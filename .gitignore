@@ -1,0 +1,38 @@
+# Cloned reference repos (test/exploration only)
+repo/
+
+# Graphify output (generated artifacts)
+graphify-out/
+
+# Playwright MCP cache
+.playwright-mcp/
+
+# Eval screenshots (generated during testing)
+eval-screenshots/
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+*.egg
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.*
+
+# Claude Code project memory (private)
+.claude/projects/
