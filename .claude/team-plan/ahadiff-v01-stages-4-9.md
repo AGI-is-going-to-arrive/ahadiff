@@ -87,7 +87,7 @@
   2. 实现硬门禁：Accuracy<14 FAIL, Evidence<12 FAIL, contradicted claims FAIL, secret leak FAIL, injection unresolved FAIL
   3. 实现 PASS(≥80) / CAUTION(60-79) / FAIL(<60) verdict 计算
   4. 实现机械化打分（R10）：evidence 从 claims.jsonl 统计 verified/weak 比例；safety_privacy 从 redaction_report.json 统计
-  5. 生成 `score.json`（8 维明细 + verdict + hard_gates + weakest_dimension）
+  5. 生成 `score.json`（8 维明细 + verdict + hard_gates + weakest_dim）
   6. 跨模型强制：生成用大模型，评估用小模型
   7. `evaluator.py` 首次 commit 后标记为 immutable，后续修改需要 `[rubric-bump]` PR 标签
 - **验收标准**: `ahadiff verify <run_id>` 和 `ahadiff score <run_id>` 输出 PASS/CAUTION/FAIL 及最弱维度

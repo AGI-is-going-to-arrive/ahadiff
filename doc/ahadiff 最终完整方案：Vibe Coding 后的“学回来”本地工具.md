@@ -746,7 +746,7 @@ diff → claims → evidence verification → lesson → quiz → review
     "not_proven": 1,
     "rejected_contradicted": 1
   },
-  "weakest_dimension": "quiz_transfer"
+  "weakest_dim": "quiz_transfer"
 }
 ```
 
@@ -1026,7 +1026,7 @@ Senior 版示例：
 
 # 13. SKILL0 思想如何落地
 
-SKILL0 的真实机制是训练阶段从 full skill context 开始，然后通过 Dynamic Curriculum 根据 helpfulness 逐步撤掉 skill context，最终在推理时不依赖 skill retrieval；论文还报告 ALFWorld 和 Search-QA 提升，并强调每步上下文少于 0.5k tokens。**Budget 递减方式是阶段跳变 `[6, 3, 0]`（非线性递减）**：Step 1-60 保留全部 6 个 skill，Step 61-120 保留 top-3，Step 121-180 完全撤架。**Helpfulness 计算原版是 skill file 级**（如 `clean.md` 整体保留或移除），AhaDiff 自行扩展到 section 粒度（每个 section 独立计算 Delta_k）。AhaDiff 不做模型训练，所以不能 claim 实现 SKILL0 RL；它应该借的是”撤脚手架学习法”。([arXiv](https://arxiv.org/abs/2604.02268?utm_source=chatgpt.com))
+SKILL0 的真实机制是训练阶段从 full skill context 开始，然后通过 Dynamic Curriculum 根据 helpfulness 逐步撤掉 skill context，最终在推理时不依赖 skill retrieval；论文还报告 ALFWorld 和 Search-QA 提升，并强调每步上下文少于 0.5k tokens。**Budget 递减方式是阶段跳变 `[6, 3, 0]`（非阶段跳变 [6,3,0]）**：Step 1-60 保留全部 6 个 skill，Step 61-120 保留 top-3，Step 121-180 完全撤架。**Helpfulness 计算原版是 skill file 级**（如 `clean.md` 整体保留或移除），AhaDiff 自行扩展到 section 粒度（每个 section 独立计算 Delta_k）。AhaDiff 不做模型训练，所以不能 claim 实现 SKILL0 RL；它应该借的是”撤脚手架学习法”。([arXiv](https://arxiv.org/abs/2604.02268?utm_source=chatgpt.com))
 
 AhaDiff 中落地为：
 
@@ -1291,7 +1291,7 @@ ahadiff improve --suite local --rounds 6
 1. 读取 local benchmark suite
 2. 读取当前 prompt/template
 3. 跑 baseline
-4. 找 weakest_dimension
+4. 找 weakest_dim
 5. 只提出一个改进假设
 6. 只改一个文件
 7. 重新跑同一批 benchmark
@@ -1307,7 +1307,7 @@ ahadiff improve --suite local --rounds 6
 ```text
 触发条件（来自 darwin-skill，非 autoresearch）：
   连续 2 个优化目标在首轮即无增益（round 1 即 discard）
-  或同一 weakest_dimension 连续出现
+  或同一 weakest_dim 连续出现
 
 动作：
   stash 当前最好版本
