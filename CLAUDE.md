@@ -49,8 +49,9 @@ graph TD
 
 | 模块 | 路径 | 语言 | 职责 |
 |------|------|------|------|
-| doc | `doc/` | Markdown | 产品设计文档：架构方案、改名方案、前端视觉手册 |
+| doc | `doc/` | Markdown | 产品设计文档：架构方案、改名方案、前端视觉手册、评估报告 |
 | ui | `ui/` | HTML/CSS/JS | UI 原型：Warm 风格 v1-v5 迭代版本 |
+| team-plan | `.claude/team-plan/` | Markdown | 团队计划：v0.1 kickoff + 修订方案 + CLI 接入扩展 |
 | 根级原型 | `AhaDiff Warm v5.html` | HTML | 最新 UI 原型（v5 副本，便于快速预览） |
 
 ## 运行与开发
