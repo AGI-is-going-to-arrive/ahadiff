@@ -1026,7 +1026,7 @@ Senior 版示例：
 
 # 13. SKILL0 思想如何落地
 
-SKILL0 的真实机制是训练阶段从 full skill context 开始，然后通过 Dynamic Curriculum 根据 helpfulness 逐步撤掉 skill context，最终在推理时不依赖 skill retrieval；论文还报告 ALFWorld 和 Search-QA 提升，并强调每步上下文少于 0.5k tokens。AhaDiff 不做模型训练，所以不能 claim 实现 SKILL0 RL；它应该借的是“撤脚手架学习法”。([arXiv](https://arxiv.org/abs/2604.02268?utm_source=chatgpt.com))
+SKILL0 的真实机制是训练阶段从 full skill context 开始，然后通过 Dynamic Curriculum 根据 helpfulness 逐步撤掉 skill context，最终在推理时不依赖 skill retrieval；论文还报告 ALFWorld 和 Search-QA 提升，并强调每步上下文少于 0.5k tokens。**Budget 递减方式是阶段跳变 `[6, 3, 0]`（非线性递减）**：Step 1-60 保留全部 6 个 skill，Step 61-120 保留 top-3，Step 121-180 完全撤架。**Helpfulness 计算原版是 skill file 级**（如 `clean.md` 整体保留或移除），AhaDiff 自行扩展到 section 粒度（每个 section 独立计算 Delta_k）。AhaDiff 不做模型训练，所以不能 claim 实现 SKILL0 RL；它应该借的是”撤脚手架学习法”。([arXiv](https://arxiv.org/abs/2604.02268?utm_source=chatgpt.com))
 
 AhaDiff 中落地为：
 
@@ -1064,9 +1064,11 @@ Day 7:
 
 # 14. Autoresearch / Darwin / SkillCompass 的真实纳入
 
-## 14.1 Autoresearch：三文件契约
+## 14.1 Autoresearch：三文件契约（概念改编）
 
-Karpathy/autoresearch 的核心不是复杂 engine，而是 `program.md`、固定评估、唯一可编辑资产、`results.tsv` 和 keep/discard loop；其 README 描述了 agent 修改训练代码、训练 5 分钟、检查是否改进、保留或丢弃的循环。`program.md` 还明确 `prepare.py` 中的 `evaluate_bpb` 是 ground truth metric，目标是降低 `val_bpb`。([GitHub](https://github.com/karpathy/autoresearch?utm_source=chatgpt.com))
+> **归因说明**：AhaDiff 的三文件契约是对 autoresearch 的**概念改编**，不是直接复刻。autoresearch 原版是 `program.md` + `prepare.py`（immutable）+ `train.py`（mutable），改的是 Python 代码；AhaDiff 改的是 Markdown prompt（`prompts/*.md`）。评估指标也不同：autoresearch 是单一数值 `val_bpb`，AhaDiff 是 8 维 rubric + verdict。
+
+Karpathy/autoresearch 的核心不是复杂 engine，而是 `program.md`、固定评估、唯一可编辑资产、`results.tsv` 和 keep/discard loop；其 README 描述了 agent 修改训练代码、训练 5 分钟、检查是否改进、保留或丢弃的循环。`program.md` 还明确 `prepare.py` 中的 `evaluate_bpb` 是 ground truth metric，目标是降低 `val_bpb`。autoresearch **没有 Phase 2.5 或 stuck 检测**，仅在 program.md 中说"if you feel stuck, think harder"。([GitHub](https://github.com/karpathy/autoresearch?utm_source=chatgpt.com))
 
 AhaDiff 映射：
 
@@ -1093,11 +1095,10 @@ Immutable:
 - src/ahadiff/eval/rubric.yaml
 - tests/fixtures/
 
-Editable:
+Editable (improve loop ONLY touches prompts/*.md):
 - prompts/claim_extract.md
 - prompts/lesson_generate.md
 - prompts/quiz_generate.md
-- viewer/templates/warm/*.j2
 
 Loop:
 1. Read results.tsv.
@@ -1108,7 +1109,7 @@ Loop:
 6. Append results.tsv.
 7. Keep only if score improves and all hard gates pass.
 8. Otherwise discard.
-9. After 3 stuck rounds, try structural rewrite.
+9. After 2 consecutive optimization targets show no gain at round 1, try structural rewrite (Phase 2.5, from darwin-skill).
 ```
 
 ------
@@ -1124,7 +1125,7 @@ AhaDiff 落地：
 生成模型和 judge 模型分离
 结果必须写入 results.tsv
 不提升就 discard
-连续 3 轮卡住进入 structural rewrite
+连续 2 个优化目标在首轮即无增益，进入 structural rewrite（Phase 2.5，来自 darwin-skill）
 ```
 
 默认本地工具建议：
@@ -1138,7 +1139,7 @@ AhaDiff 落地：
 
 ## 14.3 SkillCompass：PASS / CAUTION / FAIL 与安全硬门
 
-SkillCompass 明确是 local-first skill quality evaluator，六维评分，找 weakest link，修复并证明有效；其 PASS / CAUTION / FAIL 规则把 D3 security 作为硬门，并强调 local-first、read-only by default、passive tracking、active decisions。AhaDiff 应该直接吸收这些原则。([GitHub](https://github.com/Evol-ai/SkillCompass/blob/main/README.md))
+SkillCompass 明确是 local-first skill quality evaluator，**原版 6 维**（Structure/Trigger/Security/Functional/Comparative/Uniqueness）评估 **skill 文件质量**（非学习笔记质量），找 weakest link，修复并证明有效；其 PASS / CAUTION / FAIL 规则把 D3 Security 作为硬门，并强调 local-first、read-only by default、passive tracking、active decisions。AhaDiff 借鉴其三档判定机制和 weakest-dimension-first 策略，但**阈值从原版 70（PASS）/50（FAIL）调高为 80/60**，理由是学习笔记质量标准应高于 skill 文件格式检查。([GitHub](https://github.com/Evol-ai/SkillCompass/blob/main/README.md))
 
 AhaDiff verdict：
 
@@ -1167,7 +1168,9 @@ FAIL:
 
 # 15. 评估体系
 
-## 15.1 8 维评分
+## 15.1 8 维评分（AhaDiff 完全自研体系）
+
+> **归因说明**：AhaDiff 的 8 维 rubric 是完全自研体系，不来自任何灵感项目。darwin-skill 有 8 维但评估对象是 skill 文件质量（Frontmatter/Workflow/Boundaries 等）；SkillCompass 原版 6 维评估 skill 文件质量。AhaDiff 的 8 维评估的是**学习笔记质量**，维度定义完全不同。
 
 ```text
 D1 Accuracy / 准确性                     20
@@ -1175,9 +1178,9 @@ D2 Evidence / 证据链                     18
 D3 Diff Coverage / diff 覆盖             14
 D4 Learnability / 可学性                 14
 D5 Quiz Transfer / 测验迁移              10
-D6 Conciseness / 简洁度                   8
-D7 Safety & Privacy / 安全隐私           10
-D8 Local UX / 本地可用性                  6
+D6 Spec Alignment / 规范对齐             10
+D7 Conciseness / 简洁度                   8
+D8 Safety & Privacy / 安全隐私            6
 Total                                  100
 ```
 
@@ -1251,15 +1254,30 @@ thresholds:
 
 # 16. Ratchet 改进机制
 
-## 16.1 `results.tsv`
+## 16.1 `results.tsv`（AhaDiff 自定义 10 列）
+
+> **归因说明**：autoresearch 原版 5 列（commit/val_bpb/memory_gb/status/description），darwin-skill 9 列。AhaDiff 自定义 10 列，新增 head_sha/prompt_version/rubric_version 以支持跨版本回溯。
 
 ```text
-timestamp	run_id	version	score	verdict	status	weakest_dimension	note
-2026-04-19T14:00	abc123	v1	71	CAUTION	baseline	evidence	missing line evidence
-2026-04-19T14:04	abc123	v2	78	CAUTION	keep	learnability	added hunk walkthrough
-2026-04-19T14:10	abc123	v3	74	CAUTION	discard	conciseness	too verbose
-2026-04-19T14:18	abc123	v4	88	PASS	keep_final	quiz_transfer	added transfer quiz
+timestamp	run_id	head_sha	prompt_version	rubric_version	overall	verdict	status	weakest_dim	note
+2026-04-19T14:00	run_001	abc1234	pv_a1b2	rv_c3d4	71	CAUTION	baseline	evidence	missing line evidence
+2026-04-19T14:04	run_002	abc1234	pv_e5f6	rv_c3d4	78	CAUTION	keep	learnability	added hunk walkthrough
+2026-04-19T14:10	run_003	abc1234	pv_g7h8	rv_c3d4	74	CAUTION	discard	conciseness	too verbose
+2026-04-19T14:18	run_004	abc1234	pv_i9j0	rv_c3d4	88	PASS	keep_final	quiz_transfer	added transfer quiz
 ```
+
+| 列 | 类型 | 说明 |
+|----|------|------|
+| timestamp | ISO 8601 | 运行时间 |
+| run_id | string | `make_run_id()` 生成 |
+| head_sha | string(7) | git short hash |
+| prompt_version | string | `prompts/` 目录的 tree hash 前 7 位 |
+| rubric_version | string | `rubric.yaml` 的 content hash 前 7 位 |
+| overall | int 0-100 | 加权总分 |
+| verdict | enum | PASS / CAUTION / FAIL |
+| status | enum | baseline / keep / discard / rollback / crash / targeted_verify / keep_final |
+| weakest_dim | string | 最弱维度的 json_key |
+| note | string | 人类或 agent 的简短描述 |
 
 ## 16.2 `ahadiff improve`
 
@@ -1281,14 +1299,14 @@ ahadiff improve --suite local --rounds 6
 9. 如果均分提升且硬门全过，keep
 10. 否则 discard
 11. 追加 results.tsv
-12. 连续 3 轮无提升，进入 structural rewrite
+12. 连续 2 个优化目标在首轮即无增益（round 1 即 discard），进入 structural rewrite（Phase 2.5）
 ```
 
 ## 16.3 Structural rewrite
 
 ```text
-触发条件：
-  连续 3 轮没有提升
+触发条件（来自 darwin-skill，非 autoresearch）：
+  连续 2 个优化目标在首轮即无增益（round 1 即 discard）
   或同一 weakest_dimension 连续出现
 
 动作：
@@ -2339,13 +2357,12 @@ Phase 2.5 structural rewrite
 ahadiff improve --suite local --rounds 6
 ```
 
-只允许改：
+只允许改（viewer 模板归前端工作流，不归 improve loop）：
 
 ```text
 prompts/claim_extract.md
 prompts/lesson_generate.md
 prompts/quiz_generate.md
-viewer/templates/warm/*.j2
 ```
 
 不允许改：
