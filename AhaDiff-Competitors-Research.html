@@ -1183,7 +1183,7 @@ footer{
           </div>
           <div>
             <div class="moat-num">MOAT 02</div>
-            <h3>Claim → 证据 4 状态</h3>
+            <h3>Claim → 证据 5 状态</h3>
           </div>
         </div>
         <div class="moat-analogy">论文审稿 — 每个结论都必须引原文行号，拒绝"感觉对"。</div>
@@ -1196,7 +1196,7 @@ footer{
         </div>
         <div class="moat-compare">
           <span class="moat-compare-chip no">别家都是"自然语言带行号"</span>
-          <span class="moat-compare-chip has">AhaDiff 独家 4 状态机</span>
+          <span class="moat-compare-chip has">AhaDiff 独家 5 状态机</span>
         </div>
       </div>
 
@@ -1217,7 +1217,7 @@ footer{
         <div class="moat-example">
           Round 1: <code>wiki_score = 0.72</code> ✓ git commit<br>
           Round 2: <code>wiki_score = 0.84</code> ✓ git commit<br>
-          Round 3: <code>wiki_score = 0.76</code> ✗ git reset<br>
+          Round 3: <code>wiki_score = 0.76</code> ✗ 删除 worktree（不触碰主分支）<br>
           连续 2 个优化目标无增益 → 触发 Phase 2.5 探索性重写
         </div>
         <div class="moat-compare">
@@ -1244,7 +1244,7 @@ footer{
         <div class="moat-example">
           所有产物存 <code>.ahadiff/</code> 目录<br>
           出本机的只有 LLM API prompt 本身<br>
-          四道闸门过滤：<code>.ahadiffignore</code> + <code>redact.py</code> + <code>offline_only=true</code> + <code>audit.jsonl</code>
+          五道安全闸门：<code>.ahadiffignore</code> → secret scan(两层扫描) → UNTRUSTED_DIFF 边界 → 隐私三档(<code>strict_local</code>/<code>redacted_remote</code>/<code>explicit_remote</code>) → <code>audit.jsonl</code>
         </div>
         <div class="moat-compare">
           <span class="moat-compare-chip no">CodeRabbit / Greptile / DeepWiki 全 SaaS</span>
@@ -1426,11 +1426,11 @@ footer{
       <div class="split-col left">
         <div class="split-badge">借骨架（repo/ 下源码）</div>
         <h3>4 个灵感项目</h3>
-        <p>贡献：三文件契约 / Ratchet 概念 / rubric 框架 / 图谱格式。<strong>没一个评估"学习笔记质量"。</strong></p>
+        <p>贡献：N-文件契约 / Ratchet 概念 / rubric 框架 / 图谱格式。<strong>没一个评估"学习笔记质量"。</strong></p>
         <div class="split-items">
           <div class="split-item">
             <div class="split-item-name">autoresearch <span class="split-item-tag">Karpathy</span></div>
-            <div class="split-item-evid">借走：三文件契约 + git ratchet；原版评估 ML 代码的 val_bpb</div>
+            <div class="split-item-evid">借走：N-文件契约（受三文件启发的变体）+ git ratchet；原版评估 ML 代码的 val_bpb</div>
           </div>
           <div class="split-item">
             <div class="split-item-name">darwin-skill <span class="split-item-tag">零代码 MD</span></div>
@@ -1482,6 +1482,76 @@ footer{
       <h3>两边都没人做——这正是 AhaDiff 的机会：<br>把你<em>刚写完的 diff</em> 变成有证据、能棘轮、能复习的学习笔记。</h3>
       <div class="tag">THE GAP BETWEEN TWO WORLDS</div>
     </div>
+  </div>
+</section>
+
+<!-- =============== LLM Wiki Mapping Table =============== -->
+<section class="page" style="padding:30px">
+  <div class="page-head" style="margin-bottom:24px">
+    <div class="eyebrow">附录 · Karpathy LLM Wiki 映射</div>
+    <h1 style="font-size:22px">LLM Wiki 思想的具体落地</h1>
+    <div class="sub">Karpathy 2026 年 4 月提出的 persistent compounding wiki 模式，AhaDiff 如何将其适配到代码学习场景。</div>
+  </div>
+
+  <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:13px;line-height:1.6">
+      <thead>
+        <tr style="background:#F5F0E6">
+          <th style="padding:10px 14px;text-align:left;border-bottom:2px solid #E3CDA1;width:20%">Karpathy 原版</th>
+          <th style="padding:10px 14px;text-align:left;border-bottom:2px solid #E3CDA1;width:25%">核心描述</th>
+          <th style="padding:10px 14px;text-align:left;border-bottom:2px solid #E3CDA1;width:25%">AhaDiff 落地</th>
+          <th style="padding:10px 14px;text-align:left;border-bottom:2px solid #E3CDA1;width:30%">差异说明</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid #EDE8DB">
+          <td style="padding:10px 14px;font-weight:600">输入源</td>
+          <td style="padding:10px 14px">文档、论文、网页</td>
+          <td style="padding:10px 14px"><code>git diff</code>（6 种输入模式）</td>
+          <td style="padding:10px 14px;color:#8B7355">源从静态文档变为代码变更，每次 diff 是一个增量知识单元</td>
+        </tr>
+        <tr style="border-bottom:1px solid #EDE8DB;background:#FDFCF8">
+          <td style="padding:10px 14px;font-weight:600">Ingest 操作</td>
+          <td style="padding:10px 14px">LLM 读源 → 提取 → 整合到 wiki</td>
+          <td style="padding:10px 14px"><code>ahadiff learn</code></td>
+          <td style="padding:10px 14px;color:#8B7355">增加了 claim 验证层（5 态枚举），确保每句解释有代码证据</td>
+        </tr>
+        <tr style="border-bottom:1px solid #EDE8DB">
+          <td style="padding:10px 14px;font-weight:600">index.md</td>
+          <td style="padding:10px 14px">内容导航页，LLM 每次 ingest 更新</td>
+          <td style="padding:10px 14px"><code>.ahadiff/index.md</code>（v0.2）</td>
+          <td style="padding:10px 14px;color:#8B7355">diff-aware merge：只追加新概念或更新引用计数，不覆盖</td>
+        </tr>
+        <tr style="border-bottom:1px solid #EDE8DB;background:#FDFCF8">
+          <td style="padding:10px 14px;font-weight:600">log.md</td>
+          <td style="padding:10px 14px">时间线日志，append-only</td>
+          <td style="padding:10px 14px"><code>concepts.jsonl</code>（v0.1）</td>
+          <td style="padding:10px 14px;color:#8B7355">结构化 JSONL 替代纯文本 log，支持 branch-aware 过滤</td>
+        </tr>
+        <tr style="border-bottom:1px solid #EDE8DB">
+          <td style="padding:10px 14px;font-weight:600">Query 反写</td>
+          <td style="padding:10px 14px">好的回答反写到 wiki</td>
+          <td style="padding:10px 14px">quiz/review → learning signals</td>
+          <td style="padding:10px 14px;color:#8B7355">学习行为（答题、标错）反馈到概念系统，驱动 improve loop</td>
+        </tr>
+        <tr style="border-bottom:1px solid #EDE8DB;background:#FDFCF8">
+          <td style="padding:10px 14px;font-weight:600">Lint（健康检查）</td>
+          <td style="padding:10px 14px">手动请求 LLM 检查矛盾/过时</td>
+          <td style="padding:10px 14px">evaluator.py + claim verifier</td>
+          <td style="padding:10px 14px;color:#8B7355">自动化 8 维评分 + 硬门禁，无需手动触发</td>
+        </tr>
+        <tr style="background:#FDFCF8">
+          <td style="padding:10px 14px;font-weight:600">知识复利</td>
+          <td style="padding:10px 14px">wiki 越来越丰富</td>
+          <td style="padding:10px 14px">concepts.jsonl 越学越厚</td>
+          <td style="padding:10px 14px;color:#8B7355">+ Graphify repo map 底层 + 学习覆盖层上层 = 双层复利</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="margin-top:20px;padding:14px;background:#F1F8E9;border:1px solid #C8E6C9;border-radius:8px;font-size:13px;line-height:1.7">
+    <b style="color:#4A7C59">Graphify × LLM Wiki 互补关系</b>：Graphify 做 repo-level 全局 map（底层结构图谱，偶尔更新），AhaDiff 的 LLM Wiki 模式做 diff-level 增量 learning overlay（上层学习覆盖层，每次 learn 都增长）。两者通过 <code>ahadiff graph import</code> 连接，Graphify 节点成为 Concept/Claim 节点的锚点。Graphify 可选不强制，不安装时静默降级为"仅学习节点"模式。
   </div>
 </section>
 
@@ -1700,7 +1770,7 @@ footer{
           <ul>
             <li><strong>抢占 Claude Skill 生态入口</strong> — 发布到 <code>awesome-claude-skills</code>（55k stars），让用户装一个 skill 就得到 AhaDiff。</li>
             <li><strong>强调 Local-First 个人工具定位</strong> — CodeRabbit 是企业 SaaS，AhaDiff 是个人本地。数据不出本机是卖点，不是借口。</li>
-            <li><strong>Claim 四状态 + SRS 组合</strong> — 这是 CodeRabbit 企业 review 基因不会做的事。它的客户是 reviewer，不是学习者。</li>
+            <li><strong>Claim 五状态 + SRS 组合</strong> — 这是 CodeRabbit 企业 review 基因不会做的事。它的客户是 reviewer，不是学习者。</li>
             <li><strong>棘轮机制差异化</strong> — CodeRabbit 的目标是"找出所有问题"；AhaDiff 的目标是"笔记质量单调递增"，完全不同的优化目标。</li>
           </ul>
         </div>
@@ -1776,9 +1846,9 @@ footer{
 const products = {
   'ahadiff':{name:'知返 AhaDiff', tag:'MY', url:'local',
     model:'Local CLI (Python 3.11+)', focus:'git diff → 学习笔记 + SRS + 证据链',
-    local:'YES — 所有产物在 .ahadiff/ 目录', claim:'4 状态（verified/weak/not_proven/contradicted）',
+    local:'YES — 所有产物在 .ahadiff/ 目录', claim:'5 状态（verified/weak/not_proven/contradicted/rejected）',
     ratchet:'有（wiki_score + git commit/reset + Phase 2.5）',
-    srs:'有（quiz.jsonl + review.db + SM-2/FSRS）',
+    srs:'有（quiz.jsonl + review.sqlite + SM-2/FSRS）',
     overlap:'自己', note:'本项目 · 当前设计阶段'},
   'coderabbit':{name:'CodeRabbit', tag:'SAAS', url:'https://coderabbit.ai',
     model:'SaaS $24/$48 per user/month（Pro/Pro Plus）',
@@ -1935,7 +2005,7 @@ const borrowData = [
     title:`5 列 TSV 日志（非 CSV / JSONL）`,
     loc:`program.md:L67-L88`,
     how:`固定列：commit val_bpb memory_gb status description。status 枚举 keep|discard|crash。tab 分隔避免 description 中 comma 破坏。`,
-    apply:`<b>已覆盖</b> — HC-15 已固定 10 列（非 5 列），不回退。落地于 L5 eval/results.py。`},
+    apply:`<b>已覆盖</b> — HC-15 已固定 11 列（非 5 列），不回退。落地于 L5 eval/results.py。`},
   {n:3, proj:'autoresearch', pri:'P2', verdict:'deferred',
     title:`gc.disable() + 定期 gc.collect()`,
     loc:`train.py:L592-L598`,
@@ -1972,7 +2042,7 @@ const borrowData = [
     title:`results.tsv 增 eval_mode 列（full_test / dry_run）`,
     loc:`SKILL.md:L232-L239`,
     how:`TSV 第 9 列区分完整测试 vs 干跑。子 agent 不可用时退化为干跑验证并标注。`,
-    apply:`<b>不适用</b> — 与 HC-15 固定 10 列直接冲突，eval_mode 信息可记录在 note 列（第 10 列）。`},
+    apply:`<b>不适用</b> — 与 HC-15 固定 11 列直接冲突，eval_mode 信息可记录在 note 列。`},
   {n:10, proj:'darwin-skill', pri:'P1', verdict:'deferred',
     title:`文件体积 &gt; 150% → 拒绝提交`,
     loc:`SKILL.md:L282`,
@@ -2046,7 +2116,7 @@ const borrowData = [
     title:`SHA256 内容寻址缓存（多因子 key）`,
     loc:`graphify/cache.py:L10-L41`,
     how:`原版是 per-file extraction cache：file_hash() 对 .md 先剥 YAML frontmatter 再哈希，key = content + "\\x00" + relative_path（repo-relative 可移植）。有 fallback 到 raw content 的健壮处理。`,
-    apply:`<b>纳入 v0.1</b> — 借鉴内容寻址 + 相对路径可移植性思想，但 AhaDiff 是 LLM 调用缓存。key = SHA256(diff_content + \\x00 + source_ref + \\x00 + prompt_version + \\x00 + model_id + \\x00 + rubric_version + \\x00 + redaction_config_hash + \\x00 + context_bundle_hash)。落地于 L2 llm/cache.py。`},
+    apply:`<b>纳入 v0.1</b> — 借鉴内容寻址 + 相对路径可移植性思想，但 AhaDiff 是 LLM 调用缓存。key = SHA256(diff_content + \\x00 + source_ref + \\x00 + prompt_fingerprint + \\x00 + model_id + \\x00 + rubric_version + \\x00 + redaction_config_hash + \\x00 + context_bundle_hash)。prompt_fingerprint 为双层版本策略的 per-prompt 级 hash（非整目录 tree hash）。落地于 L2c llm/cache.py。`},
   {n:24, proj:'graphify', pri:'P0', verdict:'covered',
     title:`枚举型 Schema 验证 + assert_valid() 快速失败`,
     loc:`graphify/validate.py:L4-L64`,

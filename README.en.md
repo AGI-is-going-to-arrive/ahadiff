@@ -19,7 +19,7 @@ It's not a PR summary, not a repo wiki, not yet another "code explainer." It rea
 - A **concept graph** of ideas introduced by this diff
 - **Quiz** questions for active recall
 - **SRS cards** for future spaced review
-- A comparable **quality score history** (`results.tsv`, ratcheted)
+- A comparable **quality score history** (ratcheted; `review.sqlite` is the single source of truth, `results.tsv` is a human-readable export)
 
 > Code Wiki explains a repo. AhaDiff teaches you what changed — and verifies every claim against the diff.
 
@@ -30,19 +30,19 @@ AI writes code faster, but developers know less about what they actually underst
 1. **AI ships, the understanding has to come back to humans** — a commit message isn't enough.
 2. **Every claim must have evidence** — no hallucinated functions, no fabricated causality.
 3. **Knowledge should compound** — when the same concept is touched again, the wiki should record evolution and backlinks.
-4. **Quality should be comparable** — replace "looks fine" with an immutable evaluator and a git ratchet.
+4. **Quality should be comparable** — replace "looks fine" with an immutable evaluation bundle and a git ratchet.
 
-## Core Philosophy (Three-Layer Asymmetry)
+## Core Philosophy (N-File Contract)
 
-Inherits the Karpathy / autoresearch design philosophy:
+Extends the Karpathy / autoresearch three-file contract into an N-file variant:
 
 | File | Who edits | Role |
 |------|-----------|------|
 | `program.md` | Human | Natural-language state machine for the improve loop |
-| `evaluator.py` | **Immutable** | The ruler — emits one scalar `lesson_score` |
-| `generator_prompt.md` | Agent | The only "creative strategy" the agent may optimize |
+| evaluation bundle | **Immutable** | `evaluator.py` + `rubric.yaml` + `gates.py` + `deterministic.py` — locked as a unit |
+| `prompts/*.md` | Agent | The only writable surface — a directory of prompts (agent edits prompts, never user code) |
 
-LOOP: edit → commit → evaluate → keep if better, reset if worse → append to `results.tsv`.
+LOOP: edit → commit → evaluate → keep if better, reset if worse → write to `review.sqlite` (single source of truth; `results.tsv` is an export view).
 
 ## Quickstart (Planned)
 
@@ -132,7 +132,7 @@ Roadmap:
 
 ## Inspirations
 
-- **karpathy/autoresearch** — three-file contract + git ratchet
+- **karpathy/autoresearch** — N-file contract (three-file variant) + git ratchet
 - **alchaincyf/darwin-skill** — 8-dimension rubric + Phase 2.5 rewrite
 - **Evol-ai/SkillCompass** — PASS/CAUTION/FAIL + weakest-dimension-first
 - **ZJU-REAL/SkillZero** — helpfulness-driven retention + compact context
@@ -143,7 +143,7 @@ Roadmap:
 
 1. **Evidence first** — every claim must trace back to `file:line`
 2. **Learning over summary** — quizzes and review beat pretty summaries
-3. **Local-first trust** — offline by default, every LLM call surfaced
+3. **Local-first trust** — three privacy tiers (`strict_local` / `redacted_remote` / `explicit_remote`), defaults to `strict_local`
 4. **Paper-like seriousness** — academic feel; no cool-purple SaaS gradients
 5. **One accent per style** — warm paper background + a single accent color
 

@@ -34,7 +34,7 @@
 **Claim Verifier（声明验证器）** 是真正差异化：
 - `diff → claims → evidence verification → lesson → quiz → review`
 - 这比 `diff → explanation` 深了整整两层
-- 五种状态（verified/weak/not_proven/contradicted/rejected）在全网无人做到
+- 五种状态（verified / weak / not_proven / contradicted / rejected）在全网无人做到
 - negative evidence scan（反向证据扫描）是杀手级特性
 
 ### 2.3 风险评估
@@ -61,7 +61,7 @@
 
 | AhaDiff 声明 | 真实情况 | 判定 |
 |-------------|---------|------|
-| 三文件契约：program.md + evaluator.py + generator_prompt.md | autoresearch 原版是 `program.md` + `prepare.py`(immutable) + `train.py`(mutable) | **准确** — 方案 §14.1 明确展示了映射关系，是有意的概念改编而非错误引用 |
+| N-文件契约：program.md + evaluation bundle + generator_prompt.md | autoresearch 原版三文件是 `program.md` + `prepare.py`(immutable) + `train.py`(mutable)。AhaDiff 改编为 N-文件契约 | **准确** — 方案 §14.1 明确展示了映射关系，是有意的概念改编而非错误引用 |
 | results.tsv 记录每次尝试 | 真实存在，记录 keep/discard/crash | **准确** |
 | 单指标优化（val_bpb） | 真实，agent 的唯一目标是降低 val_bpb | **准确** |
 | keep/discard/git ratchet | 真实，改进 git commit，退步 git reset | **准确** |
@@ -200,7 +200,7 @@ cat graphify-out/graph.json | python3 -m json.tool | head -100
 
 ### 6.3 不需要的项目
 
-- **autoresearch**：不需要 clone。它是 GPU 训练项目（需要数据集+GPU），AhaDiff 只借鉴了它的三文件契约和 ratchet 模式，这些概念已完整理解
+- **autoresearch**：不需要 clone。它是 GPU 训练项目（需要数据集+GPU），AhaDiff 只借鉴了它的三文件契约思想（改编为 N-文件契约）和 ratchet 模式，这些概念已完整理解
 - **darwin-skill**：不需要 clone。它是 Claude Skill 优化器，AhaDiff 已吸收其 rubric 评分和 improve loop 思想
 - **SkillCompass**：不需要 clone。已验证其 PASS/CAUTION/FAIL 体系，AhaDiff 已完成改编
 
@@ -218,7 +218,7 @@ cat graphify-out/graph.json | python3 -m json.tool | head -100
 
 | 灵感项目 | 引用维度 | 准确性 | 需修正 |
 |---------|---------|--------|--------|
-| autoresearch | 三文件契约 | ✅ 准确 | 无 |
+| autoresearch | 三文件契约（AhaDiff 改编为 N-文件契约） | ✅ 准确 | 无 |
 | autoresearch | ratchet/keep/discard | ✅ 准确 | 无 |
 | darwin-skill | 8 维 rubric | ✅ 准确 | 无 |
 | darwin-skill | Phase 2.5 阈值 | ⚠️ 部分准确 | 2 轮非 3 轮 |

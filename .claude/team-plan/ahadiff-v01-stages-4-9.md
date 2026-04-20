@@ -59,40 +59,41 @@
   - `tests/unit/test_quiz_generator.py`
 - **依赖**: Task 9（Lesson）+ Task 8（Claim）
 - **实施步骤**:
-  1. 定义 `QuizQuestion`, `QuizSet`, `ReviewCard` schema
+  1. 定义 `QuizQuestion`, `QuizSet`, `ReviewCard` schema。ReviewCard 必须包含 anchor 元数据：`source_ref`、`path`、`hunk_id`、`hunk_hash`、`symbol`、`change_kind`
   2. 编写 `quiz_generate.md` prompt
   3. 实现 `generate_quiz()` → `quiz.jsonl`（每题含 source_claims / concepts / file:line evidence）
   4. 实现 `generate_cards()` → `cards.jsonl`（SRS 复习卡，每张 <500 token）
   5. 实现 `ahadiff quiz <run_id>` CLI 子命令（交互式答题）
-- **验收标准**: `ahadiff quiz <run_id>` 能做题，每题可回链到 source_claims 和 file:line
+  6. **Quiz staleness 惰性检测**（Anki 无此能力，AhaDiff 创新点）：`CardState = active | stale | archived`。当 `ahadiff review` 或 `ahadiff quiz` 取卡时，用当前 HEAD 重新解析 card 的 anchor（path + hunk_hash + symbol）。解析失败 → 标记 `stale` + `stale_reason`（file_deleted/symbol_removed/line_drifted），移出正常 due 队列，CLI 提示 `ahadiff regenerate --only quiz <run_id>` 或 `ahadiff card archive <card_id>`。rename/move 场景优先用 symbol 判定，path 失效但 symbol 可解析时判为 `moved` 而非 stale。非 git 输入（patch/compare）标记 `staleness_unknown`，不误报
+- **验收标准**: `ahadiff quiz <run_id>` 能做题，每题可回链到 source_claims 和 file:line；stale card 不更新 ease/interval
 
 ---
 
 ## 第五段：score + verifier hard gates + results.tsv
 
-### Task 11: 评估体系（evaluator.py immutable）
+### Task 11: 评估体系（Evaluation Bundle — 整体 immutable）
 
 - **类型**: 后端（Codex 实现）
 - **文件范围**:
-  - `src/ahadiff/eval/evaluator.py`（**IMMUTABLE after first commit**）
-  - `src/ahadiff/eval/rubric.py`
-  - `src/ahadiff/eval/gates.py`
-  - `src/ahadiff/eval/deterministic.py`
-  - `evals/rubric.yaml`
+  - `src/ahadiff/eval/evaluator.py`（**evaluation bundle 成员，整体 IMMUTABLE**）
+  - `src/ahadiff/eval/rubric.py`（**evaluation bundle 成员**）
+  - `src/ahadiff/eval/gates.py`（**evaluation bundle 成员**）
+  - `src/ahadiff/eval/deterministic.py`（**evaluation bundle 成员**）
+  - `evals/rubric.yaml`（**evaluation bundle 成员**）
   - `tests/unit/test_evaluator.py`
   - `tests/unit/test_gates.py`
-- **依赖**: Task 7（LLM Provider）+ Task 8（Claim）
+- **依赖**: Task 0（Schema Freeze）+ Task 7（LLM Provider）+ Task 8（Claim）
 - **实施步骤**:
   1. 实现 8 维 rubric 评分（accuracy/evidence/diff_coverage/learnability/quiz_transfer/spec_alignment/conciseness/safety_privacy = 100 分）
   2. 实现硬门禁：Accuracy<14 FAIL, Evidence<12 FAIL, contradicted claims FAIL, secret leak FAIL, injection unresolved FAIL
   3. 实现 PASS(≥80) / CAUTION(60-79) / FAIL(<60) verdict 计算
   4. 实现机械化打分（R10）：evidence 从 claims.jsonl 统计 verified/weak 比例；safety_privacy 从 redaction_report.json 统计
-  5. 生成 `score.json`（8 维明细 + verdict + hard_gates + weakest_dim）
+  5. 生成 `score.json`（8 维明细 + verdict + hard_gates + weakest_dim + `eval_bundle_version` + `degraded_flags`）
   6. 跨模型强制：生成用大模型，评估用小模型
-  7. `evaluator.py` 首次 commit 后标记为 immutable，后续修改需要 `[rubric-bump]` PR 标签
-- **验收标准**: `ahadiff verify <run_id>` 和 `ahadiff score <run_id>` 输出 PASS/CAUTION/FAIL 及最弱维度
+  7. **Evaluation bundle 整体 immutable**：`evaluator.py` + `rubric.yaml` + `gates.py` + `deterministic.py` 的联合 hash 为 `eval_bundle_version`。任一文件变更视为新评估版本，需更新 `rubric_version`，自动触发 VCR cassette 失效，并在 results 中记录新版本号。v0.1 期间允许迭代但必须版本化
+- **验收标准**: `ahadiff verify <run_id>` 和 `ahadiff score <run_id>` 输出 PASS/CAUTION/FAIL 及最弱维度；score.json 包含 eval_bundle_version
 
-### Task 12: results.tsv + Ratchet 机制
+### Task 12: Ratchet 机制 + results 写入
 
 - **类型**: 后端（Codex 实现）
 - **文件范围**:
@@ -100,14 +101,19 @@
   - `src/ahadiff/eval/results.py`
   - `tests/unit/test_ratchet.py`
   - `tests/unit/test_results.py`
-- **依赖**: Task 11（评估体系）
+- **依赖**: Task 0（Schema Freeze — RunStatus/EventLog 契约）+ Task 11（评估体系）
 - **实施步骤**:
-  1. 实现 11 列 results.tsv append-only 写入（timestamp/run_id/head_sha/base_sha/prompt_version/rubric_version/overall/verdict/status/weakest_dim/note）。`head_sha` 为当前评估的 commit SHA，`base_sha` 为 ratchet 比较的基线 SHA（首次 baseline 时 base_sha 为空）。Phase 2.5 rewrite 时 note 字段记录 `PHASE25:stash_ref=<ref>`
-  2. status 枚举化：`baseline | keep | discard | rollback | crash | targeted_verify | keep_final | phase25_rewrite`
-  3. 实现 ratchet 决策逻辑：score 提升且 hard gate 全过 → keep；否则 → discard + git reset
-  4. 实现 Phase 2.5 检测：连续 2 个优化目标在首轮即 discard → 触发 structural rewrite
-  5. 简洁性准则：0.001 分提升 + 20 行 hacky prompt → 不值得
-- **验收标准**: results.tsv 正确追加，ratchet keep/discard/crash 三路径单测全绿
+  1. **写入顺序**：先写 review.sqlite `result_events`（有事务保护），成功后 append results.tsv。TSV 仅作为人类可读的 audit trail，**review.sqlite 为唯一真相源**。TSV 写入失败仅 warn，不阻塞主流程
+  2. results.tsv 11 列 append-only（timestamp/run_id/source_ref/base_ref/prompt_version/rubric_version/overall/verdict/status/weakest_dim/note）。`source_ref` 为当前评估的来源标识（git 场景为 commit SHA，patch 场景为文件 hash，compare 场景为路径对 hash），`base_ref` 为 ratchet 比较的基线标识（首次 baseline 时为空）。Phase 2.5 rewrite 时 note 字段记录 `PHASE25:worktree_path=<path>`
+  3. `result_events` 主键为 `event_id`（UUID v7，全局唯一），`run_id`/`status`/`timestamp` 为二级索引。同一 run_id 可有多行事件（如 keep → targeted_verify → keep_final）
+  4. 实现 `append_result()` 的幂等保证：写入前检查 `event_id` 是否已存在，存在则跳过
+  5. 提供 `ahadiff export-results` 从 review.sqlite 重建 results.tsv
+  6. status 枚举化（从 Task 0 contracts 导入）：`baseline | keep | discard | rollback | crash | targeted_verify | keep_final | phase25_rewrite`
+  7. 实现 ratchet 决策逻辑：score 提升且 hard gate 全过 → keep（cherry-pick 回主分支）；否则 → discard（删除 worktree）。降级 run（`degraded_flags` 非空）的 ratchet 比较需标记 `ratchet_note=degraded_comparison`，不直接丢弃
+  8. 实现 Phase 2.5 检测：连续 2 个优化目标在首轮即 discard → 触发 structural rewrite
+  9. 简洁性准则：0.001 分提升 + 20 行 hacky prompt → 不值得
+  10. 实现 PID lockfile 检查（复用 Task 5 的 `.ahadiff/ahadiff.lock`）：ratchet 写入前验证锁持有
+- **验收标准**: review.sqlite result_events 正确写入，ratchet keep/discard/crash 三路径单测全绿；`ahadiff export-results` 重建的 TSV 与直接 append 的 TSV 一致
 
 ---
 
@@ -132,7 +138,7 @@
   1. 从 Warm v6 HTML 原型提取 CSS 变量和布局结构
   2. 实现 Jinja2 五层模板架构（base → layouts → partials → components → pages）
   3. 实现 `data_bundle.py`：构建 `<script id="aha-data" type="application/json">` 注入的 JSON
-  4. data_bundle schema：context(run_id/head_sha/theme) + verdict(overall/status) + rubric_scores + claims + lesson + ratchet_history
+  4. data_bundle schema：context(run_id/source_ref/source_kind/capability_level/theme) + verdict(overall/status) + rubric_scores + claims + lesson + ratchet_history
   5. 实现 `_rubric_bar.html` 组件：自动根据 score/max 映射 PASS/CAUTION/FAIL 语义色（P1 from Gemini）
   6. 实现 `data_bundle.py` 数据裁剪：ratchet_history 仅保留 score 趋势 + run_id，丢弃废弃版本的全量 payload；diff 行数超过 soft_limit (500行) 时启用折叠截断；hard_limit 2000 行时截断并附注 `[truncated: N lines omitted]`，确保单页 HTML 不超过 2MB
   7. 确保 `file://` 打开兼容（所有资源内联，无 CDN）
@@ -180,14 +186,14 @@
   - `tests/unit/test_review.py`
 - **依赖**: Task 10（Quiz）+ Task 12（Results）
 - **实施步骤**:
-  1. 创建 `review.sqlite` schema：`cards`(id/concept/run_id/due_date/interval/ease/reps)、`result_events`(物理事件表，SQLite 为唯一真相源)、`learning_signals`(用户行为日志)
+  1. 创建 `review.sqlite` schema（**启用 WAL mode + busy_timeout=5000**）：`schema_version`(整数版本号，每次 migration 递增)、`cards`(id/concept/run_id/due_date/interval/ease/reps)、`result_events`(物理事件表，SQLite 为唯一真相源)、`learning_signals`(用户行为日志)。schema_version 嵌入 DB，不匹配时通过顺序 SQL migration 自动升级
   2. 实现 SM-2 SRS 调度算法
   3. 实现 `ahadiff review` CLI：展示 due cards，记录答题结果
   4. 实现 `ahadiff mark <claim_id> wrong` CLI：用户标记 claim 错误 → 写入 learning-signal.jsonl
   5. 实现 `results.tsv → result_events` 入库契约：
-     - `result_events` 是多行事件表，同一 run_id 可有多行（如 keep → targeted_verify → keep_final）。主键为 `(run_id, event_type, timestamp)`
-     - `result_events` 是**物理表**（非视图），schema 与 results.tsv 列一一对应
-     - **写入责任**归属 `eval/results.py`（Task 12）：每次 `append_result()` 时同步调用 `review/database.py` 的 `sync_result_event()` 写入 SQLite
+     - `result_events` 是多行事件表，同一 run_id 可有多行（如 keep → targeted_verify → keep_final）。主键为 `event_id`（UUID v7，全局唯一），`run_id`/`event_type`/`timestamp` 为二级索引
+     - `result_events` 是**物理表**（非视图），schema 与 results.tsv 列一一对应 + `event_id` + `eval_bundle_version`
+     - **写入责任**归属 `eval/results.py`（Task 12）：每次 `append_result()` 时同步调用 `review/database.py` 的 `sync_result_event()` 写入 SQLite，写入前检查 `event_id` 幂等
      - 字段映射：results.tsv 的 `weakest_dim` → SQLite 的 `weakest_dim`（统一用短名）
      - **写入顺序**：先写 SQLite（有事务保护），成功后 append TSV。TSV 仅作为人类可读的 audit trail，SQLite 为唯一真相源。TSV 写入失败仅 warn，不阻塞主流程。提供 `ahadiff export-results` 从 SQLite 重建 TSV
   6. 实现 `targeted_verify → keep_final` 升级规则：
@@ -196,8 +202,12 @@
      - 升级时写入新 result_event 行（status=keep_final），不修改原行
      - 升级失败（全 8 维 recheck 分数下降）则 status 保持 `targeted_verify`，不回滚
   7. 实现 `ahadiff regenerate --only quiz <run_id>` CLI：只重新生成 quiz，不重跑 lesson
-  8. 索引：`(run_id, event_type, timestamp)` 复合主键, `(head_sha, timestamp DESC)`, `(prompt_version, rubric_version)`, `(verdict, status)`, `(weakest_dim, timestamp DESC)`
-- **验收标准**: `ahadiff review` 显示 due cards，wrong concepts 写入 learning-signal.jsonl；result_events 行数 ≥ results.tsv 行数（因升级事件产生额外行）
+  8. 索引：`event_id` 主键, `(run_id, event_type, timestamp)` 唯一索引, `(source_ref, timestamp DESC)`, `(prompt_version, rubric_version)`, `(verdict, status)`, `(weakest_dim, timestamp DESC)`
+  9. 实现 `ahadiff db upgrade`：每个 migration 脚本在 `BEGIN EXCLUSIVE ... COMMIT` 事务中执行，失败时自动回滚到备份。升级前自动生成一致性备份（使用 SQLite backup API 或 `VACUUM INTO`，**不要直接 cp**）
+  10. 实现 `ahadiff db backup` / `ahadiff db restore <backup_path>`：手动备份/恢复
+  11. **取消 TSV 无损 repair 承诺**：`ahadiff db repair` 更名为 `ahadiff db import-results --lossy`，仅作为最后手段，显式声明为有损导入（合成 event_id，event_type 标记为 `imported_from_tsv`）。默认隐藏，需 `--i-understand-this-is-lossy` flag
+  12. 实现 `ahadiff db check`：验证 SQLite schema_version 与期望一致、WAL 完整性、event_id 唯一性
+- **验收标准**: `ahadiff review` 显示 due cards，wrong concepts 写入 learning-signal.jsonl；upgrade 前有 .bak 备份；migration 失败自动回滚
 
 ---
 
@@ -221,7 +231,8 @@
   4. 实现 weakest-dimension-first 选择（从 review.sqlite.result_events 查询最近记录）
   5. 实现 prompt versioning：`prompt_version = prompts/ 目录的 tree hash 前 7 位`
   6. 简洁性准则写入 improve_program.md
-  7. **Improve 隔离策略**：improve loop 在独立的 `ahadiff-improve` 分支执行 prompt 迭代。keep 时 cherry-pick 回主分支；discard 时 reset 该分支。不影响用户主分支的工作区。Phase 2.5 在临时 worktree 中执行（`git worktree add`），成功后合并，失败则删除 worktree。cherry-pick 冲突时自动 abort 并保持 improve 分支状态，输出冲突文件列表供人工解决，不强制覆盖主分支。
+  7. **Improve 隔离策略（统一 worktree）**：常规 improve loop 和 Phase 2.5 均在 `git worktree add` 创建的临时 worktree 中执行，不触碰用户主分支工作区。keep 时从 worktree cherry-pick 回主分支；discard 时删除 worktree。cherry-pick 冲突时自动 abort 并保持 worktree 状态，输出冲突文件列表供人工解决，不强制覆盖主分支。improve loop 启动前检查主分支 `prompts/` 是否有未提交修改，有则提前警告用户。
+  8. 禁止并发 improve：复用 PID lockfile（`.ahadiff/ahadiff.lock`），第二个 improve 实例被拒绝
 - **验收标准**: `ahadiff improve --suite local --rounds 6` 跑完，results.tsv 正确追加 6 行
 
 ### Task 17: Targeted Verification + Phase 2.5
@@ -236,7 +247,7 @@
 - **实施步骤**:
   1. 实现 Targeted Verification（R11）：improve 后不重跑全 8 维，只验证 **目标维度 + accuracy + evidence + safety_privacy**（4 维）
   2. 通过则 status=`targeted_verify`，最终确认后升级为 `keep_final`
-  3. 实现 Phase 2.5 structural rewrite：连续 2 个优化目标在首轮即 discard → `git stash` → 从头重写 → 评估 → 更好则采用，否则 `git stash pop`
+  3. 实现 Phase 2.5 structural rewrite：连续 2 个优化目标在首轮即 discard → 在新 worktree 中从头重写 → 评估 → 更好则 cherry-pick 回主分支，否则删除 worktree。**Phase 2.5 最多触发 1 次/session**（设置 `phase25_attempted=true` 标志，防止无限重写循环）
   4. Phase 2.5 触发时 status=`phase25_rewrite`（结构化枚举，非自由文本）。note 字段记录 `stash_ref=<ref>;trigger_reason=<consecutive_discard_count>`。最终结果写入 results.tsv，status=`keep` 或 `discard`，note 前缀 `PHASE25:`
 - **验收标准**: targeted verification 降低 ~50% token 消耗；Phase 2.5 在连续卡住时正确触发
 
@@ -258,7 +269,12 @@
   3. 实现 `ahadiff benchmark --suite local` CLI
   4. 输出 benchmark report：mean score / claim verification rate / 各维度均值
 - **验收标准**: `ahadiff benchmark --suite local` 跑通 10 份 diff，输出结构化报告
-- **VCR cassette 管理**：cassette key 包含 `prompt_version + model_id + rubric_version` 三元组的 hash。prompt/model/rubric 任一变更时，对应 cassette 自动失效。CI 分两档：PR 触发 `tests/unit`（无 LLM，全 mock），nightly 触发 `tests/eval`（有 LLM，VCR 录制）。月均 LLM 成本预算 $50。
+- **VCR cassette 管理（双层版本策略）**：
+  - **run 级**：`prompt_version = tree hash(prompts/)` 不变，用于 results/ratchet 一致性
+  - **cassette 级**：`prompt_fingerprint = hash(top_level_prompt_file + declared_includes + schema_version)`。每个 LLM 调用按 `prompt_fingerprint + model_id + rubric_version` 命名 cassette 文件。修改 `lesson_generate.md` 只失效 lesson 相关 cassette，不影响 quiz/claim cassette
+  - **实现**：`src/ahadiff/prompts/loader.py` 新增 `load_prompt_bundle(name) → (text, deps, fingerprint)` 和 `compute_prompt_fingerprint()`。`tests/helpers/vcr_keys.py` 提供 `make_cassette_key()`。prompt 文件通过 frontmatter `includes: [shared/base.md]` 声明依赖
+  - **CI 分档**：PR 触发 `tests/unit`（无 LLM，全 mock），nightly 触发 `tests/eval`（有 LLM，VCR 录制）。月均 LLM 成本预算 $50
+  - **edge case**：共享 partial 改动 → 所有显式依赖它的 cassette 失效；prompt rename → path 纳入 fingerprint，rename 会失效（by design）；judge/generator cassette 严格分开
 
 ---
 
@@ -386,7 +402,15 @@ Layer 8 (串行):  Task 19 (依赖 CLI 接口冻结：Task 9+10+11+15+16)
 - Socratic follow-up → v0.2
 - forgetting-risk dashboard → v0.2
 - shareable result cards（`ahadiff card`）→ v0.2
-- index.md / concepts.jsonl 增量 wiki → v0.2
+- index.md 增量 wiki → v0.2
+- **concepts.jsonl 最小版提前到 v0.1**（branch-aware 方案）：
+  - **存储**：repo 级 `.ahadiff/concepts.jsonl`，append-only 日志
+  - **每条记录**：`{concept, source_ref, branch_hint, introduced_by_run, updated_by_runs[], related_claims[], file_refs[]}`
+  - **读取时 branch 过滤**：`load_visible_concepts(head_ref)` 只返回 `source_ref` 是当前 HEAD ancestor 的记录（`git merge-base --is-ancestor`）；不可达概念保留在日志但默认隐藏
+  - **merge 语义**：feature-A 合并到 main 后，若原 commit 仍可达，概念自动重新可见；squash/cherry-pick 导致原 SHA 不可达时为已知限制，等待后续 run 再次引入
+  - **去重**：`append_concepts()` 时按 concept 名称（normalized: lowercase + strip）检查已存在，存在则合并 `updated_by_runs` 和 `file_refs`
+  - **非 git 输入**：概念仅在 run-local 视图展示，不进入全局 concepts
+  - **实现文件**：`src/ahadiff/wiki/concepts.py`（~120-180 行）
 - Claim Inspector 独立页面 → 已合并到 Diff+Evidence Viewer 侧边栏
 - Spec Alignment 页面 → v0.2
 - Benchmark Transparency 页面 → v0.2

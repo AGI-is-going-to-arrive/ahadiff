@@ -129,7 +129,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .compliance-item .ci-desc{font-size:12px;color:var(--muted);margin-top:2px;line-height:1.5}
 
 /* Architecture flow */
-.arch-flow{display:grid;grid-template-columns:repeat(7,1fr);gap:0;margin:28px 0;border:1px solid var(--hair);border-radius:12px;overflow:hidden;background:#fff}
+.arch-flow{display:grid;grid-template-columns:repeat(8,1fr);gap:0;margin:28px 0;border:1px solid var(--hair);border-radius:12px;overflow:hidden;background:#fff}
 .arch-step{padding:16px 12px;border-right:1px solid var(--hair);text-align:center;transition:background .15s;position:relative}
 .arch-step:last-child{border-right:0}
 .arch-step:hover{background:var(--accent-softer)}
@@ -201,7 +201,7 @@ table.t tr:hover td{background:var(--accent-softer)}
       <button class="nav-item active" data-goto="overview"><span class="ic">◎</span><span>总览</span><span class="en">Overview</span></button>
       <button class="nav-item" data-goto="diffflow"><span class="ic">⟳</span><span>Diff 流程</span><span class="en">Flow</span></button>
       <button class="nav-item" data-goto="inspirations"><span class="ic">✦</span><span>灵感借鉴</span><span class="en">Sources</span></button>
-      <button class="nav-item" data-goto="architecture"><span class="ic">▤</span><span>七层架构</span><span class="en">Arch</span></button>
+      <button class="nav-item" data-goto="architecture"><span class="ic">▤</span><span>八层架构</span><span class="en">Arch</span></button>
       <button class="nav-item" data-goto="rubric"><span class="ic">▲</span><span>评估体系</span><span class="en">Rubric</span></button>
       <button class="nav-item" data-goto="compliance"><span class="ic">⇌</span><span>方案一致性</span><span class="en">Align</span></button>
       <button class="nav-item" data-goto="frontend"><span class="ic">❦</span><span>前端现状</span><span class="en">UI</span></button>
@@ -230,9 +230,9 @@ table.t tr:hover td{background:var(--accent-softer)}
       <div class="kpi-grid" style="margin-bottom:28px">
         <div class="kpi"><div class="lb">灵感项目</div><div class="vl">6</div><div class="delta">autoresearch · darwin-skill · SkillCompass · SKILL0 · Graphify · LLM Wiki</div></div>
         <div class="kpi"><div class="lb">评估维度</div><div class="vl">8</div><div class="delta">完全自研 rubric · 满分 100</div></div>
-        <div class="kpi"><div class="lb">架构层数</div><div class="vl">7</div><div class="delta">Diff Capture → Wiki + UI</div></div>
+        <div class="kpi"><div class="lb">架构层数</div><div class="vl">8</div><div class="delta">Schema & Contract → Wiki + UI</div></div>
         <div class="kpi"><div class="lb">设计文档</div><div class="vl">2594<span style="font-size:14px;color:var(--muted)">行</span></div><div class="delta">31 节 + 9 段开发计划</div></div>
-        <div class="kpi"><div class="lb">产品原则</div><div class="vl">14</div><div class="delta">local-first · 文件即真相源</div></div>
+        <div class="kpi"><div class="lb">产品原则</div><div class="vl">14</div><div class="delta">local-first · SQLite 即唯一真相源</div></div>
         <div class="kpi"><div class="lb">UI 原型</div><div class="vl">v6</div><div class="delta">Warm 风格 · 11 页面</div></div>
       </div>
 
@@ -281,9 +281,9 @@ table.t tr:hover td{background:var(--accent-softer)}
               <ul style="font-size:12px;line-height:1.7;padding-left:16px;color:var(--ink-2)">
                 <li>证据绑定 + Symbol 索引</li>
                 <li>跨文件上下文</li>
-                <li>棘轮回滚（git revert）</li>
+                <li>棘轮回滚（删除 worktree）</li>
                 <li>Graph overlay + Backlinks</li>
-                <li>版本追踪（head_sha）</li>
+                <li>版本追踪（source_ref）</li>
               </ul>
               <div style="margin-top:8px;font-size:11px;font-family:var(--font-mono);color:var(--accent-ink)">--last / --staged / --since</div>
             </div>
@@ -779,15 +779,15 @@ table.t tr:hover td{background:var(--accent-softer)}
           <b>原版核心</b>：<code>program.md</code> + <code>prepare.py</code>（immutable）+ <code>train.py</code>（mutable），agent 修改 Python 训练代码，训练 5 分钟，检查 <code>val_bpb</code> 是否改进，keep 或 discard。README 明确 <code>prepare.py</code> 中的 <code>evaluate_bpb</code> 是 ground truth metric。<b>没有 Phase 2.5 或 stuck 检测</b>，仅在 program.md 中说 "if you feel stuck, think harder"。
         </div>
         <div class="src-desc" style="margin-top:8px">
-          <b>AhaDiff 如何借鉴</b>：将三文件契约的<b>概念</b>映射到学习场景 —— 评估对象从 Python 代码变为 Markdown prompt，评估指标从单一 <code>val_bpb</code> 变为 8 维 rubric + verdict。<code>results.tsv</code> 和 keep/discard 循环是直接借鉴。
+          <b>AhaDiff 如何借鉴</b>：将 N-文件契约的<b>概念</b>映射到学习场景 —— 评估对象从 Python 代码变为 Markdown prompt，评估指标从单一 <code>val_bpb</code> 变为 8 维 rubric + verdict。<code>results.tsv</code> 和 keep/discard 循环是直接借鉴。
         </div>
         <div class="src-mapping" style="margin-top:14px">
           <h5>映射关系 · Mapping</h5>
-          <div class="mapping-row"><span class="from">prepare.py (immutable)</span><span class="arrow">→</span><span class="to">evaluator.py (immutable)</span></div>
+          <div class="mapping-row"><span class="from">prepare.py (immutable)</span><span class="arrow">→</span><span class="to">evaluation bundle (immutable: evaluator.py + rubric.py + rubric.yaml + gates.py + deterministic.py)</span></div>
           <div class="mapping-row"><span class="from">train.py (mutable Python)</span><span class="arrow">→</span><span class="to">prompts/*.md (mutable Markdown)</span></div>
           <div class="mapping-row"><span class="from">program.md</span><span class="arrow">→</span><span class="to">improve_program.md</span></div>
           <div class="mapping-row"><span class="from">val_bpb (单指标)</span><span class="arrow">→</span><span class="to">aha_score (8 维 rubric)</span></div>
-          <div class="mapping-row"><span class="from">results.tsv (5 列)</span><span class="arrow">→</span><span class="to">results.tsv (10 列，自定义)</span></div>
+          <div class="mapping-row"><span class="from">results.tsv (5 列)</span><span class="arrow">→</span><span class="to">results.tsv (11 列，导出视图；唯一真相源为 review.sqlite)</span></div>
           <div class="mapping-row"><span class="from">keep / discard</span><span class="arrow">→</span><span class="to">keep / discard + git ratchet</span></div>
         </div>
       </div>
@@ -806,7 +806,7 @@ table.t tr:hover td{background:var(--accent-softer)}
           <span class="src-tag borrowed">直接借鉴</span>
         </div>
         <div class="src-desc">
-          <b>原版核心</b>：SKILL.md 里明确 8 维 rubric（结构 60 + 效果 40 = 100 分），先找得分最低的维度，每轮只提出一个改进方案，编辑 SKILL.md 后重新评估。效果维度需要 spawn 独立子 agent，不能自己评自己。分数提升则 keep，否则 <code>git revert HEAD</code> 回滚。<b>零可执行代码</b> —— 全部逻辑在 SKILL.md 自然语言指令中。
+          <b>原版核心</b>：SKILL.md 里明确 8 维 rubric（结构 60 + 效果 40 = 100 分），先找得分最低的维度，每轮只提出一个改进方案，编辑 SKILL.md 后重新评估。效果维度需要 spawn 独立子 agent，不能自己评自己。分数提升则 keep，否则 <code>git revert HEAD</code> 回滚。<b>核心逻辑全在 SKILL.md 自然语言指令中</b>（仅有一个辅助截图脚本 screenshot.mjs）。
         </div>
         <div class="src-desc" style="margin-top:8px">
           <b>Phase 2.5 触发条件</b>：连续 <b>2</b> 个 skill 在 round 1 就 break 时触发 structural rewrite（不是 3 个）。这是 darwin-skill 独有的机制，<b>autoresearch 没有此机制</b>。
@@ -818,7 +818,7 @@ table.t tr:hover td{background:var(--accent-softer)}
           <li>Weakest-dimension-first 策略 → 每轮只改一个维度</li>
           <li>生成模型与 judge 模型分离 → Sonnet 生成，Haiku 评估</li>
           <li>Phase 2.5 structural rewrite → 连续 2 个优化目标首轮即无增益时触发</li>
-          <li>git revert 回滚机制 → 不提升就 discard</li>
+          <li>git revert 回滚机制 → 不提升就 discard（AhaDiff 改为 worktree 隔离）</li>
           <li>子 agent 独立评测 → 跨模型评估</li>
         </ul>
       </div>
@@ -937,23 +937,105 @@ table.t tr:hover td{background:var(--accent-softer)}
         </div>
       </div>
 
+<div class="card" style="margin-top:20px">
+  <div class="ch"><h3>LLM Wiki 工作示例</h3><div class="meta">concepts.jsonl 增量积累</div></div>
+  <div class="cb">
+    <div style="font-size:13px;color:var(--ink-2);line-height:1.7;margin-bottom:16px">
+      <b>场景</b>：开发者连续学习了 3 个 diff，概念如何复利累积：
+    </div>
+    <div style="background:#FDFCF8;border:1px solid var(--hair);border-radius:8px;padding:16px;font-family:var(--font-mono);font-size:12px;line-height:1.8;white-space:pre-wrap;margin-bottom:16px"><span style="color:var(--muted)">// 第 1 次 learn：添加了 retry 逻辑</span>
+{"concept":"exponential_backoff","source_ref":"a1b2c3d","branch_hint":"feat/retry","introduced_by_run":"run-001","updated_by_runs":[],"related_claims":["c001","c002"],"file_refs":["src/http/client.py:42"]}
+
+<span style="color:var(--muted)">// 第 2 次 learn：改进了错误处理，再次提到 backoff</span>
+{"concept":"circuit_breaker","source_ref":"d4e5f6a","branch_hint":"feat/retry","introduced_by_run":"run-002","updated_by_runs":[],"related_claims":["c010"],"file_refs":["src/http/resilience.py:15"]}
+{"concept":"exponential_backoff","source_ref":"d4e5f6a","branch_hint":"feat/retry","introduced_by_run":"run-001","updated_by_runs":["run-002"],"related_claims":["c001","c002","c011"],"file_refs":["src/http/client.py:42","src/http/resilience.py:28"]}
+
+<span style="color:var(--muted)">// 第 3 次 learn：切到 main 分支，合并了 feat/retry</span>
+<span style="color:var(--muted)">// → exponential_backoff 和 circuit_breaker 自动变为可见（git ancestry 检测）</span></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;text-align:center;font-size:13px">
+      <div style="padding:12px;background:var(--accent-softer);border-radius:8px">
+        <div style="font-weight:600;font-size:20px;color:var(--accent-ink)">Run 1</div>
+        <div style="color:var(--muted)">1 concept</div>
+      </div>
+      <div style="padding:12px;background:var(--accent-softer);border-radius:8px">
+        <div style="font-weight:600;font-size:20px;color:var(--accent-ink)">Run 2</div>
+        <div style="color:var(--muted)">2 concepts<br>(1 new + 1 updated)</div>
+      </div>
+      <div style="padding:12px;background:var(--accent-softer);border-radius:8px">
+        <div style="font-weight:600;font-size:20px;color:var(--accent-ink)">Run 3</div>
+        <div style="color:var(--muted)">2 concepts visible<br>(branch merged)</div>
+      </div>
+    </div>
+    <div style="margin-top:16px;padding:12px;background:#FBF5E6;border:1px dashed #E3CDA1;border-radius:8px;font-size:12px;color:var(--warning);line-height:1.6">
+      <b>关键差异</b>：传统 RAG 每次查询重新发现知识。LLM Wiki 模式把知识<b>编译一次</b>，持续更新。第 3 次 learn 时，LLM 已经知道 exponential_backoff 是老概念，只需更新引用，不需重新提取。
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:20px">
+  <div class="ch"><h3>Graphify × AhaDiff 集成流程</h3><div class="meta">两层互补架构</div></div>
+  <div class="cb">
+    <div style="display:flex;flex-direction:column;gap:8px;font-family:var(--font-mono);font-size:12px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="padding:8px 12px;background:#E4EFE0;border-radius:6px;min-width:160px;text-align:center"><b>graphify .</b></div>
+        <span style="color:var(--muted)">→</span>
+        <div style="padding:8px 12px;background:#E4EFE0;border-radius:6px;min-width:200px;text-align:center">graphify-out/graph.json</div>
+        <span style="color:var(--muted)">repo 静态结构图</span>
+      </div>
+      <div style="text-align:center;color:var(--muted);font-size:18px">↓ 自动检测 + 按需导入</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="padding:8px 12px;background:var(--accent-softer);border-radius:6px;min-width:160px;text-align:center"><b>ahadiff learn</b></div>
+        <span style="color:var(--muted)">→</span>
+        <div style="padding:8px 12px;background:var(--accent-softer);border-radius:6px;min-width:200px;text-align:center">.ahadiff/graph/graph.slice.json</div>
+        <span style="color:var(--muted)">diff 相关子图切片</span>
+      </div>
+      <div style="text-align:center;color:var(--muted);font-size:18px">↓ 叠加学习节点</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="padding:8px 12px;background:#FBF5E6;border-radius:6px;min-width:160px;text-align:center"><b>概念图谱</b></div>
+        <span style="color:var(--muted)">→</span>
+        <div style="padding:8px 12px;background:#FBF5E6;border-radius:6px;min-width:200px;text-align:center">Graphify 节点 + Claim/Concept/Lesson 节点</div>
+        <span style="color:var(--muted)">学习覆盖层</span>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:12px">
+      <div style="padding:12px;border:1px solid #C8E6C9;border-radius:8px;background:#F1F8E9">
+        <div style="font-weight:600;color:#4A7C59;margin-bottom:4px">有 Graphify</div>
+        <div style="color:var(--ink-2)">完整上下文：文件→模块→函数 结构 + 学习节点叠加</div>
+      </div>
+      <div style="padding:12px;border:1px solid var(--hair);border-radius:8px;background:var(--subtle)">
+        <div style="font-weight:600;color:var(--ink);margin-bottom:4px">无 Graphify</div>
+        <div style="color:var(--ink-2)">静默降级：仅显示学习节点，功能不受影响</div>
+      </div>
+      <div style="padding:12px;border:1px solid #FFECB3;border-radius:8px;background:#FFFDE7">
+        <div style="font-weight:600;color:var(--warning);margin-bottom:4px">设计原则</div>
+        <div style="color:var(--ink-2)">可选不强制 · 检测优先于安装 · 零耦合</div>
+      </div>
+    </div>
+  </div>
+</div>
+
     </section>
 
     <!-- ============ ARCHITECTURE ============ -->
     <section class="page" data-page="architecture">
       <div class="page-head">
-        <div class="eyebrow">§ 02 · 七层架构</div>
-        <h1>七层数据流架构</h1>
-        <div class="sub">从 git diff 到 wiki + UI 的完整数据管道，每层职责明确，文件即真相源。</div>
+        <div class="eyebrow">§ 02 · 八层架构</div>
+        <h1>八层数据流架构</h1>
+        <div class="sub">从 git diff 到 wiki + UI 的完整数据管道，每层职责明确，SQLite 即唯一真相源。</div>
       </div>
 
-      <div class="arch-flow">
-        <div class="arch-step" style="background:var(--accent-softer)"><div class="n">L1</div><h4>Diff Capture</h4><p>git diff / PR patch / staged changes</p></div>
-        <div class="arch-step"><div class="n">L2</div><h4>Context</h4><p>repo files · graphify · specs · privacy filter</p></div>
-        <div class="arch-step"><div class="n">L3</div><h4>Lesson Gen</h4><p>generator_prompt.md · claim extraction</p></div>
+      <div class="arch-flow" style="grid-template-columns:repeat(5,1fr)">
+        <div class="arch-step" style="background:var(--accent-softer)"><div class="n">L0</div><h4>Schema & Contract</h4><p>核心契约冻结（5 个 Pydantic schema）</p></div>
+        <div class="arch-step" style="background:var(--accent-softer)"><div class="n">L1</div><h4>Diff Capture</h4><p>git diff / PR patch / staged / --compare</p></div>
+        <div class="arch-step"><div class="n">L2a</div><h4>Context Assembly</h4><p>repo files · graphify enrichment · specs</p></div>
+        <div class="arch-step"><div class="n">L2b</div><h4>Safety Gate</h4><p>secret scan → redact → 才能 log/cache/model/render</p></div>
+        <div class="arch-step"><div class="n">L2c</div><h4>Budget & Degrade</h4><p>token budget · large diff skip/clip/summarize</p></div>
+      </div>
+      <div class="arch-flow" style="grid-template-columns:repeat(5,1fr);margin-top:0;border-top:0;border-top-left-radius:0;border-top-right-radius:0">
+        <div class="arch-step"><div class="n">L3</div><h4>Lesson Gen</h4><p>prompts/*.md · claim extraction</p></div>
         <div class="arch-step"><div class="n">L4</div><h4>Verification</h4><p>claims.jsonl · deterministic + LLM judge</p></div>
-        <div class="arch-step"><div class="n">L5</div><h4>Ratchet</h4><p>evaluator.py (immutable) · results.tsv</p></div>
-        <div class="arch-step"><div class="n">L6</div><h4>Learning</h4><p>quiz · SRS review · section helpfulness</p></div>
+        <div class="arch-step"><div class="n">L5</div><h4>Ratchet</h4><p>evaluation bundle (immutable) · review.sqlite</p></div>
+        <div class="arch-step"><div class="n">L6</div><h4>Learning</h4><p>quiz · SRS · section helpfulness · concepts.jsonl</p></div>
         <div class="arch-step" style="background:var(--accent-softer)"><div class="n">L7</div><h4>Wiki + UI</h4><p>index.md · concept graph · dashboard</p></div>
       </div>
 
@@ -964,7 +1046,7 @@ table.t tr:hover td{background:var(--accent-softer)}
   .ahadiffignore
   index.md                    <span style="color:var(--muted)">← LLM Wiki 落地</span>
   concepts.jsonl              <span style="color:var(--muted)">← append-only 概念累积</span>
-  results.tsv                 <span style="color:var(--muted)">← 10 列自定义 ratchet 记录</span>
+  results.tsv                 <span style="color:var(--muted)">← 11 列导出视图（唯一真相源为 review.sqlite）</span>
   learning-signal.jsonl
 
   runs/
@@ -979,21 +1061,25 @@ table.t tr:hover td{background:var(--accent-softer)}
       graph/   graph.slice.json
 
   review/
-    review.sqlite             <span style="color:var(--muted)">← SRS 卡片 + result_events 物理表</span></div>
+    review.sqlite             <span style="color:var(--muted)">← SRS 卡片 + result_events 物理表</span>
+    review.sqlite.bak         <span style="color:var(--muted)">← 迁移前自动备份</span></div>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px">
         <div class="card">
-          <div class="ch"><h3>三文件契约</h3><div class="meta">概念改编 autoresearch</div></div>
+          <div class="ch"><h3>N-文件契约</h3><div class="meta">autoresearch 三文件启发的 N-文件变体</div></div>
           <div class="cb">
+            <div style="font-size:12px;color:var(--ink-2);line-height:1.6;margin-bottom:12px;padding:10px;background:#FDFCF8;border:1px solid var(--hair);border-radius:8px">
+              受 autoresearch 三文件启发的 N-文件变体：<code>program.md</code>（约束）+ evaluation bundle（<code>evaluator.py</code> + <code>rubric.py</code> + <code>rubric.yaml</code> + <code>gates.py</code> + <code>deterministic.py</code>，整体 immutable）+ <code>prompts/*.md</code>（可变 prompt 集合）
+            </div>
             <div style="display:flex;flex-direction:column;gap:12px">
               <div style="padding:12px;background:#ECF4EE;border:1px solid #B9D7C1;border-radius:8px">
-                <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--success)">IMMUTABLE · 不可改</div>
-                <div style="font-weight:500;margin-top:4px">evaluator.py + rubric.yaml + tests/fixtures/</div>
-                <div style="font-size:12px;color:var(--muted);margin-top:2px">评估尺子，agent 永远不能修改</div>
+                <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--success)">IMMUTABLE · evaluation bundle</div>
+                <div style="font-weight:500;margin-top:4px">evaluator.py + rubric.py + rubric.yaml + gates.py + deterministic.py</div>
+                <div style="font-size:12px;color:var(--muted);margin-top:2px">评估尺子整体不可改，agent 永远不能修改</div>
               </div>
               <div style="padding:12px;background:var(--accent-soft);border:1px solid #EBC3AE;border-radius:8px">
-                <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-ink)">MUTABLE · 可改</div>
+                <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-ink)">MUTABLE · 可变 prompt 集合</div>
                 <div style="font-weight:500;margin-top:4px">prompts/*.md</div>
                 <div style="font-size:12px;color:var(--muted);margin-top:2px">improve loop 唯一可编辑资产（Markdown prompt）</div>
               </div>
@@ -1006,14 +1092,15 @@ table.t tr:hover td{background:var(--accent-softer)}
           </div>
         </div>
         <div class="card">
-          <div class="ch"><h3>results.tsv · 10 列</h3><div class="meta">自定义方案</div></div>
+          <div class="ch"><h3>results.tsv · 11 列</h3><div class="meta">导出视图（唯一真相源为 review.sqlite）</div></div>
           <div class="cb">
             <table class="t" style="font-size:12px">
               <thead><tr><th>列</th><th>类型</th><th>说明</th></tr></thead>
               <tbody>
                 <tr><td class="mono">timestamp</td><td>ISO 8601</td><td>运行时间</td></tr>
                 <tr><td class="mono">run_id</td><td>string</td><td>运行 ID</td></tr>
-                <tr><td class="mono">head_sha</td><td>string(7)</td><td>git short hash</td></tr>
+                <tr><td class="mono">source_ref</td><td>string</td><td>来源标识（git SHA / patch hash / path hash）</td></tr>
+                <tr><td class="mono">base_ref</td><td>string</td><td>ratchet 基线标识（首次为空）</td></tr>
                 <tr><td class="mono">prompt_version</td><td>string</td><td>prompts/ tree hash</td></tr>
                 <tr><td class="mono">rubric_version</td><td>string</td><td>rubric.yaml hash</td></tr>
                 <tr><td class="mono">overall</td><td>int 0-100</td><td>加权总分</td></tr>
@@ -1110,10 +1197,10 @@ table.t tr:hover td{background:var(--accent-softer)}
         <div class="ch"><h3>核心设计原则 · 14 项全部坚持</h3><div class="meta"><span class="badge pass"><span class="bd"></span>ALIGNED</span></div></div>
         <div class="cb">
           <div class="compliance-grid">
-            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">完全 local-first</div><div class="ci-desc">不做 SaaS，不做账号，不做云同步</div></div></div>
-            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">文件是真相源</div><div class="ci-desc">HTML 只是 viewer，删除前端不丢功能</div></div></div>
+            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">隐私三档 local-first</div><div class="ci-desc">strict_local（默认，仅本地模型，diff 不出机）· redacted_remote（脱敏后发远端，secrets/PII 替换为 ***）· explicit_remote（用户显式确认后发原文）</div></div></div>
+            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">SQLite 即唯一真相源</div><div class="ci-desc">review.sqlite 为唯一真相源，HTML 只是 viewer，删除前端不丢功能</div></div></div>
             <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">Claim 先于 Prose</div><div class="ci-desc">每句解释必须绑定 file:line 证据</div></div></div>
-            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">不能证明就标 not_proven</div><div class="ci-desc">四种 claim 状态：verified / weak / not_proven / contradicted</div></div></div>
+            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">不能证明就标 not_proven</div><div class="ci-desc">五种 claim 状态：verified / weak / not_proven / contradicted / rejected</div></div></div>
             <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">学习效果可测试</div><div class="ci-desc">Quiz + SRS 复习 + section helpfulness</div></div></div>
             <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">改进可回滚</div><div class="ci-desc">git ratchet + results.tsv + keep/discard</div></div></div>
           </div>
@@ -1129,7 +1216,7 @@ table.t tr:hover td{background:var(--accent-softer)}
               <tr><td>R1 · Phase 2.5</td><td>触发阈值 3→2，归因 darwin-skill（非 autoresearch）</td><td><span class="badge pass">PASS</span></td></tr>
               <tr><td>R2 · autoresearch</td><td>移除 Phase 2.5/stuck 检测的错误归因</td><td><span class="badge pass">PASS</span></td></tr>
               <tr><td>R3 · SkillCompass</td><td>原版 6 维（非 8 维），评估对象是 skill 文件质量</td><td><span class="badge pass">PASS</span></td></tr>
-              <tr><td>R5 · 三文件契约</td><td>"概念改编"而非"严格复刻"</td><td><span class="badge pass">PASS</span></td></tr>
+              <tr><td>R5 · N-文件契约</td><td>"概念改编"而非"严格复刻"，三文件扩展为 N-文件</td><td><span class="badge pass">PASS</span></td></tr>
               <tr><td>R6 · SKILL0 budget</td><td>阶段跳变 [6,3,0]（非线性递减）</td><td><span class="badge pass">PASS</span></td></tr>
               <tr><td>R7 · SKILL0 粒度</td><td>原版 file 级，AhaDiff 扩展到 section 级</td><td><span class="badge pass">PASS</span></td></tr>
               <tr><td>R8 · 8 维 rubric</td><td>完全自研体系，不来自任何灵感项目</td><td><span class="badge pass">PASS</span></td></tr>
@@ -1291,12 +1378,12 @@ table.t tr:hover td{background:var(--accent-softer)}
         </div>
       </div>
 
-      <!-- FAQ 2: 三文件契约 -->
+      <!-- FAQ 2: N-文件契约 -->
       <div class="card" style="margin-bottom:20px">
-        <div class="ch"><h3>Q2: 三文件契约到底是什么？和用户有什么关系？</h3><div class="meta">通俗解释</div></div>
+        <div class="ch"><h3>Q2: N-文件契约到底是什么？和用户有什么关系？</h3><div class="meta">通俗解释</div></div>
         <div class="cb">
           <div style="padding:14px;background:var(--accent-softer);border:1px dashed var(--accent);border-radius:8px;font-size:13px;color:var(--accent-ink);margin-bottom:16px;line-height:1.7">
-            <b>和用户完全无关</b> — 这是 AhaDiff 自己"自动提升教学质量"的后台机制。用户只看到越来越好的 Lesson，不需要知道这三个文件的存在。
+            <b>和用户完全无关</b> — 这是 AhaDiff 自己"自动提升教学质量"的后台机制。用户只看到越来越好的 Lesson，不需要知道这些文件的存在。
           </div>
           <div style="display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:0;align-items:stretch">
             <div style="padding:16px;background:#ECF4EE;border:2px solid #B9D7C1;border-radius:10px;text-align:center">

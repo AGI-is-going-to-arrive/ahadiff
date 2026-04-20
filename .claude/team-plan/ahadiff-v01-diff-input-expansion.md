@@ -75,7 +75,7 @@ Level 3 · git-grounded（完整能力）
   ✓ symbol 提取（import tree、call graph）
   ✓ 跨文件上下文（改了 A，影响 B）
   ✓ ratchet 回滚（git revert）
-  ✓ head_sha 版本追踪
+  ✓ source_ref 版本追踪
   ✓ backlinks / graph overlay
   来源：git ref range, --staged, --last, --since
 
@@ -84,7 +84,7 @@ Level 2 · workspace-grounded（有本地文件）
   ✓ symbol 提取（仅 diff 涉及的文件）
   ✗ 跨文件上下文（无 git history）
   ✗ ratchet 回滚
-  ✗ head_sha
+  ✗ source_ref
   ✓ backlinks（限当前 run）
   来源：--compare old.py new.py
 
@@ -93,7 +93,7 @@ Level 1 · patch-grounded（只有 diff 文本）
   ✗ symbol 提取（无完整文件）
   ✗ 跨文件上下文
   ✗ ratchet 回滚
-  ✗ head_sha
+  ✗ source_ref
   ✗ backlinks
   来源：--patch file.patch, --patch -（stdin）
 ```
@@ -103,11 +103,11 @@ Level 1 · patch-grounded（只有 diff 文本）
 | 步骤 | 原方案 | Level 3 (git) | Level 2 (workspace) | Level 1 (patch) |
 |------|--------|---------------|---------------------|-----------------|
 | 1-2 | 检查 git repo + 解析 ref | 不变 | 选择 FileDiffSource | 选择 PatchDiffSource |
-| 5 | 写 metadata.json | head_sha = git SHA | head_sha = null, source_ref = content_hash | 同 Level 2 |
+| 5 | 写 metadata.json | source_ref = git SHA | source_ref = patch content hash | 同 Level 2 |
 | 11 | 提取 changed symbols | 完整 import tree | 仅 diff 文件的 symbols | 跳过 |
 | 15-16 | deterministic verifier | 完整验证 | 降级：跨文件 claim 最高 `weak` | 降级：repo-wide claim `not_proven` |
 | 23 | evaluator.py 打分 | 8 维完整 | D3 Diff Coverage 基于 patch 内文件 | D3 基于 hunk 覆盖 |
-| 27 | 追加 results.tsv | head_sha 列填 SHA | source_ref 列填 content hash | 同上 |
+| 27 | 追加 results.tsv | source_ref 列填 SHA | source_ref 列填 content hash | 同上 |
 
 #### 2.3 Ratchet 处理（修复 C4）
 
@@ -168,7 +168,7 @@ class DiffSource(Protocol):
   "repo": "my-project",
   "base_ref": "HEAD~3",
   "head_ref": "HEAD",
-  "head_sha": "abc1234",
+  "source_ref": "abc1234",
   "source_kind": "git",
   "source_ref": "abc1234",
   "capability_level": 3,
@@ -182,7 +182,7 @@ class DiffSource(Protocol):
   "mode": "learn",
   "level": "intermediate",
   "provider": { "generate": "ollama/qwen3-coder", "judge": "ollama/qwen3-coder" },
-  "privacy": { "offline_only": true, "redaction": "strict" }
+  "privacy_mode": "strict_local"
 }
 ```
 
@@ -194,7 +194,7 @@ class DiffSource(Protocol):
   "repo": null,
   "base_ref": null,
   "head_ref": null,
-  "head_sha": null,
+  "source_ref": "patch-sha256-xxxx",
   "source_kind": "patch",
   "source_ref": "sha256:a1b2c3...",
   "capability_level": 1,
@@ -207,7 +207,7 @@ class DiffSource(Protocol):
   "mode": "learn",
   "level": "intermediate",
   "provider": { "generate": "ollama/qwen3-coder", "judge": "ollama/qwen3-coder" },
-  "privacy": { "offline_only": true, "redaction": "strict" }
+  "privacy_mode": "strict_local"
 }
 ```
 
@@ -309,9 +309,9 @@ ahadiff learn abc123 --open
 
 - claims 验证的核心逻辑（claim → file:line evidence）在所有 level 都可用（基于 hunk）
 - 8 维 rubric 评分框架不变（D3 按 capability level 调整基准）
-- 三文件契约不变
+- N-文件契约不变（evaluation bundle immutable + prompts/*.md 可变）
 - quiz/cards/SRS 生成链路不变
-- local-first / 文件即真相源 / claim-first 原则不变
+- local-first / SQLite 即唯一真相源 / claim-first 原则不变
 
 ---
 

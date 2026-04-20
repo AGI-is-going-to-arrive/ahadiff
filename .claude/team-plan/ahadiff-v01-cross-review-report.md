@@ -1,9 +1,27 @@
 # AhaDiff v0.1 设计方案 — 三模型交叉审查报告
 
-> 审查日期：2026-04-20
-> 审查模型：**Codex CLI**（后端工程） + **Gemini CLI** (`gemini-3.1-pro-preview`，前端/UX） + **Claude**（架构/编排）
-> 审查范围：6 份核心设计文档 + UI 原型 + 竞品源码交叉验证
-> 方法论：三模型独立审查 → 去重收敛 → 人工校正 → 分级综合
+> 审查日期：2026-04-20（第一轮）→ 2026-04-20 13:30（第二轮修复）
+> 审查模型：**Codex CLI**（后端工程） + **Gemini CLI** (`gemini-3.1-pro-preview`，前端/UX） + **Claude**（架构/编排） + 3× Claude Explorer（灵感源码深度核查）
+> 审查范围：6 份核心设计文档 + UI 原型 + 竞品源码交叉验证 + 4 个灵感项目实际源码逐条核查
+> 方法论：三模型独立审查 → 去重收敛 → 人工校正 → 分级综合 → **第二轮 5 模型深度审查 → 全量修复**
+>
+> **第二轮修复状态**（2026-04-20 ~13:30）：
+> - ✅ N-文件契约改述（从"三文件"扩展为 prompts/ 目录）— CLAUDE.md + kickoff.md 已同步
+> - ✅ Evaluation bundle 整体 immutable（从单文件扩展到 4 文件联合 hash）— stages-4-9.md Task 11 已同步
+> - ✅ SQLite 唯一真相源 + results.tsv 降级为导出视图 — CLAUDE.md + stages-4-9.md Task 12/15 已同步
+> - ✅ Layer 2 拆分为 2a/2b/2c（Context Assembly/Safety Gate/Budget & Degrade）— CLAUDE.md 已同步
+> - ✅ Schema Freeze Gate（Task 0）前置 — kickoff.md 已添加
+> - ✅ 安全脱敏顺序工程化 + UNTRUSTED_DIFF 边界 — kickoff.md Task 2 已同步
+> - ✅ 隐私三档（strict-local/redacted-remote/explicit-remote）— CLAUDE.md + kickoff.md Task 7 已同步
+> - ✅ 统一错误类型层级 — Task 0 contracts 已定义
+> - ✅ 并发 PID lockfile — kickoff.md Task 5 + stages-4-9.md Task 12/16 已同步
+> - ✅ Large diff policy 前移到 capture stage — kickoff.md Task 5 已同步
+> - ✅ Secret detection 扩展覆盖 — kickoff.md Task 2 已同步
+> - ✅ review.sqlite WAL mode + schema_version + migration — stages-4-9.md Task 15 已同步
+> - ✅ event_id 主键（UUID v7）替代复合主键 — stages-4-9.md Task 12/15 已同步
+> - ✅ Improve loop 统一 worktree 隔离 — stages-4-9.md Task 16 已同步
+> - ✅ Provider circuit breaker + cost ceiling + cache key 契约 — kickoff.md Task 7 已同步
+> - ✅ darwin-skill "零可执行代码" 措辞修正 — CLAUDE.md 已同步
 
 ---
 

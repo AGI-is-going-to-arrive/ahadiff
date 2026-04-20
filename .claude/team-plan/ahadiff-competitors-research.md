@@ -36,11 +36,11 @@
 
 **核心定位**：local-first verified diff learning layer（`CLAUDE.md`:L5-7）。Code Wiki 解释整仓，知返解释**这次 diff**；且每句话回到代码证据（`doc/知返ahadiff改名后的后续方案.md`:L109-113）。
 
-**七层架构**：Diff Capture → Context → Lesson Generation → Verification → Ratchet → Learning → Wiki+UI（`CLAUDE.md`:L44-54）。
+**八层架构**：Diff Capture → Context → Lesson Generation → Verification → Ratchet → Learning → Wiki+UI → Persistence（`CLAUDE.md`:L44-54）。
 
-**三文件契约**（概念改编自 autoresearch，非原版映射）：
+**N-文件契约**（概念改编自 autoresearch 三文件契约，非原版映射）：
 - `program.md` 自然语言状态机（人写，agent 解释）
-- `evaluator.py` IMMUTABLE 评估器，`evaluate_wiki(path) → wiki_score ∈ [0,1]`，stdout 固定 `^wiki_score:` 前缀
+- evaluation bundle（IMMUTABLE），`evaluate_wiki(path) → wiki_score ∈ [0,1]`，stdout 固定 `^wiki_score:` 前缀
 - `generator_prompt.md` agent 唯一可改资产
 
 **Claim 五状态**：verified / weak / not_proven / contradicted / rejected。deterministic verifier（file/line/hunk/symbol + risky words）**先行**，LLM judge 只判因果合理性（`改名方案.md`:L457-492）。
@@ -54,7 +54,7 @@
 accuracy(20) · evidence(18) · diff_coverage(14) · learnability(14) · quiz_transfer(10) · spec_alignment(10) · conciseness(8) · safety_privacy(6)
 三档：PASS ≥80 / CAUTION 60-79 / FAIL <60（或 accuracy <14 硬 gate）。SkillCompass 原版 70/50，本项目调高为 80/60。
 
-**Local-first 边界**：所有产物存 `.ahadiff/`；出本机仅 LLM API prompt，受 `.ahadiffignore` / `safety/redact.py` / `config.toml[offline_only]` / `audit.jsonl` 四道闸控制。
+**Local-first 边界**：所有产物存 `.ahadiff/`；出本机仅 LLM API prompt，受 `.ahadiffignore` / `safety/redact.py` / `config.toml[strict_local]`（隐私三级） / `audit.jsonl` 四道闸控制。
 
 ### A.2 灵感项目源码实测（`repo/`）
 
@@ -69,7 +69,7 @@ accuracy(20) · evidence(18) · diff_coverage(14) · learnability(14) · quiz_tr
 
 **需修订的 CLAUDE.md 表述**（源码实测发现 6 项）：
 
-- **[M-1]** CLAUDE.md:L99「三文件契约=program.md+evaluator.py+generator_prompt.md」映射为 autoresearch 原版。**偏差**：autoresearch 原版是 `program.md + prepare.py + train.py`，AhaDiff 的 `evaluator.py`/`generator_prompt.md` 名称是自研命名，非原版映射
+- **[M-1]** CLAUDE.md:L99「N-文件契约=program.md+evaluation bundle+generator_prompt.md」改编自 autoresearch 三文件契约。**偏差**：autoresearch 原版是 `program.md + prepare.py + train.py`，AhaDiff 的 evaluation bundle/`generator_prompt.md` 名称是自研命名，非原版映射
 - **[M-2]** darwin-skill「连续 2 个 skill 在 round 1 就 break」在 `SKILL.md`:L187 精确对上 — ✅ 无需修订
 - **[M-3]** SkillCompass 阈值 PASS≥70 / FAIL<50 在 `shared/scoring.md`:L28-35 对上 — ✅ 无需修订
 - **[M-4]** darwin-skill「零可执行代码」经 Glob 验证 — ✅ 无需修订
@@ -106,7 +106,7 @@ accuracy(20) · evidence(18) · diff_coverage(14) · learnability(14) · quiz_tr
 | ID | 约束 | 来源 |
 |---|---|---|
 | HC-1 | 所有产物存 `.ahadiff/`；源码/diff/claim/quiz/review 不得上传第三方；仅 LLM API prompt 可出本机 | 内部设计：`CLAUDE.md`:L5；竞品对标：CodeRabbit/Greptile 全 SaaS |
-| HC-2 | `evaluator.py` 必须 IMMUTABLE（agent 禁改）；`generator_prompt.md` 是唯一可改资产；三文件物理分离 | 内部设计：`设计思路.md`:L146-180；灵感项目：autoresearch `prepare.py` 同构 |
+| HC-2 | evaluation bundle 必须 IMMUTABLE（agent 禁改）；`generator_prompt.md` 是唯一可改资产；N-文件物理分离 | 内部设计：`设计思路.md`:L146-180；灵感项目：autoresearch `prepare.py` 同构 |
 | HC-3 | 每条 claim 必须能回到 `file:line`，附 `source_hunks / changed_symbols / concepts`；deterministic verifier 先于 LLM judge | 内部设计：`改名方案.md`:L457-485；竞品空白 B |
 | HC-4 | 评估模型 ≠ 生成模型；禁止同模型自评（生成用 Sonnet，judge 用 Haiku） | 内部设计：`CLAUDE.md`:L22 |
 | HC-5 | 首版 UI 只用 Jinja2 静态 HTML；禁止 Next.js / React / Node 构建链 | 内部设计：`CLAUDE.md`:L30；`kickoff.md`:L40-43 |
@@ -119,7 +119,7 @@ accuracy(20) · evidence(18) · diff_coverage(14) · learnability(14) · quiz_tr
 | HC-12 | 不做 PR summary（避免与 What The Diff 同质） | 内部设计：`最终方案.md`:2.2 段；外部竞品：What The Diff |
 | HC-13 | 不做 SaaS / 云同步 / 团队 workspace；local-first 核心原则 | 内部设计：`最终方案.md`:产品原则段 |
 | HC-14 | Verdict 三档阈值固定：PASS ≥80 / CAUTION 60-79 / FAIL <60；accuracy <14 硬 FAIL gate | 内部设计：`kickoff.md`:L33 |
-| HC-15 | `results.tsv` 11 列 TAB 分隔：`timestamp / run_id / head_sha / base_sha / prompt_version / rubric_version / overall / verdict / status / weakest_dim / note` | 内部设计：`kickoff.md`:L33；`SOURCE-CODE-VERIFICATION-REPORT.md`:L222 |
+| HC-15 | `results.tsv` 11 列 TAB 分隔：`timestamp / run_id / source_ref / base_ref / prompt_version / rubric_version / overall / verdict / status / weakest_dim / note` | 内部设计：`kickoff.md`:L33；`SOURCE-CODE-VERIFICATION-REPORT.md`:L222 |
 
 ### B.2 软约束（Soft Constraints）— 倾向性
 
@@ -127,7 +127,7 @@ accuracy(20) · evidence(18) · diff_coverage(14) · learnability(14) · quiz_tr
 |---|---|---|
 | SC-1 | 发行通道兼顾：PyPI `ahadiff` 包 + 发布到 `awesome-claude-skills` 生态作为 skill 入口 | 外部竞品：ComposioHQ/awesome-claude-skills 55K stars |
 | SC-2 | 与 graphify 互补（repo map + AhaDiff diff overlay），非竞争关系；保留 `graphify-out/GRAPH_REPORT.md` 作 Context Layer 输入 | 灵感项目：graphify 定位、`改名方案.md`:L74-80 |
-| SC-3 | SRS 算法采用 SM-2 或 FSRS，SQLite 存 `.ahadiff/review.db` | 外部竞品：RemNote 使用 SM-2/FSRS |
+| SC-3 | SRS 算法采用 SM-2 或 FSRS，SQLite 存 `.ahadiff/review.sqlite` | 外部竞品：RemNote 使用 SM-2/FSRS |
 | SC-4 | `.ahadiffignore` 类比 `.gitignore` 过滤路径 | 内部设计：`设计思路.md` 配置层 |
 | SC-5 | `audit.jsonl` 记录每次 LLM 调用（file/token/cost/provider） | 内部设计：`改名方案.md` Settings 段 |
 | SC-6 | section helpfulness Δ（score_with_section − score_without_section）反哺棘轮，Δ ≤ ε 的章节压缩或删除（SKILL0 思想，扩展到 section 粒度） | 内部设计：`改名方案.md`:L145-165 |
@@ -142,7 +142,7 @@ accuracy(20) · evidence(18) · diff_coverage(14) · learnability(14) · quiz_tr
 | DEP-3 | Verification → Ratchet | `wiki_score` 决定 keep/discard |
 | DEP-4 | Ratchet → Learning（只有 PASS/keep 的 lesson 才进 quiz/SRS） | 避免把低质笔记塞给 SRS 污染长期记忆 |
 | DEP-5 | Learning → Wiki（section helpfulness 反哺棘轮） | `concepts.jsonl` append-only，`index.md` diff-aware merge |
-| DEP-6 | 三文件契约先于任何其他模块落地 | `evaluator.py` 是所有 ratchet 的唯一真相源 |
+| DEP-6 | N-文件契约先于任何其他模块落地 | SQLite 即唯一真相源（evaluation bundle 驱动所有 ratchet） |
 | DEP-7 | `llm/provider.py` 先于所有 prompt 文件 | HC-8 要求 |
 
 ### B.4 风险（Risks）+ 缓解
@@ -152,11 +152,11 @@ accuracy(20) · evidence(18) · diff_coverage(14) · learnability(14) · quiz_tr
 | RISK-1 | **CodeRabbit 加入 SRS/learning 特性** → 直接进入 AhaDiff 领地 | 中 | 高 | 强调 local-first 个人工具定位；SRS+Claim-Evidence 组合是 CodeRabbit 企业 review 基因不会做的事；迅速建立 `awesome-claude-skills` 生态入口 |
 | RISK-2 | Anthropic 官方推出「Diff Learning Skill」 | 低 | 极高 | 提前将 AhaDiff 作为 skill 发布，占据 `obra/superpowers` 同级生态位；突出 `evaluator.py` + ratchet 的非平凡实现 |
 | RISK-3 | Greptile 「learns your codebase」扩展到人类学习 | 低 | 中 | Claim 五状态机差异化；Greptile 是 rule-adapt 而非人类学习 |
-| RISK-4 | LLM 调用成本高（每条 diff 3-5 次 API：generation + verification + judge） | 中 | 中 | 小模型做 judge（Haiku），`offline_only = true` 支持本地模型；`audit.jsonl` 可视化成本 |
+| RISK-4 | LLM 调用成本高（每条 diff 3-5 次 API：generation + verification + judge） | 中 | 中 | 小模型做 judge（Haiku），`strict_local = true` 支持本地模型；`audit.jsonl` 可视化成本 |
 | RISK-5 | Claim verification 的 deterministic 规则不足以识别"虚构解释"，LLM judge 可能漂移 | 中 | 高 | risky words 扫描作为第三层；跨模型评估；人工标注 20 份 benchmark 做 judge 稳定性测试 |
 | RISK-6 | 用户不愿意在本地跑 Python CLI（希望 IDE 插件） | 中 | 中 | 留 v1.0 做 VS Code 扩展；首版走 `ahadiff install claude/codex/cursor` 让 agent 代用户调用 |
 | RISK-7 | 命名冲突遗留：GitHub 已有 `mohi-devhub/antivibe`（已通过改名 AhaDiff 规避），但需确保 `ahadiff` 的 PyPI/npm/GitHub 未被占 | 低 | 中 | 发布前冻结三站命名；`doc/知返ahadiff改名后的后续方案.md` 已记录 |
-| RISK-8 | `repo/` 下 autoresearch 原版三文件结构与 CLAUDE.md 描述有偏差[M-1] | 已发生 | 低 | 本研究文件「Part A.2」已识别；需在后续 planning 更新 CLAUDE.md 归因表述 |
+| RISK-8 | `repo/` 下 autoresearch 原版三文件结构与 CLAUDE.md N-文件契约描述有偏差[M-1] | 已发生 | 低 | 本研究文件「Part A.2」已识别；需在后续 planning 更新 CLAUDE.md 归因表述 |
 
 ---
 
@@ -168,8 +168,8 @@ accuracy(20) · evidence(18) · diff_coverage(14) · learnability(14) · quiz_tr
 | OK-2 | Claim 5 状态分类人工标注对齐 ≥ 85%（20 份 benchmark） | 对比 `claims.jsonl.status` 与人工标注 |
 | OK-3 | Phase 2.5 真实触发率 ≤ 15%（避免滥用重写） | `results.tsv` 统计 `status=='phase2.5_rewrite'` 占比 |
 | OK-4 | 4 个差异化空白（Diff-Learning / Claim-Evidence / Ratchet / Local-first）有可 demo 的最小实现 | 各写 1 段 5 分钟 screencast |
-| OK-5 | SRS review 留存率（2 周后主动回忆正确率）≥ 50% | `review.db` 统计 `correct / total` |
-| OK-6 | 离线模式（`offline_only=true`）可完整跑通 `learn/verify/improve/quiz/review` 5 个核心命令 | CI 用本地模型端点做 smoke test |
+| OK-5 | SRS review 留存率（2 周后主动回忆正确率）≥ 50% | `review.sqlite` 统计 `correct / total` |
+| OK-6 | 离线模式（`strict_local=true`）可完整跑通 `learn/verify/improve/quiz/review` 5 个核心命令 | CI 用本地模型端点做 smoke test |
 | OK-7 | 发布到 `awesome-claude-skills` 仓库并被列入索引 | PR 合入 `ComposioHQ/awesome-claude-skills` |
 | OK-8 | 与 CodeRabbit/Greptile/Qodo 的对比页面明确列出 4 个差异化空白 | `doc/vs-others.md` 落地 |
 
@@ -180,10 +180,10 @@ accuracy(20) · evidence(18) · diff_coverage(14) · learnability(14) · quiz_tr
 | ID | 问题 | 建议默认值 | 需决策阶段 |
 |---|---|---|---|
 | Q-1 | 对 CodeRabbit 的竞争策略：是否在 README / 官网做"反广告"对比页？ | 建议：`doc/vs-others.md` 做客观对比，不贬竞品 | `/ccg:team-plan` |
-| Q-2 | 离线模式（`offline_only`）优先级：P0（首版必交付）还是 P1（v0.2）？ | 建议：P0 关键词"support"（即有 code path 但不强制 CI 覆盖），P1 才做完整验证 | `/ccg:team-plan` |
+| Q-2 | 离线模式（`strict_local`，隐私三级）优先级：P0（首版必交付）还是 P1（v0.2）？ | 建议：P0 关键词"support"（即有 code path 但不强制 CI 覆盖），P1 才做完整验证 | `/ccg:team-plan` |
 | Q-3 | 发行策略：先 PyPI `ahadiff` 还是先 `awesome-claude-skills` skill 条目？ | 建议：同步 — PyPI 为主，skill 作为安装器 | `/ccg:team-plan` |
 | Q-4 | 多模态 diff：图片/UI 改动如何学习？ | 建议：v0.1 仅支持文本 diff，多模态留 v1.0 | `/ccg:team-plan` |
-| Q-5 | CLAUDE.md [M-1] 偏差（三文件契约归因）是否需修订描述？ | 建议：修订为「受 autoresearch 三文件思想启发，具体映射 AhaDiff 自研命名」 | 本次研究可直接修订 |
+| Q-5 | CLAUDE.md [M-1] 偏差（N-文件契约归因）是否需修订描述？ | 建议：修订为「受 autoresearch 三文件思想启发，AhaDiff 改编为 N-文件契约，自研命名」 | 本次研究可直接修订 |
 | Q-6 | 是否主动接入 `graphify`（SC-2）作为 Context Layer 依赖？ | 建议：可选依赖（via `ahadiff learn --with-graph`），非强制 | `/ccg:team-plan` |
 
 **标注说明**：以上 Q-1~Q-6 不在本研究阶段消解，按 `/ccg:team-research` 定义，它们是后续 `/ccg:team-plan` 阶段需通过 `AskUserQuestion` 与用户对齐的决策点。本研究已把问题收敛到具体可决策的粒度。
