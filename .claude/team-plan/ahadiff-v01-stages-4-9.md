@@ -393,7 +393,8 @@ Layer 8 (串行):  Task 19 (依赖 CLI 接口冻结：Task 9+10+11+15+16)
 - Agent Skill Hub viewer 页面 → v0.2
 - public benchmark suite → v0.2（v0.1 只做 local）
 - `--level beginner/intermediate/senior` → v0.2
-- `git show` / PR patch / staged changes 输入 → v0.2（v0.1 只支持 ref range）
+- `git show` / PR patch 输入 → v0.2
+- `--staged` 已纳入 v0.1（`git diff --cached`，实现简单，与 Blueprint 一致）
 
 ## 预计时间
 

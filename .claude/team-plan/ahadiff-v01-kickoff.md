@@ -130,10 +130,20 @@
 - **依赖**: Task 1
 - **实施步骤**:
   1. 实现 `open_repo()`, `resolve_ref_range()`
-  2. 实现 `capture_patch()` 生成 `patch.diff`
-  3. 实现 `write_input_artifacts()` 生成 `metadata.json`
+  2. 实现 `capture_patch()` 生成 `patch.diff`，支持 4 种 Level 3 输入模式：
+     - ref range: `HEAD~1..HEAD` 或 `abc123..def456`（核心路径）
+     - `--last`: 语法糖，先检查 HEAD 父提交数：0 父用 `git diff-tree --root`，多父用 `--first-parent` 语义
+     - `--staged`: 调用 `git diff --cached --no-ext-diff`（暂存区未 commit 的改动）
+     - `--since "2h ago"`: 用 `git rev-list --first-parent --since` 获取命中 commit 列表；连续后缀则做端点 diff，非连续则聚合各 commit patch。`--author` 在 Python 层做精确过滤（git 的 `--author` 是正则匹配）
+  3. 实现 `write_input_artifacts()` 生成 `metadata.json`，包含 `capability_flags`：`has_repo_context / has_symbol_index / has_cross_file_context / has_head_sha / has_graph`（Level 3 全 true，Level 2/1 按实际降级）
   4. 集成安全层：捕获后自动过滤 + redaction
-- **验收标准**: `ahadiff learn HEAD~1..HEAD --dry-run` 生成 `patch.diff` + `metadata.json`
+  5. 实现 `--patch file.patch` / `--patch -`（stdin）Level 1 输入：直接读取 unified diff 文本，跳过 git 操作
+- **验收标准**:
+  - `ahadiff learn HEAD~1..HEAD --dry-run` 生成 `patch.diff` + `metadata.json`
+  - `ahadiff learn --last --dry-run` 等价于上述
+  - `ahadiff learn --staged --dry-run` 捕获暂存区 diff
+  - `ahadiff learn --since "1h ago" --dry-run` 扫描时间范围内的 commit
+  - `ahadiff learn --patch tests/fixtures/sample.patch --dry-run` 读取外部 patch 文件
 
 #### Task 6: Diff 解析 + 结构化
 - **类型**: 后端（Codex 实现）
