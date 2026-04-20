@@ -1007,7 +1007,7 @@ footer{
     <h1>为什么 <span class="highlight">AhaDiff 没有真正的竞品</span>？</h1>
     <p class="hero-sub">
       我们翻了 <span class="mono">10 款</span> 商业产品的官网、读了 <span class="mono">6 个</span> 灵感项目的源码，
-      在 <span class="mono">5 个</span> 象限里挖出 <span class="mono">4 条</span> 没人占的护城河。
+      在 <span class="mono">5 个</span> 象限里挖出 <span class="mono">5 条</span> 没人占的护城河（含 i18n 学习笔记多语言）。
       <br>这份报告用尽量少的黑话讲清楚：<em>知返到底跟谁在抢饭？和谁其实完全不冲突？</em>
     </p>
     <div class="hero-stats">
@@ -1141,7 +1141,7 @@ footer{
 <section id="moats">
   <div class="container">
     <div class="section-label">三、护城河</div>
-    <h2>四个<em>没人占</em>的山头</h2>
+    <h2>五个<em>没人占</em>的山头</h2>
     <p class="lead">把 10 款产品的功能列齐，这 4 个格子全是空的 — AhaDiff 同时占住这 4 个格子，就是 100% 的差异化。</p>
 
     <div class="moat-grid">
@@ -1251,6 +1251,27 @@ footer{
         <div class="moat-compare">
           <span class="moat-compare-chip no">CodeRabbit / Greptile / DeepWiki 全 SaaS</span>
           <span class="moat-compare-chip has">AhaDiff 纯本地</span>
+        </div>
+      </div>
+
+      <!-- MOAT 05: i18n -->
+      <div class="moat-card">
+        <div class="moat-header">
+          <div>
+            <div class="moat-num">MOAT 05</div>
+            <h3>i18n 学习笔记多语言</h3>
+          </div>
+        </div>
+        <div class="moat-analogy">课本有中文版也有英文版，但笔记只有一种语言？AhaDiff 让笔记跟着你说的语言走。</div>
+        <div class="moat-example">
+          浏览器自动检测 + Topbar zh/EN 手动切换<br>
+          LLM prompt 用 <code>OUTPUT_LANGUAGE</code> 指令前缀<br>
+          概念用英文 <code>term_key</code> 稳定身份 + 本地化 <code>display_name</code><br>
+          SRS 卡片保留创建时语言，不重翻译
+        </div>
+        <div class="moat-compare">
+          <span class="moat-compare-chip no">10 款竞品均无 diff→学习笔记的多语言生成能力（竞品矩阵已验证）</span>
+          <span class="moat-compare-chip has">AhaDiff 中英双语全链路</span>
         </div>
       </div>
 
@@ -1728,6 +1749,21 @@ footer{
         <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px">
           <div class="borrow-howto-tag" style="margin:0">Graphify 智能缓存</div>
           <div class="borrow-howto-body">7 态新鲜度判断 + 4 值投影，squash/cherry-pick/rebase 后不会误判为过期，减少无谓的 context 重建开销。</div>
+        </div>
+
+        <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px">
+          <div class="borrow-howto-tag" style="margin:0">i18n 全链路</div>
+          <div class="borrow-howto-body">浏览器自动检测语言 + Topbar 手动 zh/EN 切换。LLM prompt 用 <code>OUTPUT_LANGUAGE</code> 指令前缀，生成中文或英文 lesson。SRS 卡片保留创建时语言，不重翻译。<strong>10 款竞品无一支持学习笔记多语言</strong>。</div>
+        </div>
+
+        <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px">
+          <div class="borrow-howto-tag" style="margin:0">安全 6 类全覆盖</div>
+          <div class="borrow-howto-body">不仅脱敏 diff 正文，还覆盖文件名、commit message、Graphify 标签、LLM 输出、VCR 录制。统一 <code>redaction_pipeline()</code> 入口，raw → scan → redact → 才能 log/cache/model/render。</div>
+        </div>
+
+        <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px">
+          <div class="borrow-howto-tag" style="margin:0">30 Corner Cases 全闭合</div>
+          <div class="borrow-howto-body">经多轮三模型审查（Claude+Codex+Gemini，Gemini 429 时 Claude 兜底），从 Quiz staleness 到 Archive bomb，从 locale 归一化到 z-index 层级，30 个 corner case 全部有具体工程闭合方案。详见 <code>.claude/team-plan/corner-cases-closure-8.md</code> 和评估报告。</div>
         </div>
 
       </div>

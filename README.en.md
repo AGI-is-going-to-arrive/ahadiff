@@ -39,7 +39,7 @@ Extends the Karpathy / autoresearch three-file contract into an N-file variant:
 | File | Who edits | Role |
 |------|-----------|------|
 | `program.md` | Human | Natural-language state machine for the improve loop |
-| evaluation bundle | **Immutable** | `evaluator.py` + `rubric.yaml` + `gates.py` + `deterministic.py` — locked as a unit |
+| evaluation bundle | **Immutable** | `evaluator.py` + `rubric.py` + `rubric.yaml` + `gates.py` + `deterministic.py` (5 files, locked as a unit) |
 | `prompts/*.md` | Agent | The only writable surface — a directory of prompts (agent edits prompts, never user code) |
 
 LOOP: edit → commit → evaluate → keep if better, reset if worse → write to `review.sqlite` (single source of truth; `results.tsv` is an export view).
@@ -114,10 +114,12 @@ Three verdicts: **PASS** ≥ 80 / **CAUTION** 60–80 / **FAIL** < 60.
 ```text
 ahadiff/
 ├─ AhaDiff Warm v6.html         # Latest UI prototype
+├─ AhaDiff-Blueprint.html       # 8-layer architecture visualization (i18n / VCR / 30 CCs)
+├─ AhaDiff-Competitors-Research.html  # Competitor matrix + 5 moats
 ├─ doc/                         # Design docs (Chinese)
 │  ├─ ahadiff设计思路.md          # Full architecture (MVP → v1.0)
 │  ├─ 知返ahadiff改名后的后续方案.md  # Brand redefinition + product upgrade
-│  └─ AhaDiff_frontend_design_v1.1_revised.md  # Frontend design manual
+│  └─ AhaDiff_frontend_design_v1.1_revised.md  # Frontend design manual (v0.1=Jinja2 / v1.0=React)
 ├─ ui/                          # HTML prototypes v1–v6 (design history)
 └─ CLAUDE.md                    # Project AI context index
 ```
@@ -128,7 +130,7 @@ ahadiff/
 
 Roadmap:
 
-- [ ] `v0.1` (MVP): CLI + Lesson + Evaluator + Ratchet end-to-end + `ahadiff serve` local interactive server
+- [ ] `v0.1` (MVP): CLI + Lesson + Evaluator + Ratchet end-to-end + `ahadiff serve` local interactive server + zh/en i18n
 - [ ] `v0.2`: watchdog incremental regeneration + section-level helpfulness + forgetting-risk dashboard
 - [ ] `v0.3`: Textual TUI + Socratic follow-up
 - [ ] `v1.0`: Next.js + React 19 full UI + Benchmark Transparency page

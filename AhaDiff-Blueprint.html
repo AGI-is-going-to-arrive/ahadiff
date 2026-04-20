@@ -1224,6 +1224,113 @@ table.t tr:hover td{background:var(--accent-softer)}
           </div>
         </div>
       </div>
+      <!-- v5 新增：i18n 全链路国际化 -->
+      <div class="card" style="margin-top:18px">
+        <div class="ch"><h3>v5 新增：i18n 全链路国际化</h3><div class="meta">浏览器检测 → 手动切换 → CLI → config → 降级 en</div></div>
+        <div class="cb">
+          <div style="font-size:12px;color:var(--ink-2);line-height:1.6;margin-bottom:12px;padding:10px;background:#FDFCF8;border:1px solid var(--hair);border-radius:8px">
+            AhaDiff 支持中英文双语。语言的解析按优先级链逐级降级，确保任何场景都有明确的语言。
+          </div>
+          <!-- 语言解析优先级链 -->
+          <div style="padding:12px;background:#FDFCF8;border:1px solid var(--hair);border-radius:8px;font-family:var(--font-mono);font-size:11.5px;line-height:2;white-space:pre-wrap;margin-bottom:12px"><span style="color:var(--accent-ink);font-weight:600">语言解析优先级链（从高到低）</span>
+
+① 手动切换 → cookie <code>ahadiff_lang</code>
+② 浏览器 → <code>navigator.language</code> / <code>Accept-Language</code>
+③ CLI 参数 → <code>ahadiff learn --lang zh</code>
+④ 配置文件 → <code>config.toml [general] lang</code>
+⑤ 系统环境 → <code>LANG</code> 环境变量
+⑥ 降级默认 → <code>en</code></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+            <div style="padding:12px;background:var(--subtle);border:1px solid var(--hair);border-radius:8px">
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--info)">LAYER 3 · PROMPT 语言</div>
+              <div style="font-size:12px;color:var(--ink-2);margin-top:6px">单 prompt + <code>OUTPUT_LANGUAGE</code> 指令前缀。不维护双语 prompt 文件。代码片段、变量名永不翻译。</div>
+            </div>
+            <div style="padding:12px;background:var(--subtle);border:1px solid var(--hair);border-radius:8px">
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--success)">LAYER 7 · 前端切换</div>
+              <div style="font-size:12px;color:var(--ink-2);margin-top:6px">Topbar <strong>zh/EN</strong> 切换按钮。Serve 模式：写 cookie + 页面重载。Static 模式：按钮 disabled + 提示用 CLI 重生成。</div>
+            </div>
+            <div style="padding:12px;background:var(--subtle);border:1px solid var(--hair);border-radius:8px">
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-ink)">SRS · 卡片语言</div>
+              <div style="font-size:12px;color:var(--ink-2);margin-top:6px">卡片保留<strong>创建时语言</strong>，切换 locale 不重翻译。<code>actor_lang</code> 记录复习时界面语言。</div>
+            </div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:8px;padding:6px 10px;background:var(--subtle);border-radius:6px">
+            <strong>概念图谱</strong>：英文 <code>term_key</code> 稳定身份 + <code>display_name</code> 本地化 + <code>aliases[]</code> 去重 &nbsp;|&nbsp; <strong>审计日志</strong>：始终英文 &nbsp;|&nbsp; <strong>VCR cassette key</strong>：含 <code>output_lang</code>（语言变更 = 不同 cassette）
+          </div>
+        </div>
+      </div>
+
+      <!-- v5 新增：UNTRUSTED_DIFF 扩展边界 -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px">
+        <div class="card">
+          <div class="ch"><h3>v5 新增：不可信输入 6 类全覆盖</h3><div class="meta">UNTRUSTED_DIFF 扩展</div></div>
+          <div class="cb">
+            <div style="font-size:12px;color:var(--ink-2);line-height:1.6;margin-bottom:12px;padding:10px;background:#FEF6F0;border:1px solid #EBC3AE;border-radius:8px">
+              所有外部文本和路径元数据均视为不可信，统一经 <code>redaction_pipeline()</code> 处理后才能进入系统。
+            </div>
+            <table class="t" style="font-size:12px">
+              <thead><tr><th>输入类型</th><th>来源</th><th>风险</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">diff_body</td><td>git diff / patch</td><td>prompt injection</td></tr>
+                <tr><td class="mono">file_path</td><td>路径元数据</td><td>path traversal / symlink</td></tr>
+                <tr><td class="mono">commit_message</td><td>git log</td><td>隐藏指令</td></tr>
+                <tr><td class="mono">graph_label</td><td>Graphify 导入</td><td>注入 wiki 标签</td></tr>
+                <tr><td class="mono">model_output</td><td>LLM 响应</td><td>Markdown XSS</td></tr>
+                <tr><td class="mono">vcr_body</td><td>VCR cassette</td><td>replay 投毒</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- VCR 双层版本 -->
+        <div class="card">
+          <div class="ch"><h3>v5 新增：VCR 双层版本策略</h3><div class="meta">run 级 + cassette 级</div></div>
+          <div class="cb">
+            <div style="padding:12px;background:#FDFCF8;border:1px solid var(--hair);border-radius:8px;font-family:var(--font-mono);font-size:11.5px;line-height:2;white-space:pre-wrap;margin-bottom:12px"><span style="font-weight:600;color:var(--info)">Run 级（整体变更检测）</span>
+prompt_version = hash(prompts/ 目录 tree)
+
+<span style="font-weight:600;color:var(--success)">Cassette 级（精确匹配单调用）</span>
+key = prompt_fingerprint
+    + model_id
+    + rubric_version
+    + <span style="color:var(--accent-ink);font-weight:700">output_lang</span> ← <em>i18n 新增</em></div>
+            <div style="font-size:11px;color:var(--muted);padding:6px 10px;background:var(--subtle);border-radius:6px">
+              改 <code>lesson_generate.md</code> 只失效 lesson cassette，不影响 quiz/claim。改语言只失效该语言的 cassette。
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- v5 新增：30 Corner Cases 全部闭合 -->
+      <div class="card" style="margin-top:18px">
+        <div class="ch"><h3>v5 新增：30 Corner Cases 全部闭合</h3><div class="meta">原 9 + i18n 10 + 新增 11 = 30</div></div>
+        <div class="cb">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+            <div style="text-align:center;padding:16px;background:#ECF4EE;border:1px solid #B9D7C1;border-radius:8px">
+              <div style="font-size:28px;font-weight:700;color:var(--success)">9/9</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px">原始 CC（Quiz staleness / Branch-aware / 4 Lane 等）</div>
+            </div>
+            <div style="text-align:center;padding:16px;background:#ECF4EE;border:1px solid #B9D7C1;border-radius:8px">
+              <div style="font-size:28px;font-weight:700;color:var(--success)">10/10</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px">i18n CC（混合语言 / 卡片不重翻译 / VCR key / 静态烘焙等）</div>
+            </div>
+            <div style="text-align:center;padding:16px;background:#ECF4EE;border:1px solid #B9D7C1;border-radius:8px">
+              <div style="font-size:28px;font-weight:700;color:var(--success)">11/11</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px">新增 CC（Locale 归一化 / 幂等 / Archive bomb / z-index 等）</div>
+            </div>
+          </div>
+          <details style="font-size:12px;color:var(--ink-2);cursor:pointer">
+            <summary style="font-weight:600;padding:8px 0;color:var(--ink)">展开查看全部 30 个 Corner Case 及闭合方案</summary>
+            <div style="margin-top:8px;display:grid;gap:6px">
+              <div style="padding:6px 10px;background:var(--subtle);border-radius:6px"><strong>CC-1~9 原始</strong>：Quiz staleness 惰性检测 | Branch-aware concepts (git ancestry) | Degraded 永不提升 baseline | Rename 两段式检测 | 4 Lane 正交 | VCR shared partial 失效 | PID lockfile 并发 | Graphify 7 态 | L3 degraded 归属</div>
+              <div style="padding:6px 10px;background:var(--subtle);border-radius:6px"><strong>CC-i18n-1~10</strong>：混合语言 diff | LLM 质量波动 | SRS 不重翻译 | 概念 display_name | Static 单语烘焙 | VCR 加 output_lang | 审计英文 | CLI/Serve 错误消息 | 日期格式 | improve prompt 语言</div>
+              <div style="padding:6px 10px;background:var(--subtle);border-radius:6px"><strong>CC-NEW-1~8</strong>：Locale BCP47 归一化 | 混合语言检测+重试 | Evidence file_id 分离 | idempotency_key 幂等 | term_key 概念去重 | Archive bomb 限制 | Session cookie 同步 | Static 按钮 disabled</div>
+              <div style="padding:6px 10px;background:var(--subtle);border-radius:6px"><strong>CC-FE-1~3</strong>：超长路径 word-break | 窄屏 Unified 回退 | z-index 层级表 (0/50/60/70/80/100)</div>
+            </div>
+          </details>
+        </div>
+      </div>
+
     </section>
 
     <!-- ============ RUBRIC ============ -->

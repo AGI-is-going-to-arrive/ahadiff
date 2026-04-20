@@ -90,7 +90,7 @@
   4. 实现机械化打分（R10）：evidence 从 claims.jsonl 统计 verified/weak 比例；safety_privacy 从 redaction_report.json 统计
   5. 生成 `score.json`（8 维明细 + verdict + hard_gates + weakest_dim + `eval_bundle_version` + `degraded_flags`）
   6. 跨模型强制：生成用大模型，评估用小模型
-  7. **Evaluation bundle 整体 immutable**：`evaluator.py` + `rubric.yaml` + `gates.py` + `deterministic.py` 的联合 hash 为 `eval_bundle_version`。任一文件变更视为新评估版本，需更新 `rubric_version`，自动触发 VCR cassette 失效，并在 results 中记录新版本号。v0.1 期间允许迭代但必须版本化
+  7. **Evaluation bundle 整体 immutable**：`evaluator.py` + `rubric.py` + `rubric.yaml` + `gates.py` + `deterministic.py` 共 5 文件的联合 hash 为 `eval_bundle_version`。任一文件变更视为新评估版本，需更新 `rubric_version`，自动触发 VCR cassette 失效，并在 results 中记录新版本号。v0.1 期间允许迭代但必须版本化
 - **验收标准**: `ahadiff verify <run_id>` 和 `ahadiff score <run_id>` 输出 PASS/CAUTION/FAIL 及最弱维度；score.json 包含 eval_bundle_version
 
 ### Task 12: Ratchet 机制 + results 写入
@@ -104,8 +104,8 @@
 - **依赖**: Task 0（Schema Freeze — RunStatus/EventLog 契约）+ Task 11（评估体系）
 - **实施步骤**:
   1. **写入顺序**：先写 review.sqlite `result_events`（有事务保护），成功后 append results.tsv。TSV 仅作为人类可读的 audit trail，**review.sqlite 为唯一真相源**。TSV 写入失败仅 warn，不阻塞主流程
-  2. results.tsv 11 列 append-only（timestamp/run_id/source_ref/base_ref/prompt_version/rubric_version/overall/verdict/status/weakest_dim/note）。`source_ref` 为当前评估的来源标识（git 场景为 commit SHA，patch 场景为文件 hash，compare 场景为路径对 hash），`base_ref` 为 ratchet 比较的基线标识（首次 baseline 时为空）。Phase 2.5 rewrite 时 note 字段记录 `PHASE25:worktree_path=<path>`
-  3. `result_events` 主键为 `event_id`（UUID v7，全局唯一），`run_id`/`status`/`timestamp` 为二级索引。同一 run_id 可有多行事件（如 keep → targeted_verify → keep_final）
+  2. results.tsv 11 列 append-only（timestamp/run_id/source_ref/base_ref/prompt_version/rubric_version/overall/verdict/status/weakest_dim/note_json）。`source_ref` 为当前评估的来源标识（git 场景为 commit SHA，patch 场景为文件 hash，compare 场景为路径对 hash），`base_ref` 为 ratchet 比较的基线标识（首次 baseline 时为空）。Phase 2.5 rewrite 时 note_json 字段记录 `{"phase25": true, "worktree_path": "<path>"}`
+  3. `result_events` 主键为 `event_id`（UUID v7，全局唯一），唯一索引 `(run_id, event_type, timestamp)`，二级索引 `(source_ref, timestamp DESC)` + `(verdict, status)` + `(weakest_dimension, timestamp DESC)`。同一 run_id 可有多行事件（如 keep → targeted_verify → keep_final）
   4. 实现 `append_result()` 的幂等保证：写入前检查 `event_id` 是否已存在，存在则跳过
   5. 提供 `ahadiff export-results` 从 review.sqlite 重建 results.tsv
   6. status 枚举化（从 Task 0 contracts 导入）：`baseline | keep | discard | rollback | crash | targeted_verify | keep_final | phase25_rewrite`
@@ -133,16 +133,18 @@
   - `viewer/templates/components/_rubric_bar.html`
   - `viewer/templates/components/_diff_row.html`
   - `viewer/static/style.css`
-- **依赖**: Task 9（Lesson）+ Task 11（Score）
+- **依赖**: Task 9（Lesson）+ Task 11（Score）+ Task 12（Ratchet History，只读依赖 — data_bundle 含 ratchet_history 字段）
 - **实施步骤**:
   1. 从 Warm v6 HTML 原型提取 CSS 变量和布局结构
   2. 实现 Jinja2 五层模板架构（base → layouts → partials → components → pages）
   3. 实现 `data_bundle.py`：构建 `<script id="aha-data" type="application/json">` 注入的 JSON
-  4. data_bundle schema：context(run_id/source_ref/source_kind/capability_level/theme) + verdict(overall/status) + rubric_scores + claims + lesson + ratchet_history
+  4. data_bundle schema：context(run_id/source_ref/source_kind/capability_level/theme/**locale**) + verdict(overall/status) + rubric_scores + claims + lesson + ratchet_history
   5. 实现 `_rubric_bar.html` 组件：自动根据 score/max 映射 PASS/CAUTION/FAIL 语义色（P1 from Gemini）
   6. 实现 `data_bundle.py` 数据裁剪：ratchet_history 仅保留 score 趋势 + run_id，丢弃废弃版本的全量 payload；diff 行数超过 soft_limit (500行) 时启用折叠截断；hard_limit 2000 行时截断并附注 `[truncated: N lines omitted]`，确保单页 HTML 不超过 2MB
   7. 确保 `file://` 打开兼容（所有资源内联，无 CDN）
-  8. 移除外部字体依赖和硬编码 demo 数据
+  8. 移除外部字体依赖和硬编码 demo 数据，转向 System Font Stack（`system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', 'Sarasa Gothic SC', sans-serif`）确保中英文覆盖（经 Codex 交叉审查确认纯 system-ui 中文覆盖不足）
+  9. 实现 i18n 基础：`viewer/i18n/loader.py` JSON catalog loader + Jinja2 `_()` 全局翻译函数 + `<html lang="{{ locale }}">`
+  10. Topbar 右侧添加语言切换按钮（zh/EN）+ 环境探针标识（Static/Serve badge）
 - **验收标准**:
   - `ahadiff learn HEAD~1..HEAD --open` 打开本地 HTML，视觉接近 Warm v6 原型
   - data_bundle 裁剪：>500 行 diff 启用折叠，>2000 行截断，单页 HTML ≤ 2MB
@@ -271,7 +273,7 @@
 - **验收标准**: `ahadiff benchmark --suite local` 跑通 10 份 diff，输出结构化报告
 - **VCR cassette 管理（双层版本策略）**：
   - **run 级**：`prompt_version = tree hash(prompts/)` 不变，用于 results/ratchet 一致性
-  - **cassette 级**：`prompt_fingerprint = hash(top_level_prompt_file + declared_includes + schema_version)`。每个 LLM 调用按 `prompt_fingerprint + model_id + rubric_version` 命名 cassette 文件。修改 `lesson_generate.md` 只失效 lesson 相关 cassette，不影响 quiz/claim cassette
+  - **cassette 级**：`prompt_fingerprint = hash(top_level_prompt_file + declared_includes + schema_version)`。每个 LLM 调用按 `prompt_fingerprint + model_id + rubric_version + output_lang` 四元组命名 cassette 文件。修改 `lesson_generate.md` 只失效 lesson 相关 cassette，不影响 quiz/claim cassette
   - **实现**：`src/ahadiff/prompts/loader.py` 新增 `load_prompt_bundle(name) → (text, deps, fingerprint)` 和 `compute_prompt_fingerprint()`。`tests/helpers/vcr_keys.py` 提供 `make_cassette_key()`。prompt 文件通过 frontmatter `includes: [shared/base.md]` 声明依赖
   - **CI 分档**：PR 触发 `tests/unit`（无 LLM，全 mock），nightly 触发 `tests/eval`（有 LLM，VCR 录制）。月均 LLM 成本预算 $50
   - **edge case**：共享 partial 改动 → 所有显式依赖它的 cassette 失效；prompt rename → path 纳入 fingerprint，rename 会失效（by design）；judge/generator cassette 严格分开
@@ -420,12 +422,128 @@ Layer 8 (串行):  Task 19 (依赖 CLI 接口冻结：Task 9+10+11+15+16)
 - `git show` / PR patch 输入 → v0.2
 - `--staged` 已纳入 v0.1（`git diff --cached`，实现简单，与 Blueprint 一致）
 
-## 预计时间
+## 第十段：i18n 全链路国际化（新增）
+
+> 依赖：Task 0（Schema Freeze）+ 各层 Task 并行集成
+> 估时：~3.75 天（可与 Layer 4-8 并行）
+
+### Task i18n-0: i18n Schema 冻结
+
+- **类型**: 后端（Codex 实现）
+- **文件范围**:
+  - `src/ahadiff/i18n/resolver.py` — locale 解析优先级链
+  - `src/ahadiff/config.py` — UserConfig 加 `lang` 字段
+- **依赖**: Task 0（Schema Freeze Gate）
+- **实施步骤**:
+  1. 实现 locale 解析链：手动切换(cookie) → 浏览器 Accept-Language → CLI `--lang` → config.toml `[general] lang` → 系统 `LANG` 环境变量 → 降级 `en`
+  2. UserConfig 加 `lang: Literal["auto", "en", "zh-CN"] = "auto"`
+  3. RunRecord 加 `content_lang: str`（记录生成时的解析语言）
+  4. ConceptNode 加 `term_key: str`（slug 归一化稳定身份）+ `term: str`（规范英文）+ `display_name: str`（本地化）+ `lang: str` + `aliases: list[str]`（CC-NEW-5 闭合方案回流）
+  5. EvidenceAnchor 加 `file_id: str`（SHA-256 前缀，脱敏前分配）+ `display_path: str`（脱敏后显示路径）（CC-NEW-3 闭合方案回流）
+  5. config.toml 加 `[general] lang = "auto"` + `[llm] prompt_lang = "auto"` + `[llm] output_lang = "auto"`
+- **验收标准**: `resolve_locale()` 在 CLI/serve/static 三种模式下都返回正确 locale
+
+### Task i18n-1: JSON Catalog + Loader
+
+- **类型**: 前端+后端（Claude 实现）
+- **文件范围**:
+  - `messages/en.json` — 英文消息目录（扩展为 12+ 类别）
+  - `messages/zh-CN.json` — 中文消息目录
+  - `src/ahadiff/i18n/catalog.py` — JSON catalog loader
+- **依赖**: Task i18n-0
+- **实施步骤**:
+  1. 扩展消息目录类别：Brand/Nav/Claim/Verdict/Rubric/Quiz/SRS/Serve/Settings/CLI/Error/Accessibility
+  2. 实现 `load_catalog(locale: str) -> dict` 函数
+  3. 实现 `translate(key: str, locale: str, **kwargs) -> str`（支持 `{variable}` 插值）
+  4. CLI 使用 Rich 输出本地化消息
+- **验收标准**: `translate("Nav.dashboard", "zh-CN")` 返回 "运行"
+
+### Task i18n-2: Prompt 语言指令
+
+- **类型**: 后端（Claude 编写 prompt，Codex review）
+- **文件范围**: `prompts/*.md` 所有 prompt 文件头部
+- **依赖**: Task i18n-0 + Task 9（Lesson prompt 存在后才能加指令）
+- **实施步骤**:
+  1. 所有 prompt 文件头部添加 `## Language Directive` 段落
+  2. 使用 `{{OUTPUT_LANGUAGE}}` 模板变量（由 `llm/provider.py` 注入）
+  3. 中文规则：技术术语保留英文原文，首次出现时括注中文
+  4. 英文规则：All explanations in English
+  5. 代码片段、文件路径、变量名：NEVER translate
+- **验收标准**: lesson 生成在 `--lang zh` 时输出中文解释，`--lang en` 时输出英文解释
+
+### Task i18n-3: Jinja2 模板 i18n
+
+- **类型**: 前端（Claude 实现，Gemini 评审）
+- **文件范围**: `viewer/templates/**` 所有模板文件
+- **依赖**: Task i18n-1 + Task 13（Viewer 基础架构存在后才能改模板）
+- **实施步骤**:
+  1. 在 `viewer/templates/base.html` 注入 `_()` 全局翻译函数
+  2. 所有硬编码中文/英文文案替换为 `{{ _("Nav.dashboard") }}` 调用
+  3. `<html lang="{{ locale }}">`
+  4. Static 模式：`_()` 在构建时解析，语言烘焙进 HTML
+  5. Serve 模式：`_()` 在请求时解析，读 cookie `ahadiff_lang`
+  6. 数字/日期格式按 locale 格式化
+- **验收标准**: 同一页面在 zh-CN 和 en 下所有文案正确切换
+
+### Task i18n-4: 前端语言切换 UI
+
+- **类型**: 前端（Claude 实现，Gemini 评审）
+- **文件范围**:
+  - `viewer/templates/partials/_topbar.html` — 语言切换按钮
+  - `viewer/static/style.css` — 按钮样式
+  - `src/ahadiff/viewer/serve_app.py` — API endpoint
+- **依赖**: Task i18n-3 + Task 14（Viewer 页面存在）+ Task 14.5（Serve 存在）
+- **实施步骤**:
+  1. Topbar 右侧添加 zh/EN 切换按钮（紧邻主题切换按钮）
+  2. 点击后：Serve 模式写 cookie `ahadiff_lang` + 页面重载；Static 模式 toggle 降级为 disabled 状态 + tooltip "运行 `ahadiff serve` 以切换语言，或 `ahadiff learn --lang en` 重新生成"（**不嵌入双语 JSON，保持单语烘焙**，经 Codex 交叉审查确认）
+  3. Serve API: `GET /api/locale` 返回当前 locale，`PUT /api/locale` 设置 locale
+  4. 按钮样式：当前语言高亮，非当前语言降低不透明度
+- **验收标准**: 在 serve 模式下点击 zh/EN 按钮后页面立即切换语言
+
+### Task i18n-5: CLI 语言支持
+
+- **类型**: 后端（Codex 实现）
+- **文件范围**:
+  - `src/ahadiff/cli.py` — `--lang` 全局参数
+  - Rich console 输出本地化
+- **依赖**: Task i18n-1
+- **实施步骤**:
+  1. 添加 `--lang` 全局 Typer Option（`auto|en|zh-CN`）
+  2. Rich 进度条、状态消息、错误消息使用 `translate()` 函数
+  3. `ahadiff learn --lang zh HEAD~1..HEAD` 生成中文 lesson
+- **验收标准**: CLI 在 `--lang zh` 和 `--lang en` 下所有提示信息正确
+
+### Task i18n-6: VCR Cassette Key 扩展
+
+- **类型**: 后端（Codex 实现）
+- **文件范围**: `src/ahadiff/eval/vcr.py`
+- **依赖**: Task i18n-2 + Task 18（VCR/Benchmark 存在）
+- **实施步骤**:
+  1. cassette key 从三元组扩展为四元组：`prompt_version + model_id + rubric_version + output_lang`
+  2. 语言变更自动失效对应 cassette
+  3. 测试：同一 diff 在 en/zh-CN 下生成不同 cassette
+- **验收标准**: `output_lang` 变更时仅失效对应语言的 cassette，不影响其他语言
+
+---
+
+## i18n Task 依赖图
+
+```
+Task 0 (Schema Freeze)
+  └─> Task i18n-0 (i18n Schema)
+        ├─> Task i18n-1 (JSON Catalog)
+        │     ├─> Task i18n-3 (Jinja2 模板 i18n) ──> Task i18n-4 (语言切换 UI)
+        │     └─> Task i18n-5 (CLI 语言)
+        └─> Task i18n-2 (Prompt 语言指令) ──> Task i18n-6 (VCR Key 扩展)
+```
+
+## 预计时间（修订）
 
 - Layer 4: ~2 天（Lesson + Quiz + Evaluator 并行）
 - Layer 5: ~2 天（Ratchet + Viewer 并行）
 - Layer 6: ~1 天（Review）
 - Layer 7: ~2 天（Improve + Targeted + Benchmark 并行）
 - Layer 8: ~1 天（Install + GitHub Action 并行）
+- **i18n: ~3.75 天（可与 Layer 4-8 并行，不增加关键路径）**
 
-**总计：~8 天**，加上 Layer 1-3 的 ~3 天 = **v0.1 完整开发周期 ~11 天**
+**总计：~8 天**（主线）+ i18n 并行，加上 Layer 1-3 的 ~3 天 = **v0.1 完整开发周期 ~11-12 天**

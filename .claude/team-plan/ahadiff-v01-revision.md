@@ -29,18 +29,19 @@
 
 #### R4. results.tsv 格式自行定义
 - **旧**：混用 autoresearch 5 列和 darwin-skill 9 列
-- **新**：AhaDiff 自定义 11 列（含 base_sha）
+- **新**：AhaDiff 自定义 11 列（含 base_ref）
+- **⚠️ 术语更新**：后续版本已统一为 `source_ref`/`base_ref`（替代 `head_sha`/`base_sha`），见 CLAUDE.md
 
 ```
-timestamp	run_id	head_sha	base_sha	prompt_version	rubric_version	overall	verdict	status	weakest_dim	note
+timestamp	run_id	source_ref	base_ref	prompt_version	rubric_version	overall	verdict	status	weakest_dim	note_json
 ```
 
 | 列 | 类型 | 说明 |
 |----|------|------|
 | timestamp | ISO 8601 | 运行时间 |
 | run_id | string | `make_run_id()` 生成 |
-| head_sha | string(7) | git short hash（当前评估 commit） |
-| base_sha | string(7) | ratchet 比较基线 SHA（首次 baseline 时为空） |
+| source_ref | string | 统一标识（git short hash / patch 路径 / staged 标记） |
+| base_ref | string | ratchet 比较基线（首次 baseline 时为空） |
 | prompt_version | string | `prompts/` 目录的 tree hash 前 7 位 |
 | rubric_version | string | `rubric.yaml` 的 content hash 前 7 位 |
 | overall | int 0-100 | 加权总分 |
@@ -445,7 +446,8 @@ ahadiff install --detect --dry-run    # 新增
 - 定位为 **append-only evaluation event log**，不承担 cache/索引/报表职责
 - `status` 必须枚举化：`baseline | keep | discard | rollback | crash | targeted_verify | keep_final | phase25_rewrite`
 - `note` 约定"短错误码前缀 + 自由文本"，例如 `EVIDENCE_MISSING_LINE: missing line evidence`
-- 查询走 `review.sqlite` 的 `result_events` 表，索引：`(run_id UNIQUE)`, `(head_sha, timestamp DESC)`, `(prompt_version, rubric_version)`, `(verdict, status)`, `(weakest_dimension, timestamp DESC)`
+- 查询走 `review.sqlite` 的 `result_events` 表，索引：`(run_id, event_type, timestamp)` 唯一索引, `(source_ref, timestamp DESC)`, `(prompt_version, rubric_version)`, `(verdict, status)`, `(weakest_dimension, timestamp DESC)`
+- **⚠️ 术语更新**：`head_sha` 已替换为 `source_ref`，`note` 已改为 `note_json`，`(run_id UNIQUE)` 已改为多事件流唯一索引
 
 ### CLI 接入扩展建议
 1. **Gemini CLI**：默认写项目根 `GEMINI.md`（不写 `settings.json`），只有 `--with-settings` 时才写 `.gemini/settings.json`。置信度 High

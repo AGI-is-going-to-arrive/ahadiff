@@ -48,6 +48,10 @@ header-includes:
 
 本文件是对原 **AntiVibe Tutor v1.0 前端视觉与交互手册** 的整体修订版。原文件已经完整规划了 3 风格 × 11 页面 = 33 个界面，并提供了三套视觉 DNA、Design Tokens、i18n、页面规格、7 轮 Claude Design 投喂方式和自查清单。本版保留这个结构，不删减 **3 风格 × 11 页面**，但把产品从「AntiVibe Tutor」重构为 **知返 AhaDiff**，并把 Evidence / Claim / Spec / Graphify / Ratchet / Review 这些核心差异点嵌入到原有 11 个页面里。
 
+> **技术栈说明**：本手册中的 Design Tokens、布局结构、组件语义和 i18n 骨架适用于所有前端实现。
+> - **v0.1**：使用 Jinja2 模板 + Vanilla JS + Starlette serve（详见 `CLAUDE.md`），组件对应 Jinja2 partials/components
+> - **v1.0+**：可升级为 Next.js + React + Tailwind + shadcn/ui（本手册 §14 投喂 Prompt 适用于此阶段）
+
 ## 0.1 必改项总览
 
 | 原设计 | 本版修改 |
@@ -519,6 +523,7 @@ npx shadcn@latest add button card dialog sheet tabs tooltip popover \
     "weak": "Weak",
     "notProven": "Not proven",
     "contradicted": "Contradicted",
+    "rejected": "Rejected",
     "openEvidence": "Open evidence",
     "markWrong": "Mark wrong"
   },
@@ -556,6 +561,7 @@ npx shadcn@latest add button card dialog sheet tabs tooltip popover \
     "weak": "证据弱",
     "notProven": "无法证明",
     "contradicted": "与代码冲突",
+    "rejected": "证据无效",
     "openEvidence": "打开证据",
     "markWrong": "标记错误"
   },
@@ -1401,6 +1407,10 @@ i18n 文案
 \newpage
 
 # 14. 直接投喂 Claude Design 的总 Prompt
+
+> **注意**：以下 Prompt 使用 Next.js/React 技术栈，适用于 **v1.0 高保真前端**。
+> v0.1 使用 Jinja2 + Vanilla JS + Starlette serve（见 `CLAUDE.md` 技术栈章节）。
+> v0.1 开发时请将此 Prompt 中的组件概念映射为 Jinja2 模板 partials/components。
 
 ```markdown
 你是 Claude Design / Stitch。请基于以下规范生成 Next.js 16 + React 19 + Tailwind v4 + shadcn/ui + Motion 的前端。
