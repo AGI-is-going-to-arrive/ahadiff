@@ -1164,7 +1164,8 @@ footer{
           你改了 <code>src/auth/oauth.py</code><br>
           → 生成 <code>4</code> 条带证据的笔记<br>
           → 生成 <code>5</code> 道主动回忆 quiz<br>
-          → <code>14</code> 天后 SRS 自动推送给你复习
+          → <code>14</code> 天后 SRS 自动推送给你复习<br>
+          v0.1 通过 <code>ahadiff serve</code> 实现浏览器内交互（Quiz/SRS 答题通过 REST API 写回），不再需要在 terminal 和浏览器间来回切换。
         </div>
         <div class="moat-compare">
           <span class="moat-compare-chip no">CodeRabbit 只评审</span>
@@ -1686,6 +1687,41 @@ footer{
     <div class="borrow-grid" id="borrowGrid"></div>
     <div class="borrow-empty" id="borrowEmpty" style="display:none">
       没有符合的条目 — 换一个筛选条件？
+    </div>
+  </div>
+</section>
+
+<!-- =============== v0.1 UPGRADE =============== -->
+<section id="v01-upgrade">
+  <div class="container">
+    <div class="section-label">六 · 附</div>
+    <h2>v0.1 设计升级<em>（2026-04-20 三轮评估后新增）</em></h2>
+    <p class="lead">经三模型 + Explorer 五轮交叉审查，v0.1 取消静态 viewer 冻结，新增以下关键能力。</p>
+
+    <div class="top10-wrap">
+      <div class="top10-grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;display:grid">
+
+        <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px">
+          <div class="borrow-howto-tag" style="margin:0">serve 模式</div>
+          <div class="borrow-howto-body"><code>ahadiff serve</code> — 轻量本地服务器（Starlette + Uvicorn），Quiz/SRS 答题在浏览器内完成，结果直接写回 SQLite，不用在 terminal 和浏览器间来回切换。同一模板在 serve 和 <code>file://</code> 下自动切换（Progressive Enhancement）。</div>
+        </div>
+
+        <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px">
+          <div class="borrow-howto-tag" style="margin:0">四 Lane 历史</div>
+          <div class="borrow-howto-body">不同 capability level 的 run（git/patch/compare/staged）分 lane 展示，不混在一起比。降级 run 自动标记，不会拉低整体质量评估。</div>
+        </div>
+
+        <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px">
+          <div class="borrow-howto-tag" style="margin:0">三层锁</div>
+          <div class="borrow-howto-body">CLI 和 serve 可以同时运行，写入安全由跨进程文件锁（PID lockfile + liveness check + SQLite WAL）三层保护，无需用户手动协调。</div>
+        </div>
+
+        <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px">
+          <div class="borrow-howto-tag" style="margin:0">Graphify 智能缓存</div>
+          <div class="borrow-howto-body">7 态新鲜度判断 + 4 值投影，squash/cherry-pick/rebase 后不会误判为过期，减少无谓的 context 重建开销。</div>
+        </div>
+
+      </div>
     </div>
   </div>
 </section>

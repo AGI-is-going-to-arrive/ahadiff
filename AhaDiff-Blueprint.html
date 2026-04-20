@@ -1031,12 +1031,13 @@ table.t tr:hover td{background:var(--accent-softer)}
         <div class="arch-step"><div class="n">L2b</div><h4>Safety Gate</h4><p>secret scan → redact → 才能 log/cache/model/render</p></div>
         <div class="arch-step"><div class="n">L2c</div><h4>Budget & Degrade</h4><p>token budget · large diff skip/clip/summarize</p></div>
       </div>
-      <div class="arch-flow" style="grid-template-columns:repeat(5,1fr);margin-top:0;border-top:0;border-top-left-radius:0;border-top-right-radius:0">
+      <div class="arch-flow" style="grid-template-columns:repeat(6,1fr);margin-top:0;border-top:0;border-top-left-radius:0;border-top-right-radius:0">
         <div class="arch-step"><div class="n">L3</div><h4>Lesson Gen</h4><p>prompts/*.md · claim extraction</p></div>
         <div class="arch-step"><div class="n">L4</div><h4>Verification</h4><p>claims.jsonl · deterministic + LLM judge</p></div>
         <div class="arch-step"><div class="n">L5</div><h4>Ratchet</h4><p>evaluation bundle (immutable) · review.sqlite</p></div>
         <div class="arch-step"><div class="n">L6</div><h4>Learning</h4><p>quiz · SRS · section helpfulness · concepts.jsonl</p></div>
-        <div class="arch-step" style="background:var(--accent-softer)"><div class="n">L7</div><h4>Wiki + UI</h4><p>index.md · concept graph · dashboard</p></div>
+        <div class="arch-step" style="background:var(--accent-softer)"><div class="n">L7a</div><h4>Static Snapshot</h4><p>file:// 模式 · data_bundle.json</p></div>
+        <div class="arch-step" style="background:var(--accent-softer)"><div class="n">L7b</div><h4>Live Serve</h4><p>localhost:8765 · REST API · SQLite</p></div>
       </div>
 
       <div class="card" style="margin-top:24px">
@@ -1063,6 +1064,75 @@ table.t tr:hover td{background:var(--accent-softer)}
   review/
     review.sqlite             <span style="color:var(--muted)">← SRS 卡片 + result_events 物理表</span>
     review.sqlite.bak         <span style="color:var(--muted)">← 迁移前自动备份</span></div>
+      </div>
+
+      <!-- v3 新增：ahadiff serve 双适配器 -->
+      <div class="card" style="margin-top:18px">
+        <div class="ch"><h3>v3 新增：ahadiff serve 双适配器</h3><div class="meta">Layer 7a Static + 7b Serve</div></div>
+        <div class="cb">
+          <div style="font-size:12px;color:var(--ink-2);line-height:1.6;margin-bottom:12px;padding:10px;background:#FDFCF8;border:1px solid var(--hair);border-radius:8px">
+            Layer 7 拆分为 <strong>7a Static Snapshot</strong>（file:// 模式）和 <strong>7b Live Serve</strong>（<code>ahadiff serve</code>，Starlette + Uvicorn 轻量本地服务器）。同一套 Jinja2 模板通过 <code>data-mode="serve|static"</code> 属性切换行为，实现 Progressive Enhancement。
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <!-- 流程图 -->
+            <div style="padding:12px;background:#FDFCF8;border:1px solid var(--hair);border-radius:8px;font-family:var(--font-mono);font-size:11.5px;line-height:2;white-space:pre-wrap">CLI  →  orchestrator  →  Layer 5/6
+                                    ↓
+              ┌─────────────────────┴─────────────────────┐
+              ↓                                           ↓
+    <span style="color:var(--info);font-weight:600">7a: Static HTML</span>                         <span style="color:var(--success);font-weight:600">7b: localhost:8765</span>
+    data_bundle.json 内嵌              REST API 实时读 SQLite
+    file:// 可直接打开                 轮询 /api/status 获取进度</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div style="padding:12px;background:var(--subtle);border:1px solid var(--hair);border-radius:8px">
+                <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--info)">7a · STATIC SNAPSHOT</div>
+                <div style="font-size:12px;color:var(--ink-2);margin-top:6px">一次性将 lesson + claims + quiz 序列化为 <code>data_bundle.json</code>，嵌入 HTML。无需服务器，<code>file://</code> 可直接打开。适合 CI 产物归档。</div>
+              </div>
+              <div style="padding:12px;background:#ECF4EE;border:1px solid #B9D7C1;border-radius:8px">
+                <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--success)">7b · LIVE SERVE</div>
+                <div style="font-size:12px;color:var(--ink-2);margin-top:6px"><code>ahadiff serve</code> 启动 Starlette + Uvicorn 本地服务器（默认 :8765），通过 Layer 5/6 接口读写 <code>review.sqlite</code>，提供 REST API。进度通过 <code>GET /api/status</code> 轮询获取。默认 read-only 模式，<code>--enable-write</code> 开启写入。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 三层锁模型 -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px">
+        <div class="card">
+          <div class="ch"><h3>三层锁模型</h3><div class="meta">CLI 与 serve 安全共存</div></div>
+          <div class="cb">
+            <div style="font-size:12px;color:var(--ink-2);line-height:1.6;margin-bottom:12px;padding:10px;background:#FDFCF8;border:1px solid var(--hair);border-radius:8px">
+              锁获取顺序严格为 <strong>repo → run → db</strong>，不可逆序，防止死锁。CLI 写入和 serve 写入都通过分层文件锁保护并发安全。GET 请求不拿锁，只依赖 SQLite busy_timeout。
+            </div>
+            <table class="t" style="font-size:12px">
+              <thead><tr><th>锁</th><th>粒度</th><th>持有者</th><th>说明</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">repo_write_lock</td><td>仓库级</td><td>CLI（learn/improve）</td><td>保证同一仓库同一时刻只有一个写入会话；PID lockfile + liveness check</td></tr>
+                <tr><td class="mono">run_write_lock</td><td>运行级</td><td>orchestrator</td><td>保证单次 run 内各 layer 串行写入；run 目录创建即获取</td></tr>
+                <tr><td class="mono">db_write_lock</td><td>SQLite 级</td><td>ratchet layer</td><td>跨进程文件锁 <code>.ahadiff/db.lock</code> + serve 内 asyncio.Lock；CLI 和 serve 的写入都先拿此锁</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 四 Lane 历史模型 -->
+        <div class="card">
+          <div class="ch"><h3>四 Lane 历史模型</h3><div class="meta">Dashboard 分层展示</div></div>
+          <div class="cb">
+            <div style="font-size:12px;color:var(--ink-2);line-height:1.6;margin-bottom:12px;padding:10px;background:#FDFCF8;border:1px solid var(--hair);border-radius:8px">
+              Lane 由 <code>capability_level</code> 决定，<code>degraded_flags</code> 决定 lane 内子分类。Dashboard 默认只展示 <strong>L3 主线</strong>（git_ratchet），其余按需展开。
+            </div>
+            <table class="t" style="font-size:12px">
+              <thead><tr><th>Lane</th><th>标签</th><th>展示</th><th>说明</th></tr></thead>
+              <tbody>
+                <tr><td class="mono" style="font-weight:600">L3_git_ratchet</td><td>主线</td><td style="color:var(--success);font-weight:600">Headline</td><td>完整 ratchet 对比，可信基线</td></tr>
+                <tr><td class="mono" style="color:var(--muted)">L3_degraded_observation</td><td>降级观测</td><td style="color:var(--muted)">灰色辅助</td><td>budget 降级或 capability_level &lt; full 的运行</td></tr>
+                <tr><td class="mono" style="color:var(--muted)">L2_workspace_compare</td><td>工作区</td><td style="color:var(--muted)">按需展开</td><td>--compare 模式，无 git 基线</td></tr>
+                <tr><td class="mono" style="color:var(--muted)">L1_patch_only</td><td>补丁</td><td style="color:var(--muted)">按需展开</td><td>外部 patch 文件，无仓库上下文</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px">
@@ -1107,7 +1177,7 @@ table.t tr:hover td{background:var(--accent-softer)}
                 <tr><td class="mono">verdict</td><td>enum</td><td>PASS / CAUTION / FAIL</td></tr>
                 <tr><td class="mono">status</td><td>enum</td><td>baseline / keep / discard / keep_final</td></tr>
                 <tr><td class="mono">weakest_dim</td><td>string</td><td>最弱维度</td></tr>
-                <tr><td class="mono">note</td><td>string</td><td>简短描述</td></tr>
+                <tr><td class="mono">note_json</td><td>JSON</td><td>结构化元数据（phase/trigger/degraded_flags/cleanup_state）</td></tr>
               </tbody>
             </table>
           </div>
