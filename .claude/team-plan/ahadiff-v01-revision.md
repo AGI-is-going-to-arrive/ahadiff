@@ -29,22 +29,23 @@
 
 #### R4. results.tsv 格式自行定义
 - **旧**：混用 autoresearch 5 列和 darwin-skill 9 列
-- **新**：AhaDiff 自定义 10 列
+- **新**：AhaDiff 自定义 11 列（含 base_sha）
 
 ```
-timestamp	run_id	head_sha	prompt_version	rubric_version	overall	verdict	status	weakest_dim	note
+timestamp	run_id	head_sha	base_sha	prompt_version	rubric_version	overall	verdict	status	weakest_dim	note
 ```
 
 | 列 | 类型 | 说明 |
 |----|------|------|
 | timestamp | ISO 8601 | 运行时间 |
 | run_id | string | `make_run_id()` 生成 |
-| head_sha | string(7) | git short hash |
+| head_sha | string(7) | git short hash（当前评估 commit） |
+| base_sha | string(7) | ratchet 比较基线 SHA（首次 baseline 时为空） |
 | prompt_version | string | `prompts/` 目录的 tree hash 前 7 位 |
 | rubric_version | string | `rubric.yaml` 的 content hash 前 7 位 |
 | overall | int 0-100 | 加权总分 |
 | verdict | enum | PASS / CAUTION / FAIL |
-| status | enum | baseline / keep / discard / rollback / crash / targeted_verify / keep_final |
+| status | enum | baseline / keep / discard / rollback / crash / targeted_verify / keep_final / phase25_rewrite |
 | weakest_dim | string | 最弱维度的 json_key |
 | note | string | 人类或 agent 的简短描述 |
 
@@ -408,7 +409,7 @@ ahadiff install --detect --dry-run    # 新增
 
 ### Task 3（文档 contract 冻结）需额外处理
 - 应用 P0-1~3 + P1-1~5 修订到 CLAUDE.md 和设计思路文档
-- 统一 results.tsv 为 10 列方案
+- 统一 results.tsv 为 11 列方案（含 base_sha）
 - 注明所有灵感项目的精确归因
 
 ### Task 9（原第九段，新增）
@@ -442,7 +443,7 @@ ahadiff install --detect --dry-run    # 新增
 
 ### results.tsv 工程建议
 - 定位为 **append-only evaluation event log**，不承担 cache/索引/报表职责
-- `status` 必须枚举化：`baseline | keep | discard | rollback | crash | targeted_verify | keep_final`
+- `status` 必须枚举化：`baseline | keep | discard | rollback | crash | targeted_verify | keep_final | phase25_rewrite`
 - `note` 约定"短错误码前缀 + 自由文本"，例如 `EVIDENCE_MISSING_LINE: missing line evidence`
 - 查询走 `review.sqlite` 的 `result_events` 表，索引：`(run_id UNIQUE)`, `(head_sha, timestamp DESC)`, `(prompt_version, rubric_version)`, `(verdict, status)`, `(weakest_dimension, timestamp DESC)`
 

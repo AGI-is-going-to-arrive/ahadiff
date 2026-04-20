@@ -219,7 +219,7 @@ max_set=0 (无skill)       →  quiz（纯主动回忆）
 
 ### 应该修订（P1）
 
-4. **results.tsv 格式**：AhaDiff 应自行定义列，建议合并：`timestamp | run_id | head_sha | prompt_version | rubric_version | overall | verdict | status | weakest_dimension | note`（10列）
+4. **results.tsv 格式**：AhaDiff 应自行定义列，建议合并：`timestamp | run_id | head_sha | base_sha | prompt_version | rubric_version | overall | verdict | status | weakest_dimension | note`（11列，含 base_sha）
 5. **三文件契约描述**：注明"AhaDiff 的 evaluator.py/generator_prompt.md 是对 autoresearch prepare.py/train.py 的概念改编，不是直接复刻"
 6. **SKILL0 budget 描述**：从"线性递减"改为"阶段跳变"，并注明实际 schedule 是 [6,3,0]
 7. **SKILL0 helpfulness 描述**：注明"原论文 skill file 级，AhaDiff 自行扩展到 section 粒度"

@@ -194,7 +194,7 @@ AhaDiff 采用 8 维 lesson rubric：
 | Evidence | 15 | claims 是否绑定 source |
 | Diff Coverage | 15 | changed symbols 覆盖 |
 | Learnability | 15 | 解释是否能教会 |
-| Recall Transfer | 10 | quiz 是否能检验迁移 |
+| Quiz Transfer | 10 | quiz 是否能检验迁移 |
 | Spec Alignment | 10 | 是否符合 SPEC |
 | Conciseness | 8 | 是否冗长 |
 | Safety & Privacy | 7 | 是否泄漏或误导 |
@@ -821,7 +821,7 @@ Accuracy
 Evidence
 Diff Coverage
 Learnability
-Recall Transfer
+Quiz Transfer
 Spec Alignment
 Conciseness
 Safety & Privacy

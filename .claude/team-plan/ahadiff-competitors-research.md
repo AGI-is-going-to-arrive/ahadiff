@@ -43,7 +43,7 @@
 - `evaluator.py` IMMUTABLE 评估器，`evaluate_wiki(path) → wiki_score ∈ [0,1]`，stdout 固定 `^wiki_score:` 前缀
 - `generator_prompt.md` agent 唯一可改资产
 
-**Claim 四状态**：verified / weak / not_proven / contradicted。deterministic verifier（file/line/hunk/symbol + risky words）**先行**，LLM judge 只判因果合理性（`改名方案.md`:L457-492）。
+**Claim 五状态**：verified / weak / not_proven / contradicted / rejected。deterministic verifier（file/line/hunk/symbol + risky words）**先行**，LLM judge 只判因果合理性（`改名方案.md`:L457-492）。
 
 **棘轮**：
 - keep：`wiki_score_new > wiki_score_old` → `git commit`
@@ -52,7 +52,7 @@
 
 **8 维 rubric（完全自研，100 分）**：
 accuracy(20) · evidence(18) · diff_coverage(14) · learnability(14) · quiz_transfer(10) · spec_alignment(10) · conciseness(8) · safety_privacy(6)
-三档：PASS ≥80 / CAUTION 60-79 / FAIL <60（或 accuracy <15 硬 gate）。SkillCompass 原版 70/50，本项目调高为 80/60。
+三档：PASS ≥80 / CAUTION 60-79 / FAIL <60（或 accuracy <14 硬 gate）。SkillCompass 原版 70/50，本项目调高为 80/60。
 
 **Local-first 边界**：所有产物存 `.ahadiff/`；出本机仅 LLM API prompt，受 `.ahadiffignore` / `safety/redact.py` / `config.toml[offline_only]` / `audit.jsonl` 四道闸控制。
 
@@ -93,7 +93,7 @@ accuracy(20) · evidence(18) · diff_coverage(14) · learnability(14) · quiz_tr
 
 **4 个差异化空白（护城河）**：
 - **空白 A：Diff-to-Learning 闭环** — 没有产品把 git diff 作为输入同时输出 SRS 复习
-- **空白 B：Claim-Evidence 结构化验证** — 所有竞品都是"自然语言带行号"，无人做 4 状态机
+- **空白 B：Claim-Evidence 结构化验证** — 所有竞品都是"自然语言带行号"，无人做 5 状态机
 - **空白 C：Quality Ratchet for learning notes** — 仅 autoresearch 有 ratchet，但用于 ML 训练非学习笔记
 - **空白 D：Local-first 学习数据** — PR Review 全是 SaaS；AhaDiff 学习数据留本机
 
@@ -118,8 +118,8 @@ accuracy(20) · evidence(18) · diff_coverage(14) · learnability(14) · quiz_tr
 | HC-11 | 不做整库 wiki（避免与 DeepWiki / Code Wiki 同质） | 内部设计：`改名方案.md`:L24-28；外部竞品：DeepWiki |
 | HC-12 | 不做 PR summary（避免与 What The Diff 同质） | 内部设计：`最终方案.md`:2.2 段；外部竞品：What The Diff |
 | HC-13 | 不做 SaaS / 云同步 / 团队 workspace；local-first 核心原则 | 内部设计：`最终方案.md`:产品原则段 |
-| HC-14 | Verdict 三档阈值固定：PASS ≥80 / CAUTION 60-79 / FAIL <60；accuracy <15 硬 FAIL gate | 内部设计：`kickoff.md`:L33 |
-| HC-15 | `results.tsv` 10 列 TAB 分隔：`timestamp / run_id / head_sha / prompt_version / rubric_version / overall / verdict / status / weakest_dim / note` | 内部设计：`kickoff.md`:L33；`SOURCE-CODE-VERIFICATION-REPORT.md`:L222 |
+| HC-14 | Verdict 三档阈值固定：PASS ≥80 / CAUTION 60-79 / FAIL <60；accuracy <14 硬 FAIL gate | 内部设计：`kickoff.md`:L33 |
+| HC-15 | `results.tsv` 11 列 TAB 分隔：`timestamp / run_id / head_sha / base_sha / prompt_version / rubric_version / overall / verdict / status / weakest_dim / note` | 内部设计：`kickoff.md`:L33；`SOURCE-CODE-VERIFICATION-REPORT.md`:L222 |
 
 ### B.2 软约束（Soft Constraints）— 倾向性
 
@@ -151,7 +151,7 @@ accuracy(20) · evidence(18) · diff_coverage(14) · learnability(14) · quiz_tr
 |---|---|:---:|:---:|---|
 | RISK-1 | **CodeRabbit 加入 SRS/learning 特性** → 直接进入 AhaDiff 领地 | 中 | 高 | 强调 local-first 个人工具定位；SRS+Claim-Evidence 组合是 CodeRabbit 企业 review 基因不会做的事；迅速建立 `awesome-claude-skills` 生态入口 |
 | RISK-2 | Anthropic 官方推出「Diff Learning Skill」 | 低 | 极高 | 提前将 AhaDiff 作为 skill 发布，占据 `obra/superpowers` 同级生态位；突出 `evaluator.py` + ratchet 的非平凡实现 |
-| RISK-3 | Greptile 「learns your codebase」扩展到人类学习 | 低 | 中 | Claim 四状态机差异化；Greptile 是 rule-adapt 而非人类学习 |
+| RISK-3 | Greptile 「learns your codebase」扩展到人类学习 | 低 | 中 | Claim 五状态机差异化；Greptile 是 rule-adapt 而非人类学习 |
 | RISK-4 | LLM 调用成本高（每条 diff 3-5 次 API：generation + verification + judge） | 中 | 中 | 小模型做 judge（Haiku），`offline_only = true` 支持本地模型；`audit.jsonl` 可视化成本 |
 | RISK-5 | Claim verification 的 deterministic 规则不足以识别"虚构解释"，LLM judge 可能漂移 | 中 | 高 | risky words 扫描作为第三层；跨模型评估；人工标注 20 份 benchmark 做 judge 稳定性测试 |
 | RISK-6 | 用户不愿意在本地跑 Python CLI（希望 IDE 插件） | 中 | 中 | 留 v1.0 做 VS Code 扩展；首版走 `ahadiff install claude/codex/cursor` 让 agent 代用户调用 |
@@ -165,7 +165,7 @@ accuracy(20) · evidence(18) · diff_coverage(14) · learnability(14) · quiz_tr
 | ID | 可验证行为 | 验证方式 |
 |---|---|---|
 | OK-1 | 10 份 pinned diff 端到端验证，`wiki_score ≥ 0.80`（PASS 档） | `tests/integration/` 跑 `ahadiff learn` 读取 `score.json` |
-| OK-2 | Claim 4 状态分类人工标注对齐 ≥ 85%（20 份 benchmark） | 对比 `claims.jsonl.status` 与人工标注 |
+| OK-2 | Claim 5 状态分类人工标注对齐 ≥ 85%（20 份 benchmark） | 对比 `claims.jsonl.status` 与人工标注 |
 | OK-3 | Phase 2.5 真实触发率 ≤ 15%（避免滥用重写） | `results.tsv` 统计 `status=='phase2.5_rewrite'` 占比 |
 | OK-4 | 4 个差异化空白（Diff-Learning / Claim-Evidence / Ratchet / Local-first）有可 demo 的最小实现 | 各写 1 段 5 分钟 screencast |
 | OK-5 | SRS review 留存率（2 周后主动回忆正确率）≥ 50% | `review.db` 统计 `correct / total` |
@@ -274,7 +274,7 @@ accuracy(20) · evidence(18) · diff_coverage(14) · learnability(14) · quiz_tr
 | 5 | #14 + #15 | Layer 5 Ratchet | 减分制 + gate 维度 = 评分引擎核心 |
 | 6 | #19 | Layer 3 Generation | few-shot + 算术验证行防 LLM 算错加权分 |
 | 7 | #32 + #33 | Layer 2 Context | 双缓冲区 token 预算 + skip/clip 大 diff 降级 |
-| 8 | #1 + #2 | Layer 5 Ratchet | `^wiki_score:` + TSV 10 列日志 |
+| 8 | #1 + #2 | Layer 5 Ratchet | `^wiki_score:` + TSV 11 列日志 |
 | 9 | #23 | 跨层 | SHA256 内容寻址缓存，避免重复 LLM 调用 |
 | 10 | #11 | 跨层 | 异常处理决策表，鲁棒性基线 |
 

@@ -20,7 +20,7 @@
 
 ### 优先级校正（vs 原始标注）
 
-- **P0 不应照搬**：#2（5列TSV，与 HC-15 的 10 列冲突）、#9（eval_mode 列，同上）、#18（quick-scan，v0.1 deterministic verifier 已够）
+- **P0 不应照搬**：#2（5列TSV，与 HC-15 的 11 列（含 base_sha）冲突）、#9（eval_mode 列，同上）、#18（quick-scan，v0.1 deterministic verifier 已够）
 - **P1 应升档为 P0**：#34（按语言排序，是 #32/#33 clip 策略的必要配套）
 - **P0 已被现有设计吸收**：#1 #7 #14 #15 #20 #24 #35（不需要再单独立项）
 
@@ -33,7 +33,7 @@
 | # | 借鉴点 | 原级 | 决策 | 理由 | 落地模块 |
 |:--:|---|:--:|---|---|---|
 | 1 | `^key:value` stdout 协议 | P0 | **已覆盖** | HC-10 已冻结 `^wiki_score:` 协议 | L5 `eval/evaluator.py` |
-| 2 | 5 列 TSV 日志 | P0 | **已覆盖** | HC-15 已固定 10 列，不回退 | L5 `eval/results.py` |
+| 2 | 5 列 TSV 日志 | P0 | **已覆盖** | HC-15 已固定 11 列（含 base_sha），不回退 | L5 `eval/results.py` |
 | 3 | `gc.disable()` + 定期 collect | P2 | **延后 v0.2+** | CLI/LLM 主路径无证据表明 GC 是瓶颈 | — |
 | 4 | 时间预算制 TIME_BUDGET | P1 | **延后 v0.2+** | v0.1 已有 token/cost/round budget，时间预算需真实数据 | — |
 | 5 | NEVER STOP 自主循环 | P1 | **不适用** | 与 `improve --rounds N` + 成本门禁 + 人工确认点冲突 | — |
@@ -45,7 +45,7 @@
 |:--:|---|:--:|---|---|---|
 | 7 | 8 维加权 Rubric + 严格 `>` | P0 | **已覆盖** | 8 维体系 + 严格改进规则已写进设计 | L5 `eval/rubric.py` |
 | 8 | test-prompts.json 测试集 | P1 | **已覆盖** | v0.1 已有 benchmark fixture 等价方案 | L5 `benchmarks/` |
-| 9 | results.tsv 增 eval_mode 列 | P0 | **不适用** | 与 HC-15 固定 10 列直接冲突 | — |
+| 9 | results.tsv 增 eval_mode 列 | P0 | **不适用** | 与 HC-15 固定 11 列（含 base_sha）直接冲突 | — |
 | 10 | 文件体积 >150% 阈值拒提交 | P1 | **延后 v0.2+** | v0.1 先用简洁性准则更稳 | — |
 | 11 | 异常处理决策表（10 场景） | P0 | **纳入 v0.1** | git/revert/TSV 失败路径多，缺显式决策表会让 ratchet 不可靠 | L5 `core/errors.py` + `eval/ratchet.py` |
 | 12 | HTML 卡片 3 主题 + 截图 | P2 | **延后 v0.2+** | v0.1 只做 Warm 单主题，多主题增加前端资产维护成本 | — |
@@ -150,9 +150,9 @@
 
 | # | 原因 |
 |:--:|---|
-| 2 | HC-15 已冻结 10 列，不回退到 5 列 |
+| 2 | HC-15 已冻结 11 列（含 base_sha），不回退到 5 列 |
 | 5 | 与可控 improve loop 冲突，AhaDiff 不做无限自主循环 |
-| 9 | 与 HC-15 冲突，eval_mode 信息可记录在 note 列（第 10 列） |
+| 9 | 与 HC-15 冲突，eval_mode 信息可记录在 note 列（第 11 列） |
 | 28 | 代码风格偏好，非架构决策 |
 | 36 | PR review 维度，不适用于学习质量评估 |
 
@@ -192,17 +192,25 @@
 
 ### 8 维权重收敛预警（v4 精确化）
 
-仓内存在**两组权重**，且维度命名不一致：
+仓内曾存在两组权重且维度命名不一致，现已统一冻结：
 
-| 来源 | acc | evi | diff_cov | learn | quiz/recall | spec | conc | safety |
-|------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| README.md / README.en.md / 前端设计稿 | 20 | **15** | **15** | **15** | 10 | 10 | 8 | **7** |
-| doc/CLAUDE.md / 知返设计坐标 / 最终方案 | 20 | **18** | **14** | **14** | 10 | 10 | 8 | **6** |
+**已冻结**（2026-04-20）：权重唯一真相源为 kickoff.md 核心决策。所有旧版引用（evidence=15, diff_coverage=15, safety=7, Accuracy<15）已作废。
 
-维度命名漂移：CLAUDE.md 写 `quiz_transfer`，README.md 写 `Recall Transfer`。
-Hard gate 漂移：README 写 `Accuracy <14 FAIL`，competitors-research 写 `<15 FAIL`。
+| 维度 | 权重 |
+|------|:---:|
+| accuracy | 20 |
+| evidence | 18 |
+| diff_coverage | 14 |
+| learnability | 14 |
+| quiz_transfer | 10 |
+| spec_alignment | 10 |
+| conciseness | 8 |
+| safety_privacy | 6 |
+| **合计** | **100** |
 
-**行动项**：v0.1 开发前必须统一权重为单一真相源，#19 算术验证行在此之后才能落地。
+- Hard gate: accuracy < 14 → FAIL
+- 维度名统一为 `quiz_transfer`（非 Recall Transfer）
+- 三档：PASS >= 80 / CAUTION 60-79 / FAIL < 60
 
 ---
 

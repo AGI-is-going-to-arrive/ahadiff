@@ -34,7 +34,7 @@
 **Claim Verifier（声明验证器）** 是真正差异化：
 - `diff → claims → evidence verification → lesson → quiz → review`
 - 这比 `diff → explanation` 深了整整两层
-- 四种状态（verified/weak/not_proven/rejected_contradicted）在全网无人做到
+- 五种状态（verified/weak/not_proven/contradicted/rejected）在全网无人做到
 - negative evidence scan（反向证据扫描）是杀手级特性
 
 ### 2.3 风险评估
@@ -131,7 +131,7 @@
 | 交互质量 | **8.5/10** | 页面导航流畅、面包屑自动更新、20处 hover 效果 |
 | 排版与色彩 | **9/10** | 中文行高 1.75、苹方+Noto Sans SC fallback、代码等宽字体 |
 | 响应式设计 | **7.5/10** | ⚠️ 768px 平板视口布局断裂、移动端侧边栏缺背景遮罩 |
-| 内容完整度 | **9.5/10** | 11 页面全部实现，claim 四种状态完整展示，mock 数据丰富 |
+| 内容完整度 | **9.5/10** | 11 页面全部实现，claim 五种状态完整展示，mock 数据丰富 |
 
 ### 4.2 需修复的问题
 

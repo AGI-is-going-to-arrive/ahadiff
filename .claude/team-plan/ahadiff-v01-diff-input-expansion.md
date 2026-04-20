@@ -29,7 +29,7 @@
 | # | 来源 | 问题 | 修复 |
 |---|------|------|------|
 | C1 | Codex | "步骤 3-29 不变"不成立。metadata(步骤5)、symbols(步骤11)、verifier(步骤15-16)、evaluator(步骤23)、results.tsv(步骤27) 都深度绑定 git 语义 | 引入 source capability 分级，显式标注哪些步骤需要分支 |
-| C2 | Codex | `results.tsv` 第3列 `head_sha` 对非 git 场景无意义，"10 列不变"不成立 | `head_sha` → `source_ref`（git 场景填 SHA，非 git 填 content hash） |
+| C2 | Codex | `results.tsv` 第3列 `head_sha` 对非 git 场景无意义，"11 列不变"不成立 | `head_sha` → `source_ref`（git 场景填 SHA，非 git 填 content hash） |
 | C3 | Codex | `--patch`/`--diff` 引入不受信输入，缺安全边界定义 | 补充 External Diff Source 安全边界 |
 | C4 | Claude | 非 git 场景违反"改进必须可回滚"原则 | 非 git 模式禁用 ratchet，status 标为 `non_ratcheted` |
 | C5 | Claude | `--diff old.py new.py` 命名与工具名 AhaDiff 冲突 | 改为 `--compare` |

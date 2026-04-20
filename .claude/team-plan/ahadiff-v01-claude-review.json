@@ -1,0 +1,121 @@
+{
+  "findings": [
+    {
+      "severity": "Critical",
+      "dimension": "logic",
+      "file": ".claude/team-plan/ahadiff-v01-kickoff.md",
+      "line": 266,
+      "description": "Task 5 与 Task 6 被标为并行（Layer 2），但 Task 6 的步骤 1「实现 unified diff 解析器」直接消费 Task 5 的 capture_patch() 输出（patch.diff）。这是假并行：Task 6 依赖 Task 5 的产物，必须串行。并行分组图与依赖声明自相矛盾。",
+      "fix_suggestion": "将并行分组改为：Layer 2a = Task 5 + Task 7（真并行，仅依赖 Task 1）；Layer 2b = Task 6（依赖 Task 5）。或者在 Task 6 中提供硬编码 fixture patch.diff 做开发时解耦，但验收仍需串行集成。"
+    },
+    {
+      "severity": "Critical",
+      "dimension": "data_model",
+      "file": ".claude/team-plan/ahadiff-borrow-points-decision.md",
+      "line": 196,
+      "description": "8 维 rubric 权重在仓内存在两组数值且未收敛。README/前端设计稿：evidence=15, diff_coverage=15, learnability=15, safety=7；CLAUDE.md/kickoff.md：evidence=18, diff_coverage=14, learnability=14, safety=6。维度命名也漂移（quiz_transfer vs Recall Transfer）。Hard gate 阈值同样冲突（Accuracy <14 vs <15）。kickoff.md L33 冻结了后者，但 README 和前端设计稿未同步。",
+      "fix_suggestion": "在 Task 3（文档 contract 冻结）的验收标准中增加：全仓 grep 确认 rubric 权重、维度命名、hard gate 阈值只有单一真相源（kickoff.md 的 20/18/14/14/10/10/8/6 + Accuracy<14）。README 和前端设计稿必须同步修改或标注为旧版。"
+    },
+    {
+      "severity": "Critical",
+      "dimension": "data_model",
+      "file": ".claude/team-plan/ahadiff-v01-kickoff.md",
+      "line": 245,
+      "description": "Claim 状态枚举已发生漂移。顶层设计（CLAUDE.md L46）定义 4 态：verified / weak / not_proven / contradicted。但 Task 8 验收标准引入了第 5 个状态 rejected_contradicted，且 diff-input-expansion.md 引入了 non_ratcheted。两者均未回写到顶层 4 态枚举。",
+      "fix_suggestion": "统一枚举为 5 态：verified / weak / not_proven / contradicted / rejected（将 rejected_contradicted 拆为 contradicted + rejected 两个独立状态，或合并为 rejected 统一表示）。non_ratcheted 属于 run status 而非 claim status，不应混入 claim 枚举。在 claims/schema.py 中用 Pydantic Literal 冻结枚举。"
+    },
+    {
+      "severity": "Critical",
+      "dimension": "security",
+      "file": ".claude/team-plan/ahadiff-v01-kickoff.md",
+      "line": 103,
+      "description": "Ratchet 的 discard 路径使用 git reset --hard HEAD~1（来自 autoresearch 设计）。此操作会销毁用户 working tree 中未提交的修改，且不可逆。在 vibe coding 场景中用户极可能有未暂存的实验代码。Phase 2.5 的 git stash -> 重写 -> stash pop 也不是原子操作：crash/断电后 stash 可能成为孤立引用。",
+      "fix_suggestion": "（1）discard 改用 git revert HEAD（revision.md 提到 --audit 模式已有此选项，应设为默认）；（2）Phase 2.5 改用 git worktree add 在临时 worktree 中重写和评估，成功后 cherry-pick 回主分支，失败则删除 worktree；（3）所有 ratchet 操作前先 git stash --include-untracked 保护用户工作区，操作后 stash pop。"
+    },
+    {
+      "severity": "Warning",
+      "dimension": "architecture",
+      "file": "CLAUDE.md",
+      "line": 44,
+      "description": "Layer 2 Context 同时承载 4 个正交职责：repo 文件读取、graphify overlay、privacy 过滤（.ahadiffignore + redaction）、token budget（soft/hard buffer + skip/clip）。这些职责有不同的变更频率和测试策略，耦合在一层会导致模块膨胀。",
+      "fix_suggestion": "考虑将 Layer 2 拆为 2a Context Acquisition（repo 文件 + graphify overlay）和 2b Context Sanitization（privacy + token budget + file prioritization）。这与 PR-Agent 的 routing -> budget -> content 三阶段一致（ast-lsp-research.md DEP-1）。"
+    },
+    {
+      "severity": "Warning",
+      "dimension": "architecture",
+      "file": ".claude/team-plan/ahadiff-v01-kickoff.md",
+      "line": 196,
+      "description": "Task 7（LLM Provider）标注依赖 Task 1，但实际上它是纯接口层，不依赖 git/diff/safety 任何模块。将其放在 Layer 2 是正确的（可以与 Task 5/6 并行），但 kickoff.md 的并行图暗示它在 Layer 2 而依赖描述仅写 Task 1，这会误导构建者认为它与 Layer 2 的其他 Task 有时序关系。",
+      "fix_suggestion": "在并行图中明确标注 Task 7 为 Layer 1.5 或 Layer 2-independent，强调它可以在 Task 1 完成后立即启动，不等待 Task 5/6。"
+    },
+    {
+      "severity": "Warning",
+      "dimension": "data_model",
+      "file": ".claude/team-plan/ahadiff-v01-revision.md",
+      "line": 34,
+      "description": "results.tsv 与 review.sqlite 的 result_events 表形成双写一致性挑战。stages-4-9.md L184 说写入责任在 eval/results.py，失败时 results.tsv 回滚。但 TSV 是 append-only 文件，回滚需要截断文件最后一行——这在并发场景（多个 improve loop 实例）或 crash 后会导致数据不一致。",
+      "fix_suggestion": "采用 WAL 模式：先写 SQLite（有事务保护），成功后再 append TSV。TSV 仅作为人类可读的 audit trail，SQLite 为唯一真相源。重建 TSV 可通过 ahadiff export-results 从 SQLite 导出。"
+    },
+    {
+      "severity": "Warning",
+      "dimension": "feasibility",
+      "file": ".claude/team-plan/ahadiff-v01-kickoff.md",
+      "line": 293,
+      "description": "Layer 1-3 估时 2-3 天过于乐观。Task 8（Claim 6 步验证）包含 file 检查 + line range 检查 + hunk_id 匹配 + symbol fuzzy match + risky generalization 扫描 + deleted symbol 处理，每步都有 edge case 和降级逻辑。仅 symbol fuzzy match 就需要 normalize + 多策略对比。加上 Task 6 的三层 symbol 提取（ast + regex + section_header + 合并优先级），实际工作量远超 3 天。",
+      "fix_suggestion": "将 Task 8 拆为 8a（deterministic verifier 前 4 步：file/line/hunk/symbol 存在性检查）和 8b（risky generalization + negative scan + classify 状态机）。8a 与 8b 可串行，但各自内部测试可并行。总估时建议 5-7 天。"
+    },
+    {
+      "severity": "Warning",
+      "dimension": "accuracy",
+      "file": "CLAUDE.md",
+      "line": 70,
+      "description": "三文件契约映射描述仍存在歧义。CLAUDE.md L70 写「概念改编自 Karpathy/autoresearch（原版为 prepare.py + train.py）」，但 autoresearch 原版实际是 program.md + prepare.py + train.py 三文件。competitors-research.md M-1 已识别此偏差并建议修订为「受启发，自研命名」，但 CLAUDE.md 正文尚未更新。",
+      "fix_suggestion": "CLAUDE.md L70 改为：「三文件契约受 autoresearch（program.md + prepare.py + train.py）启发，AhaDiff 改编为 program.md + evaluator.py + generator_prompt.md。关键差异：autoresearch 改 Python 代码，AhaDiff 改 Markdown prompt。」"
+    },
+    {
+      "severity": "Warning",
+      "dimension": "logic",
+      "file": ".claude/team-plan/ahadiff-v01-stages-4-9.md",
+      "line": 332,
+      "description": "Layer 8 的 Task 19（Install）标注仅依赖 Task 1，意味着它可以在 Layer 1 完成后立即开始——与 Layer 4-7 完全并行。但实际上 install 模板需要引用 ahadiff learn/verify/quiz 等命令的最终 CLI 接口，这些接口在 Task 9-18 中才定义。过早实现 install 模板会导致 CLI 接口变更时需要大量返工。",
+      "fix_suggestion": "Task 19 的真正依赖应为 Task 9+10+11+15+16 的 CLI 接口冻结。建议：(1) 将 InstallTarget protocol 和 registry 作为 Layer 1 实现；(2) 具体模板内容延后到 CLI 接口稳定后生成。"
+    },
+    {
+      "severity": "Info",
+      "dimension": "architecture",
+      "file": "CLAUDE.md",
+      "line": 44,
+      "description": "七层架构缺少显式的 Orchestration Layer。ahadiff learn 命令需要按顺序调度 L1->L2->L3->L4->L5->L6->L7，但没有一层专职编排。当前由 cli.py 隐式承担此职责，但 cli.py 同时处理参数解析、子命令路由、错误格式化——职责过载。",
+      "fix_suggestion": "新增 core/orchestrator.py 作为 learn/improve/verify 三条主链路的编排器，cli.py 只做参数解析和输出格式化。orchestrator 负责：(1) 按 capability level 分支；(2) 错误决策表路由；(3) run artifact 生命周期管理。"
+    },
+    {
+      "severity": "Info",
+      "dimension": "accuracy",
+      "file": ".claude/team-plan/ahadiff-competitors-research.md",
+      "line": 51,
+      "description": "Phase 2.5 归因 darwin-skill 有明确文档支持。competitors-research.md 引用 SKILL.md:L187，M-2 验证项确认精确对上。CLAUDE.md 也已修正归因。此项验证通过。",
+      "fix_suggestion": "无需修改。"
+    },
+    {
+      "severity": "Info",
+      "dimension": "accuracy",
+      "file": ".claude/team-plan/ahadiff-competitors-research.md",
+      "line": 25,
+      "description": "SkillCompass 6 维到 AhaDiff 8 维的自研声明经 R3 修订后站得住。SkillCompass 原版 6 维评估 skill 文件质量（Structure/Trigger/Security/Functional/Comparative/Uniqueness），AhaDiff 的 8 维评估学习笔记质量（accuracy/evidence/diff_coverage/learnability/quiz_transfer/spec_alignment/conciseness/safety_privacy），评估对象和维度定义均不同。",
+      "fix_suggestion": "无需修改。自研声明有 R3 修订支持。"
+    }
+  ],
+  "passed_checks": [
+    "Phase 2.5 归因 darwin-skill 有 SKILL.md:L187 源码实测支持（M-2 verified）",
+    "SkillCompass 6 维->AhaDiff 8 维的自研声明经 R3 修订后准确",
+    "autoresearch 三文件契约概念改编定位正确（概念改编而非直接复刻）",
+    "竞品 4 个差异化空白（Diff-Learning/Claim-Evidence/Ratchet/Local-first）论证充分",
+    "AST/LSP 三层方案（Python ast -> tree-sitter -> LSP opt-in）与竞品实测一致",
+    "Layer 6 Learning 与 Layer 7 Wiki+UI 边界基本清晰（Learning=SRS+quiz+signal，Wiki+UI=viewer+graph）",
+    "37 条借鉴点决策表经三轮三模型交叉 review，纳入 10 条/排除 27 条有理有据",
+    "Diff 输入扩展的 Source Capability 三级分层（git/workspace/patch）设计合理",
+    "results.tsv 10 列方案与 status 枚举化设计合理",
+    "文件冲突检查 Task 1-8 完全隔离验证通过"
+  ],
+  "summary": "方案整体架构思路清晰，竞品研究扎实，差异化定位准确。但存在 4 个 Critical 问题：(1) Task 5/6 假并行会导致开发阻塞；(2) 8 维权重在仓内有两组未收敛数值，必须在开发前冻结单一真相源；(3) Claim 状态枚举已从设计的 4 态漂移到实际 5+ 态；(4) git reset --hard 的 ratchet discard 对用户工作区有破坏性风险，建议改为 git revert 或 worktree 隔离。此外 Layer 1-3 的 3 天估时过于乐观，建议 5-7 天。"
+}

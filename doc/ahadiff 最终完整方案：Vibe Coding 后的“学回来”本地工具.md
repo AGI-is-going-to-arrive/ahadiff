@@ -26,7 +26,7 @@ ahadiff learn HEAD~1..HEAD --open
 下次怎么复习
 ```
 
-你现有的 Warm HTML 原型可以保留为本地 viewer 的视觉和交互基准；它已经包含 Landing、Runs、Lesson、Diff + Evidence、Ratchet、Quiz、Review、Settings、Agent Skills、Learning Graph、claim 状态、`rejected_contradicted`、Graphify source card、隐私审计等关键元素，很适合作为静态 HTML viewer 的模板来源。
+你现有的 Warm HTML 原型可以保留为本地 viewer 的视觉和交互基准；它已经包含 Landing、Runs、Lesson、Diff + Evidence、Ratchet、Quiz、Review、Settings、Agent Skills、Learning Graph、claim 状态、`rejected`、Graphify source card、隐私审计等关键元素，很适合作为静态 HTML viewer 的模板来源。
 
 ------
 
@@ -181,7 +181,7 @@ AhaDiff 帮你证明你真的懂了这个 diff。
 HTML 只是 viewer
 claim 先于 prose
 不能证明就标 not_proven
-危险误解就 rejected_contradicted
+危险误解就 rejected
 学习效果必须可测试
 改进必须可回滚
 ```
@@ -202,7 +202,7 @@ claim 先于 prose
 5. ahadiff 抽取 claims
 6. ahadiff 验证每条 claim 是否有代码证据
 7. ahadiff 生成 lesson
-8. ahadiff 标出 not_proven / rejected_contradicted
+8. ahadiff 标出 not_proven / rejected
 9. ahadiff 生成 quiz
 10. ahadiff 生成 review cards
 11. ahadiff 打分 PASS / CAUTION / FAIL
@@ -218,7 +218,7 @@ AI explanation:
 “Retrying all POST requests is safe.”
 
 AhaDiff:
-rejected_contradicted
+rejected
 
 Reason:
 No method gate.
@@ -693,14 +693,14 @@ diff → claims → evidence verification → lesson → quiz → review
 }
 ```
 
-## 9.4 `rejected_contradicted` 示例
+## 9.4 `rejected` 示例
 
 ```json
 {
   "claim_id": "c020",
   "run_id": "20260419-abc123-retry-backoff",
   "text": "Retrying all POST requests is safe.",
-  "status": "rejected_contradicted",
+  "status": "rejected",
   "confidence": 0.94,
   "shipped": false,
   "evidence": [
@@ -751,7 +751,7 @@ diff → claims → evidence verification → lesson → quiz → review
     "verified": 17,
     "weak": 1,
     "not_proven": 1,
-    "rejected_contradicted": 1
+    "rejected": 1
   },
   "weakest_dim": "quiz_transfer"
 }
@@ -801,14 +801,14 @@ weak
 not_proven
   diff 不足以证明。必须进入 Not Proven 区，不能伪装成事实。
 
-rejected_contradicted
+rejected
   与代码或负向扫描冲突。不能进入 lesson 正文，只能进入 misconception quiz。
 ```
 
 硬规则：
 
 ```text
-lesson 正文中出现 rejected_contradicted claim = FAIL
+lesson 正文中出现 rejected claim = FAIL
 ```
 
 ------
@@ -892,7 +892,7 @@ scan:
       "severity": "high"
     }
   ],
-  "recommended_status": "rejected_contradicted"
+  "recommended_status": "rejected"
 }
 ```
 
@@ -906,7 +906,7 @@ def classify_claim(claim, deterministic, negative_scan):
         return "not_proven"
 
     if negative_scan.has_high_severity_contradiction:
-        return "rejected_contradicted"
+        return "rejected"
 
     if deterministic.has_direct_evidence and not negative_scan.has_contradiction:
         return "verified"
@@ -961,7 +961,7 @@ weak claim:
 not_proven claim:
   只能进入 Not Proven 区。
 
-rejected_contradicted claim:
+rejected claim:
   不允许进入正文。
   只能进入 Misconceptions 和 Quiz。
 ```
@@ -1167,7 +1167,7 @@ FAIL:
   score < 60
   secret leak
   unresolved prompt injection
-  rejected_contradicted 被写入正文
+  rejected 被写入正文
   critical claim 无 evidence
 ```
 
@@ -1261,9 +1261,9 @@ thresholds:
 
 # 16. Ratchet 改进机制
 
-## 16.1 `results.tsv`（AhaDiff 自定义 10 列）
+## 16.1 `results.tsv`（AhaDiff 自定义 11 列，含 base_sha）
 
-> **归因说明**：autoresearch 原版 5 列（commit/val_bpb/memory_gb/status/description），darwin-skill 9 列。AhaDiff 自定义 10 列，新增 head_sha/prompt_version/rubric_version 以支持跨版本回溯。
+> **归因说明**：autoresearch 原版 5 列（commit/val_bpb/memory_gb/status/description），darwin-skill 9 列。AhaDiff 自定义 11 列，新增 head_sha/base_sha/prompt_version/rubric_version 以支持跨版本回溯。
 
 ```text
 timestamp	run_id	head_sha	prompt_version	rubric_version	overall	verdict	status	weakest_dim	note
@@ -1974,7 +1974,7 @@ claim line range 超出 hunk
 claim 引用不存在 symbol
 performance claim 无 benchmark
 security claim 无 test
-rejected_contradicted 被误 ship
+rejected 被误 ship
 not_proven 被误写成 verified
 ```
 
@@ -2005,7 +2005,7 @@ quiz.jsonl exists
 score.json exists
 viewer/index.html exists
 score verdict in PASS/CAUTION/FAIL
-no rejected_contradicted shipped
+no rejected shipped
 ```
 
 ------
@@ -2085,7 +2085,7 @@ data_bundle 被嵌入 script[type=application/json]
 diff row 点击高亮 claim
 claim 点击高亮 diff row
 Not Proven 区永远存在
-rejected_contradicted 不进入 shipped claims
+rejected 不进入 shipped claims
 print CSS 存在
 reduced-motion CSS 存在
 a11y fallback list 存在
@@ -2212,7 +2212,7 @@ zod-boundary              86    PASS     15/17       0/0
 [ ] 每条 shipped claim 都有 evidence
 [ ] evidence line range 落在 changed hunk
 [ ] not_proven 没有被写成事实
-[ ] rejected_contradicted 没有进入正文
+[ ] rejected 没有进入正文
 [ ] risky generalization 被降级
 [ ] performance/security claim 无证据时不会通过
 [ ] 每个重要 hunk 至少有一条 claim 或明确 skip reason
@@ -2351,7 +2351,7 @@ ahadiff claims <run_id>
 verified
 weak
 not_proven
-rejected_contradicted
+rejected
 ```
 
 ------
@@ -2649,7 +2649,7 @@ jobs:
 [ ] README 不使用假 benchmark 数字
 [ ] Demo data 明确标注 DEMO
 [ ] 首屏文案强调 vibe coding learn-back
-[ ] GIF 展示 rejected_contradicted
+[ ] GIF 展示 rejected
 [ ] viewer 无外部资源
 [ ] offline_only 可用
 [ ] PyPI Trusted Publisher 配置完成

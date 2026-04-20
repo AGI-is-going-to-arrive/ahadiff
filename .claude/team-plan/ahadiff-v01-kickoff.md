@@ -117,7 +117,9 @@
 - **验收标准**: Playwright 截图验证 375px/768px/1024px/1440px 四个视口无断裂
 - **Review**: Claude 实现后 → Gemini(gemini-3.1-pro-preview) + Codex 交叉 review
 
-### Layer 2（依赖 Layer 1）— Git 捕获 + Diff 结构化
+### Layer 1.5 / Layer 2（依赖 Layer 1）— LLM Provider + Git 捕获 + Diff 结构化
+
+> **依赖关系**：Task 7 仅依赖 Task 1，可最早启动（Layer 1.5）。Task 5 依赖 Task 1（Layer 2a）。Task 6 依赖 Task 5 的 `capture_patch()` 输出（patch.diff），必须串行等待 Task 5 完成（Layer 2b）。
 
 #### Task 5: Git diff 捕获
 - **类型**: 后端（Codex 实现）
@@ -186,7 +188,9 @@
     - AST 语法错误文件的 graceful fallback
     - binary/unsupported 文件返回空列表
 
-### Layer 3（依赖 Layer 2）— Claim 闭环
+### Layer 1.5（依赖 Task 1）— LLM Provider 适配
+
+> Task 7 仅依赖 Task 1，可与 Layer 2a/2b 并行启动。
 
 #### Task 7: LLM Provider 适配
 - **类型**: 后端（Codex 实现）
@@ -205,8 +209,13 @@
   2. 实现 `make_provider()` 工厂
   3. 实现三个 adapter（httpx 直连，不用 SDK）
   4. 统一超时、重试、JSON 解码、token/cost audit
-  5. 实现 audit.jsonl 记录
-- **验收标准**: `pytest tests/unit/test_provider.py` 覆盖三种 provider mock
+  5. 实现调度层：per-provider QPS 限制（config.toml 配置）、exponential backoff（Retry-After header 解析）、并发预算（默认 max_concurrent=3）、上下文窗口超限检测（请求前估算 token 数）
+  6. 实现 audit.jsonl 记录
+- **验收标准**:
+  - `pytest tests/unit/test_provider.py` 覆盖三种 provider mock
+  - 429 响应触发 backoff，不崩溃；并发超限时排队
+
+### Layer 3（依赖 Layer 2b + Layer 1.5）— Claim 闭环
 
 #### Task 8: Claim 提取与验证
 - **类型**: 后端（Codex 实现）
@@ -231,18 +240,21 @@
      d. **symbol 存在性检查**（消费 Task 6 `SymbolRecord`）：
         - `claim.symbols[]` 是否命中 `SymbolRecord.qualified_name`（同 path 下匹配）
         - 匹配时使用 fuzzy 对比：先精确匹配，失败后 normalize（strip 空白/大小写/分隔符差异）
+        - fuzzy match 额外约束：命中后需确认 `SymbolRecord.parent` scope 一致或 `touched_lines` 与 claim 的 `source_hunks` 有 overlap，否则降为候选信号（confidence=low），不直接计入 verified
         - symbol 命中置信度：`python_ast` 命中 → high；`regex` 命中 → medium；仅 `section_header` → low
      e. **risky generalization 检查**：claim 是否含 risky words（faster/secure/always/never 等）但无对应证据
      f. **deleted/renamed symbol**：claim 引用已删除的 symbol → 标注 `change_kind=deleted`
   4. 实现 negative evidence scan（risky words + 结构缺失检查）：
      - Python 文件：利用 AST 检查 try/except、test_ 函数、assert、import 等结构是否存在
      - 非 Python 文件：回退到 regex + risky words 扫描
+     - **非 Python 限制声明**：regex + risky words 扫描仅产生 weak signal，不直接驱动 contradicted 状态。性能/安全/重试类 claim 的否定性结论需至少两项证据（结构缺失 + risky words 共存），单项不足以判定
      - claim 声称有重试/安全/性能但 AST 中无对应结构 → negative evidence
   5. 实现 `classify_claim()` 状态机
-  6. 集成：`ahadiff claims <run_id>` 可展示四种状态
+  6. 集成：`ahadiff claims <run_id>` 可展示五种状态
 - **验收标准**:
-  - 对 retry-backoff fixture 生成 claims.jsonl，包含 verified/weak/not_proven/rejected_contradicted
-  - file 不在 patch 中的 claim → rejected_contradicted
+  - 对 retry-backoff fixture 生成 claims.jsonl，包含 verified/weak/not_proven/contradicted/rejected
+  - file 不在 patch 中的 claim → rejected（reason_code=file_not_in_patch）
+  - **Claim 状态枚举冻结为 5 态**：`verified | weak | not_proven | contradicted | rejected`。`rejected` 表示 claim 引用了 patch 外的文件或不存在的证据，与 `contradicted`（证据直接反驳）语义不同。每个 rejected claim 附带 `reason_code` 字段。reason_code 枚举：`file_not_in_patch | line_outside_hunk | symbol_not_found | hunk_id_mismatch | evidence_missing`。
   - 引用不存在 symbol 的 claim → not_proven（非 FAIL，因为可能是 regex 漏匹配或 section_header 未覆盖）
   - `python_ast` 命中的 symbol 验证结果标注 `confidence=high`
   - risky words claim 无结构证据 → weak 或 not_proven
@@ -263,12 +275,13 @@
 ## 并行分组
 
 ```
-Layer 1 (全并行): Task 1 + Task 2 + Task 3 + Task 4
+Layer 1 (全并行):  Task 1 + Task 2 + Task 3 + Task 4
    ↓
-Layer 2 (并行):   Task 5 + Task 6 (依赖 Task 1)
-                  Task 7 (可与 Layer 2 并行，仅依赖 Task 1)
+Layer 1.5 (并行):  Task 7 (仅依赖 Task 1，可最早启动)
+Layer 2a (并行):   Task 5 (依赖 Task 1)
+Layer 2b (串行):   Task 6 (依赖 Task 5，消费 patch.diff)
    ↓
-Layer 3:          Task 8 (依赖 Task 6 + Task 7)
+Layer 3:           Task 8 (依赖 Task 6 + Task 7)
 ```
 
 ## 模型分工
@@ -290,4 +303,6 @@ Layer 3:          Task 8 (依赖 Task 6 + Task 7)
 - Layer 2: 3 个并行 Builder（2 Codex + 1 Codex Provider）
 - Layer 3: 1 个 Builder（Codex Claim 闭环）
 
-总计 ~8 个子任务，预计 2-3 天完成 Layer 1-3。
+总计 ~8 个子任务。
+
+**估时修正**：原始 2-3 天估算偏乐观。Task 8（Claim 6步验证）含 800-1000 LoC + symbol fuzzy match + negative scan，单独需 2-3 天。建议 Layer 1-3 总计 5-7 天。

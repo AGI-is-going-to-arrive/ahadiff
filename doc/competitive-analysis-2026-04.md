@@ -142,7 +142,7 @@
 ### 没填满的空白（差异化机会）
 
 - **空白 A — Diff-to-Learning 闭环**：没有任何产品把 git diff 作为输入，同时输出带 SRS 复习的学习笔记。CodeRabbit/Greptile 做 review 但不做学习，Execute Program 做 SRS 但不接真实 diff。
-- **空白 B — Claim-Evidence 结构化验证**：所有竞品的代码引用都是"自然语言附带行号"，无一做到 claim 四状态（verified / weak / not_proven / contradicted）+ 结构化 evidence chain。
+- **空白 B — Claim-Evidence 结构化验证**：所有竞品的代码引用都是"自然语言附带行号"，无一做到 claim 五状态（verified / weak / not_proven / contradicted / rejected）+ 结构化 evidence chain。
 - **空白 C — 质量棘轮 (Git Ratchet)**：无竞品使用 git commit/reset 机制保证输出质量单调递增。autoresearch 有此机制但用于 ML 训练而非学习笔记。
 - **空白 D — Local-first 学习数据**：PR review 工具多为 SaaS；学习笔记数据留在本地是隐私敏感用户的差异化卖点。
 

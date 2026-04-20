@@ -967,7 +967,7 @@ hr.rule{border:0;border-top:1px solid var(--hair);margin:24px 0}
                 <div class="ev">⊘ 本 diff 未包含 benchmark</div>
               </div>
               <div class="claim-card" style="border-color:#E4B8AE;background:#FDF1EC">
-                <div class="id" style="color:var(--danger)">c020 · <b>rejected_contradicted · dangerous</b> <span style="color:var(--muted);font-family:var(--font-mono);font-size:11px;margin-left:6px">not shipped · quiz-only</span></div>
+                <div class="id" style="color:var(--danger)">c020 · <b>rejected · dangerous</b> <span style="color:var(--muted);font-family:var(--font-mono);font-size:11px;margin-left:6px">not shipped · quiz-only</span></div>
                 <div class="txt serif"><b>Claim:</b> Retrying all POST requests is safe.</div>
                 <div style="font-size:12px;color:var(--ink-2);margin-top:6px;line-height:1.55"><b>Reason:</b> No method gate or idempotency key appears in this diff.<br/><b>Action:</b> Converted to misconception quiz. Not shipped to lesson.</div>
                 <div class="ev" style="color:var(--danger);margin-top:6px;font-family:var(--font-mono);font-size:11.5px;line-height:1.7">
@@ -1047,7 +1047,7 @@ hr.rule{border:0;border-top:1px solid var(--hair);margin:24px 0}
                   <div>Evidence <span class="mono" style="color:var(--muted);font-size:10.5px">15</span></div><div class="bar"><span style="width:88%"></span></div><div class="mono num">13/15</div>
                   <div>Diff Coverage <span class="mono" style="color:var(--muted);font-size:10.5px">15</span></div><div class="bar"><span style="width:80%"></span></div><div class="mono num">12/15</div>
                   <div>Learnability <span class="mono" style="color:var(--muted);font-size:10.5px">15</span></div><div class="bar"><span style="width:85%"></span></div><div class="mono num">13/15</div>
-                  <div>Recall Transfer <span class="mono" style="color:var(--muted);font-size:10.5px">10</span></div><div class="bar"><span style="width:70%;background:#B4791F"></span></div><div class="mono num">7/10</div>
+                  <div>Quiz Transfer <span class="mono" style="color:var(--muted);font-size:10.5px">10</span></div><div class="bar"><span style="width:70%;background:#B4791F"></span></div><div class="mono num">7/10</div>
                   <div>Spec Alignment <span class="mono" style="color:var(--muted);font-size:10.5px">10</span></div><div class="bar"><span style="width:80%"></span></div><div class="mono num">8/10</div>
                   <div>Conciseness <span class="mono" style="color:var(--muted);font-size:10.5px">8</span></div><div class="bar"><span style="width:87%"></span></div><div class="mono num">7/8</div>
                   <div>Safety & Privacy <span class="mono" style="color:var(--muted);font-size:10.5px">7</span></div><div class="bar"><span style="width:100%"></span></div><div class="mono num">7/7</div>
@@ -1057,7 +1057,7 @@ hr.rule{border:0;border-top:1px solid var(--hair);margin:24px 0}
             <hr class="rule" style="margin:18px 0"/>
             <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);font-family:var(--font-mono)">
               <span>Hard gates <b style="color:var(--success)">all pass</b></span>
-              <span>Weakest · <b style="color:var(--warning)">Recall Transfer</b></span>
+              <span>Weakest · <b style="color:var(--warning)">Quiz Transfer</b></span>
             </div>
           </div>
         </div>
@@ -1090,7 +1090,7 @@ hr.rule{border:0;border-top:1px solid var(--hair);margin:24px 0}
         <div class="card">
           <div class="ch"><h3>Phase 2.5 · structural rewrite</h3><div class="meta">stuck for 3 rounds · human checkpoint required</div></div>
           <div class="cb">
-            <div class="code-block">Stuck for 3 rounds on Recall Transfer.
+            <div class="code-block">Stuck for 3 rounds on Quiz Transfer.
 AhaDiff is trying a structural rewrite of generator_prompt.md.
 Previous best (v6 · 84) is stashed and recoverable.
 
@@ -1742,11 +1742,11 @@ $ ahadiff learn HEAD~1..HEAD --use-graphify</pre>
 <pre>type Claim = {
   id: string; text: string;
   status: 'verified'|'weak'|'not_proven'
-        | 'rejected_contradicted';
+        | 'rejected';
   confidence?: number;
   evidence: { file: string; range: string; kind: 'positive'|'negative_scan' };
   concepts: string[];
-  shipped: boolean; // rejected_contradicted ⇒ false
+  shipped: boolean; // rejected ⇒ false
 };
 type RatchetRow = {
   version: string; score: number;
@@ -1779,7 +1779,7 @@ type BenchmarkSummary = { demoData: true; ... };</pre>
               <li>✗ Don't hardcode provider API IDs (<code>claude-sonnet-4-5</code>)</li>
               <li>✗ Don't ship inline styles</li>
               <li>✗ Don't treat DEMO data as benchmark</li>
-              <li>✗ Don't ship <code>rejected_contradicted</code> as claim</li>
+              <li>✗ Don't ship <code>rejected</code> as claim</li>
             </ul>
           </div>
         </div>

@@ -33,6 +33,8 @@
 7. Wiki + UI Layer       -- index.md, concept graph, dashboard
 ```
 
+编排逻辑由 `core/orchestrator.py` 统一管理 learn/improve/verify 三条主链路，cli.py 仅做参数解析和输出格式化。
+
 ## 模块结构图
 
 ```mermaid
@@ -79,6 +81,9 @@ python3 -m http.server 8765
 - 集成测试：10 份 pinned diff 端到端验证
 - Eval 测试：20 份 benchmark diff + LLM-as-judge 稳定性验证
 - 覆盖率目标：核心路径 >= 85%
+- VCR cassette key: `prompt_version + model_id + rubric_version` 三元组 hash，任一变更自动失效
+- CI 分档：PR 触发 unit tests（无 LLM），nightly 触发 eval tests（有 LLM）
+- Benchmark 分层：Python 主套件（7份）+ Non-Python 降级套件（3份），独立出 recall/precision
 
 ## 编码规范
 
@@ -96,9 +101,9 @@ python3 -m http.server 8765
 ## AI 使用指引
 
 ### 关键设计决策（读取文档前必知）
-1. **三文件契约**：`program.md`（自然语言状态机）+ `evaluator.py`（不可改）+ `generator_prompt.md`（可改），概念改编自 Karpathy/autoresearch（原版为 prepare.py + train.py，改 Python 代码；AhaDiff 改 Markdown prompt）
-2. **Claim Verifier 是核心护城河**：每句解释必须绑定 file:line 证据，claim 有四种状态（verified / weak / not_proven / contradicted）
-3. **棘轮机制**：改进则保留（git commit），退步则回滚（git reset），连续 2 个优化目标在首轮即无增益时触发 Phase 2.5 探索性重写（darwin-skill 原文："连续2个skill都在round1就break"，AhaDiff 沿用此阈值。autoresearch 无此机制）
+1. **三文件契约**：`program.md`（自然语言状态机）+ `evaluator.py`（不可改）+ `generator_prompt.md`（可改），受 Karpathy/autoresearch 启发（原版三文件：program.md + prepare.py + train.py，agent 改 Python 代码）。AhaDiff 改编为 program.md + evaluator.py + generator_prompt.md，agent 只改 Markdown prompt，不改用户代码
+2. **Claim Verifier 是核心护城河**：每句解释必须绑定 file:line 证据，claim 有五种状态（verified / weak / not_proven / contradicted / rejected），其中 rejected 表示 claim 引用了 patch 外的文件或不存在的证据（附 reason_code），与 contradicted（证据直接反驳）语义不同
+3. **棘轮机制**：改进则保留（git commit 到 improve 分支，cherry-pick 回主分支），退步则回滚（git reset improve 分支，不影响用户主分支），连续 2 个优化目标在首轮即无增益时触发 Phase 2.5 探索性重写（darwin-skill 原文："连续2个skill都在round1就break"，AhaDiff 沿用此阈值。autoresearch 无此机制）
 4. **跨模型评估**：生成用大模型（Sonnet），评估用小模型（Haiku），绝不同模型自评
 5. **文件即真相源**：前端只是 viewer/editor，删除前端不丢功能
 
@@ -161,3 +166,4 @@ python3 -m http.server 8765
 | 2026-04-19 ~24:00 | 基于源码实测应用 12 项修订（3 P0 + 5 P1 + 4 P2），修正 Phase 2.5 触发条件/归因、三文件契约描述、SkillCompass 维度归因等 |
 | 2026-04-19 ~24:00 | CLI 接入扩展：新增 Gemini CLI (GEMINI.md) / OpenCode (AGENTS.md+.opencode/agents/) / Git hooks / GitHub Action 支持 |
 | 2026-04-19 ~24:00 | results.tsv 自定义 10 列方案，status 枚举化，查询走 review.sqlite |
+| 2026-04-20 ~22:00 | 三模型交叉审查修订：Claim 5态枚举冻结、rubric 权重统一、Task 5/6 并行修正、Viewer 只读边界、results.tsv 11列+base_sha、improve 分支隔离 |

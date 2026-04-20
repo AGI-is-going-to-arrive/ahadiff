@@ -102,8 +102,8 @@
   - `tests/unit/test_results.py`
 - **依赖**: Task 11（评估体系）
 - **实施步骤**:
-  1. 实现 10 列 results.tsv append-only 写入（timestamp/run_id/head_sha/prompt_version/rubric_version/overall/verdict/status/weakest_dim/note）
-  2. status 枚举化：`baseline | keep | discard | rollback | crash | targeted_verify | keep_final`
+  1. 实现 11 列 results.tsv append-only 写入（timestamp/run_id/head_sha/base_sha/prompt_version/rubric_version/overall/verdict/status/weakest_dim/note）。`head_sha` 为当前评估的 commit SHA，`base_sha` 为 ratchet 比较的基线 SHA（首次 baseline 时 base_sha 为空）。Phase 2.5 rewrite 时 note 字段记录 `PHASE25:stash_ref=<ref>`
+  2. status 枚举化：`baseline | keep | discard | rollback | crash | targeted_verify | keep_final | phase25_rewrite`
   3. 实现 ratchet 决策逻辑：score 提升且 hard gate 全过 → keep；否则 → discard + git reset
   4. 实现 Phase 2.5 检测：连续 2 个优化目标在首轮即 discard → 触发 structural rewrite
   5. 简洁性准则：0.001 分提升 + 20 行 hacky prompt → 不值得
@@ -134,9 +134,13 @@
   3. 实现 `data_bundle.py`：构建 `<script id="aha-data" type="application/json">` 注入的 JSON
   4. data_bundle schema：context(run_id/head_sha/theme) + verdict(overall/status) + rubric_scores + claims + lesson + ratchet_history
   5. 实现 `_rubric_bar.html` 组件：自动根据 score/max 映射 PASS/CAUTION/FAIL 语义色（P1 from Gemini）
-  6. 确保 `file://` 打开兼容（所有资源内联，无 CDN）
-  7. 移除外部字体依赖和硬编码 demo 数据
-- **验收标准**: `ahadiff learn HEAD~1..HEAD --open` 打开本地 HTML，视觉接近 Warm v6 原型
+  6. 实现 `data_bundle.py` 数据裁剪：ratchet_history 仅保留 score 趋势 + run_id，丢弃废弃版本的全量 payload；diff 行数超过 soft_limit (500行) 时启用折叠截断；hard_limit 2000 行时截断并附注 `[truncated: N lines omitted]`，确保单页 HTML 不超过 2MB
+  7. 确保 `file://` 打开兼容（所有资源内联，无 CDN）
+  8. 移除外部字体依赖和硬编码 demo 数据
+- **验收标准**:
+  - `ahadiff learn HEAD~1..HEAD --open` 打开本地 HTML，视觉接近 Warm v6 原型
+  - data_bundle 裁剪：>500 行 diff 启用折叠，>2000 行截断，单页 HTML ≤ 2MB
+  - 无障碍基线：所有可交互元素有 `tabindex="0"` 或语义 HTML（`<button>`），焦点可见（`:focus-visible`），ARIA `role` 标注完整
 - **Review**: Claude 实现后 → Gemini(gemini-3.1-pro-preview) + Codex 交叉 review
 
 ### Task 14: Viewer 核心页面（v0.1 必须的 4 页）
@@ -154,9 +158,10 @@
   2. **Lesson Reader**: 渲染 lesson.full.md + 右栏 Claims/Evidence/Quiz 状态，支持 full/hint/compact 切换
   3. **Diff + Evidence Viewer**: 点击 diff 行 → 高亮相关 claim；点击 claim → 滚动到 source hunk（核心交互）
   4. **Ratchet Lab**: score before/after、weakest dimension、keep/discard 历史、results.tsv 可视化
-  5. Claim Inspector 侧边栏：verified(绿)/weak(黄)/not_proven(灰)/contradicted(红) 状态标识
+  5. Claim Inspector 侧边栏：verified(绿 `#2F6F4F`)/weak(黄 `#B4791F`)/not_proven(灰 `#6B6B6B`)/contradicted(红 `#A33D2B`)/rejected(紫 `#7B5EA7`) 五态色彩标识
   6. 移动端：Claim Inspector 降级为 Drawer 浮层（P2 from Gemini）
   7. 打印样式：保留证据链，隐藏 UI chrome
+  8. **Viewer 只读边界声明**：HTML Viewer 是纯展示层，所有状态变更（Quiz 答题、SRS 复习、Claim 标记）必须通过 CLI 命令执行。前端交互按钮（如 Mark wrong/Good/Hard）的行为定义为：(a) 在 `ahadiff serve` 模式下直接调用后端 API；(b) 在 `file://` 静态模式下显示可复制的 CLI 命令提示（如 `ahadiff mark wrong c020`）。v0.1 只实现 (b)，`ahadiff serve` 推迟到 v0.2。
 - **验收标准**: 4 个页面在 375px/768px/1024px/1440px 四个视口正常显示
 - **Review**: Gemini(gemini-3.1-pro-preview) 评审
 
@@ -175,23 +180,24 @@
   - `tests/unit/test_review.py`
 - **依赖**: Task 10（Quiz）+ Task 12（Results）
 - **实施步骤**:
-  1. 创建 `review.sqlite` schema：`cards`(id/concept/run_id/due_date/interval/ease/reps)、`result_events`(从 results.tsv 入库的查询视图)、`learning_signals`(用户行为日志)
+  1. 创建 `review.sqlite` schema：`cards`(id/concept/run_id/due_date/interval/ease/reps)、`result_events`(物理事件表，SQLite 为唯一真相源)、`learning_signals`(用户行为日志)
   2. 实现 SM-2 SRS 调度算法
   3. 实现 `ahadiff review` CLI：展示 due cards，记录答题结果
   4. 实现 `ahadiff mark <claim_id> wrong` CLI：用户标记 claim 错误 → 写入 learning-signal.jsonl
   5. 实现 `results.tsv → result_events` 入库契约：
-     - `result_events` 是**物理表**（非视图），schema 与 results.tsv 10 列一一对应
+     - `result_events` 是多行事件表，同一 run_id 可有多行（如 keep → targeted_verify → keep_final）。主键为 `(run_id, event_type, timestamp)`
+     - `result_events` 是**物理表**（非视图），schema 与 results.tsv 列一一对应
      - **写入责任**归属 `eval/results.py`（Task 12）：每次 `append_result()` 时同步调用 `review/database.py` 的 `sync_result_event()` 写入 SQLite
      - 字段映射：results.tsv 的 `weakest_dim` → SQLite 的 `weakest_dim`（统一用短名）
-     - 事务时机：results.tsv 写入成功后立即同步，失败时 results.tsv 回滚
+     - **写入顺序**：先写 SQLite（有事务保护），成功后 append TSV。TSV 仅作为人类可读的 audit trail，SQLite 为唯一真相源。TSV 写入失败仅 warn，不阻塞主流程。提供 `ahadiff export-results` 从 SQLite 重建 TSV
   6. 实现 `targeted_verify → keep_final` 升级规则：
      - `ahadiff improve` 中 targeted verification 通过后 status=`targeted_verify`
      - 全 8 维 recheck 通过后由 `ahadiff improve --finalize <run_id>` 升级为 `keep_final`
      - 升级时写入新 result_event 行（status=keep_final），不修改原行
      - 升级失败（全 8 维 recheck 分数下降）则 status 保持 `targeted_verify`，不回滚
   7. 实现 `ahadiff regenerate --only quiz <run_id>` CLI：只重新生成 quiz，不重跑 lesson
-  8. 索引：`(run_id UNIQUE)`, `(head_sha, timestamp DESC)`, `(prompt_version, rubric_version)`, `(verdict, status)`, `(weakest_dim, timestamp DESC)`
-- **验收标准**: `ahadiff review` 显示 due cards，wrong concepts 写入 learning-signal.jsonl；`result_events` 与 results.tsv 行数一致
+  8. 索引：`(run_id, event_type, timestamp)` 复合主键, `(head_sha, timestamp DESC)`, `(prompt_version, rubric_version)`, `(verdict, status)`, `(weakest_dim, timestamp DESC)`
+- **验收标准**: `ahadiff review` 显示 due cards，wrong concepts 写入 learning-signal.jsonl；result_events 行数 ≥ results.tsv 行数（因升级事件产生额外行）
 
 ---
 
@@ -215,6 +221,7 @@
   4. 实现 weakest-dimension-first 选择（从 review.sqlite.result_events 查询最近记录）
   5. 实现 prompt versioning：`prompt_version = prompts/ 目录的 tree hash 前 7 位`
   6. 简洁性准则写入 improve_program.md
+  7. **Improve 隔离策略**：improve loop 在独立的 `ahadiff-improve` 分支执行 prompt 迭代。keep 时 cherry-pick 回主分支；discard 时 reset 该分支。不影响用户主分支的工作区。Phase 2.5 在临时 worktree 中执行（`git worktree add`），成功后合并，失败则删除 worktree。cherry-pick 冲突时自动 abort 并保持 improve 分支状态，输出冲突文件列表供人工解决，不强制覆盖主分支。
 - **验收标准**: `ahadiff improve --suite local --rounds 6` 跑完，results.tsv 正确追加 6 行
 
 ### Task 17: Targeted Verification + Phase 2.5
@@ -230,7 +237,7 @@
   1. 实现 Targeted Verification（R11）：improve 后不重跑全 8 维，只验证 **目标维度 + accuracy + evidence + safety_privacy**（4 维）
   2. 通过则 status=`targeted_verify`，最终确认后升级为 `keep_final`
   3. 实现 Phase 2.5 structural rewrite：连续 2 个优化目标在首轮即 discard → `git stash` → 从头重写 → 评估 → 更好则采用，否则 `git stash pop`
-  4. Phase 2.5 结果写入 results.tsv，status=`keep` 或 `discard`，note 前缀 `PHASE25:`
+  4. Phase 2.5 触发时 status=`phase25_rewrite`（结构化枚举，非自由文本）。note 字段记录 `stash_ref=<ref>;trigger_reason=<consecutive_discard_count>`。最终结果写入 results.tsv，status=`keep` 或 `discard`，note 前缀 `PHASE25:`
 - **验收标准**: targeted verification 降低 ~50% token 消耗；Phase 2.5 在连续卡住时正确触发
 
 ### Task 18: Benchmark Suite（本地版）
@@ -242,11 +249,16 @@
   - `tests/eval/test_benchmark.py`
 - **依赖**: Task 11（Evaluator）
 - **实施步骤**:
-  1. 构建 10 份 pinned benchmark diff（覆盖 Python/TypeScript/Rust/Go 等多语言）
+  1. 构建 10 份 pinned benchmark diff：
+     - **Python 主套件**（7 份）：全功能验证（AST + regex + section_header）
+     - **Non-Python 降级套件**（3 份，TypeScript/Rust/Go 各 1）：仅验证 regex + section_header 降级路径
+     - 两套件独立出 recall/precision 报告，不混成单一基线
+     - Non-Python 套件的期望 recall 显式低于 Python 套件（标注 `degraded=true`）
   2. 每份含：`diff.patch` + `ground_truth.md` + `qa_probe.jsonl` + `expected_concepts.json`
   3. 实现 `ahadiff benchmark --suite local` CLI
   4. 输出 benchmark report：mean score / claim verification rate / 各维度均值
 - **验收标准**: `ahadiff benchmark --suite local` 跑通 10 份 diff，输出结构化报告
+- **VCR cassette 管理**：cassette key 包含 `prompt_version + model_id + rubric_version` 三元组的 hash。prompt/model/rubric 任一变更时，对应 cassette 自动失效。CI 分两档：PR 触发 `tests/unit`（无 LLM，全 mock），nightly 触发 `tests/eval`（有 LLM，VCR 录制）。月均 LLM 成本预算 $50。
 
 ---
 
@@ -344,7 +356,7 @@ Layer 7 (串行):  Task 16 (依赖 Task 11 + Task 12 + Task 15)
    ↓             Task 17 (依赖 Task 16，串行)
                  Task 18 (依赖 Task 11，可与 Task 16 并行)
    ↓
-Layer 8 (串行):  Task 19 (仅依赖 Task 1)
+Layer 8 (串行):  Task 19 (依赖 CLI 接口冻结：Task 9+10+11+15+16)
                  Task 20 (依赖 Task 19，串行)
 ```
 
