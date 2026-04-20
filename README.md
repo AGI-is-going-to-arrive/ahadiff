@@ -66,10 +66,14 @@ ahadiff review
 # 棘轮优化
 ahadiff improve abc123 --rounds 6
 
-# 安装到 Agent
-ahadiff install claude    # Claude Code Skill
-ahadiff install codex     # Codex AGENTS.md
-ahadiff install cursor    # Cursor rules
+# 安装到 AI 工具（支持 11 个目标）
+ahadiff install claude    # Claude Code → .claude/skills/
+ahadiff install codex     # Codex CLI → AGENTS.md
+ahadiff install cursor    # Cursor → .cursor/rules/
+ahadiff install copilot   # GitHub Copilot
+ahadiff install gemini    # Gemini CLI → GEMINI.md
+ahadiff install windsurf  # Windsurf → .windsurf/rules/
+# 还支持: opencode / cline / amp / jules / aider
 ```
 
 产出物结构：
@@ -92,13 +96,13 @@ ahadiff install cursor    # Cursor rules
 | # | 维度 | 权重 | 硬门禁 |
 |---|------|------|--------|
 | 1 | Accuracy（准确性） | 20 | < 14 → FAIL |
-| 2 | Evidence（证据链） | 15 | < 10 → FAIL |
-| 3 | Diff Coverage（覆盖度） | 15 | — |
-| 4 | Learnability（可学性） | 15 | — |
-| 5 | Recall Transfer（迁移） | 10 | — |
+| 2 | Evidence（证据链） | 18 | < 12 → FAIL |
+| 3 | Diff Coverage（覆盖度） | 14 | — |
+| 4 | Learnability（可学性） | 14 | — |
+| 5 | Quiz Transfer（迁移） | 10 | — |
 | 6 | Spec Alignment | 10 | — |
 | 7 | Conciseness（简洁度） | 8 | — |
-| 8 | Safety & Privacy | 7 | Critical → FAIL |
+| 8 | Safety & Privacy | 6 | Critical → FAIL |
 
 三档 verdict：**PASS** ≥ 80 / **CAUTION** 60–80 / **FAIL** < 60。
 
@@ -106,12 +110,12 @@ ahadiff install cursor    # Cursor rules
 
 ```text
 ahadiff/
-├─ AhaDiff Warm v5.html         # 当前最新 UI 原型
+├─ AhaDiff Warm v6.html         # 当前最新 UI 原型
 ├─ doc/                         # 中文设计文档
 │  ├─ ahadiff设计思路.md          # 完整架构方案（MVP → v1.0）
 │  ├─ 知返ahadiff改名后的后续方案.md  # 品牌重定义 + 产品升级
 │  └─ AhaDiff_frontend_design_v1.1_revised.md  # 前端视觉手册
-├─ ui/                          # HTML 原型 v1–v5（设计迭代史）
+├─ ui/                          # HTML 原型 v1–v6（设计迭代史）
 └─ CLAUDE.md                    # 项目 AI 上下文索引
 ```
 

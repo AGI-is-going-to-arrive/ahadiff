@@ -1,0 +1,1574 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>知返 AhaDiff · 方案蓝图 Blueprint</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Serif+SC:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --paper:#FAF8F2;--subtle:#F2EFE7;--elevated:#FFFFFF;--ink:#1C1B18;--ink-2:#38362F;
+  --muted:#6A6456;--muted-2:#8F8878;--hair:#E6E3D8;--hair-strong:#D5D0BF;
+  --accent:#D27050;--accent-ink:#B04E28;--accent-soft:#F4E4D9;--accent-softer:#FAF0E8;
+  --add-bg:#E4EFE0;--add-fg:#2F6F4F;--del-bg:#F6DCD5;--del-fg:#A33D2B;
+  --success:#2F6F4F;--warning:#B4791F;--danger:#A33D2B;--info:#2E4A6B;
+  --font-sans:"Inter","PingFang SC","Noto Sans SC",ui-sans-serif,system-ui,sans-serif;
+  --font-serif:"Newsreader","Noto Serif SC","Source Serif 4",ui-serif,Georgia,serif;
+  --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--paper);color:var(--ink);font-family:var(--font-sans);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+::selection{background:var(--accent-soft);color:var(--accent-ink)}
+.mono{font-family:var(--font-mono)}
+.serif{font-family:var(--font-serif)}
+
+/* Layout */
+.app{display:grid;grid-template-columns:240px 1fr;min-height:100vh}
+@media(max-width:1024px){.app{grid-template-columns:1fr}.sidebar{display:none}}
+
+/* Sidebar */
+.sidebar{position:sticky;top:0;height:100vh;background:linear-gradient(180deg,var(--subtle) 0%,#EEEADF 100%);border-right:1px solid var(--hair);display:flex;flex-direction:column;overflow-y:auto}
+.brand{padding:22px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--hair)}
+.brand-mark{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,var(--accent) 0%,var(--accent-ink) 100%);color:#fff;display:grid;place-items:center;font-family:var(--font-serif);font-weight:600;font-size:18px;box-shadow:0 2px 6px -2px rgba(176,78,40,.4)}
+.brand-name{font-family:var(--font-serif);font-weight:600;font-size:17px}
+.brand-en{font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase;margin-top:2px}
+.nav-section{padding:14px 12px 4px}
+.nav-label{font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted-2);padding:6px 10px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:var(--ink-2);font-size:14px;cursor:pointer;margin:1px 0;transition:all .15s}
+.nav-item:hover{background:var(--accent-softer);color:var(--ink)}
+.nav-item.active{background:#fff;color:var(--ink);box-shadow:0 1px 0 var(--hair),0 4px 12px -8px rgba(120,80,50,.22)}
+.nav-item.active .ic{color:var(--accent)}
+.nav-item .ic{width:16px;opacity:.75;flex:none}
+.nav-item .en{color:var(--muted-2);font-family:var(--font-mono);font-size:10px;margin-left:auto;letter-spacing:.08em;text-transform:uppercase}
+.side-foot{margin-top:auto;padding:14px 16px;border-top:1px solid var(--hair);font-size:12px;color:var(--muted);display:flex;align-items:center;gap:10px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--success);box-shadow:0 0 0 3px rgba(47,111,79,.15)}
+
+/* Topbar */
+.main{min-width:0;display:flex;flex-direction:column}
+.topbar{display:flex;align-items:center;gap:16px;padding:14px 32px;border-bottom:1px solid var(--hair);background:rgba(250,248,242,.88);backdrop-filter:blur(8px);position:sticky;top:0;z-index:5}
+.crumb{font-family:var(--font-mono);font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.crumb .sep{opacity:.5}
+
+/* Page */
+.page{display:none;padding:32px 40px 88px;max-width:1440px;animation:fadeUp .28s ease-out}
+.page.active{display:block}
+@keyframes fadeUp{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.page-head{padding-bottom:22px;margin-bottom:28px;border-bottom:1px solid var(--hair)}
+.page-head h1{font-family:var(--font-serif);font-weight:500;font-size:36px;letter-spacing:-.022em;line-height:1.08}
+.page-head .sub{color:var(--muted);font-size:14px;margin-top:8px;max-width:720px;line-height:1.65}
+.eyebrow{font-family:var(--font-mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+
+/* Cards */
+.card{background:var(--elevated);border:1px solid var(--hair);border-radius:12px;box-shadow:0 1px 0 rgba(180,160,130,.06),0 4px 20px -16px rgba(120,80,40,.18);transition:box-shadow .2s}
+.card:hover{box-shadow:0 1px 0 rgba(180,160,130,.06),0 8px 28px -18px rgba(120,80,40,.28)}
+.card .ch{padding:15px 20px;border-bottom:1px solid var(--hair);display:flex;align-items:center;gap:10px;justify-content:space-between}
+.card .ch h3{margin:0;font-family:var(--font-serif);font-size:18px;font-weight:500}
+.card .ch .meta{font-family:var(--font-mono);font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+.card .cb{padding:20px}
+
+/* Badges */
+.badge{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;height:22px;font-size:11px;font-family:var(--font-mono);letter-spacing:.08em;text-transform:uppercase;border-radius:99px;border:1px solid var(--hair-strong);background:#fff;color:var(--ink-2)}
+.badge .bd{width:6px;height:6px;border-radius:50%;background:currentColor}
+.badge.pass{color:var(--success);background:#ECF4EE;border-color:#B9D7C1}
+.badge.caution{color:var(--warning);background:#F7EED9;border-color:#E3CDA1}
+.badge.fail{color:var(--danger);background:#F7E2DC;border-color:#E4B8AE}
+.badge.accent{color:var(--accent-ink);background:var(--accent-soft);border-color:#EBC3AE}
+.badge.info{color:var(--info);background:#E4ECF4;border-color:#B0C4D8}
+
+/* KPI */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px}
+.kpi{background:var(--elevated);border:1px solid var(--hair);border-radius:12px;padding:18px 20px;transition:transform .18s,box-shadow .2s;position:relative;overflow:hidden}
+.kpi::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--accent);opacity:0;transition:opacity .2s}
+.kpi:hover{transform:translateY(-2px);box-shadow:0 10px 28px -18px rgba(120,80,40,.3)}
+.kpi:hover::before{opacity:.7}
+.kpi .lb{font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase}
+.kpi .vl{font-family:var(--font-serif);font-size:34px;font-weight:500;letter-spacing:-.024em;line-height:1;margin-top:12px}
+.kpi .delta{margin-top:10px;font-size:12px;color:var(--muted)}
+
+/* Source cards */
+.src-card{background:#FDFCF8;border:1px solid var(--hair);border-radius:12px;padding:20px;margin-bottom:16px;transition:all .2s;cursor:pointer;position:relative;overflow:hidden}
+.src-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:4px 0 0 4px;transition:background .2s}
+.src-card:hover{border-color:var(--hair-strong);transform:translateX(3px);box-shadow:0 8px 24px -12px rgba(120,80,40,.2)}
+.src-card.autoresearch::before{background:#D27050}
+.src-card.darwin::before{background:#2F6F4F}
+.src-card.skillcompass::before{background:#2E4A6B}
+.src-card.skill0::before{background:#B4791F}
+.src-card.nuwa::before{background:#8B5E83}
+.src-card.graphify::before{background:#4A7C59}
+.src-card .src-head{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.src-card .src-icon{width:44px;height:44px;border-radius:10px;display:grid;place-items:center;font-size:20px;font-weight:600;flex:none}
+.src-card .src-name{font-family:var(--font-serif);font-size:20px;font-weight:500;letter-spacing:-.01em}
+.src-card .src-author{font-family:var(--font-mono);font-size:11px;color:var(--muted);letter-spacing:.08em;margin-top:2px}
+.src-card .src-desc{font-size:14px;color:var(--ink-2);line-height:1.7;margin-bottom:14px}
+.src-card .src-mapping{background:var(--subtle);border:1px solid var(--hair);border-radius:8px;padding:14px;font-size:13px}
+.src-card .src-mapping h5{font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.mapping-row{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;padding:4px 0;border-bottom:1px dashed var(--hair);font-family:var(--font-mono);font-size:12px}
+.mapping-row:last-child{border-bottom:0}
+.mapping-row .arrow{color:var(--accent);font-weight:600}
+.mapping-row .from{color:var(--muted)}
+.mapping-row .to{color:var(--ink);font-weight:500}
+.src-tag{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;font-size:10px;font-family:var(--font-mono);letter-spacing:.08em;text-transform:uppercase;margin-right:6px;margin-bottom:4px}
+.src-tag.borrowed{color:var(--success);background:#ECF4EE;border:1px solid #B9D7C1}
+.src-tag.adapted{color:var(--accent-ink);background:var(--accent-soft);border:1px solid #EBC3AE}
+.src-tag.self-designed{color:var(--info);background:#E4ECF4;border:1px solid #B0C4D8}
+.src-tag.extended{color:#8B5E83;background:#F3EBF1;border:1px solid #D4BED0}
+
+/* Compliance */
+.compliance-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px}
+@media(max-width:768px){.compliance-grid{grid-template-columns:1fr}}
+.compliance-item{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border:1px solid var(--hair);border-radius:10px;background:#fff;transition:all .15s}
+.compliance-item:hover{border-color:var(--accent);transform:translateX(2px)}
+.compliance-item .ci-icon{width:28px;height:28px;border-radius:6px;display:grid;place-items:center;font-size:14px;flex:none}
+.compliance-item .ci-icon.ok{background:#ECF4EE;color:var(--success)}
+.compliance-item .ci-icon.warn{background:#F7EED9;color:var(--warning)}
+.compliance-item .ci-title{font-weight:500;font-size:14px}
+.compliance-item .ci-desc{font-size:12px;color:var(--muted);margin-top:2px;line-height:1.5}
+
+/* Architecture flow */
+.arch-flow{display:grid;grid-template-columns:repeat(7,1fr);gap:0;margin:28px 0;border:1px solid var(--hair);border-radius:12px;overflow:hidden;background:#fff}
+.arch-step{padding:16px 12px;border-right:1px solid var(--hair);text-align:center;transition:background .15s;position:relative}
+.arch-step:last-child{border-right:0}
+.arch-step:hover{background:var(--accent-softer)}
+.arch-step .n{font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.14em}
+.arch-step h4{font-family:var(--font-serif);font-size:14px;font-weight:500;margin:6px 0 4px}
+.arch-step p{font-size:11px;color:var(--muted);line-height:1.4}
+@media(max-width:900px){.arch-flow{grid-template-columns:repeat(3,1fr)}.arch-step:nth-child(3){border-right:0}}
+
+/* Rubric bars */
+.rubric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:14px}
+@media(max-width:900px){.rubric-grid{grid-template-columns:repeat(2,1fr)}}
+.rubric-dim{padding:12px;border:1px solid var(--hair);border-radius:8px;background:#fff}
+.rubric-dim .rd-name{font-family:var(--font-mono);font-size:11px;color:var(--ink-2);letter-spacing:.04em}
+.rubric-dim .rd-weight{font-family:var(--font-serif);font-size:24px;font-weight:500;margin-top:4px}
+.rubric-dim .rd-bar{height:6px;background:var(--subtle);border-radius:99px;overflow:hidden;margin-top:6px}
+.rubric-dim .rd-bar>span{display:block;height:100%;border-radius:99px}
+
+/* Timeline */
+.timeline{position:relative;padding-left:28px;margin-top:18px}
+.timeline::before{content:"";position:absolute;left:10px;top:0;bottom:0;width:2px;background:var(--hair)}
+.tl-item{position:relative;padding-bottom:20px}
+.tl-item::before{content:"";position:absolute;left:-22px;top:4px;width:10px;height:10px;border-radius:50%;border:2px solid var(--accent);background:var(--paper)}
+.tl-item.done::before{background:var(--success);border-color:var(--success)}
+.tl-item.current::before{background:var(--accent);border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.tl-item .tl-title{font-weight:500;font-size:14px}
+.tl-item .tl-desc{font-size:12px;color:var(--muted);margin-top:2px}
+
+/* Tabs */
+.tab-bar{display:flex;gap:4px;background:var(--subtle);border-radius:8px;padding:3px;border:1px solid var(--hair);margin-bottom:20px;flex-wrap:wrap}
+.tab-btn{padding:6px 14px;border-radius:6px;font-size:13px;font-family:var(--font-mono);letter-spacing:.04em;color:var(--muted);transition:all .15s}
+.tab-btn:hover{background:var(--accent-softer);color:var(--accent-ink)}
+.tab-btn.active{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+/* Expand/collapse */
+.expandable{overflow:hidden;max-height:0;transition:max-height .3s ease}
+.expandable.open{max-height:2000px}
+.expand-btn{display:flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:11px;color:var(--accent-ink);letter-spacing:.08em;text-transform:uppercase;margin-top:10px;padding:4px 0}
+.expand-btn .arrow{transition:transform .2s;display:inline-block}
+.expand-btn .arrow.rotated{transform:rotate(90deg)}
+
+/* Tables */
+table.t{width:100%;border-collapse:collapse;font-size:13px}
+table.t th{text-align:left;font-weight:500;color:var(--muted);font-family:var(--font-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;padding:10px 14px;border-bottom:1px solid var(--hair);background:var(--subtle)}
+table.t td{padding:12px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+table.t tr:hover td{background:var(--accent-softer)}
+
+/* Scroll hint */
+.scroll-hint{text-align:center;padding:20px;font-family:var(--font-mono);font-size:11px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+
+/* Print */
+@media print{.sidebar,.topbar{display:none !important}.app{grid-template-columns:1fr}.page{display:block !important;padding:20px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark"><span>Δ知</span></div>
+      <div>
+        <div class="brand-name">知返 AhaDiff</div>
+        <div class="brand-en">Blueprint · 方案蓝图</div>
+      </div>
+    </div>
+    <nav class="nav-section">
+      <div class="nav-label">蓝图 · Blueprint</div>
+      <button class="nav-item active" data-goto="overview"><span class="ic">◎</span><span>总览</span><span class="en">Overview</span></button>
+      <button class="nav-item" data-goto="diffflow"><span class="ic">⟳</span><span>Diff 流程</span><span class="en">Flow</span></button>
+      <button class="nav-item" data-goto="inspirations"><span class="ic">✦</span><span>灵感借鉴</span><span class="en">Sources</span></button>
+      <button class="nav-item" data-goto="architecture"><span class="ic">▤</span><span>七层架构</span><span class="en">Arch</span></button>
+      <button class="nav-item" data-goto="rubric"><span class="ic">▲</span><span>评估体系</span><span class="en">Rubric</span></button>
+      <button class="nav-item" data-goto="compliance"><span class="ic">⇌</span><span>方案一致性</span><span class="en">Align</span></button>
+      <button class="nav-item" data-goto="frontend"><span class="ic">❦</span><span>前端现状</span><span class="en">UI</span></button>
+      <button class="nav-item" data-goto="faq"><span class="ic">?</span><span>深度 FAQ</span><span class="en">FAQ</span></button>
+    </nav>
+    <div class="side-foot">
+      <span class="dot"></span>
+      <span>v0.1 · 设计阶段</span>
+      <span class="mono" style="margin-left:auto">2026-04</span>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="crumb"><span>ahadiff</span><span class="sep">/</span><span id="bc-page">Blueprint</span></div>
+    </div>
+
+    <!-- ============ OVERVIEW ============ -->
+    <section class="page active" data-page="overview">
+      <div class="page-head">
+        <div class="eyebrow">§ 00 · 方案总览</div>
+        <h1>知返 AhaDiff · 方案蓝图</h1>
+        <div class="sub">Vibe coding 写得很快，但你真的学会了吗？—— 知返把每个 AI 写出的 git diff 变成带代码证据链的学习笔记、概念图谱、主动回忆测验和质量棘轮记录。</div>
+      </div>
+
+      <div class="kpi-grid" style="margin-bottom:28px">
+        <div class="kpi"><div class="lb">灵感项目</div><div class="vl">6</div><div class="delta">autoresearch · darwin-skill · SkillCompass · SKILL0 · Graphify · LLM Wiki</div></div>
+        <div class="kpi"><div class="lb">评估维度</div><div class="vl">8</div><div class="delta">完全自研 rubric · 满分 100</div></div>
+        <div class="kpi"><div class="lb">架构层数</div><div class="vl">7</div><div class="delta">Diff Capture → Wiki + UI</div></div>
+        <div class="kpi"><div class="lb">设计文档</div><div class="vl">2594<span style="font-size:14px;color:var(--muted)">行</span></div><div class="delta">31 节 + 9 段开发计划</div></div>
+        <div class="kpi"><div class="lb">产品原则</div><div class="vl">14</div><div class="delta">local-first · 文件即真相源</div></div>
+        <div class="kpi"><div class="lb">UI 原型</div><div class="vl">v6</div><div class="delta">Warm 风格 · 11 页面</div></div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="ch"><h3>核心用户闭环</h3><div class="meta">§ 04 · User Loop</div></div>
+        <div class="cb">
+          <div class="arch-flow" style="grid-template-columns:repeat(5,1fr)">
+            <div class="arch-step"><div class="n">01</div><h4>Vibe Code</h4><p>用 Claude / Codex / Cursor 写代码</p></div>
+            <div class="arch-step"><div class="n">02</div><h4>Capture</h4><p>ahadiff learn HEAD~1..HEAD</p></div>
+            <div class="arch-step"><div class="n">03</div><h4>Verify</h4><p>每条 claim 绑定 file:line 证据</p></div>
+            <div class="arch-step"><div class="n">04</div><h4>Learn</h4><p>Lesson + Quiz + Review Cards</p></div>
+            <div class="arch-step"><div class="n">05</div><h4>Ratchet</h4><p>改进保留 · 退步回滚</p></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="ch"><h3>一句话定位</h3><div class="meta">Brand</div></div>
+        <div class="cb" style="font-family:var(--font-serif);font-size:22px;line-height:1.6;text-align:center;padding:32px">
+          <div style="color:var(--accent-ink);font-weight:500;font-size:28px;margin-bottom:8px">AI 写完，Diff 教回。</div>
+          <div style="color:var(--muted);font-size:16px;font-style:italic">Ship with AI. Learn it back.</div>
+          <div style="margin-top:20px;font-size:14px;color:var(--ink-2);font-family:var(--font-sans);max-width:600px;margin-left:auto;margin-right:auto;line-height:1.7">
+            Code Wiki 解释仓库，知返解释这次改动。<br/>
+            PR Summary 告诉你改了什么，知返教你为什么这样改。<br/>
+            Diffity 帮你看 diff，知返帮你证明你真的懂了。
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ DIFF FLOW ============ -->
+    <section class="page" data-page="diffflow">
+      <div class="page-head">
+        <div class="eyebrow">§ 01 · Diff 从哪来，到哪去</div>
+        <h1>Diff 完整流程详解</h1>
+        <div class="sub">从 vibe coding 到打开学习页面，每一步如何触发、数据如何流转、用户需要做什么。</div>
+      </div>
+
+      <!-- Q1: 前置条件 -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="ch"><h3>前置条件 · 什么时候能用？</h3><div class="meta">Prerequisites</div></div>
+        <div class="cb">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+            <div style="padding:16px;border:2px solid var(--accent);border-radius:10px;background:var(--accent-softer)">
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-ink);margin-bottom:8px">Level 3 · Git 仓库（完整功能）</div>
+              <ul style="font-size:12px;line-height:1.7;padding-left:16px;color:var(--ink-2)">
+                <li>证据绑定 + Symbol 索引</li>
+                <li>跨文件上下文</li>
+                <li>棘轮回滚（git revert）</li>
+                <li>Graph overlay + Backlinks</li>
+                <li>版本追踪（head_sha）</li>
+              </ul>
+              <div style="margin-top:8px;font-size:11px;font-family:var(--font-mono);color:var(--accent-ink)">--last / --staged / --since</div>
+            </div>
+            <div style="padding:16px;border:1px solid #B9D7C1;border-radius:10px;background:#ECF4EE">
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--success);margin-bottom:8px">Level 2 · 文件对比（无需 git）</div>
+              <ul style="font-size:12px;line-height:1.7;padding-left:16px;color:var(--ink-2)">
+                <li>证据绑定 + 部分 Symbol</li>
+                <li style="text-decoration:line-through;color:var(--muted)">跨文件上下文</li>
+                <li style="text-decoration:line-through;color:var(--muted)">棘轮回滚</li>
+                <li>Backlinks（限当前 run）</li>
+                <li>Content hash 追踪</li>
+              </ul>
+              <div style="margin-top:8px;font-size:11px;font-family:var(--font-mono);color:var(--success)">--compare old.py new.py</div>
+            </div>
+            <div style="padding:16px;border:1px solid var(--hair);border-radius:10px;background:#FDFCF8">
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Level 1 · Patch 文件（最轻量）</div>
+              <ul style="font-size:12px;line-height:1.7;padding-left:16px;color:var(--muted)">
+                <li>证据绑定（基于 hunk）</li>
+                <li style="text-decoration:line-through">Symbol 索引</li>
+                <li style="text-decoration:line-through">棘轮回滚</li>
+                <li style="text-decoration:line-through">Backlinks / Graph</li>
+                <li>Patch hash 追踪</li>
+              </ul>
+              <div style="margin-top:8px;font-size:11px;font-family:var(--font-mono);color:var(--muted)">--patch file.patch / stdin</div>
+            </div>
+          </div>
+          <div style="margin-top:14px;padding:12px;background:var(--subtle);border-radius:8px;font-size:13px;line-height:1.7;color:var(--ink-2)">
+            <b style="color:var(--ink)">不一定是 git 仓库</b> — git 是默认主流程（Level 3 完整功能），但通过 <code>--patch</code> 和 <code>--compare</code> 也能在非 git 环境下使用，只是部分功能降级。所有 level 都支持：证据绑定、Lesson 生成、Quiz、SRS 复习。
+          </div>
+        </div>
+      </div>
+
+      <!-- Q2: 触发方式 -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="ch"><h3>Diff 的 6 种捕获方式</h3><div class="meta">Capture Modes · 3 Levels</div></div>
+        <div class="cb">
+          <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--success);margin-bottom:10px">Level 3 · Git（完整功能）</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+
+            <div style="padding:16px;border:2px solid var(--accent);border-radius:10px;background:var(--accent-softer);position:relative">
+              <div style="position:absolute;top:8px;right:10px"><span class="badge accent">推荐</span></div>
+              <div style="font-family:var(--font-mono);font-size:12px;color:var(--accent-ink);font-weight:600;margin-bottom:6px">A · 最后一次 commit</div>
+              <div style="font-family:var(--font-mono);font-size:13px;background:var(--ink);color:#E8E3D8;padding:10px 12px;border-radius:6px;margin:8px 0">ahadiff learn --last --open</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">最简单用法。<b>自动</b>找最近一次 commit 的全部 diff。</div>
+            </div>
+
+            <div style="padding:16px;border:2px solid var(--success);border-radius:10px;background:#ECF4EE;position:relative">
+              <div style="position:absolute;top:8px;right:10px"><span class="badge pass">v0.1 新增</span></div>
+              <div style="font-family:var(--font-mono);font-size:12px;color:var(--success);font-weight:600;margin-bottom:6px">B · 会话时间范围扫描</div>
+              <div style="font-family:var(--font-mono);font-size:13px;background:var(--ink);color:#E8E3D8;padding:10px 12px;border-radius:6px;margin:8px 0">ahadiff learn --since "2h ago" --open</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">一次 vibe coding 产生多个 commit？<b>按时间自动扫描</b>，一次学完整个会话。</div>
+            </div>
+
+            <div style="padding:16px;border:1px solid var(--hair);border-radius:10px;background:#fff">
+              <div style="font-family:var(--font-mono);font-size:12px;color:var(--ink-2);font-weight:600;margin-bottom:6px">C · 暂存区（还没 commit）</div>
+              <div style="font-family:var(--font-mono);font-size:13px;background:var(--ink);color:#E8E3D8;padding:10px 12px;border-radius:6px;margin:8px 0">ahadiff learn --staged --open</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">已 <code>git add</code> 但还没 commit？直接学习暂存区的变更。</div>
+            </div>
+
+            <div style="padding:16px;border:1px solid var(--hair);border-radius:10px;background:#fff">
+              <div style="font-family:var(--font-mono);font-size:12px;color:var(--ink-2);font-weight:600;margin-bottom:6px">D · 指定范围 / commit hash</div>
+              <div style="font-family:var(--font-mono);font-size:13px;background:var(--ink);color:#E8E3D8;padding:10px 12px;border-radius:6px;margin:8px 0">ahadiff learn HEAD~5..HEAD --open</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">手动指定 commit 范围，或 <code>ahadiff learn abc1234</code> 学习单个 commit。</div>
+            </div>
+          </div>
+
+          <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--info);margin-bottom:10px">Level 1-2 · 非 Git（无需 git 仓库）</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+
+            <div style="padding:16px;border:2px solid var(--info);border-radius:10px;background:#E4ECF4;position:relative">
+              <div style="position:absolute;top:8px;right:10px"><span class="badge info">v0.1 新增</span></div>
+              <div style="font-family:var(--font-mono);font-size:12px;color:var(--info);font-weight:600;margin-bottom:6px">E · Patch 文件 / stdin 管道</div>
+              <div style="font-family:var(--font-mono);font-size:13px;background:var(--ink);color:#E8E3D8;padding:10px 12px;border-radius:6px;margin:8px 0">ahadiff learn --patch fix.patch --open</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6"><b>不需要 git</b>。从 patch 文件、PR 下载、CI 产出、或 <code>diff a b | ahadiff learn --patch -</code> 管道输入。Level 1 功能。</div>
+            </div>
+
+            <div style="padding:16px;border:1px solid #B0C4D8;border-radius:10px;background:#F0F4F8;position:relative">
+              <div style="position:absolute;top:8px;right:10px"><span class="badge" style="color:var(--muted)">v0.1.1</span></div>
+              <div style="font-family:var(--font-mono);font-size:12px;color:var(--info);font-weight:600;margin-bottom:6px">F · 文件对比（IDE 单文件场景）</div>
+              <div style="font-family:var(--font-mono);font-size:13px;background:var(--ink);color:#E8E3D8;padding:10px 12px;border-radius:6px;margin:8px 0">ahadiff learn --compare old.py new.py --open</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6"><b>不需要 git</b>。IDE 修改了单文件？直接对比新旧版本学习。Level 2 功能。</div>
+            </div>
+
+          </div>
+
+          <div style="margin-top:16px;padding:14px;background:var(--subtle);border-radius:8px;font-size:13px;line-height:1.7;color:var(--ink-2)">
+            <b style="color:var(--ink)">用户不需要指定行号或文件名</b> — AhaDiff 自动解析 diff 中的所有变更。所有 Level 都支持 Lesson + Quiz + SRS 核心学习功能。
+          </div>
+        </div>
+      </div>
+
+      <!-- Q3: 自动触发 -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="ch"><h3>不想手动？11 种 AI 工具集成</h3><div class="meta">ahadiff install · 11 targets</div></div>
+        <div class="cb">
+          <div style="font-size:13px;color:var(--ink-2);line-height:1.7;margin-bottom:16px">
+            <code>ahadiff install &lt;tool&gt;</code> 会向你的 AI 工具写入配置文件，让 AI 工具在完成 vibe coding 后<b>自动提醒你</b>运行 learn 命令。支持 <b>11 个目标</b>，覆盖主流 AI CLI 和 IDE 工具。
+          </div>
+
+          <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-ink);margin-bottom:10px">核心 CLI · 专有规则文件</div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+            <div style="padding:14px;border:2px solid var(--accent);border-radius:10px;background:var(--accent-softer);text-align:center">
+              <div style="font-size:24px;margin-bottom:6px">🤖</div>
+              <div style="font-weight:600;font-size:14px">Claude Code</div>
+              <div style="font-family:var(--font-mono);font-size:11px;color:var(--accent-ink);margin-top:6px">ahadiff install claude</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5">写入 .claude/skills/ahadiff/SKILL.md + CLAUDE.md 追加</div>
+            </div>
+            <div style="padding:14px;border:1px solid var(--hair);border-radius:10px;background:#fff;text-align:center">
+              <div style="font-size:24px;margin-bottom:6px">⚡</div>
+              <div style="font-weight:600;font-size:14px">Codex CLI</div>
+              <div style="font-family:var(--font-mono);font-size:11px;color:var(--accent-ink);margin-top:6px">ahadiff install codex</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5">写入 AGENTS.md（AAIF 标准）</div>
+            </div>
+            <div style="padding:14px;border:1px solid var(--hair);border-radius:10px;background:#fff;text-align:center">
+              <div style="font-size:24px;margin-bottom:6px">💎</div>
+              <div style="font-weight:600;font-size:14px">Gemini CLI</div>
+              <div style="font-family:var(--font-mono);font-size:11px;color:var(--accent-ink);margin-top:6px">ahadiff install gemini</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5">写入 GEMINI.md 追加段落</div>
+            </div>
+            <div style="padding:14px;border:1px solid var(--hair);border-radius:10px;background:#fff;text-align:center">
+              <div style="font-size:24px;margin-bottom:6px">🔓</div>
+              <div style="font-weight:600;font-size:14px">OpenCode</div>
+              <div style="font-family:var(--font-mono);font-size:11px;color:var(--accent-ink);margin-top:6px">ahadiff install opencode</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5">AGENTS.md + .opencode/agents/ahadiff.md</div>
+            </div>
+          </div>
+
+          <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--success);margin-bottom:10px">IDE 插件 · 各自规则文件</div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+            <div style="padding:14px;border:1px solid var(--hair);border-radius:10px;background:#fff;text-align:center">
+              <div style="font-size:24px;margin-bottom:6px">📝</div>
+              <div style="font-weight:600;font-size:14px">Cursor</div>
+              <div style="font-family:var(--font-mono);font-size:11px;color:var(--accent-ink);margin-top:6px">ahadiff install cursor</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5">.cursor/rules/ahadiff.mdc</div>
+            </div>
+            <div style="padding:14px;border:1px solid var(--hair);border-radius:10px;background:#fff;text-align:center">
+              <div style="font-size:24px;margin-bottom:6px">✈</div>
+              <div style="font-weight:600;font-size:14px">Copilot</div>
+              <div style="font-family:var(--font-mono);font-size:11px;color:var(--accent-ink);margin-top:6px">ahadiff install copilot</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5">.github/copilot-instructions.md</div>
+            </div>
+            <div style="padding:14px;border:1px solid var(--hair);border-radius:10px;background:#fff;text-align:center">
+              <div style="font-size:24px;margin-bottom:6px">🌊</div>
+              <div style="font-weight:600;font-size:14px">Windsurf</div>
+              <div style="font-family:var(--font-mono);font-size:11px;color:var(--accent-ink);margin-top:6px">ahadiff install windsurf</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5">.windsurf/rules/ahadiff.md</div>
+            </div>
+            <div style="padding:14px;border:1px solid var(--hair);border-radius:10px;background:#fff;text-align:center">
+              <div style="font-size:24px;margin-bottom:6px">🔌</div>
+              <div style="font-weight:600;font-size:14px">Cline</div>
+              <div style="font-family:var(--font-mono);font-size:11px;color:var(--accent-ink);margin-top:6px">ahadiff install cline</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5">.clinerules/ahadiff.md</div>
+            </div>
+          </div>
+
+          <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--info);margin-bottom:10px">AGENTS.md 复用 · 共享模板</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+            <div style="padding:14px;border:1px solid var(--hair);border-radius:10px;background:#fff;text-align:center">
+              <div style="font-size:24px;margin-bottom:6px">⚡</div>
+              <div style="font-weight:600;font-size:14px">Amp</div>
+              <div style="font-family:var(--font-mono);font-size:11px;color:var(--accent-ink);margin-top:6px">ahadiff install amp</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5">AGENTS.md（复用 codex 模板）</div>
+            </div>
+            <div style="padding:14px;border:1px solid var(--hair);border-radius:10px;background:#fff;text-align:center">
+              <div style="font-size:24px;margin-bottom:6px">☁️</div>
+              <div style="font-weight:600;font-size:14px">Jules</div>
+              <div style="font-family:var(--font-mono);font-size:11px;color:var(--accent-ink);margin-top:6px">ahadiff install jules</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5">AGENTS.md（异步 VM 自动读取）</div>
+            </div>
+            <div style="padding:14px;border:1px solid var(--hair);border-radius:10px;background:#fff;text-align:center">
+              <div style="font-size:24px;margin-bottom:6px">📓</div>
+              <div style="font-weight:600;font-size:14px">Aider</div>
+              <div style="font-family:var(--font-mono);font-size:11px;color:var(--accent-ink);margin-top:6px">ahadiff install aider</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5">.aider.conf.yml + CONVENTIONS.md</div>
+            </div>
+          </div>
+
+          <div style="padding:14px;background:var(--subtle);border-radius:8px;font-size:12px;line-height:1.7;color:var(--ink-2);margin-bottom:12px">
+            <b style="color:var(--ink)">智能复用</b> — AGENTS.md 系工具（Codex / OpenCode / Amp / Jules / Junie）共享一个模板。写入安全规则：不覆盖已有内容，用 <code>&lt;!-- AHADIFF:BEGIN --&gt;</code> / <code>&lt;!-- AHADIFF:END --&gt;</code> 标记包裹，uninstall 时精确删除。
+          </div>
+          <div style="padding:14px;border:1px dashed #E3CDA1;background:#FBF5E6;border-radius:8px;font-size:12px;line-height:1.6;color:var(--warning)">
+            <b style="color:var(--ink)">还可以配 git hook</b> — 在 <code>.git/hooks/post-commit</code> 中加入 <code>ahadiff learn --last</code>，每次 commit 后全自动触发学习，无需任何手动操作。
+          </div>
+        </div>
+      </div>
+
+      <!-- 完整数据流 -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="ch"><h3>ahadiff learn 完整 29 步流程</h3><div class="meta">§ 08 · Full Pipeline</div></div>
+        <div class="cb">
+
+          <!-- Interactive flow visualization -->
+          <div style="display:grid;grid-template-columns:1fr;gap:0;position:relative">
+
+            <!-- Phase 1: Input -->
+            <div style="padding:20px;border:1px solid var(--hair);border-radius:12px 12px 0 0;background:linear-gradient(135deg,var(--accent-softer),#fff)">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+                <span style="background:var(--accent);color:#fff;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-family:var(--font-mono);font-size:12px;font-weight:600">1</span>
+                <span style="font-family:var(--font-serif);font-size:18px;font-weight:500">输入捕获 · Capture</span>
+                <span class="badge accent" style="margin-left:auto">步骤 1-6</span>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+                <div style="padding:10px;background:#fff;border:1px solid var(--hair);border-radius:8px;font-size:12px;text-align:center">
+                  <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted)">STEP 1-2</div>
+                  <div style="margin-top:4px">检查 git repo<br/>解析 ref range</div>
+                </div>
+                <div style="padding:10px;background:#fff;border:1px solid var(--hair);border-radius:8px;font-size:12px;text-align:center">
+                  <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted)">STEP 3-4</div>
+                  <div style="margin-top:4px">生成 run_id<br/>捕获 patch.diff</div>
+                </div>
+                <div style="padding:10px;background:#fff;border:1px solid var(--hair);border-radius:8px;font-size:12px;text-align:center">
+                  <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted)">STEP 5-6</div>
+                  <div style="margin-top:4px">写 metadata.json<br/>套用 .ahadiffignore</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="text-align:center;padding:4px 0;color:var(--muted);font-size:18px">▼</div>
+
+            <!-- Phase 2: Safety -->
+            <div style="padding:20px;border:1px solid var(--hair);background:#FDF8F4">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+                <span style="background:var(--danger);color:#fff;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-family:var(--font-mono);font-size:12px;font-weight:600">2</span>
+                <span style="font-family:var(--font-serif);font-size:18px;font-weight:500">安全过滤 · Safety</span>
+                <span class="badge fail" style="margin-left:auto">步骤 7-8</span>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                <div style="padding:10px;background:#fff;border:1px solid #E4B8AE;border-radius:8px;font-size:12px">
+                  <b>Secret 扫描</b> — 检测 API key、JWT、私钥等，自动脱敏，写入 redaction_report.json
+                </div>
+                <div style="padding:10px;background:#fff;border:1px solid #E4B8AE;border-radius:8px;font-size:12px">
+                  <b>Prompt Injection 转义</b> — diff 中的 "ignore previous instructions" 等危险内容被转义隔离
+                </div>
+              </div>
+            </div>
+
+            <div style="text-align:center;padding:4px 0;color:var(--muted);font-size:18px">▼</div>
+
+            <!-- Phase 3: Parse -->
+            <div style="padding:20px;border:1px solid var(--hair);background:#FDFCF8">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+                <span style="background:var(--info);color:#fff;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-family:var(--font-mono);font-size:12px;font-weight:600">3</span>
+                <span style="font-family:var(--font-serif);font-size:18px;font-weight:500">结构化解析 · Parse</span>
+                <span class="badge info" style="margin-left:auto">步骤 9-13</span>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">
+                <div style="padding:8px;background:#fff;border:1px solid var(--hair);border-radius:6px;font-size:11px;text-align:center">解析 hunk</div>
+                <div style="padding:8px;background:#fff;border:1px solid var(--hair);border-radius:6px;font-size:11px;text-align:center">line_map.json</div>
+                <div style="padding:8px;background:#fff;border:1px solid var(--hair);border-radius:6px;font-size:11px;text-align:center">提取 symbols</div>
+                <div style="padding:8px;background:#fff;border:1px solid var(--hair);border-radius:6px;font-size:11px;text-align:center">hunk_hash</div>
+                <div style="padding:8px;background:#fff;border:1px solid var(--hair);border-radius:6px;font-size:11px;text-align:center">最小上下文包</div>
+              </div>
+            </div>
+
+            <div style="text-align:center;padding:4px 0;color:var(--muted);font-size:18px">▼</div>
+
+            <!-- Phase 4: LLM -->
+            <div style="padding:20px;border:1px solid var(--hair);background:linear-gradient(135deg,#F4E4D9,#fff)">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+                <span style="background:var(--accent-ink);color:#fff;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-family:var(--font-mono);font-size:12px;font-weight:600">4</span>
+                <span style="font-family:var(--font-serif);font-size:18px;font-weight:500">AI 理解 + 验证 · Understand & Verify</span>
+                <span class="badge accent" style="margin-left:auto">步骤 14-17 · 核心</span>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div style="padding:14px;background:#fff;border:2px solid var(--accent);border-radius:10px;font-size:13px;line-height:1.7">
+                  <div style="font-weight:600;color:var(--accent-ink);margin-bottom:6px">14. LLM 抽取 candidate claims</div>
+                  AI 读完 diff，把它理解为一系列<b>可验证的断言</b>（"这段代码使用了指数退避"、"默认重试 4 次"），而不是模糊的解释。
+                </div>
+                <div style="padding:14px;background:#fff;border:2px solid var(--success);border-radius:10px;font-size:13px;line-height:1.7">
+                  <div style="font-weight:600;color:var(--success);margin-bottom:6px">15-17. 逐条验证每个 claim</div>
+                  <b>Deterministic verifier</b> 检查每条 claim 是否有 file:line 证据。<br/>
+                  Negative scan 查缺失。<br/>
+                  最终分类为 <span class="badge pass" style="font-size:9px">verified</span> <span class="badge caution" style="font-size:9px">weak</span> <span class="badge" style="font-size:9px">not_proven</span> <span class="badge fail" style="font-size:9px">contradicted</span>
+                </div>
+              </div>
+              <div style="margin-top:12px;padding:12px;border:1px dashed var(--accent);border-radius:8px;font-size:12px;color:var(--accent-ink);line-height:1.6;background:var(--accent-softer)">
+                <b>这就是 AhaDiff 和普通 AI 解释的本质区别：</b>普通工具是 diff → 解释；AhaDiff 是 diff → 抽取断言 → <b>逐条验证</b> → 只有通过验证的才进入 lesson。AI 说的每一句话都要有代码证据。
+              </div>
+            </div>
+
+            <div style="text-align:center;padding:4px 0;color:var(--muted);font-size:18px">▼</div>
+
+            <!-- Phase 5: Generate -->
+            <div style="padding:20px;border:1px solid var(--hair);background:#FDFCF8">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+                <span style="background:var(--success);color:#fff;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-family:var(--font-mono);font-size:12px;font-weight:600">5</span>
+                <span style="font-family:var(--font-serif);font-size:18px;font-weight:500">生成学习包 · Generate</span>
+                <span class="badge pass" style="margin-left:auto">步骤 18-26</span>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+                <div style="padding:12px;background:#ECF4EE;border:1px solid #B9D7C1;border-radius:8px;font-size:12px;text-align:center">
+                  <div style="font-weight:600;font-size:14px">Lesson</div>
+                  <div style="margin-top:4px;color:var(--ink-2)">lesson.full.md<br/>lesson.hint.md<br/>lesson.compact.md</div>
+                </div>
+                <div style="padding:12px;background:var(--accent-soft);border:1px solid #EBC3AE;border-radius:8px;font-size:12px;text-align:center">
+                  <div style="font-weight:600;font-size:14px">Quiz + Cards</div>
+                  <div style="margin-top:4px;color:var(--ink-2)">quiz.jsonl<br/>cards.jsonl<br/>misconception quiz</div>
+                </div>
+                <div style="padding:12px;background:#E4ECF4;border:1px solid #B0C4D8;border-radius:8px;font-size:12px;text-align:center">
+                  <div style="font-weight:600;font-size:14px">评分 + Viewer</div>
+                  <div style="margin-top:4px;color:var(--ink-2)">score.json (8 维)<br/>viewer/index.html<br/>results.tsv</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="text-align:center;padding:4px 0;color:var(--muted);font-size:18px">▼</div>
+
+            <!-- Phase 6: Output -->
+            <div style="padding:20px;border:2px solid var(--accent);border-radius:0 0 12px 12px;background:linear-gradient(135deg,#fff,var(--accent-softer))">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+                <span style="background:var(--accent);color:#fff;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-family:var(--font-mono);font-size:12px;font-weight:600">6</span>
+                <span style="font-family:var(--font-serif);font-size:18px;font-weight:500">用户体验 · Experience</span>
+                <span class="badge accent" style="margin-left:auto">步骤 27-29</span>
+              </div>
+              <div style="font-size:14px;color:var(--ink-2);line-height:1.8">
+                <code>--open</code> 自动打开浏览器，加载 <code>.ahadiff/runs/&lt;run_id&gt;/viewer/index.html</code> —— 就是 <b>Warm v6 风格</b>的本地页面。用户可以：
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:12px">
+                <div style="padding:12px 8px;border:1px solid var(--hair);border-radius:8px;background:#fff;text-align:center;font-size:12px">
+                  <div style="font-size:18px;margin-bottom:4px">📖</div>
+                  <b>读 Lesson</b><br/>
+                  <span style="color:var(--muted)">带证据的解释</span>
+                </div>
+                <div style="padding:12px 8px;border:1px solid var(--hair);border-radius:8px;background:#fff;text-align:center;font-size:12px">
+                  <div style="font-size:18px;margin-bottom:4px">🔗</div>
+                  <b>点 Claim</b><br/>
+                  <span style="color:var(--muted)">跳到 diff 对应行</span>
+                </div>
+                <div style="padding:12px 8px;border:1px solid var(--hair);border-radius:8px;background:#fff;text-align:center;font-size:12px">
+                  <div style="font-size:18px;margin-bottom:4px">❓</div>
+                  <b>做 Quiz</b><br/>
+                  <span style="color:var(--muted)">验证你是否真懂</span>
+                </div>
+                <div style="padding:12px 8px;border:1px solid var(--hair);border-radius:8px;background:#fff;text-align:center;font-size:12px">
+                  <div style="font-size:18px;margin-bottom:4px">🔄</div>
+                  <b>SRS 复习</b><br/>
+                  <span style="color:var(--muted)">间隔重复记忆</span>
+                </div>
+                <div style="padding:12px 8px;border:1px solid var(--hair);border-radius:8px;background:#fff;text-align:center;font-size:12px">
+                  <div style="font-size:18px;margin-bottom:4px">📊</div>
+                  <b>看分数</b><br/>
+                  <span style="color:var(--muted)">PASS / CAUTION / FAIL</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 典型场景对照 -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="ch"><h3>典型场景 · 你会怎么用？</h3><div class="meta">Scenarios</div></div>
+        <div class="cb">
+          <table class="t">
+            <thead><tr><th>场景</th><th>你做了什么</th><th>AhaDiff 命令</th><th>结果</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><b>Claude Code 写了一个功能</b></td>
+                <td>Claude 改了 3 个文件，你 commit 了</td>
+                <td class="mono" style="font-size:12px">ahadiff learn --last --open</td>
+                <td>浏览器打开 lesson 页面，看到 17 条 verified claim</td>
+              </tr>
+              <tr>
+                <td><b>Cursor 改了一堆但还没 commit</b></td>
+                <td>你 git add 了一些文件</td>
+                <td class="mono" style="font-size:12px">ahadiff learn --staged --open</td>
+                <td>学习暂存区的变更，不影响 git 历史</td>
+              </tr>
+              <tr>
+                <td><b>Codex 一口气写了 5 个 commit</b></td>
+                <td>一次 vibe coding 会话产生多个 commit</td>
+                <td class="mono" style="font-size:12px">ahadiff learn HEAD~5..HEAD --open</td>
+                <td>一次学习这 5 个 commit 的全部 diff</td>
+              </tr>
+              <tr style="background:var(--accent-softer)">
+                <td><b>一次会话不知道几个 commit</b> <span class="badge pass" style="font-size:9px">v0.1 新增</span></td>
+                <td>vibe coding 2 小时，不知道改了多少</td>
+                <td class="mono" style="font-size:12px">ahadiff learn --since "2h ago" --open</td>
+                <td>自动扫描最近 2 小时内的所有 commit</td>
+              </tr>
+              <tr style="background:#E4ECF4">
+                <td><b>不是 git 仓库，有个 patch</b> <span class="badge info" style="font-size:9px">v0.1 新增</span></td>
+                <td>收到一个 PR patch 文件</td>
+                <td class="mono" style="font-size:12px">ahadiff learn --patch fix.patch --open</td>
+                <td>直接学习 patch 内容（Level 1，部分功能降级）</td>
+              </tr>
+              <tr style="background:#E4ECF4">
+                <td><b>IDE 改了单文件，没有 git</b> <span class="badge" style="font-size:9px;color:var(--muted)">v0.1.1</span></td>
+                <td>playground 里 AI 改了 main.py</td>
+                <td class="mono" style="font-size:12px">ahadiff learn --compare old.py new.py --open</td>
+                <td>对比两个文件学习（Level 2，无棘轮）</td>
+              </tr>
+              <tr>
+                <td><b>想复习上周的一个改动</b></td>
+                <td>知道 commit hash</td>
+                <td class="mono" style="font-size:12px">ahadiff learn abc1234 --open</td>
+                <td>重新生成那个 commit 的学习包</td>
+              </tr>
+              <tr>
+                <td><b>不想每次手动跑</b></td>
+                <td>一次性配置</td>
+                <td class="mono" style="font-size:12px">ahadiff install claude</td>
+                <td>Claude Code 每次完成任务后会提醒你 learn</td>
+              </tr>
+              <tr>
+                <td><b>想全自动</b></td>
+                <td>配 git hook</td>
+                <td class="mono" style="font-size:12px;white-space:pre-wrap">echo 'ahadiff learn --last' >> .git/hooks/post-commit</td>
+                <td>每次 commit 自动触发学习，零手动</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 对比图：普通 AI vs AhaDiff -->
+      <div class="card">
+        <div class="ch"><h3>普通 AI 解释 vs AhaDiff</h3><div class="meta">Why Different</div></div>
+        <div class="cb">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <div style="padding:20px;border:1px solid var(--hair);border-radius:10px;background:var(--subtle)">
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--danger);margin-bottom:10px">普通 AI 工具</div>
+              <div style="font-family:var(--font-mono);font-size:12px;color:var(--muted);margin-bottom:12px">diff → 解释文本</div>
+              <div style="font-size:13px;line-height:1.7;color:var(--ink-2)">
+                <div style="padding:10px;background:#fff;border-radius:6px;margin-bottom:8px;border-left:3px solid var(--danger)">
+                  "这段代码加了重试功能，使用指数退避，<b style="color:var(--danger)">对 POST 请求也是安全的</b>。"
+                </div>
+                <ul style="padding-left:16px;font-size:12px;color:var(--muted)">
+                  <li>没有代码证据</li>
+                  <li>可能包含错误说法</li>
+                  <li>不知道哪些是 AI 猜的</li>
+                  <li>看完就忘了</li>
+                </ul>
+              </div>
+            </div>
+            <div style="padding:20px;border:2px solid var(--accent);border-radius:10px;background:#fff">
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-ink);margin-bottom:10px">AhaDiff</div>
+              <div style="font-family:var(--font-mono);font-size:12px;color:var(--muted);margin-bottom:12px">diff → claims → 验证 → lesson → quiz → review</div>
+              <div style="font-size:13px;line-height:1.7;color:var(--ink-2)">
+                <div style="padding:10px;background:#ECF4EE;border-radius:6px;margin-bottom:4px;border-left:3px solid var(--success)">
+                  <span class="badge pass" style="font-size:9px">verified</span> "使用指数退避 + 抖动" <span style="font-size:11px;color:var(--muted)">— src/client.ts:L76-83</span>
+                </div>
+                <div style="padding:10px;background:#F7E2DC;border-radius:6px;margin-bottom:8px;border-left:3px solid var(--danger)">
+                  <span class="badge fail" style="font-size:9px">contradicted</span> "对 POST 也安全" <span style="font-size:11px;color:var(--danger)">— 无 idempotency key，转为误解题</span>
+                </div>
+                <ul style="padding-left:16px;font-size:12px;color:var(--success)">
+                  <li>每句话有 file:line 证据</li>
+                  <li>错误说法被标记并变成测验</li>
+                  <li>不能证明的标 not_proven</li>
+                  <li>Quiz + SRS 帮你真正记住</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ============ INSPIRATIONS ============ -->
+    <section class="page" data-page="inspirations">
+      <div class="page-head">
+        <div class="eyebrow">§ 01 · 灵感借鉴详解</div>
+        <h1>6 个灵感项目如何接入</h1>
+        <div class="sub">每个项目都经过源码验证，明确标注了哪些是直接借鉴、哪些是概念改编、哪些是 AhaDiff 自研。绝不虚构归因。</div>
+      </div>
+
+      <div class="tab-bar">
+        <button class="tab-btn active" data-tab="all">全部 · All</button>
+        <button class="tab-btn" data-tab="autoresearch">Autoresearch</button>
+        <button class="tab-btn" data-tab="darwin">Darwin-skill</button>
+        <button class="tab-btn" data-tab="skillcompass">SkillCompass</button>
+        <button class="tab-btn" data-tab="skill0">SKILL0</button>
+        <button class="tab-btn" data-tab="nuwa">Nuwa-skill</button>
+        <button class="tab-btn" data-tab="graphify">Graphify + LLM Wiki</button>
+      </div>
+
+      <!-- Autoresearch -->
+      <div class="src-card autoresearch" data-src="autoresearch">
+        <div class="src-head">
+          <div class="src-icon" style="background:var(--accent-soft);color:var(--accent-ink)">AK</div>
+          <div>
+            <div class="src-name">Karpathy / autoresearch</div>
+            <div class="src-author">github.com/karpathy/autoresearch</div>
+          </div>
+          <span class="badge accent" style="margin-left:auto">概念改编</span>
+        </div>
+        <div style="margin-bottom:12px">
+          <span class="src-tag adapted">概念改编</span>
+          <span class="src-tag borrowed">直接借鉴</span>
+        </div>
+        <div class="src-desc">
+          <b>原版核心</b>：<code>program.md</code> + <code>prepare.py</code>（immutable）+ <code>train.py</code>（mutable），agent 修改 Python 训练代码，训练 5 分钟，检查 <code>val_bpb</code> 是否改进，keep 或 discard。README 明确 <code>prepare.py</code> 中的 <code>evaluate_bpb</code> 是 ground truth metric。<b>没有 Phase 2.5 或 stuck 检测</b>，仅在 program.md 中说 "if you feel stuck, think harder"。
+        </div>
+        <div class="src-desc" style="margin-top:8px">
+          <b>AhaDiff 如何借鉴</b>：将三文件契约的<b>概念</b>映射到学习场景 —— 评估对象从 Python 代码变为 Markdown prompt，评估指标从单一 <code>val_bpb</code> 变为 8 维 rubric + verdict。<code>results.tsv</code> 和 keep/discard 循环是直接借鉴。
+        </div>
+        <div class="src-mapping" style="margin-top:14px">
+          <h5>映射关系 · Mapping</h5>
+          <div class="mapping-row"><span class="from">prepare.py (immutable)</span><span class="arrow">→</span><span class="to">evaluator.py (immutable)</span></div>
+          <div class="mapping-row"><span class="from">train.py (mutable Python)</span><span class="arrow">→</span><span class="to">prompts/*.md (mutable Markdown)</span></div>
+          <div class="mapping-row"><span class="from">program.md</span><span class="arrow">→</span><span class="to">improve_program.md</span></div>
+          <div class="mapping-row"><span class="from">val_bpb (单指标)</span><span class="arrow">→</span><span class="to">aha_score (8 维 rubric)</span></div>
+          <div class="mapping-row"><span class="from">results.tsv (5 列)</span><span class="arrow">→</span><span class="to">results.tsv (10 列，自定义)</span></div>
+          <div class="mapping-row"><span class="from">keep / discard</span><span class="arrow">→</span><span class="to">keep / discard + git ratchet</span></div>
+        </div>
+      </div>
+
+      <!-- Darwin-skill -->
+      <div class="src-card darwin" data-src="darwin">
+        <div class="src-head">
+          <div class="src-icon" style="background:#ECF4EE;color:var(--success)">DS</div>
+          <div>
+            <div class="src-name">Darwin-skill</div>
+            <div class="src-author">github.com/alchaincyf/darwin-skill</div>
+          </div>
+          <span class="badge pass" style="margin-left:auto">直接借鉴</span>
+        </div>
+        <div style="margin-bottom:12px">
+          <span class="src-tag borrowed">直接借鉴</span>
+        </div>
+        <div class="src-desc">
+          <b>原版核心</b>：SKILL.md 里明确 8 维 rubric（结构 60 + 效果 40 = 100 分），先找得分最低的维度，每轮只提出一个改进方案，编辑 SKILL.md 后重新评估。效果维度需要 spawn 独立子 agent，不能自己评自己。分数提升则 keep，否则 <code>git revert HEAD</code> 回滚。<b>零可执行代码</b> —— 全部逻辑在 SKILL.md 自然语言指令中。
+        </div>
+        <div class="src-desc" style="margin-top:8px">
+          <b>Phase 2.5 触发条件</b>：连续 <b>2</b> 个 skill 在 round 1 就 break 时触发 structural rewrite（不是 3 个）。这是 darwin-skill 独有的机制，<b>autoresearch 没有此机制</b>。
+        </div>
+        <div class="src-desc" style="margin-top:8px">
+          <b>AhaDiff 如何借鉴</b>：
+        </div>
+        <ul style="font-size:13px;color:var(--ink-2);line-height:1.8;padding-left:20px;margin-top:4px">
+          <li>Weakest-dimension-first 策略 → 每轮只改一个维度</li>
+          <li>生成模型与 judge 模型分离 → Sonnet 生成，Haiku 评估</li>
+          <li>Phase 2.5 structural rewrite → 连续 2 个优化目标首轮即无增益时触发</li>
+          <li>git revert 回滚机制 → 不提升就 discard</li>
+          <li>子 agent 独立评测 → 跨模型评估</li>
+        </ul>
+      </div>
+
+      <!-- SkillCompass -->
+      <div class="src-card skillcompass" data-src="skillcompass">
+        <div class="src-head">
+          <div class="src-icon" style="background:#E4ECF4;color:var(--info)">SC</div>
+          <div>
+            <div class="src-name">SkillCompass</div>
+            <div class="src-author">github.com/Evol-ai/SkillCompass</div>
+          </div>
+          <span class="badge info" style="margin-left:auto">借鉴 + 自研</span>
+        </div>
+        <div style="margin-bottom:12px">
+          <span class="src-tag borrowed">三档判定</span>
+          <span class="src-tag adapted">阈值调整</span>
+          <span class="src-tag self-designed">8 维自研</span>
+        </div>
+        <div class="src-desc">
+          <b>原版核心</b>：local-first skill quality evaluator，<b>原版 6 维</b>（Structure / Trigger / Security / Functional / Comparative / Uniqueness）评估 <b>skill 文件质量</b>（非学习笔记质量）。PASS / CAUTION / FAIL 三档判定，D3 Security 作为硬门。阈值为 PASS ≥ 70，FAIL &lt; 50。
+        </div>
+        <div class="src-desc" style="margin-top:8px">
+          <b>AhaDiff 如何借鉴</b>：借鉴三档判定机制和 weakest-dimension-first 策略，但做了关键修改：
+        </div>
+        <div class="src-mapping" style="margin-top:14px">
+          <h5>关键差异 · Key Differences</h5>
+          <div class="mapping-row"><span class="from">原版 6 维</span><span class="arrow">→</span><span class="to">AhaDiff 8 维（完全自研）</span></div>
+          <div class="mapping-row"><span class="from">评估 skill 文件质量</span><span class="arrow">→</span><span class="to">评估学习笔记质量</span></div>
+          <div class="mapping-row"><span class="from">PASS ≥ 70 / FAIL &lt; 50</span><span class="arrow">→</span><span class="to">PASS ≥ 80 / FAIL &lt; 60</span></div>
+          <div class="mapping-row"><span class="from">D3 Security 硬门</span><span class="arrow">→</span><span class="to">D8 Safety&Privacy 硬门</span></div>
+        </div>
+      </div>
+
+      <!-- SKILL0 -->
+      <div class="src-card skill0" data-src="skill0">
+        <div class="src-head">
+          <div class="src-icon" style="background:#F7EED9;color:var(--warning)">S0</div>
+          <div>
+            <div class="src-name">SKILL0 (ZJU-REAL)</div>
+            <div class="src-author">arxiv.org/abs/2604.02268</div>
+          </div>
+          <span class="badge caution" style="margin-left:auto">概念改编</span>
+        </div>
+        <div style="margin-bottom:12px">
+          <span class="src-tag adapted">撤架学习法</span>
+          <span class="src-tag extended">粒度扩展</span>
+        </div>
+        <div class="src-desc">
+          <b>原版核心</b>：Helpfulness-driven Skill Retention。训练阶段从 full skill context 开始，通过 Dynamic Curriculum 根据 helpfulness 逐步撤掉 skill context。<b>Budget 递减方式是阶段跳变 <code>[6, 3, 0]</code></b>（非线性递减）：Step 1-60 保留全部 6 个 skill，Step 61-120 保留 top-3，Step 121-180 完全撤架。Helpfulness 计算原版是 <b>skill file 级</b>。
+        </div>
+        <div class="src-desc" style="margin-top:8px">
+          <b>AhaDiff 如何借鉴</b>：AhaDiff 不做模型训练（无 RL），借鉴的是"撤脚手架学习法"思想，映射为三段式 lesson：
+        </div>
+        <div class="src-mapping" style="margin-top:14px">
+          <h5>撤架对应 · Scaffolding Mapping</h5>
+          <div class="mapping-row"><span class="from">Step 1-60: Full 6 skills</span><span class="arrow">→</span><span class="to">Day 0: lesson.full.md（完整解释）</span></div>
+          <div class="mapping-row"><span class="from">Step 61-120: Top-3 skills</span><span class="arrow">→</span><span class="to">Day 1: lesson.hint.md + quiz</span></div>
+          <div class="mapping-row"><span class="from">Step 121-180: No skills</span><span class="arrow">→</span><span class="to">Day 3+: quiz-only + compact card</span></div>
+          <div class="mapping-row"><span class="from">File-level helpfulness</span><span class="arrow">→</span><span class="to">Section-level helpfulness（自行扩展）</span></div>
+        </div>
+      </div>
+
+      <!-- Nuwa-skill -->
+      <div class="src-card nuwa" data-src="nuwa">
+        <div class="src-head">
+          <div class="src-icon" style="background:#F3EBF1;color:#8B5E83">NW</div>
+          <div>
+            <div class="src-name">Nuwa-skill</div>
+            <div class="src-author">github.com/alchaincyf/nuwa-skill</div>
+          </div>
+          <span class="badge" style="color:#8B5E83;background:#F3EBF1;border-color:#D4BED0;margin-left:auto">参考</span>
+        </div>
+        <div style="margin-bottom:12px">
+          <span class="src-tag adapted">skill 生态参考</span>
+        </div>
+        <div class="src-desc">
+          <b>原版核心</b>：Nuwa-skill 是 darwin-skill 的姊妹项目，同属 alchaincyf 的 SKILL.md 生态。它的 SKILL.md 定义了创建内容的 agent workflow —— 包括 planning、execution、review 三阶段循环，每阶段有独立的质量门禁。
+        </div>
+        <div class="src-desc" style="margin-top:8px">
+          <b>AhaDiff 如何借鉴</b>：主要作为 SKILL.md 生态的补充参考，验证了 darwin-skill 的 improve loop 设计模式在不同场景下的通用性。AhaDiff 的 improve loop（plan → execute → evaluate → keep/discard）与之共享相同的设计哲学，但实现细节完全独立。
+        </div>
+      </div>
+
+      <!-- Graphify + LLM Wiki -->
+      <div class="src-card graphify" data-src="graphify">
+        <div class="src-head">
+          <div class="src-icon" style="background:#E4EFE0;color:#4A7C59">G+</div>
+          <div>
+            <div class="src-name">Graphify + Karpathy LLM Wiki</div>
+            <div class="src-author">repo-level map + persistent wiki</div>
+          </div>
+          <span class="badge pass" style="margin-left:auto">直接借鉴</span>
+        </div>
+        <div style="margin-bottom:12px">
+          <span class="src-tag borrowed">Graphify: repo map</span>
+          <span class="src-tag borrowed">LLM Wiki: persistent wiki</span>
+        </div>
+        <div class="src-desc">
+          <b>Graphify</b>：repo-level knowledge graph 工具，Claude Code 会写入 <code>CLAUDE.md</code> 提醒先读 <code>graphify-out/GRAPH_REPORT.md</code>。AhaDiff 不重造 repo graph，只做 <b>diff-level learning overlay</b>，通过 <code>ahadiff graph import graphify-out/graph.json</code> 导入 repo map，在上面叠加学习层。
+        </div>
+        <div class="src-desc" style="margin-top:8px">
+          <b>Karpathy LLM Wiki Gist</b>：persistent compounding wiki 思想。AhaDiff 落地为 <code>index.md</code>（diff-aware merge）+ <code>concepts.jsonl</code>（append-only 概念累积），与 Graphify 互补 —— Graphify = repo map，LLM Wiki = diff learning overlay。
+        </div>
+        <div class="src-mapping" style="margin-top:14px">
+          <h5>AhaDiff 新增的 Graph 节点类型</h5>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+            <span class="badge accent">Claim</span>
+            <span class="badge accent">Concept</span>
+            <span class="badge accent">Lesson</span>
+            <span class="badge accent">Quiz</span>
+            <span class="badge accent">ReviewCard</span>
+            <span class="badge accent">EvidenceEdge</span>
+            <span class="badge accent">Run</span>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ============ ARCHITECTURE ============ -->
+    <section class="page" data-page="architecture">
+      <div class="page-head">
+        <div class="eyebrow">§ 02 · 七层架构</div>
+        <h1>七层数据流架构</h1>
+        <div class="sub">从 git diff 到 wiki + UI 的完整数据管道，每层职责明确，文件即真相源。</div>
+      </div>
+
+      <div class="arch-flow">
+        <div class="arch-step" style="background:var(--accent-softer)"><div class="n">L1</div><h4>Diff Capture</h4><p>git diff / PR patch / staged changes</p></div>
+        <div class="arch-step"><div class="n">L2</div><h4>Context</h4><p>repo files · graphify · specs · privacy filter</p></div>
+        <div class="arch-step"><div class="n">L3</div><h4>Lesson Gen</h4><p>generator_prompt.md · claim extraction</p></div>
+        <div class="arch-step"><div class="n">L4</div><h4>Verification</h4><p>claims.jsonl · deterministic + LLM judge</p></div>
+        <div class="arch-step"><div class="n">L5</div><h4>Ratchet</h4><p>evaluator.py (immutable) · results.tsv</p></div>
+        <div class="arch-step"><div class="n">L6</div><h4>Learning</h4><p>quiz · SRS review · section helpfulness</p></div>
+        <div class="arch-step" style="background:var(--accent-softer)"><div class="n">L7</div><h4>Wiki + UI</h4><p>index.md · concept graph · dashboard</p></div>
+      </div>
+
+      <div class="card" style="margin-top:24px">
+        <div class="ch"><h3>本地目录结构</h3><div class="meta">§ 05 · .ahadiff/</div></div>
+        <div class="cb" style="font-family:var(--font-mono);font-size:12.5px;line-height:1.8;color:var(--ink-2);white-space:pre-wrap;background:#FDFCF8;border:1px solid var(--hair);border-radius:8px;padding:16px">.ahadiff/
+  config.toml
+  .ahadiffignore
+  index.md                    <span style="color:var(--muted)">← LLM Wiki 落地</span>
+  concepts.jsonl              <span style="color:var(--muted)">← append-only 概念累积</span>
+  results.tsv                 <span style="color:var(--muted)">← 10 列自定义 ratchet 记录</span>
+  learning-signal.jsonl
+
+  runs/
+    &lt;run_id&gt;/
+      input/   patch.diff · metadata.json · line_map.json
+      safety/  redaction_report.json · audit.jsonl
+      claims/  candidates.jsonl · claims.jsonl · verifier.json
+      lesson/  lesson.full.md · lesson.hint.md · lesson.compact.md
+      quiz/    quiz.jsonl · attempts.jsonl
+      eval/    score.json · rubric_breakdown.json
+      viewer/  index.html · data.json
+      graph/   graph.slice.json
+
+  review/
+    review.sqlite             <span style="color:var(--muted)">← SRS 卡片 + result_events 物理表</span></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px">
+        <div class="card">
+          <div class="ch"><h3>三文件契约</h3><div class="meta">概念改编 autoresearch</div></div>
+          <div class="cb">
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div style="padding:12px;background:#ECF4EE;border:1px solid #B9D7C1;border-radius:8px">
+                <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--success)">IMMUTABLE · 不可改</div>
+                <div style="font-weight:500;margin-top:4px">evaluator.py + rubric.yaml + tests/fixtures/</div>
+                <div style="font-size:12px;color:var(--muted);margin-top:2px">评估尺子，agent 永远不能修改</div>
+              </div>
+              <div style="padding:12px;background:var(--accent-soft);border:1px solid #EBC3AE;border-radius:8px">
+                <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-ink)">MUTABLE · 可改</div>
+                <div style="font-weight:500;margin-top:4px">prompts/*.md</div>
+                <div style="font-size:12px;color:var(--muted);margin-top:2px">improve loop 唯一可编辑资产（Markdown prompt）</div>
+              </div>
+              <div style="padding:12px;background:var(--subtle);border:1px solid var(--hair);border-radius:8px">
+                <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)">PROGRAM · 状态机</div>
+                <div style="font-weight:500;margin-top:4px">improve_program.md</div>
+                <div style="font-size:12px;color:var(--muted);margin-top:2px">自然语言状态机，定义 improve loop 的完整规则</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="ch"><h3>results.tsv · 10 列</h3><div class="meta">自定义方案</div></div>
+          <div class="cb">
+            <table class="t" style="font-size:12px">
+              <thead><tr><th>列</th><th>类型</th><th>说明</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">timestamp</td><td>ISO 8601</td><td>运行时间</td></tr>
+                <tr><td class="mono">run_id</td><td>string</td><td>运行 ID</td></tr>
+                <tr><td class="mono">head_sha</td><td>string(7)</td><td>git short hash</td></tr>
+                <tr><td class="mono">prompt_version</td><td>string</td><td>prompts/ tree hash</td></tr>
+                <tr><td class="mono">rubric_version</td><td>string</td><td>rubric.yaml hash</td></tr>
+                <tr><td class="mono">overall</td><td>int 0-100</td><td>加权总分</td></tr>
+                <tr><td class="mono">verdict</td><td>enum</td><td>PASS / CAUTION / FAIL</td></tr>
+                <tr><td class="mono">status</td><td>enum</td><td>baseline / keep / discard / keep_final</td></tr>
+                <tr><td class="mono">weakest_dim</td><td>string</td><td>最弱维度</td></tr>
+                <tr><td class="mono">note</td><td>string</td><td>简短描述</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ RUBRIC ============ -->
+    <section class="page" data-page="rubric">
+      <div class="page-head">
+        <div class="eyebrow">§ 03 · 评估体系</div>
+        <h1>8 维自研 Rubric</h1>
+        <div class="sub">AhaDiff 的 8 维评分体系完全自研，不来自任何灵感项目。darwin-skill 有 8 维但评估 skill 文件质量；SkillCompass 原版 6 维也评估 skill 文件质量。AhaDiff 的 8 维评估的是学习笔记质量。</div>
+      </div>
+
+      <div class="rubric-grid">
+        <div class="rubric-dim"><div class="rd-name">D1 · Accuracy 准确性</div><div class="rd-weight">20<span style="font-size:12px;color:var(--muted)">/100</span></div><div class="rd-bar"><span style="width:100%;background:var(--accent)"></span></div></div>
+        <div class="rubric-dim"><div class="rd-name">D2 · Evidence 证据链</div><div class="rd-weight">18<span style="font-size:12px;color:var(--muted)">/100</span></div><div class="rd-bar"><span style="width:90%;background:var(--accent)"></span></div></div>
+        <div class="rubric-dim"><div class="rd-name">D3 · Diff Coverage 覆盖</div><div class="rd-weight">14<span style="font-size:12px;color:var(--muted)">/100</span></div><div class="rd-bar"><span style="width:70%;background:var(--success)"></span></div></div>
+        <div class="rubric-dim"><div class="rd-name">D4 · Learnability 可学性</div><div class="rd-weight">14<span style="font-size:12px;color:var(--muted)">/100</span></div><div class="rd-bar"><span style="width:70%;background:var(--success)"></span></div></div>
+        <div class="rubric-dim"><div class="rd-name">D5 · Quiz Transfer 测验迁移</div><div class="rd-weight">10<span style="font-size:12px;color:var(--muted)">/100</span></div><div class="rd-bar"><span style="width:50%;background:var(--info)"></span></div></div>
+        <div class="rubric-dim"><div class="rd-name">D6 · Spec Alignment 规范对齐</div><div class="rd-weight">10<span style="font-size:12px;color:var(--muted)">/100</span></div><div class="rd-bar"><span style="width:50%;background:var(--info)"></span></div></div>
+        <div class="rubric-dim"><div class="rd-name">D7 · Conciseness 简洁度</div><div class="rd-weight">8<span style="font-size:12px;color:var(--muted)">/100</span></div><div class="rd-bar"><span style="width:40%;background:var(--warning)"></span></div></div>
+        <div class="rubric-dim"><div class="rd-name">D8 · Safety & Privacy</div><div class="rd-weight">6<span style="font-size:12px;color:var(--muted)">/100</span></div><div class="rd-bar"><span style="width:30%;background:var(--danger)"></span></div><div style="font-size:10px;color:var(--danger);margin-top:4px;font-family:var(--font-mono)">HARD GATE</div></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px">
+        <div class="card">
+          <div class="ch"><h3>三档判定</h3><div class="meta">借鉴 SkillCompass</div></div>
+          <div class="cb">
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div style="padding:14px;background:#ECF4EE;border:1px solid #B9D7C1;border-radius:10px;display:flex;align-items:center;gap:14px">
+                <span class="badge pass" style="font-size:14px;height:28px;padding:0 12px">PASS</span>
+                <div>
+                  <div style="font-weight:500">score ≥ 80</div>
+                  <div style="font-size:12px;color:var(--muted)">无硬门失败 · 无 contradicted claim · evidence ≥ 80%</div>
+                </div>
+              </div>
+              <div style="padding:14px;background:#F7EED9;border:1px solid #E3CDA1;border-radius:10px;display:flex;align-items:center;gap:14px">
+                <span class="badge caution" style="font-size:14px;height:28px;padding:0 12px">CAUTION</span>
+                <div>
+                  <div style="font-weight:500">60 ≤ score &lt; 80</div>
+                  <div style="font-size:12px;color:var(--muted)">weak/not_proven 偏多 · quiz transfer 不够</div>
+                </div>
+              </div>
+              <div style="padding:14px;background:#F7E2DC;border:1px solid #E4B8AE;border-radius:10px;display:flex;align-items:center;gap:14px">
+                <span class="badge fail" style="font-size:14px;height:28px;padding:0 12px">FAIL</span>
+                <div>
+                  <div style="font-weight:500">score &lt; 60</div>
+                  <div style="font-size:12px;color:var(--muted)">secret leak · prompt injection · contradicted 被写入正文</div>
+                </div>
+              </div>
+            </div>
+            <div style="margin-top:14px;padding:10px;background:var(--subtle);border-radius:6px;font-size:12px;color:var(--muted);line-height:1.6">
+              <b style="color:var(--ink)">阈值来源</b>：SkillCompass 原版 PASS ≥ 70 / FAIL &lt; 50，AhaDiff 调高为 80/60，理由是学习笔记质量标准应高于 skill 文件格式检查。
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="ch"><h3>硬门禁</h3><div class="meta">Hard Gates</div></div>
+          <div class="cb">
+            <table class="t" style="font-size:12.5px">
+              <thead><tr><th>条件</th><th>结果</th></tr></thead>
+              <tbody>
+                <tr><td>Accuracy &lt; 14/20</td><td><span class="badge fail">FAIL</span></td></tr>
+                <tr><td>Evidence &lt; 12/18</td><td><span class="badge fail">FAIL</span></td></tr>
+                <tr><td>Shipped contradicted claims &gt; 0</td><td><span class="badge fail">FAIL</span></td></tr>
+                <tr><td>Secret leak detected</td><td><span class="badge fail">FAIL</span></td></tr>
+                <tr><td>Prompt injection unresolved</td><td><span class="badge fail">FAIL</span></td></tr>
+                <tr><td>Evidence coverage &lt; 60%</td><td><span class="badge fail">FAIL</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ COMPLIANCE ============ -->
+    <section class="page" data-page="compliance">
+      <div class="page-head">
+        <div class="eyebrow">§ 04 · 方案一致性审查</div>
+        <h1>是否偏离设计初衷？</h1>
+        <div class="sub">逐项对照最终完整方案（2594 行 · 31 节 · 9 段开发计划），检查当前文档与原始设计的一致性。</div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="ch"><h3>核心设计原则 · 14 项全部坚持</h3><div class="meta"><span class="badge pass"><span class="bd"></span>ALIGNED</span></div></div>
+        <div class="cb">
+          <div class="compliance-grid">
+            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">完全 local-first</div><div class="ci-desc">不做 SaaS，不做账号，不做云同步</div></div></div>
+            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">文件是真相源</div><div class="ci-desc">HTML 只是 viewer，删除前端不丢功能</div></div></div>
+            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">Claim 先于 Prose</div><div class="ci-desc">每句解释必须绑定 file:line 证据</div></div></div>
+            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">不能证明就标 not_proven</div><div class="ci-desc">四种 claim 状态：verified / weak / not_proven / contradicted</div></div></div>
+            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">学习效果可测试</div><div class="ci-desc">Quiz + SRS 复习 + section helpfulness</div></div></div>
+            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">改进可回滚</div><div class="ci-desc">git ratchet + results.tsv + keep/discard</div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="ch"><h3>灵感项目归因准确性</h3><div class="meta"><span class="badge pass"><span class="bd"></span>13/13 修订已应用</span></div></div>
+        <div class="cb">
+          <table class="t" style="font-size:12.5px">
+            <thead><tr><th>修订项</th><th>修订内容</th><th>状态</th></tr></thead>
+            <tbody>
+              <tr><td>R1 · Phase 2.5</td><td>触发阈值 3→2，归因 darwin-skill（非 autoresearch）</td><td><span class="badge pass">PASS</span></td></tr>
+              <tr><td>R2 · autoresearch</td><td>移除 Phase 2.5/stuck 检测的错误归因</td><td><span class="badge pass">PASS</span></td></tr>
+              <tr><td>R3 · SkillCompass</td><td>原版 6 维（非 8 维），评估对象是 skill 文件质量</td><td><span class="badge pass">PASS</span></td></tr>
+              <tr><td>R5 · 三文件契约</td><td>"概念改编"而非"严格复刻"</td><td><span class="badge pass">PASS</span></td></tr>
+              <tr><td>R6 · SKILL0 budget</td><td>阶段跳变 [6,3,0]（非线性递减）</td><td><span class="badge pass">PASS</span></td></tr>
+              <tr><td>R7 · SKILL0 粒度</td><td>原版 file 级，AhaDiff 扩展到 section 级</td><td><span class="badge pass">PASS</span></td></tr>
+              <tr><td>R8 · 8 维 rubric</td><td>完全自研体系，不来自任何灵感项目</td><td><span class="badge pass">PASS</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="ch"><h3>技术栈一致性</h3><div class="meta"><span class="badge pass"><span class="bd"></span>ALIGNED</span></div></div>
+        <div class="cb">
+          <div class="compliance-grid">
+            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">首版 Jinja2 静态 HTML</div><div class="ci-desc">非 Next.js/React，与最终方案 §19 一致</div></div></div>
+            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">不使用 LiteLLM</div><div class="ci-desc">供应链风险，使用薄 provider adapter</div></div></div>
+            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">Python 3.11+ CLI</div><div class="ci-desc">typer + rich + pydantic + jinja2</div></div></div>
+            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">跨模型评估</div><div class="ci-desc">Sonnet 生成，Haiku 评估，绝不同模型自评</div></div></div>
+            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">Improve loop 只改 prompts/*.md</div><div class="ci-desc">evaluator.py / rubric.yaml / viewer 不可改</div></div></div>
+            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">路径 runs/&lt;run_id&gt;/</div><div class="ci-desc">统一使用 run_id 路径，非 commits/&lt;sha&gt;</div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="ch"><h3>已知待修复项</h3><div class="meta"><span class="badge caution"><span class="bd"></span>2 MINOR</span></div></div>
+        <div class="cb">
+          <div class="compliance-grid" style="grid-template-columns:1fr">
+            <div class="compliance-item"><div class="ci-icon warn">!</div><div><div class="ci-title">前端设计手册路径引用</div><div class="ci-desc">doc/AhaDiff_frontend_design_v1.1_revised.md 第 261-263 行仍有 commits/&lt;sha&gt; 路径，应迁移为 runs/&lt;run_id&gt;</div></div></div>
+            <div class="compliance-item"><div class="ci-icon warn">!</div><div><div class="ci-title">D8 Safety&Privacy 分值</div><div class="ci-desc">改名方案中 D8=7 分，但 CLAUDE.md 和最终方案中 D8=6 分。以 CLAUDE.md（6 分）为准</div></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ FRONTEND ============ -->
+    <section class="page" data-page="frontend">
+      <div class="page-head">
+        <div class="eyebrow">§ 05 · 前端现状</div>
+        <h1>Warm v6 原型 · 前端模板</h1>
+        <div class="sub">前端仍以 ui/AhaDiff Warm v6.html 为模板基准，2346 行自包含 HTML。工程化将拆为 Jinja2 模板，不使用 Next.js/React。</div>
+      </div>
+
+      <div class="kpi-grid" style="margin-bottom:24px">
+        <div class="kpi"><div class="lb">当前版本</div><div class="vl">v6</div><div class="delta">Warm 风格 · Clay Orange #D27050</div></div>
+        <div class="kpi"><div class="lb">总行数</div><div class="vl">2164</div><div class="delta">自包含 HTML + CSS + JS</div></div>
+        <div class="kpi"><div class="lb">页面数</div><div class="vl">11</div><div class="delta">Landing / Dashboard / Lesson / Diff / ...</div></div>
+        <div class="kpi"><div class="lb">迁移目标</div><div class="vl">Jinja2</div><div class="delta">静态 HTML · 非 Next.js</div></div>
+      </div>
+
+      <div class="card" style="margin-bottom:18px">
+        <div class="ch"><h3>v6 包含的 11 个页面</h3><div class="meta">与设计手册一致</div></div>
+        <div class="cb">
+          <table class="t">
+            <thead><tr><th>页面</th><th>英文</th><th>状态</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td>首页</td><td class="mono">Landing</td><td><span class="badge pass">已实现</span></td><td>Hero + 工作流 + Evidence Demo + Benchmark</td></tr>
+              <tr><td>运行记录</td><td class="mono">Dashboard</td><td><span class="badge pass">已实现</span></td><td>KPI + Quality trajectory + Recent runs</td></tr>
+              <tr><td>学习笔记</td><td class="mono">Lesson</td><td><span class="badge pass">已实现</span></td><td>三栏布局：目录 / 正文 / 右侧栏</td></tr>
+              <tr><td>Diff + 证据</td><td class="mono">Diff</td><td><span class="badge pass">已实现</span></td><td>代码行级 claim 关联</td></tr>
+              <tr><td>棘轮</td><td class="mono">Ratchet</td><td><span class="badge pass">已实现</span></td><td>Improve loop 可视化</td></tr>
+              <tr><td>测验</td><td class="mono">Quiz</td><td><span class="badge pass">已实现</span></td><td>Socratic 追问 + 选项</td></tr>
+              <tr><td>复习</td><td class="mono">Review</td><td><span class="badge pass">已实现</span></td><td>SRS 闪卡翻转</td></tr>
+              <tr><td>图谱</td><td class="mono">Graph</td><td><span class="badge pass">已实现</span></td><td>概念关系图（列表 fallback）</td></tr>
+              <tr><td>新手上路</td><td class="mono">Onboarding</td><td><span class="badge pass">已实现</span></td><td>Stepper 向导</td></tr>
+              <tr><td>Agent 技能</td><td class="mono">Skills</td><td><span class="badge pass">已实现</span></td><td>Skill 卡片网格</td></tr>
+              <tr><td>设置</td><td class="mono">Settings</td><td><span class="badge pass">已实现</span></td><td>隐私 / Provider / 主题</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:18px">
+        <div class="ch"><h3>工程化迁移路线</h3><div class="meta">§ 19 · Viewer 设计</div></div>
+        <div class="cb">
+          <div class="timeline">
+            <div class="tl-item done"><div class="tl-title">Warm v6 HTML 原型完成</div><div class="tl-desc">11 页面 · 自包含 · 可浏览器直开</div></div>
+            <div class="tl-item current"><div class="tl-title">当前：设计文档定稿</div><div class="tl-desc">方案完善 · 13 项修订全部应用</div></div>
+            <div class="tl-item"><div class="tl-title">拆 Jinja2 模板</div><div class="tl-desc">templates/{base,layouts/,partials/,components/,pages/}</div></div>
+            <div class="tl-item"><div class="tl-title">抽出 warm.css + viewer.js</div><div class="tl-desc">移除 Google Fonts 外链，内联 SVG favicon</div></div>
+            <div class="tl-item"><div class="tl-title">嵌入真实 data_bundle.json</div><div class="tl-desc">替换 mock 数据为 &lt;script type="application/json"&gt; 注入</div></div>
+            <div class="tl-item"><div class="tl-title">响应式修复</div><div class="tl-desc">769-1024px icon-only 侧栏 + ≤768px 抽屉模式</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="ch"><h3>设计风格一致性</h3><div class="meta"><span class="badge pass"><span class="bd"></span>无偏离</span></div></div>
+        <div class="cb">
+          <table class="t" style="font-size:12.5px">
+            <thead><tr><th>设计元素</th><th>设计手册定义</th><th>v6 实际</th><th>状态</th></tr></thead>
+            <tbody>
+              <tr><td>主色</td><td class="mono">Clay Orange</td><td class="mono">#D27050</td><td><span class="badge pass">一致</span></td></tr>
+              <tr><td>底色</td><td class="mono">暖白纸感</td><td class="mono">#FAF8F2</td><td><span class="badge pass">一致</span></td></tr>
+              <tr><td>正文字体</td><td>Newsreader + Noto Serif SC</td><td>Newsreader + Noto Serif SC</td><td><span class="badge pass">一致</span></td></tr>
+              <tr><td>UI 字体</td><td>Inter</td><td>Inter</td><td><span class="badge pass">一致</span></td></tr>
+              <tr><td>代码字体</td><td>JetBrains Mono</td><td>JetBrains Mono</td><td><span class="badge pass">一致</span></td></tr>
+              <tr><td>Diff 新增色</td><td class="mono">#E4EFE0 / #2F6F4F</td><td class="mono">#E4EFE0 / #2F6F4F</td><td><span class="badge pass">一致</span></td></tr>
+              <tr><td>品牌标识</td><td>Δ知 · Ship·Learn·Ratchet</td><td>Δ知 · Ship·Learn·Ratchet</td><td><span class="badge pass">一致</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ FAQ ============ -->
+    <section class="page" data-page="faq">
+      <div class="page-head">
+        <div class="eyebrow">§ 06 · 深度 FAQ</div>
+        <h1>7 个核心问题，彻底讲透</h1>
+        <div class="sub">经 Codex + Claude + Gemini 三模型交叉验证。每个回答都有设计文档行号溯源。</div>
+      </div>
+
+      <!-- FAQ 1: Diff 检测机制 -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="ch"><h3>Q1: Diff 是怎么检测的？和 IDE 的 LSP/AST 有什么不同？</h3><div class="meta">Codex 验证</div></div>
+        <div class="cb">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+            <div style="padding:20px;border:2px solid var(--accent);border-radius:12px;background:var(--accent-softer)">
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-ink);margin-bottom:10px">AhaDiff 的方式 · Git Unified Diff</div>
+              <div style="font-family:var(--font-mono);font-size:12px;background:var(--ink);color:#E8E3D8;padding:12px;border-radius:8px;line-height:1.6;margin-bottom:12px;white-space:pre">@@ -68,7 +68,29 @@ class ApiClient
+<span style="color:#F6DCD5">- async request(path) {</span>
+<span style="color:#F6DCD5">-   return fetch(path)</span>
+<span style="color:#E4EFE0">+ async request(path, opts) {</span>
+<span style="color:#E4EFE0">+   for (let i = 0; i<=max; i++)</span>
+<span style="color:#E4EFE0">+     try { return await fetch() }</span></div>
+              <div style="font-size:13px;color:var(--ink-2);line-height:1.7">
+                <b>看到的是</b>：哪几<b>行</b>被加了（+）、删了（-）、在哪个文件、有限的上下文（hunk header 会提示函数名）<br/>
+                <b>不擅长的</b>：稳定、结构化地理解 symbol 关系、调用链、语义影响
+              </div>
+              <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:4px">
+                <span class="badge pass" style="font-size:9px">语言无关</span>
+                <span class="badge pass" style="font-size:9px">零依赖</span>
+                <span class="badge pass" style="font-size:9px">半成品代码也行</span>
+                <span class="badge pass" style="font-size:9px">隐私友好</span>
+              </div>
+            </div>
+            <div style="padding:20px;border:1px solid var(--hair);border-radius:12px;background:#FDFCF8">
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">IDE 的方式 · LSP + AST</div>
+              <div style="font-family:var(--font-mono);font-size:12px;background:#F5F3EE;padding:12px;border-radius:8px;line-height:1.6;margin-bottom:12px;white-space:pre;color:var(--muted)">ClassDeclaration: ApiClient
+  MethodDefinition: request
+    ├─ params: [path, <span style="color:var(--success)">opts</span>]
+    └─ body: <span style="color:var(--success)">ForStatement</span>
+        └─ TryStatement
+            └─ AwaitExpression: fetch()</div>
+              <div style="font-size:13px;color:var(--ink-2);line-height:1.7">
+                <b>看到的是</b>：代码的<b>结构</b>（函数、类、参数、调用关系）<br/>
+                <b>看不到的是</b>：这次 commit 到底改了什么（它不做 diff）
+              </div>
+              <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:4px">
+                <span class="badge caution" style="font-size:9px">需按语言安装</span>
+                <span class="badge caution" style="font-size:9px">需语言服务</span>
+                <span class="badge caution" style="font-size:9px">重量级</span>
+              </div>
+            </div>
+          </div>
+          <div style="padding:14px;background:var(--subtle);border-radius:8px;font-size:13px;line-height:1.7;color:var(--ink-2)">
+            <b style="color:var(--ink)">AhaDiff 的策略</b>：用 git diff 作为<b>真相源</b>（"到底改了什么"），由 <b>LLM 补全语义理解</b>（"为什么这样改"）。未来可考虑引入 Tree-sitter AST 作为<b>增强层</b>（提升 symbol 提取精度），但永远不替代 diff。<span style="font-size:11px;color:var(--muted)">（AST 增强尚未纳入正式方案）</span><br/><br/>
+            <b>一句话</b>：IDE 用 AST 理解代码结构，AhaDiff 用 diff 锁定变更事实 + LLM 理解变更含义。两者互补，不冲突。
+          </div>
+        </div>
+      </div>
+
+      <!-- FAQ 2: 三文件契约 -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="ch"><h3>Q2: 三文件契约到底是什么？和用户有什么关系？</h3><div class="meta">通俗解释</div></div>
+        <div class="cb">
+          <div style="padding:14px;background:var(--accent-softer);border:1px dashed var(--accent);border-radius:8px;font-size:13px;color:var(--accent-ink);margin-bottom:16px;line-height:1.7">
+            <b>和用户完全无关</b> — 这是 AhaDiff 自己"自动提升教学质量"的后台机制。用户只看到越来越好的 Lesson，不需要知道这三个文件的存在。
+          </div>
+          <div style="display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:0;align-items:stretch">
+            <div style="padding:16px;background:#ECF4EE;border:2px solid #B9D7C1;border-radius:10px;text-align:center">
+              <div style="font-size:28px;margin-bottom:6px">🔒</div>
+              <div style="font-family:var(--font-serif);font-size:18px;font-weight:500">考官</div>
+              <div style="font-family:var(--font-mono);font-size:11px;color:var(--success);margin:6px 0">evaluator.py</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">永远不变的评分标准。<br/>就像高考阅卷标准 —— 出题人不能改自己的评分规则。</div>
+              <div style="margin-top:8px"><span class="badge pass" style="font-size:9px">不可修改</span></div>
+            </div>
+            <div style="display:flex;align-items:center;padding:0 8px;font-size:20px;color:var(--muted)">→</div>
+            <div style="padding:16px;background:var(--accent-soft);border:2px solid #EBC3AE;border-radius:10px;text-align:center">
+              <div style="font-size:28px;margin-bottom:6px">✏️</div>
+              <div style="font-family:var(--font-serif);font-size:18px;font-weight:500">教案</div>
+              <div style="font-family:var(--font-mono);font-size:11px;color:var(--accent-ink);margin:6px 0">prompts/*.md</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">AI 生成 Lesson 的指令。<br/>就像老师的教学大纲 —— 可以不断改进怎么教。</div>
+              <div style="margin-top:8px"><span class="badge accent" style="font-size:9px">可以改进</span></div>
+            </div>
+            <div style="display:flex;align-items:center;padding:0 8px;font-size:20px;color:var(--muted)">→</div>
+            <div style="padding:16px;background:var(--subtle);border:2px solid var(--hair-strong);border-radius:10px;text-align:center">
+              <div style="font-size:28px;margin-bottom:6px">⚙️</div>
+              <div style="font-family:var(--font-serif);font-size:18px;font-weight:500">教研规则</div>
+              <div style="font-family:var(--font-mono);font-size:11px;color:var(--muted);margin:6px 0">improve_program.md</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">怎么改进教案的流程。<br/>就像教研组的工作手册 —— 规定每次只改一处。</div>
+              <div style="margin-top:8px"><span class="badge" style="font-size:9px">状态机</span></div>
+            </div>
+          </div>
+          <div style="margin-top:16px;padding:14px;background:#FDFCF8;border:1px solid var(--hair);border-radius:8px;font-size:13px;line-height:1.7;color:var(--ink-2)">
+            <b>循环过程</b>：跑一遍 Lesson → 考官打分 → 找到最弱项 → 改教案 → 重新跑 → 分数提升就保留，否则丢弃。<br/>
+            <b>核心约束</b>：AI 可以改教案（prompts），但<b>不能改考试标准</b>（evaluator）—— 这防止了"自己给自己放水"。
+          </div>
+        </div>
+      </div>
+
+      <!-- FAQ 3: 灵感项目映射 -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="ch"><h3>Q3: 6 个灵感项目分别落在哪里？"Skill"是什么？</h3><div class="meta">架构映射</div></div>
+        <div class="cb">
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0;border:1px solid var(--hair);border-radius:12px;overflow:hidden;background:#fff;margin-bottom:16px">
+            <div style="padding:12px 8px;border-right:1px solid var(--hair);text-align:center;font-size:11px">
+              <div style="font-family:var(--font-mono);font-size:9px;color:var(--muted)">L1</div>
+              <div style="font-weight:500;margin:4px 0">Diff Capture</div>
+              <div style="margin-top:6px;font-size:9px;color:var(--muted);font-family:var(--font-mono)">AhaDiff 自研</div>
+            </div>
+            <div style="padding:12px 8px;border-right:1px solid var(--hair);text-align:center;font-size:11px">
+              <div style="font-family:var(--font-mono);font-size:9px;color:var(--muted)">L2</div>
+              <div style="font-weight:500;margin:4px 0">Context</div>
+              <div style="margin-top:6px"><span style="display:inline-block;padding:2px 6px;background:#E4EFE0;border-radius:4px;font-size:9px;font-family:var(--font-mono);color:#4A7C59">Graphify</span></div>
+            </div>
+            <div style="padding:12px 8px;border-right:1px solid var(--hair);text-align:center;font-size:11px">
+              <div style="font-family:var(--font-mono);font-size:9px;color:var(--muted)">L3</div>
+              <div style="font-weight:500;margin:4px 0">Lesson Gen</div>
+              <div style="margin-top:6px"><span style="display:inline-block;padding:2px 6px;background:#ECF4EE;border-radius:4px;font-size:9px;font-family:var(--font-mono);color:var(--success)">autoresearch</span></div>
+            </div>
+            <div style="padding:12px 8px;border-right:1px solid var(--hair);text-align:center;font-size:11px;background:var(--accent-softer)">
+              <div style="font-family:var(--font-mono);font-size:9px;color:var(--muted)">L4</div>
+              <div style="font-weight:500;margin:4px 0">Verification</div>
+              <div style="margin-top:6px"><span style="display:inline-block;padding:2px 6px;background:var(--accent-soft);border-radius:4px;font-size:9px;font-family:var(--font-mono);color:var(--accent-ink)">SkillCompass</span></div>
+            </div>
+            <div style="padding:12px 8px;border-right:1px solid var(--hair);text-align:center;font-size:11px;background:var(--accent-softer)">
+              <div style="font-family:var(--font-mono);font-size:9px;color:var(--muted)">L5</div>
+              <div style="font-weight:500;margin:4px 0">Ratchet</div>
+              <div style="margin-top:4px"><span style="display:inline-block;padding:2px 6px;background:var(--accent-soft);border-radius:4px;font-size:9px;font-family:var(--font-mono);color:var(--accent-ink)">autoresearch</span><br/><span style="display:inline-block;padding:2px 6px;background:#ECF4EE;border-radius:4px;font-size:9px;font-family:var(--font-mono);color:var(--success);margin-top:2px">darwin-skill</span></div>
+            </div>
+            <div style="padding:12px 8px;border-right:1px solid var(--hair);text-align:center;font-size:11px">
+              <div style="font-family:var(--font-mono);font-size:9px;color:var(--muted)">L6</div>
+              <div style="font-weight:500;margin:4px 0">Learning</div>
+              <div style="margin-top:6px"><span style="display:inline-block;padding:2px 6px;background:#F7EED9;border-radius:4px;font-size:9px;font-family:var(--font-mono);color:var(--warning)">SKILL0</span></div>
+            </div>
+            <div style="padding:12px 8px;text-align:center;font-size:11px">
+              <div style="font-family:var(--font-mono);font-size:9px;color:var(--muted)">L7</div>
+              <div style="font-weight:500;margin:4px 0">Wiki + UI</div>
+              <div style="margin-top:6px"><span style="display:inline-block;padding:2px 6px;background:#E4ECF4;border-radius:4px;font-size:9px;font-family:var(--font-mono);color:var(--info)">LLM Wiki</span></div>
+            </div>
+          </div>
+          <div style="padding:14px;background:#FDFCF8;border:1px solid var(--hair);border-radius:8px;margin-bottom:12px">
+            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">"Skill" 概念翻译</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px">
+              <div style="padding:12px;background:var(--subtle);border-radius:8px;border-left:3px solid var(--muted)">
+                <div style="font-weight:500;margin-bottom:4px">在灵感项目中（darwin-skill / nuwa-skill）</div>
+                <div style="color:var(--ink-2);line-height:1.6">Skill = 一个 <code>SKILL.md</code> 文件，是给 AI Agent 的"外挂技能说明书"。<br/>比如：教 Claude 怎么写代码、怎么做 review。</div>
+              </div>
+              <div style="padding:12px;background:var(--accent-softer);border-radius:8px;border-left:3px solid var(--accent)">
+                <div style="font-weight:500;margin-bottom:4px">在 AhaDiff 中</div>
+                <div style="color:var(--ink-2);line-height:1.6">核心学习管线<b>不依赖</b> skill 概念。<br/>Skill 仅用于 agent 集成分发（<code>ahadiff install claude</code>），不是产品内部抽象。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FAQ 4: Graphify + LLM Wiki -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="ch"><h3>Q4: Graphify 和 LLM Wiki 怎么集成？Graph 能可视化吗？</h3><div class="meta">Codex 验证</div></div>
+        <div class="cb">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+            <div style="padding:18px;border:1px solid var(--hair);border-radius:12px;background:#FDFCF8;position:relative">
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#4A7C59;margin-bottom:8px">底层 · Graphify（代码地图）</div>
+              <div style="font-size:13px;color:var(--ink-2);line-height:1.7;margin-bottom:10px">
+                Graphify 扫描整个仓库，生成<b>代码结构图</b>（文件 → 函数 → 依赖关系）。<br/>
+                <b>已经存在</b>：<code>graphify-out/graph.html</code> 可直接在浏览器打开。
+              </div>
+              <div style="font-family:var(--font-mono);font-size:12px;background:var(--ink);color:#E8E3D8;padding:8px 10px;border-radius:6px">graphify .  <span style="color:var(--muted)">→ graphify-out/graph.html</span></div>
+              <div style="text-align:center;margin-top:12px;font-size:12px;color:var(--muted)">📊 vis-network 交互式图谱 · 可搜索 · 可缩放</div>
+            </div>
+            <div style="padding:18px;border:2px solid var(--accent);border-radius:12px;background:var(--accent-softer);position:relative">
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-ink);margin-bottom:8px">上层 · AhaDiff（学习覆盖层）</div>
+              <div style="font-size:13px;color:var(--ink-2);line-height:1.7;margin-bottom:10px">
+                每次 <code>ahadiff learn</code> 会在代码图谱上叠加<b>学习节点</b>（Concept、Claim、Lesson）。<br/>
+                学得越多，覆盖层越丰富。
+              </div>
+              <div style="font-family:var(--font-mono);font-size:12px;background:var(--ink);color:#E8E3D8;padding:8px 10px;border-radius:6px">ahadiff graph <span style="color:var(--muted)">→ learning overlay</span></div>
+              <div style="text-align:center;margin-top:12px;font-size:12px;color:var(--accent-ink)">📈 每次 learn 自动追加 concepts.jsonl</div>
+            </div>
+          </div>
+          <div style="padding:14px;background:var(--subtle);border-radius:8px;margin-bottom:12px">
+            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">LLM Wiki 怎么工作？</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px">
+              <div style="padding:10px;background:#fff;border:1px solid var(--hair);border-radius:8px">
+                <div style="font-weight:500"><code>index.md</code> — 导航页</div>
+                <div style="color:var(--muted);font-size:12px;margin-top:4px;line-height:1.5">给人看的总览：最近学了什么、哪些概念关联、反向链接。每次 learn 后 diff-aware merge 更新。</div>
+              </div>
+              <div style="padding:10px;background:#fff;border:1px solid var(--hair);border-radius:8px">
+                <div style="font-weight:500"><code>concepts.jsonl</code> — 概念账本</div>
+                <div style="color:var(--muted);font-size:12px;margin-top:4px;line-height:1.5">给程序看的数据：append-only，每条记录一个概念被哪个 commit 引入/更新。不删只追加。</div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:10px 14px;border:1px dashed #E3CDA1;background:#FBF5E6;border-radius:8px;font-size:12px;color:var(--warning);line-height:1.6">
+            <b>注意</b>：Graphify 的 repo graph 不会每次 learn 都重建（太重了）。AhaDiff 只在 <code>graph import</code> 时导入一次，然后每次 learn 往上叠加学习层。
+          </div>
+        </div>
+      </div>
+
+      <!-- FAQ 5: 只读确认 -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="ch"><h3>Q5: AhaDiff 会修改我的代码吗？</h3><div class="meta">安全保证</div></div>
+        <div class="cb">
+          <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:0;align-items:center">
+            <div style="padding:20px;background:#ECF4EE;border:2px solid #B9D7C1;border-radius:12px;text-align:center">
+              <div style="font-size:36px;margin-bottom:8px">🔒</div>
+              <div style="font-family:var(--font-serif);font-size:20px;font-weight:500;color:var(--success)">你的代码</div>
+              <div style="font-family:var(--font-mono);font-size:12px;color:var(--muted);margin:8px 0">src/ · tests/ · *.py · *.ts</div>
+              <div style="font-size:14px;font-weight:600;color:var(--success);margin-top:8px">只读 · READ-ONLY</div>
+              <div style="font-size:12px;color:var(--ink-2);margin-top:6px">AhaDiff 永远不会修改、删除、<br/>或重写你的任何一行代码</div>
+            </div>
+            <div style="padding:0 16px;text-align:center">
+              <div style="font-size:24px;color:var(--accent)">→</div>
+              <div style="font-size:10px;color:var(--muted);font-family:var(--font-mono);letter-spacing:.1em">READ</div>
+              <div style="font-size:10px;color:var(--muted);font-family:var(--font-mono);letter-spacing:.1em;margin-top:2px">ONLY</div>
+            </div>
+            <div style="padding:20px;background:var(--accent-soft);border:2px solid #EBC3AE;border-radius:12px;text-align:center">
+              <div style="font-size:36px;margin-bottom:8px">✏️</div>
+              <div style="font-family:var(--font-serif);font-size:20px;font-weight:500;color:var(--accent-ink)">.ahadiff/ 目录</div>
+              <div style="font-family:var(--font-mono);font-size:12px;color:var(--muted);margin:8px 0">lesson.md · quiz.jsonl · score.json</div>
+              <div style="font-size:14px;font-weight:600;color:var(--accent-ink);margin-top:8px">写入 · WRITE</div>
+              <div style="font-size:12px;color:var(--ink-2);margin-top:6px">所有输出都在独立目录中<br/>删除 .ahadiff/ 不影响你的项目</div>
+            </div>
+          </div>
+          <div style="margin-top:14px;padding:10px 14px;background:var(--subtle);border-radius:8px;font-size:12px;color:var(--ink-2);line-height:1.6">
+            <b>improve loop 改的是什么？</b> — 改的是 AhaDiff <b>自己的教学 prompt</b>（<code>prompts/*.md</code>），让下次生成的 lesson 更好。和你的代码完全无关。
+          </div>
+        </div>
+      </div>
+
+      <!-- FAQ 6: 单模型 BYOK -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="ch"><h3>Q6: 需要多个模型吗？只有一个 API key 怎么办？</h3><div class="meta">BYOK 兼容</div></div>
+        <div class="cb">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+            <div style="padding:16px;border:1px solid var(--hair);border-radius:10px;background:#FDFCF8">
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">理想模式 · 双模型</div>
+              <div style="font-size:13px;color:var(--ink-2);line-height:1.7">
+                <b>生成模型</b>（大模型如 Sonnet）：写 lesson、抽取 claim<br/>
+                <b>评估模型</b>（小模型如 Haiku）：打分、验证<br/>
+                <span style="color:var(--success)">优点：避免"自己给自己打高分"</span>
+              </div>
+            </div>
+            <div style="padding:16px;border:2px solid var(--accent);border-radius:10px;background:var(--accent-softer)">
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-ink);margin-bottom:8px">退路模式 · 单模型（Fallback）</div>
+              <div style="font-size:13px;color:var(--ink-2);line-height:1.7">
+                <b>同一个模型</b>同时做生成和评估<br/>
+                generate temp=0.7（发散），judge temp=0.0（严格）<br/>
+                <span style="color:var(--warning)">设计已预留此能力，推荐仍是跨模型评估</span>
+              </div>
+            </div>
+          </div>
+          <div style="font-family:var(--font-mono);font-size:12px;background:var(--ink);color:#E8E3D8;padding:14px;border-radius:8px;line-height:1.8;margin-bottom:12px;white-space:pre-wrap"># 单模型配置（完全可用）
+[llm.generate]
+provider = "anthropic"
+model = "claude-sonnet-4-5-20250514"
+temperature = 0.7
+
+[llm.judge]
+provider = "anthropic"          <span style="color:var(--muted)"># 同一个 provider</span>
+model = "claude-sonnet-4-5-20250514"  <span style="color:var(--muted)"># 同一个 model</span>
+temperature = 0.0               <span style="color:var(--muted)"># 但 temp=0 更严格</span>
+
+# 甚至可以全离线
+[llm.generate]
+provider = "ollama"
+model = "qwen3-coder"</div>
+          <div style="padding:10px 14px;border:1px dashed #E3CDA1;background:#FBF5E6;border-radius:8px;font-size:12px;color:var(--warning);line-height:1.6">
+            <b>最低成本方案</b>：用免费的本地 Ollama 模型（如 qwen3-coder）做 judge，云端大模型做 generate。这样只需一个 API key，且有跨模型评估的好处。
+          </div>
+        </div>
+      </div>
+
+      <!-- FAQ 7: 总结 -->
+      <div class="card">
+        <div class="ch"><h3>Q7: 所以 AhaDiff 到底是什么？一句话版本</h3><div class="meta">最终定位</div></div>
+        <div class="cb" style="text-align:center;padding:32px">
+          <div style="font-family:var(--font-serif);font-size:22px;color:var(--ink);line-height:1.6;max-width:700px;margin:0 auto">
+            AhaDiff 是一个<b>只读的本地 CLI</b>。<br/><br/>
+            它<b>读取</b> AI 写出的 git diff（或 patch 文件），<br/>
+            把每句解释都<b>绑定到代码证据</b>，<br/>
+            标出 AI 说错的地方，<br/>
+            生成 Lesson / Quiz / 复习卡，<br/>
+            然后<b>自动评分</b>，越来越好。<br/><br/>
+            <span style="color:var(--accent-ink);font-weight:500">它不改你的代码。<br/>它教你理解你的代码。</span>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+</div>
+
+<script>
+// Navigation
+document.querySelectorAll('.nav-item').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const target = btn.dataset.goto;
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    const page = document.querySelector(`[data-page="${target}"]`);
+    if (page) page.classList.add('active');
+    const bcPage = document.getElementById('bc-page');
+    if (bcPage) bcPage.textContent = btn.querySelector('span:not(.ic):not(.en)').textContent;
+  });
+});
+
+// Tabs
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    const bar = btn.parentElement;
+    bar.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    const cards = document.querySelectorAll('.src-card');
+    cards.forEach(card => {
+      if (tab === 'all') {
+        card.style.display = '';
+      } else {
+        card.style.display = card.dataset.src === tab ? '' : 'none';
+      }
+    });
+  });
+});
+
+// Expand/collapse
+document.querySelectorAll('.expand-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const target = document.getElementById(btn.dataset.target);
+    if (target) {
+      target.classList.toggle('open');
+      btn.querySelector('.arrow').classList.toggle('rotated');
+    }
+  });
+});
+</script>
+</body>
+</html>

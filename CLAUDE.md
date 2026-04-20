@@ -17,7 +17,7 @@
 ### 计划技术栈
 
 - **后端 CLI**：Python 3.11+, typer, rich, pydantic, jinja2, httpx, pyyaml
-- **前端 Viewer**（首版）：Jinja2 静态 HTML（从 Warm v5 原型转化），不使用 Next.js/React
+- **前端 Viewer**（首版）：Jinja2 静态 HTML（从 Warm v6 原型转化），不使用 Next.js/React
 - **评估系统**：LLM-as-judge + 8 维自研 rubric（accuracy/evidence/diff_coverage/learnability/quiz_transfer/spec_alignment/conciseness/safety_privacy = 100 分）+ git ratchet 棘轮
 - **不使用**：LiteLLM（供应链风险）、LangChain、Node 构建链
 
@@ -39,7 +39,7 @@
 graph TD
     A["(根) 知返 AhaDiff"] --> B["doc"];
     A --> C["ui"];
-    A --> D["AhaDiff Warm v5.html"];
+    A --> D["AhaDiff Warm v6.html"];
 
     click B "./doc/CLAUDE.md" "查看 doc 模块文档"
     click C "./ui/CLAUDE.md" "查看 ui 模块文档"
@@ -50,9 +50,9 @@ graph TD
 | 模块 | 路径 | 语言 | 职责 |
 |------|------|------|------|
 | doc | `doc/` | Markdown | 产品设计文档：架构方案、改名方案、前端视觉手册、评估报告 |
-| ui | `ui/` | HTML/CSS/JS | UI 原型：Warm 风格 v1-v5 迭代版本 |
+| ui | `ui/` | HTML/CSS/JS | UI 原型：Warm 风格 v1-v6 迭代版本 |
 | team-plan | `.claude/team-plan/` | Markdown | 团队计划：v0.1 kickoff + 修订方案 + CLI 接入扩展 |
-| 根级原型 | `AhaDiff Warm v5.html` | HTML | 最新 UI 原型（v5 副本，便于快速预览） |
+| 根级原型 | `AhaDiff Warm v6.html` | HTML | 最新 UI 原型（v6 副本，便于快速预览） |
 
 ## 运行与开发
 
@@ -60,7 +60,7 @@ graph TD
 
 ```bash
 # 用浏览器打开最新原型
-open "AhaDiff Warm v5.html"
+open "AhaDiff Warm v6.html"
 
 # 或使用本地服务器
 python3 -m http.server 8765

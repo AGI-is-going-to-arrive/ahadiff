@@ -66,10 +66,14 @@ ahadiff review
 # Ratcheted self-improvement
 ahadiff improve abc123 --rounds 6
 
-# Install into your coding agent
-ahadiff install claude    # Claude Code Skill
-ahadiff install codex     # Codex AGENTS.md
-ahadiff install cursor    # Cursor rules
+# Install into your AI tool (11 targets supported)
+ahadiff install claude    # Claude Code → .claude/skills/
+ahadiff install codex     # Codex CLI → AGENTS.md
+ahadiff install cursor    # Cursor → .cursor/rules/
+ahadiff install copilot   # GitHub Copilot
+ahadiff install gemini    # Gemini CLI → GEMINI.md
+ahadiff install windsurf  # Windsurf → .windsurf/rules/
+# Also: opencode / cline / amp / jules / aider
 ```
 
 Output layout:
@@ -92,13 +96,13 @@ Output layout:
 | # | Dimension | Weight | Hard gate |
 |---|-----------|--------|-----------|
 | 1 | Accuracy | 20 | < 14 → FAIL |
-| 2 | Evidence | 15 | < 10 → FAIL |
-| 3 | Diff Coverage | 15 | — |
-| 4 | Learnability | 15 | — |
-| 5 | Recall Transfer | 10 | — |
+| 2 | Evidence | 18 | < 12 → FAIL |
+| 3 | Diff Coverage | 14 | — |
+| 4 | Learnability | 14 | — |
+| 5 | Quiz Transfer | 10 | — |
 | 6 | Spec Alignment | 10 | — |
 | 7 | Conciseness | 8 | — |
-| 8 | Safety & Privacy | 7 | Critical → FAIL |
+| 8 | Safety & Privacy | 6 | Critical → FAIL |
 
 Three verdicts: **PASS** ≥ 80 / **CAUTION** 60–80 / **FAIL** < 60.
 
@@ -106,12 +110,12 @@ Three verdicts: **PASS** ≥ 80 / **CAUTION** 60–80 / **FAIL** < 60.
 
 ```text
 ahadiff/
-├─ AhaDiff Warm v5.html         # Latest UI prototype
+├─ AhaDiff Warm v6.html         # Latest UI prototype
 ├─ doc/                         # Design docs (Chinese)
 │  ├─ ahadiff设计思路.md          # Full architecture (MVP → v1.0)
 │  ├─ 知返ahadiff改名后的后续方案.md  # Brand redefinition + product upgrade
 │  └─ AhaDiff_frontend_design_v1.1_revised.md  # Frontend design manual
-├─ ui/                          # HTML prototypes v1–v5 (design history)
+├─ ui/                          # HTML prototypes v1–v6 (design history)
 └─ CLAUDE.md                    # Project AI context index
 ```
 

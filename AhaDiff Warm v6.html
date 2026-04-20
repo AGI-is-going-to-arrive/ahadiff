@@ -1,0 +1,2346 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>知返 AhaDiff · Warm</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Serif+SC:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --paper:#FAF8F2;
+  --subtle:#F2EFE7;
+  --elevated:#FFFFFF;
+  --ink:#1C1B18;
+  --ink-2:#38362F;
+  --muted:#6A6456;
+  --muted-2:#8F8878;
+  --hair:#E6E3D8;
+  --hair-strong:#D5D0BF;
+  --accent:#D27050;
+  --accent-ink:#B04E28;
+  --accent-soft:#F4E4D9;
+  --accent-softer:#FAF0E8;
+  --add-bg:#E4EFE0;
+  --add-fg:#2F6F4F;
+  --del-bg:#F6DCD5;
+  --del-fg:#A33D2B;
+  --success:#2F6F4F;
+  --warning:#B4791F;
+  --danger:#A33D2B;
+  --info:#2E4A6B;
+  --font-sans:"Inter","PingFang SC","Noto Sans SC",ui-sans-serif,system-ui,sans-serif;
+  --font-serif:"Newsreader","Noto Serif SC","Source Serif 4",ui-serif,Georgia,serif;
+  --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,"Sarasa Mono SC",monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--paper);color:var(--ink);font-family:var(--font-sans);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;font-feature-settings:"kern" 1,"liga" 1,"calt" 1}
+:lang(zh-Hans),:lang(zh-CN){line-height:1.75}
+a{color:inherit;text-decoration:none;transition:color .15s}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0;transition:background .15s,color .15s,border-color .15s,box-shadow .15s,transform .15s}
+button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+::selection{background:var(--accent-soft);color:var(--accent-ink)}
+.mono{font-family:var(--font-mono)}
+.serif{font-family:var(--font-serif)}
+.eyebrow{font-family:var(--font-mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.num{font-variant-numeric:tabular-nums}
+
+/* App shell */
+.app{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
+.sidebar{position:sticky;top:0;height:100vh;background:linear-gradient(180deg,var(--subtle) 0%,#EEEADF 100%);border-right:1px solid var(--hair);display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden}
+.brand{padding:22px 22px 18px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--hair)}
+.brand-mark{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,var(--accent) 0%,var(--accent-ink) 100%);color:#fff;display:grid;place-items:center;font-family:var(--font-serif);font-weight:600;font-size:18px;letter-spacing:-.02em;box-shadow:0 2px 6px -2px rgba(176,78,40,.4),inset 0 1px 0 rgba(255,255,255,.15)}
+.brand-mark span{display:inline-block;transform:translateY(-1px)}
+.brand-name{font-family:var(--font-serif);font-weight:600;font-size:17px;letter-spacing:-.01em}
+.brand-en{font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase;margin-top:2px}
+
+.nav-section{padding:14px 12px 4px}
+.nav-label{font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted-2);padding:6px 10px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:var(--ink-2);font-size:14px;cursor:pointer;margin:1px 0}
+.nav-item .ic{width:16px;height:16px;flex:none;opacity:.75}
+.nav-item .en{color:var(--muted-2);font-family:var(--font-mono);font-size:10px;margin-left:auto;letter-spacing:.08em;text-transform:uppercase}
+.nav-item:hover{background:var(--accent-softer);color:var(--ink)}
+.nav-item.active{background:#fff;color:var(--ink);box-shadow:0 1px 0 var(--hair), 0 4px 12px -8px rgba(120,80,50,.22)}
+.nav-item.active .ic{opacity:1;color:var(--accent)}
+.nav-item.active .en{color:var(--accent)}
+
+.side-foot{margin-top:auto;padding:14px 16px;border-top:1px solid var(--hair);font-size:12px;color:var(--muted);display:flex;align-items:center;gap:10px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--success);box-shadow:0 0 0 3px rgba(47,111,79,.15)}
+
+/* Topbar */
+.main{min-width:0;display:flex;flex-direction:column}
+.topbar{display:flex;align-items:center;gap:16px;padding:14px 32px;border-bottom:1px solid var(--hair);background:rgba(250,248,242,.88);backdrop-filter:saturate(1.4) blur(8px);-webkit-backdrop-filter:saturate(1.4) blur(8px);position:sticky;top:0;z-index:5}
+.crumb{font-family:var(--font-mono);font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.crumb .sep{opacity:.5}
+.topbar .search{margin-left:auto;display:flex;align-items:center;gap:8px;background:var(--subtle);border:1px solid var(--hair);border-radius:8px;padding:7px 12px;font-size:13px;color:var(--muted);min-width:280px;cursor:text;transition:all .15s}
+.topbar .search:hover{background:#fff;border-color:var(--hair-strong)}
+.topbar .search kbd{font-family:var(--font-mono);font-size:10px;background:#fff;border:1px solid var(--hair);padding:1px 5px;border-radius:4px;color:var(--muted)}
+.btn{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 14px;border-radius:8px;font-size:13px;font-weight:500;border:1px solid var(--hair-strong);background:#fff;color:var(--ink);transition:all .15s;white-space:nowrap}
+.btn:hover{background:var(--accent-softer);border-color:#E0B89E;transform:translateY(-1px);box-shadow:0 4px 10px -6px rgba(120,80,50,.2)}
+.btn:active{transform:translateY(0);box-shadow:none}
+.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);box-shadow:0 1px 2px rgba(176,78,40,.18)}
+.btn.primary:hover{background:var(--accent-ink);border-color:var(--accent-ink);box-shadow:0 6px 14px -6px rgba(176,78,40,.45)}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.btn.ghost:hover{background:var(--subtle);color:var(--ink);box-shadow:none;transform:none}
+
+/* Page container */
+.page{display:none;padding:32px 40px 88px;max-width:1440px;animation:fadeUp .28s ease-out}
+.page.active{display:block}
+@keyframes fadeUp{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.page-head{display:flex;align-items:flex-start;gap:24px;padding-bottom:22px;margin-bottom:28px;border-bottom:1px solid var(--hair);flex-wrap:wrap}
+.page-head h1{font-family:var(--font-serif);font-weight:500;font-size:36px;letter-spacing:-.022em;margin:0;line-height:1.08}
+.page-head .sub{color:var(--muted);font-size:14px;margin-top:8px;max-width:680px;line-height:1.65}
+.page-head .right{margin-left:auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end;min-width:0}
+.page-head .right{margin-left:auto;display:flex;gap:10px;align-items:center}
+
+/* Cards */
+.card{background:var(--elevated);border:1px solid var(--hair);border-radius:12px;box-shadow:0 1px 0 rgba(180,160,130,.06), 0 4px 20px -16px rgba(120,80,40,.18);transition:box-shadow .2s,border-color .2s}
+.card:hover{box-shadow:0 1px 0 rgba(180,160,130,.06), 0 8px 28px -18px rgba(120,80,40,.28)}
+.card .ch{padding:15px 20px;border-bottom:1px solid var(--hair);display:flex;align-items:center;gap:10px;justify-content:space-between}
+.card .ch h3{margin:0;font-family:var(--font-serif);font-size:18px;font-weight:500;letter-spacing:-.012em}
+.card .ch .meta{font-family:var(--font-mono);font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+.card .cb{padding:20px}
+
+/* Badges */
+.badge{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;height:22px;font-size:11px;font-family:var(--font-mono);letter-spacing:.08em;text-transform:uppercase;border-radius:99px;border:1px solid var(--hair-strong);background:#fff;color:var(--ink-2)}
+.badge .bd{width:6px;height:6px;border-radius:50%;background:currentColor}
+.badge.verified{color:var(--success);border-color:#B9D7C1;background:#ECF4EE}
+.badge.weak{color:var(--warning);border-color:#E3CDA1;background:#F7EED9}
+.badge.notproven{color:var(--muted);border-color:var(--hair-strong);background:var(--subtle)}
+.badge.contradicted{color:var(--danger);border-color:#E4B8AE;background:#F7E2DC}
+.badge.pass{color:var(--success);background:#ECF4EE;border-color:#B9D7C1}
+.badge.caution{color:var(--warning);background:#F7EED9;border-color:#E3CDA1}
+.badge.fail{color:var(--danger);background:#F7E2DC;border-color:#E4B8AE}
+.badge.accent{color:var(--accent-ink);background:var(--accent-soft);border-color:#EBC3AE}
+
+/* Diff */
+.diff{font-family:var(--font-mono);font-size:12.5px;line-height:1.6;border:1px solid var(--hair);border-radius:10px;overflow:hidden;background:#FDFCF8;box-shadow:0 1px 0 rgba(180,160,130,.04)}
+.diff .hd{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--subtle);border-bottom:1px solid var(--hair);font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+.diff .row{display:grid;grid-template-columns:44px 44px 1fr;min-height:22px}
+.diff .row .ln{color:var(--muted-2);text-align:right;padding-right:8px;user-select:none;border-right:1px dashed var(--hair);font-size:11px;padding-top:2px}
+.diff .row .code{padding:2px 12px;white-space:pre;overflow-x:auto}
+.diff .row.add{background:var(--add-bg)}
+.diff .row.add .code{color:var(--add-fg)}
+.diff .row.del{background:var(--del-bg)}
+.diff .row.del .code{color:var(--del-fg)}
+.diff .row.hunk{background:var(--subtle);color:var(--muted)}
+.diff .row.hunk .code{font-style:italic}
+.diff .row.clickable{cursor:pointer;transition:filter .12s}
+.diff .row.clickable:hover{filter:brightness(.97);outline:1px solid var(--accent);outline-offset:-1px}
+.diff .row.selected{box-shadow:inset 3px 0 0 var(--accent);filter:brightness(.98)}
+
+/* KPI */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.kpi{background:var(--elevated);border:1px solid var(--hair);border-radius:12px;padding:18px 20px;transition:transform .18s,box-shadow .2s,border-color .2s;position:relative;overflow:hidden}
+.kpi::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--accent);opacity:0;transition:opacity .2s}
+.kpi:hover{transform:translateY(-2px);box-shadow:0 10px 28px -18px rgba(120,80,40,.3);border-color:var(--hair-strong)}
+.kpi:hover::before{opacity:.7}
+.kpi .lb{font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.kpi .vl{font-family:var(--font-serif);font-size:34px;font-weight:500;letter-spacing:-.024em;line-height:1;margin-top:12px;font-variant-numeric:tabular-nums}
+.kpi .delta{margin-top:10px;font-size:12px;color:var(--muted)}
+.kpi .delta .up{color:var(--success)}
+.kpi .delta .dn{color:var(--danger)}
+
+/* Tables */
+table.t{width:100%;border-collapse:collapse;font-size:13px}
+table.t th{text-align:left;font-weight:500;color:var(--muted);font-family:var(--font-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;padding:10px 14px;border-bottom:1px solid var(--hair);background:var(--subtle)}
+table.t td{padding:12px 14px;border-bottom:1px solid var(--hair);vertical-align:middle}
+table.t tbody tr{transition:background .12s}
+table.t tr:hover td{background:var(--accent-softer)}
+table.t tbody tr:last-child td{border-bottom:0}
+table.t .mono{font-size:12.5px}
+
+/* Misc */
+hr.rule{border:0;border-top:1px solid var(--hair);margin:24px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 11px;border-radius:99px;background:var(--subtle);font-size:12px;color:var(--ink-2);border:1px solid var(--hair);cursor:pointer;transition:all .12s;user-select:none}
+.chip:hover{border-color:var(--hair-strong);background:#fff}
+.chip.on{background:var(--accent-soft);color:var(--accent-ink);border-color:#E6BFA6}
+.chip.on:hover{background:var(--accent-soft);border-color:#D9A682}
+.kbd{font-family:var(--font-mono);font-size:10.5px;background:#fff;border:1px solid var(--hair);padding:1px 5px;border-radius:4px;color:var(--muted)}
+
+.claim-card{border:1px solid var(--hair);border-radius:10px;padding:13px 15px;background:#fff;margin-bottom:10px;transition:all .15s;cursor:pointer}
+.claim-card:hover{border-color:var(--hair-strong);transform:translateX(2px)}
+.claim-card.selected{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);transform:translateX(2px)}
+.claim-card .id{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);letter-spacing:.1em}
+.claim-card .txt{margin:6px 0;font-size:13.5px;line-height:1.55}
+.claim-card .ev{font-family:var(--font-mono);font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.claim-card .actions{display:flex;gap:8px;margin-top:10px;border-top:1px dashed var(--hair);padding-top:10px}
+.claim-card .actions button{font-family:var(--font-mono);font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+.claim-card .actions button:hover{color:var(--accent-ink)}
+
+/* Scrollbars */
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--hair-strong);border-radius:10px;border:2px solid var(--paper)}
+
+/* Landing */
+.hero{padding:72px 40px 56px;border-bottom:1px solid var(--hair);position:relative;overflow:hidden}
+.hero::after{content:"";position:absolute;top:-40%;right:-10%;width:420px;height:420px;background:radial-gradient(circle,var(--accent-soft) 0%,transparent 65%);opacity:.5;pointer-events:none;z-index:0}
+.hero-grid{display:grid;grid-template-columns:1.05fr 1fr;gap:64px;align-items:center;max-width:1280px;position:relative;z-index:1}
+.hero h1{font-family:var(--font-serif);font-weight:500;font-size:68px;letter-spacing:-.032em;line-height:1.02;margin:0}
+.hero h1 em{font-style:italic;color:var(--accent-ink)}
+.hero .en{font-family:var(--font-serif);font-style:italic;color:var(--muted);font-size:18px;margin-top:18px}
+.hero .lead{margin-top:24px;font-size:16.5px;color:var(--ink-2);max-width:540px;line-height:1.75}
+.hero-ctas{display:flex;gap:12px;margin-top:32px;align-items:center;flex-wrap:wrap}
+.hero-ctas .text{color:var(--muted);font-size:13px;font-family:var(--font-mono)}
+
+.hero-demo{position:relative;border:1px solid var(--hair);border-radius:14px;background:#fff;padding:18px;box-shadow:0 30px 60px -40px rgba(120,80,40,.45),0 2px 6px -4px rgba(120,80,40,.1)}
+.hero-demo .tabs{display:flex;gap:6px;margin-bottom:12px}
+.hero-demo .tab{padding:6px 13px;border-radius:8px;font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:var(--subtle);cursor:pointer;transition:all .15s}
+.hero-demo .tab:hover{background:var(--accent-softer);color:var(--accent-ink)}
+.hero-demo .tab.active{background:var(--accent-soft);color:var(--accent-ink)}
+.hero-demo .pane{display:none}
+.hero-demo .pane.active{display:block}
+
+.steps{display:grid;grid-template-columns:repeat(5,1fr);gap:0;margin:28px 0;border:1px solid var(--hair);border-radius:12px;overflow:hidden;background:#fff}
+.steps .st{padding:18px 20px;border-right:1px solid var(--hair);position:relative;transition:background .15s}
+.steps .st:hover{background:var(--accent-softer)}
+.steps .st:last-child{border-right:0}
+.steps .st .n{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);letter-spacing:.14em}
+.steps .st h4{font-family:var(--font-serif);font-size:17px;font-weight:500;margin:8px 0 6px;letter-spacing:-.01em}
+.steps .st p{font-size:12.5px;color:var(--muted);margin:0;line-height:1.55}
+
+.section{padding:64px 40px;max-width:1280px}
+.section h2{font-family:var(--font-serif);font-size:38px;font-weight:500;letter-spacing:-.024em;margin:8px 0 10px;line-height:1.1}
+.section .sub{color:var(--muted);max-width:680px;margin-bottom:32px;font-size:15.5px;line-height:1.7}
+
+/* Lesson Reader */
+.reader{display:grid;grid-template-columns:220px 1fr 320px;gap:28px}
+.reader .toc{position:sticky;top:72px;align-self:start;font-size:13px}
+.reader .toc .h{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px}
+.reader .toc a{display:block;padding:4px 0;color:var(--muted);border-left:2px solid transparent;padding-left:10px}
+.reader .toc a.active{color:var(--accent-ink);border-left-color:var(--accent);font-weight:500}
+.prose{font-family:var(--font-serif);font-size:17px;line-height:1.8;color:var(--ink)}
+.prose h2{font-family:var(--font-serif);font-size:28px;font-weight:500;letter-spacing:-.02em;margin:32px 0 12px;border-bottom:1px solid var(--hair);padding-bottom:8px}
+.prose h3{font-family:var(--font-serif);font-size:20px;font-weight:500;margin:24px 0 8px}
+.prose p{margin:0 0 14px}
+.prose code{font-family:var(--font-mono);font-size:14px;background:var(--subtle);padding:1px 6px;border-radius:4px}
+.prose .highlight{background:var(--accent-soft);padding:1px 4px;border-radius:3px;cursor:pointer;border-bottom:1px dashed var(--accent)}
+.prose ul{padding-left:22px}
+.reader .rail{position:sticky;top:72px;align-self:start;max-height:calc(100vh - 92px);overflow:auto}
+.rail-block{border-bottom:1px solid var(--hair);padding:16px 0}
+.rail-block:first-child{padding-top:0}
+.rail-block .h{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+.scaffold{display:flex;gap:4px;font-family:var(--font-mono);font-size:10.5px;background:var(--subtle);border-radius:6px;padding:3px;border:1px solid var(--hair)}
+.scaffold .sg{flex:1;text-align:center;padding:4px 6px;border-radius:4px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+.scaffold .sg.active{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.04)}
+
+/* Radar */
+.radar-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin-top:8px}
+.radar-grid .rd{font-size:11px;font-family:var(--font-mono);color:var(--muted);letter-spacing:.04em}
+.bar{height:6px;background:var(--subtle);border-radius:99px;overflow:hidden;margin-top:4px}
+.bar>span{display:block;height:100%;background:var(--accent);border-radius:99px}
+
+/* Graph */
+.graph-wrap{position:relative;background:var(--subtle);border:1px solid var(--hair);border-radius:12px;padding:20px;min-height:560px}
+.graph-svg{width:100%;height:560px;display:block}
+.legend{position:absolute;left:16px;right:16px;bottom:14px;background:rgba(255,255,255,.94);border:1px solid var(--hair);border-radius:10px;padding:9px 14px;font-size:11.5px;backdrop-filter:blur(4px);display:flex;gap:18px;flex-wrap:wrap;align-items:center;justify-content:center}
+.legend .lg{display:flex;align-items:center;gap:7px;white-space:nowrap;color:var(--ink-2)}
+.legend .lg .sw{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.legend .lgl{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);padding-right:8px;border-right:1px solid var(--hair);margin-right:2px}
+
+/* Demo data watermark */
+.demo-tag{display:inline-flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--warning);background:#F7EED9;border:1px dashed #E3CDA1;padding:2px 8px;border-radius:4px}
+.demo-banner{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border:1px dashed #E3CDA1;background:#FBF5E6;border-radius:8px;font-size:12px;color:var(--warning);margin:0 0 18px;font-family:var(--font-mono);line-height:1.55;max-width:none;width:100%;flex-wrap:wrap}
+.demo-banner b{color:var(--ink-2)}
+.demo-banner + .kpi-grid{margin-top:0}
+.demo-banner.dashboard-note{margin:18px 0}
+
+/* Per-page QA state switcher (design-only) */
+.qa-switch{display:inline-flex;align-items:center;gap:6px;padding:3px 8px 3px 10px;border:1px dashed #E3CDA1;background:#FBF5E6;border-radius:99px;font-family:var(--font-mono);font-size:10.5px;letter-spacing:.08em;color:var(--warning);text-transform:uppercase;user-select:none}
+.qa-switch .qa-lb{color:#B4791F;font-weight:600;border-right:1px solid #E3CDA1;padding-right:8px;margin-right:2px;letter-spacing:.14em}
+.qa-switch select{font:inherit;color:var(--ink-2);background:transparent;border:0;outline:0;padding:2px 4px 2px 2px;cursor:pointer;text-transform:uppercase;letter-spacing:.08em}
+.qa-switch select:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+@media print{.qa-switch,.design-only,.no-print{display:none !important}}
+.design-only-tag{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;font-family:var(--font-mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#A33D2B;background:#FDF1EC;border:1px dashed #E4B8AE;border-radius:99px}
+
+/* State overlays (Empty / Loading / Error) applied to main content region */
+.page[data-state="empty"] .page-content::before,
+.page[data-state="loading"] .page-content::before,
+.page[data-state="error"] .page-content::before{
+  content:attr(data-state-msg);
+  display:flex;align-items:center;justify-content:center;min-height:260px;
+  border:1px dashed var(--hair-strong);border-radius:12px;background:var(--subtle);
+  color:var(--muted);font-family:var(--font-serif);font-size:18px;padding:32px;text-align:center;
+  margin-bottom:18px;
+}
+.page[data-state="loading"] .page-content::before{background:#FBF5E6;border-color:#E3CDA1;color:var(--warning)}
+.page[data-state="error"] .page-content::before{background:#FDF1EC;border-color:#E4B8AE;color:var(--danger)}
+.page[data-state="empty"] .page-content > *:not(.page-head),
+.page[data-state="loading"] .page-content > *:not(.page-head),
+.page[data-state="error"] .page-content > *:not(.page-head){opacity:.25;pointer-events:none;filter:grayscale(.3)}
+
+/* Drawer backdrop */
+.drawer-backdrop{position:fixed;inset:0;background:rgba(30,26,20,.35);backdrop-filter:blur(2px);z-index:40;opacity:0;pointer-events:none;transition:opacity .18s}
+.drawer-backdrop.open{opacity:1;pointer-events:auto}
+@media (min-width:1025px){.drawer-backdrop{display:none !important}}
+
+/* Settings mode summary card */
+.mode-summary{background:#fff;border:1px solid var(--hair);border-radius:12px;padding:18px 20px 18px 22px;margin-bottom:18px;position:relative;overflow:hidden;box-shadow:0 1px 0 rgba(180,160,130,.06)}
+.mode-summary::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent)}
+.mode-summary h3{font-family:var(--font-serif);font-weight:500;font-size:17px;margin:0 0 2px;letter-spacing:-.012em}
+.mode-summary .ms-sub{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
+.mode-summary .ms-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 28px;font-size:13px}
+.mode-summary .ms-row{display:flex;gap:10px;align-items:baseline;min-width:0}
+.mode-summary .ms-row .k{color:var(--muted);font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;min-width:110px;flex-shrink:0}
+.mode-summary .ms-row .v{color:var(--ink-2);min-width:0;word-break:break-word}
+.mode-summary .ms-row .v b{color:var(--ink);font-weight:500}
+.mode-summary .ms-foot{margin-top:12px;padding-top:12px;border-top:1px dashed var(--hair);font-size:12px;color:var(--muted);line-height:1.55}
+@media (max-width:720px){.mode-summary .ms-grid{grid-template-columns:1fr}}
+
+/* Setting English subtitle */
+.setting-en{display:block;font-family:var(--font-mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted-2);margin:2px 0 6px}
+
+/* Skip link */
+.skip-link{position:absolute;left:-9999px;top:0;background:var(--accent);color:#fff;padding:8px 14px;border-radius:0 0 8px 0;z-index:1000;font-size:13px;font-weight:500}
+.skip-link:focus{left:0}
+
+/* Focusable nav */
+.nav-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.nav-item[aria-current="page"]{background:#fff;color:var(--ink);box-shadow:0 1px 0 var(--hair), 0 2px 8px -6px rgba(120,80,50,.2)}
+.nav-item[aria-current="page"] .ic{opacity:1;color:var(--accent)}
+.nav-item[aria-current="page"] .en{color:var(--accent)}
+
+/* Wiki file tree */
+.tree{font-family:var(--font-mono);font-size:11.5px;line-height:1.75;color:var(--ink-2)}
+.tree .tr-dir{color:var(--accent-ink);font-weight:600}
+.tree .tr-file{color:var(--ink-2);padding-left:14px;display:block}
+.tree .tr-sub{padding-left:28px;display:block;color:var(--muted)}
+.tree .tr-new{color:var(--success);font-weight:500}
+
+/* Graphify source card */
+.src-card{background:#FDFCF8;border:1px solid var(--hair);border-left:3px solid var(--accent);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:12.5px}
+.src-card .h{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+
+/* States strip */
+.states-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:24px;padding-top:20px;border-top:1px dashed var(--hair-strong)}
+.state-card{border:1px solid var(--hair);border-radius:10px;padding:14px;background:#FDFCF8;min-height:118px;display:flex;flex-direction:column;gap:6px}
+.state-card .lb{font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.state-card .tl{font-family:var(--font-serif);font-size:15px;color:var(--ink)}
+.state-card .ds{font-size:12.5px;color:var(--muted);line-height:1.55;margin-top:auto}
+.state-card.empty{background:#F8F6F0}
+.state-card.loading{background:#FBF5E6}
+.state-card.error{background:#FDF1EC}
+.spin{width:12px;height:12px;border:2px solid var(--hair-strong);border-top-color:var(--accent);border-radius:50%;animation:sp 1s linear infinite;display:inline-block;vertical-align:-1px;margin-right:6px}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* Implementation notes */
+.impl-notes{margin-top:36px;padding:22px;border:1px solid var(--hair);border-radius:12px;background:#FDFCF8}
+.impl-notes h3{font-family:var(--font-serif);font-weight:500;margin:0 0 6px;font-size:22px}
+.impl-notes .g{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:14px}
+.impl-notes pre{font-family:var(--font-mono);font-size:11.5px;background:var(--subtle);border:1px solid var(--hair);border-radius:8px;padding:10px 12px;line-height:1.65;white-space:pre-wrap;color:var(--ink-2);margin:0}
+.impl-notes ul{margin:6px 0 0;padding-left:20px;font-size:13px;color:var(--ink-2);line-height:1.7}
+.impl-notes code{font-family:var(--font-mono);font-size:11.5px;background:var(--subtle);padding:1px 5px;border-radius:3px}
+
+@media print {
+  @page { margin: 18mm 16mm; }
+  body,html{background:#fff}
+  .sidebar,.topbar,.toc,.rail,.page-head .right,.btn,#mobile-nav-toggle,.states-strip,.impl-notes{display:none !important}
+  .app{grid-template-columns:1fr}
+  .page{display:none !important;padding:0;max-width:none}
+  .page[data-page="lesson"]{display:block !important}
+  .page-head{border-bottom:1px solid #000;margin-bottom:18px}
+  .reader{grid-template-columns:1fr !important}
+  .prose{font-family:"Newsreader",Georgia,serif;font-size:12pt;color:#111}
+  .prose h2{font-size:16pt;margin-top:22pt}
+  .prose h3{font-size:13pt}
+  .prose code, .prose pre, .mono{font-family:"JetBrains Mono",monospace;font-size:9.5pt;background:#f5f2ec}
+  .prose a[href]::after{content:" (" attr(href) ")";font-size:9pt;color:#555}
+  .demo-banner,.demo-tag{border:1px solid #aaa;background:#fff !important;color:#666 !important}
+}
+.src-card .h strong{font-family:var(--font-serif);font-size:15px;font-weight:500}
+.src-card .row{display:flex;gap:8px;align-items:center;padding:3px 0;font-family:var(--font-mono);font-size:11.5px;color:var(--ink-2)}
+.src-card .row .ok{color:var(--success);font-weight:600}
+.src-card .row .lb{color:var(--muted);min-width:90px;display:inline-block}
+
+/* Responsive */
+@media (max-width: 1024px){
+  .app{grid-template-columns:1fr}
+  .sidebar{position:fixed;top:0;left:0;width:280px;transform:translateX(-100%);transition:transform .2s;z-index:50;height:100vh;box-shadow:0 0 40px rgba(0,0,0,.2)}
+  .sidebar.open{transform:translateX(0)}
+  .mobile-nav-btn{display:inline-flex !important}
+  .reader{grid-template-columns:1fr !important;gap:18px}
+  .reader .toc,.reader .rail{position:static !important;max-height:none}
+  .settings-layout{grid-template-columns:1fr !important}
+  .settings-layout .stabs{position:static !important;display:flex;flex-wrap:wrap;gap:6px}
+  .settings-layout .stabs .st{flex:0 0 auto}
+  .hero-grid{grid-template-columns:1fr !important;gap:28px}
+  .hero h1{font-size:44px !important}
+  .steps{grid-template-columns:repeat(2,1fr) !important}
+  .topbar .search{min-width:160px}
+  .page{padding:20px 20px 80px}
+}
+@media (max-width: 768px){
+  .kpi-grid,.agent-grid,.states-strip,.impl-notes .g{grid-template-columns:1fr !important}
+  .ba{grid-template-columns:1fr !important}
+  .steps{grid-template-columns:1fr !important}
+  .page-head{flex-direction:column;align-items:flex-start}
+  .page-head .right{margin-left:0}
+  [data-page="diff"] > div[style*="grid-template-columns:1fr 360px"],
+  [data-page="quiz"] > div[style*="grid-template-columns:1fr 320px"],
+  [data-page="ratchet"] > div[style*="grid-template-columns:1.3fr 1fr"],
+  [data-page="review"] > div[style*="grid-template-columns:1fr 340px"],
+  [data-page="graph"] > div[style*="grid-template-columns:1fr 320px"],
+  [data-page="dashboard"] > div[style*="grid-template-columns:2fr 1fr"],
+  [data-page="dashboard"] > div[style*="grid-template-columns:1fr 1fr"],
+  [data-page="onboarding"] > div[style*="grid-template-columns:1fr 1fr"],
+  [data-page="skills"] > div[style*="grid-template-columns:1.1fr 1fr"],
+  [data-page="ratchet"] > div[style*="grid-template-columns:1fr 1fr"]{
+    grid-template-columns:1fr !important;
+  }
+  .topbar{padding:10px 14px;flex-wrap:wrap;gap:8px}
+  .topbar .search{display:none}
+  .hero{padding:28px 18px}
+  .hero h1{font-size:34px !important}
+  .section{padding:28px 18px}
+  .stepper{flex-direction:column}
+}
+.mobile-nav-btn{display:none;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;border:1px solid var(--hair);background:#fff;font-size:18px;color:var(--ink-2);cursor:pointer;transition:background .15s}
+.mobile-nav-btn:hover{background:var(--accent-softer)}
+.sidebar-backdrop{position:fixed;inset:0;background:rgba(31,30,27,.32);z-index:45;opacity:0;transition:opacity .18s;pointer-events:none}
+.sidebar-backdrop.visible{opacity:1;pointer-events:auto}
+@media (max-width:768px){
+  .sidebar-backdrop[hidden]{display:block}
+}
+.copy-btn{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent-ink);background:transparent;border:1px solid transparent;border-radius:4px;padding:2px 8px;cursor:pointer;transition:all .12s}
+.copy-btn:hover{background:var(--accent-softer);border-color:#EBC3AE}
+.copy-btn.copied{color:var(--success);background:#ECF4EE;border-color:#C7DBC9}
+.copy-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.impl-warn{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#FDF1EC;border:1px solid #E4B8AE;border-radius:8px;margin-bottom:14px;font-size:12px;color:var(--danger)}
+.impl-warn b{color:var(--danger)}
+
+/* With/without gain */
+.gain-card{background:#FDFCF8;border:1px solid var(--hair);border-radius:10px;padding:12px 14px;margin-top:10px}
+.gain-row{display:grid;grid-template-columns:140px 1fr 40px;gap:10px;align-items:center;font-size:12.5px;padding:4px 0}
+.gain-row .lb{color:var(--muted);font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+.gain-row .bar{height:6px;background:var(--subtle);border-radius:99px;overflow:hidden}
+.gain-row .bar>span{display:block;height:100%;background:var(--accent);border-radius:99px}
+.gain-row .bar>span.lo{background:#B4791F}
+
+/* Steps / onboarding */
+.stepper{display:flex;align-items:center;gap:18px;margin-bottom:28px}
+.stepper .sp{flex:1;display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--hair);border-radius:10px;background:#fff}
+.stepper .sp.done{border-color:#B9D7C1;background:#ECF4EE}
+.stepper .sp.current{border-color:var(--accent);background:var(--accent-soft)}
+.stepper .sp .n{width:24px;height:24px;border-radius:50%;background:var(--subtle);display:grid;place-items:center;font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+.stepper .sp.done .n{background:var(--success);color:#fff}
+.stepper .sp.current .n{background:var(--accent);color:#fff}
+.stepper .sp h4{margin:0;font-size:14px;font-weight:500}
+.stepper .sp p{margin:0;font-size:11px;color:var(--muted);font-family:var(--font-mono)}
+
+/* Quiz */
+.option{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border:1px solid var(--hair);border-radius:10px;margin-bottom:10px;background:#fff;cursor:pointer;transition:all .15s}
+.option:hover{border-color:var(--accent);transform:translateX(2px);box-shadow:0 4px 12px -8px rgba(120,80,50,.25)}
+.option.selected{border-color:var(--accent);background:var(--accent-soft)}
+.option.correct{border-color:#B9D7C1;background:#ECF4EE}
+.option.wrong{border-color:#E4B8AE;background:#F7E2DC}
+.option .letter{font-family:var(--font-mono);font-size:12px;color:var(--muted);width:18px}
+.option.selected .letter,.option.correct .letter{color:var(--accent-ink);font-weight:600}
+
+/* SRS flashcard */
+.card-flip{perspective:1200px}
+.flashcard{background:#fff;border:1px solid var(--hair);border-radius:14px;padding:36px;min-height:300px;display:flex;flex-direction:column;justify-content:center;position:relative}
+.flashcard .front{font-family:var(--font-serif);font-size:26px;line-height:1.4;letter-spacing:-.01em}
+.flashcard .back{border-top:1px dashed var(--hair);margin-top:20px;padding-top:20px;color:var(--ink-2);font-size:15px}
+.flashcard .tag{position:absolute;top:14px;right:14px}
+.srs-buttons{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}
+.srs-buttons .sb{padding:14px;border:1px solid var(--hair);border-radius:10px;background:#fff;text-align:center;cursor:pointer}
+.srs-buttons .sb{transition:all .15s}
+.srs-buttons .sb:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:0 8px 20px -12px rgba(120,80,50,.3)}
+.srs-buttons .sb .t{font-family:var(--font-serif);font-size:18px;font-weight:500}
+.srs-buttons .sb .d{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-top:4px}
+.srs-buttons .sb .k{display:block;margin-top:6px}
+
+.settings-layout{display:grid;grid-template-columns:184px minmax(0,960px);gap:24px;align-items:start}
+.settings-layout .stabs{position:sticky;top:72px;align-self:start}
+.settings-main{min-width:0;max-width:960px}
+.stabs .st{padding:8px 12px;border-radius:8px;font-size:13px;color:var(--muted);cursor:pointer;display:flex;justify-content:space-between;transition:all .12s}
+.stabs .st:hover{background:#fff;color:var(--ink-2)}
+.stabs .st.active{background:#fff;color:var(--ink);border:1px solid var(--hair)}
+.stabs .st .en{font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-2)}
+.field{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:20px 0;border-bottom:1px solid var(--hair)}
+.field:last-child{border-bottom:0}
+.field .lb{min-width:0}
+.field .lb h4{margin:0;font-size:15px;font-weight:500;letter-spacing:-.005em}
+.field .lb p{margin:0;font-size:12.5px;color:var(--muted);max-width:620px;line-height:1.65}
+.setting-control{min-width:116px;display:flex;justify-content:flex-end;align-items:center;gap:10px;flex-wrap:wrap}
+@media (max-width:900px){
+  .settings-layout{grid-template-columns:1fr}
+  .field{grid-template-columns:1fr;gap:10px}
+  .setting-control{justify-content:flex-start}
+}
+/* Settings: 中主英副 + Mode Summary + Provider grid */
+.en-sub{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-2);font-weight:400;margin-left:6px}
+.field .lb h4 .en-sub{margin-left:8px}
+.ctrl-hint{font-size:11.5px;color:var(--muted)}
+.field code{font-family:var(--font-mono);font-size:11.5px;background:var(--accent-softer);padding:1px 5px;border-radius:3px;color:var(--ink-2)}
+
+.mode-summary{position:relative;overflow:hidden}
+.mode-summary::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent)}
+.mode-summary .ch h3 .en-sub{margin-left:8px}
+.mode-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border:1px solid var(--hair);border-radius:8px;overflow:hidden;background:var(--paper)}
+.mode-cell{padding:14px 16px;border-right:1px solid var(--hair);background:#fff}
+.mode-cell:last-child{border-right:0}
+.mode-cell .mode-val{font-family:var(--font-serif);font-size:17px;font-weight:500;letter-spacing:-.005em;margin-top:6px;color:var(--ink)}
+.mode-cell .mode-sub{font-size:11.5px;color:var(--muted);margin-top:4px;line-height:1.5}
+.mode-foot{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.65;padding:10px 12px;background:var(--accent-softer);border-radius:6px}
+.mode-foot b{color:var(--ink);font-weight:600}
+@media (max-width:780px){
+  .mode-grid{grid-template-columns:repeat(2,1fr)}
+  .mode-cell:nth-child(2){border-right:0}
+  .mode-cell:nth-child(1),.mode-cell:nth-child(2){border-bottom:1px solid var(--hair)}
+}
+
+.provider-note{font-size:11.5px;color:var(--muted);margin-bottom:14px;line-height:1.6}
+.provider-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.provider-cell{border:1px solid var(--hair);border-radius:8px;padding:12px 14px;background:#fff;transition:border-color .15s}
+.provider-cell:hover{border-color:var(--hair-strong)}
+.provider-name{font-size:14.5px;font-weight:600;letter-spacing:-.005em;margin-top:8px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.provider-meta{margin:10px 0 0;font-size:11px;line-height:1.7;display:grid;grid-template-columns:auto 1fr;gap:2px 10px}
+.provider-meta dt{color:var(--muted-2);font-weight:400}
+.provider-meta dd{margin:0;color:var(--ink-2)}
+.provider-meta dd.hl{color:var(--accent-ink)}
+@media (max-width:900px){
+  .provider-grid{grid-template-columns:1fr}
+}
+
+.toggle{width:38px;height:22px;background:var(--hair-strong);border-radius:99px;position:relative;cursor:pointer;transition:background .15s}
+.toggle .kn{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.15);transition:transform .15s}
+.toggle.on{background:var(--accent)}
+.toggle.on .kn{transform:translateX(16px)}
+
+/* Ratchet */
+.chart{width:100%;height:260px;background:#fff;border:1px solid var(--hair);border-radius:10px;padding:12px}
+
+/* Agent skill */
+.agent-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.agent-card{border:1px solid var(--hair);border-radius:12px;background:#fff;padding:18px;position:relative}
+.agent-card .a-mark{width:36px;height:36px;border-radius:8px;background:var(--subtle);display:grid;place-items:center;font-family:var(--font-mono);font-size:11px;color:var(--ink-2);font-weight:600}
+.agent-card .a-name{font-family:var(--font-serif);font-size:18px;font-weight:500;margin-top:10px}
+.agent-card .a-cmd{font-family:var(--font-mono);font-size:11.5px;background:var(--subtle);padding:8px 10px;border-radius:6px;margin-top:10px;color:var(--ink-2);display:flex;align-items:center;justify-content:space-between}
+
+/* List graph fallback */
+.listg{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}
+.listg .lnode{padding:10px 12px;border:1px solid var(--hair);background:#fff;border-radius:8px;font-size:12.5px}
+.listg .lnode .n{font-weight:500}
+.listg .lnode .m{color:var(--muted);font-family:var(--font-mono);font-size:11px;margin-top:2px}
+
+/* Before/After */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
+.ba .col{background:var(--subtle);border:1px solid var(--hair);border-radius:10px;padding:14px;min-height:240px}
+.ba .col h5{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+
+/* tiny icon system using characters */
+.ic-sq{display:inline-block;width:16px;height:16px;border:1.5px solid currentColor;border-radius:3px}
+
+/* utility */
+.row-flex{display:flex;gap:10px;align-items:center}
+.grow{flex:1}
+.divider-v{width:1px;background:var(--hair);align-self:stretch;margin:0 4px}
+
+.code-block{font-family:var(--font-mono);font-size:12.5px;background:#FDFCF8;border:1px solid var(--hair);border-left:3px solid var(--accent);border-radius:8px;padding:12px 14px;white-space:pre-wrap;overflow-x:auto;color:var(--ink-2);line-height:1.7}
+
+/* Empty / loading */
+.empty{border:1px dashed var(--hair-strong);border-radius:12px;padding:40px;text-align:center;color:var(--muted);background:var(--subtle)}
+.empty h4{font-family:var(--font-serif);font-weight:500;font-size:18px;color:var(--ink);margin:0 0 6px}
+
+/* ============================================================
+   v6 Polish Layer — typography scale, optical rhythm,
+   half-pixel sanitiser, responsive + a11y + print refinement.
+   Additive over v5; intentionally ordered last for specificity.
+   ============================================================ */
+
+/* --- Extended design tokens (additive; originals untouched) --- */
+:root{
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px;
+  --sp-6:24px; --sp-8:32px; --sp-10:40px; --sp-12:48px; --sp-16:64px;
+  --r-sm:4px; --r-md:8px; --r-lg:12px; --r-xl:16px; --r-full:999px;
+  --sh-sm:0 1px 0 rgba(180,160,130,.06);
+  --sh-md:0 1px 0 rgba(180,160,130,.06),0 4px 20px -16px rgba(120,80,40,.18);
+  --sh-lg:0 2px 4px -1px rgba(120,80,40,.08),0 18px 50px -30px rgba(120,80,40,.28);
+  --sh-ring:0 0 0 3px var(--accent-softer);
+  --ease-out:cubic-bezier(.2,.8,.2,1);
+  --ease-in-out:cubic-bezier(.4,0,.2,1);
+  --dur-fast:.15s; --dur-base:.25s; --dur-slow:.4s;
+  --mw-prose:680px; --mw-content:960px; --mw-page:1280px; --mw-wide:1440px;
+}
+
+/* --- Text rendering & CJK refinement --- */
+html{text-size-adjust:100%;-webkit-text-size-adjust:100%}
+body{
+  font-feature-settings:"kern" 1,"liga" 1,"calt" 1,"ss01" 1,"cv11" 1;
+  font-optical-sizing:auto;
+  text-underline-offset:.18em;
+  text-decoration-thickness:from-font;
+  font-synthesis:none;
+}
+:lang(zh),:lang(zh-Hans),:lang(zh-CN),:lang(zh-SG){
+  font-feature-settings:"kern" 1,"palt" 1;
+  font-variant-east-asian:proportional-width;
+}
+
+/* --- Headings: balance + optical tracking --- */
+h1,h2,h3,h4{text-wrap:balance;font-synthesis-weight:none}
+p,li,dd{text-wrap:pretty;hanging-punctuation:first last}
+h1{letter-spacing:-.022em;line-height:1.1}
+.hero h1{letter-spacing:-.034em;margin-bottom:.4em}
+.hero h1 em{letter-spacing:-.028em;font-weight:500}
+h2{letter-spacing:-.02em;line-height:1.15}
+h3{letter-spacing:-.014em;line-height:1.3}
+h4{letter-spacing:-.01em}
+
+/* --- Body vertical rhythm --- */
+p{margin:0 0 .75em}
+p:last-child{margin-bottom:0}
+.eyebrow{line-height:1;margin-bottom:12px;display:inline-block}
+.nav-label{line-height:1.4}
+
+/* --- Mono: tabular numerals, unified sizing --- */
+.mono,.num,code,pre,kbd,samp,tt{
+  font-variant-numeric:tabular-nums slashed-zero;
+  font-feature-settings:"ss01" 1,"zero" 1,"cv11" 1;
+}
+.mono{font-size:13px}
+table.t .mono{font-size:13px}
+.code-block{font-size:13px;line-height:1.7;padding:14px 16px;letter-spacing:.005em}
+
+/* --- Half-pixel sanitiser: kill 9.5/10.5/11.5/12.5/13.5/14.5 inline --- */
+[style*="font-size:12.5px"],[style*="font-size: 12.5px"]{font-size:13px !important}
+[style*="font-size:11.5px"],[style*="font-size: 11.5px"]{font-size:12px !important}
+[style*="font-size:10.5px"],[style*="font-size: 10.5px"]{font-size:11px !important}
+[style*="font-size:9.5px"],[style*="font-size: 9.5px"]{font-size:10px !important}
+[style*="font-size:13.5px"],[style*="font-size: 13.5px"]{font-size:13px !important}
+[style*="font-size:14.5px"],[style*="font-size: 14.5px"]{font-size:14px !important}
+[style*="font-size:15.5px"]{font-size:15px !important}
+[style*="font-size:16.5px"]{font-size:17px !important}
+
+/* --- pt → px unification --- */
+[style*="font-size:9pt"]{font-size:12px !important}
+[style*="font-size:9.5pt"]{font-size:13px !important}
+[style*="font-size:10pt"]{font-size:13px !important}
+[style*="font-size:12pt"]{font-size:16px !important}
+[style*="font-size:13pt"]{font-size:17px !important}
+[style*="font-size:16pt"]{font-size:21px !important}
+
+/* --- Sidebar / nav hover feedback --- */
+.nav-item{padding-block:9px;letter-spacing:.002em;transition:background var(--dur-fast) var(--ease-out),color var(--dur-fast) var(--ease-out),transform var(--dur-fast) var(--ease-out)}
+.nav-item:hover{transform:translateX(1px)}
+
+/* --- Cards: smoother transitions --- */
+.card{transition:box-shadow var(--dur-base) var(--ease-out),border-color var(--dur-base) var(--ease-out),transform var(--dur-base) var(--ease-out)}
+
+/* --- Buttons: calibrated height + lift --- */
+.btn{height:36px;border-radius:8px;font-weight:500;transition:background var(--dur-fast) var(--ease-out),border-color var(--dur-fast) var(--ease-out),color var(--dur-fast) var(--ease-out),transform var(--dur-fast) var(--ease-out),box-shadow var(--dur-fast) var(--ease-out)}
+.btn:hover{transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+
+/* --- Hero rhythm --- */
+.hero .en{margin-top:.5em;max-width:38ch}
+.hero-ctas{margin-top:1.5em}
+
+/* --- Focus polish (a11y) --- */
+button:focus-visible,a:focus-visible,[tabindex]:focus-visible,[role="button"]:focus-visible{
+  outline:2px solid var(--accent);
+  outline-offset:3px;
+  box-shadow:var(--sh-ring);
+  border-radius:8px;
+}
+
+/* --- Scrollbar tuning --- */
+.sidebar::-webkit-scrollbar,.main::-webkit-scrollbar{width:10px;height:10px}
+.sidebar::-webkit-scrollbar-track,.main::-webkit-scrollbar-track{background:transparent}
+.sidebar::-webkit-scrollbar-thumb,.main::-webkit-scrollbar-thumb{background:var(--hair-strong);border-radius:999px;border:2px solid transparent;background-clip:padding-box}
+.sidebar::-webkit-scrollbar-thumb:hover,.main::-webkit-scrollbar-thumb:hover{background:var(--muted-2);background-clip:padding-box;border:2px solid transparent}
+*{scrollbar-color:var(--hair-strong) transparent;scrollbar-width:thin}
+
+/* --- Responsive polish --- */
+@media (min-width:1280px){
+  .page{padding-left:56px;padding-right:56px}
+}
+@media (max-width:900px){
+  h1{font-size:clamp(28px,5.4vw,36px)}
+  h2{font-size:clamp(22px,4vw,28px)}
+  h3{font-size:clamp(18px,3.2vw,22px)}
+  .card{border-radius:10px}
+}
+@media (max-width:540px){
+  body{font-size:15px;line-height:1.65}
+  .hero{padding:24px 18px}
+  .btn{height:38px;padding:0 14px}
+}
+
+/* ============================================================
+   v6.1 Follow-up fixes (Gemini review → CAUTION → PASS)
+   - Fixes heading hierarchy inversion (page-h1 < section-h2)
+   - Eliminates stylesheet-level half-pixel font-size
+   - Lifts --muted-2 and text-accent to WCAG AA contrast
+   ============================================================ */
+
+/* --- H1/H2 hierarchy repair: page-head h1 was 36px, section h2 38px --- */
+.page-head h1{font-size:40px;letter-spacing:-.024em;line-height:1.1}
+.section h2{font-size:32px;letter-spacing:-.02em;line-height:1.15;margin:24px 0 10px}
+
+/* --- Stylesheet-level half-pixel → whole-px --- */
+/* 10.5px → 11px */
+.setting-en, .ba .col h5, table.t th, .kbd, .claim-card .id,
+.steps .st .n, .reader .toc .h, .rail-block .h, .scaffold,
+.legend, .legend .lgl, .qa-switch, .state-card .ds, .copy-btn,
+.gain-row, .srs-buttons .sb .d, .field .lb, .en-sub, .ctrl-hint,
+.mode-cell .mode-sub, .mode-foot, .provider-note, .provider-name,
+.mode-summary .ms-sub, .tree{font-size:11px}
+/* 11.5px → 12px */
+.agent-card .a-cmd, .impl-notes, .src-card .row, .src-card{font-size:12px}
+/* 12.5px → 13px */
+.diff, table.t .mono, .listg .lnode{font-size:13px}
+/* 13.5px → 14px (stay readable) */
+.claim-card .txt, .steps .st, .section .sub, .field{font-size:14px}
+/* 16.5px → 17px */
+.hero .lead{font-size:17px}
+/* Nested/descendant half-pixel cleanups (higher specificity than above) */
+.steps .st p, .field .lb p{font-size:13px}
+.impl-notes pre, .impl-notes code, .field code{font-size:12px}
+
+/* --- WCAG AA: muted-2 #8F8878 (3.3:1) → #7A7366 (4.55:1) --- */
+:root{--muted-2:#7A7366}
+
+/* --- WCAG AA: accent-as-text → use accent-ink (4.99:1) --- */
+.nav-item.active .ic,
+.nav-item.active .en,
+.nav-item[aria-current="page"] .ic,
+.nav-item[aria-current="page"] .en{color:var(--accent-ink)}
+
+/* --- Motion: respect prefers-reduced-motion (v6 supersedes v5) --- */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{
+    animation-duration:.001ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.001ms !important;
+    scroll-behavior:auto !important;
+  }
+}
+
+/* --- Print: lesson / diff pages become clean A4 documents --- */
+@media print{
+  .sidebar,.btn,.mobile-nav-toggle,.sidebar-backdrop{display:none !important}
+  .page{padding:0 !important;max-width:none !important}
+  body{background:#fff;font-size:11pt;line-height:1.55}
+  a{color:var(--ink);text-decoration:underline}
+  .card{break-inside:avoid;box-shadow:none;border-color:#ccc}
+}
+</style>
+</head>
+<body>
+<a href="#main-content" class="skip-link">Skip to content</a>
+<div class="app">
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar" aria-label="Primary navigation">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"><span>Δ知</span></div>
+      <div>
+        <div class="brand-name">知返 AhaDiff</div>
+        <div class="brand-en">Ship · Learn · Ratchet</div>
+      </div>
+    </div>
+    <nav class="nav-section" aria-label="Workspace">
+      <div class="nav-label">工作区 · Workspace</div>
+      <button type="button" class="nav-item" data-goto="landing" aria-label="Landing 首页"><span class="ic" aria-hidden="true">◎</span><span>首页</span><span class="en">Landing</span></button>
+      <button type="button" class="nav-item active" data-goto="dashboard" aria-current="page" aria-label="Runs 运行"><span class="ic" aria-hidden="true">▤</span><span>运行</span><span class="en">Runs</span></button>
+      <button type="button" class="nav-item" data-goto="lesson" aria-label="Lessons 学习笔记"><span class="ic" aria-hidden="true">❦</span><span>学习笔记</span><span class="en">Lessons</span></button>
+      <button type="button" class="nav-item" data-goto="diff" aria-label="Diff and evidence"><span class="ic" aria-hidden="true">⇌</span><span>Diff + 证据</span><span class="en">Diff</span></button>
+      <button type="button" class="nav-item" data-goto="ratchet" aria-label="Ratchet Lab"><span class="ic" aria-hidden="true">▲</span><span>棘轮</span><span class="en">Ratchet</span></button>
+    </nav>
+    <nav class="nav-section" aria-label="Practice">
+      <div class="nav-label">学习 · Practice</div>
+      <button type="button" class="nav-item" data-goto="quiz" aria-label="Quiz 测验"><span class="ic" aria-hidden="true">?</span><span>测验</span><span class="en">Quiz</span></button>
+      <button type="button" class="nav-item" data-goto="review" aria-label="Review 复习"><span class="ic" aria-hidden="true">⟲</span><span>复习</span><span class="en">Review</span></button>
+      <button type="button" class="nav-item" data-goto="graph" aria-label="Learning Graph 图谱"><span class="ic" aria-hidden="true">◈</span><span>图谱</span><span class="en">Graph</span></button>
+    </nav>
+    <nav class="nav-section" aria-label="System">
+      <div class="nav-label">系统 · System</div>
+      <button type="button" class="nav-item" data-goto="onboarding" aria-label="Onboarding 新手上路"><span class="ic" aria-hidden="true">➊</span><span>新手上路</span><span class="en">Onboard</span></button>
+      <button type="button" class="nav-item" data-goto="skills" aria-label="Agent Skills 技能"><span class="ic" aria-hidden="true">✦</span><span>Agent 技能</span><span class="en">Skills</span></button>
+      <button type="button" class="nav-item" data-goto="settings" aria-label="Settings 设置"><span class="ic" aria-hidden="true">⚙</span><span>设置</span><span class="en">Settings</span></button>
+    </nav>
+    <div class="side-foot">
+      <span class="dot" aria-hidden="true"></span>
+      <span id="mode-status">Hybrid · Local embed + BYOK</span>
+      <span class="mono" style="margin-left:auto">v1.1.0</span>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main" id="main-content">
+    <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
+    <div class="topbar">
+      <button type="button" class="mobile-nav-btn" id="mobile-nav-toggle" aria-label="Toggle navigation menu" aria-controls="sidebar" aria-expanded="false">☰</button>
+      <div class="crumb"><span>knowledge-return</span><span class="sep" aria-hidden="true">/</span><span id="bc-page">Runs</span></div>
+      <div class="search" role="search"><span aria-hidden="true">⌕</span><span>搜索 claim / concept / commit…</span><kbd>⌘K</kbd></div>
+      <button class="btn ghost" type="button">文档 Docs</button>
+      <button class="btn primary" type="button">+ 新建 Learn Run</button>
+    </div>
+
+    <!-- ============ LANDING ============ -->
+    <section class="page" data-page="landing">
+      <div class="hero">
+        <div class="hero-grid">
+          <div>
+            <div class="eyebrow" style="margin-bottom:18px">§ 01 · 知返 AhaDiff · v1.1</div>
+            <h1>让每个 AI Diff，<br/>讲到你 <em>真的懂</em>。</h1>
+            <div class="en">Every AI-written diff becomes a verified Aha lesson.</div>
+            <p class="lead">知返是一个 <b>local-first 的 verified diff learning layer</b>。它把 Claude、Codex、Cursor 写出的 git diff，变成带代码证据链的学习笔记、概念图、主动回忆测验，以及可棘轮的质量评分。</p>
+            <div class="hero-ctas">
+              <button class="btn primary">▶ 查看一篇已验证的 Lesson</button>
+              <button class="btn">从你的 diff 开始 →</button>
+              <span class="text">⌘ ahadiff learn HEAD~1..HEAD</span>
+            </div>
+          </div>
+          <div class="hero-demo">
+            <div class="tabs">
+              <div class="tab" data-bat="raw">Raw Diff</div>
+              <div class="tab active" data-bat="aha">Aha Lesson</div>
+            </div>
+            <div class="pane" data-bap="raw">
+<pre class="code-block" style="margin:0;border-left:3px solid var(--muted);max-height:340px">diff --git a/src/client.ts b/src/client.ts
+@@ -68,7 +68,29 @@ export class ApiClient {
+-  async request(path: string) {
+-    return fetch(this.base + path)
+-  }
++  async request(path: string, opts: ReqOpts = {}) {
++    const max = opts.retries ?? 4
++    for (let i = 0; i &lt;= max; i++) {
++      try {
++        return await fetch(this.base + path, opts)
++      } catch (e) {
++        if (i === max) throw e
++        const backoff = 200 * 2 ** i
++        const jitter  = Math.random() * backoff
++        await sleep(backoff + jitter)
++      }
++    }
++  }</pre>
+            </div>
+            <div class="pane active" data-bap="aha">
+              <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
+                <span class="badge verified"><span class="bd"></span>17 verified</span>
+                <span class="badge weak"><span class="bd"></span>1 weak</span>
+                <span class="badge notproven"><span class="bd"></span>1 not proven</span>
+                <span class="badge contradicted"><span class="bd"></span>1 rejected</span>
+                <span class="badge pass" style="margin-left:auto">PASS · 88</span>
+              </div>
+              <div class="claim-card selected">
+                <div class="id">c007 · verified · 0.91</div>
+                <div class="txt serif" style="font-size:15px">重试循环现采用指数退避 + 抖动（jitter），避免同步风暴。</div>
+                <div class="ev">src/client.ts:L76–L83 · hunk@a7f2</div>
+              </div>
+              <div class="claim-card">
+                <div class="id">c008 · verified · 0.87</div>
+                <div class="txt serif" style="font-size:15px">最大重试次数由 <code style="font-family:var(--font-mono);font-size:12px">opts.retries</code> 配置，默认 4 次。</div>
+                <div class="ev">src/client.ts:L74–L75</div>
+              </div>
+              <div class="claim-card">
+                <div class="id">c020 · contradicted · dangerous</div>
+                <div class="txt serif" style="font-size:15px">“重试对 POST 请求也是安全的” — 本 diff 没有 idempotency key 或 method gate。</div>
+                <div class="ev" style="color:var(--danger)">✗ contradicted · add misconception quiz</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="eyebrow">§ 02 · 工作流</div>
+        <h2>AI 写完，Diff 教回。</h2>
+        <div class="sub">一次 commit 的学习回路：捕获 diff → 验证 claim → 主动回忆 → 质量棘轮 → 写入长期 wiki。</div>
+        <div class="steps">
+          <div class="st"><div class="n">STEP · 01</div><h4>Capture Diff</h4><p>staged / commit / PR patch 统一进入 .ahadiff/commits/</p></div>
+          <div class="st"><div class="n">STEP · 02</div><h4>Verify Claims</h4><p>每句解释回到 file:line，标注 verified / weak / not_proven</p></div>
+          <div class="st"><div class="n">STEP · 03</div><h4>Quiz</h4><p>Socratic 追问、Hint、Quiz-only 三阶 scaffolding</p></div>
+          <div class="st"><div class="n">STEP · 04</div><h4>Ratchet</h4><p>score 71 → 88 保留；否则丢弃并记录原因</p></div>
+          <div class="st"><div class="n">STEP · 05</div><h4>Wiki Memory</h4><p>commits / concepts / graph.json 增量积累</p></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="eyebrow">§ 03 · Evidence Demo</div>
+        <h2>解释的每一句，都能回到代码。</h2>
+        <div class="ba">
+          <div class="col">
+            <h5>Before · Raw git diff</h5>
+<pre class="mono" style="font-size:12px;line-height:1.6;color:var(--ink-2);white-space:pre-wrap">
++ async request(path, opts = {}) {
++   const max = opts.retries ?? 4
++   for (let i = 0; i &lt;= max; i++) {
++     try { return await fetch(this.base+path,opts) }
++     catch (e) {
++       if (i === max) throw e
++       const backoff = 200 * 2 ** i
++       const jitter  = Math.random() * backoff
++       await sleep(backoff + jitter)
++     }
++   }
++ }
+</pre>
+          </div>
+          <div class="col" style="background:#fff">
+            <h5>After · Aha Lesson（excerpt）</h5>
+            <div class="prose" style="font-size:14.5px;line-height:1.7">
+              <p>这次改动把 <code>request()</code> 从单次 <code>fetch</code> 改成了
+              <span class="highlight">指数退避 + 抖动</span>的重试循环。重试次数由 <code>opts.retries</code> 配置，默认 4 次；每次失败后延迟 <code>200·2^i</code> 毫秒加上一个均匀分布的抖动。</p>
+              <p><b>为什么重要？</b>同步重试容易引发 <span class="highlight">Thundering Herd</span>；抖动能把大量客户端的重试点错开。</p>
+              <p><span style="color:var(--muted)">Not proven by this diff:</span> 真正的性能提升不能仅由代码得出。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="eyebrow">§ 04 · Benchmark & Trust</div>
+        <h2>开源、可审计、可打印。</h2>
+        <div class="demo-banner"><span class="demo-tag">● DEMO DATA</span><span>Synthetic benchmark preview · <b>replace with real results.tsv after backend integration</b>. Not a published benchmark.</span></div>
+        <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
+          <div class="kpi"><div class="lb">Pinned diffs <span class="demo-tag" style="font-size:9px;padding:1px 5px">DEMO</span></div><div class="vl">50</div><div class="delta">8 语言 · 12 项目类型</div></div>
+          <div class="kpi"><div class="lb">Judge–Human κ <span class="demo-tag" style="font-size:9px;padding:1px 5px">DEMO</span></div><div class="vl">0.82</div><div class="delta"><span class="up">+0.04</span> 自 v1.0.2 · mock</div></div>
+          <div class="kpi"><div class="lb">Ratchet keep-rate <span class="demo-tag" style="font-size:9px;padding:1px 5px">DEMO</span></div><div class="vl">64%</div><div class="delta">last 30 days · mock</div></div>
+          <div class="kpi"><div class="lb">Median cost / lesson <span class="demo-tag" style="font-size:9px;padding:1px 5px">DEMO</span></div><div class="vl">$0.018</div><div class="delta">Haiku judge · mock</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ DASHBOARD ============ -->
+    <section class="page active" data-page="dashboard">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">§ Runs Dashboard</div>
+          <h1>运行记录 <span class="mono" style="font-size:18px;color:var(--muted)">· knowledge-return</span></h1>
+          <div class="sub">过去 30 天共 147 次 learn run。仓库 main 分支领先 SPEC.md 6/8 个需求。</div>
+        </div>
+        <div class="right">
+          <span class="chip">last 30 days</span>
+          <button class="btn">导出 CSV</button>
+          <button class="btn primary">+ New Learn Run</button>
+        </div>
+      </div>
+
+      <div class="demo-banner dashboard-note"><span class="demo-tag">DEMO DATA</span><span>Dashboard KPI values are synthetic. Replace with real results.tsv + audit log after backend integration.</span></div>
+
+      <div class="kpi-grid">
+        <div class="kpi"><div class="lb">Lesson score · median</div><div class="vl">82.4</div><div class="delta"><span class="up">▲ 4.2</span> vs 上周 · PASS ratio 71%</div></div>
+        <div class="kpi"><div class="lb">Claims verified</div><div class="vl">2,418 <span style="font-size:14px;color:var(--muted)">/ 2,704</span></div><div class="delta">89.4% · 186 weak · 100 not proven</div></div>
+        <div class="kpi"><div class="lb">Reviews due today</div><div class="vl">27</div><div class="delta">4 overdue · 3 at-risk 概念</div></div>
+        <div class="kpi"><div class="lb">Spec alignment</div><div class="vl">6<span style="font-size:22px;color:var(--muted)">/8</span></div><div class="delta"><span class="badge caution">CAUTION</span> OAuth logout 未实现</div></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:18px;margin-top:18px">
+        <div class="card">
+          <div class="ch"><h3>Quality trajectory</h3><div class="meta">FIG 1 · 30 day ratchet</div></div>
+          <div class="cb">
+            <svg viewBox="0 0 800 240" style="width:100%;height:220px" role="img" aria-labelledby="qt-title qt-desc">
+              <title id="qt-title">Quality trajectory · 30-day ratchet</title>
+              <desc id="qt-desc">Lesson score has improved from ~50 on Mar 20 to a current PASS score of 88 on Apr 19. The line trends upward with small dips and the latest point is highlighted.</desc>
+              <defs>
+                <linearGradient id="g1" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0" stop-color="#D97757" stop-opacity=".25"/>
+                  <stop offset="1" stop-color="#D97757" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <g stroke="#E8E6DC" stroke-dasharray="2 4">
+                <line x1="40" y1="40" x2="780" y2="40"/>
+                <line x1="40" y1="100" x2="780" y2="100"/>
+                <line x1="40" y1="160" x2="780" y2="160"/>
+                <line x1="40" y1="220" x2="780" y2="220"/>
+              </g>
+              <g font-family="JetBrains Mono" font-size="10" fill="#8E8778">
+                <text x="10" y="44">95</text><text x="10" y="104">80</text><text x="10" y="164">65</text><text x="10" y="224">50</text>
+              </g>
+              <path d="M40,180 L100,165 L160,150 L220,140 L280,120 L340,130 L400,110 L460,95 L520,100 L580,82 L640,88 L700,70 L760,65" fill="none" stroke="#D97757" stroke-width="2"/>
+              <path d="M40,180 L100,165 L160,150 L220,140 L280,120 L340,130 L400,110 L460,95 L520,100 L580,82 L640,88 L700,70 L760,65 L760,230 L40,230 Z" fill="url(#g1)"/>
+              <g fill="#D97757">
+                <circle cx="40" cy="180" r="3"/><circle cx="280" cy="120" r="3"/><circle cx="460" cy="95" r="3"/><circle cx="760" cy="65" r="3.5" stroke="#B8542F" stroke-width="1.5" fill="#fff"/>
+              </g>
+              <g font-family="JetBrains Mono" font-size="10" fill="#6B6559">
+                <text x="40" y="20">Mar 20</text><text x="280" y="20">Mar 31</text><text x="460" y="20">Apr 08</text><text x="720" y="20">Apr 19</text>
+              </g>
+              <g fill="#2F6F4F" font-family="JetBrains Mono" font-size="10">
+                <rect x="700" y="50" width="60" height="16" rx="3" fill="#ECF4EE"/>
+                <text x="706" y="61">PASS 88</text>
+              </g>
+              <text x="760" y="55" text-anchor="end" font-family="JetBrains Mono" font-size="9" fill="#8E8778" opacity="0">final v10 = 88</text>
+            </svg>
+          </div>
+        </div>
+        <div class="card">
+          <div class="ch"><h3>Spec alignment</h3><div class="meta">SPEC · OAuth login</div></div>
+          <div class="cb">
+            <table class="t" style="font-size:12.5px">
+              <tbody>
+                <tr><td>authorize endpoint</td><td><span class="badge verified"><span class="bd"></span>done</span></td></tr>
+                <tr><td>callback handler</td><td><span class="badge verified"><span class="bd"></span>done</span></td></tr>
+                <tr><td>refresh rotation</td><td><span class="badge verified"><span class="bd"></span>done</span></td></tr>
+                <tr><td>state / PKCE</td><td><span class="badge verified"><span class="bd"></span>done</span></td></tr>
+                <tr><td>error boundary</td><td><span class="badge verified"><span class="bd"></span>done</span></td></tr>
+                <tr><td>audit log</td><td><span class="badge verified"><span class="bd"></span>done</span></td></tr>
+                <tr><td>logout flow</td><td><span class="badge weak"><span class="bd"></span>missing</span></td></tr>
+                <tr><td>token revoke</td><td><span class="badge weak"><span class="bd"></span>missing</span></td></tr>
+              </tbody>
+            </table>
+            <div style="margin-top:14px;font-size:12px;color:var(--muted)">判定 <span class="badge caution">CAUTION</span> · 6 / 8 覆盖，2 项缺失</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:18px">
+        <div class="ch"><h3>Recent runs</h3><div class="row-flex"><span class="chip on">All</span><span class="chip">PASS</span><span class="chip">CAUTION</span><span class="chip">FAIL</span></div></div>
+        <table class="t">
+          <thead><tr><th>commit</th><th>lesson</th><th>score</th><th>verdict</th><th>claims</th><th>spec</th><th>cost</th><th>status</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">abc123</td><td>Add retry backoff to API client</td><td class="mono num">88</td><td><span class="badge pass">PASS</span></td><td class="mono">19<span style="color:var(--muted)">/20</span></td><td>6/8</td><td class="mono">$0.021</td><td><span class="badge accent">kept</span></td></tr>
+            <tr><td class="mono">def456</td><td>Refactor token store → KV</td><td class="mono num">78</td><td><span class="badge caution">CAUTION</span></td><td class="mono">11<span style="color:var(--muted)">/14</span></td><td>3/5</td><td class="mono">$0.014</td><td><span class="badge accent">kept</span></td></tr>
+            <tr><td class="mono">7f1c22</td><td>Add PKCE to OAuth flow</td><td class="mono num">91</td><td><span class="badge pass">PASS</span></td><td class="mono">23<span style="color:var(--muted)">/24</span></td><td>4/4</td><td class="mono">$0.027</td><td><span class="badge accent">kept</span></td></tr>
+            <tr><td class="mono">e3a801</td><td>Inline SQL in analytics export</td><td class="mono num">52</td><td><span class="badge fail">FAIL</span></td><td class="mono">4<span style="color:var(--muted)">/12</span></td><td>—</td><td class="mono">$0.011</td><td><span style="color:var(--muted);font-family:var(--font-mono);font-size:11px">discarded</span></td></tr>
+            <tr><td class="mono">9b2e0d</td><td>Adopt zod at request boundary</td><td class="mono num">84</td><td><span class="badge pass">PASS</span></td><td class="mono">16<span style="color:var(--muted)">/18</span></td><td>—</td><td class="mono">$0.018</td><td><span class="badge accent">kept</span></td></tr>
+            <tr><td class="mono">221af0</td><td>Switch logger to pino</td><td class="mono num">74</td><td><span class="badge caution">CAUTION</span></td><td class="mono">9<span style="color:var(--muted)">/13</span></td><td>—</td><td class="mono">$0.009</td><td><span class="badge accent">kept</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px">
+        <div class="card"><div class="ch"><h3>Weak concepts</h3><div class="meta">forgetting risk</div></div><div class="cb">
+          <div style="display:flex;flex-wrap:wrap;gap:8px">
+            <span class="chip on">idempotency</span>
+            <span class="chip on">jitter</span>
+            <span class="chip">CSRF</span>
+            <span class="chip">PKCE verifier</span>
+            <span class="chip">retry budget</span>
+            <span class="chip">refresh rotation</span>
+          </div>
+          <div style="margin-top:14px;font-size:12.5px;color:var(--muted)">2 concept 已连续答错 ≥2 次，建议 <b style="color:var(--accent-ink)">SRS 今晚复习</b>。</div>
+        </div></div>
+        <div class="card"><div class="ch"><h3>Audit cost (24h)</h3><div class="meta">provider call log</div></div><div class="cb">
+          <table class="t" style="font-size:12.5px">
+            <tr><td>Anthropic · Claude Haiku 4.5 <span style="color:var(--muted)">(judge)</span></td><td class="mono num">18 calls</td><td class="mono num">$0.12</td></tr>
+            <tr><td>Anthropic · Claude Sonnet 4.5 <span style="color:var(--muted)">(generate)</span></td><td class="mono num">3 calls</td><td class="mono num">$0.08</td></tr>
+            <tr><td>Local · Ollama nomic-embed</td><td class="mono num">42 calls</td><td class="mono num">$0.00</td></tr>
+            <tr><td>OpenAI · configured (judge backup)</td><td class="mono num">6 calls</td><td class="mono num">$0.03</td></tr>
+          </table>
+        </div></div>
+      </div>
+    </section>
+
+    <!-- ============ LESSON READER ============ -->
+    <section class="page" data-page="lesson">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">§ Lesson · abc123 · retry-backoff</div>
+          <h1 class="serif">Commit abc123 · Add retry backoff to API client</h1>
+          <div class="sub">2026-04-18 · src/client.ts · 1 file · +22 −2 · 由 Claude Code + 你共同完成，知返验证了 20 条 claim。</div>
+        </div>
+        <div class="right">
+          <span class="badge pass">PASS · 88</span>
+          <button class="btn">🖶 Print</button>
+          <button class="btn primary">Mark as learned</button>
+        </div>
+      </div>
+
+      <div class="reader">
+        <aside class="toc">
+          <div class="h">目录 · Contents</div>
+          <a href="#s-tldr">TL;DR</a>
+          <a href="#s-what" class="active">What changed</a>
+          <a href="#s-why">Why it matters</a>
+          <a href="#s-claims">Claims verified</a>
+          <a href="#s-walk">Walkthrough by hunk</a>
+          <a href="#s-concepts">Concepts you just used</a>
+          <a href="#s-misconceptions">Misconceptions</a>
+          <a href="#s-notproven">Not proven by this diff</a>
+          <a href="#s-quiz">Quiz</a>
+          <a href="#s-sources">Sources</a>
+
+          <div class="h" style="margin-top:24px">反向链接 · Backlinks</div>
+          <a href="#">← def456 · token store</a>
+          <a href="#">← 7f1c22 · PKCE flow</a>
+          <a href="#">→ concept: jitter</a>
+          <a href="#">→ concept: idempotency</a>
+        </aside>
+
+        <article class="prose">
+          <h2 id="s-tldr">TL;DR</h2>
+          <p>这次改动给 <code>ApiClient.request</code> 加上了 <b>指数退避 + 抖动</b> 的重试循环，默认重试 4 次；失败会抛出原始错误。它解决的是<span class="highlight">短暂网络抖动导致请求失败</span>的问题，但<b>不解决</b>幂等性——GET 以外的请求如果你不显式标注 <code>idempotencyKey</code>，重试是危险的。</p>
+
+          <h2 id="s-what">What changed</h2>
+          <p>新增了 <code>ReqOpts</code> 可选参数；默认行为从“一次请求”变成“最多 5 次尝试，逐次退避 200·2^i 毫秒 + 随机抖动”。没有默认 <code>idempotencyKey</code>；没有对 HTTP 状态码做分类（5xx vs 4xx）；没有引入 <code>AbortController</code>。</p>
+
+          <h2 id="s-why">Why it matters</h2>
+          <p>在面向多租户 API 时，单次 <code>fetch</code> 遇到瞬断会把失败原样抛给用户。<b>加入退避可以降低短暂网络抖动造成的可见失败；具体改善幅度需要线上指标或 benchmark 证明</b>（见 <a href="#s-notproven" style="color:var(--accent-ink)">Not Proven</a>）。而抖动是在<span class="highlight">大量客户端同时重试</span>时避免 Thundering Herd 的关键——这也是这次 diff 最值得记住的一条。</p>
+
+          <h2 id="s-claims">Shipped claims <span class="mono" style="font-size:14px;color:var(--muted);font-weight:400">· 19 of 20 candidates</span></h2>
+          <p style="font-size:12.5px;color:var(--muted);margin:-4px 0 8px">Verified, weak, and not-proven claims all ship to the lesson. Contradicted candidates are <b>not shipped</b> — see Rejected misconception below.</p>
+          <ul>
+            <li><span class="badge verified" style="vertical-align:middle"><span class="bd"></span>c007</span> 使用指数退避 + 抖动 — <code>src/client.ts:L76–L83</code></li>
+            <li><span class="badge verified" style="vertical-align:middle"><span class="bd"></span>c008</span> 默认重试 4 次 — <code>src/client.ts:L74–L75</code></li>
+            <li><span class="badge verified" style="vertical-align:middle"><span class="bd"></span>c009</span> 只在 <code>fetch</code> throw 时触发重试，不看 HTTP 状态码 — <code>src/client.ts:L78–L80</code></li>
+            <li><span class="badge weak" style="vertical-align:middle"><span class="bd"></span>c015</span> 作者意图是避免 Thundering Herd — <code>src/client.ts:L81–L83</code> · intent inferred</li>
+            <li><span class="badge notproven" style="vertical-align:middle"><span class="bd"></span>c018</span> 性能提升 12% — 本 diff 无 benchmark 证据</li>
+            <li style="color:var(--muted);font-size:12.5px;list-style:none;margin-left:-20px;margin-top:6px;font-style:italic">… 14 more verified claims (c001–c019, omitted for brevity)</li>
+          </ul>
+
+          <h2 id="s-rejected">Rejected misconception <span class="mono" style="font-size:14px;color:var(--danger);font-weight:400">· 1 of 20 candidates · not shipped</span></h2>
+          <p style="font-size:12.5px;color:var(--muted);margin:-4px 0 8px">A contradicted candidate that the rubric refuses to ship as a fact. Instead, it becomes a misconception quiz item that warns the learner of the same trap next time.</p>
+          <ul>
+            <li><span class="badge contradicted" style="vertical-align:middle"><span class="bd"></span>c020</span> <b style="color:var(--danger)">DANGEROUS</b> · “重试对 POST 请求也安全” — 本 diff 无 idempotency key / method gate. Converted to misconception quiz, surfaces in SRS as <code>m-c020</code>.</li>
+          </ul>
+
+          <h2 id="s-walk">Walkthrough by hunk</h2>
+          <p>hunk <code>a7f2 · L76–L83</code>：<span class="highlight">这是重试循环本体</span>。注意 <code>i &lt;= max</code> 意味着总尝试次数是 <code>max + 1</code>，这是一个经常被记错的细节。<code>backoff + jitter</code> 而不是 <code>backoff * (1 + jitter)</code>，两者在长尾分布上并不相同。</p>
+
+          <h2 id="s-concepts">Concepts you just used</h2>
+          <p>Exponential backoff · Jitter · Idempotency (未触达) · Retry budget · Thundering Herd. 其中 <b>jitter</b> 是本 lesson 首次引入，会进入 SRS 复习队列。</p>
+
+          <h2 id="s-misconceptions">Misconceptions</h2>
+          <p>很多人以为加重试一定更可靠——对非幂等请求反而会放大副作用。常见的另一错觉：抖动没有必要。从数学上看，没有抖动时大量同步客户端在第 n 次重试会<span class="highlight">在同一毫秒聚合</span>。</p>
+
+          <h2 id="s-notproven">Not proven by this diff</h2>
+          <ul>
+            <li>性能提升幅度（“吃掉 X% 瞬断” / “延迟降低 Y%”）——无 benchmark。</li>
+            <li>作者真正的意图——无法从代码独立验证。</li>
+            <li>安全影响——这次不涉及 token / 敏感路径，因此也无法说“安全”。</li>
+            <li>POST 请求重试的安全性——<b style="color:var(--danger)">已 contradicted</b>（见 c020）。</li>
+          </ul>
+
+          <h2 id="s-quiz">Quiz · 5 道</h2>
+          <p>已生成 5 道问题，其中 1 道 transfer scenario（把这套重试放到 webhook receiver 会发生什么？）。<span class="mono">Quiz 完成 · 4/5</span></p>
+
+          <h2 id="s-sources">Sources</h2>
+          <p class="mono" style="font-size:13px">src/client.ts:L68–L104 · tests/client.test.ts:L21–L49 · .ahadiff/commits/abc123/claims.jsonl</p>
+        </article>
+
+        <aside class="rail">
+          <div class="rail-block">
+            <div class="h">Claims <span class="mono" style="color:var(--ink-2)">20 candidate · 19 shipped · 1 rejected</span></div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <span class="badge verified"><span class="bd"></span>17 verified</span>
+              <span class="badge weak"><span class="bd"></span>1 weak</span>
+              <span class="badge notproven"><span class="bd"></span>1 not proven</span>
+              <span class="badge contradicted"><span class="bd"></span>1 rejected</span>
+            </div>
+            <div style="margin-top:8px;font-size:11.5px;color:var(--muted);font-family:var(--font-mono);line-height:1.55">
+              Shipped: 17 verified · 1 weak · 1 not_proven · <b style="color:var(--success)">0 contradicted</b><br/>
+              Rejected: c020 · POST retry misconception (quiz-only)
+            </div>
+          </div>
+          <div class="rail-block">
+            <div class="h">Wiki Memory · <span class="mono" style="color:var(--ink-2)">.ahadiff/</span></div>
+            <div class="tree">
+              <span class="tr-dir">.ahadiff/</span><br/>
+              <span class="tr-file">index.md</span>
+              <span class="tr-file">concepts.md</span>
+              <span class="tr-file">log.md</span>
+              <span class="tr-file tr-dir">commits/</span>
+              <span class="tr-sub">abc123/lesson.md</span>
+              <span class="tr-sub">abc123/claims.jsonl</span>
+              <span class="tr-sub">abc123/quiz.md</span>
+            </div>
+            <div style="margin-top:10px;font-family:var(--font-mono);font-size:11px;color:var(--muted);line-height:1.8">
+              <span class="tr-new">Index updated</span><br/>
+              <span style="color:var(--success)">+ Exponential Backoff</span><br/>
+              <span style="color:var(--success)">+ Jitter</span><br/>
+              <span style="color:var(--success)">+ Retry Budget</span>
+            </div>
+          </div>
+          <div class="rail-block">
+            <div class="h">Evidence <span class="kbd">↵</span></div>
+            <div class="mono" style="font-size:11.5px;color:var(--ink-2);line-height:1.8">
+              src/client.ts<br/><span style="color:var(--muted)">  L74–L86 (canonical)</span><br/>
+              tests/client.test.ts<br/><span style="color:var(--muted)">  L21–L49</span>
+            </div>
+          </div>
+          <div class="rail-block">
+            <div class="h">Learning</div>
+            <div style="display:flex;justify-content:space-between;font-size:13px"><span>Quiz</span><span class="mono">4 / 5</span></div>
+            <div class="bar" style="margin:6px 0 12px"><span style="width:80%"></span></div>
+            <div style="display:flex;justify-content:space-between;font-size:13px"><span>Review due</span><span class="mono">tomorrow</span></div>
+          </div>
+          <div class="rail-block">
+            <div class="h">Scaffolding</div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:6px;font-family:var(--font-mono);line-height:1.5">Inspired by SKILL0-style context withdrawal for <b style="color:var(--ink-2)">human learning, not model training</b>.</div>
+            <div class="scaffold"><div class="sg active">Full</div><div class="sg">Hint</div><div class="sg">Quiz-only</div></div>
+            <div class="gain-card">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span class="demo-tag">DEMO</span><span style="font-family:var(--font-mono);font-size:10.5px;color:var(--muted);letter-spacing:.1em">paired recall probe</span></div>
+              <div class="gain-row"><span class="lb">with lesson</span><div class="bar"><span style="width:80%"></span></div><span class="mono num">4/5</span></div>
+              <div class="gain-row"><span class="lb">without lesson</span><div class="bar"><span class="lo" style="width:40%"></span></div><span class="mono num">2/5</span></div>
+              <div style="margin-top:6px;font-family:var(--font-mono);font-size:11px;color:var(--accent-ink)">learning_gain: <b>+40%</b></div>
+            </div>
+            <div style="font-size:11.5px;color:var(--muted);margin-top:8px;font-family:var(--font-mono)">
+              TL;DR +0.06<br/>Walkthrough +0.19<br/>Background +0.02 <span style="color:var(--warning)">· candidate to compress</span>
+            </div>
+          </div>
+          <div class="rail-block">
+            <div class="h">Not proven</div>
+            <ul style="margin:0;padding-left:18px;font-size:12.5px;color:var(--muted);line-height:1.7">
+              <li>性能提升幅度</li>
+              <li>作者意图</li>
+              <li>安全影响</li>
+            </ul>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ============ DIFF + EVIDENCE ============ -->
+    <section class="page" data-page="diff">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">§ Diff + Evidence · abc123</div>
+          <h1 class="serif">src/client.ts <span style="color:var(--muted);font-size:22px">· +22 −2</span></h1>
+          <div class="sub">点击 diff 行或 claim，左右联动定位证据。</div>
+        </div>
+        <div class="right">
+          <span class="chip on">Unified</span><span class="chip">Split</span>
+          <button class="btn">Prev file</button>
+          <button class="btn">Next file</button>
+          <button class="btn primary">Open Lesson →</button>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 360px;gap:18px">
+        <div>
+          <div class="diff">
+            <div class="hd"><span>src/client.ts · unified</span><span>hunk a7f2 · +22 −2</span></div>
+            <div class="row hunk"><div class="ln"></div><div class="ln"></div><div class="code">@@ -68,7 +68,29 @@ export class ApiClient {</div></div>
+            <div class="row"><div class="ln">68</div><div class="ln">68</div><div class="code">export class ApiClient {</div></div>
+            <div class="row"><div class="ln">69</div><div class="ln">69</div><div class="code">  constructor(private base: string) {}</div></div>
+            <div class="row"><div class="ln">70</div><div class="ln">70</div><div class="code"></div></div>
+            <div class="row del"><div class="ln">71</div><div class="ln"></div><div class="code">-  async request(path: string) {</div></div>
+            <div class="row del"><div class="ln">72</div><div class="ln"></div><div class="code">-    return fetch(this.base + path)</div></div>
+            <div class="row del"><div class="ln">73</div><div class="ln"></div><div class="code">-  }</div></div>
+            <div class="row add clickable" data-claim="c008"><div class="ln"></div><div class="ln">74</div><div class="code">+  async request(path: string, opts: ReqOpts = {}) {</div></div>
+            <div class="row add clickable" data-claim="c008"><div class="ln"></div><div class="ln">75</div><div class="code">+    const max = opts.retries ?? 4</div></div>
+            <div class="row add clickable selected" data-claim="c007"><div class="ln"></div><div class="ln">76</div><div class="code">+    for (let i = 0; i &lt;= max; i++) {</div></div>
+            <div class="row add clickable" data-claim="c007"><div class="ln"></div><div class="ln">77</div><div class="code">+      try {</div></div>
+            <div class="row add clickable" data-claim="c009"><div class="ln"></div><div class="ln">78</div><div class="code">+        return await fetch(this.base + path, opts)</div></div>
+            <div class="row add clickable" data-claim="c009"><div class="ln"></div><div class="ln">79</div><div class="code">+      } catch (e) {</div></div>
+            <div class="row add clickable" data-claim="c009"><div class="ln"></div><div class="ln">80</div><div class="code">+        if (i === max) throw e</div></div>
+            <div class="row add clickable selected" data-claim="c007"><div class="ln"></div><div class="ln">81</div><div class="code">+        const backoff = 200 * 2 ** i</div></div>
+            <div class="row add clickable selected" data-claim="c007"><div class="ln"></div><div class="ln">82</div><div class="code">+        const jitter  = Math.random() * backoff</div></div>
+            <div class="row add clickable selected" data-claim="c007"><div class="ln"></div><div class="ln">83</div><div class="code">+        await sleep(backoff + jitter)</div></div>
+            <div class="row add"><div class="ln"></div><div class="ln">84</div><div class="code">+      }</div></div>
+            <div class="row add"><div class="ln"></div><div class="ln">85</div><div class="code">+    }</div></div>
+            <div class="row add"><div class="ln"></div><div class="ln">86</div><div class="code">+  }</div></div>
+            <div class="row"><div class="ln">74</div><div class="ln">87</div><div class="code">}</div></div>
+          </div>
+
+          <div class="card" style="margin-top:18px">
+            <div class="ch"><h3>Selected source hunk</h3><div class="meta">c007 · src/client.ts:L76–L83</div></div>
+            <div class="cb">
+              <div class="prose" style="font-size:15px">
+                <p>你点击的行位于 hunk <code>a7f2</code>，这是重试循环体。知返把它与 <b>claim c007</b> 关联：</p>
+                <blockquote style="border-left:3px solid var(--accent);padding:4px 14px;color:var(--ink-2);margin:0;background:var(--accent-softer)">
+                  重试循环现采用指数退避 + 抖动（jitter），避免同步风暴。
+                </blockquote>
+                <p>hover 单行可 <span class="highlight">Ask this line</span>；双击可把它加入今天的 SRS 卡片。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <aside>
+          <div class="card">
+            <div class="ch"><h3>Claim Inspector</h3><div class="meta">19 shipped · 1 rejected · 1 selected</div></div>
+            <div class="cb" style="padding:14px 14px 8px">
+              <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+                <span class="chip on">Shipped 19</span>
+                <span class="chip">Verified 17</span>
+                <span class="chip">Weak 1</span>
+                <span class="chip">Not proven 1</span>
+                <span class="chip" style="color:var(--danger);border-color:#E4B8AE;background:#FDF1EC">Rejected 1</span>
+              </div>
+              <div class="claim-card selected">
+                <div class="id">c007 · <span style="color:var(--success)">verified</span> · conf 0.91</div>
+                <div class="txt serif">重试循环现采用指数退避 + 抖动（jitter），避免同步风暴。</div>
+                <div class="ev">◎ src/client.ts:L76–L83 · hunk@a7f2</div>
+                <div style="font-size:11px;color:var(--muted);font-family:var(--font-mono);margin-top:4px">concepts · retry · exponential_backoff · jitter</div>
+                <div class="actions"><button>Accept</button><button>Mark wrong</button><button>Add to quiz</button></div>
+              </div>
+              <div class="claim-card">
+                <div class="id">c008 · <span style="color:var(--success)">verified</span> · conf 0.87</div>
+                <div class="txt serif">最大重试次数由 <code style="font-family:var(--font-mono);font-size:12px">opts.retries</code> 控制，默认 4 次。</div>
+                <div class="ev">◎ src/client.ts:L74–L75</div>
+              </div>
+              <div class="claim-card">
+                <div class="id">c009 · <span style="color:var(--success)">verified</span> · conf 0.82</div>
+                <div class="txt serif">仅当 <code style="font-family:var(--font-mono);font-size:12px">fetch</code> 抛出时触发重试，不看 HTTP 状态码。</div>
+                <div class="ev">◎ src/client.ts:L78–L80</div>
+              </div>
+              <div class="claim-card" id="ci-c015">
+                <div class="id">c015 · <span style="color:var(--warning)">weak</span></div>
+                <div class="txt serif">作者意图是避免 Thundering Herd。</div>
+                <div class="ev">△ src/client.ts:L81–L83 · intent inferred from code but not proven</div>
+              </div>
+              <div class="claim-card">
+                <div class="id">c018 · <span style="color:var(--muted)">not proven</span></div>
+                <div class="txt serif">性能提升 12%。</div>
+                <div class="ev">⊘ 本 diff 未包含 benchmark</div>
+              </div>
+              <div class="claim-card" style="border-color:#E4B8AE;background:#FDF1EC">
+                <div class="id" style="color:var(--danger)">c020 · <b>rejected_contradicted · dangerous</b> <span style="color:var(--muted);font-family:var(--font-mono);font-size:11px;margin-left:6px">not shipped · quiz-only</span></div>
+                <div class="txt serif"><b>Claim:</b> Retrying all POST requests is safe.</div>
+                <div style="font-size:12px;color:var(--ink-2);margin-top:6px;line-height:1.55"><b>Reason:</b> No method gate or idempotency key appears in this diff.<br/><b>Action:</b> Converted to misconception quiz. Not shipped to lesson.</div>
+                <div class="ev" style="color:var(--danger);margin-top:6px;font-family:var(--font-mono);font-size:11.5px;line-height:1.7">
+                  ✗ negative evidence scan · src/client.ts:L74–L86<br/>
+                    missing: method gate · idempotencyKey · retry safety check
+                </div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ============ RATCHET LAB ============ -->
+    <section class="page" data-page="ratchet">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">§ Ratchet Lab · abc123</div>
+          <h1 class="serif">质量棘轮 <span class="mono" style="color:var(--muted);font-size:18px">· 11 iterations · kept 6 · final v10=88</span></h1>
+          <div class="sub">immutable evaluator · editable generator_prompt.md · results.tsv · <b style="color:var(--accent-ink)">strict ratchet: only strictly better scores are kept.</b></div>
+        </div>
+        <div class="right">
+          <span class="chip on">Results</span><span class="chip">Rubric</span><span class="chip">Benchmark</span><span class="chip">Judge notes</span>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:18px">
+        <div class="card">
+          <div class="ch"><h3>Quality trajectory</h3><div class="meta">score before → after</div></div>
+          <div class="cb">
+            <svg viewBox="0 0 700 240" style="width:100%;height:240px" role="img" aria-labelledby="rt-title rt-desc">
+              <title id="rt-title">Ratchet quality trajectory · 11 iterations</title>
+              <desc id="rt-desc">Score series across 11 prompt revisions. The strict ratchet keeps only strictly higher scores; the final kept version is v10 with score 88.</desc>
+              <g stroke="#E8E6DC" stroke-dasharray="2 4">
+                <line x1="40" y1="40" x2="680" y2="40"/>
+                <line x1="40" y1="100" x2="680" y2="100"/>
+                <line x1="40" y1="160" x2="680" y2="160"/>
+                <line x1="40" y1="220" x2="680" y2="220"/>
+              </g>
+              <g font-family="JetBrains Mono" font-size="10" fill="#8E8778">
+                <text x="10" y="44">95</text><text x="10" y="104">80</text><text x="10" y="164">65</text><text x="10" y="224">50</text>
+              </g>
+              <path d="M60,200 L120,180 L180,150 L240,190 L300,140 L360,130 L420,170 L480,115 L540,110 L600,90 L660,80" fill="none" stroke="#D97757" stroke-width="2"/>
+              <g fill="#D97757">
+                <circle cx="60" cy="200" r="3"/>
+                <circle cx="120" cy="180" r="3"/>
+                <circle cx="180" cy="150" r="3"/>
+                <circle cx="240" cy="190" r="3" fill="#fff" stroke="#A33D2B"/>
+                <circle cx="300" cy="140" r="3"/>
+                <circle cx="360" cy="130" r="3"/>
+                <circle cx="420" cy="170" r="3" fill="#fff" stroke="#A33D2B"/>
+                <circle cx="480" cy="115" r="3"/>
+                <circle cx="540" cy="110" r="3" fill="#fff" stroke="#A33D2B"/>
+                <circle cx="600" cy="90" r="4" fill="#fff" stroke="#B8542F" stroke-width="2"/>
+                <circle cx="660" cy="80" r="3" fill="#fff" stroke="#A33D2B"/>
+              </g>
+              <g font-family="JetBrains Mono" font-size="10" fill="#6B6559">
+                <text x="55" y="220">v1</text><text x="596" y="72">v10 final</text><text x="660" y="220">v11</text>
+              </g>
+              <line x1="60" y1="200" x2="660" y2="200" stroke="#C66B3D" stroke-dasharray="4 4" opacity=".3"/>
+              <g fill="#2F6F4F" font-family="JetBrains Mono" font-size="10">
+                <rect x="560" y="82" width="60" height="16" rx="3" fill="#ECF4EE"/>
+                <text x="566" y="94">final 88</text>
+              </g>
+            </svg>
+            <div style="display:flex;gap:12px;margin-top:8px;font-family:var(--font-mono);font-size:11.5px;color:var(--muted)">
+              <span>● kept</span><span style="color:var(--danger)">○ discarded</span><span>— baseline 71</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="ch"><h3>Rubric · 8-dim</h3><div class="meta">darwin-skill</div></div>
+          <div class="cb">
+            <div class="radar-grid" style="grid-template-columns:1fr 40px">
+              <div style="grid-column:1 / span 2">
+                <div style="display:grid;grid-template-columns:160px 1fr 36px;gap:10px;align-items:center;font-size:12.5px;row-gap:10px">
+                  <div>Accuracy <span class="mono" style="color:var(--muted);font-size:10.5px">20</span></div><div class="bar"><span style="width:92%"></span></div><div class="mono num">18/20</div>
+                  <div>Evidence <span class="mono" style="color:var(--muted);font-size:10.5px">15</span></div><div class="bar"><span style="width:88%"></span></div><div class="mono num">13/15</div>
+                  <div>Diff Coverage <span class="mono" style="color:var(--muted);font-size:10.5px">15</span></div><div class="bar"><span style="width:80%"></span></div><div class="mono num">12/15</div>
+                  <div>Learnability <span class="mono" style="color:var(--muted);font-size:10.5px">15</span></div><div class="bar"><span style="width:85%"></span></div><div class="mono num">13/15</div>
+                  <div>Recall Transfer <span class="mono" style="color:var(--muted);font-size:10.5px">10</span></div><div class="bar"><span style="width:70%;background:#B4791F"></span></div><div class="mono num">7/10</div>
+                  <div>Spec Alignment <span class="mono" style="color:var(--muted);font-size:10.5px">10</span></div><div class="bar"><span style="width:80%"></span></div><div class="mono num">8/10</div>
+                  <div>Conciseness <span class="mono" style="color:var(--muted);font-size:10.5px">8</span></div><div class="bar"><span style="width:87%"></span></div><div class="mono num">7/8</div>
+                  <div>Safety & Privacy <span class="mono" style="color:var(--muted);font-size:10.5px">7</span></div><div class="bar"><span style="width:100%"></span></div><div class="mono num">7/7</div>
+                </div>
+              </div>
+            </div>
+            <hr class="rule" style="margin:18px 0"/>
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);font-family:var(--font-mono)">
+              <span>Hard gates <b style="color:var(--success)">all pass</b></span>
+              <span>Weakest · <b style="color:var(--warning)">Recall Transfer</b></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:18px">
+        <div class="ch"><h3>results.tsv</h3><div class="meta">immutable evaluator v4.2.1 · 12 rows</div></div>
+        <div style="padding:10px 14px;font-family:var(--font-mono);font-size:11px;color:var(--muted);background:var(--subtle);border-bottom:1px solid var(--hair);letter-spacing:.04em">
+          <b style="color:var(--accent-ink)">Strict ratchet rule:</b> only strictly better scores are kept. <span class="demo-tag" style="margin-left:8px">DEMO DATA</span>
+        </div>
+        <table class="t">
+          <thead><tr><th>time</th><th>commit</th><th>version</th><th>score</th><th>verdict</th><th>status</th><th>weakest</th><th>note</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">14:22:18</td><td class="mono">abc123</td><td class="mono">v1</td><td class="mono num">71</td><td><span class="badge caution">CAUTION</span></td><td><span class="badge accent">baseline</span></td><td>Evidence</td><td>weak claims: 4</td></tr>
+            <tr><td class="mono">14:24:05</td><td class="mono">abc123</td><td class="mono">v2</td><td class="mono num">74</td><td><span class="badge caution">CAUTION</span></td><td><span class="badge accent">kept</span></td><td>Evidence</td><td>tightened evidence binding</td></tr>
+            <tr><td class="mono">14:26:41</td><td class="mono">abc123</td><td class="mono">v3</td><td class="mono num">79</td><td><span class="badge caution">CAUTION</span></td><td><span class="badge accent">kept</span></td><td>Recall</td><td>added transfer quiz</td></tr>
+            <tr><td class="mono">14:29:10</td><td class="mono">abc123</td><td class="mono">v4</td><td class="mono num">68</td><td><span class="badge fail">FAIL</span></td><td><span style="color:var(--muted);font-family:var(--font-mono);font-size:11px">discarded</span></td><td>Accuracy</td><td>prompt rewrite broke rubric</td></tr>
+            <tr><td class="mono">14:31:02</td><td class="mono">abc123</td><td class="mono">v5</td><td class="mono num">82</td><td><span class="badge pass">PASS</span></td><td><span class="badge accent">kept</span></td><td>Coverage</td><td>covered L74 default</td></tr>
+            <tr><td class="mono">14:33:44</td><td class="mono">abc123</td><td class="mono">v6</td><td class="mono num">84</td><td><span class="badge pass">PASS</span></td><td><span class="badge accent">kept</span></td><td>Recall</td><td>—</td></tr>
+            <tr><td class="mono">14:35:18</td><td class="mono">abc123</td><td class="mono">v7</td><td class="mono num">72</td><td><span class="badge caution">CAUTION</span></td><td><span style="color:var(--muted);font-family:var(--font-mono);font-size:11px">discarded</span></td><td>Accuracy</td><td>Phase 2.5 · structural rewrite</td></tr>
+            <tr><td class="mono">14:37:00</td><td class="mono">abc123</td><td class="mono">v8</td><td class="mono num">87</td><td><span class="badge pass">PASS</span></td><td><span class="badge accent">keep</span></td><td>Recall</td><td>new best=87 · post-rewrite recovery</td></tr>
+            <tr><td class="mono">14:38:44</td><td class="mono">abc123</td><td class="mono">v9</td><td class="mono num">85</td><td><span class="badge pass">PASS</span></td><td><span style="color:var(--muted);font-family:var(--font-mono);font-size:11px">discard</span></td><td>Recall</td><td>below best=87 · ratchet reject</td></tr>
+            <tr><td class="mono">14:40:09</td><td class="mono">abc123</td><td class="mono">v10</td><td class="mono num">88</td><td><span class="badge pass">PASS</span></td><td><span class="badge accent">keep final</span></td><td>Learnability</td><td>new best=88 · shipped to lesson</td></tr>
+            <tr><td class="mono">14:41:55</td><td class="mono">abc123</td><td class="mono">v11</td><td class="mono num">86</td><td><span class="badge pass">PASS</span></td><td><span style="color:var(--muted);font-family:var(--font-mono);font-size:11px">discard</span></td><td>Recall</td><td>below best=88 · ratchet reject</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px">
+        <div class="card">
+          <div class="ch"><h3>Phase 2.5 · structural rewrite</h3><div class="meta">stuck for 3 rounds · human checkpoint required</div></div>
+          <div class="cb">
+            <div class="code-block">Stuck for 3 rounds on Recall Transfer.
+AhaDiff is trying a structural rewrite of generator_prompt.md.
+Previous best (v6 · 84) is stashed and recoverable.
+
+diff generator_prompt.md
++ Require one transfer scenario per lesson.
++ Weight Recall +15% when quiz miss rate &gt; 0.2.
+- Default lesson length: 800–1200 tokens.
++ Default lesson length: 900–1400 tokens.</div>
+            <div style="margin-top:12px;padding:10px 12px;border:1px dashed #E3CDA1;background:#FBF5E6;border-radius:8px">
+              <div style="font-family:var(--font-mono);font-size:11px;color:var(--warning);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px">Human checkpoint required</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn primary" type="button" aria-label="Accept v10 as final">Accept v10</button>
+                <button class="btn" type="button" aria-label="Restore v8 best">Restore v8</button>
+                <button class="btn" type="button" aria-label="Open full diff">Open diff</button>
+                <button class="btn" type="button" aria-label="Run one more evaluation">Run one more eval</button>
+              </div>
+              <div style="margin-top:10px;font-size:12px;color:var(--ink-2);display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+                <span class="mono" style="color:var(--muted);font-size:11px">Ratchet history mode:</span>
+                <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="radio" name="rmode"/> <span>clean reset</span></label>
+                <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="radio" name="rmode" checked/> <span>audit revert</span></label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="ch"><h3>Benchmark transparency</h3><div class="meta">pinned suite · <span class="demo-tag">DEMO</span></div></div>
+          <div class="cb">
+            <div class="demo-banner"><span class="demo-tag">DEMO DATA</span><span>Replace with real results.tsv after backend integration.</span></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12.5px">
+              <div><div class="eyebrow">Suite</div><div>50 pinned diffs · 8 langs · 12 project types</div></div>
+              <div><div class="eyebrow">Ground truth</div><div>human-labeled · 3 reviewers · κ 0.78</div></div>
+              <div><div class="eyebrow">Judge–human κ</div><div>0.82 (+0.04 vs v1.0.2)</div></div>
+              <div><div class="eyebrow">Regression?</div><div><span class="badge verified"><span class="bd"></span>No regression</span></div></div>
+            </div>
+            <hr class="rule"/>
+            <div class="mono" style="font-size:11.5px;color:var(--muted);line-height:1.8">
+              pinned/0004-retry-backoff ............... 88 (+1)<br/>
+              pinned/0011-oauth-pkce .................. 91 (+2)<br/>
+              pinned/0023-zod-at-boundary ............. 84 (=)<br/>
+              pinned/0041-logger-switch ............... 74 (−1)<br/>
+              pinned/0050-analytics-sql ............... 52 (=)
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ QUIZ ============ -->
+    <section class="page" data-page="quiz">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">§ Socratic Quiz · abc123</div>
+          <h1 class="serif">主动回忆 · Question <span class="mono">3 / 5</span></h1>
+          <div class="sub">模式 · Recall · 基于 hunk a7f2 生成</div>
+        </div>
+        <div class="right">
+          <span class="chip">Guided</span><span class="chip on">Recall</span><span class="chip">Transfer</span>
+          <button class="btn">Skip →</button>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 320px;gap:24px">
+        <div>
+          <div class="bar" style="margin-bottom:18px"><span style="width:60%"></span></div>
+          <div class="card">
+            <div class="cb" style="padding:26px">
+              <div class="eyebrow" style="margin-bottom:10px">QUESTION · III of V</div>
+              <div class="serif" style="font-size:22px;line-height:1.4;letter-spacing:-.01em">
+                在当前实现里，<code style="font-family:var(--font-mono);font-size:19px">for (let i = 0; i &lt;= max; i++)</code> 的循环条件意味着最多会发起多少次 <code style="font-family:var(--font-mono);font-size:19px">fetch</code>？
+              </div>
+              <div style="margin-top:22px">
+                <div class="option"><span class="letter">A</span><div><div>max 次</div><div style="color:var(--muted);font-size:12px;margin-top:2px">等于 <code>opts.retries</code> 默认 4 次</div></div></div>
+                <div class="option correct"><span class="letter">B</span><div><div>max + 1 次</div><div style="color:var(--muted);font-size:12px;margin-top:2px">因为 <code>i &lt;= max</code> 包含 0 和 max</div></div></div>
+                <div class="option"><span class="letter">C</span><div><div>2^max 次</div></div></div>
+                <div class="option"><span class="letter">D</span><div><div>无限次，直到成功</div></div></div>
+              </div>
+              <div style="margin-top:18px;padding:14px;background:var(--accent-softer);border:1px solid #EBC3AE;border-radius:10px">
+                <div class="eyebrow" style="color:var(--accent-ink);margin-bottom:6px">Explanation · 正确</div>
+                <div style="font-size:14px;line-height:1.7;color:var(--ink-2)">
+                  <code>i</code> 从 0 循环到 <code>max</code> 共 <code>max + 1</code> 次；只有第 <code>max</code> 次捕获异常时才 <code>throw</code>。这意味着默认情况下最多 5 次 <code>fetch</code>，不是 4 次——这也是经常被记错的细节。
+                </div>
+              </div>
+              <div style="display:flex;gap:10px;margin-top:18px">
+                <button class="btn">← Prev</button>
+                <button class="btn ghost">Mark wrong (override)</button>
+                <button class="btn primary" style="margin-left:auto">Next →</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <aside>
+          <div class="card">
+            <div class="ch"><h3>Evidence</h3><div class="meta">live link</div></div>
+            <div class="cb">
+              <div class="mono" style="font-size:11.5px;color:var(--muted);line-height:1.8">src/client.ts:L76–L83 (c007)</div>
+              <pre class="mono" style="font-size:12px;background:var(--subtle);padding:10px;border-radius:6px;margin:10px 0 0">for (let i = 0;
+     i &lt;= max;
+     i++) {
+  ...
+}</pre>
+              <div style="margin-top:10px;font-size:12.5px;color:var(--muted)">Claim <b style="color:var(--ink-2)">c007</b> · Concepts <b>retry</b> · <b>off-by-one</b></div>
+            </div>
+          </div>
+          <div class="card" style="margin-top:14px">
+            <div class="ch"><h3>Progress</h3><div class="meta">5-question set</div></div>
+            <div class="cb">
+              <table class="t" style="font-size:12.5px">
+                <tr><td class="mono">Q1</td><td>idempotency</td><td><span class="badge verified"><span class="bd"></span>✓</span></td></tr>
+                <tr><td class="mono">Q2</td><td>jitter intent</td><td><span class="badge verified"><span class="bd"></span>✓</span></td></tr>
+                <tr><td class="mono">Q3</td><td>off-by-one</td><td><span class="badge accent">now</span></td></tr>
+                <tr><td class="mono">Q4</td><td>retry budget</td><td style="color:var(--muted)">pending</td></tr>
+                <tr><td class="mono">Q5</td><td>POST retry · misconception</td><td style="color:var(--muted)">transfer</td></tr>
+              </table>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ============ SRS REVIEW ============ -->
+    <section class="page" data-page="review">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">§ SRS Review · today</div>
+          <h1 class="serif">今日复习 · <span class="mono">7 / 27</span></h1>
+          <div class="sub">基于遗忘曲线排序。红色风险表示连续错误 ≥ 2 次。</div>
+        </div>
+        <div class="right">
+          <span class="chip">Cards 27</span><span class="chip">At-risk 3</span><span class="chip on">FSRS v4</span>
+          <button class="btn">暂停</button>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 340px;gap:24px">
+        <div>
+          <div class="flashcard">
+            <div class="tag"><span class="badge weak"><span class="bd"></span>forgetting risk high</span></div>
+            <div style="font-family:var(--font-mono);font-size:10.5px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase;margin-bottom:12px">Concept · Idempotency</div>
+            <div class="front">为什么对非幂等请求加重试会<br/><em style="color:var(--accent-ink)">放大副作用</em>？</div>
+            <div class="back">
+              <div class="eyebrow" style="margin-bottom:6px">Answer</div>
+              非幂等请求（例如 <code>POST /charges</code>）在第一次"失败"时可能已在服务端成功写入。客户端重试会导致同一笔操作在服务端记录两次——支付领域尤其危险。解决办法是携带 <code>Idempotency-Key</code>，服务端去重。
+              <div style="margin-top:10px;font-size:12.5px;color:var(--muted)">Introduced by commit <b class="mono">abc123</b> · Evidence <span class="mono">src/client.ts:L76–L83</span> · Claim c020 · <span style="color:var(--danger)">rejected_contradicted (kept as misconception)</span></div>
+              <div style="margin-top:8px;padding:8px 10px;background:#FDF1EC;border:1px solid #E4B8AE;border-radius:6px;font-size:11.5px;font-family:var(--font-mono);color:var(--danger);line-height:1.65">
+                ✗ negative evidence scan · src/client.ts:L74–L86<br/>
+                &nbsp;&nbsp;missing: method gate · idempotencyKey · retry safety check
+              </div>
+            </div>
+          </div>
+          <div class="srs-buttons">
+            <div class="sb"><div class="t">Again</div><div class="d">&lt; 10min</div><span class="kbd">1</span></div>
+            <div class="sb"><div class="t">Hard</div><div class="d">1 day</div><span class="kbd">2</span></div>
+            <div class="sb" style="background:var(--accent-soft);border-color:#EBC3AE"><div class="t" style="color:var(--accent-ink)">Good</div><div class="d">4 days</div><span class="kbd">3</span></div>
+            <div class="sb"><div class="t">Easy</div><div class="d">9 days</div><span class="kbd">4</span></div>
+          </div>
+        </div>
+
+        <aside>
+          <div class="card">
+            <div class="ch"><h3>Calendar</h3><div class="meta">30-day heatmap</div></div>
+            <div class="cb">
+              <div style="display:grid;grid-template-columns:repeat(10,1fr);gap:3px">
+                <script>/* rendered via JS below */</script>
+                <!-- 30 cells -->
+              </div>
+              <div id="heatmap" style="display:grid;grid-template-columns:repeat(10,1fr);gap:3px"></div>
+              <div style="margin-top:10px;font-size:11px;color:var(--muted);display:flex;justify-content:space-between"><span>less</span><span>more</span></div>
+            </div>
+          </div>
+          <div class="card" style="margin-top:14px">
+            <div class="ch"><h3>Concept mastery</h3><div class="meta">top 6</div></div>
+            <div class="cb">
+              <div style="display:grid;grid-template-columns:1fr 80px;gap:8px;font-size:13px;row-gap:10px;align-items:center">
+                <div>Exponential backoff</div><div class="bar"><span style="width:92%"></span></div>
+                <div>Jitter</div><div class="bar"><span style="width:68%;background:#B4791F"></span></div>
+                <div>Idempotency</div><div class="bar"><span style="width:45%;background:#A33D2B"></span></div>
+                <div>PKCE</div><div class="bar"><span style="width:80%"></span></div>
+                <div>zod @ boundary</div><div class="bar"><span style="width:75%"></span></div>
+                <div>Retry budget</div><div class="bar"><span style="width:58%;background:#B4791F"></span></div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ============ SETTINGS ============ -->
+    <section class="page" data-page="settings">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">§ Settings</div>
+          <h1 class="serif">系统设置</h1>
+          <div class="sub">BYOK · Offline-only · 每一次 LLM 调用都有审计。</div>
+        </div>
+      </div>
+      <div class="settings-layout">
+        <aside class="stabs" role="tablist" aria-label="Settings sections">
+          <div class="st"><span>账户</span><span class="en">Account</span></div>
+          <div class="st"><span>密钥</span><span class="en">Keys</span></div>
+          <div class="st"><span>模型</span><span class="en">Models</span></div>
+          <div class="st active" aria-selected="true"><span>隐私</span><span class="en">Privacy</span></div>
+          <div class="st"><span>审计</span><span class="en">Audit</span></div>
+          <div class="st"><span>语言</span><span class="en">Language</span></div>
+          <div class="st"><span>外观</span><span class="en">Appearance</span></div>
+          <div class="st"><span>集成</span><span class="en">Integrations</span></div>
+        </aside>
+        <div class="settings-main">
+          <!-- Mode Summary card -->
+          <div class="card mode-summary">
+            <div class="ch">
+              <h3>当前运行模式 <span class="en-sub">Current mode</span></h3>
+              <div class="meta"><span class="badge accent">Hybrid · BYOK</span></div>
+            </div>
+            <div class="cb">
+              <div class="mode-grid">
+                <div class="mode-cell">
+                  <div class="eyebrow">Generate</div>
+                  <div class="mode-val">cloud · BYOK</div>
+                  <div class="mode-sub">你的 anthropic key</div>
+                </div>
+                <div class="mode-cell">
+                  <div class="eyebrow">Judge</div>
+                  <div class="mode-val">cloud · BYOK</div>
+                  <div class="mode-sub">独立模型 · v4.2.1</div>
+                </div>
+                <div class="mode-cell">
+                  <div class="eyebrow">Embed</div>
+                  <div class="mode-val">local · Ollama</div>
+                  <div class="mode-sub">$0.000 / 次</div>
+                </div>
+                <div class="mode-cell">
+                  <div class="eyebrow">代码</div>
+                  <div class="mode-val">never sent</div>
+                  <div class="mode-sub">只发 diff，且自动脱敏</div>
+                </div>
+              </div>
+              <div class="mode-foot">
+                打开 <b>Offline only</b> 后所有云端调用关闭，Generate / Judge 自动 fallback 到本地 llama.cpp。
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:18px">
+            <div class="ch">
+              <h3>隐私 <span class="en-sub">Privacy</span></h3>
+              <div class="meta">Local-first by default</div>
+            </div>
+            <div class="cb" style="padding:4px 18px 8px">
+
+              <div class="field">
+                <div class="lb">
+                  <h4>离线模式 <span class="en-sub">Offline only</span></h4>
+                  <p>禁用所有云端 provider，只走本地 Ollama / llama.cpp。默认 OFF —— Hybrid 模式：Generate / Judge 走 BYOK cloud，Embed 走本地。</p>
+                </div>
+                <div class="setting-control">
+                  <span class="mono ctrl-hint">off · hybrid</span>
+                  <div class="toggle" role="switch" aria-checked="false" tabindex="0"><div class="kn"></div></div>
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="lb">
+                  <h4>脱敏密钥 <span class="en-sub">Redact secrets</span></h4>
+                  <p>自动脱敏 <code>.env</code> / <code>*.pem</code> / tokens / cloud credential，diff 中匹配到的行用 <code>&lt;REDACTED&gt;</code> 占位。</p>
+                </div>
+                <div class="setting-control">
+                  <span class="mono ctrl-hint">strict</span>
+                  <div class="toggle on" role="switch" aria-checked="true" tabindex="0"><div class="kn"></div></div>
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="lb">
+                  <h4>显式上传 <span class="en-sub">Explicit upload</span></h4>
+                  <p>任何非 diff 文件上传前必须用户勾选，每次一问，不记忆选择。</p>
+                </div>
+                <div class="setting-control">
+                  <div class="toggle on" role="switch" aria-checked="true" tabindex="0"><div class="kn"></div></div>
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="lb">
+                  <h4>展示所有 LLM 调用 <span class="en-sub">Show every LLM call</span></h4>
+                  <p>在下方 Audit 标签显示 prompt、文件清单、provider 响应 id，可逐条 inspect。</p>
+                </div>
+                <div class="setting-control">
+                  <div class="toggle on" role="switch" aria-checked="true" tabindex="0"><div class="kn"></div></div>
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="lb">
+                  <h4>外部资源 <span class="en-sub">External assets</span></h4>
+                  <p>Demo 站点会从 <code>fonts.googleapis.com</code> 加载字体。生产环境默认 self-host，关闭一切外链请求。</p>
+                </div>
+                <div class="setting-control">
+                  <span class="mono ctrl-hint">demo: allow</span>
+                  <span class="mono ctrl-hint" style="color:var(--success)">prod: self-host</span>
+                  <div class="toggle" role="switch" aria-checked="false" tabindex="0"><div class="kn"></div></div>
+                </div>
+              </div>
+
+              <div class="field" style="border-bottom:0">
+                <div class="lb">
+                  <h4>清除本地缓存 <span class="en-sub">Delete local cache</span></h4>
+                  <p>保留 <code>.ahadiff/commits</code>，清除 embedding / judge cache。下次提问时自动重建。</p>
+                </div>
+                <div class="setting-control">
+                  <button class="btn" type="button">Delete now</button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:18px">
+            <div class="ch">
+              <h3>Provider <span class="en-sub">三角分工 · Generate / Judge / Embed</span></h3>
+              <div class="meta">三个模型独立配置</div>
+            </div>
+            <div class="cb">
+              <div class="provider-note mono">
+                Display name 与 API model id 分离配置，model id 可随 provider 升级修改 —— 永不写死在代码里。
+              </div>
+              <div class="provider-grid">
+                <div class="provider-cell">
+                  <div class="eyebrow">Generate · 生成</div>
+                  <div class="provider-name">Claude Sonnet 4.5 <span class="badge accent">BYOK</span></div>
+                  <dl class="provider-meta mono">
+                    <dt>display_name</dt><dd>Claude Sonnet 4.5</dd>
+                    <dt>api_model</dt><dd class="hl">configured</dd>
+                    <dt>role</dt><dd>generate</dd>
+                  </dl>
+                </div>
+                <div class="provider-cell">
+                  <div class="eyebrow">Judge · 评审</div>
+                  <div class="provider-name">Claude Haiku 4.5</div>
+                  <dl class="provider-meta mono">
+                    <dt>display_name</dt><dd>Claude Haiku 4.5</dd>
+                    <dt>api_model</dt><dd class="hl">configured separately</dd>
+                    <dt>role</dt><dd>judge · immutable v4.2.1</dd>
+                  </dl>
+                </div>
+                <div class="provider-cell">
+                  <div class="eyebrow">Embed · 向量</div>
+                  <div class="provider-name">nomic-embed-text (Ollama)</div>
+                  <dl class="provider-meta mono">
+                    <dt>role</dt><dd>embed</dd>
+                    <dt>host</dt><dd>local</dd>
+                    <dt>cost</dt><dd>$0.000</dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:18px">
+            <div class="ch">
+              <h3>审计日志 <span class="en-sub">Audit log · last 20</span></h3>
+              <div class="meta">每一次 provider 调用</div>
+            </div>
+            <table class="t">
+              <thead><tr><th>time</th><th>provider</th><th>model</th><th>files sent</th><th>tokens</th><th>cost</th><th>purpose</th><th>status</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">14:41:55</td><td class="mono">anthropic</td><td class="mono">sonnet-4.5 (configured)</td><td class="mono">2 (redacted)</td><td class="mono num">8,114</td><td class="mono num">$0.024</td><td>generate · abc123 v11</td><td><span class="badge verified"><span class="bd"></span>ok</span></td></tr>
+                <tr><td class="mono">14:41:02</td><td class="mono">anthropic</td><td class="mono">haiku-4.5 (configured)</td><td class="mono">1</td><td class="mono num">3,206</td><td class="mono num">$0.004</td><td>judge · abc123 v11</td><td><span class="badge verified"><span class="bd"></span>ok</span></td></tr>
+                <tr><td class="mono">14:38:44</td><td class="mono">local</td><td class="mono">nomic-embed</td><td class="mono">5</td><td class="mono num">—</td><td class="mono num">$0.000</td><td>embed · graph update</td><td><span class="badge verified"><span class="bd"></span>ok</span></td></tr>
+                <tr><td class="mono">14:31:02</td><td class="mono">anthropic</td><td class="mono">sonnet-4.5 (configured)</td><td class="mono">2 (redacted)</td><td class="mono num">7,902</td><td class="mono num">$0.022</td><td>generate · abc123 v5</td><td><span class="badge verified"><span class="bd"></span>ok</span></td></tr>
+                <tr><td class="mono">14:29:10</td><td class="mono">anthropic</td><td class="mono">sonnet-4.5 (configured)</td><td class="mono">2</td><td class="mono num">9,441</td><td class="mono num">$0.029</td><td>generate · abc123 v4</td><td><span class="badge weak"><span class="bd"></span>rubric FAIL</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ONBOARDING ============ -->
+    <section class="page" data-page="onboarding">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">§ Onboarding · 4 steps</div>
+          <h1 class="serif">Plan → Implement → <em style="color:var(--accent-ink);font-style:italic">Learn</em></h1>
+          <div class="sub">知返坚持 spec-before-code：先让 AI 写 SPEC.md，再写代码，最后把 diff 教回。</div>
+        </div>
+      </div>
+
+      <div class="stepper">
+        <div class="sp done"><div class="n">✓</div><div><h4>Pick a repo</h4><p>knowledge-return</p></div></div>
+        <div class="sp done"><div class="n">✓</div><div><h4>Add provider key</h4><p>anthropic · BYOK</p></div></div>
+        <div class="sp current"><div class="n">3</div><div><h4>Install agent</h4><p>Claude Code · Cursor · Codex</p></div></div>
+        <div class="sp"><div class="n">4</div><div><h4>First plan + learn</h4><p>SPEC.md → diff → lesson</p></div></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+        <div class="card">
+          <div class="ch"><h3>Spec-before-code</h3><div class="meta">plan · implement · learn</div></div>
+          <div class="cb">
+            <pre class="code-block">$ ahadiff plan "add OAuth login"
+  → SPEC.md (8 requirements)
+  → acceptance_tests.md (12 cases)
+  → concept_primer.md
+
+$ # 让 Claude / Cursor / Codex 按 SPEC.md 实现
+
+$ ahadiff learn HEAD~1..HEAD --against SPEC.md
+  → lesson.md
+  → claims.jsonl
+  → spec alignment: 6/8 ✓ 2 missing (logout, revoke)</pre>
+            <div style="margin-top:12px;font-size:13px;color:var(--muted)">第 4 步完成后你会得到一篇真正可读的 lesson；spec alignment 小于 100% 不是失败——它只是告诉你哪部分 SPEC 还没落地。</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="ch"><h3>Install agent integration</h3><div class="meta">pick at least one</div></div>
+          <div class="cb">
+            <div class="agent-grid" style="grid-template-columns:1fr 1fr">
+              <div class="agent-card">
+                <div class="a-mark">CC</div>
+                <div class="a-name">Claude Code</div>
+                <div class="a-cmd"><span>$ ahadiff install claude</span><button type="button" class="copy-btn" data-copy="ahadiff install claude">copy</button></div>
+                <div style="font-family:var(--font-mono);font-size:10.5px;color:var(--muted);margin-top:6px;line-height:1.5">→ writes .claude/skills/ahadiff/SKILL.md</div>
+              </div>
+              <div class="agent-card">
+                <div class="a-mark">CX</div>
+                <div class="a-name">Cursor</div>
+                <div class="a-cmd"><span>$ ahadiff install cursor</span><button type="button" class="copy-btn" data-copy="ahadiff install cursor">copy</button></div>
+              </div>
+              <div class="agent-card">
+                <div class="a-mark">CD</div>
+                <div class="a-name">Codex CLI</div>
+                <div class="a-cmd"><span>$ ahadiff install codex</span><button type="button" class="copy-btn" data-copy="ahadiff install codex">copy</button></div>
+              </div>
+              <div class="agent-card">
+                <div class="a-mark">GM</div>
+                <div class="a-name">Gemini CLI</div>
+                <div class="a-cmd"><span>$ ahadiff install gemini</span><button type="button" class="copy-btn" data-copy="ahadiff install gemini">copy</button></div>
+              </div>
+            </div>
+            <div style="margin-top:12px;font-size:12px;color:var(--muted)">安装脚本会在你的 repo 写入 <code class="mono">.claude/</code> 或 <code class="mono">AGENTS.md</code>，并在 .ahadiff 下创建 wiki 目录。</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:18px">
+        <div class="ch"><h3>Step 4 preview · first learn run</h3><div class="meta">simulated</div></div>
+        <div class="cb">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+            <div><div class="eyebrow">SPEC</div><div class="mono" style="font-size:12.5px;margin-top:8px;color:var(--ink-2);line-height:1.7">8 requirements<br/>12 acceptance tests<br/>concept: PKCE, refresh rotation, CSRF</div></div>
+            <div><div class="eyebrow">Diff</div><div class="mono" style="font-size:12.5px;margin-top:8px;color:var(--ink-2);line-height:1.7">4 files · +187 −34<br/>6/8 requirements implemented<br/>logout / revoke missing</div></div>
+            <div><div class="eyebrow">Verdict</div><div style="margin-top:8px"><span class="badge caution" style="font-size:12px">CAUTION · 78</span><div style="font-size:12px;color:var(--muted);margin-top:6px">2 missing, no hard gate failed</div></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ AGENT SKILL HUB ============ -->
+    <section class="page" data-page="skills">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">§ Agent Skill Hub</div>
+          <h1 class="serif">Agent Skills</h1>
+          <div class="sub">一个 SKILL.md 被 Claude / Codex / Cursor / Gemini / OpenCode / Copilot 共同理解。</div>
+        </div>
+        <div class="right">
+          <span class="chip on">All</span><span class="chip">Installed 2</span><span class="chip">Available 6</span>
+        </div>
+      </div>
+
+      <div class="agent-grid">
+        <div class="agent-card">
+          <div style="display:flex;justify-content:space-between;align-items:center"><div class="a-mark" style="background:#1F1E1B;color:#FAF9F5">CC</div><span class="badge verified"><span class="bd"></span>installed</span></div>
+          <div class="a-name">Claude Code</div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:6px">.claude/skills/ahadiff/SKILL.md</div>
+          <div class="a-cmd"><span>$ ahadiff install claude</span><button type="button" class="copy-btn" data-copy="ahadiff install claude">copy</button></div>
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-top:8px;line-height:1.7;background:var(--subtle);padding:8px 10px;border-radius:6px">
+            <b style="color:var(--ink-2)">Manual:</b><br/>
+            mkdir -p .claude/skills/ahadiff<br/>
+            cp skills/ahadiff/SKILL.md<br/>
+            &nbsp;&nbsp;.claude/skills/ahadiff/SKILL.md<br/>
+            <b style="color:var(--ink-2);margin-top:4px;display:inline-block">Plugin marketplace:</b><br/>
+            /plugin marketplace add &lt;owner&gt;/&lt;repo&gt;<br/>
+            /plugin install ahadiff
+          </div>
+        </div>
+        <div class="agent-card">
+          <div style="display:flex;justify-content:space-between;align-items:center"><div class="a-mark">CX</div><span class="badge verified"><span class="bd"></span>installed</span></div>
+          <div class="a-name">Cursor</div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:6px">.cursor/rules/ahadiff.mdc</div>
+          <div class="a-cmd"><span>$ ahadiff install cursor</span><button type="button" class="copy-btn" data-copy="ahadiff install cursor">copy</button></div>
+        </div>
+        <div class="agent-card">
+          <div style="display:flex;justify-content:space-between;align-items:center"><div class="a-mark">CD</div><span class="chip">available</span></div>
+          <div class="a-name">Codex CLI</div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:6px">AGENTS.md + ahadiff.toml</div>
+          <div class="a-cmd"><span>$ ahadiff install codex</span><button type="button" class="copy-btn" data-copy="ahadiff install codex">copy</button></div>
+          <div style="margin-top:8px;font-family:var(--font-mono);font-size:10.5px;color:var(--muted);line-height:1.7;background:var(--subtle);padding:8px 10px;border-radius:6px">
+            <b style="color:var(--ink-2)">AGENTS.md discovery:</b><br/>
+            project: ./AGENTS.md<br/>
+            global: ~/.codex/AGENTS.md<br/>
+            <span style="color:var(--accent-ink)">AhaDiff writes project-level only.</span>
+          </div>
+        </div>
+        <div class="agent-card">
+          <div style="display:flex;justify-content:space-between;align-items:center"><div class="a-mark">GM</div><span class="chip">available</span></div>
+          <div class="a-name">Gemini CLI</div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:6px">gemini/settings.json</div>
+          <div class="a-cmd"><span>$ ahadiff install gemini</span><button type="button" class="copy-btn" data-copy="ahadiff install gemini">copy</button></div>
+        </div>
+        <div class="agent-card">
+          <div style="display:flex;justify-content:space-between;align-items:center"><div class="a-mark">OC</div><span class="chip">available</span></div>
+          <div class="a-name">OpenCode</div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:6px">opencode/skills/ahadiff</div>
+          <div class="a-cmd"><span>$ ahadiff install opencode</span><button type="button" class="copy-btn" data-copy="ahadiff install opencode">copy</button></div>
+        </div>
+        <div class="agent-card">
+          <div style="display:flex;justify-content:space-between;align-items:center"><div class="a-mark">CP</div><span class="chip">available</span></div>
+          <div class="a-name">Copilot / VS Code</div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:6px">.vscode/ahadiff.json</div>
+          <div class="a-cmd"><span>$ ahadiff install vscode</span><button type="button" class="copy-btn" data-copy="ahadiff install vscode">copy</button></div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1.1fr 1fr;gap:18px;margin-top:18px">
+        <div class="card">
+          <div class="ch"><h3>SKILL.md</h3><div class="meta">canonical contract</div></div>
+          <div class="cb">
+            <pre class="code-block">---
+name: ahadiff
+description: &gt;
+  Turn git diffs and AI-written code changes into verified learning
+  lessons. Use when the user says "explain this diff", "learn this
+  commit", "teach me what Claude wrote", "generate a diff wiki", or
+  "quiz me on this PR".
+allowed-tools: Read, Grep, Bash
+---
+
+# AhaDiff · diff learning skill
+
+## When to invoke
+- user asks to "学一下这个 commit" / "explain this PR"
+- a code change lands on main without a lesson
+- user runs `ahadiff learn`
+
+## Output contract
+1. lesson.md (prose, sections defined in references/output-contract.md)
+2. claims.jsonl (one claim per line, status ∈ verified|weak|not_proven|contradicted)
+3. quiz.md (≥ 1 transfer scenario)
+4. score.json (rubric 8-dim)
+
+## Hard gates (must not ship)
+- Accuracy &lt; 14/20
+- Evidence &lt; 10/15
+- Unresolved contradicted *shipped* claims &gt; 0
+  (Rejected contradicted candidates are allowed if
+   clearly marked and converted to misconception quiz.)
+- Any prompt injection unresolved</pre>
+            <div style="margin-top:10px;font-family:var(--font-mono);font-size:11px;color:var(--muted);line-height:1.6;padding:8px 10px;background:var(--subtle);border-radius:6px">
+              <b style="color:var(--accent-ink)">Claude SDK caveat:</b> <code>allowed-tools</code> applies to Claude Code CLI. When using the Claude SDK, configure <code>allowedTools</code> in SDK options instead.
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="ch"><h3>AGENTS.md preview</h3><div class="meta">auto-merged</div></div>
+          <div class="cb">
+            <pre class="code-block"># AGENTS.md · knowledge-return
+
+When a commit lands, the `ahadiff` skill SHOULD:
+1. Read the diff via `git diff HEAD~1..HEAD`.
+2. Ground every claim to file:line.
+3. Prefer short claims over long prose.
+4. Never upload .env, *.pem, or any secret.
+5. If a claim cannot be grounded, mark status: not_proven.
+
+## Triggers (always-on)
+- on commit to main → ahadiff learn
+- on PR opened     → ahadiff learn --against SPEC.md
+- on SPEC.md edit  → ahadiff plan --refresh
+
+## File layout
+skills/ahadiff/
+  SKILL.md
+  references/rubric.md
+  references/output-contract.md
+  scripts/run_ahadiff.py
+  examples/retry-backoff.md</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ LEARNING GRAPH ============ -->
+    <section class="page" data-page="graph">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">§ Learning Graph · repo overlay</div>
+          <h1 class="serif">学习图谱 <span class="mono" style="color:var(--muted);font-size:18px">· 48 nodes · 71 edges</span></h1>
+          <div class="sub">Graphify 提供 repo 架构，AhaDiff 叠加 commit-level 学习层。</div>
+        </div>
+        <div class="right">
+          <span class="chip on">Graph</span><span class="chip">List</span>
+          <button class="btn">Fit</button>
+          <button class="btn">Export JSON</button>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 320px;gap:18px">
+        <div>
+        <div class="src-card">
+          <div class="h"><span style="color:var(--accent-ink);font-size:15px">◈</span><strong>Graphify source</strong><span class="demo-tag" style="margin-left:auto">synced</span></div>
+          <div class="row"><span class="lb">report:</span><span class="ok">✓</span> <span>graphify-out/GRAPH_REPORT.md</span></div>
+          <div class="row"><span class="lb">graph:</span><span class="ok">✓</span> <span>graphify-out/graph.json</span></div>
+          <div class="row"><span class="lb">imported:</span><span>2026-04-19 14:31</span></div>
+          <div class="row"><span class="lb">query:</span><span>module=api-client depth=2</span></div>
+          <pre class="code-block" style="margin-top:10px;font-size:11.5px;padding:8px 10px">$ graphify .
+$ graphify query "show api client retry flow" \
+    --graph graphify-out/graph.json
+$ ahadiff graph import graphify-out/GRAPH_REPORT.md
+$ ahadiff learn HEAD~1..HEAD --use-graphify</pre>
+          <div style="margin-top:6px;font-size:11px;color:var(--muted);line-height:1.5">Graphify provides <b style="color:var(--ink-2)">repo-level</b> context; AhaDiff overlays <b style="color:var(--ink-2)">diff-level</b> learning evidence.</div>
+        </div>
+        <div class="graph-wrap">
+          <div style="position:absolute;top:16px;left:16px;display:flex;gap:6px;flex-wrap:wrap">
+            <span class="chip on">All</span>
+            <span class="chip">This Diff</span>
+            <span class="chip">From Graphify</span>
+            <span class="chip">Learning Memory</span>
+            <span class="chip">Weak Claims</span>
+          </div>
+          <div class="legend">
+            <span class="lgl">Legend</span>
+            <div class="lg"><span class="sw" style="background:#A8A39A"></span>Repo context</div>
+            <div class="lg"><span class="sw" style="background:#D97757"></span>Current diff</div>
+            <div class="lg"><span class="sw" style="background:#2F6F4F"></span>Verified</div>
+            <div class="lg"><span class="sw" style="background:#B4791F"></span>Weak claim</div>
+            <div class="lg"><span class="sw" style="background:#A33D2B"></span>Contradicted</div>
+          </div>
+
+          <svg class="graph-svg" viewBox="0 0 900 560" role="img" aria-labelledby="graph-title graph-desc">
+            <title id="graph-title">Learning Graph — 48 nodes, 71 edges</title>
+            <desc id="graph-desc">Shows repo context files linking to the current diff (client.ts), its symbols (request, ReqOpts, sleep) and the concepts it touches (Exponential Backoff, Jitter, Idempotency, Retry Budget). See list fallback at right for an accessible equivalent.</desc>
+            <defs>
+              <marker id="arr" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8E8778"/></marker>
+            </defs>
+            <!-- edges -->
+            <g stroke="#D9D5C6" stroke-width="1" fill="none">
+              <path d="M160,200 C250,150 340,150 420,200"/>
+              <path d="M420,200 C500,200 560,240 620,280"/>
+              <path d="M420,200 C480,140 560,120 640,150"/>
+              <path d="M620,280 C700,310 740,370 760,440"/>
+              <path d="M420,200 C380,300 320,360 280,440"/>
+              <path d="M160,200 C130,300 140,380 200,460"/>
+              <path d="M640,150 C700,120 760,140 800,200"/>
+              <path d="M800,200 C820,280 800,350 720,420"/>
+              <path d="M420,200 C460,280 520,320 540,400"/>
+              <path d="M280,440 C340,460 400,460 540,400"/>
+              <path d="M160,200 L90,110"/>
+              <path d="M620,280 L700,250"/>
+              <path d="M200,460 L340,500"/>
+            </g>
+            <!-- nodes: repo context (grey) -->
+            <g>
+              <circle cx="90" cy="110" r="12" fill="#fff" stroke="#A8A39A" stroke-width="2"/>
+              <text x="90" y="142" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#6B6559">pkg.json</text>
+              <circle cx="700" cy="250" r="12" fill="#fff" stroke="#A8A39A" stroke-width="2"/>
+              <text x="700" y="282" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#6B6559">types/</text>
+              <circle cx="340" cy="500" r="12" fill="#fff" stroke="#A8A39A" stroke-width="2"/>
+              <text x="340" y="530" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#6B6559">logger</text>
+            </g>
+            <!-- file: current diff -->
+            <g>
+              <rect x="392" y="180" width="80" height="40" rx="6" fill="#F6E8DF" stroke="#D97757" stroke-width="2"/>
+              <text x="432" y="198" text-anchor="middle" font-family="Inter" font-size="11" fill="#1F1E1B" font-weight="600">client.ts</text>
+              <text x="432" y="212" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#B8542F">+22 −2</text>
+            </g>
+            <!-- symbol nodes -->
+            <g>
+              <circle cx="620" cy="280" r="18" fill="#D97757"/>
+              <text x="620" y="284" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#fff">request()</text>
+              <circle cx="160" cy="200" r="16" fill="#F6E8DF" stroke="#D97757" stroke-width="2"/>
+              <text x="160" y="204" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#B8542F">ReqOpts</text>
+              <circle cx="640" cy="150" r="14" fill="#F6E8DF" stroke="#D97757" stroke-width="2"/>
+              <text x="640" y="154" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#B8542F">sleep</text>
+            </g>
+            <!-- concept nodes (green) -->
+            <g>
+              <circle cx="760" cy="440" r="22" fill="#ECF4EE" stroke="#2F6F4F" stroke-width="2"/>
+              <text x="760" y="438" text-anchor="middle" font-family="Inter" font-size="10" fill="#1F1E1B" font-weight="600">Exp</text>
+              <text x="760" y="450" text-anchor="middle" font-family="Inter" font-size="10" fill="#1F1E1B" font-weight="600">Backoff</text>
+              <circle cx="800" cy="200" r="20" fill="#ECF4EE" stroke="#2F6F4F" stroke-width="2"/>
+              <text x="800" y="204" text-anchor="middle" font-family="Inter" font-size="10" fill="#1F1E1B" font-weight="600">Jitter</text>
+              <circle cx="280" cy="440" r="20" fill="#F7EED9" stroke="#B4791F" stroke-width="2"/>
+              <text x="280" y="438" text-anchor="middle" font-family="Inter" font-size="10" fill="#1F1E1B" font-weight="600">Idem-</text>
+              <text x="280" y="450" text-anchor="middle" font-family="Inter" font-size="10" fill="#1F1E1B" font-weight="600">potency</text>
+              <circle cx="200" cy="460" r="16" fill="#F7EED9" stroke="#B4791F" stroke-width="2"/>
+              <text x="200" y="464" text-anchor="middle" font-family="Inter" font-size="9" fill="#1F1E1B" font-weight="600">Thunder</text>
+              <circle cx="540" cy="400" r="20" fill="#ECF4EE" stroke="#2F6F4F" stroke-width="2"/>
+              <text x="540" y="398" text-anchor="middle" font-family="Inter" font-size="10" fill="#1F1E1B" font-weight="600">Retry</text>
+              <text x="540" y="410" text-anchor="middle" font-family="Inter" font-size="10" fill="#1F1E1B" font-weight="600">Budget</text>
+              <circle cx="720" cy="420" r="14" fill="#F7EED9" stroke="#B4791F" stroke-width="2"/>
+              <text x="720" y="424" text-anchor="middle" font-family="Inter" font-size="9" fill="#1F1E1B" font-weight="600">Attempt</text>
+            </g>
+          </svg>
+        </div>
+        </div>
+
+        <aside>
+          <div class="card">
+            <div class="ch"><h3>Node detail</h3><div class="meta">concept</div></div>
+            <div class="cb">
+              <div class="eyebrow">CONCEPT</div>
+              <div class="serif" style="font-size:22px;font-weight:500;margin-top:4px">Exponential Backoff</div>
+              <div style="margin-top:14px;font-size:12.5px;color:var(--ink-2);line-height:1.75">
+                <div><span style="color:var(--muted)">First introduced:</span> <span class="mono">commit abc123</span></div>
+                <div><span style="color:var(--muted)">Updated by:</span> <span class="mono">commit def456</span></div>
+                <div><span style="color:var(--muted)">Evidence:</span> <span class="mono">src/client.ts:L76–L83</span></div>
+                <div><span style="color:var(--muted)">Related claims:</span> <span class="mono">c007, c012</span></div>
+                <div><span style="color:var(--muted)">Quiz performance:</span> 80% (4/5 last run)</div>
+                <div><span style="color:var(--muted)">SRS mastery:</span> <span style="color:var(--success)">92%</span></div>
+              </div>
+              <hr class="rule"/>
+              <div class="eyebrow" style="margin-bottom:6px">One-liner</div>
+              <div style="font-size:13px">失败后延迟 <code style="font-family:var(--font-mono);font-size:12px">200·2^i</code> 毫秒后重试；在抖动配合下避免客户端同步。</div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:14px">
+            <div class="ch"><h3>List fallback</h3><div class="meta">a11y equivalent</div></div>
+            <div class="cb" style="padding:12px">
+              <div class="listg" style="grid-template-columns:1fr">
+                <div class="lnode"><div class="n">client.ts</div><div class="m">file · +22 −2 · abc123</div></div>
+                <div class="lnode"><div class="n">request()</div><div class="m">symbol · 8 claims</div></div>
+                <div class="lnode"><div class="n">ReqOpts</div><div class="m">symbol · 2 claims</div></div>
+                <div class="lnode"><div class="n">Exponential Backoff</div><div class="m">concept · verified</div></div>
+                <div class="lnode"><div class="n">Jitter</div><div class="m">concept · verified</div></div>
+                <div class="lnode"><div class="n">Idempotency</div><div class="m">concept · weak</div></div>
+                <div class="lnode"><div class="n">Attempt Count</div><div class="m">claim c007 · verified</div></div>
+                <div class="lnode" style="border-color:#E4B8AE;background:#FDF1EC"><div class="n" style="color:var(--danger)">Misconception: POST retry safe</div><div class="m">claim c020 · contradicted</div></div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <!-- Implementation Notes - hidden by default, toggle with button -->
+      <div style="margin-top:24px">
+        <button class="btn" type="button" id="toggle-impl-notes" aria-controls="impl-notes" aria-expanded="false" style="font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase">⌥ Show handoff notes for Claude Code</button>
+      </div>
+      <section class="impl-notes" id="impl-notes" aria-labelledby="impl-h" hidden>
+        <div class="impl-warn">
+          <span class="demo-tag" style="color:var(--danger);background:#FDF1EC;border-color:#E4B8AE">DESIGN ONLY</span>
+          <span>This block is for the developer who will rebuild the prototype. It is <b>not</b> part of the production UI.</span>
+        </div>
+        <div class="eyebrow">§ Implementation Notes · handoff → Claude Code</div>
+        <h3 id="impl-h">Component map & data contracts</h3>
+        <div style="font-size:12.5px;color:var(--muted);max-width:720px;line-height:1.6">This HTML is a design fixture. Production should convert inline styles to Tailwind utilities + CSS variables, and adopt shadcn primitives. Do <b style="color:var(--danger)">not</b> ship inline styles.</div>
+        <div class="g">
+          <div>
+            <div class="eyebrow" style="margin-bottom:6px">Component map</div>
+<pre>&lt;LessonReader lesson claims evidence quizSummary wikiMemory /&gt;
+&lt;ClaimInspector claims selectedId onSelect /&gt;
+&lt;DiffEvidenceViewer diff claims selectedClaimId /&gt;
+&lt;RatchetLab results rubric benchmarkSummary checkpoint /&gt;
+&lt;QuizRunner question scaffolding="full|hint|quiz_only" /&gt;
+&lt;SRSReviewDeck cards dueToday /&gt;
+&lt;LearningGraph nodes edges source="graphify" /&gt;
+&lt;SkillHub agents=[claude,cursor,codex,gemini,opencode,copilot] /&gt;</pre>
+          </div>
+          <div>
+            <div class="eyebrow" style="margin-bottom:6px">Data contracts (TypeScript-ish)</div>
+<pre>type Claim = {
+  id: string; text: string;
+  status: 'verified'|'weak'|'not_proven'
+        | 'rejected_contradicted';
+  confidence?: number;
+  evidence: { file: string; range: string; kind: 'positive'|'negative_scan' };
+  concepts: string[];
+  shipped: boolean; // rejected_contradicted =&gt; false
+};
+type RatchetRow = {
+  version: string; score: number;
+  verdict: 'PASS'|'CAUTION'|'FAIL';
+  status: 'baseline'|'kept'|'discarded'|'kept_final';
+  weakest: string; note: string;
+};
+type BenchmarkSummary = { demoData: true; ... };</pre>
+          </div>
+        </div>
+        <div class="g" style="margin-top:10px">
+          <div>
+            <div class="eyebrow" style="margin-bottom:6px">Page → source</div>
+            <ul>
+              <li><code>Landing</code> → static, DEMO benchmark</li>
+              <li><code>Dashboard</code> → <code>GET /runs?since=</code></li>
+              <li><code>Lesson</code> → <code>.ahadiff/commits/&lt;sha&gt;/lesson.md</code></li>
+              <li><code>Diff</code> → <code>git diff</code> + <code>claims.jsonl</code></li>
+              <li><code>Ratchet</code> → <code>results.tsv</code></li>
+              <li><code>Graph</code> → <code>graphify-out/graph.json</code></li>
+              <li><code>Skills</code> → <code>.claude/skills/ahadiff/SKILL.md</code></li>
+            </ul>
+          </div>
+          <div>
+            <div class="eyebrow" style="margin-bottom:6px">Do / don't</div>
+            <ul>
+              <li>✓ Tailwind utilities + design tokens (oklch)</li>
+              <li>✓ Self-host fonts in production</li>
+              <li>✓ shadcn Dialog/Sheet/Command/Tabs</li>
+              <li>✗ Don't hardcode provider API IDs (<code>claude-sonnet-4-5</code>)</li>
+              <li>✗ Don't ship inline styles</li>
+              <li>✗ Don't treat DEMO data as benchmark</li>
+              <li>✗ Don't ship <code>rejected_contradicted</code> as claim</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </section>
+
+  </main>
+</div>
+
+<script>
+// Sidebar navigation
+const navItems = document.querySelectorAll('.nav-item');
+const pages = document.querySelectorAll('.page');
+const bcPage = document.getElementById('bc-page');
+const sidebar = document.getElementById('sidebar');
+const sbBackdrop = document.getElementById('sidebar-backdrop');
+const pageLabels = {landing:'Landing',dashboard:'Runs',lesson:'Lesson · abc123',diff:'Diff + Evidence',ratchet:'Ratchet Lab',quiz:'Quiz',review:'SRS Review',settings:'Settings',onboarding:'Onboarding',skills:'Agent Skills',graph:'Learning Graph'};
+function goto(key){
+  navItems.forEach(n=>{
+    const on = n.dataset.goto===key;
+    n.classList.toggle('active', on);
+    if(on){ n.setAttribute('aria-current','page'); } else { n.removeAttribute('aria-current'); }
+  });
+  pages.forEach(p=>p.classList.toggle('active', p.dataset.page===key));
+  if(bcPage) bcPage.textContent = pageLabels[key]||key;
+  if(sidebar) sidebar.classList.remove('open');
+  if(sbBackdrop){ sbBackdrop.classList.remove('visible'); sbBackdrop.hidden = true; }
+  const mb = document.getElementById('mobile-nav-toggle');
+  if(mb) mb.setAttribute('aria-expanded','false');
+  try{localStorage.setItem('ahadiff-warm-page', key);}catch(e){}
+  window.scrollTo({top:0,behavior:'auto'});
+}
+navItems.forEach(n=>{
+  n.addEventListener('click',()=>goto(n.dataset.goto));
+  n.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); goto(n.dataset.goto); } });
+});
+// Mobile nav
+const mbtn = document.getElementById('mobile-nav-toggle');
+function setDrawer(open){
+  if(!sidebar) return;
+  sidebar.classList.toggle('open', open);
+  if(sbBackdrop){ sbBackdrop.classList.toggle('visible', open); sbBackdrop.hidden = !open; }
+  if(mbtn) mbtn.setAttribute('aria-expanded', open?'true':'false');
+}
+if(mbtn){
+  mbtn.addEventListener('click',()=>{
+    setDrawer(!sidebar.classList.contains('open'));
+  });
+}
+if(sbBackdrop){ sbBackdrop.addEventListener('click',()=>setDrawer(false)); }
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape' && sidebar && sidebar.classList.contains('open')){ setDrawer(false); mbtn && mbtn.focus(); }
+});
+// Implementation Notes toggle
+const implBtn = document.getElementById('toggle-impl-notes');
+const implPanel = document.getElementById('impl-notes');
+if(implBtn && implPanel){
+  implBtn.addEventListener('click',()=>{
+    const open = implPanel.hasAttribute('hidden');
+    if(open){ implPanel.removeAttribute('hidden'); implBtn.setAttribute('aria-expanded','true'); implBtn.textContent='⌥ Hide handoff notes'; }
+    else { implPanel.setAttribute('hidden',''); implBtn.setAttribute('aria-expanded','false'); implBtn.textContent='⌥ Show handoff notes for Claude Code'; }
+  });
+}
+// Copy buttons (Agent Hub)
+document.querySelectorAll('.copy-btn[data-copy]').forEach(btn=>{
+  btn.addEventListener('click', async ()=>{
+    const txt = btn.dataset.copy || '';
+    try { await navigator.clipboard.writeText(txt); }
+    catch(e){ /* fallback: select + execCommand omitted in design fixture */ }
+    const orig = btn.textContent;
+    btn.classList.add('copied'); btn.textContent='copied ✓';
+    setTimeout(()=>{ btn.classList.remove('copied'); btn.textContent=orig; }, 1400);
+  });
+});
+// Restore
+try{
+  const saved = localStorage.getItem('ahadiff-warm-page');
+  if(saved && pageLabels[saved]) goto(saved);
+}catch(e){}
+
+// Landing before/after tabs
+document.querySelectorAll('[data-bat]').forEach(t=>{
+  t.addEventListener('click',()=>{
+    document.querySelectorAll('[data-bat]').forEach(x=>x.classList.toggle('active', x===t));
+    document.querySelectorAll('[data-bap]').forEach(p=>p.classList.toggle('active', p.dataset.bap===t.dataset.bat));
+  });
+});
+
+// Diff <-> claim linkage
+const diffRows = document.querySelectorAll('.diff .row.clickable');
+const claimCards = document.querySelectorAll('.claim-card');
+diffRows.forEach(r=>{
+  r.addEventListener('click',()=>{
+    const id = r.dataset.claim;
+    diffRows.forEach(x=>x.classList.toggle('selected', x.dataset.claim===id));
+    claimCards.forEach(c=>{
+      const match = c.querySelector('.id')?.textContent?.startsWith(id);
+      c.classList.toggle('selected', !!match);
+    });
+  });
+});
+claimCards.forEach(c=>{
+  c.addEventListener('click',()=>{
+    const txt = c.querySelector('.id')?.textContent || '';
+    const id = txt.split(' ')[0];
+    diffRows.forEach(r=>r.classList.toggle('selected', r.dataset.claim===id));
+    claimCards.forEach(x=>x.classList.toggle('selected', x===c));
+  });
+});
+
+// Heatmap
+const hm = document.getElementById('heatmap');
+if(hm){
+  const vals = [2,1,3,4,0,2,5,1,3,2, 0,1,2,3,4,5,4,2,1,0, 3,2,1,4,5,5,3,2,1,4];
+  vals.forEach(v=>{
+    const a = v/5;
+    const d = document.createElement('div');
+    d.style.cssText = 'aspect-ratio:1;border-radius:3px;background:'+(v===0?'#F4F1EA':`rgba(217,119,87,${0.2+a*0.7})`);
+    hm.appendChild(d);
+  });
+}
+
+// Reduced motion respected via CSS
+</script>
+</body>
+</html>

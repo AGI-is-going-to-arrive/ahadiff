@@ -103,8 +103,8 @@
 #### Task 4: UI 响应式修复
 - **类型**: 前端（Gemini 评审 → Claude 实现）
 - **文件范围**:
-  - `AhaDiff Warm v5.html`（根目录）
-  - `ui/AhaDiff Warm v5.html`
+  - `AhaDiff Warm v6.html`（根目录）
+  - `ui/AhaDiff Warm v6.html`
 - **依赖**: 无
 - **实施步骤**:
   1. 添加 769-1024px icon-only 侧栏断点
@@ -142,13 +142,49 @@
   - `src/ahadiff/git/hunk_hash.py`
   - `tests/unit/test_diff_parser.py`
   - `tests/unit/test_line_map.py`
+  - `tests/unit/test_symbol_extract.py`
 - **依赖**: Task 5
 - **实施步骤**:
   1. 实现 unified diff 解析器（iter_hunks, iter_changed_files）
-  2. 实现 `build_line_map()` 生成 `line_map.json`
-  3. 实现 symbol extraction（Python AST + regex fallback）
-  4. 实现 `compute_hunk_hash()`（内容规范化，不含时间戳）
-- **验收标准**: 解析 examples/retry-backoff/patch.diff 输出正确的 line_map 和 symbols
+  2. 在 hunk 解析中提取 `section_header`（@@ 行尾的函数/类签名，零依赖零成本）
+     - 正则：`r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@[ ]?(.*)"` 第 5 组即为 section_header
+     - 来源：PR-Agent `git_patch_processing.py:RE_HUNK_HEADER`，git 自动生成此信息
+     - 示例：`@@ -15,7 +15,8 @@ def retry_with_backoff(max_retries=3):` → section_header = `def retry_with_backoff(max_retries=3):`
+     - 输出到 `HunkRecord.section_header` 字段，作为免费 symbol hint
+  3. 实现 `build_line_map()` 生成 `line_map.json`
+  4. 实现 symbol extraction 三层策略：
+     - **采集阶段**：三个 extractor 按可用性依次尝试，输出统一 `SymbolRecord`
+       a. **section_header**：步骤 2 已从 hunk header 提取，所有语言通用，作为最低成本 hint
+       b. **Python `ast` 模块**：仅 `.py` 文件，提取函数/类/方法/导入/测试函数
+       c. **regex fallback**：AST 失败或非 Python 文件时，匹配 `def/class/function/const/export` 等模式
+     - **合并优先级**（权威性递减）：`python_ast > regex > section_header`
+       - 同一 symbol 被多个 extractor 命中时，取最高权威性的 extractor 结果
+       - section_header 仅在其他 extractor 均未命中时保留为独立 symbol
+     - 定义 `SymbolExtractor` protocol：`extract(path, before_text, after_text, hunks) -> list[SymbolRecord]`
+     - `SymbolRecord` 字段：`path, qualified_name, kind, range, selection_range, parent, touched_lines, hunk_ids, hunk_hash, change_kind, extractor, confidence`
+       - `path`：文件路径（repo-relative），确保跨文件同名 symbol 可区分
+       - `hunk_ids`：关联的 hunk 标识列表，与 `hunk_hash` 契约统一（使用 `compute_hunk_hash()` 的输出）
+     - `extractor` 枚举：`section_header | python_ast | regex`
+     - `confidence` 对应：`python_ast=high | regex=medium | section_header=low`
+     - **降级契约**（每层失败时的统一处理）：
+       - AST parse 失败（语法错误/编码问题）→ 降级为 regex，记录 `error` 字段
+       - regex 也失败 → 保留 section_header-only 记录（如果有）
+       - section_header 为空（如 `@@ -0,0 +1 @@` 新文件）→ 该 hunk 无 symbol hint
+       - binary/unsupported 文件 → 返回空 `[]`，不报错
+       - 删除的文件 → 仅解析 before_text；新增文件 → 仅解析 after_text
+       - 重命名/移动的 symbol → `change_kind=renamed`，新旧 qualified_name 都记录
+  5. 实现 `compute_hunk_hash()`（内容规范化，不含时间戳）
+- **验收标准**:
+  - 解析 examples/retry-backoff/patch.diff 输出正确的 line_map、symbols 和 section_headers
+  - Python 文件的 symbols 使用 `python_ast` extractor，JS/TS 等文件降级为 `section_header` + `regex`
+  - AST parse 失败时自动降级为 regex，不中断主链路
+  - `tests/unit/test_symbol_extract.py` 覆盖：
+    - 三层策略的降级路径（AST 成功/AST 失败降级 regex/regex+section_header only）
+    - hunk header 边界：`@@ -0,0 +1 @@`（空 section_header）、`@@ -1 +1,2 @@`（无 size）
+    - 重复 symbol 去重与 extractor 优先级合并
+    - 删除/新增/重命名文件的 symbol 处理
+    - AST 语法错误文件的 graceful fallback
+    - binary/unsupported 文件返回空列表
 
 ### Layer 3（依赖 Layer 2）— Claim 闭环
 
@@ -188,11 +224,29 @@
 - **实施步骤**:
   1. 定义 Pydantic schema：ClaimCandidate, ClaimRecord, NegativeEvidence
   2. 编写 `claim_extract.md` prompt
-  3. 实现 deterministic verifier（file/line/hunk/symbol 检查）
-  4. 实现 negative evidence scan（risky words + missing checks）
+  3. 实现 deterministic verifier（按检查顺序，参照 §10.2 设计）：
+     a. **file 检查**：claim 引用的 file 是否出现在 patch.diff（不在 patch 中 → rejected）
+     b. **line range 检查**：claim.source_hunks[{file, start, end}] 是否落在 hunk 范围内
+     c. **hunk_id 匹配**：claim 引用的 hunk 是否与 line_map 中的 hunk 对应
+     d. **symbol 存在性检查**（消费 Task 6 `SymbolRecord`）：
+        - `claim.symbols[]` 是否命中 `SymbolRecord.qualified_name`（同 path 下匹配）
+        - 匹配时使用 fuzzy 对比：先精确匹配，失败后 normalize（strip 空白/大小写/分隔符差异）
+        - symbol 命中置信度：`python_ast` 命中 → high；`regex` 命中 → medium；仅 `section_header` → low
+     e. **risky generalization 检查**：claim 是否含 risky words（faster/secure/always/never 等）但无对应证据
+     f. **deleted/renamed symbol**：claim 引用已删除的 symbol → 标注 `change_kind=deleted`
+  4. 实现 negative evidence scan（risky words + 结构缺失检查）：
+     - Python 文件：利用 AST 检查 try/except、test_ 函数、assert、import 等结构是否存在
+     - 非 Python 文件：回退到 regex + risky words 扫描
+     - claim 声称有重试/安全/性能但 AST 中无对应结构 → negative evidence
   5. 实现 `classify_claim()` 状态机
   6. 集成：`ahadiff claims <run_id>` 可展示四种状态
-- **验收标准**: 对 retry-backoff fixture 生成 claims.jsonl，包含 verified/weak/not_proven/rejected_contradicted
+- **验收标准**:
+  - 对 retry-backoff fixture 生成 claims.jsonl，包含 verified/weak/not_proven/rejected_contradicted
+  - file 不在 patch 中的 claim → rejected_contradicted
+  - 引用不存在 symbol 的 claim → not_proven（非 FAIL，因为可能是 regex 漏匹配或 section_header 未覆盖）
+  - `python_ast` 命中的 symbol 验证结果标注 `confidence=high`
+  - risky words claim 无结构证据 → weak 或 not_proven
+  - `tests/unit/test_claim_verify.py` 覆盖：file-not-in-patch、line-outside-hunk、symbol-not-found、symbol-fuzzy-match、risky-word-without-evidence、deleted-symbol-reference
 
 ## 文件冲突检查
 
@@ -202,7 +256,7 @@
 - Task 3: `CLAUDE.md`, `doc/*`
 - Task 4: `*.html`（前端文件）
 - Task 5: `git/repo.py`, `git/capture.py`
-- Task 6: `git/parser.py`, `git/line_map.py`, `git/symbols.py`, `git/hunk_hash.py`
+- Task 6: `git/parser.py`, `git/line_map.py`, `git/symbols.py`, `git/hunk_hash.py`, `tests/unit/test_symbol_extract.py`
 - Task 7: `llm/*`
 - Task 8: `claims/*`, `prompts/*`
 

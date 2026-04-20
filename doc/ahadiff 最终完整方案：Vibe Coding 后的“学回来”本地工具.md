@@ -527,11 +527,18 @@ ahadiff improve --suite local --rounds 6
 ahadiff benchmark --suite local
 ahadiff eval prompts/lesson_generate.md
 
-# agent 集成
-ahadiff install claude
-ahadiff install codex
-ahadiff install cursor
-ahadiff install copilot
+# agent 集成（11 个目标）
+ahadiff install claude          # → .claude/skills/ahadiff/SKILL.md + CLAUDE.md 追加
+ahadiff install codex           # → AGENTS.md
+ahadiff install gemini          # → GEMINI.md
+ahadiff install opencode        # → AGENTS.md + .opencode/agents/ahadiff.md
+ahadiff install cursor          # → .cursor/rules/ahadiff.mdc
+ahadiff install copilot         # → .github/copilot-instructions.md + .github/instructions/ahadiff.instructions.md
+ahadiff install windsurf        # → .windsurf/rules/ahadiff.md
+ahadiff install cline           # → .clinerules/ahadiff.md
+ahadiff install amp             # → AGENTS.md（复用 codex 模板）
+ahadiff install aider           # → CONVENTIONS.md + .aider.conf.yml
+ahadiff install jules           # → AGENTS.md（复用 codex 模板）
 ahadiff install claude --dry-run
 ahadiff uninstall claude
 
@@ -1503,7 +1510,7 @@ no PyPI API token in GitHub secrets
 ## 19.1 转换路线
 
 ```text
-AhaDiff Warm v5.html
+AhaDiff Warm v6.html
   ↓
 拆成 Jinja partials
   ↓
@@ -1711,6 +1718,123 @@ ahadiff install copilot
 .github/copilot-instructions.md
 .github/instructions/ahadiff.instructions.md
 ```
+
+## 20.5 Gemini CLI / GEMINI.md
+
+Gemini CLI 使用 `GEMINI.md` 作为项目级上下文文件，支持 `~/.gemini/` → 项目根 → 子目录层级发现，支持 `@file.md` import 语法。可通过 `settings.json` 中 `context.fileName` 配置为同时读取 `AGENTS.md`。([Gemini CLI 官方文档](https://geminicli.com/docs/cli/gemini-md/))
+
+```bash
+ahadiff install gemini
+```
+
+写入：
+
+```text
+GEMINI.md（追加 <!-- AHADIFF:BEGIN --> 段落）
+```
+
+## 20.6 OpenCode / AGENTS.md + agents
+
+OpenCode 优先读取 `AGENTS.md`，fallback 到 `CLAUDE.md`。支持在 `.opencode/agents/` 目录定义 subagent。([OpenCode 官方文档](https://opencode.ai/docs/rules/))
+
+```bash
+ahadiff install opencode
+```
+
+写入：
+
+```text
+AGENTS.md（复用 codex 模板，追加 AhaDiff 段落）
+.opencode/agents/ahadiff.md（subagent 定义）
+```
+
+## 20.7 Windsurf / .windsurf/rules
+
+Windsurf 当前使用 `.windsurf/rules/*.md` 目录（新）作为 workspace rules，同时支持 `AGENTS.md` 零配置入口。旧版 `.windsurfrules` 已不推荐。([Windsurf 文档](https://docs.windsurf.com/windsurf/cascade/memories))
+
+```bash
+ahadiff install windsurf
+```
+
+写入：
+
+```text
+.windsurf/rules/ahadiff.md
+```
+
+## 20.8 Cline / .clinerules
+
+Cline 使用 `.clinerules` 文件或目录。支持多文件模式 `.clinerules/*.md`。自动注入 system prompt。([Cline 官方文档](https://cline.bot/blog/clinerules-version-controlled-shareable-and-ai-editable-instructions))
+
+```bash
+ahadiff install cline
+```
+
+写入：
+
+```text
+.clinerules/ahadiff.md
+```
+
+## 20.9 Amp / AGENTS.md
+
+Amp（Sourcegraph）使用 AGENTS.md 作为项目规则文件。([Amp 文档](https://ampcode.com/agent.md))
+
+```bash
+ahadiff install amp
+```
+
+写入：
+
+```text
+AGENTS.md（复用 codex 模板）
+```
+
+## 20.10 Aider / CONVENTIONS.md
+
+Aider 通过 `--read CONVENTIONS.md` 或 `.aider.conf.yml` 配置加载约定文件。模型无关。([Aider 官方文档](https://aider.chat/docs/usage/conventions.html))
+
+```bash
+ahadiff install aider
+```
+
+写入：
+
+```text
+CONVENTIONS.md（追加 AhaDiff 段落）
+.aider.conf.yml（追加 read: CONVENTIONS.md）
+```
+
+## 20.11 Jules / AGENTS.md
+
+Google Jules 是异步 coding agent，克隆 repo 到 GCP VM 执行时自动读取 `AGENTS.md`。([Jules 官方文档](https://jules.google/docs/))
+
+```bash
+ahadiff install jules
+```
+
+写入：
+
+```text
+AGENTS.md（复用 codex 模板）
+```
+
+## 20.12 智能复用与写入安全
+
+AGENTS.md 系工具（Codex / OpenCode / Amp / Jules / Junie）共享同一模板 `codex/AGENTS.md.j2`，减少维护成本。
+
+写入安全规则：
+
+```text
+1. --dry-run 默认显示将写入的文件列表和 diff 预览
+2. 不覆盖已有规则文件内容，仅追加 AhaDiff 段落
+3. 追加时用明确的分隔标记：<!-- AHADIFF:BEGIN --> ... <!-- AHADIFF:END -->
+4. uninstall 时精确删除标记之间的内容
+5. 文件不存在时才创建新文件
+6. 每次写入记录到 .ahadiff/install.log
+```
+
+完整规则文件对照表见 `.claude/team-plan/ahadiff-agent-rules-registry.md`。
 
 ------
 
@@ -2281,7 +2405,7 @@ file:line evidence
 ahadiff learn HEAD~1..HEAD --open
 ```
 
-打开本地 HTML，视觉接近你现在的 Warm v5 原型。
+打开本地 HTML，视觉接近你现在的 Warm v6 原型。
 
 ------
 

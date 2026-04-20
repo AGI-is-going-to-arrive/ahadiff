@@ -129,14 +129,14 @@
   - `viewer/static/style.css`
 - **依赖**: Task 9（Lesson）+ Task 11（Score）
 - **实施步骤**:
-  1. 从 Warm v5 HTML 原型提取 CSS 变量和布局结构
+  1. 从 Warm v6 HTML 原型提取 CSS 变量和布局结构
   2. 实现 Jinja2 五层模板架构（base → layouts → partials → components → pages）
   3. 实现 `data_bundle.py`：构建 `<script id="aha-data" type="application/json">` 注入的 JSON
   4. data_bundle schema：context(run_id/head_sha/theme) + verdict(overall/status) + rubric_scores + claims + lesson + ratchet_history
   5. 实现 `_rubric_bar.html` 组件：自动根据 score/max 映射 PASS/CAUTION/FAIL 语义色（P1 from Gemini）
   6. 确保 `file://` 打开兼容（所有资源内联，无 CDN）
   7. 移除外部字体依赖和硬编码 demo 数据
-- **验收标准**: `ahadiff learn HEAD~1..HEAD --open` 打开本地 HTML，视觉接近 Warm v5 原型
+- **验收标准**: `ahadiff learn HEAD~1..HEAD --open` 打开本地 HTML，视觉接近 Warm v6 原型
 - **Review**: Claude 实现后 → Gemini(gemini-3.1-pro-preview) + Codex 交叉 review
 
 ### Task 14: Viewer 核心页面（v0.1 必须的 4 页）
@@ -259,11 +259,14 @@
   - `src/ahadiff/install/base.py`（InstallTarget protocol）
   - `src/ahadiff/install/registry.py`
   - `src/ahadiff/install/claude.py`
-  - `src/ahadiff/install/codex.py`
+  - `src/ahadiff/install/codex.py`（复用于 amp/jules；Junie 作为 JetBrains 插件共享 AGENTS.md，无独立 install 命令）
   - `src/ahadiff/install/gemini.py`
   - `src/ahadiff/install/opencode.py`
   - `src/ahadiff/install/cursor.py`
   - `src/ahadiff/install/copilot.py`
+  - `src/ahadiff/install/windsurf.py`
+  - `src/ahadiff/install/cline.py`
+  - `src/ahadiff/install/aider.py`
   - `src/ahadiff/install/hooks.py`
   - `src/ahadiff/install/templates/*.j2`
   - `src/ahadiff/cli.py`（新增 install/uninstall 子命令）
@@ -271,14 +274,16 @@
 - **依赖**: Task 1（工程骨架）
 - **实施步骤**:
   1. 实现 `InstallTarget` protocol：`detect() → bool`, `preview() → str`, `write() → list[Path]`, `uninstall() → list[Path]`
-  2. 实现 6 个 target：claude / codex / gemini / opencode / cursor / copilot
+  2. 实现 11 个 target：claude / codex / gemini / opencode / cursor / copilot / windsurf / cline / amp / aider / jules
+     其中 AGENTS.md 系（codex/opencode/amp/jules）共享模板
   3. 实现 Git hooks：post-commit（非阻塞提示）、pre-push（未学习 diff 警告）
   4. 实现 `--detect` 自动检测已安装工具
   5. 实现 `--dry-run` 预览、`--force` 覆盖、`uninstall` 清理
   6. 实现 safe merge 规则：检测目标文件是否已存在用户内容，存在则追加 section 而非覆盖；冲突时 diff 展示并询问
   7. 所有配置通过 Jinja2 模板化生成
   8. 默认不改用户全局配置，不默认启用阻断式 hook
-- **验收标准**: 6 个 target + hooks 的 `--dry-run` 全部正确输出将写入的文件列表
+- **验收标准**: 11 个 target + hooks 的 `--dry-run` 全部正确输出将写入的文件列表
+- **规则文件对照**: 详见 `.claude/team-plan/ahadiff-agent-rules-registry.md`
 
 ### Task 20: GitHub Action 集成
 

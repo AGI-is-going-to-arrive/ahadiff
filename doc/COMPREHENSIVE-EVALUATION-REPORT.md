@@ -119,7 +119,7 @@
 
 ---
 
-## 四、UI 原型评估（AhaDiff Warm v5.html）
+## 四、UI 原型评估（AhaDiff Warm v6.html）
 
 > 基于 Playwright 自动化测试，15 张截图，全部 11 页面逐一验证
 

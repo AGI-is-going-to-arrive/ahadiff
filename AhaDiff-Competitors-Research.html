@@ -1,0 +1,2209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>知返 AhaDiff · 竞品研究可视化</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+SC:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   Design Tokens - Warm (Anthropic Paper)
+   ============================================================ */
+:root{
+  --paper-00:#FDFBF6;
+  --paper-01:#FAF7F2;
+  --paper-02:#F5F1EA;
+  --paper-03:#EDE7DD;
+  --paper-04:#E3DCCE;
+  --ink-01:#2A2520;
+  --ink-02:#554A3F;
+  --ink-03:#8C7E70;
+  --ink-04:#B3A796;
+  --clay:#D97757;
+  --clay-dark:#B05B40;
+  --clay-soft:#F4D9CC;
+  --sage:#7A9179;
+  --sage-soft:#DCE5DA;
+  --amber:#C08B44;
+  --amber-soft:#F2E1C3;
+  --rust:#B0583E;
+  --rust-soft:#F1D2C6;
+  --divider:#DCD3C4;
+  --shadow-sm:0 1px 2px rgba(42,37,32,.06);
+  --shadow-md:0 4px 12px rgba(42,37,32,.08);
+  --shadow-lg:0 12px 32px rgba(42,37,32,.10);
+  --shadow-xl:0 24px 56px rgba(42,37,32,.14);
+  --serif:'Newsreader','Noto Serif SC',Georgia,serif;
+  --sans:'Inter','Noto Serif SC',-apple-system,BlinkMacSystemFont,sans-serif;
+  --mono:'JetBrains Mono',monospace;
+  --r-sm:6px;
+  --r-md:10px;
+  --r-lg:16px;
+  --r-xl:24px;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:var(--sans);
+  background:var(--paper-01);
+  color:var(--ink-01);
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+
+/* Selection */
+::selection{background:var(--clay-soft);color:var(--ink-01)}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:var(--paper-02)}
+::-webkit-scrollbar-thumb{background:var(--ink-04);border-radius:5px}
+::-webkit-scrollbar-thumb:hover{background:var(--ink-03)}
+
+/* ============================================================
+   Layout
+   ============================================================ */
+.container{max-width:1200px;margin:0 auto;padding:0 32px}
+section{padding:96px 0;position:relative}
+section.compact{padding:56px 0}
+
+/* Section label */
+.section-label{
+  display:inline-flex;align-items:center;gap:8px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.12em;
+  color:var(--clay);text-transform:uppercase;font-weight:500;
+  padding:4px 12px;background:var(--clay-soft);
+  border-radius:999px;margin-bottom:16px;
+}
+.section-label::before{content:'';width:6px;height:6px;background:var(--clay);border-radius:50%}
+
+h1,h2,h3,h4{font-family:var(--serif);font-weight:500;color:var(--ink-01);line-height:1.15;letter-spacing:-.01em}
+h1{font-size:clamp(48px,7vw,88px)}
+h2{font-size:clamp(36px,4.6vw,56px);margin-bottom:16px}
+h3{font-size:28px;margin-bottom:12px}
+h4{font-size:20px;margin-bottom:8px}
+p{color:var(--ink-02)}
+.lead{font-size:20px;color:var(--ink-02);max-width:720px}
+.muted{color:var(--ink-03)}
+.mono{font-family:var(--mono)}
+em{color:var(--clay-dark);font-style:italic;font-family:var(--serif)}
+
+/* ============================================================
+   Nav
+   ============================================================ */
+nav{
+  position:sticky;top:0;z-index:100;
+  background:rgba(250,247,242,.88);
+  backdrop-filter:saturate(160%) blur(14px);
+  -webkit-backdrop-filter:saturate(160%) blur(14px);
+  border-bottom:1px solid var(--divider);
+}
+.nav-inner{
+  max-width:1200px;margin:0 auto;padding:14px 32px;
+  display:flex;align-items:center;justify-content:space-between;gap:24px;
+}
+.logo{
+  display:flex;align-items:center;gap:10px;
+  font-family:var(--serif);font-weight:600;font-size:20px;
+  color:var(--ink-01);text-decoration:none;
+}
+.logo-mark{
+  width:34px;height:34px;border-radius:9px;
+  background:linear-gradient(135deg,var(--clay) 0%,var(--clay-dark) 100%);
+  display:grid;place-items:center;color:#fff;
+  font-family:var(--serif);font-weight:700;font-size:18px;
+  box-shadow:var(--shadow-sm);
+}
+.nav-links{display:flex;gap:6px;font-size:14px}
+.nav-links a{
+  color:var(--ink-02);text-decoration:none;
+  padding:8px 14px;border-radius:var(--r-md);
+  transition:all .2s ease;
+}
+.nav-links a:hover{background:var(--paper-03);color:var(--ink-01)}
+.nav-meta{font-family:var(--mono);font-size:11px;color:var(--ink-03)}
+
+@media(max-width:780px){.nav-links{display:none}}
+
+/* ============================================================
+   Hero
+   ============================================================ */
+.hero{
+  padding:120px 0 80px;position:relative;overflow:hidden;
+  background:linear-gradient(180deg,var(--paper-00) 0%,var(--paper-01) 100%);
+}
+.hero-decoration{
+  position:absolute;pointer-events:none;
+  right:-120px;top:60px;
+  width:480px;height:480px;
+  border-radius:50%;
+  background:radial-gradient(circle,var(--clay-soft) 0%,transparent 72%);
+  opacity:.7;animation:floatSlow 12s ease-in-out infinite;
+}
+.hero-decoration-2{
+  position:absolute;pointer-events:none;
+  left:-140px;bottom:-100px;
+  width:380px;height:380px;border-radius:50%;
+  background:radial-gradient(circle,var(--sage-soft) 0%,transparent 72%);
+  opacity:.5;animation:floatSlow 14s ease-in-out infinite reverse;
+}
+@keyframes floatSlow{
+  0%,100%{transform:translate(0,0) scale(1)}
+  50%{transform:translate(20px,-24px) scale(1.04)}
+}
+
+.hero h1{
+  letter-spacing:-.02em;
+  max-width:980px;
+}
+.hero h1 .highlight{
+  color:var(--clay);position:relative;display:inline-block;
+}
+.hero h1 .highlight::after{
+  content:'';position:absolute;left:-4px;right:-4px;bottom:6px;
+  height:14px;background:var(--clay-soft);z-index:-1;
+  transform:skew(-4deg);border-radius:3px;
+}
+.hero-sub{
+  margin-top:28px;font-size:20px;color:var(--ink-02);
+  max-width:700px;line-height:1.55;
+}
+.hero-sub .mono{color:var(--ink-01)}
+
+.hero-stats{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:24px;
+  margin-top:56px;max-width:880px;
+}
+.stat-card{
+  padding:24px;background:var(--paper-00);
+  border:1px solid var(--divider);border-radius:var(--r-lg);
+  transition:all .3s ease;
+}
+.stat-card:hover{
+  transform:translateY(-3px);
+  border-color:var(--clay);
+  box-shadow:var(--shadow-md);
+}
+.stat-num{
+  font-family:var(--serif);font-size:44px;font-weight:600;
+  color:var(--clay);line-height:1;
+}
+.stat-label{
+  margin-top:8px;font-size:13px;color:var(--ink-03);
+  text-transform:uppercase;letter-spacing:.08em;
+}
+.stat-detail{margin-top:6px;font-size:13px;color:var(--ink-02)}
+
+@media(max-width:780px){.hero-stats{grid-template-columns:repeat(2,1fr)}}
+
+/* ============================================================
+   Scenario Cards
+   ============================================================ */
+.scenario-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:24px;
+  margin-top:40px;
+}
+.scenario-card{
+  position:relative;padding:32px 28px;
+  background:var(--paper-00);border-radius:var(--r-lg);
+  border:1px solid var(--divider);
+  transition:all .3s ease;cursor:default;
+}
+.scenario-card:nth-child(1){transform:rotate(-.4deg)}
+.scenario-card:nth-child(2){transform:rotate(.3deg)}
+.scenario-card:nth-child(3){transform:rotate(-.2deg)}
+.scenario-card:hover{
+  transform:rotate(0) translateY(-4px);
+  box-shadow:var(--shadow-lg);border-color:var(--clay);
+}
+.scenario-num{
+  position:absolute;top:-14px;left:24px;
+  background:var(--clay);color:#fff;
+  width:32px;height:32px;border-radius:50%;
+  display:grid;place-items:center;
+  font-family:var(--serif);font-weight:600;font-size:16px;
+  box-shadow:var(--shadow-sm);
+}
+.scenario-card h4{margin-top:12px;color:var(--ink-01)}
+.scenario-dialog{
+  margin-top:14px;padding:14px 16px;
+  background:var(--paper-02);border-left:3px solid var(--clay);
+  border-radius:0 var(--r-sm) var(--r-sm) 0;
+  font-family:var(--serif);font-style:italic;color:var(--ink-02);
+}
+.scenario-pain{
+  margin-top:16px;font-size:14px;color:var(--rust);
+  display:flex;align-items:flex-start;gap:8px;
+}
+.scenario-pain::before{content:'→';font-weight:600;margin-top:2px}
+
+.scenario-conclusion{
+  margin-top:48px;padding:40px;text-align:center;
+  background:linear-gradient(135deg,var(--paper-02) 0%,var(--clay-soft) 100%);
+  border-radius:var(--r-lg);
+}
+.scenario-conclusion h3{
+  font-style:italic;font-weight:500;color:var(--ink-01);
+  font-size:28px;line-height:1.35;
+}
+
+@media(max-width:780px){.scenario-grid{grid-template-columns:1fr}}
+
+/* ============================================================
+   Landscape Map (5 Quadrants Radial)
+   ============================================================ */
+.landscape-wrap{
+  position:relative;width:100%;max-width:880px;margin:60px auto 0;
+  aspect-ratio:1;
+}
+.landscape-svg{width:100%;height:100%;overflow:visible}
+.landscape-center{
+  fill:var(--clay);stroke:var(--clay-dark);stroke-width:3;
+}
+.landscape-center-text{
+  font-family:var(--serif);font-weight:600;
+  fill:#fff;text-anchor:middle;dominant-baseline:middle;
+}
+.landscape-ring{
+  fill:none;stroke:var(--divider);stroke-width:1;
+  stroke-dasharray:4 4;
+}
+.landscape-spoke{stroke:var(--paper-04);stroke-width:1.5}
+.quadrant-label{
+  font-family:var(--serif);font-size:15px;font-weight:600;
+  fill:var(--ink-01);text-anchor:middle;
+}
+.product-dot{
+  cursor:pointer;transition:all .25s ease;
+}
+.product-dot circle{
+  fill:var(--paper-00);stroke:var(--ink-03);stroke-width:2;
+  transition:all .25s ease;
+}
+.product-dot text{
+  font-family:var(--sans);font-size:11px;font-weight:500;
+  fill:var(--ink-02);text-anchor:middle;
+  transition:all .25s ease;
+}
+.product-dot:hover circle{
+  fill:var(--clay);stroke:var(--clay-dark);r:10;
+}
+.product-dot:hover text{fill:var(--ink-01);font-weight:600}
+.product-dot.threat circle{stroke:var(--rust);stroke-width:2.5}
+.quadrant-count{
+  font-family:var(--mono);font-size:10px;
+  fill:var(--ink-03);text-anchor:middle;
+}
+
+.landscape-caption{
+  margin-top:32px;padding:20px 24px;
+  background:var(--paper-02);border-radius:var(--r-md);
+  font-size:14px;color:var(--ink-02);
+  display:flex;gap:24px;flex-wrap:wrap;justify-content:center;
+}
+.legend-item{display:flex;align-items:center;gap:8px}
+.legend-dot{width:14px;height:14px;border-radius:50%;border:2px solid var(--ink-03);background:var(--paper-00)}
+.legend-dot.threat{border-color:var(--rust)}
+.legend-dot.self{background:var(--clay);border-color:var(--clay-dark)}
+
+/* ============================================================
+   Moat Cards (4 Differentiators)
+   ============================================================ */
+.moat-grid{
+  display:grid;grid-template-columns:repeat(2,1fr);gap:24px;
+  margin-top:40px;
+}
+.moat{
+  position:relative;padding:36px 32px;
+  background:var(--paper-00);border-radius:var(--r-lg);
+  border:1px solid var(--divider);overflow:hidden;
+  transition:all .3s ease;
+}
+.moat::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,transparent 60%,var(--clay-soft) 100%);
+  opacity:0;transition:opacity .3s ease;z-index:0;
+}
+.moat:hover::before{opacity:1}
+.moat:hover{
+  transform:translateY(-4px);box-shadow:var(--shadow-lg);
+  border-color:var(--clay);
+}
+.moat>*{position:relative;z-index:1}
+.moat-header{
+  display:flex;align-items:center;gap:16px;margin-bottom:20px;
+}
+.moat-icon{
+  width:56px;height:56px;border-radius:var(--r-md);
+  background:var(--clay-soft);display:grid;place-items:center;
+  color:var(--clay-dark);flex-shrink:0;
+}
+.moat-icon svg{width:28px;height:28px}
+.moat-num{
+  font-family:var(--mono);font-size:12px;color:var(--clay);
+  letter-spacing:.1em;margin-bottom:4px;
+}
+.moat h3{margin-bottom:0;font-size:24px}
+.moat-analogy{
+  margin:16px 0;padding:14px 16px;
+  background:var(--paper-02);border-radius:var(--r-md);
+  font-family:var(--serif);font-style:italic;
+  color:var(--ink-02);font-size:16px;line-height:1.55;
+  border-left:3px solid var(--clay);
+}
+.moat-analogy::before{
+  content:'好比';font-family:var(--mono);font-style:normal;
+  font-size:11px;color:var(--clay);letter-spacing:.15em;
+  display:block;margin-bottom:6px;
+}
+.moat-example{
+  margin-top:14px;padding:16px;
+  background:var(--paper-01);border-radius:var(--r-md);
+  font-size:14px;border:1px dashed var(--divider);
+}
+.moat-example::before{
+  content:'举个栗子';font-family:var(--mono);font-size:11px;
+  color:var(--sage);letter-spacing:.15em;font-weight:600;
+  display:block;margin-bottom:10px;
+}
+.moat-example code{
+  background:var(--paper-03);padding:2px 6px;border-radius:3px;
+  font-size:13px;color:var(--ink-01);
+}
+.moat-compare{
+  margin-top:20px;display:flex;gap:8px;flex-wrap:wrap;
+  font-size:12px;
+}
+.moat-compare-chip{
+  padding:5px 10px;border-radius:999px;
+  background:var(--paper-02);color:var(--ink-02);
+  border:1px solid var(--divider);
+  display:flex;align-items:center;gap:6px;
+}
+.moat-compare-chip.has{background:var(--sage-soft);color:#425C41;border-color:#B2C4B1}
+.moat-compare-chip.no{background:var(--rust-soft);color:var(--rust);border-color:#D8B9AE}
+.moat-compare-chip::before{
+  width:5px;height:5px;border-radius:50%;content:'';
+  background:var(--ink-03);
+}
+.moat-compare-chip.has::before{background:#4F7A4D}
+.moat-compare-chip.no::before{background:var(--rust)}
+
+@media(max-width:860px){.moat-grid{grid-template-columns:1fr}}
+
+/* ============================================================
+   Product Matrix
+   ============================================================ */
+.matrix-controls{
+  display:flex;justify-content:space-between;align-items:center;
+  margin:32px 0 20px;flex-wrap:wrap;gap:16px;
+}
+.filter-group{display:flex;gap:6px;flex-wrap:wrap}
+.filter-btn{
+  padding:8px 14px;font-family:var(--sans);font-size:13px;
+  background:var(--paper-00);border:1px solid var(--divider);
+  border-radius:999px;cursor:pointer;color:var(--ink-02);
+  transition:all .2s ease;font-weight:500;
+}
+.filter-btn:hover{border-color:var(--clay);color:var(--clay)}
+.filter-btn.active{
+  background:var(--clay);color:#fff;border-color:var(--clay-dark);
+}
+.matrix-hint{font-size:13px;color:var(--ink-03)}
+
+.matrix-wrap{
+  background:var(--paper-00);border-radius:var(--r-lg);
+  border:1px solid var(--divider);overflow-x:auto;
+}
+.matrix{
+  width:100%;border-collapse:collapse;min-width:920px;
+}
+.matrix th,.matrix td{
+  padding:14px 12px;text-align:center;
+  border-bottom:1px solid var(--paper-03);
+  font-size:14px;
+}
+.matrix thead th{
+  background:var(--paper-02);font-weight:500;
+  color:var(--ink-02);font-size:12px;
+  text-transform:uppercase;letter-spacing:.08em;
+  position:sticky;top:0;
+}
+.matrix tbody tr{transition:background .2s ease}
+.matrix tbody tr:hover{background:var(--paper-01)}
+.matrix .product-name{
+  text-align:left;font-weight:500;color:var(--ink-01);
+  display:flex;align-items:center;gap:10px;padding-left:20px;
+}
+.product-badge{
+  padding:2px 8px;font-size:10px;border-radius:999px;
+  font-family:var(--mono);letter-spacing:.05em;
+}
+.product-badge.saas{background:var(--paper-03);color:var(--ink-03)}
+.product-badge.oss{background:var(--sage-soft);color:#4A6849}
+.product-badge.freemium{background:var(--amber-soft);color:var(--amber)}
+.product-badge.hero{background:var(--clay);color:#fff}
+
+.cell-value{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:32px;height:32px;border-radius:50%;font-size:16px;font-weight:600;
+}
+.cell-value.yes{background:var(--sage-soft);color:#4A6849}
+.cell-value.no{background:var(--paper-02);color:var(--ink-04)}
+.cell-value.partial{background:var(--amber-soft);color:var(--amber)}
+.cell-value.star{background:var(--clay);color:#fff;box-shadow:0 0 0 3px var(--clay-soft)}
+
+.row-self{background:linear-gradient(90deg,var(--clay-soft) 0%,var(--paper-00) 80%)!important}
+.row-self:hover{background:linear-gradient(90deg,var(--clay-soft) 0%,var(--paper-01) 80%)!important}
+.row-self .product-name{font-weight:700;color:var(--clay-dark);font-family:var(--serif)}
+
+.threat-level{
+  display:inline-block;padding:4px 10px;border-radius:999px;
+  font-size:11px;font-family:var(--mono);font-weight:600;
+  letter-spacing:.05em;
+}
+.threat-level.low{background:var(--sage-soft);color:#4A6849}
+.threat-level.mid{background:var(--amber-soft);color:var(--amber)}
+.threat-level.high{background:var(--rust-soft);color:var(--rust)}
+.threat-level.self{background:var(--clay);color:#fff}
+
+/* ============================================================
+   Inspiration vs Rival
+   ============================================================ */
+.split-view{
+  display:grid;grid-template-columns:1fr auto 1fr;
+  gap:32px;margin-top:48px;align-items:stretch;
+}
+.split-col{
+  padding:36px 32px;background:var(--paper-00);
+  border-radius:var(--r-lg);border:1px solid var(--divider);
+}
+.split-col.left{border-top:4px solid var(--sage)}
+.split-col.right{border-top:4px solid var(--rust)}
+.split-badge{
+  display:inline-block;padding:4px 12px;border-radius:999px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.1em;
+  margin-bottom:12px;font-weight:500;
+}
+.split-col.left .split-badge{background:var(--sage-soft);color:#4A6849}
+.split-col.right .split-badge{background:var(--rust-soft);color:var(--rust)}
+.split-col h3{font-size:24px;margin-bottom:8px}
+.split-col p{font-size:14px;color:var(--ink-03);margin-bottom:24px}
+.split-items{display:flex;flex-direction:column;gap:14px}
+.split-item{
+  padding:14px 16px;background:var(--paper-01);
+  border-radius:var(--r-md);border:1px solid var(--divider);
+  transition:all .2s ease;
+}
+.split-item:hover{border-color:var(--ink-04);transform:translateX(4px)}
+.split-item-name{
+  font-weight:600;color:var(--ink-01);font-size:15px;
+  display:flex;justify-content:space-between;align-items:center;
+}
+.split-item-tag{
+  font-family:var(--mono);font-size:10px;
+  color:var(--ink-03);font-weight:400;
+}
+.split-item-evid{
+  margin-top:6px;font-size:13px;color:var(--ink-02);line-height:1.5;
+}
+
+.split-divider{
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:center;min-width:120px;
+}
+.split-divider-arrow{
+  width:64px;height:64px;border-radius:50%;
+  background:var(--clay);color:#fff;
+  display:grid;place-items:center;margin:12px 0;
+  box-shadow:var(--shadow-md);font-family:var(--serif);font-weight:700;font-size:22px;
+}
+.split-divider-label{
+  font-family:var(--serif);font-weight:600;color:var(--ink-01);
+  text-align:center;font-size:14px;line-height:1.4;max-width:140px;
+}
+
+.key-insight{
+  margin-top:48px;padding:32px 40px;
+  background:var(--ink-01);color:var(--paper-01);
+  border-radius:var(--r-lg);text-align:center;
+  position:relative;
+}
+.key-insight::before{
+  content:'"';position:absolute;top:-10px;left:28px;
+  font-family:var(--serif);font-size:80px;
+  color:var(--clay);line-height:1;
+}
+.key-insight h3{color:var(--paper-00);font-style:italic;font-weight:400;font-size:26px;line-height:1.45;max-width:780px;margin:0 auto}
+.key-insight .tag{
+  margin-top:16px;font-family:var(--mono);font-size:11px;
+  color:var(--clay);letter-spacing:.15em;
+}
+
+@media(max-width:900px){
+  .split-view{grid-template-columns:1fr;gap:20px}
+  .split-divider{padding:8px 0}
+}
+
+/* ============================================================
+   Threat Section (CodeRabbit)
+   ============================================================ */
+.threat-grid{
+  display:grid;grid-template-columns:minmax(0,1fr) 1.2fr;
+  gap:48px;margin-top:40px;align-items:center;
+}
+.radar-wrap{position:relative;width:100%;max-width:460px;margin:0 auto;aspect-ratio:1}
+.radar{width:100%;height:100%;overflow:visible}
+.radar-grid{fill:none;stroke:var(--divider);stroke-width:1}
+.radar-axis{stroke:var(--paper-04);stroke-width:1}
+.radar-label{
+  font-family:var(--sans);font-size:12px;font-weight:500;
+  fill:var(--ink-02);text-anchor:middle;
+}
+.radar-poly-a{fill:var(--rust);fill-opacity:.18;stroke:var(--rust);stroke-width:2}
+.radar-poly-b{fill:var(--clay);fill-opacity:.22;stroke:var(--clay);stroke-width:2.5}
+.radar-point-a{fill:var(--rust);stroke:#fff;stroke-width:2}
+.radar-point-b{fill:var(--clay);stroke:#fff;stroke-width:2}
+
+.threat-info .threat-title{
+  display:flex;align-items:center;gap:14px;margin-bottom:16px;
+}
+.threat-logo{
+  width:56px;height:56px;border-radius:var(--r-md);
+  background:var(--rust);color:#fff;display:grid;place-items:center;
+  font-family:var(--serif);font-weight:700;font-size:24px;
+}
+.threat-title h3{margin:0;color:var(--rust)}
+.threat-title .threat-price{
+  font-family:var(--mono);font-size:13px;
+  background:var(--paper-02);padding:4px 10px;border-radius:999px;
+  color:var(--ink-02);
+}
+.threat-overview{
+  padding:20px;background:var(--paper-02);border-radius:var(--r-md);
+  font-size:14px;color:var(--ink-02);line-height:1.65;margin-bottom:24px;
+  border-left:3px solid var(--rust);
+}
+.counter-list{
+  background:var(--paper-00);padding:24px;border-radius:var(--r-md);
+  border:1px solid var(--divider);
+}
+.counter-list-title{
+  font-family:var(--serif);font-weight:600;font-size:17px;
+  color:var(--ink-01);margin-bottom:14px;
+  display:flex;align-items:center;gap:10px;
+}
+.counter-list-title::before{
+  content:'';width:24px;height:2px;background:var(--clay);
+}
+.counter-list ul{list-style:none}
+.counter-list li{
+  padding:10px 0 10px 28px;position:relative;
+  font-size:14px;color:var(--ink-02);line-height:1.55;
+  border-bottom:1px dashed var(--divider);
+}
+.counter-list li:last-child{border-bottom:none}
+.counter-list li::before{
+  content:'';position:absolute;left:8px;top:17px;
+  width:8px;height:8px;background:var(--clay);border-radius:50%;
+}
+.counter-list li strong{color:var(--ink-01);font-weight:600}
+
+.radar-legend{
+  display:flex;gap:18px;justify-content:center;margin-top:16px;
+  font-size:13px;
+}
+.radar-legend-item{display:flex;align-items:center;gap:8px}
+.radar-legend-swatch{width:16px;height:16px;border-radius:3px}
+.radar-legend-swatch.rabbit{background:var(--rust);opacity:.5}
+.radar-legend-swatch.self{background:var(--clay);opacity:.6}
+
+@media(max-width:880px){.threat-grid{grid-template-columns:1fr}}
+
+/* ============================================================
+   Conclusion
+   ============================================================ */
+.conclusion-grid{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:16px;
+  margin-top:40px;
+}
+.conclusion-card{
+  padding:28px 24px;background:var(--paper-00);
+  border-radius:var(--r-lg);border:1px solid var(--divider);
+  text-align:center;position:relative;
+  transition:all .35s ease;
+}
+.conclusion-card:hover{
+  transform:translateY(-4px);box-shadow:var(--shadow-md);
+}
+.conclusion-card.hero{
+  background:linear-gradient(145deg,var(--clay) 0%,var(--clay-dark) 100%);
+  color:#fff;border:none;grid-column:span 1;
+  box-shadow:var(--shadow-lg);transform:translateY(-6px);
+}
+.conclusion-card.hero::before{
+  content:'';position:absolute;top:12px;right:12px;
+  width:28px;height:28px;background:#fff;border-radius:50%;
+  opacity:.15;
+}
+.conclusion-name{
+  font-family:var(--serif);font-weight:600;font-size:20px;
+  margin-bottom:8px;color:var(--ink-01);
+}
+.conclusion-card.hero .conclusion-name{color:#fff;font-size:22px}
+.conclusion-verb{
+  font-family:var(--mono);font-size:11px;
+  color:var(--ink-03);letter-spacing:.1em;
+  text-transform:uppercase;margin-bottom:16px;
+}
+.conclusion-card.hero .conclusion-verb{color:var(--clay-soft)}
+.conclusion-phrase{font-size:15px;color:var(--ink-02);line-height:1.5}
+.conclusion-card.hero .conclusion-phrase{color:#fff;font-weight:500}
+
+@media(max-width:900px){.conclusion-grid{grid-template-columns:repeat(2,1fr)}}
+
+/* ============================================================
+   Modal / Detail Panel
+   ============================================================ */
+.detail-panel{
+  position:fixed;inset:0;background:rgba(42,37,32,.5);
+  display:none;align-items:center;justify-content:center;
+  z-index:200;padding:20px;opacity:0;transition:opacity .2s ease;
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+}
+.detail-panel.show{display:flex;opacity:1}
+.detail-card{
+  background:var(--paper-00);border-radius:var(--r-xl);
+  max-width:620px;width:100%;max-height:82vh;overflow-y:auto;
+  padding:32px 36px;box-shadow:var(--shadow-xl);
+  transform:scale(.94);transition:transform .2s ease;
+}
+.detail-panel.show .detail-card{transform:scale(1)}
+.detail-close{
+  float:right;background:var(--paper-02);border:none;
+  width:36px;height:36px;border-radius:50%;
+  cursor:pointer;font-size:18px;color:var(--ink-02);
+  transition:all .2s ease;
+}
+.detail-close:hover{background:var(--paper-03);color:var(--ink-01)}
+.detail-card h3{margin-bottom:8px;font-size:26px}
+.detail-kv{
+  display:grid;grid-template-columns:110px 1fr;gap:10px 14px;
+  margin:18px 0;font-size:14px;
+}
+.detail-kv dt{color:var(--ink-03);font-family:var(--mono);font-size:12px;padding-top:2px}
+.detail-kv dd{color:var(--ink-01);line-height:1.55}
+.detail-kv a{color:var(--clay);text-decoration:underline}
+
+/* ============================================================
+   Footer
+   ============================================================ */
+footer{
+  padding:48px 0 32px;background:var(--ink-01);color:var(--paper-03);
+}
+.footer-inner{
+  max-width:1200px;margin:0 auto;padding:0 32px;
+  display:flex;justify-content:space-between;align-items:center;
+  flex-wrap:wrap;gap:24px;
+}
+.footer-left{font-family:var(--serif);font-size:16px}
+.footer-left .mono{font-size:12px;color:var(--ink-04);display:block;margin-top:4px}
+.footer-right{font-family:var(--mono);font-size:12px;color:var(--ink-04);text-align:right}
+
+/* ============================================================
+   Utility
+   ============================================================ */
+.fade-in{opacity:0;transform:translateY(16px);transition:opacity .6s ease,transform .6s ease}
+.fade-in.visible{opacity:1;transform:translateY(0)}
+
+/* ============================================================
+   Borrow Section (Implementation References)
+   ============================================================ */
+.borrow-stats{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:16px;
+  margin:40px 0 48px;
+}
+.bstat{
+  padding:24px;background:var(--paper-00);
+  border:1px solid var(--divider);border-radius:var(--r-lg);
+  text-align:center;transition:all .3s ease;
+}
+.bstat:hover{transform:translateY(-3px);box-shadow:var(--shadow-md)}
+.bstat.p0{border-top:3px solid var(--clay)}
+.bstat.p1{border-top:3px solid var(--amber)}
+.bstat.p2{border-top:3px solid var(--sage)}
+.bstat-num{
+  font-family:var(--serif);font-size:48px;font-weight:600;
+  color:var(--ink-01);line-height:1;margin-bottom:6px;
+}
+.bstat.p0 .bstat-num{color:var(--clay)}
+.bstat.p1 .bstat-num{color:var(--amber)}
+.bstat.p2 .bstat-num{color:var(--sage)}
+.bstat-label{
+  font-size:12px;color:var(--ink-03);
+  text-transform:uppercase;letter-spacing:.08em;
+}
+@media(max-width:700px){.borrow-stats{grid-template-columns:repeat(2,1fr)}}
+
+.borrow-chart{
+  margin-bottom:56px;padding:32px;
+  background:var(--paper-00);border-radius:var(--r-lg);
+  border:1px solid var(--divider);
+}
+.chart-title{
+  font-family:var(--serif);font-size:20px;font-weight:600;
+  margin-bottom:24px;color:var(--ink-01);
+  display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;
+}
+.chart-legend{
+  display:flex;gap:14px;font-family:var(--mono);font-size:11px;
+  color:var(--ink-03);font-weight:400;align-items:center;
+}
+.legend-swatch{
+  display:inline-block;width:14px;height:14px;
+  border-radius:3px;margin-right:6px;vertical-align:middle;
+}
+.legend-swatch.p0{background:var(--clay)}
+.legend-swatch.p1{background:var(--amber)}
+.legend-swatch.p2{background:var(--sage)}
+.chart-rows{display:flex;flex-direction:column;gap:10px}
+.chart-row{
+  display:grid;grid-template-columns:140px 1fr 42px;
+  align-items:center;gap:16px;
+}
+.chart-label{
+  font-family:var(--mono);font-size:13px;font-weight:500;
+  color:var(--ink-02);
+}
+.chart-bar{
+  display:flex;gap:2px;height:34px;border-radius:6px;
+  overflow:hidden;background:var(--paper-02);
+}
+.bar-seg{
+  display:grid;place-items:center;
+  font-size:11px;color:#fff;font-weight:600;
+  font-family:var(--mono);letter-spacing:.04em;
+  transition:all .3s ease;cursor:default;min-width:36px;
+}
+.bar-seg.p0{background:var(--clay)}
+.bar-seg.p1{background:var(--amber)}
+.bar-seg.p2{background:var(--sage)}
+.bar-seg:hover{opacity:.88;filter:brightness(1.05)}
+.chart-total{
+  font-family:var(--serif);font-weight:600;font-size:18px;
+  color:var(--ink-01);text-align:right;
+}
+.chart-hint{
+  margin-top:20px;padding-top:18px;border-top:1px dashed var(--divider);
+  font-family:var(--serif);font-style:italic;font-size:14px;
+  color:var(--ink-02);line-height:1.55;
+}
+@media(max-width:520px){
+  .chart-row{grid-template-columns:1fr;gap:4px}
+  .chart-label{font-size:13px;font-weight:600;color:var(--ink-01)}
+  .chart-bar{height:26px}
+  .chart-total{text-align:left;font-size:14px;color:var(--clay);font-family:var(--mono)}
+  .chart-total::before{content:'合计 '}
+  .bar-seg{font-size:10px;min-width:28px;padding:0 2px}
+}
+
+.top10-wrap{margin:64px 0 48px}
+.top10-head{
+  display:flex;align-items:center;gap:16px;margin-bottom:28px;
+  flex-wrap:wrap;
+}
+.top10-head h3{margin:0;font-size:26px}
+.top10-hint{
+  flex-basis:100%;font-size:14px;color:var(--ink-03);
+  font-family:var(--serif);font-style:italic;margin-top:4px;
+}
+.top10-grid{
+  display:grid;grid-template-columns:repeat(5,1fr);gap:12px;
+}
+.top10-card{
+  padding:22px 14px 16px;background:var(--paper-00);
+  border-radius:var(--r-md);border:1px solid var(--divider);
+  display:flex;flex-direction:column;gap:8px;
+  position:relative;transition:all .25s ease;min-height:140px;
+}
+.top10-card:hover{
+  transform:translateY(-3px);
+  border-color:var(--clay);
+  box-shadow:var(--shadow-md);
+}
+.top10-rank{
+  position:absolute;top:-10px;left:12px;
+  width:28px;height:28px;border-radius:50%;
+  background:var(--clay);color:#fff;
+  display:grid;place-items:center;
+  font-family:var(--serif);font-weight:700;font-size:14px;
+  box-shadow:var(--shadow-sm);
+}
+.top10-proj{
+  font-family:var(--mono);font-size:10px;
+  color:var(--ink-03);text-transform:uppercase;letter-spacing:.08em;
+  margin-top:6px;
+}
+.top10-title{
+  font-family:var(--serif);font-size:14px;line-height:1.35;
+  color:var(--ink-01);font-weight:500;
+}
+.top10-where{
+  font-family:var(--mono);font-size:10px;
+  color:var(--clay);margin-top:auto;letter-spacing:.04em;
+}
+@media(max-width:1100px){.top10-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:720px){.top10-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:480px){.top10-grid{grid-template-columns:1fr}}
+
+.borrow-filter-bar{
+  margin:32px 0 24px;padding:24px;
+  background:var(--paper-00);border:1px solid var(--divider);
+  border-radius:var(--r-md);
+  display:flex;gap:32px;flex-wrap:wrap;
+}
+.filter-section{display:flex;flex-direction:column;gap:10px;flex:1;min-width:260px}
+.filter-title{
+  font-family:var(--mono);font-size:11px;
+  color:var(--ink-03);letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.borrow-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:16px;
+  transition:opacity .2s ease;
+}
+.borrow-grid.fading{opacity:.22}
+@media(max-width:1000px){.borrow-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:680px){.borrow-grid{grid-template-columns:1fr}}
+
+.borrow-card{
+  padding:20px;background:var(--paper-00);
+  border:1px solid var(--divider);border-radius:var(--r-md);
+  display:flex;flex-direction:column;gap:10px;
+  transition:all .25s ease;position:relative;overflow:hidden;
+}
+.borrow-card::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,transparent 65%,var(--clay-soft) 100%);
+  opacity:0;transition:opacity .3s ease;z-index:0;pointer-events:none;
+}
+.borrow-card>*{position:relative;z-index:1}
+.borrow-card:hover{
+  transform:translateY(-3px);box-shadow:var(--shadow-md);
+  border-color:var(--clay);
+}
+.borrow-card:hover::before{opacity:.7}
+.borrow-card-top{
+  display:flex;align-items:center;gap:8px;
+  flex-wrap:wrap;
+}
+.borrow-num{
+  font-family:var(--mono);font-size:12px;font-weight:500;
+  color:var(--ink-04);
+}
+.borrow-pri{
+  padding:2px 9px;border-radius:999px;
+  font-family:var(--mono);font-size:10px;font-weight:600;
+  letter-spacing:.04em;
+}
+.borrow-pri.P0{background:var(--clay-soft);color:var(--clay-dark)}
+.borrow-pri.P1{background:var(--amber-soft);color:#806028}
+.borrow-pri.P2{background:var(--sage-soft);color:#4A6849}
+.borrow-proj-tag{
+  padding:2px 9px;border-radius:999px;
+  font-family:var(--mono);font-size:10px;
+  background:var(--paper-02);color:var(--ink-02);
+  margin-left:auto;font-weight:500;
+}
+.borrow-title{
+  font-family:var(--serif);font-weight:500;
+  font-size:17px;line-height:1.4;color:var(--ink-01);
+  margin-top:4px;
+}
+.borrow-loc{
+  font-family:var(--mono);font-size:11px;
+  color:var(--clay);word-break:break-all;
+  padding:8px 12px;background:var(--paper-02);
+  border-radius:var(--r-sm);line-height:1.5;
+}
+.borrow-how, .borrow-apply{
+  font-size:13px;line-height:1.6;color:var(--ink-02);
+}
+.borrow-how strong, .borrow-apply strong{
+  display:block;font-family:var(--mono);
+  font-size:10px;letter-spacing:.08em;
+  color:var(--ink-03);text-transform:uppercase;
+  margin-bottom:4px;font-weight:500;
+}
+.borrow-apply{
+  padding-top:10px;border-top:1px dashed var(--divider);
+}
+.borrow-apply strong{color:var(--clay)}
+
+.borrow-empty{
+  padding:72px 24px;text-align:center;color:var(--ink-03);
+  font-family:var(--serif);font-style:italic;font-size:18px;
+  background:var(--paper-00);border-radius:var(--r-lg);
+  border:1px dashed var(--divider);
+}
+
+.borrow-howto{
+  margin:8px 0 40px;padding:18px 22px;
+  background:var(--paper-02);border-left:3px solid var(--clay);
+  border-radius:0 var(--r-sm) var(--r-sm) 0;
+  font-size:14.5px;color:var(--ink-02);line-height:1.65;
+  display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;
+}
+.borrow-howto-tag{
+  flex-shrink:0;font-family:var(--mono);font-size:11px;
+  color:var(--clay);letter-spacing:.14em;font-weight:600;
+  text-transform:uppercase;padding-top:2px;
+}
+.borrow-howto-body{flex:1;min-width:260px;font-family:var(--serif)}
+.borrow-howto-body strong{color:var(--ink-01);font-weight:600}
+.borrow-howto-body .pri-pill{
+  display:inline-block;padding:1px 8px;border-radius:999px;
+  font-family:var(--mono);font-size:10px;font-weight:600;
+  margin:0 2px;vertical-align:1px;
+}
+.borrow-howto-body .pri-pill.P0{background:var(--clay-soft);color:var(--clay-dark)}
+.borrow-howto-body .pri-pill.P1{background:var(--amber-soft);color:#806028}
+.borrow-howto-body .pri-pill.P2{background:var(--sage-soft);color:#4A6849}
+
+</style>
+</head>
+<body>
+
+<nav>
+<div class="nav-inner">
+  <a href="#top" class="logo">
+    <div class="logo-mark">Δ</div>
+    <span>知返 AhaDiff</span>
+  </a>
+  <div class="nav-links">
+    <a href="#scenarios">场景</a>
+    <a href="#landscape">地形</a>
+    <a href="#moats">护城河</a>
+    <a href="#matrix">矩阵</a>
+    <a href="#borrow">借鉴</a>
+    <a href="#threat">威胁</a>
+    <a href="#conclusion">结论</a>
+  </div>
+  <div class="nav-meta">research · 2026-04-20</div>
+</div>
+</nav>
+
+<!-- =============== HERO =============== -->
+<section class="hero" id="top">
+  <div class="hero-decoration"></div>
+  <div class="hero-decoration-2"></div>
+  <div class="container">
+    <div class="section-label">竞品研究 · 可视化报告</div>
+    <h1>为什么 <span class="highlight">AhaDiff 没有真正的竞品</span>？</h1>
+    <p class="hero-sub">
+      我们翻了 <span class="mono">10 款</span> 商业产品的官网、读了 <span class="mono">4 个</span> 灵感项目的源码，
+      在 <span class="mono">5 个</span> 象限里挖出 <span class="mono">4 条</span> 没人占的护城河。
+      <br>这份报告用尽量少的黑话讲清楚：<em>知返到底跟谁在抢饭？和谁其实完全不冲突？</em>
+    </p>
+    <div class="hero-stats">
+      <div class="stat-card">
+        <div class="stat-num">10</div>
+        <div class="stat-label">竞品</div>
+        <div class="stat-detail">CodeRabbit · Greptile · DeepWiki…</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">4</div>
+        <div class="stat-label">灵感项目</div>
+        <div class="stat-detail">源码真机验证</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">4</div>
+        <div class="stat-label">护城河空白</div>
+        <div class="stat-detail">无人占领</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">1</div>
+        <div class="stat-label">中高威胁</div>
+        <div class="stat-detail">CodeRabbit</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =============== SCENARIOS =============== -->
+<section id="scenarios">
+  <div class="container">
+    <div class="section-label">一、问题是什么</div>
+    <h2>你一定遇到过这三种场景</h2>
+    <p class="lead">"AI 写得飞起，但你学不到东西" — 这就是 AhaDiff 想解决的事。</p>
+
+    <div class="scenario-grid">
+      <div class="scenario-card fade-in">
+        <div class="scenario-num">1</div>
+        <h4>AI 5 分钟写完了 OAuth</h4>
+        <div class="scenario-dialog">"嗯，看懂了，挺顺的。"</div>
+        <div class="scenario-pain">明天新需求，还是 AI 写；三个月后被问原理，一问三不知。</div>
+      </div>
+      <div class="scenario-card fade-in">
+        <div class="scenario-num">2</div>
+        <h4>CodeRabbit 留下评论</h4>
+        <div class="scenario-dialog">"第 42 行可能有 race condition。"</div>
+        <div class="scenario-pain">你说"哦，好的"。然后呢？没有 quiz、没有复习、两周后忘光。</div>
+      </div>
+      <div class="scenario-card fade-in">
+        <div class="scenario-num">3</div>
+        <h4>Execute Program SQL 课 100 分</h4>
+        <div class="scenario-dialog">"预制课程都过了。"</div>
+        <div class="scenario-pain">但打开自己项目的 PR，还是看不懂人家为什么那样改。</div>
+      </div>
+    </div>
+
+    <div class="scenario-conclusion fade-in">
+      <h3>有没有一种工具，把你<em>刚写完的这份 diff</em><br>变成能在两周后主动回忆出来的学习笔记？</h3>
+    </div>
+  </div>
+</section>
+
+<!-- =============== LANDSCAPE =============== -->
+<section id="landscape" style="background:var(--paper-02)">
+  <div class="container">
+    <div class="section-label">二、市场地形</div>
+    <h2>AhaDiff 在哪里？点一下看看</h2>
+    <p class="lead">我们把 10 款竞品按"主打什么"分进 5 个象限。知返站在正中间 — 每个象限都沾一点，但都没完全重合。</p>
+
+    <div class="landscape-wrap">
+      <svg class="landscape-svg" viewBox="-250 -250 500 500">
+        <!-- Rings -->
+        <circle class="landscape-ring" cx="0" cy="0" r="80"/>
+        <circle class="landscape-ring" cx="0" cy="0" r="150"/>
+        <circle class="landscape-ring" cx="0" cy="0" r="220"/>
+        <!-- Spokes -->
+        <line class="landscape-spoke" x1="0" y1="0" x2="0" y2="-220"/>
+        <line class="landscape-spoke" x1="0" y1="0" x2="209" y2="-68"/>
+        <line class="landscape-spoke" x1="0" y1="0" x2="129" y2="178"/>
+        <line class="landscape-spoke" x1="0" y1="0" x2="-129" y2="178"/>
+        <line class="landscape-spoke" x1="0" y1="0" x2="-209" y2="-68"/>
+
+        <!-- Quadrant labels -->
+        <text class="quadrant-label" x="0" y="-238">Code Wiki（解释整仓）</text>
+        <text class="quadrant-count" x="0" y="-222">2 款</text>
+        <text class="quadrant-label" x="225" y="-60">Diff 摘要</text>
+        <text class="quadrant-count" x="225" y="-44">1 款</text>
+        <text class="quadrant-label" x="145" y="205">Skill 框架</text>
+        <text class="quadrant-count" x="145" y="221">2 款</text>
+        <text class="quadrant-label" x="-145" y="205">SRS 学习</text>
+        <text class="quadrant-count" x="-145" y="221">2 款</text>
+        <text class="quadrant-label" x="-225" y="-60">PR Review</text>
+        <text class="quadrant-count" x="-225" y="-44">3 款</text>
+
+        <!-- Center AhaDiff -->
+        <circle class="landscape-center" cx="0" cy="0" r="50"/>
+        <text class="landscape-center-text" x="0" y="-4" font-size="15">AhaDiff</text>
+        <text class="landscape-center-text" x="0" y="14" font-size="10" style="font-family:var(--mono);opacity:.85">知返</text>
+
+        <!-- Product dots -->
+        <!-- Code Wiki (top) -->
+        <g class="product-dot" data-product="deepwiki"><circle cx="-30" cy="-160" r="7"/><text x="-30" y="-172">DeepWiki</text></g>
+        <g class="product-dot" data-product="unblocked"><circle cx="40" cy="-190" r="7"/><text x="40" y="-202">Unblocked</text></g>
+
+        <!-- Diff 摘要 (right-top) -->
+        <g class="product-dot" data-product="whatthediff"><circle cx="175" cy="-80" r="7"/><text x="175" y="-92">What The Diff</text></g>
+
+        <!-- Skill 框架 (right-bottom) -->
+        <g class="product-dot" data-product="anthropic-skills"><circle cx="100" cy="140" r="7"/><text x="100" y="158">Anthropic Skills</text></g>
+        <g class="product-dot" data-product="awesome"><circle cx="165" cy="100" r="7"/><text x="165" y="118">awesome-skills</text></g>
+
+        <!-- SRS (left-bottom) -->
+        <g class="product-dot" data-product="execute-program"><circle cx="-100" cy="140" r="7"/><text x="-100" y="158">Execute Program</text></g>
+        <g class="product-dot" data-product="remnote"><circle cx="-165" cy="100" r="7"/><text x="-165" y="118">RemNote</text></g>
+
+        <!-- PR Review (left) -->
+        <g class="product-dot threat" data-product="coderabbit"><circle cx="-175" cy="-40" r="9"/><text x="-175" y="-56" style="font-weight:700">CodeRabbit</text></g>
+        <g class="product-dot" data-product="greptile"><circle cx="-195" cy="30" r="7"/><text x="-195" y="46">Greptile</text></g>
+        <g class="product-dot" data-product="qodo"><circle cx="-125" cy="-95" r="7"/><text x="-125" y="-107">Qodo PR-Agent</text></g>
+      </svg>
+    </div>
+
+    <div class="landscape-caption">
+      <div class="legend-item"><div class="legend-dot self"></div>AhaDiff（站中心）</div>
+      <div class="legend-item"><div class="legend-dot threat"></div>中高威胁（红边）</div>
+      <div class="legend-item"><div class="legend-dot"></div>其他竞品（点一下看详情）</div>
+    </div>
+  </div>
+</section>
+
+<!-- =============== MOATS =============== -->
+<section id="moats">
+  <div class="container">
+    <div class="section-label">三、护城河</div>
+    <h2>四个<em>没人占</em>的山头</h2>
+    <p class="lead">把 10 款产品的功能列齐，这 4 个格子全是空的 — AhaDiff 同时占住这 4 个格子，就是 100% 的差异化。</p>
+
+    <div class="moat-grid">
+
+      <!-- Moat 1 -->
+      <div class="moat fade-in">
+        <div class="moat-header">
+          <div class="moat-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>
+            </svg>
+          </div>
+          <div>
+            <div class="moat-num">MOAT 01</div>
+            <h3>Diff → 学习 闭环</h3>
+          </div>
+        </div>
+        <div class="moat-analogy">不是背例题，而是拿你刚做错的题做三道相似题、两周后再考一遍。</div>
+        <div class="moat-example">
+          你改了 <code>src/auth/oauth.py</code><br>
+          → 生成 <code>4</code> 条带证据的笔记<br>
+          → 生成 <code>5</code> 道主动回忆 quiz<br>
+          → <code>14</code> 天后 SRS 自动推送给你复习
+        </div>
+        <div class="moat-compare">
+          <span class="moat-compare-chip no">CodeRabbit 只评审</span>
+          <span class="moat-compare-chip no">Execute Program 只教预制课</span>
+          <span class="moat-compare-chip has">AhaDiff 两头都做</span>
+        </div>
+      </div>
+
+      <!-- Moat 2 -->
+      <div class="moat fade-in">
+        <div class="moat-header">
+          <div class="moat-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M8 11h6"/><path d="M11 8v6"/>
+            </svg>
+          </div>
+          <div>
+            <div class="moat-num">MOAT 02</div>
+            <h3>Claim → 证据 4 状态</h3>
+          </div>
+        </div>
+        <div class="moat-analogy">论文审稿 — 每个结论都必须引原文行号，拒绝"感觉对"。</div>
+        <div class="moat-example">
+          一条解释会被打上 4 种标签之一：<br>
+          <span style="color:#4A6849">● verified</span> — 能回到 diff 的某行<br>
+          <span style="color:var(--amber)">● weak</span> — 有线索但不完整<br>
+          <span style="color:var(--ink-03)">● not_proven</span> — 如"性能提升 20%"（diff 不含基准测试）<br>
+          <span style="color:var(--rust)">● contradicted</span> — 跟 diff 相矛盾
+        </div>
+        <div class="moat-compare">
+          <span class="moat-compare-chip no">别家都是"自然语言带行号"</span>
+          <span class="moat-compare-chip has">AhaDiff 独家 4 状态机</span>
+        </div>
+      </div>
+
+      <!-- Moat 3 -->
+      <div class="moat fade-in">
+        <div class="moat-header">
+          <div class="moat-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 20V4"/><path d="m7 9 5-5 5 5"/><circle cx="12" cy="12" r="10" stroke-dasharray="2 3"/>
+            </svg>
+          </div>
+          <div>
+            <div class="moat-num">MOAT 03</div>
+            <h3>Git 棘轮（单调变好）</h3>
+          </div>
+        </div>
+        <div class="moat-analogy">钢琴考级 — 新演奏必须比上次高分才能通过，否则退回原处。</div>
+        <div class="moat-example">
+          Round 1: <code>wiki_score = 0.72</code> ✓ git commit<br>
+          Round 2: <code>wiki_score = 0.84</code> ✓ git commit<br>
+          Round 3: <code>wiki_score = 0.76</code> ✗ git reset<br>
+          连续 2 个优化目标无增益 → 触发 Phase 2.5 探索性重写
+        </div>
+        <div class="moat-compare">
+          <span class="moat-compare-chip no">0/10 竞品有此机制</span>
+          <span class="moat-compare-chip has">autoresearch 有但用于 ML</span>
+          <span class="moat-compare-chip has">AhaDiff 用于笔记质量</span>
+        </div>
+      </div>
+
+      <!-- Moat 4 -->
+      <div class="moat fade-in">
+        <div class="moat-header">
+          <div class="moat-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+          </div>
+          <div>
+            <div class="moat-num">MOAT 04</div>
+            <h3>Local-First 隐私</h3>
+          </div>
+        </div>
+        <div class="moat-analogy">写日记锁在家里抽屉，而不是发到云端 SaaS。</div>
+        <div class="moat-example">
+          所有产物存 <code>.ahadiff/</code> 目录<br>
+          出本机的只有 LLM API prompt 本身<br>
+          四道闸门过滤：<code>.ahadiffignore</code> + <code>redact.py</code> + <code>offline_only=true</code> + <code>audit.jsonl</code>
+        </div>
+        <div class="moat-compare">
+          <span class="moat-compare-chip no">CodeRabbit / Greptile / DeepWiki 全 SaaS</span>
+          <span class="moat-compare-chip has">AhaDiff 纯本地</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- =============== MATRIX =============== -->
+<section id="matrix" style="background:var(--paper-02)">
+  <div class="container">
+    <div class="section-label">四、竞品对比</div>
+    <h2>一张表看懂 10 款产品</h2>
+    <p class="lead">六个关键维度、10 款产品（含知返）。<strong>点任意产品名</strong>查看详细信息。</p>
+
+    <div class="matrix-controls">
+      <div class="filter-group" id="filterGroup">
+        <button class="filter-btn active" data-filter="all">全部 10</button>
+        <button class="filter-btn" data-filter="high">中高威胁 1</button>
+        <button class="filter-btn" data-filter="diff">做 diff 的 4</button>
+        <button class="filter-btn" data-filter="srs">做 SRS 的 2</button>
+        <button class="filter-btn" data-filter="oss">开源的 2</button>
+      </div>
+      <div class="matrix-hint">★ = 知返 · ● = 有 · 部分 = 有条件 · 空 = 没有</div>
+    </div>
+
+    <div class="matrix-wrap">
+      <table class="matrix" id="matrixTable">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding-left:20px">产品</th>
+            <th>聚焦 Diff</th>
+            <th>Claim→证据</th>
+            <th>Local-First</th>
+            <th>SRS/主动回忆</th>
+            <th>Git Ratchet</th>
+            <th>开源</th>
+            <th>威胁等级</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="row-self" data-tag="all diff srs oss">
+            <td class="product-name" data-product="ahadiff">
+              <span class="product-badge hero">MY</span> 知返 AhaDiff
+            </td>
+            <td><span class="cell-value star">★</span></td>
+            <td><span class="cell-value star">★</span></td>
+            <td><span class="cell-value star">★</span></td>
+            <td><span class="cell-value star">★</span></td>
+            <td><span class="cell-value star">★</span></td>
+            <td><span class="cell-value star">★</span></td>
+            <td><span class="threat-level self">自己</span></td>
+          </tr>
+          <tr data-tag="all high diff">
+            <td class="product-name" data-product="coderabbit">
+              <span class="product-badge saas">SAAS</span> CodeRabbit
+            </td>
+            <td><span class="cell-value yes">●</span></td>
+            <td><span class="cell-value partial">半</span></td>
+            <td><span class="cell-value partial">企业版</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="threat-level high">中高</span></td>
+          </tr>
+          <tr data-tag="all diff">
+            <td class="product-name" data-product="greptile">
+              <span class="product-badge saas">SAAS</span> Greptile
+            </td>
+            <td><span class="cell-value yes">●</span></td>
+            <td><span class="cell-value partial">半</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="threat-level mid">中</span></td>
+          </tr>
+          <tr data-tag="all diff oss">
+            <td class="product-name" data-product="qodo">
+              <span class="product-badge oss">OSS</span> Qodo PR-Agent
+            </td>
+            <td><span class="cell-value yes">●</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value yes">●</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value yes">●</span></td>
+            <td><span class="threat-level mid">中</span></td>
+          </tr>
+          <tr data-tag="all diff">
+            <td class="product-name" data-product="whatthediff">
+              <span class="product-badge freemium">FREEMIUM</span> What The Diff
+            </td>
+            <td><span class="cell-value yes">●</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="threat-level mid">中</span></td>
+          </tr>
+          <tr data-tag="all">
+            <td class="product-name" data-product="deepwiki">
+              <span class="product-badge freemium">FREEMIUM</span> DeepWiki
+            </td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="threat-level low">低</span></td>
+          </tr>
+          <tr data-tag="all srs">
+            <td class="product-name" data-product="execute-program">
+              <span class="product-badge saas">SAAS</span> Execute Program
+            </td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value yes">●</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="threat-level low">低</span></td>
+          </tr>
+          <tr data-tag="all srs">
+            <td class="product-name" data-product="remnote">
+              <span class="product-badge freemium">FREEMIUM</span> RemNote
+            </td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value partial">半</span></td>
+            <td><span class="cell-value yes">●</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="threat-level low">低</span></td>
+          </tr>
+          <tr data-tag="all oss">
+            <td class="product-name" data-product="anthropic-skills">
+              <span class="product-badge oss">OSS</span> Anthropic Skills
+            </td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value partial">半</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value yes">●</span></td>
+            <td><span class="threat-level low">低</span></td>
+          </tr>
+          <tr data-tag="all">
+            <td class="product-name" data-product="unblocked">
+              <span class="product-badge saas">SAAS</span> Unblocked
+            </td>
+            <td><span class="cell-value partial">半</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="threat-level low">低</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- =============== INSPIRATION vs RIVAL =============== -->
+<section id="split">
+  <div class="container">
+    <div class="section-label">五、关键认知</div>
+    <h2>骨架借鉴 ≠ 同赛道竞品</h2>
+    <p class="lead">我们项目 <code class="mono">repo/</code> 目录下有 4 个"灵感项目"。<br>这是容易搞混的地方 — 它们不是竞品，而是<em>建筑骨架</em>：借它们的梁柱，盖知返的房子。</p>
+
+    <div class="split-view">
+      <div class="split-col left">
+        <div class="split-badge">借骨架（repo/ 下源码）</div>
+        <h3>4 个灵感项目</h3>
+        <p>贡献：三文件契约 / Ratchet 概念 / rubric 框架 / 图谱格式。<strong>没一个评估"学习笔记质量"。</strong></p>
+        <div class="split-items">
+          <div class="split-item">
+            <div class="split-item-name">autoresearch <span class="split-item-tag">Karpathy</span></div>
+            <div class="split-item-evid">借走：三文件契约 + git ratchet；原版评估 ML 代码的 val_bpb</div>
+          </div>
+          <div class="split-item">
+            <div class="split-item-name">darwin-skill <span class="split-item-tag">零代码 MD</span></div>
+            <div class="split-item-evid">借走：Phase 2.5 触发条件（连续 2 个目标 round 1 break）</div>
+          </div>
+          <div class="split-item">
+            <div class="split-item-name">SkillCompass <span class="split-item-tag">npm</span></div>
+            <div class="split-item-evid">借走：PASS/CAUTION/FAIL 阈值框架；原版评估 skill 文件</div>
+          </div>
+          <div class="split-item">
+            <div class="split-item-name">graphify <span class="split-item-tag">PyPI</span></div>
+            <div class="split-item-evid">互补：repo-level map，AhaDiff 做 diff learning overlay</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="split-divider">
+        <div class="split-divider-label">站在骨架上<br>盖新房</div>
+        <div class="split-divider-arrow">↑</div>
+        <div class="split-divider-label">抢同一份<br>市场</div>
+      </div>
+
+      <div class="split-col right">
+        <div class="split-badge">同赛道（外部真实竞品）</div>
+        <h3>10 款商业产品</h3>
+        <p>抢同一批用户（开发者 / AI 协作者）。<strong>也没一个做"把 diff 变学习笔记"。</strong></p>
+        <div class="split-items">
+          <div class="split-item">
+            <div class="split-item-name">CodeRabbit <span class="split-item-tag">威胁 中高</span></div>
+            <div class="split-item-evid">PR 审查 + 架构图 + 摘要。若加 SRS，直接侵入领地。</div>
+          </div>
+          <div class="split-item">
+            <div class="split-item-name">Greptile · Qodo · What The Diff <span class="split-item-tag">Diff 类</span></div>
+            <div class="split-item-evid">做 PR 评审/摘要，都不做学习闭环</div>
+          </div>
+          <div class="split-item">
+            <div class="split-item-name">Execute Program · RemNote <span class="split-item-tag">SRS 类</span></div>
+            <div class="split-item-evid">做 SRS 复习，但不接真实 diff</div>
+          </div>
+          <div class="split-item">
+            <div class="split-item-name">DeepWiki · Unblocked <span class="split-item-tag">Wiki 类</span></div>
+            <div class="split-item-evid">解释整仓或提供 agent 上下文，不聚焦单次改动</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="key-insight fade-in">
+      <h3>两边都没人做——这正是 AhaDiff 的机会：<br>把你<em>刚写完的 diff</em> 变成有证据、能棘轮、能复习的学习笔记。</h3>
+      <div class="tag">THE GAP BETWEEN TWO WORLDS</div>
+    </div>
+  </div>
+</section>
+
+<!-- =============== BORROW (真实代码借鉴) =============== -->
+<section id="borrow">
+  <div class="container">
+    <div class="section-label">六、借鉴实现点 · 三模型交叉验证</div>
+    <h2>37 条借鉴点 → <em>10 条纳入 v0.1</em>，全部"借思想 + 特化重写"</h2>
+    <p class="lead">
+      经 Codex + Claude + Gemini 三模型四轮交叉 review，逐条源码验证。<br>
+      核心原则：<em>无一条可直接照搬原项目代码</em>，每条都需要 AhaDiff 特化重写。
+    </p>
+
+    <!-- Stats -->
+    <div class="borrow-stats">
+      <div class="bstat" style="border-top:3px solid var(--clay)">
+        <div class="bstat-num" style="color:var(--clay)">10</div>
+        <div class="bstat-label">纳入 v0.1</div>
+      </div>
+      <div class="bstat p0">
+        <div class="bstat-num">10</div>
+        <div class="bstat-label">已覆盖</div>
+      </div>
+      <div class="bstat p1">
+        <div class="bstat-num">13</div>
+        <div class="bstat-label">延后 v0.2+</div>
+      </div>
+      <div class="bstat p2">
+        <div class="bstat-num">4</div>
+        <div class="bstat-label">不适用</div>
+      </div>
+    </div>
+
+    <!-- Project × Priority chart -->
+    <div class="borrow-chart">
+      <div class="chart-title">各项目借鉴点分布<span class="chart-legend"><span class="legend-swatch p0"></span>P0<span class="legend-swatch p1"></span>P1<span class="legend-swatch p2"></span>P2</span></div>
+      <div class="chart-rows">
+        <div class="chart-row">
+          <div class="chart-label">autoresearch</div>
+          <div class="chart-bar">
+            <div class="bar-seg p0" style="flex:3" title="3 条 P0 必抄">3 · P0</div>
+            <div class="bar-seg p1" style="flex:2" title="2 条 P1">2 · P1</div>
+            <div class="bar-seg p2" style="flex:1" title="1 条 P2">1</div>
+          </div>
+          <div class="chart-total">6</div>
+        </div>
+        <div class="chart-row">
+          <div class="chart-label">darwin-skill</div>
+          <div class="chart-bar">
+            <div class="bar-seg p0" style="flex:3">3 · P0</div>
+            <div class="bar-seg p1" style="flex:2">2 · P1</div>
+            <div class="bar-seg p2" style="flex:1">1</div>
+          </div>
+          <div class="chart-total">6</div>
+        </div>
+        <div class="chart-row">
+          <div class="chart-label">SkillCompass</div>
+          <div class="chart-bar">
+            <div class="bar-seg p0" style="flex:6">6 · P0</div>
+            <div class="bar-seg p1" style="flex:4">4 · P1</div>
+          </div>
+          <div class="chart-total">10</div>
+        </div>
+        <div class="chart-row">
+          <div class="chart-label">graphify</div>
+          <div class="chart-bar">
+            <div class="bar-seg p0" style="flex:2">2 · P0</div>
+            <div class="bar-seg p1" style="flex:4">4 · P1</div>
+            <div class="bar-seg p2" style="flex:1">1</div>
+          </div>
+          <div class="chart-total">7</div>
+        </div>
+        <div class="chart-row">
+          <div class="chart-label">Qodo PR-Agent</div>
+          <div class="chart-bar">
+            <div class="bar-seg p0" style="flex:5">5 · P0</div>
+            <div class="bar-seg p1" style="flex:3">3 · P1</div>
+          </div>
+          <div class="chart-total">8</div>
+        </div>
+      </div>
+      <div class="chart-hint">SkillCompass 和 Qodo PR-Agent 贡献了 P0 最多 — 一个是"评估引擎最严谨"，一个是"prompt + token 工程最生产级"。</div>
+    </div>
+
+    <!-- Top 10 -->
+    <div class="top10-wrap">
+      <div class="top10-head">
+        <div class="section-label" style="background:var(--clay);color:#fff;margin:0">v0.1 纳入清单</div>
+        <h3>纳入 v0.1 的 10 条（按架构层排序）</h3>
+        <div class="top10-hint">L1 Diff Capture → L2 Context → L3/L4 Gen+Verify → L5 Ratchet，按开发顺序排列</div>
+      </div>
+      <div class="top10-grid" id="top10Grid"></div>
+    </div>
+
+    <!-- How to read -->
+    <div class="borrow-howto">
+      <div class="borrow-howto-tag">怎么读</div>
+      <div class="borrow-howto-body">
+        每张卡片 = 一个借鉴点的"施工决策"：<strong>#编号 + 来源 + 优先级 + 决策</strong> → <strong>真实 file:line</strong> → <strong>实现机制</strong>（原项目怎么做）→ <strong>AhaDiff 特化方案</strong>（我们借什么、改什么）。
+        决策标签：<span class="pri-pill P0" style="background:var(--clay);color:#fff">纳入 v0.1</span> 首版开发 ·
+        <span class="pri-pill P1" style="background:var(--sage-soft);color:#4A6849">已覆盖</span> 设计已有 ·
+        <span class="pri-pill P2">延后</span> v0.2+ ·
+        <span class="pri-pill P2" style="background:var(--rust-soft);color:var(--rust)">不适用</span> 方向不符。
+      </div>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="borrow-filter-bar">
+      <div class="filter-section">
+        <div class="filter-title">按来源项目</div>
+        <div class="filter-group" id="borrowProjFilter">
+          <button class="filter-btn active" data-bp="all">全部 · 37</button>
+          <button class="filter-btn" data-bp="autoresearch">autoresearch · 6</button>
+          <button class="filter-btn" data-bp="darwin-skill">darwin-skill · 6</button>
+          <button class="filter-btn" data-bp="SkillCompass">SkillCompass · 10</button>
+          <button class="filter-btn" data-bp="graphify">graphify · 7</button>
+          <button class="filter-btn" data-bp="Qodo PR-Agent">Qodo · 8</button>
+        </div>
+      </div>
+      <div class="filter-section">
+        <div class="filter-title">按优先级</div>
+        <div class="filter-group" id="borrowPriFilter">
+          <button class="filter-btn active" data-bpr="all">任意</button>
+          <button class="filter-btn" data-bpr="P0">只看 P0（19）</button>
+          <button class="filter-btn" data-bpr="P1">P1（15）</button>
+          <button class="filter-btn" data-bpr="P2">P2（3）</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 37 items -->
+    <div class="borrow-grid" id="borrowGrid"></div>
+    <div class="borrow-empty" id="borrowEmpty" style="display:none">
+      没有符合的条目 — 换一个筛选条件？
+    </div>
+  </div>
+</section>
+
+<!-- =============== THREAT =============== -->
+<section id="threat" style="background:var(--paper-02)">
+  <div class="container">
+    <div class="section-label">七、威胁预警</div>
+    <h2>最大威胁：<span style="color:var(--rust)">CodeRabbit</span></h2>
+    <p class="lead">10 款竞品里唯一威胁等级"中高"。它已经占住"PR Review + 架构图 + 摘要"，如果加上 SRS/learning，就会直接进入 AhaDiff 的领地。</p>
+
+    <div class="threat-grid">
+      <div>
+        <div class="radar-wrap">
+          <svg class="radar" viewBox="-220 -220 440 440">
+            <!-- Grid circles -->
+            <circle class="radar-grid" cx="0" cy="0" r="40"/>
+            <circle class="radar-grid" cx="0" cy="0" r="80"/>
+            <circle class="radar-grid" cx="0" cy="0" r="120"/>
+            <circle class="radar-grid" cx="0" cy="0" r="160"/>
+
+            <!-- 6 axes (hexagon) -->
+            <line class="radar-axis" x1="0" y1="0" x2="0" y2="-160"/>
+            <line class="radar-axis" x1="0" y1="0" x2="139" y2="-80"/>
+            <line class="radar-axis" x1="0" y1="0" x2="139" y2="80"/>
+            <line class="radar-axis" x1="0" y1="0" x2="0" y2="160"/>
+            <line class="radar-axis" x1="0" y1="0" x2="-139" y2="80"/>
+            <line class="radar-axis" x1="0" y1="0" x2="-139" y2="-80"/>
+
+            <!-- CodeRabbit polygon (values out of 160) -->
+            <!-- [PR Review 150, 架构图 130, 用户量 150, 学习笔记 30, Claim验证 40, Local-First 40] -->
+            <polygon class="radar-poly-a" points="0,-150 113,-65 130,75 0,30 -35,20 -35,-20"/>
+            <circle class="radar-point-a" cx="0" cy="-150" r="4"/>
+            <circle class="radar-point-a" cx="113" cy="-65" r="4"/>
+            <circle class="radar-point-a" cx="130" cy="75" r="4"/>
+            <circle class="radar-point-a" cx="0" cy="30" r="4"/>
+            <circle class="radar-point-a" cx="-35" cy="20" r="4"/>
+            <circle class="radar-point-a" cx="-35" cy="-20" r="4"/>
+
+            <!-- AhaDiff polygon (values out of 160) -->
+            <!-- [PR Review 50, 架构图 30, 用户量 20, 学习笔记 150, Claim验证 155, Local-First 155] -->
+            <polygon class="radar-poly-b" points="0,-50 26,-15 17,10 0,150 -134,77 -134,-77"/>
+            <circle class="radar-point-b" cx="0" cy="-50" r="4"/>
+            <circle class="radar-point-b" cx="26" cy="-15" r="4"/>
+            <circle class="radar-point-b" cx="17" cy="10" r="4"/>
+            <circle class="radar-point-b" cx="0" cy="150" r="4"/>
+            <circle class="radar-point-b" cx="-134" cy="77" r="4"/>
+            <circle class="radar-point-b" cx="-134" cy="-77" r="4"/>
+
+            <!-- Axis labels -->
+            <text class="radar-label" x="0" y="-180">PR Review</text>
+            <text class="radar-label" x="160" y="-90">架构图</text>
+            <text class="radar-label" x="160" y="95">用户量</text>
+            <text class="radar-label" x="0" y="185">学习笔记</text>
+            <text class="radar-label" x="-160" y="95">Claim 验证</text>
+            <text class="radar-label" x="-160" y="-90">Local-First</text>
+          </svg>
+        </div>
+        <div class="radar-legend">
+          <div class="radar-legend-item">
+            <div class="radar-legend-swatch rabbit"></div>CodeRabbit
+          </div>
+          <div class="radar-legend-item">
+            <div class="radar-legend-swatch self"></div>AhaDiff（知返）
+          </div>
+        </div>
+      </div>
+
+      <div class="threat-info">
+        <div class="threat-title">
+          <div class="threat-logo">CR</div>
+          <h3>CodeRabbit</h3>
+          <span class="threat-price">$24 / 用户 / 月</span>
+        </div>
+        <div class="threat-overview">
+          SOC 2 Type II 认证，已覆盖 <strong>3M repos</strong>。主打 PR 逐行评审 + 变更摘要 + 架构图 + AI 修复。<br>
+          跟 AhaDiff 的重合点：<strong>都处理 diff、都生成说明</strong>。
+        </div>
+
+        <div class="counter-list">
+          <div class="counter-list-title">知返如何反击</div>
+          <ul>
+            <li><strong>抢占 Claude Skill 生态入口</strong> — 发布到 <code>awesome-claude-skills</code>（55k stars），让用户装一个 skill 就得到 AhaDiff。</li>
+            <li><strong>强调 Local-First 个人工具定位</strong> — CodeRabbit 是企业 SaaS，AhaDiff 是个人本地。数据不出本机是卖点，不是借口。</li>
+            <li><strong>Claim 四状态 + SRS 组合</strong> — 这是 CodeRabbit 企业 review 基因不会做的事。它的客户是 reviewer，不是学习者。</li>
+            <li><strong>棘轮机制差异化</strong> — CodeRabbit 的目标是"找出所有问题"；AhaDiff 的目标是"笔记质量单调递增"，完全不同的优化目标。</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =============== CONCLUSION =============== -->
+<section id="conclusion">
+  <div class="container">
+    <div class="section-label">八、三秒记住</div>
+    <h2>一句话讲清 AhaDiff 是什么</h2>
+    <p class="lead">四张卡片并排，你会一眼看到 AhaDiff 的位置。</p>
+
+    <div class="conclusion-grid">
+      <div class="conclusion-card">
+        <div class="conclusion-verb">解释</div>
+        <div class="conclusion-name">DeepWiki</div>
+        <div class="conclusion-phrase">把 <strong>整个仓库</strong> 变成结构化文档</div>
+      </div>
+      <div class="conclusion-card">
+        <div class="conclusion-verb">评审</div>
+        <div class="conclusion-name">CodeRabbit</div>
+        <div class="conclusion-phrase">审一次 PR 并给出行内评论</div>
+      </div>
+      <div class="conclusion-card">
+        <div class="conclusion-verb">教学</div>
+        <div class="conclusion-name">Execute Program</div>
+        <div class="conclusion-phrase">教预制课程 + SRS 复习</div>
+      </div>
+      <div class="conclusion-card hero">
+        <div class="conclusion-verb">知返 ★</div>
+        <div class="conclusion-name">AhaDiff</div>
+        <div class="conclusion-phrase">把你<strong>刚写完的 diff</strong> 变成能 <strong>两周后主动回忆</strong> 的学习笔记</div>
+      </div>
+    </div>
+
+    <div style="margin-top:72px;padding:40px;background:var(--ink-01);color:var(--paper-00);border-radius:var(--r-xl);text-align:center">
+      <div style="font-family:var(--mono);font-size:12px;color:var(--clay);letter-spacing:.15em;margin-bottom:14px">NEXT ACTION</div>
+      <h3 style="color:var(--paper-00);font-style:italic;font-weight:400;max-width:720px;margin:0 auto;font-size:24px;line-height:1.5">
+        约束集已写入 <span class="mono" style="color:var(--clay)">.claude/team-plan/ahadiff-competitors-research.md</span><br>
+        运行 <span class="mono" style="color:var(--clay)">/ccg:team-plan</span> 进入规划阶段
+      </h3>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-left">
+      知返 AhaDiff · 竞品研究可视化
+      <span class="mono">generated 2026-04-20 · warm v1</span>
+    </div>
+    <div class="footer-right">
+      sources: doc/知返设计坐标.md · doc/competitive-analysis-2026-04.md<br>
+      repo/ 源码 · 10 款产品官网 × 5 象限
+    </div>
+  </div>
+</footer>
+
+<!-- =============== Detail Modal =============== -->
+<div class="detail-panel" id="detailPanel">
+  <div class="detail-card" id="detailCard">
+    <!-- filled by JS -->
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   Product Database
+   ============================================================ */
+const products = {
+  'ahadiff':{name:'知返 AhaDiff', tag:'MY', url:'local',
+    model:'Local CLI (Python 3.11+)', focus:'git diff → 学习笔记 + SRS + 证据链',
+    local:'YES — 所有产物在 .ahadiff/ 目录', claim:'4 状态（verified/weak/not_proven/contradicted）',
+    ratchet:'有（wiki_score + git commit/reset + Phase 2.5）',
+    srs:'有（quiz.jsonl + review.db + SM-2/FSRS）',
+    overlap:'自己', note:'本项目 · 当前设计阶段'},
+  'coderabbit':{name:'CodeRabbit', tag:'SAAS', url:'https://coderabbit.ai',
+    model:'SaaS $24/$48 per user/month（Pro/Pro Plus）',
+    focus:'PR 逐行 review + 变更摘要 + 架构图 + AI 修复',
+    local:'NO（Enterprise 有 self-host）', claim:'部分（自然语言带行号，无结构化）',
+    ratchet:'无', srs:'无',
+    overlap:'中高 · 威胁最大', note:'3M repos, SOC 2 Type II. 若加 SRS 将直接侵入'},
+  'greptile':{name:'Greptile', tag:'SAAS', url:'https://www.greptile.com',
+    model:'SaaS $30/seat/mo（含 50 次 review）', focus:'PR diff + 全仓图谱 → review + 序列图',
+    local:'NO（云端图索引）', claim:'部分', ratchet:'无', srs:'无',
+    overlap:'中', note:'learn-your-codebase 但限 rule-adapt，非个人学习'},
+  'qodo':{name:'Qodo PR-Agent', tag:'OSS', url:'https://github.com/qodo-ai/pr-agent',
+    model:'Apache-2.0 · 11k+ stars · 可自部署',
+    focus:'/describe /review /improve /implement 命令式',
+    local:'可自部署', claim:'无', ratchet:'无', srs:'无',
+    overlap:'中', note:'开源优势但不做学习闭环'},
+  'whatthediff':{name:'What The Diff', tag:'FREEMIUM', url:'https://whatthediff.ai',
+    model:'Freemium 按 token', focus:'PR diff → 简短描述 + changelog + 周报',
+    local:'NO', claim:'无', ratchet:'无', srs:'无',
+    overlap:'中', note:'只做摘要，无学习/quiz'},
+  'deepwiki':{name:'DeepWiki', tag:'FREEMIUM', url:'https://deepwiki.com',
+    model:'Cognition 出品 · 公开仓库免费', focus:'整仓 → 结构化 Wiki + 对话问答',
+    local:'NO（已索引 50,000+ 公开仓库）', claim:'无', ratchet:'无', srs:'无',
+    overlap:'低', note:'解释整仓结构而非单次 diff'},
+  'execute-program':{name:'Execute Program', tag:'SAAS', url:'https://www.executeprogram.com',
+    model:'$19-39/月 · Gary Bernhardt 创办',
+    focus:'预制编程课程 + 间隔重复复习',
+    local:'NO', claim:'无', ratchet:'无', srs:'YES（核心卖点）',
+    overlap:'低', note:'SRS 理念相同，输入不同（课程 vs diff）'},
+  'remnote':{name:'RemNote', tag:'FREEMIUM', url:'https://www.remnote.com',
+    model:'Freemium / Pro $6/月', focus:'通用笔记 + 闪卡 + 概念图',
+    local:'部分（Pro 离线模式）', claim:'无', ratchet:'无', srs:'YES（SM-2/FSRS）',
+    overlap:'低', note:'面向学生，非代码场景'},
+  'anthropic-skills':{name:'Anthropic Agent Skills', tag:'OSS', url:'https://platform.claude.com/docs/en/agents-and-tools/agent-skills',
+    model:'开源 SKILL.md 格式 · 官方 + 社区', focus:'通用 agent 扩展框架',
+    local:'部分（文件本地，执行依赖 Claude）', claim:'无', ratchet:'无', srs:'无',
+    overlap:'低 · 生态入口', note:'AhaDiff 可发布为一个 skill'},
+  'unblocked':{name:'Unblocked', tag:'SAAS', url:'https://getunblocked.com',
+    model:'Free + 商业版 · 企业向', focus:'code + PRs + Slack + Jira → agent 上下文',
+    local:'NO', claim:'无', ratchet:'无', srs:'无',
+    overlap:'低中', note:'面向 coding agent 而非人类学习者'},
+  'awesome':{name:'awesome-claude-skills', tag:'OSS', url:'https://github.com/ComposioHQ/awesome-claude-skills',
+    model:'MIT · 55k+ stars', focus:'Claude skills 社区汇编',
+    local:'YES', claim:'无', ratchet:'无', srs:'无',
+    overlap:'低（发行通道）', note:'AhaDiff 应该上榜'}
+};
+
+/* ============================================================
+   Detail Panel
+   ============================================================ */
+const panel = document.getElementById('detailPanel');
+const card  = document.getElementById('detailCard');
+
+function showDetail(key){
+  const p = products[key];
+  if(!p) return;
+  card.innerHTML = `
+    <button class="detail-close" onclick="hideDetail()">✕</button>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+      <span class="product-badge ${p.tag.toLowerCase()==='my'?'hero':p.tag.toLowerCase()}">${p.tag}</span>
+      <h3 style="margin:0">${p.name}</h3>
+    </div>
+    ${p.url!=='local'?`<a href="${p.url}" target="_blank" style="color:var(--clay);font-size:13px;font-family:var(--mono)">${p.url} ↗</a>`:''}
+    <dl class="detail-kv">
+      <dt>模式</dt><dd>${p.model}</dd>
+      <dt>输入→输出</dt><dd>${p.focus}</dd>
+      <dt>Local-First</dt><dd>${p.local}</dd>
+      <dt>Claim 绑证据</dt><dd>${p.claim}</dd>
+      <dt>Git Ratchet</dt><dd>${p.ratchet}</dd>
+      <dt>SRS</dt><dd>${p.srs}</dd>
+      <dt>与知返重合</dt><dd><strong>${p.overlap}</strong></dd>
+    </dl>
+    <div style="padding:14px 16px;background:var(--paper-02);border-radius:var(--r-md);border-left:3px solid var(--clay);font-style:italic;color:var(--ink-02);font-family:var(--serif)">
+      ${p.note}
+    </div>
+  `;
+  panel.classList.add('show');
+}
+
+function hideDetail(){ panel.classList.remove('show'); }
+
+panel.addEventListener('click', e => {
+  if(e.target === panel) hideDetail();
+});
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape') hideDetail();
+});
+
+/* Wire landscape dots */
+document.querySelectorAll('.product-dot').forEach(el => {
+  el.addEventListener('click', () => showDetail(el.dataset.product));
+});
+/* Wire matrix rows */
+document.querySelectorAll('.matrix .product-name').forEach(el => {
+  el.style.cursor = 'pointer';
+  el.addEventListener('click', () => showDetail(el.dataset.product));
+});
+
+/* ============================================================
+   Matrix Filter
+   ============================================================ */
+const filterGroup = document.getElementById('filterGroup');
+const matrixRows  = document.querySelectorAll('#matrixTable tbody tr');
+filterGroup.addEventListener('click', e => {
+  if(!e.target.classList.contains('filter-btn')) return;
+  [...filterGroup.children].forEach(b => b.classList.remove('active'));
+  e.target.classList.add('active');
+  const f = e.target.dataset.filter;
+  matrixRows.forEach(r => {
+    const tags = (r.dataset.tag || '').split(' ');
+    r.style.display = (f === 'all' || tags.includes(f)) ? '' : 'none';
+  });
+});
+
+/* ============================================================
+   Scroll Reveal
+   ============================================================ */
+const io = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if(e.isIntersecting){
+      e.target.classList.add('visible');
+      io.unobserve(e.target);
+    }
+  });
+}, {threshold:0.12});
+document.querySelectorAll('.fade-in').forEach(el => io.observe(el));
+
+/* ============================================================
+   Smooth nav highlight
+   ============================================================ */
+const navLinks = document.querySelectorAll('.nav-links a');
+const sections = [...document.querySelectorAll('section[id]')];
+window.addEventListener('scroll', () => {
+  const y = window.scrollY + 120;
+  let current = sections[0].id;
+  sections.forEach(s => { if(s.offsetTop <= y) current = s.id; });
+  navLinks.forEach(l => {
+    l.style.background = l.getAttribute('href') === '#'+current ? 'var(--paper-03)' : '';
+    l.style.color = l.getAttribute('href') === '#'+current ? 'var(--ink-01)' : '';
+  });
+});
+
+/* ============================================================
+   Borrow Section: 37 Implementation References + Top 10
+   ============================================================ */
+const borrowData = [
+  // --- autoresearch (6) ---
+  {n:1, proj:'autoresearch', pri:'P0', verdict:'covered',
+    title:`^key:value stdout 协议输出评估指标`,
+    loc:`train.py:L622-L630 · program.md:L61-L63`,
+    how:`print(f"val_bpb: {val_bpb:.6f}") 输出 KV 对，外层 grep "^val_bpb:" run.log 抓取。比 JSON 省 token，比 exit code 传值量大。`,
+    apply:`<b>已覆盖</b> — HC-10 已冻结 ^wiki_score: 协议，落地于 L5 eval/evaluator.py。`},
+  {n:2, proj:'autoresearch', pri:'P0', verdict:'covered',
+    title:`5 列 TSV 日志（非 CSV / JSONL）`,
+    loc:`program.md:L67-L88`,
+    how:`固定列：commit val_bpb memory_gb status description。status 枚举 keep|discard|crash。tab 分隔避免 description 中 comma 破坏。`,
+    apply:`<b>已覆盖</b> — HC-15 已固定 10 列（非 5 列），不回退。落地于 L5 eval/results.py。`},
+  {n:3, proj:'autoresearch', pri:'P2', verdict:'deferred',
+    title:`gc.disable() + 定期 gc.collect()`,
+    loc:`train.py:L592-L598`,
+    how:`step==0 时 gc.collect(); gc.freeze(); gc.disable()。每 5000 步手动 collect。注释："Python GC causes ~500ms stalls"。`,
+    apply:`<b>延后 v0.2+</b> — CLI/LLM 主路径无证据表明 GC 是瓶颈，需真实 benchmark 数据。`},
+  {n:4, proj:'autoresearch', pri:'P1', verdict:'deferred',
+    title:`时间预算制 + progress 线性调度`,
+    loc:`train.py:L29-L30, L518-L525`,
+    how:`TIME_BUDGET=300，所有调度按 progress = elapsed / budget 比例走。不同硬件行为一致。`,
+    apply:`<b>延后 v0.2+</b> — v0.1 已有 token/cost/round budget，时间预算需真实数据后再评估。`},
+  {n:5, proj:'autoresearch', pri:'P1', verdict:'na',
+    title:`NEVER STOP 自主循环 + 10min 超时 kill`,
+    loc:`program.md:L111-L114`,
+    how:`明确写 "do NOT pause to ask the human… The loop runs until human interrupts, period"。超时 10min 自动 kill 视为 failure。`,
+    apply:`<b>不适用</b> — 与 improve --rounds N + 成本门禁 + 人工确认点冲突，AhaDiff 不做无限自主循环。`},
+  {n:6, proj:'autoresearch', pri:'P0', verdict:'v01',
+    title:`redirect stdout+stderr 到 run.log`,
+    loc:`program.md:L99`,
+    how:`uv run train.py &gt; run.log 2&gt;&amp;1。"redirect everything — do NOT use tee or let output flood your context"。仅 grep 关键指标行。`,
+    apply:`<b>纳入 v0.1</b> — stdout+stderr 写入 .ahadiff/runs/&lt;run_id&gt;/run.log（HC-1）。场景分治：agent 模式纯 log 禁 tee；人类 CLI 可选 tee 回显精简进度。`},
+
+  // --- darwin-skill (6) ---
+  {n:7, proj:'darwin-skill', pri:'P0', verdict:'covered',
+    title:`8 维加权 Rubric 表 + 严格 &gt; 改进`,
+    loc:`SKILL.md:L29-L51`,
+    how:`6 结构维度 60 分 + 2 效果维度 40 分。改进要求严格高于旧分（非 &gt;=）。公式：总分 = sum(dim_score × weight) / 10。`,
+    apply:`<b>已覆盖</b> — AhaDiff 8 维 rubric + 严格改进规则已写进设计文档。`},
+  {n:8, proj:'darwin-skill', pri:'P1', verdict:'covered',
+    title:`test-prompts.json 格式化测试用例集`,
+    loc:`SKILL.md:L87-L95`,
+    how:`每个 skill 目录放 [{id, prompt, expected}]。Phase 0.5 设计测试 prompt，展示给用户确认后才进入评估。`,
+    apply:`<b>已覆盖</b> — v0.1 已有 benchmark fixture 等价方案。`},
+  {n:9, proj:'darwin-skill', pri:'P0', verdict:'na',
+    title:`results.tsv 增 eval_mode 列（full_test / dry_run）`,
+    loc:`SKILL.md:L232-L239`,
+    how:`TSV 第 9 列区分完整测试 vs 干跑。子 agent 不可用时退化为干跑验证并标注。`,
+    apply:`<b>不适用</b> — 与 HC-15 固定 10 列直接冲突，eval_mode 信息可记录在 note 列（第 10 列）。`},
+  {n:10, proj:'darwin-skill', pri:'P1', verdict:'deferred',
+    title:`文件体积 &gt; 150% → 拒绝提交`,
+    loc:`SKILL.md:L282`,
+    how:`优化后体积超 150% → 回退到改进步骤精简。`,
+    apply:`<b>延后 v0.2+</b> — v0.1 先用简洁性准则更稳，体积规则待 benchmark 验证。`},
+  {n:11, proj:'darwin-skill', pri:'P0', verdict:'v01',
+    title:`异常处理决策表（10 场景 + 绝不静默跳过）`,
+    loc:`SKILL.md:L270-L286`,
+    how:`Markdown 表列 10 异常场景（不在 git / TSV 损坏 / 分支冲突 / revert 失败…），每个有触发条件 + 处理动作。原则："异常先告知用户，再按规则处理；绝不静默跳过"。`,
+    apply:`<b>纳入 v0.1</b> — 以 darwin-skill 10 场景为 seed，扩展 AhaDiff 专属错误分类（约 15+ 场景，含 provider timeout / secret gate / cache corruption / degraded run）。落地于 L5 core/errors.py + eval/ratchet.py。`},
+  {n:12, proj:'darwin-skill', pri:'P2', verdict:'deferred',
+    title:`HTML 成果卡片 3 主题（URL hash 切换）`,
+    loc:`SKILL.md:L356-L364 · templates/result-card.html`,
+    how:`3 主题 #swiss / #terminal / #newspaper 通过 URL hash 切换。data-field 定位占位符。screenshot.mjs 截 PNG。`,
+    apply:`<b>延后 v0.2+</b> — v0.1 只做 Warm 单主题，多主题增加前端资产维护成本。`},
+
+  // --- SkillCompass (10) ---
+  {n:13, proj:'SkillCompass', pri:'P0', verdict:'v01',
+    title:`eval-result.json Schema 严格约束 LLM 输出`,
+    loc:`schemas/eval-result.json:L1-L224`,
+    how:`原版是 6 维 skill 评估 {score, max, details, sub_scores, issues, metadata}。overall_score 0-100 整数，verdict 枚举 PASS|CAUTION|FAIL。`,
+    apply:`<b>纳入 v0.1</b> — 借鉴五元组作为默认 envelope，但 AhaDiff 是 8 维 lesson 评估，结构差异化：safety_privacy 走 pass/findings/tools_used；diff_coverage 走 deterministic counts；其余 6 维用 score+max+details+sub_scores+issues。`},
+  {n:14, proj:'SkillCompass', pri:'P0', verdict:'covered',
+    title:`D3 Security Gate — critical 直接 FAIL`,
+    loc:`shared/scoring.md:L40-L46`,
+    how:`D3 是 gate 维度。任何 critical → score=0, verdict=FAIL（不论 overall）。扣分阶梯：critical→0, high→-4, medium→-1, low→-0.5。`,
+    apply:`<b>已覆盖</b> — 安全 hard gate 已在 Task 2 + Task 11 锁定。`},
+  {n:15, proj:'SkillCompass', pri:'P0', verdict:'covered',
+    title:`减分制评分 + fatal cap`,
+    loc:`lib/structure-validator.js:L524-L534, L49-L63`,
+    how:`从 10 起扣：error -3, warning -1.5, info -0.5。Math.max(0, Math.min(10, score))。fatal 错误锁上限（如 fatalFrontmatter → frontmatterScore ≤ 2）。`,
+    apply:`<b>已覆盖</b> — 扣分制 + 维度门禁已存在于设计。`},
+  {n:16, proj:'SkillCompass', pri:'P1', verdict:'deferred',
+    title:`output-guard.js BLOCK/WARN 双级检查`,
+    loc:`hooks/scripts/output-guard.js:L42-L52, L143-L175`,
+    how:`5 规则：新 URL / 危险命令 (BLOCK) / scope mismatch (WARN) / 体积 &gt;3x WARN &gt;5x BLOCK / 二次安全扫描。结果含 sha256: 哈希审计。`,
+    apply:`<b>延后 v0.2+</b> — agent-hook 增强，非 v0.1 主链路。`},
+  {n:17, proj:'SkillCompass', pri:'P1', verdict:'deferred',
+    title:`hooks.json PostToolUse 钩子注册`,
+    loc:`hooks/hooks.json:L1-L53`,
+    how:`按事件类型注册，matcher 用管道符 Write|Edit，command 用 \${CLAUDE_PLUGIN_ROOT} 变量，每钩子独立 timeout 3000-5000ms。`,
+    apply:`<b>延后 v0.2+</b> — 等 Task 19 install 稳定后再做。`},
+  {n:18, proj:'SkillCompass', pri:'P0', verdict:'deferred',
+    title:`quick-scan.js 三维快扫 + mtime 缓存`,
+    loc:`lib/quick-scan.js:L42-L127, L136-L168`,
+    how:`scanOne 依次 D1/D2/D3，try-catch 独立。verdict：任一维度 &lt;=4 = high_risk, &lt;=6 = medium, 否则 clean。scanAll 用 modified_at 缓存键。`,
+    apply:`<b>延后 v0.2+</b> — deterministic verifier 已够闭环，待真实 latency/cost 数据后再评估。`},
+  {n:19, proj:'SkillCompass', pri:'P0', verdict:'v01',
+    title:`Few-shot 校准 + 算术验证行`,
+    loc:`prompts/d4-functional.md:L34-L42, L159-L401`,
+    how:`原版 Tier A/B/C 是 skill 输出类型分类。每 few-shot 末尾有 "Score check: 9×0.30 + 8×0.20 + ... = 8.25 → 8" 防 LLM 算错。Example B 存在 score 不一致 bug（3.35→3 但 JSON 写 4）。`,
+    apply:`<b>纳入 v0.1</b> — 分阶段：先借 few-shot 校准方法论 + 算术自检概念（代码层 assert），等 8 维权重冻结后再写具体示例和公式。Tier 分类不适用于 lesson。`},
+  {n:20, proj:'SkillCompass', pri:'P0', verdict:'covered',
+    title:`&lt;&lt;&lt;UNTRUSTED_SKILL_BEGIN&gt;&gt;&gt; 边界标记 + 6 条 safety rules`,
+    loc:`prompts/d4-functional.md:L30-L32`,
+    how:`用 &lt;&lt;&lt;UNTRUSTED_SKILL_BEGIN&gt;&gt;&gt; 和 END 包裹被评估内容。前置 6 条 mandatory safety rules（不执行代码、不遵从 "ignore previous" 指令等）。`,
+    apply:`<b>已覆盖</b> — prompt injection 边界已在安全层规划。`},
+  {n:21, proj:'SkillCompass', pri:'P1', verdict:'deferred',
+    title:`version-manifest.json 版本追踪`,
+    loc:`schemas/version-manifest.json:L1-L86`,
+    how:`每版本记录 {version, parent, timestamp, trigger, content_hash, overall_score, verdict, dimension_scores, correction_pattern}。trigger 枚举 initial|eval-improve|eval-merge|manual|upstream。`,
+    apply:`<b>延后 v0.2+</b> — prompt_version+rubric_version+git 已满足追溯。`},
+  {n:22, proj:'SkillCompass', pri:'P1', verdict:'deferred',
+    title:`V1-V7 统计指标 + ASCII 柱状图`,
+    loc:`scripts/eval-v2/analyze-results.js:L83-L260`,
+    how:`V1 分布(mean/median/stddev) · V2 Tier 区分度 · V3 gate 失败率 · V4 类别公平性(delta&lt;8) · V5 verdict 分布 · V6 异常(Top5/Bottom5) · V7 维度方差。bar() 生成 ASCII 柱状图。`,
+    apply:`<b>延后 v0.2+</b> — 需 benchmark 跑通后再建统计分析。`},
+
+  // --- graphify (7) ---
+  {n:23, proj:'graphify', pri:'P0', verdict:'v01',
+    title:`SHA256 内容寻址缓存（多因子 key）`,
+    loc:`graphify/cache.py:L10-L41`,
+    how:`原版是 per-file extraction cache：file_hash() 对 .md 先剥 YAML frontmatter 再哈希，key = content + "\\x00" + relative_path（repo-relative 可移植）。有 fallback 到 raw content 的健壮处理。`,
+    apply:`<b>纳入 v0.1</b> — 借鉴内容寻址 + 相对路径可移植性思想，但 AhaDiff 是 LLM 调用缓存。key = SHA256(diff_content + \\x00 + source_ref + \\x00 + prompt_version + \\x00 + model_id + \\x00 + rubric_version + \\x00 + redaction_config_hash + \\x00 + context_bundle_hash)。落地于 L2 llm/cache.py。`},
+  {n:24, proj:'graphify', pri:'P0', verdict:'covered',
+    title:`枚举型 Schema 验证 + assert_valid() 快速失败`,
+    loc:`graphify/validate.py:L4-L64`,
+    how:`VALID_FILE_TYPES = {"code","document","paper","image","rationale"} 等常量集。验证器检查 required / 枚举值 / 悬挂边，返回错误列表。assert_valid() 格式化后 raise ValueError。`,
+    apply:`<b>已覆盖</b> — Pydantic + enum 常量已在设计中。`},
+  {n:25, proj:'graphify', pri:'P1', verdict:'deferred',
+    title:`_normalize_id() 容忍 LLM 拼写差异`,
+    loc:`graphify/build.py:L31-L37, L61-L72`,
+    how:`re.sub(r"[^a-zA-Z0-9]+","_",s).strip("_").lower()。构建图时先尝试精确匹配，失败后用 norm_to_id 映射查找。`,
+    apply:`<b>延后 v0.2+</b> — graph overlay 深化后收益更大。`},
+  {n:26, proj:'graphify', pri:'P2', verdict:'covered',
+    title:`_PLATFORM_CONFIG 字典驱动多平台 install`,
+    loc:`graphify/__main__.py:L62-L128`,
+    how:`一字典定义 13 平台的 {skill_file, skill_dst, claude_md}。所有 install/uninstall 逻辑复用同一代码路径，字典查表区分平台。`,
+    apply:`<b>已覆盖</b> — Task 19 install registry 已吸收，扩展到 11 个目标。`},
+  {n:27, proj:'graphify', pri:'P1', verdict:'deferred',
+    title:`benchmark.py token 缩减比 + 5 采样问题`,
+    loc:`graphify/benchmark.py:L55-L61, L64-L111`,
+    how:`5 固定采样问题，对每个跑 BFS 取子图 token 数 vs 全语料库 token 数算缩减比。_CHARS_PER_TOKEN=4 近似。`,
+    apply:`<b>延后 v0.2+</b> — graphify 接入稳定后再做。`},
+  {n:28, proj:'graphify', pri:'P1', verdict:'na',
+    title:`report.py 纯字符串拼接报告`,
+    loc:`graphify/report.py:L15-L176`,
+    how:`generate() 组装多 section：Corpus Check + Summary + God Nodes + Surprising Connections + Knowledge Gaps + Suggested Questions。纯字符串拼接零模板引擎。`,
+    apply:`<b>不适用</b> — 代码风格偏好，非产品/架构增益。`},
+  {n:29, proj:'graphify', pri:'P1', verdict:'deferred',
+    title:`PreToolUse hook 条件注入上下文提醒`,
+    loc:`graphify/__main__.py:L39-L51`,
+    how:`matcher=Glob|Grep，当 graphify-out/graph.json 存在时 echo JSON additionalContext 提醒 agent 先读图谱报告。`,
+    apply:`<b>延后 v0.2+</b> — graphify 为可选上下文，v0.1 不做默认 hook。`},
+
+  // --- Qodo PR-Agent (8, 外部开源) ---
+  {n:30, proj:'Qodo PR-Agent', pri:'P0', verdict:'v01',
+    title:`__new hunk__ / __old hunk__ diff 格式化协议`,
+    loc:`settings/pr_reviewer_prompts.toml`,
+    how:`diff 重组为 __new hunk__（带行号）和 __old hunk__（不带）两 section。行号仅用于引用，不是代码一部分。`,
+    apply:`<b>纳入 v0.1</b> — 借协议思路，但 AhaDiff 需 old/new 双侧可锚定（evidence viewer 需要），PR-Agent 只给 new hunk 行号。落地于 L1 git/parser.py + prompt formatter。`},
+  {n:31, proj:'Qodo PR-Agent', pri:'P0', verdict:'v01',
+    title:`YAML 内部交换 + Pydantic 验证`,
+    loc:`settings/pr_reviewer_prompts.toml`,
+    how:`prompt 要求 "Response (should be a valid YAML, and nothing else)"，配合 class Review(BaseModel) 验证。YAML 对 LLM 更友好。`,
+    apply:`<b>纳入 v0.1</b> — 借"YAML 约束 + validator"模式；Pydantic 模型必须 AhaDiff 自研（PR-Agent 的是 review object，非 claim/lesson）。落地于 L3/L4 claims/extract.py。`},
+  {n:32, proj:'Qodo PR-Agent', pri:'P0', verdict:'v01',
+    title:`双缓冲区 token 预算（soft/hard）`,
+    loc:`algo/pr_processing.py`,
+    how:`SOFT_THRESHOLD = 1500, HARD_THRESHOLD = 1000。total_tokens + SOFT &lt; max_tokens 返回完整 diff；超出触发 large_patch_policy。`,
+    apply:`<b>纳入 v0.1</b> — 借 soft/hard buffer 机制；常量 1500/1000 是 PR-Agent 特定值，AhaDiff 需根据自身 prompt 结构重新标定。落地于 L2 llm/provider.py + diff packer。`},
+  {n:33, proj:'Qodo PR-Agent', pri:'P0', verdict:'v01',
+    title:`large_patch_policy: skip/clip 降级策略`,
+    loc:`algo/pr_processing.py`,
+    how:`skip 跳过大 patch 记 warning；clip 截断到剩余 budget，删除最后不完整行。`,
+    apply:`<b>纳入 v0.1</b> — 借 skip/clip 语义名；必须同步 degraded_run 标记 + diff_coverage 扣分 + benchmark 排除规则。`},
+  {n:34, proj:'Qodo PR-Agent', pri:'P0', verdict:'v01',
+    title:`按学习价值排序文件（借自按语言排序思路）`,
+    loc:`algo/pr_processing.py`,
+    how:`原版按"仓库主语言"排序，主语言文件优先处理，token 预算用在核心代码。`,
+    apply:`<b>纳入 v0.1（P1→P0 升档）</b> — 借排序思路；AhaDiff 按"学习价值"排序（核心逻辑 &gt; 测试 &gt; 配置 &gt; glue code），是 #32/#33 clip 策略的必要配套。`},
+  {n:35, proj:'Qodo PR-Agent', pri:'P0', verdict:'covered',
+    title:`key_issues_to_review 附 start_line / end_line`,
+    loc:`settings/pr_reviewer_prompts.toml`,
+    how:`每 issue 包含 {relevant_file, issue_header, issue_content, start_line, end_line}。`,
+    apply:`<b>已覆盖</b> — HC-3 已要求 source_hunks{file,start,end}。`},
+  {n:36, proj:'Qodo PR-Agent', pri:'P1', verdict:'na',
+    title:`score: 0-100 + review_effort: 1-5 双正交维度`,
+    loc:`settings/pr_reviewer_prompts.toml`,
+    how:`score 是 0-100 整体质量分，estimated_effort_to_review_[1-5] 是审查难度。两正交维度。`,
+    apply:`<b>不适用</b> — "审查 effort" 是 PR review 维度，非学习质量核心。`},
+  {n:37, proj:'Qodo PR-Agent', pri:'P1', verdict:'deferred',
+    title:`Jinja2 条件渲染 prompt`,
+    loc:`settings/pr_reviewer_prompts.toml`,
+    how:`prompt 模板用 {%- if require_score %} 块控制输出字段。动态裁剪 prompt 段落。`,
+    apply:`<b>延后 v0.2+</b> — v0.1 用多份显式 prompt 文件更可审计。`},
+];
+
+const top10List = [
+  {rank:1, proj:'Qodo PR-Agent', title:`hunk 格式化输入协议`,  where:`#30 · L1 · 纳入 v0.1`},
+  {rank:2, proj:'Qodo PR-Agent', title:`双缓冲区 token 预算`, where:`#32 · L2 · 纳入 v0.1`},
+  {rank:3, proj:'Qodo PR-Agent', title:`large_patch skip/clip`, where:`#33 · L2 · 纳入 v0.1`},
+  {rank:4, proj:'Qodo PR-Agent', title:`按学习价值排序文件`,   where:`#34 · L2 · 纳入 v0.1`},
+  {rank:5, proj:'graphify',      title:`SHA256 多因子缓存 key`, where:`#23 · L2 · 纳入 v0.1`},
+  {rank:6, proj:'Qodo PR-Agent', title:`YAML+Pydantic 验证`,  where:`#31 · L3/L4 · 纳入 v0.1`},
+  {rank:7, proj:'autoresearch',  title:`stdout+stderr → run.log`,where:`#6 · L5 · 纳入 v0.1`},
+  {rank:8, proj:'darwin-skill',  title:`异常处理决策表（10+）`, where:`#11 · L5 · 纳入 v0.1`},
+  {rank:9, proj:'SkillCompass',  title:`score.json Schema 强制`, where:`#13 · L5 · 纳入 v0.1`},
+  {rank:10,proj:'SkillCompass',  title:`Few-shot + 算术自检`,   where:`#19 · L5 · 纳入 v0.1`},
+];
+
+function renderTop10(){
+  document.getElementById('top10Grid').innerHTML = top10List.map(t => `
+    <div class="top10-card">
+      <div class="top10-rank">${t.rank}</div>
+      <div class="top10-proj">${t.proj}</div>
+      <div class="top10-title">${t.title}</div>
+      <div class="top10-where">${t.where}</div>
+    </div>
+  `).join('');
+}
+
+function renderBorrow(withFade = false){
+  const proj = document.querySelector('#borrowProjFilter .active')?.dataset.bp || 'all';
+  const pri  = document.querySelector('#borrowPriFilter .active')?.dataset.bpr || 'all';
+  const items = borrowData.filter(d =>
+    (proj === 'all' || d.proj === proj) && (pri === 'all' || d.pri === pri)
+  );
+  const grid  = document.getElementById('borrowGrid');
+  const empty = document.getElementById('borrowEmpty');
+
+  const paint = () => {
+    if(!items.length){ grid.innerHTML=''; empty.style.display='block'; }
+    else {
+      empty.style.display='none';
+      const verdictBadge = v => ({
+        v01:'<span class="borrow-pri P0" style="background:var(--clay);color:#fff">纳入 v0.1</span>',
+        covered:'<span class="borrow-pri P1" style="background:var(--sage-soft);color:#4A6849">已覆盖</span>',
+        deferred:'<span class="borrow-pri P2" style="background:var(--paper-03);color:var(--ink-03)">延后</span>',
+        na:'<span class="borrow-pri P2" style="background:var(--rust-soft);color:var(--rust)">不适用</span>',
+      }[v] || '');
+      grid.innerHTML = items.map(d => `
+        <div class="borrow-card" style="${d.verdict==='v01'?'border-left:3px solid var(--clay)':d.verdict==='covered'?'border-left:3px solid var(--sage)':''}">
+          <div class="borrow-card-top">
+            <span class="borrow-num">#${d.n}</span>
+            <span class="borrow-pri ${d.pri}">${d.pri}</span>
+            ${verdictBadge(d.verdict)}
+            <span class="borrow-proj-tag">${d.proj}</span>
+          </div>
+          <div class="borrow-title">${d.title}</div>
+          <div class="borrow-loc">${d.loc}</div>
+          <div class="borrow-how"><strong>实现机制</strong>${d.how}</div>
+          <div class="borrow-apply"><strong>AhaDiff 特化方案</strong>${d.apply}</div>
+        </div>
+      `).join('');
+    }
+  };
+
+  if(withFade){
+    grid.classList.add('fading');
+    setTimeout(() => { paint(); grid.classList.remove('fading'); }, 180);
+  } else {
+    paint();
+  }
+}
+
+['borrowProjFilter','borrowPriFilter'].forEach(id => {
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.addEventListener('click', e => {
+    const btn = e.target.closest('.filter-btn');
+    if(!btn || !el.contains(btn) || btn.classList.contains('active')) return;
+    el.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderBorrow(true);
+  });
+});
+
+renderTop10();
+renderBorrow(false);
+
+</script>
+</body>
+</html>

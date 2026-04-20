@@ -158,8 +158,8 @@
 #### Task 3.1: UI 响应式修复
 - **类型**: 前端
 - **文件范围**:
-  - `AhaDiff Warm v5.html`（根目录）
-  - `ui/AhaDiff Warm v5.html`
+  - `AhaDiff Warm v6.html`（根目录）
+  - `ui/AhaDiff Warm v6.html`
 - **依赖**: 无（可与 Layer 1-2 完全并行）
 - **执行者**: Claude 实现（基于 Gemini 方案）, Gemini review
 - **实施步骤**:

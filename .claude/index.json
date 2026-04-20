@@ -36,9 +36,9 @@
       "path": "ui/",
       "claude_md": "ui/CLAUDE.md",
       "language": "HTML/CSS/JS",
-      "purpose": "UI 原型：Warm 风格 v1-v5 迭代版本",
+      "purpose": "UI 原型：Warm 风格 v1-v6 迭代版本",
       "entry_files": [
-        "ui/AhaDiff Warm v5.html"
+        "ui/AhaDiff Warm v6.html"
       ],
       "api_interfaces": [],
       "test_directory": null,
@@ -48,11 +48,12 @@
         "ui/ahadiff-warm-v2.html",
         "ui/ahadiff-warm-v3 (1).html",
         "ui/AhaDiff Warm v4.html",
-        "ui/AhaDiff Warm v5.html"
+        "ui/AhaDiff Warm v5.html",
+        "ui/AhaDiff Warm v6.html"
       ],
       "coverage": {
-        "scanned_files": 5,
-        "total_files": 5,
+        "scanned_files": 6,
+        "total_files": 6,
         "percentage": 100,
         "gaps": []
       }
@@ -60,7 +61,7 @@
   ],
   "root_level_files": [
     {
-      "path": "AhaDiff Warm v5.html",
+      "path": "AhaDiff Warm v6.html",
       "purpose": "最新 UI 原型副本（便于快速预览）"
     }
   ],
