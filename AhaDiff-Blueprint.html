@@ -518,6 +518,9 @@ table.t tr:hover td{background:var(--accent-softer)}
                   <b>Prompt Injection 转义</b> — diff 中的 "ignore previous instructions" 等危险内容被转义隔离
                 </div>
               </div>
+              <div style="margin-top:10px;padding:10px;background:#FDF8F4;border:1px dashed #E4B8AE;border-radius:6px;font-size:12px;color:var(--danger);line-height:1.6">
+                <b>顺序不可逆</b>：raw input → secret scan → redact → 才能 log/cache/model/render。完成脱敏前，禁止写日志、进缓存或发送到模型。
+              </div>
             </div>
 
             <div style="text-align:center;padding:4px 0;color:var(--muted);font-size:18px">▼</div>
@@ -556,7 +559,7 @@ table.t tr:hover td{background:var(--accent-softer)}
                   <div style="font-weight:600;color:var(--success);margin-bottom:6px">15-17. 逐条验证每个 claim</div>
                   <b>Deterministic verifier</b> 检查每条 claim 是否有 file:line 证据。<br/>
                   Negative scan 查缺失。<br/>
-                  最终分类为 <span class="badge pass" style="font-size:9px">verified</span> <span class="badge caution" style="font-size:9px">weak</span> <span class="badge" style="font-size:9px">not_proven</span> <span class="badge fail" style="font-size:9px">contradicted</span>
+                  最终分类为 <span class="badge pass" style="font-size:9px">verified</span> <span class="badge caution" style="font-size:9px">weak</span> <span class="badge" style="font-size:9px">not_proven</span> <span class="badge fail" style="font-size:9px">contradicted</span> <span class="badge fail" style="font-size:9px">rejected</span>
                 </div>
               </div>
               <div style="margin-top:12px;padding:12px;border:1px dashed var(--accent);border-radius:8px;font-size:12px;color:var(--accent-ink);line-height:1.6;background:var(--accent-softer)">
@@ -584,7 +587,7 @@ table.t tr:hover td{background:var(--accent-softer)}
                 </div>
                 <div style="padding:12px;background:#E4ECF4;border:1px solid #B0C4D8;border-radius:8px;font-size:12px;text-align:center">
                   <div style="font-weight:600;font-size:14px">评分 + Viewer</div>
-                  <div style="margin-top:4px;color:var(--ink-2)">score.json (8 维)<br/>viewer/index.html<br/>results.tsv</div>
+                  <div style="margin-top:4px;color:var(--ink-2)">score.json (8 维)<br/>viewer/index.html<br/>results.tsv（导出视图）</div>
                 </div>
               </div>
             </div>
@@ -599,7 +602,7 @@ table.t tr:hover td{background:var(--accent-softer)}
                 <span class="badge accent" style="margin-left:auto">步骤 27-29</span>
               </div>
               <div style="font-size:14px;color:var(--ink-2);line-height:1.8">
-                <code>--open</code> 自动打开浏览器，加载 <code>.ahadiff/runs/&lt;run_id&gt;/viewer/index.html</code> —— 就是 <b>Warm v6 风格</b>的本地页面。用户可以：
+                <code>--open</code> 自动打开浏览器。静态模式加载 <code>.ahadiff/runs/&lt;run_id&gt;/viewer/index.html</code>；若已启用 <code>ahadiff serve</code>，则打开 <code>localhost:8765</code>（支持 Quiz/SRS 交互写回）。两种模式都是 <b>Warm v6 风格</b>。用户可以：
               </div>
               <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:12px">
                 <div style="padding:12px 8px;border:1px solid var(--hair);border-radius:8px;background:#fff;text-align:center;font-size:12px">
@@ -779,7 +782,7 @@ table.t tr:hover td{background:var(--accent-softer)}
           <b>原版核心</b>：<code>program.md</code> + <code>prepare.py</code>（immutable）+ <code>train.py</code>（mutable），agent 修改 Python 训练代码，训练 5 分钟，检查 <code>val_bpb</code> 是否改进，keep 或 discard。README 明确 <code>prepare.py</code> 中的 <code>evaluate_bpb</code> 是 ground truth metric。<b>没有 Phase 2.5 或 stuck 检测</b>，仅在 program.md 中说 "if you feel stuck, think harder"。
         </div>
         <div class="src-desc" style="margin-top:8px">
-          <b>AhaDiff 如何借鉴</b>：将 N-文件契约的<b>概念</b>映射到学习场景 —— 评估对象从 Python 代码变为 Markdown prompt，评估指标从单一 <code>val_bpb</code> 变为 8 维 rubric + verdict。<code>results.tsv</code> 和 keep/discard 循环是直接借鉴。
+          <b>AhaDiff 如何借鉴</b>：将 N-文件契约的<b>概念</b>映射到学习场景 —— 评估对象从 Python 代码变为 Markdown prompt，评估指标从单一 <code>val_bpb</code> 变为 8 维 rubric + verdict。<code>results.tsv</code>（导出视图；唯一真相源为 review.sqlite）和 keep/discard 循环是直接借鉴。
         </div>
         <div class="src-mapping" style="margin-top:14px">
           <h5>映射关系 · Mapping</h5>
@@ -1014,6 +1017,44 @@ table.t tr:hover td{background:var(--accent-softer)}
   </div>
 </div>
 
+<div class="card" style="margin-top:20px">
+  <div class="ch"><h3>Graphify 新鲜度状态机</h3><div class="meta">7 态内部 → 4 值对外投影</div></div>
+  <div class="cb">
+    <div style="font-size:13px;color:var(--ink-2);line-height:1.7;margin-bottom:16px">
+      Graphify 导入后的 repo graph 不是永远新鲜的。AhaDiff 用 <b>7 个内部状态</b>追踪 graph 与当前 HEAD 的关系，对外投影为 <b>4 个值</b>供 Layer 6/7 消费。
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">内部 7 态</div>
+        <table class="t" style="font-size:12px">
+          <thead><tr><th>状态</th><th>含义</th></tr></thead>
+          <tbody>
+            <tr><td class="mono" style="color:var(--success)">fresh_exact</td><td>SHA 完全匹配</td></tr>
+            <tr><td class="mono" style="color:var(--success)">fresh_equivalent_tree</td><td>tree hash 匹配（squash/cherry-pick）</td></tr>
+            <tr><td class="mono" style="color:var(--warning)">stale_ahead</td><td>HEAD 领先于 import</td></tr>
+            <tr><td class="mono" style="color:var(--warning)">stale_behind</td><td>HEAD 落后于 import</td></tr>
+            <tr><td class="mono" style="color:var(--danger)">stale_diverged</td><td>分叉</td></tr>
+            <tr><td class="mono" style="color:var(--danger)">stale_unreachable</td><td>import SHA 不可达</td></tr>
+            <tr><td class="mono" style="color:var(--danger)">invalid</td><td>校验失败</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">对外 4 值（context_freshness）</div>
+        <table class="t" style="font-size:12px">
+          <thead><tr><th>值</th><th>来源</th><th>UI</th></tr></thead>
+          <tbody>
+            <tr><td class="mono" style="color:var(--success);font-weight:600">exact</td><td>fresh_exact</td><td>正常展示</td></tr>
+            <tr><td class="mono" style="color:var(--success)">equivalent</td><td>fresh_equivalent_tree</td><td>正常（轻标注）</td></tr>
+            <tr><td class="mono" style="color:var(--warning)">stale</td><td>stale_ahead / behind / diverged / unreachable</td><td>提醒 banner</td></tr>
+            <tr><td class="mono" style="color:var(--danger)">absent</td><td>invalid</td><td>阻断渲染</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
     </section>
 
     <!-- ============ ARCHITECTURE ============ -->
@@ -1089,7 +1130,7 @@ table.t tr:hover td{background:var(--accent-softer)}
               </div>
               <div style="padding:12px;background:#ECF4EE;border:1px solid #B9D7C1;border-radius:8px">
                 <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--success)">7b · LIVE SERVE</div>
-                <div style="font-size:12px;color:var(--ink-2);margin-top:6px"><code>ahadiff serve</code> 启动 Starlette + Uvicorn 本地服务器（默认 :8765），通过 Layer 5/6 接口读写 <code>review.sqlite</code>，提供 REST API。进度通过 <code>GET /api/status</code> 轮询获取。默认 read-only 模式，<code>--enable-write</code> 开启写入。</div>
+                <div style="font-size:12px;color:var(--ink-2);margin-top:6px"><code>ahadiff serve</code> 启动 Starlette + Uvicorn 本地服务器（默认 :8765），通过 Layer 5/6 接口读写 <code>review.sqlite</code>，提供 REST API。进度通过 <code>GET /api/status</code> 轮询获取。默认 read-only 模式，<code>--enable-write</code> 开启写入。写入安全：随机 loopback write token（<code>X-Write-Token</code> header）+ Origin/Referer 校验 + token-bucket 速率限制（100 req/min）。</div>
               </div>
             </div>
           </div>
@@ -1175,7 +1216,7 @@ table.t tr:hover td{background:var(--accent-softer)}
                 <tr><td class="mono">rubric_version</td><td>string</td><td>rubric.yaml hash</td></tr>
                 <tr><td class="mono">overall</td><td>int 0-100</td><td>加权总分</td></tr>
                 <tr><td class="mono">verdict</td><td>enum</td><td>PASS / CAUTION / FAIL</td></tr>
-                <tr><td class="mono">status</td><td>enum</td><td>baseline / keep / discard / keep_final</td></tr>
+                <tr><td class="mono">status</td><td>enum</td><td>baseline / keep / discard / keep_final / non_ratcheted</td></tr>
                 <tr><td class="mono">weakest_dim</td><td>string</td><td>最弱维度</td></tr>
                 <tr><td class="mono">note_json</td><td>JSON</td><td>结构化元数据（phase/trigger/degraded_flags/cleanup_state）</td></tr>
               </tbody>
@@ -1299,7 +1340,7 @@ table.t tr:hover td{background:var(--accent-softer)}
         <div class="ch"><h3>技术栈一致性</h3><div class="meta"><span class="badge pass"><span class="bd"></span>ALIGNED</span></div></div>
         <div class="cb">
           <div class="compliance-grid">
-            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">首版 Jinja2 静态 HTML</div><div class="ci-desc">非 Next.js/React，与最终方案 §19 一致</div></div></div>
+            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">首版 Jinja2 模板 + ahadiff serve</div><div class="ci-desc">Starlette + Uvicorn 本地服务器，同时保留 file:// 静态模式；非 Next.js/React</div></div></div>
             <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">不使用 LiteLLM</div><div class="ci-desc">供应链风险，使用薄 provider adapter</div></div></div>
             <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">Python 3.11+ CLI</div><div class="ci-desc">typer + rich + pydantic + jinja2</div></div></div>
             <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">跨模型评估</div><div class="ci-desc">Sonnet 生成，Haiku 评估，绝不同模型自评</div></div></div>
@@ -1330,7 +1371,7 @@ table.t tr:hover td{background:var(--accent-softer)}
 
       <div class="kpi-grid" style="margin-bottom:24px">
         <div class="kpi"><div class="lb">当前版本</div><div class="vl">v6</div><div class="delta">Warm 风格 · Clay Orange #D27050</div></div>
-        <div class="kpi"><div class="lb">总行数</div><div class="vl">2164</div><div class="delta">自包含 HTML + CSS + JS</div></div>
+        <div class="kpi"><div class="lb">总行数</div><div class="vl">2346</div><div class="delta">自包含 HTML + CSS + JS</div></div>
         <div class="kpi"><div class="lb">页面数</div><div class="vl">11</div><div class="delta">Landing / Dashboard / Lesson / Diff / ...</div></div>
         <div class="kpi"><div class="lb">迁移目标</div><div class="vl">Jinja2</div><div class="delta">静态 HTML · 非 Next.js</div></div>
       </div>

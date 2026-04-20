@@ -1006,7 +1006,7 @@ footer{
     <div class="section-label">竞品研究 · 可视化报告</div>
     <h1>为什么 <span class="highlight">AhaDiff 没有真正的竞品</span>？</h1>
     <p class="hero-sub">
-      我们翻了 <span class="mono">10 款</span> 商业产品的官网、读了 <span class="mono">4 个</span> 灵感项目的源码，
+      我们翻了 <span class="mono">10 款</span> 商业产品的官网、读了 <span class="mono">6 个</span> 灵感项目的源码，
       在 <span class="mono">5 个</span> 象限里挖出 <span class="mono">4 条</span> 没人占的护城河。
       <br>这份报告用尽量少的黑话讲清楚：<em>知返到底跟谁在抢饭？和谁其实完全不冲突？</em>
     </p>
@@ -1017,7 +1017,7 @@ footer{
         <div class="stat-detail">CodeRabbit · Greptile · DeepWiki…</div>
       </div>
       <div class="stat-card">
-        <div class="stat-num">4</div>
+        <div class="stat-num">6</div>
         <div class="stat-label">灵感项目</div>
         <div class="stat-detail">源码真机验证</div>
       </div>
@@ -1189,11 +1189,12 @@ footer{
         </div>
         <div class="moat-analogy">论文审稿 — 每个结论都必须引原文行号，拒绝"感觉对"。</div>
         <div class="moat-example">
-          一条解释会被打上 4 种标签之一：<br>
+          一条解释会被打上 5 种标签之一：<br>
           <span style="color:#4A6849">● verified</span> — 能回到 diff 的某行<br>
           <span style="color:var(--amber)">● weak</span> — 有线索但不完整<br>
           <span style="color:var(--ink-03)">● not_proven</span> — 如"性能提升 20%"（diff 不含基准测试）<br>
-          <span style="color:var(--rust)">● contradicted</span> — 跟 diff 相矛盾
+          <span style="color:var(--rust)">● contradicted</span> — 跟 diff 相矛盾<br>
+          <span style="color:var(--rust)">● rejected</span> — 引用了 patch 外的文件或不存在的证据
         </div>
         <div class="moat-compare">
           <span class="moat-compare-chip no">别家都是"自然语言带行号"</span>
@@ -1421,13 +1422,13 @@ footer{
   <div class="container">
     <div class="section-label">五、关键认知</div>
     <h2>骨架借鉴 ≠ 同赛道竞品</h2>
-    <p class="lead">我们项目 <code class="mono">repo/</code> 目录下有 4 个"灵感项目"。<br>这是容易搞混的地方 — 它们不是竞品，而是<em>建筑骨架</em>：借它们的梁柱，盖知返的房子。</p>
+    <p class="lead">我们项目 <code class="mono">repo/</code> 目录下有 6 个"灵感项目"。<br>这是容易搞混的地方 — 它们不是竞品，而是<em>建筑骨架</em>：借它们的梁柱，盖知返的房子。</p>
 
     <div class="split-view">
       <div class="split-col left">
         <div class="split-badge">借骨架（repo/ 下源码）</div>
-        <h3>4 个灵感项目</h3>
-        <p>贡献：N-文件契约 / Ratchet 概念 / rubric 框架 / 图谱格式。<strong>没一个评估"学习笔记质量"。</strong></p>
+        <h3>6 个灵感项目</h3>
+        <p>贡献：N-文件契约 / Ratchet 概念 / rubric 框架 / 撤架学习法 / 图谱格式 / 复利 wiki。<strong>没一个评估"学习笔记质量"。</strong></p>
         <div class="split-items">
           <div class="split-item">
             <div class="split-item-name">autoresearch <span class="split-item-tag">Karpathy</span></div>
@@ -1435,15 +1436,23 @@ footer{
           </div>
           <div class="split-item">
             <div class="split-item-name">darwin-skill <span class="split-item-tag">零代码 MD</span></div>
-            <div class="split-item-evid">借走：Phase 2.5 触发条件（连续 2 个目标 round 1 break）</div>
+            <div class="split-item-evid">借走：Phase 2.5 触发条件（连续 2 个目标 round 1 break）+ weakest-dimension-first</div>
           </div>
           <div class="split-item">
             <div class="split-item-name">SkillCompass <span class="split-item-tag">npm</span></div>
-            <div class="split-item-evid">借走：PASS/CAUTION/FAIL 阈值框架；原版评估 skill 文件</div>
+            <div class="split-item-evid">借走：PASS/CAUTION/FAIL 阈值框架；原版 6 维评估 skill 文件</div>
           </div>
           <div class="split-item">
-            <div class="split-item-name">graphify <span class="split-item-tag">PyPI</span></div>
+            <div class="split-item-name">SKILL0 <span class="split-item-tag">ZJU-REAL</span></div>
+            <div class="split-item-evid">借走：撤架学习法（scaffolding removal）；原版 file 级 helpfulness，AhaDiff 扩展到 section 级</div>
+          </div>
+          <div class="split-item">
+            <div class="split-item-name">Graphify <span class="split-item-tag">PyPI</span></div>
             <div class="split-item-evid">互补：repo-level map，AhaDiff 做 diff learning overlay</div>
+          </div>
+          <div class="split-item">
+            <div class="split-item-name">LLM Wiki <span class="split-item-tag">Karpathy gist</span></div>
+            <div class="split-item-evid">借走：persistent compounding wiki 思想；落地为 index.md + concepts.jsonl</div>
           </div>
         </div>
       </div>
@@ -1848,7 +1857,7 @@ footer{
     <div style="margin-top:72px;padding:40px;background:var(--ink-01);color:var(--paper-00);border-radius:var(--r-xl);text-align:center">
       <div style="font-family:var(--mono);font-size:12px;color:var(--clay);letter-spacing:.15em;margin-bottom:14px">NEXT ACTION</div>
       <h3 style="color:var(--paper-00);font-style:italic;font-weight:400;max-width:720px;margin:0 auto;font-size:24px;line-height:1.5">
-        约束集已写入 <span class="mono" style="color:var(--clay)">.claude/team-plan/ahadiff-competitors-research.md</span><br>
+        约束集已写入 <span class="mono" style="color:var(--clay)">.claude/team-plan/ahadiff-v01-comprehensive-evaluation-research.md</span><br>
         运行 <span class="mono" style="color:var(--clay)">/ccg:team-plan</span> 进入规划阶段
       </h3>
     </div>
@@ -1883,7 +1892,7 @@ const products = {
   'ahadiff':{name:'知返 AhaDiff', tag:'MY', url:'local',
     model:'Local CLI (Python 3.11+)', focus:'git diff → 学习笔记 + SRS + 证据链',
     local:'YES — 所有产物在 .ahadiff/ 目录', claim:'5 状态（verified/weak/not_proven/contradicted/rejected）',
-    ratchet:'有（wiki_score + git commit/reset + Phase 2.5）',
+    ratchet:'有（wiki_score + git worktree 隔离 + Phase 2.5）',
     srs:'有（quiz.jsonl + review.sqlite + SM-2/FSRS）',
     overlap:'自己', note:'本项目 · 当前设计阶段'},
   'coderabbit':{name:'CodeRabbit', tag:'SAAS', url:'https://coderabbit.ai',
