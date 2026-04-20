@@ -117,8 +117,8 @@ ahadiff/
 ├─ AhaDiff-Blueprint.html       # 八层架构可视化（含 i18n / VCR / 30 CC）
 ├─ AhaDiff-Competitors-Research.html  # 竞品矩阵 + 5 条护城河
 ├─ doc/                         # 中文设计文档
-│  ├─ ahadiff设计思路.md          # 完整架构方案（MVP → v1.0）
-│  ├─ 知返ahadiff改名后的后续方案.md  # 品牌重定义 + 产品升级
+│  ├─ ahadiff设计思路.md          # [ARCHIVED] 早期架构快照
+│  ├─ 知返ahadiff改名后的后续方案.md  # [ARCHIVED] 改名过渡方案
 │  └─ AhaDiff_frontend_design_v1.1_revised.md  # 前端视觉手册（v0.1=Jinja2 / v1.0=React）
 ├─ ui/                          # HTML 原型 v1–v6（设计迭代史）
 └─ CLAUDE.md                    # 项目 AI 上下文索引

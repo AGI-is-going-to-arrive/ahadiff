@@ -59,12 +59,12 @@
   - `tests/unit/test_quiz_generator.py`
 - **依赖**: Task 9（Lesson）+ Task 8（Claim）
 - **实施步骤**:
-  1. 定义 `QuizQuestion`, `QuizSet`, `ReviewCard` schema。ReviewCard 必须包含 anchor 元数据：`source_ref`、`path`、`hunk_id`、`hunk_hash`、`symbol`、`change_kind`
+  1. 定义 `QuizQuestion`, `QuizSet`, `ReviewCard` schema。ReviewCard 必须包含 anchor 元数据：`source_ref`、`file_id`（稳定标识，与 EvidenceAnchor 统一）、`display_path`（用户可见路径）、`hunk_id`、`hunk_hash`、`symbol`、`change_kind`。**注意**：`path` 字段已废弃，统一使用 `file_id + display_path` 二元组（与 CC-NEW-3 闭合方案一致）
   2. 编写 `quiz_generate.md` prompt
   3. 实现 `generate_quiz()` → `quiz.jsonl`（每题含 source_claims / concepts / file:line evidence）
   4. 实现 `generate_cards()` → `cards.jsonl`（SRS 复习卡，每张 <500 token）
   5. 实现 `ahadiff quiz <run_id>` CLI 子命令（交互式答题）
-  6. **Quiz staleness 惰性检测**（Anki 无此能力，AhaDiff 创新点）：`CardState = active | stale | archived`。当 `ahadiff review` 或 `ahadiff quiz` 取卡时，用当前 HEAD 重新解析 card 的 anchor（path + hunk_hash + symbol）。解析失败 → 标记 `stale` + `stale_reason`（file_deleted/symbol_removed/line_drifted），移出正常 due 队列，CLI 提示 `ahadiff regenerate --only quiz <run_id>` 或 `ahadiff card archive <card_id>`。rename/move 场景优先用 symbol 判定，path 失效但 symbol 可解析时判为 `moved` 而非 stale。非 git 输入（patch/compare）标记 `staleness_unknown`，不误报
+  6. **Quiz staleness 惰性检测**（Anki 无此能力，AhaDiff 创新点）：`CardState = active | stale | archived`。当 `ahadiff review` 或 `ahadiff quiz` 取卡时，用当前 HEAD 重新解析 card 的 anchor（`file_id` → 反查当前路径 + hunk_hash + symbol）。解析失败 → 标记 `stale` + `stale_reason`（file_deleted/symbol_removed/line_drifted），移出正常 due 队列，CLI 提示 `ahadiff regenerate --only quiz <run_id>` 或 `ahadiff card archive <card_id>`。rename/move 场景优先用 symbol 判定，path 失效但 symbol 可解析时判为 `moved` 而非 stale。非 git 输入（patch/compare）标记 `staleness_unknown`，不误报
 - **验收标准**: `ahadiff quiz <run_id>` 能做题，每题可回链到 source_claims 和 file:line；stale card 不更新 ease/interval
 
 ---
@@ -108,7 +108,7 @@
   3. `result_events` 主键为 `event_id`（UUID v7，全局唯一），唯一索引 `(run_id, event_type, timestamp)`，二级索引 `(source_ref, timestamp DESC)` + `(verdict, status)` + `(weakest_dimension, timestamp DESC)`。同一 run_id 可有多行事件（如 keep → targeted_verify → keep_final）
   4. 实现 `append_result()` 的幂等保证：写入前检查 `event_id` 是否已存在，存在则跳过
   5. 提供 `ahadiff export-results` 从 review.sqlite 重建 results.tsv
-  6. status 枚举化（从 Task 0 contracts 导入）：`baseline | keep | discard | rollback | crash | targeted_verify | keep_final | phase25_rewrite`
+  6. status 枚举化（从 Task 0 `contracts/event_log.py` 单点导入 `RunStatus`）：`baseline | keep | discard | rollback | crash | targeted_verify | keep_final | phase25_rewrite | non_ratcheted`。**`non_ratcheted` 判定条件**：`has_git_ancestry == false`（即无法通过 `git merge-base` 确认 baseline 关系）。Level 1/2 输入（patch/file_compare）虽然有 `source_ref`（content hash），但没有 git ancestry，因此无法 ratchet 回滚。写入时 status 直接标记为 `non_ratcheted`，不进入 keep/discard 决策。**注意区分**：`has_source_ref`（所有输入都有）≠ `has_git_ancestry`（仅 Level 3 git 输入有）
   7. 实现 ratchet 决策逻辑：score 提升且 hard gate 全过 → keep（cherry-pick 回主分支）；否则 → discard（删除 worktree）。降级 run（`degraded_flags` 非空）的 ratchet 比较需标记 `ratchet_note=degraded_comparison`，不直接丢弃
   8. 实现 Phase 2.5 检测：连续 2 个优化目标在首轮即 discard → 触发 structural rewrite
   9. 简洁性准则：0.001 分提升 + 20 行 hacky prompt → 不值得
@@ -145,10 +145,19 @@
   8. 移除外部字体依赖和硬编码 demo 数据，转向 System Font Stack（`system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', 'Sarasa Gothic SC', sans-serif`）确保中英文覆盖（经 Codex 交叉审查确认纯 system-ui 中文覆盖不足）
   9. 实现 i18n 基础：`viewer/i18n/loader.py` JSON catalog loader + Jinja2 `_()` 全局翻译函数 + `<html lang="{{ locale }}">`
   10. Topbar 右侧添加语言切换按钮（zh/EN）+ 环境探针标识（Static/Serve badge）
+  11. **Print CSS 修复**：`@media print` 中 `.rail`（证据链右栏）必须保持可见（`display: block`），移除 `position: sticky`，使证据链在打印时流式追加到正文尾部。隐藏 UI chrome（sidebar/topbar/按钮）但保留证据
+  12. **Ratchet 图表迁移策略**：v6 原型中的 SVG 硬编码坐标不迁移到 Jinja2。Jinja2 只输出 `<div id="ratchet-chart" data-scores="...">`，折线图由 Vanilla JS 读取 data_bundle 后动态绘制（使用 `<canvas>` 或动态 SVG，不引入外部 charting 库）
+  13. **Lesson HTML 安全渲染**：`lesson.full.md` 经 Markdown→HTML 转换后，**必须经 bleach 白名单过滤**（允许 `p/h1-h6/ul/ol/li/code/pre/a/em/strong/blockquote/table/tr/td/th`，移除所有 `<script>` 和 `on*` 事件属性），过滤后才能用 `|safe` 输出。这是因为 diff 内容是 UNTRUSTED_DIFF
+  14. **Static 模式按钮降级**：Jinja2 渲染时若 `mode == "static"`，直接在 HTML 输出 `disabled` 属性 + CLI 降级文案（不依赖 JS 运行时去修补 DOM）。JS 只做 Serve 模式的增强绑定
+  15. **侧栏焦点陷阱**：侧栏/抽屉打开时，对 `<main>` 动态注入 `inert` 属性阻断焦点穿透；关闭时移除
+  16. **i18n 格式化过滤器**：`viewer/i18n/loader.py` 补充 `|format_date(locale)` 和 `|format_number(locale)` 两个 Jinja2 自定义过滤器（用 Python `datetime` + `locale` 模块，不引入 Babel）
 - **验收标准**:
   - `ahadiff learn HEAD~1..HEAD --open` 打开本地 HTML，视觉接近 Warm v6 原型
   - data_bundle 裁剪：>500 行 diff 启用折叠，>2000 行截断，单页 HTML ≤ 2MB
   - 无障碍基线：所有可交互元素有 `tabindex="0"` 或语义 HTML（`<button>`），焦点可见（`:focus-visible`），ARIA `role` 标注完整
+  - **WCAG AA 对比度**：Rubric 语义色（PASS 绿/CAUTION 橙/FAIL 红）在浅色和深色主题下均满足 4.5:1 文本对比度。`--warning` 色值使用 `#955D13`（非原 #B4791F，后者对比度仅 3.3:1）。五态 Claim 色同样需达标
+  - **打印验证**：`Ctrl+P` 预览时证据链（.rail）可见
+  - **XSS 验证**：在 diff 中注入 `<script>alert(1)</script>`，渲染后不执行
 - **Review**: Claude 实现后 → Gemini(gemini-3.1-pro-preview) + Codex 交叉 review
 
 ### Task 14: Viewer 核心页面（v0.1 必须的 4 页）
@@ -172,6 +181,34 @@
   8. **Viewer 双模式声明**：前端交互按钮（如 Mark wrong/Good/Hard）的行为通过 `data-mode` 属性区分：(a) 在 `ahadiff serve` 模式下直接调用后端 API；(b) 在 `file://` 静态模式下显示可复制的 CLI 命令提示（如 `ahadiff mark wrong c020`）。v0.1 同时实现 (a) 和 (b)，通过 Progressive Enhancement 自动切换。serve 后端的完整规格见评估报告 Task 14.5 段落（`.claude/team-plan/ahadiff-v01-comprehensive-evaluation-research.md`）。
 - **验收标准**: 4 个页面在 375px/768px/1024px/1440px 四个视口正常显示
 - **Review**: Gemini(gemini-3.1-pro-preview) 评审
+
+### Task 14.5: Serve Backend（写入端点）
+
+- **类型**: 后端（Codex 实现）
+- **文件范围**:
+  - `src/ahadiff/serve/app.py`
+  - `src/ahadiff/serve/middleware.py`
+  - `src/ahadiff/serve/routes_signals.py`
+  - `src/ahadiff/serve/routes_locale.py`
+  - `src/ahadiff/serve/auth.py`
+  - `tests/unit/test_serve_app.py`
+- **依赖**: Task 0（serve_app contract）+ Task 14（Viewer 页面）+ Task 15（review.sqlite schema）
+- **实施步骤**:
+  1. 实现 Starlette app 工厂，`bind=127.0.0.1:8765`（**仅绑定回环地址，拒绝外网连接**）
+  2. 实现路由鉴权矩阵：
+     - 读路由（`GET /api/*`）：无需 token，默认开放
+     - 写路由（`POST /api/signals/*`, `PUT /api/locale`）：需 `X-AhaDiff-Token` header
+     - token 在 `ahadiff serve` 启动时自动生成并注入 data_bundle，前端从 `<meta name="aha-token">` 读取
+  3. 实现 `Host` + `Origin/Referer` 双校验中间件：只允许 `localhost`/`127.0.0.1`/`[::1]`
+  4. 实现 `POST /api/signals/mark-wrong`、`POST /api/signals/quiz-answer`、`POST /api/signals/srs-review`、`POST /api/signals/helpfulness`
+  5. 实现 `GET /api/runs`、`GET /api/run/:id`（只读，直接查 review.sqlite）
+  6. 集成 `LocaleMiddleware`（CC-NEW-7 方案）
+  7. 实现 `ahadiff serve [--port PORT] [--no-open]` CLI 子命令
+- **验收标准**:
+  - `ahadiff serve` 启动后 `curl -H "X-AhaDiff-Token: <token>" -X POST localhost:8765/api/signals/mark-wrong` 返回 200
+  - 外网 IP 连接被拒绝
+  - 无 token 的写请求返回 403
+- **Review**: Claude + Codex 交叉 review
 
 ---
 
@@ -359,15 +396,16 @@
 ## 并行分组
 
 ```
-Layer 4 (并行):  Task 9 (依赖 Layer 3)
-                 Task 11 (可与 Task 9 并行，仅依赖 Task 7)
+Layer 4 (并行):  Task 9 (依赖 Task 7 + Task 8)
+                 Task 11 (依赖 Task 0 + Task 7，可与 Task 9 并行)
    ↓
 Layer 5 (串行+并行):
-                 Task 10 (依赖 Task 9，串行)
-                 Task 12 (依赖 Task 11，与 Task 10 并行)
-                 Task 13 (依赖 Task 9 + Task 11，与 Task 10/12 并行)
+                 Task 10 (依赖 Task 9 + Task 8，串行)
+                 Task 12 (依赖 Task 0 + Task 11，与 Task 10 并行)
+                 Task 13 (依赖 Task 9 + Task 11 + Task 12[只读]，与 Task 10 并行)
    ↓
 Layer 6 (串行):  Task 14 (依赖 Task 13，串行)
+                 Task 14.5 (依赖 Task 14，Serve 写入端点)
                  Task 15 (依赖 Task 10 + Task 12，与 Task 14 并行)
    ↓
 Layer 7 (串行):  Task 16 (依赖 Task 11 + Task 12 + Task 15)
@@ -376,6 +414,9 @@ Layer 7 (串行):  Task 16 (依赖 Task 11 + Task 12 + Task 15)
    ↓
 Layer 8 (串行):  Task 19 (依赖 CLI 接口冻结：Task 9+10+11+15+16)
                  Task 20 (依赖 Task 19，串行)
+
+注：Task 11 的 Claim 消费能力（步骤 4 机械化打分读 claims.jsonl）
+    可延迟到 Task 8 产物可用时填充，不阻塞 evaluator 骨架实现。
 ```
 
 ## 模型分工

@@ -168,10 +168,14 @@ class EvidenceAnchor(BaseModel):
 原有的 `file_path: str` 字段废弃，迁移为 `file_id` + `display_path` 二元组。
 
 **redaction_map.json** 结构（每个 run 一份，写入 `runs/<run_id>/`）:
+
+⚠️ **隐私模式条件写入**：`original_path` 字段仅在 `strict_local` 模式下写入（数据不离开本机）。`redacted_remote` 和 `explicit_remote` 模式下该字段为 `null`，防止敏感路径随 artifact 意外泄露。
+
 ```json
 {
   "f_a1b2c3d4e5f6": {
     "original_path": "/home/user/project/src/auth.py",
+    "original_path_note": "仅 strict_local 模式写入，其他模式为 null",
     "display_path": "src/auth.py",
     "redacted_segments": []
   }

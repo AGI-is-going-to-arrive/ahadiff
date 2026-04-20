@@ -13,7 +13,7 @@
   --muted:#6A6456;--muted-2:#8F8878;--hair:#E6E3D8;--hair-strong:#D5D0BF;
   --accent:#D27050;--accent-ink:#B04E28;--accent-soft:#F4E4D9;--accent-softer:#FAF0E8;
   --add-bg:#E4EFE0;--add-fg:#2F6F4F;--del-bg:#F6DCD5;--del-fg:#A33D2B;
-  --success:#2F6F4F;--warning:#B4791F;--danger:#A33D2B;--info:#2E4A6B;
+  --success:#2F6F4F;--warning:#955D13;--danger:#A33D2B;--info:#2E4A6B;
   --font-sans:"Inter","PingFang SC","Noto Sans SC",ui-sans-serif,system-ui,sans-serif;
   --font-serif:"Newsreader","Noto Serif SC","Source Serif 4",ui-serif,Georgia,serif;
   --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
@@ -183,7 +183,7 @@ table.t tr:hover td{background:var(--accent-softer)}
 @keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
 
 /* Print */
-@media print{.sidebar,.topbar{display:none !important}.app{grid-template-columns:1fr}.page{display:block !important;padding:20px}}
+@media print{.sidebar,.topbar{display:none !important}.app{grid-template-columns:1fr}.page{display:block !important;padding:20px}.rail{display:block !important;break-inside:avoid}}
 </style>
 </head>
 <body>
@@ -510,16 +510,20 @@ table.t tr:hover td{background:var(--accent-softer)}
                 <span style="font-family:var(--font-serif);font-size:18px;font-weight:500">安全过滤 · Safety</span>
                 <span class="badge fail" style="margin-left:auto">步骤 7-8</span>
               </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
                 <div style="padding:10px;background:#fff;border:1px solid #E4B8AE;border-radius:8px;font-size:12px">
-                  <b>Secret 扫描</b> — 检测 API key、JWT、私钥等，自动脱敏，写入 redaction_report.json
+                  <b>Secret 扫描</b> — 检测 API key、JWT、私钥等，自动脱敏，写入 redaction_report.json 和 redaction_map.json（<code>original_path</code> 仅在 <code>strict_local</code> 模式写入）
                 </div>
                 <div style="padding:10px;background:#fff;border:1px solid #E4B8AE;border-radius:8px;font-size:12px">
                   <b>Prompt Injection 转义</b> — diff 中的 "ignore previous instructions" 等危险内容被转义隔离
                 </div>
+                <div style="padding:10px;background:#fff;border:1px solid #E4B8AE;border-radius:8px;font-size:12px">
+                  <b>HTML 白名单过滤</b> — Lesson HTML 必须经 bleach 白名单过滤后才 <code>|safe</code>，防止 XSS 注入
+                </div>
               </div>
               <div style="margin-top:10px;padding:10px;background:#FDF8F4;border:1px dashed #E4B8AE;border-radius:6px;font-size:12px;color:var(--danger);line-height:1.6">
-                <b>顺序不可逆</b>：raw input → secret scan → redact → 才能 log/cache/model/render。完成脱敏前，禁止写日志、进缓存或发送到模型。
+                <b>顺序不可逆</b>：raw input → secret scan → redact → 才能 log/cache/model/render。完成脱敏前，禁止写日志、进缓存或发送到模型。<br/>
+                <b>Serve 绑定安全</b>：bind 127.0.0.1 + Host/Origin 双校验，外部请求无法到达本地服务。
               </div>
             </div>
 
@@ -1062,7 +1066,7 @@ table.t tr:hover td{background:var(--accent-softer)}
       <div class="page-head">
         <div class="eyebrow">§ 02 · 八层架构</div>
         <h1>八层数据流架构</h1>
-        <div class="sub">从 git diff 到 wiki + UI 的完整数据管道，每层职责明确，SQLite 即唯一真相源。</div>
+        <div class="sub">从 git diff 到 wiki + UI 的完整数据管道，每层职责明确，SQLite 即唯一真相源。编排逻辑由 <code>core/orchestrator.py</code> 统一管理 learn / improve / verify 三条主链路，cli.py 仅做参数解析和输出格式化。</div>
       </div>
 
       <div class="arch-flow" style="grid-template-columns:repeat(5,1fr)">
@@ -1122,15 +1126,19 @@ table.t tr:hover td{background:var(--accent-softer)}
               ↓                                           ↓
     <span style="color:var(--info);font-weight:600">7a: Static HTML</span>                         <span style="color:var(--success);font-weight:600">7b: localhost:8765</span>
     data_bundle.json 内嵌              REST API 实时读 SQLite
-    file:// 可直接打开                 轮询 /api/status 获取进度</div>
+    file:// 可直接打开                 Quiz/SRS 答题写回 SQLite</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
               <div style="padding:12px;background:var(--subtle);border:1px solid var(--hair);border-radius:8px">
                 <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--info)">7a · STATIC SNAPSHOT</div>
                 <div style="font-size:12px;color:var(--ink-2);margin-top:6px">一次性将 lesson + claims + quiz 序列化为 <code>data_bundle.json</code>，嵌入 HTML。无需服务器，<code>file://</code> 可直接打开。适合 CI 产物归档。</div>
               </div>
               <div style="padding:12px;background:#ECF4EE;border:1px solid #B9D7C1;border-radius:8px">
-                <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--success)">7b · LIVE SERVE</div>
-                <div style="font-size:12px;color:var(--ink-2);margin-top:6px"><code>ahadiff serve</code> 启动 Starlette + Uvicorn 本地服务器（默认 :8765），通过 Layer 5/6 接口读写 <code>review.sqlite</code>，提供 REST API。进度通过 <code>GET /api/status</code> 轮询获取。默认 read-only 模式，<code>--enable-write</code> 开启写入。写入安全：随机 loopback write token（<code>X-Write-Token</code> header）+ Origin/Referer 校验 + token-bucket 速率限制（100 req/min）。</div>
+                <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--success)">7b · LIVE SERVE <span style="color:var(--accent-ink)">(Task 14.5)</span></div>
+                <div style="font-size:12px;color:var(--ink-2);margin-top:6px"><code>ahadiff serve</code> 启动 Starlette + Uvicorn 本地服务器（默认 :8765，bind=<strong>127.0.0.1</strong>），通过 Layer 5/6 接口读写 <code>review.sqlite</code>，提供 REST API。默认 read-only，写路由需 token 鉴权。依赖 Task 0（serve_app contract）+ Task 14 + Task 15（review.sqlite schema）。</div>
+                <div style="font-size:12px;color:var(--ink-2);margin-top:8px;padding:8px;background:#FDFCF8;border:1px solid var(--hair);border-radius:6px;line-height:1.6">
+                  <strong>路由鉴权分级</strong>：读路由无需 token（GET /api/runs、/api/locale 等）；写路由必须验 <code>X-AhaDiff-Token</code> header（POST /api/signals/*、PUT /api/locale）。Token 在 serve 启动时自动生成并注入 data_bundle。<br/>
+                  <strong>安全三重保障</strong>：bind 127.0.0.1（仅回环，拒绝外网）+ Host/Origin/Referer 校验（只允许 localhost）+ 写路由 token 鉴权。
+                </div>
               </div>
             </div>
           </div>
@@ -1140,19 +1148,23 @@ table.t tr:hover td{background:var(--accent-softer)}
       <!-- 三层锁模型 -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px">
         <div class="card">
-          <div class="ch"><h3>三层锁模型</h3><div class="meta">CLI 与 serve 安全共存</div></div>
+          <div class="ch"><h3>三层锁矩阵</h3><div class="meta">CLI 与 serve 安全共存</div></div>
           <div class="cb">
-            <div style="font-size:12px;color:var(--ink-2);line-height:1.6;margin-bottom:12px;padding:10px;background:#FDFCF8;border:1px solid var(--hair);border-radius:8px">
-              锁获取顺序严格为 <strong>repo → run → db</strong>，不可逆序，防止死锁。CLI 写入和 serve 写入都通过分层文件锁保护并发安全。GET 请求不拿锁，只依赖 SQLite busy_timeout。
+            <div style="font-size:12px;color:var(--ink-2);line-height:1.6;margin-bottom:12px;padding:10px;background:#FEF6F0;border:1px solid #EBC3AE;border-radius:8px">
+              获取顺序严格为 <strong>repo_write → db_write → serve_write</strong>，不可逆序，防止死锁。CLI 写入和 serve 写入都通过分层锁保护并发安全。GET 请求不拿锁，只依赖 SQLite busy_timeout。
             </div>
             <table class="t" style="font-size:12px">
-              <thead><tr><th>锁</th><th>粒度</th><th>持有者</th><th>说明</th></tr></thead>
+              <thead><tr><th>锁</th><th>实现</th><th>粒度</th><th>持有者</th><th>说明</th></tr></thead>
               <tbody>
-                <tr><td class="mono">repo_write_lock</td><td>仓库级</td><td>CLI（learn/improve）</td><td>保证同一仓库同一时刻只有一个写入会话；PID lockfile + liveness check</td></tr>
-                <tr><td class="mono">run_write_lock</td><td>运行级</td><td>orchestrator</td><td>保证单次 run 内各 layer 串行写入；run 目录创建即获取</td></tr>
-                <tr><td class="mono">db_write_lock</td><td>SQLite 级</td><td>ratchet layer</td><td>跨进程文件锁 <code>.ahadiff/db.lock</code> + serve 内 asyncio.Lock；CLI 和 serve 的写入都先拿此锁</td></tr>
+                <tr><td class="mono" style="font-weight:600">repo_write_lock</td><td>PID lockfile</td><td>仓库级</td><td>CLI（learn/improve）</td><td>保证同一仓库同一时刻只有一个写入会话；含 liveness check（进程存活检测）</td></tr>
+                <tr><td class="mono" style="font-weight:600">db_write_lock</td><td>SQLite WAL + busy_timeout</td><td>SQLite 级</td><td>ratchet layer / serve</td><td>依赖 SQLite 自身的 WAL 模式 + <code>busy_timeout=5000ms</code> 实现跨进程并发写保护；CLI 和 serve 共享同一 SQLite 文件</td></tr>
+                <tr><td class="mono" style="font-weight:600">serve_write_lock</td><td>asyncio.Lock</td><td>进程内</td><td>serve endpoint</td><td>保护 serve 进程内写操作的并发安全（异步上下文）</td></tr>
               </tbody>
             </table>
+            <div style="margin-top:10px;padding:10px;background:var(--subtle);border-radius:6px;font-family:var(--font-mono);font-size:11px;color:var(--ink-2);line-height:1.8;white-space:pre-wrap">获取顺序图：
+repo_write_lock  →  db_write_lock  →  serve_write_lock
+   (PID file)         (WAL + flock)     (asyncio.Lock)
+                                         ↑ 仅 serve 进程内需要</div>
           </div>
         </div>
 
@@ -1167,9 +1179,46 @@ table.t tr:hover td{background:var(--accent-softer)}
               <thead><tr><th>Lane</th><th>标签</th><th>展示</th><th>说明</th></tr></thead>
               <tbody>
                 <tr><td class="mono" style="font-weight:600">L3_git_ratchet</td><td>主线</td><td style="color:var(--success);font-weight:600">Headline</td><td>完整 ratchet 对比，可信基线</td></tr>
-                <tr><td class="mono" style="color:var(--muted)">L3_degraded_observation</td><td>降级观测</td><td style="color:var(--muted)">灰色辅助</td><td>budget 降级或 capability_level &lt; full 的运行</td></tr>
+                <tr><td class="mono" style="color:var(--muted)">L3_degraded_observation</td><td>降级观测</td><td style="color:var(--muted)">灰色辅助</td><td>budget 降级或 capability_level &lt; full 的运行（由 degraded_flags 触发）</td></tr>
                 <tr><td class="mono" style="color:var(--muted)">L2_workspace_compare</td><td>工作区</td><td style="color:var(--muted)">按需展开</td><td>--compare 模式，无 git 基线</td></tr>
                 <tr><td class="mono" style="color:var(--muted)">L1_patch_only</td><td>补丁</td><td style="color:var(--muted)">按需展开</td><td>外部 patch 文件，无仓库上下文</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- degraded_flags 完整触发规则 + ReviewCard anchor -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px">
+        <div class="card">
+          <div class="ch"><h3>degraded_flags 触发规则</h3><div class="meta">降级标记 · 4 种场景</div></div>
+          <div class="cb">
+            <div style="font-size:12px;color:var(--ink-2);line-height:1.6;margin-bottom:12px;padding:10px;background:#FDFCF8;border:1px solid var(--hair);border-radius:8px">
+              当 diff 超出正常处理范围时，系统自动设置 <code>degraded_flags</code>，标记该 run 为降级观测，不参与棘轮主线对比。多个 flag 可同时存在。
+            </div>
+            <table class="t" style="font-size:12px">
+              <thead><tr><th>Flag</th><th>触发条件</th><th>处理方式</th></tr></thead>
+              <tbody>
+                <tr><td class="mono" style="font-weight:600;color:var(--warning)">diff_clipped</td><td>diff 超过 <strong>5000 行</strong></td><td>截断到 5000 行，clip 后继续处理</td></tr>
+                <tr><td class="mono" style="font-weight:600;color:var(--warning)">binary_only</td><td>全部文件为 <strong>binary</strong></td><td>跳过内容分析，仅记录文件名</td></tr>
+                <tr><td class="mono" style="font-weight:600;color:var(--warning)">file_count_exceeded</td><td>变更文件超过 <strong>50 个</strong></td><td>按影响程度排序，截取 top-50</td></tr>
+                <tr><td class="mono" style="font-weight:600;color:var(--warning)">token_exceeded</td><td>超出 provider <strong>上下文窗口</strong></td><td>降级为 summarize 模式</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="ch"><h3>ReviewCard anchor 统一</h3><div class="meta">file_id + display_path</div></div>
+          <div class="cb">
+            <div style="font-size:12px;color:var(--ink-2);line-height:1.6;margin-bottom:12px;padding:10px;background:#FDFCF8;border:1px solid var(--hair);border-radius:8px">
+              所有 ReviewCard 和 Claim 的定位锚点统一使用 <code>file_id</code>（稳定不变的内部标识）+ <code>display_path</code>（用户可读的展示路径），不再直接使用 path 字段。这解决了文件 rename 后锚点失效的问题。
+            </div>
+            <table class="t" style="font-size:12px">
+              <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+              <tbody>
+                <tr><td class="mono" style="font-weight:600">file_id</td><td>string (SHA)</td><td>基于文件内容 hash 的稳定标识，rename 不影响</td></tr>
+                <tr><td class="mono">display_path</td><td>string</td><td>用户可读路径，跟随 rename 更新</td></tr>
+                <tr><td class="mono" style="text-decoration:line-through;color:var(--muted)">path</td><td><span style="color:var(--danger)">废弃</span></td><td>不再作为 anchor，仅保留兼容</td></tr>
               </tbody>
             </table>
           </div>
@@ -1216,7 +1265,7 @@ table.t tr:hover td{background:var(--accent-softer)}
                 <tr><td class="mono">rubric_version</td><td>string</td><td>rubric.yaml hash</td></tr>
                 <tr><td class="mono">overall</td><td>int 0-100</td><td>加权总分</td></tr>
                 <tr><td class="mono">verdict</td><td>enum</td><td>PASS / CAUTION / FAIL</td></tr>
-                <tr><td class="mono">status</td><td>enum</td><td>baseline / keep / discard / keep_final / non_ratcheted</td></tr>
+                <tr><td class="mono">status</td><td>enum</td><td>baseline / keep / discard / rollback / crash / targeted_verify / keep_final / phase25_rewrite / non_ratcheted（共 9 态；non_ratcheted 判定：<code>has_git_ancestry == false</code>）</td></tr>
                 <tr><td class="mono">weakest_dim</td><td>string</td><td>最弱维度</td></tr>
                 <tr><td class="mono">note_json</td><td>JSON</td><td>结构化元数据（phase/trigger/degraded_flags/cleanup_state）</td></tr>
               </tbody>
@@ -1489,17 +1538,17 @@ key = prompt_fingerprint
           <table class="t">
             <thead><tr><th>页面</th><th>英文</th><th>状态</th><th>说明</th></tr></thead>
             <tbody>
-              <tr><td>首页</td><td class="mono">Landing</td><td><span class="badge pass">已实现</span></td><td>Hero + 工作流 + Evidence Demo + Benchmark</td></tr>
-              <tr><td>运行记录</td><td class="mono">Dashboard</td><td><span class="badge pass">已实现</span></td><td>KPI + Quality trajectory + Recent runs</td></tr>
-              <tr><td>学习笔记</td><td class="mono">Lesson</td><td><span class="badge pass">已实现</span></td><td>三栏布局：目录 / 正文 / 右侧栏</td></tr>
-              <tr><td>Diff + 证据</td><td class="mono">Diff</td><td><span class="badge pass">已实现</span></td><td>代码行级 claim 关联</td></tr>
-              <tr><td>棘轮</td><td class="mono">Ratchet</td><td><span class="badge pass">已实现</span></td><td>Improve loop 可视化</td></tr>
-              <tr><td>测验</td><td class="mono">Quiz</td><td><span class="badge pass">已实现</span></td><td>Socratic 追问 + 选项</td></tr>
-              <tr><td>复习</td><td class="mono">Review</td><td><span class="badge pass">已实现</span></td><td>SRS 闪卡翻转</td></tr>
-              <tr><td>图谱</td><td class="mono">Graph</td><td><span class="badge pass">已实现</span></td><td>概念关系图（列表 fallback）</td></tr>
-              <tr><td>新手上路</td><td class="mono">Onboarding</td><td><span class="badge pass">已实现</span></td><td>Stepper 向导</td></tr>
-              <tr><td>Agent 技能</td><td class="mono">Skills</td><td><span class="badge pass">已实现</span></td><td>Skill 卡片网格</td></tr>
-              <tr><td>设置</td><td class="mono">Settings</td><td><span class="badge pass">已实现</span></td><td>隐私 / Provider / 主题</td></tr>
+              <tr><td>首页</td><td class="mono">Landing</td><td><span class="badge accent">原型完成</span></td><td>Hero + 工作流 + Evidence Demo + Benchmark</td></tr>
+              <tr><td>运行记录</td><td class="mono">Dashboard</td><td><span class="badge accent">原型完成</span></td><td>KPI + Quality trajectory + Recent runs</td></tr>
+              <tr><td>学习笔记</td><td class="mono">Lesson</td><td><span class="badge accent">原型完成</span></td><td>三栏布局：目录 / 正文 / 右侧栏</td></tr>
+              <tr><td>Diff + 证据</td><td class="mono">Diff</td><td><span class="badge accent">原型完成</span></td><td>代码行级 claim 关联</td></tr>
+              <tr><td>棘轮</td><td class="mono">Ratchet</td><td><span class="badge accent">原型完成</span></td><td>Improve loop 可视化</td></tr>
+              <tr><td>测验</td><td class="mono">Quiz</td><td><span class="badge accent">原型完成</span></td><td>Socratic 追问 + 选项</td></tr>
+              <tr><td>复习</td><td class="mono">Review</td><td><span class="badge accent">原型完成</span></td><td>SRS 闪卡翻转</td></tr>
+              <tr><td>图谱</td><td class="mono">Graph</td><td><span class="badge accent">原型完成</span></td><td>概念关系图（列表 fallback）</td></tr>
+              <tr><td>新手上路</td><td class="mono">Onboarding</td><td><span class="badge accent">原型完成</span></td><td>Stepper 向导</td></tr>
+              <tr><td>Agent 技能</td><td class="mono">Skills</td><td><span class="badge accent">原型完成</span></td><td>Skill 卡片网格</td></tr>
+              <tr><td>设置</td><td class="mono">Settings</td><td><span class="badge accent">原型完成</span></td><td>隐私 / Provider / 主题</td></tr>
             </tbody>
           </table>
         </div>
@@ -1512,6 +1561,7 @@ key = prompt_fingerprint
             <div class="tl-item done"><div class="tl-title">Warm v6 HTML 原型完成</div><div class="tl-desc">11 页面 · 自包含 · 可浏览器直开</div></div>
             <div class="tl-item current"><div class="tl-title">当前：设计文档定稿</div><div class="tl-desc">方案完善 · 13 项修订全部应用</div></div>
             <div class="tl-item"><div class="tl-title">拆 Jinja2 模板</div><div class="tl-desc">templates/{base,layouts/,partials/,components/,pages/}</div></div>
+            <div class="tl-item"><div class="tl-title">Task 14.5 · Serve Backend</div><div class="tl-desc">Starlette app（bind=127.0.0.1），写路由需 X-AhaDiff-Token，读路由开放</div></div>
             <div class="tl-item"><div class="tl-title">抽出 warm.css + viewer.js</div><div class="tl-desc">移除 Google Fonts 外链，内联 SVG favicon</div></div>
             <div class="tl-item"><div class="tl-title">嵌入真实 data_bundle.json</div><div class="tl-desc">替换 mock 数据为 &lt;script type="application/json"&gt; 注入</div></div>
             <div class="tl-item"><div class="tl-title">响应式修复</div><div class="tl-desc">769-1024px icon-only 侧栏 + ≤768px 抽屉模式</div></div>
@@ -1532,8 +1582,42 @@ key = prompt_fingerprint
               <tr><td>代码字体</td><td>JetBrains Mono</td><td>JetBrains Mono</td><td><span class="badge pass">一致</span></td></tr>
               <tr><td>Diff 新增色</td><td class="mono">#E4EFE0 / #2F6F4F</td><td class="mono">#E4EFE0 / #2F6F4F</td><td><span class="badge pass">一致</span></td></tr>
               <tr><td>品牌标识</td><td>Δ知 · Ship·Learn·Ratchet</td><td>Δ知 · Ship·Learn·Ratchet</td><td><span class="badge pass">一致</span></td></tr>
+              <tr><td>Warning 色值</td><td class="mono">WCAG AA</td><td class="mono">#955D13</td><td><span class="badge pass">一致</span></td></tr>
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- 前端工程化新增规范 -->
+      <div class="card" style="margin-top:18px">
+        <div class="ch"><h3>前端工程化新增规范</h3><div class="meta">v5 · 渐进增强 + 无障碍</div></div>
+        <div class="cb">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div style="padding:14px;border:1px solid var(--hair);border-radius:10px;background:#FDFCF8">
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--info);margin-bottom:8px">Print CSS</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6"><code>.rail</code> 证据链在打印时保持可见（<code>display:block !important; break-inside:avoid</code>），确保打印 Lesson 时证据不丢失。</div>
+            </div>
+            <div style="padding:14px;border:1px solid var(--hair);border-radius:10px;background:#FDFCF8">
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--success);margin-bottom:8px">Ratchet 图表</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">Jinja2 只输出占位 <code>&lt;div class="ratchet-chart"&gt;</code>，JS 动态绘制。无 JS 环境下降级显示表格。</div>
+            </div>
+            <div style="padding:14px;border:1px solid var(--hair);border-radius:10px;background:#FDFCF8">
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-ink);margin-bottom:8px">Static 模式</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">Jinja2 直接输出 <code>disabled</code> 属性，不靠 JS 修补。写入操作按钮在 static 模式下物理 disabled，提示 <code>ahadiff serve</code>。</div>
+            </div>
+            <div style="padding:14px;border:1px solid var(--hair);border-radius:10px;background:#FDFCF8">
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--warning);margin-bottom:8px">WCAG AA 无障碍</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6"><code>--warning</code> 色值改为 <code>#955D13</code>（对比度 4.52:1，满足 AA 标准），替换原 <code>#B4791F</code>（3.8:1 不达标）。</div>
+            </div>
+            <div style="padding:14px;border:1px solid var(--hair);border-radius:10px;background:#FDFCF8">
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--info);margin-bottom:8px">i18n 格式化过滤器</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">Jinja2 新增 <code>|format_date</code> 和 <code>|format_number</code> 过滤器，根据当前 locale 自动格式化日期和数字。</div>
+            </div>
+            <div style="padding:14px;border:1px solid var(--hair);border-radius:10px;background:#FDFCF8">
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--danger);margin-bottom:8px">侧栏焦点陷阱</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">侧栏展开时 <code>main</code> 加 <code>inert</code> 属性，焦点严格锁定在侧栏内。关闭后自动移除 <code>inert</code>，恢复主区域交互。</div>
+            </div>
+          </div>
         </div>
       </div>
     </section>

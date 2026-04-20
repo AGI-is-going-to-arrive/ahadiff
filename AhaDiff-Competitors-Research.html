@@ -420,7 +420,7 @@ nav{
   border:1px solid var(--divider);overflow-x:auto;
 }
 .matrix{
-  width:100%;border-collapse:collapse;min-width:920px;
+  width:100%;border-collapse:collapse;min-width:1020px;
 }
 .matrix th,.matrix td{
   padding:14px 12px;text-align:center;
@@ -989,12 +989,13 @@ footer{
     <a href="#scenarios">场景</a>
     <a href="#landscape">地形</a>
     <a href="#moats">护城河</a>
+    <a href="#eng-moats">工程</a>
     <a href="#matrix">矩阵</a>
     <a href="#borrow">借鉴</a>
     <a href="#threat">威胁</a>
     <a href="#conclusion">结论</a>
   </div>
-  <div class="nav-meta">research · 2026-04-20</div>
+  <div class="nav-meta">research · 2026-04-21</div>
 </div>
 </nav>
 
@@ -1004,17 +1005,17 @@ footer{
   <div class="hero-decoration-2"></div>
   <div class="container">
     <div class="section-label">竞品研究 · 可视化报告</div>
-    <h1>为什么 <span class="highlight">AhaDiff 没有真正的竞品</span>？</h1>
+    <h1>AhaDiff 的<span class="highlight">差异化定位</span>在哪里？</h1>
     <p class="hero-sub">
-      我们翻了 <span class="mono">10 款</span> 商业产品的官网、读了 <span class="mono">6 个</span> 灵感项目的源码，
-      在 <span class="mono">5 个</span> 象限里挖出 <span class="mono">5 条</span> 没人占的护城河（含 i18n 学习笔记多语言）。
+      我们翻了 <span class="mono">12 款</span> 产品的官网、读了 <span class="mono">6 个</span> 灵感项目的源码，
+      在 <span class="mono">5 个</span> 象限里挖出 <span class="mono">5 条</span> 产品护城河 + <span class="mono">5 条</span> 工程护城河（含 i18n、三层锁、隐私三档）。
       <br>这份报告用尽量少的黑话讲清楚：<em>知返到底跟谁在抢饭？和谁其实完全不冲突？</em>
     </p>
     <div class="hero-stats">
       <div class="stat-card">
-        <div class="stat-num">10</div>
+        <div class="stat-num">12</div>
         <div class="stat-label">竞品</div>
-        <div class="stat-detail">CodeRabbit · Greptile · DeepWiki…</div>
+        <div class="stat-detail">CodeRabbit · Greptile · DeepWiki · Graphify…</div>
       </div>
       <div class="stat-card">
         <div class="stat-num">6</div>
@@ -1022,7 +1023,7 @@ footer{
         <div class="stat-detail">源码真机验证</div>
       </div>
       <div class="stat-card">
-        <div class="stat-num">4</div>
+        <div class="stat-num">5</div>
         <div class="stat-label">护城河空白</div>
         <div class="stat-detail">无人占领</div>
       </div>
@@ -1074,7 +1075,7 @@ footer{
   <div class="container">
     <div class="section-label">二、市场地形</div>
     <h2>AhaDiff 在哪里？点一下看看</h2>
-    <p class="lead">我们把 10 款竞品按"主打什么"分进 5 个象限。知返站在正中间 — 每个象限都沾一点，但都没完全重合。</p>
+    <p class="lead">我们把 12 款竞品按"主打什么"分进 5 个象限。知返站在正中间 — 每个象限都沾一点，但都没完全重合。</p>
 
     <div class="landscape-wrap">
       <svg class="landscape-svg" viewBox="-250 -250 500 500">
@@ -1091,7 +1092,7 @@ footer{
 
         <!-- Quadrant labels -->
         <text class="quadrant-label" x="0" y="-238">Code Wiki（解释整仓）</text>
-        <text class="quadrant-count" x="0" y="-222">2 款</text>
+        <text class="quadrant-count" x="0" y="-222">4 款</text>
         <text class="quadrant-label" x="225" y="-60">Diff 摘要</text>
         <text class="quadrant-count" x="225" y="-44">1 款</text>
         <text class="quadrant-label" x="145" y="205">Skill 框架</text>
@@ -1110,6 +1111,8 @@ footer{
         <!-- Code Wiki (top) -->
         <g class="product-dot" data-product="deepwiki"><circle cx="-30" cy="-160" r="7"/><text x="-30" y="-172">DeepWiki</text></g>
         <g class="product-dot" data-product="unblocked"><circle cx="40" cy="-190" r="7"/><text x="40" y="-202">Unblocked</text></g>
+        <g class="product-dot" data-product="graphify"><circle cx="60" cy="-140" r="7"/><text x="60" y="-152">Graphify</text></g>
+        <g class="product-dot" data-product="google-code-wiki"><circle cx="-60" cy="-200" r="7"/><text x="-60" y="-212">Code Wiki</text></g>
 
         <!-- Diff 摘要 (right-top) -->
         <g class="product-dot" data-product="whatthediff"><circle cx="175" cy="-80" r="7"/><text x="175" y="-92">What The Diff</text></g>
@@ -1142,7 +1145,7 @@ footer{
   <div class="container">
     <div class="section-label">三、护城河</div>
     <h2>五个<em>没人占</em>的山头</h2>
-    <p class="lead">把 10 款产品的功能列齐，这 4 个格子全是空的 — AhaDiff 同时占住这 4 个格子，就是 100% 的差异化。</p>
+    <p class="lead">把 12 款产品的功能列齐，这 5 个格子全是空的 — AhaDiff 同时占住这 5 个格子，就是 100% 的差异化。</p>
 
     <div class="moat-grid">
 
@@ -1220,10 +1223,13 @@ footer{
           Round 1: <code>wiki_score = 0.72</code> ✓ git commit<br>
           Round 2: <code>wiki_score = 0.84</code> ✓ git commit<br>
           Round 3: <code>wiki_score = 0.76</code> ✗ 删除 worktree（不触碰主分支）<br>
-          连续 2 个优化目标无增益 → 触发 Phase 2.5 探索性重写
+          连续 2 个优化目标无增益 → 触发 Phase 2.5 探索性重写<br><br>
+          <strong style="font-size:12px;font-family:var(--mono);color:var(--ink-03)">8 维自研 RUBRIC (100 分)</strong><br>
+          <code>accuracy 20</code> · <code>evidence 18</code> · <code>diff_coverage 14</code> · <code>learnability 14</code><br>
+          <code>quiz_transfer 10</code> · <code>spec_alignment 10</code> · <code>conciseness 8</code> · <code>safety_privacy 6</code>
         </div>
         <div class="moat-compare">
-          <span class="moat-compare-chip no">0/10 竞品有此机制</span>
+          <span class="moat-compare-chip no">调研的 12 款产品中未发现类似机制</span>
           <span class="moat-compare-chip has">autoresearch 有但用于 ML</span>
           <span class="moat-compare-chip has">AhaDiff 用于笔记质量</span>
         </div>
@@ -1245,8 +1251,10 @@ footer{
         <div class="moat-analogy">写日记锁在家里抽屉，而不是发到云端 SaaS。</div>
         <div class="moat-example">
           所有产物存 <code>.ahadiff/</code> 目录<br>
-          出本机的只有 LLM API prompt 本身<br>
-          五道安全闸门：<code>.ahadiffignore</code> → secret scan(两层扫描) → UNTRUSTED_DIFF 边界 → 隐私三档(<code>strict_local</code>/<code>redacted_remote</code>/<code>explicit_remote</code>) → <code>audit.jsonl</code>
+          出本机的只有 LLM API prompt 本身（脱敏后）<br>
+          脱敏顺序（不可跳过）：<code>raw</code> → <code>scan</code> → <code>redact</code> → 才能 <code>log/cache/model/render</code><br>
+          五道安全闸门：<code>.ahadiffignore</code> → secret scan(两层扫描) → UNTRUSTED_DIFF 边界（6 类） → 隐私三档 → <code>audit.jsonl</code><br>
+          Lesson HTML 经 <code>bleach</code> 过滤防 XSS
         </div>
         <div class="moat-compare">
           <span class="moat-compare-chip no">CodeRabbit / Greptile / DeepWiki 全 SaaS</span>
@@ -1269,14 +1277,158 @@ footer{
         </div>
         <div class="moat-analogy">课本有中文版也有英文版，但笔记只有一种语言？AhaDiff 让笔记跟着你说的语言走。</div>
         <div class="moat-example">
-          浏览器自动检测 + Topbar zh/EN 手动切换<br>
-          LLM prompt 用 <code>OUTPUT_LANGUAGE</code> 指令前缀<br>
+          优先级链：<code>cookie ahadiff_lang</code> → <code>navigator.language</code> → <code>CLI --lang</code> → <code>config.toml</code> → <code>$LANG</code> → 降级 <code>en</code><br>
+          LLM prompt 用 <code>OUTPUT_LANGUAGE</code> 指令前缀（单 prompt，不分语言文件）<br>
           概念用英文 <code>term_key</code> 稳定身份 + 本地化 <code>display_name</code><br>
-          SRS 卡片保留创建时语言，不重翻译
+          SRS 卡片保留创建时语言，不重翻译<br>
+          VCR cassette key 包含 <code>output_lang</code>，换语言不命中旧缓存
         </div>
         <div class="moat-compare">
           <span class="moat-compare-chip no">10 款竞品均无 diff→学习笔记的多语言生成能力（竞品矩阵已验证）</span>
-          <span class="moat-compare-chip has">AhaDiff 中英双语全链路</span>
+          <span class="moat-compare-chip has">AhaDiff 中英双语全链路（en + zh-CN）</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- =============== ENGINEERING MOATS =============== -->
+<section id="eng-moats" style="background:var(--paper-02)">
+  <div class="container">
+    <div class="section-label">三 · 附 工程护城河</div>
+    <h2>竞品<em>做不到</em>的 5 个工程细节</h2>
+    <p class="lead">这些不是"功能点"而是"安全/并发/部署"维度的深水区 — SaaS 竞品的架构决策让它们天然无法复刻。</p>
+
+    <div class="moat-grid" style="grid-template-columns:repeat(auto-fill,minmax(340px,1fr))">
+
+      <!-- Eng 1: Three-Layer Lock -->
+      <div class="moat fade-in">
+        <div class="moat-header">
+          <div class="moat-icon" style="background:var(--sage-soft);color:var(--sage)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="1"/>
+            </svg>
+          </div>
+          <div>
+            <div class="moat-num">ENG 01</div>
+            <h3>三层锁并发安全</h3>
+          </div>
+        </div>
+        <div class="moat-analogy">三把不同的钥匙管三扇门：repo 文件、数据库、serve 端口，互不干扰又不冲突。</div>
+        <div class="moat-example">
+          <code>repo_write</code> — PID lockfile + liveness check（CLI improve 用）<br>
+          <code>db_write</code> — SQLite WAL + 跨进程文件锁（CLI/serve 共享）<br>
+          <code>serve_write</code> — Starlette 进程级排他（同一端口只能一个 serve）<br><br>
+          CLI 和 serve 可同时运行，写入安全由三层保护，无需用户手动协调。
+        </div>
+        <div class="moat-compare">
+          <span class="moat-compare-chip no">SaaS 竞品不需本地并发</span>
+          <span class="moat-compare-chip has">AhaDiff local-first 刚需</span>
+        </div>
+      </div>
+
+      <!-- Eng 2: Progressive Enhancement -->
+      <div class="moat fade-in">
+        <div class="moat-header">
+          <div class="moat-icon" style="background:var(--sage-soft);color:var(--sage)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 20h20"/><path d="M5 20V8l7-5 7 5v12"/><path d="M9 20v-5h6v5"/>
+            </svg>
+          </div>
+          <div>
+            <div class="moat-num">ENG 02</div>
+            <h3>Progressive Enhancement</h3>
+          </div>
+        </div>
+        <div class="moat-analogy">有网看在线视频，没网照样看下载好的。两个模式用同一模板，体验一致。</div>
+        <div class="moat-example">
+          <code>file://</code> 静态模式 — 双击 HTML 即可阅读笔记（只读，Quiz 按钮提示 CLI 命令）<br>
+          <code>ahadiff serve</code> — 本地 Starlette + Uvicorn，Quiz/SRS 答题写回 SQLite<br><br>
+          同一 Jinja2 模板自动检测：有 serve → REST API 交互；无 serve → 优雅降级显示命令提示。
+        </div>
+        <div class="moat-compare">
+          <span class="moat-compare-chip no">竞品全依赖云端</span>
+          <span class="moat-compare-chip has">AhaDiff 断网可用</span>
+        </div>
+      </div>
+
+      <!-- Eng 3: Privacy Three-Tier -->
+      <div class="moat fade-in">
+        <div class="moat-header">
+          <div class="moat-icon" style="background:var(--sage-soft);color:var(--sage)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+          </div>
+          <div>
+            <div class="moat-num">ENG 03</div>
+            <h3>隐私三档分级</h3>
+          </div>
+        </div>
+        <div class="moat-analogy">手机通讯录导出有三档：永不上传 / 脱敏后上传 / 明确授权后上传。</div>
+        <div class="moat-example">
+          <code>strict_local</code> — 仅本地模型，数据不出机器（默认）<br>
+          <code>redacted_remote</code> — 脱敏后发远端 LLM API<br>
+          <code>explicit_remote</code> — 用户显式授权发原文<br><br>
+          CLI 参数、config.toml、audit 日志统一 snake_case 命名。<code>redaction_map.json</code> 的 <code>original_path</code> 仅 <code>strict_local</code> 写入。
+        </div>
+        <div class="moat-compare">
+          <span class="moat-compare-chip no">CodeRabbit/Greptile/DeepWiki 全 SaaS 无分档</span>
+          <span class="moat-compare-chip has">AhaDiff 用户完全掌控</span>
+        </div>
+      </div>
+
+      <!-- Eng 4: UNTRUSTED_DIFF Boundary -->
+      <div class="moat fade-in">
+        <div class="moat-header">
+          <div class="moat-icon" style="background:var(--sage-soft);color:var(--sage)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+          </div>
+          <div>
+            <div class="moat-num">ENG 04</div>
+            <h3>UNTRUSTED_DIFF 边界</h3>
+          </div>
+        </div>
+        <div class="moat-analogy">不仅怀疑包裹里的东西，连包裹上的地址标签、快递员说的话都验。</div>
+        <div class="moat-example">
+          不可信输入面覆盖 6 类：<br>
+          <code>diff 正文</code> · <code>文件名</code> · <code>commit message</code><br>
+          <code>Graphify label</code> · <code>模型输出</code> · <code>VCR cassette</code><br><br>
+          统一经 <code>redaction_pipeline()</code> 处理<br>
+          顺序：raw → scan → redact → 才能 log/cache/model/render
+        </div>
+        <div class="moat-compare">
+          <span class="moat-compare-chip no">竞品只过滤 diff 正文</span>
+          <span class="moat-compare-chip has">AhaDiff 全链路防注入</span>
+        </div>
+      </div>
+
+      <!-- Eng 5: Serve Security -->
+      <div class="moat fade-in">
+        <div class="moat-header">
+          <div class="moat-icon" style="background:var(--sage-soft);color:var(--sage)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+          </div>
+          <div>
+            <div class="moat-num">ENG 05</div>
+            <h3>Serve 安全模型</h3>
+          </div>
+        </div>
+        <div class="moat-analogy">家里的 Wi-Fi 路由器 — 只在家门内可见，外面看不到也连不上。</div>
+        <div class="moat-example">
+          <code>bind=127.0.0.1</code> — 只监听本机回环（外部不可访问）<br>
+          <code>Host + Origin</code> 双校验 — 防 DNS rebinding<br>
+          读写鉴权分级：默认只读，写操作需 write token<br>
+          Lesson HTML 经 <code>bleach</code> 过滤防 XSS
+        </div>
+        <div class="moat-compare">
+          <span class="moat-compare-chip no">SaaS 竞品用云端鉴权</span>
+          <span class="moat-compare-chip has">AhaDiff 本地零信任</span>
         </div>
       </div>
 
@@ -1288,18 +1440,18 @@ footer{
 <section id="matrix" style="background:var(--paper-02)">
   <div class="container">
     <div class="section-label">四、竞品对比</div>
-    <h2>一张表看懂 10 款产品</h2>
-    <p class="lead">六个关键维度、10 款产品（含知返）。<strong>点任意产品名</strong>查看详细信息。</p>
+    <h2>一张表看懂 12 款产品</h2>
+    <p class="lead">六个关键维度、12 款产品（含知返）。<strong>点任意产品名</strong>查看详细信息。</p>
 
     <div class="matrix-controls">
       <div class="filter-group" id="filterGroup">
-        <button class="filter-btn active" data-filter="all">全部 10</button>
+        <button class="filter-btn active" data-filter="all">全部 12</button>
         <button class="filter-btn" data-filter="high">中高威胁 1</button>
         <button class="filter-btn" data-filter="diff">做 diff 的 4</button>
         <button class="filter-btn" data-filter="srs">做 SRS 的 2</button>
-        <button class="filter-btn" data-filter="oss">开源的 2</button>
+        <button class="filter-btn" data-filter="oss">开源的 4</button>
       </div>
-      <div class="matrix-hint">★ = 知返 · ● = 有 · 部分 = 有条件 · 空 = 没有</div>
+      <div class="matrix-hint">★ = 知返 · ● = 有 · 半 = 有条件 · · = 没有 · i18n = 学习笔记多语言</div>
     </div>
 
     <div class="matrix-wrap">
@@ -1312,6 +1464,7 @@ footer{
             <th>Local-First</th>
             <th>SRS/主动回忆</th>
             <th>Git Ratchet</th>
+            <th>i18n</th>
             <th>开源</th>
             <th>威胁等级</th>
           </tr>
@@ -1321,6 +1474,7 @@ footer{
             <td class="product-name" data-product="ahadiff">
               <span class="product-badge hero">MY</span> 知返 AhaDiff
             </td>
+            <td><span class="cell-value star">★</span></td>
             <td><span class="cell-value star">★</span></td>
             <td><span class="cell-value star">★</span></td>
             <td><span class="cell-value star">★</span></td>
@@ -1339,6 +1493,7 @@ footer{
             <td><span class="cell-value no">·</span></td>
             <td><span class="cell-value no">·</span></td>
             <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
             <td><span class="threat-level high">中高</span></td>
           </tr>
           <tr data-tag="all diff">
@@ -1347,6 +1502,7 @@ footer{
             </td>
             <td><span class="cell-value yes">●</span></td>
             <td><span class="cell-value partial">半</span></td>
+            <td><span class="cell-value no">·</span></td>
             <td><span class="cell-value no">·</span></td>
             <td><span class="cell-value no">·</span></td>
             <td><span class="cell-value no">·</span></td>
@@ -1362,6 +1518,7 @@ footer{
             <td><span class="cell-value yes">●</span></td>
             <td><span class="cell-value no">·</span></td>
             <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
             <td><span class="cell-value yes">●</span></td>
             <td><span class="threat-level mid">中</span></td>
           </tr>
@@ -1375,12 +1532,14 @@ footer{
             <td><span class="cell-value no">·</span></td>
             <td><span class="cell-value no">·</span></td>
             <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
             <td><span class="threat-level mid">中</span></td>
           </tr>
           <tr data-tag="all">
             <td class="product-name" data-product="deepwiki">
               <span class="product-badge freemium">FREEMIUM</span> DeepWiki
             </td>
+            <td><span class="cell-value no">·</span></td>
             <td><span class="cell-value no">·</span></td>
             <td><span class="cell-value no">·</span></td>
             <td><span class="cell-value no">·</span></td>
@@ -1399,6 +1558,7 @@ footer{
             <td><span class="cell-value yes">●</span></td>
             <td><span class="cell-value no">·</span></td>
             <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
             <td><span class="threat-level low">低</span></td>
           </tr>
           <tr data-tag="all srs">
@@ -1409,6 +1569,7 @@ footer{
             <td><span class="cell-value no">·</span></td>
             <td><span class="cell-value partial">半</span></td>
             <td><span class="cell-value yes">●</span></td>
+            <td><span class="cell-value no">·</span></td>
             <td><span class="cell-value no">·</span></td>
             <td><span class="cell-value no">·</span></td>
             <td><span class="threat-level low">低</span></td>
@@ -1422,6 +1583,7 @@ footer{
             <td><span class="cell-value partial">半</span></td>
             <td><span class="cell-value no">·</span></td>
             <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
             <td><span class="cell-value yes">●</span></td>
             <td><span class="threat-level low">低</span></td>
           </tr>
@@ -1430,6 +1592,33 @@ footer{
               <span class="product-badge saas">SAAS</span> Unblocked
             </td>
             <td><span class="cell-value partial">半</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="threat-level low">低</span></td>
+          </tr>
+          <tr data-tag="all oss">
+            <td class="product-name" data-product="graphify">
+              <span class="product-badge oss">OSS</span> Graphify
+            </td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value yes">●</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value yes">●</span></td>
+            <td><span class="threat-level low">低（互补）</span></td>
+          </tr>
+          <tr data-tag="all">
+            <td class="product-name" data-product="google-code-wiki">
+              <span class="product-badge saas">SAAS</span> Google Code Wiki
+            </td>
+            <td><span class="cell-value no">·</span></td>
+            <td><span class="cell-value no">·</span></td>
             <td><span class="cell-value no">·</span></td>
             <td><span class="cell-value no">·</span></td>
             <td><span class="cell-value no">·</span></td>
@@ -1491,7 +1680,7 @@ footer{
 
       <div class="split-col right">
         <div class="split-badge">同赛道（外部真实竞品）</div>
-        <h3>10 款商业产品</h3>
+        <h3>12 款产品</h3>
         <p>抢同一批用户（开发者 / AI 协作者）。<strong>也没一个做"把 diff 变学习笔记"。</strong></p>
         <div class="split-items">
           <div class="split-item">
@@ -1507,8 +1696,12 @@ footer{
             <div class="split-item-evid">做 SRS 复习，但不接真实 diff</div>
           </div>
           <div class="split-item">
-            <div class="split-item-name">DeepWiki · Unblocked <span class="split-item-tag">Wiki 类</span></div>
-            <div class="split-item-evid">解释整仓或提供 agent 上下文，不聚焦单次改动</div>
+            <div class="split-item-name">DeepWiki · Unblocked · Google Code Wiki <span class="split-item-tag">Wiki 类</span></div>
+            <div class="split-item-evid">解释整仓（repo 粒度），不聚焦单次改动；AhaDiff 是 diff 粒度</div>
+          </div>
+          <div class="split-item">
+            <div class="split-item-name">Graphify <span class="split-item-tag">互补</span></div>
+            <div class="split-item-evid">repo-level map；AhaDiff 做 commit-level learning overlay，双层配合</div>
           </div>
         </div>
       </div>
@@ -1731,7 +1924,7 @@ footer{
   <div class="container">
     <div class="section-label">六 · 附</div>
     <h2>v0.1 设计升级<em>（2026-04-20 三轮评估后新增）</em></h2>
-    <p class="lead">经三模型 + Explorer 五轮交叉审查，v0.1 取消静态 viewer 冻结，新增以下关键能力。</p>
+    <p class="lead">经三模型 + Explorer 五轮交叉审查，v0.1 取消静态 viewer 冻结，新增以下关键能力。<br>技术栈确认：<strong>Python 3.11+ / Typer / Rich / Pydantic / Jinja2 / Starlette+Uvicorn</strong>，前端用 Jinja2 模板 + Vanilla JS，<strong>SQLite 为唯一真相源</strong>。</p>
 
     <div class="top10-wrap">
       <div class="top10-grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;display:grid">
@@ -1781,7 +1974,7 @@ footer{
   <div class="container">
     <div class="section-label">七、威胁预警</div>
     <h2>最大威胁：<span style="color:var(--rust)">CodeRabbit</span></h2>
-    <p class="lead">10 款竞品里唯一威胁等级"中高"。它已经占住"PR Review + 架构图 + 摘要"，如果加上 SRS/learning，就会直接进入 AhaDiff 的领地。</p>
+    <p class="lead">12 款竞品里唯一威胁等级"中高"。它已经占住"PR Review + 架构图 + 摘要"，如果加上 SRS/learning，就会直接进入 AhaDiff 的领地。</p>
 
     <div class="threat-grid">
       <div>
@@ -1856,7 +2049,7 @@ footer{
           <ul>
             <li><strong>抢占 Claude Skill 生态入口</strong> — 发布到 <code>awesome-claude-skills</code>（55k stars），让用户装一个 skill 就得到 AhaDiff。</li>
             <li><strong>强调 Local-First 个人工具定位</strong> — CodeRabbit 是企业 SaaS，AhaDiff 是个人本地。数据不出本机是卖点，不是借口。</li>
-            <li><strong>Claim 五状态 + SRS 组合</strong> — 这是 CodeRabbit 企业 review 基因不会做的事。它的客户是 reviewer，不是学习者。</li>
+            <li><strong>Claim 五状态 + SRS 组合</strong> — CodeRabbit 定位为 code review 工具（服务 reviewer），AhaDiff 定位为 diff learning 工具（服务学习者），用户群和优化方向不同。</li>
             <li><strong>棘轮机制差异化</strong> — CodeRabbit 的目标是"找出所有问题"；AhaDiff 的目标是"笔记质量单调递增"，完全不同的优化目标。</li>
           </ul>
         </div>
@@ -1872,7 +2065,7 @@ footer{
     <h2>一句话讲清 AhaDiff 是什么</h2>
     <p class="lead">四张卡片并排，你会一眼看到 AhaDiff 的位置。</p>
 
-    <div class="conclusion-grid">
+    <div class="conclusion-grid" style="grid-template-columns:repeat(5,1fr)">
       <div class="conclusion-card">
         <div class="conclusion-verb">解释</div>
         <div class="conclusion-name">DeepWiki</div>
@@ -1882,6 +2075,11 @@ footer{
         <div class="conclusion-verb">评审</div>
         <div class="conclusion-name">CodeRabbit</div>
         <div class="conclusion-phrase">审一次 PR 并给出行内评论</div>
+      </div>
+      <div class="conclusion-card">
+        <div class="conclusion-verb">图谱</div>
+        <div class="conclusion-name">Graphify</div>
+        <div class="conclusion-phrase">repo-level map（底层结构）</div>
       </div>
       <div class="conclusion-card">
         <div class="conclusion-verb">教学</div>
@@ -1909,11 +2107,11 @@ footer{
   <div class="footer-inner">
     <div class="footer-left">
       知返 AhaDiff · 竞品研究可视化
-      <span class="mono">generated 2026-04-20 · warm v1</span>
+      <span class="mono">generated 2026-04-21 · warm v2</span>
     </div>
     <div class="footer-right">
       sources: doc/知返设计坐标.md · doc/competitive-analysis-2026-04.md<br>
-      repo/ 源码 · 10 款产品官网 × 5 象限
+      repo/ 源码 · 12 款产品官网 × 5 象限
     </div>
   </div>
 </footer>
@@ -1931,11 +2129,13 @@ footer{
    ============================================================ */
 const products = {
   'ahadiff':{name:'知返 AhaDiff', tag:'MY', url:'local',
-    model:'Local CLI (Python 3.11+)', focus:'git diff → 学习笔记 + SRS + 证据链',
-    local:'YES — 所有产物在 .ahadiff/ 目录', claim:'5 状态（verified/weak/not_proven/contradicted/rejected）',
-    ratchet:'有（wiki_score + git worktree 隔离 + Phase 2.5）',
+    model:'Local CLI · Python 3.11+ / Typer / Rich / Pydantic / Jinja2 / Starlette+Uvicorn',
+    focus:'git diff → 学习笔记 + SRS + 证据链 · 8 维 rubric (100分) · SQLite 唯一真相源',
+    local:'YES — 所有产物在 .ahadiff/ · 前端 Jinja2 模板 + Vanilla JS（不用 React/Next.js）',
+    claim:'5 状态（verified/weak/not_proven/contradicted/rejected）',
+    ratchet:'有（wiki_score + git worktree 隔离 + Phase 2.5 + 8 维自研 rubric）',
     srs:'有（quiz.jsonl + review.sqlite + SM-2/FSRS）',
-    overlap:'自己', note:'本项目 · 当前设计阶段'},
+    overlap:'自己', note:'本项目 · 当前设计阶段 · v0.1 技术栈: Python 3.11+, Typer, Rich, Pydantic, Jinja2, Starlette+Uvicorn'},
   'coderabbit':{name:'CodeRabbit', tag:'SAAS', url:'https://coderabbit.ai',
     model:'SaaS $24/$48 per user/month（Pro/Pro Plus）',
     focus:'PR 逐行 review + 变更摘要 + 架构图 + AI 修复',
@@ -1979,7 +2179,15 @@ const products = {
   'awesome':{name:'awesome-claude-skills', tag:'OSS', url:'https://github.com/ComposioHQ/awesome-claude-skills',
     model:'MIT · 55k+ stars', focus:'Claude skills 社区汇编',
     local:'YES', claim:'无', ratchet:'无', srs:'无',
-    overlap:'低（发行通道）', note:'AhaDiff 应该上榜'}
+    overlap:'低（发行通道）', note:'AhaDiff 应该上榜'},
+  'graphify':{name:'Graphify', tag:'OSS', url:'https://pypi.org/project/graphify/',
+    model:'开源 PyPI · repo-level map 生成', focus:'仓库结构 → 知识图谱（repo-level map）',
+    local:'YES（本地运行）', claim:'无', ratchet:'无', srs:'无',
+    overlap:'低（互补） · AhaDiff 做 commit-level learning overlay', note:'互补关系：Graphify = 底层 repo map，AhaDiff = 上层 diff learning overlay，通过 ahadiff graph import 连接'},
+  'google-code-wiki':{name:'Google Code Wiki', tag:'SAAS', url:'https://cloud.google.com',
+    model:'Google Cloud 内部工具 · 企业向', focus:'整仓理解 + 代码搜索 + 文档生成',
+    local:'NO（云端索引）', claim:'无', ratchet:'无', srs:'无',
+    overlap:'低', note:'解释整仓（repo 粒度），不聚焦单次 diff；AhaDiff 是 diff 粒度学习'}
 };
 
 /* ============================================================

@@ -1,3 +1,5 @@
+> **⚠️ ARCHIVED**: 本文档为早期完整方案（多处术语过时：head_sha→source_ref、offline_only→strict_local、local_ux→spec_alignment、review.db→review.sqlite）。权威文档见 CLAUDE.md。保留仅供历史参考。
+
 # ahadiff 最终完整方案：Vibe Coding 后的“学回来”本地工具
 
 你的项目最终应该围绕一句话展开：

@@ -117,8 +117,8 @@ ahadiff/
 ├─ AhaDiff-Blueprint.html       # 8-layer architecture visualization (i18n / VCR / 30 CCs)
 ├─ AhaDiff-Competitors-Research.html  # Competitor matrix + 5 moats
 ├─ doc/                         # Design docs (Chinese)
-│  ├─ ahadiff设计思路.md          # Full architecture (MVP → v1.0)
-│  ├─ 知返ahadiff改名后的后续方案.md  # Brand redefinition + product upgrade
+│  ├─ ahadiff设计思路.md          # [ARCHIVED] Early architecture snapshot
+│  ├─ 知返ahadiff改名后的后续方案.md  # [ARCHIVED] Rename transition plan
 │  └─ AhaDiff_frontend_design_v1.1_revised.md  # Frontend design manual (v0.1=Jinja2 / v1.0=React)
 ├─ ui/                          # HTML prototypes v1–v6 (design history)
 └─ CLAUDE.md                    # Project AI context index

@@ -54,6 +54,8 @@
   - `src/ahadiff/contracts/eval_bundle.py`
   - `src/ahadiff/contracts/event_log.py`
   - `src/ahadiff/contracts/error_types.py`
+  - `src/ahadiff/contracts/orchestrator.py`
+  - `src/ahadiff/contracts/serve_app.py`
   - `doc/contract-freeze.md`
 - **依赖**: 无
 - **实施步骤**:
@@ -67,7 +69,15 @@
   8. 定义 PID lockfile 规范：lockfile 格式 `{pid}\n{start_time_iso}\n{command}`，加锁前检查 PID 存活性（`os.kill(pid, 0)`），死进程自动释放锁；提供 `ahadiff unlock --force` 手动清理
   9. 定义 crash recovery 状态机：stale lock → 自动释放；orphaned worktree → `ahadiff doctor` 自动清理；migration 部分失败 → 每个 migration 脚本在 `BEGIN EXCLUSIVE ... COMMIT` 事务中执行
   10. 写入 `doc/contract-freeze.md` 作为所有下游 Task 的权威参考
-- **验收标准**: 所有 5 个契约的 Pydantic schema 可 import，`pytest tests/unit/test_contracts.py` 全绿
+  11. 冻结 `Orchestrator` 接口契约：`OrchestratorCommand` DTO（`learn | improve | verify | serve`）+ `OrchestratorResult` 返回结构 + 三条主链路入口签名（`run_learn()`, `run_improve()`, `run_verify()`）。`core/orchestrator.py` 统一编排，`cli.py` 仅做参数解析和输出格式化
+  12. 冻结 `ServeApp` 接口契约：`src/ahadiff/serve/app.py` 的路由注册协议 + write token 鉴权（`X-AhaDiff-Token` header）+ `Host`+`Origin/Referer` 双校验 + `bind=127.0.0.1`（仅回环） + read-only 默认模式。API 端点清单：`GET /api/locale`, `PUT /api/locale`, `GET /api/runs`, `GET /api/run/:id`, `POST /api/signals/*`。路由鉴权分级：读路由无需 token，写路由必须验 token
+  13. 冻结**三层写锁矩阵**（解决并发安全）：
+      - `repo_write_lock`（`.ahadiff/ahadiff.lock` PID lockfile）：保护 `runs/` 目录写入、worktree 创建/清理。持有者：`ahadiff learn` / `ahadiff improve`
+      - `db_write_lock`（SQLite WAL mode + `busy_timeout=5000`）：保护 `review.sqlite` 写入。持有者：所有写 SQLite 的路径（results/signals/cards/migrations）
+      - `serve_write_lock`（Starlette 进程内 `asyncio.Lock`）：保护 serve 模式下并发 POST 请求的序列化。持有者：写路由 handler
+      - **获取顺序**（防死锁）：repo_write → db_write → serve_write，永远从外到内
+      - **覆盖映射**：`ahadiff learn` 需要 repo_write + db_write；`ahadiff serve POST` 需要 serve_write + db_write；`ahadiff improve` 需要 repo_write + db_write；`ahadiff export-results` 只读不锁
+- **验收标准**: 所有 7 个契约（5 原有 + orchestrator + serve）的 Pydantic schema 可 import，`pytest tests/unit/test_contracts.py` 全绿
 
 ### Layer 1（并行）— 工程骨架 + 文档修正 + UI 响应式修复
 
@@ -165,7 +175,12 @@
      - `--since "2h ago"`: 用 `git rev-list --first-parent --since` 获取命中 commit 列表；连续后缀则做端点 diff，非连续则聚合各 commit patch。`--author` 在 Python 层做精确过滤（git 的 `--author` 是正则匹配）
   3. 实现 `write_input_artifacts()` 生成 `metadata.json`，包含 `capability_flags`：`has_repo_context / has_symbol_index / has_cross_file_context / has_source_ref / has_graph`（Level 3 全 true，Level 2/1 按实际降级）
   4. 集成安全层：捕获后通过 `safety.redaction_pipeline()` 统一过滤 + redaction（脱敏必须在写入任何 artifact 之前完成）
-  5. **Large diff policy（前置到 capture stage）**：diff 超过 `config.toml [capture].soft_limit`（默认 2000 行）时启用 hunk 优先级排序（按修改密度 top-K 选择）；超过 `hard_limit`（默认 5000 行）时 clip 并标记 `metadata.json` 中 `degraded_flags.diff_clipped = true`；超过 `skip_limit`（默认 10000 行）时跳过并提示用户缩小范围。策略: skip > clip > summarize 三档，`degraded=true` 写进 score.json 和 results
+  5. **Large diff policy（前置到 capture stage）** + **degraded_flags 完整触发规则**：
+     - `diff_clipped`：diff 行数超过 `hard_limit`（默认 5000 行）时 clip，设置点=capture，传播点=metadata→score.json→results，UI 行为=显示 "[truncated]" 横幅
+     - `binary_only`：patch 中所有文件均为 binary diff 时，设置点=capture parser，传播点=metadata→lesson（跳过代码 walkthrough），UI 行为=显示 "Binary files only" 提示
+     - `file_count_exceeded`：变更文件数超过 `config.toml [capture].max_files`（默认 50）时，设置点=capture，传播点=metadata→lesson（仅处理 top-K 文件），UI 行为=显示 "N files omitted"
+     - `token_exceeded`：组装 context 后 token 数超过 provider 上下文窗口时，设置点=provider（请求前估算），传播点=score.json，UI 行为=显示 "Context truncated"
+     - 策略总览：skip（>10000行）> clip（>5000行）> summarize（>2000行），`degraded=true` 写进 score.json 和 results
   6. 实现 `--patch file.patch` / `--patch -`（stdin）Level 1 输入：直接读取 unified diff 文本，跳过 git 操作
   7. 实现 PID lockfile（`.ahadiff/ahadiff.lock`）：第二个 `ahadiff learn` 实例检测到锁时提示 "另一个 ahadiff 进程正在运行(PID=xxx)"，防止并发写入 review.sqlite 和 results.tsv
 - **验收标准**:

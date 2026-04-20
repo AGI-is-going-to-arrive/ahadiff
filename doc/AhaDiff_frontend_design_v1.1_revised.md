@@ -3,6 +3,7 @@ title: "知返 AhaDiff v1.1 前端视觉与交互手册"
 subtitle: "3 风格 × 11 页面 = 33 个 Claude Design / Stitch 可生成界面"
 author: "Revised design spec based on uploaded frontend design"
 date: "2026-04-19"
+note: "⚠️ 技术栈分版说明：v0.1 使用 Jinja2 + Vanilla JS（无 Node 构建链）；v1.0+ 可升级为 Next.js + React + Tailwind + shadcn/ui。本文档中涉及 Next.js/React 的内容仅适用于 v1.0 阶段，v0.1 开发时请忽略。"
 lang: zh-CN
 mainfont: DejaVu Serif
 monofont: DejaVu Sans Mono
