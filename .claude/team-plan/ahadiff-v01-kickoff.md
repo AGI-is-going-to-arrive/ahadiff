@@ -34,6 +34,7 @@
 3. **Phase 2.5 阈值**：默认 2 轮
 4. **Backend improve 可写集**：仅 `prompts/*.md`，viewer 模板归前端工作流
 5. **模型协作**：Claude 编排+前端实现，Codex 后端实现，Gemini 前端评审(gemini-3.1-pro-preview)
+6. **阶段门禁（Stage Gate）**：每完成一个 Stage 必须通过 Codex+Claude 交叉审查（含前端的 Stage 加 Gemini），0 Critical + 0 High 方可进入下一 Stage（详见 CLAUDE.md "阶段门禁" 章节）
 
 ### 技术栈
 
@@ -69,8 +70,8 @@
   8. 定义文件锁规范：使用 `portalocker` 作为文件锁真相源（跨平台）。lockfile `.ahadiff/ahadiff.lock` 中 `{pid}\n{start_time_iso}\n{command}` 仅作诊断元数据，不用于活性检查。提供 `ahadiff unlock --force` 手动清理
   9. 定义 crash recovery 状态机：stale lock → portalocker 自动释放（进程退出即释放）；orphaned worktree → `ahadiff doctor` 自动清理；migration 部分失败 → 每个 migration 脚本在 `BEGIN EXCLUSIVE ... COMMIT` 事务中执行
   10. 写入 `doc/contract-freeze.md` 作为所有下游 Task 的权威参考
-  14. 冻结 **Config 优先级链**：`ENV(AHADIFF_*) → CLI flag → per-repo .ahadiff/config.toml → global ~/.config/ahadiff/config.toml → defaults`。凭证类：`env secret → per-repo env_var_name → global env_var_name → none`。Serve/request：`cookie → Accept-Language → CLI session → per-repo → global → system → defaults`
-  15. 冻结 **数据范围契约**：真相源永远 per-repo（review.sqlite / audit.jsonl / concepts.jsonl / prompts/ / VCR）；global（`~/.config/ahadiff/`）只做派生索引/账本/偏好，不参与 ratchet 判定
+  14. 冻结 **Config 优先级链**：`ENV(AHADIFF_*) → CLI flag → per-repo .ahadiff/config.toml → global_config_dir()/config.toml → defaults`。凭证类：`env secret → per-repo env_var_name → global env_var_name → none`。Serve/request：`cookie → Accept-Language → CLI session → per-repo → global → system → defaults`
+  15. 冻结 **数据范围契约**：真相源永远 per-repo（review.sqlite / audit.jsonl / concepts.jsonl / prompts/ / VCR）；global（`global_config_dir()`，各平台实际路径见 data-scope 文档）只做派生索引/账本/偏好，不参与 ratchet 判定
   16. 预留 **UsageEvent schema**：`event_id / run_id / repo_id / provider_class / model_id / input_tokens / output_tokens / cost_usd / pricing_version / cost_confidence / billing_mode / execution_origin / api_principal_hash / timestamp`（v0.2 实现 global usage.sqlite）
   17. 预留 **Allowlist policy contract**：builtin hard_block（不可禁用）+ soft_detect（可被 allowlist suppress）；v0.1 支持 exact/hash/path-scope，不支持 regex；每 run 存 `allowlist_digest`
   11. 冻结 `Orchestrator` 接口契约：`OrchestratorCommand` DTO（`learn | improve | verify | serve`）+ `OrchestratorResult` 返回结构 + 三条主链路入口签名（`run_learn()`, `run_improve()`, `run_verify()`）。`core/orchestrator.py` 统一编排，`cli.py` 仅做参数解析和输出格式化

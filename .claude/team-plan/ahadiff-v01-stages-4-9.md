@@ -1,8 +1,9 @@
 # AhaDiff v0.1 开发计划 — 第 4-9 段 Task 拆分
 
-> 生成时间：2026-04-20
+> 生成时间：2026-04-20（第四轮终审更新：2026-04-21）
 > 基于：ahadiff-v01-revision.md + Codex 技术审查 + Gemini 前端评审
 > 依赖：Layer 1-3（Task 1-8）全部完成
+> **阶段门禁**：每个 Stage 完成后必须通过 Codex+Claude 交叉审查（含前端的 Stage 加 Gemini），详见 CLAUDE.md "阶段门禁" 章节
 
 ---
 
@@ -55,8 +56,10 @@
   - `src/ahadiff/quiz/generator.py`
   - `src/ahadiff/quiz/schemas.py`
   - `src/ahadiff/quiz/cards.py`
+  - `src/ahadiff/wiki/concepts.py`
   - `prompts/quiz_generate.md`
   - `tests/unit/test_quiz_generator.py`
+  - `tests/unit/test_concepts.py`
 - **依赖**: Task 9（Lesson）+ Task 8（Claim）
 - **实施步骤**:
   1. 定义 `QuizQuestion`, `QuizSet`, `ReviewCard` schema。ReviewCard 必须包含 anchor 元数据：`source_ref`、`file_id`（稳定标识，与 EvidenceAnchor 统一）、`display_path`（用户可见路径）、`hunk_id`、`hunk_hash`、`symbol`、`change_kind`。**注意**：`path` 字段已废弃，统一使用 `file_id + display_path` 二元组（与 CC-NEW-3 闭合方案一致）
@@ -64,8 +67,10 @@
   3. 实现 `generate_quiz()` → `quiz.jsonl`（每题含 source_claims / concepts / file:line evidence）
   4. 实现 `generate_cards()` → `cards.jsonl`（SRS 复习卡，每张 <500 token）
   5. 实现 `ahadiff quiz <run_id>` CLI 子命令（交互式答题）
-  6. **Quiz staleness 惰性检测**（Anki 无此能力，AhaDiff 创新点）：`CardState = active | stale | archived`。当 `ahadiff review` 或 `ahadiff quiz` 取卡时，用当前 HEAD 重新解析 card 的 anchor（`file_id` → 反查当前路径 + hunk_hash + symbol）。解析失败 → 标记 `stale` + `stale_reason`（file_deleted/symbol_removed/line_drifted），移出正常 due 队列，CLI 提示 `ahadiff regenerate --only quiz <run_id>` 或 `ahadiff card archive <card_id>`。rename/move 场景优先用 symbol 判定，path 失效但 symbol 可解析时判为 `moved` 而非 stale。非 git 输入（patch/compare）标记 `staleness_unknown`，不误报
-- **验收标准**: `ahadiff quiz <run_id>` 能做题，每题可回链到 source_claims 和 file:line；stale card 不更新 ease/interval
+  6. **Quiz staleness 惰性检测**（Anki 无此能力，AhaDiff 创新点）：`CardState = active | stale | archived`。当 `ahadiff review` 或 `ahadiff quiz` 取卡时，用当前 HEAD 重新解析 card 的 anchor（`file_id` → 反查当前路径 + hunk_hash + symbol）。解析失败 → 标记 `stale` + `stale_reason`（file_deleted/symbol_removed/line_drifted），移出正常 due 队列，CLI 提示 `ahadiff regenerate --only quiz <run_id>` 或 `ahadiff card archive <card_id>`。rename/move 场景优先用 symbol 判定，path 失效但 symbol 可解析时判为 `moved` 而非 stale。非 git 输入（`patch_file`/`patch_stdin`/`file_compare`）标记 `staleness_unknown`，不误报
+  7. **concepts.jsonl 实现**（~120-180 行）：实现 `src/ahadiff/wiki/concepts.py`，包含 `append_concepts(run_id, concepts_list)`、`load_visible_concepts(head_ref)` 函数。存储为 repo 级 `.ahadiff/concepts.jsonl`（append-only 日志格式，允许同一 term_key 多行存在）。每条记录：`{concept, term_key, source_refs[], branch_hint, introduced_by_run, updated_by_runs[], related_claims[], file_refs[]}`。**存储模型：每个 term_key 恰好一行**（upsert 语义）。`append_concepts()` 写入时按 term_key 查找已有行：存在则原地更新该行字段（合并 `updated_by_runs`/`file_refs`，追加 `source_refs[]`）；不存在则追加新行。文件整体保持 JSONL 格式但**每个 term_key 唯一**。**读取时过滤**：`load_visible_concepts(head_ref)` 扫描所有行，检查 `source_refs[]` 中是否有**任一** ref 是当前 HEAD 的 ancestor（`any(is-ancestor)`），有则可见。**non-git 输入守卫**：当 `source_kind` 为 `patch_file`/`patch_stdin`/`file_compare` 时，`source_ref` 为内容 hash 而非 git commit，此时概念仅在 run-local 视图展示（写入 `runs/<run_id>/concepts_local.jsonl`），不进入全局 `concepts.jsonl`
+  8. **concept 去重**（CC-NEW-5 闭合方案）：`compute_term_key()` 使用 NFKD + lowercase + strip + slug 归一化。`append_concepts()` 时按 term_key 检查已存在，存在则合并 `updated_by_runs`、`file_refs`，**并将当前 run 的 commit 追加到 `source_refs[]` 数组**（保留所有引入过该概念的 commit，确保任何分支上只要有一个 source_ref 可达即可见；解决 squash/cherry-pick 和多分支并行问题）
+- **验收标准**: `ahadiff quiz <run_id>` 能做题，每题可回链到 source_claims 和 file:line；stale card 不更新 ease/interval；`concepts.jsonl` 可正确追加/去重/按 branch 过滤可见概念
 
 ---
 
@@ -192,7 +197,7 @@
   - `src/ahadiff/serve/routes_locale.py`
   - `src/ahadiff/serve/auth.py`
   - `tests/unit/test_serve_app.py`
-- **依赖**: Task 0（serve_app contract）+ Task 14（Viewer 页面）+ Task 15（review.sqlite schema）
+- **依赖**: Task 0（serve_app contract）+ Task 13（Jinja2 基础架构）+ Task 15（review.sqlite schema，signals/result 路由需要其表结构）。注：与 Task 14 并行开发，不阻塞等待 Task 14 完成
 - **实施步骤**:
   1. 实现 Starlette app 工厂，`bind=127.0.0.1:8765`（**仅绑定回环地址，拒绝外网连接**）
   2. 实现路由鉴权矩阵：
@@ -228,7 +233,7 @@
   1. 创建 `review.sqlite` schema（**启用 WAL mode + busy_timeout=5000**）：`schema_version`(整数版本号，每次 migration 递增)、`cards`(id/concept/run_id/due_date/interval/ease/reps)、`result_events`(物理事件表，SQLite 为唯一真相源)、`learning_signals`(用户行为日志)。schema_version 嵌入 DB，不匹配时通过顺序 SQL migration 自动升级
   2. 实现 SM-2 SRS 调度算法
   3. 实现 `ahadiff review` CLI：展示 due cards，记录答题结果
-  4. 实现 `ahadiff mark <claim_id> wrong` CLI：用户标记 claim 错误 → 写入 learning-signal.jsonl
+  4. 实现 `ahadiff mark <claim_id> wrong` CLI：用户标记 claim 错误 → 写入 review.sqlite `learning_signals` 表
   5. 实现 `results.tsv → result_events` 入库契约：
      - `result_events` 是多行事件表，同一 run_id 可有多行（如 keep → targeted_verify → keep_final）。主键为 `event_id`（UUID v7，全局唯一），`run_id`/`event_type`/`timestamp` 为二级索引
      - `result_events` 是**物理表**（非视图），schema 与 results.tsv 列一一对应 + `event_id` + `eval_bundle_version`
@@ -246,7 +251,7 @@
   10. 实现 `ahadiff db backup` / `ahadiff db restore <backup_path>`：手动备份/恢复
   11. **取消 TSV 无损 repair 承诺**：`ahadiff db repair` 更名为 `ahadiff db import-results --lossy`，仅作为最后手段，显式声明为有损导入（合成 event_id，event_type 标记为 `imported_from_tsv`）。默认隐藏，需 `--i-understand-this-is-lossy` flag
   12. 实现 `ahadiff db check`：验证 SQLite schema_version 与期望一致、WAL 完整性、event_id 唯一性
-- **验收标准**: `ahadiff review` 显示 due cards，wrong concepts 写入 learning-signal.jsonl；upgrade 前有 .bak 备份；migration 失败自动回滚
+- **验收标准**: `ahadiff review` 显示 due cards，wrong concepts 写入 review.sqlite `learning_signals` 表；upgrade 前有 .bak 备份；migration 失败自动回滚
 
 ---
 
@@ -405,9 +410,9 @@ Layer 5 (串行+并行):
                  Task 12 (依赖 Task 0 + Task 11，与 Task 10 并行)
                  Task 13 (依赖 Task 9 + Task 11 + Task 12[只读]，与 Task 10 并行)
    ↓
-Layer 6 (串行):  Task 14 (依赖 Task 13，串行)
-                 Task 14.5 (依赖 Task 14，Serve 写入端点)
+Layer 6 (并行):  Task 14 (依赖 Task 13)
                  Task 15 (依赖 Task 10 + Task 12，与 Task 14 并行)
+                 Task 14.5 (依赖 Task 0 + Task 13 + Task 15，与 Task 14 并行但需等 Task 15 schema)
    ↓
 Layer 7 (串行):  Task 16 (依赖 Task 11 + Task 12 + Task 15)
    ↓             Task 17 (依赖 Task 16，串行)
@@ -448,11 +453,11 @@ Layer 8 (串行):  Task 19 (依赖 CLI 接口冻结：Task 9+10+11+15+16)
 - shareable result cards（`ahadiff card`）→ v0.2
 - index.md 增量 wiki → v0.2
 - **concepts.jsonl 最小版提前到 v0.1**（branch-aware 方案）：
-  - **存储**：repo 级 `.ahadiff/concepts.jsonl`，append-only 日志
-  - **每条记录**：`{concept, source_ref, branch_hint, introduced_by_run, updated_by_runs[], related_claims[], file_refs[]}`
-  - **读取时 branch 过滤**：`load_visible_concepts(head_ref)` 只返回 `source_ref` 是当前 HEAD ancestor 的记录（`git merge-base --is-ancestor`）；不可达概念保留在日志但默认隐藏
-  - **merge 语义**：feature-A 合并到 main 后，若原 commit 仍可达，概念自动重新可见；squash/cherry-pick 导致原 SHA 不可达时为已知限制，等待后续 run 再次引入
-  - **去重**：`append_concepts()` 时按 concept 名称（normalized: lowercase + strip）检查已存在，存在则合并 `updated_by_runs` 和 `file_refs`
+  - **存储**：repo 级 `.ahadiff/concepts.jsonl`，JSONL 格式但每个 term_key 恰好一行（upsert 语义，非纯追加）
+  - **每条记录**：`{concept, term_key, source_refs[], branch_hint, introduced_by_run, updated_by_runs[], related_claims[], file_refs[]}`
+  - **读取时 branch 过滤**：`load_visible_concepts(head_ref)` 只返回 `source_refs[]` 中有任一 ref 是当前 HEAD ancestor 的记录（`any(is-ancestor)`）；全部不可达的概念保留在日志但默认隐藏
+  - **merge 语义**：feature-A 合并到 main 后，若原 commit 仍可达，概念自动重新可见；squash/cherry-pick 导致原 SHA 不可达时，后续 run 会追加新 source_ref 到 `source_refs[]` 使概念重新可达
+  - **去重**：`append_concepts()` 时按 `compute_term_key(concept)` 检查已存在（NFKD + lowercase + slug 归一化），存在则合并 `updated_by_runs`、`file_refs`，并追加当前 commit 到 `source_refs[]`
   - **非 git 输入**：概念仅在 run-local 视图展示，不进入全局 concepts
   - **实现文件**：`src/ahadiff/wiki/concepts.py`（~120-180 行）
 - Claim Inspector 独立页面 → 已合并到 Diff+Evidence Viewer 侧边栏
@@ -533,7 +538,7 @@ Layer 8 (串行):  Task 19 (依赖 CLI 接口冻结：Task 9+10+11+15+16)
 - **文件范围**:
   - `viewer/templates/partials/_topbar.html` — 语言切换按钮
   - `viewer/static/style.css` — 按钮样式
-  - `src/ahadiff/viewer/serve_app.py` — API endpoint
+  - `src/ahadiff/serve/app.py` — locale API endpoint（统一 serve 模块路径）
 - **依赖**: Task i18n-3 + Task 14（Viewer 页面存在）+ Task 14.5（Serve 存在）
 - **实施步骤**:
   1. Topbar 右侧添加 zh/EN 切换按钮（紧邻主题切换按钮）
@@ -586,6 +591,6 @@ Task 0 (Schema Freeze)
 - Layer 6: ~1 天（Review）
 - Layer 7: ~2 天（Improve + Targeted + Benchmark 并行）
 - Layer 8: ~1 天（Install + GitHub Action 并行）
-- **i18n: ~3.75 天（可与 Layer 4-8 并行，不增加关键路径）**
+- **i18n: ~3.75 天（理论并行，实际因渗透集成可能需串行）**
 
-**总计：~8 天**（主线）+ i18n 并行，加上 Layer 1-3 的 ~3 天 = **v0.1 完整开发周期 ~11-12 天**
+**总计：~8 天**（主线）+ i18n + 集成开销，加上 Layer 1-3 的 ~5-7 天 = **v0.1 完整开发周期修正估计 ~14-16 天**（原估 11-12 天偏乐观，第四轮终审修正）

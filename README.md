@@ -83,15 +83,18 @@ ahadiff install windsurf  # Windsurf → .windsurf/rules/
 
 ```text
 .ahadiff/
-├─ index.md
-├─ concepts.md
-├─ commits/<sha>/
+├─ config.toml           # repo 级配置
+├─ review.sqlite         # 唯一真相源（SRS/results/signals）
+├─ concepts.jsonl        # 概念图谱（term_key-keyed upsert）
+├─ runs/<run_id>/
 │  ├─ lesson.md          # 带证据链的学习笔记
 │  ├─ claims.jsonl       # 可验证断言
-│  ├─ quiz.md            # 主动回忆题
+│  ├─ quiz.jsonl         # 主动回忆题
+│  ├─ cards.jsonl        # SRS 复习卡
 │  └─ score.json         # 8 维评分 + verdict
-├─ results.tsv           # ratchet 历史（不进 git）
-└─ specs/<feature>/      # 计划-实现-学习闭环
+├─ audit.jsonl           # LLM 调用审计
+├─ ahadiff.lock          # portalocker 文件锁
+└─ .ahadiffignore        # 路径过滤
 ```
 
 ## 8 维评分 Rubric
@@ -130,7 +133,7 @@ ahadiff/
 
 下一步路线图：
 
-- [ ] `v0.1`（MVP）：CLI + Lesson + Evaluator + Ratchet 全链路 + `ahadiff serve` 本地交互服务器 + 中英文 i18n
+- [ ] `v0.1`（MVP，~14-16 天）：CLI + Lesson + Evaluator + Ratchet 全链路 + `ahadiff serve` 本地交互 + i18n + 阶段门禁（Codex+Claude+Gemini 交叉审查）
 - [ ] `v0.2`：watchdog 增量重生 + section-level helpfulness + forgetting-risk dashboard
 - [ ] `v0.3`：Textual TUI + Socratic follow-up
 - [ ] `v1.0`：Next.js + React 19 完整前端 + Benchmark Transparency

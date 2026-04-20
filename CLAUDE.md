@@ -200,6 +200,61 @@ python3 -m http.server 8765
 | `doc/**` | Claude 维护 | 无需 review |
 | `CLAUDE.md` | Claude 维护 | 无需 review |
 
+### 阶段门禁：跨模型交叉审查（Stage Gate）
+
+**硬性要求**：每完成一个 Stage/Phase 后，**必须**通过跨模型交叉审查门禁才能进入下一阶段。未通过门禁的代码不得合并到主分支。
+
+#### 审查流程
+
+```
+Stage N 完成 → 三模型并行审查 → 汇总问题 → 修复 → 验证 → 进入 Stage N+1
+```
+
+#### 三模型职责
+
+| 模型 | 审查重点 | 工具 | 参与 Stage |
+|------|---------|------|-----------|
+| **Codex CLI** | 代码正确性、边界条件、测试覆盖、类型安全 | `codex review --uncommitted` | 全部 |
+| **Claude** | 架构一致性、文档同步、集成点验证、安全审计 | Claude Code CLI | 全部 |
+| **Gemini CLI** | 前端/UX 评审、视觉一致性、交互合理性 | `gemini` CLI（429 时 Claude 兜底） | 含前端的 Stage（1/4/7） |
+
+#### 门禁通过标准
+
+- **GO**：0 Critical + 0 High findings → 直接进入下一 Stage
+- **CONDITIONAL GO**：0 Critical + ≤3 High → 修复后重新验证，无需全量审查
+- **NO GO**：≥1 Critical 或 >3 High → 全量修复 + 全量重新审查
+
+#### 审查清单（每个 Stage 必检）
+
+1. **功能正确性**：所有新增功能的 happy path + edge case 通过测试
+2. **Corner case 覆盖**：对照 CC 列表验证相关 CC 已闭合
+3. **文档同步**：CLAUDE.md、kickoff.md、stages-4-9.md 与代码一致
+4. **类型安全**：`pyright --strict` 零错误
+5. **代码规范**：`ruff check` + `ruff format --check` 通过
+6. **安全扫描**：无 hardcoded secrets、无 SQL injection、无 path traversal
+7. **跨平台兼容**：pathlib 使用、portalocker 调用、编码处理
+8. **集成点验证**：上下游 Task 接口契约匹配
+
+#### Stage 划分对应表
+
+| Stage | 包含 Task | 门禁重点 | 审查模型 |
+|-------|----------|---------|---------|
+| Stage 0 | Task 0 (Schema Freeze) | 契约可 import + 序列化正确 | Codex + Claude |
+| Stage 1 | Task 1-4 (Infra + CLI + Safety + UI Fix) | CLI 骨架 + 安全脱敏 + 响应式修复 | Codex + Claude + Gemini（Task 4 前端） |
+| Stage 2 | Task 5-8 (Capture + Parse + Provider + Claim) | diff 捕获 + 结构化 + LLM 接入 + Claim 验证 | Codex + Claude |
+| Stage 3 | Task 9-12 (Lesson + Quiz + Eval + Ratchet) | 生成 + SRS + 评估 + 棘轮 | Codex + Claude |
+| Stage 4 | Task 13-14 (Viewer) | 前端渲染（Jinja2 + 核心页面） | Codex + Claude + Gemini |
+| Stage 5 | Task 15 + 14.5 + 16-17 (DB + Serve + Improve) | review.sqlite schema → Serve 写入端点 → 改进循环 | Codex + Claude |
+| Stage 6 | Task 18-20 (Bench + Deploy) | 基准测试 + CI + 发布 | Codex + Claude |
+| Stage 7 | i18n-0~6 (国际化) | 全链路双语 + locale 降级 | Codex + Claude + Gemini |
+
+#### Corner Case 回归
+
+每个 Stage 门禁期间，必须验证以下 CC 类别：
+- **本 Stage 新增的 CC**：确认已实现闭合方案
+- **跨 Stage CC**：确认未因本 Stage 修改而回归
+- **CC-GAP 系列**：确认高风险项（GAP-2 网络中断、GAP-3 SQLite 损坏、GAP-10 Unicode 路径）已覆盖
+
 ## 变更记录 (Changelog)
 
 | 时间 | 变更 |
@@ -221,3 +276,4 @@ python3 -m http.server 8765
 | 2026-04-21 ~02:00 | 六轮深度修订（Claude+Codex+Gemini 三模型交叉 review+fact-check）：(1) Task 0 扩展至 13 步（新增 orchestrator 契约、serve_app 契约、三层锁矩阵 repo_write→db_write→serve_write）；(2) Task 5 degraded_flags 完整触发规则（4 种 flag 各有设置点/传播点/UI 行为）；(3) Task 10 ReviewCard anchor 统一为 file_id+display_path（废弃 path 字段）；(4) Task 12 non_ratcheted 第 9 态判定条件（has_git_ancestry==false）；(5) Task 13 新增 6 步（print CSS/ratchet 图表迁移/XSS bleach/static 按钮/焦点陷阱/i18n 过滤器）+验收标准 3 项（WCAG AA/打印/XSS）；(6) 新增 Task 14.5 Serve Backend 完整定义（7 步实施+3 项验收）；(7) DAG 并行分组重写修正依赖关系；(8) HTML Blueprint 6 项 fact-check 修复（RunStatus 9 态/serve 契约/锁描述/状态标签）；(9) HTML Competitors 3 项措辞中性化；(10) 3 份早期文档标 ARCHIVED；(11) 前端手册加技术栈分版说明 |
 | 2026-04-21 | 第三轮开工就绪审查（Claude+Codex，Gemini 429 Claude 兜底）：(1) 跨平台 10 项全闭合（portalocker 替代 os.kill / pathlib 强制 / locale.getlocale 替代已弃用 getdefaultlocale / webbrowser.open / os.replace / 短路径策略 / WAL 网络盘 fail-fast / Rich auto-detect / CI 三平台矩阵）；(2) Python 3.11+ 最终确认；(3) Windows 支持 PowerShell 一等 + cmd.exe fallback；(4) Blueprint HTML 修正 portalocker + WAL+busy_timeout |
 | 2026-04-21 | 数据范围架构设计（Claude+Codex 双模型全功能评估）：(1) 确立 per-repo truth + global derived governance 原则；(2) 9 功能逐一评估（A-I）4 项需 v0.1 调整（cost schema / allowlist / benchmark manifest / config precedence）5 项不动；(3) Config 5 层优先级链冻结；(4) Task 0/1/2/7/18 补充新契约（portalocker / allowlist policy / UsageEvent / audit rotation / manifest）；(5) Blueprint 新增数据范围+跨平台可视化卡片 |
+| 2026-04-21 | 第四轮终审（Claude Opus 4.6 + 3 并行代理）：(1) 判定 CONDITIONAL GO→GO（C-1 路径冲突复核降级为 Info，C-2 concepts.jsonl 已归入 Task 10）；(2) 新增 13 个 CC-GAP corner case（高优 GAP-2 网络中断需 Task 7 处理）；(3) 8 项 Warning 各需在相应 Task 启动前修复；(4) 新增阶段门禁制度（Stage Gate：Codex+Claude+Gemini 三模型交叉审查，0 Critical+0 High 方可进入下一 Stage）；(5) karpathy-skills 可追溯性测试/验证计划结构/Before-After 范例模式采纳；(6) 4 项过度工程化简化建议（CC-NEW-6/7/8/3）；(7) 实际工期修正为 14-16 天 |

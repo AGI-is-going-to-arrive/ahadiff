@@ -1168,7 +1168,7 @@ footer{
           → 生成 <code>4</code> 条带证据的笔记<br>
           → 生成 <code>5</code> 道主动回忆 quiz<br>
           → <code>14</code> 天后 SRS 自动推送给你复习<br>
-          v0.1 通过 <code>ahadiff serve</code> 实现浏览器内交互（Quiz/SRS 答题通过 REST API 写回），不再需要在 terminal 和浏览器间来回切换。
+          v0.1 通过 <code>ahadiff serve</code> 实现浏览器内交互（Quiz/SRS 答题通过 REST API 写回 <code>review.sqlite</code>），不再需要在 terminal 和浏览器间来回切换。
         </div>
         <div class="moat-compare">
           <span class="moat-compare-chip no">CodeRabbit 只评审</span>
@@ -1250,7 +1250,8 @@ footer{
         </div>
         <div class="moat-analogy">写日记锁在家里抽屉，而不是发到云端 SaaS。</div>
         <div class="moat-example">
-          所有产物存 <code>.ahadiff/</code> 目录<br>
+          per-repo 真相源存 <code>.ahadiff/</code> 目录（review.sqlite / concepts.jsonl / audit.jsonl / runs/）<br>
+          全局目录仅做派生索引和偏好，不参与 ratchet 判定<br>
           出本机的只有 LLM API prompt 本身（脱敏后）<br>
           脱敏顺序（不可跳过）：<code>raw</code> → <code>scan</code> → <code>redact</code> → 才能 <code>log/cache/model/render</code><br>
           五道安全闸门：<code>.ahadiffignore</code> → secret scan(两层扫描) → UNTRUSTED_DIFF 边界（6 类） → 隐私三档 → <code>audit.jsonl</code><br>
@@ -1344,7 +1345,7 @@ footer{
         <div class="moat-analogy">有网看在线视频，没网照样看下载好的。两个模式用同一模板，体验一致。</div>
         <div class="moat-example">
           <code>file://</code> 静态模式 — 双击 HTML 即可阅读笔记（只读，Quiz 按钮提示 CLI 命令）<br>
-          <code>ahadiff serve</code> — 本地 Starlette + Uvicorn，Quiz/SRS 答题写回 SQLite<br><br>
+          <code>ahadiff serve</code> — 本地 Starlette + Uvicorn，Quiz/SRS 答题写回 <code>review.sqlite</code><br><br>
           同一 Jinja2 模板自动检测：有 serve → REST API 交互；无 serve → 优雅降级显示命令提示。
         </div>
         <div class="moat-compare">
@@ -1755,7 +1756,7 @@ footer{
           <td style="padding:10px 14px;font-weight:600">log.md</td>
           <td style="padding:10px 14px">时间线日志，append-only</td>
           <td style="padding:10px 14px"><code>concepts.jsonl</code>（v0.1）</td>
-          <td style="padding:10px 14px;color:#8B7355">结构化 JSONL 替代纯文本 log，支持 branch-aware 过滤</td>
+          <td style="padding:10px 14px;color:#8B7355">结构化 JSONL，term_key-keyed upsert log + branch-aware 过滤（git ancestry 判断概念可见性）</td>
         </tr>
         <tr style="border-bottom:1px solid #EDE8DB">
           <td style="padding:10px 14px;font-weight:600">Query 反写</td>
@@ -1931,7 +1932,7 @@ footer{
 
         <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px">
           <div class="borrow-howto-tag" style="margin:0">serve 模式</div>
-          <div class="borrow-howto-body"><code>ahadiff serve</code> — 轻量本地服务器（Starlette + Uvicorn），Quiz/SRS 答题在浏览器内完成，结果直接写回 SQLite，不用在 terminal 和浏览器间来回切换。同一模板在 serve 和 <code>file://</code> 下自动切换（Progressive Enhancement）。</div>
+          <div class="borrow-howto-body"><code>ahadiff serve</code> — 轻量本地服务器（Starlette + Uvicorn），Quiz/SRS 答题在浏览器内完成，结果直接写回 <code>review.sqlite</code>（唯一真相源），不用在 terminal 和浏览器间来回切换。同一模板在 serve 和 <code>file://</code> 下自动切换（Progressive Enhancement）。</div>
         </div>
 
         <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px">
@@ -2096,8 +2097,8 @@ footer{
     <div style="margin-top:72px;padding:40px;background:var(--ink-01);color:var(--paper-00);border-radius:var(--r-xl);text-align:center">
       <div style="font-family:var(--mono);font-size:12px;color:var(--clay);letter-spacing:.15em;margin-bottom:14px">NEXT ACTION</div>
       <h3 style="color:var(--paper-00);font-style:italic;font-weight:400;max-width:720px;margin:0 auto;font-size:24px;line-height:1.5">
-        约束集已写入 <span class="mono" style="color:var(--clay)">.claude/team-plan/ahadiff-v01-comprehensive-evaluation-research.md</span><br>
-        运行 <span class="mono" style="color:var(--clay)">/ccg:team-plan</span> 进入规划阶段
+        v0.1 Kickoff 已完成 → <span class="mono" style="color:var(--clay)">.claude/team-plan/ahadiff-v01-kickoff.md</span><br>
+        数据范围架构已冻结 → <span class="mono" style="color:var(--clay)">.claude/team-plan/ahadiff-data-scope-architecture.md</span>
       </h3>
     </div>
   </div>
@@ -2110,7 +2111,7 @@ footer{
       <span class="mono">generated 2026-04-21 · warm v2</span>
     </div>
     <div class="footer-right">
-      sources: doc/知返设计坐标.md · doc/competitive-analysis-2026-04.md<br>
+      sources: doc/知返设计坐标.md (archived) · doc/competitive-analysis-2026-04.md<br>
       repo/ 源码 · 12 款产品官网 × 5 象限
     </div>
   </div>
@@ -2131,11 +2132,11 @@ const products = {
   'ahadiff':{name:'知返 AhaDiff', tag:'MY', url:'local',
     model:'Local CLI · Python 3.11+ / Typer / Rich / Pydantic / Jinja2 / Starlette+Uvicorn',
     focus:'git diff → 学习笔记 + SRS + 证据链 · 8 维 rubric (100分) · SQLite 唯一真相源',
-    local:'YES — 所有产物在 .ahadiff/ · 前端 Jinja2 模板 + Vanilla JS（不用 React/Next.js）',
+    local:'YES — per-repo truth（.ahadiff/）+ global derived（config/registry，非真相源） · 前端 Jinja2 模板 + Vanilla JS（不用 React/Next.js）',
     claim:'5 状态（verified/weak/not_proven/contradicted/rejected）',
     ratchet:'有（wiki_score + git worktree 隔离 + Phase 2.5 + 8 维自研 rubric）',
     srs:'有（quiz.jsonl + review.sqlite + SM-2/FSRS）',
-    overlap:'自己', note:'本项目 · 当前设计阶段 · v0.1 技术栈: Python 3.11+, Typer, Rich, Pydantic, Jinja2, Starlette+Uvicorn'},
+    overlap:'自己', note:'本项目 · 当前设计阶段 · v0.1 技术栈: Python 3.11+, Typer, Rich, Pydantic, Jinja2, Starlette+Uvicorn · 数据范围: per-repo truth + global derived governance · portalocker 跨平台文件锁'},
   'coderabbit':{name:'CodeRabbit', tag:'SAAS', url:'https://coderabbit.ai',
     model:'SaaS $24/$48 per user/month（Pro/Pro Plus）',
     focus:'PR 逐行 review + 变更摘要 + 架构图 + AI 修复',
@@ -2299,7 +2300,7 @@ const borrowData = [
     title:`5 列 TSV 日志（非 CSV / JSONL）`,
     loc:`program.md:L67-L88`,
     how:`固定列：commit val_bpb memory_gb status description。status 枚举 keep|discard|crash。tab 分隔避免 description 中 comma 破坏。`,
-    apply:`<b>已覆盖</b> — HC-15 已固定 11 列（非 5 列），不回退。落地于 L5 eval/results.py。`},
+    apply:`<b>已覆盖</b> — review.sqlite 为唯一真相源，results.tsv 降级为人类可读导出视图（11 列）。落地于 L5 eval/results.py。`},
   {n:3, proj:'autoresearch', pri:'P2', verdict:'deferred',
     title:`gc.disable() + 定期 gc.collect()`,
     loc:`train.py:L592-L598`,
@@ -2336,7 +2337,7 @@ const borrowData = [
     title:`results.tsv 增 eval_mode 列（full_test / dry_run）`,
     loc:`SKILL.md:L232-L239`,
     how:`TSV 第 9 列区分完整测试 vs 干跑。子 agent 不可用时退化为干跑验证并标注。`,
-    apply:`<b>不适用</b> — 与 HC-15 固定 11 列直接冲突，eval_mode 信息可记录在 note 列。`},
+    apply:`<b>不适用</b> — results.tsv 已降级为 review.sqlite 的导出视图，eval_mode 信息记录在 note_json 字段中。`},
   {n:10, proj:'darwin-skill', pri:'P1', verdict:'deferred',
     title:`文件体积 &gt; 150% → 拒绝提交`,
     loc:`SKILL.md:L282`,
@@ -2345,7 +2346,7 @@ const borrowData = [
   {n:11, proj:'darwin-skill', pri:'P0', verdict:'v01',
     title:`异常处理决策表（10 场景 + 绝不静默跳过）`,
     loc:`SKILL.md:L270-L286`,
-    how:`Markdown 表列 10 异常场景（不在 git / TSV 损坏 / 分支冲突 / revert 失败…），每个有触发条件 + 处理动作。原则："异常先告知用户，再按规则处理；绝不静默跳过"。`,
+    how:`Markdown 表列 10 异常场景（不在 git / SQLite 损坏 / 分支冲突 / revert 失败…），每个有触发条件 + 处理动作。原则："异常先告知用户，再按规则处理；绝不静默跳过"。`,
     apply:`<b>纳入 v0.1</b> — 以 darwin-skill 10 场景为 seed，扩展 AhaDiff 专属错误分类（约 15+ 场景，含 provider timeout / secret gate / cache corruption / degraded run）。落地于 L5 core/errors.py + eval/ratchet.py。`},
   {n:12, proj:'darwin-skill', pri:'P2', verdict:'deferred',
     title:`HTML 成果卡片 3 主题（URL hash 切换）`,

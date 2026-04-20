@@ -83,15 +83,18 @@ Output layout:
 
 ```text
 .ahadiff/
-├─ index.md
-├─ concepts.md
-├─ commits/<sha>/
+├─ config.toml           # Per-repo config
+├─ review.sqlite         # Single source of truth (SRS/results/signals)
+├─ concepts.jsonl        # Concept graph (term_key-keyed upsert)
+├─ runs/<run_id>/
 │  ├─ lesson.md          # Lesson with evidence chain
 │  ├─ claims.jsonl       # Verifiable assertions
-│  ├─ quiz.md            # Active-recall questions
+│  ├─ quiz.jsonl         # Active-recall questions
+│  ├─ cards.jsonl        # SRS review cards
 │  └─ score.json         # 8-dimension score + verdict
-├─ results.tsv           # Ratchet history (untracked)
-└─ specs/<feature>/      # Plan → implement → learn loop
+├─ audit.jsonl           # LLM call audit log
+├─ ahadiff.lock          # portalocker file lock
+└─ .ahadiffignore        # Path filter rules
 ```
 
 ## 8-Dimension Rubric
@@ -130,7 +133,7 @@ ahadiff/
 
 Roadmap:
 
-- [ ] `v0.1` (MVP): CLI + Lesson + Evaluator + Ratchet end-to-end + `ahadiff serve` local interactive server + zh/en i18n
+- [ ] `v0.1` (MVP, ~14-16 days): CLI + Lesson + Evaluator + Ratchet end-to-end + `ahadiff serve` local interactive + i18n + stage gates (Codex+Claude+Gemini cross-review)
 - [ ] `v0.2`: watchdog incremental regeneration + section-level helpfulness + forgetting-risk dashboard
 - [ ] `v0.3`: Textual TUI + Socratic follow-up
 - [ ] `v1.0`: Next.js + React 19 full UI + Benchmark Transparency page

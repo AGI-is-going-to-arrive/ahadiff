@@ -928,7 +928,7 @@ table.t tr:hover td{background:var(--accent-softer)}
           <b>Graphify</b>：repo-level knowledge graph 工具，Claude Code 会写入 <code>CLAUDE.md</code> 提醒先读 <code>graphify-out/GRAPH_REPORT.md</code>。AhaDiff 不重造 repo graph，只做 <b>diff-level learning overlay</b>，通过 <code>ahadiff graph import graphify-out/graph.json</code> 导入 repo map，在上面叠加学习层。
         </div>
         <div class="src-desc" style="margin-top:8px">
-          <b>Karpathy LLM Wiki Gist</b>：persistent compounding wiki 思想。AhaDiff 落地为 <code>index.md</code>（diff-aware merge）+ <code>concepts.jsonl</code>（append-only 概念累积），与 Graphify 互补 —— Graphify = repo map，LLM Wiki = diff learning overlay。
+          <b>Karpathy LLM Wiki Gist</b>：persistent compounding wiki 思想。AhaDiff 落地为 <code>index.md</code>（diff-aware merge）+ <code>concepts.jsonl</code>（term_key-keyed upsert log，按 term_key 去重更新），与 Graphify 互补 —— Graphify = repo map，LLM Wiki = diff learning overlay。
         </div>
         <div class="src-mapping" style="margin-top:14px">
           <h5>AhaDiff 新增的 Graph 节点类型</h5>
@@ -945,17 +945,17 @@ table.t tr:hover td{background:var(--accent-softer)}
       </div>
 
 <div class="card" style="margin-top:20px">
-  <div class="ch"><h3>LLM Wiki 工作示例</h3><div class="meta">concepts.jsonl 增量积累</div></div>
+  <div class="ch"><h3>LLM Wiki 工作示例</h3><div class="meta">concepts.jsonl term_key upsert</div></div>
   <div class="cb">
     <div style="font-size:13px;color:var(--ink-2);line-height:1.7;margin-bottom:16px">
       <b>场景</b>：开发者连续学习了 3 个 diff，概念如何复利累积：
     </div>
     <div style="background:#FDFCF8;border:1px solid var(--hair);border-radius:8px;padding:16px;font-family:var(--font-mono);font-size:12px;line-height:1.8;white-space:pre-wrap;margin-bottom:16px"><span style="color:var(--muted)">// 第 1 次 learn：添加了 retry 逻辑</span>
-{"concept":"exponential_backoff","source_ref":"a1b2c3d","branch_hint":"feat/retry","introduced_by_run":"run-001","updated_by_runs":[],"related_claims":["c001","c002"],"file_refs":["src/http/client.py:42"]}
+{"concept":"exponential_backoff","term_key":"exponential-backoff","source_refs":["a1b2c3d"],"branch_hint":"feat/retry","introduced_by_run":"run-001","updated_by_runs":[],"related_claims":["c001","c002"],"file_refs":["src/http/client.py:42"]}
 
-<span style="color:var(--muted)">// 第 2 次 learn：改进了错误处理，再次提到 backoff</span>
-{"concept":"circuit_breaker","source_ref":"d4e5f6a","branch_hint":"feat/retry","introduced_by_run":"run-002","updated_by_runs":[],"related_claims":["c010"],"file_refs":["src/http/resilience.py:15"]}
-{"concept":"exponential_backoff","source_ref":"d4e5f6a","branch_hint":"feat/retry","introduced_by_run":"run-001","updated_by_runs":["run-002"],"related_claims":["c001","c002","c011"],"file_refs":["src/http/client.py:42","src/http/resilience.py:28"]}
+<span style="color:var(--muted)">// 第 2 次 learn：改进了错误处理，同 term_key 的记录被原地更新（upsert），source_refs 追加新 commit</span>
+{"concept":"circuit_breaker","term_key":"circuit-breaker","source_refs":["d4e5f6a"],"branch_hint":"feat/retry","introduced_by_run":"run-002","updated_by_runs":[],"related_claims":["c010"],"file_refs":["src/http/resilience.py:15"]}
+{"concept":"exponential_backoff","term_key":"exponential-backoff","source_refs":["a1b2c3d","d4e5f6a"],"branch_hint":"feat/retry","introduced_by_run":"run-001","updated_by_runs":["run-002"],"related_claims":["c001","c002","c011"],"file_refs":["src/http/client.py:42","src/http/resilience.py:28"]}
 
 <span style="color:var(--muted)">// 第 3 次 learn：切到 main 分支，合并了 feat/retry</span>
 <span style="color:var(--muted)">// → exponential_backoff 和 circuit_breaker 自动变为可见（git ancestry 检测）</span></div>
@@ -974,7 +974,7 @@ table.t tr:hover td{background:var(--accent-softer)}
       </div>
     </div>
     <div style="margin-top:16px;padding:12px;background:#FBF5E6;border:1px dashed #E3CDA1;border-radius:8px;font-size:12px;color:var(--warning);line-height:1.6">
-      <b>关键差异</b>：传统 RAG 每次查询重新发现知识。LLM Wiki 模式把知识<b>编译一次</b>，持续更新。第 3 次 learn 时，LLM 已经知道 exponential_backoff 是老概念，只需更新引用，不需重新提取。
+      <b>关键差异</b>：传统 RAG 每次查询重新发现知识。LLM Wiki 模式把知识<b>编译一次</b>，按 term_key 去重更新（upsert log）。第 3 次 learn 时，LLM 已经知道 exponential_backoff 是老概念，只需追加 source_refs 和更新 file_refs，不需重新提取。squash/cherry-pick 后概念通过新追加的 source_ref 重新可达（只要 source_refs 中任一 ref 可达即可见）。
     </div>
   </div>
 </div>
@@ -1091,14 +1091,15 @@ table.t tr:hover td{background:var(--accent-softer)}
   config.toml
   .ahadiffignore
   index.md                    <span style="color:var(--muted)">← LLM Wiki 落地</span>
-  concepts.jsonl              <span style="color:var(--muted)">← append-only 概念累积</span>
+  concepts.jsonl              <span style="color:var(--muted)">← term_key-keyed upsert log（按 term_key 去重更新）</span>
   results.tsv                 <span style="color:var(--muted)">← 11 列导出视图（唯一真相源为 review.sqlite）</span>
-  learning-signal.jsonl
+  audit.jsonl                 <span style="color:var(--muted)">← LLM 调用审计（schema_version + rotation &gt; 10MB）</span>
+  ahadiff.lock                <span style="color:var(--muted)">← portalocker 文件锁</span>
 
   runs/
     &lt;run_id&gt;/
       input/   patch.diff · metadata.json · line_map.json
-      safety/  redaction_report.json · audit.jsonl
+      safety/  redaction_report.json · redaction_map.json
       claims/  candidates.jsonl · claims.jsonl · verifier.json
       lesson/  lesson.full.md · lesson.hint.md · lesson.compact.md
       quiz/    quiz.jsonl · attempts.jsonl
@@ -1106,9 +1107,8 @@ table.t tr:hover td{background:var(--accent-softer)}
       viewer/  index.html · data.json
       graph/   graph.slice.json
 
-  review/
-    review.sqlite             <span style="color:var(--muted)">← SRS 卡片 + result_events 物理表</span>
-    review.sqlite.bak         <span style="color:var(--muted)">← 迁移前自动备份</span></div>
+  review.sqlite               <span style="color:var(--muted)">← SRS 卡片 + result_events + learning_signals 唯一真相源</span>
+  graphify/                   <span style="color:var(--muted)">← repo-level code map cache</span></div>
       </div>
 
       <!-- v3 新增：ahadiff serve 双适配器 -->
@@ -1134,7 +1134,7 @@ table.t tr:hover td{background:var(--accent-softer)}
               </div>
               <div style="padding:12px;background:#ECF4EE;border:1px solid #B9D7C1;border-radius:8px">
                 <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--success)">7b · LIVE SERVE <span style="color:var(--accent-ink)">(Task 14.5)</span></div>
-                <div style="font-size:12px;color:var(--ink-2);margin-top:6px"><code>ahadiff serve</code> 启动 Starlette + Uvicorn 本地服务器（默认 :8765，bind=<strong>127.0.0.1</strong>），通过 Layer 5/6 接口读写 <code>review.sqlite</code>，提供 REST API。默认 read-only，写路由需 token 鉴权。依赖 Task 0（serve_app contract）+ Task 14 + Task 15（review.sqlite schema）。</div>
+                <div style="font-size:12px;color:var(--ink-2);margin-top:6px"><code>ahadiff serve</code> 启动 Starlette + Uvicorn 本地服务器（默认 :8765，bind=<strong>127.0.0.1</strong>），通过 Layer 5/6 接口读写 <code>review.sqlite</code>，提供 REST API。默认 read-only，写路由需 token 鉴权。依赖 Task 0（serve_app contract）+ Task 13（Jinja2 基础架构）+ Task 15（review.sqlite schema）。与 Task 14 并行开发，不阻塞等待 Task 14 完成。</div>
                 <div style="font-size:12px;color:var(--ink-2);margin-top:8px;padding:8px;background:#FDFCF8;border:1px solid var(--hair);border-radius:6px;line-height:1.6">
                   <strong>路由鉴权分级</strong>：读路由无需 token（GET /api/runs、/api/locale 等）；写路由必须验 <code>X-AhaDiff-Token</code> header（POST /api/signals/*、PUT /api/locale）。Token 在 serve 启动时自动生成并注入 data_bundle。<br/>
                   <strong>安全三重保障</strong>：bind 127.0.0.1（仅回环，拒绝外网）+ Host/Origin/Referer 校验（只允许 localhost）+ 写路由 token 鉴权。
@@ -1259,7 +1259,7 @@ repo_write_lock  →  db_write_lock  →  serve_write_lock
               <tbody>
                 <tr><td class="mono">timestamp</td><td>ISO 8601</td><td>运行时间</td></tr>
                 <tr><td class="mono">run_id</td><td>string</td><td>运行 ID</td></tr>
-                <tr><td class="mono">source_ref</td><td>string</td><td>来源标识（git SHA / patch hash / path hash）</td></tr>
+                <tr><td class="mono">source_refs</td><td>string[]</td><td>来源标识数组（git SHA / patch hash），任一可达即概念可见</td></tr>
                 <tr><td class="mono">base_ref</td><td>string</td><td>ratchet 基线标识（首次为空）</td></tr>
                 <tr><td class="mono">prompt_version</td><td>string</td><td>prompts/ tree hash</td></tr>
                 <tr><td class="mono">rubric_version</td><td>string</td><td>rubric.yaml hash</td></tr>
@@ -1513,11 +1513,11 @@ key = prompt_fingerprint
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
             <div style="padding:14px;background:var(--subtle);border-radius:8px;border-left:4px solid #2F6F4F">
               <div style="font-weight:700;margin-bottom:8px;color:#2F6F4F">Per-repo（唯一真相源）</div>
-              <div style="font-size:12px;font-family:var(--font-mono);line-height:1.8;color:var(--ink-2)">&lt;repo&gt;/.ahadiff/<br>├── review.sqlite（SRS/results/signals 唯一真相源）<br>├── concepts.jsonl（branch-aware）<br>├── runs/&lt;run_id&gt;/（lesson/quiz/claims）<br>├── graphify/（code map cache）<br>├── audit.jsonl（LLM 调用审计）<br>├── ahadiff.lock（portalocker）<br>├── .ahadiffignore（路径过滤规则）<br>└── config.toml（repo 级覆盖）</div>
+              <div style="font-size:12px;font-family:var(--font-mono);line-height:1.8;color:var(--ink-2)">&lt;repo&gt;/.ahadiff/<br>├── review.sqlite（SRS/results/signals 唯一真相源）<br>├── concepts.jsonl（term_key-keyed upsert log）<br>├── runs/&lt;run_id&gt;/（lesson/quiz/claims）<br>├── graphify/（code map cache）<br>├── audit.jsonl（LLM 调用审计 + rotation）<br>├── ahadiff.lock（portalocker 文件锁）<br>├── .ahadiffignore（路径过滤规则）<br>└── config.toml（repo 级覆盖）</div>
             </div>
             <div style="padding:14px;background:var(--subtle);border-radius:8px;border-left:4px solid #7B5EA7">
-              <div style="font-weight:700;margin-bottom:8px;color:#7B5EA7">Global（派生/索引，非真相源）</div>
-              <div style="font-size:12px;font-family:var(--font-mono);line-height:1.8;color:var(--ink-2)">~/.config/ahadiff/ (Linux)<br>~/Library/.../ahadiff/ (macOS)<br>%APPDATA%/ahadiff/ (Windows)<br>├── config.toml（全局偏好）<br>├── registry.json（v0.2, opt-in）<br>├── usage.sqlite（v0.2 花费账本）<br>└── security/allowlist.yaml（v0.2）</div>
+              <div style="font-weight:700;margin-bottom:8px;color:#7B5EA7">Global · <code>global_config_dir()</code>（派生/索引，非真相源）</div>
+              <div style="font-size:12px;font-family:var(--font-mono);line-height:1.8;color:var(--ink-2)">global_config_dir():<br>&nbsp; Linux: ~/.config/ahadiff/<br>&nbsp; macOS: ~/Library/Application Support/ahadiff/<br>&nbsp; Windows: %APPDATA%/ahadiff/<br>├── config.toml（全局偏好）<br>├── registry.json（v0.2, opt-in; strict_local 下默认关闭）<br>├── usage.sqlite（v0.2 花费账本）<br>└── security/allowlist.yaml（v0.2）</div>
             </div>
           </div>
           <div style="padding:12px;background:var(--subtle);border-radius:6px;font-size:12px;margin-bottom:12px">
@@ -1858,7 +1858,7 @@ key = prompt_fingerprint
               </div>
               <div style="padding:10px;background:#fff;border:1px solid var(--hair);border-radius:8px">
                 <div style="font-weight:500"><code>concepts.jsonl</code> — 概念账本</div>
-                <div style="color:var(--muted);font-size:12px;margin-top:4px;line-height:1.5">给程序看的数据：append-only，每条记录一个概念被哪个 commit 引入/更新。不删只追加。</div>
+                <div style="color:var(--muted);font-size:12px;margin-top:4px;line-height:1.5">给程序看的数据：term_key-keyed upsert log，按 term_key 去重更新。读取时按 git ancestry 过滤可见概念。</div>
               </div>
             </div>
           </div>
