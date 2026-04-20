@@ -1156,14 +1156,14 @@ table.t tr:hover td{background:var(--accent-softer)}
             <table class="t" style="font-size:12px">
               <thead><tr><th>锁</th><th>实现</th><th>粒度</th><th>持有者</th><th>说明</th></tr></thead>
               <tbody>
-                <tr><td class="mono" style="font-weight:600">repo_write_lock</td><td>PID lockfile</td><td>仓库级</td><td>CLI（learn/improve）</td><td>保证同一仓库同一时刻只有一个写入会话；含 liveness check（进程存活检测）</td></tr>
+                <tr><td class="mono" style="font-weight:600">repo_write_lock</td><td>portalocker 文件锁</td><td>仓库级</td><td>CLI（learn/improve）</td><td>跨平台文件锁（portalocker 库）保证同一仓库同一时刻只有一个写入会话；lockfile 中 PID/时间/命令仅作诊断元数据</td></tr>
                 <tr><td class="mono" style="font-weight:600">db_write_lock</td><td>SQLite WAL + busy_timeout</td><td>SQLite 级</td><td>ratchet layer / serve</td><td>依赖 SQLite 自身的 WAL 模式 + <code>busy_timeout=5000ms</code> 实现跨进程并发写保护；CLI 和 serve 共享同一 SQLite 文件</td></tr>
                 <tr><td class="mono" style="font-weight:600">serve_write_lock</td><td>asyncio.Lock</td><td>进程内</td><td>serve endpoint</td><td>保护 serve 进程内写操作的并发安全（异步上下文）</td></tr>
               </tbody>
             </table>
-            <div style="margin-top:10px;padding:10px;background:var(--subtle);border-radius:6px;font-family:var(--font-mono);font-size:11px;color:var(--ink-2);line-height:1.8;white-space:pre-wrap">获取顺序图：
+            <div style="margin-top:10px;padding:10px;background:var(--subtle);border-radius:6px;font-family:var(--font-mono);font-size:11px;color:var(--ink-2);line-height:1.8;white-space:pre-wrap">获取顺序图（永远从外到内）：
 repo_write_lock  →  db_write_lock  →  serve_write_lock
-   (PID file)         (WAL + flock)     (asyncio.Lock)
+  (portalocker)     (WAL+busy_timeout)   (asyncio.Lock)
                                          ↑ 仅 serve 进程内需要</div>
           </div>
         </div>
@@ -1371,7 +1371,7 @@ key = prompt_fingerprint
           <details style="font-size:12px;color:var(--ink-2);cursor:pointer">
             <summary style="font-weight:600;padding:8px 0;color:var(--ink)">展开查看全部 30 个 Corner Case 及闭合方案</summary>
             <div style="margin-top:8px;display:grid;gap:6px">
-              <div style="padding:6px 10px;background:var(--subtle);border-radius:6px"><strong>CC-1~9 原始</strong>：Quiz staleness 惰性检测 | Branch-aware concepts (git ancestry) | Degraded 永不提升 baseline | Rename 两段式检测 | 4 Lane 正交 | VCR shared partial 失效 | PID lockfile 并发 | Graphify 7 态 | L3 degraded 归属</div>
+              <div style="padding:6px 10px;background:var(--subtle);border-radius:6px"><strong>CC-1~9 原始</strong>：Quiz staleness 惰性检测 | Branch-aware concepts (git ancestry) | Degraded 永不提升 baseline | Rename 两段式检测 | 4 Lane 正交 | VCR shared partial 失效 | portalocker 并发闭合 | Graphify 7 态 | L3 degraded 归属</div>
               <div style="padding:6px 10px;background:var(--subtle);border-radius:6px"><strong>CC-i18n-1~10</strong>：混合语言 diff | LLM 质量波动 | SRS 不重翻译 | 概念 display_name | Static 单语烘焙 | VCR 加 output_lang | 审计英文 | CLI/Serve 错误消息 | 日期格式 | improve prompt 语言</div>
               <div style="padding:6px 10px;background:var(--subtle);border-radius:6px"><strong>CC-NEW-1~8</strong>：Locale BCP47 归一化 | 混合语言检测+重试 | Evidence file_id 分离 | idempotency_key 幂等 | term_key 概念去重 | Archive bomb 限制 | Session cookie 同步 | Static 按钮 disabled</div>
               <div style="padding:6px 10px;background:var(--subtle);border-radius:6px"><strong>CC-FE-1~3</strong>：超长路径 word-break | 窄屏 Unified 回退 | z-index 层级表 (0/50/60/70/80/100)</div>
@@ -1503,6 +1503,55 @@ key = prompt_fingerprint
             <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">Improve loop 只改 prompts/*.md</div><div class="ci-desc">evaluator.py / rubric.yaml / viewer 不可改</div></div></div>
             <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">路径 runs/&lt;run_id&gt;/</div><div class="ci-desc">统一使用 run_id 路径，非 commits/&lt;sha&gt;</div></div></div>
           </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="ch"><h3>数据范围架构</h3><div class="meta"><span class="badge pass"><span class="bd"></span>FROZEN</span></div></div>
+        <div class="cb">
+          <p style="margin-bottom:12px;color:var(--ink-2)">核心原则：<strong>per-repo truth + global derived governance</strong>。CLI 全局安装，per-repo 运用。</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+            <div style="padding:14px;background:var(--subtle);border-radius:8px;border-left:4px solid #2F6F4F">
+              <div style="font-weight:700;margin-bottom:8px;color:#2F6F4F">Per-repo（唯一真相源）</div>
+              <div style="font-size:12px;font-family:var(--font-mono);line-height:1.8;color:var(--ink-2)">&lt;repo&gt;/.ahadiff/<br>├── review.sqlite（SRS/results/signals 唯一真相源）<br>├── concepts.jsonl（branch-aware）<br>├── runs/&lt;run_id&gt;/（lesson/quiz/claims）<br>├── graphify/（code map cache）<br>├── audit.jsonl（LLM 调用审计）<br>├── ahadiff.lock（portalocker）<br>├── .ahadiffignore（路径过滤规则）<br>└── config.toml（repo 级覆盖）</div>
+            </div>
+            <div style="padding:14px;background:var(--subtle);border-radius:8px;border-left:4px solid #7B5EA7">
+              <div style="font-weight:700;margin-bottom:8px;color:#7B5EA7">Global（派生/索引，非真相源）</div>
+              <div style="font-size:12px;font-family:var(--font-mono);line-height:1.8;color:var(--ink-2)">~/.config/ahadiff/ (Linux)<br>~/Library/.../ahadiff/ (macOS)<br>%APPDATA%/ahadiff/ (Windows)<br>├── config.toml（全局偏好）<br>├── registry.json（v0.2, opt-in）<br>├── usage.sqlite（v0.2 花费账本）<br>└── security/allowlist.yaml（v0.2）</div>
+            </div>
+          </div>
+          <div style="padding:12px;background:var(--subtle);border-radius:6px;font-size:12px;margin-bottom:12px">
+            <strong>Config 优先级链（高→低）：</strong>ENV(AHADIFF_*) → CLI flag → per-repo config.toml → global config.toml → defaults<br>
+            <strong>不可全局化：</strong>review.sqlite / audit.jsonl / concepts.jsonl / prompts/ / VCR cassettes / Graphify
+          </div>
+          <div style="padding:12px;background:#f8f6f0;border-radius:6px;font-size:12px;border:1px solid #e8e4dc">
+            <strong>例子：</strong>用户在 repo-A 和 repo-B 都用 AhaDiff 学习。<br>
+            → 每个 repo 独立维护自己的 lesson/quiz/SRS 卡片<br>
+            → <code>ahadiff review</code> 默认复习当前 repo 的 due cards<br>
+            → <code>ahadiff review --all</code>（v0.2）扫描所有注册 repo 的 due cards 做跨 repo 复习<br>
+            → 全局 usage.sqlite 汇总两个 repo 的 LLM 花费，统一月度预算管理
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="ch"><h3>跨平台兼容性</h3><div class="meta"><span class="badge pass"><span class="bd"></span>10/10 CLOSED</span></div></div>
+        <div class="cb">
+          <table class="t" style="font-size:12px">
+            <thead><tr><th>#</th><th>问题</th><th>方案</th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td>PID lockfile Windows 不兼容</td><td><code>portalocker</code> 依赖，PID 仅诊断</td></tr>
+              <tr><td>2</td><td>路径分隔符</td><td><code>pathlib.Path</code> 强制，artifact 存 POSIX 字符串</td></tr>
+              <tr><td>3</td><td>LANG 环境变量 Windows 不存在</td><td><code>locale.getlocale()</code> + ctypes fallback + BCP47 归一化</td></tr>
+              <tr><td>4</td><td>git worktree MAX_PATH 260</td><td>短路径策略（hash 前 8 位）+ 启动预检长度</td></tr>
+              <tr><td>5</td><td>SQLite WAL 网络驱动器</td><td>启动检测本地路径，网络盘 fail-fast 报错</td></tr>
+              <tr><td>6</td><td>open 命令跨平台</td><td><code>webbrowser.open(path.as_uri())</code></td></tr>
+              <tr><td>7</td><td>原子写 Windows</td><td><code>os.replace()</code>（Windows 兼容已验证）</td></tr>
+              <tr><td>8</td><td>symlink 行为差异</td><td>输入拒绝，输出不使用</td></tr>
+              <tr><td>9</td><td>Rich cmd.exe ANSI</td><td>auto-detect，PowerShell 一等，cmd.exe 降级 plain text</td></tr>
+              <tr><td>10</td><td>CI 矩阵</td><td>ubuntu + macos + windows × 3.11/3.12</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
 

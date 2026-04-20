@@ -112,7 +112,7 @@
   7. 实现 ratchet 决策逻辑：score 提升且 hard gate 全过 → keep（cherry-pick 回主分支）；否则 → discard（删除 worktree）。降级 run（`degraded_flags` 非空）的 ratchet 比较需标记 `ratchet_note=degraded_comparison`，不直接丢弃
   8. 实现 Phase 2.5 检测：连续 2 个优化目标在首轮即 discard → 触发 structural rewrite
   9. 简洁性准则：0.001 分提升 + 20 行 hacky prompt → 不值得
-  10. 实现 PID lockfile 检查（复用 Task 5 的 `.ahadiff/ahadiff.lock`）：ratchet 写入前验证锁持有
+  10. 实现 repo_write_lock 检查（复用 Task 5 的 `.ahadiff/ahadiff.lock`，portalocker）：ratchet 写入前验证锁持有
 - **验收标准**: review.sqlite result_events 正确写入，ratchet keep/discard/crash 三路径单测全绿；`ahadiff export-results` 重建的 TSV 与直接 append 的 TSV 一致
 
 ---
@@ -271,7 +271,7 @@
   5. 实现 prompt versioning：`prompt_version = prompts/ 目录的 tree hash 前 7 位`
   6. 简洁性准则写入 improve_program.md
   7. **Improve 隔离策略（统一 worktree）**：常规 improve loop 和 Phase 2.5 均在 `git worktree add` 创建的临时 worktree 中执行，不触碰用户主分支工作区。keep 时从 worktree cherry-pick 回主分支；discard 时删除 worktree。cherry-pick 冲突时自动 abort 并保持 worktree 状态，输出冲突文件列表供人工解决，不强制覆盖主分支。improve loop 启动前检查主分支 `prompts/` 是否有未提交修改，有则提前警告用户。
-  8. 禁止并发 improve：复用 PID lockfile（`.ahadiff/ahadiff.lock`），第二个 improve 实例被拒绝
+  8. 禁止并发 improve：复用 repo_write_lock（`.ahadiff/ahadiff.lock`，portalocker），第二个 improve 实例被拒绝
 - **验收标准**: `ahadiff improve --suite local --rounds 6` 跑完，results.tsv 正确追加 6 行
 
 ### Task 17: Targeted Verification + Phase 2.5
@@ -299,15 +299,16 @@
   - `tests/eval/test_benchmark.py`
 - **依赖**: Task 11（Evaluator）
 - **实施步骤**:
-  1. 构建 10 份 pinned benchmark diff：
+  1. **冻结 `benchmarks/manifest.json`**（数据范围架构新增）：定义 `suite_id`（如 "ahadiff-local-v1"）、`suite_digest`（全部 fixture 的联合 SHA-256）、`visibility`（"private"|"public"）、entries 列表。只有 `suite_digest + eval_bundle_version + model_id` 全匹配时 benchmark 结果才可比
+  2. 构建 10 份 pinned benchmark diff：
      - **Python 主套件**（7 份）：全功能验证（AST + regex + section_header）
      - **Non-Python 降级套件**（3 份，TypeScript/Rust/Go 各 1）：仅验证 regex + section_header 降级路径
      - 两套件独立出 recall/precision 报告，不混成单一基线
      - Non-Python 套件的期望 recall 显式低于 Python 套件（标注 `degraded=true`）
-  2. 每份含：`diff.patch` + `ground_truth.md` + `qa_probe.jsonl` + `expected_concepts.json`
-  3. 实现 `ahadiff benchmark --suite local` CLI
-  4. 输出 benchmark report：mean score / claim verification rate / 各维度均值
-- **验收标准**: `ahadiff benchmark --suite local` 跑通 10 份 diff，输出结构化报告
+  3. 每份含：`diff.patch` + `ground_truth.md` + `qa_probe.jsonl` + `expected_concepts.json`
+  4. 实现 `ahadiff benchmark --suite local` CLI
+  5. 输出 benchmark report：mean score / claim verification rate / 各维度均值 + `suite_id` + `suite_digest`
+- **验收标准**: `ahadiff benchmark --suite local` 跑通 10 份 diff；`benchmarks/manifest.json` 存在且 `suite_digest` 可验证；报告含 suite_id
 - **VCR cassette 管理（双层版本策略）**：
   - **run 级**：`prompt_version = tree hash(prompts/)` 不变，用于 results/ratchet 一致性
   - **cassette 级**：`prompt_fingerprint = hash(top_level_prompt_file + declared_includes + schema_version)`。每个 LLM 调用按 `prompt_fingerprint + model_id + rubric_version + output_lang` 四元组命名 cassette 文件。修改 `lesson_generate.md` 只失效 lesson 相关 cassette，不影响 quiz/claim cassette

@@ -1317,10 +1317,10 @@ footer{
         </div>
         <div class="moat-analogy">三把不同的钥匙管三扇门：repo 文件、数据库、serve 端口，互不干扰又不冲突。</div>
         <div class="moat-example">
-          <code>repo_write</code> — PID lockfile + liveness check（CLI improve 用）<br>
-          <code>db_write</code> — SQLite WAL + 跨进程文件锁（CLI/serve 共享）<br>
-          <code>serve_write</code> — Starlette 进程级排他（同一端口只能一个 serve）<br><br>
-          CLI 和 serve 可同时运行，写入安全由三层保护，无需用户手动协调。
+          <code>repo_write</code> — portalocker 跨平台文件锁（CLI learn/improve 用，PID 仅诊断）<br>
+          <code>db_write</code> — SQLite WAL mode + busy_timeout=5000ms（CLI/serve 共享）<br>
+          <code>serve_write</code> — Starlette asyncio.Lock 进程内排他<br><br>
+          CLI 和 serve 可同时运行，写入安全由三层保护（从外到内获取），无需用户手动协调。
         </div>
         <div class="moat-compare">
           <span class="moat-compare-chip no">SaaS 竞品不需本地并发</span>
@@ -1941,7 +1941,7 @@ footer{
 
         <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px">
           <div class="borrow-howto-tag" style="margin:0">三层锁</div>
-          <div class="borrow-howto-body">CLI 和 serve 可以同时运行，写入安全由跨进程文件锁（PID lockfile + liveness check + SQLite WAL）三层保护，无需用户手动协调。</div>
+          <div class="borrow-howto-body">CLI 和 serve 可以同时运行，写入安全由三层保护（portalocker 文件锁 → SQLite WAL + busy_timeout → asyncio.Lock），无需用户手动协调。</div>
         </div>
 
         <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px">

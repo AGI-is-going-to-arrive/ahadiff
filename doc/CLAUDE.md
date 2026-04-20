@@ -79,10 +79,20 @@
 
 | 数据文件 | 格式 | 用途 |
 |----------|------|------|
+| `review.sqlite` | SQLite (WAL) | 唯一真相源：SRS cards / result_events / learning_signals |
 | `claims.jsonl` | JSONL | 可验证断言，含 source_hunks / status / confidence |
 | `score.json` | JSON | 8 维评分 + verdict + hard_gates |
-| `results.tsv` | TSV | 每轮评估记录，11 列：timestamp / run_id / source_ref / base_ref / prompt_version / rubric_version / overall / verdict / status / weakest_dim / note_json |
-| `learning-signal.jsonl` | JSONL | 用户学习行为信号 |
+| `results.tsv` | TSV | 人类可读导出视图，11 列（从 review.sqlite 导出） |
+| `concepts.jsonl` | JSONL | branch-aware 概念累积（per-repo） |
+| `audit.jsonl` | JSONL | LLM 调用审计（schema_version + rotation） |
+
+### 数据范围
+
+CLI 全局安装（`pip install ahadiff`），per-repo 运用。核心原则：**per-repo truth + global derived governance**。
+
+- **Per-repo 真相源**（`<repo>/.ahadiff/`）：review.sqlite / concepts.jsonl / audit.jsonl / runs/ / graphify/ / prompts/
+- **Global 派生层**（`~/.config/ahadiff/` 等）：config.toml / registry.json(v0.2) / usage.sqlite(v0.2)
+- **Config 优先级**：ENV → CLI flag → per-repo config.toml → global config.toml → defaults
 
 ## 测试与质量
 
@@ -122,3 +132,4 @@ A: 权威文档见根目录 `CLAUDE.md` + `.claude/team-plan/`（kickoff + stage
 | 2026-04-20 | 术语同步：三文件契约→N-文件契约（描述 AhaDiff 自身设计时）、evaluator.py→evaluation bundle、四状态→五状态（含 rejected） |
 | 2026-04-21 | 同步 v5 改进：evaluation bundle 统一为 5 文件（含 rubric.py）、note→note_json、前端设计手册标注 v0.1=Jinja2/v1.0=React、知返设计坐标.md 标 archived、i18n 骨架补 rejected 第五态 |
 | 2026-04-21 | 同步 v6 三模型交叉审查：设计思路/改名方案/最终方案三文档标 ARCHIVED、文件清单描述更新 |
+| 2026-04-21 | 同步第三轮开工就绪审查：新增数据范围架构（per-repo truth + global derived governance）、数据模型补 review.sqlite/concepts.jsonl/audit.jsonl、Config 5 层优先级链 |

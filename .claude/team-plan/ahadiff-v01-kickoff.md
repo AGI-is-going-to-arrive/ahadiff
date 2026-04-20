@@ -66,18 +66,22 @@
   5. 冻结 `EventLog` schema：主键为 `event_id`（UUID v7），`(run_id, event_type, timestamp)` 为唯一索引（注意：`event_type` 与 `status` 是两个独立字段。`event_type` 描述事件动作如 `score_computed | ratchet_decided | phase25_triggered`；`status` 是 RunStatus 枚举值）。`run_id` 为二级索引
   6. 冻结统一字段命名：所有文档使用 `source_ref`（替代旧的 `head_sha`）、`privacy_mode`（snake_case: `strict_local | redacted_remote | explicit_remote`）、`eval_bundle_version`
   7. 定义统一错误类型层级：`InputError | SafetyError | ProviderError | VerificationError | StorageError | MigrationError | DegradedRunWarning`
-  8. 定义 PID lockfile 规范：lockfile 格式 `{pid}\n{start_time_iso}\n{command}`，加锁前检查 PID 存活性（`os.kill(pid, 0)`），死进程自动释放锁；提供 `ahadiff unlock --force` 手动清理
-  9. 定义 crash recovery 状态机：stale lock → 自动释放；orphaned worktree → `ahadiff doctor` 自动清理；migration 部分失败 → 每个 migration 脚本在 `BEGIN EXCLUSIVE ... COMMIT` 事务中执行
+  8. 定义文件锁规范：使用 `portalocker` 作为文件锁真相源（跨平台）。lockfile `.ahadiff/ahadiff.lock` 中 `{pid}\n{start_time_iso}\n{command}` 仅作诊断元数据，不用于活性检查。提供 `ahadiff unlock --force` 手动清理
+  9. 定义 crash recovery 状态机：stale lock → portalocker 自动释放（进程退出即释放）；orphaned worktree → `ahadiff doctor` 自动清理；migration 部分失败 → 每个 migration 脚本在 `BEGIN EXCLUSIVE ... COMMIT` 事务中执行
   10. 写入 `doc/contract-freeze.md` 作为所有下游 Task 的权威参考
+  14. 冻结 **Config 优先级链**：`ENV(AHADIFF_*) → CLI flag → per-repo .ahadiff/config.toml → global ~/.config/ahadiff/config.toml → defaults`。凭证类：`env secret → per-repo env_var_name → global env_var_name → none`。Serve/request：`cookie → Accept-Language → CLI session → per-repo → global → system → defaults`
+  15. 冻结 **数据范围契约**：真相源永远 per-repo（review.sqlite / audit.jsonl / concepts.jsonl / prompts/ / VCR）；global（`~/.config/ahadiff/`）只做派生索引/账本/偏好，不参与 ratchet 判定
+  16. 预留 **UsageEvent schema**：`event_id / run_id / repo_id / provider_class / model_id / input_tokens / output_tokens / cost_usd / pricing_version / cost_confidence / billing_mode / execution_origin / api_principal_hash / timestamp`（v0.2 实现 global usage.sqlite）
+  17. 预留 **Allowlist policy contract**：builtin hard_block（不可禁用）+ soft_detect（可被 allowlist suppress）；v0.1 支持 exact/hash/path-scope，不支持 regex；每 run 存 `allowlist_digest`
   11. 冻结 `Orchestrator` 接口契约：`OrchestratorCommand` DTO（`learn | improve | verify | serve`）+ `OrchestratorResult` 返回结构 + 三条主链路入口签名（`run_learn()`, `run_improve()`, `run_verify()`）。`core/orchestrator.py` 统一编排，`cli.py` 仅做参数解析和输出格式化
   12. 冻结 `ServeApp` 接口契约：`src/ahadiff/serve/app.py` 的路由注册协议 + write token 鉴权（`X-AhaDiff-Token` header）+ `Host`+`Origin/Referer` 双校验 + `bind=127.0.0.1`（仅回环） + read-only 默认模式。API 端点清单：`GET /api/locale`, `PUT /api/locale`, `GET /api/runs`, `GET /api/run/:id`, `POST /api/signals/*`。路由鉴权分级：读路由无需 token，写路由必须验 token
   13. 冻结**三层写锁矩阵**（解决并发安全）：
-      - `repo_write_lock`（`.ahadiff/ahadiff.lock` PID lockfile）：保护 `runs/` 目录写入、worktree 创建/清理。持有者：`ahadiff learn` / `ahadiff improve`
+      - `repo_write_lock`（`.ahadiff/ahadiff.lock`，portalocker 文件锁，PID/time/cmd 仅诊断）：保护 `runs/` 目录写入、worktree 创建/清理。持有者：`ahadiff learn` / `ahadiff improve`
       - `db_write_lock`（SQLite WAL mode + `busy_timeout=5000`）：保护 `review.sqlite` 写入。持有者：所有写 SQLite 的路径（results/signals/cards/migrations）
       - `serve_write_lock`（Starlette 进程内 `asyncio.Lock`）：保护 serve 模式下并发 POST 请求的序列化。持有者：写路由 handler
       - **获取顺序**（防死锁）：repo_write → db_write → serve_write，永远从外到内
       - **覆盖映射**：`ahadiff learn` 需要 repo_write + db_write；`ahadiff serve POST` 需要 serve_write + db_write；`ahadiff improve` 需要 repo_write + db_write；`ahadiff export-results` 只读不锁
-- **验收标准**: 所有 7 个契约（5 原有 + orchestrator + serve）的 Pydantic schema 可 import，`pytest tests/unit/test_contracts.py` 全绿
+- **验收标准**: 所有 9 个契约（5 原有 + orchestrator + serve + config_precedence + data_scope）的规范文档写入 `doc/contract-freeze.md`，核心 Pydantic schema 可 import，`pytest tests/unit/test_contracts.py` 全绿。`UsageEvent` schema 可 import（但 v0.1 不实现写入 global usage.sqlite）
 
 ### Layer 1（并行）— 工程骨架 + 文档修正 + UI 响应式修复
 
@@ -94,13 +98,15 @@
   - `src/ahadiff/core/errors.py`
 - **依赖**: 无
 - **实施步骤**:
-  1. 创建 `pyproject.toml`（runtime deps + ruff + pyright + pytest 配置）
-  2. 实现 `paths.py`：`project_state_dir()`, `run_dir(run_id)`, `review_db_path()`
-  3. 实现 `config.py`：`load_config()`, `write_default_config()`, TOML 解析
+  1. 创建 `pyproject.toml`（runtime deps 含 `portalocker` + ruff + pyright + pytest 配置）
+  2. 实现 `paths.py`：`project_state_dir()`, `run_dir(run_id)`, `review_db_path()`, `global_config_dir()`（跨平台：Linux `~/.config/ahadiff/`，macOS `~/Library/Application Support/ahadiff/`，Windows `%APPDATA%/ahadiff/`）
+  3. 实现 `config.py`：**5 层 config resolver**（`ENV(AHADIFF_*) → CLI flag → per-repo .ahadiff/config.toml → global config.toml → defaults`）+ `load_config()` + `write_default_config()` + `resolve_effective(key)` 返回值及来源
   4. 实现 `ids.py`：`make_run_id()`, `make_claim_id()`, `make_hunk_id()`
-  5. 实现 `cli.py`：`app()`, `init_cmd()`, `doctor_cmd()` 基础框架
+  5. 实现 `cli.py`：`app()`, `init_cmd()`, `doctor_cmd()`, `config_show_cmd()`（显示每个值的来源层级）
   6. 实现 `__main__.py`：`python -m ahadiff` 入口
-- **验收标准**: `uv sync && uv run ahadiff init && uv run ahadiff doctor` 可运行
+  7. 实现 `paths.py` 网络路径检测：启动时检测 `.ahadiff/` 是否在 UNC/网络映射盘上，是则 fail-fast 报错
+  8. 实现 `doctor_cmd()` config 诊断：报告 precedence 冲突、unknown keys、敏感配置进仓库
+- **验收标准**: `uv sync && uv run ahadiff init && uv run ahadiff doctor` 可运行；`ahadiff config show --resolved` 正确显示每个值的来源；网络路径检测在 UNC 路径上报错
 
 #### Task 2: 安全层
 - **类型**: 后端（Codex 实现）
@@ -121,8 +127,13 @@
   4. **强制脱敏顺序**: raw input → secret scan → redact → 才能 log/cache/model/render。`redaction_pipeline()` 函数作为统一入口，所有模块（git capture/patch reader/file compare/viewer/logger）必须调用此入口而非直接处理原始 diff
   5. 实现安全门禁：`enforce_privacy_mode(mode: strict_local|redacted_remote|explicit_remote)`, `assert_no_unredacted_secret()`
   6. 实现路径安全库（供所有输入模式共用）：canonical path 解析、repo-root containment 校验、symlink 拒绝、device/FIFO 拒绝、HTML/JSON/terminal escape
-  7. 编写单测覆盖：空 diff、secret in code、injection in comment/markdown/string、PEM key、base64 secret、symlink traversal、Unicode 混淆
-- **验收标准**: `pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py` 全绿
+  7. 实现 **allowlist policy**（数据范围架构新增）：
+     - 规则分级：`hard_block`（builtin，不可禁用）+ `soft_detect`（可被 allowlist suppress）
+     - per-repo 配置：`.ahadiff/config.toml [security]` 支持 `allow_exact = [...]`、`allow_paths = ["tests/fixtures/**"]`、`suppress_rules = ["RULE-ID"]`
+     - 每 run 持久化 `allowlist_digest`（规则集 SHA-256）到 `metadata.json`，确保可追溯
+     - v0.1 不支持任意 regex（防 ReDoS），只支持 exact/hash/glob/path-scope
+  8. 编写单测覆盖：空 diff、secret in code、injection in comment/markdown/string、PEM key、base64 secret、symlink traversal、Unicode 混淆、allowlist suppress、hard_block 不可禁用
+- **验收标准**: `pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py` 全绿；hard_block 规则在 suppress_rules 中被忽略（不生效）
 
 #### Task 3: 文档 contract 冻结
 - **类型**: 文档（Claude 维护）
@@ -182,7 +193,7 @@
      - `token_exceeded`：组装 context 后 token 数超过 provider 上下文窗口时，设置点=provider（请求前估算），传播点=score.json，UI 行为=显示 "Context truncated"
      - 策略总览：skip（>10000行）> clip（>5000行）> summarize（>2000行），`degraded=true` 写进 score.json 和 results
   6. 实现 `--patch file.patch` / `--patch -`（stdin）Level 1 输入：直接读取 unified diff 文本，跳过 git 操作
-  7. 实现 PID lockfile（`.ahadiff/ahadiff.lock`）：第二个 `ahadiff learn` 实例检测到锁时提示 "另一个 ahadiff 进程正在运行(PID=xxx)"，防止并发写入 review.sqlite 和 results.tsv
+  7. 实现 repo_write_lock（`.ahadiff/ahadiff.lock`，portalocker）：第二个 `ahadiff learn` 实例检测到锁时提示 "另一个 ahadiff 进程正在运行(PID=xxx)"，防止并发写入 review.sqlite 和 results.tsv
 - **验收标准**:
   - `ahadiff learn HEAD~1..HEAD --dry-run` 生成 `patch.diff` + `metadata.json`
   - `ahadiff learn --last --dry-run` 等价于上述
@@ -270,12 +281,15 @@
   8. 实现 **cache key 契约**：`hash(diff_content + source_ref + prompt_version + model_id + rubric_version + redaction_config + context_bundle_hash)`，任一变更自动失效
   9. 实现 **隐私模式感知**：`strict_local` 模式下只允许 ollama provider；`redacted_remote` 下发送脱敏后的 diff；`explicit_remote` 下发送原文（需用户确认）
   10. 实现 **异常处理决策表**（9+ 场景）：(1) 网络超时→重试 3 次 (2) 速率限制→指数退避 (3) context length exceeded→自动 clip diff 后重试 (4) API key 无效→立即 SafetyError (5) 空响应→标记 crash (6) JSON 解码失败→重试 1 次 (7) provider 不可用→切换 fallback (8) 模型返回拒绝→记录并跳过 (9) 超时+重试耗尽→ProviderError
-  11. 实现 audit.jsonl 记录（含 event_id、request hash、token 用量、cost estimate）
+  11. 实现 **audit.jsonl** 记录（数据范围架构新增）：每行含 `schema_version: 1` + `event_id` + `prompt_name` + `prompt_fingerprint` + `request_hash` + `input_tokens` + `output_tokens` + `cost_usd` + `pricing_version` + `cost_confidence` + `billing_mode` + `execution_origin` + `api_principal_hash` + `timestamp`。不存 prompt/response 原文（隐私）
+  12. 实现 **audit rotation**：audit.jsonl > 10MB → rotate 为 `audit.1.jsonl.gz`，保留最近 3 份
+  13. 预留 **UsageEvent schema**（v0.2 实现写入 global usage.sqlite）：字段同 audit 事件 + `repo_id`（repo fingerprint），v0.1 仅定义 Pydantic model 不实现 global 写入
 - **验收标准**:
   - `pytest tests/unit/test_provider.py` 覆盖三种 provider mock
   - 429 响应触发 backoff，不崩溃；并发超限时排队
   - circuit breaker 熔断/恢复测试通过
   - strict_local 模式下拒绝远端 provider 调用
+  - audit.jsonl 每行含 schema_version，rotation 在 >10MB 时触发
 
 ### Layer 3（依赖 Layer 2b + Layer 1.5）— Claim 闭环
 
