@@ -17,7 +17,7 @@
 ### 计划技术栈
 
 - **后端 CLI**：Python 3.11+, typer, rich, pydantic, jinja2, httpx, pyyaml
-- **前端 Viewer**（首版）：Jinja2 静态 HTML（从 Warm v6 原型转化），不使用 Next.js/React
+- **前端 Viewer**（首版）：Jinja2 模板 + `ahadiff serve`（Starlette + Uvicorn 轻量本地服务器，支持 Quiz/SRS 交互写回）；同时保留 `file://` 静态模式（只读，显示 CLI 命令提示）。不使用 Next.js/React
 - **评估系统**：LLM-as-judge + 8 维自研 rubric（accuracy/evidence/diff_coverage/learnability/quiz_transfer/spec_alignment/conciseness/safety_privacy = 100 分）+ git ratchet 棘轮
 - **不使用**：LiteLLM（供应链风险）、LangChain、Node 构建链
 
@@ -35,6 +35,8 @@
 5. Ratchet Layer         -- evaluation bundle (immutable), review.sqlite (唯一真相源)
 6. Learning Layer        -- quiz, SRS review, section helpfulness, concepts.jsonl
 7. Wiki + UI Layer       -- index.md, concept graph, dashboard
+   7a. Static Snapshot   -- file:// 兼容，一次性 data_bundle.json
+   7b. Live Serve        -- ahadiff serve（Starlette），实时读 SQLite + REST API
 ```
 
 编排逻辑由 `core/orchestrator.py` 统一管理 learn/improve/verify 三条主链路，cli.py 仅做参数解析和输出格式化。results.tsv 降级为 review.sqlite 的人类可读导出视图。
@@ -176,3 +178,4 @@ python3 -m http.server 8765
 | 2026-04-20 ~13:30 | 第二轮三模型+Explorer 审查修订(5模型)：N-文件契约改述、evaluation bundle 整体锁定、SQLite 唯一真相源、Layer 2 拆分为 2a/2b/2c、安全脱敏顺序工程化、隐私三档、Schema Freeze Gate 前置、统一错误类型、并发 PID lockfile、large diff 前移 capture stage、UNTRUSTED_DIFF 边界协议、secret detection 扩展覆盖 |
 | 2026-04-20 ~14:00 | 第二轮修复后交叉验证：修复术语漂移（head_sha→source_ref、隐私模式统一 snake_case、git reset→worktree、三文件→N-文件）、补 non_ratcheted 到 RunStatus 枚举、event_type/status 区分明确化、evaluation bundle 5 文件（含 rubric.py）、Phase 2.5 最多 1 次/session、PID lockfile 含 liveness check、migration 事务包裹、degraded run ratchet 标记 |
 | 2026-04-20 ~15:00 | 4 个 corner case 解决（Claude+Codex+网上研究）：(1) Quiz staleness 惰性检测（Anki 无此能力，AhaDiff 创新点）；(2) concepts.jsonl branch-aware 方案提前到 v0.1（repo 级 append-only + git ancestry 过滤）；(3) VCR cassette 双层版本（run 级 tree hash + cassette 级 per-prompt fingerprint）；(4) TSV 降级为导出视图，取消无损 repair 承诺，改用 SQLite backup API 作为恢复路径 |
+| 2026-04-20 ~21:00 | 三轮三模型全面评估（Claude+Codex+Gemini）：取消静态 viewer 冻结，v0.1 引入 `ahadiff serve`（Starlette+Uvicorn）；Layer 7 拆分为 7a Static + 7b Serve 双适配器；三层锁模型（repo_write/run_write/db_write 跨进程文件锁）；Graphify 7 态新鲜度状态机 + 4 值对外投影；四 Lane 历史模型（L3_git_ratchet/L3_degraded/L2/L1）；serve 安全模型（write token + Origin 校验 + read-only 默认）；note 字段改为 note_json；Layer 5/6/7 显式服务契约 + query DTO 冻结 |

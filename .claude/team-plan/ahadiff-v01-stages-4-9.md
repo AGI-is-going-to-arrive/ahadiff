@@ -167,7 +167,7 @@
   5. Claim Inspector 侧边栏：verified(绿 `#2F6F4F`)/weak(黄 `#B4791F`)/not_proven(灰 `#6B6B6B`)/contradicted(红 `#A33D2B`)/rejected(紫 `#7B5EA7`) 五态色彩标识
   6. 移动端：Claim Inspector 降级为 Drawer 浮层（P2 from Gemini）
   7. 打印样式：保留证据链，隐藏 UI chrome
-  8. **Viewer 只读边界声明**：HTML Viewer 是纯展示层，所有状态变更（Quiz 答题、SRS 复习、Claim 标记）必须通过 CLI 命令执行。前端交互按钮（如 Mark wrong/Good/Hard）的行为定义为：(a) 在 `ahadiff serve` 模式下直接调用后端 API；(b) 在 `file://` 静态模式下显示可复制的 CLI 命令提示（如 `ahadiff mark wrong c020`）。v0.1 只实现 (b)，`ahadiff serve` 推迟到 v0.2。
+  8. **Viewer 双模式声明**：前端交互按钮（如 Mark wrong/Good/Hard）的行为通过 `data-mode` 属性区分：(a) 在 `ahadiff serve` 模式下直接调用后端 API；(b) 在 `file://` 静态模式下显示可复制的 CLI 命令提示（如 `ahadiff mark wrong c020`）。v0.1 同时实现 (a) 和 (b)，通过 Progressive Enhancement 自动切换。serve 后端的完整规格见评估报告 Task 14.5 段落（`.claude/team-plan/ahadiff-v01-comprehensive-evaluation-research.md`）。
 - **验收标准**: 4 个页面在 375px/768px/1024px/1440px 四个视口正常显示
 - **Review**: Gemini(gemini-3.1-pro-preview) 评审
 

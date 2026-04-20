@@ -63,6 +63,9 @@ ahadiff learn HEAD~1..HEAD --against .ahadiff/specs/oauth-login/SPEC.md
 ahadiff quiz abc123
 ahadiff review
 
+# 在浏览器中交互（Quiz/SRS/Dashboard）
+ahadiff serve
+
 # 棘轮优化
 ahadiff improve abc123 --rounds 6
 
@@ -125,9 +128,9 @@ ahadiff/
 
 下一步路线图：
 
-- [ ] `v0.1`（3 天 MVP）：CLI + Lesson + Evaluator + Ratchet 全链路
-- [ ] `v0.2`：HTMX dashboard + watchdog 增量重生
-- [ ] `v0.3`：Textual TUI + 章节级 helpfulness
+- [ ] `v0.1`（MVP）：CLI + Lesson + Evaluator + Ratchet 全链路 + `ahadiff serve` 本地交互服务器
+- [ ] `v0.2`：watchdog 增量重生 + section-level helpfulness + forgetting-risk dashboard
+- [ ] `v0.3`：Textual TUI + Socratic follow-up
 - [ ] `v1.0`：Next.js + React 19 完整前端 + Benchmark Transparency
 
 ## 灵感来源

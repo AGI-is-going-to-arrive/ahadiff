@@ -63,6 +63,9 @@ ahadiff learn HEAD~1..HEAD --against .ahadiff/specs/oauth-login/SPEC.md
 ahadiff quiz abc123
 ahadiff review
 
+# Interactive browser UI (Quiz/SRS/Dashboard)
+ahadiff serve
+
 # Ratcheted self-improvement
 ahadiff improve abc123 --rounds 6
 
@@ -125,9 +128,9 @@ ahadiff/
 
 Roadmap:
 
-- [ ] `v0.1` (3-day MVP): CLI + Lesson + Evaluator + Ratchet end-to-end
-- [ ] `v0.2`: HTMX dashboard + watchdog incremental regeneration
-- [ ] `v0.3`: Textual TUI + section-level helpfulness
+- [ ] `v0.1` (MVP): CLI + Lesson + Evaluator + Ratchet end-to-end + `ahadiff serve` local interactive server
+- [ ] `v0.2`: watchdog incremental regeneration + section-level helpfulness + forgetting-risk dashboard
+- [ ] `v0.3`: Textual TUI + Socratic follow-up
 - [ ] `v1.0`: Next.js + React 19 full UI + Benchmark Transparency page
 
 ## Inspirations
