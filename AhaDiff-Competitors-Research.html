@@ -1254,9 +1254,14 @@ footer{
         </div>
       </div>
 
-      <!-- MOAT 05: i18n -->
-      <div class="moat-card">
+      <!-- Moat 5 -->
+      <div class="moat fade-in">
         <div class="moat-header">
+          <div class="moat-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+            </svg>
+          </div>
           <div>
             <div class="moat-num">MOAT 05</div>
             <h3>i18n 学习笔记多语言</h3>
@@ -1751,17 +1756,17 @@ footer{
           <div class="borrow-howto-body">7 态新鲜度判断 + 4 值投影，squash/cherry-pick/rebase 后不会误判为过期，减少无谓的 context 重建开销。</div>
         </div>
 
-        <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px">
+        <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px;margin:0">
           <div class="borrow-howto-tag" style="margin:0">i18n 全链路</div>
           <div class="borrow-howto-body">浏览器自动检测语言 + Topbar 手动 zh/EN 切换。LLM prompt 用 <code>OUTPUT_LANGUAGE</code> 指令前缀，生成中文或英文 lesson。SRS 卡片保留创建时语言，不重翻译。<strong>10 款竞品无一支持学习笔记多语言</strong>。</div>
         </div>
 
-        <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px">
+        <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px;margin:0">
           <div class="borrow-howto-tag" style="margin:0">安全 6 类全覆盖</div>
           <div class="borrow-howto-body">不仅脱敏 diff 正文，还覆盖文件名、commit message、Graphify 标签、LLM 输出、VCR 录制。统一 <code>redaction_pipeline()</code> 入口，raw → scan → redact → 才能 log/cache/model/render。</div>
         </div>
 
-        <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px">
+        <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px;margin:0">
           <div class="borrow-howto-tag" style="margin:0">30 Corner Cases 全闭合</div>
           <div class="borrow-howto-body">经多轮三模型审查（Claude+Codex+Gemini，Gemini 429 时 Claude 兜底），从 Quiz staleness 到 Archive bomb，从 locale 归一化到 z-index 层级，30 个 corner case 全部有具体工程闭合方案。详见 <code>.claude/team-plan/corner-cases-closure-8.md</code> 和评估报告。</div>
         </div>
