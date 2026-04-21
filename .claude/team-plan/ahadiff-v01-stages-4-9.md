@@ -47,7 +47,12 @@
   5. 实现 `generate_compact()` → 生成 `lesson.compact.md`（<500 token 概念卡）
   6. 实现 `not_proven.md` 和 `misconception.md` 分离输出
   7. 每篇 lesson 必须包含 TL;DR / What Changed / Why / Walkthrough / Claims / Concepts / Misconceptions / Not Proven / Quiz / Sources
-- **验收标准**: `ahadiff learn HEAD~1..HEAD` 生成 `runs/<run_id>/lesson/` 下的 full/hint/compact 三个文件
+  8. **三段式撤架降级触发条件**（学习科学补齐）：
+     - **自动降级**：`ahadiff review` 展示 lesson 时，根据 SRS 复习阶段选择版本：首次展示=Full，interval≥3天=Hint，interval≥14天=Compact
+     - **手动切换**：UI 提供 Full/Hint/Compact 三个标签页，用户可随时手动切换（不受自动规则约束）
+     - **Quiz 表现反馈**：若 quiz 答错率>50%，下次 review 自动回退一级（Compact→Hint 或 Hint→Full）
+     - 降级选择写入 `ReviewCard.scaffolding_level` 字段（`full|hint|compact`），影响 SRS 调度但不改变 lesson 内容本身
+- **验收标准**: `ahadiff learn HEAD~1..HEAD` 生成 `runs/<run_id>/lesson/` 下的 full/hint/compact 三个文件；`ahadiff review` 根据 interval 自动选择展示版本
 
 ### Task 10: Quiz 生成 + SRS 卡片
 
@@ -70,6 +75,7 @@
   6. **Quiz staleness 惰性检测**（Anki 无此能力，AhaDiff 创新点）：`CardState = active | stale | archived`。当 `ahadiff review` 或 `ahadiff quiz` 取卡时，用当前 HEAD 重新解析 card 的 anchor（`file_id` → 反查当前路径 + hunk_hash + symbol）。解析失败 → 标记 `stale` + `stale_reason`（file_deleted/symbol_removed/line_drifted），移出正常 due 队列，CLI 提示 `ahadiff regenerate --only quiz <run_id>` 或 `ahadiff card archive <card_id>`。rename/move 场景优先用 symbol 判定，path 失效但 symbol 可解析时判为 `moved` 而非 stale。非 git 输入（`patch_file`/`patch_stdin`/`file_compare`）标记 `staleness_unknown`，不误报
   7. **concepts.jsonl 实现**（~120-180 行）：实现 `src/ahadiff/wiki/concepts.py`，包含 `append_concepts(run_id, concepts_list)`、`load_visible_concepts(head_ref)` 函数。存储为 repo 级 `.ahadiff/concepts.jsonl`（append-only 日志格式，允许同一 term_key 多行存在）。每条记录：`{concept, term_key, source_refs[], branch_hint, introduced_by_run, updated_by_runs[], related_claims[], file_refs[]}`。**存储模型：每个 term_key 恰好一行**（upsert 语义）。`append_concepts()` 写入时按 term_key 查找已有行：存在则原地更新该行字段（合并 `updated_by_runs`/`file_refs`，追加 `source_refs[]`）；不存在则追加新行。文件整体保持 JSONL 格式但**每个 term_key 唯一**。**读取时过滤**：`load_visible_concepts(head_ref)` 扫描所有行，检查 `source_refs[]` 中是否有**任一** ref 是当前 HEAD 的 ancestor（`any(is-ancestor)`），有则可见。**non-git 输入守卫**：当 `source_kind` 为 `patch_file`/`patch_stdin`/`file_compare` 时，`source_ref` 为内容 hash 而非 git commit，此时概念仅在 run-local 视图展示（写入 `runs/<run_id>/concepts_local.jsonl`），不进入全局 `concepts.jsonl`
   8. **concept 去重**（CC-NEW-5 闭合方案）：`compute_term_key()` 使用 NFKD + lowercase + strip + slug 归一化。`append_concepts()` 时按 term_key 检查已存在，存在则合并 `updated_by_runs`、`file_refs`，**并将当前 run 的 commit 追加到 `source_refs[]` 数组**（保留所有引入过该概念的 commit，确保任何分支上只要有一个 source_ref 可达即可见；解决 squash/cherry-pick 和多分支并行问题）
+  9. **concepts.jsonl crash-atomicity**（Codex 审查发现）：upsert 操作采用 write-to-temp-then-rename 策略：(1) 读取现有 concepts.jsonl 到内存；(2) 执行 term_key 匹配/合并；(3) 写入完整内容到 `.ahadiff/concepts.jsonl.tmp`；(4) `os.replace()` 原子替换原文件。中断恢复：启动时检测 `.tmp` 残留 → 若 `.tmp` 大小 > 0 且合法 JSONL 则 replace 生效（完成中断的 rename），否则删除 `.tmp`（回退到原文件）。**并发保护**：`append_concepts()` 必须在 `repo_write_lock` 内调用；`ahadiff serve` 的读路径（`load_visible_concepts`）无需锁（读取原子性由 OS rename 保证）
 - **验收标准**: `ahadiff quiz <run_id>` 能做题，每题可回链到 source_claims 和 file:line；stale card 不更新 ease/interval；`concepts.jsonl` 可正确追加/去重/按 branch 过滤可见概念
 
 ---
@@ -114,7 +120,16 @@
   4. 实现 `append_result()` 的幂等保证：写入前检查 `event_id` 是否已存在，存在则跳过
   5. 提供 `ahadiff export-results` 从 review.sqlite 重建 results.tsv
   6. status 枚举化（从 Task 0 `contracts/event_log.py` 单点导入 `RunStatus`）：`baseline | keep | discard | rollback | crash | targeted_verify | keep_final | phase25_rewrite | non_ratcheted`。**`non_ratcheted` 判定条件**：`has_git_ancestry == false`（即无法通过 `git merge-base` 确认 baseline 关系）。Level 1/2 输入（patch/file_compare）虽然有 `source_ref`（content hash），但没有 git ancestry，因此无法 ratchet 回滚。写入时 status 直接标记为 `non_ratcheted`，不进入 keep/discard 决策。**注意区分**：`has_source_ref`（所有输入都有）≠ `has_git_ancestry`（仅 Level 3 git 输入有）
-  7. 实现 ratchet 决策逻辑：score 提升且 hard gate 全过 → keep（cherry-pick 回主分支）；否则 → discard（删除 worktree）。降级 run（`degraded_flags` 非空）的 ratchet 比较需标记 `ratchet_note=degraded_comparison`，不直接丢弃
+  7. 实现 ratchet 决策逻辑 + **improve 状态机统一定义**：
+     - **learn 链路**（`ahadiff learn`，非 improve）：score 评估后直接写入 `status=baseline`（首次）或 `status=keep`（后续 ratchet 提升）/ `status=discard`（退步）。learn 不涉及 cherry-pick（直接在主分支上运行）
+     - **improve 链路**（`ahadiff improve`，在 worktree 中）：
+       (a) 评估通过（score 提升 + hard gate 全过）→ 先执行 `git cherry-pick` → 成功后写 `status=targeted_verify`（不是 `keep`）
+       (b) cherry-pick 失败（冲突）→ 写 `status=targeted_verify` + `note_json={"cherry_pick_pending": true, "worktree_path": "..."}`，保留 worktree 供人工 resolve
+       (c) 评估未通过 → 写 `status=discard`，删除 worktree
+       (d) `ahadiff improve --finalize <run_id>` 全 8 维 recheck 通过 → 升级为 `status=keep_final`
+     - **边界定义**：`keep` 仅出现在 learn 链路（直接 ratchet 判定）；`targeted_verify → keep_final` 仅出现在 improve 链路。两者不混用。Phase 2.5 最终结果也走 improve 链路：通过写 `targeted_verify`，不通过写 `discard`
+     - **禁止**：先写 status 再 cherry-pick（避免状态与 git 不一致）
+     - 降级 run（`degraded_flags` 非空）的 ratchet 比较需标记 `ratchet_note=degraded_comparison`，不直接丢弃
   8. 实现 Phase 2.5 检测：连续 2 个优化目标在首轮即 discard → 触发 structural rewrite
   9. 简洁性准则：0.001 分提升 + 20 行 hacky prompt → 不值得
   10. 实现 repo_write_lock 检查（复用 Task 5 的 `.ahadiff/ahadiff.lock`，portalocker）：ratchet 写入前验证锁持有
@@ -140,21 +155,26 @@
 - **实施步骤**:
   1. 初始化 Vite + React 19 + TypeScript 项目
   2. 以 `AhaDiff Warm v6.html` 为设计参考模板，提取设计 token（颜色、字体、间距）
-  3. 实现 Warm 风格 CSS 设计系统（vanilla CSS custom properties，不用 CSS 框架）
+  3. 实现 Warm 风格 CSS 设计系统（vanilla CSS custom properties + CSS Modules，不用 CSS 框架）
   4. 实现基础 layout：sidebar nav + main content area + responsive breakpoints
   5. 实现 API client：连接 `ahadiff serve` 的 REST API
-  6. 实现 i18n：React Context + JSON catalog（`messages/en.json` + `messages/zh-CN.json`）
+  6. **i18n 架构（Gemini 审查修正）**：使用 Zustand 原子 store 而非顶层 React Context。`useLocale()` hook 返回当前 locale，`useT()` hook 返回翻译函数。DiffView 等重渲染组件通过 `React.memo` + `useMemo(messages[key])` 隔离，语言切换时仅 re-render 含文案的轻组件（Nav/Sidebar/Footer），不触发 DiffView/EvidencePanel 重建
   7. 实现语言切换 UI + cookie 持久化 + 浏览器检测降级
-  8. 实现 print CSS（@media print）
-  9. 实现 WCAG AA 无障碍：焦点管理、aria-label、键盘导航
-  10. 配置 Vite build：`ahadiff serve` 开发时 proxy API，生产时 serve 静态 build
-  11. 实现 XSS 防护：所有用户数据渲染用 React 自动 escape，data_bundle 用 DOMPurify
-  12. 字体策略：Google Fonts（Newsreader/Inter/JetBrains Mono/Noto Serif SC）+ 系统字体回退链
+  8. **防 FOUC 阻塞脚本（Gemini 审查新增）**：在 `index.html` `<head>` 中注入内联 `<script>`（非 defer/async），在 React bundle 加载前读取 `localStorage.getItem('ahadiff_lang')` 和 `localStorage.getItem('ahadiff_theme')` 并设置 `<html lang="..." data-theme="...">`。配合 CSS Variables 实现 0 闪烁。脚本体积 < 500 bytes
+  9. 实现 print CSS（@media print）。`break-inside: avoid` 仅作用于 `.claim-card` 和 `<table>` 等小块级元素，不作用于 `<article>` 或长 `<pre>`（避免大面积空白）
+  10. 实现 WCAG AA 无障碍：焦点管理、aria-label、键盘导航
+  11. 配置 Vite build：`ahadiff serve` 开发时 proxy API，生产时 serve 静态 build
+  12. 实现 XSS 防护：所有用户数据渲染用 React 自动 escape，data_bundle 用 DOMPurify
+  13. 字体策略：Google Fonts（Newsreader/Inter/JetBrains Mono/Noto Serif SC）+ 系统字体回退链
+  14. **DiffView 渲染隔离（性能约束）**：DiffView 组件整体用 `React.memo(DiffView, shallowEqual)` 包裹，props 仅接收 `runId` + `highlightedClaimId`。内部使用虚拟列表（`@tanstack/react-virtual`）渲染 5000+ 行。i18n/theme 切换不传入 DiffView props，通过 CSS Variables + `data-lang` 属性处理静态文案
+  15. `<noscript>` 提示：JS 禁用时显示 "AhaDiff requires JavaScript" 友好提示
 - **验收标准**: 
   - `cd viewer && npm run build` 成功
   - `ahadiff serve` 启动后自动打开浏览器，显示 Warm 风格首页
   - WCAG AA 合规（axe-core 零 critical）
-  - 中英文切换无闪烁
+  - 中英文切换无闪烁、无 FOUC（清空缓存后首次加载验证）
+  - DiffView 5000 行渲染 FCP < 500ms（虚拟列表验证）
+  - 语言切换时 DiffView 不触发 re-render（React DevTools Profiler 验证）
 
 ### Task 14: Viewer 核心页面（v0.1 必须的 4 页）
 
@@ -170,17 +190,21 @@
   - `viewer/src/components/ConceptGraph.tsx` — 概念图谱（SVG + List fallback）
 - **依赖**: Task 13（Viewer 基础）
 - **实施步骤**:
-  1. **DashboardPage**: 显示所有 run 的 verdict/score/时间线 + Ratchet 趋势图
-  2. **LessonPage**: 渲染 lesson.full.md + 右栏 Claims/Evidence/Quiz 状态，支持 full/hint/compact 切换
-  3. **DiffViewerPage**: 点击 diff 行 → 高亮相关 claim；点击 claim → 滚动到 source hunk（核心交互）
+  1. **DashboardPage**: 显示所有 run 的 verdict/score/时间线 + Ratchet 趋势图。**冷启动降级（Gemini 审查新增）**：runs≤2 时隐藏 Line Chart，渲染为 KPI 卡片对比视图（Score Before → Score After 两个大号数字）；runs=1 时仅显示单次 Score 卡片 + "完成更多学习以查看趋势" 提示
+  2. **LessonPage**: 渲染 lesson.full.md + 右栏 Claims/Evidence/Quiz 状态，支持 full/hint/compact 三标签切换（三段式撤架 UI）。**命名统一**：权威枚举为 `full|hint|compact`（v6.html 中的 "Quiz-only" 为旧命名，Task 13 实现时统一为 compact，前端设计手册同步更新）
+  3. **DiffViewerPage**: 点击 diff 行 → 高亮相关 claim；点击 claim → 滚动到 source hunk（核心交互）。**移动端双向联动（Gemini Critical 修复 + 二轮验证修正）**：≤768px 时不使用全屏 Sheet/Drawer 展示 Claim 详情。改为：(a) Diff 行号旁显示 Claim Avatar 小圆点（按状态色编码）；(b) 点击后屏幕底部弹出 Bottom Mini-Panel，采用**三段 Snap Points 吸附设计**：默认 25vh（~167px，摘要视图）/ 手指上滑到 50vh（详情视图）/ 继续上滑到 90vh（近全屏，Back 手势返回）。`min-height: min(25vh, 180px)` 确保 iPhone SE 可用；(c) Mini-Panel 内显示 Claim 摘要，50vh 以上显示完整证据链；(d) 从 Mini-Panel 点击 "跳转到代码" 时，收起 Panel 到 25vh + 自动滚动到目标行
   4. **QuizPage**: Quiz 交互（Guided/Recall/Transfer 三类题型），答题结果通过 API 写入后端
   5. **ClaimBadge**: verified(绿 `#2F6F4F`)/weak(黄 `#B4791F`)/not_proven(灰 `#6B6B6B`)/contradicted(红 `#A33D2B`)/rejected(紫 `#7B5EA7`) 五态色彩标识
   6. **EvidencePanel**: file:line 证据链面板，点击跳转到 DiffViewer 对应 hunk
   7. **SRSCard**: 翻牌动画 + Good/Hard/Wrong 按钮，直接调用 `ahadiff serve` API 写入
-  8. **ConceptGraph**: 概念图谱（SVG 力导向图 + List fallback for 无障碍）
-  9. 移动端：EvidencePanel 降级为 Drawer 浮层
+  8. **ConceptGraph**: 概念图谱（SVG 力导向图 + List fallback for 无障碍）。**大集合聚类（Gemini 审查新增 + 二轮触屏修正）**：节点数>20 时默认按文件路径（File）分组为 Cluster 节点，每个 Cluster 显示文件名 + `+N` 概念数徽标（视觉暗示可展开）；**单击** Cluster 展开细节概念（不用双击——双击在触屏上不可发现且被浏览器缩放拦截）。节点数≤20 时正常展示全部节点。用户可通过 "展开全部/折叠为文件" 按钮切换。触屏长按 Cluster 弹出操作菜单（展开/隐藏/高亮关联 claims）
+  9. 移动端：EvidencePanel 在≤768px 使用步骤 3 的 Bottom Mini-Panel 模式（不用全屏 Drawer）
   10. 打印样式：保留证据链，隐藏 UI chrome
-- **验收标准**: 4 个页面在 375px/768px/1024px/1440px 四个视口正常显示
+- **验收标准**: 
+  - 4 个页面在 375px/768px/1024px/1440px 四个视口正常显示
+  - 375px 视口点击 Claim Avatar，底部 Mini-Panel 弹出且 Diff 代码仍可滚动查看
+  - ConceptGraph 50 节点时渲染流畅（聚类后实际渲染≤20 节点）
+  - Ratchet 趋势图在仅 1 次 run 时显示 KPI 卡片（非空坐标轴）
 - **Review**: Gemini(gemini-3.1-pro-preview) 评审
 
 ### Task 14.5: Serve Backend（REST API for React 前端）
@@ -293,7 +317,7 @@
   1. 实现 Targeted Verification（R11）：improve 后不重跑全 8 维，只验证 **目标维度 + accuracy + evidence + safety_privacy**（4 维）
   2. 通过则 status=`targeted_verify`，最终确认后升级为 `keep_final`
   3. 实现 Phase 2.5 structural rewrite：连续 2 个优化目标在首轮即 discard → 在新 worktree 中从头重写 → 评估 → 更好则 cherry-pick 回主分支，否则删除 worktree。**Phase 2.5 最多触发 1 次/session**（设置 `phase25_attempted=true` 标志，防止无限重写循环）
-  4. Phase 2.5 触发时 status=`phase25_rewrite`（结构化枚举，非自由文本）。note 字段记录 `stash_ref=<ref>;trigger_reason=<consecutive_discard_count>`。最终结果写入 results.tsv，status=`keep` 或 `discard`，note 前缀 `PHASE25:`
+  4. Phase 2.5 触发时 status=`phase25_rewrite`（结构化枚举，非自由文本）。note 字段记录 `stash_ref=<ref>;trigger_reason=<consecutive_discard_count>`。最终结果写入 results.tsv：通过=`targeted_verify`（走 improve 链路，后续可升级为 `keep_final`），不通过=`discard`，note 前缀 `PHASE25:`。**注意**：Phase 2.5 属于 improve 链路，不使用 `keep` 状态（与 Task 12 step 7 状态机统一定义一致）
 - **验收标准**: targeted verification 降低 ~50% token 消耗；Phase 2.5 在连续卡住时正确触发
 
 ### Task 18: Benchmark Suite（本地版）
@@ -412,9 +436,11 @@ Layer 5 (串行+并行):
                  Task 12 (依赖 Task 0 + Task 11，与 Task 10 并行)
                  Task 13 (依赖 Task 0，API 通过 mock/proxy 解耦，与 Task 10 并行)
    ↓
-Layer 6 (并行):  Task 14 (依赖 Task 13)
+Layer 6a (并行): Task 14 (依赖 Task 13)
                  Task 15 (依赖 Task 10 + Task 12，与 Task 14 并行)
-                 Task 14.5 (依赖 Task 0 + Task 13 + Task 15，与 Task 14 并行)
+   ↓
+Layer 6b (串行): Task 14.5 (依赖 Task 0 + Task 13 + **Task 15**，必须等 Task 15 完成 DB schema)
+                 ⚠️ 注意：Task 14.5 不能与 Task 15 真正并行（signals 路由需要 review.sqlite schema）
    ↓
 Layer 7 (串行):  Task 16 (依赖 Task 11 + Task 12 + Task 15)
    ↓             Task 17 (依赖 Task 16，串行)
@@ -592,8 +618,9 @@ Task 0 (Schema Freeze)
 ## 预计时间（修订）
 
 - Layer 4: ~2 天（Lesson + Quiz + Evaluator 并行）
-- Layer 5: ~2 天（Ratchet + Viewer 并行）
-- Layer 6: ~1 天（Review）
+- Layer 5: ~2 天（Ratchet + Viewer 基础 并行）
+- Layer 6a: ~1.5 天（Viewer 页面 + Review DB 并行）
+- Layer 6b: ~1 天（Serve Backend，等待 Task 15 DB schema）
 - Layer 7: ~2 天（Improve + Targeted + Benchmark 并行）
 - Layer 8: ~1 天（Install + GitHub Action 并行）
 - **i18n: ~3.75 天（理论并行，实际因渗透集成可能需串行）**

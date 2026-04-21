@@ -1168,6 +1168,7 @@ footer{
           → 生成 <code>4</code> 条带证据的笔记<br>
           → 生成 <code>5</code> 道主动回忆 quiz<br>
           → <code>14</code> 天后 SRS 自动推送给你复习<br>
+          → 三段式撤架：<code>full</code>（完整笔记）→ <code>hint</code>（只留关键词）→ <code>compact</code>（仅概念名），interval 驱动 + quiz 表现反馈<br>
           v0.1 通过 <code>ahadiff serve</code> 实现浏览器内交互（Quiz/SRS 答题通过 REST API 写回 <code>review.sqlite</code>），不再需要在 terminal 和浏览器间来回切换。
         </div>
         <div class="moat-compare">
@@ -1661,7 +1662,7 @@ footer{
           </div>
           <div class="split-item">
             <div class="split-item-name">SKILL0 <span class="split-item-tag">ZJU-REAL</span></div>
-            <div class="split-item-evid">借走：撤架学习法（scaffolding removal）；原版 file 级 helpfulness，AhaDiff 扩展到 section 级</div>
+            <div class="split-item-evid">借走：撤架学习法（scaffolding removal）→ AhaDiff 落地为三段式 full→hint→compact（interval 驱动 + quiz 表现反馈）；原版 file 级 helpfulness，AhaDiff 扩展到 section 级</div>
           </div>
           <div class="split-item">
             <div class="split-item-name">Graphify <span class="split-item-tag">PyPI</span></div>
@@ -1977,6 +1978,21 @@ footer{
         </div>
 
         <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px;margin:0">
+          <div class="borrow-howto-tag" style="margin:0">移动端 Bottom Mini-Panel</div>
+          <div class="borrow-howto-body">移动端交互采用 Bottom Mini-Panel（非全屏 Drawer），保留上方 diff 上下文可见性。用户可上滑展开、下滑收起，兼顾单手操作与信息密度。</div>
+        </div>
+
+        <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px;margin:0">
+          <div class="borrow-howto-tag" style="margin:0">概念图谱自动聚类</div>
+          <div class="borrow-howto-body">概念图谱节点 &gt;20 时自动聚类，避免节点爆炸导致的视觉混乱。聚类后用户可点击展开子图，保持交互层次清晰。</div>
+        </div>
+
+        <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px;margin:0">
+          <div class="borrow-howto-tag" style="margin:0">SRS 三段式撤架</div>
+          <div class="borrow-howto-body">借鉴 SKILL0 的 scaffolding removal，落地为三段式撤架：<code>full</code>（完整笔记）→ <code>hint</code>（只留关键词提示）→ <code>compact</code>（仅概念名称）。由 SRS interval 驱动切换，结合 quiz 表现反馈动态调整：答对加速撤架，答错回退一级。</div>
+        </div>
+
+        <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px;margin:0">
           <div class="borrow-howto-tag" style="margin:0">50+ Corner Cases 全闭合</div>
           <div class="borrow-howto-body">经六轮三模型审查（Claude+Codex+Gemini，Gemini 429 时 Claude 兜底），从 Quiz staleness 到 Archive bomb，从 locale 归一化到 z-index 层级，50+ 个 corner case 全部有具体工程闭合方案（含 CC-GAP 系列 13 项 + CC-R6 系列 7 项 + diff 捕获扩展 30+ 项）。第六轮终审判定：<strong>GO</strong>（0 Critical，3 High 已修复）。</div>
         </div>
@@ -2152,8 +2168,8 @@ const products = {
     local:'YES — per-repo truth（.ahadiff/）+ global derived（config/registry，非真相源） · 前端 React 19 SPA（ahadiff serve 本地启动）',
     claim:'5 状态（verified/weak/not_proven/contradicted/rejected）',
     ratchet:'有（wiki_score + git worktree 隔离 + Phase 2.5 + 8 维自研 rubric）',
-    srs:'有（quiz.jsonl + review.sqlite + SM-2）',
-    overlap:'自己', note:'本项目 · 当前设计阶段 · v0.1 技术栈: Python 3.11+, Typer, Rich, Pydantic, React 19 + Vite + vanilla CSS, Starlette+Uvicorn · 8 种 diff 捕获（v0.1: --last/--since/--staged/--unstaged/commit-range/git-show/--patch/--compare）+ 4 种规划（v0.2: --compare-dir/--patch-url, v0.3: .ipynb/--url PR）· 8 种 LLM Provider（OpenAI/Responses/Gemini/Anthropic/Azure/NewAPI/CherryIN/Ollama）+ BYOK 自动探测 · Judge: gpt-5.4-mini (1M ctx) · 数据范围: per-repo truth + global derived governance · portalocker 跨平台文件锁 · Capture Pipeline: raw/redacted 双表示（raw 永不落盘）· 50+ corner cases 全闭合'},
+    srs:'有（quiz.jsonl + review.sqlite + SM-2 + 三段式撤架 full→hint→compact）',
+    overlap:'自己', note:'本项目 · 当前设计阶段 · v0.1 技术栈: Python 3.11+, Typer, Rich, Pydantic, React 19 + Vite + vanilla CSS, Starlette+Uvicorn · 8 种 diff 捕获（v0.1: --last/--since/--staged/--unstaged/commit-range/git-show/--patch/--compare）+ 4 种规划（v0.2: --compare-dir/--patch-url, v0.3: .ipynb/--url PR）· 8 种 LLM Provider（OpenAI/Responses/Gemini/Anthropic/Azure/NewAPI/CherryIN/Ollama）+ BYOK 自动探测 · Judge: gpt-5.4-mini (1M ctx) · 数据范围: per-repo truth + global derived governance · portalocker 跨平台文件锁 · Capture Pipeline: raw/redacted 双表示（raw 永不落盘）· 移动端 Bottom Mini-Panel · 概念图谱 >20 节点自动聚类 · SRS 三段式撤架 full→hint→compact · 50+ corner cases 全闭合'},
   'coderabbit':{name:'CodeRabbit', tag:'SAAS', url:'https://coderabbit.ai',
     model:'SaaS $24/$48 per user/month（Pro/Pro Plus）',
     focus:'PR 逐行 review + 变更摘要 + 架构图 + AI 修复',

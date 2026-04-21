@@ -465,6 +465,8 @@ def get_parser(file_path: str) -> DiffParser:
 | Task 5b | `--patch-url` 远端 patch 下载 | Task 5 + Task 7（httpx 复用） |
 | Task 0a | `SourceDetail` schema + `degraded_flags` 扩展 | Task 0 |
 
+**⚠️ Ratchet 规则约束（Codex 审查冻结）**：v0.2 新增的 `--compare-dir`（source_kind=`file_compare`）和 `--patch-url`（source_kind=`patch_url`）均无 git ancestry，必须挂到与 v0.1 相同的 `has_git_ancestry == false → non_ratcheted` 规则。禁止通过 capability_level 或 source_ref 推断 ancestry 关系。此规则适用于所有未来新增的非 git 输入模式。
+
 ### v0.3 新增 Task
 
 | Task | 内容 | 依赖 |

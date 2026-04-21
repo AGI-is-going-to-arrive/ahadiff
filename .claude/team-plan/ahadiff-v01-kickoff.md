@@ -64,13 +64,13 @@
   1. 冻结 `ClaimStatus` 枚举：`verified | weak | not_proven | contradicted | rejected`（Pydantic Literal）
   2. 冻结 `RunStatus` 枚举：`baseline | keep | discard | rollback | crash | targeted_verify | keep_final | phase25_rewrite | non_ratcheted`（non_ratcheted 用于 Level 1/2 非 git 输入，这类 run 无法 ratchet 回滚）
   3. 冻结 `RunSource` schema：`source_kind`(git_ref/git_staged/git_unstaged/git_since/patch_file/patch_stdin/file_compare，**细粒度为权威值，diff-input 文档的粗粒度 git/patch/file_compare 降级为 UI 展示分组**) + `source_ref`(统一标识，替代旧的 head_sha) + `capability_level`(1/2/3) + `degraded_flags`(dict，key 枚举：`diff_clipped | binary_only | file_count_exceeded | token_exceeded`)
-  4. 冻结 `EvaluationBundle` 版本化契约：`evaluator.py` + `rubric.py` + `rubric.yaml` + `gates.py` + `deterministic.py` 五个文件的联合 hash 作为 `eval_bundle_version`
+  4. 冻结 `EvaluationBundle` 版本化契约：`evaluator.py` + `rubric.py` + `rubric.yaml` + `gates.py` + `deterministic.py` 五个文件的联合 hash 作为 `eval_bundle_version`。**Hash 算法冻结（字节级伪代码）**：��文件相对路径 ASCII 字典序排序后，逐个拼接 `path_utf8_bytes + b"\n" + content_bytes`，文件间用 `b"\n---\n"` 连接，最终对拼接结果做 SHA-256 取 hex 前 12 位。示例：`sha256(b"eval/deterministic.py\n<content>\n---\neval/evaluator.py\n<content>\n---\n...")[:12]`。所有操作在字节层面，不做编码转换。任一文件变更（含空白）均产生新版本号
   5. 冻结 `EventLog` schema：主键为 `event_id`（UUID v7），`(run_id, event_type, timestamp)` 为唯一索引（注意：`event_type` 与 `status` 是两个独立字段。`event_type` 描述事件动作如 `score_computed | ratchet_decided | phase25_triggered`；`status` 是 RunStatus 枚举值）。`run_id` 为二级索引
   6. 冻结统一字段命名：所有文档使用 `source_ref`（替代旧的 `head_sha`）、`privacy_mode`（snake_case: `strict_local | redacted_remote | explicit_remote`）、`eval_bundle_version`
   7. 定义统一错误类型层级：`InputError | SafetyError | ProviderError | VerificationError | StorageError | MigrationError | DegradedRunWarning`
   8. 定义文件锁规范：使用 `portalocker` 作为文件锁真相源（跨平台）。lockfile `.ahadiff/ahadiff.lock` 中 `{pid}\n{start_time_iso}\n{command}` 仅作诊断元数据，不用于活性检查。提供 `ahadiff unlock --force` 手动清理
   9. 定义 crash recovery 状态机：stale lock → portalocker 自动释放（进程退出即释放）；orphaned worktree → `ahadiff doctor` 自动清理；migration 部分失败 → 每个 migration 脚本在 `BEGIN EXCLUSIVE ... COMMIT` 事务中执行
-  10. 写入 `doc/contract-freeze.md` 作为所有下游 Task 的权威参考
+  10. 写入 `doc/contract-freeze.md` 作为所有下游 Task 的权威参考。**注意**：该文件当前不存在（Task 0 尚未执行），这是正确的——它是 Task 0 的核心产出物。Task 0 完成后，`contract-freeze.md` 成为唯一架构权威源，其他设计文档（kickoff/stages/diff-input 等）降级为设计过程文档，与 contract-freeze 冲突时以后者为准
   14. 冻结 **Config 优先级链**：`ENV(AHADIFF_*) → CLI flag → per-repo .ahadiff/config.toml → global_config_dir()/config.toml → defaults`。凭证类：`env secret → per-repo env_var_name → global env_var_name → none`。Serve/request：`cookie → Accept-Language → CLI session → per-repo → global → system → defaults`
   15. 冻结 **数据范围契约**：真相源永远 per-repo（review.sqlite / audit.jsonl / concepts.jsonl / prompts/ / VCR）；global（`global_config_dir()`，各平台实际路径见 data-scope 文档）只做派生索引/账本/偏好，不参与 ratchet 判定
   16. 预留 **UsageEvent schema**：`event_id / run_id / repo_id / provider_class / model_id / input_tokens / output_tokens / cost_usd / pricing_version / cost_confidence / billing_mode / execution_origin / api_principal_hash / timestamp`（v0.2 实现 global usage.sqlite）
@@ -79,7 +79,7 @@
   21. 冻结**开发测试阶段默认模型**：生成和评估统一使用 `gpt-5.4-mini`（provider_class=openai, 1M 上下文）。config.toml 默认值 `[llm] generate_model = "gpt-5.4-mini"` + `[llm] judge_model = "gpt-5.4-mini"`。生产环境用户可按需将 generate_model 切换为 gpt-5.4 或其他大模型
   19. 冻结 SQLite 运行时版本门禁：启动时 `sqlite3.sqlite_version_info >= MINIMUM_VERSION`
   20. 冻结统一连接初始化：`journal_mode=WAL` + `busy_timeout=5000` + `trusted_schema=OFF` + 启动时 `quick_check`（非 integrity_check）
-  11. 冻结 `Orchestrator` 接口契约：`OrchestratorCommand` DTO（`learn | improve | verify | serve`）+ `OrchestratorResult` 返回结构 + 三条主链路入口签名（`run_learn()`, `run_improve()`, `run_verify()`）。`core/orchestrator.py` 统一编排，`cli.py` 仅做参数解析和输出格式化
+  11. 冻结 `Orchestrator` 接口契约：`OrchestratorCommand` DTO（`learn | improve | verify | serve`）+ `OrchestratorResult` 返回结构 + 三条主链路入口签名（`run_learn()`, `run_improve()`, `run_verify()`）+ **serve 链路区分**：serve 是 pull/读模式（被动响应请求），与其他三条 push/写模式本质不同。`run_serve()` 不返回 `OrchestratorResult`，而是启动 ASGI app 的长驻进程。DTO 中 `command=serve` 时附带 `ServeConfig(port, no_browser, bind_host)` 而非 `RunConfig`。`core/orchestrator.py` 统一编排，`cli.py` 仅做参数解析和输出格式化
   12. 冻结 `ServeApp` 接口契约：`src/ahadiff/serve/app.py` 的路由注册协议 + write token 鉴权（`X-AhaDiff-Token` header）+ `Host`+`Origin/Referer` 双校验 + `bind=127.0.0.1`（仅回环） + read-only 默认模式。API 端点清单：`GET /api/locale`, `PUT /api/locale`, `GET /api/runs`, `GET /api/run/:id`, `POST /api/signals/*`。路由鉴权分级：读路由无需 token，写路由必须验 token
   13. 冻结**三层写锁矩阵**（解决并发安全）：
       - `repo_write_lock`（`.ahadiff/ahadiff.lock`，portalocker 文件锁，PID/time/cmd 仅诊断）：保护 `runs/` 目录写入、worktree 创建/清理。持有者：`ahadiff learn` / `ahadiff improve`
@@ -319,7 +319,7 @@
      - `explicit_remote` 下发送原文（需用户确认）
   10. 实现 **异常处理决策表**（9+ 场景）：(1) 网络超时→重试 3 次 (2) 速率限制→指数退避 (3) context length exceeded→自动 clip diff 后重试 (4) API key 无效→立即 SafetyError (5) 空响应→标记 crash (6) JSON 解码失败→重试 1 次 (7) provider 不可用→切换 fallback (8) 模型返回拒绝→记录并跳过 (9) 超时+重试耗尽→ProviderError
   11. 实现 **audit.jsonl** 记录（数据范围架构新增）：每行含 `schema_version: 1` + `event_id` + `prompt_name` + `prompt_fingerprint` + `request_hash` + `input_tokens` + `output_tokens` + `cost_usd` + `pricing_version` + `cost_confidence` + `billing_mode` + `execution_origin` + `api_principal_hash` + `timestamp`。不存 prompt/response 原文（隐私）
-  12. 实现 **audit rotation**：audit.jsonl > 10MB → rotate 为 `audit.1.jsonl.gz`，保留最近 3 份
+  12. 实现 **audit rotation**：audit.jsonl > 10MB → rotate 为 `audit.1.jsonl.gz`，保留最近 3 份。**故障恢复语义**：rotation 采用 write-then-rename 原子序列：(1) 先 gzip 写入 `audit.1.jsonl.gz.tmp`；(2) `os.replace()` 原子移动为 `audit.1.jsonl.gz`；(3) 清空原 audit.jsonl（truncate）。中断恢复：`ahadiff doctor` 检测到 `.tmp` 后缀残留文件时自动清理（删除 tmp + 不 truncate 原文件，下次写入时重新触发 rotation）。所有 rotation 在 `repo_write_lock` 内执行
   13. 预留 **UsageEvent schema**（v0.2 实现写入 global usage.sqlite）：字段同 audit 事件 + `repo_id`（repo fingerprint），v0.1 仅定义 Pydantic model 不实现 global 写入
   14. 实现 **BYOK 自动探测**（`src/ahadiff/llm/probe.py`）：
       1. 用户提供 `model_name + base_url + api_key` 后，执行 `ahadiff provider test`
@@ -329,10 +329,10 @@
       5. 探测上下文长度：优先解析 `/v1/models` 端点获取 `context_window`/`max_tokens`；fallback 用已知模型 ID 映射表；再 fallback 默认 128K
       6. 所有探测结果缓存到 `.ahadiff/config.toml` 的 `[providers.{name}]` section
   15. 实现 **上下文长度保护**：
-      1. 所有 LLM 调用前，估算 input tokens（使用 tiktoken 或 provider 提供的 tokenizer）
+      1. 所有 LLM 调用前，估算 input tokens。**Token 估算策略（per-adapter，probe 优先）**：(a) 首选：使用 BYOK 探测阶段缓存的 `probed_tokenizer` 信息（如模型返回了 tokenizer 类型或 encoding 名）；(b) 次选（per-adapter fallback）：OpenAI/Azure → tiktoken(`cl100k_base`)；Anthropic → tiktoken(`cl100k_base`) × 1.1 安全系数；Gemini → `len(text) / 4`（官方近似）；Ollama → 取决于模型 metadata tokenizer 字段，无则 `len(text) / 4`；NewAPI/CherryIN → 因网关后可能挂任意模型，**优先用 probe 结果中的 model_id 匹配已知 tokenizer 映射表**，未命中时 fallback 到 tiktoken(`cl100k_base`)（近似，非精确）。所有估算结果上浮 5% 安全余量
       2. 若 estimated_tokens > provider.max_context * 0.9，自动 clip diff（保留头尾文件和最大变更文件）
       3. 若 clip 后仍超，设置 `degraded_flags.token_exceeded = true`
-      4. 日志记录每次调用的 estimated vs actual tokens
+      4. 日志记录每次调用的 estimated vs actual tokens（actual 来自 provider response usage 字段）
 - **验收标准**:
   - `pytest tests/unit/test_provider.py` 覆盖 8 种 adapter mock
   - `pytest tests/unit/test_probe.py` 覆盖连通性/temperature/TPM/RPM/context_length 探测
