@@ -143,7 +143,7 @@ Current minimal verification:
 python3 -m pytest tests/unit/test_contracts.py
 ```
 
-Actual result from this session: `13 passed`.
+Actual result from this session: `18 passed`.
 
 Roadmap:
 

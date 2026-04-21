@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import sys
 from pathlib import Path
@@ -103,7 +104,7 @@ class TestSerialization:
         )
         assert ClaimRecord.model_validate(record.model_dump()) == record
 
-    def test_review_card_preserves_stage0_fields(self) -> None:
+    def test_review_card_excludes_session_local_flag_from_dump(self) -> None:
         from ahadiff.contracts import ReviewCard
 
         card = ReviewCard(
@@ -118,9 +119,71 @@ class TestSerialization:
             hunk_hash="deadbeef",
         )
         dumped = card.model_dump()
+        assert card.peeked_this_session is False
         assert dumped["card_state"] == "active"
         assert dumped["scaffolding_level"] == "full"
-        assert dumped["peeked_this_session"] is False
+        assert "peeked_this_session" not in dumped
+
+    def test_review_card_rejects_invalid_fsrs_state_or_change_kind(self) -> None:
+        from ahadiff.contracts import ReviewCard
+
+        with pytest.raises(Exception):
+            ReviewCard(
+                card_id="card-1",
+                concept="retry loop",
+                run_id="run-1",
+                source_ref="abc1234",
+                fsrs_state="[]",
+                file_id="file-1",
+                display_path="src/a.py",
+                hunk_id="h1",
+                hunk_hash="deadbeef",
+            )
+
+        with pytest.raises(Exception):
+            ReviewCard(
+                card_id="card-1",
+                concept="retry loop",
+                run_id="run-1",
+                source_ref="abc1234",
+                fsrs_state="{}",
+                file_id="file-1",
+                display_path="src/a.py",
+                hunk_id="h1",
+                hunk_hash="deadbeef",
+                change_kind="modified",
+            )
+
+    def test_claim_record_enforces_reason_code_and_source_hunk_shape(self) -> None:
+        from ahadiff.contracts import ClaimRecord
+
+        with pytest.raises(Exception):
+            ClaimRecord(
+                claim_id="cl1",
+                run_id="run-1",
+                text="missing evidence",
+                status="rejected",
+                source_hunks=[{"file": "a.py", "start": 10, "end": 20}],
+            )
+
+        with pytest.raises(Exception):
+            ClaimRecord(
+                claim_id="cl1",
+                run_id="run-1",
+                text="verified text",
+                status="verified",
+                reason_code="evidence_missing",
+                source_hunks=[{"file": "a.py", "start": 10, "end": 20}],
+            )
+
+        with pytest.raises(Exception):
+            ClaimRecord(
+                claim_id="cl1",
+                run_id="run-1",
+                text="bad hunk",
+                status="verified",
+                source_hunks=[{"file": "a.py", "start": 20, "end": 10}],
+            )
 
     def test_learnability_defaults(self) -> None:
         from ahadiff.contracts import LearnabilityGate
@@ -174,16 +237,27 @@ class TestUtilities:
     def test_eval_bundle_hash_uses_frozen_logical_labels(self, tmp_path: Path) -> None:
         from ahadiff.contracts import EVAL_BUNDLE_FILES, compute_eval_bundle_version
 
-        chunks: list[bytes] = []
-        for logical_path, disk_path in EVAL_BUNDLE_FILES:
+        chunks: list[tuple[str, bytes]] = []
+        for logical_path, disk_path in reversed(EVAL_BUNDLE_FILES):
             target = tmp_path / disk_path
             target.parent.mkdir(parents=True, exist_ok=True)
             content = f"payload:{logical_path}".encode("utf-8")
             target.write_bytes(content)
-            chunks.append(logical_path.encode("utf-8") + b"\n" + content)
+            chunks.append((logical_path, content))
 
-        expected = hashlib.sha256(b"\n---\n".join(chunks)).hexdigest()[:12]
+        expected = hashlib.sha256(
+            b"\n---\n".join(
+                logical_path.encode("utf-8") + b"\n" + content
+                for logical_path, content in sorted(chunks, key=lambda item: item[0])
+            )
+        ).hexdigest()[:12]
         assert compute_eval_bundle_version(tmp_path) == expected
+
+    def test_eval_bundle_hash_raises_clear_error_when_bundle_missing(self, tmp_path: Path) -> None:
+        from ahadiff.contracts import compute_eval_bundle_version
+
+        with pytest.raises(FileNotFoundError, match="eval bundle files are not available"):
+            compute_eval_bundle_version(tmp_path)
 
     def test_error_hierarchy(self) -> None:
         from ahadiff.contracts import AhaDiffError, InputError
@@ -207,3 +281,47 @@ class TestUtilities:
 
         assert OrchestratorCommand(kind="learn", run_config=run_config).kind == "learn"
         assert OrchestratorCommand(kind="serve", serve_config=serve_config).kind == "serve"
+
+    def test_orchestrator_stubs_raise_not_implemented(self) -> None:
+        from ahadiff.contracts import Orchestrator, RunConfig, RunSource
+
+        orchestrator = Orchestrator()
+        run_config = RunConfig(
+            source=RunSource(source_kind="git_ref", source_ref="abc1234", capability_level=3)
+        )
+
+        with pytest.raises(NotImplementedError):
+            asyncio.run(orchestrator.run_learn(run_config))
+
+    def test_event_log_numeric_fields_are_strict(self) -> None:
+        from ahadiff.contracts import ResultEvent, UsageEvent
+
+        with pytest.raises(Exception):
+            ResultEvent(
+                event_id="e1",
+                run_id="r1",
+                event_type="lesson_scored",
+                timestamp="2026-04-22T00:00:00Z",
+                source_ref="abc1234",
+                prompt_version="pv1",
+                eval_bundle_version="ev1",
+                overall="9.5",
+                verdict="PASS",
+                status="keep",
+                weakest_dim="conciseness",
+            )
+
+        with pytest.raises(Exception):
+            UsageEvent(
+                event_id="e1",
+                run_id="r1",
+                repo_id="repo",
+                provider_class="openai",
+                model_id="m1",
+                input_tokens="1",
+                output_tokens=1,
+                billing_mode="local",
+                execution_origin="test",
+                api_principal_hash="hash",
+                timestamp="2026-04-22T00:00:00Z",
+            )

@@ -69,7 +69,7 @@
   - `doc/contract-freeze.md`
 - **补充说明**：Task 0 的最小 Python contract 文件范围以上述 7 个为准。`UsageEvent`、`Allowlist policy`、`ProviderCapabilities`、`LearnabilityGate`、Graphify v0.1 detect/import/sanitize/freshness 等其余契约，统一写入 `doc/contract-freeze.md`，不要求都在 Task 0 展开成独立 `contracts/*.py`
 - **依赖**: 无
-- **当前状态（2026-04-22）**：Task 0 已落地 `doc/contract-freeze.md`、7 个 contract 文件与 `tests/unit/test_contracts.py`；`python3 -m pytest tests/unit/test_contracts.py` 实测 `13 passed`
+- **当前状态（2026-04-22）**：Task 0 已落地 `doc/contract-freeze.md`、7 个 contract 文件与 `tests/unit/test_contracts.py`；当前实测 `python3 -m pytest tests/unit/test_contracts.py` 为 `18 passed`
 - **实施步骤**:
   1. 冻结 `ClaimStatus` 枚举：`verified | weak | not_proven | contradicted | rejected`（Pydantic Literal）
   2. 冻结 `RunStatus` 枚举：`baseline | keep | discard | crash | targeted_verify | keep_final | phase25_rewrite | non_ratcheted`（non_ratcheted 用于 Level 1/2 非 git 输入，这类 run 无法 ratchet 回滚）。**移除 `rollback`**：当前状态机无任何合法产出路径，避免 orphan enum

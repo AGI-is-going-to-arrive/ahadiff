@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+import json
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
 
 ClaimStatus = Literal["verified", "weak", "not_proven", "contradicted", "rejected"]
 RejectReasonCode = Literal[
@@ -17,6 +18,21 @@ StaleReason = Literal["file_deleted", "symbol_removed", "line_drifted", "stalene
 ScaffoldingLevel = Literal["full", "hint", "compact"]
 ClaimConfidence = Literal["high", "medium", "low"]
 ClaimExtractor = Literal["python_ast", "regex", "section_header"]
+ChangeKind = Literal["deleted", "renamed"]
+
+
+class SourceHunk(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    file: str
+    start: StrictInt
+    end: StrictInt
+
+    @model_validator(mode="after")
+    def validate_range(self) -> "SourceHunk":
+        if self.end < self.start:
+            raise ValueError("source hunk end must be >= start")
+        return self
 
 
 class ReviewCard(BaseModel):
@@ -33,13 +49,21 @@ class ReviewCard(BaseModel):
     last_rating: int | None = None
     card_state: CardState = "active"
     stale_reason: StaleReason | None = None
-    peeked_this_session: bool = False
+    peeked_this_session: bool = Field(default=False, exclude=True)
     file_id: str
     display_path: str
     hunk_id: str
     hunk_hash: str
     symbol: str | None = None
-    change_kind: str | None = None
+    change_kind: ChangeKind | None = None
+
+    @field_validator("fsrs_state")
+    @classmethod
+    def validate_fsrs_state_json(cls, value: str) -> str:
+        parsed = json.loads(value)
+        if not isinstance(parsed, dict):
+            raise ValueError("fsrs_state must be a JSON object string")
+        return value
 
 
 class ClaimRecord(BaseModel):
@@ -53,10 +77,18 @@ class ClaimRecord(BaseModel):
     status: ClaimStatus
     reason_code: RejectReasonCode | None = None
     confidence: ClaimConfidence = "medium"
-    source_hunks: list[dict[str, Any]]
+    source_hunks: list[SourceHunk]
     symbols: list[str] = Field(default_factory=list)
     negative_evidence: list[str] = Field(default_factory=list)
     extractor: ClaimExtractor | None = None
+
+    @model_validator(mode="after")
+    def validate_reason_code_contract(self) -> "ClaimRecord":
+        if self.status == "rejected" and self.reason_code is None:
+            raise ValueError("rejected claims require reason_code")
+        if self.status != "rejected" and self.reason_code is not None:
+            raise ValueError("reason_code is only allowed for rejected claims")
+        return self
 
 
 __all__ = [
@@ -67,6 +99,8 @@ __all__ = [
     "ScaffoldingLevel",
     "ClaimConfidence",
     "ClaimExtractor",
+    "ChangeKind",
+    "SourceHunk",
     "ReviewCard",
     "ClaimRecord",
 ]

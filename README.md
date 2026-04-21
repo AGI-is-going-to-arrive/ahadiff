@@ -143,7 +143,7 @@ ahadiff/
 python3 -m pytest tests/unit/test_contracts.py
 ```
 
-本次实际结果：`13 passed`。
+本次实际结果：`18 passed`。
 
 下一步路线图：
 

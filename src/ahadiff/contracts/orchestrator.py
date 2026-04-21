@@ -76,13 +76,17 @@ class OrchestratorResult(BaseModel):
 
 
 class Orchestrator:
-    async def run_learn(self, config: RunConfig) -> OrchestratorResult: ...
+    async def run_learn(self, config: RunConfig) -> OrchestratorResult:
+        raise NotImplementedError("run_learn must be implemented by a runtime orchestrator")
 
-    async def run_improve(self, config: RunConfig) -> OrchestratorResult: ...
+    async def run_improve(self, config: RunConfig) -> OrchestratorResult:
+        raise NotImplementedError("run_improve must be implemented by a runtime orchestrator")
 
-    async def run_verify(self, config: RunConfig) -> OrchestratorResult: ...
+    async def run_verify(self, config: RunConfig) -> OrchestratorResult:
+        raise NotImplementedError("run_verify must be implemented by a runtime orchestrator")
 
-    async def run_serve(self, config: ServeConfig) -> None: ...
+    async def run_serve(self, config: ServeConfig) -> None:
+        raise NotImplementedError("run_serve must be implemented by a runtime orchestrator")
 
 
 __all__ = [

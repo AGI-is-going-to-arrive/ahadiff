@@ -68,6 +68,7 @@ Stage 0 只冻结“最小可 import + 可序列化”的 contracts 面，不提
 约束：
 
 - `rejected` 仅用于 patch 外证据或不存在证据，不等价于 `contradicted`
+- `status = rejected` 时 `reason_code` 必填；其他状态不得携带 `reason_code`
 - Claim 记录的最小字段包含 `claim_id / run_id / text / status / reason_code / confidence / source_hunks`
 
 ### 2.3 RunStatus
@@ -224,6 +225,12 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 - `peeked_this_session`
 - `file_id / display_path / hunk_id / hunk_hash / symbol / change_kind`
 
+补充约束：
+
+- `fsrs_state` 存的是 opaque Card JSON，序列化字符串必须是合法 JSON object
+- `peeked_this_session` 允许存在于运行时模型，但序列化持久化时不输出
+- `change_kind` 在当前最小合同里只承载 `deleted | renamed | null`
+
 `ClaimRecord` 最小字段：
 
 - `claim_id / run_id / text / status / reason_code / confidence`
@@ -231,6 +238,16 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 - `symbols`
 - `negative_evidence`
 - `extractor`
+
+`source_hunks[]` 的最小 entry：
+
+- `file`
+- `start`
+- `end`
+
+补充约束：
+
+- `end >= start`
 
 ### 3.5 ProviderConfig / ProviderCapabilities
 

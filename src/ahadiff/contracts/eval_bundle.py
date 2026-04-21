@@ -27,11 +27,24 @@ RUBRIC_WEIGHTS: dict[str, dict[str, int]] = {
 
 
 def compute_eval_bundle_version(repo_root: str | Path) -> str:
+    """Compute the frozen eval bundle hash when the bundle files exist."""
+
     root = Path(repo_root)
     chunks: list[bytes] = []
+    missing_paths: list[str] = []
     for logical_path, disk_path in sorted(EVAL_BUNDLE_FILES, key=lambda item: item[0]):
-        content = (root / disk_path).read_bytes()
+        target = root / disk_path
+        if not target.is_file():
+            missing_paths.append(disk_path)
+            continue
+        content = target.read_bytes()
         chunks.append(logical_path.encode("utf-8") + b"\n" + content)
+
+    if missing_paths:
+        raise FileNotFoundError(
+            "eval bundle files are not available in this checkout yet: "
+            + ", ".join(missing_paths)
+        )
     return hashlib.sha256(b"\n---\n".join(chunks)).hexdigest()[:12]
 
 

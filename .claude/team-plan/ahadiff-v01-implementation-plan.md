@@ -3,7 +3,7 @@
 > 修订日期 2026-04-22
 > 权威源（高→低）：① `CLAUDE.md` ② `ahadiff-v01-kickoff.md` ③ `ahadiff-v01-stages-4-9.md` ④ `closure-checklist-29.md` ⑤ `AhaDiff_frontend_design_v1.1_revised.md` ⑥ `AhaDiff Warm v6.html`
 > 本文档是执行排程，不是新的架构权威源。与 `doc/contract-freeze.md` 冲突时，Task 0 产出的 `contract-freeze.md` 为准。
-> 状态更新（2026-04-22）：`Stage 0 / Task 0` 已完成，已产出 `doc/contract-freeze.md`、`src/ahadiff/contracts/*.py`、`tests/unit/test_contracts.py`；实测 `python3 -m pytest tests/unit/test_contracts.py` 为 `13 passed`。
+> 状态更新（2026-04-22）：`Stage 0 / Task 0` 已完成，已产出 `doc/contract-freeze.md`、`src/ahadiff/contracts/*.py`、`tests/unit/test_contracts.py`；当前实测 `python3 -m pytest tests/unit/test_contracts.py` 为 `18 passed`。
 
 ---
 
@@ -62,7 +62,7 @@
   - `doc/contract-freeze.md` 已落地
   - `src/ahadiff/contracts/{claim_status,run_source,eval_bundle,event_log,error_types,orchestrator,serve_app}.py` 已落地
   - `tests/unit/test_contracts.py` 已落地
-  - `python3 -m pytest tests/unit/test_contracts.py` 实测 `13 passed`
+  - `python3 -m pytest tests/unit/test_contracts.py` 实测 `18 passed`
 
 - **目标**：
   - 产出 `doc/contract-freeze.md`
@@ -541,7 +541,7 @@
 
 | ID | 任务 | Owner type | 依赖 | 预计工作量 | 验收 |
 |---|---|---|---|---|---|
-| `BL-00` | Task 0 `contract-freeze.md` + core contracts + tests（已完成） | docs + backend | — | 1.5–2d | `contract-freeze.md` 已落地；contracts import 正常；`python3 -m pytest tests/unit/test_contracts.py` 实测 `13 passed` |
+| `BL-00` | Task 0 `contract-freeze.md` + core contracts + tests（已完成） | docs + backend | — | 1.5–2d | `contract-freeze.md` 已落地；contracts import 正常；`python3 -m pytest tests/unit/test_contracts.py` 实测 `18 passed` |
 | `BL-01` | Task 1 scaffold + `pyproject.toml` + `doctor` + `config show --resolved` | backend | `BL-00` | 1d | `uv run ahadiff init/doctor/config show --resolved` 可运行 |
 | `BL-02` | Task 2 safety + allowlist + audit provenance | backend | `BL-00` | 1d | redaction / injection / allowlist / path safety 测试通过 |
 | `BL-03` | Task 7 provider + probe + ProviderCapabilities | backend | `BL-01` | 1.5–2d | 8 adapter mock + probe + capability 测试通过；loopback OpenAI-compatible smoke 跑通；示例只用 env 占位符 |

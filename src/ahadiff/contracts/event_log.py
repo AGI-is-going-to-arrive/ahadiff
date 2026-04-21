@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, StrictFloat, StrictInt
 
 from .run_source import ProviderClass
 
@@ -38,7 +38,7 @@ class ResultEvent(BaseModel):
     prompt_version: str
     eval_bundle_version: str
     rubric_version: str | None = None
-    overall: float
+    overall: StrictFloat
     verdict: Verdict
     status: RunStatus
     weakest_dim: str
@@ -55,9 +55,9 @@ class UsageEvent(BaseModel):
     repo_id: str
     provider_class: ProviderClass
     model_id: str
-    input_tokens: int
-    output_tokens: int
-    cost_usd: float | None = None
+    input_tokens: StrictInt
+    output_tokens: StrictInt
+    cost_usd: StrictFloat | None = None
     pricing_version: str | None = None
     cost_confidence: CostConfidence = "medium"
     billing_mode: str
