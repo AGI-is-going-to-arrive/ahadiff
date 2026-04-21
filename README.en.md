@@ -97,8 +97,9 @@ Output layout:
 ├─ audit.jsonl           # LLM call audit log
 ├─ audit.private.jsonl   # strict_local local-only audit (gitignored)
 ├─ ahadiff.lock          # portalocker file lock
-└─ .ahadiffignore        # Path filter rules
 ```
+
+.ahadiffignore            # Repo-root path filter rules
 
 ## 8-Dimension Rubric
 
@@ -128,19 +129,21 @@ ahadiff/
 │  ├─ 知返ahadiff改名后的后续方案.md  # [ARCHIVED] Rename transition plan
 │  └─ AhaDiff_frontend_design_v1.1_revised.md  # Frontend design manual (v0.1=React 19+Vite)
 ├─ src/ahadiff/contracts/       # Stage 0 minimal contracts skeleton
-├─ tests/unit/test_contracts.py # Stage 0 acceptance test
+├─ src/ahadiff/core/            # Stage 1 / Task 1 scaffold
+├─ src/ahadiff/safety/          # Stage 1 / Task 2 safety primitives
+├─ tests/unit/                  # Stage 0 + Stage 1 unit tests
 ├─ ui/                          # HTML prototypes v1–v6 (design history)
 └─ CLAUDE.md                    # Project AI context index
 ```
 
 ## Status
 
-**Stage 1 / Task 1 is now landed, and Stage 2 has not started yet.** The repository now contains the contract freeze doc, a minimal importable contracts skeleton, `pyproject.toml`, an executable CLI scaffold (`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `python -m ahadiff`), and the Stage 0 + Task 1 acceptance tests. Real diff capture, provider, evaluator, and viewer runtime work are still pending.
+**Stage 1 Task 1 and Task 2 (safety primitives) are now landed, and Stage 2 has not started yet.** The repository now contains the contract freeze doc, a minimal importable contracts skeleton, `pyproject.toml`, an executable CLI scaffold (`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `python -m ahadiff`), the safety-layer primitives under `src/ahadiff/safety/`, and the Stage 0 + Stage 1 unit tests. Real diff capture, provider, evaluator, and viewer runtime work are still pending.
 
 Current minimal verification:
 
 ```bash
-uv run pytest tests/unit/test_stage1_task1.py tests/unit/test_contracts.py
+uv run pytest tests/unit
 uv run ruff check src tests
 uv run ruff format --check src tests
 uv run pyright
@@ -151,7 +154,7 @@ uv run ahadiff doctor
 uv run ahadiff config show --resolved
 ```
 
-Actual result from this session: `35 passed`; `ruff check`, `ruff format --check`, `pyright`, and `uv build --wheel` all passed, and the CLI smoke commands completed successfully.
+Actual result from this session: `uv run pytest tests/unit` finished with `61 passed`; the focused safety suite `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py` finished with `26 passed`. `ruff check`, `ruff format --check`, `pyright`, and `uv build --wheel` all passed; `python -m ahadiff --version`, `ahadiff init`, `ahadiff doctor`, and `ahadiff config show --resolved` were also rerun successfully in this session.
 
 Roadmap:
 

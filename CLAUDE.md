@@ -8,11 +8,11 @@
 
 核心差异定位：Code Wiki 解释仓库，知返解释这次改动；而且每句话都能回到代码证据。
 
-**当前阶段**：`Stage 1 / Task 1` 已落地，`Stage 1` 其余任务与 `Stage 2` 尚未开始。当前仓库已具备 `contract-freeze.md`、最小 contracts skeleton、`pyproject.toml`、可执行 CLI scaffold（`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `python -m ahadiff`）和对应的 Stage 0 + Task 1 验收测试。
+**当前阶段**：`Stage 1 / Task 1` 与 `Stage 1 / Task 2` 已落地，`Task 3/4` 与 `Stage 2` 尚未开始。当前仓库已具备 `contract-freeze.md`、最小 contracts skeleton、`pyproject.toml`、可执行 CLI scaffold（`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `python -m ahadiff`）、`src/ahadiff/safety/` 安全层基础实现，以及对应的 Stage 0 + Stage 1 单元测试。
 
 ## 架构总览
 
-本仓库当前仍以**设计文档和 HTML 原型**为主，但已补入 Stage 0 与 Stage 1 / Task 1 产物：`doc/contract-freeze.md`、`src/ahadiff/contracts/` 最小 contracts skeleton、`pyproject.toml`、`src/ahadiff/{__main__,cli}.py`、`src/ahadiff/core/{__init__,config,paths,ids,errors}.py`，以及 `tests/unit/{test_contracts,test_stage1_task1}.py`。当前已具备可执行的 CLI scaffold，但 provider / evaluator / viewer runtime 仍未实现。
+本仓库当前仍以**设计文档和 HTML 原型**为主，但已补入 Stage 0、Stage 1 / Task 1 和 Stage 1 / Task 2 的后端产物：`doc/contract-freeze.md`、`src/ahadiff/contracts/` 最小 contracts skeleton、`pyproject.toml`、`src/ahadiff/{__main__,cli}.py`、`src/ahadiff/core/{__init__,config,paths,ids,errors}.py`、`src/ahadiff/safety/{__init__,_types,ignore,redact,injection,gates,audit}.py`，以及 `tests/unit/{test_contracts,test_stage1_task1,test_redact,test_injection,test_path_safety,test_allowlist}.py`。当前已具备可执行的 CLI scaffold 和安全层基础实现，但 provider / evaluator / viewer runtime 仍未实现。
 
 ### 计划技术栈
 
@@ -64,8 +64,9 @@ global_config_dir()                   ← Global（派生/索引/偏好，非真
 ├── graphify/                         — repo-level code map cache
 ├── audit.jsonl                       — LLM 调用审计（schema_version + rotation）
 ├── audit.private.jsonl               — strict_local 本机专用审计（gitignored）
-├── ahadiff.lock                      — portalocker 文件锁
-└── .ahadiffignore                    — 路径过滤规则
+└── ahadiff.lock                      — portalocker 文件锁
+
+<repo>/.ahadiffignore                 ← repo 根路径过滤规则
 ```
 
 **Config 优先级链**（高到低）：`ENV(AHADIFF_*) → CLI flag → per-repo config.toml → global config.toml → defaults`。凭证类：`env secret → per-repo env_var_name → global env_var_name → none`。
@@ -90,7 +91,9 @@ graph TD
 |------|------|------|------|
 | doc | `doc/` | Markdown | 产品设计文档：架构方案、改名方案、前端视觉手册、评估报告 |
 | contracts | `src/ahadiff/contracts/` | Python | Stage 0 最小 contracts skeleton：枚举、DTO、契约 helper、错误类型 |
-| tests | `tests/unit/` | Python | Stage 0 验收测试：contracts import / 序列化 / 边界约束 |
+| core | `src/ahadiff/core/` | Python | Stage 1 / Task 1 工程骨架：CLI 配置、路径、ID、错误类型 |
+| safety | `src/ahadiff/safety/` | Python | Stage 1 / Task 2 安全层基础实现：ignore / redaction / injection / gates / audit |
+| tests | `tests/unit/` | Python | Stage 0 + Stage 1 单元测试：contracts、CLI/config/paths、安全层边界 |
 | ui | `ui/` | HTML/CSS/JS | UI 原型：Warm 风格 v1-v6 迭代版本 |
 | team-plan | `.claude/team-plan/` | Markdown | 团队计划：v0.1 kickoff + 修订方案 + CLI 接入扩展 |
 | 根级原型 | `AhaDiff Warm v6.html` | HTML | 最新 UI 参考模板（相对 `ui/` 目录内 v6 快照继续演进，便于快速预览） |
@@ -110,7 +113,7 @@ python3 -m http.server 8765
 ### 当前已落地的验证
 
 ```bash
-uv run pytest tests/unit/test_stage1_task1.py tests/unit/test_contracts.py
+uv run pytest tests/unit
 uv run ruff check src tests
 uv run ruff format --check src tests
 uv run pyright
@@ -121,7 +124,7 @@ uv run ahadiff doctor
 uv run ahadiff config show --resolved
 ```
 
-本次 session 实际结果：`35 passed`；`ruff check`、`ruff format --check`、`pyright`、`uv build --wheel` 全通过，CLI smoke 命令也都可运行。
+本次 session 实际结果：`uv run pytest tests/unit` 为 `61 passed`；其中 Task 2 目标测试 `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py` 为 `26 passed`。`ruff check`、`ruff format --check`、`pyright`、`uv build --wheel` 全通过；`python -m ahadiff --version`、`ahadiff init`、`ahadiff doctor`、`ahadiff config show --resolved` 本次也已实测可运行。
 
 ### 仓库当前依赖状态
 
@@ -320,3 +323,4 @@ Stage N 完成 → 三模型并行审查 → 汇总问题 → 修复 → 验证 
 | 2026-04-21 | 第十轮三模型交叉审查（Codex CLI + Gemini 3.1 Pro + Claude team-reviewer）：发现 Round 9 盲点 16 项（3C+5H+5M+3L）。修复：(1) RunStatus 移除 `rollback`（8 态）；(2) CardState 四态 `active\|stale\|archived\|suspended` + `peeked_this_session`；(3) result_events 列集冻结 + weakest_dim 统一；(4) Task 5→Task 2 隐性依赖补入；(5) cards DDL 补 anchor 列（hunk_id/hunk_hash/symbol/change_kind）+ FK + card_state；(6) `fsrs_card_json` 统一为 `fsrs_state`；(7) VCR cassette key `rubric_version` 改为 `eval_bundle_version`；(8) Learnability Gate 升格 Task 8.5；(9) 前端验收标准量化（FCP<500ms/render-count≤1/long-task<50ms）；(10) entropy_scan=soft_detect + UUID/hash/minified 豁免；(11) ConceptGraph Cluster `⋮` 菜单替代长按；(12) cache key 扩展为 10 元素。全部修复后 GO 确认。Blueprint/Competitors HTML 同步更新 |
 | 2026-04-22 | Stage 0 contract 收口（本次真实代码修复）：(1) `peeked_this_session` 改为 session-local，仅运行时存在，不参与持久化 dump；(2) `ClaimRecord` 增加 `status/reason_code` 联动校验，补 `source_hunks` 最小 schema；(3) `ReviewCard.fsrs_state` 要求合法 JSON object 字符串，`change_kind` 收紧到当前文档已支撑的最小值域；(4) `Orchestrator` contract stub 改为显式 `NotImplementedError`；(5) `compute_eval_bundle_version()` 在缺少 eval bundle 文件时返回清晰 guard 错误；(6) 数值字段 strict 校验补入 contract tests；(7) Task 13 验收改为 build + mock/proxy，不再依赖 Stage 5 `ahadiff serve`；(8) `tests/unit/test_contracts.py` 当前实测 `18 passed` |
 | 2026-04-22 | Stage 1 / Task 1 落地与 review 收口（本次真实代码与测试）：(1) 落地 `pyproject.toml`、`uv.lock`、`src/ahadiff/{__main__,cli}.py`、`src/ahadiff/core/{__init__,config,paths,ids,errors}.py` 与 `tests/unit/test_stage1_task1.py`；(2) `ahadiff doctor` 现在对 corrupt `review.sqlite` 输出友好错误，不再泄露 traceback；(3) SQLite gate 在不满足冻结门槛时改为非零退出；(4) `python -m ahadiff --version` 可直接到达；(5) TOML 字符串序列化补齐换行转义，`HOME=\"\"` 不再回退真实 home；(6) config CLI 补 `--browser/--no-browser` 成对覆盖；(7) `src/ahadiff/core/__init__.py` 已补齐，wheel 构建通过；(8) 当前实测 `uv run pytest tests/unit/test_stage1_task1.py tests/unit/test_contracts.py` 为 `35 passed`，并且 `ruff check`、`ruff format --check`、`pyright`、`uv build --wheel` 全通过 |
+| 2026-04-22 | Stage 1 / Task 2 安全层基础落地（本次真实代码与测试）：(1) 落地 `src/ahadiff/safety/{__init__,_types,ignore,redact,injection,gates,audit}.py` 与 `tests/unit/{test_redact,test_injection,test_path_safety,test_allowlist}.py`；(2) `.ahadiffignore`、双层 secret scan、branch/tag 走 `redaction_pipeline()`、allowlist digest、`audit.jsonl` / `audit.private.jsonl` 基础 rotation helper 已落地；(3) prompt injection 边界补上 `untrusted_diff` 包裹转义、Unicode/confusable 归一化检测、benign `system prompt` 文本误报收窄；(4) base64 包装的 JWT/DB URL/Slack webhook 现在会进入 hard block；(5) `AllowlistPolicy` 改为独立 dataclass，`SourceKind` 收口到共享类型，`safety/` 目录补 `__init__.py`；(6) 运行时 `get_type_hints()` 对安全层类型注解可正常解析；(7) 当前实测 `uv run pytest tests/unit` 为 `61 passed`，其中 Task 2 目标测试为 `26 passed`，并且 `ruff check`、`ruff format --check`、`pyright`、`uv build --wheel` 全通过 |

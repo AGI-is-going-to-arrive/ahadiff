@@ -6,7 +6,7 @@ import re
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, TypeGuard, cast
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -14,10 +14,12 @@ if TYPE_CHECKING:
 from .errors import ConfigError
 from .paths import find_repo_root, global_config_dir, repo_config_path
 
-Scalar = str | int | float | bool
+Scalar = str | int | float | bool | tuple[str, ...]
 NestedConfig = dict[str, "Scalar | NestedConfig"]
+_PRIVACY_MODES = {"strict_local", "redacted_remote", "explicit_remote"}
+_SECURITY_KEYS = frozenset({"allow_exact", "allow_paths", "suppress_rules"})
 
-DEFAULT_CONFIG: NestedConfig = {
+DEFAULT_CONFIG: dict[str, Any] = {
     "lang": "auto",
     "privacy_mode": "strict_local",
     "llm": {
@@ -31,6 +33,11 @@ DEFAULT_CONFIG: NestedConfig = {
         "port": 8765,
         "bind_host": "127.0.0.1",
         "no_browser": False,
+    },
+    "security": {
+        "allow_exact": [],
+        "allow_paths": [],
+        "suppress_rules": [],
     },
 }
 
@@ -68,12 +75,29 @@ class ConfigSnapshot:
     precedence_conflicts: tuple[ConfigConflict, ...]
 
 
+@dataclass(frozen=True)
+class SecurityConfig:
+    allow_exact: tuple[str, ...] = ()
+    allow_paths: tuple[str, ...] = ()
+    suppress_rules: tuple[str, ...] = ()
+
+
+def _is_string_sequence(value: object) -> TypeGuard[list[str] | tuple[str, ...]]:
+    if not isinstance(value, list | tuple):
+        return False
+    items = cast("list[object] | tuple[object, ...]", value)
+    return all(isinstance(item, str) for item in items)
+
+
 def _flatten_mapping(data: Mapping[str, Any], prefix: str = "") -> dict[str, Scalar]:
     flattened: dict[str, Scalar] = {}
     for key, value in data.items():
         dotted_key = f"{prefix}.{key}" if prefix else key
         if isinstance(value, Mapping):
             flattened.update(_flatten_mapping(cast("Mapping[str, Any]", value), dotted_key))
+            continue
+        if _is_string_sequence(value):
+            flattened[dotted_key] = tuple(value)
             continue
         if not isinstance(value, str | int | float | bool):
             message = f"{dotted_key} must be a scalar TOML value, got {type(value).__name__}"
@@ -103,12 +127,25 @@ def _coerce_bool(raw_value: str, *, key: str) -> bool:
 
 
 def _coerce_value(key: str, value: Any, expected: Scalar) -> Scalar:
+    if key == "privacy_mode":
+        if not isinstance(value, str):
+            raise ConfigError(f"{key} expects str, got {type(value).__name__}")
+        if value not in _PRIVACY_MODES:
+            allowed = ", ".join(sorted(_PRIVACY_MODES))
+            raise ConfigError(f"{key} must be one of {allowed}, got {value!r}")
+        return value
     if isinstance(expected, bool):
         if isinstance(value, bool):
             return value
         if isinstance(value, str):
             return _coerce_bool(value, key=key)
         raise ConfigError(f"{key} expects bool, got {type(value).__name__}")
+    if isinstance(expected, tuple):
+        if _is_string_sequence(value):
+            return tuple(value)
+        if isinstance(value, str):
+            return tuple(item.strip() for item in value.split(",") if item.strip())
+        raise ConfigError(f"{key} expects an array of strings, got {type(value).__name__}")
     if isinstance(expected, int) and not isinstance(expected, bool):
         if isinstance(value, int) and not isinstance(value, bool):
             return value
@@ -134,7 +171,11 @@ def _coerce_value(key: str, value: Any, expected: Scalar) -> Scalar:
 
 _FLAT_DEFAULTS = _flatten_mapping(DEFAULT_CONFIG)
 _KNOWN_KEYS = tuple(sorted(_FLAT_DEFAULTS))
-_ENV_KEY_MAP = {key: f"AHADIFF_{key.replace('.', '_').upper()}" for key in _KNOWN_KEYS}
+_ENV_KEY_MAP = {
+    key: f"AHADIFF_{key.replace('.', '_').upper()}"
+    for key in _KNOWN_KEYS
+    if not isinstance(_FLAT_DEFAULTS[key], tuple)
+}
 
 
 def _read_toml(path: Path) -> dict[str, Any]:
@@ -143,9 +184,19 @@ def _read_toml(path: Path) -> dict[str, Any]:
     return tomllib.loads(path.read_text(encoding="utf-8"))
 
 
+def _coerce_string_sequence(key: str, value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if not _is_string_sequence(value):
+        raise ConfigError(f"{key} must be an array of strings")
+    return tuple(value)
+
+
 def _render_scalar(value: Scalar) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
+    if isinstance(value, tuple):
+        return "[" + ", ".join(json.dumps(item, ensure_ascii=False) for item in value) + "]"
     if isinstance(value, str):
         return json.dumps(value, ensure_ascii=False)
     return str(value)
@@ -328,13 +379,46 @@ def iter_resolved_settings(snapshot: ConfigSnapshot) -> list[ResolvedSetting]:
     return [snapshot.resolved[key] for key in sorted(snapshot.resolved)]
 
 
+def load_security_config(repo_root: Path | None = None) -> SecurityConfig:
+    root = find_repo_root(repo_root)
+    config_path = repo_config_path(root)
+    if not config_path.exists():
+        return SecurityConfig()
+
+    data = _read_toml(config_path)
+    security = data.get("security", {})
+    if security == {}:
+        return SecurityConfig()
+    if not isinstance(security, Mapping):
+        raise ConfigError("[security] must be a TOML table")
+
+    security_mapping = cast("Mapping[str, Any]", security)
+    unknown = sorted(set(security_mapping) - _SECURITY_KEYS)
+    if unknown:
+        raise ConfigError(f"unsupported [security] keys: {', '.join(unknown)}")
+
+    return SecurityConfig(
+        allow_exact=_coerce_string_sequence(
+            "security.allow_exact", security_mapping.get("allow_exact")
+        ),
+        allow_paths=_coerce_string_sequence(
+            "security.allow_paths", security_mapping.get("allow_paths")
+        ),
+        suppress_rules=_coerce_string_sequence(
+            "security.suppress_rules", security_mapping.get("suppress_rules")
+        ),
+    )
+
+
 __all__ = [
     "DEFAULT_CONFIG",
     "ConfigConflict",
     "ConfigSnapshot",
     "ResolvedSetting",
+    "SecurityConfig",
     "iter_resolved_settings",
     "load_config",
+    "load_security_config",
     "resolve_effective",
     "write_default_config",
 ]

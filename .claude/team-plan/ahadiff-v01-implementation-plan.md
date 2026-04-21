@@ -103,7 +103,9 @@
 
 - **当前状态（2026-04-22）**：
   - `Task 1` 已落地并通过当前 gate
-  - 当前实测：`uv run pytest tests/unit/test_stage1_task1.py tests/unit/test_contracts.py` 为 `35 passed`
+  - `Task 2` 的安全层基础实现也已落地，并通过当前后端 gate
+  - 当前实测：`uv run pytest tests/unit` 为 `61 passed`
+  - 其中安全层目标测试：`uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py` 为 `26 passed`
   - 当前实测：`uv run ruff check src tests`、`uv run ruff format --check src tests`、`uv run pyright` 与 `uv build --wheel` 全通过
   - 当前仓库 `.venv` 运行时为 Python 3.12.10 / SQLite 3.51.3，`ahadiff doctor` 的 SQLite gate 实测通过；低版本 SQLite runtime 下 `doctor` 已改为非零退出
 - **目标**：
@@ -548,7 +550,7 @@
 |---|---|---|---|---|---|
 | `BL-00` | Task 0 `contract-freeze.md` + core contracts + tests（已完成） | docs + backend | — | 1.5–2d | `contract-freeze.md` 已落地；contracts import 正常；`python3 -m pytest tests/unit/test_contracts.py` 实测 `18 passed` |
 | `BL-01` | Task 1 scaffold + `pyproject.toml` + `doctor` + `config show --resolved` | backend | `BL-00` | 1d | `uv run ahadiff init/doctor/config show --resolved` 可运行 |
-| `BL-02` | Task 2 safety + allowlist + audit provenance | backend | `BL-00` | 1d | redaction / injection / allowlist / path safety 测试通过 |
+| `BL-02` | Task 2 safety + allowlist + audit provenance（已落地基础实现） | backend | `BL-00` | 1d | `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py` 实测 `26 passed`；`uv run pytest tests/unit` 实测 `61 passed` |
 | `BL-03` | Task 7 provider + probe + ProviderCapabilities | backend | `BL-01` | 1.5–2d | 8 adapter mock + probe + capability 测试通过；loopback OpenAI-compatible smoke 跑通；示例只用 env 占位符 |
 | `BL-04` | Task 5 diff capture v0.1 输入面 | backend | `BL-01` + `BL-02` | 1.5d | `--unstaged`、单 commit、`--compare`、`--patch`、range 全部 dry-run 正常 |
 | `BL-05` | Task 6 parser + anchors + line map | backend | `BL-04` | 1.5d | AST / regex / section header 降级与 casefold guard 测试通过 |

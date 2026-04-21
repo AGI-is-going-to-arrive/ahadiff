@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 import typer
 from rich.console import Console
@@ -60,6 +60,9 @@ def _cli_overrides(
 def _format_scalar(value: Any) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
+    if isinstance(value, tuple):
+        rendered = ", ".join(str(item) for item in cast("tuple[Any, ...]", value))
+        return f"[{rendered}]"
     return str(value)
 
 

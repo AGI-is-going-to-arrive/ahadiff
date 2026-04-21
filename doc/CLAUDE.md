@@ -149,3 +149,4 @@ A: 当前先读 `contract-freeze.md`，再读根目录 `CLAUDE.md` 和 `.claude/
 | 2026-04-21 | 同步 Warm v6.x `editorial-terminal` overlay：字体 weight ramp、FOLIO / verified 印章 / serif page-head / tabular italic numerals / inkstone CTA，以及 focus / print / forced-colors / reduced-transparency 的增强规则补入前端手册；`CLAUDE.md`、`ui/CLAUDE.md` 与 Task 13 参考口径同步更新 |
 | 2026-04-22 | 新增 `contract-freeze.md` 为当前权威源；同步根文档与 README 口径到 Stage 0 已完成；记录当前实测 `python3 -m pytest tests/unit/test_contracts.py` = `18 passed` |
 | 2026-04-22 | 同步本轮 Stage 0 contract 收口：`peeked_this_session` 改为不参与持久化 dump、`ClaimRecord` 补 `status/reason_code` 联动约束、`source_hunks` 补最小 entry 结构、`fsrs_state` 补合法 JSON object 约束、`Task 13` 验收改为 build + mock/proxy、不再硬依赖 `ahadiff serve` |
+| 2026-04-22 | 同步本轮 Stage 1 / Task 2 文档口径：根 README / README.en / CLAUDE 与 team-plan 当前状态更新为 Task 1 + Task 2 已落地；补入 `src/ahadiff/safety/`、4 份安全层单测、`.ahadiffignore` repo 根位置，以及本次真实实测 `tests/unit = 61 passed`、Task 2 目标测试 `26 passed` |

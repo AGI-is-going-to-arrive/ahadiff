@@ -97,8 +97,9 @@ ahadiff install opencode  # OpenCode → AGENTS.md + .opencode/agents/
 ├─ audit.jsonl           # LLM 调用审计
 ├─ audit.private.jsonl   # strict_local 本机审计（gitignored）
 ├─ ahadiff.lock          # portalocker 文件锁
-└─ .ahadiffignore        # 路径过滤
 ```
+
+.ahadiffignore            # repo 根的路径过滤
 
 ## 8 维评分 Rubric
 
@@ -128,19 +129,21 @@ ahadiff/
 │  ├─ 知返ahadiff改名后的后续方案.md  # [ARCHIVED] 改名过渡方案
 │  └─ AhaDiff_frontend_design_v1.1_revised.md  # 前端视觉手册（v0.1=React 19+Vite）
 ├─ src/ahadiff/contracts/       # Stage 0 最小 contracts skeleton
-├─ tests/unit/test_contracts.py # Stage 0 验收测试
+├─ src/ahadiff/core/            # Stage 1 / Task 1 工程骨架
+├─ src/ahadiff/safety/          # Stage 1 / Task 2 安全层基础实现
+├─ tests/unit/                  # Stage 0 + Stage 1 单元测试
 ├─ ui/                          # HTML 原型 v1–v6（设计迭代史）
 └─ CLAUDE.md                    # 项目 AI 上下文索引
 ```
 
 ## 当前阶段
 
-**Stage 1 / Task 1 已落地，尚未进入 Stage 2。** 仓库现在除了设计文档和 HTML 原型，还包含 `contract-freeze.md`、最小 contracts skeleton、`pyproject.toml`、可执行的 CLI scaffold（`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `python -m ahadiff`），以及对应的 Stage 0 + Task 1 验收测试。真实 diff capture、provider、evaluator 和 viewer runtime 仍未实现。
+**Stage 1 里 Task 1 和 Task 2（安全层基础）已落地，尚未进入 Stage 2。** 仓库现在除了设计文档和 HTML 原型，还包含 `contract-freeze.md`、最小 contracts skeleton、`pyproject.toml`、可执行的 CLI scaffold（`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `python -m ahadiff`）、`src/ahadiff/safety/` 安全层基础实现，以及对应的 Stage 0 + Stage 1 单元测试。真实 diff capture、provider、evaluator 和 viewer runtime 仍未实现。
 
 当前已落地的最小验证：
 
 ```bash
-uv run pytest tests/unit/test_stage1_task1.py tests/unit/test_contracts.py
+uv run pytest tests/unit
 uv run ruff check src tests
 uv run ruff format --check src tests
 uv run pyright
@@ -151,7 +154,7 @@ uv run ahadiff doctor
 uv run ahadiff config show --resolved
 ```
 
-本次实际结果：`35 passed`；`ruff check`、`ruff format --check`、`pyright`、`uv build --wheel` 全通过，CLI smoke 命令也都可运行。
+本次实际结果：`uv run pytest tests/unit` 为 `61 passed`；其中 `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py` 为 `26 passed`。`ruff check`、`ruff format --check`、`pyright`、`uv build --wheel` 全通过；`python -m ahadiff --version`、`ahadiff init`、`ahadiff doctor`、`ahadiff config show --resolved` 本次也已实测可运行。
 
 下一步路线图：
 

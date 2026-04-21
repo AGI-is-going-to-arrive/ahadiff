@@ -139,6 +139,11 @@ def repo_config_path(repo_root: Path | None = None) -> Path:
     return project_state_dir(repo_root) / "config.toml"
 
 
+def ignore_file_path(repo_root: Path | None = None) -> Path:
+    root = find_repo_root(repo_root)
+    return root / ".ahadiffignore"
+
+
 def run_dir(run_id: str, repo_root: Path | None = None) -> Path:
     return project_state_dir(repo_root) / "runs" / run_id
 
@@ -147,18 +152,29 @@ def review_db_path(repo_root: Path | None = None) -> Path:
     return project_state_dir(repo_root) / "review.sqlite"
 
 
+def audit_log_path(repo_root: Path | None = None) -> Path:
+    return project_state_dir(repo_root) / "audit.jsonl"
+
+
+def private_audit_log_path(repo_root: Path | None = None) -> Path:
+    return project_state_dir(repo_root) / "audit.private.jsonl"
+
+
 def lock_file_path(repo_root: Path | None = None) -> Path:
     return project_state_dir(repo_root) / "ahadiff.lock"
 
 
 __all__ = [
     "PathWarning",
+    "audit_log_path",
     "assert_local_repo_path",
     "find_repo_root",
     "global_config_dir",
+    "ignore_file_path",
     "inspect_repo_path",
     "lock_file_path",
     "path_identity_key",
+    "private_audit_log_path",
     "project_state_dir",
     "repo_config_path",
     "review_db_path",
