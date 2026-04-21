@@ -119,7 +119,7 @@ Three verdicts: **PASS** ≥ 80 / **CAUTION** 60–80 / **FAIL** < 60.
 
 ```text
 ahadiff/
-├─ AhaDiff Warm v6.html         # Latest UI prototype
+├─ AhaDiff Warm v6.html         # Latest UI reference template
 ├─ AhaDiff-Blueprint.html       # 8-layer architecture visualization (i18n / VCR / 50+ CCs)
 ├─ AhaDiff-Competitors-Research.html  # Competitor matrix + 5 moats
 ├─ doc/                         # Design docs (Chinese)

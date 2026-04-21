@@ -184,9 +184,232 @@ table.t tr:hover td{background:var(--accent-softer)}
 
 /* Print */
 @media print{.sidebar,.topbar{display:none !important}.app{grid-template-columns:1fr}.page{display:block !important;padding:20px}.rail{display:block !important;break-inside:avoid}}
+
+/* === BOLDER v1 OVERLAY === */
+/* ================================================================
+   BOLDER v1 — Elegant Editorial Drama overlay
+   Layers onto Warm v6.2 tokens. Do NOT redefine existing vars.
+   Must be inserted at the END of an existing <style> block so it wins cascade.
+   Respects reduced-motion / reduced-transparency / forced-colors (v6.2 polish).
+   ================================================================ */
+
+/* ---- Extended tokens (additive only) ---- */
+:root{
+  --ink-display: #15130F;
+  --accent-deep: #8C3A1A;
+  --paper-tinted: #F7F3EA;
+  --ornament: rgba(210,112,80,.42);
+  --rule-bold: 2px;
+  --shadow-editorial: 0 1px 0 rgba(255,255,255,.9) inset, 0 28px 60px -38px rgba(110,55,25,.45), 0 4px 10px -4px rgba(110,55,25,.14);
+  --shadow-lifted: 0 1px 0 rgba(255,255,255,.85) inset, 0 42px 80px -48px rgba(110,55,25,.55), 0 6px 14px -6px rgba(110,55,25,.18);
+  --ease-editorial: cubic-bezier(.22,.61,.36,1);
+}
+
+/* ---- Grain / paper texture (subtle, pointer-transparent) ---- */
+.b-grain{
+  content:"";
+  position:fixed; inset:0; z-index:0; pointer-events:none;
+  opacity:.35; mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.4  0 0 0 0 0.28  0 0 0 0 0.16  0 0 0 0.06 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size:240px 240px;
+}
+@media (prefers-reduced-transparency: reduce){ .b-grain{ display:none } }
+@media (forced-colors: active){ .b-grain{ display:none } }
+
+/* ---- Display drama type ---- */
+.b-display{
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-style: italic;
+  font-size: clamp(56px, 8.4vw, 128px);
+  line-height: .92;
+  letter-spacing: -0.025em;
+  color: var(--ink-display);
+}
+.b-display em{ color: var(--accent-ink); font-style: italic; }
+.b-display .shout{
+  background: linear-gradient(180deg, var(--accent) 0%, var(--accent-ink) 62%, var(--accent-deep) 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  padding-right: .06em;
+}
+
+/* ---- Eyebrow label (editorial small-caps) ---- */
+.b-eyebrow{
+  display:inline-flex; align-items:center; gap:10px;
+  font-family: var(--font-mono);
+  font-size: 11.5px; font-weight: 600;
+  letter-spacing: .22em; text-transform: uppercase;
+  color: var(--accent-ink);
+}
+.b-eyebrow::before{
+  content:""; width:28px; height:1px; background:currentColor; opacity:.75;
+}
+
+/* ---- Pull quote with ornate initial ---- */
+.b-pullquote{
+  position: relative;
+  margin: 28px 0 32px;
+  padding: 26px 36px 26px 72px;
+  background: linear-gradient(98deg, var(--accent-softer) 0%, transparent 110%);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 18px 18px 0;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: clamp(18px, 1.5vw, 22px);
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.b-pullquote::before{
+  content:"\201C";
+  position:absolute; left: 16px; top: -2px;
+  font-family: var(--font-serif); font-style: italic; font-weight: 700;
+  font-size: 88px; line-height: 1;
+  color: var(--accent); opacity: .32;
+  pointer-events:none;
+}
+.b-pullquote cite{
+  display:block; margin-top: 12px;
+  font-family: var(--font-mono); font-style: normal; font-weight: 600;
+  font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--muted);
+}
+.b-pullquote cite::before{ content:"— "; }
+
+/* ---- Ornamental divider ---- */
+.b-divider{
+  display:flex; align-items:center; justify-content:center; gap:18px;
+  margin: 72px 0 52px;
+  color: var(--accent-ink);
+}
+.b-divider::before, .b-divider::after{
+  content:""; flex:1; height: 1px;
+  background: linear-gradient(to right, transparent, var(--hair-strong) 18%, var(--hair-strong) 82%, transparent);
+}
+.b-divider .mark{
+  font-family: var(--font-serif); font-style: italic; font-weight: 500;
+  font-size: 18px; letter-spacing: .4em;
+  padding: 0 6px;
+  opacity: .62;
+}
+
+/* ---- Marker underline (hand-drawn emphasis) ---- */
+.b-mark{
+  background-image: linear-gradient(transparent 60%, rgba(210,112,80,.32) 60%, rgba(210,112,80,.32) 92%, transparent 92%);
+  padding: 0 .08em; border-radius: 2px;
+}
+
+/* ---- Drop cap ---- */
+.b-dropcap::first-letter{
+  font-family: var(--font-serif); font-weight: 700; font-style: italic;
+  font-size: 5.2em; line-height: .82;
+  float: left; padding: 6px 14px 0 0;
+  color: var(--accent-ink);
+}
+
+/* ---- Metric display ---- */
+.b-metric{
+  font-family: var(--font-serif); font-weight: 700; font-style: italic;
+  font-size: clamp(52px, 7.6vw, 120px); line-height: .88;
+  letter-spacing: -0.035em;
+  color: var(--accent-ink);
+  font-variant-numeric: lining-nums oldstyle-nums;
+}
+.b-metric-label{
+  display:block; margin-top: 6px;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+  letter-spacing: .18em; text-transform: uppercase; color: var(--muted);
+}
+
+/* ---- Focal card (single hero moment only) ---- */
+.b-focal{
+  position: relative;
+  padding: 34px 40px;
+  background: linear-gradient(148deg, #FFFCF5 0%, var(--accent-softer) 92%);
+  border: 1.5px solid var(--hair-strong);
+  border-radius: 22px;
+  box-shadow: var(--shadow-editorial);
+  overflow: hidden;
+  transition: transform .5s var(--ease-editorial), box-shadow .5s var(--ease-editorial);
+}
+.b-focal::before{
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(600px 180px at 85% -10%, rgba(210,112,80,.22), transparent 60%);
+  pointer-events: none;
+}
+.b-focal:hover{ transform: translateY(-3px); box-shadow: var(--shadow-lifted); }
+
+/* ---- Section number marker (Swiss editorial) ---- */
+.b-section-num{
+  position: absolute;
+  left: -.2em; top: -.4em;
+  font-family: var(--font-serif); font-style: italic; font-weight: 400;
+  font-size: clamp(56px, 7vw, 112px); line-height: 1;
+  color: var(--accent);
+  opacity: .14;
+  pointer-events: none; user-select: none;
+  z-index: 0;
+}
+
+/* ---- Rule bold (editorial edge) ---- */
+.b-rule-top{ border-top: var(--rule-bold) solid var(--ink); padding-top: 10px; }
+.b-rule-bottom{ border-bottom: var(--rule-bold) solid var(--ink); padding-bottom: 10px; }
+
+/* ---- Tag chip (confident) ---- */
+.b-chip{
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px;
+  background: var(--ink); color: var(--paper);
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase;
+  border-radius: 999px;
+}
+.b-chip.is-accent{ background: var(--accent); color: #fff; }
+
+/* ---- Asymmetric two-col layout ---- */
+.b-asymmetric{
+  display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: clamp(24px, 3vw, 56px);
+}
+@media (max-width: 820px){
+  .b-asymmetric{ grid-template-columns: 1fr; gap: 28px; }
+}
+
+/* ---- Hero crown (giant watermark glyph) ---- */
+.b-crown{
+  position: absolute; z-index: 0; pointer-events: none;
+  font-family: var(--font-serif); font-style: italic; font-weight: 400;
+  color: var(--accent); opacity: .06;
+  font-size: clamp(240px, 36vw, 520px); line-height: .82;
+  letter-spacing: -0.04em; user-select: none;
+}
+
+/* ---- Scroll-reveal (respects reduced-motion) ---- */
+.b-reveal{ opacity: 0; transform: translateY(14px); transition: opacity .7s var(--ease-editorial), transform .7s var(--ease-editorial); }
+.b-reveal.is-in{ opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce){
+  .b-reveal{ opacity: 1; transform: none; transition: none; }
+}
+
+/* ---- Print polish ---- */
+@media print{
+  body::before{ display: none; }
+  .b-crown{ display: none; }
+  .b-focal{ box-shadow: none; border: 1px solid #000; background: #fff; }
+  .b-pullquote{ background: none; border-left: 2px solid #000; }
+}
+
+/* ---- Forced-colors parity ---- */
+@media (forced-colors: active){
+  .b-focal, .b-pullquote{ background: Canvas; border: 2px solid CanvasText; }
+  .b-mark{ background: none; text-decoration: underline; text-decoration-thickness: 2px; }
+  .b-section-num, .b-crown{ display: none; }
+  .b-display .shout{ -webkit-text-fill-color: CanvasText; color: CanvasText; }
+}
+/* === END BOLDER v1 OVERLAY === */
 </style>
 </head>
 <body>
+<div class="b-grain" aria-hidden="true"></div>
 <div class="app">
   <aside class="sidebar">
     <div class="brand">
@@ -221,10 +444,13 @@ table.t tr:hover td{background:var(--accent-softer)}
 
     <!-- ============ OVERVIEW ============ -->
     <section class="page active" data-page="overview">
-      <div class="page-head">
+      <div class="page-head" style="position:relative">
+        <div class="b-crown" aria-hidden="true" style="top:-48px;left:-40px;font-size:clamp(180px,26vw,380px)">&Delta;</div>
         <div class="eyebrow">§ 00 · 方案总览</div>
-        <h1>知返 AhaDiff · 方案蓝图</h1>
-        <div class="sub">Vibe coding 写得很快，但你真的学会了吗？—— 知返把每个 AI 写出的 git diff 变成带代码证据链的学习笔记、概念图谱、主动回忆测验和质量棘轮记录。</div>
+        <div class="b-eyebrow"><span>Design Manifesto · 2026</span></div>
+        <h1 class="b-display">知返 <span class="shout">AhaDiff</span> · 方案蓝图</h1>
+        <blockquote class="b-pullquote">AI 写完，Diff 教回。每一行解释都回到代码证据。<cite>核心信念</cite></blockquote>
+        <div class="sub b-dropcap">Vibe coding 写得很快，但你真的学会了吗？—— 知返把每个 AI 写出的 git diff 变成带代码证据链的学习笔记、概念图谱、主动回忆测验和质量棘轮记录。</div>
       </div>
 
       <div class="kpi-grid" style="margin-bottom:28px">
@@ -236,7 +462,7 @@ table.t tr:hover td{background:var(--accent-softer)}
         <div class="kpi"><div class="lb">UI 原型</div><div class="vl">v6</div><div class="delta">Warm 风格 · 11 页面</div></div>
       </div>
 
-      <div class="card" style="margin-bottom:20px">
+      <div class="card b-focal" style="margin-bottom:20px">
         <div class="ch"><h3>核心用户闭环</h3><div class="meta">§ 04 · User Loop</div></div>
         <div class="cb">
           <div class="arch-flow" style="grid-template-columns:repeat(5,1fr)">
@@ -267,6 +493,7 @@ table.t tr:hover td{background:var(--accent-softer)}
     <section class="page" data-page="diffflow">
       <div class="page-head">
         <div class="eyebrow">§ 01 · Diff 从哪来，到哪去</div>
+        <div class="b-divider" aria-hidden="true"><span class="mark">§</span></div>
         <h1>Diff 完整流程详解</h1>
         <div class="sub">从 vibe coding 到打开学习页面，每一步如何触发、数据如何流转、用户需要做什么。</div>
       </div>
@@ -944,6 +1171,7 @@ table.t tr:hover td{background:var(--accent-softer)}
     <section class="page" data-page="inspirations">
       <div class="page-head">
         <div class="eyebrow">§ 01 · 灵感借鉴详解</div>
+        <div class="b-divider" aria-hidden="true"><span class="mark">§</span></div>
         <h1>6 个灵感项目如何接入</h1>
         <div class="sub">每个项目都经过源码验证，明确标注了哪些是直接借鉴、哪些是概念改编、哪些是 AhaDiff 自研。绝不虚构归因。</div>
       </div>
@@ -1255,8 +1483,10 @@ table.t tr:hover td{background:var(--accent-softer)}
     <section class="page" data-page="architecture">
       <div class="page-head">
         <div class="eyebrow">§ 02 · 八层架构</div>
+        <div class="b-divider" aria-hidden="true"><span class="mark">§</span></div>
         <h1>八层数据流架构</h1>
         <div class="sub">从 git diff 到 wiki + UI 的完整数据管道，每层职责明确，SQLite 即唯一真相源。编排逻辑由 <code>core/orchestrator.py</code> 统一管理 learn / improve / verify 三条主链路。learn 链路：直接 <code>keep</code> 写入 ratchet；improve 链路：<code>targeted_verify → keep_final</code>（先 cherry-pick 后写 status）。Phase 2.5 也走 improve 链路。cli.py 仅做参数解析和输出格式化。</div>
+        <blockquote class="b-pullquote">review.sqlite 为唯一真相源，HTML 只是 viewer，删除前端不丢功能。<cite>SQLite 即唯一真相源</cite></blockquote>
       </div>
 
       <div class="arch-flow" style="grid-template-columns:repeat(5,1fr)">
@@ -1274,6 +1504,8 @@ table.t tr:hover td{background:var(--accent-softer)}
         <div class="arch-step"><div class="n">L6b</div><h4>Learning Serve</h4><p>section helpfulness · API 集成（Task 14.5，等待 Task 15 DB schema）</p></div>
         <div class="arch-step" style="background:var(--accent-softer)"><div class="n">L7</div><h4>React SPA</h4><p>React 19 + Vite + Zustand · ahadiff serve (Starlette) · REST API</p></div>
       </div>
+
+      <blockquote class="b-pullquote">改进在 git worktree 执行，进步则 cherry-pick 回主分支，退步则删除 worktree——只进不退的质量棘轮。<cite>棘轮机制</cite></blockquote>
 
       <div class="card" style="margin-top:24px">
         <div class="ch"><h3>本地目录结构</h3><div class="meta">§ 05 · .ahadiff/</div></div>
@@ -1344,6 +1576,8 @@ table.t tr:hover td{background:var(--accent-softer)}
           </div>
         </div>
       </div>
+
+      <blockquote class="b-pullquote">受 autoresearch 三文件启发的 N-文件变体：evaluation bundle 整体 immutable，agent 只改 Markdown prompt，不改用户代码。<cite>N-文件契约</cite></blockquote>
 
       <!-- 三层锁模型 -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px">
@@ -1587,6 +1821,7 @@ key = prompt_fingerprint
     <section class="page" data-page="rubric">
       <div class="page-head">
         <div class="eyebrow">§ 03 · 评估体系</div>
+        <div class="b-divider" aria-hidden="true"><span class="mark">§</span></div>
         <h1>8 维自研 Rubric</h1>
         <div class="sub">AhaDiff 的 8 维评分体系完全自研，不来自任何灵感项目。darwin-skill 有 8 维但评估 skill 文件质量；SkillCompass 原版 6 维也评估 skill 文件质量。AhaDiff 的 8 维评估的是学习笔记质量。</div>
       </div>
@@ -1657,6 +1892,7 @@ key = prompt_fingerprint
     <section class="page" data-page="compliance">
       <div class="page-head">
         <div class="eyebrow">§ 04 · 方案一致性审查</div>
+        <div class="b-divider" aria-hidden="true"><span class="mark">§</span></div>
         <h1>是否偏离设计初衷？</h1>
         <div class="sub">逐项对照最终完整方案（2594 行 · 31 节 · 9 段开发计划），检查当前文档与原始设计的一致性。</div>
       </div>
@@ -1771,6 +2007,7 @@ key = prompt_fingerprint
     <section class="page" data-page="frontend">
       <div class="page-head">
         <div class="eyebrow">§ 05 · 前端架构</div>
+        <div class="b-divider" aria-hidden="true"><span class="mark">§</span></div>
         <h1>React 19 + Vite · Warm v6 设计语言</h1>
         <div class="sub">前端以 ui/AhaDiff Warm v6.html（2346 行）为设计参考模板，工程实现为 React 19 + Vite + vanilla CSS（CSS Modules）。不使用 Next.js 等 SSR 框架。通过 <code>ahadiff serve</code> 启动本地 Starlette 服务器，CLI 完成后自动打开浏览器。</div>
       </div>
@@ -1876,6 +2113,7 @@ key = prompt_fingerprint
     <section class="page" data-page="faq">
       <div class="page-head">
         <div class="eyebrow">§ 06 · 深度 FAQ</div>
+        <div class="b-divider" aria-hidden="true"><span class="mark">§</span></div>
         <h1>8 个核心问题，彻底讲透</h1>
         <div class="sub">经 Codex + Claude + Gemini 三模型六轮交叉验证（最终判定 GO）。每个回答基于真实设计文档。</div>
       </div>

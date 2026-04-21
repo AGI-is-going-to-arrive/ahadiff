@@ -289,6 +289,8 @@ AhaDiff 不是每次重新生成一篇孤立文档，而是写入长期 wiki：
 | 装饰 | § / FIG / REF 编号 | Clay 小圆点 / 手绘节拍 | drop cap / marginalia |
 | CTA | solid + ghost | solid Clay + soft card | underline editorial link |
 
+补充说明：当前根级参考模板 `AhaDiff Warm v6.html` 已在 Warm 基底上叠加一层 `editorial-terminal` overlay。它不是第四套新主题，也不是把 Warm 切成 Editorial，而是在保留 Warm 色域、信息架构和单 accent 原则的前提下，引入报刊 folio、档案印章、衬线 italic display、CLI 黑底色带等局部语言，给 Landing、page-head、badge、CTA 和关键数值更多“纸面权威感”。
+
 ## 3.1 全局视觉约束
 
 - 亮色默认，暗色是克制版本，不做纯反色。
@@ -381,6 +383,15 @@ color.graph.{repo|diff|concept|claim|weak}
   ui-monospace, SFMono-Regular, "Sarasa Mono SC", monospace;
 ```
 
+根级参考模板当前实际加载的字重范围比表格更宽，用于支持 overlay 的细粒度层次：
+
+- `Newsreader`：`200-800`，italic `200/300/400/500/700`
+- `Inter`：`300/400/450/500/600/700/800`
+- `JetBrains Mono`：`400/500/600/700`
+- `Noto Serif SC`：`300/400/500/600/700`
+
+这些扩展主要服务于 Landing Hero、page-head、tabular numerals、verified 印章和少数强调态，不意味着全站正文默认进入重字重对比。
+
 ## 4.4 CSS-first Tailwind v4 片段
 
 ```css
@@ -443,6 +454,18 @@ color.graph.{repo|diff|concept|claim|weak}
 - **触控目标补齐**：触屏场景下，核心按钮、tab、chip 的点击高度至少 44px，避免难点。
 - **打印再收紧**：除了继续隐藏无关 UI，还要控制 widow/orphan、避免整块内容被切断，并在打印时把外链 URL 直接带出来，纸面版也能读。
 - **保持 additive-only**：这些补充都应该作为最后一层 polish 覆盖，不回头打散已有 token，也不重写前面三套视觉 DNA。
+
+## 4.6 v6.x editorial-terminal overlay
+
+这一轮 `AhaDiff Warm v6.html` 继续保持“只加强视觉、不改页面骨架”的原则，但已经不只是 v6.2 的通用 polish，而是一个更明确的 `editorial-terminal` 叠加层。它适合作为 v0.1 Viewer 的视觉参考，但落地时仍要把语义结构和可维护性放在精确复刻 selector 技巧之前。
+
+- **改动边界**：Warm 参考模板当前是 `1` 条 Google Fonts 链接扩展 + 一段追加在 `</style>` 前的 overlay。没有改 DOM 结构、没有引入 JS、没有改基础品牌色，也没有回写旧 token。
+- **字体层次**：Landing Hero 使用 `Newsreader` italic 大字号 display，`em` 进入更重字重；page-head 和部分 TOC / breadcrumb 也进入 serif italic 语气；metric / dashboard / ratchet 数字允许使用 Newsreader italic + `tnum` / `lnum`，形成“出版物数据栏”而不是普通 dashboard 数字。
+- **档案式装饰**：Warm 允许借用 Editorial 的一部分语言，但只在局部使用。可用元素包括 `FOLIO` 报刊号、顶部粗线 eyebrow、`§` 侧标、花饰分割线、凿刻感品牌方块、档案目录式 TOC hover 线；不要把每个 card 都做成杂志页。
+- **状态与 CTA**：`verified` 印章允许使用 Archive Indigo `#2E4A6B` 这类非主 accent 的“状态色蓝”，因为它服务于印章语义，不替代 Warm 的 Clay Orange 主 accent。主按钮可以进入 inkstone 黑底白字样式，但仍要保持 Warm 的阅读气质，而不是切成 terminal 主题。
+- **新增 overlay token**：这层视觉新增的 token 主要是 `--stamp-verified`、`--stamp-verified-ink`、`--stamp-verified-tint`、`--stamp-verified-frame`、`--stamp-verified-shadow`、`--stamp-red`、`--stamp-red-ink`、`--folio-line`、`--ink-blackletter`、`--paper-deep`、`--ornament-ink`、`--ease-expo`、`--ease-out-quart`、`--bolder-thin`、`--bolder-bold`。规则仍然是 additive-only，不回头重写 Warm 既有 token。
+- **可访问性与打印**：focus 从单层 ring 提升为双层 outline；`prefers-reduced-transparency` 下去掉依赖透明度和渐变的装饰；`forced-colors` 下保留系统色 token 和关键倾斜语义；打印时 `FOLIO` 和主 CTA 可以保留黑白形态，不必像早期模板那样全部隐藏。
+- **使用边界**：这层 overlay 适合 Landing、page-head、badge、TOC、diff hunk 标记和单个 focal card。不要把 pull quote、drop cap、ornament rule、印章、黑底 CTA 同时堆满一个页面；每个 screen 最多保留一到两个“主戏剧点”。
 
 \newpage
 

@@ -981,9 +981,162 @@ footer{
     grid-template-columns:1fr !important;
   }
 }
+
+/* === BOLDER v1 OVERLAY === */
+/* ---- Extended tokens (additive only) ---- */
+:root{
+  --ink-display: #15130F;
+  --accent-deep: #8C3A1A;
+  --paper-tinted: #F7F3EA;
+  --ornament: rgba(210,112,80,.42);
+  --rule-bold: 2px;
+  --shadow-editorial: 0 1px 0 rgba(255,255,255,.9) inset, 0 28px 60px -38px rgba(110,55,25,.45), 0 4px 10px -4px rgba(110,55,25,.14);
+  --shadow-lifted: 0 1px 0 rgba(255,255,255,.85) inset, 0 42px 80px -48px rgba(110,55,25,.55), 0 6px 14px -6px rgba(110,55,25,.18);
+  --ease-editorial: cubic-bezier(.22,.61,.36,1);
+}
+
+/* ---- Grain / paper texture (subtle, pointer-transparent) ---- */
+.b-grain{
+  content:"";
+  position:fixed; inset:0; z-index:0; pointer-events:none;
+  opacity:.35; mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.4  0 0 0 0 0.28  0 0 0 0 0.16  0 0 0 0.06 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size:240px 240px;
+}
+@media (prefers-reduced-transparency: reduce){ .b-grain{ display:none } }
+@media (forced-colors: active){ .b-grain{ display:none } }
+
+/* ---- Display drama type ---- */
+.b-display{
+  font-family: var(--font-serif, var(--serif));
+  font-weight: 600;
+  font-style: italic;
+  font-size: clamp(56px, 8.4vw, 128px);
+  line-height: .92;
+  letter-spacing: -0.025em;
+  color: var(--ink-display);
+}
+.b-display em{ color: var(--accent-ink, var(--clay-dark)); font-style: italic; }
+.b-display .shout{
+  background: linear-gradient(180deg, var(--clay) 0%, var(--clay-dark) 62%, var(--accent-deep) 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  padding-right: .06em;
+}
+
+/* ---- Eyebrow label (editorial small-caps) ---- */
+.b-eyebrow{
+  display:inline-flex; align-items:center; gap:10px;
+  font-family: var(--mono);
+  font-size: 11.5px; font-weight: 600;
+  letter-spacing: .22em; text-transform: uppercase;
+  color: var(--clay-dark);
+}
+.b-eyebrow::before{
+  content:""; width:28px; height:1px; background:currentColor; opacity:.75;
+}
+
+/* ---- Pull quote with ornate initial ---- */
+.b-pullquote{
+  position: relative;
+  margin: 28px 0 32px;
+  padding: 26px 36px 26px 72px;
+  background: linear-gradient(98deg, var(--clay-soft) 0%, transparent 110%);
+  border-left: 3px solid var(--clay);
+  border-radius: 0 18px 18px 0;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: clamp(18px, 1.5vw, 22px);
+  line-height: 1.5;
+  color: var(--ink-02);
+}
+.b-pullquote::before{
+  content:"\201C";
+  position:absolute; left: 16px; top: -2px;
+  font-family: var(--serif); font-style: italic; font-weight: 700;
+  font-size: 88px; line-height: 1;
+  color: var(--clay); opacity: .32;
+  pointer-events:none;
+}
+.b-pullquote cite{
+  display:block; margin-top: 12px;
+  font-family: var(--mono); font-style: normal; font-weight: 600;
+  font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink-03);
+}
+.b-pullquote cite::before{ content:"— "; }
+
+/* ---- Ornamental divider ---- */
+.b-divider{
+  display:flex; align-items:center; justify-content:center; gap:18px;
+  margin: 72px 0 52px;
+  color: var(--clay-dark);
+}
+.b-divider::before, .b-divider::after{
+  content:""; flex:1; height: 1px;
+  background: linear-gradient(to right, transparent, var(--divider) 18%, var(--divider) 82%, transparent);
+}
+.b-divider .mark{
+  font-family: var(--serif); font-style: italic; font-weight: 500;
+  font-size: 18px; letter-spacing: .4em;
+  padding: 0 6px;
+  opacity: .62;
+}
+
+/* ---- Drop cap ---- */
+.b-dropcap::first-letter{
+  font-family: var(--serif); font-weight: 700; font-style: italic;
+  font-size: 5.2em; line-height: .82;
+  float: left; padding: 6px 14px 0 0;
+  color: var(--clay-dark);
+}
+
+/* ---- Focal card (single hero moment only) ---- */
+.b-focal{
+  position: relative;
+  padding: 34px 40px;
+  background: linear-gradient(148deg, #FFFCF5 0%, var(--clay-soft) 92%);
+  border: 1.5px solid var(--divider);
+  border-radius: 22px;
+  box-shadow: var(--shadow-editorial);
+  overflow: hidden;
+  transition: transform .5s var(--ease-editorial), box-shadow .5s var(--ease-editorial);
+}
+.b-focal::before{
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(600px 180px at 85% -10%, rgba(210,112,80,.22), transparent 60%);
+  pointer-events: none;
+}
+.b-focal:hover{ transform: translateY(-3px); box-shadow: var(--shadow-lifted); }
+
+/* ---- Tag chip (confident) ---- */
+.b-chip{
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px;
+  background: var(--ink-01); color: var(--paper-01);
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase;
+  border-radius: 999px;
+}
+.b-chip.is-accent{ background: var(--clay); color: #fff; }
+
+/* ---- Print polish (overlay) ---- */
+@media print{
+  .b-grain{ display: none; }
+  .b-focal{ box-shadow: none; border: 1px solid #000; background: #fff; }
+  .b-pullquote{ background: none; border-left: 2px solid #000; }
+}
+
+/* ---- Forced-colors parity (overlay) ---- */
+@media (forced-colors: active){
+  .b-focal, .b-pullquote{ background: Canvas; border: 2px solid CanvasText; }
+  .b-display .shout{ -webkit-text-fill-color: CanvasText; color: CanvasText; }
+}
+/* === END BOLDER v1 OVERLAY === */
 </style>
 </head>
 <body>
+<div class="b-grain" aria-hidden="true"></div>
 
 <nav>
 <div class="nav-inner">
@@ -1010,15 +1163,18 @@ footer{
 <section class="hero" id="top">
   <div class="hero-decoration"></div>
   <div class="hero-decoration-2"></div>
-  <div class="container">
+  <div class="container" style="position:relative">
+    <div class="b-crown" aria-hidden="true" style="top:-72px;right:-30px;left:auto;font-size:clamp(160px,22vw,300px);color:var(--accent);opacity:.06;line-height:.82">&Delta;</div>
     <div class="section-label">竞品研究 · 可视化报告</div>
-    <h1>AhaDiff 的<span class="highlight">差异化定位</span>在哪里？</h1>
-    <p class="hero-sub">
+    <div class="b-eyebrow"><span>Competitive Intel · 2026</span></div>
+    <h1 class="b-display">AhaDiff 的<span class="shout">差异化定位</span>在哪里？</h1>
+    <p class="hero-sub b-dropcap">
       我们翻了 <span class="mono">12 款</span> 产品的官网、读了 <span class="mono">6 个</span> 灵感项目的源码，
       在 <span class="mono">5 个</span> 象限里挖出 <span class="mono">5 条</span> 产品护城河 + <span class="mono">5 条</span> 工程护城河（含 i18n、三层锁、隐私三档）。
       <br>这份报告用尽量少的黑话讲清楚：<em>知返到底跟谁在抢饭？和谁其实完全不冲突？</em>
     </p>
-    <div class="hero-stats">
+    <div class="b-eyebrow" style="margin:32px 0 6px"><span>By the numbers · 研究样本</span></div>
+    <div class="hero-stats b-rule-top b-rule-bottom" style="padding:24px 0;margin-top:4px">
       <div class="stat-card">
         <div class="stat-num">12</div>
         <div class="stat-label">竞品</div>
@@ -1074,6 +1230,8 @@ footer{
     <div class="scenario-conclusion fade-in">
       <h3>有没有一种工具，把你<em>刚写完的这份 diff</em><br>变成能在两周后主动回忆出来的学习笔记？</h3>
     </div>
+
+    <blockquote class="b-pullquote">AI 写得飞起，但你学不到东西 — 这就是 AhaDiff 想解决的事。<cite>Core Problem Statement</cite></blockquote>
   </div>
 </section>
 
@@ -1147,12 +1305,15 @@ footer{
   </div>
 </section>
 
+<div class="b-divider" aria-hidden="true"><span class="mark">&sect;</span></div>
 <!-- =============== MOATS =============== -->
 <section id="moats">
   <div class="container">
     <div class="section-label">三、护城河</div>
     <h2>五个<em>没人占</em>的山头</h2>
     <p class="lead">把 12 款产品的功能列齐，这 5 个格子全是空的 — AhaDiff 同时占住这 5 个格子，就是 100% 的差异化。</p>
+
+    <blockquote class="b-pullquote">把 12 款产品的功能列齐，这 5 个格子全是空的 — 同时占住就是 100% 的差异化。<cite>Moat Analysis Verdict</cite></blockquote>
 
     <div class="moat-grid">
 
@@ -1182,6 +1343,7 @@ footer{
           <span class="moat-compare-chip no">CodeRabbit 只评审</span>
           <span class="moat-compare-chip no">Execute Program 只教预制课</span>
           <span class="moat-compare-chip has">AhaDiff 两头都做</span>
+          <span class="b-chip is-accent">Only in AhaDiff</span>
         </div>
       </div>
 
@@ -1210,6 +1372,7 @@ footer{
         <div class="moat-compare">
           <span class="moat-compare-chip no">别家都是"自然语言带行号"</span>
           <span class="moat-compare-chip has">AhaDiff 独家 5 状态机</span>
+          <span class="b-chip is-accent">Only in AhaDiff</span>
         </div>
       </div>
 
@@ -1240,6 +1403,7 @@ footer{
           <span class="moat-compare-chip no">调研的 12 款产品中未发现类似机制</span>
           <span class="moat-compare-chip has">autoresearch 有但用于 ML</span>
           <span class="moat-compare-chip has">AhaDiff 用于笔记质量</span>
+          <span class="b-chip is-accent">Only in AhaDiff</span>
         </div>
       </div>
 
@@ -1296,6 +1460,7 @@ footer{
         <div class="moat-compare">
           <span class="moat-compare-chip no">10 款竞品均无 diff→学习笔记的多语言生成能力（竞品矩阵已验证）</span>
           <span class="moat-compare-chip has">AhaDiff 中英双语全链路（en + zh-CN）</span>
+          <span class="b-chip is-accent">Only in AhaDiff</span>
         </div>
       </div>
 
@@ -1642,6 +1807,7 @@ footer{
   </div>
 </section>
 
+<div class="b-divider" aria-hidden="true"><span class="mark">&sect;</span></div>
 <!-- =============== INSPIRATION vs RIVAL =============== -->
 <section id="split">
   <div class="container">
@@ -1721,6 +1887,8 @@ footer{
       <h3>两边都没人做——这正是 AhaDiff 的机会：<br>把你<em>刚写完的 diff</em> 变成有证据、能棘轮、能复习的学习笔记。</h3>
       <div class="tag">THE GAP BETWEEN TWO WORLDS</div>
     </div>
+
+    <blockquote class="b-pullquote">两边都没人做 — 骨架借鉴 ≠ 同赛道竞品。这正是 AhaDiff 的机会。<cite>The Gap Between Two Worlds</cite></blockquote>
   </div>
 </section>
 
@@ -2125,12 +2293,15 @@ footer{
   </div>
 </section>
 
+<div class="b-divider" aria-hidden="true"><span class="mark">&sect;</span></div>
 <!-- =============== THREAT =============== -->
 <section id="threat" style="background:var(--paper-02)">
   <div class="container">
     <div class="section-label">七、威胁预警</div>
     <h2>最大威胁：<span style="color:var(--rust)">CodeRabbit</span></h2>
     <p class="lead">12 款竞品里唯一威胁等级"中高"。它已经占住"PR Review + 架构图 + 摘要"，如果加上 SRS/learning，就会直接进入 AhaDiff 的领地。</p>
+
+    <blockquote class="b-pullquote">CodeRabbit 如果加上 SRS/learning，就会直接进入 AhaDiff 的领地 — 这是唯一的中高威胁。<cite>Threat Assessment</cite></blockquote>
 
     <div class="threat-grid">
       <div>
@@ -2214,6 +2385,7 @@ footer{
   </div>
 </section>
 
+<div class="b-divider" aria-hidden="true"><span class="mark">&sect;</span></div>
 <!-- =============== CONCLUSION =============== -->
 <section id="conclusion">
   <div class="container">
@@ -2242,7 +2414,7 @@ footer{
         <div class="conclusion-name">Execute Program</div>
         <div class="conclusion-phrase">教预制课程 + SRS 复习</div>
       </div>
-      <div class="conclusion-card hero">
+      <div class="conclusion-card hero b-focal">
         <div class="conclusion-verb">知返 ★</div>
         <div class="conclusion-name">AhaDiff</div>
         <div class="conclusion-phrase">把你<strong>刚写完的 diff</strong> 变成能 <strong>两周后主动回忆</strong> 的学习笔记</div>

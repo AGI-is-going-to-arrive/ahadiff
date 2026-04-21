@@ -119,7 +119,7 @@ ahadiff install opencode  # OpenCode → AGENTS.md + .opencode/agents/
 
 ```text
 ahadiff/
-├─ AhaDiff Warm v6.html         # 当前最新 UI 原型
+├─ AhaDiff Warm v6.html         # 当前最新 UI 参考模板
 ├─ AhaDiff-Blueprint.html       # 八层架构可视化（含 i18n / VCR / 50+ CC）
 ├─ AhaDiff-Competitors-Research.html  # 竞品矩阵 + 5 条护城河
 ├─ doc/                         # 中文设计文档
