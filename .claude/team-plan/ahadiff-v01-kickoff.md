@@ -44,6 +44,14 @@
 - ruff + pyright strict
 - 不用 LiteLLM/LangChain/Next.js（SSR 框架）
 
+### 与 CLAUDE.md Stage 的对应关系
+
+- 本文件的 `Layer 0` 对应 `CLAUDE.md` 的 `Stage 0`
+- 本文件的 `Layer 1` 对应 `Stage 1`
+- 本文件的 `Layer 1.5 / Layer 2 / Layer 3` 合并后对应 `Stage 2`
+- 对外 gate 一律以 `CLAUDE.md` 的 `Stage 0-7` 为准；这里保留 `Layer` 只是为了表达前半段内部依赖
+- `Stage 3-7` 的任务拆分见后续排程文档 `ahadiff-v01-stages-4-9.md`
+
 ## 子任务列表
 
 ### Layer 0（前置 Gate）— Schema Freeze
@@ -59,7 +67,9 @@
   - `src/ahadiff/contracts/orchestrator.py`
   - `src/ahadiff/contracts/serve_app.py`
   - `doc/contract-freeze.md`
+- **补充说明**：Task 0 的最小 Python contract 文件范围以上述 7 个为准。`UsageEvent`、`Allowlist policy`、`ProviderCapabilities`、`LearnabilityGate`、Graphify v0.1 detect/import/sanitize/freshness 等其余契约，统一写入 `doc/contract-freeze.md`，不要求都在 Task 0 展开成独立 `contracts/*.py`
 - **依赖**: 无
+- **当前状态（2026-04-22）**：Task 0 已落地 `doc/contract-freeze.md`、7 个 contract 文件与 `tests/unit/test_contracts.py`；`python3 -m pytest tests/unit/test_contracts.py` 实测 `13 passed`
 - **实施步骤**:
   1. 冻结 `ClaimStatus` 枚举：`verified | weak | not_proven | contradicted | rejected`（Pydantic Literal）
   2. 冻结 `RunStatus` 枚举：`baseline | keep | discard | crash | targeted_verify | keep_final | phase25_rewrite | non_ratcheted`（non_ratcheted 用于 Level 1/2 非 git 输入，这类 run 无法 ratchet 回滚）。**移除 `rollback`**：当前状态机无任何合法产出路径，避免 orphan enum
@@ -70,7 +80,7 @@
   7. 定义统一错误类型层级：`InputError | SafetyError | ProviderError | VerificationError | StorageError | MigrationError | DegradedRunWarning`
   8. 定义文件锁规范：使用 `portalocker` 作为文件锁真相源（跨平台）。lockfile `.ahadiff/ahadiff.lock` 中 `{pid}\n{start_time_iso}\n{command}` 仅作诊断元数据，不用于活性检查。提供 `ahadiff unlock --force` 手动清理
   9. 定义 crash recovery 状态机：stale lock → portalocker 自动释放（进程退出即释放）；orphaned worktree → `ahadiff doctor` 自动清理；migration 部分失败 → 每个 migration 脚本在 `BEGIN EXCLUSIVE ... COMMIT` 事务中执行
-  10. 写入 `doc/contract-freeze.md` 作为所有下游 Task 的权威参考。**注意**：该文件当前不存在（Task 0 尚未执行），这是正确的——它是 Task 0 的核心产出物。Task 0 完成后，`contract-freeze.md` 成为唯一架构权威源，其他设计文档（kickoff/stages/diff-input 等）降级为设计过程文档，与 contract-freeze 冲突时以后者为准
+  10. 写入 `doc/contract-freeze.md` 作为所有下游 Task 的权威参考。Task 0 开工前该文件不存在；当前已产出。Task 0 完成后，`contract-freeze.md` 成为唯一架构权威源，其他设计文档（kickoff/stages/diff-input 等）降级为设计过程文档，与 contract-freeze 冲突时以后者为准
   14. 冻结 **Config 优先级链**：`ENV(AHADIFF_*) → CLI flag → per-repo .ahadiff/config.toml → global_config_dir()/config.toml → defaults`。凭证类：`env secret → per-repo env_var_name → global env_var_name → none`。Serve/request：`cookie → Accept-Language → CLI session → per-repo → global → system → defaults`
   15. 冻结 **数据范围契约**：真相源永远 per-repo（review.sqlite / audit.jsonl / audit.private.jsonl〔strict_local 下本机专用、gitignored、随 audit rotation 一起管理〕/ concepts.jsonl / prompts/ / VCR）；global（`global_config_dir()`，各平台实际路径见 data-scope 文档）只做派生索引/账本/偏好，不参与 ratchet 判定
   16. 预留 **UsageEvent schema**：`event_id / run_id / repo_id / provider_class / model_id / input_tokens / output_tokens / cost_usd / pricing_version / cost_confidence / billing_mode / execution_origin / api_principal_hash / timestamp`（v0.2 实现 global usage.sqlite）
@@ -80,6 +90,7 @@
   19. 冻结 SQLite 运行时版本门禁：启动时 `sqlite3.sqlite_version_info >= (3, 51, 3)`（WAL-reset bug 修复版）。允许 backport 白名单：`(3, 50, 7)` 和 `(3, 44, 6)`。不满足时 `StorageError("SQLite {actual} < 3.51.3, WAL mode unsafe")`。`ahadiff doctor` 输出实际 sqlite3 runtime 来源路径
   20. 冻结统一连接初始化：`journal_mode=WAL` + `busy_timeout=5000` + `trusted_schema=OFF` + `PRAGMA SQLITE_DBCONFIG_DEFENSIVE=ON`（防止 SQL 注入修改 schema） + 启动时 `quick_check`（快速健康检查）。**两级健康检查**：启动时 `quick_check`（跳过 UNIQUE/index 一致性，速度优先），`ahadiff doctor --deep` 或 migration 前跑 `integrity_check + foreign_key_check`（完整但慢）
   22. 冻结 `LearnabilityGate` 默认值：`weights={complexity: 0.4, novelty: 0.3, pattern: 0.3}`、`threshold=0.3`。**说明**：这是一组 heuristic defaults，不宣称来自外部科学定标；在 `benchmark --suite local` 积累首批 50 份 pinned diff 后再做经验校准。配置仍允许 `[learn].learnability_threshold` 覆盖
+  23. 冻结 **Graphify v0.1 contract**：Graphify 是可选增强，不是主链前置。`ahadiff learn` 自动检测 `graphify-out/graph.json`，存在则导入 repo-level context，不存在则静默降级；`graph.json` 和 Graphify label 视为 untrusted，必须先走 sanitization，再进入 context/viewer；freshness 沿用内部 7 态、对外 4 值投影。CLI surface 冻结到 `--use-graphify` / `--no-graphify` / `ahadiff graph status` / `ahadiff graph refresh` / `ahadiff graph import`
   11. 冻结 `Orchestrator` 接口契约：`OrchestratorCommand` DTO（`learn | improve | verify | serve`）+ `OrchestratorResult` 返回结构 + 三条主链路入口签名（`run_learn()`, `run_improve()`, `run_verify()`）+ **serve 链路区分**：serve 是 pull/读模式（被动响应请求），与其他三条 push/写模式本质不同。`run_serve()` 不返回 `OrchestratorResult`，而是启动 ASGI app 的长驻进程。DTO 中 `command=serve` 时附带 `ServeConfig(port, no_browser, bind_host)` 而非 `RunConfig`。`core/orchestrator.py` 统一编排，`cli.py` 仅做参数解析和输出格式化
   12. 冻结 `ServeApp` 接口契约：`src/ahadiff/serve/app.py` 的路由注册协议 + write token 鉴权（`X-AhaDiff-Token` header）+ `Host`+`Origin/Referer` 双校验 + `bind=127.0.0.1`（仅回环） + read-only 默认模式。API 端点清单冻结为：`GET /api/auth/token`, `GET /api/locale`, `PUT /api/locale`, `GET /api/runs`, `GET /api/run/:id`, `GET /api/run/:id/lesson`, `GET /api/run/:id/claims`, `GET /api/run/:id/quiz`, `GET /api/run/:id/diff`, `GET /api/concepts`, `GET /api/ratchet/history`, `POST /api/signals/*`。路由鉴权分级：读路由无需 token，写路由必须验 token。**发布可见性冻结**：run-scoped 读接口只暴露已完成二阶段发布的 finalized runs；SQLite `result_events` 仍是评分/ratchet 真相源，但未写出 `finalized.json` 的临时 run 不得对前端可见。**DTO 冻结**：至少定义 `AuthTokenResponse`、`LocaleResponse`、`RunSummary`、`RunDetail`、`RunArtifactEnvelope`、`RatchetHistoryEntry`
   13. 冻结**三层写锁矩阵**（解决并发安全）：
@@ -88,7 +99,7 @@
       - `serve_write_lock`（Starlette 进程内 `asyncio.Lock`）：保护 serve 模式下并发 POST 请求的序列化。持有者：写路由 handler
       - **获取顺序**（防死锁）：repo_write → db_write → serve_write，永远从外到内
       - **覆盖映射**：`ahadiff learn` 需要 repo_write + db_write；`ahadiff serve POST` 需要 serve_write + db_write；`ahadiff improve` 需要 repo_write + db_write；`ahadiff export-results` 只读不锁
-- **验收标准**: 所有已冻结契约（基础 schema + orchestrator + serve + config_precedence + data_scope + provider + sqlite + lock matrix + learnability gate defaults）的规范文档写入 `doc/contract-freeze.md`，核心 Pydantic schema 可 import，`pytest tests/unit/test_contracts.py` 全绿。`UsageEvent` schema 可 import（但 v0.1 不实现写入 global usage.sqlite）
+- **验收标准**: 所有已冻结契约（基础 schema + orchestrator + serve + config_precedence + data_scope + provider + sqlite + lock matrix + learnability gate defaults）的规范文档写入 `doc/contract-freeze.md`，核心 Pydantic schema 可 import，`python3 -m pytest tests/unit/test_contracts.py` 全绿。`UsageEvent` schema 可 import（但 v0.1 不实现写入 global usage.sqlite）
 
 ### Layer 1（并行）— 工程骨架 + 文档修正 + UI 响应式修复
 
@@ -196,6 +207,7 @@
      - `--since "2h ago"`: 用 `git rev-list --first-parent --since` 获取命中 commit 列表，取最早命中 commit 的父节点作为 base、HEAD 作为 target，执行 `git diff base..HEAD`（连续 ancestry 窗口 diff，不拼接多份 patch）。**Corner cases**：(1) `--author` 过滤后若命中 commit 不连续（中间有他人 commit），仍使用整个窗口（包含他人 commit），避免 patch 语义断裂；(2) 无命中 commit → InputError "该时间范围内无 commit"；(3) 仅命中 1 个 commit → 等价于单 commit 模式；(4) metadata 记录 `matched_commits[]` 和 `window_base`/`window_head`
      - `git show <sha>`: 单 commit 学习，调用 `git diff-tree -p <sha>`。source_kind=`git_ref`（复用，source_ref 设为该 sha）。**Corner cases**：merge commit 默认用 `--first-parent`；初始 commit（无父）用 `git diff-tree --root`；sha 不存在时 InputError
   3. 实现 `write_input_artifacts()` 生成 `metadata.json`，包含 `capability_flags`：`has_repo_context / has_symbol_index / has_cross_file_context / has_source_ref / has_graph`（Level 3 全 true，Level 2/1 按实际降级）
+  3a. 集成 **Graphify v0.1 可选增强**：`ahadiff learn` 自动检测 `graphify-out/graph.json`；`--use-graphify` 在缺产物时直接报错，`--no-graphify` 强制关闭。导入前与 diff 一样先走 sanitization；`metadata.json` 记录 `has_graph`、freshness 与 provenance。CLI 提供 `ahadiff graph status` / `ahadiff graph refresh` / `ahadiff graph import` 基础入口
   4. 集成安全层：捕获后通过 `safety.redaction_pipeline()` 统一过滤 + redaction（脱敏必须在写入任何 artifact 之前完成）
   5. **Large diff policy（前置到 capture stage）** + **degraded_flags 完整触发规则**：
      - `diff_clipped`：diff 行数超过 `hard_limit`（默认 5000 行）时 clip，设置点=capture，传播点=metadata→score.json→results，UI 行为=显示 "[truncated]" 横幅
@@ -219,6 +231,7 @@
   - `ahadiff learn --patch tests/fixtures/sample.patch --dry-run` 读取外部 patch 文件
   - `echo "..." | ahadiff learn --patch - --dry-run` stdin 管道输入（TTY 时报错）
   - `ahadiff learn --compare old.py new.py --dry-run` 单文件对比
+  - 存在 `graphify-out/graph.json` 时可导入并标记 `has_graph=true`；不存在时正常降级，不阻塞 learn
   - 有 untracked 文件时 CLI 输出提示信息（不报错）
   - bare repo / merge 冲突 / unborn HEAD 时输出可读 InputError
   - metadata.json 包含正确的 source_kind/source_ref/capability_level/degraded_flags
@@ -326,6 +339,7 @@
   13. 预留 **UsageEvent schema**（v0.2 实现写入 global usage.sqlite）：字段同 audit 事件 + `repo_id`（repo fingerprint），v0.1 仅定义 Pydantic model 不实现 global 写入
   14. 实现 **BYOK 自动探测**（`src/ahadiff/llm/probe.py`）：
       1. 用户提供 `model_name + base_url + api_key` 后，执行 `ahadiff provider test`
+      1a. 开发阶段允许用 **loopback OpenAI-compatible endpoint** 做 provider live smoke，但 committed docs / 命令示例只写环境变量占位符，不写本地 endpoint 或真实 key
       2. 发送最小测试请求验证连通性
       3. 探测 temperature 透传：发送 `temperature=0.0` 和 `temperature=1.0` 两次请求，比较输出差异判断是否支持
       4. 探测 TPM/RPM：解析响应头 `x-ratelimit-limit-tokens` / `x-ratelimit-limit-requests` / `x-ratelimit-remaining-*`，若无头则用保守默认值
@@ -354,7 +368,7 @@
 - **验收标准**:
   - `pytest tests/unit/test_provider.py` 覆盖 8 种 adapter mock + ProviderCapabilities 声明验证
   - `pytest tests/unit/test_probe.py` 覆盖连通性/temperature/TPM/RPM/context_length 探测
-  - `ahadiff provider test --name my-gpt --base-url https://... --api-key sk-...` 输出探测报告 + capabilities 矩阵
+  - `ahadiff provider test --name my-gpt --base-url "$AHADIFF_PROVIDER_BASE_URL" --api-key "$AHADIFF_PROVIDER_API_KEY"` 输出探测报告 + capabilities 矩阵
   - strict_local 模式下拒绝非 loopback base_url（不仅检查 provider class）
   - 上下文超限时自动 clip 并设置 degraded_flags
   - 429 响应触发 backoff，不崩溃；并发超限时排队
@@ -419,7 +433,7 @@
 - Task 7: `llm/*`
 - Task 8: `claims/*`, `prompts/*`
 
-## 并行分组
+## Stage 0-2 内部并行分组
 
 ```
 Layer 1 (全并行):  Task 1 + Task 2 + Task 3 + Task 4

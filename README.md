@@ -123,16 +123,27 @@ ahadiff/
 ├─ AhaDiff-Blueprint.html       # 八层架构可视化（含 i18n / VCR / 50+ CC）
 ├─ AhaDiff-Competitors-Research.html  # 竞品矩阵 + 5 条护城河
 ├─ doc/                         # 中文设计文档
+│  ├─ contract-freeze.md        # Stage 0 架构权威源
 │  ├─ ahadiff设计思路.md          # [ARCHIVED] 早期架构快照
 │  ├─ 知返ahadiff改名后的后续方案.md  # [ARCHIVED] 改名过渡方案
 │  └─ AhaDiff_frontend_design_v1.1_revised.md  # 前端视觉手册（v0.1=React 19+Vite）
+├─ src/ahadiff/contracts/       # Stage 0 最小 contracts skeleton
+├─ tests/unit/test_contracts.py # Stage 0 验收测试
 ├─ ui/                          # HTML 原型 v1–v6（设计迭代史）
 └─ CLAUDE.md                    # 项目 AI 上下文索引
 ```
 
 ## 当前阶段
 
-**Pre-engineering（设计阶段）**。仓库目前只包含设计文档与 HTML 原型；CLI / 评估器 / Skill 均尚未编码。
+**Pre-engineering（设计阶段）**。Stage 0 / Task 0 已完成，仓库现在除了设计文档和 HTML 原型，还包含 `contract-freeze.md`、最小 contracts skeleton，以及 Stage 0 验收测试。CLI / provider / evaluator / viewer runtime 仍未开始实现。
+
+当前已落地的最小验证：
+
+```bash
+python3 -m pytest tests/unit/test_contracts.py
+```
+
+本次实际结果：`13 passed`。
 
 下一步路线图：
 

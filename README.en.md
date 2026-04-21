@@ -123,16 +123,27 @@ ahadiff/
 ├─ AhaDiff-Blueprint.html       # 8-layer architecture visualization (i18n / VCR / 50+ CCs)
 ├─ AhaDiff-Competitors-Research.html  # Competitor matrix + 5 moats
 ├─ doc/                         # Design docs (Chinese)
+│  ├─ contract-freeze.md        # Stage 0 architecture authority
 │  ├─ ahadiff设计思路.md          # [ARCHIVED] Early architecture snapshot
 │  ├─ 知返ahadiff改名后的后续方案.md  # [ARCHIVED] Rename transition plan
 │  └─ AhaDiff_frontend_design_v1.1_revised.md  # Frontend design manual (v0.1=React 19+Vite)
+├─ src/ahadiff/contracts/       # Stage 0 minimal contracts skeleton
+├─ tests/unit/test_contracts.py # Stage 0 acceptance test
 ├─ ui/                          # HTML prototypes v1–v6 (design history)
 └─ CLAUDE.md                    # Project AI context index
 ```
 
 ## Status
 
-**Pre-engineering (design phase).** The repository currently contains only design documents and HTML prototypes; the CLI, evaluator, and Skill packages have not yet been coded.
+**Pre-engineering (design phase).** Stage 0 / Task 0 is now complete. The repository contains the contract freeze doc, a minimal importable contracts skeleton, and a Stage 0 acceptance test, but the CLI, provider, evaluator, and viewer runtime have not been implemented yet.
+
+Current minimal verification:
+
+```bash
+python3 -m pytest tests/unit/test_contracts.py
+```
+
+Actual result from this session: `13 passed`.
 
 Roadmap:
 
