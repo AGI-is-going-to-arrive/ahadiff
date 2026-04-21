@@ -112,7 +112,7 @@ Level 1 · patch-grounded（只有 diff 文本）
 #### 2.3 Ratchet 处理（修复 C4）
 
 ```text
-Level 3 (git)：ratchet 完整可用，status 含 keep/discard/rollback/keep_final
+Level 3 (git)：ratchet 完整可用，status 含 baseline/keep/discard/crash/targeted_verify/keep_final/phase25_rewrite（7 态）
 Level 2/1：ratchet 禁用，status 固定为 non_ratcheted
 viewer 中棘轮面板显示 banner："此 run 来自非 git 输入，棘轮改进不可用"
 ```

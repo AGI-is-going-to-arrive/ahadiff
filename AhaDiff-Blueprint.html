@@ -1462,10 +1462,10 @@ repo_write_lock  →  db_write_lock  →  serve_write_lock
                 <tr><td class="mono">source_refs</td><td>string[]</td><td>来源标识数组（git SHA / patch hash），任一可达即概念可见</td></tr>
                 <tr><td class="mono">base_ref</td><td>string</td><td>ratchet 基线标识（首次为空）</td></tr>
                 <tr><td class="mono">prompt_version</td><td>string</td><td>prompts/ tree hash</td></tr>
-                <tr><td class="mono">rubric_version</td><td>string</td><td>rubric.yaml hash（eval bundle hash = SHA-256：按文件名 ASCII 排序后逐个拼 <code>path_utf8 + b"\n" + content_bytes</code>，文件间 <code>b"\n---\n"</code> 连接，取 hex 前 12 位）</td></tr>
+                <tr><td class="mono">eval_bundle_version</td><td>string</td><td>evaluation bundle hash（SHA-256：5 文件按路径 ASCII 排序逐个拼 <code>path_utf8 + b"\n" + content_bytes</code>，文件间 <code>b"\n---\n"</code> 连接，取 hex 前 12 位）。<code>rubric_version</code> 降级为派生显示字段</td></tr>
                 <tr><td class="mono">overall</td><td>int 0-100</td><td>加权总分</td></tr>
                 <tr><td class="mono">verdict</td><td>enum</td><td>PASS / CAUTION / FAIL</td></tr>
-                <tr><td class="mono">status</td><td>enum</td><td>baseline / keep / discard / rollback / crash / targeted_verify / keep_final / phase25_rewrite / non_ratcheted（共 9 态）。<code>keep</code> 仅出现在 learn 链路（直接 ratchet）；improve 链路用 <code>targeted_verify → keep_final</code>。Phase 2.5 也走 improve 链路。non_ratcheted 判定：<code>has_git_ancestry == false</code></td></tr>
+                <tr><td class="mono">status</td><td>enum</td><td>baseline / keep / discard / crash / targeted_verify / keep_final / phase25_rewrite / non_ratcheted（共 8 态，<code>rollback</code> 已移除：无合法产出路径）。<code>keep</code> 仅出现在 learn 链路（直接 ratchet）；improve 链路用 <code>targeted_verify → keep_final</code>。Phase 2.5 也走 improve 链路。non_ratcheted 判定：<code>has_git_ancestry == false</code></td></tr>
                 <tr><td class="mono">weakest_dim</td><td>string</td><td>最弱维度</td></tr>
                 <tr><td class="mono">note_json</td><td>JSON</td><td>结构化元数据（phase/trigger/degraded_flags/cleanup_state）</td></tr>
               </tbody>
@@ -1542,7 +1542,7 @@ prompt_version = hash(prompts/ 目录 tree)
 <span style="font-weight:600;color:var(--success)">Cassette 级（精确匹配单调用）</span>
 key = prompt_fingerprint
     + model_id
-    + rubric_version
+    + eval_bundle_version
     + <span style="color:var(--accent-ink);font-weight:700">output_lang</span> ← <em>i18n 新增</em></div>
             <div style="font-size:11px;color:var(--muted);padding:6px 10px;background:var(--subtle);border-radius:6px">
               改 <code>lesson_generate.md</code> 只失效 lesson cassette，不影响 quiz/claim。改语言只失效该语言的 cassette。
@@ -2284,9 +2284,14 @@ judge_model = "qwen3-coder"       <span style="color:var(--muted)"># 本地模�
     scaffolding_level TEXT NOT NULL DEFAULT 'full',
     last_rating INTEGER,               <span style="color:var(--muted)">-- 1-4</span>
     last_review_utc TEXT,              <span style="color:var(--muted)">-- ISO 8601 UTC</span>
-    <span style="color:#E4EFE0">-- 元数据</span>
+    <span style="color:#E4EFE0">-- anchor 元数据</span>
     source_ref TEXT, file_id TEXT, display_path TEXT,
-    created_at_utc TEXT NOT NULL
+    hunk_id TEXT, hunk_hash TEXT, symbol TEXT, change_kind TEXT,
+    <span style="color:#E4EFE0">-- 卡片状态</span>
+    card_state TEXT NOT NULL DEFAULT 'active', <span style="color:var(--muted)">-- active/stale/archived/suspended</span>
+    archived_at_utc TEXT, suspended_at_utc TEXT,
+    created_at_utc TEXT NOT NULL,
+    FOREIGN KEY (scheduler_preset_id) REFERENCES scheduler_presets(preset_id)
 );
 
 CREATE TABLE scheduler_presets (       <span style="color:var(--muted)">-- Optimizer 参数存储</span>

@@ -1934,7 +1934,7 @@ footer{
   <div class="container">
     <div class="section-label">六 · 附</div>
     <h2>v0.1 设计升级<em>（2026-04-20 多轮评估后新增）</em></h2>
-    <p class="lead">经三模型 + Explorer 八轮交叉审查，v0.1 确认以下关键能力。<br>技术栈确认：<strong>Python 3.11+ / Typer / Rich / Pydantic / React 19 + Vite + vanilla CSS / Starlette+Uvicorn</strong>，前端为 React 19 SPA（<code>ahadiff serve</code> 自动开浏览器），<strong>SQLite 为唯一真相源</strong>。<br>SRS 调度：<strong>FSRS-6</strong>（py-fsrs v6.3.1, desired_retention=0.9, stability 驱动三段式撤架, misconception 卡）。<br>LLM Provider 支持 <strong>8 种 API 格式</strong>（OpenAI Chat / Responses / Gemini / Anthropic / Azure / NewAPI / CherryIN / Ollama）+ BYOK 自动探测（temperature/TPM/RPM/context length）。评估 Judge：<strong>gpt-5.4-mini</strong>（1M 上下文）。</p>
+    <p class="lead">经三模型 + Explorer 十轮交叉审查，v0.1 确认以下关键能力。<br>技术栈确认：<strong>Python 3.11+ / Typer / Rich / Pydantic / React 19 + Vite + vanilla CSS / Starlette+Uvicorn</strong>，前端为 React 19 SPA（<code>ahadiff serve</code> 自动开浏览器），<strong>SQLite 为唯一真相源</strong>。<br>SRS 调度：<strong>FSRS-6</strong>（py-fsrs v6.3.1, desired_retention=0.9, stability 驱动三段式撤架, misconception 卡）。<br>LLM Provider 支持 <strong>8 种 API 格式</strong>（OpenAI Chat / Responses / Gemini / Anthropic / Azure / NewAPI / CherryIN / Ollama）+ BYOK 自动探测（temperature/TPM/RPM/context length）。评估 Judge：<strong>gpt-5.4-mini</strong>（1M 上下文）。</p>
 
     <div class="top10-wrap">
       <div class="top10-grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;display:grid">
@@ -2005,7 +2005,7 @@ footer{
 
         <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px;margin:0">
           <div class="borrow-howto-tag" style="margin:0">50+ Corner Cases 全闭合</div>
-          <div class="borrow-howto-body">经六轮三模型审查（Claude+Codex+Gemini，Gemini 429 时 Claude 兜底），从 Quiz staleness 到 Archive bomb，从 locale 归一化到 z-index 层级，50+ 个 corner case 全部有具体工程闭合方案（含 CC-GAP 系列 13 项 + CC-R6 系列 7 项 + diff 捕获扩展 30+ 项）。第六轮终审判定：<strong>GO</strong>（0 Critical，3 High 已修复）。</div>
+          <div class="borrow-howto-body">经十轮三模型审查（Claude+Codex+Gemini，Gemini 429 时 Claude 兜底），从 Quiz staleness 到 Archive bomb，从 locale 归一化到 z-index 层级，65+ 个 corner case 全部有具体工程闭合方案（含 CC-GAP 系列 13 项 + CC-R6 系列 7 项 + diff 捕获扩展 30+ 项 + Round 10 新增 16 项修复）。第十轮终审判定：<strong>GO</strong>（Round 10 三模型交叉验证 16 项全部修复）。</div>
         </div>
 
       </div>
@@ -2255,7 +2255,7 @@ footer{
         v0.1 Kickoff 已完成 → <span class="mono" style="color:var(--clay)">.claude/team-plan/ahadiff-v01-kickoff.md</span><br>
         数据范围架构已冻结 → <span class="mono" style="color:var(--clay)">.claude/team-plan/ahadiff-data-scope-architecture.md</span><br>
         SRS: SM-2 → FSRS-6 → <span class="mono" style="color:var(--clay)">.claude/team-plan/ahadiff-fsrs-decision.md</span><br>
-        第八轮终审 CONDITIONAL GO → <span class="mono" style="color:var(--clay)">三模型交叉验证（Claude 7.8 / Gemini 8.6 / Codex 6.5）</span>
+        第十轮终审 GO → <span class="mono" style="color:var(--clay)">三模型交叉验证（Round 9: 8.2/10 GO → Round 10: Codex 5.8 + Gemini 8.0 + Claude 7.8, 16 项修复后 GO）</span>
       </h3>
     </div>
   </div>
@@ -2265,7 +2265,7 @@ footer{
   <div class="footer-inner">
     <div class="footer-left">
       知返 AhaDiff · 竞品研究可视化
-      <span class="mono">generated 2026-04-21 · warm v3 (round 8 sync · SM-2→FSRS-6)</span>
+      <span class="mono">generated 2026-04-21 · warm v3 (round 10 sync · SM-2→FSRS-6)</span>
     </div>
     <div class="footer-right">
       sources: doc/知返设计坐标.md (archived) · doc/competitive-analysis-2026-04.md<br>
@@ -2556,7 +2556,7 @@ const borrowData = [
     title:`version-manifest.json 版本追踪`,
     loc:`schemas/version-manifest.json:L1-L86`,
     how:`每版本记录 {version, parent, timestamp, trigger, content_hash, overall_score, verdict, dimension_scores, correction_pattern}。trigger 枚举 initial|eval-improve|eval-merge|manual|upstream。`,
-    apply:`<b>延后 v0.2+</b> — prompt_version+rubric_version+git 已满足追溯。`},
+    apply:`<b>延后 v0.2+</b> — prompt_version + eval_bundle_version + git 已满足追溯；其中 rubric_version 已降级为派生显示字段。`},
   {n:22, proj:'SkillCompass', pri:'P1', verdict:'deferred',
     title:`V1-V7 统计指标 + ASCII 柱状图`,
     loc:`scripts/eval-v2/analyze-results.js:L83-L260`,
@@ -2568,7 +2568,7 @@ const borrowData = [
     title:`SHA256 内容寻址缓存（多因子 key）`,
     loc:`graphify/cache.py:L10-L41`,
     how:`原版是 per-file extraction cache：file_hash() 对 .md 先剥 YAML frontmatter 再哈希，key = content + "\\x00" + relative_path（repo-relative 可移植）。有 fallback 到 raw content 的健壮处理。`,
-    apply:`<b>纳入 v0.1</b> — 借鉴内容寻址 + 相对路径可移植性思想，但 AhaDiff 是 LLM 调用缓存。key = SHA256(diff_content + \\x00 + source_ref + \\x00 + prompt_fingerprint + \\x00 + model_id + \\x00 + rubric_version + \\x00 + redaction_config_hash + \\x00 + context_bundle_hash)。prompt_fingerprint 为双层版本策略的 per-prompt 级 hash（非整目录 tree hash）。落地于 L2c llm/cache.py。`},
+    apply:`<b>纳入 v0.1</b> — 借鉴内容寻址 + 相对路径可移植性思想，但 AhaDiff 是 LLM 调用缓存。权威 key = SHA256(diff_content + \\x00 + source_ref + \\x00 + prompt_version + \\x00 + eval_bundle_version + \\x00 + model_id + \\x00 + api_family + \\x00 + output_lang + \\x00 + privacy_mode + \\x00 + redaction_config_hash + \\x00 + context_bundle_hash)。其中 prompt_fingerprint 仅用于 VCR cassette key，非整仓 LLM cache key。落地于 L2c llm/cache.py。`},
   {n:24, proj:'graphify', pri:'P0', verdict:'covered',
     title:`枚举型 Schema 验证 + assert_valid() 快速失败`,
     loc:`graphify/validate.py:L4-L64`,

@@ -483,7 +483,7 @@ Dark mode: **v0.2**（v0.1 专注 paper-like light theme）
 
 | Corner Case | 闭合状态 | 改进 |
 |------------|---------|------|
-| Quiz staleness | ✅ 闭合 | 保持（CardState 三态 + anchor 惰性检测） |
+| Quiz staleness | ✅ 闭合 | 保持（CardState 四态 + anchor 惰性检测） |
 | Branch-aware concepts | ✅ **改为闭合** | CC3 提供 squash/cherry-pick 诊断通知 |
 | Degraded run ratchet | ✅ **改为闭合** | E4 定义 degraded 永不提升 baseline |
 | Rename/move symbol | ✅ **改为闭合** | CC4 两段式检测 + ambiguous_move 降级 |

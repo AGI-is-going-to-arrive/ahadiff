@@ -67,10 +67,17 @@ import re
 
 _CJK_RANGE = re.compile(r"[\u4e00-\u9fff\u3400-\u4dbf]")
 _LATIN_RANGE = re.compile(r"[a-zA-Z]")
+_FENCED_CODE = re.compile(r"```[\s\S]*?```")
+_INLINE_CODE = re.compile(r"`[^`\n]+`")
+
+def _strip_code_for_language_detection(text: str) -> str:
+    text = _FENCED_CODE.sub(" ", text)
+    text = _INLINE_CODE.sub(" ", text)
+    return text
 
 def detect_output_language(text: str) -> str:
-    """检测前 500 字符中 CJK vs Latin 比例。"""
-    sample = text[:500]
+    """剔除代码块后，检测前 500 字符中 CJK vs Latin 比例。"""
+    sample = _strip_code_for_language_detection(text)[:500]
     cjk_count = len(_CJK_RANGE.findall(sample))
     latin_count = len(_LATIN_RANGE.findall(sample))
     if cjk_count == 0 and latin_count == 0:
@@ -117,6 +124,14 @@ def test_detect_english():
 def test_detect_mixed():
     # 30% 临界
     assert detect_output_language("abc中文def") == "mixed"
+
+def test_detect_ignores_fenced_code():
+    text = "中文解释：这是重试策略。\n```ts\nconst retryCount = 3;\nfunction backoff() {}\n```"
+    assert detect_output_language(text) == "zh-CN"
+
+def test_detect_ignores_inline_code():
+    text = "中文说明里包含 `const token = secret` 这种 inline code。"
+    assert detect_output_language(text) == "zh-CN"
 
 def test_enforce_retries_once(mocker):
     mock_retry = mocker.Mock(return_value="纯中文输出")

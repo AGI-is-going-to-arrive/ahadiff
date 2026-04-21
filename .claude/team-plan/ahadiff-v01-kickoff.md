@@ -62,10 +62,10 @@
 - **依赖**: 无
 - **实施步骤**:
   1. 冻结 `ClaimStatus` 枚举：`verified | weak | not_proven | contradicted | rejected`（Pydantic Literal）
-  2. 冻结 `RunStatus` 枚举：`baseline | keep | discard | rollback | crash | targeted_verify | keep_final | phase25_rewrite | non_ratcheted`（non_ratcheted 用于 Level 1/2 非 git 输入，这类 run 无法 ratchet 回滚）
+  2. 冻结 `RunStatus` 枚举：`baseline | keep | discard | crash | targeted_verify | keep_final | phase25_rewrite | non_ratcheted`（non_ratcheted 用于 Level 1/2 非 git 输入，这类 run 无法 ratchet 回滚）。**移除 `rollback`**：当前状态机无任何合法产出路径，避免 orphan enum
   3. 冻结 `RunSource` schema：`source_kind`(git_ref/git_staged/git_unstaged/git_since/patch_file/patch_stdin/file_compare，**细粒度为权威值，diff-input 文档的粗粒度 git/patch/file_compare 降级为 UI 展示分组**) + `source_ref`(统一标识，替代旧的 head_sha) + `capability_level`(1/2/3) + `degraded_flags`(dict，key 枚举：`diff_clipped | binary_only | file_count_exceeded | token_exceeded`)
-  4. 冻结 `EvaluationBundle` 版本化契约：`evaluator.py` + `rubric.py` + `rubric.yaml` + `gates.py` + `deterministic.py` 五个文件的联合 hash 作为 `eval_bundle_version`。**Hash 算法冻结（字节级伪代码）**：��文件相对路径 ASCII 字典序排序后，逐个拼接 `path_utf8_bytes + b"\n" + content_bytes`，文件间用 `b"\n---\n"` 连接，最终对拼接结果做 SHA-256 取 hex 前 12 位。示例：`sha256(b"eval/deterministic.py\n<content>\n---\neval/evaluator.py\n<content>\n---\n...")[:12]`。所有操作在字节层面，不做编码转换。任一文件变更（含空白）均产生新版本号
-  5. 冻结 `EventLog` schema：主键为 `event_id`（UUID v7），`(run_id, event_type, timestamp)` 为唯一索引（注意：`event_type` 与 `status` 是两个独立字段。`event_type` 描述事件动作如 `score_computed | ratchet_decided | phase25_triggered`；`status` 是 RunStatus 枚举值）。`run_id` 为二级索引
+  4. 冻结 `EvaluationBundle` 版本化契约：`evaluator.py` + `rubric.py` + `rubric.yaml` + `gates.py` + `deterministic.py` 五个文件的联合 hash 作为 `eval_bundle_version`。**Hash 算法冻结（字节级伪代码）**：��文件相对路径 ASCII 字典序排序后，逐个拼接 `path_utf8_bytes + b"\n" + content_bytes`，文件间用 `b"\n---\n"` 连接，最终对拼接结果做 SHA-256 取 hex 前 12 位。示例：`sha256(b"eval/deterministic.py\n<content>\n---\neval/evaluator.py\n<content>\n---\n...")[:12]`。所有操作在字节层面，不做编码转换。任一文件变更（含空白）均产生新版本号。`rubric_version` 降级为 `eval_bundle_version` 的派生显示字段，VCR cassette 失效由 `eval_bundle_version` 自动驱动
+  5. 冻结 `EventLog` / `result_events` 物理事件表契约：列集至少包含 `event_id / run_id / event_type / timestamp / source_ref / base_ref / prompt_version / eval_bundle_version / rubric_version / overall / verdict / status / weakest_dim / note_json`。主键为 `event_id`（UUID v7），唯一索引为 `(run_id, event_type, timestamp)`，二级索引 `(source_ref, timestamp DESC)`、`(verdict, status)`、`(weakest_dim, timestamp DESC)`。**注意**：`event_type` 与 `status` 是两个独立字段；`result_events` 是物理事件流，`results.tsv` 只是其导出视图，不要求列集一一同构
   6. 冻结统一字段命名：所有文档使用 `source_ref`（替代旧的 `head_sha`）、`privacy_mode`（snake_case: `strict_local | redacted_remote | explicit_remote`）、`eval_bundle_version`
   7. 定义统一错误类型层级：`InputError | SafetyError | ProviderError | VerificationError | StorageError | MigrationError | DegradedRunWarning`
   8. 定义文件锁规范：使用 `portalocker` 作为文件锁真相源（跨平台）。lockfile `.ahadiff/ahadiff.lock` 中 `{pid}\n{start_time_iso}\n{command}` 仅作诊断元数据，不用于活性检查。提供 `ahadiff unlock --force` 手动清理
@@ -79,6 +79,7 @@
   21. 冻结**开发测试阶段默认模型**：生成和评估统一使用 `gpt-5.4-mini`（provider_class=openai, 1M 上下文）。config.toml 默认值 `[llm] generate_model = "gpt-5.4-mini"` + `[llm] judge_model = "gpt-5.4-mini"`。生产环境用户可按需将 generate_model 切换为 gpt-5.4 或其他大模型
   19. 冻结 SQLite 运行时版本门禁：启动时 `sqlite3.sqlite_version_info >= (3, 51, 3)`（WAL-reset bug 修复版）。允许 backport 白名单：`(3, 50, 7)` 和 `(3, 44, 6)`。不满足时 `StorageError("SQLite {actual} < 3.51.3, WAL mode unsafe")`。`ahadiff doctor` 输出实际 sqlite3 runtime 来源路径
   20. 冻结统一连接初始化：`journal_mode=WAL` + `busy_timeout=5000` + `trusted_schema=OFF` + `PRAGMA SQLITE_DBCONFIG_DEFENSIVE=ON`（防止 SQL 注入修改 schema） + 启动时 `quick_check`（快速健康检查）。**两级健康检查**：启动时 `quick_check`（跳过 UNIQUE/index 一致性，速度优先），`ahadiff doctor --deep` 或 migration 前跑 `integrity_check + foreign_key_check`（完整但慢）
+  22. 冻结 `LearnabilityGate` 默认值：`weights={complexity: 0.4, novelty: 0.3, pattern: 0.3}`、`threshold=0.3`。**说明**：这是一组 heuristic defaults，不宣称来自外部科学定标；在 `benchmark --suite local` 积累首批 50 份 pinned diff 后再做经验校准。配置仍允许 `[learn].learnability_threshold` 覆盖
   11. 冻结 `Orchestrator` 接口契约：`OrchestratorCommand` DTO（`learn | improve | verify | serve`）+ `OrchestratorResult` 返回结构 + 三条主链路入口签名（`run_learn()`, `run_improve()`, `run_verify()`）+ **serve 链路区分**：serve 是 pull/读模式（被动响应请求），与其他三条 push/写模式本质不同。`run_serve()` 不返回 `OrchestratorResult`，而是启动 ASGI app 的长驻进程。DTO 中 `command=serve` 时附带 `ServeConfig(port, no_browser, bind_host)` 而非 `RunConfig`。`core/orchestrator.py` 统一编排，`cli.py` 仅做参数解析和输出格式化
   12. 冻结 `ServeApp` 接口契约：`src/ahadiff/serve/app.py` 的路由注册协议 + write token 鉴权（`X-AhaDiff-Token` header）+ `Host`+`Origin/Referer` 双校验 + `bind=127.0.0.1`（仅回环） + read-only 默认模式。API 端点清单：`GET /api/locale`, `PUT /api/locale`, `GET /api/runs`, `GET /api/run/:id`, `POST /api/signals/*`。路由鉴权分级：读路由无需 token，写路由必须验 token
   13. 冻结**三层写锁矩阵**（解决并发安全）：
@@ -87,7 +88,7 @@
       - `serve_write_lock`（Starlette 进程内 `asyncio.Lock`）：保护 serve 模式下并发 POST 请求的序列化。持有者：写路由 handler
       - **获取顺序**（防死锁）：repo_write → db_write → serve_write，永远从外到内
       - **覆盖映射**：`ahadiff learn` 需要 repo_write + db_write；`ahadiff serve POST` 需要 serve_write + db_write；`ahadiff improve` 需要 repo_write + db_write；`ahadiff export-results` 只读不锁
-- **验收标准**: 所有 9 个契约（5 原有 + orchestrator + serve + config_precedence + data_scope）的规范文档写入 `doc/contract-freeze.md`，核心 Pydantic schema 可 import，`pytest tests/unit/test_contracts.py` 全绿。`UsageEvent` schema 可 import（但 v0.1 不实现写入 global usage.sqlite）
+- **验收标准**: 所有已冻结契约（基础 schema + orchestrator + serve + config_precedence + data_scope + provider + sqlite + lock matrix + learnability gate defaults）的规范文档写入 `doc/contract-freeze.md`，核心 Pydantic schema 可 import，`pytest tests/unit/test_contracts.py` 全绿。`UsageEvent` schema 可 import（但 v0.1 不实现写入 global usage.sqlite）
 
 ### Layer 1（并行）— 工程骨架 + 文档修正 + UI 响应式修复
 
@@ -140,7 +141,7 @@
      - v0.1 不支持任意 regex（防 ReDoS），只支持 exact/hash/glob/path-scope
   8. 编写单测覆盖：空 diff、secret in code、injection in comment/markdown/string、PEM key、base64 secret、symlink traversal、Unicode 混淆、allowlist suppress、hard_block 不可禁用
   9. **UNTRUSTED_DIFF 边界扩展**：branch/tag 名称也视为不可信输入，经 `redaction_pipeline()` 处理
-  10. **entropy-based secondary scan**：Shannon entropy > 4.5 且 length > 20 的字符串 flag 为可疑
+  10. **entropy-based secondary scan**：`HIGH_ENTROPY_STRING` 归类为 `soft_detect` 规则（可被 allowlist suppress），默认条件为 Shannon entropy > 4.5 且 length > 20 的字符串 flag 为可疑。**误报豁免**：RFC4122 UUID、固定长度 hex hash（SHA-1/256/512）、常见 minified bundle 片段、编译产物 sourcemap token 不触发 hard block
 - **验收标准**: `pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py` 全绿；hard_block 规则在 suppress_rules 中被忽略（不生效）
 
 #### Task 3: 文档 contract 冻结
@@ -176,7 +177,7 @@
 
 ### Layer 1.5 / Layer 2（依赖 Layer 1）— LLM Provider + Git 捕获 + Diff 结构化
 
-> **依赖关系**：Task 7 仅依赖 Task 1，可最早启动（Layer 1.5）。Task 5 依赖 Task 1（Layer 2a）。Task 6 依赖 Task 5 的 `capture_patch()` 输出（patch.diff），必须串行等待 Task 5 完成（Layer 2b）。
+> **依赖关系**：Task 7 仅依赖 Task 1，可最早启动（Layer 1.5）。Task 5 依赖 Task 1 + Task 2（Layer 2a，必须复用 `redaction_pipeline()`）。Task 6 依赖 Task 5 的 `capture_patch()` 输出（patch.diff），必须串行等待 Task 5 完成（Layer 2b）。
 
 #### Task 5: Git diff 捕获
 - **类型**: 后端（Codex 实现）
@@ -184,7 +185,7 @@
   - `src/ahadiff/git/repo.py`
   - `src/ahadiff/git/capture.py`
   - `tests/unit/test_git_capture.py`
-- **依赖**: Task 1
+- **依赖**: Task 1 + Task 2
 - **实施步骤**:
   1. 实现 `open_repo()`, `resolve_ref_range()`
   2. 实现 `capture_patch()` 生成 `patch.diff`，支持 6 种 Level 3 输入模式：
@@ -312,7 +313,7 @@
   5. 实现调度层：per-provider QPS 限制（config.toml 配置）、exponential backoff（Retry-After header 解析）、并发预算（默认 max_concurrent=3）、上下文窗口超限检测（请求前估算 token 数，超限时自动 clip diff 后重试）
   6. 实现 **circuit breaker**：连续 N 次失败（默认 5）后熔断该 provider，冷却 `config.toml [provider].circuit_cooldown`（默认 60s）后自动恢复
   7. 实现 **cost ceiling**：per-run token budget（默认 200K input + 50K output），超限时中止并提示
-  8. 实现 **cache key 契约**：`hash(diff_content + source_ref + prompt_version + model_id + rubric_version + redaction_config + context_bundle_hash)`，任一变更自动失效
+  8. 实现 **cache key 契约**：`hash(diff_content + source_ref + prompt_version + eval_bundle_version + model_id + api_family + output_lang + privacy_mode + redaction_config + context_bundle_hash)`，任一变更自动失效。`rubric_version` 仅作展示字段，不再承担缓存失效职责。**context bundle hash pinning**：`context_bundle_hash` 必须基于最终选中的 context artifacts 按稳定顺序拼接后的字节流计算；provider dispatch 前再次校验该 hash，若 assembly→dispatch 间内容漂移则直接 `SafetyError`
   9. 实现 **隐私模式感知**（**transport boundary 检查，非 provider class 检查**）：
      - `strict_local` 模式下检查 `base_url` 的 transport boundary：仅允许 `127.0.0.1` / `localhost` / `[::1]` / Unix socket / 用户 `config.toml [security].local_hosts` 显式 allowlist。即使 provider_class=ollama，若 `base_url` 指向非本地地址也拒绝（`SafetyError("strict_local mode: base_url {url} is not loopback")`）
      - `redacted_remote` 下发送脱敏后的 diff

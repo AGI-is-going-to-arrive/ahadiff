@@ -911,7 +911,7 @@ Transfer: 给一个新场景，检验概念迁移
 
 - 顶部：cards due today、progress、weak concepts。
 - 中央：Review Card，front/back。
-- 底部：Again / Hard / Good / Easy。
+- 底部：Again / Hard / Good 主按钮 + Archive / Suspend 次级动作。
 - 右栏：calendar heatmap、concept mastery、forgetting risk。
 
 ### Review card 来源
@@ -935,9 +935,16 @@ Next review: tomorrow
 
 ### 三风格差异
 
-- Minimal：卡片无阴影，四按钮等宽，键盘提示 `(1)(2)(3)(4)`。
+- Minimal：卡片无阴影，三主按钮等宽，键盘提示 `(1)(2)(3)`；Archive/Suspend 用次级操作。
 - Warm：翻书感，但 reduced-motion 用 fade。
 - Editorial：ruled paper 视觉，按钮用 editorial link。
+
+### 卡片状态动作
+
+- `Archive`：永久移出 due 队列，用于确认低质量或不再需要的卡。
+- `Suspend`：临时移出 due 队列，等待人工恢复或 regenerate。
+- `Archive / Suspend` 不写入 FSRS rating，只更新卡片状态。
+- 同一 session 内如果用户主动展开完整答案（peek），`Good` 必须禁用，只允许 `Hard / Wrong`。
 
 \newpage
 
@@ -1113,6 +1120,7 @@ allowed-tools: Read, Grep, Bash
 - 右栏 Sheet：node detail。
 - 底部：minimap、zoom。
 - Toggle：Graph / List。
+- Cluster 节点右上角提供可见 `⋮` 菜单按钮，统一承载展开 / 隐藏 / 高亮关联 claims；不依赖长按手势。
 
 ### Graphify Overlay
 

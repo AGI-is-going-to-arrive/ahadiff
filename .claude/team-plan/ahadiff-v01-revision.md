@@ -43,10 +43,10 @@ timestamp	run_id	source_ref	base_ref	prompt_version	rubric_version	overall	verdi
 | source_ref | string | 统一标识（git short hash / patch 路径 / staged 标记） |
 | base_ref | string | ratchet 比较基线（首次 baseline 时为空） |
 | prompt_version | string | `prompts/` 目录的 tree hash 前 7 位 |
-| rubric_version | string | `rubric.yaml` 的 content hash 前 7 位 |
+| rubric_version | string | `eval_bundle_version` 的派生显示字段（可展示为 `rubric.yaml` short hash） |
 | overall | int 0-100 | 加权总分 |
 | verdict | enum | PASS / CAUTION / FAIL |
-| status | enum | baseline / keep / discard / rollback / crash / targeted_verify / keep_final / phase25_rewrite |
+| status | enum | baseline / keep / discard / crash / targeted_verify / keep_final / phase25_rewrite |
 | weakest_dim | string | 最弱维度的 json_key |
 | note | string | 人类或 agent 的简短描述 |
 
@@ -444,9 +444,9 @@ ahadiff install --detect --dry-run    # 新增
 
 ### results.tsv 工程建议
 - 定位为 **append-only evaluation event log**，不承担 cache/索引/报表职责
-- `status` 必须枚举化：`baseline | keep | discard | rollback | crash | targeted_verify | keep_final | phase25_rewrite`
+- `status` 必须枚举化：`baseline | keep | discard | crash | targeted_verify | keep_final | phase25_rewrite`
 - `note` 约定"短错误码前缀 + 自由文本"，例如 `EVIDENCE_MISSING_LINE: missing line evidence`
-- 查询走 `review.sqlite` 的 `result_events` 表，索引：`(run_id, event_type, timestamp)` 唯一索引, `(source_ref, timestamp DESC)`, `(prompt_version, rubric_version)`, `(verdict, status)`, `(weakest_dimension, timestamp DESC)`
+- 查询走 `review.sqlite` 的 `result_events` 表，索引：`(run_id, event_type, timestamp)` 唯一索引, `(source_ref, timestamp DESC)`, `(prompt_version, eval_bundle_version)`, `(verdict, status)`, `(weakest_dim, timestamp DESC)`
 - **⚠️ 术语更新**：`head_sha` 已替换为 `source_ref`，`note` 已改为 `note_json`，`(run_id UNIQUE)` 已改为多事件流唯一索引
 
 ### CLI 接入扩展建议

@@ -121,6 +121,11 @@ def compute_scaffolding_level(card: Card) -> Literal["full", "hint", "compact"]:
 | SRS 翻牌 Hard | Rating.Hard (2) | — |
 | SRS 翻牌 Wrong | Rating.Again (1) | — |
 
+**非评分动作**：
+- `Archive`：把卡片永久移出 due 队列，不写 FSRS rating
+- `Suspend`：把卡片临时移出 due 队列，等待人工恢复或 regenerate，不写 FSRS rating
+- `peeked_this_session`：同一 review session 内若用户主动展开 Full/完整答案，则该卡本轮最多记 `Hard`，不得记 `Good`
+
 **Misconception 卡生成规则**（Codex 新增建议）：
 - 触发条件：quiz 答错 + 题目涉及安全/误解风险（如把不安全 claim 当真）
 - 行为：额外生成一张 `misconception` 类型卡片，强化正确理解
@@ -173,12 +178,14 @@ class ReviewCard(BaseModel):
     # reps: int = 0
 
     # FSRS 字段（新增）
-    fsrs_card_json: str            # Card 对象 JSON 序列化（opaque）
+    fsrs_state: str                # Card 对象 JSON 序列化（opaque）
     scheduler_preset_id: str       # 调度器 preset（支持多 preset）
     desired_retention: float = 0.9 # 该卡的 retention 目标
     scaffolding_level: Literal["full", "hint", "compact"] = "full"
     last_rating: int | None = None # 1-4
     last_reviewed_at_utc: str | None = None  # ISO 8601 UTC（py-fsrs 强制 UTC）
+    card_state: Literal["active", "stale", "archived", "suspended"] = "active"
+    peeked_this_session: bool = False   # session-local，切下一张卡时重置
 ```
 
 ### 4.3 review.sqlite schema 变更
@@ -205,7 +212,15 @@ CREATE TABLE cards (
     source_ref TEXT,
     file_id TEXT,
     display_path TEXT,
-    created_at_utc TEXT NOT NULL     -- ISO 8601 UTC
+    hunk_id TEXT,
+    hunk_hash TEXT,
+    symbol TEXT,
+    change_kind TEXT,
+    card_state TEXT NOT NULL DEFAULT 'active', -- active/stale/archived/suspended
+    archived_at_utc TEXT,
+    suspended_at_utc TEXT,
+    created_at_utc TEXT NOT NULL,    -- ISO 8601 UTC
+    FOREIGN KEY (scheduler_preset_id) REFERENCES scheduler_presets(preset_id)
 );
 
 -- Optimizer 参数存储（不写死 weights 数量）

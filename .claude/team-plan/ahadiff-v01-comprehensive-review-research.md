@@ -89,7 +89,7 @@
 **改进建议**:
 - 先实现 prompt loader + dependency graph + cassette key 生成器
 - PR 必跑提升 static/serve parity + db_write_lock + rejected-not-shipped
-- cassette key 扩展为 `prompt_version + model_id + rubric_version + output_lang`
+- cassette key 扩展为 `prompt_fingerprint + model_id + eval_bundle_version + output_lang`
 
 ### 2.5 用户体验 — **A-**
 
@@ -132,7 +132,7 @@
 
 | Corner Case | 状态 | 备注 |
 |------------|------|------|
-| Quiz staleness | ✅ 闭合 | CardState 三态 + anchor 惰性检测 |
+| Quiz staleness | ✅ 闭合 | CardState 四态（新增 suspended）+ anchor 惰性检测 |
 | Branch-aware concepts | ✅ 闭合 | squash/cherry-pick 诊断通知 |
 | Degraded run ratchet | ✅ 闭合 | degraded 永不提升 baseline |
 | Rename/move symbol | ✅ 闭合 | 两段式检测 + ambiguous_move 降级 |
