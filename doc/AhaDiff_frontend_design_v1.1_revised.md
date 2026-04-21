@@ -431,6 +431,19 @@ color.graph.{repo|diff|concept|claim|weak}
 }
 ```
 
+## 4.5 v6.2 细化补充
+
+这一轮 `AhaDiff Warm v6.html` 的更新没有改页面骨架，也没有改产品信息架构，主要是把 Warm 默认风格再磨细一层。落地时把下面这些补充一起带上：
+
+- **浏览器元信息**：`viewport-fit=cover`、`theme-color`、`color-scheme=light`、`format-detection=telephone=no`。作用就是让移动端安全区、浏览器状态栏颜色和阅读体验更稳，不是新增功能。
+- **语义 token 补齐**：保留原有色板不变，把常用的 soft / tint / hairline / surface / ring 颜色补成可复用 token，减少 React 组件里的重复写死。
+- **动效节奏统一**：继续保持 Warm 的轻微入场和低存在感，但统一到一组 easing 和 duration。目的不是“更花”，只是让 hover / card / table / diff row 的反馈手感一致。
+- **滚动体验补齐**：页面级补 `scrollbar-gutter: stable` 和 `overscroll-behavior`，避免桌面端滚动条跳变、移动端滚动穿透。
+- **可访问性加强**：`focus-visible` 的对比度要高于旧版；同时照顾 `forced-colors` 和 `prefers-reduced-transparency`。也就是说，不只在默认浅色环境下好看，在高对比和弱透明偏好下也要能用。
+- **触控目标补齐**：触屏场景下，核心按钮、tab、chip 的点击高度至少 44px，避免难点。
+- **打印再收紧**：除了继续隐藏无关 UI，还要控制 widow/orphan、避免整块内容被切断，并在打印时把外链 URL 直接带出来，纸面版也能读。
+- **保持 additive-only**：这些补充都应该作为最后一层 polish 覆盖，不回头打散已有 token，也不重写前面三套视觉 DNA。
+
 \newpage
 
 # 5. 技术栈与依赖
@@ -1180,6 +1193,9 @@ Quiz performance: 80%
 - Graph filter：opacity fade 240ms。
 - Theme switch：切 CSS variables，不重载页面。
 - reduced-motion：所有 Motion 动画降级为 opacity-only 或 0ms。
+- reduced-transparency：所有依赖 blur / backdrop-filter 的浮层退回纯色背景。
+- forced-colors：badge / chip / card 可以掉装饰，但不能丢结构和状态语义。
+- touch：按钮、tab、chip、可点 claim action 在 coarse pointer 下最小高度 44px。
 
 \newpage
 
@@ -1284,6 +1300,12 @@ Lesson Reader 必须支持打印：
   h2 { page-break-after: avoid; }
 }
 ```
+
+补充约束：
+
+- `break-inside: avoid` 只给 card / table / figure / 短代码块，不要给整篇长 prose。
+- 标题后面至少带一段正文，避免标题单独挂在页尾。
+- 外部链接打印时直接显示 URL，别让纸面版本只剩不可点击的锚文本。
 
 \newpage
 
@@ -1410,6 +1432,8 @@ Graph List fallback
 Print CSS
 reduced-motion
 i18n 文案
+safe-area / theme-color / color-scheme
+focus-visible / forced-colors / coarse pointer
 ```
 
 \newpage

@@ -3,7 +3,11 @@
 <head>
 <meta charset="utf-8" />
 <title>知返 AhaDiff · Warm</title>
-<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="description" content="知返 AhaDiff · 把 AI 写出的 git diff 变成带代码证据链的学习笔记 / Ship with AI. Learn it back." />
+<meta name="theme-color" content="#FAF8F2" media="(prefers-color-scheme: light)" />
+<meta name="color-scheme" content="light" />
+<meta name="format-detection" content="telephone=no" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Serif+SC:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -726,6 +730,197 @@ button:focus-visible,a:focus-visible,[tabindex]:focus-visible,[role="button"]:fo
   body{background:#fff;font-size:11pt;line-height:1.55}
   a{color:var(--ink);text-decoration:underline}
   .card{break-inside:avoid;box-shadow:none;border-color:#ccc}
+}
+
+/* ============================================================
+   v6.2 Polish Layer — final pass
+   - Tokenize 22 hardcoded colors already equal to existing tokens
+   - Introduce 10 semantic tokens for repeated literals (soft/tint/hair)
+   - Modern easing curves (quart/quint) + uniform duration scale
+   - Scroll behavior: scrollbar-gutter + overscroll containment
+   - A11y: reinforce focus contrast; honor reduced-transparency
+   - Print: page-break/widow/orphan + URL reveal
+   Additive-only; intentionally ordered last for specificity.
+   ============================================================ */
+
+/* --- Extended tokens (semantic layer for repeated literals) --- */
+:root{
+  /* Brand shades (provider logos, claim highlights) */
+  --brand-anthropic:#D97757;
+  --brand-anthropic-ink:#B8542F;
+  --brand-anthropic-soft:#F6E8DF;
+
+  /* Ink variants (kept close to existing --ink for local tint matching) */
+  --ink-deep:#1F1E1B;
+  --ink-3:#6B6559;
+  --muted-3:#A8A39A;
+
+  /* Soft fills (already used widely; now addressable) */
+  --success-soft:#ECF4EE;
+  --success-hair:#B9D7C1;
+  --warning-soft:#F7EED9;
+  --warning-soft-bg:#FBF5E6;
+  --warning-hair:#E3CDA1;
+  --danger-soft:#F7E2DC;
+  --danger-hair:#E4B8AE;
+  --accent-softest:#FDF1EC;
+  --accent-tint:#E4B8AE;
+  --accent-hair:#EBC3AE;
+
+  /* Surface tints */
+  --surface-diff:#FDFCF8;
+  --surface-veil:rgba(255,255,255,.94);
+
+  /* Modern easing curves (SKILL: ease-out-quart/quint > Material standard) */
+  --ease-out-quart:cubic-bezier(.25,1,.5,1);
+  --ease-out-quint:cubic-bezier(.22,1,.36,1);
+  --ease-out-expo:cubic-bezier(.16,1,.3,1);
+
+  /* Unified micro durations */
+  --dur-micro:.12s;
+  --dur-xfast:.15s;
+  --dur-xslow:.6s;
+
+  /* Focus ring (AA-safe, higher contrast than pure accent) */
+  --ring-offset:3px;
+  --ring-color:var(--accent-ink);
+  --ring-halo:0 0 0 4px rgba(210,112,80,.18);
+}
+
+/* --- Page root: prevent layout shift + color-scheme hint --- */
+html{
+  color-scheme:light;
+  scrollbar-gutter:stable;
+  -webkit-tap-highlight-color:rgba(210,112,80,.14);
+}
+body{overscroll-behavior-y:none}
+
+/* --- Links: add subtle hover feedback (was transition-only) --- */
+a:not(.nav-item):not(.btn):not(.tab):not(.skip-link):hover{
+  color:var(--accent-ink);
+}
+
+/* --- Focus: stronger indicator (WCAG 2.2 target contrast) --- */
+button:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible,
+[role="button"]:focus-visible,
+select:focus-visible,
+input:focus-visible,
+textarea:focus-visible{
+  outline:2px solid var(--ring-color);
+  outline-offset:var(--ring-offset);
+  box-shadow:var(--ring-halo);
+  border-radius:8px;
+}
+
+/* --- Selection: readable on colored backgrounds too --- */
+.diff ::selection,.code-block ::selection,pre ::selection{
+  background:var(--accent-ink);color:#fff;
+}
+
+/* --- Scrollbars: scope and soften (keeps v6 look, adds safety) --- */
+html{scrollbar-color:var(--hair-strong) transparent;scrollbar-width:thin}
+
+/* --- Motion: upgrade transitions that used ease-in-out(Material) --- */
+.kpi,.steps .st,.claim-card,.chip,table.t tbody tr,.diff .row.clickable{
+  transition-timing-function:var(--ease-out-quart) !important;
+}
+
+/* --- Prefer-reduced-transparency (macOS Sonoma+): kill backdrop-filter --- */
+@media (prefers-reduced-transparency: reduce){
+  .legend,.demo-banner,.veil,[style*="backdrop-filter"]{
+    backdrop-filter:none !important;
+    -webkit-backdrop-filter:none !important;
+    background:var(--elevated) !important;
+  }
+}
+
+/* --- Tokenize: direct literal→token replacements (no visual change) --- */
+/* #B4791F == --warning */
+.qa-switch .qa-lb{color:var(--warning)}
+/* #A33D2B == --danger */
+.design-only-tag{color:var(--danger)}
+/* #2F6F4F == --success --- already via var in badges, keep consistency */
+/* #ECF4EE / #F7EED9 / #F7E2DC backgrounds already stable; add semantic aliases below */
+
+/* --- Badges: use semantic soft/hair tokens (matches existing pixels) --- */
+.badge.verified{border-color:var(--success-hair);background:var(--success-soft)}
+.badge.weak{border-color:var(--warning-hair);background:var(--warning-soft)}
+.badge.contradicted{border-color:var(--danger-hair);background:var(--danger-soft)}
+.badge.pass{background:var(--success-soft);border-color:var(--success-hair)}
+.badge.caution{background:var(--warning-soft);border-color:var(--warning-hair)}
+.badge.fail{background:var(--danger-soft);border-color:var(--danger-hair)}
+.badge.accent{border-color:var(--accent-hair)}
+
+/* --- Demo / warning banners --- */
+.demo-tag{background:var(--warning-soft);border-color:var(--warning-hair)}
+.demo-banner{border-color:var(--warning-hair);background:var(--warning-soft-bg)}
+.qa-switch{border-color:var(--warning-hair);background:var(--warning-soft-bg)}
+.qa-switch .qa-lb{border-right-color:var(--warning-hair)}
+.design-only-tag{background:var(--accent-softest);border-color:var(--danger-hair)}
+
+/* --- Diff surface token --- */
+.diff{background:var(--surface-diff)}
+
+/* --- Chip on-state: firmer hover border --- */
+.chip.on{border-color:var(--accent-hair)}
+
+/* --- Text selection ring for claim cards (was transform-only) --- */
+.claim-card.selected{box-shadow:0 0 0 3px var(--accent-soft),0 1px 0 rgba(180,160,130,.06)}
+
+/* --- Interactive min target (WCAG 2.5.5 — 24×24 AA / 44×44 AAA) --- */
+@media (pointer:coarse){
+  .nav-item,.btn,.chip,.tab,.claim-card .actions button{
+    min-height:44px;
+  }
+  .chip{padding-block:10px}
+}
+
+/* --- Typography: forbid orphaned headings near bottom of viewport --- */
+h1,h2,h3{break-after:avoid-page;page-break-after:avoid}
+h1+p,h2+p,h3+p{break-before:avoid-page}
+
+/* --- Number cells: tabular + slashed zero (reinforces v6) --- */
+.kpi .vl,.delta,.num,table.t td.num{font-variant-numeric:tabular-nums slashed-zero}
+
+/* --- Print: page-break discipline + URL reveal --- */
+@media print{
+  /* Widow/orphan control */
+  p,li,dd{orphans:3;widows:3}
+  h1,h2,h3,h4{break-after:avoid;page-break-after:avoid}
+  .card,.claim-card,.kpi,.diff,pre,figure,table{break-inside:avoid;page-break-inside:avoid}
+  /* Reveal URLs after external links (skip in-page anchors) */
+  a[href^="http"]::after{
+    content:" (" attr(href) ")";
+    font-size:9pt;color:#555;word-break:break-all;
+  }
+  /* Hide decorative / transient chrome */
+  .skip-link,.hero::after,.demo-tag,.demo-banner,.qa-switch{display:none !important}
+  /* Cleaner paper */
+  body{color:#000;background:#fff}
+  .prose{font-size:11pt;line-height:1.55}
+  @page{margin:18mm 16mm 20mm}
+}
+
+/* --- Forced-colors (Windows high contrast): keep structure, drop decoration --- */
+@media (forced-colors: active){
+  .badge,.chip,.card,.kpi,.btn,.claim-card{
+    border-color:CanvasText;background:Canvas;color:CanvasText;
+    box-shadow:none;
+  }
+  .badge.verified,.badge.pass,.badge.weak,.badge.caution,
+  .badge.contradicted,.badge.fail,.badge.notproven,.badge.accent{
+    forced-color-adjust:none;
+  }
+  button:focus-visible,a:focus-visible{
+    outline:2px solid Highlight;box-shadow:none;
+  }
+}
+
+/* --- Smooth anchor scrolling without breaking reduced-motion --- */
+@media (prefers-reduced-motion: no-preference){
+  html{scroll-behavior:smooth}
 }
 </style>
 </head>

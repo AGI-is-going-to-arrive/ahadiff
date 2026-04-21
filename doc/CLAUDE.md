@@ -135,3 +135,4 @@ A: 权威文档见根目录 `CLAUDE.md` + `.claude/team-plan/`（kickoff + stage
 | 2026-04-21 | 同步 v6 三模型交叉审查：设计思路/改名方案/最终方案三文档标 ARCHIVED、文件清单描述更新 |
 | 2026-04-21 | 同步第三轮开工就绪审查：新增数据范围架构（per-repo truth + global derived governance）、数据模型补 review.sqlite/concepts.jsonl/audit.jsonl、Config 5 层优先级链 |
 | 2026-04-21 | 同步本轮契约收敛：补 `audit.private.jsonl` 本机边界、FSRS 撤架规则统一为 stability 驱动、VCR key 补 `api_family_version`、前端撤架命名统一为 Compact、测试口径补 pinned integration + coverage gate |
+| 2026-04-21 | 同步 Warm v6.2 模板细化：safe-area/meta、语义 token、统一 easing/duration、scroll / focus / print / 高对比 / reduced-transparency / 触控目标等前端实现约束补入手册与 Stage 文档 |
