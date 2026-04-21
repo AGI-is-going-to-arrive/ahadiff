@@ -37,7 +37,7 @@
 |------|---------|------|
 | **Anki** | FSRS（23.10 引入，需手动启用） | 从 SM-2 逐步迁移到 FSRS |
 | Mochi | SR（算法未公开） | 官方文档未明确写出 FSRS（低-中置信） |
-| **RemNote** | **FSRS v6（已内置）** | 建议默认 weights + ≥1000 reviews 后 auto-train |
+| **RemNote** | **FSRS v6（已内置）** | 建议默认 weights，后续通过手动 optimizer 迭代 |
 | Obsidian Decks 插件 | FSRS 6 | 社区插件 `dscherdi/decks` 明确使用 FSRS 6 |
 | Exercism | 无 SRS（练习制） | — |
 | CodeCombat | 无 SRS（关卡制） | — |
@@ -169,7 +169,7 @@ def compute_scaffolding_level(card: Card) -> Literal["full", "hint", "compact"]:
 ### 4.2 数据模型变更
 
 ```python
-# ReviewCard schema 变更（Codex 改进版）
+# ReviewCard schema 变更（生成态 cards.jsonl）
 class ReviewCard(BaseModel):
     # ... existing fields ...
     # SM-2 字段（删除）
@@ -179,14 +179,13 @@ class ReviewCard(BaseModel):
 
     # FSRS 字段（新增）
     fsrs_state: str                # Card 对象 JSON 序列化（opaque）
-    scheduler_preset_id: str       # 调度器 preset（支持多 preset）
-    desired_retention: float = 0.9 # 该卡的 retention 目标
     scaffolding_level: Literal["full", "hint", "compact"] = "full"
     last_rating: int | None = None # 1-4
-    last_reviewed_at_utc: str | None = None  # ISO 8601 UTC（py-fsrs 强制 UTC）
     card_state: Literal["active", "stale", "archived", "suspended"] = "active"
     peeked_this_session: bool = False   # session-local，切下一张卡时重置
 ```
+
+> **持久化边界**：`scheduler_preset_id`、`desired_retention`、`last_review_utc` 属于 `review.sqlite.cards` 的 persisted-only 字段，不进入生成态 `cards.jsonl`。Task 15 首次入库时注入默认 preset=`default` 和 `desired_retention=0.9`，首次 review 后再写入 `last_review_utc`。
 
 ### 4.3 review.sqlite schema 变更
 

@@ -10,6 +10,9 @@ graphify-out/
 # Eval screenshots (generated during testing)
 eval-screenshots/
 
+# Local AhaDiff per-repo state
+.ahadiff/
+
 # macOS
 .DS_Store
 .DS_Store?

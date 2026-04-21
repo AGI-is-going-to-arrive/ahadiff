@@ -72,7 +72,7 @@
   9. 定义 crash recovery 状态机：stale lock → portalocker 自动释放（进程退出即释放）；orphaned worktree → `ahadiff doctor` 自动清理；migration 部分失败 → 每个 migration 脚本在 `BEGIN EXCLUSIVE ... COMMIT` 事务中执行
   10. 写入 `doc/contract-freeze.md` 作为所有下游 Task 的权威参考。**注意**：该文件当前不存在（Task 0 尚未执行），这是正确的——它是 Task 0 的核心产出物。Task 0 完成后，`contract-freeze.md` 成为唯一架构权威源，其他设计文档（kickoff/stages/diff-input 等）降级为设计过程文档，与 contract-freeze 冲突时以后者为准
   14. 冻结 **Config 优先级链**：`ENV(AHADIFF_*) → CLI flag → per-repo .ahadiff/config.toml → global_config_dir()/config.toml → defaults`。凭证类：`env secret → per-repo env_var_name → global env_var_name → none`。Serve/request：`cookie → Accept-Language → CLI session → per-repo → global → system → defaults`
-  15. 冻结 **数据范围契约**：真相源永远 per-repo（review.sqlite / audit.jsonl / concepts.jsonl / prompts/ / VCR）；global（`global_config_dir()`，各平台实际路径见 data-scope 文档）只做派生索引/账本/偏好，不参与 ratchet 判定
+  15. 冻结 **数据范围契约**：真相源永远 per-repo（review.sqlite / audit.jsonl / audit.private.jsonl〔strict_local 下本机专用、gitignored、随 audit rotation 一起管理〕/ concepts.jsonl / prompts/ / VCR）；global（`global_config_dir()`，各平台实际路径见 data-scope 文档）只做派生索引/账本/偏好，不参与 ratchet 判定
   16. 预留 **UsageEvent schema**：`event_id / run_id / repo_id / provider_class / model_id / input_tokens / output_tokens / cost_usd / pricing_version / cost_confidence / billing_mode / execution_origin / api_principal_hash / timestamp`（v0.2 实现 global usage.sqlite）
   17. 预留 **Allowlist policy contract**：builtin hard_block（不可禁用）+ soft_detect（可被 allowlist suppress）；v0.1 支持 exact/hash/path-scope，不支持 regex；每 run 存 `allowlist_digest`
   18. 冻结 `ProviderConfig` schema：`provider_class`(openai/openai_responses/gemini/anthropic/azure/newapi/cherryin/ollama) + `model_name` + `base_url` + `api_key_env` + `probed_max_context` + `probed_tpm` + `probed_rpm` + `supports_temperature` + `probe_timestamp`
@@ -81,7 +81,7 @@
   20. 冻结统一连接初始化：`journal_mode=WAL` + `busy_timeout=5000` + `trusted_schema=OFF` + `PRAGMA SQLITE_DBCONFIG_DEFENSIVE=ON`（防止 SQL 注入修改 schema） + 启动时 `quick_check`（快速健康检查）。**两级健康检查**：启动时 `quick_check`（跳过 UNIQUE/index 一致性，速度优先），`ahadiff doctor --deep` 或 migration 前跑 `integrity_check + foreign_key_check`（完整但慢）
   22. 冻结 `LearnabilityGate` 默认值：`weights={complexity: 0.4, novelty: 0.3, pattern: 0.3}`、`threshold=0.3`。**说明**：这是一组 heuristic defaults，不宣称来自外部科学定标；在 `benchmark --suite local` 积累首批 50 份 pinned diff 后再做经验校准。配置仍允许 `[learn].learnability_threshold` 覆盖
   11. 冻结 `Orchestrator` 接口契约：`OrchestratorCommand` DTO（`learn | improve | verify | serve`）+ `OrchestratorResult` 返回结构 + 三条主链路入口签名（`run_learn()`, `run_improve()`, `run_verify()`）+ **serve 链路区分**：serve 是 pull/读模式（被动响应请求），与其他三条 push/写模式本质不同。`run_serve()` 不返回 `OrchestratorResult`，而是启动 ASGI app 的长驻进程。DTO 中 `command=serve` 时附带 `ServeConfig(port, no_browser, bind_host)` 而非 `RunConfig`。`core/orchestrator.py` 统一编排，`cli.py` 仅做参数解析和输出格式化
-  12. 冻结 `ServeApp` 接口契约：`src/ahadiff/serve/app.py` 的路由注册协议 + write token 鉴权（`X-AhaDiff-Token` header）+ `Host`+`Origin/Referer` 双校验 + `bind=127.0.0.1`（仅回环） + read-only 默认模式。API 端点清单：`GET /api/locale`, `PUT /api/locale`, `GET /api/runs`, `GET /api/run/:id`, `POST /api/signals/*`。路由鉴权分级：读路由无需 token，写路由必须验 token
+  12. 冻结 `ServeApp` 接口契约：`src/ahadiff/serve/app.py` 的路由注册协议 + write token 鉴权（`X-AhaDiff-Token` header）+ `Host`+`Origin/Referer` 双校验 + `bind=127.0.0.1`（仅回环） + read-only 默认模式。API 端点清单冻结为：`GET /api/auth/token`, `GET /api/locale`, `PUT /api/locale`, `GET /api/runs`, `GET /api/run/:id`, `GET /api/run/:id/lesson`, `GET /api/run/:id/claims`, `GET /api/run/:id/quiz`, `GET /api/run/:id/diff`, `GET /api/concepts`, `GET /api/ratchet/history`, `POST /api/signals/*`。路由鉴权分级：读路由无需 token，写路由必须验 token。**发布可见性冻结**：run-scoped 读接口只暴露已完成二阶段发布的 finalized runs；SQLite `result_events` 仍是评分/ratchet 真相源，但未写出 `finalized.json` 的临时 run 不得对前端可见。**DTO 冻结**：至少定义 `AuthTokenResponse`、`LocaleResponse`、`RunSummary`、`RunDetail`、`RunArtifactEnvelope`、`RatchetHistoryEntry`
   13. 冻结**三层写锁矩阵**（解决并发安全）：
       - `repo_write_lock`（`.ahadiff/ahadiff.lock`，portalocker 文件锁，PID/time/cmd 仅诊断）：保护 `runs/` 目录写入、worktree 创建/清理。持有者：`ahadiff learn` / `ahadiff improve`
       - `db_write_lock`（SQLite WAL mode + `busy_timeout=5000`）：保护 `review.sqlite` 写入。持有者：所有写 SQLite 的路径（results/signals/cards/migrations）
@@ -111,9 +111,9 @@
   4. 实现 `ids.py`：`make_run_id()`, `make_claim_id()`, `make_hunk_id()`
   5. 实现 `cli.py`：`app()`, `init_cmd()`, `doctor_cmd()`, `config_show_cmd()`（显示每个值的来源层级）
   6. 实现 `__main__.py`：`python -m ahadiff` 入口
-  7. 实现 `paths.py` 网络路径检测：启动时检测 `.ahadiff/` 是否在 UNC/网络映射盘上，是则 fail-fast 报错
+  7. 实现 `paths.py` 路径预检：启动时检测 `.ahadiff/` 是否在 UNC/网络映射盘上，是则 fail-fast 报错；Windows/macOS 再额外做 `NFC + casefold` 路径身份预检与长路径提示（含中文路径），避免 WAL 与 anchor 稳定性受大小写/路径长度影响
   8. 实现 `doctor_cmd()` config 诊断：报告 precedence 冲突、unknown keys、敏感配置进仓库
-- **验收标准**: `uv sync && uv run ahadiff init && uv run ahadiff doctor` 可运行；`ahadiff config show --resolved` 正确显示每个值的来源；网络路径检测在 UNC 路径上报错
+- **验收标准**: `uv sync && uv run ahadiff init && uv run ahadiff doctor` 可运行；`ahadiff config show --resolved` 正确显示每个值的来源；网络路径检测在 UNC 路径上报错；Windows 长路径/大小写折叠路径可被预警
 
 #### Task 2: 安全层
 - **类型**: 后端（Codex 实现）
@@ -202,6 +202,7 @@
      - `binary_only`：patch 中所有文件均为 binary diff 时，设置点=capture parser，传播点=metadata→lesson（跳过代码 walkthrough），UI 行为=显示 "Binary files only" 提示
      - `file_count_exceeded`：变更文件数超过 `config.toml [capture].max_files`（默认 50）时，设置点=capture，传播点=metadata→lesson（仅处理 top-K 文件），UI 行为=显示 "N files omitted"
      - `token_exceeded`：组装 context 后 token 数超过 provider 上下文窗口时，设置点=provider（请求前估算），传播点=score.json，UI 行为=显示 "Context truncated"
+     - **deterministic ranking（FIX-13）**：凡是 `top-K`、`clip`、"保留头尾文件+最大变更文件" 等降级路径，统一按 `changed_lines DESC -> hunk_count DESC -> repo_relative_path ASCII ASC` 稳定排序；`metadata.json` 记录 `selected_files[]`、`omitted_files[]`、`ranking_version="v1"`，保证 degraded run、benchmark、VCR 回放可复现
      - 策略总览：skip（>10000行）> clip（>5000行）> summarize（>2000行），`degraded=true` 写进 score.json 和 results
   6. 实现 `--patch file.patch` / `--patch -`（stdin）Level 1 输入：直接读取 unified diff 文本，跳过 git 操作。**stdin contract**：(1) 检测 TTY 时 InputError "stdin 需要管道输入，如 `git diff | ahadiff learn --patch -`"；(2) pipe 模式流式读取，最大 10MB（`config.toml [capture].max_patch_bytes`）；(3) 支持 UTF-8/UTF-8 BOM/GBK charset 检测；(4) CRLF → LF 归一化；(5) EOF/EPIPE/超时 30s → InputError
   6a. 实现 `--compare old.py new.py` Level 2 输入：读取两个文件内容，使用 `difflib.unified_diff()` 生成 unified diff。source_kind=`file_compare`，source_ref=两文件 content hash 拼接，capability_level=2。**Corner cases**：(1) 文件不存在 → InputError；(2) binary 文件 → `degraded_flags.binary_only` + warn；(3) 编码检测 + BOM sniffing；(4) 权限不足 → InputError "无法读取文件"；(5) 两文件内容相同 → InputError "文件内容相同，无差异"；(6) 超大文件 (>1MB) → `degraded_flags.diff_clipped`
@@ -255,6 +256,7 @@
        - `hunk_ids`：关联的 hunk 标识列表，与 `hunk_hash` 契约统一（使用 `compute_hunk_hash()` 的输出）
      - `extractor` 枚举：`section_header | python_ast | regex`
      - `confidence` 对应：`python_ast=high | regex=medium | section_header=low`
+     - **case-insensitive anchor guard（FIX-29）**：生成 `file_id` / symbol anchor 前，先计算 `path_identity_key = NFC(repo_relative_path).replace(\"\\\\\", \"/\").casefold()`；`file_id = sha256(path_identity_key)[:12]`。若同一 run 中两个不同原始路径折叠到相同 `path_identity_key`，直接报 `InputError(\"case-insensitive path collision\")`，要求用户先消除大小写冲突；`display_path` 继续保留原始大小写用于 UI 展示
      - **降级契约**（每层失败时的统一处理）：
        - AST parse 失败（语法错误/编码问题）→ 降级为 regex，记录 `error` 字段
        - regex 也失败 → 保留 section_header-only 记录（如果有）

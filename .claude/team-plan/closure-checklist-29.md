@@ -31,12 +31,12 @@
 
 | ID | 来源 | 问题 | 已落地文档 | 目标 Task | 状态 |
 |----|------|------|-----------|----------|------|
-| FIX-13 | Round 6 | 大 diff deterministic ranking（CC-R6-1） | — | Task 5 | ⚠️ **未下沉** |
-| FIX-14 | Round 6 | improve Ctrl+C 恢复（CC-R6-2） | — | Task 16 | ⚠️ **未下沉** |
-| FIX-15 | Round 6 | VCR cassette key 含 api_family+version（CC-R6-4） | — | Task 18 | ⚠️ **未下沉** |
-| FIX-16 | Round 6 | 多进程 serve 读 half-written artifact（CC-R6-5） | — | Task 14.5 | ⚠️ **未下沉** |
-| FIX-17 | Codex R8 | SQLITE_DBCONFIG_DEFENSIVE | — | Task 0 | ⚠️ **未下沉** |
-| FIX-18 | Codex R8 | Windows cancel token | — | Task 7 | ⚠️ **未下沉** |
+| FIX-13 | Round 6 | 大 diff deterministic ranking（CC-R6-1） | kickoff.md Task 5 step 5 | Task 5 | ✅ 已下沉 |
+| FIX-14 | Round 6 | improve Ctrl+C 恢复（CC-R6-2） | stages-4-9.md Task 16 step 7 | Task 16 | ✅ 已下沉 |
+| FIX-15 | Round 6 | VCR cassette key 含 api_family+version（CC-R6-4） | stages-4-9.md Task 18 + i18n-6 | Task 18 | ✅ 已下沉 |
+| FIX-16 | Round 6 | 多进程 serve 读 half-written artifact（CC-R6-5） | stages-4-9.md Task 14.5 step 0 | Task 14.5 | ✅ 已下沉 |
+| FIX-17 | Codex R8 | SQLITE_DBCONFIG_DEFENSIVE | kickoff.md Task 0 step 20 | Task 0 | ✅ 已下沉 |
+| FIX-18 | Codex R8 | Windows cancel token | kickoff.md Task 7 step 10 | Task 7 | ✅ 已下沉 |
 | FIX-19 | Round 7 | concepts.jsonl 并发写入 serve+learn | stages-4-9.md Task 10 step 9 | Task 10 | ✅ repo_write_lock 保护 |
 | FIX-20 | Round 7 | Windows 长路径 + Chinese 路径名预检 | kickoff.md Task 1 step 7 | Task 1 | ✅ 网络路径检测 |
 | FIX-21 | Round 5 | locale BCP47 归一化（CC-NEW-1） | corner-cases-closure-8.md | Task i18n-0 | ✅ 闭合方案含代码 |
@@ -52,7 +52,7 @@
 | FIX-26 | Round 5 | archive bomb DoS（CC-NEW-6） | corner-cases-closure-8.md | Task 2 | ✅ 闭合方案 |
 | FIX-27 | Round 5 | SSR/API 语言不一致（CC-NEW-7） | corner-cases-closure-8.md | Task 14.5 | ✅ 闭合方案 |
 | FIX-28 | Round 4 | CC-GAP-2 网络中断需 Task 7 处理 | kickoff.md Task 7 step 10 | Task 7 | ✅ 异常处理表 |
-| FIX-29 | Codex R8 | macOS case-insensitive file_id collision | — | Task 6 | ⚠️ **未下沉** |
+| FIX-29 | Codex R8 | macOS case-insensitive file_id collision | kickoff.md Task 6 step 4 | Task 6 | ✅ 已下沉 |
 
 ---
 
@@ -60,18 +60,10 @@
 
 | 状态 | 数量 |
 |------|------|
-| ✅ 已下沉到 Task | 22 |
-| ⚠️ 未下沉（需补入） | **7** |
+| ✅ 已下沉到 Task | 29 |
+| ⚠️ 待补项 | **0** |
 | 总计 | 29 |
 
-## 7 项未下沉修复的目标 Task 分配
+## 闭合说明
 
-| ID | 问题 | 补入 Task | 补入位置 |
-|----|------|----------|---------|
-| FIX-13 | 大 diff deterministic ranking | Task 5 step 5 | `degraded_flags` 策略后新增确定性排序 |
-| FIX-14 | improve Ctrl+C two-phase finalization | Task 16 step 7 | improve 隔离策略补充 |
-| FIX-15 | VCR key 含 api_family_version | Task 18 VCR 管理 | cassette 级四元组扩展为五元组 |
-| FIX-16 | serve 读 half-written artifact finalized marker | Task 14.5 step 1 后 | 新增 run finalize 协议 |
-| FIX-17 | SQLITE_DBCONFIG_DEFENSIVE | Task 0 step 20 | 统一连接初始化补充 |
-| FIX-18 | Windows cancel token | Task 7 step 10 | 异常处理决策表补充 |
-| FIX-29 | macOS case-insensitive file_id collision | Task 6 step 4 | symbol extraction 补充 |
+当前 29 项 canonical checklist 已全部下沉到对应 Task；后续 GO/NO-GO 判定应以各 Task 的最新实施步骤与验收标准为准，而不是继续把本节当作“待补列表”。

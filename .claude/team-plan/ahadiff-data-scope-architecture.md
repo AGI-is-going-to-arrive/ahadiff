@@ -37,6 +37,7 @@ global_config_dir()                   ← Global（派生/索引/偏好，非真
 ├── runs/<run_id>/                    — lesson/quiz/claims/score/patch
 ├── graphify/                         — repo-level code map cache
 ├── audit.jsonl                       — 本 repo LLM 调用审计
+├── audit.private.jsonl               — strict_local 本机专用隐私审计（gitignored）
 ├── ahadiff.lock                      — portalocker 文件锁
 └── .ahadiffignore                    — 路径过滤规则
 ```
@@ -181,9 +182,9 @@ rules:
 }
 ```
 
-**Retention**：audit.jsonl > 10MB → rotate 为 `audit.1.jsonl.gz`，保留最近 3 份。
+**Retention**：audit.jsonl > 10MB → rotate 为 `audit.1.jsonl.gz`，保留最近 3 份。`audit.private.jsonl` 复用同一 rotation 策略，但仅在 `strict_local` 下生成。
 
-**隐私**：不存 prompt 原文、不存 response 内容、不存 API key。只存结构化元数据。
+**隐私**：不存 prompt 原文、不存 response 内容、不存 API key。只存结构化元数据。若确需记录绝对路径/本机诊断信息，只能写入 `audit.private.jsonl`；该文件必须保持 repo-local、gitignored，不参与远端同步。
 
 **Task 影响**：改 Task 7（补 schema_version + rotation）
 

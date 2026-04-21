@@ -84,7 +84,7 @@ Level 2 · workspace-grounded（有本地文件）
   ✓ symbol 提取（仅 diff 涉及的文件）
   ✗ 跨文件上下文（无 git history）
   ✗ ratchet 回滚
-  ✗ source_ref
+  ✓ source_ref（content hash）
   ✓ backlinks（限当前 run）
   来源：--compare old.py new.py
 
@@ -93,7 +93,7 @@ Level 1 · patch-grounded（只有 diff 文本）
   ✗ symbol 提取（无完整文件）
   ✗ 跨文件上下文
   ✗ ratchet 回滚
-  ✗ source_ref
+  ✓ source_ref（patch content hash）
   ✗ backlinks
   来源：--patch file.patch, --patch -（stdin）
 ```
@@ -149,11 +149,19 @@ v0.2+（延后）：
 
 @dataclass
 class CapturedDiff:
-    patch_text: str                      # unified diff 文本
-    source_kind: Literal["git", "patch", "file_compare"]
-    source_ref: str                      # git SHA / content hash
-    capability_level: Literal[1, 2, 3]   # 验证能力等级
-    metadata_extra: dict                 # source-specific 附加信息
+    patch_text: str  # unified diff 文本
+    source_kind: Literal[
+        "git_ref",
+        "git_staged",
+        "git_unstaged",
+        "git_since",
+        "patch_file",
+        "patch_stdin",
+        "file_compare",
+    ]
+    source_ref: str                    # git SHA / content hash（所有 level 都有）
+    capability_level: Literal[1, 2, 3] # 验证能力等级
+    metadata_extra: dict               # source-specific 附加信息；UI 可派生 source_group=git/patch/file_compare
     file_snapshots: dict[str, str] | None  # path → file content（Level 2+ 可用）
 
 class DiffSource(Protocol):
@@ -169,8 +177,7 @@ class DiffSource(Protocol):
   "base_ref": "HEAD~3",
   "head_ref": "HEAD",
   "source_ref": "abc1234",
-  "source_kind": "git",
-  "source_ref": "abc1234",
+  "source_kind": "git_since",
   "capability_level": 3,
   "source_detail": {
     "type": "since",
@@ -194,8 +201,7 @@ class DiffSource(Protocol):
   "repo": null,
   "base_ref": null,
   "head_ref": null,
-  "source_ref": "patch-sha256-xxxx",
-  "source_kind": "patch",
+  "source_kind": "patch_file",
   "source_ref": "sha256:a1b2c3...",
   "capability_level": 1,
   "source_detail": {
@@ -240,7 +246,7 @@ class DiffSource(Protocol):
   只接受 regular file，拒绝 /dev/、socket、FIFO
   不跟随 symlink（默认），可配 --follow-symlinks
   拒绝绝对路径中的 .. 穿越
-  artifact 中默认存相对路径，绝对路径只放 audit.private.jsonl
+  artifact 中默认存相对路径，绝对路径只放 audit.private.jsonl（strict_local 下本机专用、gitignored、随 audit rotation 一起管理）
   diff 输出限流：单文件 > 1MB 时警告并建议 --ignore
 
 viewer/terminal 渲染：

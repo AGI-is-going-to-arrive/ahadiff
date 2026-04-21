@@ -85,12 +85,17 @@ Output layout:
 ├─ review.sqlite         # Single source of truth (SRS/results/signals)
 ├─ concepts.jsonl        # Concept graph (term_key-keyed upsert)
 ├─ runs/<run_id>/
-│  ├─ lesson.md          # Lesson with evidence chain
+│  ├─ lesson/
+│  │  ├─ lesson.full.md
+│  │  ├─ lesson.hint.md
+│  │  └─ lesson.compact.md
 │  ├─ claims.jsonl       # Verifiable assertions
-│  ├─ quiz.jsonl         # Active-recall questions
+│  ├─ quiz/
+│  │  └─ quiz.jsonl      # Active-recall questions
 │  ├─ cards.jsonl        # SRS review cards
 │  └─ score.json         # 8-dimension score + verdict
 ├─ audit.jsonl           # LLM call audit log
+├─ audit.private.jsonl   # strict_local local-only audit (gitignored)
 ├─ ahadiff.lock          # portalocker file lock
 └─ .ahadiffignore        # Path filter rules
 ```

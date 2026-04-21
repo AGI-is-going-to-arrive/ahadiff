@@ -854,9 +854,9 @@ button:focus-visible,a:focus-visible,[tabindex]:focus-visible,[role="button"]:fo
         <div class="steps">
           <div class="st"><div class="n">STEP · 01</div><h4>Capture Diff</h4><p>staged / commit / PR patch 统一进入 .ahadiff/runs/&lt;run_id&gt;/</p></div>
           <div class="st"><div class="n">STEP · 02</div><h4>Verify Claims</h4><p>每句解释回到 file:line，标注 verified / weak / not_proven</p></div>
-          <div class="st"><div class="n">STEP · 03</div><h4>Quiz</h4><p>Socratic 追问、Hint、Quiz-only 三阶 scaffolding</p></div>
+          <div class="st"><div class="n">STEP · 03</div><h4>Quiz</h4><p>Socratic 追问、Hint、Compact 三阶 scaffolding</p></div>
           <div class="st"><div class="n">STEP · 04</div><h4>Ratchet</h4><p>score 71 → 88 保留；否则丢弃并记录原因</p></div>
-          <div class="st"><div class="n">STEP · 05</div><h4>Wiki Memory</h4><p>commits / concepts / graph.json 增量积累</p></div>
+          <div class="st"><div class="n">STEP · 05</div><h4>Wiki Memory</h4><p>runs / concepts / graph.json 增量积累</p></div>
         </div>
       </div>
 
@@ -1124,20 +1124,20 @@ button:focus-visible,a:focus-visible,[tabindex]:focus-visible,[role="button"]:fo
             </div>
             <div style="margin-top:8px;font-size:11.5px;color:var(--muted);font-family:var(--font-mono);line-height:1.55">
               Shipped: 17 verified · 1 weak · 1 not_proven · <b style="color:var(--success)">0 contradicted</b><br/>
-              Rejected: c020 · POST retry misconception (quiz-only)
+              Rejected: c020 · POST retry misconception (compact)
             </div>
           </div>
           <div class="rail-block">
             <div class="h">Wiki Memory · <span class="mono" style="color:var(--ink-2)">.ahadiff/</span></div>
             <div class="tree">
               <span class="tr-dir">.ahadiff/</span><br/>
-              <span class="tr-file">index.md</span>
-              <span class="tr-file">concepts.md</span>
-              <span class="tr-file">log.md</span>
+              <span class="tr-file">review.sqlite</span>
+              <span class="tr-file">concepts.jsonl</span>
+              <span class="tr-file">audit.jsonl</span>
               <span class="tr-file tr-dir">runs/</span>
-              <span class="tr-sub">abc123/lesson.md</span>
-              <span class="tr-sub">abc123/claims.jsonl</span>
-              <span class="tr-sub">abc123/quiz.md</span>
+              <span class="tr-sub">20260421-abc123/lesson/lesson.full.md</span>
+              <span class="tr-sub">20260421-abc123/claims.jsonl</span>
+              <span class="tr-sub">20260421-abc123/quiz/quiz.jsonl</span>
             </div>
             <div style="margin-top:10px;font-family:var(--font-mono);font-size:11px;color:var(--muted);line-height:1.8">
               <span class="tr-new">Index updated</span><br/>
@@ -1162,7 +1162,7 @@ button:focus-visible,a:focus-visible,[tabindex]:focus-visible,[role="button"]:fo
           <div class="rail-block">
             <div class="h">Scaffolding</div>
             <div style="font-size:11px;color:var(--muted);margin-bottom:6px;font-family:var(--font-mono);line-height:1.5">Inspired by SKILL0-style context withdrawal for <b style="color:var(--ink-2)">human learning, not model training</b>.</div>
-            <div class="scaffold"><div class="sg active">Full</div><div class="sg">Hint</div><div class="sg">Quiz-only</div></div>
+            <div class="scaffold"><div class="sg active">Full</div><div class="sg">Hint</div><div class="sg">Compact</div></div>
             <div class="gain-card">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span class="demo-tag">DEMO</span><span style="font-family:var(--font-mono);font-size:10.5px;color:var(--muted);letter-spacing:.1em">paired recall probe</span></div>
               <div class="gain-row"><span class="lb">with lesson</span><div class="bar"><span style="width:80%"></span></div><span class="mono num">4/5</span></div>
@@ -1281,7 +1281,7 @@ button:focus-visible,a:focus-visible,[tabindex]:focus-visible,[role="button"]:fo
                 <div class="ev">⊘ 本 diff 未包含 benchmark</div>
               </div>
               <div class="claim-card" style="border-color:#E4B8AE;background:#FDF1EC">
-                <div class="id" style="color:var(--danger)">c020 · <b>rejected · dangerous</b> <span style="color:var(--muted);font-family:var(--font-mono);font-size:11px;margin-left:6px">not shipped · quiz-only</span></div>
+                <div class="id" style="color:var(--danger)">c020 · <b>rejected · dangerous</b> <span style="color:var(--muted);font-family:var(--font-mono);font-size:11px;margin-left:6px">not shipped · compact</span></div>
                 <div class="txt serif"><b>Claim:</b> Retrying all POST requests is safe.</div>
                 <div style="font-size:12px;color:var(--ink-2);margin-top:6px;line-height:1.55"><b>Reason:</b> No method gate or idempotency key appears in this diff.<br/><b>Action:</b> Converted to misconception quiz. Not shipped to lesson.</div>
                 <div class="ev" style="color:var(--danger);margin-top:6px;font-family:var(--font-mono);font-size:11.5px;line-height:1.7">
@@ -1714,7 +1714,7 @@ diff generator_prompt.md
               <div class="field" style="border-bottom:0">
                 <div class="lb">
                   <h4>清除本地缓存 <span class="en-sub">Delete local cache</span></h4>
-                  <p>保留 <code>.ahadiff/commits</code>，清除 embedding / judge cache。下次提问时自动重建。</p>
+                  <p>保留 <code>.ahadiff/runs</code> 与已发布 lesson，清除 embedding / judge cache。下次提问时自动重建。</p>
                 </div>
                 <div class="setting-control">
                   <button class="btn" type="button">Delete now</button>
@@ -1814,7 +1814,7 @@ diff generator_prompt.md
 $ # 让 Claude / Cursor / Codex 按 SPEC.md 实现
 
 $ ahadiff learn HEAD~1..HEAD --against SPEC.md
-  → lesson.md
+  → lesson/lesson.full.md
   → claims.jsonl
   → spec alignment: 6/8 ✓ 2 missing (logout, revoke)</pre>
             <div style="margin-top:12px;font-size:13px;color:var(--muted)">第 4 步完成后你会得到一篇真正可读的 lesson；spec alignment 小于 100% 不是失败——它只是告诉你哪部分 SPEC 还没落地。</div>
@@ -1952,9 +1952,9 @@ allowed-tools: Read, Grep, Bash
 - user runs `ahadiff learn`
 
 ## Output contract
-1. lesson.md (prose, sections defined in references/output-contract.md)
+1. lesson/lesson.full.md (prose, sections defined in references/output-contract.md)
 2. claims.jsonl (one claim per line, status ∈ verified|weak|not_proven|contradicted)
-3. quiz.md (≥ 1 transfer scenario)
+3. quiz/quiz.jsonl (≥ 1 transfer scenario)
 4. score.json (rubric 8-dim)
 
 ## Hard gates (must not ship)
@@ -2201,7 +2201,7 @@ type BenchmarkSummary = { demoData: true; ... };</pre>
             <ul>
               <li><code>Landing</code> → static, DEMO benchmark</li>
               <li><code>Dashboard</code> → <code>GET /runs?since=</code></li>
-              <li><code>Lesson</code> → <code>.ahadiff/runs/&lt;run_id&gt;/lesson.md</code></li>
+              <li><code>Lesson</code> → <code>.ahadiff/runs/&lt;run_id&gt;/lesson/lesson.full.md</code></li>
               <li><code>Diff</code> → <code>git diff</code> + <code>claims.jsonl</code></li>
               <li><code>Ratchet</code> → <code>results.tsv</code></li>
               <li><code>Graph</code> → <code>graphify-out/graph.json</code></li>

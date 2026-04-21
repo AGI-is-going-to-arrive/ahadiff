@@ -85,12 +85,17 @@ ahadiff install opencode  # OpenCode → AGENTS.md + .opencode/agents/
 ├─ review.sqlite         # 唯一真相源（SRS/results/signals）
 ├─ concepts.jsonl        # 概念图谱（term_key-keyed upsert）
 ├─ runs/<run_id>/
-│  ├─ lesson.md          # 带证据链的学习笔记
+│  ├─ lesson/
+│  │  ├─ lesson.full.md
+│  │  ├─ lesson.hint.md
+│  │  └─ lesson.compact.md
 │  ├─ claims.jsonl       # 可验证断言
-│  ├─ quiz.jsonl         # 主动回忆题
+│  ├─ quiz/
+│  │  └─ quiz.jsonl      # 主动回忆题
 │  ├─ cards.jsonl        # SRS 复习卡
 │  └─ score.json         # 8 维评分 + verdict
 ├─ audit.jsonl           # LLM 调用审计
+├─ audit.private.jsonl   # strict_local 本机审计（gitignored）
 ├─ ahadiff.lock          # portalocker 文件锁
 └─ .ahadiffignore        # 路径过滤
 ```

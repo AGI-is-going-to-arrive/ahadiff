@@ -36,7 +36,7 @@
   - LLM Wiki (Karpathy Gist)：persistent compounding wiki，AhaDiff 落地为 `index.md` + `concepts.jsonl` 增量积累
 - **12 模块分层**：cli / diff.parser / concept.extractor / wiki.generator / graph.renderer / deck.exporter / render.jinja / eval.evaluator / eval.ratchet / llm.provider / persistence.store / config
 - **8 维自研 Rubric**（非来自 SkillCompass）：accuracy(20) / evidence(18) / diff_coverage(14) / learnability(14) / quiz_transfer(10) / spec_alignment(10) / conciseness(8) / safety_privacy(6) = 100 分
-- **测试策略**：单元(VCR) + 集成(pinned repo) + Eval(benchmark + judge 稳定性) + 性能成本
+- **测试策略**：单元(VCR) + 集成(pinned diff E2E) + Eval(benchmark + judge 稳定性) + 覆盖率门禁 + 性能成本
 - **风险清单**：15 项，包含命名冲突（极高概率）、litellm 供应链事件、prompt injection 等
 - **3 天 MVP 行动清单**：Day 1 核心链路 / Day 2 评估棘轮 / Day 3 可视化+CI
 
@@ -55,7 +55,7 @@
 - **Claim Verifier 设计**：deterministic verifier + LLM judge 双层验证
 - **最终命令体系**：plan / learn / verify / improve / quiz / review / graph / install / card / export
 - **前端 PDF 9 处必改**：品牌替换、页面重命名、hero 重写、技术栈版本更新等
-- **最终数据结构**：claims.jsonl / score.json / learning-signal.jsonl / results.tsv
+- **最终数据结构**：claims.jsonl / score.json / review.sqlite / results.tsv
 
 ### 3. `AhaDiff_frontend_design_v1.1_revised.md` -- 前端视觉与交互手册
 
@@ -85,12 +85,13 @@
 | `results.tsv` | TSV | 人类可读导出视图，11 列（从 review.sqlite 导出） |
 | `concepts.jsonl` | JSONL | branch-aware 概念累积（per-repo） |
 | `audit.jsonl` | JSONL | LLM 调用审计（schema_version + rotation） |
+| `audit.private.jsonl` | JSONL | `strict_local` 下的本机隐私审计（gitignored） |
 
 ### 数据范围
 
 CLI 全局安装（`pip install ahadiff`），per-repo 运用。核心原则：**per-repo truth + global derived governance**。
 
-- **Per-repo 真相源**（`<repo>/.ahadiff/`）：review.sqlite / concepts.jsonl / audit.jsonl / runs/ / graphify/ / prompts/
+- **Per-repo 真相源**（`<repo>/.ahadiff/`）：review.sqlite / concepts.jsonl / audit.jsonl / audit.private.jsonl / runs/ / graphify/ / prompts/
 - **Global 派生层**（`~/.config/ahadiff/` 等）：config.toml / registry.json(v0.2) / usage.sqlite(v0.2)
 - **Config 优先级**：ENV → CLI flag → per-repo config.toml → global config.toml → defaults
 
@@ -133,3 +134,4 @@ A: 权威文档见根目录 `CLAUDE.md` + `.claude/team-plan/`（kickoff + stage
 | 2026-04-21 | 同步 v5 改进：evaluation bundle 统一为 5 文件（含 rubric.py）、note→note_json、前端设计手册标注 v0.1=Jinja2/v1.0=React、知返设计坐标.md 标 archived、i18n 骨架补 rejected 第五态 |
 | 2026-04-21 | 同步 v6 三模型交叉审查：设计思路/改名方案/最终方案三文档标 ARCHIVED、文件清单描述更新 |
 | 2026-04-21 | 同步第三轮开工就绪审查：新增数据范围架构（per-repo truth + global derived governance）、数据模型补 review.sqlite/concepts.jsonl/audit.jsonl、Config 5 层优先级链 |
+| 2026-04-21 | 同步本轮契约收敛：补 `audit.private.jsonl` 本机边界、FSRS 撤架规则统一为 stability 驱动、VCR key 补 `api_family_version`、前端撤架命名统一为 Compact、测试口径补 pinned integration + coverage gate |
