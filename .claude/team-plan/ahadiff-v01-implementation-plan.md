@@ -1,6 +1,6 @@
 # AhaDiff v0.1 Implementation Plan
 
-> 修订日期 2026-04-21
+> 修订日期 2026-04-22
 > 权威源（高→低）：① `CLAUDE.md` ② `ahadiff-v01-kickoff.md` ③ `ahadiff-v01-stages-4-9.md` ④ `closure-checklist-29.md` ⑤ `AhaDiff_frontend_design_v1.1_revised.md` ⑥ `AhaDiff Warm v6.html`
 > 本文档是执行排程，不是新的架构权威源。与 `doc/contract-freeze.md` 冲突时，Task 0 产出的 `contract-freeze.md` 为准。
 > 状态更新（2026-04-22）：`Stage 0 / Task 0` 已完成，已产出 `doc/contract-freeze.md`、`src/ahadiff/contracts/*.py`、`tests/unit/test_contracts.py`；实测 `python3 -m pytest tests/unit/test_contracts.py` 为 `13 passed`。
@@ -320,7 +320,7 @@
     - Phase 2.5
     - max once/session
 - **依赖**：
-  - `Task 14.5` 依赖 `Task 15`；与 `Task 14` 无硬依赖，只需对齐 `Task 13` 的 DTO / build 形状
+  - `Task 14.5` 依赖 `Task 15`；与 `Task 14` 无硬依赖。开发时只需和 `Task 13` 的前端 build / API 接入方式保持一致；具体 DTO 字段命名与 shape 以 `doc/contract-freeze.md` 和对应 contract 文件为准
   - `Task 16` 依赖 `Task 11 + Task 12 + Task 15`
   - `Task 17` 依赖 `Task 16`
 - **可并行项**：
