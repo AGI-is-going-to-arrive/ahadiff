@@ -27,6 +27,39 @@
 
 ## 第四段：lesson + quiz
 
+### 前置：Learnability Gate（Task 9 前冻结）
+
+> **来源**：Gemini R8 D15 + D17 发现。琐碎提交（typo/formatting/deps bump）全量生成 lesson+quiz 会造成认知疲劳和 SRS 题库爆炸。
+
+**设计**：在 `ahadiff learn` 的 capture→parse 之后、lesson 生成之前，增加 **learnability scoring** 前置判定。
+
+```python
+# src/ahadiff/lesson/learnability.py
+def compute_learnability_score(parsed_diff: ParsedDiff) -> float:
+    """基于三因子评分，0.0-1.0。低于阈值跳过 lesson/quiz 生成。"""
+    factors = {
+        "complexity": _diff_complexity(parsed_diff),     # 变更复杂度（非空行数/函数级变更/跨文件引用）
+        "novelty": _file_type_novelty(parsed_diff),      # 文件类型新颖度（.py/.ts=高, .lock/.json=低）
+        "pattern": _change_pattern(parsed_diff),          # 变更模式（新增逻辑=高, 纯格式化=低, deps bump=低）
+    }
+    return weighted_average(factors, weights={"complexity": 0.4, "novelty": 0.3, "pattern": 0.3})
+
+LEARNABILITY_THRESHOLD = 0.3  # config.toml [learn].learnability_threshold 可覆盖
+```
+
+**行为**：
+- score ≥ 阈值：正常生成 lesson + quiz
+- score < 阈值：跳过 lesson/quiz，CLI 输出 `"This change has low learning value (score={:.2f}). Skipping lesson generation. Use --force-learn to override."`
+- `--force-learn` 旗标强制生成（无论 score）
+- learnability_score 写入 `metadata.json`，前端 Dashboard 可展示
+
+**低学习价值变更的典型模式**：
+- 纯 whitespace/formatting 变更
+- package-lock.json / yarn.lock / go.sum 等依赖锁文件
+- 自动生成的文件（.pb.go / .d.ts / migration 文件）
+- 单行 typo 修正
+- 版本号 bump（pyproject.toml version 字段变更）
+
 ### Task 9: Lesson 生成（三段式撤架）
 
 - **类型**: 后端（Codex 实现）
@@ -67,7 +100,7 @@
   - `tests/unit/test_concepts.py`
 - **依赖**: Task 9（Lesson）+ Task 8（Claim）
 - **实施步骤**:
-  1. 定义 `QuizQuestion`, `QuizSet`, `ReviewCard` schema。ReviewCard 必须包含 anchor 元数据：`source_ref`、`file_id`（稳定标识，与 EvidenceAnchor 统一）、`display_path`（用户可见路径）、`hunk_id`、`hunk_hash`、`symbol`、`change_kind`。**注意**：`path` 字段已废弃，统一使用 `file_id + display_path` 二元组（与 CC-NEW-3 闭合方案一致）
+  1. 定义 `QuizQuestion`, `QuizSet`, `ReviewCard` schema。ReviewCard 必须包含 anchor 元数据：`source_ref`、`file_id`（稳定标识，与 EvidenceAnchor 统一）、`display_path`（用户可见路径）、`hunk_id`、`hunk_hash`、`symbol`、`change_kind`。**注意**：`path` 字段已废弃，统一使用 `file_id + display_path` 二元组（与 CC-NEW-3 闭合方案一致）。**FSRS 字段（Codex R8 交叉审查修复）**：ReviewCard 必须包含 `fsrs_state: str`（FSRS Card JSON 序列化）、`scaffolding_level: Literal["full", "hint", "compact"] = "full"`、`last_rating: int | None = None`（1-4 对应 Again/Hard/Good/Easy）。**删除 SM-2 字段**：不再使用 `ease_factor`/`interval`/`reps`
   2. 编写 `quiz_generate.md` prompt
   3. 实现 `generate_quiz()` → `quiz.jsonl`（每题含 source_claims / concepts / file:line evidence）
   4. 实现 `generate_cards()` → `cards.jsonl`（SRS 复习卡，每张 <500 token）
@@ -114,7 +147,7 @@
   - `tests/unit/test_results.py`
 - **依赖**: Task 0（Schema Freeze — RunStatus/EventLog 契约）+ Task 11（评估体系）
 - **实施步骤**:
-  1. **写入顺序**：先写 review.sqlite `result_events`（有事务保护），成功后 append results.tsv。TSV 仅作为人类可读的 audit trail，**review.sqlite 为唯一真相源**。TSV 写入失败仅 warn，不阻塞主流程
+  1. **写入顺序（跨 Task 统一协议，Codex R8 交叉审查修复）**：artifact 临时目录写完并校验 → SQLite `result_events` commit（有事务保护）→ append results.tsv → 写 `finalized.json` → 原子 rename 发布 run 目录。**`/api/runs` 以 SQLite 已提交 run 为准**（非以 finalized.json 为准），确保 Dashboard/ratchet 永远能查到对应 result_event。TSV 写入失败仅 warn，不阻塞主流程。finalized.json 写入失败时 run 已写入 SQLite（功能不受影响），但 serve API 不展示该 run（降级但安全）
   2. results.tsv 11 列 append-only（timestamp/run_id/source_ref/base_ref/prompt_version/rubric_version/overall/verdict/status/weakest_dim/note_json）。`source_ref` 为当前评估的来源标识（git 场景为 commit SHA，patch 场景为文件 hash，compare 场景为路径对 hash），`base_ref` 为 ratchet 比较的基线标识（首次 baseline 时为空）。Phase 2.5 rewrite 时 note_json 字段记录 `{"phase25": true, "worktree_path": "<path>"}`
   3. `result_events` 主键为 `event_id`（UUID v7，全局唯一），唯一索引 `(run_id, event_type, timestamp)`，二级索引 `(source_ref, timestamp DESC)` + `(verdict, status)` + `(weakest_dimension, timestamp DESC)`。同一 run_id 可有多行事件（如 keep → targeted_verify → keep_final）
   4. 实现 `append_result()` 的幂等保证：写入前检查 `event_id` 是否已存在，存在则跳过
@@ -166,7 +199,8 @@
   11. 配置 Vite build：`ahadiff serve` 开发时 proxy API，生产时 serve 静态 build
   12. 实现 XSS 防护：所有用户数据渲染用 React 自动 escape，data_bundle 用 DOMPurify
   13. 字体策略：Google Fonts（Newsreader/Inter/JetBrains Mono/Noto Serif SC）+ 系统字体回退链
-  14. **DiffView 渲染隔离（性能约束）**：DiffView 组件整体用 `React.memo(DiffView, shallowEqual)` 包裹，props 仅接收 `runId` + `highlightedClaimId`。内部使用虚拟列表（`@tanstack/react-virtual`）渲染 5000+ 行。i18n/theme 切换不传入 DiffView props，通过 CSS Variables + `data-lang` 属性处理静态文案
+  14. **DiffView 渲染隔离（性能约束）**：DiffView 组件整体用 `React.memo(DiffView, shallowEqual)` 包裹，props 仅接收 `runId` + `highlightedClaimId`。内部使用虚拟列表（`@tanstack/react-virtual`）渲染 5000+ 行。i18n/theme 切换不传入 DiffView props，通过 CSS Variables + `data-lang` 属性处理静态文案。**虚拟列表 dynamic measuring（Gemini R8 H-3 修复）**：因 Claim 标注注入导致行高动态变化，必须开启 `@tanstack/react-virtual` 的 `measureElement` + `estimateSize` 动态测量模式，绑定 `ResizeObserver` 获取真实行高。禁止使用固定 `itemSize`，否则 Claim 展开时滚动条跳动
+  14a. **Bottom Mini-Panel Scroll Chaining 修复（Gemini R8 H-4）**：Evidence 列表面板使用 `overscroll-behavior: contain` 防止滚动事件穿透到 Diff 区域。触控设备使用 `touch-action: pan-y` + gesture 库（`@use-gesture/react` 或 `framer-motion`）严格接管触控事件传播边界，防止面板上滑手势与内部列表滚动冲突
   15. `<noscript>` 提示：JS 禁用时显示 "AhaDiff requires JavaScript" 友好提示
 - **验收标准**: 
   - `cd viewer && npm run build` 成功
@@ -221,6 +255,7 @@
   - `tests/unit/test_serve_app.py`
 - **依赖**: Task 0（serve_app contract）+ Task 15（review.sqlite schema，signals/result 路由需要其表结构）。注：与 Task 14 并行开发，不阻塞等待 Task 14 完成
 - **实施步骤**:
+  0. **Run 目录二阶段发布协议（Codex R8 CX-3 修复）**：API 只暴露 finalized runs，防止前端读到 half-written artifact。协议：(a) learn/improve 写入 `runs/<run_id>.tmp/` 临时目录；(b) 所有文件写入完成后 `fsync` 每个文件；(c) 写入 `runs/<run_id>.tmp/finalized.json`（含 `{"finalized_at": "...", "artifact_count": N, "checksum": "..."}`）；(d) `os.rename("runs/<run_id>.tmp/", "runs/<run_id>/")` 原子发布。API `GET /api/runs` 只列出含 `finalized.json` 的 run 目录。中断恢复：`ahadiff doctor` 检测到 `.tmp/` 后缀 run 目录→提示用户 `ahadiff clean-orphans` 清理
   1. 实现 Starlette app 工厂，`bind=127.0.0.1:8765`（**仅绑定回环地址，拒绝外网连接**）
   2. 实现路由鉴权矩阵：
      - 读路由（`GET /api/*`）：无需 token，默认开放
@@ -255,8 +290,8 @@
   - `tests/unit/test_review.py`
 - **依赖**: Task 10（Quiz）+ Task 12（Results）
 - **实施步骤**:
-  1. 创建 `review.sqlite` schema（**启用 WAL mode + busy_timeout=5000**）：`schema_version`(整数版本号，每次 migration 递增)、`cards`(id/concept/run_id/due_date/interval/ease/reps)、`result_events`(物理事件表，SQLite 为唯一真相源)、`learning_signals`(用户行为日志)。schema_version 嵌入 DB，不匹配时通过顺序 SQL migration 自动升级
-  2. 实现 SM-2 SRS 调度算法
+  1. 创建 `review.sqlite` schema（**必须先复用 Task 0 的 SQLite 版本门禁 ≥3.51.3 和统一连接初始化**，含 WAL mode + busy_timeout=5000 + DBCONFIG_DEFENSIVE + quick_check）：`schema_version`(整数版本号，每次 migration 递增)、`cards`(**FSRS schema，Codex R8+FSRS 调研改进**：id/concept/run_id/fsrs_state TEXT NOT NULL（opaque Card JSON）/scheduler_preset_id TEXT DEFAULT 'default'/scheduler_version TEXT NOT NULL/desired_retention REAL DEFAULT 0.9/due_date TEXT NOT NULL（UTC）/stability REAL NOT NULL/difficulty REAL NOT NULL/reps INTEGER DEFAULT 0/lapses INTEGER DEFAULT 0/scaffolding_level TEXT DEFAULT 'full'/last_rating INTEGER/last_review_utc TEXT/source_ref/file_id/display_path/created_at_utc TEXT NOT NULL)、`scheduler_presets`(preset_id/weights TEXT（opaque JSON array，不写死数量）/desired_retention/scheduler_version/total_reviews/last_optimized_utc/created_at_utc)、`review_logs`(id/card_id/rating/reviewed_at_utc/elapsed_days/scheduled_days/state，供 Optimizer 训练用)、`result_events`(物理事件表，SQLite 为唯一真相源)、`learning_signals`(用户行为日志)。schema_version 嵌入 DB，不匹配时通过顺序 SQL migration 自动升级。**所有时间戳统一 UTC**（py-fsrs 强制）。**版本门禁验收**：低于 3.51.3 且不在 backport 白名单时拒绝创建/打开 DB
+  2. 实现 **FSRS-6 SRS 调度算法**（替代 SM-2，详见 `ahadiff-fsrs-decision.md`）：使用 `py-fsrs` 库（`pip install fsrs`，v6.3.1+）。默认 `desired_retention=0.9`，`maximum_interval=365`，`enable_fuzzing=True`。ReviewCard 存储 FSRS Card JSON 序列化（`fsrs_state` 字段，opaque）而非 SM-2 的 ease/interval/reps。**v0.1 UI 只暴露 Good/Hard/Wrong 三按钮**（不暴露 Easy）：答对=Good(3)，犹豫答对=Hard(2)，答错/mark-wrong=Again(1)。安全/误解题答错额外生成 misconception 卡。冷启动用默认 weights + desired_retention=0.90（不运行 optimizer）；**≥500-1000 次有效 review** 后支持 `ahadiff review --optimize` 运行 Optimizer。**重训双门槛**：距上次训练 ≥30 天 **或** 新增 review 数 ≥ max(512, 上次样本量×50%)。**三段式撤架由 FSRS stability 驱动**：full=Learning/Relearning 或 stability<3d，hint=Review 且 3d≤stability<14d，compact=stability≥14d 且最近 2 次成功。保留 `--scheduler sm2` feature-flag fallback（不做默认路径）
   3. 实现 `ahadiff review` CLI：展示 due cards，记录答题结果
   4. 实现 `ahadiff mark <claim_id> wrong` CLI：用户标记 claim 错误 → 写入 review.sqlite `learning_signals` 表
   5. 实现 `results.tsv → result_events` 入库契约：
@@ -300,7 +335,7 @@
   4. 实现 weakest-dimension-first 选择（从 review.sqlite.result_events 查询最近记录）
   5. 实现 prompt versioning：`prompt_version = prompts/ 目录的 tree hash 前 7 位`
   6. 简洁性准则写入 improve_program.md
-  7. **Improve 隔离策略（统一 worktree）**：常规 improve loop 和 Phase 2.5 均在 `git worktree add` 创建的临时 worktree 中执行，不触碰用户主分支工作区。keep 时从 worktree cherry-pick 回主分支；discard 时删除 worktree。cherry-pick 冲突时自动 abort 并保持 worktree 状态，输出冲突文件列表供人工解决，不强制覆盖主分支。improve loop 启动前检查主分支 `prompts/` 是否有未提交修改，有则提前警告用户。
+  7. **Improve 隔离策略（统一 worktree）**：常规 improve loop 和 Phase 2.5 均在 `git worktree add` 创建的临时 worktree 中执行，不触碰用户主分支工作区。keep 时从 worktree cherry-pick 回主分支；discard 时删除 worktree。cherry-pick 冲突时自动 abort 并保持 worktree 状态，输出冲突文件列表供人工解决，不强制覆盖主分支。improve loop 启动前检查主分支 `prompts/` 是否有未提交修改，有则提前警告用户。**Ctrl+C two-phase finalization（CC-R6-2 修复）**：improve loop 注册 `signal.SIGINT` handler，首次 Ctrl+C 进入 graceful shutdown：(a) 等待当前 LLM 调用完成（最多 30s）；(b) 将已完成的 rounds 写入 results（status=crash, note="interrupted_after_round_N"）；(c) 清理 worktree。二次 Ctrl+C 立即 `sys.exit(1)`。Windows 使用 `signal.CTRL_C_EVENT` + `atexit` 注册清理
   8. 禁止并发 improve：复用 repo_write_lock（`.ahadiff/ahadiff.lock`，portalocker），第二个 improve 实例被拒绝
 - **验收标准**: `ahadiff improve --suite local --rounds 6` 跑完，results.tsv 正确追加 6 行
 

@@ -975,6 +975,12 @@ footer{
 .borrow-howto-body .pri-pill.P1{background:var(--amber-soft);color:#806028}
 .borrow-howto-body .pri-pill.P2{background:var(--sage-soft);color:#4A6849}
 
+/* FSRS Compare section responsive */
+@media(max-width:700px){
+  #fsrs-compare [style*="grid-template-columns:1fr 1fr"]{
+    grid-template-columns:1fr !important;
+  }
+}
 </style>
 </head>
 <body>
@@ -992,6 +998,7 @@ footer{
     <a href="#eng-moats">工程</a>
     <a href="#matrix">矩阵</a>
     <a href="#borrow">借鉴</a>
+    <a href="#fsrs-compare">FSRS</a>
     <a href="#threat">威胁</a>
     <a href="#conclusion">结论</a>
   </div>
@@ -1167,8 +1174,8 @@ footer{
           你改了 <code>src/auth/oauth.py</code><br>
           → 生成 <code>4</code> 条带证据的笔记<br>
           → 生成 <code>5</code> 道主动回忆 quiz<br>
-          → <code>14</code> 天后 SRS 自动推送给你复习<br>
-          → 三段式撤架：<code>full</code>（完整笔记）→ <code>hint</code>（只留关键词）→ <code>compact</code>（仅概念名），interval 驱动 + quiz 表现反馈<br>
+          → FSRS 根据答题表现自动计算下次复习时间（非固定间隔）<br>
+          → 三段式撤架：<code>full</code>（完整笔记）→ <code>hint</code>（只留关键词）→ <code>compact</code>（仅概念名），FSRS stability 驱动（非固定 interval）<br>
           v0.1 通过 <code>ahadiff serve</code> 实现浏览器内交互（Quiz/SRS 答题通过 REST API 写回 <code>review.sqlite</code>），不再需要在 terminal 和浏览器间来回切换。
         </div>
         <div class="moat-compare">
@@ -1662,7 +1669,7 @@ footer{
           </div>
           <div class="split-item">
             <div class="split-item-name">SKILL0 <span class="split-item-tag">ZJU-REAL</span></div>
-            <div class="split-item-evid">借走：撤架学习法（scaffolding removal）→ AhaDiff 落地为三段式 full→hint→compact（interval 驱动 + quiz 表现反馈）；原版 file 级 helpfulness，AhaDiff 扩展到 section 级</div>
+            <div class="split-item-evid">借走：撤架学习法（scaffolding removal）→ AhaDiff 落地为三段式 full→hint→compact（FSRS stability 驱动：full=stability&lt;3d，hint=3-14d，compact=&ge;14d+连续2次成功）；原版 file 级 helpfulness，AhaDiff 扩展到 section 级</div>
           </div>
           <div class="split-item">
             <div class="split-item-name">Graphify <span class="split-item-tag">PyPI</span></div>
@@ -1696,7 +1703,7 @@ footer{
           </div>
           <div class="split-item">
             <div class="split-item-name">Execute Program · RemNote <span class="split-item-tag">SRS 类</span></div>
-            <div class="split-item-evid">做 SRS 复习，但不接真实 diff</div>
+            <div class="split-item-evid">做 SRS 复习（RemNote 已内置 FSRS v6），但不接真实 diff</div>
           </div>
           <div class="split-item">
             <div class="split-item-name">DeepWiki · Unblocked · Google Code Wiki <span class="split-item-tag">Wiki 类</span></div>
@@ -1927,7 +1934,7 @@ footer{
   <div class="container">
     <div class="section-label">六 · 附</div>
     <h2>v0.1 设计升级<em>（2026-04-20 多轮评估后新增）</em></h2>
-    <p class="lead">经三模型 + Explorer 六轮交叉审查，v0.1 确认以下关键能力。<br>技术栈确认：<strong>Python 3.11+ / Typer / Rich / Pydantic / React 19 + Vite + vanilla CSS / Starlette+Uvicorn</strong>，前端为 React 19 SPA（<code>ahadiff serve</code> 自动开浏览器），<strong>SQLite 为唯一真相源</strong>。<br>LLM Provider 支持 <strong>8 种 API 格式</strong>（OpenAI Chat / Responses / Gemini / Anthropic / Azure / NewAPI / CherryIN / Ollama）+ BYOK 自动探测（temperature/TPM/RPM/context length）。评估 Judge：<strong>gpt-5.4-mini</strong>（1M 上下文）。</p>
+    <p class="lead">经三模型 + Explorer 八轮交叉审查，v0.1 确认以下关键能力。<br>技术栈确认：<strong>Python 3.11+ / Typer / Rich / Pydantic / React 19 + Vite + vanilla CSS / Starlette+Uvicorn</strong>，前端为 React 19 SPA（<code>ahadiff serve</code> 自动开浏览器），<strong>SQLite 为唯一真相源</strong>。<br>SRS 调度：<strong>FSRS-6</strong>（py-fsrs v6.3.1, desired_retention=0.9, stability 驱动三段式撤架, misconception 卡）。<br>LLM Provider 支持 <strong>8 种 API 格式</strong>（OpenAI Chat / Responses / Gemini / Anthropic / Azure / NewAPI / CherryIN / Ollama）+ BYOK 自动探测（temperature/TPM/RPM/context length）。评估 Judge：<strong>gpt-5.4-mini</strong>（1M 上下文）。</p>
 
     <div class="top10-wrap">
       <div class="top10-grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;display:grid">
@@ -1989,7 +1996,11 @@ footer{
 
         <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px;margin:0">
           <div class="borrow-howto-tag" style="margin:0">SRS 三段式撤架</div>
-          <div class="borrow-howto-body">借鉴 SKILL0 的 scaffolding removal，落地为三段式撤架：<code>full</code>（完整笔记）→ <code>hint</code>（只留关键词提示）→ <code>compact</code>（仅概念名称）。由 SRS interval 驱动切换，结合 quiz 表现反馈动态调整：答对加速撤架，答错回退一级。</div>
+          <div class="borrow-howto-body">借鉴 SKILL0 的 scaffolding removal，落地为三段式撤架，由 <strong>FSRS-6 stability</strong> 驱动（非固定 interval）：<br>
+            <code>full</code>：Learning/Relearning 阶段，或 stability &lt; 3d<br>
+            <code>hint</code>：Review 阶段，3d &le; stability &lt; 14d<br>
+            <code>compact</code>：stability &ge; 14d 且最近 2 次为成功回忆（Good/Hard）<br>
+            v0.1 UI 只暴露 Good/Hard/Wrong 三按钮。安全/误解题答错额外生成 misconception 卡（纠错卡）。</div>
         </div>
 
         <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px;margin:0">
@@ -1997,6 +2008,118 @@ footer{
           <div class="borrow-howto-body">经六轮三模型审查（Claude+Codex+Gemini，Gemini 429 时 Claude 兜底），从 Quiz staleness 到 Archive bomb，从 locale 归一化到 z-index 层级，50+ 个 corner case 全部有具体工程闭合方案（含 CC-GAP 系列 13 项 + CC-R6 系列 7 项 + diff 捕获扩展 30+ 项）。第六轮终审判定：<strong>GO</strong>（0 Critical，3 High 已修复）。</div>
         </div>
 
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =============== FSRS vs SM-2 =============== -->
+<section id="fsrs-compare" class="compact">
+  <div class="container">
+    <div class="section-label">附 · SRS 算法对比</div>
+    <h2>为什么选 <em>FSRS-6</em> 而不是 SM-2？</h2>
+    <p class="lead">Anki 23.10 起可手动启用 FSRS，RemNote 已内置 FSRS v6。AhaDiff 跟进行业趋势，采用 FSRS-6（py-fsrs v6.3.1）。<br>三模型共识 + Codex 深度调研（6 官方源取证）。</p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:40px">
+      <!-- SM-2 -->
+      <div style="padding:28px;background:var(--paper-02);border-radius:var(--r-lg);border:1px solid var(--divider)">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--ink-03);letter-spacing:.1em;margin-bottom:8px">旧方案</div>
+        <h3 style="font-size:22px;color:var(--ink-03)">SM-2</h3>
+        <div style="margin-top:16px;font-size:14px;color:var(--ink-02);line-height:1.7">
+          <div style="display:flex;gap:8px;margin:8px 0"><span style="color:var(--rust)">&#10007;</span> 1987 年固定 EF 衰减公式</div>
+          <div style="display:flex;gap:8px;margin:8px 0"><span style="color:var(--rust)">&#10007;</span> 仅 2 个参数（EF + interval）</div>
+          <div style="display:flex;gap:8px;margin:8px 0"><span style="color:var(--rust)">&#10007;</span> 指数衰减建模（不精确）</div>
+          <div style="display:flex;gap:8px;margin:8px 0"><span style="color:var(--rust)">&#10007;</span> 无自适应 Optimizer</div>
+          <div style="display:flex;gap:8px;margin:8px 0"><span style="color:var(--rust)">&#10007;</span> 需自行实现调度逻辑</div>
+        </div>
+      </div>
+      <!-- FSRS-6 -->
+      <div style="padding:28px;background:var(--paper-00);border-radius:var(--r-lg);border:2px solid var(--clay);box-shadow:var(--shadow-md)">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--clay);letter-spacing:.1em;margin-bottom:8px">AhaDiff 方案</div>
+        <h3 style="font-size:22px;color:var(--clay)">FSRS-6</h3>
+        <div style="margin-top:16px;font-size:14px;color:var(--ink-02);line-height:1.7">
+          <div style="display:flex;gap:8px;margin:8px 0"><span style="color:var(--sage)">&#10003;</span> 2023-2024 DSR 三分量记忆模型</div>
+          <div style="display:flex;gap:8px;margin:8px 0"><span style="color:var(--sage)">&#10003;</span> 21 个可优化参数（opaque array）</div>
+          <div style="display:flex;gap:8px;margin:8px 0"><span style="color:var(--sage)">&#10003;</span> 幂律衰减（实验验证更精确）</div>
+          <div style="display:flex;gap:8px;margin:8px 0"><span style="color:var(--sage)">&#10003;</span> Optimizer 自动训练个人参数</div>
+          <div style="display:flex;gap:8px;margin:8px 0"><span style="color:var(--sage)">&#10003;</span> <code>pip install fsrs</code> 即用</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 竞品 SRS 算法速览 -->
+    <div style="margin-top:40px;padding:28px;background:var(--paper-00);border-radius:var(--r-lg);border:1px solid var(--divider)">
+      <h4 style="margin-bottom:16px">竞品 SRS 算法速览（Codex 2026-04-21 官方源取证）</h4>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;line-height:1.6">
+          <thead>
+            <tr style="background:var(--paper-02)">
+              <th style="padding:10px 14px;text-align:left;border-bottom:2px solid var(--divider)">产品</th>
+              <th style="padding:10px 14px;text-align:left;border-bottom:2px solid var(--divider)">SRS 算法</th>
+              <th style="padding:10px 14px;text-align:left;border-bottom:2px solid var(--divider)">置信度</th>
+              <th style="padding:10px 14px;text-align:left;border-bottom:2px solid var(--divider)">说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="background:linear-gradient(90deg,var(--clay-soft) 0%,var(--paper-00) 80%);font-weight:500">
+              <td style="padding:10px 14px">知返 AhaDiff</td>
+              <td style="padding:10px 14px;color:var(--clay);font-weight:600">FSRS-6</td>
+              <td style="padding:10px 14px">—</td>
+              <td style="padding:10px 14px">py-fsrs v6.3.1，desired_retention=0.9，stability 驱动撤架</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--paper-03)">
+              <td style="padding:10px 14px;font-weight:500">Anki</td>
+              <td style="padding:10px 14px;font-weight:600">FSRS</td>
+              <td style="padding:10px 14px"><span style="color:var(--sage)">高</span></td>
+              <td style="padding:10px 14px">23.10 引入原生 FSRS 支持（需手动启用），25.07 更新至 FSRS-6 代际</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--paper-03);background:var(--paper-01)">
+              <td style="padding:10px 14px;font-weight:500">RemNote</td>
+              <td style="padding:10px 14px;font-weight:600">FSRS v6</td>
+              <td style="padding:10px 14px"><span style="color:var(--sage)">高</span></td>
+              <td style="padding:10px 14px">已内置 FSRS v6，建议先用默认 weights 累积 &ge;1000 次 reviews 后手动运行 optimizer</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--paper-03)">
+              <td style="padding:10px 14px;font-weight:500">Mochi</td>
+              <td style="padding:10px 14px">SR（算法未公开）</td>
+              <td style="padding:10px 14px"><span style="color:var(--amber)">低-中</span></td>
+              <td style="padding:10px 14px">官方文档未明确写出具体算法名称</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--paper-03);background:var(--paper-01)">
+              <td style="padding:10px 14px;font-weight:500">Obsidian Decks</td>
+              <td style="padding:10px 14px;font-weight:600">FSRS 6</td>
+              <td style="padding:10px 14px"><span style="color:var(--sage)">高</span></td>
+              <td style="padding:10px 14px">社区插件 dscherdi/decks 明确使用 FSRS 6</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--paper-03)">
+              <td style="padding:10px 14px;font-weight:500">Execute Program</td>
+              <td style="padding:10px 14px">自有 SRS（无文档）</td>
+              <td style="padding:10px 14px"><span style="color:var(--amber)">低</span></td>
+              <td style="padding:10px 14px">使用间隔重复但未公开具体算法</td>
+            </tr>
+            <tr style="background:var(--paper-01)">
+              <td style="padding:10px 14px;font-weight:500">CodeCombat</td>
+              <td style="padding:10px 14px">无 SRS</td>
+              <td style="padding:10px 14px">—</td>
+              <td style="padding:10px 14px">关卡制，无间隔重复调度</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:14px;font-size:12px;color:var(--ink-03);font-style:italic">
+        数据来源：Codex CLI 深度调研（212 events，6 官方源直接取证，2026-04-21）。"低-中置信"表示官方文档未明确声明，不宜断言。
+      </div>
+    </div>
+
+    <!-- FSRS 对 AhaDiff 的特殊适配 -->
+    <div style="margin-top:24px;padding:24px;background:var(--paper-02);border-radius:var(--r-md);border-left:3px solid var(--clay)">
+      <h4 style="margin-bottom:12px;font-size:16px">FSRS-6 在 AhaDiff 的特殊适配</h4>
+      <div style="font-size:14px;color:var(--ink-02);line-height:1.7">
+        <strong>减少复习负担</strong>：代码学习者每天复习量预计减少 20-30%（RemNote 经验值，中置信度）<br>
+        <strong>Misconception 卡</strong>：安全/误解题答错不仅 reset interval，还额外生成纠错卡，强化正确理解<br>
+        <strong>冷启动策略</strong>：&lt;500 次 review 用默认 weights；&ge;1000 次后 Optimizer 自动训练个人参数<br>
+        <strong>v0.1 UI 简化</strong>：只暴露 Good / Hard / Wrong 三按钮（不强行暴露 Easy）<br>
+        <strong>Stability 驱动撤架</strong>：scaffolding_level 不进入 FSRS optimizer，只由 FSRS memory state 驱动 UI 展示层
       </div>
     </div>
   </div>
@@ -2131,7 +2254,8 @@ footer{
       <h3 style="color:var(--paper-00);font-style:italic;font-weight:400;max-width:720px;margin:0 auto;font-size:24px;line-height:1.5">
         v0.1 Kickoff 已完成 → <span class="mono" style="color:var(--clay)">.claude/team-plan/ahadiff-v01-kickoff.md</span><br>
         数据范围架构已冻结 → <span class="mono" style="color:var(--clay)">.claude/team-plan/ahadiff-data-scope-architecture.md</span><br>
-        第六轮终审 GO → <span class="mono" style="color:var(--clay)">.claude/team-plan/ahadiff-v01-round6-cross-review.md</span>
+        SRS: SM-2 → FSRS-6 → <span class="mono" style="color:var(--clay)">.claude/team-plan/ahadiff-fsrs-decision.md</span><br>
+        第八轮终审 CONDITIONAL GO → <span class="mono" style="color:var(--clay)">三模型交叉验证（Claude 7.8 / Gemini 8.6 / Codex 6.5）</span>
       </h3>
     </div>
   </div>
@@ -2141,7 +2265,7 @@ footer{
   <div class="footer-inner">
     <div class="footer-left">
       知返 AhaDiff · 竞品研究可视化
-      <span class="mono">generated 2026-04-21 · warm v3 (round 6 sync)</span>
+      <span class="mono">generated 2026-04-21 · warm v3 (round 8 sync · SM-2→FSRS-6)</span>
     </div>
     <div class="footer-right">
       sources: doc/知返设计坐标.md (archived) · doc/competitive-analysis-2026-04.md<br>
@@ -2168,8 +2292,8 @@ const products = {
     local:'YES — per-repo truth（.ahadiff/）+ global derived（config/registry，非真相源） · 前端 React 19 SPA（ahadiff serve 本地启动）',
     claim:'5 状态（verified/weak/not_proven/contradicted/rejected）',
     ratchet:'有（wiki_score + git worktree 隔离 + Phase 2.5 + 8 维自研 rubric）',
-    srs:'有（quiz.jsonl + review.sqlite + SM-2 + 三段式撤架 full→hint→compact）',
-    overlap:'自己', note:'本项目 · 当前设计阶段 · v0.1 技术栈: Python 3.11+, Typer, Rich, Pydantic, React 19 + Vite + vanilla CSS, Starlette+Uvicorn · 8 种 diff 捕获（v0.1: --last/--since/--staged/--unstaged/commit-range/git-show/--patch/--compare）+ 4 种规划（v0.2: --compare-dir/--patch-url, v0.3: .ipynb/--url PR）· 8 种 LLM Provider（OpenAI/Responses/Gemini/Anthropic/Azure/NewAPI/CherryIN/Ollama）+ BYOK 自动探测 · Judge: gpt-5.4-mini (1M ctx) · 数据范围: per-repo truth + global derived governance · portalocker 跨平台文件锁 · Capture Pipeline: raw/redacted 双表示（raw 永不落盘）· 移动端 Bottom Mini-Panel · 概念图谱 >20 节点自动聚类 · SRS 三段式撤架 full→hint→compact · 50+ corner cases 全闭合'},
+    srs:'有（quiz.jsonl + review.sqlite + FSRS-6（py-fsrs v6.3.1，desired_retention=0.9）+ stability 驱动三段式撤架 full→hint→compact + misconception 卡）',
+    overlap:'自己', note:'本项目 · 当前设计阶段 · v0.1 技术栈: Python 3.11+, Typer, Rich, Pydantic, React 19 + Vite + vanilla CSS, Starlette+Uvicorn · 8 种 diff 捕获（v0.1: --last/--since/--staged/--unstaged/commit-range/git-show/--patch/--compare）+ 4 种规划（v0.2: --compare-dir/--patch-url, v0.3: .ipynb/--url PR）· 8 种 LLM Provider（OpenAI/Responses/Gemini/Anthropic/Azure/NewAPI/CherryIN/Ollama）+ BYOK 自动探测 · Judge: gpt-5.4-mini (1M ctx) · 数据范围: per-repo truth + global derived governance · portalocker 跨平台文件锁 · Capture Pipeline: raw/redacted 双表示（raw 永不落盘）· 移动端 Bottom Mini-Panel · 概念图谱 >20 节点自动聚类 · FSRS-6 自适应调度（py-fsrs v6.3.1）+ stability 驱动三段式撤架 full→hint→compact + misconception 卡 · 50+ corner cases 全闭合'},
   'coderabbit':{name:'CodeRabbit', tag:'SAAS', url:'https://coderabbit.ai',
     model:'SaaS $24/$48 per user/month（Pro/Pro Plus）',
     focus:'PR 逐行 review + 变更摘要 + 架构图 + AI 修复',
@@ -2196,12 +2320,12 @@ const products = {
   'execute-program':{name:'Execute Program', tag:'SAAS', url:'https://www.executeprogram.com',
     model:'$19-39/月 · Gary Bernhardt 创办',
     focus:'预制编程课程 + 间隔重复复习',
-    local:'NO', claim:'无', ratchet:'无', srs:'YES（核心卖点）',
+    local:'NO', claim:'无', ratchet:'无', srs:'YES（核心卖点，SRS 算法未公开，证据不足不宜断言具体算法）',
     overlap:'低', note:'SRS 理念相同，输入不同（课程 vs diff）'},
   'remnote':{name:'RemNote', tag:'FREEMIUM', url:'https://www.remnote.com',
     model:'Freemium / Pro $6/月', focus:'通用笔记 + 闪卡 + 概念图',
-    local:'部分（Pro 离线模式）', claim:'无', ratchet:'无', srs:'YES（SM-2）',
-    overlap:'低', note:'面向学生，非代码场景'},
+    local:'部分（Pro 离线模式）', claim:'无', ratchet:'无', srs:'YES（已内置 FSRS v6，建议先用默认 weights 累积 ≥1000 次 reviews 后手动 optimizer）',
+    overlap:'低', note:'面向学生，非代码场景。SRS 算法已从 SM-2 迁移到 FSRS v6（Codex 2026-04-21 官方源取证确认）'},
   'anthropic-skills':{name:'Anthropic Agent Skills', tag:'OSS', url:'https://platform.claude.com/docs/en/agents-and-tools/agent-skills',
     model:'开源 SKILL.md 格式 · 官方 + 社区', focus:'通用 agent 扩展框架',
     local:'部分（文件本地，执行依赖 Claude）', claim:'无', ratchet:'无', srs:'无',

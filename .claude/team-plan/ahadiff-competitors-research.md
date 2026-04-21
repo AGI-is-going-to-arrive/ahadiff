@@ -85,7 +85,7 @@ accuracy(20) · evidence(18) · diff_coverage(14) · learnability(14) · quiz_tr
 | **CodeRabbit** | PR Review | ✅ PR | 部分 | 仅 Enterprise | ❌ | ❌ | SaaS $24/$48 | **中高** |
 | Qodo PR-Agent | PR Review | ✅ PR | ❌ | ✅ 可自部署 | ❌ | ❌ | Apache-2.0 | 中 |
 | Execute Program | SRS 学习 | ❌ 预制课程 | ❌ | ❌ SaaS | ✅ | ❌ | SaaS $19-39 | 低 |
-| RemNote | 通用 SRS | ❌ 笔记 | ❌ | 部分离线 | ✅ SM-2/FSRS | ❌ | Freemium | 低 |
+| RemNote | 通用 SRS | ❌ 笔记 | ❌ | 部分离线 | ✅ FSRS v6 | ❌ | Freemium | 低 |
 | Anthropic Skills | Skill 框架 | ❌ | ❌ | 部分 | ❌ | ❌ | 开源 | 低（生态入口） |
 | awesome-claude-skills | Skill 汇编 | ❌ | ❌ | ✅ | ❌ | ❌ | MIT | 低（发行通道） |
 | What The Diff | Diff 摘要 | ✅ PR | ❌ | ❌ SaaS | ❌ | ❌ | Freemium | 中 |
@@ -127,7 +127,7 @@ accuracy(20) · evidence(18) · diff_coverage(14) · learnability(14) · quiz_tr
 |---|---|---|
 | SC-1 | 发行通道兼顾：PyPI `ahadiff` 包 + 发布到 `awesome-claude-skills` 生态作为 skill 入口 | 外部竞品：ComposioHQ/awesome-claude-skills 55K stars |
 | SC-2 | 与 graphify 互补（repo map + AhaDiff diff overlay），非竞争关系；保留 `graphify-out/GRAPH_REPORT.md` 作 Context Layer 输入 | 灵感项目：graphify 定位、`改名方案.md`:L74-80 |
-| SC-3 | SRS 算法采用 SM-2 或 FSRS，SQLite 存 `.ahadiff/review.sqlite` | 外部竞品：RemNote 使用 SM-2/FSRS |
+| SC-3 | SRS 算法采用 FSRS-6（py-fsrs），SQLite 存 `.ahadiff/review.sqlite` | 外部竞品：RemNote 已内置 FSRS v6 |
 | SC-4 | `.ahadiffignore` 类比 `.gitignore` 过滤路径 | 内部设计：`设计思路.md` 配置层 |
 | SC-5 | `audit.jsonl` 记录每次 LLM 调用（file/token/cost/provider） | 内部设计：`改名方案.md` Settings 段 |
 | SC-6 | section helpfulness Δ（score_with_section − score_without_section）反哺棘轮，Δ ≤ ε 的章节压缩或删除（SKILL0 思想，扩展到 section 粒度） | 内部设计：`改名方案.md`:L145-165 |

@@ -77,8 +77,8 @@
   17. 预留 **Allowlist policy contract**：builtin hard_block（不可禁用）+ soft_detect（可被 allowlist suppress）；v0.1 支持 exact/hash/path-scope，不支持 regex；每 run 存 `allowlist_digest`
   18. 冻结 `ProviderConfig` schema：`provider_class`(openai/openai_responses/gemini/anthropic/azure/newapi/cherryin/ollama) + `model_name` + `base_url` + `api_key_env` + `probed_max_context` + `probed_tpm` + `probed_rpm` + `supports_temperature` + `probe_timestamp`
   21. 冻结**开发测试阶段默认模型**：生成和评估统一使用 `gpt-5.4-mini`（provider_class=openai, 1M 上下文）。config.toml 默认值 `[llm] generate_model = "gpt-5.4-mini"` + `[llm] judge_model = "gpt-5.4-mini"`。生产环境用户可按需将 generate_model 切换为 gpt-5.4 或其他大模型
-  19. 冻结 SQLite 运行时版本门禁：启动时 `sqlite3.sqlite_version_info >= MINIMUM_VERSION`
-  20. 冻结统一连接初始化：`journal_mode=WAL` + `busy_timeout=5000` + `trusted_schema=OFF` + 启动时 `quick_check`（非 integrity_check）
+  19. 冻结 SQLite 运行时版本门禁：启动时 `sqlite3.sqlite_version_info >= (3, 51, 3)`（WAL-reset bug 修复版）。允许 backport 白名单：`(3, 50, 7)` 和 `(3, 44, 6)`。不满足时 `StorageError("SQLite {actual} < 3.51.3, WAL mode unsafe")`。`ahadiff doctor` 输出实际 sqlite3 runtime 来源路径
+  20. 冻结统一连接初始化：`journal_mode=WAL` + `busy_timeout=5000` + `trusted_schema=OFF` + `PRAGMA SQLITE_DBCONFIG_DEFENSIVE=ON`（防止 SQL 注入修改 schema） + 启动时 `quick_check`（快速健康检查）。**两级健康检查**：启动时 `quick_check`（跳过 UNIQUE/index 一致性，速度优先），`ahadiff doctor --deep` 或 migration 前跑 `integrity_check + foreign_key_check`（完整但慢）
   11. 冻结 `Orchestrator` 接口契约：`OrchestratorCommand` DTO（`learn | improve | verify | serve`）+ `OrchestratorResult` 返回结构 + 三条主链路入口签名（`run_learn()`, `run_improve()`, `run_verify()`）+ **serve 链路区分**：serve 是 pull/读模式（被动响应请求），与其他三条 push/写模式本质不同。`run_serve()` 不返回 `OrchestratorResult`，而是启动 ASGI app 的长驻进程。DTO 中 `command=serve` 时附带 `ServeConfig(port, no_browser, bind_host)` 而非 `RunConfig`。`core/orchestrator.py` 统一编排，`cli.py` 仅做参数解析和输出格式化
   12. 冻结 `ServeApp` 接口契约：`src/ahadiff/serve/app.py` 的路由注册协议 + write token 鉴权（`X-AhaDiff-Token` header）+ `Host`+`Origin/Referer` 双校验 + `bind=127.0.0.1`（仅回环） + read-only 默认模式。API 端点清单：`GET /api/locale`, `PUT /api/locale`, `GET /api/runs`, `GET /api/run/:id`, `POST /api/signals/*`。路由鉴权分级：读路由无需 token，写路由必须验 token
   13. 冻结**三层写锁矩阵**（解决并发安全）：
@@ -313,11 +313,11 @@
   6. 实现 **circuit breaker**：连续 N 次失败（默认 5）后熔断该 provider，冷却 `config.toml [provider].circuit_cooldown`（默认 60s）后自动恢复
   7. 实现 **cost ceiling**：per-run token budget（默认 200K input + 50K output），超限时中止并提示
   8. 实现 **cache key 契约**：`hash(diff_content + source_ref + prompt_version + model_id + rubric_version + redaction_config + context_bundle_hash)`，任一变更自动失效
-  9. 实现 **隐私模式感知**：
-     - `strict_local` 模式下只允许 Ollama adapter（本地模型）
+  9. 实现 **隐私模式感知**（**transport boundary 检查，非 provider class 检查**）：
+     - `strict_local` 模式下检查 `base_url` 的 transport boundary：仅允许 `127.0.0.1` / `localhost` / `[::1]` / Unix socket / 用户 `config.toml [security].local_hosts` 显式 allowlist。即使 provider_class=ollama，若 `base_url` 指向非本地地址也拒绝（`SafetyError("strict_local mode: base_url {url} is not loopback")`）
      - `redacted_remote` 下发送脱敏后的 diff
      - `explicit_remote` 下发送原文（需用户确认）
-  10. 实现 **异常处理决策表**（9+ 场景）：(1) 网络超时→重试 3 次 (2) 速率限制→指数退避 (3) context length exceeded→自动 clip diff 后重试 (4) API key 无效→立即 SafetyError (5) 空响应→标记 crash (6) JSON 解码失败→重试 1 次 (7) provider 不可用→切换 fallback (8) 模型返回拒绝→记录并跳过 (9) 超时+重试耗尽→ProviderError
+  10. 实现 **异常处理决策表**（11 场景）：(1) 网络超时→重试 3 次 (2) 速率限制→指数退避 (3) context length exceeded→自动 clip diff 后重试 (4) API key 无效→立即 SafetyError (5) 空响应→标记 crash (6) JSON 解码失败→重试 1 次 (7) provider 不可用→切换 fallback (8) 模型返回拒绝→记录并跳过 (9) 超时+重试耗尽→ProviderError (10) **Windows CTRL_C_EVENT/CTRL_BREAK_EVENT**→捕获 `KeyboardInterrupt`，写入 `status=crash` + `note_json={"interrupted": true}`，清理临时资源后 graceful exit (11) **mid-stream 网络断开**→已消耗 token 写入 UsageEvent，标记 `crash` + 记录 `partial_tokens`
   11. 实现 **audit.jsonl** 记录（数据范围架构新增）：每行含 `schema_version: 1` + `event_id` + `prompt_name` + `prompt_fingerprint` + `request_hash` + `input_tokens` + `output_tokens` + `cost_usd` + `pricing_version` + `cost_confidence` + `billing_mode` + `execution_origin` + `api_principal_hash` + `timestamp`。不存 prompt/response 原文（隐私）
   12. 实现 **audit rotation**：audit.jsonl > 10MB → rotate 为 `audit.1.jsonl.gz`，保留最近 3 份。**故障恢复语义**：rotation 采用 write-then-rename 原子序列：(1) 先 gzip 写入 `audit.1.jsonl.gz.tmp`；(2) `os.replace()` 原子移动为 `audit.1.jsonl.gz`；(3) 清空原 audit.jsonl（truncate）。中断恢复：`ahadiff doctor` 检测到 `.tmp` 后缀残留文件时自动清理（删除 tmp + 不 truncate 原文件，下次写入时重新触发 rotation）。所有 rotation 在 `repo_write_lock` 内执行
   13. 预留 **UsageEvent schema**（v0.2 实现写入 global usage.sqlite）：字段同 audit 事件 + `repo_id`（repo fingerprint），v0.1 仅定义 Pydantic model 不实现 global 写入
@@ -333,15 +333,31 @@
       2. 若 estimated_tokens > provider.max_context * 0.9，自动 clip diff（保留头尾文件和最大变更文件）
       3. 若 clip 后仍超，设置 `degraded_flags.token_exceeded = true`
       4. 日志记录每次调用的 estimated vs actual tokens（actual 来自 provider response usage 字段）
+  16. 定义 **ProviderCapabilities 契约**（Codex R8 新增）：每个 adapter 必须声明能力矩阵
+      ```python
+      class ProviderCapabilities(BaseModel):
+          supports_stream: bool
+          supports_json_mode: bool
+          supports_tool_use: bool
+          supports_temperature: bool         # 与 ProviderConfig.supports_temperature 一致
+          supports_rate_limit_headers: bool  # 响应头含 x-ratelimit-*
+          supports_context_probe: bool       # /v1/models 端点可查 context_window
+          tokenizer_estimation: Literal["tiktoken", "char_div_4", "probe_cached"]
+          api_family: str                    # "openai" | "anthropic" | "gemini" | "ollama"
+          api_family_version: str            # "2024-10" | "v1" | "v1beta" 等
+          provider_kind: str                 # 区分 "openai_chat" | "openai_responses" | "azure" | "openai_compat" | "anthropic" | "gemini" | "ollama"
+      ```
+      实现 `adapter_conformance_test(provider)` 验证声明与实际能力一致
 - **验收标准**:
-  - `pytest tests/unit/test_provider.py` 覆盖 8 种 adapter mock
+  - `pytest tests/unit/test_provider.py` 覆盖 8 种 adapter mock + ProviderCapabilities 声明验证
   - `pytest tests/unit/test_probe.py` 覆盖连通性/temperature/TPM/RPM/context_length 探测
-  - `ahadiff provider test --name my-gpt --base-url https://... --api-key sk-...` 输出探测报告
-  - strict_local 模式下拒绝非 Ollama provider
+  - `ahadiff provider test --name my-gpt --base-url https://... --api-key sk-...` 输出探测报告 + capabilities 矩阵
+  - strict_local 模式下拒绝非 loopback base_url（不仅检查 provider class）
   - 上下文超限时自动 clip 并设置 degraded_flags
   - 429 响应触发 backoff，不崩溃；并发超限时排队
   - circuit breaker 熔断/恢复测试通过
   - audit.jsonl 每行含 schema_version，rotation 在 >10MB 时触发
+  - Windows CTRL_C_EVENT 捕获 + graceful exit 测试
 
 ### Layer 3（依赖 Layer 2b + Layer 1.5）— Claim 闭环
 

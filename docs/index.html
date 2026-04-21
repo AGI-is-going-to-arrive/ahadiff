@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>知返 AhaDiff — AI 写完，Diff 教回</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="description" content="Local-first verified diff learning layer. Turn AI-generated git diffs into learning notes with code evidence chains." />
+<meta name="theme-color" content="#FAF8F2" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+SC:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+/* ===== Design Tokens ===== */
+:root {
+  --paper: #FAF8F2;
+  --subtle: #F2EFE7;
+  --elevated: #FFFFFF;
+  --ink: #1C1B18;
+  --ink-2: #38362F;
+  --muted: #6A6456;
+  --muted-2: #8F8878;
+  --hair: #E6E3D8;
+  --accent: #D27050;
+  --accent-ink: #B04E28;
+  --accent-soft: #F4E4D9;
+  --add-bg: #E4EFE0;
+  --add-fg: #2F6F4F;
+  --del-bg: #F6DCD5;
+  --del-fg: #A33D2B;
+  --success: #2F6F4F;
+  --warning: #B4791F;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-serif: "Newsreader", "Noto Serif SC", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --max-w: 1120px;
+  --section-pad: 96px;
+}
+
+
+/* ===== Reset & Base ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+a { color: var(--accent-ink); text-decoration: none; transition: color .15s; }
+a:hover { color: var(--accent); }
+img { max-width: 100%; display: block; }
+::selection { background: var(--accent-soft); color: var(--accent-ink); }
+
+/* ===== Utilities ===== */
+.container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+.serif { font-family: var(--font-serif); }
+.mono { font-family: var(--font-mono); }
+.section-pad { padding-top: var(--section-pad); padding-bottom: var(--section-pad); }
+
+/* ===== Animations ===== */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideLeft { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: none; } }
+@keyframes blink { 0%,50% { opacity: 1; } 51%,100% { opacity: 0; } }
+@keyframes layerPulse { 0%,100% { opacity: .85; } 50% { opacity: 1; } }
+@keyframes typing { from { width: 0; } to { width: 100%; } }
+
+.reveal { opacity: 0; transform: translateY(24px); transition: opacity .6s ease, transform .6s ease; }
+.reveal.visible { opacity: 1; transform: none; }
+.reveal-delay-1 { transition-delay: .1s; }
+.reveal-delay-2 { transition-delay: .2s; }
+.reveal-delay-3 { transition-delay: .3s; }
+
+/* ===== Navigation ===== */
+.topnav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(250,248,242,.88);
+  backdrop-filter: saturate(1.4) blur(12px);
+  -webkit-backdrop-filter: saturate(1.4) blur(12px);
+  border-bottom: 1px solid var(--hair);
+  transition: background .2s;
+}
+.topnav-inner {
+  max-width: var(--max-w); margin: 0 auto; padding: 0 24px;
+  display: flex; align-items: center; height: 56px; gap: 24px;
+}
+.topnav-brand {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--font-serif); font-weight: 600; font-size: 17px;
+  color: var(--ink); letter-spacing: -.01em;
+}
+.topnav-mark {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-ink));
+  color: #fff; display: grid; place-items: center;
+  font-family: var(--font-serif); font-weight: 600; font-size: 16px;
+  box-shadow: 0 2px 6px -2px rgba(176,78,40,.4);
+}
+.topnav-links { display: flex; gap: 6px; margin-left: auto; align-items: center; }
+.topnav-links a {
+  font-size: 14px; font-weight: 500; color: var(--muted);
+  padding: 6px 12px; border-radius: 6px; transition: all .15s;
+}
+.topnav-links a:hover { color: var(--ink); background: var(--subtle); }
+.lang-toggle {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 500;
+  padding: 4px 10px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--hair); background: var(--elevated);
+  color: var(--muted); transition: all .15s; letter-spacing: .04em;
+}
+.lang-toggle:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ===== Hero ===== */
+.hero {
+  padding-top: 140px; padding-bottom: 80px;
+  text-align: center; position: relative; overflow: hidden;
+}
+.hero::before {
+  content: ''; position: absolute; top: -120px; left: 50%; transform: translateX(-50%);
+  width: 800px; height: 800px; border-radius: 50%;
+  background: radial-gradient(circle, var(--accent-soft) 0%, transparent 70%);
+  opacity: .4; pointer-events: none;
+}
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--accent-ink);
+  background: var(--accent-soft); padding: 6px 16px; border-radius: 20px;
+  margin-bottom: 24px;
+}
+.hero h1 {
+  font-family: var(--font-serif); font-size: clamp(42px, 6vw, 72px);
+  font-weight: 600; letter-spacing: -.03em; line-height: 1.08;
+  margin-bottom: 8px; position: relative;
+}
+.hero h1 .delta {
+  background: linear-gradient(135deg, var(--accent), var(--accent-ink));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text; font-weight: 700;
+}
+.hero-tagline {
+  font-family: var(--font-serif); font-size: clamp(20px, 3vw, 28px);
+  color: var(--ink-2); margin-bottom: 8px; font-weight: 400;
+}
+.hero-tagline-en {
+  font-family: var(--font-mono); font-size: 14px; color: var(--muted);
+  letter-spacing: .04em; margin-bottom: 24px;
+}
+.hero-desc {
+  max-width: 620px; margin: 0 auto 36px; color: var(--muted);
+  font-size: 16px; line-height: 1.7;
+}
+.hero-ctas { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 28px; border-radius: 10px; font-size: 15px; font-weight: 600;
+  background: var(--accent); color: #fff; border: none; cursor: pointer;
+  box-shadow: 0 2px 8px -2px rgba(176,78,40,.4);
+  transition: all .2s;
+}
+.btn-primary:hover { background: var(--accent-ink); transform: translateY(-1px); box-shadow: 0 6px 20px -4px rgba(176,78,40,.5); }
+.btn-secondary {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 28px; border-radius: 10px; font-size: 15px; font-weight: 600;
+  background: transparent; color: var(--ink); cursor: pointer;
+  border: 1.5px solid var(--hair); transition: all .2s;
+}
+.btn-secondary:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+
+/* Hero diff preview */
+.hero-diff {
+  max-width: 600px; margin: 48px auto 0; border-radius: 12px;
+  background: var(--elevated); border: 1px solid var(--hair);
+  box-shadow: 0 8px 40px -12px rgba(120,80,40,.15);
+  overflow: hidden; text-align: left; animation: fadeUp .8s ease .3s both;
+}
+.hero-diff-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px; background: var(--subtle); border-bottom: 1px solid var(--hair);
+  font-family: var(--font-mono); font-size: 12px; color: var(--muted);
+}
+.hero-diff-dots { display: flex; gap: 6px; }
+.hero-diff-dots span { width: 10px; height: 10px; border-radius: 50%; }
+.hero-diff-dots span:nth-child(1) { background: #EF6B5E; }
+.hero-diff-dots span:nth-child(2) { background: #F5BD4F; }
+.hero-diff-dots span:nth-child(3) { background: #61C554; }
+.hero-diff-code {
+  padding: 16px; font-family: var(--font-mono); font-size: 13px;
+  line-height: 1.7; overflow-x: auto;
+}
+.hero-diff-code .line-del { background: var(--del-bg); color: var(--del-fg); padding: 1px 8px; margin: 0 -16px; display: block; }
+.hero-diff-code .line-add { background: var(--add-bg); color: var(--add-fg); padding: 1px 8px; margin: 0 -16px; display: block; }
+.hero-diff-code .line-ctx { color: var(--muted); padding: 1px 8px; margin: 0 -16px; display: block; }
+.hero-diff-code .line-hdr { color: var(--accent); padding: 1px 8px; margin: 0 -16px; display: block; font-weight: 500; }
+
+/* Arrow between diff and insight */
+.hero-arrow {
+  display: flex; justify-content: center; padding: 20px 0;
+  color: var(--accent); font-size: 28px; animation: fadeIn .6s ease .8s both;
+}
+
+.hero-insight {
+  max-width: 600px; margin: 0 auto; border-radius: 12px;
+  background: var(--elevated); border: 1px solid var(--hair);
+  box-shadow: 0 8px 40px -12px rgba(120,80,40,.15);
+  overflow: hidden; text-align: left; animation: fadeUp .8s ease 1s both;
+}
+.hero-insight-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px; background: var(--add-bg); border-bottom: 1px solid var(--hair);
+  font-family: var(--font-mono); font-size: 12px; color: var(--add-fg); font-weight: 500;
+}
+.hero-insight-body { padding: 16px 20px; font-size: 14px; line-height: 1.75; }
+.hero-insight-body .claim {
+  display: flex; gap: 8px; padding: 6px 0; align-items: flex-start;
+}
+.claim-badge {
+  flex: none; font-family: var(--font-mono); font-size: 10px;
+  padding: 2px 8px; border-radius: 4px; font-weight: 500;
+  background: var(--add-bg); color: var(--add-fg); margin-top: 3px;
+}
+.claim-badge.weak { background: #FFF3CD; color: var(--warning); }
+.claim-text { color: var(--ink-2); }
+.claim-ref { font-family: var(--font-mono); font-size: 12px; color: var(--accent); }
+
+/* ===== Problem Section ===== */
+.problem { background: var(--subtle); }
+.section-eyebrow {
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 12px;
+}
+.section-title {
+  font-family: var(--font-serif); font-size: clamp(28px, 4vw, 40px);
+  font-weight: 500; letter-spacing: -.02em; margin-bottom: 12px; line-height: 1.15;
+}
+.section-subtitle { color: var(--muted); font-size: 16px; max-width: 560px; margin-bottom: 48px; }
+.pain-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.pain-card {
+  background: var(--elevated); border: 1px solid var(--hair); border-radius: 12px;
+  padding: 28px 24px;
+  box-shadow: 0 2px 12px -6px rgba(120,80,40,.1);
+}
+.pain-icon {
+  width: 48px; height: 48px; border-radius: 12px; margin-bottom: 16px;
+  display: grid; place-items: center;
+}
+.pain-icon.red { background: var(--del-bg); color: var(--del-fg); }
+.pain-icon.amber { background: #FFF3CD; color: var(--warning); }
+.pain-icon.grey { background: var(--subtle); color: var(--muted); }
+.pain-card h3 { font-size: 17px; font-weight: 600; margin-bottom: 8px; }
+.pain-card p { color: var(--muted); font-size: 14px; line-height: 1.65; }
+
+/* ===== How It Works ===== */
+.steps-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; position: relative; }
+.step-card {
+  background: var(--elevated); border: 1px solid var(--hair); border-radius: 12px;
+  padding: 24px 20px; text-align: center; position: relative;
+  box-shadow: 0 2px 12px -6px rgba(120,80,40,.1);
+}
+.step-num {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+  color: var(--accent); background: var(--accent-soft);
+  width: 28px; height: 28px; border-radius: 50%; display: inline-grid;
+  place-items: center; margin-bottom: 14px;
+}
+.step-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+.step-card .step-cmd {
+  font-family: var(--font-mono); font-size: 12px; color: var(--accent-ink);
+  background: var(--accent-soft); padding: 3px 10px; border-radius: 4px;
+  display: inline-block; margin-bottom: 10px;
+}
+.step-card p { color: var(--muted); font-size: 13px; line-height: 1.6; }
+.step-arrow {
+  position: absolute; top: 50%; right: -12px; transform: translateY(-50%);
+  color: var(--accent); font-size: 18px; z-index: 1;
+}
+
+/* ===== Features ===== */
+.feat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+.feat-card {
+  background: var(--elevated); border: 1px solid var(--hair); border-radius: 12px;
+  padding: 24px 20px;
+  box-shadow: 0 2px 12px -6px rgba(120,80,40,.1);
+  transition: all .2s;
+}
+.feat-card:hover { border-color: var(--accent-soft); box-shadow: 0 8px 28px -8px rgba(120,80,40,.18); transform: translateY(-2px); }
+.feat-icon {
+  width: 40px; height: 40px; border-radius: 10px;
+  background: var(--accent-soft); color: var(--accent-ink);
+  display: grid; place-items: center; margin-bottom: 14px;
+}
+.feat-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+.feat-card p { color: var(--muted); font-size: 13px; line-height: 1.6; }
+
+/* ===== Architecture ===== */
+.arch { background: var(--subtle); }
+.arch-stack { max-width: 700px; margin: 0 auto; display: flex; flex-direction: column; gap: 6px; }
+.arch-layer {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 18px; border-radius: 8px; cursor: default;
+  border: 1px solid transparent; transition: all .25s;
+  position: relative;
+}
+.arch-layer:hover { border-color: var(--accent); background: var(--elevated); box-shadow: 0 4px 16px -6px rgba(120,80,40,.15); transform: translateX(4px); }
+.arch-layer:hover .arch-tooltip { opacity: 1; visibility: visible; transform: translateX(0); }
+.arch-num {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+  color: #fff; width: 26px; height: 26px; border-radius: 6px;
+  display: grid; place-items: center; flex: none;
+}
+.arch-layer-name { font-weight: 600; font-size: 14px; flex: 1; }
+.arch-layer-sub { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.arch-tooltip {
+  position: absolute; left: calc(100% + 16px); top: 50%; transform: translateX(8px) translateY(-50%);
+  background: var(--ink); color: var(--paper); padding: 8px 14px; border-radius: 8px;
+  font-size: 12px; line-height: 1.5; white-space: nowrap;
+  opacity: 0; visibility: hidden; transition: all .2s;
+  pointer-events: none; z-index: 10;
+}
+.arch-tooltip::before {
+  content: ''; position: absolute; left: -6px; top: 50%; transform: translateY(-50%);
+  border: 6px solid transparent; border-right-color: var(--ink);
+}
+/* Layer colors */
+.al-0 .arch-num { background: #6366F1; }
+.al-0 { background: rgba(99,102,241,.08); }
+.al-1 .arch-num { background: var(--accent); }
+.al-1 { background: rgba(210,112,80,.08); }
+.al-2 .arch-num { background: var(--warning); }
+.al-2 { background: rgba(180,121,31,.08); }
+.al-3 .arch-num { background: #0891B2; }
+.al-3 { background: rgba(8,145,178,.08); }
+.al-4 .arch-num { background: var(--success); }
+.al-4 { background: rgba(47,111,79,.08); }
+.al-5 .arch-num { background: #7C3AED; }
+.al-5 { background: rgba(124,58,237,.08); }
+.al-6 .arch-num { background: #DB2777; }
+.al-6 { background: rgba(219,39,119,.08); }
+.al-7 .arch-num { background: #059669; }
+.al-7 { background: rgba(5,150,105,.08); }
+
+/* ===== Terminal Demo ===== */
+.terminal {
+  max-width: 660px; margin: 0 auto; border-radius: 12px;
+  background: #1E1D1A; border: 1px solid #333;
+  box-shadow: 0 12px 48px -12px rgba(0,0,0,.4); overflow: hidden;
+}
+.terminal-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px; background: #2A2926; border-bottom: 1px solid #333;
+}
+.terminal-dots { display: flex; gap: 6px; }
+.terminal-dots span { width: 10px; height: 10px; border-radius: 50%; }
+.terminal-dots span:nth-child(1) { background: #EF6B5E; }
+.terminal-dots span:nth-child(2) { background: #F5BD4F; }
+.terminal-dots span:nth-child(3) { background: #61C554; }
+.terminal-title { font-family: var(--font-mono); font-size: 12px; color: #888; margin-left: 8px; }
+.terminal-body {
+  padding: 20px; font-family: var(--font-mono); font-size: 13px;
+  line-height: 1.8; color: #C8C4B8; overflow-x: auto;
+}
+.terminal-body .prompt { color: var(--accent); }
+.terminal-body .cmd { color: #E8E5DC; }
+.terminal-body .ok { color: #7CC896; }
+.terminal-body .info { color: #6BB3D9; }
+.terminal-body .score { color: #F5BD4F; }
+.terminal-body .arrow { color: var(--accent); }
+
+/* ===== Comparison Table ===== */
+.cmp-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.cmp-table {
+  width: 100%; border-collapse: collapse; font-size: 14px;
+  background: var(--elevated); border-radius: 12px;
+  border: 1px solid var(--hair); overflow: hidden;
+}
+.cmp-table thead th {
+  padding: 14px 16px; text-align: center; font-weight: 600; font-size: 13px;
+  background: var(--subtle); border-bottom: 1px solid var(--hair);
+  position: sticky; top: 0;
+}
+.cmp-table thead th:first-child { text-align: left; }
+.cmp-table tbody td {
+  padding: 12px 16px; text-align: center; border-bottom: 1px solid var(--hair);
+}
+.cmp-table tbody td:first-child { text-align: left; font-weight: 500; }
+.cmp-table tbody tr:last-child td { border-bottom: none; }
+.cmp-table tbody tr:first-child { background: var(--accent-soft); }
+.cmp-table tbody tr:first-child td:first-child { color: var(--accent-ink); font-weight: 700; }
+.cmp-check { color: var(--success); font-weight: 700; font-size: 16px; }
+.cmp-cross { color: var(--muted-2); font-size: 16px; }
+.cmp-partial { color: var(--warning); font-size: 14px; }
+
+/* ===== Getting Started ===== */
+.start { background: var(--subtle); }
+.start-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.start-card {
+  background: var(--elevated); border: 1px solid var(--hair); border-radius: 12px;
+  padding: 28px 24px;
+  box-shadow: 0 2px 12px -6px rgba(120,80,40,.1);
+}
+.start-card .start-num {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+  color: #fff; background: var(--accent);
+  width: 28px; height: 28px; border-radius: 50%; display: inline-grid;
+  place-items: center; margin-bottom: 14px;
+}
+.start-card h3 { font-size: 17px; font-weight: 600; margin-bottom: 10px; }
+.start-card p { color: var(--muted); font-size: 14px; margin-bottom: 14px; line-height: 1.6; }
+.code-block {
+  background: #1E1D1A; border-radius: 8px; padding: 14px 16px;
+  font-family: var(--font-mono); font-size: 13px; line-height: 1.7;
+  color: #C8C4B8; overflow-x: auto;
+}
+.code-block .prompt { color: var(--accent); }
+.code-block .cmd { color: #E8E5DC; }
+
+/* ===== Tech Badges ===== */
+.badges { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 500;
+  background: var(--elevated); border: 1px solid var(--hair);
+  color: var(--ink-2); transition: all .15s;
+}
+.badge:hover { border-color: var(--accent); color: var(--accent-ink); }
+.badge-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.badge-dot.python { background: #3776AB; }
+.badge-dot.react { background: #61DAFB; }
+.badge-dot.sqlite { background: #003B57; }
+.badge-dot.starlette { background: #05998B; }
+.badge-dot.fsrs { background: #DB2777; }
+.badge-dot.vite { background: #646CFF; }
+
+/* ===== Footer ===== */
+.footer {
+  border-top: 1px solid var(--hair);
+  padding: 40px 24px; text-align: center;
+  color: var(--muted); font-size: 13px;
+}
+.footer-links { display: flex; justify-content: center; gap: 24px; margin-bottom: 16px; }
+.footer-links a { color: var(--muted); font-weight: 500; }
+.footer-links a:hover { color: var(--accent); }
+.footer-version {
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--muted-2); margin-top: 8px;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 1024px) {
+  .feat-grid { grid-template-columns: repeat(2, 1fr); }
+  .arch-tooltip { display: none; }
+}
+@media (max-width: 768px) {
+  :root { --section-pad: 64px; }
+  .topnav-links a[data-nav] { display: none; }
+  .pain-grid, .start-grid { grid-template-columns: 1fr; }
+  .steps-grid { grid-template-columns: repeat(2, 1fr); }
+  .step-arrow { display: none; }
+  .feat-grid { grid-template-columns: 1fr; }
+  .hero { padding-top: 110px; }
+  .hero-diff, .hero-insight { margin-left: 12px; margin-right: 12px; }
+}
+@media (max-width: 480px) {
+  .steps-grid { grid-template-columns: 1fr; }
+  .hero h1 { font-size: 36px; }
+  .container { padding: 0 16px; }
+}
+
+/* ===== Print ===== */
+@media print {
+  .topnav, .lang-toggle, .hero::before, .hero-arrow { display: none; }
+  body { background: #fff; color: #000; font-size: 12pt; }
+  .section-pad { padding-top: 24pt; padding-bottom: 24pt; }
+  .hero { padding-top: 0; }
+  .terminal { box-shadow: none; border: 1px solid #ccc; }
+  .feat-card, .pain-card, .start-card, .step-card { box-shadow: none; break-inside: avoid; }
+  a { color: #000; }
+  .reveal { opacity: 1 !important; transform: none !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- ===== Top Navigation ===== -->
+<nav class="topnav">
+  <div class="topnav-inner">
+    <a href="#" class="topnav-brand">
+      <div class="topnav-mark">&Delta;</div>
+      <span data-i18n="nav.brand">知返</span>
+    </a>
+    <div class="topnav-links">
+      <a href="#problem" data-nav data-i18n="nav.problem">痛点</a>
+      <a href="#how" data-nav data-i18n="nav.how">原理</a>
+      <a href="#features" data-nav data-i18n="nav.features">特性</a>
+      <a href="#arch" data-nav data-i18n="nav.arch">架构</a>
+      <a href="#start" data-nav data-i18n="nav.start">开始</a>
+      <button class="lang-toggle" id="langToggle" aria-label="Toggle language">zh / EN</button>
+    </div>
+  </div>
+</nav>
+
+<!-- ===== Hero ===== -->
+<section class="hero container" id="hero">
+  <div class="hero-badge"><span>&Delta;</span> <span data-i18n="hero.badge">Local-first Verified Diff Learning</span></div>
+  <h1><span data-i18n="hero.title.pre">知返 Aha</span><span class="delta">Diff</span></h1>
+  <p class="hero-tagline" data-i18n="hero.tagline">AI 写完，Diff 教回。</p>
+  <p class="hero-tagline-en" data-i18n="hero.tagline_en">Ship with AI. Learn it back.</p>
+  <p class="hero-desc" data-i18n="hero.desc">一个 local-first 的 verified diff learning layer。把 Claude / Codex / Cursor 等 AI 工具写出的 git diff，变成带代码证据链的学习笔记、概念图谱、主动回忆测验和 SRS 复习卡。</p>
+  <p class="hero-status" data-i18n="hero.status" style="display:inline-block;margin:12px auto 0;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:500;background:var(--accent-soft);color:var(--accent-ink);font-family:var(--font-mono);letter-spacing:.04em">v0.1 Design Preview — Coming Soon</p>
+  <div class="hero-ctas">
+    <a href="#start" class="btn-primary" data-i18n="hero.cta1">Design Preview</a>
+    <a href="https://github.com/agi-is-coming/ahadiff" target="_blank" rel="noopener" class="btn-secondary">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+      GitHub
+    </a>
+  </div>
+
+  <!-- Diff Preview -->
+  <div class="hero-diff">
+    <div class="hero-diff-bar">
+      <div class="hero-diff-dots"><span></span><span></span><span></span></div>
+      <span>auth/session.py</span>
+    </div>
+    <div class="hero-diff-code">
+      <span class="line-hdr">@@ -12,6 +12,10 @@ class SessionManager:</span>
+      <span class="line-ctx">&nbsp;&nbsp;&nbsp;&nbsp;def validate(self, token: str):</span>
+      <span class="line-del">-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return jwt.decode(token, KEY)</span>
+      <span class="line-add">+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;try:</span>
+      <span class="line-add">+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;payload = jwt.decode(token, KEY, algorithms=["HS256"])</span>
+      <span class="line-add">+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return payload if payload["exp"] > time.time() else None</span>
+      <span class="line-add">+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;except jwt.InvalidTokenError:</span>
+      <span class="line-add">+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return None</span>
+    </div>
+  </div>
+
+  <div class="hero-arrow">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+  </div>
+
+  <div class="hero-insight">
+    <div class="hero-insight-bar">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      <span data-i18n="hero.insight_title">AhaDiff Verified Lesson</span>
+    </div>
+    <div class="hero-insight-body">
+      <div class="claim"><span class="claim-badge">verified</span><span class="claim-text" data-i18n="hero.claim1">Added explicit algorithm pinning (HS256) to prevent algorithm confusion attacks</span> <span class="claim-ref">auth/session.py:15</span></div>
+      <div class="claim"><span class="claim-badge">verified</span><span class="claim-text" data-i18n="hero.claim2">Token expiry check uses monotonic comparison with time.time()</span> <span class="claim-ref">auth/session.py:16</span></div>
+      <div class="claim"><span class="claim-badge weak">weak</span><span class="claim-text" data-i18n="hero.claim3">Exception handler catches all JWT errors including expired signatures</span> <span class="claim-ref">auth/session.py:17</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Problem Statement ===== -->
+<section class="section-pad problem" id="problem">
+  <div class="container">
+    <div class="section-eyebrow reveal" data-i18n="problem.eyebrow">THE PROBLEM</div>
+    <h2 class="section-title reveal">
+      <span data-i18n="problem.title">Vibe Coding 的知识断层</span>
+    </h2>
+    <p class="section-subtitle reveal" data-i18n="problem.subtitle">AI 工具让你 10x 产出，但学习曲线变成了一条平线。</p>
+    <div class="pain-grid">
+      <div class="pain-card reveal">
+        <div class="pain-icon red">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <h3 data-i18n="problem.p1.title">AI 写的代码看不懂</h3>
+        <p data-i18n="problem.p1.desc">Copilot / Claude 产出大量代码，你点了 Accept，却说不清它为什么有效、何时会失败。</p>
+      </div>
+      <div class="pain-card reveal reveal-delay-1">
+        <div class="pain-icon amber">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+        </div>
+        <h3 data-i18n="problem.p2.title">Code Review 成了橡皮图章</h3>
+        <p data-i18n="problem.p2.desc">diff 太大、上下文不够，review 变成形式主义。关键逻辑在 LGTM 中悄悄滑过。</p>
+      </div>
+      <div class="pain-card reveal reveal-delay-2">
+        <div class="pain-icon grey">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20h.01"/><path d="M7 20v-4"/><path d="M12 20v-8"/><path d="M17 20V8"/><path d="M22 4v16"/></svg>
+        </div>
+        <h3 data-i18n="problem.p3.title">知识债务无声堆积</h3>
+        <p data-i18n="problem.p3.desc">用 AI 交付越快，技术债中"人脑里欠的那部分"累积越深，直到一次线上事故暴露一切。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== How It Works ===== -->
+<section class="section-pad" id="how">
+  <div class="container">
+    <div class="section-eyebrow reveal" data-i18n="how.eyebrow">HOW IT WORKS</div>
+    <h2 class="section-title reveal" data-i18n="how.title">四步从 Diff 到掌握</h2>
+    <p class="section-subtitle reveal" data-i18n="how.subtitle">每次 AI 写完代码，AhaDiff 用证据链帮你真正学会它。</p>
+    <div class="steps-grid">
+      <div class="step-card reveal">
+        <div class="step-num">1</div>
+        <div class="step-cmd">git diff</div>
+        <h3 data-i18n="how.s1.title">捕获变更</h3>
+        <p data-i18n="how.s1.desc">自动捕获 last / staged / unstaged / range 等多种 diff 模式，支持 patch 文件和 stdin。</p>
+        <span class="step-arrow">&rarr;</span>
+      </div>
+      <div class="step-card reveal reveal-delay-1">
+        <div class="step-num">2</div>
+        <div class="step-cmd">verify</div>
+        <h3 data-i18n="how.s2.title">AI 验证分析</h3>
+        <p data-i18n="how.s2.desc">生成 verified claims，每句解释绑定 file:line 证据。五种状态确保可信度。</p>
+        <span class="step-arrow">&rarr;</span>
+      </div>
+      <div class="step-card reveal reveal-delay-2">
+        <div class="step-num">3</div>
+        <div class="step-cmd">learn</div>
+        <h3 data-i18n="how.s3.title">生成学习材料</h3>
+        <p data-i18n="how.s3.desc">课文 + 测验 + SRS 卡片。三阶段撤架 (Full/Hint/Compact) 渐进掌握。</p>
+        <span class="step-arrow">&rarr;</span>
+      </div>
+      <div class="step-card reveal reveal-delay-3">
+        <div class="step-num">4</div>
+        <div class="step-cmd">ratchet</div>
+        <h3 data-i18n="how.s4.title">棘轮质量追踪</h3>
+        <p data-i18n="how.s4.desc">8 维评估 100 分制。Git ratchet 确保只进不退，Phase 2.5 突破瓶颈。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Feature Cards ===== -->
+<section class="section-pad" id="features" style="background: var(--subtle);">
+  <div class="container">
+    <div class="section-eyebrow reveal" data-i18n="feat.eyebrow">FEATURES</div>
+    <h2 class="section-title reveal" data-i18n="feat.title">每个细节都为学习设计</h2>
+    <p class="section-subtitle reveal" data-i18n="feat.subtitle">不是又一个文档工具，而是一个让你和 AI 共同成长的学习系统。</p>
+    <div class="feat-grid">
+      <!-- 1: Verified Claims -->
+      <div class="feat-card reveal">
+        <div class="feat-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
+        <h3 data-i18n="feat.f1.title">Verified Claims</h3>
+        <p data-i18n="feat.f1.desc">每句解释都链接到 file:line 代码证据。5 种 claim 状态 (verified / weak / not_proven / contradicted / rejected) 确保可信。</p>
+      </div>
+      <!-- 2: FSRS -->
+      <div class="feat-card reveal reveal-delay-1">
+        <div class="feat-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <h3 data-i18n="feat.f2.title">FSRS Spaced Repetition</h3>
+        <p data-i18n="feat.f2.desc">采用 Anki 同源的 FSRS-6 算法，根据你的答题表现自动调整复习间隔。</p>
+      </div>
+      <!-- 3: Scaffolding -->
+      <div class="feat-card reveal reveal-delay-2">
+        <div class="feat-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        </div>
+        <h3 data-i18n="feat.f3.title">Three-Stage Scaffolding</h3>
+        <p data-i18n="feat.f3.desc">Full &rarr; Hint &rarr; Compact 三阶段学习撤架。由 FSRS 记忆稳定度自动驱动，越熟悉提示越少。</p>
+      </div>
+      <!-- 4: Rubric -->
+      <div class="feat-card reveal reveal-delay-3">
+        <div class="feat-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+        </div>
+        <h3 data-i18n="feat.f4.title">8-Dimension Rubric</h3>
+        <p data-i18n="feat.f4.desc">accuracy / evidence / diff_coverage / learnability / quiz_transfer / spec_alignment / conciseness / safety_privacy = 100 分。</p>
+      </div>
+      <!-- 5: Ratchet -->
+      <div class="feat-card reveal">
+        <div class="feat-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        </div>
+        <h3 data-i18n="feat.f5.title">Git Ratchet</h3>
+        <p data-i18n="feat.f5.desc">只进不退：improve loop 渐进优化，Phase 2.5 在卡住时触发结构性重写，突破质量瓶颈。</p>
+      </div>
+      <!-- 6: Privacy -->
+      <div class="feat-card reveal reveal-delay-1">
+        <div class="feat-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+        <h3 data-i18n="feat.f6.title">Privacy First</h3>
+        <p data-i18n="feat.f6.desc">strict_local / redacted_remote / explicit_remote 三档隐私。Secret scan 在所有操作之前执行，绝不泄露。</p>
+      </div>
+      <!-- 7: Providers -->
+      <div class="feat-card reveal reveal-delay-2">
+        <div class="feat-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+        <h3 data-i18n="feat.f7.title">8 LLM Providers</h3>
+        <p data-i18n="feat.f7.desc">OpenAI / Anthropic / Gemini / Azure / Ollama 等 8 种 API 格式。BYOK 自动探测 context length、TPM/RPM。</p>
+      </div>
+      <!-- 8: Multi-Agent -->
+      <div class="feat-card reveal reveal-delay-3">
+        <div class="feat-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <h3 data-i18n="feat.f8.title">Multi-Agent Install</h3>
+        <p data-i18n="feat.f8.desc">Claude Code / Codex CLI / Gemini CLI / OpenCode 一键接入，AI agent 在你的工作流中无缝集成。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Architecture ===== -->
+<section class="section-pad arch" id="arch">
+  <div class="container">
+    <div class="section-eyebrow reveal" data-i18n="arch.eyebrow">ARCHITECTURE</div>
+    <h2 class="section-title reveal" data-i18n="arch.title">八层分层架构</h2>
+    <p class="section-subtitle reveal" data-i18n="arch.subtitle">从 diff 捕获到 UI 渲染，每一层各司其职。</p>
+    <div class="arch-stack">
+      <div class="arch-layer al-0 reveal">
+        <div class="arch-num">0</div>
+        <div class="arch-layer-name">Schema & Contract</div>
+        <div class="arch-layer-sub" data-i18n="arch.l0">ClaimStatus / RunSource / EvalBundle / EventLog</div>
+        <div class="arch-tooltip" data-i18n="arch.l0.tip">Core contract freeze: immutable type definitions</div>
+      </div>
+      <div class="arch-layer al-1 reveal reveal-delay-1">
+        <div class="arch-num">1</div>
+        <div class="arch-layer-name">Diff Capture</div>
+        <div class="arch-layer-sub" data-i18n="arch.l1">last / since / staged / unstaged / show / range / patch</div>
+        <div class="arch-tooltip" data-i18n="arch.l1.tip">Git diff in 7 modes + patch file + stdin</div>
+      </div>
+      <div class="arch-layer al-2 reveal reveal-delay-1">
+        <div class="arch-num">2</div>
+        <div class="arch-layer-name">Context</div>
+        <div class="arch-layer-sub" data-i18n="arch.l2">2a Assembly + 2b Safety Gate + 2c Budget</div>
+        <div class="arch-tooltip" data-i18n="arch.l2.tip">Repo files, secret scan, token budget</div>
+      </div>
+      <div class="arch-layer al-3 reveal reveal-delay-2">
+        <div class="arch-num">3</div>
+        <div class="arch-layer-name">Lesson Generation</div>
+        <div class="arch-layer-sub" data-i18n="arch.l3">prompts/*.md + claim extraction</div>
+        <div class="arch-tooltip" data-i18n="arch.l3.tip">Markdown prompts generate structured lessons</div>
+      </div>
+      <div class="arch-layer al-4 reveal reveal-delay-2">
+        <div class="arch-num">4</div>
+        <div class="arch-layer-name">Verification</div>
+        <div class="arch-layer-sub" data-i18n="arch.l4">claims.jsonl + deterministic + LLM judge</div>
+        <div class="arch-tooltip" data-i18n="arch.l4.tip">5-state claims: verified / weak / not_proven / contradicted / rejected</div>
+      </div>
+      <div class="arch-layer al-5 reveal reveal-delay-3">
+        <div class="arch-num">5</div>
+        <div class="arch-layer-name">Ratchet</div>
+        <div class="arch-layer-sub" data-i18n="arch.l5">evaluation bundle (immutable) + review.sqlite</div>
+        <div class="arch-tooltip" data-i18n="arch.l5.tip">Git ratchet: score can only go up</div>
+      </div>
+      <div class="arch-layer al-6 reveal reveal-delay-3">
+        <div class="arch-num">6</div>
+        <div class="arch-layer-name">Learning</div>
+        <div class="arch-layer-sub" data-i18n="arch.l6">quiz + SRS review + concepts.jsonl</div>
+        <div class="arch-tooltip" data-i18n="arch.l6.tip">FSRS-6 spaced repetition + concept graph</div>
+      </div>
+      <div class="arch-layer al-7 reveal">
+        <div class="arch-num">7</div>
+        <div class="arch-layer-name">Wiki + UI</div>
+        <div class="arch-layer-sub" data-i18n="arch.l7">React SPA via ahadiff serve</div>
+        <div class="arch-tooltip" data-i18n="arch.l7.tip">Starlette API + Vite + React 19</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Terminal Demo ===== -->
+<section class="section-pad" id="demo">
+  <div class="container">
+    <div class="section-eyebrow reveal" style="text-align:center;" data-i18n="demo.eyebrow">SEE IT IN ACTION</div>
+    <h2 class="section-title reveal" style="text-align:center;" data-i18n="demo.title">一条命令开始学习</h2>
+    <p class="section-subtitle reveal" style="text-align:center;margin-left:auto;margin-right:auto;" data-i18n="demo.subtitle">在任何 git 仓库中运行 ahadiff，立刻获得带证据链的学习反馈。</p>
+    <div class="terminal reveal">
+      <div class="terminal-bar">
+        <div class="terminal-dots"><span></span><span></span><span></span></div>
+        <span class="terminal-title">Terminal</span>
+      </div>
+      <div class="terminal-body">
+        <div><span class="prompt">$ </span><span class="cmd">pip install ahadiff</span></div>
+        <div><span class="prompt">$ </span><span class="cmd">cd my-project</span></div>
+        <div><span class="prompt">$ </span><span class="cmd">ahadiff learn --last</span></div>
+        <div>&nbsp;</div>
+        <div><span class="ok">&check; </span><span data-i18n="demo.t1">Captured 3 files, 47 lines changed</span></div>
+        <div><span class="ok">&check; </span><span data-i18n="demo.t2">Generated 12 verified claims</span> <span class="info">(10 verified, 2 weak)</span></div>
+        <div><span class="ok">&check; </span><span data-i18n="demo.t3">Created lesson</span> <span class="info">(full/hint/compact)</span></div>
+        <div><span class="ok">&check; </span><span data-i18n="demo.t4">Generated 5 quiz questions</span></div>
+        <div><span class="ok">&check; </span>Score: <span class="score">86/100</span> (PASS) <span class="info">&mdash; weakest: quiz_transfer</span></div>
+        <div><span class="arrow">&rarr; </span><span data-i18n="demo.t5">Opening</span> <span class="info">http://localhost:8765</span> ...</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Comparison Table ===== -->
+<section class="section-pad" id="compare" style="background:var(--subtle);">
+  <div class="container">
+    <div class="section-eyebrow reveal" data-i18n="cmp.eyebrow">COMPARISON</div>
+    <h2 class="section-title reveal" data-i18n="cmp.title">AhaDiff vs. Alternatives</h2>
+    <p class="section-subtitle reveal" data-i18n="cmp.subtitle">不是取代 Code Review，而是补上缺失的学习环。</p>
+    <div class="cmp-wrap reveal">
+      <table class="cmp-table">
+        <thead>
+          <tr>
+            <th data-i18n="cmp.col0">Tool</th>
+            <th data-i18n="cmp.col1">Verified Claims</th>
+            <th data-i18n="cmp.col2">SRS</th>
+            <th data-i18n="cmp.col3">Ratchet</th>
+            <th data-i18n="cmp.col4">Local-first</th>
+            <th data-i18n="cmp.col5">Evidence Chain</th>
+            <th data-i18n="cmp.col6">Agent Install</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>AhaDiff</td>
+            <td class="cmp-check">&check;</td>
+            <td class="cmp-check">&check;</td>
+            <td class="cmp-check">&check;</td>
+            <td class="cmp-check">&check;</td>
+            <td class="cmp-check">&check;</td>
+            <td class="cmp-check">&check;</td>
+          </tr>
+          <tr>
+            <td>Code Wiki</td>
+            <td class="cmp-cross">&ndash;</td>
+            <td class="cmp-cross">&ndash;</td>
+            <td class="cmp-cross">&ndash;</td>
+            <td class="cmp-cross">&ndash;</td>
+            <td class="cmp-partial">&sim;</td>
+            <td class="cmp-cross">&ndash;</td>
+          </tr>
+          <tr>
+            <td>Diffity</td>
+            <td class="cmp-partial">&sim;</td>
+            <td class="cmp-cross">&ndash;</td>
+            <td class="cmp-cross">&ndash;</td>
+            <td class="cmp-check">&check;</td>
+            <td class="cmp-cross">&ndash;</td>
+            <td class="cmp-cross">&ndash;</td>
+          </tr>
+          <tr>
+            <td>Anki + Code</td>
+            <td class="cmp-cross">&ndash;</td>
+            <td class="cmp-check">&check;</td>
+            <td class="cmp-cross">&ndash;</td>
+            <td class="cmp-check">&check;</td>
+            <td class="cmp-cross">&ndash;</td>
+            <td class="cmp-cross">&ndash;</td>
+          </tr>
+          <tr>
+            <td>Exercism</td>
+            <td class="cmp-cross">&ndash;</td>
+            <td class="cmp-cross">&ndash;</td>
+            <td class="cmp-partial">&sim;</td>
+            <td class="cmp-cross">&ndash;</td>
+            <td class="cmp-cross">&ndash;</td>
+            <td class="cmp-cross">&ndash;</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Getting Started ===== -->
+<section class="section-pad start" id="start">
+  <div class="container">
+    <div class="section-eyebrow reveal" data-i18n="start.eyebrow">PLANNED INTERFACE</div>
+    <h2 class="section-title reveal" data-i18n="start.title">三步开始（计划中）</h2>
+    <p class="section-subtitle reveal" data-i18n="start.subtitle">从安装到第一个学习循环，不超过两分钟。</p>
+    <div class="start-grid">
+      <div class="start-card reveal">
+        <div class="start-num">1</div>
+        <h3 data-i18n="start.c1.title">Install</h3>
+        <p data-i18n="start.c1.desc">通过 pip 安装 AhaDiff CLI 工具。</p>
+        <div class="code-block"><span class="prompt">$ </span><span class="cmd">pip install ahadiff</span></div>
+      </div>
+      <div class="start-card reveal reveal-delay-1">
+        <div class="start-num">2</div>
+        <h3 data-i18n="start.c2.title">Learn</h3>
+        <p data-i18n="start.c2.desc">在你的项目中运行 learn 命令，分析最近一次提交的 diff。</p>
+        <div class="code-block"><span class="prompt">$ </span><span class="cmd">cd your-project</span><br/><span class="prompt">$ </span><span class="cmd">ahadiff learn --last</span></div>
+      </div>
+      <div class="start-card reveal reveal-delay-2">
+        <div class="start-num">3</div>
+        <h3 data-i18n="start.c3.title">Review</h3>
+        <p data-i18n="start.c3.desc">打开 Web UI 进行 SRS 复习和测验，巩固知识。</p>
+        <div class="code-block"><span class="prompt">$ </span><span class="cmd">ahadiff serve</span><br/><span style="color:#6BB3D9;"># Opens http://localhost:8765</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Tech Stack Badges ===== -->
+<section class="section-pad" id="tech">
+  <div class="container" style="text-align:center;">
+    <div class="section-eyebrow reveal" data-i18n="tech.eyebrow">TECH STACK</div>
+    <h2 class="section-title reveal" style="margin-bottom:36px;" data-i18n="tech.title">Built On</h2>
+    <div class="badges reveal">
+      <div class="badge"><span class="badge-dot python"></span>Python 3.11+</div>
+      <div class="badge"><span class="badge-dot react"></span>React 19</div>
+      <div class="badge"><span class="badge-dot sqlite"></span>SQLite WAL</div>
+      <div class="badge"><span class="badge-dot starlette"></span>Starlette</div>
+      <div class="badge"><span class="badge-dot fsrs"></span>FSRS-6</div>
+      <div class="badge"><span class="badge-dot vite"></span>Vite</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Footer ===== -->
+<footer class="footer">
+  <div class="footer-links">
+    <a href="https://github.com/agi-is-coming/ahadiff" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://github.com/agi-is-coming/ahadiff/tree/main/doc" target="_blank" rel="noopener" data-i18n="footer.docs">Documentation</a>
+    <a href="https://github.com/agi-is-coming/ahadiff/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+  </div>
+  <p data-i18n="footer.credit">Built with care by the AhaDiff team.</p>
+  <div class="footer-version">v0.1 (in development)</div>
+</footer>
+
+<script>
+/* ===== i18n ===== */
+const T = {
+  "nav.brand": { zh: "知返", en: "AhaDiff" },
+  "nav.problem": { zh: "痛点", en: "Problem" },
+  "nav.how": { zh: "原理", en: "How" },
+  "nav.features": { zh: "特性", en: "Features" },
+  "nav.arch": { zh: "架构", en: "Architecture" },
+  "nav.start": { zh: "开始", en: "Start" },
+  "hero.badge": { zh: "Local-first 验证式 Diff 学习", en: "Local-first Verified Diff Learning" },
+  "hero.title.pre": { zh: "知返 Aha", en: "Aha" },
+  "hero.tagline": { zh: "AI 写完，Diff 教回。", en: "Ship with AI. Learn it back." },
+  "hero.tagline_en": { zh: "Ship with AI. Learn it back.", en: "AI 写完，Diff 教回。" },
+  "hero.desc": {
+    zh: "一个 local-first 的 verified diff learning layer。把 Claude / Codex / Cursor 等 AI 工具写出的 git diff，变成带代码证据链的学习笔记、概念图谱、主动回忆测验和 SRS 复习卡。",
+    en: "A local-first verified diff learning layer. Transforms git diffs from AI coding tools like Claude, Codex, and Cursor into learning notes with code evidence chains, concept graphs, active recall quizzes, and SRS review cards."
+  },
+  "hero.status": { zh: "v0.1 设计预览 — 即将发布", en: "v0.1 Design Preview — Coming Soon" },
+  "hero.cta1": { zh: "设计预览", en: "Design Preview" },
+  "hero.insight_title": { zh: "AhaDiff 验证课文", en: "AhaDiff Verified Lesson" },
+  "hero.claim1": {
+    zh: "添加了显式算法固定 (HS256)，防止算法混淆攻击",
+    en: "Added explicit algorithm pinning (HS256) to prevent algorithm confusion attacks"
+  },
+  "hero.claim2": {
+    zh: "Token 过期检查使用 time.time() 进行单调比较",
+    en: "Token expiry check uses monotonic comparison with time.time()"
+  },
+  "hero.claim3": {
+    zh: "异常处理捕获所有 JWT 错误，包括过期签名",
+    en: "Exception handler catches all JWT errors including expired signatures"
+  },
+  "problem.eyebrow": { zh: "问题", en: "THE PROBLEM" },
+  "problem.title": { zh: "Vibe Coding 的知识断层", en: "The Vibe Coding Gap" },
+  "problem.subtitle": {
+    zh: "AI 工具让你 10x 产出，但学习曲线变成了一条平线。",
+    en: "AI tools give you 10x output, but your learning curve flatlines."
+  },
+  "problem.p1.title": { zh: "AI 写的代码看不懂", en: "Code You Don't Understand" },
+  "problem.p1.desc": {
+    zh: "Copilot / Claude 产出大量代码，你点了 Accept，却说不清它为什么有效、何时会失败。",
+    en: "Copilot / Claude writes tons of code. You hit Accept, but can't explain why it works or when it breaks."
+  },
+  "problem.p2.title": { zh: "Code Review 成了橡皮图章", en: "Rubber-Stamp Reviews" },
+  "problem.p2.desc": {
+    zh: "diff 太大、上下文不够，review 变成形式主义。关键逻辑在 LGTM 中悄悄滑过。",
+    en: "Diffs too large, context too sparse. Reviews become formality. Critical logic slips through with LGTM."
+  },
+  "problem.p3.title": { zh: "知识债务无声堆积", en: "Silent Knowledge Debt" },
+  "problem.p3.desc": {
+    zh: "用 AI 交付越快，技术债中"人脑里欠的那部分"累积越深，直到一次线上事故暴露一切。",
+    en: "The faster AI ships, the deeper the \"brain debt\" compounds — until a production incident exposes it all."
+  },
+  "how.eyebrow": { zh: "工作原理", en: "HOW IT WORKS" },
+  "how.title": { zh: "四步从 Diff 到掌握", en: "Four Steps from Diff to Mastery" },
+  "how.subtitle": {
+    zh: "每次 AI 写完代码，AhaDiff 用证据链帮你真正学会它。",
+    en: "Every time AI writes code, AhaDiff helps you truly learn it with evidence chains."
+  },
+  "how.s1.title": { zh: "捕获变更", en: "Capture Changes" },
+  "how.s1.desc": {
+    zh: "自动捕获 last / staged / unstaged / range 等多种 diff 模式，支持 patch 文件和 stdin。",
+    en: "Capture diffs in multiple modes: last / staged / unstaged / range. Supports patch files and stdin."
+  },
+  "how.s2.title": { zh: "AI 验证分析", en: "AI Verified Analysis" },
+  "how.s2.desc": {
+    zh: "生成 verified claims，每句解释绑定 file:line 证据。五种状态确保可信度。",
+    en: "Generate verified claims with file:line evidence bindings. Five states ensure trustworthiness."
+  },
+  "how.s3.title": { zh: "生成学习材料", en: "Generate Learning Materials" },
+  "how.s3.desc": {
+    zh: "课文 + 测验 + SRS 卡片。三阶段撤架 (Full/Hint/Compact) 渐进掌握。",
+    en: "Lessons + Quizzes + SRS cards. Three-stage scaffolding (Full/Hint/Compact) for progressive mastery."
+  },
+  "how.s4.title": { zh: "棘轮质量追踪", en: "Ratchet Quality Tracking" },
+  "how.s4.desc": {
+    zh: "8 维评估 100 分制。Git ratchet 确保只进不退，Phase 2.5 突破瓶颈。",
+    en: "8-dimension rubric, 100-point scale. Git ratchet ensures no regression. Phase 2.5 breaks through plateaus."
+  },
+  "feat.eyebrow": { zh: "核心特性", en: "FEATURES" },
+  "feat.title": { zh: "每个细节都为学习设计", en: "Every Detail Designed for Learning" },
+  "feat.subtitle": {
+    zh: "不是又一个文档工具，而是一个让你和 AI 共同成长的学习系统。",
+    en: "Not another docs tool. A learning system that grows with you and AI."
+  },
+  "feat.f1.title": { zh: "Verified Claims", en: "Verified Claims" },
+  "feat.f1.desc": {
+    zh: "每句解释都链接到 file:line 代码证据。5 种 claim 状态 (verified / weak / not_proven / contradicted / rejected) 确保可信。",
+    en: "Every explanation links to file:line code evidence. 5 claim states (verified / weak / not_proven / contradicted / rejected) ensure trust."
+  },
+  "feat.f2.title": { zh: "FSRS 间隔重复", en: "FSRS Spaced Repetition" },
+  "feat.f2.desc": {
+    zh: "采用 Anki 同源的 FSRS-6 算法，根据你的答题表现自动调整复习间隔。",
+    en: "Powered by FSRS-6 (same algorithm family as Anki). Review intervals adapt automatically based on your answers."
+  },
+  "feat.f3.title": { zh: "三阶段撤架", en: "Three-Stage Scaffolding" },
+  "feat.f3.desc": {
+    zh: "Full → Hint → Compact 三阶段学习撤架。由 FSRS 记忆稳定度自动驱动，越熟悉提示越少。",
+    en: "Full → Hint → Compact progressive scaffolding. Driven by FSRS memory stability — the better you know it, the less help you get."
+  },
+  "feat.f4.title": { zh: "8 维评估量规", en: "8-Dimension Rubric" },
+  "feat.f4.desc": {
+    zh: "accuracy / evidence / diff_coverage / learnability / quiz_transfer / spec_alignment / conciseness / safety_privacy = 100 分。",
+    en: "accuracy / evidence / diff_coverage / learnability / quiz_transfer / spec_alignment / conciseness / safety_privacy = 100 points."
+  },
+  "feat.f5.title": { zh: "Git 棘轮", en: "Git Ratchet" },
+  "feat.f5.desc": {
+    zh: "只进不退：improve loop 渐进优化，Phase 2.5 在卡住时触发结构性重写，突破质量瓶颈。",
+    en: "Never regress: improve loop for progressive optimization. Phase 2.5 triggers structural rewrite when stuck."
+  },
+  "feat.f6.title": { zh: "隐私优先", en: "Privacy First" },
+  "feat.f6.desc": {
+    zh: "strict_local / redacted_remote / explicit_remote 三档隐私。Secret scan 在所有操作之前执行，绝不泄露。",
+    en: "Three privacy modes: strict_local / redacted_remote / explicit_remote. Secret scan runs before all operations."
+  },
+  "feat.f7.title": { zh: "8 种 LLM 供应商", en: "8 LLM Providers" },
+  "feat.f7.desc": {
+    zh: "OpenAI / Anthropic / Gemini / Azure / Ollama 等 8 种 API 格式。BYOK 自动探测 context length、TPM/RPM。",
+    en: "8 API formats: OpenAI / Anthropic / Gemini / Azure / Ollama and more. BYOK with auto-probe for context length and rate limits."
+  },
+  "feat.f8.title": { zh: "多 Agent 接入", en: "Multi-Agent Install" },
+  "feat.f8.desc": {
+    zh: "Claude Code / Codex CLI / Gemini CLI / OpenCode 一键接入，AI agent 在你的工作流中无缝集成。",
+    en: "Claude Code / Codex CLI / Gemini CLI / OpenCode one-command setup. AI agents integrate seamlessly into your workflow."
+  },
+  "arch.eyebrow": { zh: "系统架构", en: "ARCHITECTURE" },
+  "arch.title": { zh: "八层分层架构", en: "Eight-Layer Architecture" },
+  "arch.subtitle": {
+    zh: "从 diff 捕获到 UI 渲染，每一层各司其职。",
+    en: "From diff capture to UI rendering, each layer has a clear responsibility."
+  },
+  "arch.l0": { zh: "ClaimStatus / RunSource / EvalBundle / EventLog", en: "ClaimStatus / RunSource / EvalBundle / EventLog" },
+  "arch.l0.tip": { zh: "核心契约冻结：不可变类型定义", en: "Core contract freeze: immutable type definitions" },
+  "arch.l1": { zh: "last / since / staged / unstaged / show / range / patch", en: "last / since / staged / unstaged / show / range / patch" },
+  "arch.l1.tip": { zh: "7 种 diff 模式 + patch 文件 + stdin", en: "Git diff in 7 modes + patch file + stdin" },
+  "arch.l2": { zh: "2a 上下文组装 + 2b 安全门 + 2c 预算", en: "2a Assembly + 2b Safety Gate + 2c Budget" },
+  "arch.l2.tip": { zh: "仓库文件、密钥扫描、token 预算", en: "Repo files, secret scan, token budget" },
+  "arch.l3": { zh: "prompts/*.md + claim 提取", en: "prompts/*.md + claim extraction" },
+  "arch.l3.tip": { zh: "Markdown prompt 生成结构化课文", en: "Markdown prompts generate structured lessons" },
+  "arch.l4": { zh: "claims.jsonl + 确定性 + LLM 裁判", en: "claims.jsonl + deterministic + LLM judge" },
+  "arch.l4.tip": { zh: "5 态 claims: verified / weak / not_proven / contradicted / rejected", en: "5-state claims: verified / weak / not_proven / contradicted / rejected" },
+  "arch.l5": { zh: "evaluation bundle (不可变) + review.sqlite", en: "evaluation bundle (immutable) + review.sqlite" },
+  "arch.l5.tip": { zh: "Git 棘轮：分数只升不降", en: "Git ratchet: score can only go up" },
+  "arch.l6": { zh: "测验 + SRS 复习 + concepts.jsonl", en: "quiz + SRS review + concepts.jsonl" },
+  "arch.l6.tip": { zh: "FSRS-6 间隔重复 + 概念图谱", en: "FSRS-6 spaced repetition + concept graph" },
+  "arch.l7": { zh: "React SPA via ahadiff serve", en: "React SPA via ahadiff serve" },
+  "arch.l7.tip": { zh: "Starlette API + Vite + React 19", en: "Starlette API + Vite + React 19" },
+  "demo.eyebrow": { zh: "实际演示", en: "SEE IT IN ACTION" },
+  "demo.title": { zh: "一条命令开始学习", en: "One Command to Start Learning" },
+  "demo.subtitle": {
+    zh: "在任何 git 仓库中运行 ahadiff，立刻获得带证据链的学习反馈。",
+    en: "Run ahadiff in any git repo for instant learning feedback with evidence chains."
+  },
+  "demo.t1": { zh: "捕获 3 个文件，47 行变更", en: "Captured 3 files, 47 lines changed" },
+  "demo.t2": { zh: "生成 12 条验证声明", en: "Generated 12 verified claims" },
+  "demo.t3": { zh: "创建学习笔记", en: "Created lesson" },
+  "demo.t4": { zh: "生成 5 道测验题", en: "Generated 5 quiz questions" },
+  "demo.t5": { zh: "正在打开", en: "Opening" },
+  "cmp.eyebrow": { zh: "对比", en: "COMPARISON" },
+  "cmp.title": { zh: "AhaDiff vs. 替代方案", en: "AhaDiff vs. Alternatives" },
+  "cmp.subtitle": {
+    zh: "不是取代 Code Review，而是补上缺失的学习环。",
+    en: "Not replacing Code Review. Closing the missing learning loop."
+  },
+  "cmp.col0": { zh: "工具", en: "Tool" },
+  "cmp.col1": { zh: "Verified Claims", en: "Verified Claims" },
+  "cmp.col2": { zh: "SRS", en: "SRS" },
+  "cmp.col3": { zh: "Ratchet", en: "Ratchet" },
+  "cmp.col4": { zh: "Local-first", en: "Local-first" },
+  "cmp.col5": { zh: "证据链", en: "Evidence Chain" },
+  "cmp.col6": { zh: "Agent 接入", en: "Agent Install" },
+  "start.eyebrow": { zh: "计划接口预览", en: "PLANNED INTERFACE" },
+  "start.title": { zh: "三步开始（计划中）", en: "Three Steps to Start (Planned)" },
+  "start.subtitle": {
+    zh: "从安装到第一个学习循环，不超过两分钟。",
+    en: "From install to your first learning loop in under two minutes."
+  },
+  "start.c1.title": { zh: "安装", en: "Install" },
+  "start.c1.desc": {
+    zh: "通过 pip 安装 AhaDiff CLI 工具。",
+    en: "Install AhaDiff CLI via pip."
+  },
+  "start.c2.title": { zh: "学习", en: "Learn" },
+  "start.c2.desc": {
+    zh: "在你的项目中运行 learn 命令，分析最近一次提交的 diff。",
+    en: "Run the learn command in your project to analyze the latest commit diff."
+  },
+  "start.c3.title": { zh: "复习", en: "Review" },
+  "start.c3.desc": {
+    zh: "打开 Web UI 进行 SRS 复习和测验，巩固知识。",
+    en: "Open the Web UI for SRS review and quizzes to consolidate knowledge."
+  },
+  "tech.eyebrow": { zh: "技术栈", en: "TECH STACK" },
+  "tech.title": { zh: "技术选型", en: "Built On" },
+  "footer.docs": { zh: "文档", en: "Documentation" },
+  "footer.credit": {
+    zh: "由 AhaDiff 团队用心打造。",
+    en: "Built with care by the AhaDiff team."
+  }
+};
+
+/* Language detection & toggle */
+let lang = localStorage.getItem("ahadiff_lang");
+if (!lang) {
+  const nav = navigator.language || navigator.languages?.[0] || "en";
+  lang = nav.startsWith("zh") ? "zh" : "en";
+}
+
+function applyLang(l) {
+  lang = l;
+  localStorage.setItem("ahadiff_lang", l);
+  document.documentElement.lang = l === "zh" ? "zh-CN" : "en";
+  document.querySelectorAll("[data-i18n]").forEach(function(el) {
+    var key = el.getAttribute("data-i18n");
+    if (T[key] && T[key][l]) el.textContent = T[key][l];
+  });
+  document.getElementById("langToggle").textContent = l === "zh" ? "zh / EN" : "ZH / en";
+}
+
+applyLang(lang);
+
+document.getElementById("langToggle").addEventListener("click", function() {
+  applyLang(lang === "zh" ? "en" : "zh");
+});
+
+/* ===== Scroll Reveal ===== */
+var observer = new IntersectionObserver(function(entries) {
+  entries.forEach(function(entry) {
+    if (entry.isIntersecting) {
+      entry.target.classList.add("visible");
+      observer.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.1, rootMargin: "0px 0px -40px 0px" });
+
+document.querySelectorAll(".reveal").forEach(function(el) { observer.observe(el); });
+
+/* ===== Smooth scroll for nav links ===== */
+document.querySelectorAll('a[href^="#"]').forEach(function(a) {
+  a.addEventListener("click", function(e) {
+    var id = this.getAttribute("href").slice(1);
+    var target = document.getElementById(id);
+    if (target) {
+      e.preventDefault();
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  });
+});
+</script>
+</body>
+</html>

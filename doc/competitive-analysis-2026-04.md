@@ -69,7 +69,7 @@
 - Local-first: 有离线模式（Pro 功能），但核心为云同步
 - Claim 绑证据: No — 通用笔记工具，不解析代码
 - Ratchet: No
-- SRS: **Yes** — 支持 SM-2 和 FSRS 算法。官网："Cards resurface at the optimal time for retention"
+- SRS: **Yes** — 已内置 FSRS v6 算法（Codex 2026-04-21 官方源取证确认）。官网："Cards resurface at the optimal time for retention"
 - Overlap: **低**（SRS + 概念关联的产品形态可参考，但不面向代码/diff 场景）
 
 ---

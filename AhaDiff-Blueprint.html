@@ -232,7 +232,7 @@ table.t tr:hover td{background:var(--accent-softer)}
         <div class="kpi"><div class="lb">评估维度</div><div class="vl">8</div><div class="delta">完全自研 rubric · 满分 100</div></div>
         <div class="kpi"><div class="lb">架构层数</div><div class="vl">8</div><div class="delta">Schema & Contract → Wiki + UI</div></div>
         <div class="kpi"><div class="lb">设计文档</div><div class="vl">2594<span style="font-size:14px;color:var(--muted)">行</span></div><div class="delta">31 节 + 9 段开发计划</div></div>
-        <div class="kpi"><div class="lb">产品原则</div><div class="vl">14</div><div class="delta">local-first · SQLite 即唯一真相源</div></div>
+        <div class="kpi"><div class="lb">产品原则</div><div class="vl">14</div><div class="delta">local-first · SQLite 即唯一真相源 · FSRS-6 SRS</div></div>
         <div class="kpi"><div class="lb">UI 原型</div><div class="vl">v6</div><div class="delta">Warm 风格 · 11 页面</div></div>
       </div>
 
@@ -311,7 +311,7 @@ table.t tr:hover td{background:var(--accent-softer)}
             </div>
           </div>
           <div style="margin-top:14px;padding:12px;background:var(--subtle);border-radius:8px;font-size:13px;line-height:1.7;color:var(--ink-2)">
-            <b style="color:var(--ink)">不一定是 git 仓库</b> — git 是默认主流程（Level 3 完整功能），但通过 <code>--patch</code> 和 <code>--compare</code> 也能在非 git 环境下使用，只是部分功能降级。所有 level 都支持：证据绑定、Lesson 生成、Quiz、SRS 复习。
+            <b style="color:var(--ink)">不一定是 git 仓库</b> — git 是默认主流程（Level 3 完整功能），但通过 <code>--patch</code> 和 <code>--compare</code> 也能在非 git 环境下使用，只是部分功能降级。所有 level 都支持：证据绑定、Lesson 生成、Quiz、FSRS-6 SRS 复习。
           </div>
         </div>
       </div>
@@ -393,7 +393,7 @@ table.t tr:hover td{background:var(--accent-softer)}
           </div>
 
           <div style="margin-top:16px;padding:14px;background:var(--subtle);border-radius:8px;font-size:13px;line-height:1.7;color:var(--ink-2)">
-            <b style="color:var(--ink)">用户不需要指定行号或文件名</b> — AhaDiff 自动解析 diff 中的所有变更。所有 Level 都支持 Lesson + Quiz + SRS 核心学习功能。无参数时默认等价于 <code>--last</code>（不自动推断 --unstaged）。
+            <b style="color:var(--ink)">用户不需要指定行号或文件名</b> — AhaDiff 自动解析 diff 中的所有变更。所有 Level 都支持 Lesson + Quiz + FSRS-6 SRS 核心学习功能。无参数时默认等价于 <code>--last</code>（不自动推断 --unstaged）。
           </div>
         </div>
       </div>
@@ -784,7 +784,7 @@ table.t tr:hover td{background:var(--accent-softer)}
                 <span class="badge accent" style="margin-left:auto">步骤 27-29</span>
               </div>
               <div style="font-size:14px;color:var(--ink-2);line-height:1.8">
-                <code>--open</code> 自动调用 <code>webbrowser.open()</code> 打开 <code>localhost:8765</code>（<code>ahadiff serve</code> 自动启动的 React 19 SPA）。支持 Quiz/SRS 交互写回 review.sqlite。界面保持 <b>Warm v6 风格</b>。用户可以：
+                <code>--open</code> 自动调用 <code>webbrowser.open()</code> 打开 <code>localhost:8765</code>（<code>ahadiff serve</code> 自动启动的 React 19 SPA）。支持 Quiz / FSRS-6 SRS 交互写回 review.sqlite。界面保持 <b>Warm v6 风格</b>。用户可以：
               </div>
               <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:12px">
                 <div style="padding:12px 8px;border:1px solid var(--hair);border-radius:8px;background:#fff;text-align:center;font-size:12px">
@@ -804,8 +804,8 @@ table.t tr:hover td{background:var(--accent-softer)}
                 </div>
                 <div style="padding:12px 8px;border:1px solid var(--hair);border-radius:8px;background:#fff;text-align:center;font-size:12px">
                   <div style="font-size:18px;margin-bottom:4px">🔄</div>
-                  <b>SRS 复习</b><br/>
-                  <span style="color:var(--muted)">间隔重复记忆</span>
+                  <b>FSRS-6 复习</b><br/>
+                  <span style="color:var(--muted)">DSR 间隔重复</span>
                 </div>
                 <div style="padding:12px 8px;border:1px solid var(--hair);border-radius:8px;background:#fff;text-align:center;font-size:12px">
                   <div style="font-size:18px;margin-bottom:4px">📊</div>
@@ -930,7 +930,7 @@ table.t tr:hover td{background:var(--accent-softer)}
                   <li>每句话有 file:line 证据</li>
                   <li>错误说法被标记并变成测验</li>
                   <li>不能证明的标 not_proven</li>
-                  <li>Quiz + SRS 帮你真正记住</li>
+                  <li>Quiz + FSRS-6 间隔复习帮你真正记住</li>
                 </ul>
               </div>
             </div>
@@ -1068,13 +1068,13 @@ table.t tr:hover td{background:var(--accent-softer)}
           <b>原版核心</b>：Helpfulness-driven Skill Retention。训练阶段从 full skill context 开始，通过 Dynamic Curriculum 根据 helpfulness 逐步撤掉 skill context。<b>Budget 递减方式是阶段跳变 <code>[6, 3, 0]</code></b>（非线性递减）：Step 1-60 保留全部 6 个 skill，Step 61-120 保留 top-3，Step 121-180 完全撤架。Helpfulness 计算原版是 <b>skill file 级</b>。
         </div>
         <div class="src-desc" style="margin-top:8px">
-          <b>AhaDiff 如何借鉴</b>：AhaDiff 不做模型训练（无 RL），借鉴的是"撤脚手架学习法"思想，映射为三段式 lesson：
+          <b>AhaDiff 如何借鉴</b>：AhaDiff 不做模型训练（无 RL），借鉴的是"撤脚手架学习法"思想，映射为三段式 lesson。<b>撤架由 FSRS-6 stability 驱动</b>（非固定 interval）：
         </div>
         <div class="src-mapping" style="margin-top:14px">
-          <h5>撤架对应 · Scaffolding Mapping</h5>
-          <div class="mapping-row"><span class="from">Step 1-60: Full 6 skills</span><span class="arrow">→</span><span class="to">Day 0: lesson.full.md（完整解释）</span></div>
-          <div class="mapping-row"><span class="from">Step 61-120: Top-3 skills</span><span class="arrow">→</span><span class="to">Day 1: lesson.hint.md + quiz</span></div>
-          <div class="mapping-row"><span class="from">Step 121-180: No skills</span><span class="arrow">→</span><span class="to">Day 3+: lesson.compact.md + quiz（撤架命名统一：full | hint | compact）</span></div>
+          <h5>撤架对应 · Scaffolding Mapping（FSRS stability 驱动）</h5>
+          <div class="mapping-row"><span class="from">Step 1-60: Full 6 skills</span><span class="arrow">→</span><span class="to">stability &lt; 3d：lesson.full.md（完整解释）</span></div>
+          <div class="mapping-row"><span class="from">Step 61-120: Top-3 skills</span><span class="arrow">→</span><span class="to">3d ≤ stability &lt; 14d：lesson.hint.md + quiz</span></div>
+          <div class="mapping-row"><span class="from">Step 121-180: No skills</span><span class="arrow">→</span><span class="to">stability ≥ 14d 且最近 2 次成功：lesson.compact.md + quiz（撤架命名统一：full | hint | compact）</span></div>
           <div class="mapping-row"><span class="from">File-level helpfulness</span><span class="arrow">→</span><span class="to">Section-level helpfulness（自行扩展）</span></div>
         </div>
       </div>
@@ -1270,7 +1270,7 @@ table.t tr:hover td{background:var(--accent-softer)}
         <div class="arch-step"><div class="n">L3</div><h4>Lesson Gen</h4><p>prompts/*.md · claim extraction</p></div>
         <div class="arch-step"><div class="n">L4</div><h4>Verification</h4><p>claims.jsonl · deterministic + LLM judge</p></div>
         <div class="arch-step"><div class="n">L5</div><h4>Ratchet</h4><p>evaluation bundle (immutable) · review.sqlite</p></div>
-        <div class="arch-step"><div class="n">L6a</div><h4>Learning Core</h4><p>quiz · SRS · concepts.jsonl（Task 14 + 15 并行）</p></div>
+        <div class="arch-step"><div class="n">L6a</div><h4>Learning Core</h4><p>quiz · FSRS-6 SRS · concepts.jsonl（Task 14 + 15 并行）</p></div>
         <div class="arch-step"><div class="n">L6b</div><h4>Learning Serve</h4><p>section helpfulness · API 集成（Task 14.5，等待 Task 15 DB schema）</p></div>
         <div class="arch-step" style="background:var(--accent-softer)"><div class="n">L7</div><h4>React SPA</h4><p>React 19 + Vite + Zustand · ahadiff serve (Starlette) · REST API</p></div>
       </div>
@@ -1297,7 +1297,7 @@ table.t tr:hover td{background:var(--accent-softer)}
       viewer/  index.html · data.json
       graph/   graph.slice.json
 
-  review.sqlite               <span style="color:var(--muted)">← SRS 卡片 + result_events + learning_signals 唯一真相源</span>
+  review.sqlite               <span style="color:var(--muted)">← FSRS-6 SRS 卡片 + scheduler_presets + review_logs + result_events + learning_signals 唯一真相源</span>
   graphify/                   <span style="color:var(--muted)">← repo-level code map cache</span></div>
       </div>
 
@@ -1499,8 +1499,8 @@ repo_write_lock  →  db_write_lock  →  serve_write_lock
               <div style="font-size:12px;color:var(--ink-2);margin-top:6px">Topbar <strong>zh/EN</strong> 切换按钮。点击后写 cookie <code>ahadiff_lang</code> + 通过 Zustand 原子 store 触发 i18n re-render（非 React Context，无需页面刷新），同时调用 <code>PUT /api/locale</code> 持久化。</div>
             </div>
             <div style="padding:12px;background:var(--subtle);border:1px solid var(--hair);border-radius:8px">
-              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-ink)">SRS · 卡片语言</div>
-              <div style="font-size:12px;color:var(--ink-2);margin-top:6px">卡片保留<strong>创建时语言</strong>，切换 locale 不重翻译。<code>actor_lang</code> 记录复习时界面语言。</div>
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-ink)">FSRS-6 SRS · 卡片语言</div>
+              <div style="font-size:12px;color:var(--ink-2);margin-top:6px">卡片保留<strong>创建时语言</strong>，切换 locale 不重翻译。<code>actor_lang</code> 记录复习时界面语言。所有时间戳统一 UTC（py-fsrs 强制）。</div>
             </div>
           </div>
           <div style="font-size:11px;color:var(--muted);margin-top:8px;padding:6px 10px;background:var(--subtle);border-radius:6px">
@@ -1669,7 +1669,7 @@ key = prompt_fingerprint
             <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">SQLite 即唯一真相源</div><div class="ci-desc">review.sqlite 为唯一真相源，HTML 只是 viewer，删除前端不丢功能</div></div></div>
             <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">Claim 先于 Prose</div><div class="ci-desc">每句解释必须绑定 file:line 证据</div></div></div>
             <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">不能证明就标 not_proven</div><div class="ci-desc">五种 claim 状态：verified / weak / not_proven / contradicted / rejected</div></div></div>
-            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">学习效果可测试</div><div class="ci-desc">Quiz + SRS 复习 + section helpfulness</div></div></div>
+            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">学习效果可测试</div><div class="ci-desc">Quiz + FSRS-6 SRS 复习（py-fsrs v6.3.1, DSR 三分量模型, desired_retention=0.9）+ section helpfulness</div></div></div>
             <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">改进可回滚</div><div class="ci-desc">git ratchet + results.tsv + learn 链路 keep / improve 链路 targeted_verify → keep_final / discard</div></div></div>
           </div>
         </div>
@@ -1699,7 +1699,7 @@ key = prompt_fingerprint
           <div class="compliance-grid">
             <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">React 19 + Vite + vanilla CSS + ahadiff serve</div><div class="ci-desc">Starlette + Uvicorn 本地服务器；不使用 Next.js 等 SSR 框架</div></div></div>
             <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">不使用 LiteLLM / LangChain</div><div class="ci-desc">供应链风险，使用薄 provider adapter（8 种 API 格式）。token 估算 per-adapter：tiktoken（OpenAI/Azure） / len÷4（Gemini/Ollama） / ×1.1（Anthropic）</div></div></div>
-            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">Python 3.11+ CLI</div><div class="ci-desc">typer + rich + pydantic + httpx + pyyaml</div></div></div>
+            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">Python 3.11+ CLI</div><div class="ci-desc">typer + rich + pydantic + httpx + pyyaml + fsrs (py-fsrs v6.3.1, FSRS-6 间隔重复调度)</div></div></div>
             <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">跨模型评估（生产）/ 统一 gpt-5.4-mini（开发测试）</div><div class="ci-desc">开发测试阶段生成和评估统一用 gpt-5.4-mini；生产环境生成切大模型，绝不同模型自评</div></div></div>
             <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">Improve loop 只改 prompts/*.md</div><div class="ci-desc">evaluator.py / rubric.yaml / viewer 不可改</div></div></div>
             <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">路径 .ahadiff/runs/&lt;run_id&gt;/</div><div class="ci-desc">统一使用 run_id 作为一级存储单元</div></div></div>
@@ -1714,7 +1714,7 @@ key = prompt_fingerprint
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
             <div style="padding:14px;background:var(--subtle);border-radius:8px;border-left:4px solid #2F6F4F">
               <div style="font-weight:700;margin-bottom:8px;color:#2F6F4F">Per-repo（唯一真相源）</div>
-              <div style="font-size:12px;font-family:var(--font-mono);line-height:1.8;color:var(--ink-2)">&lt;repo&gt;/.ahadiff/<br>├── review.sqlite（SRS/results/signals 唯一真相源）<br>├── concepts.jsonl（term_key-keyed upsert log，write-to-temp-then-rename）<br>├── runs/&lt;run_id&gt;/（lesson/quiz/claims）<br>├── graphify/（code map cache）<br>├── audit.jsonl（LLM 调用审计 + rotation，write-then-rename + doctor 清理）<br>├── ahadiff.lock（portalocker 文件锁）<br>├── .ahadiffignore（路径过滤规则）<br>└── config.toml（repo 级覆盖）</div>
+              <div style="font-size:12px;font-family:var(--font-mono);line-height:1.8;color:var(--ink-2)">&lt;repo&gt;/.ahadiff/<br>├── review.sqlite（FSRS-6 SRS/cards/scheduler_presets/review_logs/results/signals 唯一真相源）<br>├── concepts.jsonl（term_key-keyed upsert log，write-to-temp-then-rename）<br>├── runs/&lt;run_id&gt;/（lesson/quiz/claims）<br>├── graphify/（code map cache）<br>├── audit.jsonl（LLM 调用审计 + rotation，write-then-rename + doctor 清理）<br>├── ahadiff.lock（portalocker 文件锁）<br>├── .ahadiffignore（路径过滤规则）<br>└── config.toml（repo 级覆盖）</div>
             </div>
             <div style="padding:14px;background:var(--subtle);border-radius:8px;border-left:4px solid #7B5EA7">
               <div style="font-weight:700;margin-bottom:8px;color:#7B5EA7">Global · <code>global_config_dir()</code>（派生/索引，非真相源）</div>
@@ -1727,7 +1727,7 @@ key = prompt_fingerprint
           </div>
           <div style="padding:12px;background:#f8f6f0;border-radius:6px;font-size:12px;border:1px solid #e8e4dc">
             <strong>例子：</strong>用户在 repo-A 和 repo-B 都用 AhaDiff 学习。<br>
-            → 每个 repo 独立维护自己的 lesson/quiz/SRS 卡片<br>
+            → 每个 repo 独立维护自己的 lesson/quiz/FSRS-6 SRS 卡片<br>
             → <code>ahadiff review</code> 默认复习当前 repo 的 due cards<br>
             → <code>ahadiff review --all</code>（v0.2）扫描所有注册 repo 的 due cards 做跨 repo 复习<br>
             → 全局 usage.sqlite 汇总两个 repo 的 LLM 花费，统一月度预算管理
@@ -1794,11 +1794,11 @@ key = prompt_fingerprint
               <tr><td>Diff + 证据</td><td class="mono">Diff</td><td><span class="badge accent">原型完成</span></td><td>代码行级 claim 关联</td></tr>
               <tr><td>棘轮</td><td class="mono">Ratchet</td><td><span class="badge accent">原型完成</span></td><td>Improve loop 可视化</td></tr>
               <tr><td>测验</td><td class="mono">Quiz</td><td><span class="badge accent">原型完成</span></td><td>Socratic 追问 + 选项</td></tr>
-              <tr><td>复习</td><td class="mono">Review</td><td><span class="badge accent">原型完成</span></td><td>SRS 闪卡翻转</td></tr>
+              <tr><td>复习</td><td class="mono">Review</td><td><span class="badge accent">原型完成</span></td><td>FSRS-6 闪卡翻转（Good/Hard/Wrong 三按钮）</td></tr>
               <tr><td>图谱</td><td class="mono">Graph</td><td><span class="badge accent">原型完成</span></td><td>概念关系图（列表 fallback）</td></tr>
               <tr><td>新手上路</td><td class="mono">Onboarding</td><td><span class="badge accent">原型完成</span></td><td>Stepper 向导</td></tr>
               <tr><td>Agent 技能</td><td class="mono">Skills</td><td><span class="badge accent">原型完成</span></td><td>Skill 卡片网格</td></tr>
-              <tr><td>设置</td><td class="mono">Settings</td><td><span class="badge accent">原型完成</span></td><td>隐私 / Provider / 主题</td></tr>
+              <tr><td>设置</td><td class="mono">Settings</td><td><span class="badge accent">原型完成</span></td><td>隐私 / 8 种 Provider + BYOK / FSRS desired_retention / 主题</td></tr>
             </tbody>
           </table>
         </div>
@@ -1876,7 +1876,7 @@ key = prompt_fingerprint
     <section class="page" data-page="faq">
       <div class="page-head">
         <div class="eyebrow">§ 06 · 深度 FAQ</div>
-        <h1>7 个核心问题，彻底讲透</h1>
+        <h1>8 个核心问题，彻底讲透</h1>
         <div class="sub">经 Codex + Claude + Gemini 三模型六轮交叉验证（最终判定 GO）。每个回答基于真实设计文档。</div>
       </div>
 
@@ -2156,9 +2156,190 @@ judge_model = "qwen3-coder"       <span style="color:var(--muted)"># 本地模�
         </div>
       </div>
 
-      <!-- FAQ 7: 总结 -->
+      <!-- FAQ 7: FSRS-6 SRS 调度算法 -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="ch"><h3>Q7: 复习卡片怎么调度？为什么用 FSRS-6 而不是 SM-2？</h3><div class="meta">FSRS-6 · DSR 三分量模型</div></div>
+        <div class="cb">
+
+          <!-- SM-2 vs FSRS-6 对比表 -->
+          <div style="font-size:13px;color:var(--ink-2);line-height:1.7;margin-bottom:16px;padding:12px;background:#FDFCF8;border:1px solid var(--hair);border-radius:8px">
+            AhaDiff 采用 <strong>FSRS-6</strong>（Free Spaced Repetition Scheduler）作为 SRS 调度算法，使用 <code>py-fsrs</code> 库（v6.3.1+）。FSRS-6 基于 DSR 三分量记忆模型（Difficulty / Stability / Retrievability），Anki 23.10 起可手动启用，RemNote 已内置。
+          </div>
+
+          <div style="overflow-x:auto;margin-bottom:20px">
+            <table class="t" style="font-size:12.5px">
+              <thead><tr><th style="width:25%">对比维度</th><th style="width:37%">SM-2（1987，已放弃）</th><th style="width:38%">FSRS-6（2024，AhaDiff 采用）</th></tr></thead>
+              <tbody>
+                <tr><td style="font-weight:600">算法基础</td><td>1987 年固定 EF 衰减公式</td><td style="color:var(--success);font-weight:500">2023-2024 DSR 三分量记忆模型</td></tr>
+                <tr><td style="font-weight:600">核心参数</td><td>2 个（ease_factor, interval）</td><td style="color:var(--success);font-weight:500">21 个（opaque weights JSON array，不写死数量）</td></tr>
+                <tr><td style="font-weight:600">遗忘曲线</td><td>指数衰减（不精确）</td><td style="color:var(--success);font-weight:500">幂律衰减（empirically validated）</td></tr>
+                <tr><td style="font-weight:600">自适应</td><td>无</td><td style="color:var(--success);font-weight:500">Optimizer 自动训练个人参数</td></tr>
+                <tr><td style="font-weight:600">复习效率</td><td>基线</td><td style="color:var(--success);font-weight:500">减少 20-30% 复习量（RemNote 经验值，中置信）</td></tr>
+                <tr><td style="font-weight:600">Python 库</td><td>需自行实现</td><td style="color:var(--success);font-weight:500"><code>pip install fsrs</code>（py-fsrs v6.3.1）</td></tr>
+                <tr><td style="font-weight:600">Anki 内置</td><td>默认（已逐步被替代）</td><td style="color:var(--success);font-weight:500">23.10 引入原生支持（需手动启用）</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- FSRS 调度流程图 -->
+          <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-ink);margin-bottom:10px">FSRS-6 调度流程</div>
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0;border:1px solid var(--hair);border-radius:12px;overflow:hidden;background:#fff;margin-bottom:20px">
+            <div style="padding:14px 10px;border-right:1px solid var(--hair);text-align:center;background:var(--accent-softer)">
+              <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--accent-ink)">1. 卡片创建</div>
+              <div style="font-size:11px;color:var(--ink-2);margin-top:6px">新 card → State=New<br/>默认 weights<br/>desired_retention=0.9</div>
+            </div>
+            <div style="padding:14px 10px;border-right:1px solid var(--hair);text-align:center;background:#ECF4EE">
+              <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--success)">2. 用户作答</div>
+              <div style="font-size:11px;color:var(--ink-2);margin-top:6px">Good(3) / Hard(2)<br/>/ Again(1)<br/>v0.1 暴露三按钮</div>
+            </div>
+            <div style="padding:14px 10px;border-right:1px solid var(--hair);text-align:center;background:#E4ECF4">
+              <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--info)">3. FSRS 计算</div>
+              <div style="font-size:11px;color:var(--ink-2);margin-top:6px">更新 DSR 三分量<br/>Difficulty<br/>Stability · Retrievability</div>
+            </div>
+            <div style="padding:14px 10px;border-right:1px solid var(--hair);text-align:center;background:var(--accent-softer)">
+              <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--accent-ink)">4. 撤架映射</div>
+              <div style="font-size:11px;color:var(--ink-2);margin-top:6px">stability → scaffolding<br/>full / hint / compact<br/>驱动 lesson 展示</div>
+            </div>
+            <div style="padding:14px 10px;text-align:center;background:var(--subtle)">
+              <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--ink)">5. 下次复习</div>
+              <div style="font-size:11px;color:var(--ink-2);margin-top:6px">due_date（UTC）<br/>enable_fuzzing=True<br/>maximum_interval=365d</div>
+            </div>
+          </div>
+
+          <!-- 撤架状态机图 -->
+          <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--success);margin-bottom:10px">三段式撤架状态机（FSRS stability 驱动）</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">
+            <div style="padding:16px;border:2px solid var(--accent);border-radius:10px;background:var(--accent-softer);text-align:center;position:relative">
+              <div style="font-family:var(--font-serif);font-size:22px;font-weight:500;color:var(--accent-ink);margin-bottom:6px">full</div>
+              <div style="font-family:var(--font-mono);font-size:11px;color:var(--accent-ink);margin-bottom:8px">stability &lt; 3 天</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">完整解释 lesson.full.md<br/>Learning/Relearning 阶段<br/>或答错回退到 full</div>
+              <div style="position:absolute;top:-10px;right:10px"><span class="badge accent" style="font-size:9px">初始状态</span></div>
+            </div>
+            <div style="padding:16px;border:2px solid var(--warning);border-radius:10px;background:#F7EED9;text-align:center">
+              <div style="font-family:var(--font-serif);font-size:22px;font-weight:500;color:var(--warning);margin-bottom:6px">hint</div>
+              <div style="font-family:var(--font-mono);font-size:11px;color:var(--warning);margin-bottom:8px">3d ≤ stability &lt; 14d</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">关键提示 lesson.hint.md<br/>已进入 Review 状态<br/>记忆开始稳固</div>
+            </div>
+            <div style="padding:16px;border:2px solid var(--success);border-radius:10px;background:#ECF4EE;text-align:center">
+              <div style="font-family:var(--font-serif);font-size:22px;font-weight:500;color:var(--success);margin-bottom:6px">compact</div>
+              <div style="font-family:var(--font-mono);font-size:11px;color:var(--success);margin-bottom:8px">stability ≥ 14d + 近 2 次成功</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">概念卡 lesson.compact.md<br/>&lt;500 token 精炼版<br/>记忆已长期稳固</div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:center;gap:20px;margin-bottom:20px;font-family:var(--font-mono);font-size:12px;color:var(--muted)">
+            <span>full <span style="color:var(--accent)">→</span> hint（stability 达到 3d）</span>
+            <span>hint <span style="color:var(--accent)">→</span> compact（stability ≥ 14d + 2 次成功）</span>
+            <span style="color:var(--danger)">Again → full（任何阶段答错回退）</span>
+          </div>
+
+          <!-- Quiz Rating 映射 -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+            <div>
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Quiz Rating 映射（v0.1 只暴露三按钮）</div>
+              <table class="t" style="font-size:12px">
+                <thead><tr><th>用户操作</th><th>FSRS Rating</th><th>说明</th></tr></thead>
+                <tbody>
+                  <tr><td>答对</td><td class="mono" style="color:var(--success);font-weight:600">Good (3)</td><td>正常回忆</td></tr>
+                  <tr><td>犹豫答对</td><td class="mono" style="color:var(--warning);font-weight:600">Hard (2)</td><td>困难回忆</td></tr>
+                  <tr><td>答错 / mark-wrong</td><td class="mono" style="color:var(--danger);font-weight:600">Again (1)</td><td>需重学，回 full 撤架</td></tr>
+                  <tr><td>安全题答错</td><td class="mono" style="color:var(--danger);font-weight:600">Again (1)</td><td>额外生成 misconception 卡</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div>
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Optimizer 自适应策略</div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="padding:10px;background:#ECF4EE;border:1px solid #B9D7C1;border-radius:8px;font-size:12px">
+                  <div style="font-weight:600;color:var(--success)">&lt;500 次 review：冷启动</div>
+                  <div style="color:var(--ink-2);margin-top:2px">默认 weights + desired_retention=0.9，不跑 optimizer</div>
+                </div>
+                <div style="padding:10px;background:#F7EED9;border:1px solid #E3CDA1;border-radius:8px;font-size:12px">
+                  <div style="font-weight:600;color:var(--warning)">500-999 次：积累期</div>
+                  <div style="color:var(--ink-2);margin-top:2px">可选手动 optimize，微调 desired_retention</div>
+                </div>
+                <div style="padding:10px;background:var(--accent-softer);border:1px solid #EBC3AE;border-radius:8px;font-size:12px">
+                  <div style="font-weight:600;color:var(--accent-ink)">≥1000 次：成熟期</div>
+                  <div style="color:var(--ink-2);margin-top:2px">Optimizer 计算完整个人参数 + optimal_retention</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- review.sqlite cards 表 schema -->
+          <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--info);margin-bottom:10px">review.sqlite · cards 表 FSRS Schema</div>
+          <div style="font-family:var(--font-mono);font-size:11.5px;background:var(--ink);color:#E8E3D8;padding:14px;border-radius:8px;line-height:1.7;margin-bottom:16px;white-space:pre-wrap;overflow-x:auto">CREATE TABLE cards (
+    id TEXT PRIMARY KEY,
+    concept TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    <span style="color:#E4EFE0">-- FSRS-6 字段（opaque，不解构 weights）</span>
+    fsrs_state TEXT NOT NULL,          <span style="color:var(--muted)">-- Card JSON（opaque）</span>
+    scheduler_preset_id TEXT NOT NULL DEFAULT 'default',
+    scheduler_version TEXT NOT NULL,   <span style="color:var(--muted)">-- e.g. "fsrs-6.3.1"</span>
+    desired_retention REAL NOT NULL DEFAULT 0.9,
+    due_date TEXT NOT NULL,            <span style="color:var(--muted)">-- ISO 8601 UTC</span>
+    stability REAL NOT NULL,
+    difficulty REAL NOT NULL,
+    reps INTEGER NOT NULL DEFAULT 0,
+    lapses INTEGER NOT NULL DEFAULT 0,
+    scaffolding_level TEXT NOT NULL DEFAULT 'full',
+    last_rating INTEGER,               <span style="color:var(--muted)">-- 1-4</span>
+    last_review_utc TEXT,              <span style="color:var(--muted)">-- ISO 8601 UTC</span>
+    <span style="color:#E4EFE0">-- 元数据</span>
+    source_ref TEXT, file_id TEXT, display_path TEXT,
+    created_at_utc TEXT NOT NULL
+);
+
+CREATE TABLE scheduler_presets (       <span style="color:var(--muted)">-- Optimizer 参数存储</span>
+    preset_id TEXT PRIMARY KEY,
+    weights TEXT NOT NULL,             <span style="color:var(--muted)">-- opaque JSON array（当前 21 个，不写死）</span>
+    desired_retention REAL NOT NULL DEFAULT 0.9,
+    scheduler_version TEXT NOT NULL,
+    total_reviews INTEGER NOT NULL DEFAULT 0,
+    last_optimized_utc TEXT, created_at_utc TEXT NOT NULL
+);
+
+CREATE TABLE review_logs (             <span style="color:var(--muted)">-- 供 Optimizer 训练</span>
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    card_id TEXT NOT NULL REFERENCES cards(id),
+    rating INTEGER NOT NULL,           <span style="color:var(--muted)">-- 1-4</span>
+    reviewed_at_utc TEXT NOT NULL,
+    elapsed_days REAL NOT NULL, scheduled_days REAL NOT NULL,
+    state TEXT NOT NULL                <span style="color:var(--muted)">-- Learning/Review/Relearning</span>
+);</div>
+
+          <!-- 工业界实践 -->
+          <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">工业界 SRS 实践（2025 年现状）</div>
+          <div style="overflow-x:auto;margin-bottom:16px">
+            <table class="t" style="font-size:12.5px">
+              <thead><tr><th>产品</th><th>SRS 算法</th><th>备注</th></tr></thead>
+              <tbody>
+                <tr><td style="font-weight:600">Anki</td><td style="color:var(--success);font-weight:500">FSRS（23.10 引入，需手动启用）</td><td>从 SM-2 逐步迁移到 FSRS</td></tr>
+                <tr><td style="font-weight:600">RemNote</td><td style="color:var(--success);font-weight:500">FSRS v6（已内置）</td><td>建议先用默认 weights 累积 ≥1000 次 reviews 后手动运行 optimizer</td></tr>
+                <tr><td style="font-weight:600">Obsidian Decks 插件</td><td style="color:var(--success);font-weight:500">FSRS 6</td><td>社区插件 dscherdi/decks</td></tr>
+                <tr><td>Mochi</td><td style="color:var(--muted)">SR（算法未公开）</td><td>官方文档未明确写出所用算法</td></tr>
+                <tr><td>Exercism</td><td style="color:var(--muted)">无 SRS（练习制）</td><td>--</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 重训双门槛 -->
+          <div style="padding:14px;background:var(--subtle);border-radius:8px;font-size:13px;line-height:1.7;color:var(--ink-2);margin-bottom:16px">
+            <b style="color:var(--ink)">Optimizer 重训触发双门槛</b>（来源 Anki Manual + FSRS tutorial）：<br/>
+            门槛 A：距上次训练 <b>≥ 30 天</b>；门槛 B：新增 review 数 ≥ <b>max(512, 上次样本量 x 50%)</b>。<br/>
+            满足 A <b>或</b> B 时异步跑 optimizer。手动触发：<code>ahadiff review --optimize</code>。<br/>
+            <b>所有时间戳统一 UTC</b>（py-fsrs 强制），weights 为 opaque JSON array（不写死数量，当前 21 个）。
+          </div>
+
+          <!-- Misconception 卡 -->
+          <div style="padding:14px;background:#FDF8F4;border:1px dashed var(--danger);border-radius:8px;font-size:12px;color:var(--danger);line-height:1.6">
+            <b>Misconception 卡</b>：安全/误解题答错时，除了 Again(1) 重置外，额外生成一张 <code>misconception</code> 类型卡片来强化正确理解。比单纯 "答错重置 interval" 更贴合 code-review 学习目标。
+          </div>
+        </div>
+      </div>
+
+      <!-- FAQ 8: 总结 -->
       <div class="card">
-        <div class="ch"><h3>Q7: 所以 AhaDiff 到底是什么？一句话版本</h3><div class="meta">最终定位</div></div>
+        <div class="ch"><h3>Q8: 所以 AhaDiff 到底是什么？一句话版本</h3><div class="meta">最终定位</div></div>
         <div class="cb" style="text-align:center;padding:32px">
           <div style="font-family:var(--font-serif);font-size:22px;color:var(--ink);line-height:1.6;max-width:700px;margin:0 auto">
             AhaDiff 是一个<b>只读的本地 CLI</b>。<br/><br/>

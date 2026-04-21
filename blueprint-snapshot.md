@@ -1,0 +1,28 @@
+- generic [ref=e2]:
+  - complementary [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e6]: Δ知
+      - generic [ref=e7]
+    - navigation [ref=e10]:
+      - generic [ref=e11]: 蓝图 · Blueprint
+      - button "◎ 总览 Overview" [ref=e12] [cursor=pointer]
+      - button "⟳ Diff 流程 Flow" [ref=e16] [cursor=pointer]
+      - button "✦ 灵感借鉴 Sources" [ref=e20] [cursor=pointer]
+      - button "▤ 八层架构 Arch" [ref=e24] [cursor=pointer]
+      - button "▲ 评估体系 Rubric" [ref=e28] [cursor=pointer]
+      - button "⇌ 方案一致性 Align" [ref=e32] [cursor=pointer]
+      - button "❦ 前端现状 UI" [ref=e36] [cursor=pointer]
+      - button "? 深度 FAQ FAQ" [ref=e40] [cursor=pointer]
+    - generic [ref=e44]:
+      - generic [ref=e46]: v0.1 · 设计阶段
+      - generic [ref=e47]: 2026-04
+  - main [ref=e48]:
+    - generic [ref=e50]:
+      - generic [ref=e51]: ahadiff
+      - generic [ref=e52]: /
+      - generic [ref=e53]: Blueprint
+    - generic [ref=e54]:
+      - generic [ref=e55]
+      - generic [ref=e59]
+      - generic [ref=e84]
+      - generic [ref=e110]
