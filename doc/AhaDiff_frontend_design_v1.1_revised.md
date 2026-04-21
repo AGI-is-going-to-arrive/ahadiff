@@ -3,7 +3,7 @@ title: "知返 AhaDiff v1.1 前端视觉与交互手册"
 subtitle: "3 风格 × 11 页面 = 33 个 Claude Design / Stitch 可生成界面"
 author: "Revised design spec based on uploaded frontend design"
 date: "2026-04-19"
-note: "⚠️ 技术栈分版说明：v0.1 使用 Jinja2 + Vanilla JS（无 Node 构建链）；v1.0+ 可升级为 Next.js + React + Tailwind + shadcn/ui。本文档中涉及 Next.js/React 的内容仅适用于 v1.0 阶段，v0.1 开发时请忽略。"
+note: "⚠️ 技术栈分版说明：v0.1 使用 React 19 + Vite + vanilla CSS（viewer/ 目录，无 CSS 框架）；v1.0+ 可升级为 PWA 增强 + Tailwind + shadcn/ui。本文档中涉及 Next.js 的内容仅适用于 v1.0 阶段参考。"
 lang: zh-CN
 mainfont: DejaVu Serif
 monofont: DejaVu Sans Mono
@@ -50,8 +50,8 @@ header-includes:
 本文件是对原 **AntiVibe Tutor v1.0 前端视觉与交互手册** 的整体修订版。原文件已经完整规划了 3 风格 × 11 页面 = 33 个界面，并提供了三套视觉 DNA、Design Tokens、i18n、页面规格、7 轮 Claude Design 投喂方式和自查清单。本版保留这个结构，不删减 **3 风格 × 11 页面**，但把产品从「AntiVibe Tutor」重构为 **知返 AhaDiff**，并把 Evidence / Claim / Spec / Graphify / Ratchet / Review 这些核心差异点嵌入到原有 11 个页面里。
 
 > **技术栈说明**：本手册中的 Design Tokens、布局结构、组件语义和 i18n 骨架适用于所有前端实现。
-> - **v0.1**：使用 Jinja2 模板 + Vanilla JS + Starlette serve（详见 `CLAUDE.md`），组件对应 Jinja2 partials/components
-> - **v1.0+**：可升级为 Next.js + React + Tailwind + shadcn/ui（本手册 §14 投喂 Prompt 适用于此阶段）
+> - **v0.1**：使用 React 19 + Vite + vanilla CSS + Starlette serve（详见 `CLAUDE.md`），组件对应 React 函数组件（`viewer/src/components/`）
+> - **v1.0+**：PWA 增强 + Tailwind + shadcn/ui（本手册 §14 投喂 Prompt 适用于此阶段高保真升级）
 
 ## 0.1 必改项总览
 
@@ -1409,9 +1409,9 @@ i18n 文案
 
 # 14. 直接投喂 Claude Design 的总 Prompt
 
-> **注意**：以下 Prompt 使用 Next.js/React 技术栈，适用于 **v1.0 高保真前端**。
-> v0.1 使用 Jinja2 + Vanilla JS + Starlette serve（见 `CLAUDE.md` 技术栈章节）。
-> v0.1 开发时请将此 Prompt 中的组件概念映射为 Jinja2 模板 partials/components。
+> **注意**：以下 Prompt 使用 Next.js/React + Tailwind + shadcn/ui 技术栈，适用于 **v1.0 PWA 增强阶段**。
+> v0.1 使用 React 19 + Vite + vanilla CSS + Starlette serve（见 `CLAUDE.md` 技术栈章节）。
+> v0.1 的组件已是 React 函数组件（`viewer/src/components/`），v1.0 升级主要涉及 Tailwind 迁移和 PWA 能力。
 
 ```markdown
 你是 Claude Design / Stitch。请基于以下规范生成 Next.js 16 + React 19 + Tailwind v4 + shadcn/ui + Motion 的前端。

@@ -69,14 +69,12 @@ ahadiff serve
 # 棘轮优化
 ahadiff improve abc123 --rounds 6
 
-# 安装到 AI 工具（支持 11 个目标）
+# 安装到 AI 工具（v0.1 支持 4 个核心 CLI）
 ahadiff install claude    # Claude Code → .claude/skills/
 ahadiff install codex     # Codex CLI → AGENTS.md
-ahadiff install cursor    # Cursor → .cursor/rules/
-ahadiff install copilot   # GitHub Copilot
 ahadiff install gemini    # Gemini CLI → GEMINI.md
-ahadiff install windsurf  # Windsurf → .windsurf/rules/
-# 还支持: opencode / cline / amp / jules / aider
+ahadiff install opencode  # OpenCode → AGENTS.md + .opencode/agents/
+# v0.2 扩展: cursor / copilot / windsurf / cline / amp / jules / aider
 ```
 
 产出物结构：
@@ -117,12 +115,12 @@ ahadiff install windsurf  # Windsurf → .windsurf/rules/
 ```text
 ahadiff/
 ├─ AhaDiff Warm v6.html         # 当前最新 UI 原型
-├─ AhaDiff-Blueprint.html       # 八层架构可视化（含 i18n / VCR / 30 CC）
+├─ AhaDiff-Blueprint.html       # 八层架构可视化（含 i18n / VCR / 50+ CC）
 ├─ AhaDiff-Competitors-Research.html  # 竞品矩阵 + 5 条护城河
 ├─ doc/                         # 中文设计文档
 │  ├─ ahadiff设计思路.md          # [ARCHIVED] 早期架构快照
 │  ├─ 知返ahadiff改名后的后续方案.md  # [ARCHIVED] 改名过渡方案
-│  └─ AhaDiff_frontend_design_v1.1_revised.md  # 前端视觉手册（v0.1=Jinja2 / v1.0=React）
+│  └─ AhaDiff_frontend_design_v1.1_revised.md  # 前端视觉手册（v0.1=React 19+Vite）
 ├─ ui/                          # HTML 原型 v1–v6（设计迭代史）
 └─ CLAUDE.md                    # 项目 AI 上下文索引
 ```
@@ -133,10 +131,9 @@ ahadiff/
 
 下一步路线图：
 
-- [ ] `v0.1`（MVP，~14-16 天）：CLI + Lesson + Evaluator + Ratchet 全链路 + `ahadiff serve` 本地交互 + i18n + 阶段门禁（Codex+Claude+Gemini 交叉审查）
-- [ ] `v0.2`：watchdog 增量重生 + section-level helpfulness + forgetting-risk dashboard
-- [ ] `v0.3`：Textual TUI + Socratic follow-up
-- [ ] `v1.0`：Next.js + React 19 完整前端 + Benchmark Transparency
+- [ ] `v0.1`（MVP）：CLI + Lesson + Evaluator + Ratchet 全链路 + React 19 WebUI（`ahadiff serve`）+ 8 种 LLM Provider + 8 种 diff 捕获（含 --unstaged / git show）+ 4 个 CLI install target + i18n + 阶段门禁
+- [ ] `v0.2`：--compare-dir + --patch-url + 7 个 IDE install target + watchdog 增量重生 + section-level helpfulness + Team 功能
+- [ ] `v1.0`：PWA + public benchmark suite
 
 ## 灵感来源
 

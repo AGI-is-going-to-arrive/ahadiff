@@ -108,8 +108,8 @@ accuracy(20) · evidence(18) · diff_coverage(14) · learnability(14) · quiz_tr
 | HC-1 | 所有产物存 `.ahadiff/`；源码/diff/claim/quiz/review 不得上传第三方；仅 LLM API prompt 可出本机 | 内部设计：`CLAUDE.md`:L5；竞品对标：CodeRabbit/Greptile 全 SaaS |
 | HC-2 | evaluation bundle 必须 IMMUTABLE（agent 禁改）；`generator_prompt.md` 是唯一可改资产；N-文件物理分离 | 内部设计：`设计思路.md`:L146-180；灵感项目：autoresearch `prepare.py` 同构 |
 | HC-3 | 每条 claim 必须能回到 `file:line`，附 `source_hunks / changed_symbols / concepts`；deterministic verifier 先于 LLM judge | 内部设计：`改名方案.md`:L457-485；竞品空白 B |
-| HC-4 | 评估模型 ≠ 生成模型；禁止同模型自评（生成用 Sonnet，judge 用 Haiku） | 内部设计：`CLAUDE.md`:L22 |
-| HC-5 | 首版 UI 只用 Jinja2 静态 HTML；禁止 Next.js / React / Node 构建链 | 内部设计：`CLAUDE.md`:L30；`kickoff.md`:L40-43 |
+| HC-4 | 生产环境生成与评估用不同模型；开发测试阶段统一 gpt-5.4-mini（跨模型约束暂放松） | 内部设计：`CLAUDE.md`:L22；第五/六轮决策 |
+| HC-5 | 首版 UI 使用 React 19 + Vite + vanilla CSS（`ahadiff serve` 本地 SPA）；不用 Next.js 等 SSR 框架 | 内部设计：`CLAUDE.md`:L20；第五轮决策 |
 | HC-6 | 禁止依赖 LiteLLM（2026-03-24 `1.82.7/8` 供应链事件） | 内部设计：`设计思路.md`:L10 |
 | HC-7 | 禁止 f-string 拼长 prompt；prompt 必须独立 `.md` 文件 | 内部设计：`CLAUDE.md`:L52 |
 | HC-8 | 所有 LLM 调用走 `llm/provider.py` 单一出口；禁止直接 `import anthropic/openai` | 内部设计：`CLAUDE.md`:L51 |
@@ -152,9 +152,9 @@ accuracy(20) · evidence(18) · diff_coverage(14) · learnability(14) · quiz_tr
 | RISK-1 | **CodeRabbit 加入 SRS/learning 特性** → 直接进入 AhaDiff 领地 | 中 | 高 | 强调 local-first 个人工具定位；SRS+Claim-Evidence 组合是 CodeRabbit 企业 review 基因不会做的事；迅速建立 `awesome-claude-skills` 生态入口 |
 | RISK-2 | Anthropic 官方推出「Diff Learning Skill」 | 低 | 极高 | 提前将 AhaDiff 作为 skill 发布，占据 `obra/superpowers` 同级生态位；突出 `evaluator.py` + ratchet 的非平凡实现 |
 | RISK-3 | Greptile 「learns your codebase」扩展到人类学习 | 低 | 中 | Claim 五状态机差异化；Greptile 是 rule-adapt 而非人类学习 |
-| RISK-4 | LLM 调用成本高（每条 diff 3-5 次 API：generation + verification + judge） | 中 | 中 | 小模型做 judge（Haiku），`strict_local = true` 支持本地模型；`audit.jsonl` 可视化成本 |
+| RISK-4 | LLM 调用成本高（每条 diff 3-5 次 API：generation + verification + judge） | 中 | 中 | gpt-5.4-mini 做 judge（成本低+1M 上下文），`strict_local = true` 支持本地模型；`audit.jsonl` 可视化成本 |
 | RISK-5 | Claim verification 的 deterministic 规则不足以识别"虚构解释"，LLM judge 可能漂移 | 中 | 高 | risky words 扫描作为第三层；跨模型评估；人工标注 20 份 benchmark 做 judge 稳定性测试 |
-| RISK-6 | 用户不愿意在本地跑 Python CLI（希望 IDE 插件） | 中 | 中 | 留 v1.0 做 VS Code 扩展；首版走 `ahadiff install claude/codex/cursor` 让 agent 代用户调用 |
+| RISK-6 | 用户不愿意在本地跑 Python CLI（希望 IDE 插件） | 中 | 中 | v0.1 先支持 4 个核心 CLI（claude/codex/gemini/opencode）；v0.2 扩展 7 个 IDE target（cursor/copilot/windsurf 等） |
 | RISK-7 | 命名冲突遗留：GitHub 已有 `mohi-devhub/antivibe`（已通过改名 AhaDiff 规避），但需确保 `ahadiff` 的 PyPI/npm/GitHub 未被占 | 低 | 中 | 发布前冻结三站命名；`doc/知返ahadiff改名后的后续方案.md` 已记录 |
 | RISK-8 | `repo/` 下 autoresearch 原版三文件结构与 CLAUDE.md N-文件契约描述有偏差[M-1] | 已发生 | 低 | 本研究文件「Part A.2」已识别；需在后续 planning 更新 CLAUDE.md 归因表述 |
 

@@ -501,9 +501,11 @@ async def test_api_and_page_consistent(client):
 
 ---
 
-## CC-NEW-8: Static 按钮可点击但无法提交
+## CC-NEW-8: ~~Static 按钮可点击但无法提交~~ — **N/A（已取消 static 模式）**
 
-**文件**: `viewer/templates/components/_action_button.html` + `viewer/static/app.js`
+> 第五轮审查决策：前端直接用 React SPA，取消 file:// 静态模式。此 CC 不再适用。
+
+**原文件**: `viewer/templates/components/_action_button.html` + `viewer/static/app.js`
 
 **HTML 属性规范**:
 ```html
@@ -623,4 +625,4 @@ def test_cli_hint_visible_in_static(page):
 | CC-NEW-5 | `concepts/identity.py` | `ConceptNode.term_key` + `aliases[]` | 7 parametrize |
 | CC-NEW-6 | `safety/archive_walker.py` | 无（config 新增 `[security.archive]`） | 3 |
 | CC-NEW-7 | `serve/middleware.py` | 无 | 3 |
-| CC-NEW-8 | `viewer/static/app.js` + `_action_button.html` | 无 | 3 |
+| CC-NEW-8 | ~~N/A — 已取消 static 模式~~ | — | — |

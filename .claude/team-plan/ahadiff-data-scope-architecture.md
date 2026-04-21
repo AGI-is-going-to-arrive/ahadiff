@@ -79,7 +79,7 @@ class UsageEvent(BaseModel):
     event_id: str               # UUID v7
     run_id: str
     repo_id: str                # repo fingerprint
-    provider_class: str         # "anthropic" | "openai" | "ollama"
+    provider_class: str         # "openai" | "openai_responses" | "gemini" | "anthropic" | "azure" | "newapi" | "cherryin" | "ollama"
     model_id: str
     input_tokens: int
     output_tokens: int

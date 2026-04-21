@@ -68,8 +68,8 @@
   - Warm（Anthropic 纸感，默认）：Clay Orange `#D97757`，Inter + Newsreader
   - Editorial（精品出版物）：Terracotta `#C66B3D`，Inter + Fraunces
 - **11 页面**：Landing / Runs Dashboard / Lesson Reader / Diff+Evidence Viewer / Ratchet Lab / Socratic Quiz / SRS Review / Settings / Onboarding / Agent Skill Hub / Learning Graph Explorer
-- **Design Tokens**：语义层 CSS 变量，Tailwind v4 CSS-first 配置
-- **技术栈**：Next.js 16.2.4 / React 19.2.5 / Tailwind 4.2.2 / Motion 12.38.0 / shadcn/ui
+- **Design Tokens**：语义层 CSS 变量
+- **技术栈**：v0.1 使用 React 19 + Vite + vanilla CSS（见 `CLAUDE.md`）；手册中的 Next.js/Tailwind/shadcn 描述仅适用于 v1.0 参考
 - **7 轮 Claude Design 投喂流程**
 - **20 条一致性 Checklist**
 
@@ -116,7 +116,7 @@ A: 权威文档见根目录 `CLAUDE.md` + `.claude/team-plan/`（kickoff + stage
 | `ahadiff设计思路.md` | ~630 行 | [ARCHIVED] 早期架构快照 |
 | `知返ahadiff改名后的后续方案.md` | ~530 行 | [ARCHIVED] 改名过渡方案 |
 | `ahadiff 最终完整方案：*.md` | ~2500 行 | [ARCHIVED] 最终完整方案（31 节 + 9 段开发顺序） |
-| `AhaDiff_frontend_design_v1.1_revised.md` | 1500 行 | 前端视觉与交互手册（v0.1=Jinja2 / v1.0=React，可编译 PDF） |
+| `AhaDiff_frontend_design_v1.1_revised.md` | 1500 行 | 前端视觉与交互手册（v0.1=React 19+Vite / v1.0=PWA 增强，可编译 PDF） |
 | `知返设计坐标.md` | ~100 行 | 早期设计快照（**已归档**，多处术语过时） |
 | `COMPREHENSIVE-EVALUATION-REPORT.md` | ~240 行 | 综合评估报告（方案 9.0/10，UI 8.7/10） |
 | `SOURCE-CODE-VERIFICATION-REPORT.md` | ~240 行 | 灵感项目源码验证报告（12 项修订） |

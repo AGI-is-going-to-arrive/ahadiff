@@ -1,5 +1,7 @@
 # Team Research: AhaDiff v0.1 全面评估 + i18n 全链路设计
 
+> **⚠️ 部分内容已过时**：本报告撰写于 2026-04-20（第五轮决策之前）。以下内容已被后续决策取代：(1) 前端从 Jinja2 改为 React 19 + Vite；(2) Judge 从 Haiku 改为 gpt-5.4-mini；(3) source_kind 从 3 值扩展为 7 值；(4) Install target 从 11 个分期为 v0.1 四个 CLI + v0.2 七个 IDE。当前权威设计请参阅 `CLAUDE.md` 和 `ahadiff-diff-input-expansion.md`。
+
 > 评估方法：Claude（编排+综合）+ Codex（后端架构）+ Gemini（前端/UX）+ 3 个 Web 验证 Agent（灵感项目源码）
 > 日期：2026-04-20
 

@@ -852,7 +852,7 @@ button:focus-visible,a:focus-visible,[tabindex]:focus-visible,[role="button"]:fo
         <h2>AI 写完，Diff 教回。</h2>
         <div class="sub">一次 commit 的学习回路：捕获 diff → 验证 claim → 主动回忆 → 质量棘轮 → 写入长期 wiki。</div>
         <div class="steps">
-          <div class="st"><div class="n">STEP · 01</div><h4>Capture Diff</h4><p>staged / commit / PR patch 统一进入 .ahadiff/commits/</p></div>
+          <div class="st"><div class="n">STEP · 01</div><h4>Capture Diff</h4><p>staged / commit / PR patch 统一进入 .ahadiff/runs/&lt;run_id&gt;/</p></div>
           <div class="st"><div class="n">STEP · 02</div><h4>Verify Claims</h4><p>每句解释回到 file:line，标注 verified / weak / not_proven</p></div>
           <div class="st"><div class="n">STEP · 03</div><h4>Quiz</h4><p>Socratic 追问、Hint、Quiz-only 三阶 scaffolding</p></div>
           <div class="st"><div class="n">STEP · 04</div><h4>Ratchet</h4><p>score 71 → 88 保留；否则丢弃并记录原因</p></div>
@@ -901,7 +901,7 @@ button:focus-visible,a:focus-visible,[tabindex]:focus-visible,[role="button"]:fo
           <div class="kpi"><div class="lb">Pinned diffs <span class="demo-tag" style="font-size:9px;padding:1px 5px">DEMO</span></div><div class="vl">50</div><div class="delta">8 语言 · 12 项目类型</div></div>
           <div class="kpi"><div class="lb">Judge–Human κ <span class="demo-tag" style="font-size:9px;padding:1px 5px">DEMO</span></div><div class="vl">0.82</div><div class="delta"><span class="up">+0.04</span> 自 v1.0.2 · mock</div></div>
           <div class="kpi"><div class="lb">Ratchet keep-rate <span class="demo-tag" style="font-size:9px;padding:1px 5px">DEMO</span></div><div class="vl">64%</div><div class="delta">last 30 days · mock</div></div>
-          <div class="kpi"><div class="lb">Median cost / lesson <span class="demo-tag" style="font-size:9px;padding:1px 5px">DEMO</span></div><div class="vl">$0.018</div><div class="delta">Haiku judge · mock</div></div>
+          <div class="kpi"><div class="lb">Median cost / lesson <span class="demo-tag" style="font-size:9px;padding:1px 5px">DEMO</span></div><div class="vl">$0.018</div><div class="delta">gpt-5.4-mini judge · mock</div></div>
         </div>
       </div>
     </section>
@@ -1017,8 +1017,8 @@ button:focus-visible,a:focus-visible,[tabindex]:focus-visible,[role="button"]:fo
         </div></div>
         <div class="card"><div class="ch"><h3>Audit cost (24h)</h3><div class="meta">provider call log</div></div><div class="cb">
           <table class="t" style="font-size:12.5px">
-            <tr><td>Anthropic · Claude Haiku 4.5 <span style="color:var(--muted)">(judge)</span></td><td class="mono num">18 calls</td><td class="mono num">$0.12</td></tr>
-            <tr><td>Anthropic · Claude Sonnet 4.5 <span style="color:var(--muted)">(generate)</span></td><td class="mono num">3 calls</td><td class="mono num">$0.08</td></tr>
+            <tr><td>OpenAI · GPT-5.4-mini <span style="color:var(--muted)">(judge)</span></td><td class="mono num">18 calls</td><td class="mono num">$0.12</td></tr>
+            <tr><td>OpenAI · GPT-5.4-mini <span style="color:var(--muted)">(generate)</span></td><td class="mono num">3 calls</td><td class="mono num">$0.02</td></tr>
             <tr><td>Local · Ollama nomic-embed</td><td class="mono num">42 calls</td><td class="mono num">$0.00</td></tr>
             <tr><td>OpenAI · configured (judge backup)</td><td class="mono num">6 calls</td><td class="mono num">$0.03</td></tr>
           </table>
@@ -1110,7 +1110,7 @@ button:focus-visible,a:focus-visible,[tabindex]:focus-visible,[role="button"]:fo
           <p>已生成 5 道问题，其中 1 道 transfer scenario（把这套重试放到 webhook receiver 会发生什么？）。<span class="mono">Quiz 完成 · 4/5</span></p>
 
           <h2 id="s-sources">Sources</h2>
-          <p class="mono" style="font-size:13px">src/client.ts:L68–L104 · tests/client.test.ts:L21–L49 · .ahadiff/commits/abc123/claims.jsonl</p>
+          <p class="mono" style="font-size:13px">src/client.ts:L68–L104 · tests/client.test.ts:L21–L49 · .ahadiff/runs/abc123/claims.jsonl</p>
         </article>
 
         <aside class="rail">
@@ -1134,7 +1134,7 @@ button:focus-visible,a:focus-visible,[tabindex]:focus-visible,[role="button"]:fo
               <span class="tr-file">index.md</span>
               <span class="tr-file">concepts.md</span>
               <span class="tr-file">log.md</span>
-              <span class="tr-file tr-dir">commits/</span>
+              <span class="tr-file tr-dir">runs/</span>
               <span class="tr-sub">abc123/lesson.md</span>
               <span class="tr-sub">abc123/claims.jsonl</span>
               <span class="tr-sub">abc123/quiz.md</span>
@@ -1745,9 +1745,9 @@ diff generator_prompt.md
                 </div>
                 <div class="provider-cell">
                   <div class="eyebrow">Judge · 评审</div>
-                  <div class="provider-name">Claude Haiku 4.5</div>
+                  <div class="provider-name">GPT-5.4-mini</div>
                   <dl class="provider-meta mono">
-                    <dt>display_name</dt><dd>Claude Haiku 4.5</dd>
+                    <dt>display_name</dt><dd>GPT-5.4-mini</dd>
                     <dt>api_model</dt><dd class="hl">configured separately</dd>
                     <dt>role</dt><dd>judge · immutable v4.2.1</dd>
                   </dl>
@@ -1774,7 +1774,7 @@ diff generator_prompt.md
               <thead><tr><th>time</th><th>provider</th><th>model</th><th>files sent</th><th>tokens</th><th>cost</th><th>purpose</th><th>status</th></tr></thead>
               <tbody>
                 <tr><td class="mono">14:41:55</td><td class="mono">anthropic</td><td class="mono">sonnet-4.5 (configured)</td><td class="mono">2 (redacted)</td><td class="mono num">8,114</td><td class="mono num">$0.024</td><td>generate · abc123 v11</td><td><span class="badge verified"><span class="bd"></span>ok</span></td></tr>
-                <tr><td class="mono">14:41:02</td><td class="mono">anthropic</td><td class="mono">haiku-4.5 (configured)</td><td class="mono">1</td><td class="mono num">3,206</td><td class="mono num">$0.004</td><td>judge · abc123 v11</td><td><span class="badge verified"><span class="bd"></span>ok</span></td></tr>
+                <tr><td class="mono">14:41:02</td><td class="mono">anthropic</td><td class="mono">gpt-5.4-mini (configured)</td><td class="mono">1</td><td class="mono num">3,206</td><td class="mono num">$0.004</td><td>judge · abc123 v11</td><td><span class="badge verified"><span class="bd"></span>ok</span></td></tr>
                 <tr><td class="mono">14:38:44</td><td class="mono">local</td><td class="mono">nomic-embed</td><td class="mono">5</td><td class="mono num">—</td><td class="mono num">$0.000</td><td>embed · graph update</td><td><span class="badge verified"><span class="bd"></span>ok</span></td></tr>
                 <tr><td class="mono">14:31:02</td><td class="mono">anthropic</td><td class="mono">sonnet-4.5 (configured)</td><td class="mono">2 (redacted)</td><td class="mono num">7,902</td><td class="mono num">$0.022</td><td>generate · abc123 v5</td><td><span class="badge verified"><span class="bd"></span>ok</span></td></tr>
                 <tr><td class="mono">14:29:10</td><td class="mono">anthropic</td><td class="mono">sonnet-4.5 (configured)</td><td class="mono">2</td><td class="mono num">9,441</td><td class="mono num">$0.029</td><td>generate · abc123 v4</td><td><span class="badge weak"><span class="bd"></span>rubric FAIL</span></td></tr>
@@ -2201,7 +2201,7 @@ type BenchmarkSummary = { demoData: true; ... };</pre>
             <ul>
               <li><code>Landing</code> → static, DEMO benchmark</li>
               <li><code>Dashboard</code> → <code>GET /runs?since=</code></li>
-              <li><code>Lesson</code> → <code>.ahadiff/commits/&lt;sha&gt;/lesson.md</code></li>
+              <li><code>Lesson</code> → <code>.ahadiff/runs/&lt;run_id&gt;/lesson.md</code></li>
               <li><code>Diff</code> → <code>git diff</code> + <code>claims.jsonl</code></li>
               <li><code>Ratchet</code> → <code>results.tsv</code></li>
               <li><code>Graph</code> → <code>graphify-out/graph.json</code></li>

@@ -16,27 +16,26 @@
 
 ### 计划技术栈
 
-- **后端 CLI**：Python 3.11+, typer, rich, pydantic, jinja2, httpx, pyyaml
-- **前端 Viewer**（首版）：Jinja2 模板 + `ahadiff serve`（Starlette + Uvicorn 轻量本地服务器，支持 Quiz/SRS 交互写回）；同时保留 `file://` 静态模式（只读，显示 CLI 命令提示）。不使用 Next.js/React
+- **后端 CLI**：Python 3.11+, typer, rich, pydantic, httpx, pyyaml
+- **前端 Viewer**：React 19 + Vite + vanilla CSS（以 `AhaDiff Warm v6.html` 为设计参考模板）。`ahadiff serve` 启动本地 dev server（Starlette + Uvicorn API + Vite dev/build），CLI 运行完成后自动调用 `webbrowser.open()` 打开 WebUI（可通过 `--no-browser` 禁用）。不使用 Next.js 等 SSR 框架
 - **评估系统**：LLM-as-judge + 8 维自研 rubric（accuracy/evidence/diff_coverage/learnability/quiz_transfer/spec_alignment/conciseness/safety_privacy = 100 分）+ git ratchet 棘轮
-- **不使用**：LiteLLM（供应链风险）、LangChain、Node 构建链
+- **LLM Provider**：支持 8 种 API 格式（OpenAI Chat / OpenAI Responses / Gemini / Anthropic / Azure OpenAI / New API / CherryIN / Ollama）。BYOK 流程：用户提供 model_name + base_url + api_key → 自动探测 temperature 透传、TPM/RPM 限制、上下文长度。所有 LLM 调用必须确保不超过探测到的 max_context_length
+- **不使用**：LiteLLM（供应链风险）、LangChain、Jinja2 模板渲染前端、Next.js 等 SSR 框架。注：Vite 属于前端构建工具（非传统 Node 后端构建链），仅用于 viewer/ 目录
 
 ### 八层架构（计划）
 
 ```
 0. Schema & Contract     -- 核心契约冻结（ClaimStatus/RunSource/EvalBundle/EventLog）
-1. Diff Capture Layer    -- git diff / PR patch / staged changes / --compare
+1. Diff Capture Layer    -- git diff (last/since/staged/unstaged/show/range) / patch file/stdin / --compare
 2. Context Layer
    2a. Context Assembly  -- repo files, graphify enrichment, specs
    2b. Safety Gate       -- secret scan → redact → 才能 log/cache/model/render
    2c. Budget & Degrade  -- token budget, large diff skip/clip/summarize, capability_level
 3. Lesson Generation     -- prompts/*.md, claim extraction
 4. Verification Layer    -- claims.jsonl, deterministic + LLM judge
-5. Ratchet Layer         -- evaluation bundle (immutable), review.sqlite (唯一真相源)
+5. Ratchet Layer         -- evaluation bundle (immutable), review.sqlite (唯一真相源), Graphify freshness query
 6. Learning Layer        -- quiz, SRS review, section helpfulness, concepts.jsonl
-7. Wiki + UI Layer       -- index.md, concept graph, dashboard
-   7a. Static Snapshot   -- file:// 兼容，一次性 data_bundle.json
-   7b. Live Serve        -- ahadiff serve（Starlette），实时读 SQLite + REST API
+7. Wiki + UI Layer       -- React SPA via `ahadiff serve`（Starlette API + Vite dev/build）
 ```
 
 编排逻辑由 `core/orchestrator.py` 统一管理 learn/improve/verify 三条主链路，cli.py 仅做参数解析和输出格式化。results.tsv 降级为 review.sqlite 的人类可读导出视图。
@@ -145,12 +144,14 @@ python3 -m http.server 8765
 1. **N-文件契约**（受 autoresearch 三文件启发的变体）：`program.md`（自然语言状态机）+ **evaluation bundle**（`evaluator.py` + `rubric.py` + `rubric.yaml` + `gates.py` + `deterministic.py` 共 5 文件，整体 immutable，变更需更新 `rubric_version` 并触发 VCR cassette 失效）+ `prompts/*.md`（可变 prompt 集合，improve loop 的唯一可写面）。原版 autoresearch 三文件：`program.md`（约束）+ `prepare.py`（不可改评估基座）+ `train.py`（唯一可改文件）。AhaDiff 核心创新：(1) 可变面从单一 Python 文件扩展为 prompt 目录；(2) agent 只改 Markdown prompt，不改用户代码；(3) immutable 边界从单文件扩展到 evaluation bundle
 2. **Claim Verifier 是核心护城河**：每句解释必须绑定 file:line 证据，claim 有五种状态（verified / weak / not_proven / contradicted / rejected），其中 rejected 表示 claim 引用了 patch 外的文件或不存在的证据（附 reason_code），与 contradicted（证据直接反驳）语义不同
 3. **棘轮机制**：improve loop 和 Phase 2.5 均在 `git worktree` 临时工作区执行，不触碰用户主分支。改进则 cherry-pick 回主分支，退步则删除 worktree。连续 2 个优化目标在首轮即无增益时触发 Phase 2.5 探索性重写（darwin-skill 原文："连续2个skill都在round1就break"，AhaDiff 沿用此阈值。autoresearch 无此机制）。Phase 2.5 最多触发 1 次/session，防止无限重写循环
-4. **跨模型评估**：生成用大模型（Sonnet），评估用小模型（Haiku），绝不同模型自评
+4. **跨模型评估**：生产环境要求生成与评估使用不同模型（生成用 gpt-5.4/Sonnet，评估用 gpt-5.4-mini），防止自评偏差。**开发测试阶段**：为节省成本，生成和评估统一使用 gpt-5.4-mini（1M 上下文），此时跨模型约束暂时放松
 5. **SQLite 即唯一真相源**：`review.sqlite` 的 `result_events` 表是所有评估数据的唯一真相源。`results.tsv` 降级为人类可读的导出视图（先写 SQLite 有事务保护，成功后 append TSV；TSV 写入失败仅 warn 不阻塞；`ahadiff export-results` 可从 SQLite 重建 TSV）。前端只是 viewer，删除前端不丢功能
 6. **安全脱敏顺序**：raw input → secret scan → redact → 才能 log/cache/model/render。任何 artifact 在完成 redaction 之前不得写入日志、进缓存或发送到模型
 7. **隐私三档**（统一 snake_case）：`strict_local`（仅本地模型，默认）/ `redacted_remote`（脱敏后发远端）/ `explicit_remote`（用户显式授权发原文）。CLI 参数、config.toml、audit 日志和 CI 行为必须使用统一的 snake_case 命名
-8. **i18n 全链路国际化**：手动切换（cookie `ahadiff_lang`）→ 浏览器检测 `navigator.language` → CLI `--lang` → `config.toml` → 系统 `LANG` → 降级 `en`。支持 `en` 和 `zh-CN`。Layer 3 Prompt 用单 prompt + `OUTPUT_LANGUAGE` 指令前缀（不分语言文件）。Jinja2 模板用 `_()` 函数 + JSON catalog（`messages/en.json` + `messages/zh-CN.json`）。Static 模式语言在生成时烘焙，Serve 模式动态切换。SRS 卡片保留创建时语言不重翻译。概念图谱用英文规范术语 + `display_name` 本地化。审计日志始终英文。VCR cassette key 包含 `output_lang`
-9. **UNTRUSTED_DIFF 扩展边界**：不可信输入面不仅包括 diff 正文，还包括文件名、commit message、Graphify label、模型输出、VCR cassette 内容。所有外部文本和路径元数据均视为 untrusted，统一经 `redaction_pipeline()` 处理
+8. **i18n 全链路国际化**：手动切换（cookie `ahadiff_lang`）→ 浏览器检测 `navigator.language` → CLI `--lang` → `config.toml` → 系统 `LANG` → 降级 `en`。支持 `en` 和 `zh-CN`。Layer 3 Prompt 用单 prompt + `OUTPUT_LANGUAGE` 指令前缀（不分语言文件）。React 前端用 i18n JSON catalog（`messages/en.json` + `messages/zh-CN.json`）动态切换。SRS 卡片保留创建时语言不重翻译。概念图谱用英文规范术语 + `display_name` 本地化。审计日志始终英文。VCR cassette key 包含 `output_lang`
+9. **UNTRUSTED_DIFF 扩展边界**：不可信输入面不仅包括 diff 正文，还包括文件名、commit message、branch/tag 名称、Graphify label、模型输出、VCR cassette 内容。所有外部文本和路径元数据均视为 untrusted，统一经 `redaction_pipeline()` 处理
+10. **SQLite 运行时版本门禁**：启动时检查 SQLite 版本，不低于修复 WAL-reset bug 的最低版本。统一连接初始化：WAL + busy_timeout + trusted_schema=OFF + quick_check（非 integrity_check）
+11. **架构权威源**：`contract-freeze.md` 是唯一架构权威源，所有契约定义以该文件为准，其他文档引用时不得与之冲突
 
 ### 灵感项目
 - Karpathy/autoresearch：三文件契约（AhaDiff 扩展为 N-文件变体：可变面从单一 train.py 扩展为 prompts/ 目录） + 单指标 val_bpb + git ratchet + 简洁性准则。**无 Phase 2.5 或 stuck 检测**，keep/discard 全在自然语言中
@@ -187,6 +188,7 @@ python3 -m http.server 8765
    - Gemini 只能使用 `gemini-3.1-pro-preview`，禁止降级模型
    - Codex 用于后端权威判断
    - Claude 是默认编排者和前端实现者
+   - LLM Provider 支持 8 种 API 格式（OpenAI Chat / OpenAI Responses / Gemini / Anthropic / Azure OpenAI / New API / CherryIN / Ollama）
 
 ### 文件所有权
 
@@ -194,8 +196,8 @@ python3 -m http.server 8765
 |---------|---------|---------|
 | `src/ahadiff/**/*.py` | Codex 实现 | Claude + Codex review |
 | `prompts/*.md` | Claude 编写 | Claude + Codex review |
-| `viewer/templates/**` | Claude 实现 | Claude + Gemini review |
-| `viewer/assets/*.css` | Claude 实现 | Gemini review |
+| `viewer/src/**/*.tsx` | Claude 实现 | Claude + Gemini review |
+| `viewer/src/**/*.css` | Claude 实现 | Gemini review |
 | `tests/**` | Codex 实现 | Claude + Codex review |
 | `doc/**` | Claude 维护 | 无需 review |
 | `CLAUDE.md` | Claude 维护 | 无需 review |
@@ -243,8 +245,8 @@ Stage N 完成 → 三模型并行审查 → 汇总问题 → 修复 → 验证 
 | Stage 1 | Task 1-4 (Infra + CLI + Safety + UI Fix) | CLI 骨架 + 安全脱敏 + 响应式修复 | Codex + Claude + Gemini（Task 4 前端） |
 | Stage 2 | Task 5-8 (Capture + Parse + Provider + Claim) | diff 捕获 + 结构化 + LLM 接入 + Claim 验证 | Codex + Claude |
 | Stage 3 | Task 9-12 (Lesson + Quiz + Eval + Ratchet) | 生成 + SRS + 评估 + 棘轮 | Codex + Claude |
-| Stage 4 | Task 13-14 (Viewer) | 前端渲染（Jinja2 + 核心页面） | Codex + Claude + Gemini |
-| Stage 5 | Task 15 + 14.5 + 16-17 (DB + Serve + Improve) | review.sqlite schema → Serve 写入端点 → 改进循环 | Codex + Claude |
+| Stage 4 | Task 13 + 14 (React Viewer) | React 前端基础 + 核心页面（API 用 mock/proxy） | Codex + Claude + Gemini |
+| Stage 5 | Task 14.5 + 15 + 16-17 (Serve + DB + Improve) | Serve API + review.sqlite schema → 改进循环 | Codex + Claude |
 | Stage 6 | Task 18-20 (Bench + Deploy) | 基准测试 + CI + 发布 | Codex + Claude |
 | Stage 7 | i18n-0~6 (国际化) | 全链路双语 + locale 降级 | Codex + Claude + Gemini |
 
@@ -277,3 +279,7 @@ Stage N 完成 → 三模型并行审查 → 汇总问题 → 修复 → 验证 
 | 2026-04-21 | 第三轮开工就绪审查（Claude+Codex，Gemini 429 Claude 兜底）：(1) 跨平台 10 项全闭合（portalocker 替代 os.kill / pathlib 强制 / locale.getlocale 替代已弃用 getdefaultlocale / webbrowser.open / os.replace / 短路径策略 / WAL 网络盘 fail-fast / Rich auto-detect / CI 三平台矩阵）；(2) Python 3.11+ 最终确认；(3) Windows 支持 PowerShell 一等 + cmd.exe fallback；(4) Blueprint HTML 修正 portalocker + WAL+busy_timeout |
 | 2026-04-21 | 数据范围架构设计（Claude+Codex 双模型全功能评估）：(1) 确立 per-repo truth + global derived governance 原则；(2) 9 功能逐一评估（A-I）4 项需 v0.1 调整（cost schema / allowlist / benchmark manifest / config precedence）5 项不动；(3) Config 5 层优先级链冻结；(4) Task 0/1/2/7/18 补充新契约（portalocker / allowlist policy / UsageEvent / audit rotation / manifest）；(5) Blueprint 新增数据范围+跨平台可视化卡片 |
 | 2026-04-21 | 第四轮终审（Claude Opus 4.6 + 3 并行代理）：(1) 判定 CONDITIONAL GO→GO（C-1 路径冲突复核降级为 Info，C-2 concepts.jsonl 已归入 Task 10）；(2) 新增 13 个 CC-GAP corner case（高优 GAP-2 网络中断需 Task 7 处理）；(3) 8 项 Warning 各需在相应 Task 启动前修复；(4) 新增阶段门禁制度（Stage Gate：Codex+Claude+Gemini 三模型交叉审查，0 Critical+0 High 方可进入下一 Stage）；(5) karpathy-skills 可追溯性测试/验证计划结构/Before-After 范例模式采纳；(6) 4 项过度工程化简化建议（CC-NEW-6/7/8/3）；(7) 实际工期修正为 14-16 天 |
+| 2026-04-21 | 第五轮全面深度审查（Claude+Codex+Gemini 三模型并行）：(1) 前端从 Jinja2 改为 React 19+Vite，以 v6.html 为设计参考，`ahadiff serve` 自动开浏览器；(2) LLM Provider 支持 8 种 API 格式（OpenAI/Responses/Gemini/Anthropic/Azure/NewAPI/CherryIN/Ollama）+ BYOK 自动探测（temperature/TPM/RPM/context length）；(3) Judge 从 Haiku 升级为 gpt-5.4-mini（1M 上下文）；(4) SQLite WAL-reset version gate + 统一连接初始化；(5) UNTRUSTED_DIFF 边界扩展至 branch/tag 名称；(6) 新增 9 个 CC-REVIEW corner cases；(7) contract-freeze.md 升格唯一权威；(8) 商业可行性暂不考虑 |
+| 2026-04-21 | 第六轮交叉审查（Codex+Claude+Gemini 全维度）：(1) 修复 3 High：Blueprint judge 描述/ui/CLAUDE.md Jinja2 残留/Task 13-14.5 依赖图+Stage 归属矛盾；(2) v6.html 修复 provider 标签"Anthropic→OpenAI"和 commits/→runs/ 旧路径 4 处；(3) competitors-research HC-4/HC-5/RISK-4 同步更新；(4) 技术栈三方评分确认（React 19=7-9/SQLite WAL=7/Starlette=8）；(5) 新增 7 个 CC-R6 corner cases（含 Ctrl+C 恢复/VCR schema version/多进程 half-write）；(6) Gemini 建议采纳：Zustand+虚拟列表+CSS Modules；(7) 跨平台 6 项新增缓解措施 |
+| 2026-04-21 | Diff 捕获场景扩展 + 交叉审查修复（Codex+Claude）：(1) v0.1 新增 `--unstaged` + `git show` + `--compare`（Task 5 补全）+ `--include-untracked`；(2) 修复 4 Critical：`--staged --unstaged` 改为 `git diff HEAD`（不拼 patch）、`--since` 改为连续 ancestry 窗口 diff、`--compare` 补入 Task 5 实现步骤、capture pipeline 改为 raw/redacted 双表示（parse 在 raw 上执行，持久化只用 redacted）；(3) 补全 corner case：bare repo/detached HEAD/unmerged index/shallow clone/unborn HEAD/TTY stdin/编码检测/BOM sniffing；(4) v0.2 规划 `--compare-dir` + `--patch-url`；v0.3 规划 .ipynb + `--url PR` |
+| 2026-04-21 | Install target 分期：v0.1 只实现 4 个核心 CLI（Claude Code / Codex CLI / Gemini CLI / OpenCode），v0.2 扩展 7 个 IDE/复用 target（Cursor / Copilot / Windsurf / Cline / Amp / Jules / Aider） |

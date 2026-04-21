@@ -1253,9 +1253,10 @@ footer{
           per-repo 真相源存 <code>.ahadiff/</code> 目录（review.sqlite / concepts.jsonl / audit.jsonl / runs/）<br>
           全局目录仅做派生索引和偏好，不参与 ratchet 判定<br>
           出本机的只有 LLM API prompt 本身（脱敏后）<br>
-          脱敏顺序（不可跳过）：<code>raw</code> → <code>scan</code> → <code>redact</code> → 才能 <code>log/cache/model/render</code><br>
-          五道安全闸门：<code>.ahadiffignore</code> → secret scan(两层扫描) → UNTRUSTED_DIFF 边界（6 类） → 隐私三档 → <code>audit.jsonl</code><br>
-          Lesson HTML 经 <code>bleach</code> 过滤防 XSS
+          Capture Pipeline（raw/redacted 双表示）：<code>capture_raw()</code>（仅内存）→ <code>secret_scan(raw)</code> → <code>parse_patch(raw)</code> → <code>apply_redaction(parsed, map)</code> → <code>persist(redacted)</code> → learn pipeline<br>
+          raw_patch 永不落盘、永不进日志、永不发送到模型；parse 在 raw 上执行保证 AST 准确性<br>
+          五道安全闸门：<code>.ahadiffignore</code> → secret scan(两层扫描) → UNTRUSTED_DIFF 边界（7 类） → 隐私三档 → <code>audit.jsonl</code><br>
+          React 19 默认 escape + DOMPurify 防 XSS
         </div>
         <div class="moat-compare">
           <span class="moat-compare-chip no">CodeRabbit / Greptile / DeepWiki 全 SaaS</span>
@@ -1342,11 +1343,11 @@ footer{
             <h3>Progressive Enhancement</h3>
           </div>
         </div>
-        <div class="moat-analogy">有网看在线视频，没网照样看下载好的。两个模式用同一模板，体验一致。</div>
+        <div class="moat-analogy">CLI 完成学习后自动打开浏览器，一个命令完成从学习到复习的全闭环。</div>
         <div class="moat-example">
-          <code>file://</code> 静态模式 — 双击 HTML 即可阅读笔记（只读，Quiz 按钮提示 CLI 命令）<br>
-          <code>ahadiff serve</code> — 本地 Starlette + Uvicorn，Quiz/SRS 答题写回 <code>review.sqlite</code><br><br>
-          同一 Jinja2 模板自动检测：有 serve → REST API 交互；无 serve → 优雅降级显示命令提示。
+          <code>ahadiff serve</code> — 本地 Starlette + Uvicorn，自动调用 <code>webbrowser.open()</code> 打开 React 19 SPA<br>
+          Quiz/SRS 答题在浏览器内完成，结果直接写回 <code>review.sqlite</code><br><br>
+          React 19 + Vite SPA 自动检测后端状态：有 serve → REST API 交互；CLI 可通过 <code>--no-browser</code> 禁用自动打开。
         </div>
         <div class="moat-compare">
           <span class="moat-compare-chip no">竞品全依赖云端</span>
@@ -1395,8 +1396,8 @@ footer{
         </div>
         <div class="moat-analogy">不仅怀疑包裹里的东西，连包裹上的地址标签、快递员说的话都验。</div>
         <div class="moat-example">
-          不可信输入面覆盖 6 类：<br>
-          <code>diff 正文</code> · <code>文件名</code> · <code>commit message</code><br>
+          不可信输入面覆盖 7 类：<br>
+          <code>diff 正文</code> · <code>文件名</code> · <code>commit message</code> · <code>branch/tag 名称</code><br>
           <code>Graphify label</code> · <code>模型输出</code> · <code>VCR cassette</code><br><br>
           统一经 <code>redaction_pipeline()</code> 处理<br>
           顺序：raw → scan → redact → 才能 log/cache/model/render
@@ -1425,7 +1426,7 @@ footer{
           <code>bind=127.0.0.1</code> — 只监听本机回环（外部不可访问）<br>
           <code>Host + Origin</code> 双校验 — 防 DNS rebinding<br>
           读写鉴权分级：默认只读，写操作需 write token<br>
-          Lesson HTML 经 <code>bleach</code> 过滤防 XSS
+          React 19 默认 escape + DOMPurify 防 XSS
         </div>
         <div class="moat-compare">
           <span class="moat-compare-chip no">SaaS 竞品用云端鉴权</span>
@@ -1737,7 +1738,7 @@ footer{
         <tr style="border-bottom:1px solid #EDE8DB">
           <td style="padding:10px 14px;font-weight:600">输入源</td>
           <td style="padding:10px 14px">文档、论文、网页</td>
-          <td style="padding:10px 14px"><code>git diff</code>（6 种输入模式）</td>
+          <td style="padding:10px 14px">diff（8 种 v0.1：git 6 种 + patch + compare；v0.2+ 规划 4 种：--compare-dir / --patch-url / .ipynb / --url PR）</td>
           <td style="padding:10px 14px;color:#8B7355">源从静态文档变为代码变更，每次 diff 是一个增量知识单元</td>
         </tr>
         <tr style="border-bottom:1px solid #EDE8DB;background:#FDFCF8">
@@ -1791,7 +1792,7 @@ footer{
     <div class="section-label">六、借鉴实现点 · 三模型交叉验证</div>
     <h2>37 条借鉴点 → <em>10 条纳入 v0.1</em>，全部"借思想 + 特化重写"</h2>
     <p class="lead">
-      经 Codex + Claude + Gemini 三模型四轮交叉 review，逐条源码验证。<br>
+      经 Codex + Claude + Gemini 三模型多轮交叉 review，逐条源码验证。<br>
       核心原则：<em>无一条可直接照搬原项目代码</em>，每条都需要 AhaDiff 特化重写。
     </p>
 
@@ -1924,20 +1925,20 @@ footer{
 <section id="v01-upgrade">
   <div class="container">
     <div class="section-label">六 · 附</div>
-    <h2>v0.1 设计升级<em>（2026-04-20 三轮评估后新增）</em></h2>
-    <p class="lead">经三模型 + Explorer 五轮交叉审查，v0.1 取消静态 viewer 冻结，新增以下关键能力。<br>技术栈确认：<strong>Python 3.11+ / Typer / Rich / Pydantic / Jinja2 / Starlette+Uvicorn</strong>，前端用 Jinja2 模板 + Vanilla JS，<strong>SQLite 为唯一真相源</strong>。</p>
+    <h2>v0.1 设计升级<em>（2026-04-20 多轮评估后新增）</em></h2>
+    <p class="lead">经三模型 + Explorer 六轮交叉审查，v0.1 确认以下关键能力。<br>技术栈确认：<strong>Python 3.11+ / Typer / Rich / Pydantic / React 19 + Vite + vanilla CSS / Starlette+Uvicorn</strong>，前端为 React 19 SPA（<code>ahadiff serve</code> 自动开浏览器），<strong>SQLite 为唯一真相源</strong>。<br>LLM Provider 支持 <strong>8 种 API 格式</strong>（OpenAI Chat / Responses / Gemini / Anthropic / Azure / NewAPI / CherryIN / Ollama）+ BYOK 自动探测（temperature/TPM/RPM/context length）。评估 Judge：<strong>gpt-5.4-mini</strong>（1M 上下文）。</p>
 
     <div class="top10-wrap">
       <div class="top10-grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;display:grid">
 
         <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px">
           <div class="borrow-howto-tag" style="margin:0">serve 模式</div>
-          <div class="borrow-howto-body"><code>ahadiff serve</code> — 轻量本地服务器（Starlette + Uvicorn），Quiz/SRS 答题在浏览器内完成，结果直接写回 <code>review.sqlite</code>（唯一真相源），不用在 terminal 和浏览器间来回切换。同一模板在 serve 和 <code>file://</code> 下自动切换（Progressive Enhancement）。</div>
+          <div class="borrow-howto-body"><code>ahadiff serve</code> — 轻量本地服务器（Starlette + Uvicorn），自动调用 <code>webbrowser.open()</code> 打开 React 19 + Vite SPA。Quiz/SRS 答题在浏览器内完成，结果直接写回 <code>review.sqlite</code>（唯一真相源），不用在 terminal 和浏览器间来回切换。可通过 <code>--no-browser</code> 禁用自动打开。</div>
         </div>
 
         <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px">
           <div class="borrow-howto-tag" style="margin:0">四 Lane 历史</div>
-          <div class="borrow-howto-body">不同 capability level 的 run（git/patch/compare/staged）分 lane 展示，不混在一起比。降级 run 自动标记，不会拉低整体质量评估。</div>
+          <div class="borrow-howto-body">v0.1 支持 8 种 diff 捕获（Level 3: --last / --since / --staged / --unstaged / commit-range / git-show；Level 2: --compare；Level 1: --patch），v0.2+ 规划 4 种（--compare-dir / --patch-url / .ipynb / --url PR）。不同 capability level 分 lane 展示，降级 run 自动标记。<strong>竞品对比</strong>：Greptile/What-the-Diff 仅支持 PR diff；CodeRabbit 支持 PR + CLI（含 staged/unstaged），但无 patch/compare/SRS 学习闭环。</div>
         </div>
 
         <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px">
@@ -1956,13 +1957,28 @@ footer{
         </div>
 
         <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px;margin:0">
-          <div class="borrow-howto-tag" style="margin:0">安全 6 类全覆盖</div>
-          <div class="borrow-howto-body">不仅脱敏 diff 正文，还覆盖文件名、commit message、Graphify 标签、LLM 输出、VCR 录制。统一 <code>redaction_pipeline()</code> 入口，raw → scan → redact → 才能 log/cache/model/render。</div>
+          <div class="borrow-howto-tag" style="margin:0">8 种 Diff 捕获 + 非 Git 支持</div>
+          <div class="borrow-howto-body">v0.1 即支持 8 种 diff 捕获方式（3 Level 分层）：<br>
+            <b>Level 3 · Git</b>（完整功能）：<code>--last</code> / <code>--since "2h"</code> / <code>--staged</code> / <code>--unstaged</code> / <code>HEAD~5..HEAD</code> / <code>git show &lt;sha&gt;</code><br>
+            <b>Level 1 · Patch</b>（无需 git）：<code>--patch file/-</code><br>
+            <b>Level 2 · File Compare</b>（无需 git）：<code>--compare a b</code><br>
+            + <code>--include-untracked</code> 纳入新文件 + <code>--staged --unstaged</code> 组合自动 <code>git diff HEAD</code><br>
+            <strong>核心差异</strong>：Greptile/What-the-Diff 仅支持 PR diff；CodeRabbit 支持 PR + CLI review，但无学习/SRS 闭环。AhaDiff 覆盖 staged/unstaged/patch/compare 等 AI coding 后最高频的学习时点。v0.2 规划 <code>--compare-dir</code> / <code>--patch-url</code>（含 GitHub PR + GitLab MR 自动识别），v0.3 规划 <code>.ipynb</code> cell-aware diff + <code>--url PR</code> 元数据集成。</div>
         </div>
 
         <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px;margin:0">
-          <div class="borrow-howto-tag" style="margin:0">30 Corner Cases 全闭合</div>
-          <div class="borrow-howto-body">经多轮三模型审查（Claude+Codex+Gemini，Gemini 429 时 Claude 兜底），从 Quiz staleness 到 Archive bomb，从 locale 归一化到 z-index 层级，30 个 corner case 全部有具体工程闭合方案。详见 <code>.claude/team-plan/corner-cases-closure-8.md</code> 和评估报告。</div>
+          <div class="borrow-howto-tag" style="margin:0">8 种 LLM Provider + BYOK</div>
+          <div class="borrow-howto-body">支持 OpenAI Chat / OpenAI Responses / Gemini / Anthropic / Azure OpenAI / New API / CherryIN / Ollama 共 8 种 API 格式。BYOK 流程：用户提供 model_name + base_url + api_key → 自动探测 temperature 透传、TPM/RPM 限制、上下文长度。开发测试阶段生成和评估统一用 gpt-5.4-mini（1M 上下文，节省成本）；生产环境生成切大模型、评估用 gpt-5.4-mini。</div>
+        </div>
+
+        <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px;margin:0">
+          <div class="borrow-howto-tag" style="margin:0">安全 7 类全覆盖</div>
+          <div class="borrow-howto-body">不仅脱敏 diff 正文，还覆盖文件名、commit message、branch/tag 名称、Graphify 标签、LLM 输出、VCR 录制。统一 <code>redaction_pipeline()</code> 入口，raw → scan → redact → 才能 log/cache/model/render。</div>
+        </div>
+
+        <div class="borrow-howto" style="flex-direction:column;align-items:flex-start;gap:8px;padding:20px;margin:0">
+          <div class="borrow-howto-tag" style="margin:0">50+ Corner Cases 全闭合</div>
+          <div class="borrow-howto-body">经六轮三模型审查（Claude+Codex+Gemini，Gemini 429 时 Claude 兜底），从 Quiz staleness 到 Archive bomb，从 locale 归一化到 z-index 层级，50+ 个 corner case 全部有具体工程闭合方案（含 CC-GAP 系列 13 项 + CC-R6 系列 7 项 + diff 捕获扩展 30+ 项）。第六轮终审判定：<strong>GO</strong>（0 Critical，3 High 已修复）。</div>
         </div>
 
       </div>
@@ -2098,7 +2114,8 @@ footer{
       <div style="font-family:var(--mono);font-size:12px;color:var(--clay);letter-spacing:.15em;margin-bottom:14px">NEXT ACTION</div>
       <h3 style="color:var(--paper-00);font-style:italic;font-weight:400;max-width:720px;margin:0 auto;font-size:24px;line-height:1.5">
         v0.1 Kickoff 已完成 → <span class="mono" style="color:var(--clay)">.claude/team-plan/ahadiff-v01-kickoff.md</span><br>
-        数据范围架构已冻结 → <span class="mono" style="color:var(--clay)">.claude/team-plan/ahadiff-data-scope-architecture.md</span>
+        数据范围架构已冻结 → <span class="mono" style="color:var(--clay)">.claude/team-plan/ahadiff-data-scope-architecture.md</span><br>
+        第六轮终审 GO → <span class="mono" style="color:var(--clay)">.claude/team-plan/ahadiff-v01-round6-cross-review.md</span>
       </h3>
     </div>
   </div>
@@ -2108,7 +2125,7 @@ footer{
   <div class="footer-inner">
     <div class="footer-left">
       知返 AhaDiff · 竞品研究可视化
-      <span class="mono">generated 2026-04-21 · warm v2</span>
+      <span class="mono">generated 2026-04-21 · warm v3 (round 6 sync)</span>
     </div>
     <div class="footer-right">
       sources: doc/知返设计坐标.md (archived) · doc/competitive-analysis-2026-04.md<br>
@@ -2130,19 +2147,19 @@ footer{
    ============================================================ */
 const products = {
   'ahadiff':{name:'知返 AhaDiff', tag:'MY', url:'local',
-    model:'Local CLI · Python 3.11+ / Typer / Rich / Pydantic / Jinja2 / Starlette+Uvicorn',
-    focus:'git diff → 学习笔记 + SRS + 证据链 · 8 维 rubric (100分) · SQLite 唯一真相源',
-    local:'YES — per-repo truth（.ahadiff/）+ global derived（config/registry，非真相源） · 前端 Jinja2 模板 + Vanilla JS（不用 React/Next.js）',
+    model:'Local CLI · Python 3.11+ / Typer / Rich / Pydantic / React 19 + Vite + vanilla CSS / Starlette+Uvicorn',
+    focus:'git diff（8 种 v0.1 捕获 + 4 种规划）→ 学习笔记 + SRS + 证据链 · 8 维 rubric (100分) · SQLite 唯一真相源 · 8 种 LLM Provider 格式 + BYOK 自动探测',
+    local:'YES — per-repo truth（.ahadiff/）+ global derived（config/registry，非真相源） · 前端 React 19 SPA（ahadiff serve 本地启动）',
     claim:'5 状态（verified/weak/not_proven/contradicted/rejected）',
     ratchet:'有（wiki_score + git worktree 隔离 + Phase 2.5 + 8 维自研 rubric）',
-    srs:'有（quiz.jsonl + review.sqlite + SM-2/FSRS）',
-    overlap:'自己', note:'本项目 · 当前设计阶段 · v0.1 技术栈: Python 3.11+, Typer, Rich, Pydantic, Jinja2, Starlette+Uvicorn · 数据范围: per-repo truth + global derived governance · portalocker 跨平台文件锁'},
+    srs:'有（quiz.jsonl + review.sqlite + SM-2）',
+    overlap:'自己', note:'本项目 · 当前设计阶段 · v0.1 技术栈: Python 3.11+, Typer, Rich, Pydantic, React 19 + Vite + vanilla CSS, Starlette+Uvicorn · 8 种 diff 捕获（v0.1: --last/--since/--staged/--unstaged/commit-range/git-show/--patch/--compare）+ 4 种规划（v0.2: --compare-dir/--patch-url, v0.3: .ipynb/--url PR）· 8 种 LLM Provider（OpenAI/Responses/Gemini/Anthropic/Azure/NewAPI/CherryIN/Ollama）+ BYOK 自动探测 · Judge: gpt-5.4-mini (1M ctx) · 数据范围: per-repo truth + global derived governance · portalocker 跨平台文件锁 · Capture Pipeline: raw/redacted 双表示（raw 永不落盘）· 50+ corner cases 全闭合'},
   'coderabbit':{name:'CodeRabbit', tag:'SAAS', url:'https://coderabbit.ai',
     model:'SaaS $24/$48 per user/month（Pro/Pro Plus）',
     focus:'PR 逐行 review + 变更摘要 + 架构图 + AI 修复',
     local:'NO（Enterprise 有 self-host）', claim:'部分（自然语言带行号，无结构化）',
     ratchet:'无', srs:'无',
-    overlap:'中高 · 威胁最大', note:'3M repos, SOC 2 Type II. 若加 SRS 将直接侵入'},
+    overlap:'中高 · 威胁最大', note:'3M repos, SOC 2 Type II. 支持 PR + CLI review（含 staged/unstaged），但无 patch/compare/SRS 学习闭环。若加 SRS 将直接侵入'},
   'greptile':{name:'Greptile', tag:'SAAS', url:'https://www.greptile.com',
     model:'SaaS $30/seat/mo（含 50 次 review）', focus:'PR diff + 全仓图谱 → review + 序列图',
     local:'NO（云端图索引）', claim:'部分', ratchet:'无', srs:'无',
@@ -2155,7 +2172,7 @@ const products = {
   'whatthediff':{name:'What The Diff', tag:'FREEMIUM', url:'https://whatthediff.ai',
     model:'Freemium 按 token', focus:'PR diff → 简短描述 + changelog + 周报',
     local:'NO', claim:'无', ratchet:'无', srs:'无',
-    overlap:'中', note:'只做摘要，无学习/quiz'},
+    overlap:'中', note:'只做摘要，无学习/quiz。仅支持 PR diff 单一模式，无本地 staged/unstaged/patch/compare'},
   'deepwiki':{name:'DeepWiki', tag:'FREEMIUM', url:'https://deepwiki.com',
     model:'Cognition 出品 · 公开仓库免费', focus:'整仓 → 结构化 Wiki + 对话问答',
     local:'NO（已索引 50,000+ 公开仓库）', claim:'无', ratchet:'无', srs:'无',
@@ -2167,7 +2184,7 @@ const products = {
     overlap:'低', note:'SRS 理念相同，输入不同（课程 vs diff）'},
   'remnote':{name:'RemNote', tag:'FREEMIUM', url:'https://www.remnote.com',
     model:'Freemium / Pro $6/月', focus:'通用笔记 + 闪卡 + 概念图',
-    local:'部分（Pro 离线模式）', claim:'无', ratchet:'无', srs:'YES（SM-2/FSRS）',
+    local:'部分（Pro 离线模式）', claim:'无', ratchet:'无', srs:'YES（SM-2）',
     overlap:'低', note:'面向学生，非代码场景'},
   'anthropic-skills':{name:'Anthropic Agent Skills', tag:'OSS', url:'https://platform.claude.com/docs/en/agents-and-tools/agent-skills',
     model:'开源 SKILL.md 格式 · 官方 + 社区', focus:'通用 agent 扩展框架',
@@ -2426,7 +2443,7 @@ const borrowData = [
     title:`_PLATFORM_CONFIG 字典驱动多平台 install`,
     loc:`graphify/__main__.py:L62-L128`,
     how:`一字典定义 13 平台的 {skill_file, skill_dst, claude_md}。所有 install/uninstall 逻辑复用同一代码路径，字典查表区分平台。`,
-    apply:`<b>已覆盖</b> — Task 19 install registry 已吸收，扩展到 11 个目标。`},
+    apply:`<b>已覆盖</b> — Task 19 install registry 已吸收，v0.1 支持 4 个核心 CLI（claude/codex/gemini/opencode），v0.2 扩展 7 个 IDE。`},
   {n:27, proj:'graphify', pri:'P1', verdict:'deferred',
     title:`benchmark.py token 缩减比 + 5 采样问题`,
     loc:`graphify/benchmark.py:L55-L61, L64-L111`,
@@ -2480,10 +2497,10 @@ const borrowData = [
     how:`score 是 0-100 整体质量分，estimated_effort_to_review_[1-5] 是审查难度。两正交维度。`,
     apply:`<b>不适用</b> — "审查 effort" 是 PR review 维度，非学习质量核心。`},
   {n:37, proj:'Qodo PR-Agent', pri:'P1', verdict:'deferred',
-    title:`Jinja2 条件渲染 prompt`,
+    title:`模板条件渲染 prompt（动态裁剪段落）`,
     loc:`settings/pr_reviewer_prompts.toml`,
     how:`prompt 模板用 {%- if require_score %} 块控制输出字段。动态裁剪 prompt 段落。`,
-    apply:`<b>延后 v0.2+</b> — v0.1 用多份显式 prompt 文件更可审计。`},
+    apply:`<b>延后 v0.2+</b> — v0.1 用多份显式 prompt .md 文件更可审计，禁止 f-string 拼长 prompt（HC-7）。`},
 ];
 
 const top10List = [

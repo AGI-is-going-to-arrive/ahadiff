@@ -285,7 +285,7 @@ table.t tr:hover td{background:var(--accent-softer)}
                 <li>Graph overlay + Backlinks</li>
                 <li>版本追踪（source_ref）</li>
               </ul>
-              <div style="margin-top:8px;font-size:11px;font-family:var(--font-mono);color:var(--accent-ink)">--last / --staged / --since</div>
+              <div style="margin-top:8px;font-size:11px;font-family:var(--font-mono);color:var(--accent-ink)">--last / --staged / --unstaged / --since / range / sha</div>
             </div>
             <div style="padding:16px;border:1px solid #B9D7C1;border-radius:10px;background:#ECF4EE">
               <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--success);margin-bottom:8px">Level 2 · 文件对比（无需 git）</div>
@@ -318,69 +318,247 @@ table.t tr:hover td{background:var(--accent-softer)}
 
       <!-- Q2: 触发方式 -->
       <div class="card" style="margin-bottom:20px">
-        <div class="ch"><h3>Diff 的 6 种捕获方式</h3><div class="meta">Capture Modes · 3 Levels</div></div>
+        <div class="ch"><h3>Diff 的 8 种捕获方式（v0.1）</h3><div class="meta">Capture Modes · 3 Levels · 8 Modes</div></div>
         <div class="cb">
-          <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--success);margin-bottom:10px">Level 3 · Git（完整功能）</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+          <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--success);margin-bottom:10px">Level 3 · Git（完整功能：证据链 + 棘轮 + 概念图谱）— 6 种模式</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
 
             <div style="padding:16px;border:2px solid var(--accent);border-radius:10px;background:var(--accent-softer);position:relative">
               <div style="position:absolute;top:8px;right:10px"><span class="badge accent">推荐</span></div>
-              <div style="font-family:var(--font-mono);font-size:12px;color:var(--accent-ink);font-weight:600;margin-bottom:6px">A · 最后一次 commit</div>
+              <div style="font-family:var(--font-mono);font-size:12px;color:var(--accent-ink);font-weight:600;margin-bottom:6px">A · --last</div>
               <div style="font-family:var(--font-mono);font-size:13px;background:var(--ink);color:#E8E3D8;padding:10px 12px;border-radius:6px;margin:8px 0">ahadiff learn --last --open</div>
               <div style="font-size:12px;color:var(--ink-2);line-height:1.6">最简单用法。<b>自动</b>找最近一次 commit 的全部 diff。</div>
             </div>
 
             <div style="padding:16px;border:2px solid var(--success);border-radius:10px;background:#ECF4EE;position:relative">
-              <div style="position:absolute;top:8px;right:10px"><span class="badge pass">v0.1 新增</span></div>
-              <div style="font-family:var(--font-mono);font-size:12px;color:var(--success);font-weight:600;margin-bottom:6px">B · 会话时间范围扫描</div>
+              <div style="position:absolute;top:8px;right:10px"><span class="badge pass">连续窗口</span></div>
+              <div style="font-family:var(--font-mono);font-size:12px;color:var(--success);font-weight:600;margin-bottom:6px">B · --since</div>
               <div style="font-family:var(--font-mono);font-size:13px;background:var(--ink);color:#E8E3D8;padding:10px 12px;border-radius:6px;margin:8px 0">ahadiff learn --since "2h ago" --open</div>
-              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">一次 vibe coding 产生多个 commit？<b>按时间自动扫描</b>，一次学完整个会话。</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">连续 ancestry 窗口 diff：取最早命中 commit 的父节点为 base、HEAD 为 target，<b>执行 git diff base..HEAD</b>（不拼接多份 patch）。</div>
             </div>
 
             <div style="padding:16px;border:1px solid var(--hair);border-radius:10px;background:#fff">
-              <div style="font-family:var(--font-mono);font-size:12px;color:var(--ink-2);font-weight:600;margin-bottom:6px">C · 暂存区（还没 commit）</div>
+              <div style="font-family:var(--font-mono);font-size:12px;color:var(--ink-2);font-weight:600;margin-bottom:6px">C · --staged</div>
               <div style="font-family:var(--font-mono);font-size:13px;background:var(--ink);color:#E8E3D8;padding:10px 12px;border-radius:6px;margin:8px 0">ahadiff learn --staged --open</div>
               <div style="font-size:12px;color:var(--ink-2);line-height:1.6">已 <code>git add</code> 但还没 commit？直接学习暂存区的变更。</div>
             </div>
 
             <div style="padding:16px;border:1px solid var(--hair);border-radius:10px;background:#fff">
-              <div style="font-family:var(--font-mono);font-size:12px;color:var(--ink-2);font-weight:600;margin-bottom:6px">D · 指定范围 / commit hash</div>
+              <div style="font-family:var(--font-mono);font-size:12px;color:var(--ink-2);font-weight:600;margin-bottom:6px">D · commit 范围</div>
               <div style="font-family:var(--font-mono);font-size:13px;background:var(--ink);color:#E8E3D8;padding:10px 12px;border-radius:6px;margin:8px 0">ahadiff learn HEAD~5..HEAD --open</div>
-              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">手动指定 commit 范围，或 <code>ahadiff learn abc1234</code> 学习单个 commit。</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">手动指定 commit 范围。有 <code>..</code> 则为范围模式。</div>
+            </div>
+
+            <div style="padding:16px;border:2px solid var(--success);border-radius:10px;background:#ECF4EE;position:relative">
+              <div style="position:absolute;top:8px;right:10px"><span class="badge pass">NEW</span></div>
+              <div style="font-family:var(--font-mono);font-size:12px;color:var(--success);font-weight:600;margin-bottom:6px">E · --unstaged</div>
+              <div style="font-family:var(--font-mono);font-size:13px;background:var(--ink);color:#E8E3D8;padding:10px 12px;border-radius:6px;margin:8px 0">ahadiff learn --unstaged --open</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">AI 写完代码还没 <code>git add</code>？学习<b>工作区未暂存改动</b>。AI coding 后最高频学习时点。<br/><code>--staged --unstaged</code> 组合 = <code>git diff HEAD</code>（单一基准状态，不拼接两份 patch）。<br/><code>--include-untracked</code> 可纳入新文件。</div>
+            </div>
+
+            <div style="padding:16px;border:2px solid var(--success);border-radius:10px;background:#ECF4EE;position:relative">
+              <div style="position:absolute;top:8px;right:10px"><span class="badge pass">NEW</span></div>
+              <div style="font-family:var(--font-mono);font-size:12px;color:var(--success);font-weight:600;margin-bottom:6px">F · git show（单 commit）</div>
+              <div style="font-family:var(--font-mono);font-size:13px;background:var(--ink);color:#E8E3D8;padding:10px 12px;border-radius:6px;margin:8px 0">ahadiff learn abc1234 --open</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">学习某个<b>历史 commit</b>。无 <code>..</code> 的 sha/tag/branch 参数，使用 <code>git diff-tree -p</code> 语义。</div>
             </div>
           </div>
 
-          <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--info);margin-bottom:10px">Level 1-2 · 非 Git（无需 git 仓库）</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--info);margin-bottom:10px">Level 1 · Patch（无需 git）— 1 种模式</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
 
             <div style="padding:16px;border:2px solid var(--info);border-radius:10px;background:#E4ECF4;position:relative">
-              <div style="position:absolute;top:8px;right:10px"><span class="badge info">v0.1 新增</span></div>
-              <div style="font-family:var(--font-mono);font-size:12px;color:var(--info);font-weight:600;margin-bottom:6px">E · Patch 文件 / stdin 管道</div>
+              <div style="font-family:var(--font-mono);font-size:12px;color:var(--info);font-weight:600;margin-bottom:6px">G · --patch 文件 / stdin 管道</div>
               <div style="font-family:var(--font-mono);font-size:13px;background:var(--ink);color:#E8E3D8;padding:10px 12px;border-radius:6px;margin:8px 0">ahadiff learn --patch fix.patch --open</div>
-              <div style="font-size:12px;color:var(--ink-2);line-height:1.6"><b>不需要 git</b>。从 patch 文件、PR 下载、CI 产出、或 <code>diff a b | ahadiff learn --patch -</code> 管道输入。Level 1 功能。</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6"><b>不需要 git</b>。从 patch 文件、CI 产出、或 <code>svn diff | ahadiff learn --patch -</code> 管道输入。Level 1 功能。</div>
             </div>
 
+            <div style="padding:16px;border:1px solid var(--hair);border-radius:10px;background:#F8F7F3;font-size:12px;color:var(--ink-2);line-height:1.7;display:flex;align-items:center">
+              <div><b style="color:var(--ink)">stdin contract</b>：TTY 时报错提示管道用法；pipe 最大 10MB；UTF-8/GBK charset 检测；CRLF 归一化；EOF/EPIPE/超时 30s 报 InputError。</div>
+            </div>
+          </div>
+
+          <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--info);margin-bottom:10px">Level 2 · File Compare（无需 git）— 1 种模式</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+
             <div style="padding:16px;border:1px solid #B0C4D8;border-radius:10px;background:#F0F4F8;position:relative">
-              <div style="position:absolute;top:8px;right:10px"><span class="badge" style="color:var(--muted)">v0.1.1</span></div>
-              <div style="font-family:var(--font-mono);font-size:12px;color:var(--info);font-weight:600;margin-bottom:6px">F · 文件对比（IDE 单文件场景）</div>
+              <div style="font-family:var(--font-mono);font-size:12px;color:var(--info);font-weight:600;margin-bottom:6px">H · --compare（单文件新旧对比）</div>
               <div style="font-family:var(--font-mono);font-size:13px;background:var(--ink);color:#E8E3D8;padding:10px 12px;border-radius:6px;margin:8px 0">ahadiff learn --compare old.py new.py --open</div>
               <div style="font-size:12px;color:var(--ink-2);line-height:1.6"><b>不需要 git</b>。IDE 修改了单文件？直接对比新旧版本学习。Level 2 功能。</div>
             </div>
 
+            <div style="padding:16px;border:1px solid var(--hair);border-radius:10px;background:#F8F7F3;font-size:12px;color:var(--ink-2);line-height:1.7;display:flex;align-items:center">
+              <div><b style="color:var(--ink)">v0.2 规划</b>：<code>--compare-dir old/ new/</code> 目录递归对比 + <code>--patch-url URL</code> 远端 patch 下载。<br/><b style="color:var(--ink)">v0.3 规划</b>：<code>.ipynb</code> cell-aware diff + <code>--url PR_URL</code> 平台 PR/MR 深度集成。</div>
+            </div>
           </div>
 
           <div style="margin-top:16px;padding:14px;background:var(--subtle);border-radius:8px;font-size:13px;line-height:1.7;color:var(--ink-2)">
-            <b style="color:var(--ink)">用户不需要指定行号或文件名</b> — AhaDiff 自动解析 diff 中的所有变更。所有 Level 都支持 Lesson + Quiz + SRS 核心学习功能。
+            <b style="color:var(--ink)">用户不需要指定行号或文件名</b> — AhaDiff 自动解析 diff 中的所有变更。所有 Level 都支持 Lesson + Quiz + SRS 核心学习功能。无参数时默认等价于 <code>--last</code>（不自动推断 --unstaged）。
+          </div>
+        </div>
+      </div>
+
+      <!-- Capture Pipeline 双表示 -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="ch"><h3>Capture Pipeline：raw/redacted 双表示</h3><div class="meta">Security-First · 5 步流水线</div></div>
+        <div class="cb">
+          <div style="font-size:13px;color:var(--ink-2);line-height:1.7;margin-bottom:16px">
+            核心约束：<b>parse 在 raw 上执行</b>（保证 AST/行号准确），<b>持久化只用 redacted</b>。raw_patch 永不落盘、永不进日志、永不发送到模型。
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0;border:1px solid var(--hair);border-radius:12px;overflow:hidden;background:#fff">
+            <div style="padding:14px 10px;border-right:1px solid var(--hair);text-align:center;background:var(--accent-softer)">
+              <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--accent-ink)">1. capture_raw()</div>
+              <div style="font-size:11px;color:var(--ink-2);margin-top:6px">git/patch/compare<br/>产出 raw_patch<br/><b>仅内存</b></div>
+            </div>
+            <div style="padding:14px 10px;border-right:1px solid var(--hair);text-align:center;background:#FDF8F4">
+              <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--danger)">2. secret_scan()</div>
+              <div style="font-size:11px;color:var(--ink-2);margin-top:6px">检测 API key<br/>JWT/私钥等<br/>产出 redaction_map</div>
+            </div>
+            <div style="padding:14px 10px;border-right:1px solid var(--hair);text-align:center;background:#E4ECF4">
+              <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--info)">3. parse_patch(raw)</div>
+              <div style="font-size:11px;color:var(--ink-2);margin-top:6px">HunkRecord[]<br/>LineMap<br/>SymbolRecord[]<br/><b>在 raw 上解析</b></div>
+            </div>
+            <div style="padding:14px 10px;border-right:1px solid var(--hair);text-align:center;background:#ECF4EE">
+              <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--success)">4. apply_redaction()</div>
+              <div style="font-size:11px;color:var(--ink-2);margin-top:6px">用 map 替换<br/>等长占位符<br/><b>保持行号不变</b></div>
+            </div>
+            <div style="padding:14px 10px;text-align:center;background:var(--subtle)">
+              <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--ink)">5. persist(redacted)</div>
+              <div style="font-size:11px;color:var(--ink-2);margin-top:6px">patch.diff<br/>metadata.json<br/>line_map.json<br/><b>只存 redacted</b></div>
+            </div>
+          </div>
+          <div style="margin-top:12px;padding:12px;border:1px dashed var(--danger);border-radius:8px;font-size:12px;color:var(--danger);line-height:1.6;background:#FDF8F4">
+            <b>安全铁律</b>：raw input → secret scan → redact → 才能 log/cache/model/render。所有下游（lesson/claims/quiz）只消费 redacted 版本。redaction_map 记录 <code>[(start, end, replacement)]</code>。
+          </div>
+        </div>
+      </div>
+
+      <!-- --staged --unstaged 组合 + --since 语义 -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="ch"><h3>关键语义：组合模式与窗口 diff</h3><div class="meta">--staged --unstaged / --since / --include-untracked</div></div>
+        <div class="cb">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+            <div style="padding:16px;border:2px solid var(--accent);border-radius:10px;background:var(--accent-softer)">
+              <div style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--accent-ink);margin-bottom:8px">--staged --unstaged 组合</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.7">
+                <b>不拼接两份 patch</b>。直接执行 <code>git diff HEAD --no-ext-diff</code>，产出单一 patch 以 HEAD 为基准，包含 index 和 worktree 的全部改动。<br/><br/>
+                source_kind = <code>git_unstaged</code><br/>
+                metadata: <code>combined_mode=true</code>
+              </div>
+            </div>
+            <div style="padding:16px;border:2px solid var(--success);border-radius:10px;background:#ECF4EE">
+              <div style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--success);margin-bottom:8px">--since "2h ago" 语义</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.7">
+                <b>连续 ancestry 窗口 diff</b>（始终产出单一自洽 patch）。<br/><br/>
+                1. <code>git rev-list --first-parent --since</code> 获取命中 commit 列表<br/>
+                2. 取最早命中 commit 的父节点为 base<br/>
+                3. 执行 <code>git diff base..HEAD</code><br/><br/>
+                中间有他人 commit 仍包含在窗口内（避免语义断裂）。
+              </div>
+            </div>
+            <div style="padding:16px;border:1px solid var(--hair);border-radius:10px;background:#fff">
+              <div style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:8px">--include-untracked</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.7">
+                配合 <code>--unstaged</code> 或 <code>--staged --unstaged</code> 使用。<br/><br/>
+                通过 <code>git ls-files --others --exclude-standard</code> 列出新文件，当作全新增 diff 纳入。<br/><br/>
+                按 <code>.ahadiffignore</code> 过滤 + <code>file_count_exceeded</code> 截断。默认不含 untracked（CLI warn 提示）。
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Capture Corner Cases -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="ch"><h3>Capture 层 Corner Cases</h3><div class="meta">Git 边界场景处理</div></div>
+        <div class="cb">
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;line-height:1.6">
+              <thead>
+                <tr style="border-bottom:2px solid var(--hair)">
+                  <th style="text-align:left;padding:10px 12px;font-weight:600;color:var(--ink)">场景</th>
+                  <th style="text-align:left;padding:10px 12px;font-weight:600;color:var(--ink)">行为</th>
+                  <th style="text-align:left;padding:10px 12px;font-weight:600;color:var(--ink)">适用模式</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style="border-bottom:1px solid var(--hair)">
+                  <td style="padding:8px 12px;font-weight:500">Bare repo（无工作区）</td>
+                  <td style="padding:8px 12px"><span class="badge fail" style="font-size:10px">InputError</span> "bare 仓库没有工作区"</td>
+                  <td style="padding:8px 12px;font-family:var(--font-mono);font-size:11px">--unstaged / --staged</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--hair)">
+                  <td style="padding:8px 12px;font-weight:500">Unborn HEAD（空仓库无 commit）</td>
+                  <td style="padding:8px 12px"><span class="badge fail" style="font-size:10px">InputError</span> "仓库尚无 commit，请先提交一次或用 --patch / --compare"</td>
+                  <td style="padding:8px 12px;font-family:var(--font-mono);font-size:11px">--last / --since / sha</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--hair)">
+                  <td style="padding:8px 12px;font-weight:500">Detached HEAD</td>
+                  <td style="padding:8px 12px"><span class="badge pass" style="font-size:10px">正常工作</span> metadata 记录 <code>head_detached=true</code></td>
+                  <td style="padding:8px 12px;font-family:var(--font-mono);font-size:11px">全部 Level 3</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--hair)">
+                  <td style="padding:8px 12px;font-weight:500">Merge 冲突状态</td>
+                  <td style="padding:8px 12px"><span class="badge fail" style="font-size:10px">InputError</span> "请先解决 merge 冲突"</td>
+                  <td style="padding:8px 12px;font-family:var(--font-mono);font-size:11px">--unstaged / --staged</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--hair)">
+                  <td style="padding:8px 12px;font-weight:500">Merge commit（多父）</td>
+                  <td style="padding:8px 12px"><span class="badge pass" style="font-size:10px">正常</span> 用 <code>--first-parent</code> 只看主分支改动</td>
+                  <td style="padding:8px 12px;font-family:var(--font-mono);font-size:11px">--last / sha</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--hair)">
+                  <td style="padding:8px 12px;font-weight:500">初始 commit（无父）</td>
+                  <td style="padding:8px 12px"><span class="badge pass" style="font-size:10px">正常</span> 用 <code>git diff-tree --root</code>（对比空树）</td>
+                  <td style="padding:8px 12px;font-family:var(--font-mono);font-size:11px">--last / sha</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--hair)">
+                  <td style="padding:8px 12px;font-weight:500">SHA 不存在</td>
+                  <td style="padding:8px 12px"><span class="badge fail" style="font-size:10px">InputError</span> "commit {sha} 不存在"</td>
+                  <td style="padding:8px 12px;font-family:var(--font-mono);font-size:11px">sha 模式</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--hair)">
+                  <td style="padding:8px 12px;font-weight:500">短 SHA 有歧义</td>
+                  <td style="padding:8px 12px"><span class="badge fail" style="font-size:10px">InputError</span> "sha 有歧义，匹配 N 个 commit"</td>
+                  <td style="padding:8px 12px;font-family:var(--font-mono);font-size:11px">sha 模式</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--hair)">
+                  <td style="padding:8px 12px;font-weight:500">Shallow clone</td>
+                  <td style="padding:8px 12px"><span class="badge pass" style="font-size:10px">正常工作</span> git diff 不需要完整历史</td>
+                  <td style="padding:8px 12px;font-family:var(--font-mono);font-size:11px">--unstaged / --staged</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--hair)">
+                  <td style="padding:8px 12px;font-weight:500">子模块（submodule）</td>
+                  <td style="padding:8px 12px"><span class="badge caution" style="font-size:10px">跳过 + warn</span> git diff 默认不展开子模块</td>
+                  <td style="padding:8px 12px;font-family:var(--font-mono);font-size:11px">全部 Level 3</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--hair)">
+                  <td style="padding:8px 12px;font-weight:500">--since 无命中 commit</td>
+                  <td style="padding:8px 12px"><span class="badge fail" style="font-size:10px">InputError</span> "该时间范围内无 commit"</td>
+                  <td style="padding:8px 12px;font-family:var(--font-mono);font-size:11px">--since</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--hair)">
+                  <td style="padding:8px 12px;font-weight:500">工作区无改动</td>
+                  <td style="padding:8px 12px"><span class="badge fail" style="font-size:10px">InputError</span> "没有未暂存的改动。用 --staged 或 --last 试试？"</td>
+                  <td style="padding:8px 12px;font-family:var(--font-mono);font-size:11px">--unstaged</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 12px;font-weight:500">Binary 文件改动</td>
+                  <td style="padding:8px 12px"><span class="badge caution" style="font-size:10px">degraded</span> 设置 <code>degraded_flags.binary_only</code></td>
+                  <td style="padding:8px 12px;font-family:var(--font-mono);font-size:11px">全部模式</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
 
       <!-- Q3: 自动触发 -->
       <div class="card" style="margin-bottom:20px">
-        <div class="ch"><h3>不想手动？11 种 AI 工具集成</h3><div class="meta">ahadiff install · 11 targets</div></div>
+        <div class="ch"><h3>不想手动？AI 工具集成</h3><div class="meta">ahadiff install · v0.1: 4 CLI · v0.2: +7 IDE</div></div>
         <div class="cb">
           <div style="font-size:13px;color:var(--ink-2);line-height:1.7;margin-bottom:16px">
-            <code>ahadiff install &lt;tool&gt;</code> 会向你的 AI 工具写入配置文件，让 AI 工具在完成 vibe coding 后<b>自动提醒你</b>运行 learn 命令。支持 <b>11 个目标</b>，覆盖主流 AI CLI 和 IDE 工具。
+            <code>ahadiff install &lt;tool&gt;</code> 会向你的 AI 工具写入配置文件，让 AI 工具在完成 vibe coding 后<b>自动提醒你</b>运行 learn 命令。v0.1 支持 <b>4 个核心 CLI</b>，v0.2 扩展 7 个 IDE 工具。
           </div>
 
           <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-ink);margin-bottom:10px">核心 CLI · 专有规则文件</div>
@@ -518,7 +696,7 @@ table.t tr:hover td{background:var(--accent-softer)}
                   <b>Prompt Injection 转义</b> — diff 中的 "ignore previous instructions" 等危险内容被转义隔离
                 </div>
                 <div style="padding:10px;background:#fff;border:1px solid #E4B8AE;border-radius:8px;font-size:12px">
-                  <b>HTML 白名单过滤</b> — Lesson HTML 必须经 bleach 白名单过滤后才 <code>|safe</code>，防止 XSS 注入
+                  <b>XSS 防护</b> — React 默认 escape 所有数据；Markdown 渲染后的 HTML 必须经 DOMPurify 清洗，防止 XSS 注入
                 </div>
               </div>
               <div style="margin-top:10px;padding:10px;background:#FDF8F4;border:1px dashed #E4B8AE;border-radius:6px;font-size:12px;color:var(--danger);line-height:1.6">
@@ -590,8 +768,8 @@ table.t tr:hover td{background:var(--accent-softer)}
                   <div style="margin-top:4px;color:var(--ink-2)">quiz.jsonl<br/>cards.jsonl<br/>misconception quiz</div>
                 </div>
                 <div style="padding:12px;background:#E4ECF4;border:1px solid #B0C4D8;border-radius:8px;font-size:12px;text-align:center">
-                  <div style="font-weight:600;font-size:14px">评分 + Viewer</div>
-                  <div style="margin-top:4px;color:var(--ink-2)">score.json (8 维)<br/>viewer/index.html<br/>results.tsv（导出视图）</div>
+                  <div style="font-weight:600;font-size:14px">评分 + 存储</div>
+                  <div style="margin-top:4px;color:var(--ink-2)">score.json (8 维)<br/>review.sqlite（唯一真相源）<br/>results.tsv（导出视图）</div>
                 </div>
               </div>
             </div>
@@ -606,7 +784,7 @@ table.t tr:hover td{background:var(--accent-softer)}
                 <span class="badge accent" style="margin-left:auto">步骤 27-29</span>
               </div>
               <div style="font-size:14px;color:var(--ink-2);line-height:1.8">
-                <code>--open</code> 自动打开浏览器。静态模式加载 <code>.ahadiff/runs/&lt;run_id&gt;/viewer/index.html</code>；若已启用 <code>ahadiff serve</code>，则打开 <code>localhost:8765</code>（支持 Quiz/SRS 交互写回）。两种模式都是 <b>Warm v6 风格</b>。用户可以：
+                <code>--open</code> 自动调用 <code>webbrowser.open()</code> 打开 <code>localhost:8765</code>（<code>ahadiff serve</code> 自动启动的 React 19 SPA）。支持 Quiz/SRS 交互写回 review.sqlite。界面保持 <b>Warm v6 风格</b>。用户可以：
               </div>
               <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:12px">
                 <div style="padding:12px 8px;border:1px solid var(--hair);border-radius:8px;background:#fff;text-align:center;font-size:12px">
@@ -659,6 +837,18 @@ table.t tr:hover td{background:var(--accent-softer)}
                 <td class="mono" style="font-size:12px">ahadiff learn --staged --open</td>
                 <td>学习暂存区的变更，不影响 git 历史</td>
               </tr>
+              <tr style="background:#ECF4EE">
+                <td><b>AI 刚写完，还没 git add</b> <span class="badge pass" style="font-size:9px">NEW</span></td>
+                <td>工作区有未暂存改动</td>
+                <td class="mono" style="font-size:12px">ahadiff learn --unstaged --open</td>
+                <td>学习工作区未暂存改动（最高频场景）</td>
+              </tr>
+              <tr style="background:#ECF4EE">
+                <td><b>全部工作区改动（含新文件）</b> <span class="badge pass" style="font-size:9px">NEW</span></td>
+                <td>staged + unstaged + 新文件都要学</td>
+                <td class="mono" style="font-size:12px">ahadiff learn --staged --unstaged --include-untracked --open</td>
+                <td>git diff HEAD + untracked 新文件，单一基准状态</td>
+              </tr>
               <tr>
                 <td><b>Codex 一口气写了 5 个 commit</b></td>
                 <td>一次 vibe coding 会话产生多个 commit</td>
@@ -669,7 +859,7 @@ table.t tr:hover td{background:var(--accent-softer)}
                 <td><b>一次会话不知道几个 commit</b> <span class="badge pass" style="font-size:9px">v0.1 新增</span></td>
                 <td>vibe coding 2 小时，不知道改了多少</td>
                 <td class="mono" style="font-size:12px">ahadiff learn --since "2h ago" --open</td>
-                <td>自动扫描最近 2 小时内的所有 commit</td>
+                <td>连续 ancestry 窗口 diff（base..HEAD），一次学完整个会话</td>
               </tr>
               <tr style="background:#E4ECF4">
                 <td><b>不是 git 仓库，有个 patch</b> <span class="badge info" style="font-size:9px">v0.1 新增</span></td>
@@ -823,7 +1013,7 @@ table.t tr:hover td{background:var(--accent-softer)}
         </div>
         <ul style="font-size:13px;color:var(--ink-2);line-height:1.8;padding-left:20px;margin-top:4px">
           <li>Weakest-dimension-first 策略 → 每轮只改一个维度</li>
-          <li>生成模型与 judge 模型分离 → Sonnet 生成，Haiku 评估</li>
+          <li>生成模型与 judge 模型分离 → 生产环境大模型生成，gpt-5.4-mini 评估；开发测试统一 gpt-5.4-mini</li>
           <li>Phase 2.5 structural rewrite → 连续 2 个优化目标首轮即无增益时触发</li>
           <li>git revert 回滚机制 → 不提升就 discard（AhaDiff 改为 worktree 隔离）</li>
           <li>子 agent 独立评测 → 跨模型评估</li>
@@ -1071,7 +1261,7 @@ table.t tr:hover td{background:var(--accent-softer)}
 
       <div class="arch-flow" style="grid-template-columns:repeat(5,1fr)">
         <div class="arch-step" style="background:var(--accent-softer)"><div class="n">L0</div><h4>Schema & Contract</h4><p>核心契约冻结（5 个 Pydantic schema）</p></div>
-        <div class="arch-step" style="background:var(--accent-softer)"><div class="n">L1</div><h4>Diff Capture</h4><p>git diff / PR patch / staged / --compare</p></div>
+        <div class="arch-step" style="background:var(--accent-softer)"><div class="n">L1</div><h4>Diff Capture</h4><p>8 种模式：--last / --since / --staged / range / --unstaged / sha / --patch / --compare</p></div>
         <div class="arch-step"><div class="n">L2a</div><h4>Context Assembly</h4><p>repo files · graphify enrichment · specs</p></div>
         <div class="arch-step"><div class="n">L2b</div><h4>Safety Gate</h4><p>secret scan → redact → 才能 log/cache/model/render</p></div>
         <div class="arch-step"><div class="n">L2c</div><h4>Budget & Degrade</h4><p>token budget · large diff skip/clip/summarize</p></div>
@@ -1081,8 +1271,7 @@ table.t tr:hover td{background:var(--accent-softer)}
         <div class="arch-step"><div class="n">L4</div><h4>Verification</h4><p>claims.jsonl · deterministic + LLM judge</p></div>
         <div class="arch-step"><div class="n">L5</div><h4>Ratchet</h4><p>evaluation bundle (immutable) · review.sqlite</p></div>
         <div class="arch-step"><div class="n">L6</div><h4>Learning</h4><p>quiz · SRS · section helpfulness · concepts.jsonl</p></div>
-        <div class="arch-step" style="background:var(--accent-softer)"><div class="n">L7a</div><h4>Static Snapshot</h4><p>file:// 模式 · data_bundle.json</p></div>
-        <div class="arch-step" style="background:var(--accent-softer)"><div class="n">L7b</div><h4>Live Serve</h4><p>localhost:8765 · REST API · SQLite</p></div>
+        <div class="arch-step" style="background:var(--accent-softer)"><div class="n">L7</div><h4>React SPA</h4><p>React 19 + Vite + Zustand · ahadiff serve (Starlette) · REST API</p></div>
       </div>
 
       <div class="card" style="margin-top:24px">
@@ -1111,34 +1300,44 @@ table.t tr:hover td{background:var(--accent-softer)}
   graphify/                   <span style="color:var(--muted)">← repo-level code map cache</span></div>
       </div>
 
-      <!-- v3 新增：ahadiff serve 双适配器 -->
+      <!-- Layer 7: React SPA via ahadiff serve -->
       <div class="card" style="margin-top:18px">
-        <div class="ch"><h3>v3 新增：ahadiff serve 双适配器</h3><div class="meta">Layer 7a Static + 7b Serve</div></div>
+        <div class="ch"><h3>Layer 7：React SPA via ahadiff serve</h3><div class="meta">React 19 + Vite + Starlette API</div></div>
         <div class="cb">
           <div style="font-size:12px;color:var(--ink-2);line-height:1.6;margin-bottom:12px;padding:10px;background:#FDFCF8;border:1px solid var(--hair);border-radius:8px">
-            Layer 7 拆分为 <strong>7a Static Snapshot</strong>（file:// 模式）和 <strong>7b Live Serve</strong>（<code>ahadiff serve</code>，Starlette + Uvicorn 轻量本地服务器）。同一套 Jinja2 模板通过 <code>data-mode="serve|static"</code> 属性切换行为，实现 Progressive Enhancement。
+            Layer 7 统一为 <strong>React 19 SPA</strong>，通过 <code>ahadiff serve</code>（Starlette + Uvicorn）提供本地服务。CLI 运行完成后自动调用 <code>webbrowser.open()</code> 打开 WebUI（可通过 <code>--no-browser</code> 禁用）。以 <code>AhaDiff Warm v6.html</code> 为设计参考模板。
           </div>
           <div style="display:flex;flex-direction:column;gap:10px">
             <!-- 流程图 -->
-            <div style="padding:12px;background:#FDFCF8;border:1px solid var(--hair);border-radius:8px;font-family:var(--font-mono);font-size:11.5px;line-height:2;white-space:pre-wrap">CLI  →  orchestrator  →  Layer 5/6
-                                    ↓
-              ┌─────────────────────┴─────────────────────┐
-              ↓                                           ↓
-    <span style="color:var(--info);font-weight:600">7a: Static HTML</span>                         <span style="color:var(--success);font-weight:600">7b: localhost:8765</span>
-    data_bundle.json 内嵌              REST API 实时读 SQLite
-    file:// 可直接打开                 Quiz/SRS 答题写回 SQLite</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-              <div style="padding:12px;background:var(--subtle);border:1px solid var(--hair);border-radius:8px">
-                <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--info)">7a · STATIC SNAPSHOT</div>
-                <div style="font-size:12px;color:var(--ink-2);margin-top:6px">一次性将 lesson + claims + quiz 序列化为 <code>data_bundle.json</code>，嵌入 HTML。无需服务器，<code>file://</code> 可直接打开。适合 CI 产物归档。</div>
+            <div style="padding:12px;background:#FDFCF8;border:1px solid var(--hair);border-radius:8px;font-family:var(--font-mono);font-size:11.5px;line-height:2;white-space:pre-wrap">ahadiff learn --last --open
+       ↓
+  orchestrator  →  Layer 1-6（生成 lesson/quiz/claims/score）
+       ↓
+  ahadiff serve (localhost:8765)
+       ↓
+  <span style="color:var(--success);font-weight:600">React 19 SPA + Vite + vanilla CSS</span>
+  REST API 实时读写 review.sqlite
+  webbrowser.open() 自动打开浏览器</div>
+            <div style="padding:12px;background:#ECF4EE;border:1px solid #B9D7C1;border-radius:8px">
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--success)">AHADIFF SERVE · Starlette + Uvicorn</div>
+              <div style="font-size:12px;color:var(--ink-2);margin-top:6px"><code>ahadiff serve</code> 启动 Starlette + Uvicorn 本地服务器（默认 :8765，bind=<strong>127.0.0.1</strong>），通过 Layer 5/6 接口读写 <code>review.sqlite</code>，提供 REST API。默认 read-only，写路由需 token 鉴权。</div>
+              <div style="font-size:12px;color:var(--ink-2);margin-top:8px;padding:8px;background:#FDFCF8;border:1px solid var(--hair);border-radius:6px;line-height:1.6">
+                <strong>路由鉴权分级</strong>：读路由无需 token（GET /api/runs、/api/locale 等）；写路由必须验 <code>X-AhaDiff-Token</code> header（POST /api/signals/*、PUT /api/locale）。Token 在 serve 启动时自动生成并注入前端。<br/>
+                <strong>安全三重保障</strong>：bind 127.0.0.1（仅回环，拒绝外网）+ Host/Origin/Referer 校验（只允许 localhost）+ 写路由 token 鉴权。
               </div>
-              <div style="padding:12px;background:#ECF4EE;border:1px solid #B9D7C1;border-radius:8px">
-                <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--success)">7b · LIVE SERVE <span style="color:var(--accent-ink)">(Task 14.5)</span></div>
-                <div style="font-size:12px;color:var(--ink-2);margin-top:6px"><code>ahadiff serve</code> 启动 Starlette + Uvicorn 本地服务器（默认 :8765，bind=<strong>127.0.0.1</strong>），通过 Layer 5/6 接口读写 <code>review.sqlite</code>，提供 REST API。默认 read-only，写路由需 token 鉴权。依赖 Task 0（serve_app contract）+ Task 13（Jinja2 基础架构）+ Task 15（review.sqlite schema）。与 Task 14 并行开发，不阻塞等待 Task 14 完成。</div>
-                <div style="font-size:12px;color:var(--ink-2);margin-top:8px;padding:8px;background:#FDFCF8;border:1px solid var(--hair);border-radius:6px;line-height:1.6">
-                  <strong>路由鉴权分级</strong>：读路由无需 token（GET /api/runs、/api/locale 等）；写路由必须验 <code>X-AhaDiff-Token</code> header（POST /api/signals/*、PUT /api/locale）。Token 在 serve 启动时自动生成并注入 data_bundle。<br/>
-                  <strong>安全三重保障</strong>：bind 127.0.0.1（仅回环，拒绝外网）+ Host/Origin/Referer 校验（只允许 localhost）+ 写路由 token 鉴权。
-                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:4px">
+              <div style="padding:10px;background:var(--subtle);border:1px solid var(--hair);border-radius:8px;font-size:11px;text-align:center">
+                <div style="font-weight:600;color:var(--ink)">Stage 4</div>
+                <div style="color:var(--muted);margin-top:2px">Task 13: React Viewer 基础<br>Task 14: DiffViewer 组件</div>
+              </div>
+              <div style="padding:10px;background:var(--subtle);border:1px solid var(--hair);border-radius:8px;font-size:11px;text-align:center">
+                <div style="font-weight:600;color:var(--ink)">Stage 5</div>
+                <div style="color:var(--muted);margin-top:2px">Task 14.5: Serve Backend<br>Task 15: review.sqlite</div>
+              </div>
+              <div style="padding:10px;background:var(--subtle);border:1px solid var(--hair);border-radius:8px;font-size:11px;text-align:center">
+                <div style="font-weight:600;color:var(--ink)">状态管理</div>
+                <div style="color:var(--muted);margin-top:2px">Zustand 细粒度订阅<br>Diff-Claim 双向联动</div>
               </div>
             </div>
           </div>
@@ -1296,7 +1495,7 @@ repo_write_lock  →  db_write_lock  →  serve_write_lock
             </div>
             <div style="padding:12px;background:var(--subtle);border:1px solid var(--hair);border-radius:8px">
               <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--success)">LAYER 7 · 前端切换</div>
-              <div style="font-size:12px;color:var(--ink-2);margin-top:6px">Topbar <strong>zh/EN</strong> 切换按钮。Serve 模式：写 cookie + 页面重载。Static 模式：按钮 disabled + 提示用 CLI 重生成。</div>
+              <div style="font-size:12px;color:var(--ink-2);margin-top:6px">Topbar <strong>zh/EN</strong> 切换按钮。点击后写 cookie <code>ahadiff_lang</code> + 通过 React Context 触发 i18n re-render（无需页面刷新），同时调用 <code>PUT /api/locale</code> 持久化。</div>
             </div>
             <div style="padding:12px;background:var(--subtle);border:1px solid var(--hair);border-radius:8px">
               <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-ink)">SRS · 卡片语言</div>
@@ -1312,7 +1511,7 @@ repo_write_lock  →  db_write_lock  →  serve_write_lock
       <!-- v5 新增：UNTRUSTED_DIFF 扩展边界 -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px">
         <div class="card">
-          <div class="ch"><h3>v5 新增：不可信输入 6 类全覆盖</h3><div class="meta">UNTRUSTED_DIFF 扩展</div></div>
+          <div class="ch"><h3>不可信输入 7 类全覆盖</h3><div class="meta">UNTRUSTED_DIFF 扩展边界</div></div>
           <div class="cb">
             <div style="font-size:12px;color:var(--ink-2);line-height:1.6;margin-bottom:12px;padding:10px;background:#FEF6F0;border:1px solid #EBC3AE;border-radius:8px">
               所有外部文本和路径元数据均视为不可信，统一经 <code>redaction_pipeline()</code> 处理后才能进入系统。
@@ -1323,6 +1522,7 @@ repo_write_lock  →  db_write_lock  →  serve_write_lock
                 <tr><td class="mono">diff_body</td><td>git diff / patch</td><td>prompt injection</td></tr>
                 <tr><td class="mono">file_path</td><td>路径元数据</td><td>path traversal / symlink</td></tr>
                 <tr><td class="mono">commit_message</td><td>git log</td><td>隐藏指令</td></tr>
+                <tr><td class="mono">branch_tag_name</td><td>git branch / tag 名称</td><td>Unicode 混淆 / 隐藏指令</td></tr>
                 <tr><td class="mono">graph_label</td><td>Graphify 导入</td><td>注入 wiki 标签</td></tr>
                 <tr><td class="mono">model_output</td><td>LLM 响应</td><td>Markdown XSS</td></tr>
                 <tr><td class="mono">vcr_body</td><td>VCR cassette</td><td>replay 投毒</td></tr>
@@ -1350,9 +1550,9 @@ key = prompt_fingerprint
         </div>
       </div>
 
-      <!-- v5 新增：30 Corner Cases 全部闭合 -->
+      <!-- Corner Cases 全部闭合 -->
       <div class="card" style="margin-top:18px">
-        <div class="ch"><h3>v5 新增：30 Corner Cases 全部闭合</h3><div class="meta">原 9 + i18n 10 + 新增 11 = 30</div></div>
+        <div class="ch"><h3>50+ Corner Cases 全部闭合</h3><div class="meta">原 30 + CC-GAP 13 + CC-R6 7 + diff 扩展 30+ = 50+</div></div>
         <div class="cb">
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">
             <div style="text-align:center;padding:16px;background:#ECF4EE;border:1px solid #B9D7C1;border-radius:8px">
@@ -1496,12 +1696,12 @@ key = prompt_fingerprint
         <div class="ch"><h3>技术栈一致性</h3><div class="meta"><span class="badge pass"><span class="bd"></span>ALIGNED</span></div></div>
         <div class="cb">
           <div class="compliance-grid">
-            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">首版 Jinja2 模板 + ahadiff serve</div><div class="ci-desc">Starlette + Uvicorn 本地服务器，同时保留 file:// 静态模式；非 Next.js/React</div></div></div>
-            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">不使用 LiteLLM</div><div class="ci-desc">供应链风险，使用薄 provider adapter</div></div></div>
-            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">Python 3.11+ CLI</div><div class="ci-desc">typer + rich + pydantic + jinja2</div></div></div>
-            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">跨模型评估</div><div class="ci-desc">Sonnet 生成，Haiku 评估，绝不同模型自评</div></div></div>
+            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">React 19 + Vite + vanilla CSS + ahadiff serve</div><div class="ci-desc">Starlette + Uvicorn 本地服务器；不使用 Next.js 等 SSR 框架</div></div></div>
+            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">不使用 LiteLLM / LangChain</div><div class="ci-desc">供应链风险，使用薄 provider adapter（8 种 API 格式）</div></div></div>
+            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">Python 3.11+ CLI</div><div class="ci-desc">typer + rich + pydantic + httpx + pyyaml</div></div></div>
+            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">跨模型评估（生产）/ 统一 gpt-5.4-mini（开发测试）</div><div class="ci-desc">开发测试阶段生成和评估统一用 gpt-5.4-mini；生产环境生成切大模型，绝不同模型自评</div></div></div>
             <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">Improve loop 只改 prompts/*.md</div><div class="ci-desc">evaluator.py / rubric.yaml / viewer 不可改</div></div></div>
-            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">路径 runs/&lt;run_id&gt;/</div><div class="ci-desc">统一使用 run_id 路径，非 commits/&lt;sha&gt;</div></div></div>
+            <div class="compliance-item"><div class="ci-icon ok">✓</div><div><div class="ci-title">路径 .ahadiff/runs/&lt;run_id&gt;/</div><div class="ci-desc">统一使用 run_id 作为一级存储单元</div></div></div>
           </div>
         </div>
       </div>
@@ -1559,7 +1759,7 @@ key = prompt_fingerprint
         <div class="ch"><h3>已知待修复项</h3><div class="meta"><span class="badge caution"><span class="bd"></span>2 MINOR</span></div></div>
         <div class="cb">
           <div class="compliance-grid" style="grid-template-columns:1fr">
-            <div class="compliance-item"><div class="ci-icon warn">!</div><div><div class="ci-title">前端设计手册路径引用</div><div class="ci-desc">doc/AhaDiff_frontend_design_v1.1_revised.md 第 261-263 行仍有 commits/&lt;sha&gt; 路径，应迁移为 runs/&lt;run_id&gt;</div></div></div>
+            <div class="compliance-item"><div class="ci-icon warn">!</div><div><div class="ci-title">前端设计手册路径引用</div><div class="ci-desc">doc/AhaDiff_frontend_design_v1.1_revised.md 第 261-263 行仍使用旧存储路径命名，应迁移为 runs/&lt;run_id&gt; 格式</div></div></div>
             <div class="compliance-item"><div class="ci-icon warn">!</div><div><div class="ci-title">D8 Safety&Privacy 分值</div><div class="ci-desc">改名方案中 D8=7 分，但 CLAUDE.md 和最终方案中 D8=6 分。以 CLAUDE.md（6 分）为准</div></div></div>
           </div>
         </div>
@@ -1569,16 +1769,16 @@ key = prompt_fingerprint
     <!-- ============ FRONTEND ============ -->
     <section class="page" data-page="frontend">
       <div class="page-head">
-        <div class="eyebrow">§ 05 · 前端现状</div>
-        <h1>Warm v6 原型 · 前端模板</h1>
-        <div class="sub">前端仍以 ui/AhaDiff Warm v6.html 为模板基准，2346 行自包含 HTML。工程化将拆为 Jinja2 模板，不使用 Next.js/React。</div>
+        <div class="eyebrow">§ 05 · 前端架构</div>
+        <h1>React 19 + Vite · Warm v6 设计语言</h1>
+        <div class="sub">前端以 ui/AhaDiff Warm v6.html（2346 行）为设计参考模板，工程实现为 React 19 + Vite + vanilla CSS（CSS Modules）。不使用 Next.js 等 SSR 框架。通过 <code>ahadiff serve</code> 启动本地 Starlette 服务器，CLI 完成后自动打开浏览器。</div>
       </div>
 
       <div class="kpi-grid" style="margin-bottom:24px">
-        <div class="kpi"><div class="lb">当前版本</div><div class="vl">v6</div><div class="delta">Warm 风格 · Clay Orange #D27050</div></div>
-        <div class="kpi"><div class="lb">总行数</div><div class="vl">2346</div><div class="delta">自包含 HTML + CSS + JS</div></div>
+        <div class="kpi"><div class="lb">设计参考</div><div class="vl">v6</div><div class="delta">Warm 风格 · Clay Orange #D27050</div></div>
+        <div class="kpi"><div class="lb">原型行数</div><div class="vl">2346</div><div class="delta">自包含 HTML + CSS + JS（设计模板）</div></div>
         <div class="kpi"><div class="lb">页面数</div><div class="vl">11</div><div class="delta">Landing / Dashboard / Lesson / Diff / ...</div></div>
-        <div class="kpi"><div class="lb">迁移目标</div><div class="vl">Jinja2</div><div class="delta">静态 HTML · 非 Next.js</div></div>
+        <div class="kpi"><div class="lb">工程技术栈</div><div class="vl">React 19</div><div class="delta">+ Vite + vanilla CSS + Zustand</div></div>
       </div>
 
       <div class="card" style="margin-bottom:18px">
@@ -1604,16 +1804,16 @@ key = prompt_fingerprint
       </div>
 
       <div class="card" style="margin-bottom:18px">
-        <div class="ch"><h3>工程化迁移路线</h3><div class="meta">§ 19 · Viewer 设计</div></div>
+        <div class="ch"><h3>工程化迁移路线</h3><div class="meta">React 19 + Vite + vanilla CSS</div></div>
         <div class="cb">
           <div class="timeline">
-            <div class="tl-item done"><div class="tl-title">Warm v6 HTML 原型完成</div><div class="tl-desc">11 页面 · 自包含 · 可浏览器直开</div></div>
-            <div class="tl-item current"><div class="tl-title">当前：设计文档定稿</div><div class="tl-desc">方案完善 · 13 项修订全部应用</div></div>
-            <div class="tl-item"><div class="tl-title">拆 Jinja2 模板</div><div class="tl-desc">templates/{base,layouts/,partials/,components/,pages/}</div></div>
-            <div class="tl-item"><div class="tl-title">Task 14.5 · Serve Backend</div><div class="tl-desc">Starlette app（bind=127.0.0.1），写路由需 X-AhaDiff-Token，读路由开放</div></div>
-            <div class="tl-item"><div class="tl-title">抽出 warm.css + viewer.js</div><div class="tl-desc">移除 Google Fonts 外链，内联 SVG favicon</div></div>
-            <div class="tl-item"><div class="tl-title">嵌入真实 data_bundle.json</div><div class="tl-desc">替换 mock 数据为 &lt;script type="application/json"&gt; 注入</div></div>
-            <div class="tl-item"><div class="tl-title">响应式修复</div><div class="tl-desc">769-1024px icon-only 侧栏 + ≤768px 抽屉模式</div></div>
+            <div class="tl-item done"><div class="tl-title">Warm v6 HTML 原型完成</div><div class="tl-desc">11 页面 · 自包含 · 可浏览器直开 · 作为设计参考模板</div></div>
+            <div class="tl-item current"><div class="tl-title">当前：设计文档定稿 + 六轮交叉审查 GO</div><div class="tl-desc">方案完善 · 三模型交叉验证通过 · 准备进入工程阶段</div></div>
+            <div class="tl-item"><div class="tl-title">Task 13：React 19 Viewer 基础架构（Stage 4）</div><div class="tl-desc">Vite 初始化 + vanilla CSS（CSS Modules）+ Zustand 状态管理 + i18n JSON catalog</div></div>
+            <div class="tl-item"><div class="tl-title">Task 14：DiffViewer 组件（Stage 4）</div><div class="tl-desc">虚拟列表 + Diff-Claim 双向联动 + 5000+ 行 diff DOM 性能</div></div>
+            <div class="tl-item"><div class="tl-title">Task 14.5：Serve Backend（Stage 5）</div><div class="tl-desc">Starlette + Uvicorn（bind=127.0.0.1），写路由 X-AhaDiff-Token 鉴权</div></div>
+            <div class="tl-item"><div class="tl-title">ahadiff serve 自动开浏览器</div><div class="tl-desc">CLI 运行完成 → webbrowser.open(localhost:8765)（--no-browser 可禁用）</div></div>
+            <div class="tl-item"><div class="tl-title">响应式适配</div><div class="tl-desc">769-1024px icon-only 侧栏 + ≤768px 抽屉模式 + WCAG AA</div></div>
           </div>
         </div>
       </div>
@@ -1637,34 +1837,34 @@ key = prompt_fingerprint
         </div>
       </div>
 
-      <!-- 前端工程化新增规范 -->
+      <!-- 前端工程化规范 -->
       <div class="card" style="margin-top:18px">
-        <div class="ch"><h3>前端工程化新增规范</h3><div class="meta">v5 · 渐进增强 + 无障碍</div></div>
+        <div class="ch"><h3>前端工程化规范</h3><div class="meta">React 19 + Vite · 无障碍 + 国际化</div></div>
         <div class="cb">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
             <div style="padding:14px;border:1px solid var(--hair);border-radius:10px;background:#FDFCF8">
               <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--info);margin-bottom:8px">Print CSS</div>
-              <div style="font-size:12px;color:var(--ink-2);line-height:1.6"><code>.rail</code> 证据链在打印时保持可见（<code>display:block !important; break-inside:avoid</code>），确保打印 Lesson 时证据不丢失。</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">证据链 <code>.rail</code> 在打印时保持可见（<code>display:block !important; break-inside:avoid</code>），确保打印 Lesson 时证据不丢失。</div>
             </div>
             <div style="padding:14px;border:1px solid var(--hair);border-radius:10px;background:#FDFCF8">
-              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--success);margin-bottom:8px">Ratchet 图表</div>
-              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">Jinja2 只输出占位 <code>&lt;div class="ratchet-chart"&gt;</code>，JS 动态绘制。无 JS 环境下降级显示表格。</div>
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--success);margin-bottom:8px">Zustand 状态管理</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">Diff-Claim 双向联动需细粒度订阅。DiffViewer 组件使用虚拟列表处理 5000+ 行 diff DOM 性能。</div>
             </div>
             <div style="padding:14px;border:1px solid var(--hair);border-radius:10px;background:#FDFCF8">
-              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-ink);margin-bottom:8px">Static 模式</div>
-              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">Jinja2 直接输出 <code>disabled</code> 属性，不靠 JS 修补。写入操作按钮在 static 模式下物理 disabled，提示 <code>ahadiff serve</code>。</div>
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-ink);margin-bottom:8px">CSS Modules</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">vanilla CSS + CSS Modules 避免全局样式污染。Warm v6 设计语言通过 CSS 变量（<code>--paper</code>, <code>--accent</code> 等）统一。</div>
             </div>
             <div style="padding:14px;border:1px solid var(--hair);border-radius:10px;background:#FDFCF8">
               <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--warning);margin-bottom:8px">WCAG AA 无障碍</div>
-              <div style="font-size:12px;color:var(--ink-2);line-height:1.6"><code>--warning</code> 色值改为 <code>#955D13</code>（对比度 4.52:1，满足 AA 标准），替换原 <code>#B4791F</code>（3.8:1 不达标）。</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6"><code>--warning</code> 色值 <code>#955D13</code>（对比度 4.52:1，满足 AA 标准）。侧栏展开时 <code>main</code> 加 <code>inert</code> 属性实现焦点陷阱。</div>
             </div>
             <div style="padding:14px;border:1px solid var(--hair);border-radius:10px;background:#FDFCF8">
-              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--info);margin-bottom:8px">i18n 格式化过滤器</div>
-              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">Jinja2 新增 <code>|format_date</code> 和 <code>|format_number</code> 过滤器，根据当前 locale 自动格式化日期和数字。</div>
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--info);margin-bottom:8px">i18n 国际化</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">i18n JSON catalog（<code>messages/en.json</code> + <code>messages/zh-CN.json</code>）。强类型 hook 做 TypeScript key 检查。日期/数字跟随 locale 格式化。</div>
             </div>
             <div style="padding:14px;border:1px solid var(--hair);border-radius:10px;background:#FDFCF8">
-              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--danger);margin-bottom:8px">侧栏焦点陷阱</div>
-              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">侧栏展开时 <code>main</code> 加 <code>inert</code> 属性，焦点严格锁定在侧栏内。关闭后自动移除 <code>inert</code>，恢复主区域交互。</div>
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--danger);margin-bottom:8px">XSS 防护</div>
+              <div style="font-size:12px;color:var(--ink-2);line-height:1.6">Lesson HTML 经白名单过滤后才渲染。React 默认 escape + 显式 <code>dangerouslySetInnerHTML</code> 仅用于安全过滤后的内容。</div>
             </div>
           </div>
         </div>
@@ -1676,7 +1876,7 @@ key = prompt_fingerprint
       <div class="page-head">
         <div class="eyebrow">§ 06 · 深度 FAQ</div>
         <h1>7 个核心问题，彻底讲透</h1>
-        <div class="sub">经 Codex + Claude + Gemini 三模型交叉验证。每个回答都有设计文档行号溯源。</div>
+        <div class="sub">经 Codex + Claude + Gemini 三模型六轮交叉验证（最终判定 GO）。每个回答基于真实设计文档。</div>
       </div>
 
       <!-- FAQ 1: Diff 检测机制 -->
@@ -1899,45 +2099,57 @@ key = prompt_fingerprint
         </div>
       </div>
 
-      <!-- FAQ 6: 单模型 BYOK -->
+      <!-- FAQ 6: LLM Provider + BYOK -->
       <div class="card" style="margin-bottom:20px">
-        <div class="ch"><h3>Q6: 需要多个模型吗？只有一个 API key 怎么办？</h3><div class="meta">BYOK 兼容</div></div>
+        <div class="ch"><h3>Q6: 支持哪些模型？只有一个 API key 怎么办？</h3><div class="meta">8 种 Provider + BYOK</div></div>
         <div class="cb">
+          <div style="font-size:12px;color:var(--ink-2);line-height:1.6;margin-bottom:12px;padding:10px;background:#FDFCF8;border:1px solid var(--hair);border-radius:8px">
+            AhaDiff 支持 <strong>8 种 API 格式</strong>，BYOK 流程：用户提供 model_name + base_url + api_key → 自动探测 temperature 透传、TPM/RPM 限制、上下文长度。所有 LLM 调用确保不超过探测到的 max_context_length。
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">
+            <div style="padding:10px;border:2px solid var(--accent);border-radius:8px;background:var(--accent-softer);text-align:center;font-size:11px"><b>OpenAI Chat</b></div>
+            <div style="padding:10px;border:1px solid var(--hair);border-radius:8px;background:#fff;text-align:center;font-size:11px"><b>OpenAI Responses</b></div>
+            <div style="padding:10px;border:1px solid var(--hair);border-radius:8px;background:#fff;text-align:center;font-size:11px"><b>Gemini</b></div>
+            <div style="padding:10px;border:1px solid var(--hair);border-radius:8px;background:#fff;text-align:center;font-size:11px"><b>Anthropic</b></div>
+            <div style="padding:10px;border:1px solid var(--hair);border-radius:8px;background:#fff;text-align:center;font-size:11px"><b>Azure OpenAI</b></div>
+            <div style="padding:10px;border:1px solid var(--hair);border-radius:8px;background:#fff;text-align:center;font-size:11px"><b>New API</b></div>
+            <div style="padding:10px;border:1px solid var(--hair);border-radius:8px;background:#fff;text-align:center;font-size:11px"><b>CherryIN</b></div>
+            <div style="padding:10px;border:1px solid var(--hair);border-radius:8px;background:#fff;text-align:center;font-size:11px"><b>Ollama</b></div>
+          </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
-            <div style="padding:16px;border:1px solid var(--hair);border-radius:10px;background:#FDFCF8">
-              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">理想模式 · 双模型</div>
+            <div style="padding:16px;border:2px solid var(--accent);border-radius:10px;background:var(--accent-softer)">
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-ink);margin-bottom:8px">开发测试默认 · 统一 gpt-5.4-mini</div>
               <div style="font-size:13px;color:var(--ink-2);line-height:1.7">
-                <b>生成模型</b>（大模型如 Sonnet）：写 lesson、抽取 claim<br/>
-                <b>评估模型</b>（小模型如 Haiku）：打分、验证<br/>
+                <b>生成和评估统一使用 gpt-5.4-mini</b>（1M 上下文）<br/>
+                config.toml 默认：<code>generate_model = "gpt-5.4-mini"</code> + <code>judge_model = "gpt-5.4-mini"</code><br/>
+                <span style="color:var(--accent-ink)">快速迭代 · 成本最低 · 单 key 即可开始</span>
+              </div>
+            </div>
+            <div style="padding:16px;border:1px solid var(--hair);border-radius:10px;background:#FDFCF8">
+              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">生产推荐 · 跨模型评估</div>
+              <div style="font-size:13px;color:var(--ink-2);line-height:1.7">
+                <b>生成模型</b>（大模型如 gpt-5.4 / Sonnet）：写 lesson、抽取 claim<br/>
+                <b>评估模型</b>（gpt-5.4-mini）：打分、验证<br/>
                 <span style="color:var(--success)">优点：避免"自己给自己打高分"</span>
               </div>
             </div>
-            <div style="padding:16px;border:2px solid var(--accent);border-radius:10px;background:var(--accent-softer)">
-              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-ink);margin-bottom:8px">退路模式 · 单模型（Fallback）</div>
-              <div style="font-size:13px;color:var(--ink-2);line-height:1.7">
-                <b>同一个模型</b>同时做生成和评估<br/>
-                generate temp=0.7（发散），judge temp=0.0（严格）<br/>
-                <span style="color:var(--warning)">设计已预留此能力，推荐仍是跨模型评估</span>
-              </div>
-            </div>
           </div>
-          <div style="font-family:var(--font-mono);font-size:12px;background:var(--ink);color:#E8E3D8;padding:14px;border-radius:8px;line-height:1.8;margin-bottom:12px;white-space:pre-wrap"># 单模型配置（完全可用）
-[llm.generate]
-provider = "anthropic"
-model = "claude-sonnet-4-5-20250514"
-temperature = 0.7
+          <div style="font-family:var(--font-mono);font-size:12px;background:var(--ink);color:#E8E3D8;padding:14px;border-radius:8px;line-height:1.8;margin-bottom:12px;white-space:pre-wrap"># 默认配置（开发测试阶段，开箱即用）
+[llm]
+generate_model = "gpt-5.4-mini"   <span style="color:var(--muted)"># provider_class = openai</span>
+judge_model = "gpt-5.4-mini"      <span style="color:var(--muted)"># 1M 上下文</span>
 
-[llm.judge]
-provider = "anthropic"          <span style="color:var(--muted)"># 同一个 provider</span>
-model = "claude-sonnet-4-5-20250514"  <span style="color:var(--muted)"># 同一个 model</span>
-temperature = 0.0               <span style="color:var(--muted)"># 但 temp=0 更严格</span>
+# 生产环境推荐（跨模型评估）
+[llm]
+generate_model = "gpt-5.4"        <span style="color:var(--muted)"># 大模型生成</span>
+judge_model = "gpt-5.4-mini"      <span style="color:var(--muted)"># 小模型评估</span>
 
-# 甚至可以全离线
-[llm.generate]
-provider = "ollama"
-model = "qwen3-coder"</div>
+# 全离线（strict_local 隐私模式）
+[llm]
+generate_model = "qwen3-coder"    <span style="color:var(--muted)"># provider_class = ollama</span>
+judge_model = "qwen3-coder"       <span style="color:var(--muted)"># 本地模型</span></div>
           <div style="padding:10px 14px;border:1px dashed #E3CDA1;background:#FBF5E6;border-radius:8px;font-size:12px;color:var(--warning);line-height:1.6">
-            <b>最低成本方案</b>：用免费的本地 Ollama 模型（如 qwen3-coder）做 judge，云端大模型做 generate。这样只需一个 API key，且有跨模型评估的好处。
+            <b>BYOK 自动探测</b>：配置 model_name + base_url + api_key 后，系统自动探测该模型的 temperature 支持、TPM/RPM 限速、上下文长度。生产环境推荐跨模型评估（生成用大模型，judge 用 gpt-5.4-mini）。strict_local 模式下可全部使用本地 Ollama 模型。
           </div>
         </div>
       </div>

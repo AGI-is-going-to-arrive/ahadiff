@@ -2,7 +2,7 @@
 
 ## 概述
 
-将 AhaDiff 从纯设计文档仓库转化为可执行的 Python CLI + 静态 HTML Viewer 工程，完成第一段至第三段开发（本地 diff 包 → diff 结构化 → claim 闭环），并同步修复 UI 原型的响应式断裂问题。
+将 AhaDiff 从纯设计文档仓库转化为可执行的 Python CLI + React 19 WebUI（`ahadiff serve`）工程，完成第一段至第三段开发（本地 diff 包 → diff 结构化 → claim 闭环）。前端以 `AhaDiff Warm v6.html` 为设计参考模板。
 
 ## codex 分析摘要
 
@@ -20,7 +20,7 @@
 - **响应式修复**：769-1024px 引入 icon-only 迷你侧栏（64px），≤768px 彻底抽屉化
 - **侧边栏遮罩**：fixed backdrop + blur(3px) + ESC/点击关闭
 - **Rubric 色板**：8 维独立语义色（Accuracy=#2F6F4F, Evidence=#D27050, Coverage=#B09060...）
-- **Jinja 拆分**：`templates/{base,layouts/,partials/,components/,pages/}` 五层架构
+- **~~Jinja 拆分~~**：已改为 React 19 + Vite 组件架构（第五轮决策）
 - **打印样式**：隐藏 UI 但保留证据链，代码块/claim 卡片 page-break-inside: avoid
 - **A11y**：`--muted-2` 加深至 #7A7463，progressbar ARIA 补全，focus-visible ring
 - **Inline SVG favicon**：`Δ` 字符 + #D27050 填色
@@ -38,10 +38,11 @@
 
 ### 技术栈
 
-- Python 3.11+, typer, rich, pydantic, jinja2, httpx, pyyaml
+- Python 3.11+, typer, rich, pydantic, httpx, pyyaml, jinja2（仅用于 `ahadiff install` 模板生成）
+- React 19 + Vite + vanilla CSS（前端 Viewer，以 v6.html 为设计参考）
 - SQLite (SRS review)
 - ruff + pyright strict
-- 不用 LiteLLM/LangChain/Next.js/React
+- 不用 LiteLLM/LangChain/Next.js（SSR 框架）
 
 ## 子任务列表
 
@@ -62,7 +63,7 @@
 - **实施步骤**:
   1. 冻结 `ClaimStatus` 枚举：`verified | weak | not_proven | contradicted | rejected`（Pydantic Literal）
   2. 冻结 `RunStatus` 枚举：`baseline | keep | discard | rollback | crash | targeted_verify | keep_final | phase25_rewrite | non_ratcheted`（non_ratcheted 用于 Level 1/2 非 git 输入，这类 run 无法 ratchet 回滚）
-  3. 冻结 `RunSource` schema：`source_kind`(git_ref/git_staged/git_since/patch_file/patch_stdin/file_compare，**细粒度为权威值，diff-input 文档的粗粒度 git/patch/file_compare 降级为 UI 展示分组**) + `source_ref`(统一标识，替代旧的 head_sha) + `capability_level`(1/2/3) + `degraded_flags`(dict，key 枚举：`diff_clipped | binary_only | file_count_exceeded | token_exceeded`)
+  3. 冻结 `RunSource` schema：`source_kind`(git_ref/git_staged/git_unstaged/git_since/patch_file/patch_stdin/file_compare，**细粒度为权威值，diff-input 文档的粗粒度 git/patch/file_compare 降级为 UI 展示分组**) + `source_ref`(统一标识，替代旧的 head_sha) + `capability_level`(1/2/3) + `degraded_flags`(dict，key 枚举：`diff_clipped | binary_only | file_count_exceeded | token_exceeded`)
   4. 冻结 `EvaluationBundle` 版本化契约：`evaluator.py` + `rubric.py` + `rubric.yaml` + `gates.py` + `deterministic.py` 五个文件的联合 hash 作为 `eval_bundle_version`
   5. 冻结 `EventLog` schema：主键为 `event_id`（UUID v7），`(run_id, event_type, timestamp)` 为唯一索引（注意：`event_type` 与 `status` 是两个独立字段。`event_type` 描述事件动作如 `score_computed | ratchet_decided | phase25_triggered`；`status` 是 RunStatus 枚举值）。`run_id` 为二级索引
   6. 冻结统一字段命名：所有文档使用 `source_ref`（替代旧的 `head_sha`）、`privacy_mode`（snake_case: `strict_local | redacted_remote | explicit_remote`）、`eval_bundle_version`
@@ -74,6 +75,10 @@
   15. 冻结 **数据范围契约**：真相源永远 per-repo（review.sqlite / audit.jsonl / concepts.jsonl / prompts/ / VCR）；global（`global_config_dir()`，各平台实际路径见 data-scope 文档）只做派生索引/账本/偏好，不参与 ratchet 判定
   16. 预留 **UsageEvent schema**：`event_id / run_id / repo_id / provider_class / model_id / input_tokens / output_tokens / cost_usd / pricing_version / cost_confidence / billing_mode / execution_origin / api_principal_hash / timestamp`（v0.2 实现 global usage.sqlite）
   17. 预留 **Allowlist policy contract**：builtin hard_block（不可禁用）+ soft_detect（可被 allowlist suppress）；v0.1 支持 exact/hash/path-scope，不支持 regex；每 run 存 `allowlist_digest`
+  18. 冻结 `ProviderConfig` schema：`provider_class`(openai/openai_responses/gemini/anthropic/azure/newapi/cherryin/ollama) + `model_name` + `base_url` + `api_key_env` + `probed_max_context` + `probed_tpm` + `probed_rpm` + `supports_temperature` + `probe_timestamp`
+  21. 冻结**开发测试阶段默认模型**：生成和评估统一使用 `gpt-5.4-mini`（provider_class=openai, 1M 上下文）。config.toml 默认值 `[llm] generate_model = "gpt-5.4-mini"` + `[llm] judge_model = "gpt-5.4-mini"`。生产环境用户可按需将 generate_model 切换为 gpt-5.4 或其他大模型
+  19. 冻结 SQLite 运行时版本门禁：启动时 `sqlite3.sqlite_version_info >= MINIMUM_VERSION`
+  20. 冻结统一连接初始化：`journal_mode=WAL` + `busy_timeout=5000` + `trusted_schema=OFF` + 启动时 `quick_check`（非 integrity_check）
   11. 冻结 `Orchestrator` 接口契约：`OrchestratorCommand` DTO（`learn | improve | verify | serve`）+ `OrchestratorResult` 返回结构 + 三条主链路入口签名（`run_learn()`, `run_improve()`, `run_verify()`）。`core/orchestrator.py` 统一编排，`cli.py` 仅做参数解析和输出格式化
   12. 冻结 `ServeApp` 接口契约：`src/ahadiff/serve/app.py` 的路由注册协议 + write token 鉴权（`X-AhaDiff-Token` header）+ `Host`+`Origin/Referer` 双校验 + `bind=127.0.0.1`（仅回环） + read-only 默认模式。API 端点清单：`GET /api/locale`, `PUT /api/locale`, `GET /api/runs`, `GET /api/run/:id`, `POST /api/signals/*`。路由鉴权分级：读路由无需 token，写路由必须验 token
   13. 冻结**三层写锁矩阵**（解决并发安全）：
@@ -134,6 +139,8 @@
      - 每 run 持久化 `allowlist_digest`（规则集 SHA-256）到 `metadata.json`，确保可追溯
      - v0.1 不支持任意 regex（防 ReDoS），只支持 exact/hash/glob/path-scope
   8. 编写单测覆盖：空 diff、secret in code、injection in comment/markdown/string、PEM key、base64 secret、symlink traversal、Unicode 混淆、allowlist suppress、hard_block 不可禁用
+  9. **UNTRUSTED_DIFF 边界扩展**：branch/tag 名称也视为不可信输入，经 `redaction_pipeline()` 处理
+  10. **entropy-based secondary scan**：Shannon entropy > 4.5 且 length > 20 的字符串 flag 为可疑
 - **验收标准**: `pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py` 全绿；hard_block 规则在 suppress_rules 中被忽略（不生效）
 
 #### Task 3: 文档 contract 冻结
@@ -180,11 +187,13 @@
 - **依赖**: Task 1
 - **实施步骤**:
   1. 实现 `open_repo()`, `resolve_ref_range()`
-  2. 实现 `capture_patch()` 生成 `patch.diff`，支持 4 种 Level 3 输入模式：
+  2. 实现 `capture_patch()` 生成 `patch.diff`，支持 6 种 Level 3 输入模式：
      - ref range: `HEAD~1..HEAD` 或 `abc123..def456`（核心路径）
      - `--last`: 语法糖，先检查 HEAD 父提交数：0 父用 `git diff-tree --root`，多父用 `--first-parent` 语义
      - `--staged`: 调用 `git diff --cached --no-ext-diff`（暂存区未 commit 的改动）
-     - `--since "2h ago"`: 用 `git rev-list --first-parent --since` 获取命中 commit 列表；连续后缀则做端点 diff，非连续则聚合各 commit patch。`--author` 在 Python 层做精确过滤（git 的 `--author` 是正则匹配）
+     - `--unstaged`: 调用 `git diff --no-ext-diff`（工作区未暂存改动，AI coding 后最常用场景）。source_kind=`git_unstaged`。**Corner cases**：(1) 同时有 staged 和 unstaged 时，`--unstaged` 只捕获未暂存部分；(2) `--staged --unstaged` 组合时执行 `git diff HEAD --no-ext-diff`（单一基准状态，不拼接两份 patch），metadata 记录 `combined_mode=true`；(3) untracked 新文件默认不含，`--include-untracked` 选项可纳入（通过 `git ls-files --others --exclude-standard` 列出后当作全新增 diff）；(4) bare repo → InputError；(5) detached HEAD → 正常工作，metadata 记录 `head_detached=true`；(6) merge 冲突 → InputError
+     - `--since "2h ago"`: 用 `git rev-list --first-parent --since` 获取命中 commit 列表，取最早命中 commit 的父节点作为 base、HEAD 作为 target，执行 `git diff base..HEAD`（连续 ancestry 窗口 diff，不拼接多份 patch）。**Corner cases**：(1) `--author` 过滤后若命中 commit 不连续（中间有他人 commit），仍使用整个窗口（包含他人 commit），避免 patch 语义断裂；(2) 无命中 commit → InputError "该时间范围内无 commit"；(3) 仅命中 1 个 commit → 等价于单 commit 模式；(4) metadata 记录 `matched_commits[]` 和 `window_base`/`window_head`
+     - `git show <sha>`: 单 commit 学习，调用 `git diff-tree -p <sha>`。source_kind=`git_ref`（复用，source_ref 设为该 sha）。**Corner cases**：merge commit 默认用 `--first-parent`；初始 commit（无父）用 `git diff-tree --root`；sha 不存在时 InputError
   3. 实现 `write_input_artifacts()` 生成 `metadata.json`，包含 `capability_flags`：`has_repo_context / has_symbol_index / has_cross_file_context / has_source_ref / has_graph`（Level 3 全 true，Level 2/1 按实际降级）
   4. 集成安全层：捕获后通过 `safety.redaction_pipeline()` 统一过滤 + redaction（脱敏必须在写入任何 artifact 之前完成）
   5. **Large diff policy（前置到 capture stage）** + **degraded_flags 完整触发规则**：
@@ -193,14 +202,24 @@
      - `file_count_exceeded`：变更文件数超过 `config.toml [capture].max_files`（默认 50）时，设置点=capture，传播点=metadata→lesson（仅处理 top-K 文件），UI 行为=显示 "N files omitted"
      - `token_exceeded`：组装 context 后 token 数超过 provider 上下文窗口时，设置点=provider（请求前估算），传播点=score.json，UI 行为=显示 "Context truncated"
      - 策略总览：skip（>10000行）> clip（>5000行）> summarize（>2000行），`degraded=true` 写进 score.json 和 results
-  6. 实现 `--patch file.patch` / `--patch -`（stdin）Level 1 输入：直接读取 unified diff 文本，跳过 git 操作
+  6. 实现 `--patch file.patch` / `--patch -`（stdin）Level 1 输入：直接读取 unified diff 文本，跳过 git 操作。**stdin contract**：(1) 检测 TTY 时 InputError "stdin 需要管道输入，如 `git diff | ahadiff learn --patch -`"；(2) pipe 模式流式读取，最大 10MB（`config.toml [capture].max_patch_bytes`）；(3) 支持 UTF-8/UTF-8 BOM/GBK charset 检测；(4) CRLF → LF 归一化；(5) EOF/EPIPE/超时 30s → InputError
+  6a. 实现 `--compare old.py new.py` Level 2 输入：读取两个文件内容，使用 `difflib.unified_diff()` 生成 unified diff。source_kind=`file_compare`，source_ref=两文件 content hash 拼接，capability_level=2。**Corner cases**：(1) 文件不存在 → InputError；(2) binary 文件 → `degraded_flags.binary_only` + warn；(3) 编码检测 + BOM sniffing；(4) 权限不足 → InputError "无法读取文件"；(5) 两文件内容相同 → InputError "文件内容相同，无差异"；(6) 超大文件 (>1MB) → `degraded_flags.diff_clipped`
   7. 实现 repo_write_lock（`.ahadiff/ahadiff.lock`，portalocker）：第二个 `ahadiff learn` 实例检测到锁时提示 "另一个 ahadiff 进程正在运行(PID=xxx)"，防止并发写入 review.sqlite 和 results.tsv
 - **验收标准**:
   - `ahadiff learn HEAD~1..HEAD --dry-run` 生成 `patch.diff` + `metadata.json`
   - `ahadiff learn --last --dry-run` 等价于上述
   - `ahadiff learn --staged --dry-run` 捕获暂存区 diff
-  - `ahadiff learn --since "1h ago" --dry-run` 扫描时间范围内的 commit
+  - `ahadiff learn --unstaged --dry-run` 捕获工作区未暂存改动
+  - `ahadiff learn --staged --unstaged --dry-run` 执行 `git diff HEAD`（单一基准，不拼接）
+  - `ahadiff learn --unstaged --include-untracked --dry-run` 包含 untracked 新文件
+  - `ahadiff learn abc1234 --dry-run` 学习单个 commit（git show 语义）
+  - `ahadiff learn --since "1h ago" --dry-run` 连续 ancestry 窗口 diff
   - `ahadiff learn --patch tests/fixtures/sample.patch --dry-run` 读取外部 patch 文件
+  - `echo "..." | ahadiff learn --patch - --dry-run` stdin 管道输入（TTY 时报错）
+  - `ahadiff learn --compare old.py new.py --dry-run` 单文件对比
+  - 有 untracked 文件时 CLI 输出提示信息（不报错）
+  - bare repo / merge 冲突 / unborn HEAD 时输出可读 InputError
+  - metadata.json 包含正确的 source_kind/source_ref/capability_level/degraded_flags
 
 #### Task 6: Diff 解析 + 结构化
 - **类型**: 后端（Codex 实现）
@@ -262,34 +281,66 @@
 #### Task 7: LLM Provider 适配
 - **类型**: 后端（Codex 实现）
 - **文件范围**:
-  - `src/ahadiff/llm/provider.py`
-  - `src/ahadiff/llm/local_ollama.py`
-  - `src/ahadiff/llm/openai_provider.py`
-  - `src/ahadiff/llm/anthropic_provider.py`
+  - `src/ahadiff/llm/provider.py`         # Provider Protocol + 工厂
+  - `src/ahadiff/llm/adapters/openai.py`   # OpenAI Chat Completions
+  - `src/ahadiff/llm/adapters/openai_responses.py`  # OpenAI Responses API
+  - `src/ahadiff/llm/adapters/gemini.py`   # Google Gemini
+  - `src/ahadiff/llm/adapters/anthropic.py` # Anthropic Messages
+  - `src/ahadiff/llm/adapters/azure.py`    # Azure OpenAI
+  - `src/ahadiff/llm/adapters/newapi.py`   # New API (OpenAI 兼容)
+  - `src/ahadiff/llm/adapters/cherryin.py` # CherryIN (OpenAI 兼容)
+  - `src/ahadiff/llm/adapters/ollama.py`   # Ollama (本地模型)
+  - `src/ahadiff/llm/probe.py`            # 自动探测模块
   - `src/ahadiff/llm/cache.py`
   - `src/ahadiff/llm/cost.py`
   - `src/ahadiff/llm/schemas.py`
   - `tests/unit/test_provider.py`
+  - `tests/unit/test_probe.py`
 - **依赖**: Task 1
 - **实施步骤**:
   1. 定义 `Provider` protocol + `ProviderRequest/Response`
   2. 实现 `make_provider()` 工厂
-  3. 实现三个 adapter（httpx 直连，不用 SDK）
+  3. 实现 8 个 adapter（httpx 直连，不用 SDK）：
+     - **OpenAI Chat**：`/v1/chat/completions`，支持 streaming
+     - **OpenAI Responses**：`/v1/responses`，Responses API 格式
+     - **Gemini**：`/v1beta/models/{model}:generateContent`
+     - **Anthropic**：`/v1/messages`，Messages API 格式
+     - **Azure OpenAI**：`/{deployment}/chat/completions?api-version=...`
+     - **New API / CherryIN**：OpenAI 兼容格式，自定义 base_url
+     - **Ollama**：`/api/chat`，本地模型
   4. 统一超时、重试、JSON 解码、token/cost audit
   5. 实现调度层：per-provider QPS 限制（config.toml 配置）、exponential backoff（Retry-After header 解析）、并发预算（默认 max_concurrent=3）、上下文窗口超限检测（请求前估算 token 数，超限时自动 clip diff 后重试）
   6. 实现 **circuit breaker**：连续 N 次失败（默认 5）后熔断该 provider，冷却 `config.toml [provider].circuit_cooldown`（默认 60s）后自动恢复
   7. 实现 **cost ceiling**：per-run token budget（默认 200K input + 50K output），超限时中止并提示
   8. 实现 **cache key 契约**：`hash(diff_content + source_ref + prompt_version + model_id + rubric_version + redaction_config + context_bundle_hash)`，任一变更自动失效
-  9. 实现 **隐私模式感知**：`strict_local` 模式下只允许 ollama provider；`redacted_remote` 下发送脱敏后的 diff；`explicit_remote` 下发送原文（需用户确认）
+  9. 实现 **隐私模式感知**：
+     - `strict_local` 模式下只允许 Ollama adapter（本地模型）
+     - `redacted_remote` 下发送脱敏后的 diff
+     - `explicit_remote` 下发送原文（需用户确认）
   10. 实现 **异常处理决策表**（9+ 场景）：(1) 网络超时→重试 3 次 (2) 速率限制→指数退避 (3) context length exceeded→自动 clip diff 后重试 (4) API key 无效→立即 SafetyError (5) 空响应→标记 crash (6) JSON 解码失败→重试 1 次 (7) provider 不可用→切换 fallback (8) 模型返回拒绝→记录并跳过 (9) 超时+重试耗尽→ProviderError
   11. 实现 **audit.jsonl** 记录（数据范围架构新增）：每行含 `schema_version: 1` + `event_id` + `prompt_name` + `prompt_fingerprint` + `request_hash` + `input_tokens` + `output_tokens` + `cost_usd` + `pricing_version` + `cost_confidence` + `billing_mode` + `execution_origin` + `api_principal_hash` + `timestamp`。不存 prompt/response 原文（隐私）
   12. 实现 **audit rotation**：audit.jsonl > 10MB → rotate 为 `audit.1.jsonl.gz`，保留最近 3 份
   13. 预留 **UsageEvent schema**（v0.2 实现写入 global usage.sqlite）：字段同 audit 事件 + `repo_id`（repo fingerprint），v0.1 仅定义 Pydantic model 不实现 global 写入
+  14. 实现 **BYOK 自动探测**（`src/ahadiff/llm/probe.py`）：
+      1. 用户提供 `model_name + base_url + api_key` 后，执行 `ahadiff provider test`
+      2. 发送最小测试请求验证连通性
+      3. 探测 temperature 透传：发送 `temperature=0.0` 和 `temperature=1.0` 两次请求，比较输出差异判断是否支持
+      4. 探测 TPM/RPM：解析响应头 `x-ratelimit-limit-tokens` / `x-ratelimit-limit-requests` / `x-ratelimit-remaining-*`，若无头则用保守默认值
+      5. 探测上下文长度：优先解析 `/v1/models` 端点获取 `context_window`/`max_tokens`；fallback 用已知模型 ID 映射表；再 fallback 默认 128K
+      6. 所有探测结果缓存到 `.ahadiff/config.toml` 的 `[providers.{name}]` section
+  15. 实现 **上下文长度保护**：
+      1. 所有 LLM 调用前，估算 input tokens（使用 tiktoken 或 provider 提供的 tokenizer）
+      2. 若 estimated_tokens > provider.max_context * 0.9，自动 clip diff（保留头尾文件和最大变更文件）
+      3. 若 clip 后仍超，设置 `degraded_flags.token_exceeded = true`
+      4. 日志记录每次调用的 estimated vs actual tokens
 - **验收标准**:
-  - `pytest tests/unit/test_provider.py` 覆盖三种 provider mock
+  - `pytest tests/unit/test_provider.py` 覆盖 8 种 adapter mock
+  - `pytest tests/unit/test_probe.py` 覆盖连通性/temperature/TPM/RPM/context_length 探测
+  - `ahadiff provider test --name my-gpt --base-url https://... --api-key sk-...` 输出探测报告
+  - strict_local 模式下拒绝非 Ollama provider
+  - 上下文超限时自动 clip 并设置 degraded_flags
   - 429 响应触发 backoff，不崩溃；并发超限时排队
   - circuit breaker 熔断/恢复测试通过
-  - strict_local 模式下拒绝远端 provider 调用
   - audit.jsonl 每行含 schema_version，rotation 在 >10MB 时触发
 
 ### Layer 3（依赖 Layer 2b + Layer 1.5）— Claim 闭环

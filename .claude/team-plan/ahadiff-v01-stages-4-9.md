@@ -15,7 +15,7 @@
 原顺序                    新顺序（Codex 建议）
 第四段 lesson + quiz      → 第四段 lesson + quiz（不变）
 第五段 Warm HTML viewer   → 第五段 score + verifier hard gates + results.tsv
-第六段 score + verifier   → 第六段 Warm HTML viewer
+第六段 score + verifier   → 第六段 React Viewer
 第七段 review + learning  → 第七段 review + learning signal
 第八段 improve loop       → 第八段 improve loop + targeted verification + Phase 2.5
 第九段 agent install      → 第九段 agent & automation install（扩展为 6 工具 + hooks + Action）
@@ -94,7 +94,7 @@
   3. 实现 PASS(≥80) / CAUTION(60-79) / FAIL(<60) verdict 计算
   4. 实现机械化打分（R10）：evidence 从 claims.jsonl 统计 verified/weak 比例；safety_privacy 从 redaction_report.json 统计
   5. 生成 `score.json`（8 维明细 + verdict + hard_gates + weakest_dim + `eval_bundle_version` + `degraded_flags`）
-  6. 跨模型强制：生成用大模型，评估用小模型
+  6. 跨模型评估：生产环境生成与评估用不同模型；**开发测试阶段统一 gpt-5.4-mini**（跨模型约束暂时放松），生产环境生成切大模型
   7. **Evaluation bundle 整体 immutable**：`evaluator.py` + `rubric.py` + `rubric.yaml` + `gates.py` + `deterministic.py` 共 5 文件的联合 hash 为 `eval_bundle_version`。任一文件变更视为新评估版本，需更新 `rubric_version`，自动触发 VCR cassette 失效，并在 results 中记录新版本号。v0.1 期间允许迭代但必须版本化
 - **验收标准**: `ahadiff verify <run_id>` 和 `ahadiff score <run_id>` 输出 PASS/CAUTION/FAIL 及最弱维度；score.json 包含 eval_bundle_version
 
@@ -122,72 +122,68 @@
 
 ---
 
-## 第六段：Warm HTML viewer
+## 第六段：React Viewer
 
-### Task 13: Jinja2 Viewer 基础架构
+### Task 13: React Viewer 基础架构
 
-- **类型**: 前端（Claude 实现，Gemini 评审）
+- **类型**: 前端（Claude 实现）
 - **文件范围**:
-  - `src/ahadiff/viewer/builder.py`
-  - `src/ahadiff/viewer/data_bundle.py`
-  - `viewer/templates/base.html`
-  - `viewer/templates/layouts/app.html`
-  - `viewer/templates/partials/_sidebar.html`
-  - `viewer/templates/partials/_topbar.html`
-  - `viewer/templates/components/_badge.html`
-  - `viewer/templates/components/_rubric_bar.html`
-  - `viewer/templates/components/_diff_row.html`
-  - `viewer/static/style.css`
-- **依赖**: Task 9（Lesson）+ Task 11（Score）+ Task 12（Ratchet History，只读依赖 — data_bundle 含 ratchet_history 字段）
+  - `viewer/` 目录（React + Vite 项目）
+  - `viewer/package.json`
+  - `viewer/vite.config.ts`
+  - `viewer/src/App.tsx`
+  - `viewer/src/components/` — 通用组件
+  - `viewer/src/styles/` — CSS（vanilla CSS，不用 Tailwind）
+  - `viewer/src/api/` — API client
+  - `viewer/src/i18n/` — 国际化
+- **依赖**: Task 0（Schema Freeze）；开发时 API 通过 mock/proxy 解耦（Vite dev server proxy），不硬依赖 Task 14.5（Task 14.5 同属 Stage 4 并行开发）
 - **实施步骤**:
-  1. 从 Warm v6 HTML 原型提取 CSS 变量和布局结构
-  2. 实现 Jinja2 五层模板架构（base → layouts → partials → components → pages）
-  3. 实现 `data_bundle.py`：构建 `<script id="aha-data" type="application/json">` 注入的 JSON
-  4. data_bundle schema：context(run_id/source_ref/source_kind/capability_level/theme/**locale**) + verdict(overall/status) + rubric_scores + claims + lesson + ratchet_history
-  5. 实现 `_rubric_bar.html` 组件：自动根据 score/max 映射 PASS/CAUTION/FAIL 语义色（P1 from Gemini）
-  6. 实现 `data_bundle.py` 数据裁剪：ratchet_history 仅保留 score 趋势 + run_id，丢弃废弃版本的全量 payload；diff 行数超过 soft_limit (500行) 时启用折叠截断；hard_limit 2000 行时截断并附注 `[truncated: N lines omitted]`，确保单页 HTML 不超过 2MB
-  7. 确保 `file://` 打开兼容（所有资源内联，无 CDN）
-  8. 移除外部字体依赖和硬编码 demo 数据，转向 System Font Stack（`system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', 'Sarasa Gothic SC', sans-serif`）确保中英文覆盖（经 Codex 交叉审查确认纯 system-ui 中文覆盖不足）
-  9. 实现 i18n 基础：`viewer/i18n/loader.py` JSON catalog loader + Jinja2 `_()` 全局翻译函数 + `<html lang="{{ locale }}">`
-  10. Topbar 右侧添加语言切换按钮（zh/EN）+ 环境探针标识（Static/Serve badge）
-  11. **Print CSS 修复**：`@media print` 中 `.rail`（证据链右栏）必须保持可见（`display: block`），移除 `position: sticky`，使证据链在打印时流式追加到正文尾部。隐藏 UI chrome（sidebar/topbar/按钮）但保留证据
-  12. **Ratchet 图表迁移策略**：v6 原型中的 SVG 硬编码坐标不迁移到 Jinja2。Jinja2 只输出 `<div id="ratchet-chart" data-scores="...">`，折线图由 Vanilla JS 读取 data_bundle 后动态绘制（使用 `<canvas>` 或动态 SVG，不引入外部 charting 库）
-  13. **Lesson HTML 安全渲染**：`lesson.full.md` 经 Markdown→HTML 转换后，**必须经 bleach 白名单过滤**（允许 `p/h1-h6/ul/ol/li/code/pre/a/em/strong/blockquote/table/tr/td/th`，移除所有 `<script>` 和 `on*` 事件属性），过滤后才能用 `|safe` 输出。这是因为 diff 内容是 UNTRUSTED_DIFF
-  14. **Static 模式按钮降级**：Jinja2 渲染时若 `mode == "static"`，直接在 HTML 输出 `disabled` 属性 + CLI 降级文案（不依赖 JS 运行时去修补 DOM）。JS 只做 Serve 模式的增强绑定
-  15. **侧栏焦点陷阱**：侧栏/抽屉打开时，对 `<main>` 动态注入 `inert` 属性阻断焦点穿透；关闭时移除
-  16. **i18n 格式化过滤器**：`viewer/i18n/loader.py` 补充 `|format_date(locale)` 和 `|format_number(locale)` 两个 Jinja2 自定义过滤器（用 Python `datetime` + `locale` 模块，不引入 Babel）
-- **验收标准**:
-  - `ahadiff learn HEAD~1..HEAD --open` 打开本地 HTML，视觉接近 Warm v6 原型
-  - data_bundle 裁剪：>500 行 diff 启用折叠，>2000 行截断，单页 HTML ≤ 2MB
-  - 无障碍基线：所有可交互元素有 `tabindex="0"` 或语义 HTML（`<button>`），焦点可见（`:focus-visible`），ARIA `role` 标注完整
-  - **WCAG AA 对比度**：Rubric 语义色（PASS 绿/CAUTION 橙/FAIL 红）在浅色和深色主题下均满足 4.5:1 文本对比度。`--warning` 色值使用 `#955D13`（非原 #B4791F，后者对比度仅 3.3:1）。五态 Claim 色同样需达标
-  - **打印验证**：`Ctrl+P` 预览时证据链（.rail）可见
-  - **XSS 验证**：在 diff 中注入 `<script>alert(1)</script>`，渲染后不执行
-- **Review**: Claude 实现后 → Gemini(gemini-3.1-pro-preview) + Codex 交叉 review
+  1. 初始化 Vite + React 19 + TypeScript 项目
+  2. 以 `AhaDiff Warm v6.html` 为设计参考模板，提取设计 token（颜色、字体、间距）
+  3. 实现 Warm 风格 CSS 设计系统（vanilla CSS custom properties，不用 CSS 框架）
+  4. 实现基础 layout：sidebar nav + main content area + responsive breakpoints
+  5. 实现 API client：连接 `ahadiff serve` 的 REST API
+  6. 实现 i18n：React Context + JSON catalog（`messages/en.json` + `messages/zh-CN.json`）
+  7. 实现语言切换 UI + cookie 持久化 + 浏览器检测降级
+  8. 实现 print CSS（@media print）
+  9. 实现 WCAG AA 无障碍：焦点管理、aria-label、键盘导航
+  10. 配置 Vite build：`ahadiff serve` 开发时 proxy API，生产时 serve 静态 build
+  11. 实现 XSS 防护：所有用户数据渲染用 React 自动 escape，data_bundle 用 DOMPurify
+  12. 字体策略：Google Fonts（Newsreader/Inter/JetBrains Mono/Noto Serif SC）+ 系统字体回退链
+- **验收标准**: 
+  - `cd viewer && npm run build` 成功
+  - `ahadiff serve` 启动后自动打开浏览器，显示 Warm 风格首页
+  - WCAG AA 合规（axe-core 零 critical）
+  - 中英文切换无闪烁
 
 ### Task 14: Viewer 核心页面（v0.1 必须的 4 页）
 
 - **类型**: 前端（Claude 实现，Gemini 评审）
 - **文件范围**:
-  - `viewer/templates/pages/dashboard.html`（Runs Dashboard）
-  - `viewer/templates/pages/lesson_reader.html`（Lesson Reader）
-  - `viewer/templates/pages/diff_viewer.html`（Diff + Evidence Viewer + Claim Inspector）
-  - `viewer/templates/pages/ratchet_lab.html`（Ratchet Lab）
-  - `viewer/templates/partials/_claim_inspector.html`
+  - `viewer/src/pages/LessonPage.tsx` — Lesson 全文 + Evidence 侧边栏
+  - `viewer/src/pages/DiffViewerPage.tsx` — Diff + Claim 标注
+  - `viewer/src/pages/QuizPage.tsx` — Quiz 交互（Guided/Recall/Transfer）
+  - `viewer/src/pages/DashboardPage.tsx` — 历史 + Ratchet 趋势图
+  - `viewer/src/components/ClaimBadge.tsx` — 5 态 Claim 状态标签
+  - `viewer/src/components/EvidencePanel.tsx` — file:line 证据链
+  - `viewer/src/components/SRSCard.tsx` — SRS 翻牌卡片
+  - `viewer/src/components/ConceptGraph.tsx` — 概念图谱（SVG + List fallback）
 - **依赖**: Task 13（Viewer 基础）
 - **实施步骤**:
-  1. **Runs Dashboard**: 显示所有 run 的 verdict/score/时间线
-  2. **Lesson Reader**: 渲染 lesson.full.md + 右栏 Claims/Evidence/Quiz 状态，支持 full/hint/compact 切换
-  3. **Diff + Evidence Viewer**: 点击 diff 行 → 高亮相关 claim；点击 claim → 滚动到 source hunk（核心交互）
-  4. **Ratchet Lab**: score before/after、weakest dimension、keep/discard 历史、results.tsv 可视化
-  5. Claim Inspector 侧边栏：verified(绿 `#2F6F4F`)/weak(黄 `#B4791F`)/not_proven(灰 `#6B6B6B`)/contradicted(红 `#A33D2B`)/rejected(紫 `#7B5EA7`) 五态色彩标识
-  6. 移动端：Claim Inspector 降级为 Drawer 浮层（P2 from Gemini）
-  7. 打印样式：保留证据链，隐藏 UI chrome
-  8. **Viewer 双模式声明**：前端交互按钮（如 Mark wrong/Good/Hard）的行为通过 `data-mode` 属性区分：(a) 在 `ahadiff serve` 模式下直接调用后端 API；(b) 在 `file://` 静态模式下显示可复制的 CLI 命令提示（如 `ahadiff mark wrong c020`）。v0.1 同时实现 (a) 和 (b)，通过 Progressive Enhancement 自动切换。serve 后端的完整规格见评估报告 Task 14.5 段落（`.claude/team-plan/ahadiff-v01-comprehensive-evaluation-research.md`）。
+  1. **DashboardPage**: 显示所有 run 的 verdict/score/时间线 + Ratchet 趋势图
+  2. **LessonPage**: 渲染 lesson.full.md + 右栏 Claims/Evidence/Quiz 状态，支持 full/hint/compact 切换
+  3. **DiffViewerPage**: 点击 diff 行 → 高亮相关 claim；点击 claim → 滚动到 source hunk（核心交互）
+  4. **QuizPage**: Quiz 交互（Guided/Recall/Transfer 三类题型），答题结果通过 API 写入后端
+  5. **ClaimBadge**: verified(绿 `#2F6F4F`)/weak(黄 `#B4791F`)/not_proven(灰 `#6B6B6B`)/contradicted(红 `#A33D2B`)/rejected(紫 `#7B5EA7`) 五态色彩标识
+  6. **EvidencePanel**: file:line 证据链面板，点击跳转到 DiffViewer 对应 hunk
+  7. **SRSCard**: 翻牌动画 + Good/Hard/Wrong 按钮，直接调用 `ahadiff serve` API 写入
+  8. **ConceptGraph**: 概念图谱（SVG 力导向图 + List fallback for 无障碍）
+  9. 移动端：EvidencePanel 降级为 Drawer 浮层
+  10. 打印样式：保留证据链，隐藏 UI chrome
 - **验收标准**: 4 个页面在 375px/768px/1024px/1440px 四个视口正常显示
 - **Review**: Gemini(gemini-3.1-pro-preview) 评审
 
-### Task 14.5: Serve Backend（写入端点）
+### Task 14.5: Serve Backend（REST API for React 前端）
 
 - **类型**: 后端（Codex 实现）
 - **文件范围**:
@@ -195,22 +191,27 @@
   - `src/ahadiff/serve/middleware.py`
   - `src/ahadiff/serve/routes_signals.py`
   - `src/ahadiff/serve/routes_locale.py`
+  - `src/ahadiff/serve/routes_runs.py`
   - `src/ahadiff/serve/auth.py`
+  - `src/ahadiff/serve/static.py` — 服务 React build 产物
   - `tests/unit/test_serve_app.py`
-- **依赖**: Task 0（serve_app contract）+ Task 13（Jinja2 基础架构）+ Task 15（review.sqlite schema，signals/result 路由需要其表结构）。注：与 Task 14 并行开发，不阻塞等待 Task 14 完成
+- **依赖**: Task 0（serve_app contract）+ Task 15（review.sqlite schema，signals/result 路由需要其表结构）。注：与 Task 14 并行开发，不阻塞等待 Task 14 完成
 - **实施步骤**:
   1. 实现 Starlette app 工厂，`bind=127.0.0.1:8765`（**仅绑定回环地址，拒绝外网连接**）
   2. 实现路由鉴权矩阵：
      - 读路由（`GET /api/*`）：无需 token，默认开放
      - 写路由（`POST /api/signals/*`, `PUT /api/locale`）：需 `X-AhaDiff-Token` header
-     - token 在 `ahadiff serve` 启动时自动生成并注入 data_bundle，前端从 `<meta name="aha-token">` 读取
+     - token 在 `ahadiff serve` 启动时自动生成，React 前端从 `GET /api/auth/token` 获取（仅限 localhost）
   3. 实现 `Host` + `Origin/Referer` 双校验中间件：只允许 `localhost`/`127.0.0.1`/`[::1]`
-  4. 实现 `POST /api/signals/mark-wrong`、`POST /api/signals/quiz-answer`、`POST /api/signals/srs-review`、`POST /api/signals/helpfulness`
-  5. 实现 `GET /api/runs`、`GET /api/run/:id`（只读，直接查 review.sqlite）
-  6. 集成 `LocaleMiddleware`（CC-NEW-7 方案）
-  7. 实现 `ahadiff serve [--port PORT] [--no-open]` CLI 子命令
+  4. 实现 JSON 数据 API：`GET /api/runs`、`GET /api/run/:id`、`GET /api/run/:id/lesson`、`GET /api/run/:id/claims`、`GET /api/run/:id/quiz`、`GET /api/run/:id/diff`、`GET /api/concepts`、`GET /api/ratchet/history`（只读，直接查 review.sqlite）
+  5. 实现写入端点：`POST /api/signals/mark-wrong`、`POST /api/signals/quiz-answer`、`POST /api/signals/srs-review`、`POST /api/signals/helpfulness`
+  6. 集成 `LocaleMiddleware`（CC-NEW-7 方案）：`GET /api/locale`、`PUT /api/locale`
+  7. 实现 React 静态资源服务：`viewer/dist/` 目录通过 Starlette `StaticFiles` 挂载，SPA fallback 到 `index.html`
+  8. 实现 `ahadiff serve [--port PORT] [--no-browser]` CLI 子命令。启动时自动调用 `webbrowser.open(f"http://localhost:{port}")` 打开浏览器，`--no-browser` 禁用此行为
 - **验收标准**:
-  - `ahadiff serve` 启动后 `curl -H "X-AhaDiff-Token: <token>" -X POST localhost:8765/api/signals/mark-wrong` 返回 200
+  - `ahadiff serve` 启动后自动打开浏览器，显示 React 前端
+  - `curl -H "X-AhaDiff-Token: <token>" -X POST localhost:8765/api/signals/mark-wrong` 返回 200
+  - `GET /api/runs` 返回 JSON 格式的 runs 列表
   - 外网 IP 连接被拒绝
   - 无 token 的写请求返回 403
 - **Review**: Claude + Codex 交叉 review
@@ -332,14 +333,9 @@
   - `src/ahadiff/install/base.py`（InstallTarget protocol）
   - `src/ahadiff/install/registry.py`
   - `src/ahadiff/install/claude.py`
-  - `src/ahadiff/install/codex.py`（复用于 amp/jules；Junie 作为 JetBrains 插件共享 AGENTS.md，无独立 install 命令）
+  - `src/ahadiff/install/codex.py`
   - `src/ahadiff/install/gemini.py`
   - `src/ahadiff/install/opencode.py`
-  - `src/ahadiff/install/cursor.py`
-  - `src/ahadiff/install/copilot.py`
-  - `src/ahadiff/install/windsurf.py`
-  - `src/ahadiff/install/cline.py`
-  - `src/ahadiff/install/aider.py`
   - `src/ahadiff/install/hooks.py`
   - `src/ahadiff/install/templates/*.j2`
   - `src/ahadiff/cli.py`（新增 install/uninstall 子命令）
@@ -347,15 +343,21 @@
 - **依赖**: Task 1（工程骨架）
 - **实施步骤**:
   1. 实现 `InstallTarget` protocol：`detect() → bool`, `preview() → str`, `write() → list[Path]`, `uninstall() → list[Path]`
-  2. 实现 11 个 target：claude / codex / gemini / opencode / cursor / copilot / windsurf / cline / amp / aider / jules
-     其中 AGENTS.md 系（codex/opencode/amp/jules）共享模板
-  3. 实现 Git hooks：post-commit（非阻塞提示）、pre-push（未学习 diff 警告）
-  4. 实现 `--detect` 自动检测已安装工具
-  5. 实现 `--dry-run` 预览、`--force` 覆盖、`uninstall` 清理
-  6. 实现 safe merge 规则：检测目标文件是否已存在用户内容，存在则追加 section 而非覆盖；冲突时 diff 展示并询问
-  7. 所有配置通过 Jinja2 模板化生成
-  8. 默认不改用户全局配置，不默认启用阻断式 hook
-- **验收标准**: 11 个 target + hooks 的 `--dry-run` 全部正确输出将写入的文件列表
+  2. **v0.1 只实现 4 个核心 CLI target**：
+     - `claude` — 写入 `.claude/skills/ahadiff/SKILL.md` + 追加 `CLAUDE.md` section
+     - `codex` — 写入 `AGENTS.md`（AAIF 标准）
+     - `gemini` — 追加 `GEMINI.md` 段落
+     - `opencode` — 写入 `AGENTS.md` + `.opencode/agents/ahadiff.md`
+     其中 codex/opencode 共享 AGENTS.md 模板
+  3. **v0.2 扩展 7 个 IDE/复用 target**：cursor / copilot / windsurf / cline / amp / jules / aider
+  4. 实现 Git hooks：post-commit（非阻塞提示）、pre-push（未学习 diff 警告）
+  5. 实现 `--detect` 自动检测已安装工具
+  6. 实现 `--dry-run` 预览、`--force` 覆盖、`uninstall` 清理
+  7. 实现 safe merge 规则：检测目标文件是否已存在用户内容，存在则追加 section 而非覆盖；冲突时 diff 展示并询问
+  8. 所有配置通过 Jinja2 模板化生成
+  9. 默认不改用户全局配置，不默认启用阻断式 hook
+- **验收标准**: 4 个核心 CLI target + hooks 的 `--dry-run` 全部正确输出将写入的文件列表
+- **v0.2 验收标准**: 额外 7 个 target 的 `--dry-run` 全部正确
 - **规则文件对照**: 详见 `.claude/team-plan/ahadiff-agent-rules-registry.md`
 
 ### Task 20: GitHub Action 集成
@@ -388,8 +390,8 @@
 | Task 10 | `quiz/*`, `prompts/quiz_*.md` |
 | Task 11 | `eval/evaluator.py`, `eval/rubric.py`, `eval/gates.py`, `evals/rubric.yaml` |
 | Task 12 | `eval/ratchet.py`, `eval/results.py` |
-| Task 13 | `viewer/builder.py`, `viewer/data_bundle.py`, `viewer/templates/{base,layouts,partials,components}` |
-| Task 14 | `viewer/templates/pages/*` |
+| Task 13 | `viewer/package.json`, `viewer/vite.config.ts`, `viewer/src/{App,components,styles,api,i18n}` |
+| Task 14 | `viewer/src/pages/*`, `viewer/src/components/{ClaimBadge,EvidencePanel,SRSCard,ConceptGraph}` |
 | Task 15 | `review/*` |
 | Task 16 | `improve/loop.py`, `improve/program.py`, `prompts/improve_program.md` |
 | Task 17 | `improve/targeted.py`, `improve/rewrite.py` |
@@ -408,11 +410,11 @@ Layer 4 (并行):  Task 9 (依赖 Task 7 + Task 8)
 Layer 5 (串行+并行):
                  Task 10 (依赖 Task 9 + Task 8，串行)
                  Task 12 (依赖 Task 0 + Task 11，与 Task 10 并行)
-                 Task 13 (依赖 Task 9 + Task 11 + Task 12[只读]，与 Task 10 并行)
+                 Task 13 (依赖 Task 0，API 通过 mock/proxy 解耦，与 Task 10 并行)
    ↓
 Layer 6 (并行):  Task 14 (依赖 Task 13)
                  Task 15 (依赖 Task 10 + Task 12，与 Task 14 并行)
-                 Task 14.5 (依赖 Task 0 + Task 13 + Task 15，与 Task 14 并行但需等 Task 15 schema)
+                 Task 14.5 (依赖 Task 0 + Task 13 + Task 15，与 Task 14 并行)
    ↓
 Layer 7 (串行):  Task 16 (依赖 Task 11 + Task 12 + Task 15)
    ↓             Task 17 (依赖 Task 16，串行)
@@ -466,8 +468,10 @@ Layer 8 (串行):  Task 19 (依赖 CLI 接口冻结：Task 9+10+11+15+16)
 - Agent Skill Hub viewer 页面 → v0.2
 - public benchmark suite → v0.2（v0.1 只做 local）
 - `--level beginner/intermediate/senior` → v0.2
-- `git show` / PR patch 输入 → v0.2
 - `--staged` 已纳入 v0.1（`git diff --cached`，实现简单，与 Blueprint 一致）
+- `--unstaged` 已纳入 v0.1（`git diff`，AI coding 后最高频场景）
+- `git show <sha>` 已纳入 v0.1（单 commit 学习，复用 git_ref source_kind）
+- PR patch / 平台 URL 输入 → v0.2（`--patch-url`，httpx GET 薄封装）
 
 ## 第十段：i18n 全链路国际化（新增）
 
@@ -488,7 +492,7 @@ Layer 8 (串行):  Task 19 (依赖 CLI 接口冻结：Task 9+10+11+15+16)
   4. ConceptNode 加 `term_key: str`（slug 归一化稳定身份）+ `term: str`（规范英文）+ `display_name: str`（本地化）+ `lang: str` + `aliases: list[str]`（CC-NEW-5 闭合方案回流）
   5. EvidenceAnchor 加 `file_id: str`（SHA-256 前缀，脱敏前分配）+ `display_path: str`（脱敏后显示路径）（CC-NEW-3 闭合方案回流）
   5. config.toml 加 `[general] lang = "auto"` + `[llm] prompt_lang = "auto"` + `[llm] output_lang = "auto"`
-- **验收标准**: `resolve_locale()` 在 CLI/serve/static 三种模式下都返回正确 locale
+- **验收标准**: `resolve_locale()` 在 CLI 和 serve 两种模式下都返回正确 locale
 
 ### Task i18n-1: JSON Catalog + Loader
 
@@ -518,34 +522,35 @@ Layer 8 (串行):  Task 19 (依赖 CLI 接口冻结：Task 9+10+11+15+16)
   5. 代码片段、文件路径、变量名：NEVER translate
 - **验收标准**: lesson 生成在 `--lang zh` 时输出中文解释，`--lang en` 时输出英文解释
 
-### Task i18n-3: Jinja2 模板 i18n
+### Task i18n-3: React 组件 i18n
 
 - **类型**: 前端（Claude 实现，Gemini 评审）
-- **文件范围**: `viewer/templates/**` 所有模板文件
-- **依赖**: Task i18n-1 + Task 13（Viewer 基础架构存在后才能改模板）
+- **文件范围**: `viewer/src/**/*.tsx` 所有 React 组件
+- **依赖**: Task i18n-1 + Task 13（React Viewer 基础架构存在后才能改组件）
 - **实施步骤**:
-  1. 在 `viewer/templates/base.html` 注入 `_()` 全局翻译函数
-  2. 所有硬编码中文/英文文案替换为 `{{ _("Nav.dashboard") }}` 调用
-  3. `<html lang="{{ locale }}">`
-  4. Static 模式：`_()` 在构建时解析，语言烘焙进 HTML
-  5. Serve 模式：`_()` 在请求时解析，读 cookie `ahadiff_lang`
-  6. 数字/日期格式按 locale 格式化
-- **验收标准**: 同一页面在 zh-CN 和 en 下所有文案正确切换
+  1. 实现 `viewer/src/i18n/I18nProvider.tsx`：React Context 提供 `t()` 翻译函数
+  2. 实现 `useTranslation()` hook，组件内调用 `t("Nav.dashboard")` 获取翻译
+  3. 所有硬编码中文/英文文案替换为 `t()` 调用
+  4. `<html lang={locale}>` 动态设置
+  5. 语言切换时通过 Context 触发 re-render，无需页面刷新
+  6. 数字/日期格式按 locale 格式化（使用 `Intl.DateTimeFormat` / `Intl.NumberFormat`）
+- **验收标准**: 同一页面在 zh-CN 和 en 下所有文案正确切换，切换无闪烁
 
 ### Task i18n-4: 前端语言切换 UI
 
 - **类型**: 前端（Claude 实现，Gemini 评审）
 - **文件范围**:
-  - `viewer/templates/partials/_topbar.html` — 语言切换按钮
-  - `viewer/static/style.css` — 按钮样式
+  - `viewer/src/components/LanguageSwitcher.tsx` — 语言切换按钮组件
+  - `viewer/src/styles/language-switcher.css` — 按钮样式
   - `src/ahadiff/serve/app.py` — locale API endpoint（统一 serve 模块路径）
 - **依赖**: Task i18n-3 + Task 14（Viewer 页面存在）+ Task 14.5（Serve 存在）
 - **实施步骤**:
-  1. Topbar 右侧添加 zh/EN 切换按钮（紧邻主题切换按钮）
-  2. 点击后：Serve 模式写 cookie `ahadiff_lang` + 页面重载；Static 模式 toggle 降级为 disabled 状态 + tooltip "运行 `ahadiff serve` 以切换语言，或 `ahadiff learn --lang en` 重新生成"（**不嵌入双语 JSON，保持单语烘焙**，经 Codex 交叉审查确认）
-  3. Serve API: `GET /api/locale` 返回当前 locale，`PUT /api/locale` 设置 locale
-  4. 按钮样式：当前语言高亮，非当前语言降低不透明度
-- **验收标准**: 在 serve 模式下点击 zh/EN 按钮后页面立即切换语言
+  1. Topbar 右侧添加 zh/EN 切换按钮组件（紧邻主题切换按钮）
+  2. 点击后：写 cookie `ahadiff_lang` + 通过 React Context 触发 i18n re-render（无需页面刷新）
+  3. 同时调用 Serve API `PUT /api/locale` 持久化选择
+  4. 初始化时：读 cookie → 浏览器 `navigator.language` → 降级 `en`
+  5. 按钮样式：当前语言高亮，非当前语言降低不透明度
+- **验收标准**: 点击 zh/EN 按钮后页面立即切换语言，无闪烁无刷新
 
 ### Task i18n-5: CLI 语言支持
 
@@ -579,7 +584,7 @@ Layer 8 (串行):  Task 19 (依赖 CLI 接口冻结：Task 9+10+11+15+16)
 Task 0 (Schema Freeze)
   └─> Task i18n-0 (i18n Schema)
         ├─> Task i18n-1 (JSON Catalog)
-        │     ├─> Task i18n-3 (Jinja2 模板 i18n) ──> Task i18n-4 (语言切换 UI)
+        │     ├─> Task i18n-3 (React 组件 i18n) ──> Task i18n-4 (语言切换 UI)
         │     └─> Task i18n-5 (CLI 语言)
         └─> Task i18n-2 (Prompt 语言指令) ──> Task i18n-6 (VCR Key 扩展)
 ```

@@ -69,14 +69,12 @@ ahadiff serve
 # Ratcheted self-improvement
 ahadiff improve abc123 --rounds 6
 
-# Install into your AI tool (11 targets supported)
+# Install into your AI tool (v0.1: 4 core CLI targets)
 ahadiff install claude    # Claude Code → .claude/skills/
 ahadiff install codex     # Codex CLI → AGENTS.md
-ahadiff install cursor    # Cursor → .cursor/rules/
-ahadiff install copilot   # GitHub Copilot
 ahadiff install gemini    # Gemini CLI → GEMINI.md
-ahadiff install windsurf  # Windsurf → .windsurf/rules/
-# Also: opencode / cline / amp / jules / aider
+ahadiff install opencode  # OpenCode → AGENTS.md + .opencode/agents/
+# v0.2: cursor / copilot / windsurf / cline / amp / jules / aider
 ```
 
 Output layout:
@@ -117,12 +115,12 @@ Three verdicts: **PASS** ≥ 80 / **CAUTION** 60–80 / **FAIL** < 60.
 ```text
 ahadiff/
 ├─ AhaDiff Warm v6.html         # Latest UI prototype
-├─ AhaDiff-Blueprint.html       # 8-layer architecture visualization (i18n / VCR / 30 CCs)
+├─ AhaDiff-Blueprint.html       # 8-layer architecture visualization (i18n / VCR / 50+ CCs)
 ├─ AhaDiff-Competitors-Research.html  # Competitor matrix + 5 moats
 ├─ doc/                         # Design docs (Chinese)
 │  ├─ ahadiff设计思路.md          # [ARCHIVED] Early architecture snapshot
 │  ├─ 知返ahadiff改名后的后续方案.md  # [ARCHIVED] Rename transition plan
-│  └─ AhaDiff_frontend_design_v1.1_revised.md  # Frontend design manual (v0.1=Jinja2 / v1.0=React)
+│  └─ AhaDiff_frontend_design_v1.1_revised.md  # Frontend design manual (v0.1=React 19+Vite)
 ├─ ui/                          # HTML prototypes v1–v6 (design history)
 └─ CLAUDE.md                    # Project AI context index
 ```
@@ -133,10 +131,9 @@ ahadiff/
 
 Roadmap:
 
-- [ ] `v0.1` (MVP, ~14-16 days): CLI + Lesson + Evaluator + Ratchet end-to-end + `ahadiff serve` local interactive + i18n + stage gates (Codex+Claude+Gemini cross-review)
-- [ ] `v0.2`: watchdog incremental regeneration + section-level helpfulness + forgetting-risk dashboard
-- [ ] `v0.3`: Textual TUI + Socratic follow-up
-- [ ] `v1.0`: Next.js + React 19 full UI + Benchmark Transparency page
+- [ ] `v0.1` (MVP): CLI + Lesson + Evaluator + Ratchet end-to-end + React 19 WebUI (`ahadiff serve`) + 8 LLM Providers + 8 diff capture modes (incl. --unstaged / git show) + 4 CLI install targets + i18n + stage gates
+- [ ] `v0.2`: --compare-dir + --patch-url + 7 IDE install targets + watchdog incremental regeneration + section-level helpfulness + Team features
+- [ ] `v1.0`: PWA + public benchmark suite
 
 ## Inspirations
 
