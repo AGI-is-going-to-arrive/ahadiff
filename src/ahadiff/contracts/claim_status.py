@@ -29,7 +29,7 @@ class SourceHunk(BaseModel):
     end: StrictInt
 
     @model_validator(mode="after")
-    def validate_range(self) -> "SourceHunk":
+    def validate_range(self) -> SourceHunk:
         if self.end < self.start:
             raise ValueError("source hunk end must be >= start")
         return self
@@ -83,7 +83,7 @@ class ClaimRecord(BaseModel):
     extractor: ClaimExtractor | None = None
 
     @model_validator(mode="after")
-    def validate_reason_code_contract(self) -> "ClaimRecord":
+    def validate_reason_code_contract(self) -> ClaimRecord:
         if self.status == "rejected" and self.reason_code is None:
             raise ValueError("rejected claims require reason_code")
         if self.status != "rejected" and self.reason_code is not None:

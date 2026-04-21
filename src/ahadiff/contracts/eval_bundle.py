@@ -42,8 +42,7 @@ def compute_eval_bundle_version(repo_root: str | Path) -> str:
 
     if missing_paths:
         raise FileNotFoundError(
-            "eval bundle files are not available in this checkout yet: "
-            + ", ".join(missing_paths)
+            "eval bundle files are not available in this checkout yet: " + ", ".join(missing_paths)
         )
     return hashlib.sha256(b"\n---\n".join(chunks)).hexdigest()[:12]
 

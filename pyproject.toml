@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ahadiff"
+version = "0.1.0a0"
+description = "Local-first verified diff learning layer."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "portalocker>=3.1,<4",
+  "pydantic>=2.11,<3",
+  "rich>=14,<15",
+  "typer>=0.16,<1",
+]
+
+[project.scripts]
+ahadiff = "ahadiff.cli:main"
+
+[dependency-groups]
+dev = [
+  "pyright>=1.1.400,<2",
+  "pytest>=8.4,<9",
+  "ruff>=0.12,<0.13",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "I", "UP", "B", "C4", "SIM", "RET", "PTH", "TC", "FA"]
+
+[tool.ruff.format]
+indent-style = "space"
+quote-style = "double"
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.11"
+reportMissingTypeStubs = false
+typeCheckingMode = "strict"
+venv = ".venv"
+venvPath = "."

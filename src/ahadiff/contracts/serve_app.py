@@ -1,11 +1,17 @@
 from __future__ import annotations
 
-from typing import Any, Literal, Optional
+from typing import Any, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .event_log import RunStatus, Verdict
-from .run_source import DegradedFlag, SourceKind
+from . import event_log as event_log_contract
+from . import run_source as run_source_contract
+
+DegradedFlag: TypeAlias = run_source_contract.DegradedFlag
+DegradedFlagsMap: TypeAlias = run_source_contract.DegradedFlagsMap
+SourceKind: TypeAlias = run_source_contract.SourceKind
+RunStatus: TypeAlias = event_log_contract.RunStatus
+Verdict: TypeAlias = event_log_contract.Verdict
 
 ReviewAnswer = Literal["good", "hard", "wrong"]
 GraphifyMode = Literal["full", "learning_only", "empty"]
@@ -15,7 +21,7 @@ class AuthTokenResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     token: str
-    expires_at: Optional[str] = None
+    expires_at: str | None = None
 
 
 class LocaleResponse(BaseModel):
@@ -35,19 +41,21 @@ class RunSummary(BaseModel):
     status: RunStatus
     weakest_dim: str
     created_at: str
-    degraded_flags: dict[DegradedFlag, bool] = Field(default_factory=dict)
+    degraded_flags: DegradedFlagsMap = Field(
+        default_factory=run_source_contract.empty_degraded_flags
+    )
 
 
 class RunDetail(RunSummary):
     model_config = ConfigDict(extra="forbid")
 
-    base_ref: Optional[str] = None
+    base_ref: str | None = None
     prompt_version: str
     eval_bundle_version: str
-    note_json: Optional[str] = None
+    note_json: str | None = None
     artifacts: list[str] = Field(default_factory=list)
-    graphify_mode: Optional[GraphifyMode] = None
-    graphify_status: Optional[str] = None
+    graphify_mode: GraphifyMode | None = None
+    graphify_status: str | None = None
 
 
 class RunArtifactEnvelope(BaseModel):
@@ -85,7 +93,7 @@ class LearningSignalRequest(BaseModel):
 
 class MarkWrongRequest(LearningSignalRequest):
     claim_id: str
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 class ReviewSignalRequest(LearningSignalRequest):

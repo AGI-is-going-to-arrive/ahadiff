@@ -1,11 +1,18 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .event_log import RunStatus, Verdict
-from .run_source import DegradedFlag, PrivacyMode, RunSource
+from . import event_log as event_log_contract
+from . import run_source as run_source_contract
+
+DegradedFlag: TypeAlias = run_source_contract.DegradedFlag
+DegradedFlagsMap: TypeAlias = run_source_contract.DegradedFlagsMap
+PrivacyMode: TypeAlias = run_source_contract.PrivacyMode
+RunSource = run_source_contract.RunSource
+RunStatus: TypeAlias = event_log_contract.RunStatus
+Verdict: TypeAlias = event_log_contract.Verdict
 
 
 class LearnabilityWeights(BaseModel):
@@ -51,7 +58,7 @@ class OrchestratorCommand(BaseModel):
     serve_config: ServeConfig | None = None
 
     @model_validator(mode="after")
-    def validate_config_shape(self) -> "OrchestratorCommand":
+    def validate_config_shape(self) -> OrchestratorCommand:
         if self.kind == "serve":
             if self.serve_config is None or self.run_config is not None:
                 raise ValueError("serve requires serve_config and forbids run_config")
@@ -72,7 +79,9 @@ class OrchestratorResult(BaseModel):
     weakest_dim: str | None = None
     artifacts_path: str | None = None
     note_json: str | None = None
-    degraded_flags: dict[DegradedFlag, bool] = Field(default_factory=dict)
+    degraded_flags: DegradedFlagsMap = Field(
+        default_factory=run_source_contract.empty_degraded_flags
+    )
 
 
 class Orchestrator:

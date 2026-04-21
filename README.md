@@ -135,15 +135,23 @@ ahadiff/
 
 ## 当前阶段
 
-**Pre-engineering（设计阶段）**。Stage 0 / Task 0 已完成，仓库现在除了设计文档和 HTML 原型，还包含 `contract-freeze.md`、最小 contracts skeleton，以及 Stage 0 验收测试。CLI / provider / evaluator / viewer runtime 仍未开始实现。
+**Stage 1 / Task 1 已落地，尚未进入 Stage 2。** 仓库现在除了设计文档和 HTML 原型，还包含 `contract-freeze.md`、最小 contracts skeleton、`pyproject.toml`、可执行的 CLI scaffold（`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `python -m ahadiff`），以及对应的 Stage 0 + Task 1 验收测试。真实 diff capture、provider、evaluator 和 viewer runtime 仍未实现。
 
 当前已落地的最小验证：
 
 ```bash
-python3 -m pytest tests/unit/test_contracts.py
+uv run pytest tests/unit/test_stage1_task1.py tests/unit/test_contracts.py
+uv run ruff check src tests
+uv run ruff format --check src tests
+uv run pyright
+uv build --wheel
+uv run python -m ahadiff --version
+uv run ahadiff init
+uv run ahadiff doctor
+uv run ahadiff config show --resolved
 ```
 
-本次实际结果：`18 passed`。
+本次实际结果：`35 passed`；`ruff check`、`ruff format --check`、`pyright`、`uv build --wheel` 全通过，CLI smoke 命令也都可运行。
 
 下一步路线图：
 

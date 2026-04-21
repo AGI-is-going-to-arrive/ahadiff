@@ -135,15 +135,23 @@ ahadiff/
 
 ## Status
 
-**Pre-engineering (design phase).** Stage 0 / Task 0 is now complete. The repository contains the contract freeze doc, a minimal importable contracts skeleton, and a Stage 0 acceptance test, but the CLI, provider, evaluator, and viewer runtime have not been implemented yet.
+**Stage 1 / Task 1 is now landed, and Stage 2 has not started yet.** The repository now contains the contract freeze doc, a minimal importable contracts skeleton, `pyproject.toml`, an executable CLI scaffold (`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `python -m ahadiff`), and the Stage 0 + Task 1 acceptance tests. Real diff capture, provider, evaluator, and viewer runtime work are still pending.
 
 Current minimal verification:
 
 ```bash
-python3 -m pytest tests/unit/test_contracts.py
+uv run pytest tests/unit/test_stage1_task1.py tests/unit/test_contracts.py
+uv run ruff check src tests
+uv run ruff format --check src tests
+uv run pyright
+uv build --wheel
+uv run python -m ahadiff --version
+uv run ahadiff init
+uv run ahadiff doctor
+uv run ahadiff config show --resolved
 ```
 
-Actual result from this session: `18 passed`.
+Actual result from this session: `35 passed`; `ruff check`, `ruff format --check`, `pyright`, and `uv build --wheel` all passed, and the CLI smoke commands completed successfully.
 
 Roadmap:
 

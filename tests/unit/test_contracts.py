@@ -6,9 +6,10 @@ import asyncio
 import hashlib
 import sys
 from pathlib import Path
-from typing import get_args
+from typing import Any, cast, get_args
 
 import pytest
+from pydantic import ValidationError
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
@@ -50,6 +51,7 @@ class TestContractsImport:
         )
 
         assert ClaimStatus
+        assert ClaimRecord
         assert ReviewCard
         assert RunSource
         assert ProviderConfig
@@ -60,6 +62,7 @@ class TestContractsImport:
         assert LearnabilityGate
         assert OrchestratorCommand
         assert OrchestratorResult
+        assert RunConfig
         assert ServeConfig
         assert AuthTokenResponse
         assert RunSummary
@@ -84,23 +87,23 @@ class TestSerialization:
     def test_run_source_rejects_unknown_degraded_flag(self) -> None:
         from ahadiff.contracts import RunSource
 
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             RunSource(
                 source_kind="git_ref",
                 source_ref="abc1234",
                 capability_level=3,
-                degraded_flags={"unexpected_flag": True},
+                degraded_flags=cast("Any", {"unexpected_flag": True}),
             )
 
     def test_claim_record_roundtrip(self) -> None:
-        from ahadiff.contracts import ClaimRecord
+        from ahadiff.contracts import ClaimRecord, SourceHunk
 
         record = ClaimRecord(
             claim_id="cl1",
             run_id="run-1",
             text="adds retry logic",
             status="verified",
-            source_hunks=[{"file": "a.py", "start": 10, "end": 20}],
+            source_hunks=[SourceHunk(file="a.py", start=10, end=20)],
         )
         assert ClaimRecord.model_validate(record.model_dump()) == record
 
@@ -127,7 +130,7 @@ class TestSerialization:
     def test_review_card_rejects_invalid_fsrs_state_or_change_kind(self) -> None:
         from ahadiff.contracts import ReviewCard
 
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             ReviewCard(
                 card_id="card-1",
                 concept="retry loop",
@@ -140,7 +143,7 @@ class TestSerialization:
                 hunk_hash="deadbeef",
             )
 
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             ReviewCard(
                 card_id="card-1",
                 concept="retry loop",
@@ -151,38 +154,41 @@ class TestSerialization:
                 display_path="src/a.py",
                 hunk_id="h1",
                 hunk_hash="deadbeef",
-                change_kind="modified",
+                change_kind=cast("Any", "modified"),
             )
 
     def test_claim_record_enforces_reason_code_and_source_hunk_shape(self) -> None:
         from ahadiff.contracts import ClaimRecord
 
-        with pytest.raises(Exception):
+        invalid_hunks = cast("Any", [{"file": "a.py", "start": 10, "end": 20}])
+        reversed_hunks = cast("Any", [{"file": "a.py", "start": 20, "end": 10}])
+
+        with pytest.raises(ValidationError):
             ClaimRecord(
                 claim_id="cl1",
                 run_id="run-1",
                 text="missing evidence",
                 status="rejected",
-                source_hunks=[{"file": "a.py", "start": 10, "end": 20}],
+                source_hunks=invalid_hunks,
             )
 
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             ClaimRecord(
                 claim_id="cl1",
                 run_id="run-1",
                 text="verified text",
                 status="verified",
                 reason_code="evidence_missing",
-                source_hunks=[{"file": "a.py", "start": 10, "end": 20}],
+                source_hunks=invalid_hunks,
             )
 
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             ClaimRecord(
                 claim_id="cl1",
                 run_id="run-1",
                 text="bad hunk",
                 status="verified",
-                source_hunks=[{"file": "a.py", "start": 20, "end": 10}],
+                source_hunks=reversed_hunks,
             )
 
     def test_learnability_defaults(self) -> None:
@@ -212,12 +218,12 @@ class TestSerialization:
     def test_usage_event_rejects_unknown_provider_class(self) -> None:
         from ahadiff.contracts import UsageEvent
 
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             UsageEvent(
                 event_id="e1",
                 run_id="r1",
                 repo_id="repo",
-                provider_class="bad-provider",
+                provider_class=cast("Any", "bad-provider"),
                 model_id="m1",
                 input_tokens=1,
                 output_tokens=1,
@@ -241,7 +247,7 @@ class TestUtilities:
         for logical_path, disk_path in reversed(EVAL_BUNDLE_FILES):
             target = tmp_path / disk_path
             target.parent.mkdir(parents=True, exist_ok=True)
-            content = f"payload:{logical_path}".encode("utf-8")
+            content = f"payload:{logical_path}".encode()
             target.write_bytes(content)
             chunks.append((logical_path, content))
 
@@ -274,9 +280,9 @@ class TestUtilities:
         )
         serve_config = ServeConfig()
 
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             OrchestratorCommand(kind="learn")
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             OrchestratorCommand(kind="serve", run_config=run_config)
 
         assert OrchestratorCommand(kind="learn", run_config=run_config).kind == "learn"
@@ -296,7 +302,7 @@ class TestUtilities:
     def test_event_log_numeric_fields_are_strict(self) -> None:
         from ahadiff.contracts import ResultEvent, UsageEvent
 
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             ResultEvent(
                 event_id="e1",
                 run_id="r1",
@@ -305,20 +311,20 @@ class TestUtilities:
                 source_ref="abc1234",
                 prompt_version="pv1",
                 eval_bundle_version="ev1",
-                overall="9.5",
+                overall=cast("Any", "9.5"),
                 verdict="PASS",
                 status="keep",
                 weakest_dim="conciseness",
             )
 
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             UsageEvent(
                 event_id="e1",
                 run_id="r1",
                 repo_id="repo",
                 provider_class="openai",
                 model_id="m1",
-                input_tokens="1",
+                input_tokens=cast("Any", "1"),
                 output_tokens=1,
                 billing_mode="local",
                 execution_origin="test",

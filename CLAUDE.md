@@ -8,11 +8,11 @@
 
 核心差异定位：Code Wiki 解释仓库，知返解释这次改动；而且每句话都能回到代码证据。
 
-**当前阶段**：产品设计与 UI 原型迭代阶段。`Stage 0 / Task 0` 已完成，已落地 `contract-freeze.md`、最小 contracts skeleton 和 Stage 0 验收测试；尚未进入 `Stage 1` 工程开发。
+**当前阶段**：`Stage 1 / Task 1` 已落地，`Stage 1` 其余任务与 `Stage 2` 尚未开始。当前仓库已具备 `contract-freeze.md`、最小 contracts skeleton、`pyproject.toml`、可执行 CLI scaffold（`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `python -m ahadiff`）和对应的 Stage 0 + Task 1 验收测试。
 
 ## 架构总览
 
-本仓库当前仍以**设计文档和 HTML 原型**为主，但已补入 Stage 0 产物：`doc/contract-freeze.md`、`src/ahadiff/contracts/` 最小 contracts skeleton，以及 `tests/unit/test_contracts.py`。尚无可执行的 CLI / provider / viewer runtime 实现。
+本仓库当前仍以**设计文档和 HTML 原型**为主，但已补入 Stage 0 与 Stage 1 / Task 1 产物：`doc/contract-freeze.md`、`src/ahadiff/contracts/` 最小 contracts skeleton、`pyproject.toml`、`src/ahadiff/{__main__,cli}.py`、`src/ahadiff/core/{__init__,config,paths,ids,errors}.py`，以及 `tests/unit/{test_contracts,test_stage1_task1}.py`。当前已具备可执行的 CLI scaffold，但 provider / evaluator / viewer runtime 仍未实现。
 
 ### 计划技术栈
 
@@ -107,17 +107,25 @@ open "AhaDiff Warm v6.html"
 python3 -m http.server 8765
 ```
 
-### 当前已落地的 Stage 0 验证
+### 当前已落地的验证
 
 ```bash
-python3 -m pytest tests/unit/test_contracts.py
+uv run pytest tests/unit/test_stage1_task1.py tests/unit/test_contracts.py
+uv run ruff check src tests
+uv run ruff format --check src tests
+uv run pyright
+uv build --wheel
+uv run python -m ahadiff --version
+uv run ahadiff init
+uv run ahadiff doctor
+uv run ahadiff config show --resolved
 ```
 
-本次 session 实际结果：`18 passed`。
+本次 session 实际结果：`35 passed`；`ruff check`、`ruff format --check`、`pyright`、`uv build --wheel` 全通过，CLI smoke 命令也都可运行。
 
 ### 仓库当前依赖状态
 
-仓库根当前仍无 `package.json`、`pyproject.toml` 等依赖管理文件。Stage 0 只补入了纯 Python contracts 与测试文件；正式依赖管理仍放在 `Stage 1 / Task 1`。
+仓库根当前已落地 `pyproject.toml` 与 `uv.lock`，并通过 `uv sync` 建立本地 Python toolchain。当前依赖管理仍只覆盖后端 CLI scaffold；前端 `viewer/` 工程和后续 runtime 依赖尚未引入。
 
 ## 测试策略
 
@@ -311,3 +319,4 @@ Stage N 完成 → 三模型并行审查 → 汇总问题 → 修复 → 验证 
 | 2026-04-21 | 第九轮终极审查（Claude Opus 4.6，10 维度 v0.1→v1.0 全路径）：8.2/10 GO。0 Critical + 2 High + 7 Medium + 5 Low。HTML 浏览器验证 3 份全 PASS |
 | 2026-04-21 | 第十轮三模型交叉审查（Codex CLI + Gemini 3.1 Pro + Claude team-reviewer）：发现 Round 9 盲点 16 项（3C+5H+5M+3L）。修复：(1) RunStatus 移除 `rollback`（8 态）；(2) CardState 四态 `active\|stale\|archived\|suspended` + `peeked_this_session`；(3) result_events 列集冻结 + weakest_dim 统一；(4) Task 5→Task 2 隐性依赖补入；(5) cards DDL 补 anchor 列（hunk_id/hunk_hash/symbol/change_kind）+ FK + card_state；(6) `fsrs_card_json` 统一为 `fsrs_state`；(7) VCR cassette key `rubric_version` 改为 `eval_bundle_version`；(8) Learnability Gate 升格 Task 8.5；(9) 前端验收标准量化（FCP<500ms/render-count≤1/long-task<50ms）；(10) entropy_scan=soft_detect + UUID/hash/minified 豁免；(11) ConceptGraph Cluster `⋮` 菜单替代长按；(12) cache key 扩展为 10 元素。全部修复后 GO 确认。Blueprint/Competitors HTML 同步更新 |
 | 2026-04-22 | Stage 0 contract 收口（本次真实代码修复）：(1) `peeked_this_session` 改为 session-local，仅运行时存在，不参与持久化 dump；(2) `ClaimRecord` 增加 `status/reason_code` 联动校验，补 `source_hunks` 最小 schema；(3) `ReviewCard.fsrs_state` 要求合法 JSON object 字符串，`change_kind` 收紧到当前文档已支撑的最小值域；(4) `Orchestrator` contract stub 改为显式 `NotImplementedError`；(5) `compute_eval_bundle_version()` 在缺少 eval bundle 文件时返回清晰 guard 错误；(6) 数值字段 strict 校验补入 contract tests；(7) Task 13 验收改为 build + mock/proxy，不再依赖 Stage 5 `ahadiff serve`；(8) `tests/unit/test_contracts.py` 当前实测 `18 passed` |
+| 2026-04-22 | Stage 1 / Task 1 落地与 review 收口（本次真实代码与测试）：(1) 落地 `pyproject.toml`、`uv.lock`、`src/ahadiff/{__main__,cli}.py`、`src/ahadiff/core/{__init__,config,paths,ids,errors}.py` 与 `tests/unit/test_stage1_task1.py`；(2) `ahadiff doctor` 现在对 corrupt `review.sqlite` 输出友好错误，不再泄露 traceback；(3) SQLite gate 在不满足冻结门槛时改为非零退出；(4) `python -m ahadiff --version` 可直接到达；(5) TOML 字符串序列化补齐换行转义，`HOME=\"\"` 不再回退真实 home；(6) config CLI 补 `--browser/--no-browser` 成对覆盖；(7) `src/ahadiff/core/__init__.py` 已补齐，wheel 构建通过；(8) 当前实测 `uv run pytest tests/unit/test_stage1_task1.py tests/unit/test_contracts.py` 为 `35 passed`，并且 `ruff check`、`ruff format --check`、`pyright`、`uv build --wheel` 全通过 |

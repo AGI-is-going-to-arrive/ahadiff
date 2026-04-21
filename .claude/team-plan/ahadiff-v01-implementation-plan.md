@@ -101,6 +101,11 @@
 
 ### Stage 1 — Infra + Safety + Docs + Prototype Fix（Task 1–4）
 
+- **当前状态（2026-04-22）**：
+  - `Task 1` 已落地并通过当前 gate
+  - 当前实测：`uv run pytest tests/unit/test_stage1_task1.py tests/unit/test_contracts.py` 为 `35 passed`
+  - 当前实测：`uv run ruff check src tests`、`uv run ruff format --check src tests`、`uv run pyright` 与 `uv build --wheel` 全通过
+  - 当前仓库 `.venv` 运行时为 Python 3.12.10 / SQLite 3.51.3，`ahadiff doctor` 的 SQLite gate 实测通过；低版本 SQLite runtime 下 `doctor` 已改为非零退出
 - **目标**：
   - 建立工程骨架、doctor/config 基础能力
   - 落地安全层

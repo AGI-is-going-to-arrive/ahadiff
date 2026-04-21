@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, StrictFloat, StrictInt
 
-from .run_source import ProviderClass
+from . import run_source as run_source_contract
 
-RunStatus = Literal[
+ProviderClass: TypeAlias = run_source_contract.ProviderClass
+RunStatus: TypeAlias = Literal[
     "baseline",
     "keep",
     "discard",
@@ -16,9 +17,9 @@ RunStatus = Literal[
     "phase25_rewrite",
     "non_ratcheted",
 ]
-Verdict = Literal["PASS", "CAUTION", "FAIL"]
-EventType = str
-CostConfidence = Literal["high", "medium", "low"]
+Verdict: TypeAlias = Literal["PASS", "CAUTION", "FAIL"]
+EventType: TypeAlias = str
+CostConfidence: TypeAlias = Literal["high", "medium", "low"]
 
 TERMINAL_RUN_STATUSES = frozenset(
     {"baseline", "keep", "discard", "crash", "keep_final", "non_ratcheted"}

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SourceKind = Literal[
+SourceKind: TypeAlias = Literal[
     "git_ref",
     "git_staged",
     "git_unstaged",
@@ -13,9 +13,14 @@ SourceKind = Literal[
     "patch_stdin",
     "file_compare",
 ]
-DegradedFlag = Literal["diff_clipped", "binary_only", "file_count_exceeded", "token_exceeded"]
-PrivacyMode = Literal["strict_local", "redacted_remote", "explicit_remote"]
-ProviderClass = Literal[
+DegradedFlag: TypeAlias = Literal[
+    "diff_clipped",
+    "binary_only",
+    "file_count_exceeded",
+    "token_exceeded",
+]
+PrivacyMode: TypeAlias = Literal["strict_local", "redacted_remote", "explicit_remote"]
+ProviderClass: TypeAlias = Literal[
     "openai",
     "openai_responses",
     "gemini",
@@ -25,7 +30,12 @@ ProviderClass = Literal[
     "cherryin",
     "ollama",
 ]
-TokenizerEstimation = Literal["tiktoken", "char_div_4", "probe_cached"]
+TokenizerEstimation: TypeAlias = Literal["tiktoken", "char_div_4", "probe_cached"]
+DegradedFlagsMap: TypeAlias = dict[DegradedFlag, bool]
+
+
+def empty_degraded_flags() -> DegradedFlagsMap:
+    return {}
 
 
 class RunSource(BaseModel):
@@ -34,7 +44,7 @@ class RunSource(BaseModel):
     source_kind: SourceKind
     source_ref: str
     capability_level: Literal[1, 2, 3]
-    degraded_flags: dict[DegradedFlag, bool] = Field(default_factory=dict)
+    degraded_flags: DegradedFlagsMap = Field(default_factory=empty_degraded_flags)
 
 
 class ProviderConfig(BaseModel):
@@ -89,4 +99,6 @@ __all__ = [
     "ProviderConfig",
     "ProviderCapabilities",
     "AllowlistPolicy",
+    "DegradedFlagsMap",
+    "empty_degraded_flags",
 ]

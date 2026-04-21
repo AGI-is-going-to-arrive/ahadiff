@@ -114,6 +114,7 @@
   - `src/ahadiff/core/paths.py`
   - `src/ahadiff/core/ids.py`
   - `src/ahadiff/core/errors.py`
+- **当前状态（2026-04-22）**：Task 1 已落地 `pyproject.toml`、`uv.lock`、`src/ahadiff/{__main__,cli}.py`、`src/ahadiff/core/{__init__,config,paths,ids,errors}.py` 与 `tests/unit/test_stage1_task1.py`。当前实测 `uv run pytest tests/unit/test_stage1_task1.py tests/unit/test_contracts.py` 为 `35 passed`；`uv run ruff check src tests`、`uv run ruff format --check src tests`、`uv run pyright` 与 `uv build --wheel` 全通过；仓库 `.venv` 当前运行时为 Python 3.12.10 / SQLite 3.51.3，`ahadiff doctor` 的 SQLite gate 实测通过
 - **依赖**: 无
 - **实施步骤**:
   1. 创建 `pyproject.toml`（runtime deps 含 `portalocker` + ruff + pyright + pytest 配置）
@@ -124,7 +125,7 @@
   6. 实现 `__main__.py`：`python -m ahadiff` 入口
   7. 实现 `paths.py` 路径预检：启动时检测 `.ahadiff/` 是否在 UNC/网络映射盘上，是则 fail-fast 报错；Windows/macOS 再额外做 `NFC + casefold` 路径身份预检与长路径提示（含中文路径），避免 WAL 与 anchor 稳定性受大小写/路径长度影响
   8. 实现 `doctor_cmd()` config 诊断：报告 precedence 冲突、unknown keys、敏感配置进仓库
-- **验收标准**: `uv sync && uv run ahadiff init && uv run ahadiff doctor` 可运行；`ahadiff config show --resolved` 正确显示每个值的来源；网络路径检测在 UNC 路径上报错；Windows 长路径/大小写折叠路径可被预警
+- **验收标准**: `uv sync && uv run ahadiff init && uv run ahadiff doctor` 可运行；`ahadiff config show --resolved` 正确显示每个值的来源；网络路径检测在 UNC 路径上报错；Windows 长路径/大小写折叠路径可被预警；`python -m ahadiff --version` 可运行；SQLite gate 不满足时 `doctor` 非零退出；`ruff check`、`ruff format --check`、`pyright` 与 wheel build 通过
 
 #### Task 2: 安全层
 - **类型**: 后端（Codex 实现）
