@@ -137,7 +137,7 @@
   - `src/ahadiff/safety/audit.py`
   - `tests/unit/test_redact.py`
   - `tests/unit/test_injection.py`
-- **当前状态（2026-04-22）**：Task 2 已落地安全层基础实现：`src/ahadiff/safety/{__init__,_types,ignore,redact,injection,gates,audit}.py` 与 `tests/unit/{test_redact,test_injection,test_path_safety,test_allowlist}.py` 已存在。当前实测 `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py` 为 `26 passed`；`uv run pytest tests/unit` 为 `61 passed`；`uv run ruff check src tests`、`uv run ruff format --check src tests`、`uv run pyright` 与 `uv build --wheel` 全通过。当前代码已落地 `.ahadiffignore`、双层 secret scan、branch/tag 走 `redaction_pipeline()`、`allowlist_digest`、`audit.jsonl` / `audit.private.jsonl` 基础 helper，以及 `untrusted_diff` 包裹转义、Unicode/confusable 注入检测和 base64 包装 JWT/DB URL/Slack webhook hard block。provider `base_url` 的 transport boundary 和更完整的 audit event 字段仍待后续 Task 5 / Task 7 接线时补齐。
+- **当前状态（2026-04-22）**：Task 2 已落地安全层基础实现：`src/ahadiff/safety/{__init__,_types,ignore,redact,injection,gates,audit}.py` 与 `tests/unit/{test_redact,test_injection,test_path_safety,test_allowlist}.py` 已存在。当前实测 `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py` 为 `26 passed`；随着 Task 5 落地，`uv run pytest tests/unit` 当前为 `87 passed`；`uv run ruff check src tests`、`uv run ruff format --check src tests`、`uv run pyright` 与 `uv build --wheel` 全通过。当前代码已落地 `.ahadiffignore`、双层 secret scan、branch/tag 走 `redaction_pipeline()`、`allowlist_digest`、`audit.jsonl` / `audit.private.jsonl` 基础 helper，以及 `untrusted_diff` 包裹转义、Unicode/confusable 注入检测和 base64 包装 JWT/DB URL/Slack webhook hard block。provider `base_url` 的 transport boundary 和更完整的 audit event 字段仍待后续 Task 7 接线时补齐。
 - **依赖**: 无
 - **依赖**: Task 0（Schema Freeze Gate — 使用 `error_types.SafetyError`）
 - **实施步骤**:
@@ -198,6 +198,7 @@
   - `src/ahadiff/git/repo.py`
   - `src/ahadiff/git/capture.py`
   - `tests/unit/test_git_capture.py`
+- **当前状态（2026-04-22）**：Task 5 已落地 `src/ahadiff/git/{__init__,repo,capture}.py` 与 `tests/unit/test_git_capture.py`。当前实测 `uv run pytest tests/unit/test_git_capture.py` 为 `26 passed`；`uv run pytest tests/unit` 为 `87 passed`；`uv run ahadiff learn --unstaged --include-untracked --dry-run --repo-root /Users/yangjunjie/Desktop/ahadiff`、非 git 目录下的 `uv run python -m ahadiff learn --patch sample.patch --dry-run --repo-root <tmpdir>`、非 git 目录下的 `uv run python -m ahadiff learn --compare old.py new.py --dry-run --repo-root <tmpdir>`、`uv run ahadiff graph status --repo-root /Users/yangjunjie/Desktop/ahadiff` 与 non-git `uv run python -m ahadiff unlock --force --repo-root <tmpdir>` 本次都已实测可运行。当前 v0.1 已覆盖 diff capture 输入面与最小 Graphify CLI；Task 6 / Task 7 / Task 8 仍待后续继续。
 - **依赖**: Task 1 + Task 2
 - **实施步骤**:
   1. 实现 `open_repo()`, `resolve_ref_range()`

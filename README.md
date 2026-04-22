@@ -131,14 +131,15 @@ ahadiff/
 ├─ src/ahadiff/contracts/       # Stage 0 最小 contracts skeleton
 ├─ src/ahadiff/core/            # Stage 1 / Task 1 工程骨架
 ├─ src/ahadiff/safety/          # Stage 1 / Task 2 安全层基础实现
-├─ tests/unit/                  # Stage 0 + Stage 1 单元测试
+├─ src/ahadiff/git/             # Stage 2 / Task 5 diff capture
+├─ tests/unit/                  # Stage 0 + Stage 1 + Stage 2 单元测试
 ├─ ui/                          # HTML 原型 v1–v6（设计迭代史）
 └─ CLAUDE.md                    # 项目 AI 上下文索引
 ```
 
 ## 当前阶段
 
-**Stage 1 里 Task 1 和 Task 2（安全层基础）已落地，尚未进入 Stage 2。** 仓库现在除了设计文档和 HTML 原型，还包含 `contract-freeze.md`、最小 contracts skeleton、`pyproject.toml`、可执行的 CLI scaffold（`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `python -m ahadiff`）、`src/ahadiff/safety/` 安全层基础实现，以及对应的 Stage 0 + Stage 1 单元测试。真实 diff capture、provider、evaluator 和 viewer runtime 仍未实现。
+**Stage 1 的 Task 1/2 已落地，Stage 2 / Task 5（diff capture）现在也已落地。** 仓库现在除了设计文档和 HTML 原型，还包含 `contract-freeze.md`、最小 contracts skeleton、`pyproject.toml`、可执行的 CLI scaffold（`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `python -m ahadiff`），`src/ahadiff/safety/` 安全层基础实现，以及 `src/ahadiff/git/{__init__,repo,capture}.py`、`ahadiff learn --dry-run`、非 git 目录下可运行的 `--patch` / `--compare`、`ahadiff graph status|import|refresh`、`ahadiff unlock --force` 和对应的 Stage 0 + Stage 1 + Stage 2 单元测试。provider、evaluator 和 viewer runtime 仍未实现。
 
 当前已落地的最小验证：
 
@@ -154,7 +155,7 @@ uv run ahadiff doctor
 uv run ahadiff config show --resolved
 ```
 
-本次实际结果：`uv run pytest tests/unit` 为 `61 passed`；其中 `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py` 为 `26 passed`。`ruff check`、`ruff format --check`、`pyright`、`uv build --wheel` 全通过；`python -m ahadiff --version`、`ahadiff init`、`ahadiff doctor`、`ahadiff config show --resolved` 本次也已实测可运行。
+本次实际结果：`uv run pytest tests/unit` 为 `87 passed`；其中新增 `uv run pytest tests/unit/test_git_capture.py` 为 `26 passed`，Task 2 目标测试 `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py` 仍为 `26 passed`。`ruff check`、`ruff format --check`、`pyright` 全通过；`uv run ahadiff learn --unstaged --include-untracked --dry-run --repo-root /Users/yangjunjie/Desktop/ahadiff`、非 git 目录下的 `uv run python -m ahadiff learn --patch sample.patch --dry-run --repo-root <tmpdir>`、非 git 目录下的 `uv run python -m ahadiff learn --compare old.py new.py --dry-run --repo-root <tmpdir>`、`uv run ahadiff graph status --repo-root /Users/yangjunjie/Desktop/ahadiff`、non-git `uv run python -m ahadiff unlock --force --repo-root <tmpdir>` 本次都已实测可运行；非 `--dry-run` 的 `ahadiff learn` 现在会在写入任何 artifact 前直接报错退出。
 
 下一步路线图：
 

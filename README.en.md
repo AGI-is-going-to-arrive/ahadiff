@@ -131,14 +131,15 @@ ahadiff/
 ├─ src/ahadiff/contracts/       # Stage 0 minimal contracts skeleton
 ├─ src/ahadiff/core/            # Stage 1 / Task 1 scaffold
 ├─ src/ahadiff/safety/          # Stage 1 / Task 2 safety primitives
-├─ tests/unit/                  # Stage 0 + Stage 1 unit tests
+├─ src/ahadiff/git/             # Stage 2 / Task 5 diff capture
+├─ tests/unit/                  # Stage 0 + Stage 1 + Stage 2 unit tests
 ├─ ui/                          # HTML prototypes v1–v6 (design history)
 └─ CLAUDE.md                    # Project AI context index
 ```
 
 ## Status
 
-**Stage 1 Task 1 and Task 2 (safety primitives) are now landed, and Stage 2 has not started yet.** The repository now contains the contract freeze doc, a minimal importable contracts skeleton, `pyproject.toml`, an executable CLI scaffold (`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `python -m ahadiff`), the safety-layer primitives under `src/ahadiff/safety/`, and the Stage 0 + Stage 1 unit tests. Real diff capture, provider, evaluator, and viewer runtime work are still pending.
+**Stage 1 Task 1/2 are landed, and Stage 2 / Task 5 (diff capture) is now landed as well.** The repository now contains the contract freeze doc, a minimal importable contracts skeleton, `pyproject.toml`, an executable CLI scaffold (`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `python -m ahadiff`), the safety-layer primitives under `src/ahadiff/safety/`, plus `src/ahadiff/git/{__init__,repo,capture}.py`, `ahadiff learn --dry-run`, non-git `--patch` / `--compare` support, `ahadiff graph status|import|refresh`, `ahadiff unlock --force`, and the Stage 0 + Stage 1 + Stage 2 unit tests. Provider, evaluator, and viewer runtime work are still pending.
 
 Current minimal verification:
 
@@ -154,7 +155,7 @@ uv run ahadiff doctor
 uv run ahadiff config show --resolved
 ```
 
-Actual result from this session: `uv run pytest tests/unit` finished with `61 passed`; the focused safety suite `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py` finished with `26 passed`. `ruff check`, `ruff format --check`, `pyright`, and `uv build --wheel` all passed; `python -m ahadiff --version`, `ahadiff init`, `ahadiff doctor`, and `ahadiff config show --resolved` were also rerun successfully in this session.
+Actual result from this session: `uv run pytest tests/unit` finished with `87 passed`; the new capture suite `uv run pytest tests/unit/test_git_capture.py` finished with `26 passed`, and the focused safety suite `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py` remained `26 passed`. `ruff check`, `ruff format --check`, and `pyright` all passed; `uv run ahadiff learn --unstaged --include-untracked --dry-run --repo-root /Users/yangjunjie/Desktop/ahadiff`, non-git `uv run python -m ahadiff learn --patch sample.patch --dry-run --repo-root <tmpdir>`, non-git `uv run python -m ahadiff learn --compare old.py new.py --dry-run --repo-root <tmpdir>`, `uv run ahadiff graph status --repo-root /Users/yangjunjie/Desktop/ahadiff`, and non-git `uv run python -m ahadiff unlock --force --repo-root <tmpdir>` were also rerun successfully in this session; non-`--dry-run` `ahadiff learn` now fails before writing any artifact.
 
 Roadmap:
 

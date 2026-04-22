@@ -107,6 +107,11 @@ def _matches_exact_entry(raw_value: str, entry: str) -> bool:
 
 def resolve_safe_path(repo_root: Path | None, candidate: str | Path) -> Path:
     root = find_repo_root(repo_root).resolve()
+    return resolve_safe_path_from_root(root, candidate)
+
+
+def resolve_safe_path_from_root(root: Path, candidate: str | Path) -> Path:
+    root = root.resolve()
     candidate_path = Path(candidate).expanduser()
     absolute_candidate = candidate_path if candidate_path.is_absolute() else root / candidate_path
 
@@ -123,13 +128,13 @@ def _reject_symlink_or_special_path(root: Path, candidate: Path) -> None:
     for current in (candidate, *candidate.parents):
         if current == current.parent:
             break
+        if current.is_symlink():
+            raise SafetyError(f"symlink paths are not allowed: {current}")
         if not current.exists():
             if current == root:
                 break
             continue
         mode = current.lstat().st_mode
-        if stat.S_ISLNK(mode):
-            raise SafetyError(f"symlink paths are not allowed: {current}")
         if current != root and (
             stat.S_ISFIFO(mode) or stat.S_ISCHR(mode) or stat.S_ISBLK(mode) or stat.S_ISSOCK(mode)
         ):
@@ -176,4 +181,5 @@ __all__ = [
     "load_allowlist_policy",
     "load_ignore_matcher",
     "resolve_safe_path",
+    "resolve_safe_path_from_root",
 ]

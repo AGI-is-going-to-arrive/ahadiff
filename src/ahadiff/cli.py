@@ -10,16 +10,24 @@ from rich.table import Table
 from typer import Exit
 
 from . import __version__
-from .core.config import iter_resolved_settings, load_config, write_default_config
+from .core.config import DEFAULT_CONFIG, iter_resolved_settings, load_config, write_default_config
 from .core.errors import AhaDiffError
 from .core.paths import (
     find_repo_root,
     global_config_dir,
     inspect_repo_path,
+    lock_file_path,
     project_state_dir,
     repo_config_path,
     review_db_path,
 )
+from .git.capture import (
+    capture_patch,
+    detect_graphify_status,
+    import_graphify_artifact,
+    write_input_artifacts,
+)
+from .git.repo import repo_write_lock, unlock_repo_write_lock
 
 console = Console()
 error_console = Console(stderr=True)
@@ -29,7 +37,9 @@ _APP = typer.Typer(
     no_args_is_help=False,
 )
 _CONFIG_APP = typer.Typer(help="Inspect configuration and precedence.")
+_GRAPH_APP = typer.Typer(help="Inspect Graphify source and imported artifacts.")
 _APP.add_typer(_CONFIG_APP, name="config")
+_APP.add_typer(_GRAPH_APP, name="graph")
 _SQLITE_MIN_VERSION = (3, 51, 3)
 _SQLITE_ALLOWED_BACKPORTS = {(3, 50, 7), (3, 44, 6)}
 
@@ -82,6 +92,22 @@ def _handle_cli_error(error: Exception) -> None:
         raise Exit(code=1) from error
     error_console.print(f"[red]Unexpected error:[/red] {error}")
     raise Exit(code=2) from error
+
+
+def _resolve_learn_workspace_root(
+    repo_root: Path,
+    *,
+    allow_non_git: bool,
+) -> tuple[Path, bool]:
+    try:
+        return find_repo_root(repo_root), True
+    except AhaDiffError:
+        if not allow_non_git:
+            raise
+        root = repo_root.expanduser()
+        if root.is_file():
+            root = root.parent
+        return root.resolve(), False
 
 
 @_APP.callback()
@@ -237,6 +263,149 @@ def doctor_cmd(
         _handle_cli_error(error)
 
 
+@_APP.command("learn")
+def learn_cmd(
+    revision: Annotated[
+        str | None,
+        typer.Argument(help="Commit range such as HEAD~1..HEAD, or a single commit sha."),
+    ] = None,
+    last: Annotated[bool, typer.Option("--last", help="Capture the last commit.")] = False,
+    since: Annotated[
+        str | None,
+        typer.Option(
+            "--since",
+            help='Capture a first-parent ancestry window such as "2 hours ago".',
+        ),
+    ] = None,
+    author: Annotated[
+        str | None,
+        typer.Option(
+            "--author",
+            help="Optional git --author regex filter for --since windows.",
+        ),
+    ] = None,
+    staged: Annotated[bool, typer.Option("--staged", help="Capture staged changes.")] = False,
+    unstaged: Annotated[bool, typer.Option("--unstaged", help="Capture unstaged changes.")] = False,
+    include_untracked: Annotated[
+        bool,
+        typer.Option("--include-untracked", help="Include untracked files in worktree capture."),
+    ] = False,
+    patch: Annotated[
+        str | None,
+        typer.Option("--patch", help="Read a unified diff from FILE or '-' for stdin."),
+    ] = None,
+    compare: Annotated[
+        tuple[Path, Path] | None,
+        typer.Option("--compare", help="Compare two files with unified diff semantics."),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Only capture diff artifacts; do not run downstream stages.",
+        ),
+    ] = False,
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or any path inside it."),
+    ] = Path(),
+    privacy_mode: Annotated[
+        str | None,
+        typer.Option("--privacy-mode", help="Temporary CLI override."),
+    ] = None,
+    use_graphify: Annotated[
+        bool | None,
+        typer.Option(
+            "--use-graphify/--no-graphify",
+            help="Force Graphify on or off for this run.",
+        ),
+    ] = None,
+) -> None:
+    try:
+        if not dry_run:
+            raise AhaDiffError(
+                "Stage 2 / Task 5 currently supports capture-only flow; use --dry-run"
+            )
+        allow_non_git = patch is not None or compare is not None
+        root, has_git_repo = _resolve_learn_workspace_root(
+            repo_root,
+            allow_non_git=allow_non_git,
+        )
+        if has_git_repo:
+            snapshot = load_config(root, cli_overrides=_cli_overrides(privacy_mode=privacy_mode))
+            capture_config = cast("dict[str, Any]", snapshot.values["capture"])
+            effective_privacy_mode = str(snapshot.values["privacy_mode"])
+            repo_lock_path = lock_file_path(root)
+        else:
+            capture_config = cast("dict[str, Any]", DEFAULT_CONFIG["capture"])
+            effective_privacy_mode = privacy_mode or str(DEFAULT_CONFIG["privacy_mode"])
+            repo_lock_path = root / ".ahadiff" / "ahadiff.lock"
+
+        with repo_write_lock(repo_lock_path, command="learn") as _:
+            capture = capture_patch(
+                workspace_root=root,
+                revision=revision,
+                last=last,
+                since=since,
+                author=author,
+                staged=staged,
+                unstaged=unstaged,
+                include_untracked=include_untracked,
+                patch=patch,
+                compare=compare,
+                use_graphify=use_graphify,
+                max_files=int(capture_config["max_files"]),
+                hard_limit=int(capture_config["hard_limit"]),
+                max_patch_bytes=int(capture_config["max_patch_bytes"]),
+                privacy_mode=effective_privacy_mode,
+            )
+            patch_path, metadata_path = write_input_artifacts(capture)
+
+        console.print(f"[green]Captured[/green] {capture.run_source.source_kind}")
+        console.print(f"[bold]Run ID[/bold]: {capture.run_id}")
+        console.print(f"[bold]Patch[/bold]: {patch_path}")
+        console.print(f"[bold]Metadata[/bold]: {metadata_path}")
+        console.print(f"[bold]Source ref[/bold]: {capture.run_source.source_ref}")
+        console.print(f"[bold]Capability level[/bold]: {capture.run_source.capability_level}")
+        if capture.run_source.degraded_flags:
+            console.print(f"[yellow]Degraded flags[/yellow]: {capture.run_source.degraded_flags}")
+        else:
+            console.print("[green]Degraded flags[/green]: none")
+        if capture.graphify_status.has_graph:
+            console.print(
+                f"[bold]Graphify[/bold]: detected at {capture.graphify_status.source_path}"
+            )
+        else:
+            console.print("[bold]Graphify[/bold]: not detected")
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+@_APP.command("unlock")
+def unlock_cmd(
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or any path inside it."),
+    ] = Path(),
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Remove the repo write lock file."),
+    ] = False,
+) -> None:
+    try:
+        if not force:
+            raise AhaDiffError("unlock requires --force")
+        root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        lock_path = lock_file_path(root) if has_git_repo else root / ".ahadiff" / "ahadiff.lock"
+        removed = unlock_repo_write_lock(lock_path)
+        if removed:
+            console.print("[green]Removed[/green] repo write lock")
+        else:
+            console.print("No repo write lock was present")
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
 @_CONFIG_APP.command("show")
 def config_show_cmd(
     resolved: Annotated[
@@ -304,8 +473,76 @@ def config_show_cmd(
         _handle_cli_error(error)
 
 
+@_GRAPH_APP.command("status")
+def graph_status_cmd(
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or any path inside it."),
+    ] = Path(),
+) -> None:
+    try:
+        root = find_repo_root(repo_root)
+        status = detect_graphify_status(root, use_graphify=None)
+        console.print(f"[bold]Source[/bold]: {status.source_path}")
+        console.print(f"[bold]Imported[/bold]: {status.imported_path}")
+        console.print(f"[bold]Source exists[/bold]: {status.source_exists}")
+        console.print(f"[bold]Imported exists[/bold]: {status.imported_exists}")
+        console.print(f"[bold]Has graph[/bold]: {status.has_graph}")
+        if status.freshness is not None:
+            console.print(f"[bold]Freshness[/bold]: {status.freshness}")
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+@_GRAPH_APP.command("import")
+def graph_import_cmd(
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or any path inside it."),
+    ] = Path(),
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Overwrite an existing imported graph artifact."),
+    ] = False,
+) -> None:
+    try:
+        root = find_repo_root(repo_root)
+        with repo_write_lock(lock_file_path(root), command="graph import") as _:
+            status = import_graphify_artifact(root, force=force)
+        console.print(f"[green]Imported[/green] {status.imported_path}")
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+@_GRAPH_APP.command("refresh")
+def graph_refresh_cmd(
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or any path inside it."),
+    ] = Path(),
+) -> None:
+    try:
+        root = find_repo_root(repo_root)
+        with repo_write_lock(lock_file_path(root), command="graph refresh") as _:
+            status = import_graphify_artifact(root, force=True)
+        console.print(f"[green]Refreshed[/green] {status.imported_path}")
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
 def main() -> None:
     app()()
 
 
-__all__ = ["app", "config_show_cmd", "doctor_cmd", "init_cmd", "main"]
+__all__ = [
+    "app",
+    "config_show_cmd",
+    "doctor_cmd",
+    "graph_import_cmd",
+    "graph_refresh_cmd",
+    "graph_status_cmd",
+    "init_cmd",
+    "learn_cmd",
+    "main",
+    "unlock_cmd",
+]

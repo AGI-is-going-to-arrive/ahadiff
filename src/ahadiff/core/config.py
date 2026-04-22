@@ -22,6 +22,11 @@ _SECURITY_KEYS = frozenset({"allow_exact", "allow_paths", "suppress_rules"})
 DEFAULT_CONFIG: dict[str, Any] = {
     "lang": "auto",
     "privacy_mode": "strict_local",
+    "capture": {
+        "max_files": 50,
+        "hard_limit": 5000,
+        "max_patch_bytes": 10_000_000,
+    },
     "llm": {
         "generate_model": "gpt-5.4-mini",
         "judge_model": "gpt-5.4-mini",
