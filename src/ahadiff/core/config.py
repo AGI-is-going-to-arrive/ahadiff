@@ -12,13 +12,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 from .errors import ConfigError
-from .paths import find_repo_root, global_config_dir, repo_config_path
+from .paths import find_repo_root, find_workspace_root, global_config_dir
 
 Scalar = str | int | float | bool | tuple[str, ...]
 NestedConfig = dict[str, "Scalar | NestedConfig"]
 _PRIVACY_MODES = {"strict_local", "redacted_remote", "explicit_remote"}
-_SECURITY_KEYS = frozenset({"allow_exact", "allow_paths", "suppress_rules"})
-
 DEFAULT_CONFIG: dict[str, Any] = {
     "lang": "auto",
     "privacy_mode": "strict_local",
@@ -301,15 +299,20 @@ def _layer_source_label(layer: str, key: str, repo_path: Path, global_path: Path
     return "default"
 
 
-def load_config(
-    repo_root: Path | None = None,
+def _resolve_config_root(repo_root: Path | None, *, allow_non_git: bool) -> Path:
+    if allow_non_git:
+        return find_workspace_root(repo_root)
+    return find_repo_root(repo_root)
+
+
+def _load_config_snapshot(
+    root: Path,
     *,
     cli_overrides: Mapping[str, Any] | None = None,
     env: Mapping[str, str] | None = None,
 ) -> ConfigSnapshot:
     env_map = os.environ if env is None else env
-    root = find_repo_root(repo_root)
-    repo_path = repo_config_path(root)
+    repo_path = root / ".ahadiff" / "config.toml"
     global_path = global_config_dir(env=env_map) / "config.toml"
 
     repo_flattened, repo_values, repo_unknown = _flatten_config_file(repo_path)
@@ -365,6 +368,26 @@ def load_config(
     )
 
 
+def load_config(
+    repo_root: Path | None = None,
+    *,
+    cli_overrides: Mapping[str, Any] | None = None,
+    env: Mapping[str, str] | None = None,
+) -> ConfigSnapshot:
+    root = _resolve_config_root(repo_root, allow_non_git=False)
+    return _load_config_snapshot(root, cli_overrides=cli_overrides, env=env)
+
+
+def load_workspace_config(
+    workspace_root: Path,
+    *,
+    cli_overrides: Mapping[str, Any] | None = None,
+    env: Mapping[str, str] | None = None,
+) -> ConfigSnapshot:
+    root = _resolve_config_root(workspace_root, allow_non_git=True)
+    return _load_config_snapshot(root, cli_overrides=cli_overrides, env=env)
+
+
 def resolve_effective(
     key: str,
     *,
@@ -385,23 +408,17 @@ def iter_resolved_settings(snapshot: ConfigSnapshot) -> list[ResolvedSetting]:
 
 
 def load_security_config(repo_root: Path | None = None) -> SecurityConfig:
-    root = find_repo_root(repo_root)
-    config_path = repo_config_path(root)
-    if not config_path.exists():
-        return SecurityConfig()
+    snapshot = load_config(repo_root)
+    return _security_config_from_snapshot(snapshot)
 
-    data = _read_toml(config_path)
-    security = data.get("security", {})
-    if security == {}:
-        return SecurityConfig()
-    if not isinstance(security, Mapping):
-        raise ConfigError("[security] must be a TOML table")
 
-    security_mapping = cast("Mapping[str, Any]", security)
-    unknown = sorted(set(security_mapping) - _SECURITY_KEYS)
-    if unknown:
-        raise ConfigError(f"unsupported [security] keys: {', '.join(unknown)}")
+def load_workspace_security_config(workspace_root: Path) -> SecurityConfig:
+    snapshot = load_workspace_config(workspace_root)
+    return _security_config_from_snapshot(snapshot)
 
+
+def _security_config_from_snapshot(snapshot: ConfigSnapshot) -> SecurityConfig:
+    security_mapping = cast("Mapping[str, Any]", snapshot.values.get("security", {}))
     return SecurityConfig(
         allow_exact=_coerce_string_sequence(
             "security.allow_exact", security_mapping.get("allow_exact")
@@ -423,7 +440,9 @@ __all__ = [
     "SecurityConfig",
     "iter_resolved_settings",
     "load_config",
+    "load_workspace_config",
     "load_security_config",
+    "load_workspace_security_config",
     "resolve_effective",
     "write_default_config",
 ]

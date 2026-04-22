@@ -5,8 +5,8 @@ import io
 import json
 import os
 import pathlib as _pathlib
-import re
 import selectors
+import shutil
 import sys
 import threading
 from dataclasses import dataclass
@@ -17,18 +17,22 @@ from typing import TYPE_CHECKING, Any, BinaryIO, Literal, cast
 
 from ahadiff.contracts import RunSource
 from ahadiff.core.config import DEFAULT_CONFIG
-from ahadiff.core.errors import InputError
+from ahadiff.core.errors import InputError, StorageError
 from ahadiff.core.ids import make_run_id
 from ahadiff.core.paths import project_state_dir, run_dir
 from ahadiff.safety.audit import append_audit_record, build_redaction_audit_record
 from ahadiff.safety.ignore import (
     AllowlistPolicy,
     canonicalize_path_text,
+    load_workspace_allowlist_policy,
     resolve_safe_path_from_root,
 )
 from ahadiff.safety.injection import protect_untrusted_text
 from ahadiff.safety.redact import RedactionPipelineResult, redaction_pipeline
 
+from .line_map import build_line_map, serialize_line_map_payload
+from .parser import parse_unified_diff
+from .path_tokens import normalize_diff_path_token, parse_diff_git_header_paths
 from .repo import (
     GitRepo,
     ensure_head_exists,
@@ -41,6 +45,7 @@ from .repo import (
     run_git,
     run_git_bytes,
 )
+from .symbols import extract_symbols, serialize_symbols_payload
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -83,6 +88,8 @@ class CapturedDiff:
     metadata: dict[str, Any]
     redaction_result: RedactionPipelineResult
     graphify_status: GraphifyStatus
+    before_text_by_path: dict[str, str]
+    after_text_by_path: dict[str, str]
 
 
 @dataclass(frozen=True)
@@ -97,6 +104,8 @@ class _RawCapture:
     branch_names: tuple[str, ...]
     tag_names: tuple[str, ...]
     resolved_files: dict[str, str]
+    before_text_by_path: dict[str, str]
+    after_text_by_path: dict[str, str]
 
 
 @dataclass(frozen=True)
@@ -111,7 +120,8 @@ class _PatchSegment:
 
 _GRAPHIFY_RELATIVE_PATH = Path("graphify-out") / "graph.json"
 _TRUNCATED_MARKER = "[truncated]\n"
-_DIFF_GIT_HEADER_RE = re.compile(r"^diff --git a/(.*) b/(.*)$")
+_ARTIFACT_SET_SCHEMA = "ahadiff.artifact_set"
+_ARTIFACT_SET_SCHEMA_VERSION = 1
 
 
 def capture_patch(
@@ -132,6 +142,7 @@ def capture_patch(
     max_patch_bytes: int | None = None,
     privacy_mode: str = "strict_local",
 ) -> CapturedDiff:
+    workspace_root = workspace_root.expanduser().resolve()
     raw_capture = _capture_input(
         workspace_root=workspace_root,
         revision=revision,
@@ -222,23 +233,47 @@ def capture_patch(
         metadata=metadata,
         redaction_result=redaction_result,
         graphify_status=graphify_status,
+        before_text_by_path=raw_capture.before_text_by_path,
+        after_text_by_path=raw_capture.after_text_by_path,
     )
 
 
 def write_input_artifacts(capture: CapturedDiff) -> tuple[Path, Path]:
-    artifacts_dir = (
-        run_dir(capture.run_id, capture.workspace_root)
-        if _has_git_root(capture.workspace_root)
-        else capture.state_dir / "runs" / capture.run_id
+    metadata_text = _redact_json_artifact(
+        _render_json_text(capture.metadata),
+        capture.workspace_root,
     )
-    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    line_map_payload, symbols_payload = _structured_artifact_payloads(capture)
+    redacted_line_map = _redact_json_artifact(
+        _render_json_text(line_map_payload),
+        capture.workspace_root,
+    )
+    redacted_symbols = _redact_json_artifact(
+        _render_json_text(symbols_payload),
+        capture.workspace_root,
+    )
+
+    artifact_texts: dict[str, str] = {
+        "patch.diff": capture.persisted_patch_text,
+        "metadata.json": metadata_text,
+        "line_map.json": redacted_line_map,
+        "symbols.json": redacted_symbols,
+    }
+    artifact_set_payload = _artifact_set_payload(
+        capture,
+        artifact_texts,
+        line_map_payload,
+        symbols_payload,
+    )
+    artifact_texts["artifact_set.json"] = _redact_json_artifact(
+        _render_json_text(artifact_set_payload),
+        capture.workspace_root,
+    )
+
+    artifacts_dir = _artifacts_dir(capture)
+    _publish_artifact_directory(artifacts_dir, artifact_texts)
     patch_path = artifacts_dir / "patch.diff"
     metadata_path = artifacts_dir / "metadata.json"
-    _atomic_write_text(patch_path, capture.persisted_patch_text)
-    _atomic_write_text(
-        metadata_path,
-        json.dumps(capture.metadata, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-    )
 
     audit_path = capture.state_dir / "audit.jsonl"
     private_audit_path = capture.state_dir / "audit.private.jsonl"
@@ -250,6 +285,131 @@ def write_input_artifacts(capture: CapturedDiff) -> tuple[Path, Path]:
     if capture.metadata["privacy_mode"] == "strict_local":
         append_audit_record(private_audit_path, audit_record)
     return patch_path, metadata_path
+
+
+def _artifacts_dir(capture: CapturedDiff) -> Path:
+    return (
+        run_dir(capture.run_id, capture.workspace_root)
+        if _has_git_root(capture.workspace_root)
+        else capture.state_dir / "runs" / capture.run_id
+    )
+
+
+def _publish_artifact_directory(artifacts_dir: Path, artifact_texts: dict[str, str]) -> None:
+    artifacts_dir.parent.mkdir(parents=True, exist_ok=True)
+    tmp_dir = artifacts_dir.parent / f".{artifacts_dir.name}.tmp"
+    if tmp_dir.exists():
+        _remove_tree(tmp_dir)
+    tmp_dir.mkdir(parents=True, exist_ok=False)
+    try:
+        for name, text in artifact_texts.items():
+            _atomic_write_text(tmp_dir / name, text)
+        if artifacts_dir.exists():
+            raise StorageError(f"run artifacts already exist: {artifacts_dir}")
+        tmp_dir.rename(artifacts_dir)
+    except Exception as exc:
+        _remove_tree(tmp_dir)
+        if isinstance(exc, StorageError):
+            raise
+        raise StorageError(f"failed to publish run artifacts for {artifacts_dir.name}") from exc
+
+
+def _remove_tree(path: Path) -> None:
+    if path.exists():
+        shutil.rmtree(path, ignore_errors=True)
+
+
+def _render_json_text(payload: dict[str, Any]) -> str:
+    return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+
+
+def _artifact_set_payload(
+    capture: CapturedDiff,
+    artifact_texts: dict[str, str],
+    line_map_payload: dict[str, Any],
+    symbols_payload: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "artifacts": [
+            _artifact_descriptor(
+                artifact_type="patch",
+                path="patch.diff",
+                media_type="text/x-diff",
+                text=artifact_texts["patch.diff"],
+            ),
+            _artifact_descriptor(
+                artifact_type="metadata",
+                path="metadata.json",
+                media_type="application/json",
+                text=artifact_texts["metadata.json"],
+            ),
+            _artifact_descriptor(
+                artifact_type="line_map",
+                path="line_map.json",
+                media_type="application/json",
+                text=artifact_texts["line_map.json"],
+                schema=line_map_payload["schema"],
+                schema_version=line_map_payload["schema_version"],
+            ),
+            _artifact_descriptor(
+                artifact_type="symbols",
+                path="symbols.json",
+                media_type="application/json",
+                text=artifact_texts["symbols.json"],
+                schema=symbols_payload["schema"],
+                schema_version=symbols_payload["schema_version"],
+            ),
+        ],
+        "created_at": capture.metadata["created_at"],
+        "generation": {
+            "redaction": {
+                "json_artifacts": "redaction_pipeline",
+                "patch": "redaction_pipeline+protect_untrusted_text",
+            },
+            "selection_source": "persisted_patch_text",
+            "line_map_from": "persisted_patch_text",
+            "symbols_from": [
+                "persisted_patch_text",
+                "before_text_by_path",
+                "after_text_by_path",
+            ],
+        },
+        "manifest_type": "artifact_set",
+        "run_id": capture.run_id,
+        "schema": _ARTIFACT_SET_SCHEMA,
+        "schema_version": _ARTIFACT_SET_SCHEMA_VERSION,
+        "selection": {
+            "degraded_flags": capture.metadata["degraded_flags"],
+            "omitted_files": capture.metadata["omitted_files"],
+            "selected_files": capture.metadata["selected_files"],
+        },
+        "source_kind": capture.run_source.source_kind,
+        "source_ref": capture.run_source.source_ref,
+    }
+
+
+def _artifact_descriptor(
+    *,
+    artifact_type: str,
+    path: str,
+    media_type: str,
+    text: str,
+    schema: str | None = None,
+    schema_version: int | None = None,
+) -> dict[str, Any]:
+    encoded = text.encode("utf-8")
+    descriptor: dict[str, Any] = {
+        "artifact_type": artifact_type,
+        "bytes": len(encoded),
+        "media_type": media_type,
+        "path": path,
+        "sha256": hashlib.sha256(encoded).hexdigest(),
+    }
+    if schema is not None:
+        descriptor["schema"] = schema
+    if schema_version is not None:
+        descriptor["schema_version"] = schema_version
+    return descriptor
 
 
 def detect_graphify_status(workspace_root: Path, *, use_graphify: bool | None) -> GraphifyStatus:
@@ -366,7 +526,8 @@ def _capture_revision(repo: GitRepo, revision: str) -> _RawCapture:
         base_ref, head_ref = resolve_ref_range(repo, revision)
         raw_patch = run_git(repo.root, "diff", "--no-ext-diff", base_ref, head_ref).stdout
         changed_paths = _changed_paths_between(repo.root, base_ref, head_ref)
-        resolved_files = _resolve_git_files(repo.root, head_ref, changed_paths)
+        before_text_by_path = _resolve_git_files(repo.root, base_ref, changed_paths)
+        after_text_by_path = _resolve_git_files(repo.root, head_ref, changed_paths)
         return _RawCapture(
             source_kind="git_ref",
             source_ref=head_ref,
@@ -377,12 +538,16 @@ def _capture_revision(repo: GitRepo, revision: str) -> _RawCapture:
             source_detail={"type": "range", "revision": revision},
             branch_names=_branch_names(repo),
             tag_names=(),
-            resolved_files=resolved_files,
+            resolved_files=after_text_by_path,
+            before_text_by_path=before_text_by_path,
+            after_text_by_path=after_text_by_path,
         )
 
     sha = resolve_commitish(repo, revision)
     raw_patch, base_ref = _single_commit_patch(repo, sha)
-    resolved_files = _resolve_git_files(repo.root, sha, _changed_paths_for_commit(repo.root, sha))
+    changed_paths = _changed_paths_for_commit(repo.root, sha)
+    before_text_by_path = _resolve_git_files(repo.root, base_ref, changed_paths)
+    after_text_by_path = _resolve_git_files(repo.root, sha, changed_paths)
     return _RawCapture(
         source_kind="git_ref",
         source_ref=sha,
@@ -393,14 +558,18 @@ def _capture_revision(repo: GitRepo, revision: str) -> _RawCapture:
         source_detail={"type": "single_commit", "sha": sha},
         branch_names=_branch_names(repo),
         tag_names=(),
-        resolved_files=resolved_files,
+        resolved_files=after_text_by_path,
+        before_text_by_path=before_text_by_path,
+        after_text_by_path=after_text_by_path,
     )
 
 
 def _capture_last(repo: GitRepo) -> _RawCapture:
     sha = ensure_head_exists(repo)
     raw_patch, base_ref = _single_commit_patch(repo, sha)
-    resolved_files = _resolve_git_files(repo.root, sha, _changed_paths_for_commit(repo.root, sha))
+    changed_paths = _changed_paths_for_commit(repo.root, sha)
+    before_text_by_path = _resolve_git_files(repo.root, base_ref, changed_paths)
+    after_text_by_path = _resolve_git_files(repo.root, sha, changed_paths)
     return _RawCapture(
         source_kind="git_ref",
         source_ref=sha,
@@ -411,7 +580,9 @@ def _capture_last(repo: GitRepo) -> _RawCapture:
         source_detail={"type": "last"},
         branch_names=_branch_names(repo),
         tag_names=(),
-        resolved_files=resolved_files,
+        resolved_files=after_text_by_path,
+        before_text_by_path=before_text_by_path,
+        after_text_by_path=after_text_by_path,
     )
 
 
@@ -440,6 +611,8 @@ def _capture_since(repo: GitRepo, *, since: str, author: str | None) -> _RawCapt
             branch_names=capture.branch_names,
             tag_names=capture.tag_names,
             resolved_files=capture.resolved_files,
+            before_text_by_path=capture.before_text_by_path,
+            after_text_by_path=capture.after_text_by_path,
         )
 
     oldest_commit = matched_commits[-1]
@@ -447,7 +620,8 @@ def _capture_since(repo: GitRepo, *, since: str, author: str | None) -> _RawCapt
     head_ref = ensure_head_exists(repo)
     raw_patch = run_git(repo.root, "diff", "--no-ext-diff", base_ref, head_ref).stdout
     changed_paths = _changed_paths_between(repo.root, base_ref, head_ref)
-    resolved_files = _resolve_git_files(repo.root, head_ref, changed_paths)
+    before_text_by_path = _resolve_git_files(repo.root, base_ref, changed_paths)
+    after_text_by_path = _resolve_git_files(repo.root, head_ref, changed_paths)
     return _RawCapture(
         source_kind="git_since",
         source_ref=head_ref,
@@ -465,7 +639,9 @@ def _capture_since(repo: GitRepo, *, since: str, author: str | None) -> _RawCapt
         },
         branch_names=_branch_names(repo),
         tag_names=(),
-        resolved_files=resolved_files,
+        resolved_files=after_text_by_path,
+        before_text_by_path=before_text_by_path,
+        after_text_by_path=after_text_by_path,
     )
 
 
@@ -499,8 +675,16 @@ def _capture_worktree(
         patch_text = patch_text + _build_untracked_patch(repo.root, untracked_files)
 
     changed_paths = _changed_paths_in_worktree(repo.root, staged, unstaged)
-    resolved_files = _resolve_worktree_files(repo.root, changed_paths)
-    resolved_files.update(_resolve_worktree_files(repo.root, untracked_files))
+    if combined_mode:
+        before_text_by_path = _resolve_git_files(repo.root, head_sha, changed_paths)
+        after_text_by_path = _resolve_worktree_files(repo.root, changed_paths)
+    elif staged:
+        before_text_by_path = _resolve_git_files(repo.root, head_sha, changed_paths)
+        after_text_by_path = _resolve_index_files(repo.root, changed_paths)
+    else:
+        before_text_by_path = _resolve_index_files(repo.root, changed_paths)
+        after_text_by_path = _resolve_worktree_files(repo.root, changed_paths)
+    after_text_by_path.update(_resolve_worktree_files(repo.root, untracked_files))
     source_ref = head_sha if combined_mode or staged else f"{head_sha}:unstaged"
     source_detail: dict[str, Any] = {
         "type": "worktree",
@@ -521,7 +705,9 @@ def _capture_worktree(
         source_detail=source_detail,
         branch_names=_branch_names(repo),
         tag_names=(),
-        resolved_files=resolved_files,
+        resolved_files=after_text_by_path,
+        before_text_by_path=before_text_by_path,
+        after_text_by_path=after_text_by_path,
     )
 
 
@@ -574,6 +760,8 @@ def _capture_patch_input(
         branch_names=(),
         tag_names=(),
         resolved_files={},
+        before_text_by_path={},
+        after_text_by_path={},
     )
 
 
@@ -679,6 +867,8 @@ def _capture_compare_input(workspace_root: Path, compare: tuple[Path, Path]) -> 
             branch_names=(),
             tag_names=(),
             resolved_files={},
+            before_text_by_path={},
+            after_text_by_path={},
         )
 
     old_text = _normalize_newlines(_decode_text_bytes(old_bytes, description=f"{old_rel}"))
@@ -712,6 +902,8 @@ def _capture_compare_input(workspace_root: Path, compare: tuple[Path, Path]) -> 
         branch_names=(),
         tag_names=(),
         resolved_files={old_rel: old_text, new_rel: new_text},
+        before_text_by_path={old_rel: old_text},
+        after_text_by_path={new_rel: new_text},
     )
 
 
@@ -820,24 +1012,35 @@ def _split_patch_segments(text: str) -> list[_PatchSegment]:
 def _segment_path(lines: list[str]) -> str:
     for line in lines:
         if line.startswith("+++ "):
-            candidate = line.strip().split(" ", 1)[1].removeprefix("b/")
-            if candidate != "/dev/null":
+            candidate = _normalize_segment_path_token(line.strip().split(" ", 1)[1], prefix="b/")
+            if candidate is not None:
                 return candidate
     for line in lines:
         if line.startswith("--- "):
-            candidate = line.strip().split(" ", 1)[1].removeprefix("a/")
-            if candidate != "/dev/null":
+            candidate = _normalize_segment_path_token(line.strip().split(" ", 1)[1], prefix="a/")
+            if candidate is not None:
                 return candidate
     for line in lines:
         if line.startswith("diff --git "):
-            match = _DIFF_GIT_HEADER_RE.match(line.strip())
-            if match is not None:
-                return match.group(2)
+            parsed_paths = parse_diff_git_header_paths(line.strip())
+            if parsed_paths is not None:
+                _, new_path = parsed_paths
+                candidate = new_path
+                if candidate is not None:
+                    return candidate
     return "__unknown__"
 
 
+def _normalize_segment_path_token(value: str, *, prefix: str) -> str | None:
+    return normalize_diff_path_token(value, prefix=prefix)
+
+
 def _resolve_policy(workspace_root: Path) -> AllowlistPolicy | None:
-    return None if not _has_git_root(workspace_root) else None
+    return (
+        load_workspace_allowlist_policy(workspace_root)
+        if not _has_git_root(workspace_root)
+        else None
+    )
 
 
 def _has_git_root(workspace_root: Path) -> bool:
@@ -987,6 +1190,20 @@ def _resolve_worktree_files(repo_root: Path, paths: list[str]) -> dict[str, str]
     return resolved
 
 
+def _resolve_index_files(repo_root: Path, paths: list[str]) -> dict[str, str]:
+    resolved: dict[str, str] = {}
+    for path in paths:
+        result = run_git_bytes(repo_root, "show", f":{path}")
+        if result.returncode != 0 or b"\x00" in result.stdout:
+            continue
+        try:
+            decoded = _decode_text_bytes(result.stdout, description=path)
+            resolved[path] = _normalize_newlines(decoded)
+        except InputError:
+            continue
+    return resolved
+
+
 def _list_untracked_files(repo_root: Path) -> list[str]:
     result = run_git(repo_root, "ls-files", "--others", "--exclude-standard")
     return [
@@ -1077,6 +1294,25 @@ def _decode_text_bytes(data: bytes, *, description: str) -> str:
 
 def _normalize_newlines(text: str) -> str:
     return text.replace("\r\n", "\n")
+
+
+def _structured_artifact_payloads(capture: CapturedDiff) -> tuple[dict[str, Any], dict[str, Any]]:
+    changed_files = parse_unified_diff(capture.persisted_patch_text)
+    line_map = build_line_map(changed_files)
+    symbols = extract_symbols(
+        changed_files,
+        before_text_by_path=capture.before_text_by_path,
+        after_text_by_path=capture.after_text_by_path,
+    )
+    return serialize_line_map_payload(line_map), serialize_symbols_payload(symbols)
+
+
+def _redact_json_artifact(raw_text: str, workspace_root: Path) -> str:
+    return redaction_pipeline(
+        raw_text,
+        repo_root=workspace_root if _has_git_root(workspace_root) else None,
+        policy=_resolve_policy(workspace_root),
+    ).redacted_text
 
 
 __all__ = [

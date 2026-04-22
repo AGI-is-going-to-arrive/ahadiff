@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import pathlib as _pathlib
@@ -58,6 +59,19 @@ def _load_run_artifacts(repo_root: Path) -> tuple[Path, dict[str, object], str]:
     return run_dir, metadata, patch_text
 
 
+def _assert_artifact_manifest_matches_files(run_dir: Path) -> None:
+    manifest = json.loads((run_dir / "artifact_set.json").read_text(encoding="utf-8"))
+    assert manifest["schema"] == "ahadiff.artifact_set"
+    assert manifest["schema_version"] == 1
+    assert manifest["manifest_type"] == "artifact_set"
+    paths = [item["path"] for item in manifest["artifacts"]]
+    assert paths == ["patch.diff", "metadata.json", "line_map.json", "symbols.json"]
+    for item in manifest["artifacts"]:
+        payload = (run_dir / item["path"]).read_text(encoding="utf-8")
+        assert item["bytes"] == len(payload.encode("utf-8"))
+        assert item["sha256"] == hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def _invoke_repo_cli(
     runner: CliRunner,
     repo_root: Path,
@@ -88,13 +102,23 @@ def test_learn_range_dry_run_writes_redacted_artifacts(tmp_path: Path) -> None:
     result = _invoke_repo_cli(runner, repo_root, ["learn", "HEAD~1..HEAD", "--dry-run"])
 
     assert result.exit_code == 0
-    _, metadata, patch_text = _load_run_artifacts(repo_root)
+    run_dir, metadata, patch_text = _load_run_artifacts(repo_root)
+    line_map = json.loads((run_dir / "line_map.json").read_text(encoding="utf-8"))
+    symbols = json.loads((run_dir / "symbols.json").read_text(encoding="utf-8"))
     assert metadata["source_kind"] == "git_ref"
     assert metadata["source_ref"] == head_sha
     assert metadata["capability_level"] == 3
     assert metadata["allowlist_digest"]
     assert secret not in patch_text
     assert "[REDACTED:openai_api_key]" in patch_text
+    assert line_map["schema"] == "ahadiff.line_map"
+    assert line_map["schema_version"] == 1
+    assert line_map["files"][0]["display_path"] == "app.py"
+    assert line_map["files"][0]["hunks"][0]["added_lines"] == [1]
+    assert symbols["schema"] == "ahadiff.symbols"
+    assert symbols["schema_version"] == 1
+    assert isinstance(symbols["symbols"], list)
+    _assert_artifact_manifest_matches_files(run_dir)
 
 
 def test_learn_last_matches_single_commit_semantics(tmp_path: Path) -> None:
@@ -255,15 +279,30 @@ def test_learn_patch_file_and_stdin_modes(tmp_path: Path) -> None:
 def test_patch_and_compare_modes_work_without_git_repo(tmp_path: Path) -> None:
     workspace_root = tmp_path / "workspace"
     workspace_root.mkdir()
+    (workspace_root / ".ahadiff").mkdir()
+    (workspace_root / ".ahadiff" / "config.toml").write_text(
+        'privacy_mode = "explicit_remote"\n\n'
+        "[capture]\n"
+        "hard_limit = 4\n"
+        "max_files = 50\n"
+        "max_patch_bytes = 10000000\n",
+        encoding="utf-8",
+    )
     patch_path = workspace_root / "sample.patch"
     patch_path.write_text(
-        "--- a/sample.py\n+++ b/sample.py\n@@ -0,0 +1 @@\n+value = 1\n",
+        "--- a/sample.py\n"
+        "+++ b/sample.py\n"
+        "@@ -0,0 +1,4 @@\n"
+        "+value = 1\n"
+        "+extra = 2\n"
+        "+extra = 3\n"
+        "+extra = 4\n",
         encoding="utf-8",
     )
     old_file = workspace_root / "old.py"
     new_file = workspace_root / "new.py"
-    old_file.write_text("value = 1\n", encoding="utf-8")
-    new_file.write_text("value = 2\n", encoding="utf-8")
+    old_file.write_text("", encoding="utf-8")
+    new_file.write_text("".join(f"value = {index}\n" for index in range(8)), encoding="utf-8")
 
     runner = CliRunner()
     patch_result = _invoke_repo_cli(
@@ -275,6 +314,7 @@ def test_patch_and_compare_modes_work_without_git_repo(tmp_path: Path) -> None:
     patch_run_dir = _latest_run_dir(workspace_root)
     patch_metadata = json.loads((patch_run_dir / "metadata.json").read_text(encoding="utf-8"))
     assert patch_metadata["source_kind"] == "patch_file"
+    assert patch_metadata["privacy_mode"] == "explicit_remote"
 
     compare_result = _invoke_repo_cli(
         runner,
@@ -285,11 +325,46 @@ def test_patch_and_compare_modes_work_without_git_repo(tmp_path: Path) -> None:
     compare_run_dir = _latest_run_dir(workspace_root)
     compare_metadata = json.loads((compare_run_dir / "metadata.json").read_text(encoding="utf-8"))
     assert compare_metadata["source_kind"] == "file_compare"
+    assert compare_metadata["privacy_mode"] == "explicit_remote"
+    degraded_flags = compare_metadata["degraded_flags"]
+    assert degraded_flags["diff_clipped"] is True
     compare_detail = compare_metadata["source_detail"]
     assert compare_detail["old_name"] == "old.py"
     assert compare_detail["new_name"] == "new.py"
     assert "old_path" not in compare_detail
     assert "new_path" not in compare_detail
+
+
+def test_non_git_subdir_repo_root_resolves_parent_workspace(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    subdir = workspace_root / "nested" / "child"
+    subdir.mkdir(parents=True)
+    (workspace_root / ".ahadiff").mkdir()
+    (workspace_root / ".ahadiff" / "config.toml").write_text(
+        'privacy_mode = "explicit_remote"\n',
+        encoding="utf-8",
+    )
+    (workspace_root / "old.py").write_text("", encoding="utf-8")
+    (workspace_root / "new.py").write_text("value = 1\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = _invoke_repo_cli(
+        runner,
+        subdir,
+        [
+            "learn",
+            "--compare",
+            "old.py",
+            "new.py",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
+    run_dir = _latest_run_dir(workspace_root)
+    metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
+    assert metadata["privacy_mode"] == "explicit_remote"
+    assert not (subdir / ".ahadiff").exists()
 
 
 def test_learn_without_dry_run_rejects_before_writing_artifacts(tmp_path: Path) -> None:
@@ -468,6 +543,27 @@ def test_segment_path_handles_spaces() -> None:
     assert path == "my file.py"
 
 
+def test_segment_path_unquotes_git_quoted_paths() -> None:
+    path = capture_module._segment_path(  # pyright: ignore[reportPrivateUsage]
+        [
+            'diff --git "a/my file.py" "b/my file.py"\n',
+            '--- "a/my file.py"\n',
+            '+++ "b/my file.py"\n',
+        ]
+    )
+    assert path == "my file.py"
+
+
+def test_segment_path_keeps_quoted_binary_paths_without_patch_headers() -> None:
+    path = capture_module._segment_path(  # pyright: ignore[reportPrivateUsage]
+        [
+            'diff --git "a/my file.png" "b/my file.png"\n',
+            'Binary files "a/my file.png" and "b/my file.png" differ\n',
+        ]
+    )
+    assert path == "my file.png"
+
+
 def test_learn_compare_mode_and_binary_only_degrade(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -530,6 +626,42 @@ def test_compare_mode_respects_hard_limit_for_single_segment(tmp_path: Path) -> 
     assert "[truncated]" in capture.persisted_patch_text
 
 
+def test_capture_patch_accepts_unresolved_workspace_root_for_patch_and_compare(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    patch_path = workspace_root / "sample.patch"
+    patch_path.write_text(
+        "--- a/sample.py\n+++ b/sample.py\n@@ -0,0 +1 @@\n+value = 1\n",
+        encoding="utf-8",
+    )
+    (workspace_root / "old.py").write_text("", encoding="utf-8")
+    (workspace_root / "new.py").write_text("value = 1\n", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+    relative_root = Path("workspace")
+
+    patch_capture = capture_module.capture_patch(
+        workspace_root=relative_root,
+        patch="sample.patch",
+        max_files=50,
+        hard_limit=5000,
+        max_patch_bytes=10_000_000,
+    )
+    compare_capture = capture_module.capture_patch(
+        workspace_root=relative_root,
+        compare=(Path("old.py"), Path("new.py")),
+        max_files=50,
+        hard_limit=5000,
+        max_patch_bytes=10_000_000,
+    )
+
+    assert patch_capture.run_source.source_kind == "patch_file"
+    assert compare_capture.run_source.source_kind == "file_compare"
+
+
 def test_capture_config_limits_selected_files_with_stable_ranking(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -553,13 +685,127 @@ def test_capture_config_limits_selected_files_with_stable_ranking(tmp_path: Path
     result = _invoke_repo_cli(runner, repo_root, ["learn", head_sha, "--dry-run"])
 
     assert result.exit_code == 0
-    _, metadata, patch_text = _load_run_artifacts(repo_root)
+    run_dir, metadata, patch_text = _load_run_artifacts(repo_root)
     degraded_flags = cast("dict[str, Any]", metadata["degraded_flags"])
     assert degraded_flags["file_count_exceeded"] is True
     assert metadata["selected_files"] == ["alpha.py"]
     assert metadata["omitted_files"] == ["beta.py"]
     assert "alpha.py" in patch_text
     assert "beta.py" not in patch_text
+    line_map = json.loads((run_dir / "line_map.json").read_text(encoding="utf-8"))
+    symbols = json.loads((run_dir / "symbols.json").read_text(encoding="utf-8"))
+    manifest = json.loads((run_dir / "artifact_set.json").read_text(encoding="utf-8"))
+    assert [item["display_path"] for item in line_map["files"]] == ["alpha.py"]
+    assert all(item["path"] == "alpha.py" for item in symbols["symbols"])
+    assert manifest["selection"]["selected_files"] == ["alpha.py"]
+    assert manifest["selection"]["omitted_files"] == ["beta.py"]
+
+
+def test_compare_metadata_is_redacted_before_persist(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    old_name = "sk-abcdefghijklmnopqrstuvwxyz123456.py"
+    old_file = workspace_root / old_name
+    new_file = workspace_root / "plain.py"
+    old_file.write_text("value = 1\n", encoding="utf-8")
+    new_file.write_text("value = 2\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = _invoke_repo_cli(
+        runner,
+        workspace_root,
+        ["learn", "--compare", old_name, "plain.py", "--dry-run"],
+    )
+
+    assert result.exit_code == 0
+    run_dir = _latest_run_dir(workspace_root)
+    metadata_text = (run_dir / "metadata.json").read_text(encoding="utf-8")
+    assert old_name not in metadata_text
+    assert "[REDACTED:openai_api_key]" in metadata_text
+
+
+def test_artifact_manifest_describes_line_map_and_symbol_sources_accurately(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    old_file = workspace_root / "old.py"
+    new_file = workspace_root / "new.py"
+    old_file.write_text("", encoding="utf-8")
+    new_file.write_text("".join(f"value = {index}\n" for index in range(20)), encoding="utf-8")
+
+    capture = capture_module.capture_patch(
+        workspace_root=workspace_root,
+        compare=(Path("old.py"), Path("new.py")),
+        max_files=50,
+        hard_limit=6,
+        max_patch_bytes=10_000_000,
+    )
+    capture_module.write_input_artifacts(capture)
+
+    run_dir = _latest_run_dir(workspace_root)
+    manifest = json.loads((run_dir / "artifact_set.json").read_text(encoding="utf-8"))
+
+    assert manifest["generation"]["line_map_from"] == "persisted_patch_text"
+    assert manifest["generation"]["symbols_from"] == [
+        "persisted_patch_text",
+        "before_text_by_path",
+        "after_text_by_path",
+    ]
+
+
+def test_write_input_artifacts_publishes_run_directory_atomically(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    (workspace_root / "old.py").write_text("", encoding="utf-8")
+    (workspace_root / "new.py").write_text("value = 1\nvalue = 2\n", encoding="utf-8")
+    capture = capture_module.capture_patch(
+        workspace_root=workspace_root,
+        compare=(Path("old.py"), Path("new.py")),
+        max_files=50,
+        hard_limit=5000,
+        max_patch_bytes=10_000_000,
+    )
+    original_write = capture_module._atomic_write_text  # pyright: ignore[reportPrivateUsage]
+
+    def _fail_on_symbols(path: Path, text: str) -> None:
+        if path.name == "symbols.json":
+            raise OSError("disk full")
+        original_write(path, text)
+
+    monkeypatch.setattr(capture_module, "_atomic_write_text", _fail_on_symbols)
+
+    with pytest.raises(StorageError, match="failed to publish run artifacts"):
+        capture_module.write_input_artifacts(capture)
+
+    runs_dir = workspace_root / ".ahadiff" / "runs"
+    if runs_dir.exists():
+        assert not any(path.name == capture.run_id for path in runs_dir.iterdir())
+        assert not any(
+            path.name.startswith(f".{capture.run_id}.tmp") for path in runs_dir.iterdir()
+        )
+
+
+def test_invalid_structured_artifact_input_does_not_leave_partial_run_dir(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    patch_path = workspace_root / "bad.patch"
+    patch_path.write_text(
+        "--- a/sample.py\n+++ b/sample.py\n@@ invalid @@\n+value = 1\n",
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    result = _invoke_repo_cli(
+        runner,
+        workspace_root,
+        ["learn", "--patch", "bad.patch", "--dry-run"],
+    )
+
+    assert result.exit_code == 1
+    runs_dir = workspace_root / ".ahadiff" / "runs"
+    assert not runs_dir.exists()
 
 
 def test_graph_commands_and_unlock_force(tmp_path: Path) -> None:

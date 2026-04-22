@@ -14,6 +14,7 @@ from ahadiff.core.config import (
     DEFAULT_CONFIG,
     iter_resolved_settings,
     load_config,
+    load_workspace_config,
     resolve_effective,
     write_default_config,
 )
@@ -21,6 +22,7 @@ from ahadiff.core.errors import StorageError
 from ahadiff.core.ids import make_claim_id, make_hunk_id, make_run_id
 from ahadiff.core.paths import (
     assert_local_repo_path,
+    find_workspace_root,
     global_config_dir,
     inspect_repo_path,
     project_state_dir,
@@ -110,6 +112,49 @@ def test_load_config_reports_unknown_and_sensitive_repo_keys(tmp_path: Path) -> 
     snapshot = load_config(repo_root, env={"HOME": str(tmp_path / "home")})
     assert snapshot.repo_unknown_keys == ("llm.api_key", "llm.unknown_flag")
     assert snapshot.repo_sensitive_keys == ("llm.api_key",)
+
+
+def test_load_workspace_config_resolves_local_and_global_layers_without_git(
+    tmp_path: Path,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    home_root = tmp_path / "home"
+    global_path = global_config_dir(env={"HOME": str(home_root)}) / "config.toml"
+    global_path.parent.mkdir(parents=True)
+    global_path.write_text("[capture]\nmax_files = 9\n", encoding="utf-8")
+    (workspace_root / ".ahadiff").mkdir()
+    (workspace_root / ".ahadiff" / "config.toml").write_text(
+        'privacy_mode = "explicit_remote"\n\n[capture]\nhard_limit = 7\n',
+        encoding="utf-8",
+    )
+
+    snapshot = load_workspace_config(
+        workspace_root,
+        cli_overrides={"capture.max_patch_bytes": 1234},
+        env={"HOME": str(home_root)},
+    )
+
+    assert resolve_effective("privacy_mode", snapshot=snapshot).value == "explicit_remote"
+    assert resolve_effective("capture.max_files", snapshot=snapshot).value == 9
+    assert resolve_effective("capture.hard_limit", snapshot=snapshot).value == 7
+    assert resolve_effective("capture.max_patch_bytes", snapshot=snapshot).value == 1234
+
+
+def test_load_workspace_config_finds_parent_workspace_root_from_subdir(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    subdir = workspace_root / "nested" / "child"
+    subdir.mkdir(parents=True)
+    (workspace_root / ".ahadiff").mkdir()
+    (workspace_root / ".ahadiff" / "config.toml").write_text(
+        'privacy_mode = "explicit_remote"\n',
+        encoding="utf-8",
+    )
+
+    snapshot = load_workspace_config(subdir)
+
+    assert find_workspace_root(subdir) == workspace_root
+    assert resolve_effective("privacy_mode", snapshot=snapshot).value == "explicit_remote"
 
 
 def test_sensitive_repo_config_detection_matches_supported_keys(tmp_path: Path) -> None:

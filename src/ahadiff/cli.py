@@ -10,10 +10,16 @@ from rich.table import Table
 from typer import Exit
 
 from . import __version__
-from .core.config import DEFAULT_CONFIG, iter_resolved_settings, load_config, write_default_config
+from .core.config import (
+    iter_resolved_settings,
+    load_config,
+    load_workspace_config,
+    write_default_config,
+)
 from .core.errors import AhaDiffError
 from .core.paths import (
     find_repo_root,
+    find_workspace_root,
     global_config_dir,
     inspect_repo_path,
     lock_file_path,
@@ -104,10 +110,7 @@ def _resolve_learn_workspace_root(
     except AhaDiffError:
         if not allow_non_git:
             raise
-        root = repo_root.expanduser()
-        if root.is_file():
-            root = root.parent
-        return root.resolve(), False
+        return find_workspace_root(repo_root), False
 
 
 @_APP.callback()
@@ -331,15 +334,19 @@ def learn_cmd(
             repo_root,
             allow_non_git=allow_non_git,
         )
-        if has_git_repo:
-            snapshot = load_config(root, cli_overrides=_cli_overrides(privacy_mode=privacy_mode))
-            capture_config = cast("dict[str, Any]", snapshot.values["capture"])
-            effective_privacy_mode = str(snapshot.values["privacy_mode"])
-            repo_lock_path = lock_file_path(root)
-        else:
-            capture_config = cast("dict[str, Any]", DEFAULT_CONFIG["capture"])
-            effective_privacy_mode = privacy_mode or str(DEFAULT_CONFIG["privacy_mode"])
-            repo_lock_path = root / ".ahadiff" / "ahadiff.lock"
+        snapshot = (
+            load_config(root, cli_overrides=_cli_overrides(privacy_mode=privacy_mode))
+            if has_git_repo
+            else load_workspace_config(
+                root,
+                cli_overrides=_cli_overrides(privacy_mode=privacy_mode),
+            )
+        )
+        capture_config = cast("dict[str, Any]", snapshot.values["capture"])
+        effective_privacy_mode = str(snapshot.values["privacy_mode"])
+        repo_lock_path = (
+            lock_file_path(root) if has_git_repo else root / ".ahadiff" / "ahadiff.lock"
+        )
 
         with repo_write_lock(repo_lock_path, command="learn") as _:
             capture = capture_patch(

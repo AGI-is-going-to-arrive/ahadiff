@@ -113,6 +113,18 @@ def find_repo_root(start: Path | None = None) -> Path:
     raise InputError(f"{cursor} is not inside a git repository")
 
 
+def find_workspace_root(start: Path | None = None) -> Path:
+    cursor = (Path.cwd() if start is None else start).expanduser()
+    if cursor.is_file():
+        cursor = cursor.parent
+    cursor = cursor.resolve()
+    for candidate in (cursor, *cursor.parents):
+        state_dir = candidate / ".ahadiff"
+        if state_dir.exists() or (state_dir / "config.toml").exists():
+            return candidate
+    return cursor
+
+
 def global_config_dir(*, platform: str | None = None, env: Mapping[str, str] | None = None) -> Path:
     current_platform = _platform_name(platform)
     env_map = os.environ if env is None else env
@@ -169,6 +181,7 @@ __all__ = [
     "audit_log_path",
     "assert_local_repo_path",
     "find_repo_root",
+    "find_workspace_root",
     "global_config_dir",
     "ignore_file_path",
     "inspect_repo_path",

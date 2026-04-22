@@ -5,10 +5,21 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ahadiff.core.config import load_config, load_security_config, resolve_effective
+from ahadiff.core.config import (
+    load_config,
+    load_security_config,
+    load_workspace_security_config,
+    resolve_effective,
+)
 from ahadiff.core.errors import ConfigError, SafetyError
+from ahadiff.core.paths import global_config_dir
 from ahadiff.safety.gates import assert_no_unredacted_secret, enforce_privacy_mode
-from ahadiff.safety.ignore import AllowlistPolicy, compute_allowlist_digest, load_allowlist_policy
+from ahadiff.safety.ignore import (
+    AllowlistPolicy,
+    compute_allowlist_digest,
+    load_allowlist_policy,
+    load_workspace_allowlist_policy,
+)
 from ahadiff.safety.redact import redaction_pipeline, scan_text_for_secrets
 
 if TYPE_CHECKING:
@@ -147,3 +158,92 @@ def test_allowlist_digest_is_stable_across_rule_order() -> None:
     )
 
     assert left == right
+
+
+def test_non_git_workspace_allowlist_policy_works_for_local_config(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    token = "AbC123xYz789LmNoPqRsTuVwXyZaBcDeFgHiJk45"
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    (workspace_root / ".ahadiff").mkdir()
+    (workspace_root / ".ahadiff" / "config.toml").write_text(
+        f'[security]\nallow_exact = ["sha256:{token_hash}"]\nallow_paths = ["fixtures/**"]\n',
+        encoding="utf-8",
+    )
+
+    policy = load_workspace_allowlist_policy(workspace_root)
+    findings = scan_text_for_secrets(
+        token,
+        source_name="fixtures/token.txt",
+        source_kind="resolved_file",
+        path="fixtures/token.txt",
+        policy=policy,
+    )
+
+    assert len(findings) == 1
+    assert findings[0].allowlisted is True
+
+
+def test_global_security_config_flows_into_repo_allowlist_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    home_root = tmp_path / "home"
+    global_path = global_config_dir(env={"HOME": str(home_root)}) / "config.toml"
+    global_path.parent.mkdir(parents=True)
+    global_path.write_text(
+        '[security]\nsuppress_rules = ["HIGH_ENTROPY_STRING"]\n',
+        encoding="utf-8",
+    )
+    token = "AbC123xYz789LmNoPqRsTuVwXyZaBcDeFgHiJk45"
+    monkeypatch.setenv("HOME", str(home_root))
+
+    security = load_security_config(repo_root)
+    policy = load_allowlist_policy(repo_root)
+    snapshot = load_config(repo_root, env={"HOME": str(home_root)})
+    findings = scan_text_for_secrets(
+        token,
+        source_name="sample.txt",
+        source_kind="resolved_file",
+        path="sample.txt",
+        policy=policy,
+    )
+
+    assert resolve_effective("security.suppress_rules", snapshot=snapshot).value == (
+        "HIGH_ENTROPY_STRING",
+    )
+    assert security.suppress_rules == ("HIGH_ENTROPY_STRING",)
+    assert findings[0].allowlisted is True
+
+
+def test_global_security_config_flows_into_workspace_allowlist_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    home_root = tmp_path / "home"
+    global_path = global_config_dir(env={"HOME": str(home_root)}) / "config.toml"
+    global_path.parent.mkdir(parents=True)
+    global_path.write_text(
+        '[security]\nsuppress_rules = ["HIGH_ENTROPY_STRING"]\n',
+        encoding="utf-8",
+    )
+    token = "AbC123xYz789LmNoPqRsTuVwXyZaBcDeFgHiJk45"
+    monkeypatch.setenv("HOME", str(home_root))
+
+    security = load_workspace_security_config(workspace_root)
+    policy = load_workspace_allowlist_policy(workspace_root)
+    findings = scan_text_for_secrets(
+        token,
+        source_name="sample.txt",
+        source_kind="resolved_file",
+        path="sample.txt",
+        policy=policy,
+    )
+
+    assert security.suppress_rules == ("HIGH_ENTROPY_STRING",)
+    assert findings[0].allowlisted is True

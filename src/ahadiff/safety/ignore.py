@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from pathlib import Path
 
-from ahadiff.core.config import load_security_config
+from ahadiff.core.config import load_security_config, load_workspace_security_config
 from ahadiff.core.errors import SafetyError
 from ahadiff.core.paths import find_repo_root, ignore_file_path
 
@@ -61,6 +61,15 @@ def is_ignored_path(path: str | Path, matcher: IgnoreMatcher) -> bool:
 
 def load_allowlist_policy(repo_root: Path | None = None) -> AllowlistPolicy:
     config = load_security_config(repo_root)
+    return AllowlistPolicy(
+        allow_exact=config.allow_exact,
+        allow_paths=tuple(canonicalize_path_text(value) for value in config.allow_paths),
+        suppress_rules=config.suppress_rules,
+    )
+
+
+def load_workspace_allowlist_policy(workspace_root: Path) -> AllowlistPolicy:
+    config = load_workspace_security_config(workspace_root)
     return AllowlistPolicy(
         allow_exact=config.allow_exact,
         allow_paths=tuple(canonicalize_path_text(value) for value in config.allow_paths),
@@ -179,6 +188,7 @@ __all__ = [
     "is_finding_allowlisted",
     "is_ignored_path",
     "load_allowlist_policy",
+    "load_workspace_allowlist_policy",
     "load_ignore_matcher",
     "resolve_safe_path",
     "resolve_safe_path_from_root",
