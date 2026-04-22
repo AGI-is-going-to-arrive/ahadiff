@@ -131,15 +131,16 @@ ahadiff/
 ├─ src/ahadiff/contracts/       # Stage 0 最小 contracts skeleton
 ├─ src/ahadiff/core/            # Stage 1 / Task 1 工程骨架
 ├─ src/ahadiff/safety/          # Stage 1 / Task 2 安全层基础实现
+├─ src/ahadiff/llm/             # Layer 1.5 / Task 7 provider + probe
 ├─ src/ahadiff/git/             # Stage 2 / Task 5-6 diff capture + 结构化
-├─ tests/unit/                  # Stage 0 + Stage 1 + Stage 2 单元测试
+├─ tests/unit/                  # Stage 0 + Stage 1 + Layer 1.5 + Stage 2 单元测试
 ├─ ui/                          # HTML 原型 v1–v6（设计迭代史）
 └─ CLAUDE.md                    # 项目 AI 上下文索引
 ```
 
 ## 当前阶段
 
-**Stage 1 的 Task 1/2 已落地，Stage 2 / Task 5-6 现在也已落地。** 仓库现在除了设计文档和 HTML 原型，还包含 `contract-freeze.md`、最小 contracts skeleton、`pyproject.toml`、可执行的 CLI scaffold（`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `python -m ahadiff`），`src/ahadiff/safety/` 安全层基础实现，以及 `src/ahadiff/git/{__init__,repo,capture,parser,path_tokens,line_map,symbols,hunk_hash}.py`、`ahadiff learn --dry-run`、非 git 目录下可运行且会读取 workspace `.ahadiff/config.toml` 的 `--patch` / `--compare`、`ahadiff graph status|import|refresh`、`ahadiff unlock --force`、`line_map.json` / `symbols.json` / `artifact_set.json` 和对应的 Stage 0 + Stage 1 + Stage 2 单元测试。provider、evaluator 和 viewer runtime 仍未实现。
+**Stage 1 的 Task 1/2、Layer 1.5 的 Task 7，以及 Stage 2 / Task 5-6 已落地。** 仓库现在除了设计文档和 HTML 原型，还包含 `contract-freeze.md`、最小 contracts skeleton、`pyproject.toml`、可执行的 CLI scaffold（`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `ahadiff provider test` / `ahadiff maint clean-orphans` / `python -m ahadiff`），`src/ahadiff/safety/` 安全层基础实现、`src/ahadiff/llm/{provider,probe,cache,cost}.py` 与 8 个 provider adapter，以及 `src/ahadiff/git/{__init__,repo,capture,parser,path_tokens,line_map,symbols,hunk_hash}.py`、`ahadiff learn --dry-run`、非 git 目录下可运行且会读取 workspace `.ahadiff/config.toml` 的 `--patch` / `--compare`、`ahadiff graph status|import|refresh`、`ahadiff unlock --force`、`line_map.json` / `symbols.json` / `artifact_set.json` 和对应的 Stage 0 + Stage 1 + Layer 1.5 + Stage 2 单元测试。evaluator 和 viewer runtime 仍未实现。
 
 当前已落地的最小验证：
 
@@ -155,7 +156,7 @@ uv run ahadiff doctor
 uv run ahadiff config show --resolved
 ```
 
-本次实际结果：`uv run pytest tests/unit` 为 `119 passed`；其中 `uv run pytest tests/unit/test_hunk_hash.py tests/unit/test_diff_parser.py tests/unit/test_line_map.py tests/unit/test_symbol_extract.py tests/unit/test_git_capture.py -q` 为 `56 passed`，`uv run pytest tests/unit/test_git_capture.py -q` 为 `30 passed`，Task 2 目标测试 `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` 为 `27 passed`。`ruff check`、`ruff format --check`、`pyright` 全通过；`uv run ahadiff learn --unstaged --include-untracked --dry-run --repo-root /Users/yangjunjie/Desktop/ahadiff`、非 git 目录下的 `uv run python -m ahadiff learn --patch sample.patch --dry-run --repo-root <tmpdir>`、非 git 目录下的 `uv run python -m ahadiff learn --compare old.py new.py --dry-run --repo-root <tmpdir>`、从 non-git workspace 子目录传 `--repo-root <subdir>` 的 `learn --compare ... --dry-run`、`uv run ahadiff graph status --repo-root /Users/yangjunjie/Desktop/ahadiff`、non-git `uv run python -m ahadiff unlock --force --repo-root <tmpdir>` 本次都已实测可运行；非 `--dry-run` 的 `ahadiff learn` 现在会在写入任何 artifact 前直接报错退出。
+本次实际结果：`uv run pytest tests/unit` 为 `181 passed`；`uv run pytest tests/unit/test_stage1_task1.py tests/unit/test_contracts.py -q` 为 `42 passed`，Task 2 目标测试 `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` 为 `29 passed`，`uv run pytest tests/unit/test_probe.py tests/unit/test_provider.py -q` 为 `40 passed`，`uv run pytest tests/unit/test_hunk_hash.py tests/unit/test_diff_parser.py tests/unit/test_line_map.py tests/unit/test_symbol_extract.py tests/unit/test_git_capture.py -q` 为 `70 passed`。`uv run ruff check src tests` 与 `uv run pyright` 全通过。
 
 下一步路线图：
 

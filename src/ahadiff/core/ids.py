@@ -18,6 +18,14 @@ def make_run_id() -> str:
     return f"run_{timestamp_ms:012x}{suffix}"
 
 
+def make_event_id() -> str:
+    """Create a sortable event identifier for audit and event streams."""
+
+    timestamp_ms = int(time.time() * 1000)
+    suffix = uuid.uuid4().hex[:20]
+    return f"evt_{timestamp_ms:012x}{suffix}"
+
+
 def make_claim_id(run_id: str, ordinal: int) -> str:
     """Create a deterministic claim identifier within a run."""
 
@@ -35,4 +43,4 @@ def make_hunk_id(
     return f"hunk_{_digest(repo_relative_path, old_start, new_start, section_header or '')}"
 
 
-__all__ = ["make_claim_id", "make_hunk_id", "make_run_id"]
+__all__ = ["make_claim_id", "make_event_id", "make_hunk_id", "make_run_id"]

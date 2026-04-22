@@ -15,6 +15,7 @@ from ahadiff.core.config import (
     iter_resolved_settings,
     load_config,
     load_workspace_config,
+    load_workspace_pricing_settings,
     resolve_effective,
     write_default_config,
 )
@@ -48,6 +49,20 @@ def test_render_scalar_escapes_literal_newlines_for_toml_roundtrip() -> None:
     rendered = config_module._render_scalar("line1\nline2")  # pyright: ignore[reportPrivateUsage]
     parsed = tomllib.loads(f"value = {rendered}\n")
     assert parsed["value"] == "line1\nline2"
+
+
+def test_render_toml_quotes_special_keys_for_roundtrip() -> None:
+    rendered = config_module._render_toml(  # pyright: ignore[reportPrivateUsage]
+        {
+            "pricing": {
+                "input_per_million_usd": {
+                    "openrouter/custom.model": 0.4,
+                }
+            }
+        }
+    )
+    parsed = tomllib.loads(rendered)
+    assert parsed["pricing"]["input_per_million_usd"]["openrouter/custom.model"] == 0.4
 
 
 def test_load_config_resolves_five_layer_precedence(
@@ -112,6 +127,41 @@ def test_load_config_reports_unknown_and_sensitive_repo_keys(tmp_path: Path) -> 
     snapshot = load_config(repo_root, env={"HOME": str(tmp_path / "home")})
     assert snapshot.repo_unknown_keys == ("llm.api_key", "llm.unknown_flag")
     assert snapshot.repo_sensitive_keys == ("llm.api_key",)
+
+
+def test_provider_tables_and_security_local_hosts_are_supported_config_keys(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+
+    repo_path = repo_config_path(repo_root)
+    repo_path.parent.mkdir(parents=True)
+    repo_path.write_text(
+        '[security]\nlocal_hosts = ["model.local"]\n\n'
+        "[pricing]\nopenrouter_enabled = true\nopenrouter_refresh_seconds = 900\n\n"
+        '[pricing.input_per_million_usd]\n"openrouter/custom.model" = 0.4\n\n'
+        '[pricing.output_per_million_usd]\n"openrouter/custom.model" = 1.6\n\n'
+        '[providers.demo]\nprovider_class = "openai"\nmodel_name = "gpt-5.4-mini"\n'
+        'base_url = "http://127.0.0.1:8000"\napi_key_env = "AHADIFF_PROVIDER_API_KEY"\n'
+        "probed_max_context = 1000000\nsupports_temperature = true\n",
+        encoding="utf-8",
+    )
+
+    snapshot = load_config(repo_root, env={"HOME": str(tmp_path / "home")})
+    pricing = load_workspace_pricing_settings(repo_root, env={"HOME": str(tmp_path / "home")})
+
+    assert snapshot.repo_unknown_keys == ()
+    assert resolve_effective("security.local_hosts", snapshot=snapshot).value == ("model.local",)
+    assert resolve_effective("pricing.openrouter_enabled", snapshot=snapshot).value is True
+    assert (
+        resolve_effective(
+            "pricing.input_per_million_usd.openrouter/custom.model",
+            snapshot=snapshot,
+        ).value
+        == 0.4
+    )
+    assert pricing.openrouter_refresh_seconds == 900
+    assert pricing.model_overrides["openrouter/custom.model"].output_per_million_usd == 1.6
 
 
 def test_load_workspace_config_resolves_local_and_global_layers_without_git(
@@ -331,3 +381,62 @@ def test_cli_doctor_exits_non_zero_when_sqlite_gate_fails(
     assert result.exit_code == 1
     assert "SQLite gate" in result.stdout
     assert "does not satisfy the frozen doctor gate" in result.stderr
+
+
+def test_cli_maint_clean_orphans_removes_tmp_runs_and_audit_tmp_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    monkeypatch.chdir(repo_root)
+
+    state_dir = repo_root / ".ahadiff"
+    orphan_run_dir = state_dir / "runs" / ".run_123.tmp"
+    orphan_run_dir.mkdir(parents=True)
+    (orphan_run_dir / "lesson.md").write_text("placeholder", encoding="utf-8")
+    audit_tmp = state_dir / "audit.1.jsonl.gz.tmp"
+    audit_tmp.parent.mkdir(parents=True, exist_ok=True)
+    audit_tmp.write_text("tmp", encoding="utf-8")
+    snapshot = state_dir / "audit.jsonl.rotation-src"
+    snapshot.write_text("keep", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(app(), ["maint", "clean-orphans"], catch_exceptions=False)
+
+    assert result.exit_code == 0
+    assert "Removed" in result.stdout
+    assert ".ahadiff/runs/.run_123.tmp" in result.stdout
+    assert not orphan_run_dir.exists()
+    assert not audit_tmp.exists()
+    assert snapshot.exists()
+
+
+def test_cli_maint_clean_orphans_dry_run_preserves_state_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    monkeypatch.chdir(repo_root)
+
+    state_dir = repo_root / ".ahadiff"
+    orphan_run_dir = state_dir / "runs" / ".run_456.tmp"
+    orphan_run_dir.mkdir(parents=True)
+    audit_tmp = state_dir / "audit.private.1.jsonl.gz.tmp"
+    audit_tmp.parent.mkdir(parents=True, exist_ok=True)
+    audit_tmp.write_text("tmp", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app(),
+        ["maint", "clean-orphans", "--dry-run"],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0
+    assert "Would remove" in result.stdout
+    assert orphan_run_dir.exists()
+    assert audit_tmp.exists()

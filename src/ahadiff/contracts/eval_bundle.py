@@ -11,7 +11,7 @@ EVAL_BUNDLE_FILES: tuple[tuple[str, str], ...] = (
     ("eval/evaluator.py", "src/ahadiff/eval/evaluator.py"),
     ("eval/gates.py", "src/ahadiff/eval/gates.py"),
     ("eval/rubric.py", "src/ahadiff/eval/rubric.py"),
-    ("evals/rubric.yaml", "evals/rubric.yaml"),
+    ("eval/rubric.yaml", "src/ahadiff/eval/rubric.yaml"),
 )
 
 RUBRIC_WEIGHTS: dict[str, dict[str, int]] = {

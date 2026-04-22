@@ -6,6 +6,7 @@ import pathlib as _pathlib
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from ahadiff.core.ids import make_event_id
 from ahadiff.core.paths import audit_log_path, private_audit_log_path
 
 if TYPE_CHECKING:
@@ -34,6 +35,7 @@ def build_redaction_audit_record(
     event_type: str = "redaction_pipeline",
 ) -> dict[str, Any]:
     return {
+        "event_id": make_event_id(),
         "schema_version": _AUDIT_SCHEMA_VERSION,
         "event_type": event_type,
         "timestamp": _utc_now(),
@@ -43,6 +45,52 @@ def build_redaction_audit_record(
         "finding_count": len(result.findings),
         "findings": [_finding_payload(finding) for finding in result.findings],
     }
+
+
+def build_provider_audit_record(
+    *,
+    event_id: str,
+    event_type: str,
+    provider_class: str,
+    model_id: str,
+    prompt_name: str,
+    prompt_fingerprint: str,
+    request_hash: str,
+    input_tokens: int,
+    output_tokens: int,
+    cost_usd: float | None,
+    pricing_version: str | None,
+    cost_confidence: str,
+    billing_mode: str,
+    execution_origin: str,
+    api_principal_hash: str,
+    partial_tokens: int | None = None,
+    note: str | None = None,
+) -> dict[str, Any]:
+    record: dict[str, Any] = {
+        "event_id": event_id,
+        "schema_version": _AUDIT_SCHEMA_VERSION,
+        "event_type": event_type,
+        "timestamp": _utc_now(),
+        "provider_class": provider_class,
+        "model_id": model_id,
+        "prompt_name": prompt_name,
+        "prompt_fingerprint": prompt_fingerprint,
+        "request_hash": request_hash,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cost_usd": cost_usd,
+        "pricing_version": pricing_version,
+        "cost_confidence": cost_confidence,
+        "billing_mode": billing_mode,
+        "execution_origin": execution_origin,
+        "api_principal_hash": api_principal_hash,
+    }
+    if partial_tokens is not None:
+        record["partial_tokens"] = partial_tokens
+    if note is not None:
+        record["note"] = note
+    return record
 
 
 def append_audit_record(
@@ -116,4 +164,9 @@ def _utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-__all__ = ["append_audit_record", "audit_log_paths", "build_redaction_audit_record"]
+__all__ = [
+    "append_audit_record",
+    "audit_log_paths",
+    "build_provider_audit_record",
+    "build_redaction_audit_record",
+]

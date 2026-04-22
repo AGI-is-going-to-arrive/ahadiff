@@ -3,13 +3,12 @@ from __future__ import annotations
 import json
 import os
 import re
+import tempfile
 import tomllib
 from collections.abc import Mapping
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, TypeGuard, cast
-
-if TYPE_CHECKING:
-    from pathlib import Path
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, TypeGuard, cast
 
 from .errors import ConfigError
 from .paths import find_repo_root, find_workspace_root, global_config_dir
@@ -28,6 +27,21 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "llm": {
         "generate_model": "gpt-5.4-mini",
         "judge_model": "gpt-5.4-mini",
+        "max_concurrent": 3,
+        "request_timeout_seconds": 30,
+        "retry_attempts": 3,
+        "input_token_budget": 200_000,
+        "output_token_budget": 50_000,
+    },
+    "pricing": {
+        "openrouter_enabled": True,
+        "openrouter_models_url": "https://openrouter.ai/api/v1/models",
+        "openrouter_refresh_seconds": 3600,
+    },
+    "provider": {
+        "qps_limit": 3,
+        "circuit_failure_threshold": 5,
+        "circuit_cooldown": 60,
     },
     "learn": {
         "learnability_threshold": 0.3,
@@ -41,6 +55,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "allow_exact": [],
         "allow_paths": [],
         "suppress_rules": [],
+        "local_hosts": [],
     },
 }
 
@@ -50,6 +65,7 @@ _SECRET_VALUE_PATTERNS = (
     re.compile(r"gh[pousr]_[A-Za-z0-9]{12,}"),
     re.compile(r"github_pat_[A-Za-z0-9_]{20,}"),
 )
+_TOML_BARE_KEY_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 @dataclass(frozen=True)
@@ -83,6 +99,24 @@ class SecurityConfig:
     allow_exact: tuple[str, ...] = ()
     allow_paths: tuple[str, ...] = ()
     suppress_rules: tuple[str, ...] = ()
+    local_hosts: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ModelPriceOverride:
+    input_per_million_usd: float
+    output_per_million_usd: float
+    request_per_call_usd: float | None = None
+
+
+@dataclass(frozen=True)
+class PricingSettings:
+    openrouter_enabled: bool = True
+    openrouter_models_url: str = "https://openrouter.ai/api/v1/models"
+    openrouter_refresh_seconds: int = 3600
+    model_overrides: dict[str, ModelPriceOverride] = field(
+        default_factory=lambda: dict[str, ModelPriceOverride]()
+    )
 
 
 def _is_string_sequence(value: object) -> TypeGuard[list[str] | tuple[str, ...]]:
@@ -179,12 +213,45 @@ _ENV_KEY_MAP = {
     for key in _KNOWN_KEYS
     if not isinstance(_FLAT_DEFAULTS[key], tuple)
 }
+_PROVIDER_DYNAMIC_FIELDS = frozenset(
+    {
+        "provider_class",
+        "model_name",
+        "base_url",
+        "api_key_env",
+        "probed_max_context",
+        "probed_tpm",
+        "probed_rpm",
+        "supports_temperature",
+        "probe_timestamp",
+    }
+)
+_DYNAMIC_PROVIDER_FIELD_DEFAULTS: dict[str, Scalar] = {
+    "provider_class": "",
+    "model_name": "",
+    "base_url": "",
+    "api_key_env": "",
+    "probed_max_context": 0,
+    "probed_tpm": 0,
+    "probed_rpm": 0,
+    "supports_temperature": False,
+    "probe_timestamp": "",
+}
+_MODEL_PRICING_DYNAMIC_FIELDS: dict[str, Scalar] = {
+    "pricing.input_per_million_usd": 0.0,
+    "pricing.output_per_million_usd": 0.0,
+    "pricing.request_per_call_usd": 0.0,
+}
 
 
 def _read_toml(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     return tomllib.loads(path.read_text(encoding="utf-8"))
+
+
+def read_config_data(path: Path) -> dict[str, Any]:
+    return _read_toml(path)
 
 
 def _coerce_string_sequence(key: str, value: Any) -> tuple[str, ...]:
@@ -207,6 +274,16 @@ def _render_scalar(value: Scalar) -> str:
 
 def _render_toml(data: Mapping[str, Any]) -> str:
     lines: list[str] = []
+    _render_toml_mapping(lines, data, table_path=())
+    return "\n".join(lines) + "\n"
+
+
+def _render_toml_mapping(
+    lines: list[str],
+    data: Mapping[str, Any],
+    *,
+    table_path: tuple[str, ...],
+) -> None:
     scalars = {key: value for key, value in data.items() if not isinstance(value, Mapping)}
     tables = {
         key: cast("Mapping[str, Any]", value)
@@ -214,26 +291,46 @@ def _render_toml(data: Mapping[str, Any]) -> str:
         if isinstance(value, Mapping)
     }
 
-    for key, value in scalars.items():
-        lines.append(f"{key} = {_render_scalar(value)}")
-
-    for key, value in tables.items():
+    if table_path:
         if lines:
             lines.append("")
-        lines.append(f"[{key}]")
-        for child_key, child_value in value.items():
-            if isinstance(child_value, Mapping):
-                raise ConfigError("nested tables deeper than one level are not supported yet")
-            lines.append(f"{child_key} = {_render_scalar(child_value)}")
+        rendered_path = ".".join(_render_toml_key(part) for part in table_path)
+        lines.append(f"[{rendered_path}]")
 
-    return "\n".join(lines) + "\n"
+    for key, value in scalars.items():
+        lines.append(f"{_render_toml_key(key)} = {_render_scalar(value)}")
+
+    for key, value in tables.items():
+        _render_toml_mapping(lines, value, table_path=(*table_path, key))
+
+
+def _render_toml_key(key: str) -> str:
+    if _TOML_BARE_KEY_PATTERN.fullmatch(key):
+        return key
+    return json.dumps(key, ensure_ascii=False)
 
 
 def write_default_config(config_path: Path, *, overwrite: bool = False) -> Path:
     config_path.parent.mkdir(parents=True, exist_ok=True)
     if config_path.exists() and not overwrite:
         return config_path
-    config_path.write_text(_render_toml(DEFAULT_CONFIG), encoding="utf-8")
+    return write_config_data(config_path, DEFAULT_CONFIG)
+
+
+def write_config_data(config_path: Path, data: Mapping[str, Any]) -> Path:
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    rendered = _render_toml(data)
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=config_path.parent,
+        prefix=f"{config_path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        handle.write(rendered)
+        temp_path = handle.name
+    Path(temp_path).replace(config_path)
     return config_path
 
 
@@ -263,13 +360,55 @@ def _flatten_config_file(
 ) -> tuple[dict[str, Scalar], dict[str, Scalar], tuple[str, ...]]:
     data = _read_toml(path)
     flattened = _flatten_mapping(data)
-    unknown = tuple(sorted(key for key in flattened if key not in _FLAT_DEFAULTS))
+    unknown = tuple(sorted(key for key in flattened if not _is_supported_key(key)))
     normalized: dict[str, Scalar] = {}
     for key, value in flattened.items():
-        if key not in _FLAT_DEFAULTS:
+        if key in _FLAT_DEFAULTS:
+            normalized[key] = _coerce_value(key, value, _FLAT_DEFAULTS[key])
             continue
-        normalized[key] = _coerce_value(key, value, _FLAT_DEFAULTS[key])
+        dynamic_field = _dynamic_provider_field(key)
+        if dynamic_field is not None:
+            normalized[key] = _coerce_value(
+                key,
+                value,
+                _DYNAMIC_PROVIDER_FIELD_DEFAULTS[dynamic_field],
+            )
+            continue
+        model_pricing_field = _dynamic_model_pricing_field(key)
+        if model_pricing_field is None:
+            continue
+        normalized[key] = _coerce_value(
+            key,
+            value,
+            _MODEL_PRICING_DYNAMIC_FIELDS[model_pricing_field],
+        )
     return flattened, normalized, unknown
+
+
+def _is_supported_key(key: str) -> bool:
+    if key in _FLAT_DEFAULTS:
+        return True
+    return _dynamic_provider_field(key) is not None or _dynamic_model_pricing_field(key) is not None
+
+
+def _dynamic_provider_field(key: str) -> str | None:
+    parts = key.split(".")
+    if len(parts) < 3 or parts[0] != "providers":
+        return None
+    if any(part == "" for part in parts[1:-1]):
+        return None
+    field_name = parts[-1]
+    if field_name not in _PROVIDER_DYNAMIC_FIELDS:
+        return None
+    return field_name
+
+
+def _dynamic_model_pricing_field(key: str) -> str | None:
+    for field_name in _MODEL_PRICING_DYNAMIC_FIELDS:
+        prefix = f"{field_name}."
+        if key.startswith(prefix) and key[len(prefix) :] != "":
+            return field_name
+    return None
 
 
 def _is_sensitive_key(key: str, value: Scalar) -> bool:
@@ -329,7 +468,8 @@ def _load_config_snapshot(
     }
 
     resolved: dict[str, ResolvedSetting] = {}
-    for key in _KNOWN_KEYS:
+    resolved_keys = sorted(set(_KNOWN_KEYS) | set(repo_values) | set(global_values))
+    for key in resolved_keys:
         for layer_name in ("env", "cli", "repo", "global", "default"):
             layer_values = layers[layer_name]
             if key not in layer_values:
@@ -339,7 +479,7 @@ def _load_config_snapshot(
             break
 
     precedence_conflicts: list[ConfigConflict] = []
-    for key in _KNOWN_KEYS:
+    for key in resolved_keys:
         shadowed = [
             _layer_source_label(layer_name, key, repo_path, global_path)
             for layer_name in ("env", "cli", "repo", "global")
@@ -417,6 +557,88 @@ def load_workspace_security_config(workspace_root: Path) -> SecurityConfig:
     return _security_config_from_snapshot(snapshot)
 
 
+def load_workspace_pricing_settings(
+    workspace_root: Path,
+    *,
+    env: Mapping[str, str] | None = None,
+) -> PricingSettings:
+    snapshot = load_workspace_config(workspace_root, env=env)
+    pricing_mapping = cast("Mapping[str, Any]", snapshot.values.get("pricing", {}))
+    repo_payload = read_config_data(snapshot.repo_config_path)
+    global_payload = read_config_data(snapshot.global_config_path)
+
+    global_input = _read_model_pricing_table(
+        global_payload,
+        table_name="input_per_million_usd",
+        source_path=snapshot.global_config_path,
+    )
+    repo_input = _read_model_pricing_table(
+        repo_payload,
+        table_name="input_per_million_usd",
+        source_path=snapshot.repo_config_path,
+    )
+    global_output = _read_model_pricing_table(
+        global_payload,
+        table_name="output_per_million_usd",
+        source_path=snapshot.global_config_path,
+    )
+    repo_output = _read_model_pricing_table(
+        repo_payload,
+        table_name="output_per_million_usd",
+        source_path=snapshot.repo_config_path,
+    )
+    global_request = _read_model_pricing_table(
+        global_payload,
+        table_name="request_per_call_usd",
+        source_path=snapshot.global_config_path,
+    )
+    repo_request = _read_model_pricing_table(
+        repo_payload,
+        table_name="request_per_call_usd",
+        source_path=snapshot.repo_config_path,
+    )
+
+    merged_input = {**global_input, **repo_input}
+    merged_output = {**global_output, **repo_output}
+    merged_request = {**global_request, **repo_request}
+    model_overrides: dict[str, ModelPriceOverride] = {}
+
+    for model_id in sorted(set(merged_input) | set(merged_output) | set(merged_request)):
+        if model_id not in merged_input or model_id not in merged_output:
+            raise ConfigError(
+                "pricing override for "
+                f"{model_id!r} requires both pricing.input_per_million_usd and "
+                "pricing.output_per_million_usd"
+            )
+        model_overrides[model_id] = ModelPriceOverride(
+            input_per_million_usd=merged_input[model_id],
+            output_per_million_usd=merged_output[model_id],
+            request_per_call_usd=merged_request.get(model_id),
+        )
+
+    return PricingSettings(
+        openrouter_enabled=bool(
+            pricing_mapping.get(
+                "openrouter_enabled",
+                DEFAULT_CONFIG["pricing"]["openrouter_enabled"],
+            )
+        ),
+        openrouter_models_url=str(
+            pricing_mapping.get(
+                "openrouter_models_url",
+                DEFAULT_CONFIG["pricing"]["openrouter_models_url"],
+            )
+        ),
+        openrouter_refresh_seconds=int(
+            pricing_mapping.get(
+                "openrouter_refresh_seconds",
+                DEFAULT_CONFIG["pricing"]["openrouter_refresh_seconds"],
+            )
+        ),
+        model_overrides=model_overrides,
+    )
+
+
 def _security_config_from_snapshot(snapshot: ConfigSnapshot) -> SecurityConfig:
     security_mapping = cast("Mapping[str, Any]", snapshot.values.get("security", {}))
     return SecurityConfig(
@@ -429,20 +651,60 @@ def _security_config_from_snapshot(snapshot: ConfigSnapshot) -> SecurityConfig:
         suppress_rules=_coerce_string_sequence(
             "security.suppress_rules", security_mapping.get("suppress_rules")
         ),
+        local_hosts=_coerce_string_sequence(
+            "security.local_hosts", security_mapping.get("local_hosts")
+        ),
     )
+
+
+def _read_model_pricing_table(
+    payload: Mapping[str, Any],
+    *,
+    table_name: str,
+    source_path: Path,
+) -> dict[str, float]:
+    raw_pricing = payload.get("pricing", {})
+    if raw_pricing == {}:
+        return {}
+    if not isinstance(raw_pricing, Mapping):
+        raise ConfigError(f"{source_path}: [pricing] must be a table")
+    pricing = cast("Mapping[str, Any]", raw_pricing)
+    raw_table_value = pricing.get(table_name, {})
+    if raw_table_value == {}:
+        return {}
+    if not isinstance(raw_table_value, Mapping):
+        raise ConfigError(f"{source_path}: [pricing.{table_name}] must be a table")
+    raw_table = cast("Mapping[str, Any]", raw_table_value)
+
+    normalized: dict[str, float] = {}
+    for model_id, value in raw_table.items():
+        normalized[model_id] = cast(
+            "float",
+            _coerce_value(
+                f"pricing.{table_name}.{model_id}",
+                value,
+                0.0,
+            ),
+        )
+    return normalized
 
 
 __all__ = [
     "DEFAULT_CONFIG",
     "ConfigConflict",
     "ConfigSnapshot",
+    "ModelPriceOverride",
+    "PricingSettings",
     "ResolvedSetting",
     "SecurityConfig",
     "iter_resolved_settings",
     "load_config",
+    "read_config_data",
+    "load_workspace_pricing_settings",
     "load_workspace_config",
     "load_security_config",
     "load_workspace_security_config",
     "resolve_effective",
+    "write_config_data",
     "write_default_config",
 ]

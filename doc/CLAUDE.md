@@ -26,9 +26,9 @@
 
 **核心内容**：收口 Stage 0 / Task 0 已冻结的架构契约，作为当前唯一架构权威源。
 
-- **冻结范围**：`RunStatus` / `ClaimStatus` / `CardState` / `RunSource` / `EvaluationBundle` / `result_events` / `ProviderCapabilities` / `UsageEvent` / `LearnabilityGate` / `Orchestrator` / `Serve` / SQLite / 锁矩阵 / Graphify 边界
+- **冻结范围**：`RunStatus` / `ClaimStatus` / `CardState` / `RunSource` / `EvaluationBundle` / `result_events` / `ProviderConfig` / `ProviderCapabilities` / `UsageEvent` / `LearnabilityGate` / `Orchestrator` / `Serve` / SQLite / 锁矩阵 / Graphify 边界
 - **代码对应面**：`src/ahadiff/contracts/*.py`
-- **当前验收**：`python3 -m pytest tests/unit/test_contracts.py`，本次实际结果 `18 passed`
+- **当前验收**：`uv run pytest tests/unit/test_contracts.py -q`，本次实际结果 `19 passed`
 - **适用边界**：当前只冻结 Stage 0 最小 importable contracts，不提前覆盖 Stage 1 之后的运行时实现
 
 ### 2. `ahadiff设计思路.md` -- 早期架构快照（⚠️ ARCHIVED）

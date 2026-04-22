@@ -69,19 +69,19 @@
   - `doc/contract-freeze.md`
 - **补充说明**：Task 0 的最小 Python contract 文件范围以上述 7 个为准。`UsageEvent`、`Allowlist policy`、`ProviderCapabilities`、`LearnabilityGate`、Graphify v0.1 detect/import/sanitize/freshness 等其余契约，统一写入 `doc/contract-freeze.md`，不要求都在 Task 0 展开成独立 `contracts/*.py`
 - **依赖**: 无
-- **当前状态（2026-04-22）**：Task 0 已落地 `doc/contract-freeze.md`、7 个 contract 文件与 `tests/unit/test_contracts.py`；当前实测 `python3 -m pytest tests/unit/test_contracts.py` 为 `18 passed`
+- **当前状态（2026-04-23）**：Task 0 已落地 `doc/contract-freeze.md`、7 个 contract 文件与 `tests/unit/test_contracts.py`；当前实测 `uv run pytest tests/unit/test_contracts.py -q` 为 `19 passed`
 - **实施步骤**:
   1. 冻结 `ClaimStatus` 枚举：`verified | weak | not_proven | contradicted | rejected`（Pydantic Literal）
   2. 冻结 `RunStatus` 枚举：`baseline | keep | discard | crash | targeted_verify | keep_final | phase25_rewrite | non_ratcheted`（non_ratcheted 用于 Level 1/2 非 git 输入，这类 run 无法 ratchet 回滚）。**移除 `rollback`**：当前状态机无任何合法产出路径，避免 orphan enum
   3. 冻结 `RunSource` schema：`source_kind`(git_ref/git_staged/git_unstaged/git_since/patch_file/patch_stdin/file_compare，**细粒度为权威值，diff-input 文档的粗粒度 git/patch/file_compare 降级为 UI 展示分组**) + `source_ref`(统一标识，替代旧的 head_sha) + `capability_level`(1/2/3) + `degraded_flags`(dict，key 枚举：`diff_clipped | binary_only | file_count_exceeded | token_exceeded`)
-  4. 冻结 `EvaluationBundle` 版本化契约：`evaluator.py` + `rubric.py` + `rubric.yaml` + `gates.py` + `deterministic.py` 五个文件的联合 hash 作为 `eval_bundle_version`。**Hash 算法冻结（字节级伪代码）**：��文件相对路径 ASCII 字典序排序后，逐个拼接 `path_utf8_bytes + b"\n" + content_bytes`，文件间用 `b"\n---\n"` 连接，最终对拼接结果做 SHA-256 取 hex 前 12 位。示例：`sha256(b"eval/deterministic.py\n<content>\n---\neval/evaluator.py\n<content>\n---\n...")[:12]`。所有操作在字节层面，不做编码转换。任一文件变更（含空白）均产生新版本号。`rubric_version` 降级为 `eval_bundle_version` 的派生显示字段，VCR cassette 失效由 `eval_bundle_version` 自动驱动
+  4. 冻结 `EvaluationBundle` 版本化契约：`evaluator.py` + `rubric.py` + `rubric.yaml` + `gates.py` + `deterministic.py` 五个文件的联合 hash 作为 `eval_bundle_version`。**文件放置口径冻结**：5 个成员统一位于 `src/ahadiff/eval/` 命名空间下，其中 rubric 文件磁盘路径为 `src/ahadiff/eval/rubric.yaml`，逻辑 hash 标签为 `eval/rubric.yaml`。**Hash 算法冻结（字节级伪代码）**：按逻辑路径 ASCII 字典序排序后，逐个拼接 `path_utf8_bytes + b"\n" + content_bytes`，文件间用 `b"\n---\n"` 连接，最终对拼接结果做 SHA-256 取 hex 前 12 位。示例：`sha256(b"eval/deterministic.py\n<content>\n---\neval/evaluator.py\n<content>\n---\n...")[:12]`。所有操作在字节层面，不做编码转换。任一文件变更（含空白）均产生新版本号。`rubric_version` 降级为 `eval_bundle_version` 的派生显示字段，VCR cassette 失效由 `eval_bundle_version` 自动驱动
   5. 冻结 `EventLog` / `result_events` 物理事件表契约：列集至少包含 `event_id / run_id / event_type / timestamp / source_ref / base_ref / prompt_version / eval_bundle_version / rubric_version / overall / verdict / status / weakest_dim / note_json`。主键为 `event_id`（UUID v7），唯一索引为 `(run_id, event_type, timestamp)`，二级索引 `(source_ref, timestamp DESC)`、`(verdict, status)`、`(weakest_dim, timestamp DESC)`。**注意**：`event_type` 与 `status` 是两个独立字段；`result_events` 是物理事件流，`results.tsv` 只是其导出视图，不要求列集一一同构
   6. 冻结统一字段命名：所有文档使用 `source_ref`（替代旧的 `head_sha`）、`privacy_mode`（snake_case: `strict_local | redacted_remote | explicit_remote`）、`eval_bundle_version`
   7. 定义统一错误类型层级：`InputError | SafetyError | ProviderError | VerificationError | StorageError | MigrationError | DegradedRunWarning`
   8. 定义文件锁规范：使用 `portalocker` 作为文件锁真相源（跨平台）。lockfile `.ahadiff/ahadiff.lock` 中 `{pid}\n{start_time_iso}\n{command}` 仅作诊断元数据，不用于活性检查。提供 `ahadiff unlock --force` 手动清理
-  9. 定义 crash recovery 状态机：stale lock → portalocker 自动释放（进程退出即释放）；orphaned worktree → `ahadiff doctor` 自动清理；migration 部分失败 → 每个 migration 脚本在 `BEGIN EXCLUSIVE ... COMMIT` 事务中执行
+  9. 定义 crash recovery 状态机：stale lock → portalocker 自动释放（进程退出即释放）；orphaned worktree / `.tmp` run 目录 / audit rotation 临时文件 → 当前不并入 `doctor`，单独由 `ahadiff maint clean-orphans` 处理 `.ahadiff/runs/*.tmp` 与 `audit*.jsonl.gz.tmp`；migration 部分失败 → 每个 migration 脚本在 `BEGIN EXCLUSIVE ... COMMIT` 事务中执行
   10. 写入 `doc/contract-freeze.md` 作为所有下游 Task 的权威参考。Task 0 开工前该文件不存在；当前已产出。Task 0 完成后，`contract-freeze.md` 成为唯一架构权威源，其他设计文档（kickoff/stages/diff-input 等）降级为设计过程文档，与 contract-freeze 冲突时以后者为准
-  14. 冻结 **Config 优先级链**：`ENV(AHADIFF_*) → CLI flag → per-repo .ahadiff/config.toml → global_config_dir()/config.toml → defaults`。凭证类：`env secret → per-repo env_var_name → global env_var_name → none`。Serve/request：`cookie → Accept-Language → CLI session → per-repo → global → system → defaults`
+  14. 冻结 **Config 优先级链**：`ENV(AHADIFF_*) → CLI flag → per-repo .ahadiff/config.toml → global_config_dir()/config.toml → defaults`。凭证类：`env secret → per-repo env_var_name → global env_var_name → none`。**说明**：这条 5 层链适用于除 locale 以外的所有常规 config key。locale 是唯一例外，Serve/request 必须走独立链：`cookie → Accept-Language → CLI session → per-repo → global → system → defaults`
   15. 冻结 **数据范围契约**：真相源永远 per-repo（review.sqlite / audit.jsonl / audit.private.jsonl〔strict_local 下本机专用、gitignored、随 audit rotation 一起管理〕/ concepts.jsonl / prompts/ / VCR）；global（`global_config_dir()`，各平台实际路径见 data-scope 文档）只做派生索引/账本/偏好，不参与 ratchet 判定
   16. 预留 **UsageEvent schema**：`event_id / run_id / repo_id / provider_class / model_id / input_tokens / output_tokens / cost_usd / pricing_version / cost_confidence / billing_mode / execution_origin / api_principal_hash / timestamp`（v0.2 实现 global usage.sqlite）
   17. 预留 **Allowlist policy contract**：builtin hard_block（不可禁用）+ soft_detect（可被 allowlist suppress）；v0.1 支持 exact/hash/path-scope，不支持 regex；每 run 存 `allowlist_digest`
@@ -92,14 +92,14 @@
   22. 冻结 `LearnabilityGate` 默认值：`weights={complexity: 0.4, novelty: 0.3, pattern: 0.3}`、`threshold=0.3`。**说明**：这是一组 heuristic defaults，不宣称来自外部科学定标；在 `benchmark --suite local` 积累首批 50 份 pinned diff 后再做经验校准。配置仍允许 `[learn].learnability_threshold` 覆盖
   23. 冻结 **Graphify v0.1 contract**：Graphify 是可选增强，不是主链前置。`ahadiff learn` 自动检测 `graphify-out/graph.json`，存在则导入 repo-level context，不存在则静默降级；`graph.json` 和 Graphify label 视为 untrusted，必须先走 sanitization，再进入 context/viewer；freshness 沿用内部 7 态、对外 4 值投影。CLI surface 冻结到 `--use-graphify` / `--no-graphify` / `ahadiff graph status` / `ahadiff graph refresh` / `ahadiff graph import`
   11. 冻结 `Orchestrator` 接口契约：`OrchestratorCommand` DTO（`learn | improve | verify | serve`）+ `OrchestratorResult` 返回结构 + 三条主链路入口签名（`run_learn()`, `run_improve()`, `run_verify()`）+ **serve 链路区分**：serve 是 pull/读模式（被动响应请求），与其他三条 push/写模式本质不同。`run_serve()` 不返回 `OrchestratorResult`，而是启动 ASGI app 的长驻进程。DTO 中 `command=serve` 时附带 `ServeConfig(port, no_browser, bind_host)` 而非 `RunConfig`。`core/orchestrator.py` 统一编排，`cli.py` 仅做参数解析和输出格式化
-  12. 冻结 `ServeApp` 接口契约：`src/ahadiff/serve/app.py` 的路由注册协议 + write token 鉴权（`X-AhaDiff-Token` header）+ `Host`+`Origin/Referer` 双校验 + `bind=127.0.0.1`（仅回环） + read-only 默认模式。API 端点清单冻结为：`GET /api/auth/token`, `GET /api/locale`, `PUT /api/locale`, `GET /api/runs`, `GET /api/run/:id`, `GET /api/run/:id/lesson`, `GET /api/run/:id/claims`, `GET /api/run/:id/quiz`, `GET /api/run/:id/diff`, `GET /api/concepts`, `GET /api/ratchet/history`, `POST /api/signals/*`。路由鉴权分级：读路由无需 token，写路由必须验 token。**发布可见性冻结**：run-scoped 读接口只暴露已完成二阶段发布的 finalized runs；SQLite `result_events` 仍是评分/ratchet 真相源，但未写出 `finalized.json` 的临时 run 不得对前端可见。**DTO 冻结**：至少定义 `AuthTokenResponse`、`LocaleResponse`、`RunSummary`、`RunDetail`、`RunArtifactEnvelope`、`RatchetHistoryEntry`
+  12. 冻结 `ServeApp` 接口契约：`src/ahadiff/serve/app.py` 的路由注册协议 + write token 鉴权（`X-AhaDiff-Token` header）+ `Host`+`Origin/Referer` 双校验 + `bind=127.0.0.1`（仅回环） + read-only 默认模式。API 端点清单冻结为：`GET /api/auth/token`, `GET /api/locale`, `PUT /api/locale`, `GET /api/runs`, `GET /api/run/:id`, `GET /api/run/:id/lesson`, `GET /api/run/:id/claims`, `GET /api/run/:id/quiz`, `GET /api/run/:id/diff`, `GET /api/concepts`, `GET /api/ratchet/history`, `POST /api/signals/*`。`GET /api/runs` 的最小摘要字段必须包含 `source_kind`、`capability_level`、`degraded_flags`、`status`，并支持可选 `?source_kind=` 过滤，供前端默认排除 non-ratcheted / compare 类 runs 的趋势图混入。路由鉴权分级：读路由无需 token，写路由必须验 token。**发布可见性冻结**：run-scoped 读接口只暴露已完成二阶段发布的 finalized runs；SQLite `result_events` 仍是评分/ratchet 真相源，但未写出 `finalized.json` 的临时 run 不得对前端可见。**DTO 冻结**：至少定义 `AuthTokenResponse`、`LocaleResponse`、`RunSummary`、`RunDetail`、`RunArtifactEnvelope`、`RatchetHistoryEntry`
   13. 冻结**三层写锁矩阵**（解决并发安全）：
       - `repo_write_lock`（`.ahadiff/ahadiff.lock`，portalocker 文件锁，PID/time/cmd 仅诊断）：保护 `runs/` 目录写入、worktree 创建/清理。持有者：`ahadiff learn` / `ahadiff improve`
       - `db_write_lock`（SQLite WAL mode + `busy_timeout=5000`）：保护 `review.sqlite` 写入。持有者：所有写 SQLite 的路径（results/signals/cards/migrations）
       - `serve_write_lock`（Starlette 进程内 `asyncio.Lock`）：保护 serve 模式下并发 POST 请求的序列化。持有者：写路由 handler
       - **获取顺序**（防死锁）：repo_write → db_write → serve_write，永远从外到内
       - **覆盖映射**：`ahadiff learn` 需要 repo_write + db_write；`ahadiff serve POST` 需要 serve_write + db_write；`ahadiff improve` 需要 repo_write + db_write；`ahadiff export-results` 只读不锁
-- **验收标准**: 所有已冻结契约（基础 schema + orchestrator + serve + config_precedence + data_scope + provider + sqlite + lock matrix + learnability gate defaults）的规范文档写入 `doc/contract-freeze.md`，核心 Pydantic schema 可 import，`python3 -m pytest tests/unit/test_contracts.py` 全绿。`UsageEvent` schema 可 import（但 v0.1 不实现写入 global usage.sqlite）
+- **验收标准**: 所有已冻结契约（基础 schema + orchestrator + serve + config_precedence + data_scope + provider + sqlite + lock matrix + learnability gate defaults）的规范文档写入 `doc/contract-freeze.md`，核心 Pydantic schema 可 import，`uv run pytest tests/unit/test_contracts.py -q` 全绿。`UsageEvent` schema 可 import（但 v0.1 不实现写入 global usage.sqlite）
 
 ### Layer 1（并行）— 工程骨架 + 文档修正 + UI 响应式修复
 
@@ -114,7 +114,7 @@
   - `src/ahadiff/core/paths.py`
   - `src/ahadiff/core/ids.py`
   - `src/ahadiff/core/errors.py`
-- **当前状态（2026-04-22）**：Task 1 已落地 `pyproject.toml`、`uv.lock`、`src/ahadiff/{__main__,cli}.py`、`src/ahadiff/core/{__init__,config,paths,ids,errors}.py` 与 `tests/unit/test_stage1_task1.py`。当前实测 `uv run pytest tests/unit/test_stage1_task1.py tests/unit/test_contracts.py` 为 `35 passed`；`uv run ruff check src tests`、`uv run ruff format --check src tests`、`uv run pyright` 与 `uv build --wheel` 全通过；仓库 `.venv` 当前运行时为 Python 3.12.10 / SQLite 3.51.3，`ahadiff doctor` 的 SQLite gate 实测通过
+- **当前状态（2026-04-23）**：Task 1 已落地 `pyproject.toml`、`uv.lock`、`src/ahadiff/{__main__,cli}.py`、`src/ahadiff/core/{__init__,config,paths,ids,errors}.py` 与 `tests/unit/test_stage1_task1.py`。当前实测 `uv run pytest tests/unit/test_stage1_task1.py tests/unit/test_contracts.py -q` 为 `42 passed`；`uv run ruff check src tests`、`uv run pyright` 与 `uv build --wheel` 全通过；仓库 `.venv` 当前运行时为 Python 3.12.10 / SQLite 3.51.3，`ahadiff doctor` 的 SQLite gate 实测通过。当前 CLI 还新增了独立 maintenance 子命令 `ahadiff maint clean-orphans`，专门处理 `.tmp` run 目录与 audit rotation 残留文件
 - **依赖**: 无
 - **实施步骤**:
   1. 创建 `pyproject.toml`（runtime deps 含 `portalocker` + ruff + pyright + pytest 配置）
@@ -124,7 +124,7 @@
   5. 实现 `cli.py`：`app()`, `init_cmd()`, `doctor_cmd()`, `config_show_cmd()`（显示每个值的来源层级）
   6. 实现 `__main__.py`：`python -m ahadiff` 入口
   7. 实现 `paths.py` 路径预检：启动时检测 `.ahadiff/` 是否在 UNC/网络映射盘上，是则 fail-fast 报错；Windows/macOS 再额外做 `NFC + casefold` 路径身份预检与长路径提示（含中文路径），避免 WAL 与 anchor 稳定性受大小写/路径长度影响
-  8. 实现 `doctor_cmd()` config 诊断：报告 precedence 冲突、unknown keys、敏感配置进仓库
+  8. 实现 `doctor_cmd()` config 诊断：报告 precedence 冲突、unknown keys、敏感配置进仓库。**当前 scope 收窄**：Task 1 的 `doctor` 只承担 runtime/path/config/SQLite diagnostics，不把后续 GC/cleanup 维护动作默认并入本 Task 验收
 - **验收标准**: `uv sync && uv run ahadiff init && uv run ahadiff doctor` 可运行；`ahadiff config show --resolved` 正确显示每个值的来源；网络路径检测在 UNC 路径上报错；Windows 长路径/大小写折叠路径可被预警；`python -m ahadiff --version` 可运行；SQLite gate 不满足时 `doctor` 非零退出；`ruff check`、`ruff format --check`、`pyright` 与 wheel build 通过
 
 #### Task 2: 安全层
@@ -137,7 +137,7 @@
   - `src/ahadiff/safety/audit.py`
   - `tests/unit/test_redact.py`
   - `tests/unit/test_injection.py`
-- **当前状态（2026-04-22）**：Task 2 已落地安全层基础实现：`src/ahadiff/safety/{__init__,_types,ignore,redact,injection,gates,audit}.py` 与 `tests/unit/{test_redact,test_injection,test_path_safety,test_allowlist}.py` 已存在。当前实测 `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` 为 `27 passed`；随着 Task 5 / Task 6 落地，`uv run pytest tests/unit` 当前为 `119 passed`；`uv run ruff check src tests`、`uv run ruff format --check src tests`、`uv run pyright` 与 `uv build --wheel` 全通过。当前代码已落地 `.ahadiffignore`、双层 secret scan、branch/tag 走 `redaction_pipeline()`、`allowlist_digest`、`audit.jsonl` / `audit.private.jsonl` 基础 helper，以及 `untrusted_diff` 包裹转义、Unicode/confusable 注入检测和 base64 包装 JWT/DB URL/Slack webhook hard block；全局 `[security]` 配置和 workspace allowlist 也已进入当前运行时链路。provider `base_url` 的 transport boundary 和更完整的 audit event 字段仍待后续 Task 7 接线时补齐。
+- **当前状态（2026-04-23）**：Task 2 已落地安全层基础实现：`src/ahadiff/safety/{__init__,_types,ignore,redact,injection,gates,audit}.py` 与 `tests/unit/{test_redact,test_injection,test_path_safety,test_allowlist}.py` 已存在。当前实测 `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` 为 `29 passed`；当前仓库 `uv run pytest tests/unit -q` 为 `181 passed`；`uv run ruff check src tests`、`uv run pyright` 与 `uv build --wheel` 全通过。当前代码已落地 `.ahadiffignore`、双层 secret scan、branch/tag 走 `redaction_pipeline()`、`allowlist_digest`、`audit.jsonl` / `audit.private.jsonl` 基础 helper，以及 `untrusted_diff` 包裹转义、Unicode/confusable 注入检测和 base64 包装 JWT/DB URL/Slack webhook hard block；全局 `[security]` 配置和 workspace allowlist 也已进入当前运行时链路。随着 Task 7 接线完成，provider `base_url` 的 transport boundary 和更完整的 provider audit event 字段也已进入当前运行时链路。
 - **依赖**: 无
 - **依赖**: Task 0（Schema Freeze Gate — 使用 `error_types.SafetyError`）
 - **实施步骤**:
@@ -198,7 +198,7 @@
   - `src/ahadiff/git/repo.py`
   - `src/ahadiff/git/capture.py`
   - `tests/unit/test_git_capture.py`
-- **当前状态（2026-04-22）**：Task 5 已落地 `src/ahadiff/git/{__init__,repo,capture}.py` 与 `tests/unit/test_git_capture.py`。当前实测 `uv run pytest tests/unit/test_git_capture.py -q` 为 `30 passed`；`uv run pytest tests/unit` 为 `119 passed`；`uv run ahadiff learn --unstaged --include-untracked --dry-run --repo-root /Users/yangjunjie/Desktop/ahadiff`、非 git 目录下的 `uv run python -m ahadiff learn --patch sample.patch --dry-run --repo-root <tmpdir>`、非 git 目录下的 `uv run python -m ahadiff learn --compare old.py new.py --dry-run --repo-root <tmpdir>`、从 non-git workspace 子目录传 `--repo-root <subdir>` 的 `learn --compare ... --dry-run`、`uv run ahadiff graph status --repo-root /Users/yangjunjie/Desktop/ahadiff` 与 non-git `uv run python -m ahadiff unlock --force --repo-root <tmpdir>` 本次都已实测可运行。当前 v0.1 已覆盖 diff capture 输入面与最小 Graphify CLI；Task 6 已落地，Task 7 / Task 8 仍待后续继续。
+- **当前状态（2026-04-23）**：Task 5 已落地 `src/ahadiff/git/{__init__,repo,capture}.py` 与 `tests/unit/test_git_capture.py`。当前实测 `uv run pytest tests/unit/test_git_capture.py -q` 为 `34 passed`；`uv run pytest tests/unit -q` 为 `181 passed`。当前 v0.1 已覆盖 diff capture 输入面与最小 Graphify CLI；Task 6 与 Task 7 已落地，Task 8 仍待后续继续。
 - **依赖**: Task 1 + Task 2
 - **实施步骤**:
   1. 实现 `open_repo()`, `resolve_ref_range()`
@@ -251,7 +251,7 @@
   - `tests/unit/test_hunk_hash.py`
   - `tests/unit/test_line_map.py`
   - `tests/unit/test_symbol_extract.py`
-- **当前状态（2026-04-22）**：Task 6 已落地 `src/ahadiff/git/{parser,path_tokens,line_map,symbols,hunk_hash}.py` 与 `tests/unit/{test_diff_parser,test_hunk_hash,test_line_map,test_symbol_extract}.py`。当前实测 `uv run pytest tests/unit/test_hunk_hash.py tests/unit/test_diff_parser.py tests/unit/test_line_map.py tests/unit/test_symbol_extract.py tests/unit/test_git_capture.py -q` 为 `56 passed`；`uv run pytest tests/unit` 为 `119 passed`；`uv run ruff check src tests`、`uv run ruff format --check src tests`、`uv run pyright` 全通过。当前代码已补齐 `line_map.json` / `symbols.json` 的显式 schema/version、`artifact_set.json`、shared path helper、quoted/octal/c-style path 恢复、rename old/new 双名记录、regex/section_header scope fallback、non-git 子目录根解析、`capture_patch()` 库 API 边界与 hostile input/property-style 回归测试。
+- **当前状态（2026-04-23）**：Task 6 已落地 `src/ahadiff/git/{parser,path_tokens,line_map,symbols,hunk_hash}.py` 与 `tests/unit/{test_diff_parser,test_hunk_hash,test_line_map,test_symbol_extract}.py`。当前实测 `uv run pytest tests/unit/test_hunk_hash.py tests/unit/test_diff_parser.py tests/unit/test_line_map.py tests/unit/test_symbol_extract.py tests/unit/test_git_capture.py -q` 为 `70 passed`；`uv run pytest tests/unit -q` 为 `181 passed`；`uv run ruff check src tests`、`uv run pyright` 全通过。当前代码已补齐 `line_map.json` / `symbols.json` 的显式 schema/version、`artifact_set.json`、shared path helper、quoted/octal/c-style path 恢复、rename old/new 双名记录、non-git 子目录根解析、`capture_patch()` 库 API 边界与 hostile input/property-style 回归测试；同时补上了 malformed hunk body count mismatch 的显式拒绝、mixed binary marker 的 hunk 边界处理，以及 JS/TS regex fallback 的 body-only symbol 命中和轻量 scope qualification。
 - **依赖**: Task 5
 - **实施步骤**:
   1. 实现 unified diff 解析器（iter_hunks, iter_changed_files）
@@ -318,6 +318,7 @@
   - `src/ahadiff/llm/schemas.py`
   - `tests/unit/test_provider.py`
   - `tests/unit/test_probe.py`
+- **当前状态（2026-04-23）**：Task 7 已落地 `src/ahadiff/llm/{__init__,provider,probe,cache,cost,schemas}.py`、8 个 adapter，以及 `tests/unit/{test_provider,test_probe}.py`。当前实测 `uv run pytest tests/unit/test_probe.py tests/unit/test_provider.py -q` 为 `40 passed`；`uv run pytest tests/unit -q` 为 `181 passed`；`uv run ruff check src tests` 与 `uv run pyright` 全通过。当前代码已接通 provider protocol / 工厂、probe 持久化、OpenAI official pricing fallback、strict_local transport boundary、`ahadiff provider test` CLI、本地 loopback 无鉴权 provider 支持，以及 provider audit event 字段。
 - **依赖**: Task 1
 - **实施步骤**:
   1. 定义 `Provider` protocol + `ProviderRequest/Response`
@@ -341,7 +342,7 @@
      - `explicit_remote` 下发送原文（需用户确认）
   10. 实现 **异常处理决策表**（11 场景）：(1) 网络超时→重试 3 次 (2) 速率限制→指数退避 (3) context length exceeded→自动 clip diff 后重试 (4) API key 无效→立即 SafetyError (5) 空响应→标记 crash (6) JSON 解码失败→重试 1 次 (7) provider 不可用→切换 fallback (8) 模型返回拒绝→记录并跳过 (9) 超时+重试耗尽→ProviderError (10) **Windows CTRL_C_EVENT/CTRL_BREAK_EVENT**→捕获 `KeyboardInterrupt`，写入 `status=crash` + `note_json={"interrupted": true}`，清理临时资源后 graceful exit (11) **mid-stream 网络断开**→已消耗 token 写入 UsageEvent，标记 `crash` + 记录 `partial_tokens`
   11. 实现 **audit.jsonl** 记录（数据范围架构新增）：每行含 `schema_version: 1` + `event_id` + `prompt_name` + `prompt_fingerprint` + `request_hash` + `input_tokens` + `output_tokens` + `cost_usd` + `pricing_version` + `cost_confidence` + `billing_mode` + `execution_origin` + `api_principal_hash` + `timestamp`。不存 prompt/response 原文（隐私）
-  12. 实现 **audit rotation**：audit.jsonl > 10MB → rotate 为 `audit.1.jsonl.gz`，保留最近 3 份。**故障恢复语义**：rotation 采用 write-then-rename 原子序列：(1) 先 gzip 写入 `audit.1.jsonl.gz.tmp`；(2) `os.replace()` 原子移动为 `audit.1.jsonl.gz`；(3) 清空原 audit.jsonl（truncate）。中断恢复：`ahadiff doctor` 检测到 `.tmp` 后缀残留文件时自动清理（删除 tmp + 不 truncate 原文件，下次写入时重新触发 rotation）。所有 rotation 在 `repo_write_lock` 内执行
+  12. 实现 **audit rotation**：audit.jsonl > 10MB → rotate 为 `audit.1.jsonl.gz`，保留最近 3 份。**故障恢复语义**：rotation 采用 write-then-rename 原子序列：(1) 先 gzip 写入 `audit.1.jsonl.gz.tmp`；(2) `os.replace()` 原子移动为 `audit.1.jsonl.gz`；(3) 清空原 audit.jsonl（truncate）。中断恢复：`.tmp` 残留不并入 `ahadiff doctor`，当前单独由 `ahadiff maint clean-orphans` 处理；后续再次 rotation 也可覆盖同名 `.tmp` 重试。所有 rotation 在 `repo_write_lock` 内执行
   13. 预留 **UsageEvent schema**（v0.2 实现写入 global usage.sqlite）：字段同 audit 事件 + `repo_id`（repo fingerprint），v0.1 仅定义 Pydantic model 不实现 global 写入
   14. 实现 **BYOK 自动探测**（`src/ahadiff/llm/probe.py`）：
       1. 用户提供 `model_name + base_url + api_key` 后，执行 `ahadiff provider test`

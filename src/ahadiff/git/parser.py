@@ -201,6 +201,8 @@ def _parse_hunks(path: str, change_kind: DiffChangeKind, lines: list[str]) -> li
             index < len(lines)
             and not lines[index].startswith("@@ ")
             and not lines[index].startswith("diff --git ")
+            and not lines[index].startswith("Binary files ")
+            and not lines[index].startswith("GIT binary patch")
         ):
             body.append(lines[index])
             index += 1
@@ -231,6 +233,7 @@ def _build_hunk(
     new_cursor = new_start
     consumed_old = 0
     consumed_new = 0
+    has_truncated_marker = any(line == "[truncated]" for line in body_lines)
     parsed_lines: list[DiffLineRecord] = []
 
     for index, raw_line in enumerate(body_lines):
@@ -260,6 +263,13 @@ def _build_hunk(
             parsed_lines.append(DiffLineRecord("add", content, None, new_cursor))
             new_cursor += 1
             consumed_new += 1
+
+    if not has_truncated_marker and (consumed_old != old_count or consumed_new != new_count):
+        raise InputError(
+            "unified diff hunk body does not match header counts: "
+            f"{header} (expected old={old_count}, new={new_count}; "
+            f"parsed old={consumed_old}, new={consumed_new})"
+        )
 
     return HunkRecord(
         path=path,

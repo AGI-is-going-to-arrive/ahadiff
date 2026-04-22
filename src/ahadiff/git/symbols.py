@@ -66,6 +66,75 @@ _REGEX_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
         "type",
     ),
 )
+_JS_LIKE_TOP_LEVEL_REGEX_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"^\s*(?:export\s+default\s+)?class\s+([A-Za-z_$][A-Za-z0-9_$]*)"),
+        "class",
+    ),
+    (
+        re.compile(
+            r"^\s*(?:export\s+default\s+)?(?:async\s+)?function\s+"
+            r"([A-Za-z_$][A-Za-z0-9_$]*)\s*(?:<[^>{}()]+>)?\s*\("
+        ),
+        "function",
+    ),
+    (
+        re.compile(
+            r"^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*"
+            r"(?:async\s*)?(?:function\b|(?:<[^>{}()]+>\s*)?(?:\([^)]*\)|[A-Za-z_$][A-Za-z0-9_$]*)\s*=>)"
+        ),
+        "function",
+    ),
+    (
+        re.compile(r"^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)"),
+        "const",
+    ),
+    (
+        re.compile(r"^\s*(?:export\s+)?(?:interface|type|enum)\s+([A-Za-z_$][A-Za-z0-9_$]*)"),
+        "type",
+    ),
+)
+_JS_LIKE_METHOD_REGEX_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(
+            r"^\s*(?:(?:public|private|protected|readonly|static|abstract|override|declare|get|set)\s+)*"
+            r"(?:async\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*(?:<[^>{}()]+>)?\s*\("
+        ),
+        "method",
+    ),
+    (
+        re.compile(
+            r"^\s*(?:(?:public|private|protected|readonly|static|abstract|override|declare)\s+)*"
+            r"(?:async\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*"
+            r"(?:async\s*)?(?:function\b|(?:<[^>{}()]+>\s*)?(?:\([^)]*\)|[A-Za-z_$][A-Za-z0-9_$]*)\s*=>)"
+        ),
+        "method",
+    ),
+)
+_JS_LIKE_NON_SYMBOL_NAMES = frozenset(
+    {
+        "catch",
+        "class",
+        "const",
+        "default",
+        "else",
+        "enum",
+        "export",
+        "for",
+        "function",
+        "if",
+        "interface",
+        "let",
+        "return",
+        "switch",
+        "throw",
+        "type",
+        "var",
+        "while",
+    }
+)
+_JS_LIKE_EXTENSIONS = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx")
+_JS_LIKE_STRING_RE = re.compile(r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"|`(?:\\.|[^`\\])*`")
 _SECTION_HEADER_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)"), "function"),
     (re.compile(r"class\s+([A-Za-z_][A-Za-z0-9_]*)"), "class"),
@@ -407,6 +476,38 @@ def _extract_regex_symbols(
             error=error,
         )
 
+    if _is_js_like_path(target_path):
+        return _extract_js_like_regex_symbols(
+            changed_file=changed_file,
+            target_path=target_path,
+            source_lines=source_lines,
+            touched_lines=touched_lines,
+            side=side,
+            include_all=include_all,
+            error=error,
+        )
+
+    return _extract_generic_regex_symbols(
+        changed_file=changed_file,
+        target_path=target_path,
+        source_lines=source_lines,
+        touched_lines=touched_lines,
+        side=side,
+        include_all=include_all,
+        error=error,
+    )
+
+
+def _extract_generic_regex_symbols(
+    *,
+    changed_file: ChangedFileRecord,
+    target_path: str,
+    source_lines: Sequence[str],
+    touched_lines: set[int],
+    side: Literal["old", "new"],
+    include_all: bool,
+    error: str | None,
+) -> list[SymbolRecord]:
     records: list[SymbolRecord] = []
     for line_number, line in enumerate(source_lines, start=1):
         if not include_all and line_number not in touched_lines:
@@ -448,6 +549,49 @@ def _extract_regex_symbols(
                 )
             )
             break
+    return records
+
+
+def _extract_js_like_regex_symbols(
+    *,
+    changed_file: ChangedFileRecord,
+    target_path: str,
+    source_lines: Sequence[str],
+    touched_lines: set[int],
+    side: Literal["old", "new"],
+    include_all: bool,
+    error: str | None,
+) -> list[SymbolRecord]:
+    records: list[SymbolRecord] = []
+    for candidate in _qualify_js_like_regex_candidates(source_lines):
+        symbol_lines = set(range(candidate.line_number, candidate.end_line + 1))
+        overlap = tuple(sorted(symbol_lines & touched_lines))
+        if not include_all and not overlap:
+            continue
+        hunk_ids = _collect_hunk_ids(changed_file.hunks, symbol_lines, side=side)
+        records.append(
+            SymbolRecord(
+                path=target_path,
+                qualified_name=candidate.qualified_name or candidate.name,
+                kind=candidate.kind,
+                range=SymbolRange(candidate.line_number, candidate.end_line),
+                selection_range=SymbolRange(candidate.line_number, candidate.line_number),
+                parent=candidate.parent,
+                touched_lines=(
+                    overlap
+                    if overlap
+                    else tuple(sorted(symbol_lines))
+                    if include_all
+                    else (candidate.line_number,)
+                ),
+                hunk_ids=hunk_ids,
+                hunk_hash=_combine_hunk_hashes(changed_file.hunks, hunk_ids),
+                change_kind=_symbol_change_kind(changed_file),
+                extractor="regex",
+                confidence="medium",
+                error=error,
+            )
+        )
     return records
 
 
@@ -601,6 +745,51 @@ def _qualify_python_regex_candidates(lines: Sequence[str]) -> list[_RegexScopeCa
     return qualified
 
 
+def _qualify_js_like_regex_candidates(lines: Sequence[str]) -> list[_RegexScopeCandidate]:
+    raw_candidates: list[_RegexScopeCandidate] = []
+    for line_number, line in enumerate(lines, start=1):
+        matched = _match_regex_candidate(line, _JS_LIKE_TOP_LEVEL_REGEX_PATTERNS)
+        if matched is None:
+            matched = _match_regex_candidate(line, _JS_LIKE_METHOD_REGEX_PATTERNS)
+        if matched is None:
+            continue
+        name, kind = matched
+        if name in _JS_LIKE_NON_SYMBOL_NAMES:
+            continue
+        raw_candidates.append(
+            _RegexScopeCandidate(
+                name=name,
+                kind=kind,
+                line_number=line_number,
+                end_line=_infer_js_like_end_line(lines, start_line=line_number, kind=kind),
+                indent=_line_indent(line),
+            )
+        )
+
+    qualified: list[_RegexScopeCandidate] = []
+    for candidate in raw_candidates:
+        parent = _enclosing_js_like_scope_name(
+            qualified,
+            line_number=candidate.line_number,
+            end_line=candidate.end_line,
+        )
+        if candidate.kind == "method" and parent is None:
+            continue
+        qualified_name = f"{parent}.{candidate.name}" if parent else candidate.name
+        qualified.append(
+            _RegexScopeCandidate(
+                name=candidate.name,
+                kind=candidate.kind,
+                line_number=candidate.line_number,
+                end_line=candidate.end_line,
+                indent=candidate.indent,
+                parent=parent,
+                qualified_name=qualified_name,
+            )
+        )
+    return qualified
+
+
 def _enclosing_python_scope_name(
     scopes: Sequence[_RegexScopeCandidate],
     *,
@@ -614,6 +803,22 @@ def _enclosing_python_scope_name(
             continue
         if line_number <= scope.end_line:
             return scope.qualified_name
+    return None
+
+
+def _enclosing_js_like_scope_name(
+    scopes: Sequence[_RegexScopeCandidate],
+    *,
+    line_number: int,
+    end_line: int,
+) -> str | None:
+    for scope in reversed(scopes):
+        if scope.kind != "class":
+            continue
+        if scope.line_number >= line_number:
+            continue
+        if end_line <= scope.end_line:
+            return scope.qualified_name or scope.name
     return None
 
 
@@ -814,6 +1019,36 @@ def _infer_regex_end_line(
     return end_line
 
 
+def _infer_js_like_end_line(
+    lines: Sequence[str],
+    *,
+    start_line: int,
+    kind: str,
+) -> int:
+    if kind not in {"class", "function", "method"}:
+        return start_line
+    start_index = start_line - 1
+    depth = 0
+    started = False
+    end_line = start_line
+    for index in range(start_index, len(lines)):
+        sanitized = _sanitize_js_like_structure_line(lines[index])
+        open_count = sanitized.count("{")
+        close_count = sanitized.count("}")
+        if open_count > 0:
+            started = True
+            depth += open_count
+        if started:
+            depth -= close_count
+            end_line = index + 1
+            if depth <= 0:
+                return end_line
+            continue
+        if index == start_index and "=>" in sanitized and "{" not in sanitized:
+            return start_line
+    return end_line if started else start_line
+
+
 def _line_indent(line: str) -> int:
     return len(line) - len(line.lstrip(" "))
 
@@ -822,8 +1057,29 @@ def _is_python_path(path: str) -> bool:
     return path.endswith(".py")
 
 
+def _is_js_like_path(path: str) -> bool:
+    return path.endswith(_JS_LIKE_EXTENSIONS)
+
+
 def _normalize_symbol_name(name: str) -> str:
     return re.sub(r"[\s_\-]+", "", name).casefold()
+
+
+def _match_regex_candidate(
+    line: str,
+    patterns: Sequence[tuple[re.Pattern[str], str]],
+) -> tuple[str, str] | None:
+    for pattern, kind in patterns:
+        match = pattern.search(line)
+        if match is not None:
+            return match.group(1), kind
+    return None
+
+
+def _sanitize_js_like_structure_line(line: str) -> str:
+    without_block_comments = re.sub(r"/\*.*?\*/", "", line)
+    without_line_comments = re.sub(r"//.*", "", without_block_comments)
+    return _JS_LIKE_STRING_RE.sub("", without_line_comments)
 
 
 def serialize_symbols_payload(items: Iterable[SymbolRecord]) -> dict[str, Any]:

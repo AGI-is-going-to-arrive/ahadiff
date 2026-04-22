@@ -17,7 +17,7 @@ def test_build_line_map_uses_casefolded_file_identity_and_hunk_ranges() -> None:
         "diff --git a/src/App.py b/src/App.py\n"
         "--- a/src/App.py\n"
         "+++ b/src/App.py\n"
-        "@@ -3,2 +3,3 @@ def render_card():\n"
+        "@@ -3 +3,2 @@ def render_card():\n"
         "-    return old_value\n"
         "+    card = new_value\n"
         "+    return card\n"
@@ -34,9 +34,9 @@ def test_build_line_map_uses_casefolded_file_identity_and_hunk_ranges() -> None:
 
     hunk = file_map.hunks[0]
     assert hunk.old_start == 3
-    assert hunk.old_end == 4
+    assert hunk.old_end == 3
     assert hunk.new_start == 3
-    assert hunk.new_end == 5
+    assert hunk.new_end == 4
     assert hunk.added_lines == (3, 4)
     assert hunk.deleted_lines == (3,)
 

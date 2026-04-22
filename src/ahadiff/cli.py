@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import os
+import shutil
 import sqlite3
+import sys
 from pathlib import Path
-from typing import Annotated, Any, cast
+from typing import TYPE_CHECKING, Annotated, Any, cast
 
 import typer
 from rich.console import Console
@@ -13,7 +16,9 @@ from . import __version__
 from .core.config import (
     iter_resolved_settings,
     load_config,
+    load_security_config,
     load_workspace_config,
+    load_workspace_security_config,
     write_default_config,
 )
 from .core.errors import AhaDiffError
@@ -34,6 +39,11 @@ from .git.capture import (
     write_input_artifacts,
 )
 from .git.repo import repo_write_lock, unlock_repo_write_lock
+from .llm import probe_provider
+from .llm.provider import transport_target_for_base_url
+
+if TYPE_CHECKING:
+    from .contracts import PrivacyMode
 
 console = Console()
 error_console = Console(stderr=True)
@@ -44,8 +54,12 @@ _APP = typer.Typer(
 )
 _CONFIG_APP = typer.Typer(help="Inspect configuration and precedence.")
 _GRAPH_APP = typer.Typer(help="Inspect Graphify source and imported artifacts.")
+_MAINT_APP = typer.Typer(help="Mutating maintenance tasks kept separate from doctor diagnostics.")
+_PROVIDER_APP = typer.Typer(help="Probe and persist LLM provider capabilities.")
 _APP.add_typer(_CONFIG_APP, name="config")
 _APP.add_typer(_GRAPH_APP, name="graph")
+_APP.add_typer(_MAINT_APP, name="maint")
+_APP.add_typer(_PROVIDER_APP, name="provider")
 _SQLITE_MIN_VERSION = (3, 51, 3)
 _SQLITE_ALLOWED_BACKPORTS = {(3, 50, 7), (3, 44, 6)}
 
@@ -98,6 +112,34 @@ def _handle_cli_error(error: Exception) -> None:
         raise Exit(code=1) from error
     error_console.print(f"[red]Unexpected error:[/red] {error}")
     raise Exit(code=2) from error
+
+
+def _state_dir_and_lock_path(repo_root: Path) -> tuple[Path, Path]:
+    root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+    if has_git_repo:
+        return project_state_dir(root), lock_file_path(root)
+    state_dir = root / ".ahadiff"
+    return state_dir, state_dir / "ahadiff.lock"
+
+
+def _iter_orphan_state_paths(state_dir: Path) -> tuple[Path, ...]:
+    candidates: list[Path] = []
+    runs_dir = state_dir / "runs"
+    if runs_dir.exists():
+        candidates.extend(
+            path
+            for path in runs_dir.iterdir()
+            if path.name.endswith(".tmp") and (path.is_dir() or path.is_file())
+        )
+    candidates.extend(sorted(state_dir.glob("audit*.jsonl.gz.tmp")))
+    return tuple(sorted(candidates))
+
+
+def _remove_state_path(path: Path) -> None:
+    if path.is_dir():
+        shutil.rmtree(path)
+        return
+    path.unlink(missing_ok=True)
 
 
 def _resolve_learn_workspace_root(
@@ -262,6 +304,41 @@ def doctor_cmd(
             raise AhaDiffError(
                 f"SQLite runtime {sqlite3.sqlite_version} does not satisfy the frozen doctor gate"
             )
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+@_MAINT_APP.command("clean-orphans")
+def maint_clean_orphans_cmd(
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or any path inside it."),
+    ] = Path(),
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Report orphaned state artifacts without removing them."),
+    ] = False,
+) -> None:
+    try:
+        state_dir, lock_path = _state_dir_and_lock_path(repo_root)
+        if not state_dir.exists():
+            console.print("[green]State dir[/green]: not initialized; nothing to clean")
+            return
+
+        with repo_write_lock(lock_path, command="maint clean-orphans") as _:
+            orphan_paths = _iter_orphan_state_paths(state_dir)
+            if not orphan_paths:
+                console.print("[green]Clean[/green]: no orphaned state artifacts found")
+                return
+
+            action = "Would remove" if dry_run else "Removed"
+            console.print(
+                f"[yellow]{action}[/yellow] {len(orphan_paths)} orphaned state artifact(s)"
+            )
+            for orphan_path in orphan_paths:
+                console.print(f"  - {orphan_path.relative_to(state_dir.parent)}")
+                if not dry_run:
+                    _remove_state_path(orphan_path)
     except Exception as error:  # pragma: no cover - exercised through CLI tests
         _handle_cli_error(error)
 
@@ -537,6 +614,154 @@ def graph_refresh_cmd(
         _handle_cli_error(error)
 
 
+@_PROVIDER_APP.command("test")
+def provider_test_cmd(
+    name: Annotated[
+        str,
+        typer.Option("--name", help="Provider alias persisted under [providers.<name>]."),
+    ],
+    base_url: Annotated[
+        str,
+        typer.Option("--base-url", help="Provider API base URL."),
+    ],
+    api_key: Annotated[
+        str | None,
+        typer.Option(
+            "--api-key",
+            help="Deprecated: avoid plaintext CLI keys; prefer --api-key-env or hidden prompt.",
+        ),
+    ] = None,
+    model: Annotated[
+        str | None,
+        typer.Option("--model", help="Model name to probe; defaults to llm.generate_model."),
+    ] = None,
+    provider_class: Annotated[
+        str,
+        typer.Option("--provider-class", help="Frozen provider class."),
+    ] = "openai",
+    api_key_env: Annotated[
+        str,
+        typer.Option(
+            "--api-key-env",
+            help="Env var name persisted into config.toml instead of the raw key.",
+        ),
+    ] = "AHADIFF_PROVIDER_API_KEY",
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or workspace root."),
+    ] = Path(),
+    privacy_mode: Annotated[
+        str | None,
+        typer.Option("--privacy-mode", help="Temporary CLI override."),
+    ] = None,
+    ) -> None:
+    try:
+        root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        snapshot = (
+            load_config(root, cli_overrides=_cli_overrides(privacy_mode=privacy_mode))
+            if has_git_repo
+            else load_workspace_config(
+                root,
+                cli_overrides=_cli_overrides(privacy_mode=privacy_mode),
+            )
+        )
+        security_config = (
+            load_security_config(root) if has_git_repo else load_workspace_security_config(root)
+        )
+        llm_config = cast("dict[str, Any]", snapshot.values["llm"])
+        provider_limits = cast("dict[str, Any]", snapshot.values["provider"])
+        resolved_model = model or str(llm_config["generate_model"])
+        resolved_privacy_mode = cast("PrivacyMode", str(snapshot.values["privacy_mode"]))
+        transport_target = transport_target_for_base_url(
+            base_url,
+            local_hosts=security_config.local_hosts,
+        )
+        if (
+            privacy_mode is None
+            and resolved_privacy_mode == "strict_local"
+            and transport_target == "remote"
+        ):
+            # Invoking a remote provider probe is itself an explicit remote action.
+            resolved_privacy_mode = "explicit_remote"
+        if "." in name:
+            raise AhaDiffError("--name must not contain '.' because it becomes a TOML table path")
+        if api_key is not None:
+            raise AhaDiffError(
+                "Passing raw API keys on the command line is not allowed; use --api-key-env "
+                "or interactive hidden input instead"
+            )
+        effective_api_key = os.environ.get(api_key_env)
+        if (
+            effective_api_key is None
+            and provider_class != "ollama"
+            and transport_target == "remote"
+        ):
+            if sys.stdin.isatty():
+                effective_api_key = typer.prompt("Provider API key", hide_input=True)
+            else:
+                raise AhaDiffError(
+                    "--api-key-env must point to a set env var when stdin is non-interactive"
+                )
+
+        report = probe_provider(
+            provider_name=name,
+            provider_class=provider_class,
+            model_name=resolved_model,
+            base_url=base_url,
+            api_key=effective_api_key,
+            api_key_env=api_key_env,
+            workspace_root=root,
+            security_config=security_config,
+            max_concurrent=int(llm_config["max_concurrent"]),
+            qps_limit=int(provider_limits["qps_limit"]),
+            retry_attempts=int(llm_config["retry_attempts"]),
+            request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
+            privacy_mode=resolved_privacy_mode,
+        )
+
+        console.print(f"[green]Provider probe succeeded[/green] for {report.provider_name}")
+        console.print(f"[bold]Transport[/bold]: {report.transport_target}")
+        console.print(f"[bold]Model[/bold]: {report.config.model_name}")
+        console.print(f"[bold]Config path[/bold]: {root / '.ahadiff' / 'config.toml'}")
+        capabilities = Table(title="Provider capabilities")
+        capabilities.add_column("Field", style="cyan")
+        capabilities.add_column("Value", style="magenta")
+        capabilities.add_row("provider_class", report.config.provider_class)
+        capabilities.add_row("supports_stream", str(report.capabilities.supports_stream))
+        capabilities.add_row("supports_json_mode", str(report.capabilities.supports_json_mode))
+        capabilities.add_row("supports_tool_use", str(report.capabilities.supports_tool_use))
+        capabilities.add_row("supports_temperature", str(report.config.supports_temperature))
+        capabilities.add_row(
+            "supports_rate_limit_headers",
+            str(report.capabilities.supports_rate_limit_headers),
+        )
+        capabilities.add_row(
+            "supports_context_probe",
+            str(report.capabilities.supports_context_probe),
+        )
+        capabilities.add_row("tokenizer_estimation", report.capabilities.tokenizer_estimation)
+        capabilities.add_row(
+            "probed_max_context",
+            "unknown"
+            if report.config.probed_max_context is None
+            else str(
+                report.config.probed_max_context,
+            ),
+        )
+        capabilities.add_row("context_window_source", report.context_window_source)
+        capabilities.add_row(
+            "probed_tpm",
+            "unknown" if report.config.probed_tpm is None else str(report.config.probed_tpm),
+        )
+        capabilities.add_row(
+            "probed_rpm",
+            "unknown" if report.config.probed_rpm is None else str(report.config.probed_rpm),
+        )
+        console.print(capabilities)
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
 def main() -> None:
     app()()
 
@@ -551,5 +776,7 @@ __all__ = [
     "init_cmd",
     "learn_cmd",
     "main",
+    "maint_clean_orphans_cmd",
+    "provider_test_cmd",
     "unlock_cmd",
 ]

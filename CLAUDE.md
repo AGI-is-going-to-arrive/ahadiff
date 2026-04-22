@@ -8,11 +8,11 @@
 
 核心差异定位：Code Wiki 解释仓库，知返解释这次改动；而且每句话都能回到代码证据。
 
-**当前阶段**：`Stage 1 / Task 1`、`Stage 1 / Task 2`、`Stage 2 / Task 5` 与 `Stage 2 / Task 6` 已落地。当前仓库已具备 `contract-freeze.md`、最小 contracts skeleton、`pyproject.toml`、可执行 CLI scaffold（`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `python -m ahadiff`）、`src/ahadiff/safety/` 安全层基础实现、`src/ahadiff/git/{__init__,repo,capture,parser,path_tokens,line_map,symbols,hunk_hash}.py`、`ahadiff learn --dry-run`、非 git 目录下可运行且会读取 workspace `.ahadiff/config.toml` 的 `--patch` / `--compare`、从 non-git workspace 子目录传 `--repo-root <subdir>` 也能回到工作区根的 `learn --dry-run`、`ahadiff graph status|import|refresh`、`ahadiff unlock --force`，以及对应的 Stage 0 + Stage 1 + Stage 2 单元测试。provider / evaluator / viewer runtime 仍未实现。
+**当前阶段**：`Stage 1 / Task 1`、`Stage 1 / Task 2`、`Layer 1.5 / Task 7`、`Stage 2 / Task 5` 与 `Stage 2 / Task 6` 已落地。当前仓库已具备 `contract-freeze.md`、最小 contracts skeleton、`pyproject.toml`、可执行 CLI scaffold（`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `ahadiff provider test` / `ahadiff maint clean-orphans` / `python -m ahadiff`）、`src/ahadiff/safety/` 安全层基础实现、`src/ahadiff/llm/{provider,probe,cache,cost}.py` 与 8 个 provider adapter、`src/ahadiff/git/{__init__,repo,capture,parser,path_tokens,line_map,symbols,hunk_hash}.py`、`ahadiff learn --dry-run`、非 git 目录下可运行且会读取 workspace `.ahadiff/config.toml` 的 `--patch` / `--compare`、从 non-git workspace 子目录传 `--repo-root <subdir>` 也能回到工作区根的 `learn --dry-run`、`ahadiff graph status|import|refresh`、`ahadiff unlock --force`，以及对应的 Stage 0 + Stage 1 + Layer 1.5 + Stage 2 单元测试。evaluator / viewer runtime 仍未实现。
 
 ## 架构总览
 
-本仓库当前仍以**设计文档和 HTML 原型**为主，但已补入 Stage 0、Stage 1 / Task 1、Stage 1 / Task 2、Stage 2 / Task 5 和 Stage 2 / Task 6 的后端产物：`doc/contract-freeze.md`、`src/ahadiff/contracts/` 最小 contracts skeleton、`pyproject.toml`、`src/ahadiff/{__main__,cli}.py`、`src/ahadiff/core/{__init__,config,paths,ids,errors}.py`、`src/ahadiff/safety/{__init__,_types,ignore,redact,injection,gates,audit}.py`、`src/ahadiff/git/{__init__,repo,capture,parser,path_tokens,line_map,symbols,hunk_hash}.py`，以及 `tests/unit/{test_contracts,test_stage1_task1,test_redact,test_injection,test_path_safety,test_allowlist,test_git_capture,test_diff_parser,test_hunk_hash,test_line_map,test_symbol_extract}.py`。当前已具备可执行的 CLI scaffold、安全层基础实现、diff capture 输入面和 diff 结构化基础模块；全局 `[security]` 配置、workspace `.ahadiff/config.toml`、non-git 子目录根解析、`line_map.json` / `symbols.json` / `artifact_set.json` 的结构化产物也已接线，但 provider / evaluator / viewer runtime 仍未实现。
+本仓库当前仍以**设计文档和 HTML 原型**为主，但已补入 Stage 0、Stage 1 / Task 1、Stage 1 / Task 2、Layer 1.5 / Task 7、Stage 2 / Task 5 和 Stage 2 / Task 6 的后端产物：`doc/contract-freeze.md`、`src/ahadiff/contracts/` 最小 contracts skeleton、`pyproject.toml`、`src/ahadiff/{__main__,cli}.py`、`src/ahadiff/core/{__init__,config,paths,ids,errors}.py`、`src/ahadiff/safety/{__init__,_types,ignore,redact,injection,gates,audit}.py`、`src/ahadiff/llm/{provider,probe,cache,cost,schemas,adapters}.py`、`src/ahadiff/git/{__init__,repo,capture,parser,path_tokens,line_map,symbols,hunk_hash}.py`，以及 `tests/unit/{test_contracts,test_stage1_task1,test_redact,test_injection,test_path_safety,test_allowlist,test_probe,test_provider,test_git_capture,test_diff_parser,test_hunk_hash,test_line_map,test_symbol_extract}.py`。当前已具备可执行的 CLI scaffold、安全层基础实现、provider probe/runtime、diff capture 输入面和 diff 结构化基础模块；全局 `[security]` 配置、workspace `.ahadiff/config.toml`、non-git 子目录根解析、`line_map.json` / `symbols.json` / `artifact_set.json` 的结构化产物也已接线，但 evaluator / viewer runtime 仍未实现。
 
 ### 计划技术栈
 
@@ -93,7 +93,8 @@ graph TD
 | contracts | `src/ahadiff/contracts/` | Python | Stage 0 最小 contracts skeleton：枚举、DTO、契约 helper、错误类型 |
 | core | `src/ahadiff/core/` | Python | Stage 1 / Task 1 工程骨架：CLI 配置、路径、ID、错误类型 |
 | safety | `src/ahadiff/safety/` | Python | Stage 1 / Task 2 安全层基础实现：ignore / redaction / injection / gates / audit |
-| tests | `tests/unit/` | Python | Stage 0 + Stage 1 单元测试：contracts、CLI/config/paths、安全层边界 |
+| llm | `src/ahadiff/llm/` | Python | Layer 1.5 / Task 7：provider、probe、cache、cost、schemas、adapters |
+| tests | `tests/unit/` | Python | Stage 0 + Stage 1 + Layer 1.5 + Stage 2 单元测试：contracts、CLI/config/paths、安全层、provider、diff capture |
 | ui | `ui/` | HTML/CSS/JS | UI 原型：Warm 风格 v1-v6 迭代版本 |
 | team-plan | `.claude/team-plan/` | Markdown | 团队计划：v0.1 kickoff + 修订方案 + CLI 接入扩展 |
 | 根级原型 | `AhaDiff Warm v6.html` | HTML | 最新 UI 参考模板（相对 `ui/` 目录内 v6 快照继续演进，便于快速预览） |
@@ -124,11 +125,11 @@ uv run ahadiff doctor
 uv run ahadiff config show --resolved
 ```
 
-本次 session 实际结果：`uv run pytest tests/unit` 为 `119 passed`；其中 `uv run pytest tests/unit/test_hunk_hash.py tests/unit/test_diff_parser.py tests/unit/test_line_map.py tests/unit/test_symbol_extract.py tests/unit/test_git_capture.py -q` 为 `56 passed`，Task 2 目标测试 `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` 为 `27 passed`，`uv run pytest tests/unit/test_git_capture.py -q` 为 `30 passed`。`ruff check`、`ruff format --check`、`pyright` 全通过；`uv run ahadiff learn --unstaged --include-untracked --dry-run --repo-root /Users/yangjunjie/Desktop/ahadiff`、非 git 目录下的 `uv run python -m ahadiff learn --patch sample.patch --dry-run --repo-root <tmpdir>`、非 git 目录下的 `uv run python -m ahadiff learn --compare old.py new.py --dry-run --repo-root <tmpdir>`、从 non-git workspace 子目录传 `--repo-root <subdir>` 的 `learn --compare ... --dry-run`、`uv run ahadiff graph status --repo-root /Users/yangjunjie/Desktop/ahadiff` 与 non-git `uv run python -m ahadiff unlock --force --repo-root <tmpdir>` 本次也已实测可运行；非 `--dry-run` 的 `ahadiff learn` 现在会在写入任何 artifact 前直接报错退出。
+本次 session 实际结果：`uv run pytest tests/unit` 为 `181 passed`；`uv run pytest tests/unit/test_stage1_task1.py tests/unit/test_contracts.py -q` 为 `42 passed`，Task 2 目标测试 `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` 为 `29 passed`，`uv run pytest tests/unit/test_probe.py tests/unit/test_provider.py -q` 为 `40 passed`，`uv run pytest tests/unit/test_hunk_hash.py tests/unit/test_diff_parser.py tests/unit/test_line_map.py tests/unit/test_symbol_extract.py tests/unit/test_git_capture.py -q` 为 `70 passed`。`uv run ruff check src tests` 与 `uv run pyright` 全通过。
 
 ### 仓库当前依赖状态
 
-仓库根当前已落地 `pyproject.toml` 与 `uv.lock`，并通过 `uv sync` 建立本地 Python toolchain。当前依赖管理仍只覆盖后端 CLI scaffold；前端 `viewer/` 工程和后续 runtime 依赖尚未引入。
+仓库根当前已落地 `pyproject.toml` 与 `uv.lock`，并通过 `uv sync` 建立本地 Python toolchain。当前依赖管理已覆盖后端 CLI scaffold、provider runtime 与对应测试依赖；前端 `viewer/` 工程和后续 runtime 依赖尚未引入。
 
 ## 测试策略
 
@@ -165,7 +166,7 @@ uv run ahadiff config show --resolved
 - committed docs / 命令示例 / manifest 示例只允许使用占位符、环境变量名或相对表述；不得写入本地 provider endpoint、真实 API key 或带用户名的绝对路径。
 
 ### 关键设计决策（读取文档前必知）
-1. **N-文件契约**（受 autoresearch 三文件启发的变体）：`program.md`（自然语言状态机）+ **evaluation bundle**（`evaluator.py` + `rubric.py` + `rubric.yaml` + `gates.py` + `deterministic.py` 共 5 文件，整体 immutable，任一变更都会生成新的 `eval_bundle_version` 并触发 VCR cassette 失效；`rubric_version` 仅保留为派生显示字段）+ `prompts/*.md`（可变 prompt 集合，improve loop 的唯一可写面）。原版 autoresearch 三文件：`program.md`（约束）+ `prepare.py`（不可改评估基座）+ `train.py`（唯一可改文件）。AhaDiff 核心创新：(1) 可变面从单一 Python 文件扩展为 prompt 目录；(2) agent 只改 Markdown prompt，不改用户代码；(3) immutable 边界从单文件扩展到 evaluation bundle
+1. **N-文件契约**（受 autoresearch 三文件启发的变体）：`program.md`（自然语言状态机）+ **evaluation bundle**（`evaluator.py` + `rubric.py` + `rubric.yaml` + `gates.py` + `deterministic.py` 共 5 文件，统一位于 `src/ahadiff/eval/` 命名空间，整体 immutable，任一变更都会生成新的 `eval_bundle_version` 并触发 VCR cassette 失效；`rubric_version` 仅保留为派生显示字段）+ prompt 集合。**可写 prompt 白名单** 仅限 `lesson_generate.md`、`lesson_hint.md`、`lesson_compact.md`、`quiz_generate.md`、`claim_extract.md`；`prompts/improve_program.md` 是 human-written immutable state machine，不在 improve loop 可写集合内。原版 autoresearch 三文件：`program.md`（约束）+ `prepare.py`（不可改评估基座）+ `train.py`（唯一可改文件）。AhaDiff 核心创新：(1) 可变面从单一 Python 文件扩展为受白名单约束的 prompt 目录；(2) agent 只改 Markdown prompt，不改用户代码；(3) immutable 边界从单文件扩展到 evaluation bundle
 2. **Claim Verifier 是核心护城河**：每句解释必须绑定 file:line 证据，claim 有五种状态（verified / weak / not_proven / contradicted / rejected），其中 rejected 表示 claim 引用了 patch 外的文件或不存在的证据（附 reason_code），与 contradicted（证据直接反驳）语义不同
 3. **棘轮机制**：improve loop 和 Phase 2.5 均在 `git worktree` 临时工作区执行，不触碰用户主分支。改进则 cherry-pick 回主分支，退步则删除 worktree。连续 2 个优化目标在首轮即无增益时触发 Phase 2.5 探索性重写（darwin-skill 原文："连续2个skill都在round1就break"，AhaDiff 沿用此阈值。autoresearch 无此机制）。Phase 2.5 最多触发 1 次/session，防止无限重写循环
 4. **跨模型评估**：生产环境要求生成与评估使用不同模型（生成用 gpt-5.4/Sonnet，评估用 gpt-5.4-mini），防止自评偏差。**开发测试阶段**：为节省成本，生成和评估统一使用 gpt-5.4-mini（1M 上下文），此时跨模型约束暂时放松；`gpt-5.4` 等更大模型和其他候选模型只作为后续对比或生产切换选项，不作为默认开发基线

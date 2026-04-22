@@ -131,15 +131,16 @@ ahadiff/
 ├─ src/ahadiff/contracts/       # Stage 0 minimal contracts skeleton
 ├─ src/ahadiff/core/            # Stage 1 / Task 1 scaffold
 ├─ src/ahadiff/safety/          # Stage 1 / Task 2 safety primitives
+├─ src/ahadiff/llm/             # Layer 1.5 / Task 7 provider + probe
 ├─ src/ahadiff/git/             # Stage 2 / Task 5-6 diff capture + structuring
-├─ tests/unit/                  # Stage 0 + Stage 1 + Stage 2 unit tests
+├─ tests/unit/                  # Stage 0 + Stage 1 + Layer 1.5 + Stage 2 unit tests
 ├─ ui/                          # HTML prototypes v1–v6 (design history)
 └─ CLAUDE.md                    # Project AI context index
 ```
 
 ## Status
 
-**Stage 1 Task 1/2 are landed, and Stage 2 / Task 5-6 are now landed as well.** The repository now contains the contract freeze doc, a minimal importable contracts skeleton, `pyproject.toml`, an executable CLI scaffold (`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `python -m ahadiff`), the safety-layer primitives under `src/ahadiff/safety/`, plus `src/ahadiff/git/{__init__,repo,capture,parser,path_tokens,line_map,symbols,hunk_hash}.py`, `ahadiff learn --dry-run`, non-git `--patch` / `--compare` support that also reads workspace `.ahadiff/config.toml`, `ahadiff graph status|import|refresh`, `ahadiff unlock --force`, `line_map.json` / `symbols.json` / `artifact_set.json`, and the Stage 0 + Stage 1 + Stage 2 unit tests. Provider, evaluator, and viewer runtime work are still pending.
+**Stage 1 Task 1/2, Layer 1.5 / Task 7, and Stage 2 / Task 5-6 are now landed.** The repository now contains the contract freeze doc, a minimal importable contracts skeleton, `pyproject.toml`, an executable CLI scaffold (`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `ahadiff provider test` / `ahadiff maint clean-orphans` / `python -m ahadiff`), the safety-layer primitives under `src/ahadiff/safety/`, `src/ahadiff/llm/{provider,probe,cache,cost}.py` plus eight provider adapters, and `src/ahadiff/git/{__init__,repo,capture,parser,path_tokens,line_map,symbols,hunk_hash}.py`, `ahadiff learn --dry-run`, non-git `--patch` / `--compare` support that also reads workspace `.ahadiff/config.toml`, `ahadiff graph status|import|refresh`, `ahadiff unlock --force`, `line_map.json` / `symbols.json` / `artifact_set.json`, and the Stage 0 + Stage 1 + Layer 1.5 + Stage 2 unit tests. Evaluator and viewer runtime work are still pending.
 
 Current minimal verification:
 
@@ -155,7 +156,7 @@ uv run ahadiff doctor
 uv run ahadiff config show --resolved
 ```
 
-Actual result from this session: `uv run pytest tests/unit` finished with `119 passed`; `uv run pytest tests/unit/test_hunk_hash.py tests/unit/test_diff_parser.py tests/unit/test_line_map.py tests/unit/test_symbol_extract.py tests/unit/test_git_capture.py -q` finished with `56 passed`; `uv run pytest tests/unit/test_git_capture.py -q` finished with `30 passed`; and the focused safety suite `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` finished with `27 passed`. `ruff check`, `ruff format --check`, and `pyright` all passed; `uv run ahadiff learn --unstaged --include-untracked --dry-run --repo-root /Users/yangjunjie/Desktop/ahadiff`, non-git `uv run python -m ahadiff learn --patch sample.patch --dry-run --repo-root <tmpdir>`, non-git `uv run python -m ahadiff learn --compare old.py new.py --dry-run --repo-root <tmpdir>`, `learn --compare ... --dry-run` from a non-git workspace subdirectory via `--repo-root <subdir>`, `uv run ahadiff graph status --repo-root /Users/yangjunjie/Desktop/ahadiff`, and non-git `uv run python -m ahadiff unlock --force --repo-root <tmpdir>` were also rerun successfully in this session; non-`--dry-run` `ahadiff learn` now fails before writing any artifact.
+Actual result from this session: `uv run pytest tests/unit` finished with `181 passed`; `uv run pytest tests/unit/test_stage1_task1.py tests/unit/test_contracts.py -q` finished with `42 passed`; the focused safety suite `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` finished with `29 passed`; `uv run pytest tests/unit/test_probe.py tests/unit/test_provider.py -q` finished with `40 passed`; and `uv run pytest tests/unit/test_hunk_hash.py tests/unit/test_diff_parser.py tests/unit/test_line_map.py tests/unit/test_symbol_extract.py tests/unit/test_git_capture.py -q` finished with `70 passed`. `uv run ruff check src tests` and `uv run pyright` both passed.
 
 Roadmap:
 

@@ -84,6 +84,22 @@ class TestSerialization:
         )
         assert RunSource.model_validate(source.model_dump()) == source
 
+    def test_run_summary_includes_capability_level(self) -> None:
+        from ahadiff.contracts import RunSummary
+
+        summary = RunSummary(
+            run_id="run-1",
+            source_ref="abc1234",
+            source_kind="git_ref",
+            capability_level=3,
+            verdict="PASS",
+            overall=88.5,
+            status="keep",
+            weakest_dim="conciseness",
+            created_at="2026-04-22T00:00:00Z",
+        )
+        assert summary.capability_level == 3
+
     def test_run_source_rejects_unknown_degraded_flag(self) -> None:
         from ahadiff.contracts import RunSource
 
@@ -243,6 +259,7 @@ class TestUtilities:
     def test_eval_bundle_hash_uses_frozen_logical_labels(self, tmp_path: Path) -> None:
         from ahadiff.contracts import EVAL_BUNDLE_FILES, compute_eval_bundle_version
 
+        assert ("eval/rubric.yaml", "src/ahadiff/eval/rubric.yaml") in EVAL_BUNDLE_FILES
         chunks: list[tuple[str, bytes]] = []
         for logical_path, disk_path in reversed(EVAL_BUNDLE_FILES):
             target = tmp_path / disk_path

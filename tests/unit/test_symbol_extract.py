@@ -14,7 +14,7 @@ def test_extract_symbols_prefers_python_ast_over_section_header() -> None:
         "diff --git a/src/app.py b/src/app.py\n"
         "--- a/src/app.py\n"
         "+++ b/src/app.py\n"
-        "@@ -1,2 +1,3 @@ def retry_with_backoff(max_retries=3):\n"
+        "@@ -1 +1,2 @@ def retry_with_backoff(max_retries=3):\n"
         "-    return 1\n"
         "+    result = 1\n"
         "+    return result\n"
@@ -39,7 +39,7 @@ def test_extract_symbols_falls_back_to_regex_when_python_ast_fails() -> None:
         "diff --git a/src/broken.py b/src/broken.py\n"
         "--- a/src/broken.py\n"
         "+++ b/src/broken.py\n"
-        "@@ -1,2 +1,2 @@ def broken(\n"
+        "@@ -1 +1,2 @@ def broken(\n"
         "-def broken(old):\n"
         "+def broken(\n"
         "+    return 1\n"
@@ -61,16 +61,17 @@ def test_extract_symbols_falls_back_to_regex_when_python_ast_fails() -> None:
     assert symbol.range.end == 2
 
 
-def test_extract_symbols_uses_section_header_for_non_python_hint_only_changes() -> None:
+def test_extract_symbols_regex_fallback_finds_export_const_arrow_function_for_body_only_change(
+) -> None:
     patch = (
         "diff --git a/src/widget.ts b/src/widget.ts\n"
         "--- a/src/widget.ts\n"
         "+++ b/src/widget.ts\n"
-        "@@ -2,1 +2,1 @@ function renderCard(props) {\n"
+        "@@ -2 +2 @@\n"
         "-  return oldValue;\n"
         "+  return nextValue;\n"
     )
-    after_text = "function renderCard(props) {\n  return nextValue;\n}\n"
+    after_text = "export const renderCard = () => {\n  return nextValue;\n};\n"
 
     symbols = extract_symbols(
         parse_unified_diff(patch),
@@ -80,8 +81,9 @@ def test_extract_symbols_uses_section_header_for_non_python_hint_only_changes() 
     assert len(symbols) == 1
     symbol = symbols[0]
     assert symbol.qualified_name == "renderCard"
-    assert symbol.extractor == "section_header"
-    assert symbol.confidence == "low"
+    assert symbol.kind == "function"
+    assert symbol.extractor == "regex"
+    assert symbol.confidence == "medium"
 
 
 def test_extract_symbols_handles_deleted_and_renamed_files() -> None:
@@ -153,6 +155,132 @@ def test_extract_symbols_keeps_text_hunks_when_binary_marker_is_mixed() -> None:
 
     assert len(symbols) == 1
     assert symbols[0].qualified_name == "renderDemo"
+
+
+def test_extract_symbols_regex_fallback_finds_function_expression_for_body_only_change() -> None:
+    patch = (
+        "diff --git a/src/helpers.ts b/src/helpers.ts\n"
+        "--- a/src/helpers.ts\n"
+        "+++ b/src/helpers.ts\n"
+        "@@ -2 +2 @@\n"
+        '-  return "old";\n'
+        '+  return "new";\n'
+    )
+    after_text = 'const buildCard = function () {\n  return "new";\n};\n'
+
+    symbols = extract_symbols(
+        parse_unified_diff(patch),
+        after_text_by_path={"src/helpers.ts": after_text},
+    )
+
+    assert len(symbols) == 1
+    assert symbols[0].qualified_name == "buildCard"
+    assert symbols[0].kind == "function"
+    assert symbols[0].extractor == "regex"
+
+
+def test_extract_symbols_regex_fallback_tracks_js_class_and_static_async_method_scope() -> None:
+    patch = (
+        "diff --git a/src/widget.ts b/src/widget.ts\n"
+        "--- a/src/widget.ts\n"
+        "+++ b/src/widget.ts\n"
+        "@@ -3 +3 @@\n"
+        '-    return "old";\n'
+        '+    return "new";\n'
+    )
+    after_text = (
+        "export default class Widget {\n"
+        "  static async renderCard() {\n"
+        '    return "new";\n'
+        "  }\n"
+        "}\n"
+    )
+
+    symbols = extract_symbols(
+        parse_unified_diff(patch),
+        after_text_by_path={"src/widget.ts": after_text},
+    )
+
+    names = {symbol.qualified_name for symbol in symbols}
+    assert "Widget" in names
+    assert "Widget.renderCard" in names
+    render_symbol = next(
+        symbol for symbol in symbols if symbol.qualified_name == "Widget.renderCard"
+    )
+    assert render_symbol.parent == "Widget"
+    assert render_symbol.kind == "method"
+    assert render_symbol.extractor == "regex"
+
+
+def test_extract_symbols_regex_fallback_finds_generic_arrow_function() -> None:
+    patch = (
+        "diff --git a/src/widget.ts b/src/widget.ts\n"
+        "--- a/src/widget.ts\n"
+        "+++ b/src/widget.ts\n"
+        "@@ -2 +2 @@\n"
+        "-  return oldValue;\n"
+        "+  return nextValue;\n"
+    )
+    after_text = "export const renderCard = <T,>(value: T) => {\n  return nextValue;\n};\n"
+
+    symbols = extract_symbols(
+        parse_unified_diff(patch),
+        after_text_by_path={"src/widget.ts": after_text},
+    )
+
+    assert len(symbols) == 1
+    assert symbols[0].qualified_name == "renderCard"
+    assert symbols[0].kind == "function"
+    assert symbols[0].extractor == "regex"
+
+
+def test_extract_symbols_regex_fallback_ignores_object_literal_methods() -> None:
+    patch = (
+        "diff --git a/src/widget.ts b/src/widget.ts\n"
+        "--- a/src/widget.ts\n"
+        "+++ b/src/widget.ts\n"
+        "@@ -3 +3 @@\n"
+        "-    return oldValue;\n"
+        "+    return nextValue;\n"
+    )
+    after_text = "const registry = {\n  renderCard() {\n    return nextValue;\n  },\n};\n"
+
+    assert (
+        extract_symbols(
+            parse_unified_diff(patch),
+            after_text_by_path={"src/widget.ts": after_text},
+        )
+        == ()
+    )
+
+
+def test_extract_symbols_regex_fallback_handles_braces_in_string_and_comment() -> None:
+    patch = (
+        "diff --git a/src/widget.ts b/src/widget.ts\n"
+        "--- a/src/widget.ts\n"
+        "+++ b/src/widget.ts\n"
+        "@@ -4 +4 @@\n"
+        "-    return oldValue;\n"
+        "+    return `value: ${nextValue}`;\n"
+    )
+    after_text = (
+        "export default class Widget {\n"
+        "  renderCard() {\n"
+        '    const template = "}";\n'
+        "    // comment with } brace\n"
+        "    return `value: ${nextValue}`;\n"
+        "  }\n"
+        "}\n"
+    )
+
+    symbols = extract_symbols(
+        parse_unified_diff(patch),
+        after_text_by_path={"src/widget.ts": after_text},
+    )
+
+    names = {symbol.qualified_name for symbol in symbols}
+    assert "Widget" in names
+    assert "Widget.renderCard" in names
 
 
 def test_extract_symbols_merges_same_symbol_across_multiple_hunks() -> None:

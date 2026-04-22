@@ -13,7 +13,7 @@ def test_parse_unified_diff_extracts_changed_files_and_section_header() -> None:
         "index 1111111..2222222 100644\n"
         "--- a/src/app.py\n"
         "+++ b/src/app.py\n"
-        "@@ -10,2 +10,3 @@ def retry_with_backoff(max_retries=3):\n"
+        "@@ -10 +10,2 @@ def retry_with_backoff(max_retries=3):\n"
         "-    return 1\n"
         "+    result = 1\n"
         "+    return result\n"
@@ -178,3 +178,33 @@ def test_parse_unified_diff_rejects_malformed_hunk_header() -> None:
 
     with pytest.raises(InputError, match="invalid unified diff hunk header"):
         parse_unified_diff(patch)
+
+
+def test_parse_unified_diff_rejects_non_truncated_hunk_body_count_mismatch() -> None:
+    patch = (
+        "--- a/demo.py\n"
+        "+++ b/demo.py\n"
+        "@@ -1,1 +1,3 @@\n"
+        "-old = 1\n"
+        "value = 2\n"
+        "extra = 3\n"
+    )
+
+    with pytest.raises(InputError, match="hunk body does not match header counts"):
+        parse_unified_diff(patch)
+
+
+def test_parse_unified_diff_allows_truncated_hunk_body_count_mismatch() -> None:
+    patch = (
+        "--- a/demo.py\n"
+        "+++ b/demo.py\n"
+        "@@ -1,1 +1,3 @@\n"
+        "-old = 1\n"
+        "+value = 2\n"
+        "[truncated]\n"
+    )
+
+    changed_files = parse_unified_diff(patch)
+
+    assert len(changed_files) == 1
+    assert changed_files[0].hunks[0].added_lines == (1,)

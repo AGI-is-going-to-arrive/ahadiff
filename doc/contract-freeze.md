@@ -33,7 +33,7 @@ Stage 0 只冻结“最小可 import + 可序列化”的 contracts 面，不提
 以下内容不允许提前偷跑：
 
 - `pyproject.toml`、CLI 包装、依赖管理：属于 Stage 1 / Task 1
-- `src/ahadiff/eval/*.py`、`evals/rubric.yaml` 的实际实现：属于 Stage 3 / Task 11
+- `src/ahadiff/eval/*.py`、`src/ahadiff/eval/rubric.yaml` 的实际实现：属于 Stage 3 / Task 11
 - SQLite 表结构/migration 落库：属于 Stage 4 / Task 15
 - provider、Graphify、learnability 的运行时实现：属于后续 Stage；Stage 0 只冻结契约
 
@@ -145,7 +145,7 @@ Stage 0 只冻结“最小可 import + 可序列化”的 contracts 面，不提
 - `src/ahadiff/eval/evaluator.py`
 - `src/ahadiff/eval/gates.py`
 - `src/ahadiff/eval/rubric.py`
-- `evals/rubric.yaml`
+- `src/ahadiff/eval/rubric.yaml`
 
 哈希输入使用**逻辑标签**而不是磁盘路径：
 
@@ -155,7 +155,7 @@ EVAL_BUNDLE_FILES = (
     ("eval/evaluator.py", "src/ahadiff/eval/evaluator.py"),
     ("eval/gates.py", "src/ahadiff/eval/gates.py"),
     ("eval/rubric.py", "src/ahadiff/eval/rubric.py"),
-    ("evals/rubric.yaml", "evals/rubric.yaml"),
+    ("eval/rubric.yaml", "src/ahadiff/eval/rubric.yaml"),
 )
 ```
 
@@ -173,8 +173,9 @@ eval_bundle_version = sha256(b"\n---\n".join(chunks)).hexdigest()[:12]
 
 - 在字节层做哈希，不做编码转换
 - 任一文件变更，包括空白，都会产生新的 `eval_bundle_version`
+- `rubric.yaml` 与其余 bundle 文件统一放在 `src/ahadiff/eval/` 下，避免 `eval/` 与 `evals/` 双口径漂移
 - `rubric_version` 仅是派生显示字段，不再参与真相判定或缓存失效
-- `prompts/*.md` 是 improve loop 的唯一可写面，不属于 evaluation bundle
+- `prompts/*.md` 是 improve loop 唯一允许写入的命名空间，但实际可写白名单只包含 `lesson_generate.md`、`lesson_hint.md`、`lesson_compact.md`、`quiz_generate.md`、`claim_extract.md`；`prompts/improve_program.md` 为 human-written immutable state machine，不属于 improve loop 可写面
 
 ### 3.3 ResultEvent / result_events
 
@@ -230,6 +231,7 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 - `fsrs_state` 存的是 opaque Card JSON，序列化字符串必须是合法 JSON object
 - `peeked_this_session` 允许存在于运行时模型，但序列化持久化时不输出
 - `change_kind` 在当前最小合同里只承载 `deleted | renamed | null`
+- `hunk_hash` 算法冻结：只从 hunk header 提取 `section_header`，若非空则在规范化 payload 首行加入 `section:<section_header>`；body 中忽略 `[truncated]` 与 `\ No newline at end of file`，其余行仅去掉行尾 `\r\n`，保留原始 `+/-/ ` 前缀与正文；最终用 `\n` 连接规范化结果，做 SHA-256 并取 hex 前 12 位。因此 LF/CRLF 差异与 hunk 数字范围变化不影响 `hunk_hash`
 
 `ClaimRecord` 最小字段：
 
@@ -374,6 +376,11 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 - `GET /api/ratchet/history`
 - `POST /api/signals/*`
 
+补充冻结：
+
+- `GET /api/runs` 的最小摘要字段必须包含 `source_kind`、`capability_level`、`degraded_flags`、`status`
+- `GET /api/runs` 支持可选 `?source_kind=` 过滤；前端 ratchet/trend 视图默认排除 `status=non_ratcheted` 或非 `git_ref` runs
+
 发布可见性冻结：
 
 - run-scoped 读接口只暴露已完成二阶段发布的 finalized runs
@@ -419,6 +426,11 @@ serve/request 链路的 locale 冻结为：
 统一优先级：
 
 `ENV(AHADIFF_*) -> CLI flag -> per-repo .ahadiff/config.toml -> global_config_dir()/config.toml -> defaults`
+
+说明：
+
+- 上述 5 层链适用于除 locale 以外的常规配置键
+- locale 是唯一例外，必须走 4.4 的 6 层 request/session 链，因此它额外包含 `cookie / Accept-Language / system LANG`
 
 凭证类优先级：
 
@@ -486,11 +498,12 @@ StorageError(f"SQLite {actual} < 3.51.3, WAL mode unsafe")
 - `SQLITE_DBCONFIG_DEFENSIVE=ON`（实现支持时启用）
 - 启动时 `quick_check`
 - 深检查留给 `doctor --deep` 或 migration 前的 `integrity_check + foreign_key_check`
+- 当前冻结的 `doctor` surface 仅包含 runtime/path/config/SQLite diagnostics；GC/cleanup 类维护动作不默认绑定到 `doctor`
 
 ### 5.5 Crash recovery
 
 - stale lock：依赖 `portalocker` 随进程退出自动释放
-- orphaned worktree：`ahadiff doctor` 清理
+- orphaned worktree / `.tmp` run 目录 / audit rotation 临时文件：当前不并入 `doctor`。单独维护命令 `ahadiff maint clean-orphans` 负责清理 `.ahadiff/runs/*.tmp` 与 `audit*.jsonl.gz.tmp`；不承诺处理 VCR、Graphify 或其他任意临时文件
 - migration 部分失败：每个 migration 在 `BEGIN EXCLUSIVE ... COMMIT` 中执行
 
 ### 5.6 Allowlist / untrusted boundary
@@ -559,8 +572,8 @@ Stage 0 通过标准：
 最小验证命令：
 
 ```bash
-PYTHONPATH=src python3 -m pytest tests/unit/test_contracts.py
-PYTHONPATH=src python3 - <<'PY'
+uv run pytest tests/unit/test_contracts.py -q
+uv run python - <<'PY'
 from ahadiff.contracts import *
 print("contracts import ok")
 PY

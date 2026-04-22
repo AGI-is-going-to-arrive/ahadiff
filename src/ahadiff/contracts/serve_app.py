@@ -36,6 +36,7 @@ class RunSummary(BaseModel):
     run_id: str
     source_ref: str
     source_kind: SourceKind
+    capability_level: Literal[1, 2, 3]
     verdict: Verdict
     overall: float
     status: RunStatus
