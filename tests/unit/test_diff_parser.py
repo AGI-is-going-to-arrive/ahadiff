@@ -149,6 +149,14 @@ def test_normalize_diff_path_token_handles_literal_backslash_and_c_style_escapes
     assert normalize_diff_path_token('"a/car\\rriage.py"', prefix="a/") == "car\rriage.py"
 
 
+def test_normalize_diff_path_token_collapses_path_traversal_segments() -> None:
+    assert normalize_diff_path_token("b/src/../safe/demo.py", prefix="b/") == "safe/demo.py"
+    assert normalize_diff_path_token("a/src/../demo.py", prefix="a/") == "demo.py"
+    assert normalize_diff_path_token("../../outside.py") is None
+    assert normalize_diff_path_token("/etc/passwd") is None
+    assert normalize_diff_path_token("../..") is None
+
+
 def test_parse_unified_diff_does_not_split_control_looking_added_lines() -> None:
     patch = (
         "diff --git a/demo.py b/demo.py\n"
@@ -181,30 +189,44 @@ def test_parse_unified_diff_rejects_malformed_hunk_header() -> None:
 
 
 def test_parse_unified_diff_rejects_non_truncated_hunk_body_count_mismatch() -> None:
-    patch = (
-        "--- a/demo.py\n"
-        "+++ b/demo.py\n"
-        "@@ -1,1 +1,3 @@\n"
-        "-old = 1\n"
-        "value = 2\n"
-        "extra = 3\n"
-    )
+    patch = "--- a/demo.py\n+++ b/demo.py\n@@ -1,1 +1,3 @@\n-old = 1\n+value = 2\n+extra = 3\n"
 
     with pytest.raises(InputError, match="hunk body does not match header counts"):
         parse_unified_diff(patch)
 
 
-def test_parse_unified_diff_allows_truncated_hunk_body_count_mismatch() -> None:
+def test_parse_unified_diff_rejects_hunk_lines_missing_prefix() -> None:
     patch = (
-        "--- a/demo.py\n"
-        "+++ b/demo.py\n"
-        "@@ -1,1 +1,3 @@\n"
-        "-old = 1\n"
-        "+value = 2\n"
-        "[truncated]\n"
+        "--- a/demo.py\n+++ b/../safe/demo.py\n@@ -1,2 +1,2 @@\n-old = 1\nshared = 2\n+new = 3\n"
+    )
+
+    with pytest.raises(InputError, match="missing prefix"):
+        parse_unified_diff(patch)
+
+
+def test_parse_unified_diff_scrubs_traversal_only_paths_to_unknown() -> None:
+    patch = (
+        "diff --git a/../../etc/passwd b/../../etc/passwd\n"
+        "--- a/../../etc/passwd\n"
+        "+++ b/../../etc/passwd\n"
+        "@@ -1 +1 @@\n"
+        "-root:x\n"
+        "+root:*:x\n"
     )
 
     changed_files = parse_unified_diff(patch)
 
     assert len(changed_files) == 1
+    assert changed_files[0].old_path is None
+    assert changed_files[0].new_path is None
+    assert changed_files[0].display_path == "__unknown__"
+
+
+def test_parse_unified_diff_allows_truncated_hunk_body_count_mismatch() -> None:
+    patch = "--- a/demo.py\n+++ b/../demo.py\n@@ -1,1 +1,3 @@\n-old = 1\n+value = 2\n[truncated]\n"
+
+    changed_files = parse_unified_diff(patch)
+
+    assert len(changed_files) == 1
+    assert changed_files[0].display_path == "demo.py"
     assert changed_files[0].hunks[0].added_lines == (1,)

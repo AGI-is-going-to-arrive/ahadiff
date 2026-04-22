@@ -73,7 +73,7 @@
 - **实施步骤**:
   1. 冻结 `ClaimStatus` 枚举：`verified | weak | not_proven | contradicted | rejected`（Pydantic Literal）
   2. 冻结 `RunStatus` 枚举：`baseline | keep | discard | crash | targeted_verify | keep_final | phase25_rewrite | non_ratcheted`（non_ratcheted 用于 Level 1/2 非 git 输入，这类 run 无法 ratchet 回滚）。**移除 `rollback`**：当前状态机无任何合法产出路径，避免 orphan enum
-  3. 冻结 `RunSource` schema：`source_kind`(git_ref/git_staged/git_unstaged/git_since/patch_file/patch_stdin/file_compare，**细粒度为权威值，diff-input 文档的粗粒度 git/patch/file_compare 降级为 UI 展示分组**) + `source_ref`(统一标识，替代旧的 head_sha) + `capability_level`(1/2/3) + `degraded_flags`(dict，key 枚举：`diff_clipped | binary_only | file_count_exceeded | token_exceeded`)
+  3. 冻结 `RunSource` schema：`source_kind`(git_ref/git_staged/git_staged_unstaged/git_unstaged/git_since/patch_file/patch_stdin/file_compare，**细粒度为权威值，diff-input 文档的粗粒度 git/patch/file_compare 降级为 UI 展示分组**) + `source_ref`(统一标识，替代旧的 head_sha) + `capability_level`(1/2/3) + `degraded_flags`(dict，key 枚举：`diff_clipped | binary_only | file_count_exceeded | token_exceeded`)
   4. 冻结 `EvaluationBundle` 版本化契约：`evaluator.py` + `rubric.py` + `rubric.yaml` + `gates.py` + `deterministic.py` 五个文件的联合 hash 作为 `eval_bundle_version`。**文件放置口径冻结**：5 个成员统一位于 `src/ahadiff/eval/` 命名空间下，其中 rubric 文件磁盘路径为 `src/ahadiff/eval/rubric.yaml`，逻辑 hash 标签为 `eval/rubric.yaml`。**Hash 算法冻结（字节级伪代码）**：按逻辑路径 ASCII 字典序排序后，逐个拼接 `path_utf8_bytes + b"\n" + content_bytes`，文件间用 `b"\n---\n"` 连接，最终对拼接结果做 SHA-256 取 hex 前 12 位。示例：`sha256(b"eval/deterministic.py\n<content>\n---\neval/evaluator.py\n<content>\n---\n...")[:12]`。所有操作在字节层面，不做编码转换。任一文件变更（含空白）均产生新版本号。`rubric_version` 降级为 `eval_bundle_version` 的派生显示字段，VCR cassette 失效由 `eval_bundle_version` 自动驱动
   5. 冻结 `EventLog` / `result_events` 物理事件表契约：列集至少包含 `event_id / run_id / event_type / timestamp / source_ref / base_ref / prompt_version / eval_bundle_version / rubric_version / overall / verdict / status / weakest_dim / note_json`。主键为 `event_id`（UUID v7），唯一索引为 `(run_id, event_type, timestamp)`，二级索引 `(source_ref, timestamp DESC)`、`(verdict, status)`、`(weakest_dim, timestamp DESC)`。**注意**：`event_type` 与 `status` 是两个独立字段；`result_events` 是物理事件流，`results.tsv` 只是其导出视图，不要求列集一一同构
   6. 冻结统一字段命名：所有文档使用 `source_ref`（替代旧的 `head_sha`）、`privacy_mode`（snake_case: `strict_local | redacted_remote | explicit_remote`）、`eval_bundle_version`
@@ -137,7 +137,7 @@
   - `src/ahadiff/safety/audit.py`
   - `tests/unit/test_redact.py`
   - `tests/unit/test_injection.py`
-- **当前状态（2026-04-23）**：Task 2 已落地安全层基础实现：`src/ahadiff/safety/{__init__,_types,ignore,redact,injection,gates,audit}.py` 与 `tests/unit/{test_redact,test_injection,test_path_safety,test_allowlist}.py` 已存在。当前实测 `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` 为 `29 passed`；当前仓库 `uv run pytest tests/unit -q` 为 `181 passed`；`uv run ruff check src tests`、`uv run pyright` 与 `uv build --wheel` 全通过。当前代码已落地 `.ahadiffignore`、双层 secret scan、branch/tag 走 `redaction_pipeline()`、`allowlist_digest`、`audit.jsonl` / `audit.private.jsonl` 基础 helper，以及 `untrusted_diff` 包裹转义、Unicode/confusable 注入检测和 base64 包装 JWT/DB URL/Slack webhook hard block；全局 `[security]` 配置和 workspace allowlist 也已进入当前运行时链路。随着 Task 7 接线完成，provider `base_url` 的 transport boundary 和更完整的 provider audit event 字段也已进入当前运行时链路。
+- **当前状态（2026-04-23）**：Task 2 已落地安全层基础实现：`src/ahadiff/safety/{__init__,_types,ignore,redact,injection,gates,audit}.py` 与 `tests/unit/{test_redact,test_injection,test_path_safety,test_allowlist}.py` 已存在。当前实测 `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` 为 `35 passed`；当前仓库 `uv run pytest tests/unit -q` 为 `198 passed`；`uv run ruff check src tests`、`uv run pyright` 与 `uv build --wheel` 全通过。当前代码已把 `.ahadiffignore` 接入 capture 主链，补上了跨行 secret / prompt injection 检测、递归 base64 hard block、macOS `/tmp`/`/var` alias 路径收口，以及 `audit.jsonl` / `audit.private.jsonl` 的 rotation 文件锁和多进程回归测试；全局 `[security]` 配置、workspace allowlist 与 provider `base_url` 的 transport boundary 也都已进入当前运行时链路。
 - **依赖**: 无
 - **依赖**: Task 0（Schema Freeze Gate — 使用 `error_types.SafetyError`）
 - **实施步骤**:
@@ -198,7 +198,7 @@
   - `src/ahadiff/git/repo.py`
   - `src/ahadiff/git/capture.py`
   - `tests/unit/test_git_capture.py`
-- **当前状态（2026-04-23）**：Task 5 已落地 `src/ahadiff/git/{__init__,repo,capture}.py` 与 `tests/unit/test_git_capture.py`。当前实测 `uv run pytest tests/unit/test_git_capture.py -q` 为 `34 passed`；`uv run pytest tests/unit -q` 为 `181 passed`。当前 v0.1 已覆盖 diff capture 输入面与最小 Graphify CLI；Task 6 与 Task 7 已落地，Task 8 仍待后续继续。
+- **当前状态（2026-04-23）**：Task 5 已落地 `src/ahadiff/git/{__init__,repo,capture}.py` 与 `tests/unit/test_git_capture.py`。当前实测 `uv run pytest tests/unit/test_git_capture.py -q` 为 `37 passed`；`uv run pytest tests/unit -q` 为 `198 passed`。当前代码已把 `.ahadiffignore` 真正接入 git capture 主链，`--staged --unstaged` 现在使用明确的 `git_staged_unstaged` source_kind，git-sourced patch 读取会执行 `max_patch_bytes` 字节上限保护，并继续覆盖 non-git workspace、Graphify CLI、`unlock --force` 等输入面。Task 6 与 Task 7 已落地，Task 8 仍待后续继续。
 - **依赖**: Task 1 + Task 2
 - **实施步骤**:
   1. 实现 `open_repo()`, `resolve_ref_range()`
@@ -206,7 +206,7 @@
      - ref range: `HEAD~1..HEAD` 或 `abc123..def456`（核心路径）
      - `--last`: 语法糖，先检查 HEAD 父提交数：0 父用 `git diff-tree --root`，多父用 `--first-parent` 语义
      - `--staged`: 调用 `git diff --cached --no-ext-diff`（暂存区未 commit 的改动）
-     - `--unstaged`: 调用 `git diff --no-ext-diff`（工作区未暂存改动，AI coding 后最常用场景）。source_kind=`git_unstaged`。**Corner cases**：(1) 同时有 staged 和 unstaged 时，`--unstaged` 只捕获未暂存部分；(2) `--staged --unstaged` 组合时执行 `git diff HEAD --no-ext-diff`（单一基准状态，不拼接两份 patch），metadata 记录 `combined_mode=true`；(3) untracked 新文件默认不含，`--include-untracked` 选项可纳入（通过 `git ls-files --others --exclude-standard` 列出后当作全新增 diff）；(4) bare repo → InputError；(5) detached HEAD → 正常工作，metadata 记录 `head_detached=true`；(6) merge 冲突 → InputError
+     - `--unstaged`: 调用 `git diff --no-ext-diff`（工作区未暂存改动，AI coding 后最常用场景）。source_kind=`git_unstaged`。**Corner cases**：(1) 同时有 staged 和 unstaged 时，`--unstaged` 只捕获未暂存部分；(2) `--staged --unstaged` 组合时执行 `git diff HEAD --no-ext-diff`（单一基准状态，不拼接两份 patch），source_kind=`git_staged_unstaged`，metadata 记录 `combined_mode=true`；(3) untracked 新文件默认不含，`--include-untracked` 选项可纳入（通过 `git ls-files --others --exclude-standard` 列出后当作全新增 diff）；(4) bare repo → InputError；(5) detached HEAD → 正常工作，metadata 记录 `head_detached=true`；(6) merge 冲突 → InputError
      - `--since "2h ago"`: 用 `git rev-list --first-parent --since` 获取命中 commit 列表，取最早命中 commit 的父节点作为 base、HEAD 作为 target，执行 `git diff base..HEAD`（连续 ancestry 窗口 diff，不拼接多份 patch）。**Corner cases**：(1) `--author` 过滤后若命中 commit 不连续（中间有他人 commit），仍使用整个窗口（包含他人 commit），避免 patch 语义断裂；(2) 无命中 commit → InputError "该时间范围内无 commit"；(3) 仅命中 1 个 commit → 等价于单 commit 模式；(4) metadata 记录 `matched_commits[]` 和 `window_base`/`window_head`
      - `git show <sha>`: 单 commit 学习，调用 `git diff-tree -p <sha>`。source_kind=`git_ref`（复用，source_ref 设为该 sha）。**Corner cases**：merge commit 默认用 `--first-parent`；初始 commit（无父）用 `git diff-tree --root`；sha 不存在时 InputError
   3. 实现 `write_input_artifacts()` 生成 `metadata.json`，包含 `capability_flags`：`has_repo_context / has_symbol_index / has_cross_file_context / has_source_ref / has_graph`（Level 3 全 true，Level 2/1 按实际降级）
@@ -251,7 +251,7 @@
   - `tests/unit/test_hunk_hash.py`
   - `tests/unit/test_line_map.py`
   - `tests/unit/test_symbol_extract.py`
-- **当前状态（2026-04-23）**：Task 6 已落地 `src/ahadiff/git/{parser,path_tokens,line_map,symbols,hunk_hash}.py` 与 `tests/unit/{test_diff_parser,test_hunk_hash,test_line_map,test_symbol_extract}.py`。当前实测 `uv run pytest tests/unit/test_hunk_hash.py tests/unit/test_diff_parser.py tests/unit/test_line_map.py tests/unit/test_symbol_extract.py tests/unit/test_git_capture.py -q` 为 `70 passed`；`uv run pytest tests/unit -q` 为 `181 passed`；`uv run ruff check src tests`、`uv run pyright` 全通过。当前代码已补齐 `line_map.json` / `symbols.json` 的显式 schema/version、`artifact_set.json`、shared path helper、quoted/octal/c-style path 恢复、rename old/new 双名记录、non-git 子目录根解析、`capture_patch()` 库 API 边界与 hostile input/property-style 回归测试；同时补上了 malformed hunk body count mismatch 的显式拒绝、mixed binary marker 的 hunk 边界处理，以及 JS/TS regex fallback 的 body-only symbol 命中和轻量 scope qualification。
+- **当前状态（2026-04-23）**：Task 6 已落地 `src/ahadiff/git/{parser,path_tokens,line_map,symbols,hunk_hash}.py` 与 `tests/unit/{test_diff_parser,test_hunk_hash,test_line_map,test_symbol_extract}.py`。当前实测 `uv run pytest tests/unit/test_hunk_hash.py tests/unit/test_diff_parser.py tests/unit/test_line_map.py tests/unit/test_symbol_extract.py tests/unit/test_git_capture.py -q` 为 `78 passed`；`uv run pytest tests/unit -q` 为 `198 passed`；`uv run ruff check src tests`、`uv run pyright` 全通过。当前代码已补齐 `line_map.json` / `symbols.json` 的显式 schema/version、`artifact_set.json`、shared path helper、quoted/octal/c-style path 恢复、rename old/new 双名记录、non-git 子目录根解析、`capture_patch()` 库 API 边界与 hostile input/property-style 回归测试；本轮又补上了缺前缀 hunk 的 fail-fast、路径穿越 header 到 `__unknown__` 的清洗，以及 JS/TS 多行块注释中的 brace 不再干扰 regex fallback scope。
 - **依赖**: Task 5
 - **实施步骤**:
   1. 实现 unified diff 解析器（iter_hunks, iter_changed_files）
@@ -318,7 +318,7 @@
   - `src/ahadiff/llm/schemas.py`
   - `tests/unit/test_provider.py`
   - `tests/unit/test_probe.py`
-- **当前状态（2026-04-23）**：Task 7 已落地 `src/ahadiff/llm/{__init__,provider,probe,cache,cost,schemas}.py`、8 个 adapter，以及 `tests/unit/{test_provider,test_probe}.py`。当前实测 `uv run pytest tests/unit/test_probe.py tests/unit/test_provider.py -q` 为 `40 passed`；`uv run pytest tests/unit -q` 为 `181 passed`；`uv run ruff check src tests` 与 `uv run pyright` 全通过。当前代码已接通 provider protocol / 工厂、probe 持久化、OpenAI official pricing fallback、strict_local transport boundary、`ahadiff provider test` CLI、本地 loopback 无鉴权 provider 支持，以及 provider audit event 字段。
+- **当前状态（2026-04-23）**：Task 7 已落地 `src/ahadiff/llm/{__init__,provider,probe,cache,cost,schemas}.py`、8 个 adapter，以及 `tests/unit/{test_provider,test_probe}.py`。当前实测 `uv run pytest tests/unit/test_probe.py tests/unit/test_provider.py -q` 为 `43 passed`；`uv run pytest tests/unit -q` 为 `198 passed`；`uv run ruff check src tests` 与 `uv run pyright` 全通过。当前代码已接通 provider protocol / 工厂、probe 持久化、OpenAI official pricing fallback、strict_local transport boundary、`ahadiff provider test` CLI、本地 loopback 无鉴权 provider 支持，以及 provider audit event 字段；本轮又补上了 provider slot shrink 并发收口、负 usage 归零、`probed_max_context=0` 的 fallback，以及 `openai_responses` 解析中的变量遮蔽清理。另已实测本地 loopback provider：`AHADIFF_PROVIDER_API_KEY=... ahadiff provider test --name local-probe --base-url "$AHADIFF_PROVIDER_BASE_URL" --model gpt-5.4-mini` 成功，随后真实 `generate()` 调用也已跑通。
 - **依赖**: Task 1
 - **实施步骤**:
   1. 定义 `Provider` protocol + `ProviderRequest/Response`
@@ -375,7 +375,7 @@
 - **验收标准**:
   - `pytest tests/unit/test_provider.py` 覆盖 8 种 adapter mock + ProviderCapabilities 声明验证
   - `pytest tests/unit/test_probe.py` 覆盖连通性/temperature/TPM/RPM/context_length 探测
-  - `ahadiff provider test --name my-gpt --base-url "$AHADIFF_PROVIDER_BASE_URL" --api-key "$AHADIFF_PROVIDER_API_KEY"` 输出探测报告 + capabilities 矩阵
+  - `AHADIFF_PROVIDER_API_KEY=... ahadiff provider test --name my-gpt --base-url "$AHADIFF_PROVIDER_BASE_URL" --model gpt-5.4-mini` 输出探测报告 + capabilities 矩阵；`base_url` 传 API 根地址，不要带 `/v1/chat/completions`
   - strict_local 模式下拒绝非 loopback base_url（不仅检查 provider class）
   - 上下文超限时自动 clip 并设置 degraded_flags
   - 429 响应触发 backoff，不崩溃；并发超限时排队

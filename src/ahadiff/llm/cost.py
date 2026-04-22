@@ -132,7 +132,7 @@ def clip_text_to_context_limit(
 
 
 def resolve_context_window(model_name: str, probed_max_context: int | None) -> int:
-    if probed_max_context is not None:
+    if probed_max_context is not None and probed_max_context > 0:
         return probed_max_context
     return _DEV_CONTEXT_WINDOWS.get(model_name, DEFAULT_CONTEXT_WINDOW)
 

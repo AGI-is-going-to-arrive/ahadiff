@@ -76,6 +76,7 @@ _INJECTION_RULES: tuple[_InjectionRule, ...] = (
 )
 _UNTRUSTED_WRAPPER_TAG = re.compile(r"(?i)</?untrusted_diff>")
 _COMBINING_MARK_RE = re.compile(r"[\u0300-\u036f]")
+_MULTILINE_DETECTION_WINDOW = 3
 _CONFUSABLE_TRANSLATION = str.maketrans(
     {
         "а": "a",
@@ -132,10 +133,23 @@ def protect_untrusted_text(
     source_kind: SourceKind = "raw_patch",
 ) -> InjectionReport:
     normalized_text = normalize_untrusted_text(text)
+    raw_lines = normalized_text.splitlines()
+    line_rules: dict[int, _InjectionRule] = {}
+    for line_number, raw_line in enumerate(raw_lines, start=1):
+        rule = _matching_rule(raw_line)
+        if rule is not None:
+            line_rules[line_number] = rule
+
+    for line_number, rule in _iter_multiline_rule_matches(
+        raw_lines,
+        blocked_lines=frozenset(line_rules),
+    ):
+        line_rules.setdefault(line_number, rule)
+
     findings: list[InjectionFinding] = []
     protected_lines: list[str] = []
-    for line_number, raw_line in enumerate(normalized_text.splitlines(), start=1):
-        rule = _matching_rule(raw_line)
+    for line_number, raw_line in enumerate(raw_lines, start=1):
+        rule = line_rules.get(line_number)
         if rule is None:
             protected_lines.append(raw_line)
             continue
@@ -200,6 +214,32 @@ def _matching_rule(line: str) -> _InjectionRule | None:
         if rule.pattern.search(detection_line):
             return rule
     return None
+
+
+def _iter_multiline_rule_matches(
+    raw_lines: list[str], *, blocked_lines: frozenset[int]
+) -> tuple[tuple[int, _InjectionRule], ...]:
+    matches: list[tuple[int, _InjectionRule]] = []
+    total_lines = len(raw_lines)
+    for start in range(total_lines):
+        for window_size in range(2, _MULTILINE_DETECTION_WINDOW + 1):
+            end = start + window_size
+            if end > total_lines:
+                break
+            line_numbers = range(start + 1, end + 1)
+            if any(line_number in blocked_lines for line_number in line_numbers):
+                continue
+            contributing_lines = [
+                line_number for line_number in line_numbers if raw_lines[line_number - 1].strip()
+            ]
+            if len(contributing_lines) < 2:
+                continue
+            combined = " ".join(raw_lines[line_number - 1] for line_number in contributing_lines)
+            rule = _matching_rule(combined)
+            if rule is None:
+                continue
+            matches.extend((line_number, rule) for line_number in contributing_lines)
+    return tuple(matches)
 
 
 __all__ = [

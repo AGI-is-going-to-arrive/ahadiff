@@ -176,6 +176,20 @@ _UUID_TOKEN = re.compile(
 )
 _HEX_HASH = re.compile(r"^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64}|[0-9a-fA-F]{128})$")
 _SOURCE_MAP_FRAGMENT = re.compile(r"^(?:AAAA|CAAC|EAAE|GAAG|IAAI|OAAO|QAAQ|SAAS|UAAU|YAAA){2,}$")
+_MULTILINE_COMPACT_RULE_IDS = frozenset(
+    {
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "AWS_ACCESS_KEY",
+        "JWT_TOKEN",
+        "DATABASE_URL",
+        "GITHUB_TOKEN",
+        "SLACK_WEBHOOK",
+    }
+)
+_SECRET_BRIDGE_CHARS = frozenset(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_:/+-=.@"
+)
 
 
 def redaction_pipeline(
@@ -295,6 +309,46 @@ def scan_target_for_secrets(
             )
         )
 
+    for rule, start, end, raw_value in _iter_multiline_compact_secret_matches(normalized_text):
+        if _overlaps(occupied, start, end):
+            continue
+        occupied.append((start, end))
+        findings.append(
+            _make_finding(
+                rule_id=rule.rule_id,
+                secret_type=rule.secret_type,
+                severity=rule.severity,
+                blocked_remote=rule.blocked_remote,
+                raw_value=raw_value,
+                start=start,
+                end=end,
+                target=target,
+                text=normalized_text,
+                policy=policy,
+            )
+        )
+
+    for start, end, raw_value in _iter_multiline_compact_base64_wrapped_secret_matches(
+        normalized_text
+    ):
+        if _overlaps(occupied, start, end):
+            continue
+        occupied.append((start, end))
+        findings.append(
+            _make_finding(
+                rule_id="BASE64_WRAPPED_SECRET",
+                secret_type="base64_wrapped_secret",
+                severity="hard_block",
+                blocked_remote=True,
+                raw_value=raw_value,
+                start=start,
+                end=end,
+                target=target,
+                text=normalized_text,
+                policy=policy,
+            )
+        )
+
     for start, end, raw_value in _iter_high_entropy_matches(normalized_text):
         if _overlaps(occupied, start, end):
             continue
@@ -322,7 +376,11 @@ def apply_redactions(text: str, findings: tuple[SecretFinding, ...]) -> str:
     output = unicodedata.normalize("NFC", text)
     active_findings = [finding for finding in findings if not finding.allowlisted]
     for finding in sorted(active_findings, key=lambda item: item.start, reverse=True):
-        output = output[: finding.start] + finding.replacement + output[finding.end :]
+        replacement = _replacement_for_span(
+            output[finding.start : finding.end],
+            finding.replacement,
+        )
+        output = output[: finding.start] + replacement + output[finding.end :]
     return output
 
 
@@ -372,6 +430,46 @@ def _make_finding(
 
 
 def _iter_base64_wrapped_secret_matches(text: str) -> tuple[tuple[int, int, str], ...]:
+    return _iter_base64_wrapped_secret_matches_in_view(text)
+
+
+def _iter_multiline_compact_secret_matches(
+    text: str,
+) -> tuple[tuple[_SecretRule, int, int, str], ...]:
+    compact_text, positions = _build_multiline_compact_view(text)
+    if compact_text == text:
+        return ()
+
+    matches: list[tuple[_SecretRule, int, int, str]] = []
+    for rule in _SECRET_RULES:
+        if rule.rule_id not in _MULTILINE_COMPACT_RULE_IDS:
+            continue
+        for match in rule.pattern.finditer(compact_text):
+            start, end = _map_compact_span_to_source(positions, *match.span())
+            if end - start == len(match.group(0)):
+                continue
+            matches.append((rule, start, end, match.group(0)))
+    return tuple(matches)
+
+
+def _iter_multiline_compact_base64_wrapped_secret_matches(
+    text: str,
+) -> tuple[tuple[int, int, str], ...]:
+    compact_text, positions = _build_multiline_compact_view(text)
+    if compact_text == text:
+        return ()
+    return tuple(
+        match
+        for match in _iter_base64_wrapped_secret_matches_in_view(compact_text, positions=positions)
+        if match[1] - match[0] != len(match[2])
+    )
+
+
+def _iter_base64_wrapped_secret_matches_in_view(
+    text: str,
+    *,
+    positions: tuple[int, ...] | None = None,
+) -> tuple[tuple[int, int, str], ...]:
     matches: list[tuple[int, int, str]] = []
     for match in _BASE64_WRAPPED_SECRET.finditer(text):
         raw_value = match.group("value")
@@ -380,7 +478,7 @@ def _iter_base64_wrapped_secret_matches(text: str) -> tuple[tuple[int, int, str]
             continue
         if not _decoded_payload_matches_hard_block_rule(decoded):
             continue
-        start, end = match.span("value")
+        start, end = _map_view_span_to_source(match.span("value"), positions)
         matches.append((start, end, raw_value))
     return tuple(matches)
 
@@ -398,11 +496,20 @@ def _iter_high_entropy_matches(text: str) -> tuple[tuple[int, int, str], ...]:
     return tuple(matches)
 
 
-def _decoded_payload_matches_hard_block_rule(payload: str) -> bool:
-    normalized_payload = unicodedata.normalize("NFC", payload)
-    return any(
-        rule.blocked_remote and rule.pattern.search(normalized_payload) for rule in _SECRET_RULES
-    )
+def _decoded_payload_matches_hard_block_rule(payload: str, *, max_depth: int = 3) -> bool:
+    candidate = unicodedata.normalize("NFC", payload)
+    seen: set[str] = set()
+    for _ in range(max_depth):
+        if candidate in seen:
+            return False
+        seen.add(candidate)
+        if any(rule.blocked_remote and rule.pattern.search(candidate) for rule in _SECRET_RULES):
+            return True
+        decoded = _decode_base64(candidate)
+        if decoded is None:
+            return False
+        candidate = unicodedata.normalize("NFC", decoded)
+    return False
 
 
 def _decode_base64(value: str) -> str | None:
@@ -452,6 +559,59 @@ def _line_and_column(text: str, offset: int) -> tuple[int, int]:
     last_newline = text.rfind("\n", 0, offset)
     column = offset + 1 if last_newline < 0 else offset - last_newline
     return line, column
+
+
+def _build_multiline_compact_view(text: str) -> tuple[str, tuple[int, ...]]:
+    compact_chars: list[str] = []
+    positions: list[int] = []
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if char.isspace():
+            next_index = index
+            saw_line_break = False
+            while next_index < len(text) and text[next_index].isspace():
+                saw_line_break = saw_line_break or text[next_index] in "\r\n"
+                next_index += 1
+            previous_char = compact_chars[-1] if compact_chars else None
+            next_char = text[next_index] if next_index < len(text) else None
+            if (
+                saw_line_break
+                and previous_char is not None
+                and next_char is not None
+                and previous_char in _SECRET_BRIDGE_CHARS
+                and next_char in _SECRET_BRIDGE_CHARS
+            ):
+                index = next_index
+                continue
+        compact_chars.append(char)
+        positions.append(index)
+        index += 1
+    return "".join(compact_chars), tuple(positions)
+
+
+def _map_compact_span_to_source(
+    positions: tuple[int, ...], start: int, end: int
+) -> tuple[int, int]:
+    if end <= start:
+        return start, end
+    return positions[start], positions[end - 1] + 1
+
+
+def _map_view_span_to_source(
+    span: tuple[int, int], positions: tuple[int, ...] | None
+) -> tuple[int, int]:
+    start, end = span
+    if positions is None:
+        return start, end
+    return _map_compact_span_to_source(positions, start, end)
+
+
+def _replacement_for_span(span_text: str, replacement: str) -> str:
+    preserved_breaks = "".join(char for char in span_text if char in "\r\n")
+    if not preserved_breaks:
+        return replacement
+    return f"{replacement}{preserved_breaks}"
 
 
 __all__ = [

@@ -134,22 +134,26 @@ def resolve_safe_path_from_root(root: Path, candidate: str | Path) -> Path:
 
 
 def _reject_symlink_or_special_path(root: Path, candidate: Path) -> None:
-    for current in (candidate, *candidate.parents):
-        if current == current.parent:
-            break
+    path_chain = [candidate, *candidate.parents]
+    repo_anchor_index = next(
+        (
+            index
+            for index, current in enumerate(path_chain)
+            if current.resolve(strict=False) == root
+        ),
+        None,
+    )
+    if repo_anchor_index is None:
+        raise SafetyError(f"symlink paths are not allowed: {candidate}")
+
+    for current in path_chain[:repo_anchor_index]:
         if current.is_symlink():
             raise SafetyError(f"symlink paths are not allowed: {current}")
         if not current.exists():
-            if current == root:
-                break
             continue
         mode = current.lstat().st_mode
-        if current != root and (
-            stat.S_ISFIFO(mode) or stat.S_ISCHR(mode) or stat.S_ISBLK(mode) or stat.S_ISSOCK(mode)
-        ):
+        if stat.S_ISFIFO(mode) or stat.S_ISCHR(mode) or stat.S_ISBLK(mode) or stat.S_ISSOCK(mode):
             raise SafetyError(f"special files are not allowed: {current}")
-        if current == root:
-            break
 
 
 def escape_html_text(text: str) -> str:

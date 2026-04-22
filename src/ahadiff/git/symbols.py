@@ -134,7 +134,6 @@ _JS_LIKE_NON_SYMBOL_NAMES = frozenset(
     }
 )
 _JS_LIKE_EXTENSIONS = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx")
-_JS_LIKE_STRING_RE = re.compile(r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"|`(?:\\.|[^`\\])*`")
 _SECTION_HEADER_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)"), "function"),
     (re.compile(r"class\s+([A-Za-z_][A-Za-z0-9_]*)"), "class"),
@@ -746,11 +745,12 @@ def _qualify_python_regex_candidates(lines: Sequence[str]) -> list[_RegexScopeCa
 
 
 def _qualify_js_like_regex_candidates(lines: Sequence[str]) -> list[_RegexScopeCandidate]:
+    sanitized_lines = _sanitize_js_like_structure_lines(lines)
     raw_candidates: list[_RegexScopeCandidate] = []
-    for line_number, line in enumerate(lines, start=1):
-        matched = _match_regex_candidate(line, _JS_LIKE_TOP_LEVEL_REGEX_PATTERNS)
+    for line_number, sanitized_line in enumerate(sanitized_lines, start=1):
+        matched = _match_regex_candidate(sanitized_line, _JS_LIKE_TOP_LEVEL_REGEX_PATTERNS)
         if matched is None:
-            matched = _match_regex_candidate(line, _JS_LIKE_METHOD_REGEX_PATTERNS)
+            matched = _match_regex_candidate(sanitized_line, _JS_LIKE_METHOD_REGEX_PATTERNS)
         if matched is None:
             continue
         name, kind = matched
@@ -761,8 +761,12 @@ def _qualify_js_like_regex_candidates(lines: Sequence[str]) -> list[_RegexScopeC
                 name=name,
                 kind=kind,
                 line_number=line_number,
-                end_line=_infer_js_like_end_line(lines, start_line=line_number, kind=kind),
-                indent=_line_indent(line),
+                end_line=_infer_js_like_end_line(
+                    sanitized_lines,
+                    start_line=line_number,
+                    kind=kind,
+                ),
+                indent=_line_indent(lines[line_number - 1]),
             )
         )
 
@@ -1020,7 +1024,7 @@ def _infer_regex_end_line(
 
 
 def _infer_js_like_end_line(
-    lines: Sequence[str],
+    sanitized_lines: Sequence[str],
     *,
     start_line: int,
     kind: str,
@@ -1031,8 +1035,8 @@ def _infer_js_like_end_line(
     depth = 0
     started = False
     end_line = start_line
-    for index in range(start_index, len(lines)):
-        sanitized = _sanitize_js_like_structure_line(lines[index])
+    for index in range(start_index, len(sanitized_lines)):
+        sanitized = sanitized_lines[index]
         open_count = sanitized.count("{")
         close_count = sanitized.count("}")
         if open_count > 0:
@@ -1076,10 +1080,59 @@ def _match_regex_candidate(
     return None
 
 
-def _sanitize_js_like_structure_line(line: str) -> str:
-    without_block_comments = re.sub(r"/\*.*?\*/", "", line)
-    without_line_comments = re.sub(r"//.*", "", without_block_comments)
-    return _JS_LIKE_STRING_RE.sub("", without_line_comments)
+def _sanitize_js_like_structure_lines(lines: Sequence[str]) -> tuple[str, ...]:
+    sanitized_lines: list[str] = []
+    in_block_comment = False
+    in_string: str | None = None
+    escaped = False
+
+    for line in lines:
+        sanitized: list[str] = []
+        index = 0
+        while index < len(line):
+            char = line[index]
+            next_char = line[index + 1] if index + 1 < len(line) else ""
+            if in_block_comment:
+                if char == "*" and next_char == "/":
+                    in_block_comment = False
+                    index += 2
+                    continue
+                index += 1
+                continue
+            if in_string is not None:
+                if escaped:
+                    escaped = False
+                    index += 1
+                    continue
+                if char == "\\":
+                    escaped = True
+                    index += 1
+                    continue
+                if char == in_string:
+                    in_string = None
+                    index += 1
+                    continue
+                index += 1
+                continue
+            if char in {"'", '"', "`"}:
+                in_string = char
+                escaped = False
+                index += 1
+                continue
+            if char == "/" and next_char == "/":
+                break
+            if char == "/" and next_char == "*":
+                in_block_comment = True
+                index += 2
+                continue
+            sanitized.append(char)
+            index += 1
+        if in_string in {"'", '"'}:
+            in_string = None
+            escaped = False
+        sanitized_lines.append("".join(sanitized))
+
+    return tuple(sanitized_lines)
 
 
 def serialize_symbols_payload(items: Iterable[SymbolRecord]) -> dict[str, Any]:

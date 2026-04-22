@@ -61,8 +61,7 @@ def test_extract_symbols_falls_back_to_regex_when_python_ast_fails() -> None:
     assert symbol.range.end == 2
 
 
-def test_extract_symbols_regex_fallback_finds_export_const_arrow_function_for_body_only_change(
-) -> None:
+def test_extract_symbols_regex_fallback_finds_export_const_arrow_fn_for_body_only_change() -> None:
     patch = (
         "diff --git a/src/widget.ts b/src/widget.ts\n"
         "--- a/src/widget.ts\n"
@@ -189,11 +188,7 @@ def test_extract_symbols_regex_fallback_tracks_js_class_and_static_async_method_
         '+    return "new";\n'
     )
     after_text = (
-        "export default class Widget {\n"
-        "  static async renderCard() {\n"
-        '    return "new";\n'
-        "  }\n"
-        "}\n"
+        'export default class Widget {\n  static async renderCard() {\n    return "new";\n  }\n}\n'
     )
 
     symbols = extract_symbols(
@@ -281,6 +276,69 @@ def test_extract_symbols_regex_fallback_handles_braces_in_string_and_comment() -
     names = {symbol.qualified_name for symbol in symbols}
     assert "Widget" in names
     assert "Widget.renderCard" in names
+
+
+def test_extract_symbols_regex_fallback_handles_multiline_block_comment_braces() -> None:
+    patch = (
+        "diff --git a/src/widget.ts b/src/widget.ts\n"
+        "--- a/src/widget.ts\n"
+        "+++ b/src/widget.ts\n"
+        "@@ -5 +5 @@\n"
+        '-    return "old";\n'
+        '+    return "new";\n'
+    )
+    after_text = (
+        "export default class Widget {\n"
+        "  renderCard() {\n"
+        "    /*\n"
+        "      } confusing brace in comment\n"
+        "    */\n"
+        '    return "new";\n'
+        "  }\n"
+        "}\n"
+    )
+
+    symbols = extract_symbols(
+        parse_unified_diff(patch),
+        after_text_by_path={"src/widget.ts": after_text},
+    )
+
+    names = {symbol.qualified_name for symbol in symbols}
+    assert "Widget" in names
+    assert "Widget.renderCard" in names
+
+
+def test_extract_symbols_regex_fallback_ignores_multiline_block_comment_signatures() -> None:
+    patch = (
+        "diff --git a/src/widget.ts b/src/widget.ts\n"
+        "--- a/src/widget.ts\n"
+        "+++ b/src/widget.ts\n"
+        "@@ -8 +8 @@\n"
+        "-    return oldValue;\n"
+        "+    return nextValue;\n"
+    )
+    after_text = (
+        "export default class Widget {\n"
+        "  /*\n"
+        "  fakeRender(value) {\n"
+        "    return ignored(value);\n"
+        "  }\n"
+        "  */\n"
+        "  renderCard() {\n"
+        "    return nextValue;\n"
+        "  }\n"
+        "}\n"
+    )
+
+    symbols = extract_symbols(
+        parse_unified_diff(patch),
+        after_text_by_path={"src/widget.ts": after_text},
+    )
+
+    names = {symbol.qualified_name for symbol in symbols}
+    assert "Widget" in names
+    assert "Widget.renderCard" in names
+    assert "Widget.fakeRender" not in names
 
 
 def test_extract_symbols_merges_same_symbol_across_multiple_hunks() -> None:

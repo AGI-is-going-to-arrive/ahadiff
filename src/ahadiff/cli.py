@@ -654,7 +654,7 @@ def provider_test_cmd(
         str | None,
         typer.Option("--privacy-mode", help="Temporary CLI override."),
     ] = None,
-    ) -> None:
+) -> None:
     try:
         root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
         snapshot = (

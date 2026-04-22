@@ -83,6 +83,10 @@ class ProviderResponse:
     notes: tuple[str, ...] = ()
     raw_json: dict[str, Any] | None = None
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "input_tokens", max(0, self.input_tokens))
+        object.__setattr__(self, "output_tokens", max(0, self.output_tokens))
+
 
 @dataclass(frozen=True)
 class ProbeReport:

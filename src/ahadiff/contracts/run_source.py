@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 SourceKind: TypeAlias = Literal[
     "git_ref",
     "git_staged",
+    "git_staged_unstaged",
     "git_unstaged",
     "git_since",
     "patch_file",

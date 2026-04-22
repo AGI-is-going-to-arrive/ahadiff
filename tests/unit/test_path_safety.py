@@ -47,6 +47,25 @@ def test_resolve_safe_path_rejects_repo_escape(tmp_path: Path) -> None:
         resolve_safe_path(repo_root, "../outside.txt")
 
 
+def test_resolve_safe_path_allows_symlinked_repo_alias_ancestors(tmp_path: Path) -> None:
+    if not hasattr(os, "symlink"):
+        pytest.skip("symlink is not available on this platform")
+
+    real_parent = tmp_path / "private"
+    repo_root = real_parent / "repo"
+    repo_root.mkdir(parents=True)
+    _init_git_repo(repo_root)
+    target = repo_root / "tracked.txt"
+    target.write_text("x", encoding="utf-8")
+
+    alias_parent = tmp_path / "alias"
+    os.symlink(real_parent, alias_parent)
+
+    resolved = resolve_safe_path(repo_root, alias_parent / "repo" / "tracked.txt")
+
+    assert resolved == target
+
+
 def test_resolve_safe_path_rejects_symlink_paths(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()

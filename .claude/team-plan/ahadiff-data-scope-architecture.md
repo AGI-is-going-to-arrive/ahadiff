@@ -1,4 +1,4 @@
-# AhaDiff 数据范围架构设计（最终版）
+# AhaDiff 数据范围架构设计（候选版）
 
 > 评估方法：Codex 深度分析 + Claude 独立评估，双方交叉验证
 > 日期：2026-04-21
@@ -38,8 +38,9 @@ global_config_dir()                   ← Global（派生/索引/偏好，非真
 ├── graphify/                         — repo-level code map cache
 ├── audit.jsonl                       — 本 repo LLM 调用审计
 ├── audit.private.jsonl               — strict_local 本机专用隐私审计（gitignored）
-├── ahadiff.lock                      — portalocker 文件锁
-└── .ahadiffignore                    — 路径过滤规则
+└── ahadiff.lock                      — portalocker 文件锁
+
+<repo>/.ahadiffignore                 — repo 根路径过滤规则
 ```
 
 ---

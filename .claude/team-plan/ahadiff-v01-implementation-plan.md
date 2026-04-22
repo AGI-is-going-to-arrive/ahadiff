@@ -105,11 +105,12 @@
   - `Task 1` 已落地并通过当前 gate
   - `Task 2` 的安全层基础实现也已落地，并通过当前后端 gate
   - 当前实测：`uv run pytest tests/unit/test_stage1_task1.py tests/unit/test_contracts.py -q` 为 `42 passed`
-  - 当前实测：`uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` 为 `29 passed`
-  - 当前实测：`uv run pytest tests/unit` 为 `181 passed`
+  - 当前实测：`uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` 为 `35 passed`
+  - 当前实测：`uv run pytest tests/unit` 为 `198 passed`
   - 当前实测：`uv run ruff check src tests`、`uv run pyright` 与 `uv build --wheel` 全通过
   - 当前仓库 `.venv` 运行时为 Python 3.12.10 / SQLite 3.51.3，`ahadiff doctor` 的 SQLite gate 实测通过；低版本 SQLite runtime 下 `doctor` 已改为非零退出
   - `Task 1` 现已补入独立 maintenance 子命令 `ahadiff maint clean-orphans`，专门处理 `.tmp` run 目录与 audit rotation 残留，不再把清理职责塞回 `doctor`
+  - 本轮又补上了 `.ahadiffignore` capture 接线、跨行 secret / prompt injection 检测、递归 base64 hard block、macOS `/tmp` / `/var` alias 路径收口，以及 audit rotation 文件锁和多进程回归测试
 - **目标**：
   - 建立工程骨架、doctor/config 基础能力
   - 落地安全层
@@ -153,13 +154,14 @@
   - `Task 5` 已落地 `src/ahadiff/git/{__init__,repo,capture}.py` 与 `tests/unit/test_git_capture.py`
   - `Task 6` 已落地 `src/ahadiff/git/{parser,path_tokens,line_map,symbols,hunk_hash}.py` 与 `tests/unit/{test_diff_parser,test_hunk_hash,test_line_map,test_symbol_extract}.py`
   - `Task 7` 已落地 `src/ahadiff/llm/{provider,probe,cache,cost,schemas}.py`、8 个 adapter 与 `tests/unit/{test_probe,test_provider}.py`
-  - 当前实测：`uv run pytest tests/unit/test_git_capture.py -q` 为 `34 passed`
-  - 当前实测：`uv run pytest tests/unit/test_probe.py tests/unit/test_provider.py -q` 为 `40 passed`
-  - 当前实测：`uv run pytest tests/unit/test_hunk_hash.py tests/unit/test_diff_parser.py tests/unit/test_line_map.py tests/unit/test_symbol_extract.py tests/unit/test_git_capture.py -q` 为 `70 passed`
-  - 当前实测：`uv run pytest tests/unit` 为 `181 passed`
+  - 当前实测：`uv run pytest tests/unit/test_git_capture.py -q` 为 `37 passed`
+  - 当前实测：`uv run pytest tests/unit/test_probe.py tests/unit/test_provider.py -q` 为 `43 passed`
+  - 当前实测：`uv run pytest tests/unit/test_hunk_hash.py tests/unit/test_diff_parser.py tests/unit/test_line_map.py tests/unit/test_symbol_extract.py tests/unit/test_git_capture.py -q` 为 `78 passed`
+  - 当前实测：`uv run pytest tests/unit` 为 `198 passed`
   - 当前实测：`uv run ruff check src tests`、`uv run pyright` 全通过
-  - 当前实测：`uv run ahadiff learn --unstaged --include-untracked --dry-run --repo-root /Users/yangjunjie/Desktop/ahadiff`、非 git 目录下的 `uv run python -m ahadiff learn --patch sample.patch --dry-run --repo-root <tmpdir>`、非 git 目录下的 `uv run python -m ahadiff learn --compare old.py new.py --dry-run --repo-root <tmpdir>`、`uv run ahadiff graph status --repo-root /Users/yangjunjie/Desktop/ahadiff` 与 non-git `uv run python -m ahadiff unlock --force --repo-root <tmpdir>` 本次都已实测可运行
+  - 当前实测：`uv run ahadiff learn --unstaged --include-untracked --dry-run --repo-root <repo-root>`、非 git 目录下的 `uv run python -m ahadiff learn --patch sample.patch --dry-run --repo-root <tmpdir>`、非 git 目录下的 `uv run python -m ahadiff learn --compare old.py new.py --dry-run --repo-root <tmpdir>`、`uv run ahadiff graph status --repo-root <repo-root>` 与 non-git `uv run python -m ahadiff unlock --force --repo-root <tmpdir>` 本次都已实测可运行
   - 当前已落地 `--last` / `--since` / `--staged` / `--unstaged` / commit range / 单 commit / `--patch file|-` / `--compare a b`，以及最小 Graphify detect/import/status/refresh CLI
+  - 本轮又补上了 `git_staged_unstaged`、git-sourced patch 的 `max_patch_bytes`、缺前缀 hunk fail-fast、路径穿越清洗、多行块注释 symbol scope 收口，以及 provider slot shrink / 负 usage / `probed_max_context=0` fallback；另已实测使用环境变量形式的本地 loopback provider 执行 `provider test` 与真实 `generate()` 调用
   - `Task 6` 的 `line_map.json` / `symbols.json` 显式 schema+version、`artifact_set.json`、全局+workspace allowlist、shared path helper、non-git 子目录根解析、`capture_patch()` 库 API 边界、hostile input/property-style tests 与目录级原子发布已收口；Task 6 还新增了 malformed hunk count mismatch 的显式拒绝，以及 JS/TS regex fallback 的 body-only 命中与轻量 scope qualification；`Task 7` 已落地，`Task 8` 仍未开始
 - **目标**：
   - 落地 v0.1 完整 diff 输入面
@@ -564,10 +566,10 @@
 |---|---|---|---|---|---|
 | `BL-00` | Task 0 `contract-freeze.md` + core contracts + tests（已完成） | docs + backend | — | 1.5–2d | `contract-freeze.md` 已落地；contracts import 正常；`uv run pytest tests/unit/test_contracts.py -q` 实测 `19 passed` |
 | `BL-01` | Task 1 scaffold + `pyproject.toml` + `doctor` + `config show --resolved` | backend | `BL-00` | 1d | `uv run ahadiff init/doctor/config show --resolved` 可运行 |
-| `BL-02` | Task 2 safety + allowlist + audit provenance（已落地基础实现） | backend | `BL-00` | 1d | `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` 实测 `29 passed`；`uv run pytest tests/unit -q` 当前实测 `181 passed` |
-| `BL-03` | Task 7 provider + probe + ProviderCapabilities（已落地） | backend | `BL-01` | 1.5–2d | `uv run pytest tests/unit/test_probe.py tests/unit/test_provider.py -q` 实测 `40 passed`；`ahadiff provider test` 已落地；committed docs / examples 仍只用 env 占位符 |
-| `BL-04` | Task 5 diff capture v0.1 输入面（已落地） | backend | `BL-01` + `BL-02` | 1.5d | range / `--last` / `--since` / `--staged` / `--unstaged` / 单 commit / `--patch file|-` / `--compare a b` 全部 dry-run 正常；`uv run pytest tests/unit/test_git_capture.py -q` 实测 `34 passed` |
-| `BL-05` | Task 6 parser + anchors + line map（已落地） | backend | `BL-04` | 1.5d | `uv run pytest tests/unit/test_hunk_hash.py tests/unit/test_diff_parser.py tests/unit/test_line_map.py tests/unit/test_symbol_extract.py tests/unit/test_git_capture.py -q` 实测 `70 passed`；`line_map.json` / `symbols.json` artifact 已升级为显式 schema/version，`artifact_set.json` 已接线；全局+workspace allowlist、shared path helper、non-git 子目录根解析、`capture_patch()` 库 API 边界、目录级原子发布、quoted path、CRLF / `[truncated]` hash、AST / regex / section header 降级、JS/TS regex fallback、rename 双名记录与 hostile input/property-style 测试通过 |
+| `BL-02` | Task 2 safety + allowlist + audit provenance（已落地基础实现） | backend | `BL-00` | 1d | `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` 实测 `35 passed`；`uv run pytest tests/unit -q` 当前实测 `198 passed` |
+| `BL-03` | Task 7 provider + probe + ProviderCapabilities（已落地） | backend | `BL-01` | 1.5–2d | `uv run pytest tests/unit/test_probe.py tests/unit/test_provider.py -q` 实测 `43 passed`；`ahadiff provider test` 已落地；使用环境变量形式的本地 loopback provider 的真实 probe 与 `generate()` 调用本次也已跑通 |
+| `BL-04` | Task 5 diff capture v0.1 输入面（已落地） | backend | `BL-01` + `BL-02` | 1.5d | range / `--last` / `--since` / `--staged` / `--unstaged` / 单 commit / `--patch file|-` / `--compare a b` 全部 dry-run 正常；`uv run pytest tests/unit/test_git_capture.py -q` 实测 `37 passed` |
+| `BL-05` | Task 6 parser + anchors + line map（已落地） | backend | `BL-04` | 1.5d | `uv run pytest tests/unit/test_hunk_hash.py tests/unit/test_diff_parser.py tests/unit/test_line_map.py tests/unit/test_symbol_extract.py tests/unit/test_git_capture.py -q` 实测 `78 passed`；`line_map.json` / `symbols.json` artifact 已升级为显式 schema/version，`artifact_set.json` 已接线；全局+workspace allowlist、shared path helper、non-git 子目录根解析、`capture_patch()` 库 API 边界、目录级原子发布、quoted path、CRLF / `[truncated]` hash、AST / regex / section header 降级、JS/TS regex fallback、rename 双名记录与 hostile input/property-style 测试通过 |
 | `BL-06` | Graphify v0.1 backend/CLI workstream | backend + test | `BL-04` + `BL-05` | 1.5d | `graph status/refresh/import`、detect/import/sanitize、degrade path 覆盖 |
 | `BL-07` | Task 8 claim verifier | backend | `BL-03` + `BL-05` | 4–5d | 5 态 claim + `reason_code` + negative scan 全绿 |
 

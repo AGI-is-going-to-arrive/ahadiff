@@ -6,6 +6,8 @@ import pathlib as _pathlib
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+import portalocker
+
 from ahadiff.core.ids import make_event_id
 from ahadiff.core.paths import audit_log_path, private_audit_log_path
 
@@ -101,9 +103,11 @@ def append_audit_record(
     max_backups: int = 3,
 ) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    _rotate_if_needed(path, rotate_bytes=rotate_bytes, max_backups=max_backups)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+    lock_path = _audit_lock_path(path)
+    with portalocker.Lock(str(lock_path), mode="a", timeout=10):
+        _rotate_if_needed(path, rotate_bytes=rotate_bytes, max_backups=max_backups)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
     return path
 
 
@@ -141,6 +145,10 @@ def _rotated_path(path: Path, index: int) -> Path:
 
 def _rotation_snapshot_path(path: Path) -> Path:
     return path.with_name(f"{path.name}{_ROTATION_SNAPSHOT_SUFFIX}")
+
+
+def _audit_lock_path(path: Path) -> Path:
+    return path.with_name(f"{path.name}.lock")
 
 
 def _finding_payload(finding: SecretFinding) -> dict[str, Any]:

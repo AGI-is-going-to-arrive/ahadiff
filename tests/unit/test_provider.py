@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any
+import threading
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 import pytest
@@ -10,8 +11,10 @@ from ahadiff.contracts import ProviderConfig
 from ahadiff.core.config import SecurityConfig
 from ahadiff.core.errors import ProviderError, SafetyError
 from ahadiff.llm import ProviderRequest, adapter_conformance_test, make_provider
+from ahadiff.llm import provider as provider_module
 from ahadiff.llm.adapters.azure import AzureOpenAIAdapter
 from ahadiff.llm.adapters.openai_compat import OpenAICompatAdapter
+from ahadiff.llm.adapters.openai_responses import OpenAIResponsesAdapter
 from ahadiff.llm.cache import build_cache_key
 from ahadiff.llm.cost import (
     DEFAULT_OPENROUTER_MODELS_URL,
@@ -20,6 +23,7 @@ from ahadiff.llm.cost import (
     fetch_openrouter_pricing_catalog,
     official_pricing_source_url,
     reset_openrouter_pricing_cache,
+    resolve_context_window,
     resolve_pricing_entry,
 )
 from ahadiff.llm.provider import reset_provider_runtime_state, transport_target_for_base_url
@@ -114,6 +118,36 @@ def test_make_provider_builds_all_frozen_adapters(provider_class: str) -> None:
         assert provider.capabilities.provider_kind
     finally:
         provider.close()
+
+
+def test_openai_responses_adapter_clamps_negative_usage_and_concatenates_content() -> None:
+    adapter = OpenAIResponsesAdapter(_provider_config("openai_responses"))
+    response = httpx.Response(
+        200,
+        json={
+            "model": "gpt-5.4-mini",
+            "output": [
+                {
+                    "content": [
+                        {"type": "output_text", "text": "first"},
+                        {"type": "text", "text": " second"},
+                    ]
+                }
+            ],
+            "usage": {"input_tokens": -5, "output_tokens": -2},
+            "status": "completed",
+        },
+    )
+
+    parsed = adapter.parse_response(response)
+
+    assert parsed.content == "first second"
+    assert parsed.input_tokens == 0
+    assert parsed.output_tokens == 0
+
+
+def test_resolve_context_window_falls_back_when_probe_returns_zero() -> None:
+    assert resolve_context_window("gpt-5.4-mini", 0) == 1_000_000
 
 
 def test_make_provider_default_client_disables_env_proxy_trust() -> None:
@@ -249,6 +283,46 @@ def test_request_hash_is_salted_per_audit_event(tmp_path: Path) -> None:
     first = json.loads(lines[0])
     second = json.loads(lines[1])
     assert first["request_hash"] != second["request_hash"]
+
+
+def test_provider_slot_blocks_new_entries_until_shrunk_limit_is_satisfied() -> None:
+    provider_slot = cast("Any", provider_module._provider_slot)  # pyright: ignore[reportPrivateUsage]
+    key = "provider-slot-shrink"
+    second_entered = threading.Event()
+    release_second = threading.Event()
+    shrunk_attempted = threading.Event()
+    shrunk_entered = threading.Event()
+
+    def second_holder() -> None:
+        with provider_slot(key, 2):
+            second_entered.set()
+            assert release_second.wait(timeout=1)
+
+    def shrunk_holder() -> None:
+        shrunk_attempted.set()
+        with provider_slot(key, 1):
+            shrunk_entered.set()
+
+    second_thread = threading.Thread(target=second_holder)
+    shrunk_thread = threading.Thread(target=shrunk_holder)
+    try:
+        with provider_slot(key, 2):
+            second_thread.start()
+            assert second_entered.wait(timeout=1)
+
+            shrunk_thread.start()
+            assert shrunk_attempted.wait(timeout=1)
+            assert not shrunk_entered.wait(timeout=0.1)
+
+        assert not shrunk_entered.wait(timeout=0.1)
+    finally:
+        release_second.set()
+        second_thread.join(timeout=1)
+        shrunk_thread.join(timeout=1)
+
+    assert not second_thread.is_alive()
+    assert shrunk_entered.wait(timeout=1)
+    assert not shrunk_thread.is_alive()
 
 
 def test_retry_after_header_triggers_backoff_then_success() -> None:
@@ -624,3 +698,7 @@ def test_transport_target_accepts_loopback_ips_and_named_pipe_schemes() -> None:
     assert transport_target_for_base_url("http://127.0.0.2:8000", local_hosts=()) == "local"
     assert transport_target_for_base_url("http://[::1]:8000", local_hosts=()) == "local"
     assert transport_target_for_base_url("npipe://./pipe/ollama", local_hosts=()) == "local"
+    assert (
+        transport_target_for_base_url("http://model.local:8000", local_hosts=("model.local",))
+        == "local"
+    )

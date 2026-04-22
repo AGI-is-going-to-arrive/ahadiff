@@ -8,8 +8,8 @@ def normalize_diff_path_token(candidate: str, *, prefix: str = "") -> str | None
     if value == "/dev/null":
         return None
     if prefix and value.startswith(prefix):
-        return value.removeprefix(prefix)
-    return value
+        value = value.removeprefix(prefix)
+    return _normalize_relative_diff_path(value)
 
 
 def parse_diff_git_header_paths(line: str) -> tuple[str | None, str | None] | None:
@@ -121,6 +121,24 @@ def _consume_git_header_token(payload: str, start: int) -> tuple[str | None, int
     while end < len(payload) and payload[end] != " ":
         end += 1
     return payload[start:end], end
+
+
+def _normalize_relative_diff_path(value: str) -> str | None:
+    if value.startswith("/"):
+        return None
+    parts: list[str] = []
+    for segment in value.split("/"):
+        if segment in {"", "."}:
+            continue
+        if segment == "..":
+            if not parts:
+                return None
+            parts.pop()
+            continue
+        parts.append(segment)
+    if not parts:
+        return None
+    return "/".join(parts)
 
 
 __all__ = ["normalize_diff_path_token", "parse_diff_git_header_paths"]

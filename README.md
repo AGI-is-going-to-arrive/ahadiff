@@ -142,6 +142,8 @@ ahadiff/
 
 **Stage 1 的 Task 1/2、Layer 1.5 的 Task 7，以及 Stage 2 / Task 5-6 已落地。** 仓库现在除了设计文档和 HTML 原型，还包含 `contract-freeze.md`、最小 contracts skeleton、`pyproject.toml`、可执行的 CLI scaffold（`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `ahadiff provider test` / `ahadiff maint clean-orphans` / `python -m ahadiff`），`src/ahadiff/safety/` 安全层基础实现、`src/ahadiff/llm/{provider,probe,cache,cost}.py` 与 8 个 provider adapter，以及 `src/ahadiff/git/{__init__,repo,capture,parser,path_tokens,line_map,symbols,hunk_hash}.py`、`ahadiff learn --dry-run`、非 git 目录下可运行且会读取 workspace `.ahadiff/config.toml` 的 `--patch` / `--compare`、`ahadiff graph status|import|refresh`、`ahadiff unlock --force`、`line_map.json` / `symbols.json` / `artifact_set.json` 和对应的 Stage 0 + Stage 1 + Layer 1.5 + Stage 2 单元测试。evaluator 和 viewer runtime 仍未实现。
 
+本轮还补齐了几项运行时硬化：`.ahadiffignore` 已真正接入 capture 主链，跨行 secret / prompt injection 会被拦截，`--staged --unstaged` 有了明确的 `git_staged_unstaged` source_kind，git-sourced patch 增加了字节上限，parser/path/symbol 提取补上了更严格的边界处理，provider 并发和 audit rotation 也做了收口。
+
 当前已落地的最小验证：
 
 ```bash
@@ -156,7 +158,7 @@ uv run ahadiff doctor
 uv run ahadiff config show --resolved
 ```
 
-本次实际结果：`uv run pytest tests/unit` 为 `181 passed`；`uv run pytest tests/unit/test_stage1_task1.py tests/unit/test_contracts.py -q` 为 `42 passed`，Task 2 目标测试 `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` 为 `29 passed`，`uv run pytest tests/unit/test_probe.py tests/unit/test_provider.py -q` 为 `40 passed`，`uv run pytest tests/unit/test_hunk_hash.py tests/unit/test_diff_parser.py tests/unit/test_line_map.py tests/unit/test_symbol_extract.py tests/unit/test_git_capture.py -q` 为 `70 passed`。`uv run ruff check src tests` 与 `uv run pyright` 全通过。
+本次实际结果：`uv run pytest tests/unit` 为 `198 passed`；`uv run pytest tests/unit/test_stage1_task1.py tests/unit/test_contracts.py -q` 为 `42 passed`，Task 2 目标测试 `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` 为 `35 passed`，`uv run pytest tests/unit/test_probe.py tests/unit/test_provider.py -q` 为 `43 passed`，`uv run pytest tests/unit/test_hunk_hash.py tests/unit/test_diff_parser.py tests/unit/test_line_map.py tests/unit/test_symbol_extract.py tests/unit/test_git_capture.py -q` 为 `78 passed`。`uv run ruff check src tests` 与 `uv run pyright` 全通过。另有两轮真实 CLI / runtime 验证也已通过：使用环境变量形式的本地 loopback provider 执行 `AHADIFF_PROVIDER_API_KEY=... ahadiff provider test --name local-probe --base-url "$AHADIFF_PROVIDER_BASE_URL" --model gpt-5.4-mini` 可正常 probe，同一 provider 的真实 `generate()` 调用也已跑通；这里的 `base_url` 需要传 API 根地址，不要带 `/v1/chat/completions`。
 
 下一步路线图：
 

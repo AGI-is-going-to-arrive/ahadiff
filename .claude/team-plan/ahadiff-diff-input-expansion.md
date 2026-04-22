@@ -115,7 +115,7 @@ ahadiff learn
 ```
 
 **`--staged --unstaged` 组合语义**（C-1 修复）：
-> 不拼接两份 patch。直接执行 `git diff HEAD --no-ext-diff`，产出单一 patch 以 HEAD 为基准，包含 index 和 worktree 的全部改动。source_kind=`git_unstaged`，metadata 记录 `combined_mode=true`。
+> 不拼接两份 patch。直接执行 `git diff HEAD --no-ext-diff`，产出单一 patch 以 HEAD 为基准，包含 index 和 worktree 的全部改动。source_kind=`git_staged_unstaged`，metadata 记录 `combined_mode=true`。
 
 **Corner Cases**：
 
@@ -454,7 +454,7 @@ def get_parser(file_path: str) -> DiffParser:
 
 | Task | 改动 | 内容 |
 |------|------|------|
-| Task 0 | 补充 | `source_kind` 枚举新增 `git_unstaged`（共 7 个值） |
+| Task 0 | 补充 | `source_kind` 枚举新增 `git_staged_unstaged`（共 8 个值） |
 | Task 5 | 补充 | 新增 `--unstaged` + `git show <sha>` 两种捕获模式（步骤 2 从 4 种扩展为 6 种），验收标准新增 3 条 |
 
 ### v0.2 新增 Task

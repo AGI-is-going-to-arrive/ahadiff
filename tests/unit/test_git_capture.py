@@ -180,6 +180,7 @@ def test_learn_staged_unstaged_and_combined_modes(tmp_path: Path) -> None:
     )
     assert combined_result.exit_code == 0
     _, combined_metadata, combined_patch = _load_run_artifacts(repo_root)
+    assert combined_metadata["source_kind"] == "git_staged_unstaged"
     source_detail = combined_metadata["source_detail"]
     assert isinstance(source_detail, dict)
     assert source_detail["combined_mode"] is True
@@ -210,6 +211,35 @@ def test_learn_unstaged_include_untracked_records_new_file(tmp_path: Path) -> No
     assert isinstance(source_detail, dict)
     assert "new_file.py" in patch_text
     assert source_detail["untracked_count"] == 1
+
+
+def test_git_capture_filters_ahadiffignore_from_patch_and_resolved_files(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / ".ahadiffignore").write_text("ignored.py\n", encoding="utf-8")
+    (repo_root / "tracked.py").write_text("value = 1\n", encoding="utf-8")
+    (repo_root / "ignored.py").write_text("secret = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+
+    (repo_root / "tracked.py").write_text("value = 2\n", encoding="utf-8")
+    (repo_root / "ignored.py").write_text("secret = 2\n", encoding="utf-8")
+
+    capture = capture_module.capture_patch(
+        workspace_root=repo_root,
+        unstaged=True,
+        max_files=50,
+        hard_limit=5000,
+        max_patch_bytes=10_000_000,
+    )
+
+    secondary_names = {target.source_name for target in capture.redaction_result.secondary_targets}
+    assert "tracked.py" in capture.persisted_patch_text
+    assert "ignored.py" not in capture.persisted_patch_text
+    assert capture.after_text_by_path == {"tracked.py": "value = 2\n"}
+    assert capture.before_text_by_path == {"tracked.py": "value = 1\n"}
+    assert "tracked.py" in secondary_names
+    assert "ignored.py" not in secondary_names
 
 
 def test_learn_since_records_window_metadata(tmp_path: Path) -> None:
@@ -624,6 +654,49 @@ def test_compare_mode_respects_hard_limit_for_single_segment(tmp_path: Path) -> 
     assert degraded_flags["diff_clipped"] is True
     assert len(capture.persisted_patch_text.splitlines()) <= 11
     assert "[truncated]" in capture.persisted_patch_text
+
+
+def test_git_show_capture_respects_max_patch_bytes(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "tracked.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+    (repo_root / "tracked.py").write_text(
+        "".join(f"value = {index}\n" for index in range(40)),
+        encoding="utf-8",
+    )
+    head_sha = _commit_all(repo_root, "expand patch")
+
+    with pytest.raises(InputError, match="git patch exceeds 128 bytes"):
+        capture_module.capture_patch(
+            workspace_root=repo_root,
+            revision=head_sha,
+            max_files=50,
+            hard_limit=5000,
+            max_patch_bytes=128,
+        )
+
+
+def test_git_diff_capture_respects_max_patch_bytes(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "tracked.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+    (repo_root / "tracked.py").write_text(
+        "".join(f"value = {index}\n" for index in range(40)),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(InputError, match="git patch exceeds 128 bytes"):
+        capture_module.capture_patch(
+            workspace_root=repo_root,
+            unstaged=True,
+            max_files=50,
+            hard_limit=5000,
+            max_patch_bytes=128,
+        )
 
 
 def test_capture_patch_accepts_unresolved_workspace_root_for_patch_and_compare(

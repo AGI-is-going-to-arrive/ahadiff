@@ -90,7 +90,8 @@ class AdapterBase(ABC):
 @dataclass
 class _SemaphoreState:
     limit: int
-    semaphore: threading.BoundedSemaphore
+    active: int = 0
+    condition: threading.Condition = field(default_factory=threading.Condition)
 
 
 @dataclass
@@ -446,20 +447,29 @@ class ManagedProvider:
 @contextmanager
 def _provider_slot(key: str, limit: int) -> Iterator[None]:
     state = _semaphore_state(key, limit)
-    state.semaphore.acquire()
+    with state.condition:
+        while state.active >= state.limit:
+            state.condition.wait()
+        state.active += 1
     try:
         yield
     finally:
-        state.semaphore.release()
+        with state.condition:
+            state.active -= 1
+            state.condition.notify_all()
 
 
 def _semaphore_state(key: str, limit: int) -> _SemaphoreState:
     with _STATE_LOCK:
         state = _SEMAPHORES.get(key)
-        if state is None or state.limit != limit:
-            state = _SemaphoreState(limit=limit, semaphore=threading.BoundedSemaphore(limit))
+        if state is None:
+            state = _SemaphoreState(limit=limit)
             _SEMAPHORES[key] = state
-        return state
+    with state.condition:
+        if state.limit != limit:
+            state.limit = limit
+            state.condition.notify_all()
+    return state
 
 
 def _rate_limiter_state(key: str) -> _RateLimiterState:
@@ -497,8 +507,6 @@ def transport_target_for_base_url(
             return "local"
     except ValueError:
         pass
-    if hostname in local_hosts:
-        return "local"
     return "remote"
 
 

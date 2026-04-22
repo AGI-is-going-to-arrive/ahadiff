@@ -7,6 +7,7 @@ import os
 import pathlib as _pathlib
 import selectors
 import shutil
+import subprocess
 import sys
 import threading
 from dataclasses import dataclass
@@ -23,7 +24,10 @@ from ahadiff.core.paths import project_state_dir, run_dir
 from ahadiff.safety.audit import append_audit_record, build_redaction_audit_record
 from ahadiff.safety.ignore import (
     AllowlistPolicy,
+    IgnoreMatcher,
     canonicalize_path_text,
+    is_ignored_path,
+    load_ignore_matcher,
     load_workspace_allowlist_policy,
     resolve_safe_path_from_root,
 )
@@ -57,6 +61,7 @@ else:
 ContractSourceKind = Literal[
     "git_ref",
     "git_staged",
+    "git_staged_unstaged",
     "git_unstaged",
     "git_since",
     "patch_file",
@@ -156,6 +161,7 @@ def capture_patch(
         compare=compare,
         max_patch_bytes=max_patch_bytes,
     )
+    raw_capture = _filter_ignored_capture(workspace_root, raw_capture)
     graphify_status = detect_graphify_status(workspace_root, use_graphify=use_graphify)
 
     redaction_result = redaction_pipeline(
@@ -506,25 +512,45 @@ def _capture_input(
     repo = open_repo(workspace_root)
     ensure_no_merge_conflicts(repo)
     if since is not None:
-        return _capture_since(repo, since=since, author=author)
+        return _capture_since(
+            repo,
+            since=since,
+            author=author,
+            max_patch_bytes=max_patch_bytes or int(DEFAULT_CONFIG["capture"]["max_patch_bytes"]),
+        )
     if last:
-        return _capture_last(repo)
+        return _capture_last(
+            repo,
+            max_patch_bytes=max_patch_bytes or int(DEFAULT_CONFIG["capture"]["max_patch_bytes"]),
+        )
     if staged or unstaged:
         return _capture_worktree(
             repo,
             staged=staged,
             unstaged=unstaged,
             include_untracked=include_untracked,
+            max_patch_bytes=max_patch_bytes or int(DEFAULT_CONFIG["capture"]["max_patch_bytes"]),
         )
     if revision is None:
         raise InputError("revision input was not provided")
-    return _capture_revision(repo, revision)
+    return _capture_revision(
+        repo,
+        revision,
+        max_patch_bytes=max_patch_bytes or int(DEFAULT_CONFIG["capture"]["max_patch_bytes"]),
+    )
 
 
-def _capture_revision(repo: GitRepo, revision: str) -> _RawCapture:
+def _capture_revision(repo: GitRepo, revision: str, *, max_patch_bytes: int) -> _RawCapture:
     if ".." in revision:
         base_ref, head_ref = resolve_ref_range(repo, revision)
-        raw_patch = run_git(repo.root, "diff", "--no-ext-diff", base_ref, head_ref).stdout
+        raw_patch = _run_git_patch_text(
+            repo.root,
+            "diff",
+            "--no-ext-diff",
+            base_ref,
+            head_ref,
+            max_patch_bytes=max_patch_bytes,
+        )
         changed_paths = _changed_paths_between(repo.root, base_ref, head_ref)
         before_text_by_path = _resolve_git_files(repo.root, base_ref, changed_paths)
         after_text_by_path = _resolve_git_files(repo.root, head_ref, changed_paths)
@@ -544,7 +570,7 @@ def _capture_revision(repo: GitRepo, revision: str) -> _RawCapture:
         )
 
     sha = resolve_commitish(repo, revision)
-    raw_patch, base_ref = _single_commit_patch(repo, sha)
+    raw_patch, base_ref = _single_commit_patch(repo, sha, max_patch_bytes=max_patch_bytes)
     changed_paths = _changed_paths_for_commit(repo.root, sha)
     before_text_by_path = _resolve_git_files(repo.root, base_ref, changed_paths)
     after_text_by_path = _resolve_git_files(repo.root, sha, changed_paths)
@@ -564,9 +590,9 @@ def _capture_revision(repo: GitRepo, revision: str) -> _RawCapture:
     )
 
 
-def _capture_last(repo: GitRepo) -> _RawCapture:
+def _capture_last(repo: GitRepo, *, max_patch_bytes: int) -> _RawCapture:
     sha = ensure_head_exists(repo)
-    raw_patch, base_ref = _single_commit_patch(repo, sha)
+    raw_patch, base_ref = _single_commit_patch(repo, sha, max_patch_bytes=max_patch_bytes)
     changed_paths = _changed_paths_for_commit(repo.root, sha)
     before_text_by_path = _resolve_git_files(repo.root, base_ref, changed_paths)
     after_text_by_path = _resolve_git_files(repo.root, sha, changed_paths)
@@ -586,7 +612,13 @@ def _capture_last(repo: GitRepo) -> _RawCapture:
     )
 
 
-def _capture_since(repo: GitRepo, *, since: str, author: str | None) -> _RawCapture:
+def _capture_since(
+    repo: GitRepo,
+    *,
+    since: str,
+    author: str | None,
+    max_patch_bytes: int,
+) -> _RawCapture:
     ensure_head_exists(repo)
     args = ["rev-list", "--first-parent", f"--since={since}", "HEAD"]
     if author is not None:
@@ -597,7 +629,7 @@ def _capture_since(repo: GitRepo, *, since: str, author: str | None) -> _RawCapt
         raise InputError("该时间范围内无 commit")
 
     if len(matched_commits) == 1:
-        capture = _capture_revision(repo, matched_commits[0])
+        capture = _capture_revision(repo, matched_commits[0], max_patch_bytes=max_patch_bytes)
         detail = dict(capture.source_detail)
         detail.update({"type": "since", "since": since, "matched_commits": matched_commits})
         return _RawCapture(
@@ -618,7 +650,14 @@ def _capture_since(repo: GitRepo, *, since: str, author: str | None) -> _RawCapt
     oldest_commit = matched_commits[-1]
     base_ref = first_parent_or_empty_tree(repo.root, oldest_commit)
     head_ref = ensure_head_exists(repo)
-    raw_patch = run_git(repo.root, "diff", "--no-ext-diff", base_ref, head_ref).stdout
+    raw_patch = _run_git_patch_text(
+        repo.root,
+        "diff",
+        "--no-ext-diff",
+        base_ref,
+        head_ref,
+        max_patch_bytes=max_patch_bytes,
+    )
     changed_paths = _changed_paths_between(repo.root, base_ref, head_ref)
     before_text_by_path = _resolve_git_files(repo.root, base_ref, changed_paths)
     after_text_by_path = _resolve_git_files(repo.root, head_ref, changed_paths)
@@ -651,13 +690,14 @@ def _capture_worktree(
     staged: bool,
     unstaged: bool,
     include_untracked: bool,
+    max_patch_bytes: int,
 ) -> _RawCapture:
     head_sha = ensure_head_exists(repo)
     combined_mode = staged and unstaged
     args = ["diff", "--no-ext-diff"]
     if combined_mode:
         args.append("HEAD")
-        source_kind: ContractSourceKind = "git_unstaged"
+        source_kind: ContractSourceKind = "git_staged_unstaged"
         base_ref = "HEAD"
         head_ref = "WORKTREE"
     elif staged:
@@ -669,10 +709,11 @@ def _capture_worktree(
         source_kind = "git_unstaged"
         base_ref = "INDEX"
         head_ref = "WORKTREE"
-    patch_text = run_git(repo.root, *args).stdout
+    patch_text = _run_git_patch_text(repo.root, *args, max_patch_bytes=max_patch_bytes)
     untracked_files = _list_untracked_files(repo.root) if include_untracked else []
     if untracked_files:
         patch_text = patch_text + _build_untracked_patch(repo.root, untracked_files)
+        _ensure_patch_text_size(patch_text, max_patch_bytes=max_patch_bytes)
 
     changed_paths = _changed_paths_in_worktree(repo.root, staged, unstaged)
     if combined_mode:
@@ -907,6 +948,58 @@ def _capture_compare_input(workspace_root: Path, compare: tuple[Path, Path]) -> 
     )
 
 
+def _filter_ignored_capture(workspace_root: Path, raw_capture: _RawCapture) -> _RawCapture:
+    if not _has_git_root(workspace_root) or not raw_capture.source_kind.startswith("git_"):
+        return raw_capture
+
+    matcher = load_ignore_matcher(workspace_root)
+    if not matcher.patterns:
+        return raw_capture
+
+    filtered_patch = _filter_ignored_patch_text(raw_capture.raw_patch_text, matcher)
+    filtered_resolved_files = {
+        path: text
+        for path, text in raw_capture.resolved_files.items()
+        if not is_ignored_path(path, matcher)
+    }
+    filtered_before = {
+        path: text
+        for path, text in raw_capture.before_text_by_path.items()
+        if not is_ignored_path(path, matcher)
+    }
+    filtered_after = {
+        path: text
+        for path, text in raw_capture.after_text_by_path.items()
+        if not is_ignored_path(path, matcher)
+    }
+    return _RawCapture(
+        source_kind=raw_capture.source_kind,
+        source_ref=raw_capture.source_ref,
+        capability_level=raw_capture.capability_level,
+        raw_patch_text=filtered_patch,
+        base_ref=raw_capture.base_ref,
+        head_ref=raw_capture.head_ref,
+        source_detail=raw_capture.source_detail,
+        branch_names=raw_capture.branch_names,
+        tag_names=raw_capture.tag_names,
+        resolved_files=filtered_resolved_files,
+        before_text_by_path=filtered_before,
+        after_text_by_path=filtered_after,
+    )
+
+
+def _filter_ignored_patch_text(text: str, matcher: IgnoreMatcher) -> str:
+    segments = _split_patch_segments(text)
+    if not segments:
+        return text
+    kept_segments = [
+        segment
+        for segment in segments
+        if segment.path == "__unknown__" or not is_ignored_path(segment.path, matcher)
+    ]
+    return "".join(segment.text for segment in kept_segments)
+
+
 def _apply_capture_limits(
     text: str,
     *,
@@ -1083,15 +1176,82 @@ def _capability_flags(capability_level: int, has_graph: bool) -> dict[str, bool]
     }
 
 
-def _single_commit_patch(repo: GitRepo, revision: str) -> tuple[str, str]:
+def _single_commit_patch(
+    repo: GitRepo,
+    revision: str,
+    *,
+    max_patch_bytes: int,
+) -> tuple[str, str]:
     parents = parent_count(repo.root, revision)
     if parents == 0:
-        raw_patch = run_git(repo.root, "show", "--format=", "--root", revision).stdout
+        raw_patch = _run_git_patch_text(
+            repo.root,
+            "show",
+            "--format=",
+            "--root",
+            revision,
+            max_patch_bytes=max_patch_bytes,
+        )
     elif parents > 1:
-        raw_patch = run_git(repo.root, "show", "--format=", "--first-parent", revision).stdout
+        raw_patch = _run_git_patch_text(
+            repo.root,
+            "show",
+            "--format=",
+            "--first-parent",
+            revision,
+            max_patch_bytes=max_patch_bytes,
+        )
     else:
-        raw_patch = run_git(repo.root, "show", "--format=", revision).stdout
+        raw_patch = _run_git_patch_text(
+            repo.root,
+            "show",
+            "--format=",
+            revision,
+            max_patch_bytes=max_patch_bytes,
+        )
     return raw_patch, first_parent_or_empty_tree(repo.root, revision)
+
+
+def _run_git_patch_text(repo_root: Path, *args: str, max_patch_bytes: int) -> str:
+    command = ["git", "-C", str(repo_root), *args]
+    try:
+        with subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        ) as process:
+            if process.stdout is None:
+                raise InputError(f"git command failed: {' '.join(args)}")
+
+            chunks: list[bytes] = []
+            total_bytes = 0
+            while True:
+                chunk = process.stdout.read(65_536)
+                if chunk == b"":
+                    break
+                total_bytes += len(chunk)
+                if total_bytes > max_patch_bytes:
+                    process.kill()
+                    process.wait()
+                    raise InputError(f"git patch exceeds {max_patch_bytes} bytes")
+                chunks.append(chunk)
+
+            output = b"".join(chunks)
+            returncode = process.wait()
+    except OSError as exc:
+        raise InputError(f"git command failed: {' '.join(args)}") from exc
+
+    if returncode != 0:
+        message = _decode_text_bytes(output, description="git command output").strip()
+        raise InputError(message or f"git command failed: {' '.join(args)}")
+    if b"\x00" in output:
+        raise InputError("git patch output must be text")
+    return _normalize_newlines(_decode_text_bytes(output, description="git patch"))
+
+
+def _ensure_patch_text_size(text: str, *, max_patch_bytes: int) -> None:
+    if len(text.encode("utf-8")) > max_patch_bytes:
+        raise InputError(f"git patch exceeds {max_patch_bytes} bytes")
 
 
 def _branch_names(repo: GitRepo) -> tuple[str, ...]:

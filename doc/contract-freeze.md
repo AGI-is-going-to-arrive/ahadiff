@@ -124,7 +124,7 @@ Stage 0 只冻结“最小可 import + 可序列化”的 contracts 面，不提
 
 `RunSource` 最小字段：
 
-- `source_kind`: `git_ref | git_staged | git_unstaged | git_since | patch_file | patch_stdin | file_compare`
+- `source_kind`: `git_ref | git_staged | git_staged_unstaged | git_unstaged | git_since | patch_file | patch_stdin | file_compare`
 - `source_ref`: 统一来源标识
 - `capability_level`: `1 | 2 | 3`
 - `degraded_flags`: key 仅允许来自以下集合

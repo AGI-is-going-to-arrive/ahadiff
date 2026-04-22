@@ -236,19 +236,15 @@ def _build_hunk(
     has_truncated_marker = any(line == "[truncated]" for line in body_lines)
     parsed_lines: list[DiffLineRecord] = []
 
-    for index, raw_line in enumerate(body_lines):
+    for raw_line in body_lines:
         if raw_line.startswith("\\ "):
             continue
         if raw_line == "[truncated]":
             continue
         prefix = raw_line[:1]
-        content = raw_line[1:] if prefix in {" ", "+", "-"} else raw_line
         if prefix not in {" ", "+", "-"}:
-            prefix = _infer_prefix(
-                remaining_lines=body_lines[index + 1 :],
-                old_remaining=old_count - consumed_old,
-                new_remaining=new_count - consumed_new,
-            )
+            raise InputError(f"unified diff hunk line is missing prefix: {raw_line!r}")
+        content = raw_line[1:]
         if prefix == " ":
             parsed_lines.append(DiffLineRecord("context", content, old_cursor, new_cursor))
             old_cursor += 1
@@ -285,34 +281,6 @@ def _build_hunk(
         raw_lines=tuple(body_lines),
         lines=tuple(parsed_lines),
     )
-
-
-def _infer_prefix(
-    *,
-    remaining_lines: list[str],
-    old_remaining: int,
-    new_remaining: int,
-) -> Literal[" ", "+", "-"]:
-    future_old = 0
-    future_new = 0
-    for line in remaining_lines:
-        if line.startswith("\\ "):
-            continue
-        if line.startswith(" "):
-            future_old += 1
-            future_new += 1
-        elif line.startswith("-"):
-            future_old += 1
-        elif line.startswith("+"):
-            future_new += 1
-
-    delta_old = old_remaining - future_old
-    delta_new = new_remaining - future_new
-    if delta_old > 0 and delta_new <= 0:
-        return "-"
-    if delta_new > 0 and delta_old <= 0:
-        return "+"
-    return " "
 
 
 __all__ = [

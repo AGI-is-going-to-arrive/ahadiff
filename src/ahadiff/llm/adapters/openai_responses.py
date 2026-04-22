@@ -55,11 +55,10 @@ class OpenAIResponsesAdapter(AdapterBase):
         output_text = payload.get("output_text")
         if output_text is None:
             output_text = "".join(
-                item.get("text", "")
-                for item in payload.get("output", [])
-                for content in item.get("content", [])
-                for item in [content]
-                if content.get("type") in {"output_text", "text"}
+                content_item.get("text", "")
+                for output_item in payload.get("output", [])
+                for content_item in output_item.get("content", [])
+                if content_item.get("type") in {"output_text", "text"}
             )
         return ProviderResponse(
             content=str(output_text or ""),
