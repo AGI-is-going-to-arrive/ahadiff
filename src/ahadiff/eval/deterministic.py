@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -9,7 +10,7 @@ from ahadiff.safety.injection import protect_untrusted_text
 from ahadiff.safety.redact import redaction_pipeline
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Sequence
 
     from ahadiff.contracts import ClaimRecord
     from ahadiff.git.line_map import FileLineMap, HunkLineMap
@@ -58,7 +59,7 @@ def build_deterministic_scores(
 ) -> DeterministicScoreResult:
     notes: list[str] = []
     learnability_score = _metadata_learnability_score(metadata, notes)
-    quiz_score, quiz_reason = _quiz_transfer_score(quiz_entries)
+    quiz_score, quiz_reason = _quiz_transfer_score(quiz_entries, claims=claims, line_maps=line_maps)
     conciseness_score, conciseness_reason = _conciseness_score(lesson_artifacts)
     spec_score, spec_reason = _spec_alignment_score(metadata)
     coverage_score, coverage_reason = _diff_coverage_score(claims, line_maps)
@@ -173,26 +174,90 @@ def _metadata_learnability_score(metadata: Mapping[str, Any], notes: list[str]) 
 
 def _quiz_transfer_score(
     quiz_entries: Sequence[Mapping[str, Any]],
+    *,
+    claims: Sequence[ClaimRecord],
+    line_maps: Sequence[FileLineMap],
 ) -> tuple[float, str]:
     if not quiz_entries:
         return 0.0, "quiz.jsonl is missing"
     count_ratio = min(len(quiz_entries) / 3.0, 1.0)
-    claim_ratio = _field_presence_ratio(quiz_entries, ("source_claims", "claim_ids", "claims"))
-    evidence_ratio = _field_presence_ratio(
-        quiz_entries,
-        ("evidence", "file_line_evidence", "source_hunks"),
-    )
+    claim_ratio = _quiz_claim_link_ratio(quiz_entries, claims)
+    evidence_ratio = _quiz_evidence_link_ratio(quiz_entries, line_maps)
     concept_ratio = _field_presence_ratio(quiz_entries, ("concepts", "concept_ids"))
     composite_ratio = (
-        0.5 * count_ratio
-        + 0.25 * claim_ratio
-        + 0.25
-        * max(
-            evidence_ratio,
-            concept_ratio,
-        )
+        0.3 * count_ratio + 0.35 * claim_ratio + 0.25 * evidence_ratio + 0.1 * concept_ratio
     )
-    return round(10.0 * composite_ratio, 2), "quiz artifact count and anchor richness"
+    return round(10.0 * composite_ratio, 2), "quiz artifact count and validated anchor richness"
+
+
+def _quiz_claim_link_ratio(
+    quiz_entries: Sequence[Mapping[str, Any]],
+    claims: Sequence[ClaimRecord],
+) -> float:
+    if not quiz_entries:
+        return 0.0
+    known_claim_ids = {claim.claim_id for claim in claims}
+    if not known_claim_ids:
+        return 0.0
+    valid_entries = 0
+    for entry in quiz_entries:
+        claim_ids = _string_values(entry, ("source_claims", "claim_ids", "claims"))
+        if claim_ids and all(claim_id in known_claim_ids for claim_id in claim_ids):
+            valid_entries += 1
+    return valid_entries / len(quiz_entries)
+
+
+def _quiz_evidence_link_ratio(
+    quiz_entries: Sequence[Mapping[str, Any]],
+    line_maps: Sequence[FileLineMap],
+) -> float:
+    if not quiz_entries:
+        return 0.0
+    valid_lines = _line_lookup(line_maps)
+    if not valid_lines:
+        return 0.0
+    valid_entries = 0
+    for entry in quiz_entries:
+        if _entry_has_valid_evidence(entry, valid_lines):
+            valid_entries += 1
+    return valid_entries / len(quiz_entries)
+
+
+def _entry_has_valid_evidence(
+    entry: Mapping[str, Any],
+    valid_lines: set[tuple[str, int]],
+) -> bool:
+    for field_name in ("evidence", "file_line_evidence", "source_hunks"):
+        payload = entry.get(field_name)
+        if not isinstance(payload, list):
+            continue
+        for item in cast("list[object]", payload):
+            if not isinstance(item, Mapping):
+                continue
+            item_map = cast("Mapping[str, object]", item)
+            raw_file = item_map.get("file", item_map.get("path"))
+            raw_line = item_map.get("line", item_map.get("start"))
+            if not isinstance(raw_file, str) or not isinstance(raw_line, int):
+                continue
+            identity = path_identity_key(Path(raw_file))
+            if (identity, raw_line) in valid_lines:
+                return True
+    return False
+
+
+def _line_lookup(line_maps: Sequence[FileLineMap]) -> set[tuple[str, int]]:
+    valid_lines: set[tuple[str, int]] = set()
+    for file_map in line_maps:
+        identity = path_identity_key(Path(file_map.display_path))
+        for hunk in file_map.hunks:
+            for line in (
+                *hunk.added_lines,
+                *hunk.deleted_lines,
+                *hunk.context_old_lines,
+                *hunk.context_new_lines,
+            ):
+                valid_lines.add((identity, line))
+    return valid_lines
 
 
 def _conciseness_score(
@@ -316,6 +381,21 @@ def _has_non_empty_field(entry: Mapping[str, Any], field_name: str) -> bool:
     if isinstance(value, dict):
         return len(cast("dict[object, object]", value)) > 0
     return value is not None
+
+
+def _string_values(entry: Mapping[str, Any], field_names: tuple[str, ...]) -> tuple[str, ...]:
+    values: list[str] = []
+    for field_name in field_names:
+        raw_value = entry.get(field_name)
+        if not isinstance(raw_value, list | tuple):
+            continue
+        for item in cast("list[object] | tuple[object, ...]", raw_value):
+            if not isinstance(item, str):
+                continue
+            normalized = item.strip()
+            if normalized and normalized not in values:
+                values.append(normalized)
+    return tuple(values)
 
 
 def _word_count(text: str) -> int:

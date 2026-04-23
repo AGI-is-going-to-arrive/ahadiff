@@ -190,6 +190,75 @@ diff --git a/src/app.py b/src/app.py
     assert report.hard_gates.passed is True
 
 
+def test_evaluate_run_does_not_pass_with_unlinked_quiz_artifacts(
+    tmp_path: Path,
+) -> None:
+    patch_text = """\
+diff --git a/src/app.py b/src/app.py
+--- a/src/app.py
++++ b/src/app.py
+@@ -1,2 +1,8 @@
+-def retry_once():
+-    return 1
++def retry_once():
++    for attempt in range(3):
++        try:
++            return attempt
++        except Exception:
++            continue
++    return 0
++# end
+"""
+    claims = [
+        ClaimRecord(
+            claim_id="claim_retry_loop",
+            run_id="run_fake_quiz",
+            text="The retry helper now iterates up to three attempts.",
+            status="verified",
+            confidence="high",
+            source_hunks=[SourceHunk(file="src/app.py", start=1, end=6, side="new")],
+        ),
+        ClaimRecord(
+            claim_id="claim_default_return",
+            run_id="run_fake_quiz",
+            text="The helper now returns 0 after exhausting attempts.",
+            status="verified",
+            confidence="high",
+            source_hunks=[SourceHunk(file="src/app.py", start=7, end=8, side="new")],
+        ),
+    ]
+    run_path = _write_run_fixture(
+        tmp_path,
+        run_id="run_fake_quiz",
+        claims=claims,
+        patch_text=patch_text,
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+    )
+    (run_path / "quiz" / "quiz.jsonl").write_text(
+        "\n".join(
+            json.dumps(
+                {
+                    "question": f"Fake question {index}",
+                    "source_claims": [f"missing-claim-{index}"],
+                    "evidence": [{"file": "nope.py", "line": 999}],
+                    "concepts": ["placeholder"],
+                }
+            )
+            for index in range(1, 4)
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    report = evaluate_run(run_path)
+    dimensions = cast("dict[str, dict[str, object]]", report.to_payload()["dimensions"])
+
+    assert dimensions["quiz_transfer"]["score"] == 4.0
+    assert report.verdict == "CAUTION"
+
+
 def test_evaluate_run_does_not_pass_without_lesson_and_quiz_even_when_other_dims_are_high(
     tmp_path: Path,
 ) -> None:

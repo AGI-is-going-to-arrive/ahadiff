@@ -18,7 +18,7 @@
 - 一份每条结论都可回溯的 **断言清单**（Claims）
 - 一条可比较的 **质量评分历史**（Ratchet，`review.sqlite` 为唯一真相源，`results.tsv` 为导出视图）
 
-当前代码已经能稳定产出 Lesson / Claims / Score / Ratchet；Concept Graph、Quiz 和 SRS 还在后续阶段。
+当前代码已经能稳定产出 Lesson / Claims / Quiz / Cards / Score / Ratchet；review 流的 SRS runtime 和 Viewer 还在后续阶段。
 
 > Code Wiki 解释仓库，知返解释这次改动 —— 而且每一句话都能回到代码证据。
 
@@ -82,6 +82,7 @@ ahadiff install opencode  # OpenCode → AGENTS.md + .opencode/agents/
 .ahadiff/
 ├─ config.toml           # repo 级配置
 ├─ review.sqlite         # 唯一真相源（SRS/results/signals）
+├─ concepts.jsonl        # git 输入的 repo 级概念累积
 ├─ results.tsv           # 从 review.sqlite 导出的可读视图
 ├─ runs/<run_id>/
 │  ├─ patch.diff
@@ -95,12 +96,16 @@ ahadiff install opencode  # OpenCode → AGENTS.md + .opencode/agents/
 │  ├─ claims.jsonl       # 可验证断言
 │  ├─ score.json         # 8 维评分 + verdict
 │  ├─ finalized.json     # run 发布标记
-│  └─ lesson/
+│  ├─ concepts_local.jsonl   # non-git 输入的 run 级概念累积（按需生成）
+│  ├─ lesson/
 │     ├─ lesson.full.md
 │     ├─ lesson.hint.md
 │     ├─ lesson.compact.md
 │     ├─ misconception.md
 │     └─ not_proven.md
+│  └─ quiz/
+│     ├─ quiz.jsonl
+│     └─ cards.jsonl     # 仅 PASS / CAUTION 生成
 ├─ audit.jsonl           # LLM 调用审计
 ├─ audit.private.jsonl   # strict_local 本机审计（gitignored）
 ├─ ahadiff.lock          # portalocker 文件锁
@@ -141,25 +146,30 @@ ahadiff/
 ├─ src/ahadiff/llm/             # Layer 1.5 / Task 7 provider + probe
 ├─ src/ahadiff/git/             # Stage 2 / Task 5-6 diff capture + 结构化
 ├─ src/ahadiff/claims/          # Stage 2 / Task 8 claim 提取 + 验证 + runtime
-├─ src/ahadiff/lesson/          # Stage 2 / Task 8.5 + 9 learnability + lesson 生成
-├─ src/ahadiff/eval/            # Stage 2 / Task 11-12 evaluator + ratchet + results
+├─ src/ahadiff/lesson/          # Stage 3 / Task 8.5 + 9 learnability + lesson 生成
+├─ src/ahadiff/quiz/            # Stage 3 / Task 10 quiz + cards
+├─ src/ahadiff/wiki/            # Stage 3 / Task 10 concepts ledger
+├─ src/ahadiff/eval/            # Stage 3 / Task 11-12 evaluator + ratchet + results
 ├─ src/ahadiff/prompts/         # wheel 内打包的 prompt 资源
 ├─ prompts/                     # Lesson / claim prompt 模板
-├─ tests/unit/                  # Stage 0 + Stage 1 + Layer 1.5 + Stage 2 单元测试
+├─ tests/unit/                  # Stage 0 + Stage 1 + Layer 1.5 + Stage 2 / Stage 3 单元测试
 ├─ ui/                          # HTML 原型 v1–v6（设计迭代史）
 └─ CLAUDE.md                    # 项目 AI 上下文索引
 ```
 
 ## 当前阶段
 
-**Stage 1 的 Task 1/2、Layer 1.5 的 Task 7，以及 Stage 2 / Task 5/6/8/8.5/9/11/12 已落地。** 当前代码除了设计文档和 HTML 原型，还已经有：
+**Stage 1 的 Task 1/2、Layer 1.5 的 Task 7、Stage 2 / Task 5/6/8，以及 Stage 3 / Task 8.5/9/10/11/12 已落地。** 当前代码除了设计文档和 HTML 原型，还已经有：
 
 - `ahadiff learn` 的主链路：支持 git / `--patch` / `--compare` capture，经过 learnability gate 后生成 `claims.raw.jsonl -> claims.jsonl`、`lesson.full|hint|compact.md`、`misconception.md`、`not_proven.md`
+- `ahadiff quiz`：对已生成的 `quiz.jsonl` 做最小交互式答题，并回显 source_claims / file:line evidence
+- `cards.jsonl` / `concepts.jsonl`：评分通过的 run 会生成 cards；git 输入写 repo 级 `concepts.jsonl`，non-git 输入写 run 级 `concepts_local.jsonl`
 - `ahadiff score` / `ahadiff verify` / `ahadiff export-results`：评分、ratchet 判定和 `results.tsv` 导出都已可用
 - `src/ahadiff/eval/{rubric,gates,deterministic,evaluator,results,ratchet}.py`：8 维评分、hard gates、结果写入、ratchet 选择和导出视图
 - source checkout 与 wheel 安装态的 runtime 资源定位：`eval_bundle_version`、`prompt_version`、lesson prompt 加载都已经接到包内资源
+- `ahadiff review` / `ahadiff serve` / `ahadiff improve` / `ahadiff install` 还在后续阶段；上面“规划中”的对应命令示例目前还不是当前 CLI 的可用命令
 
-本轮又收口了几件容易出错的运行时边界：`prompt_version` 只描述 AhaDiff 自己的 prompt 资源，不再受目标工作区 `prompts/` 影响；lesson JSON 解析会跳过不匹配 schema 的示例块；lesson 目录改成 staging 后整体发布，失败时会回滚；如果 lesson 生成阶段失败，会清掉新写出的 `claims.raw.jsonl` / `claims.jsonl` 和 lesson 半成品；`learn` 成功后会写入 `event_type=learn` 的评分事件和 `score.json`，manual `score` / `verify` 不再污染 learn 的 ratchet baseline；partial lesson 产物不会再误拿 `PASS`。
+本轮又收口了几件容易出错的运行时边界：`prompt_version` 只描述 AhaDiff 自己的 prompt 资源，不再受目标工作区 `prompts/` 影响；lesson JSON 解析会跳过不匹配 schema 的示例块；lesson/quiz 目录改成生成后再接到主链，失败时会回滚；如果 lesson 生成阶段失败，会清掉新写出的 `claims.raw.jsonl` / `claims.jsonl`、`quiz/` 和 `concepts_local.jsonl` 半成品；`learn` 成功后会写入 `event_type=learn` 的评分事件和 `score.json`，manual `score` / `verify` 不再污染 learn 的 ratchet baseline；`ReviewCard` 现在会校验 `last_rating` 范围和 `card_state/stale_reason` 组合；伪造 quiz 也不会再误拿 `PASS`。
 
 当前已落地的最小验证：
 
@@ -169,9 +179,10 @@ source .venv/bin/activate && ruff check src tests
 source .venv/bin/activate && ruff format --check src tests
 source .venv/bin/activate && pyright
 source .venv/bin/activate && uv build --wheel
+source .venv/bin/activate && python -m ahadiff quiz --help
 ```
 
-本次实际结果：`source .venv/bin/activate && pytest tests/unit -q` 为 `326 passed`；`source .venv/bin/activate && ruff check src tests`、`source .venv/bin/activate && ruff format --check src tests`、`source .venv/bin/activate && pyright` 与 `source .venv/bin/activate && uv build --wheel` 全通过。另做了一次 clean-room wheel 验证：在临时虚拟环境离线安装新 wheel 后，确认安装态 `evaluate_run()`、`compute_prompt_version()`、lesson prompt 加载和 lesson JSON 解析都能正常工作，且目标工作区自带的 `prompts/` 不会污染 `prompt_version`。
+本次实际结果：`source .venv/bin/activate && pytest tests/unit -q` 为 `335 passed`；`source .venv/bin/activate && ruff check src tests`、`source .venv/bin/activate && ruff format --check src tests`、`source .venv/bin/activate && pyright` 与 `source .venv/bin/activate && uv build --wheel` 全通过。另做了一次 clean-room wheel 验证：在临时虚拟环境安装新 wheel 后，确认安装态 `evaluate_run()`、`compute_prompt_version()`、lesson/quiz prompt 加载、lesson JSON 解析和 `compute_term_key()` 都能正常工作，且目标工作区自带的 `prompts/` 不会污染 `prompt_version`。
 
 下一步路线图：
 

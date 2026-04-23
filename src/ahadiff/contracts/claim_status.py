@@ -69,6 +69,23 @@ class ReviewCard(BaseModel):
             raise ValueError("fsrs_state must be a JSON object string")
         return value
 
+    @field_validator("last_rating")
+    @classmethod
+    def validate_last_rating(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        if value < 1 or value > 4:
+            raise ValueError("last_rating must be between 1 and 4")
+        return value
+
+    @model_validator(mode="after")
+    def validate_stale_contract(self) -> ReviewCard:
+        if self.card_state == "stale" and self.stale_reason is None:
+            raise ValueError("stale cards require stale_reason")
+        if self.card_state != "stale" and self.stale_reason is not None:
+            raise ValueError("stale_reason is only allowed when card_state is stale")
+        return self
+
 
 class ClaimRecord(BaseModel):
     """Stage 0 minimal importable claim schema."""

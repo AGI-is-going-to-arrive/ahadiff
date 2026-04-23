@@ -173,6 +173,52 @@ class TestSerialization:
                 change_kind=cast("Any", "modified"),
             )
 
+    def test_review_card_enforces_rating_and_stale_state_contract(self) -> None:
+        from ahadiff.contracts import ReviewCard
+
+        with pytest.raises(ValidationError):
+            ReviewCard(
+                card_id="card-1",
+                concept="retry loop",
+                run_id="run-1",
+                source_ref="abc1234",
+                fsrs_state="{}",
+                last_rating=5,
+                file_id="file-1",
+                display_path="src/a.py",
+                hunk_id="h1",
+                hunk_hash="deadbeef",
+            )
+
+        with pytest.raises(ValidationError):
+            ReviewCard(
+                card_id="card-1",
+                concept="retry loop",
+                run_id="run-1",
+                source_ref="abc1234",
+                fsrs_state="{}",
+                card_state="stale",
+                file_id="file-1",
+                display_path="src/a.py",
+                hunk_id="h1",
+                hunk_hash="deadbeef",
+            )
+
+        with pytest.raises(ValidationError):
+            ReviewCard(
+                card_id="card-1",
+                concept="retry loop",
+                run_id="run-1",
+                source_ref="abc1234",
+                fsrs_state="{}",
+                card_state="active",
+                stale_reason="file_deleted",
+                file_id="file-1",
+                display_path="src/a.py",
+                hunk_id="h1",
+                hunk_hash="deadbeef",
+            )
+
     def test_claim_record_enforces_reason_code_and_source_hunk_shape(self) -> None:
         from ahadiff.contracts import ClaimRecord
 

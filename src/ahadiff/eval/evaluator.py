@@ -10,6 +10,7 @@ from typing import Any, cast
 from ahadiff.claims import load_line_map_records
 from ahadiff.contracts import ClaimRecord, compute_runtime_eval_bundle_version
 from ahadiff.core.errors import InputError
+from ahadiff.core.paths import path_identity_key
 
 from .deterministic import DimensionScore, build_deterministic_scores
 from .gates import HardGateSummary, evaluate_hard_gates
@@ -82,6 +83,8 @@ def evaluate_run(run_path: Path) -> ScoreReport:
         pass_threshold=rubric.pass_threshold,
         caution_threshold=rubric.caution_threshold,
         artifacts_complete=_has_complete_stage3_artifacts(
+            claims=claims,
+            line_maps=line_maps,
             lesson_artifacts=lesson_artifacts,
             quiz_entries=quiz_entries,
         ),
@@ -199,11 +202,67 @@ def _resolve_verdict(
 
 def _has_complete_stage3_artifacts(
     *,
+    claims: tuple[ClaimRecord, ...],
+    line_maps: tuple[Any, ...],
     lesson_artifacts: dict[str, str],
     quiz_entries: tuple[dict[str, Any], ...],
 ) -> bool:
     required_lesson_variants = {"full", "hint", "compact"}
-    return required_lesson_variants.issubset(lesson_artifacts) and bool(quiz_entries)
+    return required_lesson_variants.issubset(lesson_artifacts) and _has_linked_quiz_entries(
+        claims=claims,
+        line_maps=line_maps,
+        quiz_entries=quiz_entries,
+    )
+
+
+def _has_linked_quiz_entries(
+    *,
+    claims: tuple[ClaimRecord, ...],
+    line_maps: tuple[Any, ...],
+    quiz_entries: tuple[dict[str, Any], ...],
+) -> bool:
+    if not quiz_entries:
+        return False
+    claim_ids = {claim.claim_id for claim in claims}
+    valid_lines: set[tuple[str, int]] = set()
+    for file_map in line_maps:
+        identity = file_map.path_identity_key
+        for hunk in file_map.hunks:
+            for line in (
+                *hunk.added_lines,
+                *hunk.deleted_lines,
+                *hunk.context_old_lines,
+                *hunk.context_new_lines,
+            ):
+                valid_lines.add((identity, line))
+    for entry in quiz_entries:
+        raw_claims = entry.get("source_claims")
+        if not isinstance(raw_claims, list) or not raw_claims:
+            return False
+        claim_values = cast("list[object]", raw_claims)
+        if any(not isinstance(item, str) or item.strip() not in claim_ids for item in claim_values):
+            return False
+        evidence = entry.get("evidence")
+        if not isinstance(evidence, list) or not evidence:
+            return False
+        evidence_items = cast("list[object]", evidence)
+        if not any(_evidence_links_to_line_map(item, valid_lines) for item in evidence_items):
+            return False
+    return True
+
+
+def _evidence_links_to_line_map(
+    payload: object,
+    valid_lines: set[tuple[str, int]],
+) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    payload_map = cast("dict[str, object]", payload)
+    raw_file = payload_map.get("file", payload_map.get("path"))
+    raw_line = payload_map.get("line", payload_map.get("start"))
+    if not isinstance(raw_file, str) or not isinstance(raw_line, int):
+        return False
+    return (path_identity_key(Path(raw_file)), raw_line) in valid_lines
 
 
 def _resolve_weakest_dimension(dimensions: tuple[DimensionScore, ...]) -> str:

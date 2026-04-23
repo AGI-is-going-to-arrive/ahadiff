@@ -18,7 +18,7 @@ It's not a PR summary, not a repo wiki, not yet another "code explainer." It rea
 - A **claims** ledger where every assertion traces back to a hunk
 - A comparable **quality score history** (ratcheted; `review.sqlite` is the single source of truth, `results.tsv` is a human-readable export)
 
-The current code already ships Lesson / Claims / Score / Ratchet. Concept Graph, Quiz, and SRS are still in later stages.
+The current code already ships Lesson / Claims / Quiz / Cards / Score / Ratchet. The review-flow SRS runtime and Viewer are still in later stages.
 
 > Code Wiki explains a repo. AhaDiff teaches you what changed — and verifies every claim against the diff.
 
@@ -82,6 +82,7 @@ Current output layout:
 .ahadiff/
 ├─ config.toml           # Per-repo config
 ├─ review.sqlite         # Single source of truth (SRS/results/signals)
+├─ concepts.jsonl        # Repo-global concept ledger for git-backed runs
 ├─ results.tsv           # Human-readable export rebuilt from review.sqlite
 ├─ runs/<run_id>/
 │  ├─ patch.diff
@@ -95,12 +96,16 @@ Current output layout:
 │  ├─ claims.jsonl       # Verifiable assertions
 │  ├─ score.json         # 8-dimension score + verdict
 │  ├─ finalized.json     # Publish marker for the run
-│  └─ lesson/
+│  ├─ concepts_local.jsonl   # Run-local concept ledger for non-git inputs (when needed)
+│  ├─ lesson/
 │     ├─ lesson.full.md
 │     ├─ lesson.hint.md
 │     ├─ lesson.compact.md
 │     ├─ misconception.md
 │     └─ not_proven.md
+│  └─ quiz/
+│     ├─ quiz.jsonl
+│     └─ cards.jsonl     # Only written for PASS / CAUTION runs
 ├─ audit.jsonl           # LLM call audit log
 ├─ audit.private.jsonl   # strict_local local-only audit (gitignored)
 ├─ ahadiff.lock          # portalocker file lock
@@ -141,25 +146,30 @@ ahadiff/
 ├─ src/ahadiff/llm/             # Layer 1.5 / Task 7 provider + probe
 ├─ src/ahadiff/git/             # Stage 2 / Task 5-6 diff capture + structuring
 ├─ src/ahadiff/claims/          # Stage 2 / Task 8 claim extraction + verification + runtime
-├─ src/ahadiff/lesson/          # Stage 2 / Task 8.5 + 9 learnability + lesson generation
-├─ src/ahadiff/eval/            # Stage 2 / Task 11-12 evaluator + ratchet + results
+├─ src/ahadiff/lesson/          # Stage 3 / Task 8.5 + 9 learnability + lesson generation
+├─ src/ahadiff/quiz/            # Stage 3 / Task 10 quiz + cards
+├─ src/ahadiff/wiki/            # Stage 3 / Task 10 concepts ledger
+├─ src/ahadiff/eval/            # Stage 3 / Task 11-12 evaluator + ratchet + results
 ├─ src/ahadiff/prompts/         # Prompt resources packaged into the wheel
 ├─ prompts/                     # Lesson / claim prompt templates
-├─ tests/unit/                  # Stage 0 + Stage 1 + Layer 1.5 + Stage 2 unit tests
+├─ tests/unit/                  # Stage 0 + Stage 1 + Layer 1.5 + Stage 2 / Stage 3 unit tests
 ├─ ui/                          # HTML prototypes v1–v6 (design history)
 └─ CLAUDE.md                    # Project AI context index
 ```
 
 ## Status
 
-**Stage 1 Task 1/2, Layer 1.5 / Task 7, and Stage 2 / Task 5/6/8/8.5/9/11/12 are now landed.** The current codebase already has:
+**Stage 1 Task 1/2, Layer 1.5 / Task 7, Stage 2 / Task 5/6/8, and Stage 3 / Task 8.5/9/10/11/12 are now landed.** The current codebase already has:
 
 - the `ahadiff learn` main path for git and non-git capture (`--patch` / `--compare`), followed by learnability gating, `claims.raw.jsonl -> claims.jsonl`, and full / hint / compact lesson output
+- `ahadiff quiz` for a minimal interactive quiz loop backed by `quiz.jsonl`, with source-claim and file-line evidence printed back to the user
+- `cards.jsonl` / `concepts.jsonl`: cards are generated for scored PASS / CAUTION runs; git-backed runs write the repo-global `concepts.jsonl`, while non-git runs write `concepts_local.jsonl`
 - `ahadiff score`, `ahadiff verify`, and `ahadiff export-results`, backed by `review.sqlite` as the single source of truth and `results.tsv` as an export view
 - `src/ahadiff/eval/{rubric,gates,deterministic,evaluator,results,ratchet}.py` for the 8-dimension scorer, hard gates, result persistence, ratchet selection, and export rebuilds
 - runtime resource lookup that works in both source checkout and installed wheel mode for `eval_bundle_version`, `prompt_version`, and packaged lesson prompts
+- `ahadiff review` / `ahadiff serve` / `ahadiff improve` / `ahadiff install` are still later-stage commands; the matching roadmap examples above are not available in the current CLI yet
 
-This round also closed several runtime edges: `prompt_version` now tracks AhaDiff's own prompt resources instead of any target-workspace `prompts/`; lesson JSON parsing skips schema-mismatched example blocks before accepting a real answer; the lesson directory is staged and published as a unit with rollback on failure; lesson-generation failures now clean up newly written `claims.raw.jsonl` / `claims.jsonl` and lesson half-artifacts; successful `learn` runs now write a `learn` event plus `score.json`; manual `score` / `verify` no longer contaminate the learn baseline; partial lesson artifacts can no longer pass as a complete Stage-3 result.
+This round also closed several runtime edges: `prompt_version` still tracks AhaDiff's own prompt resources instead of any target-workspace `prompts/`; lesson JSON parsing skips schema-mismatched example blocks before accepting a real answer; the lesson/quiz chain is now wired into `learn`; lesson-generation failures now clean up newly written `claims.raw.jsonl` / `claims.jsonl`, `quiz/`, and `concepts_local.jsonl` half-artifacts; successful `learn` runs now write a `learn` event plus `score.json`; manual `score` / `verify` still do not contaminate the learn baseline; `ReviewCard` now validates `last_rating` and `card_state/stale_reason`; fake quiz artifacts no longer pass as a complete Stage-3 result.
 
 Current minimal verification:
 
@@ -169,9 +179,10 @@ source .venv/bin/activate && ruff check src tests
 source .venv/bin/activate && ruff format --check src tests
 source .venv/bin/activate && pyright
 source .venv/bin/activate && uv build --wheel
+source .venv/bin/activate && python -m ahadiff quiz --help
 ```
 
-Actual result from this session: `source .venv/bin/activate && pytest tests/unit -q` finished with `326 passed`; `source .venv/bin/activate && ruff check src tests`, `source .venv/bin/activate && ruff format --check src tests`, `source .venv/bin/activate && pyright`, and `source .venv/bin/activate && uv build --wheel` all passed. This session also included a clean-room wheel check: after offline-installing the newly built wheel into a temporary virtualenv, installed-mode `evaluate_run()`, `compute_prompt_version()`, lesson prompt loading, and lesson JSON parsing all worked, and a target workspace `prompts/` directory no longer polluted `prompt_version`.
+Actual result from this session: `source .venv/bin/activate && pytest tests/unit -q` finished with `335 passed`; `source .venv/bin/activate && ruff check src tests`, `source .venv/bin/activate && ruff format --check src tests`, `source .venv/bin/activate && pyright`, and `source .venv/bin/activate && uv build --wheel` all passed. This session also included a clean-room wheel check: after installing the newly built wheel into a temporary virtualenv, installed-mode `evaluate_run()`, `compute_prompt_version()`, lesson/quiz prompt loading, lesson JSON parsing, and `compute_term_key()` all worked, and a target workspace `prompts/` directory still did not pollute `prompt_version`.
 
 Roadmap:
 

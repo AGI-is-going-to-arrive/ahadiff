@@ -28,6 +28,8 @@ from ahadiff.lesson.generator import (
 from ahadiff.lesson.scaffolding import compute_scaffolding_level
 from ahadiff.lesson.schemas import LessonCompact, LessonFull, LessonHint, parse_lesson_payload
 from ahadiff.llm.schemas import ProviderRequest, ProviderResponse
+from ahadiff.quiz.generator import QuizArtifactPaths, write_quiz_questions_jsonl
+from ahadiff.quiz.schemas import QuizEvidence, QuizQuestion
 
 _RUNNER = CliRunner()
 
@@ -526,6 +528,26 @@ def test_learn_cli_generates_lessons_with_explicit_provider(
 
     monkeypatch.setattr("ahadiff.lesson.generator.make_provider", fake_provider_factory)
 
+    def fake_quiz(
+        *args: object, **kwargs: object
+    ) -> tuple[QuizArtifactPaths, tuple[QuizQuestion, ...]]:
+        run_path = cast("Path", kwargs["run_path"])
+        questions = (
+            QuizQuestion(
+                question_id="quiz_1",
+                question="What changed?",
+                expected_answer="The retry helper now loops over attempts.",
+                source_claims=["run_cli_claim_1"],
+                concepts=["retry loop"],
+                evidence=[QuizEvidence(file="src/app.py", line=2)],
+            ),
+        )
+        quiz_path = run_path / "quiz" / "quiz.jsonl"
+        write_quiz_questions_jsonl(quiz_path, questions)
+        return QuizArtifactPaths(quiz_dir=quiz_path.parent, quiz_path=quiz_path), questions
+
+    monkeypatch.setattr(cli_module, "generate_quiz_from_run", fake_quiz)
+
     result = _RUNNER.invoke(
         app(),
         [
@@ -550,6 +572,7 @@ def test_learn_cli_generates_lessons_with_explicit_provider(
     assert (lesson_dir / "lesson.full.md").exists()
     assert (lesson_dir / "lesson.hint.md").exists()
     assert (lesson_dir / "lesson.compact.md").exists()
+    assert (run_dirs[-1] / "quiz" / "quiz.jsonl").exists()
     assert (run_dirs[-1] / "score.json").exists()
     provider_config = captured["provider_config"]
     assert isinstance(provider_config, ProviderConfig)

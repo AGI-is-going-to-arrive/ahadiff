@@ -3,7 +3,7 @@
 > 修订日期 2026-04-23
 > 权威源（高→低）：① `CLAUDE.md` ② `ahadiff-v01-kickoff.md` ③ `ahadiff-v01-stages-4-9.md` ④ `closure-checklist-29.md` ⑤ `AhaDiff_frontend_design_v1.1_revised.md` ⑥ `AhaDiff Warm v6.html`
 > 本文档是执行排程，不是新的架构权威源。与 `doc/contract-freeze.md` 冲突时，Task 0 产出的 `contract-freeze.md` 为准。
-> 状态更新（2026-04-23）：`Stage 0 / Task 0` 已完成，已产出 `doc/contract-freeze.md`、`src/ahadiff/contracts/*.py`、`tests/unit/test_contracts.py`；当前实测 `uv run pytest tests/unit/test_contracts.py -q` 为 `19 passed`。
+> 状态更新（2026-04-24）：`Stage 0 / Task 0`、`Stage 1 / Task 1-2`、`Layer 1.5 / Task 7`、`Stage 2 / Task 5/6/8`、`Stage 3 / Task 8.5/9/10/11/12` 已落地。当前实测 `uv run pytest tests/unit -q` 为 `335 passed`，`uv run ruff check src tests`、`uv run pyright` 与 `uv build --wheel` 全通过；clean-room wheel smoke 也已覆盖 quiz prompt 资源与 concepts helper。
 
 ---
 
@@ -106,7 +106,7 @@
   - `Task 2` 的安全层基础实现也已落地，并通过当前后端 gate
   - 当前实测：`uv run pytest tests/unit/test_stage1_task1.py tests/unit/test_contracts.py -q` 为 `42 passed`
   - 当前实测：`uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` 为 `35 passed`
-  - 当前实测：`env PYTEST_ADDOPTS='-p no:cacheprovider' uv run pytest tests/unit -q` 为 `242 passed`
+  - 当前实测：`uv run pytest tests/unit -q` 为 `335 passed`
   - 当前实测：`uv run ruff check src tests`、`uv run pyright` 与 `uv build --wheel` 全通过
   - 当前仓库 `.venv` 运行时为 Python 3.12.10 / SQLite 3.51.3，`ahadiff doctor` 的 SQLite gate 实测通过；低版本 SQLite runtime 下 `doctor` 已改为非零退出
   - `Task 1` 现已补入独立 maintenance 子命令 `ahadiff maint clean-orphans`，专门处理 `.tmp` run 目录与 audit rotation 残留，不再把清理职责塞回 `doctor`
@@ -157,7 +157,7 @@
   - 当前实测：`uv run pytest tests/unit/test_git_capture.py -q` 为 `37 passed`
   - 当前实测：`uv run pytest tests/unit/test_probe.py tests/unit/test_provider.py -q` 为 `43 passed`
   - 当前实测：`uv run pytest tests/unit/test_hunk_hash.py tests/unit/test_diff_parser.py tests/unit/test_line_map.py tests/unit/test_symbol_extract.py tests/unit/test_git_capture.py -q` 为 `78 passed`
-  - 当前实测：`env PYTEST_ADDOPTS='-p no:cacheprovider' uv run pytest tests/unit -q` 为 `242 passed`
+  - 当前实测：`uv run pytest tests/unit -q` 为 `335 passed`
   - 当前实测：`uv run ruff check src tests`、`uv run pyright` 全通过
   - 当前实测：`uv run ahadiff learn --unstaged --include-untracked --dry-run --repo-root <repo-root>`、非 git 目录下的 `uv run python -m ahadiff learn --patch sample.patch --dry-run --repo-root <tmpdir>`、非 git 目录下的 `uv run python -m ahadiff learn --compare old.py new.py --dry-run --repo-root <tmpdir>`、`uv run ahadiff graph status --repo-root <repo-root>` 与 non-git `uv run python -m ahadiff unlock --force --repo-root <tmpdir>` 本次都已实测可运行
   - 当前已落地 `--last` / `--since` / `--staged` / `--unstaged` / commit range / 单 commit / `--patch file|-` / `--compare a b`，以及最小 Graphify detect/import/status/refresh CLI
@@ -223,6 +223,14 @@
   - `Codex + Claude`
 
 ### Stage 3 — Learnability + Lesson + Quiz + Eval + Ratchet（Task 8.5, 9–12）
+
+- **当前状态（2026-04-24）**：
+  - `Task 8.5` 已落地 `src/ahadiff/lesson/learnability.py` 与 `tests/unit/test_learnability.py`
+  - `Task 9` 已落地 `src/ahadiff/lesson/{generator,scaffolding,schemas}.py`、`prompts/{lesson_generate,lesson_hint,lesson_compact}.md` 与 `tests/unit/test_lesson_generator.py`
+  - `Task 10` 已落地 `src/ahadiff/quiz/{generator,schemas}.py`、`src/ahadiff/wiki/concepts.py`、`prompts/quiz_generate.md` 与 `tests/unit/{test_quiz_generator,test_concepts}.py`
+  - `Task 11/12` 已落地 `src/ahadiff/eval/{rubric,gates,deterministic,evaluator,results,ratchet}.py` 与 `ahadiff score` / `ahadiff verify` / `ahadiff export-results`
+  - 当前实测：`uv run pytest tests/unit -q` 为 `335 passed`
+  - 当前实测：`uv run ruff check src tests`、`uv run pyright` 与 `uv build --wheel` 全通过
 
 - **目标**：
   - 建立 learnability 判定
@@ -566,18 +574,18 @@
 |---|---|---|---|---|---|
 | `BL-00` | Task 0 `contract-freeze.md` + core contracts + tests（已完成） | docs + backend | — | 1.5–2d | `contract-freeze.md` 已落地；contracts import 正常；`uv run pytest tests/unit/test_contracts.py -q` 实测 `19 passed` |
 | `BL-01` | Task 1 scaffold + `pyproject.toml` + `doctor` + `config show --resolved` | backend | `BL-00` | 1d | `uv run ahadiff init/doctor/config show --resolved` 可运行 |
-| `BL-02` | Task 2 safety + allowlist + audit provenance（已落地基础实现） | backend | `BL-00` | 1d | `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` 实测 `35 passed`；`env PYTEST_ADDOPTS='-p no:cacheprovider' uv run pytest tests/unit -q` 当前实测 `242 passed` |
+| `BL-02` | Task 2 safety + allowlist + audit provenance（已落地基础实现） | backend | `BL-00` | 1d | `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` 实测 `35 passed`；`uv run pytest tests/unit -q` 当前实测 `335 passed` |
 | `BL-03` | Task 7 provider + probe + ProviderCapabilities（已落地） | backend | `BL-01` | 1.5–2d | `uv run pytest tests/unit/test_probe.py tests/unit/test_provider.py -q` 实测 `43 passed`；`ahadiff provider test` 已落地；使用环境变量形式的本地 loopback provider 的真实 probe 与 `generate()` 调用本次也已跑通 |
 | `BL-04` | Task 5 diff capture v0.1 输入面（已落地） | backend | `BL-01` + `BL-02` | 1.5d | range / `--last` / `--since` / `--staged` / `--unstaged` / 单 commit / `--patch file|-` / `--compare a b` 全部 dry-run 正常；`uv run pytest tests/unit/test_git_capture.py -q` 实测 `37 passed` |
 | `BL-05` | Task 6 parser + anchors + line map（已落地） | backend | `BL-04` | 1.5d | `uv run pytest tests/unit/test_hunk_hash.py tests/unit/test_diff_parser.py tests/unit/test_line_map.py tests/unit/test_symbol_extract.py tests/unit/test_git_capture.py -q` 实测 `78 passed`；`line_map.json` / `symbols.json` artifact 已升级为显式 schema/version，`artifact_set.json` 已接线；全局+workspace allowlist、shared path helper、non-git 子目录根解析、`capture_patch()` 库 API 边界、目录级原子发布、quoted path、CRLF / `[truncated]` hash、AST / regex / section header 降级、JS/TS regex fallback、rename 双名记录与 hostile input/property-style 测试通过 |
 | `BL-06` | Graphify v0.1 backend/CLI workstream | backend + test | `BL-04` + `BL-05` | 1.5d | `graph status/refresh/import`、detect/import/sanitize、degrade path 覆盖 |
-| `BL-07` | Task 8 claim verifier（已落地） | backend | `BL-03` + `BL-05` | 4–5d | `uv run pytest tests/unit/test_claim_verify.py tests/unit/test_claim_extract.py tests/unit/test_negative_scan.py tests/unit/test_git_capture.py -q` 实测 `75 passed`；`env PYTEST_ADDOPTS='-p no:cacheprovider' uv run pytest tests/unit -q` 当前实测 `242 passed`；5 态 claim + `reason_code` + negative scan 已接线 |
+| `BL-07` | Task 8 claim verifier（已落地） | backend | `BL-03` + `BL-05` | 4–5d | `uv run pytest tests/unit/test_claim_verify.py tests/unit/test_claim_extract.py tests/unit/test_negative_scan.py tests/unit/test_git_capture.py -q` 实测 `75 passed`；`uv run pytest tests/unit -q` 当前实测 `335 passed`；5 态 claim + `reason_code` + negative scan 已接线 |
 
 ### P1
 
 | ID | 任务 | Owner type | 依赖 | 预计工作量 | 验收 |
 |---|---|---|---|---|---|
-| `BL-08` | Task 8.5 + 9 + 10 | backend + docs | `BL-07` | 2.5–3d | learnability、lesson 三档、quiz/cards/concepts 跑通 |
+| `BL-08` | Task 8.5 + 9 + 10（已落地） | backend + docs | `BL-07` | 2.5–3d | learnability、lesson 三档、quiz/cards/concepts 已跑通；`uv run pytest tests/unit/test_learnability.py tests/unit/test_lesson_generator.py tests/unit/test_quiz_generator.py tests/unit/test_concepts.py -q` 与全量 `uv run pytest tests/unit -q` 当前均通过 |
 | `BL-09` | Task 11 + 12 | backend | `BL-07` | 2–2.5d | `eval_bundle_version`、ratchet、`result_events`、TSV 重建通过 |
 | `BL-10` | Task 13 viewer foundation | frontend | `BL-00` | 2d | build / FOUC / a11y / print / FCP / render-count 通过 |
 | `BL-11` | Task 14 core 4 pages + Graphify/ConceptGraph tri-state | frontend | `BL-10` | 2–2.5d | 4 视口、Mini-Panel、KPI fallback、cluster 性能与无障碍通过 |

@@ -235,6 +235,8 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 补充约束：
 
 - `fsrs_state` 存的是 opaque Card JSON，序列化字符串必须是合法 JSON object
+- `last_rating` 只允许 `1-4`
+- `card_state = stale` 时 `stale_reason` 必填；其他状态不得携带 `stale_reason`
 - `peeked_this_session` 允许存在于运行时模型，但序列化持久化时不输出
 - `change_kind` 在当前最小合同里只承载 `deleted | renamed | null`
 - `hunk_hash` 算法冻结：只从 hunk header 提取 `section_header`，若非空则在规范化 payload 首行加入 `section:<section_header>`；body 中忽略 `[truncated]` 与 `\ No newline at end of file`，其余行仅去掉行尾 `\r\n`，保留原始 `+/-/ ` 前缀与正文；最终用 `\n` 连接规范化结果，做 SHA-256 并取 hex 前 12 位。因此 LF/CRLF 差异与 hunk 数字范围变化不影响 `hunk_hash`

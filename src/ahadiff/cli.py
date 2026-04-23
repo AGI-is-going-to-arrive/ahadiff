@@ -68,6 +68,8 @@ from .lesson import generate_lessons_from_run
 from .lesson.learnability import assess_learnability
 from .llm import probe_provider
 from .llm.provider import transport_target_for_base_url
+from .quiz import generate_cards_for_run, generate_quiz_from_run, load_quiz_questions
+from .wiki import append_concepts
 
 if TYPE_CHECKING:
     from .contracts import PrivacyMode
@@ -348,6 +350,8 @@ def _cleanup_lesson_generation_artifacts(
         raw_claims_path,
         claims_output_path,
         run_path / "lesson",
+        run_path / "quiz",
+        run_path / "concepts_local.jsonl",
     ):
         if target is None or not target.exists():
             continue
@@ -367,6 +371,10 @@ def _resolve_learn_workspace_root(
         workspace_root = find_workspace_root(repo_root)
         assert_local_repo_path(workspace_root)
         return workspace_root, False
+
+
+def _normalize_quiz_answer(value: str) -> str:
+    return " ".join(value.strip().casefold().split())
 
 
 @_APP.callback()
@@ -704,6 +712,9 @@ def learn_cmd(
             raw_claims_path: Path | None = None
             claims_output_path: Path | None = None
             lesson_paths = None
+            quiz_path: Path | None = None
+            cards_path: Path | None = None
+            concepts_path: Path | None = None
             lesson_skip_reason: str | None = None
             learn_report = None
             learn_outcome = None
@@ -789,7 +800,26 @@ def learn_cmd(
                             retry_attempts=int(llm_config["retry_attempts"]),
                             privacy_mode=resolved_privacy_mode,
                         )
+                        quiz_artifacts, quiz_questions = generate_quiz_from_run(
+                            run_id=capture.run_id,
+                            run_path=run_path,
+                            workspace_root=root,
+                            provider_config=provider_config,
+                            api_key=effective_api_key,
+                            security_config=security_config,
+                            request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
+                            max_concurrent=int(llm_config["max_concurrent"]),
+                            qps_limit=int(provider_limits["qps_limit"]),
+                            retry_attempts=int(llm_config["retry_attempts"]),
+                            privacy_mode=resolved_privacy_mode,
+                        )
+                        quiz_path = quiz_artifacts.quiz_path
                         learn_report = evaluate_run(run_path)
+                        cards_path = generate_cards_for_run(
+                            run_path=run_path,
+                            questions=quiz_questions,
+                            verdict=learn_report.verdict,
+                        )
                         learn_outcome, learn_warnings = _persist_evaluated_run(
                             run_path=run_path,
                             report=learn_report,
@@ -799,6 +829,17 @@ def learn_cmd(
                             force=False,
                             note_payload={"learnability": learnability.as_metadata()},
                         )
+                        try:
+                            concepts_path = append_concepts(
+                                workspace_root=root,
+                                run_path=run_path,
+                                run_id=capture.run_id,
+                                source_kind=str(capture.run_source.source_kind),
+                                source_ref=str(capture.run_source.source_ref),
+                                questions=quiz_questions,
+                            )
+                        except Exception as concept_error:
+                            learn_warnings.append(f"concepts append failed: {concept_error}")
                 except Exception as exc:
                     _cleanup_lesson_generation_artifacts(
                         run_path=run_path,
@@ -835,6 +876,14 @@ def learn_cmd(
             console.print(f"[bold]Lesson[/bold]: {lesson_paths.full_path}")
             console.print(f"[bold]Hint[/bold]: {lesson_paths.hint_path}")
             console.print(f"[bold]Compact[/bold]: {lesson_paths.compact_path}")
+            if quiz_path is not None:
+                console.print(f"[bold]Quiz[/bold]: {quiz_path}")
+            if cards_path is not None:
+                console.print(f"[bold]Cards[/bold]: {cards_path}")
+            elif learn_report is not None and learn_report.verdict == "FAIL":
+                console.print("[bold]Cards[/bold]: skipped because verdict is FAIL")
+            if concepts_path is not None:
+                console.print(f"[bold]Concepts[/bold]: {concepts_path}")
             if learn_report is not None and learn_outcome is not None:
                 console.print(f"[bold]Score[/bold]: {learn_report.overall:.2f}")
                 console.print(f"[bold]Verdict[/bold]: {learn_report.verdict}")
@@ -856,6 +905,49 @@ def learn_cmd(
             )
         else:
             console.print("[bold]Graphify[/bold]: not detected")
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+@_APP.command("quiz")
+def quiz_cmd(
+    run_id: Annotated[
+        str,
+        typer.Argument(help="Run id under .ahadiff/runs/<run_id>."),
+    ],
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or workspace root."),
+    ] = Path(),
+) -> None:
+    try:
+        root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        validate_run_id(run_id)
+        run_path = (
+            run_dir(run_id, root)
+            if has_git_repo
+            else (root / ".ahadiff" / "runs" / run_id)
+        )
+        questions = load_quiz_questions(run_path / "quiz" / "quiz.jsonl")
+        correct = 0
+        for index, question in enumerate(questions, start=1):
+            console.print(f"[bold]Question {index}[/bold]: {question.question}")
+            answer = typer.prompt("Your answer")
+            if _normalize_quiz_answer(answer) == _normalize_quiz_answer(question.expected_answer):
+                correct += 1
+                console.print("[green]Correct[/green]")
+            else:
+                console.print(f"[yellow]Expected[/yellow]: {question.expected_answer}")
+            claims_text = ", ".join(question.source_claims)
+            evidence_text = ", ".join(f"{item.file}:{item.line}" for item in question.evidence)
+            console.print(f"[bold]Claims[/bold]: {claims_text}")
+            console.print(f"[bold]Evidence[/bold]: {evidence_text}")
+            if question.concepts:
+                console.print(f"[bold]Concepts[/bold]: {', '.join(question.concepts)}")
+            if question.explanation:
+                console.print(f"[bold]Why[/bold]: {question.explanation}")
+            console.print("")
+        console.print(f"[bold]Score[/bold]: {correct}/{len(questions)}")
     except Exception as error:  # pragma: no cover - exercised through CLI tests
         _handle_cli_error(error)
 
