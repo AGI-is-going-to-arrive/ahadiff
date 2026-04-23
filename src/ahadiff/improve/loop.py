@@ -23,6 +23,7 @@ from ahadiff.llm import ProviderRequest, make_provider
 from ahadiff.review.database import load_result_events_from_db
 
 from .program import (
+    ImproveSessionState,
     build_replay_learn_args,
     create_improve_session,
     improve_session_dir,
@@ -34,6 +35,8 @@ from .program import (
     validate_improve_session_id,
     validate_mutable_prompt_name,
 )
+from .rewrite import decide_phase25, phase25_note_payload
+from .targeted import load_score_snapshot, snapshot_from_report, verify_targeted_dimensions
 
 if TYPE_CHECKING:
     import httpx
@@ -59,6 +62,7 @@ class ImproveRoundResult:
     overall: float
     verdict: str
     cherry_pick_pending: bool = False
+    phase25: bool = False
 
 
 @dataclass(frozen=True)
@@ -219,6 +223,12 @@ def run_improve_loop(
                     source_run_path=candidate_run_path,
                     state_dir=state_dir,
                 )
+                targeted_verify = verify_targeted_dimensions(
+                    baseline=load_score_snapshot(baseline_run_path),
+                    candidate=snapshot_from_report(candidate_report),
+                    target_dimension=target_dimension,
+                    failed_gates=tuple(candidate_report.hard_gates.failed_names()),
+                )
 
                 note_payload: dict[str, object] = {
                     "improve_session_id": session.session_id,
@@ -227,12 +237,10 @@ def run_improve_loop(
                     "target_prompt": target_prompt,
                     "baseline_overall": round(baseline_event.overall, 2),
                 }
+                note_payload.update(targeted_verify.note_payload())
                 status = "discard"
                 cherry_pick_pending = False
-                if (
-                    candidate_report.overall > baseline_event.overall
-                    and not candidate_report.hard_gates.failed_names()
-                ):
+                if targeted_verify.passed:
                     cherry_pick = _cherry_pick_prompt_commit(repo_root, commit_sha)
                     if cherry_pick.pending_conflict:
                         cherry_pick_pending = True
@@ -290,6 +298,46 @@ def run_improve_loop(
                         cherry_pick_pending=cherry_pick_pending,
                     )
                 )
+                phase25_decision = decide_phase25(
+                    recent_statuses=tuple(item.status for item in outcomes),
+                    phase25_attempted=session.phase25_attempted,
+                )
+                if (
+                    phase25_decision.should_run
+                    and phase25_decision.trigger_reason is not None
+                    and not cherry_pick_pending
+                    and not interrupt.requested
+                ):
+                    session = update_improve_session(session, phase25_attempted=True)
+                    save_improve_session(state_dir, session)
+                    phase25_result, session = _run_phase25_rewrite(
+                        repo_root=repo_root,
+                        state_dir=state_dir,
+                        session=session,
+                        baseline_event=baseline_event,
+                        baseline_run_path=baseline_run_path,
+                        anchor_metadata=anchor_metadata,
+                        provider_config=provider_config,
+                        api_key=api_key,
+                        security_config=security_config,
+                        privacy_mode=privacy_mode,
+                        client=client,
+                        request_timeout_seconds=request_timeout_seconds,
+                        max_concurrent=max_concurrent,
+                        qps_limit=qps_limit,
+                        retry_attempts=retry_attempts,
+                        trigger_reason=phase25_decision.trigger_reason,
+                        target_dimension=target_dimension,
+                        target_prompt=target_prompt,
+                    )
+                    save_improve_session(state_dir, session)
+                    outcomes.append(phase25_result)
+                    if phase25_result.cherry_pick_pending:
+                        warnings.append(
+                            "Phase 2.5 cherry-pick conflict left pending worktree; "
+                            "resolve manually before resuming"
+                        )
+                        break
                 if cherry_pick_pending:
                     warnings.append(
                         "cherry-pick conflict left pending worktree; "
@@ -315,6 +363,149 @@ def run_improve_loop(
         outcomes=tuple(outcomes),
         warnings=tuple(warnings),
     )
+
+
+def _run_phase25_rewrite(
+    *,
+    repo_root: Path,
+    state_dir: Path,
+    session: ImproveSessionState,
+    baseline_event: ResultEvent,
+    baseline_run_path: Path,
+    anchor_metadata: dict[str, Any],
+    provider_config: ProviderConfig,
+    api_key: str | None,
+    security_config: SecurityConfig,
+    privacy_mode: str,
+    client: httpx.Client | None,
+    request_timeout_seconds: int,
+    max_concurrent: int,
+    qps_limit: int,
+    retry_attempts: int,
+    trigger_reason: str,
+    target_dimension: str,
+    target_prompt: str,
+) -> tuple[ImproveRoundResult, ImproveSessionState]:
+    worktree_path = _session_phase25_worktree_path(state_dir, session.session_id)
+    session = update_improve_session(session, worktree_path=str(worktree_path))
+    save_improve_session(state_dir, session)
+    _create_worktree(repo_root, worktree_path)
+    cherry_pick_pending = False
+    status = "discard"
+    try:
+        _mutate_prompt_in_worktree(
+            worktree_root=worktree_path,
+            target_prompt=target_prompt,
+            target_dimension=target_dimension,
+            baseline_event=baseline_event,
+            provider_config=provider_config,
+            api_key=api_key,
+            security_config=security_config,
+            privacy_mode=privacy_mode,
+            client=client,
+            request_timeout_seconds=request_timeout_seconds,
+            max_concurrent=max_concurrent,
+            qps_limit=qps_limit,
+            retry_attempts=retry_attempts,
+        )
+        commit_sha = _commit_prompt_change(
+            worktree_root=worktree_path,
+            target_prompt=target_prompt,
+            round_index=session.rounds_completed,
+            target_dimension=f"phase25-{target_dimension}",
+        )
+        candidate_run_path = _run_replay_learn_subprocess(
+            worktree_root=worktree_path,
+            anchor_run_path=baseline_run_path,
+            metadata=anchor_metadata,
+            provider_config=provider_config,
+            privacy_mode=privacy_mode,
+        )
+        candidate_report: ScoreReport = evaluate_run(candidate_run_path)
+        candidate_prompt_version = compute_prompt_version(worktree_path)
+        imported_run_path = _copy_candidate_run_to_state(
+            source_run_path=candidate_run_path,
+            state_dir=state_dir,
+        )
+        targeted_verify = verify_targeted_dimensions(
+            baseline=load_score_snapshot(baseline_run_path),
+            candidate=snapshot_from_report(candidate_report),
+            target_dimension=target_dimension,
+            failed_gates=tuple(candidate_report.hard_gates.failed_names()),
+        )
+        note_payload = phase25_note_payload(
+            session_id=session.session_id,
+            round_index=session.rounds_completed,
+            target_dimension=target_dimension,
+            target_prompt=target_prompt,
+            worktree_path=worktree_path,
+            commit_sha=commit_sha,
+            trigger_reason=trigger_reason,
+            baseline_overall=baseline_event.overall,
+        )
+        append_result(
+            run_path=imported_run_path,
+            report=candidate_report,
+            status="phase25_rewrite",
+            base_ref=baseline_event.source_ref,
+            event_type="improve",
+            note_payload=note_payload,
+            prompt_version_override=candidate_prompt_version,
+            write_finalized=False,
+        )
+        note_payload.update(targeted_verify.note_payload())
+        if targeted_verify.passed:
+            cherry_pick = _cherry_pick_prompt_commit(repo_root, commit_sha)
+            if cherry_pick.pending_conflict:
+                cherry_pick_pending = True
+                note_payload["cherry_pick_pending"] = True
+                note_payload["worktree_path"] = str(worktree_path)
+                if cherry_pick.conflicted_files:
+                    note_payload["conflicted_files"] = list(cherry_pick.conflicted_files)
+            status = "targeted_verify"
+
+        should_write_finalized = status != "discard" and not cherry_pick_pending
+        append_result(
+            run_path=imported_run_path,
+            report=candidate_report,
+            status=status,
+            base_ref=baseline_event.source_ref,
+            event_type="improve",
+            note_payload=note_payload,
+            prompt_version_override=candidate_prompt_version,
+            write_finalized=should_write_finalized,
+        )
+        if cherry_pick_pending:
+            session = update_improve_session(
+                session,
+                worktree_path=str(worktree_path),
+                last_status=status,
+            )
+        else:
+            _remove_worktree(repo_root, worktree_path)
+            session = update_improve_session(
+                session,
+                worktree_path=None,
+                last_status=status,
+            )
+        return (
+            ImproveRoundResult(
+                round_index=session.rounds_completed,
+                session_id=session.session_id,
+                run_id=imported_run_path.name,
+                target_prompt=target_prompt,
+                target_dimension=target_dimension,
+                status=status,
+                overall=candidate_report.overall,
+                verdict=candidate_report.verdict,
+                cherry_pick_pending=cherry_pick_pending,
+                phase25=True,
+            ),
+            session,
+        )
+    finally:
+        if not cherry_pick_pending and worktree_path.exists():
+            _remove_worktree(repo_root, worktree_path)
 
 
 def _select_anchor_event(*, state_dir: Path, db_path: Path) -> ResultEvent:
@@ -362,6 +553,12 @@ def _session_worktree_path(state_dir: Path, session_id: str, round_index: int) -
     validate_improve_session_id(session_id)
     worktree_id = sha256(session_id.encode("utf-8")).hexdigest()[:12]
     return improve_session_dir(state_dir) / "wt" / f"{worktree_id}-r{round_index}"
+
+
+def _session_phase25_worktree_path(state_dir: Path, session_id: str) -> Path:
+    validate_improve_session_id(session_id)
+    worktree_id = sha256(session_id.encode("utf-8")).hexdigest()[:12]
+    return improve_session_dir(state_dir) / "wt" / f"{worktree_id}-phase25"
 
 
 def _create_worktree(repo_root: Path, worktree_path: Path) -> None:

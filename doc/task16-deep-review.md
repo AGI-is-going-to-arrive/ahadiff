@@ -14,7 +14,7 @@ The review body below is preserved as the original independent review. Current c
 - `session_id` is validated before file access and payload load; traversal and hidden-name inputs are rejected.
 - replay subprocesses now have a 30-minute timeout.
 - discard and pending-conflict runs do not write `finalized.json`; pending-conflict runs are also excluded from the next improve baseline.
-- `targeted_verify` remains a Task 16 improve event. Automatic targeted verification, `keep_final` decisions, and Phase 2.5 runtime remain Task 17 work; manual `db finalize-targeted` already exists.
+- Task 17 targeted verification and Phase 2.5 runtime have since landed. `keep_final` still remains the manual full 8-dimension recheck path through `db finalize-targeted`.
 - prompt writes are temp+replace, cherry-pick non-conflict failures raise `InputError`, worktree fallback cleanup prunes git worktree metadata, volatile staged/unstaged replay uses the saved `patch.diff`, `--rounds` is capped at 20, and null-byte LLM content is rejected.
 - tests expanded from 4 to 14 improve-loop cases.
 
@@ -22,11 +22,12 @@ Current live verification from this session:
 
 | Command | Result |
 |---------|--------|
-| `pytest tests/unit/test_improve_loop.py -q` | 14 passed |
-| `pytest tests/unit/test_improve_loop.py tests/unit/test_results.py tests/unit/test_review.py -q` | 56 passed |
-| `pytest tests/unit -q` | 397 passed |
+| `pytest tests/unit/test_targeted_verify.py tests/unit/test_phase25.py tests/unit/test_improve_loop.py tests/unit/test_ratchet.py tests/unit/test_results.py tests/unit/test_probe.py -q` | 56 passed |
+| `AHADIFF_LIVE_LLM_JUDGE=1 ... pytest tests/live/test_llm_judge_live.py -q` | 1 passed |
+| `pytest tests/unit -q` | 406 passed |
+| `pytest tests -q` | 406 passed, 1 skipped |
 | `ruff check src tests` / `ruff format --check src tests` / `pyright` / `uv build --wheel` | passed |
-| `python -m ahadiff improve --help` | passed |
+| `python -m ahadiff provider test --help` | passed |
 
 ---
 

@@ -99,9 +99,15 @@ Stage 0 只冻结“最小可 import + 可序列化”的 contracts 面，不提
 
 Task 16 补充：
 
-- `targeted_verify` 仍是 improve 链路的过渡态，不属于终态集合；成功 cherry-pick 后写出的 finalized `targeted_verify` 可以作为后续 improve baseline，等待 Task 17 或手动 `db finalize-targeted` 升级为 `keep_final`
+- `targeted_verify` 仍是 improve 链路的过渡态，不属于终态集合；成功 cherry-pick 后写出的 finalized `targeted_verify` 可以作为后续 improve baseline，`keep_final` 仍通过全 8 维 recheck 后的手动 `db finalize-targeted` 收口
 - cherry-pick 冲突时允许写 `status=targeted_verify` 并在 `note_json` 中记录 `cherry_pick_pending=true`，但不得写 `finalized.json`，也不得被下一轮 improve 当作 baseline
 - `discard` 不写 `finalized.json`
+
+Task 17 补充：
+
+- targeted verification 只比较目标维度 + `accuracy` + `evidence` + `safety_privacy` 四个维度的合计分；候选还必须通过 hard gates，才允许从 `discard` 升级为 `targeted_verify`
+- Phase 2.5 只在同一 improve session 内连续两次 `discard` 后触发一次；触发时先写 `status=phase25_rewrite`，并在 `note_json` 中记录 `phase25=true`、`phase25_note`、`stash_ref` 与 `trigger_reason`
+- Phase 2.5 的最终结果仍回到 improve 链路：通过写 `targeted_verify`，不通过写 `discard`；它不使用 learn 链路的 `keep`
 
 ### 2.4 CardState / StaleReason
 

@@ -10,6 +10,7 @@ import pytest
 from ahadiff.contracts import ProviderConfig, ResultEvent
 from ahadiff.core.config import SecurityConfig
 from ahadiff.core.errors import InputError
+from ahadiff.eval.deterministic import DimensionScore
 from ahadiff.eval.evaluator import ScoreReport
 from ahadiff.eval.gates import HardGateSummary
 from ahadiff.eval.results import finalized_marker_path
@@ -96,6 +97,7 @@ def _write_run_fixture(
     source_ref: str,
     base_ref: str,
     finalized: bool,
+    score_overall: float = 70.0,
 ) -> None:
     run_path.mkdir(parents=True, exist_ok=True)
     (run_path / "metadata.json").write_text(
@@ -116,6 +118,23 @@ def _write_run_fixture(
         encoding="utf-8",
     )
     (run_path / "patch.diff").write_text("diff --git a/a.py b/a.py\n", encoding="utf-8")
+    (run_path / "score.json").write_text(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "source_ref": source_ref,
+                "source_kind": "git_ref",
+                "overall": score_overall,
+                "verdict": "PASS",
+                "weakest_dim": "learnability",
+                "dimensions": _dimension_payload(score_overall),
+                "hard_gates": {},
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     quiz_dir = run_path / "quiz"
     quiz_dir.mkdir(exist_ok=True)
     (quiz_dir / "cards.jsonl").write_text(
@@ -172,10 +191,32 @@ def _score_report(*, run_id: str, source_ref: str, overall: float, weakest_dim: 
         weakest_dim=weakest_dim,
         eval_bundle_version="eval123",
         rubric_version="rubric-v1",
-        dimensions=(),
+        dimensions=tuple(
+            DimensionScore(
+                name=name,
+                score=float(payload["score"]),
+                max_score=float(payload["max_score"]),
+                reason="fixture",
+            )
+            for name, payload in _dimension_payload(overall).items()
+        ),
         hard_gates=HardGateSummary(results=()),
         notes=(),
     )
+
+
+def _dimension_payload(overall: float) -> dict[str, dict[str, float | str]]:
+    learnability = max(0.0, min(14.0, overall - 60.0))
+    return {
+        "accuracy": {"score": 18.0, "max_score": 20.0, "reason": "fixture"},
+        "evidence": {"score": 17.0, "max_score": 18.0, "reason": "fixture"},
+        "safety_privacy": {"score": 6.0, "max_score": 6.0, "reason": "fixture"},
+        "learnability": {"score": learnability, "max_score": 14.0, "reason": "fixture"},
+        "diff_coverage": {"score": 10.0, "max_score": 14.0, "reason": "fixture"},
+        "quiz_transfer": {"score": 7.0, "max_score": 10.0, "reason": "fixture"},
+        "spec_alignment": {"score": 8.0, "max_score": 10.0, "reason": "fixture"},
+        "conciseness": {"score": 5.0, "max_score": 8.0, "reason": "fixture"},
+    }
 
 
 def test_build_replay_learn_args_prefers_git_range(tmp_path: Path) -> None:

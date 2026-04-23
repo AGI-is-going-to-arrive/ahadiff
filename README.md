@@ -18,7 +18,7 @@
 - 一份每条结论都可回溯的 **断言清单**（Claims）
 - 一条可比较的 **质量评分历史**（Ratchet，`review.sqlite` 为唯一真相源，`results.tsv` 为导出视图）
 
-当前代码已经能稳定产出 Lesson / Claims / Quiz / Cards / Score / Ratchet；review 流的 SRS runtime 和 improve loop core 已落地，Viewer / serve / Task 17 targeted verify 仍在后续阶段。
+当前代码已经能稳定产出 Lesson / Claims / Quiz / Cards / Score / Ratchet；review 流的 SRS runtime、improve loop core、Task 17 targeted verification 与 Phase 2.5 runtime 已落地，Viewer / serve / install 仍在后续阶段。
 
 > Code Wiki 解释仓库，知返解释这次改动 —— 而且每一句话都能回到代码证据。
 
@@ -65,7 +65,7 @@ ahadiff review
 # 在浏览器中交互（Quiz/SRS/Dashboard）
 ahadiff serve
 
-# 棘轮优化（Task 16 core 已落地；需要已有 finalized run 和 provider 配置）
+# 棘轮优化（Task 16/17 后端已落地；需要已有 finalized run 和 provider 配置）
 ahadiff improve --suite local --rounds 6
 
 # 安装到 AI 工具（v0.1 支持 4 个核心 CLI）
@@ -107,8 +107,8 @@ ahadiff install opencode  # OpenCode → AGENTS.md + .opencode/agents/
 │     ├─ quiz.jsonl
 │     └─ cards.jsonl     # 仅 PASS / CAUTION 生成
 ├─ improve/
-│  ├─ <session_id>.json  # improve session 状态
-│  └─ wt/<12hex>-rN/     # pending conflict 时保留的临时 worktree
+│  ├─ <session_id>.json  # improve session 状态，含 phase25_attempted
+│  └─ wt/<12hex>-rN/     # pending conflict 或 Phase 2.5 时使用的临时 worktree
 ├─ audit.jsonl           # LLM 调用审计
 ├─ audit.private.jsonl   # strict_local 本机审计（gitignored）
 ├─ ahadiff.lock          # portalocker 文件锁
@@ -155,29 +155,30 @@ ahadiff/
 ├─ src/ahadiff/eval/            # Stage 3 / Task 11-12 evaluator + ratchet + results
 ├─ src/ahadiff/prompts/         # wheel 内打包的 prompt 资源
 ├─ prompts/                     # Lesson / claim prompt 模板
-├─ src/ahadiff/improve/         # Stage 5 / Task 16 improve loop core
+├─ src/ahadiff/improve/         # Stage 5 / Task 16/17 improve loop、targeted verify、Phase 2.5
 ├─ tests/unit/                  # Stage 0 + Stage 1 + Layer 1.5 + Stage 2 / Stage 3 / Stage 4 / Stage 5 单元测试
+├─ tests/live/                  # 需要显式环境变量开启的真实 LLM judge smoke
 ├─ ui/                          # HTML 原型 v1–v6（设计迭代史）
 └─ CLAUDE.md                    # 项目 AI 上下文索引
 ```
 
 ## 当前阶段
 
-**Stage 1 的 Task 1/2、Layer 1.5 的 Task 7、Stage 2 / Task 5/6/8、Stage 3 / Task 8.5/9/10/11/12、Stage 4 / Task 15，以及 Stage 5 / Task 16 已落地。** 当前代码除了设计文档和 HTML 原型，还已经有：
+**Stage 1 的 Task 1/2、Layer 1.5 的 Task 7、Stage 2 / Task 5/6/8、Stage 3 / Task 8.5/9/10/11/12、Stage 4 / Task 15，以及 Stage 5 / Task 16/17 已落地。** 当前代码除了设计文档和 HTML 原型，还已经有：
 
 - `ahadiff learn` 的主链路：支持 git / `--patch` / `--compare` capture，经过 learnability gate 后生成 `claims.raw.jsonl -> claims.jsonl`、`lesson.full|hint|compact.md`、`misconception.md`、`not_proven.md`
 - `ahadiff quiz`：对已生成的 `quiz.jsonl` 做最小交互式答题，并回显 source_claims / file:line evidence
 - `cards.jsonl` / `concepts.jsonl`：评分通过的 run 会生成 cards；git 输入写 repo 级 `concepts.jsonl`，non-git 输入写 run 级 `concepts_local.jsonl`
 - `ahadiff score` / `ahadiff verify` / `ahadiff export-results`：评分、ratchet 判定和 `results.tsv` 导出都已可用
 - `ahadiff review` / `ahadiff mark <claim_id> wrong` / `ahadiff db {backup,restore,check,import-results,finalize-targeted}`：`review.sqlite` 的 review / signals / result_events / lossy import / targeted finalize 链路都已可用
-- `ahadiff improve --suite local --rounds N`：目前仅支持 `--suite local`。它从已有 finalized run 中选择 baseline，在 git worktree 里只改白名单 prompt，重放同一 diff 并重新评分；候选分数高于 baseline 且 hard gates 通过时，会尝试 cherry-pick prompt commit 回主分支，并记录 `event_type=improve` / `status=targeted_verify`；未提升则记录 `discard`，cherry-pick 冲突则保留 pending worktree 且不 finalized
+- `ahadiff improve --suite local --rounds N`：目前仅支持 `--suite local`。它从已有 finalized run 中选择 baseline，在 git worktree 里只改白名单 prompt，重放同一 diff 并重新评分；候选必须让目标维度 + `accuracy` + `evidence` + `safety_privacy` 的合计分高于 baseline，且 hard gates 通过，才会尝试 cherry-pick prompt commit 回主分支，并记录 `event_type=improve` / `status=targeted_verify`；未提升则记录 `discard`，cherry-pick 冲突则保留 pending worktree 且不 finalized；同一 session 连续两次 `discard` 会触发一次 Phase 2.5 worktree rewrite
 - `src/ahadiff/eval/{rubric,gates,deterministic,evaluator,results,ratchet}.py`：8 维评分、hard gates、结果写入、ratchet 选择和导出视图
 - `src/ahadiff/review/{database,scheduler,schemas,signal}.py`：review.sqlite schema / migration、FSRS-6 调度、review queue、learning signal 和 review CLI 后端
-- `src/ahadiff/improve/{loop,program}.py`：improve session、immutable improve_program、worktree 隔离、5 个 mutable prompt 白名单、replay-learn、cherry-pick 顺序、session 校验与 pending worktree resume guard
+- `src/ahadiff/improve/{loop,program,targeted,rewrite}.py`：improve session、immutable improve_program、worktree 隔离、5 个 mutable prompt 白名单、replay-learn、targeted verification、Phase 2.5 触发、cherry-pick 顺序、session 校验与 pending worktree resume guard
 - source checkout 与 wheel 安装态的 runtime 资源定位：`eval_bundle_version`、`prompt_version`、lesson prompt 加载都已经接到包内资源
-- `ahadiff serve` / `ahadiff install` / Task 17 的自动 targeted verification、`keep_final` 决策与 Phase 2.5 rewrite 仍在后续阶段；当前已有的是 Task 16 产生 `targeted_verify` 事件，以及 `db finalize-targeted` 的手动收口入口
+- `ahadiff serve` / `ahadiff install` 仍在后续阶段；Task 17 的 targeted verification 与 Phase 2.5 runtime 已落地。`keep_final` 仍通过全 8 维 recheck 后的 `ahadiff db finalize-targeted <event_id>` 手动收口，不在 improve loop 内自动升级
 
-本轮又收口了几件容易出错的运行时边界：`prompt_version` 只描述 AhaDiff 自己的 prompt 资源，不再受目标工作区 `prompts/` 影响；lesson JSON 解析会跳过不匹配 schema 的示例块；lesson/quiz 目录改成生成后再接到主链，失败时会回滚；如果 lesson 生成阶段失败，会清掉新写出的 `claims.raw.jsonl` / `claims.jsonl`、`quiz/` 和 `concepts_local.jsonl` 半成品；`learn` 成功后会写入 `event_type=learn` 的评分事件和 `score.json`，manual `score` / `verify` 不再污染 learn 的 ratchet baseline；`ReviewCard` 现在会校验 `last_rating` 范围和 `card_state/stale_reason` 组合；伪造 quiz 也不会再误拿 `PASS`。Task 15 这轮也已经补齐：旧版 `cards` schema 会显式迁移 `stale_reason`，schema-invalid `cards.jsonl` 会降级成 warning，重复 regenerate 不会把旧 active 卡留在 due queue 里；`regenerate --only quiz` 在 `evaluate_run` 失败时会恢复旧 quiz/cards，在 `FAIL` 时会删掉陈旧 `cards.jsonl` 并把该 run 的 active 卡标成 `stale + staleness_unknown`；lossy TSV import 现在走单连接整批导入，坏行或 duplicate identity 会整批回滚；`rollback_result_event` 也改成同一连接里完成 delete + export rows，普通 DB connect 不会再因为路径 typo 静默建目录。Task 16 这轮补上了 `lesson_hint.md` 白名单、session_id 路径校验、30 分钟 replay timeout、双 prompt temp+replace 写入、非冲突 cherry-pick 失败区分、discard/pending conflict 不写 `finalized.json`、pending conflict 不作为下一轮 baseline、volatile staged/unstaged 输入从保存的 `patch.diff` 重放、短 worktree 路径、`--rounds` 上限 20、null byte 拒绝，以及 Ctrl+C 在已完成 round 后不再追加第二条 crash event。
+本轮又收口了几件容易出错的运行时边界：`prompt_version` 只描述 AhaDiff 自己的 prompt 资源，不再受目标工作区 `prompts/` 影响；lesson JSON 解析会跳过不匹配 schema 的示例块；lesson/quiz 目录改成生成后再接到主链，失败时会回滚；如果 lesson 生成阶段失败，会清掉新写出的 `claims.raw.jsonl` / `claims.jsonl`、`quiz/` 和 `concepts_local.jsonl` 半成品；`learn` 成功后会写入 `event_type=learn` 的评分事件和 `score.json`，manual `score` / `verify` 不再污染 learn 的 ratchet baseline；`ReviewCard` 现在会校验 `last_rating` 范围和 `card_state/stale_reason` 组合；伪造 quiz 也不会再误拿 `PASS`。Task 15 这轮也已经补齐：旧版 `cards` schema 会显式迁移 `stale_reason`，schema-invalid `cards.jsonl` 会降级成 warning，重复 regenerate 不会把旧 active 卡留在 due queue 里；`regenerate --only quiz` 在 `evaluate_run` 失败时会恢复旧 quiz/cards，在 `FAIL` 时会删掉陈旧 `cards.jsonl` 并把该 run 的 active 卡标成 `stale + staleness_unknown`；lossy TSV import 现在走单连接整批导入，坏行或 duplicate identity 会整批回滚；`rollback_result_event` 也改成同一连接里完成 delete + export rows，普通 DB connect 不会再因为路径 typo 静默建目录。Task 16/17 这轮补上了 `lesson_hint.md` 白名单、session_id 路径校验、30 分钟 replay timeout、双 prompt temp+replace 写入、非冲突 cherry-pick 失败区分、discard/pending conflict 不写 `finalized.json`、pending conflict 不作为下一轮 baseline、volatile staged/unstaged 输入从保存的 `patch.diff` 重放、短 worktree 路径、`--rounds` 上限 20、null byte 拒绝、Ctrl+C 在已完成 round 后不再追加第二条 crash event、targeted verification、Phase 2.5 单次触发，以及 OpenAI-compatible provider endpoint 归一化。
 
 当前已落地的最小验证：
 
@@ -193,7 +194,16 @@ source .venv/bin/activate && python -m ahadiff improve --help
 source .venv/bin/activate && python -m ahadiff db check --help
 ```
 
-本次实际结果：`source .venv/bin/activate && pytest tests/unit/test_improve_loop.py -q` 为 `14 passed`；`source .venv/bin/activate && pytest tests/unit/test_improve_loop.py tests/unit/test_results.py tests/unit/test_review.py -q` 为 `56 passed`；`source .venv/bin/activate && pytest tests/unit -q` 为 `397 passed`；`source .venv/bin/activate && ruff check src tests`、`source .venv/bin/activate && ruff format --check src tests`、`source .venv/bin/activate && pyright` 与 `source .venv/bin/activate && uv build --wheel` 全通过；`source .venv/bin/activate && python -m ahadiff improve --help` 也已实测可用。另做了一次 clean-room wheel 验证：在临时虚拟环境安装新 wheel 后，确认安装态 `evaluate_run()`、`compute_prompt_version()`、lesson/quiz prompt 加载、lesson JSON 解析和 `compute_term_key()` 都能正常工作，且目标工作区自带的 `prompts/` 不会污染 `prompt_version`。
+真实 LLM judge smoke 需要显式开启，默认模型是 `gpt-5.4-mini`，调用顺序是 OpenAI Responses 优先、Chat Completions fallback：
+
+```bash
+AHADIFF_LIVE_LLM_JUDGE=1 \
+AHADIFF_LIVE_LLM_API_KEY="$AHADIFF_LIVE_LLM_API_KEY" \
+AHADIFF_LIVE_LLM_BASE_URL="$AHADIFF_LIVE_LLM_BASE_URL" \
+pytest tests/live/test_llm_judge_live.py -q
+```
+
+本次实际结果：`source .venv/bin/activate && pytest tests/unit/test_targeted_verify.py tests/unit/test_phase25.py tests/unit/test_improve_loop.py tests/unit/test_ratchet.py tests/unit/test_results.py tests/unit/test_probe.py -q` 为 `56 passed`；`source .venv/bin/activate && AHADIFF_LIVE_LLM_JUDGE=1 ... pytest tests/live/test_llm_judge_live.py -q` 为 `1 passed`；`source .venv/bin/activate && pytest tests/unit -q` 为 `406 passed`；`source .venv/bin/activate && pytest tests -q` 为 `406 passed, 1 skipped`（live judge 默认跳过）；`source .venv/bin/activate && ruff check src tests`、`source .venv/bin/activate && ruff format --check src tests`、`source .venv/bin/activate && pyright` 与 `source .venv/bin/activate && uv build --wheel` 全通过；`source .venv/bin/activate && python -m ahadiff provider test --help` 也已实测可用。
 
 下一步路线图：
 

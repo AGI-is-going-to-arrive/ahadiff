@@ -297,9 +297,17 @@ def test_provider_cli_normalizes_chat_completions_base_url_before_probe(
     assert captured["base_url"] == "http://127.0.0.1:8318"
 
 
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "http://127.0.0.1:8318/v1/responses",
+        "http://127.0.0.1:8318/v1/chat/completions",
+    ],
+)
 def test_provider_cli_normalizes_openai_responses_base_url_before_probe(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    base_url: str,
 ) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -344,7 +352,7 @@ def test_provider_cli_normalizes_openai_responses_base_url_before_probe(
             "--provider-class",
             "openai_responses",
             "--base-url",
-            "http://127.0.0.1:8318/v1/responses",
+            base_url,
             "--repo-root",
             str(repo_root),
         ],
