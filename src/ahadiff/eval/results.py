@@ -4,9 +4,7 @@ import csv
 import hashlib
 import json
 import os
-import sqlite3
 import tempfile
-import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib.resources import files
@@ -14,13 +12,17 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from ahadiff.contracts import ResultEvent
-from ahadiff.core.errors import InputError, StorageError
+from ahadiff.core.errors import InputError
+from ahadiff.review.database import (
+    delete_result_event_and_select_tsv_rows,
+    load_result_events_from_db,
+    make_uuid7,
+    select_result_tsv_rows,
+    sync_result_event,
+)
 
 if TYPE_CHECKING:
     from .evaluator import ScoreReport
-
-_SQLITE_MIN_VERSION = (3, 51, 3)
-_SQLITE_ALLOWED_BACKPORTS = {(3, 50, 7), (3, 44, 6)}
 
 RESULTS_TSV_COLUMNS: tuple[str, ...] = (
     "timestamp",
@@ -117,6 +119,14 @@ def append_result(
 
 def export_results(*, db_path: Path, output_path: Path) -> Path:
     rows = _select_result_rows(db_path)
+    return _write_result_rows(output_path=output_path, rows=rows)
+
+
+def _write_result_rows(
+    *,
+    output_path: Path,
+    rows: tuple[dict[str, object], ...],
+) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = _temporary_sibling_path(output_path, suffix=".export.tmp")
     try:
@@ -137,36 +147,7 @@ def export_results(*, db_path: Path, output_path: Path) -> Path:
 
 
 def load_result_events(db_path: Path) -> tuple[ResultEvent, ...]:
-    if not db_path.exists():
-        return ()
-    try:
-        with _connect_result_db(db_path) as connection:
-            if not _result_events_table_exists(connection):
-                return ()
-            rows = connection.execute(
-                """
-                SELECT
-                    event_id,
-                    run_id,
-                    event_type,
-                    timestamp,
-                    source_ref,
-                    base_ref,
-                    prompt_version,
-                    eval_bundle_version,
-                    rubric_version,
-                    overall,
-                    verdict,
-                    status,
-                    weakest_dim,
-                    note_json
-                FROM result_events
-                ORDER BY timestamp DESC, event_id DESC
-                """
-            ).fetchall()
-    except sqlite3.DatabaseError as exc:
-        raise StorageError(f"failed to read result_events from {db_path}: {exc}") from exc
-    return tuple(ResultEvent.model_validate(dict(row)) for row in rows)
+    return load_result_events_from_db(db_path)
 
 
 def compute_prompt_version(repo_root: Path) -> str:
@@ -193,56 +174,11 @@ def run_state_dir_for_run(run_path: Path) -> Path:
 
 
 def make_result_event_id() -> str:
-    timestamp_ms = int(datetime.now(UTC).timestamp() * 1000)
-    unix_ms = timestamp_ms & ((1 << 48) - 1)
-    random_low = uuid.uuid4().int & ((1 << 74) - 1)
-    versioned = (unix_ms << 80) | (0x7 << 76) | random_low
-    return str(uuid.UUID(int=versioned))
+    return make_uuid7()
 
 
 def _insert_result_event(db_path: Path, event: ResultEvent) -> bool:
-    try:
-        with _connect_result_db(db_path) as connection:
-            _ensure_result_events_schema(connection)
-            cursor = connection.execute(
-                """
-                INSERT OR IGNORE INTO result_events (
-                    event_id,
-                    run_id,
-                    event_type,
-                    timestamp,
-                    source_ref,
-                    base_ref,
-                    prompt_version,
-                    eval_bundle_version,
-                    rubric_version,
-                    overall,
-                    verdict,
-                    status,
-                    weakest_dim,
-                    note_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    event.event_id,
-                    event.run_id,
-                    event.event_type,
-                    event.timestamp,
-                    event.source_ref,
-                    event.base_ref,
-                    event.prompt_version,
-                    event.eval_bundle_version,
-                    event.rubric_version,
-                    event.overall,
-                    event.verdict,
-                    event.status,
-                    event.weakest_dim,
-                    event.note_json,
-                ),
-            )
-        return cursor.rowcount > 0
-    except sqlite3.DatabaseError as exc:
-        raise StorageError(f"failed to append result event to {db_path}: {exc}") from exc
+    return sync_result_event(db_path, event)
 
 
 def _append_results_tsv(path: Path, event: ResultEvent) -> None:
@@ -274,107 +210,8 @@ def _write_finalized_marker(run_path: Path, event: ResultEvent, *, score_path: P
         temp_path.unlink(missing_ok=True)
 
 
-def _connect_result_db(db_path: Path) -> sqlite3.Connection:
-    _assert_sqlite_runtime_supported()
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(db_path)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA journal_mode=WAL")
-    connection.execute("PRAGMA busy_timeout=5000")
-    connection.execute("PRAGMA trusted_schema=OFF")
-    connection.execute("PRAGMA foreign_keys=ON")
-    defensive_flag = getattr(sqlite3, "SQLITE_DBCONFIG_DEFENSIVE", None)
-    setconfig = getattr(connection, "setconfig", None)
-    if defensive_flag is not None and callable(setconfig):
-        cast("Any", setconfig)(defensive_flag, True)
-    return connection
-
-
-def _ensure_result_events_schema(connection: sqlite3.Connection) -> None:
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS result_events (
-            event_id TEXT PRIMARY KEY,
-            run_id TEXT NOT NULL,
-            event_type TEXT NOT NULL,
-            timestamp TEXT NOT NULL,
-            source_ref TEXT NOT NULL,
-            base_ref TEXT,
-            prompt_version TEXT NOT NULL,
-            eval_bundle_version TEXT NOT NULL,
-            rubric_version TEXT,
-            overall REAL NOT NULL,
-            verdict TEXT NOT NULL,
-            status TEXT NOT NULL,
-            weakest_dim TEXT NOT NULL,
-            note_json TEXT
-        )
-        """
-    )
-    connection.execute(
-        """
-        CREATE UNIQUE INDEX IF NOT EXISTS ux_result_events_run_type_ts
-            ON result_events (run_id, event_type, timestamp)
-        """
-    )
-    connection.execute(
-        """
-        CREATE INDEX IF NOT EXISTS ix_result_events_source_ts
-            ON result_events (source_ref, timestamp DESC)
-        """
-    )
-    connection.execute(
-        """
-        CREATE INDEX IF NOT EXISTS ix_result_events_prompt_eval
-            ON result_events (prompt_version, eval_bundle_version)
-        """
-    )
-    connection.execute(
-        """
-        CREATE INDEX IF NOT EXISTS ix_result_events_verdict_status
-            ON result_events (verdict, status)
-        """
-    )
-    connection.execute(
-        """
-        CREATE INDEX IF NOT EXISTS ix_result_events_weakest_dim_ts
-            ON result_events (weakest_dim, timestamp DESC)
-        """
-    )
-
-
-def _result_events_table_exists(connection: sqlite3.Connection) -> bool:
-    row = connection.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'result_events'"
-    ).fetchone()
-    return row is not None
-
-
 def _select_result_rows(db_path: Path) -> tuple[dict[str, object], ...]:
-    if not db_path.exists():
-        raise InputError(f"review.sqlite does not exist: {db_path}")
-    with _connect_result_db(db_path) as connection:
-        if not _result_events_table_exists(connection):
-            raise InputError("result_events table does not exist yet")
-        rows = connection.execute(
-            """
-            SELECT
-                timestamp,
-                run_id,
-                source_ref,
-                base_ref,
-                prompt_version,
-                rubric_version,
-                overall,
-                verdict,
-                status,
-                weakest_dim,
-                note_json
-            FROM result_events
-            ORDER BY timestamp ASC, event_id ASC
-            """
-        ).fetchall()
-    return tuple(dict(row) for row in rows)
+    return select_result_tsv_rows(db_path)
 
 
 def _results_tsv_row(event: ResultEvent) -> dict[str, object]:
@@ -454,14 +291,8 @@ def publish_result_artifacts(
 
 def rollback_result_event(*, run_path: Path, event_id: str) -> None:
     db_path = review_db_path_for_run(run_path)
-    try:
-        with _connect_result_db(db_path) as connection:
-            if not _result_events_table_exists(connection):
-                return
-            connection.execute("DELETE FROM result_events WHERE event_id = ?", (event_id,))
-    except sqlite3.DatabaseError as exc:
-        raise StorageError(f"failed to roll back result event in {db_path}: {exc}") from exc
-    export_results(db_path=db_path, output_path=results_tsv_path_for_run(run_path))
+    rows = delete_result_event_and_select_tsv_rows(db_path, event_id)
+    _write_result_rows(output_path=results_tsv_path_for_run(run_path), rows=rows)
 
 
 def _prompt_hash_chunks(repo_root: Path) -> tuple[bytes, ...]:
@@ -549,30 +380,6 @@ def _temporary_sibling_path(path: Path, *, suffix: str) -> Path:
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
-
-
-def _assert_sqlite_runtime_supported() -> None:
-    version = _sqlite_version_tuple()
-    if _sqlite_gate_ok(version):
-        return
-    minimum = ".".join(str(part) for part in _SQLITE_MIN_VERSION)
-    backports = ", ".join(
-        ".".join(str(part) for part in item) for item in sorted(_SQLITE_ALLOWED_BACKPORTS)
-    )
-    raise StorageError(
-        f"SQLite runtime {sqlite3.sqlite_version} is below {minimum}; "
-        f"allowed backports are {backports}"
-    )
-
-
-def _sqlite_version_tuple() -> tuple[int, int, int]:
-    parts = sqlite3.sqlite_version.split(".")
-    major, minor, patch = (int(part) for part in parts[:3])
-    return major, minor, patch
-
-
-def _sqlite_gate_ok(version: tuple[int, int, int]) -> bool:
-    return version >= _SQLITE_MIN_VERSION or version in _SQLITE_ALLOWED_BACKPORTS
 
 
 __all__ = [

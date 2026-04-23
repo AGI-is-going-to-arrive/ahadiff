@@ -7,6 +7,7 @@ name = "ahadiff"
 version = "0.1.0a0"
 source = { editable = "." }
 dependencies = [
+    { name = "fsrs" },
     { name = "httpx" },
     { name = "portalocker" },
     { name = "pydantic" },
@@ -23,6 +24,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "fsrs", specifier = ">=6.3.1,<7" },
     { name = "httpx", specifier = ">=0.28,<1" },
     { name = "portalocker", specifier = ">=3.1,<4" },
     { name = "pydantic", specifier = ">=2.11,<3" },
@@ -96,6 +98,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d8/53/6f443c9a4a8358a93a6792e2acffb9d9d5cb0a5cfd8802644b7b1c9a02e4/colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44", size = 27697, upload-time = "2022-10-25T02:36:22.414Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6", size = 25335, upload-time = "2022-10-25T02:36:20.889Z" },
+]
+
+[[package]]
+name = "fsrs"
+version = "6.3.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d7/00/337de60fd5497ea4fed046192d17fa79809ca2aad7326da2e464d9d8950b/fsrs-6.3.1.tar.gz", hash = "sha256:43c5c6056b97266baf6ebfef9e4cadeb9ac5a4e1b29ffdfb300f445b6e6b15ca", size = 32645, upload-time = "2026-03-10T14:01:03.734Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/67/3c/e7e140f8cdb95b042cb125ee142e7630187e8e78d21847ca81e9d1e99bb8/fsrs-6.3.1-py3-none-any.whl", hash = "sha256:ac1bf9939573592d8c9bc1e11a00bd17e04146dc9f2c913127e2bcc431b9040b", size = 22840, upload-time = "2026-03-10T14:01:01.084Z" },
 ]
 
 [[package]]

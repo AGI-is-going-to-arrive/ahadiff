@@ -69,10 +69,27 @@ from .lesson.learnability import assess_learnability
 from .llm import probe_provider
 from .llm.provider import transport_target_for_base_url
 from .quiz import generate_cards_for_run, generate_quiz_from_run, load_quiz_questions
+from .review.database import (
+    backup_review_db,
+    check_review_db,
+    finalize_targeted_verify_event,
+    import_cards_from_jsonl,
+    import_cards_from_runs,
+    import_results_tsv_lossy,
+    initialize_review_db,
+    list_due_cards,
+    mark_run_cards_stale,
+    record_card_review,
+    restore_review_db,
+    set_card_queue_state,
+    upgrade_review_db,
+)
+from .review.signal import mark_claim_wrong
 from .wiki import append_concepts
 
 if TYPE_CHECKING:
     from .contracts import PrivacyMode
+    from .review.schemas import ReviewAnswer
     from .safety.gates import TransportTarget
 
 console = Console()
@@ -86,10 +103,12 @@ _CONFIG_APP = typer.Typer(help="Inspect configuration and precedence.")
 _GRAPH_APP = typer.Typer(help="Inspect Graphify source and imported artifacts.")
 _MAINT_APP = typer.Typer(help="Mutating maintenance tasks kept separate from doctor diagnostics.")
 _PROVIDER_APP = typer.Typer(help="Probe and persist LLM provider capabilities.")
+_DB_APP = typer.Typer(help="Manage review.sqlite migrations, backup, restore, and checks.")
 _APP.add_typer(_CONFIG_APP, name="config")
 _APP.add_typer(_GRAPH_APP, name="graph")
 _APP.add_typer(_MAINT_APP, name="maint")
 _APP.add_typer(_PROVIDER_APP, name="provider")
+_APP.add_typer(_DB_APP, name="db")
 _SQLITE_MIN_VERSION = (3, 51, 3)
 _SQLITE_ALLOWED_BACKPORTS = {(3, 50, 7), (3, 44, 6)}
 
@@ -375,6 +394,13 @@ def _resolve_learn_workspace_root(
 
 def _normalize_quiz_answer(value: str) -> str:
     return " ".join(value.strip().casefold().split())
+
+
+def _parse_review_answer(value: str) -> ReviewAnswer:
+    normalized = value.strip().casefold()
+    if normalized in {"good", "hard", "wrong"}:
+        return cast("ReviewAnswer", normalized)
+    raise AhaDiffError("review answer must be one of: good, hard, wrong")
 
 
 @_APP.callback()
@@ -923,11 +949,7 @@ def quiz_cmd(
     try:
         root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
         validate_run_id(run_id)
-        run_path = (
-            run_dir(run_id, root)
-            if has_git_repo
-            else (root / ".ahadiff" / "runs" / run_id)
-        )
+        run_path = run_dir(run_id, root) if has_git_repo else (root / ".ahadiff" / "runs" / run_id)
         questions = load_quiz_questions(run_path / "quiz" / "quiz.jsonl")
         correct = 0
         for index, question in enumerate(questions, start=1):
@@ -948,6 +970,296 @@ def quiz_cmd(
                 console.print(f"[bold]Why[/bold]: {question.explanation}")
             console.print("")
         console.print(f"[bold]Score[/bold]: {correct}/{len(questions)}")
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+def _backup_artifact_for_rollback(path: Path) -> Path | None:
+    if not path.exists():
+        return None
+    with tempfile.NamedTemporaryFile(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".rollback.bak",
+        delete=False,
+    ) as handle:
+        backup_path = Path(handle.name)
+    shutil.copy2(path, backup_path)
+    return backup_path
+
+
+def _restore_artifact_from_backup(*, target: Path, backup_path: Path | None) -> None:
+    if backup_path is None:
+        target.unlink(missing_ok=True)
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    backup_path.replace(target)
+
+
+@_APP.command("regenerate")
+def regenerate_cmd(
+    run_id: Annotated[
+        str,
+        typer.Argument(help="Run id under .ahadiff/runs/<run_id>."),
+    ],
+    only: Annotated[
+        str,
+        typer.Option("--only", help="Artifact subset to regenerate. Only 'quiz' is supported."),
+    ],
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or workspace root."),
+    ] = Path(),
+    provider: Annotated[
+        str | None,
+        typer.Option("--provider", help="Configured provider alias under [providers.<name>]."),
+    ] = None,
+    base_url: Annotated[
+        str | None,
+        typer.Option("--base-url", help="One-off provider API base URL for regeneration."),
+    ] = None,
+    model: Annotated[
+        str | None,
+        typer.Option("--model", help="Model override for regeneration."),
+    ] = None,
+    provider_class: Annotated[
+        str,
+        typer.Option("--provider-class", help="Provider class for one-off regeneration."),
+    ] = "openai",
+    api_key_env: Annotated[
+        str,
+        typer.Option("--api-key-env", help="Env var name used to resolve the provider API key."),
+    ] = "AHADIFF_PROVIDER_API_KEY",
+) -> None:
+    try:
+        if only != "quiz":
+            raise AhaDiffError("regenerate currently supports only: --only quiz")
+        root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        validate_run_id(run_id)
+        run_path = run_dir(run_id, root) if has_git_repo else (root / ".ahadiff" / "runs" / run_id)
+        if not run_path.exists():
+            raise AhaDiffError(f"run artifacts do not exist: {run_path}")
+        snapshot = load_config(root) if has_git_repo else load_workspace_config(root)
+        llm_config = cast("dict[str, Any]", snapshot.values["llm"])
+        provider_limits = cast("dict[str, Any]", snapshot.values["provider"])
+        effective_privacy_mode = str(snapshot.values["privacy_mode"])
+        security_config = (
+            load_security_config(root) if has_git_repo else load_workspace_security_config(root)
+        )
+        state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
+        _, lock_path = _state_dir_and_lock_path(repo_root)
+        with repo_write_lock(lock_path, command="regenerate quiz") as _:
+            quiz_path = run_path / "quiz" / "quiz.jsonl"
+            cards_target_path = run_path / "quiz" / "cards.jsonl"
+            quiz_backup = _backup_artifact_for_rollback(quiz_path)
+            cards_backup = _backup_artifact_for_rollback(cards_target_path)
+            (
+                provider_config,
+                effective_api_key,
+                transport_target,
+                provider_selection_explicit,
+            ) = _resolve_runtime_provider(
+                snapshot=snapshot,
+                operation_label="quiz regeneration",
+                provider_name=provider,
+                provider_class=provider_class,
+                base_url=base_url,
+                model=model,
+                api_key_env=api_key_env,
+                privacy_mode=effective_privacy_mode,
+                stdin_interactive=sys.stdin.isatty(),
+                local_hosts=security_config.local_hosts,
+            )
+            resolved_privacy_mode = _privacy_mode_for_explicit_provider_call(
+                effective_privacy_mode,
+                transport_target=transport_target,
+                provider_selection_explicit=provider_selection_explicit,
+            )
+            cards_path: Path | None = None
+            try:
+                quiz_artifacts, questions = generate_quiz_from_run(
+                    run_id=run_id,
+                    run_path=run_path,
+                    workspace_root=root,
+                    provider_config=provider_config,
+                    api_key=effective_api_key,
+                    security_config=security_config,
+                    request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
+                    max_concurrent=int(llm_config["max_concurrent"]),
+                    qps_limit=int(provider_limits["qps_limit"]),
+                    retry_attempts=int(llm_config["retry_attempts"]),
+                    privacy_mode=resolved_privacy_mode,
+                    overwrite=True,
+                )
+                report = evaluate_run(run_path)
+                cards_path = generate_cards_for_run(
+                    run_path=run_path,
+                    questions=questions,
+                    verdict=report.verdict,
+                    overwrite=True,
+                )
+                if cards_path is None:
+                    cards_target_path.unlink(missing_ok=True)
+                    mark_run_cards_stale(state_dir / "review.sqlite", run_id=run_id)
+                else:
+                    import_cards_from_jsonl(state_dir / "review.sqlite", cards_path)
+            except Exception:
+                _restore_artifact_from_backup(target=quiz_path, backup_path=quiz_backup)
+                _restore_artifact_from_backup(target=cards_target_path, backup_path=cards_backup)
+                raise
+            finally:
+                if quiz_backup is not None:
+                    quiz_backup.unlink(missing_ok=True)
+                if cards_backup is not None:
+                    cards_backup.unlink(missing_ok=True)
+        console.print(f"[green]Regenerated quiz[/green]: {quiz_artifacts.quiz_path}")
+        if cards_path is not None:
+            console.print(f"[bold]Cards[/bold]: {cards_path}")
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+@_APP.command("review")
+def review_cmd(
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or workspace root."),
+    ] = Path(),
+    limit: Annotated[
+        int,
+        typer.Option("--limit", min=1, help="Maximum due cards to display."),
+    ] = 20,
+    card_id: Annotated[
+        str | None,
+        typer.Option("--card-id", help="Record a review for this card id."),
+    ] = None,
+    answer: Annotated[
+        str | None,
+        typer.Option("--answer", help="Review answer: good, hard, or wrong."),
+    ] = None,
+    peeked: Annotated[
+        bool,
+        typer.Option("--peeked", help="Apply peek guard for this review attempt."),
+    ] = False,
+    action: Annotated[
+        str | None,
+        typer.Option("--action", help="Queue action: archive or suspend."),
+    ] = None,
+    scheduler: Annotated[
+        str,
+        typer.Option("--scheduler", help="Scheduler feature flag; fsrs is the v0.1 default."),
+    ] = "fsrs",
+    optimize: Annotated[
+        bool,
+        typer.Option("--optimize", help="Check FSRS optimizer readiness."),
+    ] = False,
+) -> None:
+    try:
+        if scheduler != "fsrs":
+            raise AhaDiffError("only the FSRS scheduler is implemented in v0.1")
+        root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
+        db_path = state_dir / "review.sqlite"
+        _, lock_path = _state_dir_and_lock_path(repo_root)
+        with repo_write_lock(lock_path, command="review") as _:
+            initialize_review_db(db_path)
+            import_warnings: list[str] = []
+
+            def _on_card_import_error(path: Path, exc: Exception) -> None:
+                import_warnings.append(f"skipped {path.name}: {exc}")
+
+            imported = import_cards_from_runs(db_path, state_dir, on_error=_on_card_import_error)
+            if action is not None:
+                if not card_id:
+                    raise AhaDiffError("--action requires --card-id")
+                if answer is not None:
+                    raise AhaDiffError("--action cannot be combined with --answer")
+                normalized_action = action.strip().casefold()
+                if normalized_action not in {"archive", "suspend"}:
+                    raise AhaDiffError("review action must be one of: archive, suspend")
+                queue_state = "archived" if normalized_action == "archive" else "suspended"
+                set_card_queue_state(db_path, card_id=card_id, state=queue_state)
+                rendered_action = "Archived" if normalized_action == "archive" else "Suspended"
+                console.print(f"[green]{rendered_action}[/green] {card_id}")
+                return
+            if card_id is not None or answer is not None:
+                if not card_id or not answer:
+                    raise AhaDiffError("--card-id and --answer must be provided together")
+                normalized_answer = _parse_review_answer(answer)
+                update = record_card_review(
+                    db_path,
+                    card_id=card_id,
+                    answer=normalized_answer,
+                    peeked_this_session=peeked,
+                )
+                console.print(f"[green]Reviewed[/green] {update.card_id}")
+                console.print(f"[bold]Rating[/bold]: {update.rating}")
+                console.print(f"[bold]Next due[/bold]: {update.due_date}")
+                console.print(f"[bold]Scaffolding[/bold]: {update.scaffolding_level}")
+                return
+            if optimize:
+                check = check_review_db(db_path)
+                console.print(
+                    "[yellow]Optimizer[/yellow]: cold-start mode; "
+                    "requires at least 500 effective reviews before training"
+                )
+                console.print(f"[bold]Result events[/bold]: {check.event_count}")
+                return
+            due_cards = list_due_cards(db_path, limit=limit)
+        console.print(f"[bold]Imported cards[/bold]: {imported}")
+        for warning in import_warnings:
+            error_console.print(f"[yellow]Warning[/yellow]: {warning}")
+        if not due_cards:
+            console.print("[green]Review queue[/green]: no due cards")
+            return
+        table = Table(title="Due review cards")
+        table.add_column("Card", style="cyan")
+        table.add_column("Concept", style="magenta")
+        table.add_column("Due", style="green")
+        table.add_column("Scaffold", style="yellow")
+        table.add_column("Path")
+        for card in due_cards:
+            table.add_row(
+                card.card_id,
+                card.concept,
+                card.due_date,
+                card.scaffolding_level,
+                card.display_path,
+            )
+        console.print(table)
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+@_APP.command("mark")
+def mark_cmd(
+    claim_id: Annotated[
+        str,
+        typer.Argument(help="Claim id to mark."),
+    ],
+    action: Annotated[
+        str,
+        typer.Argument(help="Only 'wrong' is supported in v0.1."),
+    ],
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or workspace root."),
+    ] = Path(),
+) -> None:
+    try:
+        if action != "wrong":
+            raise AhaDiffError("mark currently supports only: wrong")
+        root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
+        db_path = state_dir / "review.sqlite"
+        _, lock_path = _state_dir_and_lock_path(repo_root)
+        with repo_write_lock(lock_path, command="mark wrong") as _:
+            initialize_review_db(db_path)
+            inserted = mark_claim_wrong(db_path=db_path, claim_id=claim_id)
+        if inserted:
+            console.print(f"[green]Marked wrong[/green]: {claim_id}")
+        else:
+            console.print(f"[yellow]Already marked wrong[/yellow]: {claim_id}")
     except Exception as error:  # pragma: no cover - exercised through CLI tests
         _handle_cli_error(error)
 
@@ -1436,6 +1748,153 @@ def export_results_cmd(
         with repo_write_lock(lock_path, command="export-results") as _:
             export_results(db_path=db_path, output_path=output_path)
         console.print(f"[green]Exported[/green] {output_path}")
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+@_DB_APP.command("upgrade")
+def db_upgrade_cmd(
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or workspace root."),
+    ] = Path(),
+) -> None:
+    try:
+        root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
+        db_path = state_dir / "review.sqlite"
+        _, lock_path = _state_dir_and_lock_path(repo_root)
+        with repo_write_lock(lock_path, command="db upgrade") as _:
+            outcome = upgrade_review_db(db_path)
+        console.print(f"[green]Upgraded[/green] {outcome.db_path}")
+        console.print(f"[bold]Schema version[/bold]: {outcome.schema_version}")
+        console.print(f"[bold]Backup[/bold]: {outcome.backup_path}")
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+@_DB_APP.command("backup")
+def db_backup_cmd(
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or workspace root."),
+    ] = Path(),
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", help="Backup file path."),
+    ] = None,
+) -> None:
+    try:
+        root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
+        db_path = state_dir / "review.sqlite"
+        _, lock_path = _state_dir_and_lock_path(repo_root)
+        with repo_write_lock(lock_path, command="db backup") as _:
+            backup_path = backup_review_db(db_path, backup_path=output)
+        console.print(f"[green]Backed up[/green] {backup_path}")
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+@_DB_APP.command("restore")
+def db_restore_cmd(
+    backup_path: Annotated[
+        Path,
+        typer.Argument(help="Backup path created by `ahadiff db backup`."),
+    ],
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or workspace root."),
+    ] = Path(),
+) -> None:
+    try:
+        root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
+        db_path = state_dir / "review.sqlite"
+        _, lock_path = _state_dir_and_lock_path(repo_root)
+        with repo_write_lock(lock_path, command="db restore") as _:
+            restore_review_db(db_path=db_path, backup_path=backup_path)
+        console.print(f"[green]Restored[/green] {db_path}")
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+@_DB_APP.command("check")
+def db_check_cmd(
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or workspace root."),
+    ] = Path(),
+) -> None:
+    try:
+        root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
+        db_path = state_dir / "review.sqlite"
+        check = check_review_db(db_path)
+        console.print(f"[bold]Schema version[/bold]: {check.schema_version}")
+        console.print(f"[bold]SQLite quick_check[/bold]: {check.quick_check}")
+        console.print(f"[bold]Foreign key issues[/bold]: {check.foreign_key_issues}")
+        console.print(f"[bold]Result events[/bold]: {check.event_count}")
+        console.print(f"[bold]Event id unique[/bold]: {check.event_id_unique}")
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+@_DB_APP.command("import-results")
+def db_import_results_cmd(
+    tsv_path: Annotated[
+        Path,
+        typer.Argument(help="Legacy results.tsv path to import lossy."),
+    ],
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or workspace root."),
+    ] = Path(),
+    understand_lossy: Annotated[
+        bool,
+        typer.Option(
+            "--i-understand-this-is-lossy",
+            help="Required because TSV lacks event_id/event_type/eval_bundle_version.",
+        ),
+    ] = False,
+) -> None:
+    try:
+        if not understand_lossy:
+            raise AhaDiffError(
+                "db import-results is lossy; pass --i-understand-this-is-lossy to continue"
+            )
+        root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
+        db_path = state_dir / "review.sqlite"
+        _, lock_path = _state_dir_and_lock_path(repo_root)
+        with repo_write_lock(lock_path, command="db import-results --lossy") as _:
+            outcome = import_results_tsv_lossy(db_path, tsv_path)
+        console.print(f"[yellow]Lossy import[/yellow]: {outcome.imported} imported")
+        console.print(f"[bold]Skipped[/bold]: {outcome.skipped}")
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+@_DB_APP.command("finalize-targeted")
+def db_finalize_targeted_cmd(
+    run_id: Annotated[
+        str,
+        typer.Argument(help="Run id with a targeted_verify event."),
+    ],
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or workspace root."),
+    ] = Path(),
+) -> None:
+    try:
+        root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
+        db_path = state_dir / "review.sqlite"
+        _, lock_path = _state_dir_and_lock_path(repo_root)
+        with repo_write_lock(lock_path, command="db finalize-targeted") as _:
+            event = finalize_targeted_verify_event(db_path, run_id=run_id)
+        console.print(f"[green]Finalized targeted verify[/green]: {event.run_id}")
+        console.print(f"[bold]Event[/bold]: {event.event_id}")
     except Exception as error:  # pragma: no cover - exercised through CLI tests
         _handle_cli_error(error)
 

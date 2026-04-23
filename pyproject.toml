@@ -9,6 +9,7 @@ description = "Local-first verified diff learning layer."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+  "fsrs>=6.3.1,<7",
   "httpx>=0.28,<1",
   "portalocker>=3.1,<4",
   "pydantic>=2.11,<3",

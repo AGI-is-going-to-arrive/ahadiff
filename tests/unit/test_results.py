@@ -22,10 +22,13 @@ from ahadiff.eval.results import (
     publish_result_artifacts,
     results_tsv_path_for_run,
     review_db_path_for_run,
+    rollback_result_event,
 )
 from ahadiff.git.line_map import build_line_map, serialize_line_map_payload
+from ahadiff.review import database as review_database_module
 
 if TYPE_CHECKING:
+    import sqlite3
     from collections.abc import Iterator
 
 _RUNNER = CliRunner()
@@ -209,6 +212,39 @@ def test_export_results_rebuilds_tsv_from_sqlite(tmp_path: Path) -> None:
         rows = list(reader)
     assert len(rows) == 1
     assert rows[0]["run_id"] == "run_results"
+
+
+def test_rollback_result_event_uses_single_review_db_connection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_path = _write_run_fixture(tmp_path, run_id="run_rollback")
+    report = _report_for_run(run_path)
+    outcome = append_result(
+        run_path=run_path,
+        report=report,
+        status="non_ratcheted",
+        base_ref=None,
+        event_type="verify",
+        event_id="018f0f52-91c0-7abc-8123-000000000008",
+    )
+    connection_count = 0
+    real_connect = review_database_module.connect_review_db
+
+    def counting_connect(db_path: Path) -> sqlite3.Connection:
+        nonlocal connection_count
+        connection_count += 1
+        return real_connect(db_path)
+
+    monkeypatch.setattr(review_database_module, "connect_review_db", counting_connect)
+
+    rollback_result_event(run_path=run_path, event_id=outcome.event.event_id)
+
+    assert connection_count == 1
+    assert load_result_events(review_db_path_for_run(run_path)) == ()
+    with results_tsv_path_for_run(run_path).open("r", encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle, delimiter="\t"))
+    assert rows == []
 
 
 def test_export_results_cli_uses_workspace_review_db(tmp_path: Path) -> None:

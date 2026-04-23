@@ -152,24 +152,26 @@ ahadiff/
 ├─ src/ahadiff/eval/            # Stage 3 / Task 11-12 evaluator + ratchet + results
 ├─ src/ahadiff/prompts/         # wheel 内打包的 prompt 资源
 ├─ prompts/                     # Lesson / claim prompt 模板
-├─ tests/unit/                  # Stage 0 + Stage 1 + Layer 1.5 + Stage 2 / Stage 3 单元测试
+├─ tests/unit/                  # Stage 0 + Stage 1 + Layer 1.5 + Stage 2 / Stage 3 / Stage 4 单元测试
 ├─ ui/                          # HTML 原型 v1–v6（设计迭代史）
 └─ CLAUDE.md                    # 项目 AI 上下文索引
 ```
 
 ## 当前阶段
 
-**Stage 1 的 Task 1/2、Layer 1.5 的 Task 7、Stage 2 / Task 5/6/8，以及 Stage 3 / Task 8.5/9/10/11/12 已落地。** 当前代码除了设计文档和 HTML 原型，还已经有：
+**Stage 1 的 Task 1/2、Layer 1.5 的 Task 7、Stage 2 / Task 5/6/8、Stage 3 / Task 8.5/9/10/11/12，以及 Stage 4 / Task 15 已落地。** 当前代码除了设计文档和 HTML 原型，还已经有：
 
 - `ahadiff learn` 的主链路：支持 git / `--patch` / `--compare` capture，经过 learnability gate 后生成 `claims.raw.jsonl -> claims.jsonl`、`lesson.full|hint|compact.md`、`misconception.md`、`not_proven.md`
 - `ahadiff quiz`：对已生成的 `quiz.jsonl` 做最小交互式答题，并回显 source_claims / file:line evidence
 - `cards.jsonl` / `concepts.jsonl`：评分通过的 run 会生成 cards；git 输入写 repo 级 `concepts.jsonl`，non-git 输入写 run 级 `concepts_local.jsonl`
 - `ahadiff score` / `ahadiff verify` / `ahadiff export-results`：评分、ratchet 判定和 `results.tsv` 导出都已可用
+- `ahadiff review` / `ahadiff mark <claim_id> wrong` / `ahadiff db {backup,restore,check,import-results,finalize-targeted}`：`review.sqlite` 的 review / signals / result_events / lossy import / targeted finalize 链路都已可用
 - `src/ahadiff/eval/{rubric,gates,deterministic,evaluator,results,ratchet}.py`：8 维评分、hard gates、结果写入、ratchet 选择和导出视图
+- `src/ahadiff/review/{database,scheduler,schemas,signal}.py`：review.sqlite schema / migration、FSRS-6 调度、review queue、learning signal 和 review CLI 后端
 - source checkout 与 wheel 安装态的 runtime 资源定位：`eval_bundle_version`、`prompt_version`、lesson prompt 加载都已经接到包内资源
-- `ahadiff review` / `ahadiff serve` / `ahadiff improve` / `ahadiff install` 还在后续阶段；上面“规划中”的对应命令示例目前还不是当前 CLI 的可用命令
+- `ahadiff serve` / `ahadiff improve` / `ahadiff install` 还在后续阶段；上面“规划中”的对应命令示例里，当前 CLI 已经可用的是 `ahadiff review`
 
-本轮又收口了几件容易出错的运行时边界：`prompt_version` 只描述 AhaDiff 自己的 prompt 资源，不再受目标工作区 `prompts/` 影响；lesson JSON 解析会跳过不匹配 schema 的示例块；lesson/quiz 目录改成生成后再接到主链，失败时会回滚；如果 lesson 生成阶段失败，会清掉新写出的 `claims.raw.jsonl` / `claims.jsonl`、`quiz/` 和 `concepts_local.jsonl` 半成品；`learn` 成功后会写入 `event_type=learn` 的评分事件和 `score.json`，manual `score` / `verify` 不再污染 learn 的 ratchet baseline；`ReviewCard` 现在会校验 `last_rating` 范围和 `card_state/stale_reason` 组合；伪造 quiz 也不会再误拿 `PASS`。
+本轮又收口了几件容易出错的运行时边界：`prompt_version` 只描述 AhaDiff 自己的 prompt 资源，不再受目标工作区 `prompts/` 影响；lesson JSON 解析会跳过不匹配 schema 的示例块；lesson/quiz 目录改成生成后再接到主链，失败时会回滚；如果 lesson 生成阶段失败，会清掉新写出的 `claims.raw.jsonl` / `claims.jsonl`、`quiz/` 和 `concepts_local.jsonl` 半成品；`learn` 成功后会写入 `event_type=learn` 的评分事件和 `score.json`，manual `score` / `verify` 不再污染 learn 的 ratchet baseline；`ReviewCard` 现在会校验 `last_rating` 范围和 `card_state/stale_reason` 组合；伪造 quiz 也不会再误拿 `PASS`。Task 15 这轮也已经补齐：旧版 `cards` schema 会显式迁移 `stale_reason`，schema-invalid `cards.jsonl` 会降级成 warning，重复 regenerate 不会把旧 active 卡留在 due queue 里；`regenerate --only quiz` 在 `evaluate_run` 失败时会恢复旧 quiz/cards，在 `FAIL` 时会删掉陈旧 `cards.jsonl` 并把该 run 的 active 卡标成 `stale + staleness_unknown`；lossy TSV import 现在走单连接整批导入，坏行或 duplicate identity 会整批回滚；`rollback_result_event` 也改成同一连接里完成 delete + export rows，普通 DB connect 不会再因为路径 typo 静默建目录。
 
 当前已落地的最小验证：
 
@@ -180,9 +182,11 @@ source .venv/bin/activate && ruff format --check src tests
 source .venv/bin/activate && pyright
 source .venv/bin/activate && uv build --wheel
 source .venv/bin/activate && python -m ahadiff quiz --help
+source .venv/bin/activate && python -m ahadiff review --help
+source .venv/bin/activate && python -m ahadiff db check --help
 ```
 
-本次实际结果：`source .venv/bin/activate && pytest tests/unit -q` 为 `335 passed`；`source .venv/bin/activate && ruff check src tests`、`source .venv/bin/activate && ruff format --check src tests`、`source .venv/bin/activate && pyright` 与 `source .venv/bin/activate && uv build --wheel` 全通过。另做了一次 clean-room wheel 验证：在临时虚拟环境安装新 wheel 后，确认安装态 `evaluate_run()`、`compute_prompt_version()`、lesson/quiz prompt 加载、lesson JSON 解析和 `compute_term_key()` 都能正常工作，且目标工作区自带的 `prompts/` 不会污染 `prompt_version`。
+本次实际结果：`source .venv/bin/activate && pytest tests/unit -q` 为 `383 passed`；`source .venv/bin/activate && ruff check src tests`、`source .venv/bin/activate && ruff format --check src tests`、`source .venv/bin/activate && pyright` 与 `source .venv/bin/activate && uv build --wheel` 全通过。另做了一次 clean-room wheel 验证：在临时虚拟环境安装新 wheel 后，确认安装态 `evaluate_run()`、`compute_prompt_version()`、lesson/quiz prompt 加载、lesson JSON 解析和 `compute_term_key()` 都能正常工作，且目标工作区自带的 `prompts/` 不会污染 `prompt_version`。
 
 下一步路线图：
 
