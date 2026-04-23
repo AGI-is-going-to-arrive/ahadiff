@@ -18,7 +18,7 @@ It's not a PR summary, not a repo wiki, not yet another "code explainer." It rea
 - A **claims** ledger where every assertion traces back to a hunk
 - A comparable **quality score history** (ratcheted; `review.sqlite` is the single source of truth, `results.tsv` is a human-readable export)
 
-The current code already ships Lesson / Claims / Quiz / Cards / Score / Ratchet. The review-flow SRS runtime and Viewer are still in later stages.
+The current code already ships Lesson / Claims / Quiz / Cards / Score / Ratchet. The review-flow SRS runtime and the improve-loop core are landed; Viewer / serve / Task 17 targeted verification remain in later stages.
 
 > Code Wiki explains a repo. AhaDiff teaches you what changed — and verifies every claim against the diff.
 
@@ -65,8 +65,8 @@ ahadiff review
 # Interactive browser UI (Quiz/SRS/Dashboard)
 ahadiff serve
 
-# Ratcheted self-improvement
-ahadiff improve abc123 --rounds 6
+# Ratcheted self-improvement (Task 16 core is landed; requires an existing finalized run and provider configuration)
+ahadiff improve --suite local --rounds 6
 
 # Install into your AI tool (v0.1: 4 core CLI targets)
 ahadiff install claude    # Claude Code → .claude/skills/
@@ -106,6 +106,9 @@ Current output layout:
 │  └─ quiz/
 │     ├─ quiz.jsonl
 │     └─ cards.jsonl     # Only written for PASS / CAUTION runs
+├─ improve/
+│  ├─ <session_id>.json  # improve session state
+│  └─ wt/<12hex>-rN/     # temporary worktree kept for pending conflicts
 ├─ audit.jsonl           # LLM call audit log
 ├─ audit.private.jsonl   # strict_local local-only audit (gitignored)
 ├─ ahadiff.lock          # portalocker file lock
@@ -152,26 +155,29 @@ ahadiff/
 ├─ src/ahadiff/eval/            # Stage 3 / Task 11-12 evaluator + ratchet + results
 ├─ src/ahadiff/prompts/         # Prompt resources packaged into the wheel
 ├─ prompts/                     # Lesson / claim prompt templates
-├─ tests/unit/                  # Stage 0 + Stage 1 + Layer 1.5 + Stage 2 / Stage 3 / Stage 4 unit tests
+├─ src/ahadiff/improve/         # Stage 5 / Task 16 improve-loop core
+├─ tests/unit/                  # Stage 0 + Stage 1 + Layer 1.5 + Stage 2 / Stage 3 / Stage 4 / Stage 5 unit tests
 ├─ ui/                          # HTML prototypes v1–v6 (design history)
 └─ CLAUDE.md                    # Project AI context index
 ```
 
 ## Status
 
-**Stage 1 Task 1/2, Layer 1.5 / Task 7, Stage 2 / Task 5/6/8, Stage 3 / Task 8.5/9/10/11/12, and Stage 4 / Task 15 are now landed.** The current codebase already has:
+**Stage 1 Task 1/2, Layer 1.5 / Task 7, Stage 2 / Task 5/6/8, Stage 3 / Task 8.5/9/10/11/12, Stage 4 / Task 15, and Stage 5 / Task 16 are now landed.** The current codebase already has:
 
 - the `ahadiff learn` main path for git and non-git capture (`--patch` / `--compare`), followed by learnability gating, `claims.raw.jsonl -> claims.jsonl`, and full / hint / compact lesson output
 - `ahadiff quiz` for a minimal interactive quiz loop backed by `quiz.jsonl`, with source-claim and file-line evidence printed back to the user
 - `cards.jsonl` / `concepts.jsonl`: cards are generated for scored PASS / CAUTION runs; git-backed runs write the repo-global `concepts.jsonl`, while non-git runs write `concepts_local.jsonl`
 - `ahadiff score`, `ahadiff verify`, and `ahadiff export-results`, backed by `review.sqlite` as the single source of truth and `results.tsv` as an export view
 - `ahadiff review`, `ahadiff mark <claim_id> wrong`, and `ahadiff db {backup,restore,check,import-results,finalize-targeted}` for the landed review.sqlite review / signals / result-events / lossy-import / targeted-finalize path
+- `ahadiff improve --suite local --rounds N`, which currently supports only `--suite local`. It selects a baseline from an existing finalized run, edits only an allowlisted prompt in a git worktree, replays the same diff, and rescores the candidate; if the candidate improves the baseline and passes hard gates, AhaDiff attempts to cherry-pick the prompt commit back and records `event_type=improve` / `status=targeted_verify`; non-improving rounds are recorded as `discard`, and cherry-pick conflicts leave a pending worktree without finalizing the run
 - `src/ahadiff/eval/{rubric,gates,deterministic,evaluator,results,ratchet}.py` for the 8-dimension scorer, hard gates, result persistence, ratchet selection, and export rebuilds
 - `src/ahadiff/review/{database,scheduler,schemas,signal}.py` for review.sqlite schema / migration, FSRS-6 scheduling, the review queue, learning signals, and the review CLI backend
+- `src/ahadiff/improve/{loop,program}.py` for improve sessions, the immutable improve_program prompt, worktree isolation, the 5 mutable-prompt allowlist, replay-learn, cherry-pick ordering, session validation, and pending-worktree resume guards
 - runtime resource lookup that works in both source checkout and installed wheel mode for `eval_bundle_version`, `prompt_version`, and packaged lesson prompts
-- `ahadiff serve` / `ahadiff improve` / `ahadiff install` are still later-stage commands; among the roadmap examples above, `ahadiff review` is now available in the current CLI
+- `ahadiff serve` / `ahadiff install` / Task 17 automatic targeted verification, `keep_final` decisions, and Phase 2.5 rewrite remain later-stage work; what exists today is Task 16 producing `targeted_verify` events plus the manual `db finalize-targeted` finalization entrypoint
 
-This round also closed several runtime edges: `prompt_version` still tracks AhaDiff's own prompt resources instead of any target-workspace `prompts/`; lesson JSON parsing skips schema-mismatched example blocks before accepting a real answer; the lesson/quiz chain is now wired into `learn`; lesson-generation failures now clean up newly written `claims.raw.jsonl` / `claims.jsonl`, `quiz/`, and `concepts_local.jsonl` half-artifacts; successful `learn` runs now write a `learn` event plus `score.json`; manual `score` / `verify` still do not contaminate the learn baseline; `ReviewCard` now validates `last_rating` and `card_state/stale_reason`; fake quiz artifacts no longer pass as a complete Stage-3 result. Task 15 is also fully hardened in this round: legacy `cards` schemas now migrate `stale_reason` explicitly, schema-invalid `cards.jsonl` is downgraded to warnings, repeated regenerate runs no longer leave old active cards in the due queue, `regenerate --only quiz` restores the previous quiz/cards artifacts if `evaluate_run` fails and deletes stale `cards.jsonl` plus marks active cards `stale + staleness_unknown` on `FAIL`, lossy TSV import now runs as a single-connection whole-batch import with rollback on bad rows or duplicate identities, `rollback_result_event` now does delete + export-row selection in one connection, and a plain DB connect no longer creates parent directories silently on typo paths.
+This round also closed several runtime edges: `prompt_version` still tracks AhaDiff's own prompt resources instead of any target-workspace `prompts/`; lesson JSON parsing skips schema-mismatched example blocks before accepting a real answer; the lesson/quiz chain is now wired into `learn`; lesson-generation failures now clean up newly written `claims.raw.jsonl` / `claims.jsonl`, `quiz/`, and `concepts_local.jsonl` half-artifacts; successful `learn` runs now write a `learn` event plus `score.json`; manual `score` / `verify` still do not contaminate the learn baseline; `ReviewCard` now validates `last_rating` and `card_state/stale_reason`; fake quiz artifacts no longer pass as a complete Stage-3 result. Task 15 is also fully hardened in this round: legacy `cards` schemas now migrate `stale_reason` explicitly, schema-invalid `cards.jsonl` is downgraded to warnings, repeated regenerate runs no longer leave old active cards in the due queue, `regenerate --only quiz` restores the previous quiz/cards artifacts if `evaluate_run` fails and deletes stale `cards.jsonl` plus marks active cards `stale + staleness_unknown` on `FAIL`, lossy TSV import now runs as a single-connection whole-batch import with rollback on bad rows or duplicate identities, `rollback_result_event` now does delete + export-row selection in one connection, and a plain DB connect no longer creates parent directories silently on typo paths. Task 16 also now covers the `lesson_hint.md` allowlist entry, session-id path validation, a 30-minute replay timeout, paired prompt temp+replace writes, non-conflict cherry-pick failure handling, no `finalized.json` for discard or pending-conflict runs, pending conflicts excluded from the next baseline, volatile staged/unstaged replay from the saved `patch.diff`, shorter worktree paths, a `--rounds` cap of 20, null-byte rejection, and Ctrl+C after a completed round no longer appending a second crash event.
 
 Current minimal verification:
 
@@ -183,10 +189,11 @@ source .venv/bin/activate && pyright
 source .venv/bin/activate && uv build --wheel
 source .venv/bin/activate && python -m ahadiff quiz --help
 source .venv/bin/activate && python -m ahadiff review --help
+source .venv/bin/activate && python -m ahadiff improve --help
 source .venv/bin/activate && python -m ahadiff db check --help
 ```
 
-Actual result from this session: `source .venv/bin/activate && pytest tests/unit -q` finished with `383 passed`; `source .venv/bin/activate && ruff check src tests`, `source .venv/bin/activate && ruff format --check src tests`, `source .venv/bin/activate && pyright`, and `source .venv/bin/activate && uv build --wheel` all passed. This session also included a clean-room wheel check: after installing the newly built wheel into a temporary virtualenv, installed-mode `evaluate_run()`, `compute_prompt_version()`, lesson/quiz prompt loading, lesson JSON parsing, and `compute_term_key()` all worked, and a target workspace `prompts/` directory still did not pollute `prompt_version`.
+Actual result from this session: `source .venv/bin/activate && pytest tests/unit/test_improve_loop.py -q` finished with `14 passed`; `source .venv/bin/activate && pytest tests/unit/test_improve_loop.py tests/unit/test_results.py tests/unit/test_review.py -q` finished with `56 passed`; `source .venv/bin/activate && pytest tests/unit -q` finished with `397 passed`; `source .venv/bin/activate && ruff check src tests`, `source .venv/bin/activate && ruff format --check src tests`, `source .venv/bin/activate && pyright`, and `source .venv/bin/activate && uv build --wheel` all passed; `source .venv/bin/activate && python -m ahadiff improve --help` also succeeded. This session also included a clean-room wheel check: after installing the newly built wheel into a temporary virtualenv, installed-mode `evaluate_run()`, `compute_prompt_version()`, lesson/quiz prompt loading, lesson JSON parsing, and `compute_term_key()` all worked, and a target workspace `prompts/` directory still did not pollute `prompt_version`.
 
 Roadmap:
 

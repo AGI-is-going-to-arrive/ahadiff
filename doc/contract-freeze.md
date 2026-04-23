@@ -97,6 +97,12 @@ Stage 0 只冻结“最小可 import + 可序列化”的 contracts 面，不提
 - `keep`
 - `keep_final`
 
+Task 16 补充：
+
+- `targeted_verify` 仍是 improve 链路的过渡态，不属于终态集合；成功 cherry-pick 后写出的 finalized `targeted_verify` 可以作为后续 improve baseline，等待 Task 17 或手动 `db finalize-targeted` 升级为 `keep_final`
+- cherry-pick 冲突时允许写 `status=targeted_verify` 并在 `note_json` 中记录 `cherry_pick_pending=true`，但不得写 `finalized.json`，也不得被下一轮 improve 当作 baseline
+- `discard` 不写 `finalized.json`
+
 ### 2.4 CardState / StaleReason
 
 `CardState = active | stale | archived | suspended`
@@ -184,7 +190,7 @@ eval_bundle_version = sha256(b"\n---\n".join(chunks)).hexdigest()[:12]
 补充冻结：
 
 - `event_type=learn` 是 learn ratchet 的基线 lane；`score` / `verify` 只做临时评估，不参与 learn baseline 选择
-- `prompt_version` 记录的是 **AhaDiff 自带 prompt 资源** 的 tree hash，不读取目标工作区自己的 `prompts/`
+- `prompt_version` 记录的是 **AhaDiff 自带 prompt 资源** 的 tree hash：source checkout / improve worktree 读取该 checkout 内的 `src/ahadiff/prompts`，wheel 安装态读取包内 `ahadiff/prompts`；目标仓库顶层自己的 `prompts/` 不参与哈希
 - `note_json` 允许记录 ratchet 原因、learnability metadata 和 `degraded_flags`
 
 最小列集：

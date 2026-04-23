@@ -59,8 +59,11 @@ def append_result(
     event_id: str | None = None,
     score_path: Path | None = None,
     write_finalized: bool = True,
+    prompt_version_override: str | None = None,
 ) -> ResultWriteOutcome:
-    prompt_version = compute_prompt_version(_workspace_root_for_run(run_path))
+    prompt_version = prompt_version_override or compute_prompt_version(
+        _workspace_root_for_run(run_path)
+    )
     rendered_note_payload = dict(note_payload or {})
     if report.degraded_flags:
         rendered_note_payload["degraded_flags"] = dict(report.degraded_flags)
@@ -296,8 +299,9 @@ def rollback_result_event(*, run_path: Path, event_id: str) -> None:
 
 
 def _prompt_hash_chunks(repo_root: Path) -> tuple[bytes, ...]:
-    del repo_root
-    prompts_dir = Path(__file__).resolve().parents[1] / "prompts"
+    prompts_dir = repo_root / "src" / "ahadiff" / "prompts"
+    if not prompts_dir.is_dir():
+        prompts_dir = Path(__file__).resolve().parents[1] / "prompts"
     if prompts_dir.is_dir():
         prompt_files = sorted(path for path in prompts_dir.rglob("*") if path.is_file())
         return tuple(

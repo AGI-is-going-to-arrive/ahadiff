@@ -95,6 +95,7 @@
 | `concepts.jsonl` | JSONL | branch-aware 概念累积（per-repo） |
 | `audit.jsonl` | JSONL | LLM 调用审计（schema_version + rotation） |
 | `audit.private.jsonl` | JSONL | `strict_local` 下的本机隐私审计（gitignored） |
+| `.ahadiff/improve/<session_id>.json` | JSON | Task 16 improve session 状态：suite、anchor_run_id、rounds_completed、worktree_path、phase25_attempted |
 
 ### 数据范围
 
@@ -114,7 +115,7 @@ CLI 全局安装（`pip install ahadiff`），per-repo 运用。核心原则：*
 A: GitHub 已有功能近乎 1:1 重叠的 `mohi-devhub/antivibe`，"Antivibe" 是至少 3 家公司的注册商标，且 Substack 有同名框架预告。改名为 知返 AhaDiff 避免命名冲突。
 
 **Q: N-文件契约具体指什么？**
-A: 概念改编自 Karpathy/autoresearch 三文件契约（原版为 prepare.py + train.py，改 Python 代码）。AhaDiff 版本（N-文件契约）：`program.md`（自然语言状态机，人类写）+ evaluation bundle（不可改的评估尺子）+ `generator_prompt.md`（agent 可以改的 Markdown prompt）。核心循环不存在于 Python 层，由 agent 解释执行。
+A: 概念改编自 Karpathy/autoresearch 三文件契约（原版为 prepare.py + train.py，改 Python 代码）。AhaDiff 版本（N-文件契约）：`program.md` / `improve_program.md`（自然语言状态机，人类写）+ evaluation bundle（不可改的评估尺子）+ 可写 prompt 白名单（当前为 `lesson_generate.md`、`lesson_hint.md`、`lesson_compact.md`、`quiz_generate.md`、`claim_extract.md`，agent 只改这些 Markdown prompt）。核心循环由 Python CLI 编排，但可变面仍限制在 prompt，不改用户代码。
 
 **Q: 文档间的阅读顺序？**
 A: 当前先读 `contract-freeze.md`，再读根目录 `CLAUDE.md` 和 `.claude/team-plan/`（kickoff + stages-4-9 + implementation plan）。前端视觉见「前端设计手册」。早期三份文档（设计思路/改名方案/最终方案）已归档，仅供历史参考。
@@ -132,6 +133,7 @@ A: 当前先读 `contract-freeze.md`，再读根目录 `CLAUDE.md` 和 `.claude/
 | `COMPREHENSIVE-EVALUATION-REPORT.md` | ~240 行 | 综合评估报告（方案 9.0/10，UI 8.7/10） |
 | `SOURCE-CODE-VERIFICATION-REPORT.md` | ~240 行 | 灵感项目源码验证报告（12 项修订） |
 | `trending-ai-projects-research-2026.md` | ~240 行 | 趋势调研（无直接竞品） |
+| `task16-deep-review.md` | ~280 行 | Task 16 improve loop 独立深度 review + post-fix addendum |
 
 ## 变更记录 (Changelog)
 
@@ -153,3 +155,4 @@ A: 当前先读 `contract-freeze.md`，再读根目录 `CLAUDE.md` 和 `.claude/
 | 2026-04-22 | 同步本轮 Stage 2 / Task 5 文档口径：根 README / README.en / CLAUDE、`ahadiff-v01-kickoff.md` 与 `ahadiff-v01-implementation-plan.md` 更新为 Task 5 已落地；补入 `src/ahadiff/git/{__init__,repo,capture}.py`、`tests/unit/test_git_capture.py`、当前实测 `tests/unit = 87 passed` / `test_git_capture.py = 26 passed`，以及 non-git `unlock --force` 与 non-`--dry-run` `learn` 的最新 CLI 行为 |
 | 2026-04-23 | 同步本轮 Stage 2 / Task 9/11/12 与随后 hardening：README / README.en / 根 CLAUDE / doc/CLAUDE / contract-freeze / stages-4-9 已统一到当前代码口径；补入 `score` / `verify` / `export-results`、lesson 三档生成、8 维 evaluator、`review.sqlite` / `results.tsv` / `finalized.json` 发布链路、`prompt_version` 绑定 AhaDiff 自带 prompt 资源、`learn` 写入 `event_type=learn`、最近祖先 baseline 选择、partial lesson 不再误拿 `PASS`，以及本次真实实测 `tests/unit = 326 passed`、`ruff check` / `ruff format --check` / `pyright` / `uv build --wheel` 全通过和 clean-room wheel smoke 通过。 |
 | 2026-04-24 | 同步本轮 Task 15 文档口径：README / README.en / 根 CLAUDE / 本文档 / Task 15 cross-review report 已统一到当前代码口径；补入 `src/ahadiff/review/{__init__,database,scheduler,schemas,signal}.py`、`tests/unit/{test_review,test_review_scheduler_extra}.py`、`ahadiff review` / `ahadiff mark` / `ahadiff db` 当前可用事实，以及本轮真实修复的 review.sqlite 边界（`stale_reason` 迁移、schema-invalid cards warning、regenerate stale 化、card_state/anchor DB 约束、monotonic UUID v7、single-connection lossy import、duplicate lossy identity fail-fast、rollback delete+export rows 单连接、`connect_review_db()` 不再静默建目录）；本次真实实测 `tests/unit = 383 passed`，`ruff check` / `ruff format --check` / `pyright` / `uv build --wheel` 全通过。 |
+| 2026-04-24 | 同步本轮 Task 16 文档口径：README / README.en / 根 CLAUDE / AGENTS / contract-freeze / stages-4-9 / Task 16 review 报告已统一到当前代码口径；补入 `src/ahadiff/improve/{__init__,loop,program}.py`、`prompts/improve_program.md`、`src/ahadiff/prompts/improve_program.md`、`tests/unit/test_improve_loop.py`、`ahadiff improve --suite local --rounds N` / `--resume` 当前可用事实，以及本轮真实修复的 improve loop 边界（5 个 mutable prompt 白名单、session_id 校验、30min replay timeout、双 prompt temp+replace 写入、discard/pending conflict 不 finalized、pending conflict 不进 baseline、volatile diff 从 `patch.diff` 重放、短 worktree 路径、`--rounds` 上限 20、null byte 拒绝、Ctrl+C 不再 double append）；本次真实实测 `test_improve_loop.py = 14 passed`、目标回归 `56 passed`、`tests/unit = 397 passed`，`ruff check` / `ruff format --check` / `pyright` / `uv build --wheel` / `python -m ahadiff improve --help` 全通过。 |

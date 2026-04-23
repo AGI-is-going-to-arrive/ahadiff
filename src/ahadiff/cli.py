@@ -64,6 +64,7 @@ from .git.capture import (
     write_input_artifacts,
 )
 from .git.repo import repo_write_lock, unlock_repo_write_lock
+from .improve import run_improve_loop
 from .lesson import generate_lessons_from_run
 from .lesson.learnability import assess_learnability
 from .llm import probe_provider
@@ -1231,6 +1232,134 @@ def review_cmd(
         _handle_cli_error(error)
 
 
+@_APP.command("improve")
+def improve_cmd(
+    suite: Annotated[
+        str,
+        typer.Option("--suite", help="Improve suite name. Only 'local' is implemented."),
+    ] = "local",
+    rounds: Annotated[
+        int,
+        typer.Option("--rounds", min=1, max=20, help="Maximum improve rounds to run."),
+    ] = 1,
+    resume: Annotated[
+        str | None,
+        typer.Option("--resume", help="Resume a previous improve session id."),
+    ] = None,
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or any path inside it."),
+    ] = Path(),
+    privacy_mode: Annotated[
+        str | None,
+        typer.Option("--privacy-mode", help="Temporary CLI override."),
+    ] = None,
+    provider: Annotated[
+        str | None,
+        typer.Option("--provider", help="Configured provider alias under [providers.<name>]."),
+    ] = None,
+    base_url: Annotated[
+        str | None,
+        typer.Option("--base-url", help="One-off provider API base URL for improve."),
+    ] = None,
+    model: Annotated[
+        str | None,
+        typer.Option("--model", help="Model override for improve."),
+    ] = None,
+    provider_class: Annotated[
+        str,
+        typer.Option("--provider-class", help="Provider class for one-off improve."),
+    ] = "openai",
+    api_key_env: Annotated[
+        str,
+        typer.Option(
+            "--api-key-env",
+            help="Env var name used to resolve the API key for improve.",
+        ),
+    ] = "AHADIFF_PROVIDER_API_KEY",
+) -> None:
+    try:
+        root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=False)
+        if not has_git_repo:
+            raise AhaDiffError("improve requires a git repository")
+        snapshot = load_config(root, cli_overrides=_cli_overrides(privacy_mode=privacy_mode))
+        llm_config = cast("dict[str, Any]", snapshot.values["llm"])
+        provider_limits = cast("dict[str, Any]", snapshot.values["provider"])
+        effective_privacy_mode = str(snapshot.values["privacy_mode"])
+        security_config = load_security_config(root)
+        state_dir = project_state_dir(root)
+        db_path = state_dir / "review.sqlite"
+        (
+            provider_config,
+            effective_api_key,
+            transport_target,
+            provider_selection_explicit,
+        ) = _resolve_runtime_provider(
+            snapshot=snapshot,
+            operation_label="improve",
+            provider_name=provider,
+            provider_class=provider_class,
+            base_url=base_url,
+            model=model,
+            api_key_env=api_key_env,
+            privacy_mode=effective_privacy_mode,
+            stdin_interactive=sys.stdin.isatty(),
+            local_hosts=security_config.local_hosts,
+        )
+        resolved_privacy_mode = _privacy_mode_for_explicit_provider_call(
+            effective_privacy_mode,
+            transport_target=transport_target,
+            provider_selection_explicit=provider_selection_explicit,
+        )
+
+        with repo_write_lock(lock_file_path(root), command="improve") as _:
+            initialize_review_db(db_path)
+            result = run_improve_loop(
+                repo_root=root,
+                state_dir=state_dir,
+                db_path=db_path,
+                rounds=rounds,
+                suite=suite,
+                provider_config=provider_config,
+                api_key=effective_api_key,
+                security_config=security_config,
+                resume_session_id=resume,
+                request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
+                max_concurrent=int(llm_config["max_concurrent"]),
+                qps_limit=int(provider_limits["qps_limit"]),
+                retry_attempts=int(llm_config["retry_attempts"]),
+                privacy_mode=resolved_privacy_mode,
+            )
+
+        console.print(f"[green]Improve session[/green]: {result.session_id}")
+        console.print(f"[bold]Anchor run[/bold]: {result.anchor_run_id}")
+        console.print(f"[bold]Rounds completed[/bold]: {result.rounds_completed}")
+        if result.outcomes:
+            table = Table(title="Improve rounds")
+            table.add_column("Round", style="cyan")
+            table.add_column("Run", style="magenta")
+            table.add_column("Prompt", style="yellow")
+            table.add_column("Dimension", style="green")
+            table.add_column("Status")
+            table.add_column("Score", justify="right")
+            for item in result.outcomes:
+                table.add_row(
+                    str(item.round_index),
+                    item.run_id,
+                    item.target_prompt,
+                    item.target_dimension,
+                    item.status,
+                    f"{item.overall:.2f}",
+                )
+            console.print(table)
+        else:
+            console.print("[yellow]Improve[/yellow]: no new rounds were executed")
+        for warning in result.warnings:
+            error_console.print(f"[yellow]Warning[/yellow]: {warning}")
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
 @_APP.command("mark")
 def mark_cmd(
     claim_id: Annotated[
@@ -2125,6 +2254,7 @@ __all__ = [
     "graph_import_cmd",
     "graph_refresh_cmd",
     "graph_status_cmd",
+    "improve_cmd",
     "init_cmd",
     "learn_cmd",
     "main",
