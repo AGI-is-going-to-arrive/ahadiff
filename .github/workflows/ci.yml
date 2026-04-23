@@ -20,15 +20,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+      - name: Install Python with current Homebrew SQLite
+        run: |
+          brew install python@3.12
+          echo "$(brew --prefix python@3.12)/bin" >> "$GITHUB_PATH"
 
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
 
-      - run: uv sync --locked --dev
+      - run: python3.12 -c "import sqlite3; print(sqlite3.sqlite_version)"
+      - run: uv sync --locked --dev --python python3.12
       - run: uv run pytest tests/unit -q
       - run: uv run ruff check src tests
       - run: uv run ruff format --check src tests
