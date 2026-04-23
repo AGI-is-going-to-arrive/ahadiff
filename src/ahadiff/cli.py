@@ -13,6 +13,14 @@ from rich.table import Table
 from typer import Exit
 
 from . import __version__
+from .claims import (
+    load_claim_candidates,
+    load_line_map_records,
+    load_symbol_records,
+    load_text_map,
+    verify_claim_candidates,
+    write_verified_claims_jsonl,
+)
 from .core.config import (
     iter_resolved_settings,
     load_config,
@@ -31,6 +39,7 @@ from .core.paths import (
     project_state_dir,
     repo_config_path,
     review_db_path,
+    run_dir,
 )
 from .git.capture import (
     capture_patch,
@@ -120,6 +129,10 @@ def _state_dir_and_lock_path(repo_root: Path) -> tuple[Path, Path]:
         return project_state_dir(root), lock_file_path(root)
     state_dir = root / ".ahadiff"
     return state_dir, state_dir / "ahadiff.lock"
+
+
+def _state_dir_for_root(root: Path, *, has_git_repo: bool) -> Path:
+    return project_state_dir(root) if has_git_repo else root / ".ahadiff"
 
 
 def _iter_orphan_state_paths(state_dir: Path) -> tuple[Path, ...]:
@@ -490,6 +503,107 @@ def unlock_cmd(
         _handle_cli_error(error)
 
 
+@_APP.command("claims")
+def claims_cmd(
+    run_id: Annotated[
+        str,
+        typer.Argument(help="Run id under .ahadiff/runs/<run_id>."),
+    ],
+    claims_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--claims-file",
+            help=(
+                "Raw claim candidate JSON/JSONL file. Defaults to claims.raw.jsonl in the run dir."
+            ),
+        ),
+    ] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            help="Verified claims JSONL output path. Defaults to claims.jsonl in the run dir.",
+        ),
+    ] = None,
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or workspace root."),
+    ] = Path(),
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Overwrite an existing verified claims file."),
+    ] = False,
+) -> None:
+    try:
+        root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
+        run_path = run_dir(run_id, root) if has_git_repo else state_dir / "runs" / run_id
+        if not run_path.exists():
+            raise AhaDiffError(f"run artifacts do not exist: {run_path}")
+
+        candidate_path = claims_file or run_path / "claims.raw.jsonl"
+        output_path = output or run_path / "claims.jsonl"
+        line_map_path = run_path / "line_map.json"
+        symbols_path = run_path / "symbols.json"
+        before_text_path = run_path / "before_text_by_path.json"
+        after_text_path = run_path / "after_text_by_path.json"
+
+        candidates = load_claim_candidates(candidate_path, default_run_id=run_id)
+        mismatched_run_ids = sorted(
+            {candidate.run_id for candidate in candidates if candidate.run_id != run_id}
+        )
+        if mismatched_run_ids:
+            raise AhaDiffError(
+                f"claims payload run_id does not match CLI run_id {run_id!r}: "
+                + ", ".join(repr(item) for item in mismatched_run_ids)
+            )
+        line_maps = load_line_map_records(line_map_path)
+        symbols = load_symbol_records(symbols_path)
+        before_text_by_path: dict[str, str] = {}
+        after_text_by_path: dict[str, str] = {}
+        if before_text_path.exists():
+            before_text_by_path = load_text_map(
+                before_text_path,
+                expected_artifact="before_text_by_path",
+            )
+        if after_text_path.exists():
+            after_text_by_path = load_text_map(
+                after_text_path,
+                expected_artifact="after_text_by_path",
+            )
+        if not before_text_by_path or not after_text_by_path:
+            console.print(
+                "[yellow]Warning[/yellow]: some before/after text artifacts are missing; "
+                "structural negative scan is partially degraded"
+            )
+
+        lock_path = lock_file_path(root) if has_git_repo else state_dir / "ahadiff.lock"
+        with repo_write_lock(lock_path, command="claims verify") as _:
+            verified = verify_claim_candidates(
+                candidates,
+                line_maps=line_maps,
+                symbols=symbols,
+                before_text_by_path=before_text_by_path,
+                after_text_by_path=after_text_by_path,
+            )
+            write_verified_claims_jsonl(output_path, verified, overwrite=force)
+
+        summary = Table(title="Claim verification summary")
+        summary.add_column("Claim", style="cyan")
+        summary.add_column("Status", style="magenta")
+        summary.add_column("Confidence", style="green")
+        for item in verified:
+            summary.add_row(
+                item.record.claim_id,
+                item.record.status,
+                item.record.confidence,
+            )
+        console.print(summary)
+        console.print(f"[bold]Verified claims[/bold]: {output_path}")
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
 @_CONFIG_APP.command("show")
 def config_show_cmd(
     resolved: Annotated[
@@ -768,6 +882,7 @@ def main() -> None:
 
 __all__ = [
     "app",
+    "claims_cmd",
     "config_show_cmd",
     "doctor_cmd",
     "graph_import_cmd",

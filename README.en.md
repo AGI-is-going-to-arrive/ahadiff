@@ -133,6 +133,8 @@ ahadiff/
 ├─ src/ahadiff/safety/          # Stage 1 / Task 2 safety primitives
 ├─ src/ahadiff/llm/             # Layer 1.5 / Task 7 provider + probe
 ├─ src/ahadiff/git/             # Stage 2 / Task 5-6 diff capture + structuring
+├─ src/ahadiff/claims/          # Stage 2 / Task 8 claim extraction + verification
+├─ prompts/                     # Lesson / claim prompt templates
 ├─ tests/unit/                  # Stage 0 + Stage 1 + Layer 1.5 + Stage 2 unit tests
 ├─ ui/                          # HTML prototypes v1–v6 (design history)
 └─ CLAUDE.md                    # Project AI context index
@@ -140,9 +142,9 @@ ahadiff/
 
 ## Status
 
-**Stage 1 Task 1/2, Layer 1.5 / Task 7, and Stage 2 / Task 5-6 are now landed.** The repository now contains the contract freeze doc, a minimal importable contracts skeleton, `pyproject.toml`, an executable CLI scaffold (`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `ahadiff provider test` / `ahadiff maint clean-orphans` / `python -m ahadiff`), the safety-layer primitives under `src/ahadiff/safety/`, `src/ahadiff/llm/{provider,probe,cache,cost}.py` plus eight provider adapters, and `src/ahadiff/git/{__init__,repo,capture,parser,path_tokens,line_map,symbols,hunk_hash}.py`, `ahadiff learn --dry-run`, non-git `--patch` / `--compare` support that also reads workspace `.ahadiff/config.toml`, `ahadiff graph status|import|refresh`, `ahadiff unlock --force`, `line_map.json` / `symbols.json` / `artifact_set.json`, and the Stage 0 + Stage 1 + Layer 1.5 + Stage 2 unit tests. Evaluator and viewer runtime work are still pending.
+**Stage 1 Task 1/2, Layer 1.5 / Task 7, and Stage 2 / Task 5-8 are now landed.** The repository now contains the contract freeze doc, a minimal importable contracts skeleton, `pyproject.toml`, an executable CLI scaffold (`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `ahadiff provider test` / `ahadiff claims` / `ahadiff maint clean-orphans` / `python -m ahadiff`), the safety-layer primitives under `src/ahadiff/safety/`, `src/ahadiff/llm/{provider,probe,cache,cost}.py` plus eight provider adapters, `src/ahadiff/git/{__init__,repo,capture,parser,path_tokens,line_map,symbols,hunk_hash}.py`, `src/ahadiff/claims/{schema,extract,verify,negative_scan,classify}.py`, `prompts/claim_extract.md`, `ahadiff learn --dry-run`, non-git `--patch` / `--compare` support that also reads workspace `.ahadiff/config.toml`, `ahadiff graph status|import|refresh`, `ahadiff unlock --force`, `line_map.json` / `symbols.json` / `artifact_set.json` / `before_text_by_path.json` / `after_text_by_path.json`, and the Stage 0 + Stage 1 + Layer 1.5 + Stage 2 unit tests. Evaluator and viewer runtime work are still pending.
 
-This round also hardened a few runtime edges: `.ahadiffignore` is now wired into the capture path, cross-line secret / prompt-injection payloads are blocked, `--staged --unstaged` now emits an explicit `git_staged_unstaged` source kind, git-sourced patch reads enforce a byte cap, parser/path/symbol extraction handle stricter edge cases, and the provider concurrency plus audit rotation paths have been tightened.
+This round also hardened a few runtime edges: `.ahadiffignore` is now wired into the capture path, cross-line secret / prompt-injection payloads are blocked, `--staged --unstaged` now emits an explicit `git_staged_unstaged` source kind, git-sourced patch reads enforce a byte cap, the claim verifier now supports a deterministic `claims.raw.jsonl -> claims.jsonl` flow, `source_hunks[]` now carry an explicit `side` (`old / new / either`) to avoid old/new same-line ambiguity, and the `claims` CLI now has `run_id` path validation, partial text-map degradation warnings, and more robust claim payload parsing.
 
 Current minimal verification:
 
@@ -156,9 +158,10 @@ uv run python -m ahadiff --version
 uv run ahadiff init
 uv run ahadiff doctor
 uv run ahadiff config show --resolved
+uv run python -m ahadiff claims --help
 ```
 
-Actual result from this session: `uv run pytest tests/unit` finished with `198 passed`; `uv run pytest tests/unit/test_stage1_task1.py tests/unit/test_contracts.py -q` finished with `42 passed`; the focused safety suite `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` finished with `35 passed`; `uv run pytest tests/unit/test_probe.py tests/unit/test_provider.py -q` finished with `43 passed`; and `uv run pytest tests/unit/test_hunk_hash.py tests/unit/test_diff_parser.py tests/unit/test_line_map.py tests/unit/test_symbol_extract.py tests/unit/test_git_capture.py -q` finished with `78 passed`. `uv run ruff check src tests` and `uv run pyright` both passed. Two real provider checks also passed: a local loopback provider succeeded with `AHADIFF_PROVIDER_API_KEY=... ahadiff provider test --name local-probe --base-url "$AHADIFF_PROVIDER_BASE_URL" --model gpt-5.4-mini`, and a real `generate()` call through the same provider also succeeded. The `base_url` here must be the API root, not `/v1/chat/completions`.
+Actual result from this session: `env PYTEST_ADDOPTS='-p no:cacheprovider' uv run pytest tests/unit -q` finished with `242 passed`; `uv run pytest tests/unit/test_claim_verify.py tests/unit/test_claim_extract.py tests/unit/test_negative_scan.py tests/unit/test_git_capture.py -q` finished with `75 passed`; `uv run ruff check src tests`, `uv run ruff format --check src tests`, `uv run pyright`, and `uv build --wheel` all passed; `uv run python -m ahadiff --version` and `uv run python -m ahadiff claims --help` both ran successfully. Two real provider checks also passed: a local loopback provider succeeded with `AHADIFF_PROVIDER_API_KEY=... ahadiff provider test --name local-probe --base-url "$AHADIFF_PROVIDER_BASE_URL" --model gpt-5.4-mini`, and the same provider also completed a real `generate()` call plus a `claims.raw.jsonl -> claims.jsonl` verification chain. The `base_url` here must be the API root, not `/v1/chat/completions`.
 
 Roadmap:
 

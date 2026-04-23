@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
 
 ClaimStatus = Literal["verified", "weak", "not_proven", "contradicted", "rejected"]
+SourceHunkSide = Literal["old", "new", "either"]
 RejectReasonCode = Literal[
     "file_not_in_patch",
     "line_outside_hunk",
@@ -27,6 +28,7 @@ class SourceHunk(BaseModel):
     file: str
     start: StrictInt
     end: StrictInt
+    side: SourceHunkSide = "either"
 
     @model_validator(mode="after")
     def validate_range(self) -> SourceHunk:
@@ -93,6 +95,7 @@ class ClaimRecord(BaseModel):
 
 __all__ = [
     "ClaimStatus",
+    "SourceHunkSide",
     "RejectReasonCode",
     "CardState",
     "StaleReason",

@@ -9,6 +9,7 @@ from .claim_status import (
     ReviewCard,
     ScaffoldingLevel,
     SourceHunk,
+    SourceHunkSide,
     StaleReason,
 )
 from .error_types import (
@@ -125,6 +126,7 @@ __all__ = [
     "ServeConfig",
     "SetLocaleRequest",
     "SourceHunk",
+    "SourceHunkSide",
     "SourceKind",
     "StaleReason",
     "StorageError",

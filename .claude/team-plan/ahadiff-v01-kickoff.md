@@ -137,7 +137,7 @@
   - `src/ahadiff/safety/audit.py`
   - `tests/unit/test_redact.py`
   - `tests/unit/test_injection.py`
-- **当前状态（2026-04-23）**：Task 2 已落地安全层基础实现：`src/ahadiff/safety/{__init__,_types,ignore,redact,injection,gates,audit}.py` 与 `tests/unit/{test_redact,test_injection,test_path_safety,test_allowlist}.py` 已存在。当前实测 `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` 为 `35 passed`；当前仓库 `uv run pytest tests/unit -q` 为 `198 passed`；`uv run ruff check src tests`、`uv run pyright` 与 `uv build --wheel` 全通过。当前代码已把 `.ahadiffignore` 接入 capture 主链，补上了跨行 secret / prompt injection 检测、递归 base64 hard block、macOS `/tmp`/`/var` alias 路径收口，以及 `audit.jsonl` / `audit.private.jsonl` 的 rotation 文件锁和多进程回归测试；全局 `[security]` 配置、workspace allowlist 与 provider `base_url` 的 transport boundary 也都已进入当前运行时链路。
+- **当前状态（2026-04-23）**：Task 2 已落地安全层基础实现：`src/ahadiff/safety/{__init__,_types,ignore,redact,injection,gates,audit}.py` 与 `tests/unit/{test_redact,test_injection,test_path_safety,test_allowlist}.py` 已存在。当前实测 `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` 为 `35 passed`；当前仓库 `env PYTEST_ADDOPTS='-p no:cacheprovider' uv run pytest tests/unit -q` 为 `242 passed`；`uv run ruff check src tests`、`uv run pyright` 与 `uv build --wheel` 全通过。当前代码已把 `.ahadiffignore` 接入 capture 主链，补上了跨行 secret / prompt injection 检测、递归 base64 hard block、macOS `/tmp`/`/var` alias 路径收口，以及 `audit.jsonl` / `audit.private.jsonl` 的 rotation 文件锁和多进程回归测试；全局 `[security]` 配置、workspace allowlist 与 provider `base_url` 的 transport boundary 也都已进入当前运行时链路。
 - **依赖**: 无
 - **依赖**: Task 0（Schema Freeze Gate — 使用 `error_types.SafetyError`）
 - **实施步骤**:
@@ -198,7 +198,7 @@
   - `src/ahadiff/git/repo.py`
   - `src/ahadiff/git/capture.py`
   - `tests/unit/test_git_capture.py`
-- **当前状态（2026-04-23）**：Task 5 已落地 `src/ahadiff/git/{__init__,repo,capture}.py` 与 `tests/unit/test_git_capture.py`。当前实测 `uv run pytest tests/unit/test_git_capture.py -q` 为 `37 passed`；`uv run pytest tests/unit -q` 为 `198 passed`。当前代码已把 `.ahadiffignore` 真正接入 git capture 主链，`--staged --unstaged` 现在使用明确的 `git_staged_unstaged` source_kind，git-sourced patch 读取会执行 `max_patch_bytes` 字节上限保护，并继续覆盖 non-git workspace、Graphify CLI、`unlock --force` 等输入面。Task 6 与 Task 7 已落地，Task 8 仍待后续继续。
+- **当前状态（2026-04-23）**：Task 5 已落地 `src/ahadiff/git/{__init__,repo,capture}.py` 与 `tests/unit/test_git_capture.py`。当前实测 `uv run pytest tests/unit/test_git_capture.py -q` 为 `37 passed`；当前仓库 `env PYTEST_ADDOPTS='-p no:cacheprovider' uv run pytest tests/unit -q` 为 `242 passed`。当前代码已把 `.ahadiffignore` 真正接入 git capture 主链，`--staged --unstaged` 现在使用明确的 `git_staged_unstaged` source_kind，git-sourced patch 读取会执行 `max_patch_bytes` 字节上限保护，并继续覆盖 non-git workspace、Graphify CLI、`unlock --force` 等输入面。Task 6、Task 7 和 Task 8 已落地。
 - **依赖**: Task 1 + Task 2
 - **实施步骤**:
   1. 实现 `open_repo()`, `resolve_ref_range()`
@@ -251,7 +251,7 @@
   - `tests/unit/test_hunk_hash.py`
   - `tests/unit/test_line_map.py`
   - `tests/unit/test_symbol_extract.py`
-- **当前状态（2026-04-23）**：Task 6 已落地 `src/ahadiff/git/{parser,path_tokens,line_map,symbols,hunk_hash}.py` 与 `tests/unit/{test_diff_parser,test_hunk_hash,test_line_map,test_symbol_extract}.py`。当前实测 `uv run pytest tests/unit/test_hunk_hash.py tests/unit/test_diff_parser.py tests/unit/test_line_map.py tests/unit/test_symbol_extract.py tests/unit/test_git_capture.py -q` 为 `78 passed`；`uv run pytest tests/unit -q` 为 `198 passed`；`uv run ruff check src tests`、`uv run pyright` 全通过。当前代码已补齐 `line_map.json` / `symbols.json` 的显式 schema/version、`artifact_set.json`、shared path helper、quoted/octal/c-style path 恢复、rename old/new 双名记录、non-git 子目录根解析、`capture_patch()` 库 API 边界与 hostile input/property-style 回归测试；本轮又补上了缺前缀 hunk 的 fail-fast、路径穿越 header 到 `__unknown__` 的清洗，以及 JS/TS 多行块注释中的 brace 不再干扰 regex fallback scope。
+- **当前状态（2026-04-23）**：Task 6 已落地 `src/ahadiff/git/{parser,path_tokens,line_map,symbols,hunk_hash}.py` 与 `tests/unit/{test_diff_parser,test_hunk_hash,test_line_map,test_symbol_extract}.py`。当前实测 `uv run pytest tests/unit/test_hunk_hash.py tests/unit/test_diff_parser.py tests/unit/test_line_map.py tests/unit/test_symbol_extract.py tests/unit/test_git_capture.py -q` 为 `78 passed`；当前仓库 `env PYTEST_ADDOPTS='-p no:cacheprovider' uv run pytest tests/unit -q` 为 `242 passed`；`uv run ruff check src tests`、`uv run pyright` 全通过。当前代码已补齐 `line_map.json` / `symbols.json` 的显式 schema/version、`artifact_set.json`、shared path helper、quoted/octal/c-style path 恢复、rename old/new 双名记录、non-git 子目录根解析、`capture_patch()` 库 API 边界与 hostile input/property-style 回归测试；本轮又补上了缺前缀 hunk 的 fail-fast、路径穿越 header 到 `__unknown__` 的清洗，以及 JS/TS 多行块注释中的 brace 不再干扰 regex fallback scope。
 - **依赖**: Task 5
 - **实施步骤**:
   1. 实现 unified diff 解析器（iter_hunks, iter_changed_files）
@@ -318,7 +318,7 @@
   - `src/ahadiff/llm/schemas.py`
   - `tests/unit/test_provider.py`
   - `tests/unit/test_probe.py`
-- **当前状态（2026-04-23）**：Task 7 已落地 `src/ahadiff/llm/{__init__,provider,probe,cache,cost,schemas}.py`、8 个 adapter，以及 `tests/unit/{test_provider,test_probe}.py`。当前实测 `uv run pytest tests/unit/test_probe.py tests/unit/test_provider.py -q` 为 `43 passed`；`uv run pytest tests/unit -q` 为 `198 passed`；`uv run ruff check src tests` 与 `uv run pyright` 全通过。当前代码已接通 provider protocol / 工厂、probe 持久化、OpenAI official pricing fallback、strict_local transport boundary、`ahadiff provider test` CLI、本地 loopback 无鉴权 provider 支持，以及 provider audit event 字段；本轮又补上了 provider slot shrink 并发收口、负 usage 归零、`probed_max_context=0` 的 fallback，以及 `openai_responses` 解析中的变量遮蔽清理。另已实测本地 loopback provider：`AHADIFF_PROVIDER_API_KEY=... ahadiff provider test --name local-probe --base-url "$AHADIFF_PROVIDER_BASE_URL" --model gpt-5.4-mini` 成功，随后真实 `generate()` 调用也已跑通。
+- **当前状态（2026-04-23）**：Task 7 已落地 `src/ahadiff/llm/{__init__,provider,probe,cache,cost,schemas}.py`、8 个 adapter，以及 `tests/unit/{test_provider,test_probe}.py`。当前实测 `uv run pytest tests/unit/test_probe.py tests/unit/test_provider.py -q` 为 `43 passed`；当前仓库 `env PYTEST_ADDOPTS='-p no:cacheprovider' uv run pytest tests/unit -q` 为 `242 passed`；`uv run ruff check src tests` 与 `uv run pyright` 全通过。当前代码已接通 provider protocol / 工厂、probe 持久化、OpenAI official pricing fallback、strict_local transport boundary、`ahadiff provider test` CLI、本地 loopback 无鉴权 provider 支持，以及 provider audit event 字段；本轮又补上了 provider slot shrink 并发收口、负 usage 归零、`probed_max_context=0` 的 fallback，以及 `openai_responses` 解析中的变量遮蔽清理。另已实测本地 loopback provider：`AHADIFF_PROVIDER_API_KEY=... ahadiff provider test --name local-probe --base-url "$AHADIFF_PROVIDER_BASE_URL" --model gpt-5.4-mini` 成功，随后真实 `generate()` 调用也已跑通。
 - **依赖**: Task 1
 - **实施步骤**:
   1. 定义 `Provider` protocol + `ProviderRequest/Response`
@@ -397,13 +397,14 @@
   - `tests/unit/test_claim_verify.py`
   - `tests/unit/test_negative_scan.py`
   - `tests/unit/test_claim_classify.py`
+- **当前状态（2026-04-23）**：Task 8 已落地 `src/ahadiff/claims/{schema,extract,verify,negative_scan,classify}.py`、`prompts/claim_extract.md` 与 `ahadiff claims` CLI。当前实测 `uv run pytest tests/unit/test_claim_verify.py tests/unit/test_claim_extract.py tests/unit/test_negative_scan.py tests/unit/test_git_capture.py -q` 为 `75 passed`；当前仓库 `env PYTEST_ADDOPTS='-p no:cacheprovider' uv run pytest tests/unit -q` 为 `242 passed`；`uv run ruff check src tests`、`uv run ruff format --check src tests`、`uv run pyright` 与 `uv build --wheel` 全通过。当前代码已接通 `claims.raw.jsonl -> claims.jsonl` 的 deterministic verify、`before_text_by_path.json` / `after_text_by_path.json`、partial text-map degraded warning、`run_id` 路径约束、非 JSON fence 跳过，以及 `source_hunks.side` 的 `old / new / either` 契约和 side-aware verifier / negative scan。另已实测本地 loopback provider 的真实 `generate()` 调用和 `claims` 验证链路可跑通。
 - **依赖**: Task 6 + Task 7
 - **实施步骤**:
   1. 定义 Pydantic schema：ClaimCandidate, ClaimRecord, NegativeEvidence
   2. 编写 `claim_extract.md` prompt
   3. 实现 deterministic verifier（按检查顺序，参照 §10.2 设计）：
      a. **file 检查**：claim 引用的 file 是否出现在 patch.diff（不在 patch 中 → rejected）
-     b. **line range 检查**：claim.source_hunks[{file, start, end}] 是否落在 hunk 范围内
+     b. **line range 检查**：claim.source_hunks[{file, start, end, side}] 是否落在 hunk 范围内
      c. **hunk_id 匹配**：claim 引用的 hunk 是否与 line_map 中的 hunk 对应
      d. **symbol 存在性检查**（消费 Task 6 `SymbolRecord`）：
         - `claim.symbols[]` 是否命中 `SymbolRecord.qualified_name`（同 path 下匹配）

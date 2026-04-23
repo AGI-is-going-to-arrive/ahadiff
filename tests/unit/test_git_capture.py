@@ -65,7 +65,14 @@ def _assert_artifact_manifest_matches_files(run_dir: Path) -> None:
     assert manifest["schema_version"] == 1
     assert manifest["manifest_type"] == "artifact_set"
     paths = [item["path"] for item in manifest["artifacts"]]
-    assert paths == ["patch.diff", "metadata.json", "line_map.json", "symbols.json"]
+    assert paths == [
+        "patch.diff",
+        "metadata.json",
+        "line_map.json",
+        "symbols.json",
+        "before_text_by_path.json",
+        "after_text_by_path.json",
+    ]
     for item in manifest["artifacts"]:
         payload = (run_dir / item["path"]).read_text(encoding="utf-8")
         assert item["bytes"] == len(payload.encode("utf-8"))
@@ -105,12 +112,17 @@ def test_learn_range_dry_run_writes_redacted_artifacts(tmp_path: Path) -> None:
     run_dir, metadata, patch_text = _load_run_artifacts(repo_root)
     line_map = json.loads((run_dir / "line_map.json").read_text(encoding="utf-8"))
     symbols = json.loads((run_dir / "symbols.json").read_text(encoding="utf-8"))
+    before_text_map = (run_dir / "before_text_by_path.json").read_text(encoding="utf-8")
+    after_text_map = (run_dir / "after_text_by_path.json").read_text(encoding="utf-8")
     assert metadata["source_kind"] == "git_ref"
     assert metadata["source_ref"] == head_sha
     assert metadata["capability_level"] == 3
     assert metadata["allowlist_digest"]
     assert secret not in patch_text
+    assert secret not in before_text_map
+    assert secret not in after_text_map
     assert "[REDACTED:openai_api_key]" in patch_text
+    assert "[REDACTED:openai_api_key]" in after_text_map
     assert line_map["schema"] == "ahadiff.line_map"
     assert line_map["schema_version"] == 1
     assert line_map["files"][0]["display_path"] == "app.py"
@@ -823,6 +835,8 @@ def test_artifact_manifest_describes_line_map_and_symbol_sources_accurately(tmp_
         "before_text_by_path",
         "after_text_by_path",
     ]
+    assert manifest["generation"]["before_text_by_path_from"] == "capture.before_text_by_path"
+    assert manifest["generation"]["after_text_by_path_from"] == "capture.after_text_by_path"
 
 
 def test_write_input_artifacts_publishes_run_directory_atomically(

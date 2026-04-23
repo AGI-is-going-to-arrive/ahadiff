@@ -246,10 +246,14 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 - `file`
 - `start`
 - `end`
+- `side`
 
 补充约束：
 
 - `end >= start`
+- `side ∈ {old, new, either}`，默认值是 `either`
+- 新生成的 claim 应显式写 `old` 或 `new`；`old` 用于删除行或 rename-from 侧，`new` 用于新增/修改后的行或 rename-to 侧
+- 当 `side=either` 且同一数字行号同时能命中 hunk 的 old/new 两侧时，verifier 必须按歧义处理并返回 `reason_code=evidence_missing`
 
 ### 3.5 ProviderConfig / ProviderCapabilities
 

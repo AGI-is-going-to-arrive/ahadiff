@@ -119,7 +119,7 @@ class TestSerialization:
             run_id="run-1",
             text="adds retry logic",
             status="verified",
-            source_hunks=[SourceHunk(file="a.py", start=10, end=20)],
+            source_hunks=[SourceHunk(file="a.py", start=10, end=20, side="new")],
         )
         assert ClaimRecord.model_validate(record.model_dump()) == record
 
@@ -178,6 +178,10 @@ class TestSerialization:
 
         invalid_hunks = cast("Any", [{"file": "a.py", "start": 10, "end": 20}])
         reversed_hunks = cast("Any", [{"file": "a.py", "start": 20, "end": 10}])
+        invalid_side_hunks = cast(
+            "Any",
+            [{"file": "a.py", "start": 10, "end": 20, "side": "middle"}],
+        )
 
         with pytest.raises(ValidationError):
             ClaimRecord(
@@ -205,6 +209,15 @@ class TestSerialization:
                 text="bad hunk",
                 status="verified",
                 source_hunks=reversed_hunks,
+            )
+
+        with pytest.raises(ValidationError):
+            ClaimRecord(
+                claim_id="cl1",
+                run_id="run-1",
+                text="bad side",
+                status="verified",
+                source_hunks=invalid_side_hunks,
             )
 
     def test_learnability_defaults(self) -> None:

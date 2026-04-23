@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 import unicodedata
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ if TYPE_CHECKING:
 
 _MACOS_LONG_PATH_WARNING = 180
 _WINDOWS_LONG_PATH_WARNING = 240
+_RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 @dataclass(frozen=True)
@@ -157,6 +159,8 @@ def ignore_file_path(repo_root: Path | None = None) -> Path:
 
 
 def run_dir(run_id: str, repo_root: Path | None = None) -> Path:
+    if not _RUN_ID_RE.fullmatch(run_id):
+        raise InputError("run_id must contain only letters, numbers, dot, underscore, or hyphen")
     return project_state_dir(repo_root) / "runs" / run_id
 
 

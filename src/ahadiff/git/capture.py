@@ -127,6 +127,8 @@ _GRAPHIFY_RELATIVE_PATH = Path("graphify-out") / "graph.json"
 _TRUNCATED_MARKER = "[truncated]\n"
 _ARTIFACT_SET_SCHEMA = "ahadiff.artifact_set"
 _ARTIFACT_SET_SCHEMA_VERSION = 1
+_TEXT_MAP_SCHEMA = "ahadiff.text_map"
+_TEXT_MAP_SCHEMA_VERSION = 1
 
 
 def capture_patch(
@@ -258,18 +260,38 @@ def write_input_artifacts(capture: CapturedDiff) -> tuple[Path, Path]:
         _render_json_text(symbols_payload),
         capture.workspace_root,
     )
+    before_text_payload = _text_map_payload(
+        artifact="before_text_by_path",
+        texts=capture.before_text_by_path,
+    )
+    after_text_payload = _text_map_payload(
+        artifact="after_text_by_path",
+        texts=capture.after_text_by_path,
+    )
+    redacted_before_text = _redact_json_artifact(
+        _render_json_text(before_text_payload),
+        capture.workspace_root,
+    )
+    redacted_after_text = _redact_json_artifact(
+        _render_json_text(after_text_payload),
+        capture.workspace_root,
+    )
 
     artifact_texts: dict[str, str] = {
         "patch.diff": capture.persisted_patch_text,
         "metadata.json": metadata_text,
         "line_map.json": redacted_line_map,
         "symbols.json": redacted_symbols,
+        "before_text_by_path.json": redacted_before_text,
+        "after_text_by_path.json": redacted_after_text,
     }
     artifact_set_payload = _artifact_set_payload(
         capture,
         artifact_texts,
         line_map_payload,
         symbols_payload,
+        before_text_payload,
+        after_text_payload,
     )
     artifact_texts["artifact_set.json"] = _redact_json_artifact(
         _render_json_text(artifact_set_payload),
@@ -334,6 +356,8 @@ def _artifact_set_payload(
     artifact_texts: dict[str, str],
     line_map_payload: dict[str, Any],
     symbols_payload: dict[str, Any],
+    before_text_payload: dict[str, Any],
+    after_text_payload: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         "artifacts": [
@@ -365,6 +389,22 @@ def _artifact_set_payload(
                 schema=symbols_payload["schema"],
                 schema_version=symbols_payload["schema_version"],
             ),
+            _artifact_descriptor(
+                artifact_type="before_text_by_path",
+                path="before_text_by_path.json",
+                media_type="application/json",
+                text=artifact_texts["before_text_by_path.json"],
+                schema=before_text_payload["schema"],
+                schema_version=before_text_payload["schema_version"],
+            ),
+            _artifact_descriptor(
+                artifact_type="after_text_by_path",
+                path="after_text_by_path.json",
+                media_type="application/json",
+                text=artifact_texts["after_text_by_path.json"],
+                schema=after_text_payload["schema"],
+                schema_version=after_text_payload["schema_version"],
+            ),
         ],
         "created_at": capture.metadata["created_at"],
         "generation": {
@@ -379,6 +419,8 @@ def _artifact_set_payload(
                 "before_text_by_path",
                 "after_text_by_path",
             ],
+            "before_text_by_path_from": "capture.before_text_by_path",
+            "after_text_by_path_from": "capture.after_text_by_path",
         },
         "manifest_type": "artifact_set",
         "run_id": capture.run_id,
@@ -416,6 +458,15 @@ def _artifact_descriptor(
     if schema_version is not None:
         descriptor["schema_version"] = schema_version
     return descriptor
+
+
+def _text_map_payload(*, artifact: str, texts: dict[str, str]) -> dict[str, Any]:
+    return {
+        "artifact": artifact,
+        "schema": _TEXT_MAP_SCHEMA,
+        "schema_version": _TEXT_MAP_SCHEMA_VERSION,
+        "texts": texts,
+    }
 
 
 def detect_graphify_status(workspace_root: Path, *, use_graphify: bool | None) -> GraphifyStatus:
