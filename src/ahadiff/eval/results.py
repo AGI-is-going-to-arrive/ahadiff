@@ -172,6 +172,22 @@ def finalized_marker_path(run_path: Path) -> Path:
     return run_path / "finalized.json"
 
 
+def finalized_artifact_digest(run_path: Path) -> tuple[int, str]:
+    chunks: list[bytes] = []
+    for path in sorted(item for item in run_path.rglob("*") if item.is_file() or item.is_symlink()):
+        relative_path = path.relative_to(run_path).as_posix()
+        if relative_path == "finalized.json" or path.name.startswith("."):
+            continue
+        if path.is_symlink():
+            raise InputError(f"refusing symlink artifact in finalized run: {relative_path}")
+        chunks.append(
+            relative_path.encode("utf-8")
+            + b"\n"
+            + hashlib.sha256(path.read_bytes()).hexdigest().encode("ascii")
+        )
+    return len(chunks), hashlib.sha256(b"\n---\n".join(chunks)).hexdigest()
+
+
 def run_state_dir_for_run(run_path: Path) -> Path:
     return run_path.parent.parent
 
@@ -272,12 +288,11 @@ def publish_result_artifacts(
             json.dumps(report.to_payload(), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
+        score_temp.replace(score_path)
         finalized_temp.write_text(
             _render_finalized_payload(run_path, event, score_path=score_path),
             encoding="utf-8",
         )
-
-        score_temp.replace(score_path)
         finalized_temp.replace(finalized_path)
     except OSError:
         _restore_file_from_backup(target=score_path, backup_path=score_backup)
@@ -349,15 +364,19 @@ def _score_path_reference(run_path: Path, score_path: Path) -> str:
 
 
 def _render_finalized_payload(run_path: Path, event: ResultEvent, *, score_path: Path) -> str:
+    artifact_count, checksum = finalized_artifact_digest(run_path)
     payload = {
         "run_id": event.run_id,
         "event_id": event.event_id,
+        "finalized_at": event.timestamp,
         "timestamp": event.timestamp,
         "status": event.status,
         "verdict": event.verdict,
         "overall": round(event.overall, 2),
         "weakest_dim": event.weakest_dim,
         "score_path": _score_path_reference(run_path, score_path),
+        "artifact_count": artifact_count,
+        "checksum": checksum,
     }
     return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
 
@@ -390,6 +409,7 @@ __all__ = [
     "append_result",
     "compute_prompt_version",
     "export_results",
+    "finalized_artifact_digest",
     "finalized_marker_path",
     "load_result_events",
     "make_result_event_id",

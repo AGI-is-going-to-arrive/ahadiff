@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import os
+import secrets
 import shutil
 import sqlite3
 import sys
 import tempfile
+import webbrowser
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any, cast
+from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
 
 import typer
 from pydantic import ValidationError
@@ -86,6 +88,7 @@ from .review.database import (
     upgrade_review_db,
 )
 from .review.signal import mark_claim_wrong
+from .serve import ServeState, create_app
 from .wiki import append_concepts
 
 if TYPE_CHECKING:
@@ -1363,6 +1366,71 @@ def improve_cmd(
         _handle_cli_error(error)
 
 
+@_APP.command("serve")
+def serve_cmd(
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or workspace root."),
+    ] = Path(),
+    port: Annotated[
+        int | None,
+        typer.Option("--port", min=1, max=65535, help="Port for the local serve API."),
+    ] = None,
+    no_browser: Annotated[
+        bool | None,
+        typer.Option("--no-browser", help="Do not open the browser automatically."),
+    ] = None,
+) -> None:
+    try:
+        root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
+        snapshot = load_workspace_config(
+            root,
+            cli_overrides=_cli_overrides(serve_port=port, no_browser=no_browser),
+        )
+        serve_config = cast("dict[str, Any]", snapshot.values["serve"])
+        bind_host = str(serve_config["bind_host"])
+        if bind_host != "127.0.0.1":
+            raise AhaDiffError("serve bind_host must be 127.0.0.1 in v0.1")
+        resolved_port = int(serve_config["port"])
+        resolved_no_browser = bool(serve_config["no_browser"])
+        resolved_locale = _resolve_serve_locale(str(snapshot.values["lang"]))
+        state_dir.mkdir(parents=True, exist_ok=True)
+        app_instance = create_app(
+            ServeState(
+                state_dir=state_dir,
+                token=secrets.token_urlsafe(24),
+                locale=resolved_locale,
+                bind_host=bind_host,
+                port=resolved_port,
+            ),
+            viewer_dist=root / "viewer" / "dist",
+        )
+        url = f"http://localhost:{resolved_port}"
+        console.print(f"[green]Serving[/green] {url}")
+        console.print("[bold]Bind[/bold]: 127.0.0.1 only")
+        console.print("[bold]Write token header[/bold]: X-AhaDiff-Token")
+        if not resolved_no_browser:
+            webbrowser.open(url)
+        import uvicorn
+
+        uvicorn.run(app_instance, host=bind_host, port=resolved_port, log_level="info")
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+def _resolve_serve_locale(value: str) -> Literal["en", "zh-CN"]:
+    if value == "zh-CN":
+        return "zh-CN"
+    if value == "en":
+        return "en"
+    lang = os.environ.get("LANG", "")
+    normalized = lang.replace("_", "-").casefold()
+    if normalized.startswith("zh-cn") or normalized.startswith("zh-hans"):
+        return "zh-CN"
+    return "en"
+
+
 @_APP.command("mark")
 def mark_cmd(
     claim_id: Annotated[
@@ -2263,5 +2331,6 @@ __all__ = [
     "main",
     "maint_clean_orphans_cmd",
     "provider_test_cmd",
+    "serve_cmd",
     "unlock_cmd",
 ]

@@ -17,6 +17,7 @@ from ahadiff.eval.results import (
     append_result,
     compute_prompt_version,
     export_results,
+    finalized_artifact_digest,
     finalized_marker_path,
     load_result_events,
     publish_result_artifacts,
@@ -125,6 +126,12 @@ def test_append_result_writes_sqlite_tsv_and_finalized_marker(tmp_path: Path) ->
     assert outcome.tsv_appended is True
     assert outcome.finalized_written is True
     assert finalized_marker_path(run_path).exists()
+    marker = json.loads(finalized_marker_path(run_path).read_text(encoding="utf-8"))
+    artifact_count, checksum = finalized_artifact_digest(run_path)
+    assert marker["finalized_at"] == outcome.event.timestamp
+    assert marker["artifact_count"] == artifact_count
+    assert marker["checksum"] == checksum
+    assert len(marker["checksum"]) == 64
     assert results_tsv_path_for_run(run_path).exists()
     assert outcome.event.prompt_version != "no-prompts"
     rows = load_result_events(review_db_path_for_run(run_path))

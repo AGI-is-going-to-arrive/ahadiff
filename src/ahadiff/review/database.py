@@ -608,113 +608,46 @@ def record_card_review(
     reviewed_at_utc: datetime | None = None,
 ) -> ReviewUpdate:
     reviewed_at = reviewed_at_utc or datetime.now(UTC)
-    reviewed_at_text = _datetime_to_utc_text(reviewed_at)
     with connect_review_db(db_path) as connection:
         _ensure_schema(connection)
-        row = connection.execute(
-            """
-            SELECT
-                id,
-                fsrs_state,
-                desired_retention,
-                scheduler_preset_id,
-                due_date,
-                created_at_utc,
-                last_review_utc,
-                reps,
-                lapses
-            FROM cards
-            WHERE id = ? AND card_state = 'active'
-            """,
-            (card_id,),
-        ).fetchone()
-        if row is None:
-            raise InputError(f"active review card does not exist: {card_id}")
-        weights = _scheduler_weights_for_card(connection, str(row["scheduler_preset_id"]))
-        recent_successes = _recent_success_count(connection, card_id)
-        scheduled = review_fsrs_card(
-            fsrs_state=str(row["fsrs_state"]),
+        return _record_card_review(
+            connection,
+            card_id=card_id,
             answer=answer,
             peeked_this_session=peeked_this_session,
             reviewed_at=reviewed_at,
-            desired_retention=float(row["desired_retention"]),
-            weights=weights,
-            recent_successes=recent_successes,
         )
-        elapsed_days, scheduled_days = _review_day_deltas(
-            created_at=str(row["created_at_utc"]),
-            last_review=cast("str | None", row["last_review_utc"]),
-            due_date=str(row["due_date"]),
+
+
+def record_card_review_once(
+    db_path: Path,
+    *,
+    card_id: str,
+    answer: ReviewAnswer,
+    idempotency_key: str,
+    peeked_this_session: bool = False,
+    reviewed_at_utc: datetime | None = None,
+) -> ReviewUpdate | None:
+    reviewed_at = reviewed_at_utc or datetime.now(UTC)
+    with connect_review_db(db_path) as connection:
+        _ensure_schema(connection)
+        inserted = _insert_learning_signal(
+            connection,
+            event_id=make_uuid7(),
+            idempotency_key=idempotency_key,
+            signal_type="srs_review",
+            payload={"card_id": card_id, "answer": answer},
+            created_at_utc=reviewed_at,
+        )
+        if not inserted:
+            return None
+        return _record_card_review(
+            connection,
+            card_id=card_id,
+            answer=answer,
+            peeked_this_session=peeked_this_session,
             reviewed_at=reviewed_at,
         )
-        lapses_increment = 1 if answer == "wrong" else 0
-        connection.execute(
-            """
-            UPDATE cards
-            SET
-                fsrs_state = ?,
-                scheduler_version = ?,
-                due_date = ?,
-                stability = ?,
-                difficulty = ?,
-                reps = reps + 1,
-                lapses = lapses + ?,
-                scaffolding_level = ?,
-                last_rating = ?,
-                last_review_utc = ?
-            WHERE id = ?
-            """,
-            (
-                scheduled.fsrs_state,
-                scheduler_version(),
-                scheduled.due_date,
-                scheduled.stability,
-                scheduled.difficulty,
-                lapses_increment,
-                scheduled.scaffolding_level,
-                scheduled.rating,
-                reviewed_at_text,
-                card_id,
-            ),
-        )
-        connection.execute(
-            """
-            INSERT INTO review_logs (
-                card_id,
-                rating,
-                reviewed_at_utc,
-                elapsed_days,
-                scheduled_days,
-                state
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                card_id,
-                scheduled.rating,
-                reviewed_at_text,
-                elapsed_days,
-                scheduled_days,
-                scheduled.state_name,
-            ),
-        )
-        connection.execute(
-            """
-            UPDATE scheduler_presets
-            SET total_reviews = total_reviews + 1
-            WHERE preset_id = ?
-            """,
-            (str(row["scheduler_preset_id"]),),
-        )
-    return ReviewUpdate(
-        card_id=card_id,
-        rating=scheduled.rating,
-        due_date=scheduled.due_date,
-        fsrs_state=scheduled.fsrs_state,
-        stability=scheduled.stability,
-        difficulty=scheduled.difficulty,
-        card_state="active",
-        scaffolding_level=scheduled.scaffolding_level,
-    )
 
 
 def set_card_queue_state(
@@ -738,6 +671,121 @@ def set_card_queue_state(
             raise InputError(f"review card does not exist: {card_id}")
 
 
+def _record_card_review(
+    connection: sqlite3.Connection,
+    *,
+    card_id: str,
+    answer: ReviewAnswer,
+    peeked_this_session: bool,
+    reviewed_at: datetime,
+) -> ReviewUpdate:
+    reviewed_at_text = _datetime_to_utc_text(reviewed_at)
+    row = connection.execute(
+        """
+        SELECT
+            id,
+            fsrs_state,
+            desired_retention,
+            scheduler_preset_id,
+            due_date,
+            created_at_utc,
+            last_review_utc,
+            reps,
+            lapses
+        FROM cards
+        WHERE id = ? AND card_state = 'active'
+        """,
+        (card_id,),
+    ).fetchone()
+    if row is None:
+        raise InputError(f"active review card does not exist: {card_id}")
+    weights = _scheduler_weights_for_card(connection, str(row["scheduler_preset_id"]))
+    recent_successes = _recent_success_count(connection, card_id)
+    scheduled = review_fsrs_card(
+        fsrs_state=str(row["fsrs_state"]),
+        answer=answer,
+        peeked_this_session=peeked_this_session,
+        reviewed_at=reviewed_at,
+        desired_retention=float(row["desired_retention"]),
+        weights=weights,
+        recent_successes=recent_successes,
+    )
+    elapsed_days, scheduled_days = _review_day_deltas(
+        created_at=str(row["created_at_utc"]),
+        last_review=cast("str | None", row["last_review_utc"]),
+        due_date=str(row["due_date"]),
+        reviewed_at=reviewed_at,
+    )
+    lapses_increment = 1 if answer == "wrong" else 0
+    connection.execute(
+        """
+        UPDATE cards
+        SET
+            fsrs_state = ?,
+            scheduler_version = ?,
+            due_date = ?,
+            stability = ?,
+            difficulty = ?,
+            reps = reps + 1,
+            lapses = lapses + ?,
+            scaffolding_level = ?,
+            last_rating = ?,
+            last_review_utc = ?
+        WHERE id = ?
+        """,
+        (
+            scheduled.fsrs_state,
+            scheduler_version(),
+            scheduled.due_date,
+            scheduled.stability,
+            scheduled.difficulty,
+            lapses_increment,
+            scheduled.scaffolding_level,
+            scheduled.rating,
+            reviewed_at_text,
+            card_id,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO review_logs (
+            card_id,
+            rating,
+            reviewed_at_utc,
+            elapsed_days,
+            scheduled_days,
+            state
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            card_id,
+            scheduled.rating,
+            reviewed_at_text,
+            elapsed_days,
+            scheduled_days,
+            scheduled.state_name,
+        ),
+    )
+    connection.execute(
+        """
+        UPDATE scheduler_presets
+        SET total_reviews = total_reviews + 1
+        WHERE preset_id = ?
+        """,
+        (str(row["scheduler_preset_id"]),),
+    )
+    return ReviewUpdate(
+        card_id=card_id,
+        rating=scheduled.rating,
+        due_date=scheduled.due_date,
+        fsrs_state=scheduled.fsrs_state,
+        stability=scheduled.stability,
+        difficulty=scheduled.difficulty,
+        card_state="active",
+        scaffolding_level=scheduled.scaffolding_level,
+    )
+
+
 def insert_learning_signal(
     db_path: Path,
     *,
@@ -747,27 +795,46 @@ def insert_learning_signal(
     payload: dict[str, object],
     created_at_utc: datetime | None = None,
 ) -> bool:
-    timestamp = _datetime_to_utc_text(created_at_utc or datetime.now(UTC))
     with connect_review_db(db_path) as connection:
         _ensure_schema(connection)
-        cursor = connection.execute(
-            """
-            INSERT OR IGNORE INTO learning_signals (
-                event_id,
-                idempotency_key,
-                signal_type,
-                payload_json,
-                created_at
-            ) VALUES (?, ?, ?, ?, ?)
-            """,
-            (
-                event_id,
-                idempotency_key,
-                signal_type,
-                json.dumps(payload, ensure_ascii=False, sort_keys=True),
-                timestamp,
-            ),
+        return _insert_learning_signal(
+            connection,
+            event_id=event_id,
+            idempotency_key=idempotency_key,
+            signal_type=signal_type,
+            payload=payload,
+            created_at_utc=created_at_utc,
         )
+
+
+def _insert_learning_signal(
+    connection: sqlite3.Connection,
+    *,
+    event_id: str,
+    idempotency_key: str,
+    signal_type: str,
+    payload: dict[str, object],
+    created_at_utc: datetime | None = None,
+) -> bool:
+    timestamp = _datetime_to_utc_text(created_at_utc or datetime.now(UTC))
+    cursor = connection.execute(
+        """
+        INSERT OR IGNORE INTO learning_signals (
+            event_id,
+            idempotency_key,
+            signal_type,
+            payload_json,
+            created_at
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            event_id,
+            idempotency_key,
+            signal_type,
+            json.dumps(payload, ensure_ascii=False, sort_keys=True),
+            timestamp,
+        ),
+    )
     return cursor.rowcount > 0
 
 
@@ -1335,6 +1402,7 @@ __all__ = [
     "make_uuid7",
     "mark_run_cards_stale",
     "record_card_review",
+    "record_card_review_once",
     "restore_review_db",
     "select_result_tsv_rows",
     "set_card_queue_state",
