@@ -237,6 +237,124 @@ def test_provider_cli_outputs_capabilities_table_and_persists_probe_result(
     assert load_config(repo_root, env={"HOME": str(tmp_path / "home")}).repo_unknown_keys == ()
 
 
+@pytest.mark.parametrize("provider_class", ["openai", "newapi", "cherryin"])
+def test_provider_cli_normalizes_chat_completions_base_url_before_probe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    provider_class: str,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    (repo_root / ".ahadiff").mkdir()
+    captured: dict[str, object] = {}
+
+    def cli_probe_provider(**kwargs: Any):
+        from ahadiff.llm.adapters.openai import OpenAIChatAdapter
+        from ahadiff.llm.schemas import ProbeReport
+
+        captured["base_url"] = kwargs["base_url"]
+        config = ProviderConfig(
+            provider_class=provider_class,  # pyright: ignore[reportArgumentType]
+            model_name="gpt-5.4-mini",
+            base_url=str(kwargs["base_url"]),
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+            probed_max_context=123456,
+            supports_temperature=True,
+            probe_timestamp="2026-04-22T00:00:00Z",
+        )
+        return ProbeReport(
+            provider_name="demo",
+            config=config,
+            capabilities=OpenAIChatAdapter(config).capabilities,
+            connectivity_ok=True,
+            transport_target="local",
+            context_window_source="live",
+            notes=("ok",),
+        )
+
+    monkeypatch.setattr(cli_module, "probe_provider", cli_probe_provider)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app(),
+        [
+            "provider",
+            "test",
+            "--name",
+            "demo",
+            "--provider-class",
+            provider_class,
+            "--base-url",
+            "http://127.0.0.1:8318/v1/chat/completions",
+            "--repo-root",
+            str(repo_root),
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0
+    assert captured["base_url"] == "http://127.0.0.1:8318"
+
+
+def test_provider_cli_normalizes_openai_responses_base_url_before_probe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    (repo_root / ".ahadiff").mkdir()
+    captured: dict[str, object] = {}
+
+    def cli_probe_provider(**kwargs: Any):
+        from ahadiff.llm.adapters.openai_responses import OpenAIResponsesAdapter
+        from ahadiff.llm.schemas import ProbeReport
+
+        captured["base_url"] = kwargs["base_url"]
+        config = ProviderConfig(
+            provider_class="openai_responses",
+            model_name="gpt-5.4-mini",
+            base_url=str(kwargs["base_url"]),
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+            probed_max_context=123456,
+            supports_temperature=True,
+            probe_timestamp="2026-04-22T00:00:00Z",
+        )
+        return ProbeReport(
+            provider_name="demo",
+            config=config,
+            capabilities=OpenAIResponsesAdapter(config).capabilities,
+            connectivity_ok=True,
+            transport_target="local",
+            context_window_source="live",
+            notes=("ok",),
+        )
+
+    monkeypatch.setattr(cli_module, "probe_provider", cli_probe_provider)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app(),
+        [
+            "provider",
+            "test",
+            "--name",
+            "demo",
+            "--provider-class",
+            "openai_responses",
+            "--base-url",
+            "http://127.0.0.1:8318/v1/responses",
+            "--repo-root",
+            str(repo_root),
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0
+    assert captured["base_url"] == "http://127.0.0.1:8318"
+
+
 def test_provider_cli_can_fallback_to_api_key_env(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -432,6 +550,34 @@ def test_provider_cli_rejects_plaintext_api_key_argument(tmp_path: Path) -> None
 
     assert result.exit_code == 1
     assert "Passing raw API keys on the command line is not allowed" in result.stderr
+
+
+def test_provider_cli_rejects_invalid_provider_class_as_cli_error(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    (repo_root / ".ahadiff").mkdir()
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app(),
+        [
+            "provider",
+            "test",
+            "--name",
+            "demo",
+            "--provider-class",
+            "bogus",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--repo-root",
+            str(repo_root),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "invalid provider configuration" in result.stderr
+    assert "Unexpected error" not in result.stderr
 
 
 def test_persist_probe_result_rejects_aliases_with_dot(tmp_path: Path) -> None:

@@ -98,7 +98,7 @@ class ChangedFileRecord:
 
 def parse_unified_diff(patch_text: str) -> tuple[ChangedFileRecord, ...]:
     lines = patch_text.splitlines()
-    segments = _split_segments(lines)
+    segments = split_unified_diff_segments(lines)
     return tuple(_parse_segment(segment) for segment in segments)
 
 
@@ -112,7 +112,11 @@ def iter_hunks(patch_text: str) -> tuple[HunkRecord, ...]:
     )
 
 
-def _split_segments(lines: list[str]) -> list[list[str]]:
+def split_unified_diff_segments(
+    lines: list[str],
+    *,
+    include_preamble: bool = False,
+) -> list[list[str]]:
     segments: list[list[str]] = []
     current: list[str] = []
     current_has_diff_header = False
@@ -129,7 +133,7 @@ def _split_segments(lines: list[str]) -> list[list[str]]:
             current = [line]
             current_has_diff_header = line.startswith("diff --git ")
             continue
-        if not current:
+        if not current and not include_preamble:
             continue
         current.append(line)
 
@@ -292,4 +296,5 @@ __all__ = [
     "iter_changed_files",
     "iter_hunks",
     "parse_unified_diff",
+    "split_unified_diff_segments",
 ]

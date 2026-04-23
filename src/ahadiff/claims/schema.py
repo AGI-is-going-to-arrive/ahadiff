@@ -4,6 +4,8 @@ from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from ahadiff.contracts import SourceHunk  # noqa: TC001 - Pydantic resolves this type at runtime.
+
 
 class ClaimCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -11,7 +13,7 @@ class ClaimCandidate(BaseModel):
     claim_id: str
     run_id: str
     text: str
-    source_hunks: list[Any]
+    source_hunks: list[SourceHunk]
     symbols: list[str] = Field(default_factory=list)
     hunk_ids: list[str] = Field(default_factory=list)
     extractor: str | None = None

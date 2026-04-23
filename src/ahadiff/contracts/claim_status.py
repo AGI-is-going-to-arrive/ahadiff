@@ -32,6 +32,8 @@ class SourceHunk(BaseModel):
 
     @model_validator(mode="after")
     def validate_range(self) -> SourceHunk:
+        if self.start < 1 or self.end < 1:
+            raise ValueError("source hunk start and end must be positive")
         if self.end < self.start:
             raise ValueError("source hunk end must be >= start")
         return self

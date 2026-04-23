@@ -9,6 +9,11 @@ from .extract import (
     write_verified_claims_jsonl,
 )
 from .negative_scan import scan_negative_evidence
+from .runtime import (
+    build_claim_extract_payload,
+    extract_claim_candidates_from_run,
+    load_claim_extract_prompt,
+)
 from .schema import ClaimCandidate, NegativeEvidence, VerifiedClaim
 from .verify import verify_claim_candidate, verify_claim_candidates
 
@@ -16,8 +21,11 @@ __all__ = [
     "ClaimCandidate",
     "NegativeEvidence",
     "VerifiedClaim",
+    "build_claim_extract_payload",
     "classify_claim_status",
+    "extract_claim_candidates_from_run",
     "load_claim_candidates",
+    "load_claim_extract_prompt",
     "load_line_map_records",
     "load_symbol_records",
     "load_text_map",

@@ -146,6 +146,52 @@ def test_openai_responses_adapter_clamps_negative_usage_and_concatenates_content
     assert parsed.output_tokens == 0
 
 
+def test_openai_responses_provider_sends_responses_request_and_parses_response() -> None:
+    captured_urls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured_urls.append(str(request.url))
+        payload = json.loads(request.content.decode("utf-8"))
+        assert request.method == "POST"
+        assert payload["model"] == "gpt-5.4-mini"
+        assert payload["input"] == "Explain the diff."
+        assert payload["text"] == {"format": {"type": "json_object"}}
+        return httpx.Response(
+            200,
+            json={
+                "model": "gpt-5.4-mini",
+                "output": [
+                    {
+                        "content": [
+                            {"type": "output_text", "text": "first"},
+                            {"type": "text", "text": " second"},
+                        ]
+                    }
+                ],
+                "usage": {"input_tokens": 12, "output_tokens": 5},
+                "status": "completed",
+            },
+            headers={"x-request-id": "req-responses-123"},
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai_responses"),
+        api_key="test-key",
+        client=client,
+    )
+    try:
+        response = provider.generate(_request(response_format="json"))
+    finally:
+        provider.close()
+
+    assert captured_urls == ["http://127.0.0.1:8000/v1/responses"]
+    assert response.content == "first second"
+    assert response.input_tokens == 12
+    assert response.output_tokens == 5
+    assert response.request_id == "req-responses-123"
+
+
 def test_resolve_context_window_falls_back_when_probe_returns_zero() -> None:
     assert resolve_context_window("gpt-5.4-mini", 0) == 1_000_000
 

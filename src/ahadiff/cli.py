@@ -4,16 +4,20 @@ import os
 import shutil
 import sqlite3
 import sys
+import tempfile
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, cast
 
 import typer
+from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 from typer import Exit
 
 from . import __version__
 from .claims import (
+    extract_claim_candidates_from_run,
     load_claim_candidates,
     load_line_map_records,
     load_symbol_records,
@@ -21,6 +25,7 @@ from .claims import (
     verify_claim_candidates,
     write_verified_claims_jsonl,
 )
+from .contracts import ProviderConfig
 from .core.config import (
     iter_resolved_settings,
     load_config,
@@ -40,6 +45,7 @@ from .core.paths import (
     repo_config_path,
     review_db_path,
     run_dir,
+    validate_run_id,
 )
 from .git.capture import (
     capture_patch,
@@ -48,11 +54,13 @@ from .git.capture import (
     write_input_artifacts,
 )
 from .git.repo import repo_write_lock, unlock_repo_write_lock
+from .lesson.learnability import assess_learnability
 from .llm import probe_provider
 from .llm.provider import transport_target_for_base_url
 
 if TYPE_CHECKING:
     from .contracts import PrivacyMode
+    from .safety.gates import TransportTarget
 
 console = Console()
 error_console = Console(stderr=True)
@@ -133,6 +141,143 @@ def _state_dir_and_lock_path(repo_root: Path) -> tuple[Path, Path]:
 
 def _state_dir_for_root(root: Path, *, has_git_repo: bool) -> Path:
     return project_state_dir(root) if has_git_repo else root / ".ahadiff"
+
+
+def _normalize_provider_base_url(base_url: str, *, provider_class: str) -> str:
+    normalized = base_url.rstrip("/")
+    suffixes: tuple[str, ...] = ()
+    if provider_class in {"openai", "newapi", "cherryin"}:
+        suffixes = ("/v1/chat/completions", "/chat/completions")
+    elif provider_class == "openai_responses":
+        suffixes = ("/v1/responses", "/responses")
+    for suffix in suffixes:
+        if normalized.endswith(suffix):
+            trimmed = normalized[: -len(suffix)]
+            if trimmed:
+                return trimmed
+    return normalized
+
+
+def _provider_config_from_payload(payload: dict[str, Any]) -> ProviderConfig:
+    try:
+        return ProviderConfig.model_validate(payload)
+    except ValidationError as exc:
+        message = exc.errors()[0].get("msg", "invalid provider configuration")
+        raise AhaDiffError(f"invalid provider configuration: {message}") from exc
+
+
+def _resolve_claim_extract_provider(
+    *,
+    snapshot: Any,
+    provider_name: str | None,
+    provider_class: str,
+    base_url: str | None,
+    model: str | None,
+    api_key_env: str,
+    privacy_mode: str,
+    stdin_interactive: bool,
+    local_hosts: tuple[str, ...],
+) -> tuple[ProviderConfig, str | None, TransportTarget, bool]:
+    llm_config = cast("dict[str, Any]", snapshot.values["llm"])
+    resolved_model = model or str(llm_config["generate_model"])
+    provider_selection_explicit = base_url is not None or provider_name is not None
+    if base_url is not None:
+        normalized_base_url = _normalize_provider_base_url(base_url, provider_class=provider_class)
+        provider_config = _provider_config_from_payload(
+            {
+                "provider_class": provider_class,
+                "model_name": resolved_model,
+                "base_url": normalized_base_url,
+                "api_key_env": api_key_env,
+            }
+        )
+    else:
+        raw_providers_table = snapshot.values.get("providers")
+        if not isinstance(raw_providers_table, dict) or not raw_providers_table:
+            raise AhaDiffError(
+                "claim extraction requires --base-url or a configured [providers.<name>] entry"
+            )
+        providers_table = cast("dict[str, Any]", raw_providers_table)
+        resolved_name = provider_name
+        if resolved_name is None:
+            configured_names = sorted(providers_table.keys())
+            if len(configured_names) != 1:
+                raise AhaDiffError(
+                    "claim extraction requires --provider when multiple providers are configured"
+                )
+            resolved_name = configured_names[0]
+        raw_config_payload = providers_table.get(resolved_name)
+        if not isinstance(raw_config_payload, dict):
+            raise AhaDiffError(f"configured provider is missing or invalid: {resolved_name}")
+        config_payload = cast("dict[str, Any]", raw_config_payload)
+        normalized_payload = dict(config_payload)
+        normalized_payload["base_url"] = _normalize_provider_base_url(
+            str(normalized_payload["base_url"]),
+            provider_class=str(normalized_payload["provider_class"]),
+        )
+        if model is not None:
+            normalized_payload["model_name"] = model
+        provider_config = _provider_config_from_payload(normalized_payload)
+
+    transport_target = transport_target_for_base_url(
+        provider_config.base_url,
+        local_hosts=local_hosts,
+    )
+    if (
+        not provider_selection_explicit
+        and privacy_mode == "strict_local"
+        and transport_target == "remote"
+    ):
+        raise AhaDiffError(
+            "claims extraction requires --provider or --base-url to use a remote provider "
+            "while privacy_mode is strict_local"
+        )
+    effective_api_key = os.environ.get(provider_config.api_key_env)
+    if (
+        effective_api_key is None
+        and provider_config.provider_class != "ollama"
+        and transport_target == "remote"
+    ):
+        if stdin_interactive:
+            effective_api_key = typer.prompt("Provider API key", hide_input=True)
+        else:
+            raise AhaDiffError(
+                "--api-key-env must point to a set env var when stdin is non-interactive"
+            )
+    return provider_config, effective_api_key, transport_target, provider_selection_explicit
+
+
+def _privacy_mode_for_explicit_provider_call(
+    privacy_mode: str,
+    *,
+    transport_target: TransportTarget,
+    provider_selection_explicit: bool,
+) -> PrivacyMode:
+    resolved_privacy_mode = cast("PrivacyMode", privacy_mode)
+    if (
+        provider_selection_explicit
+        and resolved_privacy_mode == "strict_local"
+        and transport_target == "remote"
+    ):
+        return "explicit_remote"
+    return resolved_privacy_mode
+
+
+def _paths_refer_to_same_location(left: Path, right: Path) -> bool:
+    return left.expanduser().resolve(strict=False) == right.expanduser().resolve(strict=False)
+
+
+def _temporary_sibling_path(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, raw_path = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".extract.tmp",
+        dir=path.parent,
+    )
+    os.close(fd)
+    temp_path = Path(raw_path)
+    temp_path.unlink()
+    return temp_path
 
 
 def _iter_orphan_state_paths(state_dir: Path) -> tuple[Path, ...]:
@@ -413,6 +558,13 @@ def learn_cmd(
             help="Force Graphify on or off for this run.",
         ),
     ] = None,
+    force_learn: Annotated[
+        bool,
+        typer.Option(
+            "--force-learn",
+            help="Override low learnability gating for downstream lesson/quiz generation.",
+        ),
+    ] = False,
 ) -> None:
     try:
         if not dry_run:
@@ -433,6 +585,7 @@ def learn_cmd(
             )
         )
         capture_config = cast("dict[str, Any]", snapshot.values["capture"])
+        learn_config = cast("dict[str, Any]", snapshot.values["learn"])
         effective_privacy_mode = str(snapshot.values["privacy_mode"])
         repo_lock_path = (
             lock_file_path(root) if has_git_repo else root / ".ahadiff" / "ahadiff.lock"
@@ -456,6 +609,12 @@ def learn_cmd(
                 max_patch_bytes=int(capture_config["max_patch_bytes"]),
                 privacy_mode=effective_privacy_mode,
             )
+            learnability = assess_learnability(
+                capture.persisted_patch_text,
+                threshold=float(learn_config["learnability_threshold"]),
+                force_learn=force_learn,
+            )
+            capture.metadata["learnability"] = learnability.as_metadata()
             patch_path, metadata_path = write_input_artifacts(capture)
 
         console.print(f"[green]Captured[/green] {capture.run_source.source_kind}")
@@ -464,6 +623,18 @@ def learn_cmd(
         console.print(f"[bold]Metadata[/bold]: {metadata_path}")
         console.print(f"[bold]Source ref[/bold]: {capture.run_source.source_ref}")
         console.print(f"[bold]Capability level[/bold]: {capture.run_source.capability_level}")
+        console.print(
+            f"[bold]Learnability[/bold]: {learnability.score:.3f} / {learnability.threshold:.3f}"
+        )
+        if learnability.skip_lesson_quiz:
+            console.print(
+                "[yellow]Learnability[/yellow]: low learning value; lesson/quiz would be skipped"
+            )
+        elif learnability.forced and learnability.score < learnability.threshold:
+            console.print(
+                "[yellow]Learnability[/yellow]: low learning value, "
+                "but --force-learn overrides the skip"
+            )
         if capture.run_source.degraded_flags:
             console.print(f"[yellow]Degraded flags[/yellow]: {capture.run_source.degraded_flags}")
         else:
@@ -509,6 +680,17 @@ def claims_cmd(
         str,
         typer.Argument(help="Run id under .ahadiff/runs/<run_id>."),
     ],
+    extract: Annotated[
+        bool,
+        typer.Option(
+            "--extract",
+            help="Generate claim candidates with an LLM before deterministic verification.",
+        ),
+    ] = False,
+    provider: Annotated[
+        str | None,
+        typer.Option("--provider", help="Configured provider alias under [providers.<name>]."),
+    ] = None,
     claims_file: Annotated[
         Path | None,
         typer.Option(
@@ -525,6 +707,25 @@ def claims_cmd(
             help="Verified claims JSONL output path. Defaults to claims.jsonl in the run dir.",
         ),
     ] = None,
+    base_url: Annotated[
+        str | None,
+        typer.Option("--base-url", help="One-off provider API base URL for claim extraction."),
+    ] = None,
+    model: Annotated[
+        str | None,
+        typer.Option("--model", help="Model override for claim extraction."),
+    ] = None,
+    provider_class: Annotated[
+        str,
+        typer.Option("--provider-class", help="Provider class for one-off claim extraction."),
+    ] = "openai",
+    api_key_env: Annotated[
+        str,
+        typer.Option(
+            "--api-key-env",
+            help="Env var name used to resolve the API key for one-off claim extraction.",
+        ),
+    ] = "AHADIFF_PROVIDER_API_KEY",
     repo_root: Annotated[
         Path,
         typer.Option("--repo-root", help="Repository root or workspace root."),
@@ -534,21 +735,88 @@ def claims_cmd(
         typer.Option("--force", help="Overwrite an existing verified claims file."),
     ] = False,
 ) -> None:
+    candidate_path: Path | None = None
+    extracted_candidate_path: Path | None = None
+    candidate_path_preexisted = True
     try:
         root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
         state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
-        run_path = run_dir(run_id, root) if has_git_repo else state_dir / "runs" / run_id
+        if has_git_repo:
+            run_path = run_dir(run_id, root)
+        else:
+            validate_run_id(run_id)
+            run_path = state_dir / "runs" / run_id
         if not run_path.exists():
             raise AhaDiffError(f"run artifacts do not exist: {run_path}")
 
         candidate_path = claims_file or run_path / "claims.raw.jsonl"
         output_path = output or run_path / "claims.jsonl"
+        if _paths_refer_to_same_location(candidate_path, output_path):
+            raise AhaDiffError("--claims-file and --output must point to different files")
+        if output_path.exists() and not force:
+            raise AhaDiffError(f"refusing to overwrite existing file: {output_path}")
         line_map_path = run_path / "line_map.json"
         symbols_path = run_path / "symbols.json"
         before_text_path = run_path / "before_text_by_path.json"
         after_text_path = run_path / "after_text_by_path.json"
+        candidate_path_preexisted = candidate_path.exists()
+        candidate_load_path = candidate_path
+        pending_candidate_commit: tuple[Path, Path] | None = None
+        if extract:
+            if candidate_path_preexisted and not force:
+                raise AhaDiffError(f"refusing to overwrite existing file: {candidate_path}")
+            snapshot = load_config(root) if has_git_repo else load_workspace_config(root)
+            security_config = (
+                load_security_config(root) if has_git_repo else load_workspace_security_config(root)
+            )
+            llm_config = cast("dict[str, Any]", snapshot.values["llm"])
+            provider_limits = cast("dict[str, Any]", snapshot.values["provider"])
+            (
+                provider_config,
+                effective_api_key,
+                transport_target,
+                provider_selection_explicit,
+            ) = _resolve_claim_extract_provider(
+                snapshot=snapshot,
+                provider_name=provider,
+                provider_class=provider_class,
+                base_url=base_url,
+                model=model,
+                api_key_env=api_key_env,
+                privacy_mode=str(snapshot.values["privacy_mode"]),
+                stdin_interactive=sys.stdin.isatty(),
+                local_hosts=security_config.local_hosts,
+            )
+            resolved_privacy_mode = _privacy_mode_for_explicit_provider_call(
+                str(snapshot.values["privacy_mode"]),
+                transport_target=transport_target,
+                provider_selection_explicit=provider_selection_explicit,
+            )
+            extract_output_path = candidate_path
+            if candidate_path_preexisted:
+                extract_output_path = _temporary_sibling_path(candidate_path)
+            raw_claims_path, _ = extract_claim_candidates_from_run(
+                run_id=run_id,
+                run_path=run_path,
+                workspace_root=root,
+                provider_config=provider_config,
+                api_key=effective_api_key,
+                security_config=security_config,
+                output_path=extract_output_path,
+                overwrite=False,
+                privacy_mode=resolved_privacy_mode,
+                max_concurrent=int(llm_config["max_concurrent"]),
+                qps_limit=int(provider_limits["qps_limit"]),
+                retry_attempts=int(llm_config["retry_attempts"]),
+                request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
+            )
+            extracted_candidate_path = raw_claims_path
+            candidate_load_path = raw_claims_path
+            if candidate_path_preexisted:
+                pending_candidate_commit = (raw_claims_path, candidate_path)
+            console.print(f"[bold]Raw claims[/bold]: {raw_claims_path}")
 
-        candidates = load_claim_candidates(candidate_path, default_run_id=run_id)
+        candidates = load_claim_candidates(candidate_load_path, default_run_id=run_id)
         mismatched_run_ids = sorted(
             {candidate.run_id for candidate in candidates if candidate.run_id != run_id}
         )
@@ -587,6 +855,9 @@ def claims_cmd(
                 after_text_by_path=after_text_by_path,
             )
             write_verified_claims_jsonl(output_path, verified, overwrite=force)
+            if pending_candidate_commit is not None:
+                temporary_path, final_path = pending_candidate_commit
+                temporary_path.replace(final_path)
 
         summary = Table(title="Claim verification summary")
         summary.add_column("Claim", style="cyan")
@@ -601,6 +872,13 @@ def claims_cmd(
         console.print(summary)
         console.print(f"[bold]Verified claims[/bold]: {output_path}")
     except Exception as error:  # pragma: no cover - exercised through CLI tests
+        if extracted_candidate_path is not None and (
+            not candidate_path_preexisted
+            or candidate_path is None
+            or extracted_candidate_path != candidate_path
+        ):
+            with suppress(OSError):
+                extracted_candidate_path.unlink()
         _handle_cli_error(error)
 
 
@@ -785,9 +1063,18 @@ def provider_test_cmd(
         llm_config = cast("dict[str, Any]", snapshot.values["llm"])
         provider_limits = cast("dict[str, Any]", snapshot.values["provider"])
         resolved_model = model or str(llm_config["generate_model"])
+        normalized_base_url = _normalize_provider_base_url(base_url, provider_class=provider_class)
+        _provider_config_from_payload(
+            {
+                "provider_class": provider_class,
+                "model_name": resolved_model,
+                "base_url": normalized_base_url,
+                "api_key_env": api_key_env,
+            }
+        )
         resolved_privacy_mode = cast("PrivacyMode", str(snapshot.values["privacy_mode"]))
         transport_target = transport_target_for_base_url(
-            base_url,
+            normalized_base_url,
             local_hosts=security_config.local_hosts,
         )
         if (
@@ -821,7 +1108,7 @@ def provider_test_cmd(
             provider_name=name,
             provider_class=provider_class,
             model_name=resolved_model,
-            base_url=base_url,
+            base_url=normalized_base_url,
             api_key=effective_api_key,
             api_key_env=api_key_env,
             workspace_root=root,

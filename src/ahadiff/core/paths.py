@@ -104,6 +104,14 @@ def path_identity_key(path: Path) -> str:
     return _normalized_path_text(path).casefold()
 
 
+def validate_run_id(run_id: str) -> None:
+    if not _RUN_ID_RE.fullmatch(run_id) or run_id in {".", ".."}:
+        raise InputError(
+            "run_id must contain only letters, numbers, dot, underscore, or hyphen, "
+            "and must not be '.' or '..'"
+        )
+
+
 def find_repo_root(start: Path | None = None) -> Path:
     cursor = (Path.cwd() if start is None else start).expanduser()
     if cursor.is_file():
@@ -159,8 +167,7 @@ def ignore_file_path(repo_root: Path | None = None) -> Path:
 
 
 def run_dir(run_id: str, repo_root: Path | None = None) -> Path:
-    if not _RUN_ID_RE.fullmatch(run_id):
-        raise InputError("run_id must contain only letters, numbers, dot, underscore, or hyphen")
+    validate_run_id(run_id)
     return project_state_dir(repo_root) / "runs" / run_id
 
 

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import pytest
+from pydantic import ValidationError
+
 from ahadiff.claims.schema import ClaimCandidate
 from ahadiff.claims.verify import verify_claim_candidate
 from ahadiff.contracts import SourceHunk
@@ -23,6 +26,12 @@ def _build_context(
             after_text_by_path=after_text_by_path or {},
         ),
     )
+
+
+@pytest.mark.parametrize(("start", "end"), [(0, 1), (-5, -1), (1, 0)])
+def test_source_hunk_rejects_non_positive_line_ranges(start: int, end: int) -> None:
+    with pytest.raises(ValidationError, match="source hunk start and end must be positive"):
+        SourceHunk(file="src/app.py", start=start, end=end)
 
 
 def test_verify_claim_rejects_file_not_in_patch() -> None:

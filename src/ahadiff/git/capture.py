@@ -35,7 +35,7 @@ from ahadiff.safety.injection import protect_untrusted_text
 from ahadiff.safety.redact import RedactionPipelineResult, redaction_pipeline
 
 from .line_map import build_line_map, serialize_line_map_payload
-from .parser import parse_unified_diff
+from .parser import parse_unified_diff, split_unified_diff_segments
 from .path_tokens import normalize_diff_path_token, parse_diff_git_header_paths
 from .repo import (
     GitRepo,
@@ -1116,16 +1116,7 @@ def _split_patch_segments(text: str) -> list[_PatchSegment]:
     if not lines:
         return []
 
-    segments: list[list[str]] = []
-    current: list[str] = []
-    for line in lines:
-        if line.startswith("diff --git ") and current:
-            segments.append(current)
-            current = [line]
-        else:
-            current.append(line)
-    if current:
-        segments.append(current)
+    segments = split_unified_diff_segments(lines, include_preamble=True)
 
     built: list[_PatchSegment] = []
     for raw_segment in segments:
@@ -1172,11 +1163,29 @@ def _segment_path(lines: list[str]) -> str:
                 candidate = new_path
                 if candidate is not None:
                     return candidate
+    for line in lines:
+        candidate = _binary_segment_path(line)
+        if candidate is not None:
+            return candidate
     return "__unknown__"
 
 
 def _normalize_segment_path_token(value: str, *, prefix: str) -> str | None:
     return normalize_diff_path_token(value, prefix=prefix)
+
+
+def _binary_segment_path(line: str) -> str | None:
+    stripped = line.strip()
+    if not stripped.startswith("Binary files ") or not stripped.endswith(" differ"):
+        return None
+    body = stripped.removeprefix("Binary files ").removesuffix(" differ")
+    old_token, separator, new_token = body.partition(" and ")
+    if not separator:
+        return None
+    new_path = _normalize_segment_path_token(new_token, prefix="b/")
+    if new_path is not None:
+        return new_path
+    return _normalize_segment_path_token(old_token, prefix="a/")
 
 
 def _resolve_policy(workspace_root: Path) -> AllowlistPolicy | None:

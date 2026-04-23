@@ -2291,9 +2291,13 @@ ahadiff learn HEAD~1..HEAD --dry-run
 必须生成：
 
 ```text
-.ahadiff/runs/<run_id>/input/patch.diff
-.ahadiff/runs/<run_id>/input/metadata.json
-.ahadiff/runs/<run_id>/safety/redaction_report.json
+.ahadiff/runs/<run_id>/patch.diff
+.ahadiff/runs/<run_id>/metadata.json
+.ahadiff/runs/<run_id>/line_map.json
+.ahadiff/runs/<run_id>/symbols.json
+.ahadiff/runs/<run_id>/artifact_set.json
+.ahadiff/runs/<run_id>/before_text_by_path.json
+.ahadiff/runs/<run_id>/after_text_by_path.json
 ```
 
 ------
@@ -2307,7 +2311,9 @@ hunk parser
 line_map.json
 symbols.json
 hunk_hash
-changed_files.json
+artifact_set.json
+before_text_by_path.json
+after_text_by_path.json
 ```
 
 验收：
@@ -2334,11 +2340,12 @@ Secrets redacted: 0
 
 ```text
 candidate claims schema
+claims.raw.jsonl
 LLM claim extraction
+claim runtime
 deterministic verifier
 negative evidence scan
 claims.jsonl
-verifier.json
 ```
 
 验收：
@@ -2353,6 +2360,7 @@ ahadiff claims <run_id>
 verified
 weak
 not_proven
+contradicted
 rejected
 ```
 

@@ -133,7 +133,9 @@ ahadiff/
 ├─ src/ahadiff/safety/          # Stage 1 / Task 2 安全层基础实现
 ├─ src/ahadiff/llm/             # Layer 1.5 / Task 7 provider + probe
 ├─ src/ahadiff/git/             # Stage 2 / Task 5-6 diff capture + 结构化
-├─ src/ahadiff/claims/          # Stage 2 / Task 8 claim 提取 + 验证
+├─ src/ahadiff/claims/          # Stage 2 / Task 8 claim 提取 + 验证 + runtime
+├─ src/ahadiff/lesson/          # Learnability gate
+├─ src/ahadiff/prompts/         # wheel 内打包的 prompt 资源
 ├─ prompts/                     # Lesson / claim prompt 模板
 ├─ tests/unit/                  # Stage 0 + Stage 1 + Layer 1.5 + Stage 2 单元测试
 ├─ ui/                          # HTML 原型 v1–v6（设计迭代史）
@@ -142,9 +144,9 @@ ahadiff/
 
 ## 当前阶段
 
-**Stage 1 的 Task 1/2、Layer 1.5 的 Task 7，以及 Stage 2 / Task 5-8 已落地。** 仓库现在除了设计文档和 HTML 原型，还包含 `contract-freeze.md`、最小 contracts skeleton、`pyproject.toml`、可执行的 CLI scaffold（`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `ahadiff provider test` / `ahadiff claims` / `ahadiff maint clean-orphans` / `python -m ahadiff`），`src/ahadiff/safety/` 安全层基础实现、`src/ahadiff/llm/{provider,probe,cache,cost}.py` 与 8 个 provider adapter、`src/ahadiff/git/{__init__,repo,capture,parser,path_tokens,line_map,symbols,hunk_hash}.py`、`src/ahadiff/claims/{schema,extract,verify,negative_scan,classify}.py`、`prompts/claim_extract.md`、`ahadiff learn --dry-run`、非 git 目录下可运行且会读取 workspace `.ahadiff/config.toml` 的 `--patch` / `--compare`、`ahadiff graph status|import|refresh`、`ahadiff unlock --force`、`line_map.json` / `symbols.json` / `artifact_set.json` / `before_text_by_path.json` / `after_text_by_path.json`，以及对应的 Stage 0 + Stage 1 + Layer 1.5 + Stage 2 单元测试。evaluator 和 viewer runtime 仍未实现。
+**Stage 1 的 Task 1/2、Layer 1.5 的 Task 7，以及 Stage 2 / Task 5-8 已落地。** 仓库现在除了设计文档和 HTML 原型，还包含 `contract-freeze.md`、最小 contracts skeleton、`pyproject.toml`、可执行的 CLI scaffold（`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `ahadiff provider test` / `ahadiff claims` / `ahadiff maint clean-orphans` / `python -m ahadiff`），`src/ahadiff/safety/` 安全层基础实现、`src/ahadiff/llm/{provider,probe,cache,cost}.py` 与 8 个 provider adapter、`src/ahadiff/git/{__init__,repo,capture,parser,path_tokens,line_map,symbols,hunk_hash}.py`、`src/ahadiff/claims/{schema,extract,runtime,verify,negative_scan,classify}.py`、`src/ahadiff/lesson/learnability.py`、`prompts/claim_extract.md` 与 wheel 内打包的 `src/ahadiff/prompts/claim_extract.md`、`ahadiff learn --dry-run`、非 git 目录下可运行且会读取 workspace `.ahadiff/config.toml` 的 `--patch` / `--compare`、`ahadiff graph status|import|refresh`、`ahadiff unlock --force`、`line_map.json` / `symbols.json` / `artifact_set.json` / `before_text_by_path.json` / `after_text_by_path.json`，以及对应的 Stage 0 + Stage 1 + Layer 1.5 + Stage 2 单元测试。evaluator 和 viewer runtime 仍未实现。
 
-本轮还补齐了几项运行时硬化：`.ahadiffignore` 已真正接入 capture 主链，跨行 secret / prompt injection 会被拦截，`--staged --unstaged` 有了明确的 `git_staged_unstaged` source_kind，git-sourced patch 增加了字节上限，claim verifier 已支持 `claims.raw.jsonl -> claims.jsonl` 的 deterministic verify，`source_hunks[]` 现在带显式 `side`（`old / new / either`）来避免 old/new 同号歧义，`claims` CLI 也补上了 `run_id` 路径约束、partial text-map 降级告警和更稳妥的 claim payload 解析。
+本轮还补齐了几项运行时硬化：`.ahadiffignore` 已真正接入 capture 主链，跨行 secret / prompt injection 会被拦截，`--staged --unstaged` 有了明确的 `git_staged_unstaged` source_kind，git-sourced patch 增加了字节上限，claim verifier 已支持 `claims.raw.jsonl -> claims.jsonl` 的 deterministic verify，`source_hunks[]` 现在带显式 `side`（`old / new / either`）来避免 old/new 同号歧义，`claims --extract` 现在有独立 runtime，并且会在 run metadata 要求 `redacted_remote` 时继续走脱敏 payload；`provider test` 和 `claims --extract` 都会把 Chat / Responses 终点归一化回 API 根地址；extract 成功但 verify 失败时会清理新的 raw 文件；plain unified diff 的 patch file / stdin 现在也会按 `max_files` 正常截断，binary compare 会保留 `selected_files` 路径；learnability gate 已补齐 empty diff、binary diff、all-context、rename-only、structural delete 和高信号大 churn 边界。
 
 当前已落地的最小验证：
 
@@ -159,9 +161,10 @@ uv run ahadiff init
 uv run ahadiff doctor
 uv run ahadiff config show --resolved
 uv run python -m ahadiff claims --help
+uv run python -m ahadiff learn --help
 ```
 
-本次实际结果：`env PYTEST_ADDOPTS='-p no:cacheprovider' uv run pytest tests/unit -q` 为 `242 passed`；`uv run pytest tests/unit/test_claim_verify.py tests/unit/test_claim_extract.py tests/unit/test_negative_scan.py tests/unit/test_git_capture.py -q` 为 `75 passed`；`uv run ruff check src tests`、`uv run ruff format --check src tests`、`uv run pyright` 与 `uv build --wheel` 全通过；`uv run python -m ahadiff --version` 与 `uv run python -m ahadiff claims --help` 可正常运行。另有两轮真实 CLI / runtime 验证也已通过：使用环境变量形式的本地 loopback provider 执行 `AHADIFF_PROVIDER_API_KEY=... ahadiff provider test --name local-probe --base-url "$AHADIFF_PROVIDER_BASE_URL" --model gpt-5.4-mini` 可正常 probe，同一 provider 的真实 `generate()` 调用和 `claims.raw.jsonl -> claims.jsonl` 验证链路也已跑通；这里的 `base_url` 需要传 API 根地址，不要带 `/v1/chat/completions`。
+本次实际结果：`env PYTEST_ADDOPTS='-p no:cacheprovider' uv run pytest tests/unit -q` 为 `286 passed`；`uv run pytest tests/unit/test_claim_extract.py tests/unit/test_claim_verify.py tests/unit/test_git_capture.py tests/unit/test_learnability.py tests/unit/test_probe.py tests/unit/test_provider.py tests/unit/test_diff_parser.py -q` 为 `169 passed`；`uv run ruff check src tests`、`uv run ruff format --check src tests`、`uv run pyright` 与 `uv build --wheel` 全通过；`uv run python -m ahadiff --version`、`uv run python -m ahadiff claims --help`、`uv run python -m ahadiff learn --help` 可正常运行。另做了一次 clean wheel 验证：在临时虚拟环境离线安装新 wheel 后，确认 wheel 内包含 `ahadiff/prompts/claim_extract.md`、`ahadiff/claims/runtime.py`、`ahadiff/lesson/learnability.py`，并成功在 non-git workspace 跑通 `python -m ahadiff learn --patch - --dry-run`；该次产物的 `source_kind=patch_stdin`，metadata 中也带有 `learnability`。
 
 下一步路线图：
 
