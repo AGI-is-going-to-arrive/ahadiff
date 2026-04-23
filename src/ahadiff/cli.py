@@ -36,6 +36,7 @@ from .core.config import (
 )
 from .core.errors import AhaDiffError
 from .core.paths import (
+    assert_local_repo_path,
     find_repo_root,
     find_workspace_root,
     global_config_dir,
@@ -47,6 +48,15 @@ from .core.paths import (
     run_dir,
     validate_run_id,
 )
+from .eval import (
+    append_result,
+    decide_learn_ratchet,
+    evaluate_run,
+    export_results,
+    load_result_events,
+    publish_result_artifacts,
+    rollback_result_event,
+)
 from .git.capture import (
     capture_patch,
     detect_graphify_status,
@@ -54,6 +64,7 @@ from .git.capture import (
     write_input_artifacts,
 )
 from .git.repo import repo_write_lock, unlock_repo_write_lock
+from .lesson import generate_lessons_from_run
 from .lesson.learnability import assess_learnability
 from .llm import probe_provider
 from .llm.provider import transport_target_for_base_url
@@ -166,9 +177,10 @@ def _provider_config_from_payload(payload: dict[str, Any]) -> ProviderConfig:
         raise AhaDiffError(f"invalid provider configuration: {message}") from exc
 
 
-def _resolve_claim_extract_provider(
+def _resolve_runtime_provider(
     *,
     snapshot: Any,
+    operation_label: str,
     provider_name: str | None,
     provider_class: str,
     base_url: str | None,
@@ -195,7 +207,7 @@ def _resolve_claim_extract_provider(
         raw_providers_table = snapshot.values.get("providers")
         if not isinstance(raw_providers_table, dict) or not raw_providers_table:
             raise AhaDiffError(
-                "claim extraction requires --base-url or a configured [providers.<name>] entry"
+                f"{operation_label} requires --base-url or a configured [providers.<name>] entry"
             )
         providers_table = cast("dict[str, Any]", raw_providers_table)
         resolved_name = provider_name
@@ -203,7 +215,7 @@ def _resolve_claim_extract_provider(
             configured_names = sorted(providers_table.keys())
             if len(configured_names) != 1:
                 raise AhaDiffError(
-                    "claim extraction requires --provider when multiple providers are configured"
+                    f"{operation_label} requires --provider when multiple providers are configured"
                 )
             resolved_name = configured_names[0]
         raw_config_payload = providers_table.get(resolved_name)
@@ -229,7 +241,7 @@ def _resolve_claim_extract_provider(
         and transport_target == "remote"
     ):
         raise AhaDiffError(
-            "claims extraction requires --provider or --base-url to use a remote provider "
+            f"{operation_label} requires --provider or --base-url to use a remote provider "
             "while privacy_mode is strict_local"
         )
     effective_api_key = os.environ.get(provider_config.api_key_env)
@@ -245,6 +257,32 @@ def _resolve_claim_extract_provider(
                 "--api-key-env must point to a set env var when stdin is non-interactive"
             )
     return provider_config, effective_api_key, transport_target, provider_selection_explicit
+
+
+def _resolve_claim_extract_provider(
+    *,
+    snapshot: Any,
+    provider_name: str | None,
+    provider_class: str,
+    base_url: str | None,
+    model: str | None,
+    api_key_env: str,
+    privacy_mode: str,
+    stdin_interactive: bool,
+    local_hosts: tuple[str, ...],
+) -> tuple[ProviderConfig, str | None, TransportTarget, bool]:
+    return _resolve_runtime_provider(
+        snapshot=snapshot,
+        operation_label="claim extraction",
+        provider_name=provider_name,
+        provider_class=provider_class,
+        base_url=base_url,
+        model=model,
+        api_key_env=api_key_env,
+        privacy_mode=privacy_mode,
+        stdin_interactive=stdin_interactive,
+        local_hosts=local_hosts,
+    )
 
 
 def _privacy_mode_for_explicit_provider_call(
@@ -300,6 +338,22 @@ def _remove_state_path(path: Path) -> None:
     path.unlink(missing_ok=True)
 
 
+def _cleanup_lesson_generation_artifacts(
+    *,
+    run_path: Path,
+    raw_claims_path: Path | None,
+    claims_output_path: Path | None,
+) -> None:
+    for target in (
+        raw_claims_path,
+        claims_output_path,
+        run_path / "lesson",
+    ):
+        if target is None or not target.exists():
+            continue
+        _remove_state_path(target)
+
+
 def _resolve_learn_workspace_root(
     repo_root: Path,
     *,
@@ -310,7 +364,9 @@ def _resolve_learn_workspace_root(
     except AhaDiffError:
         if not allow_non_git:
             raise
-        return find_workspace_root(repo_root), False
+        workspace_root = find_workspace_root(repo_root)
+        assert_local_repo_path(workspace_root)
+        return workspace_root, False
 
 
 @_APP.callback()
@@ -565,12 +621,31 @@ def learn_cmd(
             help="Override low learnability gating for downstream lesson/quiz generation.",
         ),
     ] = False,
+    provider: Annotated[
+        str | None,
+        typer.Option("--provider", help="Configured provider alias under [providers.<name>]."),
+    ] = None,
+    base_url: Annotated[
+        str | None,
+        typer.Option("--base-url", help="One-off provider API base URL for lesson generation."),
+    ] = None,
+    model: Annotated[
+        str | None,
+        typer.Option("--model", help="Model override for lesson generation."),
+    ] = None,
+    provider_class: Annotated[
+        str,
+        typer.Option("--provider-class", help="Provider class for one-off lesson generation."),
+    ] = "openai",
+    api_key_env: Annotated[
+        str,
+        typer.Option(
+            "--api-key-env",
+            help="Env var name used to resolve the API key for lesson generation.",
+        ),
+    ] = "AHADIFF_PROVIDER_API_KEY",
 ) -> None:
     try:
-        if not dry_run:
-            raise AhaDiffError(
-                "Stage 2 / Task 5 currently supports capture-only flow; use --dry-run"
-            )
         allow_non_git = patch is not None or compare is not None
         root, has_git_repo = _resolve_learn_workspace_root(
             repo_root,
@@ -586,7 +661,12 @@ def learn_cmd(
         )
         capture_config = cast("dict[str, Any]", snapshot.values["capture"])
         learn_config = cast("dict[str, Any]", snapshot.values["learn"])
+        llm_config = cast("dict[str, Any]", snapshot.values["llm"])
+        provider_limits = cast("dict[str, Any]", snapshot.values["provider"])
         effective_privacy_mode = str(snapshot.values["privacy_mode"])
+        security_config = (
+            load_security_config(root) if has_git_repo else load_workspace_security_config(root)
+        )
         repo_lock_path = (
             lock_file_path(root) if has_git_repo else root / ".ahadiff" / "ahadiff.lock"
         )
@@ -616,6 +696,118 @@ def learn_cmd(
             )
             capture.metadata["learnability"] = learnability.as_metadata()
             patch_path, metadata_path = write_input_artifacts(capture)
+            run_path = (
+                run_dir(capture.run_id, root)
+                if has_git_repo
+                else (root / ".ahadiff" / "runs" / capture.run_id)
+            )
+            raw_claims_path: Path | None = None
+            claims_output_path: Path | None = None
+            lesson_paths = None
+            lesson_skip_reason: str | None = None
+            learn_report = None
+            learn_outcome = None
+            learn_warnings: list[str] = []
+            if not dry_run and not learnability.skip_lesson_quiz:
+                try:
+                    (
+                        provider_config,
+                        effective_api_key,
+                        transport_target,
+                        provider_selection_explicit,
+                    ) = _resolve_runtime_provider(
+                        snapshot=snapshot,
+                        operation_label="lesson generation",
+                        provider_name=provider,
+                        provider_class=provider_class,
+                        base_url=base_url,
+                        model=model,
+                        api_key_env=api_key_env,
+                        privacy_mode=effective_privacy_mode,
+                        stdin_interactive=sys.stdin.isatty(),
+                        local_hosts=security_config.local_hosts,
+                    )
+                    resolved_privacy_mode = _privacy_mode_for_explicit_provider_call(
+                        effective_privacy_mode,
+                        transport_target=transport_target,
+                        provider_selection_explicit=provider_selection_explicit,
+                    )
+                    raw_claims_path, _ = extract_claim_candidates_from_run(
+                        run_id=capture.run_id,
+                        run_path=run_path,
+                        workspace_root=root,
+                        provider_config=provider_config,
+                        api_key=effective_api_key,
+                        security_config=security_config,
+                        output_path=run_path / "claims.raw.jsonl",
+                        overwrite=False,
+                        privacy_mode=resolved_privacy_mode,
+                        max_concurrent=int(llm_config["max_concurrent"]),
+                        qps_limit=int(provider_limits["qps_limit"]),
+                        retry_attempts=int(llm_config["retry_attempts"]),
+                        request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
+                    )
+                    candidates = load_claim_candidates(
+                        raw_claims_path,
+                        default_run_id=capture.run_id,
+                    )
+                    line_maps = load_line_map_records(run_path / "line_map.json")
+                    symbols = load_symbol_records(run_path / "symbols.json")
+                    before_text_by_path = load_text_map(
+                        run_path / "before_text_by_path.json",
+                        expected_artifact="before_text_by_path",
+                    )
+                    after_text_by_path = load_text_map(
+                        run_path / "after_text_by_path.json",
+                        expected_artifact="after_text_by_path",
+                    )
+                    verified = verify_claim_candidates(
+                        candidates,
+                        line_maps=line_maps,
+                        symbols=symbols,
+                        before_text_by_path=before_text_by_path,
+                        after_text_by_path=after_text_by_path,
+                    )
+                    claims_output_path = run_path / "claims.jsonl"
+                    write_verified_claims_jsonl(claims_output_path, verified, overwrite=False)
+                    verified_claim_count = sum(
+                        1 for item in verified if item.record.status == "verified"
+                    )
+                    if verified_claim_count == 0:
+                        lesson_skip_reason = "no verified claims survived verification"
+                    else:
+                        lesson_paths = generate_lessons_from_run(
+                            run_id=capture.run_id,
+                            run_path=run_path,
+                            workspace_root=root,
+                            provider_config=provider_config,
+                            api_key=effective_api_key,
+                            security_config=security_config,
+                            request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
+                            max_concurrent=int(llm_config["max_concurrent"]),
+                            qps_limit=int(provider_limits["qps_limit"]),
+                            retry_attempts=int(llm_config["retry_attempts"]),
+                            privacy_mode=resolved_privacy_mode,
+                        )
+                        learn_report = evaluate_run(run_path)
+                        learn_outcome, learn_warnings = _persist_evaluated_run(
+                            run_path=run_path,
+                            report=learn_report,
+                            workspace_root=root,
+                            event_type="learn",
+                            output_path=run_path / "score.json",
+                            force=False,
+                            note_payload={"learnability": learnability.as_metadata()},
+                        )
+                except Exception as exc:
+                    _cleanup_lesson_generation_artifacts(
+                        run_path=run_path,
+                        raw_claims_path=raw_claims_path,
+                        claims_output_path=claims_output_path,
+                    )
+                    if isinstance(exc, AhaDiffError):
+                        raise
+                    raise AhaDiffError(f"lesson generation failed: {exc}") from exc
 
         console.print(f"[green]Captured[/green] {capture.run_source.source_kind}")
         console.print(f"[bold]Run ID[/bold]: {capture.run_id}")
@@ -635,6 +827,25 @@ def learn_cmd(
                 "[yellow]Learnability[/yellow]: low learning value, "
                 "but --force-learn overrides the skip"
             )
+        if raw_claims_path is not None:
+            console.print(f"[bold]Raw claims[/bold]: {raw_claims_path}")
+        if claims_output_path is not None:
+            console.print(f"[bold]Claims[/bold]: {claims_output_path}")
+        if lesson_paths is not None:
+            console.print(f"[bold]Lesson[/bold]: {lesson_paths.full_path}")
+            console.print(f"[bold]Hint[/bold]: {lesson_paths.hint_path}")
+            console.print(f"[bold]Compact[/bold]: {lesson_paths.compact_path}")
+            if learn_report is not None and learn_outcome is not None:
+                console.print(f"[bold]Score[/bold]: {learn_report.overall:.2f}")
+                console.print(f"[bold]Verdict[/bold]: {learn_report.verdict}")
+                console.print(f"[bold]Status[/bold]: {learn_outcome.event.status}")
+                console.print(f"[bold]Score Output[/bold]: {run_path / 'score.json'}")
+                for warning in learn_warnings:
+                    console.print(f"[yellow]Warning[/yellow]: {warning}")
+        elif lesson_skip_reason is not None:
+            console.print(f"[bold]Lesson[/bold]: skipped because {lesson_skip_reason}")
+        elif not dry_run and learnability.skip_lesson_quiz:
+            console.print("[bold]Lesson[/bold]: skipped by learnability gate")
         if capture.run_source.degraded_flags:
             console.print(f"[yellow]Degraded flags[/yellow]: {capture.run_source.degraded_flags}")
         else:
@@ -945,6 +1156,194 @@ def config_show_cmd(
 
         for setting in iter_resolved_settings(snapshot):
             console.print(f"{setting.key} = {_format_scalar(setting.value)}")
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+def _resolve_existing_run_path(repo_root: Path, run_id: str) -> Path:
+    root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+    state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
+    if has_git_repo:
+        target = run_dir(run_id, root)
+    else:
+        validate_run_id(run_id)
+        target = state_dir / "runs" / run_id
+    if not target.exists():
+        raise AhaDiffError(f"run artifacts do not exist: {target}")
+    return target
+
+
+def _persist_evaluated_run(
+    *,
+    run_path: Path,
+    report: Any,
+    workspace_root: Path,
+    event_type: str,
+    output_path: Path,
+    force: bool,
+    note_payload: dict[str, object] | None = None,
+) -> tuple[Any, list[str]]:
+    db_path = run_path.parent.parent / "review.sqlite"
+    decision = decide_learn_ratchet(
+        workspace_root=workspace_root,
+        report=report,
+        prior_events=load_result_events(db_path),
+    )
+    combined_note_payload = dict(decision.note_payload or {})
+    if note_payload:
+        combined_note_payload.update(note_payload)
+    outcome = append_result(
+        run_path=run_path,
+        report=report,
+        status=decision.status,
+        base_ref=decision.base_ref,
+        event_type=event_type,
+        note_payload=combined_note_payload or None,
+        score_path=output_path,
+        write_finalized=False,
+    )
+    warnings = list(outcome.warnings)
+    try:
+        publish_result_artifacts(
+            run_path=run_path,
+            report=report,
+            event=outcome.event,
+            score_path=output_path,
+            overwrite=force,
+        )
+    except OSError as exc:
+        if outcome.sqlite_inserted:
+            try:
+                rollback_result_event(run_path=run_path, event_id=outcome.event.event_id)
+            except Exception as rollback_error:
+                raise AhaDiffError(
+                    "failed to publish score artifacts and failed to roll back "
+                    f"result event {outcome.event.event_id}: {rollback_error}"
+                ) from rollback_error
+        raise AhaDiffError(f"failed to publish score artifacts: {exc}") from exc
+    return outcome, warnings
+
+
+def _score_or_verify_run(
+    *,
+    command_name: str,
+    run_id: str,
+    repo_root: Path,
+    output: Path | None,
+    force: bool,
+) -> None:
+    run_path = _resolve_existing_run_path(repo_root, run_id)
+    output_path = output or run_path / "score.json"
+    workspace_root = run_path.parent.parent.parent
+    _, lock_path = _state_dir_and_lock_path(repo_root)
+    if output_path.exists() and not force:
+        raise AhaDiffError(f"refusing to overwrite existing file: {output_path}")
+    with repo_write_lock(lock_path, command=command_name) as _:
+        report = evaluate_run(run_path)
+        outcome, warnings = _persist_evaluated_run(
+            run_path=run_path,
+            report=report,
+            event_type=command_name,
+            workspace_root=workspace_root,
+            output_path=output_path,
+            force=force,
+        )
+    console.print(f"[green]{command_name.title()} complete[/green]: {run_id}")
+    console.print(f"[bold]Score[/bold]: {report.overall:.2f}")
+    console.print(f"[bold]Verdict[/bold]: {report.verdict}")
+    console.print(f"[bold]Status[/bold]: {outcome.event.status}")
+    console.print(f"[bold]Weakest dim[/bold]: {report.weakest_dim}")
+    console.print(f"[bold]Eval bundle[/bold]: {report.eval_bundle_version}")
+    console.print(f"[bold]Output[/bold]: {output_path}")
+    if report.hard_gates.failed_names():
+        failed = ", ".join(report.hard_gates.failed_names())
+        console.print(f"[yellow]Failed hard gates[/yellow]: {failed}")
+    for warning in warnings:
+        console.print(f"[yellow]Warning[/yellow]: {warning}")
+
+
+@_APP.command("score")
+def score_cmd(
+    run_id: Annotated[
+        str,
+        typer.Argument(help="Run id under .ahadiff/runs/<run_id>."),
+    ],
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or workspace root."),
+    ] = Path(),
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", help="Output path for score.json."),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Overwrite an existing score output."),
+    ] = False,
+) -> None:
+    try:
+        _score_or_verify_run(
+            command_name="score",
+            run_id=run_id,
+            repo_root=repo_root,
+            output=output,
+            force=force,
+        )
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+@_APP.command("verify")
+def verify_cmd(
+    run_id: Annotated[
+        str,
+        typer.Argument(help="Run id under .ahadiff/runs/<run_id>."),
+    ],
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or workspace root."),
+    ] = Path(),
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", help="Output path for score.json."),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Overwrite an existing score output."),
+    ] = False,
+) -> None:
+    try:
+        _score_or_verify_run(
+            command_name="verify",
+            run_id=run_id,
+            repo_root=repo_root,
+            output=output,
+            force=force,
+        )
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+@_APP.command("export-results")
+def export_results_cmd(
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or workspace root."),
+    ] = Path(),
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", help="Output path for results.tsv."),
+    ] = None,
+) -> None:
+    try:
+        root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
+        db_path = state_dir / "review.sqlite"
+        output_path = output or state_dir / "results.tsv"
+        _, lock_path = _state_dir_and_lock_path(repo_root)
+        with repo_write_lock(lock_path, command="export-results") as _:
+            export_results(db_path=db_path, output_path=output_path)
+        console.print(f"[green]Exported[/green] {output_path}")
     except Exception as error:  # pragma: no cover - exercised through CLI tests
         _handle_cli_error(error)
 

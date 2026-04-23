@@ -181,6 +181,12 @@ eval_bundle_version = sha256(b"\n---\n".join(chunks)).hexdigest()[:12]
 
 `result_events` 是物理事件表，SQLite 是唯一真相源；`results.tsv` 只是导出视图。
 
+补充冻结：
+
+- `event_type=learn` 是 learn ratchet 的基线 lane；`score` / `verify` 只做临时评估，不参与 learn baseline 选择
+- `prompt_version` 记录的是 **AhaDiff 自带 prompt 资源** 的 tree hash，不读取目标工作区自己的 `prompts/`
+- `note_json` 允许记录 ratchet 原因、learnability metadata 和 `degraded_flags`
+
 最小列集：
 
 - `event_id`
@@ -390,6 +396,7 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 - run-scoped 读接口只暴露已完成二阶段发布的 finalized runs
 - 未写出 `finalized.json` 的临时 run 不得对前端可见
 - `result_events` 仍是评分与 ratchet 的唯一真相源
+- 若 `score.json` / `finalized.json` 发布失败，必须回滚刚写入的 `result_events`，避免 SQLite 中残留未发布 run
 
 ### 4.3 Serve DTO
 

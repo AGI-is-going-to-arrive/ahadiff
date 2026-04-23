@@ -1,0 +1,306 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from ahadiff.contracts import ResultEvent, RunStatus
+from ahadiff.eval.deterministic import DimensionScore
+from ahadiff.eval.evaluator import ScoreReport
+from ahadiff.eval.gates import HardGateResult, HardGateSummary
+from ahadiff.eval.ratchet import (
+    decide_learn_ratchet,
+    has_git_ancestry,
+    select_baseline_event,
+    should_trigger_phase25,
+)
+
+
+def _score_report(
+    *,
+    source_kind: str,
+    source_ref: str,
+    overall: float,
+    degraded_flags: dict[str, bool] | None = None,
+) -> ScoreReport:
+    return ScoreReport(
+        run_id="run_now",
+        source_ref=source_ref,
+        source_kind=source_kind,
+        capability_level=3,
+        degraded_flags=degraded_flags or {},
+        overall=overall,
+        verdict="PASS",
+        weakest_dim="conciseness",
+        eval_bundle_version="bundle-v1",
+        rubric_version="v0.1",
+        dimensions=(DimensionScore(name="accuracy", score=20.0, max_score=20.0, reason="ok"),),
+        hard_gates=HardGateSummary(
+            results=(HardGateResult(name="accuracy", passed=True, detail="ok"),)
+        ),
+        notes=(),
+    )
+
+
+def _event(
+    *,
+    source_ref: str,
+    overall: float,
+    status: RunStatus = "keep",
+    event_type: str = "learn",
+) -> ResultEvent:
+    return ResultEvent(
+        event_id=f"018f0f52-91c0-7abc-8123-{int(overall * 100):012d}",
+        run_id=f"run_{overall}",
+        event_type=event_type,
+        timestamp="2026-04-23T00:00:00Z",
+        source_ref=source_ref,
+        base_ref=None,
+        prompt_version="prompt-v1",
+        eval_bundle_version="bundle-v1",
+        rubric_version="v0.1",
+        overall=overall,
+        verdict="PASS",
+        status=status,
+        weakest_dim="conciseness",
+        note_json=None,
+    )
+
+
+def _init_git_repo(tmp_path: Path) -> None:
+    import subprocess
+
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=tmp_path, check=True)
+
+
+def _commit_file(tmp_path: Path, name: str, content: str, message: str) -> str:
+    import subprocess
+
+    (tmp_path / name).write_text(content, encoding="utf-8")
+    subprocess.run(["git", "add", name], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", message], cwd=tmp_path, check=True, capture_output=True)
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def test_non_git_inputs_are_non_ratcheted() -> None:
+    report = _score_report(source_kind="patch_file", source_ref="sha256:abc", overall=82.0)
+
+    decision = decide_learn_ratchet(
+        workspace_root=Path("/tmp"),
+        report=report,
+        prior_events=(),
+    )
+
+    assert decision.status == "non_ratcheted"
+
+
+def test_git_input_without_prior_baseline_returns_baseline(tmp_path: Path) -> None:
+    _init_git_repo(tmp_path)
+    head = _commit_file(tmp_path, "app.py", "value = 1\n", "init")
+    report = _score_report(source_kind="git_ref", source_ref=head, overall=78.0)
+
+    decision = decide_learn_ratchet(
+        workspace_root=tmp_path,
+        report=report,
+        prior_events=(),
+    )
+
+    assert has_git_ancestry(tmp_path, "git_ref", head) is True
+    assert decision.status == "baseline"
+
+
+def test_git_input_keeps_when_score_improves_over_ancestor(tmp_path: Path) -> None:
+    _init_git_repo(tmp_path)
+    base = _commit_file(tmp_path, "app.py", "value = 1\n", "init")
+    head = _commit_file(tmp_path, "app.py", "value = 2\n", "update")
+    prior = (_event(source_ref=base, overall=70.0, status="baseline"),)
+    report = _score_report(source_kind="git_ref", source_ref=head, overall=81.0)
+
+    decision = decide_learn_ratchet(
+        workspace_root=tmp_path,
+        report=report,
+        prior_events=prior,
+    )
+
+    assert (
+        select_baseline_event(
+            workspace_root=tmp_path,
+            source_ref=head,
+            prior_events=prior,
+        )
+        == prior[0]
+    )
+    assert decision.status == "keep"
+    assert decision.base_ref == base
+
+
+def test_git_input_discards_when_score_regresses(tmp_path: Path) -> None:
+    _init_git_repo(tmp_path)
+    base = _commit_file(tmp_path, "app.py", "value = 1\n", "init")
+    head = _commit_file(tmp_path, "app.py", "value = 2\n", "update")
+    prior = (_event(source_ref=base, overall=85.0, status="baseline"),)
+    report = _score_report(source_kind="git_ref", source_ref=head, overall=80.0)
+
+    decision = decide_learn_ratchet(
+        workspace_root=tmp_path,
+        report=report,
+        prior_events=prior,
+    )
+
+    assert decision.status == "discard"
+    assert decision.base_ref == base
+
+
+def test_select_baseline_event_ignores_score_lane_events(tmp_path: Path) -> None:
+    _init_git_repo(tmp_path)
+    base = _commit_file(tmp_path, "app.py", "value = 1\n", "init")
+    head = _commit_file(tmp_path, "app.py", "value = 2\n", "update")
+    prior = (
+        _event(source_ref=base, overall=75.0, status="baseline", event_type="score"),
+        _event(source_ref=base, overall=74.0, status="baseline", event_type="learn"),
+    )
+
+    baseline = select_baseline_event(
+        workspace_root=tmp_path,
+        source_ref=head,
+        prior_events=prior,
+        allowed_event_types={"learn", "verify"},
+    )
+
+    assert baseline == prior[1]
+
+
+def test_select_baseline_event_prefers_nearest_ancestor_over_newer_evaluation(
+    tmp_path: Path,
+) -> None:
+    _init_git_repo(tmp_path)
+    base = _commit_file(tmp_path, "app.py", "value = 1\n", "init")
+    middle = _commit_file(tmp_path, "app.py", "value = 2\n", "middle")
+    head = _commit_file(tmp_path, "app.py", "value = 3\n", "head")
+    prior = (
+        ResultEvent(
+            event_id="018f0f52-91c0-7abc-8123-000000000101",
+            run_id="run_base",
+            event_type="learn",
+            timestamp="2026-04-23T00:00:02Z",
+            source_ref=base,
+            base_ref=None,
+            prompt_version="prompt-v1",
+            eval_bundle_version="bundle-v1",
+            rubric_version="v0.1",
+            overall=90.0,
+            verdict="PASS",
+            status="baseline",
+            weakest_dim="conciseness",
+            note_json=None,
+        ),
+        ResultEvent(
+            event_id="018f0f52-91c0-7abc-8123-000000000102",
+            run_id="run_middle",
+            event_type="learn",
+            timestamp="2026-04-23T00:00:01Z",
+            source_ref=middle,
+            base_ref=None,
+            prompt_version="prompt-v1",
+            eval_bundle_version="bundle-v1",
+            rubric_version="v0.1",
+            overall=88.0,
+            verdict="PASS",
+            status="keep",
+            weakest_dim="conciseness",
+            note_json=None,
+        ),
+    )
+
+    baseline = select_baseline_event(
+        workspace_root=tmp_path,
+        source_ref=head,
+        prior_events=prior,
+        allowed_event_types={"learn"},
+    )
+
+    assert baseline == prior[1]
+
+
+def test_degraded_comparison_is_not_directly_discarded(tmp_path: Path) -> None:
+    _init_git_repo(tmp_path)
+    base = _commit_file(tmp_path, "app.py", "value = 1\n", "init")
+    head = _commit_file(tmp_path, "app.py", "value = 2\n", "update")
+    prior = (_event(source_ref=base, overall=85.0, status="baseline"),)
+    report = _score_report(
+        source_kind="git_ref",
+        source_ref=head,
+        overall=80.0,
+        degraded_flags={"diff_clipped": True},
+    )
+
+    decision = decide_learn_ratchet(
+        workspace_root=tmp_path,
+        report=report,
+        prior_events=prior,
+    )
+
+    assert decision.status == "keep"
+    assert decision.note_payload is not None
+    assert decision.note_payload["ratchet_note"] == "degraded_comparison"
+
+
+def test_select_baseline_event_ignores_degraded_events(tmp_path: Path) -> None:
+    _init_git_repo(tmp_path)
+    base = _commit_file(tmp_path, "app.py", "value = 1\n", "init")
+    head = _commit_file(tmp_path, "app.py", "value = 2\n", "update")
+    prior = (
+        ResultEvent(
+            event_id="018f0f52-91c0-7abc-8123-000000000103",
+            run_id="run_degraded",
+            event_type="learn",
+            timestamp="2026-04-23T00:00:02Z",
+            source_ref=base,
+            base_ref=None,
+            prompt_version="prompt-v1",
+            eval_bundle_version="bundle-v1",
+            rubric_version="v0.1",
+            overall=75.0,
+            verdict="PASS",
+            status="baseline",
+            weakest_dim="conciseness",
+            note_json='{"degraded_flags":{"diff_clipped":true}}',
+        ),
+        ResultEvent(
+            event_id="018f0f52-91c0-7abc-8123-000000000104",
+            run_id="run_clean",
+            event_type="learn",
+            timestamp="2026-04-23T00:00:01Z",
+            source_ref=base,
+            base_ref=None,
+            prompt_version="prompt-v1",
+            eval_bundle_version="bundle-v1",
+            rubric_version="v0.1",
+            overall=74.0,
+            verdict="PASS",
+            status="keep",
+            weakest_dim="conciseness",
+            note_json=None,
+        ),
+    )
+
+    baseline = select_baseline_event(
+        workspace_root=tmp_path,
+        source_ref=head,
+        prior_events=prior,
+        allowed_event_types={"learn"},
+    )
+
+    assert baseline == prior[1]
+
+
+def test_phase25_trigger_requires_two_consecutive_discards() -> None:
+    assert should_trigger_phase25(["keep", "discard", "discard"]) is True
+    assert should_trigger_phase25(["discard"]) is False
+    assert should_trigger_phase25(["discard", "keep"]) is False

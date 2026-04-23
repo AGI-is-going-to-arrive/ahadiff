@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from importlib.resources import files
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
@@ -47,6 +48,28 @@ def compute_eval_bundle_version(repo_root: str | Path) -> str:
     return hashlib.sha256(b"\n---\n".join(chunks)).hexdigest()[:12]
 
 
+def compute_runtime_eval_bundle_version() -> str:
+    """Compute the frozen eval bundle hash from installed package resources."""
+
+    package_root = files("ahadiff")
+    chunks: list[bytes] = []
+    missing_paths: list[str] = []
+    for logical_path, disk_path in sorted(EVAL_BUNDLE_FILES, key=lambda item: item[0]):
+        package_relative_parts = Path(disk_path).parts[2:]
+        resource = package_root.joinpath(*package_relative_parts)
+        if not resource.is_file():
+            missing_paths.append("/".join(package_relative_parts))
+            continue
+        chunks.append(logical_path.encode("utf-8") + b"\n" + resource.read_bytes())
+
+    if missing_paths:
+        raise FileNotFoundError(
+            "eval bundle files are not available in the installed package: "
+            + ", ".join(missing_paths)
+        )
+    return hashlib.sha256(b"\n---\n".join(chunks)).hexdigest()[:12]
+
+
 class EvalBundleInfo(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -59,5 +82,6 @@ __all__ = [
     "EVAL_BUNDLE_FILES",
     "RUBRIC_WEIGHTS",
     "compute_eval_bundle_version",
+    "compute_runtime_eval_bundle_version",
     "EvalBundleInfo",
 ]

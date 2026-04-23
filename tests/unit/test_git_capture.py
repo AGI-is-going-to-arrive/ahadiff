@@ -546,20 +546,33 @@ def test_non_git_subdir_repo_root_resolves_parent_workspace(tmp_path: Path) -> N
     assert not (subdir / ".ahadiff").exists()
 
 
-def test_learn_without_dry_run_rejects_before_writing_artifacts(tmp_path: Path) -> None:
+def test_learn_without_dry_run_requires_lesson_provider_after_capture(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _init_repo(repo_root)
-    (repo_root / "main.py").write_text("value = 1\n", encoding="utf-8")
+    (repo_root / "main.py").write_text(
+        "def retry_once():\n    return 1\n",
+        encoding="utf-8",
+    )
     _commit_all(repo_root, "base")
-    (repo_root / "main.py").write_text("value = 2\n", encoding="utf-8")
+    (repo_root / "main.py").write_text(
+        "def retry_once():\n"
+        "    for attempt in range(3):\n"
+        "        try:\n"
+        "            return attempt\n"
+        "        except Exception:\n"
+        "            continue\n",
+        encoding="utf-8",
+    )
 
     runner = CliRunner()
     result = _invoke_repo_cli(runner, repo_root, ["learn", "--last"])
 
     assert result.exit_code == 1
-    assert "supports capture-only flow" in result.output
-    assert not (repo_root / ".ahadiff" / "runs").exists()
+    assert "lesson generation requires --base-url" in result.output
+    run_dir = _latest_run_dir(repo_root)
+    metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
+    assert metadata["learnability"]["score"] >= 0.0
 
 
 def test_learn_dry_run_persists_low_learnability_metadata(tmp_path: Path) -> None:

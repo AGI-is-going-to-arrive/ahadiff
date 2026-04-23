@@ -16,10 +16,9 @@ It's not a PR summary, not a repo wiki, not yet another "code explainer." It rea
 
 - A **lesson** with `file:line` evidence chains
 - A **claims** ledger where every assertion traces back to a hunk
-- A **concept graph** of ideas introduced by this diff
-- **Quiz** questions for active recall
-- **SRS cards** for future spaced review
 - A comparable **quality score history** (ratcheted; `review.sqlite` is the single source of truth, `results.tsv` is a human-readable export)
+
+The current code already ships Lesson / Claims / Score / Ratchet. Concept Graph, Quiz, and SRS are still in later stages.
 
 > Code Wiki explains a repo. AhaDiff teaches you what changed — and verifies every claim against the diff.
 
@@ -77,23 +76,31 @@ ahadiff install opencode  # OpenCode → AGENTS.md + .opencode/agents/
 # v0.2: cursor / copilot / windsurf / cline / amp / jules / aider
 ```
 
-Output layout:
+Current output layout:
 
 ```text
 .ahadiff/
 ├─ config.toml           # Per-repo config
 ├─ review.sqlite         # Single source of truth (SRS/results/signals)
-├─ concepts.jsonl        # Concept graph (term_key-keyed upsert)
+├─ results.tsv           # Human-readable export rebuilt from review.sqlite
 ├─ runs/<run_id>/
-│  ├─ lesson/
-│  │  ├─ lesson.full.md
-│  │  ├─ lesson.hint.md
-│  │  └─ lesson.compact.md
+│  ├─ patch.diff
+│  ├─ metadata.json
+│  ├─ line_map.json
+│  ├─ symbols.json
+│  ├─ artifact_set.json
+│  ├─ before_text_by_path.json
+│  ├─ after_text_by_path.json
+│  ├─ claims.raw.jsonl   # Raw LLM claim candidates
 │  ├─ claims.jsonl       # Verifiable assertions
-│  ├─ quiz/
-│  │  └─ quiz.jsonl      # Active-recall questions
-│  ├─ cards.jsonl        # SRS review cards
-│  └─ score.json         # 8-dimension score + verdict
+│  ├─ score.json         # 8-dimension score + verdict
+│  ├─ finalized.json     # Publish marker for the run
+│  └─ lesson/
+│     ├─ lesson.full.md
+│     ├─ lesson.hint.md
+│     ├─ lesson.compact.md
+│     ├─ misconception.md
+│     └─ not_proven.md
 ├─ audit.jsonl           # LLM call audit log
 ├─ audit.private.jsonl   # strict_local local-only audit (gitignored)
 ├─ ahadiff.lock          # portalocker file lock
@@ -134,7 +141,8 @@ ahadiff/
 ├─ src/ahadiff/llm/             # Layer 1.5 / Task 7 provider + probe
 ├─ src/ahadiff/git/             # Stage 2 / Task 5-6 diff capture + structuring
 ├─ src/ahadiff/claims/          # Stage 2 / Task 8 claim extraction + verification + runtime
-├─ src/ahadiff/lesson/          # Learnability gate
+├─ src/ahadiff/lesson/          # Stage 2 / Task 8.5 + 9 learnability + lesson generation
+├─ src/ahadiff/eval/            # Stage 2 / Task 11-12 evaluator + ratchet + results
 ├─ src/ahadiff/prompts/         # Prompt resources packaged into the wheel
 ├─ prompts/                     # Lesson / claim prompt templates
 ├─ tests/unit/                  # Stage 0 + Stage 1 + Layer 1.5 + Stage 2 unit tests
@@ -144,27 +152,26 @@ ahadiff/
 
 ## Status
 
-**Stage 1 Task 1/2, Layer 1.5 / Task 7, and Stage 2 / Task 5-8 are now landed.** The repository now contains the contract freeze doc, a minimal importable contracts skeleton, `pyproject.toml`, an executable CLI scaffold (`ahadiff init` / `ahadiff doctor` / `ahadiff config show --resolved` / `ahadiff provider test` / `ahadiff claims` / `ahadiff maint clean-orphans` / `python -m ahadiff`), the safety-layer primitives under `src/ahadiff/safety/`, `src/ahadiff/llm/{provider,probe,cache,cost}.py` plus eight provider adapters, `src/ahadiff/git/{__init__,repo,capture,parser,path_tokens,line_map,symbols,hunk_hash}.py`, `src/ahadiff/claims/{schema,extract,runtime,verify,negative_scan,classify}.py`, `src/ahadiff/lesson/learnability.py`, `prompts/claim_extract.md` plus the packaged `src/ahadiff/prompts/claim_extract.md`, `ahadiff learn --dry-run`, non-git `--patch` / `--compare` support that also reads workspace `.ahadiff/config.toml`, `ahadiff graph status|import|refresh`, `ahadiff unlock --force`, `line_map.json` / `symbols.json` / `artifact_set.json` / `before_text_by_path.json` / `after_text_by_path.json`, and the Stage 0 + Stage 1 + Layer 1.5 + Stage 2 unit tests. Evaluator and viewer runtime work are still pending.
+**Stage 1 Task 1/2, Layer 1.5 / Task 7, and Stage 2 / Task 5/6/8/8.5/9/11/12 are now landed.** The current codebase already has:
 
-This round also hardened a few runtime edges: `.ahadiffignore` is now wired into the capture path, cross-line secret / prompt-injection payloads are blocked, `--staged --unstaged` now emits an explicit `git_staged_unstaged` source kind, git-sourced patch reads enforce a byte cap, the claim verifier now supports a deterministic `claims.raw.jsonl -> claims.jsonl` flow, `source_hunks[]` now carry an explicit `side` (`old / new / either`) to avoid old/new same-line ambiguity, `claims --extract` now has a dedicated runtime and will keep using a redacted payload when run metadata requires `redacted_remote`, `provider test` and `claims --extract` both normalize Chat / Responses endpoints back to the API root, extract-stage temp files are cleaned up when verify fails, plain unified diff patch file / stdin input now respects `max_files`, binary compare keeps `selected_files` path metadata, and the learnability gate now covers empty diff, binary diff, all-context, rename-only, structural delete, and large high-signal churn edges.
+- the `ahadiff learn` main path for git and non-git capture (`--patch` / `--compare`), followed by learnability gating, `claims.raw.jsonl -> claims.jsonl`, and full / hint / compact lesson output
+- `ahadiff score`, `ahadiff verify`, and `ahadiff export-results`, backed by `review.sqlite` as the single source of truth and `results.tsv` as an export view
+- `src/ahadiff/eval/{rubric,gates,deterministic,evaluator,results,ratchet}.py` for the 8-dimension scorer, hard gates, result persistence, ratchet selection, and export rebuilds
+- runtime resource lookup that works in both source checkout and installed wheel mode for `eval_bundle_version`, `prompt_version`, and packaged lesson prompts
+
+This round also closed several runtime edges: `prompt_version` now tracks AhaDiff's own prompt resources instead of any target-workspace `prompts/`; lesson JSON parsing skips schema-mismatched example blocks before accepting a real answer; the lesson directory is staged and published as a unit with rollback on failure; lesson-generation failures now clean up newly written `claims.raw.jsonl` / `claims.jsonl` and lesson half-artifacts; successful `learn` runs now write a `learn` event plus `score.json`; manual `score` / `verify` no longer contaminate the learn baseline; partial lesson artifacts can no longer pass as a complete Stage-3 result.
 
 Current minimal verification:
 
 ```bash
-uv run pytest tests/unit
-uv run ruff check src tests
-uv run ruff format --check src tests
-uv run pyright
-uv build --wheel
-uv run python -m ahadiff --version
-uv run ahadiff init
-uv run ahadiff doctor
-uv run ahadiff config show --resolved
-uv run python -m ahadiff claims --help
-uv run python -m ahadiff learn --help
+source .venv/bin/activate && pytest tests/unit -q
+source .venv/bin/activate && ruff check src tests
+source .venv/bin/activate && ruff format --check src tests
+source .venv/bin/activate && pyright
+source .venv/bin/activate && uv build --wheel
 ```
 
-Actual result from this session: `env PYTEST_ADDOPTS='-p no:cacheprovider' uv run pytest tests/unit -q` finished with `286 passed`; `uv run pytest tests/unit/test_claim_extract.py tests/unit/test_claim_verify.py tests/unit/test_git_capture.py tests/unit/test_learnability.py tests/unit/test_probe.py tests/unit/test_provider.py tests/unit/test_diff_parser.py -q` finished with `169 passed`; `uv run ruff check src tests`, `uv run ruff format --check src tests`, `uv run pyright`, and `uv build --wheel` all passed; `uv run python -m ahadiff --version`, `uv run python -m ahadiff claims --help`, and `uv run python -m ahadiff learn --help` all ran successfully. This session also included a clean wheel check: after offline-installing the newly built wheel into a temporary virtualenv, the wheel was confirmed to contain `ahadiff/prompts/claim_extract.md`, `ahadiff/claims/runtime.py`, and `ahadiff/lesson/learnability.py`, and a non-git `python -m ahadiff learn --patch - --dry-run` smoke test succeeded with `source_kind=patch_stdin` and `learnability` present in the resulting metadata.
+Actual result from this session: `source .venv/bin/activate && pytest tests/unit -q` finished with `326 passed`; `source .venv/bin/activate && ruff check src tests`, `source .venv/bin/activate && ruff format --check src tests`, `source .venv/bin/activate && pyright`, and `source .venv/bin/activate && uv build --wheel` all passed. This session also included a clean-room wheel check: after offline-installing the newly built wheel into a temporary virtualenv, installed-mode `evaluate_run()`, `compute_prompt_version()`, lesson prompt loading, and lesson JSON parsing all worked, and a target workspace `prompts/` directory no longer polluted `prompt_version`.
 
 Roadmap:
 

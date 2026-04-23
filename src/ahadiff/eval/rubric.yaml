@@ -1,0 +1,33 @@
+{
+  "rubric_version": "v0.1",
+  "pass_threshold": 80,
+  "caution_threshold": 60,
+  "dimensions": {
+    "accuracy": {
+      "max_score": 20,
+      "hard_gate": 14
+    },
+    "evidence": {
+      "max_score": 18,
+      "hard_gate": 12
+    },
+    "diff_coverage": {
+      "max_score": 14
+    },
+    "learnability": {
+      "max_score": 14
+    },
+    "quiz_transfer": {
+      "max_score": 10
+    },
+    "spec_alignment": {
+      "max_score": 10
+    },
+    "conciseness": {
+      "max_score": 8
+    },
+    "safety_privacy": {
+      "max_score": 6
+    }
+  }
+}

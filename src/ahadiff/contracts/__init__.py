@@ -27,6 +27,7 @@ from .eval_bundle import (
     RUBRIC_WEIGHTS,
     EvalBundleInfo,
     compute_eval_bundle_version,
+    compute_runtime_eval_bundle_version,
 )
 from .event_log import (
     RATCHET_COUNTED_STATUSES,
@@ -136,4 +137,5 @@ __all__ = [
     "VerificationError",
     "Verdict",
     "compute_eval_bundle_version",
+    "compute_runtime_eval_bundle_version",
 ]
