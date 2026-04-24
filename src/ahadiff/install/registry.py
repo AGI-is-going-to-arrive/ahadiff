@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from .claude import ClaudeTarget
 from .codex import CodexTarget
 from .gemini import GeminiTarget
+from .github_action import GitHubActionTarget
 from .hooks import HooksTarget
 from .opencode import OpenCodeTarget
 
@@ -32,6 +33,7 @@ _TARGETS: dict[str, InstallTarget] = {
     "claude": ClaudeTarget(),
     "codex": CodexTarget(),
     "gemini": GeminiTarget(),
+    "github-action": GitHubActionTarget(),
     "hooks": HooksTarget(),
     "opencode": OpenCodeTarget(),
 }

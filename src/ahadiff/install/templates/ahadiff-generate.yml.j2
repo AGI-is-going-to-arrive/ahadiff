@@ -1,0 +1,50 @@
+# AHADIFF:GENERATED
+name: AhaDiff Generate
+
+on:
+  workflow_dispatch:
+    inputs:
+      diff_ref:
+        description: Git diff range to learn from.
+        required: true
+        default: HEAD~1..HEAD
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ahadiff-generate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    runs-on: macos-latest
+    env:
+      AHADIFF_API_KEY: ${{ secrets.AHADIFF_API_KEY }}
+      AHADIFF_DIFF_REF: ${{ inputs.diff_ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require opt-in LLM secret
+        run: |
+          test -n "$AHADIFF_API_KEY" || {
+            echo "AHADIFF_API_KEY secret is required for Layer 2 generation" >&2
+            exit 1
+          }
+
+      - name: Install Python with current Homebrew SQLite
+        run: |
+          brew install python@3.12
+          echo "$(brew --prefix python@3.12)/bin" >> "$GITHUB_PATH"
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked --dev --python python3.12
+
+      - name: Generate AhaDiff lesson artifacts
+        run: uv run python -m ahadiff learn "$AHADIFF_DIFF_REF"

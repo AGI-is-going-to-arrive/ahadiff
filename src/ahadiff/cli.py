@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import secrets
 import shutil
@@ -59,6 +60,7 @@ from .eval import (
     publish_result_artifacts,
     rollback_result_event,
 )
+from .eval.results import finalized_artifact_digest
 from .git.capture import (
     capture_patch,
     detect_graphify_status,
@@ -986,7 +988,9 @@ def quiz_cmd(
 def install_cmd(
     target: Annotated[
         str | None,
-        typer.Argument(help="Install target: claude, codex, gemini, opencode, or hooks."),
+        typer.Argument(
+            help=("Install target: claude, codex, gemini, github-action, opencode, or hooks.")
+        ),
     ] = None,
     repo_root: Annotated[
         Path,
@@ -1004,10 +1008,14 @@ def install_cmd(
         bool,
         typer.Option("--detect", help="Show detected AhaDiff install targets."),
     ] = False,
+    layer2: Annotated[
+        bool,
+        typer.Option("--layer2", help="Install opt-in GitHub Action generation workflow."),
+    ] = False,
 ) -> None:
     try:
         root = find_repo_root(repo_root)
-        context = InstallContext(repo_root=root, force=force)
+        context = InstallContext(repo_root=root, force=force, layer2=layer2)
         if detect:
             table = Table(title="AhaDiff install targets")
             table.add_column("Target")
@@ -1019,6 +1027,8 @@ def install_cmd(
         if target is None:
             allowed = ", ".join(available_targets())
             raise AhaDiffError(f"install target is required; expected one of: {allowed}")
+        if layer2 and target != "github-action":
+            raise AhaDiffError("--layer2 is only supported for: ahadiff install github-action")
         installer = get_target(target)
         if dry_run:
             console.print(installer.preview(context))
@@ -1037,7 +1047,9 @@ def install_cmd(
 def uninstall_cmd(
     target: Annotated[
         str,
-        typer.Argument(help="Install target: claude, codex, gemini, opencode, or hooks."),
+        typer.Argument(
+            help=("Install target: claude, codex, gemini, github-action, opencode, or hooks.")
+        ),
     ],
     repo_root: Annotated[
         Path,
@@ -1959,6 +1971,68 @@ def _score_or_verify_run(
         console.print(f"[yellow]Warning[/yellow]: {warning}")
 
 
+def _verify_ci_artifacts(repo_root: Path) -> None:
+    root = find_workspace_root(repo_root)
+    state_dir = root / ".ahadiff"
+    runs_dir = state_dir / "runs"
+    db_path = state_dir / "review.sqlite"
+    if not runs_dir.exists():
+        console.print("[green]AhaDiff CI verify complete[/green]: no run artifacts found")
+        return
+    events_by_id = {event.event_id: event for event in load_result_events(db_path)}
+    checked = 0
+    for run_path in sorted(path for path in runs_dir.iterdir() if path.is_dir()):
+        marker_path = run_path / "finalized.json"
+        if not marker_path.exists():
+            continue
+        marker = _load_ci_finalized_marker(run_path)
+        event_id = marker["event_id"]
+        if event_id not in events_by_id:
+            raise AhaDiffError(f"finalized result event does not exist for run: {run_path.name}")
+        checked += 1
+    console.print(f"[green]AhaDiff CI verify complete[/green]: {checked} finalized runs checked")
+
+
+def _load_ci_finalized_marker(run_path: Path) -> dict[str, str | int]:
+    marker_path = run_path / "finalized.json"
+    try:
+        raw_payload: Any = json.loads(marker_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise AhaDiffError(f"finalized marker is invalid for run: {run_path.name}") from exc
+    if not isinstance(raw_payload, dict):
+        raise AhaDiffError(f"finalized marker is invalid for run: {run_path.name}")
+    payload = cast("dict[str, object]", raw_payload)
+    if payload.get("run_id") != run_path.name:
+        raise AhaDiffError(f"finalized marker run_id mismatch for run: {run_path.name}")
+    event_id = payload.get("event_id")
+    if not isinstance(event_id, str) or not event_id:
+        raise AhaDiffError(f"finalized marker is missing event_id for run: {run_path.name}")
+    finalized_at = payload.get("finalized_at")
+    if not isinstance(finalized_at, str) or not finalized_at:
+        raise AhaDiffError(f"finalized marker is missing finalized_at for run: {run_path.name}")
+    artifact_count = payload.get("artifact_count")
+    if not isinstance(artifact_count, int) or artifact_count < 0:
+        raise AhaDiffError(f"finalized marker is missing artifact_count for run: {run_path.name}")
+    checksum = payload.get("checksum")
+    if not isinstance(checksum, str) or not checksum:
+        raise AhaDiffError(f"finalized marker is missing checksum for run: {run_path.name}")
+    try:
+        actual_count, actual_checksum = finalized_artifact_digest(run_path)
+    except Exception as exc:
+        raise AhaDiffError(
+            f"finalized artifacts are invalid for run: {run_path.name}: {exc}"
+        ) from exc
+    if artifact_count != actual_count or checksum != actual_checksum:
+        raise AhaDiffError(f"finalized marker checksum mismatch for run: {run_path.name}")
+    return {
+        "run_id": run_path.name,
+        "event_id": event_id,
+        "finalized_at": finalized_at,
+        "artifact_count": artifact_count,
+        "checksum": checksum,
+    }
+
+
 @_APP.command("score")
 def score_cmd(
     run_id: Annotated[
@@ -1993,9 +2067,9 @@ def score_cmd(
 @_APP.command("verify")
 def verify_cmd(
     run_id: Annotated[
-        str,
+        str | None,
         typer.Argument(help="Run id under .ahadiff/runs/<run_id>."),
-    ],
+    ] = None,
     repo_root: Annotated[
         Path,
         typer.Option("--repo-root", help="Repository root or workspace root."),
@@ -2008,8 +2082,17 @@ def verify_cmd(
         bool,
         typer.Option("--force", help="Overwrite an existing score output."),
     ] = False,
+    ci: Annotated[
+        bool,
+        typer.Option("--ci", help="Validate persisted AhaDiff artifacts for CI."),
+    ] = False,
 ) -> None:
     try:
+        if ci:
+            _verify_ci_artifacts(repo_root)
+            return
+        if run_id is None:
+            raise AhaDiffError("verify requires RUN_ID unless --ci is used")
         _score_or_verify_run(
             command_name="verify",
             run_id=run_id,

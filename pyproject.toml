@@ -27,6 +27,7 @@ ahadiff = "ahadiff.cli:main"
 dev = [
   "pyright>=1.1.400,<2",
   "pytest>=8.4,<9",
+  "pyyaml>=6,<7",
   "ruff>=0.12,<0.13",
 ]
 

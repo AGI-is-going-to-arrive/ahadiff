@@ -1,0 +1,45 @@
+# AHADIFF:GENERATED
+name: AhaDiff Verify
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ahadiff-verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python with current Homebrew SQLite
+        run: |
+          brew install python@3.12
+          echo "$(brew --prefix python@3.12)/bin" >> "$GITHUB_PATH"
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked --dev --python python3.12
+
+      - name: Unit tests
+        run: uv run pytest tests/unit -q
+
+      - name: Pinned integration and coverage gate
+        run: |
+          uv run --with pytest-cov pytest tests/integration/test_learn_pipeline.py -m pinned \
+            --cov=src/ahadiff --cov-fail-under=85
+
+      - name: Validate AhaDiff artifacts
+        run: uv run python -m ahadiff verify --ci

@@ -20,6 +20,7 @@ SECTION_RE = re.compile(
 class InstallContext:
     repo_root: Path
     force: bool = False
+    layer2: bool = False
 
 
 @dataclass(frozen=True)
