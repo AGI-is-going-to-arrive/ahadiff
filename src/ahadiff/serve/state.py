@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
@@ -28,14 +28,10 @@ class ServeState:
     def with_runtime_lock(self) -> ServeState:
         if self.write_lock is not None:
             return self
-        return ServeState(
-            state_dir=self.state_dir,
-            token=self.token,
-            locale=self.locale,
-            bind_host=self.bind_host,
-            port=self.port,
-            write_lock=asyncio.Lock(),
-        )
+        return replace(self, write_lock=asyncio.Lock())
+
+    def with_locale(self, locale: Literal["en", "zh-CN"]) -> ServeState:
+        return replace(self, locale=locale)
 
 
 __all__ = ["ServeState"]

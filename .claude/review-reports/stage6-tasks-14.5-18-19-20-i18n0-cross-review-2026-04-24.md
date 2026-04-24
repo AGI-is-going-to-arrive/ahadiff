@@ -66,6 +66,7 @@ This section records the follow-up fixes applied after the original cross-review
 | **[L-1]** hooks install is Unix-only | Fixed in this follow-up by making the v0.1 contract explicit: hooks are POSIX-shell only, and Windows install/dry-run fails with a clear `InputError` instead of writing ambiguous hooks. |
 | **[L-2]** Jinja2 `autoescape=False` | Mitigated in this follow-up. The renderer no longer accepts arbitrary `**values`; tests assert templates are static and contain no Jinja dynamic delimiters. Current templates still render GitHub Actions `${{ }}` expressions literally. |
 | **[L-3]** full table scan in `_event_for_finalized_run` | Fixed in this follow-up. Single-run artifact reads now use `load_result_event_by_run_and_id()` with `WHERE run_id = ? AND event_id = ?` instead of loading all `result_events`. |
+| **[L-4]** `put_locale` replaces `ServeState` | Fixed in this follow-up. Locale updates now call `ServeState.with_locale()`, which uses `dataclasses.replace()` and preserves the existing runtime fields, including `write_lock`. |
 | **[L-5]** generated workflows macOS-only | Fixed in this follow-up. Generated verify/generate workflows now use a macOS + Ubuntu matrix with OS-specific Python/SQLite bootstrap; Windows remains deferred. |
 
 ### Additional real fixes made during remediation
@@ -82,12 +83,12 @@ This section records the follow-up fixes applied after the original cross-review
 - Install template rendering is now static-only; if future templates need dynamic fields, they must use a typed context-specific renderer.
 - Serve run artifact reads now avoid a per-request full `result_events` table scan.
 - Linux CI exposed a test-isolation issue: allowlist tests now clear `XDG_CONFIG_HOME` before asserting the HOME fallback global config path.
+- Locale updates now use `ServeState.with_locale()` instead of manually rebuilding every field in `routes_locale.py`; the regression test checks that runtime fields are preserved.
 
 ### Still not fixed / not expanded
 
 | Original item | Current status |
 |---------------|----------------|
-| **[L-4]** `put_locale` replaces `ServeState` | Still not changed. Re-verified as a future-proofing cleanup, not a current state-loss bug: current replacement preserves `state_dir`, `token`, `bind_host`, `port`, and the same `write_lock`; `ServeState` has no other mutable runtime fields today. |
 | Windows CI / generated workflow support | Still deferred. Linux is now covered; Windows still needs a separately proven SQLite runtime and shell/PowerShell strategy before enabling CI or generated workflow support. |
 | Workflow injection finding | Still classified as false positive; no code change made for it. |
 
@@ -190,8 +191,8 @@ This section records the follow-up fixes applied after the original cross-review
 #### [L-4] `serve/routes_locale.py:28` -- `put_locale` replaces entire `ServeState`
 
 - **Source**: Claude-reviewer W-2 / Codex-adversarial M-4
-- **Evidence**: Non-atomic ServeState replacement under async lock. CPython GIL makes attribute assignment atomic in practice.
-- **Recommendation**: v0.2 consider mutable locale holder.
+- **Original evidence**: `put_locale()` manually rebuilt `ServeState` field by field under the runtime write lock. This was low risk with the current field set, but fragile if `ServeState` gains more runtime fields later.
+- **Follow-up status**: Fixed. `ServeState.with_locale()` now uses `dataclasses.replace()` so locale updates preserve existing runtime fields without repeating the field list in `routes_locale.py`.
 
 #### [L-5] Generated workflow templates run only on macOS
 
@@ -256,7 +257,7 @@ This section records the follow-up fixes applied after the original cross-review
 
 | Command | Result | Platform | Key Output |
 |---------|--------|----------|------------|
-| `pytest tests/unit/test_serve_app.py -q` | PASS | macOS | 26 passed |
+| `pytest tests/unit/test_serve_app.py -q` | PASS | macOS | 27 passed |
 | `pytest tests/unit/test_install.py -q` | PASS | macOS | 10 passed |
 | `pytest tests/unit/test_github_action.py -q` | PASS | macOS | 8 passed |
 | `pytest tests/eval -q` | PASS | macOS | 7 passed |
@@ -268,8 +269,8 @@ This section records the follow-up fixes applied after the original cross-review
 | `python -m ahadiff install github-action --help` | PASS | macOS | Same as above |
 | `python -m ahadiff serve --help` | PASS | macOS | port/no-browser/lang params |
 | `python -m ahadiff learn --help` | PASS | macOS | --lang param present |
-| `pytest tests/unit -q` | PASS | macOS | **460 passed** |
-| `pytest tests -q` | PASS | macOS | **477 passed, 1 skipped** (live judge) |
+| `pytest tests/unit -q` | PASS | macOS | **461 passed** |
+| `pytest tests -q` | PASS | macOS | **478 passed, 1 skipped** (live judge) |
 | `ruff check src tests` | PASS | macOS | All checks passed |
 | `ruff format --check src tests` | PASS | macOS | 147 files already formatted |
 | `pyright` | PASS | macOS | 0 errors, 0 warnings, 0 informations |
@@ -291,7 +292,7 @@ This section records the follow-up fixes applied after the original cross-review
 
 | Platform | Method | Coverage | Remaining Risks |
 |----------|--------|----------|-----------------|
-| **macOS** | **Executed** | All 477 non-live tests, live judge smoke, lint, typecheck, wheel, CLI, CI runner | SQLite 3.51.0 locally; CI bootstraps Python 3.12 + SQLite explicitly |
+| **macOS** | **Executed** | All 478 non-live tests, live judge smoke, lint, typecheck, wheel, CLI, CI runner | SQLite 3.51.0 locally; CI bootstraps Python 3.12 + SQLite explicitly |
 | **Linux** | CI workflow added + static review | Backend CI and generated workflows now include Ubuntu with explicit SQLite bootstrap; pathlib usage confirmed; `os.replace()` atomic write cross-platform | Remote GitHub runner result should be checked after push; Windows remains separate |
 | **Windows** | Static review + explicit hooks rejection | pathlib usage confirmed; `os.replace()` cross-platform; hooks install/dry-run now fails clearly on Windows | SQLite gate needs a proven Windows runtime; generated workflow and CI Windows jobs remain deferred |
 
@@ -332,7 +333,7 @@ This section records the follow-up fixes applied after the original cross-review
 | Critical | 0 | 0 blocking |
 | High | 1 | 0 blocking |
 | Medium | 8 | 0 blocking; Windows CI/workflow support remains a future platform expansion |
-| Low | 5 | 1 remaining non-blocking cleanup (`put_locale` state holder) |
+| Low | 5 | 0 remaining blocking or non-blocking cleanup items from this report |
 
 **Gate rule**: the original blocker **[H-1]** is fixed and re-verified. The other remediated Medium items are fixed. The remaining items are platform expansion / low-risk cleanup and do not block the next session.
 

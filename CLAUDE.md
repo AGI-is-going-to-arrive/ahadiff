@@ -153,7 +153,7 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-最近一次全量验证（2026-04-24）：`uv run --frozen --no-sync pytest tests/unit -q` = 460 passed；`uv run --frozen --no-sync pytest tests/eval -q` = 7 passed；`uv run --frozen --no-sync pytest tests/integration/test_learn_pipeline.py -m pinned -q` = 10 passed；`PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --frozen --no-sync pytest -p no:cacheprovider tests -q` = 477 passed + 1 skipped（live judge 默认跳过）；显式开启 live judge 后为 1 passed，并单独确认 `gpt-5.3-codex-spark` 可用；ruff / pyright / wheel build / `python -m ahadiff install github-action --help` 全通过。
+最近一次全量验证（2026-04-24）：`uv run --frozen --no-sync pytest tests/unit -q` = 461 passed；`uv run --frozen --no-sync pytest tests/eval -q` = 7 passed；`uv run --frozen --no-sync pytest tests/integration/test_learn_pipeline.py -m pinned -q` = 10 passed；`PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --frozen --no-sync pytest -p no:cacheprovider tests -q` = 478 passed + 1 skipped（live judge 默认跳过）；显式开启 live judge 后为 1 passed，并单独确认 `gpt-5.3-codex-spark` 可用；ruff / pyright / wheel build / `python -m ahadiff install github-action --help` 全通过。
 
 ### 仓库当前依赖状态
 
@@ -329,4 +329,4 @@ Stage N 完成 → 三模型并行审查 → 汇总问题 → 修复 → 验证 
 | 2026-04-23 ~ 04-24 | Stage 3 Task 8.5/9/10/11/12 lesson+quiz+eval+ratchet 落地，335 passed |
 | 2026-04-24 | Stage 4 Task 15 review.sqlite + FSRS-6 + Review CLI 落地，383 passed |
 | 2026-04-24 | Stage 5 Task 16/17 improve loop + Phase 2.5 + live judge 落地，当轮 406 passed |
-| 2026-04-24 | Stage 6 Task 14.5/18/19/20 + i18n-0 review 修复收口：serve backend、benchmark、6 个 install target、GitHub Action 模板、locale resolver 与 prompt output language helper 已同步到文档；后续又补齐 macOS+Ubuntu CI / workflow、Windows hooks 明确拒绝、static-only install template render 与 serve artifact SQL 查询；本次实测 unit 460 passed、eval 7 passed、pinned integration 10 passed、全量 tests 477 passed + 1 skipped、live judge 1 passed，且 `gpt-5.3-codex-spark` 已单独确认可用 |
+| 2026-04-24 | Stage 6 Task 14.5/18/19/20 + i18n-0 review 修复收口：serve backend、benchmark、6 个 install target、GitHub Action 模板、locale resolver 与 prompt output language helper 已同步到文档；后续又补齐 macOS+Ubuntu CI / workflow、Windows hooks 明确拒绝、static-only install template render、serve artifact SQL 查询，以及 `ServeState.with_locale()` 复用运行时字段；本次实测 unit 461 passed、eval 7 passed、pinned integration 10 passed、全量 tests 478 passed + 1 skipped、live judge 1 passed，且 `gpt-5.3-codex-spark` 已单独确认可用 |

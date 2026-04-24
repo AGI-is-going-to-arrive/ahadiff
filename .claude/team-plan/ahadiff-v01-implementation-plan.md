@@ -3,7 +3,7 @@
 > 修订日期 2026-04-23
 > 权威源（高→低）：① `CLAUDE.md` ② `ahadiff-v01-kickoff.md` ③ `ahadiff-v01-stages-4-9.md` ④ `closure-checklist-29.md` ⑤ `AhaDiff_frontend_design_v1.1_revised.md` ⑥ `AhaDiff Warm v6.html`
 > 本文档是执行排程，不是新的架构权威源。与 `doc/contract-freeze.md` 冲突时，Task 0 产出的 `contract-freeze.md` 为准。
-> 状态更新（2026-04-24）：`Stage 0 / Task 0`、`Stage 1 / Task 1-2`、`Layer 1.5 / Task 7`、`Stage 2 / Task 5/6/8`、`Stage 3 / Task 8.5/9/10/11/12`、`Stage 4 / Task 15`、`Stage 5 / Task 14.5/16/17`、`Stage 6 / Task 18/19/20` 与 `i18n-0` 后端 runtime 已落地。当前实测 `uv run --frozen --no-sync pytest tests/unit -q` 为 `460 passed`，`PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --frozen --no-sync pytest -p no:cacheprovider tests -q` 为 `477 passed, 1 skipped`（live judge 默认跳过），真实 LLM judge smoke 显式开启后为 `1 passed`，并单独确认 `gpt-5.3-codex-spark` 可用；`ruff check`、`ruff format --check`、`pyright`、`uv build --wheel` 与 `python -m ahadiff install github-action --help` 全通过。Stage 6 follow-up 已补 macOS+Ubuntu CI / workflow、Windows hooks 明确拒绝、static-only install template render 与 serve artifact SQL 查询；Windows CI 仍作为后续平台扩展。
+> 状态更新（2026-04-24）：`Stage 0 / Task 0`、`Stage 1 / Task 1-2`、`Layer 1.5 / Task 7`、`Stage 2 / Task 5/6/8`、`Stage 3 / Task 8.5/9/10/11/12`、`Stage 4 / Task 15`、`Stage 5 / Task 14.5/16/17`、`Stage 6 / Task 18/19/20` 与 `i18n-0` 后端 runtime 已落地。当前实测 `uv run --frozen --no-sync pytest tests/unit -q` 为 `461 passed`，`PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --frozen --no-sync pytest -p no:cacheprovider tests -q` 为 `478 passed, 1 skipped`（live judge 默认跳过），真实 LLM judge smoke 显式开启后为 `1 passed`，并单独确认 `gpt-5.3-codex-spark` 可用；`ruff check`、`ruff format --check`、`pyright`、`uv build --wheel` 与 `python -m ahadiff install github-action --help` 全通过。Stage 6 follow-up 已补 macOS+Ubuntu CI / workflow、Windows hooks 明确拒绝、static-only install template render、serve artifact SQL 查询与 `ServeState.with_locale()` 运行时字段复用；Windows CI 仍作为后续平台扩展。
 
 ---
 
@@ -106,7 +106,7 @@
   - `Task 2` 的安全层基础实现也已落地，并通过当前后端 gate
   - 当前实测：`uv run pytest tests/unit/test_stage1_task1.py tests/unit/test_contracts.py -q` 为 `42 passed`
   - 当前实测：`uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` 为 `35 passed`
-  - 当前全量实测：`uv run --frozen --no-sync pytest tests/unit -q` 为 `460 passed`
+  - 当前全量实测：`uv run --frozen --no-sync pytest tests/unit -q` 为 `461 passed`
   - 当前实测：`uv run ruff check src tests`、`uv run pyright` 与 `uv build --wheel` 全通过
   - 当前仓库 `.venv` 运行时为 Python 3.12.10 / SQLite 3.51.3，`ahadiff doctor` 的 SQLite gate 实测通过；低版本 SQLite runtime 下 `doctor` 已改为非零退出
   - `Task 1` 现已补入独立 maintenance 子命令 `ahadiff maint clean-orphans`，专门处理 `.tmp` run 目录与 audit rotation 残留，不再把清理职责塞回 `doctor`
@@ -157,7 +157,7 @@
   - 当前实测：`uv run pytest tests/unit/test_git_capture.py -q` 为 `37 passed`
   - 当前实测：`uv run pytest tests/unit/test_probe.py tests/unit/test_provider.py -q` 为 `43 passed`
   - 当前实测：`uv run pytest tests/unit/test_hunk_hash.py tests/unit/test_diff_parser.py tests/unit/test_line_map.py tests/unit/test_symbol_extract.py tests/unit/test_git_capture.py -q` 为 `78 passed`
-  - 当前全量实测：`uv run --frozen --no-sync pytest tests/unit -q` 为 `460 passed`
+  - 当前全量实测：`uv run --frozen --no-sync pytest tests/unit -q` 为 `461 passed`
   - 当前实测：`uv run ruff check src tests`、`uv run pyright` 全通过
   - 当前实测：`uv run ahadiff learn --unstaged --include-untracked --dry-run --repo-root <repo-root>`、非 git 目录下的 `uv run python -m ahadiff learn --patch sample.patch --dry-run --repo-root <tmpdir>`、非 git 目录下的 `uv run python -m ahadiff learn --compare old.py new.py --dry-run --repo-root <tmpdir>`、`uv run ahadiff graph status --repo-root <repo-root>` 与 non-git `uv run python -m ahadiff unlock --force --repo-root <tmpdir>` 本次都已实测可运行
   - 当前已落地 `--last` / `--since` / `--staged` / `--unstaged` / commit range / 单 commit / `--patch file|-` / `--compare a b`，以及最小 Graphify detect/import/status/refresh CLI
@@ -229,7 +229,7 @@
   - `Task 9` 已落地 `src/ahadiff/lesson/{generator,scaffolding,schemas}.py`、`prompts/{lesson_generate,lesson_hint,lesson_compact}.md` 与 `tests/unit/test_lesson_generator.py`
   - `Task 10` 已落地 `src/ahadiff/quiz/{generator,schemas}.py`、`src/ahadiff/wiki/concepts.py`、`prompts/quiz_generate.md` 与 `tests/unit/{test_quiz_generator,test_concepts}.py`
   - `Task 11/12` 已落地 `src/ahadiff/eval/{rubric,gates,deterministic,evaluator,results,ratchet}.py` 与 `ahadiff score` / `ahadiff verify` / `ahadiff export-results`
-  - 当前全量实测：`uv run --frozen --no-sync pytest tests/unit -q` 为 `460 passed`
+  - 当前全量实测：`uv run --frozen --no-sync pytest tests/unit -q` 为 `461 passed`
   - 当前实测：`uv run ruff check src tests`、`uv run pyright` 与 `uv build --wheel` 全通过
 
 - **目标**：
@@ -335,7 +335,7 @@
   - `Task 17` targeted verification 与 Phase 2.5 runtime 已落地
   - `Task 19` install targets 与 `Task 20` GitHub Action 模板已落地
   - `keep_final` 仍通过全 8 维 recheck 后的 `ahadiff db finalize-targeted <event_id>` 手动收口，不在 improve loop 内自动升级
-  - 当前实测 `uv run --frozen --no-sync pytest tests/unit -q` 为 `460 passed`，全量 `tests` 为 `477 passed, 1 skipped`，真实 LLM judge smoke 显式开启后为 `1 passed`，并单独确认 `gpt-5.3-codex-spark` 可用
+  - 当前实测 `uv run --frozen --no-sync pytest tests/unit -q` 为 `461 passed`，全量 `tests` 为 `478 passed, 1 skipped`，真实 LLM judge smoke 显式开启后为 `1 passed`，并单独确认 `gpt-5.3-codex-spark` 可用
 
 - **目标**：
   - 落地本地 Serve API
@@ -582,12 +582,12 @@
 |---|---|---|---|---|---|
 | `BL-00` | Task 0 `contract-freeze.md` + core contracts + tests（已完成） | docs + backend | — | 1.5–2d | `contract-freeze.md` 已落地；contracts import 正常；`uv run pytest tests/unit/test_contracts.py -q` 实测 `19 passed` |
 | `BL-01` | Task 1 scaffold + `pyproject.toml` + `doctor` + `config show --resolved` | backend | `BL-00` | 1d | `uv run ahadiff init/doctor/config show --resolved` 可运行 |
-| `BL-02` | Task 2 safety + allowlist + audit provenance（已落地基础实现） | backend | `BL-00` | 1d | `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` 实测 `35 passed`；当前全量 `uv run --frozen --no-sync pytest tests/unit -q` 实测 `460 passed` |
+| `BL-02` | Task 2 safety + allowlist + audit provenance（已落地基础实现） | backend | `BL-00` | 1d | `uv run pytest tests/unit/test_redact.py tests/unit/test_injection.py tests/unit/test_path_safety.py tests/unit/test_allowlist.py -q` 实测 `35 passed`；当前全量 `uv run --frozen --no-sync pytest tests/unit -q` 实测 `461 passed` |
 | `BL-03` | Task 7 provider + probe + ProviderCapabilities（已落地） | backend | `BL-01` | 1.5–2d | `uv run pytest tests/unit/test_probe.py tests/unit/test_provider.py -q` 实测 `43 passed`；`ahadiff provider test` 已落地；使用环境变量形式的本地 loopback provider 的真实 probe 与 `generate()` 调用本次也已跑通 |
 | `BL-04` | Task 5 diff capture v0.1 输入面（已落地） | backend | `BL-01` + `BL-02` | 1.5d | range / `--last` / `--since` / `--staged` / `--unstaged` / 单 commit / `--patch file|-` / `--compare a b` 全部 dry-run 正常；`uv run pytest tests/unit/test_git_capture.py -q` 实测 `37 passed` |
 | `BL-05` | Task 6 parser + anchors + line map（已落地） | backend | `BL-04` | 1.5d | `uv run pytest tests/unit/test_hunk_hash.py tests/unit/test_diff_parser.py tests/unit/test_line_map.py tests/unit/test_symbol_extract.py tests/unit/test_git_capture.py -q` 实测 `78 passed`；`line_map.json` / `symbols.json` artifact 已升级为显式 schema/version，`artifact_set.json` 已接线；全局+workspace allowlist、shared path helper、non-git 子目录根解析、`capture_patch()` 库 API 边界、目录级原子发布、quoted path、CRLF / `[truncated]` hash、AST / regex / section header 降级、JS/TS regex fallback、rename 双名记录与 hostile input/property-style 测试通过 |
 | `BL-06` | Graphify v0.1 backend/CLI workstream | backend + test | `BL-04` + `BL-05` | 1.5d | `graph status/refresh/import`、detect/import/sanitize、degrade path 覆盖 |
-| `BL-07` | Task 8 claim verifier（已落地） | backend | `BL-03` + `BL-05` | 4–5d | `uv run pytest tests/unit/test_claim_verify.py tests/unit/test_claim_extract.py tests/unit/test_negative_scan.py tests/unit/test_git_capture.py -q` 实测 `75 passed`；当前全量 `uv run --frozen --no-sync pytest tests/unit -q` 实测 `460 passed`；5 态 claim + `reason_code` + negative scan 已接线 |
+| `BL-07` | Task 8 claim verifier（已落地） | backend | `BL-03` + `BL-05` | 4–5d | `uv run pytest tests/unit/test_claim_verify.py tests/unit/test_claim_extract.py tests/unit/test_negative_scan.py tests/unit/test_git_capture.py -q` 实测 `75 passed`；当前全量 `uv run --frozen --no-sync pytest tests/unit -q` 实测 `461 passed`；5 态 claim + `reason_code` + negative scan 已接线 |
 
 ### P1
 

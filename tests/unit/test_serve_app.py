@@ -167,6 +167,25 @@ def test_locale_resolves_cookie_accept_language_and_serve_state(tmp_path: Path) 
     assert from_cookie.json() == {"locale": "zh-CN"}
 
 
+def test_serve_state_locale_update_preserves_runtime_fields(tmp_path: Path) -> None:
+    state = ServeState(
+        state_dir=tmp_path / ".ahadiff",
+        token="token",
+        locale="en",
+        bind_host="127.0.0.1",
+        port=8766,
+    ).with_runtime_lock()
+
+    updated = state.with_locale("zh-CN")
+
+    assert updated.locale == "zh-CN"
+    assert updated.state_dir == state.state_dir
+    assert updated.token == state.token
+    assert updated.bind_host == state.bind_host
+    assert updated.port == state.port
+    assert updated.write_lock is state.write_lock
+
+
 def test_write_routes_require_loopback_origin_or_referer(tmp_path: Path) -> None:
     client = _client(tmp_path / ".ahadiff")
 

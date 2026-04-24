@@ -218,7 +218,7 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-本次实际结果：`uv run --frozen --no-sync pytest tests/unit -q` 为 `460 passed`；`uv run --frozen --no-sync pytest tests/eval -q` 为 `7 passed`；`uv run --frozen --no-sync pytest tests/integration/test_learn_pipeline.py -m pinned -q` 为 `10 passed`；`PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --frozen --no-sync pytest -p no:cacheprovider tests -q` 为 `477 passed, 1 skipped`（live judge 默认跳过）；显式开启 live judge 后为 `1 passed`，并单独确认 `gpt-5.3-codex-spark` 可用；`uv run --frozen --no-sync ruff check --no-cache src tests`、`uv run --frozen --no-sync ruff format --check --no-cache src tests`、`uv run --frozen --no-sync pyright`、`uv build --wheel` 与 `uv run --frozen --no-sync python -m ahadiff install github-action --help` 全通过。
+本次实际结果：`uv run --frozen --no-sync pytest tests/unit -q` 为 `461 passed`；`uv run --frozen --no-sync pytest tests/eval -q` 为 `7 passed`；`uv run --frozen --no-sync pytest tests/integration/test_learn_pipeline.py -m pinned -q` 为 `10 passed`；`PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --frozen --no-sync pytest -p no:cacheprovider tests -q` 为 `478 passed, 1 skipped`（live judge 默认跳过）；显式开启 live judge 后为 `1 passed`，并单独确认 `gpt-5.3-codex-spark` 可用；`uv run --frozen --no-sync ruff check --no-cache src tests`、`uv run --frozen --no-sync ruff format --check --no-cache src tests`、`uv run --frozen --no-sync pyright`、`uv build --wheel` 与 `uv run --frozen --no-sync python -m ahadiff install github-action --help` 全通过。
 
 下一步路线图：
 

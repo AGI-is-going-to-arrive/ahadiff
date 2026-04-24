@@ -25,14 +25,7 @@ async def put_locale(request: Request) -> JSONResponse:
     current = serve_state(request)
     assert current.write_lock is not None
     async with current.write_lock:
-        request.app.state.ahadiff = current.__class__(
-            state_dir=current.state_dir,
-            token=current.token,
-            locale=update.lang,
-            bind_host=current.bind_host,
-            port=current.port,
-            write_lock=current.write_lock,
-        )
+        request.app.state.ahadiff = current.with_locale(update.lang)
     response = JSONResponse(LocaleResponse(locale=update.lang).model_dump(mode="json"))
     response.set_cookie(
         "ahadiff_lang",
