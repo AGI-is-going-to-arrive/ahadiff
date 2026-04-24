@@ -73,7 +73,7 @@ ahadiff install claude    # Claude Code → .claude/skills/
 ahadiff install codex     # Codex CLI → AGENTS.md
 ahadiff install gemini    # Gemini CLI → GEMINI.md
 ahadiff install opencode  # OpenCode → AGENTS.md + .opencode/agents/
-ahadiff install hooks     # git hooks
+ahadiff install hooks     # POSIX shell git hooks (Windows is rejected in v0.1)
 ahadiff install github-action          # verify-only workflow
 ahadiff install github-action --layer2 # opt-in generate workflow (requires provider secret)
 # v0.2: cursor / copilot / windsurf / cline / amp / jules / aider
@@ -181,7 +181,7 @@ ahadiff/
 - `ahadiff score`, `ahadiff verify`, and `ahadiff export-results`, backed by `review.sqlite` as the single source of truth and `results.tsv` as an export view
 - `ahadiff review`, `ahadiff mark <claim_id> wrong`, and `ahadiff db {backup,restore,check,import-results,finalize-targeted}` for the landed review.sqlite review / signals / result-events / lossy-import / targeted-finalize path
 - `ahadiff serve`: the localhost-only serve backend is available. Read routes expose finalized runs only; write routes require token plus Origin/Referer checks
-- `ahadiff install`: Claude / Codex / Gemini / OpenCode / hooks / GitHub Action targets are available. The generate workflow uses `AHADIFF_PROVIDER_API_KEY` and uploads `.ahadiff/` outputs as an artifact
+- `ahadiff install`: Claude / Codex / Gemini / OpenCode / hooks / GitHub Action targets are available. Hooks are POSIX-shell targets and are explicitly rejected on Windows in v0.1. Generated GitHub workflows cover macOS + Linux; Windows remains deferred. The generate workflow uses `AHADIFF_PROVIDER_API_KEY` and uploads `.ahadiff/` outputs as an artifact
 - `ahadiff benchmark`: the local benchmark manifest, 20 eval fixtures, 10 pinned integration fixtures, and `ground_truth.md` consistency checks are available
 - i18n-0: the locale resolver supports cookie / Accept-Language / CLI / config / `AHADIFF_LANG` / `LANG` fallback, and lesson/quiz prompt payloads carry the requested output-language instruction
 - `ahadiff improve --suite local --rounds N`, which currently supports only `--suite local`. It selects a baseline from an existing finalized run, edits only an allowlisted prompt in a git worktree, replays the same diff, and rescores the candidate; the candidate must improve the target dimension plus `accuracy`, `evidence`, and `safety_privacy`, and hard gates must still pass. Passing candidates are cherry-picked back when possible and recorded as `event_type=improve` / `status=targeted_verify`; non-improving rounds are recorded as `discard`; cherry-pick conflicts leave a pending worktree without finalizing the run; two consecutive `discard` rounds in the same session trigger one Phase 2.5 worktree rewrite
@@ -218,7 +218,7 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-Actual result from this session: `uv run --frozen --no-sync pytest tests/unit -q` finished with `455 passed`; `uv run --frozen --no-sync pytest tests/eval -q` finished with `7 passed`; `uv run --frozen --no-sync pytest tests/integration/test_learn_pipeline.py -m pinned -q` finished with `10 passed`; `PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --frozen --no-sync pytest -p no:cacheprovider tests -q` finished with `472 passed, 1 skipped` (the live judge smoke is skipped by default); the explicit live judge smoke finished with `1 passed`, and `gpt-5.3-codex-spark` was verified on its own; `uv run --frozen --no-sync ruff check --no-cache src tests`, `uv run --frozen --no-sync ruff format --check --no-cache src tests`, `uv run --frozen --no-sync pyright`, `uv build --wheel`, and `uv run --frozen --no-sync python -m ahadiff install github-action --help` all passed.
+Actual result from this session: `uv run --frozen --no-sync pytest tests/unit -q` finished with `460 passed`; `uv run --frozen --no-sync pytest tests/eval -q` finished with `7 passed`; `uv run --frozen --no-sync pytest tests/integration/test_learn_pipeline.py -m pinned -q` finished with `10 passed`; `PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --frozen --no-sync pytest -p no:cacheprovider tests -q` finished with `477 passed, 1 skipped` (the live judge smoke is skipped by default); the explicit live judge smoke finished with `1 passed`, and `gpt-5.3-codex-spark` was verified on its own; `uv run --frozen --no-sync ruff check --no-cache src tests`, `uv run --frozen --no-sync ruff format --check --no-cache src tests`, `uv run --frozen --no-sync pyright`, `uv build --wheel`, and `uv run --frozen --no-sync python -m ahadiff install github-action --help` all passed.
 
 Roadmap:
 

@@ -33,8 +33,15 @@ concurrency:
 
 jobs:
   generate:
-    runs-on: macos-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
     env:
+      PYTHON_VERSION: "3.12"
+      SQLITE_AUTOCONF_VERSION: "3510300"
+      SQLITE_DOWNLOAD_YEAR: "2026"
       AHADIFF_PROVIDER_API_KEY: ${{ secrets.AHADIFF_PROVIDER_API_KEY }}
       AHADIFF_DIFF_REF: ${{ inputs.diff_ref }}
       AHADIFF_PROVIDER_CLASS: ${{ inputs.provider_class }}
@@ -54,9 +61,29 @@ jobs:
           }
 
       - name: Install Python with current Homebrew SQLite
+        if: runner.os == 'macOS'
         run: |
-          brew install python@3.12
-          echo "$(brew --prefix python@3.12)/bin" >> "$GITHUB_PATH"
+          brew install python@${PYTHON_VERSION}
+          echo "$(brew --prefix python@${PYTHON_VERSION})/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/setup-python@v5
+        if: runner.os == 'Linux'
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install SQLite runtime on Linux
+        if: runner.os == 'Linux'
+        run: |
+          sqlite_url="https://www.sqlite.org/${SQLITE_DOWNLOAD_YEAR}/sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}.tar.gz"
+          curl -fsSLo "$RUNNER_TEMP/sqlite.tar.gz" "$sqlite_url" || \
+            curl -fsSLo "$RUNNER_TEMP/sqlite.tar.gz" \
+              "https://www.sqlite.org/2025/sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}.tar.gz"
+          tar -xzf "$RUNNER_TEMP/sqlite.tar.gz" -C "$RUNNER_TEMP"
+          cd "$RUNNER_TEMP/sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}"
+          ./configure --prefix="$RUNNER_TEMP/sqlite" --disable-static
+          make -j"$(nproc)"
+          make install
+          echo "LD_LIBRARY_PATH=$RUNNER_TEMP/sqlite/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
 
       - uses: astral-sh/setup-uv@v5
         with:

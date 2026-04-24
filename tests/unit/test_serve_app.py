@@ -5,13 +5,21 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 from starlette.testclient import TestClient
 
+import ahadiff.serve.routes_runs as routes_runs_module
 from ahadiff.contracts import ResultEvent, ReviewCard
 from ahadiff.eval.results import finalized_artifact_digest
-from ahadiff.review.database import import_cards_from_jsonl, initialize_review_db, sync_result_event
+from ahadiff.review.database import (
+    import_cards_from_jsonl,
+    initialize_review_db,
+    load_result_event_by_run_and_id,
+    sync_result_event,
+)
 from ahadiff.serve import ServeState, create_app
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    import pytest
 
 
 def _client(
@@ -232,6 +240,59 @@ def test_artifact_routes_require_finalized_marker_event_match(tmp_path: Path) ->
 
     assert response.status_code == 400
     assert "finalized result event does not exist" in response.json()["error"]
+
+
+def test_load_result_event_by_run_and_id_requires_exact_match(tmp_path: Path) -> None:
+    db_path = tmp_path / ".ahadiff" / "review.sqlite"
+    event = _event("run-1")
+    initialize_review_db(db_path)
+    sync_result_event(db_path, event)
+
+    matched = load_result_event_by_run_and_id(
+        db_path,
+        run_id="run-1",
+        event_id=event.event_id,
+    )
+
+    assert matched is not None
+    assert matched.event_id == event.event_id
+    assert matched.run_id == "run-1"
+    assert load_result_event_by_run_and_id(db_path, run_id="run-2", event_id=event.event_id) is None
+    assert (
+        load_result_event_by_run_and_id(db_path, run_id="run-1", event_id="missing-event") is None
+    )
+    assert (
+        load_result_event_by_run_and_id(
+            tmp_path / "missing.sqlite",
+            run_id="run-1",
+            event_id=event.event_id,
+        )
+        is None
+    )
+
+
+def test_finalized_run_lookup_does_not_use_full_result_event_scan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    _write_run(state_dir, "run-1", finalized=True)
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    def fail_full_scan(_db_path: Path) -> tuple[ResultEvent, ...]:
+        raise AssertionError("full result_events scan should not be used for run artifact lookup")
+
+    monkeypatch.setattr(routes_runs_module, "load_result_events_from_db", fail_full_scan)
+
+    detail = client.get("/api/run/run-1")
+    lesson = client.get("/api/run/run-1/lesson")
+
+    assert detail.status_code == 200
+    assert detail.json()["run_id"] == "run-1"
+    assert lesson.status_code == 200
+    assert lesson.json()["content"] == "full lesson\n"
 
 
 def test_legacy_finalized_marker_without_digest_is_hidden(tmp_path: Path) -> None:

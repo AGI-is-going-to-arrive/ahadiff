@@ -208,6 +208,32 @@ def load_result_events_from_db(db_path: Path) -> tuple[ResultEvent, ...]:
     return tuple(ResultEvent.model_validate(dict(row)) for row in rows)
 
 
+def load_result_event_by_run_and_id(
+    db_path: Path,
+    *,
+    run_id: str,
+    event_id: str,
+) -> ResultEvent | None:
+    if not db_path.exists():
+        return None
+    try:
+        with connect_review_db(db_path) as connection:
+            if not _result_events_table_exists(connection):
+                return None
+            row = connection.execute(
+                f"""
+                SELECT {", ".join(_RESULT_EVENT_COLUMNS)}
+                FROM result_events
+                WHERE run_id = ? AND event_id = ?
+                LIMIT 1
+                """,
+                (run_id, event_id),
+            ).fetchone()
+    except sqlite3.DatabaseError as exc:
+        raise StorageError(f"failed to read result_event from {db_path}: {exc}") from exc
+    return None if row is None else ResultEvent.model_validate(dict(row))
+
+
 def select_result_tsv_rows(db_path: Path) -> tuple[dict[str, object], ...]:
     if not db_path.exists():
         raise InputError(f"review.sqlite does not exist: {db_path}")
@@ -1398,6 +1424,7 @@ __all__ = [
     "initialize_review_db",
     "insert_learning_signal",
     "list_due_cards",
+    "load_result_event_by_run_and_id",
     "load_result_events_from_db",
     "make_uuid7",
     "mark_run_cards_stale",

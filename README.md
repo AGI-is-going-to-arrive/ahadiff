@@ -73,7 +73,7 @@ ahadiff install claude    # Claude Code → .claude/skills/
 ahadiff install codex     # Codex CLI → AGENTS.md
 ahadiff install gemini    # Gemini CLI → GEMINI.md
 ahadiff install opencode  # OpenCode → AGENTS.md + .opencode/agents/
-ahadiff install hooks     # git hooks
+ahadiff install hooks     # POSIX shell git hooks（Windows v0.1 会明确拒绝）
 ahadiff install github-action          # verify-only workflow
 ahadiff install github-action --layer2 # opt-in generate workflow（需要 provider secret）
 # v0.2 扩展: cursor / copilot / windsurf / cline / amp / jules / aider
@@ -181,7 +181,7 @@ ahadiff/
 - `ahadiff score` / `ahadiff verify` / `ahadiff export-results`：评分、ratchet 判定和 `results.tsv` 导出都已可用
 - `ahadiff review` / `ahadiff mark <claim_id> wrong` / `ahadiff db {backup,restore,check,import-results,finalize-targeted}`：`review.sqlite` 的 review / signals / result_events / lossy import / targeted finalize 链路都已可用
 - `ahadiff serve`：localhost-only serve backend 已可用，读接口只暴露 finalized runs，写接口需要 token + Origin/Referer 校验
-- `ahadiff install`：Claude / Codex / Gemini / OpenCode / hooks / GitHub Action target 已可用；generate workflow 使用 `AHADIFF_PROVIDER_API_KEY`，并上传 `.ahadiff/` 产物 artifact
+- `ahadiff install`：Claude / Codex / Gemini / OpenCode / hooks / GitHub Action target 已可用；hooks 是 POSIX shell target，Windows v0.1 会明确拒绝；生成的 GitHub workflow 覆盖 macOS + Linux，Windows 暂缓；generate workflow 使用 `AHADIFF_PROVIDER_API_KEY`，并上传 `.ahadiff/` 产物 artifact
 - `ahadiff benchmark`：本地 benchmark manifest、20 个 eval fixtures、10 个 pinned integration fixtures 与 `ground_truth.md` 一致性校验已可用
 - i18n-0：locale resolver 支持 cookie / Accept-Language / CLI / config / `AHADIFF_LANG` / `LANG` fallback，lesson/quiz prompt payload 会带输出语言指令
 - `ahadiff improve --suite local --rounds N`：目前仅支持 `--suite local`。它从已有 finalized run 中选择 baseline，在 git worktree 里只改白名单 prompt，重放同一 diff 并重新评分；候选必须让目标维度 + `accuracy` + `evidence` + `safety_privacy` 的合计分高于 baseline，且 hard gates 通过，才会尝试 cherry-pick prompt commit 回主分支，并记录 `event_type=improve` / `status=targeted_verify`；未提升则记录 `discard`，cherry-pick 冲突则保留 pending worktree 且不 finalized；同一 session 连续两次 `discard` 会触发一次 Phase 2.5 worktree rewrite
@@ -218,7 +218,7 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-本次实际结果：`uv run --frozen --no-sync pytest tests/unit -q` 为 `455 passed`；`uv run --frozen --no-sync pytest tests/eval -q` 为 `7 passed`；`uv run --frozen --no-sync pytest tests/integration/test_learn_pipeline.py -m pinned -q` 为 `10 passed`；`PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --frozen --no-sync pytest -p no:cacheprovider tests -q` 为 `472 passed, 1 skipped`（live judge 默认跳过）；显式开启 live judge 后为 `1 passed`，并单独确认 `gpt-5.3-codex-spark` 可用；`uv run --frozen --no-sync ruff check --no-cache src tests`、`uv run --frozen --no-sync ruff format --check --no-cache src tests`、`uv run --frozen --no-sync pyright`、`uv build --wheel` 与 `uv run --frozen --no-sync python -m ahadiff install github-action --help` 全通过。
+本次实际结果：`uv run --frozen --no-sync pytest tests/unit -q` 为 `460 passed`；`uv run --frozen --no-sync pytest tests/eval -q` 为 `7 passed`；`uv run --frozen --no-sync pytest tests/integration/test_learn_pipeline.py -m pinned -q` 为 `10 passed`；`PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --frozen --no-sync pytest -p no:cacheprovider tests -q` 为 `477 passed, 1 skipped`（live judge 默认跳过）；显式开启 live judge 后为 `1 passed`，并单独确认 `gpt-5.3-codex-spark` 可用；`uv run --frozen --no-sync ruff check --no-cache src tests`、`uv run --frozen --no-sync ruff format --check --no-cache src tests`、`uv run --frozen --no-sync pyright`、`uv build --wheel` 与 `uv run --frozen --no-sync python -m ahadiff install github-action --help` 全通过。
 
 下一步路线图：
 

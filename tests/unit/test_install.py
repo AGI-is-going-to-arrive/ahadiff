@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import inspect
 import subprocess
+from importlib.resources import files
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from typer.testing import CliRunner
 
+import ahadiff.install.hooks as hooks_module
 from ahadiff.cli import app
+from ahadiff.install.template_loader import render_template
+
+if TYPE_CHECKING:
+    import pytest
 
 _RUNNER = CliRunner()
 
@@ -36,6 +44,20 @@ def test_install_dry_run_lists_v01_targets(tmp_path: Path) -> None:
 
     assert not (repo_root / "AGENTS.md").exists()
     assert not (repo_root / ".claude").exists()
+
+
+def test_install_templates_are_static_and_render_without_values() -> None:
+    assert tuple(inspect.signature(render_template).parameters) == ("name",)
+    templates_root = files("ahadiff.install.templates")
+    for template in templates_root.iterdir():
+        if not template.name.endswith(".j2"):
+            continue
+        template_text = template.read_text(encoding="utf-8")
+        assert "[[" not in template_text
+        assert "]]" not in template_text
+        assert "{%" not in template_text
+        assert "{#" not in template_text
+        assert render_template(template.name)
 
 
 def test_install_detect_reports_written_targets(tmp_path: Path) -> None:
@@ -139,6 +161,7 @@ def test_hooks_install_is_non_blocking_and_uninstall_removes_sections(tmp_path: 
     pre_push = repo_root / ".git" / "hooks" / "pre-push"
 
     assert result.exit_code == 0
+    assert post_commit.read_text(encoding="utf-8").startswith("#!/bin/sh\n")
     assert "AHADIFF:BEGIN target=hooks" in post_commit.read_text(encoding="utf-8")
     assert "|| true" in pre_push.read_text(encoding="utf-8")
     assert "exit 0" not in pre_push.read_text(encoding="utf-8")
@@ -159,6 +182,29 @@ def test_hooks_install_is_non_blocking_and_uninstall_removes_sections(tmp_path: 
     uninstall_result = _RUNNER.invoke(app(), ["uninstall", "hooks", "--repo-root", str(repo_root)])
     assert uninstall_result.exit_code == 0
     assert "AHADIFF:BEGIN target=hooks" not in post_commit.read_text(encoding="utf-8")
+
+
+def test_hooks_install_rejects_windows_platform(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    monkeypatch.setattr(hooks_module.sys, "platform", "win32")
+
+    dry_run = _RUNNER.invoke(
+        app(),
+        ["install", "hooks", "--repo-root", str(repo_root), "--dry-run"],
+    )
+    result = _RUNNER.invoke(app(), ["install", "hooks", "--repo-root", str(repo_root)])
+
+    assert dry_run.exit_code == 1
+    assert result.exit_code == 1
+    assert "POSIX-shell only in v0.1" in dry_run.output
+    assert "Windows is not supported yet" in result.output
+    assert not (repo_root / ".git" / "hooks" / "post-commit").exists()
+    assert not (repo_root / ".git" / "hooks" / "pre-push").exists()
 
 
 def test_hooks_install_supports_git_worktree(tmp_path: Path) -> None:

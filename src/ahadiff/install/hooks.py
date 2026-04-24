@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 from ahadiff.core.errors import InputError
@@ -25,12 +26,14 @@ class HooksTarget:
         )
 
     def preview(self, context: InstallContext) -> str:
+        _ensure_posix_hooks_supported()
         return self._plan(context).render(context.repo_root)
 
     def preview_uninstall(self, context: InstallContext) -> str:
         return self._plan(context).render_uninstall(context.repo_root)
 
     def write(self, context: InstallContext) -> list[Path]:
+        _ensure_posix_hooks_supported()
         _ensure_git_repo(context)
         post_commit, pre_push = self._hook_paths(context)
         _append_hook_section(
@@ -114,6 +117,11 @@ def _hook_pattern(target: str) -> re.Pattern[str]:
 
 def _ensure_git_repo(context: InstallContext) -> None:
     _git_path(context, "hooks")
+
+
+def _ensure_posix_hooks_supported() -> None:
+    if sys.platform == "win32":
+        raise InputError("hooks target is POSIX-shell only in v0.1; Windows is not supported yet")
 
 
 def _git_path(context: InstallContext, relative: str) -> Path:

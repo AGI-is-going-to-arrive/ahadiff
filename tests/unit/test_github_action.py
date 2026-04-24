@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import subprocess
-from typing import TYPE_CHECKING, Any, cast
+from pathlib import Path
+from typing import Any, cast
 
 import yaml
 from typer.testing import CliRunner
@@ -11,9 +12,6 @@ from ahadiff.cli import app
 from ahadiff.contracts import ResultEvent
 from ahadiff.eval.results import finalized_artifact_digest
 from ahadiff.review.database import initialize_review_db, sync_result_event
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 _RUNNER = CliRunner()
 
@@ -35,6 +33,24 @@ def _load_workflow(path: Path) -> dict[str, Any]:
     if True in workflow and "on" not in workflow:
         workflow["on"] = workflow.pop(True)
     return cast("dict[str, Any]", workflow)
+
+
+def _assert_linux_macos_matrix(workflow: dict[str, Any], job_name: str) -> None:
+    job = cast("dict[str, Any]", cast("dict[str, Any]", workflow["jobs"])[job_name])
+    strategy = cast("dict[str, Any]", job["strategy"])
+    matrix = cast("dict[str, Any]", strategy["matrix"])
+    assert job["runs-on"] == "${{ matrix.os }}"
+    assert strategy["fail-fast"] is False
+    assert matrix["os"] == ["macos-latest", "ubuntu-latest"]
+    assert "windows-latest" not in matrix["os"]
+
+
+def _assert_platform_bootstrap_steps(workflow_text: str) -> None:
+    assert "if: runner.os == 'macOS'" in workflow_text
+    assert "if: runner.os == 'Linux'" in workflow_text
+    assert "actions/setup-python@v5" in workflow_text
+    assert "sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}.tar.gz" in workflow_text
+    assert "LD_LIBRARY_PATH=$RUNNER_TEMP/sqlite/lib" in workflow_text
 
 
 def test_github_action_install_default_writes_verify_only_workflow(tmp_path: Path) -> None:
@@ -69,7 +85,10 @@ def test_github_action_install_default_writes_verify_only_workflow(tmp_path: Pat
     assert "python -m ahadiff" not in verify_text
     assert "AHADIFF_API_KEY" not in verify_text
     assert "AHADIFF_PROVIDER_API_KEY" not in verify_text
-    assert _load_workflow(verify_path)["name"] == "AhaDiff Verify"
+    verify_workflow = _load_workflow(verify_path)
+    assert verify_workflow["name"] == "AhaDiff Verify"
+    _assert_linux_macos_matrix(verify_workflow, "verify")
+    _assert_platform_bootstrap_steps(verify_text)
 
 
 def test_github_action_layer2_writes_opt_in_generate_workflow(tmp_path: Path) -> None:
@@ -127,6 +146,19 @@ def test_github_action_layer2_writes_opt_in_generate_workflow(tmp_path: Path) ->
         generate_workflow["jobs"]["generate"]["env"]["AHADIFF_PROVIDER_BASE_URL"]
         == "${{ inputs.provider_base_url }}"
     )
+    _assert_linux_macos_matrix(generate_workflow, "generate")
+    _assert_platform_bootstrap_steps(generate_text)
+
+
+def test_repository_backend_ci_uses_linux_macos_matrix() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    workflow_path = repo_root / ".github" / "workflows" / "ci.yml"
+    workflow_text = workflow_path.read_text(encoding="utf-8")
+    workflow = _load_workflow(workflow_path)
+
+    assert workflow["name"] == "Backend CI"
+    _assert_linux_macos_matrix(workflow, "backend")
+    _assert_platform_bootstrap_steps(workflow_text)
 
 
 def test_github_action_refuses_user_workflow_without_force(tmp_path: Path) -> None:

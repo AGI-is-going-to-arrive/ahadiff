@@ -62,6 +62,11 @@ This section records the follow-up fixes applied after the original cross-review
 | **[M-6]** malformed JSON 500 | Fixed. `JSONDecodeError` is handled by the serve app error path. |
 | **[M-7]** malformed `finalized.json` array crash | Fixed. Run listing now treats non-object finalized markers as invalid and continues. |
 | **[M-8]** verify workflow coverage gate unreachable | Fixed by changing the generated verify workflow to run installed CLI verification (`uvx --from ahadiff ahadiff verify --ci`) instead of source-tree pytest/coverage. |
+| **[M-3]** repository CI macOS-only | Fixed in this follow-up. Backend CI now runs a macOS + Ubuntu matrix; macOS keeps the Homebrew Python/SQLite path, Linux installs a current SQLite runtime before running the same backend checks. Windows remains deferred. |
+| **[L-1]** hooks install is Unix-only | Fixed in this follow-up by making the v0.1 contract explicit: hooks are POSIX-shell only, and Windows install/dry-run fails with a clear `InputError` instead of writing ambiguous hooks. |
+| **[L-2]** Jinja2 `autoescape=False` | Mitigated in this follow-up. The renderer no longer accepts arbitrary `**values`; tests assert templates are static and contain no Jinja dynamic delimiters. Current templates still render GitHub Actions `${{ }}` expressions literally. |
+| **[L-3]** full table scan in `_event_for_finalized_run` | Fixed in this follow-up. Single-run artifact reads now use `load_result_event_by_run_and_id()` with `WHERE run_id = ? AND event_id = ?` instead of loading all `result_events`. |
+| **[L-5]** generated workflows macOS-only | Fixed in this follow-up. Generated verify/generate workflows now use a macOS + Ubuntu matrix with OS-specific Python/SQLite bootstrap; Windows remains deferred. |
 
 ### Additional real fixes made during remediation
 
@@ -72,17 +77,17 @@ This section records the follow-up fixes applied after the original cross-review
 - Concept key normalization no longer collapses distinct Unicode terms into the same ASCII key.
 - Lesson and quiz prompt payloads now carry the requested output-language instruction.
 - Live judge default model order is now `gpt-5.3-codex-spark,gpt-5.4-mini`; `gpt-5.3-codex-spark` was tested directly.
+- Repository backend CI and generated GitHub workflows now cover macOS and Ubuntu while keeping the SQLite runtime gate explicit.
+- Hooks install now fails fast on Windows with a clear v0.1 POSIX-shell boundary instead of implying support.
+- Install template rendering is now static-only; if future templates need dynamic fields, they must use a typed context-specific renderer.
+- Serve run artifact reads now avoid a per-request full `result_events` table scan.
 
 ### Still not fixed / not expanded
 
 | Original item | Current status |
 |---------------|----------------|
-| **[M-3]** repository CI macOS-only | Not fixed in this session. It remains a cross-platform CI expansion item; Windows also needs a separate SQLite gate solution. |
-| **[L-1]** hooks install is Unix-only | Not fixed. Still a v0.2 platform-support item. |
-| **[L-2]** Jinja2 `autoescape=False` | Not fixed. Still low risk because current templates pass no user-controlled variables. |
-| **[L-3]** full table scan in `_event_for_finalized_run` | Not fixed. Still a performance follow-up. |
-| **[L-4]** `put_locale` replaces `ServeState` | Not fixed. Still a low-risk future cleanup. |
-| **[L-5]** generated workflows macOS-only | Not fixed. Still intentional for the current SQLite/Homebrew path. |
+| **[L-4]** `put_locale` replaces `ServeState` | Still not changed. Re-verified as a future-proofing cleanup, not a current state-loss bug: current replacement preserves `state_dir`, `token`, `bind_host`, `port`, and the same `write_lock`; `ServeState` has no other mutable runtime fields today. |
+| Windows CI / generated workflow support | Still deferred. Linux is now covered; Windows still needs a separately proven SQLite runtime and shell/PowerShell strategy before enabling CI or generated workflow support. |
 | Workflow injection finding | Still classified as false positive; no code change made for it. |
 
 ---
@@ -122,8 +127,8 @@ This section records the follow-up fixes applied after the original cross-review
 #### [M-3] `.github/workflows/ci.yml:19` -- CI runs only on macOS, no cross-platform matrix
 
 - **Source**: Claude-reviewer W-5 / Claude-orchestrator M
-- **Evidence**: `runs-on: macos-latest`, no matrix strategy. Linux/Windows paths, permissions, SQLite versions untested in CI.
-- **Recommendation**: v0.2 add `ubuntu-latest` to matrix. Windows requires separate SQLite version gate solution.
+- **Original evidence**: `runs-on: macos-latest`, no matrix strategy. Linux/Windows paths, permissions, SQLite versions untested in CI.
+- **Follow-up status**: Fixed for Linux in this follow-up. Backend CI now uses a macOS + Ubuntu matrix and bootstraps SQLite explicitly on both OSes. Windows remains deferred because it still needs a separately proven SQLite runtime and shell strategy.
 
 #### [M-4] `serve/routes_runs.py:107` -- `concepts.jsonl` read has no symlink guard
 
@@ -165,21 +170,21 @@ This section records the follow-up fixes applied after the original cross-review
 #### [L-1] `install/hooks.py:84,88` -- Hooks install is Unix-only
 
 - **Source**: Claude-reviewer W-3 / Claude-orchestrator L
-- **Evidence**: `#!/bin/sh` shebang (line 84) + `path.chmod(path.stat().st_mode | 0o111)` (line 88). No `sys.platform` check in the entire install module.
-- **Recommendation**: v0.2 add platform guard; Windows: skip or use `.bat`.
+- **Original evidence**: `#!/bin/sh` shebang (line 84) + `path.chmod(path.stat().st_mode | 0o111)` (line 88). No `sys.platform` check in the entire install module.
+- **Follow-up status**: Fixed for v0.1 scope. Hooks remain POSIX-shell hooks, and Windows install/dry-run now fails with a clear `InputError` instead of writing ambiguous hook files.
 
 #### [L-2] `install/template_loader.py:8` -- Jinja2 `autoescape=False`
 
 - **Source**: Claude-reviewer C-2 / Codex-adversarial M-1 / Claude-orchestrator L
-- **Evidence**: `Environment(autoescape=False, ...)`. All 11 `render_template()` calls across the install module pass zero user-controlled variables (verified via `grep -rn render_template src/ahadiff/install/`). Custom delimiters `[[`/`]]` further isolate.
+- **Evidence**: `Environment(autoescape=False, ...)`. All current install templates are static, and `render_template()` no longer accepts arbitrary `**values`. Custom delimiters `[[`/`]]` further isolate GitHub Actions `${{ }}` expressions.
 - **Severity reconciliation**: Claude-reviewer rated Critical, Codex Medium, orchestrator Low. Downgraded to Low because there is no current injection path -- all templates are rendered without variables.
-- **Recommendation**: Remove `**values: str` from function signature, or add YAML/shell-safe validation if parameterization is needed later.
+- **Follow-up status**: Mitigated. Tests assert render API shape and template staticness. If parameterization is needed later, it should be added through a typed context-specific renderer.
 
 #### [L-3] `serve/routes_runs.py:206` -- `_event_for_finalized_run` does full table scan
 
 - **Source**: Claude-reviewer W-1 / Claude-orchestrator L
-- **Evidence**: `load_result_events_from_db(db_path)` loads all events, iterates to find match. Called per artifact GET.
-- **Recommendation**: Add `load_result_event_by_run_and_id(db_path, run_id, event_id)` with SQL WHERE clause.
+- **Original evidence**: `load_result_events_from_db(db_path)` loaded all events and iterated to find a match. Called per artifact GET.
+- **Follow-up status**: Fixed. Artifact reads now call `load_result_event_by_run_and_id(db_path, run_id, event_id)` with a parameterized SQL `WHERE run_id = ? AND event_id = ?` lookup.
 
 #### [L-4] `serve/routes_locale.py:28` -- `put_locale` replaces entire `ServeState`
 
@@ -190,7 +195,8 @@ This section records the follow-up fixes applied after the original cross-review
 #### [L-5] Generated workflow templates run only on macOS
 
 - **Source**: Claude-orchestrator
-- **Evidence**: Both `ahadiff-verify.yml.j2` and `ahadiff-generate.yml.j2` use `runs-on: macos-latest` with Homebrew Python. Users on Linux/Windows repos get macOS-only CI.
+- **Original evidence**: Both `ahadiff-verify.yml.j2` and `ahadiff-generate.yml.j2` used `runs-on: macos-latest` with Homebrew Python. Users on Linux/Windows repos got macOS-only CI.
+- **Follow-up status**: Fixed for Linux. Generated verify/generate workflows now use a macOS + Ubuntu matrix and OS-specific Python/SQLite bootstrap. Windows remains deferred.
 
 ---
 
@@ -229,7 +235,7 @@ This section records the follow-up fixes applied after the original cross-review
 | Override | From | To | Reason |
 |----------|------|----|--------|
 | Token timing | Critical (Claude-reviewer) / High (Codex-adversarial) | Medium | Token already exposed via `/api/auth/token` GET; `bind_host` hard-locked to `127.0.0.1` (cli.py:1519); timing attack adds no additional attack surface |
-| Jinja2 autoescape | Critical (Claude-reviewer) | Low | Zero user-controlled variables passed to any template render call (verified: 11 call sites, all `render_template("name.j2")` with no `**values`) |
+| Jinja2 autoescape | Critical (Claude-reviewer) | Low | Renderer is now static-only: `render_template(name)` accepts no values, and tests assert templates contain no Jinja dynamic delimiters |
 | Workflow injection | High (Codex-adversarial) | False positive | Env var indirection pattern is GitHub Security Lab recommended safe practice; `${{ }}` in `env:` values does not enable YAML structure injection |
 | concepts.jsonl symlink | High (Codex-review) | Medium | Localhost-only server; `.ahadiff/` is runtime-generated, not git-tracked; attack requires user filesystem write access |
 | Empty idempotency_key | High (Codex-review) | Medium | Only affects edge case where client sends `""` -- legitimate clients always send proper keys; no data corruption, only silent dedup |
@@ -249,9 +255,9 @@ This section records the follow-up fixes applied after the original cross-review
 
 | Command | Result | Platform | Key Output |
 |---------|--------|----------|------------|
-| `pytest tests/unit/test_serve_app.py -q` | PASS | macOS | 18 passed |
-| `pytest tests/unit/test_install.py -q` | PASS | macOS | 8 passed |
-| `pytest tests/unit/test_github_action.py -q` | PASS | macOS | 7 passed |
+| `pytest tests/unit/test_serve_app.py -q` | PASS | macOS | 26 passed |
+| `pytest tests/unit/test_install.py -q` | PASS | macOS | 10 passed |
+| `pytest tests/unit/test_github_action.py -q` | PASS | macOS | 8 passed |
 | `pytest tests/eval -q` | PASS | macOS | 7 passed |
 | `pytest tests/integration/test_learn_pipeline.py -m pinned -q` | PASS | macOS | 10 passed |
 | `pytest tests/unit/test_i18n_resolver.py tests/unit/test_stage1_task1.py tests/unit/test_git_capture.py tests/unit/test_concepts.py tests/unit/test_claim_verify.py -q` | PASS | macOS | 89 passed |
@@ -261,8 +267,8 @@ This section records the follow-up fixes applied after the original cross-review
 | `python -m ahadiff install github-action --help` | PASS | macOS | Same as above |
 | `python -m ahadiff serve --help` | PASS | macOS | port/no-browser/lang params |
 | `python -m ahadiff learn --help` | PASS | macOS | --lang param present |
-| `pytest tests/unit -q` | PASS | macOS | **455 passed** |
-| `pytest tests -q` | PASS | macOS | **472 passed, 1 skipped** (live judge) |
+| `pytest tests/unit -q` | PASS | macOS | **460 passed** |
+| `pytest tests -q` | PASS | macOS | **477 passed, 1 skipped** (live judge) |
 | `ruff check src tests` | PASS | macOS | All checks passed |
 | `ruff format --check src tests` | PASS | macOS | 147 files already formatted |
 | `pyright` | PASS | macOS | 0 errors, 0 warnings, 0 informations |
@@ -270,14 +276,13 @@ This section records the follow-up fixes applied after the original cross-review
 | `python -m ahadiff --version` | PASS | macOS | ahadiff 0.1.0a0 |
 | `uv sync --locked --dev` | PASS | macOS | Stable |
 | `AHADIFF_LIVE_LLM_JUDGE=1 pytest tests/live/...` | PASS | macOS | 1 passed; `gpt-5.3-codex-spark` also passed when tested alone |
-| `gh run view 24887881201` | PASS | CI | success, headSha=a1301a5 |
 
 ### Environment
 
 - Python: 3.13.12
 - SQLite: 3.51.0
 - pyproject `requires-python`: `>=3.11`
-- CI Python: 3.12 (Homebrew)
+- CI Python: 3.12 on macOS (Homebrew) and Linux (actions/setup-python + local SQLite bootstrap)
 
 ---
 
@@ -285,14 +290,14 @@ This section records the follow-up fixes applied after the original cross-review
 
 | Platform | Method | Coverage | Remaining Risks |
 |----------|--------|----------|-----------------|
-| **macOS** | **Executed** | All 472 non-live tests, live judge smoke, lint, typecheck, wheel, CLI, CI runner | SQLite 3.51.0 via Homebrew; fully verified |
-| **Linux** | Static review | pathlib usage confirmed; `os.replace()` atomic write cross-platform | No CI Linux matrix; Homebrew Python step invalid on Ubuntu; system SQLite may not meet >=3.51.3 gate |
-| **Windows** | Static review | pathlib usage confirmed; `os.replace()` cross-platform | Hooks chmod/shebang no-op; `#!/bin/sh` not executable; SQLite gate needs conda or manual install; CRLF in patch parsing (existing `\r` preservation logic) |
+| **macOS** | **Executed** | All 477 non-live tests, live judge smoke, lint, typecheck, wheel, CLI, CI runner | SQLite 3.51.0 locally; CI bootstraps Python 3.12 + SQLite explicitly |
+| **Linux** | CI workflow added + static review | Backend CI and generated workflows now include Ubuntu with explicit SQLite bootstrap; pathlib usage confirmed; `os.replace()` atomic write cross-platform | Remote GitHub runner result should be checked after push; Windows remains separate |
+| **Windows** | Static review + explicit hooks rejection | pathlib usage confirmed; `os.replace()` cross-platform; hooks install/dry-run now fails clearly on Windows | SQLite gate needs a proven Windows runtime; generated workflow and CI Windows jobs remain deferred |
 
 ### CI-Specific Observations
 
-- Current CI: `macos-latest` single-platform only
-- Generated verify/generate workflows: also macOS-only
+- Current CI: backend matrix includes `macos-latest` and `ubuntu-latest`
+- Generated verify/generate workflows: macOS + Ubuntu matrix; Windows deferred
 - Node.js 20 deprecation: no impact (CI steps don't depend on Node)
 - `uv sync --locked`: stable across platforms (uv native support)
 - `requires-python = ">=3.11"` aligns with CI `python@3.12`
@@ -325,8 +330,8 @@ This section records the follow-up fixes applied after the original cross-review
 |--------|----------------|----------------|
 | Critical | 0 | 0 blocking |
 | High | 1 | 0 blocking |
-| Medium | 8 | 1 remaining non-blocking expansion item |
-| Low | 5 | 5 remaining non-blocking follow-ups |
+| Medium | 8 | 0 blocking; Windows CI/workflow support remains a future platform expansion |
+| Low | 5 | 1 remaining non-blocking cleanup (`put_locale` state holder) |
 
 **Gate rule**: the original blocker **[H-1]** is fixed and re-verified. The other remediated Medium items are fixed. The remaining items are platform expansion / low-risk cleanup and do not block the next session.
 

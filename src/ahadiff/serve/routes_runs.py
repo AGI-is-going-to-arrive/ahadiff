@@ -16,7 +16,7 @@ from ahadiff.contracts.event_log import RATCHET_COUNTED_STATUSES, ResultEvent
 from ahadiff.core.errors import InputError
 from ahadiff.core.paths import validate_run_id
 from ahadiff.eval.results import finalized_artifact_digest
-from ahadiff.review.database import load_result_events_from_db
+from ahadiff.review.database import load_result_event_by_run_and_id, load_result_events_from_db
 
 from .auth import serve_state
 
@@ -209,9 +209,9 @@ def _event_for_finalized_run(db_path: Path, run_path: Path) -> ResultEvent:
     event_id = marker.get("event_id")
     if not isinstance(event_id, str) or not event_id:
         raise InputError(f"finalized marker is missing event_id for run: {run_path.name}")
-    for event in load_result_events_from_db(db_path):
-        if event.run_id == run_path.name and event.event_id == event_id:
-            return event
+    event = load_result_event_by_run_and_id(db_path, run_id=run_path.name, event_id=event_id)
+    if event is not None:
+        return event
     raise InputError(f"finalized result event does not exist for run: {run_path.name}")
 
 
