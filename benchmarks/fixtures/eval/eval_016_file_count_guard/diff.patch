@@ -1,0 +1,12 @@
+diff --git a/src/app.py b/src/app.py
+--- a/src/app.py
++++ b/src/app.py
+@@ -1,2 +1,6 @@
+-def compute(value):
+-    return value
++def compute(value):
++    state = "eval_016_file_count_guard"
++    primary = "file_count_exceeded"
++    secondary = "degraded_run"
++    return f"{state}:{primary}:{secondary}:{value}"
++

@@ -1,0 +1,3 @@
+{"answer": "srs-card", "question": "Which behavior does eval_006_python_review anchor?"}
+{"answer": "src/app.py", "question": "Which changed file is used by eval_006_python_review?"}
+{"answer": "benchmark_main", "question": "Which suite group owns eval_006_python_review?"}

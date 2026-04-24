@@ -1,0 +1,380 @@
+{
+  "entries": [
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "benchmark_main",
+      "id": "eval_001_python_retry",
+      "kind": "eval",
+      "language": "python",
+      "path": "fixtures/eval/eval_001_python_retry",
+      "tags": [
+        "python_ast",
+        "regex"
+      ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "benchmark_main",
+      "id": "eval_002_python_config",
+      "kind": "eval",
+      "language": "python",
+      "path": "fixtures/eval/eval_002_python_config",
+      "tags": [
+        "python_ast"
+      ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "benchmark_main",
+      "id": "eval_003_python_sqlite",
+      "kind": "eval",
+      "language": "python",
+      "path": "fixtures/eval/eval_003_python_sqlite",
+      "tags": [
+        "python_ast"
+      ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "benchmark_main",
+      "id": "eval_004_python_safety",
+      "kind": "eval",
+      "language": "python",
+      "path": "fixtures/eval/eval_004_python_safety",
+      "tags": [
+        "python_ast",
+        "section_header"
+      ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "benchmark_main",
+      "id": "eval_005_python_quiz",
+      "kind": "eval",
+      "language": "python",
+      "path": "fixtures/eval/eval_005_python_quiz",
+      "tags": [
+        "python_ast"
+      ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "benchmark_main",
+      "id": "eval_006_python_review",
+      "kind": "eval",
+      "language": "python",
+      "path": "fixtures/eval/eval_006_python_review",
+      "tags": [
+        "python_ast"
+      ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "benchmark_main",
+      "id": "eval_007_python_ratchet",
+      "kind": "eval",
+      "language": "python",
+      "path": "fixtures/eval/eval_007_python_ratchet",
+      "tags": [
+        "python_ast"
+      ]
+    },
+    {
+      "capability_level": 1,
+      "degraded": true,
+      "group": "benchmark_main",
+      "id": "eval_008_typescript_degraded",
+      "kind": "eval",
+      "language": "typescript",
+      "path": "fixtures/eval/eval_008_typescript_degraded",
+      "tags": [
+        "regex"
+      ]
+    },
+    {
+      "capability_level": 1,
+      "degraded": true,
+      "group": "benchmark_main",
+      "id": "eval_009_rust_degraded",
+      "kind": "eval",
+      "language": "rust",
+      "path": "fixtures/eval/eval_009_rust_degraded",
+      "tags": [
+        "regex"
+      ]
+    },
+    {
+      "capability_level": 1,
+      "degraded": true,
+      "group": "benchmark_main",
+      "id": "eval_010_go_degraded",
+      "kind": "eval",
+      "language": "go",
+      "path": "fixtures/eval/eval_010_go_degraded",
+      "tags": [
+        "regex"
+      ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "judge_stability",
+      "id": "eval_011_patch_file",
+      "kind": "eval",
+      "language": "python",
+      "path": "fixtures/eval/eval_011_patch_file",
+      "tags": [
+        "section_header"
+      ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "judge_stability",
+      "id": "eval_012_patch_stdin",
+      "kind": "eval",
+      "language": "python",
+      "path": "fixtures/eval/eval_012_patch_stdin",
+      "tags": [
+        "section_header"
+      ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "judge_stability",
+      "id": "eval_013_file_compare",
+      "kind": "eval",
+      "language": "python",
+      "path": "fixtures/eval/eval_013_file_compare",
+      "tags": [
+        "section_header"
+      ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "judge_stability",
+      "id": "eval_014_git_since",
+      "kind": "eval",
+      "language": "python",
+      "path": "fixtures/eval/eval_014_git_since",
+      "tags": [
+        "section_header"
+      ]
+    },
+    {
+      "capability_level": 1,
+      "degraded": true,
+      "group": "judge_stability",
+      "id": "eval_015_binary_guard",
+      "kind": "eval",
+      "language": "python",
+      "path": "fixtures/eval/eval_015_binary_guard",
+      "tags": [
+        "regex"
+      ]
+    },
+    {
+      "capability_level": 1,
+      "degraded": true,
+      "group": "judge_stability",
+      "id": "eval_016_file_count_guard",
+      "kind": "eval",
+      "language": "python",
+      "path": "fixtures/eval/eval_016_file_count_guard",
+      "tags": [
+        "regex"
+      ]
+    },
+    {
+      "capability_level": 1,
+      "degraded": true,
+      "group": "judge_stability",
+      "id": "eval_017_token_guard",
+      "kind": "eval",
+      "language": "python",
+      "path": "fixtures/eval/eval_017_token_guard",
+      "tags": [
+        "regex"
+      ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "judge_stability",
+      "id": "eval_018_redaction",
+      "kind": "eval",
+      "language": "python",
+      "path": "fixtures/eval/eval_018_redaction",
+      "tags": [
+        "section_header"
+      ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "judge_stability",
+      "id": "eval_019_injection",
+      "kind": "eval",
+      "language": "python",
+      "path": "fixtures/eval/eval_019_injection",
+      "tags": [
+        "section_header"
+      ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "judge_stability",
+      "id": "eval_020_i18n_non_ratcheted",
+      "kind": "eval",
+      "language": "python",
+      "path": "fixtures/eval/eval_020_i18n_non_ratcheted",
+      "tags": [
+        "section_header"
+      ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "pinned_integration",
+      "id": "pinned_001_patch_file",
+      "kind": "integration",
+      "language": "python",
+      "path": "fixtures/integration/pinned_001_patch_file",
+      "tags": [
+        "learn-pipeline",
+        "ci-verify"
+      ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "pinned_integration",
+      "id": "pinned_002_patch_stdin",
+      "kind": "integration",
+      "language": "python",
+      "path": "fixtures/integration/pinned_002_patch_stdin",
+      "tags": [
+        "learn-pipeline",
+        "ci-verify"
+      ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "pinned_integration",
+      "id": "pinned_003_git_last",
+      "kind": "integration",
+      "language": "python",
+      "path": "fixtures/integration/pinned_003_git_last",
+      "tags": [
+        "learn-pipeline",
+        "ci-verify"
+      ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "pinned_integration",
+      "id": "pinned_004_staged",
+      "kind": "integration",
+      "language": "python",
+      "path": "fixtures/integration/pinned_004_staged",
+      "tags": [
+        "learn-pipeline",
+        "ci-verify"
+      ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "pinned_integration",
+      "id": "pinned_005_unstaged",
+      "kind": "integration",
+      "language": "python",
+      "path": "fixtures/integration/pinned_005_unstaged",
+      "tags": [
+        "learn-pipeline",
+        "ci-verify"
+      ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "pinned_integration",
+      "id": "pinned_006_compare",
+      "kind": "integration",
+      "language": "python",
+      "path": "fixtures/integration/pinned_006_compare",
+      "tags": [
+        "learn-pipeline",
+        "ci-verify"
+      ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "pinned_integration",
+      "id": "pinned_007_graph_absent",
+      "kind": "integration",
+      "language": "python",
+      "path": "fixtures/integration/pinned_007_graph_absent",
+      "tags": [
+        "learn-pipeline",
+        "ci-verify"
+      ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "pinned_integration",
+      "id": "pinned_008_review_import",
+      "kind": "integration",
+      "language": "python",
+      "path": "fixtures/integration/pinned_008_review_import",
+      "tags": [
+        "learn-pipeline",
+        "ci-verify"
+      ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "pinned_integration",
+      "id": "pinned_009_force_learn",
+      "kind": "integration",
+      "language": "python",
+      "path": "fixtures/integration/pinned_009_force_learn",
+      "tags": [
+        "learn-pipeline",
+        "ci-verify"
+      ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "pinned_integration",
+      "id": "pinned_010_ci_verify",
+      "kind": "integration",
+      "language": "python",
+      "path": "fixtures/integration/pinned_010_ci_verify",
+      "tags": [
+        "learn-pipeline",
+        "ci-verify"
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "suite_digest": "c8936a2d3c53fa88792658ecb723b0214345e227fbb5efcbc08dd90af71cb7b6",
+  "suite_id": "ahadiff-local-v1",
+  "visibility": "private"
+}

@@ -1,0 +1,12 @@
+diff --git a/src/app.py b/src/app.py
+--- a/src/app.py
++++ b/src/app.py
+@@ -1,2 +1,6 @@
+-def compute(value):
+-    return value
++def compute(value):
++    state = "eval_003_python_sqlite"
++    primary = "sqlite_write"
++    secondary = "transaction"
++    return f"{state}:{primary}:{secondary}:{value}"
++

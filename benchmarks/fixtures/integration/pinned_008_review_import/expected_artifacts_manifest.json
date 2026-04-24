@@ -1,0 +1,16 @@
+{
+  "required_artifacts": [
+    "metadata.json",
+    "patch.diff",
+    "line_map.json",
+    "claims.jsonl",
+    "lesson/lesson.full.md",
+    "lesson/lesson.hint.md",
+    "lesson/lesson.compact.md",
+    "quiz/quiz.jsonl",
+    "quiz/cards.jsonl",
+    "score.json",
+    "finalized.json",
+    "results.tsv"
+  ]
+}

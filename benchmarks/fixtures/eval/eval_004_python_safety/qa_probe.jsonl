@@ -1,0 +1,3 @@
+{"answer": "redaction", "question": "Which behavior does eval_004_python_safety anchor?"}
+{"answer": "src/app.py", "question": "Which changed file is used by eval_004_python_safety?"}
+{"answer": "benchmark_main", "question": "Which suite group owns eval_004_python_safety?"}

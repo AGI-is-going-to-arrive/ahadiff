@@ -1,0 +1,12 @@
+diff --git a/src/app.py b/src/app.py
+--- a/src/app.py
++++ b/src/app.py
+@@ -1,2 +1,6 @@
+-def compute(value):
+-    return value
++def compute(value):
++    state = "pinned_009_force_learn"
++    primary = "pipeline_009_force_learn"
++    secondary = "artifact_finalization"
++    return f"{state}:{primary}:{secondary}:{value}"
++

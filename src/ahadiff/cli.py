@@ -59,6 +59,8 @@ from .eval import (
     load_result_events,
     publish_result_artifacts,
     rollback_result_event,
+    run_benchmark_suite,
+    write_benchmark_report,
 )
 from .eval.results import finalized_artifact_digest
 from .git.capture import (
@@ -2060,6 +2062,66 @@ def score_cmd(
             output=output,
             force=force,
         )
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+@_APP.command("benchmark")
+def benchmark_cmd(
+    suite: Annotated[
+        str,
+        typer.Option("--suite", help="Benchmark suite to run."),
+    ] = "local",
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or workspace root."),
+    ] = Path(),
+    manifest: Annotated[
+        Path,
+        typer.Option("--manifest", help="Benchmark manifest path."),
+    ] = Path("benchmarks/manifest.json"),
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", help="Output path for benchmark report JSON."),
+    ] = None,
+    model_id: Annotated[
+        str,
+        typer.Option("--model-id", help="Model identifier recorded for comparability."),
+    ] = "deterministic-fixture",
+    api_family_version: Annotated[
+        str,
+        typer.Option("--api-family-version", help="API family/version recorded for comparability."),
+    ] = "none",
+    output_lang: Annotated[
+        str,
+        typer.Option("--output-lang", help="Output language key recorded for comparability."),
+    ] = "en",
+) -> None:
+    try:
+        root = find_workspace_root(repo_root)
+        manifest_path = manifest if manifest.is_absolute() else root / manifest
+        output_path = output or root / ".ahadiff" / "benchmarks" / f"{suite}-report.json"
+        if not output_path.is_absolute():
+            output_path = root / output_path
+        _, lock_path = _state_dir_and_lock_path(repo_root)
+        with repo_write_lock(lock_path, command="benchmark") as _:
+            report = run_benchmark_suite(
+                manifest_path,
+                suite=suite,
+                model_id=model_id,
+                api_family_version=api_family_version,
+                output_lang=output_lang,
+            )
+            write_benchmark_report(output_path, report)
+        console.print(f"[green]Benchmark complete[/green]: {report.suite_id}")
+        console.print(f"[bold]Suite digest[/bold]: {report.suite_digest}")
+        console.print(f"[bold]Eval bundle[/bold]: {report.eval_bundle_version}")
+        console.print(f"[bold]API family[/bold]: {report.api_family_version}")
+        console.print(f"[bold]Comparable entries[/bold]: {report.comparable_entry_count}")
+        console.print(f"[bold]Excluded degraded[/bold]: {report.excluded_degraded_count}")
+        console.print(f"[bold]Mean score[/bold]: {report.mean_score:.2f}")
+        console.print(f"[bold]Claim verification rate[/bold]: {report.claim_verification_rate:.4f}")
+        console.print(f"[bold]Output[/bold]: {output_path}")
     except Exception as error:  # pragma: no cover - exercised through CLI tests
         _handle_cli_error(error)
 

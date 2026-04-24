@@ -1,0 +1,12 @@
+diff --git a/src/app.py b/src/app.py
+--- a/src/app.py
++++ b/src/app.py
+@@ -1,2 +1,6 @@
+-def compute(value):
+-    return value
++def compute(value):
++    state = "eval_004_python_safety"
++    primary = "redaction"
++    secondary = "secret_scan"
++    return f"{state}:{primary}:{secondary}:{value}"
++

@@ -35,6 +35,9 @@ dev = [
 addopts = "-ra"
 pythonpath = ["src"]
 testpaths = ["tests"]
+markers = [
+  "pinned: deterministic pinned integration fixtures",
+]
 
 [tool.ruff]
 line-length = 100

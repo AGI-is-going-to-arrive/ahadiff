@@ -1,0 +1,3 @@
+{"answer": "binary-only", "question": "Which behavior does eval_015_binary_guard anchor?"}
+{"answer": "src/app.py", "question": "Which changed file is used by eval_015_binary_guard?"}
+{"answer": "judge_stability", "question": "Which suite group owns eval_015_binary_guard?"}

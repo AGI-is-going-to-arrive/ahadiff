@@ -1,0 +1,3 @@
+{"answer": "patch-stdin", "question": "Which behavior does eval_012_patch_stdin anchor?"}
+{"answer": "src/app.py", "question": "Which changed file is used by eval_012_patch_stdin?"}
+{"answer": "judge_stability", "question": "Which suite group owns eval_012_patch_stdin?"}

@@ -1,0 +1,10 @@
+{
+  "concepts": [
+    "rust-regex",
+    "non-python-degrade"
+  ],
+  "language": "rust",
+  "tags": [
+    "regex"
+  ]
+}

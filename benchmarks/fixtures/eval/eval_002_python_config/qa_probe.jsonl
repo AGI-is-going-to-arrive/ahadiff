@@ -1,0 +1,3 @@
+{"answer": "config-precedence", "question": "Which behavior does eval_002_python_config anchor?"}
+{"answer": "src/app.py", "question": "Which changed file is used by eval_002_python_config?"}
+{"answer": "benchmark_main", "question": "Which suite group owns eval_002_python_config?"}

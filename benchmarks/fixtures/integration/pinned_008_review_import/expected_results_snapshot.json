@@ -1,0 +1,6 @@
+{
+  "event_type": "verify",
+  "must_include_suite_digest": true,
+  "status": "non_ratcheted",
+  "verdict": "PASS"
+}

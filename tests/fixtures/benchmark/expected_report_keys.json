@@ -1,0 +1,15 @@
+{
+  "required_keys": [
+    "api_family_version",
+    "claim_verification_rate",
+    "comparable_entry_count",
+    "dimension_means",
+    "eval_bundle_version",
+    "excluded_degraded_count",
+    "mean_score",
+    "model_id",
+    "output_lang",
+    "suite_digest",
+    "suite_id"
+  ]
+}

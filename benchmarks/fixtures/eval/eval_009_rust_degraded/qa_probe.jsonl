@@ -1,0 +1,3 @@
+{"answer": "rust-regex", "question": "Which behavior does eval_009_rust_degraded anchor?"}
+{"answer": "src/app.py", "question": "Which changed file is used by eval_009_rust_degraded?"}
+{"answer": "benchmark_main", "question": "Which suite group owns eval_009_rust_degraded?"}

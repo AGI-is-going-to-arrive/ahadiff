@@ -1,0 +1,11 @@
+{
+  "concepts": [
+    "redaction",
+    "secret-scan"
+  ],
+  "language": "python",
+  "tags": [
+    "python_ast",
+    "section_header"
+  ]
+}

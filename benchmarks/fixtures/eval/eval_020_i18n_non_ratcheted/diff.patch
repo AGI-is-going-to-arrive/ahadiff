@@ -1,0 +1,12 @@
+diff --git a/src/app.py b/src/app.py
+--- a/src/app.py
++++ b/src/app.py
+@@ -1,2 +1,6 @@
+-def compute(value):
+-    return value
++def compute(value):
++    state = "eval_020_i18n_non_ratcheted"
++    primary = "i18n"
++    secondary = "non_ratcheted"
++    return f"{state}:{primary}:{secondary}:{value}"
++

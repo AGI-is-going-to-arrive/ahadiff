@@ -1,0 +1,10 @@
+{
+  "concepts": [
+    "patch-stdin",
+    "source-kind"
+  ],
+  "language": "python",
+  "tags": [
+    "section_header"
+  ]
+}

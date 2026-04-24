@@ -1,0 +1,10 @@
+{
+  "concepts": [
+    "go-regex",
+    "non-python-degrade"
+  ],
+  "language": "go",
+  "tags": [
+    "regex"
+  ]
+}

@@ -1,0 +1,3 @@
+{"answer": "ratchet-status", "question": "Which behavior does eval_007_python_ratchet anchor?"}
+{"answer": "src/app.py", "question": "Which changed file is used by eval_007_python_ratchet?"}
+{"answer": "benchmark_main", "question": "Which suite group owns eval_007_python_ratchet?"}

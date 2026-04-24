@@ -1,0 +1,3 @@
+{"answer": "token-exceeded", "question": "Which behavior does eval_017_token_guard anchor?"}
+{"answer": "src/app.py", "question": "Which changed file is used by eval_017_token_guard?"}
+{"answer": "judge_stability", "question": "Which suite group owns eval_017_token_guard?"}
