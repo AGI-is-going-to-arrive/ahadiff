@@ -253,6 +253,7 @@ class ManagedProvider:
                 eval_bundle_version=request.eval_bundle_version,
                 model_id=request.model,
                 api_family=self.capabilities.api_family,
+                api_family_version=self.capabilities.api_family_version,
                 output_lang=request.output_lang,
                 privacy_mode=request.privacy_mode,
                 redaction_config=request.redaction_config,

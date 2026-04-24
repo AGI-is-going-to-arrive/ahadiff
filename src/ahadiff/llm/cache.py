@@ -36,6 +36,7 @@ def assert_context_bundle_hash(
 def build_cache_key(parts: CacheKeyInput) -> str:
     payload = {
         "api_family": parts.api_family,
+        "api_family_version": parts.api_family_version,
         "context_bundle_hash": parts.context_bundle_hash,
         "diff_content_sha256": hashlib.sha256(parts.diff_content.encode("utf-8")).hexdigest(),
         "eval_bundle_version": parts.eval_bundle_version,

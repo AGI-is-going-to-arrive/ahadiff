@@ -527,6 +527,7 @@ def test_cache_key_hashes_diff_content_without_embedding_raw_patch() -> None:
             eval_bundle_version="bundle-v1",
             model_id="gpt-5.4-mini",
             api_family="openai",
+            api_family_version="v1",
             output_lang="en",
             privacy_mode="strict_local",
             redaction_config="cfg",
@@ -535,6 +536,28 @@ def test_cache_key_hashes_diff_content_without_embedding_raw_patch() -> None:
     )
     assert len(cache_key) == 64
     assert large_diff not in cache_key
+
+
+def test_cache_key_separates_api_family_versions() -> None:
+    def make_input(api_family_version: str) -> CacheKeyInput:
+        return CacheKeyInput(
+            diff_content="diff --git a/app.py b/app.py\n+print('hi')",
+            source_ref="HEAD",
+            prompt_version="prompt-v1",
+            eval_bundle_version="bundle-v1",
+            model_id="gpt-5.4-mini",
+            api_family="openai",
+            api_family_version=api_family_version,
+            output_lang="en",
+            privacy_mode="strict_local",
+            redaction_config="cfg",
+            context_bundle_hash="ctx",
+        )
+
+    v1_key = build_cache_key(make_input("v1"))
+    v2_key = build_cache_key(make_input("v2"))
+
+    assert v1_key != v2_key
 
 
 def test_estimate_cost_uses_official_openai_pricing_for_default_model() -> None:

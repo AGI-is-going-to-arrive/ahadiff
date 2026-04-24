@@ -29,6 +29,7 @@ class CacheKeyInput:
     eval_bundle_version: str
     model_id: str
     api_family: str
+    api_family_version: str
     output_lang: str
     privacy_mode: PrivacyMode
     redaction_config: str
