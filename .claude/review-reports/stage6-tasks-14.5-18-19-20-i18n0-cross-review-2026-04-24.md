@@ -81,6 +81,7 @@ This section records the follow-up fixes applied after the original cross-review
 - Hooks install now fails fast on Windows with a clear v0.1 POSIX-shell boundary instead of implying support.
 - Install template rendering is now static-only; if future templates need dynamic fields, they must use a typed context-specific renderer.
 - Serve run artifact reads now avoid a per-request full `result_events` table scan.
+- Linux CI exposed a test-isolation issue: allowlist tests now clear `XDG_CONFIG_HOME` before asserting the HOME fallback global config path.
 
 ### Still not fixed / not expanded
 

@@ -192,18 +192,19 @@ def test_global_security_config_flows_into_repo_allowlist_policy(
     repo_root.mkdir()
     _init_git_repo(repo_root)
     home_root = tmp_path / "home"
-    global_path = global_config_dir(env={"HOME": str(home_root)}) / "config.toml"
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.setenv("HOME", str(home_root))
+    global_path = global_config_dir() / "config.toml"
     global_path.parent.mkdir(parents=True)
     global_path.write_text(
         '[security]\nsuppress_rules = ["HIGH_ENTROPY_STRING"]\n',
         encoding="utf-8",
     )
     token = "AbC123xYz789LmNoPqRsTuVwXyZaBcDeFgHiJk45"
-    monkeypatch.setenv("HOME", str(home_root))
 
     security = load_security_config(repo_root)
     policy = load_allowlist_policy(repo_root)
-    snapshot = load_config(repo_root, env={"HOME": str(home_root)})
+    snapshot = load_config(repo_root)
     findings = scan_text_for_secrets(
         token,
         source_name="sample.txt",
@@ -226,14 +227,15 @@ def test_global_security_config_flows_into_workspace_allowlist_policy(
     workspace_root = tmp_path / "workspace"
     workspace_root.mkdir()
     home_root = tmp_path / "home"
-    global_path = global_config_dir(env={"HOME": str(home_root)}) / "config.toml"
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.setenv("HOME", str(home_root))
+    global_path = global_config_dir() / "config.toml"
     global_path.parent.mkdir(parents=True)
     global_path.write_text(
         '[security]\nsuppress_rules = ["HIGH_ENTROPY_STRING"]\n',
         encoding="utf-8",
     )
     token = "AbC123xYz789LmNoPqRsTuVwXyZaBcDeFgHiJk45"
-    monkeypatch.setenv("HOME", str(home_root))
 
     security = load_workspace_security_config(workspace_root)
     policy = load_workspace_allowlist_policy(workspace_root)
