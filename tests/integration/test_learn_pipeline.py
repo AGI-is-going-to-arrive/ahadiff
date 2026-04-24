@@ -8,9 +8,11 @@ import pytest
 from typer.testing import CliRunner
 
 from ahadiff.cli import app
-from ahadiff.contracts import ClaimRecord, SourceHunk
+from ahadiff.contracts import ClaimRecord, ReviewCard, SourceHunk
 from ahadiff.eval.benchmark import load_benchmark_manifest, verify_suite_digest
 from ahadiff.git.line_map import build_line_map, serialize_line_map_payload
+from ahadiff.git.symbols import serialize_symbols_payload
+from ahadiff.quiz.generator import generate_cards_for_run, load_quiz_questions
 
 _RUNNER = CliRunner()
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -118,6 +120,11 @@ def _materialize_pinned_run(workspace_root: Path, run_id: str, fixture_root: Pat
         + "\n",
         encoding="utf-8",
     )
+    (run_path / "symbols.json").write_text(
+        json.dumps(serialize_symbols_payload(()), ensure_ascii=False, indent=2, sort_keys=True)
+        + "\n",
+        encoding="utf-8",
+    )
     (run_path / "claims.jsonl").write_text(
         "\n".join(json.dumps(claim.model_dump(mode="json"), ensure_ascii=False) for claim in claims)
         + "\n",
@@ -155,21 +162,21 @@ def _write_quiz(run_path: Path, run_id: str, claims: tuple[ClaimRecord, ...]) ->
     quiz_entries = [
         {
             "question": "Which file anchors the fixture?",
-            "answer": "src/app.py",
+            "expected_answer": "src/app.py",
             "source_claims": [claims[0].claim_id],
             "evidence": [{"file": "src/app.py", "line": 2}],
             "concepts": ["pinned-pipeline"],
         },
         {
             "question": "Which marker proves finalization?",
-            "answer": "finalized.json",
+            "expected_answer": "finalized.json",
             "source_claims": [claims[1].claim_id],
             "evidence": [{"file": "src/app.py", "line": 3}],
             "concepts": ["artifact-finalization"],
         },
         {
             "question": "Which command re-checks finalized artifacts?",
-            "answer": "ahadiff verify --ci",
+            "expected_answer": "ahadiff verify --ci",
             "source_claims": [claims[1].claim_id],
             "evidence": [{"file": "src/app.py", "line": 4}],
             "concepts": ["ci-verify"],
@@ -179,15 +186,11 @@ def _write_quiz(run_path: Path, run_id: str, claims: tuple[ClaimRecord, ...]) ->
         "\n".join(json.dumps(item, ensure_ascii=False) for item in quiz_entries) + "\n",
         encoding="utf-8",
     )
-    cards = [
-        {
-            "card_id": f"{run_id}_card_{index}",
-            "concept": entry["concepts"][0],
-            "source_claims": entry["source_claims"],
-        }
-        for index, entry in enumerate(quiz_entries, start=1)
-    ]
-    (quiz_dir / "cards.jsonl").write_text(
-        "\n".join(json.dumps(item, ensure_ascii=False) for item in cards) + "\n",
-        encoding="utf-8",
+    cards_path = generate_cards_for_run(
+        run_path=run_path,
+        questions=load_quiz_questions(quiz_dir / "quiz.jsonl"),
+        verdict="PASS",
     )
+    assert cards_path is not None
+    for line in cards_path.read_text(encoding="utf-8").splitlines():
+        ReviewCard.model_validate_json(line)
