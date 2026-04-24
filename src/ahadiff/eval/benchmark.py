@@ -94,6 +94,13 @@ class BenchmarkReport:
         }
 
 
+@dataclass(frozen=True)
+class _GroundTruth:
+    concepts: tuple[str, ...]
+    language: str
+    degraded: bool
+
+
 def load_benchmark_manifest(path: Path) -> BenchmarkManifest:
     payload = _load_json_object(path)
     schema_version = payload.get("schema_version")
@@ -195,6 +202,7 @@ def run_benchmark_suite(
         temp_root = Path(temp_dir)
         for entry in eval_entries:
             run_path = _materialize_eval_fixture(manifest.root, entry, temp_root)
+            fixture_root = manifest.root / entry.path
             report = evaluate_run(run_path)
             entry_payloads.append(
                 {
@@ -202,6 +210,9 @@ def run_benchmark_suite(
                     "group": entry.group,
                     "language": entry.language,
                     "degraded": entry.degraded,
+                    "ground_truth_digest": _text_digest(
+                        _read_required_text(fixture_root / "ground_truth.md")
+                    ),
                     "overall": round(report.overall, 2),
                     "verdict": report.verdict,
                     "weakest_dim": report.weakest_dim,
@@ -319,7 +330,14 @@ def _materialize_eval_fixture(
 ) -> Path:
     fixture_root = manifest_root / entry.path
     patch_text = (fixture_root / "diff.patch").read_text(encoding="utf-8")
-    concepts = _expected_concepts(fixture_root / "expected_concepts.json")
+    ground_truth_text = _read_required_text(fixture_root / "ground_truth.md")
+    ground_truth = _ground_truth_for_entry(
+        entry=entry,
+        ground_truth_text=ground_truth_text,
+        expected_concepts=_expected_concepts(fixture_root / "expected_concepts.json"),
+        path=fixture_root / "ground_truth.md",
+    )
+    concepts = ground_truth.concepts
     qa_items = _load_jsonl_objects(fixture_root / "qa_probe.jsonl")
     run_path = temp_root / ".ahadiff" / "runs" / entry.entry_id
     run_path.mkdir(parents=True, exist_ok=True)
@@ -330,7 +348,11 @@ def _materialize_eval_fixture(
         "capability_level": entry.capability_level,
         "degraded_flags": {"benchmark_degraded": entry.degraded} if entry.degraded else {},
         "learnability": {"score": 0.78 if entry.degraded else 0.92},
-        "source_detail": {"benchmark_group": entry.group, "language": entry.language},
+        "source_detail": {
+            "benchmark_group": entry.group,
+            "language": entry.language,
+            "ground_truth_digest": _text_digest(ground_truth_text),
+        },
         "privacy_mode": "strict_local",
     }
     (run_path / "metadata.json").write_text(
@@ -338,6 +360,7 @@ def _materialize_eval_fixture(
         encoding="utf-8",
     )
     (run_path / "patch.diff").write_text(patch_text, encoding="utf-8")
+    (run_path / "benchmark_ground_truth.md").write_text(ground_truth_text, encoding="utf-8")
     (run_path / "line_map.json").write_text(
         json.dumps(serialize_line_map_payload(build_line_map(patch_text)), ensure_ascii=False)
         + "\n",
@@ -349,7 +372,12 @@ def _materialize_eval_fixture(
         + "\n",
         encoding="utf-8",
     )
-    _write_lesson_artifacts(run_path, entry=entry, concepts=concepts)
+    _write_lesson_artifacts(
+        run_path,
+        entry=entry,
+        concepts=concepts,
+        ground_truth_text=ground_truth_text,
+    )
     _write_quiz_artifacts(run_path, entry=entry, claims=claims, qa_items=qa_items)
     return run_path
 
@@ -364,6 +392,55 @@ def _expected_concepts(path: Path) -> tuple[str, ...]:
     if not concepts:
         raise InputError(f"expected_concepts.json contains no usable concepts: {path}")
     return tuple(concepts)
+
+
+def _ground_truth_for_entry(
+    *,
+    entry: BenchmarkEntry,
+    ground_truth_text: str,
+    expected_concepts: tuple[str, ...],
+    path: Path,
+) -> _GroundTruth:
+    ground_truth = _parse_ground_truth(ground_truth_text, path=path)
+    if ground_truth.concepts != expected_concepts:
+        raise InputError(
+            f"benchmark fixture {entry.entry_id} ground_truth expected concepts do not "
+            "match expected_concepts.json"
+        )
+    if ground_truth.language != entry.language:
+        raise InputError(
+            f"benchmark fixture {entry.entry_id} ground_truth language does not match manifest"
+        )
+    if ground_truth.degraded != entry.degraded:
+        raise InputError(
+            f"benchmark fixture {entry.entry_id} ground_truth degraded flag does not match manifest"
+        )
+    return ground_truth
+
+
+def _parse_ground_truth(value: str, *, path: Path) -> _GroundTruth:
+    fields: dict[str, str] = {}
+    for line in value.splitlines():
+        if ":" not in line:
+            continue
+        key, raw_value = line.split(":", 1)
+        fields[key.strip().casefold()] = raw_value.strip().rstrip(".").strip()
+    raw_concepts = fields.get("expected concepts")
+    language = fields.get("language")
+    raw_degraded = fields.get("degraded")
+    if raw_concepts is None or language is None or raw_degraded is None:
+        raise InputError(f"benchmark ground_truth.md is missing required fields: {path}")
+    concepts = tuple(item.strip().rstrip(".") for item in raw_concepts.split(",") if item.strip())
+    if not concepts:
+        raise InputError(f"benchmark ground_truth.md has no expected concepts: {path}")
+    degraded_normalized = raw_degraded.casefold()
+    if degraded_normalized not in {"true", "false"}:
+        raise InputError(f"benchmark ground_truth.md degraded field must be true or false: {path}")
+    return _GroundTruth(
+        concepts=concepts,
+        language=language.casefold(),
+        degraded=degraded_normalized == "true",
+    )
 
 
 def _claims_for_entry(
@@ -391,12 +468,14 @@ def _write_lesson_artifacts(
     *,
     entry: BenchmarkEntry,
     concepts: tuple[str, ...],
+    ground_truth_text: str,
 ) -> None:
     lesson_dir = run_path / "lesson"
     lesson_dir.mkdir()
     concept_text = ", ".join(concepts)
     (lesson_dir / "lesson.full.md").write_text(
         f"TL;DR\n\n{entry.entry_id} covers {concept_text}.\n\n"
+        "Ground Truth\n\n" + ground_truth_text.rstrip() + "\n\n"
         "What Changed\n\nThe patch adds a small deterministic behavior change.\n\n"
         "Why\n\nThe fixture anchors claims to changed lines.\n\n"
         "Walkthrough\n\nRead the added lines in src/app.py.\n\n"
@@ -508,6 +587,17 @@ def _entry_claim_verification_rate(entry: dict[str, object]) -> float | None:
     if isinstance(value, int | float):
         return float(value)
     return None
+
+
+def _read_required_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise InputError(f"benchmark text file is invalid: {path}") from exc
+
+
+def _text_digest(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 __all__ = [

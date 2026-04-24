@@ -31,7 +31,10 @@ def _init_git_repo(repo_root: Path) -> None:
 def _load_workflow(path: Path) -> dict[str, Any]:
     loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert isinstance(loaded, dict)
-    return cast("dict[str, Any]", loaded)
+    workflow = cast("dict[Any, Any]", loaded)
+    if True in workflow and "on" not in workflow:
+        workflow["on"] = workflow.pop(True)
+    return cast("dict[str, Any]", workflow)
 
 
 def test_github_action_install_default_writes_verify_only_workflow(tmp_path: Path) -> None:
@@ -56,10 +59,16 @@ def test_github_action_install_default_writes_verify_only_workflow(tmp_path: Pat
     assert verify_path.exists()
     assert not generate_path.exists()
     assert "AHADIFF:GENERATED" in verify_text
-    assert "python -m ahadiff verify --ci" in verify_text
-    assert "tests/integration/test_learn_pipeline.py -m pinned" in verify_text
-    assert "--cov-fail-under=85" in verify_text
+    assert "uvx --python python3.12 --from ahadiff ahadiff verify --ci" in verify_text
+    assert "uv sync" not in verify_text
+    assert "pytest" not in verify_text
+    assert "--cov" not in verify_text
+    assert "tests/unit" not in verify_text
+    assert "tests/integration" not in verify_text
+    assert "src/ahadiff" not in verify_text
+    assert "python -m ahadiff" not in verify_text
     assert "AHADIFF_API_KEY" not in verify_text
+    assert "AHADIFF_PROVIDER_API_KEY" not in verify_text
     assert _load_workflow(verify_path)["name"] == "AhaDiff Verify"
 
 
@@ -80,12 +89,44 @@ def test_github_action_layer2_writes_opt_in_generate_workflow(tmp_path: Path) ->
     assert result.exit_code == 0
     assert verify_path.exists()
     assert generate_path.exists()
-    assert "secrets.AHADIFF_API_KEY" in generate_text
+    assert "AHADIFF_PROVIDER_API_KEY: ${{ secrets.AHADIFF_PROVIDER_API_KEY }}" in generate_text
+    assert "AHADIFF_API_KEY" not in generate_text
     assert "pull_request" not in generate_text
-    assert 'learn "$AHADIFF_DIFF_REF"' in generate_text
+    assert 'ahadiff learn "$AHADIFF_DIFF_REF"' in generate_text
+    assert '--provider-class "$AHADIFF_PROVIDER_CLASS"' in generate_text
+    assert '--base-url "$AHADIFF_PROVIDER_BASE_URL"' in generate_text
+    assert '--model "$AHADIFF_PROVIDER_MODEL"' in generate_text
+    assert "--api-key-env AHADIFF_PROVIDER_API_KEY" in generate_text
+    assert '--privacy-mode "$AHADIFF_PRIVACY_MODE"' in generate_text
+    assert "actions/upload-artifact@v4" in generate_text
+    assert ".ahadiff/runs/**" in generate_text
+    assert "uv sync" not in generate_text
+    assert "python -m ahadiff" not in generate_text
     assert "sk-12345678" not in generate_text
-    assert "python -m ahadiff learn" in generate_text
-    assert _load_workflow(generate_path)["name"] == "AhaDiff Generate"
+    generate_workflow = _load_workflow(generate_path)
+    workflow_on = generate_workflow["on"]
+    assert isinstance(workflow_on, dict)
+    assert generate_workflow["name"] == "AhaDiff Generate"
+    workflow_dispatch = cast("dict[str, Any]", workflow_on)["workflow_dispatch"]
+    assert isinstance(workflow_dispatch, dict)
+    workflow_inputs = cast("dict[str, Any]", workflow_dispatch)["inputs"]
+    assert isinstance(workflow_inputs, dict)
+    workflow_inputs_map = cast("dict[str, Any]", workflow_inputs)
+    assert set(workflow_inputs_map) == {
+        "diff_ref",
+        "provider_class",
+        "provider_base_url",
+        "provider_model",
+        "privacy_mode",
+    }
+    assert (
+        generate_workflow["jobs"]["generate"]["env"]["AHADIFF_PROVIDER_API_KEY"]
+        == "${{ secrets.AHADIFF_PROVIDER_API_KEY }}"
+    )
+    assert (
+        generate_workflow["jobs"]["generate"]["env"]["AHADIFF_PROVIDER_BASE_URL"]
+        == "${{ inputs.provider_base_url }}"
+    )
 
 
 def test_github_action_refuses_user_workflow_without_force(tmp_path: Path) -> None:

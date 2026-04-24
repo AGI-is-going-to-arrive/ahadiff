@@ -104,12 +104,39 @@ def load_visible_concepts(
 
 
 def compute_term_key(value: str) -> str:
-    normalized = unicodedata.normalize("NFKD", value)
-    normalized = normalized.encode("ascii", "ignore").decode("ascii")
-    normalized = re.sub(r"[^a-zA-Z0-9]+", "-", normalized.strip().lower()).strip("-")
-    if not normalized:
+    source = unicodedata.normalize("NFKC", value).strip().casefold()
+    if not source:
         raise InputError("concept term_key would be empty")
-    return normalized
+    parts: list[str] = []
+    ascii_chars: list[str] = []
+    unicode_chars: list[str] = []
+
+    def flush_ascii() -> None:
+        if ascii_chars:
+            parts.append("".join(ascii_chars))
+            ascii_chars.clear()
+
+    def flush_unicode() -> None:
+        if unicode_chars:
+            parts.append("u-" + "-".join(unicode_chars))
+            unicode_chars.clear()
+
+    for char in source:
+        if char.isascii() and char.isalnum():
+            flush_unicode()
+            ascii_chars.append(char)
+        elif char.isalnum():
+            flush_ascii()
+            unicode_chars.append(format(ord(char), "x"))
+        else:
+            flush_ascii()
+            flush_unicode()
+    flush_ascii()
+    flush_unicode()
+    term_key = re.sub(r"-+", "-", "-".join(parts)).strip("-")
+    if not term_key:
+        raise InputError("concept term_key would be empty")
+    return term_key
 
 
 def _collect_concept_occurrences(

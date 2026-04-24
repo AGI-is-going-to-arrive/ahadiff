@@ -30,16 +30,5 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Install dependencies
-        run: uv sync --locked --dev --python python3.12
-
-      - name: Unit tests
-        run: uv run pytest tests/unit -q
-
-      - name: Pinned integration and coverage gate
-        run: |
-          uv run --with pytest-cov pytest tests/integration/test_learn_pipeline.py -m pinned \
-            --cov=src/ahadiff --cov-fail-under=85
-
       - name: Validate AhaDiff artifacts
-        run: uv run python -m ahadiff verify --ci
+        run: uvx --python python3.12 --from ahadiff ahadiff verify --ci

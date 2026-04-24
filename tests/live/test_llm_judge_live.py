@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 
 _DEFAULT_BASE_URL = "http://127.0.0.1:8318/v1/chat/completions"
-_DEFAULT_MODELS = "gpt-5.4-mini"
+_DEFAULT_MODELS = "gpt-5.3-codex-spark,gpt-5.4-mini"
 _PROVIDER_PRIORITY: tuple[ProviderClass, ...] = ("openai_responses", "openai")
 
 

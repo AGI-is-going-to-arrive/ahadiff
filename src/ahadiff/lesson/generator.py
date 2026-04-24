@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 from ahadiff.contracts import PrivacyMode, ProviderConfig, compute_runtime_eval_bundle_version
 from ahadiff.core.errors import InputError
+from ahadiff.i18n import prompt_language_instruction
 from ahadiff.llm import ProviderRequest, make_provider
 from ahadiff.safety.ignore import AllowlistPolicy
 from ahadiff.safety.redact import redaction_pipeline
@@ -301,6 +302,7 @@ def build_lesson_payload(
     prompt_text: str,
     bundle: RedactedRunBundle,
     variant: LessonVariant,
+    output_lang: str = "en",
 ) -> str:
     prompt_header = f"## Requested Output\nTarget: {_VARIANT_TITLES[variant]}"
     metadata_payload = {
@@ -315,6 +317,7 @@ def build_lesson_payload(
         (
             prompt_text.strip(),
             prompt_header,
+            "## Output language\n" + prompt_language_instruction(output_lang),
             "## Run metadata\n```json\n"
             + json.dumps(metadata_payload, ensure_ascii=False, indent=2, sort_keys=True)
             + "\n```",
@@ -356,7 +359,12 @@ def _generate_variant_payload(
     privacy_mode: PrivacyMode | None,
 ) -> str:
     prompt_text = load_lesson_prompt(variant)
-    payload_text = build_lesson_payload(prompt_text=prompt_text, bundle=bundle, variant=variant)
+    payload_text = build_lesson_payload(
+        prompt_text=prompt_text,
+        bundle=bundle,
+        variant=variant,
+        output_lang=output_lang,
+    )
     prompt_fingerprint = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()[:12]
     resolved_privacy_mode = privacy_mode or bundle.privacy_mode
     redacted_payload_text = None

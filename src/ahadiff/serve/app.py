@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from json import JSONDecodeError
 from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
@@ -61,6 +62,7 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
         exception_handlers={
             AhaDiffError: _handled_error,
             InputError: _handled_error,
+            JSONDecodeError: _handled_error,
             PermissionError: _permission_error,
             ValidationError: _validation_error,
             HTTPException: _http_error,

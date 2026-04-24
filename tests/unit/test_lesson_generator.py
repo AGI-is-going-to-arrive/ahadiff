@@ -20,6 +20,7 @@ from ahadiff.git.parser import parse_unified_diff
 from ahadiff.git.symbols import extract_symbols, serialize_symbols_payload
 from ahadiff.lesson.generator import (
     LessonArtifactPaths,
+    build_lesson_payload,
     generate_lessons_from_run,
     load_lesson_prompt,
     load_redacted_run_bundle,
@@ -120,10 +121,12 @@ diff --git a/src/app.py b/src/app.py
 class _FakeLessonProvider:
     def __init__(self) -> None:
         self.prompt_names: list[str] = []
+        self.requests: list[ProviderRequest] = []
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
         prompt_name = request.prompt_name
         self.prompt_names.append(prompt_name)
+        self.requests.append(request)
         if prompt_name == "lesson.generate":
             content = json.dumps(
                 {
@@ -256,6 +259,7 @@ def test_generate_lessons_from_run_writes_expected_artifacts(
         ),
         api_key=None,
         security_config=SecurityConfig(),
+        output_lang="zh-CN",
     )
 
     assert isinstance(paths, LessonArtifactPaths)
@@ -272,6 +276,8 @@ def test_generate_lessons_from_run_writes_expected_artifacts(
         "lesson.hint",
         "lesson.compact",
     ]
+    assert fake_provider.requests
+    assert all("Simplified Chinese (zh-CN)" in item.payload_text for item in fake_provider.requests)
     bundle = load_redacted_run_bundle(
         run_id="run_lesson",
         run_path=run_path,
@@ -304,6 +310,26 @@ def test_hint_and_compact_prompts_match_schema_contracts() -> None:
         assert set(_extract_prompt_contract(root_prompt)) == set(schema.model_fields)
         for token in forbidden_tokens:
             assert token not in root_prompt
+
+
+def test_lesson_payload_includes_requested_output_language(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_lesson_run_artifacts(workspace_root, "run_lang")
+    bundle = load_redacted_run_bundle(
+        run_id="run_lang",
+        run_path=run_path,
+        workspace_root=workspace_root,
+    )
+
+    payload = build_lesson_payload(
+        prompt_text="Prompt contract",
+        bundle=bundle,
+        variant="full",
+        output_lang="zh-CN",
+    )
+
+    assert "## Output language" in payload
+    assert "Simplified Chinese (zh-CN)" in payload
 
 
 def test_full_lesson_prompt_is_identical_in_root_and_package() -> None:

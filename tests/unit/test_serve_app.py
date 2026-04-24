@@ -303,6 +303,53 @@ def test_malformed_finalized_marker_is_hidden_without_500(tmp_path: Path) -> Non
     assert "finalized marker is invalid" in response.json()["error"]
 
 
+def test_malformed_run_metadata_is_hidden_from_list_without_500(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=True)
+    (run_path / "metadata.json").write_text("[]\n", encoding="utf-8")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    assert client.get("/api/runs").json() == {"runs": []}
+    response = client.get("/api/run/run-1")
+
+    assert response.status_code == 400
+    assert "finalized marker is invalid" in response.json()["error"]
+
+
+def test_non_object_finalized_marker_is_hidden_without_500(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=True)
+    (run_path / "finalized.json").write_text("[]\n", encoding="utf-8")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    assert client.get("/api/runs").json() == {"runs": []}
+    response = client.get("/api/run/run-1")
+
+    assert response.status_code == 400
+    assert "finalized marker is invalid" in response.json()["error"]
+
+
+def test_symlink_run_directory_is_not_served(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    outside_state_dir = tmp_path / "outside" / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    outside_run_path = _write_run(outside_state_dir, "run-1", finalized=True)
+    (state_dir / "runs").mkdir(parents=True)
+    (state_dir / "runs" / "run-1").symlink_to(outside_run_path, target_is_directory=True)
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    assert client.get("/api/runs").json() == {"runs": []}
+    response = client.get("/api/run/run-1/lesson")
+
+    assert response.status_code == 400
+    assert "finalized run does not exist" in response.json()["error"]
+
+
 def test_run_detail_uses_finalized_marker_event_not_newer_unfinalized_event(
     tmp_path: Path,
 ) -> None:
@@ -359,6 +406,17 @@ def test_runs_source_kind_filter_and_ratchet_history(tmp_path: Path) -> None:
     assert [entry["run_id"] for entry in history] == ["run-1"]
 
 
+def test_concepts_route_does_not_follow_symlink(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    target = tmp_path / "outside-concepts.jsonl"
+    target.write_text('{"concept":"outside"}\n', encoding="utf-8")
+    (state_dir / "concepts.jsonl").symlink_to(target)
+    client = _client(state_dir)
+
+    assert client.get("/api/concepts").json() == {"artifact_type": "concepts", "content": ""}
+
+
 def test_mark_wrong_signal_is_idempotent(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     client = _client(state_dir)
@@ -377,6 +435,20 @@ def test_mark_wrong_signal_is_idempotent(tmp_path: Path) -> None:
 
     assert first.json() == {"inserted": True}
     assert second.json() == {"inserted": False}
+
+
+def test_empty_idempotency_key_is_rejected_before_signal_write(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+
+    response = client.post(
+        "/api/signals/mark-wrong",
+        headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        json={"claim_id": "claim-1", "idempotency_key": ""},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"][0]["loc"] == ["idempotency_key"]
 
 
 def test_srs_review_records_card_review(tmp_path: Path) -> None:
@@ -430,6 +502,23 @@ def test_malformed_origin_is_rejected_without_500(tmp_path: Path) -> None:
 
     assert response.status_code == 403
     assert response.json()["error"] == "origin_not_allowed"
+
+
+def test_malformed_json_write_body_returns_400(tmp_path: Path) -> None:
+    client = _client(tmp_path / ".ahadiff")
+
+    response = client.put(
+        "/api/locale",
+        headers={
+            "content-type": "application/json",
+            "origin": "http://localhost:8765",
+            "X-AhaDiff-Token": "test-token",
+        },
+        content="{not-json",
+    )
+
+    assert response.status_code == 400
+    assert "Expecting property name enclosed in double quotes" in response.json()["error"]
 
 
 def test_viewer_static_serves_spa_fallback_without_viewer_source_changes(tmp_path: Path) -> None:

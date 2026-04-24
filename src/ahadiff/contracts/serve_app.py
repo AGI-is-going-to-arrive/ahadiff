@@ -90,7 +90,7 @@ class SetLocaleRequest(BaseModel):
 class LearningSignalRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    idempotency_key: str
+    idempotency_key: str = Field(min_length=1)
 
 
 class MarkWrongRequest(LearningSignalRequest):

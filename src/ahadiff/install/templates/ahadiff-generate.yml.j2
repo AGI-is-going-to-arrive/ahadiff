@@ -8,6 +8,21 @@ on:
         description: Git diff range to learn from.
         required: true
         default: HEAD~1..HEAD
+      provider_class:
+        description: AhaDiff provider class.
+        required: true
+        default: openai
+      provider_base_url:
+        description: Provider API base URL.
+        required: true
+      provider_model:
+        description: Provider model name.
+        required: true
+        default: gpt-5.4-mini
+      privacy_mode:
+        description: Privacy mode for LLM generation.
+        required: true
+        default: redacted_remote
 
 permissions:
   contents: read
@@ -20,8 +35,12 @@ jobs:
   generate:
     runs-on: macos-latest
     env:
-      AHADIFF_API_KEY: ${{ secrets.AHADIFF_API_KEY }}
+      AHADIFF_PROVIDER_API_KEY: ${{ secrets.AHADIFF_PROVIDER_API_KEY }}
       AHADIFF_DIFF_REF: ${{ inputs.diff_ref }}
+      AHADIFF_PROVIDER_CLASS: ${{ inputs.provider_class }}
+      AHADIFF_PROVIDER_BASE_URL: ${{ inputs.provider_base_url }}
+      AHADIFF_PROVIDER_MODEL: ${{ inputs.provider_model }}
+      AHADIFF_PRIVACY_MODE: ${{ inputs.privacy_mode }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,8 +48,8 @@ jobs:
 
       - name: Require opt-in LLM secret
         run: |
-          test -n "$AHADIFF_API_KEY" || {
-            echo "AHADIFF_API_KEY secret is required for Layer 2 generation" >&2
+          test -n "$AHADIFF_PROVIDER_API_KEY" || {
+            echo "AHADIFF_PROVIDER_API_KEY secret is required for Layer 2 generation" >&2
             exit 1
           }
 
@@ -43,8 +62,22 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Install dependencies
-        run: uv sync --locked --dev --python python3.12
-
       - name: Generate AhaDiff lesson artifacts
-        run: uv run python -m ahadiff learn "$AHADIFF_DIFF_REF"
+        run: |
+          uvx --python python3.12 --from ahadiff ahadiff learn "$AHADIFF_DIFF_REF" \
+            --provider-class "$AHADIFF_PROVIDER_CLASS" \
+            --base-url "$AHADIFF_PROVIDER_BASE_URL" \
+            --model "$AHADIFF_PROVIDER_MODEL" \
+            --api-key-env AHADIFF_PROVIDER_API_KEY \
+            --privacy-mode "$AHADIFF_PRIVACY_MODE"
+
+      - name: Upload AhaDiff artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ahadiff-artifacts
+          path: |
+            .ahadiff/runs/**
+            .ahadiff/review.sqlite
+            .ahadiff/results.tsv
+            .ahadiff/concepts.jsonl
+          if-no-files-found: warn

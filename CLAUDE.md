@@ -8,11 +8,11 @@
 
 核心差异定位：Code Wiki 解释仓库，知返解释这次改动；而且每句话都能回到代码证据。
 
-**当前阶段**：Stage 0-5 已落地（Task 0/1/2/5/6/7/8/8.5/9/10/11/12/15/16/17），覆盖 contracts、CLI scaffold、safety、LLM provider、diff capture/parse、claims、lesson、quiz、concepts、eval、review.sqlite + FSRS-6、improve loop + Phase 2.5。**未实现**：viewer / serve / install（Stage 4 Task 13-14、Stage 5 Task 14.5）。
+**当前阶段**：Stage 0-6 已落地（Task 0/1/2/5/6/7/8/8.5/9/10/11/12/14.5/15/16/17/18/19/20，另含 i18n-0 后端），覆盖 contracts、CLI scaffold、safety、LLM provider、diff capture/parse、claims、lesson、quiz、concepts、eval、review.sqlite + FSRS-6、serve backend、install targets、benchmark suite、improve loop + Phase 2.5 与后端 locale resolver。**未实现**：React Viewer（Stage 4 Task 13-14）。
 
 ## 架构总览
 
-后端 CLI 主链路（learn/improve/verify）已基本闭合，具备：CLI scaffold、safety gate、8-provider LLM runtime、diff capture+parse、claim extract/verify、lesson/quiz/concepts 生成、8 维 evaluator + ratchet、review.sqlite + FSRS-6、improve loop + Phase 2.5。viewer / serve / install 仍未实现。具体模块文件见下方「模块索引」。
+后端 CLI 主链路（learn/improve/verify/serve/install/benchmark）已基本闭合，具备：CLI scaffold、safety gate、8-provider LLM runtime、diff capture+parse、claim extract/verify、lesson/quiz/concepts 生成、8 维 evaluator + ratchet、review.sqlite + FSRS-6、localhost-only serve API、6 个 install target、benchmark suite、improve loop + Phase 2.5，以及 i18n-0 后端 resolver。React Viewer 仍未实现。具体模块文件见下方「模块索引」。
 
 ### 计划技术栈
 
@@ -100,8 +100,12 @@ graph TD
 | wiki | `src/ahadiff/wiki/` | Python | Stage 3 / Task 10：`concepts.jsonl` / `concepts_local.jsonl` 累积与可见性过滤 |
 | eval | `src/ahadiff/eval/` | Python | Stage 3 / Task 11-12：8 维评分、hard gates、ratchet、result_events、results.tsv 导出与 score/finalized 发布 |
 | review | `src/ahadiff/review/` | Python | Stage 4 / Task 15：review.sqlite schema / migration、FSRS-6 调度、review queue、learning signals、lossy import 与 review CLI 后端 |
+| serve | `src/ahadiff/serve/` | Python | Task 14.5：localhost-only serve API、finalized run 读取门禁、token + Origin/Referer 写保护 |
+| install | `src/ahadiff/install/` | Python | Task 19/20：Claude / Codex / Gemini / OpenCode / hooks / GitHub Action 安装目标与模板 |
 | improve | `src/ahadiff/improve/` | Python | Stage 5 / Task 16/17：improve session、immutable improve_program、worktree replay、prompt 白名单、targeted verification、Phase 2.5、cherry-pick 与 pending worktree guard |
-| tests | `tests/unit/` / `tests/live/` | Python | Stage 0 + Stage 1 + Layer 1.5 + Stage 2 / Stage 3 / Stage 4 / Stage 5 单元测试与 opt-in live smoke：contracts、CLI/config/paths、安全层、provider、diff capture、claims、lesson、quiz、concepts、evaluator、ratchet、review、improve loop、targeted verification、Phase 2.5、真实 LLM judge smoke |
+| i18n | `src/ahadiff/i18n/` | Python | i18n-0：locale resolver、`AHADIFF_LANG`、Accept-Language / cookie / config / LANG fallback、prompt output-language helper |
+| benchmarks | `benchmarks/` | Markdown/JSON/Patch | Task 18：local benchmark fixtures、manifest、expected concepts 与 ground_truth consistency checks |
+| tests | `tests/unit/` / `tests/eval/` / `tests/integration/` / `tests/live/` | Python | Stage 0-6 与 i18n-0 测试：contracts、CLI/config/paths、安全层、provider、diff capture、claims、lesson、quiz、concepts、evaluator、ratchet、review、serve、install、benchmark、improve、targeted verification、Phase 2.5、真实 LLM judge smoke |
 | ui | `ui/` | HTML/CSS/JS | UI 原型：Warm 风格 v1-v6 迭代版本 |
 | team-plan | `.claude/team-plan/` | Markdown | 团队计划：v0.1 kickoff + 修订方案 + CLI 接入扩展 |
 | 根级原型 | `AhaDiff Warm v6.html` | HTML | 最新 UI 参考模板（相对 `ui/` 目录内 v6 快照继续演进，便于快速预览） |
@@ -136,18 +140,20 @@ uv run python -m ahadiff quiz --help
 uv run python -m ahadiff review --help
 uv run python -m ahadiff improve --help
 uv run python -m ahadiff db check --help
+uv run python -m ahadiff install github-action --help
 ```
 
-真实 LLM judge smoke 需要显式开启，默认模型是 `gpt-5.4-mini`，调用顺序是 OpenAI Responses 优先、Chat Completions fallback：
+真实 LLM judge smoke 需要显式开启，默认模型顺序是 `gpt-5.3-codex-spark,gpt-5.4-mini`，每个模型都会先试 OpenAI Responses，再试 Chat Completions fallback：
 
 ```bash
 AHADIFF_LIVE_LLM_JUDGE=1 \
 AHADIFF_LIVE_LLM_API_KEY="$AHADIFF_LIVE_LLM_API_KEY" \
 AHADIFF_LIVE_LLM_BASE_URL="$AHADIFF_LIVE_LLM_BASE_URL" \
+AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-最近一次全量验证（2026-04-24）：`pytest tests/unit` = 406 passed，`pytest tests` = 406 passed + 1 skipped（live judge），ruff / pyright / wheel build 全通过。
+最近一次全量验证（2026-04-24）：`uv run --frozen --no-sync pytest tests/unit -q` = 455 passed；`uv run --frozen --no-sync pytest tests/eval -q` = 7 passed；`uv run --frozen --no-sync pytest tests/integration/test_learn_pipeline.py -m pinned -q` = 10 passed；`PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --frozen --no-sync pytest -p no:cacheprovider tests -q` = 472 passed + 1 skipped（live judge 默认跳过）；显式开启 live judge 后为 1 passed，并单独确认 `gpt-5.3-codex-spark` 可用；ruff / pyright / wheel build / `python -m ahadiff install github-action --help` 全通过。
 
 ### 仓库当前依赖状态
 
@@ -155,7 +161,7 @@ pytest tests/live/test_llm_judge_live.py -q
 
 ## 测试策略
 
-`tests/unit/` 下 30+ 测试文件覆盖 Stage 0-5 全部已落地模块（406 tests），另有 `tests/live/test_llm_judge_live.py`（opt-in）。UI 原型通过 Playwright MCP 浏览器验证。
+`tests/unit/`、`tests/eval/` 与 `tests/integration/` 覆盖 Stage 0-6 和 i18n-0 当前已落地模块，另有 `tests/live/test_llm_judge_live.py`（opt-in）。UI 原型通过 Playwright MCP 浏览器验证。
 
 计划测试策略（工程阶段）：
 - 单元测试：pytest + VCR.py（录制 LLM 调用）
@@ -322,4 +328,5 @@ Stage N 完成 → 三模型并行审查 → 汇总问题 → 修复 → 验证 
 | 2026-04-23 | Stage 2 Task 7/8 provider + claims 落地 + learnability gate，286 passed |
 | 2026-04-23 ~ 04-24 | Stage 3 Task 8.5/9/10/11/12 lesson+quiz+eval+ratchet 落地，335 passed |
 | 2026-04-24 | Stage 4 Task 15 review.sqlite + FSRS-6 + Review CLI 落地，383 passed |
-| 2026-04-24 | Stage 5 Task 16/17 improve loop + Phase 2.5 + live judge 落地，406 passed |
+| 2026-04-24 | Stage 5 Task 16/17 improve loop + Phase 2.5 + live judge 落地，当轮 406 passed |
+| 2026-04-24 | Stage 6 Task 14.5/18/19/20 + i18n-0 review 修复收口：serve backend、benchmark、6 个 install target、GitHub Action 模板、locale resolver 与 prompt output language helper 已同步到文档；本次实测 unit 455 passed、eval 7 passed、pinned integration 10 passed、全量 tests 472 passed + 1 skipped、live judge 1 passed，且 `gpt-5.3-codex-spark` 已单独确认可用 |

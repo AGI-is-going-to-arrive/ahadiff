@@ -14,6 +14,7 @@ from ahadiff.lesson.generator import write_lesson_artifacts
 from ahadiff.lesson.schemas import LessonCompact, LessonFull, LessonHint
 from ahadiff.quiz.generator import (
     QuizArtifactPaths,
+    build_quiz_payload,
     generate_cards_for_run,
     generate_quiz_from_run,
     load_quiz_questions,
@@ -25,6 +26,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     import pytest
+
+    from ahadiff.llm.schemas import ProviderRequest
 
 _RUNNER = CliRunner()
 
@@ -153,9 +156,13 @@ diff --git a/src/app.py b/src/app.py
 
 
 class _FakeQuizProvider:
+    def __init__(self) -> None:
+        self.requests: list[ProviderRequest] = []
+
     def generate(self, request: object) -> object:
         from ahadiff.llm.schemas import ProviderResponse
 
+        self.requests.append(cast("ProviderRequest", request))
         content = json.dumps(
             {
                 "questions": [
@@ -254,6 +261,7 @@ def test_generate_quiz_from_run_writes_expected_artifact(
         ),
         api_key=None,
         security_config=SecurityConfig(),
+        output_lang="zh-CN",
     )
 
     assert isinstance(artifacts, QuizArtifactPaths)
@@ -262,6 +270,28 @@ def test_generate_quiz_from_run_writes_expected_artifact(
     assert len(loaded) == 3
     assert questions[0].question_id is not None
     assert loaded[0].source_claims == ["run_quiz-claim-1"]
+    assert fake_provider.requests
+    assert "Simplified Chinese (zh-CN)" in fake_provider.requests[0].payload_text
+
+
+def test_quiz_payload_includes_requested_output_language(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_lang")
+    metadata = json.loads((run_path / "metadata.json").read_text(encoding="utf-8"))
+
+    payload = build_quiz_payload(
+        prompt_text="Prompt contract",
+        metadata=metadata,
+        lesson_text="Lesson",
+        claims_text=(run_path / "claims.jsonl").read_text(encoding="utf-8"),
+        patch_text=(run_path / "patch.diff").read_text(encoding="utf-8"),
+        line_map_text=(run_path / "line_map.json").read_text(encoding="utf-8"),
+        symbols_text=(run_path / "symbols.json").read_text(encoding="utf-8"),
+        output_lang="zh-CN",
+    )
+
+    assert "## Output language" in payload
+    assert "Simplified Chinese (zh-CN)" in payload
 
 
 def test_generate_cards_for_run_writes_review_cards(tmp_path: Path) -> None:

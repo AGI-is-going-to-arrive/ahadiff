@@ -4,6 +4,7 @@ from .resolver import (
     locale_from_accept_language,
     normalize_locale,
     normalize_locale_preference,
+    prompt_language_instruction,
     resolve_locale,
 )
 
@@ -13,5 +14,6 @@ __all__ = [
     "locale_from_accept_language",
     "normalize_locale",
     "normalize_locale_preference",
+    "prompt_language_instruction",
     "resolve_locale",
 ]

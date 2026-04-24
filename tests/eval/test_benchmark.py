@@ -5,9 +5,11 @@ import shutil
 from pathlib import Path
 from typing import cast
 
+import pytest
 from typer.testing import CliRunner
 
 from ahadiff.cli import app
+from ahadiff.core.errors import InputError
 from ahadiff.eval.benchmark import (
     compute_suite_digest,
     load_benchmark_manifest,
@@ -44,6 +46,30 @@ def test_benchmark_digest_detects_fixture_drift(tmp_path: Path) -> None:
     assert compute_suite_digest(manifest) != manifest.suite_digest
 
 
+def test_benchmark_rejects_ground_truth_concept_drift(tmp_path: Path) -> None:
+    local_benchmarks = tmp_path / "benchmarks"
+    shutil.copytree(_REPO_ROOT / "benchmarks", local_benchmarks)
+    manifest_path = local_benchmarks / "manifest.json"
+    fixture = local_benchmarks / "fixtures" / "eval" / "eval_001_python_retry" / "ground_truth.md"
+    fixture.write_text(
+        fixture.read_text(encoding="utf-8").replace(
+            "Expected concepts: retry-loop, exception-flow.",
+            "Expected concepts: wrong-concept, exception-flow.",
+        ),
+        encoding="utf-8",
+    )
+    manifest = load_benchmark_manifest(manifest_path)
+    manifest_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest_payload["suite_digest"] = compute_suite_digest(manifest)
+    manifest_path.write_text(
+        json.dumps(manifest_payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(InputError, match="ground_truth expected concepts"):
+        run_benchmark_suite(manifest_path, suite="local")
+
+
 def test_run_benchmark_suite_reports_comparable_metrics() -> None:
     report = run_benchmark_suite(_MANIFEST_PATH, suite="local")
     payload = report.to_payload()
@@ -58,6 +84,11 @@ def test_run_benchmark_suite_reports_comparable_metrics() -> None:
     assert isinstance(payload["mean_score"], int | float)
     assert payload["mean_score"] >= 80.0
     assert payload["claim_verification_rate"] == 1.0
+    entries = payload["entries"]
+    assert isinstance(entries, list)
+    first_entry = cast("dict[str, object]", entries[0])
+    assert isinstance(first_entry["ground_truth_digest"], str)
+    assert len(first_entry["ground_truth_digest"]) == 64
     dimensions = payload["dimension_means"]
     assert isinstance(dimensions, dict)
     dimension_map = cast("dict[str, object]", dimensions)

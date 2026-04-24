@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 from typing import TYPE_CHECKING
 
 from ahadiff.core.errors import InputError
@@ -22,7 +23,7 @@ def serve_state(request: Request) -> ServeState:
 def require_write_token(request: Request) -> None:
     state = serve_state(request)
     supplied = request.headers.get(WRITE_TOKEN_HEADER)
-    if not supplied or supplied != state.token:
+    if not supplied or not hmac.compare_digest(supplied, state.token):
         raise PermissionError("write route requires a valid X-AhaDiff-Token header")
 
 

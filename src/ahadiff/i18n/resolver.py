@@ -84,8 +84,18 @@ def resolve_locale(
     if config_locale is not None:
         return config_locale
     env_map = os.environ if env is None else env
+    env_locale = normalize_locale(env_map.get("AHADIFF_LANG"))
+    if env_locale is not None:
+        return env_locale
     env_locale = normalize_locale(env_map.get("LANG"))
     return env_locale or default
+
+
+def prompt_language_instruction(locale: str) -> str:
+    normalized = normalize_locale(locale) or "en"
+    if normalized == "zh-CN":
+        return "Write all user-facing learning content in Simplified Chinese (zh-CN)."
+    return "Write all user-facing learning content in English."
 
 
 def _explicit_preference_locale(value: str | None) -> Locale | None:
@@ -119,5 +129,6 @@ __all__ = [
     "locale_from_accept_language",
     "normalize_locale",
     "normalize_locale_preference",
+    "prompt_language_instruction",
     "resolve_locale",
 ]

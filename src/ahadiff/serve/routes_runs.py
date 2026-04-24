@@ -107,7 +107,11 @@ async def get_diff(request: Request) -> JSONResponse:
 async def get_concepts(request: Request) -> JSONResponse:
     state = serve_state(request)
     concepts_path = state.state_dir / "concepts.jsonl"
-    content = concepts_path.read_text(encoding="utf-8") if concepts_path.exists() else ""
+    content = (
+        concepts_path.read_text(encoding="utf-8")
+        if concepts_path.exists() and not concepts_path.is_symlink()
+        else ""
+    )
     return JSONResponse({"artifact_type": "concepts", "content": content})
 
 
@@ -164,7 +168,9 @@ def _iter_latest_finalized_run_events(
     rows: list[tuple[ResultEvent, dict[str, Any], Path]] = []
     for run_id, event in by_run.items():
         run_path = runs_dir / run_id
-        rows.append((event, _load_json_object(run_path / "metadata.json"), run_path))
+        metadata = _load_run_metadata_or_none(run_path)
+        if metadata is not None:
+            rows.append((event, metadata, run_path))
     return tuple(rows)
 
 
@@ -173,7 +179,7 @@ def _finalized_event_ids(runs_dir: Path) -> dict[str, str]:
         return {}
     event_ids: dict[str, str] = {}
     for path in runs_dir.iterdir():
-        if not path.is_dir() or path.name.endswith(".tmp"):
+        if path.is_symlink() or not path.is_dir() or path.name.endswith(".tmp"):
             continue
         marker_path = path / "finalized.json"
         if not marker_path.is_file():
@@ -191,7 +197,7 @@ def _finalized_event_ids(runs_dir: Path) -> dict[str, str]:
 def _finalized_run_path(runs_dir: Path, run_id: str) -> Path:
     validate_run_id(run_id)
     run_path = runs_dir / run_id
-    if not (run_path.is_dir() and (run_path / "finalized.json").is_file()):
+    if run_path.is_symlink() or not (run_path.is_dir() and (run_path / "finalized.json").is_file()):
         raise InputError(f"finalized run does not exist: {run_id}")
     return run_path
 
@@ -237,10 +243,17 @@ def _load_json_object(path: Path) -> dict[str, Any]:
     return cast("dict[str, Any]", payload)
 
 
+def _load_run_metadata_or_none(run_path: Path) -> dict[str, Any] | None:
+    try:
+        return _load_json_object(run_path / "metadata.json")
+    except (InputError, JSONDecodeError, OSError, UnicodeDecodeError):
+        return None
+
+
 def _load_valid_finalized_marker(run_path: Path) -> dict[str, Any] | None:
     try:
         marker = _load_json_object(run_path / "finalized.json")
-    except (JSONDecodeError, OSError, UnicodeDecodeError):
+    except (InputError, JSONDecodeError, OSError, UnicodeDecodeError):
         return None
     if marker.get("run_id") != run_path.name:
         return None

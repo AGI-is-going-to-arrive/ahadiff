@@ -17,6 +17,7 @@ from ahadiff.contracts import (
     compute_runtime_eval_bundle_version,
 )
 from ahadiff.core.errors import InputError
+from ahadiff.i18n import prompt_language_instruction
 from ahadiff.lesson.generator import load_redacted_run_bundle
 from ahadiff.lesson.scaffolding import compute_scaffolding_level
 from ahadiff.llm import ProviderRequest, make_provider
@@ -217,6 +218,7 @@ def build_quiz_payload(
     patch_text: str,
     line_map_text: str,
     symbols_text: str,
+    output_lang: str = "en",
 ) -> str:
     metadata_payload = {
         "run_id": metadata["run_id"],
@@ -229,6 +231,7 @@ def build_quiz_payload(
     return "\n\n".join(
         (
             prompt_text.strip(),
+            "## Output language\n" + prompt_language_instruction(output_lang),
             "## Run metadata\n```json\n"
             + json.dumps(metadata_payload, ensure_ascii=False, indent=2, sort_keys=True)
             + "\n```",
@@ -265,6 +268,7 @@ def _generate_quiz_payload(
         patch_text=bundle.patch_text,
         line_map_text=bundle.line_map_text,
         symbols_text=bundle.symbols_text,
+        output_lang=output_lang,
     )
     prompt_fingerprint = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()[:12]
     resolved_privacy_mode = privacy_mode or bundle.privacy_mode

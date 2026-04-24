@@ -52,3 +52,8 @@ def test_resolve_locale_contract_priority_chain() -> None:
     assert resolve_locale(config_lang="zh-CN", env={"LANG": "en_US.UTF-8"}) == "zh-CN"
     assert resolve_locale(config_lang="auto", env={"LANG": "zh_CN.UTF-8"}) == "zh-CN"
     assert resolve_locale(config_lang="auto", env={"LANG": "fr_FR.UTF-8"}) == "en"
+
+
+def test_resolve_locale_ahadiff_lang_overrides_system_lang() -> None:
+    assert resolve_locale(env={"AHADIFF_LANG": "zh-CN", "LANG": "en_US.UTF-8"}) == "zh-CN"
+    assert resolve_locale(env={"AHADIFF_LANG": "fr-FR", "LANG": "zh_CN.UTF-8"}) == "zh-CN"

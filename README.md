@@ -18,7 +18,7 @@
 - 一份每条结论都可回溯的 **断言清单**（Claims）
 - 一条可比较的 **质量评分历史**（Ratchet，`review.sqlite` 为唯一真相源，`results.tsv` 为导出视图）
 
-当前代码已经能稳定产出 Lesson / Claims / Quiz / Cards / Score / Ratchet；review 流的 SRS runtime、improve loop core、Task 17 targeted verification 与 Phase 2.5 runtime 已落地，Viewer / serve / install 仍在后续阶段。
+当前代码已经能稳定产出 Lesson / Claims / Quiz / Cards / Score / Ratchet；review 流的 SRS runtime、serve backend、install targets、GitHub Action 模板、benchmark suite、improve loop core、Task 17 targeted verification、Phase 2.5 runtime 与 i18n-0 后端都已落地。React Viewer 仍在后续阶段。
 
 > Code Wiki 解释仓库，知返解释这次改动 —— 而且每一句话都能回到代码证据。
 
@@ -68,11 +68,14 @@ ahadiff serve
 # 棘轮优化（Task 16/17 后端已落地；需要已有 finalized run 和 provider 配置）
 ahadiff improve --suite local --rounds 6
 
-# 安装到 AI 工具（v0.1 支持 4 个核心 CLI）
+# 安装到 AI 工具 / 自动化入口（v0.1 已支持 6 个 target）
 ahadiff install claude    # Claude Code → .claude/skills/
 ahadiff install codex     # Codex CLI → AGENTS.md
 ahadiff install gemini    # Gemini CLI → GEMINI.md
 ahadiff install opencode  # OpenCode → AGENTS.md + .opencode/agents/
+ahadiff install hooks     # git hooks
+ahadiff install github-action          # verify-only workflow
+ahadiff install github-action --layer2 # opt-in generate workflow（需要 provider secret）
 # v0.2 扩展: cursor / copilot / windsurf / cline / amp / jules / aider
 ```
 
@@ -153,10 +156,16 @@ ahadiff/
 ├─ src/ahadiff/quiz/            # Stage 3 / Task 10 quiz + cards
 ├─ src/ahadiff/wiki/            # Stage 3 / Task 10 concepts ledger
 ├─ src/ahadiff/eval/            # Stage 3 / Task 11-12 evaluator + ratchet + results
+├─ src/ahadiff/serve/           # Task 14.5 本地 serve API / finalized run gate
+├─ src/ahadiff/install/         # Task 19/20 install targets + GitHub Action 模板
+├─ src/ahadiff/i18n/            # i18n-0 locale resolver / prompt language helper
 ├─ src/ahadiff/prompts/         # wheel 内打包的 prompt 资源
 ├─ prompts/                     # Lesson / claim prompt 模板
 ├─ src/ahadiff/improve/         # Stage 5 / Task 16/17 improve loop、targeted verify、Phase 2.5
-├─ tests/unit/                  # Stage 0 + Stage 1 + Layer 1.5 + Stage 2 / Stage 3 / Stage 4 / Stage 5 单元测试
+├─ benchmarks/                  # Task 18 本地 benchmark fixtures + manifest
+├─ tests/unit/                  # Stage 0–6 与 i18n-0 单元测试
+├─ tests/eval/                  # benchmark suite 测试
+├─ tests/integration/           # pinned integration fixtures
 ├─ tests/live/                  # 需要显式环境变量开启的真实 LLM judge smoke
 ├─ ui/                          # HTML 原型 v1–v6（设计迭代史）
 └─ CLAUDE.md                    # 项目 AI 上下文索引
@@ -164,19 +173,23 @@ ahadiff/
 
 ## 当前阶段
 
-**Stage 1 的 Task 1/2、Layer 1.5 的 Task 7、Stage 2 / Task 5/6/8、Stage 3 / Task 8.5/9/10/11/12、Stage 4 / Task 15，以及 Stage 5 / Task 16/17 已落地。** 当前代码除了设计文档和 HTML 原型，还已经有：
+**Stage 1 的 Task 1/2、Layer 1.5 的 Task 7、Stage 2 / Task 5/6/8、Stage 3 / Task 8.5/9/10/11/12、Stage 4 / Task 15、Stage 5 / Task 16/17、Stage 6 / Task 18/19/20，以及 i18n-0 后端已落地。** 当前代码除了设计文档和 HTML 原型，还已经有：
 
 - `ahadiff learn` 的主链路：支持 git / `--patch` / `--compare` capture，经过 learnability gate 后生成 `claims.raw.jsonl -> claims.jsonl`、`lesson.full|hint|compact.md`、`misconception.md`、`not_proven.md`
 - `ahadiff quiz`：对已生成的 `quiz.jsonl` 做最小交互式答题，并回显 source_claims / file:line evidence
 - `cards.jsonl` / `concepts.jsonl`：评分通过的 run 会生成 cards；git 输入写 repo 级 `concepts.jsonl`，non-git 输入写 run 级 `concepts_local.jsonl`
 - `ahadiff score` / `ahadiff verify` / `ahadiff export-results`：评分、ratchet 判定和 `results.tsv` 导出都已可用
 - `ahadiff review` / `ahadiff mark <claim_id> wrong` / `ahadiff db {backup,restore,check,import-results,finalize-targeted}`：`review.sqlite` 的 review / signals / result_events / lossy import / targeted finalize 链路都已可用
+- `ahadiff serve`：localhost-only serve backend 已可用，读接口只暴露 finalized runs，写接口需要 token + Origin/Referer 校验
+- `ahadiff install`：Claude / Codex / Gemini / OpenCode / hooks / GitHub Action target 已可用；generate workflow 使用 `AHADIFF_PROVIDER_API_KEY`，并上传 `.ahadiff/` 产物 artifact
+- `ahadiff benchmark`：本地 benchmark manifest、20 个 eval fixtures、10 个 pinned integration fixtures 与 `ground_truth.md` 一致性校验已可用
+- i18n-0：locale resolver 支持 cookie / Accept-Language / CLI / config / `AHADIFF_LANG` / `LANG` fallback，lesson/quiz prompt payload 会带输出语言指令
 - `ahadiff improve --suite local --rounds N`：目前仅支持 `--suite local`。它从已有 finalized run 中选择 baseline，在 git worktree 里只改白名单 prompt，重放同一 diff 并重新评分；候选必须让目标维度 + `accuracy` + `evidence` + `safety_privacy` 的合计分高于 baseline，且 hard gates 通过，才会尝试 cherry-pick prompt commit 回主分支，并记录 `event_type=improve` / `status=targeted_verify`；未提升则记录 `discard`，cherry-pick 冲突则保留 pending worktree 且不 finalized；同一 session 连续两次 `discard` 会触发一次 Phase 2.5 worktree rewrite
 - `src/ahadiff/eval/{rubric,gates,deterministic,evaluator,results,ratchet}.py`：8 维评分、hard gates、结果写入、ratchet 选择和导出视图
 - `src/ahadiff/review/{database,scheduler,schemas,signal}.py`：review.sqlite schema / migration、FSRS-6 调度、review queue、learning signal 和 review CLI 后端
 - `src/ahadiff/improve/{loop,program,targeted,rewrite}.py`：improve session、immutable improve_program、worktree 隔离、5 个 mutable prompt 白名单、replay-learn、targeted verification、Phase 2.5 触发、cherry-pick 顺序、session 校验与 pending worktree resume guard
 - source checkout 与 wheel 安装态的 runtime 资源定位：`eval_bundle_version`、`prompt_version`、lesson prompt 加载都已经接到包内资源
-- `ahadiff serve` / `ahadiff install` 仍在后续阶段；Task 17 的 targeted verification 与 Phase 2.5 runtime 已落地。`keep_final` 仍通过全 8 维 recheck 后的 `ahadiff db finalize-targeted <event_id>` 手动收口，不在 improve loop 内自动升级
+- `keep_final` 仍通过全 8 维 recheck 后的 `ahadiff db finalize-targeted <event_id>` 手动收口，不在 improve loop 内自动升级。React Viewer 尚未实现
 
 本轮又收口了几件容易出错的运行时边界：`prompt_version` 只描述 AhaDiff 自己的 prompt 资源，不再受目标工作区 `prompts/` 影响；lesson JSON 解析会跳过不匹配 schema 的示例块；lesson/quiz 目录改成生成后再接到主链，失败时会回滚；如果 lesson 生成阶段失败，会清掉新写出的 `claims.raw.jsonl` / `claims.jsonl`、`quiz/` 和 `concepts_local.jsonl` 半成品；`learn` 成功后会写入 `event_type=learn` 的评分事件和 `score.json`，manual `score` / `verify` 不再污染 learn 的 ratchet baseline；`ReviewCard` 现在会校验 `last_rating` 范围和 `card_state/stale_reason` 组合；伪造 quiz 也不会再误拿 `PASS`。Task 15 这轮也已经补齐：旧版 `cards` schema 会显式迁移 `stale_reason`，schema-invalid `cards.jsonl` 会降级成 warning，重复 regenerate 不会把旧 active 卡留在 due queue 里；`regenerate --only quiz` 在 `evaluate_run` 失败时会恢复旧 quiz/cards，在 `FAIL` 时会删掉陈旧 `cards.jsonl` 并把该 run 的 active 卡标成 `stale + staleness_unknown`；lossy TSV import 现在走单连接整批导入，坏行或 duplicate identity 会整批回滚；`rollback_result_event` 也改成同一连接里完成 delete + export rows，普通 DB connect 不会再因为路径 typo 静默建目录。Task 16/17 这轮补上了 `lesson_hint.md` 白名单、session_id 路径校验、30 分钟 replay timeout、双 prompt temp+replace 写入、非冲突 cherry-pick 失败区分、discard/pending conflict 不写 `finalized.json`、pending conflict 不作为下一轮 baseline、volatile staged/unstaged 输入从保存的 `patch.diff` 重放、短 worktree 路径、`--rounds` 上限 20、null byte 拒绝、Ctrl+C 在已完成 round 后不再追加第二条 crash event、targeted verification、Phase 2.5 单次触发，以及 OpenAI-compatible provider endpoint 归一化。
 
@@ -192,22 +205,24 @@ source .venv/bin/activate && python -m ahadiff quiz --help
 source .venv/bin/activate && python -m ahadiff review --help
 source .venv/bin/activate && python -m ahadiff improve --help
 source .venv/bin/activate && python -m ahadiff db check --help
+source .venv/bin/activate && python -m ahadiff install github-action --help
 ```
 
-真实 LLM judge smoke 需要显式开启，默认模型是 `gpt-5.4-mini`，调用顺序是 OpenAI Responses 优先、Chat Completions fallback：
+真实 LLM judge smoke 需要显式开启，默认模型顺序是 `gpt-5.3-codex-spark,gpt-5.4-mini`，每个模型都会先试 OpenAI Responses，再试 Chat Completions：
 
 ```bash
 AHADIFF_LIVE_LLM_JUDGE=1 \
 AHADIFF_LIVE_LLM_API_KEY="$AHADIFF_LIVE_LLM_API_KEY" \
 AHADIFF_LIVE_LLM_BASE_URL="$AHADIFF_LIVE_LLM_BASE_URL" \
+AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-本次实际结果：`source .venv/bin/activate && pytest tests/unit/test_targeted_verify.py tests/unit/test_phase25.py tests/unit/test_improve_loop.py tests/unit/test_ratchet.py tests/unit/test_results.py tests/unit/test_probe.py -q` 为 `56 passed`；`source .venv/bin/activate && AHADIFF_LIVE_LLM_JUDGE=1 ... pytest tests/live/test_llm_judge_live.py -q` 为 `1 passed`；`source .venv/bin/activate && pytest tests/unit -q` 为 `406 passed`；`source .venv/bin/activate && pytest tests -q` 为 `406 passed, 1 skipped`（live judge 默认跳过）；`source .venv/bin/activate && ruff check src tests`、`source .venv/bin/activate && ruff format --check src tests`、`source .venv/bin/activate && pyright` 与 `source .venv/bin/activate && uv build --wheel` 全通过；`source .venv/bin/activate && python -m ahadiff provider test --help` 也已实测可用。
+本次实际结果：`uv run --frozen --no-sync pytest tests/unit -q` 为 `455 passed`；`uv run --frozen --no-sync pytest tests/eval -q` 为 `7 passed`；`uv run --frozen --no-sync pytest tests/integration/test_learn_pipeline.py -m pinned -q` 为 `10 passed`；`PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --frozen --no-sync pytest -p no:cacheprovider tests -q` 为 `472 passed, 1 skipped`（live judge 默认跳过）；显式开启 live judge 后为 `1 passed`，并单独确认 `gpt-5.3-codex-spark` 可用；`uv run --frozen --no-sync ruff check --no-cache src tests`、`uv run --frozen --no-sync ruff format --check --no-cache src tests`、`uv run --frozen --no-sync pyright`、`uv build --wheel` 与 `uv run --frozen --no-sync python -m ahadiff install github-action --help` 全通过。
 
 下一步路线图：
 
-- [ ] `v0.1`（MVP）：CLI + Lesson + Evaluator + Ratchet 全链路 + React 19 WebUI（`ahadiff serve`）+ 8 种 LLM Provider + 8 种 diff 捕获（含 --unstaged / git show）+ 4 个 CLI install target + i18n + 阶段门禁
+- [ ] `v0.1`（MVP）：CLI + Lesson + Evaluator + Ratchet 全链路 + React 19 WebUI（`ahadiff serve`）+ 8 种 LLM Provider + 8 种 diff 捕获（含 --unstaged / git show）+ 6 个 install target + i18n + 阶段门禁
 - [ ] `v0.2`：--compare-dir + --patch-url + 7 个 IDE install target + watchdog 增量重生 + section-level helpfulness + Team 功能
 - [ ] `v1.0`：PWA + public benchmark suite
 

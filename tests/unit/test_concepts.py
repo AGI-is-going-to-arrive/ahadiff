@@ -5,7 +5,7 @@ import subprocess
 from typing import TYPE_CHECKING
 
 from ahadiff.quiz.schemas import QuizEvidence, QuizQuestion
-from ahadiff.wiki.concepts import append_concepts, load_visible_concepts
+from ahadiff.wiki.concepts import append_concepts, compute_term_key, load_visible_concepts
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -66,6 +66,12 @@ def test_append_concepts_writes_run_local_file_for_non_git_inputs(tmp_path: Path
     assert payload["lang"] == "en"
     assert payload["aliases"] == []
     assert not (workspace_root / ".ahadiff" / "concepts.jsonl").exists()
+
+
+def test_compute_term_key_supports_cjk_terms() -> None:
+    assert compute_term_key("重试策略") == "u-91cd-8bd5-7b56-7565"
+    assert compute_term_key("依赖注入 DI") != compute_term_key("DI")
+    assert compute_term_key("Δ retry") != compute_term_key("retry")
 
 
 def test_load_visible_concepts_filters_by_git_ancestry(tmp_path: Path) -> None:
