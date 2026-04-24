@@ -335,7 +335,7 @@
   5. 实现调度层：per-provider QPS 限制（config.toml 配置）、exponential backoff（Retry-After header 解析）、并发预算（默认 max_concurrent=3）、上下文窗口超限检测（请求前估算 token 数，超限时自动 clip diff 后重试）
   6. 实现 **circuit breaker**：连续 N 次失败（默认 5）后熔断该 provider，冷却 `config.toml [provider].circuit_cooldown`（默认 60s）后自动恢复
   7. 实现 **cost ceiling**：per-run token budget（默认 200K input + 50K output），超限时中止并提示
-  8. 实现 **cache key 契约**：`hash(diff_content + source_ref + prompt_version + eval_bundle_version + model_id + api_family + output_lang + privacy_mode + redaction_config + context_bundle_hash)`，任一变更自动失效。`rubric_version` 仅作展示字段，不再承担缓存失效职责。**context bundle hash pinning**：`context_bundle_hash` 必须基于最终选中的 context artifacts 按稳定顺序拼接后的字节流计算；provider dispatch 前再次校验该 hash，若 assembly→dispatch 间内容漂移则直接 `SafetyError`
+  8. 实现 **cache key 契约**：`hash(diff_content + source_ref + prompt_version + eval_bundle_version + model_id + api_family + api_family_version + output_lang + privacy_mode + redaction_config + context_bundle_hash)`，任一变更自动失效。`rubric_version` 仅作展示字段，不再承担缓存失效职责。当前实现已经把 `ProviderCapabilities.api_family_version` 纳入 key；同一 `api_family` 的不同 API version 不共享缓存。**context bundle hash pinning**：`context_bundle_hash` 必须基于最终选中的 context artifacts 按稳定顺序拼接后的字节流计算；provider dispatch 前再次校验该 hash，若 assembly→dispatch 间内容漂移则直接 `SafetyError`
   9. 实现 **隐私模式感知**（**transport boundary 检查，非 provider class 检查**）：
      - `strict_local` 模式下检查 `base_url` 的 transport boundary：仅允许 `127.0.0.1` / `localhost` / `[::1]` / Unix socket / 用户 `config.toml [security].local_hosts` 显式 allowlist。即使 provider_class=ollama，若 `base_url` 指向非本地地址也拒绝（`SafetyError("strict_local mode: base_url {url} is not loopback")`）
      - `redacted_remote` 下发送脱敏后的 diff

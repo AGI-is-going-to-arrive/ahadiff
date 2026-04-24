@@ -3,7 +3,7 @@
 > 修订日期 2026-04-23
 > 权威源（高→低）：① `CLAUDE.md` ② `ahadiff-v01-kickoff.md` ③ `ahadiff-v01-stages-4-9.md` ④ `closure-checklist-29.md` ⑤ `AhaDiff_frontend_design_v1.1_revised.md` ⑥ `AhaDiff Warm v6.html`
 > 本文档是执行排程，不是新的架构权威源。与 `doc/contract-freeze.md` 冲突时，Task 0 产出的 `contract-freeze.md` 为准。
-> 状态更新（2026-04-24）：`Stage 0 / Task 0`、`Stage 1 / Task 1-2`、`Layer 1.5 / Task 7`、`Stage 2 / Task 5/6/8`、`Stage 3 / Task 8.5/9/10/11/12`、`Stage 4 / Task 15`、`Stage 5 / Task 14.5/16/17`、`Stage 6 / Task 18/19/20` 与 `i18n-0` 后端 runtime 已落地。当前实测 `uv run --frozen --no-sync pytest tests/unit -q` 为 `461 passed`，`PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --frozen --no-sync pytest -p no:cacheprovider tests -q` 为 `478 passed, 1 skipped`（live judge 默认跳过），真实 LLM judge smoke 显式开启后为 `1 passed`，并单独确认 `gpt-5.3-codex-spark` 可用；`ruff check`、`ruff format --check`、`pyright`、`uv build --wheel` 与 `python -m ahadiff install github-action --help` 全通过。Stage 6 follow-up 已补 macOS+Ubuntu CI / workflow、Windows hooks 明确拒绝、static-only install template render、serve artifact SQL 查询与 `ServeState.with_locale()` 运行时字段复用；后续 pinned integration cards fixture 已改为生产 `generate_cards_for_run()` 路径并逐行校验 `ReviewCard` schema，目标回归 `tests/unit/test_quiz_generator.py tests/unit/test_review.py -q` 为 38 passed；Windows CI 仍作为后续平台扩展。
+> 状态更新（2026-04-25）：`Stage 0 / Task 0`、`Stage 1 / Task 1-2`、`Layer 1.5 / Task 7`、`Stage 2 / Task 5/6/8`、`Stage 3 / Task 8.5/9/10/11/12`、`Stage 4 / Task 15`、`Stage 5 / Task 14.5/16/17`、`Stage 6 / Task 18/19/20` 与 `i18n-0` 后端 runtime 已落地。上一轮 Stage 6 收口实测 unit 461 passed、eval 7 passed、pinned integration 10 passed、quiz/review 38 passed、live judge 1 passed，并单独确认 `gpt-5.3-codex-spark` 可用。当前又补齐 LLM cache key 的 `api_family_version` 维度；本轮实测 `uv run --frozen --no-sync pytest tests/unit/test_provider.py -q` 为 `36 passed`，`PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --frozen --no-sync pytest -p no:cacheprovider tests -q` 为 `479 passed, 1 skipped`（live judge 默认跳过），`ruff check`、`ruff format --check`、`pyright` 与 `uv build --wheel` 全通过。Windows CI 仍作为后续平台扩展。
 
 ---
 
@@ -335,7 +335,7 @@
   - `Task 17` targeted verification 与 Phase 2.5 runtime 已落地
   - `Task 19` install targets 与 `Task 20` GitHub Action 模板已落地
   - `keep_final` 仍通过全 8 维 recheck 后的 `ahadiff db finalize-targeted <event_id>` 手动收口，不在 improve loop 内自动升级
-  - 当前实测 `uv run --frozen --no-sync pytest tests/unit -q` 为 `461 passed`，全量 `tests` 为 `478 passed, 1 skipped`，真实 LLM judge smoke 显式开启后为 `1 passed`，并单独确认 `gpt-5.3-codex-spark` 可用
+  - 当前又补齐 LLM cache key 的 `api_family_version` 维度；本轮实测 `uv run --frozen --no-sync pytest tests/unit/test_provider.py -q` 为 `36 passed`，全量 `tests` 为 `479 passed, 1 skipped`，ruff check / ruff format --check / pyright / wheel build 全通过。上一轮 Stage 6 收口实测 unit 461 passed、eval 7 passed、pinned integration 10 passed、quiz/review 38 passed、live judge 1 passed，并单独确认 `gpt-5.3-codex-spark` 可用
 
 - **目标**：
   - 落地本地 Serve API
