@@ -68,6 +68,7 @@ This section records the follow-up fixes applied after the original cross-review
 | **[L-3]** full table scan in `_event_for_finalized_run` | Fixed in this follow-up. Single-run artifact reads now use `load_result_event_by_run_and_id()` with `WHERE run_id = ? AND event_id = ?` instead of loading all `result_events`. |
 | **[L-4]** `put_locale` replaces `ServeState` | Fixed in this follow-up. Locale updates now call `ServeState.with_locale()`, which uses `dataclasses.replace()` and preserves the existing runtime fields, including `write_lock`. |
 | **[L-5]** generated workflows macOS-only | Fixed in this follow-up. Generated verify/generate workflows now use a macOS + Ubuntu matrix with OS-specific Python/SQLite bootstrap; Windows remains deferred. |
+| **[Info]** integration test `cards.jsonl` missing fields | Fixed in this follow-up. Pinned integration fixtures now write `symbols.json`, use `QuizQuestion.expected_answer`, generate cards through `generate_cards_for_run()`, and validate each row as `ReviewCard`. |
 
 ### Additional real fixes made during remediation
 
@@ -84,6 +85,7 @@ This section records the follow-up fixes applied after the original cross-review
 - Serve run artifact reads now avoid a per-request full `result_events` table scan.
 - Linux CI exposed a test-isolation issue: allowlist tests now clear `XDG_CONFIG_HOME` before asserting the HOME fallback global config path.
 - Locale updates now use `ServeState.with_locale()` instead of manually rebuilding every field in `routes_locale.py`; the regression test checks that runtime fields are preserved.
+- Pinned integration fixtures no longer handwrite incomplete `cards.jsonl` rows; they use the production card generator and validate the resulting `ReviewCard` schema.
 
 ### Still not fixed / not expanded
 
@@ -247,7 +249,7 @@ This section records the follow-up fixes applied after the original cross-review
 | Reviewer | Unique Findings |
 |----------|----------------|
 | Claude Orchestrator | Generated WF macOS-only (L-5) |
-| Claude-reviewer | Benchmark 20-entry gate (Info), duplicate Request import (Info), loose dict casting in signals (Info), json.loads/dumps round-trip (Info), integration test cards.jsonl missing fields (Info) |
+| Claude-reviewer | Benchmark 20-entry gate (Info), duplicate Request import (Info), loose dict casting in signals (Info), json.loads/dumps round-trip (Info), integration test cards.jsonl missing fields (Info, fixed in follow-up) |
 | Codex Adversarial | Workflow injection (false positive), auth_token endpoint exposure (Low, by design), symlink TOCTOU (mitigated by checksum) |
 | Codex Review | **Env var mismatch (H-1)**, concepts.jsonl symlink (M-4), empty idempotency_key (M-5), JSON decode 500 (M-6), finalized.json array crash (M-7), coverage gate unreachable (M-8) |
 
@@ -262,6 +264,7 @@ This section records the follow-up fixes applied after the original cross-review
 | `pytest tests/unit/test_github_action.py -q` | PASS | macOS | 8 passed |
 | `pytest tests/eval -q` | PASS | macOS | 7 passed |
 | `pytest tests/integration/test_learn_pipeline.py -m pinned -q` | PASS | macOS | 10 passed |
+| `pytest tests/unit/test_quiz_generator.py tests/unit/test_review.py -q` | PASS | macOS | 38 passed |
 | `pytest tests/unit/test_i18n_resolver.py tests/unit/test_stage1_task1.py tests/unit/test_git_capture.py tests/unit/test_concepts.py tests/unit/test_claim_verify.py -q` | PASS | macOS | 89 passed |
 | `python -m ahadiff benchmark --suite local --output /tmp/...` | PASS | macOS | Suite digest ok, mean 97.08, 14 comparable, 6 degraded excluded |
 | `python -m ahadiff install --help` | PASS | macOS | 6 targets displayed |
