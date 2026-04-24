@@ -1,0 +1,12 @@
+## AhaDiff
+
+Use `ahadiff learn` after meaningful code changes to turn the current diff into
+verified lessons, claims, quiz cards, and score artifacts. Keep the generated
+`.ahadiff/` state local unless the repository policy explicitly says otherwise.
+
+Before trusting a generated explanation, prefer AhaDiff artifacts with verified
+claims and file-line evidence. Use `ahadiff verify <run_id>` or
+`ahadiff score <run_id>` when reviewing an existing run.
+
+Do not paste provider secrets into committed files. Use environment variables
+for API keys and keep live LLM judge runs opt-in.

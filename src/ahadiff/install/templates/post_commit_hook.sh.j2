@@ -1,0 +1,7 @@
+# AHADIFF:BEGIN target=hooks
+(
+  if command -v ahadiff >/dev/null 2>&1; then
+    printf '%s\n' 'AhaDiff: run `ahadiff learn HEAD~1..HEAD` to learn back this commit.'
+  fi
+) || true
+# AHADIFF:END

@@ -67,6 +67,7 @@ from .git.capture import (
 )
 from .git.repo import repo_write_lock, unlock_repo_write_lock
 from .improve import run_improve_loop
+from .install import InstallContext, available_targets, get_target, target_detection
 from .lesson import generate_lessons_from_run
 from .lesson.learnability import assess_learnability
 from .llm import probe_provider
@@ -979,6 +980,98 @@ def quiz_cmd(
         console.print(f"[bold]Score[/bold]: {correct}/{len(questions)}")
     except Exception as error:  # pragma: no cover - exercised through CLI tests
         _handle_cli_error(error)
+
+
+@_APP.command("install")
+def install_cmd(
+    target: Annotated[
+        str | None,
+        typer.Argument(help="Install target: claude, codex, gemini, opencode, or hooks."),
+    ] = None,
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or any path inside it."),
+    ] = Path(),
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Preview writes without changing files."),
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Overwrite generated target files when needed."),
+    ] = False,
+    detect: Annotated[
+        bool,
+        typer.Option("--detect", help="Show detected AhaDiff install targets."),
+    ] = False,
+) -> None:
+    try:
+        root = find_repo_root(repo_root)
+        context = InstallContext(repo_root=root, force=force)
+        if detect:
+            table = Table(title="AhaDiff install targets")
+            table.add_column("Target")
+            table.add_column("Installed")
+            for name, installed in target_detection(context).items():
+                table.add_row(name, "yes" if installed else "no")
+            console.print(table)
+            return
+        if target is None:
+            allowed = ", ".join(available_targets())
+            raise AhaDiffError(f"install target is required; expected one of: {allowed}")
+        installer = get_target(target)
+        if dry_run:
+            console.print(installer.preview(context))
+            return
+        written_paths = installer.write(context)
+        console.print(f"[green]Installed[/green] {target}")
+        for path in written_paths:
+            console.print(f"  - {_display_install_path(path, root)}")
+    except ValueError as error:
+        _handle_cli_error(AhaDiffError(str(error)))
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+@_APP.command("uninstall")
+def uninstall_cmd(
+    target: Annotated[
+        str,
+        typer.Argument(help="Install target: claude, codex, gemini, opencode, or hooks."),
+    ],
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or any path inside it."),
+    ] = Path(),
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Preview removals without changing files."),
+    ] = False,
+) -> None:
+    try:
+        root = find_repo_root(repo_root)
+        context = InstallContext(repo_root=root)
+        installer = get_target(target)
+        if dry_run:
+            console.print(installer.preview_uninstall(context))
+            return
+        removed_paths = installer.uninstall(context)
+        console.print(f"[green]Uninstalled[/green] {target}")
+        if not removed_paths:
+            console.print("  - nothing to remove")
+        for path in removed_paths:
+            console.print(f"  - {_display_install_path(path, root)}")
+    except ValueError as error:
+        _handle_cli_error(AhaDiffError(str(error)))
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+def _display_install_path(path: Path, repo_root: Path) -> str:
+    try:
+        return path.relative_to(repo_root).as_posix()
+    except ValueError:
+        return str(path)
 
 
 def _backup_artifact_for_rollback(path: Path) -> Path | None:

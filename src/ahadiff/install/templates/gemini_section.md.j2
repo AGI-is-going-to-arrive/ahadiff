@@ -1,0 +1,10 @@
+## AhaDiff
+
+Use AhaDiff to verify and learn from AI-written diffs:
+
+- Run `ahadiff learn HEAD~1..HEAD` for committed changes.
+- Run `ahadiff learn --staged` before committing staged work.
+- Use `ahadiff verify <run_id>` when checking existing artifacts.
+
+Generated explanations should be grounded in `claims.jsonl` and file-line
+evidence. Provider secrets must stay in environment variables.

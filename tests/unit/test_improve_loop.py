@@ -441,10 +441,11 @@ def test_run_improve_loop_records_targeted_verify_and_cherry_picks(
     )
 
     events = load_result_events_from_db(db_path)
+    candidate_event = next(event for event in events if event.run_id == "run_candidate")
     assert result.rounds_completed == 1
     assert result.outcomes[0].status == "targeted_verify"
-    assert events[-1].event_type == "improve"
-    assert events[-1].status == "targeted_verify"
+    assert candidate_event.event_type == "improve"
+    assert candidate_event.status == "targeted_verify"
     assert (state_dir / "runs" / "run_candidate").exists()
     assert not (state_dir / "runs" / "run_candidate" / "quiz" / "cards.jsonl").exists()
     assert (repo_root / "prompts" / "lesson_generate.md").read_text(
@@ -543,9 +544,10 @@ def test_run_improve_loop_records_discard_without_cherry_pick(
     )
 
     events = load_result_events_from_db(db_path)
+    candidate_event = next(event for event in events if event.run_id == "run_discard")
     candidate_run_path = state_dir / "runs" / "run_discard"
     assert result.outcomes[0].status == "discard"
-    assert events[-1].status == "discard"
+    assert candidate_event.status == "discard"
     assert not finalized_marker_path(candidate_run_path).exists()
     assert (repo_root / "prompts" / "lesson_generate.md").read_text(
         encoding="utf-8"

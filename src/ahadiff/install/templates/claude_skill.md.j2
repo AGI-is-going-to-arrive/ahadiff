@@ -1,0 +1,18 @@
+<!-- AHADIFF:GENERATED -->
+# AhaDiff
+
+Use this skill when a coding change should be learned back by the developer.
+
+## Commands
+
+- `ahadiff learn HEAD~1..HEAD` captures the latest commit and generates learning artifacts.
+- `ahadiff learn --staged` captures staged changes.
+- `ahadiff quiz <run_id>` reviews generated quiz questions.
+- `ahadiff review` opens the due SRS queue.
+- `ahadiff verify <run_id>` rechecks a run.
+
+## Boundaries
+
+- Keep provider credentials in environment variables.
+- Do not commit `.ahadiff/audit.private.jsonl`.
+- Prefer verified claims with file-line evidence over free-form summaries.

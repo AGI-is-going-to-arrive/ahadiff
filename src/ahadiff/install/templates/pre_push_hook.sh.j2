@@ -1,0 +1,7 @@
+# AHADIFF:BEGIN target=hooks
+(
+  if command -v ahadiff >/dev/null 2>&1; then
+    printf '%s\n' 'AhaDiff: consider `ahadiff verify <run_id>` before pushing learned changes.'
+  fi
+) || true
+# AHADIFF:END
