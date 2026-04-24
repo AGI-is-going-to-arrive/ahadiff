@@ -148,6 +148,7 @@ def capture_patch(
     hard_limit: int | None = None,
     max_patch_bytes: int | None = None,
     privacy_mode: str = "strict_local",
+    content_lang: str = "en",
 ) -> CapturedDiff:
     workspace_root = workspace_root.expanduser().resolve()
     raw_capture = _capture_input(
@@ -213,6 +214,7 @@ def capture_patch(
         "created_at": _utc_now(),
         "mode": "learn",
         "privacy_mode": privacy_mode,
+        "content_lang": content_lang,
         "allowlist_digest": redaction_result.allowlist_digest,
         "degraded_flags": run_source.degraded_flags,
         "capability_flags": _capability_flags(

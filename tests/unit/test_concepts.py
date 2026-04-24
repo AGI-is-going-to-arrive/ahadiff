@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from typing import TYPE_CHECKING
 
@@ -57,6 +58,13 @@ def test_append_concepts_writes_run_local_file_for_non_git_inputs(tmp_path: Path
     assert concepts_path is not None
     assert concepts_path == run_path / "concepts_local.jsonl"
     assert concepts_path.exists()
+    [entry] = concepts_path.read_text(encoding="utf-8").splitlines()
+    payload = json.loads(entry)
+    assert payload["term_key"] == "retry-loop"
+    assert payload["term"] == "retry loop"
+    assert payload["display_name"] == "retry loop"
+    assert payload["lang"] == "en"
+    assert payload["aliases"] == []
     assert not (workspace_root / ".ahadiff" / "concepts.jsonl").exists()
 
 

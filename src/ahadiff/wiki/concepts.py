@@ -65,6 +65,10 @@ def append_concepts(
                 branch_hint=branch_hint,
             )
             continue
+        entry.setdefault("term", occurrence.concept)
+        entry.setdefault("display_name", occurrence.concept)
+        entry.setdefault("lang", "en")
+        entry.setdefault("aliases", [])
         entry["source_refs"] = _merge_unique_strings(entry.get("source_refs", []), [source_ref])
         entry["updated_by_runs"] = _merge_unique_strings(entry.get("updated_by_runs", []), [run_id])
         entry["related_claims"] = _merge_unique_strings(
@@ -144,6 +148,10 @@ def _concept_entry(
     return {
         "concept": occurrence.concept,
         "term_key": compute_term_key(occurrence.concept),
+        "term": occurrence.concept,
+        "display_name": occurrence.concept,
+        "lang": "en",
+        "aliases": [],
         "source_refs": [source_ref],
         "branch_hint": branch_hint,
         "introduced_by_run": run_id,

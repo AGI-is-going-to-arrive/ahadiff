@@ -10,7 +10,7 @@ import tempfile
 import webbrowser
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
+from typing import TYPE_CHECKING, Annotated, Any, cast
 
 import typer
 from pydantic import ValidationError
@@ -70,6 +70,7 @@ from .git.capture import (
     write_input_artifacts,
 )
 from .git.repo import repo_write_lock, unlock_repo_write_lock
+from .i18n import resolve_locale
 from .improve import run_improve_loop
 from .install import InstallContext, available_targets, get_target, target_detection
 from .lesson import generate_lessons_from_run
@@ -653,6 +654,10 @@ def learn_cmd(
         str | None,
         typer.Option("--privacy-mode", help="Temporary CLI override."),
     ] = None,
+    lang: Annotated[
+        str | None,
+        typer.Option("--lang", help="Temporary output language override."),
+    ] = None,
     use_graphify: Annotated[
         bool | None,
         typer.Option(
@@ -698,11 +703,11 @@ def learn_cmd(
             allow_non_git=allow_non_git,
         )
         snapshot = (
-            load_config(root, cli_overrides=_cli_overrides(privacy_mode=privacy_mode))
+            load_config(root, cli_overrides=_cli_overrides(privacy_mode=privacy_mode, lang=lang))
             if has_git_repo
             else load_workspace_config(
                 root,
-                cli_overrides=_cli_overrides(privacy_mode=privacy_mode),
+                cli_overrides=_cli_overrides(privacy_mode=privacy_mode, lang=lang),
             )
         )
         capture_config = cast("dict[str, Any]", snapshot.values["capture"])
@@ -710,6 +715,13 @@ def learn_cmd(
         llm_config = cast("dict[str, Any]", snapshot.values["llm"])
         provider_limits = cast("dict[str, Any]", snapshot.values["provider"])
         effective_privacy_mode = str(snapshot.values["privacy_mode"])
+        configured_output_lang = str(llm_config.get("output_lang", "auto"))
+        configured_content_lang = (
+            configured_output_lang
+            if configured_output_lang != "auto"
+            else str(snapshot.values["lang"])
+        )
+        resolved_content_lang = resolve_locale(cli_lang=lang, config_lang=configured_content_lang)
         security_config = (
             load_security_config(root) if has_git_repo else load_workspace_security_config(root)
         )
@@ -734,6 +746,7 @@ def learn_cmd(
                 hard_limit=int(capture_config["hard_limit"]),
                 max_patch_bytes=int(capture_config["max_patch_bytes"]),
                 privacy_mode=effective_privacy_mode,
+                content_lang=resolved_content_lang,
             )
             learnability = assess_learnability(
                 capture.persisted_patch_text,
@@ -837,6 +850,7 @@ def learn_cmd(
                             qps_limit=int(provider_limits["qps_limit"]),
                             retry_attempts=int(llm_config["retry_attempts"]),
                             privacy_mode=resolved_privacy_mode,
+                            output_lang=resolved_content_lang,
                         )
                         quiz_artifacts, quiz_questions = generate_quiz_from_run(
                             run_id=capture.run_id,
@@ -850,6 +864,7 @@ def learn_cmd(
                             qps_limit=int(provider_limits["qps_limit"]),
                             retry_attempts=int(llm_config["retry_attempts"]),
                             privacy_mode=resolved_privacy_mode,
+                            output_lang=resolved_content_lang,
                         )
                         quiz_path = quiz_artifacts.quiz_path
                         learn_report = evaluate_run(run_path)
@@ -1487,13 +1502,17 @@ def serve_cmd(
         bool | None,
         typer.Option("--no-browser", help="Do not open the browser automatically."),
     ] = None,
+    lang: Annotated[
+        str | None,
+        typer.Option("--lang", help="Temporary serve locale override."),
+    ] = None,
 ) -> None:
     try:
         root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
         state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
         snapshot = load_workspace_config(
             root,
-            cli_overrides=_cli_overrides(serve_port=port, no_browser=no_browser),
+            cli_overrides=_cli_overrides(serve_port=port, no_browser=no_browser, lang=lang),
         )
         serve_config = cast("dict[str, Any]", snapshot.values["serve"])
         bind_host = str(serve_config["bind_host"])
@@ -1501,7 +1520,7 @@ def serve_cmd(
             raise AhaDiffError("serve bind_host must be 127.0.0.1 in v0.1")
         resolved_port = int(serve_config["port"])
         resolved_no_browser = bool(serve_config["no_browser"])
-        resolved_locale = _resolve_serve_locale(str(snapshot.values["lang"]))
+        resolved_locale = resolve_locale(config_lang=str(snapshot.values["lang"]))
         state_dir.mkdir(parents=True, exist_ok=True)
         app_instance = create_app(
             ServeState(
@@ -1524,18 +1543,6 @@ def serve_cmd(
         uvicorn.run(app_instance, host=bind_host, port=resolved_port, log_level="info")
     except Exception as error:  # pragma: no cover - exercised through CLI tests
         _handle_cli_error(error)
-
-
-def _resolve_serve_locale(value: str) -> Literal["en", "zh-CN"]:
-    if value == "zh-CN":
-        return "zh-CN"
-    if value == "en":
-        return "en"
-    lang = os.environ.get("LANG", "")
-    normalized = lang.replace("_", "-").casefold()
-    if normalized.startswith("zh-cn") or normalized.startswith("zh-hans"):
-        return "zh-CN"
-    return "en"
 
 
 @_APP.command("mark")

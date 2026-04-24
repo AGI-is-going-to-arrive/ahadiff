@@ -10,12 +10,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypeGuard, cast
 
+from ahadiff.i18n import normalize_locale_preference
+
 from .errors import ConfigError
 from .paths import find_repo_root, find_workspace_root, global_config_dir
 
 Scalar = str | int | float | bool | tuple[str, ...]
 NestedConfig = dict[str, "Scalar | NestedConfig"]
 _PRIVACY_MODES = {"strict_local", "redacted_remote", "explicit_remote"}
+_LOCALE_PREFERENCE_KEYS = {"lang", "llm.prompt_lang", "llm.output_lang"}
 DEFAULT_CONFIG: dict[str, Any] = {
     "lang": "auto",
     "privacy_mode": "strict_local",
@@ -32,6 +35,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "retry_attempts": 3,
         "input_token_budget": 200_000,
         "output_token_budget": 50_000,
+        "prompt_lang": "auto",
+        "output_lang": "auto",
     },
     "pricing": {
         "openrouter_enabled": True,
@@ -164,6 +169,13 @@ def _coerce_bool(raw_value: str, *, key: str) -> bool:
 
 
 def _coerce_value(key: str, value: Any, expected: Scalar) -> Scalar:
+    if key in _LOCALE_PREFERENCE_KEYS:
+        if not isinstance(value, str):
+            raise ConfigError(f"{key} expects str, got {type(value).__name__}")
+        preference = normalize_locale_preference(value)
+        if preference is None:
+            raise ConfigError(f"{key} must be one of auto, en, zh-CN, got {value!r}")
+        return preference
     if key == "privacy_mode":
         if not isinstance(value, str):
             raise ConfigError(f"{key} expects str, got {type(value).__name__}")
@@ -211,7 +223,7 @@ _KNOWN_KEYS = tuple(sorted(_FLAT_DEFAULTS))
 _ENV_KEY_MAP = {
     key: f"AHADIFF_{key.replace('.', '_').upper()}"
     for key in _KNOWN_KEYS
-    if not isinstance(_FLAT_DEFAULTS[key], tuple)
+    if key != "lang" and not isinstance(_FLAT_DEFAULTS[key], tuple)
 }
 _PROVIDER_DYNAMIC_FIELDS = frozenset(
     {

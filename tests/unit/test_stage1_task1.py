@@ -19,7 +19,7 @@ from ahadiff.core.config import (
     resolve_effective,
     write_default_config,
 )
-from ahadiff.core.errors import StorageError
+from ahadiff.core.errors import ConfigError, StorageError
 from ahadiff.core.ids import make_claim_id, make_hunk_id, make_run_id
 from ahadiff.core.paths import (
     assert_local_repo_path,
@@ -74,7 +74,11 @@ def test_load_config_resolves_five_layer_precedence(
     _init_git_repo(repo_root)
 
     global_root = tmp_path / "global-home"
-    env = {"HOME": str(global_root), "AHADIFF_LANG": "en"}
+    env = {
+        "HOME": str(global_root),
+        "AHADIFF_LANG": "en",
+        "AHADIFF_PRIVACY_MODE": "explicit_remote",
+    }
     global_path = global_config_dir(env=env) / "config.toml"
     global_path.parent.mkdir(parents=True)
     global_path.write_text(
@@ -85,7 +89,7 @@ def test_load_config_resolves_five_layer_precedence(
     repo_path = repo_config_path(repo_root)
     repo_path.parent.mkdir(parents=True)
     repo_path.write_text(
-        'privacy_mode = "redacted_remote"\n\n[serve]\nport = 9001\n',
+        'privacy_mode = "redacted_remote"\n\n[provider]\nqps_limit = 9\n\n[serve]\nport = 9001\n',
         encoding="utf-8",
     )
 
@@ -95,13 +99,14 @@ def test_load_config_resolves_five_layer_precedence(
         env=env,
     )
 
-    assert resolve_effective("lang", snapshot=snapshot).value == "en"
-    assert resolve_effective("lang", snapshot=snapshot).source == "env:AHADIFF_LANG"
+    assert resolve_effective("lang", snapshot=snapshot).value == "zh-CN"
+    assert resolve_effective("lang", snapshot=snapshot).source == f"global:{global_path}"
     assert resolve_effective("serve.port", snapshot=snapshot).value == 9100
     assert resolve_effective("serve.port", snapshot=snapshot).source == "cli"
-    assert resolve_effective("privacy_mode", snapshot=snapshot).value == "redacted_remote"
-    privacy_source = resolve_effective("privacy_mode", snapshot=snapshot).source
-    assert privacy_source.endswith(".ahadiff/config.toml")
+    assert resolve_effective("privacy_mode", snapshot=snapshot).value == "explicit_remote"
+    assert resolve_effective("privacy_mode", snapshot=snapshot).source == "env:AHADIFF_PRIVACY_MODE"
+    provider_source = resolve_effective("provider.qps_limit", snapshot=snapshot).source
+    assert provider_source.endswith(".ahadiff/config.toml")
     assert resolve_effective("learn.learnability_threshold", snapshot=snapshot).value == 0.5
     global_source = resolve_effective("learn.learnability_threshold", snapshot=snapshot).source
     assert global_source == f"global:{global_path}"
@@ -110,6 +115,32 @@ def test_load_config_resolves_five_layer_precedence(
 
     keys = [setting.key for setting in iter_resolved_settings(snapshot)]
     assert "llm.generate_model" in keys
+
+
+def test_locale_config_values_are_schema_checked(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+
+    repo_path = repo_config_path(repo_root)
+    repo_path.parent.mkdir(parents=True)
+    repo_path.write_text('lang = "fr-FR"\n', encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="lang must be one of auto, en, zh-CN"):
+        load_config(repo_root, env={"HOME": str(tmp_path / "home")})
+
+
+def test_llm_language_config_values_are_schema_checked(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+
+    repo_path = repo_config_path(repo_root)
+    repo_path.parent.mkdir(parents=True)
+    repo_path.write_text("[llm]\noutput_lang = 42\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="llm.output_lang expects str"):
+        load_config(repo_root, env={"HOME": str(tmp_path / "home")})
 
 
 def test_load_config_reports_unknown_and_sensitive_repo_keys(tmp_path: Path) -> None:

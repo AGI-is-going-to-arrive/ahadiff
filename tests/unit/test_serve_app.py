@@ -54,7 +54,13 @@ def _event(
     )
 
 
-def _write_run(state_dir: Path, run_id: str, *, finalized: bool = True) -> Path:
+def _write_run(
+    state_dir: Path,
+    run_id: str,
+    *,
+    finalized: bool = True,
+    content_lang: str = "en",
+) -> Path:
     run_path = state_dir / "runs" / run_id
     run_path.mkdir(parents=True, exist_ok=True)
     _write_json(
@@ -63,6 +69,7 @@ def _write_run(state_dir: Path, run_id: str, *, finalized: bool = True) -> Path:
             "run_id": run_id,
             "source_kind": "git_ref",
             "source_ref": "abc1234",
+            "content_lang": content_lang,
             "capability_level": 2,
             "degraded_flags": {"diff_clipped": True},
         },
@@ -132,6 +139,7 @@ def test_write_routes_require_token(tmp_path: Path) -> None:
 
     assert denied.status_code == 403
     assert accepted.status_code == 200
+    assert "ahadiff_lang=zh-CN" in accepted.headers["set-cookie"]
     assert client.get("/api/locale").json() == {"locale": "zh-CN"}
 
 
@@ -139,15 +147,15 @@ def test_locale_resolves_cookie_accept_language_and_serve_state(tmp_path: Path) 
     client = _client(tmp_path / ".ahadiff", locale="zh-CN")
 
     from_state = client.get("/api/locale")
-    from_accept_language = client.get("/api/locale", headers={"accept-language": "en-AU,en;q=0.9"})
-    from_cookie = client.get(
+    from_accept_language = client.get(
         "/api/locale",
-        headers={"accept-language": "en"},
-        cookies={"ahadiff_lang": "zh-CN"},
+        headers={"accept-language": "en;q=0.1, zh-Hans-CN;q=0.9"},
     )
+    client.cookies.set("ahadiff_lang", "zh-CN")
+    from_cookie = client.get("/api/locale", headers={"accept-language": "en"})
 
     assert from_state.json() == {"locale": "zh-CN"}
-    assert from_accept_language.json() == {"locale": "en"}
+    assert from_accept_language.json() == {"locale": "zh-CN"}
     assert from_cookie.json() == {"locale": "zh-CN"}
 
 
@@ -180,7 +188,7 @@ def test_write_routes_require_loopback_origin_or_referer(tmp_path: Path) -> None
 def test_runs_only_expose_finalized_runs_and_artifacts(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     initialize_review_db(state_dir / "review.sqlite")
-    _write_run(state_dir, "run-1", finalized=True)
+    _write_run(state_dir, "run-1", finalized=True, content_lang="zh-CN")
     _write_run(state_dir, "run-2", finalized=False)
     sync_result_event(state_dir / "review.sqlite", _event("run-1"))
     sync_result_event(state_dir / "review.sqlite", _event("run-2"))
@@ -192,7 +200,9 @@ def test_runs_only_expose_finalized_runs_and_artifacts(tmp_path: Path) -> None:
     lesson = client.get("/api/run/run-1/lesson?level=compact").json()
 
     assert [run["run_id"] for run in runs] == ["run-1"]
+    assert runs[0]["content_lang"] == "zh-CN"
     assert detail["run_id"] == "run-1"
+    assert detail["content_lang"] == "zh-CN"
     assert detail["source_kind"] == "git_ref"
     assert detail["degraded_flags"] == {"diff_clipped": True}
     assert hidden.status_code == 400

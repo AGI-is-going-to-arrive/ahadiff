@@ -182,6 +182,8 @@ def _match_source_hunks(
                         start=source_hunk.start,
                         end=source_hunk.end,
                         side=source_hunk.side,
+                        file_id=file_map.file_id,
+                        display_path=file_map.display_path,
                     ),
                 ),
             )
@@ -203,6 +205,8 @@ def _match_source_hunks(
                         start=source_hunk.start,
                         end=source_hunk.end,
                         side=resolved_side,
+                        file_id=file_map.file_id,
+                        display_path=file_map.display_path,
                     )
                 )
                 continue
@@ -220,6 +224,8 @@ def _match_source_hunks(
                             start=source_hunk.start,
                             end=source_hunk.end,
                             side=source_hunk.side,
+                            file_id=file_map.file_id,
+                            display_path=file_map.display_path,
                         ),
                     ),
                 )
@@ -231,6 +237,8 @@ def _match_source_hunks(
                         start=source_hunk.start,
                         end=source_hunk.end,
                         side=source_hunk.side,
+                        file_id=file_map.file_id,
+                        display_path=file_map.display_path,
                     ),
                 ),
             )
@@ -261,6 +269,8 @@ def _match_source_hunks(
                             start=source_hunk.start,
                             end=source_hunk.end,
                             side=source_hunk.side,
+                            file_id=file_map.file_id,
+                            display_path=file_map.display_path,
                         ),
                     ),
                 )
@@ -272,15 +282,22 @@ def _match_source_hunks(
                         start=source_hunk.start,
                         end=source_hunk.end,
                         side=source_hunk.side,
+                        file_id=file_map.file_id,
+                        display_path=file_map.display_path,
                     ),
                 ),
             )
+        primary_hunk = matched_by_side[resolved_side][0]
         normalized_hunks.append(
             SourceHunk(
                 file=normalized_file,
                 start=source_hunk.start,
                 end=source_hunk.end,
                 side=resolved_side,
+                file_id=file_map.file_id,
+                display_path=file_map.display_path,
+                hunk_id=primary_hunk.hunk_id,
+                hunk_hash=primary_hunk.hunk_hash,
             )
         )
         matched_hunks.extend(matched_by_side[resolved_side])

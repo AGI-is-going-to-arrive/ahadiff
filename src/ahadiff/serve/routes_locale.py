@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 from starlette.responses import JSONResponse
 
 from ahadiff.contracts import LocaleResponse, SetLocaleRequest
+from ahadiff.i18n import Locale, resolve_locale
 
 from .auth import require_write_token, serve_state
 
@@ -32,40 +33,22 @@ async def put_locale(request: Request) -> JSONResponse:
             port=current.port,
             write_lock=current.write_lock,
         )
-    return JSONResponse(LocaleResponse(locale=update.lang).model_dump(mode="json"))
+    response = JSONResponse(LocaleResponse(locale=update.lang).model_dump(mode="json"))
+    response.set_cookie(
+        "ahadiff_lang",
+        update.lang,
+        httponly=False,
+        samesite="lax",
+    )
+    return response
 
 
-def _resolve_request_locale(request: Request) -> Literal["en", "zh-CN"]:
-    cookie_locale = _normalize_locale(request.cookies.get("ahadiff_lang"))
-    if cookie_locale is not None:
-        return cookie_locale
-    accepted_locale = _locale_from_accept_language(request.headers.get("accept-language"))
-    if accepted_locale is not None:
-        return accepted_locale
-    return serve_state(request).locale
-
-
-def _locale_from_accept_language(value: str | None) -> Literal["en", "zh-CN"] | None:
-    if not value:
-        return None
-    for item in value.split(","):
-        locale = _normalize_locale(item.split(";", 1)[0].strip())
-        if locale is not None:
-            return locale
-    return None
-
-
-def _normalize_locale(value: str | None) -> Literal["en", "zh-CN"] | None:
-    if value is None:
-        return None
-    normalized = value.strip().replace("_", "-").casefold()
-    if normalized == "en" or normalized.startswith("en-"):
-        return "en"
-    if normalized in {"zh-cn", "zh-hans"} or normalized.startswith("zh-hans-"):
-        return "zh-CN"
-    if normalized == "zh" or normalized.startswith("zh-"):
-        return "zh-CN"
-    return None
+def _resolve_request_locale(request: Request) -> Locale:
+    return resolve_locale(
+        cookie_lang=request.cookies.get("ahadiff_lang"),
+        accept_language=request.headers.get("accept-language"),
+        config_lang=serve_state(request).locale,
+    )
 
 
 __all__ = ["get_locale", "put_locale"]

@@ -106,7 +106,11 @@ def test_learn_range_dry_run_writes_redacted_artifacts(tmp_path: Path) -> None:
     head_sha = _commit_all(repo_root, "add secret")
 
     runner = CliRunner()
-    result = _invoke_repo_cli(runner, repo_root, ["learn", "HEAD~1..HEAD", "--dry-run"])
+    result = _invoke_repo_cli(
+        runner,
+        repo_root,
+        ["learn", "HEAD~1..HEAD", "--dry-run", "--lang", "zh"],
+    )
 
     assert result.exit_code == 0
     run_dir, metadata, patch_text = _load_run_artifacts(repo_root)
@@ -116,6 +120,7 @@ def test_learn_range_dry_run_writes_redacted_artifacts(tmp_path: Path) -> None:
     after_text_map = (run_dir / "after_text_by_path.json").read_text(encoding="utf-8")
     assert metadata["source_kind"] == "git_ref"
     assert metadata["source_ref"] == head_sha
+    assert metadata["content_lang"] == "zh-CN"
     assert metadata["capability_level"] == 3
     assert metadata["allowlist_digest"]
     assert secret not in patch_text

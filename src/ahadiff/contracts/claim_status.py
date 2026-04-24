@@ -29,6 +29,10 @@ class SourceHunk(BaseModel):
     start: StrictInt
     end: StrictInt
     side: SourceHunkSide = "either"
+    file_id: str | None = None
+    display_path: str | None = None
+    hunk_id: str | None = None
+    hunk_hash: str | None = None
 
     @model_validator(mode="after")
     def validate_range(self) -> SourceHunk:

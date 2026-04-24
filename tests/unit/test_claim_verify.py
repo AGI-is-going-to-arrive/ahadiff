@@ -279,7 +279,15 @@ diff --git a/src/app.py b/src/app.py
     )
 
     assert result.record.status == "weak"
-    assert result.record.source_hunks[0].side == "new"
+    source_hunk = result.record.source_hunks[0]
+    assert source_hunk.side == "new"
+    assert source_hunk.display_path == "src/app.py"
+    assert source_hunk.file_id is not None
+    assert len(source_hunk.file_id) == 12
+    assert source_hunk.hunk_id is not None
+    assert source_hunk.hunk_id.startswith("hunk_")
+    assert source_hunk.hunk_hash is not None
+    assert len(source_hunk.hunk_hash) == 12
 
 
 def test_verify_claim_rejects_ambiguous_old_path_alias_collision() -> None:

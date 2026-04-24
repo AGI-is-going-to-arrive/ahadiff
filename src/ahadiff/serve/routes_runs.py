@@ -215,6 +215,7 @@ def _summary_from_event(event: ResultEvent, metadata: dict[str, Any]) -> RunSumm
             run_id=event.run_id,
             source_ref=event.source_ref,
             source_kind=cast("Any", metadata.get("source_kind")),
+            content_lang=cast("Any", metadata.get("content_lang") or "en"),
             capability_level=cast("Any", metadata.get("capability_level")),
             verdict=event.verdict,
             overall=event.overall,
