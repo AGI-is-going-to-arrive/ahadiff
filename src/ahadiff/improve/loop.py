@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import signal
@@ -14,13 +15,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from ahadiff.contracts import ProviderConfig, ResultEvent, compute_runtime_eval_bundle_version
-from ahadiff.core.errors import InputError, StorageError
+from ahadiff.core.errors import ConfigError, InputError, StorageError
 from ahadiff.core.ids import make_event_id
 from ahadiff.eval.evaluator import ScoreReport, evaluate_run
 from ahadiff.eval.results import append_result, compute_prompt_version
 from ahadiff.git.repo import run_git
 from ahadiff.llm import ProviderRequest, make_provider
-from ahadiff.review.database import load_result_events_from_db
+from ahadiff.review.database import load_result_events_for_improve_chain, load_result_events_from_db
 
 from .program import (
     ImproveSessionState,
@@ -49,6 +50,10 @@ _BASELINE_STATUSES = frozenset(
 )
 _PENDING_WORKTREE_NOTE = "session has a pending improve worktree; resolve it before resuming"
 _REPLAY_LEARN_TIMEOUT_SECONDS = 30 * 60
+# Hard cap on bytes for any single mutated prompt produced by the improve LLM.
+# 256 KiB is generous for hand-edited Markdown prompts but bounds runaway output.
+_MAX_MUTATED_PROMPT_BYTES = 256 * 1024
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -92,22 +97,29 @@ class _InterruptController:
         self._count = 0
         self._lock = threading.Lock()
         self._previous_sigint = None
+        self._previous_sigterm = None
 
     def install(self) -> None:
         if threading.current_thread() is not threading.main_thread():
             return
         self._previous_sigint = signal.getsignal(signal.SIGINT)
-        signal.signal(signal.SIGINT, self._handle_sigint)
+        self._previous_sigterm = signal.getsignal(signal.SIGTERM)
+        signal.signal(signal.SIGINT, self._handle_interrupt)
+        signal.signal(signal.SIGTERM, self._handle_interrupt)
 
     def restore(self) -> None:
+        if threading.current_thread() is not threading.main_thread():
+            return
         if self._previous_sigint is not None:
             signal.signal(signal.SIGINT, self._previous_sigint)
+        if self._previous_sigterm is not None:
+            signal.signal(signal.SIGTERM, self._previous_sigterm)
 
     @property
     def requested(self) -> bool:
         return self._requested
 
-    def _handle_sigint(self, signum: int, frame: object) -> None:
+    def _handle_interrupt(self, signum: int, frame: object) -> None:
         del signum, frame
         with self._lock:
             self._count += 1
@@ -134,9 +146,15 @@ def run_improve_loop(
     qps_limit: int = 3,
     retry_attempts: int = 3,
     privacy_mode: str = "strict_local",
+    output_lang: str | None = None,
 ) -> ImproveLoopResult:
     if suite != "local":
         raise InputError("improve currently supports only: --suite local")
+    if privacy_mode == "redacted_remote":
+        raise ConfigError(
+            "improve does not support redacted_remote privacy mode; "
+            "use strict_local or explicit_remote"
+        )
 
     warnings: list[str] = []
     if _prompts_are_dirty(repo_root):
@@ -159,21 +177,35 @@ def run_improve_loop(
             )
         if session.worktree_path is not None and Path(session.worktree_path).exists():
             raise InputError(_PENDING_WORKTREE_NOTE)
+        anchor_event = _select_anchor_event_by_run_id(
+            state_dir=state_dir,
+            db_path=db_path,
+            run_id=session.anchor_run_id,
+        )
 
     save_improve_session(state_dir, session)
     anchor_run_path = state_dir / "runs" / session.anchor_run_id
     anchor_metadata = _load_run_metadata(anchor_run_path)
-    source_ref = _require_string(anchor_metadata, "source_ref")
+    source_ref = anchor_event.source_ref
+    base_ref = anchor_event.base_ref
     outcomes: list[ImproveRoundResult] = []
+    outcome_statuses = list(session.outcome_statuses)
     interrupt = _InterruptController()
     interrupt.install()
     try:
         for round_index in range(session.rounds_completed + 1, rounds + 1):
-            latest_event = _select_latest_event_for_source(db_path=db_path, source_ref=source_ref)
+            latest_event = _select_latest_event_for_source(
+                db_path=db_path,
+                source_ref=source_ref,
+                base_ref=base_ref,
+                anchor_run_id=session.anchor_run_id,
+            )
             baseline_event = _select_baseline_event_for_source(
                 state_dir=state_dir,
                 db_path=db_path,
                 source_ref=source_ref,
+                base_ref=base_ref,
+                anchor_run_id=session.anchor_run_id,
             )
             if latest_event is None or baseline_event is None:
                 raise InputError(
@@ -187,8 +219,9 @@ def run_improve_loop(
             worktree_path = _session_worktree_path(state_dir, session.session_id, round_index)
             session = update_improve_session(session, worktree_path=str(worktree_path))
             save_improve_session(state_dir, session)
-            _create_worktree(repo_root, worktree_path)
+            cherry_pick_pending = False
             try:
+                _create_worktree(repo_root, worktree_path)
                 _mutate_prompt_in_worktree(
                     worktree_root=worktree_path,
                     target_prompt=target_prompt,
@@ -203,6 +236,7 @@ def run_improve_loop(
                     max_concurrent=max_concurrent,
                     qps_limit=qps_limit,
                     retry_attempts=retry_attempts,
+                    output_lang=output_lang,
                 )
                 commit_sha = _commit_prompt_change(
                     worktree_root=worktree_path,
@@ -215,7 +249,9 @@ def run_improve_loop(
                     anchor_run_path=baseline_run_path,
                     metadata=anchor_metadata,
                     provider_config=provider_config,
+                    api_key=api_key,
                     privacy_mode=privacy_mode,
+                    output_lang=output_lang,
                 )
                 candidate_report: ScoreReport = evaluate_run(candidate_run_path)
                 candidate_prompt_version = compute_prompt_version(worktree_path)
@@ -231,6 +267,7 @@ def run_improve_loop(
                 )
 
                 note_payload: dict[str, object] = {
+                    "anchor_run_id": session.anchor_run_id,
                     "improve_session_id": session.session_id,
                     "round": round_index,
                     "target_dimension": target_dimension,
@@ -239,7 +276,6 @@ def run_improve_loop(
                 }
                 note_payload.update(targeted_verify.note_payload())
                 status = "discard"
-                cherry_pick_pending = False
                 if targeted_verify.passed:
                     cherry_pick = _cherry_pick_prompt_commit(repo_root, commit_sha)
                     if cherry_pick.pending_conflict:
@@ -255,7 +291,7 @@ def run_improve_loop(
                     run_path=imported_run_path,
                     report=candidate_report,
                     status=status,
-                    base_ref=baseline_event.source_ref,
+                    base_ref=base_ref,
                     event_type="improve",
                     note_payload=note_payload,
                     prompt_version_override=candidate_prompt_version,
@@ -263,26 +299,32 @@ def run_improve_loop(
                 )
                 if status == "discard":
                     _remove_worktree(repo_root, worktree_path)
+                    outcome_statuses.append(status)
                     session = update_improve_session(
                         session,
                         rounds_completed=round_index,
                         worktree_path=None,
                         last_status=status,
+                        outcome_statuses=tuple(outcome_statuses),
                     )
                 elif cherry_pick_pending:
+                    outcome_statuses.append(status)
                     session = update_improve_session(
                         session,
                         rounds_completed=round_index,
                         worktree_path=str(worktree_path),
                         last_status=status,
+                        outcome_statuses=tuple(outcome_statuses),
                     )
                 else:
                     _remove_worktree(repo_root, worktree_path)
+                    outcome_statuses.append(status)
                     session = update_improve_session(
                         session,
                         rounds_completed=round_index,
                         worktree_path=None,
                         last_status=status,
+                        outcome_statuses=tuple(outcome_statuses),
                     )
                 save_improve_session(state_dir, session)
                 outcomes.append(
@@ -299,7 +341,7 @@ def run_improve_loop(
                     )
                 )
                 phase25_decision = decide_phase25(
-                    recent_statuses=tuple(item.status for item in outcomes),
+                    recent_statuses=tuple(outcome_statuses),
                     phase25_attempted=session.phase25_attempted,
                 )
                 if (
@@ -315,6 +357,7 @@ def run_improve_loop(
                         state_dir=state_dir,
                         session=session,
                         baseline_event=baseline_event,
+                        anchor_base_ref=base_ref,
                         baseline_run_path=baseline_run_path,
                         anchor_metadata=anchor_metadata,
                         provider_config=provider_config,
@@ -329,9 +372,16 @@ def run_improve_loop(
                         trigger_reason=phase25_decision.trigger_reason,
                         target_dimension=target_dimension,
                         target_prompt=target_prompt,
+                        output_lang=output_lang,
                     )
                     save_improve_session(state_dir, session)
                     outcomes.append(phase25_result)
+                    outcome_statuses.append(phase25_result.status)
+                    session = update_improve_session(
+                        session,
+                        outcome_statuses=tuple(outcome_statuses),
+                    )
+                    save_improve_session(state_dir, session)
                     if phase25_result.cherry_pick_pending:
                         warnings.append(
                             "Phase 2.5 cherry-pick conflict left pending worktree; "
@@ -350,6 +400,18 @@ def run_improve_loop(
                         "stopped before starting the next round"
                     )
                     break
+            except BaseException:
+                if not cherry_pick_pending:
+                    _remove_worktree(repo_root, worktree_path)
+                    session = update_improve_session(session, worktree_path=None)
+                    try:
+                        save_improve_session(state_dir, session)
+                    except Exception as save_exc:
+                        log.warning(
+                            "failed to save improve session cleanup state after exception: %s",
+                            save_exc,
+                        )
+                raise
             finally:
                 if session.worktree_path is None and worktree_path.exists():
                     _remove_worktree(repo_root, worktree_path)
@@ -371,6 +433,7 @@ def _run_phase25_rewrite(
     state_dir: Path,
     session: ImproveSessionState,
     baseline_event: ResultEvent,
+    anchor_base_ref: str | None = None,
     baseline_run_path: Path,
     anchor_metadata: dict[str, Any],
     provider_config: ProviderConfig,
@@ -385,14 +448,15 @@ def _run_phase25_rewrite(
     trigger_reason: str,
     target_dimension: str,
     target_prompt: str,
+    output_lang: str | None,
 ) -> tuple[ImproveRoundResult, ImproveSessionState]:
     worktree_path = _session_phase25_worktree_path(state_dir, session.session_id)
     session = update_improve_session(session, worktree_path=str(worktree_path))
     save_improve_session(state_dir, session)
-    _create_worktree(repo_root, worktree_path)
     cherry_pick_pending = False
     status = "discard"
     try:
+        _create_worktree(repo_root, worktree_path)
         _mutate_prompt_in_worktree(
             worktree_root=worktree_path,
             target_prompt=target_prompt,
@@ -407,6 +471,7 @@ def _run_phase25_rewrite(
             max_concurrent=max_concurrent,
             qps_limit=qps_limit,
             retry_attempts=retry_attempts,
+            output_lang=output_lang,
         )
         commit_sha = _commit_prompt_change(
             worktree_root=worktree_path,
@@ -419,7 +484,9 @@ def _run_phase25_rewrite(
             anchor_run_path=baseline_run_path,
             metadata=anchor_metadata,
             provider_config=provider_config,
+            api_key=api_key,
             privacy_mode=privacy_mode,
+            output_lang=output_lang,
         )
         candidate_report: ScoreReport = evaluate_run(candidate_run_path)
         candidate_prompt_version = compute_prompt_version(worktree_path)
@@ -443,25 +510,16 @@ def _run_phase25_rewrite(
             trigger_reason=trigger_reason,
             baseline_overall=baseline_event.overall,
         )
-        append_result(
-            run_path=imported_run_path,
-            report=candidate_report,
-            status="phase25_rewrite",
-            base_ref=baseline_event.source_ref,
-            event_type="improve",
-            note_payload=note_payload,
-            prompt_version_override=candidate_prompt_version,
-            write_finalized=False,
-        )
-        note_payload.update(targeted_verify.note_payload())
+        note_payload["anchor_run_id"] = session.anchor_run_id
+        final_payload = {**note_payload, **targeted_verify.note_payload()}
         if targeted_verify.passed:
             cherry_pick = _cherry_pick_prompt_commit(repo_root, commit_sha)
             if cherry_pick.pending_conflict:
                 cherry_pick_pending = True
-                note_payload["cherry_pick_pending"] = True
-                note_payload["worktree_path"] = str(worktree_path)
+                final_payload["cherry_pick_pending"] = True
+                final_payload["worktree_path"] = str(worktree_path)
                 if cherry_pick.conflicted_files:
-                    note_payload["conflicted_files"] = list(cherry_pick.conflicted_files)
+                    final_payload["conflicted_files"] = list(cherry_pick.conflicted_files)
             status = "targeted_verify"
 
         should_write_finalized = status != "discard" and not cherry_pick_pending
@@ -469,9 +527,9 @@ def _run_phase25_rewrite(
             run_path=imported_run_path,
             report=candidate_report,
             status=status,
-            base_ref=baseline_event.source_ref,
+            base_ref=anchor_base_ref,
             event_type="improve",
-            note_payload=note_payload,
+            note_payload=final_payload,
             prompt_version_override=candidate_prompt_version,
             write_finalized=should_write_finalized,
         )
@@ -520,9 +578,33 @@ def _select_anchor_event(*, state_dir: Path, db_path: Path) -> ResultEvent:
     raise InputError("improve requires an existing finalized run with persisted results")
 
 
-def _select_latest_event_for_source(*, db_path: Path, source_ref: str) -> ResultEvent | None:
+def _select_anchor_event_by_run_id(*, state_dir: Path, db_path: Path, run_id: str) -> ResultEvent:
     for event in _sorted_events(load_result_events_from_db(db_path)):
-        if event.event_type in _SIGNAL_EVENT_TYPES and event.source_ref == source_ref:
+        if event.run_id != run_id:
+            continue
+        if event.event_type not in _SIGNAL_EVENT_TYPES:
+            continue
+        if event.status not in _BASELINE_STATUSES:
+            continue
+        if (state_dir / "runs" / event.run_id / "finalized.json").exists():
+            return event
+    raise InputError(f"improve anchor run is not finalized or persisted: {run_id}")
+
+
+def _select_latest_event_for_source(
+    *,
+    db_path: Path,
+    source_ref: str,
+    base_ref: str | None,
+    anchor_run_id: str,
+) -> ResultEvent | None:
+    for event in load_result_events_for_improve_chain(
+        db_path,
+        source_ref=source_ref,
+        base_ref=base_ref,
+        anchor_run_id=anchor_run_id,
+    ):
+        if event.event_type in _SIGNAL_EVENT_TYPES:
             return event
     return None
 
@@ -532,11 +614,18 @@ def _select_baseline_event_for_source(
     state_dir: Path,
     db_path: Path,
     source_ref: str,
+    base_ref: str | None,
+    anchor_run_id: str,
 ) -> ResultEvent | None:
-    for event in _sorted_events(load_result_events_from_db(db_path)):
+    for event in load_result_events_for_improve_chain(
+        db_path,
+        source_ref=source_ref,
+        base_ref=base_ref,
+        anchor_run_id=anchor_run_id,
+    ):
         if event.event_type not in _SIGNAL_EVENT_TYPES:
             continue
-        if event.source_ref != source_ref:
+        if event.run_id != anchor_run_id:
             continue
         if event.status in _BASELINE_STATUSES:
             if not (state_dir / "runs" / event.run_id / "finalized.json").exists():
@@ -565,7 +654,14 @@ def _create_worktree(repo_root: Path, worktree_path: Path) -> None:
     if worktree_path.exists():
         _remove_worktree(repo_root, worktree_path)
     worktree_path.parent.mkdir(parents=True, exist_ok=True)
-    run_git(repo_root, "worktree", "add", "--detach", str(worktree_path), "HEAD")
+    try:
+        run_git(repo_root, "worktree", "add", "--detach", str(worktree_path), "HEAD")
+    except (InputError, OSError, subprocess.SubprocessError) as exc:
+        raise InputError(
+            "failed to create detached git worktree; AhaDiff improve requires "
+            "Git >= 2.18 for 'git worktree add --detach'. Upgrade Git and retry. "
+            f"Detail: {exc}"
+        ) from exc
 
 
 def _remove_worktree(repo_root: Path, worktree_path: Path) -> None:
@@ -605,6 +701,7 @@ def _mutate_prompt_in_worktree(
     max_concurrent: int,
     qps_limit: int,
     retry_attempts: int,
+    output_lang: str | None = None,
 ) -> _MutationResult:
     validate_mutable_prompt_name(target_prompt)
     repo_prompt_path = worktree_root / "prompts" / target_prompt
@@ -651,6 +748,7 @@ def _mutate_prompt_in_worktree(
                 payload_text=payload_text,
                 diff_content=current_prompt,
                 source_ref=baseline_event.source_ref,
+                output_lang=output_lang or "en",
                 privacy_mode=cast("Any", privacy_mode),
                 response_format="json",
                 max_output_tokens=6000,
@@ -671,6 +769,10 @@ def _mutate_prompt_in_worktree(
     if "\x00" in content:
         raise InputError("improve response content must not contain null bytes")
     normalized_content = content.rstrip() + "\n"
+    # Hard cap mutated prompt size to defend against LLM runaway output filling
+    # the prompt with hostile or nonsensical content beyond editor-friendly size.
+    if len(normalized_content.encode("utf-8")) > _MAX_MUTATED_PROMPT_BYTES:
+        raise InputError("improve response prompt content exceeds 262144 bytes")
     if normalized_content == current_prompt:
         raise InputError("improve response did not change the target prompt")
     _write_prompt_pair_atomic(repo_prompt_path, package_prompt_path, normalized_content)
@@ -727,7 +829,9 @@ def _run_replay_learn_subprocess(
     anchor_run_path: Path,
     metadata: dict[str, Any],
     provider_config: ProviderConfig,
+    api_key: str | None,
     privacy_mode: str,
+    output_lang: str | None = None,
 ) -> Path:
     replay_args = build_replay_learn_args(anchor_run_path=anchor_run_path, metadata=metadata)
     command = [
@@ -749,6 +853,11 @@ def _run_replay_learn_subprocess(
         "--privacy-mode",
         privacy_mode,
     ]
+    if output_lang is not None:
+        command.extend(("--lang", output_lang))
+    env = os.environ.copy()
+    if api_key is not None:
+        env[provider_config.api_key_env] = api_key
     state_dir = worktree_root / ".ahadiff" / "runs"
     before_runs: set[str] = (
         {child.name for child in state_dir.iterdir() if child.is_dir()}
@@ -762,6 +871,7 @@ def _run_replay_learn_subprocess(
             capture_output=True,
             text=True,
             check=False,
+            env=env,
             timeout=_REPLAY_LEARN_TIMEOUT_SECONDS,
             **_detached_subprocess_kwargs(),
         )
@@ -798,11 +908,45 @@ def _copy_candidate_run_to_state(*, source_run_path: Path, state_dir: Path) -> P
     temp_path = destination.with_name(f".{destination.name}.tmp")
     if temp_path.exists():
         shutil.rmtree(temp_path, ignore_errors=True)
-    shutil.copytree(source_run_path, temp_path)
-    (temp_path / "quiz" / "cards.jsonl").unlink(missing_ok=True)
-    (temp_path / "finalized.json").unlink(missing_ok=True)
-    temp_path.replace(destination)
+    try:
+        shutil.copytree(source_run_path, temp_path, symlinks=True)
+        _validate_candidate_tree(temp_path)
+        _safe_unlink(temp_path / "quiz" / "cards.jsonl", temp_path)
+        _safe_unlink(temp_path / "finalized.json", temp_path)
+        temp_path.replace(destination)
+    except Exception:
+        if temp_path.exists():
+            shutil.rmtree(temp_path, ignore_errors=True)
+        raise
     return destination
+
+
+def _validate_candidate_tree(root: Path) -> None:
+    root_resolved = root.resolve(strict=True)
+    for path in root.rglob("*"):
+        if path.is_symlink():
+            raise InputError(f"candidate run artifact must not be a symlink: {path}")
+        try:
+            resolved = path.resolve(strict=True)
+        except OSError as exc:
+            raise InputError(f"candidate run artifact cannot be resolved: {path}") from exc
+        if not resolved.is_relative_to(root_resolved):
+            raise InputError(f"candidate run artifact resolves outside staging root: {path}")
+
+
+def _safe_unlink(path: Path, root: Path) -> None:
+    if path.is_symlink():
+        raise InputError(f"refusing to unlink symlinked candidate artifact: {path}")
+    if not path.exists():
+        return
+    root_resolved = root.resolve(strict=True)
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError as exc:
+        raise InputError(f"candidate artifact cannot be resolved before unlink: {path}") from exc
+    if not resolved.is_relative_to(root_resolved):
+        raise InputError(f"candidate artifact resolves outside staging root: {path}")
+    resolved.unlink()
 
 
 def _cherry_pick_prompt_commit(repo_root: Path, commit_sha: str) -> _CherryPickResult:
@@ -819,10 +963,18 @@ def _cherry_pick_prompt_commit(repo_root: Path, commit_sha: str) -> _CherryPickR
     conflicted_files = tuple(
         line.strip() for line in conflict_result.stdout.splitlines() if line.strip()
     )
-    run_git(repo_root, "cherry-pick", "--abort", check=False)
+    abort_result = run_git(repo_root, "cherry-pick", "--abort", check=False)
     if not conflicted_files:
         message = result.stderr.strip() or result.stdout.strip()
         raise InputError(message or "git cherry-pick failed without merge conflicts")
+    if abort_result.returncode != 0:
+        files_hint = ", ".join(conflicted_files[:5])
+        raise InputError(
+            f"git cherry-pick --abort failed after conflict (rc={abort_result.returncode}); "
+            f"main repo may have CHERRY_PICK_HEAD — run 'git cherry-pick --abort' manually. "
+            f"Conflicted files: {files_hint}. "
+            f"Detail: {(abort_result.stderr or abort_result.stdout).strip()}"
+        )
     return _CherryPickResult(
         pending_conflict=True,
         conflicted_files=conflicted_files,
@@ -847,13 +999,6 @@ def _parse_json_object(text: str) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise InputError("improve response must be a JSON object")
     return cast("dict[str, Any]", payload)
-
-
-def _require_string(payload: dict[str, Any], key: str) -> str:
-    value = payload.get(key)
-    if not isinstance(value, str) or value == "":
-        raise InputError(f"run metadata field {key!r} must be a non-empty string")
-    return value
 
 
 __all__ = [

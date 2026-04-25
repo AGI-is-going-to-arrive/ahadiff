@@ -19,6 +19,15 @@ Scalar = str | int | float | bool | tuple[str, ...]
 NestedConfig = dict[str, "Scalar | NestedConfig"]
 _PRIVACY_MODES = {"strict_local", "redacted_remote", "explicit_remote"}
 _LOCALE_PREFERENCE_KEYS = {"lang", "llm.prompt_lang", "llm.output_lang"}
+_SAFE_PROVIDER_API_KEY_ENVS = frozenset(
+    {
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "GEMINI_API_KEY",
+        "AZURE_OPENAI_API_KEY",
+    }
+)
+_AHADIFF_PROVIDER_API_KEY_ENV_PATTERN = re.compile(r"^AHADIFF_[A-Z0-9_]*$")
 DEFAULT_CONFIG: dict[str, Any] = {
     "lang": "auto",
     "privacy_mode": "strict_local",
@@ -105,6 +114,7 @@ class SecurityConfig:
     allow_paths: tuple[str, ...] = ()
     suppress_rules: tuple[str, ...] = ()
     local_hosts: tuple[str, ...] = ()
+    strict_local_hosts: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -369,6 +379,8 @@ def _normalize_cli_overrides(cli_overrides: Mapping[str, Any] | None) -> dict[st
 
 def _flatten_config_file(
     path: Path,
+    *,
+    validate_repo_provider_env: bool = False,
 ) -> tuple[dict[str, Scalar], dict[str, Scalar], tuple[str, ...]]:
     data = _read_toml(path)
     flattened = _flatten_mapping(data)
@@ -380,11 +392,14 @@ def _flatten_config_file(
             continue
         dynamic_field = _dynamic_provider_field(key)
         if dynamic_field is not None:
-            normalized[key] = _coerce_value(
+            coerced = _coerce_value(
                 key,
                 value,
                 _DYNAMIC_PROVIDER_FIELD_DEFAULTS[dynamic_field],
             )
+            if validate_repo_provider_env and dynamic_field == "api_key_env":
+                validate_repo_api_key_env_name(str(coerced))
+            normalized[key] = coerced
             continue
         model_pricing_field = _dynamic_model_pricing_field(key)
         if model_pricing_field is None:
@@ -466,7 +481,10 @@ def _load_config_snapshot(
     repo_path = root / ".ahadiff" / "config.toml"
     global_path = global_config_dir(env=env_map) / "config.toml"
 
-    repo_flattened, repo_values, repo_unknown = _flatten_config_file(repo_path)
+    repo_flattened, repo_values, repo_unknown = _flatten_config_file(
+        repo_path,
+        validate_repo_provider_env=True,
+    )
     _, global_values, global_unknown = _flatten_config_file(global_path)
     cli_values = _normalize_cli_overrides(cli_overrides)
     env_values = _collect_env_overrides(env_map)
@@ -653,6 +671,9 @@ def load_workspace_pricing_settings(
 
 def _security_config_from_snapshot(snapshot: ConfigSnapshot) -> SecurityConfig:
     security_mapping = cast("Mapping[str, Any]", snapshot.values.get("security", {}))
+    local_hosts = _coerce_string_sequence(
+        "security.local_hosts", security_mapping.get("local_hosts")
+    )
     return SecurityConfig(
         allow_exact=_coerce_string_sequence(
             "security.allow_exact", security_mapping.get("allow_exact")
@@ -663,9 +684,39 @@ def _security_config_from_snapshot(snapshot: ConfigSnapshot) -> SecurityConfig:
         suppress_rules=_coerce_string_sequence(
             "security.suppress_rules", security_mapping.get("suppress_rules")
         ),
-        local_hosts=_coerce_string_sequence(
-            "security.local_hosts", security_mapping.get("local_hosts")
-        ),
+        local_hosts=local_hosts,
+        strict_local_hosts=_global_security_local_hosts(snapshot),
+    )
+
+
+def _global_security_local_hosts(snapshot: ConfigSnapshot) -> tuple[str, ...]:
+    global_payload = read_config_data(snapshot.global_config_path)
+    raw_security = global_payload.get("security", {})
+    if raw_security == {}:
+        return ()
+    if not isinstance(raw_security, Mapping):
+        raise ConfigError(f"{snapshot.global_config_path}: [security] must be a table")
+    security_mapping = cast("Mapping[str, Any]", raw_security)
+    return _coerce_string_sequence("security.local_hosts", security_mapping.get("local_hosts"))
+
+
+def local_hosts_for_privacy_mode(
+    security_config: SecurityConfig,
+    privacy_mode: str,
+) -> tuple[str, ...]:
+    if privacy_mode == "strict_local":
+        return security_config.strict_local_hosts
+    return security_config.local_hosts
+
+
+def validate_repo_api_key_env_name(value: str) -> None:
+    if value in _SAFE_PROVIDER_API_KEY_ENVS:
+        return
+    if _AHADIFF_PROVIDER_API_KEY_ENV_PATTERN.fullmatch(value):
+        return
+    raise ConfigError(
+        "repo provider api_key_env must start with AHADIFF_ or be one of: "
+        + ", ".join(sorted(_SAFE_PROVIDER_API_KEY_ENVS))
     )
 
 
@@ -716,7 +767,9 @@ __all__ = [
     "load_workspace_config",
     "load_security_config",
     "load_workspace_security_config",
+    "local_hosts_for_privacy_mode",
     "resolve_effective",
+    "validate_repo_api_key_env_name",
     "write_config_data",
     "write_default_config",
 ]

@@ -1,0 +1,432 @@
+/* Quiz & SRS Card styles */
+
+.quiz-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+  animation: fadeUp 0.3s ease-out;
+}
+
+.quiz-page__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.quiz-page__title {
+  font-family: var(--font-serif);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--ink-strong);
+  margin: 0;
+}
+
+.quiz-page__progress {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.quiz-page__progress--summary {
+  text-align: center;
+  margin-top: 24px;
+}
+
+.quiz-page__empty {
+  text-align: center;
+  padding: 64px 24px;
+  color: var(--muted);
+  font-size: 1rem;
+}
+
+/* SRS Card */
+
+.srs-card {
+  background: var(--elevated);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-12);
+  box-shadow: var(--shadow-md);
+  padding: 28px 24px 24px;
+  transition: box-shadow var(--duration-normal) var(--ease-out-quart);
+}
+
+.srs-card__question {
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  font-weight: 500;
+  color: var(--ink-strong);
+  line-height: 1.55;
+  margin: 0 0 20px;
+}
+
+/* Choices radio group */
+
+.srs-card__choices {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.srs-card__choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--elevated);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-8);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  color: var(--ink);
+  line-height: 1.45;
+  transition:
+    background var(--duration-fast) var(--ease-out-quart),
+    border-color var(--duration-fast) var(--ease-out-quart);
+}
+
+.srs-card__choice:hover:not(.srs-card__choice--disabled) {
+  background: var(--accent-softer);
+  border-color: var(--accent-hair);
+}
+
+.srs-card__choice:active:not(.srs-card__choice--disabled) {
+  transform: scale(0.99);
+}
+
+.srs-card__choice--selected {
+  background: var(--accent-softest);
+  border-color: var(--accent);
+}
+
+.srs-card__choice--disabled {
+  cursor: default;
+  pointer-events: none;
+}
+
+.srs-card__choice--correct {
+  background: var(--add-bg);
+  border-color: var(--add-fg);
+}
+
+.srs-card__choice--wrong {
+  background: var(--del-bg);
+  border-color: var(--del-fg);
+}
+
+.srs-card__choice input[type="radio"] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* Actions row */
+
+.srs-card__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.srs-card__btn {
+  flex: 1;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 10px 16px;
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  font-weight: 500;
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-8);
+  background: var(--elevated);
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-out-quart),
+    opacity var(--duration-fast) var(--ease-out-quart);
+}
+
+.srs-card__btn:hover:not(:disabled) {
+  background: var(--accent-softer);
+}
+
+.srs-card__btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.srs-card__btn:focus-visible {
+  box-shadow: var(--ring-focus);
+  outline: none;
+}
+
+.srs-card__btn--primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+
+.srs-card__btn--primary:hover:not(:disabled) {
+  opacity: 0.9;
+  background: var(--accent);
+}
+
+.srs-card__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Result indicator (correct/wrong) */
+
+.srs-card__result {
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0;
+  margin-block-start: 16px;
+}
+
+.srs-card__result--correct { color: var(--success); }
+.srs-card__result--wrong   { color: var(--danger); }
+
+/* Explanation area */
+
+.srs-card__explanation {
+  margin-top: 20px;
+  padding: 16px;
+  background: var(--accent-softest);
+  border: 1px solid var(--accent-hair);
+  border-radius: var(--radius-8);
+}
+
+.srs-card__explanation-title {
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent-ink);
+  margin: 0 0 8px;
+}
+
+.srs-card__explanation-body {
+  font-family: var(--font-sans);
+  font-size: 0.92rem;
+  color: var(--ink);
+  line-height: 1.55;
+  margin: 0;
+}
+
+/* Peek guard hint */
+
+.srs-card__peek-hint {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+/* Rating row */
+
+.srs-card__rating {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.srs-card__rating-btn {
+  flex: 1;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 8px 12px;
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  font-weight: 500;
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-8);
+  background: var(--elevated);
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-out-quart),
+    opacity var(--duration-fast) var(--ease-out-quart);
+}
+
+.srs-card__rating-btn:hover:not(:disabled) {
+  background: var(--accent-softer);
+}
+
+.srs-card__rating-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.srs-card__rating-btn:focus-visible {
+  box-shadow: var(--ring-focus);
+  outline: none;
+}
+
+.srs-card__rating-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.srs-card__rating-btn--good {
+  border-color: var(--add-fg);
+  color: var(--add-fg);
+}
+
+.srs-card__rating-btn--good:hover:not(:disabled) {
+  background: var(--add-bg);
+}
+
+.srs-card__rating-btn--hard {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.srs-card__rating-btn--hard:hover:not(:disabled) {
+  background: var(--accent-softest);
+}
+
+.srs-card__rating-btn--wrong {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.srs-card__rating-btn--wrong:hover:not(:disabled) {
+  background: var(--danger-soft);
+}
+
+/* Secondary actions (archive/suspend) */
+
+.srs-card__secondary {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.srs-card__secondary-btn {
+  padding: 4px 8px;
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  color: var(--muted);
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.srs-card__secondary-btn:hover {
+  color: var(--ink);
+}
+
+.srs-card__secondary-btn:active {
+  transform: scale(0.97);
+}
+
+.srs-card__secondary-btn:focus-visible {
+  box-shadow: var(--ring-focus);
+  outline: none;
+  border-radius: var(--radius-6);
+}
+
+/* Nav between cards */
+
+.quiz-page__nav {
+  display: flex;
+  justify-content: center;
+  margin-top: 24px;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .quiz-page {
+    animation: none;
+  }
+  .srs-card,
+  .srs-card__choice,
+  .srs-card__btn,
+  .srs-card__rating-btn {
+    transition: none;
+  }
+}
+
+/* ---- Dark mode ---- */
+@media (prefers-color-scheme: dark) {
+  .srs-card {
+    background: var(--subtle);
+    border-color: var(--hair-strong);
+  }
+
+  .srs-card__choice {
+    background: var(--subtle);
+  }
+
+  .srs-card__explanation {
+    background: var(--elevated);
+    border-color: var(--hair-strong);
+  }
+}
+
+/* ---- Forced colors ---- */
+@media (forced-colors: active) {
+  .srs-card {
+    border: 1px solid CanvasText;
+  }
+
+  .srs-card__choice {
+    border: 1px solid CanvasText;
+  }
+
+  .srs-card__choice--selected {
+    border-color: Highlight;
+    color: HighlightText;
+    background: Highlight;
+    forced-color-adjust: none;
+  }
+
+  .srs-card__choice--correct {
+    border-color: LinkText;
+    color: LinkText;
+    background: Canvas;
+  }
+
+  .srs-card__choice--wrong {
+    border-color: CanvasText;
+    color: CanvasText;
+    background: Canvas;
+  }
+
+  .srs-card__btn {
+    border: 1px solid CanvasText;
+  }
+
+  .srs-card__rating-btn {
+    border: 1px solid CanvasText;
+  }
+
+  .srs-card__rating-btn--good {
+    border-color: LinkText;
+    color: LinkText;
+  }
+
+  .srs-card__rating-btn--hard {
+    border-color: CanvasText;
+    color: CanvasText;
+  }
+
+  .srs-card__rating-btn--wrong {
+    border-color: CanvasText;
+    color: CanvasText;
+  }
+
+  .srs-card__explanation {
+    border: 1px solid CanvasText;
+  }
+}

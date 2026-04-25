@@ -24,6 +24,7 @@ class SpaStaticFiles(StaticFiles):
 
 
 def mount_viewer_static(app: Starlette, *, viewer_dist: Path | None) -> None:
+    """Mount the SPA after API routes so browser paths can fall back to index.html."""
     if viewer_dist is None or not viewer_dist.is_dir():
         return
     app.mount("/", SpaStaticFiles(directory=viewer_dist, html=True), name="viewer")

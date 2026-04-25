@@ -1,0 +1,86 @@
+@media (forced-colors: active) {
+  :root {
+    --paper: Canvas;
+    --subtle: Canvas;
+    --elevated: Canvas;
+    --ink: CanvasText;
+    --ink-strong: CanvasText;
+    --muted: CanvasText;
+    --muted-strong: CanvasText;
+    --accent: LinkText;
+    --accent-ink: LinkText;
+    --on-accent: HighlightText;
+    --hair: CanvasText;
+    --hair-strong: CanvasText;
+    /* Diff / semantic foregrounds collapse to CanvasText; the system renders
+       its own contrasting palette. Keep backgrounds transparent so the OS
+       paints them correctly. */
+    --add-fg: CanvasText;
+    --del-fg: CanvasText;
+    --success: CanvasText;
+    --warning: CanvasText;
+    --danger: CanvasText;
+    --info: CanvasText;
+    --add-bg: Canvas;
+    --del-bg: Canvas;
+    --danger-soft: Canvas;
+    --accent-softest: Canvas;
+  }
+
+  button,
+  a {
+    border-color: CanvasText;
+  }
+
+  .topbar__brand-mark {
+    color: HighlightText;
+    background: Highlight;
+    forced-color-adjust: none;
+  }
+
+  .srs-card__btn--primary {
+    color: HighlightText;
+    background: Highlight;
+    border-color: Highlight;
+    forced-color-adjust: none;
+  }
+
+  /* Claim verdict + diff badges keep their text + glyph; rely on OS palette. */
+  .claim-badge {
+    border: 1px solid CanvasText;
+  }
+
+  /* SRS rating buttons: distinguish Good/Hard/Again via system palette. */
+  .srs-card__rating-btn {
+    border: 2px solid CanvasText;
+    forced-color-adjust: none;
+  }
+
+  .srs-card__rating-btn--good {
+    border-color: LinkText;
+  }
+
+  .srs-card__rating-btn--hard {
+    border-color: Highlight;
+  }
+
+  .srs-card__rating-btn--wrong {
+    border-color: CanvasText;
+  }
+
+  .srs-card__secondary-btn {
+    border: 1px solid CanvasText;
+  }
+
+  /* Scaffolding tabs: active tab gets Highlight background. */
+  .scaffolding-tab[aria-selected="true"] {
+    color: HighlightText;
+    background: Highlight;
+    forced-color-adjust: none;
+  }
+
+  /* KPI cards in forced-colors. */
+  .kpi-card {
+    border: 1px solid CanvasText;
+  }
+}

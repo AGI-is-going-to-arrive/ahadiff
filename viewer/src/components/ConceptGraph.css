@@ -1,0 +1,280 @@
+/* ==========================================================================
+   ConceptGraph — three-mode concept visualization
+   Uses tokens from styles/tokens.css exclusively.
+   ========================================================================== */
+
+/* ---------- Container ---------- */
+
+.concept-graph {
+  position: relative;
+  min-height: 200px;
+  animation: fadeUp 0.3s ease-out;
+}
+
+/* ---------- Full mode: SVG graph ---------- */
+
+.concept-graph__svg-wrap {
+  position: relative;
+}
+
+.concept-graph__svg {
+  display: block;
+  width: 100%;
+  height: 480px;
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-12);
+  background: var(--subtle);
+  box-shadow: var(--shadow-sm);
+}
+
+.concept-graph__edge {
+  stroke: var(--hair-strong);
+  stroke-width: 1.5;
+  fill: none;
+  transition: stroke var(--duration-fast) var(--ease-out-quart);
+}
+
+.concept-graph__node {
+  cursor: pointer;
+  outline: none;
+}
+
+.concept-graph__node:focus-visible .concept-graph__circle,
+.concept-graph__node:hover .concept-graph__circle {
+  stroke-width: 3;
+  filter: drop-shadow(0 0 4px var(--accent));
+}
+
+.concept-graph__node:focus-visible {
+  outline: none;
+}
+
+.concept-graph__circle {
+  fill: var(--accent-soft);
+  stroke: var(--accent);
+  stroke-width: 2;
+  transition: stroke-width var(--duration-fast) var(--ease-out-quart),
+              filter var(--duration-fast) var(--ease-out-quart);
+}
+
+.concept-graph__label {
+  fill: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ---------- Learning-only mode: list ---------- */
+
+.concept-graph__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.concept-graph__list-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-8);
+  background: var(--elevated);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--duration-fast) var(--ease-out-quart);
+}
+
+.concept-graph__list-item:hover,
+.concept-graph__list-item:focus-within {
+  box-shadow: var(--shadow-md);
+}
+
+.concept-graph__list-name {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--ink-strong);
+}
+
+.concept-graph__list-detail {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.concept-graph__list-refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.concept-graph__ref-tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 1px 6px;
+  background: var(--accent-softest);
+  color: var(--accent-ink);
+  border-radius: var(--radius-6);
+  white-space: nowrap;
+}
+
+/* ---------- Empty mode ---------- */
+
+.concept-graph__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  gap: 12px;
+  color: var(--muted);
+  font-family: var(--font-sans);
+}
+
+.concept-graph__empty-icon {
+  font-size: 48px;
+  opacity: 0.4;
+}
+
+.concept-graph__empty-text {
+  font-size: 15px;
+  text-align: center;
+}
+
+/* ---------- Tooltip (for SVG node detail) ---------- */
+
+.concept-graph__tooltip {
+  position: absolute;
+  z-index: 10;
+  padding: 8px 12px;
+  background: var(--elevated);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-8);
+  box-shadow: var(--shadow-md);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--ink);
+  max-width: 280px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out-quart);
+}
+
+.concept-graph__tooltip--visible {
+  opacity: 1;
+}
+
+.concept-graph__tooltip-name {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--ink-strong);
+}
+
+.concept-graph__tooltip-surface {
+  margin-bottom: 4px;
+}
+
+.concept-graph__tooltip-refs {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/* ---------- Mode indicator badge ---------- */
+
+.concept-graph__mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--radius-6);
+  background: var(--accent-softest);
+  color: var(--accent-ink);
+  margin-bottom: 12px;
+}
+
+/* ==========================================================================
+   Accessibility: forced-colors
+   ========================================================================== */
+
+@media (forced-colors: active) {
+  .concept-graph__svg {
+    border-color: CanvasText;
+    background: Canvas;
+  }
+
+  .concept-graph__circle {
+    fill: Canvas;
+    stroke: CanvasText;
+  }
+
+  .concept-graph__label {
+    fill: CanvasText;
+  }
+
+  .concept-graph__edge {
+    stroke: CanvasText;
+  }
+
+  .concept-graph__list-item {
+    border-color: CanvasText;
+    background: Canvas;
+  }
+
+  .concept-graph__ref-tag {
+    background: ButtonFace;
+    color: ButtonText;
+    border: 1px solid CanvasText;
+  }
+
+  .concept-graph__tooltip {
+    background: Canvas;
+    border-color: CanvasText;
+    color: CanvasText;
+  }
+
+  .concept-graph__mode-badge {
+    background: ButtonFace;
+    color: ButtonText;
+    border: 1px solid CanvasText;
+  }
+}
+
+/* ==========================================================================
+   Accessibility: reduced motion
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .concept-graph {
+    animation: none;
+  }
+  .concept-graph__circle,
+  .concept-graph__edge,
+  .concept-graph__tooltip,
+  .concept-graph__list-item {
+    transition: none;
+  }
+
+  .concept-graph__node:focus-visible .concept-graph__circle,
+  .concept-graph__node:hover .concept-graph__circle {
+    filter: none;
+  }
+}
+
+/* ==========================================================================
+   Dark mode
+   ========================================================================== */
+
+@media (prefers-color-scheme: dark) {
+  .concept-graph__svg {
+    background: var(--subtle);
+  }
+}

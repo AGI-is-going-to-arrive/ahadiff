@@ -48,6 +48,7 @@ class ImproveSessionState:
     created_at: str
     updated_at: str
     last_status: str | None = None
+    outcome_statuses: tuple[str, ...] = ()
 
 
 def mutable_prompt_names() -> tuple[str, ...]:
@@ -124,6 +125,7 @@ def load_improve_session(state_dir: Path, session_id: str) -> ImproveSessionStat
         created_at=_require_string(payload_map, "created_at"),
         updated_at=_require_string(payload_map, "updated_at"),
         last_status=_optional_string(payload_map, "last_status"),
+        outcome_statuses=_load_outcome_statuses(payload_map),
     )
 
 
@@ -155,6 +157,7 @@ def update_improve_session(
     rounds_completed: int | None = None,
     worktree_path: str | None | object = _UNSET,
     last_status: str | None | object = _UNSET,
+    outcome_statuses: tuple[str, ...] | None = None,
 ) -> ImproveSessionState:
     next_worktree = session.worktree_path if worktree_path is _UNSET else worktree_path
     next_status = session.last_status if last_status is _UNSET else last_status
@@ -172,6 +175,7 @@ def update_improve_session(
         created_at=session.created_at,
         updated_at=_utc_now(),
         last_status=next_status if isinstance(next_status, str) or next_status is None else None,
+        outcome_statuses=session.outcome_statuses if outcome_statuses is None else outcome_statuses,
     )
 
 
@@ -219,6 +223,38 @@ def _optional_string(payload: dict[str, Any], key: str) -> str | None:
     if not isinstance(value, str):
         raise InputError(f"improve session field {key!r} must be a string when present")
     return value
+
+
+def _load_outcome_statuses(payload: dict[str, Any]) -> tuple[str, ...]:
+    statuses = _statuses_from_sequence(payload.get("outcome_statuses"))
+    if statuses:
+        return statuses
+    for key in ("outcomes", "rounds"):
+        statuses = _statuses_from_sequence(payload.get(key))
+        if statuses:
+            return statuses
+    last_status = _optional_string(payload, "last_status")
+    rounds_completed = payload.get("rounds_completed")
+    if last_status is not None and isinstance(rounds_completed, int) and rounds_completed > 0:
+        return (last_status,)
+    return ()
+
+
+def _statuses_from_sequence(value: object) -> tuple[str, ...]:
+    if not isinstance(value, list | tuple):
+        return ()
+    statuses: list[str] = []
+    items = cast("list[object] | tuple[object, ...]", value)
+    for item in items:
+        if isinstance(item, str):
+            statuses.append(item)
+            continue
+        if isinstance(item, dict):
+            item_map = cast("dict[object, object]", item)
+            status = item_map.get("status")
+            if isinstance(status, str):
+                statuses.append(status)
+    return tuple(statuses)
 
 
 def _require_bool(payload: dict[str, Any], key: str) -> bool:

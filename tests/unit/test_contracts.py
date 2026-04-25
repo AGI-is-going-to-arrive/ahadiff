@@ -38,6 +38,7 @@ class TestContractsImport:
             OrchestratorResult,
             ProviderCapabilities,
             ProviderConfig,
+            QuizAnswerRequest,
             RatchetHistoryEntry,
             ResultEvent,
             ReviewCard,
@@ -55,6 +56,7 @@ class TestContractsImport:
         assert ReviewCard
         assert RunSource
         assert ProviderConfig
+        assert QuizAnswerRequest
         assert ProviderCapabilities
         assert AllowlistPolicy
         assert ResultEvent
@@ -99,6 +101,72 @@ class TestSerialization:
             created_at="2026-04-22T00:00:00Z",
         )
         assert summary.capability_level == 3
+
+    def test_run_detail_declares_graphify_notes_and_rejects_unknown_fields(self) -> None:
+        from ahadiff.contracts import RunDetail
+
+        detail = RunDetail(
+            run_id="run-1",
+            source_ref="abc1234",
+            source_kind="git_ref",
+            capability_level=3,
+            verdict="PASS",
+            overall=88.5,
+            status="keep",
+            weakest_dim="conciseness",
+            created_at="2026-04-22T00:00:00Z",
+            prompt_version="prompt123",
+            eval_bundle_version="eval123",
+            graphify_notes=["graph artifact is fresh"],
+        )
+
+        assert detail.graphify_notes == ["graph artifact is fresh"]
+        with pytest.raises(ValidationError):
+            RunDetail.model_validate({**detail.model_dump(mode="json"), "extra": "blocked"})
+
+    def test_quiz_answer_request_serializes_viewer_payload(self) -> None:
+        from ahadiff.contracts import QuizAnswerRequest
+
+        request = QuizAnswerRequest(
+            idempotency_key="quiz:run-1:q1",
+            quiz_id="q1",
+            choice="B",
+            correct=True,
+        )
+
+        assert request.model_dump(mode="json") == {
+            "idempotency_key": "quiz:run-1:q1",
+            "quiz_id": "q1",
+            "choice": "B",
+            "correct": True,
+        }
+
+    def test_run_artifact_envelope_accepts_legacy_payload_without_content_lang(self) -> None:
+        from ahadiff.contracts import RunArtifactEnvelope
+
+        envelope = RunArtifactEnvelope.model_validate(
+            {
+                "run_id": "run-1",
+                "artifact_type": "lesson",
+                "content": "lesson body",
+            }
+        )
+
+        assert envelope.content_lang is None
+        assert envelope.model_dump(mode="json")["content_lang"] is None
+
+    def test_run_artifact_envelope_serializes_content_lang(self) -> None:
+        from ahadiff.contracts import RunArtifactEnvelope
+
+        envelope = RunArtifactEnvelope(
+            run_id="run-1",
+            artifact_type="lesson",
+            content="lesson body",
+            content_lang="zh-CN",
+        )
+
+        assert envelope.content_lang == "zh-CN"
+        assert envelope.model_dump(mode="json")["content_lang"] == "zh-CN"
 
     def test_run_source_rejects_unknown_degraded_flag(self) -> None:
         from ahadiff.contracts import RunSource

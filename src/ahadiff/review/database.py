@@ -234,6 +234,42 @@ def load_result_event_by_run_and_id(
     return None if row is None else ResultEvent.model_validate(dict(row))
 
 
+def load_result_events_for_improve_chain(
+    db_path: Path,
+    *,
+    source_ref: str,
+    base_ref: str | None,
+    anchor_run_id: str,
+) -> tuple[ResultEvent, ...]:
+    if not db_path.exists():
+        return ()
+    try:
+        with connect_review_db(db_path) as connection:
+            if not _result_events_table_exists(connection):
+                return ()
+            rows = connection.execute(
+                f"""
+                SELECT {", ".join(_RESULT_EVENT_COLUMNS)}
+                FROM result_events
+                WHERE source_ref = ?
+                  AND ((base_ref IS NULL AND ? IS NULL) OR base_ref = ?)
+                  AND (
+                      run_id = ?
+                      OR (
+                          note_json IS NOT NULL
+                          AND json_valid(note_json)
+                          AND json_extract(note_json, '$.anchor_run_id') = ?
+                      )
+                  )
+                ORDER BY timestamp DESC, event_id DESC
+                """,
+                (source_ref, base_ref, base_ref, anchor_run_id, anchor_run_id),
+            ).fetchall()
+    except sqlite3.DatabaseError as exc:
+        raise StorageError(f"failed to read result_events from {db_path}: {exc}") from exc
+    return tuple(ResultEvent.model_validate(dict(row)) for row in rows)
+
+
 def select_result_tsv_rows(db_path: Path) -> tuple[dict[str, object], ...]:
     if not db_path.exists():
         raise InputError(f"review.sqlite does not exist: {db_path}")
@@ -689,8 +725,10 @@ def set_card_queue_state(
     column = "archived_at_utc" if state == "archived" else "suspended_at_utc"
     with connect_review_db(db_path) as connection:
         _ensure_schema(connection)
+        # Clear stale_reason whenever the card leaves the stale queue: ReviewCard
+        # contract requires stale_reason to be set only when card_state == 'stale'.
         cursor = connection.execute(
-            f"UPDATE cards SET card_state = ?, {column} = ? WHERE id = ?",
+            f"UPDATE cards SET card_state = ?, {column} = ?, stale_reason = NULL WHERE id = ?",
             (state, timestamp, card_id),
         )
         if cursor.rowcount == 0:
@@ -1425,6 +1463,7 @@ __all__ = [
     "insert_learning_signal",
     "list_due_cards",
     "load_result_event_by_run_and_id",
+    "load_result_events_for_improve_chain",
     "load_result_events_from_db",
     "make_uuid7",
     "mark_run_cards_stale",

@@ -138,14 +138,15 @@ def find_workspace_root(start: Path | None = None) -> Path:
 def global_config_dir(*, platform: str | None = None, env: Mapping[str, str] | None = None) -> Path:
     current_platform = _platform_name(platform)
     env_map = os.environ if env is None else env
-    home = _home_dir(env_map)
-    if current_platform == "darwin":
-        return home / "Library" / "Application Support" / "ahadiff"
     if current_platform.startswith("win"):
+        # Windows must not require HOME — APPDATA is the documented anchor.
         appdata = env_map.get("APPDATA")
         if not appdata:
             raise StorageError("APPDATA is not set; cannot resolve global config directory")
         return Path(appdata) / "ahadiff"
+    home = _home_dir(env_map)
+    if current_platform == "darwin":
+        return home / "Library" / "Application Support" / "ahadiff"
     xdg_config_home = env_map.get("XDG_CONFIG_HOME")
     base_dir = Path(xdg_config_home) if xdg_config_home else home / ".config"
     return base_dir / "ahadiff"

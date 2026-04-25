@@ -8,7 +8,7 @@ import sqlite3
 import sys
 import tempfile
 import webbrowser
-from contextlib import suppress
+from contextlib import ExitStack, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, cast
 
@@ -30,14 +30,16 @@ from .claims import (
 )
 from .contracts import ProviderConfig
 from .core.config import (
+    SecurityConfig,
     iter_resolved_settings,
     load_config,
     load_security_config,
     load_workspace_config,
     load_workspace_security_config,
+    local_hosts_for_privacy_mode,
     write_default_config,
 )
-from .core.errors import AhaDiffError
+from .core.errors import AhaDiffError, ConfigError, InputError, StorageError
 from .core.paths import (
     assert_local_repo_path,
     find_repo_root,
@@ -70,7 +72,7 @@ from .git.capture import (
     write_input_artifacts,
 )
 from .git.repo import repo_write_lock, unlock_repo_write_lock
-from .i18n import resolve_locale
+from .i18n import normalize_locale, resolve_locale
 from .improve import run_improve_loop
 from .install import InstallContext, available_targets, get_target, target_detection
 from .lesson import generate_lessons_from_run
@@ -185,6 +187,15 @@ def _state_dir_for_root(root: Path, *, has_git_repo: bool) -> Path:
     return project_state_dir(root) if has_git_repo else root / ".ahadiff"
 
 
+def _resolve_output_lang_from_snapshot(snapshot: Any, *, cli_lang: str | None) -> str:
+    llm_config = cast("dict[str, Any]", snapshot.values["llm"])
+    configured_output_lang = str(llm_config.get("output_lang", "auto"))
+    configured_content_lang = (
+        configured_output_lang if configured_output_lang != "auto" else str(snapshot.values["lang"])
+    )
+    return resolve_locale(cli_lang=cli_lang, config_lang=configured_content_lang)
+
+
 def _normalize_provider_base_url(base_url: str, *, provider_class: str) -> str:
     normalized = base_url.rstrip("/")
     suffixes: tuple[str, ...] = ()
@@ -223,6 +234,7 @@ def _resolve_runtime_provider(
     privacy_mode: str,
     stdin_interactive: bool,
     local_hosts: tuple[str, ...],
+    strict_local_hosts: tuple[str, ...],
 ) -> tuple[ProviderConfig, str | None, TransportTarget, bool]:
     llm_config = cast("dict[str, Any]", snapshot.values["llm"])
     resolved_model = model or str(llm_config["generate_model"])
@@ -267,7 +279,14 @@ def _resolve_runtime_provider(
 
     transport_target = transport_target_for_base_url(
         provider_config.base_url,
-        local_hosts=local_hosts,
+        local_hosts=local_hosts_for_privacy_mode(
+            SecurityConfig(
+                local_hosts=local_hosts,
+                strict_local_hosts=strict_local_hosts,
+            ),
+            privacy_mode,
+        ),
+        strict_local=privacy_mode == "strict_local",
     )
     if (
         not provider_selection_explicit
@@ -304,6 +323,7 @@ def _resolve_claim_extract_provider(
     privacy_mode: str,
     stdin_interactive: bool,
     local_hosts: tuple[str, ...],
+    strict_local_hosts: tuple[str, ...],
 ) -> tuple[ProviderConfig, str | None, TransportTarget, bool]:
     return _resolve_runtime_provider(
         snapshot=snapshot,
@@ -316,6 +336,7 @@ def _resolve_claim_extract_provider(
         privacy_mode=privacy_mode,
         stdin_interactive=stdin_interactive,
         local_hosts=local_hosts,
+        strict_local_hosts=strict_local_hosts,
     )
 
 
@@ -715,13 +736,7 @@ def learn_cmd(
         llm_config = cast("dict[str, Any]", snapshot.values["llm"])
         provider_limits = cast("dict[str, Any]", snapshot.values["provider"])
         effective_privacy_mode = str(snapshot.values["privacy_mode"])
-        configured_output_lang = str(llm_config.get("output_lang", "auto"))
-        configured_content_lang = (
-            configured_output_lang
-            if configured_output_lang != "auto"
-            else str(snapshot.values["lang"])
-        )
-        resolved_content_lang = resolve_locale(cli_lang=lang, config_lang=configured_content_lang)
+        resolved_content_lang = _resolve_output_lang_from_snapshot(snapshot, cli_lang=lang)
         security_config = (
             load_security_config(root) if has_git_repo else load_workspace_security_config(root)
         )
@@ -788,6 +803,7 @@ def learn_cmd(
                         privacy_mode=effective_privacy_mode,
                         stdin_interactive=sys.stdin.isatty(),
                         local_hosts=security_config.local_hosts,
+                        strict_local_hosts=security_config.strict_local_hosts,
                     )
                     resolved_privacy_mode = _privacy_mode_for_explicit_provider_call(
                         effective_privacy_mode,
@@ -812,6 +828,7 @@ def learn_cmd(
                     candidates = load_claim_candidates(
                         raw_claims_path,
                         default_run_id=capture.run_id,
+                        enforce_run_id_match=True,
                     )
                     line_maps = load_line_map_records(run_path / "line_map.json")
                     symbols = load_symbol_records(run_path / "symbols.json")
@@ -972,9 +989,22 @@ def quiz_cmd(
         Path,
         typer.Option("--repo-root", help="Repository root or workspace root."),
     ] = Path(),
+    lang: Annotated[
+        str | None,
+        typer.Option("--lang", help="Temporary output language override."),
+    ] = None,
 ) -> None:
     try:
         root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        snapshot = (
+            load_config(root, cli_overrides=_cli_overrides(lang=lang))
+            if has_git_repo
+            else load_workspace_config(root, cli_overrides=_cli_overrides(lang=lang))
+        )
+        _ = resolve_locale(
+            cli_lang=lang,
+            config_lang=str(snapshot.values["lang"]),
+        )  # wired in a future task.
         validate_run_id(run_id)
         run_path = run_dir(run_id, root) if has_git_repo else (root / ".ahadiff" / "runs" / run_id)
         questions = load_quiz_questions(run_path / "quiz" / "quiz.jsonl")
@@ -1125,6 +1155,22 @@ def _restore_artifact_from_backup(*, target: Path, backup_path: Path | None) -> 
     backup_path.replace(target)
 
 
+def _run_content_lang(run_path: Path) -> str:
+    metadata_path = run_path / "metadata.json"
+    if not metadata_path.exists():
+        return "en"
+    try:
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return "en"
+    if not isinstance(payload, dict):
+        return "en"
+    metadata = cast("dict[str, object]", payload)
+    value = metadata.get("content_lang")
+    locale = normalize_locale(value) if isinstance(value, str) else None
+    return locale or "en"
+
+
 @_APP.command("regenerate")
 def regenerate_cmd(
     run_id: Annotated[
@@ -1176,8 +1222,15 @@ def regenerate_cmd(
             load_security_config(root) if has_git_repo else load_workspace_security_config(root)
         )
         state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
-        _, lock_path = _state_dir_and_lock_path(repo_root)
-        with repo_write_lock(lock_path, command="regenerate quiz") as _:
+        lock_path = lock_file_path(root) if has_git_repo else state_dir / "ahadiff.lock"
+        with ExitStack() as lock_stack:
+            try:
+                lock_stack.enter_context(repo_write_lock(lock_path, command="regenerate quiz"))
+            except StorageError as error:
+                raise InputError(
+                    "another ahadiff session is already running; "
+                    "wait for it to finish before regenerating quiz"
+                ) from error
             quiz_path = run_path / "quiz" / "quiz.jsonl"
             cards_target_path = run_path / "quiz" / "cards.jsonl"
             quiz_backup = _backup_artifact_for_rollback(quiz_path)
@@ -1198,6 +1251,7 @@ def regenerate_cmd(
                 privacy_mode=effective_privacy_mode,
                 stdin_interactive=sys.stdin.isatty(),
                 local_hosts=security_config.local_hosts,
+                strict_local_hosts=security_config.strict_local_hosts,
             )
             resolved_privacy_mode = _privacy_mode_for_explicit_provider_call(
                 effective_privacy_mode,
@@ -1206,6 +1260,7 @@ def regenerate_cmd(
             )
             cards_path: Path | None = None
             try:
+                output_lang = _run_content_lang(run_path)
                 quiz_artifacts, questions = generate_quiz_from_run(
                     run_id=run_id,
                     run_path=run_path,
@@ -1218,6 +1273,7 @@ def regenerate_cmd(
                     qps_limit=int(provider_limits["qps_limit"]),
                     retry_attempts=int(llm_config["retry_attempts"]),
                     privacy_mode=resolved_privacy_mode,
+                    output_lang=output_lang,
                     overwrite=True,
                 )
                 report = evaluate_run(run_path)
@@ -1282,11 +1338,24 @@ def review_cmd(
         bool,
         typer.Option("--optimize", help="Check FSRS optimizer readiness."),
     ] = False,
+    lang: Annotated[
+        str | None,
+        typer.Option("--lang", help="Temporary output language override."),
+    ] = None,
 ) -> None:
     try:
         if scheduler != "fsrs":
             raise AhaDiffError("only the FSRS scheduler is implemented in v0.1")
         root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        snapshot = (
+            load_config(root, cli_overrides=_cli_overrides(lang=lang))
+            if has_git_repo
+            else load_workspace_config(root, cli_overrides=_cli_overrides(lang=lang))
+        )
+        _ = resolve_locale(
+            cli_lang=lang,
+            config_lang=str(snapshot.values["lang"]),
+        )  # wired in a future task.
         state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
         db_path = state_dir / "review.sqlite"
         _, lock_path = _state_dir_and_lock_path(repo_root)
@@ -1405,15 +1474,28 @@ def improve_cmd(
             help="Env var name used to resolve the API key for improve.",
         ),
     ] = "AHADIFF_PROVIDER_API_KEY",
+    lang: Annotated[
+        str | None,
+        typer.Option("--lang", help="Temporary output language override."),
+    ] = None,
 ) -> None:
     try:
         root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=False)
         if not has_git_repo:
             raise AhaDiffError("improve requires a git repository")
-        snapshot = load_config(root, cli_overrides=_cli_overrides(privacy_mode=privacy_mode))
+        snapshot = load_config(
+            root,
+            cli_overrides=_cli_overrides(privacy_mode=privacy_mode, lang=lang),
+        )
         llm_config = cast("dict[str, Any]", snapshot.values["llm"])
         provider_limits = cast("dict[str, Any]", snapshot.values["provider"])
         effective_privacy_mode = str(snapshot.values["privacy_mode"])
+        if effective_privacy_mode == "redacted_remote":
+            raise ConfigError(
+                "improve does not support redacted_remote privacy mode; "
+                "use strict_local or explicit_remote"
+            )
+        resolved_output_lang = _resolve_output_lang_from_snapshot(snapshot, cli_lang=lang)
         security_config = load_security_config(root)
         state_dir = project_state_dir(root)
         db_path = state_dir / "review.sqlite"
@@ -1433,6 +1515,7 @@ def improve_cmd(
             privacy_mode=effective_privacy_mode,
             stdin_interactive=sys.stdin.isatty(),
             local_hosts=security_config.local_hosts,
+            strict_local_hosts=security_config.strict_local_hosts,
         )
         resolved_privacy_mode = _privacy_mode_for_explicit_provider_call(
             effective_privacy_mode,
@@ -1457,6 +1540,7 @@ def improve_cmd(
                 qps_limit=int(provider_limits["qps_limit"]),
                 retry_attempts=int(llm_config["retry_attempts"]),
                 privacy_mode=resolved_privacy_mode,
+                output_lang=resolved_output_lang,
             )
 
         console.print(f"[green]Improve session[/green]: {result.session_id}")
@@ -1510,6 +1594,7 @@ def serve_cmd(
     try:
         root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
         state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
+        base_snapshot = load_workspace_config(root)
         snapshot = load_workspace_config(
             root,
             cli_overrides=_cli_overrides(serve_port=port, no_browser=no_browser, lang=lang),
@@ -1520,13 +1605,16 @@ def serve_cmd(
             raise AhaDiffError("serve bind_host must be 127.0.0.1 in v0.1")
         resolved_port = int(serve_config["port"])
         resolved_no_browser = bool(serve_config["no_browser"])
-        resolved_locale = resolve_locale(config_lang=str(snapshot.values["lang"]))
+        config_lang = str(base_snapshot.values["lang"])
+        resolved_locale = resolve_locale(cli_lang=lang, config_lang=config_lang)
         state_dir.mkdir(parents=True, exist_ok=True)
         app_instance = create_app(
             ServeState(
                 state_dir=state_dir,
                 token=secrets.token_urlsafe(24),
                 locale=resolved_locale,
+                cli_lang=lang,
+                config_lang=config_lang,
                 bind_host=bind_host,
                 port=resolved_port,
             ),
@@ -1715,6 +1803,7 @@ def claims_cmd(
                 privacy_mode=str(snapshot.values["privacy_mode"]),
                 stdin_interactive=sys.stdin.isatty(),
                 local_hosts=security_config.local_hosts,
+                strict_local_hosts=security_config.strict_local_hosts,
             )
             resolved_privacy_mode = _privacy_mode_for_explicit_provider_call(
                 str(snapshot.values["privacy_mode"]),
@@ -2110,6 +2199,13 @@ def benchmark_cmd(
         output_path = output or root / ".ahadiff" / "benchmarks" / f"{suite}-report.json"
         if not output_path.is_absolute():
             output_path = root / output_path
+        resolved_output_lang = normalize_locale(output_lang)
+        if resolved_output_lang is None:
+            console.print(
+                f"[yellow]Warning[/yellow]: unsupported --output-lang {output_lang!r}; "
+                "falling back to 'en'"
+            )
+            resolved_output_lang = "en"
         _, lock_path = _state_dir_and_lock_path(repo_root)
         with repo_write_lock(lock_path, command="benchmark") as _:
             report = run_benchmark_suite(
@@ -2117,7 +2213,7 @@ def benchmark_cmd(
                 suite=suite,
                 model_id=model_id,
                 api_family_version=api_family_version,
-                output_lang=output_lang,
+                output_lang=resolved_output_lang,
             )
             write_benchmark_report(output_path, report)
         console.print(f"[green]Benchmark complete[/green]: {report.suite_id}")
@@ -2470,7 +2566,8 @@ def provider_test_cmd(
         resolved_privacy_mode = cast("PrivacyMode", str(snapshot.values["privacy_mode"]))
         transport_target = transport_target_for_base_url(
             normalized_base_url,
-            local_hosts=security_config.local_hosts,
+            local_hosts=local_hosts_for_privacy_mode(security_config, resolved_privacy_mode),
+            strict_local=resolved_privacy_mode == "strict_local",
         )
         if (
             privacy_mode is None

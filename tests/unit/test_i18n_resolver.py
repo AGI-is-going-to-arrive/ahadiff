@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from ahadiff.i18n import (
     locale_from_accept_language,
     normalize_locale,
@@ -28,6 +30,22 @@ def test_accept_language_uses_quality_before_header_order() -> None:
     assert locale_from_accept_language("zh-CN;q=0, en;q=0.5") == "en"
 
 
+def test_accept_language_oversized_header_is_bounded() -> None:
+    header = ",".join("fr-FR;q=0.1" for _ in range(10_000))
+
+    started_at = time.perf_counter()
+    locale = locale_from_accept_language(header)
+    elapsed = time.perf_counter() - started_at
+
+    assert locale is None
+    assert elapsed < 1.0
+
+
+def test_accept_language_rejects_non_finite_and_out_of_range_quality() -> None:
+    for quality in ("nan", "inf", "1.5", "-1"):
+        assert resolve_locale(accept_language=f"zh-CN;q={quality}", default="en") == "en"
+
+
 def test_resolve_locale_contract_priority_chain() -> None:
     assert (
         resolve_locale(
@@ -52,6 +70,10 @@ def test_resolve_locale_contract_priority_chain() -> None:
     assert resolve_locale(config_lang="zh-CN", env={"LANG": "en_US.UTF-8"}) == "zh-CN"
     assert resolve_locale(config_lang="auto", env={"LANG": "zh_CN.UTF-8"}) == "zh-CN"
     assert resolve_locale(config_lang="auto", env={"LANG": "fr_FR.UTF-8"}) == "en"
+
+
+def test_resolve_locale_falls_through_to_system_lang() -> None:
+    assert resolve_locale(env={"LANG": "zh_CN.UTF-8"}) == "zh-CN"
 
 
 def test_resolve_locale_ahadiff_lang_overrides_system_lang() -> None:

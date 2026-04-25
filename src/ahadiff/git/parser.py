@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from typing import Literal
@@ -13,6 +14,11 @@ from .path_tokens import normalize_diff_path_token, parse_diff_git_header_paths
 DiffChangeKind = Literal["modified", "added", "deleted", "renamed", "binary"]
 DiffLineKind = Literal["context", "add", "delete"]
 _HUNK_HEADER_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@[ ]?(.*)$")
+_MAX_LINE_LEN = 1_000_000
+_COMBINED_DIFF_ERROR = (
+    "combined diff format is not supported; provide a standard unified diff patch"
+)
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -150,6 +156,8 @@ def _parse_segment(lines: list[str]) -> ChangedFileRecord:
     headers: list[str] = []
 
     for line in lines:
+        if line.startswith("@@@"):
+            raise InputError(_COMBINED_DIFF_ERROR)
         if line.startswith("@@ "):
             break
         if line.startswith("Binary files ") or line.startswith("GIT binary patch"):
@@ -195,20 +203,26 @@ def _parse_hunks(path: str, change_kind: DiffChangeKind, lines: list[str]) -> li
     index = 0
     while index < len(lines):
         line = lines[index]
+        if line.startswith("@@@"):
+            raise InputError(_COMBINED_DIFF_ERROR)
         if not line.startswith("@@ "):
             index += 1
             continue
         header = line
         body: list[str] = []
         index += 1
-        while (
-            index < len(lines)
-            and not lines[index].startswith("@@ ")
-            and not lines[index].startswith("diff --git ")
-            and not lines[index].startswith("Binary files ")
-            and not lines[index].startswith("GIT binary patch")
-        ):
-            body.append(lines[index])
+        while index < len(lines):
+            body_line = lines[index]
+            if body_line.startswith("@@@"):
+                raise InputError(_COMBINED_DIFF_ERROR)
+            if (
+                body_line.startswith("@@ ")
+                or body_line.startswith("diff --git ")
+                or body_line.startswith("Binary files ")
+                or body_line.startswith("GIT binary patch")
+            ):
+                break
+            body.append(body_line)
             index += 1
         hunks.append(_build_hunk(path, change_kind, header, body))
     return hunks
@@ -239,11 +253,27 @@ def _build_hunk(
     consumed_new = 0
     has_truncated_marker = any(line == "[truncated]" for line in body_lines)
     parsed_lines: list[DiffLineRecord] = []
+    normalized_body_lines: list[str] = []
 
     for raw_line in body_lines:
+        if len(raw_line) > _MAX_LINE_LEN:
+            log.warning(
+                "truncating overlong unified diff hunk line in %s from %d to %d characters",
+                path,
+                len(raw_line),
+                _MAX_LINE_LEN,
+            )
+            raw_line = raw_line[:_MAX_LINE_LEN]
+        normalized_body_lines.append(raw_line)
         if raw_line.startswith("\\ "):
             continue
         if raw_line == "[truncated]":
+            continue
+        if (
+            raw_line.startswith("index ")
+            or raw_line.startswith("--- ")
+            or raw_line.startswith("+++ ")
+        ):
             continue
         prefix = raw_line[:1]
         if prefix not in {" ", "+", "-"}:
@@ -281,8 +311,8 @@ def _build_hunk(
         new_count=new_count,
         section_header=section_header,
         hunk_id=make_hunk_id(path, old_start, new_start, section_header),
-        hunk_hash=compute_hunk_hash(header=header, body_lines=body_lines),
-        raw_lines=tuple(body_lines),
+        hunk_hash=compute_hunk_hash(header=header, body_lines=normalized_body_lines),
+        raw_lines=tuple(normalized_body_lines),
         lines=tuple(parsed_lines),
     )
 

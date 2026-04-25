@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!--
+      Defense-in-depth CSP for the localhost-only AhaDiff viewer. Allows inline
+      <style> + the bootstrap inline <script> below ('unsafe-inline'); same-origin
+      JS bundle; no external network calls. Adjust if remote assets are added.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" />
+    <title>AhaDiff</title>
+    <style>
+      /* critical inline CSS — FOUC 防护；tokens.css 加载后会覆盖 */
+      :root {
+        --paper: #FAF8F2;
+        --ink: #1C1B18;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --paper: #1C1B18;
+          --ink: #E6E3D8;
+        }
+      }
+      html, body { height: 100%; margin: 0; }
+      body {
+        background: var(--paper);
+        color: var(--ink);
+        font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+    </style>
+    <script>
+      // 同步预设 <html lang>：cookie → navigator.language → 'en'
+      (function () {
+        function readCookie(name) {
+          var match = document.cookie.split('; ').find(function (row) { return row.indexOf(name + '=') === 0; });
+          return match ? decodeURIComponent(match.split('=')[1]) : null;
+        }
+        var cookieLang = readCookie('ahadiff_lang');
+        var navLang = (navigator.language || 'en').toLowerCase();
+        var locale = 'en';
+        if (cookieLang === 'zh-CN' || cookieLang === 'zh') { locale = 'zh-CN'; }
+        else if (!cookieLang && (navLang === 'zh' || navLang.indexOf('zh-') === 0)) { locale = 'zh-CN'; }
+        document.documentElement.lang = locale;
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

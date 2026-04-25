@@ -60,13 +60,24 @@ def load_claim_candidates(
     path: Path,
     *,
     default_run_id: str | None = None,
+    enforce_run_id_match: bool = False,
 ) -> tuple[ClaimCandidate, ...]:
     if not path.exists():
         raise InputError(f"claim candidate file does not exist: {path}")
-    return parse_claim_candidates_text(
+    candidates = parse_claim_candidates_text(
         path.read_text(encoding="utf-8"),
         default_run_id=default_run_id,
     )
+    # When enforce_run_id_match is True, every claim candidate must already
+    # belong to ``default_run_id`` — used by the learn pipeline to refuse
+    # cross-run contamination from provider-emitted ``run_id`` values.
+    if enforce_run_id_match and default_run_id is not None:
+        for candidate in candidates:
+            if candidate.run_id != default_run_id:
+                raise InputError(
+                    f"claim candidate run_id mismatch: {candidate.run_id!r} != {default_run_id!r}"
+                )
+    return candidates
 
 
 def write_claim_candidates_jsonl(

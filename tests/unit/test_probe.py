@@ -117,6 +117,42 @@ def test_probe_provider_falls_back_when_context_probe_missing(tmp_path: Path) ->
     assert report.context_window_source == "fallback"
 
 
+def test_probe_provider_falls_back_when_context_probe_transport_fails(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    (repo_root / ".ahadiff").mkdir()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            raise httpx.ConnectError("connection refused")
+        return httpx.Response(
+            200,
+            json={
+                "model": "gpt-5.4-mini",
+                "choices": [{"message": {"content": "OK"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 4},
+            },
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    report = probe_provider(
+        provider_name="demo",
+        provider_class="openai",
+        model_name="gpt-5.4-mini",
+        base_url="http://127.0.0.1:8000",
+        api_key="test-key",
+        api_key_env="AHADIFF_PROVIDER_API_KEY",
+        workspace_root=repo_root,
+        security_config=None,
+        client=client,
+    )
+
+    assert report.connectivity_ok is True
+    assert report.config.probed_max_context == 1_000_000
+    assert report.context_window_source == "fallback"
+
+
 def test_probe_provider_allows_remote_targets_by_default(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()

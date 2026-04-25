@@ -3,10 +3,12 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import logging
 import os
 import pathlib as _pathlib
 import selectors
 import shutil
+import stat
 import subprocess
 import sys
 import threading
@@ -129,6 +131,7 @@ _ARTIFACT_SET_SCHEMA = "ahadiff.artifact_set"
 _ARTIFACT_SET_SCHEMA_VERSION = 1
 _TEXT_MAP_SCHEMA = "ahadiff.text_map"
 _TEXT_MAP_SCHEMA_VERSION = 1
+log = logging.getLogger(__name__)
 
 
 def capture_patch(
@@ -560,7 +563,11 @@ def _capture_input(
             max_patch_bytes=max_patch_bytes or int(DEFAULT_CONFIG["capture"]["max_patch_bytes"]),
         )
     if compare is not None:
-        return _capture_compare_input(workspace_root, compare)
+        return _capture_compare_input(
+            workspace_root,
+            compare,
+            max_patch_bytes=max_patch_bytes or int(DEFAULT_CONFIG["capture"]["max_patch_bytes"]),
+        )
 
     repo = open_repo(workspace_root)
     ensure_no_merge_conflicts(repo)
@@ -929,14 +936,16 @@ def _read_stream_bytes_with_timeout(
     return result
 
 
-def _capture_compare_input(workspace_root: Path, compare: tuple[Path, Path]) -> _RawCapture:
+def _capture_compare_input(
+    workspace_root: Path,
+    compare: tuple[Path, Path],
+    *,
+    max_patch_bytes: int,
+) -> _RawCapture:
     old_path = resolve_safe_path_from_root(workspace_root, compare[0])
     new_path = resolve_safe_path_from_root(workspace_root, compare[1])
-    try:
-        old_bytes = old_path.read_bytes()
-        new_bytes = new_path.read_bytes()
-    except OSError as exc:
-        raise InputError("无法读取文件") from exc
+    old_bytes = _read_compare_file(old_path, max_patch_bytes=max_patch_bytes)
+    new_bytes = _read_compare_file(new_path, max_patch_bytes=max_patch_bytes)
     old_binary = b"\x00" in old_bytes
     new_binary = b"\x00" in new_bytes
     old_rel = str(old_path.relative_to(workspace_root))
@@ -944,6 +953,7 @@ def _capture_compare_input(workspace_root: Path, compare: tuple[Path, Path]) -> 
 
     if old_binary or new_binary:
         raw_patch = f"Binary files a/{old_rel} and b/{new_rel} differ\n"
+        _ensure_patch_text_size(raw_patch, max_patch_bytes=max_patch_bytes)
         source_ref = f"sha256:{hashlib.sha256(old_bytes + b'::' + new_bytes).hexdigest()}"
         return _RawCapture(
             source_kind="file_compare",
@@ -980,6 +990,7 @@ def _capture_compare_input(workspace_root: Path, compare: tuple[Path, Path]) -> 
     raw_patch = _render_unified_diff(diff_lines)
     if raw_patch and not raw_patch.endswith("\n"):
         raw_patch += "\n"
+    _ensure_patch_text_size(raw_patch, max_patch_bytes=max_patch_bytes)
     source_ref = f"sha256:{hashlib.sha256(old_bytes + b'::' + new_bytes).hexdigest()}"
     return _RawCapture(
         source_kind="file_compare",
@@ -999,6 +1010,19 @@ def _capture_compare_input(workspace_root: Path, compare: tuple[Path, Path]) -> 
         before_text_by_path={old_rel: old_text},
         after_text_by_path={new_rel: new_text},
     )
+
+
+def _read_compare_file(path: Path, *, max_patch_bytes: int) -> bytes:
+    try:
+        file_stat = path.lstat()
+    except OSError as exc:
+        raise InputError("无法读取文件") from exc
+    if file_stat.st_size > max_patch_bytes:
+        raise InputError(f"compare input file exceeds {max_patch_bytes} bytes")
+    try:
+        return path.read_bytes()
+    except OSError as exc:
+        raise InputError("无法读取文件") from exc
 
 
 def _filter_ignored_capture(workspace_root: Path, raw_capture: _RawCapture) -> _RawCapture:
@@ -1399,8 +1423,8 @@ def _resolve_git_files_serial(repo_root: Path, revision: str, paths: list[str]) 
 def _resolve_worktree_files(repo_root: Path, paths: list[str]) -> dict[str, str]:
     resolved: dict[str, str] = {}
     for path in paths:
-        target = repo_root / path
-        if not target.exists() or not target.is_file():
+        target = _git_discovered_regular_file(repo_root, path)
+        if target is None:
             continue
         payload = target.read_bytes()
         if b"\x00" in payload:
@@ -1438,8 +1462,8 @@ def _list_untracked_files(repo_root: Path) -> list[str]:
 def _build_untracked_patch(repo_root: Path, paths: list[str]) -> str:
     chunks: list[str] = []
     for path in paths:
-        target = repo_root / path
-        if not target.exists() or not target.is_file():
+        target = _git_discovered_regular_file(repo_root, path)
+        if target is None:
             continue
         data = target.read_bytes()
         header = f"diff --git a/{path} b/{path}\nnew file mode 100644\n"
@@ -1459,6 +1483,30 @@ def _build_untracked_patch(repo_root: Path, paths: list[str]) -> str:
             rendered += "\n"
         chunks.append(header + rendered)
     return "".join(chunks)
+
+
+def _git_discovered_regular_file(repo_root: Path, path: str) -> Path | None:
+    relative = Path(path)
+    if relative.is_absolute() or ".." in relative.parts:
+        log.warning("skipping unsafe git-discovered path: %s", path)
+        return None
+    target = repo_root
+    for index, part in enumerate(relative.parts):
+        target = target / part
+        try:
+            mode = target.lstat().st_mode
+        except FileNotFoundError:
+            return None
+        except OSError as exc:
+            log.warning("skipping unreadable git-discovered path: %s (%s)", path, exc)
+            return None
+        if stat.S_ISLNK(mode):
+            log.warning("skipping git-discovered symlink path: %s", path)
+            return None
+        is_final = index == len(relative.parts) - 1
+        if is_final and not stat.S_ISREG(mode):
+            return None
+    return target
 
 
 def _truncate_segment(segment: _PatchSegment, *, max_lines: int) -> _PatchSegment:

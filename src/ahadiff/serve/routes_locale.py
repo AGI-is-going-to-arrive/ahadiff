@@ -37,10 +37,12 @@ async def put_locale(request: Request) -> JSONResponse:
 
 
 def _resolve_request_locale(request: Request) -> Locale:
+    state = serve_state(request)
     return resolve_locale(
         cookie_lang=request.cookies.get("ahadiff_lang"),
         accept_language=request.headers.get("accept-language"),
-        config_lang=serve_state(request).locale,
+        cli_lang=state.cli_lang,
+        config_lang=state.config_lang or state.locale,
     )
 
 

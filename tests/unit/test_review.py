@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import subprocess
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
@@ -12,8 +13,8 @@ from typer.testing import CliRunner
 from ahadiff import cli as cli_module
 from ahadiff.cli import app
 from ahadiff.contracts import ResultEvent, ReviewCard
-from ahadiff.core.errors import InputError
-from ahadiff.core.paths import review_db_path
+from ahadiff.core.errors import InputError, StorageError
+from ahadiff.core.paths import lock_file_path, review_db_path
 from ahadiff.quiz import QuizArtifactPaths
 from ahadiff.review import database as review_database_module
 from ahadiff.review.database import (
@@ -33,6 +34,7 @@ from ahadiff.review.database import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
 _RUNNER = CliRunner()
@@ -610,7 +612,7 @@ def test_review_cli_warns_and_skips_schema_invalid_cards_jsonl(tmp_path: Path) -
     assert result.exit_code == 0
     assert "card-good" in result.stdout
     assert "Warning" in result.stderr
-    assert "run-bad" in result.stderr
+    assert "run-bad" in result.stderr.replace("\n", "")
 
 
 def test_review_cli_archive_card_without_rating(tmp_path: Path) -> None:
@@ -704,6 +706,116 @@ def test_regenerate_only_quiz_rewrites_quiz_without_touching_lesson(
     assert calls == ["quiz", "cards"]
     assert lesson_path.read_text(encoding="utf-8") == "keep this lesson\n"
     assert quiz_path.read_text(encoding="utf-8") == '{"new": true}\n'
+
+
+def test_regenerate_only_quiz_uses_run_content_lang(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    run_path = repo_root / ".ahadiff" / "runs" / "run-reg"
+    quiz_path = run_path / "quiz" / "quiz.jsonl"
+    quiz_path.parent.mkdir(parents=True)
+    quiz_path.write_text('{"old": true}\n', encoding="utf-8")
+    (run_path / "metadata.json").write_text(
+        json.dumps({"content_lang": "zh-CN"}) + "\n",
+        encoding="utf-8",
+    )
+    captured: dict[str, object] = {}
+
+    class _FakeReport:
+        verdict = "PASS"
+
+    def fake_generate_quiz_from_run(
+        **kwargs: object,
+    ) -> tuple[QuizArtifactPaths, tuple[object, ...]]:
+        captured.update(kwargs)
+        quiz_path.write_text('{"new": true}\n', encoding="utf-8")
+        return QuizArtifactPaths(quiz_dir=quiz_path.parent, quiz_path=quiz_path), ()
+
+    def fake_generate_cards_for_run(**kwargs: object) -> Path:
+        del kwargs
+        cards_path = run_path / "quiz" / "cards.jsonl"
+        _write_cards_jsonl(cards_path, (_review_card(),))
+        return cards_path
+
+    def fake_evaluate_run(_run_path: Path) -> _FakeReport:
+        return _FakeReport()
+
+    monkeypatch.setattr(cli_module, "generate_quiz_from_run", fake_generate_quiz_from_run)
+    monkeypatch.setattr(cli_module, "generate_cards_for_run", fake_generate_cards_for_run)
+    monkeypatch.setattr(cli_module, "evaluate_run", fake_evaluate_run)
+
+    result = _RUNNER.invoke(
+        app(),
+        [
+            "regenerate",
+            "run-reg",
+            "--only",
+            "quiz",
+            "--repo-root",
+            str(repo_root),
+            "--base-url",
+            "http://127.0.0.1:8318",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0
+    assert captured["output_lang"] == "zh-CN"
+
+
+def test_regenerate_only_quiz_rejects_concurrent_session_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    run_path = repo_root / ".ahadiff" / "runs" / "run-reg"
+    (run_path / "quiz").mkdir(parents=True)
+    observed_locks: list[tuple[Path, str]] = []
+    generated = False
+
+    @contextmanager
+    def fake_repo_write_lock(lock_path: Path, *, command: str) -> Iterator[Path]:
+        observed_locks.append((lock_path, command))
+        if command:
+            raise StorageError("另一个 ahadiff 进程正在运行(PID=123)")
+        yield lock_path
+
+    def fake_generate_quiz_from_run(
+        **kwargs: object,
+    ) -> tuple[QuizArtifactPaths, tuple[object, ...]]:
+        nonlocal generated
+        del kwargs
+        generated = True
+        raise AssertionError("quiz generation should not start while the repo lock is held")
+
+    monkeypatch.setattr(cli_module, "repo_write_lock", fake_repo_write_lock)
+    monkeypatch.setattr(cli_module, "generate_quiz_from_run", fake_generate_quiz_from_run)
+
+    result = _RUNNER.invoke(
+        app(),
+        [
+            "regenerate",
+            "run-reg",
+            "--only",
+            "quiz",
+            "--repo-root",
+            str(repo_root),
+            "--base-url",
+            "http://127.0.0.1:8318",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1
+    assert "another ahadiff session is already running" in result.stderr
+    assert observed_locks == [(lock_file_path(repo_root), "regenerate quiz")]
+    assert generated is False
 
 
 def test_regenerate_only_quiz_restores_previous_artifacts_when_evaluate_fails(

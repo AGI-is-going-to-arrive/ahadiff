@@ -60,6 +60,49 @@ def test_iter_hunks_handles_empty_section_header_and_implicit_counts() -> None:
     assert hunks[1].added_lines == (1, 2)
 
 
+def test_parse_unified_diff_tolerates_index_line_in_body() -> None:
+    patch = (
+        "diff --git a/file.py b/file.py\n"
+        "index abc1234..def5678 100644\n"
+        "--- a/file.py\n"
+        "+++ b/file.py\n"
+        "@@ -1,3 +1,4 @@\n"
+        "index abc1234..def5678 100644\n"
+        "--- a/file.py\n"
+        "+++ b/file.py\n"
+        " line1\n"
+        "+added\n"
+        " line2\n"
+        " line3\n"
+        "diff --git a/other.py b/other.py\n"
+        "index 1111111..2222222 100644\n"
+        "--- a/other.py\n"
+        "+++ b/other.py\n"
+        "@@ -5,2 +5,3 @@\n"
+        " keep\n"
+        "+extra\n"
+        " still\n"
+    )
+
+    changed_files = parse_unified_diff(patch)
+
+    assert len(changed_files) == 2
+    leaked_metadata_file, normal_file = changed_files
+    assert leaked_metadata_file.display_path == "file.py"
+    assert normal_file.display_path == "other.py"
+
+    leaked_hunk = leaked_metadata_file.hunks[0]
+    assert leaked_hunk.added_lines == (2,)
+    assert leaked_hunk.context_old_lines == (1, 2, 3)
+    assert leaked_hunk.context_new_lines == (1, 3, 4)
+    assert len(leaked_hunk.lines) == 4
+
+    normal_hunk = normal_file.hunks[0]
+    assert normal_hunk.added_lines == (6,)
+    assert normal_hunk.context_old_lines == (5, 6)
+    assert normal_hunk.context_new_lines == (5, 7)
+
+
 def test_parse_unified_diff_marks_rename_and_binary_segments() -> None:
     patch = (
         "diff --git a/src/old_name.py b/src/new_name.py\n"
@@ -188,6 +231,40 @@ def test_parse_unified_diff_rejects_malformed_hunk_header() -> None:
         parse_unified_diff(patch)
 
 
+def test_parse_unified_diff_rejects_combined_diff() -> None:
+    patch = (
+        "diff --git a/demo.py b/demo.py\n"
+        "index 1111111,2222222..3333333\n"
+        "--- a/demo.py\n"
+        "+++ b/demo.py\n"
+        "@@@ -1,1 -1,1 +1,2 @@@ def demo():\n"
+        "  value = 1\n"
+        "+ value = 2\n"
+    )
+
+    with pytest.raises(InputError, match="combined diff format is not supported"):
+        parse_unified_diff(patch)
+
+
+def test_parse_unified_diff_allows_triple_at_in_content_line() -> None:
+    """Content starting with @@@ after a +/- prefix is NOT a combined diff marker."""
+    patch = (
+        "diff --git a/demo.py b/demo.py\n"
+        "--- a/demo.py\n"
+        "+++ b/demo.py\n"
+        "@@ -1,2 +1,2 @@\n"
+        "-old = 1\n"
+        "+@@@ not a combined diff marker\n"
+        " keep\n"
+    )
+    files = parse_unified_diff(patch)
+    assert len(files) == 1
+    hunk = files[0].hunks[0]
+    assert hunk.added_lines == (1,)
+    assert hunk.lines[0].content == "old = 1"
+    assert hunk.lines[1].content == "@@@ not a combined diff marker"
+
+
 def test_parse_unified_diff_rejects_non_truncated_hunk_body_count_mismatch() -> None:
     patch = "--- a/demo.py\n+++ b/demo.py\n@@ -1,1 +1,3 @@\n-old = 1\n+value = 2\n+extra = 3\n"
 
@@ -230,3 +307,38 @@ def test_parse_unified_diff_allows_truncated_hunk_body_count_mismatch() -> None:
     assert len(changed_files) == 1
     assert changed_files[0].display_path == "demo.py"
     assert changed_files[0].hunks[0].added_lines == (1,)
+
+
+def test_parse_unicode_filenames() -> None:
+    patch = (
+        "diff --git a/文档/说明.md b/文档/说明.md\n"
+        "new file mode 100644\n"
+        "index 0000000..1111111\n"
+        "--- /dev/null\n"
+        "+++ b/文档/说明.md\n"
+        "@@ -0,0 +1 @@\n"
+        "+你好\n"
+    )
+
+    result = parse_unified_diff(patch)
+
+    assert len(result) == 1
+    assert result[0].new_path == "文档/说明.md"
+
+
+def test_parse_emoji_filenames() -> None:
+    patch = (
+        "diff --git a/🚀/launch.py b/🚀/launch.py\n"
+        "new file mode 100644\n"
+        "index 0000000..1111111\n"
+        "--- /dev/null\n"
+        "+++ b/🚀/launch.py\n"
+        "@@ -0,0 +1 @@\n"
+        "+print('launch')\n"
+    )
+
+    result = parse_unified_diff(patch)
+
+    assert len(result) == 1
+    assert result[0].new_path is not None
+    assert "🚀" in result[0].new_path

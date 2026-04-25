@@ -3,16 +3,23 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+
+import pytest
 
 from ahadiff.contracts import ProviderConfig, ResultEvent
 from ahadiff.core.config import SecurityConfig
+from ahadiff.core.errors import InputError
 from ahadiff.eval.deterministic import DimensionScore
 from ahadiff.eval.evaluator import ScoreReport
 from ahadiff.eval.gates import HardGateResult, HardGateSummary
 from ahadiff.improve import loop as improve_loop_module
 from ahadiff.improve.loop import run_improve_loop
-from ahadiff.improve.program import load_improve_session
+from ahadiff.improve.program import (
+    create_improve_session,
+    load_improve_session,
+    save_improve_session,
+)
 from ahadiff.improve.rewrite import decide_phase25
 from ahadiff.review.database import (
     initialize_review_db,
@@ -320,7 +327,6 @@ def test_phase25_triggers_after_two_discards_and_writes_targeted_verify(
     )
 
     events = load_result_events_from_db(db_path)
-    statuses = [event.status for event in events if event.event_type == "improve"]
     phase25_events = [event for event in events if event.status == "phase25_rewrite"]
     final_phase25 = [
         event
@@ -335,13 +341,195 @@ def test_phase25_triggers_after_two_discards_and_writes_targeted_verify(
         "targeted_verify",
     ]
     assert result.outcomes[-1].phase25 is True
-    assert "phase25_rewrite" in statuses
-    assert len(phase25_events) == 1
+    assert len(phase25_events) == 0
     assert len(final_phase25) == 1
     assert session.phase25_attempted is True
     assert note_payload["phase25"] is True
     assert str(note_payload["phase25_note"]).startswith("PHASE25:")
     assert (state_dir / "runs" / "run_phase25" / "finalized.json").exists()
+
+
+def test_phase25_resume_merges_persisted_discard_history(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    _write_prompt_files(repo_root)
+    base_ref = _git_commit(repo_root, "tracked.txt", "base\n", "base")
+    source_ref = _git_commit(repo_root, "tracked.txt", "head\n", "head")
+    state_dir = repo_root / ".ahadiff"
+    anchor_run_path = state_dir / "runs" / "run_anchor"
+    _write_run_fixture(
+        anchor_run_path,
+        run_id="run_anchor",
+        source_ref=source_ref,
+        base_ref=base_ref,
+        finalized=True,
+        score_overall=70.0,
+    )
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    sync_result_event(
+        db_path,
+        _baseline_event(
+            run_id="run_anchor",
+            source_ref=source_ref,
+            overall=70.0,
+            weakest_dim="learnability",
+        ),
+    )
+    call_count = 0
+
+    def fake_mutate_prompt_in_worktree(**kwargs: Any) -> None:
+        nonlocal call_count
+        call_count += 1
+        worktree_root = Path(kwargs["worktree_root"])
+        target_prompt = str(kwargs["target_prompt"])
+        for relative in (
+            worktree_root / "prompts" / target_prompt,
+            worktree_root / "src" / "ahadiff" / "prompts" / target_prompt,
+        ):
+            relative.write_text(f"resume mutation {call_count}\n", encoding="utf-8")
+
+    replay_runs = iter(("run_round1", "run_round2", "run_phase25"))
+
+    def fake_run_replay_learn_subprocess(**kwargs: Any) -> Path:
+        worktree_root = Path(kwargs["worktree_root"])
+        run_id = next(replay_runs)
+        run_path = worktree_root / ".ahadiff" / "runs" / run_id
+        _write_run_fixture(
+            run_path,
+            run_id=run_id,
+            source_ref=source_ref,
+            base_ref=base_ref,
+            finalized=True,
+        )
+        return run_path
+
+    def fake_evaluate_run(path: Path) -> Any:
+        overall_by_run = {
+            "run_round1": 69.0,
+            "run_round2": 68.0,
+            "run_phase25": 76.0,
+        }
+        return _score_report(
+            run_id=path.name,
+            source_ref=source_ref,
+            overall=overall_by_run[path.name],
+            weakest_dim="learnability",
+        )
+
+    monkeypatch.setattr(
+        improve_loop_module, "_mutate_prompt_in_worktree", fake_mutate_prompt_in_worktree
+    )
+    monkeypatch.setattr(
+        improve_loop_module,
+        "_run_replay_learn_subprocess",
+        fake_run_replay_learn_subprocess,
+    )
+    monkeypatch.setattr(improve_loop_module, "evaluate_run", fake_evaluate_run)
+
+    first = run_improve_loop(
+        repo_root=repo_root,
+        state_dir=state_dir,
+        db_path=db_path,
+        rounds=1,
+        suite="local",
+        provider_config=_provider_config(),
+        api_key=None,
+        security_config=SecurityConfig(),
+    )
+    second = run_improve_loop(
+        repo_root=repo_root,
+        state_dir=state_dir,
+        db_path=db_path,
+        rounds=2,
+        suite="local",
+        provider_config=_provider_config(),
+        api_key=None,
+        security_config=SecurityConfig(),
+        resume_session_id=first.session_id,
+    )
+
+    session = load_improve_session(state_dir, first.session_id)
+    assert [item.status for item in first.outcomes] == ["discard"]
+    assert [item.status for item in second.outcomes] == ["discard", "targeted_verify"]
+    assert second.outcomes[-1].phase25 is True
+    assert session.phase25_attempted is True
+    assert session.outcome_statuses == ("discard", "discard", "targeted_verify")
+    assert (state_dir / "runs" / "run_phase25" / "finalized.json").exists()
+
+
+def test_phase25_cleans_partial_worktree_when_create_fails(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    _write_prompt_files(repo_root)
+    base_ref = _git_commit(repo_root, "tracked.txt", "base\n", "base")
+    source_ref = _git_commit(repo_root, "tracked.txt", "head\n", "head")
+    state_dir = repo_root / ".ahadiff"
+    anchor_run_path = state_dir / "runs" / "run_anchor"
+    _write_run_fixture(
+        anchor_run_path,
+        run_id="run_anchor",
+        source_ref=source_ref,
+        base_ref=base_ref,
+        finalized=True,
+    )
+    session = create_improve_session(
+        session_id="improve_phase25_cleanup",
+        suite="local",
+        anchor_run_id="run_anchor",
+    )
+    save_improve_session(state_dir, session)
+    expected_worktree = cast("Any", improve_loop_module)._session_phase25_worktree_path(
+        state_dir,
+        session.session_id,
+    )
+
+    def fake_create_worktree(repo_root: Path, worktree_path: Path) -> None:
+        del repo_root
+        worktree_path.mkdir(parents=True)
+        raise InputError("phase25 create failed")
+
+    monkeypatch.setattr(improve_loop_module, "_create_worktree", fake_create_worktree)
+
+    with pytest.raises(InputError, match="phase25 create failed"):
+        cast("Any", improve_loop_module)._run_phase25_rewrite(
+            repo_root=repo_root,
+            state_dir=state_dir,
+            session=session,
+            baseline_event=_baseline_event(
+                run_id="run_anchor",
+                source_ref=source_ref,
+                overall=70.0,
+                weakest_dim="learnability",
+            ),
+            baseline_run_path=anchor_run_path,
+            anchor_metadata=json.loads(
+                (anchor_run_path / "metadata.json").read_text(encoding="utf-8")
+            ),
+            provider_config=_provider_config(),
+            api_key=None,
+            security_config=SecurityConfig(),
+            privacy_mode="strict_local",
+            client=None,
+            request_timeout_seconds=30,
+            max_concurrent=3,
+            qps_limit=3,
+            retry_attempts=3,
+            trigger_reason="consecutive_discard_count=2",
+            target_dimension="learnability",
+            target_prompt="lesson_generate.md",
+            output_lang=None,
+        )
+
+    assert not expected_worktree.exists()
 
 
 def test_targeted_verification_hard_gate_failure_discards_without_cherry_pick(

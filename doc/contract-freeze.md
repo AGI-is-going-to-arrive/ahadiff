@@ -396,6 +396,7 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 - `GET /api/run/:id/claims`
 - `GET /api/run/:id/quiz`
 - `GET /api/run/:id/diff`
+- `GET /api/run/:id/concepts`
 - `GET /api/concepts`
 - `GET /api/ratchet/history`
 - `POST /api/signals/*`
@@ -420,7 +421,7 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 - `LocaleResponse`
 - `RunSummary`
 - `RunDetail`
-- `RunArtifactEnvelope`
+- `RunArtifactEnvelope`：`run_id`、`artifact_type`、`content`、`content_lang: Literal["en","zh-CN"] | None`
 - `RatchetHistoryEntry`
 
 Stage 0 同时冻结最小写请求 DTO：
@@ -440,7 +441,7 @@ Stage 0 同时冻结最小写请求 DTO：
 
 serve/request 链路的 locale 冻结为：
 
-`cookie(ahadiff_lang) -> Accept-Language -> CLI session -> per-repo config -> global config -> system -> default(en)`
+`cookie(ahadiff_lang) -> Accept-Language -> AHADIFF_LANG env -> CLI session -> per-repo config -> global config -> system LANG -> default(en)`
 
 ---
 

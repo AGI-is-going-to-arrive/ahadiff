@@ -1,0 +1,186 @@
+import type { Page, Request } from '@playwright/test';
+
+const SAMPLE_DIFF = `diff --git a/demo.py b/demo.py
+index 0000001..0000002 100644
+--- a/demo.py
++++ b/demo.py
+@@ -1,3 +1,4 @@
+ def hello():
+-    return "world"
++    return "AhaDiff"
++    # learn-from-diff
+`;
+
+function extractCookieLocale(req: Request): string {
+  const cookie = req.headers()['cookie'] ?? '';
+  const match = /(?:^|;\s*)ahadiff_lang=([^;]+)/.exec(cookie);
+  return match ? decodeURIComponent(match[1]!) : 'en';
+}
+
+/**
+ * Install minimal serve API mocks.
+ *
+ * NOTE: route predicates use `URL.pathname` equality instead of glob patterns.
+ * Glob like `**\/api/runs**` over-matches and intercepts Vite's source module
+ * requests (e.g. `/src/api/runs.ts`), returning JSON for what should be a JS
+ * module and breaking React boot.
+ */
+export async function installServeMock(page: Page): Promise<void> {
+  await page.route(
+    (url) => url.pathname === '/api/auth/token',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ token: 'test-token-xxx' }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/locale',
+    async (route) => {
+      const req = route.request();
+      if (req.method() === 'PUT') {
+        // Mirror real backend (routes_locale.py:21-36): 200 + JSONResponse(LocaleResponse).
+        let lang = 'en';
+        try {
+          const body = req.postDataJSON() as { lang?: string } | null;
+          if (body?.lang === 'en' || body?.lang === 'zh-CN') lang = body.lang;
+        } catch {
+          // ignore malformed test bodies
+        }
+        // route.fulfill Set-Cookie is not always written into the BrowserContext
+        // cookie store under WebKit + Playwright; explicitly sync via addCookies
+        // so document.cookie reads after page.reload() are cross-browser consistent
+        // with what the real backend (routes_locale.py) sets.
+        await page.context().addCookies([
+          {
+            name: 'ahadiff_lang',
+            value: lang,
+            url: 'http://localhost:5173/',
+            sameSite: 'Lax',
+          },
+        ]);
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ locale: lang }),
+        });
+        return;
+      }
+      const locale = extractCookieLocale(req);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ locale }),
+      });
+    },
+  );
+  await page.route(
+    (url) => url.pathname === '/api/runs',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ runs: [] }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/ratchet/history',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      }),
+  );
+  await page.route(
+    (url) => /^\/api\/run\/[^/]+\/diff$/.test(url.pathname),
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          run_id: 'test-run',
+          kind: 'diff',
+          content: SAMPLE_DIFF,
+          truncated: false,
+        }),
+      }),
+  );
+  // RunDetail (used by Lesson page initial fetch)
+  await page.route(
+    (url) => /^\/api\/run\/[^/]+$/.test(url.pathname),
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          run_id: 'test-run',
+          source_kind: 'last',
+          source_ref: 'HEAD',
+          base_ref: 'HEAD~1',
+          verdict: 'PASS',
+          overall: 88,
+          weakest_dim: 'evidence',
+          created_at: '2026-04-25T00:00:00Z',
+          metadata: {},
+        }),
+      }),
+  );
+  await page.route(
+    (url) => /^\/api\/run\/[^/]+\/lesson$/.test(url.pathname),
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          run_id: 'test-run',
+          kind: 'lesson',
+          content: '# Sample lesson\n\nThis change adds a learn-from-diff comment.',
+          truncated: false,
+        }),
+      }),
+  );
+  await page.route(
+    (url) => /^\/api\/run\/[^/]+\/claims$/.test(url.pathname),
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          run_id: 'test-run',
+          kind: 'claims',
+          content:
+            '{"claim_id":"c1","verdict":"verified","file":"demo.py","line_start":4,"line_end":4,"statement":"adds learn-from-diff comment"}',
+          truncated: false,
+        }),
+      }),
+  );
+  await page.route(
+    (url) => /^\/api\/run\/[^/]+\/quiz$/.test(url.pathname),
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          run_id: 'test-run',
+          kind: 'quiz',
+          content:
+            '{"quiz_id":"q1","claim_id":"c1","question":"What does the new comment indicate?","choices":["A flag","A learn-from-diff marker","Dead code","Random"],"answer_index":1,"explanation":"learn-from-diff marker tags the change for the lesson"}',
+          truncated: false,
+        }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/concepts',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          content:
+            '{"concept":"learn-from-diff","term_key":"learn-from-diff","display_name":"Learn-from-diff","related_claims":["c1"],"file_refs":["demo.py"]}',
+        }),
+      }),
+  );
+}

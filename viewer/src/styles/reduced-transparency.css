@@ -1,0 +1,12 @@
+@media (prefers-reduced-transparency: reduce) {
+  * {
+    backdrop-filter: none !important;
+    /* Safari + iOS use the prefixed property; clear both so blur is gone. */
+    -webkit-backdrop-filter: none !important;
+  }
+
+  [data-glass],
+  [data-blur] {
+    background: var(--paper) !important;
+  }
+}

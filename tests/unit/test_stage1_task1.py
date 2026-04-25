@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import tomllib
 from pathlib import Path
@@ -19,7 +20,7 @@ from ahadiff.core.config import (
     resolve_effective,
     write_default_config,
 )
-from ahadiff.core.errors import ConfigError, StorageError
+from ahadiff.core.errors import ConfigError, InputError, StorageError
 from ahadiff.core.ids import make_claim_id, make_hunk_id, make_run_id
 from ahadiff.core.paths import (
     assert_local_repo_path,
@@ -31,6 +32,17 @@ from ahadiff.core.paths import (
     review_db_path,
     run_dir,
 )
+from ahadiff.git.repo import repo_write_lock
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation requires elevated Windows privileges")
+def test_repo_write_lock_rejects_symlink(tmp_path: Path) -> None:
+    target = tmp_path / "target_file"
+    target.touch()
+    link = tmp_path / "ahadiff.lock"
+    link.symlink_to(target)
+    with pytest.raises(InputError, match="symlink"), repo_write_lock(link, command="test"):
+        pass
 
 
 def _init_git_repo(root: Path) -> None:
@@ -193,6 +205,62 @@ def test_provider_tables_and_security_local_hosts_are_supported_config_keys(tmp_
     )
     assert pricing.openrouter_refresh_seconds == 900
     assert pricing.model_overrides["openrouter/custom.model"].output_per_million_usd == 1.6
+
+
+def test_repo_provider_api_key_env_rejects_arbitrary_env_var(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+
+    repo_path = repo_config_path(repo_root)
+    repo_path.parent.mkdir(parents=True)
+    repo_path.write_text(
+        '[providers.demo]\nprovider_class = "openai"\nmodel_name = "gpt-5.4-mini"\n'
+        'base_url = "https://api.example.test"\napi_key_env = "AWS_SECRET_ACCESS_KEY"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="repo provider api_key_env"):
+        load_config(repo_root, env={"HOME": str(tmp_path / "home")})
+
+
+def test_global_provider_api_key_env_is_exempt_from_repo_restriction(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    home_root = tmp_path / "home"
+    global_path = global_config_dir(env={"HOME": str(home_root)}) / "config.toml"
+    global_path.parent.mkdir(parents=True)
+    global_path.write_text(
+        '[providers.demo]\nprovider_class = "openai"\nmodel_name = "gpt-5.4-mini"\n'
+        'base_url = "https://api.example.test"\napi_key_env = "AWS_SECRET_ACCESS_KEY"\n',
+        encoding="utf-8",
+    )
+
+    snapshot = load_config(repo_root, env={"HOME": str(home_root)})
+
+    providers = snapshot.values["providers"]
+    assert isinstance(providers, dict)
+    assert providers["demo"]["api_key_env"] == "AWS_SECRET_ACCESS_KEY"
+
+
+def test_security_config_keeps_global_local_hosts_for_strict_local(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    home_root = tmp_path / "home"
+    global_path = global_config_dir(env={"HOME": str(home_root)}) / "config.toml"
+    global_path.parent.mkdir(parents=True)
+    global_path.write_text('[security]\nlocal_hosts = ["global.model"]\n', encoding="utf-8")
+    repo_path = repo_config_path(repo_root)
+    repo_path.parent.mkdir(parents=True)
+    repo_path.write_text('[security]\nlocal_hosts = ["repo.model"]\n', encoding="utf-8")
+
+    snapshot = load_config(repo_root, env={"HOME": str(home_root)})
+    security = config_module._security_config_from_snapshot(snapshot)  # pyright: ignore[reportPrivateUsage]
+
+    assert security.local_hosts == ("repo.model",)
+    assert security.strict_local_hosts == ("global.model",)
 
 
 def test_load_workspace_config_resolves_local_and_global_layers_without_git(

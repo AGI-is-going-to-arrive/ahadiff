@@ -13,6 +13,8 @@ class ServeState:
     state_dir: Path
     token: str
     locale: Literal["en", "zh-CN"] = "en"
+    cli_lang: str | None = None
+    config_lang: str | None = None
     bind_host: str = "127.0.0.1"
     port: int = 8765
     write_lock: asyncio.Lock | None = None

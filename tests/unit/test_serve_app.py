@@ -3,12 +3,16 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any, Literal, cast
 
+import pytest
+from pydantic import ValidationError
 from starlette.testclient import TestClient
 
+import ahadiff.serve.routes_locale as routes_locale_module
 import ahadiff.serve.routes_runs as routes_runs_module
-from ahadiff.contracts import ResultEvent, ReviewCard
+from ahadiff.contracts import ResultEvent, ReviewCard, RunArtifactEnvelope
 from ahadiff.eval.results import finalized_artifact_digest
 from ahadiff.review.database import (
+    connect_review_db,
     import_cards_from_jsonl,
     initialize_review_db,
     load_result_event_by_run_and_id,
@@ -17,9 +21,15 @@ from ahadiff.review.database import (
 from ahadiff.serve import ServeState, create_app
 
 if TYPE_CHECKING:
+    from collections.abc import Generator
     from pathlib import Path
 
-    import pytest
+
+@pytest.fixture(autouse=True)
+def _clear_capability_level_warning_runs() -> Generator[None]:  # pyright: ignore[reportUnusedFunction]
+    routes_runs_module._CAPABILITY_LEVEL_WARNING_RUNS.clear()  # pyright: ignore[reportPrivateUsage]
+    yield
+    routes_runs_module._CAPABILITY_LEVEL_WARNING_RUNS.clear()  # pyright: ignore[reportPrivateUsage]
 
 
 def _client(
@@ -43,12 +53,13 @@ def _event(
     status: str = "keep",
     source_ref: str = "abc1234",
     event_id: str | None = None,
+    timestamp: str | None = None,
 ) -> ResultEvent:
     return ResultEvent(
         event_id=event_id or f"018f0f52-91c0-7abc-8123-{run_id[-1]:0>12}",
         run_id=run_id,
         event_type="learn",
-        timestamp=f"2026-04-24T00:00:0{run_id[-1]}Z",
+        timestamp=timestamp or f"2026-04-24T00:00:0{run_id[-1]}Z",
         source_ref=source_ref,
         base_ref="base1234",
         prompt_version="prompt123",
@@ -106,6 +117,27 @@ def _write_run(
             },
         )
     return run_path
+
+
+def _finalize_run(run_path: Path, run_id: str) -> None:
+    artifact_count, checksum = finalized_artifact_digest(run_path)
+    _write_json(
+        run_path / "finalized.json",
+        {
+            "run_id": run_id,
+            "event_id": f"018f0f52-91c0-7abc-8123-{run_id[-1]:0>12}",
+            "finalized_at": f"2026-04-24T00:00:0{run_id[-1]}Z",
+            "artifact_count": artifact_count,
+            "checksum": checksum,
+            "status": "keep",
+        },
+    )
+
+
+def _write_graphify_metadata(run_path: Path, graphify: dict[str, Any]) -> None:
+    metadata = json.loads((run_path / "metadata.json").read_text(encoding="utf-8"))
+    metadata["graphify"] = graphify
+    _write_json(run_path / "metadata.json", cast("dict[str, Any]", metadata))
 
 
 def test_healthz_and_loopback_host_guard(tmp_path: Path) -> None:
@@ -167,6 +199,35 @@ def test_locale_resolves_cookie_accept_language_and_serve_state(tmp_path: Path) 
     assert from_cookie.json() == {"locale": "zh-CN"}
 
 
+def test_locale_resolver_receives_cli_and_config_lang_separately(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, str | None] = {}
+
+    def fake_resolve_locale(**kwargs: str | None) -> Literal["en", "zh-CN"]:
+        captured.update(kwargs)
+        return "zh-CN"
+
+    monkeypatch.setattr(routes_locale_module, "resolve_locale", fake_resolve_locale)
+    app = create_app(
+        ServeState(
+            state_dir=tmp_path / ".ahadiff",
+            token="test-token",
+            locale="en",
+            cli_lang="zh-CN",
+            config_lang="en",
+        )
+    )
+    client = TestClient(app, base_url="http://localhost:8765")
+
+    response = client.get("/api/locale")
+
+    assert response.json() == {"locale": "zh-CN"}
+    assert captured["cli_lang"] == "zh-CN"
+    assert captured["config_lang"] == "en"
+
+
 def test_serve_state_locale_update_preserves_runtime_fields(tmp_path: Path) -> None:
     state = ServeState(
         state_dir=tmp_path / ".ahadiff",
@@ -212,6 +273,69 @@ def test_write_routes_require_loopback_origin_or_referer(tmp_path: Path) -> None
     assert referer.status_code == 200
 
 
+def test_write_routes_allow_https_loopback_origin(tmp_path: Path) -> None:
+    client = _client(tmp_path / ".ahadiff")
+
+    response = client.put(
+        "/api/locale",
+        headers={"origin": "https://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        json={"lang": "zh-CN"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"locale": "zh-CN"}
+
+
+def test_write_routes_reject_body_larger_than_one_megabyte(tmp_path: Path) -> None:
+    client = _client(tmp_path / ".ahadiff")
+
+    response = client.post(
+        "/api/signals/helpfulness",
+        headers={
+            "origin": "http://localhost:8765",
+            "X-AhaDiff-Token": "test-token",
+            "content-type": "application/json",
+        },
+        content=b"x" * (1024 * 1024 + 1),
+    )
+
+    assert response.status_code == 413
+    assert response.json()["error"] == "payload_too_large"
+
+
+def test_write_routes_reject_non_json_content_type(tmp_path: Path) -> None:
+    client = _client(tmp_path / ".ahadiff")
+
+    response = client.post(
+        "/api/signals/helpfulness",
+        headers={
+            "origin": "http://localhost:8765",
+            "X-AhaDiff-Token": "test-token",
+            "content-type": "text/html",
+        },
+        content=b"{}",
+    )
+
+    assert response.status_code == 415
+    assert response.json()["error"] == "unsupported_media_type"
+
+
+def test_write_routes_reject_missing_content_type(tmp_path: Path) -> None:
+    client = _client(tmp_path / ".ahadiff")
+
+    response = client.post(
+        "/api/signals/helpfulness",
+        headers={
+            "origin": "http://localhost:8765",
+            "X-AhaDiff-Token": "test-token",
+        },
+        content=b"{}",
+    )
+
+    assert response.status_code == 415
+    assert response.json()["error"] == "unsupported_media_type"
+
+
 def test_runs_only_expose_finalized_runs_and_artifacts(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     initialize_review_db(state_dir / "review.sqlite")
@@ -233,7 +357,346 @@ def test_runs_only_expose_finalized_runs_and_artifacts(tmp_path: Path) -> None:
     assert detail["source_kind"] == "git_ref"
     assert detail["degraded_flags"] == {"diff_clipped": True}
     assert hidden.status_code == 400
-    assert lesson == {"run_id": "run-1", "artifact_type": "lesson", "content": "compact lesson\n"}
+    assert lesson == {
+        "run_id": "run-1",
+        "artifact_type": "lesson",
+        "content": "compact lesson\n",
+        "content_lang": "zh-CN",
+    }
+
+
+def test_tmp_run_id_is_filtered_and_rejected_from_artifact_endpoint(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    _write_run(state_dir, "run-1.tmp", finalized=True)
+    sync_result_event(state_dir / "review.sqlite", _event("run-1.tmp"))
+    client = _client(state_dir)
+
+    runs = client.get("/api/runs").json()["runs"]
+    artifact = client.get("/api/run/run-1.tmp/lesson")
+
+    assert runs == []
+    assert artifact.status_code in {400, 404}
+
+
+def test_run_summary_normalizes_invalid_content_lang_to_default(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=False, content_lang="fr")
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir, locale="zh-CN")
+
+    runs = client.get("/api/runs").json()["runs"]
+    detail = client.get("/api/run/run-1").json()
+    lesson = client.get("/api/run/run-1/lesson").json()
+
+    assert [run["run_id"] for run in runs] == ["run-1"]
+    assert runs[0]["content_lang"] == "zh-CN"
+    assert detail["content_lang"] == "zh-CN"
+    assert lesson["content_lang"] == "zh-CN"
+
+
+def test_run_summary_defaults_capability_level_when_missing(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=False)
+    metadata = json.loads((run_path / "metadata.json").read_text(encoding="utf-8"))
+    metadata.pop("capability_level")
+    _write_json(run_path / "metadata.json", cast("dict[str, Any]", metadata))
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    runs = client.get("/api/runs").json()["runs"]
+
+    assert [run["run_id"] for run in runs] == ["run-1"]
+    assert runs[0]["capability_level"] == 1
+
+
+def test_run_artifact_envelope_rejects_non_literal_content_lang() -> None:
+    with pytest.raises(ValidationError):
+        RunArtifactEnvelope(
+            run_id="run-1",
+            artifact_type="lesson",
+            content="lesson body",
+            content_lang=cast("Any", "fr"),
+        )
+
+
+def test_run_artifact_envelope_requires_required_fields() -> None:
+    with pytest.raises(ValidationError):
+        RunArtifactEnvelope.model_validate(
+            {"run_id": "run-1", "artifact_type": "lesson", "content_lang": "en"}
+        )
+
+
+def test_run_detail_projects_graphify_full_from_nested_metadata(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=False)
+    _write_graphify_metadata(
+        run_path,
+        {
+            "mode": "empty",
+            "status": "fresh",
+            "notes": ["graph artifact is fresh"],
+        },
+    )
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    detail = client.get("/api/run/run-1").json()
+
+    assert detail["graphify_mode"] == "full"
+    assert detail["graphify_status"] == "fresh"
+    assert detail["graphify_notes"] == ["graph artifact is fresh"]
+
+
+def test_run_detail_projects_graphify_learning_only_from_nested_metadata(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=False)
+    _write_graphify_metadata(
+        run_path,
+        {
+            "status": "missing_partial",
+            "notes": ["graph artifact is partially missing"],
+        },
+    )
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    detail = client.get("/api/run/run-1").json()
+
+    assert detail["graphify_mode"] == "learning_only"
+    assert detail["graphify_status"] == "missing_partial"
+    assert detail["graphify_notes"] == ["graph artifact is partially missing"]
+
+
+def test_run_detail_ignores_invalid_graphify_status(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=False)
+    _write_graphify_metadata(run_path, {"status": "invalid"})
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    detail = client.get("/api/run/run-1").json()
+
+    assert detail["graphify_mode"] == "empty"
+    assert detail["graphify_status"] is None
+
+
+def test_run_detail_projects_graphify_empty_without_nested_metadata(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    _write_run(state_dir, "run-1", finalized=True)
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    detail = client.get("/api/run/run-1").json()
+
+    assert detail["graphify_mode"] == "empty"
+    assert detail["graphify_status"] is None
+    assert detail["graphify_notes"] is None
+
+
+def test_artifact_envelopes_include_content_lang_from_run_metadata(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=False, content_lang="zh-CN")
+    concepts_content = '{"term_key":"retry-loop","display_name":"Retry loop"}\n'
+    (run_path / "concepts.jsonl").write_text(concepts_content, encoding="utf-8")
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    routes = (
+        ("/api/run/run-1/lesson?level=full", "lesson"),
+        ("/api/run/run-1/claims", "claims"),
+        ("/api/run/run-1/quiz", "quiz"),
+        ("/api/run/run-1/diff", "diff"),
+        ("/api/run/run-1/concepts", "concepts"),
+    )
+
+    for route, artifact_type in routes:
+        response = client.get(route)
+        payload = response.json()
+
+        assert response.status_code == 200
+        assert payload["artifact_type"] == artifact_type
+        assert payload["content_lang"] == "zh-CN"
+
+
+def test_artifact_envelope_uses_none_content_lang_when_metadata_field_missing(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=False, content_lang="zh-CN")
+    metadata = json.loads((run_path / "metadata.json").read_text(encoding="utf-8"))
+    metadata.pop("content_lang")
+    _write_json(run_path / "metadata.json", cast("dict[str, Any]", metadata))
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir, locale="zh-CN")
+
+    response = client.get("/api/run/run-1/lesson?level=full")
+
+    assert response.status_code == 200
+    assert response.json()["content_lang"] is None
+
+
+def test_artifact_envelope_uses_none_content_lang_when_metadata_field_null(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=False, content_lang="zh-CN")
+    metadata = json.loads((run_path / "metadata.json").read_text(encoding="utf-8"))
+    metadata["content_lang"] = None
+    _write_json(run_path / "metadata.json", cast("dict[str, Any]", metadata))
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir, locale="zh-CN")
+
+    response = client.get("/api/run/run-1/lesson?level=full")
+
+    assert response.status_code == 200
+    assert response.json()["content_lang"] is None
+
+
+def test_artifact_route_returns_413_for_oversized_text_artifact(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=False)
+    (run_path / "patch.diff").write_text(
+        "x" * (routes_runs_module._MAX_TEXT_ARTIFACT_BYTES + 1),  # pyright: ignore[reportPrivateUsage]
+        encoding="utf-8",
+    )
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    response = client.get("/api/run/run-1/diff")
+
+    assert response.status_code == 413
+    assert response.json()["error"] == "patch.diff exceeds size limit"
+
+
+def test_get_run_returns_413_for_oversized_json_metadata(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=False)
+    (run_path / "metadata.json").write_text(
+        '{"padding":"' + "x" * routes_runs_module._MAX_JSON_OBJECT_BYTES + '"}\n',  # pyright: ignore[reportPrivateUsage]
+        encoding="utf-8",
+    )
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    response = client.get("/api/run/run-1")
+
+    assert response.status_code == 413
+    assert response.json()["error"] == "metadata.json exceeds size limit"
+
+
+def test_concepts_route_returns_413_for_oversized_repo_concepts(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "concepts.jsonl").write_text(
+        "x" * (routes_runs_module._MAX_TEXT_ARTIFACT_BYTES + 1),  # pyright: ignore[reportPrivateUsage]
+        encoding="utf-8",
+    )
+    client = _client(state_dir)
+
+    response = client.get("/api/concepts")
+
+    assert response.status_code == 413
+    assert response.json()["error"] == "concepts.jsonl exceeds size limit"
+
+
+def test_artifact_envelopes_use_none_content_lang_when_metadata_missing(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=False)
+    (run_path / "metadata.json").unlink()
+    (run_path / "concepts.jsonl").write_text(
+        '{"term_key":"retry-loop","display_name":"Retry loop"}\n',
+        encoding="utf-8",
+    )
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir, locale="zh-CN")
+
+    routes = (
+        "/api/run/run-1/lesson?level=full",
+        "/api/run/run-1/claims",
+        "/api/run/run-1/quiz",
+        "/api/run/run-1/diff",
+        "/api/run/run-1/concepts",
+    )
+
+    for route in routes:
+        response = client.get(route)
+        payload = response.json()
+
+        assert response.status_code == 200
+        assert payload["content_lang"] is None
+
+
+def test_get_run_concepts_returns_content(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=False)
+    content = '{"term_key":"retry-loop","display_name":"Retry loop"}\n'
+    (run_path / "concepts.jsonl").write_text(content, encoding="utf-8")
+    artifact_count, checksum = finalized_artifact_digest(run_path)
+    _write_json(
+        run_path / "finalized.json",
+        {
+            "run_id": "run-1",
+            "event_id": "018f0f52-91c0-7abc-8123-000000000001",
+            "finalized_at": "2026-04-24T00:00:01Z",
+            "artifact_count": artifact_count,
+            "checksum": checksum,
+            "status": "keep",
+        },
+    )
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    response = client.get("/api/run/run-1/concepts")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "run_id": "run-1",
+        "artifact_type": "concepts",
+        "content": content,
+        "content_lang": "en",
+    }
+
+
+def test_get_run_concepts_missing_returns_404(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    _write_run(state_dir, "run-1", finalized=True)
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    response = client.get("/api/run/run-1/concepts")
+
+    assert response.status_code == 404
+    assert response.json()["error"] == "artifact_not_found"
 
 
 def test_artifact_routes_require_finalized_marker_event_match(tmp_path: Path) -> None:
@@ -383,6 +846,24 @@ def test_malformed_finalized_marker_is_hidden_without_500(tmp_path: Path) -> Non
     assert "finalized marker is invalid" in response.json()["error"]
 
 
+def test_oversized_finalized_marker_is_hidden_from_list_without_500(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=True)
+    (run_path / "finalized.json").write_text(
+        '{"padding":"' + "x" * routes_runs_module._MAX_JSON_OBJECT_BYTES + '"}\n',  # pyright: ignore[reportPrivateUsage]
+        encoding="utf-8",
+    )
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    assert client.get("/api/runs").json() == {"runs": []}
+    response = client.get("/api/run/run-1")
+
+    assert response.status_code == 400
+    assert "finalized marker is invalid" in response.json()["error"]
+
+
 def test_malformed_run_metadata_is_hidden_from_list_without_500(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     initialize_review_db(state_dir / "review.sqlite")
@@ -486,6 +967,61 @@ def test_runs_source_kind_filter_and_ratchet_history(tmp_path: Path) -> None:
     assert [entry["run_id"] for entry in history] == ["run-1"]
 
 
+def test_run_and_ratchet_lists_are_capped_to_newest_500(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    for index in range(505):
+        run_id = f"run-{index:03d}"
+        event_id = f"018f0f52-91c0-7abc-8123-{index:012d}"
+        run_path = state_dir / "runs" / run_id
+        run_path.mkdir(parents=True)
+        _write_json(
+            run_path / "metadata.json",
+            {
+                "run_id": run_id,
+                "source_kind": "git_ref",
+                "source_ref": f"abc{index:03d}",
+                "content_lang": "en",
+                "capability_level": 2,
+                "degraded_flags": {},
+            },
+        )
+        (run_path / "patch.diff").write_text("diff --git a/a.py b/a.py\n", encoding="utf-8")
+        artifact_count, checksum = finalized_artifact_digest(run_path)
+        _write_json(
+            run_path / "finalized.json",
+            {
+                "run_id": run_id,
+                "event_id": event_id,
+                "finalized_at": f"2026-04-24T00:{index // 60:02d}:{index % 60:02d}Z",
+                "artifact_count": artifact_count,
+                "checksum": checksum,
+                "status": "keep",
+            },
+        )
+        sync_result_event(
+            db_path,
+            _event(
+                run_id,
+                source_ref=f"abc{index:03d}",
+                event_id=event_id,
+                timestamp=f"2026-04-24T00:{index // 60:02d}:{index % 60:02d}Z",
+            ),
+        )
+    client = _client(state_dir)
+
+    runs = client.get("/api/runs").json()["runs"]
+    history = client.get("/api/ratchet/history").json()["history"]
+
+    assert len(runs) == 500
+    assert len(history) == 500
+    assert runs[0]["run_id"] == "run-504"
+    assert history[0]["run_id"] == "run-504"
+    assert runs[-1]["run_id"] == "run-005"
+    assert history[-1]["run_id"] == "run-005"
+
+
 def test_concepts_route_does_not_follow_symlink(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     state_dir.mkdir()
@@ -515,6 +1051,41 @@ def test_mark_wrong_signal_is_idempotent(tmp_path: Path) -> None:
 
     assert first.json() == {"inserted": True}
     assert second.json() == {"inserted": False}
+
+
+def test_quiz_answer_signal_validates_dto_and_records_payload(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+    payload = {
+        "idempotency_key": "quiz:run-1:q1",
+        "quiz_id": "q1",
+        "choice": "B",
+        "correct": True,
+    }
+
+    first = client.post(
+        "/api/signals/quiz-answer",
+        headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        json=payload,
+    )
+    second = client.post(
+        "/api/signals/quiz-answer",
+        headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        json=payload,
+    )
+
+    assert first.json() == {"inserted": True}
+    assert second.json() == {"inserted": False}
+    with connect_review_db(state_dir / "review.sqlite") as connection:
+        row = connection.execute(
+            "SELECT signal_type, payload_json FROM learning_signals"
+        ).fetchone()
+    assert row["signal_type"] == "quiz_answer"
+    assert json.loads(row["payload_json"]) == {
+        "choice": "B",
+        "correct": True,
+        "quiz_id": "q1",
+    }
 
 
 def test_empty_idempotency_key_is_rejected_before_signal_write(tmp_path: Path) -> None:
@@ -617,6 +1188,83 @@ def test_viewer_static_serves_spa_fallback_without_viewer_source_changes(tmp_pat
     assert "AhaDiff" in nested.text
 
 
+def test_api_unknown_returns_json_404(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    viewer_dist = tmp_path / "viewer" / "dist"
+    viewer_dist.mkdir(parents=True)
+    (viewer_dist / "index.html").write_text("<h1>AhaDiff</h1>\n", encoding="utf-8")
+    app = create_app(ServeState(state_dir=state_dir, token="test-token"), viewer_dist=viewer_dist)
+    client = TestClient(app, base_url="http://localhost:8765")
+
+    response = client.get("/api/does-not-exist")
+
+    assert response.status_code == 404
+    assert "application/json" in response.headers["content-type"]
+    assert response.json()["error"] == "not_found"
+    assert response.json()["path"] == "/api/does-not-exist"
+
+
+def test_api_unknown_post_returns_json_404(tmp_path: Path) -> None:
+    client = _client(tmp_path / ".ahadiff")
+
+    response = client.post(
+        "/api/not-a-real-endpoint",
+        headers={"origin": "http://localhost:8765"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"] == "not_found"
+
+
+def test_helpfulness_signal_records_section_id_and_rating(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+    payload = {
+        "idempotency_key": "help:run-1:section-1",
+        "target_kind": "file",
+        "target_id": "section-1",
+        "payload": {"rating": 5, "section_id": "sec-intro"},
+    }
+
+    first = client.post(
+        "/api/signals/helpfulness",
+        headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        json=payload,
+    )
+    second = client.post(
+        "/api/signals/helpfulness",
+        headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        json=payload,
+    )
+
+    assert first.json() == {"inserted": True}
+    assert second.json() == {"inserted": False}
+    with connect_review_db(state_dir / "review.sqlite") as connection:
+        row = connection.execute(
+            "SELECT signal_type, payload_json FROM learning_signals"
+        ).fetchone()
+    assert row["signal_type"] == "helpfulness"
+    assert json.loads(row["payload_json"]) == {
+        "target_kind": "file",
+        "target_id": "section-1",
+        "payload": {"rating": 5, "section_id": "sec-intro"},
+    }
+
+
+def test_helpfulness_signal_invalid_payload(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+
+    response = client.post(
+        "/api/signals/helpfulness",
+        headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        json={"idempotency_key": "help:run-1:section-1"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"][0]["loc"] == ["target_id"]
+
+
 def test_failed_srs_review_does_not_poison_idempotency_key(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     db_path = state_dir / "review.sqlite"
@@ -654,3 +1302,38 @@ def test_failed_srs_review_does_not_poison_idempotency_key(tmp_path: Path) -> No
     assert missing_card.status_code == 400
     assert retry.status_code == 200
     assert retry.json()["inserted"] is True
+
+
+def test_middleware_rejects_unsupported_content_type(tmp_path: Path) -> None:
+    client = _client(tmp_path / ".ahadiff")
+
+    response = client.post(
+        "/api/signals/mark-wrong",
+        headers={
+            "content-type": "text/html",
+            "origin": "http://localhost:8765",
+            "X-AhaDiff-Token": "test-token",
+        },
+        content="<html></html>",
+    )
+
+    assert response.status_code == 415
+    assert response.json()["error"] == "unsupported_media_type"
+
+
+def test_middleware_rejects_oversized_body(tmp_path: Path) -> None:
+    client = _client(tmp_path / ".ahadiff")
+
+    response = client.post(
+        "/api/signals/mark-wrong",
+        headers={
+            "content-type": "application/json",
+            "content-length": "2000000",
+            "origin": "http://localhost:8765",
+            "X-AhaDiff-Token": "test-token",
+        },
+        content='{"claim_id":"claim-1","idempotency_key":"test"}',
+    )
+
+    assert response.status_code == 413
+    assert response.json()["error"] == "payload_too_large"

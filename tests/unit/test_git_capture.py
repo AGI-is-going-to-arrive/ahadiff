@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import pathlib as _pathlib
 import subprocess
@@ -228,6 +229,72 @@ def test_learn_unstaged_include_untracked_records_new_file(tmp_path: Path) -> No
     assert isinstance(source_detail, dict)
     assert "new_file.py" in patch_text
     assert source_detail["untracked_count"] == 1
+
+
+def test_untracked_symlink_file_is_skipped_without_reading_target(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    if not hasattr(os, "symlink"):
+        pytest.skip("symlink is not available on this platform")
+
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "tracked.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+
+    outside = tmp_path / "outside_secret.txt"
+    outside.write_text("OUTSIDE_SECRET\n", encoding="utf-8")
+    os.symlink(outside, repo_root / "leak.py")
+
+    caplog.set_level(logging.WARNING, logger="ahadiff.git.capture")
+    capture = capture_module.capture_patch(
+        workspace_root=repo_root,
+        unstaged=True,
+        include_untracked=True,
+        max_files=50,
+        hard_limit=5000,
+        max_patch_bytes=10_000_000,
+    )
+
+    assert "OUTSIDE_SECRET" not in capture.raw_patch_text
+    assert "OUTSIDE_SECRET" not in capture.persisted_patch_text
+    assert "leak.py" not in capture.after_text_by_path
+    assert "skipping git-discovered symlink path: leak.py" in caplog.text
+
+
+def test_worktree_symlink_file_is_skipped_from_resolved_text_maps(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    if not hasattr(os, "symlink"):
+        pytest.skip("symlink is not available on this platform")
+
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    tracked = repo_root / "tracked.py"
+    tracked.write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+
+    outside = tmp_path / "outside_secret.txt"
+    outside.write_text("OUTSIDE_SECRET\n", encoding="utf-8")
+    tracked.unlink()
+    os.symlink(outside, tracked)
+
+    caplog.set_level(logging.WARNING, logger="ahadiff.git.capture")
+    capture = capture_module.capture_patch(
+        workspace_root=repo_root,
+        unstaged=True,
+        max_files=50,
+        hard_limit=5000,
+        max_patch_bytes=10_000_000,
+    )
+
+    assert "OUTSIDE_SECRET" not in capture.after_text_by_path.values()
+    assert "tracked.py" not in capture.after_text_by_path
+    assert "skipping git-discovered symlink path: tracked.py" in caplog.text
 
 
 def test_git_capture_filters_ahadiffignore_from_patch_and_resolved_files(tmp_path: Path) -> None:
@@ -879,6 +946,24 @@ def test_compare_mode_respects_hard_limit_for_single_segment(tmp_path: Path) -> 
     assert "[truncated]" in capture.persisted_patch_text
 
 
+def test_compare_capture_rejects_file_larger_than_max_patch_bytes(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    old_file = workspace_root / "old.py"
+    new_file = workspace_root / "new.py"
+    old_file.write_text("old = 1\n", encoding="utf-8")
+    new_file.write_text("x" * 129, encoding="utf-8")
+
+    with pytest.raises(InputError, match="compare input file exceeds 128 bytes"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            compare=(Path("old.py"), Path("new.py")),
+            max_files=50,
+            hard_limit=5000,
+            max_patch_bytes=128,
+        )
+
+
 def test_git_show_capture_respects_max_patch_bytes(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -1236,6 +1321,24 @@ def test_unlock_repo_write_lock_rejects_symlink(tmp_path: Path) -> None:
 
     with pytest.raises(StorageError, match="must not be a symlink"):
         repo_module.unlock_repo_write_lock(lock_path)
+
+
+def test_repo_write_lock_rejects_symlink_before_acquire(tmp_path: Path) -> None:
+    if not hasattr(os, "symlink"):
+        pytest.skip("symlink is not available on this platform")
+
+    target = tmp_path / "target.lock"
+    target.write_text("keep-me\n", encoding="utf-8")
+    lock_path = tmp_path / "ahadiff.lock"
+    os.symlink(target, lock_path)
+
+    with (
+        pytest.raises(InputError, match="must not be a symlink"),
+        repo_module.repo_write_lock(lock_path, command="learn"),
+    ):
+        raise AssertionError("lock acquisition should have failed")
+
+    assert target.read_text(encoding="utf-8") == "keep-me\n"
 
 
 def test_resolve_git_files_batches_cat_file_requests(

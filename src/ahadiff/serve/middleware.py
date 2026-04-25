@@ -12,6 +12,9 @@ if TYPE_CHECKING:
     from starlette.responses import Response
 
 _ALLOWED_HOSTS = {"localhost", "127.0.0.1", "::1"}
+_MAX_BODY_BYTES = 1_048_576  # 1 MiB
+_WRITE_GUARD_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+_JSON_BODY_METHODS = {"POST", "PUT", "PATCH"}
 
 
 class LoopbackGuardMiddleware(BaseHTTPMiddleware):
@@ -20,7 +23,7 @@ class LoopbackGuardMiddleware(BaseHTTPMiddleware):
         expected_port = _expected_port(state)
         if not _is_allowed_host(request.headers.get("host", ""), expected_port=expected_port):
             return JSONResponse({"error": "host_not_allowed"}, status_code=400)
-        if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        if request.method in _WRITE_GUARD_METHODS:
             origin = request.headers.get("origin")
             referer = request.headers.get("referer")
             if origin is None and referer is None:
@@ -29,10 +32,50 @@ class LoopbackGuardMiddleware(BaseHTTPMiddleware):
                 return JSONResponse({"error": "origin_not_allowed"}, status_code=403)
             if referer is not None and not _is_allowed_origin(referer, expected_port=expected_port):
                 return JSONResponse({"error": "referer_not_allowed"}, status_code=403)
+        if request.method in _JSON_BODY_METHODS:
+            has_body = _declares_request_body(request)
+            if has_body and not _is_json_content_type(request.headers.get("content-type", "")):
+                return JSONResponse({"error": "unsupported_media_type"}, status_code=415)
+            content_length = request.headers.get("content-length")
+            if (
+                content_length is not None
+                and content_length.isdigit()
+                and int(content_length) > _MAX_BODY_BYTES
+            ):
+                return JSONResponse({"error": "payload_too_large"}, status_code=413)
+            if has_body and not await _cache_limited_body(request):
+                return JSONResponse({"error": "payload_too_large"}, status_code=413)
         response = await call_next(request)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "same-origin")
         return response
+
+
+async def _cache_limited_body(request: Request) -> bool:
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > _MAX_BODY_BYTES:
+            return False
+        chunks.append(chunk)
+    request._body = b"".join(chunks)  # pyright: ignore[reportPrivateUsage]
+    return True
+
+
+def _is_json_content_type(value: str) -> bool:
+    media_type = value.split(";", 1)[0].strip().lower()
+    return media_type == "application/json"
+
+
+def _declares_request_body(request: Request) -> bool:
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            return int(content_length) > 0
+        except ValueError:
+            return True
+    return "transfer-encoding" in request.headers
 
 
 def _is_allowed_host(value: str, *, expected_port: int | None) -> bool:
@@ -56,7 +99,7 @@ def _is_allowed_origin(value: str, *, expected_port: int | None) -> bool:
     except ValueError:
         return False
     return (
-        parsed.scheme == "http"
+        parsed.scheme in {"http", "https"}
         and hostname in _ALLOWED_HOSTS
         and _port_allowed(port, expected_port=expected_port)
     )

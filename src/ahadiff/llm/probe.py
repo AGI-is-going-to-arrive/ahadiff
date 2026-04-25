@@ -2,8 +2,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import httpx
+
 from ahadiff.contracts import PrivacyMode, ProviderConfig
-from ahadiff.core.config import SecurityConfig, read_config_data, write_config_data
+from ahadiff.core.config import (
+    SecurityConfig,
+    local_hosts_for_privacy_mode,
+    read_config_data,
+    validate_repo_api_key_env_name,
+    write_config_data,
+)
 from ahadiff.core.errors import InputError, ProviderError
 
 from .cost import resolve_context_window
@@ -12,8 +20,6 @@ from .schemas import ProbeReport, ProviderRequest
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    import httpx
 
     from ahadiff.safety.gates import TransportTarget
 
@@ -107,6 +113,7 @@ def persist_probe_result(
 ) -> Path:
     if "." in provider_name:
         raise InputError("provider alias must not contain '.' because it becomes a TOML table path")
+    validate_repo_api_key_env_name(config.api_key_env)
     config_path = workspace_root / ".ahadiff" / "config.toml"
     lock_path = workspace_root / ".ahadiff" / "ahadiff.lock"
     with repo_write_lock(lock_path, command="provider probe persist"):
@@ -198,10 +205,16 @@ def _probe_context_window(provider: Any, *, model_name: str) -> tuple[int, str]:
     if request is None:
         return resolve_context_window(model_name, provider.config.probed_max_context), "fallback"
     method, url, headers = request
-    response = provider.client.request(method, url, headers=headers)
+    try:
+        response = provider.client.request(method, url, headers=headers)
+    except (httpx.TimeoutException, httpx.TransportError):
+        return resolve_context_window(model_name, provider.config.probed_max_context), "fallback"
     if response.status_code >= 400:
         return resolve_context_window(model_name, provider.config.probed_max_context), "fallback"
-    probed = provider.adapter.parse_context_probe(response, model_name=model_name)
+    try:
+        probed = provider.adapter.parse_context_probe(response, model_name=model_name)
+    except (KeyError, TypeError, ValueError):
+        return resolve_context_window(model_name, provider.config.probed_max_context), "fallback"
     if probed is None:
         return resolve_context_window(model_name, provider.config.probed_max_context), "fallback"
     return probed, "live"
@@ -211,8 +224,12 @@ def _transport_target(
     base_url: str,
     security_config: SecurityConfig | None,
 ) -> TransportTarget:
-    local_hosts = () if security_config is None else security_config.local_hosts
-    return transport_target_for_base_url(base_url, local_hosts=local_hosts)
+    if security_config is None:
+        return transport_target_for_base_url(base_url, local_hosts=())
+    return transport_target_for_base_url(
+        base_url,
+        local_hosts=local_hosts_for_privacy_mode(security_config, "explicit_remote"),
+    )
 
 
 def _utc_now() -> str:

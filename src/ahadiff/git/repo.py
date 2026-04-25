@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import os
 import pathlib as _pathlib
 import stat
@@ -189,7 +190,33 @@ def read_lock_metadata(lock_path: Path) -> LockMetadata:
 @contextmanager
 def repo_write_lock(lock_path: Path, *, command: str) -> Iterator[Path]:
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    handle = lock_path.open("a+", encoding="utf-8")
+    try:
+        path_stat = lock_path.lstat()
+    except FileNotFoundError:
+        path_stat = None
+    else:
+        if stat.S_ISLNK(path_stat.st_mode):
+            raise InputError("repo write lock path must not be a symlink")
+    flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(str(lock_path), flags, 0o644)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise InputError("repo write lock path must not be a symlink") from exc
+        raise
+    try:
+        file_stat = os.fstat(fd)
+        path_stat = lock_path.lstat()
+        if stat.S_ISLNK(path_stat.st_mode):
+            raise InputError("repo write lock path must not be a symlink")
+        if not stat.S_ISREG(file_stat.st_mode) or not stat.S_ISREG(path_stat.st_mode):
+            raise StorageError("repo write lock path must be a regular file")
+        if (file_stat.st_dev, file_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
+            raise InputError("repo write lock path changed during acquisition")
+    except Exception:
+        os.close(fd)
+        raise
+    handle = os.fdopen(fd, "a+", encoding="utf-8")
     try:
         try:
             portalocker.lock(handle, portalocker.LOCK_EX | portalocker.LOCK_NB)

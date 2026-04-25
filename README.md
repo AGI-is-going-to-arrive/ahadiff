@@ -18,7 +18,7 @@
 - 一份每条结论都可回溯的 **断言清单**（Claims）
 - 一条可比较的 **质量评分历史**（Ratchet，`review.sqlite` 为唯一真相源，`results.tsv` 为导出视图）
 
-当前代码已经能稳定产出 Lesson / Claims / Quiz / Cards / Score / Ratchet；review 流的 SRS runtime、serve backend、install targets、GitHub Action 模板、benchmark suite、improve loop core、Task 17 targeted verification、Phase 2.5 runtime 与 i18n-0 后端都已落地。React Viewer 仍在后续阶段。
+当前代码已经能稳定产出 Lesson / Claims / Quiz / Cards / Score / Ratchet；review 流的 SRS runtime、serve backend、install targets、GitHub Action 模板、benchmark suite、improve loop core、Task 17 targeted verification、Phase 2.5 runtime、i18n-0 后端以及前端 `viewer/` React SPA（Dashboard / Lesson / Diff / Quiz / ConceptGraph 五页 + LanguageSwitcher + 全量 i18n 82/82 key parity + 330/330 Playwright 矩阵 + R1-R5 五轮跨模型对抗审查共 51 项 real findings 修复）都已落地，Stage 7 i18n signoff 已通过。
 
 > Code Wiki 解释仓库，知返解释这次改动 —— 而且每一句话都能回到代码证据。
 
@@ -189,7 +189,7 @@ ahadiff/
 - `src/ahadiff/review/{database,scheduler,schemas,signal}.py`：review.sqlite schema / migration、FSRS-6 调度、review queue、learning signal 和 review CLI 后端
 - `src/ahadiff/improve/{loop,program,targeted,rewrite}.py`：improve session、immutable improve_program、worktree 隔离、5 个 mutable prompt 白名单、replay-learn、targeted verification、Phase 2.5 触发、cherry-pick 顺序、session 校验与 pending worktree resume guard
 - source checkout 与 wheel 安装态的 runtime 资源定位：`eval_bundle_version`、`prompt_version`、lesson prompt 加载都已经接到包内资源
-- `keep_final` 仍通过全 8 维 recheck 后的 `ahadiff db finalize-targeted <event_id>` 手动收口，不在 improve loop 内自动升级。React Viewer 尚未实现
+- `keep_final` 仍通过全 8 维 recheck 后的 `ahadiff db finalize-targeted <event_id>` 手动收口，不在 improve loop 内自动升级。前端 `viewer/` React SPA Phase A-E 已完成并经 R1-R5 五轮跨模型深度审查（scaffold + 5 核心页面 + LanguageSwitcher + i18n 82/82 key parity + 330/330 Playwright 矩阵 + AbortController 全覆盖 + token fetch timeout + 401/403 重试 + ErrorBoundary + WCAG AAA dark-mode 全 token ≥ 7.0:1）
 
 本轮又收口了几件容易出错的运行时边界：`prompt_version` 只描述 AhaDiff 自己的 prompt 资源，不再受目标工作区 `prompts/` 影响；lesson JSON 解析会跳过不匹配 schema 的示例块；lesson/quiz 目录改成生成后再接到主链，失败时会回滚；如果 lesson 生成阶段失败，会清掉新写出的 `claims.raw.jsonl` / `claims.jsonl`、`quiz/` 和 `concepts_local.jsonl` 半成品；`learn` 成功后会写入 `event_type=learn` 的评分事件和 `score.json`，manual `score` / `verify` 不再污染 learn 的 ratchet baseline；`ReviewCard` 现在会校验 `last_rating` 范围和 `card_state/stale_reason` 组合；伪造 quiz 也不会再误拿 `PASS`。后续又把 pinned integration 里的 `cards.jsonl` fixture 收回真实生成路径：测试先写 `symbols.json`，再用 `generate_cards_for_run()` 生成 cards，并逐行校验 `ReviewCard` schema，避免手写半截 cards 绕过生产契约。Task 15 这轮也已经补齐：旧版 `cards` schema 会显式迁移 `stale_reason`，schema-invalid `cards.jsonl` 会降级成 warning，重复 regenerate 不会把旧 active 卡留在 due queue 里；`regenerate --only quiz` 在 `evaluate_run` 失败时会恢复旧 quiz/cards，在 `FAIL` 时会删掉陈旧 `cards.jsonl` 并把该 run 的 active 卡标成 `stale + staleness_unknown`；lossy TSV import 现在走单连接整批导入，坏行或 duplicate identity 会整批回滚；`rollback_result_event` 也改成同一连接里完成 delete + export rows，普通 DB connect 不会再因为路径 typo 静默建目录。Task 16/17 这轮补上了 `lesson_hint.md` 白名单、session_id 路径校验、30 分钟 replay timeout、双 prompt temp+replace 写入、非冲突 cherry-pick 失败区分、discard/pending conflict 不写 `finalized.json`、pending conflict 不作为下一轮 baseline、volatile staged/unstaged 输入从保存的 `patch.diff` 重放、短 worktree 路径、`--rounds` 上限 20、null byte 拒绝、Ctrl+C 在已完成 round 后不再追加第二条 crash event、targeted verification、Phase 2.5 单次触发，以及 OpenAI-compatible provider endpoint 归一化。这次又把 LLM cache key 的版本边界补齐：同一 `api_family` 下不同 `api_family_version` 会生成不同 cache key，避免兼容网关或 API 版本变化时误复用旧结果。
 
@@ -218,7 +218,7 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-本轮补 cache-key 后的实际结果：`uv run --frozen --no-sync pytest tests/unit/test_provider.py -q` 为 `36 passed`；`PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --frozen --no-sync pytest -p no:cacheprovider tests -q` 为 `479 passed, 1 skipped`（live judge 默认跳过）；`uv run --frozen --no-sync ruff check --no-cache src tests`、`uv run --frozen --no-sync ruff format --check --no-cache src tests`、`uv run --frozen --no-sync pyright` 与 `uv build --wheel` 全通过。上一轮 Stage 6 收口还实测过 `uv run --frozen --no-sync pytest tests/unit -q` 为 `461 passed`、`uv run --frozen --no-sync pytest tests/eval -q` 为 `7 passed`、`uv run --frozen --no-sync pytest tests/integration/test_learn_pipeline.py -m pinned -q` 为 `10 passed`、`uv run --frozen --no-sync pytest tests/unit/test_quiz_generator.py tests/unit/test_review.py -q` 为 `38 passed`，显式 live judge 为 `1 passed`，并单独确认 `gpt-5.3-codex-spark` 可用。
+最近一次 R5 全功能验收后的实际结果：`uv run pytest tests/unit -q` 为 `542 passed`；`uv run pytest tests -q` 为 `559 passed, 1 skipped`（live judge 默认跳过）；`uv run ruff check src tests`、`uv run ruff format src tests`、`uv run ruff format --check src tests`、`uv run pyright` 全通过。前端 `pnpm run typecheck` 0 errors、`pnpm run build` 261.39 KB（gzip 82.49 KB）、`pnpm exec playwright test` 330/330 passed。
 
 下一步路线图：
 

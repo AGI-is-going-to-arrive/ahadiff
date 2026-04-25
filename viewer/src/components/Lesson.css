@@ -1,0 +1,449 @@
+/* ==========================================================================
+   Lesson Page Layout
+   ========================================================================== */
+
+.lesson-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  animation: fadeUp 0.3s ease-out;
+}
+
+.lesson-page__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.lesson-page__title {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: 24px;
+  letter-spacing: -0.01em;
+  color: var(--ink-strong);
+  margin: 0;
+}
+
+.lesson-page__body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Desktop: 2-column */
+@media (min-width: 1024px) {
+  .lesson-page__body {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 32px;
+    align-items: start;
+  }
+}
+
+/* ==========================================================================
+   Lesson Markdown
+   ========================================================================== */
+
+.lesson-markdown {
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+  line-height: 1.72;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--elevated);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-10);
+  padding: 24px 28px;
+  margin: 0;
+  overflow-x: auto;
+}
+
+/* ==========================================================================
+   Scaffolding Tabs
+   ========================================================================== */
+
+.scaffolding-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.scaffolding-tab {
+  padding: 6px 14px;
+  border-radius: var(--radius-8);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--subtle);
+  border: none;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out-quart),
+              color var(--duration-fast) var(--ease-out-quart);
+}
+
+.scaffolding-tab:hover {
+  background: var(--accent-softer);
+  color: var(--accent-ink);
+}
+
+.scaffolding-tab:active {
+  transform: scale(0.97);
+}
+
+.scaffolding-tab--active {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.scaffolding-tab:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
+
+/* ==========================================================================
+   Right Sidebar: Evidence + Claims
+   ========================================================================== */
+
+.lesson-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ==========================================================================
+   Evidence Panel
+   ========================================================================== */
+
+.evidence-panel {
+  background: var(--elevated);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-10);
+  padding: 18px 20px;
+}
+
+.evidence-panel__title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 14px;
+}
+
+.evidence-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  min-width: 0;
+}
+
+.evidence-panel__claim-id {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+}
+
+.evidence-panel__statement {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ink);
+  margin: 0 0 10px;
+}
+
+.evidence-panel__location {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.evidence-panel__location code {
+  background: var(--subtle);
+  padding: 2px 6px;
+  border-radius: var(--radius-6);
+}
+
+.evidence-panel__evidence {
+  margin: 12px 0 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--subtle);
+  border-radius: var(--radius-6);
+  padding: 12px 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+.evidence-panel__empty {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+  font-style: italic;
+}
+
+/* ==========================================================================
+   Claim Badge
+   ========================================================================== */
+
+.claim-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-6);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+/* Glyph paired with the localized verdict text per WCAG 1.4.1, so the verdict
+   stays distinguishable in monochrome / forced-colors / printed output. */
+.claim-badge__glyph {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.claim-badge--verified {
+  background: var(--add-bg);
+  color: var(--add-fg);
+}
+
+.claim-badge--weak {
+  /* Fallback for Safari < 16.2 / older browsers without color-mix support. */
+  background: var(--accent-softest);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  color: var(--warning);
+}
+
+.claim-badge--not-proven {
+  background: var(--subtle);
+  color: var(--muted);
+}
+
+.claim-badge--contradicted {
+  background: var(--del-bg);
+  color: var(--danger);
+}
+
+.claim-badge--rejected {
+  background: var(--subtle);
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+/* ==========================================================================
+   Claims List
+   ========================================================================== */
+
+.claims-section__title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+
+.claims-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.claim-card {
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-10);
+  padding: 13px 15px;
+  background: var(--elevated);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out-quart);
+  overflow: hidden;
+}
+
+.claim-card:hover {
+  border-color: var(--hair-strong);
+  transform: translateX(2px);
+}
+
+.claim-card:active {
+  transform: translateX(0) scale(0.99);
+  transition-duration: 0s;
+}
+
+.claim-card--selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  transform: translateX(2px);
+}
+
+.claim-card:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
+
+.claim-card__id {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.claim-card__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.claim-card__statement {
+  margin: 6px 0 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+.claim-card__location {
+  margin-top: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ==========================================================================
+   Loading / Error states
+   ========================================================================== */
+
+.lesson-page__loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.lesson-page__error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 0;
+  color: var(--danger);
+  font-size: 14px;
+}
+
+/* ==========================================================================
+   Dark mode adjustments
+   ========================================================================== */
+
+@media (prefers-color-scheme: dark) {
+  .claim-badge--weak {
+    background: var(--subtle);
+    background: color-mix(in srgb, var(--warning) 18%, transparent);
+  }
+
+  .lesson-markdown {
+    background: var(--subtle);
+    border-color: var(--hair-strong);
+  }
+
+  .claim-card {
+    background: var(--subtle);
+  }
+
+  .claim-card--selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  .evidence-panel {
+    background: var(--subtle);
+    border-color: var(--hair-strong);
+  }
+}
+
+/* ==========================================================================
+   Reduced motion
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .lesson-page {
+    animation: none;
+  }
+  .claim-card,
+  .lesson-markdown,
+  .evidence-panel,
+  .scaffolding-tab {
+    transition: none;
+  }
+}
+
+/* ==========================================================================
+   Forced colors
+   ========================================================================== */
+
+@media (forced-colors: active) {
+  .claim-badge {
+    border: 1px solid CanvasText;
+  }
+  .claim-badge--verified {
+    color: LinkText;
+    border-color: LinkText;
+  }
+  .claim-badge--weak {
+    color: CanvasText;
+    border-color: CanvasText;
+  }
+  .claim-badge--contradicted,
+  .claim-badge--rejected {
+    color: CanvasText;
+    border-color: CanvasText;
+  }
+  .claim-card {
+    border: 1px solid CanvasText;
+  }
+}
+
+/* ==========================================================================
+   Mobile: stack layout
+   ========================================================================== */
+
+@media (max-width: 1023px) {
+  .lesson-page__body {
+    flex-direction: column;
+  }
+
+  .lesson-sidebar {
+    border-top: 1px solid var(--hair);
+    padding-top: 20px;
+  }
+}

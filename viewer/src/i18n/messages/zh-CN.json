@@ -1,0 +1,118 @@
+{
+  "Brand": {
+    "name": "知返 AhaDiff",
+    "tagline": "AI 写完，Diff 教回。"
+  },
+  "Nav": {
+    "dashboard": "运行",
+    "lesson": "课程",
+    "diff": "差异",
+    "quiz": "测验",
+    "needs_run_hint": "请先在运行面板打开一个 run"
+  },
+  "Claim": {
+    "verified": "已验证",
+    "weak": "较弱",
+    "not_proven": "未证明",
+    "contradicted": "被反驳",
+    "rejected": "已拒绝"
+  },
+  "Verdict": {
+    "PASS": "通过",
+    "CAUTION": "警示",
+    "FAIL": "未通过"
+  },
+  "Rubric": {
+    "overall": "总分",
+    "weakest_dim": "最弱维度"
+  },
+  "SRS": {
+    "good": "通过",
+    "hard": "较难",
+    "again": "再来",
+    "archive": "归档",
+    "suspend": "暂停"
+  },
+  "Serve": {
+    "loading": "加载中…",
+    "empty": "暂无运行"
+  },
+  "Settings": {
+    "language": "语言",
+    "language_en": "English",
+    "language_zh_CN": "简体中文"
+  },
+  "CLI": {
+    "footer": "由 AhaDiff 生成"
+  },
+  "Error": {
+    "fetch_failed": "拉取 {resource} 失败",
+    "not_found": "未找到",
+    "back_to_dashboard": "返回运行面板",
+    "boundary_title": "出现错误",
+    "boundary_body": "请刷新页面，错误详情已记录到控制台。",
+    "retry": "重试"
+  },
+  "A11y": {
+    "loading": "加载中",
+    "close": "关闭",
+    "open_menu": "打开菜单",
+    "skip_to_content": "跳至正文"
+  },
+  "Shell": {
+    "nav_label": "导航",
+    "concept_graph": "概念图谱"
+  },
+  "Dashboard": {
+    "title": "运行面板",
+    "subtitle": "运行列表、棘轮与学习信号",
+    "empty_hint": "运行 `ahadiff learn` 创建第一个 run",
+    "cold_start_single_run": "历史数据不足，暂无法绘制棘轮",
+    "kpi_total_runs": "运行总数",
+    "kpi_pass_rate": "通过率",
+    "kpi_weakest_dim": "最弱维度",
+    "ratchet_title": "棘轮轨迹",
+    "ratchet_chart_label": "棘轮质量轨迹",
+    "ratchet_not_enough": "需要 ≥2 次 run 才能绘图",
+    "run_list_title": "最近运行",
+    "col_ref": "引用",
+    "col_verdict": "判定",
+    "col_date": "时间"
+  },
+  "Lesson": {
+    "title": "课程",
+    "title_with_ref": "{title} · {ref}",
+    "evidence_panel_title": "证据",
+    "evidence_empty": "选择一条声明以查看证据",
+    "claims_title": "声明列表",
+    "level_full": "完整",
+    "level_hint": "提示",
+    "level_compact": "精简"
+  },
+  "Diff": {
+    "title": "差异",
+    "stats_files": "文件",
+    "stats_additions": "新增",
+    "stats_deletions": "删除",
+    "empty": "暂无差异数据",
+    "inspector_title": "声明检查器",
+    "inspector_empty": "选择一行差异以查看关联的声明"
+  },
+  "Quiz": {
+    "correct": "正确",
+    "wrong": "错误",
+    "show_answer": "显示答案",
+    "title": "测验",
+    "progress": "{current}/{total}",
+    "peek_guard_hint": "请先阅读答案",
+    "explanation_title": "解析",
+    "next": "下一题"
+  },
+  "Concept": {
+    "title": "概念图谱",
+    "mode_full": "完整图谱",
+    "mode_learning_only": "列表视图",
+    "mode_empty": "暂无数据",
+    "empty": "暂无概念"
+  }
+}

@@ -58,6 +58,7 @@ class RunDetail(RunSummary):
     artifacts: list[str] = Field(default_factory=list)
     graphify_mode: GraphifyMode | None = None
     graphify_status: str | None = None
+    graphify_notes: list[str] | None = None
 
 
 class RunArtifactEnvelope(BaseModel):
@@ -66,6 +67,13 @@ class RunArtifactEnvelope(BaseModel):
     run_id: str
     artifact_type: str
     content: str
+    content_lang: Literal["en", "zh-CN"] | None = Field(
+        default=None,
+        description=(
+            "Content language from run metadata.content_lang, normalized to en or zh-CN; "
+            "None when missing."
+        ),
+    )
 
 
 class RatchetHistoryEntry(BaseModel):
@@ -103,6 +111,12 @@ class ReviewSignalRequest(LearningSignalRequest):
     answer: ReviewAnswer
 
 
+class QuizAnswerRequest(LearningSignalRequest):
+    quiz_id: str
+    choice: str
+    correct: bool
+
+
 class HelpfulnessRequest(LearningSignalRequest):
     target_kind: Literal["file"] = "file"
     target_id: str
@@ -116,6 +130,7 @@ __all__ = [
     "LearningSignalRequest",
     "LocaleResponse",
     "MarkWrongRequest",
+    "QuizAnswerRequest",
     "RatchetHistoryEntry",
     "ReviewAnswer",
     "ReviewSignalRequest",

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import logging
 from json import JSONDecodeError
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
+from pydantic import ValidationError
+from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
 
 from ahadiff.contracts import (
@@ -25,16 +28,28 @@ if TYPE_CHECKING:
 
     from starlette.requests import Request
 
+    from .state import ServeState
+
 _ARTIFACT_PATHS = {
     "claims": "claims.jsonl",
+    "concepts": "concepts.jsonl",
     "diff": "patch.diff",
     "quiz": "quiz/quiz.jsonl",
     "score": "score.json",
 }
 _LESSON_LEVELS = {"full", "hint", "compact"}
+_SUPPORTED_CONTENT_LANGS = frozenset({"en", "zh-CN"})
+_SUPPORTED_GRAPHIFY_STATUSES = frozenset({"fresh", "stale", "missing_partial", "missing"})
+_CAPABILITY_LEVEL_WARNING_RUNS: set[str] = set()
+_MAX_TEXT_ARTIFACT_BYTES = 10 * 1024 * 1024
+_MAX_JSON_OBJECT_BYTES = 1024 * 1024
+_MAX_LIST_RUNS = 500
+_MAX_RATCHET_HISTORY = 500
+log = logging.getLogger(__name__)
 _ALLOWED_ARTIFACTS = frozenset(
     {
         "claims.jsonl",
+        "concepts.jsonl",
         "patch.diff",
         "quiz/quiz.jsonl",
         "score.json",
@@ -57,9 +72,11 @@ async def list_runs(request: Request) -> JSONResponse:
     ):
         if source_kind_filter and metadata.get("source_kind") != source_kind_filter:
             continue
-        summary = _summary_from_event(event, metadata)
+        summary = _summary_from_event(event, metadata, default_locale=state.locale)
         if summary is not None:
             summaries.append(summary.model_dump(mode="json"))
+        if len(summaries) >= _MAX_LIST_RUNS:
+            break
     return JSONResponse({"runs": summaries})
 
 
@@ -67,11 +84,14 @@ async def get_run(request: Request) -> JSONResponse:
     state = serve_state(request)
     run_id = str(request.path_params["run_id"])
     run_path = _finalized_run_path(state.runs_dir, run_id)
+    if run_path is None:
+        raise InputError(f"finalized run does not exist: {run_id}")
     event = _event_for_finalized_run(state.review_db_path, run_path)
     metadata = _load_json_object(run_path / "metadata.json")
-    summary = _summary_from_event(event, metadata)
+    summary = _summary_from_event(event, metadata, default_locale=state.locale)
     if summary is None:
         raise InputError(f"run metadata is invalid: {run_id}")
+    graphify_mode, graphify_status, graphify_notes = _project_graphify(metadata)
     detail = RunDetail(
         **summary.model_dump(mode="json"),
         base_ref=event.base_ref,
@@ -79,8 +99,9 @@ async def get_run(request: Request) -> JSONResponse:
         eval_bundle_version=event.eval_bundle_version,
         note_json=event.note_json,
         artifacts=_artifact_names(run_path),
-        graphify_mode=cast("Any", metadata.get("graphify_mode")),
-        graphify_status=cast("str | None", metadata.get("graphify_status")),
+        graphify_mode=cast("Any", graphify_mode),
+        graphify_status=graphify_status,
+        graphify_notes=graphify_notes,
     )
     return JSONResponse(detail.model_dump(mode="json"))
 
@@ -104,11 +125,20 @@ async def get_diff(request: Request) -> JSONResponse:
     return _artifact_response(request, _ARTIFACT_PATHS["diff"], "diff")
 
 
+async def get_run_concepts(request: Request) -> JSONResponse:
+    return _artifact_response(
+        request,
+        _ARTIFACT_PATHS["concepts"],
+        "concepts",
+        not_found_status_code=404,
+    )
+
+
 async def get_concepts(request: Request) -> JSONResponse:
     state = serve_state(request)
     concepts_path = state.state_dir / "concepts.jsonl"
     content = (
-        concepts_path.read_text(encoding="utf-8")
+        _read_text_capped(concepts_path, max_bytes=_MAX_TEXT_ARTIFACT_BYTES)
         if concepts_path.exists() and not concepts_path.is_symlink()
         else ""
     )
@@ -119,7 +149,11 @@ async def get_ratchet_history(request: Request) -> JSONResponse:
     state = serve_state(request)
     finalized_event_ids = set(_finalized_event_ids(state.runs_dir).values())
     entries: list[dict[str, Any]] = []
-    for event in reversed(load_result_events_from_db(state.review_db_path)):
+    for event in sorted(
+        load_result_events_from_db(state.review_db_path),
+        key=lambda item: (item.timestamp, item.event_id),
+        reverse=True,
+    ):
         if (
             event.event_id not in finalized_event_ids
             or event.status not in RATCHET_COUNTED_STATUSES
@@ -137,23 +171,54 @@ async def get_ratchet_history(request: Request) -> JSONResponse:
                 weakest_dim=event.weakest_dim,
             ).model_dump(mode="json")
         )
+        if len(entries) >= _MAX_RATCHET_HISTORY:
+            break
     return JSONResponse({"history": entries})
 
 
-def _artifact_response(request: Request, relative_path: str, artifact_type: str) -> JSONResponse:
+def _artifact_response(
+    request: Request,
+    relative_path: str,
+    artifact_type: str,
+    *,
+    not_found_status_code: int | None = None,
+) -> JSONResponse:
     state = serve_state(request)
     run_id = str(request.path_params["run_id"])
     run_path = _finalized_run_path(state.runs_dir, run_id)
-    _event_for_finalized_run(state.review_db_path, run_path)
+    if run_path is None:
+        raise InputError(f"finalized run does not exist: {run_id}")
+    event = _event_for_finalized_run(state.review_db_path, run_path)
     artifact_path = _artifact_path_for_read(run_path, relative_path)
     if artifact_path is None:
+        if not_found_status_code is not None:
+            return JSONResponse({"error": "artifact_not_found"}, status_code=not_found_status_code)
         raise InputError(f"artifact does not exist for run {run_id}: {relative_path}")
     envelope = RunArtifactEnvelope(
         run_id=run_id,
         artifact_type=artifact_type,
-        content=artifact_path.read_text(encoding="utf-8"),
+        content=_read_text_capped(artifact_path, max_bytes=_MAX_TEXT_ARTIFACT_BYTES),
+        content_lang=_artifact_content_lang(state, run_path, event),
     )
     return JSONResponse(envelope.model_dump(mode="json"))
+
+
+def _artifact_content_lang(
+    state: ServeState,
+    run_path: Path,
+    event: ResultEvent,
+) -> Literal["en", "zh-CN"] | None:
+    if not (run_path / "metadata.json").exists():
+        return None
+    metadata = _load_run_metadata_or_none(run_path)
+    if metadata is None:
+        return None
+    if "content_lang" not in metadata:
+        return None
+    content_lang = metadata.get("content_lang")
+    if content_lang is None:
+        return None
+    return _normalize_content_lang(content_lang, default_locale=state.locale)
 
 
 def _iter_latest_finalized_run_events(
@@ -171,7 +236,7 @@ def _iter_latest_finalized_run_events(
         metadata = _load_run_metadata_or_none(run_path)
         if metadata is not None:
             rows.append((event, metadata, run_path))
-    return tuple(rows)
+    return tuple(sorted(rows, key=lambda row: (row[0].timestamp, row[0].event_id), reverse=True))
 
 
 def _finalized_event_ids(runs_dir: Path) -> dict[str, str]:
@@ -194,8 +259,10 @@ def _finalized_event_ids(runs_dir: Path) -> dict[str, str]:
     return event_ids
 
 
-def _finalized_run_path(runs_dir: Path, run_id: str) -> Path:
+def _finalized_run_path(runs_dir: Path, run_id: str) -> Path | None:
     validate_run_id(run_id)
+    if run_id.endswith(".tmp"):
+        return None
     run_path = runs_dir / run_id
     if run_path.is_symlink() or not (run_path.is_dir() and (run_path / "finalized.json").is_file()):
         raise InputError(f"finalized run does not exist: {run_id}")
@@ -215,14 +282,25 @@ def _event_for_finalized_run(db_path: Path, run_path: Path) -> ResultEvent:
     raise InputError(f"finalized result event does not exist for run: {run_path.name}")
 
 
-def _summary_from_event(event: ResultEvent, metadata: dict[str, Any]) -> RunSummary | None:
+def _summary_from_event(
+    event: ResultEvent,
+    metadata: dict[str, Any],
+    *,
+    default_locale: str | None = None,
+) -> RunSummary | None:
     try:
         return RunSummary(
             run_id=event.run_id,
             source_ref=event.source_ref,
             source_kind=cast("Any", metadata.get("source_kind")),
-            content_lang=cast("Any", metadata.get("content_lang") or "en"),
-            capability_level=cast("Any", metadata.get("capability_level")),
+            content_lang=_normalize_content_lang(
+                metadata.get("content_lang"),
+                default_locale=default_locale,
+            ),
+            capability_level=_normalize_capability_level(
+                metadata.get("capability_level"),
+                run_id=event.run_id,
+            ),
             verdict=event.verdict,
             overall=event.overall,
             status=event.status,
@@ -230,17 +308,86 @@ def _summary_from_event(event: ResultEvent, metadata: dict[str, Any]) -> RunSumm
             created_at=event.timestamp,
             degraded_flags=cast("Any", metadata.get("degraded_flags") or {}),
         )
-    except Exception:
+    except ValidationError as exc:
+        log.warning("dropping run %s due to schema mismatch: %s", event.run_id, exc)
         return None
+
+
+def _normalize_content_lang(
+    value: object,
+    *,
+    default_locale: object = None,
+) -> Literal["en", "zh-CN"]:
+    if isinstance(value, str) and value in _SUPPORTED_CONTENT_LANGS:
+        return cast("Literal['en', 'zh-CN']", value)
+    if isinstance(default_locale, str) and default_locale in _SUPPORTED_CONTENT_LANGS:
+        return cast("Literal['en', 'zh-CN']", default_locale)
+    return "en"
+
+
+def _normalize_capability_level(
+    value: object,
+    *,
+    run_id: str,
+) -> Literal[1, 2, 3]:
+    if isinstance(value, int) and not isinstance(value, bool) and value in {1, 2, 3}:
+        return cast("Literal[1, 2, 3]", value)
+    if run_id not in _CAPABILITY_LEVEL_WARNING_RUNS:
+        log.warning(
+            "defaulting run %s capability_level to 1 due to invalid metadata value: %r",
+            run_id,
+            value,
+        )
+        if len(_CAPABILITY_LEVEL_WARNING_RUNS) < 10000:
+            _CAPABILITY_LEVEL_WARNING_RUNS.add(run_id)
+    return 1
+
+
+def _project_graphify(metadata: dict[str, Any]) -> tuple[str, str | None, list[str] | None]:
+    graphify_value = metadata.get("graphify")
+    if not isinstance(graphify_value, dict):
+        return "empty", None, None
+    graphify = cast("dict[str, Any]", graphify_value)
+
+    mode_value = graphify.get("mode")
+    mode = mode_value if isinstance(mode_value, str) else None
+    status_value = graphify.get("status")
+    status = (
+        status_value
+        if isinstance(status_value, str) and status_value in _SUPPORTED_GRAPHIFY_STATUSES
+        else None
+    )
+
+    notes: list[str] | None = None
+    notes_value = graphify.get("notes")
+    if isinstance(notes_value, list):
+        notes_items = cast("list[object]", notes_value)
+        if all(isinstance(note, str) for note in notes_items):
+            notes = cast("list[str]", notes_items)
+
+    if mode == "full" or status == "fresh":
+        projected_mode = "full"
+    elif mode == "learning_only" or status in {"stale", "missing_partial"}:
+        projected_mode = "learning_only"
+    else:
+        projected_mode = "empty"
+    return projected_mode, status, notes
 
 
 def _load_json_object(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
-    payload: Any = json.loads(path.read_text(encoding="utf-8"))
+    payload: Any = json.loads(_read_text_capped(path, max_bytes=_MAX_JSON_OBJECT_BYTES))
     if not isinstance(payload, dict):
         raise InputError(f"expected JSON object in {path.name}")
     return cast("dict[str, Any]", payload)
+
+
+def _read_text_capped(path: Path, *, max_bytes: int) -> str:
+    size = path.stat().st_size
+    if size > max_bytes:
+        raise HTTPException(status_code=413, detail=f"{path.name} exceeds size limit")
+    return path.read_text(encoding="utf-8")
 
 
 def _load_run_metadata_or_none(run_path: Path) -> dict[str, Any] | None:
@@ -253,7 +400,7 @@ def _load_run_metadata_or_none(run_path: Path) -> dict[str, Any] | None:
 def _load_valid_finalized_marker(run_path: Path) -> dict[str, Any] | None:
     try:
         marker = _load_json_object(run_path / "finalized.json")
-    except (InputError, JSONDecodeError, OSError, UnicodeDecodeError):
+    except (HTTPException, InputError, JSONDecodeError, OSError, UnicodeDecodeError):
         return None
     if marker.get("run_id") != run_path.name:
         return None
@@ -301,5 +448,6 @@ __all__ = [
     "get_quiz",
     "get_ratchet_history",
     "get_run",
+    "get_run_concepts",
     "list_runs",
 ]

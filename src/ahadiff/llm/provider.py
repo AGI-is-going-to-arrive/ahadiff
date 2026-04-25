@@ -14,8 +14,12 @@ from urllib.parse import urlparse
 
 import httpx
 
-from ahadiff.core.config import SecurityConfig, load_workspace_pricing_settings
-from ahadiff.core.errors import ProviderError, SafetyError
+from ahadiff.core.config import (
+    SecurityConfig,
+    load_workspace_pricing_settings,
+    local_hosts_for_privacy_mode,
+)
+from ahadiff.core.errors import ConfigError, ProviderError, SafetyError
 from ahadiff.core.ids import make_event_id
 from ahadiff.core.paths import path_identity_key
 from ahadiff.safety.audit import append_audit_record, build_provider_audit_record
@@ -150,6 +154,8 @@ class ManagedProvider:
         self.api_key = api_key
         self.security_config = security_config or SecurityConfig()
         self.workspace_root = workspace_root
+        if max_concurrent < 1:
+            raise ConfigError("max_concurrent must be >= 1")
         self.max_concurrent = max_concurrent
         self.qps_limit = qps_limit
         self.retry_attempts = retry_attempts
@@ -186,7 +192,11 @@ class ManagedProvider:
     def generate(self, request: ProviderRequest) -> ProviderResponse:
         transport_target = transport_target_for_base_url(
             self.config.base_url,
-            local_hosts=self.security_config.local_hosts,
+            local_hosts=local_hosts_for_privacy_mode(
+                self.security_config,
+                request.privacy_mode,
+            ),
+            strict_local=request.privacy_mode == "strict_local",
         )
         if (
             request.privacy_mode == "strict_local"
@@ -276,7 +286,7 @@ class ManagedProvider:
                         break
                     self.sleep(error.retry_after_seconds or min(2**attempt, 8))
                     continue
-                except (httpx.TimeoutException, httpx.ReadError) as error:
+                except httpx.TransportError as error:
                     last_error = ProviderError(f"provider transport failed: {error}")
                     if attempt >= self.retry_attempts:
                         break
@@ -494,6 +504,7 @@ def transport_target_for_base_url(
     base_url: str,
     *,
     local_hosts: tuple[str, ...],
+    strict_local: bool = False,
 ) -> TransportTarget:
     parsed = urlparse(base_url)
     if parsed.scheme in {"unix", "http+unix", "npipe", "http+npipe"}:
@@ -501,7 +512,13 @@ def transport_target_for_base_url(
     hostname = parsed.hostname
     if hostname is None:
         raise SafetyError(f"unable to determine transport boundary for base_url {base_url!r}")
-    if hostname in {"localhost", *local_hosts}:
+    hostname_normalized = hostname.lower()
+    normalized_local_hosts = {item.lower() for item in local_hosts}
+    if strict_local:
+        if hostname_normalized in {"localhost", "127.0.0.1", "::1", *normalized_local_hosts}:
+            return "local"
+        return "remote"
+    if hostname_normalized in {"localhost", *normalized_local_hosts}:
         return "local"
     try:
         if ip_address(hostname).is_loopback:

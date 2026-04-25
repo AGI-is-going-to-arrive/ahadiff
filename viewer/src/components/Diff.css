@@ -1,0 +1,262 @@
+/* ── DiffView ──────────────────────────────────────────────── */
+
+.diff-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  /* Kept as px intentionally: VirtualList itemHeight (22px) depends on a fixed line-height. */
+  line-height: 22px;
+  background: var(--paper);
+  border-radius: var(--radius-8);
+  border: 1px solid var(--hair);
+}
+
+/* ── Line row ─────────────────────────────────────────────── */
+
+.diff-line {
+  display: flex;
+  align-items: stretch;
+  min-height: 22px;
+  padding: 0;
+}
+
+.diff-line--add {
+  background: var(--add-bg);
+  color: var(--add-fg);
+}
+
+.diff-line--del {
+  background: var(--del-bg);
+  color: var(--del-fg);
+}
+
+.diff-line--hunk {
+  background: var(--accent-soft);
+  color: var(--muted);
+  font-style: italic;
+}
+
+.diff-line--meta {
+  background: var(--subtle);
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.diff-line--ctx {
+  background: transparent;
+  color: var(--ink);
+}
+
+/* ── Line numbers ─────────────────────────────────────────── */
+
+.diff-line__lineno {
+  display: inline-block;
+  box-sizing: border-box;
+  width: 52px;
+  min-width: 52px;
+  padding: 0 8px;
+  text-align: end;
+  color: var(--muted-strong);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  border-inline-end: 1px solid var(--hair);
+  flex-shrink: 0;
+}
+
+.diff-line--hunk .diff-line__lineno,
+.diff-line--meta .diff-line__lineno {
+  visibility: hidden;
+}
+
+/* ── Line text ────────────────────────────────────────────── */
+
+.diff-line__text {
+  flex: 1 1 auto;
+  padding: 0 12px;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.diff-line__text code {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* ── Diff page layout ─────────────────────────────────────── */
+
+.diff-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 16px 24px;
+  gap: 12px;
+  animation: fadeUp 0.3s ease-out;
+}
+
+.diff-page__header {
+  flex-shrink: 0;
+}
+
+.diff-page__header h1 {
+  font-family: var(--font-serif);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--ink-strong);
+  margin: 0;
+}
+
+.diff-page__split {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 16px;
+}
+
+.diff-page__body {
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.diff-page__aside {
+  min-width: 0;
+  background: var(--elevated);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-10);
+  padding: 16px;
+  overflow-y: auto;
+  max-height: 100%;
+}
+
+.diff-page__aside-title {
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink-strong);
+  margin: 0 0 8px;
+}
+
+.diff-page__aside-empty {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.diff-page__loading,
+.diff-page__error,
+.diff-page__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.diff-page__error {
+  color: var(--danger);
+}
+
+/* ── BottomMiniPanel ──────────────────────────────────────── */
+
+.mini-panel {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  background: var(--elevated);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-10);
+  padding: 8px 16px;
+  font-size: 0.82rem;
+  box-shadow: var(--shadow-lg);
+
+  /* Desktop: fixed overlay at bottom-right */
+  position: fixed;
+  inset-inline-end: 24px;
+  bottom: 24px;
+  z-index: 20;
+}
+
+.mini-panel__item {
+  display: flex;
+  gap: 4px;
+  align-items: baseline;
+}
+
+.mini-panel__label {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.mini-panel__value {
+  color: var(--ink-strong);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* ── Mobile layout ────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .diff-page {
+    padding: 12px 12px;
+    gap: 8px;
+  }
+
+  .diff-page__split {
+    grid-template-columns: 1fr;
+  }
+
+  .diff-page__aside {
+    max-height: 240px;
+  }
+
+  .diff-line__lineno {
+    width: 36px;
+    min-width: 36px;
+    padding: 0 4px;
+    font-size: 11px;
+  }
+
+  .diff-line__text {
+    padding: 0 8px;
+  }
+
+  .mini-panel {
+    position: sticky;
+    inset-inline-end: auto;
+    bottom: 64px; /* let out sidebar bottom nav */
+    inset-inline-start: 0;
+    border-radius: 0;
+    box-shadow: var(--shadow-md);
+    justify-content: center;
+    z-index: 20;
+  }
+}
+
+/* ── Accessibility ────────────────────────────────────────── */
+
+@media (forced-colors: active) {
+  .diff-line--add,
+  .diff-line--del,
+  .diff-line--hunk,
+  .diff-line--meta {
+    border: 1px solid CanvasText;
+  }
+
+  .mini-panel {
+    border: 1px solid CanvasText;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diff-page,
+  .diff-view,
+  .mini-panel {
+    animation: none;
+    transition: none;
+  }
+}

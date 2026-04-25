@@ -1,0 +1,59 @@
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  header,
+  nav,
+  aside,
+  footer,
+  .sidebar,
+  .topbar,
+  .skip-to-content,
+  [data-print-hide] {
+    display: none !important;
+  }
+
+  a {
+    color: black;
+    text-decoration: underline;
+  }
+
+  a[href]::after {
+    content: " (" attr(href) ")";
+    font-size: 0.85em;
+    color: #555;
+  }
+
+  a[href^="#"]::after,
+  a[href^="javascript:"]::after {
+    content: none;
+  }
+
+  pre,
+  code {
+    font-size: 10pt;
+    /* Long lines (e.g. mono-spaced diff content) must wrap on narrow paper
+       sizes so they don't overflow the @page margin and clip during print. */
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+
+  @page {
+    margin: 2cm;
+  }
+
+  .kpi-card,
+  .ratchet-section__card,
+  .claim-card,
+  .srs-card {
+    page-break-inside: avoid;
+  }
+}

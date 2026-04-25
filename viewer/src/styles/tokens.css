@@ -1,0 +1,117 @@
+:root {
+  /* Surface */
+  --paper: #FAF8F2;
+  --subtle: #F2EFE7;
+  --elevated: #FFFFFF;
+
+  /* Text */
+  --ink: #1C1B18;
+  --ink-strong: #38362F;
+  --muted: #5A5447;
+  --muted-strong: #736D5E;
+
+  /* Borders */
+  --hair: #E6E3D8;
+  --hair-strong: #D5D0BF;
+
+  /* Accent */
+  --on-accent: #FFFFFF;
+  --accent: #B05436;
+  --accent-ink: #B04E28;
+  --accent-soft: #F4E4D9;
+  --accent-softer: #FAF0E8;
+  --accent-softest: #FBF5EE;
+  --accent-tint: #FBEADD;
+  --accent-hair: #EBC3AE;
+
+  /* Diff */
+  --add-bg: #E4EFE0;
+  --add-fg: #2F6F4F;
+  --del-bg: #F6DCD5;
+  --del-fg: #A33D2B;
+
+  /* Semantic */
+  --success: #2F6F4F;
+  --warning: #946216;
+  --danger: #A33D2B;
+  --danger-soft: #F7E2DC;
+  --info: #2E4A6B;
+
+  /* Typography */
+  --font-sans: "Inter", "PingFang SC", "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Newsreader", "Source Serif 4", "Noto Serif SC", ui-serif, Georgia, serif;
+  --font-mono: "JetBrains Mono", SFMono-Regular, "Sarasa Mono SC", ui-monospace, monospace;
+
+  /* Radius */
+  --radius-6: 6px;
+  --radius-8: 8px;
+  --radius-10: 10px;
+  --radius-12: 12px;
+  --radius-pill: 99px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 1px 0 rgba(180, 160, 130, 0.06), 0 4px 20px -16px rgba(120, 80, 40, 0.18);
+  --shadow-lg: 0 10px 28px -18px rgba(120, 80, 40, 0.3);
+  --shadow-brand: 0 2px 6px -2px rgba(176, 78, 40, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+
+  /* Focus ring */
+  --ring-focus: 0 0 0 3px var(--accent-softer);
+
+  /* Motion */
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #1C1B18;
+    --subtle: #2A2823;
+    --elevated: #38362F;
+
+    --ink: #E6E3D8;
+    --ink-strong: #F2EFE7;
+    /* Dark-mode muted lifted to clear WCAG AAA 7:1 on every dark surface
+       (paper / subtle / elevated). Old #ABA69D was 4.99:1 on --elevated;
+       #C9C3B7 was 6.89:1; #D0CABF clears 7.4:1 on the worst surface. */
+    --muted: #D0CABF;
+    --muted-strong: #DBD5CB;
+
+    --hair: #38362F;
+    --hair-strong: #4A473E;
+
+    --on-accent: #1C1B18;
+    --accent: #D97757;
+    /* Lifted from #E0B89E (6.63:1 on --elevated) to clear AAA 7:1. */
+    --accent-ink: #E3C0A8;
+    --accent-soft: rgba(210, 112, 80, 0.15);
+    --accent-softer: rgba(210, 112, 80, 0.08);
+    --accent-softest: rgba(210, 112, 80, 0.04);
+    --accent-tint: rgba(210, 112, 80, 0.12);
+    --accent-hair: rgba(210, 112, 80, 0.25);
+
+    --add-bg: rgba(47, 111, 79, 0.15);
+    /* Add/del foregrounds also appear on --elevated (claim badges live in the
+       evidence panel), so their AAA target is the worst dark surface. */
+    --add-fg: #95D4B4;
+    --del-bg: rgba(163, 61, 43, 0.15);
+    --del-fg: #F4B7AC;
+
+    /* Semantic foregrounds lifted to clear WCAG AAA 7:1 on all dark
+       surfaces (paper / subtle / elevated).  Old values only passed on
+       --paper; e.g. --danger #E09080 was 4.88:1 on --elevated. */
+    --success: #A1D2B8;
+    --warning: #E5C18C;
+    --danger: #ECBCB2;
+    --danger-soft: rgba(163, 61, 43, 0.12);
+    --info: #B3C9E0;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+    --shadow-md: 0 1px 0 rgba(0, 0, 0, 0.15), 0 4px 20px -16px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 10px 28px -18px rgba(0, 0, 0, 0.5);
+    --shadow-brand: 0 2px 6px -2px rgba(210, 112, 80, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+
+    --ring-focus: 0 0 0 3px rgba(210, 112, 80, 0.35);
+  }
+}

@@ -9,7 +9,7 @@ import pytest
 
 from ahadiff.contracts import ProviderConfig
 from ahadiff.core.config import SecurityConfig
-from ahadiff.core.errors import ProviderError, SafetyError
+from ahadiff.core.errors import ConfigError, ProviderError, SafetyError
 from ahadiff.llm import ProviderRequest, adapter_conformance_test, make_provider
 from ahadiff.llm import provider as provider_module
 from ahadiff.llm.adapters.azure import AzureOpenAIAdapter
@@ -26,6 +26,7 @@ from ahadiff.llm.cost import (
     resolve_context_window,
     resolve_pricing_entry,
 )
+from ahadiff.llm.probe import _probe_context_window  # pyright: ignore[reportPrivateUsage]
 from ahadiff.llm.provider import reset_provider_runtime_state, transport_target_for_base_url
 from ahadiff.llm.schemas import CacheKeyInput
 from ahadiff.safety.redact import redaction_pipeline
@@ -250,7 +251,7 @@ def test_strict_local_rejects_non_loopback_even_for_ollama() -> None:
         provider.close()
 
 
-def test_security_local_hosts_allowlist_permits_named_host_under_strict_local() -> None:
+def test_global_local_hosts_allowlist_permits_named_host_under_strict_local() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content.decode("utf-8"))
         assert payload["messages"][0]["content"] == "Explain the diff."
@@ -260,12 +261,33 @@ def test_security_local_hosts_allowlist_permits_named_host_under_strict_local() 
     provider = make_provider(
         _provider_config("openai", base_url="http://model.local:8000"),
         api_key="test-key",
-        security_config=SecurityConfig(local_hosts=("model.local",)),
+        security_config=SecurityConfig(
+            local_hosts=("model.local",),
+            strict_local_hosts=("model.local",),
+        ),
         client=client,
     )
     try:
         response = provider.generate(_request())
         assert response.content == "OK"
+    finally:
+        provider.close()
+
+
+def test_repo_local_hosts_are_ignored_under_strict_local() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return _openai_success_response()
+
+    provider = make_provider(
+        _provider_config("openai", base_url="http://model.local:8000"),
+        api_key="test-key",
+        security_config=SecurityConfig(local_hosts=("model.local",)),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    try:
+        with pytest.raises(SafetyError, match="strict_local mode forbids remote transport"):
+            provider.generate(_request())
     finally:
         provider.close()
 
@@ -763,6 +785,73 @@ def test_openai_compat_adapters_share_common_base() -> None:
     assert issubclass(CherryINAdapter, OpenAICompatAdapter)
 
 
+def test_make_provider_rejects_max_concurrent_below_one() -> None:
+    with pytest.raises(ConfigError, match="max_concurrent must be >= 1"):
+        make_provider(_provider_config("openai"), api_key="test-key", max_concurrent=0)
+
+
+def test_retry_succeeds_after_transport_error() -> None:
+    calls = {"count": 0}
+    sleep_calls: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise httpx.ConnectError("connection refused")
+        return _openai_success_response(content="Recovered after transport error")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        client=client,
+        retry_attempts=1,
+        sleep=sleep,
+    )
+    try:
+        response = provider.generate(_request())
+    finally:
+        provider.close()
+
+    assert response.content == "Recovered after transport error"
+    assert calls["count"] == 2
+    assert len(sleep_calls) == 1
+
+
+def test_retry_succeeds_after_remote_protocol_error() -> None:
+    calls = {"count": 0}
+    sleep_calls: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise httpx.RemoteProtocolError("server disconnected")
+        return _openai_success_response(content="Recovered after protocol error")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        client=client,
+        retry_attempts=1,
+        sleep=sleep,
+    )
+    try:
+        response = provider.generate(_request())
+    finally:
+        provider.close()
+
+    assert response.content == "Recovered after protocol error"
+    assert calls["count"] == 2
+    assert sleep_calls == [1]
+
+
 def test_transport_target_accepts_loopback_ips_and_named_pipe_schemes() -> None:
     assert transport_target_for_base_url("http://127.0.0.2:8000", local_hosts=()) == "local"
     assert transport_target_for_base_url("http://[::1]:8000", local_hosts=()) == "local"
@@ -771,3 +860,49 @@ def test_transport_target_accepts_loopback_ips_and_named_pipe_schemes() -> None:
         transport_target_for_base_url("http://model.local:8000", local_hosts=("model.local",))
         == "local"
     )
+    assert (
+        transport_target_for_base_url(
+            "http://127.0.0.2:8000",
+            local_hosts=(),
+            strict_local=True,
+        )
+        == "remote"
+    )
+    assert (
+        transport_target_for_base_url(
+            "http://model.local:8000",
+            local_hosts=("model.local",),
+            strict_local=True,
+        )
+        == "local"
+    )
+
+
+def test_probe_context_window_returns_fallback_on_transport_error() -> None:
+    class FakeAdapter:
+        def __init__(self) -> None:
+            self.config = _provider_config("openai")
+
+        def build_context_probe_request(
+            self, *, api_key: str | None, model_name: str
+        ) -> tuple[str, str, dict[str, str]]:
+            return ("GET", "http://127.0.0.1:8000/v1/models/gpt-5.4-mini", {})
+
+        def parse_context_probe(self, response: httpx.Response, *, model_name: str) -> int | None:
+            return None
+
+    class FakeClient:
+        def request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+            raise httpx.ConnectError("connection refused")
+
+    class FakeProvider:
+        def __init__(self) -> None:
+            self.adapter = FakeAdapter()
+            self.config = _provider_config("openai")
+            self.client = FakeClient()
+            self.api_key = "test-key"
+
+    context_window, source = _probe_context_window(FakeProvider(), model_name="gpt-5.4-mini")
+
+    assert source == "fallback"
+    assert context_window > 0

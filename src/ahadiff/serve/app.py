@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any
 from pydantic import ValidationError
 from starlette.applications import Starlette
 from starlette.exceptions import HTTPException
-from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
@@ -24,6 +23,7 @@ from .routes_runs import (
     get_quiz,
     get_ratchet_history,
     get_run,
+    get_run_concepts,
     list_runs,
 )
 from .routes_signals import helpfulness, mark_wrong, quiz_answer, srs_review
@@ -52,12 +52,18 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
             Route("/api/run/{run_id}/claims", get_claims, methods=["GET"]),
             Route("/api/run/{run_id}/quiz", get_quiz, methods=["GET"]),
             Route("/api/run/{run_id}/diff", get_diff, methods=["GET"]),
+            Route("/api/run/{run_id}/concepts", get_run_concepts, methods=["GET"]),
             Route("/api/concepts", get_concepts, methods=["GET"]),
             Route("/api/ratchet/history", get_ratchet_history, methods=["GET"]),
             Route("/api/signals/mark-wrong", mark_wrong, methods=["POST"]),
             Route("/api/signals/quiz-answer", quiz_answer, methods=["POST"]),
             Route("/api/signals/srs-review", srs_review, methods=["POST"]),
             Route("/api/signals/helpfulness", helpfulness, methods=["POST"]),
+            Route(
+                "/api/{rest_of_path:path}",
+                api_not_found,
+                methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
+            ),
         ],
         exception_handlers={
             AhaDiffError: _handled_error,
@@ -81,6 +87,10 @@ async def healthz(_request: Request) -> JSONResponse:
 async def auth_token(request: Request) -> JSONResponse:
     state = serve_state(request)
     return JSONResponse(AuthTokenResponse(token=state.token).model_dump(mode="json"))
+
+
+async def api_not_found(request: Request) -> JSONResponse:
+    return JSONResponse({"error": "not_found", "path": request.url.path}, status_code=404)
 
 
 async def _handled_error(_request: Request, exc: Exception) -> JSONResponse:
