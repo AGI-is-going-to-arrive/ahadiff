@@ -37,5 +37,9 @@ build/
 .env
 .env.*
 
-# Claude Code project memory (private)
-.claude/projects/
+# Claude Code local dev artifacts (review reports, team plans, memory)
+.claude/
+
+# Development screenshots & test patches (local only)
+*.png
+*.patch
