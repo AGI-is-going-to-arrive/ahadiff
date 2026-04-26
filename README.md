@@ -18,7 +18,7 @@
 - 一份每条结论都可回溯的 **断言清单**（Claims）
 - 一条可比较的 **质量评分历史**（Ratchet，`review.sqlite` 为唯一真相源，`results.tsv` 为导出视图）
 
-当前代码已经能稳定产出 Lesson / Claims / Quiz / Cards / Score / Ratchet；review 流的 SRS runtime、serve backend、install targets、GitHub Action 模板、benchmark suite、improve loop core、Task 17 targeted verification、Phase 2.5 runtime、i18n-0 后端以及前端 `viewer/` React SPA（Dashboard / Lesson / Diff / Quiz / ConceptGraph 五页 + LanguageSwitcher + 全量 i18n 82/82 key parity + 330/330 Playwright 矩阵 + R1-R5 五轮跨模型对抗审查共 51 项 real findings 修复）都已落地，Stage 7 i18n signoff 已通过。v0.2 Gate 0 跨平台基础已通过审查：subprocess UTF-8 encoding + Git `core.quotePath=false`、SQLite journal mode WSL2 降级、lock inode 校验 + headless serve 检测、`datetime.utcnow()` 静态 guard。
+当前代码已经能稳定产出 Lesson / Claims / Quiz / Cards / Score / Ratchet；review 流的 SRS runtime、serve backend、install targets、GitHub Action 模板、benchmark suite、improve loop core、Task 17 targeted verification、Phase 2.5 runtime、i18n-0 后端以及前端 `viewer/` React SPA（Dashboard / Lesson / Diff / Quiz / ConceptGraph 五页 + LanguageSwitcher + 全量 i18n 82/82 key parity + 330/330 Playwright 矩阵 + R1-R5 五轮跨模型对抗审查共 51 项 real findings 修复）都已落地，Stage 7 i18n signoff 已通过。v0.2 Gate 0 跨平台基础已通过审查：subprocess UTF-8 encoding + Git `core.quotePath=false`、SQLite journal mode WSL2 降级、lock inode 校验 + headless serve 检测、`datetime.utcnow()` 静态 guard。v0.2 Gate 1 Review DB Migration + Write Safety 已通过审查：`PRAGMA user_version` migration chain、serve 写锁统一（repo_write_lock + threading.Lock）、SQL pagination DAO、review queue/rate API 端点。
 
 > Code Wiki 解释仓库，知返解释这次改动 —— 而且每一句话都能回到代码证据。
 
@@ -218,7 +218,7 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-最近一次验证（v0.2 Gate 0 通过后）：`uv run pytest tests/unit -q` 为 `559 passed`；`uv run pytest tests -q` 为 `576 passed, 1 skipped`（live judge 默认跳过）；`uv run ruff check src tests`、`uv run ruff format src tests`、`uv run ruff format --check src tests`、`uv run pyright` 全通过。前端 `pnpm run typecheck` 0 errors、`pnpm run build` 261.39 KB（gzip 82.49 KB）、`pnpm exec playwright test` 330/330 passed。
+最近一次验证（v0.2 Gate 1 通过后）：`uv run pytest tests -q` 为 `587 passed, 1 skipped`（live judge 默认跳过，单独跑 1 passed）；`uv run ruff check src tests`、`uv run ruff format --check src tests`、`uv run pyright` 全通过。前端 `pnpm run typecheck` 0 errors、`pnpm run build` 261.39 KB（gzip 82.49 KB）、`pnpm exec playwright test` 330/330 passed。
 
 下一步路线图：
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 import pytest
@@ -11,11 +12,14 @@ import ahadiff.serve.routes_locale as routes_locale_module
 import ahadiff.serve.routes_runs as routes_runs_module
 from ahadiff.contracts import ResultEvent, ReviewCard, RunArtifactEnvelope
 from ahadiff.eval.results import finalized_artifact_digest
+from ahadiff.git.repo import repo_write_lock
 from ahadiff.review.database import (
     connect_review_db,
     import_cards_from_jsonl,
     initialize_review_db,
+    load_finalized_ratchet_history_page,
     load_result_event_by_run_and_id,
+    load_result_events_page,
     sync_result_event,
 )
 from ahadiff.serve import ServeState, create_app
@@ -245,6 +249,8 @@ def test_serve_state_locale_update_preserves_runtime_fields(tmp_path: Path) -> N
     assert updated.bind_host == state.bind_host
     assert updated.port == state.port
     assert updated.write_lock is state.write_lock
+    assert updated.repo_lock_path == state.repo_lock_path
+    assert updated.thread_write_lock is state.thread_write_lock
 
 
 def test_serve_state_bind_port_and_token_survive_headless_runtime(tmp_path: Path) -> None:
@@ -785,10 +791,10 @@ def test_finalized_run_lookup_does_not_use_full_result_event_scan(
     sync_result_event(state_dir / "review.sqlite", _event("run-1"))
     client = _client(state_dir)
 
-    def fail_full_scan(_db_path: Path) -> tuple[ResultEvent, ...]:
-        raise AssertionError("full result_events scan should not be used for run artifact lookup")
+    def fail_event_page(*_args: Any, **_kwargs: Any) -> tuple[ResultEvent, ...]:
+        raise AssertionError("result_events page scan should not be used for run artifact lookup")
 
-    monkeypatch.setattr(routes_runs_module, "load_result_events_from_db", fail_full_scan)
+    monkeypatch.setattr(routes_runs_module, "load_result_events_page", fail_event_page)
 
     detail = client.get("/api/run/run-1")
     lesson = client.get("/api/run/run-1/lesson")
@@ -797,6 +803,74 @@ def test_finalized_run_lookup_does_not_use_full_result_event_scan(
     assert detail.json()["run_id"] == "run-1"
     assert lesson.status_code == 200
     assert lesson.json()["content"] == "full lesson\n"
+
+
+def test_run_lists_use_sql_pagination(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    for index in range(3):
+        run_id = f"run-{index}"
+        _write_run(state_dir, run_id, finalized=True)
+        sync_result_event(
+            db_path,
+            _event(
+                run_id,
+                event_id=f"018f0f52-91c0-7abc-8123-{index:012d}",
+                timestamp=f"2026-04-24T00:00:0{index}Z",
+            ),
+        )
+    calls: list[tuple[int, tuple[str, str] | None]] = []
+
+    def recording_page(*args: Any, **kwargs: Any) -> tuple[ResultEvent, ...]:
+        calls.append(
+            (cast("int", kwargs["limit"]), cast("tuple[str, str] | None", kwargs["before"]))
+        )
+        return load_result_events_page(*args, **kwargs)
+
+    monkeypatch.setattr(routes_runs_module, "load_result_events_page", recording_page)
+    client = _client(state_dir)
+
+    runs = client.get("/api/runs").json()["runs"]
+
+    assert [run["run_id"] for run in runs] == ["run-2", "run-1", "run-0"]
+    assert calls == [(routes_runs_module._MAX_LIST_RUNS, None)]  # pyright: ignore[reportPrivateUsage]
+
+
+def test_ratchet_history_uses_sql_pagination(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    for index in range(3):
+        run_id = f"run-{index}"
+        _write_run(state_dir, run_id, finalized=True)
+        sync_result_event(
+            db_path,
+            _event(
+                run_id,
+                event_id=f"018f0f52-91c0-7abc-8123-{index:012d}",
+                timestamp=f"2026-04-24T00:00:0{index}Z",
+                status="keep",
+            ),
+        )
+    calls: list[tuple[int, tuple[str, str] | None]] = []
+
+    def recording_page(*args: Any, **kwargs: Any) -> tuple[ResultEvent, ...]:
+        calls.append(
+            (cast("int", kwargs["limit"]), cast("tuple[str, str] | None", kwargs["before"]))
+        )
+        return load_finalized_ratchet_history_page(*args, **kwargs)
+
+    monkeypatch.setattr(routes_runs_module, "load_finalized_ratchet_history_page", recording_page)
+    client = _client(state_dir)
+
+    history = client.get("/api/ratchet/history").json()["history"]
+
+    assert [entry["run_id"] for entry in history] == ["run-2", "run-1", "run-0"]
+    assert calls == [(routes_runs_module._MAX_RATCHET_HISTORY, None)]  # pyright: ignore[reportPrivateUsage]
 
 
 def test_legacy_finalized_marker_without_digest_is_hidden(tmp_path: Path) -> None:
@@ -960,6 +1034,35 @@ def test_run_detail_uses_finalized_marker_event_not_newer_unfinalized_event(
     assert runs[0]["status"] == "keep"
 
 
+def test_run_lists_validate_finalized_marker_run_event_binding(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    run_1_path = _write_run(state_dir, "run-1", finalized=False)
+    _write_run(state_dir, "run-2", finalized=False)
+    run_2_event_id = "018f0f52-91c0-7abc-8123-000000000002"
+    artifact_count, checksum = finalized_artifact_digest(run_1_path)
+    _write_json(
+        run_1_path / "finalized.json",
+        {
+            "run_id": "run-1",
+            "event_id": run_2_event_id,
+            "finalized_at": "2026-04-24T00:00:01Z",
+            "artifact_count": artifact_count,
+            "checksum": checksum,
+            "status": "keep",
+        },
+    )
+    sync_result_event(db_path, _event("run-2", event_id=run_2_event_id, status="keep"))
+    client = _client(state_dir)
+
+    runs = client.get("/api/runs")
+    history = client.get("/api/ratchet/history")
+
+    assert runs.json() == {"runs": []}
+    assert history.json() == {"history": []}
+
+
 def test_runs_source_kind_filter_and_ratchet_history(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     initialize_review_db(state_dir / "review.sqlite")
@@ -1075,6 +1178,30 @@ def test_mark_wrong_signal_is_idempotent(tmp_path: Path) -> None:
     assert second.json() == {"inserted": False}
 
 
+def test_signal_write_respects_repo_write_lock(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+    payload = {"claim_id": "claim-1", "idempotency_key": "mark:claim-1:wrong"}
+
+    with repo_write_lock(state_dir / "ahadiff.lock", command="db restore"):
+        blocked = client.post(
+            "/api/signals/mark-wrong",
+            headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+            json=payload,
+        )
+
+    accepted = client.post(
+        "/api/signals/mark-wrong",
+        headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        json=payload,
+    )
+
+    assert blocked.status_code == 400
+    assert "另一个 ahadiff 进程正在运行" in blocked.json()["error"]
+    assert accepted.status_code == 200
+    assert accepted.json() == {"inserted": True}
+
+
 def test_quiz_answer_signal_validates_dto_and_records_payload(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     client = _client(state_dir)
@@ -1162,6 +1289,88 @@ def test_srs_review_records_card_review(tmp_path: Path) -> None:
     assert response.json()["review"]["card_id"] == "card-1"
     assert response.json()["review"]["rating"] == 2
     assert duplicate.json() == {"inserted": False}
+
+
+def test_review_queue_get_is_public_and_rate_requires_token(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    cards_path = state_dir / "runs" / "run-1" / "quiz" / "cards.jsonl"
+    card = ReviewCard(
+        card_id="card-1",
+        concept="retry loop",
+        run_id="run-1",
+        source_ref="abc1234",
+        fsrs_state="{}",
+        file_id="file-app",
+        display_path="src/app.py",
+        hunk_id="hunk-1",
+        hunk_hash="deadbeefcafe",
+        symbol="retry_once",
+    )
+    cards_path.parent.mkdir(parents=True, exist_ok=True)
+    cards_path.write_text(json.dumps(card.model_dump(mode="json")) + "\n", encoding="utf-8")
+    assert import_cards_from_jsonl(db_path, cards_path) == 1
+    client = _client(state_dir)
+
+    queue = client.get("/api/review/queue")
+    denied = client.post(
+        "/api/review/rate",
+        headers={"origin": "http://localhost:8765"},
+        json={"card_id": "card-1", "answer": "good", "idempotency_key": "review-api-1"},
+    )
+    accepted = client.post(
+        "/api/review/rate",
+        headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        json={"card_id": "card-1", "answer": "good", "idempotency_key": "review-api-1"},
+    )
+    duplicate = client.post(
+        "/api/review/rate",
+        headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        json={"card_id": "card-1", "answer": "good", "idempotency_key": "review-api-1"},
+    )
+
+    assert queue.status_code == 200
+    assert queue.json()["cards"][0]["card_id"] == "card-1"
+    assert denied.status_code == 403
+    assert "X-AhaDiff-Token" in denied.json()["error"]
+    assert accepted.status_code == 200
+    assert accepted.json()["inserted"] is True
+    assert accepted.json()["review"]["rating"] == 3
+    assert duplicate.json() == {"inserted": False}
+
+
+def test_review_queue_returns_empty_on_legacy_db_without_triggering_migration(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE result_events (
+                event_id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL
+            )
+            """
+        )
+    client = _client(state_dir)
+
+    queue = client.get("/api/review/queue")
+
+    assert queue.status_code == 200
+    assert queue.json() == {"cards": []}
+    with sqlite3.connect(db_path) as connection:
+        user_version = connection.execute("PRAGMA user_version").fetchone()[0]
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+    assert user_version == 0
+    assert "cards" not in tables
 
 
 def test_malformed_origin_is_rejected_without_500(tmp_path: Path) -> None:

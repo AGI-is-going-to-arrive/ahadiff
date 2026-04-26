@@ -14,7 +14,7 @@ from typer.testing import CliRunner
 from ahadiff import cli as cli_module
 from ahadiff.cli import app
 from ahadiff.contracts import ResultEvent, ReviewCard
-from ahadiff.core.errors import InputError, StorageError
+from ahadiff.core.errors import InputError, MigrationError, StorageError
 from ahadiff.core.paths import is_wsl2_mnt, lock_file_path, review_db_path
 from ahadiff.quiz import QuizArtifactPaths
 from ahadiff.review import database as review_database_module
@@ -172,6 +172,92 @@ def _create_v1_review_db_without_stale_reason(db_path: Path) -> None:
         )
 
 
+def _insert_v1_review_data(db_path: Path) -> None:
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO scheduler_presets (
+                preset_id,
+                weights,
+                desired_retention,
+                scheduler_version,
+                created_at_utc
+            ) VALUES ('default', '[0.0]', 0.9, 'fsrs-v1', '2026-04-24T00:00:00Z')
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO cards (
+                id,
+                concept,
+                run_id,
+                fsrs_state,
+                scheduler_version,
+                due_date,
+                stability,
+                difficulty,
+                source_ref,
+                file_id,
+                display_path,
+                hunk_id,
+                hunk_hash,
+                symbol,
+                created_at_utc
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "legacy-card",
+                "retry loop",
+                "run-legacy",
+                "{}",
+                "fsrs-v1",
+                "2026-04-25T00:00:00Z",
+                1.0,
+                2.0,
+                "abc1234",
+                "file-app",
+                "src/app.py",
+                "hunk-1",
+                "deadbeefcafe",
+                "retry_once",
+                "2026-04-24T00:00:00Z",
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO result_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "legacy-event",
+                "run-legacy",
+                "learn",
+                "2026-04-24T00:00:00Z",
+                "abc1234",
+                None,
+                "prompt-v1",
+                "eval-v1",
+                "rubric-v1",
+                82.0,
+                "PASS",
+                "baseline",
+                "evidence",
+                '{"legacy": true}',
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO learning_signals VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                "legacy-signal",
+                "legacy-key",
+                "mark_wrong",
+                '{"claim_id": "claim-1"}',
+                "2026-04-24T00:00:00Z",
+            ),
+        )
+
+
 def _result_event(
     event_id: str = "018f0f52-91c0-7abc-8123-000000000101",
     *,
@@ -218,9 +304,7 @@ def test_initialize_review_db_creates_full_schema_and_pragmas(tmp_path: Path) ->
                 "SELECT name FROM sqlite_master WHERE type = 'index'"
             ).fetchall()
         }
-        schema_version = connection.execute(
-            "SELECT version FROM schema_version WHERE id = 1"
-        ).fetchone()[0]
+        schema_version = connection.execute("PRAGMA user_version").fetchone()[0]
         busy_timeout = connection.execute("PRAGMA busy_timeout").fetchone()[0]
         journal_mode = connection.execute("PRAGMA journal_mode").fetchone()[0]
         quick_check = connection.execute("PRAGMA quick_check").fetchone()[0]
@@ -246,6 +330,34 @@ def test_initialize_review_db_creates_full_schema_and_pragmas(tmp_path: Path) ->
     assert "CHECK (card_state IN ('active', 'stale', 'archived', 'suspended'))" in str(cards_sql)
     for column in ("source_ref", "file_id", "display_path", "hunk_id", "hunk_hash"):
         assert int(card_info[column]["notnull"]) == 1
+
+
+def test_initialize_review_db_rolls_back_partial_fresh_schema(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "review.sqlite"
+
+    def fail_cards_schema(connection: sqlite3.Connection) -> None:
+        connection.execute("CREATE TABLE should_not_survive (id TEXT)")
+        raise sqlite3.DatabaseError("boom")
+
+    monkeypatch.setattr(review_database_module, "_ensure_cards_schema", fail_cards_schema)
+
+    with pytest.raises(sqlite3.DatabaseError, match="boom"):
+        initialize_review_db(db_path)
+
+    with sqlite3.connect(db_path) as connection:
+        user_version = connection.execute("PRAGMA user_version").fetchone()[0]
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+    assert user_version == 0
+    assert "scheduler_presets" not in tables
+    assert "should_not_survive" not in tables
 
 
 def test_is_wsl2_mnt_detects_only_linux_wsl_mount_paths() -> None:
@@ -417,6 +529,118 @@ def test_initialize_review_db_migrates_legacy_result_events_only_db(tmp_path: Pa
     assert len(rows) == 1
     assert rows[0].event_id == event.event_id
     assert check.schema_version == CURRENT_SCHEMA_VERSION
+
+
+def test_migration_v1_to_v2_preserves_data(tmp_path: Path) -> None:
+    db_path = tmp_path / "review.sqlite"
+    _create_v1_review_db_without_stale_reason(db_path)
+    _insert_v1_review_data(db_path)
+
+    outcome = upgrade_review_db(db_path)
+
+    with connect_review_db(db_path) as connection:
+        user_version = connection.execute("PRAGMA user_version").fetchone()[0]
+        card_columns = {row["name"] for row in connection.execute("PRAGMA table_info(cards)")}
+        legacy_schema_table = connection.execute(
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table' AND name = 'schema_version'
+            """
+        ).fetchone()
+        card = connection.execute(
+            """
+            SELECT id, concept, run_id, source_ref, file_id, display_path, hunk_hash, stale_reason
+            FROM cards
+            WHERE id = 'legacy-card'
+            """
+        ).fetchone()
+        event = connection.execute(
+            "SELECT event_id, run_id, note_json FROM result_events WHERE event_id = 'legacy-event'"
+        ).fetchone()
+        signal = connection.execute(
+            """
+            SELECT event_id, idempotency_key, signal_type, payload_json
+            FROM learning_signals
+            WHERE event_id = 'legacy-signal'
+            """
+        ).fetchone()
+
+    assert outcome.schema_version == CURRENT_SCHEMA_VERSION
+    assert user_version == CURRENT_SCHEMA_VERSION
+    assert legacy_schema_table is None
+    assert "stale_reason" in card_columns
+    assert tuple(card) == (
+        "legacy-card",
+        "retry loop",
+        "run-legacy",
+        "abc1234",
+        "file-app",
+        "src/app.py",
+        "deadbeefcafe",
+        None,
+    )
+    assert tuple(event) == ("legacy-event", "run-legacy", '{"legacy": true}')
+    assert tuple(signal) == (
+        "legacy-signal",
+        "legacy-key",
+        "mark_wrong",
+        '{"claim_id": "claim-1"}',
+    )
+
+
+def test_legacy_schema_version_newer_than_supported_is_rejected(tmp_path: Path) -> None:
+    db_path = tmp_path / "review.sqlite"
+    _create_v1_review_db_without_stale_reason(db_path)
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("UPDATE schema_version SET version = ? WHERE id = 1", (999,))
+
+    with pytest.raises(MigrationError, match="legacy schema version 999 is newer than supported"):
+        initialize_review_db(db_path)
+
+    with sqlite3.connect(db_path) as connection:
+        user_version = connection.execute("PRAGMA user_version").fetchone()[0]
+        card_columns = {row[1] for row in connection.execute("PRAGMA table_info(cards)")}
+    assert user_version == 0
+    assert "stale_reason" not in card_columns
+
+
+def test_newer_version_friendly_error(tmp_path: Path) -> None:
+    db_path = tmp_path / "review.sqlite"
+    initialize_review_db(db_path)
+    with connect_review_db(db_path) as connection:
+        connection.execute(f"PRAGMA user_version={CURRENT_SCHEMA_VERSION + 1}")
+
+    with pytest.raises(MigrationError, match="newer than supported"):
+        initialize_review_db(db_path)
+
+
+def test_partial_migration_rollback(tmp_path: Path) -> None:
+    db_path = tmp_path / "review.sqlite"
+    _create_v1_review_db_without_stale_reason(db_path)
+    _insert_v1_review_data(db_path)
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("DROP TABLE review_logs")
+        connection.execute("CREATE INDEX review_logs ON cards(id)")
+
+    with pytest.raises(MigrationError, match="rolled back"):
+        upgrade_review_db(db_path)
+
+    with connect_review_db(db_path) as connection:
+        user_version = connection.execute("PRAGMA user_version").fetchone()[0]
+        card_columns = {row["name"] for row in connection.execute("PRAGMA table_info(cards)")}
+        leftover = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'should_not_survive'"
+        ).fetchone()
+        conflict = connection.execute(
+            "SELECT type FROM sqlite_master WHERE name = 'review_logs'"
+        ).fetchone()
+        legacy_card = connection.execute("SELECT id FROM cards WHERE id = 'legacy-card'").fetchone()
+    assert user_version == 0
+    assert "stale_reason" not in card_columns
+    assert leftover is None
+    assert conflict["type"] == "index"
+    assert legacy_card["id"] == "legacy-card"
 
 
 def test_cards_schema_rejects_invalid_state_and_null_core_fields(tmp_path: Path) -> None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+from anyio import to_thread
 from starlette.responses import JSONResponse
 
 from ahadiff.contracts import (
@@ -20,9 +21,14 @@ from ahadiff.review.database import (
 from ahadiff.review.signal import mark_claim_wrong
 
 from .auth import require_write_token, serve_state
+from .lock import serve_repo_write_lock
 
 if TYPE_CHECKING:
     from starlette.requests import Request
+
+    from ahadiff.review.schemas import ReviewUpdate
+
+    from .state import ServeState
 
 
 async def mark_wrong(request: Request) -> JSONResponse:
@@ -30,14 +36,7 @@ async def mark_wrong(request: Request) -> JSONResponse:
     payload = await request.json()
     body = MarkWrongRequest.model_validate(payload)
     state = serve_state(request)
-    assert state.write_lock is not None
-    async with state.write_lock:
-        initialize_review_db(state.review_db_path)
-        inserted = mark_claim_wrong(
-            db_path=state.review_db_path,
-            claim_id=body.claim_id,
-            idempotency_key=body.idempotency_key,
-        )
+    inserted = await to_thread.run_sync(_mark_wrong_sync, state, body)
     return JSONResponse({"inserted": inserted})
 
 
@@ -46,17 +45,9 @@ async def srs_review(request: Request) -> JSONResponse:
     payload = await request.json()
     body = ReviewSignalRequest.model_validate(payload)
     state = serve_state(request)
-    assert state.write_lock is not None
-    async with state.write_lock:
-        initialize_review_db(state.review_db_path)
-        update = record_card_review_once(
-            state.review_db_path,
-            card_id=body.card_id,
-            answer=body.answer,
-            idempotency_key=body.idempotency_key,
-        )
-        if update is None:
-            return JSONResponse({"inserted": False})
+    update = await to_thread.run_sync(_srs_review_sync, state, body)
+    if update is None:
+        return JSONResponse({"inserted": False})
     return JSONResponse({"inserted": True, "review": update.__dict__})
 
 
@@ -65,10 +56,44 @@ async def quiz_answer(request: Request) -> JSONResponse:
     payload = await request.json()
     body = QuizAnswerRequest.model_validate(payload)
     state = serve_state(request)
-    assert state.write_lock is not None
-    async with state.write_lock:
+    inserted = await to_thread.run_sync(_quiz_answer_sync, state, body)
+    return JSONResponse({"inserted": inserted})
+
+
+async def helpfulness(request: Request) -> JSONResponse:
+    require_write_token(request)
+    payload = await request.json()
+    body = HelpfulnessRequest.model_validate(payload)
+    state = serve_state(request)
+    inserted = await to_thread.run_sync(_helpfulness_sync, state, body)
+    return JSONResponse({"inserted": inserted})
+
+
+def _mark_wrong_sync(state: ServeState, body: MarkWrongRequest) -> bool:
+    with serve_repo_write_lock(state, command="serve mark-wrong"):
         initialize_review_db(state.review_db_path)
-        inserted = insert_learning_signal(
+        return mark_claim_wrong(
+            db_path=state.review_db_path,
+            claim_id=body.claim_id,
+            idempotency_key=body.idempotency_key,
+        )
+
+
+def _srs_review_sync(state: ServeState, body: ReviewSignalRequest) -> ReviewUpdate | None:
+    with serve_repo_write_lock(state, command="serve srs-review"):
+        initialize_review_db(state.review_db_path)
+        return record_card_review_once(
+            state.review_db_path,
+            card_id=body.card_id,
+            answer=body.answer,
+            idempotency_key=body.idempotency_key,
+        )
+
+
+def _quiz_answer_sync(state: ServeState, body: QuizAnswerRequest) -> bool:
+    with serve_repo_write_lock(state, command="serve quiz-answer"):
+        initialize_review_db(state.review_db_path)
+        return insert_learning_signal(
             state.review_db_path,
             event_id=make_uuid7(),
             idempotency_key=body.idempotency_key,
@@ -79,18 +104,12 @@ async def quiz_answer(request: Request) -> JSONResponse:
                 "correct": body.correct,
             },
         )
-    return JSONResponse({"inserted": inserted})
 
 
-async def helpfulness(request: Request) -> JSONResponse:
-    require_write_token(request)
-    payload = await request.json()
-    body = HelpfulnessRequest.model_validate(payload)
-    state = serve_state(request)
-    assert state.write_lock is not None
-    async with state.write_lock:
+def _helpfulness_sync(state: ServeState, body: HelpfulnessRequest) -> bool:
+    with serve_repo_write_lock(state, command="serve helpfulness"):
         initialize_review_db(state.review_db_path)
-        inserted = insert_learning_signal(
+        return insert_learning_signal(
             state.review_db_path,
             event_id=make_uuid7(),
             idempotency_key=body.idempotency_key,
@@ -101,7 +120,6 @@ async def helpfulness(request: Request) -> JSONResponse:
                 "payload": json.loads(json.dumps(body.payload)),
             },
         )
-    return JSONResponse({"inserted": inserted})
 
 
 __all__ = ["helpfulness", "mark_wrong", "quiz_answer", "srs_review"]

@@ -8,6 +8,7 @@ import tempfile
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -31,7 +32,7 @@ from .scheduler import (
 from .schemas import DueReviewCard, ReviewAnswer, ReviewDbCheck, ReviewUpdate
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Iterable
 
 CURRENT_SCHEMA_VERSION = 2
 _SQLITE_MIN_VERSION = (3, 51, 3)
@@ -61,6 +62,9 @@ _uuid7_last_tail = -1
 _UUID7_TIMESTAMP_MASK = (1 << 48) - 1
 _UUID7_TAIL_MASK = (1 << 74) - 1
 _UUID7_RANDOM_B_MASK = (1 << 62) - 1
+
+
+MigrationStep = Callable[[sqlite3.Connection], None]
 
 
 @dataclass(frozen=True)
@@ -121,11 +125,11 @@ def upgrade_review_db(
     connection: sqlite3.Connection | None = None
     try:
         connection = connect_review_db(db_path)
-        connection.execute("BEGIN EXCLUSIVE")
         _ensure_schema(connection)
         if migration_hook is not None:
+            connection.execute("BEGIN EXCLUSIVE")
             migration_hook(connection)
-        connection.execute("COMMIT")
+            connection.execute("COMMIT")
     except Exception as exc:
         if connection is not None:
             with suppress(sqlite3.DatabaseError):
@@ -228,6 +232,73 @@ def load_result_events_from_db(db_path: Path) -> tuple[ResultEvent, ...]:
     except sqlite3.DatabaseError as exc:
         raise StorageError(f"failed to read result_events from {db_path}: {exc}") from exc
     return tuple(ResultEvent.model_validate(dict(row)) for row in rows)
+
+
+def load_result_events_page(
+    db_path: Path,
+    *,
+    limit: int,
+    before: tuple[str, str] | None = None,
+    event_ids: Iterable[str] | None = None,
+    statuses: Iterable[str] | None = None,
+) -> tuple[ResultEvent, ...]:
+    if limit <= 0 or not db_path.exists():
+        return ()
+    event_id_values = _dedupe_filter_values(event_ids)
+    if event_ids is not None and not event_id_values:
+        return ()
+    status_values = _dedupe_filter_values(statuses)
+    if statuses is not None and not status_values:
+        return ()
+    try:
+        with connect_review_db(db_path) as connection:
+            if not _result_events_table_exists(connection):
+                return ()
+            rows: list[sqlite3.Row] = []
+            if event_id_values is None:
+                rows.extend(
+                    _select_result_events_page(
+                        connection,
+                        limit=limit,
+                        before=before,
+                        event_ids=None,
+                        statuses=status_values,
+                    )
+                )
+            else:
+                for chunk in _chunks(event_id_values, 700):
+                    rows.extend(
+                        _select_result_events_page(
+                            connection,
+                            limit=limit,
+                            before=before,
+                            event_ids=chunk,
+                            statuses=status_values,
+                        )
+                    )
+    except sqlite3.DatabaseError as exc:
+        raise StorageError(f"failed to read result_events page from {db_path}: {exc}") from exc
+    events = tuple(ResultEvent.model_validate(dict(row)) for row in rows)
+    return tuple(
+        sorted(events, key=lambda item: (item.timestamp, item.event_id), reverse=True)[:limit]
+    )
+
+
+def load_finalized_ratchet_history_page(
+    db_path: Path,
+    *,
+    finalized_event_ids: Iterable[str],
+    statuses: Iterable[str],
+    limit: int,
+    before: tuple[str, str] | None = None,
+) -> tuple[ResultEvent, ...]:
+    return load_result_events_page(
+        db_path,
+        limit=limit,
+        before=before,
+        event_ids=finalized_event_ids,
+        statuses=statuses,
+    )
 
 
 def load_result_event_by_run_and_id(
@@ -649,7 +720,8 @@ def list_due_cards(
 ) -> tuple[DueReviewCard, ...]:
     now_text = _datetime_to_utc_text(now_utc or datetime.now(UTC))
     with connect_review_db(db_path) as connection:
-        _ensure_schema(connection)
+        if _get_schema_version(connection) != CURRENT_SCHEMA_VERSION:
+            return ()
         rows = connection.execute(
             """
             SELECT
@@ -925,39 +997,116 @@ def _insert_learning_signal(
 
 
 def _ensure_schema(connection: sqlite3.Connection) -> None:
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS schema_version (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
-            version INTEGER NOT NULL
-        )
-        """
-    )
-    _ensure_scheduler_presets_schema(connection)
-    _ensure_cards_schema(connection)
-    _ensure_review_logs_schema(connection)
-    _ensure_result_events_schema(connection)
-    _ensure_learning_signals_schema(connection)
-    _ensure_default_scheduler_preset(connection, created_at_utc=_utc_now())
-    row = connection.execute("SELECT version FROM schema_version WHERE id = 1").fetchone()
-    if row is None:
-        connection.execute(
-            "INSERT INTO schema_version (id, version) VALUES (1, ?)",
-            (CURRENT_SCHEMA_VERSION,),
-        )
+    actual = _get_schema_version(connection)
+    has_tables = _has_user_tables(connection)
+    if actual == 0 and not has_tables:
+        _initialize_schema(connection)
         return
-    actual = int(row["version"])
+    if actual == 0 and has_tables:
+        legacy_version = _get_legacy_schema_version(connection)
+        if legacy_version is not None:
+            if legacy_version < 1:
+                raise MigrationError(
+                    f"review.sqlite legacy schema version {legacy_version} is not supported"
+                )
+            if legacy_version > CURRENT_SCHEMA_VERSION:
+                raise MigrationError(
+                    f"review.sqlite legacy schema version {legacy_version} is newer than supported "
+                    f"{CURRENT_SCHEMA_VERSION}; upgrade AhaDiff before opening this database"
+                )
+        _run_migrations(connection, legacy_version or 1)
+        return
+    if actual == CURRENT_SCHEMA_VERSION:
+        return
     if actual > CURRENT_SCHEMA_VERSION:
         raise MigrationError(
-            f"review.sqlite schema_version {actual} is newer than supported "
-            f"{CURRENT_SCHEMA_VERSION}"
+            f"review.sqlite schema version {actual} is newer than supported "
+            f"{CURRENT_SCHEMA_VERSION}; upgrade AhaDiff before opening this database"
         )
-    if actual < CURRENT_SCHEMA_VERSION:
-        _migrate_schema(connection, from_version=actual)
-        connection.execute(
-            "UPDATE schema_version SET version = ? WHERE id = 1",
-            (CURRENT_SCHEMA_VERSION,),
-        )
+    _run_migrations(connection, actual)
+
+
+def _get_schema_version(connection: sqlite3.Connection) -> int:
+    row = connection.execute("PRAGMA user_version").fetchone()
+    if row is None:
+        return 0
+    return int(row[0])
+
+
+def _get_legacy_schema_version(connection: sqlite3.Connection) -> int | None:
+    legacy_table = connection.execute(
+        """
+        SELECT 1
+        FROM sqlite_master
+        WHERE type = 'table' AND name = 'schema_version'
+        LIMIT 1
+        """
+    ).fetchone()
+    if legacy_table is None:
+        return None
+    try:
+        row = connection.execute("SELECT version FROM schema_version WHERE id = 1").fetchone()
+    except sqlite3.DatabaseError as exc:
+        raise MigrationError("review.sqlite legacy schema_version table is invalid") from exc
+    if row is None:
+        raise MigrationError("review.sqlite legacy schema_version table is missing version row")
+    try:
+        return int(row[0])
+    except (TypeError, ValueError) as exc:
+        raise MigrationError("review.sqlite legacy schema_version value is invalid") from exc
+
+
+def _set_schema_version(connection: sqlite3.Connection, version: int) -> None:
+    connection.execute(f"PRAGMA user_version={version}")
+
+
+def _has_user_tables(connection: sqlite3.Connection) -> bool:
+    row = connection.execute(
+        """
+        SELECT 1
+        FROM sqlite_master
+        WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+        LIMIT 1
+        """
+    ).fetchone()
+    return row is not None
+
+
+def _initialize_schema(connection: sqlite3.Connection) -> None:
+    try:
+        connection.execute("BEGIN EXCLUSIVE")
+        _ensure_scheduler_presets_schema(connection)
+        _ensure_cards_schema(connection)
+        _ensure_review_logs_schema(connection)
+        _ensure_result_events_schema(connection)
+        _ensure_learning_signals_schema(connection)
+        _ensure_default_scheduler_preset(connection, created_at_utc=_utc_now())
+        _set_schema_version(connection, CURRENT_SCHEMA_VERSION)
+        connection.execute("COMMIT")
+    except Exception:
+        with suppress(sqlite3.DatabaseError):
+            connection.execute("ROLLBACK")
+        raise
+
+
+def _run_migrations(connection: sqlite3.Connection, from_version: int) -> None:
+    if from_version < 1:
+        raise MigrationError(f"review.sqlite schema version {from_version} is not supported")
+    for version in range(from_version, CURRENT_SCHEMA_VERSION):
+        migration = _MIGRATIONS.get(version)
+        if migration is None:
+            raise MigrationError(
+                f"review.sqlite migration path is missing for schema version {version}"
+            )
+        try:
+            connection.execute("BEGIN EXCLUSIVE")
+            migration(connection)
+            _set_schema_version(connection, version + 1)
+            connection.execute("COMMIT")
+        except Exception:
+            with suppress(sqlite3.DatabaseError):
+                connection.execute("ROLLBACK")
+            raise
 
 
 def _ensure_scheduler_presets_schema(connection: sqlite3.Connection) -> None:
@@ -1078,9 +1227,19 @@ def _ensure_cards_contract_triggers(connection: sqlite3.Connection) -> None:
     )
 
 
-def _migrate_schema(connection: sqlite3.Connection, *, from_version: int) -> None:
-    if from_version < 2:
-        _ensure_cards_column(connection, "stale_reason", "TEXT")
+def _migrate_v1_to_v2(connection: sqlite3.Connection) -> None:
+    _ensure_scheduler_presets_schema(connection)
+    _ensure_cards_schema(connection)
+    _ensure_cards_column(connection, "stale_reason", "TEXT")
+    _ensure_review_logs_schema(connection)
+    _ensure_result_events_schema(connection)
+    _ensure_learning_signals_schema(connection)
+    _ensure_learning_signals_columns(connection)
+    _ensure_default_scheduler_preset(connection, created_at_utc=_utc_now())
+    connection.execute("DROP TABLE IF EXISTS schema_version")
+
+
+_MIGRATIONS: dict[int, MigrationStep] = {1: _migrate_v1_to_v2}
 
 
 def _ensure_review_logs_schema(connection: sqlite3.Connection) -> None:
@@ -1156,6 +1315,12 @@ def _ensure_result_events_schema(connection: sqlite3.Connection) -> None:
             ON result_events (weakest_dim, timestamp DESC)
         """
     )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS ix_result_events_timestamp_id
+            ON result_events (timestamp DESC, event_id DESC)
+        """
+    )
 
 
 def _ensure_learning_signals_schema(connection: sqlite3.Connection) -> None:
@@ -1204,10 +1369,7 @@ def _ensure_default_scheduler_preset(
 
 
 def _schema_version(connection: sqlite3.Connection) -> int:
-    row = connection.execute("SELECT version FROM schema_version WHERE id = 1").fetchone()
-    if row is None:
-        raise MigrationError("schema_version row is missing")
-    return int(row["version"])
+    return _get_schema_version(connection)
 
 
 def _result_events_table_exists(connection: sqlite3.Connection) -> bool:
@@ -1235,12 +1397,48 @@ def _load_review_cards(cards_path: Path) -> tuple[ReviewCard, ...]:
 
 
 def _ensure_cards_column(connection: sqlite3.Connection, column_name: str, ddl: str) -> None:
-    column_names = {
-        str(row["name"]) for row in connection.execute("PRAGMA table_info(cards)").fetchall()
-    }
+    column_names = _table_column_names(connection, "cards")
     if column_name in column_names:
         return
     connection.execute(f"ALTER TABLE cards ADD COLUMN {column_name} {ddl}")
+
+
+def _ensure_learning_signals_columns(connection: sqlite3.Connection) -> None:
+    for column_name in ("event_id", "idempotency_key", "signal_type", "payload_json", "created_at"):
+        _ensure_table_column(connection, "learning_signals", column_name, "TEXT")
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_learning_signals_event_id
+            ON learning_signals (event_id)
+            WHERE event_id IS NOT NULL
+        """
+    )
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_learning_signals_idempotency_key
+            ON learning_signals (idempotency_key)
+            WHERE idempotency_key IS NOT NULL
+        """
+    )
+
+
+def _ensure_table_column(
+    connection: sqlite3.Connection,
+    table_name: str,
+    column_name: str,
+    ddl: str,
+) -> None:
+    column_names = _table_column_names(connection, table_name)
+    if column_name in column_names:
+        return
+    connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {ddl}")
+
+
+def _table_column_names(connection: sqlite3.Connection, table_name: str) -> set[str]:
+    return {
+        str(row["name"])
+        for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    }
 
 
 def _lossy_event_from_tsv_row(row: dict[str, str]) -> ResultEvent:
@@ -1311,6 +1509,53 @@ def _sync_result_event(connection: sqlite3.Connection, event: ResultEvent) -> sq
             event.note_json,
         ),
     )
+
+
+def _select_result_events_page(
+    connection: sqlite3.Connection,
+    *,
+    limit: int,
+    before: tuple[str, str] | None,
+    event_ids: tuple[str, ...] | None,
+    statuses: tuple[str, ...] | None,
+) -> list[sqlite3.Row]:
+    filters: list[str] = []
+    params: list[object] = []
+    if event_ids is not None:
+        filters.append(f"event_id IN ({', '.join('?' for _ in event_ids)})")
+        params.extend(event_ids)
+    if statuses is not None:
+        filters.append(f"status IN ({', '.join('?' for _ in statuses)})")
+        params.extend(statuses)
+    if before is not None:
+        before_timestamp, before_event_id = before
+        filters.append("(timestamp < ? OR (timestamp = ? AND event_id < ?))")
+        params.extend((before_timestamp, before_timestamp, before_event_id))
+    where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+    params.append(limit)
+    return list(
+        connection.execute(
+            f"""
+            SELECT {", ".join(_RESULT_EVENT_COLUMNS)}
+            FROM result_events
+            {where_clause}
+            ORDER BY timestamp DESC, event_id DESC
+            LIMIT ?
+            """,
+            tuple(params),
+        ).fetchall()
+    )
+
+
+def _dedupe_filter_values(values: Iterable[str] | None) -> tuple[str, ...] | None:
+    if values is None:
+        return None
+    return tuple(sorted({value for value in values if value}))
+
+
+def _chunks(values: tuple[str, ...], size: int) -> Iterable[tuple[str, ...]]:
+    for index in range(0, len(values), size):
+        yield values[index : index + size]
 
 
 def _merge_event_note(note_json: str | None, extra: dict[str, object]) -> str:
@@ -1502,9 +1747,11 @@ __all__ = [
     "initialize_review_db",
     "insert_learning_signal",
     "list_due_cards",
+    "load_finalized_ratchet_history_page",
     "load_result_event_by_run_and_id",
     "load_result_events_for_improve_chain",
     "load_result_events_from_db",
+    "load_result_events_page",
     "make_uuid7",
     "mark_run_cards_stale",
     "record_card_review",

@@ -19,7 +19,11 @@ from ahadiff.contracts.event_log import RATCHET_COUNTED_STATUSES, ResultEvent
 from ahadiff.core.errors import InputError
 from ahadiff.core.paths import validate_run_id
 from ahadiff.eval.results import finalized_artifact_digest
-from ahadiff.review.database import load_result_event_by_run_and_id, load_result_events_from_db
+from ahadiff.review.database import (
+    load_finalized_ratchet_history_page,
+    load_result_event_by_run_and_id,
+    load_result_events_page,
+)
 
 from .auth import serve_state
 
@@ -65,17 +69,28 @@ _ALLOWED_ARTIFACTS = frozenset(
 async def list_runs(request: Request) -> JSONResponse:
     state = serve_state(request)
     source_kind_filter = request.query_params.get("source_kind")
+    finalized_events_by_run = _finalized_event_ids(state.runs_dir)
     summaries: list[dict[str, Any]] = []
-    for event, metadata, _run_path in _iter_latest_finalized_run_events(
-        state.runs_dir,
-        state.review_db_path,
-    ):
-        if source_kind_filter and metadata.get("source_kind") != source_kind_filter:
-            continue
-        summary = _summary_from_event(event, metadata, default_locale=state.locale)
-        if summary is not None:
-            summaries.append(summary.model_dump(mode="json"))
-        if len(summaries) >= _MAX_LIST_RUNS:
+    cursor: tuple[str, str] | None = None
+    while len(summaries) < _MAX_LIST_RUNS:
+        rows = _latest_finalized_run_events_page(
+            state.runs_dir,
+            state.review_db_path,
+            finalized_events_by_run=finalized_events_by_run,
+            cursor=cursor,
+        )
+        if not rows:
+            break
+        for event, metadata, _run_path in rows:
+            if source_kind_filter and metadata.get("source_kind") != source_kind_filter:
+                continue
+            summary = _summary_from_event(event, metadata, default_locale=state.locale)
+            if summary is not None:
+                summaries.append(summary.model_dump(mode="json"))
+            if len(summaries) >= _MAX_LIST_RUNS:
+                break
+        cursor = (rows[-1][0].timestamp, rows[-1][0].event_id)
+        if len(rows) < _MAX_LIST_RUNS:
             break
     return JSONResponse({"runs": summaries})
 
@@ -84,8 +99,6 @@ async def get_run(request: Request) -> JSONResponse:
     state = serve_state(request)
     run_id = str(request.path_params["run_id"])
     run_path = _finalized_run_path(state.runs_dir, run_id)
-    if run_path is None:
-        raise InputError(f"finalized run does not exist: {run_id}")
     event = _event_for_finalized_run(state.review_db_path, run_path)
     metadata = _load_json_object(run_path / "metadata.json")
     summary = _summary_from_event(event, metadata, default_locale=state.locale)
@@ -147,31 +160,38 @@ async def get_concepts(request: Request) -> JSONResponse:
 
 async def get_ratchet_history(request: Request) -> JSONResponse:
     state = serve_state(request)
-    finalized_event_ids = set(_finalized_event_ids(state.runs_dir).values())
+    finalized_events_by_run = _finalized_event_ids(state.runs_dir)
     entries: list[dict[str, Any]] = []
-    for event in sorted(
-        load_result_events_from_db(state.review_db_path),
-        key=lambda item: (item.timestamp, item.event_id),
-        reverse=True,
-    ):
-        if (
-            event.event_id not in finalized_event_ids
-            or event.status not in RATCHET_COUNTED_STATUSES
-        ):
-            continue
-        entries.append(
-            RatchetHistoryEntry(
-                run_id=event.run_id,
-                source_ref=event.source_ref,
-                eval_bundle_version=event.eval_bundle_version,
-                overall=event.overall,
-                verdict=event.verdict,
-                status=event.status,
-                timestamp=event.timestamp,
-                weakest_dim=event.weakest_dim,
-            ).model_dump(mode="json")
+    cursor: tuple[str, str] | None = None
+    while len(entries) < _MAX_RATCHET_HISTORY:
+        events = load_finalized_ratchet_history_page(
+            state.review_db_path,
+            finalized_event_ids=set(finalized_events_by_run.values()),
+            statuses=RATCHET_COUNTED_STATUSES,
+            limit=_MAX_RATCHET_HISTORY,
+            before=cursor,
         )
-        if len(entries) >= _MAX_RATCHET_HISTORY:
+        if not events:
+            break
+        for event in events:
+            if finalized_events_by_run.get(event.run_id) != event.event_id:
+                continue
+            entries.append(
+                RatchetHistoryEntry(
+                    run_id=event.run_id,
+                    source_ref=event.source_ref,
+                    eval_bundle_version=event.eval_bundle_version,
+                    overall=event.overall,
+                    verdict=event.verdict,
+                    status=event.status,
+                    timestamp=event.timestamp,
+                    weakest_dim=event.weakest_dim,
+                ).model_dump(mode="json")
+            )
+            if len(entries) >= _MAX_RATCHET_HISTORY:
+                break
+        cursor = (events[-1].timestamp, events[-1].event_id)
+        if len(events) < _MAX_RATCHET_HISTORY:
             break
     return JSONResponse({"history": entries})
 
@@ -186,8 +206,6 @@ def _artifact_response(
     state = serve_state(request)
     run_id = str(request.path_params["run_id"])
     run_path = _finalized_run_path(state.runs_dir, run_id)
-    if run_path is None:
-        raise InputError(f"finalized run does not exist: {run_id}")
     event = _event_for_finalized_run(state.review_db_path, run_path)
     artifact_path = _artifact_path_for_read(run_path, relative_path)
     if artifact_path is None:
@@ -221,22 +239,27 @@ def _artifact_content_lang(
     return _normalize_content_lang(content_lang, default_locale=state.locale)
 
 
-def _iter_latest_finalized_run_events(
+def _latest_finalized_run_events_page(
     runs_dir: Path,
     db_path: Path,
+    *,
+    finalized_events_by_run: dict[str, str],
+    cursor: tuple[str, str] | None,
 ) -> tuple[tuple[ResultEvent, dict[str, Any], Path], ...]:
-    finalized_event_ids = _finalized_event_ids(runs_dir)
-    by_run: dict[str, ResultEvent] = {}
-    for event in load_result_events_from_db(db_path):
-        if finalized_event_ids.get(event.run_id) == event.event_id:
-            by_run[event.run_id] = event
     rows: list[tuple[ResultEvent, dict[str, Any], Path]] = []
-    for run_id, event in by_run.items():
-        run_path = runs_dir / run_id
+    for event in load_result_events_page(
+        db_path,
+        limit=_MAX_LIST_RUNS,
+        before=cursor,
+        event_ids=set(finalized_events_by_run.values()),
+    ):
+        if finalized_events_by_run.get(event.run_id) != event.event_id:
+            continue
+        run_path = runs_dir / event.run_id
         metadata = _load_run_metadata_or_none(run_path)
         if metadata is not None:
             rows.append((event, metadata, run_path))
-    return tuple(sorted(rows, key=lambda row: (row[0].timestamp, row[0].event_id), reverse=True))
+    return tuple(rows)
 
 
 def _finalized_event_ids(runs_dir: Path) -> dict[str, str]:
@@ -259,10 +282,10 @@ def _finalized_event_ids(runs_dir: Path) -> dict[str, str]:
     return event_ids
 
 
-def _finalized_run_path(runs_dir: Path, run_id: str) -> Path | None:
+def _finalized_run_path(runs_dir: Path, run_id: str) -> Path:
     validate_run_id(run_id)
     if run_id.endswith(".tmp"):
-        return None
+        raise InputError(f"finalized run does not exist: {run_id}")
     run_path = runs_dir / run_id
     if run_path.is_symlink() or not (run_path.is_dir() and (run_path / "finalized.json").is_file()):
         raise InputError(f"finalized run does not exist: {run_id}")

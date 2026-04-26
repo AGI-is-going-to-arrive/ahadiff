@@ -1629,6 +1629,7 @@ def serve_cmd(
                 config_lang=config_lang,
                 bind_host=bind_host,
                 port=resolved_port,
+                repo_lock_path=lock_file_path(root) if has_git_repo else state_dir / "ahadiff.lock",
             ),
             viewer_dist=root / "viewer" / "dist",
         )

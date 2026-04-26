@@ -89,6 +89,19 @@ class RatchetHistoryEntry(BaseModel):
     weakest_dim: str
 
 
+class DueReviewCardResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    card_id: str
+    concept: str
+    run_id: str
+    due_date: str
+    scaffolding_level: str
+    display_path: str
+    source_ref: str | None = None
+    symbol: str | None = None
+
+
 class SetLocaleRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -111,6 +124,11 @@ class ReviewSignalRequest(LearningSignalRequest):
     answer: ReviewAnswer
 
 
+class ReviewRateRequest(LearningSignalRequest):
+    card_id: str
+    answer: ReviewAnswer
+
+
 class QuizAnswerRequest(LearningSignalRequest):
     quiz_id: str
     choice: str
@@ -125,6 +143,7 @@ class HelpfulnessRequest(LearningSignalRequest):
 
 __all__ = [
     "AuthTokenResponse",
+    "DueReviewCardResponse",
     "GraphifyMode",
     "HelpfulnessRequest",
     "LearningSignalRequest",
@@ -133,6 +152,7 @@ __all__ = [
     "QuizAnswerRequest",
     "RatchetHistoryEntry",
     "ReviewAnswer",
+    "ReviewRateRequest",
     "ReviewSignalRequest",
     "RunArtifactEnvelope",
     "RunDetail",

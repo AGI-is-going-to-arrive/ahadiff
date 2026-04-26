@@ -15,6 +15,7 @@ from ahadiff.core.errors import AhaDiffError, InputError
 from .auth import serve_state
 from .middleware import LoopbackGuardMiddleware
 from .routes_locale import get_locale, put_locale
+from .routes_review import get_review_queue, post_review_rate
 from .routes_runs import (
     get_claims,
     get_concepts,
@@ -55,6 +56,8 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
             Route("/api/run/{run_id}/concepts", get_run_concepts, methods=["GET"]),
             Route("/api/concepts", get_concepts, methods=["GET"]),
             Route("/api/ratchet/history", get_ratchet_history, methods=["GET"]),
+            Route("/api/review/queue", get_review_queue, methods=["GET"]),
+            Route("/api/review/rate", post_review_rate, methods=["POST"]),
             Route("/api/signals/mark-wrong", mark_wrong, methods=["POST"]),
             Route("/api/signals/quiz-answer", quiz_answer, methods=["POST"]),
             Route("/api/signals/srs-review", srs_review, methods=["POST"]),

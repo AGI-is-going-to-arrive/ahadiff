@@ -61,6 +61,7 @@ from .run_source import (
 )
 from .serve_app import (
     AuthTokenResponse,
+    DueReviewCardResponse,
     GraphifyMode,
     HelpfulnessRequest,
     LearningSignalRequest,
@@ -69,6 +70,7 @@ from .serve_app import (
     QuizAnswerRequest,
     RatchetHistoryEntry,
     ReviewAnswer,
+    ReviewRateRequest,
     ReviewSignalRequest,
     RunArtifactEnvelope,
     RunDetail,
@@ -89,6 +91,7 @@ __all__ = [
     "CostConfidence",
     "DegradedFlag",
     "DegradedRunWarning",
+    "DueReviewCardResponse",
     "EVAL_BUNDLE_FILES",
     "EvalBundleInfo",
     "EventType",
@@ -117,6 +120,7 @@ __all__ = [
     "ResultEvent",
     "ReviewAnswer",
     "ReviewCard",
+    "ReviewRateRequest",
     "ReviewSignalRequest",
     "RunArtifactEnvelope",
     "RunConfig",
