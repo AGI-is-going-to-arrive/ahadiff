@@ -4,12 +4,13 @@ import inspect
 import subprocess
 from importlib.resources import files
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from typer.testing import CliRunner
 
 import ahadiff.install.hooks as hooks_module
 from ahadiff.cli import app
+from ahadiff.install.base import InstallContext
 from ahadiff.install.template_loader import render_template
 
 if TYPE_CHECKING:
@@ -19,7 +20,15 @@ _RUNNER = CliRunner()
 
 
 def _git(repo_root: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=repo_root, check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", *args],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
 
 
 def _init_git_repo(repo_root: Path) -> None:
@@ -177,11 +186,48 @@ def test_hooks_install_is_non_blocking_and_uninstall_removes_sections(tmp_path: 
         check=True,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     assert "after-ahadiff" in hook_run.stdout
     uninstall_result = _RUNNER.invoke(app(), ["uninstall", "hooks", "--repo-root", str(repo_root)])
     assert uninstall_result.exit_code == 0
     assert "AHADIFF:BEGIN target=hooks" not in post_commit.read_text(encoding="utf-8")
+
+
+def test_hooks_git_path_uses_utf8_when_cjk_locale_would_fail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    calls: dict[str, Any] = {}
+    stdout_bytes = ".git/hooks/预推送😀\n".encode()
+
+    def fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls["command"] = command
+        calls["kwargs"] = kwargs
+        if kwargs.get("encoding") != "utf-8":
+            stdout_bytes.decode("cp936")
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=stdout_bytes.decode("utf-8", errors="replace"),
+            stderr="",
+        )
+
+    monkeypatch.setattr(hooks_module.subprocess, "run", fake_run)
+
+    hook_path = hooks_module._git_path(  # pyright: ignore[reportPrivateUsage]
+        InstallContext(repo_root=repo_root),
+        "hooks/pre-push",
+    )
+
+    assert calls["command"] == ["git", "rev-parse", "--git-path", "hooks/pre-push"]
+    assert calls["kwargs"]["text"] is True
+    assert calls["kwargs"]["encoding"] == "utf-8"
+    assert calls["kwargs"]["errors"] == "replace"
+    assert hook_path == repo_root / ".git" / "hooks" / "预推送😀"
 
 
 def test_hooks_install_rejects_windows_platform(
@@ -224,6 +270,8 @@ def test_hooks_install_supports_git_worktree(tmp_path: Path) -> None:
         check=True,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     hook_path = Path(hook_path_result.stdout.strip())
     if not hook_path.is_absolute():

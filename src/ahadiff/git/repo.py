@@ -47,12 +47,14 @@ def run_git(
     input_text: str | None = None,
     check: bool = True,
 ) -> subprocess.CompletedProcess[str]:
-    command = ["git", "-C", str(repo_root), *args]
+    command = ["git", "-c", "core.quotePath=false", "-C", str(repo_root), *args]
     result = subprocess.run(
         command,
         input=input_text,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     if check and result.returncode != 0:
@@ -67,7 +69,7 @@ def run_git_bytes(
     input_bytes: bytes | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(
-        ["git", "-C", str(repo_root), *args],
+        ["git", "-c", "core.quotePath=false", "-C", str(repo_root), *args],
         input=input_bytes,
         capture_output=True,
         text=False,
@@ -257,7 +259,17 @@ def unlock_repo_write_lock(lock_path: Path) -> bool:
     if not stat.S_ISREG(lock_lstat.st_mode):
         raise StorageError("repo write lock path must be a regular file")
 
-    handle = lock_path.open("r+", encoding="utf-8")
+    flags = os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(str(lock_path), flags)
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise StorageError("repo write lock path must not be a symlink") from exc
+        raise
+
+    handle = os.fdopen(fd, "r+", encoding="utf-8")
     try:
         try:
             portalocker.lock(handle, portalocker.LOCK_EX | portalocker.LOCK_NB)
@@ -266,17 +278,27 @@ def unlock_repo_write_lock(lock_path: Path) -> bool:
 
         file_stat = os.fstat(handle.fileno())
         try:
-            path_stat = lock_path.stat()
+            path_stat = lock_path.lstat()
         except FileNotFoundError:
             return False
         if (
             not stat.S_ISREG(file_stat.st_mode)
             or not stat.S_ISREG(path_stat.st_mode)
+            or (file_stat.st_dev, file_stat.st_ino) != (lock_lstat.st_dev, lock_lstat.st_ino)
             or (file_stat.st_dev, file_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino)
         ):
             raise StorageError("repo write lock changed during force unlock; retry the command")
 
-        lock_path.unlink()
+        handle.seek(0)
+        handle.truncate(0)
+        handle.flush()
+        os.fsync(handle.fileno())
+        try:
+            lock_path.unlink()
+        except FileNotFoundError:
+            return True
+        except OSError:
+            return True
         return True
     finally:
         try:

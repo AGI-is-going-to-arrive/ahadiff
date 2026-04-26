@@ -856,6 +856,7 @@ def _run_replay_learn_subprocess(
     if output_lang is not None:
         command.extend(("--lang", output_lang))
     env = os.environ.copy()
+    env["PYTHONUTF8"] = "1"
     if api_key is not None:
         env[provider_config.api_key_env] = api_key
     state_dir = worktree_root / ".ahadiff" / "runs"
@@ -870,6 +871,8 @@ def _run_replay_learn_subprocess(
             cwd=worktree_root,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
             env=env,
             timeout=_REPLAY_LEARN_TIMEOUT_SECONDS,

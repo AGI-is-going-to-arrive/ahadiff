@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
+import sys
 import tomllib
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
 
+import ahadiff.git.repo as repo_module
 from ahadiff import cli as cli_module
 from ahadiff.cli import app
 from ahadiff.core import config as config_module
@@ -32,7 +37,7 @@ from ahadiff.core.paths import (
     review_db_path,
     run_dir,
 )
-from ahadiff.git.repo import repo_write_lock
+from ahadiff.git.repo import repo_write_lock, unlock_repo_write_lock
 
 
 @pytest.mark.skipif(os.name == "nt", reason="symlink creation requires elevated Windows privileges")
@@ -43,6 +48,98 @@ def test_repo_write_lock_rejects_symlink(tmp_path: Path) -> None:
     link.symlink_to(target)
     with pytest.raises(InputError, match="symlink"), repo_write_lock(link, command="test"):
         pass
+
+
+def test_unlock_repo_write_lock_removes_inactive_regular_lock(tmp_path: Path) -> None:
+    lock_path = tmp_path / "ahadiff.lock"
+    lock_path.write_text("123\n2026-04-26T00:00:00Z\nstale\n", encoding="utf-8")
+
+    assert unlock_repo_write_lock(lock_path) is True
+    assert not lock_path.exists()
+    assert unlock_repo_write_lock(lock_path) is False
+
+
+def test_unlock_repo_write_lock_best_effort_unlink_failure_leaves_empty_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lock_path = tmp_path / "ahadiff.lock"
+    lock_path.write_text("123\n2026-04-26T00:00:00Z\nstale\n", encoding="utf-8")
+    original_unlink = Path.unlink
+
+    def fail_lock_unlink(self: Path, *args: Any, **kwargs: Any) -> None:
+        if self == lock_path:
+            raise PermissionError("simulated platform unlink failure")
+        original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", fail_lock_unlink)
+
+    assert unlock_repo_write_lock(lock_path) is True
+    assert lock_path.exists()
+    assert lock_path.read_text(encoding="utf-8") == ""
+
+
+def test_unlock_repo_write_lock_refuses_active_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lock_path = tmp_path / "ahadiff.lock"
+    lock_path.write_text("123\n2026-04-26T00:00:00Z\nactive\n", encoding="utf-8")
+
+    def fail_lock(_handle: object, _flags: int) -> None:
+        raise repo_module.portalocker.exceptions.LockException("active")
+
+    def unlock_noop(_handle: object) -> None:
+        return None
+
+    monkeypatch.setattr(repo_module.portalocker, "lock", fail_lock)
+    monkeypatch.setattr(repo_module.portalocker, "unlock", unlock_noop)
+
+    with pytest.raises(StorageError, match="active"):
+        unlock_repo_write_lock(lock_path)
+    assert lock_path.read_text(encoding="utf-8") != ""
+
+
+def test_unlock_repo_write_lock_refuses_real_cross_process_lock(tmp_path: Path) -> None:
+    lock_path = tmp_path / "ahadiff.lock"
+    source_root = Path(__file__).resolve().parents[2] / "src"
+    env = os.environ.copy()
+    env["PYTHONPATH"] = (
+        f"{source_root}{os.pathsep}{env['PYTHONPATH']}"
+        if env.get("PYTHONPATH")
+        else str(source_root)
+    )
+    script = """
+import sys
+import time
+from pathlib import Path
+from ahadiff.git.repo import repo_write_lock
+
+with repo_write_lock(Path(sys.argv[1]), command="child-lock"):
+    print("locked", flush=True)
+    time.sleep(30)
+"""
+    process = subprocess.Popen(
+        [sys.executable, "-c", script, str(lock_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=env,
+    )
+    try:
+        assert process.stdout is not None
+        assert process.stdout.readline().strip() == "locked"
+        with pytest.raises(StorageError, match="active"):
+            unlock_repo_write_lock(lock_path)
+    finally:
+        process.terminate()
+        try:
+            process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate(timeout=5)
 
 
 def _init_git_repo(root: Path) -> None:
@@ -407,6 +504,61 @@ def test_cli_browser_flag_can_override_repo_no_browser(
     assert "serve.no_browser" in result.stdout
     assert "false" in result.stdout
     assert "cli" in result.stdout
+
+
+def test_cli_serve_headless_linux_does_not_open_browser(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    monkeypatch.chdir(repo_root)
+    monkeypatch.setattr(cli_module.sys, "platform", "linux")
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    monkeypatch.delenv("CI", raising=False)
+    opened: list[str] = []
+    captured: dict[str, object] = {}
+
+    def fake_run(app_instance: object, *, host: str, port: int, log_level: str) -> None:
+        captured.update(
+            {
+                "app": app_instance,
+                "host": host,
+                "port": port,
+                "log_level": log_level,
+            }
+        )
+
+    monkeypatch.setitem(sys.modules, "uvicorn", SimpleNamespace(run=fake_run))
+
+    def record_opened_url(url: str) -> None:
+        opened.append(url)
+
+    monkeypatch.setattr(cli_module.webbrowser, "open", record_opened_url)
+
+    runner = CliRunner()
+    result = runner.invoke(app(), ["serve", "--port", "9123"], catch_exceptions=False)
+
+    assert result.exit_code == 0
+    assert opened == []
+    assert captured["host"] == "127.0.0.1"
+    assert captured["port"] == 9123
+    assert captured["log_level"] == "info"
+    assert "http://127.0.0.1:9123" in result.stdout
+    assert "localhost" not in result.stdout
+
+
+def test_cli_serve_browser_disabled_in_ci_even_with_display(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cli_module.sys, "platform", "linux")
+    monkeypatch.setenv("CI", "1")
+    monkeypatch.setenv("DISPLAY", ":99")
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+
+    assert cli_module._should_open_serve_browser(no_browser=False) is False  # pyright: ignore[reportPrivateUsage]
 
 
 def test_cli_version_flag_is_reachable() -> None:

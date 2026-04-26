@@ -183,6 +183,18 @@ def _state_dir_and_lock_path(repo_root: Path) -> tuple[Path, Path]:
     return state_dir, state_dir / "ahadiff.lock"
 
 
+def _should_open_serve_browser(*, no_browser: bool) -> bool:
+    if no_browser:
+        return False
+    if os.environ.get("CI"):
+        return False
+    return not (
+        sys.platform.startswith("linux")
+        and not os.environ.get("DISPLAY")
+        and not os.environ.get("WAYLAND_DISPLAY")
+    )
+
+
 def _state_dir_for_root(root: Path, *, has_git_repo: bool) -> Path:
     return project_state_dir(root) if has_git_repo else root / ".ahadiff"
 
@@ -1620,11 +1632,11 @@ def serve_cmd(
             ),
             viewer_dist=root / "viewer" / "dist",
         )
-        url = f"http://localhost:{resolved_port}"
+        url = f"http://127.0.0.1:{resolved_port}"
         console.print(f"[green]Serving[/green] {url}")
         console.print("[bold]Bind[/bold]: 127.0.0.1 only")
         console.print("[bold]Write token header[/bold]: X-AhaDiff-Token")
-        if not resolved_no_browser:
+        if _should_open_serve_browser(no_browser=resolved_no_browser):
             webbrowser.open(url)
         import uvicorn
 

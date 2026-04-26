@@ -8,7 +8,7 @@
 
 核心差异定位：Code Wiki 解释仓库，知返解释这次改动；而且每句话都能回到代码证据。
 
-**当前阶段**：Stage 0-7 已落地（Task 0/1/2/5/6/7/8/8.5/9/10/11/12/14.5/15/16/17/18/19/20，另含 i18n-0 后端 + Stage 7 i18n signoff），覆盖 contracts、CLI scaffold、safety、LLM provider、diff capture/parse、claims、lesson、quiz、concepts、eval、review.sqlite + FSRS-6、serve backend、install targets、benchmark suite、improve loop + Phase 2.5 与后端 locale resolver。React Viewer（Stage 4 Task 13/14）Phase A-E 已完成并经 R1-R5 五轮跨模型深度对抗审查修复（累计 51 项 real findings 闭合）：`viewer/` Vite + React 19 + TS + Zustand scaffold、Dashboard/Lesson/Diff/Quiz/ConceptGraph 五页、LanguageSwitcher + i18n 全覆盖（82/82 key parity）、330/330 Playwright 测试跨 4 viewport × 3 浏览器（smoke + i18n + media features）、AbortController + token fetch timeout 全覆盖、token 过期 401/403 重试、ErrorBoundary 恢复按钮、WCAG AAA dark-mode 全 token ≥ 7.0:1、forced-colors 焦点环、reduced-transparency Safari 兼容、CSP 防护、unified diff 解析 inHunk 状态、Quiz Next 按钮强制 SRS rating gate、全交互元素 `:active` 按压反馈。
+**当前阶段**：Stage 0-7 已落地（Task 0/1/2/5/6/7/8/8.5/9/10/11/12/14.5/15/16/17/18/19/20，另含 i18n-0 后端 + Stage 7 i18n signoff），覆盖 contracts、CLI scaffold、safety、LLM provider、diff capture/parse、claims、lesson、quiz、concepts、eval、review.sqlite + FSRS-6、serve backend、install targets、benchmark suite、improve loop + Phase 2.5 与后端 locale resolver。React Viewer（Stage 4 Task 13/14）Phase A-E 已完成并经 R1-R5 五轮跨模型深度对抗审查修复（累计 51 项 real findings 闭合）：`viewer/` Vite + React 19 + TS + Zustand scaffold、Dashboard/Lesson/Diff/Quiz/ConceptGraph 五页、LanguageSwitcher + i18n 全覆盖（82/82 key parity）、330/330 Playwright 测试跨 4 viewport × 3 浏览器（smoke + i18n + media features）、AbortController + token fetch timeout 全覆盖、token 过期 401/403 重试、ErrorBoundary 恢复按钮、WCAG AAA dark-mode 全 token ≥ 7.0:1、forced-colors 焦点环、reduced-transparency Safari 兼容、CSP 防护、unified diff 解析 inHunk 状态、Quiz Next 按钮强制 SRS rating gate、全交互元素 `:active` 按压反馈。v0.2 Gate 0（跨平台基础）已通过审查：subprocess 强制 UTF-8 encoding + Git `core.quotePath=false`、SQLite journal mode WSL2 `/mnt/*` 自动降级 DELETE + restore 前后 `wal_checkpoint(TRUNCATE)`、lock 文件 `O_NOFOLLOW` + inode 三重校验 + best-effort unlink、headless serve 检测（DISPLAY/WAYLAND_DISPLAY/CI）、`datetime.utcnow()` 静态 guard。
 
 ## 架构总览
 
@@ -91,7 +91,7 @@ graph TD
 |------|------|------|------|
 | doc | `doc/` | Markdown | 产品设计文档：架构方案、改名方案、前端视觉手册、评估报告 |
 | contracts | `src/ahadiff/contracts/` | Python | Stage 0 最小 contracts skeleton：枚举、DTO、契约 helper、错误类型 |
-| core | `src/ahadiff/core/` | Python | Stage 1 / Task 1 工程骨架：CLI 配置、路径、ID、错误类型 |
+| core | `src/ahadiff/core/` | Python | Stage 1 / Task 1 工程骨架：CLI 配置、路径（含 `is_wsl2_mnt` WSL2 挂载检测）、ID、错误类型 |
 | safety | `src/ahadiff/safety/` | Python | Stage 1 / Task 2 安全层基础实现：ignore / redaction / injection / gates / audit |
 | llm | `src/ahadiff/llm/` | Python | Layer 1.5 / Task 7：provider、probe、cache、cost、schemas、adapters |
 | claims | `src/ahadiff/claims/` | Python | Stage 2 / Task 8：claim candidate 解析、claim runtime、negative scan、deterministic verifier、claims.jsonl 写盘 |
@@ -99,14 +99,14 @@ graph TD
 | quiz | `src/ahadiff/quiz/` | Python | Stage 3 / Task 10：quiz.jsonl、cards.jsonl 生成与 `ahadiff quiz` CLI |
 | wiki | `src/ahadiff/wiki/` | Python | Stage 3 / Task 10：`concepts.jsonl` / `concepts_local.jsonl` 累积与可见性过滤 |
 | eval | `src/ahadiff/eval/` | Python | Stage 3 / Task 11-12：8 维评分、hard gates、ratchet、result_events、results.tsv 导出与 score/finalized 发布 |
-| review | `src/ahadiff/review/` | Python | Stage 4 / Task 15：review.sqlite schema / migration、FSRS-6 调度、review queue、learning signals、lossy import 与 review CLI 后端 |
+| review | `src/ahadiff/review/` | Python | Stage 4 / Task 15：review.sqlite schema / migration、FSRS-6 调度、review queue、learning signals、lossy import、review CLI 后端、`resolve_sqlite_journal_mode` WSL2 降级与 `checkpoint_review_db` |
 | serve | `src/ahadiff/serve/` | Python | Task 14.5：localhost-only serve API、finalized run 读取门禁、token + Origin/Referer 写保护 |
 | install | `src/ahadiff/install/` | Python | Task 19/20：Claude / Codex / Gemini / OpenCode / hooks / GitHub Action 安装目标与模板 |
 | improve | `src/ahadiff/improve/` | Python | Stage 5 / Task 16/17：improve session、immutable improve_program、worktree replay、prompt 白名单、targeted verification、Phase 2.5、cherry-pick 与 pending worktree guard |
 | i18n | `src/ahadiff/i18n/` | Python | i18n-0：locale resolver、`AHADIFF_LANG`、Accept-Language / cookie / config / LANG fallback、prompt output-language helper |
 | benchmarks | `benchmarks/` | Markdown/JSON/Patch | Task 18：local benchmark fixtures、manifest、expected concepts 与 ground_truth consistency checks |
 | viewer | `viewer/` | TypeScript/TSX/CSS | Stage 4 Task 13/14 + i18n-3/4：Vite + React 19 + Zustand + HashRouter + vanilla CSS tokens；AppShell / Topbar / LanguageSwitcher / Sidebar / Dashboard / Lesson / Diff / Quiz / ConceptGraph / RatchetChart / VirtualList / SRSCard / EvidencePanel / ScaffoldingTabs / BottomMiniPanel / ErrorBoundary；`src/i18n/messages/{en,zh-CN}.json` catalog 82/82 parity；`src/state/{locale,runs}-store.ts`；`src/api/{client,runs,locale,signals}.ts` 消费 serve API（AbortController + token 重试）；`tests/e2e/{smoke,i18n,media-features}.spec.ts` Playwright 330 tests 跨 4 viewport × 3 浏览器 |
-| tests | `tests/unit/` / `tests/eval/` / `tests/integration/` / `tests/live/` | Python | Stage 0-6 与 i18n-0 测试：contracts、CLI/config/paths、安全层、provider、diff capture、claims、lesson、quiz、concepts、evaluator、ratchet、review、serve、install、benchmark、improve、targeted verification、Phase 2.5、真实 LLM judge smoke |
+| tests | `tests/unit/` / `tests/eval/` / `tests/integration/` / `tests/live/` | Python | Stage 0-6、i18n-0 与 v0.2 Gate 0 测试：contracts、CLI/config/paths、安全层、provider、diff capture、claims、lesson、quiz、concepts、evaluator、ratchet、review、serve、install、benchmark、improve、targeted verification、Phase 2.5、跨平台静态 guard（`test_cross_platform_static.py`）、真实 LLM judge smoke |
 | ui | `ui/` | HTML/CSS/JS | UI 原型：Warm 风格 v1-v6 迭代版本 |
 | team-plan | `.claude/team-plan/` | Markdown | 团队计划：v0.1 kickoff + 修订方案 + CLI 接入扩展 |
 | 根级原型 | `AhaDiff Warm v6.html` | HTML | 最新 UI 参考模板（相对 `ui/` 目录内 v6 快照继续演进，便于快速预览） |
@@ -154,7 +154,7 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-最近一次 R5 全功能验收（2026-04-26）：后端 unit `pytest tests/unit -q` = 542 passed；后端全量 `pytest tests -q` = 559 passed + 1 skipped（live judge 默认跳过）；ruff check / ruff format / ruff format --check / pyright 全通过。前端 `pnpm run typecheck` = 0 errors、`pnpm run build` = 261.39 KB（gzip 82.49 KB）、`pnpm exec playwright test` = 330/330 passed。i18n parity = 82/82。WCAG AAA dark-mode 全 token（含语义 + accent）在 paper / subtle / elevated 三个表面均 ≥ 7.0:1。
+最近一次验证（v0.2 Gate 0 通过后，2026-04-26）：后端 unit `pytest tests/unit -q` = 559 passed（含 Gate 0 新增 17 个跨平台测试）；后端全量 `pytest tests -q` = 576 passed, 1 skipped（live judge 默认跳过）；ruff check / ruff format / ruff format --check / pyright 全通过。前端 `pnpm run typecheck` = 0 errors、`pnpm run build` = 261.39 KB（gzip 82.49 KB）、`pnpm exec playwright test` = 330/330 passed。i18n parity = 82/82。WCAG AAA dark-mode 全 token（含语义 + accent）在 paper / subtle / elevated 三个表面均 ≥ 7.0:1。
 
 ### 仓库当前依赖状态
 
@@ -162,7 +162,7 @@ pytest tests/live/test_llm_judge_live.py -q
 
 ## 测试策略
 
-`tests/unit/`、`tests/eval/` 与 `tests/integration/` 覆盖 Stage 0-6 和 i18n-0 当前已落地模块，另有 `tests/live/test_llm_judge_live.py`（opt-in）。UI 原型通过 Playwright MCP 浏览器验证。
+`tests/unit/`、`tests/eval/` 与 `tests/integration/` 覆盖 Stage 0-6、i18n-0 和 v0.2 Gate 0 当前已落地模块，另有 `tests/unit/test_cross_platform_static.py` 作为 `datetime.utcnow()` 零使用的静态 guard，以及 `tests/live/test_llm_judge_live.py`（opt-in）。UI 原型通过 Playwright MCP 浏览器验证。
 
 计划测试策略（工程阶段）：
 - 单元测试：pytest + VCR.py（录制 LLM 调用）
@@ -337,3 +337,4 @@ Stage N 完成 → 三模型并行审查 → 汇总问题 → 修复 → 验证 
 | 2026-04-25 | **R3 全面对抗式审查门禁通过**：四路独立审查（Codex 后端 + Codex 前端 + Claude 后端 + Claude+Gemini 前端）共识别 31 项 finding，交叉判定后 22 项 real 全部本 gate 修复 + 3 项 follow-up（Codex 终验抓出的 WCAG 7:1 边界 + 注释 stale + 359px lang-switcher 紧凑度）。后端 11 项（Codex 修）含 candidate staging symlink reject + resolve guard、improve baseline triplet 隔离、`content_lang` 不再伪造、oversized finalized 跳过、regenerate quiz 继承 lang、ServeState cli/config 拆分、`QuizAnswerRequest` 与 `RunDetail.graphify_notes` Pydantic DTO、`https://localhost` Origin 放行、`_MAX_MUTATED_PROMPT_BYTES` 边界测试、文档测试计数 → 537。前端 11 项（Claude 修）含 Quiz Next 按钮 `rated` gate 防绕过 SRS rating、DiffView `inHunk` 状态防 `++/--` content 误判 file header 与 `\ No newline` 行号错误、token fetch 8s timeout 防卡死、forced-colors 焦点环恢复、`-webkit-backdrop-filter` 配对清除、RunDetail index signature 移除 + `graphify_notes` 显式字段、dark-mode WCAG AAA tokens 升级（`--muted #ABA69D→#D0CABF` 7.42:1、`--muted-strong #A09586→#DBD5CB` 8.29:1、`--add-fg #7ABF9A→#95D4B4` 7.11:1、`--del-fg #E09080→#F4B7AC` 7.03:1）、print.css overflow-wrap、AppShell 359px lang-switcher 紧凑 ellipsis 而非隐藏。Codex 终验前端 9 PASS + 1 FAIL + 2 PARTIAL → follow-up 3/3 PASS；Claude 终验后端 11/11 PASS。回归 537+1 / 330/330 / i18n 82/82 / WCAG AAA dark mode 全 ≥ 7.0:1 全绿；累计 R1+R2+R3 闭合 39 项 real findings |
 | 2026-04-26 | **R4 全方位严苛对抗式审查门禁通过**：四路独立审查（Codex 后端 sub-agents + Codex 前端 + Claude 后端 + Claude+Gemini 前端）共识别 25 项 finding，交叉判定后 14 项 real、10 项本轮修复。后端 6 项：lock symlink 攻击防护（`O_NOFOLLOW` + `lstat()`）、provider retry 扩展到 `httpx.TransportError` 全覆盖、improve 拒绝 `redacted_remote` 模式、`max_concurrent >= 1` 校验、probe transport 异常 fallback、middleware POST body size 1MiB + Content-Type 校验。前端 3 项：dark-mode 语义 token（`--success #7ABF9A→#A1D2B8`、`--warning #D9A65A→#E5C18C`、`--danger #E09080→#ECBCB2`、`--info #7AA0C8→#B3C9E0`、`--accent-ink #E0B89E→#E3C0A8`）全部提升至 AAA 7.0:1 on paper/subtle/elevated；forced-colors 新增 `.srs-card__rating-btn` / `.scaffolding-tab` / `.kpi-card` 规则。+10 new tests。Codex 终验前端 PASS（独立对比度计算验证）；Claude 终验后端 6/6 PASS。回归 547+1 / 330/330 / i18n 82/82 / WCAG AAA dark mode 全 token ≥ 7.0:1 全绿；累计 R1+R2+R3+R4 闭合 49 项 real findings |
 | 2026-04-26 | **R5 全功能验收通过**：四路并行验收（Codex 后端 E2E + Claude 后端 serve/install/provider/db + Claude 前端 Playwright + Claude UX 审查）确认全部功能端到端正常。2 项 real findings 本轮修复：R5-UX-13 全交互元素 `:active` 按压反馈（12 条 CSS 规则覆盖 button/sidebar/kpi-card/quiz-btn/rating-btn/claim-card/scaffolding-tab/lang-switcher + 即时 transition-duration:0s）、R5-BE-5 diff parser Unicode 文件名测试（中文 + emoji）。R5-UX-14 skeleton/shimmer 加载 + 66 个 v6 token 未移植 + 5 个 v6 页面列入 v0.2。回归 559+1 / 330/330 / i18n 82/82 / WCAG AAA dark mode 全 ≥ 7.0:1 全绿；累计 R1-R5 闭合 51 项 real findings |
+| 2026-04-26 | **v0.2 Gate 0 跨平台基础通过**（Codex 实现 + Claude 交叉审查，GO 判定：0 Critical / 0 High / 2 Low）：Task 0.1 所有 `subprocess.run(text=True)` 加 `encoding="utf-8", errors="replace"`，`run_git` / `run_git_bytes` 注入 `core.quotePath=false`，`improve/loop.py` 子 Python 进程设置 `PYTHONUTF8=1`；Task 0.2 新增 `is_wsl2_mnt()` 检测 WSL2 `/mnt/*` 路径（需 Linux + WSL 环境变量），`resolve_sqlite_journal_mode()` 在 WSL2 挂载点降级 DELETE，`checkpoint_review_db()` 调用 `PRAGMA wal_checkpoint(TRUNCATE)`，`restore_review_db` 前后三次 checkpoint + `_remove_sqlite_sidecars_with_retry` 5 次重试清理 -wal/-shm/-journal；Task 0.3 `repo_write_lock` 和 `unlock_repo_write_lock` 加 `O_NOFOLLOW` + `lstat/fstat` inode 三重校验 + best-effort unlink（Windows 降级写空文件），headless 检测 `_should_open_serve_browser()` 覆盖 CI / Linux 无 DISPLAY / WAYLAND_DISPLAY，serve 输出 `127.0.0.1` 替代 `localhost`；Task 0.4 新增 `test_cross_platform_static.py` 扫描 `src/ahadiff/` 全部 `.py` 确保 `datetime.utcnow()` 零使用。回归 unit 559 passed / 全量 576 passed + 1 skipped / ruff + pyright 全绿 |

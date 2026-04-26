@@ -31,6 +31,8 @@ def _git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
         cwd=repo_root,
         check=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         capture_output=True,
     )
 
@@ -229,6 +231,70 @@ def test_learn_unstaged_include_untracked_records_new_file(tmp_path: Path) -> No
     assert isinstance(source_detail, dict)
     assert "new_file.py" in patch_text
     assert source_detail["untracked_count"] == 1
+
+
+def test_git_capture_preserves_non_ascii_changed_paths(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    relative_path = Path("模块") / "你好😀.py"
+    target = repo_root / relative_path
+    target.parent.mkdir()
+    target.write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+
+    target.write_text("value = 2\n", encoding="utf-8")
+
+    name_result = repo_module.run_git(repo_root, "diff", "--name-only", "HEAD")
+    assert relative_path.as_posix() in name_result.stdout.splitlines()
+    assert "\\344" not in name_result.stdout
+
+    capture = capture_module.capture_patch(
+        workspace_root=repo_root,
+        unstaged=True,
+        privacy_mode="explicit_remote",
+    )
+
+    assert relative_path.as_posix() in capture.before_text_by_path
+    assert relative_path.as_posix() in capture.after_text_by_path
+    assert capture.after_text_by_path[relative_path.as_posix()] == "value = 2\n"
+
+
+def test_run_git_uses_utf8_when_cjk_locale_would_fail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: dict[str, Any] = {}
+    stdout_bytes = "模块/你好😀.py\n".encode()
+
+    def fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls["command"] = command
+        calls["kwargs"] = kwargs
+        if kwargs.get("encoding") != "utf-8":
+            stdout_bytes.decode("cp936")
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=stdout_bytes.decode("utf-8", errors="replace"),
+            stderr="",
+        )
+
+    monkeypatch.setattr(repo_module.subprocess, "run", fake_run)
+
+    result = repo_module.run_git(Path("repo"), "diff", "--name-only")
+
+    assert calls["command"] == [
+        "git",
+        "-c",
+        "core.quotePath=false",
+        "-C",
+        "repo",
+        "diff",
+        "--name-only",
+    ]
+    assert calls["kwargs"]["text"] is True
+    assert calls["kwargs"]["encoding"] == "utf-8"
+    assert calls["kwargs"]["errors"] == "replace"
+    assert result.stdout == "模块/你好😀.py\n"
 
 
 def test_untracked_symlink_file_is_skipped_without_reading_target(

@@ -6,6 +6,7 @@ import os
 import sqlite3
 import tempfile
 import threading
+import time
 import uuid
 from contextlib import suppress
 from dataclasses import dataclass
@@ -17,6 +18,7 @@ from pydantic import ValidationError
 
 from ahadiff.contracts import ResultEvent, ReviewCard
 from ahadiff.core.errors import InputError, MigrationError, StorageError
+from ahadiff.core.paths import is_wsl2_mnt
 
 from .scheduler import (
     DEFAULT_DESIRED_RETENTION,
@@ -34,6 +36,9 @@ if TYPE_CHECKING:
 CURRENT_SCHEMA_VERSION = 2
 _SQLITE_MIN_VERSION = (3, 51, 3)
 _SQLITE_ALLOWED_BACKPORTS = {(3, 50, 7), (3, 44, 6)}
+_SQLITE_SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
+_SQLITE_SIDECAR_REMOVE_ATTEMPTS = 5
+_SQLITE_SIDECAR_REMOVE_DELAY_SECONDS = 0.05
 _RESULT_EVENT_COLUMNS = (
     "event_id",
     "run_id",
@@ -71,6 +76,10 @@ class LossyImportOutcome:
     skipped: int
 
 
+def resolve_sqlite_journal_mode(db_path: Path) -> str:
+    return "DELETE" if is_wsl2_mnt(db_path) else "WAL"
+
+
 def connect_review_db(db_path: Path, *, create_parent: bool = False) -> sqlite3.Connection:
     _assert_sqlite_runtime_supported()
     if create_parent:
@@ -80,7 +89,7 @@ def connect_review_db(db_path: Path, *, create_parent: bool = False) -> sqlite3.
     connection = sqlite3.connect(db_path)
     connection.row_factory = sqlite3.Row
     try:
-        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute(f"PRAGMA journal_mode={resolve_sqlite_journal_mode(db_path)}")
         connection.execute("PRAGMA busy_timeout=5000")
         connection.execute("PRAGMA trusted_schema=OFF")
         connection.execute("PRAGMA foreign_keys=ON")
@@ -145,6 +154,13 @@ def backup_review_db(db_path: Path, backup_path: Path | None = None) -> Path:
     return target
 
 
+def checkpoint_review_db(db_path: Path) -> None:
+    if not db_path.exists():
+        return
+    with connect_review_db(db_path) as connection:
+        connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+
 def restore_review_db(*, db_path: Path, backup_path: Path) -> None:
     if not backup_path.exists():
         raise InputError(f"review DB backup does not exist: {backup_path}")
@@ -153,8 +169,14 @@ def restore_review_db(*, db_path: Path, backup_path: Path) -> None:
     try:
         with sqlite3.connect(backup_path) as source, sqlite3.connect(temp_path) as target:
             source.backup(target)
+        checkpoint_review_db(backup_path)
+        _remove_sqlite_sidecars_with_retry(backup_path)
+        with suppress(sqlite3.DatabaseError, StorageError):
+            checkpoint_review_db(db_path)
+        _remove_sqlite_sidecars_with_retry(db_path)
         temp_path.replace(db_path)
-        _remove_sqlite_sidecars(db_path)
+        checkpoint_review_db(db_path)
+        _remove_sqlite_sidecars_with_retry(db_path)
     finally:
         temp_path.unlink(missing_ok=True)
 
@@ -1411,9 +1433,26 @@ def make_uuid7() -> str:
     return str(uuid.UUID(int=versioned))
 
 
-def _remove_sqlite_sidecars(db_path: Path) -> None:
-    for suffix in ("-wal", "-shm", "-journal"):
-        db_path.with_name(f"{db_path.name}{suffix}").unlink(missing_ok=True)
+def _remove_sqlite_sidecars_with_retry(
+    db_path: Path,
+    *,
+    attempts: int = _SQLITE_SIDECAR_REMOVE_ATTEMPTS,
+    delay_seconds: float = _SQLITE_SIDECAR_REMOVE_DELAY_SECONDS,
+) -> None:
+    for suffix in _SQLITE_SIDECAR_SUFFIXES:
+        sidecar_path = db_path.with_name(f"{db_path.name}{suffix}")
+        for attempt in range(attempts):
+            try:
+                sidecar_path.unlink()
+                break
+            except FileNotFoundError:
+                break
+            except OSError as exc:
+                if attempt + 1 >= attempts:
+                    raise StorageError(
+                        f"failed to remove SQLite sidecar {sidecar_path}: {exc}"
+                    ) from exc
+                time.sleep(delay_seconds)
 
 
 def _coerce_float(value: object) -> float:
@@ -1452,6 +1491,7 @@ __all__ = [
     "UpgradeOutcome",
     "backup_review_db",
     "check_review_db",
+    "checkpoint_review_db",
     "connect_review_db",
     "delete_result_event",
     "delete_result_event_and_select_tsv_rows",
@@ -1469,6 +1509,7 @@ __all__ = [
     "mark_run_cards_stale",
     "record_card_review",
     "record_card_review_once",
+    "resolve_sqlite_journal_mode",
     "restore_review_db",
     "select_result_tsv_rows",
     "set_card_queue_state",

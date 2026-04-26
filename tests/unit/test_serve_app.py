@@ -247,6 +247,28 @@ def test_serve_state_locale_update_preserves_runtime_fields(tmp_path: Path) -> N
     assert updated.write_lock is state.write_lock
 
 
+def test_serve_state_bind_port_and_token_survive_headless_runtime(tmp_path: Path) -> None:
+    app = create_app(
+        ServeState(
+            state_dir=tmp_path / ".ahadiff",
+            token="headless-token",
+            bind_host="127.0.0.1",
+            port=9123,
+        )
+    )
+    client = TestClient(app, base_url="http://127.0.0.1:9123")
+    runtime_state = cast("ServeState", app.state.ahadiff)
+
+    assert client.get("/healthz").json() == {"ok": True}
+    assert client.get("/api/auth/token").json() == {
+        "token": "headless-token",
+        "expires_at": None,
+    }
+    assert runtime_state.bind_host == "127.0.0.1"
+    assert runtime_state.port == 9123
+    assert runtime_state.token == "headless-token"
+
+
 def test_write_routes_require_loopback_origin_or_referer(tmp_path: Path) -> None:
     client = _client(tmp_path / ".ahadiff")
 

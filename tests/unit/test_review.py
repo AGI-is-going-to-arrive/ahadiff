@@ -5,6 +5,7 @@ import sqlite3
 import subprocess
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
@@ -14,12 +15,13 @@ from ahadiff import cli as cli_module
 from ahadiff.cli import app
 from ahadiff.contracts import ResultEvent, ReviewCard
 from ahadiff.core.errors import InputError, StorageError
-from ahadiff.core.paths import lock_file_path, review_db_path
+from ahadiff.core.paths import is_wsl2_mnt, lock_file_path, review_db_path
 from ahadiff.quiz import QuizArtifactPaths
 from ahadiff.review import database as review_database_module
 from ahadiff.review.database import (
     CURRENT_SCHEMA_VERSION,
     check_review_db,
+    checkpoint_review_db,
     connect_review_db,
     finalize_targeted_verify_event,
     import_cards_from_jsonl,
@@ -28,6 +30,7 @@ from ahadiff.review.database import (
     list_due_cards,
     load_result_events_from_db,
     record_card_review,
+    resolve_sqlite_journal_mode,
     set_card_queue_state,
     sync_result_event,
     upgrade_review_db,
@@ -35,7 +38,6 @@ from ahadiff.review.database import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
 
 _RUNNER = CliRunner()
 
@@ -244,6 +246,104 @@ def test_initialize_review_db_creates_full_schema_and_pragmas(tmp_path: Path) ->
     assert "CHECK (card_state IN ('active', 'stale', 'archived', 'suspended'))" in str(cards_sql)
     for column in ("source_ref", "file_id", "display_path", "hunk_id", "hunk_hash"):
         assert int(card_info[column]["notnull"]) == 1
+
+
+def test_is_wsl2_mnt_detects_only_linux_wsl_mount_paths() -> None:
+    wsl_env = {"WSL_DISTRO_NAME": "Ubuntu", "WSL_INTEROP": "/run/WSL/1_interop"}
+
+    assert is_wsl2_mnt(Path("/mnt/c/project"), platform="linux", env=wsl_env) is True
+    assert is_wsl2_mnt(Path("/mnt/c/project"), platform="darwin", env=wsl_env) is False
+    assert is_wsl2_mnt(Path("/home/user/project"), platform="linux", env=wsl_env) is False
+    assert is_wsl2_mnt(Path("/mnt"), platform="linux", env=wsl_env) is False
+    assert is_wsl2_mnt(Path("/mnt/c/project"), platform="linux", env={}) is False
+
+
+@pytest.mark.parametrize(
+    ("is_wsl2_mount", "expected_mode"),
+    ((False, "WAL"), (True, "DELETE")),
+)
+def test_connect_review_db_applies_resolved_journal_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    is_wsl2_mount: bool,
+    expected_mode: str,
+) -> None:
+    db_path = tmp_path / "review.sqlite"
+
+    def fake_is_wsl2_mnt(_path: Path) -> bool:
+        return is_wsl2_mount
+
+    monkeypatch.setattr(review_database_module, "is_wsl2_mnt", fake_is_wsl2_mnt)
+
+    assert resolve_sqlite_journal_mode(db_path) == expected_mode
+    initialize_review_db(db_path)
+
+    with connect_review_db(db_path) as connection:
+        journal_mode = connection.execute("PRAGMA journal_mode").fetchone()[0]
+
+    assert journal_mode == expected_mode.lower()
+
+
+def test_restore_review_db_checkpoints_before_after_and_removes_sidecars(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "review.sqlite"
+    backup_path = tmp_path / "manual.bak"
+    initialize_review_db(db_path)
+    sync_result_event(db_path, _result_event())
+    review_database_module.backup_review_db(db_path, backup_path)
+    sync_result_event(
+        db_path,
+        _result_event(event_id="018f0f52-91c0-7abc-8123-000000000102"),
+    )
+    for suffix in ("-wal", "-shm", "-journal"):
+        db_path.with_name(f"{db_path.name}{suffix}").write_text("stale sidecar", encoding="utf-8")
+    checkpointed_paths: list[Path] = []
+
+    def recording_checkpoint(path: Path) -> None:
+        checkpointed_paths.append(path)
+
+    monkeypatch.setattr(review_database_module, "checkpoint_review_db", recording_checkpoint)
+
+    review_database_module.restore_review_db(db_path=db_path, backup_path=backup_path)
+
+    assert checkpointed_paths == [backup_path, db_path, db_path]
+    for suffix in ("-wal", "-shm", "-journal"):
+        assert not db_path.with_name(f"{db_path.name}{suffix}").exists()
+    assert [event.event_id for event in load_result_events_from_db(db_path)] == [
+        "018f0f52-91c0-7abc-8123-000000000101"
+    ]
+
+
+def test_restore_review_db_removes_real_stale_sidecars_without_mocked_checkpoint(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "review.sqlite"
+    backup_path = tmp_path / "manual.bak"
+    initialize_review_db(db_path)
+    sync_result_event(db_path, _result_event())
+    review_database_module.backup_review_db(db_path, backup_path)
+    sync_result_event(
+        db_path,
+        _result_event(event_id="018f0f52-91c0-7abc-8123-000000000102"),
+    )
+    for suffix in ("-wal", "-shm", "-journal"):
+        db_path.with_name(f"{db_path.name}{suffix}").write_text("stale sidecar", encoding="utf-8")
+
+    review_database_module.restore_review_db(db_path=db_path, backup_path=backup_path)
+
+    for base_path in (db_path, backup_path):
+        for suffix in ("-wal", "-shm", "-journal"):
+            assert not base_path.with_name(f"{base_path.name}{suffix}").exists()
+    assert [event.event_id for event in load_result_events_from_db(db_path)] == [
+        "018f0f52-91c0-7abc-8123-000000000101"
+    ]
+
+
+def test_checkpoint_review_db_ignores_missing_database(tmp_path: Path) -> None:
+    checkpoint_review_db(tmp_path / "missing.sqlite")
 
 
 def test_connect_review_db_does_not_create_missing_parent_directory(tmp_path: Path) -> None:

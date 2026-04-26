@@ -132,6 +132,8 @@ def _git_path(context: InstallContext, relative: str) -> Path:
             check=True,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
     except (OSError, subprocess.CalledProcessError) as exc:
         raise InputError("hooks target requires a git repository") from exc

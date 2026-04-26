@@ -50,6 +50,26 @@ def is_network_path(path: Path, *, platform: str | None = None) -> bool:
     return raw.startswith("//") and not raw.startswith("///")
 
 
+def is_wsl2_mnt(
+    path: Path,
+    *,
+    platform: str | None = None,
+    env: Mapping[str, str] | None = None,
+) -> bool:
+    current_platform = _platform_name(platform)
+    if not current_platform.startswith("linux"):
+        return False
+    normalized = _normalized_path_text(path)
+    if not normalized.startswith("/mnt/") or normalized == "/mnt/":
+        return False
+    env_map = os.environ if env is None else env
+    return bool(
+        env_map.get("WSL_DISTRO_NAME")
+        or env_map.get("WSL_INTEROP")
+        or env_map.get("WSL2_GUI_APPS_ENABLED")
+    )
+
+
 def assert_local_repo_path(path: Path, *, platform: str | None = None) -> None:
     if is_network_path(path, platform=platform):
         raise StorageError(f"Refusing to place .ahadiff on a UNC or network-mounted path: {path}")
@@ -197,6 +217,7 @@ __all__ = [
     "global_config_dir",
     "ignore_file_path",
     "inspect_repo_path",
+    "is_wsl2_mnt",
     "lock_file_path",
     "path_identity_key",
     "private_audit_log_path",

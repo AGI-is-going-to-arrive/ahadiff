@@ -18,7 +18,7 @@ It's not a PR summary, not a repo wiki, not yet another "code explainer." It rea
 - A **claims** ledger where every assertion traces back to a hunk
 - A comparable **quality score history** (ratcheted; `review.sqlite` is the single source of truth, `results.tsv` is a human-readable export)
 
-The current code already ships Lesson / Claims / Quiz / Cards / Score / Ratchet. The review-flow SRS runtime, serve backend, install targets, GitHub Action templates, benchmark suite, improve-loop core, Task 17 targeted verification, Phase 2.5 runtime, i18n-0 backend, and the `viewer/` React SPA (Dashboard / Lesson / Diff / Quiz / ConceptGraph + LanguageSwitcher + full i18n 82/82 key parity + 330/330 Playwright matrix + R1-R5 five-round cross-model adversarial review with 51 real findings fixed) are all landed. Stage 7 i18n signoff is complete.
+The current code already ships Lesson / Claims / Quiz / Cards / Score / Ratchet. The review-flow SRS runtime, serve backend, install targets, GitHub Action templates, benchmark suite, improve-loop core, Task 17 targeted verification, Phase 2.5 runtime, i18n-0 backend, and the `viewer/` React SPA (Dashboard / Lesson / Diff / Quiz / ConceptGraph + LanguageSwitcher + full i18n 82/82 key parity + 330/330 Playwright matrix + R1-R5 five-round cross-model adversarial review with 51 real findings fixed) are all landed. Stage 7 i18n signoff is complete. v0.2 Gate 0 (Cross-Platform Foundation) has passed review: subprocess UTF-8 encoding + Git `core.quotePath=false`, SQLite journal mode WSL2 fallback, lock inode verification + headless serve detection, and a `datetime.utcnow()` static guard.
 
 > Code Wiki explains a repo. AhaDiff teaches you what changed — and verifies every claim against the diff.
 
@@ -218,7 +218,7 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-Actual result after R5 full acceptance: `uv run pytest tests/unit -q` finished with `542 passed`; `uv run pytest tests -q` finished with `559 passed, 1 skipped` (the live judge smoke is skipped by default); `uv run ruff check src tests`, `uv run ruff format src tests`, `uv run ruff format --check src tests`, and `uv run pyright` all passed. Frontend: `pnpm run typecheck` 0 errors, `pnpm run build` 261.39 KB (gzip 82.49 KB), `pnpm exec playwright test` 330/330 passed.
+Actual result after v0.2 Gate 0: `uv run pytest tests/unit -q` finished with `559 passed`; `uv run pytest tests -q` finished with `576 passed, 1 skipped` (the live judge smoke is skipped by default); `uv run ruff check src tests`, `uv run ruff format src tests`, `uv run ruff format --check src tests`, and `uv run pyright` all passed. Frontend: `pnpm run typecheck` 0 errors, `pnpm run build` 261.39 KB (gzip 82.49 KB), `pnpm exec playwright test` 330/330 passed.
 
 Roadmap:
 
