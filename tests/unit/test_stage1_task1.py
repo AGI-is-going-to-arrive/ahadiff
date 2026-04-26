@@ -174,6 +174,31 @@ def test_render_toml_quotes_special_keys_for_roundtrip() -> None:
     assert parsed["pricing"]["input_per_million_usd"]["openrouter/custom.model"] == 0.4
 
 
+def test_read_config_data_uses_tomllib_message_without_synthetic_location(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text("invalid = \n", encoding="utf-8")
+    decode_error = tomllib.TOMLDecodeError("synthetic invalid TOML", "", 0)
+    decode_error.lineno = 99  # pyright: ignore[reportAttributeAccessIssue]
+    decode_error.colno = 42  # pyright: ignore[reportAttributeAccessIssue]
+
+    def fail_loads(_text: str) -> dict[str, Any]:
+        raise decode_error
+
+    monkeypatch.setattr(config_module.tomllib, "loads", fail_loads)
+
+    with pytest.raises(ConfigError) as error:
+        config_module.read_config_data(config_path)
+
+    message = str(error.value)
+    assert str(config_path) in message
+    assert "synthetic invalid TOML" in message
+    assert "line 99" not in message
+    assert "column 42" not in message
+
+
 def test_load_config_resolves_five_layer_precedence(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

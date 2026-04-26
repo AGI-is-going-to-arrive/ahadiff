@@ -22,33 +22,37 @@ class LoopbackGuardMiddleware(BaseHTTPMiddleware):
         state = getattr(request.app.state, "ahadiff", None)
         expected_port = _expected_port(state)
         if not _is_allowed_host(request.headers.get("host", ""), expected_port=expected_port):
-            return JSONResponse({"error": "host_not_allowed"}, status_code=400)
+            return _error_response("host_not_allowed", status_code=400)
         if request.method in _WRITE_GUARD_METHODS:
             origin = request.headers.get("origin")
             referer = request.headers.get("referer")
             if origin is None and referer is None:
-                return JSONResponse({"error": "origin_or_referer_required"}, status_code=403)
+                return _error_response("origin_or_referer_required", status_code=403)
             if origin is not None and not _is_allowed_origin(origin, expected_port=expected_port):
-                return JSONResponse({"error": "origin_not_allowed"}, status_code=403)
+                return _error_response("origin_not_allowed", status_code=403)
             if referer is not None and not _is_allowed_origin(referer, expected_port=expected_port):
-                return JSONResponse({"error": "referer_not_allowed"}, status_code=403)
+                return _error_response("referer_not_allowed", status_code=403)
         if request.method in _JSON_BODY_METHODS:
             has_body = _declares_request_body(request)
             if has_body and not _is_json_content_type(request.headers.get("content-type", "")):
-                return JSONResponse({"error": "unsupported_media_type"}, status_code=415)
+                return _error_response("unsupported_media_type", status_code=415)
             content_length = request.headers.get("content-length")
             if (
                 content_length is not None
                 and content_length.isdigit()
                 and int(content_length) > _MAX_BODY_BYTES
             ):
-                return JSONResponse({"error": "payload_too_large"}, status_code=413)
+                return _error_response("payload_too_large", status_code=413)
             if has_body and not await _cache_limited_body(request):
-                return JSONResponse({"error": "payload_too_large"}, status_code=413)
+                return _error_response("payload_too_large", status_code=413)
         response = await call_next(request)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "same-origin")
         return response
+
+
+def _error_response(error: str, *, status_code: int) -> JSONResponse:
+    return JSONResponse({"error": error, "status": status_code}, status_code=status_code)
 
 
 async def _cache_limited_body(request: Request) -> bool:

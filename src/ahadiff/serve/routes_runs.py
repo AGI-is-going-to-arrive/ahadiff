@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from json import JSONDecodeError
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -48,7 +49,9 @@ _CAPABILITY_LEVEL_WARNING_RUNS: set[str] = set()
 _MAX_TEXT_ARTIFACT_BYTES = 10 * 1024 * 1024
 _MAX_JSON_OBJECT_BYTES = 1024 * 1024
 _MAX_LIST_RUNS = 500
+_MAX_LIST_RUN_PAGES = 100
 _MAX_RATCHET_HISTORY = 500
+_CANONICAL_RUN_ID_RE = re.compile(r"^run_[0-9a-f]{32}$")
 log = logging.getLogger(__name__)
 _ALLOWED_ARTIFACTS = frozenset(
     {
@@ -69,15 +72,19 @@ _ALLOWED_ARTIFACTS = frozenset(
 async def list_runs(request: Request) -> JSONResponse:
     state = serve_state(request)
     source_kind_filter = request.query_params.get("source_kind")
+    limit = _query_limit(request, default=_MAX_LIST_RUNS, max_value=_MAX_LIST_RUNS)
     finalized_events_by_run = _finalized_event_ids(state.runs_dir)
     summaries: list[dict[str, Any]] = []
-    cursor: tuple[str, str] | None = None
-    while len(summaries) < _MAX_LIST_RUNS:
+    cursor = _query_cursor(request)
+    pages_scanned = 0
+    while len(summaries) < limit and pages_scanned < _MAX_LIST_RUN_PAGES:
+        pages_scanned += 1
         rows = _latest_finalized_run_events_page(
             state.runs_dir,
             state.review_db_path,
             finalized_events_by_run=finalized_events_by_run,
             cursor=cursor,
+            limit=limit,
         )
         if not rows:
             break
@@ -87,10 +94,10 @@ async def list_runs(request: Request) -> JSONResponse:
             summary = _summary_from_event(event, metadata, default_locale=state.locale)
             if summary is not None:
                 summaries.append(summary.model_dump(mode="json"))
-            if len(summaries) >= _MAX_LIST_RUNS:
+            if len(summaries) >= limit:
                 break
         cursor = (rows[-1][0].timestamp, rows[-1][0].event_id)
-        if len(rows) < _MAX_LIST_RUNS:
+        if len(rows) < limit:
             break
     return JSONResponse({"runs": summaries})
 
@@ -160,15 +167,16 @@ async def get_concepts(request: Request) -> JSONResponse:
 
 async def get_ratchet_history(request: Request) -> JSONResponse:
     state = serve_state(request)
+    limit = _query_limit(request, default=_MAX_RATCHET_HISTORY, max_value=_MAX_RATCHET_HISTORY)
     finalized_events_by_run = _finalized_event_ids(state.runs_dir)
     entries: list[dict[str, Any]] = []
-    cursor: tuple[str, str] | None = None
-    while len(entries) < _MAX_RATCHET_HISTORY:
+    cursor = _query_cursor(request)
+    while len(entries) < limit:
         events = load_finalized_ratchet_history_page(
             state.review_db_path,
             finalized_event_ids=set(finalized_events_by_run.values()),
             statuses=RATCHET_COUNTED_STATUSES,
-            limit=_MAX_RATCHET_HISTORY,
+            limit=limit,
             before=cursor,
         )
         if not events:
@@ -188,10 +196,10 @@ async def get_ratchet_history(request: Request) -> JSONResponse:
                     weakest_dim=event.weakest_dim,
                 ).model_dump(mode="json")
             )
-            if len(entries) >= _MAX_RATCHET_HISTORY:
+            if len(entries) >= limit:
                 break
         cursor = (events[-1].timestamp, events[-1].event_id)
-        if len(events) < _MAX_RATCHET_HISTORY:
+        if len(events) < limit:
             break
     return JSONResponse({"history": entries})
 
@@ -210,7 +218,10 @@ def _artifact_response(
     artifact_path = _artifact_path_for_read(run_path, relative_path)
     if artifact_path is None:
         if not_found_status_code is not None:
-            return JSONResponse({"error": "artifact_not_found"}, status_code=not_found_status_code)
+            return JSONResponse(
+                {"error": "artifact_not_found", "status": not_found_status_code},
+                status_code=not_found_status_code,
+            )
         raise InputError(f"artifact does not exist for run {run_id}: {relative_path}")
     envelope = RunArtifactEnvelope(
         run_id=run_id,
@@ -245,11 +256,12 @@ def _latest_finalized_run_events_page(
     *,
     finalized_events_by_run: dict[str, str],
     cursor: tuple[str, str] | None,
+    limit: int,
 ) -> tuple[tuple[ResultEvent, dict[str, Any], Path], ...]:
     rows: list[tuple[ResultEvent, dict[str, Any], Path]] = []
     for event in load_result_events_page(
         db_path,
-        limit=_MAX_LIST_RUNS,
+        limit=limit,
         before=cursor,
         event_ids=set(finalized_events_by_run.values()),
     ):
@@ -283,13 +295,51 @@ def _finalized_event_ids(runs_dir: Path) -> dict[str, str]:
 
 
 def _finalized_run_path(runs_dir: Path, run_id: str) -> Path:
-    validate_run_id(run_id)
+    _validate_route_run_id(run_id)
     if run_id.endswith(".tmp"):
-        raise InputError(f"finalized run does not exist: {run_id}")
+        raise HTTPException(status_code=404, detail=f"finalized run does not exist: {run_id}")
     run_path = runs_dir / run_id
     if run_path.is_symlink() or not (run_path.is_dir() and (run_path / "finalized.json").is_file()):
-        raise InputError(f"finalized run does not exist: {run_id}")
+        raise HTTPException(status_code=404, detail=f"finalized run does not exist: {run_id}")
     return run_path
+
+
+def _validate_route_run_id(run_id: str) -> None:
+    validate_run_id(run_id)
+    if run_id.startswith("run_") and _CANONICAL_RUN_ID_RE.fullmatch(run_id) is None:
+        raise InputError("run_id must be 'run_' followed by 32 lowercase hex characters")
+
+
+def _query_limit(request: Request, *, default: int, max_value: int) -> int:
+    raw_value = request.query_params.get("page_size", request.query_params.get("limit"))
+    if raw_value is None:
+        return default
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"page_size must be an integer between 1 and {max_value}",
+        ) from exc
+    if value < 1 or value > max_value:
+        raise HTTPException(
+            status_code=400,
+            detail=f"page_size must be an integer between 1 and {max_value}",
+        )
+    return value
+
+
+def _query_cursor(request: Request) -> tuple[str, str] | None:
+    raw_value = request.query_params.get("cursor")
+    if raw_value is None:
+        return None
+    timestamp, separator, event_id = raw_value.partition(",")
+    if not separator or not timestamp or not event_id:
+        raise HTTPException(
+            status_code=400,
+            detail="cursor must use '<timestamp>,<event_id>' format",
+        )
+    return timestamp, event_id
 
 
 def _event_for_finalized_run(db_path: Path, run_path: Path) -> ResultEvent:

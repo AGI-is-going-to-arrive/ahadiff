@@ -1048,6 +1048,8 @@ def _read_regular_file_no_follow_bounded(
         file_stat = os.fstat(fd)
         if not stat.S_ISREG(file_stat.st_mode):
             raise InputError("compare input file must be a regular file")
+        if (file_stat.st_dev, file_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
+            raise InputError("compare input file changed during validation")
         if file_stat.st_size > max_bytes:
             if file_stat.st_size > total_budget_bytes:
                 raise InputError(f"compare input file exceeds {total_budget_bytes} bytes")

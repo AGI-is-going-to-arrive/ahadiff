@@ -451,6 +451,41 @@ def test_retry_after_header_triggers_backoff_then_success() -> None:
     assert sleep_calls == [0.25]
 
 
+def test_negative_retry_after_uses_exponential_backoff() -> None:
+    calls = {"count": 0}
+    sleep_calls: list[float] = []
+    clock = {"now": 0.0}
+
+    def monotonic() -> float:
+        return clock["now"]
+
+    def sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+        clock["now"] += seconds
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return httpx.Response(429, headers={"retry-after": "-5"})
+        return _openai_success_response(content="Retried")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        client=client,
+        sleep=sleep,
+        monotonic=monotonic,
+    )
+    try:
+        response = provider.generate(_request())
+    finally:
+        provider.close()
+
+    assert response.content == "Retried"
+    assert sleep_calls == [1.0]  # 2**0 = 1 (exponential backoff, not -5)
+
+
 def test_circuit_breaker_opens_and_recovers() -> None:
     clock = {"now": 0.0}
     calls = {"count": 0}

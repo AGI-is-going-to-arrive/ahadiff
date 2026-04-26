@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from ahadiff.claims import load_line_map_records
 from ahadiff.contracts import ClaimRecord, compute_runtime_eval_bundle_version
@@ -15,6 +16,9 @@ from ahadiff.core.paths import path_identity_key
 from .deterministic import DimensionScore, build_deterministic_scores
 from .gates import HardGateSummary, evaluate_hard_gates
 from .rubric import load_rubric
+
+if TYPE_CHECKING:
+    from .rubric import RubricDefinition
 
 
 @dataclass(frozen=True)
@@ -107,6 +111,43 @@ def evaluate_run(run_path: Path) -> ScoreReport:
     )
 
 
+def parse_llm_judge_output(
+    content: str,
+    *,
+    rubric: RubricDefinition | None = None,
+) -> tuple[DimensionScore, ...]:
+    active_rubric = rubric or load_rubric()
+    payload = _load_llm_judge_json_object(content)
+    raw_dimensions = payload.get("dimensions")
+    if not isinstance(raw_dimensions, dict):
+        raise InputError("LLM judge output is missing object-valued dimensions")
+    raw_dimension_map = cast("dict[object, object]", raw_dimensions)
+    missing = [
+        dimension.name
+        for dimension in active_rubric.dimensions
+        if dimension.name not in raw_dimension_map
+    ]
+    if missing:
+        raise InputError("LLM judge output is missing dimensions: " + ", ".join(missing))
+
+    dimensions: list[DimensionScore] = []
+    for dimension in active_rubric.dimensions:
+        score, reason = _parse_llm_judge_dimension(
+            raw_dimension_map[dimension.name],
+            name=dimension.name,
+            max_score=float(dimension.max_score),
+        )
+        dimensions.append(
+            DimensionScore(
+                name=dimension.name,
+                score=score,
+                max_score=float(dimension.max_score),
+                reason=reason,
+            )
+        )
+    return tuple(dimensions)
+
+
 def write_score_report(path: Path, report: ScoreReport, *, overwrite: bool = False) -> Path:
     if path.exists() and not overwrite:
         raise InputError(f"refusing to overwrite existing file: {path}")
@@ -121,6 +162,53 @@ def write_score_report(path: Path, report: ScoreReport, *, overwrite: bool = Fal
     finally:
         temp_path.unlink(missing_ok=True)
     return path
+
+
+def _load_llm_judge_json_object(content: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(content, parse_constant=_reject_llm_judge_json_constant)
+    except json.JSONDecodeError as exc:
+        raise InputError(f"invalid LLM judge JSON: {exc.msg}") from exc
+    except ValueError as exc:
+        raise InputError(f"invalid LLM judge JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise InputError("LLM judge output must decode to a JSON object")
+    return cast("dict[str, Any]", payload)
+
+
+def _reject_llm_judge_json_constant(value: str) -> None:
+    raise ValueError(f"non-finite numeric literal {value!r} is not allowed")
+
+
+def _parse_llm_judge_dimension(
+    raw_dimension: object,
+    *,
+    name: str,
+    max_score: float,
+) -> tuple[float, str]:
+    if isinstance(raw_dimension, dict):
+        raw_dimension_map = cast("dict[object, object]", raw_dimension)
+        raw_score = raw_dimension_map.get("score")
+        raw_reason = raw_dimension_map.get("reason")
+        reason = (
+            raw_reason.strip()
+            if isinstance(raw_reason, str) and raw_reason.strip()
+            else "LLM judge score"
+        )
+    else:
+        raw_score = raw_dimension
+        reason = "LLM judge score"
+
+    if isinstance(raw_score, bool) or not isinstance(raw_score, int | float):
+        raise InputError(f"LLM judge dimension {name!r} score must be numeric")
+    score = float(raw_score)
+    if not math.isfinite(score):
+        raise InputError(f"LLM judge dimension {name!r} score must be finite")
+    if score < 0.0 or score > max_score:
+        raise InputError(
+            f"LLM judge dimension {name!r} score must be between 0.00 and {max_score:.2f}"
+        )
+    return round(score, 2), reason
 
 
 def _load_json_object(path: Path) -> dict[str, Any]:
@@ -296,4 +384,4 @@ def _temporary_sibling_path(path: Path) -> Path:
     return temp_path
 
 
-__all__ = ["ScoreReport", "evaluate_run", "write_score_report"]
+__all__ = ["ScoreReport", "evaluate_run", "parse_llm_judge_output", "write_score_report"]

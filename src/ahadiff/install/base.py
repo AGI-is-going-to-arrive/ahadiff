@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 from dataclasses import dataclass
@@ -217,9 +218,22 @@ def _manifest_action(action: InstallAction, repo_root: Path) -> dict[str, str]:
 
 
 def _atomic_write(path: Path, content: str) -> None:
-    temp_path = path.with_name(f".{path.name}.ahadiff.tmp")
-    temp_path.write_text(content if content.endswith("\n") else f"{content}\n", encoding="utf-8")
-    temp_path.replace(path)
+    import os
+    import tempfile
+    from pathlib import Path as _Path
+
+    text = content if content.endswith("\n") else f"{content}\n"
+    fd, tmp_name = tempfile.mkstemp(
+        dir=str(path.parent), prefix=f".{path.name}.", suffix=".ahadiff.tmp"
+    )
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(text.encode("utf-8"))
+        _Path(tmp_name).replace(path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            _Path(tmp_name).unlink()
+        raise
 
 
 def remove_empty_parents(path: Path, *, stop_at: Path) -> None:

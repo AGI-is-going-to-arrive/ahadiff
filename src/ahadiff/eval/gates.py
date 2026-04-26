@@ -53,29 +53,41 @@ def evaluate_hard_gates(
     claims: Sequence[ClaimRecord],
     secret_leak_detected: bool,
     injection_unresolved: bool,
+    safety_findings: Sequence[Mapping[str, object]] = (),
 ) -> HardGateSummary:
     contradicted_count = sum(1 for claim in claims if claim.status == "contradicted")
     accuracy_dimension = rubric.dimension("accuracy")
     evidence_dimension = rubric.dimension("evidence")
+    accuracy_score = _dimension_score(dimension_scores, "accuracy")
+    evidence_score = _dimension_score(dimension_scores, "evidence")
+    critical_safety_count = _critical_safety_finding_count(safety_findings)
     results = (
         HardGateResult(
             name="accuracy",
-            passed=dimension_scores["accuracy"] >= float(accuracy_dimension.hard_gate or 0.0),
-            detail=(
-                f"accuracy score {dimension_scores['accuracy']:.2f} "
-                f">= {float(accuracy_dimension.hard_gate or 0.0):.2f}"
+            passed=(
+                accuracy_score is not None
+                and accuracy_score > float(accuracy_dimension.hard_gate or 0.0)
             ),
-            score=dimension_scores["accuracy"],
+            detail=_threshold_detail(
+                "accuracy",
+                score=accuracy_score,
+                threshold=float(accuracy_dimension.hard_gate or 0.0),
+            ),
+            score=accuracy_score,
             threshold=accuracy_dimension.hard_gate,
         ),
         HardGateResult(
             name="evidence",
-            passed=dimension_scores["evidence"] >= float(evidence_dimension.hard_gate or 0.0),
-            detail=(
-                f"evidence score {dimension_scores['evidence']:.2f} "
-                f">= {float(evidence_dimension.hard_gate or 0.0):.2f}"
+            passed=(
+                evidence_score is not None
+                and evidence_score > float(evidence_dimension.hard_gate or 0.0)
             ),
-            score=dimension_scores["evidence"],
+            detail=_threshold_detail(
+                "evidence",
+                score=evidence_score,
+                threshold=float(evidence_dimension.hard_gate or 0.0),
+            ),
+            score=evidence_score,
             threshold=evidence_dimension.hard_gate,
         ),
         HardGateResult(
@@ -105,8 +117,41 @@ def evaluate_hard_gates(
                 else "unresolved prompt-injection markers detected in persisted patch"
             ),
         ),
+        HardGateResult(
+            name="critical_safety_findings",
+            passed=critical_safety_count == 0,
+            detail=(
+                "no Critical safety findings"
+                if critical_safety_count == 0
+                else f"{critical_safety_count} Critical safety finding(s) detected"
+            ),
+        ),
     )
     return HardGateSummary(results=results)
+
+
+def _dimension_score(dimension_scores: Mapping[str, float], name: str) -> float | None:
+    value = dimension_scores.get(name)
+    if value is None:
+        return None
+    return float(value)
+
+
+def _threshold_detail(name: str, *, score: float | None, threshold: float) -> str:
+    if score is None:
+        return f"{name} score is missing; requires > {threshold:.2f}"
+    if score > threshold:
+        return f"{name} score {score:.2f} > {threshold:.2f}"
+    return f"{name} score {score:.2f} <= {threshold:.2f}; requires > {threshold:.2f}"
+
+
+def _critical_safety_finding_count(findings: Sequence[Mapping[str, object]]) -> int:
+    count = 0
+    for finding in findings:
+        raw_severity = finding.get("severity", finding.get("level"))
+        if isinstance(raw_severity, str) and raw_severity.casefold() == "critical":
+            count += 1
+    return count
 
 
 __all__ = ["HardGateResult", "HardGateSummary", "evaluate_hard_gates"]

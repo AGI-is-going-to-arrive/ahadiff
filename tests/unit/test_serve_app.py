@@ -154,6 +154,71 @@ def test_healthz_and_loopback_host_guard(tmp_path: Path) -> None:
     assert blocked.json()["error"] == "host_not_allowed"
 
 
+def test_loopback_guard_error_responses_include_status(tmp_path: Path) -> None:
+    client = _client(tmp_path / ".ahadiff")
+
+    cases = (
+        (client.get("/healthz", headers={"host": "evil.example"}), "host_not_allowed", 400),
+        (
+            client.put(
+                "/api/locale",
+                headers={"X-AhaDiff-Token": "test-token"},
+                json={"lang": "zh-CN"},
+            ),
+            "origin_or_referer_required",
+            403,
+        ),
+        (
+            client.put(
+                "/api/locale",
+                headers={"origin": "https://evil.example", "X-AhaDiff-Token": "test-token"},
+                json={"lang": "zh-CN"},
+            ),
+            "origin_not_allowed",
+            403,
+        ),
+        (
+            client.put(
+                "/api/locale",
+                headers={"referer": "https://evil.example", "X-AhaDiff-Token": "test-token"},
+                json={"lang": "zh-CN"},
+            ),
+            "referer_not_allowed",
+            403,
+        ),
+        (
+            client.post(
+                "/api/signals/helpfulness",
+                headers={
+                    "origin": "http://localhost:8765",
+                    "X-AhaDiff-Token": "test-token",
+                    "content-type": "text/html",
+                },
+                content=b"{}",
+            ),
+            "unsupported_media_type",
+            415,
+        ),
+        (
+            client.post(
+                "/api/signals/helpfulness",
+                headers={
+                    "origin": "http://localhost:8765",
+                    "X-AhaDiff-Token": "test-token",
+                    "content-type": "application/json",
+                },
+                content=b"x" * (1024 * 1024 + 1),
+            ),
+            "payload_too_large",
+            413,
+        ),
+    )
+
+    for response, error, status in cases:
+        assert response.status_code == status
+        assert response.json() == {"error": error, "status": status}
+
+
 def test_origin_guard_rejects_non_loopback_write_origin(tmp_path: Path) -> None:
     client = _client(tmp_path / ".ahadiff")
 
@@ -384,7 +449,7 @@ def test_runs_only_expose_finalized_runs_and_artifacts(tmp_path: Path) -> None:
     assert detail["content_lang"] == "zh-CN"
     assert detail["source_kind"] == "git_ref"
     assert detail["degraded_flags"] == {"diff_clipped": True}
-    assert hidden.status_code == 400
+    assert hidden.status_code == 404
     assert lesson == {
         "run_id": "run-1",
         "artifact_type": "lesson",
@@ -1003,7 +1068,7 @@ def test_symlink_run_directory_is_not_served(tmp_path: Path) -> None:
     assert client.get("/api/runs").json() == {"runs": []}
     response = client.get("/api/run/run-1/lesson")
 
-    assert response.status_code == 400
+    assert response.status_code == 404
     assert "finalized run does not exist" in response.json()["error"]
 
 
@@ -1090,6 +1155,36 @@ def test_runs_source_kind_filter_and_ratchet_history(tmp_path: Path) -> None:
 
     assert [run["run_id"] for run in filtered] == ["run-1"]
     assert [entry["run_id"] for entry in history] == ["run-1"]
+
+
+def test_runs_source_kind_filter_stops_after_max_pages(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    for index in range(1, 4):
+        run_id = f"run-{index}"
+        _write_run(state_dir, run_id, finalized=True)
+        sync_result_event(db_path, _event(run_id, status="keep"))
+    original_load_page = routes_runs_module.load_result_events_page
+    page_calls = 0
+
+    def spy_load_page(*args: Any, **kwargs: Any) -> tuple[ResultEvent, ...]:
+        nonlocal page_calls
+        page_calls += 1
+        return original_load_page(*args, **kwargs)
+
+    monkeypatch.setattr(routes_runs_module, "_MAX_LIST_RUN_PAGES", 2)
+    monkeypatch.setattr(routes_runs_module, "load_result_events_page", spy_load_page)
+    client = _client(state_dir)
+
+    response = client.get("/api/runs?source_kind=patch_file&page_size=1")
+
+    assert response.status_code == 200
+    assert response.json() == {"runs": []}
+    assert page_calls == 2
 
 
 def test_run_and_ratchet_lists_are_capped_to_newest_500(tmp_path: Path) -> None:

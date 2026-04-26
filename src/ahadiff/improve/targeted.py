@@ -58,11 +58,24 @@ def snapshot_from_report(report: ScoreReport) -> ScoreSnapshot:
     return ScoreSnapshot(overall=float(report.overall), dimensions=dimensions)
 
 
-def load_score_snapshot(run_path: Path) -> ScoreSnapshot:
+def load_score_snapshot(
+    run_path: Path,
+    *,
+    expected_run_id: str | None = None,
+    expected_source_ref: str | None = None,
+    expected_overall: float | None = None,
+) -> ScoreSnapshot:
     target = run_path / "score.json"
     if not target.exists():
         raise InputError(f"baseline run is missing score.json: {run_path.name}")
     payload = _load_json_object(target)
+    _validate_score_snapshot_identity(
+        payload,
+        target=target,
+        expected_run_id=expected_run_id,
+        expected_source_ref=expected_source_ref,
+        expected_overall=expected_overall,
+    )
     raw_dimensions = payload.get("dimensions")
     if not isinstance(raw_dimensions, dict):
         raise InputError(f"score.json dimensions must be an object: {target}")
@@ -83,6 +96,24 @@ def load_score_snapshot(run_path: Path) -> ScoreSnapshot:
     if not isinstance(overall, int | float):
         raise InputError(f"score.json overall must be numeric: {target}")
     return ScoreSnapshot(overall=float(overall), dimensions=dimensions)
+
+
+def _validate_score_snapshot_identity(
+    payload: dict[str, Any],
+    *,
+    target: Path,
+    expected_run_id: str | None,
+    expected_source_ref: str | None,
+    expected_overall: float | None,
+) -> None:
+    if expected_run_id is not None and payload.get("run_id") != expected_run_id:
+        raise InputError(f"score.json run_id does not match selected baseline event: {target}")
+    if expected_source_ref is not None and payload.get("source_ref") != expected_source_ref:
+        raise InputError(f"score.json source_ref does not match selected baseline event: {target}")
+    if expected_overall is not None:
+        overall = payload.get("overall")
+        if not isinstance(overall, int | float) or float(overall) != float(expected_overall):
+            raise InputError(f"score.json overall does not match selected baseline event: {target}")
 
 
 def verify_targeted_dimensions(

@@ -301,6 +301,21 @@ def test_hooks_git_path_uses_utf8_when_cjk_locale_would_fail(
     assert hook_path == repo_root / ".git" / "hooks" / "预推送😀"
 
 
+def test_hooks_install_rejects_hooks_path_outside_repo_or_git_dir(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    outside_hooks = tmp_path / "outside-hooks"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    _git(repo_root, "config", "core.hooksPath", "../outside-hooks")
+
+    result = _RUNNER.invoke(app(), ["install", "hooks", "--repo-root", str(repo_root)])
+
+    assert result.exit_code == 1
+    assert "repository root or git directory" in " ".join(result.output.split())
+    assert not (outside_hooks / "post-commit").exists()
+    assert not (outside_hooks / "pre-push").exists()
+
+
 def test_hooks_install_rejects_windows_platform(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -360,3 +375,21 @@ def test_hooks_install_supports_git_worktree(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert "AHADIFF:BEGIN target=hooks" in hook_path.read_text(encoding="utf-8")
+
+
+def test_hooks_detect_handles_oserror_gracefully(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    context = InstallContext(repo_root=repo_root)
+    from unittest.mock import patch
+
+    from ahadiff.install.hooks import HooksTarget
+
+    target = HooksTarget()
+
+    with (
+        patch.object(Path, "read_text", side_effect=OSError("permission denied")),
+        patch.object(Path, "exists", return_value=True),
+    ):
+        assert target.detect(context) is False

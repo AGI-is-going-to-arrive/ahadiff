@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+import atexit
+import errno
 import json
 import logging
 import os
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
 import threading
+from contextlib import suppress
+from contextvars import ContextVar
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -53,7 +58,16 @@ _REPLAY_LEARN_TIMEOUT_SECONDS = 30 * 60
 # Hard cap on bytes for any single mutated prompt produced by the improve LLM.
 # 256 KiB is generous for hand-edited Markdown prompts but bounds runaway output.
 _MAX_MUTATED_PROMPT_BYTES = 256 * 1024
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 log = logging.getLogger(__name__)
+_ACTIVE_WORKTREE_CLEANUPS: dict[str, tuple[Path, Path]] = {}
+_ACTIVE_WORKTREE_LOCK = threading.Lock()
+_atexit_cleanup_registered = False
+_IMPROVE_LOOP_LOCK = threading.Lock()
+_CHERRY_PICK_EXPECTED_PARENT: ContextVar[str | None] = ContextVar(
+    "_CHERRY_PICK_EXPECTED_PARENT",
+    default=None,
+)
 
 
 @dataclass(frozen=True)
@@ -83,6 +97,7 @@ class ImproveLoopResult:
 class _CherryPickResult:
     pending_conflict: bool
     conflicted_files: tuple[str, ...] = ()
+    new_head: str | None = None
 
 
 @dataclass(frozen=True)
@@ -148,6 +163,50 @@ def run_improve_loop(
     privacy_mode: str = "strict_local",
     output_lang: str | None = None,
 ) -> ImproveLoopResult:
+    if not _IMPROVE_LOOP_LOCK.acquire(blocking=False):
+        raise StorageError("another ahadiff improve loop is already running in this process")
+    try:
+        return _run_improve_loop_unlocked(
+            repo_root=repo_root,
+            state_dir=state_dir,
+            db_path=db_path,
+            rounds=rounds,
+            suite=suite,
+            provider_config=provider_config,
+            api_key=api_key,
+            security_config=security_config,
+            resume_session_id=resume_session_id,
+            client=client,
+            request_timeout_seconds=request_timeout_seconds,
+            max_concurrent=max_concurrent,
+            qps_limit=qps_limit,
+            retry_attempts=retry_attempts,
+            privacy_mode=privacy_mode,
+            output_lang=output_lang,
+        )
+    finally:
+        _IMPROVE_LOOP_LOCK.release()
+
+
+def _run_improve_loop_unlocked(
+    *,
+    repo_root: Path,
+    state_dir: Path,
+    db_path: Path,
+    rounds: int,
+    suite: str,
+    provider_config: ProviderConfig,
+    api_key: str | None,
+    security_config: SecurityConfig,
+    resume_session_id: str | None = None,
+    client: httpx.Client | None = None,
+    request_timeout_seconds: int = 30,
+    max_concurrent: int = 3,
+    qps_limit: int = 3,
+    retry_attempts: int = 3,
+    privacy_mode: str = "strict_local",
+    output_lang: str | None = None,
+) -> ImproveLoopResult:
     if suite != "local":
         raise InputError("improve currently supports only: --suite local")
     if privacy_mode == "redacted_remote":
@@ -155,6 +214,10 @@ def run_improve_loop(
             "improve does not support redacted_remote privacy mode; "
             "use strict_local or explicit_remote"
         )
+
+    _reject_existing_pending_worktrees(state_dir, allowed_session_id=resume_session_id)
+    expected_branch = _current_branch(repo_root)
+    expected_head = _current_head(repo_root)
 
     warnings: list[str] = []
     if _prompts_are_dirty(repo_root):
@@ -253,14 +316,29 @@ def run_improve_loop(
                     privacy_mode=privacy_mode,
                     output_lang=output_lang,
                 )
+                _validate_candidate_run_matches_anchor(
+                    candidate_run_path,
+                    expected_source_ref=source_ref,
+                    expected_base_ref=_metadata_base_ref(anchor_metadata),
+                )
                 candidate_report: ScoreReport = evaluate_run(candidate_run_path)
+                _validate_candidate_report_matches_run(
+                    candidate_report,
+                    candidate_run_path=candidate_run_path,
+                    expected_source_ref=source_ref,
+                )
                 candidate_prompt_version = compute_prompt_version(worktree_path)
                 imported_run_path = _copy_candidate_run_to_state(
                     source_run_path=candidate_run_path,
                     state_dir=state_dir,
                 )
                 targeted_verify = verify_targeted_dimensions(
-                    baseline=load_score_snapshot(baseline_run_path),
+                    baseline=load_score_snapshot(
+                        baseline_run_path,
+                        expected_run_id=baseline_event.run_id,
+                        expected_source_ref=baseline_event.source_ref,
+                        expected_overall=baseline_event.overall,
+                    ),
                     candidate=snapshot_from_report(candidate_report),
                     target_dimension=target_dimension,
                     failed_gates=tuple(candidate_report.hard_gates.failed_names()),
@@ -277,7 +355,16 @@ def run_improve_loop(
                 note_payload.update(targeted_verify.note_payload())
                 status = "discard"
                 if targeted_verify.passed:
-                    cherry_pick = _cherry_pick_prompt_commit(repo_root, commit_sha)
+                    _validate_cherry_pick_target(
+                        repo_root,
+                        expected_branch=expected_branch,
+                        expected_head=expected_head,
+                    )
+                    cherry_pick = _cherry_pick_prompt_commit_for_expected_parent(
+                        repo_root,
+                        commit_sha,
+                        expected_parent=expected_head,
+                    )
                     if cherry_pick.pending_conflict:
                         cherry_pick_pending = True
                         note_payload["cherry_pick_pending"] = True
@@ -285,6 +372,9 @@ def run_improve_loop(
                         if cherry_pick.conflicted_files:
                             note_payload["conflicted_files"] = list(cherry_pick.conflicted_files)
                     status = "targeted_verify"
+                    new_head = getattr(cherry_pick, "new_head", None)
+                    if new_head is not None:
+                        expected_head = new_head
 
                 should_write_finalized = status != "discard" and not cherry_pick_pending
                 append_result(
@@ -373,6 +463,8 @@ def run_improve_loop(
                         target_dimension=target_dimension,
                         target_prompt=target_prompt,
                         output_lang=output_lang,
+                        expected_branch=expected_branch,
+                        expected_head=expected_head,
                     )
                     save_improve_session(state_dir, session)
                     outcomes.append(phase25_result)
@@ -388,6 +480,8 @@ def run_improve_loop(
                             "resolve manually before resuming"
                         )
                         break
+                    if phase25_result.status == "targeted_verify":
+                        expected_head = _current_head(repo_root)
                 if cherry_pick_pending:
                     warnings.append(
                         "cherry-pick conflict left pending worktree; "
@@ -402,8 +496,11 @@ def run_improve_loop(
                     break
             except BaseException:
                 if not cherry_pick_pending:
-                    _remove_worktree(repo_root, worktree_path)
-                    session = update_improve_session(session, worktree_path=None)
+                    removed = _remove_worktree(repo_root, worktree_path)
+                    session = update_improve_session(
+                        session,
+                        worktree_path=None if removed else str(worktree_path),
+                    )
                     try:
                         save_improve_session(state_dir, session)
                     except Exception as save_exc:
@@ -449,7 +546,13 @@ def _run_phase25_rewrite(
     target_dimension: str,
     target_prompt: str,
     output_lang: str | None,
+    expected_branch: str | None = None,
+    expected_head: str | None = None,
 ) -> tuple[ImproveRoundResult, ImproveSessionState]:
+    if expected_head is None:
+        expected_head = _current_head(repo_root)
+    if expected_branch is None:
+        expected_branch = _current_branch(repo_root)
     worktree_path = _session_phase25_worktree_path(state_dir, session.session_id)
     session = update_improve_session(session, worktree_path=str(worktree_path))
     save_improve_session(state_dir, session)
@@ -488,14 +591,29 @@ def _run_phase25_rewrite(
             privacy_mode=privacy_mode,
             output_lang=output_lang,
         )
+        _validate_candidate_run_matches_anchor(
+            candidate_run_path,
+            expected_source_ref=baseline_event.source_ref,
+            expected_base_ref=_metadata_base_ref(anchor_metadata),
+        )
         candidate_report: ScoreReport = evaluate_run(candidate_run_path)
+        _validate_candidate_report_matches_run(
+            candidate_report,
+            candidate_run_path=candidate_run_path,
+            expected_source_ref=baseline_event.source_ref,
+        )
         candidate_prompt_version = compute_prompt_version(worktree_path)
         imported_run_path = _copy_candidate_run_to_state(
             source_run_path=candidate_run_path,
             state_dir=state_dir,
         )
         targeted_verify = verify_targeted_dimensions(
-            baseline=load_score_snapshot(baseline_run_path),
+            baseline=load_score_snapshot(
+                baseline_run_path,
+                expected_run_id=baseline_event.run_id,
+                expected_source_ref=baseline_event.source_ref,
+                expected_overall=baseline_event.overall,
+            ),
             candidate=snapshot_from_report(candidate_report),
             target_dimension=target_dimension,
             failed_gates=tuple(candidate_report.hard_gates.failed_names()),
@@ -513,7 +631,16 @@ def _run_phase25_rewrite(
         note_payload["anchor_run_id"] = session.anchor_run_id
         final_payload = {**note_payload, **targeted_verify.note_payload()}
         if targeted_verify.passed:
-            cherry_pick = _cherry_pick_prompt_commit(repo_root, commit_sha)
+            _validate_cherry_pick_target(
+                repo_root,
+                expected_branch=expected_branch,
+                expected_head=expected_head,
+            )
+            cherry_pick = _cherry_pick_prompt_commit_for_expected_parent(
+                repo_root,
+                commit_sha,
+                expected_parent=expected_head,
+            )
             if cherry_pick.pending_conflict:
                 cherry_pick_pending = True
                 final_payload["cherry_pick_pending"] = True
@@ -638,6 +765,44 @@ def _sorted_events(events: tuple[ResultEvent, ...]) -> list[ResultEvent]:
     return sorted(events, key=lambda item: (item.timestamp, item.event_id), reverse=True)
 
 
+def _reject_existing_pending_worktrees(
+    state_dir: Path,
+    *,
+    allowed_session_id: str | None,
+) -> None:
+    session_dir = improve_session_dir(state_dir)
+    if session_dir.exists():
+        _assert_directory_no_follow(session_dir)
+        for session_file in sorted(session_dir.glob("*.json")):
+            try:
+                session = load_improve_session(state_dir, session_file.stem)
+            except InputError:
+                continue
+            if session.session_id == allowed_session_id:
+                continue
+            if session.worktree_path is not None and Path(session.worktree_path).exists():
+                raise InputError(_PENDING_WORKTREE_NOTE)
+
+    worktree_dir = session_dir / "wt"
+    if not worktree_dir.exists():
+        return
+    _assert_directory_no_follow(worktree_dir)
+    leftovers = [child for child in worktree_dir.iterdir() if child.exists() or child.is_symlink()]
+    if leftovers:
+        raise InputError(_PENDING_WORKTREE_NOTE)
+
+
+def _current_branch(repo_root: Path) -> str | None:
+    result = run_git(repo_root, "branch", "--show-current")
+    branch = result.stdout.strip()
+    return branch or None
+
+
+def _current_head(repo_root: Path) -> str:
+    result = run_git(repo_root, "rev-parse", "HEAD")
+    return result.stdout.strip()
+
+
 def _session_worktree_path(state_dir: Path, session_id: str, round_index: int) -> Path:
     validate_improve_session_id(session_id)
     worktree_id = sha256(session_id.encode("utf-8")).hexdigest()[:12]
@@ -651,12 +816,12 @@ def _session_phase25_worktree_path(state_dir: Path, session_id: str) -> Path:
 
 
 def _create_worktree(repo_root: Path, worktree_path: Path) -> None:
-    if worktree_path.exists():
-        _remove_worktree(repo_root, worktree_path)
-    worktree_path.parent.mkdir(parents=True, exist_ok=True)
+    _prepare_worktree_target(worktree_path)
+    _register_active_worktree(repo_root, worktree_path)
     try:
         run_git(repo_root, "worktree", "add", "--detach", str(worktree_path), "HEAD")
     except (InputError, OSError, subprocess.SubprocessError) as exc:
+        _remove_worktree(repo_root, worktree_path)
         raise InputError(
             "failed to create detached git worktree; AhaDiff improve requires "
             "Git >= 2.18 for 'git worktree add --detach'. Upgrade Git and retry. "
@@ -664,7 +829,7 @@ def _create_worktree(repo_root: Path, worktree_path: Path) -> None:
         ) from exc
 
 
-def _remove_worktree(repo_root: Path, worktree_path: Path) -> None:
+def _remove_worktree(repo_root: Path, worktree_path: Path) -> bool:
     remove_result = run_git(
         repo_root,
         "worktree",
@@ -673,12 +838,112 @@ def _remove_worktree(repo_root: Path, worktree_path: Path) -> None:
         str(worktree_path),
         check=False,
     )
+    removed = True
     try:
         if worktree_path.exists():
             shutil.rmtree(worktree_path, ignore_errors=True)
+        if worktree_path.exists():
+            removed = False
     finally:
         if remove_result.returncode != 0:
             run_git(repo_root, "worktree", "prune", check=False)
+        if removed:
+            _unregister_active_worktree(worktree_path)
+    return removed
+
+
+def _prepare_worktree_target(worktree_path: Path) -> None:
+    if ".." in worktree_path.parts:
+        raise InputError("improve worktree path must not contain path traversal")
+    if worktree_path.name in {"", ".", ".."}:
+        raise InputError("invalid improve worktree path")
+    _mkdir_no_symlink(worktree_path.parent)
+    try:
+        target_stat = worktree_path.lstat()
+    except FileNotFoundError:
+        return
+    if stat.S_ISLNK(target_stat.st_mode):
+        raise InputError("improve worktree path must not be a symlink")
+    raise InputError("refusing to overwrite existing improve worktree path")
+
+
+def _mkdir_no_symlink(path: Path) -> None:
+    if path.exists():
+        _assert_directory_no_follow(path)
+        return
+    missing: list[Path] = []
+    cursor = path
+    while not cursor.exists():
+        missing.append(cursor)
+        if cursor.parent == cursor:
+            break
+        cursor = cursor.parent
+    _assert_directory_no_follow(cursor)
+    for directory in reversed(missing):
+        with suppress(FileExistsError):
+            directory.mkdir()
+        _assert_directory_no_follow(directory)
+
+
+def _assert_directory_no_follow(path: Path) -> None:
+    try:
+        path_stat = path.lstat()
+    except FileNotFoundError as exc:
+        raise InputError(f"improve worktree parent directory is missing: {path}") from exc
+    if stat.S_ISLNK(path_stat.st_mode):
+        raise InputError("improve worktree parent directory must not be a symlink")
+    if not stat.S_ISDIR(path_stat.st_mode):
+        raise InputError("improve worktree parent path must be a directory")
+    if sys.platform.startswith("win"):
+        if _has_windows_reparse_point(path_stat):
+            raise InputError(
+                "improve worktree parent directory must not be a Windows reparse point or junction"
+            )
+        return
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_DIRECTORY", 0)
+    try:
+        fd = os.open(str(path), flags)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise InputError("improve worktree parent directory must not be a symlink") from exc
+        raise
+    try:
+        file_stat = os.fstat(fd)
+        if not stat.S_ISDIR(file_stat.st_mode):
+            raise InputError("improve worktree parent path must be a directory")
+        if (file_stat.st_dev, file_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
+            raise InputError("improve worktree parent changed during validation")
+    finally:
+        os.close(fd)
+
+
+def _has_windows_reparse_point(path_stat: object) -> bool:
+    return bool(getattr(path_stat, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def _register_active_worktree(repo_root: Path, worktree_path: Path) -> None:
+    global _atexit_cleanup_registered
+    key = str(worktree_path)
+    with _ACTIVE_WORKTREE_LOCK:
+        _ACTIVE_WORKTREE_CLEANUPS[key] = (repo_root, worktree_path)
+        if not _atexit_cleanup_registered:
+            atexit.register(_cleanup_active_worktrees_at_exit)
+            _atexit_cleanup_registered = True
+
+
+def _unregister_active_worktree(worktree_path: Path) -> None:
+    with _ACTIVE_WORKTREE_LOCK:
+        _ACTIVE_WORKTREE_CLEANUPS.pop(str(worktree_path), None)
+
+
+def _cleanup_active_worktrees_at_exit() -> None:
+    with _ACTIVE_WORKTREE_LOCK:
+        items = tuple(_ACTIVE_WORKTREE_CLEANUPS.values())
+    for repo_root, worktree_path in items:
+        try:
+            _remove_worktree(repo_root, worktree_path)
+        except Exception as exc:  # pragma: no cover - process-exit best effort
+            log.warning("failed to remove improve worktree at exit %s: %s", worktree_path, exc)
 
 
 def _prompts_are_dirty(repo_root: Path) -> bool:
@@ -706,9 +971,10 @@ def _mutate_prompt_in_worktree(
     validate_mutable_prompt_name(target_prompt)
     repo_prompt_path = worktree_root / "prompts" / target_prompt
     package_prompt_path = worktree_root / "src" / "ahadiff" / "prompts" / target_prompt
-    if not repo_prompt_path.is_file() or not package_prompt_path.is_file():
-        raise InputError(f"mutable prompt file is missing from worktree: {target_prompt}")
-    current_prompt = repo_prompt_path.read_text(encoding="utf-8")
+    _assert_prompt_path_no_symlinks(worktree_root, repo_prompt_path)
+    _assert_prompt_path_no_symlinks(worktree_root, package_prompt_path)
+    current_prompt = _read_prompt_regular_no_follow(repo_prompt_path, target_prompt)
+    _assert_prompt_regular_no_follow(package_prompt_path, target_prompt)
     improve_program = load_improve_program(worktree_root)
     payload_text = "\n\n".join(
         (
@@ -766,29 +1032,77 @@ def _mutate_prompt_in_worktree(
         raise InputError(
             f"improve response attempted to mutate {target_file!r}; expected {target_prompt!r}"
         )
-    if "\x00" in content:
-        raise InputError("improve response content must not contain null bytes")
-    normalized_content = content.rstrip() + "\n"
-    # Hard cap mutated prompt size to defend against LLM runaway output filling
-    # the prompt with hostile or nonsensical content beyond editor-friendly size.
-    if len(normalized_content.encode("utf-8")) > _MAX_MUTATED_PROMPT_BYTES:
+    normalized_content, content_bytes = _normalize_mutated_prompt_content(content)
+    if len(content_bytes) > _MAX_MUTATED_PROMPT_BYTES:
         raise InputError("improve response prompt content exceeds 262144 bytes")
     if normalized_content == current_prompt:
         raise InputError("improve response did not change the target prompt")
     _write_prompt_pair_atomic(repo_prompt_path, package_prompt_path, normalized_content)
     return _MutationResult(
         target_prompt=target_prompt,
-        content_hash=sha256(normalized_content.encode("utf-8")).hexdigest()[:12],
+        content_hash=sha256(content_bytes).hexdigest()[:12],
     )
 
 
+def _read_prompt_regular_no_follow(path: Path, target_prompt: str) -> str:
+    _assert_prompt_regular_no_follow(path, target_prompt)
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise InputError(f"mutable prompt file must be valid UTF-8: {target_prompt}") from exc
+
+
+def _assert_prompt_regular_no_follow(path: Path, target_prompt: str) -> None:
+    try:
+        path_stat = path.lstat()
+    except FileNotFoundError as exc:
+        raise InputError(f"mutable prompt file is missing from worktree: {target_prompt}") from exc
+    if stat.S_ISLNK(path_stat.st_mode):
+        raise InputError(f"mutable prompt file must not be a symlink: {target_prompt}")
+    if not stat.S_ISREG(path_stat.st_mode):
+        raise InputError(f"mutable prompt file must be a regular file: {target_prompt}")
+
+
+def _assert_prompt_path_no_symlinks(worktree_root: Path, path: Path) -> None:
+    try:
+        relative_path = path.relative_to(worktree_root)
+    except ValueError as exc:
+        raise InputError("mutable prompt path must stay inside improve worktree") from exc
+    current = worktree_root
+    for part in relative_path.parts[:-1]:
+        current = current / part
+        try:
+            path_stat = current.lstat()
+        except FileNotFoundError as exc:
+            raise InputError(f"mutable prompt parent path is missing: {current}") from exc
+        if stat.S_ISLNK(path_stat.st_mode):
+            raise InputError("mutable prompt parent path must not be a symlink")
+
+
+def _normalize_mutated_prompt_content(content: str) -> tuple[str, bytes]:
+    if "\x00" in content:
+        raise InputError("improve response content must not contain null bytes")
+    normalized_content = content.rstrip() + "\n"
+    try:
+        content_bytes = normalized_content.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise InputError("improve response content must be valid UTF-8") from exc
+    return normalized_content, content_bytes
+
+
 def _write_prompt_pair_atomic(first_path: Path, second_path: Path, content: str) -> None:
+    _assert_prompt_regular_no_follow(first_path, first_path.name)
+    _assert_prompt_regular_no_follow(second_path, second_path.name)
     first_temp = _temporary_sibling_path(first_path, suffix=".prompt.tmp")
     second_temp = _temporary_sibling_path(second_path, suffix=".prompt.tmp")
     temp_paths = (first_temp, second_temp)
     try:
         for temp_path in temp_paths:
             temp_path.write_text(content, encoding="utf-8")
+        # These prompt copies live only in the detached improve worktree. If the
+        # second replace fails after the first one succeeds, the exception
+        # propagates to run_improve_loop/_run_phase25_rewrite, which removes the
+        # disposable worktree unless a later cherry-pick conflict is pending.
         first_temp.replace(first_path)
         second_temp.replace(second_path)
     finally:
@@ -893,7 +1207,7 @@ def _run_replay_learn_subprocess(
         return new_runs[0]
     if new_runs:
         return max(new_runs, key=lambda item: item.stat().st_mtime_ns)
-    return max(after_runs, key=lambda item: item.stat().st_mtime_ns)
+    raise InputError("improve learn replay produced no fresh run artifacts")
 
 
 def _detached_subprocess_kwargs() -> dict[str, Any]:
@@ -901,6 +1215,60 @@ def _detached_subprocess_kwargs() -> dict[str, Any]:
         creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         return {"creationflags": creationflags}
     return {"start_new_session": True}
+
+
+def _validate_candidate_run_matches_anchor(
+    candidate_run_path: Path,
+    *,
+    expected_source_ref: str,
+    expected_base_ref: str | None,
+) -> None:
+    metadata = _load_run_metadata(candidate_run_path)
+    run_id = metadata.get("run_id")
+    if run_id != candidate_run_path.name:
+        raise InputError("candidate run metadata run_id does not match its directory")
+    if metadata.get("source_ref") != expected_source_ref:
+        raise InputError("candidate run source_ref does not match improve anchor")
+    if (metadata.get("base_ref") or None) != (expected_base_ref or None):
+        raise InputError("candidate run base_ref does not match improve anchor")
+    _validate_claim_records_belong_to_run(
+        candidate_run_path / "claims.jsonl", candidate_run_path.name
+    )
+
+
+def _metadata_base_ref(metadata: dict[str, Any]) -> str | None:
+    raw_base_ref = metadata.get("base_ref")
+    return raw_base_ref if isinstance(raw_base_ref, str) and raw_base_ref else None
+
+
+def _validate_candidate_report_matches_run(
+    report: ScoreReport,
+    *,
+    candidate_run_path: Path,
+    expected_source_ref: str,
+) -> None:
+    if report.run_id != candidate_run_path.name:
+        raise InputError("candidate score report run_id does not match its directory")
+    if report.source_ref != expected_source_ref:
+        raise InputError("candidate score report source_ref does not match improve anchor")
+
+
+def _validate_claim_records_belong_to_run(path: Path, expected_run_id: str) -> None:
+    if not path.exists():
+        return
+    for index, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            payload = json.loads(stripped)
+        except json.JSONDecodeError as exc:
+            raise InputError(f"invalid claims.jsonl line {index}: {path}") from exc
+        if not isinstance(payload, dict):
+            continue
+        payload_map = cast("dict[str, object]", payload)
+        if payload_map.get("run_id") != expected_run_id:
+            raise InputError("candidate claims.jsonl run_id does not match candidate run")
 
 
 def _copy_candidate_run_to_state(*, source_run_path: Path, state_dir: Path) -> Path:
@@ -952,10 +1320,56 @@ def _safe_unlink(path: Path, root: Path) -> None:
     resolved.unlink()
 
 
-def _cherry_pick_prompt_commit(repo_root: Path, commit_sha: str) -> _CherryPickResult:
+def _verify_cherry_pick_parent(
+    repo_root: Path,
+    *,
+    expected_parent: str,
+) -> None:
+    parent_result = run_git(repo_root, "rev-parse", "HEAD~1", check=False)
+    actual_parent = parent_result.stdout.strip()
+    if parent_result.returncode == 0 and actual_parent == expected_parent:
+        return
+
+    revert_result = run_git(repo_root, "revert", "--no-edit", "HEAD", check=False)
+    if revert_result.returncode == 0:
+        raise InputError(
+            "cherry-pick parent mismatch detected; auto-reverted the improve commit. "
+            "Another commit landed between validation and cherry-pick."
+        )
+    run_git(repo_root, "revert", "--abort", check=False)
+    raise InputError(
+        f"cherry-pick parent mismatch (expected {expected_parent[:12]}, "
+        f"got {actual_parent[:12]}) and auto-revert failed. "
+        "Run 'git revert HEAD --no-edit' to undo the improve commit."
+    )
+
+
+def _cherry_pick_prompt_commit_for_expected_parent(
+    repo_root: Path,
+    commit_sha: str,
+    *,
+    expected_parent: str,
+) -> _CherryPickResult:
+    token = _CHERRY_PICK_EXPECTED_PARENT.set(expected_parent)
+    try:
+        return _cherry_pick_prompt_commit(repo_root, commit_sha)
+    finally:
+        _CHERRY_PICK_EXPECTED_PARENT.reset(token)
+
+
+def _cherry_pick_prompt_commit(
+    repo_root: Path, commit_sha: str, *, expected_parent: str | None = None
+) -> _CherryPickResult:
     result = run_git(repo_root, "cherry-pick", commit_sha, check=False)
     if result.returncode == 0:
-        return _CherryPickResult(pending_conflict=False)
+        new_head = _current_head(repo_root)
+        effective_expected_parent = expected_parent or _CHERRY_PICK_EXPECTED_PARENT.get()
+        if effective_expected_parent is not None:
+            _verify_cherry_pick_parent(
+                repo_root,
+                expected_parent=effective_expected_parent,
+            )
+        return _CherryPickResult(pending_conflict=False, new_head=new_head)
     conflict_result = run_git(
         repo_root,
         "diff",
@@ -982,6 +1396,25 @@ def _cherry_pick_prompt_commit(repo_root: Path, commit_sha: str) -> _CherryPickR
         pending_conflict=True,
         conflicted_files=conflicted_files,
     )
+
+
+def _validate_cherry_pick_target(
+    repo_root: Path,
+    *,
+    expected_branch: str | None,
+    expected_head: str,
+) -> None:
+    current_branch = _current_branch(repo_root)
+    if current_branch != expected_branch:
+        expected = expected_branch or "detached HEAD"
+        current = current_branch or "detached HEAD"
+        raise InputError(
+            f"refusing to cherry-pick improve commit onto unexpected branch: "
+            f"expected {expected}, got {current}"
+        )
+    current_head = _current_head(repo_root)
+    if current_head != expected_head:
+        raise InputError("refusing to cherry-pick improve commit because target HEAD changed")
 
 
 def _load_run_metadata(run_path: Path) -> dict[str, Any]:

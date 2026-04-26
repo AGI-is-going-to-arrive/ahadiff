@@ -93,27 +93,30 @@ async def auth_token(request: Request) -> JSONResponse:
 
 
 async def api_not_found(request: Request) -> JSONResponse:
-    return JSONResponse({"error": "not_found", "path": request.url.path}, status_code=404)
+    return JSONResponse(
+        {"error": "not_found", "status": 404, "path": request.url.path},
+        status_code=404,
+    )
 
 
 async def _handled_error(_request: Request, exc: Exception) -> JSONResponse:
-    return JSONResponse({"error": str(exc)}, status_code=400)
+    return JSONResponse({"error": str(exc), "status": 400}, status_code=400)
 
 
 async def _permission_error(_request: Request, exc: Exception) -> JSONResponse:
-    return JSONResponse({"error": str(exc)}, status_code=403)
+    return JSONResponse({"error": str(exc), "status": 403}, status_code=403)
 
 
 async def _validation_error(_request: Request, exc: Exception) -> JSONResponse:
     if isinstance(exc, ValidationError):
-        return JSONResponse({"error": exc.errors()}, status_code=422)
-    return JSONResponse({"error": str(exc)}, status_code=422)
+        return JSONResponse({"error": exc.errors(), "status": 422}, status_code=422)
+    return JSONResponse({"error": str(exc), "status": 422}, status_code=422)
 
 
 async def _http_error(_request: Request, exc: Exception) -> JSONResponse:
     status_code = exc.status_code if isinstance(exc, HTTPException) else 500
     detail: Any = exc.detail if isinstance(exc, HTTPException) else str(exc)
-    return JSONResponse({"error": detail}, status_code=status_code)
+    return JSONResponse({"error": detail, "status": status_code}, status_code=status_code)
 
 
 __all__ = ["create_app"]

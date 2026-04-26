@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import stat
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from importlib.resources import files
@@ -14,6 +15,7 @@ if TYPE_CHECKING:
 
 IMPROVE_PROGRAM_FILENAME = "improve_program.md"
 IMPROVE_SESSION_DIRNAME = "improve"
+_MAX_IMPROVE_PROGRAM_BYTES = 256 * 1024
 _MUTABLE_PROMPT_NAMES = (
     "claim_extract.md",
     "lesson_generate.md",
@@ -64,7 +66,7 @@ def mutable_prompt_for_dimension(weakest_dim: str | None) -> str:
 def load_improve_program(repo_root: Path) -> str:
     prompt_path = repo_root / "prompts" / IMPROVE_PROGRAM_FILENAME
     if prompt_path.is_file():
-        return prompt_path.read_text(encoding="utf-8")
+        return _read_improve_program_file(prompt_path)
     try:
         package_prompt = files("ahadiff").joinpath("prompts", IMPROVE_PROGRAM_FILENAME)
         if package_prompt.is_file():
@@ -72,6 +74,28 @@ def load_improve_program(repo_root: Path) -> str:
     except (FileNotFoundError, ModuleNotFoundError, OSError):
         pass
     raise InputError(f"missing improve program prompt: {IMPROVE_PROGRAM_FILENAME}")
+
+
+def _read_improve_program_file(path: Path) -> str:
+    try:
+        path_stat = path.lstat()
+    except FileNotFoundError as exc:
+        raise InputError(f"missing improve program prompt: {IMPROVE_PROGRAM_FILENAME}") from exc
+    if stat.S_ISLNK(path_stat.st_mode):
+        raise InputError("improve program prompt must not be a symlink")
+    if not stat.S_ISREG(path_stat.st_mode):
+        raise InputError("improve program prompt must be a regular file")
+    if path_stat.st_size > _MAX_IMPROVE_PROGRAM_BYTES:
+        raise InputError("improve program prompt exceeds 262144 bytes")
+    try:
+        content = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise InputError("improve program prompt must be valid UTF-8") from exc
+    if "\x00" in content:
+        raise InputError("improve program prompt must not contain null bytes")
+    if not content.strip():
+        raise InputError("improve program prompt must not be empty")
+    return content
 
 
 def improve_session_dir(state_dir: Path) -> Path:

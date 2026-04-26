@@ -6,7 +6,10 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+from pydantic import ValidationError
+
 from ahadiff.core.errors import InputError
+from ahadiff.core.paths import path_identity_key
 from ahadiff.git.line_map import (
     LINE_MAP_SCHEMA,
     LINE_MAP_SCHEMA_VERSION,
@@ -25,7 +28,10 @@ from .schema import ClaimCandidate, VerifiedClaim
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
+    from ahadiff.contracts import SourceHunk
 
+
+_MAX_CLAIM_TEXT_BYTES = 10 * 1024
 _JSON_FENCE_RE = re.compile(
     r"```(?P<lang>[^\r\n`]*)\r?\n(?P<body>[\s\S]*?)```",
     re.IGNORECASE,
@@ -36,6 +42,7 @@ def parse_claim_candidates_text(
     text: str,
     *,
     default_run_id: str | None = None,
+    line_maps: Sequence[FileLineMap] | None = None,
 ) -> tuple[ClaimCandidate, ...]:
     stripped = text.strip()
     if not stripped:
@@ -45,9 +52,17 @@ def parse_claim_candidates_text(
     for payload_text in _candidate_payload_texts(stripped):
         json_payload = _try_parse_json(payload_text)
         if json_payload is not None:
-            return _coerce_claim_candidates(json_payload, default_run_id=default_run_id)
+            return _coerce_claim_candidates(
+                json_payload,
+                default_run_id=default_run_id,
+                line_maps=line_maps,
+            )
         try:
-            return _parse_jsonl_candidates(payload_text, default_run_id=default_run_id)
+            return _parse_jsonl_candidates(
+                payload_text,
+                default_run_id=default_run_id,
+                line_maps=line_maps,
+            )
         except InputError as exc:
             last_error = exc
             continue
@@ -61,12 +76,14 @@ def load_claim_candidates(
     *,
     default_run_id: str | None = None,
     enforce_run_id_match: bool = False,
+    line_maps: Sequence[FileLineMap] | None = None,
 ) -> tuple[ClaimCandidate, ...]:
     if not path.exists():
         raise InputError(f"claim candidate file does not exist: {path}")
     candidates = parse_claim_candidates_text(
         path.read_text(encoding="utf-8"),
         default_run_id=default_run_id,
+        line_maps=line_maps,
     )
     # When enforce_run_id_match is True, every claim candidate must already
     # belong to ``default_run_id`` — used by the learn pipeline to refuse
@@ -194,10 +211,14 @@ def _candidate_payload_texts(text: str) -> tuple[str, ...]:
     return (*fence_payloads, text)
 
 
+def _reject_non_finite(value: object) -> None:
+    raise ValueError(f"non-finite numeric literal in claim JSON: {value!r}")
+
+
 def _try_parse_json(text: str) -> Any | None:
     try:
-        return json.loads(text)
-    except json.JSONDecodeError:
+        return json.loads(text, parse_constant=_reject_non_finite)
+    except (json.JSONDecodeError, ValueError):
         return None
 
 
@@ -205,6 +226,7 @@ def _parse_jsonl_candidates(
     text: str,
     *,
     default_run_id: str | None,
+    line_maps: Sequence[FileLineMap] | None,
 ) -> tuple[ClaimCandidate, ...]:
     items: list[dict[str, Any]] = []
     for index, line in enumerate(text.splitlines(), start=1):
@@ -212,21 +234,22 @@ def _parse_jsonl_candidates(
         if not stripped:
             continue
         try:
-            payload = json.loads(stripped)
-        except json.JSONDecodeError as exc:
+            payload = json.loads(stripped, parse_constant=_reject_non_finite)
+        except (json.JSONDecodeError, ValueError) as exc:
             raise InputError(f"invalid claim candidate JSONL line {index}") from exc
         if not isinstance(payload, dict):
             raise InputError(f"claim candidate line {index} must be a JSON object")
         items.append(cast("dict[str, Any]", payload))
     if not items:
         raise InputError("claim candidate payload did not contain any JSON objects")
-    return _coerce_claim_candidates(items, default_run_id=default_run_id)
+    return _coerce_claim_candidates(items, default_run_id=default_run_id, line_maps=line_maps)
 
 
 def _coerce_claim_candidates(
     payload: Any,
     *,
     default_run_id: str | None,
+    line_maps: Sequence[FileLineMap] | None,
 ) -> tuple[ClaimCandidate, ...]:
     items: list[dict[str, Any]]
     if isinstance(payload, dict):
@@ -252,6 +275,7 @@ def _coerce_claim_candidates(
         raise InputError("claim candidate payload must be a JSON object, array, or JSONL")
     candidates: list[ClaimCandidate] = []
     seen_claim_ids: set[str] = set()
+    file_lookup = None if line_maps is None else _build_line_map_lookup(line_maps)
     for index, item in enumerate(items, start=1):
         normalized: dict[str, Any] = dict(item)
         normalized.setdefault("claim_id", _default_claim_id(default_run_id, index))
@@ -259,12 +283,97 @@ def _coerce_claim_candidates(
             if default_run_id is None:
                 raise InputError(f"claim candidate #{index} is missing run_id")
             normalized["run_id"] = default_run_id
-        candidate = ClaimCandidate.model_validate(normalized)
+        try:
+            candidate = ClaimCandidate.model_validate(normalized)
+        except ValidationError as exc:
+            raise InputError(f"invalid claim candidate #{index}: {exc}") from exc
         if candidate.claim_id in seen_claim_ids:
             raise InputError(f"duplicate claim_id is not allowed: {candidate.claim_id}")
+        _validate_claim_candidate_shape(candidate, file_lookup=file_lookup)
         seen_claim_ids.add(candidate.claim_id)
         candidates.append(candidate)
     return tuple(candidates)
+
+
+def _validate_claim_candidate_shape(
+    candidate: ClaimCandidate,
+    *,
+    file_lookup: dict[str, tuple[FileLineMap, ...]] | None,
+) -> None:
+    if len(candidate.text.encode("utf-8")) > _MAX_CLAIM_TEXT_BYTES:
+        raise InputError(
+            f"claim content exceeds {_MAX_CLAIM_TEXT_BYTES} bytes: {candidate.claim_id}"
+        )
+    if file_lookup is None:
+        return
+    for source_hunk in candidate.source_hunks:
+        candidates = file_lookup.get(_identity(source_hunk.file))
+        if candidates is None:
+            raise InputError(
+                f"claim {candidate.claim_id} references file outside patch: {source_hunk.file}"
+            )
+        if len(candidates) != 1:
+            raise InputError(
+                f"claim {candidate.claim_id} references ambiguous patch file: {source_hunk.file}"
+            )
+        file_map = candidates[0]
+        if not file_map.hunks:
+            if file_map.change_kind == "binary":
+                raise InputError(
+                    f"claim {candidate.claim_id} references binary file without line evidence: "
+                    f"{source_hunk.file}"
+                )
+            raise InputError(
+                f"claim {candidate.claim_id} references file without line evidence: "
+                f"{source_hunk.file}"
+            )
+        if not _source_hunk_is_within_line_map(source_hunk, file_map):
+            raise InputError(
+                f"claim {candidate.claim_id} references line outside patch: "
+                f"{source_hunk.file}:{source_hunk.start}-{source_hunk.end}"
+            )
+
+
+def _build_line_map_lookup(
+    line_maps: Sequence[FileLineMap],
+) -> dict[str, tuple[FileLineMap, ...]]:
+    lookup: dict[str, list[FileLineMap]] = {}
+
+    def add(path: str | None, item: FileLineMap) -> None:
+        if path is None:
+            return
+        identity = _identity(path)
+        existing = lookup.setdefault(identity, [])
+        if all(candidate.file_id != item.file_id for candidate in existing):
+            existing.append(item)
+
+    for item in line_maps:
+        add(item.display_path, item)
+        add(item.old_path, item)
+        add(item.new_path, item)
+    return {key: tuple(value) for key, value in lookup.items()}
+
+
+def _source_hunk_is_within_line_map(source_hunk: SourceHunk, file_map: FileLineMap) -> bool:
+    old_lines: set[int] = set()
+    new_lines: set[int] = set()
+    for hunk in file_map.hunks:
+        old_lines.update(hunk.deleted_lines)
+        old_lines.update(hunk.context_old_lines)
+        new_lines.update(hunk.added_lines)
+        new_lines.update(hunk.context_new_lines)
+    requested = range(source_hunk.start, source_hunk.end + 1)
+    if source_hunk.side == "old":
+        return all(line in old_lines for line in requested)
+    if source_hunk.side == "new":
+        return all(line in new_lines for line in requested)
+    return all(line in old_lines for line in requested) or all(
+        line in new_lines for line in requested
+    )
+
+
+def _identity(path: str) -> str:
+    return path_identity_key(Path(path))
 
 
 def _default_claim_id(run_id: str | None, index: int) -> str:
@@ -293,18 +402,22 @@ def _write_jsonl(
     payload_text = "".join(
         json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows
     )
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-        delete=False,
-    ) as handle:
-        handle.write(payload_text)
-        tmp_path = handle.name
-    tmp_file = Path(tmp_path)
-    tmp_file.replace(path)
+    tmp_file: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            tmp_file = Path(handle.name)
+            handle.write(payload_text)
+        tmp_file.replace(path)
+    finally:
+        if tmp_file is not None:
+            tmp_file.unlink(missing_ok=True)
     return path
 
 

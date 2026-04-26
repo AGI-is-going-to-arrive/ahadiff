@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import tempfile
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib.resources import files
@@ -12,7 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from ahadiff.contracts import ResultEvent
-from ahadiff.core.errors import InputError
+from ahadiff.core.errors import InputError, StorageError
 from ahadiff.review.database import (
     delete_result_event_and_select_tsv_rows,
     load_result_events_from_db,
@@ -37,6 +38,8 @@ RESULTS_TSV_COLUMNS: tuple[str, ...] = (
     "weakest_dim",
     "note_json",
 )
+_RESULT_EVENT_INSERT_ATTEMPTS = 6
+_RESULT_EVENT_INSERT_RETRY_SECONDS = 0.05
 
 
 @dataclass(frozen=True)
@@ -197,7 +200,16 @@ def make_result_event_id() -> str:
 
 
 def _insert_result_event(db_path: Path, event: ResultEvent) -> bool:
-    return sync_result_event(db_path, event)
+    if _RESULT_EVENT_INSERT_ATTEMPTS < 1:
+        raise AssertionError("_RESULT_EVENT_INSERT_ATTEMPTS must be >= 1")
+    for attempt in range(_RESULT_EVENT_INSERT_ATTEMPTS):
+        try:
+            return sync_result_event(db_path, event)
+        except StorageError as exc:
+            if "database is locked" not in str(exc) or attempt == _RESULT_EVENT_INSERT_ATTEMPTS - 1:
+                raise
+            time.sleep(_RESULT_EVENT_INSERT_RETRY_SECONDS * (attempt + 1))
+    raise AssertionError("_insert_result_event retry loop exhausted unexpectedly")
 
 
 def _append_results_tsv(path: Path, event: ResultEvent) -> None:

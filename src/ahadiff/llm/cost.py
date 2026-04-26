@@ -165,7 +165,8 @@ def parse_retry_after(headers: Mapping[str, str]) -> float | None:
     if raw_value is None:
         return None
     try:
-        return float(raw_value)
+        value = float(raw_value)
+        return value if value > 0.0 else None
     except ValueError:
         try:
             parsed = parsedate_to_datetime(raw_value)

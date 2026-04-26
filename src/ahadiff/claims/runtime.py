@@ -11,7 +11,11 @@ from ahadiff.llm import ProviderRequest, make_provider
 from ahadiff.safety.ignore import AllowlistPolicy
 from ahadiff.safety.redact import redaction_pipeline
 
-from .extract import parse_claim_candidates_text, write_claim_candidates_jsonl
+from .extract import (
+    load_line_map_records,
+    parse_claim_candidates_text,
+    write_claim_candidates_jsonl,
+)
 
 if TYPE_CHECKING:
     import httpx
@@ -157,7 +161,11 @@ def extract_claim_candidates_from_run(
         )
     finally:
         provider.close()
-    candidates = parse_claim_candidates_text(response.content, default_run_id=run_id)
+    candidates = parse_claim_candidates_text(
+        response.content,
+        default_run_id=run_id,
+        line_maps=load_line_map_records(run_path / "line_map.json"),
+    )
     return write_claim_candidates_jsonl(output_path, candidates, overwrite=overwrite), candidates
 
 

@@ -8,8 +8,10 @@ import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TypeGuard, cast
+from typing import Any, TypeGuard, cast, get_args
+from urllib.parse import urlsplit
 
+from ahadiff.contracts import ProviderClass
 from ahadiff.i18n import normalize_locale_preference
 
 from .errors import ConfigError
@@ -28,6 +30,7 @@ _SAFE_PROVIDER_API_KEY_ENVS = frozenset(
     }
 )
 _AHADIFF_PROVIDER_API_KEY_ENV_PATTERN = re.compile(r"^AHADIFF_[A-Z0-9_]*$")
+_SUPPORTED_PROVIDER_CLASSES = frozenset(cast("tuple[str, ...]", get_args(ProviderClass)))
 DEFAULT_CONFIG: dict[str, Any] = {
     "lang": "auto",
     "privacy_mode": "strict_local",
@@ -158,6 +161,34 @@ def _flatten_mapping(data: Mapping[str, Any], prefix: str = "") -> dict[str, Sca
     return flattened
 
 
+def _actual_type_name(value: Any) -> str:
+    if isinstance(value, Mapping):
+        return "table"
+    if isinstance(value, list | tuple):
+        return "array"
+    if isinstance(value, bool):
+        return "bool"
+    if isinstance(value, int) and not isinstance(value, bool):
+        return "int"
+    if isinstance(value, float):
+        return "float"
+    if isinstance(value, str):
+        return "str"
+    return type(value).__name__
+
+
+def _expected_type_name(expected: Scalar) -> str:
+    if isinstance(expected, bool):
+        return "bool"
+    if isinstance(expected, tuple):
+        return "array of strings"
+    if isinstance(expected, int) and not isinstance(expected, bool):
+        return "int"
+    if isinstance(expected, float):
+        return "float"
+    return "str"
+
+
 def _nest_mapping(flattened: Mapping[str, Scalar]) -> dict[str, Any]:
     nested: dict[str, Any] = {}
     for dotted_key, value in flattened.items():
@@ -178,7 +209,13 @@ def _coerce_bool(raw_value: str, *, key: str) -> bool:
     raise ConfigError(f"{key} expects a boolean-compatible env value, got {raw_value!r}")
 
 
-def _coerce_value(key: str, value: Any, expected: Scalar) -> Scalar:
+def _coerce_value(
+    key: str,
+    value: Any,
+    expected: Scalar,
+    *,
+    coerce_strings: bool = True,
+) -> Scalar:
     if key in _LOCALE_PREFERENCE_KEYS:
         if not isinstance(value, str):
             raise ConfigError(f"{key} expects str, got {type(value).__name__}")
@@ -196,19 +233,19 @@ def _coerce_value(key: str, value: Any, expected: Scalar) -> Scalar:
     if isinstance(expected, bool):
         if isinstance(value, bool):
             return value
-        if isinstance(value, str):
+        if coerce_strings and isinstance(value, str):
             return _coerce_bool(value, key=key)
         raise ConfigError(f"{key} expects bool, got {type(value).__name__}")
     if isinstance(expected, tuple):
         if _is_string_sequence(value):
             return tuple(value)
-        if isinstance(value, str):
+        if coerce_strings and isinstance(value, str):
             return tuple(item.strip() for item in value.split(",") if item.strip())
         raise ConfigError(f"{key} expects an array of strings, got {type(value).__name__}")
     if isinstance(expected, int) and not isinstance(expected, bool):
         if isinstance(value, int) and not isinstance(value, bool):
             return value
-        if isinstance(value, str):
+        if coerce_strings and isinstance(value, str):
             try:
                 return int(value)
             except ValueError as exc:
@@ -217,7 +254,7 @@ def _coerce_value(key: str, value: Any, expected: Scalar) -> Scalar:
     if isinstance(expected, float):
         if isinstance(value, int | float) and not isinstance(value, bool):
             return float(value)
-        if isinstance(value, str):
+        if coerce_strings and isinstance(value, str):
             try:
                 return float(value)
             except ValueError as exc:
@@ -264,12 +301,26 @@ _MODEL_PRICING_DYNAMIC_FIELDS: dict[str, Scalar] = {
     "pricing.output_per_million_usd": 0.0,
     "pricing.request_per_call_usd": 0.0,
 }
+_KNOWN_TABLE_PATHS = (
+    frozenset(
+        tuple(key.split(".")[:index])
+        for key in _FLAT_DEFAULTS
+        for index in range(1, len(key.split(".")))
+    )
+    | frozenset(tuple(key.split(".")) for key in _MODEL_PRICING_DYNAMIC_FIELDS)
+    | {("providers",)}
+)
 
 
 def _read_toml(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
-    return tomllib.loads(path.read_text(encoding="utf-8"))
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigError(f"{path}: invalid TOML: {exc}") from exc
+    _validate_config_table_shapes(data)
+    return data
 
 
 def read_config_data(path: Path) -> dict[str, Any]:
@@ -377,6 +428,67 @@ def _normalize_cli_overrides(cli_overrides: Mapping[str, Any] | None) -> dict[st
     return normalized
 
 
+def _path_expects_table(path: tuple[str, ...]) -> bool:
+    if path in _KNOWN_TABLE_PATHS:
+        return True
+    return len(path) == 2 and path[0] == "providers"
+
+
+def _expected_scalar_for_path(path: tuple[str, ...]) -> Scalar | None:
+    dotted_key = ".".join(path)
+    if dotted_key in _FLAT_DEFAULTS:
+        return _FLAT_DEFAULTS[dotted_key]
+    provider_field = _dynamic_provider_field(dotted_key)
+    if provider_field is not None:
+        return _DYNAMIC_PROVIDER_FIELD_DEFAULTS[provider_field]
+    model_pricing_field = _dynamic_model_pricing_field(dotted_key)
+    if model_pricing_field is not None:
+        return _MODEL_PRICING_DYNAMIC_FIELDS[model_pricing_field]
+    return None
+
+
+def _validate_config_table_shapes(data: Mapping[str, Any], prefix: tuple[str, ...] = ()) -> None:
+    for key, value in data.items():
+        path = (*prefix, key)
+        dotted_key = ".".join(path)
+        expected_scalar = _expected_scalar_for_path(path)
+        if expected_scalar is not None and isinstance(value, Mapping):
+            expected_type = _expected_type_name(expected_scalar)
+            raise ConfigError(f"{dotted_key} expects {expected_type}, got table")
+        if _path_expects_table(path) and not isinstance(value, Mapping):
+            raise ConfigError(f"{dotted_key} expects table, got {_actual_type_name(value)}")
+        if isinstance(value, Mapping):
+            _validate_config_table_shapes(cast("Mapping[str, Any]", value), path)
+
+
+def _coerce_config_file_value(key: str, value: Any, expected: Scalar) -> Scalar:
+    return _coerce_value(key, value, expected, coerce_strings=False)
+
+
+def _validate_provider_dynamic_field(key: str, field_name: str, value: Scalar) -> None:
+    if field_name == "provider_class":
+        provider_class = cast("str", value)
+        if provider_class not in _SUPPORTED_PROVIDER_CLASSES:
+            expected = ", ".join(sorted(_SUPPORTED_PROVIDER_CLASSES))
+            raise ConfigError(f"{key} must be one of {expected}, got {provider_class!r}")
+        return
+    if field_name == "model_name":
+        model_name = cast("str", value)
+        if model_name.strip() == "":
+            raise ConfigError(f"{key} expects non-empty str, got empty string")
+        return
+    if field_name != "base_url":
+        return
+    base_url = cast("str", value)
+    parsed = urlsplit(base_url)
+    if base_url.strip() == "" or any(char.isspace() for char in base_url):
+        raise ConfigError(f"{key} expects valid URL, got {base_url!r}")
+    if not parsed.scheme or not parsed.netloc:
+        raise ConfigError(f"{key} expects valid URL, got {base_url!r}")
+    if parsed.scheme not in ("http", "https"):
+        raise ConfigError(f"{key} expects http or https URL, got {base_url!r}")
+
+
 def _flatten_config_file(
     path: Path,
     *,
@@ -388,15 +500,16 @@ def _flatten_config_file(
     normalized: dict[str, Scalar] = {}
     for key, value in flattened.items():
         if key in _FLAT_DEFAULTS:
-            normalized[key] = _coerce_value(key, value, _FLAT_DEFAULTS[key])
+            normalized[key] = _coerce_config_file_value(key, value, _FLAT_DEFAULTS[key])
             continue
         dynamic_field = _dynamic_provider_field(key)
         if dynamic_field is not None:
-            coerced = _coerce_value(
+            coerced = _coerce_config_file_value(
                 key,
                 value,
                 _DYNAMIC_PROVIDER_FIELD_DEFAULTS[dynamic_field],
             )
+            _validate_provider_dynamic_field(key, dynamic_field, coerced)
             if validate_repo_provider_env and dynamic_field == "api_key_env":
                 validate_repo_api_key_env_name(str(coerced))
             normalized[key] = coerced
@@ -404,7 +517,7 @@ def _flatten_config_file(
         model_pricing_field = _dynamic_model_pricing_field(key)
         if model_pricing_field is None:
             continue
-        normalized[key] = _coerce_value(
+        normalized[key] = _coerce_config_file_value(
             key,
             value,
             _MODEL_PRICING_DYNAMIC_FIELDS[model_pricing_field],

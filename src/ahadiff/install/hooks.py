@@ -21,11 +21,17 @@ class HooksTarget:
     def detect(self, context: InstallContext) -> bool:
         if sys.platform == "win32":
             return False
-        return any(
-            f"# AHADIFF:BEGIN target={self.name}" in path.read_text(encoding="utf-8")
-            for path in self._hook_paths(context)
-            if path.exists()
-        )
+        marker = f"# AHADIFF:BEGIN target={self.name}"
+        for path in self._hook_paths(context):
+            if not path.exists():
+                continue
+            try:
+                content = path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if marker in content:
+                return True
+        return False
 
     def preview(self, context: InstallContext) -> str:
         _ensure_posix_hooks_supported()
@@ -144,4 +150,45 @@ def _git_path(context: InstallContext, relative: str) -> Path:
     except (OSError, subprocess.CalledProcessError) as exc:
         raise InputError("hooks target requires a git repository") from exc
     raw_path = Path(result.stdout.strip())
-    return raw_path if raw_path.is_absolute() else repo_path(context, raw_path.as_posix())
+    hook_path = raw_path if raw_path.is_absolute() else repo_path(context, raw_path.as_posix())
+    return _validate_git_hook_path(context, hook_path)
+
+
+def _validate_git_hook_path(context: InstallContext, hook_path: Path) -> Path:
+    resolved_hook_path = hook_path.resolve(strict=False)
+    repo_root = context.repo_root.resolve(strict=False)
+    if resolved_hook_path.is_relative_to(repo_root):
+        return hook_path
+    git_dir = _absolute_git_dir(context)
+    if resolved_hook_path.is_relative_to(git_dir):
+        return hook_path
+    git_common_dir = _git_common_dir(context)
+    if resolved_hook_path.is_relative_to(git_common_dir):
+        return hook_path
+    raise InputError("resolved git hook path must stay within the repository root or git directory")
+
+
+def _absolute_git_dir(context: InstallContext) -> Path:
+    return _git_directory_path(context, "--absolute-git-dir")
+
+
+def _git_common_dir(context: InstallContext) -> Path:
+    return _git_directory_path(context, "--git-common-dir")
+
+
+def _git_directory_path(context: InstallContext, option: str) -> Path:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", option],
+            cwd=context.repo_root,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise InputError("hooks target requires a git repository") from exc
+    raw_path = Path(result.stdout.strip())
+    path = raw_path if raw_path.is_absolute() else repo_path(context, raw_path.as_posix())
+    return path.resolve(strict=False)
