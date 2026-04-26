@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 import subprocess
 from importlib.resources import files
 from pathlib import Path
@@ -17,6 +18,21 @@ if TYPE_CHECKING:
     import pytest
 
 _RUNNER = CliRunner()
+
+
+def test_install_reexports_manifest_helpers() -> None:
+    from ahadiff import install as install_package
+    from ahadiff.install.base import (
+        InstallFileStrategy as BaseInstallFileStrategy,
+    )
+    from ahadiff.install.base import (
+        InstallManifest as BaseInstallManifest,
+    )
+    from ahadiff.install.common import manifest_preview_for as common_manifest_preview_for
+
+    assert install_package.InstallManifest is BaseInstallManifest
+    assert install_package.InstallFileStrategy == BaseInstallFileStrategy
+    assert install_package.manifest_preview_for is common_manifest_preview_for
 
 
 def _git(repo_root: Path, *args: str) -> None:
@@ -81,6 +97,61 @@ def test_install_detect_reports_written_targets(tmp_path: Path) -> None:
     assert detect_result.exit_code == 0
     assert "codex" in detect_result.output
     assert "yes" in detect_result.output
+
+
+def test_install_manifest_preview_lists_file_strategies(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+
+    result = _RUNNER.invoke(
+        app(),
+        ["install", "claude", "--repo-root", str(repo_root), "--manifest"],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["schema_version"] == 1
+    assert payload["target"] == "claude"
+    assert payload["actions"]["preview"] == [
+        {
+            "action": "write",
+            "file_strategy": "generated",
+            "path": ".claude/skills/ahadiff/SKILL.md",
+        },
+        {"action": "merge-section", "file_strategy": "user-managed", "path": "CLAUDE.md"},
+    ]
+    assert payload["actions"]["write"] == payload["actions"]["preview"]
+    assert payload["actions"]["uninstall"] == [
+        {
+            "action": "remove",
+            "file_strategy": "generated",
+            "path": ".claude/skills/ahadiff/SKILL.md",
+        },
+        {"action": "remove-section", "file_strategy": "user-managed", "path": "CLAUDE.md"},
+    ]
+    assert not (repo_root / ".claude").exists()
+    assert not (repo_root / "CLAUDE.md").exists()
+
+    github_result = _RUNNER.invoke(
+        app(),
+        ["install", "github-action", "--repo-root", str(repo_root), "--manifest"],
+    )
+
+    assert github_result.exit_code == 0
+    github_payload = json.loads(github_result.output)
+    assert github_payload["actions"]["uninstall"] == [
+        {
+            "action": "remove",
+            "file_strategy": "generated",
+            "path": ".github/workflows/ahadiff-verify.yml",
+        },
+        {
+            "action": "remove",
+            "file_strategy": "generated",
+            "path": ".github/workflows/ahadiff-generate.yml",
+        },
+    ]
 
 
 def test_codex_install_merges_and_uninstalls_agents_section(tmp_path: Path) -> None:
@@ -243,12 +314,22 @@ def test_hooks_install_rejects_windows_platform(
         app(),
         ["install", "hooks", "--repo-root", str(repo_root), "--dry-run"],
     )
+    manifest = _RUNNER.invoke(
+        app(),
+        ["install", "hooks", "--repo-root", str(repo_root), "--manifest"],
+    )
+    detect = _RUNNER.invoke(app(), ["install", "--detect", "--repo-root", str(repo_root)])
+    uninstall_dry_run = _RUNNER.invoke(
+        app(),
+        ["uninstall", "hooks", "--repo-root", str(repo_root), "--dry-run"],
+    )
     result = _RUNNER.invoke(app(), ["install", "hooks", "--repo-root", str(repo_root)])
 
-    assert dry_run.exit_code == 1
-    assert result.exit_code == 1
-    assert "POSIX-shell only in v0.1" in dry_run.output
-    assert "Windows is not supported yet" in result.output
+    for failed in (dry_run, manifest, uninstall_dry_run, result):
+        assert failed.exit_code == 1
+        assert "v0.1 does not support Windows hooks" in failed.output
+    assert detect.exit_code == 0
+    assert "hooks" in detect.output
     assert not (repo_root / ".git" / "hooks" / "post-commit").exists()
     assert not (repo_root / ".git" / "hooks" / "pre-push").exists()
 

@@ -127,11 +127,12 @@ def split_unified_diff_segments(
     current: list[str] = []
     current_has_diff_header = False
 
-    for index, line in enumerate(lines):
+    for index, raw_line in enumerate(lines):
+        line = raw_line.removeprefix("\ufeff") if index == 0 else raw_line
         plain_start = (
             line.startswith("--- ")
             and index + 1 < len(lines)
-            and lines[index + 1].startswith("+++ ")
+            and lines[index + 1].removeprefix("\ufeff").startswith("+++ ")
         )
         if line.startswith("diff --git ") or (plain_start and not current_has_diff_header):
             if current:

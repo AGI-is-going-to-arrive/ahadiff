@@ -2,13 +2,16 @@ from __future__ import annotations
 
 
 def normalize_diff_path_token(candidate: str, *, prefix: str = "") -> str | None:
-    value = candidate.strip()
-    if len(value) >= 2 and value[0] == value[-1] == '"':
-        value = _unquote_git_path(value[1:-1])
+    raw_value = candidate.strip()
+    if len(raw_value) >= 2 and raw_value[0] == raw_value[-1] == '"':
+        value = _unquote_git_path(_normalize_quoted_diff_path_separators(raw_value[1:-1]))
+    else:
+        value = _normalize_diff_path_separators(raw_value)
     if value == "/dev/null":
         return None
-    if prefix and value.startswith(prefix):
-        value = value.removeprefix(prefix)
+    normalized_prefix = _normalize_diff_path_separators(prefix)
+    if normalized_prefix and value.startswith(normalized_prefix):
+        value = value.removeprefix(normalized_prefix)
     return _normalize_relative_diff_path(value)
 
 
@@ -126,6 +129,8 @@ def _consume_git_header_token(payload: str, start: int) -> tuple[str | None, int
 def _normalize_relative_diff_path(value: str) -> str | None:
     if value.startswith("/"):
         return None
+    if _has_windows_drive_prefix(value):
+        return None
     parts: list[str] = []
     for segment in value.split("/"):
         if segment in {"", "."}:
@@ -139,6 +144,45 @@ def _normalize_relative_diff_path(value: str) -> str | None:
     if not parts:
         return None
     return "/".join(parts)
+
+
+def _normalize_diff_path_separators(value: str) -> str:
+    return value.replace("\\", "/")
+
+
+def _normalize_quoted_diff_path_separators(value: str) -> str:
+    normalized: list[str] = []
+    index = 0
+    while index < len(value):
+        char = value[index]
+        if char != "\\":
+            normalized.append(char)
+            index += 1
+            continue
+        if index + 1 >= len(value):
+            normalized.append("/")
+            index += 1
+            continue
+
+        next_char = value[index + 1]
+        if next_char in {"\\", '"', "t", "n", "r", "a", "b", "f", "v"}:
+            normalized.append(char)
+            normalized.append(next_char)
+            index += 2
+            continue
+        if next_char in "01234567":
+            normalized.append(char)
+            normalized.append(next_char)
+            index += 2
+            continue
+
+        normalized.append("/")
+        index += 1
+    return "".join(normalized)
+
+
+def _has_windows_drive_prefix(value: str) -> bool:
+    return len(value) >= 2 and value[0].isalpha() and value[1] == ":"
 
 
 __all__ = ["normalize_diff_path_token", "parse_diff_git_header_paths"]

@@ -74,7 +74,13 @@ from .git.capture import (
 from .git.repo import repo_write_lock, unlock_repo_write_lock
 from .i18n import normalize_locale, resolve_locale
 from .improve import run_improve_loop
-from .install import InstallContext, available_targets, get_target, target_detection
+from .install import (
+    InstallContext,
+    available_targets,
+    get_target,
+    manifest_preview_for,
+    target_detection,
+)
 from .lesson import generate_lessons_from_run
 from .lesson.learnability import assess_learnability
 from .llm import probe_provider
@@ -1048,7 +1054,10 @@ def install_cmd(
     target: Annotated[
         str | None,
         typer.Argument(
-            help=("Install target: claude, codex, gemini, github-action, opencode, or hooks.")
+            help=(
+                "Install target: claude, codex, gemini, github-action, opencode, or hooks. "
+                "hooks uses POSIX shell hooks; Windows hooks are not supported in v0.1."
+            )
         ),
     ] = None,
     repo_root: Annotated[
@@ -1058,6 +1067,13 @@ def install_cmd(
     dry_run: Annotated[
         bool,
         typer.Option("--dry-run", help="Preview writes without changing files."),
+    ] = False,
+    manifest: Annotated[
+        bool,
+        typer.Option(
+            "--manifest",
+            help="Show machine-readable preview/write/uninstall action manifest.",
+        ),
     ] = False,
     force: Annotated[
         bool,
@@ -1089,6 +1105,9 @@ def install_cmd(
         if layer2 and target != "github-action":
             raise AhaDiffError("--layer2 is only supported for: ahadiff install github-action")
         installer = get_target(target)
+        if manifest:
+            console.print(manifest_preview_for(installer, context))
+            return
         if dry_run:
             console.print(installer.preview(context))
             return

@@ -19,6 +19,8 @@ class HooksTarget:
     name = "hooks"
 
     def detect(self, context: InstallContext) -> bool:
+        if sys.platform == "win32":
+            return False
         return any(
             f"# AHADIFF:BEGIN target={self.name}" in path.read_text(encoding="utf-8")
             for path in self._hook_paths(context)
@@ -30,6 +32,7 @@ class HooksTarget:
         return self._plan(context).render(context.repo_root)
 
     def preview_uninstall(self, context: InstallContext) -> str:
+        _ensure_posix_hooks_supported()
         return self._plan(context).render_uninstall(context.repo_root)
 
     def write(self, context: InstallContext) -> list[Path]:
@@ -49,6 +52,7 @@ class HooksTarget:
         return [post_commit, pre_push]
 
     def uninstall(self, context: InstallContext) -> list[Path]:
+        _ensure_posix_hooks_supported()
         removed: list[Path] = []
         for path in self._hook_paths(context):
             if _remove_hook_section(path, self.name):
@@ -121,7 +125,9 @@ def _ensure_git_repo(context: InstallContext) -> None:
 
 def _ensure_posix_hooks_supported() -> None:
     if sys.platform == "win32":
-        raise InputError("hooks target is POSIX-shell only in v0.1; Windows is not supported yet")
+        raise InputError(
+            "hooks target is POSIX-shell only; v0.1 does not support Windows hooks yet"
+        )
 
 
 def _git_path(context: InstallContext, relative: str) -> Path:

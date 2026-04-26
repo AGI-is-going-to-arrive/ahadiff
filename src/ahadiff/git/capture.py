@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import hashlib
 import io
 import json
@@ -944,12 +945,20 @@ def _capture_compare_input(
 ) -> _RawCapture:
     old_path = resolve_safe_path_from_root(workspace_root, compare[0])
     new_path = resolve_safe_path_from_root(workspace_root, compare[1])
-    old_bytes = _read_compare_file(old_path, max_patch_bytes=max_patch_bytes)
-    new_bytes = _read_compare_file(new_path, max_patch_bytes=max_patch_bytes)
+    old_bytes = _read_regular_file_no_follow_bounded(
+        old_path,
+        max_bytes=max_patch_bytes,
+        total_budget_bytes=max_patch_bytes,
+    )
+    new_bytes = _read_regular_file_no_follow_bounded(
+        new_path,
+        max_bytes=max_patch_bytes - len(old_bytes),
+        total_budget_bytes=max_patch_bytes,
+    )
     old_binary = b"\x00" in old_bytes
     new_binary = b"\x00" in new_bytes
-    old_rel = str(old_path.relative_to(workspace_root))
-    new_rel = str(new_path.relative_to(workspace_root))
+    old_rel = old_path.relative_to(workspace_root).as_posix()
+    new_rel = new_path.relative_to(workspace_root).as_posix()
 
     if old_binary or new_binary:
         raw_patch = f"Binary files a/{old_rel} and b/{new_rel} differ\n"
@@ -1012,17 +1021,58 @@ def _capture_compare_input(
     )
 
 
-def _read_compare_file(path: Path, *, max_patch_bytes: int) -> bytes:
+def _read_regular_file_no_follow_bounded(
+    path: Path,
+    *,
+    max_bytes: int,
+    total_budget_bytes: int,
+) -> bytes:
+    if max_bytes < 0:
+        raise InputError(f"compare input files exceed {total_budget_bytes} bytes total")
     try:
-        file_stat = path.lstat()
+        path_stat = os.lstat(path)
     except OSError as exc:
         raise InputError("无法读取文件") from exc
-    if file_stat.st_size > max_patch_bytes:
-        raise InputError(f"compare input file exceeds {max_patch_bytes} bytes")
+    if stat.S_ISLNK(path_stat.st_mode):
+        raise InputError("compare input file must not be a symlink")
+
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     try:
-        return path.read_bytes()
+        fd = os.open(str(path), flags)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise InputError("compare input file must not be a symlink") from exc
+        raise InputError("无法读取文件") from exc
+
+    try:
+        file_stat = os.fstat(fd)
+        if not stat.S_ISREG(file_stat.st_mode):
+            raise InputError("compare input file must be a regular file")
+        if file_stat.st_size > max_bytes:
+            if file_stat.st_size > total_budget_bytes:
+                raise InputError(f"compare input file exceeds {total_budget_bytes} bytes")
+            raise InputError(f"compare input files exceed {total_budget_bytes} bytes total")
+
+        chunks: list[bytes] = []
+        total_bytes = 0
+        while True:
+            chunk_size = min(65_536, max_bytes + 1 - total_bytes)
+            if chunk_size <= 0:
+                break
+            chunk = os.read(fd, chunk_size)
+            if chunk == b"":
+                break
+            chunks.append(chunk)
+            total_bytes += len(chunk)
+            if total_bytes > max_bytes:
+                raise InputError(f"compare input files exceed {total_budget_bytes} bytes total")
+        return b"".join(chunks)
+    except InputError:
+        raise
     except OSError as exc:
         raise InputError("无法读取文件") from exc
+    finally:
+        os.close(fd)
 
 
 def _filter_ignored_capture(workspace_root: Path, raw_capture: _RawCapture) -> _RawCapture:

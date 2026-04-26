@@ -170,6 +170,81 @@ def test_parse_unified_diff_handles_octal_quoted_paths_and_crlf() -> None:
     assert changed_files[0].hunks[0].added_lines == (1,)
 
 
+def test_parse_unified_diff_preserves_quoted_literal_backslash_paths() -> None:
+    patch = (
+        'diff --git "a/my\\\\file.py" "b/my\\\\file.py"\n'
+        '--- "a/my\\\\file.py"\n'
+        '+++ "b/my\\\\file.py"\n'
+        "@@ -1 +1 @@\n"
+        "-value = 1\n"
+        "+value = 2\n"
+    )
+
+    changed_files = parse_unified_diff(patch)
+
+    assert len(changed_files) == 1
+    assert changed_files[0].old_path == r"my\file.py"
+    assert changed_files[0].new_path == r"my\file.py"
+    assert changed_files[0].display_path == r"my\file.py"
+    assert changed_files[0].hunks[0].path == r"my\file.py"
+
+
+def test_parse_unified_diff_normalizes_backslash_paths() -> None:
+    patch = (
+        r"diff --git a\src\old.py b\src\new.py"
+        "\n"
+        r"--- a\src\old.py"
+        "\n"
+        r"+++ b\src\new.py"
+        "\n"
+        "@@ -1 +1 @@\n"
+        "-value = 1\n"
+        "+value = 2\n"
+    )
+
+    changed_files = parse_unified_diff(patch)
+
+    assert len(changed_files) == 1
+    assert changed_files[0].old_path == "src/old.py"
+    assert changed_files[0].new_path == "src/new.py"
+    assert changed_files[0].display_path == "src/new.py"
+    assert changed_files[0].hunks[0].path == "src/new.py"
+
+
+def test_parse_unified_diff_handles_crlf_plain_headers() -> None:
+    patch = (
+        "diff --git a/src/crlf.py b/src/crlf.py\r\n"
+        "--- a/src/crlf.py\r\n"
+        "+++ b/src/crlf.py\r\n"
+        "@@ -1 +1 @@\r\n"
+        "-value = 1\r\n"
+        "+value = 2\r\n"
+    )
+
+    changed_files = parse_unified_diff(patch)
+
+    assert len(changed_files) == 1
+    assert changed_files[0].display_path == "src/crlf.py"
+    assert changed_files[0].hunks[0].raw_lines == ("-value = 1", "+value = 2")
+
+
+def test_parse_unified_diff_strips_utf8_bom_from_first_header() -> None:
+    patch = (
+        "\ufeffdiff --git a/src/bom.py b/src/bom.py\n"
+        "--- a/src/bom.py\n"
+        "+++ b/src/bom.py\n"
+        "@@ -1 +1 @@\n"
+        "-value = 1\n"
+        "+value = 2\n"
+    )
+
+    changed_files = parse_unified_diff(patch)
+
+    assert len(changed_files) == 1
+    assert changed_files[0].display_path == "src/bom.py"
+    assert changed_files[0].headers[0] == "diff --git a/src/bom.py b/src/bom.py"
+
+
 def test_parse_unified_diff_preserves_quoted_binary_paths_without_hunks() -> None:
     patch = (
         'diff --git "a/my file.png" "b/my file.png"\n'
@@ -187,9 +262,17 @@ def test_parse_unified_diff_preserves_quoted_binary_paths_without_hunks() -> Non
 
 def test_normalize_diff_path_token_handles_literal_backslash_and_c_style_escapes() -> None:
     assert normalize_diff_path_token('"a/my\\\\040file.py"', prefix="a/") == r"my\040file.py"
+    assert normalize_diff_path_token('"a/my\\\\file.py"', prefix="a/") == r"my\file.py"
     assert normalize_diff_path_token('"a/tab\\tname.py"', prefix="a/") == "tab\tname.py"
     assert normalize_diff_path_token('"a/new\\nline.py"', prefix="a/") == "new\nline.py"
     assert normalize_diff_path_token('"a/car\\rriage.py"', prefix="a/") == "car\rriage.py"
+
+
+def test_normalize_diff_path_token_converts_windows_separators_to_posix() -> None:
+    assert normalize_diff_path_token(r"a\src\demo.py", prefix="a/") == "src/demo.py"
+    assert normalize_diff_path_token(r"b\src\..\demo.py", prefix="b/") == "demo.py"
+    assert normalize_diff_path_token(r"C:\repo\demo.py") is None
+    assert normalize_diff_path_token(r"\\server\share\demo.py") is None
 
 
 def test_normalize_diff_path_token_collapses_path_traversal_segments() -> None:

@@ -931,6 +931,17 @@ def test_segment_path_unquotes_git_quoted_paths() -> None:
     assert path == "my file.py"
 
 
+def test_segment_path_normalizes_windows_style_patch_headers() -> None:
+    path = capture_module._segment_path(  # pyright: ignore[reportPrivateUsage]
+        [
+            r"diff --git a\src\old.py b\src\new.py" "\n",
+            r"--- a\src\old.py" "\n",
+            r"+++ b\src\new.py" "\n",
+        ]
+    )
+    assert path == "src/new.py"
+
+
 def test_segment_path_keeps_quoted_binary_paths_without_patch_headers() -> None:
     path = capture_module._segment_path(  # pyright: ignore[reportPrivateUsage]
         [
@@ -1028,6 +1039,119 @@ def test_compare_capture_rejects_file_larger_than_max_patch_bytes(tmp_path: Path
             hard_limit=5000,
             max_patch_bytes=128,
         )
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "symlink") or not hasattr(os, "O_NOFOLLOW"),
+    reason="requires POSIX symlink no-follow support",
+)
+def test_read_regular_file_no_follow_bounded_rejects_symlink(tmp_path: Path) -> None:
+    target_file = tmp_path / "target.py"
+    symlink_file = tmp_path / "link.py"
+    target_file.write_text("value = 1\n", encoding="utf-8")
+    os.symlink(target_file, symlink_file)
+
+    with pytest.raises(InputError, match="compare input file must not be a symlink"):
+        capture_module._read_regular_file_no_follow_bounded(  # pyright: ignore[reportPrivateUsage]
+            symlink_file,
+            max_bytes=128,
+            total_budget_bytes=128,
+        )
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlink support")
+def test_read_regular_file_no_follow_bounded_rejects_symlink_without_o_nofollow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target_file = tmp_path / "target.py"
+    symlink_file = tmp_path / "link.py"
+    target_file.write_text("value = 1\n", encoding="utf-8")
+    try:
+        os.symlink(target_file, symlink_file)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
+    monkeypatch.delattr(capture_module.os, "O_NOFOLLOW", raising=False)
+
+    with pytest.raises(InputError, match="compare input file must not be a symlink"):
+        capture_module._read_regular_file_no_follow_bounded(  # pyright: ignore[reportPrivateUsage]
+            symlink_file,
+            max_bytes=128,
+            total_budget_bytes=128,
+        )
+
+
+def test_compare_capture_rejects_files_exceeding_total_byte_budget(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    old_file = workspace_root / "old.py"
+    new_file = workspace_root / "new.py"
+    old_file.write_text("a" * 120, encoding="utf-8")
+    new_file.write_text("b" * 120, encoding="utf-8")
+
+    with pytest.raises(InputError, match="compare input files exceed 128 bytes total"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            compare=(Path("old.py"), Path("new.py")),
+            max_files=50,
+            hard_limit=5000,
+            max_patch_bytes=128,
+        )
+
+
+def test_compare_capture_rejects_new_file_when_old_fills_budget(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    old_file = workspace_root / "old.py"
+    new_file = workspace_root / "new.py"
+    old_file.write_text("a" * 128, encoding="utf-8")
+    new_file.write_text("b", encoding="utf-8")
+
+    with pytest.raises(InputError, match="compare input files exceed 128 bytes total"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            compare=(Path("old.py"), Path("new.py")),
+            max_files=50,
+            hard_limit=5000,
+            max_patch_bytes=128,
+        )
+
+
+def test_read_regular_file_no_follow_bounded_rejects_non_regular_file(tmp_path: Path) -> None:
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("FIFO not available on this platform")
+
+    fifo_path = tmp_path / "test.fifo"
+    os.mkfifo(fifo_path)
+
+    with pytest.raises(InputError, match="compare input file must be a regular file"):
+        capture_module._read_regular_file_no_follow_bounded(  # pyright: ignore[reportPrivateUsage]
+            fifo_path,
+            max_bytes=128,
+            total_budget_bytes=128,
+        )
+
+
+def test_compare_capture_uses_posix_diff_headers(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    source_dir = workspace_root / "dir"
+    source_dir.mkdir(parents=True)
+    old_file = source_dir / "old.py"
+    new_file = source_dir / "new.py"
+    old_file.write_text("value = 1\n", encoding="utf-8")
+    new_file.write_text("value = 2\n", encoding="utf-8")
+
+    capture = capture_module.capture_patch(
+        workspace_root=workspace_root,
+        compare=(Path("dir") / "old.py", Path("dir") / "new.py"),
+        max_files=50,
+        hard_limit=5000,
+        max_patch_bytes=10_000,
+    )
+
+    assert "--- a/dir/old.py" in capture.raw_patch_text
+    assert "+++ b/dir/new.py" in capture.raw_patch_text
+    assert capture.metadata["selected_files"] == ["dir/new.py"]
 
 
 def test_git_show_capture_respects_max_patch_bytes(tmp_path: Path) -> None:

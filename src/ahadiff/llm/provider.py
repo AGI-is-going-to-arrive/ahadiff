@@ -110,7 +110,7 @@ class _CircuitState:
     opened_until: float = 0.0
 
 
-@dataclass(frozen=True)
+@dataclass
 class _RetryableProviderError(Exception):
     message: str
     retry_after_seconds: float | None = None
@@ -120,6 +120,7 @@ _STATE_LOCK = threading.Lock()
 _SEMAPHORES: dict[str, _SemaphoreState] = {}
 _RATE_LIMITERS: dict[str, _RateLimiterState] = {}
 _CIRCUITS: dict[str, _CircuitState] = {}
+DEFAULT_PROVIDER_RESPONSE_BYTE_CAP = 10 * 1024 * 1024
 
 
 class ManagedProvider:
@@ -135,6 +136,7 @@ class ManagedProvider:
         qps_limit: int = 3,
         retry_attempts: int = 3,
         request_timeout_seconds: int = 30,
+        response_byte_cap: int = DEFAULT_PROVIDER_RESPONSE_BYTE_CAP,
         circuit_failure_threshold: int = 5,
         circuit_cooldown: int = 60,
         input_token_budget: int = DEFAULT_INPUT_TOKEN_BUDGET,
@@ -156,10 +158,13 @@ class ManagedProvider:
         self.workspace_root = workspace_root
         if max_concurrent < 1:
             raise ConfigError("max_concurrent must be >= 1")
+        if response_byte_cap < 1:
+            raise ConfigError("response_byte_cap must be >= 1")
         self.max_concurrent = max_concurrent
         self.qps_limit = qps_limit
         self.retry_attempts = retry_attempts
         self.request_timeout_seconds = request_timeout_seconds
+        self.response_byte_cap = response_byte_cap
         self.circuit_failure_threshold = circuit_failure_threshold
         self.circuit_cooldown = circuit_cooldown
         self.input_token_budget = input_token_budget
@@ -345,22 +350,41 @@ class ManagedProvider:
 
     def _send_once(self, request: ProviderRequest) -> ProviderResponse:
         method, url, headers, payload = self.adapter.build_request(request, api_key=self.api_key)
-        response = self.client.request(method, url, headers=headers, json=payload)
-        if response.status_code in {401, 403}:
-            raise SafetyError("provider authentication failed")
-        if response.status_code == 429:
-            retry_after = parse_rate_limit_headers(response.headers).retry_after_seconds
-            raise _RetryableProviderError("provider rate limit exceeded", retry_after)
-        if response.status_code in {408, 409} or response.status_code >= 500:
-            raise _RetryableProviderError(
-                f"provider returned retryable status {response.status_code}"
+        with self.client.stream(method, url, headers=headers, json=payload) as response:
+            if response.status_code in {401, 403}:
+                raise SafetyError("provider authentication failed")
+            if response.status_code == 429:
+                retry_after = parse_rate_limit_headers(response.headers).retry_after_seconds
+                raise _RetryableProviderError("provider rate limit exceeded", retry_after)
+            if response.status_code in {408, 409} or response.status_code >= 500:
+                raise _RetryableProviderError(
+                    f"provider returned retryable status {response.status_code}"
+                )
+            if response.status_code >= 400:
+                raise ProviderError(f"provider request failed with status {response.status_code}")
+            buffered_response = httpx.Response(
+                response.status_code,
+                headers=response.headers,
+                content=self._read_capped_response_body(response),
+                request=response.request,
+                extensions=response.extensions,
             )
-        if response.status_code >= 400:
-            raise ProviderError(f"provider request failed with status {response.status_code}")
-        parsed = self.adapter.parse_response(response)
+        parsed = self.adapter.parse_response(buffered_response)
         if not parsed.content.strip():
             raise ProviderError("provider returned empty response")
-        return replace(parsed, rate_limits=parse_rate_limit_headers(response.headers))
+        return replace(parsed, rate_limits=parse_rate_limit_headers(buffered_response.headers))
+
+    def _read_capped_response_body(self, response: httpx.Response) -> bytes:
+        body = bytearray()
+        total_bytes = 0
+        for chunk in response.iter_bytes(chunk_size=65_536):
+            total_bytes += len(chunk)
+            if total_bytes > self.response_byte_cap:
+                raise ProviderError(
+                    f"provider response exceeded byte cap ({self.response_byte_cap} bytes)"
+                )
+            body.extend(chunk)
+        return bytes(body)
 
     def _assert_circuit_closed(self) -> None:
         with _STATE_LOCK:
@@ -552,6 +576,7 @@ def make_provider(
     qps_limit: int = 3,
     retry_attempts: int = 3,
     request_timeout_seconds: int = 30,
+    response_byte_cap: int = DEFAULT_PROVIDER_RESPONSE_BYTE_CAP,
     circuit_failure_threshold: int = 5,
     circuit_cooldown: int = 60,
     input_token_budget: int = DEFAULT_INPUT_TOKEN_BUDGET,
@@ -616,6 +641,7 @@ def make_provider(
         qps_limit=qps_limit,
         retry_attempts=retry_attempts,
         request_timeout_seconds=request_timeout_seconds,
+        response_byte_cap=response_byte_cap,
         circuit_failure_threshold=circuit_failure_threshold,
         circuit_cooldown=circuit_cooldown,
         input_token_budget=input_token_budget,
@@ -633,6 +659,7 @@ def make_provider(
 
 __all__ = [
     "AdapterBase",
+    "DEFAULT_PROVIDER_RESPONSE_BYTE_CAP",
     "ManagedProvider",
     "Provider",
     "adapter_conformance_test",

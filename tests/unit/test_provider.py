@@ -32,7 +32,7 @@ from ahadiff.llm.schemas import CacheKeyInput
 from ahadiff.safety.redact import redaction_pipeline
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    from collections.abc import Generator, Iterator
     from pathlib import Path
 
 
@@ -77,6 +77,12 @@ def _request(**overrides: Any) -> ProviderRequest:
     return ProviderRequest(**payload)
 
 
+def test_llm_reexports_provider_response_byte_cap() -> None:
+    from ahadiff.llm import DEFAULT_PROVIDER_RESPONSE_BYTE_CAP
+
+    assert DEFAULT_PROVIDER_RESPONSE_BYTE_CAP == provider_module.DEFAULT_PROVIDER_RESPONSE_BYTE_CAP
+
+
 def _openai_success_response(
     content: str = "OK",
     *,
@@ -97,6 +103,23 @@ def _openai_success_response(
             "x-ratelimit-remaining-requests": "8",
         },
     )
+
+
+class _ChunkedByteStream(httpx.SyncByteStream):
+    def __init__(self, chunks: tuple[bytes, ...]) -> None:
+        self.chunks = chunks
+        self.read_chunks = 0
+
+    def __iter__(self) -> Iterator[bytes]:
+        for chunk in self.chunks:
+            self.read_chunks += 1
+            yield chunk
+
+
+class _FailingByteStream(httpx.SyncByteStream):
+    def __iter__(self) -> Iterator[bytes]:
+        yield b'{"model":"gpt-5.4-mini",'
+        raise httpx.ReadError("server disconnected during response body")
 
 
 @pytest.mark.parametrize(
@@ -790,6 +813,82 @@ def test_make_provider_rejects_max_concurrent_below_one() -> None:
         make_provider(_provider_config("openai"), api_key="test-key", max_concurrent=0)
 
 
+def test_make_provider_rejects_response_byte_cap_below_one() -> None:
+    with pytest.raises(ConfigError, match="response_byte_cap must be >= 1"):
+        make_provider(_provider_config("openai"), api_key="test-key", response_byte_cap=0)
+
+
+def test_provider_rejects_empty_completion_response() -> None:
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda _: _openai_success_response(content="   ")),
+        trust_env=False,
+    )
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        client=client,
+        retry_attempts=0,
+    )
+    try:
+        with pytest.raises(ProviderError, match="provider returned empty response"):
+            provider.generate(_request())
+    finally:
+        provider.close()
+
+
+def test_provider_rejects_overlong_completion_during_streaming_read() -> None:
+    stream = _ChunkedByteStream(
+        (
+            b"{",
+            b'"choices": [{"message": {"content": "too large"}}]',
+            b"additional over-cap payload",
+        )
+    )
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, stream=stream)),
+        trust_env=False,
+    )
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        client=client,
+        response_byte_cap=16,
+        retry_attempts=0,
+    )
+    try:
+        with pytest.raises(ProviderError, match="provider response exceeded byte cap"):
+            provider.generate(_request())
+    finally:
+        provider.close()
+
+
+def test_read_capped_response_body_uses_bounded_iter_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen_chunk_sizes: list[int | None] = []
+
+    def recording_iter_bytes(
+        self: httpx.Response,
+        chunk_size: int | None = None,
+    ) -> Iterator[bytes]:
+        seen_chunk_sizes.append(chunk_size)
+        yield b'{"model":"gpt-5.4-mini","choices":[{"message":{"content":"OK"}}]}'
+
+    monkeypatch.setattr(httpx.Response, "iter_bytes", recording_iter_bytes)
+    response = httpx.Response(200)
+    seen_chunk_sizes.clear()
+    provider = make_provider(_provider_config("openai"), api_key="test-key")
+    try:
+        body = provider._read_capped_response_body(  # pyright: ignore[reportPrivateUsage]
+            response
+        )
+    finally:
+        provider.close()
+
+    assert body.startswith(b'{"model":"gpt-5.4-mini"')
+    assert seen_chunk_sizes == [65_536]
+
+
 def test_retry_succeeds_after_transport_error() -> None:
     calls = {"count": 0}
     sleep_calls: list[float] = []
@@ -819,6 +918,37 @@ def test_retry_succeeds_after_transport_error() -> None:
     assert response.content == "Recovered after transport error"
     assert calls["count"] == 2
     assert len(sleep_calls) == 1
+
+
+def test_retry_succeeds_after_streaming_transport_error() -> None:
+    calls = {"count": 0}
+    sleep_calls: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return httpx.Response(200, stream=_FailingByteStream())
+        return _openai_success_response(content="Recovered after streaming transport error")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        client=client,
+        retry_attempts=1,
+        sleep=sleep,
+    )
+    try:
+        response = provider.generate(_request())
+    finally:
+        provider.close()
+
+    assert response.content == "Recovered after streaming transport error"
+    assert calls["count"] == 2
+    assert sleep_calls == [1]
 
 
 def test_retry_succeeds_after_remote_protocol_error() -> None:
