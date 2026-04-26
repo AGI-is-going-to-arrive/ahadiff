@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 import pytest
@@ -25,8 +26,7 @@ from ahadiff.review.database import (
 from ahadiff.serve import ServeState, create_app
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
-    from pathlib import Path
+    from collections.abc import Generator, Iterator
 
 
 @pytest.fixture(autouse=True)
@@ -902,6 +902,83 @@ def test_run_lists_use_sql_pagination(tmp_path: Path, monkeypatch: pytest.Monkey
     assert calls == [(routes_runs_module._MAX_LIST_RUNS, None)]  # pyright: ignore[reportPrivateUsage]
 
 
+def test_run_lists_page_without_full_finalized_directory_scan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    for index in range(1001):
+        run_id = f"run-{index:04d}"
+        event_id = f"018f0f52-91c0-7abc-8123-{index:012d}"
+        run_path = state_dir / "runs" / run_id
+        run_path.mkdir(parents=True)
+        _write_json(
+            run_path / "metadata.json",
+            {
+                "run_id": run_id,
+                "source_kind": "git_ref",
+                "source_ref": f"abc{index:04d}",
+                "content_lang": "en",
+                "capability_level": 2,
+                "degraded_flags": {},
+            },
+        )
+        (run_path / "patch.diff").write_text("diff --git a/a.py b/a.py\n", encoding="utf-8")
+        artifact_count, checksum = finalized_artifact_digest(run_path)
+        timestamp = f"2026-04-24T{index // 3600:02d}:{index // 60 % 60:02d}:{index % 60:02d}Z"
+        _write_json(
+            run_path / "finalized.json",
+            {
+                "run_id": run_id,
+                "event_id": event_id,
+                "finalized_at": timestamp,
+                "artifact_count": artifact_count,
+                "checksum": checksum,
+                "status": "keep",
+            },
+        )
+        sync_result_event(
+            db_path,
+            _event(
+                run_id,
+                source_ref=f"abc{index:04d}",
+                event_id=event_id,
+                timestamp=timestamp,
+            ),
+        )
+    calls: list[int] = []
+
+    runs_dir = state_dir / "runs"
+
+    original_iterdir = Path.iterdir
+
+    def fail_runs_iterdir(self: Path) -> Iterator[Path]:
+        if self == runs_dir:
+            raise AssertionError("list pagination must not scan all finalized run directories")
+        return original_iterdir(self)
+
+    original_load_page = routes_runs_module.load_result_events_page
+
+    def recording_page(*args: Any, **kwargs: Any) -> tuple[ResultEvent, ...]:
+        calls.append(cast("int", kwargs["limit"]))
+        return original_load_page(*args, **kwargs)
+
+    monkeypatch.setattr(Path, "iterdir", fail_runs_iterdir)
+    monkeypatch.setattr(routes_runs_module, "load_result_events_page", recording_page)
+    client = _client(state_dir)
+
+    first = client.get("/api/runs?limit=10").json()
+    second = client.get(f"/api/runs?limit=10&cursor={first['next_cursor']}").json()
+
+    assert len(first["runs"]) == 10
+    assert len(second["runs"]) == 10
+    assert first["runs"][0]["run_id"] == "run-1000"
+    assert second["runs"][0]["run_id"] == "run-0990"
+    assert calls[:2] == [10, 10]
+
+
 def test_ratchet_history_uses_sql_pagination(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1251,6 +1328,57 @@ def test_concepts_route_does_not_follow_symlink(tmp_path: Path) -> None:
     client = _client(state_dir)
 
     assert client.get("/api/concepts").json() == {"artifact_type": "concepts", "content": ""}
+
+
+def test_concepts_route_supports_limit_and_cursor(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "concepts.jsonl").write_text(
+        "".join(
+            json.dumps({"term_key": f"term-{index}", "concept": f"term {index}"}) + "\n"
+            for index in range(3)
+        ),
+        encoding="utf-8",
+    )
+    client = _client(state_dir)
+
+    first = client.get("/api/concepts?limit=2").json()
+    second = client.get(f"/api/concepts?limit=2&cursor={first['next_cursor']}").json()
+
+    assert [json.loads(line)["term_key"] for line in first["content"].splitlines()] == [
+        "term-0",
+        "term-1",
+    ]
+    assert first["next_cursor"] == "3"
+    assert [json.loads(line)["term_key"] for line in second["content"].splitlines()] == ["term-2"]
+    assert "next_cursor" not in second
+
+
+def test_run_routes_use_anyio_threadpool_for_file_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    _write_run(state_dir, "run-1", finalized=True)
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    calls: list[str] = []
+
+    async def recording_run_sync(func: Any, *args: Any, **kwargs: Any) -> Any:
+        del kwargs
+        calls.append(getattr(func, "__name__", repr(func)))
+        return func(*args)
+
+    monkeypatch.setattr(routes_runs_module.to_thread, "run_sync", recording_run_sync)
+    client = _client(state_dir)
+
+    assert client.get("/api/runs").status_code == 200
+    assert client.get("/api/run/run-1").status_code == 200
+    assert client.get("/api/run/run-1/lesson").status_code == 200
+
+    assert "_list_runs_payload" in calls
+    assert "_run_detail_payload" in calls
+    assert any("lambda" in call for call in calls)
 
 
 def test_mark_wrong_signal_is_idempotent(tmp_path: Path) -> None:

@@ -5,8 +5,9 @@ import json
 import subprocess
 from importlib.resources import files
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+import pytest
 from typer.testing import CliRunner
 
 import ahadiff.install.hooks as hooks_module
@@ -14,10 +15,16 @@ from ahadiff.cli import app
 from ahadiff.install.base import InstallContext
 from ahadiff.install.template_loader import render_template
 
-if TYPE_CHECKING:
-    import pytest
-
 _RUNNER = CliRunner()
+_V02_INSTALL_TARGET_CASES = (
+    ("aider", "CONVENTIONS.md", "AHADIFF:BEGIN target=aider", False),
+    ("cline", ".clinerules/ahadiff.md", "AHADIFF:GENERATED", True),
+    ("continue", ".continue/rules/ahadiff.md", "AHADIFF:GENERATED", True),
+    ("copilot", ".github/copilot-instructions.md", "AHADIFF:BEGIN target=copilot", False),
+    ("cursor", ".cursor/rules/ahadiff.mdc", "AHADIFF:GENERATED", True),
+    ("roo", ".roo/rules/ahadiff.md", "AHADIFF:GENERATED", True),
+    ("windsurf", ".windsurf/rules/ahadiff.md", "AHADIFF:GENERATED", True),
+)
 
 
 def test_install_reexports_manifest_helpers() -> None:
@@ -69,6 +76,54 @@ def test_install_dry_run_lists_v01_targets(tmp_path: Path) -> None:
 
     assert not (repo_root / "AGENTS.md").exists()
     assert not (repo_root / ".claude").exists()
+
+
+@pytest.mark.parametrize(
+    ("target", "relative_path", "marker", "generated"),
+    _V02_INSTALL_TARGET_CASES,
+)
+def test_v02_install_targets_write_detect_and_uninstall(
+    tmp_path: Path,
+    target: str,
+    relative_path: str,
+    marker: str,
+    generated: bool,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    target_path = repo_root / relative_path
+
+    install_result = _RUNNER.invoke(app(), ["install", target, "--repo-root", str(repo_root)])
+    second_install = _RUNNER.invoke(app(), ["install", target, "--repo-root", str(repo_root)])
+    detect_result = _RUNNER.invoke(app(), ["install", "--detect", "--repo-root", str(repo_root)])
+
+    assert install_result.exit_code == 0, install_result.output
+    assert second_install.exit_code == 0, second_install.output
+    assert target_path.exists()
+    assert marker in target_path.read_text(encoding="utf-8")
+    assert detect_result.exit_code == 0, detect_result.output
+    assert target in detect_result.output
+    assert "yes" in detect_result.output
+
+    uninstall_result = _RUNNER.invoke(
+        app(),
+        ["uninstall", target, "--repo-root", str(repo_root)],
+    )
+
+    assert uninstall_result.exit_code == 0, uninstall_result.output
+    if generated:
+        assert not target_path.exists()
+    else:
+        assert marker not in target_path.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("target", tuple(case[0] for case in _V02_INSTALL_TARGET_CASES))
+def test_v02_install_targets_are_available_in_help(target: str) -> None:
+    result = _RUNNER.invoke(app(), ["install", target, "--help"])
+
+    assert result.exit_code == 0, result.output
+    assert target in result.output
 
 
 def test_install_templates_are_static_and_render_without_values() -> None:

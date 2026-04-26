@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import threading
 from typing import TYPE_CHECKING, Any, cast
 
@@ -10,6 +11,7 @@ import pytest
 from ahadiff.contracts import ProviderConfig
 from ahadiff.core.config import SecurityConfig
 from ahadiff.core.errors import ConfigError, ProviderError, SafetyError
+from ahadiff.core.paths import usage_db_path
 from ahadiff.llm import ProviderRequest, adapter_conformance_test, make_provider
 from ahadiff.llm import provider as provider_module
 from ahadiff.llm.adapters.azure import AzureOpenAIAdapter
@@ -37,7 +39,13 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture(autouse=True)
-def _reset_provider_runtime_state() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+def _reset_provider_runtime_state(  # pyright: ignore[reportUnusedFunction]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Generator[None, None, None]:
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
     reset_provider_runtime_state()
     reset_openrouter_pricing_cache()
     yield
@@ -365,8 +373,8 @@ def test_request_hash_is_salted_per_audit_event(tmp_path: Path) -> None:
         client=client,
     )
     try:
-        provider.generate(_request())
-        provider.generate(_request())
+        provider.generate(_request(source_ref="first"))
+        provider.generate(_request(source_ref="second"))
     finally:
         provider.close()
 
@@ -603,6 +611,8 @@ def test_cache_key_hashes_diff_content_without_embedding_raw_patch() -> None:
         CacheKeyInput(
             diff_content=large_diff,
             source_ref="HEAD",
+            prompt_name="lesson.generate",
+            prompt_fingerprint="prompt-v1",
             prompt_version="prompt-v1",
             eval_bundle_version="bundle-v1",
             model_id="gpt-5.4-mini",
@@ -612,6 +622,7 @@ def test_cache_key_hashes_diff_content_without_embedding_raw_patch() -> None:
             privacy_mode="strict_local",
             redaction_config="cfg",
             context_bundle_hash="ctx",
+            request_payload_sha256="payload",
         )
     )
     assert len(cache_key) == 64
@@ -623,6 +634,8 @@ def test_cache_key_separates_api_family_versions() -> None:
         return CacheKeyInput(
             diff_content="diff --git a/app.py b/app.py\n+print('hi')",
             source_ref="HEAD",
+            prompt_name="lesson.generate",
+            prompt_fingerprint="prompt-v1",
             prompt_version="prompt-v1",
             eval_bundle_version="bundle-v1",
             model_id="gpt-5.4-mini",
@@ -632,12 +645,151 @@ def test_cache_key_separates_api_family_versions() -> None:
             privacy_mode="strict_local",
             redaction_config="cfg",
             context_bundle_hash="ctx",
+            request_payload_sha256="payload",
         )
 
     v1_key = build_cache_key(make_input("v1"))
     v2_key = build_cache_key(make_input("v2"))
 
     assert v1_key != v2_key
+
+
+def test_provider_disk_cache_hit_skips_network_and_records_usage(tmp_path: Path) -> None:
+    calls = {"count": 0}
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        return _openai_success_response(content="Cached", prompt_tokens=13, completion_tokens=5)
+
+    workspace_root = tmp_path / "repo"
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        workspace_root=workspace_root,
+        client=client,
+    )
+    try:
+        first = provider.generate(_request())
+        second = provider.generate(_request())
+    finally:
+        provider.close()
+
+    assert calls["count"] == 1
+    assert first.content == "Cached"
+    assert second.content == "Cached"
+    assert "cache_hit" in second.notes
+    assert any(note.startswith("cache_key=") for note in second.notes)
+    cache_files = list((workspace_root / ".ahadiff" / "cache").glob("*.json"))
+    assert len(cache_files) == 1
+
+    with sqlite3.connect(usage_db_path()) as connection:
+        rows = connection.execute(
+            """
+            SELECT cache_hit, input_tokens, output_tokens, cost_usd, pricing_version
+            FROM llm_usage
+            ORDER BY rowid
+            """
+        ).fetchall()
+
+    assert rows == [
+        (0, 13, 5, 0.00003225, "openai-api-pricing-2026-04-23"),
+        (1, 13, 5, 0.0, "cache-hit"),
+    ]
+
+
+def test_provider_disk_cache_key_separates_prompt_identity(tmp_path: Path) -> None:
+    calls = {"count": 0}
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        return _openai_success_response(content=f"Call {calls['count']}")
+
+    workspace_root = tmp_path / "repo"
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        workspace_root=workspace_root,
+        client=client,
+    )
+    try:
+        first = provider.generate(_request())
+        second = provider.generate(
+            _request(
+                prompt_name="quiz.generate",
+                prompt_fingerprint="prompt-v1",
+                payload_text="Explain the diff.",
+                diff_content="Explain the diff.",
+            )
+        )
+    finally:
+        provider.close()
+
+    assert calls["count"] == 2
+    assert first.content == "Call 1"
+    assert second.content == "Call 2"
+
+
+def test_provider_usage_write_failure_does_not_fail_successful_call(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_record_usage(*_args: object, **_kwargs: object) -> None:
+        raise sqlite3.OperationalError("database is locked")
+
+    workspace_root = tmp_path / "repo"
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda _: _openai_success_response(content="OK")),
+        trust_env=False,
+    )
+    monkeypatch.setattr(provider_module, "record_usage_event", fail_record_usage)
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        workspace_root=workspace_root,
+        client=client,
+    )
+    try:
+        response = provider.generate(_request())
+    finally:
+        provider.close()
+
+    assert response.content == "OK"
+
+
+def test_provider_ignores_cache_entry_with_mismatched_eval_bundle_version(
+    tmp_path: Path,
+) -> None:
+    calls = {"count": 0}
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        return _openai_success_response(content=f"Miss {calls['count']}")
+
+    workspace_root = tmp_path / "repo"
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        workspace_root=workspace_root,
+        client=client,
+    )
+    try:
+        first = provider.generate(_request())
+        cache_file = next((workspace_root / ".ahadiff" / "cache").glob("*.json"))
+        cached_payload = json.loads(cache_file.read_text(encoding="utf-8"))
+        cached_payload["eval_bundle_version"] = "bundle-v2"
+        cache_file.write_text(json.dumps(cached_payload), encoding="utf-8")
+
+        second = provider.generate(_request())
+    finally:
+        provider.close()
+
+    assert first.content == "Miss 1"
+    assert second.content == "Miss 2"
+    assert "cache_hit" not in second.notes
+    assert calls["count"] == 2
 
 
 def test_estimate_cost_uses_official_openai_pricing_for_default_model() -> None:

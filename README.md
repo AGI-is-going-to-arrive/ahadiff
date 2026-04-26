@@ -18,7 +18,7 @@
 - 一份每条结论都可回溯的 **断言清单**（Claims）
 - 一条可比较的 **质量评分历史**（Ratchet，`review.sqlite` 为唯一真相源，`results.tsv` 为导出视图）
 
-当前代码已经能稳定产出 Lesson / Claims / Quiz / Cards / Score / Ratchet；review 流的 SRS runtime、serve backend、install targets、GitHub Action 模板、benchmark suite、improve loop core、Task 17 targeted verification、Phase 2.5 runtime、i18n-0 后端以及前端 `viewer/` React SPA（Dashboard / Lesson / Diff / Quiz / ConceptGraph 五页 + LanguageSwitcher + 全量 i18n 82/82 key parity + 330/330 Playwright 矩阵 + R1-R5 五轮跨模型对抗审查共 51 项 real findings 修复）都已落地，Stage 7 i18n signoff 已通过。v0.2 Gate 0 跨平台基础已通过审查：subprocess UTF-8 encoding + Git `core.quotePath=false`、SQLite journal mode WSL2 降级、lock inode 校验 + headless serve 检测、`datetime.utcnow()` 静态 guard。v0.2 Gate 1 Review DB Migration + Write Safety 已通过审查：`PRAGMA user_version` migration chain、serve 写锁统一（repo_write_lock + threading.Lock）、SQL pagination DAO、review queue/rate API 端点。v0.2 Gate 2 Backend Expansion 已通过审查：compare 文件读取四层防御（lstat + O_NOFOLLOW + O_NONBLOCK + fstat）、diff path token 转义感知 Windows 反斜杠归一化、provider streaming byte cap + 空 completion 拒绝 + TransportError 全覆盖 retry、install manifest preview/write/uninstall 三态 + hooks Windows detect 不阻塞。
+当前代码已经能稳定产出 Lesson / Claims / Quiz / Cards / Score / Ratchet；review 流的 SRS runtime、serve backend、install targets、GitHub Action 模板、benchmark suite、improve loop core、Task 17 targeted verification、Phase 2.5 runtime、i18n-0 后端以及前端 `viewer/` React SPA（Dashboard / Lesson / Diff / Quiz / ConceptGraph 五页 + LanguageSwitcher + 全量 i18n 82/82 key parity + 330/330 Playwright 矩阵 + R1-R5 五轮跨模型对抗审查共 51 项 real findings 修复）都已落地，Stage 7 i18n signoff 已通过。v0.2 Gate 0-5 已全部通过审查。Gate 5（Scale + Input + Install Expansion）新增：`--compare-dir` 目录 diff（no-follow + 文件/目录/深度三重限制）、`--patch-url` URL 下载（全链路 SSRF 防护：pre-resolve IP-connect + TLS SNI + 每跳 redirect 重新检查）、serve cursor pagination + anyio threadpool、LLM cache lookup/store + usage.sqlite 花费记录、7 个新 install target（Cursor/Windsurf/Copilot/Continue/Aider/Cline/Roo）。
 
 > Code Wiki 解释仓库，知返解释这次改动 —— 而且每一句话都能回到代码证据。
 
@@ -68,7 +68,7 @@ ahadiff serve
 # 棘轮优化（Task 16/17 后端已落地；需要已有 finalized run 和 provider 配置）
 ahadiff improve --suite local --rounds 6
 
-# 安装到 AI 工具 / 自动化入口（v0.1 已支持 6 个 target）
+# 安装到 AI 工具 / 自动化入口（13 个 target）
 ahadiff install claude    # Claude Code → .claude/skills/
 ahadiff install codex     # Codex CLI → AGENTS.md
 ahadiff install gemini    # Gemini CLI → GEMINI.md
@@ -76,7 +76,13 @@ ahadiff install opencode  # OpenCode → AGENTS.md + .opencode/agents/
 ahadiff install hooks     # POSIX shell git hooks（Windows v0.1 会明确拒绝）
 ahadiff install github-action          # verify-only workflow
 ahadiff install github-action --layer2 # opt-in generate workflow（需要 provider secret）
-# v0.2 扩展: cursor / copilot / windsurf / cline / amp / jules / aider
+ahadiff install cursor    # Cursor → .cursor/rules/
+ahadiff install windsurf  # Windsurf → .windsurf/rules/
+ahadiff install copilot   # GitHub Copilot → .github/copilot-instructions.md
+ahadiff install continue  # Continue → .continue/rules/
+ahadiff install aider     # Aider → .aider.conf.yml
+ahadiff install cline     # Cline → .clinerules
+ahadiff install roo       # Roo Code → .roo/rules/
 ```
 
 当前已落地的主要产出结构：

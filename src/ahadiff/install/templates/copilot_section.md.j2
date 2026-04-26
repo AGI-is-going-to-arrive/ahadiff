@@ -1,0 +1,11 @@
+## AhaDiff
+
+When suggesting or reviewing code changes, use AhaDiff for verified learn-back:
+
+- `ahadiff learn HEAD~1..HEAD` for committed changes.
+- `ahadiff learn --staged` before committing staged work.
+- `ahadiff verify <run_id>` or `ahadiff score <run_id>` for existing runs.
+
+Prefer explanations backed by `claims.jsonl` and file-line evidence. Keep
+provider credentials in environment variables and avoid committing private
+audit logs.

@@ -292,11 +292,12 @@ def load_finalized_ratchet_history_page(
     limit: int,
     before: tuple[str, str] | None = None,
 ) -> tuple[ResultEvent, ...]:
+    event_ids = tuple(finalized_event_ids)
     return load_result_events_page(
         db_path,
         limit=limit,
         before=before,
-        event_ids=finalized_event_ids,
+        event_ids=event_ids if event_ids else None,
         statuses=statuses,
     )
 

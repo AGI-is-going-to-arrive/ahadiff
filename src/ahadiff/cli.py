@@ -127,6 +127,11 @@ _APP.add_typer(_GRAPH_APP, name="graph")
 _APP.add_typer(_MAINT_APP, name="maint")
 _APP.add_typer(_PROVIDER_APP, name="provider")
 _APP.add_typer(_DB_APP, name="db")
+_INSTALL_TARGET_HELP = (
+    "Install target: aider, claude, cline, codex, continue, copilot, cursor, gemini, "
+    "github-action, hooks, opencode, roo, or windsurf. hooks uses POSIX shell hooks; "
+    "Windows hooks are not supported in v0.1."
+)
 _SQLITE_MIN_VERSION = (3, 51, 3)
 _SQLITE_ALLOWED_BACKPORTS = {(3, 50, 7), (3, 44, 6)}
 
@@ -678,6 +683,14 @@ def learn_cmd(
         tuple[Path, Path] | None,
         typer.Option("--compare", help="Compare two files with unified diff semantics."),
     ] = None,
+    compare_dir: Annotated[
+        tuple[Path, Path] | None,
+        typer.Option("--compare-dir", help="Recursively compare two directories."),
+    ] = None,
+    patch_url: Annotated[
+        str | None,
+        typer.Option("--patch-url", help="Download a unified diff from an HTTP(S) URL."),
+    ] = None,
     dry_run: Annotated[
         bool,
         typer.Option(
@@ -736,7 +749,12 @@ def learn_cmd(
     ] = "AHADIFF_PROVIDER_API_KEY",
 ) -> None:
     try:
-        allow_non_git = patch is not None or compare is not None
+        allow_non_git = (
+            patch is not None
+            or compare is not None
+            or compare_dir is not None
+            or patch_url is not None
+        )
         root, has_git_repo = _resolve_learn_workspace_root(
             repo_root,
             allow_non_git=allow_non_git,
@@ -774,6 +792,8 @@ def learn_cmd(
                 include_untracked=include_untracked,
                 patch=patch,
                 compare=compare,
+                compare_dir=compare_dir,
+                patch_url=patch_url,
                 use_graphify=use_graphify,
                 max_files=int(capture_config["max_files"]),
                 hard_limit=int(capture_config["hard_limit"]),
@@ -1053,12 +1073,7 @@ def quiz_cmd(
 def install_cmd(
     target: Annotated[
         str | None,
-        typer.Argument(
-            help=(
-                "Install target: claude, codex, gemini, github-action, opencode, or hooks. "
-                "hooks uses POSIX shell hooks; Windows hooks are not supported in v0.1."
-            )
-        ),
+        typer.Argument(help=_INSTALL_TARGET_HELP),
     ] = None,
     repo_root: Annotated[
         Path,
@@ -1125,9 +1140,7 @@ def install_cmd(
 def uninstall_cmd(
     target: Annotated[
         str,
-        typer.Argument(
-            help=("Install target: claude, codex, gemini, github-action, opencode, or hooks.")
-        ),
+        typer.Argument(help=_INSTALL_TARGET_HELP),
     ],
     repo_root: Annotated[
         Path,

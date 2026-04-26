@@ -2,13 +2,20 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 from typing import TYPE_CHECKING
 
+import ahadiff.wiki.concepts as concepts_module
 from ahadiff.quiz.schemas import QuizEvidence, QuizQuestion
-from ahadiff.wiki.concepts import append_concepts, compute_term_key, load_visible_concepts
+from ahadiff.wiki.concepts import (
+    append_concepts,
+    compute_term_key,
+    load_concepts_page,
+    load_visible_concepts,
+)
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    import pytest
 
 
 def _init_git_repo(path: Path) -> None:
@@ -110,3 +117,76 @@ def test_load_visible_concepts_filters_by_git_ancestry(tmp_path: Path) -> None:
     assert len(visible_at_head) == 1
     assert visible_at_head[0]["concept"] == "stdout update"
     assert visible_at_base == ()
+
+
+def test_load_concepts_page_streams_with_line_cursor(tmp_path: Path) -> None:
+    concepts_path = tmp_path / "concepts.jsonl"
+    concepts_path.write_text(
+        "\n".join(
+            json.dumps({"term_key": f"term-{index}", "concept": f"term {index}"})
+            for index in range(3)
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    first_page = load_concepts_page(concepts_path, limit=2)
+    second_page = load_concepts_page(
+        concepts_path,
+        limit=2,
+        cursor=int(first_page.next_cursor or "0"),
+    )
+
+    assert [entry["term_key"] for entry in first_page.entries] == ["term-0", "term-1"]
+    assert first_page.next_cursor == "3"
+    assert [entry["term_key"] for entry in second_page.entries] == ["term-2"]
+    assert second_page.next_cursor is None
+
+
+def test_load_visible_concepts_streams_and_memoizes_ancestry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "repo"
+    workspace_root.mkdir()
+    _init_git_repo(workspace_root)
+    head_sha = _commit_file(workspace_root, "src/app.py", "value = 1\n", "base")
+    concepts_path = workspace_root / ".ahadiff" / "concepts.jsonl"
+    concepts_path.parent.mkdir(parents=True)
+    with concepts_path.open("w", encoding="utf-8") as handle:
+        for index in range(10_000):
+            handle.write(
+                json.dumps(
+                    {
+                        "term_key": f"term-{index}",
+                        "concept": f"term {index}",
+                        "source_refs": [head_sha],
+                    }
+                )
+                + "\n"
+            )
+    calls: list[str] = []
+
+    def fake_is_ancestor(repo_root: Path, source_ref: str, head_ref: str) -> bool:
+        assert repo_root == workspace_root
+        assert head_ref == "HEAD"
+        calls.append(source_ref)
+        return True
+
+    def fail_read_text(
+        self: Path,
+        encoding: str | None = None,
+        errors: str | None = None,
+    ) -> str:
+        if self == concepts_path:
+            raise AssertionError("concepts.jsonl must be streamed, not read_text()")
+        return original_read_text(self, encoding=encoding, errors=errors)
+
+    original_read_text = Path.read_text
+    monkeypatch.setattr(concepts_module, "_is_ancestor", fake_is_ancestor)
+    monkeypatch.setattr(Path, "read_text", fail_read_text)
+
+    visible = load_visible_concepts(workspace_root=workspace_root, head_ref="HEAD")
+
+    assert len(visible) == 10_000
+    assert calls == [head_sha]

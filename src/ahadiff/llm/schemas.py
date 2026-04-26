@@ -25,6 +25,8 @@ class RateLimitSnapshot:
 class CacheKeyInput:
     diff_content: str
     source_ref: str
+    prompt_name: str
+    prompt_fingerprint: str
     prompt_version: str
     eval_bundle_version: str
     model_id: str
@@ -34,6 +36,7 @@ class CacheKeyInput:
     privacy_mode: PrivacyMode
     redaction_config: str
     context_bundle_hash: str
+    request_payload_sha256: str
 
 
 @dataclass(frozen=True)

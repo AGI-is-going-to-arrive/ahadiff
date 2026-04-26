@@ -13,7 +13,7 @@ import stat
 import subprocess
 import sys
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from difflib import unified_diff
 from queue import Queue
@@ -37,6 +37,7 @@ from ahadiff.safety.ignore import (
 from ahadiff.safety.injection import protect_untrusted_text
 from ahadiff.safety.redact import RedactionPipelineResult, redaction_pipeline
 
+from .download import download_patch_url
 from .line_map import build_line_map, serialize_line_map_payload
 from .parser import parse_unified_diff, split_unified_diff_segments
 from .path_tokens import normalize_diff_path_token, parse_diff_git_header_paths
@@ -71,6 +72,14 @@ ContractSourceKind = Literal[
     "patch_stdin",
     "file_compare",
 ]
+
+_COMPARE_DIR_MAX_FILES = 10_000
+_COMPARE_DIR_MAX_DIRS = 1_000
+_COMPARE_DIR_MAX_DEPTH = 64
+
+
+def _empty_metadata_texts() -> dict[str, str]:
+    return {}
 
 
 @dataclass(frozen=True)
@@ -114,6 +123,7 @@ class _RawCapture:
     resolved_files: dict[str, str]
     before_text_by_path: dict[str, str]
     after_text_by_path: dict[str, str]
+    metadata_texts: dict[str, str] = field(default_factory=_empty_metadata_texts)
 
 
 @dataclass(frozen=True)
@@ -147,6 +157,8 @@ def capture_patch(
     include_untracked: bool = False,
     patch: str | None = None,
     compare: tuple[Path, Path] | None = None,
+    compare_dir: tuple[Path, Path] | None = None,
+    patch_url: str | None = None,
     use_graphify: bool | None = None,
     max_files: int | None = None,
     hard_limit: int | None = None,
@@ -166,6 +178,8 @@ def capture_patch(
         include_untracked=include_untracked,
         patch=patch,
         compare=compare,
+        compare_dir=compare_dir,
+        patch_url=patch_url,
         max_patch_bytes=max_patch_bytes,
     )
     raw_capture = _filter_ignored_capture(workspace_root, raw_capture)
@@ -178,6 +192,7 @@ def capture_patch(
         resolved_files=raw_capture.resolved_files,
         branch_names=raw_capture.branch_names,
         tag_names=raw_capture.tag_names,
+        metadata_texts=raw_capture.metadata_texts,
     )
     protected_patch = protect_untrusted_text(
         redaction_result.redacted_text,
@@ -539,20 +554,25 @@ def _capture_input(
     include_untracked: bool,
     patch: str | None,
     compare: tuple[Path, Path] | None,
+    compare_dir: tuple[Path, Path] | None,
+    patch_url: str | None,
     max_patch_bytes: int | None,
 ) -> _RawCapture:
+    effective_max_patch_bytes = max_patch_bytes or int(DEFAULT_CONFIG["capture"]["max_patch_bytes"])
     selections = [
         revision is not None,
         last,
         since is not None,
         patch is not None,
         compare is not None,
+        compare_dir is not None,
+        patch_url is not None,
         staged or unstaged,
     ]
     if sum(1 for item in selections if item) != 1:
         raise InputError(
             "choose exactly one input mode: revision range/single commit, --last, "
-            "--since, --staged/--unstaged, --patch, or --compare"
+            "--since, --staged/--unstaged, --patch, --patch-url, --compare, or --compare-dir"
         )
     if author is not None and since is None:
         raise InputError("--author can only be used together with --since")
@@ -561,13 +581,24 @@ def _capture_input(
         return _capture_patch_input(
             workspace_root=workspace_root,
             patch=patch,
-            max_patch_bytes=max_patch_bytes or int(DEFAULT_CONFIG["capture"]["max_patch_bytes"]),
+            max_patch_bytes=effective_max_patch_bytes,
+        )
+    if patch_url is not None:
+        return _capture_patch_url_input(
+            patch_url,
+            max_patch_bytes=effective_max_patch_bytes,
         )
     if compare is not None:
         return _capture_compare_input(
             workspace_root,
             compare,
-            max_patch_bytes=max_patch_bytes or int(DEFAULT_CONFIG["capture"]["max_patch_bytes"]),
+            max_patch_bytes=effective_max_patch_bytes,
+        )
+    if compare_dir is not None:
+        return _capture_compare_dir_input(
+            workspace_root,
+            compare_dir,
+            max_patch_bytes=effective_max_patch_bytes,
         )
 
     repo = open_repo(workspace_root)
@@ -577,12 +608,12 @@ def _capture_input(
             repo,
             since=since,
             author=author,
-            max_patch_bytes=max_patch_bytes or int(DEFAULT_CONFIG["capture"]["max_patch_bytes"]),
+            max_patch_bytes=effective_max_patch_bytes,
         )
     if last:
         return _capture_last(
             repo,
-            max_patch_bytes=max_patch_bytes or int(DEFAULT_CONFIG["capture"]["max_patch_bytes"]),
+            max_patch_bytes=effective_max_patch_bytes,
         )
     if staged or unstaged:
         return _capture_worktree(
@@ -590,14 +621,14 @@ def _capture_input(
             staged=staged,
             unstaged=unstaged,
             include_untracked=include_untracked,
-            max_patch_bytes=max_patch_bytes or int(DEFAULT_CONFIG["capture"]["max_patch_bytes"]),
+            max_patch_bytes=effective_max_patch_bytes,
         )
     if revision is None:
         raise InputError("revision input was not provided")
     return _capture_revision(
         repo,
         revision,
-        max_patch_bytes=max_patch_bytes or int(DEFAULT_CONFIG["capture"]["max_patch_bytes"]),
+        max_patch_bytes=effective_max_patch_bytes,
     )
 
 
@@ -842,11 +873,55 @@ def _capture_patch_input(
         source_kind = "patch_file"
         source_name = Path(canonicalize_path_text(patch_path.relative_to(workspace_root))).name
 
+    return _build_patch_input_capture(
+        data,
+        source_kind=source_kind,
+        source_name=source_name,
+        source_detail={"type": source_kind, "name": source_name},
+        max_patch_bytes=max_patch_bytes,
+    )
+
+
+def _capture_patch_url_input(patch_url: str, *, max_patch_bytes: int) -> _RawCapture:
+    downloaded = download_patch_url(patch_url, max_patch_bytes=max_patch_bytes)
+    url_hash = f"sha256:{hashlib.sha256(patch_url.encode('utf-8')).hexdigest()}"
+    final_url_hash = f"sha256:{hashlib.sha256(downloaded.final_url.encode('utf-8')).hexdigest()}"
+    return _build_patch_input_capture(
+        downloaded.body,
+        source_kind="patch_file",
+        source_name="patch-url",
+        source_detail={
+            "type": "patch_url",
+            "url_hash": url_hash,
+            "final_url_hash": final_url_hash,
+            "redirect_count": downloaded.redirect_count,
+            "content_type": downloaded.content_type,
+        },
+        max_patch_bytes=max_patch_bytes,
+        metadata_texts={
+            "patch_url": patch_url,
+            "patch_url_final": downloaded.final_url,
+        },
+    )
+
+
+def _build_patch_input_capture(
+    data: bytes,
+    *,
+    source_kind: ContractSourceKind,
+    source_name: str,
+    source_detail: dict[str, Any],
+    max_patch_bytes: int,
+    metadata_texts: dict[str, str] | None = None,
+) -> _RawCapture:
     if b"\x00" in data:
         raise InputError("patch input must be text, not binary")
     raw_patch = _decode_text_bytes(data, description="patch input")
     raw_patch = _normalize_newlines(raw_patch)
     source_ref = f"sha256:{hashlib.sha256(raw_patch.encode('utf-8')).hexdigest()}"
+    detail = dict(source_detail)
+    detail.setdefault("name", source_name)
+    detail["patch_hash"] = source_ref
     return _RawCapture(
         source_kind=source_kind,
         source_ref=source_ref,
@@ -854,16 +929,13 @@ def _capture_patch_input(
         raw_patch_text=raw_patch,
         base_ref=None,
         head_ref=None,
-        source_detail={
-            "type": source_kind,
-            "name": source_name,
-            "patch_hash": source_ref,
-        },
+        source_detail=detail,
         branch_names=(),
         tag_names=(),
         resolved_files={},
         before_text_by_path={},
         after_text_by_path={},
+        metadata_texts=metadata_texts or {},
     )
 
 
@@ -1021,6 +1093,167 @@ def _capture_compare_input(
     )
 
 
+def _capture_compare_dir_input(
+    workspace_root: Path,
+    compare_dir: tuple[Path, Path],
+    *,
+    max_patch_bytes: int,
+) -> _RawCapture:
+    old_dir = resolve_safe_path_from_root(workspace_root, compare_dir[0])
+    new_dir = resolve_safe_path_from_root(workspace_root, compare_dir[1])
+    _ensure_compare_directory(old_dir)
+    _ensure_compare_directory(new_dir)
+
+    old_paths = _walk_compare_dir(old_dir)
+    new_paths = _walk_compare_dir(new_dir)
+    all_paths = sorted(set(old_paths) | set(new_paths))
+    if not all_paths:
+        raise InputError("directories have no comparable files")
+
+    remaining_bytes = max_patch_bytes
+    patch_chunks: list[str] = []
+    before_text_by_path: dict[str, str] = {}
+    after_text_by_path: dict[str, str] = {}
+    digest = hashlib.sha256()
+    changed_count = 0
+    binary_count = 0
+    for relative_path in all_paths:
+        old_file = old_dir / relative_path
+        new_file = new_dir / relative_path
+        old_exists = relative_path in old_paths
+        new_exists = relative_path in new_paths
+        old_bytes = b""
+        new_bytes = b""
+        if old_exists:
+            old_bytes = _read_regular_file_no_follow_bounded(
+                old_file,
+                max_bytes=remaining_bytes,
+                total_budget_bytes=max_patch_bytes,
+            )
+            remaining_bytes -= len(old_bytes)
+        if new_exists:
+            new_bytes = _read_regular_file_no_follow_bounded(
+                new_file,
+                max_bytes=remaining_bytes,
+                total_budget_bytes=max_patch_bytes,
+            )
+            remaining_bytes -= len(new_bytes)
+        if old_exists and new_exists and old_bytes == new_bytes:
+            continue
+
+        digest.update(relative_path.as_posix().encode("utf-8"))
+        digest.update(b"\0old\0")
+        digest.update(old_bytes)
+        digest.update(b"\0new\0")
+        digest.update(new_bytes)
+        changed_count += 1
+
+        old_text = _decode_compare_dir_text(old_bytes, relative_path.as_posix())
+        new_text = _decode_compare_dir_text(new_bytes, relative_path.as_posix())
+        if old_text is None or new_text is None:
+            binary_count += 1
+            relative_posix = relative_path.as_posix()
+            patch_chunks.append(f"Binary files a/{relative_posix} and b/{relative_posix} differ\n")
+            continue
+
+        if old_exists:
+            before_text_by_path[relative_path.as_posix()] = old_text
+        if new_exists:
+            after_text_by_path[relative_path.as_posix()] = new_text
+        diff_lines = unified_diff(
+            old_text.splitlines(keepends=True),
+            new_text.splitlines(keepends=True),
+            fromfile=f"a/{relative_path.as_posix()}",
+            tofile=f"b/{relative_path.as_posix()}",
+            lineterm="",
+        )
+        rendered = _render_unified_diff(diff_lines)
+        if rendered and not rendered.endswith("\n"):
+            rendered += "\n"
+        patch_chunks.append(rendered)
+
+    if changed_count == 0:
+        raise InputError("directories have no differences")
+
+    raw_patch = "".join(patch_chunks)
+    _ensure_patch_text_size(raw_patch, max_patch_bytes=max_patch_bytes)
+    source_ref = f"sha256:{digest.hexdigest()}"
+    return _RawCapture(
+        source_kind="file_compare",
+        source_ref=source_ref,
+        capability_level=2,
+        raw_patch_text=raw_patch,
+        base_ref=None,
+        head_ref=None,
+        source_detail={
+            "type": "compare_dir",
+            "old_name": old_dir.name,
+            "new_name": new_dir.name,
+            "changed_files": changed_count,
+            "binary_files": binary_count,
+        },
+        branch_names=(),
+        tag_names=(),
+        resolved_files=after_text_by_path,
+        before_text_by_path=before_text_by_path,
+        after_text_by_path=after_text_by_path,
+    )
+
+
+def _ensure_compare_directory(path: Path) -> None:
+    try:
+        mode = path.lstat().st_mode
+    except OSError as exc:
+        raise InputError("compare-dir input directory does not exist") from exc
+    if stat.S_ISLNK(mode):
+        raise InputError("compare-dir input directory must not be a symlink")
+    if not stat.S_ISDIR(mode):
+        raise InputError("compare-dir input must be a directory")
+
+
+def _walk_compare_dir(root: Path) -> set[Path]:
+    relative_paths: set[Path] = set()
+    stack = [root]
+    dirs_seen = 0
+    while stack:
+        current = stack.pop()
+        dirs_seen += 1
+        if dirs_seen > _COMPARE_DIR_MAX_DIRS:
+            raise InputError(f"compare-dir exceeds {_COMPARE_DIR_MAX_DIRS} directories")
+        try:
+            entries = list(os.scandir(current))
+        except OSError as exc:
+            raise InputError("compare-dir input directory is unreadable") from exc
+        for entry in entries:
+            try:
+                entry_stat = entry.stat(follow_symlinks=False)
+            except OSError as exc:
+                raise InputError("compare-dir input entry is unreadable") from exc
+            entry_path = Path(entry.path)
+            if stat.S_ISLNK(entry_stat.st_mode):
+                raise InputError("compare-dir input must not contain symlinks")
+            relative_path = entry_path.relative_to(root)
+            if len(relative_path.parts) > _COMPARE_DIR_MAX_DEPTH:
+                raise InputError(f"compare-dir exceeds depth {_COMPARE_DIR_MAX_DEPTH}")
+            if stat.S_ISDIR(entry_stat.st_mode):
+                stack.append(entry_path)
+                continue
+            if stat.S_ISREG(entry_stat.st_mode):
+                relative_paths.add(relative_path)
+                if len(relative_paths) > _COMPARE_DIR_MAX_FILES:
+                    raise InputError(f"compare-dir exceeds {_COMPARE_DIR_MAX_FILES} files")
+    return relative_paths
+
+
+def _decode_compare_dir_text(data: bytes, description: str) -> str | None:
+    if b"\x00" in data:
+        return None
+    try:
+        return _normalize_newlines(_decode_text_bytes(data, description=description))
+    except InputError:
+        return None
+
+
 def _read_regular_file_no_follow_bounded(
     path: Path,
     *,
@@ -1032,7 +1265,7 @@ def _read_regular_file_no_follow_bounded(
     try:
         path_stat = os.lstat(path)
     except OSError as exc:
-        raise InputError("无法读取文件") from exc
+        raise InputError("compare input file is unreadable") from exc
     if stat.S_ISLNK(path_stat.st_mode):
         raise InputError("compare input file must not be a symlink")
 
@@ -1042,7 +1275,7 @@ def _read_regular_file_no_follow_bounded(
     except OSError as exc:
         if exc.errno == errno.ELOOP:
             raise InputError("compare input file must not be a symlink") from exc
-        raise InputError("无法读取文件") from exc
+        raise InputError("compare input file is unreadable") from exc
 
     try:
         file_stat = os.fstat(fd)
@@ -1072,7 +1305,7 @@ def _read_regular_file_no_follow_bounded(
     except InputError:
         raise
     except OSError as exc:
-        raise InputError("无法读取文件") from exc
+        raise InputError("compare input file is unreadable") from exc
     finally:
         os.close(fd)
 
@@ -1114,6 +1347,7 @@ def _filter_ignored_capture(workspace_root: Path, raw_capture: _RawCapture) -> _
         resolved_files=filtered_resolved_files,
         before_text_by_path=filtered_before,
         after_text_by_path=filtered_after,
+        metadata_texts=raw_capture.metadata_texts,
     )
 
 

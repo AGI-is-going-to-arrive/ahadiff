@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import logging
 import os
 import pathlib as _pathlib
+import socket
 import subprocess
 import time
 from typing import TYPE_CHECKING, Any, NoReturn, cast
@@ -15,6 +17,7 @@ from typer.testing import CliRunner
 from ahadiff.cli import app
 from ahadiff.core.errors import InputError, SafetyError, StorageError
 from ahadiff.git import capture as capture_module
+from ahadiff.git import download as download_module
 from ahadiff.git import repo as repo_module
 
 if TYPE_CHECKING:
@@ -95,6 +98,57 @@ def _invoke_repo_cli(
         input=input_text,
         catch_exceptions=False,
     )
+
+
+class _FakeHTTPSocket:
+    def __init__(self, response: bytes) -> None:
+        self._response = io.BytesIO(response)
+        self.sent = b""
+        self.connected_to: object | None = None
+        self.closed = False
+
+    def settimeout(self, _timeout: float) -> None:
+        return None
+
+    def connect(self, sockaddr: object) -> None:
+        self.connected_to = sockaddr
+
+    def sendall(self, data: bytes) -> None:
+        self.sent += data
+
+    def makefile(self, _mode: str) -> io.BytesIO:
+        return self._response
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _install_fake_http(
+    monkeypatch: pytest.MonkeyPatch,
+    responses: list[bytes],
+    *,
+    dns_sequence: list[str] | None = None,
+) -> list[_FakeHTTPSocket]:
+    connections: list[_FakeHTTPSocket] = []
+    remaining_dns = list(dns_sequence or [])
+
+    def fake_getaddrinfo(host: str, port: int, **_kwargs: object) -> list[object]:
+        ip_text = remaining_dns.pop(0) if remaining_dns else "93.184.216.34"
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip_text, port))]
+
+    def fake_socket(
+        _family: socket.AddressFamily,
+        _socktype: socket.SocketKind,
+        _proto: int,
+    ) -> _FakeHTTPSocket:
+        assert responses
+        connection = _FakeHTTPSocket(responses.pop(0))
+        connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(download_module.socket, "getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr(download_module.socket, "socket", fake_socket)
+    return connections
 
 
 def test_learn_range_dry_run_writes_redacted_artifacts(tmp_path: Path) -> None:
@@ -454,6 +508,264 @@ def test_learn_patch_file_and_stdin_modes(tmp_path: Path) -> None:
     _, stdin_metadata, stdin_patch = _load_run_artifacts(repo_root)
     assert stdin_metadata["source_kind"] == "patch_stdin"
     assert "[REDACTED:openai_api_key]" in stdin_patch
+
+
+def test_patch_url_download_redacts_secret_like_url_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    secret = "sk-abcdefghijklmnopqrstuvwxyz123456"
+    patch_text = "--- a/sample.py\n+++ b/sample.py\n@@ -1 +1 @@\n-value = 1\n+value = 2\n"
+    response = (
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain; charset=utf-8\r\n"
+        f"Content-Length: {len(patch_text.encode('utf-8'))}\r\n"
+        "\r\n"
+    ).encode("ascii") + patch_text.encode("utf-8")
+    connections = _install_fake_http(monkeypatch, [response])
+
+    capture = capture_module.capture_patch(
+        workspace_root=workspace_root,
+        patch_url=f"http://patch.example/sample.diff?token={secret}",
+        max_patch_bytes=10_000,
+    )
+
+    metadata_text = json.dumps(capture.metadata, sort_keys=True)
+    url_targets = {
+        target.source_name: target.redacted_text
+        for target in capture.redaction_result.secondary_targets
+    }
+    assert capture.metadata["source_kind"] == "patch_file"
+    assert capture.metadata["source_detail"]["type"] == "patch_url"
+    assert secret not in metadata_text
+    assert "http://patch.example" not in metadata_text
+    assert "[REDACTED:openai_api_key]" in url_targets["patch_url"]
+    assert connections[0].connected_to == ("93.184.216.34", 80)
+    assert b"Host: patch.example\r\n" in connections[0].sent
+
+
+def test_patch_url_blocks_private_ip(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+
+    with pytest.raises(InputError, match="private IP"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            patch_url="http://127.0.0.1/private.diff",
+            max_patch_bytes=10_000,
+        )
+
+
+def test_patch_url_redirect_loop_is_capped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    redirect = (
+        b"HTTP/1.1 302 Found\r\n"
+        b"Location: http://patch.example/loop.diff\r\n"
+        b"Content-Length: 0\r\n"
+        b"\r\n"
+    )
+    _install_fake_http(monkeypatch, [redirect, redirect, redirect, redirect])
+
+    with pytest.raises(InputError, match="redirect limit"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            patch_url="http://patch.example/loop.diff",
+            max_patch_bytes=10_000,
+        )
+
+
+def test_patch_url_rejects_oversize_response(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    response = b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 11\r\n\r\n"
+    _install_fake_http(monkeypatch, [response])
+
+    with pytest.raises(InputError, match="exceeds 10 bytes"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            patch_url="http://patch.example/large.diff",
+            max_patch_bytes=10,
+        )
+
+
+def test_patch_url_rejects_oversize_chunk_before_reading_body(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    response = (
+        b"HTTP/1.1 200 OK\r\n"
+        b"Content-Type: text/plain\r\n"
+        b"Transfer-Encoding: chunked\r\n"
+        b"\r\n"
+        b"1000000\r\n"
+    )
+    _install_fake_http(monkeypatch, [response])
+
+    with pytest.raises(InputError, match="exceeds 10 bytes"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            patch_url="http://patch.example/chunked.diff",
+            max_patch_bytes=10,
+        )
+
+
+def test_patch_url_rejects_wrong_content_type(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    response = (
+        b"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: 0\r\n\r\n"
+    )
+    _install_fake_http(monkeypatch, [response])
+
+    with pytest.raises(InputError, match="content-type"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            patch_url="http://patch.example/blob",
+            max_patch_bytes=10_000,
+        )
+
+
+def test_patch_url_rejects_https_to_http_redirect_downgrade(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_request_once(
+        url: str,
+        *,
+        max_patch_bytes: int,
+        deadline: float,
+    ) -> object:
+        assert url == "https://patch.example/start.diff"
+        assert max_patch_bytes == 10_000
+        assert deadline > time.monotonic()
+        return download_module._HttpResponse(  # pyright: ignore[reportPrivateUsage]
+            status_code=302,
+            headers={"location": "http://patch.example/plain.diff"},
+            body=b"",
+            content_type="",
+        )
+
+    monkeypatch.setattr(download_module, "_request_once", fake_request_once)
+
+    with pytest.raises(InputError, match="downgrade"):
+        download_module.download_patch_url(
+            "https://patch.example/start.diff",
+            max_patch_bytes=10_000,
+        )
+
+
+def test_patch_url_rechecks_dns_after_redirect_and_blocks_rebinding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    redirect = (
+        b"HTTP/1.1 302 Found\r\n"
+        b"Location: http://patch.example/rebound.diff\r\n"
+        b"Content-Length: 0\r\n"
+        b"\r\n"
+    )
+    _install_fake_http(
+        monkeypatch,
+        [redirect],
+        dns_sequence=["93.184.216.34", "127.0.0.1"],
+    )
+
+    with pytest.raises(InputError, match="private IP"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            patch_url="http://patch.example/start.diff",
+            max_patch_bytes=10_000,
+        )
+
+
+def test_compare_dir_recurses_with_posix_headers_binary_lines_and_shared_budget(
+    tmp_path: Path,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    old_dir = workspace_root / "old"
+    new_dir = workspace_root / "new"
+    (old_dir / "pkg").mkdir(parents=True)
+    (new_dir / "pkg").mkdir(parents=True)
+    old_dir.mkdir(exist_ok=True)
+    new_dir.mkdir(exist_ok=True)
+    (old_dir / "pkg" / "app.py").write_text("value = 1\n", encoding="utf-8")
+    (new_dir / "pkg" / "app.py").write_text("value = 2\n", encoding="utf-8")
+    (new_dir / "pkg" / "added.py").write_text("added = True\n", encoding="utf-8")
+    (old_dir / "pkg" / "deleted.py").write_text("removed = True\n", encoding="utf-8")
+    (old_dir / "asset.bin").write_bytes(b"\x00old")
+    (new_dir / "asset.bin").write_bytes(b"\x00new")
+
+    capture = capture_module.capture_patch(
+        workspace_root=workspace_root,
+        compare_dir=(Path("old"), Path("new")),
+        max_patch_bytes=10_000,
+    )
+
+    assert capture.metadata["source_kind"] == "file_compare"
+    assert capture.metadata["source_detail"]["type"] == "compare_dir"
+    assert "--- a/pkg/app.py" in capture.raw_patch_text
+    assert "+++ b/pkg/app.py" in capture.raw_patch_text
+    assert "--- a/pkg/added.py" in capture.raw_patch_text
+    assert "+++ b/pkg/deleted.py" in capture.raw_patch_text
+    assert "Binary files a/asset.bin and b/asset.bin differ" in capture.raw_patch_text
+    assert capture.before_text_by_path["pkg/app.py"] == "value = 1\n"
+    assert capture.after_text_by_path["pkg/app.py"] == "value = 2\n"
+
+    runner = CliRunner()
+    result = _invoke_repo_cli(
+        runner,
+        workspace_root,
+        ["learn", "--compare-dir", "old", "new", "--dry-run"],
+    )
+    assert result.exit_code == 0
+    _, metadata, persisted_patch = _load_run_artifacts(workspace_root)
+    source_detail = cast("dict[str, object]", metadata["source_detail"])
+    assert source_detail["type"] == "compare_dir"
+    assert "+++ b/pkg/app.py" in persisted_patch
+
+    with pytest.raises(InputError, match="exceed"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            compare_dir=(Path("old"), Path("new")),
+            max_patch_bytes=5,
+        )
+
+
+def test_compare_dir_rejects_too_many_files_before_content_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    old_dir = workspace_root / "old"
+    new_dir = workspace_root / "new"
+    old_dir.mkdir(parents=True)
+    new_dir.mkdir(parents=True)
+    for index in range(3):
+        (old_dir / f"file{index}.txt").write_text("old\n", encoding="utf-8")
+        (new_dir / f"file{index}.txt").write_text("new\n", encoding="utf-8")
+    monkeypatch.setattr(capture_module, "_COMPARE_DIR_MAX_FILES", 2)
+
+    with pytest.raises(InputError, match="exceeds 2 files"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            compare_dir=(Path("old"), Path("new")),
+            max_patch_bytes=10_000,
+        )
 
 
 def test_patch_file_plain_unified_diff_respects_max_files(tmp_path: Path) -> None:

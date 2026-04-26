@@ -200,6 +200,7 @@ def redaction_pipeline(
     resolved_files: dict[str, str] | None = None,
     branch_names: tuple[str, ...] = (),
     tag_names: tuple[str, ...] = (),
+    metadata_texts: dict[str, str] | None = None,
 ) -> RedactionPipelineResult:
     active_policy = policy or _resolve_policy(repo_root)
     targets = [ScanTarget(source_name="raw_patch", text=raw_text, source_kind="raw_patch")]
@@ -219,6 +220,9 @@ def redaction_pipeline(
         )
     for tag_name in tag_names:
         targets.append(ScanTarget(source_name=tag_name, text=tag_name, source_kind="tag_name"))
+    if metadata_texts:
+        for name, text in sorted(metadata_texts.items()):
+            targets.append(ScanTarget(source_name=name, text=text, source_kind="string"))
 
     redacted_targets: list[RedactedTarget] = []
     all_findings: list[SecretFinding] = []

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import sqlite3
 import threading
 import time
 from abc import ABC, abstractmethod
@@ -19,13 +21,18 @@ from ahadiff.core.config import (
     load_workspace_pricing_settings,
     local_hosts_for_privacy_mode,
 )
-from ahadiff.core.errors import ConfigError, ProviderError, SafetyError
+from ahadiff.core.errors import ConfigError, InputError, ProviderError, SafetyError, StorageError
 from ahadiff.core.ids import make_event_id
 from ahadiff.core.paths import path_identity_key
 from ahadiff.safety.audit import append_audit_record, build_provider_audit_record
 from ahadiff.safety.gates import TransportTarget, enforce_privacy_mode
 
-from .cache import assert_context_bundle_hash, build_cache_key
+from .cache import (
+    assert_context_bundle_hash,
+    build_cache_key,
+    lookup_cached_response,
+    store_cached_response,
+)
 from .cost import (
     DEFAULT_INPUT_TOKEN_BUDGET,
     DEFAULT_OPENROUTER_MODELS_URL,
@@ -42,12 +49,15 @@ from .cost import (
     resolve_pricing_entry,
 )
 from .schemas import CacheKeyInput, ProviderRequest, ProviderResponse
+from .usage import UsageRecord, record_usage_event
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
     from pathlib import Path
 
     from ahadiff.contracts import ProviderCapabilities, ProviderConfig
+
+log = logging.getLogger(__name__)
 
 
 class Provider(Protocol):
@@ -260,21 +270,50 @@ class ManagedProvider:
             output_budget=self.output_token_budget,
         )
 
-        cache_key = build_cache_key(
-            CacheKeyInput(
-                diff_content=request.diff_content,
-                source_ref=request.source_ref,
-                prompt_version=request.prompt_version,
-                eval_bundle_version=request.eval_bundle_version,
-                model_id=request.model,
-                api_family=self.capabilities.api_family,
-                api_family_version=self.capabilities.api_family_version,
-                output_lang=request.output_lang,
-                privacy_mode=request.privacy_mode,
-                redaction_config=request.redaction_config,
-                context_bundle_hash=context_bundle_hash,
-            )
+        cache_parts = CacheKeyInput(
+            diff_content=request.diff_content,
+            source_ref=request.source_ref,
+            prompt_name=request.prompt_name,
+            prompt_fingerprint=request.prompt_fingerprint,
+            prompt_version=request.prompt_version,
+            eval_bundle_version=request.eval_bundle_version,
+            model_id=request.model,
+            api_family=self.capabilities.api_family,
+            api_family_version=self.capabilities.api_family_version,
+            output_lang=request.output_lang,
+            privacy_mode=request.privacy_mode,
+            redaction_config=request.redaction_config,
+            context_bundle_hash=context_bundle_hash,
+            request_payload_sha256=hashlib.sha256(
+                request_to_send.effective_payload().encode("utf-8")
+            ).hexdigest(),
         )
+        cache_key = build_cache_key(cache_parts)
+        if self.workspace_root is not None:
+            cached_response = lookup_cached_response(
+                self.workspace_root,
+                cache_parts,
+                cache_key=cache_key,
+            )
+            if cached_response is not None:
+                cache_hit_response = replace(
+                    cached_response,
+                    notes=_append_unique_notes(
+                        cached_response.notes,
+                        "cache_hit",
+                        f"cache_key={cache_key}",
+                    ),
+                )
+                self._append_usage_record(
+                    request=request_to_send,
+                    response=cache_hit_response,
+                    cache_key=cache_key,
+                    cache_hit=True,
+                    cost_usd=0.0,
+                    pricing_version="cache-hit",
+                    cost_confidence="high",
+                )
+                return cache_hit_response
 
         self._assert_circuit_closed()
         last_error: Exception | None = None
@@ -325,6 +364,22 @@ class ManagedProvider:
                     degraded_flags=merged_flags,
                     notes=merged_notes,
                 )
+                if self.workspace_root is not None:
+                    store_cached_response(
+                        self.workspace_root,
+                        cache_parts,
+                        final_response,
+                        cache_key=cache_key,
+                    )
+                    self._append_usage_record(
+                        request=request_to_send,
+                        response=final_response,
+                        cache_key=cache_key,
+                        cache_hit=False,
+                        cost_usd=cost.cost_usd,
+                        pricing_version=cost.pricing_version,
+                        cost_confidence=cost.cost_confidence,
+                    )
                 self._append_audit_record(
                     request=request_to_send,
                     response=final_response,
@@ -478,6 +533,48 @@ class ManagedProvider:
             openrouter_fetcher=self.openrouter_pricing_fetcher,
         )
 
+    def _append_usage_record(
+        self,
+        *,
+        request: ProviderRequest,
+        response: ProviderResponse,
+        cache_key: str,
+        cache_hit: bool,
+        cost_usd: float | None,
+        pricing_version: str | None,
+        cost_confidence: str,
+    ) -> None:
+        if self.workspace_root is None:
+            return
+        try:
+            record_usage_event(
+                UsageRecord(
+                    workspace_identity=path_identity_key(self.workspace_root),
+                    provider_class=self.config.provider_class,
+                    api_family=self.capabilities.api_family,
+                    api_family_version=self.capabilities.api_family_version,
+                    model_id=response.model_id,
+                    prompt_name=request.prompt_name,
+                    prompt_fingerprint=request.prompt_fingerprint,
+                    prompt_version=request.prompt_version,
+                    eval_bundle_version=request.eval_bundle_version,
+                    output_lang=request.output_lang,
+                    privacy_mode=request.privacy_mode,
+                    source_ref=request.source_ref,
+                    cache_key=cache_key,
+                    cache_hit=cache_hit,
+                    input_tokens=response.input_tokens,
+                    output_tokens=response.output_tokens,
+                    cost_usd=cost_usd,
+                    pricing_version=pricing_version,
+                    cost_confidence=cost_confidence,
+                    execution_origin=self.execution_origin,
+                    request_id=response.request_id,
+                )
+            )
+        except (InputError, OSError, sqlite3.Error, StorageError) as error:
+            log.warning("failed to record LLM usage for cache key %s: %s", cache_key, error)
+
 
 @contextmanager
 def _provider_slot(key: str, limit: int) -> Iterator[None]:
@@ -510,6 +607,14 @@ def _semaphore_state(key: str, limit: int) -> _SemaphoreState:
 def _rate_limiter_state(key: str) -> _RateLimiterState:
     with _STATE_LOCK:
         return _RATE_LIMITERS.setdefault(key, _RateLimiterState())
+
+
+def _append_unique_notes(notes: tuple[str, ...], *new_notes: str) -> tuple[str, ...]:
+    merged = list(notes)
+    for note in new_notes:
+        if note not in merged:
+            merged.append(note)
+    return tuple(merged)
 
 
 def reset_provider_runtime_state(provider_key: str | None = None) -> None:

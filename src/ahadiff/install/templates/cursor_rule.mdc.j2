@@ -1,0 +1,15 @@
+---
+description: Use AhaDiff to verify and learn back AI-written diffs.
+alwaysApply: false
+---
+<!-- AHADIFF:GENERATED -->
+# AhaDiff
+
+Use AhaDiff after meaningful code changes to produce verified learn-back
+artifacts for the current diff.
+
+- Run `ahadiff learn HEAD~1..HEAD` for the latest commit.
+- Run `ahadiff learn --staged` before committing staged work.
+- Prefer `ahadiff verify <run_id>` and `ahadiff score <run_id>` when reviewing existing artifacts.
+- Keep provider credentials in environment variables.
+- Do not commit `.ahadiff/audit.private.jsonl` or local provider endpoints.

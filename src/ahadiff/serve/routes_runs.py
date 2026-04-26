@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import os
 import re
+import stat
 from json import JSONDecodeError
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
+from anyio import to_thread
 from pydantic import ValidationError
 from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
@@ -19,18 +24,16 @@ from ahadiff.contracts import (
 from ahadiff.contracts.event_log import RATCHET_COUNTED_STATUSES, ResultEvent
 from ahadiff.core.errors import InputError
 from ahadiff.core.paths import validate_run_id
-from ahadiff.eval.results import finalized_artifact_digest
 from ahadiff.review.database import (
     load_finalized_ratchet_history_page,
     load_result_event_by_run_and_id,
     load_result_events_page,
 )
+from ahadiff.wiki.concepts import load_concepts_page
 
 from .auth import serve_state
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from starlette.requests import Request
 
     from .state import ServeState
@@ -51,6 +54,9 @@ _MAX_JSON_OBJECT_BYTES = 1024 * 1024
 _MAX_LIST_RUNS = 500
 _MAX_LIST_RUN_PAGES = 100
 _MAX_RATCHET_HISTORY = 500
+_MAX_FINALIZED_ARTIFACTS = 64
+_MAX_FINALIZED_ARTIFACT_DIRS = 64
+_MAX_FINALIZED_ARTIFACT_BYTES = 16 * 1024 * 1024
 _CANONICAL_RUN_ID_RE = re.compile(r"^run_[0-9a-f]{32}$")
 log = logging.getLogger(__name__)
 _ALLOWED_ARTIFACTS = frozenset(
@@ -73,42 +79,186 @@ async def list_runs(request: Request) -> JSONResponse:
     state = serve_state(request)
     source_kind_filter = request.query_params.get("source_kind")
     limit = _query_limit(request, default=_MAX_LIST_RUNS, max_value=_MAX_LIST_RUNS)
-    finalized_events_by_run = _finalized_event_ids(state.runs_dir)
-    summaries: list[dict[str, Any]] = []
     cursor = _query_cursor(request)
-    pages_scanned = 0
-    while len(summaries) < limit and pages_scanned < _MAX_LIST_RUN_PAGES:
-        pages_scanned += 1
-        rows = _latest_finalized_run_events_page(
-            state.runs_dir,
-            state.review_db_path,
-            finalized_events_by_run=finalized_events_by_run,
-            cursor=cursor,
-            limit=limit,
-        )
-        if not rows:
-            break
-        for event, metadata, _run_path in rows:
-            if source_kind_filter and metadata.get("source_kind") != source_kind_filter:
-                continue
-            summary = _summary_from_event(event, metadata, default_locale=state.locale)
-            if summary is not None:
-                summaries.append(summary.model_dump(mode="json"))
-            if len(summaries) >= limit:
-                break
-        cursor = (rows[-1][0].timestamp, rows[-1][0].event_id)
-        if len(rows) < limit:
-            break
-    return JSONResponse({"runs": summaries})
+    payload = await to_thread.run_sync(
+        _list_runs_payload,
+        state.runs_dir,
+        state.review_db_path,
+        state.locale,
+        source_kind_filter,
+        limit,
+        cursor,
+    )
+    return JSONResponse(payload)
 
 
 async def get_run(request: Request) -> JSONResponse:
     state = serve_state(request)
     run_id = str(request.path_params["run_id"])
+    payload = await to_thread.run_sync(
+        _run_detail_payload,
+        state.runs_dir,
+        state.review_db_path,
+        state.locale,
+        run_id,
+    )
+    return JSONResponse(payload)
+
+
+async def get_lesson(request: Request) -> JSONResponse:
+    level = request.query_params.get("level", "full")
+    if level not in _LESSON_LEVELS:
+        raise InputError("lesson level must be one of: full, hint, compact")
+    return await _artifact_response(request, f"lesson/lesson.{level}.md", "lesson")
+
+
+async def get_claims(request: Request) -> JSONResponse:
+    return await _artifact_response(request, _ARTIFACT_PATHS["claims"], "claims")
+
+
+async def get_quiz(request: Request) -> JSONResponse:
+    return await _artifact_response(request, _ARTIFACT_PATHS["quiz"], "quiz")
+
+
+async def get_diff(request: Request) -> JSONResponse:
+    return await _artifact_response(request, _ARTIFACT_PATHS["diff"], "diff")
+
+
+async def get_run_concepts(request: Request) -> JSONResponse:
+    return await _artifact_response(
+        request,
+        _ARTIFACT_PATHS["concepts"],
+        "concepts",
+        not_found_status_code=404,
+    )
+
+
+async def get_concepts(request: Request) -> JSONResponse:
+    state = serve_state(request)
+    limit = _query_limit(request, default=_MAX_LIST_RUNS, max_value=_MAX_LIST_RUNS)
+    cursor = _query_line_cursor(request)
+    payload = await to_thread.run_sync(
+        _concepts_payload,
+        state.state_dir,
+        limit,
+        cursor,
+    )
+    return JSONResponse(payload)
+
+
+async def get_ratchet_history(request: Request) -> JSONResponse:
+    state = serve_state(request)
+    limit = _query_limit(request, default=_MAX_RATCHET_HISTORY, max_value=_MAX_RATCHET_HISTORY)
+    cursor = _query_cursor(request)
+    payload = await to_thread.run_sync(
+        _ratchet_history_payload,
+        state.runs_dir,
+        state.review_db_path,
+        limit,
+        cursor,
+    )
+    return JSONResponse(payload)
+
+
+async def _artifact_response(
+    request: Request,
+    relative_path: str,
+    artifact_type: str,
+    *,
+    not_found_status_code: int | None = None,
+) -> JSONResponse:
+    state = serve_state(request)
+    run_id = str(request.path_params["run_id"])
+    payload = await to_thread.run_sync(
+        lambda: _artifact_payload(
+            state,
+            run_id,
+            relative_path,
+            artifact_type,
+            not_found_status_code=not_found_status_code,
+        )
+    )
+    return JSONResponse(payload, status_code=payload.pop("_status_code", 200))
+
+
+def _artifact_payload(
+    state: ServeState,
+    run_id: str,
+    relative_path: str,
+    artifact_type: str,
+    *,
+    not_found_status_code: int | None = None,
+) -> dict[str, Any]:
     run_path = _finalized_run_path(state.runs_dir, run_id)
     event = _event_for_finalized_run(state.review_db_path, run_path)
+    artifact_path = _artifact_path_for_read(run_path, relative_path)
+    if artifact_path is None:
+        if not_found_status_code is not None:
+            return {
+                "_status_code": not_found_status_code,
+                "error": "artifact_not_found",
+                "status": not_found_status_code,
+            }
+        raise InputError(f"artifact does not exist for run {run_id}: {relative_path}")
+    envelope = RunArtifactEnvelope(
+        run_id=run_id,
+        artifact_type=artifact_type,
+        content=_read_text_capped(artifact_path, max_bytes=_MAX_TEXT_ARTIFACT_BYTES),
+        content_lang=_artifact_content_lang(state, run_path, event),
+    )
+    return envelope.model_dump(mode="json")
+
+
+def _list_runs_payload(
+    runs_dir: Path,
+    db_path: Path,
+    default_locale: str,
+    source_kind_filter: str | None,
+    limit: int,
+    cursor: tuple[str, str] | None,
+) -> dict[str, Any]:
+    summaries: list[dict[str, Any]] = []
+    pages_scanned = 0
+    next_cursor: tuple[str, str] | None = None
+    while len(summaries) < limit and pages_scanned < _MAX_LIST_RUN_PAGES:
+        pages_scanned += 1
+        events = load_result_events_page(db_path, limit=limit, before=cursor)
+        if not events:
+            break
+        for event in events:
+            next_cursor = (event.timestamp, event.event_id)
+            run_path = _finalized_event_run_path(runs_dir, event)
+            if run_path is None:
+                continue
+            metadata = _load_run_metadata_or_none(run_path)
+            if metadata is None:
+                continue
+            if source_kind_filter and metadata.get("source_kind") != source_kind_filter:
+                continue
+            summary = _summary_from_event(event, metadata, default_locale=default_locale)
+            if summary is not None:
+                summaries.append(summary.model_dump(mode="json"))
+            if len(summaries) >= limit:
+                break
+        cursor = (events[-1].timestamp, events[-1].event_id)
+        if len(events) < limit:
+            next_cursor = None
+            break
+    return _payload_with_cursor(
+        {"runs": summaries}, next_cursor if len(summaries) >= limit else None
+    )
+
+
+def _run_detail_payload(
+    runs_dir: Path,
+    db_path: Path,
+    default_locale: str,
+    run_id: str,
+) -> dict[str, Any]:
+    run_path = _finalized_run_path(runs_dir, run_id)
+    event = _event_for_finalized_run(db_path, run_path)
     metadata = _load_json_object(run_path / "metadata.json")
-    summary = _summary_from_event(event, metadata, default_locale=state.locale)
+    summary = _summary_from_event(event, metadata, default_locale=default_locale)
     if summary is None:
         raise InputError(f"run metadata is invalid: {run_id}")
     graphify_mode, graphify_status, graphify_notes = _project_graphify(metadata)
@@ -123,58 +273,42 @@ async def get_run(request: Request) -> JSONResponse:
         graphify_status=graphify_status,
         graphify_notes=graphify_notes,
     )
-    return JSONResponse(detail.model_dump(mode="json"))
+    return detail.model_dump(mode="json")
 
 
-async def get_lesson(request: Request) -> JSONResponse:
-    level = request.query_params.get("level", "full")
-    if level not in _LESSON_LEVELS:
-        raise InputError("lesson level must be one of: full, hint, compact")
-    return _artifact_response(request, f"lesson/lesson.{level}.md", "lesson")
-
-
-async def get_claims(request: Request) -> JSONResponse:
-    return _artifact_response(request, _ARTIFACT_PATHS["claims"], "claims")
-
-
-async def get_quiz(request: Request) -> JSONResponse:
-    return _artifact_response(request, _ARTIFACT_PATHS["quiz"], "quiz")
-
-
-async def get_diff(request: Request) -> JSONResponse:
-    return _artifact_response(request, _ARTIFACT_PATHS["diff"], "diff")
-
-
-async def get_run_concepts(request: Request) -> JSONResponse:
-    return _artifact_response(
-        request,
-        _ARTIFACT_PATHS["concepts"],
-        "concepts",
-        not_found_status_code=404,
+def _concepts_payload(state_dir: Path, limit: int, cursor: int) -> dict[str, Any]:
+    concepts_path = state_dir / "concepts.jsonl"
+    if not concepts_path.exists() or concepts_path.is_symlink():
+        return {"artifact_type": "concepts", "content": ""}
+    if concepts_path.stat().st_size > _MAX_TEXT_ARTIFACT_BYTES:
+        raise HTTPException(status_code=413, detail="concepts.jsonl exceeds size limit")
+    page = load_concepts_page(
+        concepts_path,
+        limit=limit,
+        cursor=cursor,
+        max_bytes=_MAX_TEXT_ARTIFACT_BYTES,
     )
+    content = "".join(json.dumps(entry, ensure_ascii=False) + "\n" for entry in page.entries)
+    payload: dict[str, Any] = {"artifact_type": "concepts", "content": content}
+    if page.next_cursor is not None:
+        payload["next_cursor"] = page.next_cursor
+    return payload
 
 
-async def get_concepts(request: Request) -> JSONResponse:
-    state = serve_state(request)
-    concepts_path = state.state_dir / "concepts.jsonl"
-    content = (
-        _read_text_capped(concepts_path, max_bytes=_MAX_TEXT_ARTIFACT_BYTES)
-        if concepts_path.exists() and not concepts_path.is_symlink()
-        else ""
-    )
-    return JSONResponse({"artifact_type": "concepts", "content": content})
-
-
-async def get_ratchet_history(request: Request) -> JSONResponse:
-    state = serve_state(request)
-    limit = _query_limit(request, default=_MAX_RATCHET_HISTORY, max_value=_MAX_RATCHET_HISTORY)
-    finalized_events_by_run = _finalized_event_ids(state.runs_dir)
+def _ratchet_history_payload(
+    runs_dir: Path,
+    db_path: Path,
+    limit: int,
+    cursor: tuple[str, str] | None,
+) -> dict[str, Any]:
     entries: list[dict[str, Any]] = []
-    cursor = _query_cursor(request)
-    while len(entries) < limit:
+    next_cursor: tuple[str, str] | None = None
+    pages_scanned = 0
+    while len(entries) < limit and pages_scanned < _MAX_LIST_RUN_PAGES:
+        pages_scanned += 1
         events = load_finalized_ratchet_history_page(
-            state.review_db_path,
-            finalized_event_ids=set(finalized_events_by_run.values()),
+            db_path,
+            finalized_event_ids=(),
             statuses=RATCHET_COUNTED_STATUSES,
             limit=limit,
             before=cursor,
@@ -182,7 +316,8 @@ async def get_ratchet_history(request: Request) -> JSONResponse:
         if not events:
             break
         for event in events:
-            if finalized_events_by_run.get(event.run_id) != event.event_id:
+            next_cursor = (event.timestamp, event.event_id)
+            if _finalized_event_run_path(runs_dir, event) is None:
                 continue
             entries.append(
                 RatchetHistoryEntry(
@@ -200,36 +335,40 @@ async def get_ratchet_history(request: Request) -> JSONResponse:
                 break
         cursor = (events[-1].timestamp, events[-1].event_id)
         if len(events) < limit:
+            next_cursor = None
             break
-    return JSONResponse({"history": entries})
-
-
-def _artifact_response(
-    request: Request,
-    relative_path: str,
-    artifact_type: str,
-    *,
-    not_found_status_code: int | None = None,
-) -> JSONResponse:
-    state = serve_state(request)
-    run_id = str(request.path_params["run_id"])
-    run_path = _finalized_run_path(state.runs_dir, run_id)
-    event = _event_for_finalized_run(state.review_db_path, run_path)
-    artifact_path = _artifact_path_for_read(run_path, relative_path)
-    if artifact_path is None:
-        if not_found_status_code is not None:
-            return JSONResponse(
-                {"error": "artifact_not_found", "status": not_found_status_code},
-                status_code=not_found_status_code,
-            )
-        raise InputError(f"artifact does not exist for run {run_id}: {relative_path}")
-    envelope = RunArtifactEnvelope(
-        run_id=run_id,
-        artifact_type=artifact_type,
-        content=_read_text_capped(artifact_path, max_bytes=_MAX_TEXT_ARTIFACT_BYTES),
-        content_lang=_artifact_content_lang(state, run_path, event),
+    return _payload_with_cursor(
+        {"history": entries},
+        next_cursor
+        if len(entries) >= limit or (pages_scanned >= _MAX_LIST_RUN_PAGES and next_cursor)
+        else None,
     )
-    return JSONResponse(envelope.model_dump(mode="json"))
+
+
+def _finalized_event_run_path(runs_dir: Path, event: ResultEvent) -> Path | None:
+    try:
+        _validate_route_run_id(event.run_id)
+    except InputError:
+        return None
+    if event.run_id.endswith(".tmp"):
+        return None
+    run_path = runs_dir / event.run_id
+    if run_path.is_symlink() or not run_path.is_dir():
+        return None
+    marker = _load_valid_finalized_marker(run_path)
+    if marker is None or marker.get("event_id") != event.event_id:
+        return None
+    return run_path
+
+
+def _payload_with_cursor(payload: dict[str, Any], cursor: tuple[str, str] | None) -> dict[str, Any]:
+    if cursor is not None:
+        payload["next_cursor"] = _encode_cursor(cursor)
+    return payload
+
+
+def _encode_cursor(cursor: tuple[str, str]) -> str:
+    return f"{cursor[0]},{cursor[1]}"
 
 
 def _artifact_content_lang(
@@ -248,50 +387,6 @@ def _artifact_content_lang(
     if content_lang is None:
         return None
     return _normalize_content_lang(content_lang, default_locale=state.locale)
-
-
-def _latest_finalized_run_events_page(
-    runs_dir: Path,
-    db_path: Path,
-    *,
-    finalized_events_by_run: dict[str, str],
-    cursor: tuple[str, str] | None,
-    limit: int,
-) -> tuple[tuple[ResultEvent, dict[str, Any], Path], ...]:
-    rows: list[tuple[ResultEvent, dict[str, Any], Path]] = []
-    for event in load_result_events_page(
-        db_path,
-        limit=limit,
-        before=cursor,
-        event_ids=set(finalized_events_by_run.values()),
-    ):
-        if finalized_events_by_run.get(event.run_id) != event.event_id:
-            continue
-        run_path = runs_dir / event.run_id
-        metadata = _load_run_metadata_or_none(run_path)
-        if metadata is not None:
-            rows.append((event, metadata, run_path))
-    return tuple(rows)
-
-
-def _finalized_event_ids(runs_dir: Path) -> dict[str, str]:
-    if not runs_dir.exists():
-        return {}
-    event_ids: dict[str, str] = {}
-    for path in runs_dir.iterdir():
-        if path.is_symlink() or not path.is_dir() or path.name.endswith(".tmp"):
-            continue
-        marker_path = path / "finalized.json"
-        if not marker_path.is_file():
-            continue
-        marker = _load_valid_finalized_marker(path)
-        if marker is None:
-            continue
-        run_id = marker.get("run_id")
-        event_id = marker.get("event_id")
-        if run_id == path.name and isinstance(event_id, str) and event_id:
-            event_ids[path.name] = event_id
-    return event_ids
 
 
 def _finalized_run_path(runs_dir: Path, run_id: str) -> Path:
@@ -340,6 +435,21 @@ def _query_cursor(request: Request) -> tuple[str, str] | None:
             detail="cursor must use '<timestamp>,<event_id>' format",
         )
     return timestamp, event_id
+
+
+def _query_line_cursor(request: Request) -> int:
+    raw_value = request.query_params.get("cursor")
+    if raw_value is None:
+        return 0
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400, detail="cursor must be a non-negative line number"
+        ) from exc
+    if value < 0:
+        raise HTTPException(status_code=400, detail="cursor must be a non-negative line number")
+    return value
 
 
 def _event_for_finalized_run(db_path: Path, run_path: Path) -> ResultEvent:
@@ -470,7 +580,11 @@ def _load_run_metadata_or_none(run_path: Path) -> dict[str, Any] | None:
         return None
 
 
-def _load_valid_finalized_marker(run_path: Path) -> dict[str, Any] | None:
+def _load_valid_finalized_marker(
+    run_path: Path,
+    *,
+    verify_digest: bool = True,
+) -> dict[str, Any] | None:
     try:
         marker = _load_json_object(run_path / "finalized.json")
     except (HTTPException, InputError, JSONDecodeError, OSError, UnicodeDecodeError):
@@ -485,13 +599,57 @@ def _load_valid_finalized_marker(run_path: Path) -> dict[str, Any] | None:
         return None
     if not isinstance(marker.get("checksum"), str) or not marker["checksum"]:
         return None
-    try:
-        artifact_count, checksum = finalized_artifact_digest(run_path)
-    except (InputError, OSError):
-        return None
-    if marker["artifact_count"] != artifact_count or marker["checksum"] != checksum:
-        return None
+    if verify_digest:
+        try:
+            artifact_count, checksum = _bounded_finalized_artifact_digest(run_path)
+        except (InputError, OSError):
+            return None
+        if marker["artifact_count"] != artifact_count or marker["checksum"] != checksum:
+            return None
     return marker
+
+
+def _bounded_finalized_artifact_digest(run_path: Path) -> tuple[int, str]:
+    artifact_paths: list[tuple[str, Path]] = []
+    stack = [run_path]
+    dirs_seen = 0
+    while stack:
+        current = stack.pop()
+        dirs_seen += 1
+        if dirs_seen > _MAX_FINALIZED_ARTIFACT_DIRS:
+            raise InputError("finalized run has too many artifact directories")
+        try:
+            entries = list(os.scandir(current))
+        except OSError as exc:
+            raise InputError("finalized run artifact directory is unreadable") from exc
+        for entry in entries:
+            path = Path(entry.path)
+            relative_path = path.relative_to(run_path).as_posix()
+            if relative_path == "finalized.json" or path.name.startswith("."):
+                continue
+            try:
+                entry_stat = entry.stat(follow_symlinks=False)
+            except OSError as exc:
+                raise InputError("finalized run artifact is unreadable") from exc
+            if stat.S_ISLNK(entry_stat.st_mode):
+                raise InputError(f"refusing symlink artifact in finalized run: {relative_path}")
+            if stat.S_ISDIR(entry_stat.st_mode):
+                stack.append(path)
+                continue
+            if not stat.S_ISREG(entry_stat.st_mode):
+                continue
+            if len(artifact_paths) >= _MAX_FINALIZED_ARTIFACTS:
+                raise InputError("finalized run has too many artifacts")
+            if entry_stat.st_size > _MAX_FINALIZED_ARTIFACT_BYTES:
+                raise InputError("finalized run artifact exceeds size limit")
+            artifact_paths.append((relative_path, path))
+    chunks = [
+        relative_path.encode("utf-8")
+        + b"\n"
+        + hashlib.sha256(path.read_bytes()).hexdigest().encode("ascii")
+        for relative_path, path in sorted(artifact_paths)
+    ]
+    return len(chunks), hashlib.sha256(b"\n---\n".join(chunks)).hexdigest()
 
 
 def _artifact_path_for_read(run_path: Path, relative_path: str) -> Path | None:

@@ -1,0 +1,16 @@
+<!-- AHADIFF:GENERATED -->
+# AhaDiff
+
+Use AhaDiff after meaningful code changes to produce verified learning and
+review artifacts for the current diff.
+
+Preferred commands:
+
+- `ahadiff learn HEAD~1..HEAD`
+- `ahadiff learn --staged`
+- `ahadiff quiz <run_id>`
+- `ahadiff review`
+- `ahadiff verify <run_id>`
+
+Treat `.ahadiff/review.sqlite` as local learning state. Do not commit provider
+credentials, local endpoints, or private audit logs.

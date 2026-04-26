@@ -18,7 +18,7 @@ It's not a PR summary, not a repo wiki, not yet another "code explainer." It rea
 - A **claims** ledger where every assertion traces back to a hunk
 - A comparable **quality score history** (ratcheted; `review.sqlite` is the single source of truth, `results.tsv` is a human-readable export)
 
-The current code already ships Lesson / Claims / Quiz / Cards / Score / Ratchet. The review-flow SRS runtime, serve backend, install targets, GitHub Action templates, benchmark suite, improve-loop core, Task 17 targeted verification, Phase 2.5 runtime, i18n-0 backend, and the `viewer/` React SPA (Dashboard / Lesson / Diff / Quiz / ConceptGraph + LanguageSwitcher + full i18n 82/82 key parity + 330/330 Playwright matrix + R1-R5 five-round cross-model adversarial review with 51 real findings fixed) are all landed. Stage 7 i18n signoff is complete. v0.2 Gate 0 (Cross-Platform Foundation) has passed review: subprocess UTF-8 encoding + Git `core.quotePath=false`, SQLite journal mode WSL2 fallback, lock inode verification + headless serve detection, and a `datetime.utcnow()` static guard. v0.2 Gate 1 (Review DB Migration + Write Safety) has passed review: `PRAGMA user_version` migration chain, unified serve write lock (repo_write_lock + threading.Lock), SQL pagination DAO, and review queue/rate API endpoints. v0.2 Gate 2 (Backend Expansion) has passed review: compare file reads with four-layer defense (lstat + O_NOFOLLOW + O_NONBLOCK + fstat), escape-aware Windows backslash normalization for diff path tokens, provider streaming byte cap + empty completion rejection + full TransportError retry coverage, and install manifest preview/write/uninstall actions with hooks Windows detect returning False instead of blocking.
+The current code already ships Lesson / Claims / Quiz / Cards / Score / Ratchet. The review-flow SRS runtime, serve backend, install targets, GitHub Action templates, benchmark suite, improve-loop core, Task 17 targeted verification, Phase 2.5 runtime, i18n-0 backend, and the `viewer/` React SPA (Dashboard / Lesson / Diff / Quiz / ConceptGraph + LanguageSwitcher + full i18n 82/82 key parity + 330/330 Playwright matrix + R1-R5 five-round cross-model adversarial review with 51 real findings fixed) are all landed. Stage 7 i18n signoff is complete. v0.2 Gates 0-5 have all passed review. Gate 5 (Scale + Input + Install Expansion) adds: `--compare-dir` directory diff (no-follow + file/dir/depth triple limits), `--patch-url` URL download (full SSRF protection: pre-resolve IP-connect + TLS SNI + per-hop redirect re-check), serve cursor pagination + anyio threadpool, LLM cache lookup/store + usage.sqlite cost tracking, and 7 new install targets (Cursor/Windsurf/Copilot/Continue/Aider/Cline/Roo).
 
 > Code Wiki explains a repo. AhaDiff teaches you what changed — and verifies every claim against the diff.
 
@@ -68,7 +68,7 @@ ahadiff serve
 # Ratcheted self-improvement (Task 16/17 backend is landed; requires an existing finalized run and provider configuration)
 ahadiff improve --suite local --rounds 6
 
-# Install into AI tools and automation (v0.1: 6 targets)
+# Install into AI tools and automation (13 targets)
 ahadiff install claude    # Claude Code → .claude/skills/
 ahadiff install codex     # Codex CLI → AGENTS.md
 ahadiff install gemini    # Gemini CLI → GEMINI.md
@@ -76,7 +76,13 @@ ahadiff install opencode  # OpenCode → AGENTS.md + .opencode/agents/
 ahadiff install hooks     # POSIX shell git hooks (Windows is rejected in v0.1)
 ahadiff install github-action          # verify-only workflow
 ahadiff install github-action --layer2 # opt-in generate workflow (requires provider secret)
-# v0.2: cursor / copilot / windsurf / cline / amp / jules / aider
+ahadiff install cursor    # Cursor → .cursor/rules/
+ahadiff install windsurf  # Windsurf → .windsurf/rules/
+ahadiff install copilot   # GitHub Copilot → .github/copilot-instructions.md
+ahadiff install continue  # Continue → .continue/rules/
+ahadiff install aider     # Aider → .aider.conf.yml
+ahadiff install cline     # Cline → .clinerules
+ahadiff install roo       # Roo Code → .roo/rules/
 ```
 
 Current output layout:

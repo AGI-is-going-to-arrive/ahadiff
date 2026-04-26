@@ -11,8 +11,11 @@ from typing import TYPE_CHECKING, Any, cast
 from ahadiff.core.errors import InputError
 from ahadiff.git.repo import open_repo, run_git
 
+_MAX_VISIBLE_CONCEPTS_BYTES = 10 * 1024 * 1024
+_MAX_ANCESTRY_CHECKS = 200
+
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterable, Sequence
 
     from ahadiff.quiz.schemas import QuizQuestion
 
@@ -22,6 +25,34 @@ class ConceptOccurrence:
     concept: str
     related_claims: tuple[str, ...]
     file_refs: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ConceptPage:
+    entries: tuple[dict[str, Any], ...]
+    next_cursor: str | None
+
+
+class _AncestryCache:
+    def __init__(self, workspace_root: Path, head_ref: str) -> None:
+        self.workspace_root = workspace_root
+        self.head_ref = head_ref
+        self._cache: dict[str, bool] = {}
+        self._call_count = 0
+
+    def is_visible(self, source_ref: object) -> bool:
+        if not isinstance(source_ref, str) or not source_ref:
+            return False
+        cached = self._cache.get(source_ref)
+        if cached is not None:
+            return cached
+        self._call_count += 1
+        if self._call_count > _MAX_ANCESTRY_CHECKS:
+            self._cache[source_ref] = True
+            return True
+        visible = _is_ancestor(self.workspace_root, source_ref, self.head_ref)
+        self._cache[source_ref] = visible
+        return visible
 
 
 def append_concepts(
@@ -92,15 +123,47 @@ def load_visible_concepts(
     head_ref: str = "HEAD",
 ) -> tuple[dict[str, Any], ...]:
     concepts_path = workspace_root / ".ahadiff" / "concepts.jsonl"
-    if not concepts_path.exists():
+    if not concepts_path.exists() or concepts_path.is_symlink():
         return ()
+    if concepts_path.stat().st_size > _MAX_VISIBLE_CONCEPTS_BYTES:
+        raise InputError("concepts.jsonl exceeds size limit")
     open_repo(workspace_root)
     visible: list[dict[str, Any]] = []
-    for entry in _load_jsonl_entries(concepts_path):
-        source_refs = entry.get("source_refs", [])
-        if any(_is_ancestor(workspace_root, source_ref, head_ref) for source_ref in source_refs):
+    ancestry = _AncestryCache(workspace_root, head_ref)
+    for _line_index, entry in _iter_jsonl_entries_with_offsets(
+        concepts_path,
+        max_bytes=_MAX_VISIBLE_CONCEPTS_BYTES,
+    ):
+        source_refs = cast("object", entry.get("source_refs", []))
+        source_ref_values: list[str] = []
+        if isinstance(source_refs, list):
+            for source_ref in cast("list[object]", source_refs):
+                if isinstance(source_ref, str):
+                    source_ref_values.append(source_ref)
+        if any(ancestry.is_visible(source_ref) for source_ref in source_ref_values):
             visible.append(entry)
     return tuple(visible)
+
+
+def load_concepts_page(
+    path: Path,
+    *,
+    limit: int,
+    cursor: int = 0,
+    max_bytes: int | None = None,
+) -> ConceptPage:
+    if limit < 1:
+        raise InputError("concepts page limit must be >= 1")
+    entries: list[dict[str, Any]] = []
+    next_cursor: str | None = None
+    for line_index, entry in _iter_jsonl_entries_with_offsets(path, max_bytes=max_bytes):
+        if line_index < cursor:
+            continue
+        if len(entries) >= limit:
+            next_cursor = str(line_index)
+            break
+        entries.append(entry)
+    return ConceptPage(entries=tuple(entries), next_cursor=next_cursor)
 
 
 def compute_term_key(value: str) -> str:
@@ -189,21 +252,35 @@ def _concept_entry(
 
 
 def _load_jsonl_entries(path: Path) -> list[dict[str, Any]]:
+    return list(_iter_jsonl_entries(path))
+
+
+def _iter_jsonl_entries(path: Path) -> Iterable[dict[str, Any]]:
+    for _line_index, entry in _iter_jsonl_entries_with_offsets(path):
+        yield entry
+
+
+def _iter_jsonl_entries_with_offsets(
+    path: Path,
+    *,
+    max_bytes: int | None = None,
+) -> Iterable[tuple[int, dict[str, Any]]]:
     if not path.exists():
-        return []
-    entries: list[dict[str, Any]] = []
-    for index, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        stripped = line.strip()
-        if not stripped:
-            continue
-        try:
-            payload = json.loads(stripped)
-        except json.JSONDecodeError as exc:
-            raise InputError(f"invalid concepts.jsonl line {index}") from exc
-        if not isinstance(payload, dict):
-            raise InputError(f"concepts.jsonl line {index} must be an object")
-        entries.append(cast("dict[str, Any]", payload))
-    return entries
+        return
+    if max_bytes is not None and path.stat().st_size > max_bytes:
+        raise InputError(f"{path.name} exceeds size limit")
+    with path.open("r", encoding="utf-8") as handle:
+        for index, line in enumerate(handle, start=1):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                payload = json.loads(stripped)
+            except json.JSONDecodeError as exc:
+                raise InputError(f"invalid concepts.jsonl line {index}") from exc
+            if not isinstance(payload, dict):
+                raise InputError(f"concepts.jsonl line {index} must be an object")
+            yield index, cast("dict[str, Any]", payload)
 
 
 def _write_jsonl_snapshot(path: Path, entries: Sequence[dict[str, Any]]) -> None:
@@ -240,4 +317,11 @@ def _is_ancestor(repo_root: Path, source_ref: str, head_ref: str) -> bool:
     return result.returncode == 0
 
 
-__all__ = ["ConceptOccurrence", "append_concepts", "compute_term_key", "load_visible_concepts"]
+__all__ = [
+    "ConceptOccurrence",
+    "ConceptPage",
+    "append_concepts",
+    "compute_term_key",
+    "load_concepts_page",
+    "load_visible_concepts",
+]

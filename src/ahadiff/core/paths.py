@@ -196,6 +196,10 @@ def review_db_path(repo_root: Path | None = None) -> Path:
     return project_state_dir(repo_root) / "review.sqlite"
 
 
+def usage_db_path(*, platform: str | None = None, env: Mapping[str, str] | None = None) -> Path:
+    return global_config_dir(platform=platform, env=env) / "usage.sqlite"
+
+
 def audit_log_path(repo_root: Path | None = None) -> Path:
     return project_state_dir(repo_root) / "audit.jsonl"
 
@@ -225,4 +229,5 @@ __all__ = [
     "repo_config_path",
     "review_db_path",
     "run_dir",
+    "usage_db_path",
 ]
