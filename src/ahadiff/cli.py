@@ -47,7 +47,7 @@ from .core.paths import (
     run_dir,
     validate_run_id,
 )
-from .core.sqlite_util import reject_symlink_path
+from .core.sqlite_util import safe_sqlite_connect
 from .i18n import normalize_locale, resolve_locale
 
 if TYPE_CHECKING:
@@ -623,12 +623,9 @@ def doctor_cmd(
             console.print("[green]Sensitive repo config keys[/green]: none")
 
         review_path = review_db_path(root)
-        if review_path.exists():
-            reject_symlink_path(review_path)
+        if review_path.exists() or review_path.is_symlink():
             try:
-                with sqlite3.connect(review_path) as connection:
-                    connection.execute("PRAGMA busy_timeout = 5000")
-                    connection.execute("PRAGMA trusted_schema = OFF")
+                with safe_sqlite_connect(review_path) as connection:
                     quick_check = connection.execute("PRAGMA quick_check").fetchone()
                     quick_check_value = quick_check[0] if quick_check else "unknown"
                     console.print(f"[bold]SQLite quick_check[/bold]: {quick_check_value}")
@@ -644,6 +641,10 @@ def doctor_cmd(
             except sqlite3.DatabaseError as error:
                 raise AhaDiffError(
                     f"review.sqlite is not a valid SQLite database: {review_path} ({error})"
+                ) from error
+            except OSError as error:
+                raise AhaDiffError(
+                    f"review.sqlite could not be opened safely: {review_path} ({error})"
                 ) from error
         else:
             console.print("[bold]review.sqlite[/bold]: not initialized yet")

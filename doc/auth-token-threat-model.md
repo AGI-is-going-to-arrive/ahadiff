@@ -68,7 +68,7 @@ It is a same-machine write guard for the local viewer and local API clients.
 - Preflight rejection: invalid cross-origin `OPTIONS` preflights now fail with `403`.
 - Malformed IPv6 origins and loopback origins on the wrong port are rejected before write routes run.
 - Body gate: mutating requests with a body must be `application/json`, and middleware caps the body at 1 MiB before JSON parse.
-- No CORS allowlist response: the server does not add `Access-Control-Allow-Origin`.
+- Loopback-only CORS response: the server adds `Access-Control-Allow-Origin` only for validated loopback origins on the active serve port, and does not expose permissive remote-origin CORS.
 - Anti-iframe headers:
   - `X-Frame-Options: DENY`
   - `Content-Security-Policy: frame-ancestors 'none'`

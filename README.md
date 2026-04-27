@@ -191,7 +191,7 @@ ahadiff/
 - `ahadiff serve`：localhost-only serve backend 已可用，读接口只暴露 finalized runs，写接口需要 token + Origin/Referer 校验
 - `ahadiff install`：Claude / Codex / Gemini / OpenCode / hooks / GitHub Action target 已可用；hooks 是 POSIX shell target，Windows v0.1 会明确拒绝；生成的 GitHub workflow 覆盖 macOS + Linux，Windows 暂缓；generate workflow 使用 `AHADIFF_PROVIDER_API_KEY`，并上传 `.ahadiff/` 产物 artifact
 - `ahadiff benchmark`：本地 benchmark manifest、20 个 eval fixtures、10 个 pinned integration fixtures 与 `ground_truth.md` 一致性校验已可用
-- Phase 0 相关收口已经补到当前分支：contracts 权威口径、后端安全边界、CLI 冷启动和本地 baseline 脚本都已有对应实现与文档
+- Phase 0 相关收口已经补到当前分支：contracts 权威口径、`safe_sqlite_connect` SQLite 连接 helper、reparse/hardlink 防护、serve CORS 与 `X-Frame-Options` 安全头、CLI 冷启动和本地 baseline 脚本都有对应实现
 - i18n-0：locale resolver 支持 cookie / Accept-Language / CLI / config / `AHADIFF_LANG` / `LANG` fallback，lesson/quiz prompt payload 会带输出语言指令
 - `ahadiff improve --suite local --rounds N`：目前仅支持 `--suite local`。它从已有 finalized run 中选择 baseline，在 git worktree 里只改白名单 prompt，重放同一 diff 并重新评分；候选必须让目标维度 + `accuracy` + `evidence` + `safety_privacy` 的合计分高于 baseline，且 hard gates 通过，才会尝试 cherry-pick prompt commit 回主分支，并记录 `event_type=improve` / `status=targeted_verify`；未提升则记录 `discard`，cherry-pick 冲突则保留 pending worktree 且不 finalized；同一 session 连续两次 `discard` 会触发一次 Phase 2.5 worktree rewrite
 - `src/ahadiff/eval/{rubric,gates,deterministic,evaluator,results,ratchet}.py`：8 维评分、hard gates、结果写入、ratchet 选择和导出视图
@@ -227,7 +227,7 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-最近一次验证（2026-04-28）：`uv run pytest tests -q --tb=long` 为 `845 passed, 1 skipped`（live judge 默认跳过）；`uv run ruff check src tests`、`uv run ruff format --check src tests`、`uv run pyright` 全通过；CLI `--version`、`learn --help`、`serve --help`、`improve --help`、`install --help`、`doctor --help`、`quiz --help`、`review --help`、`benchmark --help`、`config show --resolved` 都已实测通过。本地 benchmark 脚本和聚合 baseline 也已重跑；`api_latency` 由于本次没有启动 `ahadiff serve`，结果仍是 `skipped`。
+最近一次验证（2026-04-28）：`uv run pytest tests -q --tb=long` 为 `881 passed, 1 skipped`（live judge 默认跳过）；`uv run ruff check src tests`、`uv run ruff format --check src tests`、`uv run pyright` 全通过。
 
 下一步路线图：
 

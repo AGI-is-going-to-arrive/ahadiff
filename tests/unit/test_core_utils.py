@@ -139,6 +139,150 @@ class TestSafeSqliteConnect:
         with pytest.raises(PermissionError, match="symlink"):
             safe_sqlite_connect(link)
 
+    def test_rejects_existing_db_swapped_to_symlink_during_connect(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        db = tmp_path / "victim.db"
+        shadow = tmp_path / "shadow.db"
+        with sqlite3.connect(db) as connection:
+            connection.execute("CREATE TABLE t(x)")
+        with sqlite3.connect(shadow) as connection:
+            connection.execute("CREATE TABLE t(x)")
+        original_connect = sqlite_util_module.sqlite3.connect
+        swapped = False
+
+        def swapping_connect(database: Any, *args: Any, **kwargs: Any) -> sqlite3.Connection:
+            nonlocal swapped
+            if database == str(db) and not swapped:
+                swapped = True
+                db.unlink()
+                try:
+                    db.symlink_to(shadow)
+                except OSError as exc:
+                    pytest.skip(f"symlink creation unavailable: {exc}")
+            return original_connect(database, *args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(sqlite_util_module.sqlite3, "connect", swapping_connect)
+
+        with pytest.raises(PermissionError, match="changed during open"):
+            safe_sqlite_connect(db)
+
+        assert swapped is True
+
+    def test_rejects_existing_db_rename_race_restored_before_verification(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        db = tmp_path / "victim.db"
+        backup = tmp_path / "victim-original.db"
+        replacement = tmp_path / "replacement.db"
+        with sqlite3.connect(db) as connection:
+            connection.execute("CREATE TABLE marker(value TEXT)")
+            connection.execute("INSERT INTO marker VALUES('original')")
+        with sqlite3.connect(replacement) as connection:
+            connection.execute("CREATE TABLE marker(value TEXT)")
+            connection.execute("INSERT INTO marker VALUES('replacement')")
+        original_connect = sqlite_util_module.sqlite3.connect
+        swapped = False
+
+        def swapping_connect(database: Any, *args: Any, **kwargs: Any) -> sqlite3.Connection:
+            nonlocal swapped
+            if database == str(db) and not swapped:
+                swapped = True
+                db.rename(backup)
+                replacement.rename(db)
+                connection = original_connect(database, *args, **kwargs)  # type: ignore[arg-type]
+                db.rename(replacement)
+                backup.rename(db)
+                return connection
+            return original_connect(database, *args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(sqlite_util_module.sqlite3, "connect", swapping_connect)
+
+        with pytest.raises(PermissionError, match="changed during open"):
+            safe_sqlite_connect(db)
+
+        assert swapped is True
+        with sqlite3.connect(db) as connection:
+            value = connection.execute("SELECT value FROM marker").fetchone()[0]
+        assert value == "original"
+
+    def test_rejects_rename_race_even_when_sidecar_state_changes(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        db = tmp_path / "victim.db"
+        backup = tmp_path / "victim-original.db"
+        replacement = tmp_path / "replacement.db"
+        with sqlite3.connect(db) as connection:
+            connection.execute("CREATE TABLE marker(value TEXT)")
+            connection.execute("INSERT INTO marker VALUES('original')")
+        with sqlite3.connect(replacement) as connection:
+            connection.execute("CREATE TABLE marker(value TEXT)")
+            connection.execute("INSERT INTO marker VALUES('replacement')")
+        original_connect = sqlite_util_module.sqlite3.connect
+        swapped = False
+
+        def swapping_connect(database: Any, *args: Any, **kwargs: Any) -> sqlite3.Connection:
+            nonlocal swapped
+            if database == str(db) and not swapped:
+                swapped = True
+                db.rename(backup)
+                replacement.rename(db)
+                connection = original_connect(database, *args, **kwargs)  # type: ignore[arg-type]
+                db.rename(replacement)
+                backup.rename(db)
+                db.with_name(f"{db.name}-wal").write_text("fake wal", encoding="utf-8")
+                return connection
+            return original_connect(database, *args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(sqlite_util_module.sqlite3, "connect", swapping_connect)
+
+        conn = safe_sqlite_connect(db)
+        try:
+            value = conn.execute("SELECT value FROM marker").fetchone()[0]
+            assert value == "original"
+        finally:
+            conn.close()
+
+        assert swapped is True
+        with sqlite3.connect(db) as connection:
+            restored_value = connection.execute("SELECT value FROM marker").fetchone()[0]
+        assert restored_value == "original"
+
+    def test_rejects_missing_db_created_as_symlink_during_connect(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        db = tmp_path / "new.db"
+        shadow = tmp_path / "shadow.db"
+        with sqlite3.connect(shadow) as connection:
+            connection.execute("CREATE TABLE t(x)")
+        original_connect = sqlite_util_module.sqlite3.connect
+        swapped = False
+
+        def swapping_connect(database: Any, *args: Any, **kwargs: Any) -> sqlite3.Connection:
+            nonlocal swapped
+            if database == str(db) and not swapped:
+                swapped = True
+                try:
+                    db.symlink_to(shadow)
+                except OSError as exc:
+                    pytest.skip(f"symlink creation unavailable: {exc}")
+            return original_connect(database, *args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(sqlite_util_module.sqlite3, "connect", swapping_connect)
+
+        with pytest.raises(PermissionError, match="symlink|changed during open"):
+            safe_sqlite_connect(db)
+
+        assert swapped is True
+
     def test_unicode_path(self, tmp_path: Path) -> None:
         db = tmp_path / "数据库.db"
         conn = safe_sqlite_connect(db)
@@ -179,6 +323,24 @@ class TestSafeSqliteConnect:
         assert trusted_schema[0] == 0
         conn.close()
 
+    def test_memory_database_keeps_safe_pragmas(self) -> None:
+        conn = safe_sqlite_connect(":memory:", busy_timeout_ms=1234)
+        try:
+            conn.execute("CREATE TABLE t(x)")
+            assert conn.execute("PRAGMA database_list").fetchone()[2] == ""
+            assert conn.execute("PRAGMA trusted_schema").fetchone()[0] == 0
+            assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 1234
+        finally:
+            conn.close()
+
+    def test_empty_path_opens_sqlite_temp_database(self) -> None:
+        conn = safe_sqlite_connect("")
+        try:
+            conn.execute("CREATE TABLE t(x)")
+            assert conn.execute("PRAGMA database_list").fetchone()[2] == ""
+        finally:
+            conn.close()
+
     def test_windows_read_only_uri_preserves_drive_letter(self) -> None:
         uri = sqlite_util_module._read_only_sqlite_uri(  # pyright: ignore[reportPrivateUsage]
             PureWindowsPath(r"C:\Users\alice\repo\.ahadiff\review.sqlite")
@@ -196,6 +358,112 @@ class TestSafeSqliteConnect:
 
         with pytest.raises(PermissionError, match="NTFS reparse point"):
             reject_symlink_path("C:/temp/review.sqlite")
+
+    def test_row_factory(self, tmp_path: Path) -> None:
+        db = tmp_path / "factory.db"
+        conn = safe_sqlite_connect(db, row_factory=sqlite3.Row)
+        conn.execute("CREATE TABLE t(x INTEGER)")
+        conn.execute("INSERT INTO t VALUES(42)")
+        conn.commit()
+        row = conn.execute("SELECT x FROM t").fetchone()
+        assert row["x"] == 42
+        conn.close()
+
+    def test_foreign_keys_enabled(self, tmp_path: Path) -> None:
+        db = tmp_path / "fk.db"
+        conn = safe_sqlite_connect(db, foreign_keys=True)
+        fk = conn.execute("PRAGMA foreign_keys").fetchone()
+        assert fk is not None
+        assert fk[0] == 1
+        conn.close()
+
+    def test_foreign_keys_disabled_by_default(self, tmp_path: Path) -> None:
+        db = tmp_path / "nofk.db"
+        conn = safe_sqlite_connect(db)
+        fk = conn.execute("PRAGMA foreign_keys").fetchone()
+        assert fk is not None
+        assert fk[0] == 0
+        conn.close()
+
+    def test_defensive_flag(self, tmp_path: Path) -> None:
+        db = tmp_path / "def.db"
+        conn = safe_sqlite_connect(db, defensive=True)
+        conn.execute("CREATE TABLE t(x)")
+        conn.close()
+
+    def test_timeout_parameter(self, tmp_path: Path) -> None:
+        db = tmp_path / "timeout.db"
+        conn = safe_sqlite_connect(db, timeout=30.0)
+        conn.execute("CREATE TABLE t(x)")
+        conn.close()
+
+    def test_negative_busy_timeout_rejected(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="busy_timeout_ms"):
+            safe_sqlite_connect(tmp_path / "busy-negative.db", busy_timeout_ms=-1)
+
+    def test_negative_timeout_rejected(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="timeout must be >= 0"):
+            safe_sqlite_connect(tmp_path / "timeout-negative.db", timeout=-1)
+
+    def test_invalid_journal_mode_rejected(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="invalid journal_mode"):
+            safe_sqlite_connect(tmp_path / "bad.db", journal_mode="WAL; DROP TABLE foo")
+
+    def test_journal_mode_case_insensitive(self, tmp_path: Path) -> None:
+        db = tmp_path / "lower.db"
+        conn = safe_sqlite_connect(db, journal_mode="wal")
+        mode = conn.execute("PRAGMA journal_mode").fetchone()
+        assert mode is not None
+        assert mode[0] == "wal"
+        conn.close()
+
+    def test_allows_wal_database_reopen_when_connect_recreates_sidecars(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        db = tmp_path / "wal-reopen.db"
+        with sqlite3.connect(db) as connection:
+            connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute("CREATE TABLE t(x)")
+            connection.commit()
+            connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        for suffix in ("-wal", "-shm"):
+            sidecar = db.with_name(f"{db.name}{suffix}")
+            sidecar.unlink(missing_ok=True)
+
+        conn = safe_sqlite_connect(db)
+        try:
+            assert conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        finally:
+            conn.close()
+
+    def test_cleanup_on_pragma_failure(self, tmp_path: Path) -> None:
+        db = tmp_path / "corrupt.db"
+        db.write_bytes(b"not a sqlite database at all")
+        with pytest.raises(sqlite3.DatabaseError):
+            safe_sqlite_connect(db, journal_mode="WAL")
+
+    def test_all_params_combined(self, tmp_path: Path) -> None:
+        db = tmp_path / "combined.db"
+        conn = safe_sqlite_connect(
+            db,
+            journal_mode="WAL",
+            busy_timeout_ms=10000,
+            timeout=10.0,
+            row_factory=sqlite3.Row,
+            foreign_keys=True,
+            defensive=True,
+        )
+        conn.execute("CREATE TABLE t(x INTEGER)")
+        conn.execute("INSERT INTO t VALUES(1)")
+        conn.commit()
+        row = conn.execute("SELECT x FROM t").fetchone()
+        assert row["x"] == 1
+        fk = conn.execute("PRAGMA foreign_keys").fetchone()
+        assert fk["foreign_keys"] == 1
+        mode = conn.execute("PRAGMA journal_mode").fetchone()
+        assert mode["journal_mode"] == "wal"
+        conn.close()
 
 
 class TestRejectSymlinkPath:

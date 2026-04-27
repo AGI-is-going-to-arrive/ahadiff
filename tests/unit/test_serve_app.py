@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -236,6 +237,60 @@ def test_origin_guard_rejects_non_loopback_write_origin(tmp_path: Path) -> None:
     assert response.json()["error"] == "origin_not_allowed"
 
 
+def test_cors_preflight_allows_loopback_origin_with_headers(tmp_path: Path) -> None:
+    client = _client(tmp_path / ".ahadiff")
+
+    response = client.options(
+        "/api/locale",
+        headers={
+            "origin": "http://localhost:8765",
+            "access-control-request-method": "PUT",
+            "access-control-request-headers": "X-AhaDiff-Token, Content-Type",
+        },
+    )
+
+    assert response.status_code == 204
+    assert response.headers["access-control-allow-origin"] == "http://localhost:8765"
+    assert response.headers["access-control-allow-methods"] == (
+        "GET, HEAD, OPTIONS, POST, PUT, PATCH, DELETE"
+    )
+    assert response.headers["access-control-allow-headers"] == ("Content-Type, X-AhaDiff-Token")
+    assert response.headers["access-control-allow-credentials"] == "true"
+    assert response.headers["vary"] == "Origin"
+
+
+def test_cors_preflight_rejects_non_loopback_origin(tmp_path: Path) -> None:
+    client = _client(tmp_path / ".ahadiff")
+
+    response = client.options(
+        "/api/locale",
+        headers={
+            "origin": "https://evil.example",
+            "access-control-request-method": "PUT",
+            "access-control-request-headers": "X-AhaDiff-Token, Content-Type",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"] == "origin_not_allowed"
+    assert "access-control-allow-origin" not in response.headers
+
+
+def test_cors_actual_response_allows_loopback_origin(tmp_path: Path) -> None:
+    client = _client(tmp_path / ".ahadiff")
+
+    response = client.put(
+        "/api/locale",
+        headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        json={"lang": "zh-CN"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:8765"
+    assert response.headers["access-control-allow-credentials"] == "true"
+    assert response.headers["vary"] == "Origin"
+
+
 def test_write_routes_require_token(tmp_path: Path) -> None:
     client = _client(tmp_path / ".ahadiff")
 
@@ -252,6 +307,8 @@ def test_write_routes_require_token(tmp_path: Path) -> None:
 
     assert denied.status_code == 403
     assert accepted.status_code == 200
+    assert accepted.headers["access-control-allow-origin"] == "http://localhost:8765"
+    assert accepted.headers["access-control-allow-credentials"] == "true"
     assert "ahadiff_lang=zh-CN" in accepted.headers["set-cookie"]
     assert client.get("/api/locale").json() == {"locale": "zh-CN"}
 
@@ -1180,6 +1237,30 @@ def test_bounded_finalized_artifact_digest_rejects_symlink_swap_before_open(
     assert swapped is True
 
 
+def test_bounded_finalized_artifact_digest_rejects_reparse_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ahadiff.core.errors import InputError
+
+    run_path = tmp_path / "run_reparse_dir"
+    reparse_dir = run_path / "junction"
+    reparse_dir.mkdir(parents=True)
+    (reparse_dir / "outside-secret.txt").write_text("outside-secret\n", encoding="utf-8")
+
+    def fake_has_reparse_point(path_stat: object) -> bool:
+        return routes_runs_module.stat.S_ISDIR(cast("Any", path_stat).st_mode)
+
+    monkeypatch.setattr(
+        routes_runs_module,
+        "_has_windows_reparse_point",
+        fake_has_reparse_point,
+    )
+
+    with pytest.raises(InputError, match="Windows reparse point"):
+        routes_runs_module._bounded_finalized_artifact_digest(run_path)  # pyright: ignore[reportPrivateUsage]
+
+
 def test_symlink_run_directory_is_not_served(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     outside_state_dir = tmp_path / "outside" / ".ahadiff"
@@ -1437,22 +1518,142 @@ def test_read_text_capped_checks_size_from_open_fd(
 ) -> None:
     visible_path = tmp_path / "artifact.txt"
     visible_path.write_text("ok\n", encoding="utf-8")
-    swapped_path = tmp_path / "swapped.txt"
-    swapped_path.write_text("too large\n", encoding="utf-8")
-    original_open = routes_runs_module.os.open
+    original_lstat = routes_runs_module.os.lstat
+    grew_after_lstat = False
 
-    def fake_open(path: Any, flags: int, mode: int = 0o777) -> int:
+    def growing_lstat(path: Any) -> Any:
+        nonlocal grew_after_lstat
+        result = original_lstat(path)
         if Path(cast("str", path)) == visible_path:
-            return original_open(str(swapped_path), flags, mode)
-        return original_open(path, flags, mode)
+            visible_path.write_text("too large\n", encoding="utf-8")
+            grew_after_lstat = True
+        return result
 
-    monkeypatch.setattr(routes_runs_module.os, "open", fake_open)
+    monkeypatch.setattr(routes_runs_module.os, "lstat", growing_lstat)
     read_text_capped = cast("Any", routes_runs_module._read_text_capped)  # pyright: ignore[reportPrivateUsage]
 
     with pytest.raises(routes_runs_module.HTTPException) as exc_info:
         read_text_capped(visible_path, max_bytes=4)
 
+    assert grew_after_lstat is True
     assert exc_info.value.status_code == 413
+
+
+def test_read_text_capped_rejects_path_swap_after_lstat(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ahadiff.core.errors import InputError
+
+    visible_path = tmp_path / "artifact.txt"
+    visible_path.write_text("safe\n", encoding="utf-8")
+    outside_path = tmp_path / "outside-secret.txt"
+    outside_path.write_text("outside-secret\n", encoding="utf-8")
+    original_open = routes_runs_module.os.open
+
+    def fake_open(path: Any, flags: int, mode: int = 0o777) -> int:
+        if Path(cast("str", path)) == visible_path:
+            return original_open(str(outside_path), flags, mode)
+        return original_open(path, flags, mode)
+
+    monkeypatch.setattr(routes_runs_module.os, "open", fake_open)
+    read_text_capped = cast("Any", routes_runs_module._read_text_capped)  # pyright: ignore[reportPrivateUsage]
+
+    with pytest.raises(InputError, match="changed during validation"):
+        read_text_capped(visible_path, max_bytes=1024)
+
+
+def test_read_text_capped_rejects_hardlinked_file(tmp_path: Path) -> None:
+    if not hasattr(os, "link"):
+        pytest.skip("hardlinks unavailable on this platform")
+
+    from ahadiff.core.errors import InputError
+
+    outside_path = tmp_path / "outside-secret.txt"
+    outside_path.write_text("outside-secret\n", encoding="utf-8")
+    visible_path = tmp_path / "artifact.txt"
+    os.link(outside_path, visible_path)
+
+    read_text_capped = cast("Any", routes_runs_module._read_text_capped)  # pyright: ignore[reportPrivateUsage]
+
+    with pytest.raises(InputError, match="hardlink"):
+        read_text_capped(visible_path, max_bytes=1024)
+
+
+@pytest.mark.skipif(
+    not hasattr(routes_runs_module.os, "symlink"), reason="requires symlink support"
+)
+def test_read_text_capped_rejects_symlink_when_open_may_follow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ahadiff.core.errors import InputError
+
+    target_path = tmp_path / "target.txt"
+    target_path.write_text("target\n", encoding="utf-8")
+    link_path = tmp_path / "artifact-link.txt"
+    routes_runs_module.os.symlink(target_path, link_path)
+    original_open = routes_runs_module.os.open
+    nofollow_flag = getattr(routes_runs_module.os, "O_NOFOLLOW", 0)
+
+    def following_open(path: Any, flags: int, mode: int = 0o777) -> int:
+        if nofollow_flag:
+            flags &= ~nofollow_flag
+        return original_open(path, flags, mode)
+
+    monkeypatch.setattr(routes_runs_module.os, "open", following_open)
+    read_text_capped = routes_runs_module._read_text_capped  # pyright: ignore[reportPrivateUsage]
+
+    with pytest.raises(InputError, match="symlink"):
+        read_text_capped(link_path, max_bytes=1024)
+
+
+@pytest.mark.skipif(
+    not hasattr(routes_runs_module.os, "symlink"), reason="requires symlink support"
+)
+def test_hash_bounded_finalized_artifact_rejects_symlink_when_open_may_follow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ahadiff.core.errors import InputError
+
+    target_path = tmp_path / "target.txt"
+    target_path.write_text("target\n", encoding="utf-8")
+    link_path = tmp_path / "artifact-link.txt"
+    routes_runs_module.os.symlink(target_path, link_path)
+    expected_stat = target_path.stat()
+    original_open = routes_runs_module.os.open
+    nofollow_flag = getattr(routes_runs_module.os, "O_NOFOLLOW", 0)
+
+    def following_open(path: Any, flags: int, mode: int = 0o777) -> int:
+        if nofollow_flag:
+            flags &= ~nofollow_flag
+        return original_open(path, flags, mode)
+
+    monkeypatch.setattr(routes_runs_module.os, "open", following_open)
+    hash_artifact = routes_runs_module._hash_bounded_finalized_artifact  # pyright: ignore[reportPrivateUsage]
+
+    with pytest.raises(InputError, match="symlink"):
+        hash_artifact(link_path, "artifact-link.txt", expected_stat)
+
+
+def test_bounded_finalized_artifact_digest_rejects_hardlinked_artifact(tmp_path: Path) -> None:
+    if not hasattr(os, "link"):
+        pytest.skip("hardlinks unavailable on this platform")
+
+    from ahadiff.core.errors import InputError
+
+    outside_path = tmp_path / "outside-secret.txt"
+    outside_path.write_text("outside-secret\n", encoding="utf-8")
+    run_path = tmp_path / "run_hardlink"
+    run_path.mkdir()
+    artifact_path = run_path / "artifact.txt"
+    os.link(outside_path, artifact_path)
+
+    with pytest.raises(InputError, match="hardlinked artifact"):
+        routes_runs_module._bounded_finalized_artifact_digest(  # pyright: ignore[reportPrivateUsage]
+            run_path
+        )
 
 
 def test_review_queue_uses_anyio_threadpool(

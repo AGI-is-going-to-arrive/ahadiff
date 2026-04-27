@@ -191,7 +191,7 @@ ahadiff/
 - `ahadiff serve`: the localhost-only serve backend is available. Read routes expose finalized runs only; write routes require token plus Origin/Referer checks
 - `ahadiff install`: Claude / Codex / Gemini / OpenCode / hooks / GitHub Action targets are available. Hooks are POSIX-shell targets and are explicitly rejected on Windows in v0.1. Generated GitHub workflows cover macOS + Linux; Windows remains deferred. The generate workflow uses `AHADIFF_PROVIDER_API_KEY` and uploads `.ahadiff/` outputs as an artifact
 - `ahadiff benchmark`: the local benchmark manifest, 20 eval fixtures, 10 pinned integration fixtures, and `ground_truth.md` consistency checks are available
-- The Phase 0 follow-up is now reflected in the branch as shipped docs plus matching runtime behavior for the contract surface, backend safety edges, CLI cold start, and local baseline scripts
+- The Phase 0 follow-up is now reflected in the branch: the contract authority, the `safe_sqlite_connect` SQLite connection helper, reparse/hardlink protections, serve CORS and `X-Frame-Options` headers, CLI cold start, and local baseline scripts all have matching implementation
 - i18n-0: the locale resolver supports cookie / Accept-Language / CLI / config / `AHADIFF_LANG` / `LANG` fallback, and lesson/quiz prompt payloads carry the requested output-language instruction
 - `ahadiff improve --suite local --rounds N`, which currently supports only `--suite local`. It selects a baseline from an existing finalized run, edits only an allowlisted prompt in a git worktree, replays the same diff, and rescores the candidate; the candidate must improve the target dimension plus `accuracy`, `evidence`, and `safety_privacy`, and hard gates must still pass. Passing candidates are cherry-picked back when possible and recorded as `event_type=improve` / `status=targeted_verify`; non-improving rounds are recorded as `discard`; cherry-pick conflicts leave a pending worktree without finalizing the run; two consecutive `discard` rounds in the same session trigger one Phase 2.5 worktree rewrite
 - `src/ahadiff/eval/{rubric,gates,deterministic,evaluator,results,ratchet}.py` for the 8-dimension scorer, hard gates, result persistence, ratchet selection, and export rebuilds
@@ -227,7 +227,7 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-Latest verification (2026-04-28): `uv run pytest tests -q --tb=long` finished with `845 passed, 1 skipped` (the live judge smoke is still skipped by default); `uv run ruff check src tests`, `uv run ruff format --check src tests`, and `uv run pyright` all passed; CLI smoke for `--version`, `learn --help`, `serve --help`, `improve --help`, `install --help`, `doctor --help`, `quiz --help`, `review --help`, `benchmark --help`, and `config show --resolved` all returned successfully. The local benchmark scripts and aggregate baseline were rerun as well; `api_latency` remained `skipped` because `ahadiff serve` was not running in this session.
+Latest verification (2026-04-28): `uv run pytest tests -q --tb=long` finished with `881 passed, 1 skipped` (the live judge smoke is still skipped by default); `uv run ruff check src tests`, `uv run ruff format --check src tests`, and `uv run pyright` all passed.
 
 Roadmap:
 

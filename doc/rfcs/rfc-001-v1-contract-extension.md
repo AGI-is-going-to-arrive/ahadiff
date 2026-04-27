@@ -1,18 +1,19 @@
 # RFC-001: v1.0 Contract Extension
 
-**Status**: DRAFT — awaiting Codex + Claude cross-review
+**Status**: APPROVED — R1 adversarial (2H+3M) + R2 cross-review (2 residuals) + R3 final check (1 residual) = all fixed
 **Date**: 2026-04-28
+**Revised**: 2026-04-28 (R1 remediation: H-1 Graphify freshness unfrozen, H-2 POST /api/learn reserved as #37, M-3 config key allowlist, M-4 search/date param safety, M-5 exclude_none constraint)
 **Authors**: Claude (orchestrator)
 **Requires**: contract-freeze.md §8 change rules (RFC + cross-review)
 
-Current branch verification after the Phase 0 follow-up: `845 passed, 1 skipped`, `ruff check` pass, `ruff format --check` pass, `pyright` pass.
+Current branch verification after the Phase 0 follow-up: `881 passed, 1 skipped`, `ruff check` pass, `ruff format --check` pass, `pyright 0 errors`.
 
 ## Motivation
 
-v1.0 execution plan requires 14 new serve endpoints (#23-#36), expanded helpfulness
+v1.0 execution plan requires 15 new serve endpoints (#23-#37), expanded helpfulness
 semantics, a new misconception-card DTO, and a formal note on Graphify's dependency
 posture. All four changes must be ratified via contract-freeze §8 before implementation
-in Phases 1E, 3A-3D, 3C, and 5F.
+in Phases 1E, 3A-3D, 3C, 5F, and 6B.
 
 ## Current State
 
@@ -22,7 +23,7 @@ Current `serve/app.py` registers 23 explicit `Route(...)` entries: 1 `/healthz`,
 
 ---
 
-## (a) Serve Endpoint Expansion: #23-#36
+## (a) Serve Endpoint Expansion: #23-#37
 
 ### Numbering Convention
 
@@ -30,7 +31,7 @@ Endpoints #1-#13: original contract-freeze.
 Endpoints #14-#22: v0.2 additions (review/queue, review/rate, config, doctor,
 install/targets, signals/mark-wrong, signals/quiz-answer, signals/srs-review,
 signals/helpfulness).
-Endpoints #23-#36: v1.0 additions below.
+Endpoints #23-#37: v1.0 additions below.
 
 ### Phase 1E — Simple APIs
 
@@ -54,12 +55,20 @@ Endpoints #23-#36: v1.0 additions below.
 | 33 | GET | `/api/spec/alignment` | token | `SpecAlignmentResponse` | 3D |
 | 34 | PUT | `/api/config` | token | `ConfigResponse` | 3D |
 
-### Phase 3C + 5F — Infrastructure APIs
+### Phase 3C + 5F + 6B — Infrastructure APIs
 
 | # | Method | Path | Auth | Response DTO | Impl Phase |
 |---|--------|------|------|-------------|------------|
 | 35 | GET | `/api/tasks/{task_id}/progress` | token | SSE stream (`text/event-stream`) | 3C |
 | 36 | GET | `/api/graph/status` | token | `GraphStatusResponse` | 5F |
+| 37 | POST | `/api/learn` | token | SSE stream (`text/event-stream`) | 6B |
+
+**Note on #37 (`POST /api/learn`)**: This endpoint triggers a full learn pipeline via
+the orchestrator.  It requires extracting `core/orchestrator.py` from `cli.py`
+(Phase 6B, 7-10 PD).  The request DTO (`LearnRequest`) and SSE event schema will be
+defined in Phase 6B after the orchestrator refactor lands.  This RFC **reserves** the
+endpoint number and path; the full contract will be ratified in a follow-up RFC or
+Phase 6B gate review.
 
 ### New Response DTOs
 
@@ -168,11 +177,13 @@ class AuditEntry(BaseModel):
 
 
 class SearchResponse(BaseModel):
-    """FTS5 full-text search results."""
+    """FTS5 full-text search results (paginated)."""
     model_config = ConfigDict(extra="forbid")
     query: str
     results: list[SearchHit]
     total: int
+    has_more: bool
+    cursor: str | None
 
 class SearchHit(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -235,39 +246,68 @@ class ConfigResponse(BaseModel):
 # --- Phase 5F ---
 
 class GraphStatusResponse(BaseModel):
-    """Graphify graph.json freshness + statistics."""
+    """Graphify graph.json freshness + statistics.
+
+    ``freshness`` is a free-form string per contract-freeze §6 (Stage 0 does
+    NOT freeze the 4 projection label literals).  Runtime values are expected
+    to be one of "fresh"/"stale"/"unknown"/"missing", but the DTO does not
+    enforce this via Literal — enforcement lives in the Graphify freshness
+    module (Phase 3E).
+    """
     model_config = ConfigDict(extra="forbid")
     detected: bool
     path: str | None
     node_count: int | None
     edge_count: int | None
-    freshness: Literal["fresh", "stale", "unknown", "missing"]
+    freshness: str
     last_imported_at: str | None
 ```
 
 ### New Request DTO (PUT /api/config)
 
 ```python
+_WRITABLE_CONFIG_KEYS: frozenset[str] = frozenset({
+    "llm.generate_model",
+    "llm.judge_model",
+    "llm.base_url",
+    "privacy_mode",
+    "learn.learnability_threshold",
+    "locale",
+})
+
+
 class UpdateConfigRequest(BaseModel):
-    """Partial config update."""
+    """Partial config update.  ``key`` must be in the writable allowlist."""
     model_config = ConfigDict(extra="forbid")
     key: str
     value: Any
+
+    @model_validator(mode="after")
+    def validate_writable_key(self) -> UpdateConfigRequest:
+        if self.key not in _WRITABLE_CONFIG_KEYS:
+            raise ValueError(
+                f"config key {self.key!r} is not in the writable allowlist"
+            )
+        return self
 ```
+
+Only keys in `_WRITABLE_CONFIG_KEYS` can be modified via the API.  Credential keys
+(`api_key_env`, secrets) are never writable via serve.  The allowlist can be expanded
+in future RFCs.
 
 ### Query Parameters
 
 | Endpoint | Query Params |
 |----------|-------------|
 | `/api/stats` | none |
-| `/api/review/heatmap` | `?from=YYYY-MM-DD&to=YYYY-MM-DD` (optional, defaults to last 365 days) |
+| `/api/review/heatmap` | `?from=YYYY-MM-DD&to=YYYY-MM-DD` (optional, defaults to last 365 days; max span 730 days) |
 | `/api/export/results` | `?format=tsv` (only tsv supported in v1.0) |
 | `/api/providers` | none |
 | `/api/serve/status` | none |
 | `/api/concepts/weak` | `?limit=N` (default 10, max 100) |
-| `/api/usage` | `?from=YYYY-MM-DD&to=YYYY-MM-DD` (optional) |
+| `/api/usage` | `?from=YYYY-MM-DD&to=YYYY-MM-DD` (optional; max span 730 days) |
 | `/api/audit` | `?cursor=C&limit=N` (default 50, max 200) |
-| `/api/search` | `?q=text&kind=lesson|claim|concept|quiz` (q required, kind optional filter) |
+| `/api/search` | `?q=text&kind=lesson|claim|concept|quiz&limit=N&cursor=C` (q required; kind optional; limit default 20, max 100) |
 | `/api/review/mastery` | none |
 | `/api/spec/alignment` | `?run_id=R` (optional, defaults to all finalized runs) |
 | `/api/config` | none |
@@ -316,7 +356,11 @@ class HelpfulnessRequest(LearningSignalRequest):
 ### Backward Compatibility
 
 - Default `target_kind="file"` preserves existing behavior
-- `section_id=None` default preserves existing wire format
+- `section_id=None` default preserves existing wire format **only if** serialization
+  uses `exclude_none=True` (or Pydantic's default `model_dump(exclude_none=True)`).
+  All serve route handlers that serialize `HelpfulnessRequest` or its response MUST
+  use `exclude_none=True` to avoid injecting `"section_id": null` into responses that
+  existing frontends do not expect.
 - Existing frontend `helpfulness` signal calls continue to work unchanged
 
 ---
@@ -401,8 +445,8 @@ Graphify remains **runtime-detected only** in v1.0. Formally documented:
 
 | File | Change | Phase |
 |------|--------|-------|
-| `doc/contract-freeze.md` | Add endpoints #23-#36 to §4.2; add new DTOs to §4.3 | 0G |
-| `src/ahadiff/contracts/serve_app.py` | Add 14 new response DTOs + UpdateConfigRequest + export in `__all__` | 1E/3D |
+| `doc/contract-freeze.md` | Add endpoints #23-#37 to §4.2; add new DTOs to §4.3 | 0G |
+| `src/ahadiff/contracts/serve_app.py` | Add 15 new response DTOs + UpdateConfigRequest + export in `__all__` | 1E/3D/6B |
 | `src/ahadiff/contracts/claim_status.py` | Add `MisconceptionCard` + `MisconceptionSeverity` + `MisconceptionStatus` | 3B |
 
 ### eval_bundle_version Impact
@@ -418,10 +462,10 @@ contract-freeze §8 rule 3.
 
 ## Acceptance Criteria
 
-1. All 14 new endpoint paths, methods, and auth requirements documented
+1. All 15 new endpoint paths (#23-#37), methods, and auth requirements documented
 2. All new DTOs defined with Pydantic `extra="forbid"` and type annotations
 3. HelpfulnessRequest expansion is backward-compatible
 4. MisconceptionCard is a separate DTO, not a ReviewCard extension
 5. Graphify runtime-only posture formally documented
 6. Codex + Claude cross-review PASS
-7. No existing tests regress (>= 845 passed)
+7. No existing tests regress against the current backend baseline (`881 passed, 1 skipped`)

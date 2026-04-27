@@ -4,17 +4,21 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 if TYPE_CHECKING:
     from starlette.middleware.base import RequestResponseEndpoint
     from starlette.requests import Request
-    from starlette.responses import Response
 
 _ALLOWED_HOSTS = {"localhost", "127.0.0.1", "::1"}
 _MAX_BODY_BYTES = 1_048_576  # 1 MiB
 _WRITE_GUARD_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 _JSON_BODY_METHODS = {"POST", "PUT", "PATCH"}
+_CORS_ALLOWED_METHODS = {"GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"}
+_CORS_ALLOW_METHODS = "GET, HEAD, OPTIONS, POST, PUT, PATCH, DELETE"
+_CORS_ALLOWED_REQUEST_HEADERS = {"content-type", "x-ahadiff-token"}
+_CORS_ALLOW_HEADERS = "Content-Type, X-AhaDiff-Token"
+_CORS_MAX_AGE_SECONDS = "600"
 
 
 class LoopbackGuardMiddleware(BaseHTTPMiddleware):
@@ -23,15 +27,29 @@ class LoopbackGuardMiddleware(BaseHTTPMiddleware):
         expected_port = _expected_port(state)
         if not _is_allowed_host(request.headers.get("host", ""), expected_port=expected_port):
             return _error_response("host_not_allowed", status_code=400)
+        origin = request.headers.get("origin")
+        cors_origin = (
+            origin
+            if origin is not None and _is_allowed_origin(origin, expected_port=expected_port)
+            else None
+        )
         if _is_cors_preflight(request):
-            origin = request.headers.get("origin")
             if origin is not None and not _is_allowed_preflight_origin(
                 origin,
                 expected_port=expected_port,
             ):
                 return _error_response("origin_not_allowed", status_code=403)
+            if not _is_allowed_preflight_method(
+                request.headers.get("access-control-request-method")
+            ):
+                return _error_response("method_not_allowed", status_code=405)
+            if not _are_allowed_preflight_headers(
+                request.headers.get("access-control-request-headers")
+            ):
+                return _error_response("headers_not_allowed", status_code=400)
+            assert origin is not None
+            return _preflight_response(origin)
         if request.method in _WRITE_GUARD_METHODS:
-            origin = request.headers.get("origin")
             referer = request.headers.get("referer")
             if origin is None and referer is None:
                 return _error_response("origin_or_referer_required", status_code=403)
@@ -42,24 +60,48 @@ class LoopbackGuardMiddleware(BaseHTTPMiddleware):
         if request.method in _JSON_BODY_METHODS:
             has_body = _declares_request_body(request)
             if has_body and not _is_json_content_type(request.headers.get("content-type", "")):
-                return _error_response("unsupported_media_type", status_code=415)
+                return _error_response(
+                    "unsupported_media_type",
+                    status_code=415,
+                    cors_origin=cors_origin,
+                )
             content_length = request.headers.get("content-length")
             if (
                 content_length is not None
                 and content_length.isdigit()
                 and int(content_length) > _MAX_BODY_BYTES
             ):
-                return _error_response("payload_too_large", status_code=413)
+                return _error_response(
+                    "payload_too_large",
+                    status_code=413,
+                    cors_origin=cors_origin,
+                )
             if has_body and not await _cache_limited_body(request):
-                return _error_response("payload_too_large", status_code=413)
+                return _error_response(
+                    "payload_too_large",
+                    status_code=413,
+                    cors_origin=cors_origin,
+                )
         response = await call_next(request)
+        if cors_origin is not None:
+            _apply_cors_headers(response, cors_origin)
         return _apply_security_headers(response)
 
 
-def _error_response(error: str, *, status_code: int) -> Response:
-    return _apply_security_headers(
-        JSONResponse({"error": error, "status": status_code}, status_code=status_code)
-    )
+def _error_response(error: str, *, status_code: int, cors_origin: str | None = None) -> Response:
+    response = JSONResponse({"error": error, "status": status_code}, status_code=status_code)
+    if cors_origin is not None:
+        _apply_cors_headers(response, cors_origin)
+    return _apply_security_headers(response)
+
+
+def _preflight_response(origin: str) -> Response:
+    response = Response(status_code=204)
+    _apply_cors_headers(response, origin)
+    response.headers["Access-Control-Allow-Methods"] = _CORS_ALLOW_METHODS
+    response.headers["Access-Control-Allow-Headers"] = _CORS_ALLOW_HEADERS
+    response.headers["Access-Control-Max-Age"] = _CORS_MAX_AGE_SECONDS
+    return _apply_security_headers(response)
 
 
 def _apply_security_headers(response: Response) -> Response:
@@ -68,6 +110,22 @@ def _apply_security_headers(response: Response) -> Response:
     response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
     response.headers.setdefault("Referrer-Policy", "same-origin")
     return response
+
+
+def _apply_cors_headers(response: Response, origin: str) -> None:
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    _add_vary_origin(response)
+
+
+def _add_vary_origin(response: Response) -> None:
+    existing = response.headers.get("Vary")
+    if existing is None:
+        response.headers["Vary"] = "Origin"
+        return
+    values = {value.strip().lower() for value in existing.split(",")}
+    if "origin" not in values:
+        response.headers["Vary"] = f"{existing}, Origin"
 
 
 async def _cache_limited_body(request: Request) -> bool:
@@ -116,6 +174,17 @@ def _is_cors_preflight(request: Request) -> bool:
         and request.headers.get("origin") is not None
         and request.headers.get("access-control-request-method") is not None
     )
+
+
+def _is_allowed_preflight_method(value: str | None) -> bool:
+    return value is not None and value.strip().upper() in _CORS_ALLOWED_METHODS
+
+
+def _are_allowed_preflight_headers(value: str | None) -> bool:
+    if value is None or not value.strip():
+        return True
+    headers = [header.strip().lower() for header in value.split(",")]
+    return all(header and header in _CORS_ALLOWED_REQUEST_HEADERS for header in headers)
 
 
 def _is_allowed_origin(value: str, *, expected_port: int | None) -> bool:

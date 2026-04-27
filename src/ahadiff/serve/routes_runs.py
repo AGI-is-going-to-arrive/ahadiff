@@ -63,6 +63,7 @@ _MAX_FINALIZED_ARTIFACTS = 64
 _MAX_FINALIZED_ARTIFACT_DIRS = 64
 _MAX_FINALIZED_ARTIFACT_BYTES = 16 * 1024 * 1024
 _CANONICAL_RUN_ID_RE = re.compile(r"^run_[0-9a-f]{32}$")
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 log = logging.getLogger(__name__)
 _ALLOWED_ARTIFACTS = frozenset(
     {
@@ -585,9 +586,32 @@ def _load_json_object(path: Path) -> dict[str, Any]:
 
 
 def _read_text_capped(path: Path, *, max_bytes: int) -> str:
-    fd = os.open(str(path), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    path_stat = os.lstat(path)
+    if stat.S_ISLNK(path_stat.st_mode):
+        raise InputError(f"{path.name} must not be a symlink")
+    if _has_windows_reparse_point(path_stat):
+        raise InputError(f"{path.name} must not be a Windows reparse point or junction")
+    _reject_hardlinked_regular_file(path, path_stat, message=f"{path.name} must not be a hardlink")
     try:
-        size = os.fstat(fd).st_size
+        fd = os.open(str(path), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise InputError(f"{path.name} must not be a symlink") from exc
+        raise
+    try:
+        opened_stat = os.fstat(fd)
+        if not stat.S_ISREG(opened_stat.st_mode):
+            raise InputError(f"{path.name} must be a regular file")
+        if _has_windows_reparse_point(opened_stat):
+            raise InputError(f"{path.name} must not be a Windows reparse point or junction")
+        _reject_hardlinked_regular_file(
+            path,
+            opened_stat,
+            message=f"{path.name} must not be a hardlink",
+        )
+        if (opened_stat.st_dev, opened_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
+            raise InputError(f"{path.name} changed during validation")
+        size = opened_stat.st_size
         if size > max_bytes:
             raise HTTPException(status_code=413, detail=f"{path.name} exceeds size limit")
         with os.fdopen(fd, "r", encoding="utf-8") as handle:
@@ -658,11 +682,20 @@ def _bounded_finalized_artifact_digest(run_path: Path) -> tuple[int, str]:
                 raise InputError("finalized run artifact is unreadable") from exc
             if stat.S_ISLNK(entry_stat.st_mode):
                 raise InputError(f"refusing symlink artifact in finalized run: {relative_path}")
+            if _has_windows_reparse_point(entry_stat):
+                raise InputError(
+                    f"refusing Windows reparse point artifact in finalized run: {relative_path}"
+                )
             if stat.S_ISDIR(entry_stat.st_mode):
                 stack.append(path)
                 continue
             if not stat.S_ISREG(entry_stat.st_mode):
                 continue
+            _reject_hardlinked_regular_file(
+                path,
+                entry_stat,
+                message=f"refusing hardlinked artifact in finalized run: {relative_path}",
+            )
             if len(artifact_paths) >= _MAX_FINALIZED_ARTIFACTS:
                 raise InputError("finalized run has too many artifacts")
             if entry_stat.st_size > _MAX_FINALIZED_ARTIFACT_BYTES:
@@ -682,6 +715,20 @@ def _hash_bounded_finalized_artifact(
     relative_path: str,
     expected_stat: os.stat_result,
 ) -> str:
+    path_stat = os.lstat(path)
+    if stat.S_ISLNK(path_stat.st_mode):
+        raise InputError(f"refusing symlink artifact in finalized run: {relative_path}")
+    if _has_windows_reparse_point(path_stat):
+        raise InputError(
+            f"refusing Windows reparse point artifact in finalized run: {relative_path}"
+        )
+    _reject_hardlinked_regular_file(
+        path,
+        path_stat,
+        message=f"refusing hardlinked artifact in finalized run: {relative_path}",
+    )
+    if (path_stat.st_dev, path_stat.st_ino) != (expected_stat.st_dev, expected_stat.st_ino):
+        raise InputError("finalized run artifact changed during validation")
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
         fd = os.open(str(path), flags)
@@ -694,6 +741,15 @@ def _hash_bounded_finalized_artifact(
         file_stat = os.fstat(fd)
         if not stat.S_ISREG(file_stat.st_mode):
             raise InputError("finalized run artifact must be a regular file")
+        if _has_windows_reparse_point(file_stat):
+            raise InputError(
+                f"refusing Windows reparse point artifact in finalized run: {relative_path}"
+            )
+        _reject_hardlinked_regular_file(
+            path,
+            file_stat,
+            message=f"refusing hardlinked artifact in finalized run: {relative_path}",
+        )
         if (file_stat.st_dev, file_stat.st_ino) != (expected_stat.st_dev, expected_stat.st_ino):
             raise InputError("finalized run artifact changed during validation")
         if file_stat.st_size > _MAX_FINALIZED_ARTIFACT_BYTES:
@@ -716,6 +772,17 @@ def _hash_bounded_finalized_artifact(
         raise InputError("finalized run artifact is unreadable") from exc
     finally:
         os.close(fd)
+
+
+def _has_windows_reparse_point(path_stat: object) -> bool:
+    if os.name != "nt":
+        return False
+    return bool(getattr(path_stat, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def _reject_hardlinked_regular_file(path: Path, path_stat: os.stat_result, *, message: str) -> None:
+    if stat.S_ISREG(path_stat.st_mode) and getattr(path_stat, "st_nlink", 1) > 1:
+        raise InputError(message)
 
 
 def _artifact_path_for_read(run_path: Path, relative_path: str) -> Path | None:

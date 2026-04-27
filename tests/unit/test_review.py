@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import subprocess
 from contextlib import contextmanager
@@ -16,6 +17,7 @@ from ahadiff.cli import app
 from ahadiff.contracts import ResultEvent, ReviewCard
 from ahadiff.core.errors import InputError, MigrationError, StorageError
 from ahadiff.core.paths import is_wsl2_mnt, lock_file_path, review_db_path
+from ahadiff.llm import usage as usage_module
 from ahadiff.quiz import QuizArtifactPaths
 from ahadiff.review import database as review_database_module
 from ahadiff.review.database import (
@@ -412,6 +414,40 @@ def test_connect_review_db_applies_resolved_journal_mode(
     assert journal_mode == expected_mode.lower()
 
 
+@pytest.mark.parametrize(
+    ("is_wsl2_mount", "expected_mode"),
+    ((False, "WAL"), (True, "DELETE")),
+)
+def test_connect_review_db_maintenance_passes_resolved_journal_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    is_wsl2_mount: bool,
+    expected_mode: str,
+) -> None:
+    db_path = tmp_path / "review.sqlite"
+    original_connect = review_database_module.safe_sqlite_connect
+    seen_kwargs: dict[str, object] = {}
+
+    def fake_is_wsl2_mnt(_path: Path) -> bool:
+        return is_wsl2_mount
+
+    def recording_connect(path: Path, **kwargs: Any) -> sqlite3.Connection:
+        seen_kwargs.update(kwargs)
+        return original_connect(path, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(review_database_module, "is_wsl2_mnt", fake_is_wsl2_mnt)
+    monkeypatch.setattr(review_database_module, "safe_sqlite_connect", recording_connect)
+
+    with review_database_module._connect_review_db_maintenance(  # pyright: ignore[reportPrivateUsage]
+        db_path,
+        create_parent=True,
+    ) as connection:
+        connection.execute("CREATE TABLE t(x)")
+
+    assert seen_kwargs["journal_mode"] == expected_mode
+
+
 def test_restore_review_db_checkpoints_before_after_and_removes_sidecars(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -480,6 +516,73 @@ def test_connect_review_db_does_not_create_missing_parent_directory(tmp_path: Pa
         connect_review_db(db_path)
 
     assert not db_path.parent.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation requires elevated Windows privileges")
+def test_connect_review_db_wraps_symlink_permission_error(tmp_path: Path) -> None:
+    target = tmp_path / "target.sqlite"
+    target.touch()
+    db_path = tmp_path / "review.sqlite"
+    db_path.symlink_to(target)
+
+    with pytest.raises(StorageError, match="failed to open review\\.sqlite safely") as caught:
+        connect_review_db(db_path)
+
+    assert isinstance(caught.value.__cause__, PermissionError)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation requires elevated Windows privileges")
+def test_connect_review_db_maintenance_wraps_symlink_permission_error(tmp_path: Path) -> None:
+    target = tmp_path / "target.sqlite"
+    target.touch()
+    db_path = tmp_path / "review.sqlite"
+    db_path.symlink_to(target)
+
+    with pytest.raises(StorageError, match="failed to open review\\.sqlite safely") as caught:
+        review_database_module._connect_review_db_maintenance(  # pyright: ignore[reportPrivateUsage]
+            db_path
+        )
+
+    assert isinstance(caught.value.__cause__, PermissionError)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation requires elevated Windows privileges")
+def test_connect_usage_db_wraps_symlink_permission_error(tmp_path: Path) -> None:
+    target = tmp_path / "target.sqlite"
+    target.touch()
+    db_path = tmp_path / "usage.sqlite"
+    db_path.symlink_to(target)
+
+    with pytest.raises(StorageError, match="failed to open usage DB safely") as caught:
+        usage_module.connect_usage_db(db_path)
+
+    assert isinstance(caught.value.__cause__, PermissionError)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation requires elevated Windows privileges")
+def test_doctor_reports_review_db_symlink_as_project_error_without_traceback(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    state_dir = repo_root / ".ahadiff"
+    state_dir.mkdir()
+    target = tmp_path / "target.sqlite"
+    target.touch()
+    (state_dir / "review.sqlite").symlink_to(target)
+
+    result = _RUNNER.invoke(
+        app(),
+        ["doctor", "--repo-root", str(repo_root)],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1
+    assert "Error:" in result.stderr
+    assert "Unexpected error" not in result.stderr
+    assert "review.sqlite could not be opened safely" in result.stderr
+    assert "Traceback" not in result.stderr
 
 
 def test_initialize_review_db_creates_missing_parent_directory(tmp_path: Path) -> None:

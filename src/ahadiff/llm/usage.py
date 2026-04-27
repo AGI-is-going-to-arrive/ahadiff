@@ -6,11 +6,12 @@ import threading
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 from ahadiff.core.errors import InputError, StorageError
 from ahadiff.core.ids import make_event_id
 from ahadiff.core.paths import is_wsl2_mnt, usage_db_path
+from ahadiff.core.sqlite_util import safe_sqlite_connect
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -52,21 +53,25 @@ class UsageRecord:
 
 def connect_usage_db(db_path: Path, *, create_parent: bool = False) -> sqlite3.Connection:
     _assert_sqlite_runtime_supported()
-    if create_parent:
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-    elif not db_path.parent.exists():
-        raise InputError(f"usage DB parent directory does not exist: {db_path.parent}")
-    connection = sqlite3.connect(db_path, timeout=_USAGE_BUSY_TIMEOUT_MS / 1000)
-    connection.row_factory = sqlite3.Row
+    try:
+        if create_parent:
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+        elif not db_path.parent.exists():
+            raise InputError(f"usage DB parent directory does not exist: {db_path.parent}")
+        connection = safe_sqlite_connect(
+            db_path,
+            timeout=_USAGE_BUSY_TIMEOUT_MS / 1000,
+            busy_timeout_ms=_USAGE_BUSY_TIMEOUT_MS,
+            journal_mode=_resolve_sqlite_journal_mode(db_path),
+            row_factory=sqlite3.Row,
+            defensive=True,
+        )
+    except sqlite3.DatabaseError as exc:
+        raise StorageError(f"SQLite quick_check failed for {db_path}: {exc}") from exc
+    except OSError as exc:
+        raise StorageError(f"failed to open usage DB safely: {db_path} ({exc})") from exc
     try:
         try:
-            connection.execute(f"PRAGMA journal_mode={_resolve_sqlite_journal_mode(db_path)}")
-            connection.execute(f"PRAGMA busy_timeout={_USAGE_BUSY_TIMEOUT_MS}")
-            connection.execute("PRAGMA trusted_schema=OFF")
-            defensive_flag = getattr(sqlite3, "SQLITE_DBCONFIG_DEFENSIVE", None)
-            setconfig = getattr(connection, "setconfig", None)
-            if defensive_flag is not None and callable(setconfig):
-                cast("Any", setconfig)(defensive_flag, True)
             quick_check = connection.execute("PRAGMA quick_check").fetchone()
         except sqlite3.DatabaseError as exc:
             raise StorageError(f"SQLite quick_check failed for {db_path}: {exc}") from exc
@@ -141,11 +146,19 @@ def record_usage_event(record: UsageRecord, *, db_path: Path | None = None) -> N
                 )
             return
         except (sqlite3.OperationalError, StorageError) as exc:
-            root = exc.__cause__ if isinstance(exc, StorageError) else exc
-            is_locked = "locked" in str(root).casefold() or "locked" in str(exc).casefold()
-            if not is_locked or attempt == _USAGE_WRITE_ATTEMPTS - 1:
+            root = exc.__cause__ if isinstance(exc, StorageError) and exc.__cause__ else exc
+            if not _is_retryable_usage_write_error(exc, root) or attempt == (
+                _USAGE_WRITE_ATTEMPTS - 1
+            ):
                 raise
             time.sleep(min(0.5, 0.05 * (2**attempt)))
+
+
+def _is_retryable_usage_write_error(exc: BaseException, root: BaseException) -> bool:
+    error_text = f"{root} {exc}".casefold()
+    if "locked" in error_text:
+        return True
+    return isinstance(root, PermissionError) and "changed during open" in error_text
 
 
 def _ensure_usage_schema(connection: sqlite3.Connection, db_path: Path) -> None:

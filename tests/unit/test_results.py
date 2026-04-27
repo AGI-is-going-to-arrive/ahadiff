@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from typer.testing import CliRunner
@@ -566,3 +567,65 @@ def test_finalized_artifact_digest_rejects_total_artifact_bytes(
 
     with pytest.raises(InputError, match="total size limit"):
         finalized_artifact_digest(run_path)
+
+
+def test_finalized_artifact_digest_rejects_reparse_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_path = tmp_path / "run_reparse_dir"
+    reparse_dir = run_path / "junction"
+    reparse_dir.mkdir(parents=True)
+    (reparse_dir / "outside-secret.txt").write_text("outside-secret\n", encoding="utf-8")
+
+    def fake_has_reparse_point(path_stat: object) -> bool:
+        return results_module.stat.S_ISDIR(cast("Any", path_stat).st_mode)
+
+    monkeypatch.setattr(
+        results_module,
+        "_has_windows_reparse_point",
+        fake_has_reparse_point,
+    )
+
+    with pytest.raises(InputError, match="Windows reparse point"):
+        finalized_artifact_digest(run_path)
+
+
+def test_finalized_artifact_digest_rejects_hardlinked_artifact(tmp_path: Path) -> None:
+    if not hasattr(os, "link"):
+        pytest.skip("hardlinks unavailable on this platform")
+
+    outside_path = tmp_path / "outside-secret.txt"
+    outside_path.write_text("outside-secret\n", encoding="utf-8")
+    run_path = tmp_path / "run_hardlink"
+    run_path.mkdir()
+    artifact_path = run_path / "artifact.txt"
+    os.link(outside_path, artifact_path)
+
+    with pytest.raises(InputError, match="hardlinked artifact"):
+        finalized_artifact_digest(run_path)
+
+
+@pytest.mark.skipif(not hasattr(results_module.os, "symlink"), reason="requires symlink support")
+def test_hash_finalized_artifact_file_rejects_symlink_when_open_may_follow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target_path = tmp_path / "target.txt"
+    target_path.write_text("target\n", encoding="utf-8")
+    link_path = tmp_path / "artifact-link.txt"
+    results_module.os.symlink(target_path, link_path)
+    expected_stat = target_path.stat()
+    original_open = results_module.os.open
+    nofollow_flag = getattr(results_module.os, "O_NOFOLLOW", 0)
+
+    def following_open(path: str, flags: int, mode: int = 0o777) -> int:
+        if nofollow_flag:
+            flags &= ~nofollow_flag
+        return original_open(path, flags, mode)
+
+    monkeypatch.setattr(results_module.os, "open", following_open)
+    hash_artifact = results_module._hash_finalized_artifact_file  # pyright: ignore[reportPrivateUsage]
+
+    with pytest.raises(InputError, match="symlink"):
+        hash_artifact(link_path, "artifact-link.txt", expected_stat)
