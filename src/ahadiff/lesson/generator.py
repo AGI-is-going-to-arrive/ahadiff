@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 from ahadiff.contracts import PrivacyMode, ProviderConfig, compute_runtime_eval_bundle_version
 from ahadiff.core.errors import InputError
+from ahadiff.core.json_util import safe_json_loads
 from ahadiff.i18n import prompt_language_instruction
 from ahadiff.llm import ProviderRequest, make_provider
 from ahadiff.safety.ignore import AllowlistPolicy
@@ -417,7 +418,7 @@ def _generate_variant_payload(
 
 
 def _load_run_json(path: Path) -> dict[str, Any]:
-    payload = json.loads(_read_required_text(path))
+    payload = safe_json_loads(_read_required_text(path))
     if not isinstance(payload, dict):
         raise InputError(f"run artifact must be a JSON object: {path}")
     return cast("dict[str, Any]", payload)

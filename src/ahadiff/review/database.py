@@ -20,6 +20,7 @@ from pydantic import ValidationError
 
 from ahadiff.contracts import ResultEvent, ReviewCard
 from ahadiff.core.errors import InputError, MigrationError, StorageError
+from ahadiff.core.json_util import safe_json_loads
 from ahadiff.core.paths import is_wsl2_mnt
 
 from .scheduler import (
@@ -1449,8 +1450,8 @@ def _load_review_cards(cards_path: Path) -> tuple[ReviewCard, ...]:
         if not stripped:
             continue
         try:
-            payload = json.loads(stripped)
-        except json.JSONDecodeError as exc:
+            payload = safe_json_loads(stripped)
+        except (json.JSONDecodeError, ValueError) as exc:
             raise InputError(f"invalid cards JSONL line {index}: {cards_path}") from exc
         try:
             cards.append(ReviewCard.model_validate(payload))
@@ -1625,8 +1626,8 @@ def _merge_event_note(note_json: str | None, extra: dict[str, object]) -> str:
     payload: dict[str, object] = {}
     if note_json:
         try:
-            parsed = json.loads(note_json)
-        except json.JSONDecodeError:
+            parsed = safe_json_loads(note_json)
+        except (json.JSONDecodeError, ValueError):
             parsed = {"original_note_json": note_json}
         if isinstance(parsed, dict):
             payload.update(cast("dict[str, object]", parsed))
@@ -1646,7 +1647,7 @@ def _scheduler_weights_for_card(
     ).fetchone()
     if row is None:
         raise InputError(f"scheduler preset does not exist: {scheduler_preset_id}")
-    payload = json.loads(str(row["weights"]))
+    payload = safe_json_loads(str(row["weights"]))
     if not isinstance(payload, list):
         raise StorageError(f"scheduler preset weights are not a JSON array: {scheduler_preset_id}")
     return tuple(_coerce_float(item) for item in cast("Iterable[object]", payload))

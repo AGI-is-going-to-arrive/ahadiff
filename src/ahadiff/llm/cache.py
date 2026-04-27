@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from ahadiff.core.errors import SafetyError
+from ahadiff.core.json_util import safe_json_loads
 from ahadiff.core.paths import ensure_state_parent_dir, validate_state_path_no_symlinks
 
 from .schemas import CacheKeyInput, ProviderResponse, RateLimitSnapshot
@@ -92,8 +93,8 @@ def lookup_cached_response(
         file_size = path.stat().st_size
         if file_size > 16 * 1024 * 1024:
             return None
-        loaded: object = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        loaded: object = safe_json_loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError, OSError):
         _cleanup_orphaned_tmp_files(path.parent)
         return None
     if not isinstance(loaded, dict):

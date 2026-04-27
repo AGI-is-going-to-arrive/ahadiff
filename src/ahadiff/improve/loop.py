@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, cast
 from ahadiff.contracts import ProviderConfig, ResultEvent, compute_runtime_eval_bundle_version
 from ahadiff.core.errors import ConfigError, InputError, StorageError
 from ahadiff.core.ids import make_event_id
+from ahadiff.core.json_util import safe_json_loads
 from ahadiff.eval.evaluator import ScoreReport, evaluate_run
 from ahadiff.eval.results import append_result, compute_prompt_version
 from ahadiff.git.repo import run_git
@@ -1371,8 +1372,8 @@ def _validate_claim_records_belong_to_run(path: Path, expected_run_id: str) -> N
         if not stripped:
             continue
         try:
-            payload = json.loads(stripped)
-        except json.JSONDecodeError as exc:
+            payload = safe_json_loads(stripped)
+        except ValueError as exc:
             raise InputError(f"invalid claims.jsonl line {index}: {path}") from exc
         if not isinstance(payload, dict):
             continue
@@ -1531,9 +1532,12 @@ def _load_run_metadata(run_path: Path) -> dict[str, Any]:
     target = run_path / "metadata.json"
     if not target.exists():
         raise InputError(f"run metadata is missing: {run_path.name}")
-    payload = json.loads(
-        _read_bounded(target, max_bytes=_MAX_IMPROVE_METADATA_BYTES, label="run metadata")
-    )
+    try:
+        payload = safe_json_loads(
+            _read_bounded(target, max_bytes=_MAX_IMPROVE_METADATA_BYTES, label="run metadata")
+        )
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise InputError(f"invalid JSON in run metadata: {target}: {exc}") from exc
     if not isinstance(payload, dict):
         raise InputError(f"run metadata must be a JSON object: {target}")
     return cast("dict[str, Any]", payload)
@@ -1586,8 +1590,8 @@ def _read_bounded(path: Path, *, max_bytes: int, label: str) -> str:
 
 def _parse_json_object(text: str) -> dict[str, Any]:
     try:
-        payload = json.loads(text)
-    except json.JSONDecodeError as exc:
+        payload = safe_json_loads(text)
+    except ValueError as exc:
         raise InputError("improve response must be valid JSON") from exc
     if not isinstance(payload, dict):
         raise InputError("improve response must be a JSON object")

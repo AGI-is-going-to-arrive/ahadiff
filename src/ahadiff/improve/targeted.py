@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
 from ahadiff.core.errors import InputError
+from ahadiff.core.json_util import safe_json_loads
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -152,8 +152,8 @@ def _score_for_dimensions(snapshot: ScoreSnapshot, dimensions: tuple[str, ...]) 
 
 def _load_json_object(path: Path) -> dict[str, Any]:
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
+        payload = safe_json_loads(path.read_text(encoding="utf-8"))
+    except ValueError as exc:
         raise InputError(f"invalid JSON file: {path}") from exc
     if not isinstance(payload, dict):
         raise InputError(f"expected a JSON object in {path}")

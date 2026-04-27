@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from ahadiff.contracts import RATCHET_COUNTED_STATUSES, ResultEvent
+from ahadiff.core.json_util import safe_json_loads
 from ahadiff.git.repo import run_git
 
 if TYPE_CHECKING:
@@ -152,8 +153,8 @@ def _event_has_degraded_flags(event: ResultEvent) -> bool:
     if event.note_json is None:
         return False
     try:
-        payload = json.loads(event.note_json)
-    except json.JSONDecodeError:
+        payload = safe_json_loads(event.note_json)
+    except (json.JSONDecodeError, ValueError):
         return False
     if not isinstance(payload, dict):
         return False
@@ -177,8 +178,8 @@ def _event_has_matching_finalized_marker(workspace_root: Path, event: ResultEven
     if len(marker_bytes) > _MAX_FINALIZED_MARKER_BYTES:
         return False
     try:
-        marker = json.loads(marker_bytes.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
+        marker = safe_json_loads(marker_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
         return False
     if not isinstance(marker, dict):
         return False

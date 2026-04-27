@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from anyio import to_thread
 from starlette.responses import JSONResponse
@@ -12,6 +12,8 @@ from ahadiff.contracts import (
     QuizAnswerRequest,
     ReviewSignalRequest,
 )
+from ahadiff.core.errors import InputError
+from ahadiff.core.json_util import safe_json_loads
 from ahadiff.review.database import (
     initialize_review_db,
     insert_learning_signal,
@@ -117,9 +119,22 @@ def _helpfulness_sync(state: ServeState, body: HelpfulnessRequest) -> bool:
             payload={
                 "target_kind": body.target_kind,
                 "target_id": body.target_id,
-                "payload": json.loads(json.dumps(body.payload)),
+                "payload": _normalized_payload(body.payload),
             },
         )
+
+
+def _normalized_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        encoded = json.dumps(payload, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise InputError(
+            "helpfulness payload must be JSON-serializable and use finite numbers"
+        ) from exc
+    normalized = safe_json_loads(encoded)
+    if not isinstance(normalized, dict):
+        raise InputError("helpfulness payload must be a JSON object")
+    return cast("dict[str, Any]", normalized)
 
 
 __all__ = ["helpfulness", "mark_wrong", "quiz_answer", "srs_review"]

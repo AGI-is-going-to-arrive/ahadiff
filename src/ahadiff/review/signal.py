@@ -4,6 +4,7 @@ import json
 from typing import TYPE_CHECKING
 
 from ahadiff.core.errors import InputError
+from ahadiff.core.json_util import safe_json_loads
 
 from .database import insert_learning_signal, make_uuid7
 
@@ -26,7 +27,7 @@ def mark_claim_wrong(
         event_id=_make_signal_event_id(),
         idempotency_key=idempotency_key or f"mark:{normalized_claim_id}:wrong",
         signal_type="mark_wrong",
-        payload=json.loads(json.dumps(payload)),
+        payload=safe_json_loads(json.dumps(payload)),
     )
 
 

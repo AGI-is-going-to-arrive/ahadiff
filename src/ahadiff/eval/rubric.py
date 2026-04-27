@@ -7,6 +7,7 @@ from typing import cast
 
 from ahadiff.contracts import RUBRIC_WEIGHTS
 from ahadiff.core.errors import InputError
+from ahadiff.core.json_util import safe_json_loads
 
 
 @dataclass(frozen=True)
@@ -33,10 +34,10 @@ class RubricDefinition:
 def load_rubric(path: Path | None = None) -> RubricDefinition:
     target = path or Path(__file__).with_name("rubric.yaml")
     try:
-        payload = json.loads(target.read_text(encoding="utf-8"))
+        payload = safe_json_loads(target.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
         raise InputError(f"rubric file does not exist: {target}") from exc
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, ValueError) as exc:
         raise InputError(f"rubric file is not valid JSON-compatible YAML: {target}") from exc
     if not isinstance(payload, dict):
         raise InputError("rubric file must decode to an object")

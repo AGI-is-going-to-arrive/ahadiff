@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, cast
 from ahadiff.claims import load_line_map_records
 from ahadiff.contracts import ClaimRecord, compute_runtime_eval_bundle_version
 from ahadiff.core.errors import InputError
+from ahadiff.core.json_util import safe_json_loads
 from ahadiff.core.paths import path_identity_key
 
 from .deterministic import DimensionScore, build_deterministic_scores
@@ -166,7 +167,7 @@ def write_score_report(path: Path, report: ScoreReport, *, overwrite: bool = Fal
 
 def _load_llm_judge_json_object(content: str) -> dict[str, Any]:
     try:
-        payload = json.loads(content, parse_constant=_reject_llm_judge_json_constant)
+        payload = safe_json_loads(content)
     except json.JSONDecodeError as exc:
         raise InputError(f"invalid LLM judge JSON: {exc.msg}") from exc
     except ValueError as exc:
@@ -174,10 +175,6 @@ def _load_llm_judge_json_object(content: str) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise InputError("LLM judge output must decode to a JSON object")
     return cast("dict[str, Any]", payload)
-
-
-def _reject_llm_judge_json_constant(value: str) -> None:
-    raise ValueError(f"non-finite numeric literal {value!r} is not allowed")
 
 
 def _parse_llm_judge_dimension(
@@ -212,7 +209,10 @@ def _parse_llm_judge_dimension(
 
 
 def _load_json_object(path: Path) -> dict[str, Any]:
-    payload = json.loads(_read_text(path))
+    try:
+        payload = safe_json_loads(_read_text(path))
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise InputError(f"invalid JSON in {path}: {exc}") from exc
     if not isinstance(payload, dict):
         raise InputError(f"expected a JSON object in {path}")
     return cast("dict[str, Any]", payload)
@@ -262,7 +262,10 @@ def _load_jsonl_objects(path: Path, *, required: bool) -> tuple[dict[str, Any], 
         stripped = line.strip()
         if not stripped:
             continue
-        payload = json.loads(stripped)
+        try:
+            payload = safe_json_loads(stripped)
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise InputError(f"invalid JSON on line {index}: {path}: {exc}") from exc
         if not isinstance(payload, dict):
             raise InputError(f"expected a JSON object on line {index}: {path}")
         payloads.append(cast("dict[str, Any]", payload))

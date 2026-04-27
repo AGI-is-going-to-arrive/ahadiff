@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from ahadiff.core.errors import InputError
+from ahadiff.core.json_util import safe_json_loads
 from ahadiff.llm import ProviderRequest, make_provider
 from ahadiff.safety.ignore import AllowlistPolicy
 from ahadiff.safety.redact import redaction_pipeline
@@ -240,7 +241,10 @@ def _resolve_claim_extract_privacy_mode(
 
 
 def _load_run_json(path: Path) -> dict[str, Any]:
-    payload = json.loads(_read_required_text(path))
+    try:
+        payload = safe_json_loads(_read_required_text(path))
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise InputError(f"invalid JSON in run artifact: {path}: {exc}") from exc
     if not isinstance(payload, dict):
         raise InputError(f"run artifact must be a JSON object: {path}")
     return cast("dict[str, Any]", payload)

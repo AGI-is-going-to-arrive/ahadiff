@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from ahadiff.core.errors import InputError
+from ahadiff.core.json_util import safe_json_loads
 from ahadiff.git.repo import open_repo, run_git
 
 _MAX_VISIBLE_CONCEPTS_BYTES = 10 * 1024 * 1024
@@ -275,8 +276,8 @@ def _iter_jsonl_entries_with_offsets(
             if not stripped:
                 continue
             try:
-                payload = json.loads(stripped)
-            except json.JSONDecodeError as exc:
+                payload = safe_json_loads(stripped)
+            except (json.JSONDecodeError, ValueError) as exc:
                 raise InputError(f"invalid concepts.jsonl line {index}") from exc
             if not isinstance(payload, dict):
                 raise InputError(f"concepts.jsonl line {index} must be an object")

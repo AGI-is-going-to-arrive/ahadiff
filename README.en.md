@@ -18,7 +18,7 @@ It's not a PR summary, not a repo wiki, not yet another "code explainer." It rea
 - A **claims** ledger where every assertion traces back to a hunk
 - A comparable **quality score history** (ratcheted; `review.sqlite` is the single source of truth, `results.tsv` is a human-readable export)
 
-The current code already ships Lesson / Claims / Quiz / Cards / Score / Ratchet. The review-flow SRS runtime, serve backend, install targets, GitHub Action templates, benchmark suite, improve-loop core, Task 17 targeted verification, Phase 2.5 runtime, i18n-0 backend, and the `viewer/` React SPA are all landed. The v0.1 frontend delivered Dashboard / Lesson / Diff / Quiz / ConceptGraph and went through R1-R5 five-round cross-model adversarial review (51 real findings fixed). v0.2 backend Gates 0-5 + frontend Phase 1-4 have all passed review: backend adds `--compare-dir` directory diff, `--patch-url` URL download (full SSRF protection), serve cursor pagination + anyio threadpool, LLM cache + usage.sqlite, 7 new install targets (13 total), and 3 new endpoints (`/api/config`, `/api/doctor`, `/api/install/targets`); frontend adds 6 new pages (Review SRS flashcards / Ratchet history / Landing hero / Settings config+diagnostics / Onboarding wizard / Skills agent hub), totalling 12 pages ~30 components, i18n 189/189 key parity, 495 Playwright tests all green.
+The main line from Stage 0 / Task 0 through Stage 6 now has real shipped artifacts. The current code already ships Lesson / Claims / Quiz / Cards / Score / Ratchet. The review-flow SRS runtime, serve backend, install targets, GitHub Action templates, benchmark suite, improve-loop core, Task 17 targeted verification, Phase 2.5 runtime, i18n-0 backend, and the `viewer/` React SPA are all landed. The v0.1 frontend delivered Dashboard / Lesson / Diff / Quiz / ConceptGraph and went through R1-R5 five-round cross-model adversarial review (51 real findings fixed). v0.2 backend Gates 0-5 + frontend Phase 1-4 have all passed review: backend adds `--compare-dir` directory diff, `--patch-url` URL download (full SSRF protection), serve cursor pagination + anyio threadpool, LLM cache + usage.sqlite, 7 new install targets (13 total), and 3 new endpoints (`/api/config`, `/api/doctor`, `/api/install/targets`); frontend adds 6 new pages (Review SRS flashcards / Ratchet history / Landing hero / Settings config+diagnostics / Onboarding wizard / Skills agent hub), totalling 12 pages ~30 components, i18n 189/189 key parity, 495 Playwright tests all green.
 
 > Code Wiki explains a repo. AhaDiff teaches you what changed — and verifies every claim against the diff.
 
@@ -152,8 +152,8 @@ ahadiff/
 │  ├─ ahadiff设计思路.md          # [ARCHIVED] Early architecture snapshot
 │  ├─ 知返ahadiff改名后的后续方案.md  # [ARCHIVED] Rename transition plan
 │  └─ AhaDiff_frontend_design_v1.1_revised.md  # Frontend design manual (v0.1=React 19+Vite)
-├─ src/ahadiff/contracts/       # Stage 0 minimal contracts skeleton
-├─ src/ahadiff/core/            # Stage 1 / Task 1 scaffold
+├─ src/ahadiff/contracts/       # Stage 0 minimal importable and serializable contracts surface
+├─ src/ahadiff/core/            # Stage 1 / Task 1 scaffold + Phase 0 JSON/SQLite safety helpers
 ├─ src/ahadiff/safety/          # Stage 1 / Task 2 safety primitives
 ├─ src/ahadiff/llm/             # Layer 1.5 / Task 7 provider + probe
 ├─ src/ahadiff/git/             # Stage 2 / Task 5-6 diff capture + structuring
@@ -169,7 +169,7 @@ ahadiff/
 ├─ src/ahadiff/prompts/         # Prompt resources packaged into the wheel
 ├─ prompts/                     # Lesson / claim prompt templates
 ├─ src/ahadiff/improve/         # Stage 5 / Task 16/17 improve loop, targeted verify, Phase 2.5
-├─ benchmarks/                  # Task 18 local benchmark fixtures + manifest
+├─ benchmarks/                  # Task 18 local benchmark fixtures + manifest + scripts + results
 ├─ tests/unit/                  # Stage 0-6 and i18n-0 unit tests
 ├─ tests/eval/                  # benchmark suite tests
 ├─ tests/integration/           # pinned integration fixtures
@@ -181,7 +181,7 @@ ahadiff/
 
 ## Status
 
-**Stage 1 Task 1/2, Layer 1.5 / Task 7, Stage 2 / Task 5/6/8, Stage 3 / Task 8.5/9/10/11/12, Stage 4 / Task 15, Stage 5 / Task 16/17, Stage 6 / Task 18/19/20, and the i18n-0 backend are now landed.** The current codebase already has:
+**Stage 0 / Task 0, Stage 1 Task 1/2, Layer 1.5 / Task 7, Stage 2 / Task 5/6/8, Stage 3 / Task 8.5/9/10/11/12, Stage 4 / Task 15, Stage 5 / Task 16/17, Stage 6 / Task 18/19/20, and the i18n-0 backend are now landed.** The current codebase already has:
 
 - the `ahadiff learn` main path for git and non-git capture (`--patch` / `--compare`), followed by learnability gating, `claims.raw.jsonl -> claims.jsonl`, and full / hint / compact lesson output
 - `ahadiff quiz` for a minimal interactive quiz loop backed by `quiz.jsonl`, with source-claim and file-line evidence printed back to the user
@@ -191,6 +191,7 @@ ahadiff/
 - `ahadiff serve`: the localhost-only serve backend is available. Read routes expose finalized runs only; write routes require token plus Origin/Referer checks
 - `ahadiff install`: Claude / Codex / Gemini / OpenCode / hooks / GitHub Action targets are available. Hooks are POSIX-shell targets and are explicitly rejected on Windows in v0.1. Generated GitHub workflows cover macOS + Linux; Windows remains deferred. The generate workflow uses `AHADIFF_PROVIDER_API_KEY` and uploads `.ahadiff/` outputs as an artifact
 - `ahadiff benchmark`: the local benchmark manifest, 20 eval fixtures, 10 pinned integration fixtures, and `ground_truth.md` consistency checks are available
+- The Phase 0 follow-up is now reflected in the branch as shipped docs plus matching runtime behavior for the contract surface, backend safety edges, CLI cold start, and local baseline scripts
 - i18n-0: the locale resolver supports cookie / Accept-Language / CLI / config / `AHADIFF_LANG` / `LANG` fallback, and lesson/quiz prompt payloads carry the requested output-language instruction
 - `ahadiff improve --suite local --rounds N`, which currently supports only `--suite local`. It selects a baseline from an existing finalized run, edits only an allowlisted prompt in a git worktree, replays the same diff, and rescores the candidate; the candidate must improve the target dimension plus `accuracy`, `evidence`, and `safety_privacy`, and hard gates must still pass. Passing candidates are cherry-picked back when possible and recorded as `event_type=improve` / `status=targeted_verify`; non-improving rounds are recorded as `discard`; cherry-pick conflicts leave a pending worktree without finalizing the run; two consecutive `discard` rounds in the same session trigger one Phase 2.5 worktree rewrite
 - `src/ahadiff/eval/{rubric,gates,deterministic,evaluator,results,ratchet}.py` for the 8-dimension scorer, hard gates, result persistence, ratchet selection, and export rebuilds
@@ -226,7 +227,7 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-Actual result after v0.2 full review (2026-04-27): `uv run pytest tests -q` finished with `808 passed, 1 skipped` (the live judge smoke is skipped by default; runs as 1 passed when enabled); `uv run ruff check src tests`, `uv run ruff format --check src tests`, and `uv run pyright` all passed. Frontend: `pnpm run typecheck` 0 errors, `pnpm run build` 298.35 KB (gzip 91.60 KB), `pnpm exec playwright test` 495/495 passed. i18n parity 189/189. Real LLM learn end-to-end: `ahadiff learn b83f831 --provider local8318` completed the full learnability→claims→lesson→quiz→concepts→score pipeline, scoring 93.86 / PASS.
+Latest verification (2026-04-28): `uv run pytest tests -q --tb=long` finished with `845 passed, 1 skipped` (the live judge smoke is still skipped by default); `uv run ruff check src tests`, `uv run ruff format --check src tests`, and `uv run pyright` all passed; CLI smoke for `--version`, `learn --help`, `serve --help`, `improve --help`, `install --help`, `doctor --help`, `quiz --help`, `review --help`, `benchmark --help`, and `config show --resolved` all returned successfully. The local benchmark scripts and aggregate baseline were rerun as well; `api_latency` remained `skipped` because `ahadiff serve` was not running in this session.
 
 Roadmap:
 

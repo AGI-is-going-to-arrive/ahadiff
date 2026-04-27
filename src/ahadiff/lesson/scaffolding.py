@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, cast
 
+from ahadiff.core.json_util import safe_json_loads
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
@@ -37,7 +39,10 @@ def parse_fsrs_state(fsrs_state: str | Mapping[str, object] | None) -> dict[str,
     if fsrs_state is None:
         return None
     if isinstance(fsrs_state, str):
-        parsed = json.loads(fsrs_state)
+        try:
+            parsed = safe_json_loads(fsrs_state)
+        except (json.JSONDecodeError, ValueError):
+            return None
         if not isinstance(parsed, dict):
             return None
         return cast("dict[str, object]", parsed)

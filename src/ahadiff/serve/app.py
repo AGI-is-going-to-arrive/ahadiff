@@ -41,6 +41,8 @@ if TYPE_CHECKING:
 
 
 def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlette:
+    # The CLI hard-fails any non-loopback bind_host so the token bootstrap endpoint
+    # and finalized-run artifacts never escape the same-machine localhost boundary.
     runtime_state = state.with_runtime_lock()
     app = Starlette(
         debug=False,
@@ -93,6 +95,8 @@ async def healthz(_request: Request) -> JSONResponse:
 
 
 async def auth_token(request: Request) -> JSONResponse:
+    # Every mutating route separately requires X-AhaDiff-Token so ambient browser state
+    # or a discovered localhost port is not enough to perform writes against the repo DB.
     state = serve_state(request)
     return JSONResponse(AuthTokenResponse(token=state.token).model_dump(mode="json"))
 

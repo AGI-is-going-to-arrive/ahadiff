@@ -1,0 +1,150 @@
+{
+  "api_latency": {
+    "benchmark": "api_latency",
+    "host": "127.0.0.1",
+    "port": 18321,
+    "reason": "serve_not_running",
+    "status": "skipped"
+  },
+  "bundle_size": {
+    "benchmark": "bundle_size",
+    "build_log_tail": [
+      "",
+      "> ahadiff-viewer@0.1.0 build /Users/yangjunjie/Desktop/ahadiff/viewer",
+      "> vite build",
+      "",
+      "vite v5.4.21 building for production...",
+      "transforming...",
+      "\u2713 104 modules transformed.",
+      "rendering chunks...",
+      "computing gzip size...",
+      "dist/index.html                   2.21 kB \u2502 gzip:  1.15 kB",
+      "dist/assets/index-B0D4LQrU.css   63.83 kB \u2502 gzip: 11.65 kB",
+      "dist/assets/index-CyU3aUp9.js   298.21 kB \u2502 gzip: 91.54 kB",
+      "\u2713 built in 496ms"
+    ],
+    "dist_directory": "dist",
+    "dist_total_bytes": 365956,
+    "js_files": [
+      {
+        "bytes": 299877,
+        "path": "dist/assets/index-CyU3aUp9.js"
+      }
+    ],
+    "status": "ok",
+    "viewer_directory": "/Users/yangjunjie/Desktop/ahadiff/viewer"
+  },
+  "cli_startup": {
+    "benchmark": "cli_startup",
+    "command": [
+      "/Users/yangjunjie/Desktop/ahadiff/.venv/bin/python",
+      "-m",
+      "ahadiff",
+      "--version"
+    ],
+    "metrics": {
+      "mean_ms": 171.518,
+      "min_ms": 161.722,
+      "p50_ms": 171.491,
+      "p95_ms": 178.87
+    },
+    "raw_samples_ms": [
+      171.659,
+      166.013,
+      161.722,
+      171.22,
+      174.105,
+      181.719,
+      174.753,
+      175.388,
+      171.324,
+      167.277
+    ],
+    "runs": 10,
+    "status": "ok",
+    "version_output": "ahadiff 0.1.0a0",
+    "working_directory": "/Users/yangjunjie/Desktop/ahadiff"
+  },
+  "diff_parse": {
+    "benchmark": "diff_parse",
+    "status": "ok",
+    "tiers": {
+      "100kb": {
+        "actual_bytes": 102570,
+        "actual_lines": 2630,
+        "bytes_per_sec": 22492521.851,
+        "files_parsed": 263,
+        "iterations": 40,
+        "lines_per_sec": 576731.33,
+        "target_bytes": 102400,
+        "total_elapsed_ms": 182.407
+      },
+      "10kb": {
+        "actual_bytes": 10530,
+        "actual_lines": 270,
+        "bytes_per_sec": 23286285.293,
+        "files_parsed": 27,
+        "iterations": 200,
+        "lines_per_sec": 597084.238,
+        "target_bytes": 10240,
+        "total_elapsed_ms": 90.44
+      },
+      "1kb": {
+        "actual_bytes": 1170,
+        "actual_lines": 30,
+        "bytes_per_sec": 22984139.715,
+        "files_parsed": 3,
+        "iterations": 500,
+        "lines_per_sec": 589336.916,
+        "target_bytes": 1024,
+        "total_elapsed_ms": 25.452
+      },
+      "1mb": {
+        "actual_bytes": 1048710,
+        "actual_lines": 26890,
+        "bytes_per_sec": 20769948.33,
+        "files_parsed": 2689,
+        "iterations": 5,
+        "lines_per_sec": 532562.778,
+        "target_bytes": 1048576,
+        "total_elapsed_ms": 252.458
+      }
+    },
+    "working_directory": "/Users/yangjunjie/Desktop/ahadiff"
+  },
+  "sqlite_queries": {
+    "benchmark": "sqlite_queries",
+    "operations": {
+      "list_due_cards": {
+        "iterations": 100,
+        "mean_ms": 0.917,
+        "min_ms": 0.818,
+        "p50_ms": 0.885,
+        "p95_ms": 0.967,
+        "result_count": 100
+      },
+      "load_finalized_ratchet_history_page": {
+        "iterations": 100,
+        "mean_ms": 1.949,
+        "min_ms": 1.761,
+        "p50_ms": 1.868,
+        "p95_ms": 2.763,
+        "result_count": 100
+      },
+      "load_result_events_page": {
+        "iterations": 100,
+        "mean_ms": 1.086,
+        "min_ms": 1.008,
+        "p50_ms": 1.05,
+        "p95_ms": 1.451,
+        "result_count": 100
+      }
+    },
+    "seed": {
+      "cards_inserted": 500,
+      "events_inserted": 1000
+    },
+    "status": "ok",
+    "working_directory": "/Users/yangjunjie/Desktop/ahadiff"
+  }
+}

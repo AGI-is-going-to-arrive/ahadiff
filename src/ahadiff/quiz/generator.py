@@ -17,6 +17,7 @@ from ahadiff.contracts import (
     compute_runtime_eval_bundle_version,
 )
 from ahadiff.core.errors import InputError
+from ahadiff.core.json_util import safe_json_loads
 from ahadiff.i18n import prompt_language_instruction
 from ahadiff.lesson.generator import load_redacted_run_bundle
 from ahadiff.lesson.scaffolding import compute_scaffolding_level
@@ -113,8 +114,8 @@ def load_quiz_questions(path: Path) -> tuple[QuizQuestion, ...]:
         if not stripped:
             continue
         try:
-            payload = json.loads(stripped)
-        except json.JSONDecodeError as exc:
+            payload = safe_json_loads(stripped)
+        except (json.JSONDecodeError, ValueError) as exc:
             raise InputError(f"invalid quiz JSONL line {index}") from exc
         questions.append(QuizQuestion.model_validate(payload))
     if not questions:
@@ -349,8 +350,8 @@ def _load_claim_records(path: Path) -> tuple[ClaimRecord, ...]:
         if not stripped:
             continue
         try:
-            payload = json.loads(stripped)
-        except json.JSONDecodeError as exc:
+            payload = safe_json_loads(stripped)
+        except (json.JSONDecodeError, ValueError) as exc:
             raise InputError(f"invalid claims.jsonl line {index}") from exc
         claims.append(ClaimRecord.model_validate(payload))
     if not claims:
@@ -469,7 +470,10 @@ def _write_jsonl(
 
 
 def _load_run_json(path: Path) -> dict[str, Any]:
-    payload = json.loads(_read_required_text(path))
+    try:
+        payload = safe_json_loads(_read_required_text(path))
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise InputError(f"invalid JSON in run artifact: {path}: {exc}") from exc
     if not isinstance(payload, dict):
         raise InputError(f"run artifact must be a JSON object: {path}")
     return cast("dict[str, Any]", payload)

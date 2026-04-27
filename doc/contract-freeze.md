@@ -374,7 +374,7 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 边界：
 
 - `run_serve()` 启动长驻 ASGI 进程，不返回 `OrchestratorResult`
-- `core/orchestrator.py` 是统一编排点；CLI 只负责参数解析和输出格式化
+- `src/ahadiff/contracts/orchestrator.py` 只冻结编排接口；运行时实现可以落在其他模块里
 
 ### 4.2 Serve 安全边界
 
@@ -384,6 +384,9 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 - 写请求必须带 `X-AhaDiff-Token`
 - 读请求默认只读，无 token
 - 中间件必须做 `Host + Origin/Referer` 双校验
+- 非法 loopback preflight 必须直接拒绝，不能透传到写路由
+- 带 body 的写请求必须是 `application/json`，并在 JSON 解析前受 1 MiB 上限保护
+- 所有响应（包含中间件直接生成的错误响应）都必须带 anti-frame / `nosniff` / `same-origin` 类安全头
 
 冻结端点清单：
 
@@ -399,6 +402,11 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 - `GET /api/run/:id/concepts`
 - `GET /api/concepts`
 - `GET /api/ratchet/history`
+- `GET /api/review/queue`
+- `POST /api/review/rate`
+- `GET /api/config`
+- `GET /api/doctor`
+- `GET /api/install/targets`
 - `POST /api/signals/*`
 
 补充冻结：
@@ -555,6 +563,10 @@ UNTRUSTED 边界至少包含：
 - Graphify label
 - 模型输出
 - VCR cassette 内容
+
+额外冻结：
+
+- 进入 model / artifact / DB 的 JSON 解析必须拒绝 `NaN`、`Infinity`、`-Infinity` 和非有限浮点溢出
 
 ---
 

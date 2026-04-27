@@ -9,6 +9,7 @@ from importlib.resources import files
 from typing import TYPE_CHECKING, Any, cast
 
 from ahadiff.core.errors import InputError
+from ahadiff.core.json_util import safe_json_loads
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -127,8 +128,8 @@ def load_improve_session(state_dir: Path, session_id: str) -> ImproveSessionStat
     if not target.exists():
         raise InputError(f"improve session does not exist: {session_id}")
     try:
-        payload = json.loads(target.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
+        payload = safe_json_loads(target.read_text(encoding="utf-8"))
+    except ValueError as exc:
         raise InputError(f"invalid improve session JSON: {target}") from exc
     if not isinstance(payload, dict):
         raise InputError(f"invalid improve session payload: {target}")

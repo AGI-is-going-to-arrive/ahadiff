@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import json
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
+
+from ahadiff.core.json_util import safe_json_loads
 
 ClaimStatus = Literal["verified", "weak", "not_proven", "contradicted", "rejected"]
 SourceHunkSide = Literal["old", "new", "either"]
@@ -68,7 +69,7 @@ class ReviewCard(BaseModel):
     @field_validator("fsrs_state")
     @classmethod
     def validate_fsrs_state_json(cls, value: str) -> str:
-        parsed = json.loads(value)
+        parsed = safe_json_loads(value)
         if not isinstance(parsed, dict):
             raise ValueError("fsrs_state must be a JSON object string")
         return value

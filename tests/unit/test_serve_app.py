@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from starlette.testclient import TestClient
 
 import ahadiff.serve.lock as serve_lock_module
+import ahadiff.serve.middleware as middleware_module
 import ahadiff.serve.routes_locale as routes_locale_module
 import ahadiff.serve.routes_review as routes_review_module
 import ahadiff.serve.routes_runs as routes_runs_module
@@ -1848,6 +1849,27 @@ def test_helpfulness_signal_invalid_payload(tmp_path: Path) -> None:
     assert response.json()["error"][0]["loc"] == ["target_id"]
 
 
+def test_helpfulness_signal_rejects_non_finite_numbers(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+
+    response = client.post(
+        "/api/signals/helpfulness",
+        headers={
+            "content-type": "application/json",
+            "origin": "http://localhost:8765",
+            "X-AhaDiff-Token": "test-token",
+        },
+        content=(
+            '{"idempotency_key":"help:run-1:section-1","target_id":"section-1",'
+            '"payload":{"rating":NaN}}'
+        ),
+    )
+
+    assert response.status_code == 400
+    assert "finite" in response.json()["error"]
+
+
 def test_failed_srs_review_does_not_poison_idempotency_key(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     db_path = state_dir / "review.sqlite"
@@ -1920,6 +1942,58 @@ def test_middleware_rejects_oversized_body(tmp_path: Path) -> None:
 
     assert response.status_code == 413
     assert response.json()["error"] == "payload_too_large"
+
+
+def test_middleware_rejects_malformed_ipv6_origin() -> None:
+    assert (
+        middleware_module._is_allowed_origin(  # pyright: ignore[reportPrivateUsage]
+            "http://[::1",
+            expected_port=8765,
+        )
+        is False
+    )
+    assert (
+        middleware_module._is_allowed_preflight_origin(  # pyright: ignore[reportPrivateUsage]
+            "http://[::1",
+            expected_port=8765,
+        )
+        is False
+    )
+
+
+def test_middleware_preflight_respects_expected_port() -> None:
+    assert (
+        middleware_module._is_allowed_preflight_origin(  # pyright: ignore[reportPrivateUsage]
+            "http://[::1]:9999",
+            expected_port=8765,
+        )
+        is False
+    )
+    assert (
+        middleware_module._is_allowed_preflight_origin(  # pyright: ignore[reportPrivateUsage]
+            "http://[::1]:8765",
+            expected_port=8765,
+        )
+        is True
+    )
+
+
+def test_load_valid_finalized_marker_rejects_non_finite_json(tmp_path: Path) -> None:
+    run_path = tmp_path / "run_0123456789abcdef0123456789abcdef"
+    run_path.mkdir()
+    (run_path / "finalized.json").write_text(
+        (
+            '{"run_id":"run_0123456789abcdef0123456789abcdef","event_id":"evt-1",'
+            '"finalized_at":NaN,"artifact_count":1,"checksum":"abc"}'
+        ),
+        encoding="utf-8",
+    )
+
+    marker = routes_runs_module._load_valid_finalized_marker(  # pyright: ignore[reportPrivateUsage]
+        run_path
+    )
+
+    assert marker is None
 
 
 # --- F3 regression: pagination cursor length limit ---

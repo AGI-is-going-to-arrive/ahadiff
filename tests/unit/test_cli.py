@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import subprocess
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -52,6 +53,11 @@ def _provider_config() -> ProviderConfig:
         base_url="http://127.0.0.1:11434",
         api_key_env="AHADIFF_PROVIDER_API_KEY",
     )
+
+
+def test_lazy_class_helpers_resolve_real_classes() -> None:
+    assert inspect.isclass(cli_module._install_context_cls())  # pyright: ignore[reportPrivateUsage]
+    assert inspect.isclass(cli_module._serve_state_cls())  # pyright: ignore[reportPrivateUsage]
 
 
 def test_improve_lang_is_passed_to_run_improve_loop(tmp_path: Path, monkeypatch: Any) -> None:

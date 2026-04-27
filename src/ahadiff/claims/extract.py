@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 from pydantic import ValidationError
 
 from ahadiff.core.errors import InputError
+from ahadiff.core.json_util import safe_json_loads
 from ahadiff.core.paths import path_identity_key
 from ahadiff.git.line_map import (
     LINE_MAP_SCHEMA,
@@ -211,13 +212,9 @@ def _candidate_payload_texts(text: str) -> tuple[str, ...]:
     return (*fence_payloads, text)
 
 
-def _reject_non_finite(value: object) -> None:
-    raise ValueError(f"non-finite numeric literal in claim JSON: {value!r}")
-
-
 def _try_parse_json(text: str) -> Any | None:
     try:
-        return json.loads(text, parse_constant=_reject_non_finite)
+        return safe_json_loads(text)
     except (json.JSONDecodeError, ValueError):
         return None
 
@@ -234,7 +231,7 @@ def _parse_jsonl_candidates(
         if not stripped:
             continue
         try:
-            payload = json.loads(stripped, parse_constant=_reject_non_finite)
+            payload = safe_json_loads(stripped)
         except (json.JSONDecodeError, ValueError) as exc:
             raise InputError(f"invalid claim candidate JSONL line {index}") from exc
         if not isinstance(payload, dict):
@@ -384,7 +381,10 @@ def _default_claim_id(run_id: str | None, index: int) -> str:
 def _load_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         raise InputError(f"artifact file does not exist: {path}")
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        payload = safe_json_loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise InputError(f"invalid JSON in artifact file: {path}: {exc}") from exc
     if not isinstance(payload, dict):
         raise InputError(f"artifact payload must be a JSON object: {path}")
     return cast("dict[str, Any]", payload)

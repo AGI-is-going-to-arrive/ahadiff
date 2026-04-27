@@ -23,6 +23,13 @@ class LoopbackGuardMiddleware(BaseHTTPMiddleware):
         expected_port = _expected_port(state)
         if not _is_allowed_host(request.headers.get("host", ""), expected_port=expected_port):
             return _error_response("host_not_allowed", status_code=400)
+        if _is_cors_preflight(request):
+            origin = request.headers.get("origin")
+            if origin is not None and not _is_allowed_preflight_origin(
+                origin,
+                expected_port=expected_port,
+            ):
+                return _error_response("origin_not_allowed", status_code=403)
         if request.method in _WRITE_GUARD_METHODS:
             origin = request.headers.get("origin")
             referer = request.headers.get("referer")
@@ -46,13 +53,21 @@ class LoopbackGuardMiddleware(BaseHTTPMiddleware):
             if has_body and not await _cache_limited_body(request):
                 return _error_response("payload_too_large", status_code=413)
         response = await call_next(request)
-        response.headers.setdefault("X-Content-Type-Options", "nosniff")
-        response.headers.setdefault("Referrer-Policy", "same-origin")
-        return response
+        return _apply_security_headers(response)
 
 
-def _error_response(error: str, *, status_code: int) -> JSONResponse:
-    return JSONResponse({"error": error, "status": status_code}, status_code=status_code)
+def _error_response(error: str, *, status_code: int) -> Response:
+    return _apply_security_headers(
+        JSONResponse({"error": error, "status": status_code}, status_code=status_code)
+    )
+
+
+def _apply_security_headers(response: Response) -> Response:
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    return response
 
 
 async def _cache_limited_body(request: Request) -> bool:
@@ -95,8 +110,18 @@ def _is_allowed_host(value: str, *, expected_port: int | None) -> bool:
     return hostname in _ALLOWED_HOSTS and _port_allowed(port, expected_port=expected_port)
 
 
+def _is_cors_preflight(request: Request) -> bool:
+    return (
+        request.method == "OPTIONS"
+        and request.headers.get("origin") is not None
+        and request.headers.get("access-control-request-method") is not None
+    )
+
+
 def _is_allowed_origin(value: str, *, expected_port: int | None) -> bool:
-    parsed = urlparse(value)
+    parsed = _parse_origin(value)
+    if parsed is None:
+        return False
     hostname = parsed.hostname
     try:
         port = parsed.port
@@ -107,6 +132,30 @@ def _is_allowed_origin(value: str, *, expected_port: int | None) -> bool:
         and hostname in _ALLOWED_HOSTS
         and _port_allowed(port, expected_port=expected_port)
     )
+
+
+def _is_allowed_preflight_origin(value: str, *, expected_port: int | None) -> bool:
+    parsed = _parse_origin(value)
+    if parsed is None:
+        return False
+    try:
+        port = parsed.port
+    except ValueError:
+        return False
+    if port is None:
+        return False
+    return (
+        parsed.scheme in {"http", "https"}
+        and parsed.hostname in _ALLOWED_HOSTS
+        and _port_allowed(port, expected_port=expected_port)
+    )
+
+
+def _parse_origin(value: str):
+    try:
+        return urlparse(value)
+    except ValueError:
+        return None
 
 
 def _split_host_port(value: str) -> tuple[str, int | None]:

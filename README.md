@@ -18,7 +18,7 @@
 - 一份每条结论都可回溯的 **断言清单**（Claims）
 - 一条可比较的 **质量评分历史**（Ratchet，`review.sqlite` 为唯一真相源，`results.tsv` 为导出视图）
 
-当前代码已经能稳定产出 Lesson / Claims / Quiz / Cards / Score / Ratchet；review 流的 SRS runtime、serve backend、install targets、GitHub Action 模板、benchmark suite、improve loop core、Task 17 targeted verification、Phase 2.5 runtime、i18n-0 后端以及前端 `viewer/` React SPA 都已落地。前端 v0.1 阶段落地 Dashboard / Lesson / Diff / Quiz / ConceptGraph 五页并经 R1-R5 五轮跨模型对抗审查（51 项 real findings 修复）。v0.2 后端 Gate 0-5 + 前端 Phase 1-4 已全部通过审查：后端新增 `--compare-dir` 目录 diff、`--patch-url` URL 下载（全链路 SSRF 防护）、serve cursor pagination + anyio threadpool、LLM cache + usage.sqlite、7 个新 install target（共 13 个）、3 个新 endpoint（`/api/config`、`/api/doctor`、`/api/install/targets`）；前端新增 6 个页面（Review SRS 闪卡 / Ratchet 历史 / Landing 首页 / Settings 配置+诊断 / Onboarding 引导 / Skills 工具集成），共 12 页面 ~30 组件，i18n 189/189 key parity，495 Playwright 测试全绿。
+Stage 0 / Task 0 到 Stage 6 主线现在都已经有实际产物。当前代码已经能稳定产出 Lesson / Claims / Quiz / Cards / Score / Ratchet；review 流的 SRS runtime、serve backend、install targets、GitHub Action 模板、benchmark suite、improve loop core、Task 17 targeted verification、Phase 2.5 runtime、i18n-0 后端以及前端 `viewer/` React SPA 都已落地。前端 v0.1 阶段落地 Dashboard / Lesson / Diff / Quiz / ConceptGraph 五页并经 R1-R5 五轮跨模型对抗审查（51 项 real findings 修复）。v0.2 后端 Gate 0-5 + 前端 Phase 1-4 已全部通过审查：后端新增 `--compare-dir` 目录 diff、`--patch-url` URL 下载（全链路 SSRF 防护）、serve cursor pagination + anyio threadpool、LLM cache + usage.sqlite、7 个新 install target（共 13 个）、3 个新 endpoint（`/api/config`、`/api/doctor`、`/api/install/targets`）；前端新增 6 个页面（Review SRS 闪卡 / Ratchet 历史 / Landing 首页 / Settings 配置+诊断 / Onboarding 引导 / Skills 工具集成），共 12 页面 ~30 组件，i18n 189/189 key parity，495 Playwright 测试全绿。
 
 > Code Wiki 解释仓库，知返解释这次改动 —— 而且每一句话都能回到代码证据。
 
@@ -152,8 +152,8 @@ ahadiff/
 │  ├─ ahadiff设计思路.md          # [ARCHIVED] 早期架构快照
 │  ├─ 知返ahadiff改名后的后续方案.md  # [ARCHIVED] 改名过渡方案
 │  └─ AhaDiff_frontend_design_v1.1_revised.md  # 前端视觉手册（v0.1=React 19+Vite）
-├─ src/ahadiff/contracts/       # Stage 0 最小 contracts skeleton
-├─ src/ahadiff/core/            # Stage 1 / Task 1 工程骨架
+├─ src/ahadiff/contracts/       # Stage 0 最小可 import + 可序列化 contracts 面
+├─ src/ahadiff/core/            # Stage 1 / Task 1 工程骨架 + Phase 0 JSON/SQLite 安全 helper
 ├─ src/ahadiff/safety/          # Stage 1 / Task 2 安全层基础实现
 ├─ src/ahadiff/llm/             # Layer 1.5 / Task 7 provider + probe
 ├─ src/ahadiff/git/             # Stage 2 / Task 5-6 diff capture + 结构化
@@ -169,7 +169,7 @@ ahadiff/
 ├─ src/ahadiff/prompts/         # wheel 内打包的 prompt 资源
 ├─ prompts/                     # Lesson / claim prompt 模板
 ├─ src/ahadiff/improve/         # Stage 5 / Task 16/17 improve loop、targeted verify、Phase 2.5
-├─ benchmarks/                  # Task 18 本地 benchmark fixtures + manifest
+├─ benchmarks/                  # Task 18 本地 benchmark fixtures + manifest + scripts + results
 ├─ tests/unit/                  # Stage 0–6 与 i18n-0 单元测试
 ├─ tests/eval/                  # benchmark suite 测试
 ├─ tests/integration/           # pinned integration fixtures
@@ -181,7 +181,7 @@ ahadiff/
 
 ## 当前阶段
 
-**Stage 1 的 Task 1/2、Layer 1.5 的 Task 7、Stage 2 / Task 5/6/8、Stage 3 / Task 8.5/9/10/11/12、Stage 4 / Task 15、Stage 5 / Task 16/17、Stage 6 / Task 18/19/20，以及 i18n-0 后端已落地。** 当前代码除了设计文档和 HTML 原型，还已经有：
+**Stage 0 / Task 0、Stage 1 的 Task 1/2、Layer 1.5 的 Task 7、Stage 2 / Task 5/6/8、Stage 3 / Task 8.5/9/10/11/12、Stage 4 / Task 15、Stage 5 / Task 16/17、Stage 6 / Task 18/19/20，以及 i18n-0 后端已落地。** 当前代码除了设计文档和 HTML 原型，还已经有：
 
 - `ahadiff learn` 的主链路：支持 git / `--patch` / `--compare` capture，经过 learnability gate 后生成 `claims.raw.jsonl -> claims.jsonl`、`lesson.full|hint|compact.md`、`misconception.md`、`not_proven.md`
 - `ahadiff quiz`：对已生成的 `quiz.jsonl` 做最小交互式答题，并回显 source_claims / file:line evidence
@@ -191,6 +191,7 @@ ahadiff/
 - `ahadiff serve`：localhost-only serve backend 已可用，读接口只暴露 finalized runs，写接口需要 token + Origin/Referer 校验
 - `ahadiff install`：Claude / Codex / Gemini / OpenCode / hooks / GitHub Action target 已可用；hooks 是 POSIX shell target，Windows v0.1 会明确拒绝；生成的 GitHub workflow 覆盖 macOS + Linux，Windows 暂缓；generate workflow 使用 `AHADIFF_PROVIDER_API_KEY`，并上传 `.ahadiff/` 产物 artifact
 - `ahadiff benchmark`：本地 benchmark manifest、20 个 eval fixtures、10 个 pinned integration fixtures 与 `ground_truth.md` 一致性校验已可用
+- Phase 0 相关收口已经补到当前分支：contracts 权威口径、后端安全边界、CLI 冷启动和本地 baseline 脚本都已有对应实现与文档
 - i18n-0：locale resolver 支持 cookie / Accept-Language / CLI / config / `AHADIFF_LANG` / `LANG` fallback，lesson/quiz prompt payload 会带输出语言指令
 - `ahadiff improve --suite local --rounds N`：目前仅支持 `--suite local`。它从已有 finalized run 中选择 baseline，在 git worktree 里只改白名单 prompt，重放同一 diff 并重新评分；候选必须让目标维度 + `accuracy` + `evidence` + `safety_privacy` 的合计分高于 baseline，且 hard gates 通过，才会尝试 cherry-pick prompt commit 回主分支，并记录 `event_type=improve` / `status=targeted_verify`；未提升则记录 `discard`，cherry-pick 冲突则保留 pending worktree 且不 finalized；同一 session 连续两次 `discard` 会触发一次 Phase 2.5 worktree rewrite
 - `src/ahadiff/eval/{rubric,gates,deterministic,evaluator,results,ratchet}.py`：8 维评分、hard gates、结果写入、ratchet 选择和导出视图
@@ -226,7 +227,7 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-最近一次验证（v0.2 全量审查通过后，2026-04-27）：`uv run pytest tests -q` 为 `808 passed, 1 skipped`（live judge 默认跳过，单独跑 1 passed）；`uv run ruff check src tests`、`uv run ruff format --check src tests`、`uv run pyright` 全通过。前端 `pnpm run typecheck` 0 errors、`pnpm run build` 298.35 KB（gzip 91.60 KB）、`pnpm exec playwright test` 495/495 passed。i18n parity 189/189。真实 LLM learn 端到端验证：`ahadiff learn b83f831 --provider local8318` 完成 learnability→claims→lesson→quiz→concepts→score 全流水线，评分 93.86 / PASS。
+最近一次验证（2026-04-28）：`uv run pytest tests -q --tb=long` 为 `845 passed, 1 skipped`（live judge 默认跳过）；`uv run ruff check src tests`、`uv run ruff format --check src tests`、`uv run pyright` 全通过；CLI `--version`、`learn --help`、`serve --help`、`improve --help`、`install --help`、`doctor --help`、`quiz --help`、`review --help`、`benchmark --help`、`config show --resolved` 都已实测通过。本地 benchmark 脚本和聚合 baseline 也已重跑；`api_latency` 由于本次没有启动 `ahadiff serve`，结果仍是 `skipped`。
 
 下一步路线图：
 

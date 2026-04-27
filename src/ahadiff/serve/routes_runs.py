@@ -24,6 +24,7 @@ from ahadiff.contracts import (
 )
 from ahadiff.contracts.event_log import RATCHET_COUNTED_STATUSES, ResultEvent
 from ahadiff.core.errors import InputError
+from ahadiff.core.json_util import safe_json_loads
 from ahadiff.core.paths import validate_run_id
 from ahadiff.review.database import (
     load_finalized_ratchet_history_page,
@@ -574,7 +575,10 @@ def _project_graphify(metadata: dict[str, Any]) -> tuple[str, str | None, list[s
 def _load_json_object(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
-    payload: Any = json.loads(_read_text_capped(path, max_bytes=_MAX_JSON_OBJECT_BYTES))
+    try:
+        payload: Any = safe_json_loads(_read_text_capped(path, max_bytes=_MAX_JSON_OBJECT_BYTES))
+    except (JSONDecodeError, ValueError, OSError, UnicodeDecodeError) as exc:
+        raise InputError(f"invalid JSON object in {path.name}") from exc
     if not isinstance(payload, dict):
         raise InputError(f"expected JSON object in {path.name}")
     return cast("dict[str, Any]", payload)
@@ -597,7 +601,7 @@ def _read_text_capped(path: Path, *, max_bytes: int) -> str:
 def _load_run_metadata_or_none(run_path: Path) -> dict[str, Any] | None:
     try:
         return _load_json_object(run_path / "metadata.json")
-    except (InputError, JSONDecodeError, OSError, UnicodeDecodeError):
+    except (InputError, JSONDecodeError, ValueError, OSError, UnicodeDecodeError):
         return None
 
 
@@ -608,7 +612,7 @@ def _load_valid_finalized_marker(
 ) -> dict[str, Any] | None:
     try:
         marker = _load_json_object(run_path / "finalized.json")
-    except (HTTPException, InputError, JSONDecodeError, OSError, UnicodeDecodeError):
+    except (HTTPException, InputError, JSONDecodeError, ValueError, OSError, UnicodeDecodeError):
         return None
     if marker.get("run_id") != run_path.name:
         return None

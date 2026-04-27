@@ -9,6 +9,7 @@ from typing import Any, Literal, cast
 
 from ahadiff.contracts import ClaimRecord, SourceHunk, compute_runtime_eval_bundle_version
 from ahadiff.core.errors import InputError
+from ahadiff.core.json_util import safe_json_loads
 from ahadiff.git.line_map import build_line_map, serialize_line_map_payload
 
 from .evaluator import ScoreReport, evaluate_run
@@ -299,8 +300,8 @@ def _required_string(payload: dict[str, object], key: str) -> str:
 
 def _load_json_object(path: Path) -> dict[str, Any]:
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        payload = safe_json_loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise InputError(f"benchmark JSON file is invalid: {path}") from exc
     if not isinstance(payload, dict):
         raise InputError(f"benchmark JSON file must contain an object: {path}")
@@ -314,8 +315,8 @@ def _load_jsonl_objects(path: Path) -> tuple[dict[str, Any], ...]:
         if not stripped:
             continue
         try:
-            payload = json.loads(stripped)
-        except json.JSONDecodeError as exc:
+            payload = safe_json_loads(stripped)
+        except (json.JSONDecodeError, ValueError) as exc:
             raise InputError(f"invalid JSONL line {index}: {path}") from exc
         if not isinstance(payload, dict):
             raise InputError(f"expected JSON object on line {index}: {path}")
@@ -528,7 +529,7 @@ def _claim_verification_rate(run_path: Path) -> float:
     records: list[dict[str, object]] = []
     for line in (run_path / "claims.jsonl").read_text(encoding="utf-8").splitlines():
         if line.strip():
-            payload = json.loads(line)
+            payload = safe_json_loads(line)
             if isinstance(payload, dict):
                 records.append(cast("dict[str, object]", payload))
     if not records:

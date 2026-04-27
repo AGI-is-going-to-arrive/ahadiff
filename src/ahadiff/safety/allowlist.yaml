@@ -1,0 +1,18 @@
+# AhaDiff global secret scan allowlist
+# Patterns listed here will NOT trigger redaction alerts.
+# Format: each entry is a regex pattern matched against detected secret candidates.
+#
+# Use sparingly — every allowlisted pattern is a potential security gap.
+# Prefer repo-level .ahadiffignore for file-level exclusions.
+
+version: 1
+
+rules:
+  # Example: allow test fixture API keys (never real)
+  # - pattern: "^sk-test-[a-zA-Z0-9]{24}$"
+  #   reason: "Test fixture keys used in VCR cassettes"
+  #   added_by: ""
+  #   added_at: ""
+
+  # Placeholder — no rules active by default
+  []

@@ -9,25 +9,17 @@ import sys
 import tempfile
 import webbrowser
 from contextlib import ExitStack, suppress
+from functools import cache
+from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, cast
 
 import typer
-from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 from typer import Exit
 
 from . import __version__
-from .claims import (
-    extract_claim_candidates_from_run,
-    load_claim_candidates,
-    load_line_map_records,
-    load_symbol_records,
-    load_text_map,
-    verify_claim_candidates,
-    write_verified_claims_jsonl,
-)
 from .contracts import ProviderConfig
 from .core.config import (
     SecurityConfig,
@@ -41,6 +33,7 @@ from .core.config import (
     write_default_config,
 )
 from .core.errors import AhaDiffError, ConfigError, InputError, StorageError
+from .core.json_util import safe_json_loads
 from .core.paths import (
     assert_local_repo_path,
     find_repo_root,
@@ -54,58 +47,8 @@ from .core.paths import (
     run_dir,
     validate_run_id,
 )
-from .eval import (
-    append_result,
-    decide_learn_ratchet,
-    evaluate_run,
-    export_results,
-    load_result_events,
-    publish_result_artifacts,
-    rollback_result_event,
-    run_benchmark_suite,
-    write_benchmark_report,
-)
-from .eval.results import finalized_artifact_digest
-from .git.capture import (
-    capture_patch,
-    detect_graphify_status,
-    import_graphify_artifact,
-    write_input_artifacts,
-)
-from .git.repo import repo_write_lock, unlock_repo_write_lock
+from .core.sqlite_util import reject_symlink_path
 from .i18n import normalize_locale, resolve_locale
-from .improve import run_improve_loop
-from .install import (
-    InstallContext,
-    available_targets,
-    get_target,
-    manifest_preview_for,
-    target_detection,
-)
-from .lesson import generate_lessons_from_run
-from .lesson.learnability import assess_learnability
-from .llm import probe_provider
-from .llm.provider import transport_target_for_base_url
-from .quiz import generate_cards_for_run, generate_quiz_from_run, load_quiz_questions
-from .review.database import (
-    backup_review_db,
-    check_review_db,
-    finalize_targeted_verify_event,
-    import_cards_from_jsonl,
-    import_cards_from_runs,
-    import_results_tsv_lossy,
-    initialize_review_db,
-    list_due_cards,
-    load_result_event_by_run_and_id,
-    mark_run_cards_stale,
-    record_card_review,
-    restore_review_db,
-    set_card_queue_state,
-    upgrade_review_db,
-)
-from .review.signal import mark_claim_wrong
-from .serve import ServeState, create_app
-from .wiki import append_concepts
 
 if TYPE_CHECKING:
     from .contracts import PrivacyMode
@@ -136,6 +79,96 @@ _INSTALL_TARGET_HELP = (
 )
 _SQLITE_MIN_VERSION = (3, 51, 3)
 _SQLITE_ALLOWED_BACKPORTS = {(3, 50, 7), (3, 44, 6)}
+
+
+@cache
+def _lazy_module(module_name: str) -> Any:
+    return import_module(f"{__package__}.{module_name}")
+
+
+class _LazyCallable:
+    def __init__(self, module_name: str, attr_name: str) -> None:
+        self._module_name = module_name
+        self._attr_name = attr_name
+
+    def _resolve(self) -> Any:
+        return getattr(_lazy_module(self._module_name), self._attr_name)
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        return self._resolve()(*args, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._resolve(), name)
+
+    def __repr__(self) -> str:
+        return repr(self._resolve())
+
+
+def _lazy_attr(module_name: str, attr_name: str) -> Any:
+    # Keep CLI monkeypatch targets stable without importing heavy modules on startup.
+    return _LazyCallable(module_name, attr_name)
+
+
+def _install_context_cls() -> type[Any]:
+    return cast("type[Any]", _lazy_module("install").InstallContext)
+
+
+def _serve_state_cls() -> type[Any]:
+    return cast("type[Any]", _lazy_module("serve").ServeState)
+
+
+extract_claim_candidates_from_run = _lazy_attr("claims", "extract_claim_candidates_from_run")
+load_claim_candidates = _lazy_attr("claims", "load_claim_candidates")
+load_line_map_records = _lazy_attr("claims", "load_line_map_records")
+load_symbol_records = _lazy_attr("claims", "load_symbol_records")
+load_text_map = _lazy_attr("claims", "load_text_map")
+verify_claim_candidates = _lazy_attr("claims", "verify_claim_candidates")
+write_verified_claims_jsonl = _lazy_attr("claims", "write_verified_claims_jsonl")
+append_result = _lazy_attr("eval", "append_result")
+decide_learn_ratchet = _lazy_attr("eval", "decide_learn_ratchet")
+evaluate_run = _lazy_attr("eval", "evaluate_run")
+export_results = _lazy_attr("eval", "export_results")
+load_result_events = _lazy_attr("eval", "load_result_events")
+publish_result_artifacts = _lazy_attr("eval", "publish_result_artifacts")
+rollback_result_event = _lazy_attr("eval", "rollback_result_event")
+run_benchmark_suite = _lazy_attr("eval", "run_benchmark_suite")
+write_benchmark_report = _lazy_attr("eval", "write_benchmark_report")
+finalized_artifact_digest = _lazy_attr("eval.results", "finalized_artifact_digest")
+capture_patch = _lazy_attr("git.capture", "capture_patch")
+detect_graphify_status = _lazy_attr("git.capture", "detect_graphify_status")
+import_graphify_artifact = _lazy_attr("git.capture", "import_graphify_artifact")
+write_input_artifacts = _lazy_attr("git.capture", "write_input_artifacts")
+repo_write_lock = _lazy_attr("git.repo", "repo_write_lock")
+unlock_repo_write_lock = _lazy_attr("git.repo", "unlock_repo_write_lock")
+run_improve_loop = _lazy_attr("improve", "run_improve_loop")
+available_targets = _lazy_attr("install", "available_targets")
+get_target = _lazy_attr("install", "get_target")
+manifest_preview_for = _lazy_attr("install", "manifest_preview_for")
+target_detection = _lazy_attr("install", "target_detection")
+generate_lessons_from_run = _lazy_attr("lesson", "generate_lessons_from_run")
+assess_learnability = _lazy_attr("lesson.learnability", "assess_learnability")
+probe_provider = _lazy_attr("llm", "probe_provider")
+transport_target_for_base_url = _lazy_attr("llm.provider", "transport_target_for_base_url")
+generate_cards_for_run = _lazy_attr("quiz", "generate_cards_for_run")
+generate_quiz_from_run = _lazy_attr("quiz", "generate_quiz_from_run")
+load_quiz_questions = _lazy_attr("quiz", "load_quiz_questions")
+backup_review_db = _lazy_attr("review.database", "backup_review_db")
+check_review_db = _lazy_attr("review.database", "check_review_db")
+finalize_targeted_verify_event = _lazy_attr("review.database", "finalize_targeted_verify_event")
+import_cards_from_jsonl = _lazy_attr("review.database", "import_cards_from_jsonl")
+import_cards_from_runs = _lazy_attr("review.database", "import_cards_from_runs")
+import_results_tsv_lossy = _lazy_attr("review.database", "import_results_tsv_lossy")
+initialize_review_db = _lazy_attr("review.database", "initialize_review_db")
+list_due_cards = _lazy_attr("review.database", "list_due_cards")
+load_result_event_by_run_and_id = _lazy_attr("review.database", "load_result_event_by_run_and_id")
+mark_run_cards_stale = _lazy_attr("review.database", "mark_run_cards_stale")
+record_card_review = _lazy_attr("review.database", "record_card_review")
+restore_review_db = _lazy_attr("review.database", "restore_review_db")
+set_card_queue_state = _lazy_attr("review.database", "set_card_queue_state")
+upgrade_review_db = _lazy_attr("review.database", "upgrade_review_db")
+mark_claim_wrong = _lazy_attr("review.signal", "mark_claim_wrong")
+create_app = _lazy_attr("serve", "create_app")
+append_concepts = _lazy_attr("wiki", "append_concepts")
 
 
 def app() -> typer.Typer:
@@ -240,6 +273,8 @@ def _normalize_provider_base_url(base_url: str, *, provider_class: str) -> str:
 
 
 def _provider_config_from_payload(payload: dict[str, Any]) -> ProviderConfig:
+    from pydantic import ValidationError
+
     try:
         return ProviderConfig.model_validate(payload)
     except ValidationError as exc:
@@ -589,6 +624,7 @@ def doctor_cmd(
 
         review_path = review_db_path(root)
         if review_path.exists():
+            reject_symlink_path(review_path)
             try:
                 with sqlite3.connect(review_path) as connection:
                     connection.execute("PRAGMA busy_timeout = 5000")
@@ -1113,7 +1149,7 @@ def install_cmd(
 ) -> None:
     try:
         root = find_repo_root(repo_root)
-        context = InstallContext(repo_root=root, force=force, layer2=layer2)
+        context = _install_context_cls()(repo_root=root, force=force, layer2=layer2)
         if detect:
             table = Table(title="AhaDiff install targets")
             table.add_column("Target")
@@ -1161,7 +1197,7 @@ def uninstall_cmd(
 ) -> None:
     try:
         root = find_repo_root(repo_root)
-        context = InstallContext(repo_root=root)
+        context = _install_context_cls()(repo_root=root)
         installer = get_target(target)
         if dry_run:
             console.print(installer.preview_uninstall(context))
@@ -1212,8 +1248,8 @@ def _run_content_lang(run_path: Path) -> str:
     if not metadata_path.exists():
         return "en"
     try:
-        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        payload = safe_json_loads(metadata_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, ValueError, OSError, UnicodeDecodeError):
         return "en"
     if not isinstance(payload, dict):
         return "en"
@@ -1661,7 +1697,7 @@ def serve_cmd(
         resolved_locale = resolve_locale(cli_lang=lang, config_lang=config_lang)
         state_dir.mkdir(parents=True, exist_ok=True)
         app_instance = create_app(
-            ServeState(
+            _serve_state_cls()(
                 state_dir=state_dir,
                 token=secrets.token_urlsafe(24),
                 locale=resolved_locale,
@@ -2151,8 +2187,8 @@ def _verify_ci_artifacts(repo_root: Path) -> None:
 def _load_ci_finalized_marker(run_path: Path) -> dict[str, str | int]:
     marker_path = run_path / "finalized.json"
     try:
-        raw_payload: Any = json.loads(marker_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raw_payload: Any = safe_json_loads(marker_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise AhaDiffError(f"finalized marker is invalid for run: {run_path.name}") from exc
     if not isinstance(raw_payload, dict):
         raise AhaDiffError(f"finalized marker is invalid for run: {run_path.name}")

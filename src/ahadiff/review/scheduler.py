@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 from fsrs import Card, Rating, Scheduler
 
 from ahadiff.core.errors import InputError
+from ahadiff.core.json_util import safe_json_loads
 from ahadiff.lesson.scaffolding import compute_scaffolding_level
 
 if TYPE_CHECKING:
@@ -51,8 +52,8 @@ def normalize_fsrs_state(fsrs_state: str | None, *, now: datetime | None = None)
         raise InputError("fsrs_state must not be an empty string; use None for a new card")
     if fsrs_state:
         try:
-            payload_obj = json.loads(fsrs_state)
-        except json.JSONDecodeError as exc:
+            payload_obj = safe_json_loads(fsrs_state)
+        except (json.JSONDecodeError, ValueError) as exc:
             raise InputError("fsrs_state must be valid JSON") from exc
         if not isinstance(payload_obj, dict):
             raise InputError("fsrs_state must be a JSON object")

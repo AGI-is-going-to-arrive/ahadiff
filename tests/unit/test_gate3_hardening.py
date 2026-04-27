@@ -181,7 +181,7 @@ def test_gate3_llm_judge_output_rejects_malformed_scores() -> None:
     invalid_range["accuracy"] = {"score": 101}
     with pytest.raises(InputError, match="between 0.00"):
         parse_llm_judge_output(json.dumps({"dimensions": invalid_range}))
-    with pytest.raises(InputError, match="non-finite numeric literal"):
+    with pytest.raises(InputError, match="Disallowed JSON constant"):
         parse_llm_judge_output('{"dimensions":{"accuracy":NaN}}')
 
 
@@ -600,12 +600,19 @@ def test_gate3_claim_parse_rejects_nan_infinity() -> None:
         ]
     ).replace('"start": 1', '"start": NaN')
 
-    with pytest.raises(InputError, match="invalid claim candidate"):
+    with pytest.raises(InputError, match="invalid claim candidate JSONL line 1"):
         parse_claim_candidates_text(nan_json, default_run_id="r1")
 
     inf_json = (
         '{"claim_id":"c1","run_id":"r1","text":"x",'
         '"source_hunks":[{"file":"a.py","start":Infinity,"end":2,"side":"new"}]}'
     )
-    with pytest.raises(InputError, match="invalid claim candidate"):
+    with pytest.raises(InputError, match="invalid claim candidate JSONL line 1"):
         parse_claim_candidates_text(inf_json, default_run_id="r1")
+
+    overflow_json = (
+        '{"claim_id":"c1","run_id":"r1","text":"x",'
+        '"source_hunks":[{"file":"a.py","start":1e309,"end":2,"side":"new"}]}'
+    )
+    with pytest.raises(InputError, match="invalid claim candidate JSONL line 1"):
+        parse_claim_candidates_text(overflow_json, default_run_id="r1")
