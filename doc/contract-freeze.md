@@ -407,12 +407,16 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 - `GET /api/config`
 - `GET /api/doctor`
 - `GET /api/install/targets`
-- `POST /api/signals/*`
+- `POST /api/signals/mark-wrong`
+- `POST /api/signals/quiz-answer`
+- `POST /api/signals/srs-review`
+- `POST /api/signals/helpfulness`
 
 补充冻结：
 
 - `GET /api/runs` 的最小摘要字段必须包含 `source_kind`、`capability_level`、`degraded_flags`、`status`
 - `GET /api/runs` 支持可选 `?source_kind=` 过滤；前端 ratchet/trend 视图默认排除 `status=non_ratcheted` 或非 `git_ref` runs
+- `/healthz` 是 utility route，不参与上述 `/api/*` endpoint 编号
 
 发布可见性冻结：
 
