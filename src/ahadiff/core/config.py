@@ -21,6 +21,7 @@ Scalar = str | int | float | bool | tuple[str, ...]
 NestedConfig = dict[str, "Scalar | NestedConfig"]
 _PRIVACY_MODES = {"strict_local", "redacted_remote", "explicit_remote"}
 _LOCALE_PREFERENCE_KEYS = {"lang", "llm.prompt_lang", "llm.output_lang"}
+_POSITIVE_INT_KEYS = {"capture.max_files", "capture.hard_limit", "capture.max_patch_bytes"}
 _SAFE_PROVIDER_API_KEY_ENVS = frozenset(
     {
         "OPENAI_API_KEY",
@@ -243,14 +244,19 @@ def _coerce_value(
             return tuple(item.strip() for item in value.split(",") if item.strip())
         raise ConfigError(f"{key} expects an array of strings, got {type(value).__name__}")
     if isinstance(expected, int) and not isinstance(expected, bool):
+        coerced: int
         if isinstance(value, int) and not isinstance(value, bool):
-            return value
-        if coerce_strings and isinstance(value, str):
+            coerced = value
+        elif coerce_strings and isinstance(value, str):
             try:
-                return int(value)
+                coerced = int(value)
             except ValueError as exc:
                 raise ConfigError(f"{key} expects int, got {value!r}") from exc
-        raise ConfigError(f"{key} expects int, got {type(value).__name__}")
+        else:
+            raise ConfigError(f"{key} expects int, got {type(value).__name__}")
+        if key in _POSITIVE_INT_KEYS and coerced < 1:
+            raise ConfigError(f"{key} must be >= 1")
+        return coerced
     if isinstance(expected, float):
         if isinstance(value, int | float) and not isinstance(value, bool):
             return float(value)

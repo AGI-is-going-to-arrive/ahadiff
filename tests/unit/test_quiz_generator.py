@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, cast
 
+import pytest
 from typer.testing import CliRunner
 
 from ahadiff.claims.extract import write_claim_candidates_jsonl
@@ -10,8 +11,10 @@ from ahadiff.claims.schema import ClaimCandidate, VerifiedClaim
 from ahadiff.cli import app
 from ahadiff.contracts import ClaimRecord, ProviderConfig, ReviewCard, SourceHunk
 from ahadiff.core.config import SecurityConfig
+from ahadiff.core.errors import InputError
 from ahadiff.lesson.generator import write_lesson_artifacts
 from ahadiff.lesson.schemas import LessonCompact, LessonFull, LessonHint
+from ahadiff.quiz import generator as quiz_generator_module
 from ahadiff.quiz.generator import (
     QuizArtifactPaths,
     build_quiz_payload,
@@ -24,8 +27,6 @@ from ahadiff.quiz.schemas import QuizEvidence, QuizQuestion
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    import pytest
 
     from ahadiff.llm.schemas import ProviderRequest
 
@@ -321,6 +322,31 @@ def test_generate_cards_for_run_writes_review_cards(tmp_path: Path) -> None:
     assert card.file_id == "file_app"
     assert card.hunk_id == "hunk_retry"
     assert card.symbol == "retry_once"
+
+
+def test_load_quiz_questions_rejects_oversized_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    quiz_path = tmp_path / "quiz.jsonl"
+    quiz_path.write_text(
+        json.dumps(
+            {
+                "question_id": "quiz_1",
+                "question": "What changed?",
+                "expected_answer": "Retries were added.",
+                "source_claims": ["claim-1"],
+                "concepts": ["retry loop"],
+                "evidence": [{"file": "src/app.py", "line": 1}],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(quiz_generator_module, "_MAX_RUN_ARTIFACT_TEXT_BYTES", 8)
+
+    with pytest.raises(InputError, match="artifact exceeds size limit"):
+        load_quiz_questions(quiz_path)
 
 
 def test_generate_cards_for_run_skips_fail_verdict(tmp_path: Path) -> None:

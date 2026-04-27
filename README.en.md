@@ -18,7 +18,7 @@ It's not a PR summary, not a repo wiki, not yet another "code explainer." It rea
 - A **claims** ledger where every assertion traces back to a hunk
 - A comparable **quality score history** (ratcheted; `review.sqlite` is the single source of truth, `results.tsv` is a human-readable export)
 
-The current code already ships Lesson / Claims / Quiz / Cards / Score / Ratchet. The review-flow SRS runtime, serve backend, install targets, GitHub Action templates, benchmark suite, improve-loop core, Task 17 targeted verification, Phase 2.5 runtime, i18n-0 backend, and the `viewer/` React SPA (Dashboard / Lesson / Diff / Quiz / ConceptGraph + LanguageSwitcher + full i18n 82/82 key parity + 330/330 Playwright matrix + R1-R5 five-round cross-model adversarial review with 51 real findings fixed) are all landed. Stage 7 i18n signoff is complete. v0.2 Gates 0-5 have all passed review. Gate 5 (Scale + Input + Install Expansion) adds: `--compare-dir` directory diff (no-follow + file/dir/depth triple limits), `--patch-url` URL download (full SSRF protection: pre-resolve IP-connect + TLS SNI + per-hop redirect re-check), serve cursor pagination + anyio threadpool, LLM cache lookup/store + usage.sqlite cost tracking, and 7 new install targets (Cursor/Windsurf/Copilot/Continue/Aider/Cline/Roo).
+The current code already ships Lesson / Claims / Quiz / Cards / Score / Ratchet. The review-flow SRS runtime, serve backend, install targets, GitHub Action templates, benchmark suite, improve-loop core, Task 17 targeted verification, Phase 2.5 runtime, i18n-0 backend, and the `viewer/` React SPA are all landed. The v0.1 frontend delivered Dashboard / Lesson / Diff / Quiz / ConceptGraph and went through R1-R5 five-round cross-model adversarial review (51 real findings fixed). v0.2 backend Gates 0-5 + frontend Phase 1-4 have all passed review: backend adds `--compare-dir` directory diff, `--patch-url` URL download (full SSRF protection), serve cursor pagination + anyio threadpool, LLM cache + usage.sqlite, 7 new install targets (13 total), and 3 new endpoints (`/api/config`, `/api/doctor`, `/api/install/targets`); frontend adds 6 new pages (Review SRS flashcards / Ratchet history / Landing hero / Settings config+diagnostics / Onboarding wizard / Skills agent hub), totalling 12 pages ~30 components, i18n 189/189 key parity, 495 Playwright tests all green.
 
 > Code Wiki explains a repo. AhaDiff teaches you what changed — and verifies every claim against the diff.
 
@@ -162,9 +162,10 @@ ahadiff/
 ├─ src/ahadiff/quiz/            # Stage 3 / Task 10 quiz + cards
 ├─ src/ahadiff/wiki/            # Stage 3 / Task 10 concepts ledger
 ├─ src/ahadiff/eval/            # Stage 3 / Task 11-12 evaluator + ratchet + results
-├─ src/ahadiff/serve/           # Task 14.5 local serve API / finalized run gate
+├─ src/ahadiff/serve/           # Task 14.5 + v0.2 local serve API (incl. routes_config / routes_install)
 ├─ src/ahadiff/install/         # Task 19/20 install targets + GitHub Action templates
 ├─ src/ahadiff/i18n/            # i18n-0 locale resolver / prompt language helper
+├─ src/ahadiff/review/          # Task 15 + v0.2 review.sqlite schema / FSRS-6 / migration chain
 ├─ src/ahadiff/prompts/         # Prompt resources packaged into the wheel
 ├─ prompts/                     # Lesson / claim prompt templates
 ├─ src/ahadiff/improve/         # Stage 5 / Task 16/17 improve loop, targeted verify, Phase 2.5
@@ -173,6 +174,7 @@ ahadiff/
 ├─ tests/eval/                  # benchmark suite tests
 ├─ tests/integration/           # pinned integration fixtures
 ├─ tests/live/                  # Opt-in real LLM judge smoke
+├─ viewer/                      # React 19 + Vite + Zustand + vanilla CSS frontend (12 pages / 189 i18n keys / 495 Playwright)
 ├─ ui/                          # HTML prototypes v1–v6 (design history)
 └─ CLAUDE.md                    # Project AI context index
 ```
@@ -195,7 +197,7 @@ ahadiff/
 - `src/ahadiff/review/{database,scheduler,schemas,signal}.py` for review.sqlite schema / migration, FSRS-6 scheduling, the review queue, learning signals, and the review CLI backend
 - `src/ahadiff/improve/{loop,program,targeted,rewrite}.py` for improve sessions, the immutable improve_program prompt, worktree isolation, the 5 mutable-prompt allowlist, replay-learn, targeted verification, Phase 2.5 triggering, cherry-pick ordering, session validation, and pending-worktree resume guards
 - runtime resource lookup that works in both source checkout and installed wheel mode for `eval_bundle_version`, `prompt_version`, and packaged lesson prompts
-- `keep_final` is still a manual full 8-dimension recheck via `ahadiff db finalize-targeted <event_id>`; the improve loop does not auto-promote it. The `viewer/` React SPA is complete through Phase A-E with R1-R5 five-round cross-model deep review (scaffold + 5 core pages + LanguageSwitcher + i18n 82/82 key parity + 330/330 Playwright matrix + AbortController coverage + token fetch timeout + 401/403 retry + ErrorBoundary + WCAG AAA dark-mode all tokens ≥ 7.0:1)
+- `keep_final` is still a manual full 8-dimension recheck via `ahadiff db finalize-targeted <event_id>`; the improve loop does not auto-promote it. The `viewer/` React SPA is complete through Phase A-E with R1-R5 five-round cross-model deep review; v0.2 frontend Phase 1-4 adds 6 new pages (Review / Ratchet / Landing / Settings / Onboarding / Skills), 66 v6 design tokens, Skeleton loading component, review-store, per-route ErrorBoundary, shared utility extraction, i18n upgraded to 189/189 parity, and Playwright upgraded to 495 tests
 
 This round also closed several runtime edges: `prompt_version` still tracks AhaDiff's own prompt resources instead of any target-workspace `prompts/`; lesson JSON parsing skips schema-mismatched example blocks before accepting a real answer; the lesson/quiz chain is now wired into `learn`; lesson-generation failures now clean up newly written `claims.raw.jsonl` / `claims.jsonl`, `quiz/`, and `concepts_local.jsonl` half-artifacts; successful `learn` runs now write a `learn` event plus `score.json`; manual `score` / `verify` still do not contaminate the learn baseline; `ReviewCard` now validates `last_rating` and `card_state/stale_reason`; fake quiz artifacts no longer pass as a complete Stage-3 result. The pinned integration fixture was also tightened after that: tests now write `symbols.json`, generate `cards.jsonl` through `generate_cards_for_run()`, and validate every row as `ReviewCard`, so hand-written partial cards can no longer bypass the production contract. Task 15 is also fully hardened in this round: legacy `cards` schemas now migrate `stale_reason` explicitly, schema-invalid `cards.jsonl` is downgraded to warnings, repeated regenerate runs no longer leave old active cards in the due queue, `regenerate --only quiz` restores the previous quiz/cards artifacts if `evaluate_run` fails and deletes stale `cards.jsonl` plus marks active cards `stale + staleness_unknown` on `FAIL`, lossy TSV import now runs as a single-connection whole-batch import with rollback on bad rows or duplicate identities, `rollback_result_event` now does delete + export-row selection in one connection, and a plain DB connect no longer creates parent directories silently on typo paths. Task 16/17 now covers the `lesson_hint.md` allowlist entry, session-id path validation, a 30-minute replay timeout, paired prompt temp+replace writes, non-conflict cherry-pick failure handling, no `finalized.json` for discard or pending-conflict runs, pending conflicts excluded from the next baseline, volatile staged/unstaged replay from the saved `patch.diff`, shorter worktree paths, a `--rounds` cap of 20, null-byte rejection, Ctrl+C after a completed round no longer appending a second crash event, targeted verification, one Phase 2.5 trigger per session, and OpenAI-compatible provider endpoint normalization. This cache-key hardening also closes the API-version boundary for LLM calls: different `api_family_version` values under the same `api_family` now produce different cache keys, so compatible gateways or API-version changes do not reuse stale results.
 
@@ -224,12 +226,12 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-Actual result after v0.2 Gate 3+4 (2026-04-27): `uv run pytest tests -q` finished with `654 passed, 1 skipped` (the live judge smoke is skipped by default; runs as 1 passed when enabled); `uv run ruff check src tests`, `uv run ruff format --check src tests`, and `uv run pyright` all passed. Frontend: `pnpm run typecheck` 0 errors, `pnpm run build` 261.39 KB (gzip 82.49 KB), `pnpm exec playwright test` 330/330 passed.
+Actual result after v0.2 full review (2026-04-27): `uv run pytest tests -q` finished with `808 passed, 1 skipped` (the live judge smoke is skipped by default; runs as 1 passed when enabled); `uv run ruff check src tests`, `uv run ruff format --check src tests`, and `uv run pyright` all passed. Frontend: `pnpm run typecheck` 0 errors, `pnpm run build` 298.35 KB (gzip 91.60 KB), `pnpm exec playwright test` 495/495 passed. i18n parity 189/189. Real LLM learn end-to-end: `ahadiff learn b83f831 --provider local8318` completed the full learnability→claims→lesson→quiz→concepts→score pipeline, scoring 93.86 / PASS.
 
 Roadmap:
 
 - [ ] `v0.1` (MVP): CLI + Lesson + Evaluator + Ratchet end-to-end + React 19 WebUI (`ahadiff serve`) + 8 LLM Providers + 8 diff capture modes (incl. --unstaged / git show) + 6 install targets + i18n + stage gates
-- [ ] `v0.2`: --compare-dir + --patch-url + 7 IDE install targets + watchdog incremental regeneration + section-level helpfulness + Team features
+- [ ] `v0.2`: --compare-dir + --patch-url + 7 IDE install targets + 6 new frontend pages + watchdog incremental regeneration + section-level helpfulness + Team features (done: backend Gates 0-5 + frontend Phase 1-4 + 13 install targets + LLM cache + usage.sqlite; remaining: watchdog / helpfulness / Team)
 - [ ] `v1.0`: PWA + public benchmark suite
 
 ## Inspirations

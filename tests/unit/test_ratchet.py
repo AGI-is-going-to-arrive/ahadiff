@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from ahadiff.contracts import ResultEvent, RunStatus
@@ -46,10 +47,12 @@ def _event(
     overall: float,
     status: RunStatus = "keep",
     event_type: str = "learn",
+    run_id: str | None = None,
+    workspace_root: Path | None = None,
 ) -> ResultEvent:
-    return ResultEvent(
+    event = ResultEvent(
         event_id=f"018f0f52-91c0-7abc-8123-{int(overall * 100):012d}",
-        run_id=f"run_{overall}",
+        run_id=run_id or f"run_{overall}",
         event_type=event_type,
         timestamp="2026-04-23T00:00:00Z",
         source_ref=source_ref,
@@ -63,28 +66,59 @@ def _event(
         weakest_dim="conciseness",
         note_json=None,
     )
+    if workspace_root is not None:
+        _write_finalized_marker(workspace_root, event)
+    return event
+
+
+def _write_finalized_marker(workspace_root: Path, event: ResultEvent) -> None:
+    marker_path = workspace_root / ".ahadiff" / "runs" / event.run_id / "finalized.json"
+    marker_path.parent.mkdir(parents=True, exist_ok=True)
+    marker_path.write_text(
+        json.dumps({"run_id": event.run_id, "event_id": event.event_id}) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _init_git_repo(tmp_path: Path) -> None:
     import subprocess
 
-    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "config", "user.name", "Test User"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True, timeout=30)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=tmp_path,
+        check=True,
+        timeout=30,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=tmp_path,
+        check=True,
+        timeout=30,
+    )
 
 
 def _commit_file(tmp_path: Path, name: str, content: str, message: str) -> str:
     import subprocess
 
     (tmp_path / name).write_text(content, encoding="utf-8")
-    subprocess.run(["git", "add", name], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-m", message], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(["git", "add", name], cwd=tmp_path, check=True, timeout=30)
+    subprocess.run(
+        ["git", "commit", "-m", message],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        timeout=30,
+    )
     return subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=tmp_path,
         check=True,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
     ).stdout.strip()
 
 
@@ -119,7 +153,7 @@ def test_git_input_keeps_when_score_improves_over_ancestor(tmp_path: Path) -> No
     _init_git_repo(tmp_path)
     base = _commit_file(tmp_path, "app.py", "value = 1\n", "init")
     head = _commit_file(tmp_path, "app.py", "value = 2\n", "update")
-    prior = (_event(source_ref=base, overall=70.0, status="baseline"),)
+    prior = (_event(source_ref=base, overall=70.0, status="baseline", workspace_root=tmp_path),)
     report = _score_report(source_kind="git_ref", source_ref=head, overall=81.0)
 
     decision = decide_learn_ratchet(
@@ -144,7 +178,7 @@ def test_git_input_discards_when_score_regresses(tmp_path: Path) -> None:
     _init_git_repo(tmp_path)
     base = _commit_file(tmp_path, "app.py", "value = 1\n", "init")
     head = _commit_file(tmp_path, "app.py", "value = 2\n", "update")
-    prior = (_event(source_ref=base, overall=85.0, status="baseline"),)
+    prior = (_event(source_ref=base, overall=85.0, status="baseline", workspace_root=tmp_path),)
     report = _score_report(source_kind="git_ref", source_ref=head, overall=80.0)
 
     decision = decide_learn_ratchet(
@@ -162,8 +196,14 @@ def test_select_baseline_event_ignores_score_lane_events(tmp_path: Path) -> None
     base = _commit_file(tmp_path, "app.py", "value = 1\n", "init")
     head = _commit_file(tmp_path, "app.py", "value = 2\n", "update")
     prior = (
-        _event(source_ref=base, overall=75.0, status="baseline", event_type="score"),
-        _event(source_ref=base, overall=74.0, status="baseline", event_type="learn"),
+        _event(
+            source_ref=base,
+            overall=75.0,
+            status="baseline",
+            event_type="score",
+            workspace_root=tmp_path,
+        ),
+        _event(source_ref=base, overall=74.0, status="baseline", workspace_root=tmp_path),
     )
 
     baseline = select_baseline_event(
@@ -217,6 +257,8 @@ def test_select_baseline_event_prefers_nearest_ancestor_over_newer_evaluation(
             note_json=None,
         ),
     )
+    for event in prior:
+        _write_finalized_marker(tmp_path, event)
 
     baseline = select_baseline_event(
         workspace_root=tmp_path,
@@ -232,7 +274,7 @@ def test_degraded_comparison_is_not_directly_discarded(tmp_path: Path) -> None:
     _init_git_repo(tmp_path)
     base = _commit_file(tmp_path, "app.py", "value = 1\n", "init")
     head = _commit_file(tmp_path, "app.py", "value = 2\n", "update")
-    prior = (_event(source_ref=base, overall=85.0, status="baseline"),)
+    prior = (_event(source_ref=base, overall=85.0, status="baseline", workspace_root=tmp_path),)
     report = _score_report(
         source_kind="git_ref",
         source_ref=head,
@@ -289,6 +331,8 @@ def test_select_baseline_event_ignores_degraded_events(tmp_path: Path) -> None:
             note_json=None,
         ),
     )
+    for event in prior:
+        _write_finalized_marker(tmp_path, event)
 
     baseline = select_baseline_event(
         workspace_root=tmp_path,
@@ -298,6 +342,61 @@ def test_select_baseline_event_ignores_degraded_events(tmp_path: Path) -> None:
     )
 
     assert baseline == prior[1]
+
+
+def test_select_baseline_event_ignores_unfinalized_events(tmp_path: Path) -> None:
+    _init_git_repo(tmp_path)
+    base = _commit_file(tmp_path, "app.py", "value = 1\n", "init")
+    head = _commit_file(tmp_path, "app.py", "value = 2\n", "update")
+    unfinalized = _event(
+        source_ref=base,
+        overall=90.0,
+        status="baseline",
+        run_id="run_unfinalized",
+    )
+    finalized = _event(
+        source_ref=base,
+        overall=70.0,
+        status="keep",
+        run_id="run_finalized",
+        workspace_root=tmp_path,
+    )
+
+    baseline = select_baseline_event(
+        workspace_root=tmp_path,
+        source_ref=head,
+        prior_events=(unfinalized, finalized),
+        allowed_event_types={"learn"},
+    )
+
+    assert baseline == finalized
+
+
+def test_select_baseline_event_rejects_marker_with_mismatched_run_id(tmp_path: Path) -> None:
+    _init_git_repo(tmp_path)
+    base = _commit_file(tmp_path, "app.py", "value = 1\n", "init")
+    head = _commit_file(tmp_path, "app.py", "value = 2\n", "update")
+    event = _event(
+        source_ref=base,
+        overall=90.0,
+        status="baseline",
+        run_id="run_real",
+        workspace_root=tmp_path,
+    )
+    marker_path = tmp_path / ".ahadiff" / "runs" / event.run_id / "finalized.json"
+    marker_path.write_text(
+        json.dumps({"run_id": "run_other", "event_id": event.event_id}) + "\n",
+        encoding="utf-8",
+    )
+
+    baseline = select_baseline_event(
+        workspace_root=tmp_path,
+        source_ref=head,
+        prior_events=(event,),
+        allowed_event_types={"learn"},
+    )
+
+    assert baseline is None
 
 
 def test_phase25_trigger_requires_two_consecutive_discards() -> None:

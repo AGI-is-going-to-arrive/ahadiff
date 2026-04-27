@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import threading
 from typing import TYPE_CHECKING, Any, cast
@@ -10,10 +11,11 @@ import pytest
 
 from ahadiff.contracts import ProviderConfig
 from ahadiff.core.config import SecurityConfig
-from ahadiff.core.errors import ConfigError, ProviderError, SafetyError
+from ahadiff.core.errors import ConfigError, InputError, ProviderError, SafetyError, StorageError
 from ahadiff.core.paths import usage_db_path
 from ahadiff.llm import ProviderRequest, adapter_conformance_test, make_provider
 from ahadiff.llm import provider as provider_module
+from ahadiff.llm import usage as usage_module
 from ahadiff.llm.adapters.azure import AzureOpenAIAdapter
 from ahadiff.llm.adapters.openai_compat import OpenAICompatAdapter
 from ahadiff.llm.adapters.openai_responses import OpenAIResponsesAdapter
@@ -31,6 +33,7 @@ from ahadiff.llm.cost import (
 from ahadiff.llm.probe import _probe_context_window  # pyright: ignore[reportPrivateUsage]
 from ahadiff.llm.provider import reset_provider_runtime_state, transport_target_for_base_url
 from ahadiff.llm.schemas import CacheKeyInput
+from ahadiff.llm.usage import UsageRecord
 from ahadiff.safety.redact import redaction_pipeline
 
 if TYPE_CHECKING:
@@ -83,6 +86,32 @@ def _request(**overrides: Any) -> ProviderRequest:
     }
     payload.update(overrides)
     return ProviderRequest(**payload)
+
+
+def _usage_record() -> UsageRecord:
+    return UsageRecord(
+        workspace_identity="workspace",
+        provider_class="openai",
+        api_family="openai_chat",
+        api_family_version="v1",
+        model_id="gpt-5.4-mini",
+        prompt_name="lesson.generate",
+        prompt_fingerprint="prompt-v1",
+        prompt_version="prompt-v1",
+        eval_bundle_version="bundle-v1",
+        output_lang="en",
+        privacy_mode="strict_local",
+        source_ref="HEAD",
+        cache_key="a" * 64,
+        cache_hit=False,
+        input_tokens=11,
+        output_tokens=7,
+        cost_usd=0.01,
+        pricing_version="test-pricing",
+        cost_confidence="high",
+        execution_origin="test",
+        request_id="req-1",
+    )
 
 
 def test_llm_reexports_provider_response_byte_cap() -> None:
@@ -494,6 +523,22 @@ def test_negative_retry_after_uses_exponential_backoff() -> None:
     assert sleep_calls == [1.0]  # 2**0 = 1 (exponential backoff, not -5)
 
 
+def test_retry_after_infinity_returns_none() -> None:
+    from ahadiff.llm.cost import parse_retry_after
+
+    assert parse_retry_after({"retry-after": "inf"}) is None
+    assert parse_retry_after({"retry-after": "-inf"}) is None
+    assert parse_retry_after({"retry-after": "nan"}) is None
+
+
+def test_retry_after_huge_value_is_capped() -> None:
+    from ahadiff.llm.cost import parse_retry_after
+
+    result = parse_retry_after({"retry-after": "999999"})
+    assert result is not None
+    assert result <= 300.0
+
+
 def test_circuit_breaker_opens_and_recovers() -> None:
     clock = {"now": 0.0}
     calls = {"count": 0}
@@ -615,6 +660,9 @@ def test_cache_key_hashes_diff_content_without_embedding_raw_patch() -> None:
             prompt_fingerprint="prompt-v1",
             prompt_version="prompt-v1",
             eval_bundle_version="bundle-v1",
+            provider_class="openai",
+            provider_kind="openai_chat",
+            base_url="https://api.openai.com/v1",
             model_id="gpt-5.4-mini",
             api_family="openai",
             api_family_version="v1",
@@ -638,6 +686,9 @@ def test_cache_key_separates_api_family_versions() -> None:
             prompt_fingerprint="prompt-v1",
             prompt_version="prompt-v1",
             eval_bundle_version="bundle-v1",
+            provider_class="openai",
+            provider_kind="openai_chat",
+            base_url="https://api.openai.com/v1",
             model_id="gpt-5.4-mini",
             api_family="openai",
             api_family_version=api_family_version,
@@ -652,6 +703,38 @@ def test_cache_key_separates_api_family_versions() -> None:
     v2_key = build_cache_key(make_input("v2"))
 
     assert v1_key != v2_key
+
+
+def test_cache_key_separates_provider_and_base_url() -> None:
+    def make_input(provider_class: str, provider_kind: str, base_url: str) -> CacheKeyInput:
+        return CacheKeyInput(
+            diff_content="diff --git a/app.py b/app.py\n+print('hi')",
+            source_ref="HEAD",
+            prompt_name="lesson.generate",
+            prompt_fingerprint="prompt-v1",
+            prompt_version="prompt-v1",
+            eval_bundle_version="bundle-v1",
+            provider_class=provider_class,
+            provider_kind=provider_kind,
+            base_url=base_url,
+            model_id="gpt-5.4-mini",
+            api_family="openai",
+            api_family_version="v1",
+            output_lang="en",
+            privacy_mode="strict_local",
+            redaction_config="cfg",
+            context_bundle_hash="ctx",
+            request_payload_sha256="payload",
+        )
+
+    official_key = build_cache_key(
+        make_input("openai", "openai_chat", "https://api.openai.com/v1/")
+    )
+    proxy_key = build_cache_key(make_input("openai", "openai_chat", "https://proxy.example/v1"))
+    newapi_key = build_cache_key(make_input("newapi", "openai_compat", "https://proxy.example/v1"))
+
+    assert official_key != proxy_key
+    assert proxy_key != newapi_key
 
 
 def test_provider_disk_cache_hit_skips_network_and_records_usage(tmp_path: Path) -> None:
@@ -696,6 +779,37 @@ def test_provider_disk_cache_hit_skips_network_and_records_usage(tmp_path: Path)
         (0, 13, 5, 0.00003225, "openai-api-pricing-2026-04-23"),
         (1, 13, 5, 0.0, "cache-hit"),
     ]
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlink support")
+def test_provider_cache_rejects_symlink_cache_dir(tmp_path: Path) -> None:
+    calls = {"count": 0}
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        return _openai_success_response(content="Cached")
+
+    workspace_root = tmp_path / "repo"
+    state_dir = workspace_root / ".ahadiff"
+    outside_cache = tmp_path / "outside-cache"
+    state_dir.mkdir(parents=True)
+    outside_cache.mkdir()
+    os.symlink(outside_cache, state_dir / "cache", target_is_directory=True)
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        workspace_root=workspace_root,
+        client=client,
+    )
+    try:
+        with pytest.raises(InputError, match="state path must not contain symlinks"):
+            provider.generate(_request())
+    finally:
+        provider.close()
+
+    assert calls["count"] == 0
+    assert list(outside_cache.iterdir()) == []
 
 
 def test_provider_disk_cache_key_separates_prompt_identity(tmp_path: Path) -> None:
@@ -758,6 +872,86 @@ def test_provider_usage_write_failure_does_not_fail_successful_call(
     assert response.content == "OK"
 
 
+def test_usage_db_retries_locked_write_and_records_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "usage.sqlite"
+    monkeypatch.setattr(usage_module, "_USAGE_BUSY_TIMEOUT_MS", 1)
+    monkeypatch.setattr(usage_module, "_USAGE_WRITE_ATTEMPTS", 5)
+    with usage_module.connect_usage_db(db_path, create_parent=True) as connection:
+        usage_module._ensure_usage_schema(connection, db_path)  # pyright: ignore[reportPrivateUsage]
+
+    lock_connection = sqlite3.connect(db_path, timeout=0.001, check_same_thread=False)
+    lock_connection.execute("BEGIN EXCLUSIVE")
+
+    def release_lock() -> None:
+        try:
+            import time
+
+            time.sleep(0.05)
+            lock_connection.rollback()
+        finally:
+            lock_connection.close()
+
+    releaser = threading.Thread(target=release_lock)
+    releaser.start()
+    try:
+        usage_module.record_usage_event(_usage_record(), db_path=db_path)
+    finally:
+        releaser.join(timeout=1)
+
+    with sqlite3.connect(db_path) as connection:
+        rows = connection.execute("SELECT cache_key, cache_hit FROM llm_usage").fetchall()
+
+    assert rows == [("a" * 64, 0)]
+
+
+def test_usage_schema_initialization_is_thread_safe(tmp_path: Path) -> None:
+    db_path = tmp_path / "usage.sqlite"
+    usage_module._SCHEMA_INITIALIZED.discard(str(db_path))  # pyright: ignore[reportPrivateUsage]
+    thread_count = 12
+    start = threading.Barrier(thread_count)
+    errors: list[BaseException] = []
+
+    def worker() -> None:
+        try:
+            start.wait(timeout=2)
+            usage_module.record_usage_event(_usage_record(), db_path=db_path)
+        except BaseException as exc:  # pragma: no cover - failure path asserted below
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker) for _ in range(thread_count)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+
+    assert errors == []
+    with sqlite3.connect(db_path) as connection:
+        row_count = connection.execute("SELECT COUNT(*) FROM llm_usage").fetchone()[0]
+    assert row_count == thread_count
+
+
+def test_usage_db_corrupt_quick_check_raises_storage_error(tmp_path: Path) -> None:
+    db_path = tmp_path / "usage.sqlite"
+    db_path.write_bytes(b"not a sqlite database")
+
+    with pytest.raises(StorageError, match="quick_check"):
+        usage_module.connect_usage_db(db_path)
+
+
+def test_usage_db_rejects_unsupported_sqlite_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(usage_module.sqlite3, "sqlite_version_info", (3, 40, 0))
+    monkeypatch.setattr(usage_module.sqlite3, "sqlite_version", "3.40.0")
+
+    with pytest.raises(StorageError, match="SQLite runtime"):
+        usage_module.connect_usage_db(tmp_path / "usage.sqlite", create_parent=True)
+
+
 def test_provider_ignores_cache_entry_with_mismatched_eval_bundle_version(
     tmp_path: Path,
 ) -> None:
@@ -790,6 +984,56 @@ def test_provider_ignores_cache_entry_with_mismatched_eval_bundle_version(
     assert second.content == "Miss 2"
     assert "cache_hit" not in second.notes
     assert calls["count"] == 2
+
+
+def test_cache_cleanup_only_removes_old_cache_tmp_files(tmp_path: Path) -> None:
+    import time
+
+    from ahadiff.llm import cache as cache_module
+
+    cache_dir = tmp_path / "repo" / ".ahadiff" / "cache"
+    cache_dir.mkdir(parents=True)
+    old_cache_tmp = cache_dir / f".{'a' * 64}.old.tmp"
+    recent_cache_tmp = cache_dir / f".{'b' * 64}.recent.tmp"
+    unrelated_tmp = cache_dir / ".not-cache.tmp"
+    for path in (old_cache_tmp, recent_cache_tmp, unrelated_tmp):
+        path.write_text("tmp\n", encoding="utf-8")
+
+    now = time.time()
+    ttl = cache_module._ORPHANED_TMP_TTL_SECONDS  # pyright: ignore[reportPrivateUsage]
+    old_timestamp = now - ttl - 1
+    recent_timestamp = now - ttl + 60
+    os.utime(old_cache_tmp, (old_timestamp, old_timestamp))
+    os.utime(recent_cache_tmp, (recent_timestamp, recent_timestamp))
+    os.utime(unrelated_tmp, (old_timestamp, old_timestamp))
+
+    cache_module._cleanup_orphaned_tmp_files(cache_dir)  # pyright: ignore[reportPrivateUsage]
+
+    assert not old_cache_tmp.exists()
+    assert recent_cache_tmp.exists()
+    assert unrelated_tmp.exists()
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlink support")
+def test_cache_cleanup_does_not_follow_symlink_directory(tmp_path: Path) -> None:
+    import time
+
+    from ahadiff.llm import cache as cache_module
+
+    outside_cache = tmp_path / "outside-cache"
+    outside_cache.mkdir()
+    victim = outside_cache / f".{'a' * 64}.victim.tmp"
+    victim.write_text("outside\n", encoding="utf-8")
+    ttl = cache_module._ORPHANED_TMP_TTL_SECONDS  # pyright: ignore[reportPrivateUsage]
+    old_timestamp = time.time() - ttl - 1
+    os.utime(victim, (old_timestamp, old_timestamp))
+    link = tmp_path / "repo" / ".ahadiff" / "cache"
+    link.parent.mkdir(parents=True)
+    os.symlink(outside_cache, link, target_is_directory=True)
+
+    cache_module._cleanup_orphaned_tmp_files(link)  # pyright: ignore[reportPrivateUsage]
+
+    assert victim.exists()
 
 
 def test_estimate_cost_uses_official_openai_pricing_for_default_model() -> None:
@@ -863,6 +1107,25 @@ def test_fetch_openrouter_pricing_catalog_parses_and_caches_results() -> None:
     assert calls["count"] == 1
     assert first["openrouter/test-model"].input_per_million_usd == 0.4
     assert second["openrouter/test-model"].request_per_call_usd == 0.01
+
+
+@pytest.mark.parametrize(
+    "models_url",
+    [
+        "http://169.254.169.254/latest/meta-data/",
+        "https://openrouter.ai.evil.example/api/v1/models",
+    ],
+)
+def test_fetch_openrouter_pricing_catalog_rejects_untrusted_url(models_url: str) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"unexpected request to {request.url}")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    try:
+        with pytest.raises(ProviderError, match="OpenRouter pricing URL"):
+            fetch_openrouter_pricing_catalog(models_url, client=client)
+    finally:
+        client.close()
 
 
 def test_resolve_pricing_entry_prefers_openrouter_catalog_for_openrouter_base_url() -> None:

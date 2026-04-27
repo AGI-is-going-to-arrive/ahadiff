@@ -62,6 +62,102 @@
   --duration-fast: 150ms;
   --duration-normal: 250ms;
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+
+  /* --- v6 Design System Tokens (66 additions) --- */
+
+  /* Spacing */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+
+  /* Radius (v6 naming) */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-full: 999px;
+
+  /* Shadows (v6 naming) */
+  --sh-sm: 0 1px 0 rgba(180, 160, 130, 0.06);
+  --sh-md: 0 1px 0 rgba(180, 160, 130, 0.06), 0 4px 20px -16px rgba(120, 80, 40, 0.18);
+  --sh-lg: 0 2px 4px -1px rgba(120, 80, 40, 0.08), 0 18px 50px -30px rgba(120, 80, 40, 0.28);
+  --sh-ring: 0 0 0 3px var(--accent-softer);
+
+  /* Duration (v6 naming) */
+  --dur-micro: 0.12s;
+  --dur-xfast: 0.15s;
+  --dur-fast: 0.15s;
+  --dur-base: 0.25s;
+  --dur-slow: 0.4s;
+  --dur-xslow: 0.6s;
+
+  /* Easing (v6 additions) */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-expo: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Layout max-width */
+  --mw-prose: 680px;
+  --mw-content: 960px;
+  --mw-page: 1280px;
+  --mw-wide: 1440px;
+
+  /* Ink variants */
+  --ink-2: #38362F;
+  --ink-3: #6B6559;
+  --ink-deep: #1F1E1B;
+  --ink-blackletter: #14130F;
+
+  /* Muted variants */
+  --muted-2: #7A7366;
+  --muted-3: #A8A39A;
+
+  /* Surface variants */
+  --paper-deep: #F3EFE4;
+  --surface-diff: #FDFCF8;
+  --surface-veil: rgba(255, 255, 255, 0.94);
+
+  /* Semantic soft/hair */
+  --success-soft: #ECF4EE;
+  --success-hair: #B9D7C1;
+  --warning-soft: #F7EED9;
+  --warning-soft-bg: #FBF5E6;
+  --warning-hair: #E3CDA1;
+  --danger-hair: #E4B8AE;
+
+  /* Brand */
+  --brand-anthropic: #D97757;
+  --brand-anthropic-ink: #B8542F;
+  --brand-anthropic-soft: #F6E8DF;
+
+  /* Stamp / Editorial */
+  --stamp-verified: #2E4A6B;
+  --stamp-verified-ink: #1F3450;
+  --stamp-verified-tint: rgba(46, 74, 107, 0.05);
+  --stamp-verified-frame: rgba(46, 74, 107, 0.42);
+  --stamp-verified-shadow: rgba(46, 74, 107, 0.22);
+  --stamp-red: #B23A2C;
+  --stamp-red-ink: #7E2318;
+  --folio-line: #1C1B18;
+  --ornament-ink: #A33D2B;
+
+  /* Weight */
+  --bolder-thin: 260;
+  --bolder-bold: 760;
+
+  /* Focus ring (v6 naming) */
+  --ring-offset: 3px;
+  --ring-color: var(--accent-ink);
+  --ring-halo: 0 0 0 4px rgba(210, 112, 80, 0.18);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -113,5 +209,54 @@
     --shadow-brand: 0 2px 6px -2px rgba(210, 112, 80, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 
     --ring-focus: 0 0 0 3px rgba(210, 112, 80, 0.35);
+
+    /* --- v6 tokens: dark mode overrides --- */
+
+    /* Shadows (v6 naming) */
+    --sh-sm: 0 1px 0 rgba(0, 0, 0, 0.15);
+    --sh-md: 0 1px 0 rgba(0, 0, 0, 0.15), 0 4px 20px -16px rgba(0, 0, 0, 0.4);
+    --sh-lg: 0 2px 4px -1px rgba(0, 0, 0, 0.2), 0 18px 50px -30px rgba(0, 0, 0, 0.5);
+
+    /* Ink variants — text on dark surfaces, AAA >= 7.0:1 on --elevated #38362F */
+    --ink-2: #D8D3C8;
+    --ink-3: #D0CABF;
+    --ink-deep: #EBE8DD;
+    --ink-blackletter: #F5F2E9;
+
+    /* Muted variants */
+    --muted-2: #D5D0C5;
+    --muted-3: #CCC7BC;
+
+    /* Surface variants */
+    --paper-deep: #1A1918;
+    --surface-diff: #211F1C;
+    --surface-veil: rgba(28, 27, 24, 0.94);
+
+    /* Semantic soft/hair — use rgba on dark backgrounds */
+    --success-soft: rgba(47, 111, 79, 0.10);
+    --success-hair: rgba(47, 111, 79, 0.25);
+    --warning-soft: rgba(148, 98, 22, 0.10);
+    --warning-soft-bg: rgba(148, 98, 22, 0.06);
+    --warning-hair: rgba(148, 98, 22, 0.25);
+    --danger-hair: rgba(163, 61, 43, 0.25);
+
+    /* Brand */
+    --brand-anthropic: #D97757;
+    --brand-anthropic-ink: #E8A080;
+    --brand-anthropic-soft: rgba(217, 119, 87, 0.12);
+
+    /* Stamp / Editorial */
+    --stamp-verified: #8FAECF;
+    --stamp-verified-ink: #A8C4DE;
+    --stamp-verified-tint: rgba(143, 174, 207, 0.06);
+    --stamp-verified-frame: rgba(143, 174, 207, 0.30);
+    --stamp-verified-shadow: rgba(0, 0, 0, 0.30);
+    --stamp-red: #E8A090;
+    --stamp-red-ink: #F0B8A8;
+    --folio-line: #E6E3D8;
+    --ornament-ink: #ECBCB2;
+
+    /* Focus ring (v6 naming) */
+    --ring-halo: 0 0 0 4px rgba(210, 112, 80, 0.30);
   }
 }

@@ -43,13 +43,25 @@ _RUNNER = CliRunner()
 
 
 def _init_git_repo(path: Path) -> None:
-    subprocess.run(["git", "init"], cwd=path, check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "init"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
     subprocess.run(
         ["git", "config", "user.email", "test@example.com"],
         cwd=path,
         check=True,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
     )
     subprocess.run(
         ["git", "config", "user.name", "Test User"],
@@ -57,6 +69,9 @@ def _init_git_repo(path: Path) -> None:
         check=True,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
     )
 
 
@@ -703,6 +718,59 @@ def test_backup_review_db_rejects_missing_database(tmp_path: Path) -> None:
     assert not db_path.parent.exists()
 
 
+def test_backup_review_db_wraps_sqlite_database_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "review.sqlite"
+    initialize_review_db(db_path)
+
+    def fail_connect(_path: Path, **_kwargs: object) -> sqlite3.Connection:
+        raise sqlite3.DatabaseError("simulated busy database")
+
+    monkeypatch.setattr(review_database_module.sqlite3, "connect", fail_connect)
+
+    with pytest.raises(StorageError, match="failed to back up review\\.sqlite"):
+        review_database_module.backup_review_db(db_path)
+
+
+def test_restore_review_db_wraps_sqlite_database_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "review.sqlite"
+    backup_path = tmp_path / "manual.bak"
+    backup_path.write_bytes(b"placeholder")
+
+    def fail_connect(_path: Path, **_kwargs: object) -> sqlite3.Connection:
+        raise sqlite3.DatabaseError("simulated restore failure")
+
+    monkeypatch.setattr(review_database_module.sqlite3, "connect", fail_connect)
+
+    with pytest.raises(StorageError, match="failed to restore review\\.sqlite"):
+        review_database_module.restore_review_db(db_path=db_path, backup_path=backup_path)
+
+
+def test_db_check_cli_acquires_repo_lock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    initialize_review_db(review_db_path(repo_root))
+    observed_locks: list[tuple[Path, str]] = []
+
+    @contextmanager
+    def fake_repo_write_lock(lock_path: Path, *, command: str) -> Iterator[Path]:
+        observed_locks.append((lock_path, command))
+        yield lock_path
+
+    monkeypatch.setattr(cli_module, "repo_write_lock", fake_repo_write_lock)
+
+    result = _RUNNER.invoke(app(), ["db", "check", "--repo-root", str(repo_root)])
+
+    assert result.exit_code == 0
+    assert observed_locks == [(lock_file_path(repo_root), "db check")]
+
+
 def test_sync_result_event_is_idempotent_under_review_db_owner(tmp_path: Path) -> None:
     db_path = tmp_path / "review.sqlite"
     event = _result_event()
@@ -1107,7 +1175,7 @@ def test_regenerate_only_quiz_rejects_concurrent_session_lock(
     def fake_repo_write_lock(lock_path: Path, *, command: str) -> Iterator[Path]:
         observed_locks.append((lock_path, command))
         if command:
-            raise StorageError("另一个 ahadiff 进程正在运行(PID=123)")
+            raise StorageError("another ahadiff process is already running (PID=123)")
         yield lock_path
 
     def fake_generate_quiz_from_run(
@@ -1573,3 +1641,16 @@ def test_db_cli_upgrade_backup_check_and_restore(tmp_path: Path) -> None:
     with connect_review_db(db_path) as connection:
         count = connection.execute("SELECT COUNT(*) FROM learning_signals").fetchone()[0]
     assert count == 0
+
+
+# --- F5 regression: review cards file size cap ---
+
+
+def test_load_review_cards_rejects_oversized_file(tmp_path: Path) -> None:
+    """_load_review_cards rejects files exceeding 16 MiB."""
+    from ahadiff.review.database import _load_review_cards  # pyright: ignore[reportPrivateUsage]
+
+    cards_path = tmp_path / "huge_cards.jsonl"
+    cards_path.write_bytes(b"x" * (16 * 1024 * 1024 + 1))
+    with pytest.raises(InputError, match="16 MiB"):
+        _load_review_cards(cards_path)

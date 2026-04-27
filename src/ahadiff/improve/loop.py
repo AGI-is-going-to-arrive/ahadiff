@@ -58,12 +58,15 @@ _REPLAY_LEARN_TIMEOUT_SECONDS = 30 * 60
 # Hard cap on bytes for any single mutated prompt produced by the improve LLM.
 # 256 KiB is generous for hand-edited Markdown prompts but bounds runaway output.
 _MAX_MUTATED_PROMPT_BYTES = 256 * 1024
+_MAX_IMPROVE_METADATA_BYTES = 1024 * 1024
+_MAX_IMPROVE_CLAIMS_BYTES = 10 * 1024 * 1024
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 log = logging.getLogger(__name__)
 _ACTIVE_WORKTREE_CLEANUPS: dict[str, tuple[Path, Path]] = {}
 _ACTIVE_WORKTREE_LOCK = threading.Lock()
 _atexit_cleanup_registered = False
 _IMPROVE_LOOP_LOCK = threading.Lock()
+_SUBPROCESS_RUN = subprocess.run
 _CHERRY_PICK_EXPECTED_PARENT: ContextVar[str | None] = ContextVar(
     "_CHERRY_PICK_EXPECTED_PARENT",
     default=None,
@@ -113,6 +116,7 @@ class _InterruptController:
         self._lock = threading.Lock()
         self._previous_sigint = None
         self._previous_sigterm = None
+        self._active_process: subprocess.Popen[str] | None = None
 
     def install(self) -> None:
         if threading.current_thread() is not threading.main_thread():
@@ -120,6 +124,7 @@ class _InterruptController:
         self._previous_sigint = signal.getsignal(signal.SIGINT)
         self._previous_sigterm = signal.getsignal(signal.SIGTERM)
         signal.signal(signal.SIGINT, self._handle_interrupt)
+        # Windows does not receive external SIGTERM like POSIX; this mainly covers POSIX/tests.
         signal.signal(signal.SIGTERM, self._handle_interrupt)
 
     def restore(self) -> None:
@@ -134,14 +139,32 @@ class _InterruptController:
     def requested(self) -> bool:
         return self._requested
 
+    def track_process(self, process: subprocess.Popen[str]) -> None:
+        terminate_now = False
+        with self._lock:
+            self._active_process = process
+            terminate_now = self._requested
+        if terminate_now:
+            _terminate_replay_process(process, force=False)
+
+    def clear_process(self, process: subprocess.Popen[str]) -> None:
+        with self._lock:
+            if self._active_process is process:
+                self._active_process = None
+
     def _handle_interrupt(self, signum: int, frame: object) -> None:
         del signum, frame
+        process: subprocess.Popen[str] | None
+        force = False
         with self._lock:
             self._count += 1
-            if self._count == 1:
-                self._requested = True
-                return
-        raise SystemExit(1)
+            self._requested = True
+            process = self._active_process
+            force = self._count > 1
+        if process is not None:
+            _terminate_replay_process(process, force=force)
+        if force:
+            raise SystemExit(1)
 
 
 def run_improve_loop(
@@ -315,6 +338,7 @@ def _run_improve_loop_unlocked(
                     api_key=api_key,
                     privacy_mode=privacy_mode,
                     output_lang=output_lang,
+                    interrupt=interrupt,
                 )
                 _validate_candidate_run_matches_anchor(
                     candidate_run_path,
@@ -398,6 +422,7 @@ def _run_improve_loop_unlocked(
                         outcome_statuses=tuple(outcome_statuses),
                     )
                 elif cherry_pick_pending:
+                    _unregister_active_worktree(worktree_path)
                     outcome_statuses.append(status)
                     session = update_improve_session(
                         session,
@@ -465,6 +490,7 @@ def _run_improve_loop_unlocked(
                         output_lang=output_lang,
                         expected_branch=expected_branch,
                         expected_head=expected_head,
+                        interrupt=interrupt,
                     )
                     save_improve_session(state_dir, session)
                     outcomes.append(phase25_result)
@@ -548,6 +574,7 @@ def _run_phase25_rewrite(
     output_lang: str | None,
     expected_branch: str | None = None,
     expected_head: str | None = None,
+    interrupt: _InterruptController | None = None,
 ) -> tuple[ImproveRoundResult, ImproveSessionState]:
     if expected_head is None:
         expected_head = _current_head(repo_root)
@@ -590,6 +617,7 @@ def _run_phase25_rewrite(
             api_key=api_key,
             privacy_mode=privacy_mode,
             output_lang=output_lang,
+            interrupt=interrupt,
         )
         _validate_candidate_run_matches_anchor(
             candidate_run_path,
@@ -661,6 +689,7 @@ def _run_phase25_rewrite(
             write_finalized=should_write_finalized,
         )
         if cherry_pick_pending:
+            _unregister_active_worktree(worktree_path)
             session = update_improve_session(
                 session,
                 worktree_path=str(worktree_path),
@@ -819,7 +848,7 @@ def _create_worktree(repo_root: Path, worktree_path: Path) -> None:
     _prepare_worktree_target(worktree_path)
     _register_active_worktree(repo_root, worktree_path)
     try:
-        run_git(repo_root, "worktree", "add", "--detach", str(worktree_path), "HEAD")
+        run_git(repo_root, "worktree", "add", "--detach", str(worktree_path), "HEAD", timeout=600)
     except (InputError, OSError, subprocess.SubprocessError) as exc:
         _remove_worktree(repo_root, worktree_path)
         raise InputError(
@@ -1047,7 +1076,11 @@ def _mutate_prompt_in_worktree(
 def _read_prompt_regular_no_follow(path: Path, target_prompt: str) -> str:
     _assert_prompt_regular_no_follow(path, target_prompt)
     try:
-        return path.read_text(encoding="utf-8")
+        return _read_bounded(
+            path,
+            max_bytes=_MAX_MUTATED_PROMPT_BYTES,
+            label=f"mutable prompt file {target_prompt}",
+        )
     except UnicodeDecodeError as exc:
         raise InputError(f"mutable prompt file must be valid UTF-8: {target_prompt}") from exc
 
@@ -1059,6 +1092,9 @@ def _assert_prompt_regular_no_follow(path: Path, target_prompt: str) -> None:
         raise InputError(f"mutable prompt file is missing from worktree: {target_prompt}") from exc
     if stat.S_ISLNK(path_stat.st_mode):
         raise InputError(f"mutable prompt file must not be a symlink: {target_prompt}")
+    if bool(getattr(path_stat, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT):
+        msg = f"mutable prompt file must not be a Windows reparse point: {target_prompt}"
+        raise InputError(msg)
     if not stat.S_ISREG(path_stat.st_mode):
         raise InputError(f"mutable prompt file must be a regular file: {target_prompt}")
 
@@ -1077,6 +1113,8 @@ def _assert_prompt_path_no_symlinks(worktree_root: Path, path: Path) -> None:
             raise InputError(f"mutable prompt parent path is missing: {current}") from exc
         if stat.S_ISLNK(path_stat.st_mode):
             raise InputError("mutable prompt parent path must not be a symlink")
+        if bool(getattr(path_stat, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT):
+            raise InputError("mutable prompt parent path must not be a Windows reparse point")
 
 
 def _normalize_mutated_prompt_content(content: str) -> tuple[str, bytes]:
@@ -1146,6 +1184,7 @@ def _run_replay_learn_subprocess(
     api_key: str | None,
     privacy_mode: str,
     output_lang: str | None = None,
+    interrupt: _InterruptController | None = None,
 ) -> Path:
     replay_args = build_replay_learn_args(anchor_run_path=anchor_run_path, metadata=metadata)
     command = [
@@ -1180,23 +1219,33 @@ def _run_replay_learn_subprocess(
         else set()
     )
     try:
-        result = subprocess.run(
-            command,
-            cwd=worktree_root,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-            env=env,
-            timeout=_REPLAY_LEARN_TIMEOUT_SECONDS,
-            **_detached_subprocess_kwargs(),
-        )
+        if interrupt is None or subprocess.run is not _SUBPROCESS_RUN:
+            result = subprocess.run(
+                command,
+                cwd=worktree_root,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+                env=env,
+                timeout=_REPLAY_LEARN_TIMEOUT_SECONDS,
+                **_detached_subprocess_kwargs(),
+            )
+        else:
+            result = _run_replay_command_with_interrupt(
+                command=command,
+                worktree_root=worktree_root,
+                env=env,
+                interrupt=interrupt,
+            )
     except subprocess.TimeoutExpired as exc:
         raise InputError(
             f"improve learn replay timed out after {_REPLAY_LEARN_TIMEOUT_SECONDS} seconds"
         ) from exc
     if result.returncode != 0:
+        if interrupt is not None and interrupt.requested:
+            raise InputError("improve learn replay interrupted")
         message = result.stderr.strip() or result.stdout.strip()
         raise InputError(message or "improve learn replay failed")
     if not state_dir.exists():
@@ -1208,6 +1257,62 @@ def _run_replay_learn_subprocess(
     if new_runs:
         return max(new_runs, key=lambda item: item.stat().st_mtime_ns)
     raise InputError("improve learn replay produced no fresh run artifacts")
+
+
+def _run_replay_command_with_interrupt(
+    *,
+    command: list[str],
+    worktree_root: Path,
+    env: dict[str, str],
+    interrupt: _InterruptController,
+) -> subprocess.CompletedProcess[str]:
+    with subprocess.Popen(
+        command,
+        cwd=worktree_root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=env,
+        **_detached_subprocess_kwargs(),
+    ) as process:
+        interrupt.track_process(process)
+        try:
+            try:
+                stdout, stderr = process.communicate(timeout=_REPLAY_LEARN_TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired:
+                _terminate_replay_process(process, force=True)
+                with suppress(subprocess.TimeoutExpired):
+                    process.communicate(timeout=5)
+                raise
+        finally:
+            interrupt.clear_process(process)
+    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+
+
+def _terminate_replay_process(process: subprocess.Popen[str], *, force: bool) -> None:
+    if process.poll() is not None:
+        return
+    if sys.platform.startswith("win"):
+        with suppress(OSError):
+            if force:
+                process.kill()
+            else:
+                process.terminate()
+        return
+
+    signum = signal.SIGKILL if force else signal.SIGTERM
+    try:
+        os.killpg(process.pid, signum)
+    except ProcessLookupError:
+        return
+    except OSError:
+        with suppress(OSError):
+            if force:
+                process.kill()
+            else:
+                process.terminate()
 
 
 def _detached_subprocess_kwargs() -> dict[str, Any]:
@@ -1256,7 +1361,12 @@ def _validate_candidate_report_matches_run(
 def _validate_claim_records_belong_to_run(path: Path, expected_run_id: str) -> None:
     if not path.exists():
         return
-    for index, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    claims_text = _read_bounded(
+        path,
+        max_bytes=_MAX_IMPROVE_CLAIMS_BYTES,
+        label="candidate claims.jsonl",
+    )
+    for index, line in enumerate(claims_text.splitlines(), start=1):
         stripped = line.strip()
         if not stripped:
             continue
@@ -1421,10 +1531,57 @@ def _load_run_metadata(run_path: Path) -> dict[str, Any]:
     target = run_path / "metadata.json"
     if not target.exists():
         raise InputError(f"run metadata is missing: {run_path.name}")
-    payload = json.loads(target.read_text(encoding="utf-8"))
+    payload = json.loads(
+        _read_bounded(target, max_bytes=_MAX_IMPROVE_METADATA_BYTES, label="run metadata")
+    )
     if not isinstance(payload, dict):
         raise InputError(f"run metadata must be a JSON object: {target}")
     return cast("dict[str, Any]", payload)
+
+
+def _read_bounded(path: Path, *, max_bytes: int, label: str) -> str:
+    try:
+        path_stat = path.lstat()
+    except OSError as exc:
+        raise InputError(f"{label} is unreadable") from exc
+    if stat.S_ISLNK(path_stat.st_mode):
+        raise InputError(f"{label} must not be a symlink")
+    if _has_windows_reparse_point(path_stat):
+        raise InputError(f"{label} must not be a Windows reparse point")
+    if not stat.S_ISREG(path_stat.st_mode):
+        raise InputError(f"{label} must be a regular file")
+    if path_stat.st_size > max_bytes:
+        raise InputError(f"{label} exceeds {max_bytes} bytes")
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(str(path), flags)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise InputError(f"{label} must not be a symlink") from exc
+        raise InputError(f"{label} is unreadable") from exc
+    try:
+        file_stat = os.fstat(fd)
+        if not stat.S_ISREG(file_stat.st_mode):
+            raise InputError(f"{label} must be a regular file")
+        if _has_windows_reparse_point(file_stat):
+            raise InputError(f"{label} must not be a Windows reparse point")
+        if (file_stat.st_dev, file_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
+            raise InputError(f"{label} changed during validation")
+        if file_stat.st_size > max_bytes:
+            raise InputError(f"{label} exceeds {max_bytes} bytes")
+        with os.fdopen(fd, "rb") as handle:
+            fd = -1
+            data = handle.read(max_bytes + 1)
+    except InputError:
+        raise
+    except OSError as exc:
+        raise InputError(f"{label} is unreadable") from exc
+    finally:
+        if fd != -1:
+            os.close(fd)
+    if len(data) > max_bytes:
+        raise InputError(f"{label} exceeds {max_bytes} bytes")
+    return data.decode("utf-8")
 
 
 def _parse_json_object(text: str) -> dict[str, Any]:

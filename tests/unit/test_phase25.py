@@ -29,13 +29,25 @@ from ahadiff.review.database import (
 
 
 def _init_git_repo(path: Path) -> None:
-    subprocess.run(["git", "init"], cwd=path, check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "init"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
     subprocess.run(
         ["git", "config", "user.email", "test@example.com"],
         cwd=path,
         check=True,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
     )
     subprocess.run(
         ["git", "config", "user.name", "Test User"],
@@ -43,6 +55,9 @@ def _init_git_repo(path: Path) -> None:
         check=True,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
     )
 
 
@@ -50,13 +65,25 @@ def _git_commit(path: Path, name: str, content: str, message: str) -> str:
     target = path / name
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
-    subprocess.run(["git", "add", "-A"], cwd=path, check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "add", "-A"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
     subprocess.run(
         ["git", "commit", "-m", message],
         cwd=path,
         check=True,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
     )
     result = subprocess.run(
         ["git", "rev-parse", "HEAD"],
@@ -64,6 +91,9 @@ def _git_commit(path: Path, name: str, content: str, message: str) -> str:
         check=True,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
     )
     return result.stdout.strip()
 

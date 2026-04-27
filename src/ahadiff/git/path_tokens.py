@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+_C_STYLE_ESCAPE_CHARS = frozenset({"\\", '"', "t", "n", "r", "a", "b", "f", "v"})
+
 
 def normalize_diff_path_token(candidate: str, *, prefix: str = "") -> str | None:
     raw_value = candidate.strip()
@@ -151,6 +153,10 @@ def _normalize_diff_path_separators(value: str) -> str:
 
 
 def _normalize_quoted_diff_path_separators(value: str) -> str:
+    # Git subprocesses use core.quotePath=false, but patch files/stdin may still
+    # contain quoted raw Windows paths. Detect those before C-style unquoting.
+    if _looks_like_raw_windows_quoted_path(value):
+        return _normalize_diff_path_separators(value)
     normalized: list[str] = []
     index = 0
     while index < len(value):
@@ -165,7 +171,7 @@ def _normalize_quoted_diff_path_separators(value: str) -> str:
             continue
 
         next_char = value[index + 1]
-        if next_char in {"\\", '"', "t", "n", "r", "a", "b", "f", "v"}:
+        if next_char in _C_STYLE_ESCAPE_CHARS:
             normalized.append(char)
             normalized.append(next_char)
             index += 2
@@ -179,6 +185,43 @@ def _normalize_quoted_diff_path_separators(value: str) -> str:
         normalized.append("/")
         index += 1
     return "".join(normalized)
+
+
+def _looks_like_raw_windows_quoted_path(value: str) -> bool:
+    if "\\" not in value:
+        return False
+    if len(value) >= 2 and value[0] in {"a", "b"} and value[1] == "\\":
+        return True
+    if "/" in value:
+        return False
+
+    single_backslash_count = 0
+    index = 0
+    while index < len(value):
+        if value[index] != "\\":
+            index += 1
+            continue
+        if index + 1 >= len(value):
+            return True
+        next_char = value[index + 1]
+        if next_char == "\\":
+            index += 2
+            continue
+        single_backslash_count += 1
+        if next_char in "01234567":
+            index += 2
+            octal_digits = 1
+            while index < len(value) and octal_digits < 3 and value[index] in "01234567":
+                index += 1
+                octal_digits += 1
+            continue
+        if next_char not in _C_STYLE_ESCAPE_CHARS:
+            return True
+        if single_backslash_count >= 2:
+            return True
+        index += 2
+        continue
+    return False
 
 
 def _has_windows_drive_prefix(value: str) -> bool:

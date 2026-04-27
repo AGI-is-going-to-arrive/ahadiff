@@ -12,6 +12,8 @@ from typer.testing import CliRunner
 from ahadiff import cli as cli_module
 from ahadiff.cli import app
 from ahadiff.contracts import ClaimRecord, SourceHunk
+from ahadiff.core.errors import InputError
+from ahadiff.eval import results as results_module
 from ahadiff.eval.evaluator import ScoreReport, evaluate_run
 from ahadiff.eval.results import (
     append_result,
@@ -334,14 +336,20 @@ def test_export_results_cli_acquires_repo_lock(
     assert commands == ["export-results"]
 
 
+@pytest.mark.parametrize(
+    "publish_error",
+    [OSError("simulated publish failure"), InputError("bad artifact")],
+)
 def test_score_command_rolls_back_result_event_when_publish_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    publish_error: Exception,
 ) -> None:
     run_path = _write_run_fixture(tmp_path, run_id="run_publish_fail")
 
     def fail_publish_result_artifacts(**kwargs: object) -> None:
-        raise OSError("simulated publish failure")
+        del kwargs
+        raise publish_error
 
     monkeypatch.setattr(cli_module, "publish_result_artifacts", fail_publish_result_artifacts)
 
@@ -412,3 +420,149 @@ def test_publish_result_artifacts_restores_backups_when_temp_write_fails(
     assert failure_injected is True
     assert score_path.read_text(encoding="utf-8") == original_score
     assert finalized_path.read_text(encoding="utf-8") == original_finalized
+
+
+def test_publish_result_artifacts_restores_backups_when_digest_rejects_artifact(
+    tmp_path: Path,
+) -> None:
+    run_path = _write_run_fixture(tmp_path, run_id="run_publish_reject")
+    report = _report_for_run(run_path)
+    outcome = append_result(
+        run_path=run_path,
+        report=report,
+        status="non_ratcheted",
+        base_ref=None,
+        event_type="verify",
+        event_id="018f0f52-91c0-7abc-8123-000000000009",
+        write_finalized=False,
+    )
+    original_score = '{"old": true}\n'
+    original_finalized = '{"old": "finalized"}\n'
+    score_path = run_path / "score.json"
+    finalized_path = finalized_marker_path(run_path)
+    score_path.write_text(original_score, encoding="utf-8")
+    finalized_path.write_text(original_finalized, encoding="utf-8")
+    outside_target = tmp_path / "outside.txt"
+    outside_target.write_text("outside\n", encoding="utf-8")
+    (run_path / "unsafe-link").symlink_to(outside_target)
+
+    with pytest.raises(InputError, match="refusing symlink artifact"):
+        publish_result_artifacts(
+            run_path=run_path,
+            report=report,
+            event=outcome.event,
+            score_path=score_path,
+            overwrite=True,
+        )
+
+    assert score_path.read_text(encoding="utf-8") == original_score
+    assert finalized_path.read_text(encoding="utf-8") == original_finalized
+
+
+def test_append_result_catches_non_os_error_in_finalized_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_path = _write_run_fixture(tmp_path, run_id="run_non_os_error")
+    report = _report_for_run(run_path)
+
+    original_write = results_module._write_finalized_marker  # pyright: ignore[reportPrivateUsage]
+
+    def raise_value_error(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise ValueError("simulated non-OSError failure")
+
+    monkeypatch.setattr(results_module, "_write_finalized_marker", raise_value_error)
+
+    outcome = append_result(
+        run_path=run_path,
+        report=report,
+        status="non_ratcheted",
+        base_ref=None,
+        event_type="verify",
+        event_id="018f0f52-91c0-7abc-8123-000000000099",
+    )
+
+    assert outcome.sqlite_inserted is True
+    assert outcome.finalized_written is False
+    assert any("simulated non-OSError" in w for w in outcome.warnings)
+
+    del original_write
+
+
+def test_finalized_artifact_digest_rejects_oversized_artifact(tmp_path: Path) -> None:
+    run_path = _write_run_fixture(tmp_path, run_id="run_huge_artifact")
+    large_artifact = run_path / "huge.bin"
+    with large_artifact.open("wb") as handle:
+        handle.truncate(16 * 1024 * 1024 + 1)
+
+    with pytest.raises(InputError, match="artifact exceeds size limit"):
+        finalized_artifact_digest(run_path)
+
+
+@pytest.mark.skipif(
+    not hasattr(results_module.os, "symlink") or not hasattr(results_module.os, "O_NOFOLLOW"),
+    reason="requires POSIX symlink no-follow support",
+)
+def test_finalized_artifact_digest_rejects_symlink_swap_before_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_path = _write_run_fixture(tmp_path, run_id="run_digest_swap")
+    artifact_path = run_path / "artifact.txt"
+    artifact_path.write_text("safe artifact\n", encoding="utf-8")
+    outside_path = tmp_path / "outside.txt"
+    outside_path.write_text("outside\n", encoding="utf-8")
+    original_open = results_module.os.open
+    swapped = False
+
+    def swapping_open(
+        path: str,
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        if Path(path) == artifact_path and not swapped:
+            swapped = True
+            artifact_path.unlink()
+            results_module.os.symlink(outside_path, artifact_path)
+        if dir_fd is None:
+            return original_open(path, flags, mode)
+        return original_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(results_module.os, "open", swapping_open)
+
+    with pytest.raises(InputError, match="symlink|changed during validation"):
+        finalized_artifact_digest(run_path)
+
+    assert swapped is True
+
+
+def test_finalized_artifact_digest_rejects_too_many_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_path = tmp_path / "run_many_artifacts"
+    run_path.mkdir()
+    monkeypatch.setattr(results_module, "_MAX_FINALIZED_ARTIFACT_COUNT", 2)
+    for index in range(3):
+        (run_path / f"artifact-{index}.txt").write_text("x\n", encoding="utf-8")
+
+    with pytest.raises(InputError, match="too many artifacts"):
+        finalized_artifact_digest(run_path)
+
+
+def test_finalized_artifact_digest_rejects_total_artifact_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_path = tmp_path / "run_total_artifacts"
+    run_path.mkdir()
+    monkeypatch.setattr(results_module, "_MAX_FINALIZED_ARTIFACTS_TOTAL_BYTES", 4)
+    (run_path / "one.txt").write_text("abc", encoding="utf-8")
+    (run_path / "two.txt").write_text("def", encoding="utf-8")
+
+    with pytest.raises(InputError, match="total size limit"):
+        finalized_artifact_digest(run_path)

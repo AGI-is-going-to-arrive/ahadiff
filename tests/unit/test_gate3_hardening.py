@@ -69,6 +69,14 @@ def test_gate3_known_config_key_rejects_wrong_toml_type(tmp_path: Path) -> None:
         load_config(repo_root, env={"HOME": str(tmp_path / "home")})
 
 
+@pytest.mark.parametrize("key", ["max_files", "hard_limit", "max_patch_bytes"])
+def test_gate3_capture_limits_reject_non_positive_values(tmp_path: Path, key: str) -> None:
+    repo_root = _repo_with_config(tmp_path, f"[capture]\n{key} = 0\n")
+
+    with pytest.raises(ConfigError, match=rf"capture\.{key} must be >= 1"):
+        load_config(repo_root, env={"HOME": str(tmp_path / "home")})
+
+
 def test_gate3_known_config_table_rejects_scalar_value(tmp_path: Path) -> None:
     repo_root = _repo_with_config(tmp_path, 'llm = "not-a-table"\n')
 

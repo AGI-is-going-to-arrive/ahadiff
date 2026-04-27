@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections.abc as _collections_abc
 import ipaddress
 import socket
 import ssl
@@ -12,6 +13,8 @@ from ahadiff.core.errors import InputError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+else:
+    Mapping = _collections_abc.Mapping
 
 _CONNECT_TIMEOUT_SECONDS = 30.0
 _TOTAL_TIMEOUT_SECONDS = 60.0
@@ -24,6 +27,7 @@ _PRIVATE_IPV4_NETWORKS = tuple(
     for network in (
         "127.0.0.0/8",
         "10.0.0.0/8",
+        "100.64.0.0/10",
         "172.16.0.0/12",
         "192.168.0.0/16",
         "169.254.0.0/16",
@@ -64,13 +68,22 @@ class _HttpResponse:
 
 
 def download_patch_url(url: str, *, max_patch_bytes: int) -> DownloadedPatch:
+    if max_patch_bytes < 1:
+        raise InputError("patch URL max_patch_bytes must be >= 1")
     current_url = url
     deadline = time.monotonic() + _TOTAL_TIMEOUT_SECONDS
     redirects = 0
     while True:
         if time.monotonic() >= deadline:
             raise InputError("patch URL download timed out after 60 seconds")
-        response = _request_once(current_url, max_patch_bytes=max_patch_bytes, deadline=deadline)
+        try:
+            response = _request_once(
+                current_url,
+                max_patch_bytes=max_patch_bytes,
+                deadline=deadline,
+            )
+        except TimeoutError as exc:
+            raise InputError("patch URL download timed out after 60 seconds") from exc
         if response.status_code in _REDIRECT_STATUS_CODES:
             if redirects >= _MAX_REDIRECTS:
                 raise InputError("patch URL redirect limit exceeded")
@@ -211,7 +224,8 @@ def _send_http_request(
     try:
         sock.settimeout(_remaining_timeout(deadline))
         sock.sendall(request.encode("ascii"))
-        with sock.makefile("rb") as stream:
+        with sock.makefile("rb") as raw_stream:
+            stream = _DeadlineStream(sock, raw_stream, deadline)
             status_code, headers = _read_response_headers(stream, deadline=deadline)
             if status_code in _REDIRECT_STATUS_CODES:
                 return _HttpResponse(
@@ -260,9 +274,9 @@ def _read_response_headers(stream: Any, *, deadline: float) -> tuple[int, dict[s
 
 
 def _readline(stream: Any, *, deadline: float) -> bytes:
-    if time.monotonic() >= deadline:
-        raise TimeoutError
+    _raise_if_deadline_expired(deadline)
     line = stream.readline(_MAX_HEADER_BYTES + 1)
+    _raise_if_deadline_expired(deadline)
     if not line:
         raise InputError("patch URL returned an incomplete HTTP response")
     if len(line) > _MAX_HEADER_BYTES:
@@ -288,6 +302,8 @@ def _read_response_body(
     max_patch_bytes: int,
     deadline: float,
 ) -> bytes:
+    if max_patch_bytes < 1:
+        raise InputError("patch URL max_patch_bytes must be >= 1")
     content_length = headers.get("content-length")
     if content_length is not None:
         try:
@@ -302,9 +318,9 @@ def _read_response_body(
     chunks: list[bytes] = []
     total = 0
     while True:
-        if time.monotonic() >= deadline:
-            raise TimeoutError
+        _raise_if_deadline_expired(deadline)
         chunk = stream.read(min(_READ_CHUNK_SIZE, max_patch_bytes + 1 - total))
+        _raise_if_deadline_expired(deadline)
         if chunk == b"":
             return b"".join(chunks)
         chunks.append(chunk)
@@ -326,14 +342,15 @@ def _read_chunked_body(stream: Any, *, max_patch_bytes: int, deadline: float) ->
         if chunk_size == 0:
             _consume_trailers(stream, deadline=deadline)
             return b"".join(chunks)
-        if time.monotonic() >= deadline:
-            raise TimeoutError
+        _raise_if_deadline_expired(deadline)
         if chunk_size > max_patch_bytes - total:
             raise InputError(f"patch URL exceeds {max_patch_bytes} bytes")
         chunk = stream.read(chunk_size)
+        _raise_if_deadline_expired(deadline)
         if len(chunk) != chunk_size:
             raise InputError("patch URL returned incomplete chunked response")
         line_end = stream.read(2)
+        _raise_if_deadline_expired(deadline)
         if line_end != b"\r\n":
             raise InputError("patch URL returned invalid chunked response")
         chunks.append(chunk)
@@ -367,6 +384,29 @@ def _host_header(host: str, port: int, scheme: str) -> str:
     return f"{rendered_host}:{port}"
 
 
+class _DeadlineStream:
+    _PER_RECV_CAP = 5.0
+    __slots__ = ("_sock", "_stream", "_deadline")
+
+    def __init__(
+        self,
+        sock: socket.socket | ssl.SSLSocket,
+        stream: Any,
+        deadline: float,
+    ) -> None:
+        self._sock = sock
+        self._stream = stream
+        self._deadline = deadline
+
+    def readline(self, limit: int = -1) -> bytes:
+        self._sock.settimeout(_remaining_timeout(self._deadline, cap=self._PER_RECV_CAP))
+        return self._stream.readline(limit)
+
+    def read(self, size: int = -1) -> bytes:
+        self._sock.settimeout(_remaining_timeout(self._deadline, cap=self._PER_RECV_CAP))
+        return self._stream.read(size)
+
+
 def _remaining_timeout(deadline: float, *, cap: float | None = None) -> float:
     remaining = deadline - time.monotonic()
     if remaining <= 0:
@@ -374,6 +414,11 @@ def _remaining_timeout(deadline: float, *, cap: float | None = None) -> float:
     if cap is None:
         return remaining
     return min(cap, remaining)
+
+
+def _raise_if_deadline_expired(deadline: float) -> None:
+    if time.monotonic() >= deadline:
+        raise TimeoutError
 
 
 __all__ = ["DownloadedPatch", "download_patch_url"]

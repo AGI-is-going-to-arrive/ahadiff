@@ -3,26 +3,23 @@ import { Link } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import KpiCard from '../components/KpiCard';
 import RatchetChart from '../components/RatchetChart';
+import Skeleton, { SkeletonGroup } from '../components/Skeleton';
 import { getRatchetHistory } from '../api/runs';
 import { useRunsStore } from '../state/runs-store';
 import { useTranslation, type MessageKey } from '../i18n/useTranslation';
 import { useLocaleStore } from '../state/locale-store';
 import type { RatchetHistoryEntry, Verdict } from '../api/types';
+import { safeVerdict } from '../utils/verdict';
 import '../components/Dashboard.css';
-
-const VALID_VERDICTS: ReadonlySet<Verdict> = new Set(['PASS', 'CAUTION', 'FAIL']);
-
-function safeVerdict(value: unknown): Verdict {
-  return typeof value === 'string' && VALID_VERDICTS.has(value as Verdict)
-    ? (value as Verdict)
-    : 'CAUTION';
-}
 
 export default function DashboardPage() {
   const { t } = useTranslation();
   const locale = useLocaleStore((s) => s.locale);
   const runs = useRunsStore((s) => s.runs);
   const loadRuns = useRunsStore((s) => s.loadRuns);
+  const hasMore = useRunsStore((s) => s.hasMore);
+  const loadMoreRuns = useRunsStore((s) => s.loadMoreRuns);
+  const loadingMore = useRunsStore((s) => s.loadingMore);
 
   const [ratchetHistory, setRatchetHistory] = useState<RatchetHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,9 +40,9 @@ export default function DashboardPage() {
       if (!controller.signal.aborted) { setError('Nav.dashboard'); failed = true; }
     }
     try {
-      const history = await getRatchetHistory({ signal: controller.signal });
+      const res = await getRatchetHistory({}, { signal: controller.signal });
       if (!controller.signal.aborted) {
-        setRatchetHistory(history);
+        setRatchetHistory(res.history);
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -66,10 +63,18 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <AppShell>
-        <div className="dashboard">
-          <div className="dashboard__loading" role="status" aria-live="polite">
-            <span className="loading-spinner" />{t('Serve.loading')}
+        <div className="dashboard" role="status" aria-live="polite" aria-label={t('A11y.loading')}>
+          <div className="dashboard__header">
+            <Skeleton variant="text" width="200px" height="1.8em" />
+            <Skeleton variant="text-short" width="300px" />
           </div>
+          <div className="skeleton-grid">
+            <Skeleton variant="card" />
+            <Skeleton variant="card" />
+            <Skeleton variant="card" />
+          </div>
+          <Skeleton variant="chart" />
+          <SkeletonGroup count={4} variant="row" />
         </div>
       </AppShell>
     );
@@ -166,7 +171,14 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <RunListTable runs={runs} t={t} locale={locale} />
+          <RunListTable
+            runs={runs}
+            t={t}
+            locale={locale}
+            hasMore={hasMore}
+            loadingMore={loadingMore}
+            onLoadMore={() => { loadMoreRuns().catch(() => { /* handled by store */ }); }}
+          />
         </div>
       </AppShell>
     );
@@ -220,7 +232,14 @@ export default function DashboardPage() {
         </div>
 
         {/* Run list */}
-        <RunListTable runs={runs} t={t} locale={locale} />
+        <RunListTable
+          runs={runs}
+          t={t}
+          locale={locale}
+          hasMore={hasMore}
+          loadingMore={loadingMore}
+          onLoadMore={() => { loadMoreRuns().catch(() => { /* handled by store */ }); }}
+        />
       </div>
     </AppShell>
   );
@@ -232,9 +251,12 @@ interface RunListTableProps {
   runs: ReturnType<typeof useRunsStore.getState>['runs'];
   t: (key: MessageKey, params?: Record<string, string | number>) => string;
   locale: string;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
-function RunListTable({ runs, t, locale }: RunListTableProps) {
+function RunListTable({ runs, t, locale, hasMore, loadingMore, onLoadMore }: RunListTableProps) {
   // Sort descending by created_at
   const sorted = [...runs].sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
@@ -273,6 +295,18 @@ function RunListTable({ runs, t, locale }: RunListTableProps) {
           ))}
         </tbody>
       </table>
+      {hasMore && (
+        <div className="run-list-section__pagination">
+          <button
+            type="button"
+            className="load-more-btn"
+            onClick={onLoadMore}
+            disabled={loadingMore}
+          >
+            {loadingMore ? t('Dashboard.loading_more') : t('Dashboard.load_more')}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

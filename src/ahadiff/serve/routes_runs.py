@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import logging
@@ -37,6 +38,9 @@ if TYPE_CHECKING:
     from starlette.requests import Request
 
     from .state import ServeState
+else:
+    Request = Any
+    ServeState = Any
 
 _ARTIFACT_PATHS = {
     "claims": "claims.jsonl",
@@ -245,7 +249,10 @@ def _list_runs_payload(
             next_cursor = None
             break
     return _payload_with_cursor(
-        {"runs": summaries}, next_cursor if len(summaries) >= limit else None
+        {"runs": summaries},
+        next_cursor
+        if len(summaries) >= limit or (pages_scanned >= _MAX_LIST_RUN_PAGES and next_cursor)
+        else None,
     )
 
 
@@ -424,10 +431,15 @@ def _query_limit(request: Request, *, default: int, max_value: int) -> int:
     return value
 
 
+_MAX_CURSOR_LENGTH = 512
+
+
 def _query_cursor(request: Request) -> tuple[str, str] | None:
     raw_value = request.query_params.get("cursor")
     if raw_value is None:
         return None
+    if len(raw_value) > _MAX_CURSOR_LENGTH:
+        raise HTTPException(status_code=400, detail="cursor value exceeds maximum length")
     timestamp, separator, event_id = raw_value.partition(",")
     if not separator or not timestamp or not event_id:
         raise HTTPException(
@@ -441,6 +453,8 @@ def _query_line_cursor(request: Request) -> int:
     raw_value = request.query_params.get("cursor")
     if raw_value is None:
         return 0
+    if len(raw_value) > _MAX_CURSOR_LENGTH:
+        raise HTTPException(status_code=400, detail="cursor value exceeds maximum length")
     try:
         value = int(raw_value)
     except ValueError as exc:
@@ -567,10 +581,17 @@ def _load_json_object(path: Path) -> dict[str, Any]:
 
 
 def _read_text_capped(path: Path, *, max_bytes: int) -> str:
-    size = path.stat().st_size
-    if size > max_bytes:
-        raise HTTPException(status_code=413, detail=f"{path.name} exceeds size limit")
-    return path.read_text(encoding="utf-8")
+    fd = os.open(str(path), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        size = os.fstat(fd).st_size
+        if size > max_bytes:
+            raise HTTPException(status_code=413, detail=f"{path.name} exceeds size limit")
+        with os.fdopen(fd, "r", encoding="utf-8") as handle:
+            fd = -1
+            return handle.read()
+    finally:
+        if fd != -1:
+            os.close(fd)
 
 
 def _load_run_metadata_or_none(run_path: Path) -> dict[str, Any] | None:
@@ -610,7 +631,7 @@ def _load_valid_finalized_marker(
 
 
 def _bounded_finalized_artifact_digest(run_path: Path) -> tuple[int, str]:
-    artifact_paths: list[tuple[str, Path]] = []
+    artifact_paths: list[tuple[str, Path, os.stat_result]] = []
     stack = [run_path]
     dirs_seen = 0
     while stack:
@@ -642,14 +663,55 @@ def _bounded_finalized_artifact_digest(run_path: Path) -> tuple[int, str]:
                 raise InputError("finalized run has too many artifacts")
             if entry_stat.st_size > _MAX_FINALIZED_ARTIFACT_BYTES:
                 raise InputError("finalized run artifact exceeds size limit")
-            artifact_paths.append((relative_path, path))
+            artifact_paths.append((relative_path, path, entry_stat))
     chunks = [
         relative_path.encode("utf-8")
         + b"\n"
-        + hashlib.sha256(path.read_bytes()).hexdigest().encode("ascii")
-        for relative_path, path in sorted(artifact_paths)
+        + _hash_bounded_finalized_artifact(path, relative_path, entry_stat).encode("ascii")
+        for relative_path, path, entry_stat in sorted(artifact_paths)
     ]
     return len(chunks), hashlib.sha256(b"\n---\n".join(chunks)).hexdigest()
+
+
+def _hash_bounded_finalized_artifact(
+    path: Path,
+    relative_path: str,
+    expected_stat: os.stat_result,
+) -> str:
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(str(path), flags)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            message = f"refusing symlink artifact in finalized run: {relative_path}"
+            raise InputError(message) from exc
+        raise InputError("finalized run artifact is unreadable") from exc
+    try:
+        file_stat = os.fstat(fd)
+        if not stat.S_ISREG(file_stat.st_mode):
+            raise InputError("finalized run artifact must be a regular file")
+        if (file_stat.st_dev, file_stat.st_ino) != (expected_stat.st_dev, expected_stat.st_ino):
+            raise InputError("finalized run artifact changed during validation")
+        if file_stat.st_size > _MAX_FINALIZED_ARTIFACT_BYTES:
+            raise InputError("finalized run artifact exceeds size limit")
+
+        digest = hashlib.sha256()
+        total_read = 0
+        while True:
+            chunk = os.read(fd, 65_536)
+            if not chunk:
+                break
+            total_read += len(chunk)
+            if total_read > _MAX_FINALIZED_ARTIFACT_BYTES:
+                raise InputError("finalized run artifact exceeds size limit")
+            digest.update(chunk)
+        return digest.hexdigest()
+    except InputError:
+        raise
+    except OSError as exc:
+        raise InputError("finalized run artifact is unreadable") from exc
+    finally:
+        os.close(fd)
 
 
 def _artifact_path_for_read(run_path: Path, relative_path: str) -> Path | None:

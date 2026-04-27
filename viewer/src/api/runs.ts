@@ -2,21 +2,23 @@ import { apiFetch } from './client';
 import type { ApiFetchOptions } from './client';
 import type {
   ArtifactKind,
-  RatchetHistoryEntry,
+  PaginatedConceptsResponse,
+  PaginatedRunsResponse,
+  RatchetHistoryResponse,
   RunArtifactEnvelope,
   RunDetail,
-  RunSummary,
 } from './types';
 
 export async function listRuns(
-  params: { source_kind?: string } = {},
+  params: { source_kind?: string; cursor?: string; page_size?: number } = {},
   opts?: Pick<ApiFetchOptions, 'signal'>,
-): Promise<RunSummary[]> {
+): Promise<PaginatedRunsResponse> {
   const q = new URLSearchParams();
   if (params.source_kind) q.set('source_kind', params.source_kind);
+  if (params.cursor) q.set('cursor', params.cursor);
+  if (params.page_size != null) q.set('page_size', String(params.page_size));
   const qs = q.toString();
-  const envelope = await apiFetch<{ runs: RunSummary[] }>(`/api/runs${qs ? `?${qs}` : ''}`, opts);
-  return envelope.runs;
+  return apiFetch<PaginatedRunsResponse>(`/api/runs${qs ? `?${qs}` : ''}`, opts);
 }
 
 export async function getRun(
@@ -50,9 +52,14 @@ export async function getRunArtifact(
 }
 
 export async function getGlobalConcepts(
+  params: { cursor?: string; page_size?: number } = {},
   opts?: Pick<ApiFetchOptions, 'signal'>,
-): Promise<{ content: string }> {
-  return apiFetch<{ content: string }>('/api/concepts', opts);
+): Promise<PaginatedConceptsResponse> {
+  const q = new URLSearchParams();
+  if (params.cursor) q.set('cursor', params.cursor);
+  if (params.page_size != null) q.set('page_size', String(params.page_size));
+  const qs = q.toString();
+  return apiFetch<PaginatedConceptsResponse>(`/api/concepts${qs ? `?${qs}` : ''}`, opts);
 }
 
 export async function getRunConcepts(
@@ -66,7 +73,12 @@ export async function getRunConcepts(
 }
 
 export async function getRatchetHistory(
+  params: { cursor?: string; page_size?: number } = {},
   opts?: Pick<ApiFetchOptions, 'signal'>,
-): Promise<RatchetHistoryEntry[]> {
-  return apiFetch<RatchetHistoryEntry[]>('/api/ratchet/history', opts);
+): Promise<RatchetHistoryResponse> {
+  const q = new URLSearchParams();
+  if (params.cursor) q.set('cursor', params.cursor);
+  if (params.page_size != null) q.set('page_size', String(params.page_size));
+  const qs = q.toString();
+  return apiFetch<RatchetHistoryResponse>(`/api/ratchet/history${qs ? `?${qs}` : ''}`, opts);
 }

@@ -1,0 +1,37 @@
+/* Small shared utilities for repeated token-backed view styles. */
+.u-muted-sm {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.u-muted-xs {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.u-text-sm-relaxed {
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.u-mt-1 {
+  margin-top: 4px;
+}
+
+.u-mb-2 {
+  margin-bottom: 6px;
+}
+
+.u-p-0 {
+  padding: 0;
+}
+
+.u-center-action-row {
+  display: flex;
+  justify-content: center;
+  padding: 16px 0;
+}
+
+.u-display-contents {
+  display: contents;
+}

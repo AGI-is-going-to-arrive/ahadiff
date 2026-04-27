@@ -75,7 +75,7 @@ export default function ConceptsPage() {
     setLoading(true);
     setErrorFlag(null);
     try {
-      const data = await getGlobalConcepts({ signal: controller.signal });
+      const data = await getGlobalConcepts({}, { signal: controller.signal });
       if (controller.signal.aborted) return;
       const parsed = parseConceptsJsonl(data.content ?? '');
       setConcepts(parsed);

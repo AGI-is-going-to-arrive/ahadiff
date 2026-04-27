@@ -1,0 +1,190 @@
+/* ==========================================================================
+   Settings page styles. Based on v6 template data-page="settings".
+   ========================================================================== */
+
+.settings {
+  max-width: var(--mw-content, 960px);
+  margin: 0 auto;
+  padding: 0 0 var(--sp-10, 40px);
+}
+
+.settings__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-6, 24px);
+  padding-bottom: 22px;
+  margin-bottom: 28px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.settings__title {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: 36px;
+  letter-spacing: -0.022em;
+  margin: 0;
+  line-height: 1.08;
+}
+
+/* ---- Section card ---- */
+.settings-card {
+  background: var(--elevated);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg, 12px);
+  overflow: hidden;
+  margin-bottom: var(--sp-6, 24px);
+}
+
+.settings-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.settings-card__header h3 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.settings-card__body {
+  padding: 20px;
+}
+
+/* ---- Field rows ---- */
+.settings-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sp-4, 16px);
+  align-items: center;
+  padding: var(--sp-3, 12px) 0;
+  border-bottom: 1px solid var(--hair);
+}
+
+.settings-field:last-child {
+  border-bottom: none;
+}
+
+.settings-field__label h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.settings-field__label p {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.settings-field__value {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink-2, var(--ink));
+}
+
+.settings-field__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: var(--r-full, 999px);
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+.settings-field__badge--configured {
+  background: var(--success-soft, rgba(47, 111, 79, 0.1));
+  color: var(--success);
+}
+
+.settings-field__badge--missing {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* ---- Provider grid ---- */
+.provider-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-4, 16px);
+}
+
+.provider-cell {
+  padding: var(--sp-4, 16px);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md, 8px);
+}
+
+.provider-cell__name {
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 500;
+  margin-bottom: var(--sp-2, 8px);
+}
+
+.provider-cell__meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ---- Doctor checks ---- */
+.doctor-check {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3, 12px);
+  padding: var(--sp-2, 8px) 0;
+}
+
+.doctor-check__icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-full, 999px);
+  font-size: 12px;
+}
+
+.doctor-check__icon--pass {
+  background: var(--success-soft, #ECF4EE);
+  color: var(--success);
+}
+
+.doctor-check__icon--warn {
+  background: var(--warning-soft, #F7EED9);
+  color: var(--warning);
+}
+
+.doctor-check__icon--fail {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.doctor-check__text {
+  flex: 1;
+  font-size: 13px;
+}
+
+.doctor-check__status {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 767px) {
+  .settings__title { font-size: 28px; }
+  .settings-field { grid-template-columns: 1fr; }
+  .provider-grid { grid-template-columns: 1fr; }
+}
+
+@media (forced-colors: active) {
+  .settings-card { border: 1px solid CanvasText; }
+  .doctor-check__icon { border: 1px solid CanvasText; }
+}

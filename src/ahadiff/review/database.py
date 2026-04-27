@@ -4,6 +4,7 @@ import csv
 import json
 import os
 import sqlite3
+import stat
 import tempfile
 import threading
 import time
@@ -84,23 +85,28 @@ def resolve_sqlite_journal_mode(db_path: Path) -> str:
     return "DELETE" if is_wsl2_mnt(db_path) else "WAL"
 
 
+def _reject_symlink_db(db_path: Path) -> None:
+    """Raise StorageError if *db_path* exists and is a symlink."""
+    try:
+        st = db_path.lstat()
+    except FileNotFoundError:
+        return  # does not exist yet — sqlite3.connect will create it
+    if stat.S_ISLNK(st.st_mode):
+        raise StorageError(f"review.sqlite is a symlink: {db_path}")
+
+
 def connect_review_db(db_path: Path, *, create_parent: bool = False) -> sqlite3.Connection:
     _assert_sqlite_runtime_supported()
     if create_parent:
         db_path.parent.mkdir(parents=True, exist_ok=True)
     elif not db_path.parent.exists():
         raise InputError(f"review DB parent directory does not exist: {db_path.parent}")
-    connection = sqlite3.connect(db_path)
+    _reject_symlink_db(db_path)
+    connection = sqlite3.connect(db_path, timeout=5.0)
     connection.row_factory = sqlite3.Row
     try:
+        _configure_review_connection(connection)
         connection.execute(f"PRAGMA journal_mode={resolve_sqlite_journal_mode(db_path)}")
-        connection.execute("PRAGMA busy_timeout=5000")
-        connection.execute("PRAGMA trusted_schema=OFF")
-        connection.execute("PRAGMA foreign_keys=ON")
-        defensive_flag = getattr(sqlite3, "SQLITE_DBCONFIG_DEFENSIVE", None)
-        setconfig = getattr(connection, "setconfig", None)
-        if defensive_flag is not None and callable(setconfig):
-            cast("Any", setconfig)(defensive_flag, True)
         quick_check = connection.execute("PRAGMA quick_check").fetchone()
         if quick_check is None or quick_check[0] != "ok":
             value = "unknown" if quick_check is None else str(quick_check[0])
@@ -109,6 +115,36 @@ def connect_review_db(db_path: Path, *, create_parent: bool = False) -> sqlite3.
     except Exception:
         connection.close()
         raise
+
+
+def _connect_review_db_maintenance(
+    db_path: Path,
+    *,
+    create_parent: bool = False,
+) -> sqlite3.Connection:
+    _assert_sqlite_runtime_supported()
+    if create_parent:
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+    elif not db_path.parent.exists():
+        raise InputError(f"review DB parent directory does not exist: {db_path.parent}")
+    _reject_symlink_db(db_path)
+    connection = sqlite3.connect(db_path, timeout=5.0)
+    try:
+        _configure_review_connection(connection)
+        return connection
+    except Exception:
+        connection.close()
+        raise
+
+
+def _configure_review_connection(connection: sqlite3.Connection) -> None:
+    connection.execute("PRAGMA busy_timeout=5000")
+    connection.execute("PRAGMA trusted_schema=OFF")
+    connection.execute("PRAGMA foreign_keys=ON")
+    defensive_flag = getattr(sqlite3, "SQLITE_DBCONFIG_DEFENSIVE", None)
+    setconfig = getattr(connection, "setconfig", None)
+    if defensive_flag is not None and callable(setconfig):
+        cast("Any", setconfig)(defensive_flag, True)
 
 
 def initialize_review_db(db_path: Path) -> None:
@@ -153,8 +189,19 @@ def backup_review_db(db_path: Path, backup_path: Path | None = None) -> Path:
         raise InputError(f"review.sqlite does not exist: {db_path}")
     target = backup_path or _default_backup_path(db_path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(db_path) as source, sqlite3.connect(target) as backup:
-        source.backup(backup)
+    try:
+        with (
+            _connect_review_db_maintenance(db_path) as source,
+            _connect_review_db_maintenance(
+                target,
+                create_parent=True,
+            ) as backup,
+        ):
+            source.backup(backup)
+    except sqlite3.DatabaseError as exc:
+        raise StorageError(
+            f"failed to back up review.sqlite from {db_path} to {target}: {exc}"
+        ) from exc
     return target
 
 
@@ -171,8 +218,16 @@ def restore_review_db(*, db_path: Path, backup_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = _temporary_sibling_path(db_path, suffix=".restore.tmp")
     try:
-        with sqlite3.connect(backup_path) as source, sqlite3.connect(temp_path) as target:
-            source.backup(target)
+        try:
+            with (
+                _connect_review_db_maintenance(backup_path) as source,
+                _connect_review_db_maintenance(temp_path, create_parent=True) as target,
+            ):
+                source.backup(target)
+        except sqlite3.DatabaseError as exc:
+            raise StorageError(
+                f"failed to restore review.sqlite from backup {backup_path}: {exc}"
+            ) from exc
         checkpoint_review_db(backup_path)
         _remove_sqlite_sidecars_with_retry(backup_path)
         with suppress(sqlite3.DatabaseError, StorageError):
@@ -782,6 +837,7 @@ def record_card_review_once(
     card_id: str,
     answer: ReviewAnswer,
     idempotency_key: str,
+    # NOTE: idempotency dedup uses key alone; card_id/answer mismatch on replay is silently ignored.
     peeked_this_session: bool = False,
     reviewed_at_utc: datetime | None = None,
 ) -> ReviewUpdate | None:
@@ -1380,7 +1436,13 @@ def _result_events_table_exists(connection: sqlite3.Connection) -> bool:
     return row is not None
 
 
+_MAX_CARDS_FILE_BYTES = 16 * 1024 * 1024
+
+
 def _load_review_cards(cards_path: Path) -> tuple[ReviewCard, ...]:
+    file_size = cards_path.stat().st_size
+    if file_size > _MAX_CARDS_FILE_BYTES:
+        raise InputError(f"cards file exceeds 16 MiB limit: {cards_path}")
     cards: list[ReviewCard] = []
     for index, line in enumerate(cards_path.read_text(encoding="utf-8").splitlines(), start=1):
         stripped = line.strip()

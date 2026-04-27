@@ -59,6 +59,8 @@ function interpolate(template: string, params?: Record<string, string | number>)
   return template.replace(/\{(\w+)\}/g, (_, key) => String(params[key] ?? `{${key}}`));
 }
 
+export type TranslateFn = (key: TranslationKey, params?: Record<string, string | number>) => string;
+
 export function useTranslation() {
   const locale = useLocaleStore((s) => s.locale);
 

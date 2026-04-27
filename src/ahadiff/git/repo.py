@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections.abc as _collections_abc
 import errno
 import os
 import pathlib as _pathlib
@@ -8,19 +9,26 @@ import subprocess
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TextIO
 
 import portalocker
 
 from ahadiff.core.errors import InputError, StorageError
 from ahadiff.core.paths import find_repo_root
 
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+
+
+def _has_windows_reparse_point(path_stat: object) -> bool:
+    return bool(getattr(path_stat, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT)
+
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
-
-    Path = _pathlib.Path
 else:
-    Path = _pathlib.Path
+    Iterator = _collections_abc.Iterator
+
+Path = _pathlib.Path
 
 _EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
@@ -41,22 +49,30 @@ class LockMetadata:
     command: str | None
 
 
+_DEFAULT_GIT_TIMEOUT_SECONDS = 120
+
+
 def run_git(
     repo_root: Path,
     *args: str,
     input_text: str | None = None,
     check: bool = True,
+    timeout: int | None = _DEFAULT_GIT_TIMEOUT_SECONDS,
 ) -> subprocess.CompletedProcess[str]:
     command = ["git", "-c", "core.quotePath=false", "-C", str(repo_root), *args]
-    result = subprocess.run(
-        command,
-        input=input_text,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            command,
+            input=input_text,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise InputError(f"git command timed out after {timeout}s: {' '.join(args)}") from exc
     if check and result.returncode != 0:
         message = result.stderr.strip() or result.stdout.strip()
         raise InputError(message or f"git command failed: {' '.join(args)}")
@@ -67,14 +83,19 @@ def run_git_bytes(
     repo_root: Path,
     *args: str,
     input_bytes: bytes | None = None,
+    timeout: int | None = _DEFAULT_GIT_TIMEOUT_SECONDS,
 ) -> subprocess.CompletedProcess[bytes]:
-    return subprocess.run(
-        ["git", "-c", "core.quotePath=false", "-C", str(repo_root), *args],
-        input=input_bytes,
-        capture_output=True,
-        text=False,
-        check=False,
-    )
+    try:
+        return subprocess.run(
+            ["git", "-c", "core.quotePath=false", "-C", str(repo_root), *args],
+            input=input_bytes,
+            capture_output=True,
+            text=False,
+            check=False,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise InputError(f"git command timed out after {timeout}s: {' '.join(args)}") from exc
 
 
 def open_repo(repo_root: Path | None = None) -> GitRepo:
@@ -182,11 +203,20 @@ def read_lock_metadata(lock_path: Path) -> LockMetadata:
     if not lock_path.exists():
         return LockMetadata(pid=None, start_time_iso=None, command=None)
 
-    lines = lock_path.read_text(encoding="utf-8").splitlines()
+    return _lock_metadata_from_text(lock_path.read_text(encoding="utf-8"))
+
+
+def _lock_metadata_from_text(text: str) -> LockMetadata:
+    lines = text.splitlines()
     pid = lines[0] if len(lines) >= 1 and lines[0] else None
     started = lines[1] if len(lines) >= 2 and lines[1] else None
     command = lines[2] if len(lines) >= 3 and lines[2] else None
     return LockMetadata(pid=pid, start_time_iso=started, command=command)
+
+
+def _read_lock_metadata_from_handle(handle: TextIO) -> LockMetadata:
+    handle.seek(0)
+    return _lock_metadata_from_text(handle.read())
 
 
 @contextmanager
@@ -199,6 +229,8 @@ def repo_write_lock(lock_path: Path, *, command: str) -> Iterator[Path]:
     else:
         if stat.S_ISLNK(path_stat.st_mode):
             raise InputError("repo write lock path must not be a symlink")
+        if _has_windows_reparse_point(path_stat):
+            raise InputError("repo write lock path must not be a Windows reparse point")
     flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
     try:
         fd = os.open(str(lock_path), flags, 0o644)
@@ -211,6 +243,8 @@ def repo_write_lock(lock_path: Path, *, command: str) -> Iterator[Path]:
         path_stat = lock_path.lstat()
         if stat.S_ISLNK(path_stat.st_mode):
             raise InputError("repo write lock path must not be a symlink")
+        if _has_windows_reparse_point(file_stat) or _has_windows_reparse_point(path_stat):
+            raise InputError("repo write lock path must not be a Windows reparse point")
         if not stat.S_ISREG(file_stat.st_mode) or not stat.S_ISREG(path_stat.st_mode):
             raise StorageError("repo write lock path must be a regular file")
         if (file_stat.st_dev, file_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
@@ -224,10 +258,9 @@ def repo_write_lock(lock_path: Path, *, command: str) -> Iterator[Path]:
             portalocker.lock(handle, portalocker.LOCK_EX | portalocker.LOCK_NB)
         except portalocker.exceptions.LockException as exc:
             handle.flush()
-            handle.seek(0)
-            metadata = read_lock_metadata(lock_path)
-            suffix = f"(PID={metadata.pid})" if metadata.pid else ""
-            raise StorageError(f"另一个 ahadiff 进程正在运行{suffix}") from exc
+            metadata = _read_lock_metadata_from_handle(handle)
+            suffix = f" (PID={metadata.pid})" if metadata.pid else ""
+            raise StorageError(f"another ahadiff process is already running{suffix}") from exc
 
         handle.seek(0)
         handle.truncate(0)
@@ -256,6 +289,8 @@ def unlock_repo_write_lock(lock_path: Path) -> bool:
         return False
     if stat.S_ISLNK(lock_lstat.st_mode):
         raise StorageError("repo write lock path must not be a symlink")
+    if _has_windows_reparse_point(lock_lstat):
+        raise StorageError("repo write lock path must not be a Windows reparse point")
     if not stat.S_ISREG(lock_lstat.st_mode):
         raise StorageError("repo write lock path must be a regular file")
 

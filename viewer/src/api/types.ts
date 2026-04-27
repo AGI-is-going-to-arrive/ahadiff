@@ -84,6 +84,11 @@ export interface RatchetHistoryEntry {
   weakest_dim: string;
 }
 
+export interface RatchetHistoryResponse {
+  history: RatchetHistoryEntry[];
+  next_cursor?: string;
+}
+
 export interface LocaleGetResponse {
   locale: Locale;
 }
@@ -94,7 +99,7 @@ export interface LocalePutPayload {
 
 export interface SignalResponse {
   inserted: boolean;
-  review?: Record<string, unknown>;
+  review?: ReviewUpdate;
 }
 
 export interface MarkWrongPayload {
@@ -121,4 +126,56 @@ export interface HelpfulnessPayload {
   target_kind?: 'file';
   target_id: string;
   payload?: Record<string, unknown>;
+}
+
+// --- Review Queue / Rate ---
+
+export interface ReviewUpdate {
+  card_id: string;
+  rating: number;
+  due_date: string;
+  fsrs_state: string;
+  stability: number;
+  difficulty: number;
+  card_state: string;
+  scaffolding_level: string;
+}
+
+export interface DueReviewCard {
+  card_id: string;
+  concept: string;
+  run_id: string;
+  due_date: string;
+  scaffolding_level: string;
+  display_path: string;
+  source_ref?: string | null;
+  symbol?: string | null;
+}
+
+export interface ReviewQueueResponse {
+  cards: DueReviewCard[];
+}
+
+export interface ReviewRatePayload {
+  card_id: string;
+  answer: ReviewAnswer;
+  idempotency_key: string;
+}
+
+export interface ReviewRateResponse {
+  inserted: boolean;
+  review?: ReviewUpdate;
+}
+
+// --- Paginated responses ---
+
+export interface PaginatedRunsResponse {
+  runs: RunSummary[];
+  next_cursor?: string;
+}
+
+export interface PaginatedConceptsResponse {
+  artifact_type: 'concepts';
+  content: string;
+  next_cursor?: string;
 }

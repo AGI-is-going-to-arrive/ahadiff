@@ -1,0 +1,148 @@
+/* ==========================================================================
+   Ratchet standalone page styles.
+   Based on v6 template data-page="ratchet".
+   ========================================================================== */
+
+.ratchet-page {
+  max-width: var(--mw-page, 1280px);
+  margin: 0 auto;
+  padding: 0 0 var(--sp-10, 40px);
+}
+
+/* ---- Header ---- */
+.ratchet-page__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-6, 24px);
+  padding-bottom: 22px;
+  margin-bottom: 28px;
+  border-bottom: 1px solid var(--hair);
+  flex-wrap: wrap;
+}
+
+.ratchet-page__head-left { flex: 1 1 0; }
+
+.ratchet-page__title {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: 36px;
+  letter-spacing: -0.022em;
+  margin: 0;
+  line-height: 1.08;
+}
+
+.ratchet-page__sub {
+  color: var(--muted);
+  font-size: 14px;
+  margin-top: 8px;
+  line-height: 1.65;
+}
+
+/* ---- 2-column grid ---- */
+.ratchet-page__grid {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: var(--sp-6, 24px);
+  margin-bottom: var(--sp-6, 24px);
+}
+
+/* ---- Card wrapper ---- */
+.ratchet-card {
+  background: var(--elevated);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg, 12px);
+  overflow: hidden;
+}
+
+.ratchet-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.ratchet-card__header h3 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.ratchet-card__meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ratchet-card__body {
+  padding: 20px;
+}
+
+/* ---- Results table ---- */
+.ratchet-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.ratchet-table thead th {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--hair);
+  text-align: left;
+  font-weight: 500;
+}
+
+.ratchet-table tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--hair);
+  vertical-align: middle;
+}
+
+.ratchet-table tbody tr:hover {
+  background: var(--subtle);
+}
+
+.ratchet-table .mono {
+  font-family: var(--font-mono);
+}
+
+.ratchet-table .num {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-feature-settings: "tnum", "lnum";
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 767px) {
+  .ratchet-page__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ratchet-page__title {
+    font-size: 28px;
+  }
+
+  .ratchet-card__body--table {
+    overflow-x: auto;
+  }
+
+  .ratchet-table {
+    font-size: 12px;
+    min-width: 500px;
+  }
+}
+
+/* ---- Forced colors ---- */
+@media (forced-colors: active) {
+  .ratchet-card {
+    border: 1px solid CanvasText;
+  }
+}

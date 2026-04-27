@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections.abc as _collections_abc
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -8,6 +9,12 @@ if TYPE_CHECKING:
 
     from ahadiff.contracts import PrivacyMode, ProviderCapabilities, ProviderConfig
     from ahadiff.safety.redact import SecretFinding
+else:
+    Mapping = _collections_abc.Mapping
+    PrivacyMode = Any
+    ProviderCapabilities = Any
+    ProviderConfig = Any
+    SecretFinding = Any
 
 RequestFormat = Literal["text", "json"]
 
@@ -29,6 +36,9 @@ class CacheKeyInput:
     prompt_fingerprint: str
     prompt_version: str
     eval_bundle_version: str
+    provider_class: str
+    provider_kind: str
+    base_url: str
     model_id: str
     api_family: str
     api_family_version: str

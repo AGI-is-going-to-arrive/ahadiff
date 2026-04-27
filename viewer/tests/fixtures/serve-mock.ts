@@ -90,7 +90,7 @@ export async function installServeMock(page: Page): Promise<void> {
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify([]),
+        body: JSON.stringify({ history: [] }),
       }),
   );
   await page.route(
@@ -101,9 +101,9 @@ export async function installServeMock(page: Page): Promise<void> {
         contentType: 'application/json',
         body: JSON.stringify({
           run_id: 'test-run',
-          kind: 'diff',
+          artifact_type: 'diff',
           content: SAMPLE_DIFF,
-          truncated: false,
+          content_lang: 'en',
         }),
       }),
   );
@@ -116,14 +116,24 @@ export async function installServeMock(page: Page): Promise<void> {
         contentType: 'application/json',
         body: JSON.stringify({
           run_id: 'test-run',
-          source_kind: 'last',
+          source_kind: 'git_ref',
           source_ref: 'HEAD',
-          base_ref: 'HEAD~1',
+          content_lang: 'en',
+          capability_level: 3,
           verdict: 'PASS',
           overall: 88,
+          status: 'baseline',
           weakest_dim: 'evidence',
           created_at: '2026-04-25T00:00:00Z',
-          metadata: {},
+          degraded_flags: {},
+          base_ref: 'HEAD~1',
+          prompt_version: 'abc1234',
+          eval_bundle_version: 'v1',
+          note_json: null,
+          artifacts: ['patch.diff', 'metadata.json', 'claims.jsonl'],
+          graphify_mode: null,
+          graphify_status: null,
+          graphify_notes: null,
         }),
       }),
   );
@@ -135,9 +145,9 @@ export async function installServeMock(page: Page): Promise<void> {
         contentType: 'application/json',
         body: JSON.stringify({
           run_id: 'test-run',
-          kind: 'lesson',
+          artifact_type: 'lesson',
           content: '# Sample lesson\n\nThis change adds a learn-from-diff comment.',
-          truncated: false,
+          content_lang: 'en',
         }),
       }),
   );
@@ -149,10 +159,10 @@ export async function installServeMock(page: Page): Promise<void> {
         contentType: 'application/json',
         body: JSON.stringify({
           run_id: 'test-run',
-          kind: 'claims',
+          artifact_type: 'claims',
           content:
             '{"claim_id":"c1","verdict":"verified","file":"demo.py","line_start":4,"line_end":4,"statement":"adds learn-from-diff comment"}',
-          truncated: false,
+          content_lang: 'en',
         }),
       }),
   );
@@ -164,10 +174,10 @@ export async function installServeMock(page: Page): Promise<void> {
         contentType: 'application/json',
         body: JSON.stringify({
           run_id: 'test-run',
-          kind: 'quiz',
+          artifact_type: 'quiz',
           content:
             '{"quiz_id":"q1","claim_id":"c1","question":"What does the new comment indicate?","choices":["A flag","A learn-from-diff marker","Dead code","Random"],"answer_index":1,"explanation":"learn-from-diff marker tags the change for the lesson"}',
-          truncated: false,
+          content_lang: 'en',
         }),
       }),
   );
@@ -178,9 +188,88 @@ export async function installServeMock(page: Page): Promise<void> {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
+          artifact_type: 'concepts',
           content:
             '{"concept":"learn-from-diff","term_key":"learn-from-diff","display_name":"Learn-from-diff","related_claims":["c1"],"file_refs":["demo.py"]}',
         }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/review/queue',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          cards: [
+            {
+              card_id: 'card-1',
+              concept: 'learn-from-diff',
+              run_id: 'test-run',
+              due_date: '2026-04-27T00:00:00Z',
+              scaffolding_level: '3',
+              display_path: 'demo.py',
+              source_ref: 'HEAD',
+              symbol: null,
+            },
+          ],
+        }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/config',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          lang: 'en',
+          privacy_mode: 'strict_local',
+          generate_model: 'gpt-5.4-mini',
+          judge_model: 'gpt-5.4-mini',
+          serve_port: 8384,
+          key_status: { openai: 'configured' },
+        }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/doctor',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          checks: [
+            { name: 'repo_root', status: 'pass', message: '.ahadiff/ exists' },
+            { name: 'sqlite_version', status: 'pass', message: 'SQLite 3.45.0' },
+            { name: 'config_valid', status: 'pass', message: 'Config loaded' },
+            { name: 'review_db', status: 'pass', message: 'review.sqlite present' },
+          ],
+        }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/install/targets',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          targets: [
+            { name: 'claude', detected: true, platform_supported: true, description: 'Claude Code CLI' },
+            { name: 'codex', detected: false, platform_supported: true, description: 'Codex CLI' },
+            { name: 'cursor', detected: false, platform_supported: true, description: 'Cursor IDE' },
+          ],
+        }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/review/rate',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ inserted: true }),
       }),
   );
 }

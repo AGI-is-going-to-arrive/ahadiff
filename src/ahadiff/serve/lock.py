@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 def serve_repo_write_lock(state: ServeState, *, command: str) -> Iterator[None]:
     assert state.repo_lock_path is not None
     assert state.thread_write_lock is not None
-    with repo_write_lock(state.repo_lock_path, command=command), state.thread_write_lock:
+    with state.thread_write_lock, repo_write_lock(state.repo_lock_path, command=command):
         yield
 
 

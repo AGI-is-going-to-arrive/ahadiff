@@ -100,6 +100,31 @@ def test_unlock_repo_write_lock_refuses_active_lock(
     assert lock_path.read_text(encoding="utf-8") != ""
 
 
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlink support")
+def test_repo_write_lock_contention_reads_metadata_from_open_handle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lock_path = tmp_path / "ahadiff.lock"
+    lock_path.write_text("123\n2026-04-26T00:00:00Z\noriginal-lock\n", encoding="utf-8")
+    replacement = tmp_path / "replacement.lock"
+    replacement.write_text("999\n2026-04-26T00:00:00Z\nleaked-replacement\n", encoding="utf-8")
+
+    def fake_lock(_handle: object, _flags: int) -> None:
+        lock_path.unlink()
+        os.symlink(replacement, lock_path)
+        raise repo_module.portalocker.exceptions.LockException("active")
+
+    monkeypatch.setattr(repo_module.portalocker, "lock", fake_lock)
+
+    with pytest.raises(StorageError) as error, repo_write_lock(lock_path, command="test"):
+        raise AssertionError("lock acquisition should have failed")
+
+    message = str(error.value)
+    assert "PID=123" in message
+    assert "leaked-replacement" not in message
+
+
 def test_unlock_repo_write_lock_refuses_real_cross_process_lock(tmp_path: Path) -> None:
     lock_path = tmp_path / "ahadiff.lock"
     source_root = Path(__file__).resolve().parents[2] / "src"
@@ -140,6 +165,40 @@ with repo_write_lock(Path(sys.argv[1]), command="child-lock"):
         except subprocess.TimeoutExpired:
             process.kill()
             process.communicate(timeout=5)
+
+
+def test_repo_write_lock_rejects_windows_reparse_point(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ahadiff.git import repo as _repo_mod
+
+    lock_path = tmp_path / "ahadiff.lock"
+    lock_path.touch()
+
+    def _always_reparse(stat_obj: object) -> bool:  # noqa: ARG001
+        return True
+
+    monkeypatch.setattr(_repo_mod, "_has_windows_reparse_point", _always_reparse)
+    with pytest.raises(InputError, match="reparse"), repo_write_lock(lock_path, command="test"):
+        pass
+
+
+def test_unlock_repo_write_lock_rejects_windows_reparse_point(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ahadiff.git import repo as _repo_mod
+
+    lock_path = tmp_path / "ahadiff.lock"
+    lock_path.write_text("123\n2026-04-26T00:00:00Z\nstale\n", encoding="utf-8")
+
+    def _always_reparse_unlock(stat_obj: object) -> bool:  # noqa: ARG001
+        return True
+
+    monkeypatch.setattr(_repo_mod, "_has_windows_reparse_point", _always_reparse_unlock)
+    with pytest.raises(StorageError, match="reparse"):
+        unlock_repo_write_lock(lock_path)
 
 
 def _init_git_repo(root: Path) -> None:
@@ -458,6 +517,19 @@ def test_path_helpers_and_global_config_dir_cover_stage1_contract(tmp_path: Path
     assert linux_path == Path("/tmp/home/.config/ahadiff")
     assert mac_path == Path("/tmp/home/Library/Application Support/ahadiff")
     assert str(win_path).replace("\\", "/").endswith("AppData/Roaming/ahadiff")
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlink support")
+def test_project_state_dir_rejects_symlink(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    outside = tmp_path / "outside-state"
+    outside.mkdir()
+    os.symlink(outside, repo_root / ".ahadiff", target_is_directory=True)
+
+    with pytest.raises(InputError, match="state dir must not be a symlink"):
+        project_state_dir(repo_root)
 
 
 def test_global_config_dir_rejects_empty_home() -> None:

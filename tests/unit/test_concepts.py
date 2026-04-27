@@ -19,23 +19,42 @@ if TYPE_CHECKING:
 
 
 def _init_git_repo(path: Path) -> None:
-    subprocess.run(["git", "init"], cwd=path, check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=path, check=True)
-    subprocess.run(["git", "config", "user.name", "Test User"], cwd=path, check=True)
+    subprocess.run(["git", "init"], cwd=path, check=True, capture_output=True, timeout=30)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=path,
+        check=True,
+        timeout=30,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=path,
+        check=True,
+        timeout=30,
+    )
 
 
 def _commit_file(path: Path, name: str, content: str, message: str) -> str:
     target = path / name
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
-    subprocess.run(["git", "add", name], cwd=path, check=True)
-    subprocess.run(["git", "commit", "-m", message], cwd=path, check=True, capture_output=True)
+    subprocess.run(["git", "add", name], cwd=path, check=True, timeout=30)
+    subprocess.run(
+        ["git", "commit", "-m", message],
+        cwd=path,
+        check=True,
+        capture_output=True,
+        timeout=30,
+    )
     return subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=path,
         check=True,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
     ).stdout.strip()
 
 

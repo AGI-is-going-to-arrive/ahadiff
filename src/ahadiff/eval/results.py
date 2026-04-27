@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import csv
+import errno
 import hashlib
 import json
 import os
+import stat
 import tempfile
 import time
 from dataclasses import dataclass
@@ -40,6 +42,10 @@ RESULTS_TSV_COLUMNS: tuple[str, ...] = (
 )
 _RESULT_EVENT_INSERT_ATTEMPTS = 6
 _RESULT_EVENT_INSERT_RETRY_SECONDS = 0.05
+_MAX_FINALIZED_ARTIFACT_COUNT = 500
+_MAX_FINALIZED_ARTIFACT_DIRS = 500
+_MAX_FINALIZED_ARTIFACT_BYTES = 16 * 1024 * 1024
+_MAX_FINALIZED_ARTIFACTS_TOTAL_BYTES = 50 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -100,7 +106,7 @@ def append_result(
         try:
             _append_results_tsv(results_tsv_path_for_run(run_path), event)
             tsv_appended = True
-        except OSError as exc:
+        except Exception as exc:
             warnings.append(f"results.tsv append failed: {exc}")
 
         if write_finalized:
@@ -111,7 +117,7 @@ def append_result(
                     score_path=score_path or (run_path / "score.json"),
                 )
                 finalized_written = True
-            except OSError as exc:
+            except Exception as exc:
                 warnings.append(f"finalized.json write failed: {exc}")
 
     return ResultWriteOutcome(
@@ -176,19 +182,96 @@ def finalized_marker_path(run_path: Path) -> Path:
 
 
 def finalized_artifact_digest(run_path: Path) -> tuple[int, str]:
+    artifact_paths: list[tuple[str, Path, os.stat_result]] = []
+    total_bytes = 0
+    dirs_seen = 0
+    stack = [run_path]
+    while stack:
+        current = stack.pop()
+        dirs_seen += 1
+        if dirs_seen > _MAX_FINALIZED_ARTIFACT_DIRS:
+            raise InputError("finalized run has too many artifact directories")
+        try:
+            entries = list(os.scandir(current))
+        except OSError as exc:
+            raise InputError("finalized run artifact directory is unreadable") from exc
+        for entry in entries:
+            path = Path(entry.path)
+            try:
+                entry_stat = entry.stat(follow_symlinks=False)
+            except OSError as exc:
+                raise InputError("finalized run artifact is unreadable") from exc
+            if stat.S_ISDIR(entry_stat.st_mode):
+                stack.append(path)
+                continue
+            if not (stat.S_ISREG(entry_stat.st_mode) or stat.S_ISLNK(entry_stat.st_mode)):
+                continue
+
+            relative_path = path.relative_to(run_path).as_posix()
+            if relative_path == "finalized.json" or path.name.startswith("."):
+                continue
+            if stat.S_ISLNK(entry_stat.st_mode):
+                raise InputError(f"refusing symlink artifact in finalized run: {relative_path}")
+            if len(artifact_paths) >= _MAX_FINALIZED_ARTIFACT_COUNT:
+                raise InputError("finalized run has too many artifacts")
+            artifact_size = entry_stat.st_size
+            if artifact_size > _MAX_FINALIZED_ARTIFACT_BYTES:
+                raise InputError(f"finalized run artifact exceeds size limit: {relative_path}")
+            total_bytes += artifact_size
+            if total_bytes > _MAX_FINALIZED_ARTIFACTS_TOTAL_BYTES:
+                raise InputError("finalized run artifacts exceed total size limit")
+            artifact_paths.append((relative_path, path, entry_stat))
+
     chunks: list[bytes] = []
-    for path in sorted(item for item in run_path.rglob("*") if item.is_file() or item.is_symlink()):
-        relative_path = path.relative_to(run_path).as_posix()
-        if relative_path == "finalized.json" or path.name.startswith("."):
-            continue
-        if path.is_symlink():
-            raise InputError(f"refusing symlink artifact in finalized run: {relative_path}")
+    for relative_path, path, entry_stat in sorted(artifact_paths):
         chunks.append(
             relative_path.encode("utf-8")
             + b"\n"
-            + hashlib.sha256(path.read_bytes()).hexdigest().encode("ascii")
+            + _hash_finalized_artifact_file(path, relative_path, entry_stat).encode("ascii")
         )
     return len(chunks), hashlib.sha256(b"\n---\n".join(chunks)).hexdigest()
+
+
+def _hash_finalized_artifact_file(
+    path: Path,
+    relative_path: str,
+    expected_stat: os.stat_result,
+) -> str:
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(str(path), flags)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise InputError(
+                f"refusing symlink artifact in finalized run: {relative_path}"
+            ) from exc
+        raise InputError(f"finalized run artifact is unreadable: {relative_path}") from exc
+    try:
+        file_stat = os.fstat(fd)
+        if not stat.S_ISREG(file_stat.st_mode):
+            raise InputError(f"finalized run artifact must be a regular file: {relative_path}")
+        if (file_stat.st_dev, file_stat.st_ino) != (expected_stat.st_dev, expected_stat.st_ino):
+            raise InputError(f"finalized run artifact changed during validation: {relative_path}")
+        if file_stat.st_size > _MAX_FINALIZED_ARTIFACT_BYTES:
+            raise InputError(f"finalized run artifact exceeds size limit: {relative_path}")
+
+        digest = hashlib.sha256()
+        total_read = 0
+        while True:
+            chunk = os.read(fd, 65_536)
+            if not chunk:
+                break
+            total_read += len(chunk)
+            if total_read > _MAX_FINALIZED_ARTIFACT_BYTES:
+                raise InputError(f"finalized run artifact exceeds size limit: {relative_path}")
+            digest.update(chunk)
+        return digest.hexdigest()
+    except InputError:
+        raise
+    except OSError as exc:
+        raise InputError(f"finalized run artifact is unreadable: {relative_path}") from exc
+    finally:
+        os.close(fd)
 
 
 def run_state_dir_for_run(run_path: Path) -> Path:
@@ -285,6 +368,7 @@ def publish_result_artifacts(
     finalized_backup: Path | None = None
     score_temp = _temporary_sibling_path(score_path, suffix=".score.tmp")
     finalized_temp = _temporary_sibling_path(finalized_path, suffix=".finalized.tmp")
+    artifacts_mutated = False
 
     try:
         if score_path.exists():
@@ -292,23 +376,28 @@ def publish_result_artifacts(
                 raise InputError(f"refusing to overwrite existing file: {score_path}")
             score_backup = _temporary_sibling_path(score_path, suffix=".score.bak")
             score_path.replace(score_backup)
+            artifacts_mutated = True
         if finalized_path.exists():
             finalized_backup = _temporary_sibling_path(finalized_path, suffix=".finalized.bak")
             finalized_path.replace(finalized_backup)
+            artifacts_mutated = True
 
         score_temp.write_text(
             json.dumps(report.to_payload(), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
         score_temp.replace(score_path)
+        artifacts_mutated = True
         finalized_temp.write_text(
             _render_finalized_payload(run_path, event, score_path=score_path),
             encoding="utf-8",
         )
         finalized_temp.replace(finalized_path)
-    except OSError:
-        _restore_file_from_backup(target=score_path, backup_path=score_backup)
-        _restore_file_from_backup(target=finalized_path, backup_path=finalized_backup)
+        artifacts_mutated = True
+    except Exception:
+        if artifacts_mutated:
+            _restore_file_from_backup(target=score_path, backup_path=score_backup)
+            _restore_file_from_backup(target=finalized_path, backup_path=finalized_backup)
         raise
     finally:
         score_temp.unlink(missing_ok=True)

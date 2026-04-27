@@ -1,0 +1,85 @@
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--subtle) 25%,
+    var(--paper-deep, var(--subtle)) 37%,
+    var(--subtle) 63%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: var(--r-md, 8px);
+}
+
+.skeleton--text {
+  height: 1em;
+  width: 100%;
+  border-radius: var(--r-sm, 4px);
+}
+
+.skeleton--text-short {
+  height: 1em;
+  width: 60%;
+  border-radius: var(--r-sm, 4px);
+}
+
+.skeleton--card {
+  height: 80px;
+  border-radius: var(--r-lg, 12px);
+}
+
+.skeleton--chart {
+  height: 200px;
+  border-radius: var(--r-lg, 12px);
+}
+
+.skeleton--row {
+  height: 40px;
+  border-radius: var(--r-sm, 4px);
+}
+
+.skeleton--circle {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-full, 999px);
+}
+
+.skeleton-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3, 12px);
+}
+
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--sp-4, 16px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+}
+
+@media (forced-colors: active) {
+  .skeleton {
+    background: Canvas;
+    border: 1px solid GrayText;
+    animation: none;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--subtle) 25%,
+      var(--elevated) 37%,
+      var(--subtle) 63%
+    );
+    background-size: 200% 100%;
+  }
+}

@@ -1,0 +1,400 @@
+/* ==========================================================================
+   Review (SRS flashcard) page styles.
+   1:1 from v6 template `data-page="review"`, adapted for dark mode.
+   ========================================================================== */
+
+/* ---- Page layout ---- */
+.review {
+  max-width: var(--mw-content, 960px);
+  margin: 0 auto;
+  padding: 0 0 var(--sp-10, 40px);
+}
+
+.review__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-6, 24px);
+  padding-bottom: 22px;
+  margin-bottom: 28px;
+  border-bottom: 1px solid var(--hair);
+  flex-wrap: wrap;
+}
+
+.review__head-left { flex: 1 1 0; }
+
+.review__eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.review__title {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: 36px;
+  letter-spacing: -0.022em;
+  margin: 0;
+  line-height: 1.08;
+}
+
+.review__sub {
+  color: var(--muted);
+  font-size: 14px;
+  margin-top: 8px;
+  max-width: var(--mw-prose, 680px);
+  line-height: 1.65;
+}
+
+.review__head-right {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.review__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 11px;
+  border-radius: var(--r-full, 999px);
+  background: var(--subtle);
+  font-size: 12px;
+  color: var(--ink-2, var(--ink));
+  border: 1px solid var(--hair);
+}
+
+.review__chip--active {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  border-color: var(--accent-hair);
+}
+
+/* ---- 2-column grid ---- */
+.review__grid {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: var(--sp-6, 24px);
+}
+
+/* ---- Flashcard ---- */
+.flashcard {
+  background: var(--elevated);
+  border: 1px solid var(--hair);
+  border-radius: 14px;
+  padding: 36px;
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+}
+
+.flashcard__tag {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+}
+
+.flashcard__concept {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: var(--sp-3, 12px);
+}
+
+.flashcard__front {
+  font-family: var(--font-serif);
+  font-size: 26px;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+}
+
+.flashcard__back {
+  border-top: 1px dashed var(--hair);
+  margin-top: 20px;
+  padding-top: 20px;
+  color: var(--ink-2, var(--ink));
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.flashcard__back[hidden] {
+  display: none;
+}
+
+.flashcard__meta {
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.flashcard__evidence {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--accent-softest);
+  border: 1px solid var(--danger-hair);
+  border-radius: var(--r-sm, 4px);
+  font-size: 11.5px;
+  font-family: var(--font-mono);
+  color: var(--danger);
+  line-height: 1.65;
+}
+
+/* ---- Flip button ---- */
+.flashcard__flip-btn {
+  margin-top: var(--sp-4, 16px);
+  height: 44px;
+  width: 100%;
+  border: 1px solid var(--hair-strong);
+  border-radius: var(--r-md, 8px);
+  background: var(--elevated);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--dur-fast, 0.15s) var(--ease-out, ease);
+}
+
+.flashcard__flip-btn:hover {
+  background: var(--accent-softer);
+  border-color: var(--accent-hair);
+}
+
+.flashcard__flip-btn:active {
+  transition-duration: 0s;
+  transform: scale(0.98);
+}
+
+/* ---- SRS Rating buttons ---- */
+.srs-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.srs-btn {
+  padding: 14px;
+  border: 1px solid var(--hair);
+  border-radius: 10px;
+  background: var(--elevated);
+  text-align: center;
+  cursor: pointer;
+  transition: all var(--dur-fast, 0.15s) var(--ease-out, ease);
+}
+
+.srs-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px -12px rgba(120, 80, 50, 0.3);
+}
+
+.srs-btn:active:not(:disabled) {
+  transform: translateY(0);
+  transition-duration: 0s;
+}
+
+.srs-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.srs-btn--good {
+  background: var(--accent-soft);
+  border-color: var(--accent-hair);
+}
+
+.srs-btn__label {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.srs-btn--good .srs-btn__label {
+  color: var(--accent-ink);
+}
+
+.srs-btn__interval {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+
+.srs-btn__kbd {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  background: var(--elevated);
+  border: 1px solid var(--hair);
+  padding: 1px 5px;
+  border-radius: var(--r-sm, 4px);
+  color: var(--muted);
+  margin-top: 6px;
+  display: inline-block;
+}
+
+/* ---- Sidebar cards ---- */
+.review__sidebar-card {
+  background: var(--elevated);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg, 12px);
+  overflow: hidden;
+}
+
+.review__sidebar-card + .review__sidebar-card {
+  margin-top: 14px;
+}
+
+.review__sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.review__sidebar-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.review__sidebar-meta {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.review__sidebar-body {
+  padding: 16px;
+}
+
+/* ---- Heatmap ---- */
+.heatmap {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 3px;
+}
+
+.heatmap__cell {
+  aspect-ratio: 1;
+  border-radius: 3px;
+}
+
+.heatmap__legend {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+}
+
+/* ---- Mastery bars ---- */
+.mastery-grid {
+  display: grid;
+  grid-template-columns: 1fr 80px;
+  gap: 8px;
+  row-gap: 10px;
+  font-size: 13px;
+  align-items: center;
+}
+
+.mastery-bar {
+  height: 6px;
+  background: var(--subtle);
+  border-radius: var(--r-full, 999px);
+  overflow: hidden;
+}
+
+.mastery-bar__fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--r-full, 999px);
+  transition: width var(--dur-base, 0.25s) var(--ease-out, ease);
+}
+
+/* ---- Empty / Complete states ---- */
+.review__empty,
+.review__complete {
+  text-align: center;
+  padding: var(--sp-16, 64px) var(--sp-6, 24px);
+}
+
+.review__empty-icon,
+.review__complete-icon {
+  font-size: 48px;
+  margin-bottom: var(--sp-4, 16px);
+}
+
+.review__complete-count {
+  color: var(--muted);
+  font-size: 14px;
+  margin-top: 8px;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 767px) {
+  .review__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .review__head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .review__head-right {
+    margin-left: 0;
+  }
+
+  .review__title {
+    font-size: 28px;
+  }
+
+  .flashcard {
+    padding: 24px;
+    min-height: 200px;
+  }
+
+  .flashcard__front {
+    font-size: 20px;
+  }
+}
+
+/* ---- Forced colors ---- */
+@media (forced-colors: active) {
+  .flashcard {
+    border: 1px solid CanvasText;
+  }
+
+  .srs-btn {
+    border: 1px solid CanvasText;
+  }
+
+  .srs-btn--good {
+    border: 2px solid Highlight;
+  }
+
+  .review__sidebar-card {
+    border: 1px solid CanvasText;
+  }
+}
+
+/* ---- Reduced motion ---- */
+@media (prefers-reduced-motion: reduce) {
+  .srs-btn,
+  .flashcard__flip-btn {
+    transition: none;
+    transform: none !important;
+  }
+}

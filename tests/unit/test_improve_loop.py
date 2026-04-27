@@ -48,6 +48,7 @@ def _init_git_repo(path: Path) -> None:
         text=True,
         encoding="utf-8",
         errors="replace",
+        timeout=30,
     )
     subprocess.run(
         ["git", "config", "user.email", "test@example.com"],
@@ -57,6 +58,7 @@ def _init_git_repo(path: Path) -> None:
         text=True,
         encoding="utf-8",
         errors="replace",
+        timeout=30,
     )
     subprocess.run(
         ["git", "config", "user.name", "Test User"],
@@ -66,6 +68,7 @@ def _init_git_repo(path: Path) -> None:
         text=True,
         encoding="utf-8",
         errors="replace",
+        timeout=30,
     )
 
 
@@ -81,6 +84,7 @@ def _git_commit(path: Path, name: str, content: str, message: str) -> str:
         text=True,
         encoding="utf-8",
         errors="replace",
+        timeout=30,
     )
     subprocess.run(
         ["git", "commit", "-m", message],
@@ -90,6 +94,7 @@ def _git_commit(path: Path, name: str, content: str, message: str) -> str:
         text=True,
         encoding="utf-8",
         errors="replace",
+        timeout=30,
     )
     result = subprocess.run(
         ["git", "rev-parse", "HEAD"],
@@ -99,6 +104,7 @@ def _git_commit(path: Path, name: str, content: str, message: str) -> str:
         text=True,
         encoding="utf-8",
         errors="replace",
+        timeout=30,
     )
     return result.stdout.strip()
 
@@ -468,6 +474,55 @@ def test_interrupt_controller_restore_is_noop_off_main_thread(
 
     assert errors == []
     assert calls == []
+
+
+def test_interrupt_controller_sigterm_marks_requested_then_exits() -> None:
+    controller = cast("Any", improve_loop_module)._InterruptController()
+
+    controller._handle_interrupt(signal.SIGTERM, None)
+
+    assert controller.requested is True
+    with pytest.raises(SystemExit):
+        controller._handle_interrupt(signal.SIGTERM, None)
+
+
+def test_improve_active_worktree_cleanup_runs_on_atexit(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    registered: list[Any] = []
+    removed: list[tuple[Path, Path]] = []
+    cleanup_map = improve_loop_module._ACTIVE_WORKTREE_CLEANUPS  # pyright: ignore[reportPrivateUsage]
+    cleanup_map.clear()
+    monkeypatch.setattr(improve_loop_module, "_atexit_cleanup_registered", False)
+
+    def fake_register(func: Any) -> None:
+        registered.append(func)
+
+    def fake_remove_worktree(repo_root: Path, worktree_path: Path) -> None:
+        removed.append((repo_root, worktree_path))
+
+    monkeypatch.setattr(
+        improve_loop_module.atexit,
+        "register",
+        fake_register,
+    )
+    monkeypatch.setattr(
+        improve_loop_module,
+        "_remove_worktree",
+        fake_remove_worktree,
+    )
+    repo_root = tmp_path / "repo"
+    worktree_path = tmp_path / "wt" / "candidate"
+
+    try:
+        cast("Any", improve_loop_module)._register_active_worktree(repo_root, worktree_path)
+        cast("Any", improve_loop_module)._cleanup_active_worktrees_at_exit()
+    finally:
+        cleanup_map.clear()
+
+    assert registered == [cast("Any", improve_loop_module)._cleanup_active_worktrees_at_exit]
+    assert removed == [(repo_root, worktree_path)]
 
 
 def test_run_replay_learn_subprocess_timeout_is_bounded_and_reported(
@@ -1123,6 +1178,8 @@ def test_run_improve_loop_keeps_worktree_on_cherry_pick_conflict(
     assert result.outcomes[0].cherry_pick_pending is True
     assert session.worktree_path is not None
     assert Path(session.worktree_path).exists()
+    cleanup_paths = improve_loop_module._ACTIVE_WORKTREE_CLEANUPS  # pyright: ignore[reportPrivateUsage]
+    assert str(session.worktree_path) not in cleanup_paths
     with pytest.raises(InputError, match="pending improve worktree"):
         run_improve_loop(
             repo_root=repo_root,
@@ -1541,3 +1598,84 @@ def test_mutate_prompt_in_worktree_rejects_oversized_content_without_writing(
 
     assert repo_prompt.read_text(encoding="utf-8") == before_repo
     assert package_prompt.read_text(encoding="utf-8") == before_pkg
+
+
+@pytest.mark.skipif(
+    not hasattr(improve_loop_module.os, "symlink")
+    or not hasattr(improve_loop_module.os, "O_NOFOLLOW"),
+    reason="requires POSIX symlink no-follow support",
+)
+def test_improve_read_bounded_rejects_symlink_swap_before_open(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    prompt_path = tmp_path / "lesson_generate.md"
+    prompt_path.write_text("safe prompt\n", encoding="utf-8")
+    outside_path = tmp_path / "outside.md"
+    outside_path.write_text("outside\n", encoding="utf-8")
+    original_open = improve_loop_module.os.open
+    swapped = False
+
+    def swapping_open(
+        path: str,
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        if Path(path) == prompt_path and not swapped:
+            swapped = True
+            prompt_path.unlink()
+            improve_loop_module.os.symlink(outside_path, prompt_path)
+        if dir_fd is None:
+            return original_open(path, flags, mode)
+        return original_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(improve_loop_module.os, "open", swapping_open)
+
+    with pytest.raises(InputError, match="symlink|changed during validation"):
+        cast("Any", improve_loop_module)._read_bounded(
+            prompt_path,
+            max_bytes=improve_loop_module._MAX_MUTATED_PROMPT_BYTES,  # pyright: ignore[reportPrivateUsage]
+            label="mutable prompt file lesson_generate.md",
+        )
+
+    assert swapped is True
+
+
+def test_read_prompt_regular_no_follow_rejects_oversized_prompt(tmp_path: Path) -> None:
+    prompt = tmp_path / "lesson_generate.md"
+    prompt.write_bytes(b"x" * (improve_loop_module._MAX_MUTATED_PROMPT_BYTES + 1))  # pyright: ignore[reportPrivateUsage]
+
+    with pytest.raises(InputError, match="mutable prompt file lesson_generate.md exceeds"):
+        cast("Any", improve_loop_module)._read_prompt_regular_no_follow(
+            prompt, "lesson_generate.md"
+        )
+
+
+def test_validate_claim_records_rejects_oversized_claims_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    claims_path = tmp_path / "claims.jsonl"
+    claims_path.write_text("{}\n" * 4, encoding="utf-8")
+    monkeypatch.setattr(improve_loop_module, "_MAX_IMPROVE_CLAIMS_BYTES", 8)
+
+    with pytest.raises(InputError, match="candidate claims.jsonl exceeds"):
+        cast("Any", improve_loop_module)._validate_claim_records_belong_to_run(
+            claims_path, "run_expected"
+        )
+
+
+def test_load_run_metadata_rejects_oversized_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_path = tmp_path / "run_metadata"
+    run_path.mkdir()
+    (run_path / "metadata.json").write_text('{"run_id": "run_metadata"}\n', encoding="utf-8")
+    monkeypatch.setattr(improve_loop_module, "_MAX_IMPROVE_METADATA_BYTES", 4)
+
+    with pytest.raises(InputError, match="run metadata exceeds"):
+        cast("Any", improve_loop_module)._load_run_metadata(run_path)

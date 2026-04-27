@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import collections.abc as _collections_abc
 import errno
 import hashlib
-import io
 import json
 import logging
 import os
@@ -12,7 +12,9 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 import threading
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from difflib import unified_diff
@@ -23,7 +25,13 @@ from ahadiff.contracts import RunSource
 from ahadiff.core.config import DEFAULT_CONFIG
 from ahadiff.core.errors import InputError, StorageError
 from ahadiff.core.ids import make_run_id
-from ahadiff.core.paths import project_state_dir, run_dir
+from ahadiff.core.paths import (
+    ensure_state_parent_dir,
+    project_state_dir,
+    run_dir,
+    validate_state_dir_path,
+    validate_state_path_no_symlinks,
+)
 from ahadiff.safety.audit import append_audit_record, build_redaction_audit_record
 from ahadiff.safety.ignore import (
     AllowlistPolicy,
@@ -57,10 +65,10 @@ from .symbols import extract_symbols, serialize_symbols_payload
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-
-    Path = _pathlib.Path
 else:
-    Path = _pathlib.Path
+    Iterable = _collections_abc.Iterable
+
+Path = _pathlib.Path
 
 ContractSourceKind = Literal[
     "git_ref",
@@ -76,6 +84,10 @@ ContractSourceKind = Literal[
 _COMPARE_DIR_MAX_FILES = 10_000
 _COMPARE_DIR_MAX_DIRS = 1_000
 _COMPARE_DIR_MAX_DEPTH = 64
+_MAX_PATCH_BYTES_HARD_CAP = 50 * 1024 * 1024
+_PATCH_URL_MAX_BYTES = 512 * 1024
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+_GIT_PATCH_PROCESS_WAIT_TIMEOUT_SECONDS = 300
 
 
 def _empty_metadata_texts() -> dict[str, str]:
@@ -166,6 +178,18 @@ def capture_patch(
     privacy_mode: str = "strict_local",
     content_lang: str = "en",
 ) -> CapturedDiff:
+    effective_max_files = (
+        int(DEFAULT_CONFIG["capture"]["max_files"]) if max_files is None else max_files
+    )
+    effective_hard_limit = (
+        int(DEFAULT_CONFIG["capture"]["hard_limit"]) if hard_limit is None else hard_limit
+    )
+    effective_max_patch_bytes = _effective_max_patch_bytes(max_patch_bytes)
+    _validate_capture_limits(
+        max_files=effective_max_files,
+        hard_limit=effective_hard_limit,
+        max_patch_bytes=effective_max_patch_bytes,
+    )
     workspace_root = workspace_root.expanduser().resolve()
     raw_capture = _capture_input(
         workspace_root=workspace_root,
@@ -180,7 +204,8 @@ def capture_patch(
         compare=compare,
         compare_dir=compare_dir,
         patch_url=patch_url,
-        max_patch_bytes=max_patch_bytes,
+        max_files=effective_max_files,
+        max_patch_bytes=effective_max_patch_bytes,
     )
     raw_capture = _filter_ignored_capture(workspace_root, raw_capture)
     graphify_status = detect_graphify_status(workspace_root, use_graphify=use_graphify)
@@ -201,8 +226,8 @@ def capture_patch(
     ).protected_text
     persisted_patch_text, selection = _apply_capture_limits(
         protected_patch,
-        max_files=max_files or int(DEFAULT_CONFIG["capture"]["max_files"]),
-        hard_limit=hard_limit or int(DEFAULT_CONFIG["capture"]["hard_limit"]),
+        max_files=effective_max_files,
+        hard_limit=effective_hard_limit,
     )
 
     degraded_flags = dict(raw_capture_extra_degraded_flags(raw_capture))
@@ -345,17 +370,22 @@ def _artifacts_dir(capture: CapturedDiff) -> Path:
 
 
 def _publish_artifact_directory(artifacts_dir: Path, artifact_texts: dict[str, str]) -> None:
-    artifacts_dir.parent.mkdir(parents=True, exist_ok=True)
+    ensure_state_parent_dir(artifacts_dir)
+    validate_state_path_no_symlinks(artifacts_dir, allow_missing_leaf=True)
     tmp_dir = artifacts_dir.parent / f".{artifacts_dir.name}.tmp"
+    validate_state_path_no_symlinks(tmp_dir, allow_missing_leaf=True)
     if tmp_dir.exists():
         _remove_tree(tmp_dir)
     tmp_dir.mkdir(parents=True, exist_ok=False)
+    validate_state_path_no_symlinks(tmp_dir, allow_missing_leaf=False)
     try:
         for name, text in artifact_texts.items():
             _atomic_write_text(tmp_dir / name, text)
+        validate_state_path_no_symlinks(artifacts_dir, allow_missing_leaf=True)
         if artifacts_dir.exists():
             raise StorageError(f"run artifacts already exist: {artifacts_dir}")
         tmp_dir.rename(artifacts_dir)
+        validate_state_path_no_symlinks(artifacts_dir, allow_missing_leaf=False)
     except Exception as exc:
         _remove_tree(tmp_dir)
         if isinstance(exc, StorageError):
@@ -521,8 +551,13 @@ def import_graphify_artifact(workspace_root: Path, *, force: bool = False) -> Gr
 
     imported_dir = status.imported_path.parent
     imported_dir.mkdir(parents=True, exist_ok=True)
-    graph_bytes = status.source_path.read_bytes()
-    graph_limit = int(DEFAULT_CONFIG["capture"]["max_patch_bytes"])
+    graph_limit = _effective_max_patch_bytes(None)
+    graph_bytes = _read_regular_file_no_follow_bounded(
+        status.source_path,
+        max_bytes=graph_limit,
+        total_budget_bytes=graph_limit,
+        label="graphify graph",
+    )
     if len(graph_bytes) > graph_limit:
         raise InputError(f"graphify graph exceeds {graph_limit} bytes")
     graph_text = _decode_text_bytes(graph_bytes, description="graphify graph")
@@ -556,9 +591,10 @@ def _capture_input(
     compare: tuple[Path, Path] | None,
     compare_dir: tuple[Path, Path] | None,
     patch_url: str | None,
+    max_files: int,
     max_patch_bytes: int | None,
 ) -> _RawCapture:
-    effective_max_patch_bytes = max_patch_bytes or int(DEFAULT_CONFIG["capture"]["max_patch_bytes"])
+    effective_max_patch_bytes = _effective_max_patch_bytes(max_patch_bytes)
     selections = [
         revision is not None,
         last,
@@ -608,11 +644,13 @@ def _capture_input(
             repo,
             since=since,
             author=author,
+            max_files=max_files,
             max_patch_bytes=effective_max_patch_bytes,
         )
     if last:
         return _capture_last(
             repo,
+            max_files=max_files,
             max_patch_bytes=effective_max_patch_bytes,
         )
     if staged or unstaged:
@@ -621,6 +659,7 @@ def _capture_input(
             staged=staged,
             unstaged=unstaged,
             include_untracked=include_untracked,
+            max_files=max_files,
             max_patch_bytes=effective_max_patch_bytes,
         )
     if revision is None:
@@ -628,11 +667,18 @@ def _capture_input(
     return _capture_revision(
         repo,
         revision,
+        max_files=max_files,
         max_patch_bytes=effective_max_patch_bytes,
     )
 
 
-def _capture_revision(repo: GitRepo, revision: str, *, max_patch_bytes: int) -> _RawCapture:
+def _capture_revision(
+    repo: GitRepo,
+    revision: str,
+    *,
+    max_files: int,
+    max_patch_bytes: int,
+) -> _RawCapture:
     if ".." in revision:
         base_ref, head_ref = resolve_ref_range(repo, revision)
         raw_patch = _run_git_patch_text(
@@ -643,9 +689,22 @@ def _capture_revision(repo: GitRepo, revision: str, *, max_patch_bytes: int) -> 
             head_ref,
             max_patch_bytes=max_patch_bytes,
         )
-        changed_paths = _changed_paths_between(repo.root, base_ref, head_ref)
-        before_text_by_path = _resolve_git_files(repo.root, base_ref, changed_paths)
-        after_text_by_path = _resolve_git_files(repo.root, head_ref, changed_paths)
+        changed_paths = _limit_text_map_paths(
+            _changed_paths_between(repo.root, base_ref, head_ref),
+            max_files=max_files,
+        )
+        before_text_by_path = _resolve_git_files(
+            repo.root,
+            base_ref,
+            changed_paths,
+            max_file_bytes=max_patch_bytes,
+        )
+        after_text_by_path = _resolve_git_files(
+            repo.root,
+            head_ref,
+            changed_paths,
+            max_file_bytes=max_patch_bytes,
+        )
         return _RawCapture(
             source_kind="git_ref",
             source_ref=head_ref,
@@ -663,9 +722,22 @@ def _capture_revision(repo: GitRepo, revision: str, *, max_patch_bytes: int) -> 
 
     sha = resolve_commitish(repo, revision)
     raw_patch, base_ref = _single_commit_patch(repo, sha, max_patch_bytes=max_patch_bytes)
-    changed_paths = _changed_paths_for_commit(repo.root, sha)
-    before_text_by_path = _resolve_git_files(repo.root, base_ref, changed_paths)
-    after_text_by_path = _resolve_git_files(repo.root, sha, changed_paths)
+    changed_paths = _limit_text_map_paths(
+        _changed_paths_for_commit(repo.root, sha),
+        max_files=max_files,
+    )
+    before_text_by_path = _resolve_git_files(
+        repo.root,
+        base_ref,
+        changed_paths,
+        max_file_bytes=max_patch_bytes,
+    )
+    after_text_by_path = _resolve_git_files(
+        repo.root,
+        sha,
+        changed_paths,
+        max_file_bytes=max_patch_bytes,
+    )
     return _RawCapture(
         source_kind="git_ref",
         source_ref=sha,
@@ -682,12 +754,25 @@ def _capture_revision(repo: GitRepo, revision: str, *, max_patch_bytes: int) -> 
     )
 
 
-def _capture_last(repo: GitRepo, *, max_patch_bytes: int) -> _RawCapture:
+def _capture_last(repo: GitRepo, *, max_files: int, max_patch_bytes: int) -> _RawCapture:
     sha = ensure_head_exists(repo)
     raw_patch, base_ref = _single_commit_patch(repo, sha, max_patch_bytes=max_patch_bytes)
-    changed_paths = _changed_paths_for_commit(repo.root, sha)
-    before_text_by_path = _resolve_git_files(repo.root, base_ref, changed_paths)
-    after_text_by_path = _resolve_git_files(repo.root, sha, changed_paths)
+    changed_paths = _limit_text_map_paths(
+        _changed_paths_for_commit(repo.root, sha),
+        max_files=max_files,
+    )
+    before_text_by_path = _resolve_git_files(
+        repo.root,
+        base_ref,
+        changed_paths,
+        max_file_bytes=max_patch_bytes,
+    )
+    after_text_by_path = _resolve_git_files(
+        repo.root,
+        sha,
+        changed_paths,
+        max_file_bytes=max_patch_bytes,
+    )
     return _RawCapture(
         source_kind="git_ref",
         source_ref=sha,
@@ -709,6 +794,7 @@ def _capture_since(
     *,
     since: str,
     author: str | None,
+    max_files: int,
     max_patch_bytes: int,
 ) -> _RawCapture:
     ensure_head_exists(repo)
@@ -718,10 +804,15 @@ def _capture_since(
     result = run_git(repo.root, *args)
     matched_commits = [line.strip() for line in result.stdout.splitlines() if line.strip()]
     if not matched_commits:
-        raise InputError("该时间范围内无 commit")
+        raise InputError("no commits found in the requested time range")
 
     if len(matched_commits) == 1:
-        capture = _capture_revision(repo, matched_commits[0], max_patch_bytes=max_patch_bytes)
+        capture = _capture_revision(
+            repo,
+            matched_commits[0],
+            max_files=max_files,
+            max_patch_bytes=max_patch_bytes,
+        )
         detail = dict(capture.source_detail)
         detail.update({"type": "since", "since": since, "matched_commits": matched_commits})
         return _RawCapture(
@@ -750,9 +841,22 @@ def _capture_since(
         head_ref,
         max_patch_bytes=max_patch_bytes,
     )
-    changed_paths = _changed_paths_between(repo.root, base_ref, head_ref)
-    before_text_by_path = _resolve_git_files(repo.root, base_ref, changed_paths)
-    after_text_by_path = _resolve_git_files(repo.root, head_ref, changed_paths)
+    changed_paths = _limit_text_map_paths(
+        _changed_paths_between(repo.root, base_ref, head_ref),
+        max_files=max_files,
+    )
+    before_text_by_path = _resolve_git_files(
+        repo.root,
+        base_ref,
+        changed_paths,
+        max_file_bytes=max_patch_bytes,
+    )
+    after_text_by_path = _resolve_git_files(
+        repo.root,
+        head_ref,
+        changed_paths,
+        max_file_bytes=max_patch_bytes,
+    )
     return _RawCapture(
         source_kind="git_since",
         source_ref=head_ref,
@@ -782,6 +886,7 @@ def _capture_worktree(
     staged: bool,
     unstaged: bool,
     include_untracked: bool,
+    max_files: int,
     max_patch_bytes: int,
 ) -> _RawCapture:
     head_sha = ensure_head_exists(repo)
@@ -804,20 +909,59 @@ def _capture_worktree(
     patch_text = _run_git_patch_text(repo.root, *args, max_patch_bytes=max_patch_bytes)
     untracked_files = _list_untracked_files(repo.root) if include_untracked else []
     if untracked_files:
-        patch_text = patch_text + _build_untracked_patch(repo.root, untracked_files)
+        patch_text = patch_text + _build_untracked_patch(
+            repo.root,
+            untracked_files,
+            max_patch_bytes=max_patch_bytes,
+        )
         _ensure_patch_text_size(patch_text, max_patch_bytes=max_patch_bytes)
 
-    changed_paths = _changed_paths_in_worktree(repo.root, staged, unstaged)
+    changed_paths = _limit_text_map_paths(
+        _changed_paths_in_worktree(repo.root, staged, unstaged),
+        max_files=max_files,
+    )
     if combined_mode:
-        before_text_by_path = _resolve_git_files(repo.root, head_sha, changed_paths)
-        after_text_by_path = _resolve_worktree_files(repo.root, changed_paths)
+        before_text_by_path = _resolve_git_files(
+            repo.root,
+            head_sha,
+            changed_paths,
+            max_file_bytes=max_patch_bytes,
+        )
+        after_text_by_path = _resolve_worktree_files(
+            repo.root,
+            changed_paths,
+            max_file_bytes=max_patch_bytes,
+        )
     elif staged:
-        before_text_by_path = _resolve_git_files(repo.root, head_sha, changed_paths)
-        after_text_by_path = _resolve_index_files(repo.root, changed_paths)
+        before_text_by_path = _resolve_git_files(
+            repo.root,
+            head_sha,
+            changed_paths,
+            max_file_bytes=max_patch_bytes,
+        )
+        after_text_by_path = _resolve_index_files(
+            repo.root,
+            changed_paths,
+            max_file_bytes=max_patch_bytes,
+        )
     else:
-        before_text_by_path = _resolve_index_files(repo.root, changed_paths)
-        after_text_by_path = _resolve_worktree_files(repo.root, changed_paths)
-    after_text_by_path.update(_resolve_worktree_files(repo.root, untracked_files))
+        before_text_by_path = _resolve_index_files(
+            repo.root,
+            changed_paths,
+            max_file_bytes=max_patch_bytes,
+        )
+        after_text_by_path = _resolve_worktree_files(
+            repo.root,
+            changed_paths,
+            max_file_bytes=max_patch_bytes,
+        )
+    after_text_by_path.update(
+        _resolve_worktree_files(
+            repo.root,
+            _limit_text_map_paths(untracked_files, max_files=max_files),
+            max_file_bytes=max_patch_bytes,
+        )
+    )
     source_ref = head_sha if combined_mode or staged else f"{head_sha}:unstaged"
     source_detail: dict[str, Any] = {
         "type": "worktree",
@@ -852,7 +996,9 @@ def _capture_patch_input(
 ) -> _RawCapture:
     if patch == "-":
         if sys.stdin.isatty():
-            raise InputError("stdin 需要管道输入，如 `git diff | ahadiff learn --patch -`")
+            raise InputError(
+                "stdin patch input requires a pipe, e.g. `git diff | ahadiff learn --patch -`"
+            )
         data = _read_stdin_bytes(
             max_patch_bytes=max_patch_bytes,
             timeout_seconds=30.0,
@@ -864,12 +1010,12 @@ def _capture_patch_input(
         patch_path = resolve_safe_path_from_root(workspace_root, patch)
         if not patch_path.exists():
             raise InputError(f"patch file does not exist: {patch}")
-        try:
-            data = patch_path.read_bytes()
-        except OSError as exc:
-            raise InputError(f"无法读取 patch 文件: {patch}") from exc
-        if len(data) > max_patch_bytes:
-            raise InputError(f"patch file exceeds {max_patch_bytes} bytes")
+        data = _read_regular_file_no_follow_bounded(
+            patch_path,
+            max_bytes=max_patch_bytes,
+            total_budget_bytes=max_patch_bytes,
+            label="patch file",
+        )
         source_kind = "patch_file"
         source_name = Path(canonicalize_path_text(patch_path.relative_to(workspace_root))).name
 
@@ -883,7 +1029,8 @@ def _capture_patch_input(
 
 
 def _capture_patch_url_input(patch_url: str, *, max_patch_bytes: int) -> _RawCapture:
-    downloaded = download_patch_url(patch_url, max_patch_bytes=max_patch_bytes)
+    url_cap_bytes = min(max_patch_bytes, _PATCH_URL_MAX_BYTES)
+    downloaded = download_patch_url(patch_url, max_patch_bytes=url_cap_bytes)
     url_hash = f"sha256:{hashlib.sha256(patch_url.encode('utf-8')).hexdigest()}"
     final_url_hash = f"sha256:{hashlib.sha256(downloaded.final_url.encode('utf-8')).hexdigest()}"
     return _build_patch_input_capture(
@@ -1059,7 +1206,7 @@ def _capture_compare_input(
     old_text = _normalize_newlines(_decode_text_bytes(old_bytes, description=f"{old_rel}"))
     new_text = _normalize_newlines(_decode_text_bytes(new_bytes, description=f"{new_rel}"))
     if old_text == new_text:
-        raise InputError("文件内容相同，无差异")
+        raise InputError("compare input files are identical")
 
     diff_lines = unified_diff(
         old_text.splitlines(keepends=True),
@@ -1104,40 +1251,32 @@ def _capture_compare_dir_input(
     _ensure_compare_directory(old_dir)
     _ensure_compare_directory(new_dir)
 
-    old_paths = _walk_compare_dir(old_dir)
-    new_paths = _walk_compare_dir(new_dir)
-    all_paths = sorted(set(old_paths) | set(new_paths))
+    old_files, remaining_bytes = _read_compare_dir_tree(
+        old_dir,
+        max_bytes=max_patch_bytes,
+        total_budget_bytes=max_patch_bytes,
+    )
+    new_files, remaining_bytes = _read_compare_dir_tree(
+        new_dir,
+        max_bytes=remaining_bytes,
+        total_budget_bytes=max_patch_bytes,
+    )
+    all_paths = sorted(set(old_files) | set(new_files))
     if not all_paths:
         raise InputError("directories have no comparable files")
 
-    remaining_bytes = max_patch_bytes
     patch_chunks: list[str] = []
     before_text_by_path: dict[str, str] = {}
     after_text_by_path: dict[str, str] = {}
     digest = hashlib.sha256()
     changed_count = 0
     binary_count = 0
+    running_patch_bytes = 0
     for relative_path in all_paths:
-        old_file = old_dir / relative_path
-        new_file = new_dir / relative_path
-        old_exists = relative_path in old_paths
-        new_exists = relative_path in new_paths
-        old_bytes = b""
-        new_bytes = b""
-        if old_exists:
-            old_bytes = _read_regular_file_no_follow_bounded(
-                old_file,
-                max_bytes=remaining_bytes,
-                total_budget_bytes=max_patch_bytes,
-            )
-            remaining_bytes -= len(old_bytes)
-        if new_exists:
-            new_bytes = _read_regular_file_no_follow_bounded(
-                new_file,
-                max_bytes=remaining_bytes,
-                total_budget_bytes=max_patch_bytes,
-            )
-            remaining_bytes -= len(new_bytes)
+        old_exists = relative_path in old_files
+        new_exists = relative_path in new_files
+        old_bytes = old_files.get(relative_path, b"")
+        new_bytes = new_files.get(relative_path, b"")
         if old_exists and new_exists and old_bytes == new_bytes:
             continue
 
@@ -1153,7 +1292,11 @@ def _capture_compare_dir_input(
         if old_text is None or new_text is None:
             binary_count += 1
             relative_posix = relative_path.as_posix()
-            patch_chunks.append(f"Binary files a/{relative_posix} and b/{relative_posix} differ\n")
+            chunk = f"Binary files a/{relative_posix} and b/{relative_posix} differ\n"
+            running_patch_bytes += len(chunk.encode("utf-8"))
+            if running_patch_bytes > max_patch_bytes:
+                raise InputError(f"compare-dir patch exceeds {max_patch_bytes} bytes")
+            patch_chunks.append(chunk)
             continue
 
         if old_exists:
@@ -1170,6 +1313,9 @@ def _capture_compare_dir_input(
         rendered = _render_unified_diff(diff_lines)
         if rendered and not rendered.endswith("\n"):
             rendered += "\n"
+        running_patch_bytes += len(rendered.encode("utf-8"))
+        if running_patch_bytes > max_patch_bytes:
+            raise InputError(f"compare-dir patch exceeds {max_patch_bytes} bytes")
         patch_chunks.append(rendered)
 
     if changed_count == 0:
@@ -1201,48 +1347,160 @@ def _capture_compare_dir_input(
 
 
 def _ensure_compare_directory(path: Path) -> None:
+    fd = _open_compare_directory_fd(
+        path,
+        missing_message="compare-dir input directory does not exist",
+    )
+    if fd is not None:
+        os.close(fd)
+
+
+def _open_compare_directory_fd(path: Path, *, missing_message: str) -> int | None:
     try:
-        mode = path.lstat().st_mode
+        path_stat = path.lstat()
     except OSError as exc:
-        raise InputError("compare-dir input directory does not exist") from exc
-    if stat.S_ISLNK(mode):
+        raise InputError(missing_message) from exc
+    if stat.S_ISLNK(path_stat.st_mode):
         raise InputError("compare-dir input directory must not be a symlink")
-    if not stat.S_ISDIR(mode):
+    if _has_windows_reparse_point(path_stat):
+        raise InputError(
+            "compare-dir input directory must not be a Windows reparse point or junction"
+        )
+    if not stat.S_ISDIR(path_stat.st_mode):
         raise InputError("compare-dir input must be a directory")
+    if sys.platform.startswith("win"):
+        return None
+
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_DIRECTORY", 0)
+    try:
+        fd = os.open(str(path), flags)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise InputError("compare-dir input directory must not be a symlink") from exc
+        raise InputError("compare-dir input directory is unreadable") from exc
+    try:
+        fd_stat = os.fstat(fd)
+        if not stat.S_ISDIR(fd_stat.st_mode):
+            raise InputError("compare-dir input must be a directory")
+        if (fd_stat.st_dev, fd_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
+            raise InputError("compare-dir input directory changed during validation")
+    except Exception:
+        os.close(fd)
+        raise
+    return fd
 
 
-def _walk_compare_dir(root: Path) -> set[Path]:
-    relative_paths: set[Path] = set()
-    stack = [root]
+def _read_compare_dir_tree(
+    root: Path,
+    *,
+    max_bytes: int,
+    total_budget_bytes: int,
+) -> tuple[dict[Path, bytes], int]:
+    file_bytes_by_path: dict[Path, bytes] = {}
+    remaining_bytes = max_bytes
+    root_fd = _open_compare_directory_fd(
+        root,
+        missing_message="compare-dir input directory is unreadable",
+    )
+    if root_fd is None:
+        raise InputError(
+            "compare-dir is not supported on this platform without secure directory "
+            "file descriptors"
+        )
+    stack = [(root, Path(), root_fd)]
     dirs_seen = 0
-    while stack:
-        current = stack.pop()
-        dirs_seen += 1
-        if dirs_seen > _COMPARE_DIR_MAX_DIRS:
-            raise InputError(f"compare-dir exceeds {_COMPARE_DIR_MAX_DIRS} directories")
-        try:
-            entries = list(os.scandir(current))
-        except OSError as exc:
-            raise InputError("compare-dir input directory is unreadable") from exc
-        for entry in entries:
+    try:
+        while stack:
+            current, relative_dir, fd = stack.pop()
+            dirs_seen += 1
+            if dirs_seen > _COMPARE_DIR_MAX_DIRS:
+                os.close(fd)
+                raise InputError(f"compare-dir exceeds {_COMPARE_DIR_MAX_DIRS} directories")
             try:
-                entry_stat = entry.stat(follow_symlinks=False)
-            except OSError as exc:
-                raise InputError("compare-dir input entry is unreadable") from exc
-            entry_path = Path(entry.path)
-            if stat.S_ISLNK(entry_stat.st_mode):
-                raise InputError("compare-dir input must not contain symlinks")
-            relative_path = entry_path.relative_to(root)
-            if len(relative_path.parts) > _COMPARE_DIR_MAX_DEPTH:
-                raise InputError(f"compare-dir exceeds depth {_COMPARE_DIR_MAX_DEPTH}")
-            if stat.S_ISDIR(entry_stat.st_mode):
-                stack.append(entry_path)
-                continue
-            if stat.S_ISREG(entry_stat.st_mode):
-                relative_paths.add(relative_path)
-                if len(relative_paths) > _COMPARE_DIR_MAX_FILES:
-                    raise InputError(f"compare-dir exceeds {_COMPARE_DIR_MAX_FILES} files")
-    return relative_paths
+                entries = os.scandir(fd)
+            except (OSError, TypeError) as exc:
+                os.close(fd)
+                if isinstance(exc, TypeError):
+                    raise InputError(
+                        "compare-dir is not supported on this platform without secure "
+                        "directory file descriptors"
+                    ) from exc
+                raise InputError("compare-dir input directory is unreadable") from exc
+            try:
+                with entries:
+                    for entry in entries:
+                        try:
+                            entry_stat = entry.stat(follow_symlinks=False)
+                        except OSError as exc:
+                            raise InputError("compare-dir input entry is unreadable") from exc
+                        entry_path = current / entry.name
+                        if stat.S_ISLNK(entry_stat.st_mode):
+                            raise InputError("compare-dir input must not contain symlinks")
+                        if _has_windows_reparse_point(entry_stat):
+                            raise InputError(
+                                "compare-dir input must not contain Windows reparse points "
+                                "or junctions"
+                            )
+                        relative_path = relative_dir / entry.name
+                        if len(relative_path.parts) > _COMPARE_DIR_MAX_DEPTH:
+                            raise InputError(f"compare-dir exceeds depth {_COMPARE_DIR_MAX_DEPTH}")
+                        if stat.S_ISDIR(entry_stat.st_mode):
+                            child_fd = _open_child_compare_directory_fd(fd, entry.name, entry_stat)
+                            stack.append((entry_path, relative_path, child_fd))
+                            continue
+                        if stat.S_ISREG(entry_stat.st_mode):
+                            data = _read_regular_file_from_dir_fd(
+                                fd,
+                                entry.name,
+                                entry_stat,
+                                max_bytes=remaining_bytes,
+                                total_budget_bytes=total_budget_bytes,
+                            )
+                            remaining_bytes -= len(data)
+                            file_bytes_by_path[relative_path] = data
+                            if len(file_bytes_by_path) > _COMPARE_DIR_MAX_FILES:
+                                raise InputError(
+                                    f"compare-dir exceeds {_COMPARE_DIR_MAX_FILES} files"
+                                )
+            finally:
+                os.close(fd)
+    except Exception:
+        _close_compare_dir_stack(stack)
+        raise
+    return file_bytes_by_path, remaining_bytes
+
+
+def _close_compare_dir_stack(stack: list[tuple[Path, Path, int]]) -> None:
+    for _, _, fd in stack:
+        os.close(fd)
+
+
+def _open_child_compare_directory_fd(
+    parent_fd: int,
+    entry_name: str,
+    expected_stat: os.stat_result,
+) -> int:
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_DIRECTORY", 0)
+    try:
+        child_fd = os.open(entry_name, flags, dir_fd=parent_fd)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise InputError("compare-dir input must not contain symlinks") from exc
+        raise InputError("compare-dir input directory is unreadable") from exc
+    try:
+        child_stat = os.fstat(child_fd)
+        if not stat.S_ISDIR(child_stat.st_mode):
+            raise InputError("compare-dir input must be a directory")
+        if (child_stat.st_dev, child_stat.st_ino) != (expected_stat.st_dev, expected_stat.st_ino):
+            raise InputError("compare-dir input directory changed during validation")
+    except Exception:
+        os.close(child_fd)
+        raise
+    return child_fd
+
+
+def _has_windows_reparse_point(path_stat: object) -> bool:
+    return bool(getattr(path_stat, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT)
 
 
 def _decode_compare_dir_text(data: bytes, description: str) -> str | None:
@@ -1259,34 +1517,39 @@ def _read_regular_file_no_follow_bounded(
     *,
     max_bytes: int,
     total_budget_bytes: int,
+    label: str = "compare input file",
 ) -> bytes:
     if max_bytes < 0:
-        raise InputError(f"compare input files exceed {total_budget_bytes} bytes total")
+        raise InputError(_total_budget_exceeded_message(label, total_budget_bytes))
     try:
         path_stat = os.lstat(path)
     except OSError as exc:
-        raise InputError("compare input file is unreadable") from exc
+        raise InputError(f"{label} is unreadable") from exc
     if stat.S_ISLNK(path_stat.st_mode):
-        raise InputError("compare input file must not be a symlink")
+        raise InputError(f"{label} must not be a symlink")
+    if _has_windows_reparse_point(path_stat):
+        raise InputError(f"{label} must not be a Windows reparse point or junction")
 
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     try:
         fd = os.open(str(path), flags)
     except OSError as exc:
         if exc.errno == errno.ELOOP:
-            raise InputError("compare input file must not be a symlink") from exc
-        raise InputError("compare input file is unreadable") from exc
+            raise InputError(f"{label} must not be a symlink") from exc
+        raise InputError(f"{label} is unreadable") from exc
 
     try:
         file_stat = os.fstat(fd)
         if not stat.S_ISREG(file_stat.st_mode):
-            raise InputError("compare input file must be a regular file")
+            raise InputError(f"{label} must be a regular file")
+        if _has_windows_reparse_point(file_stat):
+            raise InputError(f"{label} must not be a Windows reparse point or junction")
         if (file_stat.st_dev, file_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
-            raise InputError("compare input file changed during validation")
+            raise InputError(f"{label} changed during validation")
         if file_stat.st_size > max_bytes:
             if file_stat.st_size > total_budget_bytes:
-                raise InputError(f"compare input file exceeds {total_budget_bytes} bytes")
-            raise InputError(f"compare input files exceed {total_budget_bytes} bytes total")
+                raise InputError(f"{label} exceeds {total_budget_bytes} bytes")
+            raise InputError(_total_budget_exceeded_message(label, total_budget_bytes))
 
         chunks: list[bytes] = []
         total_bytes = 0
@@ -1300,14 +1563,74 @@ def _read_regular_file_no_follow_bounded(
             chunks.append(chunk)
             total_bytes += len(chunk)
             if total_bytes > max_bytes:
-                raise InputError(f"compare input files exceed {total_budget_bytes} bytes total")
+                raise InputError(_total_budget_exceeded_message(label, total_budget_bytes))
         return b"".join(chunks)
     except InputError:
         raise
     except OSError as exc:
-        raise InputError("compare input file is unreadable") from exc
+        raise InputError(f"{label} is unreadable") from exc
     finally:
         os.close(fd)
+
+
+def _read_regular_file_from_dir_fd(
+    parent_fd: int,
+    entry_name: str,
+    expected_stat: os.stat_result,
+    *,
+    max_bytes: int,
+    total_budget_bytes: int,
+    label: str = "compare input file",
+) -> bytes:
+    if max_bytes < 0:
+        raise InputError(_total_budget_exceeded_message(label, total_budget_bytes))
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    try:
+        fd = os.open(entry_name, flags, dir_fd=parent_fd)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise InputError(f"{label} must not be a symlink") from exc
+        raise InputError(f"{label} is unreadable") from exc
+
+    try:
+        file_stat = os.fstat(fd)
+        if not stat.S_ISREG(file_stat.st_mode):
+            raise InputError(f"{label} must be a regular file")
+        if _has_windows_reparse_point(file_stat):
+            raise InputError(f"{label} must not be a Windows reparse point or junction")
+        if (file_stat.st_dev, file_stat.st_ino) != (expected_stat.st_dev, expected_stat.st_ino):
+            raise InputError(f"{label} changed during validation")
+        if file_stat.st_size > max_bytes:
+            if file_stat.st_size > total_budget_bytes:
+                raise InputError(f"{label} exceeds {total_budget_bytes} bytes")
+            raise InputError(_total_budget_exceeded_message(label, total_budget_bytes))
+
+        chunks: list[bytes] = []
+        total_bytes = 0
+        while True:
+            chunk_size = min(65_536, max_bytes + 1 - total_bytes)
+            if chunk_size <= 0:
+                break
+            chunk = os.read(fd, chunk_size)
+            if chunk == b"":
+                break
+            chunks.append(chunk)
+            total_bytes += len(chunk)
+            if total_bytes > max_bytes:
+                raise InputError(_total_budget_exceeded_message(label, total_budget_bytes))
+        return b"".join(chunks)
+    except InputError:
+        raise
+    except OSError as exc:
+        raise InputError(f"{label} is unreadable") from exc
+    finally:
+        os.close(fd)
+
+
+def _total_budget_exceeded_message(label: str, total_budget_bytes: int) -> str:
+    if label == "compare input file":
+        return f"compare input files exceed {total_budget_bytes} bytes total"
+    return f"{label} exceeds {total_budget_bytes} bytes total"
 
 
 def _filter_ignored_capture(workspace_root: Path, raw_capture: _RawCapture) -> _RawCapture:
@@ -1515,7 +1838,25 @@ def _has_git_root(workspace_root: Path) -> bool:
 def _state_dir(workspace_root: Path) -> Path:
     if _has_git_root(workspace_root):
         return project_state_dir(workspace_root)
-    return workspace_root / ".ahadiff"
+    return validate_state_dir_path(workspace_root / ".ahadiff")
+
+
+def _validate_capture_limits(*, max_files: int, hard_limit: int, max_patch_bytes: int) -> None:
+    if max_files < 1:
+        raise InputError("capture max_files must be >= 1")
+    if hard_limit < 1:
+        raise InputError("capture hard_limit must be >= 1")
+    if max_patch_bytes < 1:
+        raise InputError("capture max_patch_bytes must be >= 1")
+
+
+def _effective_max_patch_bytes(max_patch_bytes: int | None) -> int:
+    configured = (
+        int(DEFAULT_CONFIG["capture"]["max_patch_bytes"])
+        if max_patch_bytes is None
+        else max_patch_bytes
+    )
+    return min(configured, _MAX_PATCH_BYTES_HARD_CAP)
 
 
 def _utc_now() -> str:
@@ -1585,7 +1926,7 @@ def _single_commit_patch(
 
 
 def _run_git_patch_text(repo_root: Path, *args: str, max_patch_bytes: int) -> str:
-    command = ["git", "-C", str(repo_root), *args]
+    command = ["git", "-c", "core.quotePath=false", "-C", str(repo_root), *args]
     try:
         with subprocess.Popen(
             command,
@@ -1604,12 +1945,12 @@ def _run_git_patch_text(repo_root: Path, *args: str, max_patch_bytes: int) -> st
                 total_bytes += len(chunk)
                 if total_bytes > max_patch_bytes:
                     process.kill()
-                    process.wait()
+                    _wait_git_patch_process(process)
                     raise InputError(f"git patch exceeds {max_patch_bytes} bytes")
                 chunks.append(chunk)
 
             output = b"".join(chunks)
-            returncode = process.wait()
+            returncode = _wait_git_patch_process(process)
     except OSError as exc:
         raise InputError(f"git command failed: {' '.join(args)}") from exc
 
@@ -1619,6 +1960,18 @@ def _run_git_patch_text(repo_root: Path, *args: str, max_patch_bytes: int) -> st
     if b"\x00" in output:
         raise InputError("git patch output must be text")
     return _normalize_newlines(_decode_text_bytes(output, description="git patch"))
+
+
+def _wait_git_patch_process(process: subprocess.Popen[bytes]) -> int:
+    try:
+        return process.wait(timeout=_GIT_PATCH_PROCESS_WAIT_TIMEOUT_SECONDS)
+    except TypeError:
+        return process.wait()
+    except subprocess.TimeoutExpired:
+        process.kill()
+        with suppress(subprocess.TimeoutExpired):
+            process.wait(timeout=5)
+        raise
 
 
 def _ensure_patch_text_size(text: str, *, max_patch_bytes: int) -> None:
@@ -1654,49 +2007,45 @@ def _changed_paths_in_worktree(repo_root: Path, staged: bool, unstaged: bool) ->
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
-def _resolve_git_files(repo_root: Path, revision: str, paths: list[str]) -> dict[str, str]:
+def _limit_text_map_paths(paths: list[str], *, max_files: int) -> list[str]:
+    return list(dict.fromkeys(paths))[:max_files]
+
+
+def _resolve_git_files(
+    repo_root: Path,
+    revision: str,
+    paths: list[str],
+    *,
+    max_file_bytes: int,
+) -> dict[str, str]:
     unique_paths = list(dict.fromkeys(paths))
     if not unique_paths:
         return {}
-
-    payload = "".join(f"{revision}:{path}\n" for path in unique_paths).encode("utf-8")
-    result = run_git_bytes(repo_root, "cat-file", "--batch", input_bytes=payload)
-    if result.returncode != 0:
-        return _resolve_git_files_serial(repo_root, revision, unique_paths)
-
-    stream = io.BytesIO(result.stdout)
-    resolved: dict[str, str] = {}
-    for path in unique_paths:
-        header = stream.readline()
-        if not header:
-            return _resolve_git_files_serial(repo_root, revision, unique_paths)
-        if header.endswith(b" missing\n"):
-            continue
-        parts = header.rstrip(b"\n").split(b" ", 2)
-        if len(parts) != 3:
-            return _resolve_git_files_serial(repo_root, revision, unique_paths)
-        _, object_type, size_text = parts
-        try:
-            size = int(size_text)
-        except ValueError:
-            return _resolve_git_files_serial(repo_root, revision, unique_paths)
-        payload = stream.read(size)
-        stream.read(1)
-        if object_type != b"blob" or b"\x00" in payload:
-            continue
-        try:
-            decoded = _decode_text_bytes(payload, description=path)
-            resolved[path] = _normalize_newlines(decoded)
-        except InputError:
-            continue
-    return resolved
+    return _resolve_git_files_serial(
+        repo_root,
+        revision,
+        unique_paths,
+        max_file_bytes=max_file_bytes,
+    )
 
 
-def _resolve_git_files_serial(repo_root: Path, revision: str, paths: list[str]) -> dict[str, str]:
+def _resolve_git_files_serial(
+    repo_root: Path,
+    revision: str,
+    paths: list[str],
+    *,
+    max_file_bytes: int,
+) -> dict[str, str]:
     resolved: dict[str, str] = {}
     for path in paths:
+        object_spec = f"{revision}:{path}"
+        size = _git_object_size(repo_root, object_spec)
+        if size is None or size > max_file_bytes:
+            continue
         result = run_git_bytes(repo_root, "show", f"{revision}:{path}")
         if result.returncode != 0 or b"\x00" in result.stdout:
+            continue
+        if len(result.stdout) > max_file_bytes:
             continue
         try:
             decoded = _decode_text_bytes(result.stdout, description=path)
@@ -1706,13 +2055,36 @@ def _resolve_git_files_serial(repo_root: Path, revision: str, paths: list[str]) 
     return resolved
 
 
-def _resolve_worktree_files(repo_root: Path, paths: list[str]) -> dict[str, str]:
+def _git_object_size(repo_root: Path, object_spec: str) -> int | None:
+    result = run_git(repo_root, "cat-file", "-s", object_spec, check=False)
+    if result.returncode != 0:
+        return None
+    try:
+        return int(result.stdout.strip())
+    except ValueError:
+        return None
+
+
+def _resolve_worktree_files(
+    repo_root: Path,
+    paths: list[str],
+    *,
+    max_file_bytes: int,
+) -> dict[str, str]:
     resolved: dict[str, str] = {}
     for path in paths:
         target = _git_discovered_regular_file(repo_root, path)
         if target is None:
             continue
-        payload = target.read_bytes()
+        try:
+            payload = _read_regular_file_no_follow_bounded(
+                target,
+                max_bytes=max_file_bytes,
+                total_budget_bytes=max_file_bytes,
+                label="worktree file",
+            )
+        except InputError:
+            continue
         if b"\x00" in payload:
             continue
         try:
@@ -1722,11 +2094,22 @@ def _resolve_worktree_files(repo_root: Path, paths: list[str]) -> dict[str, str]
     return resolved
 
 
-def _resolve_index_files(repo_root: Path, paths: list[str]) -> dict[str, str]:
+def _resolve_index_files(
+    repo_root: Path,
+    paths: list[str],
+    *,
+    max_file_bytes: int,
+) -> dict[str, str]:
     resolved: dict[str, str] = {}
     for path in paths:
+        object_spec = f":{path}"
+        size = _git_object_size(repo_root, object_spec)
+        if size is None or size > max_file_bytes:
+            continue
         result = run_git_bytes(repo_root, "show", f":{path}")
         if result.returncode != 0 or b"\x00" in result.stdout:
+            continue
+        if len(result.stdout) > max_file_bytes:
             continue
         try:
             decoded = _decode_text_bytes(result.stdout, description=path)
@@ -1745,13 +2128,20 @@ def _list_untracked_files(repo_root: Path) -> list[str]:
     ]
 
 
-def _build_untracked_patch(repo_root: Path, paths: list[str]) -> str:
+def _build_untracked_patch(repo_root: Path, paths: list[str], *, max_patch_bytes: int) -> str:
     chunks: list[str] = []
+    remaining_bytes = max_patch_bytes
     for path in paths:
         target = _git_discovered_regular_file(repo_root, path)
         if target is None:
             continue
-        data = target.read_bytes()
+        data = _read_regular_file_no_follow_bounded(
+            target,
+            max_bytes=remaining_bytes,
+            total_budget_bytes=max_patch_bytes,
+            label="untracked file",
+        )
+        remaining_bytes -= len(data)
         header = f"diff --git a/{path} b/{path}\nnew file mode 100644\n"
         if b"\x00" in data:
             chunks.append(header + f"Binary files /dev/null and b/{path} differ\n")
@@ -1780,14 +2170,18 @@ def _git_discovered_regular_file(repo_root: Path, path: str) -> Path | None:
     for index, part in enumerate(relative.parts):
         target = target / part
         try:
-            mode = target.lstat().st_mode
+            path_stat = target.lstat()
         except FileNotFoundError:
             return None
         except OSError as exc:
             log.warning("skipping unreadable git-discovered path: %s (%s)", path, exc)
             return None
+        mode = path_stat.st_mode
         if stat.S_ISLNK(mode):
             log.warning("skipping git-discovered symlink path: %s", path)
+            return None
+        if _has_windows_reparse_point(path_stat):
+            log.warning("skipping git-discovered Windows reparse point path: %s", path)
             return None
         is_final = index == len(relative.parts) - 1
         if is_final and not stat.S_ISREG(mode):
@@ -1824,10 +2218,29 @@ def _graphify_source_path(workspace_root: Path) -> Path:
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_name(f"{path.name}.tmp")
-    tmp_path.write_text(text, encoding="utf-8")
-    tmp_path.replace(path)
+    ensure_state_parent_dir(path)
+    validate_state_path_no_symlinks(path, allow_missing_leaf=True)
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as tmp_file:
+            tmp_path = Path(tmp_file.name)
+            validate_state_path_no_symlinks(tmp_path, allow_missing_leaf=True)
+            tmp_file.write(text)
+        validate_state_path_no_symlinks(path, allow_missing_leaf=True)
+        tmp_path.replace(path)
+        validate_state_path_no_symlinks(path, allow_missing_leaf=False)
+    except Exception:
+        if tmp_path is not None:
+            with suppress(OSError):
+                tmp_path.unlink(missing_ok=True)
+        raise
 
 
 def _render_unified_diff(lines: Iterable[str]) -> str:

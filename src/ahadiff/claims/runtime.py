@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 
 _CLAIM_EXTRACT_EVAL_VERSION = "claim-extract-runtime-v1"
 _VALID_PRIVACY_MODES = frozenset({"strict_local", "redacted_remote", "explicit_remote"})
+_MAX_RUN_ARTIFACT_TEXT_BYTES = 16 * 1024 * 1024
 _REQUIRED_CONTEXT_METADATA_FIELDS = (
     "run_id",
     "source_kind",
@@ -248,7 +249,17 @@ def _load_run_json(path: Path) -> dict[str, Any]:
 def _read_required_text(path: Path) -> str:
     if not path.exists():
         raise InputError(f"required run artifact is missing: {path}")
-    return path.read_text(encoding="utf-8")
+    try:
+        with path.open("rb") as handle:
+            data = handle.read(_MAX_RUN_ARTIFACT_TEXT_BYTES + 1)
+    except OSError as exc:
+        raise InputError(f"required run artifact is unreadable: {path}") from exc
+    if len(data) > _MAX_RUN_ARTIFACT_TEXT_BYTES:
+        raise InputError(f"required run artifact exceeds size limit: {path}")
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise InputError(f"required run artifact is not valid UTF-8: {path}") from exc
 
 
 __all__ = [

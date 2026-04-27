@@ -6,7 +6,12 @@ import { COOKIE_NAME } from '../i18n/constants';
 function readCookie(name: string): string | null {
   if (typeof document === 'undefined') return null;
   const match = document.cookie.split('; ').find((row) => row.startsWith(`${name}=`));
-  return match ? decodeURIComponent(match.split('=')[1]!) : null;
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match.split('=')[1]!);
+  } catch {
+    return null;
+  }
 }
 
 function writeCookie(name: string, value: string, maxAgeDays = 365): void {

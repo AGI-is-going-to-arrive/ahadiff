@@ -1,0 +1,110 @@
+/* ==========================================================================
+   Onboarding page styles. Based on v6 template data-page="onboarding".
+   ========================================================================== */
+
+.onboarding {
+  max-width: var(--mw-content, 960px);
+  margin: 0 auto;
+  padding: 0 0 var(--sp-10, 40px);
+}
+
+.onboarding__title {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: 36px;
+  letter-spacing: -0.022em;
+  margin: 0;
+  line-height: 1.08;
+}
+
+.onboarding__sub {
+  color: var(--muted);
+  font-size: 14px;
+  margin-top: 8px;
+  line-height: 1.65;
+}
+
+/* ---- Stepper ---- */
+.stepper {
+  display: flex;
+  gap: 18px;
+  margin: var(--sp-8, 32px) 0;
+}
+
+.stepper__step {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3, 12px);
+  padding: var(--sp-4, 16px);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg, 12px);
+  background: var(--elevated);
+}
+
+.stepper__step--done {
+  border-color: var(--success);
+  background: var(--success-soft, #ECF4EE);
+}
+
+.stepper__step--current {
+  border-color: var(--accent);
+  background: var(--accent-softest);
+}
+
+.stepper__number {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-full, 999px);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--subtle);
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.stepper__step--done .stepper__number {
+  background: var(--success);
+  color: var(--elevated);
+}
+
+.stepper__step--current .stepper__number {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.stepper__step h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.stepper__step p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ---- Content cards ---- */
+.onboarding__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-6, 24px);
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 767px) {
+  .onboarding__title { font-size: 28px; }
+  .stepper { flex-direction: column; }
+  .onboarding__grid { grid-template-columns: 1fr; }
+}
+
+@media (forced-colors: active) {
+  .stepper__step { border: 1px solid CanvasText; }
+  .stepper__step--done { border-color: LinkText; }
+  .stepper__step--current { border-color: Highlight; }
+}

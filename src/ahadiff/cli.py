@@ -37,6 +37,7 @@ from .core.config import (
     load_workspace_config,
     load_workspace_security_config,
     local_hosts_for_privacy_mode,
+    validate_repo_api_key_env_name,
     write_default_config,
 )
 from .core.errors import AhaDiffError, ConfigError, InputError, StorageError
@@ -95,6 +96,7 @@ from .review.database import (
     import_results_tsv_lossy,
     initialize_review_db,
     list_due_cards,
+    load_result_event_by_run_and_id,
     mark_run_cards_stale,
     record_card_review,
     restore_review_db,
@@ -263,6 +265,10 @@ def _resolve_runtime_provider(
     resolved_model = model or str(llm_config["generate_model"])
     provider_selection_explicit = base_url is not None or provider_name is not None
     if base_url is not None:
+        try:
+            validate_repo_api_key_env_name(api_key_env)
+        except ConfigError as exc:
+            raise AhaDiffError(str(exc)) from exc
         normalized_base_url = _normalize_provider_base_url(base_url, provider_class=provider_class)
         provider_config = _provider_config_from_payload(
             {
@@ -585,6 +591,8 @@ def doctor_cmd(
         if review_path.exists():
             try:
                 with sqlite3.connect(review_path) as connection:
+                    connection.execute("PRAGMA busy_timeout = 5000")
+                    connection.execute("PRAGMA trusted_schema = OFF")
                     quick_check = connection.execute("PRAGMA quick_check").fetchone()
                     quick_check_value = quick_check[0] if quick_check else "unknown"
                     console.print(f"[bold]SQLite quick_check[/bold]: {quick_check_value}")
@@ -2063,7 +2071,7 @@ def _persist_evaluated_run(
             score_path=output_path,
             overwrite=force,
         )
-    except OSError as exc:
+    except Exception as exc:
         if outcome.sqlite_inserted:
             try:
                 rollback_result_event(run_path=run_path, event_id=outcome.event.event_id)
@@ -2122,7 +2130,6 @@ def _verify_ci_artifacts(repo_root: Path) -> None:
     if not runs_dir.exists():
         console.print("[green]AhaDiff CI verify complete[/green]: no run artifacts found")
         return
-    events_by_id = {event.event_id: event for event in load_result_events(db_path)}
     checked = 0
     for run_path in sorted(path for path in runs_dir.iterdir() if path.is_dir()):
         marker_path = run_path / "finalized.json"
@@ -2130,7 +2137,12 @@ def _verify_ci_artifacts(repo_root: Path) -> None:
             continue
         marker = _load_ci_finalized_marker(run_path)
         event_id = marker["event_id"]
-        if event_id not in events_by_id:
+        event = load_result_event_by_run_and_id(
+            db_path,
+            run_id=run_path.name,
+            event_id=str(event_id),
+        )
+        if event is None:
             raise AhaDiffError(f"finalized result event does not exist for run: {run_path.name}")
         checked += 1
     console.print(f"[green]AhaDiff CI verify complete[/green]: {checked} finalized runs checked")
@@ -2241,6 +2253,11 @@ def benchmark_cmd(
     try:
         root = find_workspace_root(repo_root)
         manifest_path = manifest if manifest.is_absolute() else root / manifest
+        manifest_path = manifest_path.resolve()
+        if not manifest_path.is_relative_to(root):
+            raise InputError(
+                f"benchmark manifest path must be inside workspace root: {manifest_path}"
+            )
         output_path = output or root / ".ahadiff" / "benchmarks" / f"{suite}-report.json"
         if not output_path.is_absolute():
             output_path = root / output_path
@@ -2416,7 +2433,9 @@ def db_check_cmd(
         root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
         state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
         db_path = state_dir / "review.sqlite"
-        check = check_review_db(db_path)
+        _, lock_path = _state_dir_and_lock_path(repo_root)
+        with repo_write_lock(lock_path, command="db check") as _:
+            check = check_review_db(db_path)
         console.print(f"[bold]Schema version[/bold]: {check.schema_version}")
         console.print(f"[bold]SQLite quick_check[/bold]: {check.quick_check}")
         console.print(f"[bold]Foreign key issues[/bold]: {check.foreign_key_issues}")
@@ -2600,6 +2619,10 @@ def provider_test_cmd(
         provider_limits = cast("dict[str, Any]", snapshot.values["provider"])
         resolved_model = model or str(llm_config["generate_model"])
         normalized_base_url = _normalize_provider_base_url(base_url, provider_class=provider_class)
+        try:
+            validate_repo_api_key_env_name(api_key_env)
+        except ConfigError as exc:
+            raise AhaDiffError(str(exc)) from exc
         _provider_config_from_payload(
             {
                 "provider_class": provider_class,

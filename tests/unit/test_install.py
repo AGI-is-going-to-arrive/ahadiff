@@ -51,6 +51,7 @@ def _git(repo_root: Path, *args: str) -> None:
         text=True,
         encoding="utf-8",
         errors="replace",
+        timeout=30,
     )
 
 
@@ -314,6 +315,7 @@ def test_hooks_install_is_non_blocking_and_uninstall_removes_sections(tmp_path: 
         text=True,
         encoding="utf-8",
         errors="replace",
+        timeout=30,
     )
     assert "after-ahadiff" in hook_run.stdout
     uninstall_result = _RUNNER.invoke(app(), ["uninstall", "hooks", "--repo-root", str(repo_root)])
@@ -423,6 +425,7 @@ def test_hooks_install_supports_git_worktree(tmp_path: Path) -> None:
         text=True,
         encoding="utf-8",
         errors="replace",
+        timeout=30,
     )
     hook_path = Path(hook_path_result.stdout.strip())
     if not hook_path.is_absolute():

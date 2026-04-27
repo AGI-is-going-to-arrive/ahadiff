@@ -211,6 +211,28 @@ def test_parse_unified_diff_normalizes_backslash_paths() -> None:
     assert changed_files[0].hunks[0].path == "src/new.py"
 
 
+def test_parse_unified_diff_normalizes_quoted_raw_windows_backslash_paths() -> None:
+    patch = (
+        r'diff --git "a\src\old.py" "b\src\new.py"'
+        "\n"
+        r'--- "a\src\old.py"'
+        "\n"
+        r'+++ "b\src\new.py"'
+        "\n"
+        "@@ -1 +1 @@\n"
+        "-value = 1\n"
+        "+value = 2\n"
+    )
+
+    changed_files = parse_unified_diff(patch)
+
+    assert len(changed_files) == 1
+    assert changed_files[0].old_path == "src/old.py"
+    assert changed_files[0].new_path == "src/new.py"
+    assert changed_files[0].display_path == "src/new.py"
+    assert changed_files[0].hunks[0].path == "src/new.py"
+
+
 def test_parse_unified_diff_handles_crlf_plain_headers() -> None:
     patch = (
         "diff --git a/src/crlf.py b/src/crlf.py\r\n"

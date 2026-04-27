@@ -308,6 +308,8 @@ def test_gate4_cherry_pick_refuses_when_target_head_moves(
             capture_output=True,
             text=True,
             encoding="utf-8",
+            errors="replace",
+            timeout=30,
         )
         subprocess.run(
             ["git", "commit", "-m", "manual branch movement"],
@@ -316,6 +318,8 @@ def test_gate4_cherry_pick_refuses_when_target_head_moves(
             capture_output=True,
             text=True,
             encoding="utf-8",
+            errors="replace",
+            timeout=30,
         )
         return _score_report(
             run_id=path.name,
@@ -674,6 +678,8 @@ def test_gate4_cherry_pick_parent_mismatch_auto_reverts(
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
+        timeout=30,
     )
     subprocess.run(
         ["git", "commit", "-m", "add prompt file"],
@@ -682,6 +688,8 @@ def test_gate4_cherry_pick_parent_mismatch_auto_reverts(
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
+        timeout=30,
     )
     head_before = subprocess.run(
         ["git", "rev-parse", "HEAD"],
@@ -690,6 +698,8 @@ def test_gate4_cherry_pick_parent_mismatch_auto_reverts(
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
+        timeout=30,
     ).stdout.strip()
     (repo_root / "prompt_file.txt").write_text("modified by improve\n", encoding="utf-8")
     subprocess.run(
@@ -699,6 +709,8 @@ def test_gate4_cherry_pick_parent_mismatch_auto_reverts(
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
+        timeout=30,
     )
     subprocess.run(
         ["git", "commit", "-m", "improve round 1"],
@@ -707,6 +719,8 @@ def test_gate4_cherry_pick_parent_mismatch_auto_reverts(
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
+        timeout=30,
     )
     commit_to_pick = subprocess.run(
         ["git", "rev-parse", "HEAD"],
@@ -715,6 +729,8 @@ def test_gate4_cherry_pick_parent_mismatch_auto_reverts(
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
+        timeout=30,
     ).stdout.strip()
     subprocess.run(
         ["git", "reset", "--hard", "HEAD~1"],
@@ -723,6 +739,8 @@ def test_gate4_cherry_pick_parent_mismatch_auto_reverts(
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
+        timeout=30,
     )
     (repo_root / "other.txt").write_text("interloper\n", encoding="utf-8")
     subprocess.run(
@@ -732,6 +750,8 @@ def test_gate4_cherry_pick_parent_mismatch_auto_reverts(
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
+        timeout=30,
     )
     subprocess.run(
         ["git", "commit", "-m", "concurrent commit"],
@@ -740,6 +760,8 @@ def test_gate4_cherry_pick_parent_mismatch_auto_reverts(
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
+        timeout=30,
     )
 
     with pytest.raises(InputError, match="parent mismatch"):
@@ -756,6 +778,8 @@ def test_gate4_cherry_pick_parent_mismatch_auto_reverts(
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
+        timeout=30,
     ).stdout.strip()
     assert head_after != commit_to_pick, "HEAD must not remain at the cherry-picked commit"
 

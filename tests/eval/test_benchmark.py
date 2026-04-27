@@ -128,3 +128,30 @@ def test_benchmark_cli_writes_report(tmp_path: Path) -> None:
     assert payload["suite_id"] == "ahadiff-local-v1"
     assert payload["api_family_version"] == "none"
     assert "Suite digest" in result.output
+
+
+def test_benchmark_cli_rejects_manifest_outside_workspace(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    (workspace_root / ".ahadiff").mkdir()
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    (outside_dir / "manifest.json").write_text("{}\n", encoding="utf-8")
+
+    result = _RUNNER.invoke(
+        app(),
+        [
+            "benchmark",
+            "--repo-root",
+            str(workspace_root),
+            "--manifest",
+            "../outside/manifest.json",
+            "--output",
+            str(tmp_path / "report.json"),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "benchmark manifest path must be inside workspace root" in (
+        result.stderr + result.output
+    )

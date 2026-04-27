@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+import stat
 import tempfile
 import time
 from contextlib import suppress
@@ -10,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from ahadiff.core.errors import SafetyError
+from ahadiff.core.paths import ensure_state_parent_dir, validate_state_path_no_symlinks
 
 from .schemas import CacheKeyInput, ProviderResponse, RateLimitSnapshot
 
@@ -17,6 +20,8 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 _CACHE_SCHEMA_VERSION = 1
+_ORPHANED_TMP_TTL_SECONDS = 24 * 60 * 60
+_CACHE_TMP_NAME_RE = re.compile(r"^\.[0-9a-f]{64}\..+\.tmp$")
 
 
 def build_context_bundle_hash(artifacts: Mapping[str, bytes | str]) -> str:
@@ -47,9 +52,12 @@ def build_cache_key(parts: CacheKeyInput) -> str:
         "context_bundle_hash": parts.context_bundle_hash,
         "diff_content_sha256": hashlib.sha256(parts.diff_content.encode("utf-8")).hexdigest(),
         "eval_bundle_version": parts.eval_bundle_version,
+        "base_url": parts.base_url.rstrip("/"),
         "model_id": parts.model_id,
         "output_lang": parts.output_lang,
         "privacy_mode": parts.privacy_mode,
+        "provider_class": parts.provider_class,
+        "provider_kind": parts.provider_kind,
         "prompt_fingerprint": parts.prompt_fingerprint,
         "prompt_name": parts.prompt_name,
         "prompt_version": parts.prompt_version,
@@ -79,7 +87,11 @@ def lookup_cached_response(
 ) -> ProviderResponse | None:
     key = build_cache_key(parts) if cache_key is None else cache_key
     path = cache_file_path(workspace_root, key)
+    validate_state_path_no_symlinks(path, allow_missing_leaf=True)
     try:
+        file_size = path.stat().st_size
+        if file_size > 16 * 1024 * 1024:
+            return None
         loaded: object = json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         _cleanup_orphaned_tmp_files(path.parent)
@@ -108,7 +120,8 @@ def store_cached_response(
 ) -> Path:
     key = build_cache_key(parts) if cache_key is None else cache_key
     path = cache_file_path(workspace_root, key)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_state_parent_dir(path)
+    validate_state_path_no_symlinks(path, allow_missing_leaf=True)
     payload = {
         "schema_version": _CACHE_SCHEMA_VERSION,
         "cache_key": key,
@@ -125,10 +138,13 @@ def store_cached_response(
         delete=False,
     ) as tmp_file:
         tmp_path = Path(tmp_file.name)
+        validate_state_path_no_symlinks(tmp_path, allow_missing_leaf=True)
         tmp_file.write(encoded)
         tmp_file.write("\n")
     try:
+        validate_state_path_no_symlinks(path, allow_missing_leaf=True)
         tmp_path.replace(path)
+        validate_state_path_no_symlinks(path, allow_missing_leaf=False)
     finally:
         if tmp_path.exists():
             with suppress(OSError):
@@ -153,12 +169,21 @@ def _response_to_json(response: ProviderResponse) -> dict[str, object]:
 
 def _cleanup_orphaned_tmp_files(directory: Path) -> None:
     try:
+        validate_state_path_no_symlinks(directory, allow_missing_leaf=False)
+        directory_stat = directory.lstat()
+        if not stat.S_ISDIR(directory_stat.st_mode):
+            return
         now = time.time()
         for index, tmp_path in enumerate(directory.glob(".*.tmp")):
             if index >= 10:
                 break
             try:
-                if now - tmp_path.stat().st_mtime > 3600:
+                if not _CACHE_TMP_NAME_RE.fullmatch(tmp_path.name):
+                    continue
+                tmp_stat = tmp_path.lstat()
+                if not stat.S_ISREG(tmp_stat.st_mode):
+                    continue
+                if now - tmp_stat.st_mtime > _ORPHANED_TMP_TTL_SECONDS:
                     tmp_path.unlink()
             except Exception:
                 continue

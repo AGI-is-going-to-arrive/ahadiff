@@ -9,6 +9,7 @@ import pytest
 from typer.testing import CliRunner
 
 from ahadiff import cli as cli_module
+from ahadiff.claims import runtime as claim_runtime_module
 from ahadiff.claims.extract import (
     load_line_map_records,
     load_symbol_records,
@@ -21,6 +22,7 @@ from ahadiff.claims.schema import ClaimCandidate
 from ahadiff.cli import app
 from ahadiff.contracts import ProviderConfig, SourceHunk
 from ahadiff.core.config import SecurityConfig
+from ahadiff.core.errors import InputError
 from ahadiff.git.line_map import build_line_map, serialize_line_map_payload
 from ahadiff.git.parser import parse_unified_diff
 from ahadiff.git.symbols import extract_symbols, serialize_symbols_payload
@@ -340,6 +342,31 @@ diff --git a/src/app.py b/src/app.py
     payload = json.loads(output_path.read_text(encoding="utf-8").splitlines()[0])
     assert payload["status"] == "verified"
     assert "Claim verification summary" in result.stdout
+
+
+def test_claim_runtime_rejects_oversized_required_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_claim_run_artifacts(workspace_root, "run_oversized")
+    monkeypatch.setattr(claim_runtime_module, "_MAX_RUN_ARTIFACT_TEXT_BYTES", 8)
+
+    with pytest.raises(InputError, match="artifact exceeds size limit"):
+        extract_claim_candidates_from_run(
+            run_id="run_oversized",
+            run_path=run_path,
+            workspace_root=workspace_root,
+            provider_config=ProviderConfig(
+                provider_class="openai",
+                model_name="gpt-5.4-mini",
+                base_url="http://127.0.0.1:8318",
+                api_key_env="AHADIFF_PROVIDER_API_KEY",
+            ),
+            api_key=None,
+            security_config=SecurityConfig(),
+            output_path=run_path / "claims.raw.jsonl",
+        )
 
 
 def test_claims_cli_uses_persisted_text_maps_for_negative_scan(tmp_path: Path) -> None:

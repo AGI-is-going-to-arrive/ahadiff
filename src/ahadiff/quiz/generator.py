@@ -56,6 +56,7 @@ class _ResolvedAnchor:
 _PROMPT_FILENAME = "quiz_generate.md"
 _PROMPT_NAME = "quiz.generate"
 _VALID_PRIVACY_MODES = frozenset({"strict_local", "redacted_remote", "explicit_remote"})
+_MAX_RUN_ARTIFACT_TEXT_BYTES = 16 * 1024 * 1024
 
 
 def generate_quiz_from_run(
@@ -107,7 +108,7 @@ def load_quiz_questions(path: Path) -> tuple[QuizQuestion, ...]:
     if not path.exists():
         raise InputError(f"quiz artifact does not exist: {path}")
     questions: list[QuizQuestion] = []
-    for index, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    for index, line in enumerate(_read_required_text(path).splitlines(), start=1):
         stripped = line.strip()
         if not stripped:
             continue
@@ -343,7 +344,7 @@ def _load_claim_records(path: Path) -> tuple[ClaimRecord, ...]:
     if not path.exists():
         raise InputError(f"verified claims artifact does not exist: {path}")
     claims: list[ClaimRecord] = []
-    for index, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    for index, line in enumerate(_read_required_text(path).splitlines(), start=1):
         stripped = line.strip()
         if not stripped:
             continue
@@ -477,7 +478,17 @@ def _load_run_json(path: Path) -> dict[str, Any]:
 def _read_required_text(path: Path) -> str:
     if not path.exists():
         raise InputError(f"required run artifact is missing: {path}")
-    return path.read_text(encoding="utf-8")
+    try:
+        with path.open("rb") as handle:
+            data = handle.read(_MAX_RUN_ARTIFACT_TEXT_BYTES + 1)
+    except OSError as exc:
+        raise InputError(f"required run artifact is unreadable: {path}") from exc
+    if len(data) > _MAX_RUN_ARTIFACT_TEXT_BYTES:
+        raise InputError(f"required run artifact exceeds size limit: {path}")
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise InputError(f"required run artifact is not valid UTF-8: {path}") from exc
 
 
 __all__ = [

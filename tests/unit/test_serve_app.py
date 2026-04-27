@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -9,7 +10,9 @@ import pytest
 from pydantic import ValidationError
 from starlette.testclient import TestClient
 
+import ahadiff.serve.lock as serve_lock_module
 import ahadiff.serve.routes_locale as routes_locale_module
+import ahadiff.serve.routes_review as routes_review_module
 import ahadiff.serve.routes_runs as routes_runs_module
 from ahadiff.contracts import ResultEvent, ReviewCard, RunArtifactEnvelope
 from ahadiff.eval.results import finalized_artifact_digest
@@ -1132,6 +1135,50 @@ def test_non_object_finalized_marker_is_hidden_without_500(tmp_path: Path) -> No
     assert "finalized marker is invalid" in response.json()["error"]
 
 
+@pytest.mark.skipif(
+    not hasattr(routes_runs_module.os, "symlink")
+    or not hasattr(routes_runs_module.os, "O_NOFOLLOW"),
+    reason="requires POSIX symlink no-follow support",
+)
+def test_bounded_finalized_artifact_digest_rejects_symlink_swap_before_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ahadiff.core.errors import InputError
+
+    state_dir = tmp_path / ".ahadiff"
+    run_path = _write_run(state_dir, "run-1", finalized=False)
+    artifact_path = run_path / "artifact.txt"
+    artifact_path.write_text("safe artifact\n", encoding="utf-8")
+    outside_path = tmp_path / "outside.txt"
+    outside_path.write_text("outside\n", encoding="utf-8")
+    original_open = routes_runs_module.os.open
+    swapped = False
+
+    def swapping_open(
+        path: str,
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        if Path(path) == artifact_path and not swapped:
+            swapped = True
+            artifact_path.unlink()
+            routes_runs_module.os.symlink(outside_path, artifact_path)
+        if dir_fd is None:
+            return original_open(path, flags, mode)
+        return original_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(routes_runs_module.os, "open", swapping_open)
+
+    with pytest.raises(InputError, match="symlink|changed during validation"):
+        routes_runs_module._bounded_finalized_artifact_digest(run_path)  # pyright: ignore[reportPrivateUsage]
+
+    assert swapped is True
+
+
 def test_symlink_run_directory_is_not_served(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     outside_state_dir = tmp_path / "outside" / ".ahadiff"
@@ -1260,7 +1307,9 @@ def test_runs_source_kind_filter_stops_after_max_pages(
     response = client.get("/api/runs?source_kind=patch_file&page_size=1")
 
     assert response.status_code == 200
-    assert response.json() == {"runs": []}
+    payload = response.json()
+    assert payload["runs"] == []
+    assert payload["next_cursor"]
     assert page_calls == 2
 
 
@@ -1381,6 +1430,86 @@ def test_run_routes_use_anyio_threadpool_for_file_io(
     assert any("lambda" in call for call in calls)
 
 
+def test_read_text_capped_checks_size_from_open_fd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    visible_path = tmp_path / "artifact.txt"
+    visible_path.write_text("ok\n", encoding="utf-8")
+    swapped_path = tmp_path / "swapped.txt"
+    swapped_path.write_text("too large\n", encoding="utf-8")
+    original_open = routes_runs_module.os.open
+
+    def fake_open(path: Any, flags: int, mode: int = 0o777) -> int:
+        if Path(cast("str", path)) == visible_path:
+            return original_open(str(swapped_path), flags, mode)
+        return original_open(path, flags, mode)
+
+    monkeypatch.setattr(routes_runs_module.os, "open", fake_open)
+    read_text_capped = cast("Any", routes_runs_module._read_text_capped)  # pyright: ignore[reportPrivateUsage]
+
+    with pytest.raises(routes_runs_module.HTTPException) as exc_info:
+        read_text_capped(visible_path, max_bytes=4)
+
+    assert exc_info.value.status_code == 413
+
+
+def test_review_queue_uses_anyio_threadpool(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    calls: list[str] = []
+
+    async def recording_run_sync(func: Any, *args: Any, **kwargs: Any) -> Any:
+        del kwargs
+        calls.append(getattr(func, "__name__", repr(func)))
+        return func(*args)
+
+    monkeypatch.setattr(routes_review_module.to_thread, "run_sync", recording_run_sync)
+    client = _client(state_dir)
+
+    assert client.get("/api/review/queue").status_code == 200
+
+    assert calls == ["_review_queue_sync"]
+
+
+def test_serve_repo_write_lock_follows_thread_then_repo_lock_order(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+
+    class RecordingThreadLock:
+        def __enter__(self) -> None:
+            events.append("thread_enter")
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            del exc_type, exc, tb
+            events.append("thread_exit")
+
+    @contextmanager
+    def fake_repo_write_lock(lock_path: Path, *, command: str) -> Iterator[Path]:
+        del command
+        events.append("repo_enter")
+        yield lock_path
+        events.append("repo_exit")
+
+    state = ServeState(
+        state_dir=tmp_path / ".ahadiff",
+        token="test-token",
+        repo_lock_path=tmp_path / ".ahadiff" / "ahadiff.lock",
+        thread_write_lock=cast("Any", RecordingThreadLock()),
+    )
+    monkeypatch.setattr(serve_lock_module, "repo_write_lock", fake_repo_write_lock)
+
+    with serve_lock_module.serve_repo_write_lock(state, command="test"):
+        events.append("inside")
+
+    assert events == ["thread_enter", "repo_enter", "inside", "repo_exit", "thread_exit"]
+
+
 def test_mark_wrong_signal_is_idempotent(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     client = _client(state_dir)
@@ -1420,7 +1549,7 @@ def test_signal_write_respects_repo_write_lock(tmp_path: Path) -> None:
     )
 
     assert blocked.status_code == 400
-    assert "另一个 ahadiff 进程正在运行" in blocked.json()["error"]
+    assert "another ahadiff process is already running" in blocked.json()["error"]
     assert accepted.status_code == 200
     assert accepted.json() == {"inserted": True}
 
@@ -1791,3 +1920,15 @@ def test_middleware_rejects_oversized_body(tmp_path: Path) -> None:
 
     assert response.status_code == 413
     assert response.json()["error"] == "payload_too_large"
+
+
+# --- F3 regression: pagination cursor length limit ---
+
+
+def test_cursor_exceeding_max_length_returns_400(tmp_path: Path) -> None:
+    """Overly long cursor values are rejected before touching the DB."""
+    client = _client(tmp_path)
+    long_cursor = "A" * 600
+    response = client.get(f"/api/runs?cursor={long_cursor}")
+    assert response.status_code == 400
+    assert "maximum length" in response.json()["error"]

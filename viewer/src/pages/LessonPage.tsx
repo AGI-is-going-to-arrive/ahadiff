@@ -97,7 +97,7 @@ export default function LessonPage() {
       // Raw flag; i18n string is computed at render time
       setError('fetch_failed');
       // eslint-disable-next-line no-console
-      console.error('[LessonPage] fetch error:', err);
+      if (import.meta.env.DEV) console.error('[LessonPage] fetch error:', err);
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }

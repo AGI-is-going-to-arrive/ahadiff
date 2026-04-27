@@ -21,6 +21,8 @@ from ahadiff.git import download as download_module
 from ahadiff.git import repo as repo_module
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from click.testing import Result
 
     Path = _pathlib.Path
@@ -37,6 +39,7 @@ def _git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
         encoding="utf-8",
         errors="replace",
         capture_output=True,
+        timeout=30,
     )
 
 
@@ -417,6 +420,45 @@ def test_worktree_symlink_file_is_skipped_from_resolved_text_maps(
     assert "skipping git-discovered symlink path: tracked.py" in caplog.text
 
 
+def test_git_discovered_reparse_point_file_is_skipped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "tracked.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+    (repo_root / "tracked.py").write_text("value = 2\n", encoding="utf-8")
+    original_lstat = capture_module.Path.lstat
+    reparse_flag = cast("int", capture_module._FILE_ATTRIBUTE_REPARSE_POINT)  # pyright: ignore[reportPrivateUsage]
+
+    def fake_lstat(path: Path) -> object:
+        path_stat = original_lstat(path)
+        if Path(path).name == "tracked.py":
+            return type(
+                "FakeStat",
+                (),
+                {"st_mode": path_stat.st_mode, "st_file_attributes": reparse_flag},
+            )()
+        return path_stat
+
+    monkeypatch.setattr(capture_module.Path, "lstat", fake_lstat)
+    caplog.set_level(logging.WARNING, logger="ahadiff.git.capture")
+
+    capture = capture_module.capture_patch(
+        workspace_root=repo_root,
+        unstaged=True,
+        max_files=50,
+        hard_limit=5000,
+        max_patch_bytes=10_000,
+    )
+
+    assert "tracked.py" not in capture.after_text_by_path
+    assert "skipping git-discovered Windows reparse point path: tracked.py" in caplog.text
+
+
 def test_git_capture_filters_ahadiffignore_from_patch_and_resolved_files(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -558,6 +600,46 @@ def test_patch_url_blocks_private_ip(tmp_path: Path) -> None:
         )
 
 
+def test_patch_url_blocks_cgnat_ip(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_getaddrinfo(host: str, port: int, **_kwargs: object) -> list[object]:
+        assert host == "patch.example"
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("100.64.0.1", port))]
+
+    def fake_socket(*_args: object, **_kwargs: object) -> NoReturn:
+        raise AssertionError("CGNAT address should be rejected before connect")
+
+    monkeypatch.setattr(download_module.socket, "getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr(download_module.socket, "socket", fake_socket)
+
+    with pytest.raises(InputError, match="private IP"):
+        download_module.download_patch_url(
+            "http://patch.example/private.diff",
+            max_patch_bytes=10_000,
+        )
+
+
+def test_patch_url_rejects_non_positive_max_patch_bytes(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+
+    with pytest.raises(InputError, match="max_patch_bytes must be >= 1"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            patch_url="http://patch.example/sample.diff",
+            max_patch_bytes=0,
+        )
+
+
+def test_capture_max_patch_bytes_is_clamped_to_hard_cap() -> None:
+    hard_cap = cast("int", capture_module._MAX_PATCH_BYTES_HARD_CAP)  # pyright: ignore[reportPrivateUsage]
+
+    assert (
+        capture_module._effective_max_patch_bytes(hard_cap + 1)  # pyright: ignore[reportPrivateUsage]
+        == hard_cap
+    )
+    assert capture_module._effective_max_patch_bytes(128) == 128  # pyright: ignore[reportPrivateUsage]
+
+
 def test_patch_url_redirect_loop_is_capped(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -594,6 +676,55 @@ def test_patch_url_rejects_oversize_response(
             workspace_root=workspace_root,
             patch_url="http://patch.example/large.diff",
             max_patch_bytes=10,
+        )
+
+
+def test_patch_url_uses_512k_cap_even_when_capture_cap_is_larger(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    url_cap = cast("int", capture_module._PATCH_URL_MAX_BYTES)  # pyright: ignore[reportPrivateUsage]
+    response = (
+        f"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {url_cap + 1}\r\n\r\n"
+    ).encode("ascii")
+    _install_fake_http(monkeypatch, [response])
+
+    with pytest.raises(InputError, match=f"exceeds {url_cap} bytes"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            patch_url="http://patch.example/large.diff",
+            max_patch_bytes=10_000_000,
+        )
+
+
+def test_patch_url_download_times_out_before_connect(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_request_once(*_args: object, **_kwargs: object) -> object:
+        raise TimeoutError
+
+    monkeypatch.setattr(download_module, "_request_once", fake_request_once)
+
+    with pytest.raises(InputError, match="timed out"):
+        download_module.download_patch_url("http://patch.example/slow.diff", max_patch_bytes=1024)
+
+
+def test_patch_url_download_times_out_while_reading_body(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    response = b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 4\r\n\r\ntest"
+    _install_fake_http(monkeypatch, [response])
+    ticks = iter([100.0, 100.0, 100.0, 100.0, 100.0, 161.0])
+    monkeypatch.setattr(download_module.time, "monotonic", lambda: next(ticks, 161.0))
+
+    with pytest.raises(InputError, match="timed out"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            patch_url="http://patch.example/slow-body.diff",
+            max_patch_bytes=10_000,
         )
 
 
@@ -766,6 +897,289 @@ def test_compare_dir_rejects_too_many_files_before_content_read(
             compare_dir=(Path("old"), Path("new")),
             max_patch_bytes=10_000,
         )
+
+
+def test_compare_dir_rejects_empty_directories(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    (workspace_root / "old").mkdir(parents=True)
+    (workspace_root / "new").mkdir(parents=True)
+
+    with pytest.raises(InputError, match="no comparable files"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            compare_dir=(Path("old"), Path("new")),
+            max_patch_bytes=10_000,
+        )
+
+
+def test_compare_dir_rejects_identical_directories(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    old_dir = workspace_root / "old"
+    new_dir = workspace_root / "new"
+    old_dir.mkdir(parents=True)
+    new_dir.mkdir(parents=True)
+    (old_dir / "same.txt").write_text("same\n", encoding="utf-8")
+    (new_dir / "same.txt").write_text("same\n", encoding="utf-8")
+
+    with pytest.raises(InputError, match="no differences"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            compare_dir=(Path("old"), Path("new")),
+            max_patch_bytes=10_000,
+        )
+
+
+def test_compare_dir_rejects_symlink_entry_and_excessive_depth(tmp_path: Path) -> None:
+    if not hasattr(os, "symlink"):
+        pytest.skip("symlink is not available on this platform")
+    workspace_root = tmp_path / "workspace"
+    old_dir = workspace_root / "old"
+    new_dir = workspace_root / "new"
+    old_dir.mkdir(parents=True)
+    new_dir.mkdir(parents=True)
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret\n", encoding="utf-8")
+    (old_dir / "link.txt").symlink_to(outside)
+
+    with pytest.raises(InputError, match="must not contain symlinks"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            compare_dir=(Path("old"), Path("new")),
+            max_patch_bytes=10_000,
+        )
+
+    (old_dir / "link.txt").unlink()
+    cursor = old_dir
+    for index in range(cast("int", capture_module._COMPARE_DIR_MAX_DEPTH) + 1):  # pyright: ignore[reportPrivateUsage]
+        cursor = cursor / f"d{index}"
+        cursor.mkdir()
+    (cursor / "deep.txt").write_text("old\n", encoding="utf-8")
+
+    with pytest.raises(InputError, match="exceeds depth"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            compare_dir=(Path("old"), Path("new")),
+            max_patch_bytes=10_000,
+        )
+
+
+def test_compare_dir_uses_validated_bytes_after_root_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if not hasattr(os, "symlink") or capture_module.sys.platform.startswith("win"):
+        pytest.skip("POSIX symlink replacement race coverage only")
+    workspace_root = tmp_path / "workspace"
+    old_dir = workspace_root / "old"
+    new_dir = workspace_root / "new"
+    outside_dir = tmp_path / "outside"
+    old_dir.mkdir(parents=True)
+    new_dir.mkdir(parents=True)
+    outside_dir.mkdir()
+    (old_dir / "safe.txt").write_text("old\n", encoding="utf-8")
+    (new_dir / "safe.txt").write_text("new\n", encoding="utf-8")
+    (outside_dir / "safe.txt").write_text("SECRET-OUTSIDE\n", encoding="utf-8")
+    original_read_tree = cast("Any", capture_module)._read_compare_dir_tree
+    replaced = False
+
+    def racing_read_tree(
+        root: Path,
+        *,
+        max_bytes: int,
+        total_budget_bytes: int,
+    ) -> tuple[dict[Path, bytes], int]:
+        nonlocal replaced
+        result = original_read_tree(
+            root,
+            max_bytes=max_bytes,
+            total_budget_bytes=total_budget_bytes,
+        )
+        if root == old_dir and not replaced:
+            (workspace_root / "old-original").unlink(missing_ok=True)
+            old_dir.rename(workspace_root / "old-original")
+            old_dir.symlink_to(outside_dir, target_is_directory=True)
+            replaced = True
+        return result
+
+    monkeypatch.setattr(cast("Any", capture_module), "_read_compare_dir_tree", racing_read_tree)
+
+    capture = capture_module.capture_patch(
+        workspace_root=workspace_root,
+        compare_dir=(Path("old"), Path("new")),
+        max_patch_bytes=10_000,
+    )
+
+    assert "SECRET-OUTSIDE" not in capture.raw_patch_text
+    assert "-old" in capture.raw_patch_text
+    assert "+new" in capture.raw_patch_text
+
+
+def test_compare_dir_rejects_windows_without_secure_dir_fd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    old_dir = workspace_root / "old"
+    new_dir = workspace_root / "new"
+    old_dir.mkdir(parents=True)
+    new_dir.mkdir(parents=True)
+    (old_dir / "safe.txt").write_text("old\n", encoding="utf-8")
+    (new_dir / "safe.txt").write_text("new\n", encoding="utf-8")
+    monkeypatch.setattr(capture_module.sys, "platform", "win32")
+
+    with pytest.raises(InputError, match="secure directory file descriptors"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            compare_dir=(Path("old"), Path("new")),
+            max_patch_bytes=10_000,
+        )
+
+
+def test_compare_dir_rejects_fd_scandir_unsupported_without_leaking_fd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    old_dir = workspace_root / "old"
+    new_dir = workspace_root / "new"
+    old_dir.mkdir(parents=True)
+    new_dir.mkdir(parents=True)
+    (old_dir / "safe.txt").write_text("old\n", encoding="utf-8")
+    (new_dir / "safe.txt").write_text("new\n", encoding="utf-8")
+    original_scandir = capture_module.os.scandir
+    opened_fds: list[int] = []
+    closed_fds: list[int] = []
+    original_open = capture_module.os.open
+    original_close = capture_module.os.close
+
+    def fake_open(path: Any, flags: int, *args: Any, **kwargs: Any) -> int:
+        fd = original_open(path, flags, *args, **kwargs)
+        opened_fds.append(fd)
+        return fd
+
+    def fake_close(fd: int) -> None:
+        closed_fds.append(fd)
+        original_close(fd)
+
+    def fake_scandir(path: Any) -> Any:
+        if isinstance(path, int):
+            raise TypeError("scandir fd unsupported")
+        return original_scandir(path)
+
+    monkeypatch.setattr(capture_module.os, "open", fake_open)
+    monkeypatch.setattr(capture_module.os, "close", fake_close)
+    monkeypatch.setattr(capture_module.os, "scandir", fake_scandir)
+
+    with pytest.raises(InputError, match="secure directory file descriptors"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            compare_dir=(Path("old"), Path("new")),
+            max_patch_bytes=10_000,
+        )
+
+    assert opened_fds
+    assert set(opened_fds).issubset(closed_fds)
+
+
+def test_compare_dir_rejects_windows_reparse_point_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    old_dir = workspace_root / "old"
+    new_dir = workspace_root / "new"
+    old_dir.mkdir(parents=True)
+    new_dir.mkdir(parents=True)
+    (old_dir / "safe.txt").write_text("old\n", encoding="utf-8")
+    (new_dir / "safe.txt").write_text("new\n", encoding="utf-8")
+
+    original_lstat = capture_module.Path.lstat
+    reparse_flag = cast("int", capture_module._FILE_ATTRIBUTE_REPARSE_POINT)  # pyright: ignore[reportPrivateUsage]
+
+    def fake_lstat(path: Path) -> object:
+        path_stat = original_lstat(path)
+        if Path(path).name == "old":
+            return type(
+                "FakeStat",
+                (),
+                {"st_mode": path_stat.st_mode, "st_file_attributes": reparse_flag},
+            )()
+        return path_stat
+
+    monkeypatch.setattr(capture_module.Path, "lstat", fake_lstat)
+
+    with pytest.raises(InputError, match="reparse point"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            compare_dir=(Path("old"), Path("new")),
+            max_patch_bytes=10_000,
+        )
+
+    monkeypatch.setattr(capture_module.Path, "lstat", original_lstat)
+
+    class FakeEntryStat:
+        st_mode = capture_module.stat.S_IFREG | 0o644
+        st_file_attributes = reparse_flag
+
+    class FakeDirEntry:
+        name = "safe.txt"
+
+        def __init__(self, path: Path) -> None:
+            self.path = str(path)
+
+        def stat(self, *, follow_symlinks: bool = True) -> FakeEntryStat:
+            del follow_symlinks
+            return FakeEntryStat()
+
+    class FakeScandir:
+        def __init__(self, entries: list[FakeDirEntry]) -> None:
+            self._entries = entries
+
+        def __enter__(self) -> FakeScandir:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            del exc_type, exc, tb
+
+        def __iter__(self) -> Iterator[FakeDirEntry]:
+            return iter(self._entries)
+
+    def fake_scandir(path: object) -> FakeScandir:
+        del path
+        return FakeScandir([FakeDirEntry(old_dir / "safe.txt")])
+
+    monkeypatch.setattr(capture_module.os, "scandir", fake_scandir)
+
+    with pytest.raises(InputError, match="reparse points"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            compare_dir=(Path("old"), Path("new")),
+            max_patch_bytes=10_000,
+        )
+
+
+def test_compare_dir_preserves_unicode_and_emoji_paths(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    old_dir = workspace_root / "old"
+    new_dir = workspace_root / "new"
+    old_dir.mkdir(parents=True)
+    new_dir.mkdir(parents=True)
+    relative = Path("模块") / "emoji-😀.py"
+    (old_dir / relative).parent.mkdir(parents=True)
+    (new_dir / relative).parent.mkdir(parents=True)
+    (old_dir / relative).write_text("value = 1\n", encoding="utf-8")
+    (new_dir / relative).write_text("value = 2\n", encoding="utf-8")
+
+    capture = capture_module.capture_patch(
+        workspace_root=workspace_root,
+        compare_dir=(Path("old"), Path("new")),
+        max_patch_bytes=10_000,
+    )
+
+    assert "--- a/模块/emoji-😀.py" in capture.raw_patch_text
+    assert "+++ b/模块/emoji-😀.py" in capture.raw_patch_text
+    assert capture.before_text_by_path["模块/emoji-😀.py"] == "value = 1\n"
+    assert capture.after_text_by_path["模块/emoji-😀.py"] == "value = 2\n"
 
 
 def test_patch_file_plain_unified_diff_respects_max_files(tmp_path: Path) -> None:
@@ -1254,6 +1668,17 @@ def test_segment_path_normalizes_windows_style_patch_headers() -> None:
     assert path == "src/new.py"
 
 
+def test_segment_path_normalizes_quoted_raw_windows_paths_with_escape_like_segments() -> None:
+    path = capture_module._segment_path(  # pyright: ignore[reportPrivateUsage]
+        [
+            r'diff --git "a\new\file.py" "b\new\file.py"' "\n",
+            r'--- "a\new\file.py"' "\n",
+            r'+++ "b\new\file.py"' "\n",
+        ]
+    )
+    assert path == "new/file.py"
+
+
 def test_segment_path_keeps_quoted_binary_paths_without_patch_headers() -> None:
     path = capture_module._segment_path(  # pyright: ignore[reportPrivateUsage]
         [
@@ -1353,6 +1778,83 @@ def test_compare_capture_rejects_file_larger_than_max_patch_bytes(tmp_path: Path
         )
 
 
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlink support")
+def test_capture_rejects_symlink_state_dir_before_publishing_artifacts(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    outside = tmp_path / "outside-state"
+    outside.mkdir()
+    os.symlink(outside, repo_root / ".ahadiff", target_is_directory=True)
+    (repo_root / "old.py").write_text("old = 1\n", encoding="utf-8")
+    (repo_root / "new.py").write_text("new = 1\n", encoding="utf-8")
+
+    with pytest.raises(InputError, match="state dir must not be a symlink"):
+        capture_module.capture_patch(
+            workspace_root=repo_root,
+            compare=(Path("old.py"), Path("new.py")),
+            max_files=50,
+            hard_limit=5000,
+            max_patch_bytes=10_000,
+        )
+
+    assert not (outside / "runs").exists()
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlink support")
+def test_capture_rejects_symlink_runs_dir_before_publishing_artifacts(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    state_dir = repo_root / ".ahadiff"
+    state_dir.mkdir()
+    outside = tmp_path / "outside-runs"
+    outside.mkdir()
+    os.symlink(outside, state_dir / "runs", target_is_directory=True)
+    (repo_root / "old.py").write_text("old = 1\n", encoding="utf-8")
+    (repo_root / "new.py").write_text("new = 1\n", encoding="utf-8")
+
+    capture = capture_module.capture_patch(
+        workspace_root=repo_root,
+        compare=(Path("old.py"), Path("new.py")),
+        max_files=50,
+        hard_limit=5000,
+        max_patch_bytes=10_000,
+    )
+
+    with pytest.raises(InputError, match="state path must not contain symlinks"):
+        capture_module.write_input_artifacts(capture)
+
+    assert list(outside.iterdir()) == []
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlink support")
+def test_capture_rejects_symlink_audit_log_before_append(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    state_dir = repo_root / ".ahadiff"
+    state_dir.mkdir()
+    outside_audit = tmp_path / "outside-audit.jsonl"
+    outside_audit.write_text("outside\n", encoding="utf-8")
+    os.symlink(outside_audit, state_dir / "audit.jsonl")
+    (repo_root / "old.py").write_text("old = 1\n", encoding="utf-8")
+    (repo_root / "new.py").write_text("new = 1\n", encoding="utf-8")
+
+    capture = capture_module.capture_patch(
+        workspace_root=repo_root,
+        compare=(Path("old.py"), Path("new.py")),
+        max_files=50,
+        hard_limit=5000,
+        max_patch_bytes=10_000,
+    )
+
+    with pytest.raises(InputError, match="state path must not contain symlinks"):
+        capture_module.write_input_artifacts(capture)
+
+    assert outside_audit.read_text(encoding="utf-8") == "outside\n"
+
+
 @pytest.mark.skipif(
     not hasattr(os, "symlink") or not hasattr(os, "O_NOFOLLOW"),
     reason="requires POSIX symlink no-follow support",
@@ -1388,6 +1890,79 @@ def test_read_regular_file_no_follow_bounded_rejects_symlink_without_o_nofollow(
     with pytest.raises(InputError, match="compare input file must not be a symlink"):
         capture_module._read_regular_file_no_follow_bounded(  # pyright: ignore[reportPrivateUsage]
             symlink_file,
+            max_bytes=128,
+            total_budget_bytes=128,
+        )
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "symlink") or not hasattr(os, "O_NOFOLLOW"),
+    reason="requires POSIX symlink no-follow support",
+)
+def test_read_regular_file_no_follow_bounded_rejects_lstat_open_symlink_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target_file = tmp_path / "target.py"
+    outside_file = tmp_path / "outside.py"
+    target_file.write_text("value = 1\n", encoding="utf-8")
+    outside_file.write_text("outside = 1\n", encoding="utf-8")
+    original_open = capture_module.os.open
+    swapped = False
+
+    def swapping_open(
+        path: str,
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        if Path(path) == target_file and not swapped:
+            swapped = True
+            target_file.unlink()
+            os.symlink(outside_file, target_file)
+        if dir_fd is None:
+            return original_open(path, flags, mode)
+        return original_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(capture_module.os, "open", swapping_open)
+
+    with pytest.raises(InputError, match="symlink|changed during validation"):
+        capture_module._read_regular_file_no_follow_bounded(  # pyright: ignore[reportPrivateUsage]
+            target_file,
+            max_bytes=128,
+            total_budget_bytes=128,
+        )
+
+    assert swapped is True
+
+
+def test_read_regular_file_no_follow_bounded_rejects_windows_reparse_point(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target_file = tmp_path / "junction.txt"
+    target_file.write_text("value = 1\n", encoding="utf-8")
+    original_lstat = capture_module.os.lstat
+    reparse_flag = cast("int", capture_module._FILE_ATTRIBUTE_REPARSE_POINT)  # pyright: ignore[reportPrivateUsage]
+
+    def fake_lstat(path: object) -> object:
+        path_arg = cast("Any", path)
+        path_stat = original_lstat(path_arg)
+        if Path(path_arg) == target_file:
+            return type(
+                "FakeStat",
+                (),
+                {"st_mode": path_stat.st_mode, "st_file_attributes": reparse_flag},
+            )()
+        return path_stat
+
+    monkeypatch.setattr(capture_module.os, "lstat", fake_lstat)
+
+    with pytest.raises(InputError, match="reparse point"):
+        capture_module._read_regular_file_no_follow_bounded(  # pyright: ignore[reportPrivateUsage]
+            target_file,
             max_bytes=128,
             total_budget_bytes=128,
         )
@@ -1507,6 +2082,131 @@ def test_git_diff_capture_respects_max_patch_bytes(tmp_path: Path) -> None:
             hard_limit=5000,
             max_patch_bytes=128,
         )
+
+
+def test_git_text_map_resolution_respects_max_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    for index in range(3):
+        (repo_root / f"file_{index}.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+    for index in range(3):
+        (repo_root / f"file_{index}.py").write_text("value = 2\n", encoding="utf-8")
+    head_sha = _commit_all(repo_root, "change")
+    seen_paths: list[tuple[str, ...]] = []
+
+    def fake_resolve_git_files(
+        repo_root_arg: Path,
+        revision: str,
+        paths: list[str],
+        *,
+        max_file_bytes: int,
+    ) -> dict[str, str]:
+        del repo_root_arg, revision, max_file_bytes
+        seen_paths.append(tuple(paths))
+        return {}
+
+    monkeypatch.setattr(capture_module, "_resolve_git_files", fake_resolve_git_files)
+
+    capture_module.capture_patch(
+        workspace_root=repo_root,
+        revision=head_sha,
+        max_files=1,
+        hard_limit=5000,
+        max_patch_bytes=10_000,
+    )
+
+    assert seen_paths
+    assert all(len(paths) <= 1 for paths in seen_paths)
+
+
+def test_git_patch_streaming_uses_quote_path_false(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen_command: list[str] = []
+
+    class FakeProcess:
+        stdout = io.BytesIO(b"")
+
+        def __enter__(self) -> FakeProcess:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            del exc_type, exc, tb
+
+        def wait(self, timeout: float | None = None) -> int:
+            del timeout
+            return 0
+
+        def kill(self) -> None:
+            raise AssertionError("process should not be killed")
+
+    def fake_popen(command: list[str], **kwargs: object) -> FakeProcess:
+        del kwargs
+        seen_command.extend(command)
+        return FakeProcess()
+
+    monkeypatch.setattr(capture_module.subprocess, "Popen", fake_popen)
+
+    result = cast("Any", capture_module)._run_git_patch_text(  # pyright: ignore[reportPrivateUsage]
+        tmp_path,
+        "show",
+        "--format=",
+        "HEAD",
+        max_patch_bytes=1024,
+    )
+
+    assert result == ""
+    assert seen_command[:4] == ["git", "-c", "core.quotePath=false", "-C"]
+
+
+def test_git_patch_streaming_kills_process_when_output_exceeds_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeProcess:
+        stdout = io.BytesIO(b"a" * 129)
+        killed = False
+        waited = False
+
+        def __enter__(self) -> FakeProcess:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            del exc_type, exc, tb
+
+        def wait(self, timeout: float | None = None) -> int:
+            del timeout
+            self.waited = True
+            return 0
+
+        def kill(self) -> None:
+            self.killed = True
+
+    fake_process = FakeProcess()
+
+    def fake_popen(command: list[str], **kwargs: object) -> FakeProcess:
+        del command, kwargs
+        return fake_process
+
+    monkeypatch.setattr(capture_module.subprocess, "Popen", fake_popen)
+
+    with pytest.raises(InputError, match="git patch exceeds 128 bytes"):
+        cast("Any", capture_module)._run_git_patch_text(  # pyright: ignore[reportPrivateUsage]
+            tmp_path,
+            "show",
+            "--format=",
+            "HEAD",
+            max_patch_bytes=128,
+        )
+
+    assert fake_process.killed is True
+    assert fake_process.waited is True
 
 
 def test_capture_patch_accepts_unresolved_workspace_root_for_patch_and_compare(
@@ -1843,7 +2543,23 @@ def test_repo_write_lock_rejects_symlink_before_acquire(tmp_path: Path) -> None:
     assert target.read_text(encoding="utf-8") == "keep-me\n"
 
 
-def test_resolve_git_files_batches_cat_file_requests(
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlink support")
+def test_atomic_write_text_uses_unpredictable_tmp_name(tmp_path: Path) -> None:
+    target = tmp_path / "artifact.txt"
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside\n", encoding="utf-8")
+    predictable_tmp = target.with_name(f"{target.name}.tmp")
+    os.symlink(outside, predictable_tmp)
+
+    atomic_write_text = cast("Any", capture_module._atomic_write_text)  # pyright: ignore[reportPrivateUsage]
+    atomic_write_text(target, "safe\n")
+
+    assert target.read_text(encoding="utf-8") == "safe\n"
+    assert outside.read_text(encoding="utf-8") == "outside\n"
+    assert predictable_tmp.is_symlink()
+
+
+def test_resolve_git_files_uses_bounded_serial_show(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -1864,48 +2580,90 @@ def test_resolve_git_files_batches_cat_file_requests(
     monkeypatch.setattr(capture_module, "run_git_bytes", wrapped)
     resolve_git_files = cast("Any", capture_module._resolve_git_files)  # pyright: ignore[reportPrivateUsage]
 
-    resolved = resolve_git_files(repo_root, revision, ["one.py", "two.py"])
+    resolved = resolve_git_files(repo_root, revision, ["one.py", "two.py"], max_file_bytes=1024)
 
     assert resolved == {"one.py": "a = 1\n", "two.py": "b = 2\r"}
-    assert len(calls) == 1
-    assert calls[0][0] == ("cat-file", "--batch")
-    assert calls[0][1] == f"{revision}:one.py\n{revision}:two.py\n".encode()
+    assert [call[0][0] for call in calls] == ["show", "show"]
+    assert calls[0][1] is None
+    assert calls[1][1] is None
 
 
-def test_resolve_git_files_falls_back_to_serial_show_on_batch_failure(
+def test_resolve_git_files_skips_oversize_blob_before_show(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _init_repo(repo_root)
-    (repo_root / "one.py").write_text("a = 1\n", encoding="utf-8")
-    (repo_root / "two.py").write_text("b = 2\n", encoding="utf-8")
+    (repo_root / "big.py").write_text("x" * 200, encoding="utf-8")
     revision = _commit_all(repo_root, "base")
 
-    original = capture_module.run_git_bytes
-    batch_calls = 0
     show_calls = 0
 
     def wrapped(repo_root_arg: Path, *args: str, input_bytes: bytes | None = None) -> Any:
-        nonlocal batch_calls, show_calls
-        if args == ("cat-file", "--batch"):
-            batch_calls += 1
-            return subprocess.CompletedProcess(
-                ["git", "-C", str(repo_root_arg), *args],
-                1,
-                stdout=b"",
-                stderr=b"boom",
-            )
+        nonlocal show_calls
+        del repo_root_arg, input_bytes
         if args and args[0] == "show":
             show_calls += 1
-        return original(repo_root_arg, *args, input_bytes=input_bytes)
+        return subprocess.CompletedProcess(["git", *args], 0, stdout=b"", stderr=b"")
 
     monkeypatch.setattr(capture_module, "run_git_bytes", wrapped)
     resolve_git_files = cast("Any", capture_module._resolve_git_files)  # pyright: ignore[reportPrivateUsage]
 
-    resolved = resolve_git_files(repo_root, revision, ["one.py", "two.py"])
+    resolved = resolve_git_files(repo_root, revision, ["big.py"], max_file_bytes=128)
 
-    assert resolved == {"one.py": "a = 1\n", "two.py": "b = 2\n"}
-    assert batch_calls == 1
-    assert show_calls == 2
+    assert resolved == {}
+    assert show_calls == 0
+
+
+def test_compare_dir_patch_exceeds_byte_budget_stops_early(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    old_dir = workspace_root / "old"
+    new_dir = workspace_root / "new"
+    old_dir.mkdir(parents=True)
+    new_dir.mkdir(parents=True)
+    for i in range(20):
+        (old_dir / f"file{i:03d}.txt").write_text(f"old {i}\n", encoding="utf-8")
+        (new_dir / f"file{i:03d}.txt").write_text(f"new {i}\n", encoding="utf-8")
+
+    with pytest.raises(InputError, match="compare-dir patch exceeds"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            compare_dir=(Path("old"), Path("new")),
+            max_patch_bytes=500,
+        )
+
+
+# --- F1 regression: run_git / run_git_bytes timeout ---
+
+
+def test_run_git_timeout_raises_input_error(tmp_path: Path) -> None:
+    """run_git raises InputError on subprocess timeout."""
+    import subprocess as _subprocess
+    from unittest.mock import patch as _patch
+
+    with (
+        _patch.object(
+            _subprocess,
+            "run",
+            side_effect=_subprocess.TimeoutExpired(cmd=["git"], timeout=1),
+        ),
+        pytest.raises(InputError, match="timed out"),
+    ):
+        repo_module.run_git(tmp_path, "status", timeout=1)
+
+
+def test_run_git_bytes_timeout_raises_input_error(tmp_path: Path) -> None:
+    """run_git_bytes raises InputError on subprocess timeout."""
+    import subprocess as _subprocess
+    from unittest.mock import patch as _patch
+
+    with (
+        _patch.object(
+            _subprocess,
+            "run",
+            side_effect=_subprocess.TimeoutExpired(cmd=["git"], timeout=1),
+        ),
+        pytest.raises(InputError, match="timed out"),
+    ):
+        repo_module.run_git_bytes(tmp_path, "status", timeout=1)

@@ -38,6 +38,12 @@ export default function Sidebar() {
       disabled: !runId,
     },
     { to: '/concepts', icon: '◈', labelKey: 'Shell.concept_graph' },
+    { to: '/review', icon: '♻', labelKey: 'Review.title' },
+    { to: '/ratchet', icon: '⚡', labelKey: 'Ratchet.title' },
+    { to: '/skills', icon: '⚙', labelKey: 'Skills.title' },
+    { to: '/settings', icon: '☰', labelKey: 'Settings_page.title' },
+    { to: '/welcome', icon: '★', labelKey: 'Nav.welcome' },
+    { to: '/onboarding', icon: '▶', labelKey: 'Nav.onboarding' },
   ];
 
   return (

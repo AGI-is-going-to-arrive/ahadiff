@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import pathlib as _pathlib
 import threading
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
+    from _thread import LockType as ThreadLock
     from pathlib import Path
+else:
+    Path = _pathlib.Path
+    ThreadLock = Any
 
 
 @dataclass(frozen=True)
@@ -20,7 +25,7 @@ class ServeState:
     port: int = 8765
     write_lock: asyncio.Lock | None = None
     repo_lock_path: Path | None = None
-    thread_write_lock: threading.Lock | None = None
+    thread_write_lock: ThreadLock | None = None
 
     @property
     def runs_dir(self) -> Path:

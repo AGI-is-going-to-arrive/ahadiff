@@ -17,7 +17,16 @@ _RUNNER = CliRunner()
 
 
 def _git(repo_root: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=repo_root, check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", *args],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
 
 
 def _init_git_repo(repo_root: Path) -> None:

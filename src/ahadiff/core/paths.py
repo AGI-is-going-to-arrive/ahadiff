@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import collections.abc as _collections_abc
 import os
 import re
+import stat
 import sys
 import unicodedata
 from dataclasses import dataclass
@@ -12,10 +14,13 @@ from .errors import InputError, StorageError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+else:
+    Mapping = _collections_abc.Mapping
 
 _MACOS_LONG_PATH_WARNING = 180
 _WINDOWS_LONG_PATH_WARNING = 240
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 
 
 @dataclass(frozen=True)
@@ -61,6 +66,9 @@ def is_wsl2_mnt(
         return False
     normalized = _normalized_path_text(path)
     if not normalized.startswith("/mnt/") or normalized == "/mnt/":
+        return False
+    mount_name = normalized.removeprefix("/mnt/").split("/", 1)[0]
+    if len(mount_name) != 1 or not ("a" <= mount_name <= "z"):
         return False
     env_map = os.environ if env is None else env
     return bool(
@@ -175,7 +183,62 @@ def global_config_dir(*, platform: str | None = None, env: Mapping[str, str] | N
 def project_state_dir(repo_root: Path | None = None) -> Path:
     root = find_repo_root(repo_root)
     assert_local_repo_path(root)
-    return root / ".ahadiff"
+    return validate_state_dir_path(root / ".ahadiff")
+
+
+def validate_state_dir_path(state_dir: Path) -> Path:
+    try:
+        state_stat = state_dir.lstat()
+    except FileNotFoundError:
+        return state_dir
+    except OSError as exc:
+        raise StorageError(f"state dir is unreadable: {state_dir}") from exc
+    if stat.S_ISLNK(state_stat.st_mode):
+        raise InputError("state dir must not be a symlink")
+    if _has_windows_reparse_point(state_stat):
+        raise InputError("state dir must not be a Windows reparse point or junction")
+    if not stat.S_ISDIR(state_stat.st_mode):
+        raise InputError("state dir must be a directory")
+    return state_dir
+
+
+def validate_state_path_no_symlinks(path: Path, *, allow_missing_leaf: bool = True) -> Path:
+    absolute_path = path if path.is_absolute() else path.absolute()
+    anchor = absolute_path.anchor
+    if not anchor:
+        raise InputError("state path must be absolute")
+    cursor = Path(anchor)
+    parts = absolute_path.parts[1:]
+    for index, part in enumerate(parts):
+        cursor = cursor / part
+        is_leaf = index == len(parts) - 1
+        try:
+            path_stat = cursor.lstat()
+        except FileNotFoundError:
+            if allow_missing_leaf or not is_leaf:
+                return path
+            raise InputError(f"state path does not exist: {path}") from None
+        except OSError as exc:
+            raise StorageError(f"state path is unreadable: {cursor}") from exc
+        if stat.S_ISLNK(path_stat.st_mode):
+            raise InputError("state path must not contain symlinks")
+        if _has_windows_reparse_point(path_stat):
+            raise InputError("state path must not contain Windows reparse points or junctions")
+        if not is_leaf and not stat.S_ISDIR(path_stat.st_mode):
+            raise InputError("state path parent must be a directory")
+    return path
+
+
+def ensure_state_parent_dir(path: Path) -> Path:
+    parent = path.parent
+    validate_state_path_no_symlinks(parent, allow_missing_leaf=True)
+    parent.mkdir(parents=True, exist_ok=True)
+    validate_state_path_no_symlinks(parent, allow_missing_leaf=False)
+    return parent
+
+
+def _has_windows_reparse_point(path_stat: object) -> bool:
+    return bool(getattr(path_stat, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT)
 
 
 def repo_config_path(repo_root: Path | None = None) -> Path:
@@ -215,6 +278,7 @@ def lock_file_path(repo_root: Path | None = None) -> Path:
 __all__ = [
     "PathWarning",
     "audit_log_path",
+    "ensure_state_parent_dir",
     "assert_local_repo_path",
     "find_repo_root",
     "find_workspace_root",
@@ -230,4 +294,6 @@ __all__ = [
     "review_db_path",
     "run_dir",
     "usage_db_path",
+    "validate_state_path_no_symlinks",
+    "validate_state_dir_path",
 ]

@@ -4,8 +4,9 @@ import base64
 import gzip
 import json
 import multiprocessing as mp
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+from ahadiff.safety import audit as audit_module
 from ahadiff.safety import redact as redact_module
 from ahadiff.safety.audit import append_audit_record, build_redaction_audit_record
 from ahadiff.safety.ignore import AllowlistPolicy
@@ -172,6 +173,32 @@ def test_audit_record_rotates_when_size_threshold_is_exceeded(tmp_path: Path) ->
     assert not (tmp_path / "audit.jsonl.rotation-src").exists()
 
 
+def test_audit_rotation_copies_snapshot_without_path_open(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    audit_path = tmp_path / "audit.jsonl"
+    audit_path.write_text('{"event_id":"old"}\n', encoding="utf-8")
+
+    def fail_path_open(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise AssertionError("rotation source must be copied through fd-based open")
+
+    monkeypatch.setattr(audit_module.Path, "open", fail_path_open)
+
+    append_audit_record(
+        audit_path,
+        {"event_id": "new"},
+        rotate_bytes=1,
+        max_backups=1,
+    )
+
+    monkeypatch.undo()
+    with gzip.open(tmp_path / "audit.1.jsonl.gz", "rt", encoding="utf-8") as handle:
+        assert handle.read() == '{"event_id":"old"}\n'
+    assert '"event_id": "new"' in audit_path.read_text(encoding="utf-8")
+
+
 def test_audit_record_rotation_is_stable_under_multiprocess_contention(tmp_path: Path) -> None:
     result = redaction_pipeline(
         'API_KEY = "sk-abcdefghijklmnopqrstuvwxyz123456"',
@@ -205,3 +232,151 @@ def test_audit_record_rotation_is_stable_under_multiprocess_contention(tmp_path:
 
     assert len(event_ids) == process_count
     assert not (tmp_path / "audit.jsonl.rotation-src").exists()
+
+
+def test_audit_gzip_copy_uses_chunked_read(tmp_path: Path, monkeypatch: Any) -> None:
+    audit_path = tmp_path / "audit.jsonl"
+    content = '{"event_id":"test"}\n' * 100
+    audit_path.write_text(content, encoding="utf-8")
+
+    append_audit_record(audit_path, {"event_id": "new"}, rotate_bytes=1, max_backups=1)
+
+    rotated = tmp_path / "audit.1.jsonl.gz"
+    assert rotated.exists()
+    with gzip.open(rotated, "rt", encoding="utf-8") as handle:
+        assert handle.read() == content
+
+
+def test_audit_lock_rejects_symlink_swap_during_acquire(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    import os
+    from pathlib import Path
+
+    import pytest
+
+    from ahadiff.core.errors import InputError
+
+    if not hasattr(os, "symlink") or not hasattr(os, "O_NOFOLLOW"):
+        pytest.skip("requires POSIX symlink no-follow support")
+
+    audit_path = tmp_path / "audit.jsonl"
+    lock_path = tmp_path / "audit.jsonl.lock"
+    outside_lock = tmp_path / "outside.lock"
+    outside_lock.write_text("outside\n", encoding="utf-8")
+    original_open = audit_module.os.open
+    swapped = False
+
+    def swapping_open(
+        path: str,
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        if Path(path) == lock_path and not swapped:
+            swapped = True
+            audit_module.os.symlink(outside_lock, lock_path)
+        if dir_fd is None:
+            return original_open(path, flags, mode)
+        return original_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(audit_module.os, "open", swapping_open)
+
+    with pytest.raises(InputError, match="symlink"):
+        append_audit_record(audit_path, {"event_id": "evt-swap"})
+
+    assert swapped is True
+    assert outside_lock.read_text(encoding="utf-8") == "outside\n"
+
+
+def test_ensure_state_parent_dir_creates_directory(tmp_path: Path) -> None:
+    from ahadiff.core.paths import ensure_state_parent_dir
+
+    deep_path = tmp_path / "a" / "b" / "c" / "file.txt"
+    result = ensure_state_parent_dir(deep_path)
+    assert result == deep_path.parent
+    assert deep_path.parent.is_dir()
+
+
+def test_ensure_state_parent_dir_rejects_symlink_parent(tmp_path: Path) -> None:
+    import os
+    import sys
+
+    if sys.platform.startswith("win"):
+        import pytest
+
+        pytest.skip("symlink test requires Unix")
+
+    real_dir = tmp_path / "real"
+    real_dir.mkdir()
+    link = tmp_path / "link"
+    os.symlink(str(real_dir), str(link))
+
+    import pytest
+
+    from ahadiff.core.errors import InputError
+    from ahadiff.core.paths import ensure_state_parent_dir
+
+    with pytest.raises(InputError, match="symlinks"):
+        ensure_state_parent_dir(link / "file.txt")
+
+
+def test_validate_state_path_rejects_intermediate_symlink(tmp_path: Path) -> None:
+    import os
+    import sys
+
+    if sys.platform.startswith("win"):
+        import pytest
+
+        pytest.skip("symlink test requires Unix")
+
+    real_dir = tmp_path / "real"
+    real_dir.mkdir()
+    (real_dir / "child").mkdir()
+    link = tmp_path / "link"
+    os.symlink(str(real_dir), str(link))
+
+    import pytest
+
+    from ahadiff.core.errors import InputError
+    from ahadiff.core.paths import validate_state_path_no_symlinks
+
+    with pytest.raises(InputError, match="symlinks"):
+        validate_state_path_no_symlinks(link / "child", allow_missing_leaf=False)
+
+
+def test_open_state_file_rejects_symlink_target(tmp_path: Path) -> None:
+    import os
+    import sys
+
+    if sys.platform.startswith("win"):
+        import pytest
+
+        pytest.skip("symlink test requires Unix")
+
+    real_file = tmp_path / "real.txt"
+    real_file.write_text("data", encoding="utf-8")
+    link = tmp_path / "link.txt"
+    os.symlink(str(real_file), str(link))
+
+    import pytest
+
+    from ahadiff.core.errors import InputError
+    from ahadiff.safety.audit import (
+        _open_state_file_no_follow,  # pyright: ignore[reportPrivateUsage]
+    )
+
+    with pytest.raises(InputError, match="symlinks"):
+        _open_state_file_no_follow(link, os.O_RDONLY)
+
+
+def test_touch_no_follow_creates_file(tmp_path: Path) -> None:
+    from ahadiff.safety.audit import _touch_no_follow  # pyright: ignore[reportPrivateUsage]
+
+    target = tmp_path / "touched.txt"
+    assert not target.exists()
+    _touch_no_follow(target)
+    assert target.exists()

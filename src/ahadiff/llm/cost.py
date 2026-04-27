@@ -28,6 +28,7 @@ DEFAULT_OUTPUT_TOKEN_BUDGET = 50_000
 DEFAULT_CONTEXT_WINDOW = 128_000
 DEFAULT_OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 DEFAULT_OPENROUTER_REFRESH_SECONDS = 3600
+_MAX_RETRY_AFTER_SECONDS = 300.0
 _DEV_CONTEXT_WINDOWS = {
     "gpt-5.4-mini": 1_000_000,
 }
@@ -166,13 +167,18 @@ def parse_retry_after(headers: Mapping[str, str]) -> float | None:
         return None
     try:
         value = float(raw_value)
-        return value if value > 0.0 else None
+        if not math.isfinite(value) or value <= 0.0:
+            return None
+        return min(value, _MAX_RETRY_AFTER_SECONDS)
     except ValueError:
         try:
             parsed = parsedate_to_datetime(raw_value)
         except (TypeError, ValueError):
             return None
-        return max(0.0, parsed.timestamp() - datetime.now(tz=parsed.tzinfo).timestamp())
+        delta = max(0.0, parsed.timestamp() - datetime.now(tz=parsed.tzinfo).timestamp())
+        if not math.isfinite(delta):
+            return None
+        return min(delta, _MAX_RETRY_AFTER_SECONDS)
 
 
 def estimate_cost_usd(
@@ -269,6 +275,7 @@ def fetch_openrouter_pricing_catalog(
     client: httpx.Client | None = None,
     now: Callable[[], float] = time.time,
 ) -> dict[str, PricingEntry]:
+    _validate_openrouter_models_url(models_url)
     current_time = now()
     with _OPENROUTER_PRICING_LOCK:
         cached = _OPENROUTER_PRICING_CACHE.get(models_url)
@@ -291,6 +298,14 @@ def fetch_openrouter_pricing_catalog(
     with _OPENROUTER_PRICING_LOCK:
         _OPENROUTER_PRICING_CACHE[models_url] = (current_time, catalog)
     return dict(catalog)
+
+
+def _validate_openrouter_models_url(models_url: str) -> None:
+    parsed = urlparse(models_url)
+    if parsed.scheme != "https":
+        raise ProviderError("OpenRouter pricing URL must use https")
+    if parsed.hostname != "openrouter.ai":
+        raise ProviderError("OpenRouter pricing URL host must be openrouter.ai")
 
 
 def reset_openrouter_pricing_cache() -> None:

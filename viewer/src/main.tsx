@@ -5,6 +5,7 @@ import './styles/base.css';
 import './styles/print.css';
 import './styles/forced-colors.css';
 import './styles/reduced-transparency.css';
+import './styles/utility.css';
 import './i18n/bootstrap';
 import App from './App';
 

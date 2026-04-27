@@ -84,7 +84,7 @@ export default function QuizPage() {
         // copy is rendered via t('Error.fetch_failed', {...}) below.
         setError('fetch_failed');
         // eslint-disable-next-line no-console
-        console.error('[QuizPage] fetch error:', err);
+        if (import.meta.env.DEV) console.error('[QuizPage] fetch error:', err);
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);

@@ -20,6 +20,7 @@ else:
     Path = _pathlib.Path
 
 RATCHETABLE_SOURCE_KINDS = frozenset({"git_ref", "git_since"})
+_MAX_FINALIZED_MARKER_BYTES = 64 * 1024
 
 
 @dataclass(frozen=True)
@@ -86,6 +87,8 @@ def select_baseline_event(
         if event.status not in RATCHET_COUNTED_STATUSES:
             continue
         if allowed_event_types is not None and event.event_type not in allowed_event_types:
+            continue
+        if not _event_has_matching_finalized_marker(workspace_root, event):
             continue
         if _event_has_degraded_flags(event):
             continue
@@ -160,6 +163,29 @@ def _event_has_degraded_flags(event: ResultEvent) -> bool:
         return False
     degraded_flag_map = cast("dict[str, object]", degraded_flags)
     return any(bool(value) for value in degraded_flag_map.values())
+
+
+def _event_has_matching_finalized_marker(workspace_root: Path, event: ResultEvent) -> bool:
+    if not event.run_id or ".." in event.run_id or "/" in event.run_id or "\\" in event.run_id:
+        return False
+    marker_path = workspace_root / ".ahadiff" / "runs" / event.run_id / "finalized.json"
+    try:
+        with marker_path.open("rb") as handle:
+            marker_bytes = handle.read(_MAX_FINALIZED_MARKER_BYTES + 1)
+    except OSError:
+        return False
+    if len(marker_bytes) > _MAX_FINALIZED_MARKER_BYTES:
+        return False
+    try:
+        marker = json.loads(marker_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    if not isinstance(marker, dict):
+        return False
+    marker_payload = cast("dict[str, object]", marker)
+    if str(marker_payload.get("event_id", "")) != event.event_id:
+        return False
+    return str(marker_payload.get("run_id", "")) == event.run_id
 
 
 def _looks_like_commitish(value: str) -> bool:
