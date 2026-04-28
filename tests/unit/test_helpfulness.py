@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
+from ahadiff.contracts import HelpfulnessRequest
 from ahadiff.lesson.helpfulness import aggregate_helpfulness
 from ahadiff.review.database import initialize_review_db, insert_learning_signal, make_uuid7
 
@@ -27,6 +28,27 @@ def _insert_helpfulness(
             "target_id": target_id,
             "payload": payload or {},
         },
+    )
+
+
+def _insert_helpfulness_request(
+    db_path: Path,
+    *,
+    target_kind: Literal["file", "section"] = "file",
+    target_id: str,
+    payload: dict[str, object] | None = None,
+) -> None:
+    body = HelpfulnessRequest(
+        idempotency_key=make_uuid7(),
+        target_kind=target_kind,
+        target_id=target_id,
+        payload=payload or {},
+    )
+    _insert_helpfulness(
+        db_path,
+        target_kind=body.target_kind,
+        target_id=body.target_id,
+        payload=body.payload,
     )
 
 
@@ -76,6 +98,29 @@ def test_aggregate_section_signals(tmp_path: Path) -> None:
     assert len(result) == 1
     assert result[0].target_kind == "section"
     assert result[0].helpfulness_score == 1.0
+
+
+def test_aggregate_section_signals_share_normalized_target_id(tmp_path: Path) -> None:
+    db_path = tmp_path / "review.sqlite"
+    _insert_helpfulness_request(
+        db_path,
+        target_kind="section",
+        target_id="run1:intro",
+        payload={"helpful": True},
+    )
+    _insert_helpfulness_request(
+        db_path,
+        target_kind="section",
+        target_id="  run1  :  intro  ",
+        payload={"helpful": False},
+    )
+
+    result = aggregate_helpfulness(db_path, target_kind="section")
+    assert len(result) == 1
+    assert result[0].target_id == "run1:intro"
+    assert result[0].signal_count == 2
+    assert result[0].positive_count == 1
+    assert result[0].negative_count == 1
 
 
 def test_aggregate_filter_by_target_kind(tmp_path: Path) -> None:

@@ -382,6 +382,116 @@ class TestSerialization:
         assert set(get_args(CardState)) == {"active", "stale", "archived", "suspended"}
 
 
+class TestHelpfulnessRequestContract:
+    def test_file_target_kind_accepts_any_target_id(self) -> None:
+        from ahadiff.contracts.serve_app import HelpfulnessRequest
+
+        req = HelpfulnessRequest(
+            idempotency_key="k1",
+            target_kind="file",
+            target_id="src/main.py",
+        )
+        assert req.target_kind == "file"
+        assert req.target_id == "src/main.py"
+
+    def test_section_target_kind_requires_colon_in_target_id(self) -> None:
+        from ahadiff.contracts.serve_app import HelpfulnessRequest
+
+        req = HelpfulnessRequest(
+            idempotency_key="k2",
+            target_kind="section",
+            target_id="run1:intro",
+        )
+        assert req.target_kind == "section"
+        assert req.target_id == "run1:intro"
+
+        padded = HelpfulnessRequest(
+            idempotency_key="k2-padding",
+            target_kind="section",
+            target_id="  run1  :  intro  ",
+        )
+        assert padded.target_id == "run1:intro"
+
+    def test_section_target_kind_rejects_target_id_without_colon(self) -> None:
+        from ahadiff.contracts.serve_app import HelpfulnessRequest
+
+        with pytest.raises(ValidationError, match="target_id must contain ':'"):
+            HelpfulnessRequest(
+                idempotency_key="k3",
+                target_kind="section",
+                target_id="no_separator",
+            )
+
+    def test_section_target_kind_rejects_fullwidth_colon(self) -> None:
+        from ahadiff.contracts.serve_app import HelpfulnessRequest
+
+        with pytest.raises(ValidationError, match="target_id must contain ':'"):
+            HelpfulnessRequest(
+                idempotency_key="k3-fullwidth",
+                target_kind="section",
+                target_id="run1：intro",
+            )
+
+    def test_section_target_kind_accepts_multiple_colons(self) -> None:
+        from ahadiff.contracts.serve_app import HelpfulnessRequest
+
+        req = HelpfulnessRequest(
+            idempotency_key="k4",
+            target_kind="section",
+            target_id="run1:chapter:subsection",
+        )
+        assert req.target_id == "run1:chapter:subsection"
+
+    def test_default_target_kind_is_file(self) -> None:
+        from ahadiff.contracts.serve_app import HelpfulnessRequest
+
+        req = HelpfulnessRequest(
+            idempotency_key="k5",
+            target_id="src/lib.py",
+        )
+        assert req.target_kind == "file"
+
+    def test_section_rejects_empty_run_id(self) -> None:
+        from ahadiff.contracts.serve_app import HelpfulnessRequest
+
+        with pytest.raises(ValidationError, match="non-empty run_id"):
+            HelpfulnessRequest(
+                idempotency_key="k6",
+                target_kind="section",
+                target_id=":intro",
+            )
+
+    def test_section_rejects_empty_section_name(self) -> None:
+        from ahadiff.contracts.serve_app import HelpfulnessRequest
+
+        with pytest.raises(ValidationError, match="non-empty"):
+            HelpfulnessRequest(
+                idempotency_key="k7",
+                target_kind="section",
+                target_id="run1:",
+            )
+
+    def test_section_rejects_colon_only(self) -> None:
+        from ahadiff.contracts.serve_app import HelpfulnessRequest
+
+        with pytest.raises(ValidationError, match="non-empty"):
+            HelpfulnessRequest(
+                idempotency_key="k8",
+                target_kind="section",
+                target_id=":",
+            )
+
+    def test_section_rejects_whitespace_parts(self) -> None:
+        from ahadiff.contracts.serve_app import HelpfulnessRequest
+
+        with pytest.raises(ValidationError, match="non-empty"):
+            HelpfulnessRequest(
+                idempotency_key="k9",
+                target_kind="section",
+                target_id=" : ",
+            )
+
+
 class TestUtilities:
     def test_eval_bundle_hash_uses_frozen_logical_labels(self, tmp_path: Path) -> None:
         from ahadiff.contracts import EVAL_BUNDLE_FILES, compute_eval_bundle_version

@@ -607,13 +607,13 @@ The JSONL `content` string contains one JSON object per line with fields from `c
 
 **Backend** (`routes_runs.py`):
 ```python
-_SUPPORTED_GRAPHIFY_STATUSES = frozenset({"fresh", "stale", "missing_partial", "missing"})
+_CANONICAL_GRAPHIFY_STATUSES = frozenset({"fresh", "stale", "unavailable", "disabled"})
 ```
 
 **`GraphifyStatus` dataclass** (`git/capture.py`):
 - `source_path`, `imported_path`: File paths to `graphify-out/graph.json` and `.ahadiff/graphify/graph.json`
 - `enabled`, `source_exists`, `imported_exists`, `has_graph`: Boolean flags
-- `freshness: str | None`: Currently only set to `"source_present"` during capture
+- `freshness: str | None`: Capture-time canonical 4-value projection (`fresh` / `stale` / `unavailable` / `disabled`), or `None` when there is no source graph
 - `provenance: dict[str, str]`: Metadata about the Graphify source
 
 **Frontend types** (`api/types.ts`):
@@ -621,7 +621,7 @@ _SUPPORTED_GRAPHIFY_STATUSES = frozenset({"fresh", "stale", "missing_partial", "
 - `RunDetail.graphify_mode`, `RunDetail.graphify_status`, `RunDetail.graphify_notes`
 
 **Frontend display gaps**:
-- The 4-value freshness projection (`fresh` / `stale` / `missing_partial` / `missing`) is defined in the serve backend but **NOT displayed anywhere in the frontend**
+- The canonical 4-value freshness projection (`fresh` / `stale` / `unavailable` / `disabled`) is defined in the serve backend but **NOT displayed anywhere in the frontend**
 - `RunDetail.graphify_status` is available but the DashboardPage and SettingsPage don't show it
 - No visual indicator for Graphify freshness on the ConceptsPage or Dashboard
 
@@ -725,8 +725,8 @@ The current `Concept` interface lacks a **`concept_type`** field needed to deter
 **Dashboard**: Add a Graphify status badge to the Dashboard header or a small card:
 - `fresh`: Green dot + "Graphify: up to date"
 - `stale`: Amber dot + "Graphify: needs refresh" + link to `ahadiff graph refresh`
-- `missing_partial`: Grey dot + "Graphify: partial data"
-- `missing`: No badge (or grey "No Graphify" in Settings only)
+- `unavailable`: Grey dot + "Graphify: unavailable"
+- `disabled`: Muted dot + "Graphify: disabled"
 
 **Settings page** (under a "Graphify" tab or section):
 - Show full Graphify status: enabled/disabled, source path, freshness, provenance

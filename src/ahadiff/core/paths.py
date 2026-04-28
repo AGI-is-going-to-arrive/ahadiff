@@ -132,6 +132,18 @@ def path_identity_key(path: Path) -> str:
     return _normalized_path_text(path).casefold()
 
 
+def workspace_identity_key(path: Path, *, platform: str | None = None) -> str:
+    normalized = _normalized_path_text(path)
+    current_platform = _platform_name(platform)
+    if current_platform.startswith("win"):
+        normalized = normalized.casefold()
+    return f"workspace:v1:{normalized}"
+
+
+def workspace_identity_lookup_keys(path: Path, *, platform: str | None = None) -> tuple[str, str]:
+    return workspace_identity_key(path, platform=platform), path_identity_key(path)
+
+
 def validate_run_id(run_id: str) -> None:
     if not _RUN_ID_RE.fullmatch(run_id) or run_id in {".", ".."}:
         raise InputError(
@@ -296,4 +308,6 @@ __all__ = [
     "usage_db_path",
     "validate_state_path_no_symlinks",
     "validate_state_dir_path",
+    "workspace_identity_key",
+    "workspace_identity_lookup_keys",
 ]

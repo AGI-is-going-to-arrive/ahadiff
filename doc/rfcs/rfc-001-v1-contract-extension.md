@@ -322,30 +322,32 @@ in future RFCs.
 
 ```python
 class HelpfulnessRequest(LearningSignalRequest):
-    target_kind: Literal["file"] = "file"
-    target_id: str
-    payload: dict[str, Any] = Field(default_factory=dict)
-```
-
-### Proposed Change
-
-Expand `target_kind` to include `"section"`:
-
-```python
-class HelpfulnessRequest(LearningSignalRequest):
     target_kind: Literal["file", "section"] = "file"
     target_id: str
-    section_id: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_section_target(self) -> HelpfulnessRequest:
-        if self.target_kind == "section" and not self.section_id:
-            raise ValueError("section_id is required when target_kind is 'section'")
-        if self.target_kind == "file" and self.section_id is not None:
-            raise ValueError("section_id must be None when target_kind is 'file'")
+        if self.target_kind == "section":
+            if ":" not in self.target_id:
+                raise ValueError("target_id must contain ':' when target_kind is 'section'")
+            run_id, section_name = self.target_id.split(":", 1)
+            run_id = run_id.strip()
+            section_name = section_name.strip()
+            if not run_id or not section_name:
+                raise ValueError("target_id must have non-empty run_id and section_name")
+            self.target_id = f"{run_id}:{section_name}"
         return self
 ```
+
+### Final Decision
+
+Keep a single `target_id` field and encode section scope as `{run_id}:{section_name}`.
+
+- No separate `section_id` field was added
+- Existing file-target payloads keep working unchanged
+- Section payloads reuse the same `target_id` field and are normalized to canonical form after validation
+- Fullwidth `：` is rejected; only ASCII `:` is accepted as the separator
 
 ### Aggregation Semantics
 
@@ -356,12 +358,8 @@ class HelpfulnessRequest(LearningSignalRequest):
 ### Backward Compatibility
 
 - Default `target_kind="file"` preserves existing behavior
-- `section_id=None` default preserves existing wire format **only if** serialization
-  uses `exclude_none=True` (or Pydantic's default `model_dump(exclude_none=True)`).
-  All serve route handlers that serialize `HelpfulnessRequest` or its response MUST
-  use `exclude_none=True` to avoid injecting `"section_id": null` into responses that
-  existing frontends do not expect.
-- Existing frontend `helpfulness` signal calls continue to work unchanged
+- Existing frontend `helpfulness` signal calls continue to work unchanged for file targets
+- Section targets are backward-compatible on the wire because they reuse `target_id` instead of adding a new field
 
 ---
 
@@ -468,4 +466,4 @@ contract-freeze §8 rule 3.
 4. MisconceptionCard is a separate DTO, not a ReviewCard extension
 5. Graphify runtime-only posture formally documented
 6. Codex + Claude cross-review PASS
-7. No existing tests regress against the current backend baseline (`881 passed, 1 skipped`)
+7. No existing tests regress against the current backend baseline (`1222 passed, 1 skipped`)

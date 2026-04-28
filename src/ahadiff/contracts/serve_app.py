@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from . import event_log as event_log_contract
 from . import run_source as run_source_contract
@@ -141,6 +141,24 @@ class HelpfulnessRequest(LearningSignalRequest):
     target_kind: Literal["file", "section"] = "file"
     target_id: str
     payload: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _section_target_id_must_contain_separator(self) -> HelpfulnessRequest:
+        if self.target_kind == "section":
+            if ":" not in self.target_id:
+                raise ValueError(
+                    "target_id must contain ':' when target_kind is 'section' "
+                    "(expected format: '{run_id}:{section_name}')"
+                )
+            run_id, section_name = self.target_id.split(":", 1)
+            run_id = run_id.strip()
+            section_name = section_name.strip()
+            if not run_id or not section_name:
+                raise ValueError(
+                    "target_id must have non-empty run_id and section_name on both sides of ':'"
+                )
+            self.target_id = f"{run_id}:{section_name}"
+        return self
 
 
 __all__ = [

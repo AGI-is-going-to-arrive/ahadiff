@@ -228,7 +228,7 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-Latest verification (2026-04-29): `uv run pytest tests -q --tb=long` finished with `1191 passed, 1 skipped`; `uv run ruff check src tests`, `uv run ruff format --check src tests`, `uv run pyright`, and `uv build --wheel` all passed; `pnpm run typecheck`, `pnpm run build` (302.83 KB, 92.67 KB gzip), `pnpm run test:unit`, and `pnpm exec playwright test` (780/780) also passed.
+Latest verification (2026-04-29): `UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pytest tests -q --tb=long` finished with `1222 passed, 1 skipped`; `UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync ruff check src tests`, `UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync ruff format --check src tests`, and `UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pyright` all passed; `pnpm run typecheck`, `pnpm run build` (302.83 KB, 92.67 KB gzip), `pnpm run test:unit`, and `pnpm exec playwright test` (780/780) also passed.
 
 Roadmap:
 

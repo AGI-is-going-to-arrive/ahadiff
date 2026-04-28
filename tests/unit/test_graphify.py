@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any
+import subprocess
+from pathlib import Path
+from typing import Any
 
 import pytest
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
 from ahadiff.core.errors import InputError
+from ahadiff.git.repo import GitRepo
 from ahadiff.graphify import (
     FreshnessState,
     compute_freshness,
@@ -266,3 +266,161 @@ class TestProjectFreshness:
         for state in FreshnessState:
             result = project_freshness(state)
             assert result in ("fresh", "stale", "unavailable", "disabled")
+
+
+# ---------------------------------------------------------------------------
+# detect_graphify_status — freshness wiring
+# ---------------------------------------------------------------------------
+
+
+class TestDetectGraphifyStatusFreshness:
+    @staticmethod
+    def _repo(tmp_path: Path) -> GitRepo:
+        return GitRepo(
+            root=tmp_path,
+            head_sha="head-sha",
+            head_short_sha="head",
+            head_detached=False,
+            current_branch="main",
+        )
+
+    @staticmethod
+    def _write_source(tmp_path: Path) -> None:
+        graph_dir = tmp_path / "graphify-out"
+        graph_dir.mkdir()
+        (graph_dir / "graph.json").write_text("{}", encoding="utf-8")
+
+    def test_no_source_returns_none(self, tmp_path: Path) -> None:
+        from ahadiff.git.capture import detect_graphify_status
+
+        status = detect_graphify_status(tmp_path, use_graphify=None)
+        assert status.freshness is None
+        assert status.source_exists is False
+
+    def test_source_present_no_repo_returns_stale(self, tmp_path: Path) -> None:
+        from ahadiff.git.capture import detect_graphify_status
+
+        self._write_source(tmp_path)
+        status = detect_graphify_status(tmp_path, use_graphify=None, repo=None)
+        assert status.freshness == "stale"
+        assert status.source_exists is True
+        assert status.enabled is True
+
+    def test_disabled_with_source_returns_disabled(self, tmp_path: Path) -> None:
+        from ahadiff.git.capture import detect_graphify_status
+
+        self._write_source(tmp_path)
+        status = detect_graphify_status(tmp_path, use_graphify=False, repo=None)
+        assert status.freshness == "disabled"
+        assert status.enabled is False
+
+    def test_freshness_is_projected_value(self, tmp_path: Path) -> None:
+        from ahadiff.git.capture import detect_graphify_status
+
+        self._write_source(tmp_path)
+        status = detect_graphify_status(tmp_path, use_graphify=None, repo=None)
+        assert status.freshness in {"fresh", "stale", "unavailable", "disabled"}
+
+    def test_git_timeout_degrades_to_stale(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from ahadiff.git import capture as capture_module
+
+        def timeout_run_git(
+            _repo_root: Path,
+            *_args: str,
+            **_kwargs: object,
+        ) -> subprocess.CompletedProcess[str]:
+            raise InputError("git command timed out after 1s: log")
+
+        self._write_source(tmp_path)
+        monkeypatch.setattr(capture_module, "run_git", timeout_run_git)
+
+        status = capture_module.detect_graphify_status(
+            tmp_path,
+            use_graphify=None,
+            repo=self._repo(tmp_path),
+        )
+
+        assert status.freshness == "stale"
+
+    @pytest.mark.parametrize("count_stdout", ["not-an-int\n", ""])
+    def test_invalid_commit_count_stdout_degrades_to_stale(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        count_stdout: str,
+    ) -> None:
+        from ahadiff.git import capture as capture_module
+
+        calls: list[tuple[str, ...]] = []
+
+        def fake_run_git(
+            _repo_root: Path,
+            *args: str,
+            **_kwargs: object,
+        ) -> subprocess.CompletedProcess[str]:
+            calls.append(args)
+            if args[:3] == ("log", "-1", "--format=%H"):
+                return subprocess.CompletedProcess(["git", *args], 0, stdout="graph-sha\n")
+            if args[:2] == ("rev-list", "--count"):
+                return subprocess.CompletedProcess(["git", *args], 0, stdout=count_stdout)
+            raise AssertionError(f"unexpected git args: {args!r}")
+
+        self._write_source(tmp_path)
+        monkeypatch.setattr(capture_module, "run_git", fake_run_git)
+
+        status = capture_module.detect_graphify_status(
+            tmp_path,
+            use_graphify=None,
+            repo=self._repo(tmp_path),
+        )
+
+        assert status.freshness == "stale"
+        assert any("--max-count=51" in call for call in calls)
+
+    def test_graphify_log_pathspec_uses_forward_slashes(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from ahadiff.git import capture as capture_module
+
+        calls: list[tuple[str, ...]] = []
+
+        def fake_run_git(
+            _repo_root: Path,
+            *args: str,
+            **_kwargs: object,
+        ) -> subprocess.CompletedProcess[str]:
+            calls.append(args)
+            return subprocess.CompletedProcess(["git", *args], 0, stdout="")
+
+        monkeypatch.setattr(capture_module, "run_git", fake_run_git)
+        monkeypatch.setattr(
+            capture_module,
+            "_GRAPHIFY_RELATIVE_PATH",
+            Path("graphify-out\\graph.json"),
+        )
+
+        freshness = capture_module._resolve_graphify_freshness(  # pyright: ignore[reportPrivateUsage]
+            tmp_path,
+            repo=self._repo(tmp_path),
+            source_exists=True,
+            enabled=True,
+        )
+
+        assert freshness == "stale"
+        assert calls[0][-1] == "graphify-out/graph.json"
+
+
+def test_project_graphify_maps_legacy_missing_to_canonical_unavailable() -> None:
+    from ahadiff.serve import routes_runs as routes_runs_module
+
+    projection = routes_runs_module._project_graphify(  # pyright: ignore[reportPrivateUsage]
+        {"graphify": {"status": "missing"}}
+    )
+
+    assert projection[1] == "unavailable"

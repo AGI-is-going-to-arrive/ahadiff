@@ -631,3 +631,156 @@ PY
 2. 重新跑 Codex + Claude 交叉审查
 3. 若影响前端契约，再加 Gemini gate
 4. 若影响 evaluation bundle 语义，必须连带 bump `eval_bundle_version`
+
+---
+
+## 9. v1.0 Contract Extension — 0G 合同边界收口（2026-04-29）
+
+以下扩展基于 Phase 0G 合同边界收口裁决，适用于 v1.0 后续开发。所有决策经代码验证 + 测试确认。
+
+### 9.1 HelpfulnessRequest `section_id` 约束
+
+**裁决**：不引入独立 `section_id` 字段。`target_id` 双用：
+
+- `target_kind="file"` 时：文件路径（如 `src/main.py`），无格式约束
+- `target_kind="section"` 时：格式 `{run_id}:{section_name}`，**必须包含 ASCII `:`，且冒号两侧 strip 后均非空**
+- 服务端会在校验通过后把该字段规范化为 canonical 形式 `{run_id}:{section_name}`（去掉分隔符两侧 padding）
+
+**实现**：`contracts/serve_app.py` 的 `HelpfulnessRequest` 已添加 `model_validator(mode="after")`，在 `target_kind="section"` 时校验 `target_id` 含 `:`。
+
+**理由**：`target_id` 已在生产代码和测试中以 `run_id:section_name` 格式使用（如 `test_helpfulness.py` 中 `"run1:intro"`）。添加独立字段会创建冗余且破坏现有接口。
+
+### 9.2 MisconceptionCard 继续 artifact-only
+
+**裁决**：`MisconceptionCard` 保持 `quiz/misconception.py` 中的 frozen dataclass，不升级到 `contracts/` Pydantic DTO、不引入 SQLite 表、不新增跨 run 聚合。
+
+**冻结 artifact schema**：
+
+```
+card_id: str
+concept: str
+misconception: str
+correction: str
+evidence_ref: str
+severity: "low" | "medium" | "high"
+safety_tags: tuple[str, ...]
+run_id: str
+```
+
+**存储**：`misconception_cards.jsonl`（per-run artifact，位于 `.ahadiff/runs/<run_id>/quiz/`）
+
+**Serve 路由**：`GET /api/run/{run_id}/misconceptions` → 通过 `RunArtifactEnvelope` 返回原始 JSONL 文本（pass-through，schema 仅在写入端由 `parse_misconception_cards()` 校验；读接口不重复校验，避免拒绝旧版本产物）
+
+**理由**：misconception cards 是生成时写入、运行时只读的 per-run 产物。当前不需要 SRS 调度或跨 run 聚合。若未来需要跨 run misconception 趋势分析，再升级为 SQLite + contract DTO。
+
+### 9.3 Graphify runtime-only 边界确认
+
+**裁决**：Graphify 保持 runtime-only 检测。
+
+- 不引入 `[graph]` pip extras 或编译时依赖
+- 所有 Graphify 相关 import 必须是运行时 lazy import，不得出现在模块顶层
+- `detect_graphify_status()` 的 `"source_present"` 硬编码已在 §9.6（Phase 3E）中修复，现在通过 `compute_freshness()` 计算真实 4 值投影
+- contract-freeze §6 已有的 CLI surface（`--use-graphify` / `--no-graphify` / `ahadiff graph *`）和前端三态（`full` / `learning_only` / `empty`）继续有效
+
+### 9.4 v0.2→v1.0 Serve 端点扩展冻结
+
+以下端点是 v0.2 及当前分支已实现的新增端点，补入冻结清单（§4.2 原有端点不变）：
+
+- `GET /api/run/{run_id}/misconceptions` — misconception cards artifact
+- `GET /api/search` — FTS5 全文搜索
+- `GET /api/usage` — LLM 用量汇总
+- `GET /api/audit` — 审计日志查询
+- `GET /api/review/mastery` — SRS 掌握度
+- `GET /api/concepts/weak` — 薄弱概念
+- `GET /api/spec/alignment` — spec 对齐度
+- `GET /api/stats/learning` — 学习效能（helpfulness + transfer）
+- `GET /api/stats` — 总览统计
+- `GET /api/review/heatmap` — 复习热力图
+- `GET /api/providers` — provider 状态
+- `GET /api/serve/status` — serve 运行状态（无 auth）
+- `PUT /api/config` — 配置更新
+- `GET /api/tasks` — **unstable**，参见 §9.10
+- `GET /api/tasks/{task_id}` — **unstable**，参见 §9.10
+- `POST /api/tasks/{task_id}/cancel` — **unstable**，参见 §9.10
+- `GET /api/tasks/{task_id}/progress` — SSE 事件流，**unstable**，参见 §9.10
+
+### 9.5 Concepts 真相源主从关系（1A）
+
+**裁决**：`concepts.jsonl` 是 append-only 真相源，SQLite `concepts` 表是派生查询缓存。
+
+**写入顺序**（`wiki/concepts.py:append_concepts()`）：
+1. JSONL 先写（`_write_jsonl_snapshot()`，原子替换）
+2. SQLite 后同步（`upsert_concepts_batch()`）
+
+**同步方向**：单向 JSONL → SQLite，无反向路径。
+
+**读取路径**：
+- `load_concepts_page_from_storage()`：优先 SQLite（先同步 JSONL → SQLite），DB 不存在时回退 JSONL
+- `/api/concepts`：在 git repo 中使用 `load_visible_concepts()` 从 JSONL 读（需 ancestry 过滤），非 git 场景使用 `load_concepts_page()` 从 JSONL 直读
+- `/api/concepts/weak`：从 SQLite `cards` 表读（非 `concepts` 表），按 stability 排序
+
+**恢复保证**：SQLite `concepts` 表可从 `concepts.jsonl` 完全重建（通过 `_sync_jsonl_concepts_to_db()`）。
+
+**与 contract-freeze §5.2 一致**：`concepts.jsonl` 已列入 per-repo 真相源清单。
+
+### 9.6 Graphify Freshness 接线（3E）
+
+**裁决**：`detect_graphify_status()` 接入真实 freshness 计算，替换 `"source_present"` 硬编码。
+
+**接线方式**：
+- `detect_graphify_status()` 新增可选参数 `repo: GitRepo | None`
+- 有 git 上下文时：通过 `git log -1 --format=%H -- graphify-out/graph.json` 获取 graph commit，`git rev-list --count --max-count=51` 获取有界距离，调用 `compute_freshness()` → `project_freshness()` 得到 4 值投影
+- 无 git 上下文时：降级为 `"stale"`（`FreshnessState.UNKNOWN` 投影）
+- `GraphifyStatus.freshness` 存储 4 值投影字符串：`"fresh" | "stale" | "unavailable" | "disabled"`
+- git probe timeout / parse 失败时同样降级为 `"stale"`，不打断主链路
+
+**metadata.json 字段名修复**：
+- 写入使用键名 `freshness`（capture.py:277）
+- 读取 `_project_graphify()` 修复为读 `freshness` 键（之前错误读 `status` 键）
+- `_SUPPORTED_GRAPHIFY_STATUSES` 接受 canonical 四值以及 legacy 输入 `{"source_present", "missing_partial", "missing"}`
+- `_project_graphify()` 会把 legacy 输入规范映射到 canonical 四值输出（`source_present/missing_partial -> stale`，`missing -> unavailable`）
+
+### 9.7 /api/usage repo-scoped 过滤（1D）
+
+**裁决**：`usage.sqlite` 保持全局位置不变（`global_config_dir()/usage.sqlite`），`/api/usage` 端点按 workspace identity 过滤，只返回当前 serve repo 的用量。
+
+**实现**：`routes_stats.py:_build_usage()` 接受 `ServeState` 参数，使用 `workspace_identity_key(state.state_dir.parent)` 作为新的写入/查询键；为兼容历史 `usage.sqlite` 数据，读路径会同时兼容旧的 `path_identity_key(...)` legacy 键。
+
+### 9.8 生产接线收口状态（3D）
+
+| 组件 | 状态 | 说明 |
+|------|------|------|
+| **registry.py** | ✅ 已接线 | `cli.py` learn 成功后自动调用 `register_repo()`，失败仅 warn 不阻塞 |
+| **hooks.py** | ⏸ install-only | 当前仅安装 git hook 脚本，不执行用户自定义 hook 命令。hook 执行入口属于后续 Phase |
+| **PUT /api/config** | ✅ session-only | 仅支持 `lang` 键，修改内存中 locale，不持久化到磁盘。这是有意的 serve session 行为 |
+| **medium APIs** | ✅ 全部真实接线 | search/audit/mastery/weak/alignment/learning stats 均查 SQLite/JSONL，无 mock |
+| **/api/tasks*** | ⏸ infra-only | TaskRunner 基础设施就绪，`submit()` 零调用方。真实 submitter 属于 Phase 3C |
+
+### 9.9 Serve 异步 IO 策略（1B）
+
+**裁决**：维持 `anyio.to_thread.run_sync` + 同步 `sqlite3` 的 threadpool 模式，不引入 `aiosqlite`。
+
+**依据**：
+- 26 处 `to_thread.run_sync` 调用已正确隔离所有阻塞 IO
+- 读远多于写（21 读 / 5 写），WAL 模式下本地 SQLite 亚毫秒级响应
+- 写路径受 `portalocker` 文件锁序列化，是同步阻塞调用 — aiosqlite 无法绕过
+- 改写量：`database.py` 1700+ 行 + 6 个 route 文件，收益极低
+- `benchmarks/scripts/bench_sqlite_queries.py` 已验证核心查询 p50/p95 性能基线
+
+### 9.10 /api/tasks* 合约收缩（3C）
+
+**裁决**：`/api/tasks*` 路由从公开 API 合约中移除，降级为 **internal/unstable** 基础设施。
+
+**原因**：`TaskRunner.submit()` 零生产调用方。真实 submitter（`POST /api/learn` 启动后台 learn 任务 + SSE 进度推送）属于 Phase 6B 范围，当前无法闭环。
+
+**保留状态**：
+- `core/task_runner.py`：TaskRunner 类完整保留，Phase 6B 直接使用
+- `serve/routes_tasks.py`：路由实现完整保留，Phase 6B 启用
+- `serve/app.py`：路由注册保留（内部使用），但不纳入稳定合约
+
+**Phase 6B 闭环条件**：
+1. 实现 `POST /api/learn` → 调用 `TaskRunner.submit(learn_coroutine)`
+2. 前端通过 `GET /api/tasks/{id}/progress` SSE 展示进度
+3. 通过后纳入稳定合约清单
+
+§9.4 中 `/api/tasks*` 三个端点标注为 **unstable，不纳入稳定合约**。

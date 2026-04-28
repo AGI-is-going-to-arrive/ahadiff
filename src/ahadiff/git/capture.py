@@ -151,6 +151,7 @@ class _PatchSegment:
 
 
 _GRAPHIFY_RELATIVE_PATH = Path("graphify-out") / "graph.json"
+_GRAPHIFY_REV_LIST_MAX_COUNT = 51
 _TRUNCATED_MARKER = "[truncated]\n"
 _ARTIFACT_SET_SCHEMA = "ahadiff.artifact_set"
 _ARTIFACT_SET_SCHEMA_VERSION = 1
@@ -210,7 +211,15 @@ def capture_patch(
         max_patch_bytes=effective_max_patch_bytes,
     )
     raw_capture = _filter_ignored_capture(workspace_root, raw_capture)
-    graphify_status = detect_graphify_status(workspace_root, use_graphify=use_graphify)
+    _repo: GitRepo | None = None
+    if _has_git_root(workspace_root):
+        with suppress(InputError, OSError):
+            _repo = open_repo(workspace_root)
+    graphify_status = detect_graphify_status(
+        workspace_root,
+        use_graphify=use_graphify,
+        repo=_repo,
+    )
 
     redaction_result = redaction_pipeline(
         raw_capture.raw_patch_text,
@@ -522,7 +531,12 @@ def _text_map_payload(*, artifact: str, texts: dict[str, str]) -> dict[str, Any]
     }
 
 
-def detect_graphify_status(workspace_root: Path, *, use_graphify: bool | None) -> GraphifyStatus:
+def detect_graphify_status(
+    workspace_root: Path,
+    *,
+    use_graphify: bool | None,
+    repo: GitRepo | None = None,
+) -> GraphifyStatus:
     source_path = _graphify_source_path(workspace_root)
     imported_path = _state_dir(workspace_root) / "graphify" / "graph.json"
     source_exists = source_path.exists()
@@ -532,7 +546,12 @@ def detect_graphify_status(workspace_root: Path, *, use_graphify: bool | None) -
 
     enabled = source_exists if use_graphify is None else use_graphify and source_exists
     has_graph = enabled and source_exists
-    freshness = "source_present" if source_exists else None
+    freshness = _resolve_graphify_freshness(
+        workspace_root,
+        repo=repo,
+        source_exists=source_exists,
+        enabled=enabled,
+    )
     provenance = {"source": canonicalize_path_text(_GRAPHIFY_RELATIVE_PATH)}
     return GraphifyStatus(
         source_path=source_path,
@@ -546,8 +565,61 @@ def detect_graphify_status(workspace_root: Path, *, use_graphify: bool | None) -
     )
 
 
+def _resolve_graphify_freshness(
+    workspace_root: Path,
+    *,
+    repo: GitRepo | None,
+    source_exists: bool,
+    enabled: bool,
+) -> str | None:
+    from ahadiff.graphify.freshness import FreshnessState, compute_freshness, project_freshness
+
+    if not enabled:
+        return project_freshness(FreshnessState.DISABLED) if source_exists else None
+    if not source_exists:
+        return project_freshness(FreshnessState.UNAVAILABLE)
+    if repo is None or repo.head_sha is None:
+        return project_freshness(FreshnessState.UNKNOWN)
+
+    try:
+        graphify_pathspec = canonicalize_path_text(_GRAPHIFY_RELATIVE_PATH)
+        graph_log = run_git(
+            workspace_root,
+            "log",
+            "-1",
+            "--format=%H",
+            "--",
+            graphify_pathspec,
+            check=False,
+        )
+        graph_commit = graph_log.stdout.strip() if graph_log.returncode == 0 else None
+        graph_commit = graph_commit or None
+
+        commit_count: int | None = None
+        if graph_commit is not None:
+            count_result = run_git(
+                workspace_root,
+                "rev-list",
+                "--count",
+                f"--max-count={_GRAPHIFY_REV_LIST_MAX_COUNT}",
+                f"{graph_commit}..{repo.head_sha}",
+                check=False,
+            )
+            if count_result.returncode == 0:
+                commit_count = int(count_result.stdout.strip())
+
+        state = compute_freshness(graph_commit, repo.head_sha, commit_count)
+    except (InputError, ValueError, OSError):
+        state = FreshnessState.UNKNOWN
+
+    return project_freshness(state)
+
+
 def import_graphify_artifact(workspace_root: Path, *, force: bool = False) -> GraphifyStatus:
-    status = detect_graphify_status(workspace_root, use_graphify=True)
+    _repo: GitRepo | None = None
+    with suppress(InputError, OSError):
+        _repo = open_repo(workspace_root)
+    status = detect_graphify_status(workspace_root, use_graphify=True, repo=_repo)
     if status.imported_exists and not force:
         return status
 
@@ -574,7 +646,7 @@ def import_graphify_artifact(workspace_root: Path, *, force: bool = False) -> Gr
         status.imported_path,
         json.dumps(sanitized_graph.model_dump(mode="json"), ensure_ascii=False),
     )
-    return detect_graphify_status(workspace_root, use_graphify=True)
+    return detect_graphify_status(workspace_root, use_graphify=True, repo=_repo)
 
 
 def _sanitize_graphify_value(value: object, *, workspace_root: Path) -> object:

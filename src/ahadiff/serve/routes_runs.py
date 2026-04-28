@@ -57,7 +57,13 @@ _ARTIFACT_PATHS = {
 }
 _LESSON_LEVELS = {"full", "hint", "compact"}
 _SUPPORTED_CONTENT_LANGS = frozenset({"en", "zh-CN"})
-_SUPPORTED_GRAPHIFY_STATUSES = frozenset({"fresh", "stale", "missing_partial", "missing"})
+_CANONICAL_GRAPHIFY_STATUSES = frozenset({"fresh", "stale", "unavailable", "disabled"})
+_LEGACY_GRAPHIFY_STATUS_MAP: dict[str, str] = {
+    "source_present": "stale",
+    "missing_partial": "stale",
+    "missing": "unavailable",
+}
+_SUPPORTED_GRAPHIFY_STATUSES = _CANONICAL_GRAPHIFY_STATUSES | frozenset(_LEGACY_GRAPHIFY_STATUS_MAP)
 _CAPABILITY_LEVEL_WARNING_RUNS: set[str] = set()
 _MAX_TEXT_ARTIFACT_BYTES = 10 * 1024 * 1024
 _MAX_JSON_OBJECT_BYTES = 1024 * 1024
@@ -562,12 +568,14 @@ def _project_graphify(metadata: dict[str, Any]) -> tuple[str, str | None, list[s
 
     mode_value = graphify.get("mode")
     mode = mode_value if isinstance(mode_value, str) else None
-    status_value = graphify.get("status")
-    status = (
-        status_value
-        if isinstance(status_value, str) and status_value in _SUPPORTED_GRAPHIFY_STATUSES
-        else None
-    )
+    freshness_value = graphify.get("freshness") or graphify.get("status")
+    if isinstance(freshness_value, str) and freshness_value in _SUPPORTED_GRAPHIFY_STATUSES:
+        projected_freshness = _LEGACY_GRAPHIFY_STATUS_MAP.get(freshness_value, freshness_value)
+        freshness = (
+            projected_freshness if projected_freshness in _CANONICAL_GRAPHIFY_STATUSES else None
+        )
+    else:
+        freshness = None
 
     notes: list[str] | None = None
     notes_value = graphify.get("notes")
@@ -576,13 +584,13 @@ def _project_graphify(metadata: dict[str, Any]) -> tuple[str, str | None, list[s
         if all(isinstance(note, str) for note in notes_items):
             notes = cast("list[str]", notes_items)
 
-    if mode == "full" or status == "fresh":
+    if mode == "full" or freshness == "fresh":
         projected_mode = "full"
-    elif mode == "learning_only" or status in {"stale", "missing_partial"}:
+    elif mode == "learning_only" or freshness in {"stale", "unavailable"}:
         projected_mode = "learning_only"
     else:
         projected_mode = "empty"
-    return projected_mode, status, notes
+    return projected_mode, freshness, notes
 
 
 def _load_json_object(path: Path) -> dict[str, Any]:

@@ -36,6 +36,8 @@ from ahadiff.core.paths import (
     repo_config_path,
     review_db_path,
     run_dir,
+    workspace_identity_key,
+    workspace_identity_lookup_keys,
 )
 from ahadiff.git.repo import repo_write_lock, unlock_repo_write_lock
 
@@ -550,6 +552,27 @@ def test_inspect_repo_path_warns_about_casefold_and_length() -> None:
     assert "long_path" in warning_codes
 
 
+def test_workspace_identity_key_preserves_case_on_linux() -> None:
+    upper = workspace_identity_key(Path("/tmp/AhaDiffRepo"), platform="linux")
+    lower = workspace_identity_key(Path("/tmp/ahadiffrepo"), platform="linux")
+
+    assert upper != lower
+
+
+def test_workspace_identity_key_casefolds_on_windows() -> None:
+    upper = workspace_identity_key(Path("C:/Repo/AhaDiff"), platform="win32")
+    lower = workspace_identity_key(Path("c:/repo/ahadiff"), platform="win32")
+
+    assert upper == lower
+
+
+def test_workspace_identity_lookup_keys_include_legacy_alias() -> None:
+    current, legacy = workspace_identity_lookup_keys(Path("/tmp/Repo"), platform="linux")
+
+    assert current == "workspace:v1:/tmp/Repo"
+    assert legacy == "/tmp/repo"
+
+
 def test_id_helpers_are_stable_and_shaped() -> None:
     run_id = make_run_id()
     assert re.fullmatch(r"run_[0-9a-f]{32}", run_id)
@@ -578,6 +601,28 @@ def test_cli_init_and_config_show_resolved(tmp_path: Path, monkeypatch: pytest.M
     assert resolved.exit_code == 0
     assert "privacy_mode" in resolved.stdout
     assert "repo:" in resolved.stdout
+
+
+def test_cli_graph_status_surfaces_unexpected_open_repo_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    monkeypatch.chdir(repo_root)
+
+    def boom(_repo_root: Path | None = None) -> object:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("ahadiff.git.repo.open_repo", boom)
+
+    runner = CliRunner()
+    result = runner.invoke(app(), ["graph", "status"], catch_exceptions=False)
+
+    assert result.exit_code == 2
+    assert "Unexpected error:" in result.stderr
+    assert "boom" in result.stderr
 
 
 def test_cli_browser_flag_can_override_repo_no_browser(

@@ -150,7 +150,10 @@ async def _permission_error(_request: Request, exc: Exception) -> JSONResponse:
 
 async def _validation_error(_request: Request, exc: Exception) -> JSONResponse:
     if isinstance(exc, ValidationError):
-        return JSONResponse({"error": exc.errors(), "status": 422}, status_code=422)
+        return JSONResponse(
+            {"error": exc.errors(include_context=False, include_input=False), "status": 422},
+            status_code=422,
+        )
     return JSONResponse({"error": str(exc), "status": 422}, status_code=422)
 
 

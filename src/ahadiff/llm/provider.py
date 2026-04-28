@@ -23,7 +23,7 @@ from ahadiff.core.config import (
 )
 from ahadiff.core.errors import ConfigError, InputError, ProviderError, SafetyError, StorageError
 from ahadiff.core.ids import make_event_id
-from ahadiff.core.paths import path_identity_key
+from ahadiff.core.paths import path_identity_key, workspace_identity_key
 from ahadiff.safety.audit import append_audit_record, build_provider_audit_record
 from ahadiff.safety.gates import TransportTarget, enforce_privacy_mode
 
@@ -552,7 +552,7 @@ class ManagedProvider:
         try:
             record_usage_event(
                 UsageRecord(
-                    workspace_identity=path_identity_key(self.workspace_root),
+                    workspace_identity=workspace_identity_key(self.workspace_root),
                     provider_class=self.config.provider_class,
                     api_family=self.capabilities.api_family,
                     api_family_version=self.capabilities.api_family_version,

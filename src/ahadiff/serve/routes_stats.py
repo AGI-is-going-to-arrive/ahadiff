@@ -529,39 +529,33 @@ async def get_learning_effectiveness(request: Request) -> JSONResponse:
 # ---------------------------------------------------------------------------
 
 
-def _build_usage() -> dict[str, Any]:
-    from ahadiff.core.paths import usage_db_path
+def _build_usage(state: ServeState) -> dict[str, Any]:
+    from ahadiff.core.paths import usage_db_path, workspace_identity_lookup_keys
     from ahadiff.llm.usage import connect_usage_db
 
     db_path = usage_db_path()
     if not db_path.is_file():
         return {"models": [], "total_calls": 0}
 
+    current_identity, legacy_identity = workspace_identity_lookup_keys(state.state_dir.parent)
     try:
-        conn = connect_usage_db(db_path)
-    except Exception:
-        log.debug("failed to open usage.sqlite", exc_info=True)
-        return {"models": [], "total_calls": 0}
-
-    try:
-        rows = conn.execute(
-            """
-            SELECT model_id,
-                   COUNT(*) AS call_count,
-                   SUM(input_tokens) AS total_input,
-                   SUM(output_tokens) AS total_output,
-                   SUM(cost_usd) AS total_cost
-            FROM llm_usage
-            GROUP BY model_id
-            ORDER BY call_count DESC
-            """
-        ).fetchall()
-    except sqlite3.OperationalError:
-        conn.close()
-        return {"models": [], "total_calls": 0}
-    finally:
-        with suppress(Exception):
-            conn.close()
+        with connect_usage_db(db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT model_id,
+                       COUNT(*) AS call_count,
+                       SUM(input_tokens) AS total_input,
+                       SUM(output_tokens) AS total_output,
+                       SUM(cost_usd) AS total_cost
+                FROM llm_usage
+                WHERE workspace_identity IN (?, ?)
+                GROUP BY model_id
+                ORDER BY call_count DESC
+                """,
+                (current_identity, legacy_identity),
+            ).fetchall()
+    except Exception as error:
+        raise RuntimeError("usage database is unavailable") from error
 
     total_calls = 0
     models: list[dict[str, Any]] = []
@@ -584,10 +578,15 @@ def _build_usage() -> dict[str, Any]:
 
 
 async def get_usage(request: Request) -> JSONResponse:
-    from .auth import require_write_token
+    from .auth import require_write_token, serve_state
 
     require_write_token(request)
-    payload = await to_thread.run_sync(_build_usage)
+    state: ServeState = serve_state(request)
+    try:
+        payload = await to_thread.run_sync(_build_usage, state)
+    except Exception as error:
+        log.warning("usage API failed", exc_info=True)
+        raise HTTPException(status_code=500, detail="usage database is unavailable") from error
     return JSONResponse(payload)
 
 

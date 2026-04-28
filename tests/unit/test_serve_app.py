@@ -617,8 +617,8 @@ def test_run_detail_projects_graphify_learning_only_from_nested_metadata(
     _write_graphify_metadata(
         run_path,
         {
-            "status": "missing_partial",
-            "notes": ["graph artifact is partially missing"],
+            "freshness": "stale",
+            "notes": ["graph artifact is stale"],
         },
     )
     _finalize_run(run_path, "run-1")
@@ -628,8 +628,8 @@ def test_run_detail_projects_graphify_learning_only_from_nested_metadata(
     detail = client.get("/api/run/run-1").json()
 
     assert detail["graphify_mode"] == "learning_only"
-    assert detail["graphify_status"] == "missing_partial"
-    assert detail["graphify_notes"] == ["graph artifact is partially missing"]
+    assert detail["graphify_status"] == "stale"
+    assert detail["graphify_notes"] == ["graph artifact is stale"]
 
 
 def test_run_detail_ignores_invalid_graphify_status(tmp_path: Path) -> None:
@@ -645,6 +645,36 @@ def test_run_detail_ignores_invalid_graphify_status(tmp_path: Path) -> None:
 
     assert detail["graphify_mode"] == "empty"
     assert detail["graphify_status"] is None
+
+
+def test_run_detail_maps_legacy_source_present_to_stale(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=False)
+    _write_graphify_metadata(run_path, {"freshness": "source_present"})
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    detail = client.get("/api/run/run-1").json()
+
+    assert detail["graphify_status"] == "stale"
+    assert detail["graphify_mode"] == "learning_only"
+
+
+def test_run_detail_maps_legacy_missing_to_unavailable(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=False)
+    _write_graphify_metadata(run_path, {"status": "missing"})
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    detail = client.get("/api/run/run-1").json()
+
+    assert detail["graphify_status"] == "unavailable"
+    assert detail["graphify_mode"] == "learning_only"
 
 
 def test_run_detail_projects_graphify_empty_without_nested_metadata(tmp_path: Path) -> None:
@@ -2150,6 +2180,48 @@ def test_helpfulness_signal_invalid_payload(tmp_path: Path) -> None:
 
     assert response.status_code == 422
     assert response.json()["error"][0]["loc"] == ["target_id"]
+
+
+def test_helpfulness_signal_invalid_section_target_id_returns_422(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+
+    response = client.post(
+        "/api/signals/helpfulness",
+        headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        json={
+            "idempotency_key": "help:run-1:no-separator",
+            "target_kind": "section",
+            "target_id": "no_separator",
+            "payload": {"helpful": True},
+        },
+    )
+
+    assert response.status_code == 422
+    error = response.json()["error"][0]
+    assert "ctx" not in error
+    assert "target_id must contain ':'" in error["msg"]
+
+
+def test_helpfulness_signal_normalizes_section_target_id(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+
+    response = client.post(
+        "/api/signals/helpfulness",
+        headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        json={
+            "idempotency_key": "help:run-1:intro",
+            "target_kind": "section",
+            "target_id": "  run1  :  intro  ",
+            "payload": {"helpful": True},
+        },
+    )
+
+    assert response.json() == {"inserted": True}
+    with connect_review_db(state_dir / "review.sqlite") as connection:
+        row = connection.execute("SELECT payload_json FROM learning_signals").fetchone()
+    assert json.loads(row["payload_json"])["target_id"] == "run1:intro"
 
 
 def test_helpfulness_signal_rejects_non_finite_numbers(tmp_path: Path) -> None:

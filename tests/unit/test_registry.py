@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Generator
+from contextlib import contextmanager
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -10,6 +12,7 @@ if TYPE_CHECKING:
     from collections.abc import Generator
     from pathlib import Path
 
+from ahadiff.core.errors import StorageError
 from ahadiff.core.registry import (
     RegistryEntry,
     list_registered_repos,
@@ -135,3 +138,22 @@ def test_load_registry_non_list(registry_dir: Path) -> None:
 def test_unregister_nonexistent_is_noop(tmp_path: Path) -> None:
     unregister_repo(tmp_path / "nonexistent")
     assert load_registry() == []
+
+
+def test_register_repo_wraps_oserror_as_storage_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    state = repo / ".ahadiff"
+    state.mkdir(parents=True)
+
+    @contextmanager
+    def broken_lock() -> Generator[None, None, None]:
+        raise PermissionError("read-only registry")
+        yield
+
+    monkeypatch.setattr("ahadiff.core.registry._registry_lock", broken_lock)
+
+    with pytest.raises(StorageError, match="failed to update repo registry"):
+        register_repo(repo, state)

@@ -13,6 +13,7 @@ from typing import Any, cast
 
 import portalocker
 
+from ahadiff.core.errors import StorageError
 from ahadiff.core.json_util import safe_json_loads
 from ahadiff.core.paths import global_config_dir
 
@@ -156,23 +157,26 @@ def register_repo(repo_path: Path, state_dir: Path) -> None:
     rp = _normalize_entry_path(repo_path)
     normalized_state_dir = _normalize_entry_path(state_dir)
     now = datetime.now(UTC).isoformat()
-    with _registry_lock():
-        entries = _load_registry_unlocked(path)
-        updated: list[RegistryEntry] = []
-        found = False
-        for entry in entries:
-            if _normalize_entry_path(Path(entry.repo_path)) == rp:
+    try:
+        with _registry_lock():
+            entries = _load_registry_unlocked(path)
+            updated: list[RegistryEntry] = []
+            found = False
+            for entry in entries:
+                if _normalize_entry_path(Path(entry.repo_path)) == rp:
+                    updated.append(
+                        RegistryEntry(repo_path=rp, state_dir=normalized_state_dir, last_seen=now)
+                    )
+                    found = True
+                else:
+                    updated.append(entry)
+            if not found:
                 updated.append(
                     RegistryEntry(repo_path=rp, state_dir=normalized_state_dir, last_seen=now)
                 )
-                found = True
-            else:
-                updated.append(entry)
-        if not found:
-            updated.append(
-                RegistryEntry(repo_path=rp, state_dir=normalized_state_dir, last_seen=now)
-            )
-        _save_registry_unlocked(path, updated)
+            _save_registry_unlocked(path, updated)
+    except OSError as exc:
+        raise StorageError(f"failed to update repo registry: {exc}") from exc
 
 
 def unregister_repo(repo_path: Path) -> None:

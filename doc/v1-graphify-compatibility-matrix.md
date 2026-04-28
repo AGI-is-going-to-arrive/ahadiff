@@ -100,7 +100,7 @@ class GraphifyStatus:
     source_exists: bool
     imported_exists: bool
     has_graph: bool
-    freshness: str | None       # currently only "source_present" or None
+    freshness: str | None       # "fresh" | "stale" | "unavailable" | "disabled", or None when no source
     provenance: dict[str, str]  # {"source": "graphify-out/graph.json"}
 ```
 - Looks for `graphify-out/graph.json` at workspace root
@@ -115,11 +115,17 @@ class GraphifyStatus:
 
 ### 2.3 Serve Projection (`serve/routes_runs.py`)
 ```python
-_SUPPORTED_GRAPHIFY_STATUSES = frozenset({"fresh", "stale", "missing_partial", "missing"})
+_CANONICAL_GRAPHIFY_STATUSES = frozenset({"fresh", "stale", "unavailable", "disabled"})
+_LEGACY_GRAPHIFY_STATUS_MAP = {
+    "source_present": "stale",
+    "missing_partial": "stale",
+    "missing": "unavailable",
+}
 GraphifyMode = Literal["full", "learning_only", "empty"]
 ```
 - `_project_graphify(metadata)` reads the `graphify` dict from run metadata
-- Projects to 3 modes: `full` (mode=full or status=fresh), `learning_only` (mode=learning_only or status in {stale, missing_partial}), `empty` (fallback)
+- Accepts both canonical values and legacy metadata inputs, but normalizes API output to the canonical 4-value set
+- Projects to 3 modes: `full` (mode=full or freshness=fresh), `learning_only` (mode=learning_only or freshness in {stale, unavailable}), `empty` (fallback)
 - Frontend viewer uses these 3 modes for ConceptGraph degradation
 
 ### 2.4 Contracts
@@ -127,11 +133,12 @@ GraphifyMode = Literal["full", "learning_only", "empty"]
 - `RunDetail` has `graphify_mode`, `graphify_status`, `graphify_notes` fields
 - `LearnConfig.use_graphify: bool | None = None` in `contracts/orchestrator.py`
 
-### 2.5 Design Plan (Planned but Not Implemented)
-The design plan (`ahadiff-graphify-integration.md` + review) specifies:
-- Pydantic models: `GraphifyNode`, `GraphifyEdge`, `GraphifyMeta`, `GraphifyGraph`
-- 7-state freshness: `fresh`, `stale`, `outdated`, `missing_partial`, `missing`, `corrupt`, `disabled`
-- 4-value projection: `fresh` → fresh, `{stale, outdated, missing_partial}` → stale, `{missing, corrupt}` → unavailable, `disabled` → disabled
+### 2.5 Design Plan (Partially Landed)
+The design plan (`ahadiff-graphify-integration.md` + review) now has these pieces in code:
+- Pydantic models: `GraphifyNode`, `GraphifyEdge`, `GraphifyHyperedge`, `GraphifyGraph`
+- Internal 7-state freshness helper: `current`, `recent`, `stale`, `outdated`, `unknown`, `unavailable`, `disabled`
+- 4-value projection: `{current, recent}` → fresh, `{stale, outdated, unknown}` → stale, `unavailable` → unavailable, `disabled` → disabled
+- Remaining deeper work is still around richer provenance, graph slicing, and frontend surfacing
 - `SUPPORTED_VERSIONS: ["0.3", "0.4", "1.0"]`
 - Subgraph slicing: changed files ± 2 hop neighbors
 - `graph.slice.json` + `graphify.links.json` per run
@@ -140,7 +147,8 @@ The design plan (`ahadiff-graphify-integration.md` + review) specifies:
 | Test File | Coverage |
 |-----------|----------|
 | `tests/unit/test_git_capture.py` | `import_graphify_artifact` happy path + symlink rejection |
-| `tests/unit/test_serve_app.py` | `_project_graphify` for full/learning_only/empty modes, 5 test cases |
+| `tests/unit/test_graphify.py` | freshness projection, timeout / parse fallback, canonical pathspec, legacy mapping |
+| `tests/unit/test_serve_app.py` | `_project_graphify` for full/learning_only/empty modes, plus legacy status normalization |
 | `tests/unit/test_contracts.py` | `RunDetail.graphify_notes` field validation |
 
 ---
@@ -164,16 +172,16 @@ The design plan (`ahadiff-graphify-integration.md` + review) specifies:
 
 | AhaDiff Function | Location | Compatible? | Risk | Action Required |
 |-----------------|----------|-------------|------|-----------------|
-| `detect_graphify_status()` | `git/capture.py:523` | **YES** | LOW | Works as-is; checks file existence at `graphify-out/graph.json` |
+| `detect_graphify_status()` | `git/capture.py:534` | **YES** | LOW | Repo-aware freshness is wired in; no-repo / timeout / parse failures degrade to canonical `stale` |
 | `import_graphify_artifact()` | `git/capture.py:547` | **YES** | LOW | Works as-is; reads raw text, sanitizes, copies. No schema parsing. |
-| `_project_graphify()` | `serve/routes_runs.py:543` | **NEEDS_ADAPTATION** | MED | Currently reads from metadata dict written at capture time. The `status` values (`fresh`/`stale`) are AhaDiff-internal, not from Graphify. OK but freshness logic needs real implementation. |
-| `GraphifyStatus` dataclass | `git/capture.py:98` | **NEEDS_ADAPTATION** | MED | `freshness` currently hardcoded to `"source_present"`. Needs real freshness computation (compare graph HEAD vs repo HEAD). |
+| `_project_graphify()` | `serve/routes_runs.py:571` | **YES** | LOW | Reads `freshness` first, still accepts legacy `status` inputs, and normalizes legacy values to canonical API output |
+| `GraphifyStatus` dataclass | `git/capture.py:99` | **YES** | LOW | `freshness` now carries canonical 4-value output computed from repo context when available |
 | `GraphifyMode` type | `contracts/serve_app.py:17` | **YES** | LOW | 3-value enum is correct for viewer degradation. |
 | Sanitization pipeline | `import_graphify_artifact` | **YES** | LOW | Correctly treats graph.json as untrusted text. Runs `redaction_pipeline()` + `protect_untrusted_text()`. |
 | Pydantic validation | Planned, not implemented | **NEEDS_NEW** | HIGH | Must define models matching actual v0.5 schema (flat node fields, `links` key, no `meta` envelope) |
 | Subgraph slicing | Planned, not implemented | **NEEDS_NEW** | HIGH | Core v1.0 feature: extract ± 2-hop neighbors of changed files |
-| Freshness 7-state | Planned, not implemented | **NEEDS_NEW** | MED | Requires comparing `graph.json` provenance vs current repo HEAD |
-| `ahadiff graph status/refresh/import` | Planned CLI commands | **NEEDS_NEW** | MED | No CLI commands exist yet |
+| Freshness 7-state helper | `graphify/freshness.py` + `git/capture.py` | **PARTIAL** | MED | Repo-aware helper is landed, but imported-at / head-at-import style provenance is still not surfaced |
+| `ahadiff graph status/refresh/import` | `cli.py` | **YES** | LOW | CLI commands exist and use the current runtime wiring |
 
 ### Graphify API Surface Compatibility
 
@@ -199,7 +207,7 @@ The design plan (`ahadiff-graphify-integration.md` + review) specifies:
 | G3 | **No meta/version envelope** | Design assumes `meta.version` | Detect schema by structure; version from `.graphify_version` file or inference | S |
 | G4 | **No subgraph slicing** | Full graph copy | Extract changed-files ± 2-hop subgraph for each run | L |
 | G5 | **Pydantic models undefined** | Planned only | Define `GraphifyNode`/`GraphifyEdge`/`GraphifyGraph` matching actual v0.5 fields | M |
-| G6 | **Freshness is hardcoded** | Always `"source_present"` | Compute real freshness: compare graph provenance (git rev of last `graphify update`) vs repo HEAD | M |
+| G6 | **Freshness provenance is still shallow** | Repo-aware 4-value projection is landed, but metadata still only stores source path/projection | If v1.0 needs richer status UI, add imported-at / head-at-import style provenance and a dedicated status endpoint | M |
 
 ### Medium Gaps (Should Fix for v1.0)
 

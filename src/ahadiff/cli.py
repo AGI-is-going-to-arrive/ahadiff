@@ -1016,6 +1016,13 @@ def learn_cmd(
                         raise
                     raise AhaDiffError(f"lesson generation failed: {exc}") from exc
 
+        try:
+            from ahadiff.core.registry import register_repo
+
+            register_repo(root, capture.state_dir)
+        except Exception as reg_error:
+            learn_warnings.append(f"registry auto-register failed: {reg_error}")
+
         console.print(f"[green]Captured[/green] {capture.run_source.source_kind}")
         console.print(f"[bold]Run ID[/bold]: {capture.run_id}")
         console.print(f"[bold]Patch[/bold]: {patch_path}")
@@ -2594,7 +2601,14 @@ def graph_status_cmd(
 ) -> None:
     try:
         root = find_repo_root(repo_root)
-        status = detect_graphify_status(root, use_graphify=None)
+        _repo = None
+        try:
+            from ahadiff.git.repo import open_repo as _open_repo
+
+            _repo = _open_repo(root)
+        except InputError:
+            pass
+        status = detect_graphify_status(root, use_graphify=None, repo=_repo)
         console.print(f"[bold]Source[/bold]: {status.source_path}")
         console.print(f"[bold]Imported[/bold]: {status.imported_path}")
         console.print(f"[bold]Source exists[/bold]: {status.source_exists}")

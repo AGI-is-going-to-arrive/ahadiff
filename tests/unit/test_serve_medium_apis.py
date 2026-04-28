@@ -8,6 +8,12 @@ from typing import TYPE_CHECKING, Literal
 import pytest
 from starlette.testclient import TestClient
 
+from ahadiff.core.paths import (
+    path_identity_key as _legacy_path_identity_key,
+)
+from ahadiff.core.paths import (
+    workspace_identity_key as _workspace_identity_key,
+)
 from ahadiff.serve import ServeState, create_app
 
 if TYPE_CHECKING:
@@ -170,7 +176,7 @@ class TestUsage:
         monkeypatch.setattr("ahadiff.core.paths.usage_db_path", _usage_db_factory(usage_db))
         record_usage_event(
             UsageRecord(
-                workspace_identity=str(tmp_path),
+                workspace_identity=_workspace_identity_key(tmp_path),
                 provider_class="openai",
                 api_family="responses",
                 api_family_version="v1",
@@ -208,6 +214,60 @@ class TestUsage:
                 "total_cost_usd": 0.67,
             }
         ]
+
+    def test_usage_reads_legacy_workspace_identity_rows(
+        self,
+        tmp_path: Path,
+        monkeypatch: MonkeyPatch,
+    ) -> None:
+        from ahadiff.llm.usage import UsageRecord, record_usage_event
+
+        usage_db = tmp_path / "usage.sqlite"
+        monkeypatch.setattr("ahadiff.core.paths.usage_db_path", _usage_db_factory(usage_db))
+        record_usage_event(
+            UsageRecord(
+                workspace_identity=_legacy_path_identity_key(tmp_path),
+                provider_class="openai",
+                api_family="responses",
+                api_family_version="v1",
+                model_id="legacy-model",
+                prompt_name="quiz.generate",
+                prompt_fingerprint="legacy123",
+                prompt_version="legacy123",
+                eval_bundle_version="eval-v1",
+                output_lang="en",
+                privacy_mode="strict_local",
+                source_ref="deadbeef",
+                cache_key="legacy-cache-key",
+                cache_hit=False,
+                input_tokens=7,
+                output_tokens=3,
+                cost_usd=0.11,
+                pricing_version="pricing-v1",
+                cost_confidence="high",
+                execution_origin="quiz_generate",
+            ),
+            db_path=usage_db,
+        )
+
+        client = _client(tmp_path / ".ahadiff")
+        resp = client.get("/api/usage", headers=_AUTH)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total_calls"] == 1
+        assert body["models"][0]["model_id"] == "legacy-model"
+
+    def test_usage_corrupt_db_returns_500(self, tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+        usage_db = tmp_path / "usage.sqlite"
+        usage_db.write_text("not a sqlite db", encoding="utf-8")
+        monkeypatch.setattr("ahadiff.core.paths.usage_db_path", _usage_db_factory(usage_db))
+        client = _client(tmp_path / ".ahadiff")
+
+        resp = client.get("/api/usage", headers=_AUTH)
+
+        assert resp.status_code == 500
+        assert resp.json()["error"] == "usage database is unavailable"
 
 
 # ---------------------------------------------------------------------------
