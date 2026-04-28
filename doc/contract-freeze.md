@@ -699,6 +699,7 @@ run_id: str
 - `GET /api/providers` — provider 状态
 - `GET /api/serve/status` — serve 运行状态（无 auth）
 - `PUT /api/config` — 配置更新
+- `POST /api/learn` — 提交后台 learn 任务；当前返回 `202 {"task_id": ...}`，进度/取消走 `/api/tasks*`
 - `GET /api/tasks` — **unstable**，参见 §9.10
 - `GET /api/tasks/{task_id}` — **unstable**，参见 §9.10
 - `POST /api/tasks/{task_id}/cancel` — **unstable**，参见 §9.10
@@ -753,8 +754,9 @@ run_id: str
 | **registry.py** | ✅ 已接线 | `cli.py` learn 成功后自动调用 `register_repo()`，失败仅 warn 不阻塞 |
 | **hooks.py** | ⏸ install-only | 当前仅安装 git hook 脚本，不执行用户自定义 hook 命令。hook 执行入口属于后续 Phase |
 | **PUT /api/config** | ✅ session-only | 仅支持 `lang` 键，修改内存中 locale，不持久化到磁盘。这是有意的 serve session 行为 |
+| **POST /api/learn** | ✅ 已接线 | `core/orchestrator.py` 从 `cli.py` 抽出 learn 主链；route 只接受安全 capture / learn 选项，返回 `202 {"task_id": ...}`，provider override 不从 HTTP 暴露 |
 | **medium APIs** | ✅ 全部真实接线 | search/audit/mastery/weak/alignment/learning stats 均查 SQLite/JSONL，无 mock |
-| **/api/tasks*** | ⏸ infra-only | TaskRunner 基础设施就绪，`submit()` 零调用方。真实 submitter 属于 Phase 3C |
+| **/api/tasks*** | ⏸ internal/unstable | 现在已有真实 submitter（`POST /api/learn`），但 task payload / queue policy / progress surface 仍按低层内部接口处理 |
 
 ### 9.9 Serve 异步 IO 策略（1B）
 
@@ -769,18 +771,21 @@ run_id: str
 
 ### 9.10 /api/tasks* 合约收缩（3C）
 
-**裁决**：`/api/tasks*` 路由从公开 API 合约中移除，降级为 **internal/unstable** 基础设施。
+**裁决**：`/api/tasks*` 路由继续保持 **internal/unstable**，不纳入稳定公开 API 合约。
 
-**原因**：`TaskRunner.submit()` 零生产调用方。真实 submitter（`POST /api/learn` 启动后台 learn 任务 + SSE 进度推送）属于 Phase 6B 范围，当前无法闭环。
+**当前状态**：`POST /api/learn` 已经接到真实 learn 主链，会返回 `202 {"task_id": ...}`；进度查看和取消分别走 `GET /api/tasks/{task_id}`、`GET /api/tasks/{task_id}/progress` 和 `POST /api/tasks/{task_id}/cancel`。
+
+**为什么仍不冻结**：task queue 的状态 payload、队列容量策略、进度文案和 SSE 细节都还是低层运行时 surface，后续仍可能继续收口；因此它们继续保留为 internal/unstable。
 
 **保留状态**：
 - `core/task_runner.py`：TaskRunner 类完整保留，Phase 6B 直接使用
 - `serve/routes_tasks.py`：路由实现完整保留，Phase 6B 启用
 - `serve/app.py`：路由注册保留（内部使用），但不纳入稳定合约
+- `serve/routes_learn.py`：write-token 保护 + JSON body 校验 + learn submitter 已落地
 
-**Phase 6B 闭环条件**：
-1. 实现 `POST /api/learn` → 调用 `TaskRunner.submit(learn_coroutine)`
-2. 前端通过 `GET /api/tasks/{id}/progress` SSE 展示进度
-3. 通过后纳入稳定合约清单
+**当前请求面说明**：
+- 允许的请求字段是现有 learn capture / 选项字段：`revision`、`last`、`since`、`author`、`staged`、`unstaged`、`include_untracked`、`patch`、`compare`、`compare_dir`、`patch_url`、`dry_run`、`force_learn`、`use_graphify`、`lang`、`privacy_mode`
+- `compare` / `compare_dir` 需要 2 项 path array
+- `patch="-"` 在 serve 层明确拒绝，避免后台任务读取进程 stdin
 
 §9.4 中 `/api/tasks*` 三个端点标注为 **unstable，不纳入稳定合约**。

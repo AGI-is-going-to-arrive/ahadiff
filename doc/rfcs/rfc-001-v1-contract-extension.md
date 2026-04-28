@@ -2,11 +2,11 @@
 
 **Status**: APPROVED — R1 adversarial (2H+3M) + R2 cross-review (2 residuals) + R3 final check (1 residual) = all fixed
 **Date**: 2026-04-28
-**Revised**: 2026-04-28 (R1 remediation: H-1 Graphify freshness unfrozen, H-2 POST /api/learn reserved as #37, M-3 config key allowlist, M-4 search/date param safety, M-5 exclude_none constraint)
+**Revised**: 2026-04-29 (current-branch sync: POST /api/learn landed, route surface grew, verification refreshed)
 **Authors**: Claude (orchestrator)
 **Requires**: contract-freeze.md §8 change rules (RFC + cross-review)
 
-Current branch verification after the Phase 0 follow-up: `881 passed, 1 skipped`, `ruff check` pass, `ruff format --check` pass, `pyright 0 errors`.
+Current branch verification after the latest learn-orchestrator / `/api/learn` updates: full pytest `1266 passed, 1 skipped`; focused backend regressions `59 passed`; serve regressions `129 passed`; `ruff check` pass; `ruff format --check` pass; `pyright` currently reports `184 errors`.
 
 ## Motivation
 
@@ -17,7 +17,7 @@ in Phases 1E, 3A-3D, 3C, 5F, and 6B.
 
 ## Current State
 
-Current `serve/app.py` registers 23 explicit `Route(...)` entries: 1 `/healthz`, 21 named
+Current `serve/app.py` registers 42 explicit `Route(...)` entries: 1 `/healthz`, 40 concrete
 `/api/*` routes, and 1 `/api/{rest_of_path:path}` catchall. DTOs are frozen in
 `contracts/serve_app.py` and `contracts/claim_status.py`.
 
@@ -61,14 +61,14 @@ Endpoints #23-#37: v1.0 additions below.
 |---|--------|------|------|-------------|------------|
 | 35 | GET | `/api/tasks/{task_id}/progress` | token | SSE stream (`text/event-stream`) | 3C |
 | 36 | GET | `/api/graph/status` | token | `GraphStatusResponse` | 5F |
-| 37 | POST | `/api/learn` | token | SSE stream (`text/event-stream`) | 6B |
+| 37 | POST | `/api/learn` | token | `202 {"task_id": string}` | 6B |
 
-**Note on #37 (`POST /api/learn`)**: This endpoint triggers a full learn pipeline via
-the orchestrator.  It requires extracting `core/orchestrator.py` from `cli.py`
-(Phase 6B, 7-10 PD).  The request DTO (`LearnRequest`) and SSE event schema will be
-defined in Phase 6B after the orchestrator refactor lands.  This RFC **reserves** the
-endpoint number and path; the full contract will be ratified in a follow-up RFC or
-Phase 6B gate review.
+**Note on #37 (`POST /api/learn`)**: The current branch now lands this endpoint.
+It triggers the background learn pipeline via the concrete `core/orchestrator.py`
+implementation, returns `202 {"task_id": ...}`, and reuses `/api/tasks/{task_id}`
+plus `/api/tasks/{task_id}/progress` for polling / SSE progress. The HTTP request
+surface intentionally stays narrow: only safe learn capture / option fields are
+accepted at the route layer, while provider override fields are not exposed over HTTP.
 
 ### New Response DTOs
 
@@ -466,4 +466,4 @@ contract-freeze §8 rule 3.
 4. MisconceptionCard is a separate DTO, not a ReviewCard extension
 5. Graphify runtime-only posture formally documented
 6. Codex + Claude cross-review PASS
-7. No existing tests regress against the current backend baseline (`1222 passed, 1 skipped`)
+7. No existing tests regress against the current backend baseline (`1266 passed, 1 skipped`)

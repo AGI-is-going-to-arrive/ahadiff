@@ -3,7 +3,16 @@
 > Tested 2026-04-27 against `ahadiff serve --no-browser` (auto-bound to port 8765)
 > Route-count convention: this live baseline has 21 explicit business `/api` routes + `/healthz` = 22 concrete endpoints. The Starlette catchall `/api/{rest_of_path:path}` is an error handler route and is not counted as a business endpoint.
 
-## Current Live Concrete Endpoints (22)
+> Current status note (2026-04-29): This document only records the 2026-04-27 live
+> snapshot. Current code now has `POST /api/learn`, `/api/tasks*`
+> status/progress/cancel routes, and a larger route surface (`42 total Route(` in
+> `serve/app.py`, including `40 concrete /api/*` routes and `1` catchall). Current
+> verification for the uncommitted branch is: full pytest `1266 passed, 1 skipped`;
+> focused backend regressions `59 passed`; serve regressions `129 passed`;
+> `ruff check` / `ruff format --check` pass; `pyright` currently reports
+> `184 errors`.
+
+## 2026-04-27 Live Concrete Endpoints (22)
 
 ### Public GET Endpoints (no auth required)
 

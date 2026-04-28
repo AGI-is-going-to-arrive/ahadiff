@@ -189,7 +189,7 @@ ahadiff/
 - quiz artifact 链路：会写 `quiz.jsonl` 和 `misconception_cards.jsonl`；评分通过的 run 会生成 `cards.jsonl` 并回填 `review_card_id`，没有 `review_card_id` 的 open-answer 行在 viewer 里也仍然可以正常显示；git 输入写 repo 级 `concepts.jsonl`，non-git 输入写 run 级 `concepts_local.jsonl`
 - `ahadiff score` / `ahadiff verify` / `ahadiff export-results`：评分、ratchet 判定和 `results.tsv` 导出都已可用
 - `ahadiff review` / `ahadiff mark <claim_id> wrong` / `ahadiff db {backup,restore,check,import-results,finalize-targeted}`：`review.sqlite` 的 review / signals / result_events / lossy import / targeted finalize 链路都已可用
-- `ahadiff serve`：localhost-only serve backend 已可用，读接口只暴露 finalized runs，写接口需要 token + Origin/Referer 校验；当前还补上了 `/api/search`、`/api/usage`、`/api/audit`、`/api/review/mastery`、`/api/concepts/weak`、`/api/spec/alignment`、`/api/stats/learning`，以及低层 `/api/tasks*` 状态接口
+- `ahadiff serve`：localhost-only serve backend 已可用，读接口只暴露 finalized runs，写接口需要 token + Origin/Referer 校验；当前还补上了 `/api/search`、`/api/usage`、`/api/audit`、`/api/review/mastery`、`/api/concepts/weak`、`/api/spec/alignment`、`/api/stats/learning`，以及 `POST /api/learn` 后台 learn submitter；`/api/tasks*` 继续作为低层 task 状态 / 进度接口
 - `ahadiff install`：Claude / Codex / Gemini / OpenCode / hooks / GitHub Action target 已可用；hooks 是 POSIX shell target，Windows v0.1 会明确拒绝；对已有 hook 文件会做 no-follow regular-file 校验，拒绝 symlink / reparse point；生成的 GitHub workflow 覆盖 macOS + Linux，Windows 暂缓；generate workflow 使用 `AHADIFF_PROVIDER_API_KEY`，并上传 `.ahadiff/` 产物 artifact
 - `ahadiff benchmark`：本地 benchmark manifest、20 个 eval fixtures、10 个 pinned integration fixtures 与 `ground_truth.md` 一致性校验已可用
 - Phase 0 相关收口已经补到当前分支：contracts 权威口径、`safe_sqlite_connect` SQLite 连接 helper、reparse/hardlink 防护、serve CORS 与 `X-Frame-Options` 安全头、CLI 冷启动和本地 baseline 脚本都有对应实现
@@ -228,7 +228,7 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-最近一次验证（2026-04-29）：`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pytest tests -q --tb=long` 为 `1222 passed, 1 skipped`；`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync ruff check src tests`、`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync ruff format --check src tests`、`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pyright` 全通过；`pnpm run typecheck`、`pnpm run build`（302.83 KB，gzip 92.67 KB）、`pnpm run test:unit` 和 `pnpm exec playwright test`（780/780）也都通过。
+最近一次验证（2026-04-29）：`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pytest tests -q --tb=long` 为 `1266 passed, 1 skipped`；本轮相关回归里，`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pytest tests/unit/test_orchestrator.py tests/unit/test_routes_learn.py tests/unit/test_task_runner.py tests/unit/test_async_dao_threadpool.py -q --tb=long` 为 `59 passed`，`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pytest tests/unit/test_serve_app.py tests/unit/test_serve_medium_apis.py -q` 为 `129 passed`；`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync ruff check src tests`、`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync ruff format --check src tests` 通过；`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pyright` 当前为 `184 errors, 0 warnings, 0 informations`；前端这轮也已重跑：`pnpm run typecheck`、`pnpm run build`（302.83 KB，gzip 92.67 KB）、`pnpm run test:unit` 和 `pnpm exec playwright test`（`780 passed`）都通过。
 
 下一步路线图：
 

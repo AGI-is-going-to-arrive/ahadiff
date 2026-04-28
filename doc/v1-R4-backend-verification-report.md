@@ -5,6 +5,14 @@
 **Baseline at review time**: 808 passed, 1 skipped
 **Scope**: 9 dimensions of backend technical feasibility
 
+> Current status note (2026-04-29): This report is an R4 historical audit, not the
+> current branch truth. The current uncommitted branch already has
+> `src/ahadiff/core/orchestrator.py`, `POST /api/learn`, and `/api/tasks*`
+> status/progress/cancel wiring. Current verification is: full pytest
+> `1266 passed, 1 skipped`; focused backend regressions `59 passed`; serve
+> regressions `129 passed`; `ruff check` / `ruff format --check` pass; `pyright`
+> currently reports `184 errors`.
+
 ---
 
 ## Post-fix update (2026-04-28)

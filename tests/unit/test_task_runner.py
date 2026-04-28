@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import asyncio
-from typing import cast
+import threading
+from typing import TYPE_CHECKING, cast
 
+import anyio
 import pytest
 
 from ahadiff.core.task_runner import TaskHandle, TaskRunner, TaskStatus
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _run(coro: object) -> object:
@@ -53,6 +58,59 @@ def test_progress_updates() -> None:
         assert info.progress.total == 10
         assert info.progress.message == "step 1"
         await asyncio.sleep(0.1)
+
+    _run(_inner())
+
+
+def test_to_thread_run_sync_progress_cancel_and_result_integration(tmp_path: Path) -> None:
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=1)
+        started = threading.Event()
+        release = threading.Event()
+        artifact_path = tmp_path / "should-not-exist.txt"
+
+        async def cancellable_work(handle: TaskHandle) -> dict[str, str]:
+            def _sync_job() -> dict[str, str]:
+                handle.update_progress(1, 10, "thread-started")
+                started.set()
+                release.wait(timeout=1.0)
+                if handle.is_cancelled():
+                    raise AhaDiffError("cancelled")
+                artifact_path.write_text("finished\n", encoding="utf-8")
+                return {"run_id": "thread-run"}
+
+            return await anyio.to_thread.run_sync(_sync_job)
+
+        task_id = runner.submit("learn", cancellable_work)
+        deadline = asyncio.get_running_loop().time() + 1.0
+        while not started.is_set() and asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.01)
+        assert started.is_set()
+
+        running = runner.get_task(task_id)
+        assert running is not None
+        assert running.progress.current == 1
+        assert running.progress.total == 10
+        assert running.progress.message == "thread-started"
+
+        assert runner.cancel_task(task_id) is True
+        await asyncio.sleep(0.05)
+
+        cancelling = runner.get_task(task_id)
+        assert cancelling is not None
+        assert cancelling.status == TaskStatus.RUNNING
+        assert cancelling.result is None
+
+        release.set()
+        await asyncio.sleep(0.05)
+
+        cancelled = runner.get_task(task_id)
+        assert cancelled is not None
+        assert cancelled.status == TaskStatus.CANCELLED
+        assert cancelled.result is None
+        assert not artifact_path.exists()
+
+    from ahadiff.core.errors import AhaDiffError
 
     _run(_inner())
 

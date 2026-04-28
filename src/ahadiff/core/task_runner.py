@@ -76,6 +76,30 @@ class TaskRunner:
         task_type: str,
         coro_factory: Callable[[TaskHandle], Coroutine[Any, Any, Any]],
     ) -> str:
+        return self._submit_unchecked(task_type, coro_factory)
+
+    def submit_if_capacity(
+        self,
+        task_type: str,
+        coro_factory: Callable[[TaskHandle], Coroutine[Any, Any, Any]],
+        *,
+        max_pending: int,
+    ) -> str | None:
+        pending_count = sum(
+            1
+            for info in self._tasks.values()
+            if info.task_type == task_type
+            and info.status in (TaskStatus.PENDING, TaskStatus.RUNNING)
+        )
+        if pending_count >= max_pending:
+            return None
+        return self._submit_unchecked(task_type, coro_factory)
+
+    def _submit_unchecked(
+        self,
+        task_type: str,
+        coro_factory: Callable[[TaskHandle], Coroutine[Any, Any, Any]],
+    ) -> str:
         loop = asyncio.get_running_loop()
         task_id = uuid.uuid4().hex[:12]
         info = TaskInfo(
@@ -123,12 +147,12 @@ class TaskRunner:
         if info.status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
             return False
         handle.mark_cancelled()
-        info.status = TaskStatus.CANCELLED
-        info.completed_at = datetime.now(UTC).isoformat()
         async_task = self._async_tasks.get(task_id)
-        if async_task is not None and not async_task.done():
+        if info.status == TaskStatus.PENDING and async_task is not None and not async_task.done():
+            info.status = TaskStatus.CANCELLED
+            info.completed_at = datetime.now(UTC).isoformat()
             async_task.cancel()
-        self._prune_completed()
+            self._prune_completed()
         return True
 
     def _prune_completed(self) -> None:
@@ -179,13 +203,19 @@ class TaskRunner:
         await self._semaphore.acquire()
         try:
             if handle.is_cancelled():
+                if info.status != TaskStatus.CANCELLED:
+                    info.status = TaskStatus.CANCELLED
+                    info.completed_at = datetime.now(UTC).isoformat()
                 return
 
             info.status = TaskStatus.RUNNING
             info.started_at = datetime.now(UTC).isoformat()
 
             result = await coro_factory(handle)
-            if not handle.is_cancelled():
+            if handle.is_cancelled():
+                info.status = TaskStatus.CANCELLED
+                info.completed_at = datetime.now(UTC).isoformat()
+            else:
                 info.status = TaskStatus.COMPLETED
                 info.result = result
                 info.completed_at = datetime.now(UTC).isoformat()
@@ -195,7 +225,10 @@ class TaskRunner:
                 info.status = TaskStatus.CANCELLED
                 info.completed_at = datetime.now(UTC).isoformat()
         except Exception as exc:
-            if not handle.is_cancelled():
+            if handle.is_cancelled():
+                info.status = TaskStatus.CANCELLED
+                info.completed_at = datetime.now(UTC).isoformat()
+            else:
                 info.status = TaskStatus.FAILED
                 info.error = str(exc)
                 info.completed_at = datetime.now(UTC).isoformat()
