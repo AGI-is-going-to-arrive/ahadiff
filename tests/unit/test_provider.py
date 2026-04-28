@@ -909,7 +909,10 @@ def test_usage_db_retries_locked_write_and_records_once(
 
 def test_usage_schema_initialization_is_thread_safe(tmp_path: Path) -> None:
     db_path = tmp_path / "usage.sqlite"
-    usage_module._SCHEMA_INITIALIZED.discard(str(db_path))  # pyright: ignore[reportPrivateUsage]
+    usage_module._SCHEMA_INITIALIZED.pop(  # pyright: ignore[reportPrivateUsage]
+        str(db_path),
+        None,
+    )
     thread_count = 12
     start = threading.Barrier(thread_count)
     errors: list[BaseException] = []

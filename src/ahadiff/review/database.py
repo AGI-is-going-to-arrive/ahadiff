@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import os
 import sqlite3
 import tempfile
@@ -25,6 +26,7 @@ from ahadiff.core.sqlite_util import safe_sqlite_connect
 
 from .scheduler import (
     DEFAULT_DESIRED_RETENTION,
+    default_scheduler_parameters,
     default_weights_json,
     normalize_fsrs_state,
     review_fsrs_card,
@@ -36,7 +38,7 @@ from .schemas import DueReviewCard, ReviewAnswer, ReviewDbCheck, ReviewUpdate
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 4
 _SQLITE_MIN_VERSION = (3, 51, 3)
 _SQLITE_ALLOWED_BACKPORTS = {(3, 50, 7), (3, 44, 6)}
 _SQLITE_SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
@@ -1132,6 +1134,11 @@ def _initialize_schema(connection: sqlite3.Connection) -> None:
         _ensure_review_logs_schema(connection)
         _ensure_result_events_schema(connection)
         _ensure_learning_signals_schema(connection)
+        _ensure_concepts_schema(connection)
+        _ensure_review_logs_review_duration(connection)
+        _ensure_fts_concepts_schema(connection)
+        _ensure_fts_result_events_schema(connection)
+        _ensure_fts_cards_schema(connection)
         _ensure_default_scheduler_preset(connection, created_at_utc=_utc_now())
         _set_schema_version(connection, CURRENT_SCHEMA_VERSION)
         connection.execute("COMMIT")
@@ -1291,9 +1298,6 @@ def _migrate_v1_to_v2(connection: sqlite3.Connection) -> None:
     connection.execute("DROP TABLE IF EXISTS schema_version")
 
 
-_MIGRATIONS: dict[int, MigrationStep] = {1: _migrate_v1_to_v2}
-
-
 def _ensure_review_logs_schema(connection: sqlite3.Connection) -> None:
     connection.execute(
         """
@@ -1393,6 +1397,222 @@ def _ensure_learning_signals_schema(connection: sqlite3.Connection) -> None:
             ON learning_signals (signal_type, created_at DESC)
         """
     )
+
+
+def _ensure_concepts_schema(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS concepts (
+            term_key TEXT PRIMARY KEY,
+            concept TEXT NOT NULL,
+            term TEXT NOT NULL,
+            display_name TEXT NOT NULL,
+            lang TEXT NOT NULL DEFAULT 'en',
+            aliases TEXT NOT NULL DEFAULT '[]',
+            source_refs TEXT NOT NULL DEFAULT '[]',
+            branch_hint TEXT,
+            introduced_by_run TEXT NOT NULL,
+            updated_by_runs TEXT NOT NULL DEFAULT '[]',
+            related_claims TEXT NOT NULL DEFAULT '[]',
+            file_refs TEXT NOT NULL DEFAULT '[]',
+            created_at_utc TEXT NOT NULL,
+            updated_at_utc TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS ix_concepts_run
+            ON concepts (introduced_by_run)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS ix_concepts_lang
+            ON concepts (lang)
+        """
+    )
+
+
+def _ensure_review_logs_review_duration(connection: sqlite3.Connection) -> None:
+    _ensure_table_column(connection, "review_logs", "review_duration", "INTEGER")
+
+
+def _migrate_v2_to_v3(connection: sqlite3.Connection) -> None:
+    _ensure_concepts_schema(connection)
+    _ensure_review_logs_review_duration(connection)
+
+
+# ---------------------------------------------------------------------------
+# FTS5 full-text search schema
+# ---------------------------------------------------------------------------
+
+
+def _ensure_fts_concepts_schema(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE VIRTUAL TABLE IF NOT EXISTS fts_concepts USING fts5(
+            term_key UNINDEXED,
+            concept,
+            display_name,
+            aliases,
+            content='concepts',
+            content_rowid='rowid'
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS trg_fts_concepts_ai
+        AFTER INSERT ON concepts BEGIN
+            INSERT INTO fts_concepts(rowid, term_key, concept, display_name, aliases)
+            VALUES (NEW.rowid, NEW.term_key, NEW.concept, NEW.display_name, NEW.aliases);
+        END
+        """
+    )
+    connection.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS trg_fts_concepts_ad
+        AFTER DELETE ON concepts BEGIN
+            INSERT INTO fts_concepts(fts_concepts, rowid, term_key, concept, display_name, aliases)
+            VALUES ('delete', OLD.rowid, OLD.term_key, OLD.concept, OLD.display_name, OLD.aliases);
+        END
+        """
+    )
+    connection.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS trg_fts_concepts_au
+        AFTER UPDATE ON concepts BEGIN
+            INSERT INTO fts_concepts(fts_concepts, rowid, term_key, concept, display_name, aliases)
+            VALUES ('delete', OLD.rowid, OLD.term_key, OLD.concept, OLD.display_name, OLD.aliases);
+            INSERT INTO fts_concepts(rowid, term_key, concept, display_name, aliases)
+            VALUES (NEW.rowid, NEW.term_key, NEW.concept, NEW.display_name, NEW.aliases);
+        END
+        """
+    )
+
+
+def _ensure_fts_result_events_schema(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE VIRTUAL TABLE IF NOT EXISTS fts_result_events USING fts5(
+            event_id UNINDEXED,
+            source_ref,
+            weakest_dim,
+            note_json,
+            content='result_events',
+            content_rowid='rowid'
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS trg_fts_result_events_ai
+        AFTER INSERT ON result_events BEGIN
+            INSERT INTO fts_result_events(rowid, event_id, source_ref, weakest_dim, note_json)
+            VALUES (NEW.rowid, NEW.event_id, NEW.source_ref, NEW.weakest_dim, NEW.note_json);
+        END
+        """
+    )
+    connection.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS trg_fts_result_events_ad
+        AFTER DELETE ON result_events BEGIN
+            INSERT INTO fts_result_events(
+                fts_result_events, rowid, event_id,
+                source_ref, weakest_dim, note_json)
+            VALUES (
+                'delete', OLD.rowid, OLD.event_id,
+                OLD.source_ref, OLD.weakest_dim, OLD.note_json);
+        END
+        """
+    )
+    connection.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS trg_fts_result_events_au
+        AFTER UPDATE ON result_events BEGIN
+            INSERT INTO fts_result_events(
+                fts_result_events, rowid, event_id,
+                source_ref, weakest_dim, note_json)
+            VALUES (
+                'delete', OLD.rowid, OLD.event_id,
+                OLD.source_ref, OLD.weakest_dim, OLD.note_json);
+            INSERT INTO fts_result_events(rowid, event_id, source_ref, weakest_dim, note_json)
+            VALUES (NEW.rowid, NEW.event_id, NEW.source_ref, NEW.weakest_dim, NEW.note_json);
+        END
+        """
+    )
+
+
+def _ensure_fts_cards_schema(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE VIRTUAL TABLE IF NOT EXISTS fts_cards USING fts5(
+            id UNINDEXED,
+            concept,
+            display_path,
+            symbol,
+            content='cards',
+            content_rowid='rowid'
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS trg_fts_cards_ai
+        AFTER INSERT ON cards BEGIN
+            INSERT INTO fts_cards(rowid, id, concept, display_path, symbol)
+            VALUES (NEW.rowid, NEW.id, NEW.concept, NEW.display_path, NEW.symbol);
+        END
+        """
+    )
+    connection.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS trg_fts_cards_ad
+        AFTER DELETE ON cards BEGIN
+            INSERT INTO fts_cards(fts_cards, rowid, id, concept, display_path, symbol)
+            VALUES ('delete', OLD.rowid, OLD.id, OLD.concept, OLD.display_path, OLD.symbol);
+        END
+        """
+    )
+    connection.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS trg_fts_cards_au
+        AFTER UPDATE ON cards BEGIN
+            INSERT INTO fts_cards(fts_cards, rowid, id, concept, display_path, symbol)
+            VALUES ('delete', OLD.rowid, OLD.id, OLD.concept, OLD.display_path, OLD.symbol);
+            INSERT INTO fts_cards(rowid, id, concept, display_path, symbol)
+            VALUES (NEW.rowid, NEW.id, NEW.concept, NEW.display_path, NEW.symbol);
+        END
+        """
+    )
+
+
+_ALLOWED_FTS_TABLES = frozenset({"fts_concepts", "fts_result_events", "fts_cards"})
+
+
+def _rebuild_fts_index(connection: sqlite3.Connection, fts_table: str) -> None:
+    """Rebuild FTS index from content table. Use during migration."""
+    if fts_table not in _ALLOWED_FTS_TABLES:
+        raise StorageError(f"unknown FTS table: {fts_table}")
+    connection.execute(f"INSERT INTO {fts_table}({fts_table}) VALUES ('rebuild')")
+
+
+def _migrate_v3_to_v4(connection: sqlite3.Connection) -> None:
+    _ensure_fts_concepts_schema(connection)
+    _ensure_fts_result_events_schema(connection)
+    _ensure_fts_cards_schema(connection)
+    # Rebuild FTS indexes from existing data
+    _rebuild_fts_index(connection, "fts_concepts")
+    _rebuild_fts_index(connection, "fts_result_events")
+    _rebuild_fts_index(connection, "fts_cards")
+
+
+_MIGRATIONS: dict[int, MigrationStep] = {
+    1: _migrate_v1_to_v2,
+    2: _migrate_v2_to_v3,
+    3: _migrate_v3_to_v4,
+}
 
 
 def _ensure_default_scheduler_preset(
@@ -1644,7 +1864,16 @@ def _scheduler_weights_for_card(
     payload = safe_json_loads(str(row["weights"]))
     if not isinstance(payload, list):
         raise StorageError(f"scheduler preset weights are not a JSON array: {scheduler_preset_id}")
-    return tuple(_coerce_float(item) for item in cast("Iterable[object]", payload))
+    weights = tuple(_coerce_float(item) for item in cast("Iterable[object]", payload))
+    expected_count = len(default_scheduler_parameters())
+    if len(weights) != expected_count:
+        raise StorageError(
+            "scheduler preset weights length mismatch: "
+            f"{scheduler_preset_id} expected {expected_count}, got {len(weights)}"
+        )
+    if not all(math.isfinite(weight) for weight in weights):
+        raise StorageError(f"scheduler preset weights must be finite: {scheduler_preset_id}")
+    return weights
 
 
 def _recent_success_count(connection: sqlite3.Connection, card_id: str) -> int:
@@ -1788,6 +2017,334 @@ def _sqlite_gate_ok(version: tuple[int, int, int]) -> bool:
     return version >= _SQLITE_MIN_VERSION or version in _SQLITE_ALLOWED_BACKPORTS
 
 
+# ---------------------------------------------------------------------------
+# Concepts helpers
+# ---------------------------------------------------------------------------
+
+
+def _merge_json_list(existing_json: str, new_values: list[object]) -> str:
+    """Merge new values into a JSON array string, deduplicating."""
+    try:
+        existing_raw = safe_json_loads(existing_json)
+    except (json.JSONDecodeError, ValueError):
+        existing_raw = []
+    existing_list: list[object] = (
+        list(cast("list[object]", existing_raw)) if isinstance(existing_raw, list) else []
+    )
+    merged: list[object] = []
+    seen: set[str] = set()
+    for item in (*existing_list, *new_values):
+        key = str(item).strip()
+        if key and key not in seen:
+            seen.add(key)
+            merged.append(item)
+    return json.dumps(merged, ensure_ascii=False)
+
+
+def _merge_json_array_payloads(existing_json: str | None, incoming_json: str | None) -> str:
+    """Merge two JSON array payloads for atomic SQLite UPSERT expressions."""
+    try:
+        incoming_raw = safe_json_loads(incoming_json or "[]")
+    except (json.JSONDecodeError, ValueError):
+        incoming_raw = []
+    incoming_values = (
+        list(cast("list[object]", incoming_raw)) if isinstance(incoming_raw, list) else []
+    )
+    return _merge_json_list(existing_json or "[]", incoming_values)
+
+
+def _register_concepts_sql_functions(connection: sqlite3.Connection) -> None:
+    connection.create_function("ahadiff_merge_json_arrays", 2, _merge_json_array_payloads)
+
+
+def _table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
+    row = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
+# ---------------------------------------------------------------------------
+# Concepts public API
+# ---------------------------------------------------------------------------
+
+
+def upsert_concept(
+    db_path: Path,
+    *,
+    term_key: str,
+    concept: str,
+    run_id: str,
+    source_ref: str,
+    branch_hint: str | None,
+    related_claims: tuple[str, ...],
+    file_refs: tuple[str, ...],
+) -> None:
+    """Insert or merge a single concept entry."""
+    now = _utc_now()
+    with connect_review_db(db_path, create_parent=True) as connection:
+        _ensure_schema(connection)
+        _register_concepts_sql_functions(connection)
+        connection.execute(
+            """
+            INSERT INTO concepts (
+                term_key, concept, term, display_name,
+                lang, aliases,
+                source_refs, branch_hint,
+                introduced_by_run, updated_by_runs,
+                related_claims, file_refs,
+                created_at_utc, updated_at_utc
+            ) VALUES (
+                ?, ?, ?, ?,
+                'en', '[]',
+                ?, ?,
+                ?, ?,
+                ?, ?,
+                ?, ?
+            )
+            ON CONFLICT(term_key) DO UPDATE SET
+                source_refs = ahadiff_merge_json_arrays(concepts.source_refs, excluded.source_refs),
+                updated_by_runs = ahadiff_merge_json_arrays(
+                    concepts.updated_by_runs,
+                    excluded.updated_by_runs
+                ),
+                related_claims = ahadiff_merge_json_arrays(
+                    concepts.related_claims,
+                    excluded.related_claims
+                ),
+                file_refs = ahadiff_merge_json_arrays(concepts.file_refs, excluded.file_refs),
+                branch_hint = COALESCE(concepts.branch_hint, excluded.branch_hint),
+                updated_at_utc = excluded.updated_at_utc
+            """,
+            (
+                term_key,
+                concept,
+                concept,
+                concept,
+                json.dumps([source_ref], ensure_ascii=False),
+                branch_hint,
+                run_id,
+                json.dumps([run_id], ensure_ascii=False),
+                json.dumps(list(related_claims), ensure_ascii=False),
+                json.dumps(list(file_refs), ensure_ascii=False),
+                now,
+                now,
+            ),
+        )
+
+
+def upsert_concepts_batch(
+    db_path: Path,
+    entries: Iterable[dict[str, object]],
+) -> int:
+    """Batch upsert concept entries. Returns count of rows affected."""
+    now = _utc_now()
+    count = 0
+    with connect_review_db(db_path, create_parent=True) as connection:
+        _ensure_schema(connection)
+        _register_concepts_sql_functions(connection)
+        for entry in entries:
+            term_key = str(entry.get("term_key", ""))
+            if not term_key:
+                continue
+            concept = str(entry.get("concept", ""))
+            source_refs_raw = entry.get("source_refs", [])
+            source_refs_list: list[object] = (
+                list(cast("list[object]", source_refs_raw))
+                if isinstance(source_refs_raw, list)
+                else []
+            )
+            updated_by_runs_raw = entry.get("updated_by_runs", [])
+            updated_by_runs_list: list[object] = (
+                list(cast("list[object]", updated_by_runs_raw))
+                if isinstance(updated_by_runs_raw, list)
+                else []
+            )
+            related_claims_raw = entry.get("related_claims", [])
+            related_claims_list: list[object] = (
+                list(cast("list[object]", related_claims_raw))
+                if isinstance(related_claims_raw, list)
+                else []
+            )
+            file_refs_raw = entry.get("file_refs", [])
+            file_refs_list: list[object] = (
+                list(cast("list[object]", file_refs_raw)) if isinstance(file_refs_raw, list) else []
+            )
+            aliases_raw = entry.get("aliases", [])
+            aliases_list: list[object] = (
+                list(aliases_raw)  # type: ignore[arg-type]
+                if isinstance(aliases_raw, list)
+                else []
+            )
+            connection.execute(
+                """
+                INSERT INTO concepts (
+                    term_key, concept, term,
+                    display_name, lang, aliases,
+                    source_refs, branch_hint,
+                    introduced_by_run, updated_by_runs,
+                    related_claims, file_refs,
+                    created_at_utc, updated_at_utc
+                ) VALUES (
+                    ?, ?, ?,
+                    ?, ?, ?,
+                    ?, ?,
+                    ?, ?,
+                    ?, ?,
+                    ?, ?
+                )
+                ON CONFLICT(term_key) DO UPDATE SET
+                    concept = COALESCE(NULLIF(excluded.concept, ''), concepts.concept),
+                    term = COALESCE(NULLIF(excluded.term, ''), concepts.term),
+                    display_name = COALESCE(
+                        NULLIF(excluded.display_name, ''),
+                        concepts.display_name
+                    ),
+                    lang = COALESCE(NULLIF(excluded.lang, ''), concepts.lang),
+                    aliases = ahadiff_merge_json_arrays(
+                        concepts.aliases, excluded.aliases
+                    ),
+                    source_refs = ahadiff_merge_json_arrays(
+                        concepts.source_refs, excluded.source_refs
+                    ),
+                    updated_by_runs = ahadiff_merge_json_arrays(
+                        concepts.updated_by_runs,
+                        excluded.updated_by_runs
+                    ),
+                    related_claims = ahadiff_merge_json_arrays(
+                        concepts.related_claims,
+                        excluded.related_claims
+                    ),
+                    file_refs = ahadiff_merge_json_arrays(concepts.file_refs, excluded.file_refs),
+                    introduced_by_run = COALESCE(
+                        NULLIF(concepts.introduced_by_run, ''),
+                        excluded.introduced_by_run
+                    ),
+                    branch_hint = COALESCE(concepts.branch_hint, excluded.branch_hint),
+                    updated_at_utc = excluded.updated_at_utc
+                """,
+                (
+                    term_key,
+                    concept,
+                    str(entry.get("term", concept)),
+                    str(entry.get("display_name", concept)),
+                    str(entry.get("lang", "en")),
+                    json.dumps(aliases_list, ensure_ascii=False),
+                    json.dumps(source_refs_list, ensure_ascii=False),
+                    entry.get("branch_hint"),
+                    str(entry.get("introduced_by_run", "")),
+                    json.dumps(updated_by_runs_list, ensure_ascii=False),
+                    json.dumps(related_claims_list, ensure_ascii=False),
+                    json.dumps(file_refs_list, ensure_ascii=False),
+                    now,
+                    now,
+                ),
+            )
+            count += 1
+    return count
+
+
+def load_concepts_from_db(
+    db_path: Path,
+    *,
+    limit: int = 100,
+    after_term_key: str | None = None,
+) -> tuple[dict[str, object], ...]:
+    """Load concepts from SQLite with keyset pagination."""
+    if not db_path.exists():
+        return ()
+    with connect_review_db(db_path) as connection:
+        if not _table_exists(connection, "concepts"):
+            return ()
+        clauses: list[str] = []
+        params: list[object] = []
+        if after_term_key is not None:
+            clauses.append("term_key > ?")
+            params.append(after_term_key)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(limit)
+        rows = connection.execute(
+            f"""
+            SELECT term_key, concept, term, display_name, lang, aliases,
+                   source_refs, branch_hint, introduced_by_run, updated_by_runs,
+                   related_claims, file_refs, created_at_utc, updated_at_utc
+            FROM concepts{where}
+            ORDER BY term_key ASC
+            LIMIT ?
+            """,
+            tuple(params),
+        ).fetchall()
+    result: list[dict[str, object]] = []
+    for row in rows:
+        entry: dict[str, object] = {}
+        for key in (
+            "term_key",
+            "concept",
+            "term",
+            "display_name",
+            "lang",
+            "branch_hint",
+            "introduced_by_run",
+            "created_at_utc",
+            "updated_at_utc",
+        ):
+            entry[key] = row[key]
+        for key in ("aliases", "source_refs", "updated_by_runs", "related_claims", "file_refs"):
+            raw = row[key]
+            try:
+                entry[key] = safe_json_loads(str(raw)) if raw else []
+            except (json.JSONDecodeError, ValueError):
+                entry[key] = []
+        result.append(entry)
+    return tuple(result)
+
+
+def count_concepts(db_path: Path) -> int:
+    """Count total concepts in the database."""
+    if not db_path.exists():
+        return 0
+    with connect_review_db(db_path) as connection:
+        if not _table_exists(connection, "concepts"):
+            return 0
+        row = connection.execute("SELECT COUNT(*) FROM concepts").fetchone()
+        return int(row[0]) if row else 0
+
+
+_MAX_CONCEPTS_JSONL_BYTES = 16 * 1024 * 1024
+
+
+def import_concepts_from_jsonl(db_path: Path, jsonl_path: Path) -> int:
+    """Import concepts from a JSONL file into SQLite. Returns count imported."""
+    if not jsonl_path.exists():
+        return 0
+    if jsonl_path.is_symlink():
+        raise InputError(f"refusing symlinked concepts JSONL: {jsonl_path}")
+    file_size = jsonl_path.stat().st_size
+    if file_size > _MAX_CONCEPTS_JSONL_BYTES:
+        raise InputError(f"concepts JSONL exceeds 16 MiB limit: {jsonl_path}")
+    entries: list[dict[str, object]] = []
+    with jsonl_path.open("r", encoding="utf-8") as handle:
+        for index, line in enumerate(handle, start=1):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                payload = safe_json_loads(stripped)
+            except (json.JSONDecodeError, ValueError) as exc:
+                raise InputError(f"invalid concepts JSONL line {index}: {jsonl_path}") from exc
+            if isinstance(payload, dict):
+                row = cast("dict[str, object]", payload)
+                if not row.get("term_key") or not row.get("concept"):
+                    raise InputError(
+                        f"concepts JSONL line {index} missing term_key or concept: {jsonl_path}"
+                    )
+                entries.append(row)
+    if not entries:
+        return 0
+    return upsert_concepts_batch(db_path, entries)
+
+
 __all__ = [
     "CURRENT_SCHEMA_VERSION",
     "LossyImportOutcome",
@@ -1796,15 +2353,18 @@ __all__ = [
     "check_review_db",
     "checkpoint_review_db",
     "connect_review_db",
+    "count_concepts",
     "delete_result_event",
     "delete_result_event_and_select_tsv_rows",
     "finalize_targeted_verify_event",
     "import_cards_from_jsonl",
     "import_cards_from_runs",
+    "import_concepts_from_jsonl",
     "import_results_tsv_lossy",
     "initialize_review_db",
     "insert_learning_signal",
     "list_due_cards",
+    "load_concepts_from_db",
     "load_finalized_ratchet_history_page",
     "load_result_event_by_run_and_id",
     "load_result_events_for_improve_chain",
@@ -1820,4 +2380,6 @@ __all__ = [
     "set_card_queue_state",
     "sync_result_event",
     "upgrade_review_db",
+    "upsert_concept",
+    "upsert_concepts_batch",
 ]

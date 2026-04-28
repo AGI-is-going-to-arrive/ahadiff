@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import pathlib as _pathlib
 import threading
+import time
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -26,6 +27,7 @@ class ServeState:
     write_lock: asyncio.Lock | None = None
     repo_lock_path: Path | None = None
     thread_write_lock: ThreadLock | None = None
+    started_at: float = 0.0
 
     @property
     def runs_dir(self) -> Path:
@@ -47,6 +49,7 @@ class ServeState:
             write_lock=self.write_lock or asyncio.Lock(),
             repo_lock_path=self.repo_lock_path or self.state_dir / "ahadiff.lock",
             thread_write_lock=self.thread_write_lock or threading.Lock(),
+            started_at=self.started_at or time.monotonic(),
         )
 
     def with_locale(self, locale: Literal["en", "zh-CN"]) -> ServeState:

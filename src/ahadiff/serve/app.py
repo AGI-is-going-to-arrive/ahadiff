@@ -15,6 +15,7 @@ from ahadiff.core.errors import AhaDiffError, InputError
 from .auth import serve_state
 from .middleware import LoopbackGuardMiddleware
 from .routes_config import get_config, get_doctor
+from .routes_export import get_export_results
 from .routes_install import get_install_targets
 from .routes_locale import get_locale, put_locale
 from .routes_review import get_review_queue, post_review_rate
@@ -30,6 +31,7 @@ from .routes_runs import (
     list_runs,
 )
 from .routes_signals import helpfulness, mark_wrong, quiz_answer, srs_review
+from .routes_stats import get_providers, get_review_heatmap, get_serve_status, get_stats
 from .static import mount_viewer_static
 
 if TYPE_CHECKING:
@@ -65,6 +67,11 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
             Route("/api/config", get_config, methods=["GET"]),
             Route("/api/doctor", get_doctor, methods=["GET"]),
             Route("/api/install/targets", get_install_targets, methods=["GET"]),
+            Route("/api/stats", get_stats, methods=["GET"]),
+            Route("/api/review/heatmap", get_review_heatmap, methods=["GET"]),
+            Route("/api/export/results", get_export_results, methods=["GET"]),
+            Route("/api/providers", get_providers, methods=["GET"]),
+            Route("/api/serve/status", get_serve_status, methods=["GET"]),
             Route("/api/signals/mark-wrong", mark_wrong, methods=["POST"]),
             Route("/api/signals/quiz-answer", quiz_answer, methods=["POST"]),
             Route("/api/signals/srs-review", srs_review, methods=["POST"]),

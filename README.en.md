@@ -227,7 +227,7 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-Latest verification (2026-04-28): `uv run pytest tests -q --tb=long` finished with `881 passed, 1 skipped` (the live judge smoke is still skipped by default); `uv run ruff check src tests`, `uv run ruff format --check src tests`, and `uv run pyright` all passed.
+Latest verification (2026-04-28): `uv run pytest tests -q --tb=long` finished with `993 passed, 1 skipped` (the live judge smoke is still skipped by default); `uv run ruff check src tests`, `uv run ruff format --check src tests`, and `uv run pyright` all passed.
 
 Roadmap:
 

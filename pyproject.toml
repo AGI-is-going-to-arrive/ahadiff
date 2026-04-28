@@ -23,6 +23,11 @@ dependencies = [
 [project.scripts]
 ahadiff = "ahadiff.cli:main"
 
+[project.optional-dependencies]
+optimizer = [
+  "fsrs[optimizer]>=6.3.1,<7",
+]
+
 [dependency-groups]
 dev = [
   "pyright>=1.1.400,<2",

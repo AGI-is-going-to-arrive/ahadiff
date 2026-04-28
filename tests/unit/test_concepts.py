@@ -3,19 +3,21 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 import ahadiff.wiki.concepts as concepts_module
+from ahadiff.core.errors import InputError
 from ahadiff.quiz.schemas import QuizEvidence, QuizQuestion
+from ahadiff.review.database import count_concepts, initialize_review_db
 from ahadiff.wiki.concepts import (
     append_concepts,
     compute_term_key,
     load_concepts_page,
+    load_concepts_page_from_storage,
     load_visible_concepts,
+    parse_jsonl_concepts_cursor,
 )
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def _init_git_repo(path: Path) -> None:
@@ -160,6 +162,86 @@ def test_load_concepts_page_streams_with_line_cursor(tmp_path: Path) -> None:
     assert first_page.next_cursor == "3"
     assert [entry["term_key"] for entry in second_page.entries] == ["term-2"]
     assert second_page.next_cursor is None
+
+
+def test_load_concepts_page_from_storage_syncs_jsonl_before_db_read(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    (state_dir / "concepts.jsonl").write_text(
+        "".join(
+            json.dumps(
+                {
+                    "term_key": f"term-{index}",
+                    "concept": f"term {index}",
+                    "term": f"term {index}",
+                    "display_name": f"term {index}",
+                    "lang": "en",
+                    "aliases": [],
+                    "source_refs": ["abc123"],
+                    "branch_hint": "main",
+                    "introduced_by_run": "run_a",
+                    "updated_by_runs": ["run_a"],
+                    "related_claims": [],
+                    "file_refs": [],
+                }
+            )
+            + "\n"
+            for index in range(2)
+        ),
+        encoding="utf-8",
+    )
+
+    page = load_concepts_page_from_storage(state_dir, limit=10)
+
+    assert [entry["term_key"] for entry in page.entries] == ["term-0", "term-1"]
+    assert count_concepts(db_path) == 2
+
+
+def test_parse_jsonl_concepts_cursor_rejects_invalid_values() -> None:
+    assert parse_jsonl_concepts_cursor(None) == 0
+    assert parse_jsonl_concepts_cursor("3") == 3
+    with pytest.raises(InputError, match="must be an integer"):
+        parse_jsonl_concepts_cursor("not-an-int")
+    with pytest.raises(InputError, match="must be >= 0"):
+        parse_jsonl_concepts_cursor("-1")
+
+
+def test_append_concepts_propagates_sqlite_sync_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "repo"
+    workspace_root.mkdir()
+    _init_git_repo(workspace_root)
+    head_sha = _commit_file(workspace_root, "src/app.py", "value = 1\n", "base")
+    run_path = workspace_root / ".ahadiff" / "runs" / "run_git"
+    run_path.mkdir(parents=True)
+    questions = (
+        QuizQuestion(
+            question="What changed?",
+            expected_answer="The module now stores a value.",
+            source_claims=["claim_1"],
+            concepts=["value storage"],
+            evidence=[QuizEvidence(file="src/app.py", line=1)],
+        ),
+    )
+
+    def fail_upsert(*_args: object, **_kwargs: object) -> int:
+        raise RuntimeError("db sync failed")
+
+    monkeypatch.setattr("ahadiff.review.database.upsert_concepts_batch", fail_upsert)
+
+    with pytest.raises(RuntimeError, match="db sync failed"):
+        append_concepts(
+            workspace_root=workspace_root,
+            run_path=run_path,
+            run_id="run_git",
+            source_kind="git_ref",
+            source_ref=head_sha,
+            questions=questions,
+        )
 
 
 def test_load_visible_concepts_streams_and_memoizes_ancestry(

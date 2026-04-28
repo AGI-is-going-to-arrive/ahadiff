@@ -227,7 +227,7 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-最近一次验证（2026-04-28）：`uv run pytest tests -q --tb=long` 为 `881 passed, 1 skipped`（live judge 默认跳过）；`uv run ruff check src tests`、`uv run ruff format --check src tests`、`uv run pyright` 全通过。
+最近一次验证（2026-04-28）：`uv run pytest tests -q --tb=long` 为 `993 passed, 1 skipped`（live judge 默认跳过）；`uv run ruff check src tests`、`uv run ruff format --check src tests`、`uv run pyright` 全通过。
 
 下一步路线图：
 

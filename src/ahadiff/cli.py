@@ -162,6 +162,7 @@ initialize_review_db = _lazy_attr("review.database", "initialize_review_db")
 list_due_cards = _lazy_attr("review.database", "list_due_cards")
 load_result_event_by_run_and_id = _lazy_attr("review.database", "load_result_event_by_run_and_id")
 mark_run_cards_stale = _lazy_attr("review.database", "mark_run_cards_stale")
+optimize_review_weights = _lazy_attr("review.optimizer", "optimize_weights")
 record_card_review = _lazy_attr("review.database", "record_card_review")
 restore_review_db = _lazy_attr("review.database", "restore_review_db")
 set_card_queue_state = _lazy_attr("review.database", "set_card_queue_state")
@@ -499,6 +500,17 @@ def _parse_review_answer(value: str) -> ReviewAnswer:
     if normalized in {"good", "hard", "wrong"}:
         return cast("ReviewAnswer", normalized)
     raise AhaDiffError("review answer must be one of: good, hard, wrong")
+
+
+def _validate_review_cli_options(
+    *,
+    optimize: bool,
+    action: str | None,
+    card_id: str | None,
+    answer: str | None,
+) -> None:
+    if optimize and (action is not None or card_id is not None or answer is not None):
+        raise AhaDiffError("--optimize cannot be combined with --action, --card-id, or --answer")
 
 
 @_APP.callback()
@@ -1425,7 +1437,13 @@ def review_cmd(
     ] = "fsrs",
     optimize: Annotated[
         bool,
-        typer.Option("--optimize", help="Check FSRS optimizer readiness."),
+        typer.Option(
+            "--optimize",
+            help=(
+                "Optimize FSRS weights from accumulated review logs "
+                "(requires optional optimizer deps)."
+            ),
+        ),
     ] = False,
     lang: Annotated[
         str | None,
@@ -1435,6 +1453,12 @@ def review_cmd(
     try:
         if scheduler != "fsrs":
             raise AhaDiffError("only the FSRS scheduler is implemented in v0.1")
+        _validate_review_cli_options(
+            optimize=optimize,
+            action=action,
+            card_id=card_id,
+            answer=answer,
+        )
         root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
         snapshot = (
             load_config(root, cli_overrides=_cli_overrides(lang=lang))
@@ -1485,12 +1509,17 @@ def review_cmd(
                 console.print(f"[bold]Scaffolding[/bold]: {update.scaffolding_level}")
                 return
             if optimize:
-                check = check_review_db(db_path)
-                console.print(
-                    "[yellow]Optimizer[/yellow]: cold-start mode; "
-                    "requires at least 500 effective reviews before training"
-                )
-                console.print(f"[bold]Result events[/bold]: {check.event_count}")
+                result = optimize_review_weights(db_path)
+                weights_text = json.dumps(result.weights, ensure_ascii=False)
+                table = Table(title="FSRS optimizer")
+                table.add_column("Field", style="cyan")
+                table.add_column("Value", style="green")
+                table.add_row("Stage", result.stage)
+                table.add_row("Reviews", str(result.review_count))
+                table.add_row("Effective reviews", str(result.effective_review_count))
+                table.add_row("Message", result.message)
+                table.add_row("Weights", weights_text)
+                console.print(table)
                 return
             due_cards = list_due_cards(db_path, limit=limit)
         console.print(f"[bold]Imported cards[/bold]: {imported}")

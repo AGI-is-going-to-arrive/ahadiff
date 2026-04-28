@@ -115,6 +115,10 @@ def append_concepts(
             entry["branch_hint"] = branch_hint
     ordered = [existing[key] for key in sorted(existing)]
     _write_jsonl_snapshot(concepts_path, ordered)
+    db_path = workspace_root / ".ahadiff" / "review.sqlite"
+    from ahadiff.review.database import upsert_concepts_batch
+
+    upsert_concepts_batch(db_path, ordered)
     return concepts_path
 
 
@@ -165,6 +169,55 @@ def load_concepts_page(
             break
         entries.append(entry)
     return ConceptPage(entries=tuple(entries), next_cursor=next_cursor)
+
+
+def load_concepts_page_from_storage(
+    state_dir: Path,
+    *,
+    limit: int,
+    cursor: str | None = None,
+    max_bytes: int | None = None,
+) -> ConceptPage:
+    db_path = state_dir / "review.sqlite"
+    concepts_path = state_dir / "concepts.jsonl"
+    jsonl_readable = _concepts_jsonl_readable(concepts_path, max_bytes=max_bytes)
+    if db_path.exists():
+        try:
+            if jsonl_readable:
+                _sync_jsonl_concepts_to_db(
+                    db_path,
+                    concepts_path,
+                    max_bytes=max_bytes,
+                )
+            page = load_concepts_page_from_db(db_path, limit=limit, cursor=cursor)
+        except InputError:
+            raise
+        except Exception:
+            if not jsonl_readable:
+                raise
+        else:
+            if page.entries or cursor is not None or not jsonl_readable:
+                return page
+    if not jsonl_readable:
+        return ConceptPage(entries=(), next_cursor=None)
+    return load_concepts_page(
+        concepts_path,
+        limit=limit,
+        cursor=parse_jsonl_concepts_cursor(cursor),
+        max_bytes=max_bytes,
+    )
+
+
+def parse_jsonl_concepts_cursor(cursor: str | None) -> int:
+    if cursor is None:
+        return 0
+    try:
+        value = int(cursor)
+    except ValueError as exc:
+        raise InputError("concepts JSONL cursor must be an integer") from exc
+    if value < 0:
+        raise InputError("concepts JSONL cursor must be >= 0")
+    return value
 
 
 def compute_term_key(value: str) -> str:
@@ -284,6 +337,34 @@ def _iter_jsonl_entries_with_offsets(
             yield index, cast("dict[str, Any]", payload)
 
 
+def _concepts_jsonl_readable(path: Path, *, max_bytes: int | None = None) -> bool:
+    if not path.exists() or path.is_symlink():
+        return False
+    if max_bytes is not None and path.stat().st_size > max_bytes:
+        raise InputError(f"{path.name} exceeds size limit")
+    return True
+
+
+def _sync_jsonl_concepts_to_db(
+    db_path: Path,
+    concepts_path: Path,
+    *,
+    max_bytes: int | None = None,
+) -> int:
+    entries = [
+        entry
+        for _line_index, entry in _iter_jsonl_entries_with_offsets(
+            concepts_path,
+            max_bytes=max_bytes,
+        )
+    ]
+    if not entries:
+        return 0
+    from ahadiff.review.database import upsert_concepts_batch
+
+    return upsert_concepts_batch(db_path, entries)
+
+
 def _write_jsonl_snapshot(path: Path, entries: Sequence[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
@@ -313,6 +394,30 @@ def _merge_unique_strings(existing: Sequence[str], incoming: Sequence[str]) -> l
     return merged
 
 
+def load_concepts_page_from_db(
+    db_path: Path,
+    *,
+    limit: int,
+    cursor: str | None = None,
+) -> ConceptPage:
+    """Load concepts from SQLite with keyset pagination."""
+    if limit < 1:
+        raise InputError("concepts page limit must be >= 1")
+    from ahadiff.review.database import load_concepts_from_db
+
+    rows = load_concepts_from_db(
+        db_path,
+        limit=limit + 1,
+        after_term_key=cursor,
+    )
+    if len(rows) > limit:
+        entries = tuple(dict(r) for r in rows[:limit])
+        last = entries[-1]
+        next_cursor = str(last.get("term_key", ""))
+        return ConceptPage(entries=entries, next_cursor=next_cursor)
+    return ConceptPage(entries=tuple(dict(r) for r in rows), next_cursor=None)
+
+
 def _is_ancestor(repo_root: Path, source_ref: str, head_ref: str) -> bool:
     result = run_git(repo_root, "merge-base", "--is-ancestor", source_ref, head_ref, check=False)
     return result.returncode == 0
@@ -324,5 +429,8 @@ __all__ = [
     "append_concepts",
     "compute_term_key",
     "load_concepts_page",
+    "load_concepts_page_from_db",
+    "load_concepts_page_from_storage",
     "load_visible_concepts",
+    "parse_jsonl_concepts_cursor",
 ]

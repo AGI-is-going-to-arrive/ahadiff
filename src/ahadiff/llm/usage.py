@@ -20,7 +20,8 @@ else:
 
 _USAGE_BUSY_TIMEOUT_MS = 30_000
 _USAGE_WRITE_ATTEMPTS = 5
-_SCHEMA_INITIALIZED: set[str] = set()
+_SchemaSignature = tuple[int, int, int]
+_SCHEMA_INITIALIZED: dict[str, _SchemaSignature] = {}
 _SCHEMA_INIT_LOCK = threading.Lock()
 _SQLITE_MIN_VERSION = (3, 51, 3)
 _SQLITE_ALLOWED_BACKPORTS = {(3, 50, 7), (3, 44, 6)}
@@ -163,10 +164,12 @@ def _is_retryable_usage_write_error(exc: BaseException, root: BaseException) -> 
 
 def _ensure_usage_schema(connection: sqlite3.Connection, db_path: Path) -> None:
     db_path_key = str(db_path)
-    if db_path_key in _SCHEMA_INITIALIZED:
+    schema_signature = _usage_schema_signature(db_path)
+    if _SCHEMA_INITIALIZED.get(db_path_key) == schema_signature:
         return
     with _SCHEMA_INIT_LOCK:
-        if db_path_key in _SCHEMA_INITIALIZED:
+        schema_signature = _usage_schema_signature(db_path)
+        if _SCHEMA_INITIALIZED.get(db_path_key) == schema_signature:
             return
         connection.execute(
             """
@@ -209,7 +212,19 @@ def _ensure_usage_schema(connection: sqlite3.Connection, db_path: Path) -> None:
             ON llm_usage (timestamp_utc)
             """
         )
-        _SCHEMA_INITIALIZED.add(db_path_key)
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_llm_usage_workspace_ts
+            ON llm_usage (workspace_identity, timestamp_utc)
+            """
+        )
+        _SCHEMA_INITIALIZED[db_path_key] = _usage_schema_signature(db_path)
+
+
+def _usage_schema_signature(db_path: Path) -> _SchemaSignature:
+    stat = db_path.stat()
+    empty_generation = stat.st_ctime_ns if stat.st_size == 0 else 0
+    return (stat.st_dev, stat.st_ino, empty_generation)
 
 
 def _resolve_sqlite_journal_mode(db_path: Path) -> str:
@@ -218,6 +233,137 @@ def _resolve_sqlite_journal_mode(db_path: Path) -> str:
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+@dataclass(frozen=True)
+class UsageSummary:
+    total_cost_usd: float
+    total_input_tokens: int
+    total_output_tokens: int
+    total_calls: int
+    cache_hits: int
+    cache_misses: int
+
+
+@dataclass(frozen=True)
+class UsageByModel:
+    provider_class: str
+    model_id: str
+    cost_usd: float
+    input_tokens: int
+    output_tokens: int
+    call_count: int
+
+
+def query_usage_summary(
+    *,
+    db_path: Path | None = None,
+    workspace_identity: str | None = None,
+    since: str | None = None,
+    until: str | None = None,
+) -> UsageSummary:
+    target = usage_db_path() if db_path is None else db_path
+    if not target.exists():
+        return UsageSummary(0.0, 0, 0, 0, 0, 0)
+    clauses: list[str] = []
+    params: list[object] = []
+    if workspace_identity is not None:
+        clauses.append("workspace_identity = ?")
+        params.append(workspace_identity)
+    if since is not None:
+        clauses.append("timestamp_utc >= ?")
+        params.append(_normalize_usage_time_bound(since, "--since"))
+    if until is not None:
+        clauses.append("timestamp_utc <= ?")
+        params.append(_normalize_usage_time_bound(until, "--until"))
+    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    with connect_usage_db(target) as connection:
+        _ensure_usage_schema(connection, target)
+        row = connection.execute(
+            f"""
+            SELECT
+                COALESCE(SUM(cost_usd), 0.0),
+                COALESCE(SUM(input_tokens), 0),
+                COALESCE(SUM(output_tokens), 0),
+                COUNT(*),
+                COALESCE(SUM(cache_hit), 0),
+                COUNT(*) - COALESCE(SUM(cache_hit), 0)
+            FROM llm_usage{where}
+            """,
+            params,
+        ).fetchone()
+    if row is None:
+        return UsageSummary(0.0, 0, 0, 0, 0, 0)
+    return UsageSummary(
+        total_cost_usd=float(row[0]),
+        total_input_tokens=int(row[1]),
+        total_output_tokens=int(row[2]),
+        total_calls=int(row[3]),
+        cache_hits=int(row[4]),
+        cache_misses=int(row[5]),
+    )
+
+
+def query_usage_by_model(
+    *,
+    db_path: Path | None = None,
+    workspace_identity: str | None = None,
+    since: str | None = None,
+    until: str | None = None,
+) -> tuple[UsageByModel, ...]:
+    target = usage_db_path() if db_path is None else db_path
+    if not target.exists():
+        return ()
+    clauses: list[str] = []
+    params: list[object] = []
+    if workspace_identity is not None:
+        clauses.append("workspace_identity = ?")
+        params.append(workspace_identity)
+    if since is not None:
+        clauses.append("timestamp_utc >= ?")
+        params.append(_normalize_usage_time_bound(since, "--since"))
+    if until is not None:
+        clauses.append("timestamp_utc <= ?")
+        params.append(_normalize_usage_time_bound(until, "--until"))
+    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    with connect_usage_db(target) as connection:
+        _ensure_usage_schema(connection, target)
+        rows = connection.execute(
+            f"""
+            SELECT
+                provider_class,
+                model_id,
+                COALESCE(SUM(cost_usd), 0.0),
+                COALESCE(SUM(input_tokens), 0),
+                COALESCE(SUM(output_tokens), 0),
+                COUNT(*)
+            FROM llm_usage{where}
+            GROUP BY provider_class, model_id
+            ORDER BY COALESCE(SUM(cost_usd), 0.0) DESC
+            """,
+            params,
+        ).fetchall()
+    return tuple(
+        UsageByModel(
+            provider_class=str(row[0]),
+            model_id=str(row[1]),
+            cost_usd=float(row[2]),
+            input_tokens=int(row[3]),
+            output_tokens=int(row[4]),
+            call_count=int(row[5]),
+        )
+        for row in rows
+    )
+
+
+def _normalize_usage_time_bound(value: str, option_name: str) -> str:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise InputError(f"{option_name} must be an ISO-8601 datetime") from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _assert_sqlite_runtime_supported() -> None:
@@ -238,4 +384,12 @@ def _sqlite_version_supported(version: tuple[int, int, int]) -> bool:
     return version >= _SQLITE_MIN_VERSION or version in _SQLITE_ALLOWED_BACKPORTS
 
 
-__all__ = ["UsageRecord", "connect_usage_db", "record_usage_event"]
+__all__ = [
+    "UsageByModel",
+    "UsageRecord",
+    "UsageSummary",
+    "connect_usage_db",
+    "query_usage_by_model",
+    "query_usage_summary",
+    "record_usage_event",
+]

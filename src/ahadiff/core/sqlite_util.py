@@ -7,6 +7,7 @@ import os
 import sqlite3
 import stat
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path, PurePath
 from typing import Any, cast
@@ -14,7 +15,7 @@ from urllib.parse import quote
 
 _VALID_JOURNAL_MODES = frozenset({"DELETE", "WAL", "TRUNCATE", "PERSIST", "MEMORY", "OFF"})
 _SQLITE_SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
-_OPEN_VERIFICATION_RETRIES = 2
+_OPEN_VERIFICATION_RETRIES = 8
 
 
 @dataclass(frozen=True)
@@ -96,6 +97,7 @@ def safe_sqlite_connect(
                 conn.close()
             if attempt + 1 >= _OPEN_VERIFICATION_RETRIES:
                 raise PermissionError(f"database path changed during open: {p}") from None
+            time.sleep(0.01 * (attempt + 1))
             continue
         except Exception:
             if conn is not None:

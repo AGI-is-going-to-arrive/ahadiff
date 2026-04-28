@@ -1,0 +1,911 @@
+"""Tests for /api/stats, /api/review/heatmap, /api/export/results,
+/api/providers, and /api/serve/status endpoints."""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+from typing import TYPE_CHECKING, Any, Literal, cast
+
+from starlette.testclient import TestClient
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    import pytest
+
+import ahadiff.serve.routes_runs as routes_runs_module
+import ahadiff.serve.routes_stats as routes_stats_module
+from ahadiff.contracts.serve_stats import ProvidersResponse
+from ahadiff.review.database import count_concepts, initialize_review_db, upsert_concept
+from ahadiff.serve import ServeState, create_app
+
+
+def _client(
+    state_dir: Path,
+    *,
+    token: str = "test-token",
+    locale: Literal["en", "zh-CN"] = "en",
+    started_at: float = 0.0,
+) -> TestClient:
+    app = create_app(
+        ServeState(state_dir=state_dir, token=token, locale=locale, started_at=started_at)
+    )
+    return TestClient(app, base_url="http://localhost:8765")
+
+
+_AUTH = {"X-AhaDiff-Token": "test-token"}
+
+
+# ---------------------------------------------------------------------------
+# Helper: seed a minimal review.sqlite
+# ---------------------------------------------------------------------------
+
+
+def _seed_review_db(db_path: Path, *, reviews: int = 0, events: int = 0) -> None:
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS review_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            card_id TEXT NOT NULL,
+            rating INTEGER NOT NULL,
+            reviewed_at_utc TEXT NOT NULL,
+            elapsed_days REAL NOT NULL,
+            scheduled_days REAL NOT NULL,
+            state TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS result_events (
+            event_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            source_ref TEXT NOT NULL,
+            base_ref TEXT,
+            prompt_version TEXT NOT NULL,
+            eval_bundle_version TEXT NOT NULL,
+            rubric_version TEXT,
+            overall REAL NOT NULL,
+            verdict TEXT NOT NULL,
+            status TEXT NOT NULL,
+            weakest_dim TEXT NOT NULL,
+            note_json TEXT
+        )
+        """
+    )
+    for i in range(reviews):
+        conn.execute(
+            """
+            INSERT INTO review_logs (card_id, rating, reviewed_at_utc,
+                                     elapsed_days, scheduled_days, state)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (f"card_{i}", 3, f"2026-04-{10 + (i % 20):02d}T12:00:00Z", 1.0, 1.0, "review"),
+        )
+    for i in range(events):
+        conn.execute(
+            """
+            INSERT INTO result_events (event_id, run_id, event_type, timestamp,
+                                       source_ref, base_ref, prompt_version,
+                                       eval_bundle_version, rubric_version,
+                                       overall, verdict, status, weakest_dim,
+                                       note_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"evt_{i}",
+                f"run_{i:032x}",
+                "score",
+                f"2026-04-{10 + (i % 20):02d}T12:00:00Z",
+                "abc123",
+                "def456",
+                "v1",
+                "v1",
+                "v1",
+                75.0 + i,
+                "pass",
+                "keep_final",
+                "accuracy" if i % 2 == 0 else "evidence",
+                None,
+            ),
+        )
+    conn.commit()
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# /api/stats
+# ---------------------------------------------------------------------------
+
+
+class TestGetStats:
+    def test_happy_path_empty(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        client = _client(state_dir)
+
+        resp = client.get("/api/stats", headers=_AUTH)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total_runs"] == 0
+        assert body["total_lessons"] == 0
+        assert body["total_quizzes"] == 0
+        assert body["total_concepts"] == 0
+        assert body["total_claims"] == 0
+        assert body["total_reviews"] == 0
+        assert body["avg_overall_score"] is None
+        assert body["weakest_dimensions"] == []
+        assert body["last_run_at"] is None
+
+    def test_happy_path_with_data(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+
+        # Create runs with artifacts
+        runs_dir = state_dir / "runs"
+        runs_dir.mkdir()
+        run1 = runs_dir / "run_00000000000000000000000000000001"
+        run1.mkdir()
+        (run1 / "finalized.json").write_text("{}", encoding="utf-8")
+        (run1 / "lesson").mkdir()
+        (run1 / "lesson" / "lesson.full.md").write_text("lesson")
+        (run1 / "quiz").mkdir()
+        (run1 / "quiz" / "quiz.jsonl").write_text("{}")
+        (run1 / "claims.jsonl").write_text("{}")
+
+        # concepts
+        (state_dir / "concepts.jsonl").write_text('{"id":"c1"}\n{"id":"c2"}\n')
+
+        # review db
+        _seed_review_db(state_dir / "review.sqlite", reviews=5, events=3)
+
+        client = _client(state_dir)
+        resp = client.get("/api/stats", headers=_AUTH)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total_runs"] == 1
+        assert body["total_lessons"] == 1
+        assert body["total_quizzes"] == 1
+        assert body["total_claims"] == 1
+        assert body["total_concepts"] == 2
+        assert body["total_reviews"] == 5
+        assert body["avg_overall_score"] is not None
+        assert isinstance(body["weakest_dimensions"], list)
+        assert body["last_run_at"] is not None
+
+    def test_total_concepts_uses_sqlite_and_falls_back_to_jsonl_when_stale(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        db_path = state_dir / "review.sqlite"
+        initialize_review_db(db_path)
+        upsert_concept(
+            db_path,
+            term_key="db-only",
+            concept="db only",
+            run_id="run_db",
+            source_ref="abc123",
+            branch_hint="main",
+            related_claims=(),
+            file_refs=(),
+        )
+        (state_dir / "concepts.jsonl").write_text(
+            '{"term_key":"jsonl-1","concept":"jsonl 1"}\n'
+            '{"term_key":"jsonl-2","concept":"jsonl 2"}\n',
+            encoding="utf-8",
+        )
+
+        client = _client(state_dir)
+        resp = client.get("/api/stats", headers=_AUTH)
+
+        assert resp.status_code == 200
+        assert resp.json()["total_concepts"] == 2
+
+    def test_empty_sqlite_without_review_tables_returns_zero_stats(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        sqlite3.connect(state_dir / "review.sqlite").close()
+        client = _client(state_dir)
+
+        resp = client.get("/api/stats", headers=_AUTH)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total_reviews"] == 0
+        assert body["avg_overall_score"] is None
+        assert body["weakest_dimensions"] == []
+
+    def test_stats_returns_500_on_unexpected_review_db_error(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        (state_dir / "review.sqlite").write_text("placeholder", encoding="utf-8")
+
+        def fail_connect(*_args: object, **_kwargs: object) -> object:
+            raise sqlite3.OperationalError("disk I/O error")
+
+        def _zero_concepts(*_a: object, **_kw: object) -> int:
+            return 0
+
+        monkeypatch.setattr(routes_stats_module, "_count_concepts", _zero_concepts)
+        monkeypatch.setattr(routes_stats_module, "connect_review_db", fail_connect)
+        client = _client(state_dir)
+
+        resp = client.get("/api/stats", headers=_AUTH)
+
+        assert resp.status_code == 500
+        assert resp.json()["error"] == "failed to query review stats"
+
+    def test_stats_ignores_unfinalized_run_directories(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        runs_dir = state_dir / "runs"
+        runs_dir.mkdir()
+
+        finalized_run = runs_dir / "run_00000000000000000000000000000001"
+        finalized_run.mkdir()
+        (finalized_run / "finalized.json").write_text("{}", encoding="utf-8")
+        (finalized_run / "quiz").mkdir()
+        (finalized_run / "quiz" / "quiz.jsonl").write_text("{}")
+
+        pending_run = runs_dir / "run_00000000000000000000000000000002"
+        pending_run.mkdir()
+        (pending_run / "quiz").mkdir()
+        (pending_run / "quiz" / "quiz.jsonl").write_text("{}")
+
+        client = _client(state_dir)
+        resp = client.get("/api/stats", headers=_AUTH)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total_runs"] == 1
+        assert body["total_quizzes"] == 1
+
+    def test_auth_required(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        client = _client(state_dir)
+
+        resp = client.get("/api/stats")
+
+        assert resp.status_code == 403
+
+    def test_wrong_token(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        client = _client(state_dir)
+
+        resp = client.get("/api/stats", headers={"X-AhaDiff-Token": "wrong"})
+
+        assert resp.status_code == 403
+
+    def test_uses_anyio_threadpool(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        calls: list[str] = []
+
+        async def recording_run_sync(func: Any, *args: Any, **kwargs: Any) -> Any:
+            del kwargs
+            calls.append(getattr(func, "__name__", repr(func)))
+            return func(*args)
+
+        monkeypatch.setattr(routes_stats_module.to_thread, "run_sync", recording_run_sync)
+        client = _client(state_dir)
+        client.get("/api/stats", headers=_AUTH)
+
+        assert "_build_stats" in calls
+
+
+# ---------------------------------------------------------------------------
+# /api/review/heatmap
+# ---------------------------------------------------------------------------
+
+
+class TestGetReviewHeatmap:
+    def test_happy_path_empty(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        client = _client(state_dir)
+
+        resp = client.get("/api/review/heatmap", headers=_AUTH)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "entries" in body
+        assert body["entries"] == []
+
+    def test_happy_path_with_data(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        _seed_review_db(state_dir / "review.sqlite", reviews=10)
+
+        client = _client(state_dir)
+        resp = client.get("/api/review/heatmap", headers=_AUTH)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert isinstance(body["entries"], list)
+        assert len(body["entries"]) > 0
+        entry = body["entries"][0]
+        assert "date" in entry
+        assert "review_count" in entry
+        assert "avg_rating" in entry
+
+    def test_empty_sqlite_without_review_logs_returns_empty_entries(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        sqlite3.connect(state_dir / "review.sqlite").close()
+        client = _client(state_dir)
+
+        resp = client.get("/api/review/heatmap", headers=_AUTH)
+
+        assert resp.status_code == 200
+        assert resp.json()["entries"] == []
+
+    def test_review_heatmap_returns_500_on_unexpected_db_error(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        (state_dir / "review.sqlite").write_text("placeholder", encoding="utf-8")
+
+        def fail_connect(*_args: object, **_kwargs: object) -> object:
+            raise sqlite3.OperationalError("disk I/O error")
+
+        monkeypatch.setattr(routes_stats_module, "connect_review_db", fail_connect)
+        client = _client(state_dir)
+
+        resp = client.get("/api/review/heatmap", headers=_AUTH)
+
+        assert resp.status_code == 500
+        assert resp.json()["error"] == "failed to query review heatmap"
+
+    def test_date_range_params(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        _seed_review_db(state_dir / "review.sqlite", reviews=10)
+
+        client = _client(state_dir)
+        resp = client.get(
+            "/api/review/heatmap?from=2026-04-10&to=2026-04-15",
+            headers=_AUTH,
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        for entry in body["entries"]:
+            assert "2026-04-10" <= entry["date"] <= "2026-04-15"
+
+    def test_invalid_date_uses_defaults(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        client = _client(state_dir)
+
+        resp = client.get(
+            "/api/review/heatmap?from=bad-date&to=also-bad",
+            headers=_AUTH,
+        )
+
+        assert resp.status_code == 200
+
+    def test_auth_required(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        client = _client(state_dir)
+
+        resp = client.get("/api/review/heatmap")
+
+        assert resp.status_code == 403
+
+    def test_max_span_clamped(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        client = _client(state_dir)
+
+        # Span > 730 days should be clamped
+        resp = client.get(
+            "/api/review/heatmap?from=2020-01-01&to=2026-04-28",
+            headers=_AUTH,
+        )
+
+        assert resp.status_code == 200
+
+    def test_reversed_large_span_is_still_clamped_to_730_days(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        db_path = state_dir / "review.sqlite"
+        _seed_review_db(db_path)
+        with sqlite3.connect(str(db_path)) as conn:
+            conn.execute(
+                """
+                INSERT INTO review_logs (
+                    card_id,
+                    rating,
+                    reviewed_at_utc,
+                    elapsed_days,
+                    scheduled_days,
+                    state
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                ("old-card", 3, "2023-01-01T12:00:00Z", 1.0, 1.0, "review"),
+            )
+            conn.execute(
+                """
+                INSERT INTO review_logs (
+                    card_id,
+                    rating,
+                    reviewed_at_utc,
+                    elapsed_days,
+                    scheduled_days,
+                    state
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                ("recent-card", 3, "2025-01-01T12:00:00Z", 1.0, 1.0, "review"),
+            )
+            conn.commit()
+
+        client = _client(state_dir)
+        resp = client.get(
+            "/api/review/heatmap?from=2026-04-28&to=2020-01-01",
+            headers=_AUTH,
+        )
+
+        assert resp.status_code == 200
+        dates = [entry["date"] for entry in resp.json()["entries"]]
+        assert "2023-01-01" not in dates
+        assert "2025-01-01" in dates
+
+
+# ---------------------------------------------------------------------------
+# /api/export/results
+# ---------------------------------------------------------------------------
+
+
+class TestGetExportResults:
+    def test_happy_path(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        _seed_review_db(state_dir / "review.sqlite", events=3)
+
+        client = _client(state_dir)
+        resp = client.get("/api/export/results", headers=_AUTH)
+
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/tab-separated-values")
+        lines = resp.text.strip().split("\n")
+        assert len(lines) == 4  # header + 3 rows
+        header = lines[0].split("\t")
+        assert "run_id" in header
+        assert "overall" in header
+
+    def test_tsv_content_disposition(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        _seed_review_db(state_dir / "review.sqlite", events=1)
+
+        client = _client(state_dir)
+        resp = client.get("/api/export/results", headers=_AUTH)
+
+        assert "results.tsv" in resp.headers.get("content-disposition", "")
+
+    def test_auth_required(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        _seed_review_db(state_dir / "review.sqlite", events=1)
+
+        client = _client(state_dir)
+        resp = client.get("/api/export/results")
+
+        assert resp.status_code == 403
+
+    def test_empty_db_returns_header_only(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        _seed_review_db(state_dir / "review.sqlite", events=0)
+
+        client = _client(state_dir)
+        resp = client.get("/api/export/results", headers=_AUTH)
+
+        assert resp.status_code == 200
+        lines = resp.text.strip().split("\n")
+        assert len(lines) == 1  # header only
+
+    def test_truly_empty_sqlite_returns_header_only(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        sqlite3.connect(state_dir / "review.sqlite").close()
+
+        client = _client(state_dir)
+        resp = client.get("/api/export/results", headers=_AUTH)
+
+        assert resp.status_code == 200
+        assert resp.text == (
+            "timestamp\trun_id\tsource_ref\tbase_ref\tprompt_version\trubric_version\t"
+            "overall\tverdict\tstatus\tweakest_dim\tnote_json\n"
+        )
+
+    def test_rejects_non_tsv_export_format(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        client = _client(state_dir)
+
+        resp = client.get("/api/export/results?format=json", headers=_AUTH)
+
+        assert resp.status_code == 400
+        assert "only 'tsv' export format is supported" in resp.json()["error"]
+
+    def test_formula_injection_escaped(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        db = state_dir / "review.sqlite"
+        initialize_review_db(db)
+        from ahadiff.review.database import connect_review_db
+
+        with connect_review_db(db) as conn:
+            conn.execute(
+                """
+                INSERT INTO result_events (event_id, run_id, event_type, timestamp,
+                    source_ref, base_ref, prompt_version, eval_bundle_version,
+                    rubric_version, overall, verdict, status, weakest_dim, note_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "evt_inject",
+                    "run_" + "a" * 32,
+                    "score",
+                    "2026-04-28T12:00:00Z",
+                    "abc123",
+                    "def456",
+                    "v1",
+                    "v1",
+                    "v1",
+                    80.0,
+                    "pass",
+                    "finalized",
+                    "accuracy",
+                    '=CMD("calc")',
+                ),
+            )
+
+        client = _client(state_dir)
+        resp = client.get("/api/export/results", headers=_AUTH)
+
+        assert resp.status_code == 200
+        lines = resp.text.strip().split("\n")
+        for line in lines[1:]:
+            cells = line.split("\t")
+            for cell in cells:
+                assert not cell.startswith("="), f"formula injection not escaped: {cell}"
+                assert not cell.startswith("+"), f"formula injection not escaped: {cell}"
+
+
+# ---------------------------------------------------------------------------
+# /api/concepts
+# ---------------------------------------------------------------------------
+
+
+class TestGetConcepts:
+    def test_uses_visible_concepts_without_writing_sqlite(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        db_path = state_dir / "review.sqlite"
+        initialize_review_db(db_path)
+        concepts_jsonl = state_dir / "concepts.jsonl"
+        concepts_jsonl.write_text(
+            '{"term_key":"jsonl-only","concept":"jsonl only","source_refs":["abc123"]}\n',
+            encoding="utf-8",
+        )
+        (state_dir.parent / ".git").write_text("gitdir: test\n", encoding="utf-8")
+
+        def fake_visible_concepts(
+            *,
+            workspace_root: Path,
+            head_ref: str = "HEAD",
+        ) -> tuple[dict[str, object], ...]:
+            assert workspace_root == state_dir.parent
+            assert head_ref == "HEAD"
+            return (
+                {
+                    "term_key": "visible-only",
+                    "concept": "visible only",
+                    "source_refs": ["abc123"],
+                },
+            )
+
+        monkeypatch.setattr(routes_runs_module, "load_visible_concepts", fake_visible_concepts)
+        client = _client(state_dir)
+        resp = client.get("/api/concepts")
+
+        assert resp.status_code == 200
+        lines = resp.json()["content"].splitlines()
+        assert [json.loads(line)["term_key"] for line in lines] == ["visible-only"]
+        assert count_concepts(db_path) == 0
+
+    def test_jsonl_fallback_rejects_non_integer_cursor(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        (state_dir / "concepts.jsonl").write_text(
+            '{"term_key":"term-1","concept":"term 1"}\n',
+            encoding="utf-8",
+        )
+
+        client = _client(state_dir)
+        resp = client.get("/api/concepts?cursor=not-an-int")
+
+        assert resp.status_code == 400
+        assert "must be an integer" in resp.json()["error"]
+
+
+# ---------------------------------------------------------------------------
+# /api/providers
+# ---------------------------------------------------------------------------
+
+
+class TestGetProviders:
+    def test_happy_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+
+        from dataclasses import dataclass
+
+        @dataclass
+        class _FakeConfig:
+            values: dict[str, object]
+            resolved: dict[str, object]
+            repo_config_path: Path
+            global_config_path: Path
+            repo_unknown_keys: tuple[str, ...] = ()
+            global_unknown_keys: tuple[str, ...] = ()
+            repo_sensitive_keys: tuple[str, ...] = ()
+            precedence_conflicts: tuple[object, ...] = ()
+
+        def _mock_load_config(*_a: Any, **_kw: Any) -> _FakeConfig:
+            return _FakeConfig(
+                values={
+                    "llm": {
+                        "generate_model": "gpt-5.4-mini",
+                        "judge_model": "gpt-5.4",
+                        "base_url": "https://api.example.com",
+                    }
+                },
+                resolved={},
+                repo_config_path=state_dir / "config.toml",
+                global_config_path=state_dir / "global-config.toml",
+            )
+
+        monkeypatch.setattr(
+            "ahadiff.serve.routes_stats.routes_stats_module"
+            if False
+            else "ahadiff.core.config.load_config",
+            _mock_load_config,
+        )
+
+        client = _client(state_dir)
+        resp = client.get("/api/providers", headers=_AUTH)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "providers" in body
+        providers = cast("list[dict[str, object]]", body["providers"])
+        ProvidersResponse.model_validate(body)
+        assert isinstance(providers, list)
+        assert len(providers) == 2
+        names = {p["model_name"] for p in providers}
+        assert "gpt-5.4-mini" in names
+        assert "gpt-5.4" in names
+
+    def test_no_config_returns_empty(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+
+        client = _client(state_dir)
+        resp = client.get("/api/providers", headers=_AUTH)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "providers" in body
+        # May be empty if no config.toml exists
+
+    def test_reads_configured_provider_aliases(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+
+        from dataclasses import dataclass
+
+        @dataclass
+        class _FakeConfig:
+            values: dict[str, object]
+            resolved: dict[str, object]
+            repo_config_path: Path
+            global_config_path: Path
+            repo_unknown_keys: tuple[str, ...] = ()
+            global_unknown_keys: tuple[str, ...] = ()
+            repo_sensitive_keys: tuple[str, ...] = ()
+            precedence_conflicts: tuple[object, ...] = ()
+
+        def _mock_load_config(*_a: Any, **_kw: Any) -> _FakeConfig:
+            return _FakeConfig(
+                values={
+                    "providers": {
+                        "demo": {
+                            "provider_class": "openai",
+                            "model_name": "gpt-5.4-mini",
+                            "base_url": "https://demo.example.com/v1",
+                            "probed_max_context": 200000,
+                            "probe_timestamp": "2026-04-28T00:00:00Z",
+                        },
+                        "judge": {
+                            "provider_class": "anthropic",
+                            "model_name": "claude-sonnet-4-6",
+                            "base_url": "https://judge.example.com/v1",
+                        },
+                    }
+                },
+                resolved={},
+                repo_config_path=state_dir / "config.toml",
+                global_config_path=state_dir / "global-config.toml",
+            )
+
+        monkeypatch.setattr("ahadiff.core.config.load_config", _mock_load_config)
+        client = _client(state_dir)
+
+        resp = client.get("/api/providers", headers=_AUTH)
+
+        assert resp.status_code == 200
+        providers = cast("list[dict[str, object]]", resp.json()["providers"])
+        assert len(providers) == 2
+        assert providers[0]["provider_class"] == "openai"
+        assert providers[0]["model_name"] == "gpt-5.4-mini"
+        assert providers[0]["probed"] is True
+        assert providers[0]["probed_max_context"] == 200000
+        assert providers[1]["provider_class"] == "anthropic"
+        assert providers[1]["probed"] is False
+
+    def test_auth_required(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        client = _client(state_dir)
+
+        resp = client.get("/api/providers")
+
+        assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# /api/serve/status
+# ---------------------------------------------------------------------------
+
+
+class TestGetServeStatus:
+    def test_no_auth_needed(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        client = _client(state_dir)
+
+        resp = client.get("/api/serve/status")
+
+        assert resp.status_code == 200
+
+    def test_returns_version(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        client = _client(state_dir)
+
+        resp = client.get("/api/serve/status")
+
+        body = resp.json()
+        assert "version" in body
+        assert body["version"] == "0.1.0a0"
+
+    def test_returns_uptime(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        client = _client(state_dir)
+
+        resp = client.get("/api/serve/status")
+
+        body = resp.json()
+        assert "uptime_seconds" in body
+        assert isinstance(body["uptime_seconds"], int | float)
+        assert body["uptime_seconds"] >= 0
+
+    def test_uptime_uses_state_started_at(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        monkeypatch.setattr(routes_stats_module.time, "monotonic", lambda: 150.0)
+        client = _client(state_dir, started_at=100.0)
+
+        resp = client.get("/api/serve/status")
+
+        assert resp.status_code == 200
+        assert resp.json()["uptime_seconds"] == 50.0
+
+    def test_does_not_expose_repo_path(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        client = _client(state_dir)
+
+        resp = client.get("/api/serve/status")
+
+        body = resp.json()
+        assert "repo_path" not in body
+
+    def test_review_db_exists_false(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        client = _client(state_dir)
+
+        resp = client.get("/api/serve/status")
+
+        body = resp.json()
+        assert body["review_db_exists"] is False
+
+    def test_review_db_exists_true(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        _seed_review_db(state_dir / "review.sqlite")
+
+        client = _client(state_dir)
+        resp = client.get("/api/serve/status")
+
+        body = resp.json()
+        assert body["review_db_exists"] is True
+
+    def test_runs_count(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        runs_dir = state_dir / "runs"
+        runs_dir.mkdir()
+        finalized_1 = runs_dir / "run_00000000000000000000000000000001"
+        finalized_1.mkdir()
+        (finalized_1 / "finalized.json").write_text("{}", encoding="utf-8")
+        finalized_2 = runs_dir / "run_00000000000000000000000000000002"
+        finalized_2.mkdir()
+        (finalized_2 / "finalized.json").write_text("{}", encoding="utf-8")
+        (runs_dir / "run_00000000000000000000000000000003").mkdir()
+
+        client = _client(state_dir)
+        resp = client.get("/api/serve/status")
+
+        body = resp.json()
+        assert body["runs_count"] == 2
+
+    def test_uses_anyio_threadpool(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        calls: list[str] = []
+
+        async def recording_run_sync(func: Any, *args: Any, **kwargs: Any) -> Any:
+            del kwargs
+            calls.append(getattr(func, "__name__", repr(func)))
+            return func(*args)
+
+        monkeypatch.setattr(routes_stats_module.to_thread, "run_sync", recording_run_sync)
+        client = _client(state_dir)
+        client.get("/api/serve/status")
+
+        assert "_build_serve_status" in calls

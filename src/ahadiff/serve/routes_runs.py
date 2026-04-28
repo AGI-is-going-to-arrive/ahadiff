@@ -31,7 +31,11 @@ from ahadiff.review.database import (
     load_result_event_by_run_and_id,
     load_result_events_page,
 )
-from ahadiff.wiki.concepts import load_concepts_page
+from ahadiff.wiki.concepts import (
+    load_concepts_page,
+    load_visible_concepts,
+    parse_jsonl_concepts_cursor,
+)
 
 from .auth import serve_state
 
@@ -142,12 +146,12 @@ async def get_run_concepts(request: Request) -> JSONResponse:
 async def get_concepts(request: Request) -> JSONResponse:
     state = serve_state(request)
     limit = _query_limit(request, default=_MAX_LIST_RUNS, max_value=_MAX_LIST_RUNS)
-    cursor = _query_line_cursor(request)
+    raw_cursor = request.query_params.get("cursor")
     payload = await to_thread.run_sync(
         _concepts_payload,
         state.state_dir,
         limit,
-        cursor,
+        raw_cursor,
     )
     return JSONResponse(payload)
 
@@ -285,22 +289,36 @@ def _run_detail_payload(
     return detail.model_dump(mode="json")
 
 
-def _concepts_payload(state_dir: Path, limit: int, cursor: int) -> dict[str, Any]:
+def _concepts_payload(state_dir: Path, limit: int, cursor: str | None) -> dict[str, Any]:
     concepts_path = state_dir / "concepts.jsonl"
-    if not concepts_path.exists() or concepts_path.is_symlink():
-        return {"artifact_type": "concepts", "content": ""}
-    if concepts_path.stat().st_size > _MAX_TEXT_ARTIFACT_BYTES:
+    if (
+        concepts_path.exists()
+        and not concepts_path.is_symlink()
+        and concepts_path.stat().st_size > _MAX_TEXT_ARTIFACT_BYTES
+    ):
         raise HTTPException(status_code=413, detail="concepts.jsonl exceeds size limit")
-    page = load_concepts_page(
-        concepts_path,
-        limit=limit,
-        cursor=cursor,
-        max_bytes=_MAX_TEXT_ARTIFACT_BYTES,
-    )
-    content = "".join(json.dumps(entry, ensure_ascii=False) + "\n" for entry in page.entries)
+    if concepts_path.is_symlink():
+        return {"artifact_type": "concepts", "content": ""}
+    offset = parse_jsonl_concepts_cursor(cursor)
+    if not (state_dir.parent / ".git").exists():
+        page = load_concepts_page(
+            concepts_path,
+            limit=limit,
+            cursor=offset,
+            max_bytes=_MAX_TEXT_ARTIFACT_BYTES,
+        )
+        page_entries = page.entries
+        next_cursor = page.next_cursor
+    else:
+        visible_concepts = load_visible_concepts(workspace_root=state_dir.parent)
+        page_entries = visible_concepts[offset : offset + limit]
+        next_cursor = None
+        if offset + limit < len(visible_concepts):
+            next_cursor = str(offset + limit)
+    content = "".join(json.dumps(dict(entry), ensure_ascii=False) + "\n" for entry in page_entries)
     payload: dict[str, Any] = {"artifact_type": "concepts", "content": content}
-    if page.next_cursor is not None:
-        payload["next_cursor"] = page.next_cursor
+    if next_cursor is not None:
+        payload["next_cursor"] = next_cursor
     return payload
 
 
@@ -449,23 +467,6 @@ def _query_cursor(request: Request) -> tuple[str, str] | None:
             detail="cursor must use '<timestamp>,<event_id>' format",
         )
     return timestamp, event_id
-
-
-def _query_line_cursor(request: Request) -> int:
-    raw_value = request.query_params.get("cursor")
-    if raw_value is None:
-        return 0
-    if len(raw_value) > _MAX_CURSOR_LENGTH:
-        raise HTTPException(status_code=400, detail="cursor value exceeds maximum length")
-    try:
-        value = int(raw_value)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=400, detail="cursor must be a non-negative line number"
-        ) from exc
-    if value < 0:
-        raise HTTPException(status_code=400, detail="cursor must be a non-negative line number")
-    return value
 
 
 def _event_for_finalized_run(db_path: Path, run_path: Path) -> ResultEvent:

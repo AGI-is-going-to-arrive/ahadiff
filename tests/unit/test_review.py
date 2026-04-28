@@ -1142,6 +1142,67 @@ def test_review_cli_archive_card_without_rating(tmp_path: Path) -> None:
     assert log_count == 0
 
 
+@pytest.mark.parametrize(
+    "extra_args",
+    (
+        ["--optimize", "--card-id", "card-1"],
+        ["--optimize", "--answer", "good"],
+        ["--optimize", "--card-id", "card-1", "--action", "archive"],
+    ),
+)
+def test_review_cli_rejects_optimize_with_mutating_review_options(
+    tmp_path: Path,
+    extra_args: list[str],
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+
+    result = _RUNNER.invoke(
+        app(),
+        ["review", "--repo-root", str(repo_root), *extra_args],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1
+    assert "--optimize cannot be combined with --action, --card-id, or --answer" in result.stderr
+
+
+def test_review_cli_optimize_happy_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+
+    class _FakeOptimizeResult:
+        weights = [0.11, 0.22, 0.33]
+        review_count = 12
+        effective_review_count = 8
+        stage = "warm"
+        message = "Warm optimization applied from 8 effective reviews (12 raw logs)."
+
+    def _fake_optimize(_db_path: object) -> _FakeOptimizeResult:
+        return _FakeOptimizeResult()
+
+    monkeypatch.setattr(cli_module, "optimize_review_weights", _fake_optimize)
+
+    result = _RUNNER.invoke(
+        app(),
+        ["review", "--repo-root", str(repo_root), "--optimize"],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0
+    assert "FSRS optimizer" in result.stdout
+    assert "warm" in result.stdout.lower()
+    assert "8" in result.stdout
+    assert "12" in result.stdout
+    assert "[0.11, 0.22, 0.33]" in result.stdout
+    assert review_db_path(repo_root).is_file()
+
+
 def test_regenerate_only_quiz_rewrites_quiz_without_touching_lesson(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
