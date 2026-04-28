@@ -92,9 +92,9 @@ def review_fsrs_card(
     enable_fuzzing: bool = True,
     recent_successes: int = 0,
 ) -> ScheduledReview:
-    if peeked_this_session and answer == "good":
-        raise InputError("peeked cards cannot be reviewed as good; use hard or wrong")
     rating = rating_for_answer(answer)
+    if peeked_this_session and rating in {Rating.Good, Rating.Easy}:
+        raise InputError("peeked cards cannot be reviewed as good or easy; use hard or wrong")
     scheduler = _make_scheduler(
         parameters=weights,
         desired_retention=desired_retention,
@@ -130,6 +130,8 @@ def review_fsrs_card(
 
 
 def rating_for_answer(answer: ReviewAnswer) -> Rating:
+    if answer == "easy":
+        return Rating.Easy
     if answer == "good":
         return Rating.Good
     if answer == "hard":

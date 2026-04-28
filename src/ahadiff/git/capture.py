@@ -25,6 +25,7 @@ from ahadiff.contracts import RunSource
 from ahadiff.core.config import DEFAULT_CONFIG
 from ahadiff.core.errors import InputError, StorageError
 from ahadiff.core.ids import make_run_id
+from ahadiff.core.json_util import safe_json_loads
 from ahadiff.core.paths import (
     ensure_state_parent_dir,
     project_state_dir,
@@ -32,6 +33,7 @@ from ahadiff.core.paths import (
     validate_state_dir_path,
     validate_state_path_no_symlinks,
 )
+from ahadiff.graphify import parse_graph_json_text
 from ahadiff.safety.audit import append_audit_record, build_redaction_audit_record
 from ahadiff.safety.ignore import (
     AllowlistPolicy,
@@ -531,7 +533,7 @@ def detect_graphify_status(workspace_root: Path, *, use_graphify: bool | None) -
     enabled = source_exists if use_graphify is None else use_graphify and source_exists
     has_graph = enabled and source_exists
     freshness = "source_present" if source_exists else None
-    provenance = {"source": str(source_path.relative_to(workspace_root))}
+    provenance = {"source": canonicalize_path_text(_GRAPHIFY_RELATIVE_PATH)}
     return GraphifyStatus(
         source_path=source_path,
         imported_path=imported_path,
@@ -561,13 +563,51 @@ def import_graphify_artifact(workspace_root: Path, *, force: bool = False) -> Gr
     if len(graph_bytes) > graph_limit:
         raise InputError(f"graphify graph exceeds {graph_limit} bytes")
     graph_text = _decode_text_bytes(graph_bytes, description="graphify graph")
-    graph_text = protect_untrusted_text(
-        redaction_pipeline(graph_text, repo_root=workspace_root).redacted_text,
+    try:
+        raw_graph = safe_json_loads(graph_text)
+    except (TypeError, ValueError) as exc:
+        raise InputError(f"Invalid graph JSON: {exc}") from exc
+    protected_graph = _sanitize_graphify_value(raw_graph, workspace_root=workspace_root)
+    graph_text = json.dumps(protected_graph, ensure_ascii=False)
+    sanitized_graph = parse_graph_json_text(graph_text)
+    _atomic_write_text(
+        status.imported_path,
+        json.dumps(sanitized_graph.model_dump(mode="json"), ensure_ascii=False),
+    )
+    return detect_graphify_status(workspace_root, use_graphify=True)
+
+
+def _sanitize_graphify_value(value: object, *, workspace_root: Path) -> object:
+    if isinstance(value, str):
+        redacted = redaction_pipeline(value, repo_root=workspace_root).redacted_text
+        return protect_untrusted_text(
+            redacted,
+            source_name="graphify graph",
+            source_kind="string",
+        ).protected_text
+    if isinstance(value, list):
+        return [
+            _sanitize_graphify_value(item, workspace_root=workspace_root)
+            for item in cast("list[object]", value)
+        ]
+    if isinstance(value, dict):
+        return {
+            _sanitize_graphify_key(key, workspace_root=workspace_root): _sanitize_graphify_value(
+                item,
+                workspace_root=workspace_root,
+            )
+            for key, item in cast("dict[object, object]", value).items()
+        }
+    return value
+
+
+def _sanitize_graphify_key(key: object, *, workspace_root: Path) -> str:
+    redacted = redaction_pipeline(str(key), repo_root=workspace_root).redacted_text
+    return protect_untrusted_text(
+        redacted,
         source_name="graphify graph",
         source_kind="string",
     ).protected_text
-    _atomic_write_text(status.imported_path, graph_text)
-    return detect_graphify_status(workspace_root, use_graphify=True)
 
 
 def raw_capture_extra_degraded_flags(raw_capture: _RawCapture) -> dict[str, bool]:

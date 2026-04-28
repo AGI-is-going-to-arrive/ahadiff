@@ -667,6 +667,10 @@ def test_artifact_envelopes_include_content_lang_from_run_metadata(tmp_path: Pat
     run_path = _write_run(state_dir, "run-1", finalized=False, content_lang="zh-CN")
     concepts_content = '{"term_key":"retry-loop","display_name":"Retry loop"}\n'
     (run_path / "concepts.jsonl").write_text(concepts_content, encoding="utf-8")
+    (run_path / "quiz" / "misconception_cards.jsonl").write_text(
+        '{"concept":"retry","misconception":"x","correction":"y","evidence_ref":"src/app.py:1","severity":"low","safety_tags":[],"run_id":"run-1"}\n',
+        encoding="utf-8",
+    )
     _finalize_run(run_path, "run-1")
     sync_result_event(state_dir / "review.sqlite", _event("run-1"))
     client = _client(state_dir)
@@ -675,6 +679,7 @@ def test_artifact_envelopes_include_content_lang_from_run_metadata(tmp_path: Pat
         ("/api/run/run-1/lesson?level=full", "lesson"),
         ("/api/run/run-1/claims", "claims"),
         ("/api/run/run-1/quiz", "quiz"),
+        ("/api/run/run-1/misconceptions", "misconceptions"),
         ("/api/run/run-1/diff", "diff"),
         ("/api/run/run-1/concepts", "concepts"),
     )
@@ -686,6 +691,23 @@ def test_artifact_envelopes_include_content_lang_from_run_metadata(tmp_path: Pat
         assert response.status_code == 200
         assert payload["artifact_type"] == artifact_type
         assert payload["content_lang"] == "zh-CN"
+
+    detail = client.get("/api/run/run-1").json()
+    assert "quiz/misconception_cards.jsonl" in detail["artifacts"]
+
+
+def test_misconceptions_route_returns_404_when_artifact_is_missing(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=False)
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    response = client.get("/api/run/run-1/misconceptions")
+
+    assert response.status_code == 404
+    assert response.json()["error"] == "artifact_not_found"
 
 
 def test_artifact_envelope_uses_none_content_lang_when_metadata_field_missing(
@@ -1843,6 +1865,49 @@ def test_srs_review_records_card_review(tmp_path: Path) -> None:
     assert response.json()["review"]["card_id"] == "card-1"
     assert response.json()["review"]["rating"] == 2
     assert duplicate.json() == {"inserted": False}
+    with connect_review_db(db_path) as connection:
+        payload = connection.execute(
+            "SELECT payload_json FROM learning_signals WHERE idempotency_key = 'review-1'"
+        ).fetchone()
+    assert payload is not None
+    assert json.loads(str(payload[0]))["peeked_this_session"] is False
+
+
+def test_srs_review_rejects_peeked_good_answer(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    cards_path = state_dir / "runs" / "run-1" / "quiz" / "cards.jsonl"
+    card = ReviewCard(
+        card_id="card-1",
+        concept="retry loop",
+        run_id="run-1",
+        source_ref="abc1234",
+        fsrs_state="{}",
+        file_id="file-app",
+        display_path="src/app.py",
+        hunk_id="hunk-1",
+        hunk_hash="deadbeefcafe",
+        symbol="retry_once",
+    )
+    cards_path.parent.mkdir(parents=True, exist_ok=True)
+    cards_path.write_text(json.dumps(card.model_dump(mode="json")) + "\n", encoding="utf-8")
+    assert import_cards_from_jsonl(db_path, cards_path) == 1
+    client = _client(state_dir)
+
+    response = client.post(
+        "/api/signals/srs-review",
+        headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        json={
+            "card_id": "card-1",
+            "answer": "good",
+            "peeked_this_session": True,
+            "idempotency_key": "review-peeked-good",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "peeked cards cannot be reviewed as good or easy" in response.json()["error"]
 
 
 def test_review_queue_get_is_public_and_rate_requires_token(tmp_path: Path) -> None:
@@ -1892,6 +1957,43 @@ def test_review_queue_get_is_public_and_rate_requires_token(tmp_path: Path) -> N
     assert accepted.json()["inserted"] is True
     assert accepted.json()["review"]["rating"] == 3
     assert duplicate.json() == {"inserted": False}
+
+
+def test_review_rate_rejects_peeked_easy_answer(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    cards_path = state_dir / "runs" / "run-1" / "quiz" / "cards.jsonl"
+    card = ReviewCard(
+        card_id="card-1",
+        concept="retry loop",
+        run_id="run-1",
+        source_ref="abc1234",
+        fsrs_state="{}",
+        file_id="file-app",
+        display_path="src/app.py",
+        hunk_id="hunk-1",
+        hunk_hash="deadbeefcafe",
+        symbol="retry_once",
+    )
+    cards_path.parent.mkdir(parents=True, exist_ok=True)
+    cards_path.write_text(json.dumps(card.model_dump(mode="json")) + "\n", encoding="utf-8")
+    assert import_cards_from_jsonl(db_path, cards_path) == 1
+    client = _client(state_dir)
+
+    response = client.post(
+        "/api/review/rate",
+        headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        json={
+            "card_id": "card-1",
+            "answer": "easy",
+            "peeked_this_session": True,
+            "idempotency_key": "review-api-peeked",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "peeked cards cannot be reviewed as good or easy" in response.json()["error"]
 
 
 def test_review_queue_returns_empty_on_legacy_db_without_triggering_migration(

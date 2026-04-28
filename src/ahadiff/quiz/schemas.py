@@ -45,6 +45,7 @@ class QuizQuestion(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     question_id: str | None = None
+    review_card_id: str | None = None
     question: str
     expected_answer: str
     source_claims: list[str] = Field(default_factory=list)
@@ -60,9 +61,9 @@ class QuizQuestion(BaseModel):
             raise ValueError("quiz question text must not be empty")
         return normalized
 
-    @field_validator("question_id")
+    @field_validator("question_id", "review_card_id")
     @classmethod
-    def normalize_question_id(cls, value: str | None) -> str | None:
+    def normalize_optional_id(cls, value: str | None) -> str | None:
         if value is None:
             return None
         normalized = value.strip()

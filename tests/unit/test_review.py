@@ -29,9 +29,11 @@ from ahadiff.review.database import (
     import_cards_from_jsonl,
     import_results_tsv_lossy,
     initialize_review_db,
+    insert_learning_signal,
     list_due_cards,
     load_result_events_from_db,
     record_card_review,
+    record_card_review_once,
     resolve_sqlite_journal_mode,
     set_card_queue_state,
     sync_result_event,
@@ -919,6 +921,72 @@ def test_import_cards_and_record_fsrs_review(tmp_path: Path) -> None:
     assert preset_row["total_reviews"] == 1
 
 
+def test_record_card_review_once_rejects_duplicate_key_payload_mismatch(tmp_path: Path) -> None:
+    db_path = tmp_path / "review.sqlite"
+    cards_path = tmp_path / "cards.jsonl"
+    _write_cards_jsonl(cards_path, (_review_card(),))
+    import_cards_from_jsonl(db_path, cards_path)
+
+    first = record_card_review_once(
+        db_path,
+        card_id="card-1",
+        answer="good",
+        idempotency_key="review-key",
+        reviewed_at_utc=datetime(2026, 4, 24, tzinfo=UTC),
+    )
+    same = record_card_review_once(
+        db_path,
+        card_id="card-1",
+        answer="good",
+        idempotency_key="review-key",
+        reviewed_at_utc=datetime(2026, 4, 25, tzinfo=UTC),
+    )
+
+    assert first is not None
+    assert same is None
+    with pytest.raises(InputError, match="idempotency key already used"):
+        record_card_review_once(
+            db_path,
+            card_id="card-1",
+            answer="wrong",
+            idempotency_key="review-key",
+            reviewed_at_utc=datetime(2026, 4, 26, tzinfo=UTC),
+        )
+
+
+def test_insert_learning_signal_rejects_duplicate_key_payload_mismatch(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "review.sqlite"
+    initialize_review_db(db_path)
+
+    assert insert_learning_signal(
+        db_path,
+        event_id="event-1",
+        idempotency_key="signal-key",
+        signal_type="quiz_answer",
+        payload={"quiz_id": "q1", "choice": "a", "correct": True},
+        created_at_utc=datetime(2026, 4, 24, tzinfo=UTC),
+    )
+    assert not insert_learning_signal(
+        db_path,
+        event_id="event-2",
+        idempotency_key="signal-key",
+        signal_type="quiz_answer",
+        payload={"choice": "a", "correct": True, "quiz_id": "q1"},
+        created_at_utc=datetime(2026, 4, 25, tzinfo=UTC),
+    )
+    with pytest.raises(InputError, match="idempotency key already used"):
+        insert_learning_signal(
+            db_path,
+            event_id="event-3",
+            idempotency_key="signal-key",
+            signal_type="quiz_answer",
+            payload={"quiz_id": "q1", "choice": "b", "correct": False},
+            created_at_utc=datetime(2026, 4, 26, tzinfo=UTC),
+        )
+
+
 def test_record_card_review_rejects_missing_or_archived_card(tmp_path: Path) -> None:
     db_path = tmp_path / "review.sqlite"
     cards_path = tmp_path / "cards.jsonl"
@@ -982,11 +1050,19 @@ def test_peek_guard_rejects_good_review(tmp_path: Path) -> None:
     _write_cards_jsonl(cards_path, (_review_card(),))
     import_cards_from_jsonl(db_path, cards_path)
 
-    with pytest.raises(Exception, match="peeked cards cannot be reviewed as good"):
+    with pytest.raises(Exception, match="peeked cards cannot be reviewed as good or easy"):
         record_card_review(
             db_path,
             card_id="card-1",
             answer="good",
+            peeked_this_session=True,
+        )
+
+    with pytest.raises(Exception, match="peeked cards cannot be reviewed as good or easy"):
+        record_card_review(
+            db_path,
+            card_id="card-1",
+            answer="easy",
             peeked_this_session=True,
         )
 
@@ -1110,6 +1186,44 @@ def test_review_cli_warns_and_skips_schema_invalid_cards_jsonl(tmp_path: Path) -
     assert "run-bad" in result.stderr.replace("\n", "")
 
 
+def test_review_cli_accepts_easy_answer(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    cards_path = repo_root / ".ahadiff" / "runs" / "run-1" / "quiz" / "cards.jsonl"
+    _write_cards_jsonl(cards_path, (_review_card(),))
+
+    result = _RUNNER.invoke(
+        app(),
+        [
+            "review",
+            "--repo-root",
+            str(repo_root),
+            "--card-id",
+            "card-1",
+            "--answer",
+            "easy",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0
+    assert "Rating" in result.stdout
+    assert "4" in result.stdout
+    with connect_review_db(review_db_path(repo_root)) as connection:
+        row = connection.execute("SELECT last_rating FROM cards WHERE id = 'card-1'").fetchone()
+    assert row is not None
+    assert int(row[0]) == 4
+
+
+def test_review_cli_help_mentions_easy_answer() -> None:
+    result = _RUNNER.invoke(app(), ["review", "--help"], catch_exceptions=False)
+
+    assert result.exit_code == 0
+    assert "Review answer: easy, good, hard, or" in result.stdout
+    assert "wrong." in result.stdout
+
+
 def test_review_cli_archive_card_without_rating(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -1213,6 +1327,7 @@ def test_regenerate_only_quiz_rewrites_quiz_without_touching_lesson(
     run_path = repo_root / ".ahadiff" / "runs" / "run-reg"
     lesson_path = run_path / "lesson" / "lesson.full.md"
     quiz_path = run_path / "quiz" / "quiz.jsonl"
+    misconception_path = run_path / "quiz" / "misconception_cards.jsonl"
     lesson_path.parent.mkdir(parents=True)
     quiz_path.parent.mkdir(parents=True)
     lesson_path.write_text("keep this lesson\n", encoding="utf-8")
@@ -1228,7 +1343,15 @@ def test_regenerate_only_quiz_rewrites_quiz_without_touching_lesson(
         calls.append("quiz")
         assert kwargs["overwrite"] is True
         quiz_path.write_text('{"new": true}\n', encoding="utf-8")
-        return QuizArtifactPaths(quiz_dir=quiz_path.parent, quiz_path=quiz_path), ()
+        misconception_path.write_text('{"new-misconception": true}\n', encoding="utf-8")
+        return (
+            QuizArtifactPaths(
+                quiz_dir=quiz_path.parent,
+                quiz_path=quiz_path,
+                misconception_path=misconception_path,
+            ),
+            (),
+        )
 
     def fake_generate_cards_for_run(**kwargs: object) -> Path:
         calls.append("cards")
@@ -1262,6 +1385,7 @@ def test_regenerate_only_quiz_rewrites_quiz_without_touching_lesson(
     assert calls == ["quiz", "cards"]
     assert lesson_path.read_text(encoding="utf-8") == "keep this lesson\n"
     assert quiz_path.read_text(encoding="utf-8") == '{"new": true}\n'
+    assert misconception_path.read_text(encoding="utf-8") == '{"new-misconception": true}\n'
 
 
 def test_regenerate_only_quiz_uses_run_content_lang(
@@ -1385,18 +1509,28 @@ def test_regenerate_only_quiz_restores_previous_artifacts_when_evaluate_fails(
     lesson_path = run_path / "lesson" / "lesson.full.md"
     quiz_path = run_path / "quiz" / "quiz.jsonl"
     cards_path = run_path / "quiz" / "cards.jsonl"
+    misconception_path = run_path / "quiz" / "misconception_cards.jsonl"
     lesson_path.parent.mkdir(parents=True)
     quiz_path.parent.mkdir(parents=True)
     lesson_path.write_text("keep this lesson\n", encoding="utf-8")
     quiz_path.write_text('{"old": true}\n', encoding="utf-8")
     cards_path.write_text('{"old-card": true}\n', encoding="utf-8")
+    misconception_path.write_text('{"old-misconception": true}\n', encoding="utf-8")
 
     def fake_generate_quiz_from_run(
         **kwargs: object,
     ) -> tuple[QuizArtifactPaths, tuple[object, ...]]:
         del kwargs
         quiz_path.write_text('{"new": true}\n', encoding="utf-8")
-        return QuizArtifactPaths(quiz_dir=quiz_path.parent, quiz_path=quiz_path), ()
+        misconception_path.write_text('{"new-misconception": true}\n', encoding="utf-8")
+        return (
+            QuizArtifactPaths(
+                quiz_dir=quiz_path.parent,
+                quiz_path=quiz_path,
+                misconception_path=misconception_path,
+            ),
+            (),
+        )
 
     def fail_evaluate_run(_run_path: Path) -> object:
         raise RuntimeError("simulated evaluate failure")
@@ -1424,6 +1558,7 @@ def test_regenerate_only_quiz_restores_previous_artifacts_when_evaluate_fails(
     assert lesson_path.read_text(encoding="utf-8") == "keep this lesson\n"
     assert quiz_path.read_text(encoding="utf-8") == '{"old": true}\n'
     assert cards_path.read_text(encoding="utf-8") == '{"old-card": true}\n'
+    assert misconception_path.read_text(encoding="utf-8") == '{"old-misconception": true}\n'
 
 
 def test_regenerate_only_quiz_marks_existing_run_cards_stale_when_verdict_fails(

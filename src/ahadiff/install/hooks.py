@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import errno
+import os
 import re
+import stat
 import subprocess
 import sys
+import tempfile
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
 
 from ahadiff.core.errors import InputError
+from ahadiff.core.json_util import safe_json_loads
 
 from .base import (
     InstallAction,
@@ -13,6 +20,129 @@ from .base import (
 )
 from .common import plan_for, repo_path
 from .template_loader import render_template
+
+_VALID_HOOK_NAMES = frozenset(
+    {
+        "pre_learn",
+        "post_learn",
+        "pre_improve",
+        "post_improve",
+        "pre_review",
+        "post_review",
+    }
+)
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+
+HOOKS_JSON_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "properties": {
+        "pre_learn": {"type": "array", "items": {"type": "string"}},
+        "post_learn": {"type": "array", "items": {"type": "string"}},
+        "pre_improve": {"type": "array", "items": {"type": "string"}},
+        "post_improve": {"type": "array", "items": {"type": "string"}},
+        "pre_review": {"type": "array", "items": {"type": "string"}},
+        "post_review": {"type": "array", "items": {"type": "string"}},
+    },
+    "additionalProperties": False,
+}
+
+
+def load_hooks(state_dir: Path) -> dict[str, list[str]]:
+    hooks_path = state_dir / "hooks.json"
+    try:
+        raw = _read_text_no_follow(hooks_path)
+    except FileNotFoundError:
+        return {}
+    except OSError:
+        return {}
+    try:
+        data: Any = safe_json_loads(raw)
+    except (TypeError, ValueError) as exc:
+        raise InputError(f"hooks.json is not valid JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        return {}
+    parsed = cast("dict[str, Any]", data)
+    return validate_hooks(parsed)
+
+
+def _read_text_no_follow(path: Path, description: str = "hooks.json") -> str:
+    content, _ = _read_text_with_stat_no_follow(path, description)
+    return content
+
+
+def _read_text_with_stat_no_follow(
+    path: Path,
+    description: str,
+) -> tuple[str, os.stat_result]:
+    path_stat = path.lstat()
+    if stat.S_ISLNK(path_stat.st_mode):
+        raise OSError(errno.ELOOP, f"refusing to follow {description} symlink", str(path))
+    if _has_windows_reparse_point(path_stat):
+        raise OSError(errno.ELOOP, f"refusing to follow {description} reparse point", str(path))
+    if not stat.S_ISREG(path_stat.st_mode):
+        raise OSError(errno.EINVAL, f"{description} must be a regular file", str(path))
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(str(path), flags)
+    try:
+        opened_stat = os.fstat(fd)
+        if not stat.S_ISREG(opened_stat.st_mode):
+            raise OSError(errno.EINVAL, f"{description} must be a regular file", str(path))
+        if _has_windows_reparse_point(opened_stat):
+            raise OSError(errno.ELOOP, f"refusing to follow {description} reparse point", str(path))
+        if (opened_stat.st_dev, opened_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
+            raise OSError(errno.ELOOP, f"{description} changed during validation", str(path))
+        with os.fdopen(fd, "r", encoding="utf-8", errors="replace") as handle:
+            fd = -1
+            return handle.read(), path_stat
+    finally:
+        if fd != -1:
+            os.close(fd)
+
+
+def _has_windows_reparse_point(path_stat: os.stat_result) -> bool:
+    return bool(getattr(path_stat, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def validate_hooks(hooks: dict[str, Any]) -> dict[str, list[str]]:
+    result: dict[str, list[str]] = {}
+    for key, value in hooks.items():
+        if key not in _VALID_HOOK_NAMES:
+            raise InputError(f"Unknown hook name: {key!r}")
+        if not isinstance(value, list):
+            raise InputError(f"Hook {key!r} must be an array of strings")
+        entries = cast("list[Any]", value)
+        checked: list[str] = []
+        for entry in entries:
+            if not isinstance(entry, str):
+                raise InputError(f"Hook {key!r} contains non-string item: {entry!r}")
+            checked.append(entry)
+        result[key] = checked
+    return result
+
+
+@dataclass(frozen=True)
+class HookContext:
+    hook_name: str
+    tool_name: str
+    repo_path: str
+    state_dir: str
+    run_id: str | None = None
+
+
+def build_hook_context(
+    hook_name: str,
+    tool_name: str,
+    repo_path_val: Path,
+    state_dir: Path,
+    run_id: str | None = None,
+) -> HookContext:
+    return HookContext(
+        hook_name=hook_name,
+        tool_name=tool_name,
+        repo_path=str(repo_path_val),
+        state_dir=str(state_dir),
+        run_id=run_id,
+    )
 
 
 class HooksTarget:
@@ -23,10 +153,10 @@ class HooksTarget:
             return False
         marker = f"# AHADIFF:BEGIN target={self.name}"
         for path in self._hook_paths(context):
-            if not path.exists():
-                continue
             try:
-                content = path.read_text(encoding="utf-8", errors="replace")
+                content = _read_text_no_follow(path, "git hook")
+            except FileNotFoundError:
+                continue
             except OSError:
                 continue
             if marker in content:
@@ -85,8 +215,15 @@ class HooksTarget:
 
 def _append_hook_section(path: Path, target: str, section: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
-        original = path.read_text(encoding="utf-8")
+    original_mode: int | None = None
+    try:
+        original, path_stat = _read_text_with_stat_no_follow(path, "git hook")
+        original_mode = stat.S_IMODE(path_stat.st_mode)
+        existing_hook = True
+    except FileNotFoundError:
+        original = ""
+        existing_hook = False
+    if existing_hook:
         pattern = _hook_pattern(target)
         if pattern.search(original):
             content = pattern.sub(section.strip(), original, count=1)
@@ -95,26 +232,51 @@ def _append_hook_section(path: Path, target: str, section: str) -> None:
             content = f"{original}{separator}{section}"
     else:
         content = f"#!/bin/sh\n\n{section}"
-    temp_path = path.with_name(f".{path.name}.ahadiff.tmp")
-    temp_path.write_text(content if content.endswith("\n") else f"{content}\n", encoding="utf-8")
-    temp_path.replace(path)
-    path.chmod(path.stat().st_mode | 0o111)
+    _atomic_write_hook_text(path, content, original_mode)
+    if not existing_hook:
+        path.chmod(stat.S_IMODE(path.lstat().st_mode) | 0o111)
 
 
 def _remove_hook_section(path: Path, target: str) -> bool:
-    if not path.exists():
+    try:
+        original, path_stat = _read_text_with_stat_no_follow(path, "git hook")
+    except FileNotFoundError:
         return False
-    original = path.read_text(encoding="utf-8")
+    original_mode = stat.S_IMODE(path_stat.st_mode)
     updated, count = _hook_pattern(target).subn("\n", original)
     if count == 0:
         return False
     if updated.strip():
-        temp_path = path.with_name(f".{path.name}.ahadiff.tmp")
-        temp_path.write_text(updated.strip() + "\n", encoding="utf-8")
-        temp_path.replace(path)
+        _atomic_write_hook_text(path, updated.strip(), original_mode)
     else:
         path.unlink()
     return True
+
+
+def _atomic_write_hook_text(path: Path, content: str, original_mode: int | None) -> None:
+    temp_path: Path | None = None
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.ahadiff.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        temp_path = Path(handle.name)
+        try:
+            if original_mode is not None:
+                os.fchmod(handle.fileno(), original_mode)
+            handle.write(content if content.endswith("\n") else f"{content}\n")
+        except Exception:
+            temp_path.unlink(missing_ok=True)
+            raise
+    try:
+        temp_path.replace(path)
+        if original_mode is not None:
+            path.chmod(original_mode)
+    finally:
+        temp_path.unlink(missing_ok=True)
 
 
 def _hook_pattern(target: str) -> re.Pattern[str]:

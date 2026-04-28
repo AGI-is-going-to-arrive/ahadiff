@@ -192,5 +192,13 @@ def _write_quiz(run_path: Path, run_id: str, claims: tuple[ClaimRecord, ...]) ->
         verdict="PASS",
     )
     assert cards_path is not None
+    cards = [
+        ReviewCard.model_validate_json(line)
+        for line in cards_path.read_text(encoding="utf-8").splitlines()
+    ]
+    questions = load_quiz_questions(quiz_dir / "quiz.jsonl")
+    question_card_ids = [question.review_card_id for question in questions]
+    card_ids = [card.card_id for card in cards]
+    assert question_card_ids == card_ids
     for line in cards_path.read_text(encoding="utf-8").splitlines():
         ReviewCard.model_validate_json(line)

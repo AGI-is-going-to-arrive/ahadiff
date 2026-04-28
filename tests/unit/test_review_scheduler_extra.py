@@ -24,6 +24,7 @@ from ahadiff.review import (
 @pytest.mark.parametrize(
     ("answer", "expected"),
     [
+        ("easy", Rating.Easy),
         ("good", Rating.Good),
         ("hard", Rating.Hard),
         ("wrong", Rating.Again),
@@ -85,6 +86,45 @@ def test_snapshot_card_state_exports_normalized_card_state() -> None:
     assert stability == 0.0
     assert difficulty == 0.0
     assert scaffolding == "full"
+
+
+def test_review_fsrs_card_easy_produces_valid_schedule() -> None:
+    reviewed_at = datetime(2026, 4, 24, tzinfo=UTC)
+    initial_state = normalize_fsrs_state(None, now=reviewed_at)
+    result = review_fsrs_card(
+        fsrs_state=initial_state,
+        answer="easy",
+        reviewed_at=reviewed_at,
+        enable_fuzzing=False,
+    )
+    assert result.rating == 4
+    assert result.stability > 0.0
+    assert result.scaffolding_level in {"full", "guided", "hint", "minimal", "none"}
+
+
+def test_review_fsrs_card_rejects_peeked_easy() -> None:
+    reviewed_at = datetime(2026, 4, 24, tzinfo=UTC)
+    initial_state = normalize_fsrs_state(None, now=reviewed_at)
+    with pytest.raises(InputError, match="peeked cards cannot be reviewed as good or easy"):
+        review_fsrs_card(
+            fsrs_state=initial_state,
+            answer="easy",
+            reviewed_at=reviewed_at,
+            peeked_this_session=True,
+        )
+
+
+def test_review_fsrs_card_rejects_unhashable_answer_with_input_error() -> None:
+    reviewed_at = datetime(2026, 4, 24, tzinfo=UTC)
+    initial_state = normalize_fsrs_state(None, now=reviewed_at)
+    review_answer: Any = []
+    with pytest.raises(InputError, match="unsupported review answer"):
+        review_fsrs_card(
+            fsrs_state=initial_state,
+            answer=review_answer,
+            reviewed_at=reviewed_at,
+            peeked_this_session=True,
+        )
 
 
 def test_scheduler_version_matches_installed_fsrs_package() -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-ReviewAnswer = Literal["good", "hard", "wrong"]
+ReviewAnswer = Literal["easy", "good", "hard", "wrong"]
 CardQueueAction = Literal["archive", "suspend"]
 
 

@@ -2,36 +2,43 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import SRSCard from '../components/SRSCard';
-import type { QuizItem, SrsRating } from '../components/SRSCard';
+import type { SrsRating, SrsReviewRating } from '../components/SRSCard';
 import { getRunArtifact } from '../api/runs';
 import { quizAnswer, srsReview } from '../api/signals';
+import type { MisconceptionCardItem, ReviewAnswer } from '../api/types';
 import { useTranslation } from '../i18n/useTranslation';
+import {
+  hasQuizReviewCard,
+  parseQuizJsonl,
+  type QuizItem,
+} from '../utils/quiz-contract';
 import '../components/Quiz.css';
 
 interface AnswerRecord {
-  choice: number;
+  answer: string;
   correct: boolean;
   peekAt: number;
 }
 
-function parseQuizJsonl(content: string): QuizItem[] {
-  const items: QuizItem[] = [];
+function parseMisconceptionJsonl(content: string): MisconceptionCardItem[] {
+  const items: MisconceptionCardItem[] = [];
   for (const line of content.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     try {
-      const parsed = JSON.parse(trimmed) as QuizItem;
-      const choicesValid =
-        Array.isArray(parsed.choices) && parsed.choices.every((c) => typeof c === 'string');
-      const idValid = typeof parsed.quiz_id === 'string' && parsed.quiz_id.length > 0;
-      const qValid = typeof parsed.question === 'string' && parsed.question.length > 0;
-      const answerValid =
-        typeof parsed.answer_index === 'number' &&
-        Number.isInteger(parsed.answer_index) &&
-        parsed.answer_index >= 0 &&
-        parsed.answer_index < (parsed.choices?.length ?? 0);
-      if (idValid && qValid && choicesValid && answerValid) {
-        items.push(parsed);
+      const parsed = JSON.parse(trimmed) as Partial<MisconceptionCardItem>;
+      if (
+        typeof parsed.card_id === 'string' &&
+        typeof parsed.concept === 'string' &&
+        typeof parsed.misconception === 'string' &&
+        typeof parsed.correction === 'string' &&
+        typeof parsed.evidence_ref === 'string' &&
+        (parsed.severity === 'low' || parsed.severity === 'medium' || parsed.severity === 'high') &&
+        Array.isArray(parsed.safety_tags) &&
+        parsed.safety_tags.every((tag) => typeof tag === 'string') &&
+        typeof parsed.run_id === 'string'
+      ) {
+        items.push(parsed as MisconceptionCardItem);
       }
     } catch {
       // skip malformed lines
@@ -44,6 +51,18 @@ function makeStableKey(runId: string, prefix: string, id: string, action: string
   return `${runId}-${prefix}-${id}-${action}`;
 }
 
+function isReviewRating(rating: SrsRating): rating is ReviewAnswer {
+  return rating === 'easy' || rating === 'good' || rating === 'hard' || rating === 'wrong';
+}
+
+const QUIZ_REVIEW_PEEKED_THIS_SESSION = true;
+const PEEKED_REVIEW_RATING_BLOCKLIST = new Set<SrsReviewRating>(['easy', 'good']);
+const PEEKED_REVIEW_RATING_ERROR = 'peeked cards cannot be reviewed as good or easy; use hard or wrong';
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 export default function QuizPage() {
   const { runId } = useParams<{ runId: string }>();
   const { t } = useTranslation();
@@ -53,10 +72,11 @@ export default function QuizPage() {
   const [error, setError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answered, setAnswered] = useState<Record<string, AnswerRecord>>({});
-  // `rated` gates the Next button — users must invoke onRate (good/hard/wrong
-  // for SRS-tracked review, or archive/suspend) before advancing. Only
-  // good/hard/wrong actually emit the SRS signal; archive/suspend still mark
-  // the card as rated so the user can move on.
+  const [misconceptions, setMisconceptions] = useState<MisconceptionCardItem[]>([]);
+  const [signalError, setSignalError] = useState<string | null>(null);
+  // `rated` gates the Next button. SRS-tracked quiz rows require a rating; legacy
+  // no-review rows are marked rated after answer reveal so they do not depend on
+  // review.sqlite cards that were never generated.
   const [rated, setRated] = useState<Record<string, boolean>>({});
   const abortRef = useRef<AbortController | null>(null);
 
@@ -68,14 +88,26 @@ export default function QuizPage() {
     setLoading(true);
     setError(null);
 
-    getRunArtifact(runId, 'quiz', { signal: controller.signal })
-      .then((envelope) => {
+    Promise.allSettled([
+      getRunArtifact(runId, 'quiz', { signal: controller.signal }),
+      getRunArtifact(runId, 'misconceptions', { signal: controller.signal }),
+    ])
+      .then(([quizResult, misconceptionResult]) => {
         if (controller.signal.aborted) return;
-        const items = parseQuizJsonl(envelope.content);
+        if (quizResult.status !== 'fulfilled') {
+          throw quizResult.reason;
+        }
+        const items = parseQuizJsonl(quizResult.value.content);
         setQuizzes(items);
         setCurrentIndex(0);
         setAnswered({});
         setRated({});
+        setSignalError(null);
+        if (misconceptionResult.status === 'fulfilled') {
+          setMisconceptions(parseMisconceptionJsonl(misconceptionResult.value.content));
+        } else {
+          setMisconceptions([]);
+        }
       })
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -102,49 +134,71 @@ export default function QuizPage() {
   );
 
   const handleAnswer = useCallback(
-    (quizId: string, choice: number, correct: boolean) => {
+    (questionId: string, answer: string, correct: boolean) => {
       setAnswered((prev) => ({
         ...prev,
-        [quizId]: { choice, correct, peekAt: Date.now() },
+        [questionId]: { answer, correct, peekAt: Date.now() },
       }));
+      if (
+        currentQuiz &&
+        currentQuiz.question_id === questionId &&
+        !hasQuizReviewCard(currentQuiz)
+      ) {
+        setRated((prev) => ({ ...prev, [questionId]: true }));
+      }
+      setSignalError(null);
 
-      // Fire quiz-answer signal (fire-and-forget)
       if (runId) {
         void quizAnswer({
-          idempotency_key: makeStableKey(runId, 'qa', quizId, `choice-${choice}`),
-          quiz_id: quizId,
-          choice: String(choice),
+          idempotency_key: makeStableKey(runId, 'qa', questionId, answer),
+          quiz_id: questionId,
+          choice: answer,
           correct,
-        }).catch(() => {
-          // signal failure is non-blocking
+        }).catch((err: unknown) => {
+          setSignalError(errorMessage(err));
         });
       }
     },
-    [runId],
+    [currentQuiz, runId],
   );
 
   const handleRate = useCallback(
-    (rating: SrsRating) => {
-      if (!currentQuiz || !runId) return;
+    async (rating: SrsRating): Promise<boolean> => {
+      if (!currentQuiz || !runId) return false;
+      setSignalError(null);
 
-      const qid = currentQuiz.quiz_id;
+      const qid = currentQuiz.question_id;
 
-      // Map quiz rating to SRS answer for the review signal
-      if (rating === 'good' || rating === 'hard' || rating === 'wrong') {
-        const answerMap = { good: 'good', hard: 'hard', wrong: 'wrong' } as const;
-        void srsReview({
-          idempotency_key: makeStableKey(runId, 'srs', qid, answerMap[rating]),
-          card_id: qid,
-          answer: answerMap[rating],
-        }).catch(() => {
-          // signal failure is non-blocking
-        });
+      if (isReviewRating(rating)) {
+        if (!hasQuizReviewCard(currentQuiz)) {
+          setRated((prev) => ({ ...prev, [qid]: true }));
+          return true;
+        }
+
+        if (QUIZ_REVIEW_PEEKED_THIS_SESSION && PEEKED_REVIEW_RATING_BLOCKLIST.has(rating)) {
+          setSignalError(PEEKED_REVIEW_RATING_ERROR);
+          return false;
+        }
+
+        try {
+          const cardId = currentQuiz.review_card_id;
+          await srsReview({
+            idempotency_key: makeStableKey(runId, 'srs', cardId, rating),
+            card_id: cardId,
+            answer: rating,
+            peeked_this_session: QUIZ_REVIEW_PEEKED_THIS_SESSION,
+          });
+        } catch (err: unknown) {
+          setSignalError(errorMessage(err));
+          return false;
+        }
       }
 
       // Mark this card as rated so the Next button can appear; the user
       // must explicitly tap Next so they aren't auto-advanced past the
       // explanation panel.
       setRated((prev) => ({ ...prev, [qid]: true }));
+      return true;
     },
     [currentQuiz, runId],
   );
@@ -187,18 +241,27 @@ export default function QuizPage() {
           <>
             {currentQuiz && (
               <SRSCard
-                key={currentQuiz.quiz_id}
+                key={currentQuiz.question_id}
                 quiz={currentQuiz}
                 onAnswer={handleAnswer}
                 onRate={handleRate}
+                disabledReviewRatings={
+                  hasQuizReviewCard(currentQuiz) ? PEEKED_REVIEW_RATING_BLOCKLIST : undefined
+                }
               />
+            )}
+
+            {signalError && (
+              <div className="quiz-page__signal-error" role="alert">
+                {t('Quiz.signal_error', { message: signalError })}
+              </div>
             )}
 
             {/* Next button when on current card and already rated.
                 Gating on `rated` (not `answered`) ensures the SRS signal
                 has been recorded before advancing — selecting a choice alone
                 is not enough. */}
-            {currentIndex < quizzes.length - 1 && rated[currentQuiz?.quiz_id ?? ''] && (
+            {currentIndex < quizzes.length - 1 && rated[currentQuiz?.question_id ?? ''] && (
               <div className="quiz-page__nav">
                 <button
                   type="button"
@@ -215,6 +278,29 @@ export default function QuizPage() {
               <p className="quiz-page__progress quiz-page__progress--summary">
                 {t('Quiz.correct')}: {Object.values(answered).filter((a) => a.correct).length} / {quizzes.length}
               </p>
+            )}
+
+            {misconceptions.length > 0 && (
+              <section
+                className="quiz-page__misconceptions"
+                aria-label={t('Quiz.misconceptions_title')}
+              >
+                <p className="quiz-page__misconceptions-title">{t('Quiz.misconceptions_title')}</p>
+                {misconceptions.map((card) => (
+                  <div key={card.card_id} className="quiz-page__misconception">
+                    <strong>{card.concept}</strong>
+                    <p>
+                      {t('Quiz.misconception_label')}: {card.misconception}
+                    </p>
+                    <p>
+                      {t('Quiz.correction_label')}: {card.correction}
+                    </p>
+                    <p>
+                      {t('Quiz.evidence_label')}: {card.evidence_ref} ({card.severity})
+                    </p>
+                  </div>
+                ))}
+              </section>
             )}
           </>
         )}

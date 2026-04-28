@@ -32,7 +32,7 @@ export type DegradedFlag =
 
 export type DegradedFlagsMap = Partial<Record<DegradedFlag, boolean>>;
 
-export type ReviewAnswer = 'good' | 'hard' | 'wrong';
+export type ReviewAnswer = 'easy' | 'good' | 'hard' | 'wrong';
 
 export interface AuthTokenResponse {
   token: string;
@@ -64,7 +64,13 @@ export interface RunDetail extends RunSummary {
   graphify_notes?: string[] | null;
 }
 
-export type ArtifactKind = 'lesson' | 'claims' | 'quiz' | 'diff' | 'concepts';
+export type ArtifactKind =
+  | 'lesson'
+  | 'claims'
+  | 'quiz'
+  | 'misconceptions'
+  | 'diff'
+  | 'concepts';
 
 export interface RunArtifactEnvelope {
   run_id: string;
@@ -112,6 +118,7 @@ export interface SrsReviewPayload {
   idempotency_key: string;
   card_id: string;
   answer: ReviewAnswer;
+  peeked_this_session?: boolean;
 }
 
 export interface QuizAnswerPayload {
@@ -160,6 +167,18 @@ export interface ReviewRatePayload {
   card_id: string;
   answer: ReviewAnswer;
   idempotency_key: string;
+  peeked_this_session?: boolean;
+}
+
+export interface MisconceptionCardItem {
+  card_id: string;
+  concept: string;
+  misconception: string;
+  correction: string;
+  evidence_ref: string;
+  severity: 'low' | 'medium' | 'high';
+  safety_tags: string[];
+  run_id: string;
 }
 
 export interface ReviewRateResponse {

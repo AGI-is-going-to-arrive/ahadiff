@@ -57,7 +57,7 @@ test.describe('smoke', () => {
     await page.locator('.flashcard__flip-btn').click();
     await expect(page.locator('.srs-buttons')).toBeVisible();
     const buttons = page.locator('.srs-btn');
-    await expect(buttons).toHaveCount(3);
+    await expect(buttons).toHaveCount(4);
   });
 
   test('hash router ratchet route renders Ratchet heading', async ({ page }) => {

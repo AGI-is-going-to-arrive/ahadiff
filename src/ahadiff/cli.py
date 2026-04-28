@@ -497,9 +497,9 @@ def _normalize_quiz_answer(value: str) -> str:
 
 def _parse_review_answer(value: str) -> ReviewAnswer:
     normalized = value.strip().casefold()
-    if normalized in {"good", "hard", "wrong"}:
+    if normalized in {"easy", "good", "hard", "wrong"}:
         return cast("ReviewAnswer", normalized)
-    raise AhaDiffError("review answer must be one of: good, hard, wrong")
+    raise AhaDiffError("review answer must be one of: easy, good, hard, wrong")
 
 
 def _validate_review_cli_options(
@@ -873,6 +873,7 @@ def learn_cmd(
             raw_claims_path: Path | None = None
             claims_output_path: Path | None = None
             lesson_paths = None
+            quiz_artifacts = None
             quiz_path: Path | None = None
             cards_path: Path | None = None
             concepts_path: Path | None = None
@@ -1043,6 +1044,10 @@ def learn_cmd(
             console.print(f"[bold]Compact[/bold]: {lesson_paths.compact_path}")
             if quiz_path is not None:
                 console.print(f"[bold]Quiz[/bold]: {quiz_path}")
+            if quiz_artifacts is not None and quiz_artifacts.misconception_path is not None:
+                console.print(
+                    f"[bold]Misconception cards[/bold]: {quiz_artifacts.misconception_path}"
+                )
             if cards_path is not None:
                 console.print(f"[bold]Cards[/bold]: {cards_path}")
             elif learn_report is not None and learn_report.verdict == "FAIL":
@@ -1334,8 +1339,10 @@ def regenerate_cmd(
                 ) from error
             quiz_path = run_path / "quiz" / "quiz.jsonl"
             cards_target_path = run_path / "quiz" / "cards.jsonl"
+            misconception_target_path = run_path / "quiz" / "misconception_cards.jsonl"
             quiz_backup = _backup_artifact_for_rollback(quiz_path)
             cards_backup = _backup_artifact_for_rollback(cards_target_path)
+            misconception_backup = _backup_artifact_for_rollback(misconception_target_path)
             (
                 provider_config,
                 effective_api_key,
@@ -1392,13 +1399,21 @@ def regenerate_cmd(
             except Exception:
                 _restore_artifact_from_backup(target=quiz_path, backup_path=quiz_backup)
                 _restore_artifact_from_backup(target=cards_target_path, backup_path=cards_backup)
+                _restore_artifact_from_backup(
+                    target=misconception_target_path,
+                    backup_path=misconception_backup,
+                )
                 raise
             finally:
                 if quiz_backup is not None:
                     quiz_backup.unlink(missing_ok=True)
                 if cards_backup is not None:
                     cards_backup.unlink(missing_ok=True)
+                if misconception_backup is not None:
+                    misconception_backup.unlink(missing_ok=True)
         console.print(f"[green]Regenerated quiz[/green]: {quiz_artifacts.quiz_path}")
+        if quiz_artifacts.misconception_path is not None:
+            console.print(f"[bold]Misconception cards[/bold]: {quiz_artifacts.misconception_path}")
         if cards_path is not None:
             console.print(f"[bold]Cards[/bold]: {cards_path}")
     except Exception as error:  # pragma: no cover - exercised through CLI tests
@@ -1421,7 +1436,7 @@ def review_cmd(
     ] = None,
     answer: Annotated[
         str | None,
-        typer.Option("--answer", help="Review answer: good, hard, or wrong."),
+        typer.Option("--answer", help="Review answer: easy, good, hard, or wrong."),
     ] = None,
     peeked: Annotated[
         bool,

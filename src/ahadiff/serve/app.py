@@ -14,24 +14,36 @@ from ahadiff.core.errors import AhaDiffError, InputError
 
 from .auth import serve_state
 from .middleware import LoopbackGuardMiddleware
-from .routes_config import get_config, get_doctor
+from .routes_audit import get_audit
+from .routes_config import get_config, get_doctor, put_config
 from .routes_export import get_export_results
 from .routes_install import get_install_targets
 from .routes_locale import get_locale, put_locale
-from .routes_review import get_review_queue, post_review_rate
+from .routes_review import get_review_mastery, get_review_queue, get_weak_concepts, post_review_rate
 from .routes_runs import (
     get_claims,
     get_concepts,
     get_diff,
     get_lesson,
+    get_misconceptions,
     get_quiz,
     get_ratchet_history,
     get_run,
     get_run_concepts,
     list_runs,
 )
+from .routes_search import search_api
 from .routes_signals import helpfulness, mark_wrong, quiz_answer, srs_review
-from .routes_stats import get_providers, get_review_heatmap, get_serve_status, get_stats
+from .routes_stats import (
+    get_learning_effectiveness,
+    get_providers,
+    get_review_heatmap,
+    get_serve_status,
+    get_spec_alignment,
+    get_stats,
+    get_usage,
+)
+from .routes_tasks import cancel_task, get_task, list_tasks, task_progress_sse
 from .static import mount_viewer_static
 
 if TYPE_CHECKING:
@@ -58,13 +70,21 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
             Route("/api/run/{run_id}/lesson", get_lesson, methods=["GET"]),
             Route("/api/run/{run_id}/claims", get_claims, methods=["GET"]),
             Route("/api/run/{run_id}/quiz", get_quiz, methods=["GET"]),
+            Route("/api/run/{run_id}/misconceptions", get_misconceptions, methods=["GET"]),
             Route("/api/run/{run_id}/diff", get_diff, methods=["GET"]),
             Route("/api/run/{run_id}/concepts", get_run_concepts, methods=["GET"]),
             Route("/api/concepts", get_concepts, methods=["GET"]),
             Route("/api/ratchet/history", get_ratchet_history, methods=["GET"]),
             Route("/api/review/queue", get_review_queue, methods=["GET"]),
             Route("/api/review/rate", post_review_rate, methods=["POST"]),
+            Route("/api/search", search_api, methods=["GET"]),
+            Route("/api/concepts/weak", get_weak_concepts, methods=["GET"]),
+            Route("/api/review/mastery", get_review_mastery, methods=["GET"]),
+            Route("/api/usage", get_usage, methods=["GET"]),
+            Route("/api/audit", get_audit, methods=["GET"]),
+            Route("/api/spec/alignment", get_spec_alignment, methods=["GET"]),
             Route("/api/config", get_config, methods=["GET"]),
+            Route("/api/config", put_config, methods=["PUT"]),
             Route("/api/doctor", get_doctor, methods=["GET"]),
             Route("/api/install/targets", get_install_targets, methods=["GET"]),
             Route("/api/stats", get_stats, methods=["GET"]),
@@ -72,10 +92,15 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
             Route("/api/export/results", get_export_results, methods=["GET"]),
             Route("/api/providers", get_providers, methods=["GET"]),
             Route("/api/serve/status", get_serve_status, methods=["GET"]),
+            Route("/api/stats/learning", get_learning_effectiveness, methods=["GET"]),
             Route("/api/signals/mark-wrong", mark_wrong, methods=["POST"]),
             Route("/api/signals/quiz-answer", quiz_answer, methods=["POST"]),
             Route("/api/signals/srs-review", srs_review, methods=["POST"]),
             Route("/api/signals/helpfulness", helpfulness, methods=["POST"]),
+            Route("/api/tasks", list_tasks, methods=["GET"]),
+            Route("/api/tasks/{task_id}", get_task, methods=["GET"]),
+            Route("/api/tasks/{task_id}/cancel", cancel_task, methods=["POST"]),
+            Route("/api/tasks/{task_id}/progress", task_progress_sse, methods=["GET"]),
             Route(
                 "/api/{rest_of_path:path}",
                 api_not_found,

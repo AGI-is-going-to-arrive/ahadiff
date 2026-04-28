@@ -18,7 +18,7 @@ It's not a PR summary, not a repo wiki, not yet another "code explainer." It rea
 - A **claims** ledger where every assertion traces back to a hunk
 - A comparable **quality score history** (ratcheted; `review.sqlite` is the single source of truth, `results.tsv` is a human-readable export)
 
-The main line from Stage 0 / Task 0 through Stage 6 now has real shipped artifacts, and Stage 7 i18n signoff has also passed. The current code already ships Lesson / Claims / Quiz / Cards / Score / Ratchet. The review-flow SRS runtime, serve backend, install targets, GitHub Action templates, benchmark suite, improve-loop core, Task 17 targeted verification, Phase 2.5 runtime, i18n-0 backend, and the `viewer/` React SPA are all landed. The v0.1 frontend delivered Dashboard / Lesson / Diff / Quiz / ConceptGraph and went through R1-R5 five-round cross-model adversarial review (51 real findings fixed). v0.2 backend Gates 0-5 + frontend Phase 1-4 have all passed review: backend adds `--compare-dir` directory diff, `--patch-url` URL download (full SSRF protection), serve cursor pagination + anyio threadpool, LLM cache + usage.sqlite, 7 new install targets (13 total), and 3 new endpoints (`/api/config`, `/api/doctor`, `/api/install/targets`); frontend adds 6 new pages (Review SRS flashcards / Ratchet history / Landing hero / Settings config+diagnostics / Onboarding wizard / Skills agent hub), totalling 12 pages ~30 components, i18n 189/189 key parity, 495 Playwright tests all green.
+The main line from Stage 0 / Task 0 through Stage 6 now has real shipped artifacts, and Stage 7 i18n signoff has also passed. The current code already ships Lesson / Claims / Quiz / Misconception Cards / Cards / Score / Ratchet. The review-flow SRS runtime, serve backend, install targets, GitHub Action templates, benchmark suite, improve-loop core, Task 17 targeted verification, Phase 2.5 runtime, i18n-0 backend, and the `viewer/` React SPA are all landed. The v0.1 frontend delivered Dashboard / Lesson / Diff / Quiz / ConceptGraph and went through R1-R5 five-round cross-model adversarial review (51 real findings fixed). v0.2 backend Gates 0-6 + frontend Phase 1-4 have all passed review; the current branch also lands section-level helpfulness / learning transfer, misconception cards, Graphify Phase 1 (parser + freshness helper), the mid-tier serve APIs (`/api/search`, `/api/usage`, `/api/audit`, `/api/review/mastery`, `/api/concepts/weak`, `/api/spec/alignment`, `/api/stats/learning`), and a low-level task-status surface. The frontend remains at 12 pages ~30 components, 201/201 i18n key parity, 780 green Playwright runs, and the latest `pnpm run build` output is 302.83 KB (92.67 KB gzip).
 
 > Code Wiki explains a repo. AhaDiff teaches you what changed — and verifies every claim against the diff.
 
@@ -54,8 +54,7 @@ ahadiff learn HEAD~1..HEAD
 # Learn staged changes
 ahadiff learn --staged
 
-# Plan-then-implement-then-learn loop
-ahadiff plan "add OAuth login"
+# Learn against a spec
 ahadiff learn HEAD~1..HEAD --against .ahadiff/specs/oauth-login/SPEC.md
 
 # Review
@@ -113,8 +112,9 @@ Current output layout:
 │     ├─ misconception.md
 │     └─ not_proven.md
 │  └─ quiz/
-│     ├─ quiz.jsonl
-│     └─ cards.jsonl     # Only written for PASS / CAUTION runs
+│     ├─ quiz.jsonl      # open-answer rows; review_card_id may be absent before cards exist
+│     ├─ misconception_cards.jsonl
+│     └─ cards.jsonl     # Only written for PASS / CAUTION runs, and backfills review_card_id
 ├─ improve/
 │  ├─ <session_id>.json  # improve session state, including phase25_attempted
 │  └─ wt/<12hex>-rN/     # temporary worktree kept for pending conflicts or Phase 2.5
@@ -158,12 +158,13 @@ ahadiff/
 ├─ src/ahadiff/llm/             # Layer 1.5 / Task 7 provider + probe
 ├─ src/ahadiff/git/             # Stage 2 / Task 5-6 diff capture + structuring
 ├─ src/ahadiff/claims/          # Stage 2 / Task 8 claim extraction + verification + runtime
-├─ src/ahadiff/lesson/          # Stage 3 / Task 8.5 + 9 learnability + lesson generation
-├─ src/ahadiff/quiz/            # Stage 3 / Task 10 quiz + cards
+├─ src/ahadiff/lesson/          # Stage 3 / Task 8.5 + 9 learnability + lesson + helpfulness/transfer
+├─ src/ahadiff/quiz/            # Stage 3 / Task 10 open-answer quiz + cards + misconception cards
 ├─ src/ahadiff/wiki/            # Stage 3 / Task 10 concepts ledger
+├─ src/ahadiff/graphify/        # Current-branch Graphify Phase 1: models/parser/freshness helper
 ├─ src/ahadiff/eval/            # Stage 3 / Task 11-12 evaluator + ratchet + results
-├─ src/ahadiff/serve/           # Task 14.5 + v0.2 local serve API (incl. routes_config / routes_install)
-├─ src/ahadiff/install/         # Task 19/20 install targets + GitHub Action templates
+├─ src/ahadiff/serve/           # Task 14.5 + v0.2 local serve API (incl. search/audit/usage/mastery/learning/tasks)
+├─ src/ahadiff/install/         # Task 19/20 install targets + hooks no-follow + GitHub Action templates
 ├─ src/ahadiff/i18n/            # i18n-0 locale resolver / prompt language helper
 ├─ src/ahadiff/review/          # Task 15 + v0.2 review.sqlite schema / FSRS-6 / migration chain
 ├─ src/ahadiff/prompts/         # Prompt resources packaged into the wheel
@@ -174,7 +175,7 @@ ahadiff/
 ├─ tests/eval/                  # benchmark suite tests
 ├─ tests/integration/           # pinned integration fixtures
 ├─ tests/live/                  # Opt-in real LLM judge smoke
-├─ viewer/                      # React 19 + Vite + Zustand + vanilla CSS frontend (12 pages / 189 i18n keys / 495 Playwright)
+├─ viewer/                      # React 19 + Vite + Zustand + vanilla CSS frontend (12 pages / 201 i18n keys / 780 Playwright)
 ├─ ui/                          # HTML prototypes v1–v6 (design history)
 └─ CLAUDE.md                    # Project AI context index
 ```
@@ -185,11 +186,11 @@ ahadiff/
 
 - the `ahadiff learn` main path for git and non-git capture (`--patch` / `--compare`), followed by learnability gating, `claims.raw.jsonl -> claims.jsonl`, and full / hint / compact lesson output
 - `ahadiff quiz` for a minimal interactive quiz loop backed by `quiz.jsonl`, with source-claim and file-line evidence printed back to the user
-- `cards.jsonl` / `concepts.jsonl`: cards are generated for scored PASS / CAUTION runs; git-backed runs write the repo-global `concepts.jsonl`, while non-git runs write `concepts_local.jsonl`
+- the quiz artifact chain writes both `quiz.jsonl` and `misconception_cards.jsonl`; scored PASS / CAUTION runs generate `cards.jsonl` and backfill `review_card_id`, while open-answer rows without `review_card_id` still render correctly in the viewer; git-backed runs write the repo-global `concepts.jsonl`, while non-git runs write `concepts_local.jsonl`
 - `ahadiff score`, `ahadiff verify`, and `ahadiff export-results`, backed by `review.sqlite` as the single source of truth and `results.tsv` as an export view
 - `ahadiff review`, `ahadiff mark <claim_id> wrong`, and `ahadiff db {backup,restore,check,import-results,finalize-targeted}` for the landed review.sqlite review / signals / result-events / lossy-import / targeted-finalize path
-- `ahadiff serve`: the localhost-only serve backend is available. Read routes expose finalized runs only; write routes require token plus Origin/Referer checks
-- `ahadiff install`: Claude / Codex / Gemini / OpenCode / hooks / GitHub Action targets are available. Hooks are POSIX-shell targets and are explicitly rejected on Windows in v0.1. Generated GitHub workflows cover macOS + Linux; Windows remains deferred. The generate workflow uses `AHADIFF_PROVIDER_API_KEY` and uploads `.ahadiff/` outputs as an artifact
+- `ahadiff serve`: the localhost-only serve backend is available. Read routes expose finalized runs only; write routes require token plus Origin/Referer checks. The branch also adds `/api/search`, `/api/usage`, `/api/audit`, `/api/review/mastery`, `/api/concepts/weak`, `/api/spec/alignment`, `/api/stats/learning`, and the low-level `/api/tasks*` status endpoints
+- `ahadiff install`: Claude / Codex / Gemini / OpenCode / hooks / GitHub Action targets are available. Hooks are POSIX-shell targets and are explicitly rejected on Windows in v0.1. Existing hook files are now read through no-follow regular-file checks, so symlink / reparse-point hook paths are rejected. Generated GitHub workflows cover macOS + Linux; Windows remains deferred. The generate workflow uses `AHADIFF_PROVIDER_API_KEY` and uploads `.ahadiff/` outputs as an artifact
 - `ahadiff benchmark`: the local benchmark manifest, 20 eval fixtures, 10 pinned integration fixtures, and `ground_truth.md` consistency checks are available
 - The Phase 0 follow-up is now reflected in the branch: the contract authority, the `safe_sqlite_connect` SQLite connection helper, reparse/hardlink protections, serve CORS and `X-Frame-Options` headers, CLI cold start, and local baseline scripts all have matching implementation
 - i18n-0: the locale resolver supports cookie / Accept-Language / CLI / config / `AHADIFF_LANG` / `LANG` fallback, and lesson/quiz prompt payloads carry the requested output-language instruction
@@ -198,7 +199,7 @@ ahadiff/
 - `src/ahadiff/review/{database,scheduler,schemas,signal}.py` for review.sqlite schema / migration, FSRS-6 scheduling, the review queue, learning signals, and the review CLI backend
 - `src/ahadiff/improve/{loop,program,targeted,rewrite}.py` for improve sessions, the immutable improve_program prompt, worktree isolation, the 5 mutable-prompt allowlist, replay-learn, targeted verification, Phase 2.5 triggering, cherry-pick ordering, session validation, and pending-worktree resume guards
 - runtime resource lookup that works in both source checkout and installed wheel mode for `eval_bundle_version`, `prompt_version`, and packaged lesson prompts
-- `keep_final` is still a manual full 8-dimension recheck via `ahadiff db finalize-targeted <event_id>`; the improve loop does not auto-promote it. The `viewer/` React SPA is complete through Phase A-E with R1-R5 five-round cross-model deep review; v0.2 frontend Phase 1-4 adds 6 new pages (Review / Ratchet / Landing / Settings / Onboarding / Skills), 66 v6 design tokens, Skeleton loading component, review-store, per-route ErrorBoundary, shared utility extraction, i18n upgraded to 189/189 parity, and Playwright upgraded to 495 tests
+- `keep_final` is still a manual full 8-dimension recheck via `ahadiff db finalize-targeted <event_id>`; the improve loop does not auto-promote it. The `viewer/` React SPA is complete through Phase A-E with R1-R5 five-round cross-model deep review; v0.2 frontend Phase 1-4 adds 6 new pages (Review / Ratchet / Landing / Settings / Onboarding / Skills), 66 v6 design tokens, Skeleton loading component, review-store, per-route ErrorBoundary, shared utility extraction, i18n upgraded to 201/201 parity, and Playwright upgraded to 780 tests; the Quiz page now reads `misconception_cards.jsonl` and keeps open-answer rows without `review_card_id` renderable instead of routing them into SRS by mistake
 
 This round also closed several runtime edges: `prompt_version` still tracks AhaDiff's own prompt resources instead of any target-workspace `prompts/`; lesson JSON parsing skips schema-mismatched example blocks before accepting a real answer; the lesson/quiz chain is now wired into `learn`; lesson-generation failures now clean up newly written `claims.raw.jsonl` / `claims.jsonl`, `quiz/`, and `concepts_local.jsonl` half-artifacts; successful `learn` runs now write a `learn` event plus `score.json`; manual `score` / `verify` still do not contaminate the learn baseline; `ReviewCard` now validates `last_rating` and `card_state/stale_reason`; fake quiz artifacts no longer pass as a complete Stage-3 result. The pinned integration fixture was also tightened after that: tests now write `symbols.json`, generate `cards.jsonl` through `generate_cards_for_run()`, and validate every row as `ReviewCard`, so hand-written partial cards can no longer bypass the production contract. Task 15 is also fully hardened in this round: legacy `cards` schemas now migrate `stale_reason` explicitly, schema-invalid `cards.jsonl` is downgraded to warnings, repeated regenerate runs no longer leave old active cards in the due queue, `regenerate --only quiz` restores the previous quiz/cards artifacts if `evaluate_run` fails and deletes stale `cards.jsonl` plus marks active cards `stale + staleness_unknown` on `FAIL`, lossy TSV import now runs as a single-connection whole-batch import with rollback on bad rows or duplicate identities, `rollback_result_event` now does delete + export-row selection in one connection, and a plain DB connect no longer creates parent directories silently on typo paths. Task 16/17 now covers the `lesson_hint.md` allowlist entry, session-id path validation, a 30-minute replay timeout, paired prompt temp+replace writes, non-conflict cherry-pick failure handling, no `finalized.json` for discard or pending-conflict runs, pending conflicts excluded from the next baseline, volatile staged/unstaged replay from the saved `patch.diff`, shorter worktree paths, a `--rounds` cap of 20, null-byte rejection, Ctrl+C after a completed round no longer appending a second crash event, targeted verification, one Phase 2.5 trigger per session, and OpenAI-compatible provider endpoint normalization. This cache-key hardening also closes the API-version boundary for LLM calls: different `api_family_version` values under the same `api_family` now produce different cache keys, so compatible gateways or API-version changes do not reuse stale results.
 
@@ -227,12 +228,12 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-Latest verification (2026-04-28): `uv run pytest tests -q --tb=long` finished with `993 passed, 1 skipped` (the live judge smoke is still skipped by default); `uv run ruff check src tests`, `uv run ruff format --check src tests`, and `uv run pyright` all passed.
+Latest verification (2026-04-29): `uv run pytest tests -q --tb=long` finished with `1191 passed, 1 skipped`; `uv run ruff check src tests`, `uv run ruff format --check src tests`, `uv run pyright`, and `uv build --wheel` all passed; `pnpm run typecheck`, `pnpm run build` (302.83 KB, 92.67 KB gzip), `pnpm run test:unit`, and `pnpm exec playwright test` (780/780) also passed.
 
 Roadmap:
 
 - [ ] `v0.1` (MVP): CLI + Lesson + Evaluator + Ratchet end-to-end + React 19 WebUI (`ahadiff serve`) + 8 LLM Providers + 8 diff capture modes (incl. --unstaged / git show) + 6 install targets + i18n + stage gates
-- [ ] `v0.2`: --compare-dir + --patch-url + 7 IDE install targets + 6 new frontend pages + watchdog incremental regeneration + section-level helpfulness + Team features (done: backend Gates 0-5 + frontend Phase 1-4 + 13 install targets + LLM cache + usage.sqlite; remaining: watchdog / helpfulness / Team)
+- [ ] `v0.2`: --compare-dir + --patch-url + 7 IDE install targets + 6 new frontend pages + watchdog incremental regeneration + section-level helpfulness + Team features (done: backend Gates 0-6 + medium APIs + helpfulness / learning transfer + misconception cards + Graphify Phase 1 foundations + frontend Phase 1-4 + 13 install targets + LLM cache + usage.sqlite; remaining: watchdog / Team / deeper Graphify linking and the later V6 frontend pass)
 - [ ] `v1.0`: PWA + public benchmark suite
 
 ## Inspirations

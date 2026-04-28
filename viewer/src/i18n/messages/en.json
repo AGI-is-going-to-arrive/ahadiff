@@ -29,6 +29,7 @@
     "weakest_dim": "Weakest dimension"
   },
   "SRS": {
+    "easy": "Easy",
     "good": "Good",
     "hard": "Hard",
     "again": "Again",
@@ -90,11 +91,13 @@
     "progress": "{current}/{total}",
     "flip": "Show answer",
     "rating_good": "Good",
+    "rating_easy": "Easy",
     "rating_hard": "Hard",
     "rating_wrong": "Again",
     "interval_again": "< 10min",
     "interval_hard": "1 day",
     "interval_good": "4 days",
+    "interval_easy": "7 days",
     "complete": "Session complete!",
     "complete_hint": "You reviewed {count} cards",
     "card_concept": "Concept",
@@ -142,12 +145,21 @@
   "Quiz": {
     "correct": "Correct",
     "wrong": "Wrong",
+    "answer_label": "Your answer",
     "show_answer": "Show answer",
     "title": "Quiz",
     "progress": "{current}/{total}",
     "peek_guard_hint": "Please read the answer first",
+    "no_review_hint": "This question is not linked to an SRS card. You can continue after checking the answer.",
+    "expected_answer": "Expected answer",
+    "your_answer": "Your answer",
     "explanation_title": "Explanation",
-    "next": "Next"
+    "next": "Next",
+    "signal_error": "Could not save review signal: {message}",
+    "misconceptions_title": "Common Misconceptions",
+    "misconception_label": "Misconception",
+    "correction_label": "Correction",
+    "evidence_label": "Evidence"
   },
   "Settings_page": {
     "title": "Settings",

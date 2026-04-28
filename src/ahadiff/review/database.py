@@ -834,7 +834,6 @@ def record_card_review_once(
     card_id: str,
     answer: ReviewAnswer,
     idempotency_key: str,
-    # NOTE: idempotency dedup uses key alone; card_id/answer mismatch on replay is silently ignored.
     peeked_this_session: bool = False,
     reviewed_at_utc: datetime | None = None,
 ) -> ReviewUpdate | None:
@@ -846,7 +845,11 @@ def record_card_review_once(
             event_id=make_uuid7(),
             idempotency_key=idempotency_key,
             signal_type="srs_review",
-            payload={"card_id": card_id, "answer": answer},
+            payload={
+                "card_id": card_id,
+                "answer": answer,
+                "peeked_this_session": peeked_this_session,
+            },
             created_at_utc=reviewed_at,
         )
         if not inserted:
@@ -1029,6 +1032,7 @@ def _insert_learning_signal(
     created_at_utc: datetime | None = None,
 ) -> bool:
     timestamp = _datetime_to_utc_text(created_at_utc or datetime.now(UTC))
+    payload_json = json.dumps(payload, ensure_ascii=False, sort_keys=True)
     cursor = connection.execute(
         """
         INSERT OR IGNORE INTO learning_signals (
@@ -1043,11 +1047,30 @@ def _insert_learning_signal(
             event_id,
             idempotency_key,
             signal_type,
-            json.dumps(payload, ensure_ascii=False, sort_keys=True),
+            payload_json,
             timestamp,
         ),
     )
-    return cursor.rowcount > 0
+    if cursor.rowcount > 0:
+        return True
+
+    existing = connection.execute(
+        """
+        SELECT signal_type, payload_json
+        FROM learning_signals
+        WHERE idempotency_key = ?
+        """,
+        (idempotency_key,),
+    ).fetchone()
+    if existing is not None:
+        if (
+            str(existing["signal_type"]) == signal_type
+            and str(existing["payload_json"]) == payload_json
+        ):
+            return False
+        raise InputError("idempotency key already used with different learning signal payload")
+
+    raise InputError("learning signal event_id already exists")
 
 
 def _ensure_schema(connection: sqlite3.Connection) -> None:

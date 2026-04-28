@@ -34,31 +34,40 @@ async function installRichMock(page: Page): Promise<void> {
                 run_id: 'run-001',
                 source_kind: 'git_ref',
                 source_ref: 'HEAD~2',
+                content_lang: 'en',
+                capability_level: 3,
                 verdict: 'PASS',
                 overall: 92,
                 status: 'baseline',
                 weakest_dim: 'evidence',
                 created_at: '2026-04-25T10:00:00Z',
+                degraded_flags: {},
               },
               {
                 run_id: 'run-002',
                 source_kind: 'git_ref',
                 source_ref: 'HEAD~1',
+                content_lang: 'en',
+                capability_level: 2,
                 verdict: 'CAUTION',
                 overall: 71,
                 status: 'baseline',
                 weakest_dim: 'conciseness',
                 created_at: '2026-04-26T12:00:00Z',
+                degraded_flags: {},
               },
               {
                 run_id: 'run-003',
                 source_kind: 'git_ref',
                 source_ref: 'HEAD',
+                content_lang: 'en',
+                capability_level: 3,
                 verdict: 'PASS',
                 overall: 88,
                 status: 'baseline',
                 weakest_dim: 'evidence',
                 created_at: '2026-04-27T08:00:00Z',
+                degraded_flags: {},
               },
             ],
             next_cursor: 'cursor-page2',
@@ -70,16 +79,19 @@ async function installRichMock(page: Page): Promise<void> {
         contentType: 'application/json',
         body: JSON.stringify({
           runs: [
-            {
-              run_id: 'run-004',
-              source_kind: 'git_ref',
-              source_ref: 'v0.1',
-              verdict: 'FAIL',
-              overall: 42,
-              status: 'baseline',
-              weakest_dim: 'accuracy',
-              created_at: '2026-04-20T06:00:00Z',
-            },
+              {
+                run_id: 'run-004',
+                source_kind: 'git_ref',
+                source_ref: 'v0.1',
+                content_lang: 'en',
+                capability_level: 1,
+                verdict: 'FAIL',
+                overall: 42,
+                status: 'baseline',
+                weakest_dim: 'accuracy',
+                created_at: '2026-04-20T06:00:00Z',
+                degraded_flags: {},
+              },
           ],
         }),
       });
@@ -95,9 +107,9 @@ async function installRichMock(page: Page): Promise<void> {
         contentType: 'application/json',
         body: JSON.stringify({
           history: [
-            { run_id: 'run-001', source_ref: 'HEAD~2', overall: 92, verdict: 'PASS', weakest_dim: 'evidence', timestamp: '2026-04-25T10:00:00Z' },
-            { run_id: 'run-002', source_ref: 'HEAD~1', overall: 71, verdict: 'CAUTION', weakest_dim: 'conciseness', timestamp: '2026-04-26T12:00:00Z' },
-            { run_id: 'run-003', source_ref: 'HEAD', overall: 88, verdict: 'PASS', weakest_dim: 'evidence', timestamp: '2026-04-27T08:00:00Z' },
+            { run_id: 'run-001', source_ref: 'HEAD~2', eval_bundle_version: 'bundle-v1', overall: 92, verdict: 'PASS', status: 'baseline', weakest_dim: 'evidence', timestamp: '2026-04-25T10:00:00Z' },
+            { run_id: 'run-002', source_ref: 'HEAD~1', eval_bundle_version: 'bundle-v1', overall: 71, verdict: 'CAUTION', status: 'baseline', weakest_dim: 'conciseness', timestamp: '2026-04-26T12:00:00Z' },
+            { run_id: 'run-003', source_ref: 'HEAD', eval_bundle_version: 'bundle-v2', overall: 88, verdict: 'PASS', status: 'baseline', weakest_dim: 'evidence', timestamp: '2026-04-27T08:00:00Z' },
           ],
         }),
       }),
@@ -239,7 +251,15 @@ test.describe('walkthrough: full-app functional test', () => {
   /*  Page 4: Quiz                                                     */
   /* ---------------------------------------------------------------- */
 
-  test('Quiz — question, choices, SRS rating gate, next button', async ({ page }) => {
+  test('Quiz — question, answer, SRS rating gate, next button', async ({ page }) => {
+    const srsReviewRequests: Array<Record<string, unknown>> = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname !== '/api/signals/srs-review') return;
+      const postData = request.postData();
+      if (!postData) return;
+      srsReviewRequests.push(JSON.parse(postData) as Record<string, unknown>);
+    });
+
     await page.goto('/#/run/test-run/quiz');
 
     // Heading
@@ -252,12 +272,10 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(page.locator('.srs-card')).toBeVisible();
     await expect(page.locator('.srs-card__question')).toContainText('new comment');
 
-    // Answer choices are radio labels
-    const choices = page.locator('.srs-card__choice');
-    await expect(choices).toHaveCount(4);
-
-    // Select the correct answer (index 1: "A learn-from-diff marker")
-    await choices.nth(1).click();
+    // Real quiz.jsonl is open-answer, not legacy choices/answer_index.
+    const answerInput = page.locator('.srs-card__answer-input');
+    await expect(answerInput).toBeVisible();
+    await answerInput.fill('A learn-from-diff marker');
 
     // "Show Answer" button should now be enabled; click it
     const showAnswerBtn = page.locator('.srs-card__btn--primary');
@@ -267,8 +285,10 @@ test.describe('walkthrough: full-app functional test', () => {
     // After reveal: result indicator appears
     await expect(page.locator('.srs-card__result')).toBeVisible();
 
-    // Explanation shown (mock includes explanation field)
-    await expect(page.locator('.srs-card__explanation')).toBeVisible();
+    // Expected answer and explanation are shown.
+    await expect(page.getByText('Expected answer')).toBeVisible();
+    await expect(page.getByText('learn-from-diff marker tags the change')).toBeVisible();
+    await expect(page.locator('.quiz-page__misconceptions')).toBeVisible();
 
     // Rating buttons appear but are disabled during peek guard (1.5s)
     const ratingBtns = page.locator('.srs-card__rating-btn');
@@ -278,12 +298,25 @@ test.describe('walkthrough: full-app functional test', () => {
     // Peek guard hint visible
     await expect(page.locator('.srs-card__peek-hint')).toBeVisible();
 
-    // Wait for peek guard to expire (1.5s)
-    await page.waitForTimeout(1600);
-    await expect(ratingBtns.first()).toBeEnabled();
+    const easyBtn = page.locator('.srs-card__rating-btn--easy');
+    const goodBtn = page.locator('.srs-card__rating-btn--good');
+    const hardBtn = page.locator('.srs-card__rating-btn--hard');
 
-    // Click Good rating
-    await ratingBtns.first().click(); // first is --good
+    // Wait for peek guard to expire (1.5s). Because the quiz revealed
+    // the answer, the backend treats this review as peeked and still rejects
+    // Easy/Good. The UI must only allow Hard/Wrong SRS submissions here.
+    await page.waitForTimeout(1600);
+    await expect(easyBtn).toBeDisabled();
+    await expect(goodBtn).toBeDisabled();
+    await expect(hardBtn).toBeEnabled();
+
+    await hardBtn.click();
+    await expect.poll(() => srsReviewRequests.length, { timeout: 3000 }).toBe(1);
+    expect(srsReviewRequests[0]).toMatchObject({
+      answer: 'hard',
+      card_id: 'card_quiz_explicit_1',
+      peeked_this_session: true,
+    });
 
     // Since there is only 1 quiz item, the summary should appear
     await expect(page.locator('.quiz-page__progress--summary')).toBeVisible();
@@ -349,12 +382,13 @@ test.describe('walkthrough: full-app functional test', () => {
     const srsButtons = page.locator('.srs-buttons');
     await expect(srsButtons).toBeVisible();
     const srsBtns = page.locator('.srs-btn');
-    await expect(srsBtns).toHaveCount(3);
+    await expect(srsBtns).toHaveCount(4);
 
-    // Verify button labels (en: Again / Hard / Good)
+    // Verify button labels (en: Again / Hard / Good / Easy)
     await expect(srsBtns.nth(0)).toContainText(/Again|重来/);
     await expect(srsBtns.nth(1)).toContainText(/Hard|困难/);
     await expect(srsBtns.nth(2)).toContainText(/Good|掌握/);
+    await expect(srsBtns.nth(3)).toContainText(/Easy|简单/);
 
     // Keyboard shortcuts shown
     await expect(srsBtns.nth(0).locator('.srs-btn__kbd')).toContainText('1');
@@ -654,14 +688,18 @@ test.describe('walkthrough: full-app functional test', () => {
   /*  Cross-cutting: Keyboard accessibility                            */
   /* ---------------------------------------------------------------- */
 
-  test('Keyboard — Tab through interactive elements on Dashboard', async ({ page }) => {
+  test('Keyboard — Tab through interactive elements on Dashboard', async ({ page, browserName }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+
+    // Safari/WebKit only tabs through clickable items with Option-Tab unless
+    // Keyboard Navigation / "Press Tab to highlight each item on a webpage" is enabled.
+    const navKey = browserName === 'webkit' ? 'Alt+Tab' : 'Tab';
 
     // Tab through the page and verify focus lands on interactive elements
     const focusedTags: string[] = [];
     for (let i = 0; i < 15; i++) {
-      await page.keyboard.press('Tab');
+      await page.keyboard.press(navKey);
       const tag = await page.evaluate(() => {
         const el = document.activeElement;
         return el ? `${el.tagName}.${el.className.split(' ')[0] || ''}` : 'none';
@@ -692,6 +730,18 @@ test.describe('walkthrough: full-app functional test', () => {
     await page.keyboard.press('3');
 
     // Session complete
+    await expect(page.locator('.review__complete')).toBeVisible();
+  });
+
+  test('Review — keyboard shortcuts: 4 for Easy', async ({ page }) => {
+    await page.goto('/#/review');
+    await expect(page.locator('.flashcard')).toBeVisible();
+
+    await page.keyboard.press('Space');
+    await expect(page.locator('.srs-buttons')).toBeVisible();
+
+    await page.keyboard.press('4');
+
     await expect(page.locator('.review__complete')).toBeVisible();
   });
 

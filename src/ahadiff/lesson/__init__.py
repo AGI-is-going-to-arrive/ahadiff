@@ -22,10 +22,10 @@ from .schemas import LessonCompact, LessonFull, LessonHint, parse_lesson_payload
 __all__ = [
     "LearnabilityAssessment",
     "LearnabilityFactors",
-    "build_lesson_payload",
-    "compute_scaffolding_level",
     "assess_learnability",
+    "build_lesson_payload",
     "compute_learnability_score",
+    "compute_scaffolding_level",
     "generate_compact",
     "generate_hint",
     "generate_lesson",

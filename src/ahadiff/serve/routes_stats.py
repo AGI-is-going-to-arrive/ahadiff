@@ -464,9 +464,219 @@ async def get_serve_status(request: Request) -> JSONResponse:
     return JSONResponse(payload)
 
 
+# ---------------------------------------------------------------------------
+# /api/stats/learning
+# ---------------------------------------------------------------------------
+
+
+def _build_learning_effectiveness(state: ServeState) -> dict[str, Any]:
+    from ahadiff.contracts.serve_stats import (
+        HelpfulnessAggregateDTO,
+        LearningEffectivenessResponse,
+        TransferConceptDTO,
+    )
+    from ahadiff.lesson.helpfulness import aggregate_helpfulness
+    from ahadiff.lesson.transfer import validate_learning_transfer
+
+    helpfulness_data = aggregate_helpfulness(state.review_db_path)
+    transfer_data = validate_learning_transfer(state.review_db_path)
+
+    helpfulness_dtos = [
+        HelpfulnessAggregateDTO(
+            target_kind=h.target_kind,
+            target_id=h.target_id,
+            signal_count=h.signal_count,
+            positive_count=h.positive_count,
+            negative_count=h.negative_count,
+            helpfulness_score=h.helpfulness_score,
+        )
+        for h in helpfulness_data
+    ]
+
+    transfer_dtos = [
+        TransferConceptDTO(
+            concept=m.concept,
+            total_reviews=m.total_reviews,
+            avg_rating=m.avg_rating,
+            improving=m.improving,
+        )
+        for m in transfer_data.metrics
+    ]
+
+    resp = LearningEffectivenessResponse(
+        total_concepts_reviewed=transfer_data.total_concepts_reviewed,
+        concepts_improving=transfer_data.concepts_improving,
+        concepts_stable=transfer_data.concepts_stable,
+        concepts_declining=transfer_data.concepts_declining,
+        transfer_rate=transfer_data.transfer_rate,
+        helpfulness=helpfulness_dtos,
+        transfer_metrics=transfer_dtos,
+    )
+    return resp.model_dump(mode="json")
+
+
+async def get_learning_effectiveness(request: Request) -> JSONResponse:
+    from .auth import require_write_token, serve_state
+
+    require_write_token(request)
+    state: ServeState = serve_state(request)
+    payload = await to_thread.run_sync(_build_learning_effectiveness, state)
+    return JSONResponse(payload)
+
+
+# ---------------------------------------------------------------------------
+# /api/usage
+# ---------------------------------------------------------------------------
+
+
+def _build_usage() -> dict[str, Any]:
+    from ahadiff.core.paths import usage_db_path
+    from ahadiff.llm.usage import connect_usage_db
+
+    db_path = usage_db_path()
+    if not db_path.is_file():
+        return {"models": [], "total_calls": 0}
+
+    try:
+        conn = connect_usage_db(db_path)
+    except Exception:
+        log.debug("failed to open usage.sqlite", exc_info=True)
+        return {"models": [], "total_calls": 0}
+
+    try:
+        rows = conn.execute(
+            """
+            SELECT model_id,
+                   COUNT(*) AS call_count,
+                   SUM(input_tokens) AS total_input,
+                   SUM(output_tokens) AS total_output,
+                   SUM(cost_usd) AS total_cost
+            FROM llm_usage
+            GROUP BY model_id
+            ORDER BY call_count DESC
+            """
+        ).fetchall()
+    except sqlite3.OperationalError:
+        conn.close()
+        return {"models": [], "total_calls": 0}
+    finally:
+        with suppress(Exception):
+            conn.close()
+
+    total_calls = 0
+    models: list[dict[str, Any]] = []
+    for row in rows:
+        count = int(row[1])
+        total_calls += count
+        cost = float(row[4]) if row[4] is not None else None
+        if cost is not None and not math.isfinite(cost):
+            cost = None
+        models.append(
+            {
+                "model_id": str(row[0]),
+                "call_count": count,
+                "total_input_tokens": int(row[2]) if row[2] is not None else 0,
+                "total_output_tokens": int(row[3]) if row[3] is not None else 0,
+                "total_cost_usd": cost,
+            }
+        )
+    return {"models": models, "total_calls": total_calls}
+
+
+async def get_usage(request: Request) -> JSONResponse:
+    from .auth import require_write_token
+
+    require_write_token(request)
+    payload = await to_thread.run_sync(_build_usage)
+    return JSONResponse(payload)
+
+
+# ---------------------------------------------------------------------------
+# /api/spec/alignment
+# ---------------------------------------------------------------------------
+
+
+def _build_spec_alignment(state: ServeState) -> dict[str, Any]:
+    db_path = state.review_db_path
+    if not db_path.is_file():
+        return {"alignment_score": None, "total_evaluated": 0, "recent_trend": None}
+
+    try:
+        with connect_review_db(db_path) as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*), AVG(overall)
+                FROM result_events
+                WHERE status IN ('baseline', 'keep', 'keep_final')
+                """
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return {"alignment_score": None, "total_evaluated": 0, "recent_trend": None}
+
+    if not row or row[0] == 0:
+        return {"alignment_score": None, "total_evaluated": 0, "recent_trend": None}
+
+    total = int(row[0])
+    avg = float(row[1]) if row[1] is not None else None
+    if avg is not None and not math.isfinite(avg):
+        avg = None
+
+    trend: str | None = None
+    if total >= 4:
+        try:
+            with connect_review_db(db_path) as conn:
+                half = total // 2
+                earlier = conn.execute(
+                    """
+                    SELECT AVG(overall) FROM (
+                        SELECT overall FROM result_events
+                        WHERE status IN ('baseline', 'keep', 'keep_final')
+                        ORDER BY timestamp ASC
+                        LIMIT ?
+                    )
+                    """,
+                    (half,),
+                ).fetchone()
+                later = conn.execute(
+                    """
+                    SELECT AVG(overall) FROM (
+                        SELECT overall FROM result_events
+                        WHERE status IN ('baseline', 'keep', 'keep_final')
+                        ORDER BY timestamp DESC
+                        LIMIT ?
+                    )
+                    """,
+                    (half,),
+                ).fetchone()
+                if earlier and later and earlier[0] is not None and later[0] is not None:
+                    diff = float(later[0]) - float(earlier[0])
+                    if diff > 1.0:
+                        trend = "improving"
+                    elif diff < -1.0:
+                        trend = "declining"
+                    else:
+                        trend = "stable"
+        except sqlite3.OperationalError:
+            pass
+
+    return {"alignment_score": avg, "total_evaluated": total, "recent_trend": trend}
+
+
+async def get_spec_alignment(request: Request) -> JSONResponse:
+    from .auth import require_write_token, serve_state
+
+    require_write_token(request)
+    state: ServeState = serve_state(request)
+    payload = await to_thread.run_sync(_build_spec_alignment, state)
+    return JSONResponse(payload)
+
+
 __all__ = [
+    "get_learning_effectiveness",
     "get_providers",
     "get_review_heatmap",
     "get_serve_status",
+    "get_spec_alignment",
     "get_stats",
+    "get_usage",
 ]

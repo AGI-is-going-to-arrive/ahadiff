@@ -52,11 +52,43 @@ class ServeStatusResponse(BaseModel):
     runs_count: int
 
 
+class HelpfulnessAggregateDTO(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    target_kind: str
+    target_id: str
+    signal_count: int
+    positive_count: int
+    negative_count: int
+    helpfulness_score: float
+
+
+class TransferConceptDTO(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    concept: str
+    total_reviews: int
+    avg_rating: float
+    improving: bool
+
+
+class LearningEffectivenessResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    total_concepts_reviewed: int
+    concepts_improving: int
+    concepts_stable: int
+    concepts_declining: int
+    transfer_rate: float
+    helpfulness: list[HelpfulnessAggregateDTO]
+    transfer_metrics: list[TransferConceptDTO]
+
+
 __all__ = [
     "HeatmapEntry",
+    "HelpfulnessAggregateDTO",
+    "LearningEffectivenessResponse",
     "ProvidersResponse",
     "ProviderSummary",
     "ReviewHeatmapResponse",
     "ServeStatusResponse",
     "StatsResponse",
+    "TransferConceptDTO",
 ]

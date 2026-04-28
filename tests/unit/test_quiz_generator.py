@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import TYPE_CHECKING, cast
 
@@ -23,6 +24,7 @@ from ahadiff.quiz.generator import (
     load_quiz_questions,
     write_quiz_questions_jsonl,
 )
+from ahadiff.quiz.misconception import load_misconception_cards
 from ahadiff.quiz.schemas import QuizEvidence, QuizQuestion
 
 if TYPE_CHECKING:
@@ -164,38 +166,54 @@ class _FakeQuizProvider:
         from ahadiff.llm.schemas import ProviderResponse
 
         self.requests.append(cast("ProviderRequest", request))
-        content = json.dumps(
-            {
-                "questions": [
+        if cast("ProviderRequest", request).prompt_name == "quiz.misconception_card":
+            content = json.dumps(
+                [
                     {
-                        "question": "What structural change was added to retry_once?",
-                        "expected_answer": (
-                            "It now loops across attempts and continues after exceptions."
-                        ),
-                        "source_claims": ["run_quiz-claim-1"],
-                        "concepts": ["retry loop"],
-                        "evidence": [{"file": "src/app.py", "line": 2}],
-                        "explanation": "The loop is the new teaching surface.",
-                    },
-                    {
-                        "question": "Which branch is new in the helper?",
-                        "expected_answer": (
-                            "The exception branch now continues to the next attempt."
-                        ),
-                        "source_claims": ["run_quiz-claim-1"],
-                        "concepts": ["exception handling"],
-                        "evidence": [{"file": "src/app.py", "line": 5}],
-                    },
-                    {
-                        "question": "What should you not overclaim from this diff?",
-                        "expected_answer": "The diff does not prove backoff or reliability gains.",
-                        "source_claims": ["run_quiz-claim-1"],
-                        "concepts": ["evidence boundary"],
-                        "evidence": [{"file": "src/app.py", "line": 2}],
-                    },
+                        "concept": "retry loop",
+                        "misconception": "The diff proves exponential backoff.",
+                        "correction": "The diff only proves repeated retry attempts.",
+                        "evidence_ref": "src/app.py:2",
+                        "severity": "medium",
+                        "safety_tags": [],
+                    }
                 ]
-            }
-        )
+            )
+        else:
+            content = json.dumps(
+                {
+                    "questions": [
+                        {
+                            "question": "What structural change was added to retry_once?",
+                            "expected_answer": (
+                                "It now loops across attempts and continues after exceptions."
+                            ),
+                            "source_claims": ["run_quiz-claim-1"],
+                            "concepts": ["retry loop"],
+                            "evidence": [{"file": "src/app.py", "line": 2}],
+                            "explanation": "The loop is the new teaching surface.",
+                        },
+                        {
+                            "question": "Which branch is new in the helper?",
+                            "expected_answer": (
+                                "The exception branch now continues to the next attempt."
+                            ),
+                            "source_claims": ["run_quiz-claim-1"],
+                            "concepts": ["exception handling"],
+                            "evidence": [{"file": "src/app.py", "line": 5}],
+                        },
+                        {
+                            "question": "What should you not overclaim from this diff?",
+                            "expected_answer": (
+                                "The diff does not prove backoff or reliability gains."
+                            ),
+                            "source_claims": ["run_quiz-claim-1"],
+                            "concepts": ["evidence boundary"],
+                            "evidence": [{"file": "src/app.py", "line": 2}],
+                        },
+                    ]
+                }
+            )
         return ProviderResponse(
             content=content,
             model_id="gpt-5.4-mini",
@@ -267,11 +285,20 @@ def test_generate_quiz_from_run_writes_expected_artifact(
 
     assert isinstance(artifacts, QuizArtifactPaths)
     assert artifacts.quiz_path.exists()
+    assert artifacts.misconception_path is not None
+    assert artifacts.misconception_path.exists()
     loaded = load_quiz_questions(artifacts.quiz_path)
+    misconceptions = load_misconception_cards(artifacts.misconception_path)
     assert len(loaded) == 3
+    assert len(misconceptions) == 1
+    assert misconceptions[0].run_id == "run_quiz"
     assert questions[0].question_id is not None
     assert loaded[0].source_claims == ["run_quiz-claim-1"]
     assert fake_provider.requests
+    assert [request.prompt_name for request in fake_provider.requests] == [
+        "quiz.generate",
+        "quiz.misconception_card",
+    ]
     assert "Simplified Chinese (zh-CN)" in fake_provider.requests[0].payload_text
 
 
@@ -322,6 +349,69 @@ def test_generate_cards_for_run_writes_review_cards(tmp_path: Path) -> None:
     assert card.file_id == "file_app"
     assert card.hunk_id == "hunk_retry"
     assert card.symbol == "retry_once"
+    loaded = load_quiz_questions(run_path / "quiz" / "quiz.jsonl")
+    assert loaded[0].review_card_id == card.card_id
+
+
+@pytest.mark.parametrize(
+    ("claim_symbols", "expected_concept"),
+    [
+        (["retry_once"], "retry_once"),
+        ([], "What changed without an explicit concept?"),
+    ],
+)
+def test_generate_cards_for_run_writes_review_card_id_for_concept_fallback(
+    tmp_path: Path,
+    claim_symbols: list[str],
+    expected_concept: str,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_id = "run_card_fallback_symbol" if claim_symbols else "run_card_fallback_question"
+    run_path = _write_quiz_run_artifacts(workspace_root, run_id)
+    claim = ClaimRecord(
+        claim_id=f"{run_id}-claim-1",
+        run_id=run_id,
+        text="The retry helper now loops across attempts.",
+        status="verified",
+        confidence="high",
+        source_hunks=[SourceHunk(file="src/app.py", start=1, end=6, side="new")],
+        symbols=claim_symbols,
+        negative_evidence=[],
+        extractor="python_ast",
+    )
+    (run_path / "claims.jsonl").write_text(
+        json.dumps(claim.model_dump(mode="json"), ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    question_text = "What changed without an explicit concept?"
+    questions = (
+        QuizQuestion(
+            question_id="quiz_fallback",
+            question=question_text,
+            expected_answer="The helper now retries.",
+            source_claims=[claim.claim_id],
+            concepts=[],
+            evidence=[QuizEvidence(file="src/app.py", line=2)],
+        ),
+    )
+
+    cards_path = generate_cards_for_run(
+        run_path=run_path,
+        questions=questions,
+        verdict="PASS",
+    )
+
+    assert cards_path is not None
+    card = ReviewCard.model_validate_json(cards_path.read_text(encoding="utf-8").strip())
+    loaded = load_quiz_questions(run_path / "quiz" / "quiz.jsonl")
+    expected_digest = hashlib.sha256(
+        f"{run_id}::quiz_fallback::{expected_concept}".encode()
+    ).hexdigest()[:12]
+    expected_card_id = f"card_{expected_digest}"
+    assert card.concept == expected_concept
+    assert card.card_id == expected_card_id
+    assert loaded[0].concepts == []
+    assert loaded[0].review_card_id == card.card_id
 
 
 def test_load_quiz_questions_rejects_oversized_artifact(

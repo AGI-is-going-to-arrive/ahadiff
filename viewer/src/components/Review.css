@@ -175,7 +175,7 @@
 /* ---- SRS Rating buttons ---- */
 .srs-buttons {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   margin-top: 14px;
 }
@@ -211,6 +211,11 @@
   border-color: var(--accent-hair);
 }
 
+.srs-btn--easy {
+  background: var(--add-bg);
+  border-color: var(--add-fg);
+}
+
 .srs-btn__label {
   font-family: var(--font-serif);
   font-size: 18px;
@@ -219,6 +224,10 @@
 
 .srs-btn--good .srs-btn__label {
   color: var(--accent-ink);
+}
+
+.srs-btn--easy .srs-btn__label {
+  color: var(--add-fg);
 }
 
 .srs-btn__interval {

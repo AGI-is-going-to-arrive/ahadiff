@@ -176,7 +176,22 @@ export async function installServeMock(page: Page): Promise<void> {
           run_id: 'test-run',
           artifact_type: 'quiz',
           content:
-            '{"quiz_id":"q1","claim_id":"c1","question":"What does the new comment indicate?","choices":["A flag","A learn-from-diff marker","Dead code","Random"],"answer_index":1,"explanation":"learn-from-diff marker tags the change for the lesson"}',
+            '{"question_id":"quiz_1","review_card_id":"card_quiz_explicit_1","question":"What does the new comment indicate?","expected_answer":"A learn-from-diff marker","source_claims":["c1"],"concepts":["learn-from-diff"],"evidence":[{"file":"demo.py","line":4}],"explanation":"learn-from-diff marker tags the change for the lesson"}',
+          content_lang: 'en',
+        }),
+      }),
+  );
+  await page.route(
+    (url) => /^\/api\/run\/[^/]+\/misconceptions$/.test(url.pathname),
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          run_id: 'test-run',
+          artifact_type: 'misconceptions',
+          content:
+            '{"card_id":"m1","concept":"learn-from-diff","misconception":"The marker proves runtime behavior changed.","correction":"It only tags the diff for the lesson pipeline.","evidence_ref":"demo.py:4","severity":"low","safety_tags":[],"run_id":"test-run"}',
           content_lang: 'en',
         }),
       }),
@@ -262,6 +277,53 @@ export async function installServeMock(page: Page): Promise<void> {
           ],
         }),
       }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/signals/quiz-answer',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ inserted: true }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/signals/srs-review',
+    (route) => {
+      const body = route.request().postDataJSON() as {
+        answer?: string;
+        card_id?: string;
+        peeked_this_session?: boolean;
+      } | null;
+      if (
+        body?.peeked_this_session === true &&
+        (body.answer === 'easy' || body.answer === 'good')
+      ) {
+        return route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            error: 'peeked cards cannot be reviewed as good or easy; use hard or wrong',
+          }),
+        });
+      }
+      if (body?.card_id !== 'card_quiz_explicit_1') {
+        return route.fulfill({
+          status: 422,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            error: 'wrong_card_id',
+            expected: 'card_quiz_explicit_1',
+            received: body?.card_id ?? null,
+          }),
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ inserted: true }),
+      });
+    },
   );
   await page.route(
     (url) => url.pathname === '/api/review/rate',

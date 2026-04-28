@@ -29,6 +29,7 @@
     "weakest_dim": "最弱维度"
   },
   "SRS": {
+    "easy": "简单",
     "good": "通过",
     "hard": "较难",
     "again": "再来",
@@ -90,11 +91,13 @@
     "progress": "{current}/{total}",
     "flip": "显示答案",
     "rating_good": "通过",
+    "rating_easy": "简单",
     "rating_hard": "较难",
     "rating_wrong": "再来",
     "interval_again": "< 10分钟",
     "interval_hard": "1 天",
     "interval_good": "4 天",
+    "interval_easy": "7 天",
     "complete": "复习完成！",
     "complete_hint": "你复习了 {count} 张卡片",
     "card_concept": "概念",
@@ -142,12 +145,21 @@
   "Quiz": {
     "correct": "正确",
     "wrong": "错误",
+    "answer_label": "你的答案",
     "show_answer": "显示答案",
     "title": "测验",
     "progress": "{current}/{total}",
     "peek_guard_hint": "请先阅读答案",
+    "no_review_hint": "这题没有关联 SRS 卡片。查看答案后可以继续。",
+    "expected_answer": "参考答案",
+    "your_answer": "你的答案",
     "explanation_title": "解析",
-    "next": "下一题"
+    "next": "下一题",
+    "signal_error": "保存复习信号失败：{message}",
+    "misconceptions_title": "常见误解",
+    "misconception_label": "误解",
+    "correction_label": "纠正",
+    "evidence_label": "证据"
   },
   "Settings_page": {
     "title": "设置",

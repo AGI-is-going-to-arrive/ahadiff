@@ -10,9 +10,12 @@ from typing import TYPE_CHECKING, Any, Literal
 if TYPE_CHECKING:
     from _thread import LockType as ThreadLock
     from pathlib import Path
+
+    from ahadiff.core.task_runner import TaskRunner
 else:
     Path = _pathlib.Path
     ThreadLock = Any
+    TaskRunner = Any
 
 
 @dataclass(frozen=True)
@@ -28,6 +31,7 @@ class ServeState:
     repo_lock_path: Path | None = None
     thread_write_lock: ThreadLock | None = None
     started_at: float = 0.0
+    task_runner: TaskRunner | None = None
 
     @property
     def runs_dir(self) -> Path:
@@ -42,14 +46,19 @@ class ServeState:
             self.write_lock is not None
             and self.repo_lock_path is not None
             and self.thread_write_lock is not None
+            and self.task_runner is not None
         ):
             return self
+
+        from ahadiff.core.task_runner import TaskRunner as _TaskRunner
+
         return replace(
             self,
             write_lock=self.write_lock or asyncio.Lock(),
             repo_lock_path=self.repo_lock_path or self.state_dir / "ahadiff.lock",
             thread_write_lock=self.thread_write_lock or threading.Lock(),
             started_at=self.started_at or time.monotonic(),
+            task_runner=self.task_runner or _TaskRunner(),
         )
 
     def with_locale(self, locale: Literal["en", "zh-CN"]) -> ServeState:

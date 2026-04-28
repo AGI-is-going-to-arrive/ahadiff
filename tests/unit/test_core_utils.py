@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from pathlib import PureWindowsPath
+import sys
+import tempfile
+from pathlib import Path, PureWindowsPath
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import pytest
 
@@ -14,8 +16,9 @@ import ahadiff.core.sqlite_util as sqlite_util_module
 from ahadiff.core.json_util import safe_json_loads
 from ahadiff.core.sqlite_util import reject_symlink_path, safe_sqlite_connect
 
-if TYPE_CHECKING:
-    from pathlib import Path
+
+def _read_write_target(path: Path) -> str:
+    return sqlite_util_module._read_write_sqlite_uri(path)  # pyright: ignore[reportPrivateUsage]
 
 
 class TestSafeJsonLoads:
@@ -139,6 +142,58 @@ class TestSafeSqliteConnect:
         with pytest.raises(PermissionError, match="symlink"):
             safe_sqlite_connect(link)
 
+    def test_rejects_new_db_under_symlinked_parent(self, tmp_path: Path) -> None:
+        real_parent = tmp_path / "real-parent"
+        real_parent.mkdir()
+        link_parent = tmp_path / "link-parent"
+        try:
+            link_parent.symlink_to(real_parent, target_is_directory=True)
+        except OSError as exc:
+            pytest.skip(f"symlink creation unavailable: {exc}")
+
+        with pytest.raises(PermissionError, match="symlink"):
+            safe_sqlite_connect(link_parent / "new.db")
+
+    def test_rejects_existing_db_under_symlinked_parent(self, tmp_path: Path) -> None:
+        real_parent = tmp_path / "real-parent"
+        real_parent.mkdir()
+        db = real_parent / "existing.db"
+        with sqlite3.connect(db) as connection:
+            connection.execute("CREATE TABLE t(x)")
+        link_parent = tmp_path / "link-parent"
+        try:
+            link_parent.symlink_to(real_parent, target_is_directory=True)
+        except OSError as exc:
+            pytest.skip(f"symlink creation unavailable: {exc}")
+
+        with pytest.raises(PermissionError, match="symlink"):
+            safe_sqlite_connect(link_parent / "existing.db")
+
+    def test_allows_macos_var_alias_system_path(self) -> None:
+        if sys.platform != "darwin":
+            pytest.skip("macOS alias behavior only applies on Darwin")
+
+        with tempfile.TemporaryDirectory(prefix="ahadiff-sqlite-alias-") as temp_dir:
+            temp_root = Path(temp_dir)
+            if str(temp_root).startswith("/private/var/"):
+                alias_root = Path("/var") / temp_root.relative_to("/private/var")
+            elif str(temp_root).startswith("/var/"):
+                alias_root = temp_root
+            else:
+                pytest.skip(f"temporary directory is outside macOS /var alias space: {temp_root}")
+
+            db = alias_root / "alias.db"
+            conn = safe_sqlite_connect(db)
+            conn.execute("CREATE TABLE t(x INTEGER)")
+            conn.execute("INSERT INTO t VALUES(1)")
+            conn.commit()
+            conn.close()
+
+            with safe_sqlite_connect(db, read_only=True) as ro_conn:
+                row = ro_conn.execute("SELECT x FROM t").fetchone()
+            assert row is not None
+            assert row[0] == 1
+
     def test_rejects_existing_db_swapped_to_symlink_during_connect(
         self,
         tmp_path: Path,
@@ -151,11 +206,12 @@ class TestSafeSqliteConnect:
         with sqlite3.connect(shadow) as connection:
             connection.execute("CREATE TABLE t(x)")
         original_connect = sqlite_util_module.sqlite3.connect
+        connect_target = _read_write_target(db)
         swapped = False
 
         def swapping_connect(database: Any, *args: Any, **kwargs: Any) -> sqlite3.Connection:
             nonlocal swapped
-            if database == str(db) and not swapped:
+            if database == connect_target and not swapped:
                 swapped = True
                 db.unlink()
                 try:
@@ -166,7 +222,7 @@ class TestSafeSqliteConnect:
 
         monkeypatch.setattr(sqlite_util_module.sqlite3, "connect", swapping_connect)
 
-        with pytest.raises(PermissionError, match="changed during open"):
+        with pytest.raises(PermissionError, match="symlink|changed during open"):
             safe_sqlite_connect(db)
 
         assert swapped is True
@@ -186,11 +242,12 @@ class TestSafeSqliteConnect:
             connection.execute("CREATE TABLE marker(value TEXT)")
             connection.execute("INSERT INTO marker VALUES('replacement')")
         original_connect = sqlite_util_module.sqlite3.connect
+        connect_target = _read_write_target(db)
         swapped = False
 
         def swapping_connect(database: Any, *args: Any, **kwargs: Any) -> sqlite3.Connection:
             nonlocal swapped
-            if database == str(db) and not swapped:
+            if database == connect_target and not swapped:
                 swapped = True
                 db.rename(backup)
                 replacement.rename(db)
@@ -225,11 +282,12 @@ class TestSafeSqliteConnect:
             connection.execute("CREATE TABLE marker(value TEXT)")
             connection.execute("INSERT INTO marker VALUES('replacement')")
         original_connect = sqlite_util_module.sqlite3.connect
+        connect_target = _read_write_target(db)
         swapped = False
 
         def swapping_connect(database: Any, *args: Any, **kwargs: Any) -> sqlite3.Connection:
             nonlocal swapped
-            if database == str(db) and not swapped:
+            if database == connect_target and not swapped:
                 swapped = True
                 db.rename(backup)
                 replacement.rename(db)
@@ -254,6 +312,38 @@ class TestSafeSqliteConnect:
             restored_value = connection.execute("SELECT value FROM marker").fetchone()[0]
         assert restored_value == "original"
 
+    def test_allows_unrelated_parent_directory_churn_when_target_file_is_unchanged(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        db = tmp_path / "stable.db"
+        with sqlite3.connect(db) as connection:
+            connection.execute("CREATE TABLE marker(value TEXT)")
+            connection.execute("INSERT INTO marker VALUES('original')")
+        original_connect = sqlite_util_module.sqlite3.connect
+        connect_target = _read_write_target(db)
+        churned = False
+
+        def churning_connect(database: Any, *args: Any, **kwargs: Any) -> sqlite3.Connection:
+            nonlocal churned
+            connection = original_connect(database, *args, **kwargs)  # type: ignore[arg-type]
+            if database == connect_target and not churned:
+                churned = True
+                sibling = db.with_name("sibling.tmp")
+                sibling.write_text("noise", encoding="utf-8")
+                sibling.unlink()
+            return connection
+
+        monkeypatch.setattr(sqlite_util_module.sqlite3, "connect", churning_connect)
+
+        conn = safe_sqlite_connect(db)
+        try:
+            value = conn.execute("SELECT value FROM marker").fetchone()[0]
+            assert value == "original"
+        finally:
+            conn.close()
+
     def test_rejects_missing_db_created_as_symlink_during_connect(
         self,
         tmp_path: Path,
@@ -264,12 +354,14 @@ class TestSafeSqliteConnect:
         with sqlite3.connect(shadow) as connection:
             connection.execute("CREATE TABLE t(x)")
         original_connect = sqlite_util_module.sqlite3.connect
+        connect_target = _read_write_target(db)
         swapped = False
 
         def swapping_connect(database: Any, *args: Any, **kwargs: Any) -> sqlite3.Connection:
             nonlocal swapped
-            if database == str(db) and not swapped:
+            if database == connect_target and not swapped:
                 swapped = True
+                db.unlink()
                 try:
                     db.symlink_to(shadow)
                 except OSError as exc:
@@ -282,6 +374,42 @@ class TestSafeSqliteConnect:
             safe_sqlite_connect(db)
 
         assert swapped is True
+
+    def test_new_db_parent_swap_to_symlink_does_not_create_outside_target(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        parent = tmp_path / "parent"
+        parent.mkdir()
+        parent_backup = tmp_path / "parent-backup"
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        db = parent / "race.db"
+        outside_target = outside / "race.db"
+        original_connect = sqlite_util_module.sqlite3.connect
+        connect_target = _read_write_target(db)
+        swapped = False
+
+        def swapping_connect(database: Any, *args: Any, **kwargs: Any) -> sqlite3.Connection:
+            nonlocal swapped
+            if database == connect_target and not swapped:
+                swapped = True
+                parent.rename(parent_backup)
+                try:
+                    parent.symlink_to(outside, target_is_directory=True)
+                except OSError as exc:
+                    parent_backup.rename(parent)
+                    pytest.skip(f"symlink creation unavailable: {exc}")
+            return original_connect(database, *args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(sqlite_util_module.sqlite3, "connect", swapping_connect)
+
+        with pytest.raises(PermissionError, match="changed during open"):
+            safe_sqlite_connect(db)
+
+        assert swapped is True
+        assert not outside_target.exists()
 
     def test_unicode_path(self, tmp_path: Path) -> None:
         db = tmp_path / "数据库.db"

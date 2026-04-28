@@ -89,6 +89,7 @@ def _srs_review_sync(state: ServeState, body: ReviewSignalRequest) -> ReviewUpda
             card_id=body.card_id,
             answer=body.answer,
             idempotency_key=body.idempotency_key,
+            peeked_this_session=body.peeked_this_session,
         )
 
 

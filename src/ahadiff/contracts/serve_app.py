@@ -13,7 +13,7 @@ SourceKind: TypeAlias = run_source_contract.SourceKind
 RunStatus: TypeAlias = event_log_contract.RunStatus
 Verdict: TypeAlias = event_log_contract.Verdict
 
-ReviewAnswer = Literal["good", "hard", "wrong"]
+ReviewAnswer = Literal["easy", "good", "hard", "wrong"]
 GraphifyMode = Literal["full", "learning_only", "empty"]
 
 
@@ -122,11 +122,13 @@ class MarkWrongRequest(LearningSignalRequest):
 class ReviewSignalRequest(LearningSignalRequest):
     card_id: str
     answer: ReviewAnswer
+    peeked_this_session: bool = False
 
 
 class ReviewRateRequest(LearningSignalRequest):
     card_id: str
     answer: ReviewAnswer
+    peeked_this_session: bool = False
 
 
 class QuizAnswerRequest(LearningSignalRequest):
@@ -136,7 +138,7 @@ class QuizAnswerRequest(LearningSignalRequest):
 
 
 class HelpfulnessRequest(LearningSignalRequest):
-    target_kind: Literal["file"] = "file"
+    target_kind: Literal["file", "section"] = "file"
     target_id: str
     payload: dict[str, Any] = Field(default_factory=dict)
 

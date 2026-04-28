@@ -51,6 +51,7 @@ _ARTIFACT_PATHS = {
     "claims": "claims.jsonl",
     "concepts": "concepts.jsonl",
     "diff": "patch.diff",
+    "misconceptions": "quiz/misconception_cards.jsonl",
     "quiz": "quiz/quiz.jsonl",
     "score": "score.json",
 }
@@ -74,6 +75,7 @@ _ALLOWED_ARTIFACTS = frozenset(
         "claims.jsonl",
         "concepts.jsonl",
         "patch.diff",
+        "quiz/misconception_cards.jsonl",
         "quiz/quiz.jsonl",
         "score.json",
         "lesson/lesson.full.md",
@@ -128,6 +130,15 @@ async def get_claims(request: Request) -> JSONResponse:
 
 async def get_quiz(request: Request) -> JSONResponse:
     return await _artifact_response(request, _ARTIFACT_PATHS["quiz"], "quiz")
+
+
+async def get_misconceptions(request: Request) -> JSONResponse:
+    return await _artifact_response(
+        request,
+        _ARTIFACT_PATHS["misconceptions"],
+        "misconceptions",
+        not_found_status_code=404,
+    )
 
 
 async def get_diff(request: Request) -> JSONResponse:
@@ -810,6 +821,7 @@ __all__ = [
     "get_concepts",
     "get_diff",
     "get_lesson",
+    "get_misconceptions",
     "get_quiz",
     "get_ratchet_history",
     "get_run",

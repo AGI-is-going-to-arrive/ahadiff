@@ -63,6 +63,7 @@ export default function ReviewPage() {
       if (e.key === '1') handleRate('wrong');
       else if (e.key === '2') handleRate('hard');
       else if (e.key === '3') handleRate('good');
+      else if (e.key === '4') handleRate('easy');
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -276,6 +277,16 @@ export default function ReviewPage() {
                   <div className="srs-btn__label">{t('Review.rating_good')}</div>
                   <div className="srs-btn__interval">{t('Review.interval_good')}</div>
                   <span className="srs-btn__kbd">3</span>
+                </button>
+                <button
+                  type="button"
+                  className="srs-btn srs-btn--easy"
+                  onClick={() => handleRate('easy')}
+                  disabled={rating}
+                >
+                  <div className="srs-btn__label">{t('Review.rating_easy')}</div>
+                  <div className="srs-btn__interval">{t('Review.interval_easy')}</div>
+                  <span className="srs-btn__kbd">4</span>
                 </button>
               </div>
             )}

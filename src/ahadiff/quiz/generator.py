@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from importlib.resources import files
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -25,6 +25,13 @@ from ahadiff.llm import ProviderRequest, make_provider
 from ahadiff.safety.ignore import AllowlistPolicy
 from ahadiff.safety.redact import redaction_pipeline
 
+from .misconception import (
+    MisconceptionCard,
+    build_misconception_prompt_payload,
+    load_misconception_prompt,
+    parse_misconception_cards,
+    write_misconception_cards,
+)
 from .schemas import QuizQuestion, parse_quiz_payload
 
 if TYPE_CHECKING:
@@ -42,6 +49,7 @@ class QuizArtifactPaths:
     quiz_dir: Path
     quiz_path: Path
     cards_path: Path | None = None
+    misconception_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -56,6 +64,8 @@ class _ResolvedAnchor:
 
 _PROMPT_FILENAME = "quiz_generate.md"
 _PROMPT_NAME = "quiz.generate"
+_MISCONCEPTION_PROMPT_NAME = "quiz.misconception_card"
+_MISCONCEPTION_ARTIFACT_NAME = "misconception_cards.jsonl"
 _VALID_PRIVACY_MODES = frozenset({"strict_local", "redacted_remote", "explicit_remote"})
 _MAX_RUN_ARTIFACT_TEXT_BYTES = 16 * 1024 * 1024
 
@@ -99,10 +109,34 @@ def generate_quiz_from_run(
     )
     question_set = parse_quiz_payload(payload)
     questions = _materialize_question_ids(run_id, question_set.questions)
+    misconception_cards = _generate_misconception_cards(
+        run_id=run_id,
+        bundle=bundle,
+        questions=questions,
+        provider_config=provider_config,
+        api_key=api_key,
+        security_config=security_config,
+        output_lang=output_lang,
+        client=client,
+        request_timeout_seconds=request_timeout_seconds,
+        max_concurrent=max_concurrent,
+        qps_limit=qps_limit,
+        retry_attempts=retry_attempts,
+        privacy_mode=privacy_mode,
+    )
     quiz_dir = run_path / "quiz"
     quiz_path = quiz_dir / "quiz.jsonl"
+    misconception_path = quiz_dir / _MISCONCEPTION_ARTIFACT_NAME
     write_quiz_questions_jsonl(quiz_path, questions, overwrite=overwrite)
-    return QuizArtifactPaths(quiz_dir=quiz_dir, quiz_path=quiz_path), questions
+    write_misconception_cards(list(misconception_cards), misconception_path)
+    return (
+        QuizArtifactPaths(
+            quiz_dir=quiz_dir,
+            quiz_path=quiz_path,
+            misconception_path=misconception_path,
+        ),
+        questions,
+    )
 
 
 def load_quiz_questions(path: Path) -> tuple[QuizQuestion, ...]:
@@ -149,6 +183,7 @@ def generate_cards_for_run(
     line_maps = load_line_map_records(run_path / "line_map.json")
     symbols = load_symbol_records(run_path / "symbols.json")
     cards: list[ReviewCard] = []
+    questions_with_card_ids: list[QuizQuestion] = []
     for question in questions:
         claim = _resolve_primary_claim(question, claim_lookup)
         anchor = _resolve_claim_anchor(claim, line_maps, symbols)
@@ -156,17 +191,9 @@ def generate_cards_for_run(
             {"state_name": "Learning", "stability_days": 0.0},
             sort_keys=True,
         )
-        concept = (
-            question.concepts[0]
-            if question.concepts
-            else (claim.symbols[0] if claim.symbols else question.question)
-        )
-        card_id = _make_prefixed_digest(
-            "card",
-            claim.run_id,
-            question.question_id or question.question,
-            concept,
-        )
+        concept = _resolve_review_card_concept(question, claim)
+        card_id = _make_review_card_id(claim=claim, question=question, concept=concept)
+        questions_with_card_ids.append(question.model_copy(update={"review_card_id": card_id}))
         cards.append(
             ReviewCard(
                 card_id=card_id,
@@ -185,6 +212,11 @@ def generate_cards_for_run(
         )
     cards_path = run_path / "quiz" / "cards.jsonl"
     write_review_cards_jsonl(cards_path, cards, overwrite=overwrite)
+    write_quiz_questions_jsonl(
+        run_path / "quiz" / "quiz.jsonl",
+        questions_with_card_ids,
+        overwrite=True,
+    )
     return cards_path
 
 
@@ -325,6 +357,89 @@ def _generate_quiz_payload(
     return response.content
 
 
+def _generate_misconception_cards(
+    *,
+    run_id: str,
+    bundle: Any,
+    questions: Sequence[QuizQuestion],
+    provider_config: ProviderConfig,
+    api_key: str | None,
+    security_config: SecurityConfig,
+    output_lang: str,
+    client: httpx.Client | None,
+    request_timeout_seconds: int,
+    max_concurrent: int,
+    qps_limit: int,
+    retry_attempts: int,
+    privacy_mode: PrivacyMode | None,
+) -> tuple[MisconceptionCard, ...]:
+    prompt_text = load_misconception_prompt()
+    concept_terms = _dedupe_concept_terms(questions)
+    prompt_payload = build_misconception_prompt_payload(
+        concept_terms=concept_terms,
+        diff_text=bundle.patch_text,
+        run_id=run_id,
+    )
+    payload_text = prompt_text.format(
+        concept_terms=json.dumps(prompt_payload["concept_terms"], ensure_ascii=False, indent=2),
+        run_id=str(prompt_payload["run_id"]),
+        diff_summary=str(prompt_payload["diff_summary"]),
+        OUTPUT_LANGUAGE=prompt_language_instruction(output_lang),
+    )
+    prompt_fingerprint = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()[:12]
+    resolved_privacy_mode = privacy_mode or bundle.privacy_mode
+    if resolved_privacy_mode not in _VALID_PRIVACY_MODES:
+        raise InputError(f"unsupported privacy_mode: {resolved_privacy_mode!r}")
+    redacted_payload_text = None
+    findings = ()
+    if resolved_privacy_mode == "redacted_remote":
+        redaction = redaction_pipeline(
+            payload_text,
+            policy=AllowlistPolicy(
+                allow_exact=security_config.allow_exact,
+                allow_paths=security_config.allow_paths,
+                suppress_rules=security_config.suppress_rules,
+            ),
+        )
+        redacted_payload_text = redaction.redacted_text
+        findings = redaction.findings
+    provider = make_provider(
+        provider_config,
+        api_key=api_key,
+        security_config=security_config,
+        workspace_root=bundle.workspace_root,
+        client=client,
+        max_concurrent=max_concurrent,
+        qps_limit=qps_limit,
+        retry_attempts=retry_attempts,
+        request_timeout_seconds=request_timeout_seconds,
+        execution_origin="quiz_generate",
+    )
+    try:
+        response = provider.generate(
+            ProviderRequest(
+                prompt_name=_MISCONCEPTION_PROMPT_NAME,
+                prompt_fingerprint=prompt_fingerprint,
+                prompt_version=prompt_fingerprint,
+                eval_bundle_version=compute_runtime_eval_bundle_version(),
+                model=provider_config.model_name,
+                payload_text=payload_text,
+                diff_content=bundle.patch_text,
+                source_ref=str(bundle.metadata["source_ref"]),
+                output_lang=output_lang,
+                privacy_mode=resolved_privacy_mode,
+                redacted_payload_text=redacted_payload_text,
+                findings=findings,
+                response_format="json",
+                max_output_tokens=2000,
+            )
+        )
+    finally:
+        provider.close()
+    cards = parse_misconception_cards(response.content)
+    return tuple(replace(card, run_id=card.run_id or run_id) for card in cards)
+
+
 def _materialize_question_ids(
     run_id: str,
     questions: Sequence[QuizQuestion],
@@ -339,6 +454,19 @@ def _materialize_question_ids(
         )
         materialized.append(question.model_copy(update={"question_id": question_id}))
     return tuple(materialized)
+
+
+def _dedupe_concept_terms(questions: Sequence[QuizQuestion]) -> list[str]:
+    seen: set[str] = set()
+    terms: list[str] = []
+    for question in questions:
+        for concept in question.concepts:
+            normalized = concept.strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            terms.append(normalized)
+    return terms
 
 
 def _load_claim_records(path: Path) -> tuple[ClaimRecord, ...]:
@@ -369,6 +497,28 @@ def _resolve_primary_claim(
             return claim
     raise InputError(
         "quiz question refers to unknown source claim(s): " + ", ".join(question.source_claims)
+    )
+
+
+def _resolve_review_card_concept(question: QuizQuestion, claim: ClaimRecord) -> str:
+    if question.concepts:
+        return question.concepts[0]
+    if claim.symbols:
+        return claim.symbols[0]
+    return question.question
+
+
+def _make_review_card_id(
+    *,
+    claim: ClaimRecord,
+    question: QuizQuestion,
+    concept: str,
+) -> str:
+    return _make_prefixed_digest(
+        "card",
+        claim.run_id,
+        question.question_id or question.question,
+        concept,
     )
 
 

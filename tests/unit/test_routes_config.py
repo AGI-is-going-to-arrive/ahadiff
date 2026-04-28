@@ -46,6 +46,11 @@ class _FakeConfig:
     serve: _FakeServe | None = None
 
 
+@dataclass
+class _FakeSnapshot:
+    values: dict[str, Any]
+
+
 def _mock_load_config_factory(
     config: _FakeConfig | None = None,
 ) -> Any:
@@ -112,6 +117,70 @@ def test_get_config_returns_actual_config_values(
     payload = response.json()
     assert payload["generate_model"] == "test-gen"
     assert payload["judge_model"] == "test-judge"
+
+
+def test_get_config_reads_nested_config_snapshot_values_shape(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+
+    def _mock_load_config(*_args: Any, **_kwargs: Any) -> _FakeSnapshot:
+        return _FakeSnapshot(
+            values={
+                "lang": "auto",
+                "privacy_mode": "strict_local",
+                "llm": {
+                    "generate_model": "gpt-5.4-mini",
+                    "judge_model": "gpt-5.4-mini",
+                    "api_key_env": "AHADIFF_PROVIDER_API_KEY",
+                },
+                "serve": {"port": 8765},
+            }
+        )
+
+    monkeypatch.setattr("ahadiff.core.config.load_config", _mock_load_config)
+    client = _client(state_dir)
+
+    payload = client.get("/api/config").json()
+
+    assert payload["lang"] == "auto"
+    assert payload["privacy_mode"] == "strict_local"
+    assert payload["generate_model"] == "gpt-5.4-mini"
+    assert payload["judge_model"] == "gpt-5.4-mini"
+    assert payload["serve_port"] == 8765
+
+
+def test_get_config_key_status_reads_dynamic_provider_envs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+
+    def _mock_load_config(*_args: Any, **_kwargs: Any) -> _FakeSnapshot:
+        return _FakeSnapshot(
+            values={
+                "providers": {
+                    "openai": {"api_key_env": "AHADIFF_OPENAI_KEY"},
+                    "gemini": {"api_key_env": "AHADIFF_GEMINI_KEY"},
+                    "local": {"api_key_env": ""},
+                },
+            }
+        )
+
+    monkeypatch.setattr("ahadiff.core.config.load_config", _mock_load_config)
+    monkeypatch.setenv("AHADIFF_OPENAI_KEY", "sk-test")
+    monkeypatch.delenv("AHADIFF_GEMINI_KEY", raising=False)
+    client = _client(state_dir)
+
+    payload = client.get("/api/config").json()
+
+    assert payload["key_status"] == {
+        "openai": "configured",
+        "gemini": "missing",
+    }
 
 
 def test_get_config_handles_load_failure_gracefully(

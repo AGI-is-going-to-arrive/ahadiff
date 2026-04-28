@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import stat
 import subprocess
 from importlib.resources import files
 from pathlib import Path
@@ -321,6 +322,111 @@ def test_hooks_install_is_non_blocking_and_uninstall_removes_sections(tmp_path: 
     uninstall_result = _RUNNER.invoke(app(), ["uninstall", "hooks", "--repo-root", str(repo_root)])
     assert uninstall_result.exit_code == 0
     assert "AHADIFF:BEGIN target=hooks" not in post_commit.read_text(encoding="utf-8")
+
+
+def test_append_hook_section_preserves_existing_hook_mode(tmp_path: Path) -> None:
+    hooks_dir = tmp_path / ".git" / "hooks"
+    hooks_dir.mkdir(parents=True)
+    hook_path = hooks_dir / "post-commit"
+    hook_path.write_text("#!/bin/sh\nprintf 'existing'\n", encoding="utf-8")
+    hook_path.chmod(0o750)
+
+    hooks_module._append_hook_section(  # pyright: ignore[reportPrivateUsage]
+        hook_path,
+        "hooks",
+        "# AHADIFF:BEGIN target=hooks\necho hi\n# AHADIFF:END\n",
+    )
+
+    assert stat.S_IMODE(hook_path.stat().st_mode) == 0o750
+    assert "echo hi" in hook_path.read_text(encoding="utf-8")
+
+
+def test_append_hook_section_rejects_symlink_hook_path(tmp_path: Path) -> None:
+    hooks_dir = tmp_path / ".git" / "hooks"
+    hooks_dir.mkdir(parents=True)
+    hook_path = hooks_dir / "post-commit"
+    linked_target = tmp_path / "real-post-commit"
+    linked_target.write_text("#!/bin/sh\nprintf 'linked'\n", encoding="utf-8")
+    try:
+        hook_path.symlink_to(linked_target)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
+
+    with pytest.raises(OSError, match="refusing to follow git hook symlink"):
+        hooks_module._append_hook_section(  # pyright: ignore[reportPrivateUsage]
+            hook_path,
+            "hooks",
+            "# AHADIFF:BEGIN target=hooks\necho hi\n# AHADIFF:END\n",
+        )
+
+    assert hook_path.is_symlink()
+    assert linked_target.read_text(encoding="utf-8") == "#!/bin/sh\nprintf 'linked'\n"
+
+
+def test_append_hook_section_does_not_follow_legacy_predictable_temp_symlink(
+    tmp_path: Path,
+) -> None:
+    hooks_dir = tmp_path / ".git" / "hooks"
+    hooks_dir.mkdir(parents=True)
+    hook_path = hooks_dir / "post-commit"
+    victim_path = tmp_path / "victim.txt"
+    victim_path.write_text("victim\n", encoding="utf-8")
+    try:
+        (hooks_dir / ".post-commit.ahadiff.tmp").symlink_to(victim_path)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
+
+    hooks_module._append_hook_section(  # pyright: ignore[reportPrivateUsage]
+        hook_path,
+        "hooks",
+        "# AHADIFF:BEGIN target=hooks\necho hi\n# AHADIFF:END\n",
+    )
+
+    assert "echo hi" in hook_path.read_text(encoding="utf-8")
+    assert victim_path.read_text(encoding="utf-8") == "victim\n"
+
+
+def test_remove_hook_section_does_not_follow_legacy_predictable_temp_symlink(
+    tmp_path: Path,
+) -> None:
+    hooks_dir = tmp_path / ".git" / "hooks"
+    hooks_dir.mkdir(parents=True)
+    hook_path = hooks_dir / "pre-push"
+    hook_path.write_text(
+        "#!/bin/sh\n\n# AHADIFF:BEGIN target=hooks\necho hi\n# AHADIFF:END\n\nprintf 'after'\n",
+        encoding="utf-8",
+    )
+    victim_path = tmp_path / "victim.txt"
+    victim_path.write_text("victim\n", encoding="utf-8")
+    try:
+        (hooks_dir / ".pre-push.ahadiff.tmp").symlink_to(victim_path)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
+
+    assert hooks_module._remove_hook_section(hook_path, "hooks") is True  # pyright: ignore[reportPrivateUsage]
+    assert "AHADIFF:BEGIN target=hooks" not in hook_path.read_text(encoding="utf-8")
+    assert victim_path.read_text(encoding="utf-8") == "victim\n"
+
+
+def test_remove_hook_section_rejects_symlink_hook_path(tmp_path: Path) -> None:
+    hooks_dir = tmp_path / ".git" / "hooks"
+    hooks_dir.mkdir(parents=True)
+    hook_path = hooks_dir / "pre-push"
+    linked_target = tmp_path / "real-pre-push"
+    linked_target.write_text(
+        "#!/bin/sh\n\n# AHADIFF:BEGIN target=hooks\necho hi\n# AHADIFF:END\n",
+        encoding="utf-8",
+    )
+    try:
+        hook_path.symlink_to(linked_target)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
+
+    with pytest.raises(OSError, match="refusing to follow git hook symlink"):
+        hooks_module._remove_hook_section(hook_path, "hooks")  # pyright: ignore[reportPrivateUsage]
+
+    assert hook_path.is_symlink()
+    assert "AHADIFF:BEGIN target=hooks" in linked_target.read_text(encoding="utf-8")
 
 
 def test_hooks_git_path_uses_utf8_when_cjk_locale_would_fail(
