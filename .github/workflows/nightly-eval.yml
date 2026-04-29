@@ -1,0 +1,68 @@
+name: Nightly Eval
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-eval
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    env:
+      PYTHON_VERSION: "3.12"
+      SQLITE_AUTOCONF_VERSION: "3510300"
+      SQLITE_DOWNLOAD_YEAR: "2026"
+      AHADIFF_LIVE_LLM_API_KEY: ${{ secrets.AHADIFF_LIVE_LLM_API_KEY }}
+      AHADIFF_LIVE_LLM_BASE_URL: ${{ secrets.AHADIFF_LIVE_LLM_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install SQLite runtime
+        run: |
+          sqlite_url="https://www.sqlite.org/${SQLITE_DOWNLOAD_YEAR}/sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}.tar.gz"
+          curl -fsSLo "$RUNNER_TEMP/sqlite.tar.gz" "$sqlite_url" || \
+            curl -fsSLo "$RUNNER_TEMP/sqlite.tar.gz" \
+              "https://www.sqlite.org/2025/sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}.tar.gz"
+          tar -xzf "$RUNNER_TEMP/sqlite.tar.gz" -C "$RUNNER_TEMP"
+          cd "$RUNNER_TEMP/sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}"
+          ./configure --prefix="$RUNNER_TEMP/sqlite" --disable-static
+          make -j"$(nproc)"
+          make install
+          echo "LD_LIBRARY_PATH=$RUNNER_TEMP/sqlite/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --locked --dev --python python3.12
+
+      - name: Run full test suite
+        run: uv run pytest tests -q --tb=long
+
+      - name: Run eval tests (if LLM key available)
+        if: env.AHADIFF_LIVE_LLM_API_KEY != ''
+        env:
+          AHADIFF_LIVE_LLM_JUDGE: "1"
+        run: uv run pytest tests/live -q --tb=long
+
+      - name: Lint + format check
+        run: |
+          uv run ruff check src tests
+          uv run ruff format --check src tests
+
+      - name: Type check
+        run: uv run pyright
+
+      - name: Build wheel
+        run: uv build --wheel

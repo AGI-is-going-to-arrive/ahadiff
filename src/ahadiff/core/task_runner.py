@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import math
+import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, SupportsFloat, SupportsIndex, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
@@ -34,6 +36,7 @@ class TaskInfo:
     progress: TaskProgress = field(default_factory=TaskProgress)
     result: Any = None
     error: str | None = None
+    error_code: str | None = None
     created_at: str = ""
     started_at: str | None = None
     completed_at: str | None = None
@@ -61,22 +64,58 @@ _MAX_COMPLETED_HISTORY = 100
 _MAX_ARCHIVED_LOOKUP = 32
 
 
+_DEFAULT_TASK_TIMEOUT_SECONDS = 600.0
+_DEFAULT_TASK_TIMEOUT_ENV = "AHADIFF_DEFAULT_TASK_TIMEOUT_SECONDS"
+_TaskTimeoutValue = str | bytes | bytearray | SupportsFloat | SupportsIndex
+
+
+def _coerce_task_timeout_seconds(value: object, *, source: str) -> float:
+    if isinstance(value, bool):
+        raise ValueError(f"{source} must be a positive finite number")
+    try:
+        timeout_seconds = float(cast("_TaskTimeoutValue", value))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{source} must be a positive finite number") from exc
+    if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+        raise ValueError(f"{source} must be a positive finite number")
+    return timeout_seconds
+
+
+def _default_task_timeout_seconds() -> float:
+    raw_value = os.environ.get(_DEFAULT_TASK_TIMEOUT_ENV)
+    if raw_value is None:
+        return _DEFAULT_TASK_TIMEOUT_SECONDS
+    return _coerce_task_timeout_seconds(raw_value, source=_DEFAULT_TASK_TIMEOUT_ENV)
+
+
 class TaskRunner:
-    def __init__(self, max_concurrent: int = 2) -> None:
+    def __init__(
+        self,
+        max_concurrent: int = 2,
+        task_timeout_seconds: float | None = None,
+    ) -> None:
         self._tasks: dict[str, TaskInfo] = {}
         self._handles: dict[str, TaskHandle] = {}
         self._async_tasks: dict[str, asyncio.Task[Any]] = {}
         self._archived_tasks: dict[str, TaskInfo] = {}
         self._pinned_tasks: dict[str, int] = {}
         self._semaphore = asyncio.Semaphore(max_concurrent)
+        self._task_timeout = (
+            _default_task_timeout_seconds()
+            if task_timeout_seconds is None
+            else _coerce_task_timeout_seconds(task_timeout_seconds, source="task_timeout_seconds")
+        )
+        self._task_timeouts: dict[str, float | None] = {}
         self._coro_factories: dict[str, Callable[[TaskHandle], Coroutine[Any, Any, Any]]] = {}
 
     def submit(
         self,
         task_type: str,
         coro_factory: Callable[[TaskHandle], Coroutine[Any, Any, Any]],
+        *,
+        disable_timeout: bool = False,
     ) -> str:
-        return self._submit_unchecked(task_type, coro_factory)
+        return self._submit_unchecked(task_type, coro_factory, disable_timeout=disable_timeout)
 
     def submit_if_capacity(
         self,
@@ -84,6 +123,7 @@ class TaskRunner:
         coro_factory: Callable[[TaskHandle], Coroutine[Any, Any, Any]],
         *,
         max_pending: int,
+        disable_timeout: bool = False,
     ) -> str | None:
         pending_count = sum(
             1
@@ -93,12 +133,14 @@ class TaskRunner:
         )
         if pending_count >= max_pending:
             return None
-        return self._submit_unchecked(task_type, coro_factory)
+        return self._submit_unchecked(task_type, coro_factory, disable_timeout=disable_timeout)
 
     def _submit_unchecked(
         self,
         task_type: str,
         coro_factory: Callable[[TaskHandle], Coroutine[Any, Any, Any]],
+        *,
+        disable_timeout: bool,
     ) -> str:
         loop = asyncio.get_running_loop()
         task_id = uuid.uuid4().hex[:12]
@@ -110,9 +152,10 @@ class TaskRunner:
         handle = TaskHandle(task_id, self)
         self._tasks[task_id] = info
         self._handles[task_id] = handle
+        self._task_timeouts[task_id] = None if disable_timeout else self._task_timeout
         self._coro_factories[task_id] = coro_factory
         async_task = loop.create_task(self._run_task(task_id))
-        async_task.add_done_callback(lambda _done, tid=task_id: self._on_async_task_done(tid))
+        async_task.add_done_callback(lambda _: self._on_async_task_done(task_id))
         self._async_tasks[task_id] = async_task
         return task_id
 
@@ -172,6 +215,7 @@ class TaskRunner:
                 self._archived_tasks[tid] = info
             self._handles.pop(tid, None)
             self._async_tasks.pop(tid, None)
+            self._task_timeouts.pop(tid, None)
         self._trim_archived_tasks()
 
     def _trim_archived_tasks(self) -> None:
@@ -188,9 +232,51 @@ class TaskRunner:
                 return
             self._archived_tasks.pop(evict_task_id, None)
 
+    @staticmethod
+    def _classify_error(exc: Exception) -> str:
+        if isinstance(exc, ConnectionError):
+            return "network_error"
+        if isinstance(exc, PermissionError):
+            return "permission_error"
+        from ahadiff.core.errors import ConfigError, ProviderError, SafetyError, VerificationError
+
+        if isinstance(exc, ConfigError):
+            return "config_error"
+        if isinstance(exc, ProviderError):
+            return "config_error"
+        if isinstance(exc, SafetyError):
+            return "permission_error"
+        if isinstance(exc, VerificationError):
+            return "claim_error"
+        try:
+            error_msg = str(exc).lower()
+        except Exception:
+            return "internal_error"
+        if not error_msg:
+            return "internal_error"
+        if "cancelled" in error_msg:
+            return "cancelled"
+        if "invalid provider" in error_msg or "provider configuration" in error_msg:
+            return "config_error"
+        if "claim extraction" in error_msg or "claim verification" in error_msg:
+            return "claim_error"
+        if "lesson generation" in error_msg:
+            return "lesson_error"
+        if "quiz generation" in error_msg:
+            return "quiz_error"
+        if "learnability" in error_msg:
+            return "learnability_error"
+        if "permission" in error_msg or "denied" in error_msg:
+            return "permission_error"
+        _net = ("connection refused", "connection reset", "network error", "transport error")
+        if any(t in error_msg for t in _net):
+            return "network_error"
+        return "internal_error"
+
     def _on_async_task_done(self, task_id: str) -> None:
         self._async_tasks.pop(task_id, None)
         self._coro_factories.pop(task_id, None)
+        self._task_timeouts.pop(task_id, None)
         self._prune_completed()
 
     async def _run_task(self, task_id: str) -> None:
@@ -201,6 +287,8 @@ class TaskRunner:
             return
 
         await self._semaphore.acquire()
+        task_timeout = self._task_timeouts.get(task_id, self._task_timeout)
+        timeout_cm: asyncio.Timeout | None = None
         try:
             if handle.is_cancelled():
                 if info.status != TaskStatus.CANCELLED:
@@ -211,13 +299,33 @@ class TaskRunner:
             info.status = TaskStatus.RUNNING
             info.started_at = datetime.now(UTC).isoformat()
 
-            result = await coro_factory(handle)
+            if task_timeout is None:
+                result = await coro_factory(handle)
+            else:
+                async with asyncio.timeout(task_timeout) as timeout_cm:
+                    result = await coro_factory(handle)
+
             if handle.is_cancelled():
                 info.status = TaskStatus.CANCELLED
                 info.completed_at = datetime.now(UTC).isoformat()
             else:
                 info.status = TaskStatus.COMPLETED
                 info.result = result
+                info.completed_at = datetime.now(UTC).isoformat()
+        except TimeoutError as timeout_exc:
+            if handle.is_cancelled():
+                info.status = TaskStatus.CANCELLED
+                info.completed_at = datetime.now(UTC).isoformat()
+            elif timeout_cm is not None and timeout_cm.expired():
+                handle.mark_cancelled()
+                info.status = TaskStatus.FAILED
+                info.error = f"task exceeded {task_timeout}s timeout"
+                info.error_code = "timeout"
+                info.completed_at = datetime.now(UTC).isoformat()
+            else:
+                info.status = TaskStatus.FAILED
+                info.error = str(timeout_exc) or "task-internal timeout"
+                info.error_code = self._classify_error(timeout_exc)
                 info.completed_at = datetime.now(UTC).isoformat()
         except asyncio.CancelledError:
             handle.mark_cancelled()
@@ -231,6 +339,7 @@ class TaskRunner:
             else:
                 info.status = TaskStatus.FAILED
                 info.error = str(exc)
+                info.error_code = self._classify_error(exc)
                 info.completed_at = datetime.now(UTC).isoformat()
         finally:
             self._semaphore.release()

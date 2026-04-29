@@ -263,7 +263,46 @@ def _run_improve_loop_unlocked(
                 f"resume session suite mismatch: expected {session.suite}, got {suite}"
             )
         if session.worktree_path is not None and Path(session.worktree_path).exists():
-            raise InputError(_PENDING_WORKTREE_NOTE)
+            if session.interrupted_round is not None and session.interrupted_stage is not None:
+                prev_round = session.interrupted_round
+                prev_stage = session.interrupted_stage
+                removed = _cleanup_interrupted_worktree(
+                    repo_root, Path(session.worktree_path), prev_stage
+                )
+                if removed:
+                    session = update_improve_session(
+                        session,
+                        worktree_path=None,
+                        interrupted_round=None,
+                        interrupted_stage=None,
+                    )
+                else:
+                    log.warning(
+                        "failed to remove interrupted worktree at %s; "
+                        "clearing session state to allow resume (manual cleanup may be needed)",
+                        session.worktree_path,
+                    )
+                    session = update_improve_session(
+                        session,
+                        worktree_path=None,
+                        interrupted_round=None,
+                        interrupted_stage=None,
+                    )
+                save_improve_session(state_dir, session)
+                log.info(
+                    "cleaned up interrupted round %d (stage: %s) for resume",
+                    prev_round,
+                    prev_stage,
+                )
+            else:
+                raise InputError(_PENDING_WORKTREE_NOTE)
+        elif session.interrupted_round is not None:
+            session = update_improve_session(
+                session,
+                interrupted_round=None,
+                interrupted_stage=None,
+            )
+            save_improve_session(state_dir, session)
         anchor_event = _select_anchor_event_by_run_id(
             state_dir=state_dir,
             db_path=db_path,
@@ -307,8 +346,10 @@ def _run_improve_loop_unlocked(
             session = update_improve_session(session, worktree_path=str(worktree_path))
             save_improve_session(state_dir, session)
             cherry_pick_pending = False
+            _current_round_stage = "creating_worktree"
             try:
                 _create_worktree(repo_root, worktree_path)
+                _current_round_stage = "mutating"
                 _mutate_prompt_in_worktree(
                     worktree_root=worktree_path,
                     target_prompt=target_prompt,
@@ -325,12 +366,14 @@ def _run_improve_loop_unlocked(
                     retry_attempts=retry_attempts,
                     output_lang=output_lang,
                 )
+                _current_round_stage = "committing"
                 commit_sha = _commit_prompt_change(
                     worktree_root=worktree_path,
                     target_prompt=target_prompt,
                     round_index=round_index,
                     target_dimension=target_dimension,
                 )
+                _current_round_stage = "replaying"
                 candidate_run_path = _run_replay_learn_subprocess(
                     worktree_root=worktree_path,
                     anchor_run_path=baseline_run_path,
@@ -341,11 +384,13 @@ def _run_improve_loop_unlocked(
                     output_lang=output_lang,
                     interrupt=interrupt,
                 )
+                _current_round_stage = "validating"
                 _validate_candidate_run_matches_anchor(
                     candidate_run_path,
                     expected_source_ref=source_ref,
                     expected_base_ref=_metadata_base_ref(anchor_metadata),
                 )
+                _current_round_stage = "evaluating"
                 candidate_report: ScoreReport = evaluate_run(candidate_run_path)
                 _validate_candidate_report_matches_run(
                     candidate_report,
@@ -369,6 +414,7 @@ def _run_improve_loop_unlocked(
                     failed_gates=tuple(candidate_report.hard_gates.failed_names()),
                 )
 
+                _current_round_stage = "persisting"
                 note_payload: dict[str, object] = {
                     "anchor_run_id": session.anchor_run_id,
                     "improve_session_id": session.session_id,
@@ -521,13 +567,24 @@ def _run_improve_loop_unlocked(
                         "stopped before starting the next round"
                     )
                     break
-            except BaseException:
+            except BaseException as exc:
                 if not cherry_pick_pending:
-                    removed = _remove_worktree(repo_root, worktree_path)
-                    session = update_improve_session(
-                        session,
-                        worktree_path=None if removed else str(worktree_path),
-                    )
+                    is_interrupt = interrupt.requested or isinstance(exc, KeyboardInterrupt)
+                    if is_interrupt and worktree_path.exists():
+                        session = update_improve_session(
+                            session,
+                            worktree_path=str(worktree_path),
+                            interrupted_round=round_index,
+                            interrupted_stage=_current_round_stage,
+                        )
+                    else:
+                        removed = _remove_worktree(repo_root, worktree_path)
+                        session = update_improve_session(
+                            session,
+                            worktree_path=None if removed else str(worktree_path),
+                            interrupted_round=None,
+                            interrupted_stage=None,
+                        )
                     try:
                         save_improve_session(state_dir, session)
                     except Exception as save_exc:
@@ -795,12 +852,39 @@ def _sorted_events(events: tuple[ResultEvent, ...]) -> list[ResultEvent]:
     return sorted(events, key=lambda item: (item.timestamp, item.event_id), reverse=True)
 
 
+_LATE_INTERRUPT_STAGES = frozenset({"persisting", "cherry_picking"})
+
+
+def _cleanup_interrupted_worktree(
+    repo_root: Path,
+    worktree_path: Path,
+    interrupted_stage: str,
+) -> bool:
+    """Clean up a worktree left behind by an interrupted round.
+
+    Returns True if the worktree was successfully removed.
+    """
+    if interrupted_stage in _LATE_INTERRUPT_STAGES:
+        log.warning(
+            "interrupted at stage '%s'; imported runs or result events "
+            "may need manual inspection in .ahadiff/runs/",
+            interrupted_stage,
+        )
+    log.info(
+        "cleaning interrupted worktree (stage=%s): %s",
+        interrupted_stage,
+        worktree_path,
+    )
+    return _remove_worktree(repo_root, worktree_path)
+
+
 def _reject_existing_pending_worktrees(
     state_dir: Path,
     *,
     allowed_session_id: str | None,
 ) -> None:
     session_dir = improve_session_dir(state_dir)
+    allowed_interrupted_worktree: Path | None = None
     if session_dir.exists():
         _assert_directory_no_follow(session_dir)
         for session_file in sorted(session_dir.glob("*.json")):
@@ -809,6 +893,13 @@ def _reject_existing_pending_worktrees(
             except InputError:
                 continue
             if session.session_id == allowed_session_id:
+                if (
+                    session.worktree_path is not None
+                    and session.interrupted_round is not None
+                    and session.interrupted_stage is not None
+                    and Path(session.worktree_path).exists()
+                ):
+                    allowed_interrupted_worktree = Path(session.worktree_path).absolute()
                 continue
             if session.worktree_path is not None and Path(session.worktree_path).exists():
                 raise InputError(_PENDING_WORKTREE_NOTE)
@@ -818,6 +909,12 @@ def _reject_existing_pending_worktrees(
         return
     _assert_directory_no_follow(worktree_dir)
     leftovers = [child for child in worktree_dir.iterdir() if child.exists() or child.is_symlink()]
+    if allowed_interrupted_worktree is not None:
+        leftovers = [
+            child
+            for child in leftovers
+            if child.is_symlink() or child.absolute() != allowed_interrupted_worktree
+        ]
     if leftovers:
         raise InputError(_PENDING_WORKTREE_NOTE)
 

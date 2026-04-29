@@ -1,56 +1,39 @@
-name: Backend CI
+name: Release
 
 on:
-  pull_request:
-    branches: [main]
   push:
-    branches: [main]
+    tags:
+      - "v*"
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (skip publish)"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
 concurrency:
-  group: backend-ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  backend:
-    name: Backend CI (${{ matrix.name }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: ubuntu-py311
-            os: ubuntu-latest
-            python_version: "3.11"
-          - name: ubuntu-py312
-            os: ubuntu-latest
-            python_version: "3.12"
-          - name: macos-py312
-            os: macos-latest
-            python_version: "3.12"
+  gate-linux:
+    name: Release Gate (Linux)
+    runs-on: ubuntu-latest
     env:
-      PYTHON_VERSION: ${{ matrix.python_version }}
+      PYTHON_VERSION: "3.12"
       SQLITE_AUTOCONF_VERSION: "3510300"
       SQLITE_DOWNLOAD_YEAR: "2026"
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Python with current Homebrew SQLite
-        if: runner.os == 'macOS'
-        run: |
-          brew install python@${PYTHON_VERSION}
-          echo "$(brew --prefix python@${PYTHON_VERSION})/bin" >> "$GITHUB_PATH"
-
       - uses: actions/setup-python@v5
-        if: runner.os == 'Linux'
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install SQLite runtime on Linux
-        if: runner.os == 'Linux'
+      - name: Install SQLite runtime
         run: |
           sqlite_url="https://www.sqlite.org/${SQLITE_DOWNLOAD_YEAR}/sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}.tar.gz"
           curl -fsSLo "$RUNNER_TEMP/sqlite.tar.gz" "$sqlite_url" || \
@@ -67,17 +50,45 @@ jobs:
         with:
           enable-cache: true
 
-      - run: python -c "import sqlite3; print(sqlite3.sqlite_version)"
-      - run: uv sync --locked --dev --python ${{ env.PYTHON_VERSION }}
-      - run: uv run pytest tests/unit tests/integration/test_learn_pipeline.py -q --tb=long
-      - run: uv run ruff check src tests
-      - run: uv run ruff format --check src tests
-      - run: uv run pyright
-      - run: uv build --wheel
-      - run: uv run python -m ahadiff --version
+      - run: uv sync --locked --dev --python python3.12
 
-  windows-runtime:
-    name: Windows Runtime Guard
+      - name: Gate - tests + coverage
+        run: uv run pytest --cov=src/ahadiff --cov-report=term-missing --cov-fail-under=85 tests -q --tb=long
+
+      - name: Gate - lint
+        run: |
+          uv run ruff check src tests
+          uv run ruff format --check src tests
+
+      - name: Gate - type check
+        run: uv run pyright
+
+      - name: Gate - wheel build
+        run: uv build --wheel
+
+      - name: Gate - CLI smoke
+        run: |
+          uv run python -m ahadiff --version
+          uv run python -m ahadiff doctor
+
+      - name: Gate - wheel install smoke
+        run: |
+          python -m venv "$RUNNER_TEMP/wheel-smoke"
+          source "$RUNNER_TEMP/wheel-smoke/bin/activate"
+          python -m pip install --upgrade pip
+          python -m pip install dist/*.whl
+          ahadiff --version
+          ahadiff doctor --repo-root .
+          ahadiff learn --help > /dev/null
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel
+          path: dist/*.whl
+
+  gate-windows-runtime:
+    name: Release Gate (Windows Runtime)
     runs-on: windows-latest
     env:
       PYTHON_VERSION: "3.11"
@@ -108,3 +119,20 @@ jobs:
             tests/unit/test_stage1_task1.py::test_unlock_repo_write_lock_rejects_windows_reparse_point \
             tests/unit/test_stage1_task1.py::test_workspace_identity_key_casefolds_on_windows \
             tests/unit/test_stage1_task1.py::test_cli_doctor_exits_non_zero_when_sqlite_gate_fails
+
+  publish:
+    needs: [gate-linux, gate-windows-runtime]
+    if: startsWith(github.ref, 'refs/tags/v') && github.event.inputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheel
+          path: dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist

@@ -6,7 +6,7 @@
 **Authors**: Claude (orchestrator)
 **Requires**: contract-freeze.md §8 change rules (RFC + cross-review)
 
-Current branch verification after the latest learn-orchestrator / `/api/learn` updates: full pytest `1266 passed, 1 skipped`; focused backend regressions `59 passed`; serve regressions `129 passed`; `ruff check` pass; `ruff format --check` pass; `pyright` currently reports `184 errors`.
+Current branch verification after the latest learn-orchestrator / `/api/learn` updates: full pytest `1420 passed, 1 skipped`; coverage gate `87.37%`; focused backend regressions `59 passed`; serve regressions `129 passed`; `ruff check` pass; `ruff format --check` pass; `pyright` currently reports `0 errors, 0 warnings, 0 informations`.
 
 ## Motivation
 
@@ -17,7 +17,7 @@ in Phases 1E, 3A-3D, 3C, 5F, and 6B.
 
 ## Current State
 
-Current `serve/app.py` registers 42 explicit `Route(...)` entries: 1 `/healthz`, 40 concrete
+Current `serve/app.py` registers 43 explicit `Route(...)` entries: 1 `/healthz`, 41 concrete
 `/api/*` routes, and 1 `/api/{rest_of_path:path}` catchall. DTOs are frozen in
 `contracts/serve_app.py` and `contracts/claim_status.py`.
 
@@ -466,4 +466,4 @@ contract-freeze §8 rule 3.
 4. MisconceptionCard is a separate DTO, not a ReviewCard extension
 5. Graphify runtime-only posture formally documented
 6. Codex + Claude cross-review PASS
-7. No existing tests regress against the current backend baseline (`1266 passed, 1 skipped`)
+7. No existing tests regress against the current backend baseline (`1420 passed, 1 skipped`)

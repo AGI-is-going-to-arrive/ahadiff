@@ -1678,7 +1678,10 @@ _MAX_CARDS_FILE_BYTES = 16 * 1024 * 1024
 
 
 def _load_review_cards(cards_path: Path) -> tuple[ReviewCard, ...]:
-    file_size = cards_path.stat().st_size
+    from ahadiff.core.paths import reject_leaf_symlink_or_reparse
+
+    leaf_stat = reject_leaf_symlink_or_reparse(cards_path, label="cards file")
+    file_size = leaf_stat.st_size
     if file_size > _MAX_CARDS_FILE_BYTES:
         raise InputError(f"cards file exceeds 16 MiB limit: {cards_path}")
     cards: list[ReviewCard] = []
@@ -2341,9 +2344,10 @@ def import_concepts_from_jsonl(db_path: Path, jsonl_path: Path) -> int:
     """Import concepts from a JSONL file into SQLite. Returns count imported."""
     if not jsonl_path.exists():
         return 0
-    if jsonl_path.is_symlink():
-        raise InputError(f"refusing symlinked concepts JSONL: {jsonl_path}")
-    file_size = jsonl_path.stat().st_size
+    from ahadiff.core.paths import reject_leaf_symlink_or_reparse
+
+    leaf_stat = reject_leaf_symlink_or_reparse(jsonl_path, label="concepts JSONL")
+    file_size = leaf_stat.st_size
     if file_size > _MAX_CONCEPTS_JSONL_BYTES:
         raise InputError(f"concepts JSONL exceeds 16 MiB limit: {jsonl_path}")
     entries: list[dict[str, object]] = []

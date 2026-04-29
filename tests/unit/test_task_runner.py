@@ -4,8 +4,8 @@ import asyncio
 import threading
 from typing import TYPE_CHECKING, cast
 
-import anyio
 import pytest
+from anyio.to_thread import run_sync as run_sync_in_thread
 
 from ahadiff.core.task_runner import TaskHandle, TaskRunner, TaskStatus
 
@@ -19,6 +19,20 @@ def _run(coro: object) -> object:
         return loop.run_until_complete(coro)  # type: ignore[arg-type]
     finally:
         loop.close()
+
+
+def _task_timeout_seconds(runner: TaskRunner) -> float:
+    timeout = runner.__dict__["_task_timeout"]
+    assert isinstance(timeout, float)
+    return timeout
+
+
+def _default_task_timeout_seconds() -> float:
+    import ahadiff.core.task_runner as task_runner_module
+
+    timeout = task_runner_module.__dict__["_DEFAULT_TASK_TIMEOUT_SECONDS"]
+    assert isinstance(timeout, float)
+    return timeout
 
 
 def test_submit_and_complete() -> None:
@@ -79,7 +93,7 @@ def test_to_thread_run_sync_progress_cancel_and_result_integration(tmp_path: Pat
                 artifact_path.write_text("finished\n", encoding="utf-8")
                 return {"run_id": "thread-run"}
 
-            return await anyio.to_thread.run_sync(_sync_job)
+            return await run_sync_in_thread(_sync_job)
 
         task_id = runner.submit("learn", cancellable_work)
         deadline = asyncio.get_running_loop().time() + 1.0
@@ -388,3 +402,310 @@ def test_submit_requires_running_loop() -> None:
 
     with pytest.raises(RuntimeError, match="running event loop"):
         runner.submit("no-loop", work)
+
+
+# ---------------------------------------------------------------------------
+# Phase 6B: timeout, error_code, elapsed_seconds
+# ---------------------------------------------------------------------------
+
+
+def test_task_timeout_triggers_failure() -> None:
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=2, task_timeout_seconds=0.1)
+
+        async def slow_work(handle: TaskHandle) -> None:
+            await asyncio.sleep(10)
+
+        task_id = runner.submit("slow", slow_work)
+        await asyncio.sleep(0.5)
+        info = runner.get_task(task_id)
+        assert info is not None
+        assert info.status == TaskStatus.FAILED
+        assert info.error_code == "timeout"
+        assert "timeout" in (info.error or "")
+
+    _run(_inner())
+
+
+def test_submit_can_disable_timeout_for_thread_backed_work(tmp_path: Path) -> None:
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=2, task_timeout_seconds=0.05)
+        started = threading.Event()
+        release = threading.Event()
+        artifact_path = tmp_path / "finished.txt"
+
+        async def thread_work(handle: TaskHandle) -> str:
+            def _sync_job() -> str:
+                started.set()
+                release.wait(timeout=1.0)
+                artifact_path.write_text("finished\n", encoding="utf-8")
+                return "done"
+
+            return await run_sync_in_thread(_sync_job)
+
+        task_id = runner.submit("learn", thread_work, disable_timeout=True)
+        deadline = asyncio.get_running_loop().time() + 1.0
+        while not started.is_set() and asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.01)
+        assert started.is_set()
+
+        await asyncio.sleep(0.15)
+        running = runner.get_task(task_id)
+        assert running is not None
+        assert running.status == TaskStatus.RUNNING
+        assert running.error_code is None
+        assert not artifact_path.exists()
+
+        release.set()
+        await asyncio.sleep(0.1)
+
+        completed = runner.get_task(task_id)
+        assert completed is not None
+        assert completed.status == TaskStatus.COMPLETED
+        assert completed.result == "done"
+        assert artifact_path.read_text(encoding="utf-8") == "finished\n"
+
+    _run(_inner())
+
+
+def test_error_code_classification() -> None:
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=8)
+
+        cases = [
+            ("config_error", "invalid provider configuration: bad model"),
+            ("claim_error", "claim extraction failed: parse error"),
+            ("lesson_error", "lesson generation failed: LLM timeout"),
+            ("network_error", "connection refused: api.example.com"),
+            ("internal_error", "unexpected thing happened"),
+            ("internal_error", "failed at http://example.com/api"),
+            ("internal_error", ""),
+        ]
+        ids: list[tuple[str, str]] = []
+        for expected_code, error_msg in cases:
+
+            async def failing(handle: TaskHandle, msg: str = error_msg) -> None:
+                raise RuntimeError(msg)
+
+            tid = runner.submit("test", failing)
+            ids.append((tid, expected_code))
+
+        await asyncio.sleep(0.5)
+        for tid, expected_code in ids:
+            info = runner.get_task(tid)
+            assert info is not None
+            assert info.status == TaskStatus.FAILED
+            assert info.error_code == expected_code, (
+                f"expected {expected_code}, got {info.error_code} for error={info.error}"
+            )
+
+    _run(_inner())
+
+
+def test_error_code_is_none_on_success() -> None:
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=2)
+
+        async def work(handle: TaskHandle) -> str:
+            return "ok"
+
+        task_id = runner.submit("test", work)
+        await asyncio.sleep(0.1)
+        info = runner.get_task(task_id)
+        assert info is not None
+        assert info.status == TaskStatus.COMPLETED
+        assert info.error is None
+        assert info.error_code is None
+
+    _run(_inner())
+
+
+def test_task_info_has_error_code_field() -> None:
+    from ahadiff.core.task_runner import TaskInfo
+
+    info = TaskInfo(task_id="test", task_type="test")
+    assert info.error_code is None
+
+
+def test_task_runner_default_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("AHADIFF_DEFAULT_TASK_TIMEOUT_SECONDS", raising=False)
+    runner = TaskRunner(max_concurrent=1)
+    assert _task_timeout_seconds(runner) == _default_task_timeout_seconds()
+
+
+def test_task_runner_default_timeout_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AHADIFF_DEFAULT_TASK_TIMEOUT_SECONDS", "12.5")
+    runner = TaskRunner(max_concurrent=1)
+    assert _task_timeout_seconds(runner) == 12.5
+
+
+def test_task_runner_invalid_env_timeout_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AHADIFF_DEFAULT_TASK_TIMEOUT_SECONDS", "not-a-number")
+    with pytest.raises(ValueError, match="AHADIFF_DEFAULT_TASK_TIMEOUT_SECONDS"):
+        TaskRunner(max_concurrent=1)
+
+
+def test_task_runner_custom_timeout() -> None:
+    runner = TaskRunner(max_concurrent=1, task_timeout_seconds=30.0)
+    assert _task_timeout_seconds(runner) == 30.0
+
+
+def test_task_runner_rejects_zero_timeout() -> None:
+    with pytest.raises(ValueError, match="positive"):
+        TaskRunner(max_concurrent=1, task_timeout_seconds=0)
+
+
+def test_task_runner_rejects_negative_timeout() -> None:
+    with pytest.raises(ValueError, match="positive"):
+        TaskRunner(max_concurrent=1, task_timeout_seconds=-1)
+
+
+def test_task_runner_rejects_non_finite_timeout() -> None:
+    with pytest.raises(ValueError, match="finite"):
+        TaskRunner(max_concurrent=1, task_timeout_seconds=float("inf"))
+
+
+def test_task_internal_timeout_not_classified_as_scheduler_timeout() -> None:
+    """A TimeoutError raised by the task itself (e.g., httpx) should not be
+    classified as a scheduler timeout."""
+
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=2, task_timeout_seconds=60)
+
+        async def internal_timeout(handle: TaskHandle) -> None:
+            raise TimeoutError("socket timeout from dependency")
+
+        task_id = runner.submit("test", internal_timeout)
+        await asyncio.sleep(0.2)
+        info = runner.get_task(task_id)
+        assert info is not None
+        assert info.status == TaskStatus.FAILED
+        assert info.error_code != "timeout"
+        assert info.error == "socket timeout from dependency"
+
+    _run(_inner())
+
+
+def test_timeout_marks_handle_cancelled_for_cooperative_stop() -> None:
+    """When a task times out, the handle must be marked cancelled so
+    threads still running can check is_cancelled() and stop cooperatively."""
+
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=2, task_timeout_seconds=0.1)
+        handle_ref: list[TaskHandle] = []
+
+        async def slow_work(handle: TaskHandle) -> None:
+            handle_ref.append(handle)
+            await asyncio.sleep(10)
+
+        task_id = runner.submit("slow", slow_work)
+        await asyncio.sleep(0.5)
+
+        info = runner.get_task(task_id)
+        assert info is not None
+        assert info.status == TaskStatus.FAILED
+        assert info.error_code == "timeout"
+        assert len(handle_ref) == 1
+        assert handle_ref[0].is_cancelled() is True
+
+    _run(_inner())
+
+
+def test_classify_error_connection_error_isinstance() -> None:
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=2)
+
+        async def fail_conn(handle: TaskHandle) -> None:
+            raise ConnectionError("arbitrary message without keywords")
+
+        task_id = runner.submit("test", fail_conn)
+        await asyncio.sleep(0.2)
+        info = runner.get_task(task_id)
+        assert info is not None
+        assert info.status == TaskStatus.FAILED
+        assert info.error_code == "network_error"
+
+    _run(_inner())
+
+
+def test_classify_error_empty_connection_error_is_network() -> None:
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=2)
+
+        async def fail_conn(handle: TaskHandle) -> None:
+            raise ConnectionError()
+
+        task_id = runner.submit("test", fail_conn)
+        await asyncio.sleep(0.2)
+        info = runner.get_task(task_id)
+        assert info is not None
+        assert info.status == TaskStatus.FAILED
+        assert info.error_code == "network_error"
+
+    _run(_inner())
+
+
+def test_classify_error_project_error_types() -> None:
+    from ahadiff.core.errors import ConfigError, SafetyError, VerificationError
+
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=3)
+
+        cases = [
+            (ConfigError(), "config_error"),
+            (SafetyError(), "permission_error"),
+            (VerificationError(), "claim_error"),
+        ]
+        task_ids: list[tuple[str, str]] = []
+        for exc, expected_code in cases:
+
+            async def failing(handle: TaskHandle, error: Exception = exc) -> None:
+                raise error
+
+            task_ids.append((runner.submit("test", failing), expected_code))
+
+        await asyncio.sleep(0.2)
+        for task_id, expected_code in task_ids:
+            info = runner.get_task(task_id)
+            assert info is not None
+            assert info.status == TaskStatus.FAILED
+            assert info.error_code == expected_code
+
+    _run(_inner())
+
+
+def test_classify_error_oserror_not_network() -> None:
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=2)
+
+        async def fail_os(handle: TaskHandle) -> None:
+            raise OSError("disk full")
+
+        task_id = runner.submit("test", fail_os)
+        await asyncio.sleep(0.2)
+        info = runner.get_task(task_id)
+        assert info is not None
+        assert info.status == TaskStatus.FAILED
+        assert info.error_code == "internal_error"
+
+    _run(_inner())
+
+
+def test_cancel_before_timeout_preserves_cancelled() -> None:
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=2, task_timeout_seconds=0.2)
+        started = asyncio.Event()
+
+        async def slow(handle: TaskHandle) -> None:
+            started.set()
+            await asyncio.sleep(10)
+
+        task_id = runner.submit("test", slow)
+        await started.wait()
+        assert runner.cancel_task(task_id) is True
+        await asyncio.sleep(0.5)
+        info = runner.get_task(task_id)
+        assert info is not None
+        assert info.status == TaskStatus.CANCELLED
+
+    _run(_inner())

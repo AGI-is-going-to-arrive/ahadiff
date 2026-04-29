@@ -14,7 +14,7 @@ from ahadiff.review.database import (
     initialize_review_db,
     upsert_concept,
 )
-from ahadiff.review.search import search_all
+from ahadiff.review.search import search_all, search_all_with_graph
 
 
 def test_schema_version_is_4() -> None:
@@ -440,6 +440,51 @@ def test_search_unknown_table_silently_skipped(tmp_path: Path) -> None:
     )
     results = search_all(db, "test", tables=("evil_table", "concepts"))
     assert any(r.source_table == "concepts" for r in results)
+
+
+def test_search_all_with_graph_returns_graph_nodes_without_db(tmp_path: Path) -> None:
+    from ahadiff.graphify import parse_graph_json_text
+
+    graph = parse_graph_json_text(
+        """
+        {
+          "nodes": [
+            {"id": "n1", "label": "task_runner", "source_file": "src/task_runner.py"}
+          ],
+          "links": []
+        }
+        """
+    )
+
+    results = search_all_with_graph(
+        tmp_path / "missing.sqlite",
+        "TaskRunner",
+        tables=("graph_nodes",),
+        graph=graph,
+    )
+
+    assert len(results) == 1
+    assert results[0].source_table == "graph_nodes"
+    assert results[0].primary_key == "n1"
+
+
+def test_search_all_with_graph_respects_table_filter(tmp_path: Path) -> None:
+    from ahadiff.graphify import parse_graph_json_text
+
+    db = tmp_path / "review.sqlite"
+    initialize_review_db(db)
+    graph = parse_graph_json_text(
+        """
+        {
+          "nodes": [{"id": "n1", "label": "task_runner"}],
+          "links": []
+        }
+        """
+    )
+
+    results = search_all_with_graph(db, "task_runner", tables=("concepts",), graph=graph)
+
+    assert not any(r.source_table == "graph_nodes" for r in results)
 
 
 def test_search_query_at_exact_boundary(tmp_path: Path) -> None:

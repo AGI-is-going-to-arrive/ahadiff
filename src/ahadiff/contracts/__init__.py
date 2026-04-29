@@ -77,6 +77,16 @@ from .serve_app import (
     RunSummary,
     SetLocaleRequest,
 )
+from .serve_runtime import (
+    GraphStatusResponse,
+    SearchResponse,
+    SearchResultItem,
+    TaskCancelResponse,
+    TaskInfoResponse,
+    TaskListResponse,
+    TaskProgressResponse,
+    TaskSubmitResponse,
+)
 
 __all__ = [
     "AhaDiffError",
@@ -96,6 +106,7 @@ __all__ = [
     "EvalBundleInfo",
     "EventType",
     "GraphifyMode",
+    "GraphStatusResponse",
     "HelpfulnessRequest",
     "InputError",
     "LearnabilityGate",
@@ -130,6 +141,8 @@ __all__ = [
     "RunSummary",
     "SafetyError",
     "ScaffoldingLevel",
+    "SearchResponse",
+    "SearchResultItem",
     "ServeConfig",
     "SetLocaleRequest",
     "SourceHunk",
@@ -137,6 +150,11 @@ __all__ = [
     "SourceKind",
     "StaleReason",
     "StorageError",
+    "TaskCancelResponse",
+    "TaskInfoResponse",
+    "TaskListResponse",
+    "TaskProgressResponse",
+    "TaskSubmitResponse",
     "TERMINAL_RUN_STATUSES",
     "TokenizerEstimation",
     "UsageEvent",

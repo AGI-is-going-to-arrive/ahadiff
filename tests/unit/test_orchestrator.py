@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -154,6 +154,13 @@ class _FakeSecurityConfig:
     strict_local_hosts: tuple[str, ...] = ("127.0.0.1", "localhost")
 
 
+@dataclass(frozen=True)
+class _FakeProviderConfig:
+    base_url: str = "http://localhost:11434"
+    api_key_env: str = "FAKE_KEY"
+    provider_class: str = "ollama"
+
+
 # ---------------------------------------------------------------------------
 # Shared fixture: set up a fake git repo + .ahadiff dir
 # ---------------------------------------------------------------------------
@@ -185,36 +192,62 @@ _EVAL_RESULTS = "ahadiff.eval.results"
 
 
 @contextmanager
-def _fake_repo_write_lock(path: Any, command: str = "") -> Generator[None]:
+def _fake_repo_write_lock(path: Path, command: str = "") -> Generator[None]:
     yield None
 
 
 def _patch_config_and_paths(monkeypatch: pytest.MonkeyPatch, fake_repo: Path) -> None:
     """Patch Step 1: config loading + path resolution (module-level imports)."""
-    monkeypatch.setattr(f"{_ORCH}.find_repo_root", lambda p: fake_repo)
-    monkeypatch.setattr(f"{_ORCH}.find_workspace_root", lambda p: fake_repo)
-    monkeypatch.setattr(f"{_ORCH}.assert_local_repo_path", lambda p: None)
-    monkeypatch.setattr(
-        f"{_ORCH}.lock_file_path",
-        lambda p: fake_repo / ".ahadiff" / "ahadiff.lock",
-    )
-    monkeypatch.setattr(
-        f"{_ORCH}.run_dir",
-        lambda run_id, root: fake_repo / ".ahadiff" / "runs" / run_id,
-    )
-    monkeypatch.setattr(
-        f"{_ORCH}.load_config",
-        lambda root, cli_overrides=None: _FakeConfigSnapshot(),
-    )
-    monkeypatch.setattr(f"{_ORCH}.load_security_config", lambda root: _FakeSecurityConfig())
-    monkeypatch.setattr(f"{_ORCH}.resolve_locale", lambda **kw: "en")
+
+    def _find_repo_root(_path: Path) -> Path:
+        return fake_repo
+
+    def _find_workspace_root(_path: Path) -> Path:
+        return fake_repo
+
+    def _assert_local_repo_path(_path: Path) -> None:
+        return None
+
+    def _lock_file_path(_path: Path) -> Path:
+        return fake_repo / ".ahadiff" / "ahadiff.lock"
+
+    def _run_dir(run_id: str, _root: Path) -> Path:
+        return fake_repo / ".ahadiff" / "runs" / run_id
+
+    def _load_config(
+        _root: Path,
+        cli_overrides: dict[str, object] | None = None,
+    ) -> _FakeConfigSnapshot:
+        return _FakeConfigSnapshot()
+
+    def _load_security_config(_root: Path) -> _FakeSecurityConfig:
+        return _FakeSecurityConfig()
+
+    def _resolve_locale(**kwargs: object) -> str:
+        return "en"
+
+    monkeypatch.setattr(f"{_ORCH}.find_repo_root", _find_repo_root)
+    monkeypatch.setattr(f"{_ORCH}.find_workspace_root", _find_workspace_root)
+    monkeypatch.setattr(f"{_ORCH}.assert_local_repo_path", _assert_local_repo_path)
+    monkeypatch.setattr(f"{_ORCH}.lock_file_path", _lock_file_path)
+    monkeypatch.setattr(f"{_ORCH}.run_dir", _run_dir)
+    monkeypatch.setattr(f"{_ORCH}.load_config", _load_config)
+    monkeypatch.setattr(f"{_ORCH}.load_security_config", _load_security_config)
+    monkeypatch.setattr(f"{_ORCH}.resolve_locale", _resolve_locale)
 
 
 def _patch_capture(monkeypatch: pytest.MonkeyPatch, fake_repo: Path) -> _FakeCapture:
     """Patch Step 2: capture_patch + write_input_artifacts (local imports)."""
     capture = _FakeCapture(state_dir=fake_repo / ".ahadiff")
-    monkeypatch.setattr(f"{_GIT_CAPTURE}.capture_patch", lambda **kw: capture)
-    monkeypatch.setattr(f"{_GIT_CAPTURE}.write_input_artifacts", lambda cap: None)
+
+    def _capture_patch(**kwargs: object) -> _FakeCapture:
+        return capture
+
+    def _write_input_artifacts(_capture: _FakeCapture) -> None:
+        return None
+
+    monkeypatch.setattr(f"{_GIT_CAPTURE}.capture_patch", _capture_patch)
+    monkeypatch.setattr(f"{_GIT_CAPTURE}.write_input_artifacts", _write_input_artifacts)
     monkeypatch.setattr(f"{_GIT_REPO}.repo_write_lock", _fake_repo_write_lock)
     return capture
 
@@ -226,12 +259,20 @@ def _patch_learnability(
     skip: bool = False,
 ) -> None:
     """Patch Step 3: assess_learnability (local import)."""
-    monkeypatch.setattr(
-        f"{_LEARNABILITY}.assess_learnability",
-        lambda text, threshold=0.3, force_learn=False: _FakeLearnabilityAssessment(
+
+    def _assess_learnability(
+        _text: str,
+        threshold: float = 0.3,
+        force_learn: bool = False,
+    ) -> _FakeLearnabilityAssessment:
+        return _FakeLearnabilityAssessment(
             score=score,
             skip_lesson_quiz=skip,
-        ),
+        )
+
+    monkeypatch.setattr(
+        f"{_LEARNABILITY}.assess_learnability",
+        _assess_learnability,
     )
 
 
@@ -243,13 +284,14 @@ def _patch_completed_pipeline(
     on_generate_cards: Callable[[], None] | None = None,
     on_persist: Callable[[Path], None] | None = None,
 ) -> None:
-    fake_provider = MagicMock()
-    fake_provider.base_url = "http://localhost:11434"
-    fake_provider.api_key_env = "FAKE_KEY"
-    fake_provider.provider_class = "ollama"
+    def _resolve_provider_from_config(
+        **kwargs: object,
+    ) -> tuple[_FakeProviderConfig, str, str, bool]:
+        return _FakeProviderConfig(), "key", "local", False
+
     monkeypatch.setattr(
         f"{_ORCH}._resolve_provider_from_config",
-        lambda **kw: (fake_provider, "key", "local", False),
+        _resolve_provider_from_config,
     )
 
     @dataclass
@@ -278,23 +320,54 @@ def _patch_completed_pipeline(
         f"{_CLAIMS_RUNTIME}.extract_claim_candidates_from_run",
         _extract_claim_candidates_from_run,
     )
-    monkeypatch.setattr(f"{_CLAIMS_EXTRACT}.load_claim_candidates", lambda p, **kw: ["claim"])
-    monkeypatch.setattr(f"{_CLAIMS_EXTRACT}.load_line_map_records", lambda p: [])
-    monkeypatch.setattr(f"{_CLAIMS_EXTRACT}.load_symbol_records", lambda p: [])
-    monkeypatch.setattr(f"{_CLAIMS_EXTRACT}.load_text_map", lambda p, expected_artifact="": {})
+
+    def _load_claim_candidates(_path: Path, **kwargs: object) -> list[str]:
+        return ["claim"]
+
+    def _load_line_map_records(_path: Path) -> list[object]:
+        return []
+
+    def _load_symbol_records(_path: Path) -> list[object]:
+        return []
+
+    def _load_text_map(_path: Path, expected_artifact: str = "") -> dict[str, str]:
+        return {}
+
+    def _verify_claim_candidates(
+        _candidates: object,
+        **kwargs: object,
+    ) -> list[_FakeVerifiedClaim]:
+        return [_FakeVerifiedClaim()]
+
+    def _generate_lessons_from_run(**kwargs: object) -> None:
+        return None
+
+    def _generate_quiz_from_run(**kwargs: object) -> tuple[Path, list[object]]:
+        return fake_repo / ".ahadiff" / "runs" / capture.run_id / "quiz.json", []
+
+    def _evaluate_run(_run_path: Path) -> MagicMock:
+        return fake_report
+
+    monkeypatch.setattr(f"{_CLAIMS_EXTRACT}.load_claim_candidates", _load_claim_candidates)
+    monkeypatch.setattr(f"{_CLAIMS_EXTRACT}.load_line_map_records", _load_line_map_records)
+    monkeypatch.setattr(f"{_CLAIMS_EXTRACT}.load_symbol_records", _load_symbol_records)
+    monkeypatch.setattr(f"{_CLAIMS_EXTRACT}.load_text_map", _load_text_map)
     monkeypatch.setattr(
         f"{_CLAIMS_VERIFY}.verify_claim_candidates",
-        lambda candidates, **kw: [_FakeVerifiedClaim()],
+        _verify_claim_candidates,
     )
     monkeypatch.setattr(
         f"{_CLAIMS_EXTRACT}.write_verified_claims_jsonl",
         _write_verified_claims_jsonl,
     )
 
-    monkeypatch.setattr("ahadiff.lesson.generator.generate_lessons_from_run", lambda **kw: None)
+    monkeypatch.setattr(
+        "ahadiff.lesson.generator.generate_lessons_from_run",
+        _generate_lessons_from_run,
+    )
     monkeypatch.setattr(
         "ahadiff.quiz.generator.generate_quiz_from_run",
-        lambda **kw: (fake_repo / ".ahadiff" / "runs" / capture.run_id / "quiz.json", []),
+        _generate_quiz_from_run,
     )
 
     def _generate_cards_for_run(**kw: object) -> None:
@@ -307,7 +380,7 @@ def _patch_completed_pipeline(
     fake_report.overall = 91.0
     fake_report.verdict = "PASS"
     fake_report.weakest_dim = "safety"
-    monkeypatch.setattr("ahadiff.eval.evaluator.evaluate_run", lambda run_path: fake_report)
+    monkeypatch.setattr("ahadiff.eval.evaluator.evaluate_run", _evaluate_run)
 
     def _persist(
         *,
@@ -330,7 +403,11 @@ def _patch_completed_pipeline(
         return fake_outcome, []
 
     monkeypatch.setattr(f"{_ORCH}._persist_evaluated_run_sync", _persist)
-    monkeypatch.setattr("ahadiff.core.registry.register_repo", lambda *args, **kwargs: None)
+
+    def _register_repo(*args: object, **kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr("ahadiff.core.registry.register_repo", _register_repo)
 
 
 # ---------------------------------------------------------------------------
@@ -345,11 +422,14 @@ def test_dry_run_returns_early(
     _patch_config_and_paths(monkeypatch, fake_repo)
     _patch_capture(monkeypatch, fake_repo)
     _patch_learnability(monkeypatch, score=0.7)
-    register_calls: list[tuple[object, object]] = []
+    register_calls: list[tuple[Path, Path]] = []
+
+    def _register_repo(root: Path, state_dir: Path) -> None:
+        register_calls.append((root, state_dir))
 
     monkeypatch.setattr(
         "ahadiff.core.registry.register_repo",
-        lambda root, state_dir: register_calls.append((root, state_dir)),
+        _register_repo,
     )
 
     req = LearnRequest(workspace_root=fake_repo, dry_run=True)
@@ -368,11 +448,14 @@ def test_learnability_skip_returns_early(
     _patch_config_and_paths(monkeypatch, fake_repo)
     _patch_capture(monkeypatch, fake_repo)
     _patch_learnability(monkeypatch, score=0.1, skip=True)
-    register_calls: list[tuple[object, object]] = []
+    register_calls: list[tuple[Path, Path]] = []
+
+    def _register_repo(root: Path, state_dir: Path) -> None:
+        register_calls.append((root, state_dir))
 
     monkeypatch.setattr(
         "ahadiff.core.registry.register_repo",
-        lambda root, state_dir: register_calls.append((root, state_dir)),
+        _register_repo,
     )
 
     req = LearnRequest(workspace_root=fake_repo)
@@ -430,21 +513,25 @@ def test_no_verified_claims_skip(
     _patch_config_and_paths(monkeypatch, fake_repo)
     capture = _patch_capture(monkeypatch, fake_repo)
     _patch_learnability(monkeypatch, score=0.7)
-    register_calls: list[tuple[object, object]] = []
+    register_calls: list[tuple[Path, Path]] = []
+
+    def _register_repo(root: Path, state_dir: Path) -> None:
+        register_calls.append((root, state_dir))
 
     monkeypatch.setattr(
         "ahadiff.core.registry.register_repo",
-        lambda root, state_dir: register_calls.append((root, state_dir)),
+        _register_repo,
     )
 
     # Step 4: provider resolution (orchestrator internal helper, module-level)
-    fake_provider = MagicMock()
-    fake_provider.base_url = "http://localhost:11434"
-    fake_provider.api_key_env = "FAKE_KEY"
-    fake_provider.provider_class = "ollama"
+    def _resolve_provider_from_config(
+        **kwargs: object,
+    ) -> tuple[_FakeProviderConfig, str, str, bool]:
+        return _FakeProviderConfig(), "key", "local", False
+
     monkeypatch.setattr(
         f"{_ORCH}._resolve_provider_from_config",
-        lambda **kw: (fake_provider, "key", "local", False),
+        _resolve_provider_from_config,
     )
 
     # Step 5: claims — produce 0 verified
@@ -456,21 +543,49 @@ def test_no_verified_claims_skip(
     class _FakeVerifiedClaim:
         record: _FakeClaimRecord = field(default_factory=_FakeClaimRecord)
 
+    def _extract_claim_candidates_from_run(**kwargs: object) -> tuple[Path, int]:
+        return fake_repo / ".ahadiff" / "runs" / capture.run_id / "claims.raw.jsonl", 3
+
+    def _load_claim_candidates(_path: Path, **kwargs: object) -> list[object]:
+        return []
+
+    def _load_line_map_records(_path: Path) -> list[object]:
+        return []
+
+    def _load_symbol_records(_path: Path) -> list[object]:
+        return []
+
+    def _load_text_map(_path: Path, expected_artifact: str = "") -> dict[str, str]:
+        return {}
+
+    def _verify_claim_candidates(
+        _candidates: object,
+        **kwargs: object,
+    ) -> list[_FakeVerifiedClaim]:
+        return [_FakeVerifiedClaim()]
+
+    def _write_verified_claims_jsonl(
+        _path: Path,
+        _verified: object,
+        overwrite: bool = False,
+    ) -> None:
+        return None
+
     monkeypatch.setattr(
         f"{_CLAIMS_RUNTIME}.extract_claim_candidates_from_run",
-        lambda **kw: (fake_repo / ".ahadiff" / "runs" / capture.run_id / "claims.raw.jsonl", 3),
+        _extract_claim_candidates_from_run,
     )
-    monkeypatch.setattr(f"{_CLAIMS_EXTRACT}.load_claim_candidates", lambda p, **kw: [])
-    monkeypatch.setattr(f"{_CLAIMS_EXTRACT}.load_line_map_records", lambda p: [])
-    monkeypatch.setattr(f"{_CLAIMS_EXTRACT}.load_symbol_records", lambda p: [])
-    monkeypatch.setattr(f"{_CLAIMS_EXTRACT}.load_text_map", lambda p, expected_artifact="": {})
+    monkeypatch.setattr(f"{_CLAIMS_EXTRACT}.load_claim_candidates", _load_claim_candidates)
+    monkeypatch.setattr(f"{_CLAIMS_EXTRACT}.load_line_map_records", _load_line_map_records)
+    monkeypatch.setattr(f"{_CLAIMS_EXTRACT}.load_symbol_records", _load_symbol_records)
+    monkeypatch.setattr(f"{_CLAIMS_EXTRACT}.load_text_map", _load_text_map)
     monkeypatch.setattr(
         f"{_CLAIMS_VERIFY}.verify_claim_candidates",
-        lambda candidates, **kw: [_FakeVerifiedClaim()],
+        _verify_claim_candidates,
     )
     monkeypatch.setattr(
         f"{_CLAIMS_EXTRACT}.write_verified_claims_jsonl",
-        lambda p, v, overwrite=False: None,
+        _write_verified_claims_jsonl,
     )
 
     req = LearnRequest(workspace_root=fake_repo)
@@ -586,7 +701,12 @@ def test_persist_evaluated_run_rollback(
     tmp_path: Path,
 ) -> None:
     """_persist_evaluated_run_sync should rollback on publish failure."""
-    from ahadiff.core.orchestrator import _persist_evaluated_run_sync
+    import ahadiff.core.orchestrator as orchestrator_module
+
+    _persist_evaluated_run_sync = cast(
+        "Callable[..., tuple[Any, list[str]]]",
+        vars(orchestrator_module)["_persist_evaluated_run_sync"],
+    )
 
     fake_report = MagicMock()
     fake_report.overall = 85.0
@@ -610,14 +730,23 @@ def test_persist_evaluated_run_rollback(
 
     rollback_called = False
 
-    def _mock_rollback(*, run_path: Any, event_id: str) -> None:
+    def _mock_rollback(*, run_path: Path, event_id: str) -> None:
         nonlocal rollback_called
         rollback_called = True
 
     # _persist_evaluated_run_sync does local imports from eval.ratchet / eval.results
-    monkeypatch.setattr(f"{_EVAL_RATCHET}.decide_learn_ratchet", lambda **kw: fake_decision)
-    monkeypatch.setattr(f"{_EVAL_RESULTS}.load_result_events", lambda p: [])
-    monkeypatch.setattr(f"{_EVAL_RESULTS}.append_result", lambda **kw: fake_outcome)
+    def _decide_learn_ratchet(**kwargs: object) -> MagicMock:
+        return fake_decision
+
+    def _load_result_events(_path: Path) -> list[object]:
+        return []
+
+    def _append_result(**kwargs: object) -> MagicMock:
+        return fake_outcome
+
+    monkeypatch.setattr(f"{_EVAL_RATCHET}.decide_learn_ratchet", _decide_learn_ratchet)
+    monkeypatch.setattr(f"{_EVAL_RESULTS}.load_result_events", _load_result_events)
+    monkeypatch.setattr(f"{_EVAL_RESULTS}.append_result", _append_result)
     monkeypatch.setattr(
         f"{_EVAL_RESULTS}.publish_result_artifacts",
         MagicMock(side_effect=OSError("disk full")),

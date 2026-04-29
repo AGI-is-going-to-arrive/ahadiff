@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 import anyio
 import httpx
 import pytest
+from anyio.to_thread import run_sync as run_sync_in_thread
 from starlette.testclient import TestClient
 
+from ahadiff.contracts.serve_runtime import TaskInfoResponse, TaskSubmitResponse
 from ahadiff.core.orchestrator import LearnRequest, LearnResult
 from ahadiff.serve import ServeState, create_app
 
@@ -34,7 +36,7 @@ def _post_learn(
     *,
     token: str = "test-token",
     content_type: str = "application/json",
-) -> object:
+) -> httpx.Response:
     """Helper: POST /api/learn with correct auth + origin headers."""
     headers = {
         "X-AhaDiff-Token": token,
@@ -50,6 +52,19 @@ def _post_learn(
     )
 
 
+def _json_object(response: httpx.Response) -> dict[str, object]:
+    payload = response.json()
+    assert isinstance(payload, dict)
+    return cast("dict[str, object]", payload)
+
+
+def _task_id_from(response: httpx.Response) -> str:
+    payload = TaskSubmitResponse.model_validate(_json_object(response))
+    task_id = payload.task_id
+    assert isinstance(task_id, str)
+    return task_id
+
+
 def _wait_for_task(
     client: TestClient,
     task_id: str,
@@ -62,7 +77,8 @@ def _wait_for_task(
     while time.monotonic() < deadline:
         resp = client.get(f"/api/tasks/{task_id}")
         assert resp.status_code == 200
-        payload = resp.json()
+        payload = _json_object(resp)
+        TaskInfoResponse.model_validate(payload)
         last_payload = payload
         if payload["status"] == expected_status:
             return payload
@@ -105,7 +121,7 @@ def test_post_learn_invalid_json(tmp_path: Path) -> None:
     client = _client(tmp_path)
     resp = _post_learn(client, body=None)
     assert resp.status_code == 400
-    assert resp.json()["error"] == "invalid_json"
+    assert _json_object(resp)["error"] == "invalid_json"
 
 
 def test_post_learn_body_must_be_object(tmp_path: Path) -> None:
@@ -120,7 +136,7 @@ def test_post_learn_body_must_be_object(tmp_path: Path) -> None:
         },
     )
     assert resp.status_code == 400
-    assert resp.json()["error"] == "body_must_be_object"
+    assert _json_object(resp)["error"] == "body_must_be_object"
 
 
 # ---------------------------------------------------------------------------
@@ -132,7 +148,7 @@ def test_post_learn_returns_202_with_task_id(tmp_path: Path) -> None:
     client = _client(tmp_path)
     resp = _post_learn(client, body={})
     assert resp.status_code == 202
-    data = resp.json()
+    data = _json_object(resp)
     assert "task_id" in data
     assert isinstance(data["task_id"], str)
     assert len(data["task_id"]) > 0
@@ -149,7 +165,7 @@ def test_post_learn_with_valid_fields(tmp_path: Path) -> None:
         },
     )
     assert resp.status_code == 202
-    assert "task_id" in resp.json()
+    assert "task_id" in _json_object(resp)
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +185,7 @@ def test_post_learn_ignores_unknown_fields(tmp_path: Path) -> None:
         },
     )
     assert resp.status_code == 202
-    assert "task_id" in resp.json()
+    assert "task_id" in _json_object(resp)
 
 
 def test_post_learn_filters_none_values(tmp_path: Path) -> None:
@@ -194,7 +210,7 @@ def test_post_learn_empty_body_accepted(tmp_path: Path) -> None:
     client = _client(tmp_path)
     resp = _post_learn(client, body={})
     assert resp.status_code == 202
-    data = resp.json()
+    data = _json_object(resp)
     assert "task_id" in data
 
 
@@ -207,11 +223,14 @@ def test_post_learn_task_visible_in_tasks_list(tmp_path: Path) -> None:
     client = _client(tmp_path)
     resp = _post_learn(client, body={})
     assert resp.status_code == 202
-    task_id = resp.json()["task_id"]
+    task_id = _task_id_from(resp)
 
     tasks_resp = client.get("/api/tasks")
     assert tasks_resp.status_code == 200
-    task_ids = [t["task_id"] for t in tasks_resp.json()["tasks"]]
+    tasks_value = _json_object(tasks_resp)["tasks"]
+    assert isinstance(tasks_value, list)
+    tasks = cast("list[dict[str, object]]", tasks_value)
+    task_ids = [task["task_id"] for task in tasks]
     assert task_id in task_ids
 
 
@@ -250,7 +269,7 @@ def test_post_learn_queue_depth_limit(tmp_path: Path, monkeypatch: pytest.Monkey
     client = _client(tmp_path)
     resp = _post_learn(client, body={})
     assert resp.status_code == 503
-    assert resp.json()["error"] == "too_many_pending_learn_tasks"
+    assert _json_object(resp)["error"] == "too_many_pending_learn_tasks"
 
 
 # ---------------------------------------------------------------------------
@@ -295,7 +314,7 @@ def test_post_learn_coerces_falsey_bool_strings(
     )
     assert resp.status_code == 202
 
-    info = _wait_for_task(client, resp.json()["task_id"], expected_status="completed")
+    info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
     assert info["result"] is not None
     assert captured == {
         "dry_run": False,
@@ -333,11 +352,12 @@ def test_post_learn_coerces_path_pair_fields(
     resp = _post_learn(client, body={field: list(expected)})
     assert resp.status_code == 202
 
-    info = _wait_for_task(client, resp.json()["task_id"], expected_status="completed")
+    info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
     assert info["result"] is not None
     pair = captured[field]
     assert isinstance(pair, tuple)
-    assert tuple(str(part) for part in pair) == expected
+    path_pair = cast("tuple[Path, Path]", pair)
+    assert tuple(str(part) for part in path_pair) == expected
 
 
 def test_post_learn_rejects_stdin_patch_mode(tmp_path: Path) -> None:
@@ -368,7 +388,7 @@ def test_post_learn_rejects_invalid_values(
     client = _client(tmp_path)
     resp = _post_learn(client, body=body)
     assert resp.status_code == 422
-    assert resp.json()["error"] == error
+    assert _json_object(resp)["error"] == error
 
 
 @pytest.mark.anyio
@@ -436,7 +456,7 @@ def test_post_learn_completed_task_preserves_result(
     resp = _post_learn(client, body={})
     assert resp.status_code == 202
 
-    info = _wait_for_task(client, resp.json()["task_id"], expected_status="completed")
+    info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
     assert info["result"] == {
         "run_id": "run-complete",
         "status": "keep",
@@ -445,6 +465,141 @@ def test_post_learn_completed_task_preserves_result(
         "weakest_dim": "conciseness",
         "warnings": ["warn-1"],
     }
+
+
+# ---------------------------------------------------------------------------
+# Phase 6B: error_code + elapsed_seconds in task responses
+# ---------------------------------------------------------------------------
+
+
+def test_completed_task_has_elapsed_seconds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run_learn_pipeline(request: LearnRequest, **_: object) -> LearnResult:
+        return LearnResult(run_id="run-elapsed", status="completed")
+
+    monkeypatch.setattr(
+        "ahadiff.core.orchestrator.run_learn_pipeline",
+        fake_run_learn_pipeline,
+    )
+
+    client = _client(tmp_path)
+    resp = _post_learn(client, body={})
+    assert resp.status_code == 202
+
+    info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
+    assert "elapsed_seconds" in info
+    assert isinstance(info["elapsed_seconds"], float)
+    assert info["elapsed_seconds"] >= 0
+
+
+def test_failed_task_has_error_code(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run_learn_pipeline(request: LearnRequest, **_: object) -> LearnResult:
+        raise RuntimeError("claim extraction failed: parse error")
+
+    monkeypatch.setattr(
+        "ahadiff.core.orchestrator.run_learn_pipeline",
+        fake_run_learn_pipeline,
+    )
+
+    client = _client(tmp_path)
+    resp = _post_learn(client, body={})
+    assert resp.status_code == 202
+
+    info = _wait_for_task(client, _task_id_from(resp), expected_status="failed")
+    assert info["error_code"] == "claim_error"
+    assert "claim" in str(info["error"]).lower()
+    assert "elapsed_seconds" in info
+
+
+@pytest.mark.anyio
+async def test_post_learn_thread_task_does_not_scheduler_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AHADIFF_DEFAULT_TASK_TIMEOUT_SECONDS", "0.05")
+    started = threading.Event()
+    release = threading.Event()
+    artifact_path = tmp_path / "thread-finished.txt"
+
+    def fake_run_learn_pipeline(request: LearnRequest, **_: object) -> LearnResult:
+        started.set()
+        release.wait(timeout=1.0)
+        artifact_path.write_text("finished\n", encoding="utf-8")
+        return LearnResult(run_id="run-thread", status="completed")
+
+    monkeypatch.setattr(
+        "ahadiff.core.orchestrator.run_learn_pipeline",
+        fake_run_learn_pipeline,
+    )
+
+    app = create_app(ServeState(state_dir=tmp_path, token="test-token", locale="en"))
+    transport = httpx.ASGITransport(app=app)
+    headers = {
+        "X-AhaDiff-Token": "test-token",
+        "origin": "http://localhost:8765",
+    }
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost:8765") as client:
+        resp = await client.post("/api/learn", json={}, headers=headers)
+        assert resp.status_code == 202
+        task_id = _task_id_from(resp)
+
+        try:
+            assert await run_sync_in_thread(lambda: started.wait(timeout=1.0))
+            await anyio.sleep(0.15)
+
+            running_resp = await client.get(f"/api/tasks/{task_id}")
+            assert running_resp.status_code == 200
+            running_info = _json_object(running_resp)
+            assert running_info["status"] == "running"
+            assert running_info["error_code"] is None
+            assert not artifact_path.exists()
+        finally:
+            release.set()
+
+        deadline = time.monotonic() + 2.0
+        last_payload: dict[str, object] | None = None
+        while time.monotonic() < deadline:
+            info_resp = await client.get(f"/api/tasks/{task_id}")
+            assert info_resp.status_code == 200
+            payload = _json_object(info_resp)
+            last_payload = payload
+            if payload["status"] == "completed":
+                break
+            await anyio.sleep(0.02)
+        else:
+            raise AssertionError(f"task did not complete; last payload={last_payload!r}")
+
+    assert last_payload is not None
+    assert last_payload["error_code"] is None
+    assert last_payload["result"] is not None
+    assert artifact_path.read_text(encoding="utf-8") == "finished\n"
+
+
+def test_successful_task_error_code_is_none(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run_learn_pipeline(request: LearnRequest, **_: object) -> LearnResult:
+        return LearnResult(run_id="run-ok", status="completed")
+
+    monkeypatch.setattr(
+        "ahadiff.core.orchestrator.run_learn_pipeline",
+        fake_run_learn_pipeline,
+    )
+
+    client = _client(tmp_path)
+    resp = _post_learn(client, body={})
+    assert resp.status_code == 202
+
+    info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
+    assert info["error_code"] is None
+    assert info["error"] is None
 
 
 __all__: list[str] = []

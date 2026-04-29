@@ -253,6 +253,21 @@ def _has_windows_reparse_point(path_stat: object) -> bool:
     return bool(getattr(path_stat, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT)
 
 
+def reject_leaf_symlink_or_reparse(path: Path, *, label: str = "file") -> os.stat_result:
+    """lstat a leaf path and reject symlinks / Windows reparse points."""
+    try:
+        leaf_stat = path.lstat()
+    except FileNotFoundError:
+        raise InputError(f"{label} does not exist: {path}") from None
+    except OSError as exc:
+        raise StorageError(f"{label} is unreadable: {path}") from exc
+    if stat.S_ISLNK(leaf_stat.st_mode):
+        raise InputError(f"{label} must not be a symlink")
+    if _has_windows_reparse_point(leaf_stat):
+        raise InputError(f"{label} must not be a Windows reparse point or junction")
+    return leaf_stat
+
+
 def repo_config_path(repo_root: Path | None = None) -> Path:
     return project_state_dir(repo_root) / "config.toml"
 
@@ -302,6 +317,7 @@ __all__ = [
     "path_identity_key",
     "private_audit_log_path",
     "project_state_dir",
+    "reject_leaf_symlink_or_reparse",
     "repo_config_path",
     "review_db_path",
     "run_dir",

@@ -128,4 +128,45 @@ def _pk_column(source_table: str) -> str:
     return "rowid"
 
 
-__all__ = ["SearchResult", "search_all"]
+def _normalize_fts_rank(rank: float) -> float:
+    return 1.0 - 1.0 / (1.0 + abs(rank))
+
+
+def search_all_with_graph(
+    db_path: Path,
+    query: str,
+    *,
+    limit: int = 50,
+    tables: Sequence[str] | None = None,
+    graph: object | None = None,
+) -> tuple[SearchResult, ...]:
+    fts_raw = search_all(db_path, query, limit=limit, tables=tables)
+    merged: list[SearchResult] = [
+        SearchResult(
+            source_table=r.source_table,
+            primary_key=r.primary_key,
+            snippet=r.snippet,
+            rank=_normalize_fts_rank(r.rank),
+        )
+        for r in fts_raw
+    ]
+
+    if graph is not None and (tables is None or "graph_nodes" in tables):
+        from ahadiff.graphify.search import search_graph_nodes
+
+        graph_results = search_graph_nodes(graph, query, limit=limit)  # type: ignore[arg-type]
+        for gr in graph_results:
+            merged.append(
+                SearchResult(
+                    source_table="graph_nodes",
+                    primary_key=gr.node_id,
+                    snippet=gr.label,
+                    rank=gr.score,
+                )
+            )
+
+    merged.sort(key=lambda r: r.rank, reverse=True)
+    return tuple(merged[:limit])
+
+
+__all__ = ["SearchResult", "search_all", "search_all_with_graph"]

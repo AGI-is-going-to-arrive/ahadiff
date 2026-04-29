@@ -7,6 +7,11 @@ from typing import TYPE_CHECKING, Any
 
 from starlette.responses import JSONResponse, StreamingResponse
 
+from ahadiff.contracts.serve_runtime import (
+    TaskCancelResponse,
+    TaskInfoResponse,
+    TaskListResponse,
+)
 from ahadiff.core.task_runner import TaskStatus
 
 from .auth import require_write_token, serve_state
@@ -39,7 +44,19 @@ def _unpin_task(runner: Any, task_id: str) -> None:
 def _serialize_task(info: Any) -> dict[str, Any]:
     d = asdict(info)
     d["status"] = info.status.value
-    return d
+    if info.started_at:
+        from datetime import UTC, datetime
+
+        try:
+            started = datetime.fromisoformat(info.started_at)
+            if info.completed_at:
+                ended = datetime.fromisoformat(info.completed_at)
+            else:
+                ended = datetime.now(UTC)
+            d["elapsed_seconds"] = round((ended - started).total_seconds(), 1)
+        except (ValueError, TypeError):
+            pass
+    return TaskInfoResponse.model_validate(d).model_dump(mode="json")
 
 
 async def list_tasks(request: Request) -> JSONResponse:
@@ -47,7 +64,9 @@ async def list_tasks(request: Request) -> JSONResponse:
     if runner is None:
         return JSONResponse({"tasks": []})
     tasks = runner.list_tasks()
-    return JSONResponse({"tasks": [_serialize_task(t) for t in tasks]})
+    task_payloads = [TaskInfoResponse.model_validate(_serialize_task(t)) for t in tasks]
+    payload = TaskListResponse(tasks=task_payloads)
+    return JSONResponse(payload.model_dump(mode="json"))
 
 
 async def get_task(request: Request) -> JSONResponse:
@@ -58,7 +77,8 @@ async def get_task(request: Request) -> JSONResponse:
     info = runner.get_task(task_id)
     if info is None:
         return JSONResponse({"error": "not_found", "status": 404}, status_code=404)
-    return JSONResponse(_serialize_task(info))
+    payload = TaskInfoResponse.model_validate(_serialize_task(info))
+    return JSONResponse(payload.model_dump(mode="json"))
 
 
 async def cancel_task(request: Request) -> JSONResponse:
@@ -70,7 +90,7 @@ async def cancel_task(request: Request) -> JSONResponse:
     cancelled = runner.cancel_task(task_id)
     if not cancelled:
         return JSONResponse({"error": "not_found", "status": 404}, status_code=404)
-    return JSONResponse({"cancelled": True})
+    return JSONResponse(TaskCancelResponse(cancelled=True).model_dump(mode="json"))
 
 
 async def task_progress_sse(request: Request) -> StreamingResponse:

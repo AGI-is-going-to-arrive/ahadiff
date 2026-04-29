@@ -105,10 +105,17 @@ def _is_finalized_run_dir(path: Path) -> bool:
 
 def _count_concepts_jsonl(state_dir: Path) -> int:
     """Count lines in concepts.jsonl."""
+    import stat as stat_mod
+
     concepts_path = state_dir / "concepts.jsonl"
     if not concepts_path.is_file():
         return 0
     try:
+        leaf_stat = concepts_path.lstat()
+        if stat_mod.S_ISLNK(leaf_stat.st_mode):
+            return 0
+        if bool(getattr(leaf_stat, "st_file_attributes", 0) & 0x400):
+            return 0
         count = 0
         with concepts_path.open(encoding="utf-8", errors="replace") as fh:
             for line in fh:

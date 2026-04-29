@@ -13,6 +13,8 @@ The review body below is preserved as the original independent review. Current c
 - `lesson_hint.md` is now part of the explicit 5-file mutable prompt allowlist.
 - `session_id` is validated before file access and payload load; traversal and hidden-name inputs are rejected.
 - replay subprocesses now have a 30-minute timeout.
+- improve session JSON now persists `outcome_statuses`, `interrupted_round`, and `interrupted_stage`; older JSON missing those fields still loads as `None`/empty defaults.
+- `--resume` now distinguishes an interrupted worktree it can safely clean up from a generic pending worktree that must still be rejected.
 - discard and pending-conflict runs do not write `finalized.json`; pending-conflict runs are also excluded from the next improve baseline.
 - Task 17 targeted verification and Phase 2.5 runtime have since landed. `keep_final` still remains the manual full 8-dimension recheck path through `db finalize-targeted`.
 - prompt writes are temp+replace, cherry-pick non-conflict failures raise `InputError`, worktree fallback cleanup prunes git worktree metadata, volatile staged/unstaged replay uses the saved `patch.diff`, `--rounds` is capped at 20, and null-byte LLM content is rejected.
@@ -24,9 +26,10 @@ Current live verification from this session:
 |---------|--------|
 | `pytest tests/unit/test_targeted_verify.py tests/unit/test_phase25.py tests/unit/test_improve_loop.py tests/unit/test_ratchet.py tests/unit/test_results.py tests/unit/test_probe.py -q` | 56 passed |
 | `AHADIFF_LIVE_LLM_JUDGE=1 ... pytest tests/live/test_llm_judge_live.py -q` | 1 passed |
-| `pytest tests/unit -q` | 406 passed |
-| `pytest tests -q` | 406 passed, 1 skipped |
-| `ruff check src tests` / `ruff format --check src tests` / `pyright` / `uv build --wheel` | passed |
+| `UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pytest tests -q --tb=long` | 1420 passed, 1 skipped |
+| `UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pytest --cov=src/ahadiff --cov-report=term-missing --cov-fail-under=85 tests -q --tb=long` | 1420 passed, 1 skipped; total coverage 87.37% |
+| `UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pyright` | 0 errors, 0 warnings, 0 informations |
+| `ruff check src tests` / `ruff format --check src tests` / `uv build --wheel` | passed |
 | `python -m ahadiff provider test --help` | passed |
 
 ---
@@ -78,10 +81,10 @@ Current live verification from this session:
 **Verdict: PASS -- solid design**
 
 - Session file: JSON at `.ahadiff/improve/<session_id>.json` (`program.py:72-73`).
-- Fields persisted: `session_id, suite, anchor_run_id, phase25_attempted, rounds_completed, worktree_path, created_at, updated_at, last_status` (`program.py:32-41`).
+- Fields persisted: `session_id, suite, anchor_run_id, phase25_attempted, rounds_completed, worktree_path, created_at, updated_at, last_status, outcome_statuses, interrupted_round, interrupted_stage` (`program.py:43-56`).
 - Atomic write via temp-then-rename pattern (`program.py:79-87`).
 - Crash safety: `rounds_completed` is updated AFTER each round completes, so on crash resume starts from last completed + 1 (`loop.py:161`).
-- Pending worktree detection on resume: `loop.py:150-151` checks if `session.worktree_path` exists and raises `InputError` if so.
+- Pending worktree detection on resume: if `interrupted_round` + `interrupted_stage` are present, resume can first decide whether to clean up and continue; otherwise an existing `session.worktree_path` still raises `InputError`.
 
 ### Finding C-1 [Medium] Session does not record round-level outcomes
 

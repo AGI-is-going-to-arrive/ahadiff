@@ -52,6 +52,8 @@ class ImproveSessionState:
     updated_at: str
     last_status: str | None = None
     outcome_statuses: tuple[str, ...] = ()
+    interrupted_round: int | None = None
+    interrupted_stage: str | None = None
 
 
 def mutable_prompt_names() -> tuple[str, ...]:
@@ -151,6 +153,8 @@ def load_improve_session(state_dir: Path, session_id: str) -> ImproveSessionStat
         updated_at=_require_string(payload_map, "updated_at"),
         last_status=_optional_string(payload_map, "last_status"),
         outcome_statuses=_load_outcome_statuses(payload_map),
+        interrupted_round=_optional_int(payload_map, "interrupted_round"),
+        interrupted_stage=_optional_string(payload_map, "interrupted_stage"),
     )
 
 
@@ -183,9 +187,17 @@ def update_improve_session(
     worktree_path: str | None | object = _UNSET,
     last_status: str | None | object = _UNSET,
     outcome_statuses: tuple[str, ...] | None = None,
+    interrupted_round: int | None | object = _UNSET,
+    interrupted_stage: str | None | object = _UNSET,
 ) -> ImproveSessionState:
     next_worktree = session.worktree_path if worktree_path is _UNSET else worktree_path
     next_status = session.last_status if last_status is _UNSET else last_status
+    next_interrupted_round = (
+        session.interrupted_round if interrupted_round is _UNSET else interrupted_round
+    )
+    next_interrupted_stage = (
+        session.interrupted_stage if interrupted_stage is _UNSET else interrupted_stage
+    )
     return ImproveSessionState(
         session_id=session.session_id,
         suite=session.suite,
@@ -201,6 +213,14 @@ def update_improve_session(
         updated_at=_utc_now(),
         last_status=next_status if isinstance(next_status, str) or next_status is None else None,
         outcome_statuses=session.outcome_statuses if outcome_statuses is None else outcome_statuses,
+        interrupted_round=(
+            next_interrupted_round if isinstance(next_interrupted_round, int) else None
+        ),
+        interrupted_stage=(
+            next_interrupted_stage
+            if isinstance(next_interrupted_stage, str) or next_interrupted_stage is None
+            else None
+        ),
     )
 
 
@@ -247,6 +267,15 @@ def _optional_string(payload: dict[str, Any], key: str) -> str | None:
         return None
     if not isinstance(value, str):
         raise InputError(f"improve session field {key!r} must be a string when present")
+    return value
+
+
+def _optional_int(payload: dict[str, Any], key: str) -> int | None:
+    value = payload.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, int):
+        raise InputError(f"improve session field {key!r} must be an integer when present")
     return value
 
 

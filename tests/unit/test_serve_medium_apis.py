@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Literal
 import pytest
 from starlette.testclient import TestClient
 
+from ahadiff.contracts.serve_runtime import SearchResponse
 from ahadiff.core.paths import (
     path_identity_key as _legacy_path_identity_key,
 )
@@ -17,7 +18,7 @@ from ahadiff.core.paths import (
 from ahadiff.serve import ServeState, create_app
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
     from pathlib import Path
 
     from _pytest.monkeypatch import MonkeyPatch
@@ -46,13 +47,17 @@ class TestSearchAPI:
         client = _client(tmp_path / ".ahadiff")
         resp = client.get("/api/search", params={"q": ""}, headers=_AUTH)
         assert resp.status_code == 200
-        assert resp.json()["results"] == []
+        body = resp.json()
+        SearchResponse.model_validate(body)
+        assert body["results"] == []
 
     def test_no_db_returns_empty(self, tmp_path: Path) -> None:
         client = _client(tmp_path / ".ahadiff")
         resp = client.get("/api/search", params={"q": "hello"}, headers=_AUTH)
         assert resp.status_code == 200
-        assert resp.json()["results"] == []
+        body = resp.json()
+        SearchResponse.model_validate(body)
+        assert body["results"] == []
 
     def test_requires_auth(self, tmp_path: Path) -> None:
         client = _client(tmp_path / ".ahadiff")
@@ -68,6 +73,54 @@ class TestSearchAPI:
         client = _client(tmp_path / ".ahadiff")
         resp = client.get("/api/search", params={"q": "x", "limit": "bad"}, headers=_AUTH)
         assert resp.status_code == 200
+
+    def test_table_filter_without_graph_nodes_does_not_load_graph(
+        self,
+        tmp_path: Path,
+        monkeypatch: MonkeyPatch,
+    ) -> None:
+        from ahadiff.serve import routes_search
+
+        def fail_load_graph(_state_dir: Path) -> object | None:
+            raise AssertionError("graph should not be loaded")
+
+        monkeypatch.setattr(routes_search, "_load_graph", fail_load_graph)
+        client = _client(tmp_path / ".ahadiff")
+
+        resp = client.get(
+            "/api/search",
+            params={"q": "x", "tables": "concepts"},
+            headers=_AUTH,
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["results"] == []
+
+    def test_default_search_defers_graph_load_into_sync_worker(
+        self,
+        tmp_path: Path,
+        monkeypatch: MonkeyPatch,
+    ) -> None:
+        from ahadiff.serve import routes_search
+
+        events: list[str] = []
+
+        async def fake_run_sync(func: Callable[[], dict[str, object]]) -> dict[str, object]:
+            events.append("run_sync")
+            return func()
+
+        def fake_load_graph(_state_dir: Path) -> object | None:
+            events.append("load_graph")
+            return None
+
+        monkeypatch.setattr(routes_search.to_thread, "run_sync", fake_run_sync)
+        monkeypatch.setattr(routes_search, "_load_graph", fake_load_graph)
+        client = _client(tmp_path / ".ahadiff")
+
+        resp = client.get("/api/search", params={"q": "x"}, headers=_AUTH)
+
+        assert resp.status_code == 200
+        assert events == ["run_sync", "load_graph"]
 
 
 # ---------------------------------------------------------------------------

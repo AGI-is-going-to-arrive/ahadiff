@@ -13,6 +13,7 @@ from ahadiff.review.database import count_concepts, initialize_review_db
 from ahadiff.wiki.concepts import (
     append_concepts,
     compute_term_key,
+    export_concepts_from_db,
     load_concepts_page,
     load_concepts_page_from_storage,
     load_visible_concepts,
@@ -140,6 +141,77 @@ def test_load_visible_concepts_filters_by_git_ancestry(tmp_path: Path) -> None:
     assert visible_at_base == ()
 
 
+def test_load_visible_concepts_accepts_valid_short_sha_from_prewarmed_ancestors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "repo"
+    workspace_root.mkdir()
+    _init_git_repo(workspace_root)
+    head_sha = _commit_file(workspace_root, "src/app.py", "value = 1\n", "base")
+    concepts_path = workspace_root / ".ahadiff" / "concepts.jsonl"
+    concepts_path.parent.mkdir(parents=True)
+    concepts_path.write_text(
+        json.dumps(
+            {
+                "term_key": "short-sha",
+                "concept": "short sha",
+                "source_refs": [head_sha[:12]],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    calls: list[str] = []
+
+    def fake_is_ancestor(_repo_root: Path, source_ref: str, _head_ref: str) -> bool:
+        calls.append(source_ref)
+        return False
+
+    monkeypatch.setattr(concepts_module, "_is_ancestor", fake_is_ancestor)
+
+    visible = load_visible_concepts(workspace_root=workspace_root, head_ref="HEAD")
+
+    assert [entry["term_key"] for entry in visible] == ["short-sha"]
+    assert calls == []
+
+
+def test_load_visible_concepts_rejects_too_short_sha_prefix_from_prewarmed_ancestors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "repo"
+    workspace_root.mkdir()
+    _init_git_repo(workspace_root)
+    head_sha = _commit_file(workspace_root, "src/app.py", "value = 1\n", "base")
+    too_short_prefix = head_sha[:3]
+    concepts_path = workspace_root / ".ahadiff" / "concepts.jsonl"
+    concepts_path.parent.mkdir(parents=True)
+    concepts_path.write_text(
+        json.dumps(
+            {
+                "term_key": "too-short-sha",
+                "concept": "too short sha",
+                "source_refs": [too_short_prefix],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    calls: list[str] = []
+
+    def fake_is_ancestor(_repo_root: Path, source_ref: str, _head_ref: str) -> bool:
+        calls.append(source_ref)
+        return False
+
+    monkeypatch.setattr(concepts_module, "_is_ancestor", fake_is_ancestor)
+
+    visible = load_visible_concepts(workspace_root=workspace_root, head_ref="HEAD")
+
+    assert visible == ()
+    assert calls == [too_short_prefix]
+
+
 def test_load_concepts_page_streams_with_line_cursor(tmp_path: Path) -> None:
     concepts_path = tmp_path / "concepts.jsonl"
     concepts_path.write_text(
@@ -197,6 +269,68 @@ def test_load_concepts_page_from_storage_syncs_jsonl_before_db_read(tmp_path: Pa
 
     assert [entry["term_key"] for entry in page.entries] == ["term-0", "term-1"]
     assert count_concepts(db_path) == 2
+
+
+def test_export_concepts_from_db_paginates_until_exhausted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    db_path = state_dir / "review.sqlite"
+    db_path.write_text("", encoding="utf-8")
+    pages: dict[str | None, tuple[dict[str, object], ...]] = {
+        None: (
+            {
+                "term_key": "term-0",
+                "concept": "term 0",
+                "created_at_utc": "a",
+                "updated_at_utc": "b",
+            },
+            {
+                "term_key": "term-1",
+                "concept": "term 1",
+                "created_at_utc": "a",
+                "updated_at_utc": "b",
+            },
+        ),
+        "term-1": (
+            {
+                "term_key": "term-2",
+                "concept": "term 2",
+                "created_at_utc": "a",
+                "updated_at_utc": "b",
+            },
+        ),
+    }
+    calls: list[tuple[int, str | None]] = []
+
+    def fake_load_concepts_from_db(
+        _db_path: Path,
+        *,
+        limit: int = 100,
+        after_term_key: str | None = None,
+    ) -> tuple[dict[str, object], ...]:
+        calls.append((limit, after_term_key))
+        return pages.get(after_term_key, ())
+
+    monkeypatch.setattr(
+        "ahadiff.review.database.load_concepts_from_db",
+        fake_load_concepts_from_db,
+    )
+
+    exported = export_concepts_from_db(state_dir)
+
+    assert exported == state_dir / "concepts.jsonl"
+    payloads = [json.loads(line) for line in exported.read_text(encoding="utf-8").splitlines()]
+    assert [payload["term_key"] for payload in payloads] == ["term-0", "term-1", "term-2"]
+    assert all("created_at_utc" not in payload for payload in payloads)
+    assert all("updated_at_utc" not in payload for payload in payloads)
+    assert calls == [
+        (1000, None),
+        (1000, "term-1"),
+        (1000, "term-2"),
+    ]
 
 
 def test_parse_jsonl_concepts_cursor_rejects_invalid_values() -> None:
@@ -290,4 +424,4 @@ def test_load_visible_concepts_streams_and_memoizes_ancestry(
     visible = load_visible_concepts(workspace_root=workspace_root, head_ref="HEAD")
 
     assert len(visible) == 10_000
-    assert calls == [head_sha]
+    assert calls == [], "batch ancestry pre-warm should avoid per-ref subprocess calls"

@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Literal
 
 from starlette.testclient import TestClient
 
+from ahadiff.contracts.serve_runtime import TaskListResponse
 from ahadiff.serve import ServeState, create_app
 
 if TYPE_CHECKING:
@@ -24,7 +25,9 @@ def test_list_tasks_empty(tmp_path: Path) -> None:
     client = _client(tmp_path)
     resp = client.get("/api/tasks")
     assert resp.status_code == 200
-    assert resp.json()["tasks"] == []
+    body = resp.json()
+    TaskListResponse.model_validate(body)
+    assert body["tasks"] == []
 
 
 def test_get_task_not_found(tmp_path: Path) -> None:

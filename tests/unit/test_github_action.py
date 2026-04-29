@@ -62,6 +62,39 @@ def _assert_platform_bootstrap_steps(workflow_text: str) -> None:
     assert "LD_LIBRARY_PATH=$RUNNER_TEMP/sqlite/lib" in workflow_text
 
 
+def _assert_repository_backend_ci_matrix(workflow: dict[str, Any]) -> None:
+    job = cast("dict[str, Any]", cast("dict[str, Any]", workflow["jobs"])["backend"])
+    strategy = cast("dict[str, Any]", job["strategy"])
+    matrix = cast("dict[str, Any]", strategy["matrix"])
+    include = cast("list[dict[str, Any]]", matrix["include"])
+
+    assert job["runs-on"] == "${{ matrix.os }}"
+    assert strategy["fail-fast"] is False
+    assert include == [
+        {"name": "ubuntu-py311", "os": "ubuntu-latest", "python_version": "3.11"},
+        {"name": "ubuntu-py312", "os": "ubuntu-latest", "python_version": "3.12"},
+        {"name": "macos-py312", "os": "macos-latest", "python_version": "3.12"},
+    ]
+
+
+def _assert_windows_runtime_guard(
+    workflow: dict[str, Any],
+    workflow_text: str,
+    *,
+    job_name: str,
+    python_version: str,
+) -> None:
+    job = cast("dict[str, Any]", cast("dict[str, Any]", workflow["jobs"])[job_name])
+    env = cast("dict[str, Any]", job["env"])
+
+    assert job["runs-on"] == "windows-latest"
+    assert env["PYTHON_VERSION"] == python_version
+    assert "shell: bash" in workflow_text
+    assert "tests/unit/test_cross_platform_static.py" in workflow_text
+    assert "test_usage_db_rejects_unsupported_sqlite_runtime" in workflow_text
+    assert "test_cli_doctor_exits_non_zero_when_sqlite_gate_fails" in workflow_text
+
+
 def test_github_action_install_default_writes_verify_only_workflow(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -166,8 +199,63 @@ def test_repository_backend_ci_uses_linux_macos_matrix() -> None:
     workflow = _load_workflow(workflow_path)
 
     assert workflow["name"] == "Backend CI"
-    _assert_linux_macos_matrix(workflow, "backend")
+    _assert_repository_backend_ci_matrix(workflow)
     _assert_platform_bootstrap_steps(workflow_text)
+    _assert_windows_runtime_guard(
+        workflow,
+        workflow_text,
+        job_name="windows-runtime",
+        python_version="3.11",
+    )
+    assert "tests/integration/test_learn_pipeline.py" in workflow_text
+
+
+def test_repository_nightly_eval_uses_job_level_live_llm_env() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    workflow_path = repo_root / ".github" / "workflows" / "nightly-eval.yml"
+    workflow = _load_workflow(workflow_path)
+
+    assert workflow["name"] == "Nightly Eval"
+    job = cast("dict[str, Any]", cast("dict[str, Any]", workflow["jobs"])["eval"])
+    env = cast("dict[str, Any]", job["env"])
+    assert env["AHADIFF_LIVE_LLM_API_KEY"] == "${{ secrets.AHADIFF_LIVE_LLM_API_KEY }}"
+    assert env["AHADIFF_LIVE_LLM_BASE_URL"] == "${{ secrets.AHADIFF_LIVE_LLM_BASE_URL }}"
+
+    steps = cast("list[dict[str, Any]]", job["steps"])
+    live_step = next(
+        step for step in steps if step.get("name") == "Run eval tests (if LLM key available)"
+    )
+    assert live_step["if"] == "env.AHADIFF_LIVE_LLM_API_KEY != ''"
+    live_env = cast("dict[str, Any]", live_step["env"])
+    assert live_env == {"AHADIFF_LIVE_LLM_JUDGE": "1"}
+
+
+def test_repository_release_gate_has_blocking_doctor_and_windows_runtime() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    workflow_path = repo_root / ".github" / "workflows" / "release.yml"
+    workflow_text = workflow_path.read_text(encoding="utf-8")
+    workflow = _load_workflow(workflow_path)
+
+    assert workflow["name"] == "Release"
+    jobs = cast("dict[str, Any]", workflow["jobs"])
+    assert "gate-linux" in jobs
+    assert "gate-windows-runtime" in jobs
+    assert "uv run python -m ahadiff doctor || true" not in workflow_text
+    assert "ahadiff doctor --repo-root ." in workflow_text
+    assert "python -m venv \"$RUNNER_TEMP/wheel-smoke\"" in workflow_text
+    assert (
+        "uv run pytest --cov=src/ahadiff --cov-report=term-missing "
+        "--cov-fail-under=85 tests -q --tb=long"
+    ) in workflow_text
+    _assert_windows_runtime_guard(
+        workflow,
+        workflow_text,
+        job_name="gate-windows-runtime",
+        python_version="3.11",
+    )
+
+    publish = cast("dict[str, Any]", jobs["publish"])
+    assert publish["needs"] == ["gate-linux", "gate-windows-runtime"]
 
 
 def test_github_action_refuses_user_workflow_without_force(tmp_path: Path) -> None:

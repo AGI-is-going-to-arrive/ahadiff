@@ -1347,6 +1347,54 @@ def test_run_improve_loop_resume_rejects_pending_worktree_without_mutation(
     assert pending_worktree.exists()
 
 
+def test_run_improve_loop_resume_cleans_own_interrupted_worktree(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    repo_root, state_dir, db_path, _base_ref, _source_ref = _prepare_improve_repo(tmp_path)
+    interrupted_worktree = state_dir / "improve" / "wt" / "self-r1"
+    interrupted_worktree.mkdir(parents=True)
+    session = update_improve_session(
+        create_improve_session(
+            session_id="improve_interrupted",
+            suite="local",
+            anchor_run_id="run_anchor",
+        ),
+        worktree_path=str(interrupted_worktree),
+        interrupted_round=1,
+        interrupted_stage="replaying",
+    )
+    save_improve_session(state_dir, session)
+
+    cleaned: list[tuple[Path, Path, str]] = []
+
+    def fake_cleanup(repo_root_arg: Path, worktree_path: Path, stage: str) -> bool:
+        cleaned.append((repo_root_arg, worktree_path, stage))
+        worktree_path.rmdir()
+        return True
+
+    monkeypatch.setattr(improve_loop_module, "_cleanup_interrupted_worktree", fake_cleanup)
+
+    result = run_improve_loop(
+        repo_root=repo_root,
+        state_dir=state_dir,
+        db_path=db_path,
+        rounds=0,
+        suite="local",
+        provider_config=_provider_config(),
+        api_key=None,
+        security_config=SecurityConfig(),
+        resume_session_id="improve_interrupted",
+    )
+
+    loaded = load_improve_session(state_dir, result.session_id)
+    assert cleaned == [(repo_root, interrupted_worktree, "replaying")]
+    assert loaded.worktree_path is None
+    assert loaded.interrupted_round is None
+    assert loaded.interrupted_stage is None
+    assert not interrupted_worktree.exists()
+
+
 def test_run_improve_loop_interrupt_after_round_does_not_double_append(
     tmp_path: Path,
     monkeypatch: Any,
@@ -1679,3 +1727,106 @@ def test_load_run_metadata_rejects_oversized_metadata(
 
     with pytest.raises(InputError, match="run metadata exceeds"):
         cast("Any", improve_loop_module)._load_run_metadata(run_path)
+
+
+# ---------------------------------------------------------------------------
+# Phase 6A: improve --resume interrupt recovery tests
+# ---------------------------------------------------------------------------
+
+
+def test_session_state_interrupted_round_fields() -> None:
+    session = create_improve_session(
+        session_id="improve_test",
+        suite="local",
+        anchor_run_id="run_anchor",
+    )
+    assert session.interrupted_round is None
+    assert session.interrupted_stage is None
+
+    updated = update_improve_session(
+        session,
+        interrupted_round=3,
+        interrupted_stage="replaying",
+    )
+    assert updated.interrupted_round == 3
+    assert updated.interrupted_stage == "replaying"
+
+    cleared = update_improve_session(
+        updated,
+        interrupted_round=None,
+        interrupted_stage=None,
+    )
+    assert cleared.interrupted_round is None
+    assert cleared.interrupted_stage is None
+
+
+def test_session_state_interrupted_fields_persist_to_disk(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    session = create_improve_session(
+        session_id="improve_resume_test",
+        suite="local",
+        anchor_run_id="run_anchor",
+    )
+    session = update_improve_session(
+        session,
+        interrupted_round=2,
+        interrupted_stage="evaluating",
+    )
+    save_improve_session(state_dir, session)
+
+    loaded = load_improve_session(state_dir, "improve_resume_test")
+    assert loaded.interrupted_round == 2
+    assert loaded.interrupted_stage == "evaluating"
+
+
+def test_session_state_missing_interrupted_fields_load_as_none(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff" / "improve"
+    state_dir.mkdir(parents=True)
+    session_data: dict[str, object] = {
+        "session_id": "improve_compat_test",
+        "suite": "local",
+        "anchor_run_id": "run_anchor",
+        "phase25_attempted": False,
+        "rounds_completed": 0,
+        "worktree_path": None,
+        "created_at": "2026-04-29T00:00:00Z",
+        "updated_at": "2026-04-29T00:00:00Z",
+        "last_status": None,
+        "outcome_statuses": [],
+    }
+    (state_dir / "improve_compat_test.json").write_text(json.dumps(session_data), encoding="utf-8")
+
+    loaded = load_improve_session(tmp_path / ".ahadiff", "improve_compat_test")
+    assert loaded.interrupted_round is None
+    assert loaded.interrupted_stage is None
+
+
+def test_cleanup_interrupted_worktree_removes_worktree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    worktree_path = tmp_path / "wt_cleanup"
+    worktree_path.mkdir()
+    (worktree_path / "prompts").mkdir()
+    (worktree_path / "prompts" / "lesson_generate.md").write_text("content")
+
+    removed_paths: list[Path] = []
+
+    def mock_remove(_root: Path, wt: Path) -> bool:
+        removed_paths.append(wt)
+        wt_dir = wt
+        if wt_dir.exists():
+            import shutil
+
+            shutil.rmtree(wt_dir)
+        return True
+
+    import ahadiff.improve.loop as loop_mod
+
+    monkeypatch.setattr(loop_mod, "_remove_worktree", mock_remove)
+    cast("Any", loop_mod)._cleanup_interrupted_worktree(repo_root, worktree_path, "replaying")
+
+    assert worktree_path in removed_paths

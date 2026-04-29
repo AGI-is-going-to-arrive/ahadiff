@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import re
 from typing import TYPE_CHECKING, cast
 
@@ -16,15 +17,39 @@ _SCRIPT_STYLE_TAG_RE = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
+_DANGEROUS_URI_RE = re.compile(
+    r"^\s*(javascript|data|vbscript)\s*:",
+    re.IGNORECASE,
+)
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 _MAX_LABEL_LEN = 500
+_NODE_FILE_PATH_KEYS = ("file_path", "source_file", "path")
+_NODE_KIND_KEYS = ("kind", "type", "file_type")
+_EDGE_RELATION_KEYS = ("relation", "type")
+_NODE_CORE_KEYS = frozenset({"id", "label", "metadata", *_NODE_FILE_PATH_KEYS, *_NODE_KIND_KEYS})
+_EDGE_CORE_KEYS = frozenset({"source", "target", "metadata", *_EDGE_RELATION_KEYS})
+_HYPEREDGE_CORE_KEYS = frozenset({"id", "nodes", "relation", "type", "metadata"})
 
 
 def _sanitize_text(raw: str) -> str:
-    cleaned = _SCRIPT_STYLE_TAG_RE.sub("", raw)
+    cleaned = _unescape_html_entities(raw)
+    cleaned = _CONTROL_CHAR_RE.sub("", cleaned)
+    cleaned = _SCRIPT_STYLE_TAG_RE.sub("", cleaned)
     cleaned = _HTML_TAG_RE.sub("", cleaned)
+    cleaned = _DANGEROUS_URI_RE.sub("", cleaned)
     if len(cleaned) > _MAX_LABEL_LEN:
         cleaned = cleaned[:_MAX_LABEL_LEN]
-    return cleaned
+    return html.escape(html.unescape(cleaned), quote=True)
+
+
+def _unescape_html_entities(raw: str) -> str:
+    previous = raw
+    for _ in range(3):
+        current = html.unescape(previous)
+        if current == previous:
+            return current
+        previous = current
+    return previous
 
 
 def _sanitize_json_value(value: object, *, sanitize_keys: bool = False) -> object:
@@ -48,6 +73,113 @@ def _sanitize_json_value(value: object, *, sanitize_keys: bool = False) -> objec
     return value
 
 
+def _first_present(item: dict[str, object], keys: tuple[str, ...]) -> object | None:
+    for key in keys:
+        if key in item:
+            return item[key]
+    return None
+
+
+def _metadata_from_unknown(
+    item: dict[str, object],
+    *,
+    core_keys: frozenset[str],
+) -> dict[str, object]:
+    raw_metadata = item.get("metadata")
+    metadata = (
+        dict(cast("dict[str, object]", raw_metadata)) if isinstance(raw_metadata, dict) else {}
+    )
+    for key, value in item.items():
+        if key in core_keys:
+            continue
+        metadata[_sanitize_text(str(key))] = value
+    return metadata
+
+
+def _normalize_node(item: dict[str, object]) -> dict[str, object]:
+    node: dict[str, object] = {}
+    if "id" in item:
+        node["id"] = item["id"]
+    if "label" in item:
+        node["label"] = item["label"]
+    file_path = _first_present(item, _NODE_FILE_PATH_KEYS)
+    if file_path is not None:
+        node["file_path"] = file_path
+    kind = _first_present(item, _NODE_KIND_KEYS)
+    if kind is not None:
+        node["kind"] = kind
+    metadata = _metadata_from_unknown(item, core_keys=_NODE_CORE_KEYS)
+    if metadata:
+        node["metadata"] = metadata
+    return node
+
+
+def _normalize_edge(item: dict[str, object]) -> dict[str, object]:
+    edge: dict[str, object] = {}
+    if "source" in item:
+        edge["source"] = item["source"]
+    if "target" in item:
+        edge["target"] = item["target"]
+    relation = _first_present(item, _EDGE_RELATION_KEYS)
+    if relation is not None:
+        edge["relation"] = relation
+    metadata = _metadata_from_unknown(item, core_keys=_EDGE_CORE_KEYS)
+    if metadata:
+        edge["metadata"] = metadata
+    return edge
+
+
+def _normalize_hyperedge(item: dict[str, object]) -> dict[str, object]:
+    hyperedge: dict[str, object] = {}
+    if "id" in item:
+        hyperedge["id"] = item["id"]
+    if "nodes" in item:
+        hyperedge["nodes"] = item["nodes"]
+    relation = _first_present(item, _EDGE_RELATION_KEYS)
+    if relation is not None:
+        hyperedge["relation"] = relation
+    metadata = _metadata_from_unknown(item, core_keys=_HYPEREDGE_CORE_KEYS)
+    if metadata:
+        hyperedge["metadata"] = metadata
+    return hyperedge
+
+
+def _normalize_graph_object(obj: dict[str, object]) -> dict[str, object]:
+    normalized = dict(obj)
+
+    raw_nodes = normalized.get("nodes")
+    if isinstance(raw_nodes, list):
+        normalized["nodes"] = [
+            _normalize_node(cast("dict[str, object]", item))
+            for item in cast("list[object]", raw_nodes)
+            if isinstance(item, dict)
+        ]
+
+    raw_links: object = normalized.get("links")
+    raw_edges: object = normalized.pop("edges", None)
+    raw_link_items: list[object] | None = None
+    if isinstance(raw_links, list):
+        raw_link_items = cast("list[object]", raw_links)
+    elif isinstance(raw_edges, list):
+        raw_link_items = cast("list[object]", raw_edges)
+    if raw_link_items is not None:
+        normalized["links"] = [
+            _normalize_edge(cast("dict[str, object]", item))
+            for item in raw_link_items
+            if isinstance(item, dict)
+        ]
+
+    raw_hyperedges = normalized.get("hyperedges")
+    if isinstance(raw_hyperedges, list):
+        normalized["hyperedges"] = [
+            _normalize_hyperedge(cast("dict[str, object]", item))
+            for item in cast("list[object]", raw_hyperedges)
+            if isinstance(item, dict)
+        ]
+
+    return normalized
+
+
 def parse_graph_json_text(text: str) -> GraphifyGraph:
     try:
         data = safe_json_loads(text)
@@ -57,15 +189,9 @@ def parse_graph_json_text(text: str) -> GraphifyGraph:
     if not isinstance(data, dict):
         raise InputError("Graph JSON must be an object at the top level")
 
-    obj = cast("dict[str, object]", _sanitize_json_value(cast("object", data)))
-    for key in ("nodes", "links", "hyperedges"):
-        raw_items = obj.get(key)
-        if isinstance(raw_items, list):
-            obj[key] = [
-                cast("dict[str, object]", item)
-                for item in cast("list[object]", raw_items)
-                if isinstance(item, dict)
-            ]
+    obj = _normalize_graph_object(
+        cast("dict[str, object]", _sanitize_json_value(cast("object", data)))
+    )
 
     try:
         return GraphifyGraph.model_validate(obj)

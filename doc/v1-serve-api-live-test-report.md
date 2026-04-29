@@ -5,12 +5,15 @@
 
 > Current status note (2026-04-29): This document only records the 2026-04-27 live
 > snapshot. Current code now has `POST /api/learn`, `/api/tasks*`
-> status/progress/cancel routes, and a larger route surface (`42 total Route(` in
-> `serve/app.py`, including `40 concrete /api/*` routes and `1` catchall). Current
-> verification for the uncommitted branch is: full pytest `1266 passed, 1 skipped`;
-> focused backend regressions `59 passed`; serve regressions `129 passed`;
-> `ruff check` / `ruff format --check` pass; `pyright` currently reports
-> `184 errors`.
+> status/progress/cancel routes, `GET /api/graph/status`, and a larger route
+> surface (`43 total Route(` in `serve/app.py`, including `41 concrete /api/*`
+> routes, `1` catchall, and `/healthz`). Current verification for the
+> uncommitted branch is: full pytest `1420 passed, 1 skipped`; coverage gate
+> `87.37%`; focused backend regressions `59 passed`; serve regressions
+> `129 passed`; `ruff check` / `ruff format --check` pass; `pyright`
+> currently reports `0 errors, 0 warnings, 0 informations`. Task status
+> payloads now also carry runtime fields like `error_code` and
+> `elapsed_seconds`.
 
 ## 2026-04-27 Live Concrete Endpoints (22)
 

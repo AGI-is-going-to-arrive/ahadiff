@@ -7,11 +7,12 @@
 
 > Current status note (2026-04-29): This report is an R4 historical audit, not the
 > current branch truth. The current uncommitted branch already has
-> `src/ahadiff/core/orchestrator.py`, `POST /api/learn`, and `/api/tasks*`
-> status/progress/cancel wiring. Current verification is: full pytest
-> `1266 passed, 1 skipped`; focused backend regressions `59 passed`; serve
-> regressions `129 passed`; `ruff check` / `ruff format --check` pass; `pyright`
-> currently reports `184 errors`.
+> `src/ahadiff/core/orchestrator.py`, `POST /api/learn`, `/api/tasks*`
+> status/progress/cancel wiring, `GET /api/graph/status`, and watcher core.
+> Current verification is: full pytest `1420 passed, 1 skipped`; coverage gate
+> `87.37%`; focused backend regressions `59 passed`; serve regressions
+> `129 passed`; `ruff check` / `ruff format --check` pass; `pyright`
+> currently reports `0 errors, 0 warnings, 0 informations`.
 
 ---
 

@@ -82,7 +82,7 @@ class TestParseValid:
         assert len(g.nodes) == 2
 
     def test_node_metadata_preserved(self) -> None:
-        data = {
+        data: dict[str, Any] = {
             "nodes": [{"id": "x", "label": "X", "metadata": {"loc": 42}}],
             "links": [],
         }
@@ -96,6 +96,67 @@ class TestParseValid:
         }
         g = parse_graph_json_text(json.dumps(data))
         assert g.links[0].metadata == {"weight": 3}
+
+    def test_real_graphify_flat_fields_are_normalized(self) -> None:
+        data: dict[str, Any] = {
+            "directed": False,
+            "multigraph": False,
+            "graph": {},
+            "nodes": [
+                {
+                    "id": "client_timeout",
+                    "label": "Timeout",
+                    "file_type": "code",
+                    "source_file": "worked/httpx/raw/client.py",
+                    "source_location": "L16",
+                    "community": 1,
+                    "norm_label": "timeout",
+                }
+            ],
+            "links": [
+                {
+                    "source": "client",
+                    "target": "client_timeout",
+                    "relation": "contains",
+                    "confidence": "EXTRACTED",
+                    "confidence_score": 1.0,
+                    "source_file": "worked/httpx/raw/client.py",
+                    "weight": 1.0,
+                }
+            ],
+            "hyperedges": [
+                {
+                    "id": "auth_flow",
+                    "label": "Auth Flow",
+                    "nodes": ["client", "client_timeout"],
+                    "confidence_score": 0.75,
+                    "source_file": "worked/httpx/raw/client.py",
+                }
+            ],
+        }
+
+        g = parse_graph_json_text(json.dumps(data))
+
+        assert g.nodes[0].file_path == "worked/httpx/raw/client.py"
+        assert g.nodes[0].kind == "code"
+        assert g.nodes[0].metadata == {
+            "source_location": "L16",
+            "community": 1,
+            "norm_label": "timeout",
+        }
+        assert g.links[0].relation == "contains"
+        assert g.links[0].metadata["confidence"] == "EXTRACTED"
+        assert g.links[0].metadata["confidence_score"] == 1.0
+        assert g.hyperedges[0].metadata["label"] == "Auth Flow"
+
+    def test_edges_alias_is_normalized_to_links(self) -> None:
+        data = {
+            "nodes": [{"id": "a", "label": "A"}, {"id": "b", "label": "B"}],
+            "edges": [{"source": "a", "target": "b", "type": "imports"}],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert len(g.links) == 1
+        assert g.links[0].relation == "imports"
 
 
 # ---------------------------------------------------------------------------
@@ -202,6 +263,76 @@ class TestLabelSanitization:
         data = {"nodes": [{"id": "n", "label": ""}], "links": []}
         g = parse_graph_json_text(json.dumps(data))
         assert g.nodes[0].label == ""
+
+    def test_html_entities_escaped(self) -> None:
+        data = {"nodes": [{"id": "n", "label": "a & b"}], "links": []}
+        g = parse_graph_json_text(json.dumps(data))
+        assert "&amp;" in g.nodes[0].label
+        assert g.nodes[0].label == "a &amp; b"
+
+    def test_pre_escaped_entities_not_double_encoded(self) -> None:
+        data = {"nodes": [{"id": "n", "label": "Tom &amp; Jerry"}], "links": []}
+        g = parse_graph_json_text(json.dumps(data))
+        assert g.nodes[0].label == "Tom &amp; Jerry"
+
+    def test_javascript_uri_stripped(self) -> None:
+        data = {
+            "nodes": [{"id": "n", "label": "javascript:alert(1)"}],
+            "links": [],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert "javascript:" not in g.nodes[0].label
+
+    def test_entity_obfuscated_javascript_uri_stripped(self) -> None:
+        data = {
+            "nodes": [{"id": "n", "label": "java&#x73;cript:alert(1)"}],
+            "links": [],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert "javascript:" not in g.nodes[0].label
+
+    def test_nested_entity_obfuscated_javascript_uri_stripped(self) -> None:
+        data = {
+            "nodes": [{"id": "n", "label": "java&amp;#x73;cript:alert(1)"}],
+            "links": [],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert "javascript:" not in g.nodes[0].label
+
+    def test_data_uri_stripped(self) -> None:
+        data = {
+            "nodes": [{"id": "n", "label": "data:text/html,<script>xss</script>"}],
+            "links": [],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert "data:" not in g.nodes[0].label
+
+    def test_null_byte_in_label_stripped(self) -> None:
+        data = {
+            "nodes": [{"id": "n", "label": "java\x00script:alert(1)"}],
+            "links": [],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert "\x00" not in g.nodes[0].label
+        assert "javascript:" not in g.nodes[0].label
+
+    def test_control_chars_stripped(self) -> None:
+        data = {
+            "nodes": [{"id": "n", "label": "hello\x08world\x0etest"}],
+            "links": [],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert "\x08" not in g.nodes[0].label
+        assert "\x0e" not in g.nodes[0].label
+
+    def test_quotes_escaped_in_label(self) -> None:
+        data = {
+            "nodes": [{"id": "n", "label": 'onload="alert(1)"'}],
+            "links": [],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert '"' not in g.nodes[0].label
+        assert "&quot;" in g.nodes[0].label
 
 
 # ---------------------------------------------------------------------------

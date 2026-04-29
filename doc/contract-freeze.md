@@ -698,6 +698,7 @@ run_id: str
 - `GET /api/review/heatmap` — 复习热力图
 - `GET /api/providers` — provider 状态
 - `GET /api/serve/status` — serve 运行状态（无 auth）
+- `GET /api/graph/status` — Graphify 当前状态；当前 payload 是 `enabled` / `source_exists` / `has_graph` / `freshness` / `node_count` / `edge_count` / `source_path`，不是完整 provenance API
 - `PUT /api/config` — 配置更新
 - `POST /api/learn` — 提交后台 learn 任务；当前返回 `202 {"task_id": ...}`，进度/取消走 `/api/tasks*`
 - `GET /api/tasks` — **unstable**，参见 §9.10
@@ -721,6 +722,8 @@ run_id: str
 - `/api/concepts/weak`：从 SQLite `cards` 表读（非 `concepts` 表），按 stability 排序
 
 **恢复保证**：SQLite `concepts` 表可从 `concepts.jsonl` 完全重建（通过 `_sync_jsonl_concepts_to_db()`）。
+
+**兼容 helper**：当前也已有 `export_concepts_from_db()`，用于把 SQLite `concepts` 表重新导出为 JSONL 快照；它是兼容/维护 helper，不改变 `concepts.jsonl` 的真相源地位。
 
 **与 contract-freeze §5.2 一致**：`concepts.jsonl` 已列入 per-repo 真相源清单。
 
@@ -754,6 +757,7 @@ run_id: str
 | **registry.py** | ✅ 已接线 | `cli.py` learn 成功后自动调用 `register_repo()`，失败仅 warn 不阻塞 |
 | **hooks.py** | ⏸ install-only | 当前仅安装 git hook 脚本，不执行用户自定义 hook 命令。hook 执行入口属于后续 Phase |
 | **PUT /api/config** | ✅ session-only | 仅支持 `lang` 键，修改内存中 locale，不持久化到磁盘。这是有意的 serve session 行为 |
+| **GET /api/graph/status** | ✅ 已接线 | 以 workspace root 为基准读取 `graphify-out/graph.json`，返回 `enabled/source_exists/has_graph/freshness/node_count/edge_count/source_path(relative)` |
 | **POST /api/learn** | ✅ 已接线 | `core/orchestrator.py` 从 `cli.py` 抽出 learn 主链；route 只接受安全 capture / learn 选项，返回 `202 {"task_id": ...}`，provider override 不从 HTTP 暴露 |
 | **medium APIs** | ✅ 全部真实接线 | search/audit/mastery/weak/alignment/learning stats 均查 SQLite/JSONL，无 mock |
 | **/api/tasks*** | ⏸ internal/unstable | 现在已有真实 submitter（`POST /api/learn`），但 task payload / queue policy / progress surface 仍按低层内部接口处理 |
@@ -763,7 +767,7 @@ run_id: str
 **裁决**：维持 `anyio.to_thread.run_sync` + 同步 `sqlite3` 的 threadpool 模式，不引入 `aiosqlite`。
 
 **依据**：
-- 26 处 `to_thread.run_sync` 调用已正确隔离所有阻塞 IO
+- 28 处 `to_thread.run_sync` 调用已正确隔离所有阻塞 IO
 - 读远多于写（21 读 / 5 写），WAL 模式下本地 SQLite 亚毫秒级响应
 - 写路径受 `portalocker` 文件锁序列化，是同步阻塞调用 — aiosqlite 无法绕过
 - 改写量：`database.py` 1700+ 行 + 6 个 route 文件，收益极低
@@ -777,6 +781,12 @@ run_id: str
 
 **为什么仍不冻结**：task queue 的状态 payload、队列容量策略、进度文案和 SSE 细节都还是低层运行时 surface，后续仍可能继续收口；因此它们继续保留为 internal/unstable。
 
+**当前 runtime 事实**：
+- `GET /api/tasks` / `GET /api/tasks/{task_id}` 的 payload 已经带 `error_code`
+- 当任务进入运行态后，route 侧会额外投影 `elapsed_seconds`
+- `TaskRunner` 默认 scheduler timeout 是 600 秒，可由 `AHADIFF_DEFAULT_TASK_TIMEOUT_SECONDS` 覆盖
+- `POST /api/learn` 当前通过 `disable_timeout=True` 提交，避免 learn replay 被默认 scheduler timeout 提前切断
+
 **保留状态**：
 - `core/task_runner.py`：TaskRunner 类完整保留，Phase 6B 直接使用
 - `serve/routes_tasks.py`：路由实现完整保留，Phase 6B 启用
@@ -788,4 +798,4 @@ run_id: str
 - `compare` / `compare_dir` 需要 2 项 path array
 - `patch="-"` 在 serve 层明确拒绝，避免后台任务读取进程 stdin
 
-§9.4 中 `/api/tasks*` 三个端点标注为 **unstable，不纳入稳定合约**。
+§9.4 中 `/api/tasks*` 四个端点标注为 **unstable，不纳入稳定合约**。

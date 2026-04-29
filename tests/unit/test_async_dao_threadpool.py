@@ -19,6 +19,7 @@ from typing import Any
 
 import anyio
 import pytest
+from anyio.to_thread import run_sync as run_sync_in_thread
 
 from ahadiff.contracts import ResultEvent
 from ahadiff.review.database import (
@@ -65,7 +66,7 @@ def _list_cards_sync(db_path: Path) -> Any:
 async def _warmup(db_path: Path) -> None:
     """Warm up the anyio thread pool to avoid cold-start outliers."""
     for _ in range(_WARMUP_ROUNDS):
-        await anyio.to_thread.run_sync(lambda: _load_events_sync(db_path))
+        await run_sync_in_thread(lambda: _load_events_sync(db_path))
 
 
 @pytest.mark.anyio
@@ -83,7 +84,7 @@ async def test_threadpool_concurrent_reads_latency() -> None:
         async def _one_read() -> None:
             async with sem:
                 t0 = time.perf_counter()
-                await anyio.to_thread.run_sync(lambda: _load_events_sync(db_path))
+                await run_sync_in_thread(lambda: _load_events_sync(db_path))
                 latencies.append((time.perf_counter() - t0) * 1000)
 
         async with anyio.create_task_group() as tg:
@@ -112,9 +113,9 @@ async def test_threadpool_mixed_workload_latency() -> None:
             async with sem:
                 t0 = time.perf_counter()
                 if index % 2 == 0:
-                    await anyio.to_thread.run_sync(lambda: _load_events_sync(db_path))
+                    await run_sync_in_thread(lambda: _load_events_sync(db_path))
                 else:
-                    await anyio.to_thread.run_sync(lambda: _list_cards_sync(db_path))
+                    await run_sync_in_thread(lambda: _list_cards_sync(db_path))
                 latencies.append((time.perf_counter() - t0) * 1000)
 
         async with anyio.create_task_group() as tg:
@@ -142,7 +143,7 @@ async def test_threadpool_high_concurrency_no_deadlock() -> None:
         async def _one_read() -> None:
             async with sem:
                 t0 = time.perf_counter()
-                await anyio.to_thread.run_sync(lambda: _load_events_sync(db_path))
+                await run_sync_in_thread(lambda: _load_events_sync(db_path))
                 latencies.append((time.perf_counter() - t0) * 1000)
 
         async with anyio.create_task_group() as tg:

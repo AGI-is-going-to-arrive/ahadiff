@@ -95,7 +95,7 @@
 | `concepts.jsonl` | JSONL | branch-aware 概念累积（per-repo） |
 | `audit.jsonl` | JSONL | LLM 调用审计（schema_version + rotation） |
 | `audit.private.jsonl` | JSONL | `strict_local` 下的本机隐私审计（gitignored） |
-| `.ahadiff/improve/<session_id>.json` | JSON | Task 16 improve session 状态：suite、anchor_run_id、rounds_completed、worktree_path、phase25_attempted |
+| `.ahadiff/improve/<session_id>.json` | JSON | Task 16 improve session 状态：suite、anchor_run_id、rounds_completed、worktree_path、phase25_attempted、outcome_statuses、interrupted_round、interrupted_stage |
 
 ### 数据范围
 
@@ -108,6 +108,8 @@ CLI 全局安装（`pip install ahadiff`），per-repo 运用。核心原则：*
 ## 测试与质量
 
 文档通过人工评审和 AI 辅助迭代完成质量保障。前端设计手册包含 20 条自查 Checklist。
+
+当前仓库最近一轮实测（2026-04-29）：`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pytest tests -q --tb=long` = `1420 passed, 1 skipped`，`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pytest --cov=src/ahadiff --cov-report=term-missing --cov-fail-under=85 tests -q --tb=long` = `1420 passed, 1 skipped`（总覆盖率 `87.37%`），`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pyright` = `0 errors, 0 warnings, 0 informations`。
 
 ## 常见问题 (FAQ)
 
@@ -124,7 +126,7 @@ A: 当前先读 `contract-freeze.md`，再读根目录 `CLAUDE.md` 和 `.claude/
 
 | 文件 | 行数 | 说明 |
 |------|------|------|
-| `contract-freeze.md` | ~300 行 | Stage 0 当前权威契约总表 |
+| `contract-freeze.md` | ~800 行 | Stage 0 当前权威契约总表 |
 | `ahadiff设计思路.md` | ~630 行 | [ARCHIVED] 早期架构快照 |
 | `知返ahadiff改名后的后续方案.md` | ~530 行 | [ARCHIVED] 改名过渡方案 |
 | `ahadiff 最终完整方案：*.md` | ~2500 行 | [ARCHIVED] 最终完整方案（31 节 + 9 段开发顺序） |
@@ -134,6 +136,9 @@ A: 当前先读 `contract-freeze.md`，再读根目录 `CLAUDE.md` 和 `.claude/
 | `SOURCE-CODE-VERIFICATION-REPORT.md` | ~240 行 | 灵感项目源码验证报告（12 项修订） |
 | `trending-ai-projects-research-2026.md` | ~240 行 | 趋势调研（无直接竞品） |
 | `task16-deep-review.md` | ~280 行 | Task 16 improve loop 独立深度 review + post-fix addendum |
+| `v1-graphify-compatibility-matrix.md` | ~350 行 | Graphify ↔ AhaDiff 当前兼容性矩阵与剩余 gap |
+| `v1-serve-api-live-test-report.md` | ~220 行 | serve API 2026-04-27 live 快照 + 当前状态 note |
+| `v1.0-backend-architecture-research.md` | ~1200 行 | v1.0 后端研究报告（保留 proposal，顶部 current note 对齐当前代码） |
 
 ## 变更记录 (Changelog)
 
@@ -158,3 +163,4 @@ A: 当前先读 `contract-freeze.md`，再读根目录 `CLAUDE.md` 和 `.claude/
 | 2026-04-24 | 同步本轮 Task 16 文档口径：README / README.en / 根 CLAUDE / AGENTS / contract-freeze / stages-4-9 / Task 16 review 报告已统一到当前代码口径；补入 `src/ahadiff/improve/{__init__,loop,program}.py`、`prompts/improve_program.md`、`src/ahadiff/prompts/improve_program.md`、`tests/unit/test_improve_loop.py`、`ahadiff improve --suite local --rounds N` / `--resume` 当前可用事实，以及本轮真实修复的 improve loop 边界（5 个 mutable prompt 白名单、session_id 校验、30min replay timeout、双 prompt temp+replace 写入、discard/pending conflict 不 finalized、pending conflict 不进 baseline、volatile diff 从 `patch.diff` 重放、短 worktree 路径、`--rounds` 上限 20、null byte 拒绝、Ctrl+C 不再 double append）；本次真实实测 `test_improve_loop.py = 14 passed`、目标回归 `56 passed`、`tests/unit = 397 passed`，`ruff check` / `ruff format --check` / `pyright` / `uv build --wheel` / `python -m ahadiff improve --help` 全通过。 |
 | 2026-04-24 | 同步本轮 Stage 6 Task 14.5/18/19/20 + i18n-0 review 修复口径：README / README.en / 根 CLAUDE / AGENTS / stages-4-9 / implementation plan / Stage 6 cross-review report 已统一到当前代码和测试；补入 serve backend、benchmark、6 个 install target、GitHub Action 模板、`AHADIFF_PROVIDER_API_KEY`、locale resolver、prompt output language helper、live judge 默认模型顺序 `gpt-5.3-codex-spark,gpt-5.4-mini`；后续 pinned integration cards fixture 已改为生产 `generate_cards_for_run()` 路径并逐行校验 `ReviewCard` schema；本次真实实测 unit `461 passed`、eval `7 passed`、pinned integration `10 passed`、quiz/review `38 passed`、全量 tests `478 passed, 1 skipped`、live judge `1 passed`，且 `gpt-5.3-codex-spark` 已单独确认可用；`ruff check` / `ruff format --check` / `pyright` / `uv build --wheel` / `python -m ahadiff install github-action --help` 全通过。 |
 | 2026-04-25 | 同步本轮 LLM cache key 后端边界口径：README / README.en / 根 CLAUDE / AGENTS / kickoff / stages-4-9 / implementation plan 已统一到当前代码和测试；补入 `api_family_version` 已进入 `CacheKeyInput`、`build_cache_key()` 和 provider dispatch 的事实；本次真实实测 `test_provider.py` 36 passed、全量 tests 479 passed + 1 skipped、ruff check / ruff format --check / pyright / wheel build 全通过。 |
+| 2026-04-29 | 同步当前工作树文档口径：根 README / README.en / 根 CLAUDE / 本文档 / contract-freeze / Graphify / serve / improve / v1.0 plan/research 文档统一到本 session 真值；补入 Graphify backend 扩展、watcher core、`/api/graph/status`、`/api/tasks*` runtime 字段、`interrupted_round` / `interrupted_stage`、8A workflow 收口（PR unit+pinned + Windows runtime guard + release coverage gate），以及最新实测 `pytest tests = 1420 passed, 1 skipped`、coverage `87.37%`、`pyright = 0 errors`。 |

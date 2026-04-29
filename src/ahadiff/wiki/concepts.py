@@ -14,6 +14,8 @@ from ahadiff.git.repo import open_repo, run_git
 
 _MAX_VISIBLE_CONCEPTS_BYTES = 10 * 1024 * 1024
 _MAX_ANCESTRY_CHECKS = 200
+_EXPORT_CONCEPTS_BATCH_SIZE = 1000
+_SHORT_SHA_RE = re.compile(r"[0-9a-fA-F]{4,39}")
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -39,7 +41,26 @@ class _AncestryCache:
         self.workspace_root = workspace_root
         self.head_ref = head_ref
         self._cache: dict[str, bool] = {}
+        self._ancestors: frozenset[str] | None = None
         self._call_count = 0
+
+    def _ensure_ancestors(self) -> frozenset[str]:
+        if self._ancestors is not None:
+            return self._ancestors
+        shas: frozenset[str]
+        try:
+            result = run_git(
+                self.workspace_root,
+                "rev-list",
+                self.head_ref,
+                f"--max-count={_MAX_ANCESTRY_CHECKS}",
+                timeout=15,
+            )
+            shas = frozenset(line.strip() for line in result.stdout.splitlines() if line.strip())
+        except Exception:
+            shas = frozenset()
+        self._ancestors = shas
+        return shas
 
     def is_visible(self, source_ref: object) -> bool:
         if not isinstance(source_ref, str) or not source_ref:
@@ -47,6 +68,15 @@ class _AncestryCache:
         cached = self._cache.get(source_ref)
         if cached is not None:
             return cached
+        ancestors = self._ensure_ancestors()
+        if source_ref in ancestors:
+            self._cache[source_ref] = True
+            return True
+        if _SHORT_SHA_RE.fullmatch(source_ref) and any(
+            a.startswith(source_ref.lower()) for a in ancestors
+        ):
+            self._cache[source_ref] = True
+            return True
         self._call_count += 1
         if self._call_count > _MAX_ANCESTRY_CHECKS:
             self._cache[source_ref] = True
@@ -127,10 +157,13 @@ def load_visible_concepts(
     workspace_root: Path,
     head_ref: str = "HEAD",
 ) -> tuple[dict[str, Any], ...]:
+    from ahadiff.core.paths import reject_leaf_symlink_or_reparse
+
     concepts_path = workspace_root / ".ahadiff" / "concepts.jsonl"
-    if not concepts_path.exists() or concepts_path.is_symlink():
+    if not concepts_path.exists():
         return ()
-    if concepts_path.stat().st_size > _MAX_VISIBLE_CONCEPTS_BYTES:
+    leaf_stat = reject_leaf_symlink_or_reparse(concepts_path, label="concepts.jsonl")
+    if leaf_stat.st_size > _MAX_VISIBLE_CONCEPTS_BYTES:
         raise InputError("concepts.jsonl exceeds size limit")
     open_repo(workspace_root)
     visible: list[dict[str, Any]] = []
@@ -321,7 +354,10 @@ def _iter_jsonl_entries_with_offsets(
 ) -> Iterable[tuple[int, dict[str, Any]]]:
     if not path.exists():
         return
-    if max_bytes is not None and path.stat().st_size > max_bytes:
+    from ahadiff.core.paths import reject_leaf_symlink_or_reparse
+
+    leaf_stat = reject_leaf_symlink_or_reparse(path, label=path.name)
+    if max_bytes is not None and leaf_stat.st_size > max_bytes:
         raise InputError(f"{path.name} exceeds size limit")
     with path.open("r", encoding="utf-8") as handle:
         for index, line in enumerate(handle, start=1):
@@ -338,9 +374,19 @@ def _iter_jsonl_entries_with_offsets(
 
 
 def _concepts_jsonl_readable(path: Path, *, max_bytes: int | None = None) -> bool:
-    if not path.exists() or path.is_symlink():
+    if not path.exists():
         return False
-    if max_bytes is not None and path.stat().st_size > max_bytes:
+    try:
+        leaf_stat = path.lstat()
+    except OSError:
+        return False
+    import stat as stat_mod
+
+    if stat_mod.S_ISLNK(leaf_stat.st_mode):
+        return False
+    if bool(getattr(leaf_stat, "st_file_attributes", 0) & 0x400):
+        return False
+    if max_bytes is not None and leaf_stat.st_size > max_bytes:
         raise InputError(f"{path.name} exceeds size limit")
     return True
 
@@ -418,6 +464,33 @@ def load_concepts_page_from_db(
     return ConceptPage(entries=tuple(dict(r) for r in rows), next_cursor=None)
 
 
+def export_concepts_from_db(state_dir: Path) -> Path:
+    db_path = state_dir / "review.sqlite"
+    concepts_path = state_dir / "concepts.jsonl"
+    if not db_path.exists():
+        raise InputError("review.sqlite not found")
+    from ahadiff.review.database import load_concepts_from_db
+
+    _DB_ONLY_KEYS = {"created_at_utc", "updated_at_utc"}
+    entries: list[dict[str, Any]] = []
+    cursor: str | None = None
+    while True:
+        rows = load_concepts_from_db(
+            db_path,
+            limit=_EXPORT_CONCEPTS_BATCH_SIZE,
+            after_term_key=cursor,
+        )
+        if not rows:
+            break
+        entries.extend({k: v for k, v in dict(r).items() if k not in _DB_ONLY_KEYS} for r in rows)
+        last_term_key = rows[-1].get("term_key")
+        if not isinstance(last_term_key, str) or not last_term_key:
+            break
+        cursor = last_term_key
+    _write_jsonl_snapshot(concepts_path, entries)
+    return concepts_path
+
+
 def _is_ancestor(repo_root: Path, source_ref: str, head_ref: str) -> bool:
     result = run_git(repo_root, "merge-base", "--is-ancestor", source_ref, head_ref, check=False)
     return result.returncode == 0
@@ -428,6 +501,7 @@ __all__ = [
     "ConceptPage",
     "append_concepts",
     "compute_term_key",
+    "export_concepts_from_db",
     "load_concepts_page",
     "load_concepts_page_from_db",
     "load_concepts_page_from_storage",

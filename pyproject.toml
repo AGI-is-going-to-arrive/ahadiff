@@ -27,13 +27,21 @@ ahadiff = "ahadiff.cli:main"
 optimizer = [
   "fsrs[optimizer]>=6.3.1,<7",
 ]
+watchdog = [
+  "watchdog>=6,<7",
+]
+tree-sitter = [
+  "tree-sitter>=0.24,<1",
+]
 
 [dependency-groups]
 dev = [
   "pyright>=1.1.400,<2",
   "pytest>=8.4,<9",
+  "pytest-cov>=7,<8",
   "pyyaml>=6,<7",
   "ruff>=0.12,<0.13",
+  "watchdog>=6,<7",
 ]
 
 [tool.pytest.ini_options]

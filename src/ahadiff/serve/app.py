@@ -17,6 +17,7 @@ from .middleware import LoopbackGuardMiddleware
 from .routes_audit import get_audit
 from .routes_config import get_config, get_doctor, put_config
 from .routes_export import get_export_results
+from .routes_graph import get_graph_status
 from .routes_install import get_install_targets
 from .routes_learn import post_learn
 from .routes_locale import get_locale, put_locale
@@ -98,6 +99,7 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
             Route("/api/signals/quiz-answer", quiz_answer, methods=["POST"]),
             Route("/api/signals/srs-review", srs_review, methods=["POST"]),
             Route("/api/signals/helpfulness", helpfulness, methods=["POST"]),
+            Route("/api/graph/status", get_graph_status, methods=["GET"]),
             Route("/api/learn", post_learn, methods=["POST"]),
             Route("/api/tasks", list_tasks, methods=["GET"]),
             Route("/api/tasks/{task_id}", get_task, methods=["GET"]),
