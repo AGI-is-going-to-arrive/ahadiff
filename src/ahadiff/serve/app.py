@@ -46,6 +46,7 @@ from .routes_stats import (
     get_usage,
 )
 from .routes_tasks import cancel_task, get_task, list_tasks, task_progress_sse
+from .routes_watch import get_watch_status
 from .static import mount_viewer_static
 
 if TYPE_CHECKING:
@@ -105,6 +106,7 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
             Route("/api/tasks/{task_id}", get_task, methods=["GET"]),
             Route("/api/tasks/{task_id}/cancel", cancel_task, methods=["POST"]),
             Route("/api/tasks/{task_id}/progress", task_progress_sse, methods=["GET"]),
+            Route("/api/watch/status", get_watch_status, methods=["GET"]),
             Route(
                 "/api/{rest_of_path:path}",
                 api_not_found,

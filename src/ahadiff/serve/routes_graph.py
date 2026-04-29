@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
 from anyio import to_thread
@@ -22,31 +23,40 @@ async def get_graph_status(request: Request) -> JSONResponse:
 def _graph_status_sync(state_dir: object) -> dict[str, Any]:
     from pathlib import Path
 
+    from ahadiff.core.errors import InputError
+    from ahadiff.core.paths import validate_state_path_no_symlinks
     from ahadiff.git.capture import detect_graphify_status
+    from ahadiff.git.repo import open_repo
 
     root = Path(str(state_dir)).parent
-    status = detect_graphify_status(root, use_graphify=None)
+    repo = None
+    with suppress(InputError, OSError):
+        repo = open_repo(root)
+    status = detect_graphify_status(root, use_graphify=None, repo=repo)
 
     node_count = 0
     edge_count = 0
-    if status.has_graph:
+    has_graph = status.imported_exists
+    if has_graph:
         try:
             from ahadiff.graphify import parse_graph_json
 
-            graph = parse_graph_json(status.source_path)
+            validate_state_path_no_symlinks(status.imported_path, allow_missing_leaf=False)
+            graph = parse_graph_json(status.imported_path)
             node_count = len(graph.nodes)
             edge_count = len(graph.links)
         except Exception:
+            has_graph = False
             pass
 
     response = GraphStatusResponse(
         enabled=status.enabled,
         source_exists=status.source_exists,
-        has_graph=status.has_graph,
+        has_graph=has_graph,
         freshness=status.freshness,
         node_count=node_count,
         edge_count=edge_count,
-        source_path=(str(status.source_path.relative_to(root)) if status.source_exists else None),
+        source_path=(str(status.imported_path.relative_to(root)) if has_graph else None),
     )
     return response.model_dump(mode="json")
 

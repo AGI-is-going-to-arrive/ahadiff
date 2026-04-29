@@ -10,8 +10,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ahadiff.core.errors import AhaDiffError
-from ahadiff.core.orchestrator import LearnRequest, LearnResult, run_learn_pipeline
+from ahadiff.core.errors import AhaDiffError, ConfigError, SafetyError
+from ahadiff.core.orchestrator import (
+    LearnRequest,
+    LearnResult,
+    PipelineErrorBudget,
+    is_recoverable_error,
+    run_learn_pipeline,
+    run_with_retry,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
@@ -59,6 +66,7 @@ def test_learn_result_defaults() -> None:
     assert res.warnings == []
     assert res.learnability_score is None
     assert res.learnability_skip is False
+    assert res.recoverable_errors == 0
 
 
 def test_learn_result_warnings_isolation() -> None:
@@ -805,6 +813,276 @@ def test_dry_run_preserves_register_repo_warning(
 
     assert result.status == "dry_run"
     assert "registry auto-register failed: registry unavailable" in result.warnings
+
+
+# ---------------------------------------------------------------------------
+# PipelineErrorBudget and retry tests
+# ---------------------------------------------------------------------------
+
+
+class TestPipelineErrorBudget:
+    def test_defaults(self) -> None:
+        b = PipelineErrorBudget()
+        assert b.max_step_retries == 2
+        assert b.max_total_errors == 3
+        assert b.error_count == 0
+        assert b.exhausted() is False
+
+    def test_record_and_exhaust(self) -> None:
+        b = PipelineErrorBudget(max_total_errors=2)
+        b.record_error()
+        assert b.error_count == 1
+        assert b.exhausted() is False
+        b.record_error()
+        assert b.error_count == 2
+        assert b.exhausted() is True
+
+
+class TestIsRecoverableError:
+    def test_connection_error_is_recoverable(self) -> None:
+        assert is_recoverable_error(ConnectionError("refused")) is True
+
+    def test_timeout_error_is_recoverable(self) -> None:
+        assert is_recoverable_error(TimeoutError("timed out")) is True
+
+    def test_generic_os_error_not_recoverable(self) -> None:
+        assert is_recoverable_error(OSError("broken pipe")) is False
+
+    def test_config_error_not_recoverable(self) -> None:
+        assert is_recoverable_error(ConfigError("bad config")) is False
+
+    def test_safety_error_not_recoverable(self) -> None:
+        assert is_recoverable_error(SafetyError("blocked")) is False
+
+    def test_permission_error_not_recoverable(self) -> None:
+        assert is_recoverable_error(PermissionError("denied")) is False
+
+    def test_rate_limit_message_is_recoverable(self) -> None:
+        assert is_recoverable_error(RuntimeError("rate limit exceeded")) is True
+
+    def test_503_message_is_recoverable(self) -> None:
+        assert is_recoverable_error(RuntimeError("HTTP 503 Service Unavailable")) is True
+
+    def test_generic_runtime_error_not_recoverable(self) -> None:
+        assert is_recoverable_error(RuntimeError("unknown failure")) is False
+
+    def test_value_error_not_recoverable(self) -> None:
+        assert is_recoverable_error(ValueError("bad value")) is False
+
+
+class TestRunWithRetry:
+    def test_success_on_first_try(self) -> None:
+        budget = PipelineErrorBudget(max_step_retries=2)
+        result = run_with_retry(
+            lambda: 42,
+            step_name="test",
+            budget=budget,
+            is_cancelled=lambda: False,
+        )
+        assert result == 42
+        assert budget.error_count == 0
+
+    def test_success_after_transient_failure(self) -> None:
+        call_count = 0
+
+        def _flaky() -> str:
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                raise ConnectionError("transient")
+            return "ok"
+
+        budget = PipelineErrorBudget(max_step_retries=2)
+        result = run_with_retry(
+            _flaky,
+            step_name="test",
+            budget=budget,
+            is_cancelled=lambda: False,
+        )
+        assert result == "ok"
+        assert call_count == 2
+        assert budget.error_count == 1
+
+    def test_non_recoverable_error_not_retried(self) -> None:
+        call_count = 0
+
+        def _config_fail() -> str:
+            nonlocal call_count
+            call_count += 1
+            raise ConfigError("bad config")
+
+        budget = PipelineErrorBudget(max_step_retries=2)
+        with pytest.raises(ConfigError, match="bad config"):
+            run_with_retry(
+                _config_fail,
+                step_name="test",
+                budget=budget,
+                is_cancelled=lambda: False,
+            )
+        assert call_count == 1
+        assert budget.error_count == 0
+
+    def test_retries_exhausted_raises_original(self) -> None:
+        call_count = 0
+
+        def _always_fail() -> str:
+            nonlocal call_count
+            call_count += 1
+            raise ConnectionError(f"failure #{call_count}")
+
+        budget = PipelineErrorBudget(max_step_retries=2, max_total_errors=10)
+        with pytest.raises(ConnectionError, match="failure #3"):
+            run_with_retry(
+                _always_fail,
+                step_name="test",
+                budget=budget,
+                is_cancelled=lambda: False,
+            )
+        assert call_count == 3  # 1 initial + 2 retries
+        assert budget.error_count == 3
+
+    def test_budget_exhausted_raises_ahadiff_error(self) -> None:
+        call_count = 0
+
+        def _always_fail() -> str:
+            nonlocal call_count
+            call_count += 1
+            raise ConnectionError("fail")
+
+        budget = PipelineErrorBudget(max_step_retries=5, max_total_errors=2)
+        with pytest.raises(AhaDiffError, match="error budget exhausted"):
+            run_with_retry(
+                _always_fail,
+                step_name="flaky_step",
+                budget=budget,
+                is_cancelled=lambda: False,
+            )
+        assert budget.error_count == 2
+        assert call_count == 2
+
+    def test_cancellation_during_retry(self) -> None:
+        call_count = 0
+        cancelled = False
+
+        def _fail_then_cancel() -> str:
+            nonlocal call_count, cancelled
+            call_count += 1
+            if call_count == 1:
+                cancelled = True
+                raise ConnectionError("fail")
+            return "should not reach"
+
+        budget = PipelineErrorBudget(max_step_retries=3)
+        with pytest.raises(AhaDiffError, match="cancelled"):
+            run_with_retry(
+                _fail_then_cancel,
+                step_name="test",
+                budget=budget,
+                is_cancelled=lambda: cancelled,
+            )
+        assert call_count == 1
+
+    def test_cancellation_interrupts_backoff_sleep(self) -> None:
+        """H1 fix: cancel during backoff sleep should abort quickly."""
+        import time as _time
+
+        call_count = 0
+        cancelled = False
+
+        def _fail_once() -> str:
+            nonlocal call_count, cancelled
+            call_count += 1
+            if call_count == 1:
+                raise ConnectionError("transient")
+            return "ok"
+
+        budget = PipelineErrorBudget(max_step_retries=2)
+        start = _time.monotonic()
+
+        def _delayed_cancel() -> bool:
+            nonlocal cancelled
+            if not cancelled and _time.monotonic() - start > 0.1:
+                cancelled = True
+            return cancelled
+
+        with pytest.raises(AhaDiffError, match="cancelled"):
+            run_with_retry(
+                _fail_once,
+                step_name="test",
+                budget=budget,
+                is_cancelled=_delayed_cancel,
+            )
+        elapsed = _time.monotonic() - start
+        assert elapsed < 2.0
+
+    def test_os_error_not_recoverable(self) -> None:
+        """M3 fix: local filesystem OSError should not be retried."""
+        call_count = 0
+
+        def _disk_full() -> str:
+            nonlocal call_count
+            call_count += 1
+            raise OSError(28, "No space left on device")
+
+        budget = PipelineErrorBudget(max_step_retries=2)
+        with pytest.raises(OSError, match="No space left"):
+            run_with_retry(
+                _disk_full,
+                step_name="test",
+                budget=budget,
+                is_cancelled=lambda: False,
+            )
+        assert call_count == 1
+        assert budget.error_count == 0
+
+    def test_file_not_found_not_recoverable(self) -> None:
+        assert is_recoverable_error(FileNotFoundError("missing")) is False
+
+    def test_is_a_directory_not_recoverable(self) -> None:
+        assert is_recoverable_error(IsADirectoryError("dir")) is False
+
+
+class TestPipelineRetryIntegration:
+    def test_completed_pipeline_has_zero_recoverable_errors(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_repo: Path,
+    ) -> None:
+        _patch_config_and_paths(monkeypatch, fake_repo)
+        capture = _patch_capture(monkeypatch, fake_repo)
+        _patch_learnability(monkeypatch, score=0.7)
+        _patch_completed_pipeline(monkeypatch, fake_repo, capture)
+
+        result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
+        assert result.status == "keep"
+        assert result.recoverable_errors == 0
+
+    def test_env_override_retry_budget(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_repo: Path,
+    ) -> None:
+        monkeypatch.setenv("AHADIFF_PIPELINE_MAX_STEP_RETRIES", "0")
+        monkeypatch.setenv("AHADIFF_PIPELINE_ERROR_BUDGET", "1")
+        _patch_config_and_paths(monkeypatch, fake_repo)
+        _patch_capture(monkeypatch, fake_repo)
+        _patch_learnability(monkeypatch, score=0.7)
+
+        def _resolve_provider(**kwargs: object) -> tuple[_FakeProviderConfig, str, str, bool]:
+            return _FakeProviderConfig(), "key", "local", False
+
+        monkeypatch.setattr(f"{_ORCH}._resolve_provider_from_config", _resolve_provider)
+
+        def _extract_fail(**kwargs: object) -> tuple[Path, int]:
+            raise ConnectionError("transient LLM failure")
+
+        monkeypatch.setattr(
+            f"{_CLAIMS_RUNTIME}.extract_claim_candidates_from_run",
+            _extract_fail,
+        )
+
+        with pytest.raises(AhaDiffError, match="error budget exhausted|claim extraction failed"):
+            run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
 
 
 __all__: list[str] = []

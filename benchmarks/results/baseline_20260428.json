@@ -1,10 +1,103 @@
 {
   "api_latency": {
     "benchmark": "api_latency",
+    "endpoints": {
+      "GET /api/auth/token": {
+        "http_status_counts": {
+          "200": 30
+        },
+        "metrics": {
+          "mean_ms": 0.562,
+          "p50_ms": 0.518,
+          "p95_ms": 0.818,
+          "p99_ms": 0.891
+        },
+        "response_bytes": {
+          "max": 62,
+          "mean": 62.0,
+          "min": 62
+        },
+        "samples": 30,
+        "status": "ok"
+      },
+      "GET /api/concepts": {
+        "http_status_counts": {
+          "200": 30
+        },
+        "metrics": {
+          "mean_ms": 57.332,
+          "p50_ms": 57.219,
+          "p95_ms": 60.145,
+          "p99_ms": 61.859
+        },
+        "response_bytes": {
+          "max": 10124,
+          "mean": 10124.0,
+          "min": 10124
+        },
+        "samples": 30,
+        "status": "ok"
+      },
+      "GET /api/config": {
+        "http_status_counts": {
+          "200": 30
+        },
+        "metrics": {
+          "mean_ms": 1.103,
+          "p50_ms": 1.104,
+          "p95_ms": 1.339,
+          "p99_ms": 1.36
+        },
+        "response_bytes": {
+          "max": 184,
+          "mean": 184.0,
+          "min": 184
+        },
+        "samples": 30,
+        "status": "ok"
+      },
+      "GET /api/ratchet/history": {
+        "http_status_counts": {
+          "200": 30
+        },
+        "metrics": {
+          "mean_ms": 5.871,
+          "p50_ms": 5.76,
+          "p95_ms": 6.807,
+          "p99_ms": 7.483
+        },
+        "response_bytes": {
+          "max": 1074,
+          "mean": 1074.0,
+          "min": 1074
+        },
+        "samples": 30,
+        "status": "ok"
+      },
+      "GET /api/runs": {
+        "http_status_counts": {
+          "200": 30
+        },
+        "metrics": {
+          "mean_ms": 5.888,
+          "p50_ms": 5.848,
+          "p95_ms": 6.77,
+          "p99_ms": 7.08
+        },
+        "response_bytes": {
+          "max": 1276,
+          "mean": 1276.0,
+          "min": 1276
+        },
+        "samples": 30,
+        "status": "ok"
+      }
+    },
     "host": "127.0.0.1",
     "port": 18321,
-    "reason": "serve_not_running",
-    "status": "skipped"
+    "samples_per_endpoint": 30,
+    "status": "ok",
+    "working_directory": "/Users/yangjunjie/Desktop/ahadiff"
   },
   "bundle_size": {
     "benchmark": "bundle_size",
@@ -15,20 +108,20 @@
       "",
       "vite v5.4.21 building for production...",
       "transforming...",
-      "\u2713 104 modules transformed.",
+      "\u2713 105 modules transformed.",
       "rendering chunks...",
       "computing gzip size...",
       "dist/index.html                   2.21 kB \u2502 gzip:  1.15 kB",
-      "dist/assets/index-B0D4LQrU.css   63.83 kB \u2502 gzip: 11.65 kB",
-      "dist/assets/index-CyU3aUp9.js   298.21 kB \u2502 gzip: 91.54 kB",
-      "\u2713 built in 496ms"
+      "dist/assets/index-IKRoUsQc.css   65.81 kB \u2502 gzip: 11.94 kB",
+      "dist/assets/index-hz5h83hC.js   302.83 kB \u2502 gzip: 92.90 kB",
+      "\u2713 built in 553ms"
     ],
     "dist_directory": "dist",
-    "dist_total_bytes": 365956,
+    "dist_total_bytes": 372664,
     "js_files": [
       {
-        "bytes": 299877,
-        "path": "dist/assets/index-CyU3aUp9.js"
+        "bytes": 304604,
+        "path": "dist/assets/index-hz5h83hC.js"
       }
     ],
     "status": "ok",
@@ -43,22 +136,22 @@
       "--version"
     ],
     "metrics": {
-      "mean_ms": 171.518,
-      "min_ms": 161.722,
-      "p50_ms": 171.491,
-      "p95_ms": 178.87
+      "mean_ms": 187.38,
+      "min_ms": 180.986,
+      "p50_ms": 186.629,
+      "p95_ms": 193.238
     },
     "raw_samples_ms": [
-      171.659,
-      166.013,
-      161.722,
-      171.22,
-      174.105,
-      181.719,
-      174.753,
-      175.388,
-      171.324,
-      167.277
+      184.526,
+      180.986,
+      182.934,
+      188.212,
+      185.046,
+      191.567,
+      184.73,
+      194.606,
+      191.21,
+      189.985
     ],
     "runs": 10,
     "status": "ok",
@@ -72,71 +165,118 @@
       "100kb": {
         "actual_bytes": 102570,
         "actual_lines": 2630,
-        "bytes_per_sec": 22492521.851,
+        "bytes_per_sec": 20507403.494,
         "files_parsed": 263,
         "iterations": 40,
-        "lines_per_sec": 576731.33,
+        "lines_per_sec": 525830.859,
         "target_bytes": 102400,
-        "total_elapsed_ms": 182.407
+        "total_elapsed_ms": 200.064
       },
       "10kb": {
         "actual_bytes": 10530,
         "actual_lines": 270,
-        "bytes_per_sec": 23286285.293,
+        "bytes_per_sec": 22322751.626,
         "files_parsed": 27,
         "iterations": 200,
-        "lines_per_sec": 597084.238,
+        "lines_per_sec": 572378.247,
         "target_bytes": 10240,
-        "total_elapsed_ms": 90.44
+        "total_elapsed_ms": 94.343
       },
       "1kb": {
         "actual_bytes": 1170,
         "actual_lines": 30,
-        "bytes_per_sec": 22984139.715,
+        "bytes_per_sec": 21636148.484,
         "files_parsed": 3,
         "iterations": 500,
-        "lines_per_sec": 589336.916,
+        "lines_per_sec": 554773.038,
         "target_bytes": 1024,
-        "total_elapsed_ms": 25.452
+        "total_elapsed_ms": 27.038
       },
       "1mb": {
         "actual_bytes": 1048710,
         "actual_lines": 26890,
-        "bytes_per_sec": 20769948.33,
+        "bytes_per_sec": 19167792.08,
         "files_parsed": 2689,
         "iterations": 5,
-        "lines_per_sec": 532562.778,
+        "lines_per_sec": 491481.848,
         "target_bytes": 1048576,
-        "total_elapsed_ms": 252.458
+        "total_elapsed_ms": 273.56
       }
     },
     "working_directory": "/Users/yangjunjie/Desktop/ahadiff"
+  },
+  "graphify": {
+    "benchmarks": [
+      {
+        "edge_count": 17,
+        "iterations": 100,
+        "mean_ms": 0.298,
+        "median_ms": 0.283,
+        "node_count": 15,
+        "operation": "parse_graph_json",
+        "p95_ms": 0.373,
+        "p99_ms": 0.467
+      },
+      {
+        "iterations": 50,
+        "matches_per_round": 10,
+        "mean_ms": 1.438,
+        "median_ms": 1.426,
+        "operation": "match_concepts (10 queries)",
+        "p95_ms": 1.553
+      },
+      {
+        "iterations": 50,
+        "links_found": 10,
+        "mean_ms": 1.433,
+        "median_ms": 1.418,
+        "operation": "link_concepts (10 concepts)",
+        "p95_ms": 1.517
+      },
+      {
+        "hits_per_round": 5,
+        "iterations": 50,
+        "mean_ms": 0.61,
+        "median_ms": 0.601,
+        "operation": "search_graph_nodes (5 queries)",
+        "p95_ms": 0.702
+      },
+      {
+        "iterations": 50,
+        "mean_ms": 0.007,
+        "median_ms": 0.006,
+        "operation": "slice_by_files (2 files, 2 hops)",
+        "p95_ms": 0.008,
+        "subgraph_nodes": 12
+      }
+    ],
+    "fixture": "graph.json"
   },
   "sqlite_queries": {
     "benchmark": "sqlite_queries",
     "operations": {
       "list_due_cards": {
         "iterations": 100,
-        "mean_ms": 0.917,
-        "min_ms": 0.818,
-        "p50_ms": 0.885,
-        "p95_ms": 0.967,
+        "mean_ms": 1.93,
+        "min_ms": 1.479,
+        "p50_ms": 1.731,
+        "p95_ms": 2.142,
         "result_count": 100
       },
       "load_finalized_ratchet_history_page": {
         "iterations": 100,
-        "mean_ms": 1.949,
-        "min_ms": 1.761,
-        "p50_ms": 1.868,
-        "p95_ms": 2.763,
+        "mean_ms": 3.022,
+        "min_ms": 2.482,
+        "p50_ms": 2.927,
+        "p95_ms": 4.004,
         "result_count": 100
       },
       "load_result_events_page": {
         "iterations": 100,
-        "mean_ms": 1.086,
-        "min_ms": 1.008,
-        "p50_ms": 1.05,
-        "p95_ms": 1.451,
+        "mean_ms": 2.014,
+        "min_ms": 1.633,
+        "p50_ms": 1.928,
+        "p95_ms": 2.596,
         "result_count": 100
       }
     },

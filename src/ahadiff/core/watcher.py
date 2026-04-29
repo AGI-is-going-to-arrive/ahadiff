@@ -40,6 +40,13 @@ def is_watchdog_available() -> bool:
     return importlib.util.find_spec("watchdog") is not None
 
 
+def _matches_ignore_pattern(rel_parts: tuple[str, ...], pattern: str) -> bool:
+    normalized = pattern.replace("\\", "/")
+    if "/" not in normalized and any(fnmatch.fnmatch(part, normalized) for part in rel_parts):
+        return True
+    return fnmatch.fnmatch("/".join(rel_parts), normalized)
+
+
 @dataclass(frozen=True)
 class WatcherConfig:
     debounce_seconds: float = _DEFAULT_DEBOUNCE_SECONDS
@@ -93,18 +100,20 @@ class FileWatcher:
     def _should_ignore(self, path: str) -> bool:
         try:
             resolved = Path(path).resolve()
-            rel = str(resolved.relative_to(self._watch_path))
+            rel_parts = resolved.relative_to(self._watch_path).parts
         except (ValueError, OSError):
             return True
-        if ".." in Path(rel).parts:
+        if ".." in rel_parts:
             return True
-        parts = Path(rel).parts
-        for pattern in self._ignore_patterns:
-            if any(fnmatch.fnmatch(part, pattern) for part in parts):
-                return True
-            if fnmatch.fnmatch(rel, pattern):
-                return True
-        return False
+        return any(_matches_ignore_pattern(rel_parts, pattern) for pattern in self._ignore_patterns)
+
+    def _changed_event_paths(self, event: Any) -> tuple[str, ...]:
+        paths: list[str] = []
+        for attr in ("src_path", "dest_path"):
+            path = getattr(event, attr, None)
+            if path is not None and path not in paths and not self._should_ignore(path):
+                paths.append(path)
+        return tuple(paths)
 
     def start(self) -> None:
         with self._lifecycle_lock:
@@ -124,15 +133,13 @@ class FileWatcher:
                         return
                     if event.is_directory:
                         return
-                    src_path = getattr(event, "src_path", None)
-                    if src_path is None:
-                        return
-                    if watcher_ref._should_ignore(src_path):
+                    changed_paths = watcher_ref._changed_event_paths(event)
+                    if not changed_paths:
                         return
                     with watcher_ref._lock:
                         if watcher_ref._stopped.is_set():
                             return
-                        watcher_ref._pending_paths.add(src_path)
+                        watcher_ref._pending_paths.update(changed_paths)
                         watcher_ref._schedule_trigger()
 
             self._stopped.clear()
@@ -163,8 +170,6 @@ class FileWatcher:
                     self._observer = None
                 else:
                     log.warning("watchdog observer did not stop within timeout")
-            with self._callback_gate:
-                pass
             log.info("file watcher stopped")
 
     def _schedule_trigger(self) -> None:
@@ -199,20 +204,37 @@ class FileWatcher:
                 return
             paths = frozenset(self._pending_paths)
             self._pending_paths.clear()
-            self._last_trigger_time = now
             self._timer = None
 
         if not paths:
             return
 
-        with self._callback_gate:
+        if not self._callback_gate.acquire(blocking=False):
+            with self._lock:
+                if not self._stopped.is_set():
+                    self._pending_paths.update(paths)
+                    self._schedule_trigger()
+            return
+        try:
             if self._stopped.is_set():
                 return
+            with self._lock:
+                self._last_trigger_time = now
             event = WatchEvent(changed_paths=paths, timestamp=now)
             try:
                 self._on_change(event)
             except Exception:
                 log.exception("watcher callback failed for %d changed files", len(paths))
+        finally:
+            self._callback_gate.release()
+
+    def status(self) -> dict[str, object]:
+        with self._lock:
+            return {
+                "running": self.is_running,
+                "last_trigger_time": self._last_trigger_time,
+                "pending_changes": len(self._pending_paths),
+            }
 
     def _drain_pending(self) -> frozenset[str]:
         with self._lock:

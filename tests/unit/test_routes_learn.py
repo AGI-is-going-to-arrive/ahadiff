@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import anyio
 import httpx
@@ -14,6 +14,7 @@ from starlette.testclient import TestClient
 
 from ahadiff.contracts.serve_runtime import TaskInfoResponse, TaskSubmitResponse
 from ahadiff.core.orchestrator import LearnRequest, LearnResult
+from ahadiff.core.task_runner import TaskRunner
 from ahadiff.serve import ServeState, create_app
 
 if TYPE_CHECKING:
@@ -239,8 +240,27 @@ def test_post_learn_task_visible_in_tasks_list(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_post_learn_rejects_provider_fields(tmp_path: Path) -> None:
-    """base_url, provider_class etc. must NOT be accepted — SSRF risk."""
+def test_post_learn_drops_provider_fields_before_request_construction(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """base_url, provider_class etc. must NOT reach LearnRequest."""
+    import ahadiff.core.orchestrator as orchestrator_module
+
+    forbidden = {"base_url", "provider_class", "model", "api_key_env", "provider_name"}
+    constructed_kwargs: dict[str, Any] = {}
+
+    def recording_learn_request(**kwargs: Any) -> LearnRequest:
+        constructed_kwargs.update(kwargs)
+        assert forbidden.isdisjoint(kwargs)
+        return LearnRequest(**kwargs)
+
+    def fake_run_learn_pipeline(request: LearnRequest, **_: object) -> LearnResult:
+        return LearnResult(run_id="run-provider-fields", status="completed")
+
+    monkeypatch.setattr(orchestrator_module, "LearnRequest", recording_learn_request)
+    monkeypatch.setattr(orchestrator_module, "run_learn_pipeline", fake_run_learn_pipeline)
+
     client = _client(tmp_path)
     resp = _post_learn(
         client,
@@ -253,7 +273,10 @@ def test_post_learn_rejects_provider_fields(tmp_path: Path) -> None:
         },
     )
     assert resp.status_code == 202
-    # The fields above should be silently dropped (not in _ACCEPTED_FIELDS)
+
+    info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
+    assert info["result"] is not None
+    assert forbidden.isdisjoint(constructed_kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -396,9 +419,6 @@ async def test_post_learn_queue_depth_limit_is_atomic(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import ahadiff.serve.routes_learn as rl
-
-    monkeypatch.setattr(rl, "_MAX_PENDING_TASKS", 1)
     release = threading.Event()
 
     def fake_run_learn_pipeline(request: LearnRequest, **_: object) -> LearnResult:
@@ -464,6 +484,7 @@ def test_post_learn_completed_task_preserves_result(
         "verdict": "PASS",
         "weakest_dim": "conciseness",
         "warnings": ["warn-1"],
+        "recoverable_errors": 0,
     }
 
 
@@ -517,19 +538,24 @@ def test_failed_task_has_error_code(
 
 
 @pytest.mark.anyio
-async def test_post_learn_thread_task_does_not_scheduler_timeout(
+async def test_post_learn_thread_task_uses_bounded_task_timeout(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("AHADIFF_DEFAULT_TASK_TIMEOUT_SECONDS", "0.05")
     started = threading.Event()
     release = threading.Event()
+    cancelled_seen = threading.Event()
     artifact_path = tmp_path / "thread-finished.txt"
 
-    def fake_run_learn_pipeline(request: LearnRequest, **_: object) -> LearnResult:
+    def fake_run_learn_pipeline(request: LearnRequest, **kwargs: object) -> LearnResult:
+        cancel_check = kwargs["is_cancelled"]
+        assert callable(cancel_check)
         started.set()
         release.wait(timeout=1.0)
-        artifact_path.write_text("finished\n", encoding="utf-8")
+        if cast("Any", cancel_check)():
+            cancelled_seen.set()
+        else:
+            artifact_path.write_text("finished\n", encoding="utf-8")
         return LearnResult(run_id="run-thread", status="completed")
 
     monkeypatch.setattr(
@@ -537,7 +563,14 @@ async def test_post_learn_thread_task_does_not_scheduler_timeout(
         fake_run_learn_pipeline,
     )
 
-    app = create_app(ServeState(state_dir=tmp_path, token="test-token", locale="en"))
+    app = create_app(
+        ServeState(
+            state_dir=tmp_path,
+            token="test-token",
+            locale="en",
+            task_runner=TaskRunner(max_concurrent=1, task_timeout_seconds=0.05),
+        )
+    )
     transport = httpx.ASGITransport(app=app)
     headers = {
         "X-AhaDiff-Token": "test-token",
@@ -553,32 +586,19 @@ async def test_post_learn_thread_task_does_not_scheduler_timeout(
             assert await run_sync_in_thread(lambda: started.wait(timeout=1.0))
             await anyio.sleep(0.15)
 
-            running_resp = await client.get(f"/api/tasks/{task_id}")
-            assert running_resp.status_code == 200
-            running_info = _json_object(running_resp)
-            assert running_info["status"] == "running"
-            assert running_info["error_code"] is None
+            failed_resp = await client.get(f"/api/tasks/{task_id}")
+            assert failed_resp.status_code == 200
+            failed_info = _json_object(failed_resp)
+            assert failed_info["status"] == "failed"
+            assert failed_info["error_code"] == "timeout"
+            assert "timeout" in str(failed_info["error"])
             assert not artifact_path.exists()
         finally:
             release.set()
 
-        deadline = time.monotonic() + 2.0
-        last_payload: dict[str, object] | None = None
-        while time.monotonic() < deadline:
-            info_resp = await client.get(f"/api/tasks/{task_id}")
-            assert info_resp.status_code == 200
-            payload = _json_object(info_resp)
-            last_payload = payload
-            if payload["status"] == "completed":
-                break
-            await anyio.sleep(0.02)
-        else:
-            raise AssertionError(f"task did not complete; last payload={last_payload!r}")
+        assert await run_sync_in_thread(lambda: cancelled_seen.wait(timeout=1.0))
 
-    assert last_payload is not None
-    assert last_payload["error_code"] is None
-    assert last_payload["result"] is not None
-    assert artifact_path.read_text(encoding="utf-8") == "finished\n"
+    assert not artifact_path.exists()
 
 
 def test_successful_task_error_code_is_none(

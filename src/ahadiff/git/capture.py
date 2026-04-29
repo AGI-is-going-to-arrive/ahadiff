@@ -22,7 +22,7 @@ from queue import Queue
 from typing import TYPE_CHECKING, Any, BinaryIO, Literal, cast
 
 from ahadiff.contracts import RunSource
-from ahadiff.core.config import DEFAULT_CONFIG
+from ahadiff.core.config import DEFAULT_CONFIG, load_config, load_workspace_config
 from ahadiff.core.errors import InputError, StorageError
 from ahadiff.core.ids import make_run_id
 from ahadiff.core.json_util import safe_json_loads
@@ -63,7 +63,7 @@ from .repo import (
     run_git,
     run_git_bytes,
 )
-from .symbols import extract_symbols, serialize_symbols_payload
+from .symbols import SymbolExtractorMode, extract_symbols, serialize_symbols_payload
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -121,6 +121,7 @@ class CapturedDiff:
     graphify_status: GraphifyStatus
     before_text_by_path: dict[str, str]
     after_text_by_path: dict[str, str]
+    symbol_extractor: SymbolExtractorMode
 
 
 @dataclass(frozen=True)
@@ -178,6 +179,7 @@ def capture_patch(
     max_files: int | None = None,
     hard_limit: int | None = None,
     max_patch_bytes: int | None = None,
+    symbol_extractor: SymbolExtractorMode | None = None,
     privacy_mode: str = "strict_local",
     content_lang: str = "en",
 ) -> CapturedDiff:
@@ -194,6 +196,10 @@ def capture_patch(
         max_patch_bytes=effective_max_patch_bytes,
     )
     workspace_root = workspace_root.expanduser().resolve()
+    effective_symbol_extractor = _effective_symbol_extractor(
+        workspace_root,
+        symbol_extractor=symbol_extractor,
+    )
     raw_capture = _capture_input(
         workspace_root=workspace_root,
         revision=revision,
@@ -300,15 +306,16 @@ def capture_patch(
         graphify_status=graphify_status,
         before_text_by_path=raw_capture.before_text_by_path,
         after_text_by_path=raw_capture.after_text_by_path,
+        symbol_extractor=effective_symbol_extractor,
     )
 
 
 def write_input_artifacts(capture: CapturedDiff) -> tuple[Path, Path]:
+    line_map_payload, symbols_payload = _structured_artifact_payloads(capture)
     metadata_text = _redact_json_artifact(
-        _render_json_text(capture.metadata),
+        _render_json_text(_metadata_with_symbol_extractor(capture, symbols_payload)),
         capture.workspace_root,
     )
-    line_map_payload, symbols_payload = _structured_artifact_payloads(capture)
     redacted_line_map = _redact_json_artifact(
         _render_json_text(line_map_payload),
         capture.workspace_root,
@@ -2384,8 +2391,47 @@ def _structured_artifact_payloads(capture: CapturedDiff) -> tuple[dict[str, Any]
         changed_files,
         before_text_by_path=capture.before_text_by_path,
         after_text_by_path=capture.after_text_by_path,
+        symbol_extractor=capture.symbol_extractor,
     )
     return serialize_line_map_payload(line_map), serialize_symbols_payload(symbols)
+
+
+def _metadata_with_symbol_extractor(
+    capture: CapturedDiff,
+    symbols_payload: dict[str, Any],
+) -> dict[str, Any]:
+    resolved = sorted(
+        {
+            str(item["extractor"])
+            for item in cast("list[dict[str, Any]]", symbols_payload.get("symbols", []))
+            if item.get("extractor")
+        }
+    )
+    metadata = dict(capture.metadata)
+    metadata["symbol_extractor"] = {
+        "requested": capture.symbol_extractor,
+        "resolved": resolved,
+    }
+    return metadata
+
+
+def _effective_symbol_extractor(
+    workspace_root: Path,
+    *,
+    symbol_extractor: SymbolExtractorMode | None,
+) -> SymbolExtractorMode:
+    if symbol_extractor is not None:
+        return symbol_extractor
+    try:
+        snapshot = (
+            load_config(workspace_root)
+            if _has_git_root(workspace_root)
+            else load_workspace_config(workspace_root)
+        )
+    except StorageError:
+        return cast("SymbolExtractorMode", DEFAULT_CONFIG["capture"]["symbol_extractor"])
+    capture_config = cast("dict[str, Any]", snapshot.values["capture"])
+    return cast("SymbolExtractorMode", capture_config["symbol_extractor"])
 
 
 def _redact_json_artifact(raw_text: str, workspace_root: Path) -> str:

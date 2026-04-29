@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from ahadiff.git.parser import parse_unified_diff
 from ahadiff.git.symbols import (
     SYMBOLS_SCHEMA,
@@ -7,6 +9,7 @@ from ahadiff.git.symbols import (
     extract_symbols,
     serialize_symbols_payload,
 )
+from ahadiff.git.tree_sitter_runtime import TreeSitterExtractionResult, TreeSitterSymbolCandidate
 
 
 def test_extract_symbols_prefers_python_ast_over_section_header() -> None:
@@ -75,6 +78,7 @@ def test_extract_symbols_regex_fallback_finds_export_const_arrow_fn_for_body_onl
     symbols = extract_symbols(
         parse_unified_diff(patch),
         after_text_by_path={"src/widget.ts": after_text},
+        symbol_extractor="builtin",
     )
 
     assert len(symbols) == 1
@@ -170,6 +174,7 @@ def test_extract_symbols_regex_fallback_finds_function_expression_for_body_only_
     symbols = extract_symbols(
         parse_unified_diff(patch),
         after_text_by_path={"src/helpers.ts": after_text},
+        symbol_extractor="builtin",
     )
 
     assert len(symbols) == 1
@@ -194,6 +199,7 @@ def test_extract_symbols_regex_fallback_tracks_js_class_and_static_async_method_
     symbols = extract_symbols(
         parse_unified_diff(patch),
         after_text_by_path={"src/widget.ts": after_text},
+        symbol_extractor="builtin",
     )
 
     names = {symbol.qualified_name for symbol in symbols}
@@ -221,6 +227,7 @@ def test_extract_symbols_regex_fallback_finds_generic_arrow_function() -> None:
     symbols = extract_symbols(
         parse_unified_diff(patch),
         after_text_by_path={"src/widget.ts": after_text},
+        symbol_extractor="builtin",
     )
 
     assert len(symbols) == 1
@@ -244,9 +251,108 @@ def test_extract_symbols_regex_fallback_ignores_object_literal_methods() -> None
         extract_symbols(
             parse_unified_diff(patch),
             after_text_by_path={"src/widget.ts": after_text},
+            symbol_extractor="builtin",
         )
         == ()
     )
+
+
+def test_tree_sitter_tracks_js_class_method_and_ignores_object_literal_methods() -> None:
+    pytest.importorskip("tree_sitter")
+    pytest.importorskip("tree_sitter_javascript")
+    patch = (
+        "diff --git a/src/widget.ts b/src/widget.ts\n"
+        "--- a/src/widget.ts\n"
+        "+++ b/src/widget.ts\n"
+        "@@ -4 +4 @@\n"
+        "-    return oldValue;\n"
+        "+    return `value: ${nextValue}`;\n"
+    )
+    after_text = (
+        "export default class Widget {\n"
+        "  renderCard() {\n"
+        '    const template = "}";\n'
+        "    // comment with } brace\n"
+        "    return `value: ${nextValue}`;\n"
+        "  }\n"
+        "}\n"
+        "const registry = {\n"
+        "  renderCard() {\n"
+        "    return 3;\n"
+        "  },\n"
+        "};\n"
+    )
+
+    symbols = extract_symbols(
+        parse_unified_diff(patch),
+        after_text_by_path={"src/widget.ts": after_text},
+        symbol_extractor="tree_sitter",
+    )
+
+    names = {symbol.qualified_name for symbol in symbols}
+    assert "Widget" in names
+    assert "Widget.renderCard" in names
+    assert "registry.renderCard" not in names
+    render_symbol = next(
+        symbol for symbol in symbols if symbol.qualified_name == "Widget.renderCard"
+    )
+    assert render_symbol.parent == "Widget"
+    assert render_symbol.extractor == "tree_sitter"
+    assert render_symbol.confidence == "high"
+
+
+def test_extract_symbols_tree_sitter_uses_runtime_records_when_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    patch = (
+        "diff --git a/src/widget.ts b/src/widget.ts\n"
+        "--- a/src/widget.ts\n"
+        "+++ b/src/widget.ts\n"
+        "@@ -3 +3 @@\n"
+        '-    return "old";\n'
+        '+    return "new";\n'
+    )
+    after_text = 'export default class Widget {\n  renderCard() {\n    return "new";\n  }\n}\n'
+
+    def fake_tree_sitter_extract(path: str, source_text: str) -> TreeSitterExtractionResult:
+        del path, source_text
+        return TreeSitterExtractionResult(
+            records=(
+                TreeSitterSymbolCandidate(
+                    name="Widget",
+                    qualified_name="Widget",
+                    kind="class",
+                    parent=None,
+                    start_line=1,
+                    end_line=5,
+                ),
+                TreeSitterSymbolCandidate(
+                    name="renderCard",
+                    qualified_name="Widget.renderCard",
+                    kind="method",
+                    parent="Widget",
+                    start_line=2,
+                    end_line=4,
+                ),
+            ),
+            available=True,
+            error=None,
+        )
+
+    monkeypatch.setattr(
+        "ahadiff.git.symbols.extract_tree_sitter_symbols",
+        fake_tree_sitter_extract,
+    )
+
+    symbols = extract_symbols(
+        parse_unified_diff(patch),
+        after_text_by_path={"src/widget.ts": after_text},
+        symbol_extractor="tree_sitter",
+    )
+
+    names = {symbol.qualified_name for symbol in symbols}
+    assert names == {"Widget", "Widget.renderCard"}
+    assert all(symbol.extractor == "tree_sitter" for symbol in symbols)
 
 
 def test_extract_symbols_regex_fallback_handles_braces_in_string_and_comment() -> None:
@@ -271,6 +377,7 @@ def test_extract_symbols_regex_fallback_handles_braces_in_string_and_comment() -
     symbols = extract_symbols(
         parse_unified_diff(patch),
         after_text_by_path={"src/widget.ts": after_text},
+        symbol_extractor="builtin",
     )
 
     names = {symbol.qualified_name for symbol in symbols}
@@ -301,6 +408,7 @@ def test_extract_symbols_regex_fallback_handles_multiline_block_comment_braces()
     symbols = extract_symbols(
         parse_unified_diff(patch),
         after_text_by_path={"src/widget.ts": after_text},
+        symbol_extractor="builtin",
     )
 
     names = {symbol.qualified_name for symbol in symbols}
@@ -333,6 +441,7 @@ def test_extract_symbols_regex_fallback_ignores_multiline_block_comment_signatur
     symbols = extract_symbols(
         parse_unified_diff(patch),
         after_text_by_path={"src/widget.ts": after_text},
+        symbol_extractor="builtin",
     )
 
     names = {symbol.qualified_name for symbol in symbols}
@@ -364,6 +473,320 @@ def test_extract_symbols_merges_same_symbol_across_multiple_hunks() -> None:
     assert len(symbols) == 1
     assert symbols[0].qualified_name == "render_demo"
     assert len(symbols[0].hunk_ids) == 2
+
+
+def test_extract_symbols_tree_sitter_merges_same_symbol_across_multiple_hunks() -> None:
+    pytest.importorskip("tree_sitter")
+    pytest.importorskip("tree_sitter_typescript")
+    patch = (
+        "diff --git a/src/demo.ts b/src/demo.ts\n"
+        "--- a/src/demo.ts\n"
+        "+++ b/src/demo.ts\n"
+        "@@ -1,2 +1,2 @@\n"
+        "-const renderDemo = () => {\n"
+        "+const renderDemo = () => {\n"
+        "   return 1;\n"
+        "@@ -3 +3 @@\n"
+        "-  return 2;\n"
+        "+  return 3;\n"
+    )
+    after_text = "const renderDemo = () => {\n  return 1;\n  return 3;\n};\n"
+
+    symbols = extract_symbols(
+        parse_unified_diff(patch),
+        after_text_by_path={"src/demo.ts": after_text},
+        symbol_extractor="tree_sitter",
+    )
+
+    assert len(symbols) == 1
+    assert symbols[0].qualified_name == "renderDemo"
+    assert symbols[0].extractor == "tree_sitter"
+    assert len(symbols[0].hunk_ids) == 2
+
+
+def test_extract_symbols_tree_sitter_tracks_go_method_parent_scope() -> None:
+    pytest.importorskip("tree_sitter")
+    pytest.importorskip("tree_sitter_go")
+    patch = (
+        "diff --git a/src/service.go b/src/service.go\n"
+        "--- a/src/service.go\n"
+        "+++ b/src/service.go\n"
+        "@@ -6 +6 @@\n"
+        '-    return "old"\n'
+        '+    return "new"\n'
+    )
+    after_text = (
+        "package demo\n\n"
+        "type Service struct{}\n\n"
+        'func (s *Service) Render() string {\n    return "new"\n}\n'
+    )
+
+    symbols = extract_symbols(
+        parse_unified_diff(patch),
+        after_text_by_path={"src/service.go": after_text},
+        symbol_extractor="tree_sitter",
+    )
+
+    assert len(symbols) == 1
+    assert symbols[0].qualified_name == "Service.Render"
+    assert symbols[0].parent == "Service"
+    assert symbols[0].extractor == "tree_sitter"
+
+
+def test_extract_symbols_tree_sitter_tracks_go_type_declaration() -> None:
+    pytest.importorskip("tree_sitter")
+    pytest.importorskip("tree_sitter_go")
+    patch = (
+        "diff --git a/src/service.go b/src/service.go\n"
+        "--- a/src/service.go\n"
+        "+++ b/src/service.go\n"
+        "@@ -3 +3 @@\n"
+        "-type Service struct{}\n"
+        "+type Service struct{ value int }\n"
+    )
+    after_text = "package demo\n\ntype Service struct{ value int }\n"
+
+    symbols = extract_symbols(
+        parse_unified_diff(patch),
+        after_text_by_path={"src/service.go": after_text},
+        symbol_extractor="tree_sitter",
+    )
+
+    assert len(symbols) == 1
+    assert symbols[0].qualified_name == "Service"
+    assert symbols[0].kind == "type"
+    assert symbols[0].extractor == "tree_sitter"
+
+
+def test_extract_symbols_tree_sitter_tracks_java_class_method_scope() -> None:
+    pytest.importorskip("tree_sitter")
+    pytest.importorskip("tree_sitter_java")
+    patch = (
+        "diff --git a/src/Service.java b/src/Service.java\n"
+        "--- a/src/Service.java\n"
+        "+++ b/src/Service.java\n"
+        "@@ -3 +3 @@\n"
+        '-    return "old";\n'
+        '+    return "new";\n'
+    )
+    after_text = 'class Service {\n  String render() {\n    return "new";\n  }\n}\n'
+
+    symbols = extract_symbols(
+        parse_unified_diff(patch),
+        after_text_by_path={"src/Service.java": after_text},
+        symbol_extractor="tree_sitter",
+    )
+
+    names = {symbol.qualified_name for symbol in symbols}
+    assert "Service" in names
+    assert "Service.render" in names
+    render_symbol = next(symbol for symbol in symbols if symbol.qualified_name == "Service.render")
+    assert render_symbol.parent == "Service"
+    assert render_symbol.extractor == "tree_sitter"
+
+
+def test_extract_symbols_tree_sitter_tracks_java_interface_method_scope() -> None:
+    pytest.importorskip("tree_sitter")
+    pytest.importorskip("tree_sitter_java")
+    patch = (
+        "diff --git a/src/Named.java b/src/Named.java\n"
+        "--- a/src/Named.java\n"
+        "+++ b/src/Named.java\n"
+        "@@ -2 +2 @@\n"
+        "-  String name();\n"
+        "+  CharSequence name();\n"
+    )
+    after_text = "interface Named {\n  CharSequence name();\n}\n"
+
+    symbols = extract_symbols(
+        parse_unified_diff(patch),
+        after_text_by_path={"src/Named.java": after_text},
+        symbol_extractor="tree_sitter",
+    )
+
+    names = {symbol.qualified_name for symbol in symbols}
+    assert "Named" in names
+    assert "Named.name" in names
+    method_symbol = next(symbol for symbol in symbols if symbol.qualified_name == "Named.name")
+    assert method_symbol.parent == "Named"
+    assert method_symbol.extractor == "tree_sitter"
+
+
+def test_extract_symbols_tree_sitter_tracks_rust_impl_method_scope() -> None:
+    pytest.importorskip("tree_sitter")
+    pytest.importorskip("tree_sitter_rust")
+    patch = (
+        "diff --git a/src/lib.rs b/src/lib.rs\n"
+        "--- a/src/lib.rs\n"
+        "+++ b/src/lib.rs\n"
+        "@@ -4 +4 @@\n"
+        '-        String::from("old")\n'
+        '+        String::from("new")\n'
+    )
+    after_text = (
+        "struct Service;\n\n"
+        "impl Service {\n"
+        "    fn render(&self) -> String {\n"
+        '        String::from("new")\n'
+        "    }\n"
+        "}\n"
+    )
+
+    symbols = extract_symbols(
+        parse_unified_diff(patch),
+        after_text_by_path={"src/lib.rs": after_text},
+        symbol_extractor="tree_sitter",
+    )
+
+    assert len(symbols) == 1
+    assert symbols[0].qualified_name == "Service.render"
+    assert symbols[0].parent == "Service"
+    assert symbols[0].extractor == "tree_sitter"
+
+
+def test_extract_symbols_tree_sitter_tracks_rust_trait_method_scope() -> None:
+    pytest.importorskip("tree_sitter")
+    pytest.importorskip("tree_sitter_rust")
+    patch = (
+        "diff --git a/src/lib.rs b/src/lib.rs\n"
+        "--- a/src/lib.rs\n"
+        "+++ b/src/lib.rs\n"
+        "@@ -2 +2 @@\n"
+        "-    fn render(&self) -> String;\n"
+        "+    fn render(&self) -> &'static str;\n"
+    )
+    after_text = "trait Render {\n    fn render(&self) -> &'static str;\n}\n"
+
+    symbols = extract_symbols(
+        parse_unified_diff(patch),
+        after_text_by_path={"src/lib.rs": after_text},
+        symbol_extractor="tree_sitter",
+    )
+
+    names = {symbol.qualified_name for symbol in symbols}
+    assert "Render" in names
+    assert "Render.render" in names
+    method_symbol = next(symbol for symbol in symbols if symbol.qualified_name == "Render.render")
+    assert method_symbol.parent == "Render"
+    assert method_symbol.extractor == "tree_sitter"
+
+
+def test_extract_symbols_tree_sitter_tracks_php_namespace_class_method_scope() -> None:
+    pytest.importorskip("tree_sitter")
+    pytest.importorskip("tree_sitter_php")
+    patch = (
+        "diff --git a/src/Service.php b/src/Service.php\n"
+        "--- a/src/Service.php\n"
+        "+++ b/src/Service.php\n"
+        "@@ -4 +4 @@\n"
+        '-  public function run(): string { return "old"; }\n'
+        '+  public function run(): string { return "new"; }\n'
+    )
+    after_text = (
+        "<?php\n"
+        "namespace App\\Core {\n"
+        "class Service {\n"
+        '  public function run(): string { return "new"; }\n'
+        "}\n"
+        "}\n"
+    )
+
+    symbols = extract_symbols(
+        parse_unified_diff(patch),
+        after_text_by_path={"src/Service.php": after_text},
+        symbol_extractor="tree_sitter",
+    )
+
+    names = {symbol.qualified_name for symbol in symbols}
+    assert "Service" in names
+    assert "Service.run" in names
+    method_symbol = next(symbol for symbol in symbols if symbol.qualified_name == "Service.run")
+    assert method_symbol.parent == "Service"
+    assert method_symbol.extractor == "tree_sitter"
+
+
+def test_extract_symbols_tree_sitter_tracks_ruby_nested_singleton_method_scope() -> None:
+    pytest.importorskip("tree_sitter")
+    pytest.importorskip("tree_sitter_ruby")
+    patch = (
+        "diff --git a/src/service.rb b/src/service.rb\n"
+        "--- a/src/service.rb\n"
+        "+++ b/src/service.rb\n"
+        "@@ -4 +4 @@\n"
+        '-      "old"\n'
+        '+      "new"\n'
+    )
+    after_text = (
+        'module Outer\n  class Service\n    def self.boot\n      "new"\n    end\n  end\nend\n'
+    )
+
+    symbols = extract_symbols(
+        parse_unified_diff(patch),
+        after_text_by_path={"src/service.rb": after_text},
+        symbol_extractor="tree_sitter",
+    )
+
+    names = {symbol.qualified_name for symbol in symbols}
+    assert "Outer" in names
+    assert "Outer.Service" in names
+    assert "Outer.Service.boot" in names
+    method_symbol = next(
+        symbol for symbol in symbols if symbol.qualified_name == "Outer.Service.boot"
+    )
+    assert method_symbol.parent == "Outer.Service"
+    assert method_symbol.extractor == "tree_sitter"
+
+
+def test_extract_symbols_tree_sitter_tracks_ruby_singleton_class_scope() -> None:
+    pytest.importorskip("tree_sitter")
+    pytest.importorskip("tree_sitter_ruby")
+    patch = (
+        "diff --git a/src/service.rb b/src/service.rb\n"
+        "--- a/src/service.rb\n"
+        "+++ b/src/service.rb\n"
+        "@@ -4 +4 @@\n"
+        '-      "old"\n'
+        '+      "new"\n'
+    )
+    after_text = 'class Service\n  class << self\n    def boot\n      "new"\n    end\n  end\nend\n'
+
+    symbols = extract_symbols(
+        parse_unified_diff(patch),
+        after_text_by_path={"src/service.rb": after_text},
+        symbol_extractor="tree_sitter",
+    )
+
+    assert "Service.boot" in {symbol.qualified_name for symbol in symbols}
+    method_symbol = next(symbol for symbol in symbols if symbol.qualified_name == "Service.boot")
+    assert method_symbol.parent == "Service"
+    assert method_symbol.extractor == "tree_sitter"
+
+
+def test_extract_symbols_tree_sitter_tracks_csharp_namespace_class_method_scope() -> None:
+    pytest.importorskip("tree_sitter")
+    pytest.importorskip("tree_sitter_c_sharp")
+    patch = (
+        "diff --git a/src/Service.cs b/src/Service.cs\n"
+        "--- a/src/Service.cs\n"
+        "+++ b/src/Service.cs\n"
+        "@@ -3 +3 @@\n"
+        '-  string Run() { return "old"; }\n'
+        '+  string Run() { return "new"; }\n'
+    )
+    after_text = 'namespace Demo.Core {\nclass Service {\n  string Run() { return "new"; }\n}\n}\n'
+
+    symbols = extract_symbols(
+        parse_unified_diff(patch),
+        after_text_by_path={"src/Service.cs": after_text},
+        symbol_extractor="tree_sitter",
+    )
+
+    names = {symbol.qualified_name for symbol in symbols}
+    assert "Service" in names
+    assert "Service.Run" in names
+    method_symbol = next(symbol for symbol in symbols if symbol.qualified_name == "Service.Run")
+    assert method_symbol.parent == "Service"
+    assert method_symbol.extractor == "tree_sitter"
 
 
 def test_extract_symbols_regex_fallback_finds_enclosing_python_symbol_for_body_only_change() -> (
@@ -411,6 +834,44 @@ def test_extract_symbols_regex_fallback_tracks_nested_parent_scope() -> None:
     run_symbol = next(symbol for symbol in symbols if symbol.qualified_name == "Service.run")
     assert run_symbol.parent == "Service"
     assert run_symbol.extractor == "regex"
+
+
+def test_extract_symbols_tree_sitter_unavailable_falls_back_to_regex(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    patch = (
+        "diff --git a/src/widget.ts b/src/widget.ts\n"
+        "--- a/src/widget.ts\n"
+        "+++ b/src/widget.ts\n"
+        "@@ -2 +2 @@\n"
+        "-  return oldValue;\n"
+        "+  return nextValue;\n"
+    )
+    after_text = "export const renderCard = () => {\n  return nextValue;\n};\n"
+
+    def fake_tree_sitter_extract(path: str, source_text: str) -> TreeSitterExtractionResult:
+        del path, source_text
+        return TreeSitterExtractionResult(
+            records=(),
+            available=False,
+            error="tree_sitter runtime is not installed",
+        )
+
+    monkeypatch.setattr(
+        "ahadiff.git.symbols.extract_tree_sitter_symbols",
+        fake_tree_sitter_extract,
+    )
+
+    symbols = extract_symbols(
+        parse_unified_diff(patch),
+        after_text_by_path={"src/widget.ts": after_text},
+        symbol_extractor="tree_sitter",
+    )
+
+    assert len(symbols) == 1
+    assert symbols[0].qualified_name == "renderCard"
+    assert symbols[0].extractor == "regex"
+    assert symbols[0].error == "tree_sitter runtime is not installed"
 
 
 def test_extract_symbols_section_header_tracks_parent_from_explicit_scope_hint() -> None:

@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import threading
 import time
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
 
+from ahadiff import cli as cli_module
 from ahadiff.core.errors import ConfigError
 from ahadiff.core.watcher import (
     FileWatcher,
@@ -140,6 +142,13 @@ class TestFileWatcherIgnorePatterns:
             assert watcher._should_ignore(str(tmp_path / "build" / "dist.js"))
             assert not watcher._should_ignore(str(tmp_path / "src" / "main.py"))
 
+    def test_custom_nested_ignore_pattern_accepts_windows_separator(self, tmp_path: Path) -> None:
+        config = WatcherConfig(ignore_patterns=(r"src\generated\*",))
+        with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
+            watcher = FileWatcher(tmp_path, on_change=lambda _: None, config=config)
+            assert watcher._should_ignore(str(tmp_path / "src" / "generated" / "client.py"))
+            assert not watcher._should_ignore(str(tmp_path / "src" / "main.py"))
+
     def test_ignores_path_outside_watch_root(self, tmp_path: Path) -> None:
         with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
             watcher = FileWatcher(tmp_path, on_change=lambda _: None)
@@ -154,6 +163,29 @@ class TestFileWatcherIgnorePatterns:
         with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
             watcher = FileWatcher(tmp_path, on_change=lambda _: None)
             assert watcher._should_ignore(str(tmp_path / ".venv" / "lib" / "site.py"))
+
+
+class TestFileWatcherEventPaths:
+    def test_move_event_includes_dest_path(self, tmp_path: Path) -> None:
+        with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
+            watcher = FileWatcher(tmp_path, on_change=lambda _: None)
+            event = SimpleNamespace(
+                src_path=str(tmp_path / "old.py"),
+                dest_path=str(tmp_path / "new.py"),
+            )
+            assert watcher._changed_event_paths(event) == (
+                str(tmp_path / "old.py"),
+                str(tmp_path / "new.py"),
+            )
+
+    def test_move_event_keeps_non_ignored_dest_path(self, tmp_path: Path) -> None:
+        with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
+            watcher = FileWatcher(tmp_path, on_change=lambda _: None)
+            event = SimpleNamespace(
+                src_path=str(tmp_path / ".ahadiff" / "tmp.py"),
+                dest_path=str(tmp_path / "src" / "main.py"),
+            )
+            assert watcher._changed_event_paths(event) == (str(tmp_path / "src" / "main.py"),)
 
 
 class TestFileWatcherDrainPending:
@@ -244,7 +276,6 @@ class TestFileWatcherTrigger:
 
     def test_stop_prevents_callback_waiting_on_gate(self, tmp_path: Path) -> None:
         received: list[WatchEvent] = []
-        trigger_done = threading.Event()
 
         with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
             watcher = FileWatcher(
@@ -252,33 +283,40 @@ class TestFileWatcherTrigger:
                 on_change=lambda e: received.append(e),
                 config=WatcherConfig(cooldown_seconds=0.0),
             )
-            watcher._pending_paths.add("a.py")
             watcher._callback_gate.acquire()
-
-            def run_trigger() -> None:
-                try:
-                    watcher._trigger()
-                finally:
-                    trigger_done.set()
-
-            trigger_thread = threading.Thread(target=run_trigger)
-            trigger_thread.start()
 
             stop_thread = threading.Thread(target=watcher.stop)
             stop_thread.start()
-            deadline = time.monotonic() + 2.0
-            while not watcher._stopped.is_set() and time.monotonic() < deadline:
-                time.sleep(0.01)
-            assert watcher._stopped.is_set()
+            stop_thread.join(timeout=0.5)
 
             watcher._callback_gate.release()
-            trigger_thread.join(timeout=2.0)
             stop_thread.join(timeout=2.0)
 
-            assert trigger_done.is_set()
-            assert not trigger_thread.is_alive()
             assert not stop_thread.is_alive()
             assert received == []
+
+    def test_trigger_does_not_block_when_callback_gate_busy(self, tmp_path: Path) -> None:
+        received: list[WatchEvent] = []
+
+        with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
+            watcher = FileWatcher(
+                tmp_path,
+                on_change=lambda e: received.append(e),
+                config=WatcherConfig(debounce_seconds=60.0, cooldown_seconds=0.0),
+            )
+            watcher._pending_paths.add("a.py")
+            watcher._callback_gate.acquire()
+
+            trigger_thread = threading.Thread(target=watcher._trigger)
+            trigger_thread.start()
+            trigger_thread.join(timeout=0.5)
+
+            assert not trigger_thread.is_alive()
+            assert watcher._drain_pending() == frozenset({"a.py"})
+            assert received == []
+
+            watcher.stop()
+            watcher._callback_gate.release()
 
 
 class TestFileWatcherStartStop:
@@ -325,3 +363,37 @@ class TestFileWatcherStartStop:
             assert len(received) >= 1
         finally:
             watcher.stop()
+
+
+class TestWatchLearnRunner:
+    def test_retriggers_after_change_queued_during_run(self) -> None:
+        first_started = threading.Event()
+        finish_first = threading.Event()
+        second_done = threading.Event()
+        run_lock = threading.Lock()
+        run_count = 0
+
+        def run_learn() -> None:
+            nonlocal run_count
+            with run_lock:
+                run_count += 1
+                current = run_count
+            if current == 1:
+                first_started.set()
+                assert finish_first.wait(timeout=2.0)
+            else:
+                second_done.set()
+
+        runner = cli_module._WatchLearnRunner(run_learn)
+        runner.request(WatchEvent(changed_paths=frozenset({"a.py"}), timestamp=1.0))
+        assert first_started.wait(timeout=2.0)
+
+        started = time.monotonic()
+        runner.request(WatchEvent(changed_paths=frozenset({"b.py"}), timestamp=2.0))
+        assert time.monotonic() - started < 0.5
+
+        finish_first.set()
+        assert second_done.wait(timeout=2.0)
+        runner.stop()
+        with run_lock:
+            assert run_count == 2

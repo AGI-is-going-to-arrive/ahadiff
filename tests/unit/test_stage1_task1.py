@@ -473,6 +473,33 @@ def test_load_workspace_config_resolves_local_and_global_layers_without_git(
     assert resolve_effective("capture.max_patch_bytes", snapshot=snapshot).value == 1234
 
 
+def test_load_workspace_config_resolves_capture_symbol_extractor_precedence(
+    tmp_path: Path,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    home_root = tmp_path / "home"
+    global_path = global_config_dir(env={"HOME": str(home_root)}) / "config.toml"
+    global_path.parent.mkdir(parents=True)
+    global_path.write_text('[capture]\nsymbol_extractor = "builtin"\n', encoding="utf-8")
+    (workspace_root / ".ahadiff").mkdir()
+    (workspace_root / ".ahadiff" / "config.toml").write_text(
+        '[capture]\nsymbol_extractor = "tree_sitter"\n',
+        encoding="utf-8",
+    )
+
+    snapshot = load_workspace_config(
+        workspace_root,
+        cli_overrides={"capture.symbol_extractor": "builtin"},
+        env={
+            "HOME": str(home_root),
+            "AHADIFF_CAPTURE_SYMBOL_EXTRACTOR": "auto",
+        },
+    )
+
+    assert resolve_effective("capture.symbol_extractor", snapshot=snapshot).value == "auto"
+
+
 def test_load_workspace_config_finds_parent_workspace_root_from_subdir(tmp_path: Path) -> None:
     workspace_root = tmp_path / "workspace"
     subdir = workspace_root / "nested" / "child"

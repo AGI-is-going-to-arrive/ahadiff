@@ -242,7 +242,7 @@ def test_repository_release_gate_has_blocking_doctor_and_windows_runtime() -> No
     assert "gate-windows-runtime" in jobs
     assert "uv run python -m ahadiff doctor || true" not in workflow_text
     assert "ahadiff doctor --repo-root ." in workflow_text
-    assert "python -m venv \"$RUNNER_TEMP/wheel-smoke\"" in workflow_text
+    assert 'python -m venv "$RUNNER_TEMP/wheel-smoke"' in workflow_text
     assert (
         "uv run pytest --cov=src/ahadiff --cov-report=term-missing "
         "--cov-fail-under=85 tests -q --tb=long"
@@ -302,6 +302,30 @@ def test_github_action_uninstall_removes_generated_workflows(tmp_path: Path) -> 
     assert "- remove: .github/workflows/ahadiff-generate.yml" in dry_run.output
     assert uninstall_result.exit_code == 0
     assert not (repo_root / ".github").exists()
+
+
+def test_github_action_uninstall_preserves_user_workflows_directory(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    user_workflow = repo_root / ".github" / "workflows" / "user-managed.yml"
+    user_workflow.parent.mkdir(parents=True)
+    user_workflow.write_text("name: user workflow\n", encoding="utf-8")
+
+    install_result = _RUNNER.invoke(
+        app(),
+        ["install", "github-action", "--repo-root", str(repo_root), "--layer2"],
+    )
+    uninstall_result = _RUNNER.invoke(
+        app(),
+        ["uninstall", "github-action", "--repo-root", str(repo_root)],
+    )
+
+    assert install_result.exit_code == 0
+    assert uninstall_result.exit_code == 0
+    assert user_workflow.exists()
+    assert (repo_root / ".github").exists()
+    assert (repo_root / ".github" / "workflows").exists()
 
 
 def test_verify_ci_validates_finalized_markers_and_checksums(tmp_path: Path) -> None:

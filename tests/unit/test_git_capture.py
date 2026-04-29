@@ -2337,6 +2337,53 @@ def test_artifact_manifest_describes_line_map_and_symbol_sources_accurately(tmp_
     assert manifest["generation"]["after_text_by_path_from"] == "capture.after_text_by_path"
 
 
+def test_write_input_artifacts_persists_tree_sitter_symbols_without_changing_manifest_shape(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tree_sitter")
+    pytest.importorskip("tree_sitter_typescript")
+    workspace_root = tmp_path / "workspace"
+    old_dir = workspace_root / "old"
+    new_dir = workspace_root / "new"
+    (old_dir / "src").mkdir(parents=True)
+    (new_dir / "src").mkdir(parents=True)
+    (old_dir / "src" / "widget.ts").write_text(
+        "export const renderCard = () => {\n  return oldValue;\n};\n",
+        encoding="utf-8",
+    )
+    (new_dir / "src" / "widget.ts").write_text(
+        "export const renderCard = () => {\n  return nextValue;\n};\n",
+        encoding="utf-8",
+    )
+
+    capture = capture_module.capture_patch(
+        workspace_root=workspace_root,
+        compare_dir=(Path("old"), Path("new")),
+        max_files=50,
+        hard_limit=5000,
+        max_patch_bytes=10_000_000,
+        symbol_extractor="tree_sitter",
+    )
+    capture_module.write_input_artifacts(capture)
+
+    run_dir = _latest_run_dir(workspace_root)
+    metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
+    symbols = json.loads((run_dir / "symbols.json").read_text(encoding="utf-8"))
+    manifest = json.loads((run_dir / "artifact_set.json").read_text(encoding="utf-8"))
+
+    assert metadata["symbol_extractor"] == {
+        "requested": "tree_sitter",
+        "resolved": ["tree_sitter"],
+    }
+    assert symbols["symbols"][0]["qualified_name"] == "renderCard"
+    assert symbols["symbols"][0]["extractor"] == "tree_sitter"
+    assert manifest["generation"]["symbols_from"] == [
+        "persisted_patch_text",
+        "before_text_by_path",
+        "after_text_by_path",
+    ]
+
+
 def test_write_input_artifacts_publishes_run_directory_atomically(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

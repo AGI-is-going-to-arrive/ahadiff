@@ -25,7 +25,12 @@ from ahadiff.core.config import SecurityConfig
 from ahadiff.core.errors import InputError
 from ahadiff.git.line_map import build_line_map, serialize_line_map_payload
 from ahadiff.git.parser import parse_unified_diff
-from ahadiff.git.symbols import extract_symbols, serialize_symbols_payload
+from ahadiff.git.symbols import (
+    SymbolRange,
+    SymbolRecord,
+    extract_symbols,
+    serialize_symbols_payload,
+)
 
 
 def _write_claim_run_artifacts(
@@ -217,6 +222,22 @@ def test_parse_claim_candidates_text_handles_jsonl() -> None:
         "run-2-claim-001",
         "run-2-claim-002",
     ]
+
+
+def test_parse_claim_candidates_text_accepts_tree_sitter_extractor() -> None:
+    payload = json.dumps(
+        {
+            "text": "updates renderCard behavior",
+            "extractor": "tree_sitter",
+            "source_hunks": [{"file": "src/widget.ts", "start": 1, "end": 3}],
+            "symbols": ["renderCard"],
+        }
+    )
+
+    candidates = parse_claim_candidates_text(payload, default_run_id="run-tree")
+
+    assert len(candidates) == 1
+    assert candidates[0].extractor == "tree_sitter"
 
 
 def test_parse_claim_candidates_text_ignores_non_json_fence_before_json() -> None:
@@ -1519,3 +1540,33 @@ def test_load_symbol_records_rejects_wrong_schema(tmp_path: Path) -> None:
 
     with pytest.raises(Exception, match="unexpected symbols schema"):
         load_symbol_records(path)
+
+
+def test_load_symbol_records_round_trips_tree_sitter_extractor(tmp_path: Path) -> None:
+    path = tmp_path / "symbols.json"
+    payload = serialize_symbols_payload(
+        (
+            SymbolRecord(
+                path="src/widget.ts",
+                qualified_name="Widget.renderCard",
+                kind="method",
+                range=SymbolRange(start=1, end=3),
+                selection_range=SymbolRange(start=1, end=1),
+                parent="Widget",
+                touched_lines=(2,),
+                hunk_ids=("hunk_1",),
+                hunk_hash="abc123def456",
+                change_kind=None,
+                extractor="tree_sitter",
+                confidence="high",
+                error=None,
+            ),
+        )
+    )
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    records = load_symbol_records(path)
+
+    assert len(records) == 1
+    assert records[0].extractor == "tree_sitter"
+    assert records[0].qualified_name == "Widget.renderCard"

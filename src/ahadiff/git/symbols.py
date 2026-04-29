@@ -7,6 +7,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol
 
 from .line_map import build_file_id_index
+from .tree_sitter_runtime import (
+    TreeSitterSymbolCandidate,
+    extract_tree_sitter_symbols,
+    supports_tree_sitter_path,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
@@ -140,9 +145,10 @@ _SECTION_HEADER_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"function\s+([A-Za-z_][A-Za-z0-9_]*)"), "function"),
     (re.compile(r"(?:const|let|var)\s+([A-Za-z_][A-Za-z0-9_]*)"), "const"),
 )
-_PRIORITY = {"python_ast": 3, "regex": 2, "section_header": 1}
+_PRIORITY = {"python_ast": 4, "tree_sitter": 3, "regex": 2, "section_header": 1}
 SYMBOLS_SCHEMA = "ahadiff.symbols"
 SYMBOLS_SCHEMA_VERSION = 1
+SymbolExtractorMode = Literal["auto", "builtin", "tree_sitter"]
 
 
 @dataclass(frozen=True)
@@ -161,6 +167,7 @@ def extract_symbols(
     *,
     before_text_by_path: Mapping[str, str] | None = None,
     after_text_by_path: Mapping[str, str] | None = None,
+    symbol_extractor: SymbolExtractorMode = "auto",
 ) -> tuple[SymbolRecord, ...]:
     records = tuple(changed_files)
     build_file_id_index(record.display_path for record in records)
@@ -186,34 +193,16 @@ def extract_symbols(
                 after_text=after_text,
                 path_override=changed_file.old_path,
                 source_selector="before",
+                symbol_extractor=symbol_extractor,
             )
-            if not old_candidates:
-                old_candidates.extend(
-                    _extract_section_header_symbols(
-                        changed_file,
-                        before_text=before_text,
-                        after_text=after_text,
-                        path_override=changed_file.old_path,
-                        source_selector="before",
-                    )
-                )
             new_candidates = _extract_best_symbols(
                 changed_file=changed_file,
                 before_text=before_text,
                 after_text=after_text,
                 path_override=changed_file.new_path,
                 source_selector="after",
+                symbol_extractor=symbol_extractor,
             )
-            if not new_candidates:
-                new_candidates.extend(
-                    _extract_section_header_symbols(
-                        changed_file,
-                        before_text=before_text,
-                        after_text=after_text,
-                        path_override=changed_file.new_path,
-                        source_selector="after",
-                    )
-                )
             candidates.extend(old_candidates)
             candidates.extend(new_candidates)
         else:
@@ -221,15 +210,8 @@ def extract_symbols(
                 changed_file=changed_file,
                 before_text=before_text,
                 after_text=after_text,
+                symbol_extractor=symbol_extractor,
             )
-            if not candidates:
-                candidates.extend(
-                    _extract_section_header_symbols(
-                        changed_file,
-                        before_text=before_text,
-                        after_text=after_text,
-                    )
-                )
         merged.extend(_merge_symbol_records(candidates))
 
     return tuple(merged)
@@ -242,8 +224,8 @@ def _extract_best_symbols(
     after_text: str | None,
     path_override: str | None = None,
     source_selector: Literal["auto", "before", "after"] = "auto",
+    symbol_extractor: SymbolExtractorMode = "auto",
 ) -> list[SymbolRecord]:
-    candidates: list[SymbolRecord] = []
     target_path = path_override or changed_file.display_path
     python_records, python_error = _extract_python_symbols(
         changed_file=changed_file,
@@ -252,30 +234,68 @@ def _extract_best_symbols(
         path_override=path_override,
         source_selector=source_selector,
     )
-    candidates.extend(python_records)
-    if not python_records and (_is_python_path(target_path) or python_error is not None):
-        candidates.extend(
-            _extract_regex_symbols(
+    if python_records:
+        return python_records
+
+    tree_sitter_error: str | None = None
+    tree_sitter_available = False
+    if _should_try_tree_sitter(target_path, symbol_extractor):
+        tree_sitter_records, tree_sitter_error, tree_sitter_available = (
+            _extract_tree_sitter_symbols(
                 changed_file=changed_file,
                 before_text=before_text,
                 after_text=after_text,
-                error=python_error,
                 path_override=path_override,
                 source_selector=source_selector,
             )
         )
-    elif not _is_python_path(target_path):
-        candidates.extend(
-            _extract_regex_symbols(
-                changed_file=changed_file,
-                before_text=before_text,
-                after_text=after_text,
-                error=None,
-                path_override=path_override,
-                source_selector=source_selector,
-            )
-        )
-    return candidates
+        if tree_sitter_records:
+            return tree_sitter_records
+
+    regex_records = _extract_regex_symbols(
+        changed_file=changed_file,
+        before_text=before_text,
+        after_text=after_text,
+        error=_fallback_error(
+            target_path=target_path,
+            symbol_extractor=symbol_extractor,
+            python_error=python_error,
+            tree_sitter_error=tree_sitter_error,
+            tree_sitter_available=tree_sitter_available,
+        ),
+        path_override=path_override,
+        source_selector=source_selector,
+    )
+    if regex_records:
+        return regex_records
+    return _extract_section_header_symbols(
+        changed_file,
+        before_text=before_text,
+        after_text=after_text,
+        path_override=path_override,
+        source_selector=source_selector,
+    )
+
+
+def _should_try_tree_sitter(path: str, symbol_extractor: SymbolExtractorMode) -> bool:
+    return symbol_extractor != "builtin" and supports_tree_sitter_path(path)
+
+
+def _fallback_error(
+    *,
+    target_path: str,
+    symbol_extractor: SymbolExtractorMode,
+    python_error: str | None,
+    tree_sitter_error: str | None,
+    tree_sitter_available: bool,
+) -> str | None:
+    if _is_python_path(target_path):
+        return python_error
+    if symbol_extractor == "tree_sitter":
+        return tree_sitter_error
+    if tree_sitter_available:
+        return tree_sitter_error
+    return None
 
 
 def _lookup_text(
@@ -443,6 +463,79 @@ def _build_ast_record(
             confidence="high",
         )
     ]
+
+
+def _extract_tree_sitter_symbols(
+    *,
+    changed_file: ChangedFileRecord,
+    before_text: str | None,
+    after_text: str | None,
+    path_override: str | None = None,
+    source_selector: Literal["auto", "before", "after"] = "auto",
+) -> tuple[list[SymbolRecord], str | None, bool]:
+    if changed_file.is_binary and not changed_file.hunks:
+        return [], None, False
+    source_text, touched_lines, side, include_all = _symbol_source(
+        changed_file, before_text, after_text, source_selector=source_selector
+    )
+    target_path = path_override or changed_file.display_path
+    if source_text is None or not supports_tree_sitter_path(target_path):
+        return [], None, False
+
+    result = extract_tree_sitter_symbols(target_path, source_text)
+    records = _build_tree_sitter_records(
+        changed_file=changed_file,
+        target_path=target_path,
+        candidates=result.records,
+        touched_lines=touched_lines,
+        side=side,
+        include_all=include_all,
+        error=result.error,
+    )
+    return records, result.error, result.available
+
+
+def _build_tree_sitter_records(
+    *,
+    changed_file: ChangedFileRecord,
+    target_path: str,
+    candidates: Sequence[TreeSitterSymbolCandidate],
+    touched_lines: set[int],
+    side: Literal["old", "new"],
+    include_all: bool,
+    error: str | None,
+) -> list[SymbolRecord]:
+    records: list[SymbolRecord] = []
+    for candidate in candidates:
+        symbol_lines = set(range(candidate.start_line, candidate.end_line + 1))
+        overlap = tuple(sorted(symbol_lines & touched_lines))
+        if not include_all and not overlap:
+            continue
+        hunk_ids = _collect_hunk_ids(changed_file.hunks, symbol_lines, side=side)
+        records.append(
+            SymbolRecord(
+                path=target_path,
+                qualified_name=candidate.qualified_name,
+                kind=candidate.kind,
+                range=SymbolRange(candidate.start_line, candidate.end_line),
+                selection_range=SymbolRange(candidate.start_line, candidate.start_line),
+                parent=candidate.parent,
+                touched_lines=(
+                    overlap
+                    if overlap
+                    else tuple(sorted(symbol_lines))
+                    if include_all
+                    else (candidate.start_line,)
+                ),
+                hunk_ids=hunk_ids,
+                hunk_hash=_combine_hunk_hashes(changed_file.hunks, hunk_ids),
+                change_kind=_symbol_change_kind(changed_file),
+                extractor="tree_sitter",
+                confidence="high",
+                error=error,
+            )
+        )
+    return records
 
 
 def _extract_regex_symbols(

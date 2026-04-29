@@ -50,16 +50,12 @@ def _should_include_graph(tables: tuple[str, ...] | None) -> bool:
 
 
 def _load_graph(state_dir: Path) -> object | None:
-    import stat as stat_mod
-
-    graph_path = state_dir.parent / "graphify-out" / "graph.json"
-    if not graph_path.is_file():
-        return None
     try:
-        leaf_stat = graph_path.lstat()
-        if stat_mod.S_ISLNK(leaf_stat.st_mode):
-            return None
-        if bool(getattr(leaf_stat, "st_file_attributes", 0) & 0x400):
+        from ahadiff.core.paths import validate_state_path_no_symlinks
+
+        graph_path = state_dir / "graphify" / "graph.json"
+        validate_state_path_no_symlinks(graph_path, allow_missing_leaf=False)
+        if not graph_path.is_file():
             return None
         from ahadiff.graphify import parse_graph_json
 

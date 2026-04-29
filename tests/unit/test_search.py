@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 import pytest
@@ -485,6 +486,48 @@ def test_search_all_with_graph_respects_table_filter(tmp_path: Path) -> None:
     results = search_all_with_graph(db, "task_runner", tables=("concepts",), graph=graph)
 
     assert not any(r.source_table == "graph_nodes" for r in results)
+
+
+def test_route_search_loads_imported_graph_artifact(tmp_path: Path) -> None:
+    from starlette.testclient import TestClient
+
+    from ahadiff.serve import ServeState, create_app
+
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    raw_graph_dir = tmp_path / "graphify-out"
+    raw_graph_dir.mkdir()
+    (raw_graph_dir / "graph.json").write_text(
+        json.dumps({"nodes": [{"id": "raw", "label": "rawzzztoken"}], "links": []}),
+        encoding="utf-8",
+    )
+    imported_graph_dir = state_dir / "graphify"
+    imported_graph_dir.mkdir()
+    (imported_graph_dir / "graph.json").write_text(
+        json.dumps({"nodes": [{"id": "safe", "label": "safeaaatoken"}], "links": []}),
+        encoding="utf-8",
+    )
+
+    app = create_app(ServeState(state_dir=state_dir, token="test-token", locale="en"))
+    client = TestClient(app, base_url="http://localhost:8765")
+    headers = {
+        "X-AhaDiff-Token": "test-token",
+        "origin": "http://localhost:8765",
+    }
+
+    raw_resp = client.get(
+        "/api/search?q=rawzzztoken&tables=graph_nodes",
+        headers=headers,
+    )
+    safe_resp = client.get(
+        "/api/search?q=safeaaatoken&tables=graph_nodes",
+        headers=headers,
+    )
+
+    assert raw_resp.status_code == 200
+    assert safe_resp.status_code == 200
+    assert raw_resp.json()["results"] == []
+    assert safe_resp.json()["results"][0]["primary_key"] == "safe"
 
 
 def test_search_query_at_exact_boundary(tmp_path: Path) -> None:

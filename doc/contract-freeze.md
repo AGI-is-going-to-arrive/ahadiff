@@ -65,6 +65,8 @@ Stage 0 只冻结“最小可 import + 可序列化”的 contracts 面，不提
 
 `RejectReasonCode = file_not_in_patch | line_outside_hunk | symbol_not_found | hunk_id_mismatch | evidence_missing`
 
+`ClaimExtractor = python_ast | tree_sitter | regex | section_header`
+
 约束：
 
 - `rejected` 仅用于 patch 外证据或不存在证据，不等价于 `contradicted`
@@ -469,6 +471,11 @@ serve/request 链路的 locale 冻结为：
 
 - 上述 5 层链适用于除 locale 以外的常规配置键
 - locale 是唯一例外，必须走 4.4 的 6 层 request/session 链，因此它额外包含 `cookie / Accept-Language / system LANG`
+- capture 当前补充冻结：
+  - `capture.symbol_extractor = auto | builtin | tree_sitter`
+  - 默认值是 `auto`
+  - 当前 symbol extraction 顺序记为 `python_ast -> tree_sitter -> regex -> section_header`
+  - Python 仍优先走 AST；只有支持的非 Python 路径才会尝试 tree-sitter
 
 凭证类优先级：
 
@@ -757,7 +764,7 @@ run_id: str
 | **registry.py** | ✅ 已接线 | `cli.py` learn 成功后自动调用 `register_repo()`，失败仅 warn 不阻塞 |
 | **hooks.py** | ⏸ install-only | 当前仅安装 git hook 脚本，不执行用户自定义 hook 命令。hook 执行入口属于后续 Phase |
 | **PUT /api/config** | ✅ session-only | 仅支持 `lang` 键，修改内存中 locale，不持久化到磁盘。这是有意的 serve session 行为 |
-| **GET /api/graph/status** | ✅ 已接线 | 以 workspace root 为基准读取 `graphify-out/graph.json`，返回 `enabled/source_exists/has_graph/freshness/node_count/edge_count/source_path(relative)` |
+| **GET /api/graph/status** | ✅ 已接线 | 以 workspace root 为基准探测 raw `graphify-out/graph.json` 是否存在；当前 node/edge 统计和 `source_path` 读取的是 imported `.ahadiff/graphify/graph.json`，返回 `enabled/source_exists/has_graph/freshness/node_count/edge_count/source_path(relative)` |
 | **POST /api/learn** | ✅ 已接线 | `core/orchestrator.py` 从 `cli.py` 抽出 learn 主链；route 只接受安全 capture / learn 选项，返回 `202 {"task_id": ...}`，provider override 不从 HTTP 暴露 |
 | **medium APIs** | ✅ 全部真实接线 | search/audit/mastery/weak/alignment/learning stats 均查 SQLite/JSONL，无 mock |
 | **/api/tasks*** | ⏸ internal/unstable | 现在已有真实 submitter（`POST /api/learn`），但 task payload / queue policy / progress surface 仍按低层内部接口处理 |
@@ -785,7 +792,8 @@ run_id: str
 - `GET /api/tasks` / `GET /api/tasks/{task_id}` 的 payload 已经带 `error_code`
 - 当任务进入运行态后，route 侧会额外投影 `elapsed_seconds`
 - `TaskRunner` 默认 scheduler timeout 是 600 秒，可由 `AHADIFF_DEFAULT_TASK_TIMEOUT_SECONDS` 覆盖
-- `POST /api/learn` 当前通过 `disable_timeout=True` 提交，避免 learn replay 被默认 scheduler timeout 提前切断
+- `TaskRunner` 支持 per-task `task_timeout_seconds` override
+- `POST /api/learn` 当前不再关闭 timeout；它走 `TaskRunner` 的默认 timeout 语义
 
 **保留状态**：
 - `core/task_runner.py`：TaskRunner 类完整保留，Phase 6B 直接使用

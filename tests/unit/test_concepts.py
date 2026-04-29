@@ -425,3 +425,139 @@ def test_load_visible_concepts_streams_and_memoizes_ancestry(
 
     assert len(visible) == 10_000
     assert calls == [], "batch ancestry pre-warm should avoid per-ref subprocess calls"
+
+
+def test_ancestry_cache_fails_closed_after_200_fallback_calls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "repo"
+    workspace_root.mkdir()
+    _init_git_repo(workspace_root)
+    _commit_file(workspace_root, "src/app.py", "v = 1\n", "init")
+    concepts_path = workspace_root / ".ahadiff" / "concepts.jsonl"
+    concepts_path.parent.mkdir(parents=True)
+    max_checks = 200
+    unique_refs = [f"deadbeef{i:04x}00000000000000000000000000" for i in range(max_checks + 10)]
+    with concepts_path.open("w", encoding="utf-8") as handle:
+        for i, ref in enumerate(unique_refs):
+            handle.write(
+                json.dumps({"term_key": f"term-{i}", "concept": f"term {i}", "source_refs": [ref]})
+                + "\n"
+            )
+    fallback_calls: list[str] = []
+
+    def fake_is_ancestor(_repo_root: Path, source_ref: str, _head_ref: str) -> bool:
+        fallback_calls.append(source_ref)
+        return False
+
+    monkeypatch.setattr(concepts_module, "_is_ancestor", fake_is_ancestor)
+
+    visible = load_visible_concepts(workspace_root=workspace_root, head_ref="HEAD")
+
+    assert len(fallback_calls) == max_checks, "must not exceed fallback subprocess budget"
+    assert visible == (), "entries beyond fallback budget must fail closed"
+
+
+def test_load_concepts_page_from_storage_falls_back_to_jsonl_on_db_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    db_path = state_dir / "review.sqlite"
+    db_path.write_bytes(b"not a valid sqlite database")
+    (state_dir / "concepts.jsonl").write_text(
+        json.dumps({"term_key": "fallback-term", "concept": "fallback concept"}) + "\n",
+        encoding="utf-8",
+    )
+
+    page = load_concepts_page_from_storage(state_dir, limit=10)
+
+    assert len(page.entries) == 1
+    assert page.entries[0]["term_key"] == "fallback-term"
+
+
+def test_load_concepts_page_from_storage_empty_when_no_source(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+
+    page = load_concepts_page_from_storage(state_dir, limit=10)
+
+    assert page.entries == ()
+    assert page.next_cursor is None
+
+
+def test_sync_jsonl_to_db_is_idempotent(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    (state_dir / "concepts.jsonl").write_text(
+        json.dumps(
+            {
+                "term_key": "idem-term",
+                "concept": "idempotent concept",
+                "term": "idempotent concept",
+                "display_name": "idempotent concept",
+                "lang": "en",
+                "aliases": ["alias1"],
+                "source_refs": ["abc123"],
+                "branch_hint": "main",
+                "introduced_by_run": "run_a",
+                "updated_by_runs": ["run_a"],
+                "related_claims": [],
+                "file_refs": ["src/app.py"],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    page1 = load_concepts_page_from_storage(state_dir, limit=10)
+    page2 = load_concepts_page_from_storage(state_dir, limit=10)
+
+    assert count_concepts(db_path) == 1
+    assert page1.entries[0]["term_key"] == page2.entries[0]["term_key"]
+    assert page1.entries[0]["aliases"] == page2.entries[0]["aliases"]
+
+
+def test_export_and_reimport_roundtrip(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    original_jsonl = state_dir / "concepts.jsonl"
+    entries = [
+        {
+            "term_key": f"rt-{i}",
+            "concept": f"roundtrip {i}",
+            "term": f"roundtrip {i}",
+            "display_name": f"roundtrip {i}",
+            "lang": "en",
+            "aliases": [f"alt-{i}"],
+            "source_refs": ["sha1"],
+            "branch_hint": "main",
+            "introduced_by_run": "run_a",
+            "updated_by_runs": ["run_a"],
+            "related_claims": [],
+            "file_refs": [],
+        }
+        for i in range(3)
+    ]
+    original_jsonl.write_text(
+        "".join(json.dumps(e) + "\n" for e in entries),
+        encoding="utf-8",
+    )
+
+    load_concepts_page_from_storage(state_dir, limit=100)
+    assert count_concepts(db_path) == 3
+
+    exported = export_concepts_from_db(state_dir)
+    lines = exported.read_text(encoding="utf-8").splitlines()
+    exported_entries = [json.loads(line) for line in lines]
+    assert len(exported_entries) == 3
+    for i, entry in enumerate(exported_entries):
+        assert entry["term_key"] == f"rt-{i}"
+        assert entry["aliases"] == [f"alt-{i}"]
+        assert "created_at_utc" not in entry

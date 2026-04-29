@@ -21,6 +21,7 @@ Scalar = str | int | float | bool | tuple[str, ...]
 NestedConfig = dict[str, "Scalar | NestedConfig"]
 _PRIVACY_MODES = {"strict_local", "redacted_remote", "explicit_remote"}
 _LOCALE_PREFERENCE_KEYS = {"lang", "llm.prompt_lang", "llm.output_lang"}
+_CAPTURE_SYMBOL_EXTRACTORS = {"auto", "builtin", "tree_sitter"}
 _POSITIVE_INT_KEYS = {"capture.max_files", "capture.hard_limit", "capture.max_patch_bytes"}
 _SAFE_PROVIDER_API_KEY_ENVS = frozenset(
     {
@@ -39,6 +40,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "max_files": 50,
         "hard_limit": 5000,
         "max_patch_bytes": 10_000_000,
+        "symbol_extractor": "auto",
     },
     "llm": {
         "generate_model": "gpt-5.4-mini",
@@ -229,6 +231,13 @@ def _coerce_value(
             raise ConfigError(f"{key} expects str, got {type(value).__name__}")
         if value not in _PRIVACY_MODES:
             allowed = ", ".join(sorted(_PRIVACY_MODES))
+            raise ConfigError(f"{key} must be one of {allowed}, got {value!r}")
+        return value
+    if key == "capture.symbol_extractor":
+        if not isinstance(value, str):
+            raise ConfigError(f"{key} expects str, got {type(value).__name__}")
+        if value not in _CAPTURE_SYMBOL_EXTRACTORS:
+            allowed = ", ".join(sorted(_CAPTURE_SYMBOL_EXTRACTORS))
             raise ConfigError(f"{key} must be one of {allowed}, got {value!r}")
         return value
     if isinstance(expected, bool):

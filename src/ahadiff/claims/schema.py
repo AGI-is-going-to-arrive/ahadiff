@@ -47,8 +47,8 @@ class ClaimCandidate(BaseModel):
     def validate_extractor(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        if value not in {"python_ast", "regex", "section_header"}:
-            raise ValueError("extractor must be python_ast, regex, or section_header")
+        if value not in {"python_ast", "tree_sitter", "regex", "section_header"}:
+            raise ValueError("extractor must be python_ast, tree_sitter, regex, or section_header")
         return value
 
 

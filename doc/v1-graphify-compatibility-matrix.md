@@ -1,8 +1,8 @@
 # Graphify v0.5.0 ↔ AhaDiff v0.2 Compatibility Matrix
 
-> Research date: 2026-04-27 | Graphify commit: HEAD of `safishamsi/graphify` | AhaDiff: `main` (1943746)
+> Research date: 2026-04-27 | Graphify commit: HEAD of `safishamsi/graphify` | AhaDiff audit target: working tree on top of `a3deaca` (2026-04-29)
 
-> Current status note (2026-04-29): this document started as a 2026-04-27 compatibility baseline. The current branch now already has real `graph.json` parsing/validation, `links`/`edges` normalization, hyperedge handling, matcher/linker/slicer/search helpers, `/api/search` graph-node merge, and `GET /api/graph/status`. The remaining gaps below should be read as the still-open deeper integration pieces, not as “parser absent”.
+> Current status note (2026-04-29): this document started as a 2026-04-27 compatibility baseline. The current branch now already has real `graph.json` parsing/validation, `links`/`edges` normalization, hyperedge handling, matcher/linker/slicer/search helpers, `/api/search` graph-node merge, and `GET /api/graph/status`. Serve-time consumers now read only the imported artifact `.ahadiff/graphify/graph.json`; raw `graphify-out/graph.json` remains an untrusted source used for detection/import/freshness only.
 
 ## 1. Graphify Official Repo Summary
 
@@ -111,9 +111,9 @@ class GraphifyStatus:
 
 ### 2.2 Import (`import_graphify_artifact()`)
 - Reads `graphify-out/graph.json` via `_read_regular_file_no_follow_bounded()` (symlink-safe, size-bounded)
-- Runs through `redaction_pipeline()` + `protect_untrusted_text()` for sanitization
-- Copies sanitized content to `.ahadiff/graphify/graph.json`
-- Records in metadata: `enabled`, `source_exists`, `freshness`, `provenance`
+- Parses JSON first (`safe_json_loads()`), sanitizes recursively, then validates/normalizes with `parse_graph_json_text()`
+- Writes the validated, normalized artifact to `.ahadiff/graphify/graph.json`
+- Records in metadata/status: `enabled`, `source_exists`, `imported_exists`, `freshness`, `provenance`
 
 ### 2.3 Serve Projection (`serve/routes_runs.py`)
 ```python
@@ -165,35 +165,35 @@ The design plan (`ahadiff-graphify-integration.md` + review) now has these piece
 
 ### Schema Compatibility
 
-| Aspect | Graphify v0.5 Actual | AhaDiff Assumption | Status | Risk | Action |
-|--------|---------------------|-------------------|--------|------|--------|
-| Top-level keys | `directed`, `multigraph`, `graph`, `nodes`, `links` | Expects raw JSON text (no parsing) | **NEEDS_ADAPTATION** | HIGH | Must parse and validate using `links` not `edges` |
-| Meta envelope | None (`graph: {}` is empty) | Design plan assumes `meta.version` field | **NEEDS_NEW** | HIGH | Cannot rely on `meta.version`; detect schema by structure |
-| Node fields | `id`, `label`, `file_type`, `source_file`, `source_location`, `community` | Design plan: `id`, `label`, `meta.type`, `meta.path` | **NEEDS_ADAPTATION** | MED | Map flat fields to planned Pydantic model |
-| Edge key name | `links` (NetworkX serialization) | Design plan assumes `edges` | **NEEDS_ADAPTATION** | HIGH | Must handle both `links` and `edges` (Graphify's own `build_from_json` does this) |
+| Aspect | Graphify v0.5 Actual | AhaDiff Current Handling | Status | Risk | Action |
+|--------|---------------------|--------------------------|--------|------|--------|
+| Top-level keys | `directed`, `multigraph`, `graph`, `nodes`, `links` | `parse_graph_json[_text]()` parses and validates the object shape | **YES** | LOW | Keep structural validation; no raw-text-only assumptions remain |
+| Meta envelope | None (`graph: {}` is empty) | Structural parsing ignores missing `meta.version` and validates by shape | **YES** | LOW | Continue avoiding version-string dependence |
+| Node fields | `id`, `label`, `file_type`, `source_file`, `source_location`, `community` | Parser normalizes `source_file|file_path|path` to `file_path` and `file_type|type|kind` to `kind`; extras stay in `metadata` | **YES** | LOW | Keep metadata-preserving normalization |
+| Edge key name | `links` (NetworkX serialization) | Parser accepts `links` or `edges` and normalizes to `links` | **YES** | LOW | No further adaptation required for v1.0 |
 | Edge fields | `source`, `target`, `relation`, `confidence`, `weight`, `_src`, `_tgt`, `source_file`, `source_location` | Design plan: `source`, `target`, `relation` | **YES** | LOW | Core fields match; extras are bonus |
 | Confidence tags | `EXTRACTED`, `INFERRED`, `AMBIGUOUS` | Not in current design | **NEEDS_NEW** | LOW | Useful for trust-level filtering in viewer |
 | Community IDs | Integer on each node | Not in current design | **NEEDS_NEW** | LOW | Useful for ConceptGraph clustering in viewer |
-| Version detection | No version field in JSON | `SUPPORTED_VERSIONS: ["0.3", "0.4", "1.0"]` | **NEEDS_ADAPTATION** | MED | Must detect by presence of fields, not version string |
+| Version detection | No version field in JSON | Structural parsing/validation; no `SUPPORTED_VERSIONS` whitelist in runtime | **YES** | LOW | Keep structure-based compatibility instead of version-string checks |
 
 ### Functional Compatibility
 
 | AhaDiff Function | Location | Compatible? | Risk | Action Required |
 |-----------------|----------|-------------|------|-----------------|
 | `detect_graphify_status()` | `git/capture.py:534` | **YES** | LOW | Repo-aware freshness is wired in; no-repo / timeout / parse failures degrade to canonical `stale` |
-| `import_graphify_artifact()` | `git/capture.py:547` | **YES** | LOW | Works as-is; reads raw text, sanitizes, copies. Schema parsing happens later in graph helpers and status/search routes. |
+| `import_graphify_artifact()` | `git/capture.py:547` | **YES** | LOW | Import now parses, sanitizes, validates, and writes the normalized `.ahadiff/graphify/graph.json` artifact up front. |
 | `_project_graphify()` | `serve/routes_runs.py:571` | **YES** | LOW | Reads `freshness` first, still accepts legacy `status` inputs, and normalizes legacy values to canonical API output |
 | `GraphifyStatus` dataclass | `git/capture.py:99` | **YES** | LOW | `freshness` now carries canonical 4-value output computed from repo context when available |
 | `GraphifyMode` type | `contracts/serve_app.py:17` | **YES** | LOW | 3-value enum is correct for viewer degradation. |
 | Sanitization pipeline | `import_graphify_artifact` | **YES** | LOW | Correctly treats graph.json as untrusted text. Runs `redaction_pipeline()` + `protect_untrusted_text()`. |
 | Pydantic validation | `graphify/models.py` + `graphify/parser.py` | **YES** | LOW | Models and parser now validate the normalized schema in-process. |
 | Subgraph slicing | `graphify/slicer.py` | **YES** | MED | Extracts changed-files ± N-hop subgraphs in memory; per-run graph artifacts are still not emitted. |
-| Fuzzy concept matching | `graphify/matcher.py` | **PARTIAL** | MED | Matching helper is landed; no persistence into `concepts` rows yet. |
-| Concept linking | `graphify/linker.py` | **PARTIAL** | MED | Helper exists; no `graphify_node_id` DB field or export path yet. |
-| Graph-node search | `graphify/search.py` + `review/search.py` | **PARTIAL** | MED | Search helper exists and `/api/search` can merge graph hits; graph nodes are not indexed into SQLite FTS tables. |
-| Freshness 7-state helper | `graphify/freshness.py` + `git/capture.py` | **PARTIAL** | MED | Repo-aware helper is landed, but imported-at / head-at-import style provenance is still not surfaced |
+| Fuzzy concept matching | `graphify/matcher.py` | **YES** | LOW | Matching helper landed; runtime-only by design (no DB persistence). |
+| Concept linking | `graphify/linker.py` | **YES** | LOW | Helper exists; runtime-only by v1.0 design decision (no `graphify_node_id` DB field). |
+| Graph-node search | `graphify/search.py` + `review/search.py` | **YES** | LOW | `/api/search` merges graph hits at runtime via `search_all_with_graph()`, but only from imported `.ahadiff/graphify/graph.json`; raw `graphify-out/graph.json` is not read directly by the route. |
+| Freshness 7-state helper | `graphify/freshness.py` + `git/capture.py` | **YES** | LOW | Repo-aware helper landed with 7→4 projection; richer provenance deferred to v1.1+. |
 | `ahadiff graph status/refresh/import` | `cli.py` | **YES** | LOW | CLI commands exist and use the current runtime wiring |
-| `GET /api/graph/status` | `serve/routes_graph.py` | **YES** | LOW | Returns freshness plus current node/edge counts and a workspace-relative `source_path`. |
+| `GET /api/graph/status` | `serve/routes_graph.py` | **YES** | LOW | Returns freshness plus current node/edge counts from imported `.ahadiff/graphify/graph.json`; raw `graphify-out/graph.json` only influences detection/freshness. |
 
 ### Graphify API Surface Compatibility
 
@@ -212,14 +212,14 @@ The design plan (`ahadiff-graphify-integration.md` + review) now has these piece
 
 ### Current Remaining Gaps
 
-| # | Gap | Current State | Next Step |
-|---|-----|---------------|-----------|
-| G1 | Freshness provenance is still shallow | Repo-aware 4-value projection is landed, but metadata still only stores source path/projection | Add imported-at / head-at-import style provenance if product needs a richer status page |
-| G2 | No DB-level Graphify linkage | matcher/linker helpers exist, but `concepts` rows do not persist `graphify_node_id`-style linkage | Decide whether to add persistent linkage columns or keep Graphify runtime-only |
-| G3 | No per-run graph artifacts | slicing exists in memory only | Decide whether v1.0 needs emitted `graph.slice.json` / link artifacts |
-| G4 | Graph nodes are not indexed into SQLite FTS | `/api/search` merges graph hits at runtime instead of storing them in DB | Add graph-aware indexing only if runtime merge becomes too weak or too slow |
-| G5 | Community/confidence are not surfaced to UI | parser preserves them in metadata, but current viewer contract does not consume them | Revisit with frontend 5D/5E rather than backend-first work |
-| G6 | No `graphify update` integration | AhaDiff reads `graphify-out/graph.json` but does not drive Graphify refresh itself | Keep manual refresh path unless product explicitly wants orchestration |
+| # | Gap | Current State | Resolution |
+|---|-----|---------------|------------|
+| G1 | Freshness provenance is still shallow | Repo-aware 4-value projection is landed, metadata stores source path/projection | **ACCEPTED** for v1.0 — current provenance sufficient; richer imported-at / head-at-import deferred to v1.1+ |
+| G2 | No DB-level Graphify linkage | matcher/linker helpers exist as runtime-only | **CLOSED by design** — v1.0 keeps Graphify as runtime enhancement; no `graphify_node_id` DB columns; concept-to-graph matching at serve time via `matcher.py` |
+| G3 | No per-run graph artifacts | slicing exists in memory only | **ACCEPTED** for v1.0 — `slice_by_files()` operates in memory; per-run `graph.slice.json` emission deferred to v1.1+ |
+| G4 | Graph nodes are not indexed into SQLite FTS | `/api/search` merges graph hits at runtime via `search_all_with_graph()` | **CLOSED by design** — runtime merge is working and performant; DB-level indexing deferred unless runtime merge proves insufficient |
+| G5 | Community/confidence are not surfaced to UI | parser preserves them in metadata, viewer contract does not consume them | **DEFERRED** to frontend 5D/5E phase; backend already stores them in `GraphifyNode.metadata` |
+| G6 | Benchmark coverage for graph operations | Graphify benchmark fixture and scripts landed in `benchmarks/` | **PARTIAL** — `benchmarks/fixtures/integration/pinned_011_graph_present/graph.json` + `benchmarks/scripts/bench_graphify.py` cover helper-level parse/match/link/search/slice, but the fixture is still synthetic and does not by itself prove full fidelity against every real Graphify v0.5 export |
 
 ---
 
@@ -230,35 +230,27 @@ The design plan (`ahadiff-graphify-integration.md` + review) now has these piece
 - AhaDiff should remain a lightweight consumer of `graph.json` output only
 - If subgraph operations are needed, replicate minimal NetworkX logic or use `networkx` directly (already lightweight)
 
-### 5.2 Pydantic Models (Match v0.5 Actual Schema)
+### 5.2 Implemented Model Shape
 ```python
 class GraphifyNode(BaseModel):
     id: str
     label: str
-    file_type: str | None = None          # "code", "doc", "concept", etc.
-    source_file: str | None = None        # relative path
-    source_location: str | None = None    # "L6" format
-    community: int | None = None          # Leiden community ID
-    # Allow extra fields for forward compatibility
-    model_config = ConfigDict(extra="allow")
+    file_path: str | None = None          # normalized from source_file|file_path|path
+    kind: str | None = None               # normalized from file_type|type|kind
+    metadata: dict[str, object] = Field(default_factory=dict)
 
 class GraphifyEdge(BaseModel):
     source: str
     target: str
     relation: str = "related"
-    confidence: str | None = None         # "EXTRACTED" | "INFERRED" | "AMBIGUOUS"
-    weight: float = 1.0
-    source_file: str | None = None
-    source_location: str | None = None
-    model_config = ConfigDict(extra="allow")
+    metadata: dict[str, object] = Field(default_factory=dict)
 
 class GraphifyGraph(BaseModel):
     directed: bool = False
     multigraph: bool = False
     nodes: list[GraphifyNode]
-    links: list[GraphifyEdge] = Field(default_factory=list, alias="links")
-    edges: list[GraphifyEdge] = Field(default_factory=list)
-    # NOTE: Must normalize links→edges in validator
+    links: list[GraphifyEdge] = Field(default_factory=list)
+    hyperedges: list[GraphifyHyperedge] = Field(default_factory=list)
 ```
 
 ### 5.3 Freshness Computation Strategy
@@ -279,10 +271,8 @@ def slice_subgraph(graph: GraphifyGraph, changed_files: list[str], hops: int = 2
     # 4. Return sliced GraphifyGraph
 ```
 
-### 5.5 Implementation Priority Order
-1. **G5** Pydantic models → foundation for everything else
-2. **G1+G2+G3** Schema parsing with `links`/`edges` normalization + structural version detection
-3. **G6** Real freshness computation
-4. **G4** Subgraph slicing
-5. **G7** CLI commands
-6. **G8+G9** Confidence filtering + community surfacing in viewer
+### 5.5 Remaining Priority Order
+1. **Richer provenance**: keep `freshness` but add more explicit imported-at / head-at-import evidence if frontend needs it
+2. **Per-run graph artifacts**: today slicing is in-memory only; emitting `graph.slice.json` remains deferred
+3. **Frontend surfacing**: expose `community` / `confidence` in viewer phases 5D/5E rather than only preserving them in metadata
+4. **Stronger compatibility evidence**: add at least one benchmark or regression fixture sourced from a real Graphify v0.5 export, not only the synthetic 15-node microbenchmark

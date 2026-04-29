@@ -49,7 +49,7 @@ _TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 _FALSE_VALUES = frozenset({"", "0", "false", "no", "off"})
 _MAX_STRING_LENGTH = 4096
 
-_MAX_PENDING_TASKS = 5
+_MAX_PENDING_TASKS = 1
 
 
 def _coerce_bool(value: object) -> bool:
@@ -182,13 +182,13 @@ async def post_learn(request: Request) -> JSONResponse:
             "verdict": result.verdict,
             "weakest_dim": result.weakest_dim,
             "warnings": result.warnings,
+            "recoverable_errors": result.recoverable_errors,
         }
 
     task_id = runner.submit_if_capacity(
         "learn",
         _learn_task,
         max_pending=_MAX_PENDING_TASKS,
-        disable_timeout=True,
     )
     if task_id is None:
         return JSONResponse(

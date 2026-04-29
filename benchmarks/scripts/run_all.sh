@@ -123,6 +123,8 @@ run_benchmark "diff_parse" "$tmp_dir/diff_parse.json" \
   "$benchmark_python" "$script_dir/bench_diff_parse.py"
 run_benchmark "bundle_size" "$tmp_dir/bundle_size.json" \
   bash "$script_dir/bench_bundle_size.sh"
+run_benchmark "graphify" "$tmp_dir/graphify.json" \
+  "$benchmark_python" "$script_dir/bench_graphify.py"
 
 "$benchmark_python" - "$tmp_dir" "$output_path" <<'PY'
 import json
@@ -152,6 +154,7 @@ payload = {
     "sqlite_queries": load_payload("sqlite_queries"),
     "diff_parse": load_payload("diff_parse"),
     "bundle_size": load_payload("bundle_size"),
+    "graphify": load_payload("graphify"),
 }
 output_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 print(json.dumps(payload, indent=2, sort_keys=True))

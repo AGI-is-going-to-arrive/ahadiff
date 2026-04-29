@@ -1,0 +1,47 @@
+{
+  "benchmarks": [
+    {
+      "edge_count": 17,
+      "iterations": 100,
+      "mean_ms": 0.303,
+      "median_ms": 0.29,
+      "node_count": 15,
+      "operation": "parse_graph_json",
+      "p95_ms": 0.388,
+      "p99_ms": 0.448
+    },
+    {
+      "iterations": 50,
+      "matches_per_round": 10,
+      "mean_ms": 1.465,
+      "median_ms": 1.454,
+      "operation": "match_concepts (10 queries)",
+      "p95_ms": 1.55
+    },
+    {
+      "iterations": 50,
+      "links_found": 10,
+      "mean_ms": 1.468,
+      "median_ms": 1.457,
+      "operation": "link_concepts (10 concepts)",
+      "p95_ms": 1.581
+    },
+    {
+      "hits_per_round": 5,
+      "iterations": 50,
+      "mean_ms": 0.609,
+      "median_ms": 0.601,
+      "operation": "search_graph_nodes (5 queries)",
+      "p95_ms": 0.679
+    },
+    {
+      "iterations": 50,
+      "mean_ms": 0.007,
+      "median_ms": 0.006,
+      "operation": "slice_by_files (2 files, 2 hops)",
+      "p95_ms": 0.008,
+      "subgraph_nodes": 12
+    }
+  ],
+  "fixture": "graph.json"
+}

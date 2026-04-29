@@ -427,43 +427,51 @@ def test_task_timeout_triggers_failure() -> None:
     _run(_inner())
 
 
-def test_submit_can_disable_timeout_for_thread_backed_work(tmp_path: Path) -> None:
+def test_submit_uses_per_task_timeout_override_for_thread_backed_work(
+    tmp_path: Path,
+) -> None:
     async def _inner() -> None:
-        runner = TaskRunner(max_concurrent=2, task_timeout_seconds=0.05)
+        runner = TaskRunner(max_concurrent=2, task_timeout_seconds=60.0)
         started = threading.Event()
         release = threading.Event()
+        handle_ref: list[TaskHandle] = []
         artifact_path = tmp_path / "finished.txt"
 
         async def thread_work(handle: TaskHandle) -> str:
+            handle_ref.append(handle)
+
             def _sync_job() -> str:
                 started.set()
                 release.wait(timeout=1.0)
-                artifact_path.write_text("finished\n", encoding="utf-8")
+                if not handle.is_cancelled():
+                    artifact_path.write_text("finished\n", encoding="utf-8")
                 return "done"
 
             return await run_sync_in_thread(_sync_job)
 
-        task_id = runner.submit("learn", thread_work, disable_timeout=True)
+        task_id = runner.submit("learn", thread_work, task_timeout_seconds=0.05)
         deadline = asyncio.get_running_loop().time() + 1.0
         while not started.is_set() and asyncio.get_running_loop().time() < deadline:
             await asyncio.sleep(0.01)
         assert started.is_set()
 
         await asyncio.sleep(0.15)
-        running = runner.get_task(task_id)
-        assert running is not None
-        assert running.status == TaskStatus.RUNNING
-        assert running.error_code is None
+        failed = runner.get_task(task_id)
+        assert failed is not None
+        assert failed.status == TaskStatus.FAILED
+        assert failed.error_code == "timeout"
+        assert len(handle_ref) == 1
+        assert handle_ref[0].is_cancelled() is True
         assert not artifact_path.exists()
 
         release.set()
         await asyncio.sleep(0.1)
 
-        completed = runner.get_task(task_id)
-        assert completed is not None
-        assert completed.status == TaskStatus.COMPLETED
-        assert completed.result == "done"
-        assert artifact_path.read_text(encoding="utf-8") == "finished\n"
+        still_failed = runner.get_task(task_id)
+        assert still_failed is not None
+        assert still_failed.status == TaskStatus.FAILED
+        assert still_failed.result is None
+        assert not artifact_path.exists()
 
     _run(_inner())
 
@@ -548,6 +556,19 @@ def test_task_runner_invalid_env_timeout_raises(monkeypatch: pytest.MonkeyPatch)
 def test_task_runner_custom_timeout() -> None:
     runner = TaskRunner(max_concurrent=1, task_timeout_seconds=30.0)
     assert _task_timeout_seconds(runner) == 30.0
+
+
+def test_submit_rejects_invalid_per_task_timeout() -> None:
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=1)
+
+        async def work(handle: TaskHandle) -> None:
+            return None
+
+        with pytest.raises(ValueError, match="positive"):
+            runner.submit("bad-timeout", work, task_timeout_seconds=0)
+
+    _run(_inner())
 
 
 def test_task_runner_rejects_zero_timeout() -> None:

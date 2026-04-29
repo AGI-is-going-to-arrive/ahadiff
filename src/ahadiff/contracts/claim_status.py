@@ -19,7 +19,7 @@ CardState = Literal["active", "stale", "archived", "suspended"]
 StaleReason = Literal["file_deleted", "symbol_removed", "line_drifted", "staleness_unknown"]
 ScaffoldingLevel = Literal["full", "hint", "compact"]
 ClaimConfidence = Literal["high", "medium", "low"]
-ClaimExtractor = Literal["python_ast", "regex", "section_header"]
+ClaimExtractor = Literal["python_ast", "tree_sitter", "regex", "section_header"]
 ChangeKind = Literal["deleted", "renamed"]
 
 

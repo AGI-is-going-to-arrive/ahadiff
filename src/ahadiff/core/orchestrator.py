@@ -6,11 +6,13 @@ No rich/typer/console dependencies.
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from pydantic import ValidationError
 
@@ -38,6 +40,10 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ahadiff.safety.gates import TransportTarget
+
+log = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +94,7 @@ class LearnResult:
     warnings: list[str] = field(default_factory=lambda: [])
     learnability_score: float | None = None
     learnability_skip: bool = False
+    recoverable_errors: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +105,93 @@ ProgressCallback = Callable[[int, int, str], None]
 CancelledCheck = Callable[[], bool]
 
 _TOTAL_STEPS = 10
+
+_DEFAULT_MAX_STEP_RETRIES = 2
+_DEFAULT_ERROR_BUDGET = 3
+_MAX_BACKOFF_SECONDS = 30.0
+
+
+@dataclass
+class PipelineErrorBudget:
+    max_step_retries: int = _DEFAULT_MAX_STEP_RETRIES
+    max_total_errors: int = _DEFAULT_ERROR_BUDGET
+    error_count: int = 0
+
+    def record_error(self) -> None:
+        self.error_count += 1
+
+    def exhausted(self) -> bool:
+        return self.error_count >= self.max_total_errors
+
+
+def is_recoverable_error(exc: Exception) -> bool:
+    if isinstance(exc, PermissionError):
+        return False
+    from ahadiff.core.errors import ConfigError, SafetyError
+
+    if isinstance(exc, ConfigError | SafetyError):
+        return False
+    if isinstance(exc, ConnectionError | TimeoutError):
+        return True
+    try:
+        msg = str(exc).lower()
+    except Exception:
+        return False
+    _recoverable = ("connection", "timeout", "transport", "rate limit", "503", "429", "retry")
+    return any(p in msg for p in _recoverable)
+
+
+_CANCEL_POLL_INTERVAL = 0.25
+
+
+def _cancellable_sleep(seconds: float, is_cancelled: CancelledCheck) -> None:
+    deadline = time.monotonic() + seconds
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        _check_cancelled(is_cancelled)
+        time.sleep(min(remaining, _CANCEL_POLL_INTERVAL))
+
+
+def run_with_retry(
+    step_fn: Callable[[], _T],
+    *,
+    step_name: str,
+    budget: PipelineErrorBudget,
+    is_cancelled: CancelledCheck,
+) -> _T:
+    last_exc: Exception | None = None
+    for attempt in range(budget.max_step_retries + 1):
+        _check_cancelled(is_cancelled)
+        try:
+            return step_fn()
+        except Exception as exc:
+            if not is_recoverable_error(exc):
+                raise
+            last_exc = exc
+            budget.record_error()
+            if budget.exhausted():
+                raise AhaDiffError(
+                    f"pipeline error budget exhausted ({budget.error_count} recoverable errors, "
+                    f"last failure in step '{step_name}'): {exc}"
+                ) from exc
+            if attempt >= budget.max_step_retries:
+                raise
+            wait = min(2.0**attempt, _MAX_BACKOFF_SECONDS)
+            log.warning(
+                "step '%s' failed (attempt %d/%d, budget %d/%d), retrying in %.1fs: %s",
+                step_name,
+                attempt + 1,
+                budget.max_step_retries + 1,
+                budget.error_count,
+                budget.max_total_errors,
+                wait,
+                exc,
+            )
+            _cancellable_sleep(wait, is_cancelled)
+    assert last_exc is not None  # noqa: S101
+    raise last_exc
 
 
 # ---------------------------------------------------------------------------
@@ -483,8 +577,26 @@ def run_learn_pipeline(
             else (root / ".ahadiff" / "runs" / capture.run_id)
         )
 
+        _env_retries_raw = os.environ.get(
+            "AHADIFF_PIPELINE_MAX_STEP_RETRIES",
+            str(_DEFAULT_MAX_STEP_RETRIES),
+        )
+        _env_budget_raw = os.environ.get(
+            "AHADIFF_PIPELINE_ERROR_BUDGET",
+            str(_DEFAULT_ERROR_BUDGET),
+        )
+        try:
+            _parsed_retries = int(_env_retries_raw)
+            _parsed_budget = int(_env_budget_raw)
+        except ValueError:
+            _parsed_retries = _DEFAULT_MAX_STEP_RETRIES
+            _parsed_budget = _DEFAULT_ERROR_BUDGET
+        error_budget = PipelineErrorBudget(
+            max_step_retries=max(0, min(_parsed_retries, 10)),
+            max_total_errors=max(1, min(_parsed_budget, 20)),
+        )
+
         if request.dry_run or learnability.skip_lesson_quiz:
-            # Return early with capture-only result
             early_result = LearnResult(
                 run_id=capture.run_id,
                 status="dry_run" if request.dry_run else "learnability_skip",
@@ -547,21 +659,33 @@ def run_learn_pipeline(
                 from ahadiff.claims.runtime import extract_claim_candidates_from_run
                 from ahadiff.claims.verify import verify_claim_candidates
 
-                raw_claims_path, _ = extract_claim_candidates_from_run(
-                    run_id=capture.run_id,
-                    run_path=run_path,
-                    workspace_root=root,
-                    provider_config=provider_config,
-                    api_key=effective_api_key,
-                    security_config=security_config,
-                    output_path=run_path / "claims.raw.jsonl",
-                    overwrite=False,
-                    privacy_mode=cast("PrivacyMode", resolved_privacy_mode),
-                    max_concurrent=int(llm_config["max_concurrent"]),
-                    qps_limit=int(provider_limits["qps_limit"]),
-                    retry_attempts=int(llm_config["retry_attempts"]),
-                    request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
+                def _extract_claims() -> Any:
+                    nonlocal raw_claims_path
+                    result_path, _ = extract_claim_candidates_from_run(
+                        run_id=capture.run_id,
+                        run_path=run_path,
+                        workspace_root=root,
+                        provider_config=provider_config,
+                        api_key=effective_api_key,
+                        security_config=security_config,
+                        output_path=run_path / "claims.raw.jsonl",
+                        overwrite=False,
+                        privacy_mode=cast("PrivacyMode", resolved_privacy_mode),
+                        max_concurrent=int(llm_config["max_concurrent"]),
+                        qps_limit=int(provider_limits["qps_limit"]),
+                        retry_attempts=int(llm_config["retry_attempts"]),
+                        request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
+                    )
+                    raw_claims_path = result_path
+                    return result_path
+
+                run_with_retry(
+                    _extract_claims,
+                    step_name="claim_extraction",
+                    budget=error_budget,
+                    is_cancelled=_cancelled,
                 )
+                assert raw_claims_path is not None  # noqa: S101
 
                 candidates = load_claim_candidates(
                     raw_claims_path,
@@ -611,6 +735,7 @@ def run_learn_pipeline(
                     learnability_score=learnability.score,
                     learnability_skip=False,
                     warnings=[lesson_skip_reason],
+                    recoverable_errors=error_budget.error_count,
                 )
             else:
                 # ------------------------------------------------------------------
@@ -622,19 +747,27 @@ def run_learn_pipeline(
                 try:
                     from ahadiff.lesson.generator import generate_lessons_from_run
 
-                    generate_lessons_from_run(
-                        run_id=capture.run_id,
-                        run_path=run_path,
-                        workspace_root=root,
-                        provider_config=provider_config,
-                        api_key=effective_api_key,
-                        security_config=security_config,
-                        request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
-                        max_concurrent=int(llm_config["max_concurrent"]),
-                        qps_limit=int(provider_limits["qps_limit"]),
-                        retry_attempts=int(llm_config["retry_attempts"]),
-                        privacy_mode=cast("PrivacyMode", resolved_privacy_mode),
-                        output_lang=resolved_content_lang,
+                    def _generate_lessons() -> None:
+                        generate_lessons_from_run(
+                            run_id=capture.run_id,
+                            run_path=run_path,
+                            workspace_root=root,
+                            provider_config=provider_config,
+                            api_key=effective_api_key,
+                            security_config=security_config,
+                            request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
+                            max_concurrent=int(llm_config["max_concurrent"]),
+                            qps_limit=int(provider_limits["qps_limit"]),
+                            retry_attempts=int(llm_config["retry_attempts"]),
+                            privacy_mode=cast("PrivacyMode", resolved_privacy_mode),
+                            output_lang=resolved_content_lang,
+                        )
+
+                    run_with_retry(
+                        _generate_lessons,
+                        step_name="lesson_generation",
+                        budget=error_budget,
+                        is_cancelled=_cancelled,
                     )
                 except Exception as exc:
                     _cleanup_lesson_generation_artifacts(
@@ -658,20 +791,32 @@ def run_learn_pipeline(
                         generate_quiz_from_run,
                     )
 
-                    _, quiz_questions = generate_quiz_from_run(
-                        run_id=capture.run_id,
-                        run_path=run_path,
-                        workspace_root=root,
-                        provider_config=provider_config,
-                        api_key=effective_api_key,
-                        security_config=security_config,
-                        request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
-                        max_concurrent=int(llm_config["max_concurrent"]),
-                        qps_limit=int(provider_limits["qps_limit"]),
-                        retry_attempts=int(llm_config["retry_attempts"]),
-                        privacy_mode=cast("PrivacyMode", resolved_privacy_mode),
-                        output_lang=resolved_content_lang,
+                    quiz_questions_holder: list[Any] = []
+
+                    def _generate_quiz() -> None:
+                        _, questions = generate_quiz_from_run(
+                            run_id=capture.run_id,
+                            run_path=run_path,
+                            workspace_root=root,
+                            provider_config=provider_config,
+                            api_key=effective_api_key,
+                            security_config=security_config,
+                            request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
+                            max_concurrent=int(llm_config["max_concurrent"]),
+                            qps_limit=int(provider_limits["qps_limit"]),
+                            retry_attempts=int(llm_config["retry_attempts"]),
+                            privacy_mode=cast("PrivacyMode", resolved_privacy_mode),
+                            output_lang=resolved_content_lang,
+                        )
+                        quiz_questions_holder[:] = [questions]
+
+                    run_with_retry(
+                        _generate_quiz,
+                        step_name="quiz_generation",
+                        budget=error_budget,
+                        is_cancelled=_cancelled,
                     )
+                    quiz_questions = quiz_questions_holder[0]
                 except Exception as exc:
                     _cleanup_lesson_generation_artifacts(
                         run_path=run_path,
@@ -759,11 +904,15 @@ def run_learn_pipeline(
         warnings=learn_warnings,
         learnability_score=learnability.score,
         learnability_skip=False,
+        recoverable_errors=error_budget.error_count,
     )
 
 
 __all__ = [
     "LearnRequest",
     "LearnResult",
+    "PipelineErrorBudget",
+    "is_recoverable_error",
     "run_learn_pipeline",
+    "run_with_retry",
 ]

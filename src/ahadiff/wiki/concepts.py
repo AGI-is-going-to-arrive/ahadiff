@@ -79,8 +79,8 @@ class _AncestryCache:
             return True
         self._call_count += 1
         if self._call_count > _MAX_ANCESTRY_CHECKS:
-            self._cache[source_ref] = True
-            return True
+            self._cache[source_ref] = False
+            return False
         visible = _is_ancestor(self.workspace_root, source_ref, self.head_ref)
         self._cache[source_ref] = visible
         return visible

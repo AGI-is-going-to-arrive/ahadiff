@@ -7,6 +7,7 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+import threading
 import webbrowser
 from contextlib import ExitStack, suppress
 from functools import cache
@@ -51,6 +52,8 @@ from .core.sqlite_util import safe_sqlite_connect
 from .i18n import normalize_locale, resolve_locale
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from .contracts import PrivacyMode
     from .review.schemas import ReviewAnswer
     from .safety.gates import TransportTarget
@@ -1730,6 +1733,10 @@ def serve_cmd(
         str | None,
         typer.Option("--lang", help="Temporary serve locale override."),
     ] = None,
+    watch: Annotated[
+        bool,
+        typer.Option("--watch/--no-watch", help="Watch repo for changes and auto-learn."),
+    ] = False,
 ) -> None:
     try:
         root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
@@ -1748,29 +1755,228 @@ def serve_cmd(
         config_lang = str(base_snapshot.values["lang"])
         resolved_locale = resolve_locale(cli_lang=lang, config_lang=config_lang)
         state_dir.mkdir(parents=True, exist_ok=True)
+
+        serve_state = _serve_state_cls()(
+            state_dir=state_dir,
+            token=secrets.token_urlsafe(24),
+            locale=resolved_locale,
+            cli_lang=lang,
+            config_lang=config_lang,
+            bind_host=bind_host,
+            port=resolved_port,
+            repo_lock_path=lock_file_path(root) if has_git_repo else state_dir / "ahadiff.lock",
+        )
         app_instance = create_app(
-            _serve_state_cls()(
-                state_dir=state_dir,
-                token=secrets.token_urlsafe(24),
-                locale=resolved_locale,
-                cli_lang=lang,
-                config_lang=config_lang,
-                bind_host=bind_host,
-                port=resolved_port,
-                repo_lock_path=lock_file_path(root) if has_git_repo else state_dir / "ahadiff.lock",
-            ),
+            serve_state,
             viewer_dist=root / "viewer" / "dist",
         )
+
+        file_watcher = None
+        if watch and has_git_repo:
+            from .core.watcher import FileWatcher, WatcherConfig, is_watchdog_available
+
+            if is_watchdog_available():
+                watcher_config = WatcherConfig()
+
+                def _on_watch_change(event: Any) -> None:
+                    token = serve_state.token
+                    try:
+                        import httpx
+
+                        self_origin = f"http://127.0.0.1:{resolved_port}"
+                        resp = httpx.post(
+                            f"{self_origin}/api/learn",
+                            json={},
+                            headers={
+                                "X-AhaDiff-Token": token,
+                                "Origin": self_origin,
+                            },
+                            timeout=5.0,
+                        )
+                        if resp.status_code == 202:
+                            console.print(
+                                f"[dim]Watch: learn submitted "
+                                f"({len(event.changed_paths)} files changed)[/dim]"
+                            )
+                        else:
+                            console.print(
+                                f"[dim]Watch: learn request returned {resp.status_code}[/dim]"
+                            )
+                    except Exception as exc:
+                        console.print(f"[dim]Watch: learn request failed: {exc}[/dim]")
+
+                file_watcher = FileWatcher(
+                    root,
+                    on_change=_on_watch_change,
+                    config=watcher_config,
+                )
+                app_instance.state.file_watcher = file_watcher
+            else:
+                console.print(
+                    "[yellow]Warning[/yellow]: watchdog not installed; "
+                    "--watch requires: pip install ahadiff[watchdog]"
+                )
+
         url = f"http://127.0.0.1:{resolved_port}"
         console.print(f"[green]Serving[/green] {url}")
         console.print("[bold]Bind[/bold]: 127.0.0.1 only")
         console.print("[bold]Write token header[/bold]: X-AhaDiff-Token")
+        if file_watcher is not None:
+            console.print("[bold]Watch mode[/bold]: enabled")
         if _should_open_serve_browser(no_browser=resolved_no_browser):
             webbrowser.open(url)
+
+        if file_watcher is not None:
+            file_watcher.start()
+
         import uvicorn
 
-        uvicorn.run(app_instance, host=bind_host, port=resolved_port, log_level="info")
+        try:
+            uvicorn.run(app_instance, host=bind_host, port=resolved_port, log_level="info")
+        finally:
+            if file_watcher is not None:
+                file_watcher.stop()
     except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+def _run_watch_learn(wroot: Path, dr: bool, fl: bool, ln: str | None) -> None:
+    from .core.orchestrator import LearnRequest, run_learn_pipeline
+
+    try:
+        request = LearnRequest(
+            workspace_root=wroot,
+            dry_run=dr,
+            force_learn=fl,
+            lang=ln,
+        )
+        result = run_learn_pipeline(request)
+        console.print(
+            f"  [bold]Result[/bold]: {result.status}"
+            f" (score={result.overall},"
+            f" errors={result.recoverable_errors})"
+        )
+        if result.warnings:
+            for w in result.warnings:
+                console.print(f"  [yellow]Warning[/yellow]: {w}")
+    except AhaDiffError as exc:
+        console.print(f"  [red]Learn failed[/red]: {exc}")
+    except Exception as exc:
+        console.print(f"  [red]Unexpected error[/red]: {exc}")
+
+
+class _WatchLearnRunner:
+    def __init__(self, run_learn: Callable[[], None]) -> None:
+        self._run_learn = run_learn
+        self._lock = threading.Lock()
+        self._running = False
+        self._retrigger_pending = False
+        self._stop_requested = threading.Event()
+
+    def request(self, event: Any) -> None:
+        with self._lock:
+            if self._stop_requested.is_set():
+                return
+            if self._running:
+                self._retrigger_pending = True
+                console.print(
+                    f"[dim]Queued retrigger ({len(event.changed_paths)} files)"
+                    " — learn already in progress[/dim]"
+                )
+                return
+            self._running = True
+        console.print(
+            f"[green]Changes detected[/green]: "
+            f"{len(event.changed_paths)} file(s), triggering learn..."
+        )
+        worker = threading.Thread(target=self._run_loop, daemon=True)
+        worker.start()
+
+    def stop(self) -> None:
+        self._stop_requested.set()
+
+    def _run_loop(self) -> None:
+        first_run = True
+        while True:
+            if self._stop_requested.is_set():
+                with self._lock:
+                    self._running = False
+                    self._retrigger_pending = False
+                return
+            if not first_run:
+                console.print(
+                    "[green]Re-triggering[/green] for changes queued during previous learn..."
+                )
+            first_run = False
+            self._run_learn()
+            with self._lock:
+                if self._stop_requested.is_set() or not self._retrigger_pending:
+                    self._running = False
+                    self._retrigger_pending = False
+                    return
+                self._retrigger_pending = False
+
+
+@_APP.command("watch")
+def watch_cmd(
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or workspace root."),
+    ] = Path(),
+    debounce: Annotated[
+        float,
+        typer.Option("--debounce", min=0.1, max=60.0, help="Debounce seconds."),
+    ] = 2.0,
+    cooldown: Annotated[
+        float,
+        typer.Option("--cooldown", min=1.0, max=600.0, help="Cooldown seconds."),
+    ] = 30.0,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Capture-only, skip lesson generation."),
+    ] = False,
+    force_learn: Annotated[
+        bool,
+        typer.Option("--force-learn", help="Skip learnability gate."),
+    ] = False,
+    lang: Annotated[
+        str | None,
+        typer.Option("--lang", help="Output language override."),
+    ] = None,
+) -> None:
+    """Watch repository for file changes and auto-trigger learn."""
+    import time as _time
+
+    from .core.watcher import FileWatcher, WatcherConfig, is_watchdog_available
+
+    try:
+        if not is_watchdog_available():
+            raise AhaDiffError(
+                "watchdog is not installed; install with: pip install ahadiff[watchdog]"
+            )
+        root, _has_git = _resolve_learn_workspace_root(repo_root, allow_non_git=False)
+        config = WatcherConfig(
+            debounce_seconds=debounce,
+            cooldown_seconds=cooldown,
+        )
+        runner = _WatchLearnRunner(lambda: _run_watch_learn(root, dry_run, force_learn, lang))
+
+        watcher = FileWatcher(root, on_change=runner.request, config=config)
+        watcher.start()
+        console.print(
+            f"[green]Watching[/green] {root} (debounce={debounce}s, cooldown={cooldown}s)"
+        )
+        console.print("[dim]Press Ctrl+C to stop[/dim]")
+        try:
+            while watcher.is_running:
+                _time.sleep(1)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            runner.stop()
+            watcher.stop()
+            console.print("[green]Watcher stopped[/green]")
+    except Exception as error:
         _handle_cli_error(error)
 
 

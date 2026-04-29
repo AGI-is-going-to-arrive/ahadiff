@@ -1,0 +1,45 @@
+{
+  "directed": true,
+  "multigraph": false,
+  "graph": {},
+  "nodes": [
+    {"id": "n1", "label": "AuthMiddleware", "file_type": "code", "source_file": "src/auth/middleware.py", "source_location": "L10", "community": 1},
+    {"id": "n2", "label": "TokenValidator", "file_type": "code", "source_file": "src/auth/tokens.py", "source_location": "L8", "community": 1},
+    {"id": "n3", "label": "SessionManager", "file_type": "code", "source_file": "src/auth/session.py", "source_location": "L12", "community": 1},
+    {"id": "n4", "label": "RateLimiter", "file_type": "code", "source_file": "src/middleware/rate_limit.py", "source_location": "L5", "community": 1},
+    {"id": "n5", "label": "RequestParser", "file_type": "code", "source_file": "src/http/parser.py", "source_location": "L3", "community": 2},
+    {"id": "n6", "label": "ResponseBuilder", "file_type": "code", "source_file": "src/http/response.py", "source_location": "L4", "community": 2},
+    {"id": "n7", "label": "DatabasePool", "file_type": "code", "source_file": "src/db/pool.py", "source_location": "L7", "community": 3},
+    {"id": "n8", "label": "QueryBuilder", "file_type": "code", "source_file": "src/db/query.py", "source_location": "L6", "community": 3},
+    {"id": "n9", "label": "MigrationRunner", "file_type": "code", "source_file": "src/db/migrate.py", "source_location": "L9", "community": 3},
+    {"id": "n10", "label": "CacheLayer", "file_type": "code", "source_file": "src/cache/layer.py", "source_location": "L11", "community": 4},
+    {"id": "n11", "label": "EventBus", "file_type": "code", "source_file": "src/events/bus.py", "source_location": "L5", "community": 4},
+    {"id": "n12", "label": "LogAggregator", "file_type": "code", "source_file": "src/observability/logs.py", "source_location": "L2", "community": 5},
+    {"id": "n13", "label": "MetricsCollector", "file_type": "code", "source_file": "src/observability/metrics.py", "source_location": "L2", "community": 5},
+    {"id": "n14", "label": "ConfigLoader", "file_type": "code", "source_file": "src/config/loader.py", "source_location": "L4", "community": 6},
+    {"id": "n15", "label": "HealthCheck", "file_type": "code", "source_file": "src/health/check.py", "source_location": "L3", "community": 6}
+  ],
+  "links": [
+    {"source": "n1", "target": "n2", "relation": "delegates_to", "confidence": "EXTRACTED", "weight": 1.0, "source_file": "src/auth/middleware.py", "source_location": "L14"},
+    {"source": "n1", "target": "n3", "relation": "manages", "confidence": "EXTRACTED", "weight": 1.0, "source_file": "src/auth/middleware.py", "source_location": "L18"},
+    {"source": "n2", "target": "n10", "relation": "reads_from", "confidence": "INFERRED", "weight": 0.8, "source_file": "src/auth/tokens.py", "source_location": "L22"},
+    {"source": "n3", "target": "n7", "relation": "uses", "confidence": "EXTRACTED", "weight": 1.0, "source_file": "src/auth/session.py", "source_location": "L20"},
+    {"source": "n4", "target": "n10", "relation": "reads_from", "confidence": "AMBIGUOUS", "weight": 0.5, "source_file": "src/middleware/rate_limit.py", "source_location": "L12"},
+    {"source": "n5", "target": "n1", "relation": "calls", "confidence": "EXTRACTED", "weight": 1.0, "source_file": "src/http/parser.py", "source_location": "L17"},
+    {"source": "n5", "target": "n4", "relation": "calls", "confidence": "EXTRACTED", "weight": 1.0, "source_file": "src/http/parser.py", "source_location": "L18"},
+    {"source": "n6", "target": "n12", "relation": "logs_to", "confidence": "EXTRACTED", "weight": 1.0, "source_file": "src/http/response.py", "source_location": "L21"},
+    {"source": "n7", "target": "n8", "relation": "uses", "confidence": "EXTRACTED", "weight": 1.0, "source_file": "src/db/pool.py", "source_location": "L11"},
+    {"source": "n7", "target": "n9", "relation": "runs", "confidence": "EXTRACTED", "weight": 1.0, "source_file": "src/db/pool.py", "source_location": "L22"},
+    {"source": "n8", "target": "n12", "relation": "logs_to", "confidence": "INFERRED", "weight": 0.7, "source_file": "src/db/query.py", "source_location": "L14"},
+    {"source": "n10", "target": "n7", "relation": "backed_by", "confidence": "INFERRED", "weight": 0.8, "source_file": "src/cache/layer.py", "source_location": "L19"},
+    {"source": "n11", "target": "n12", "relation": "publishes_to", "confidence": "EXTRACTED", "weight": 1.0, "source_file": "src/events/bus.py", "source_location": "L15"},
+    {"source": "n11", "target": "n13", "relation": "emits", "confidence": "EXTRACTED", "weight": 1.0, "source_file": "src/events/bus.py", "source_location": "L16"},
+    {"source": "n14", "target": "n7", "relation": "configures", "confidence": "EXTRACTED", "weight": 1.0, "source_file": "src/config/loader.py", "source_location": "L9"},
+    {"source": "n15", "target": "n7", "relation": "checks", "confidence": "EXTRACTED", "weight": 1.0, "source_file": "src/health/check.py", "source_location": "L8"},
+    {"source": "n15", "target": "n10", "relation": "checks", "confidence": "EXTRACTED", "weight": 1.0, "source_file": "src/health/check.py", "source_location": "L9"}
+  ],
+  "hyperedges": [
+    {"id": "he1", "nodes": ["n1", "n2", "n3"], "relation": "auth_subsystem"},
+    {"id": "he2", "nodes": ["n7", "n8", "n9"], "relation": "data_layer"}
+  ]
+}

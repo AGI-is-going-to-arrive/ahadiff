@@ -2,11 +2,11 @@
 
 **Status**: APPROVED — R1 adversarial (2H+3M) + R2 cross-review (2 residuals) + R3 final check (1 residual) = all fixed
 **Date**: 2026-04-28
-**Revised**: 2026-04-29 (current-branch sync: POST /api/learn landed, route surface grew, verification refreshed)
+**Revised**: 2026-04-30 (current-branch sync: tree-sitter symbol extraction / graph status / timeout model / verification refreshed)
 **Authors**: Claude (orchestrator)
 **Requires**: contract-freeze.md §8 change rules (RFC + cross-review)
 
-Current branch verification after the latest learn-orchestrator / `/api/learn` updates: full pytest `1420 passed, 1 skipped`; coverage gate `87.37%`; focused backend regressions `59 passed`; serve regressions `129 passed`; `ruff check` pass; `ruff format --check` pass; `pyright` currently reports `0 errors, 0 warnings, 0 informations`.
+Current branch verification after the latest learn-orchestrator / symbol-extraction updates: full pytest `1479 passed, 1 skipped`; coverage gate `87.08%`; `ruff check` pass; `ruff format --check` pass; `pyright` currently reports `0 errors, 0 warnings, 0 informations`; `uv build --wheel` pass.
 
 ## Motivation
 
@@ -17,7 +17,7 @@ in Phases 1E, 3A-3D, 3C, 5F, and 6B.
 
 ## Current State
 
-Current `serve/app.py` registers 43 explicit `Route(...)` entries: 1 `/healthz`, 41 concrete
+Current `serve/app.py` registers 44 explicit `Route(...)` entries: 1 `/healthz`, 42 concrete
 `/api/*` routes, and 1 `/api/{rest_of_path:path}` catchall. DTOs are frozen in
 `contracts/serve_app.py` and `contracts/claim_status.py`.
 
@@ -423,7 +423,7 @@ Graphify remains **runtime-detected only** in v1.0. Formally documented:
 
 1. **No `[graph]` extras group** in `pyproject.toml`
 2. **No import-time dependency** on graph parsing libraries
-3. `graph.json` detected at runtime via `os.path.exists(repo / "graphify-out" / "graph.json")`
+3. raw `graphify-out/graph.json` is detected at runtime, then imported/sanitized to `.ahadiff/graphify/graph.json`; current `/api/graph/status` counts and `source_path` use the imported copy
 4. All Graphify Pydantic models live in `src/ahadiff/graphify/` (Phase 3E)
 5. Parser uses `stdlib json` only — no NetworkX, no igraph, no additional deps
 6. If `graph.json` is absent or malformed, all Graphify features degrade silently
@@ -466,4 +466,4 @@ contract-freeze §8 rule 3.
 4. MisconceptionCard is a separate DTO, not a ReviewCard extension
 5. Graphify runtime-only posture formally documented
 6. Codex + Claude cross-review PASS
-7. No existing tests regress against the current backend baseline (`1420 passed, 1 skipped`)
+7. No existing tests regress against the current backend baseline (`1479 passed, 1 skipped`)

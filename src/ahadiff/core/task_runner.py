@@ -43,15 +43,24 @@ class TaskInfo:
 
 
 class TaskHandle:
-    def __init__(self, task_id: str, runner: TaskRunner) -> None:
+    def __init__(self, task_id: str, runner: TaskRunner, loop: asyncio.AbstractEventLoop) -> None:
         self._task_id = task_id
         self._runner = runner
+        self._loop = loop
         self._cancelled = False
 
     def update_progress(self, current: int, total: int, message: str = "") -> None:
-        info = self._runner.get_task(self._task_id)
-        if info is not None:
-            info.progress = TaskProgress(current=current, total=total, message=message)
+        try:
+            self._loop.call_soon_threadsafe(
+                self._runner.apply_progress_update,
+                self._task_id,
+                current,
+                total,
+                message,
+            )
+        except RuntimeError:
+            # The loop may already be closed while a worker thread is unwinding.
+            return
 
     def is_cancelled(self) -> bool:
         return self._cancelled
@@ -113,9 +122,13 @@ class TaskRunner:
         task_type: str,
         coro_factory: Callable[[TaskHandle], Coroutine[Any, Any, Any]],
         *,
-        disable_timeout: bool = False,
+        task_timeout_seconds: float | None = None,
     ) -> str:
-        return self._submit_unchecked(task_type, coro_factory, disable_timeout=disable_timeout)
+        return self._submit_unchecked(
+            task_type,
+            coro_factory,
+            task_timeout_seconds=task_timeout_seconds,
+        )
 
     def submit_if_capacity(
         self,
@@ -123,7 +136,7 @@ class TaskRunner:
         coro_factory: Callable[[TaskHandle], Coroutine[Any, Any, Any]],
         *,
         max_pending: int,
-        disable_timeout: bool = False,
+        task_timeout_seconds: float | None = None,
     ) -> str | None:
         pending_count = sum(
             1
@@ -133,31 +146,45 @@ class TaskRunner:
         )
         if pending_count >= max_pending:
             return None
-        return self._submit_unchecked(task_type, coro_factory, disable_timeout=disable_timeout)
+        return self._submit_unchecked(
+            task_type,
+            coro_factory,
+            task_timeout_seconds=task_timeout_seconds,
+        )
 
     def _submit_unchecked(
         self,
         task_type: str,
         coro_factory: Callable[[TaskHandle], Coroutine[Any, Any, Any]],
         *,
-        disable_timeout: bool,
+        task_timeout_seconds: float | None,
     ) -> str:
         loop = asyncio.get_running_loop()
+        task_timeout = (
+            self._task_timeout
+            if task_timeout_seconds is None
+            else _coerce_task_timeout_seconds(task_timeout_seconds, source="task_timeout_seconds")
+        )
         task_id = uuid.uuid4().hex[:12]
         info = TaskInfo(
             task_id=task_id,
             task_type=task_type,
             created_at=datetime.now(UTC).isoformat(),
         )
-        handle = TaskHandle(task_id, self)
+        handle = TaskHandle(task_id, self, loop)
         self._tasks[task_id] = info
         self._handles[task_id] = handle
-        self._task_timeouts[task_id] = None if disable_timeout else self._task_timeout
+        self._task_timeouts[task_id] = task_timeout
         self._coro_factories[task_id] = coro_factory
         async_task = loop.create_task(self._run_task(task_id))
         async_task.add_done_callback(lambda _: self._on_async_task_done(task_id))
         self._async_tasks[task_id] = async_task
         return task_id
+
+    def apply_progress_update(self, task_id: str, current: int, total: int, message: str) -> None:
+        info = self.get_task(task_id)
+        if info is not None:
+            info.progress = TaskProgress(current=current, total=total, message=message)
 
     def get_task(self, task_id: str) -> TaskInfo | None:
         return self._tasks.get(task_id) or self._archived_tasks.get(task_id)
@@ -299,11 +326,8 @@ class TaskRunner:
             info.status = TaskStatus.RUNNING
             info.started_at = datetime.now(UTC).isoformat()
 
-            if task_timeout is None:
+            async with asyncio.timeout(task_timeout) as timeout_cm:
                 result = await coro_factory(handle)
-            else:
-                async with asyncio.timeout(task_timeout) as timeout_cm:
-                    result = await coro_factory(handle)
 
             if handle.is_cancelled():
                 info.status = TaskStatus.CANCELLED

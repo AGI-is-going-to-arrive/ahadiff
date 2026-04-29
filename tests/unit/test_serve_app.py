@@ -2381,3 +2381,41 @@ def test_cursor_exceeding_max_length_returns_400(tmp_path: Path) -> None:
     response = client.get(f"/api/runs?cursor={long_cursor}")
     assert response.status_code == 400
     assert "maximum length" in response.json()["error"]
+
+
+# --- 6A: /api/watch/status ---
+
+
+def test_watch_status_disabled_by_default(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    resp = client.get("/api/watch/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["enabled"] is False
+    assert data["running"] is False
+    assert data["pending_changes"] == 0
+    assert "watch_path" not in data
+
+
+class _FakeWatcher:
+    def status(self) -> dict[str, object]:
+        return {
+            "running": True,
+            "last_trigger_time": 123.0,
+            "pending_changes": 2,
+        }
+
+
+def test_watch_status_with_watcher_attached(tmp_path: Path) -> None:
+    app = create_app(ServeState(state_dir=tmp_path, token="t"))
+    app.state.file_watcher = _FakeWatcher()
+
+    client = TestClient(app, base_url="http://localhost:8765")
+    resp = client.get("/api/watch/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["enabled"] is True
+    assert data["running"] is True
+    assert data["pending_changes"] == 2
+    assert data["last_trigger_time"] == 123.0
+    assert "watch_path" not in data
