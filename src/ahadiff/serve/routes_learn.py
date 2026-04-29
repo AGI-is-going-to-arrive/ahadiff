@@ -138,6 +138,13 @@ async def post_learn(request: Request) -> JSONResponse:
         )
     raw_body = cast("dict[str, object]", raw_body_object)
 
+    unknown_fields = set(raw_body) - _ACCEPTED_FIELDS
+    if unknown_fields:
+        return JSONResponse(
+            {"error": f"unknown_fields: {', '.join(sorted(unknown_fields))}", "status": 422},
+            status_code=422,
+        )
+
     params: dict[str, Any] = {}
     for k, v in raw_body.items():
         if k in _ACCEPTED_FIELDS and v is not None:

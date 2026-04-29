@@ -174,19 +174,20 @@ def test_post_learn_with_valid_fields(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_post_learn_ignores_unknown_fields(tmp_path: Path) -> None:
-    """Extra fields should be silently dropped; route still returns 202."""
+def test_post_learn_rejects_unknown_fields(tmp_path: Path) -> None:
+    """Extra fields must be rejected with 422, not silently dropped."""
     client = _client(tmp_path)
     resp = _post_learn(
         client,
         body={
-            "unknown_field": "should be ignored",
+            "unknown_field": "should be rejected",
             "another": 42,
             "dry_run": True,
         },
     )
-    assert resp.status_code == 202
-    assert "task_id" in _json_object(resp)
+    assert resp.status_code == 422
+    body = _json_object(resp)
+    assert "unknown_fields" in str(body.get("error", ""))
 
 
 def test_post_learn_filters_none_values(tmp_path: Path) -> None:
@@ -272,11 +273,9 @@ def test_post_learn_drops_provider_fields_before_request_construction(
             "provider_name": "attacker",
         },
     )
-    assert resp.status_code == 202
-
-    info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
-    assert info["result"] is not None
-    assert forbidden.isdisjoint(constructed_kwargs)
+    assert resp.status_code == 422
+    body = _json_object(resp)
+    assert "unknown_fields" in str(body.get("error", ""))
 
 
 # ---------------------------------------------------------------------------

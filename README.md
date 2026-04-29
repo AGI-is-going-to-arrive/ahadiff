@@ -229,7 +229,7 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-最近一次验证（2026-04-30，本 session backend）：`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pytest tests -q --tb=long` 为 `1479 passed, 1 skipped`；`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pytest --cov=src/ahadiff --cov-report=term-missing --cov-fail-under=85 tests -q --tb=long` 为 `1479 passed, 1 skipped`，总覆盖率 `87.08%`；`UV_CACHE_DIR=/tmp/aha uv run --frozen --no-sync ruff check src tests` 通过；`UV_CACHE_DIR=/tmp/aha uv run --frozen --no-sync pyright` 为 `0 errors, 0 warnings, 0 informations`；`uv build --wheel` 成功；`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv lock --check` 通过。
+最近一次验证（2026-04-30）：`pytest tests` = `1479 passed, 1 skipped`；coverage gate = `86.98%`；`ruff check` / `ruff format --check` 通过；`pyright` = `0 errors, 0 warnings, 0 informations`；`uv build --wheel` 成功；`uv lock --check` 通过。
 
 下一步路线图：
 

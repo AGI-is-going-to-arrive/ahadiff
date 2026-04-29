@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import logging
 from json import JSONDecodeError
 from typing import TYPE_CHECKING, Any
 
@@ -50,6 +52,7 @@ from .routes_watch import get_watch_status
 from .static import mount_viewer_static
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
     from pathlib import Path
 
     from starlette.requests import Request
@@ -57,12 +60,31 @@ if TYPE_CHECKING:
     from .state import ServeState
 
 
+_log = logging.getLogger(__name__)
+
+
 def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlette:
-    # The CLI hard-fails any non-loopback bind_host so the token bootstrap endpoint
-    # and finalized-run artifacts never escape the same-machine localhost boundary.
     runtime_state = state.with_runtime_lock()
+
+    @contextlib.asynccontextmanager
+    async def _lifespan(_app: Starlette) -> AsyncGenerator[None]:
+        yield
+        runner = getattr(runtime_state, "task_runner", None)
+        if runner is not None:
+            try:
+                await runner.shutdown(timeout=5.0)
+            except Exception:
+                _log.debug("task runner shutdown error", exc_info=True)
+        watcher = getattr(runtime_state, "file_watcher", None)
+        if watcher is not None:
+            try:
+                watcher.stop()
+            except Exception:
+                _log.debug("file watcher stop error", exc_info=True)
+
     app = Starlette(
         debug=False,
+        lifespan=_lifespan,
         routes=[
             Route("/healthz", healthz, methods=["GET"]),
             Route("/api/auth/token", auth_token, methods=["GET"]),

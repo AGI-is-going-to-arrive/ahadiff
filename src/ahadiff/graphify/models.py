@@ -35,6 +35,6 @@ class GraphifyGraph(BaseModel):
     directed: bool = True
     multigraph: bool = False
     graph: dict[str, Any] = Field(default_factory=dict)
-    nodes: list[GraphifyNode] = Field(default_factory=lambda: list[GraphifyNode]())
-    links: list[GraphifyEdge] = Field(default_factory=lambda: list[GraphifyEdge]())
-    hyperedges: list[GraphifyHyperedge] = Field(default_factory=lambda: list[GraphifyHyperedge]())
+    nodes: list[GraphifyNode] = Field(default_factory=lambda: [])
+    links: list[GraphifyEdge] = Field(default_factory=lambda: [])
+    hyperedges: list[GraphifyHyperedge] = Field(default_factory=lambda: [])

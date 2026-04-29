@@ -23,6 +23,7 @@ _DANGEROUS_URI_RE = re.compile(
 )
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 _MAX_LABEL_LEN = 500
+_MAX_GRAPH_FILE_BYTES = 50 * 1024 * 1024  # 50 MiB
 _NODE_FILE_PATH_KEYS = ("file_path", "source_file", "path")
 _NODE_KIND_KEYS = ("kind", "type", "file_type")
 _EDGE_RELATION_KEYS = ("relation", "type")
@@ -199,7 +200,15 @@ def parse_graph_json_text(text: str) -> GraphifyGraph:
         raise InputError(f"Graph JSON validation failed: {exc}") from exc
 
 
-def parse_graph_json(path: Path) -> GraphifyGraph:
+def parse_graph_json(path: Path, *, max_bytes: int = _MAX_GRAPH_FILE_BYTES) -> GraphifyGraph:
+    try:
+        size = path.stat().st_size
+    except OSError as exc:
+        raise InputError(f"Cannot read graph file {path}: {exc}") from exc
+    if size > max_bytes:
+        raise InputError(
+            f"Graph file {path} is {size} bytes, exceeding {max_bytes} byte limit"
+        )
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:

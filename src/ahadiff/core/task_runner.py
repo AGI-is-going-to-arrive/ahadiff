@@ -209,6 +209,15 @@ class TaskRunner:
         self._prune_completed()
         self._trim_archived_tasks()
 
+    async def shutdown(self, *, timeout: float = 5.0) -> None:
+        for task_id in list(self._tasks):
+            self.cancel_task(task_id)
+        pending = [t for t in self._async_tasks.values() if not t.done()]
+        if pending:
+            _, still_pending = await asyncio.wait(pending, timeout=timeout)
+            for task in still_pending:
+                task.cancel()
+
     def cancel_task(self, task_id: str) -> bool:
         handle = self._handles.get(task_id)
         info = self._tasks.get(task_id)
