@@ -90,6 +90,7 @@ class FileWatcher:
         self._callback_gate = threading.RLock()
         self._timer: threading.Timer | None = None
         self._last_trigger_time: float = 0.0
+        self._stop_timed_out = False
         self._stopped = threading.Event()
         self._ignore_patterns = _BUILTIN_IGNORE_PATTERNS + self._config.ignore_patterns
 
@@ -118,6 +119,10 @@ class FileWatcher:
     def start(self) -> None:
         with self._lifecycle_lock:
             if self._observer is not None:
+                if self._stop_timed_out:
+                    raise ConfigError(
+                        "previous watcher did not stop cleanly; create a new FileWatcher instance"
+                    )
                 raise ConfigError("watcher is already running")
 
             events_module = cast("Any", importlib.import_module("watchdog.events"))
@@ -143,6 +148,7 @@ class FileWatcher:
                         watcher_ref._schedule_trigger()
 
             self._stopped.clear()
+            self._stop_timed_out = False
             with self._lock:
                 self._pending_paths.clear()
                 self._last_trigger_time = 0.0
@@ -168,7 +174,9 @@ class FileWatcher:
                 observer.join(timeout=5.0)
                 if not observer.is_alive():
                     self._observer = None
+                    self._stop_timed_out = False
                 else:
+                    self._stop_timed_out = True
                     log.warning("watchdog observer did not stop within timeout")
             log.info("file watcher stopped")
 
@@ -234,6 +242,8 @@ class FileWatcher:
                 "running": self.is_running,
                 "last_trigger_time": self._last_trigger_time,
                 "pending_changes": len(self._pending_paths),
+                "restartable": self._observer is None,
+                "stop_timed_out": self._stop_timed_out,
             }
 
     def _drain_pending(self) -> frozenset[str]:

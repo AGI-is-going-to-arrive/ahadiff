@@ -21,6 +21,8 @@ async def get_watch_status(request: Request) -> JSONResponse:
                 "running": False,
                 "last_trigger_time": None,
                 "pending_changes": 0,
+                "restartable": True,
+                "stop_timed_out": False,
             }
         )
     snap = watcher.status()
@@ -30,6 +32,8 @@ async def get_watch_status(request: Request) -> JSONResponse:
             "running": snap["running"],
             "last_trigger_time": snap["last_trigger_time"],
             "pending_changes": snap["pending_changes"],
+            "restartable": snap["restartable"],
+            "stop_timed_out": snap["stop_timed_out"],
         }
     )
 

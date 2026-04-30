@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, cast, get_args
 
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
@@ -380,6 +380,243 @@ class TestSerialization:
         from ahadiff.contracts import CardState
 
         assert set(get_args(CardState)) == {"active", "stale", "archived", "suspended"}
+
+    def test_public_identifier_fields_reject_empty_strings(self) -> None:
+        from ahadiff.contracts import (
+            ClaimRecord,
+            DueReviewCardResponse,
+            MarkWrongRequest,
+            OrchestratorResult,
+            RatchetHistoryEntry,
+            ResultEvent,
+            ReviewCard,
+            ReviewRateRequest,
+            ReviewSignalRequest,
+            RunArtifactEnvelope,
+            RunSummary,
+            SourceHunk,
+            TaskInfoResponse,
+            TaskSubmitResponse,
+            UsageEvent,
+        )
+
+        cases: list[tuple[type[BaseModel], dict[str, Any], str]] = [
+            (
+                RunSummary,
+                {
+                    "run_id": "run-1",
+                    "source_ref": "abc1234",
+                    "source_kind": "git_ref",
+                    "capability_level": 3,
+                    "verdict": "PASS",
+                    "overall": 88.5,
+                    "status": "keep",
+                    "weakest_dim": "conciseness",
+                    "created_at": "2026-04-22T00:00:00Z",
+                },
+                "run_id",
+            ),
+            (
+                RunArtifactEnvelope,
+                {"run_id": "run-1", "artifact_type": "lesson", "content": "body"},
+                "run_id",
+            ),
+            (
+                RatchetHistoryEntry,
+                {
+                    "run_id": "run-1",
+                    "source_ref": "abc1234",
+                    "eval_bundle_version": "eval123",
+                    "overall": 88.5,
+                    "verdict": "PASS",
+                    "status": "keep",
+                    "timestamp": "2026-04-22T00:00:00Z",
+                    "weakest_dim": "conciseness",
+                },
+                "run_id",
+            ),
+            (
+                DueReviewCardResponse,
+                {
+                    "card_id": "card-1",
+                    "concept": "retry loop",
+                    "run_id": "run-1",
+                    "due_date": "2026-04-22T00:00:00Z",
+                    "scaffolding_level": "full",
+                    "display_path": "src/a.py",
+                },
+                "card_id",
+            ),
+            (
+                DueReviewCardResponse,
+                {
+                    "card_id": "card-1",
+                    "concept": "retry loop",
+                    "run_id": "run-1",
+                    "due_date": "2026-04-22T00:00:00Z",
+                    "scaffolding_level": "full",
+                    "display_path": "src/a.py",
+                },
+                "run_id",
+            ),
+            (
+                MarkWrongRequest,
+                {"claim_id": "claim-1", "idempotency_key": "mark-1"},
+                "claim_id",
+            ),
+            (
+                ReviewSignalRequest,
+                {"card_id": "card-1", "answer": "hard", "idempotency_key": "review-1"},
+                "card_id",
+            ),
+            (
+                ReviewRateRequest,
+                {"card_id": "card-1", "answer": "good", "idempotency_key": "rate-1"},
+                "card_id",
+            ),
+            (
+                ReviewCard,
+                {
+                    "card_id": "card-1",
+                    "concept": "retry loop",
+                    "run_id": "run-1",
+                    "source_ref": "abc1234",
+                    "fsrs_state": "{}",
+                    "file_id": "file-1",
+                    "display_path": "src/a.py",
+                    "hunk_id": "hunk-1",
+                    "hunk_hash": "deadbeef",
+                },
+                "card_id",
+            ),
+            (
+                ReviewCard,
+                {
+                    "card_id": "card-1",
+                    "concept": "retry loop",
+                    "run_id": "run-1",
+                    "source_ref": "abc1234",
+                    "fsrs_state": "{}",
+                    "file_id": "file-1",
+                    "display_path": "src/a.py",
+                    "hunk_id": "hunk-1",
+                    "hunk_hash": "deadbeef",
+                },
+                "run_id",
+            ),
+            (
+                ClaimRecord,
+                {
+                    "claim_id": "claim-1",
+                    "run_id": "run-1",
+                    "text": "adds retry logic",
+                    "status": "verified",
+                    "source_hunks": [SourceHunk(file="a.py", start=1, end=2, side="new")],
+                },
+                "claim_id",
+            ),
+            (
+                ClaimRecord,
+                {
+                    "claim_id": "claim-1",
+                    "run_id": "run-1",
+                    "text": "adds retry logic",
+                    "status": "verified",
+                    "source_hunks": [SourceHunk(file="a.py", start=1, end=2, side="new")],
+                },
+                "run_id",
+            ),
+            (
+                ResultEvent,
+                {
+                    "event_id": "event-1",
+                    "run_id": "run-1",
+                    "event_type": "learn",
+                    "timestamp": "2026-04-22T00:00:00Z",
+                    "source_ref": "abc1234",
+                    "prompt_version": "pv1",
+                    "eval_bundle_version": "ev1",
+                    "overall": 88.5,
+                    "verdict": "PASS",
+                    "status": "keep",
+                    "weakest_dim": "conciseness",
+                },
+                "event_id",
+            ),
+            (
+                ResultEvent,
+                {
+                    "event_id": "event-1",
+                    "run_id": "run-1",
+                    "event_type": "learn",
+                    "timestamp": "2026-04-22T00:00:00Z",
+                    "source_ref": "abc1234",
+                    "prompt_version": "pv1",
+                    "eval_bundle_version": "ev1",
+                    "overall": 88.5,
+                    "verdict": "PASS",
+                    "status": "keep",
+                    "weakest_dim": "conciseness",
+                },
+                "run_id",
+            ),
+            (
+                UsageEvent,
+                {
+                    "event_id": "event-1",
+                    "run_id": "run-1",
+                    "repo_id": "repo-1",
+                    "provider_class": "openai",
+                    "model_id": "model-1",
+                    "input_tokens": 1,
+                    "output_tokens": 1,
+                    "billing_mode": "local",
+                    "execution_origin": "test",
+                    "api_principal_hash": "hash",
+                    "timestamp": "2026-04-22T00:00:00Z",
+                },
+                "event_id",
+            ),
+            (
+                UsageEvent,
+                {
+                    "event_id": "event-1",
+                    "run_id": "run-1",
+                    "repo_id": "repo-1",
+                    "provider_class": "openai",
+                    "model_id": "model-1",
+                    "input_tokens": 1,
+                    "output_tokens": 1,
+                    "billing_mode": "local",
+                    "execution_origin": "test",
+                    "api_principal_hash": "hash",
+                    "timestamp": "2026-04-22T00:00:00Z",
+                },
+                "run_id",
+            ),
+            (
+                OrchestratorResult,
+                {"run_id": "run-1", "status": "keep"},
+                "run_id",
+            ),
+            (
+                TaskInfoResponse,
+                {
+                    "task_id": "task-1",
+                    "task_type": "learn",
+                    "status": "pending",
+                    "progress": {"current": 0, "total": 0, "message": ""},
+                    "created_at": "2026-04-22T00:00:00Z",
+                },
+                "task_id",
+            ),
+            (TaskSubmitResponse, {"task_id": "task-1"}, "task_id"),
+        ]
+
+        for model_type, payload, field in cases:
+            with pytest.raises(ValidationError) as exc_info:
+                model_type.model_validate({**payload, field: ""})
+            assert exc_info.value.errors()[0]["loc"] == (field,)
 
 
 class TestHelpfulnessRequestContract:

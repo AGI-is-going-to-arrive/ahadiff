@@ -14,7 +14,7 @@ from starlette.routing import Route
 from ahadiff.contracts import AuthTokenResponse
 from ahadiff.core.errors import AhaDiffError, InputError
 
-from .auth import serve_state
+from .auth import require_token_bootstrap_request, serve_state
 from .middleware import LoopbackGuardMiddleware
 from .routes_audit import get_audit
 from .routes_config import get_config, get_doctor, put_config
@@ -87,7 +87,7 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
         lifespan=_lifespan,
         routes=[
             Route("/healthz", healthz, methods=["GET"]),
-            Route("/api/auth/token", auth_token, methods=["GET"]),
+            Route("/api/auth/token", auth_token, methods=["GET", "POST"]),
             Route("/api/locale", get_locale, methods=["GET"]),
             Route("/api/locale", put_locale, methods=["PUT"]),
             Route("/api/runs", list_runs, methods=["GET"]),
@@ -157,6 +157,7 @@ async def healthz(_request: Request) -> JSONResponse:
 async def auth_token(request: Request) -> JSONResponse:
     # Every mutating route separately requires X-AhaDiff-Token so ambient browser state
     # or a discovered localhost port is not enough to perform writes against the repo DB.
+    require_token_bootstrap_request(request)
     state = serve_state(request)
     return JSONResponse(AuthTokenResponse(token=state.token).model_dump(mode="json"))
 

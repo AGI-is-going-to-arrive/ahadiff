@@ -49,9 +49,9 @@ class ReviewCard(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    card_id: str
+    card_id: str = Field(min_length=1)
     concept: str
-    run_id: str
+    run_id: str = Field(min_length=1)
     source_ref: str
     fsrs_state: str
     scaffolding_level: ScaffoldingLevel = "full"
@@ -97,8 +97,8 @@ class ClaimRecord(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    claim_id: str
-    run_id: str
+    claim_id: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
     text: str
     status: ClaimStatus
     reason_code: RejectReasonCode | None = None

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, StrictFloat, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt
 
 from . import run_source as run_source_contract
 
@@ -30,8 +30,8 @@ RATCHET_COUNTED_STATUSES = frozenset({"baseline", "keep", "keep_final"})
 class ResultEvent(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    event_id: str
-    run_id: str
+    event_id: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
     event_type: EventType
     timestamp: str
     source_ref: str
@@ -51,8 +51,8 @@ class UsageEvent(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    event_id: str
-    run_id: str
+    event_id: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
     repo_id: str
     provider_class: ProviderClass
     model_id: str

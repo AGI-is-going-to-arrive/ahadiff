@@ -385,7 +385,9 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 - 只绑定回环地址：`127.0.0.1`
 - 写请求必须带 `X-AhaDiff-Token`
 - 读请求默认只读，无 token
+- `/api/auth/token` 是启动令牌获取口，不是普通匿名读接口；它必须带同源浏览器信号（`Sec-Fetch-Site: same-origin` 或当前端口的 loopback `Origin` / `Referer`）
 - 中间件必须做 `Host + Origin/Referer` 双校验
+- 中间件默认拒绝 `Forwarded` / `X-Forwarded-*` / `X-Real-IP` 这类代理痕迹头
 - 非法 loopback preflight 必须直接拒绝，不能透传到写路由
 - 带 body 的写请求必须是 `application/json`，并在 JSON 解析前受 1 MiB 上限保护
 - 所有响应（包含中间件直接生成的错误响应）都必须带 anti-frame / `nosniff` / `same-origin` 类安全头
@@ -393,6 +395,7 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 冻结端点清单：
 
 - `GET /api/auth/token`
+- `POST /api/auth/token`
 - `GET /api/locale`
 - `PUT /api/locale`
 - `GET /api/runs`
@@ -449,6 +452,7 @@ Stage 0 同时冻结最小写请求 DTO：
 说明：
 
 - Request DTO 只冻结最小标识字段；后续 payload 扩展不能破坏现有字段语义
+- `run_id` / `task_id` / `event_id` / `claim_id` / `card_id` 这类公开标识字段必须拒绝空字符串；`source_ref` 这类历史引用字段不在本轮一刀切收紧范围内
 - `src/ahadiff/contracts/serve_app.py` 是**契约文件**，不是后续真正的 `src/ahadiff/serve/app.py` 实现文件
 
 ### 4.4 Locale 解析顺序
@@ -794,6 +798,7 @@ run_id: str
 - `TaskRunner` 默认 scheduler timeout 是 600 秒，可由 `AHADIFF_DEFAULT_TASK_TIMEOUT_SECONDS` 覆盖
 - `TaskRunner` 支持 per-task `task_timeout_seconds` override
 - `POST /api/learn` 当前不再关闭 timeout；它走 `TaskRunner` 的默认 timeout 语义
+- thread-backed learn task 被取消时，取消信号会传进 `run_learn_pipeline()` 的 `is_cancelled` 回调；超时进入 draining 的 worker 不会被 `shutdown()` 提前 untrack
 
 **保留状态**：
 - `core/task_runner.py`：TaskRunner 类完整保留，Phase 6B 直接使用
@@ -807,3 +812,17 @@ run_id: str
 - `patch="-"` 在 serve 层明确拒绝，避免后台任务读取进程 stdin
 
 §9.4 中 `/api/tasks*` 四个端点标注为 **unstable，不纳入稳定合约**。
+
+### 9.11 Backend review hardening（2026-04-30）
+
+本轮只记录已经由代码和测试验证的收口项：
+
+- `/api/auth/token` 保持 GET 兼容，并新增 POST；两者都需要同源浏览器信号。它仍不是 one-time nonce / 登录态设计，前端后续应迁到 POST bootstrap。
+- 默认拒绝 `Forwarded` / `X-Forwarded-*` / `X-Real-IP` 代理痕迹头，避免在 localhost-only 模型里误信任代理来源。
+- learn 主链的取消清理继续在 `repo_write_lock` 内执行；Step 10 `append_concepts()` 之后视为发布边界，late cancel 不再回滚已发布 run。
+- `TaskRunner.shutdown()` 不再取消已经进入 draining 的 thread-backed worker；`POST /api/tasks/{task_id}/cancel` 已覆盖真实 thread-backed `/api/learn`。
+- watcher stop timeout 会暴露 `restartable` / `stop_timed_out`，供前端或调试界面展示真实状态。
+- FSRS 的 `stability` / `difficulty` 继续允许 `None -> 0.0` 作为新卡快照语义，但拒绝 `NaN` / `Inf`。
+- contracts DTO 中的 `run_id` / `task_id` / `event_id` / `claim_id` / `card_id` 拒绝空字符串；`source_ref` 等历史引用字段保持兼容。
+
+本轮后端回归基线：`pytest tests -q -p no:cacheprovider` = `1501 passed, 1 skipped`，`ruff check src tests` 通过，`pyright` = `0 errors`。只对本轮 touched files 跑了 `ruff format --check`；全仓 format 仍有既有 `src/ahadiff/graphify/parser.py` 重排遗留，不属于本轮改动。

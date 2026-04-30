@@ -385,6 +385,30 @@ def _cleanup_lesson_generation_artifacts(
             target.unlink(missing_ok=True)
 
 
+def _cleanup_cancelled_run(
+    *,
+    run_path: Path | None,
+    learn_outcome: Any,
+) -> None:
+    if run_path is None:
+        return
+    event = getattr(learn_outcome, "event", None)
+    event_id = getattr(event, "event_id", None)
+    if isinstance(event_id, str) and event_id:
+        try:
+            from ahadiff.eval.results import rollback_result_event
+
+            rollback_result_event(run_path=run_path, event_id=event_id)
+        except Exception:
+            log.warning(
+                "keeping cancelled run artifacts because result rollback failed",
+                exc_info=True,
+            )
+            return
+    if run_path.exists():
+        shutil.rmtree(run_path, ignore_errors=True)
+
+
 def _persist_evaluated_run_sync(
     *,
     run_path: Path,
@@ -525,250 +549,207 @@ def run_learn_pipeline(
 
     early_result: LearnResult | None = None
     captured_state_dir: Path | None = None
+    run_path: Path | None = None
     raw_claims_path: Path | None = None
     claims_output_path: Path | None = None
     lesson_skip_reason: str | None = None
     learn_report: Any = None
     learn_outcome: Any = None
     learn_warnings: list[str] = []
+    provider_config: ProviderConfig | None = None
+    effective_api_key: str | None = None
+    resolved_privacy_mode: str | None = None
 
     with repo_write_lock(repo_lock_path, command="learn") as _:
-        capture = capture_patch(
-            workspace_root=root,
-            revision=request.revision,
-            last=request.last,
-            since=request.since,
-            author=request.author,
-            staged=request.staged,
-            unstaged=request.unstaged,
-            include_untracked=request.include_untracked,
-            patch=request.patch,
-            compare=request.compare,
-            compare_dir=request.compare_dir,
-            patch_url=request.patch_url,
-            use_graphify=request.use_graphify,
-            max_files=int(capture_config["max_files"]),
-            hard_limit=int(capture_config["hard_limit"]),
-            max_patch_bytes=int(capture_config["max_patch_bytes"]),
-            privacy_mode=effective_privacy_mode,
-            content_lang=resolved_content_lang,
-        )
-        captured_state_dir = capture.state_dir
-
-        # ------------------------------------------------------------------
-        # Step 3: assess learnability
-        # ------------------------------------------------------------------
-        _emit(3, "Assessing learnability")
-        _check_cancelled(_cancelled)
-
-        from ahadiff.lesson.learnability import assess_learnability
-
-        learnability = assess_learnability(
-            capture.persisted_patch_text,
-            threshold=float(learn_config["learnability_threshold"]),
-            force_learn=request.force_learn,
-        )
-        capture.metadata["learnability"] = learnability.as_metadata()
-        write_input_artifacts(capture)
-
-        run_path = (
-            run_dir(capture.run_id, root)
-            if has_git_repo
-            else (root / ".ahadiff" / "runs" / capture.run_id)
-        )
-
-        _env_retries_raw = os.environ.get(
-            "AHADIFF_PIPELINE_MAX_STEP_RETRIES",
-            str(_DEFAULT_MAX_STEP_RETRIES),
-        )
-        _env_budget_raw = os.environ.get(
-            "AHADIFF_PIPELINE_ERROR_BUDGET",
-            str(_DEFAULT_ERROR_BUDGET),
-        )
         try:
-            _parsed_retries = int(_env_retries_raw)
-            _parsed_budget = int(_env_budget_raw)
-        except ValueError:
-            _parsed_retries = _DEFAULT_MAX_STEP_RETRIES
-            _parsed_budget = _DEFAULT_ERROR_BUDGET
-        error_budget = PipelineErrorBudget(
-            max_step_retries=max(0, min(_parsed_retries, 10)),
-            max_total_errors=max(1, min(_parsed_budget, 20)),
-        )
-
-        if request.dry_run or learnability.skip_lesson_quiz:
-            early_result = LearnResult(
-                run_id=capture.run_id,
-                status="dry_run" if request.dry_run else "learnability_skip",
-                artifacts_path=str(run_path),
-                learnability_score=learnability.score,
-                learnability_skip=learnability.skip_lesson_quiz,
+            capture = capture_patch(
+                workspace_root=root,
+                revision=request.revision,
+                last=request.last,
+                since=request.since,
+                author=request.author,
+                staged=request.staged,
+                unstaged=request.unstaged,
+                include_untracked=request.include_untracked,
+                patch=request.patch,
+                compare=request.compare,
+                compare_dir=request.compare_dir,
+                patch_url=request.patch_url,
+                use_graphify=request.use_graphify,
+                max_files=int(capture_config["max_files"]),
+                hard_limit=int(capture_config["hard_limit"]),
+                max_patch_bytes=int(capture_config["max_patch_bytes"]),
+                privacy_mode=effective_privacy_mode,
+                content_lang=resolved_content_lang,
             )
-        else:
+            captured_state_dir = capture.state_dir
+
             # ------------------------------------------------------------------
-            # Step 4: resolve provider
+            # Step 3: assess learnability
             # ------------------------------------------------------------------
-            _emit(4, "Resolving provider")
+            _emit(3, "Assessing learnability")
             _check_cancelled(_cancelled)
 
+            from ahadiff.lesson.learnability import assess_learnability
+
+            learnability = assess_learnability(
+                capture.persisted_patch_text,
+                threshold=float(learn_config["learnability_threshold"]),
+                force_learn=request.force_learn,
+            )
+            capture.metadata["learnability"] = learnability.as_metadata()
+            write_input_artifacts(capture)
+
+            run_path = (
+                run_dir(capture.run_id, root)
+                if has_git_repo
+                else (root / ".ahadiff" / "runs" / capture.run_id)
+            )
+
+            _env_retries_raw = os.environ.get(
+                "AHADIFF_PIPELINE_MAX_STEP_RETRIES",
+                str(_DEFAULT_MAX_STEP_RETRIES),
+            )
+            _env_budget_raw = os.environ.get(
+                "AHADIFF_PIPELINE_ERROR_BUDGET",
+                str(_DEFAULT_ERROR_BUDGET),
+            )
             try:
-                (
-                    provider_config,
-                    effective_api_key,
-                    transport_target,
-                    provider_selection_explicit,
-                ) = _resolve_provider_from_config(
-                    snapshot=snapshot,
-                    operation_label="lesson generation",
-                    provider_name=request.provider_name,
-                    provider_class=request.provider_class,
-                    base_url=request.base_url,
-                    model=request.model,
-                    api_key_env=request.api_key_env,
-                    privacy_mode=effective_privacy_mode,
-                    local_hosts=security_config.local_hosts,
-                    strict_local_hosts=security_config.strict_local_hosts,
-                )
-                resolved_privacy_mode = _privacy_mode_for_explicit_provider_call(
-                    effective_privacy_mode,
-                    transport_target=transport_target,
-                    provider_selection_explicit=provider_selection_explicit,
-                )
-            except Exception:
-                _cleanup_lesson_generation_artifacts(
-                    run_path=run_path,
-                    raw_claims_path=None,
-                    claims_output_path=None,
-                )
-                raise
+                _parsed_retries = int(_env_retries_raw)
+                _parsed_budget = int(_env_budget_raw)
+            except ValueError:
+                _parsed_retries = _DEFAULT_MAX_STEP_RETRIES
+                _parsed_budget = _DEFAULT_ERROR_BUDGET
+            error_budget = PipelineErrorBudget(
+                max_step_retries=max(0, min(_parsed_retries, 10)),
+                max_total_errors=max(1, min(_parsed_budget, 20)),
+            )
 
-            # ------------------------------------------------------------------
-            # Step 5: extract and verify claims
-            # ------------------------------------------------------------------
-            _emit(5, "Extracting claims")
-            _check_cancelled(_cancelled)
-
-            try:
-                from ahadiff.claims.extract import (
-                    load_claim_candidates,
-                    load_line_map_records,
-                    load_symbol_records,
-                    load_text_map,
-                    write_verified_claims_jsonl,
-                )
-                from ahadiff.claims.runtime import extract_claim_candidates_from_run
-                from ahadiff.claims.verify import verify_claim_candidates
-
-                def _extract_claims() -> Any:
-                    nonlocal raw_claims_path
-                    result_path, _ = extract_claim_candidates_from_run(
-                        run_id=capture.run_id,
-                        run_path=run_path,
-                        workspace_root=root,
-                        provider_config=provider_config,
-                        api_key=effective_api_key,
-                        security_config=security_config,
-                        output_path=run_path / "claims.raw.jsonl",
-                        overwrite=False,
-                        privacy_mode=cast("PrivacyMode", resolved_privacy_mode),
-                        max_concurrent=int(llm_config["max_concurrent"]),
-                        qps_limit=int(provider_limits["qps_limit"]),
-                        retry_attempts=int(llm_config["retry_attempts"]),
-                        request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
-                    )
-                    raw_claims_path = result_path
-                    return result_path
-
-                run_with_retry(
-                    _extract_claims,
-                    step_name="claim_extraction",
-                    budget=error_budget,
-                    is_cancelled=_cancelled,
-                )
-                assert raw_claims_path is not None  # noqa: S101
-
-                candidates = load_claim_candidates(
-                    raw_claims_path,
-                    default_run_id=capture.run_id,
-                    enforce_run_id_match=True,
-                )
-                line_maps = load_line_map_records(run_path / "line_map.json")
-                symbols = load_symbol_records(run_path / "symbols.json")
-                before_text_by_path = load_text_map(
-                    run_path / "before_text_by_path.json",
-                    expected_artifact="before_text_by_path",
-                )
-                after_text_by_path = load_text_map(
-                    run_path / "after_text_by_path.json",
-                    expected_artifact="after_text_by_path",
-                )
-                verified = verify_claim_candidates(
-                    candidates,
-                    line_maps=line_maps,
-                    symbols=symbols,
-                    before_text_by_path=before_text_by_path,
-                    after_text_by_path=after_text_by_path,
-                )
-                claims_output_path = run_path / "claims.jsonl"
-                write_verified_claims_jsonl(claims_output_path, verified, overwrite=False)
-
-                verified_claim_count = sum(
-                    1 for item in verified if item.record.status == "verified"
-                )
-                if verified_claim_count == 0:
-                    lesson_skip_reason = "no verified claims survived verification"
-            except Exception as exc:
-                _cleanup_lesson_generation_artifacts(
-                    run_path=run_path,
-                    raw_claims_path=raw_claims_path,
-                    claims_output_path=claims_output_path,
-                )
-                if isinstance(exc, AhaDiffError):
-                    raise
-                raise AhaDiffError(f"claim extraction failed: {exc}") from exc
-
-            if lesson_skip_reason is not None:
+            if request.dry_run or learnability.skip_lesson_quiz:
                 early_result = LearnResult(
                     run_id=capture.run_id,
-                    status="no_verified_claims",
+                    status="dry_run" if request.dry_run else "learnability_skip",
                     artifacts_path=str(run_path),
                     learnability_score=learnability.score,
-                    learnability_skip=False,
-                    warnings=[lesson_skip_reason],
-                    recoverable_errors=error_budget.error_count,
+                    learnability_skip=learnability.skip_lesson_quiz,
                 )
             else:
                 # ------------------------------------------------------------------
-                # Step 6: generate lessons
+                # Step 4: resolve provider
                 # ------------------------------------------------------------------
-                _emit(6, "Generating lessons")
+                _emit(4, "Resolving provider")
                 _check_cancelled(_cancelled)
 
                 try:
-                    from ahadiff.lesson.generator import generate_lessons_from_run
+                    (
+                        provider_config,
+                        effective_api_key,
+                        transport_target,
+                        provider_selection_explicit,
+                    ) = _resolve_provider_from_config(
+                        snapshot=snapshot,
+                        operation_label="lesson generation",
+                        provider_name=request.provider_name,
+                        provider_class=request.provider_class,
+                        base_url=request.base_url,
+                        model=request.model,
+                        api_key_env=request.api_key_env,
+                        privacy_mode=effective_privacy_mode,
+                        local_hosts=security_config.local_hosts,
+                        strict_local_hosts=security_config.strict_local_hosts,
+                    )
+                    resolved_privacy_mode = _privacy_mode_for_explicit_provider_call(
+                        effective_privacy_mode,
+                        transport_target=transport_target,
+                        provider_selection_explicit=provider_selection_explicit,
+                    )
+                except Exception:
+                    _cleanup_lesson_generation_artifacts(
+                        run_path=run_path,
+                        raw_claims_path=None,
+                        claims_output_path=None,
+                    )
+                    raise
 
-                    def _generate_lessons() -> None:
-                        generate_lessons_from_run(
+            if early_result is None:
+                assert provider_config is not None  # noqa: S101
+                assert resolved_privacy_mode is not None  # noqa: S101
+
+                # ------------------------------------------------------------------
+                # Step 5: extract and verify claims
+                # ------------------------------------------------------------------
+                _emit(5, "Extracting claims")
+                _check_cancelled(_cancelled)
+
+                try:
+                    from ahadiff.claims.extract import (
+                        load_claim_candidates,
+                        load_line_map_records,
+                        load_symbol_records,
+                        load_text_map,
+                        write_verified_claims_jsonl,
+                    )
+                    from ahadiff.claims.runtime import extract_claim_candidates_from_run
+                    from ahadiff.claims.verify import verify_claim_candidates
+
+                    def _extract_claims() -> Any:
+                        nonlocal raw_claims_path
+                        result_path, _ = extract_claim_candidates_from_run(
                             run_id=capture.run_id,
                             run_path=run_path,
                             workspace_root=root,
                             provider_config=provider_config,
                             api_key=effective_api_key,
                             security_config=security_config,
-                            request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
+                            output_path=run_path / "claims.raw.jsonl",
+                            overwrite=False,
+                            privacy_mode=cast("PrivacyMode", resolved_privacy_mode),
                             max_concurrent=int(llm_config["max_concurrent"]),
                             qps_limit=int(provider_limits["qps_limit"]),
                             retry_attempts=int(llm_config["retry_attempts"]),
-                            privacy_mode=cast("PrivacyMode", resolved_privacy_mode),
-                            output_lang=resolved_content_lang,
+                            request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
                         )
+                        raw_claims_path = result_path
+                        return result_path
 
                     run_with_retry(
-                        _generate_lessons,
-                        step_name="lesson_generation",
+                        _extract_claims,
+                        step_name="claim_extraction",
                         budget=error_budget,
                         is_cancelled=_cancelled,
                     )
+                    assert raw_claims_path is not None  # noqa: S101
+
+                    candidates = load_claim_candidates(
+                        raw_claims_path,
+                        default_run_id=capture.run_id,
+                        enforce_run_id_match=True,
+                    )
+                    line_maps = load_line_map_records(run_path / "line_map.json")
+                    symbols = load_symbol_records(run_path / "symbols.json")
+                    before_text_by_path = load_text_map(
+                        run_path / "before_text_by_path.json",
+                        expected_artifact="before_text_by_path",
+                    )
+                    after_text_by_path = load_text_map(
+                        run_path / "after_text_by_path.json",
+                        expected_artifact="after_text_by_path",
+                    )
+                    verified = verify_claim_candidates(
+                        candidates,
+                        line_maps=line_maps,
+                        symbols=symbols,
+                        before_text_by_path=before_text_by_path,
+                        after_text_by_path=after_text_by_path,
+                    )
+                    claims_output_path = run_path / "claims.jsonl"
+                    write_verified_claims_jsonl(claims_output_path, verified, overwrite=False)
+
+                    verified_claim_count = sum(
+                        1 for item in verified if item.record.status == "verified"
+                    )
+                    if verified_claim_count == 0:
+                        lesson_skip_reason = "no verified claims survived verification"
                 except Exception as exc:
                     _cleanup_lesson_generation_artifacts(
                         run_path=run_path,
@@ -777,107 +758,168 @@ def run_learn_pipeline(
                     )
                     if isinstance(exc, AhaDiffError):
                         raise
-                    raise AhaDiffError(f"lesson generation failed: {exc}") from exc
+                    raise AhaDiffError(f"claim extraction failed: {exc}") from exc
 
-                # ------------------------------------------------------------------
-                # Step 7: generate quiz
-                # ------------------------------------------------------------------
-                _emit(7, "Generating quiz")
-                _check_cancelled(_cancelled)
-
-                try:
-                    from ahadiff.quiz.generator import (
-                        generate_cards_for_run,
-                        generate_quiz_from_run,
-                    )
-
-                    quiz_questions_holder: list[Any] = []
-
-                    def _generate_quiz() -> None:
-                        _, questions = generate_quiz_from_run(
-                            run_id=capture.run_id,
-                            run_path=run_path,
-                            workspace_root=root,
-                            provider_config=provider_config,
-                            api_key=effective_api_key,
-                            security_config=security_config,
-                            request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
-                            max_concurrent=int(llm_config["max_concurrent"]),
-                            qps_limit=int(provider_limits["qps_limit"]),
-                            retry_attempts=int(llm_config["retry_attempts"]),
-                            privacy_mode=cast("PrivacyMode", resolved_privacy_mode),
-                            output_lang=resolved_content_lang,
-                        )
-                        quiz_questions_holder[:] = [questions]
-
-                    run_with_retry(
-                        _generate_quiz,
-                        step_name="quiz_generation",
-                        budget=error_budget,
-                        is_cancelled=_cancelled,
-                    )
-                    quiz_questions = quiz_questions_holder[0]
-                except Exception as exc:
-                    _cleanup_lesson_generation_artifacts(
-                        run_path=run_path,
-                        raw_claims_path=raw_claims_path,
-                        claims_output_path=claims_output_path,
-                    )
-                    if isinstance(exc, AhaDiffError):
-                        raise
-                    raise AhaDiffError(f"quiz generation failed: {exc}") from exc
-
-                # ------------------------------------------------------------------
-                # Step 8: evaluate run
-                # ------------------------------------------------------------------
-                _emit(8, "Evaluating run")
-                _check_cancelled(_cancelled)
-
-                from ahadiff.eval.evaluator import evaluate_run
-
-                learn_report = evaluate_run(run_path)
-
-                generate_cards_for_run(
-                    run_path=run_path,
-                    questions=quiz_questions,
-                    verdict=learn_report.verdict,
-                )
-
-                # ------------------------------------------------------------------
-                # Step 9: persist evaluated run (ratchet + result event + artifacts)
-                # ------------------------------------------------------------------
-                _emit(9, "Persisting results")
-                _check_cancelled(_cancelled)
-
-                learn_outcome, learn_warnings = _persist_evaluated_run_sync(
-                    run_path=run_path,
-                    report=learn_report,
-                    workspace_root=root,
-                    event_type="learn",
-                    output_path=run_path / "score.json",
-                    force=False,
-                    note_payload={"learnability": learnability.as_metadata()},
-                )
-
-                # ------------------------------------------------------------------
-                # Step 10: append concepts + register repo
-                # ------------------------------------------------------------------
-                _emit(10, "Updating concepts")
-                _check_cancelled(_cancelled)
-
-                try:
-                    from ahadiff.wiki.concepts import append_concepts
-
-                    append_concepts(
-                        workspace_root=root,
-                        run_path=run_path,
+                if lesson_skip_reason is not None:
+                    early_result = LearnResult(
                         run_id=capture.run_id,
-                        source_kind=str(capture.run_source.source_kind),
-                        source_ref=str(capture.run_source.source_ref),
-                        questions=quiz_questions,
+                        status="no_verified_claims",
+                        artifacts_path=str(run_path),
+                        learnability_score=learnability.score,
+                        learnability_skip=False,
+                        warnings=[lesson_skip_reason],
+                        recoverable_errors=error_budget.error_count,
                     )
-                except Exception as concept_error:
-                    learn_warnings.append(f"concepts append failed: {concept_error}")
+                else:
+                    # ------------------------------------------------------------------
+                    # Step 6: generate lessons
+                    # ------------------------------------------------------------------
+                    _emit(6, "Generating lessons")
+                    _check_cancelled(_cancelled)
+
+                    try:
+                        from ahadiff.lesson.generator import generate_lessons_from_run
+
+                        def _generate_lessons() -> None:
+                            generate_lessons_from_run(
+                                run_id=capture.run_id,
+                                run_path=run_path,
+                                workspace_root=root,
+                                provider_config=provider_config,
+                                api_key=effective_api_key,
+                                security_config=security_config,
+                                request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
+                                max_concurrent=int(llm_config["max_concurrent"]),
+                                qps_limit=int(provider_limits["qps_limit"]),
+                                retry_attempts=int(llm_config["retry_attempts"]),
+                                privacy_mode=cast("PrivacyMode", resolved_privacy_mode),
+                                output_lang=resolved_content_lang,
+                            )
+
+                        run_with_retry(
+                            _generate_lessons,
+                            step_name="lesson_generation",
+                            budget=error_budget,
+                            is_cancelled=_cancelled,
+                        )
+                    except Exception as exc:
+                        _cleanup_lesson_generation_artifacts(
+                            run_path=run_path,
+                            raw_claims_path=raw_claims_path,
+                            claims_output_path=claims_output_path,
+                        )
+                        if isinstance(exc, AhaDiffError):
+                            raise
+                        raise AhaDiffError(f"lesson generation failed: {exc}") from exc
+
+                    # ------------------------------------------------------------------
+                    # Step 7: generate quiz
+                    # ------------------------------------------------------------------
+                    _emit(7, "Generating quiz")
+                    _check_cancelled(_cancelled)
+
+                    try:
+                        from ahadiff.quiz.generator import (
+                            generate_cards_for_run,
+                            generate_quiz_from_run,
+                        )
+
+                        quiz_questions_holder: list[Any] = []
+
+                        def _generate_quiz() -> None:
+                            _, questions = generate_quiz_from_run(
+                                run_id=capture.run_id,
+                                run_path=run_path,
+                                workspace_root=root,
+                                provider_config=provider_config,
+                                api_key=effective_api_key,
+                                security_config=security_config,
+                                request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
+                                max_concurrent=int(llm_config["max_concurrent"]),
+                                qps_limit=int(provider_limits["qps_limit"]),
+                                retry_attempts=int(llm_config["retry_attempts"]),
+                                privacy_mode=cast("PrivacyMode", resolved_privacy_mode),
+                                output_lang=resolved_content_lang,
+                            )
+                            quiz_questions_holder[:] = [questions]
+
+                        run_with_retry(
+                            _generate_quiz,
+                            step_name="quiz_generation",
+                            budget=error_budget,
+                            is_cancelled=_cancelled,
+                        )
+                        quiz_questions = quiz_questions_holder[0]
+                    except Exception as exc:
+                        _cleanup_lesson_generation_artifacts(
+                            run_path=run_path,
+                            raw_claims_path=raw_claims_path,
+                            claims_output_path=claims_output_path,
+                        )
+                        if isinstance(exc, AhaDiffError):
+                            raise
+                        raise AhaDiffError(f"quiz generation failed: {exc}") from exc
+
+                    # ------------------------------------------------------------------
+                    # Step 8: evaluate run
+                    # ------------------------------------------------------------------
+                    _emit(8, "Evaluating run")
+                    _check_cancelled(_cancelled)
+
+                    from ahadiff.eval.evaluator import evaluate_run
+
+                    learn_report = evaluate_run(run_path)
+
+                    generate_cards_for_run(
+                        run_path=run_path,
+                        questions=quiz_questions,
+                        verdict=learn_report.verdict,
+                    )
+
+                    # ------------------------------------------------------------------
+                    # Step 9: persist evaluated run (ratchet + result event + artifacts)
+                    # ------------------------------------------------------------------
+                    _emit(9, "Persisting results")
+                    _check_cancelled(_cancelled)
+
+                    learn_outcome, learn_warnings = _persist_evaluated_run_sync(
+                        run_path=run_path,
+                        report=learn_report,
+                        workspace_root=root,
+                        event_type="learn",
+                        output_path=run_path / "score.json",
+                        force=False,
+                        note_payload={"learnability": learnability.as_metadata()},
+                    )
+
+                    # ------------------------------------------------------------------
+                    # Step 10: append concepts + register repo
+                    # ------------------------------------------------------------------
+                    _emit(10, "Updating concepts")
+                    _check_cancelled(_cancelled)
+
+                    try:
+                        from ahadiff.wiki.concepts import append_concepts
+
+                        append_concepts(
+                            workspace_root=root,
+                            run_path=run_path,
+                            run_id=capture.run_id,
+                            source_kind=str(capture.run_source.source_kind),
+                            source_ref=str(capture.run_source.source_ref),
+                            questions=quiz_questions,
+                        )
+                    except Exception as concept_error:
+                        if isinstance(concept_error, AhaDiffError):
+                            raise
+                        learn_warnings.append(f"concepts append failed: {concept_error}")
+                    # Step 10 is the commit boundary for published learn results.
+                    # Once concepts write starts, late cancellation must not roll back
+                    # finalized artifacts or global concept state.
+        except AhaDiffError as exc:
+            if str(exc) == "cancelled":
+                _cleanup_cancelled_run(run_path=run_path, learn_outcome=learn_outcome)
+            raise
 
     # Outside the repo lock
     try:

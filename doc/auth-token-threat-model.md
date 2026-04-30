@@ -14,6 +14,7 @@ It is a same-machine write guard for the local viewer and local API clients.
 - `ServeState` keeps the token in process memory only.
 - The token is not written to `.ahadiff/`, config files, cookies, or localStorage.
 - The current viewer fetches the token from `GET /api/auth/token`.
+- The backend also accepts `POST /api/auth/token` for the same bootstrap contract.
 - The viewer caches the token in module memory (`viewer/src/api/client.ts`).
 - The bootstrap fetch is capped at 8 seconds in `viewer/src/api/client.ts`.
 - On `401` or `403`, the viewer clears the cached token and retries exactly once.
@@ -21,7 +22,10 @@ It is a same-machine write guard for the local viewer and local API clients.
 
 ## 2. Token Transmission
 
-- Read bootstrap path: `GET /api/auth/token` currently returns `{ token, expires_at }`.
+- Bootstrap path: `GET /api/auth/token` or `POST /api/auth/token` returns `{ token, expires_at }`.
+- Token bootstrap now requires a same-origin browser signal:
+  - `Sec-Fetch-Site: same-origin`, or
+  - loopback `Origin` / `Referer` on the active serve port
 - `expires_at` is currently `null`; it does not carry a real TTL contract yet.
 - Write path: mutating API calls send the token in `X-AhaDiff-Token`.
 - Current backend verification is header-based only.
@@ -63,6 +67,8 @@ It is a same-machine write guard for the local viewer and local API clients.
 
 - Loopback-only bind: v0.1 serve rejects non-`127.0.0.1` bind targets.
 - Host guard: middleware rejects non-loopback `Host` headers.
+- Proxy-trace guard: middleware rejects `Forwarded`, `X-Forwarded-*`, and `X-Real-IP`.
+- Bootstrap gate: `/api/auth/token` requires a same-origin browser signal before returning the token.
 - Write token: mutating endpoints require `X-AhaDiff-Token`.
 - Origin gate: write requests require loopback `Origin` or `Referer`, and the parsed port must match the current serve port.
 - Preflight rejection: invalid cross-origin `OPTIONS` preflights now fail with `403`.
@@ -82,6 +88,7 @@ It is a same-machine write guard for the local viewer and local API clients.
 
 - Browser extensions with broad page access can still read localhost pages and tokens.
 - Local malware running as the same user can still call localhost endpoints directly.
+- This is not a one-time nonce or session-auth design; a valid same-origin viewer can still fetch the current process token.
 - A local user-space debugger or traffic interceptor can inspect process memory or requests.
 - Read endpoints remain intentionally easier to access than write endpoints.
 - The token is a CSRF-style write guard, not a machine-hard trust boundary.

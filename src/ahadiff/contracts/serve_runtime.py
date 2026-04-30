@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SearchResultItem(BaseModel):
@@ -40,7 +40,7 @@ class TaskProgressResponse(BaseModel):
 
 class TaskInfoResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    task_id: str
+    task_id: str = Field(min_length=1)
     task_type: str
     status: str
     progress: TaskProgressResponse
@@ -60,7 +60,7 @@ class TaskListResponse(BaseModel):
 
 class TaskSubmitResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    task_id: str
+    task_id: str = Field(min_length=1)
 
 
 class TaskCancelResponse(BaseModel):

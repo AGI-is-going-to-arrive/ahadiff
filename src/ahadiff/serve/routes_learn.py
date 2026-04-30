@@ -196,6 +196,7 @@ async def post_learn(request: Request) -> JSONResponse:
         "learn",
         _learn_task,
         max_pending=_MAX_PENDING_TASKS,
+        thread_backed=True,
     )
     if task_id is None:
         return JSONResponse(

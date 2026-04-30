@@ -476,6 +476,223 @@ def test_submit_uses_per_task_timeout_override_for_thread_backed_work(
     _run(_inner())
 
 
+def test_submit_if_capacity_blocks_thread_backed_task_while_timeout_is_draining() -> None:
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=2, task_timeout_seconds=60.0)
+        started = threading.Event()
+        release = threading.Event()
+
+        async def thread_work(handle: TaskHandle) -> str:
+            del handle
+
+            def _sync_job() -> str:
+                started.set()
+                release.wait(timeout=1.0)
+                return "done"
+
+            return await run_sync_in_thread(_sync_job)
+
+        task_id = runner.submit(
+            "learn",
+            thread_work,
+            task_timeout_seconds=0.05,
+            thread_backed=True,
+        )
+        deadline = asyncio.get_running_loop().time() + 1.0
+        while not started.is_set() and asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.01)
+        assert started.is_set()
+
+        await asyncio.sleep(0.15)
+        info = runner.get_task(task_id)
+        assert info is not None
+        assert info.status == TaskStatus.FAILED
+        assert info.error_code == "timeout"
+        assert (
+            runner.submit_if_capacity(
+                "learn",
+                thread_work,
+                max_pending=1,
+                thread_backed=True,
+            )
+            is None
+        )
+
+        release.set()
+        deadline = asyncio.get_running_loop().time() + 1.0
+        while (
+            task_id in runner.__dict__["_draining_tasks"]
+            and asyncio.get_running_loop().time() < deadline
+        ):
+            await asyncio.sleep(0.01)
+
+        next_task_id = runner.submit_if_capacity(
+            "learn",
+            thread_work,
+            max_pending=1,
+            thread_backed=True,
+        )
+        assert isinstance(next_task_id, str)
+        runner.cancel_task(next_task_id)
+        await asyncio.sleep(0.1)
+
+    _run(_inner())
+
+
+def test_shutdown_keeps_thread_backed_worker_tracked_until_it_finishes(tmp_path: Path) -> None:
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=1, task_timeout_seconds=60.0)
+        started = threading.Event()
+        release = threading.Event()
+        artifact_path = tmp_path / "finished-after-shutdown.txt"
+
+        async def thread_work(handle: TaskHandle) -> str:
+            del handle
+
+            def _sync_job() -> str:
+                started.set()
+                release.wait(timeout=1.0)
+                artifact_path.write_text("done\n", encoding="utf-8")
+                return "done"
+
+            return await run_sync_in_thread(_sync_job)
+
+        task_id = runner.submit("learn", thread_work, thread_backed=True)
+        assert await run_sync_in_thread(lambda: started.wait(timeout=1.0))
+
+        await runner.shutdown(timeout=0.05)
+
+        assert task_id in runner.__dict__["_draining_tasks"]
+        info = runner.get_task(task_id)
+        assert info is not None
+        assert info.status == TaskStatus.CANCELLED
+
+        release.set()
+        deadline = asyncio.get_running_loop().time() + 1.0
+        while (
+            task_id in runner.__dict__["_draining_tasks"]
+            and asyncio.get_running_loop().time() < deadline
+        ):
+            await asyncio.sleep(0.01)
+
+        assert task_id not in runner.__dict__["_draining_tasks"]
+        assert artifact_path.exists()
+
+    _run(_inner())
+
+
+def test_shutdown_does_not_untrack_already_draining_thread_worker(tmp_path: Path) -> None:
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=1, task_timeout_seconds=60.0)
+        started = threading.Event()
+        release = threading.Event()
+        finished = threading.Event()
+        artifact_path = tmp_path / "finished-after-drain-shutdown.txt"
+
+        async def thread_work(handle: TaskHandle) -> str:
+            del handle
+
+            def _sync_job() -> str:
+                started.set()
+                release.wait(timeout=1.0)
+                artifact_path.write_text("done\n", encoding="utf-8")
+                finished.set()
+                return "done"
+
+            return await run_sync_in_thread(_sync_job)
+
+        task_id = runner.submit(
+            "learn",
+            thread_work,
+            task_timeout_seconds=0.05,
+            thread_backed=True,
+        )
+        assert await run_sync_in_thread(lambda: started.wait(timeout=1.0))
+        await asyncio.sleep(0.15)
+
+        assert task_id in runner.__dict__["_draining_tasks"]
+        await runner.shutdown(timeout=0.05)
+
+        assert task_id in runner.__dict__["_draining_tasks"]
+        assert finished.is_set() is False
+        assert not artifact_path.exists()
+
+        release.set()
+        deadline = asyncio.get_running_loop().time() + 1.0
+        while (
+            task_id in runner.__dict__["_draining_tasks"]
+            and asyncio.get_running_loop().time() < deadline
+        ):
+            await asyncio.sleep(0.01)
+
+        assert task_id not in runner.__dict__["_draining_tasks"]
+        assert finished.is_set() is True
+        assert artifact_path.exists()
+
+    _run(_inner())
+
+
+def test_thread_backed_draining_task_keeps_global_concurrency_slot() -> None:
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=1, task_timeout_seconds=60.0)
+        first_started = threading.Event()
+        release_first = threading.Event()
+        second_started = asyncio.Event()
+
+        async def thread_work(handle: TaskHandle) -> str:
+            del handle
+
+            def _sync_job() -> str:
+                first_started.set()
+                release_first.wait(timeout=1.0)
+                return "done"
+
+            return await run_sync_in_thread(_sync_job)
+
+        async def second_work(handle: TaskHandle) -> str:
+            del handle
+            second_started.set()
+            return "second"
+
+        first_task_id = runner.submit(
+            "learn",
+            thread_work,
+            task_timeout_seconds=0.05,
+            thread_backed=True,
+        )
+        assert await run_sync_in_thread(lambda: first_started.wait(timeout=1.0))
+        await asyncio.sleep(0.15)
+
+        second_task_id = runner.submit("index", second_work)
+        await asyncio.sleep(0.1)
+
+        first_info = runner.get_task(first_task_id)
+        second_info = runner.get_task(second_task_id)
+        assert first_info is not None
+        assert first_info.status == TaskStatus.FAILED
+        assert second_info is not None
+        assert second_info.status == TaskStatus.PENDING
+        assert not second_started.is_set()
+
+        release_first.set()
+        await asyncio.wait_for(second_started.wait(), timeout=1.0)
+
+        deadline = asyncio.get_running_loop().time() + 1.0
+        completed = runner.get_task(second_task_id)
+        while (
+            completed is not None
+            and completed.status != TaskStatus.COMPLETED
+            and asyncio.get_running_loop().time() < deadline
+        ):
+            await asyncio.sleep(0.01)
+            completed = runner.get_task(second_task_id)
+
+        assert completed is not None
+        assert completed.status == TaskStatus.COMPLETED
+
+    _run(_inner())
+
+
 def test_error_code_classification() -> None:
     async def _inner() -> None:
         runner = TaskRunner(max_concurrent=8)

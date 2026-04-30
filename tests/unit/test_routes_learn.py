@@ -600,6 +600,136 @@ async def test_post_learn_thread_task_uses_bounded_task_timeout(
     assert not artifact_path.exists()
 
 
+@pytest.mark.anyio
+async def test_post_learn_blocks_new_submission_while_timed_out_thread_is_still_draining(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = threading.Event()
+    release = threading.Event()
+
+    def fake_run_learn_pipeline(request: LearnRequest, **kwargs: object) -> LearnResult:
+        del request, kwargs
+        started.set()
+        release.wait(timeout=1.0)
+        return LearnResult(run_id="run-thread", status="completed")
+
+    monkeypatch.setattr(
+        "ahadiff.core.orchestrator.run_learn_pipeline",
+        fake_run_learn_pipeline,
+    )
+
+    app = create_app(
+        ServeState(
+            state_dir=tmp_path,
+            token="test-token",
+            locale="en",
+            task_runner=TaskRunner(max_concurrent=1, task_timeout_seconds=0.05),
+        )
+    )
+    transport = httpx.ASGITransport(app=app)
+    headers = {
+        "X-AhaDiff-Token": "test-token",
+        "origin": "http://localhost:8765",
+    }
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost:8765") as client:
+        first = await client.post("/api/learn", json={}, headers=headers)
+        assert first.status_code == 202
+        assert await run_sync_in_thread(lambda: started.wait(timeout=1.0))
+
+        await anyio.sleep(0.15)
+
+        failed_resp = await client.get(f"/api/tasks/{_task_id_from(first)}")
+        assert failed_resp.status_code == 200
+        failed_info = _json_object(failed_resp)
+        assert failed_info["status"] == "failed"
+        assert failed_info["error_code"] == "timeout"
+
+        second = await client.post("/api/learn", json={}, headers=headers)
+        assert second.status_code == 503
+        assert _json_object(second)["error"] == "too_many_pending_learn_tasks"
+
+        release.set()
+        deadline = anyio.current_time() + 1.0
+        third: httpx.Response | None = None
+        while anyio.current_time() < deadline:
+            third = await client.post("/api/learn", json={}, headers=headers)
+            if third.status_code == 202:
+                break
+            await anyio.sleep(0.02)
+
+        assert third is not None
+        assert third.status_code == 202
+
+
+@pytest.mark.anyio
+async def test_tasks_cancel_cancels_thread_backed_learn_task(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = threading.Event()
+    cancelled_seen = threading.Event()
+
+    def fake_run_learn_pipeline(request: LearnRequest, **kwargs: object) -> LearnResult:
+        del request
+        cancel_check = kwargs["is_cancelled"]
+        assert callable(cancel_check)
+        started.set()
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline:
+            if cast("Any", cancel_check)():
+                cancelled_seen.set()
+                return LearnResult(run_id="run-cancelled", status="completed")
+            time.sleep(0.01)
+        raise AssertionError("cancel was not propagated to learn pipeline")
+
+    monkeypatch.setattr(
+        "ahadiff.core.orchestrator.run_learn_pipeline",
+        fake_run_learn_pipeline,
+    )
+
+    app = create_app(
+        ServeState(
+            state_dir=tmp_path,
+            token="test-token",
+            locale="en",
+            task_runner=TaskRunner(max_concurrent=1, task_timeout_seconds=5.0),
+        )
+    )
+    transport = httpx.ASGITransport(app=app)
+    headers = {
+        "X-AhaDiff-Token": "test-token",
+        "origin": "http://localhost:8765",
+    }
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost:8765") as client:
+        response = await client.post("/api/learn", json={}, headers=headers)
+        assert response.status_code == 202
+        task_id = _task_id_from(response)
+        assert await run_sync_in_thread(lambda: started.wait(timeout=1.0))
+
+        cancel_response = await client.post(f"/api/tasks/{task_id}/cancel", headers=headers)
+        assert cancel_response.status_code == 200
+        assert _json_object(cancel_response) == {"cancelled": True}
+
+        assert await run_sync_in_thread(lambda: cancelled_seen.wait(timeout=1.0))
+        deadline = anyio.current_time() + 1.0
+        info: dict[str, object] | None = None
+        while anyio.current_time() < deadline:
+            status_response = await client.get(f"/api/tasks/{task_id}")
+            assert status_response.status_code == 200
+            info = _json_object(status_response)
+            if info["status"] == "cancelled":
+                break
+            await anyio.sleep(0.02)
+
+        assert info is not None
+        assert info["status"] == "cancelled"
+        assert info["result"] is None
+        assert info["error_code"] is None
+
+
 def test_successful_task_error_code_is_none(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

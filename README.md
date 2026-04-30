@@ -18,7 +18,7 @@
 - 一份每条结论都可回溯的 **断言清单**（Claims）
 - 一条可比较的 **质量评分历史**（Ratchet，`review.sqlite` 为唯一真相源，`results.tsv` 为导出视图）
 
-Stage 0 / Task 0 到 Stage 6 主线现在都已经有实际产物，Stage 7 的 i18n signoff 也已通过。当前代码已经能稳定产出 Lesson / Claims / Quiz / Misconception Cards / Cards / Score / Ratchet；review 流的 SRS runtime、serve backend、install targets、GitHub Action 模板、benchmark suite、improve loop core、Task 17 targeted verification、Phase 2.5 runtime、i18n-0 后端以及前端 `viewer/` React SPA 都已落地。前端 v0.1 阶段落地 Dashboard / Lesson / Diff / Quiz / ConceptGraph 五页并经 R1-R5 五轮跨模型对抗审查（51 项 real findings 修复）。v0.2 后端 Gate 0-6 + 前端 Phase 1-4 已全部通过审查；当前分支又补上了 section-level helpfulness / learning transfer、misconception cards、Graphify 后端基础与部分深一层能力（parser / matcher / linker / slicer / search / freshness / `/api/graph/status`，仍是 backend-only partial，不是完整 Graphify provenance / UI integration）、watch mode（`ahadiff watch` / `serve --watch` / `/api/watch/status`）、中层 serve API（`/api/search`、`/api/usage`、`/api/audit`、`/api/review/mastery`、`/api/concepts/weak`、`/api/spec/alignment`、`/api/stats/learning`）、低层 task status surface，以及 repo 级 CI/CD gate（PR unit+pinned + Windows runtime guard + nightly-eval + release coverage gate）。前端仍是 12 页面 ~30 组件，i18n 201/201 key parity，780 Playwright 测试全绿，最新 `pnpm run build` 产物为 302.83 KB（gzip 92.67 KB）。
+Stage 0 / Task 0 到 Stage 6 主线现在都已经有实际产物，Stage 7 的 i18n signoff 也已通过。当前代码已经能稳定产出 Lesson / Claims / Quiz / Misconception Cards / Cards / Score / Ratchet；review 流的 SRS runtime、serve backend、install targets、GitHub Action 模板、benchmark suite、improve loop core、Task 17 targeted verification、Phase 2.5 runtime、i18n-0 后端以及前端 `viewer/` React SPA 都已落地。前端 v0.1 阶段落地 Dashboard / Lesson / Diff / Quiz / ConceptGraph 五页并经 R1-R5 五轮跨模型对抗审查（51 项 real findings 修复）。v0.2 后端 Gate 0-6 + 前端 Phase 1-4 已全部通过审查；当前分支又补上了 section-level helpfulness / learning transfer、misconception cards、Graphify 后端基础与部分深一层能力（parser / matcher / linker / slicer / search / freshness / `/api/graph/status`，仍是 backend-only partial，不是完整 Graphify provenance / UI integration）、watch mode（`ahadiff watch` / `serve --watch` / `/api/watch/status`）、中层 serve API（`/api/search`、`/api/usage`、`/api/audit`、`/api/review/mastery`、`/api/concepts/weak`、`/api/spec/alignment`、`/api/stats/learning`）、低层 task status surface，以及 repo 级 CI/CD gate（PR unit+pinned + Windows runtime guard + nightly-eval + release coverage gate）。本轮又收口了 serve token bootstrap、thread-backed learn 取消/退出、DTO 空 ID 拒绝、FSRS 非有限数拒绝、proxy trace header 拒绝这些后端边界。前端仍是 12 页面 ~30 组件，i18n 201/201 key parity，780 Playwright 测试全绿，最新 `pnpm run build` 产物为 302.83 KB（gzip 92.67 KB）。
 
 > Code Wiki 解释仓库，知返解释这次改动 —— 而且每一句话都能回到代码证据。
 
@@ -189,7 +189,7 @@ ahadiff/
 - quiz artifact 链路：会写 `quiz.jsonl` 和 `misconception_cards.jsonl`；评分通过的 run 会生成 `cards.jsonl` 并回填 `review_card_id`，没有 `review_card_id` 的 open-answer 行在 viewer 里也仍然可以正常显示；git 输入写 repo 级 `concepts.jsonl`，non-git 输入写 run 级 `concepts_local.jsonl`
 - `ahadiff score` / `ahadiff verify` / `ahadiff export-results`：评分、ratchet 判定和 `results.tsv` 导出都已可用
 - `ahadiff review` / `ahadiff mark <claim_id> wrong` / `ahadiff db {backup,restore,check,import-results,finalize-targeted}`：`review.sqlite` 的 review / signals / result_events / lossy import / targeted finalize 链路都已可用
-- `ahadiff serve`：localhost-only serve backend 已可用，读接口只暴露 finalized runs，写接口需要 token + Origin/Referer 校验；当前还补上了 `/api/search`、`/api/usage`、`/api/audit`、`/api/review/mastery`、`/api/concepts/weak`、`/api/spec/alignment`、`/api/stats/learning`、`/api/graph/status`、`POST /api/learn`，以及 `/api/watch/status`；当前 route 面是 42 个 concrete `/api` Route 对象 + 1 个 `/api` catchall（`Route(` 总数 44，另含 `/healthz`）；`/api/tasks*` 和 `/api/watch/status` 继续作为 low-level、internal/unstable 的状态 / 进度接口，不属于稳定公开 API
+- `ahadiff serve`：localhost-only serve backend 已可用，读接口只暴露 finalized runs，写接口需要 token + Origin/Referer 校验；`/api/auth/token` 现在需要同源浏览器信号，继续兼容 GET，并已支持 POST bootstrap；当前还补上了 `/api/search`、`/api/usage`、`/api/audit`、`/api/review/mastery`、`/api/concepts/weak`、`/api/spec/alignment`、`/api/stats/learning`、`/api/graph/status`、`POST /api/learn`，以及 `/api/watch/status`；当前 route 面是 42 个 concrete `/api` Route 对象 + 1 个 `/api` catchall（`Route(` 总数 44，另含 `/healthz`）；`/api/tasks*` 和 `/api/watch/status` 继续作为 low-level、internal/unstable 的状态 / 进度接口，不属于稳定公开 API
 - `ahadiff install`：Claude / Codex / Gemini / OpenCode / hooks / GitHub Action target 已可用；hooks 是 POSIX shell target，Windows v0.1 会明确拒绝；对已有 hook 文件会做 no-follow regular-file 校验，拒绝 symlink / reparse point；生成的 GitHub workflow 覆盖 macOS + Linux，Windows 暂缓；generate workflow 使用 `AHADIFF_PROVIDER_API_KEY`，并上传 `.ahadiff/` 产物 artifact
 - `ahadiff benchmark`：本地 benchmark manifest、20 个 eval fixtures、10 个 pinned integration fixtures 与 `ground_truth.md` 一致性校验已可用
 - 仓库当前还补上了 repo 级 Backend CI / `nightly-eval` / `release` workflows：PR 跑 unit + pinned integration（`ubuntu py311/py312 + macOS py312`），并有独立 Windows runtime guard；release gate 现在还会阻塞 `doctor`、wheel install smoke 和 coverage `>= 85%`。同时 `pyproject.toml` 已带 `watchdog` / `tree-sitter` optional extras 与 `pytest-cov` dev dependency；`ahadiff watch`、`serve --watch` 和 `/api/watch/status` 已落地，其中 `/api/watch/status` 仍标记为 internal/unstable。`tree-sitter` 也不再只是 optional wiring：runtime consumer 已接到 symbol extraction 层，当前支持 JS/TS/TSX + Go + Java + Rust + PHP + Ruby + C#；Python 仍优先走 AST，其他未接入语言仍回退到 regex / section header，下游 lesson / quiz / claims 逻辑未改
@@ -209,7 +209,6 @@ ahadiff/
 ```bash
 source .venv/bin/activate && pytest tests/unit -q
 source .venv/bin/activate && ruff check src tests
-source .venv/bin/activate && ruff format --check src tests
 source .venv/bin/activate && pyright
 source .venv/bin/activate && uv build --wheel
 source .venv/bin/activate && python -m ahadiff quiz --help
@@ -229,7 +228,7 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-最近一次验证（2026-04-30）：`pytest tests` = `1479 passed, 1 skipped`；coverage gate = `86.98%`；`ruff check` / `ruff format --check` 通过；`pyright` = `0 errors, 0 warnings, 0 informations`；`uv build --wheel` 成功；`uv lock --check` 通过。
+最近一次验证（2026-04-30）：`pytest tests -q -p no:cacheprovider` = `1501 passed, 1 skipped`；`ruff check src tests` 通过；本轮 touched files 的 `ruff format --check` 通过；`pyright` = `0 errors, 0 warnings, 0 informations`。全仓 `ruff format --check src tests` 仍有既有 `src/ahadiff/graphify/parser.py` 重排遗留；本轮没有修改该文件。
 
 下一步路线图：
 

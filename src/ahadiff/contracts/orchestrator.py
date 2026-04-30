@@ -72,7 +72,7 @@ class OrchestratorCommand(BaseModel):
 class OrchestratorResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    run_id: str
+    run_id: str = Field(min_length=1)
     status: RunStatus
     overall: float | None = None
     verdict: Verdict | None = None

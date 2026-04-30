@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 import os
 import uuid
@@ -77,6 +78,8 @@ _DEFAULT_TASK_TIMEOUT_SECONDS = 600.0
 _DEFAULT_TASK_TIMEOUT_ENV = "AHADIFF_DEFAULT_TASK_TIMEOUT_SECONDS"
 _TaskTimeoutValue = str | bytes | bytearray | SupportsFloat | SupportsIndex
 
+log = logging.getLogger(__name__)
+
 
 def _coerce_task_timeout_seconds(value: object, *, source: str) -> float:
     if isinstance(value, bool):
@@ -115,7 +118,9 @@ class TaskRunner:
             else _coerce_task_timeout_seconds(task_timeout_seconds, source="task_timeout_seconds")
         )
         self._task_timeouts: dict[str, float | None] = {}
+        self._thread_backed: dict[str, bool] = {}
         self._coro_factories: dict[str, Callable[[TaskHandle], Coroutine[Any, Any, Any]]] = {}
+        self._draining_tasks: dict[str, asyncio.Task[Any]] = {}
 
     def submit(
         self,
@@ -123,11 +128,13 @@ class TaskRunner:
         coro_factory: Callable[[TaskHandle], Coroutine[Any, Any, Any]],
         *,
         task_timeout_seconds: float | None = None,
+        thread_backed: bool = False,
     ) -> str:
         return self._submit_unchecked(
             task_type,
             coro_factory,
             task_timeout_seconds=task_timeout_seconds,
+            thread_backed=thread_backed,
         )
 
     def submit_if_capacity(
@@ -137,12 +144,16 @@ class TaskRunner:
         *,
         max_pending: int,
         task_timeout_seconds: float | None = None,
+        thread_backed: bool = False,
     ) -> str | None:
         pending_count = sum(
             1
-            for info in self._tasks.values()
+            for task_id, info in self._tasks.items()
             if info.task_type == task_type
-            and info.status in (TaskStatus.PENDING, TaskStatus.RUNNING)
+            and (
+                info.status in (TaskStatus.PENDING, TaskStatus.RUNNING)
+                or task_id in self._draining_tasks
+            )
         )
         if pending_count >= max_pending:
             return None
@@ -150,6 +161,7 @@ class TaskRunner:
             task_type,
             coro_factory,
             task_timeout_seconds=task_timeout_seconds,
+            thread_backed=thread_backed,
         )
 
     def _submit_unchecked(
@@ -158,6 +170,7 @@ class TaskRunner:
         coro_factory: Callable[[TaskHandle], Coroutine[Any, Any, Any]],
         *,
         task_timeout_seconds: float | None,
+        thread_backed: bool,
     ) -> str:
         loop = asyncio.get_running_loop()
         task_timeout = (
@@ -175,6 +188,7 @@ class TaskRunner:
         self._tasks[task_id] = info
         self._handles[task_id] = handle
         self._task_timeouts[task_id] = task_timeout
+        self._thread_backed[task_id] = thread_backed
         self._coro_factories[task_id] = coro_factory
         async_task = loop.create_task(self._run_task(task_id))
         async_task.add_done_callback(lambda _: self._on_async_task_done(task_id))
@@ -210,13 +224,21 @@ class TaskRunner:
         self._trim_archived_tasks()
 
     async def shutdown(self, *, timeout: float = 5.0) -> None:
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
         for task_id in list(self._tasks):
             self.cancel_task(task_id)
-        pending = [t for t in self._async_tasks.values() if not t.done()]
-        if pending:
-            _, still_pending = await asyncio.wait(pending, timeout=timeout)
+        pending_async = [task for task in self._async_tasks.values() if not task.done()]
+        if pending_async:
+            _, still_pending = await asyncio.wait(pending_async, timeout=timeout)
             for task in still_pending:
                 task.cancel()
+            if still_pending:
+                await asyncio.gather(*still_pending, return_exceptions=True)
+        remaining = max(0.0, deadline - loop.time())
+        draining = [task for task in self._draining_tasks.values() if not task.done()]
+        if draining and remaining > 0:
+            await asyncio.wait(draining, timeout=remaining)
 
     def cancel_task(self, task_id: str) -> bool:
         handle = self._handles.get(task_id)
@@ -240,6 +262,7 @@ class TaskRunner:
             for tid, info in self._tasks.items()
             if info.status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED)
             and self._pinned_tasks.get(tid, 0) == 0
+            and tid not in self._draining_tasks
         ]
         excess = len(done_ids) - _MAX_COMPLETED_HISTORY
         if excess <= 0:
@@ -252,6 +275,7 @@ class TaskRunner:
             self._handles.pop(tid, None)
             self._async_tasks.pop(tid, None)
             self._task_timeouts.pop(tid, None)
+            self._thread_backed.pop(tid, None)
         self._trim_archived_tasks()
 
     def _trim_archived_tasks(self) -> None:
@@ -315,6 +339,18 @@ class TaskRunner:
         self._task_timeouts.pop(task_id, None)
         self._prune_completed()
 
+    def _on_draining_task_done(self, task_id: str, task: asyncio.Task[Any]) -> None:
+        self._draining_tasks.pop(task_id, None)
+        self._thread_backed.pop(task_id, None)
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            log.debug("background thread-backed task exited after timeout", exc_info=True)
+        self._semaphore.release()
+        self._prune_completed()
+
     async def _run_task(self, task_id: str) -> None:
         info = self._tasks.get(task_id)
         handle = self._handles.get(task_id)
@@ -325,6 +361,9 @@ class TaskRunner:
         await self._semaphore.acquire()
         task_timeout = self._task_timeouts.get(task_id, self._task_timeout)
         timeout_cm: asyncio.Timeout | None = None
+        thread_backed = self._thread_backed.get(task_id, False)
+        worker_task: asyncio.Task[Any] | None = None
+        draining_registered = False
         try:
             if handle.is_cancelled():
                 if info.status != TaskStatus.CANCELLED:
@@ -334,9 +373,13 @@ class TaskRunner:
 
             info.status = TaskStatus.RUNNING
             info.started_at = datetime.now(UTC).isoformat()
+            worker_task = asyncio.create_task(coro_factory(handle))
 
             async with asyncio.timeout(task_timeout) as timeout_cm:
-                result = await coro_factory(handle)
+                if thread_backed:
+                    result = await asyncio.shield(worker_task)
+                else:
+                    result = await worker_task
 
             if handle.is_cancelled():
                 info.status = TaskStatus.CANCELLED
@@ -355,6 +398,15 @@ class TaskRunner:
                 info.error = f"task exceeded {task_timeout}s timeout"
                 info.error_code = "timeout"
                 info.completed_at = datetime.now(UTC).isoformat()
+                if thread_backed and worker_task is not None and not worker_task.done():
+                    draining_registered = True
+                    self._draining_tasks[task_id] = worker_task
+                    worker_task.add_done_callback(
+                        lambda completed_task, current_task_id=task_id: self._on_draining_task_done(
+                            current_task_id,
+                            completed_task,
+                        )
+                    )
             else:
                 info.status = TaskStatus.FAILED
                 info.error = str(timeout_exc) or "task-internal timeout"
@@ -362,6 +414,15 @@ class TaskRunner:
                 info.completed_at = datetime.now(UTC).isoformat()
         except asyncio.CancelledError:
             handle.mark_cancelled()
+            if thread_backed and worker_task is not None and not worker_task.done():
+                draining_registered = True
+                self._draining_tasks[task_id] = worker_task
+                worker_task.add_done_callback(
+                    lambda completed_task, current_task_id=task_id: self._on_draining_task_done(
+                        current_task_id,
+                        completed_task,
+                    )
+                )
             if info.status != TaskStatus.CANCELLED:
                 info.status = TaskStatus.CANCELLED
                 info.completed_at = datetime.now(UTC).isoformat()
@@ -375,7 +436,8 @@ class TaskRunner:
                 info.error_code = self._classify_error(exc)
                 info.completed_at = datetime.now(UTC).isoformat()
         finally:
-            self._semaphore.release()
+            if not draining_registered:
+                self._semaphore.release()
             self._prune_completed()
 
 

@@ -364,6 +364,30 @@ class TestFileWatcherStartStop:
         finally:
             watcher.stop()
 
+    def test_stop_timeout_marks_watcher_non_restartable(self, tmp_path: Path) -> None:
+        class _HungObserver:
+            def stop(self) -> None:
+                return None
+
+            def join(self, timeout: float | None = None) -> None:
+                return None
+
+            def is_alive(self) -> bool:
+                return True
+
+        with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
+            watcher = FileWatcher(tmp_path, on_change=lambda _: None)
+            watcher._observer = _HungObserver()
+            watcher.stop()
+
+            status = watcher.status()
+            assert status["running"] is False
+            assert status["stop_timed_out"] is True
+            assert status["restartable"] is False
+
+            with pytest.raises(ConfigError, match="did not stop cleanly"):
+                watcher.start()
+
 
 class TestWatchLearnRunner:
     def test_retriggers_after_change_queued_during_run(self) -> None:

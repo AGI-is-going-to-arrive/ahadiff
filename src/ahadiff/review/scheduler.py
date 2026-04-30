@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError, version
@@ -159,9 +160,12 @@ def _make_scheduler(
 
 def _card_from_json(payload: str) -> Card:
     try:
-        return Card.from_json(payload)
+        card = Card.from_json(payload)
     except Exception as exc:  # py-fsrs raises ValueError/KeyError depending on shape
         raise InputError("fsrs_state is not a valid py-fsrs Card JSON object") from exc
+    _validate_optional_card_float(card, "stability")
+    _validate_optional_card_float(card, "difficulty")
+    return card
 
 
 def _state_name(card: Card) -> str:
@@ -170,6 +174,14 @@ def _state_name(card: Card) -> str:
 
 
 _MISSING_CARD_ATTRIBUTE = object()
+
+
+def _validate_optional_card_float(card: object, field_name: str) -> None:
+    value = getattr(card, field_name, _MISSING_CARD_ATTRIBUTE)
+    if value is _MISSING_CARD_ATTRIBUTE:
+        raise InputError(f"py-fsrs Card is missing required attribute: {field_name}")
+    if value is not None:
+        _coerce_float(value)
 
 
 def _required_card_float(card: object, field_name: str) -> float:
@@ -187,7 +199,10 @@ def _optional_float(value: object) -> float:
 
 def _coerce_float(value: object) -> float:
     if isinstance(value, int | float | str):
-        return float(value)
+        parsed = float(value)
+        if not math.isfinite(parsed):
+            raise InputError("FSRS numeric fields must be finite numbers")
+        return parsed
     raise InputError("FSRS numeric fields must be numbers")
 
 

@@ -67,6 +67,35 @@ def test_normalize_fsrs_state_preserves_cards_and_rebuilds_incomplete_payloads()
     assert rebuilt["difficulty"] is None
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("stability", "nan"),
+        ("stability", "inf"),
+        ("difficulty", "-inf"),
+    ],
+)
+def test_normalize_fsrs_state_rejects_non_finite_numeric_strings(
+    field: str,
+    value: str,
+) -> None:
+    now = datetime(2026, 4, 24, tzinfo=UTC)
+    payload = json.loads(normalize_fsrs_state(None, now=now))
+    payload.update(
+        {
+            "state": 2,
+            "step": None,
+            "stability": 1.0,
+            "difficulty": 2.0,
+            "last_review": "2026-04-24T00:00:00+00:00",
+            field: value,
+        }
+    )
+
+    with pytest.raises(InputError, match="finite numbers"):
+        normalize_fsrs_state(json.dumps(payload))
+
+
 def test_default_scheduler_exports_round_trip() -> None:
     parameters = default_scheduler_parameters()
 

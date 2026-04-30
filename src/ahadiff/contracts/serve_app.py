@@ -33,7 +33,7 @@ class LocaleResponse(BaseModel):
 class RunSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    run_id: str
+    run_id: str = Field(min_length=1)
     source_ref: str
     source_kind: SourceKind
     content_lang: Literal["en", "zh-CN"] = "en"
@@ -64,7 +64,7 @@ class RunDetail(RunSummary):
 class RunArtifactEnvelope(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    run_id: str
+    run_id: str = Field(min_length=1)
     artifact_type: str
     content: str
     content_lang: Literal["en", "zh-CN"] | None = Field(
@@ -79,7 +79,7 @@ class RunArtifactEnvelope(BaseModel):
 class RatchetHistoryEntry(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    run_id: str
+    run_id: str = Field(min_length=1)
     source_ref: str
     eval_bundle_version: str
     overall: float
@@ -92,9 +92,9 @@ class RatchetHistoryEntry(BaseModel):
 class DueReviewCardResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    card_id: str
+    card_id: str = Field(min_length=1)
     concept: str
-    run_id: str
+    run_id: str = Field(min_length=1)
     due_date: str
     scaffolding_level: str
     display_path: str
@@ -115,18 +115,18 @@ class LearningSignalRequest(BaseModel):
 
 
 class MarkWrongRequest(LearningSignalRequest):
-    claim_id: str
+    claim_id: str = Field(min_length=1)
     reason: str | None = None
 
 
 class ReviewSignalRequest(LearningSignalRequest):
-    card_id: str
+    card_id: str = Field(min_length=1)
     answer: ReviewAnswer
     peeked_this_session: bool = False
 
 
 class ReviewRateRequest(LearningSignalRequest):
-    card_id: str
+    card_id: str = Field(min_length=1)
     answer: ReviewAnswer
     peeked_this_session: bool = False
 

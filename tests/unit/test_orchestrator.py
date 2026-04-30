@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -449,6 +451,85 @@ def test_dry_run_returns_early(
     assert register_calls == [(fake_repo, fake_repo / ".ahadiff")]
 
 
+def test_concurrent_dry_run_learn_calls_serialize_on_repo_write_lock(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    _patch_capture(monkeypatch, fake_repo)
+
+    repo_lock = threading.Lock()
+    first_entered = threading.Event()
+    release_first = threading.Event()
+    second_entered = threading.Event()
+    call_count = 0
+    max_active = 0
+    active = 0
+    assess_lock = threading.Lock()
+    errors: list[BaseException] = []
+
+    @contextmanager
+    def _serial_repo_write_lock(path: Path, command: str = "") -> Generator[None]:
+        del path, command
+        with repo_lock:
+            yield None
+
+    def _assess_learnability(
+        _text: str,
+        threshold: float = 0.3,
+        force_learn: bool = False,
+    ) -> _FakeLearnabilityAssessment:
+        del threshold, force_learn
+        nonlocal call_count, active, max_active
+        with assess_lock:
+            call_count += 1
+            active += 1
+            max_active = max(max_active, active)
+            current_call = call_count
+        try:
+            if current_call == 1:
+                first_entered.set()
+                assert release_first.wait(timeout=2.0)
+            else:
+                second_entered.set()
+            return _FakeLearnabilityAssessment(score=0.7)
+        finally:
+            with assess_lock:
+                active -= 1
+
+    monkeypatch.setattr(f"{_GIT_REPO}.repo_write_lock", _serial_repo_write_lock)
+    monkeypatch.setattr(f"{_LEARNABILITY}.assess_learnability", _assess_learnability)
+
+    def _register_repo(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+
+    monkeypatch.setattr("ahadiff.core.registry.register_repo", _register_repo)
+
+    def _run_pipeline() -> None:
+        try:
+            result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo, dry_run=True))
+            assert result.status == "dry_run"
+        except BaseException as exc:  # pragma: no cover - defensive thread capture
+            errors.append(exc)
+
+    first = threading.Thread(target=_run_pipeline)
+    second = threading.Thread(target=_run_pipeline)
+    first.start()
+    assert first_entered.wait(timeout=2.0)
+    second.start()
+    time.sleep(0.2)
+    assert not second_entered.is_set()
+    release_first.set()
+    first.join(timeout=2.0)
+    second.join(timeout=2.0)
+
+    assert not first.is_alive()
+    assert not second.is_alive()
+    assert errors == []
+    assert call_count == 2
+    assert max_active == 1
+
+
 def test_learnability_skip_returns_early(
     monkeypatch: pytest.MonkeyPatch,
     fake_repo: Path,
@@ -658,7 +739,7 @@ def test_cancellation_before_persist_skips_finalized_and_result_events(
     assert not (fake_repo / ".ahadiff" / "review.sqlite").exists()
 
 
-def test_cancellation_after_persist_skips_append_concepts(
+def test_cancellation_after_persist_rolls_back_run_artifacts_and_skips_append_concepts(
     monkeypatch: pytest.MonkeyPatch,
     fake_repo: Path,
 ) -> None:
@@ -698,10 +779,171 @@ def test_cancellation_after_persist_skips_append_concepts(
     with pytest.raises(AhaDiffError, match="cancelled"):
         run_learn_pipeline(req, is_cancelled=lambda: cancelled)
 
+    assert append_called is False
+    assert not finalized_path.exists()
+    assert not score_path.exists()
+    assert not run_path.exists()
+
+
+def test_cancellation_cleanup_runs_inside_repo_write_lock(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    _patch_learnability(monkeypatch, score=0.7)
+
+    cancelled = False
+    lock_held = False
+    cleanup_lock_state: list[bool] = []
+
+    @contextmanager
+    def _tracked_repo_write_lock(path: Path, command: str = "") -> Generator[None]:
+        del path, command
+        nonlocal lock_held
+        lock_held = True
+        try:
+            yield None
+        finally:
+            lock_held = False
+
+    def _persist(current_run_path: Path) -> None:
+        del current_run_path
+        nonlocal cancelled
+        cancelled = True
+
+    def _cleanup_cancelled_run(*, run_path: Path | None, learn_outcome: object) -> None:
+        del run_path, learn_outcome
+        cleanup_lock_state.append(lock_held)
+
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        on_persist=_persist,
+    )
+    monkeypatch.setattr(f"{_GIT_REPO}.repo_write_lock", _tracked_repo_write_lock)
+    monkeypatch.setattr(f"{_ORCH}._cleanup_cancelled_run", _cleanup_cancelled_run)
+
+    with pytest.raises(AhaDiffError, match="cancelled"):
+        run_learn_pipeline(LearnRequest(workspace_root=fake_repo), is_cancelled=lambda: cancelled)
+
+    assert cleanup_lock_state == [True]
+
+
+def test_cancellation_after_append_concepts_commits_published_run(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    _patch_learnability(monkeypatch, score=0.7)
+
+    cancelled = False
+    run_path = fake_repo / ".ahadiff" / "runs" / capture.run_id
+    finalized_path = run_path / "finalized.json"
+    score_path = run_path / "score.json"
+
+    def _persist(current_run_path: Path) -> None:
+        current_run_path.mkdir(parents=True, exist_ok=True)
+        finalized_path.write_text("{}\n", encoding="utf-8")
+        score_path.write_text("{}\n", encoding="utf-8")
+
+    def _append_concepts(**kwargs: object) -> Path:
+        del kwargs
+        nonlocal cancelled
+        output_path = run_path / "concepts_local.jsonl"
+        output_path.write_text("{}\n", encoding="utf-8")
+        cancelled = True
+        return output_path
+
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        on_persist=_persist,
+    )
+    monkeypatch.setattr("ahadiff.wiki.concepts.append_concepts", _append_concepts)
+
+    req = LearnRequest(workspace_root=fake_repo)
+    result = run_learn_pipeline(req, is_cancelled=lambda: cancelled)
+
+    assert result.status == "keep"
     assert finalized_path.exists()
     assert score_path.exists()
-    assert append_called is False
-    assert not (run_path / "concepts_local.jsonl").exists()
+    assert run_path.exists()
+
+
+def test_cancellation_after_append_concepts_failure_keeps_published_run(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    _patch_learnability(monkeypatch, score=0.7)
+
+    cancelled = False
+    run_path = fake_repo / ".ahadiff" / "runs" / capture.run_id
+    finalized_path = run_path / "finalized.json"
+    score_path = run_path / "score.json"
+
+    def _persist(current_run_path: Path) -> None:
+        current_run_path.mkdir(parents=True, exist_ok=True)
+        finalized_path.write_text("{}\n", encoding="utf-8")
+        score_path.write_text("{}\n", encoding="utf-8")
+
+    def _append_concepts(**kwargs: object) -> Path:
+        del kwargs
+        nonlocal cancelled
+        cancelled = True
+        raise RuntimeError("concept sync failed")
+
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        on_persist=_persist,
+    )
+    monkeypatch.setattr("ahadiff.wiki.concepts.append_concepts", _append_concepts)
+
+    req = LearnRequest(workspace_root=fake_repo)
+    result = run_learn_pipeline(req, is_cancelled=lambda: cancelled)
+
+    assert result.status == "keep"
+    assert result.warnings == ["concepts append failed: concept sync failed"]
+    assert finalized_path.exists()
+    assert score_path.exists()
+    assert run_path.exists()
+
+
+def test_cleanup_cancelled_run_keeps_artifacts_when_result_rollback_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import ahadiff.core.orchestrator as orchestrator_module
+
+    cleanup_cancelled_run = cast(
+        "Callable[..., None]",
+        vars(orchestrator_module)["_cleanup_cancelled_run"],
+    )
+    run_path = tmp_path / "runs" / "run-1"
+    run_path.mkdir(parents=True)
+    finalized_path = run_path / "finalized.json"
+    finalized_path.write_text("{}\n", encoding="utf-8")
+    fake_event = MagicMock()
+    fake_event.event_id = "evt-123"
+    fake_outcome = MagicMock()
+    fake_outcome.event = fake_event
+
+    def _fail_rollback(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("db locked")
+
+    monkeypatch.setattr("ahadiff.eval.results.rollback_result_event", _fail_rollback)
+
+    cleanup_cancelled_run(run_path=run_path, learn_outcome=fake_outcome)
+
+    assert finalized_path.exists()
+    assert run_path.exists()
 
 
 def test_persist_evaluated_run_rollback(

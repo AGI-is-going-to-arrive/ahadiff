@@ -19,12 +19,24 @@ _CORS_ALLOW_METHODS = "GET, HEAD, OPTIONS, POST, PUT, PATCH, DELETE"
 _CORS_ALLOWED_REQUEST_HEADERS = {"content-type", "x-ahadiff-token"}
 _CORS_ALLOW_HEADERS = "Content-Type, X-AhaDiff-Token"
 _CORS_MAX_AGE_SECONDS = "600"
+_PROXY_TRACE_HEADERS = frozenset(
+    {
+        "forwarded",
+        "x-forwarded-for",
+        "x-forwarded-host",
+        "x-forwarded-port",
+        "x-forwarded-proto",
+        "x-real-ip",
+    }
+)
 
 
 class LoopbackGuardMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         state = getattr(request.app.state, "ahadiff", None)
         expected_port = _expected_port(state)
+        if _has_proxy_trace_headers(request):
+            return _error_response("proxy_headers_not_allowed", status_code=400)
         if not _is_allowed_host(request.headers.get("host", ""), expected_port=expected_port):
             return _error_response("host_not_allowed", status_code=400)
         origin = request.headers.get("origin")
@@ -138,6 +150,10 @@ async def _cache_limited_body(request: Request) -> bool:
         chunks.append(chunk)
     request._body = b"".join(chunks)  # pyright: ignore[reportPrivateUsage]
     return True
+
+
+def _has_proxy_trace_headers(request: Request) -> bool:
+    return any(request.headers.get(header) is not None for header in _PROXY_TRACE_HEADERS)
 
 
 def _is_json_content_type(value: str) -> bool:

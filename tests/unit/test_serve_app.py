@@ -224,6 +224,26 @@ def test_loopback_guard_error_responses_include_status(tmp_path: Path) -> None:
         assert response.json() == {"error": error, "status": status}
 
 
+def test_proxy_trace_headers_are_rejected(tmp_path: Path) -> None:
+    client = _client(tmp_path / ".ahadiff")
+
+    health = client.get("/healthz", headers={"x-forwarded-for": "203.0.113.10"})
+    write = client.put(
+        "/api/locale",
+        headers={
+            "origin": "http://localhost:8765",
+            "X-AhaDiff-Token": "test-token",
+            "Forwarded": "for=203.0.113.10;proto=http",
+        },
+        json={"lang": "zh-CN"},
+    )
+
+    assert health.status_code == 400
+    assert health.json() == {"error": "proxy_headers_not_allowed", "status": 400}
+    assert write.status_code == 400
+    assert write.json() == {"error": "proxy_headers_not_allowed", "status": 400}
+
+
 def test_origin_guard_rejects_non_loopback_write_origin(tmp_path: Path) -> None:
     client = _client(tmp_path / ".ahadiff")
 
@@ -392,13 +412,67 @@ def test_serve_state_bind_port_and_token_survive_headless_runtime(tmp_path: Path
     runtime_state = cast("ServeState", app.state.ahadiff)
 
     assert client.get("/healthz").json() == {"ok": True}
-    assert client.get("/api/auth/token").json() == {
+    assert client.get("/api/auth/token", headers={"sec-fetch-site": "same-origin"}).json() == {
         "token": "headless-token",
         "expires_at": None,
     }
     assert runtime_state.bind_host == "127.0.0.1"
     assert runtime_state.port == 9123
     assert runtime_state.token == "headless-token"
+
+
+def test_auth_token_bootstrap_requires_same_origin_browser_signal(tmp_path: Path) -> None:
+    app = create_app(
+        ServeState(
+            state_dir=tmp_path / ".ahadiff",
+            token="bootstrap-token",
+            bind_host="127.0.0.1",
+            port=9123,
+        )
+    )
+    client = TestClient(app, base_url="http://127.0.0.1:9123")
+
+    missing = client.get("/api/auth/token")
+    cross_site = client.get("/api/auth/token", headers={"sec-fetch-site": "cross-site"})
+    same_origin = client.get("/api/auth/token", headers={"sec-fetch-site": "same-origin"})
+    referer = client.get(
+        "/api/auth/token",
+        headers={"referer": "http://127.0.0.1:9123/app"},
+    )
+
+    assert missing.status_code == 403
+    assert missing.json()["error"] == "auth token bootstrap requires a same-origin browser request"
+    assert cross_site.status_code == 403
+    assert same_origin.status_code == 200
+    assert same_origin.json()["token"] == "bootstrap-token"
+    assert referer.status_code == 200
+    assert referer.json()["token"] == "bootstrap-token"
+
+
+def test_auth_token_bootstrap_accepts_same_origin_post(tmp_path: Path) -> None:
+    app = create_app(
+        ServeState(
+            state_dir=tmp_path / ".ahadiff",
+            token="post-bootstrap-token",
+            bind_host="127.0.0.1",
+            port=9123,
+        )
+    )
+    client = TestClient(app, base_url="http://127.0.0.1:9123")
+
+    allowed = client.post(
+        "/api/auth/token",
+        headers={"origin": "http://127.0.0.1:9123"},
+    )
+    blocked = client.post(
+        "/api/auth/token",
+        headers={"origin": "http://evil.test:9123"},
+    )
+
+    assert allowed.status_code == 200
+    assert allowed.json() == {"token": "post-bootstrap-token", "expires_at": None}
+    assert blocked.status_code == 403
+    assert blocked.json()["error"] == "origin_not_allowed"
 
 
 def test_write_routes_require_loopback_origin_or_referer(tmp_path: Path) -> None:
@@ -1857,6 +1931,46 @@ def test_empty_idempotency_key_is_rejected_before_signal_write(tmp_path: Path) -
     assert response.json()["error"][0]["loc"] == ["idempotency_key"]
 
 
+@pytest.mark.parametrize(
+    ("path", "payload", "field"),
+    [
+        (
+            "/api/signals/mark-wrong",
+            {"claim_id": "", "idempotency_key": "mark-empty-claim"},
+            "claim_id",
+        ),
+        (
+            "/api/signals/srs-review",
+            {"card_id": "", "answer": "hard", "idempotency_key": "review-empty-card"},
+            "card_id",
+        ),
+        (
+            "/api/review/rate",
+            {"card_id": "", "answer": "good", "idempotency_key": "rate-empty-card"},
+            "card_id",
+        ),
+    ],
+)
+def test_signal_write_rejects_empty_identifiers_before_db_write(
+    tmp_path: Path,
+    path: str,
+    payload: dict[str, object],
+    field: str,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+
+    response = client.post(
+        path,
+        headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        json=payload,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"][0]["loc"] == [field]
+    assert not (state_dir / "review.sqlite").exists()
+
+
 def test_srs_review_records_card_review(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     db_path = state_dir / "review.sqlite"
@@ -2394,6 +2508,8 @@ def test_watch_status_disabled_by_default(tmp_path: Path) -> None:
     assert data["enabled"] is False
     assert data["running"] is False
     assert data["pending_changes"] == 0
+    assert data["restartable"] is True
+    assert data["stop_timed_out"] is False
     assert "watch_path" not in data
 
 
@@ -2403,6 +2519,8 @@ class _FakeWatcher:
             "running": True,
             "last_trigger_time": 123.0,
             "pending_changes": 2,
+            "restartable": False,
+            "stop_timed_out": True,
         }
 
 
@@ -2418,4 +2536,6 @@ def test_watch_status_with_watcher_attached(tmp_path: Path) -> None:
     assert data["running"] is True
     assert data["pending_changes"] == 2
     assert data["last_trigger_time"] == 123.0
+    assert data["restartable"] is False
+    assert data["stop_timed_out"] is True
     assert "watch_path" not in data
