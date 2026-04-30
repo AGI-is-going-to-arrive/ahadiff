@@ -32,6 +32,18 @@ test.describe('media features', () => {
     expect(overflow).toBeLessThanOrEqual(0);
   });
 
+  test('print emulation: settings sidebar tabs are hidden', async ({ page }) => {
+    await page.emulateMedia({ media: 'print' });
+    await page.goto('/#/settings');
+
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await expect(page.locator('.stabs')).toBeHidden();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+
   test('forced-colors active: key elements remain in DOM', async ({ page }) => {
     await page.emulateMedia({ forcedColors: 'active' });
     await page.goto('/');
@@ -71,6 +83,43 @@ test.describe('media features', () => {
     await page.getByRole('button', { name: '简体中文' }).click();
     await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(/运行面板/);
+  });
+
+  test('prefers-reduced-motion active: settings tabs and switches do not transition', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('/#/settings');
+
+    const tabTransition = await page
+      .getByRole('tab', { name: /privacy/i })
+      .evaluate((el) => getComputedStyle(el).transitionDuration);
+    const switchTransition = await page
+      .locator('.settings-toggle')
+      .first()
+      .evaluate((el) => getComputedStyle(el).transitionDuration);
+
+    expect(tabTransition).toBe('0s');
+    expect(switchTransition).toBe('0s');
+  });
+
+  test('settings responsive layout has reachable tabs and no horizontal overflow', async ({
+    page,
+  }) => {
+    await page.goto('/#/settings');
+
+    const auditTab = page.getByRole('tab', { name: /audit/i });
+    await expect(auditTab).toBeVisible();
+    const box = await auditTab.boundingBox();
+    expect(box).not.toBeNull();
+    if (box) expect(box.height).toBeGreaterThanOrEqual(38);
+
+    await auditTab.click();
+    await expect(page.locator('.audit-table')).toBeVisible();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
   });
 
   test('prefers-reduced-motion active: lesson controls do not transform', async ({ page }) => {

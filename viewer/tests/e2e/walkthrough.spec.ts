@@ -584,25 +584,55 @@ test.describe('walkthrough: full-app functional test', () => {
   /*  Page 8: Settings                                                 */
   /* ---------------------------------------------------------------- */
 
-  test('Settings — config fields, doctor checks', async ({ page }) => {
+  test('Settings — 8 tabs, provider grid, audit log, doctor checks', async ({ page }) => {
     await page.goto('/#/settings');
 
     // Heading
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
-    // Config fields
+    // Tab sidebar with 8 tabs
+    await expect(page.locator('.stabs')).toBeVisible();
+    await expect(page.locator('.st')).toHaveCount(8);
+
+    // Default privacy tab shows V6 mode summary + switch controls.
+    await expect(page.locator('.mode-summary')).toBeVisible();
+    await expect(page.locator('.settings-toggle')).toHaveCount(4);
+
+    // Default privacy tab shows config fields
     const fields = page.locator('.settings-field');
     await expect(fields).not.toHaveCount(0);
-    // Verify specific fields rendered
     await expect(fields.first()).toBeVisible();
 
-    // API key status badge
+    // Navigate to keys tab for API key badges
+    await page.getByRole('tab', { name: /keys/i }).click();
     await expect(page.locator('.settings-field__badge--configured')).toBeVisible();
 
-    // Doctor checks
+    // Navigate to models tab for provider grid metadata.
+    await page.getByRole('tab', { name: /models/i }).click();
+    await expect(page.locator('.provider-grid')).toBeVisible();
+    await expect(page.locator('.provider-cell__hl')).toContainText('gpt-5.4-mini');
+
+    // Navigate to audit tab for the 8-column recent provider log.
+    await page.getByRole('tab', { name: /audit/i }).click();
+    await expect(page.locator('.audit-table th')).toHaveCount(8);
+    await expect(page.locator('.audit-table')).toContainText('lesson_generate');
+    await expect(page.locator('.audit-table')).toContainText('700');
+
+    // Navigate to language and appearance tabs.
+    await page.getByRole('tab', { name: /language/i }).click();
+    await expect(page.locator('.settings-content').getByRole('group', { name: /Language/i })).toBeVisible();
+    await page.getByRole('tab', { name: /appearance/i }).click();
+    await expect(page.getByText('Theme customization coming soon')).toBeVisible();
+
+    // Navigate to integrations tab for install target badges.
+    await page.getByRole('tab', { name: /integrations/i }).click();
+    await expect(page.locator('.settings-field__badge--configured')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Claude Code' })).toBeVisible();
+
+    // Navigate to account tab for doctor checks
+    await page.getByRole('tab', { name: /account/i }).click();
     const checks = page.locator('.doctor-check');
     await expect(checks).toHaveCount(4);
-    // All pass
     await expect(page.locator('.doctor-check__icon--pass').first()).toBeVisible();
 
     await page.screenshot({ path: `${SCREENSHOT_DIR}/08-settings.png`, fullPage: true });

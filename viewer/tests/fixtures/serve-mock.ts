@@ -273,10 +273,120 @@ export async function installServeMock(page: Page): Promise<void> {
         contentType: 'application/json',
         body: JSON.stringify({
           targets: [
-            { name: 'claude', detected: true, platform_supported: true, description: 'Claude Code CLI' },
-            { name: 'codex', detected: false, platform_supported: true, description: 'Codex CLI' },
-            { name: 'cursor', detected: false, platform_supported: true, description: 'Cursor IDE' },
+            {
+              name: 'claude',
+              display_name: 'Claude Code',
+              detected: true,
+              platform_supported: true,
+              status: 'installed',
+              description: 'Claude Code CLI',
+              error_message: null,
+            },
+            {
+              name: 'codex',
+              display_name: 'Codex CLI',
+              detected: false,
+              platform_supported: true,
+              status: 'available',
+              description: 'Codex CLI',
+              error_message: null,
+            },
+            {
+              name: 'cursor',
+              display_name: 'Cursor',
+              detected: false,
+              platform_supported: true,
+              status: 'available',
+              description: 'Cursor IDE',
+              error_message: null,
+            },
           ],
+          total: 3,
+        }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/providers',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          providers: [
+            {
+              alias: 'openai-gpt5',
+              role: 'generate',
+              provider_class: 'openai',
+              provider_kind: 'openai',
+              model_name: 'gpt-5.4-mini',
+              base_url: 'https://api.openai.com/v1',
+              api_key_env: 'OPENAI_API_KEY',
+              key_status: 'configured',
+              api_family: 'openai_chat',
+              api_family_version: 'v1',
+              probed: true,
+              probed_max_context: 128000,
+              probed_tpm: 1000000,
+              probed_rpm: 500,
+              supports_temperature: true,
+              probe_timestamp: '2026-04-30T11:59:00Z',
+            },
+          ],
+        }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/usage',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          models: [
+            {
+              provider_class: 'openai',
+              model_id: 'gpt-5.4-mini',
+              call_count: 42,
+              total_input_tokens: 10000,
+              total_output_tokens: 5000,
+              total_cost_usd: 0.015,
+            },
+          ],
+          total_calls: 42,
+          total_input_tokens: 10000,
+          total_output_tokens: 5000,
+          total_cost_usd: 0.015,
+          cache_hits: 8,
+          cache_misses: 34,
+        }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/audit',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          entries: [
+            {
+              timestamp: '2026-04-30T12:00:00Z',
+              event_type: 'provider_call',
+              provider_class: 'openai',
+              model_id: 'gpt-5.4-mini',
+              prompt_name: 'lesson_generate',
+              input_tokens: 500,
+              output_tokens: 200,
+              cost_usd: 0.001,
+              cost_confidence: 'estimated',
+              execution_origin: 'serve',
+            },
+          ],
+          total: 1,
+          limit: 20,
+          offset: 0,
+          page: 1,
+          has_more: false,
         }),
       }),
   );

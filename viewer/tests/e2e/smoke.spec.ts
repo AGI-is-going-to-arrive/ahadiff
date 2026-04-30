@@ -82,10 +82,90 @@ test.describe('smoke', () => {
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   });
 
-  test('settings page shows config fields and doctor checks', async ({ page }) => {
+  test('settings page shows tab sidebar and config fields', async ({ page }) => {
     await page.goto('/#/settings');
+    await expect(page.getByRole('tablist', { name: /settings/i })).toBeVisible();
+    await expect(page.getByRole('tab')).toHaveCount(8);
     await expect(page.locator('.settings-field')).not.toHaveCount(0);
+    await expect(page.locator('.settings-toggle')).toHaveCount(4);
+
+    await page.getByRole('tab', { name: /models/i }).click();
+    await expect(page.locator('.provider-cell')).toBeVisible();
+
+    await page.getByRole('tab', { name: /audit/i }).click();
+    await expect(page.locator('.audit-table')).toBeVisible();
+    await expect(page.locator('.audit-table')).toContainText('lesson_generate');
+
+    await page.getByRole('tab', { name: /account/i }).click();
     await expect(page.locator('.doctor-check')).not.toHaveCount(0);
+  });
+
+  test('settings tabs expose stable ARIA panels and keyboard navigation', async ({ page }) => {
+    await page.goto('/#/settings');
+
+    const tabs = page.getByRole('tab');
+    await expect(tabs).toHaveCount(8);
+    const controls = await tabs.evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute('aria-controls') ?? ''),
+    );
+    for (const id of controls) {
+      expect(id).toMatch(/^spanel-/);
+      await expect(page.locator(`#${id}`)).toHaveCount(1);
+    }
+
+    const privacyTab = page.getByRole('tab', { name: /privacy/i });
+    await expect(privacyTab).toHaveAttribute('aria-selected', 'true');
+    await privacyTab.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByRole('tab', { name: /audit/i })).toHaveAttribute('aria-selected', 'true');
+    await page.keyboard.press('End');
+    await expect(page.getByRole('tab', { name: /integrations/i })).toHaveAttribute('aria-selected', 'true');
+    await page.keyboard.press('Home');
+    await expect(page.getByRole('tab', { name: /account/i })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  test('settings shows local fallback states for failed and empty resources', async ({ page }) => {
+    await page.unroute((url) => url.pathname === '/api/config');
+    await page.unroute((url) => url.pathname === '/api/providers');
+    await page.unroute((url) => url.pathname === '/api/audit');
+    await page.route(
+      (url) => url.pathname === '/api/config',
+      (route) => route.fulfill({ status: 500, contentType: 'application/json', body: '{}' }),
+    );
+    await page.route(
+      (url) => url.pathname === '/api/providers',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ providers: [] }),
+        }),
+    );
+    await page.route(
+      (url) => url.pathname === '/api/audit',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            entries: [],
+            total: 0,
+            limit: 20,
+            offset: 0,
+            page: 1,
+            has_more: false,
+          }),
+        }),
+    );
+
+    await page.goto('/#/settings');
+    await expect(page.getByText('Configuration is unavailable right now.')).toBeVisible();
+
+    await page.getByRole('tab', { name: /models/i }).click();
+    await expect(page.getByText('No providers configured')).toBeVisible();
+
+    await page.getByRole('tab', { name: /audit/i }).click();
+    await expect(page.getByText('No audit entries yet')).toBeVisible();
   });
 
   test('hash router onboarding route renders stepper', async ({ page }) => {

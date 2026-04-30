@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError, apiFetch, resetToken, setToken } from '../../src/api/client';
+import { putConfig } from '../../src/api/config';
+import { ValidationError } from '../../src/api/schemas';
 
 type Deferred<T> = {
   promise: Promise<T>;
@@ -154,5 +156,58 @@ describe('ApiError redaction', () => {
     });
     expect(JSON.stringify(err)).not.toContain('should-not-leak');
     expect(JSON.stringify(err.body)).not.toContain('sk-test-secret-token');
+  });
+});
+
+describe('config api', () => {
+  beforeEach(() => {
+    resetToken();
+    setToken('unit-test-token');
+    vi.stubGlobal('window', { location: { origin: 'http://localhost:5173' } });
+  });
+
+  afterEach(() => {
+    resetToken();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('parses PUT /api/config update acknowledgements and sends JSON', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      expect(String(input)).toBe('/api/config');
+      expect(init?.method).toBe('PUT');
+      expect(init?.body).toBe(JSON.stringify({ lang: 'zh-CN' }));
+      const headers = new Headers(init?.headers);
+      expect(headers.get('content-type')).toBe('application/json');
+      expect(headers.get('x-ahadiff-token')).toBe('unit-test-token');
+      return Promise.resolve(jsonResponse({ updated: true, scope: 'session' }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(putConfig({ lang: 'zh-CN' })).resolves.toEqual({
+      updated: true,
+      scope: 'session',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects stale PUT /api/config payloads shaped like GET /api/config', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          jsonResponse({
+            lang: 'zh-CN',
+            privacy_mode: 'strict_local',
+            generate_model: null,
+            judge_model: null,
+            serve_port: 8384,
+            key_status: {},
+          }),
+        ),
+      ),
+    );
+
+    await expect(putConfig({ lang: 'zh-CN' })).rejects.toBeInstanceOf(ValidationError);
   });
 });

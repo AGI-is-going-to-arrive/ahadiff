@@ -17,7 +17,7 @@ const NOOP_CONFIG = JSON.stringify({
   serve_port: 8765,
   key_status: {},
 });
-const NOOP_TARGETS = JSON.stringify({ targets: [] });
+const NOOP_TARGETS = JSON.stringify({ targets: [], total: 0 });
 const NOOP_DOCTOR = JSON.stringify({ checks: [] });
 
 async function installShellRoutes(

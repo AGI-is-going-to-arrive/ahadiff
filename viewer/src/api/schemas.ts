@@ -222,6 +222,11 @@ export const configResponseSchema = z.object({
   key_status: z.record(z.string(), z.enum(['configured', 'missing'])).default({}),
 });
 
+export const configUpdateResponseSchema = z.object({
+  updated: z.boolean(),
+  scope: z.enum(['session']),
+});
+
 export const doctorCheckSchema = z.object({
   name: z.string().min(1),
   status: z.enum(['pass', 'warn', 'fail']),
@@ -237,17 +242,17 @@ export const doctorResponseSchema = z.object({
 
 export const installTargetSchema = z.object({
   name: z.string().min(1),
-  display_name: z.string().min(1).optional(),
+  display_name: z.string().min(1),
   detected: z.boolean(),
   platform_supported: z.boolean(),
-  status: z.enum(['installed', 'available', 'unsupported', 'error']).optional(),
+  status: z.enum(['installed', 'available', 'unsupported', 'error']),
   description: z.string(),
   error_message: z.string().nullable().optional(),
 });
 
 export const installTargetsResponseSchema = z.object({
   targets: z.array(installTargetSchema),
-  total: z.number().int().nonnegative().optional(),
+  total: z.number().int().nonnegative(),
 });
 
 export const providerSummarySchema = z.object({

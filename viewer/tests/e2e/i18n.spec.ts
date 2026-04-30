@@ -118,6 +118,23 @@ test.describe('i18n', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(/差异/);
   });
 
+  test('Settings tab labels switch locale inside the settings page', async ({ page }) => {
+    await page.goto('/#/settings');
+    await expect(page.getByRole('tab', { name: /privacy/i })).toBeVisible();
+
+    await page.getByRole('tab', { name: /language/i }).click();
+    const putWait = page.waitForResponse(
+      (res) => res.url().endsWith('/api/locale') && res.request().method() === 'PUT',
+    );
+    await page.locator('.settings-content').getByRole('button', { name: '简体中文' }).click();
+    await putWait;
+
+    await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(/设置/);
+    await expect(page.getByRole('tab', { name: /隐私/ })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /语言/ })).toHaveAttribute('aria-selected', 'true');
+  });
+
   test('DiffView does not re-parse diff content across locale switch', async ({ page }) => {
     await page.goto('/#/run/test-run/diff');
     const region = page.getByRole('region', { name: /Diff|差异/ });

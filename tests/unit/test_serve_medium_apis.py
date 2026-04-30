@@ -431,8 +431,12 @@ class TestAudit:
             json.dumps(
                 {
                     "timestamp": f"2026-01-0{i}T00:00:00Z",
-                    "event_type": "llm",
+                    "event_type": "provider_call",
+                    "provider_class": "openai",
                     "model_id": f"model-{i}",
+                    "prompt_name": "lesson_generate",
+                    "cost_confidence": "estimated",
+                    "execution_origin": "serve",
                     "secret": "must-not-pass-filter",
                 }
             )
@@ -443,7 +447,13 @@ class TestAudit:
 
         resp = client.get(
             "/api/audit",
-            params={"limit": "2", "page": "2", "fields": "timestamp,model_id"},
+            params={
+                "limit": "2",
+                "page": "2",
+                "fields": (
+                    "timestamp,provider_class,model_id,prompt_name,cost_confidence,execution_origin"
+                ),
+            },
             headers=_AUTH,
         )
 
@@ -451,10 +461,31 @@ class TestAudit:
         body = resp.json()
         assert body["offset"] == 2
         assert body["page"] == 2
-        assert body["fields"] == ["timestamp", "model_id"]
+        assert body["fields"] == [
+            "timestamp",
+            "provider_class",
+            "model_id",
+            "prompt_name",
+            "cost_confidence",
+            "execution_origin",
+        ]
         assert body["entries"] == [
-            {"timestamp": "2026-01-03T00:00:00Z", "model_id": "model-3"},
-            {"timestamp": "2026-01-04T00:00:00Z", "model_id": "model-4"},
+            {
+                "timestamp": "2026-01-03T00:00:00Z",
+                "provider_class": "openai",
+                "model_id": "model-3",
+                "prompt_name": "lesson_generate",
+                "cost_confidence": "estimated",
+                "execution_origin": "serve",
+            },
+            {
+                "timestamp": "2026-01-04T00:00:00Z",
+                "provider_class": "openai",
+                "model_id": "model-4",
+                "prompt_name": "lesson_generate",
+                "cost_confidence": "estimated",
+                "execution_origin": "serve",
+            },
         ]
 
     def test_unknown_audit_field_is_rejected(self, tmp_path: Path) -> None:

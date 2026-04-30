@@ -3,7 +3,7 @@
    ========================================================================== */
 
 .settings {
-  max-width: var(--mw-content, 960px);
+  max-width: calc(184px + var(--sp-6, 24px) + 960px);
   margin: 0 auto;
   padding: 0 0 var(--sp-10, 40px);
 }
@@ -24,6 +24,77 @@
   letter-spacing: -0.022em;
   margin: 0;
   line-height: 1.08;
+}
+
+/* ---- 8-tab sidebar layout (V6 §4D) ---- */
+.settings-layout {
+  display: grid;
+  grid-template-columns: 184px minmax(0, 960px);
+  gap: var(--sp-6, 24px);
+  align-items: start;
+}
+
+.settings-panels,
+.settings-content {
+  min-width: 0;
+}
+
+.settings-content[hidden] {
+  display: none;
+}
+
+.stabs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: sticky;
+  top: 72px;
+}
+
+.st {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  min-height: 38px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md, 8px);
+  background: none;
+  font-size: 13px;
+  font-family: var(--font-sans);
+  color: var(--muted);
+  cursor: pointer;
+  transition: background var(--dur-fast, 0.15s) var(--ease-out),
+              color var(--dur-fast, 0.15s) var(--ease-out);
+  line-height: 1.4;
+}
+
+.st:hover {
+  background: var(--subtle);
+  color: var(--ink);
+}
+
+.st:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.st.on {
+  background: var(--elevated);
+  border-color: var(--hair);
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.st .en {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-top: 1px;
+  font-weight: 400;
 }
 
 /* ---- Section card ---- */
@@ -54,6 +125,10 @@
   padding: 20px;
 }
 
+.settings-card__body--flush {
+  padding: 0;
+}
+
 /* ---- Field rows ---- */
 .settings-field {
   display: grid;
@@ -76,7 +151,7 @@
 
 .settings-field__label p {
   margin: 4px 0 0;
-  font-size: 13px;
+  font-size: 12.5px;
   color: var(--muted);
 }
 
@@ -106,30 +181,221 @@
   color: var(--danger);
 }
 
+.settings-field__badge--unknown {
+  background: var(--subtle);
+  color: var(--muted);
+}
+
+.settings-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4, 16px);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.setting-control {
+  gap: var(--sp-5, 20px);
+}
+
+.settings-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 38px;
+  height: 22px;
+  flex: 0 0 38px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-full, 999px);
+  background: var(--subtle);
+  transition: background var(--dur-fast, 0.15s) var(--ease-out),
+              border-color var(--dur-fast, 0.15s) var(--ease-out);
+}
+
+.settings-toggle.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.settings-toggle__knob {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--r-full, 999px);
+  background: var(--elevated);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.16);
+  transition: transform var(--dur-fast, 0.15s) var(--ease-out);
+}
+
+.settings-toggle.is-on .settings-toggle__knob {
+  transform: translateX(16px);
+}
+
+.u-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- Mode summary card (V6 §4D privacy tab) ---- */
+.mode-summary {
+  background: var(--elevated);
+  border: 1px solid var(--hair);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-lg, 12px);
+  padding: 20px;
+  margin-bottom: var(--sp-6, 24px);
+}
+
+.mode-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--sp-4, 16px);
+}
+
+.mode-cell__eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.mode-cell__value {
+  font-family: var(--font-serif);
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--ink);
+  word-break: break-all;
+}
+
+.mode-cell__sub {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.mode-summary__footer {
+  margin-top: var(--sp-4, 16px);
+  padding: 10px 14px;
+  background: var(--accent-softest, rgba(217, 119, 87, 0.06));
+  border-radius: var(--r-md, 8px);
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 /* ---- Provider grid ---- */
 .provider-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: var(--sp-4, 16px);
+  gap: var(--sp-3, 12px);
 }
 
 .provider-cell {
-  padding: var(--sp-4, 16px);
+  padding: 12px 14px;
   border: 1px solid var(--hair);
   border-radius: var(--r-md, 8px);
+  background: var(--paper);
+}
+
+.provider-cell__eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 4px;
 }
 
 .provider-cell__name {
   font-family: var(--font-serif);
-  font-size: 15px;
-  font-weight: 500;
+  font-size: 14.5px;
+  font-weight: 600;
   margin-bottom: var(--sp-2, 8px);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .provider-cell__meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--muted);
+  margin: 0;
+}
+
+.provider-cell__meta dt {
+  color: var(--muted-strong, var(--muted));
+}
+
+.provider-cell__meta dd {
+  margin: 0;
+}
+
+.provider-cell__hl {
+  color: var(--accent-ink, var(--accent));
+}
+
+/* ---- Audit log table ---- */
+.audit-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.audit-table th {
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--hair);
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.audit-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hair);
+  white-space: nowrap;
+  color: var(--ink);
+}
+
+.audit-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.audit-table td.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.audit-table th:nth-child(n+4),
+.audit-table td:nth-child(n+4) {
+  text-align: right;
 }
 
 /* ---- Doctor checks ---- */
@@ -148,6 +414,7 @@
   justify-content: center;
   border-radius: var(--r-full, 999px);
   font-size: 12px;
+  flex-shrink: 0;
 }
 
 .doctor-check__icon--pass {
@@ -177,40 +444,103 @@
   letter-spacing: 0.08em;
 }
 
-/* ---- Responsive (V6 §2D, --bp-lg 900px) ----
- * Page CSS scope: only classes that exist in current SettingsPage.tsx are
- * styled here. When Phase 4D lands the 8-tab refactor it will add
- * `.settings-layout / .setting-control` collapse rules at this breakpoint —
- * see V6 line 471. Adding them now would be dead CSS. */
+/* ---- Responsive: <=1024px — tabs go horizontal ---- */
+@media (max-width: 1024px) {
+  .settings-layout {
+    grid-template-columns: 1fr;
+  }
+  .stabs {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px;
+    position: static;
+  }
+  .st {
+    flex: 0 0 auto;
+    min-height: 44px;
+    padding: 8px 12px;
+  }
+  .st .en {
+    display: none;
+  }
+}
+
+/* ---- Responsive: <=900px ---- */
 @media (max-width: 900px) {
   .settings-field {
     grid-template-columns: 1fr;
     gap: 10px;
   }
   .provider-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Responsive: <=780px ---- */
+@media (max-width: 780px) {
+  .mode-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
-/* ---- Responsive: mobile (V6 §2D, --bp-md 768px) ---- */
-@media (max-width: 767px) {
+/* ---- Responsive: mobile <=768px ---- */
+@media (max-width: 768px) {
+  .settings__head {
+    flex-direction: column;
+  }
   .settings__title { font-size: 28px; }
   .settings-field { grid-template-columns: 1fr; }
   .provider-grid { grid-template-columns: 1fr; }
 }
 
-/* ---- Responsive: small phones (V6 §2D, --bp-xs 540px) ---- */
+/* ---- Responsive: small phones <=540px ---- */
 @media (max-width: 540px) {
   .settings__title { font-size: 24px; }
-  .settings-card {
+  .settings-card__body {
     padding: 14px;
+  }
+  .settings-empty {
+    align-items: flex-start;
+    flex-direction: column;
   }
   .settings-card__header h3 {
     font-size: 14px;
   }
+  .mode-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
+/* ---- Forced colors (a11y) ---- */
 @media (forced-colors: active) {
   .settings-card { border: 1px solid CanvasText; }
   .doctor-check__icon { border: 1px solid CanvasText; }
+  .st.on { border: 2px solid Highlight; }
+  .mode-summary { border-left: 3px solid Highlight; }
+  .settings-toggle { border: 1px solid CanvasText; }
+  .settings-toggle.is-on {
+    background: Highlight;
+    border-color: Highlight;
+  }
+  .settings-toggle__knob { background: Canvas; }
+  .provider-cell { border: 1px solid CanvasText; }
+  .audit-table th,
+  .audit-table td { border-bottom: 1px solid CanvasText; }
+}
+
+/* ---- Reduced motion ---- */
+@media (prefers-reduced-motion: reduce) {
+  .st,
+  .settings-toggle,
+  .settings-toggle__knob {
+    transition: none;
+  }
+}
+
+/* ---- Print ---- */
+@media print {
+  .stabs { display: none; }
+  .settings-layout {
+    grid-template-columns: 1fr;
+  }
 }

@@ -1,10 +1,14 @@
 import { apiFetch } from './client';
 import type { ApiFetchOptions } from './client';
 import {
+  auditResponseSchema,
   configResponseSchema,
+  configUpdateResponseSchema,
   doctorResponseSchema,
   installTargetsResponseSchema,
   parseResponse,
+  providersResponseSchema,
+  usageResponseSchema,
 } from './schemas';
 
 export interface ConfigField {
@@ -22,6 +26,11 @@ export interface ConfigResponse {
   key_status: Record<string, 'configured' | 'missing'>;
 }
 
+export interface ConfigUpdateResponse {
+  updated: boolean;
+  scope: 'session';
+}
+
 export interface DoctorCheck {
   name: string;
   status: 'pass' | 'warn' | 'fail';
@@ -37,17 +46,91 @@ export interface DoctorResponse {
 
 export interface InstallTarget {
   name: string;
-  display_name?: string;
+  display_name: string;
   detected: boolean;
   platform_supported: boolean;
-  status?: 'installed' | 'available' | 'unsupported' | 'error';
+  status: 'installed' | 'available' | 'unsupported' | 'error';
   description: string;
   error_message?: string | null;
 }
 
 export interface InstallTargetsResponse {
   targets: InstallTarget[];
-  total?: number;
+  total: number;
+}
+
+export interface ProviderSummary {
+  alias: string;
+  role?: string | null;
+  provider_class: string;
+  provider_kind: string;
+  model_name: string;
+  base_url: string;
+  api_key_env?: string | null;
+  key_status: 'configured' | 'missing' | 'unknown';
+  api_family?: string | null;
+  api_family_version?: string | null;
+  probed: boolean;
+  probed_max_context: number | null;
+  probed_tpm?: number | null;
+  probed_rpm?: number | null;
+  supports_temperature?: boolean | null;
+  probe_timestamp?: string | null;
+}
+
+export interface ProvidersResponse {
+  providers: ProviderSummary[];
+}
+
+export interface UsageModelSummary {
+  provider_class: string;
+  model_id: string;
+  call_count: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cost_usd: number;
+}
+
+export interface UsageResponse {
+  models: UsageModelSummary[];
+  total_calls: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cost_usd: number;
+  cache_hits: number;
+  cache_misses: number;
+}
+
+export interface AuditEntry {
+  timestamp?: string;
+  ts?: string;
+  event_type?: string;
+  action?: string;
+  provider_class?: string;
+  provider_kind?: string;
+  model_id?: string;
+  prompt_name?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  cost_usd?: number | null;
+  cost_confidence?: string;
+  execution_origin?: string;
+  note?: string;
+  files_sent?: string | number;
+  file_count?: number;
+  files?: unknown;
+  [key: string]: unknown;
+}
+
+export interface AuditResponse {
+  entries: AuditEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+  page: number;
+  has_more: boolean;
+  next_cursor?: string | null;
+  fields?: string[] | null;
 }
 
 export async function getConfig(
@@ -69,4 +152,37 @@ export async function getInstallTargets(
 ): Promise<InstallTargetsResponse> {
   const raw = await apiFetch<unknown>('/api/install/targets', opts);
   return parseResponse('GET /api/install/targets', installTargetsResponseSchema, raw);
+}
+
+export async function getProviders(
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<ProvidersResponse> {
+  const raw = await apiFetch<unknown>('/api/providers', opts);
+  return parseResponse('GET /api/providers', providersResponseSchema, raw);
+}
+
+export async function getUsage(
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<UsageResponse> {
+  const raw = await apiFetch<unknown>('/api/usage', opts);
+  return parseResponse('GET /api/usage', usageResponseSchema, raw);
+}
+
+export async function getAudit(
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<AuditResponse> {
+  const raw = await apiFetch<unknown>('/api/audit?limit=20', opts);
+  return parseResponse('GET /api/audit', auditResponseSchema, raw);
+}
+
+export async function putConfig(
+  body: Record<string, unknown>,
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<ConfigUpdateResponse> {
+  const raw = await apiFetch<unknown>('/api/config', {
+    method: 'PUT',
+    body: JSON.stringify(body),
+    signal: opts?.signal,
+  });
+  return parseResponse('PUT /api/config', configUpdateResponseSchema, raw);
 }

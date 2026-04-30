@@ -3,7 +3,7 @@
 > Tested 2026-04-27 against `ahadiff serve --no-browser` (auto-bound to port 8765)
 > Route-count convention: this live baseline has 21 explicit business `/api` routes + `/healthz` = 22 concrete endpoints. The Starlette catchall `/api/{rest_of_path:path}` is an error handler route and is not counted as a business endpoint.
 
-> Current status note (2026-04-30): This document only records the 2026-04-27 live
+> Current status note (2026-05-01): This document only records the 2026-04-27 live
 > snapshot. Current code now has `POST /api/learn`, `/api/tasks*`
 > status/progress/cancel routes, `GET /api/graph/status`,
 > `GET /api/graph/concepts`, `GET /api/watch/status`, and a larger route
@@ -12,8 +12,8 @@
 > uncommitted branch is: full pytest `1526 passed, 1 skipped`; `ruff check`
 > pass; full-tree `ruff format --check` pass; `pyright` reports
 > `0 errors, 0 warnings, 0 informations`; frontend `typecheck` / `lint` / unit
-> / build / Playwright pass, with unit `16 passed` and Playwright
-> `1035 passed`. Coverage gate, wheel build, `uv lock --check`, and live judge
+> / build / Playwright pass, with unit `18 passed` and Playwright
+> `1125 passed`. Coverage gate, wheel build, `uv lock --check`, and live judge
 > were not rerun in this follow-up. Task status payloads now also carry runtime
 > fields like `error_code` and `elapsed_seconds`. `/api/graph/status` 当前返回的
 > `source_path` 也已经是 imported `.ahadiff/graphify/graph.json` 相对路径，不再
