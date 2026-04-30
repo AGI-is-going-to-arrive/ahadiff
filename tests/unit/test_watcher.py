@@ -388,6 +388,72 @@ class TestFileWatcherStartStop:
             with pytest.raises(ConfigError, match="did not stop cleanly"):
                 watcher.start()
 
+    def test_dead_observer_is_not_reported_as_running_and_can_restart(self, tmp_path: Path) -> None:
+        class _DeadObserver:
+            def is_alive(self) -> bool:
+                return False
+
+        started_observers: list[object] = []
+
+        class _FakeObserver:
+            def schedule(self, *args: object, **kwargs: object) -> None:
+                del args, kwargs
+
+            def start(self) -> None:
+                started_observers.append(self)
+
+            def stop(self) -> None:
+                return None
+
+            def join(self, timeout: float | None = None) -> None:
+                del timeout
+
+            def is_alive(self) -> bool:
+                return False
+
+        def _fake_import_module(name: str) -> SimpleNamespace:
+            if name == "watchdog.events":
+                return SimpleNamespace(FileSystemEventHandler=object)
+            if name == "watchdog.observers":
+                return SimpleNamespace(Observer=_FakeObserver)
+            raise AssertionError(f"unexpected module import: {name}")
+
+        with (
+            patch("ahadiff.core.watcher.is_watchdog_available", return_value=True),
+            patch("ahadiff.core.watcher.importlib.import_module", _fake_import_module),
+        ):
+            watcher = FileWatcher(tmp_path, on_change=lambda _: None)
+            watcher._observer = _DeadObserver()
+
+            status = watcher.status()
+            assert status["running"] is False
+            assert status["restartable"] is True
+            assert status["stop_timed_out"] is False
+
+            watcher.start()
+            assert len(started_observers) == 1
+            watcher.stop()
+
+    def test_cli_stop_status_does_not_report_timeout_as_clean_stop(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        messages: list[str] = []
+
+        class _Console:
+            def print(self, message: str) -> None:
+                messages.append(message)
+
+        monkeypatch.setattr(cli_module, "console", _Console())
+
+        cli_module._print_watcher_stop_status(
+            SimpleNamespace(status=lambda: {"stop_timed_out": True})
+        )
+
+        assert messages == [
+            "[yellow]Watcher stop timed out; observer may still be running[/yellow]"
+        ]
+
 
 class TestWatchLearnRunner:
     def test_retriggers_after_change_queued_during_run(self) -> None:

@@ -831,6 +831,62 @@ def test_cancellation_cleanup_runs_inside_repo_write_lock(
     assert cleanup_lock_state == [True]
 
 
+def test_failed_lesson_artifact_cleanup_runs_inside_repo_write_lock(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    import ahadiff.core.orchestrator as orchestrator_module
+
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    _patch_learnability(monkeypatch, score=0.7)
+
+    lock_held = False
+    cleanup_lock_state: list[bool] = []
+    run_path = fake_repo / ".ahadiff" / "runs" / capture.run_id
+
+    @contextmanager
+    def _tracked_repo_write_lock(path: Path, command: str = "") -> Generator[None]:
+        del path, command
+        nonlocal lock_held
+        lock_held = True
+        try:
+            yield None
+        finally:
+            lock_held = False
+
+    original_cleanup = cast(
+        "Callable[..., None]",
+        vars(orchestrator_module)["_cleanup_lesson_generation_artifacts"],
+    )
+
+    def _tracked_cleanup(*args: object, **kwargs: object) -> None:
+        cleanup_lock_state.append(lock_held)
+        original_cleanup(*args, **kwargs)
+
+    def _fail_generate_lessons(**kwargs: object) -> None:
+        del kwargs
+        (run_path / "lesson").mkdir(parents=True, exist_ok=True)
+        (run_path / "lesson" / "partial.md").write_text("partial\n", encoding="utf-8")
+        raise RuntimeError("lesson interrupted")
+
+    _patch_completed_pipeline(monkeypatch, fake_repo, capture)
+    monkeypatch.setattr(f"{_GIT_REPO}.repo_write_lock", _tracked_repo_write_lock)
+    monkeypatch.setattr(f"{_ORCH}._cleanup_lesson_generation_artifacts", _tracked_cleanup)
+    monkeypatch.setattr(
+        "ahadiff.lesson.generator.generate_lessons_from_run",
+        _fail_generate_lessons,
+    )
+
+    with pytest.raises(AhaDiffError, match="lesson generation failed"):
+        run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
+
+    assert cleanup_lock_state == [True]
+    assert not (run_path / "claims.raw.jsonl").exists()
+    assert not (run_path / "claims.jsonl").exists()
+    assert not (run_path / "lesson").exists()
+
+
 def test_cancellation_after_append_concepts_commits_published_run(
     monkeypatch: pytest.MonkeyPatch,
     fake_repo: Path,
@@ -911,6 +967,44 @@ def test_cancellation_after_append_concepts_failure_keeps_published_run(
 
     assert result.status == "keep"
     assert result.warnings == ["concepts append failed: concept sync failed"]
+    assert finalized_path.exists()
+    assert score_path.exists()
+    assert run_path.exists()
+
+
+def test_append_concepts_contract_error_after_publish_keeps_published_run(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    _patch_learnability(monkeypatch, score=0.7)
+
+    run_path = fake_repo / ".ahadiff" / "runs" / capture.run_id
+    finalized_path = run_path / "finalized.json"
+    score_path = run_path / "score.json"
+
+    def _persist(current_run_path: Path) -> None:
+        current_run_path.mkdir(parents=True, exist_ok=True)
+        finalized_path.write_text("{}\n", encoding="utf-8")
+        score_path.write_text("{}\n", encoding="utf-8")
+
+    def _append_concepts(**kwargs: object) -> Path:
+        del kwargs
+        raise AhaDiffError("cancelled")
+
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        on_persist=_persist,
+    )
+    monkeypatch.setattr("ahadiff.wiki.concepts.append_concepts", _append_concepts)
+
+    result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
+
+    assert result.status == "keep"
+    assert result.warnings == ["concepts append failed: cancelled"]
     assert finalized_path.exists()
     assert score_path.exists()
     assert run_path.exists()

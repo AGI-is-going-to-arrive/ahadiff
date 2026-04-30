@@ -1917,6 +1917,14 @@ class _WatchLearnRunner:
                 self._retrigger_pending = False
 
 
+def _print_watcher_stop_status(watcher: Any) -> None:
+    status = watcher.status()
+    if bool(status.get("stop_timed_out")):
+        console.print("[yellow]Watcher stop timed out; observer may still be running[/yellow]")
+        return
+    console.print("[green]Watcher stopped[/green]")
+
+
 @_APP.command("watch")
 def watch_cmd(
     repo_root: Annotated[
@@ -1975,7 +1983,7 @@ def watch_cmd(
         finally:
             runner.stop()
             watcher.stop()
-            console.print("[green]Watcher stopped[/green]")
+            _print_watcher_stop_status(watcher)
     except Exception as error:
         _handle_cli_error(error)
 

@@ -27,6 +27,7 @@ from ahadiff.review.database import (
     load_result_event_by_run_and_id,
     load_result_events_page,
     sync_result_event,
+    upsert_concept,
 )
 from ahadiff.serve import ServeState, create_app
 
@@ -1606,9 +1607,79 @@ def test_concepts_route_supports_limit_and_cursor(tmp_path: Path) -> None:
         "term-0",
         "term-1",
     ]
-    assert first["next_cursor"] == "3"
+    assert first["next_cursor"] == "jsonl:3"
     assert [json.loads(line)["term_key"] for line in second["content"].splitlines()] == ["term-2"]
     assert "next_cursor" not in second
+
+
+def test_concepts_route_reads_db_backed_storage_without_jsonl(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    for index in range(3):
+        upsert_concept(
+            db_path,
+            term_key=f"db-term-{index}",
+            concept=f"db term {index}",
+            run_id="run-a",
+            source_ref="abc123",
+            branch_hint=None,
+            related_claims=(),
+            file_refs=(),
+        )
+    client = _client(state_dir)
+
+    first = client.get("/api/concepts?limit=2").json()
+    second = client.get(f"/api/concepts?limit=2&cursor={first['next_cursor']}").json()
+
+    assert [json.loads(line)["term_key"] for line in first["content"].splitlines()] == [
+        "db-term-0",
+        "db-term-1",
+    ]
+    assert first["next_cursor"] == "db:db-term-1"
+    assert [json.loads(line)["term_key"] for line in second["content"].splitlines()] == [
+        "db-term-2"
+    ]
+    assert "next_cursor" not in second
+
+
+def test_concepts_route_reparse_jsonl_uses_db_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    upsert_concept(
+        db_path,
+        term_key="db-only",
+        concept="db only",
+        run_id="run-a",
+        source_ref="abc123",
+        branch_hint=None,
+        related_claims=(),
+        file_refs=(),
+    )
+    (state_dir / "concepts.jsonl").write_text(
+        json.dumps({"term_key": "blocked-jsonl", "concept": "blocked"}) + "\n",
+        encoding="utf-8",
+    )
+
+    def _is_reparse(path_stat: object) -> bool:
+        del path_stat
+        return True
+
+    monkeypatch.setattr(routes_runs_module, "_has_windows_reparse_point", _is_reparse)
+    monkeypatch.setattr("ahadiff.core.paths._has_windows_reparse_point", _is_reparse)
+    client = _client(state_dir)
+
+    response = client.get("/api/concepts")
+
+    assert response.status_code == 200
+    entries = [json.loads(line) for line in response.json()["content"].splitlines()]
+    assert [entry["term_key"] for entry in entries] == ["db-only"]
 
 
 def test_run_routes_use_anyio_threadpool_for_file_io(

@@ -96,7 +96,19 @@ class FileWatcher:
 
     @property
     def is_running(self) -> bool:
-        return self._observer is not None and not self._stopped.is_set()
+        observer = self._observer
+        return (
+            observer is not None
+            and not self._stopped.is_set()
+            and self._observer_is_alive(observer)
+        )
+
+    @staticmethod
+    def _observer_is_alive(observer: Any) -> bool:
+        try:
+            return bool(observer.is_alive())
+        except Exception:
+            return True
 
     def _should_ignore(self, path: str) -> bool:
         try:
@@ -119,12 +131,16 @@ class FileWatcher:
     def start(self) -> None:
         with self._lifecycle_lock:
             if self._observer is not None:
-                if self._stop_timed_out:
-                    raise ConfigError(
-                        "previous watcher did not stop cleanly; create a new FileWatcher instance"
-                    )
-                raise ConfigError("watcher is already running")
-
+                if not self._observer_is_alive(self._observer):
+                    self._observer = None
+                    self._stop_timed_out = False
+                else:
+                    if self._stop_timed_out:
+                        raise ConfigError(
+                            "previous watcher did not stop cleanly; "
+                            "create a new FileWatcher instance"
+                        )
+                    raise ConfigError("watcher is already running")
             events_module = cast("Any", importlib.import_module("watchdog.events"))
             observers_module = cast("Any", importlib.import_module("watchdog.observers"))
             file_system_event_handler: type[Any] = events_module.FileSystemEventHandler
@@ -237,12 +253,14 @@ class FileWatcher:
             self._callback_gate.release()
 
     def status(self) -> dict[str, object]:
+        observer = self._observer
+        observer_alive = observer is not None and self._observer_is_alive(observer)
         with self._lock:
             return {
                 "running": self.is_running,
                 "last_trigger_time": self._last_trigger_time,
                 "pending_changes": len(self._pending_paths),
-                "restartable": self._observer is None,
+                "restartable": observer is None or not observer_alive,
                 "stop_timed_out": self._stop_timed_out,
             }
 

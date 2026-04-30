@@ -19,7 +19,7 @@ _FTS_TOKEN_RE = re.compile(r"\w+", re.UNICODE)
 
 @dataclass(frozen=True)
 class SearchResult:
-    source_table: str  # "concepts" | "result_events" | "cards"
+    source_table: str  # "concepts" | "result_events" | "cards" | "graph_nodes"
     primary_key: str
     snippet: str
     rank: float
@@ -32,7 +32,7 @@ def search_all(
     limit: int = 50,
     tables: Sequence[str] | None = None,
 ) -> tuple[SearchResult, ...]:
-    """Search across FTS5 indexes. Returns results ranked by relevance."""
+    """Internal FTS helper. Raw SQLite FTS rank is lower-is-better."""
     if not query or not query.strip():
         return ()
     if len(query) > _FTS_MAX_QUERY_LENGTH:
@@ -65,7 +65,7 @@ def search_all(
                 raise StorageError(f"FTS search failed for {fts_table}: {exc}") from exc
             results.extend(rows)
 
-    results.sort(key=lambda r: r.rank)
+    results.sort(key=lambda r: (r.rank, r.source_table, r.primary_key))
     return tuple(results[:limit])
 
 
@@ -102,7 +102,7 @@ def _search_fts_table(
         SELECT {pk_col}, snippet({fts_table}, {snippet_column}, '<b>', '</b>', '...', 32), rank
         FROM {fts_table}
         WHERE {fts_table} MATCH ?
-        ORDER BY rank
+        ORDER BY rank, {pk_col} ASC
         LIMIT ?
         """,
         (query, limit),
@@ -165,7 +165,7 @@ def search_all_with_graph(
                 )
             )
 
-    merged.sort(key=lambda r: r.rank, reverse=True)
+    merged.sort(key=lambda r: (-r.rank, r.source_table, r.primary_key))
     return tuple(merged[:limit])
 
 

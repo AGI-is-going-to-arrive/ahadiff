@@ -16,6 +16,8 @@ _MAX_VISIBLE_CONCEPTS_BYTES = 10 * 1024 * 1024
 _MAX_ANCESTRY_CHECKS = 200
 _EXPORT_CONCEPTS_BATCH_SIZE = 1000
 _SHORT_SHA_RE = re.compile(r"[0-9a-fA-F]{4,39}")
+_DB_CURSOR_PREFIX = "db:"
+_JSONL_CURSOR_PREFIX = "jsonl:"
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -214,6 +216,19 @@ def load_concepts_page_from_storage(
     db_path = state_dir / "review.sqlite"
     concepts_path = state_dir / "concepts.jsonl"
     jsonl_readable = _concepts_jsonl_readable(concepts_path, max_bytes=max_bytes)
+    cursor_kind, cursor_value = _decode_storage_cursor(cursor)
+    if cursor_kind == "jsonl":
+        if not jsonl_readable:
+            return ConceptPage(entries=(), next_cursor=None)
+        return _prefix_concepts_cursor(
+            load_concepts_page(
+                concepts_path,
+                limit=limit,
+                cursor=parse_jsonl_concepts_cursor(cursor_value),
+                max_bytes=max_bytes,
+            ),
+            _JSONL_CURSOR_PREFIX,
+        )
     if db_path.exists():
         try:
             if jsonl_readable:
@@ -222,23 +237,68 @@ def load_concepts_page_from_storage(
                     concepts_path,
                     max_bytes=max_bytes,
                 )
-            page = load_concepts_page_from_db(db_path, limit=limit, cursor=cursor)
+            db_cursor = cursor_value if cursor_kind in {"db", "db_legacy"} else None
+            page = load_concepts_page_from_db(db_path, limit=limit, cursor=db_cursor)
         except InputError:
             raise
         except Exception:
+            if cursor_kind in {"db", "db_legacy"} and jsonl_readable:
+                return _load_concepts_page_from_jsonl_after_term_key(
+                    concepts_path,
+                    after_term_key=str(cursor_value),
+                    limit=limit,
+                    max_bytes=max_bytes,
+                    legacy_cursor=cursor_kind == "db_legacy",
+                )
             if not jsonl_readable:
                 raise
         else:
-            if page.entries or cursor is not None or not jsonl_readable:
-                return page
+            if page.entries or cursor_kind in {"db", "db_legacy"} or not jsonl_readable:
+                return _prefix_concepts_cursor(page, _DB_CURSOR_PREFIX)
     if not jsonl_readable:
         return ConceptPage(entries=(), next_cursor=None)
-    return load_concepts_page(
-        concepts_path,
-        limit=limit,
-        cursor=parse_jsonl_concepts_cursor(cursor),
-        max_bytes=max_bytes,
+    if cursor_kind in {"db", "db_legacy"}:
+        return _load_concepts_page_from_jsonl_after_term_key(
+            concepts_path,
+            after_term_key=str(cursor_value),
+            limit=limit,
+            max_bytes=max_bytes,
+            legacy_cursor=cursor_kind == "db_legacy",
+        )
+    return _prefix_concepts_cursor(
+        load_concepts_page(
+            concepts_path,
+            limit=limit,
+            cursor=0,
+            max_bytes=max_bytes,
+        ),
+        _JSONL_CURSOR_PREFIX,
     )
+
+
+def _prefix_concepts_cursor(page: ConceptPage, prefix: str) -> ConceptPage:
+    if page.next_cursor is None:
+        return page
+    return ConceptPage(entries=page.entries, next_cursor=f"{prefix}{page.next_cursor}")
+
+
+def _decode_storage_cursor(cursor: str | None) -> tuple[str | None, str | None]:
+    if cursor is None:
+        return None, None
+    if cursor.startswith(_JSONL_CURSOR_PREFIX):
+        value = cursor.removeprefix(_JSONL_CURSOR_PREFIX)
+        return "jsonl", str(parse_jsonl_concepts_cursor(value))
+    if cursor.startswith(_DB_CURSOR_PREFIX):
+        value = cursor.removeprefix(_DB_CURSOR_PREFIX)
+        if not value:
+            raise InputError("concepts DB cursor must include a term key")
+        return "db", value
+    try:
+        return "jsonl", str(parse_jsonl_concepts_cursor(cursor))
+    except InputError:
+        if not cursor.strip():
+            raise
+        return "db_legacy", cursor
 
 
 def parse_jsonl_concepts_cursor(cursor: str | None) -> int:
@@ -251,6 +311,44 @@ def parse_jsonl_concepts_cursor(cursor: str | None) -> int:
     if value < 0:
         raise InputError("concepts JSONL cursor must be >= 0")
     return value
+
+
+def _load_concepts_page_from_jsonl_after_term_key(
+    path: Path,
+    *,
+    after_term_key: str,
+    limit: int,
+    max_bytes: int | None = None,
+    legacy_cursor: bool = False,
+) -> ConceptPage:
+    if limit < 1:
+        raise InputError("concepts page limit must be >= 1")
+    entries: list[dict[str, Any]] = []
+    saw_cursor = False
+    next_cursor: str | None = None
+    last_returned: str | None = None
+    for _line_index, entry in _iter_jsonl_entries_with_offsets(path, max_bytes=max_bytes):
+        term_key = entry.get("term_key")
+        if not isinstance(term_key, str):
+            continue
+        if term_key == after_term_key:
+            saw_cursor = True
+            continue
+        if term_key <= after_term_key:
+            continue
+        if len(entries) >= limit:
+            next_cursor = last_returned
+            break
+        entries.append(entry)
+        last_returned = term_key
+    if not saw_cursor:
+        if legacy_cursor:
+            raise InputError("concepts JSONL cursor must be an integer")
+        raise InputError("concepts DB cursor is not compatible with JSONL fallback")
+    return _prefix_concepts_cursor(
+        ConceptPage(entries=tuple(entries), next_cursor=next_cursor),
+        _DB_CURSOR_PREFIX,
+    )
 
 
 def compute_term_key(value: str) -> str:

@@ -32,7 +32,8 @@ from ahadiff.review.database import (
     load_result_events_page,
 )
 from ahadiff.wiki.concepts import (
-    load_concepts_page,
+    load_concepts_page_from_db,
+    load_concepts_page_from_storage,
     load_visible_concepts,
     parse_jsonl_concepts_cursor,
 )
@@ -308,25 +309,30 @@ def _run_detail_payload(
 
 def _concepts_payload(state_dir: Path, limit: int, cursor: str | None) -> dict[str, Any]:
     concepts_path = state_dir / "concepts.jsonl"
-    if (
-        concepts_path.exists()
-        and not concepts_path.is_symlink()
-        and concepts_path.stat().st_size > _MAX_TEXT_ARTIFACT_BYTES
-    ):
+    db_path = state_dir / "review.sqlite"
+    concepts_stat, concepts_blocked = _concepts_jsonl_leaf_stat(concepts_path)
+    if concepts_stat is not None and concepts_stat.st_size > _MAX_TEXT_ARTIFACT_BYTES:
         raise HTTPException(status_code=413, detail="concepts.jsonl exceeds size limit")
-    if concepts_path.is_symlink():
+    if concepts_blocked and not db_path.exists():
         return {"artifact_type": "concepts", "content": ""}
-    offset = parse_jsonl_concepts_cursor(cursor)
     if not (state_dir.parent / ".git").exists():
-        page = load_concepts_page(
-            concepts_path,
-            limit=limit,
-            cursor=offset,
-            max_bytes=_MAX_TEXT_ARTIFACT_BYTES,
-        )
+        if concepts_blocked:
+            page = load_concepts_page_from_db(
+                db_path,
+                limit=limit,
+                cursor=_db_cursor_from_storage_cursor(cursor),
+            )
+        else:
+            page = load_concepts_page_from_storage(
+                state_dir,
+                limit=limit,
+                cursor=cursor,
+                max_bytes=_MAX_TEXT_ARTIFACT_BYTES,
+            )
         page_entries = page.entries
         next_cursor = page.next_cursor
     else:
+        offset = parse_jsonl_concepts_cursor(cursor)
         visible_concepts = load_visible_concepts(workspace_root=state_dir.parent)
         page_entries = visible_concepts[offset : offset + limit]
         next_cursor = None
@@ -337,6 +343,35 @@ def _concepts_payload(state_dir: Path, limit: int, cursor: str | None) -> dict[s
     if next_cursor is not None:
         payload["next_cursor"] = next_cursor
     return payload
+
+
+def _concepts_jsonl_leaf_stat(path: Path) -> tuple[os.stat_result | None, bool]:
+    try:
+        path_stat = os.lstat(path)
+    except FileNotFoundError:
+        return None, False
+    except OSError as exc:
+        raise InputError("concepts.jsonl is unreadable") from exc
+    if stat.S_ISLNK(path_stat.st_mode) or _has_windows_reparse_point(path_stat):
+        return None, True
+    return path_stat, False
+
+
+def _db_cursor_from_storage_cursor(cursor: str | None) -> str | None:
+    if cursor is None:
+        return None
+    if cursor.startswith("db:"):
+        value = cursor.removeprefix("db:")
+        if not value:
+            raise InputError("concepts DB cursor must include a term key")
+        return value
+    if cursor.startswith("jsonl:"):
+        raise InputError("concepts JSONL cursor cannot be used when concepts.jsonl is blocked")
+    try:
+        parse_jsonl_concepts_cursor(cursor)
+    except InputError:
+        return cursor
+    raise InputError("concepts JSONL cursor cannot be used when concepts.jsonl is blocked")
 
 
 def _ratchet_history_payload(

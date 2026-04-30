@@ -488,6 +488,82 @@ def test_search_all_with_graph_respects_table_filter(tmp_path: Path) -> None:
     assert not any(r.source_table == "graph_nodes" for r in results)
 
 
+def test_search_all_with_graph_uses_stable_descending_rank_order(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ahadiff.graphify.search import GraphSearchResult
+
+    def fake_search_graph_nodes(
+        graph: object,
+        query: str,
+        *,
+        limit: int = 20,
+    ) -> tuple[GraphSearchResult, ...]:
+        del graph, query, limit
+        return (
+            GraphSearchResult("node-b", "same score b", None, None, 0.5),
+            GraphSearchResult("node-a", "same score a", None, None, 0.5),
+        )
+
+    monkeypatch.setattr("ahadiff.graphify.search.search_graph_nodes", fake_search_graph_nodes)
+
+    results = search_all_with_graph(
+        tmp_path / "missing.sqlite",
+        "same score",
+        tables=("graph_nodes",),
+        graph=object(),
+    )
+
+    assert [r.primary_key for r in results] == ["node-a", "node-b"]
+    assert [r.rank for r in results] == sorted((r.rank for r in results), reverse=True)
+
+
+def test_route_search_returns_public_rank_descending_order(tmp_path: Path) -> None:
+    from starlette.testclient import TestClient
+
+    from ahadiff.serve import ServeState, create_app
+
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    db = state_dir / "review.sqlite"
+    initialize_review_db(db)
+    upsert_concept(
+        db,
+        term_key="task-timeout",
+        concept="Task timeout handling",
+        run_id="r1",
+        source_ref="abc",
+        branch_hint=None,
+        related_claims=(),
+        file_refs=(),
+    )
+    upsert_concept(
+        db,
+        term_key="task-runner",
+        concept="Task runner",
+        run_id="r1",
+        source_ref="abc",
+        branch_hint=None,
+        related_claims=(),
+        file_refs=(),
+    )
+    app = create_app(ServeState(state_dir=state_dir, token="test-token", locale="en"))
+    client = TestClient(app, base_url="http://localhost:8765")
+
+    response = client.get(
+        "/api/search?q=task timeout&tables=concepts",
+        headers={"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"},
+    )
+
+    assert response.status_code == 200
+    results = response.json()["results"]
+    assert len(results) >= 2
+    ranks = [item["rank"] for item in results]
+    assert ranks == sorted(ranks, reverse=True)
+    assert results[0]["primary_key"] == "task-timeout"
+
+
 def test_route_search_loads_imported_graph_artifact(tmp_path: Path) -> None:
     from starlette.testclient import TestClient
 

@@ -18,7 +18,7 @@
 - 一份每条结论都可回溯的 **断言清单**（Claims）
 - 一条可比较的 **质量评分历史**（Ratchet，`review.sqlite` 为唯一真相源，`results.tsv` 为导出视图）
 
-Stage 0 / Task 0 到 Stage 6 主线现在都已经有实际产物，Stage 7 的 i18n signoff 也已通过。当前代码已经能稳定产出 Lesson / Claims / Quiz / Misconception Cards / Cards / Score / Ratchet；review 流的 SRS runtime、serve backend、install targets、GitHub Action 模板、benchmark suite、improve loop core、Task 17 targeted verification、Phase 2.5 runtime、i18n-0 后端以及前端 `viewer/` React SPA 都已落地。前端 v0.1 阶段落地 Dashboard / Lesson / Diff / Quiz / ConceptGraph 五页并经 R1-R5 五轮跨模型对抗审查（51 项 real findings 修复）。v0.2 后端 Gate 0-6 + 前端 Phase 1-4 已全部通过审查；当前分支又补上了 section-level helpfulness / learning transfer、misconception cards、Graphify 后端基础与部分深一层能力（parser / matcher / linker / slicer / search / freshness / `/api/graph/status`，仍是 backend-only partial，不是完整 Graphify provenance / UI integration）、watch mode（`ahadiff watch` / `serve --watch` / `/api/watch/status`）、中层 serve API（`/api/search`、`/api/usage`、`/api/audit`、`/api/review/mastery`、`/api/concepts/weak`、`/api/spec/alignment`、`/api/stats/learning`）、低层 task status surface，以及 repo 级 CI/CD gate（PR unit+pinned + Windows runtime guard + nightly-eval + release coverage gate）。本轮又收口了 serve token bootstrap、thread-backed learn 取消/退出、DTO 空 ID 拒绝、FSRS 非有限数拒绝、proxy trace header 拒绝这些后端边界。前端仍是 12 页面 ~30 组件，i18n 201/201 key parity，780 Playwright 测试全绿，最新 `pnpm run build` 产物为 302.83 KB（gzip 92.67 KB）。
+Stage 0 / Task 0 到 Stage 6 主线现在都已经有实际产物，Stage 7 的 i18n signoff 也已通过。当前代码已经能稳定产出 Lesson / Claims / Quiz / Misconception Cards / Cards / Score / Ratchet；review 流的 SRS runtime、serve backend、install targets、GitHub Action 模板、benchmark suite、improve loop core、Task 17 targeted verification、Phase 2.5 runtime、i18n-0 后端以及前端 `viewer/` React SPA 都已落地。前端 v0.1 阶段落地 Dashboard / Lesson / Diff / Quiz / ConceptGraph 五页并经 R1-R5 五轮跨模型对抗审查（51 项 real findings 修复）。v0.2 后端 Gate 0-6 + 前端 Phase 1-4 已全部通过审查；当前分支又补上了 section-level helpfulness / learning transfer、misconception cards、Graphify 后端基础与部分深一层能力（parser / matcher / linker / slicer / search / freshness / `/api/graph/status`，仍是 backend-only partial，不是完整 Graphify provenance / UI integration）、watch mode（`ahadiff watch` / `serve --watch` / `/api/watch/status`）、中层 serve API（`/api/search`、`/api/usage`、`/api/audit`、`/api/review/mastery`、`/api/concepts/weak`、`/api/spec/alignment`、`/api/stats/learning`）、低层 task status surface，以及 repo 级 CI/CD gate（PR unit+pinned + Windows runtime guard + nightly-eval + release coverage gate）。本轮后端 closure 又收口了 learn 发布边界、watcher restart/status、concepts DB/JSONL cursor、public search rank，以及 auth token bootstrap 的前端前置合约；serve token bootstrap、thread-backed learn 取消/退出、DTO 空 ID 拒绝、FSRS 非有限数拒绝、proxy trace header 拒绝这些边界也仍然成立。前端仍是 12 页面 ~30 组件，i18n 201/201 key parity，780 Playwright 测试全绿，最新 `pnpm run build` 产物为 302.83 KB（gzip 92.67 KB）。
 
 > Code Wiki 解释仓库，知返解释这次改动 —— 而且每一句话都能回到代码证据。
 
@@ -228,7 +228,7 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-最近一次验证（2026-04-30）：`pytest tests -q -p no:cacheprovider` = `1501 passed, 1 skipped`；`ruff check src tests` 通过；本轮 touched files 的 `ruff format --check` 通过；`pyright` = `0 errors, 0 warnings, 0 informations`。全仓 `ruff format --check src tests` 仍有既有 `src/ahadiff/graphify/parser.py` 重排遗留；本轮没有修改该文件。
+最近一次验证（2026-04-30）：`pytest tests -q -p no:cacheprovider` = `1514 passed, 1 skipped`；`ruff check src tests` 通过；本轮 touched files 的 `ruff format --check` 通过；`pyright` = `0 errors, 0 warnings, 0 informations`。全仓 `ruff format --check src tests` 仍有既有 `src/ahadiff/graphify/parser.py` 重排遗留；本轮没有修改该文件。
 
 下一步路线图：
 

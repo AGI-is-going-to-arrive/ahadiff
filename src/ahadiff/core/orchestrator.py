@@ -910,8 +910,6 @@ def run_learn_pipeline(
                             questions=quiz_questions,
                         )
                     except Exception as concept_error:
-                        if isinstance(concept_error, AhaDiffError):
-                            raise
                         learn_warnings.append(f"concepts append failed: {concept_error}")
                     # Step 10 is the commit boundary for published learn results.
                     # Once concepts write starts, late cancellation must not roll back

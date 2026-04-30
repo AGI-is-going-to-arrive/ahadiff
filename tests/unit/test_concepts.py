@@ -9,7 +9,7 @@ import pytest
 import ahadiff.wiki.concepts as concepts_module
 from ahadiff.core.errors import InputError
 from ahadiff.quiz.schemas import QuizEvidence, QuizQuestion
-from ahadiff.review.database import count_concepts, initialize_review_db
+from ahadiff.review.database import count_concepts, initialize_review_db, upsert_concept
 from ahadiff.wiki.concepts import (
     append_concepts,
     compute_term_key,
@@ -269,6 +269,110 @@ def test_load_concepts_page_from_storage_syncs_jsonl_before_db_read(tmp_path: Pa
 
     assert [entry["term_key"] for entry in page.entries] == ["term-0", "term-1"]
     assert count_concepts(db_path) == 2
+
+
+def test_load_concepts_page_from_storage_keeps_jsonl_cursor_on_jsonl_path(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    concepts_path = state_dir / "concepts.jsonl"
+    concepts_path.write_text(
+        "".join(
+            json.dumps({"term_key": f"term-{index}", "concept": f"term {index}"}) + "\n"
+            for index in range(3)
+        ),
+        encoding="utf-8",
+    )
+
+    first = load_concepts_page_from_storage(state_dir, limit=2)
+    initialize_review_db(state_dir / "review.sqlite")
+    second = load_concepts_page_from_storage(state_dir, limit=2, cursor=first.next_cursor)
+
+    assert [entry["term_key"] for entry in first.entries] == ["term-0", "term-1"]
+    assert first.next_cursor == "jsonl:3"
+    assert [entry["term_key"] for entry in second.entries] == ["term-2"]
+    assert second.next_cursor is None
+
+
+def test_load_concepts_page_from_storage_db_cursor_is_stable(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    for index in range(3):
+        upsert_concept(
+            db_path,
+            term_key=f"term-{index}",
+            concept=f"term {index}",
+            run_id="run-a",
+            source_ref="abc123",
+            branch_hint=None,
+            related_claims=(),
+            file_refs=(),
+        )
+
+    first = load_concepts_page_from_storage(state_dir, limit=2)
+    second = load_concepts_page_from_storage(state_dir, limit=2, cursor=first.next_cursor)
+
+    assert [entry["term_key"] for entry in first.entries] == ["term-0", "term-1"]
+    assert first.next_cursor == "db:term-1"
+    assert [entry["term_key"] for entry in second.entries] == ["term-2"]
+    assert second.next_cursor is None
+
+
+def test_load_concepts_page_from_storage_db_cursor_falls_back_to_jsonl(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    (state_dir / "concepts.jsonl").write_text(
+        "".join(
+            json.dumps(
+                {
+                    "term_key": f"term-{index}",
+                    "concept": f"term {index}",
+                    "term": f"term {index}",
+                    "display_name": f"term {index}",
+                    "lang": "en",
+                    "aliases": [],
+                    "source_refs": ["abc123"],
+                    "branch_hint": "main",
+                    "introduced_by_run": "run_a",
+                    "updated_by_runs": ["run_a"],
+                    "related_claims": [],
+                    "file_refs": [],
+                }
+            )
+            + "\n"
+            for index in range(3)
+        ),
+        encoding="utf-8",
+    )
+
+    first = load_concepts_page_from_storage(state_dir, limit=2)
+    db_path.unlink()
+    second = load_concepts_page_from_storage(state_dir, limit=2, cursor=first.next_cursor)
+
+    assert first.next_cursor == "db:term-1"
+    assert [entry["term_key"] for entry in second.entries] == ["term-2"]
+    assert second.next_cursor is None
+
+
+def test_load_concepts_page_from_storage_rejects_unknown_legacy_db_cursor(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "concepts.jsonl").write_text(
+        json.dumps({"term_key": "term-1", "concept": "term 1"}) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(InputError, match="not compatible"):
+        load_concepts_page_from_storage(state_dir, limit=2, cursor="db:missing-term")
 
 
 def test_export_concepts_from_db_paginates_until_exhausted(
