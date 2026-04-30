@@ -2,7 +2,7 @@
 
 > Research date: 2026-04-27 | Graphify commit: HEAD of `safishamsi/graphify` | AhaDiff audit target: working tree on top of `a3deaca` (2026-04-29)
 
-> Current status note (2026-04-29): this document started as a 2026-04-27 compatibility baseline. The current branch now already has real `graph.json` parsing/validation, `links`/`edges` normalization, hyperedge handling, matcher/linker/slicer/search helpers, `/api/search` graph-node merge, and `GET /api/graph/status`. Serve-time consumers now read only the imported artifact `.ahadiff/graphify/graph.json`; raw `graphify-out/graph.json` remains an untrusted source used for detection/import/freshness only.
+> Current status note (2026-04-30): this document started as a 2026-04-27 compatibility baseline. The current branch now already has real `graph.json` parsing/validation, `links`/`edges` normalization, hyperedge handling, matcher/linker/slicer/search helpers, `/api/search` graph-node merge, `GET /api/graph/status`, and `GET /api/graph/concepts`. Serve-time consumers now read only the imported artifact `.ahadiff/graphify/graph.json`; raw `graphify-out/graph.json` remains an untrusted source used for detection/import/freshness only. The new graph concepts endpoint gives the frontend sanitized nodes/edges; full d3-force UI and richer provenance are still pending.
 
 ## 1. Graphify Official Repo Summary
 
@@ -194,6 +194,7 @@ The design plan (`ahadiff-graphify-integration.md` + review) now has these piece
 | Freshness 7-state helper | `graphify/freshness.py` + `git/capture.py` | **YES** | LOW | Repo-aware helper landed with 7→4 projection; richer provenance deferred to v1.1+. |
 | `ahadiff graph status/refresh/import` | `cli.py` | **YES** | LOW | CLI commands exist and use the current runtime wiring |
 | `GET /api/graph/status` | `serve/routes_graph.py` | **YES** | LOW | Returns freshness plus current node/edge counts from imported `.ahadiff/graphify/graph.json`; raw `graphify-out/graph.json` only influences detection/freshness. |
+| `GET /api/graph/concepts` | `serve/routes_graph.py` | **YES** | LOW | Returns sanitized ConceptGraph nodes/edges plus status for frontend consumption; it is not a full Graphify provenance API. |
 
 ### Graphify API Surface Compatibility
 

@@ -1,5 +1,11 @@
 import { apiFetch } from './client';
 import type { ApiFetchOptions } from './client';
+import {
+  configResponseSchema,
+  doctorResponseSchema,
+  installTargetsResponseSchema,
+  parseResponse,
+} from './schemas';
 
 export interface ConfigField {
   key: string;
@@ -20,37 +26,47 @@ export interface DoctorCheck {
   name: string;
   status: 'pass' | 'warn' | 'fail';
   message: string;
+  category?: string;
+  details?: Record<string, unknown>;
 }
 
 export interface DoctorResponse {
+  summary_status?: 'pass' | 'warn' | 'fail';
   checks: DoctorCheck[];
 }
 
 export interface InstallTarget {
   name: string;
+  display_name?: string;
   detected: boolean;
   platform_supported: boolean;
+  status?: 'installed' | 'available' | 'unsupported' | 'error';
   description: string;
+  error_message?: string | null;
 }
 
 export interface InstallTargetsResponse {
   targets: InstallTarget[];
+  total?: number;
 }
 
 export async function getConfig(
   opts?: Pick<ApiFetchOptions, 'signal'>,
 ): Promise<ConfigResponse> {
-  return apiFetch<ConfigResponse>('/api/config', opts);
+  const raw = await apiFetch<unknown>('/api/config', opts);
+  return parseResponse('GET /api/config', configResponseSchema, raw);
 }
 
 export async function getDoctor(
   opts?: Pick<ApiFetchOptions, 'signal'>,
 ): Promise<DoctorResponse> {
-  return apiFetch<DoctorResponse>('/api/doctor', opts);
+  const raw = await apiFetch<unknown>('/api/doctor', opts);
+  return parseResponse('GET /api/doctor', doctorResponseSchema, raw);
 }
 
 export async function getInstallTargets(
   opts?: Pick<ApiFetchOptions, 'signal'>,
 ): Promise<InstallTargetsResponse> {
-  return apiFetch<InstallTargetsResponse>('/api/install/targets', opts);
+  const raw = await apiFetch<unknown>('/api/install/targets', opts);
+  return parseResponse('GET /api/install/targets', installTargetsResponseSchema, raw);
 }

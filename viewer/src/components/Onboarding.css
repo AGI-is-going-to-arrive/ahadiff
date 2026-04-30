@@ -96,11 +96,59 @@
   gap: var(--sp-6, 24px);
 }
 
+/* ---- Phase 4G: Step 4 preview card ----
+ * V6 reference: AhaDiff Warm v6.html L2452-2475 — three-column simulated
+ * "first learn run" panel, used as marketing for what AhaDiff produces
+ * end-to-end. */
+.onboarding__preview {
+  margin-top: var(--sp-6, 24px);
+}
+
+.onboarding__preview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-4, 16px);
+}
+
+.onboarding__preview-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.onboarding__preview-text {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ink-2);
+  margin: 0;
+  white-space: pre-line;
+}
+
+.onboarding__preview-verdict {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.onboarding__preview-verdict .verdict-badge {
+  align-self: flex-start;
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
 /* ---- Responsive ---- */
+@media (max-width: 900px) {
+  .onboarding__preview-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 @media (max-width: 767px) {
   .onboarding__title { font-size: 28px; }
   .stepper { flex-direction: column; }
   .onboarding__grid { grid-template-columns: 1fr; }
+  .onboarding__preview-grid { grid-template-columns: 1fr; }
 }
 
 @media (forced-colors: active) {

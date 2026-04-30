@@ -324,19 +324,19 @@ def test_post_learn_coerces_falsey_bool_strings(
         fake_run_learn_pipeline,
     )
 
-    client = _client(tmp_path)
-    resp = _post_learn(
-        client,
-        body={
-            "dry_run": "false",
-            "force_learn": "0",
-            "last": "true",
-            "use_graphify": "false",
-        },
-    )
-    assert resp.status_code == 202
+    with _client(tmp_path) as client:
+        resp = _post_learn(
+            client,
+            body={
+                "dry_run": "false",
+                "force_learn": "0",
+                "last": "true",
+                "use_graphify": "false",
+            },
+        )
+        assert resp.status_code == 202
 
-    info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
+        info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
     assert info["result"] is not None
     assert captured == {
         "dry_run": False,
@@ -370,11 +370,11 @@ def test_post_learn_coerces_path_pair_fields(
         fake_run_learn_pipeline,
     )
 
-    client = _client(tmp_path)
-    resp = _post_learn(client, body={field: list(expected)})
-    assert resp.status_code == 202
+    with _client(tmp_path) as client:
+        resp = _post_learn(client, body={field: list(expected)})
+        assert resp.status_code == 202
 
-    info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
+        info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
     assert info["result"] is not None
     pair = captured[field]
     assert isinstance(pair, tuple)
@@ -471,11 +471,11 @@ def test_post_learn_completed_task_preserves_result(
         fake_run_learn_pipeline,
     )
 
-    client = _client(tmp_path)
-    resp = _post_learn(client, body={})
-    assert resp.status_code == 202
+    with _client(tmp_path) as client:
+        resp = _post_learn(client, body={})
+        assert resp.status_code == 202
 
-    info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
+        info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
     assert info["result"] == {
         "run_id": "run-complete",
         "status": "keep",
@@ -504,11 +504,11 @@ def test_completed_task_has_elapsed_seconds(
         fake_run_learn_pipeline,
     )
 
-    client = _client(tmp_path)
-    resp = _post_learn(client, body={})
-    assert resp.status_code == 202
+    with _client(tmp_path) as client:
+        resp = _post_learn(client, body={})
+        assert resp.status_code == 202
 
-    info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
+        info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
     assert "elapsed_seconds" in info
     assert isinstance(info["elapsed_seconds"], float)
     assert info["elapsed_seconds"] >= 0
@@ -526,11 +526,11 @@ def test_failed_task_has_error_code(
         fake_run_learn_pipeline,
     )
 
-    client = _client(tmp_path)
-    resp = _post_learn(client, body={})
-    assert resp.status_code == 202
+    with _client(tmp_path) as client:
+        resp = _post_learn(client, body={})
+        assert resp.status_code == 202
 
-    info = _wait_for_task(client, _task_id_from(resp), expected_status="failed")
+        info = _wait_for_task(client, _task_id_from(resp), expected_status="failed")
     assert info["error_code"] == "claim_error"
     assert "claim" in str(info["error"]).lower()
     assert "elapsed_seconds" in info
@@ -817,11 +817,11 @@ def test_successful_task_error_code_is_none(
         fake_run_learn_pipeline,
     )
 
-    client = _client(tmp_path)
-    resp = _post_learn(client, body={})
-    assert resp.status_code == 202
+    with _client(tmp_path) as client:
+        resp = _post_learn(client, body={})
+        assert resp.status_code == 202
 
-    info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
+        info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
     assert info["error_code"] is None
     assert info["error"] is None
 

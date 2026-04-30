@@ -26,6 +26,8 @@ function extractCookieLocale(req: Request): string {
  * module and breaking React boot.
  */
 export async function installServeMock(page: Page): Promise<void> {
+  // Phase 2H: viewer ensureToken() POSTs to /api/auth/token.
+  // Mock fulfils both POST (default) and GET (legacy compatibility).
   await page.route(
     (url) => url.pathname === '/api/auth/token',
     (route) =>

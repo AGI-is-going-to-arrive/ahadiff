@@ -1,4 +1,5 @@
 import { apiFetch } from './client';
+import { parseResponse, signalResponseSchema } from './schemas';
 import type {
   HelpfulnessPayload,
   MarkWrongPayload,
@@ -7,30 +8,34 @@ import type {
   SrsReviewPayload,
 } from './types';
 
-export function markWrong(payload: MarkWrongPayload): Promise<SignalResponse> {
-  return apiFetch<SignalResponse>('/api/signals/mark-wrong', {
+export async function markWrong(payload: MarkWrongPayload): Promise<SignalResponse> {
+  const raw = await apiFetch<unknown>('/api/signals/mark-wrong', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+  return parseResponse('POST /api/signals/mark-wrong', signalResponseSchema, raw);
 }
 
-export function srsReview(payload: SrsReviewPayload): Promise<SignalResponse> {
-  return apiFetch<SignalResponse>('/api/signals/srs-review', {
+export async function srsReview(payload: SrsReviewPayload): Promise<SignalResponse> {
+  const raw = await apiFetch<unknown>('/api/signals/srs-review', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+  return parseResponse('POST /api/signals/srs-review', signalResponseSchema, raw);
 }
 
-export function quizAnswer(payload: QuizAnswerPayload): Promise<SignalResponse> {
-  return apiFetch<SignalResponse>('/api/signals/quiz-answer', {
+export async function quizAnswer(payload: QuizAnswerPayload): Promise<SignalResponse> {
+  const raw = await apiFetch<unknown>('/api/signals/quiz-answer', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+  return parseResponse('POST /api/signals/quiz-answer', signalResponseSchema, raw);
 }
 
-export function helpfulness(payload: HelpfulnessPayload): Promise<SignalResponse> {
-  return apiFetch<SignalResponse>('/api/signals/helpfulness', {
+export async function helpfulness(payload: HelpfulnessPayload): Promise<SignalResponse> {
+  const raw = await apiFetch<unknown>('/api/signals/helpfulness', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+  return parseResponse('POST /api/signals/helpfulness', signalResponseSchema, raw);
 }

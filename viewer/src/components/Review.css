@@ -22,13 +22,9 @@
 
 .review__head-left { flex: 1 1 0; }
 
-.review__eyebrow {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
+/* .review__eyebrow rules moved to viewer/src/styles/utility.css so the
+ * five pages that reference the class still get styled when their route
+ * chunk loads in isolation. */
 
 .review__title {
   font-family: var(--font-serif);
@@ -102,7 +98,7 @@
 
 .flashcard__concept {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   letter-spacing: 0.14em;
   color: var(--muted);
   text-transform: uppercase;
@@ -131,7 +127,7 @@
 
 .flashcard__meta {
   margin-top: 10px;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--muted);
 }
 
@@ -141,7 +137,7 @@
   background: var(--accent-softest);
   border: 1px solid var(--danger-hair);
   border-radius: var(--r-sm, 4px);
-  font-size: 11.5px;
+  font-size: 12px;
   font-family: var(--font-mono);
   color: var(--danger);
   line-height: 1.65;
@@ -232,7 +228,7 @@
 
 .srs-btn__interval {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--muted);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -241,7 +237,7 @@
 
 .srs-btn__kbd {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   background: var(--elevated);
   border: 1px solid var(--hair);
   padding: 1px 5px;
@@ -308,29 +304,9 @@
 }
 
 /* ---- Mastery bars ---- */
-.mastery-grid {
-  display: grid;
-  grid-template-columns: 1fr 80px;
-  gap: 8px;
-  row-gap: 10px;
-  font-size: 13px;
-  align-items: center;
-}
-
-.mastery-bar {
-  height: 6px;
-  background: var(--subtle);
-  border-radius: var(--r-full, 999px);
-  overflow: hidden;
-}
-
-.mastery-bar__fill {
-  display: block;
-  height: 100%;
-  background: var(--accent);
-  border-radius: var(--r-full, 999px);
-  transition: width var(--dur-base, 0.25s) var(--ease-out, ease);
-}
+/* Rules now live in viewer/src/styles/utility.css so they are still applied
+ * when RatchetPage (which also uses .mastery-bar) is loaded directly under
+ * route code splitting. Keep this comment as a breadcrumb for the move. */
 
 /* ---- Empty / Complete states ---- */
 .review__empty,

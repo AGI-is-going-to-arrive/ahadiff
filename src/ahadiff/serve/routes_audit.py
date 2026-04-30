@@ -6,8 +6,10 @@ import stat
 from typing import TYPE_CHECKING, Any, cast
 
 from anyio import to_thread
+from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
 
+from ahadiff.contracts.serve_audit import AuditLogResponse
 from ahadiff.core.errors import InputError
 
 if TYPE_CHECKING:
@@ -19,6 +21,21 @@ if TYPE_CHECKING:
 
 _MAX_AUDIT_FILE_BYTES = 10 * 1024 * 1024
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+_AUDIT_FIELD_ALLOWLIST = frozenset(
+    {
+        "timestamp",
+        "ts",
+        "event_type",
+        "action",
+        "model_id",
+        "input_tokens",
+        "output_tokens",
+        "cost_usd",
+        "privacy_mode",
+        "source_ref",
+        "note",
+    }
+)
 
 
 async def get_audit(request: Request) -> JSONResponse:
@@ -28,20 +45,36 @@ async def get_audit(request: Request) -> JSONResponse:
     state: ServeState = serve_state(request)
 
     raw_limit = request.query_params.get("limit", "50")
-    raw_offset = request.query_params.get("offset", "0")
+    raw_page = request.query_params.get("page", "1")
+    raw_offset = request.query_params.get("offset")
+    fields = _parse_audit_fields(request.query_params.get("fields"))
     try:
         limit = min(max(int(raw_limit), 1), 200)
     except (ValueError, TypeError):
         limit = 50
     try:
-        offset = max(int(raw_offset), 0)
+        page = max(int(raw_page), 1)
+    except (ValueError, TypeError):
+        page = 1
+    try:
+        offset = max(int(raw_offset), 0) if raw_offset is not None else (page - 1) * limit
     except (ValueError, TypeError):
         offset = 0
 
     payload = await to_thread.run_sync(
-        lambda: _read_audit_sync(state.state_dir, limit=limit, offset=offset),
+        lambda: _read_audit_sync(state.state_dir, limit=limit, offset=offset, fields=fields),
     )
     return JSONResponse(payload)
+
+
+def _parse_audit_fields(raw_fields: str | None) -> tuple[str, ...] | None:
+    if raw_fields is None or raw_fields.strip() == "":
+        return None
+    fields = tuple(field.strip() for field in raw_fields.split(",") if field.strip())
+    unknown = sorted(set(fields) - _AUDIT_FIELD_ALLOWLIST)
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"unsupported audit fields: {unknown}")
+    return fields
 
 
 def _read_audit_sync(
@@ -49,6 +82,7 @@ def _read_audit_sync(
     *,
     limit: int,
     offset: int,
+    fields: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     from ahadiff.core.json_util import safe_json_loads
     from ahadiff.core.paths import validate_state_path_no_symlinks
@@ -56,12 +90,12 @@ def _read_audit_sync(
     validate_state_path_no_symlinks(state_dir, allow_missing_leaf=False)
     audit_path = state_dir / "audit.jsonl"
     if not audit_path.is_file():
-        return {"entries": [], "total": 0, "limit": limit, "offset": offset}
+        return _audit_response([], total=0, limit=limit, offset=offset, fields=fields)
 
     try:
         text = _read_audit_text(audit_path)
     except OSError:
-        return {"entries": [], "total": 0, "limit": limit, "offset": offset}
+        return _audit_response([], total=0, limit=limit, offset=offset, fields=fields)
 
     page_entries: list[dict[str, Any]] = []
     total = 0
@@ -75,10 +109,35 @@ def _read_audit_sync(
             continue
         if isinstance(parsed, dict):
             if total >= offset and len(page_entries) < limit:
-                page_entries.append(cast("dict[str, Any]", parsed))
+                entry = cast("dict[str, Any]", parsed)
+                if fields is not None:
+                    entry = {field: entry[field] for field in fields if field in entry}
+                page_entries.append(entry)
             total += 1
 
-    return {"entries": page_entries, "total": total, "limit": limit, "offset": offset}
+    return _audit_response(page_entries, total=total, limit=limit, offset=offset, fields=fields)
+
+
+def _audit_response(
+    entries: list[dict[str, Any]],
+    *,
+    total: int,
+    limit: int,
+    offset: int,
+    fields: tuple[str, ...] | None,
+) -> dict[str, Any]:
+    page = (offset // limit) + 1 if limit > 0 else 1
+    has_more = offset + len(entries) < total
+    return AuditLogResponse(
+        entries=entries,
+        total=total,
+        limit=limit,
+        offset=offset,
+        page=page,
+        has_more=has_more,
+        next_cursor=str(offset + len(entries)) if has_more else None,
+        fields=list(fields) if fields is not None else None,
+    ).model_dump(mode="json")
 
 
 def _read_audit_text(path: Path) -> str:

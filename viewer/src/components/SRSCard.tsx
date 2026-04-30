@@ -82,6 +82,7 @@ export default function SRSCard({
   const handleRate = useCallback(
     async (rating: SrsRating) => {
       if (ratingPending) return;
+      if (reviewable && !peekReady) return;
       if (isReviewRating(rating) && (!reviewable || !peekReady || disabledRatings.has(rating))) {
         return;
       }
@@ -101,6 +102,7 @@ export default function SRSCard({
   const isRevealed = phase === 'reveal' || phase === 'rate';
   const isReviewButtonDisabled = (rating: SrsReviewRating) =>
     !reviewable || !peekReady || ratingPending || disabledRatings.has(rating);
+  const isSecondaryButtonDisabled = reviewable ? !peekReady || ratingPending : ratingPending;
 
   return (
     <div className="srs-card">
@@ -209,7 +211,7 @@ export default function SRSCard({
                 <button
                   type="button"
                   className="srs-card__secondary-btn"
-                  disabled={ratingPending}
+                  disabled={isSecondaryButtonDisabled}
                   onClick={() => void handleRate('archive')}
                 >
                   {t('SRS.archive')}
@@ -217,7 +219,7 @@ export default function SRSCard({
                 <button
                   type="button"
                   className="srs-card__secondary-btn"
-                  disabled={ratingPending}
+                  disabled={isSecondaryButtonDisabled}
                   onClick={() => void handleRate('suspend')}
                 >
                   {t('SRS.suspend')}

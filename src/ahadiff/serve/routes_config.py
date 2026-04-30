@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Any, cast
 from anyio import to_thread
 from starlette.responses import JSONResponse
 
+from ahadiff.contracts.serve_doctor import DoctorCheck, DoctorResponse
+
 if TYPE_CHECKING:
     from starlette.requests import Request
 
@@ -86,60 +88,218 @@ def _safe_config_snapshot(state: ServeState) -> dict[str, Any]:
     return result
 
 
-def _run_doctor_checks(state: ServeState) -> list[dict[str, str]]:
-    checks: list[dict[str, str]] = []
+def _doctor_check(
+    name: str,
+    status: str,
+    message: str,
+    *,
+    category: str,
+    details: dict[str, Any] | None = None,
+) -> DoctorCheck:
+    return DoctorCheck(
+        name=name,
+        category=category,
+        status=cast("Any", status),
+        message=message,
+        details=details or {},
+    )
+
+
+def _summary_status(checks: list[DoctorCheck]) -> str:
+    if any(check.status == "fail" for check in checks):
+        return "fail"
+    if any(check.status == "warn" for check in checks):
+        return "warn"
+    return "pass"
+
+
+def _run_doctor_checks(state: ServeState) -> dict[str, Any]:
+    checks: list[DoctorCheck] = []
 
     repo_root = state.state_dir.parent
     ahadiff_dir = repo_root / ".ahadiff"
     checks.append(
-        {
-            "name": "repo_root",
-            "status": "pass" if ahadiff_dir.is_dir() else "fail",
-            "message": ".ahadiff/ exists" if ahadiff_dir.is_dir() else ".ahadiff/ not found",
-        }
+        _doctor_check(
+            "repo_root",
+            "pass" if ahadiff_dir.is_dir() else "fail",
+            ".ahadiff/ exists" if ahadiff_dir.is_dir() else ".ahadiff/ not found",
+            category="paths",
+            details={"path": ".ahadiff"},
+        )
+    )
+    checks.append(
+        _doctor_check(
+            "state_dir_path",
+            "pass" if state.state_dir.is_dir() else "fail",
+            "state directory is accessible"
+            if state.state_dir.is_dir()
+            else "state directory is missing",
+            category="paths",
+            details={"name": state.state_dir.name},
+        )
     )
 
     sqlite_ver = sqlite3.sqlite_version
     checks.append(
-        {
-            "name": "sqlite_version",
-            "status": "pass",
-            "message": f"SQLite {sqlite_ver}",
-        }
+        _doctor_check(
+            "sqlite_version",
+            "pass",
+            f"SQLite {sqlite_ver}",
+            category="runtime",
+        )
+    )
+    checks.append(
+        _doctor_check(
+            "sqlite_runtime_gate",
+            "pass",
+            f"SQLite runtime accepted: {sqlite_ver}",
+            category="runtime",
+        )
     )
 
+    cfg: Any | None = None
     try:
         from ahadiff.core.config import load_config
 
-        load_config(repo_root)
+        cfg = load_config(repo_root)
         checks.append(
-            {
-                "name": "config_valid",
-                "status": "pass",
-                "message": "Config loaded successfully",
-            }
+            _doctor_check(
+                "config_valid",
+                "pass",
+                "Config loaded successfully",
+                category="config",
+            )
         )
     except Exception as exc:
         checks.append(
-            {
-                "name": "config_valid",
-                "status": "fail",
-                "message": f"Config error: {type(exc).__name__}",
-            }
+            _doctor_check(
+                "config_valid",
+                "fail",
+                f"Config error: {type(exc).__name__}",
+                category="config",
+            )
         )
+
+    unknown_keys: list[str] = []
+    sensitive_keys: list[str] = []
+    precedence_conflicts: list[str] = []
+    if cfg is not None:
+        for attr in ("repo_unknown_keys", "global_unknown_keys"):
+            unknown_keys.extend(str(item) for item in getattr(cfg, attr, ()) or ())
+        sensitive_keys.extend(str(item) for item in getattr(cfg, "repo_sensitive_keys", ()) or ())
+        precedence_conflicts.extend(
+            str(item) for item in getattr(cfg, "precedence_conflicts", ()) or ()
+        )
+    checks.append(
+        _doctor_check(
+            "config_unknown_keys",
+            "warn" if unknown_keys else "pass",
+            "Unknown config keys found" if unknown_keys else "No unknown config keys",
+            category="config",
+            details={"count": len(unknown_keys), "keys": unknown_keys[:20]},
+        )
+    )
+    checks.append(
+        _doctor_check(
+            "config_sensitive_keys",
+            "fail" if sensitive_keys else "pass",
+            "Sensitive config keys found" if sensitive_keys else "No sensitive config keys",
+            category="config",
+            details={"count": len(sensitive_keys), "keys": sensitive_keys[:20]},
+        )
+    )
+    checks.append(
+        _doctor_check(
+            "config_precedence_conflicts",
+            "warn" if precedence_conflicts else "pass",
+            "Config precedence conflicts found"
+            if precedence_conflicts
+            else "No config precedence conflicts",
+            category="config",
+            details={"count": len(precedence_conflicts)},
+        )
+    )
 
     review_db = state.state_dir / "review.sqlite"
     checks.append(
-        {
-            "name": "review_db",
-            "status": "pass" if review_db.is_file() else "warn",
-            "message": "review.sqlite present"
-            if review_db.is_file()
-            else "review.sqlite not found",
-        }
+        _doctor_check(
+            "review_db",
+            "pass" if review_db.is_file() else "warn",
+            "review.sqlite present" if review_db.is_file() else "review.sqlite not found",
+            category="storage",
+        )
+    )
+    if review_db.is_file():
+        try:
+            with sqlite3.connect(review_db) as conn:
+                row = conn.execute("PRAGMA quick_check").fetchone()
+            quick_check_ok = row is not None and row[0] == "ok"
+            checks.append(
+                _doctor_check(
+                    "review_db_quick_check",
+                    "pass" if quick_check_ok else "fail",
+                    "review.sqlite quick_check ok"
+                    if quick_check_ok
+                    else "review.sqlite quick_check failed",
+                    category="storage",
+                )
+            )
+        except sqlite3.DatabaseError:
+            checks.append(
+                _doctor_check(
+                    "review_db_quick_check",
+                    "fail",
+                    "review.sqlite quick_check failed",
+                    category="storage",
+                )
+            )
+    else:
+        checks.append(
+            _doctor_check(
+                "review_db_quick_check",
+                "warn",
+                "review.sqlite not found",
+                category="storage",
+            )
+        )
+
+    try:
+        from ahadiff.core.paths import usage_db_path
+
+        usage_db = usage_db_path()
+        checks.append(
+            _doctor_check(
+                "usage_db",
+                "pass" if usage_db.is_file() else "warn",
+                "usage.sqlite present" if usage_db.is_file() else "usage.sqlite not found",
+                category="storage",
+                details={"filename": usage_db.name},
+            )
+        )
+    except Exception:
+        checks.append(
+            _doctor_check(
+                "usage_db",
+                "warn",
+                "usage.sqlite path unavailable",
+                category="storage",
+            )
+        )
+
+    audit_path = state.state_dir / "audit.jsonl"
+    checks.append(
+        _doctor_check(
+            "audit_file",
+            "pass" if audit_path.is_file() else "warn",
+            "audit.jsonl present" if audit_path.is_file() else "audit.jsonl not found",
+            category="storage",
+        )
     )
 
-    return checks
+    return DoctorResponse(
+        summary_status=cast("Any", _summary_status(checks)),
+        checks=checks,
+    ).model_dump(mode="json")
 
 
 async def get_config(request: Request) -> JSONResponse:
@@ -154,8 +314,8 @@ async def get_doctor(request: Request) -> JSONResponse:
     from .auth import serve_state
 
     state: ServeState = serve_state(request)
-    checks = await to_thread.run_sync(_run_doctor_checks, state)
-    return JSONResponse({"checks": checks})
+    payload = await to_thread.run_sync(_run_doctor_checks, state)
+    return JSONResponse(payload)
 
 
 _ALLOWED_CONFIG_LANG = frozenset({"en", "zh-CN"})

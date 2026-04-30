@@ -202,9 +202,35 @@
   text-align: center;
 }
 
+/* ---- Phase 4E: Chart + Heatmap row ----
+ * Pairs the trajectory chart with the 30-day heatmap. 2:1 split keeps the
+ * chart prominent on desktop; collapses to single column at the same
+ * breakpoint as the rest of the dashboard. */
+.dashboard__chart-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(220px, 1fr);
+  gap: var(--sp-4, 16px);
+  align-items: stretch;
+  margin-top: var(--sp-4, 16px);
+}
+
+@media (max-width: 1024px) {
+  .dashboard__chart-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ---- Run list ---- */
 .run-list-section {
   margin-top: 24px;
+}
+
+.run-list-section__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-bottom: 12px;
 }
 
 .run-list-section__title {
@@ -212,7 +238,92 @@
   font-size: 18px;
   font-weight: 500;
   letter-spacing: -0.012em;
-  margin: 0 0 12px;
+  margin: 0;
+}
+
+/* Phase 4E: verdict filter chips. Hover/active styles deliberately mirror
+ * the existing `.verdict-badge--PASS/CAUTION/FAIL` color tokens so the
+ * chips read as a filtered slice of the same vocabulary. */
+.run-list-section__filters {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.verdict-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--subtle);
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast, 0.15s) var(--ease-out, ease),
+    color var(--dur-fast, 0.15s) var(--ease-out, ease),
+    border-color var(--dur-fast, 0.15s) var(--ease-out, ease);
+}
+
+.verdict-chip:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.verdict-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.verdict-chip--active {
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--ink-3, var(--hair-strong, var(--hair)));
+}
+
+.verdict-chip--ALL.verdict-chip--active {
+  border-color: var(--accent);
+}
+
+.verdict-chip--PASS.verdict-chip--active {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.verdict-chip--CAUTION.verdict-chip--active {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.verdict-chip--FAIL.verdict-chip--active {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.verdict-chip__count {
+  font-variant-numeric: tabular-nums;
+  background: var(--paper);
+  border: 1px solid var(--hair);
+  border-radius: 4px;
+  padding: 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+@media (forced-colors: active) {
+  .verdict-chip {
+    border: 1px solid CanvasText;
+  }
+  .verdict-chip--active {
+    border: 2px solid Highlight;
+  }
 }
 
 .run-list {
@@ -226,7 +337,7 @@
   font-weight: 500;
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   padding: 10px 14px;
@@ -259,7 +370,7 @@
 
 .run-list .mono {
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .run-list__link {
@@ -273,40 +384,9 @@
   color: var(--accent-ink);
 }
 
-/* Verdict badges inline */
-.verdict-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  height: 22px;
-  font-size: 11px;
-  font-family: var(--font-mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--hair-strong);
-  background: var(--elevated);
-  color: var(--ink);
-}
-
-.verdict-badge--PASS {
-  background: var(--add-bg);
-  border-color: var(--add-fg);
-  color: var(--add-fg);
-}
-
-.verdict-badge--CAUTION {
-  background: var(--accent-softer);
-  border-color: var(--warning);
-  color: var(--warning);
-}
-
-.verdict-badge--FAIL {
-  background: var(--del-bg);
-  border-color: var(--del-fg);
-  color: var(--del-fg);
-}
+/* Verdict badges moved to viewer/src/styles/utility.css so they stay styled
+ * when /ratchet (which also renders them) is loaded directly under route
+ * code splitting. Forced-colors override stays in forced-colors.css. */
 
 /* ---- Empty / loading states ---- */
 .dashboard__empty {
@@ -336,31 +416,9 @@
   font-size: 18px;
 }
 
-.dashboard__error {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 200px;
-  border: 1px solid var(--danger);
-  border-radius: var(--radius-12);
-  background: var(--subtle);
-  color: var(--danger);
-  font-family: var(--font-sans);
-  font-size: 16px;
-  padding: 24px;
-  text-align: center;
-}
-
-.dashboard__error-banner {
-  padding: 8px 16px;
-  border-radius: var(--radius-8);
-  background: var(--subtle);
-  border: 1px solid var(--danger);
-  color: var(--danger);
-  font-family: var(--font-sans);
-  font-size: 14px;
-  margin-bottom: 16px;
-}
+/* .dashboard__error / .dashboard__error-banner moved to utility.css —
+ * five pages render error states with these classes; centralising keeps
+ * them styled regardless of which lazy chunk loads first. */
 
 /* ---- Reduced motion ---- */
 @media (prefers-reduced-motion: reduce) {
@@ -386,66 +444,41 @@
   padding: var(--sp-4, 16px) 0;
 }
 
-.load-more-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 36px;
-  padding: 0 var(--sp-6, 24px);
-  border-radius: var(--r-md, 8px);
-  font-size: 13px;
-  font-weight: 500;
-  border: 1px solid var(--hair-strong);
-  background: var(--elevated);
-  color: var(--ink);
-  cursor: pointer;
-  transition: all var(--dur-fast, 0.15s) var(--ease-out, ease);
-}
+/* .load-more-btn rules moved to utility.css (also used by RatchetPage). */
 
-.load-more-btn:hover:not(:disabled) {
-  background: var(--accent-softer);
-  border-color: var(--accent-hair);
-  transform: translateY(-1px);
-  box-shadow: var(--sh-md);
-}
-
-.load-more-btn:active:not(:disabled) {
-  transform: translateY(0);
-  transition-duration: 0s;
-}
-
-.load-more-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* ---- Forced colors ---- */
+/* ---- Forced colors ----
+ * .verdict-badge / --PASS / --FAIL forced-colors rules moved to
+ * forced-colors.css (globally loaded) so they apply when /ratchet renders
+ * without Dashboard.css. Same for .load-more-btn reduced-motion guard,
+ * which now lives in utility.css alongside the base rule. */
 @media (forced-colors: active) {
-  .verdict-badge {
-    border: 1px solid CanvasText;
-  }
   .kpi-card {
     border: 1px solid CanvasText;
   }
   .kpi-card::before {
     background: Highlight;
   }
-  .verdict-badge--PASS {
-    color: LinkText;
-    border-color: LinkText;
-    background: Canvas;
-  }
-  .verdict-badge--FAIL {
-    color: CanvasText;
-    border-color: CanvasText;
-    background: Canvas;
+}
+
+/* ---- Responsive: tablet collapse (V6 §2D, --bp-lg2 1024px) ----
+ * KPI cards drop from 4-col to 2-col before hitting the mobile-drawer
+ * paradigm switch. Between 781-1024 we keep 2-col so the dashboard stays
+ * scannable on tablet/portrait widths. */
+@media (max-width: 1024px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .load-more-btn {
-    transition: none;
-    transform: none !important;
+/* ---- Responsive: mid breakpoint (V6 §2D, --bp-md2 780px) ---- */
+@media (max-width: 780px) {
+  .ratchet-section,
+  .ratchet-section__card {
+    grid-template-columns: 1fr !important;
+  }
+
+  .ratchet-chart__svg {
+    height: 200px;
   }
 }
 
@@ -467,5 +500,24 @@
     flex-direction: column;
     align-items: flex-start;
     gap: 4px;
+  }
+}
+
+/* ---- Responsive: small phones (V6 §2D, --bp-xs 540px) ---- */
+@media (max-width: 540px) {
+  .dashboard {
+    gap: 12px;
+  }
+
+  .dashboard__title {
+    font-size: 26px;
+  }
+
+  .kpi-card {
+    padding: 14px 16px;
+  }
+
+  .ratchet-chart__svg {
+    height: 160px;
   }
 }

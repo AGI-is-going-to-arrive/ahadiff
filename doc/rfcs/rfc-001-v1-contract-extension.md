@@ -17,9 +17,11 @@ in Phases 1E, 3A-3D, 3C, 5F, and 6B.
 
 ## Current State
 
-Current `serve/app.py` registers 44 explicit `Route(...)` entries: 1 `/healthz`, 42 concrete
-`/api/*` routes, and 1 `/api/{rest_of_path:path}` catchall. DTOs are frozen in
-`contracts/serve_app.py` and `contracts/claim_status.py`.
+Current `serve/app.py` registers 45 explicit `Route(...)` entries: 1 `/healthz`, 43 concrete
+`/api/*` routes, and 1 `/api/{rest_of_path:path}` catchall. DTOs are frozen across
+`contracts/serve_app.py`, `contracts/serve_runtime.py`, `contracts/serve_stats.py`,
+`contracts/serve_audit.py`, `contracts/serve_doctor.py`, `contracts/serve_install.py`,
+and `contracts/claim_status.py`.
 
 ---
 
@@ -62,6 +64,7 @@ Endpoints #23-#37: v1.0 additions below.
 | 35 | GET | `/api/tasks/{task_id}/progress` | token | SSE stream (`text/event-stream`) | 3C |
 | 36 | GET | `/api/graph/status` | token | `GraphStatusResponse` | 5F |
 | 37 | POST | `/api/learn` | token | `202 {"task_id": string}` | 6B |
+| 38 | GET | `/api/graph/concepts` | token | `ConceptGraphResponse` | 5D prerequisite |
 
 **Note on #37 (`POST /api/learn`)**: The current branch now lands this endpoint.
 It triggers the background learn pipeline via the concrete `core/orchestrator.py`

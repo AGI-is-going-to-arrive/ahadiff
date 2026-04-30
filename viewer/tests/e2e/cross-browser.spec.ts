@@ -110,6 +110,76 @@ test.describe('cross-browser corner cases', () => {
     expect(errors).toHaveLength(0);
   });
 
+  test('topbar wires search button + leaves stub New-Run inactive', async ({ page }) => {
+    /* Phase 4B: search is now an interactive button that opens the global
+     * SearchOverlay (Cmd/Ctrl+K). The "+ New Learn Run" affordance remains
+     * an inactive shell because POST /api/learn from the browser is still
+     * gated on the Phase 6B consumer-polish work.
+     *
+     * On mobile (<768px) both surfaces collapse — the search lives behind
+     * Cmd/Ctrl+K only, and the New-Run primary button hides to make room
+     * for the hamburger drawer. We assert the desktop wiring on wide
+     * viewports and the deliberate hide on narrow viewports. */
+    await page.goto('/');
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+
+    const viewport = page.viewportSize();
+    const isMobile = viewport != null && viewport.width < 768;
+
+    const searchBtn = page.getByRole('button', { name: /Open search/i });
+    const newRun = page.locator('.topbar__btn--inactive');
+
+    if (isMobile) {
+      /* Search collapses on mobile — Cmd/Ctrl+K still works but the topbar
+       * affordance is hidden via @media (max-width: 767px) display:none. */
+      await expect(searchBtn).toHaveCount(0);
+      await expect(newRun).toBeHidden();
+      await page.keyboard.press('Control+K');
+    } else {
+      await expect(searchBtn).toBeVisible();
+      await expect(searchBtn).toHaveCount(1);
+      await expect(searchBtn).not.toHaveAttribute('aria-disabled', 'true');
+      await expect(newRun).toHaveAttribute('aria-disabled', 'true');
+      await searchBtn.click();
+    }
+
+    await expect(page.getByRole('dialog', { name: /Search|搜索/i })).toBeVisible();
+    await expect(page.locator('.topbar')).toHaveAttribute('inert', '');
+    await expect(page.locator('.app-shell__body')).toHaveAttribute('inert', '');
+    await expect(page.locator('#search-overlay-input')).toBeFocused();
+    const backgroundTookFocus = await page.evaluate(() => {
+      const target = document.querySelector<HTMLElement>('.topbar__search, .topbar__mobile-btn');
+      target?.focus();
+      return !document.activeElement?.closest('.search-overlay');
+    });
+    expect(backgroundTookFocus).toBe(false);
+
+    await page.route(
+      (url) => url.pathname === '/api/search',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            results: [
+              {
+                source_table: 'result_events',
+                primary_key: 'event-123',
+                snippet: 'task timeout result',
+                rank: 0.9,
+                href: '#/run/run-real/lesson',
+              },
+            ],
+          }),
+        }),
+    );
+    await page.locator('#search-overlay-input').fill('timeout');
+    const resultButton = page.locator('.search-overlay__result-btn').first();
+    await expect(resultButton).toContainText('task timeout result');
+    await resultButton.click();
+    await expect(page).toHaveURL(/#\/run\/run-real\/lesson/);
+  });
+
   test('ScaffoldingTabs keyboard navigation moves focus correctly', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (err) => errors.push(err.message));
@@ -160,9 +230,9 @@ test.describe('cross-browser corner cases', () => {
           contentType: 'application/json',
           body: JSON.stringify({
             run_id: 'test-run',
-            kind: 'lesson',
+            artifact_type: 'lesson',
             content: longContent,
-            truncated: false,
+            content_lang: 'en',
           }),
         }),
     );
@@ -170,8 +240,8 @@ test.describe('cross-browser corner cases', () => {
     await page.goto('/#/run/test-run/lesson');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
-    // Wait for lesson content to render
-    await expect(page.locator('.lesson-markdown')).toBeVisible();
+    // Wait for lesson content to render (V6 3-column: prose container)
+    await expect(page.locator('.lesson__prose')).toBeVisible();
 
     // Check that document-level horizontal overflow does not exist
     const overflow = await page.evaluate(
@@ -182,7 +252,7 @@ test.describe('cross-browser corner cases', () => {
     expect(errors).toHaveLength(0);
   });
 
-  test('mobile viewport shows bottom nav bar with navigation links', async ({ page }) => {
+  test('mobile viewport opens sidebar drawer from hamburger', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (err) => errors.push(err.message));
 
@@ -191,24 +261,59 @@ test.describe('cross-browser corner cases', () => {
 
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
-    // At mobile width (<768px), sidebar becomes fixed bottom nav
+    const menuButton = page.locator('.topbar__mobile-btn');
+    const sidebar = page.locator('#sidebar');
+    await expect(menuButton).toBeVisible();
+    await expect(menuButton).toHaveAttribute('aria-expanded', 'false');
+    await expect(sidebar).not.toHaveClass(/sidebar--open/);
+
+    await menuButton.click();
+    await expect(menuButton).toHaveAttribute('aria-expanded', 'true');
+    await expect(sidebar).toHaveClass(/sidebar--open/);
+
     const nav = page.getByRole('navigation', { name: /Navigation|导航/i });
     await expect(nav).toBeVisible();
 
-    // The nav should contain Dashboard link at minimum
-    const dashboardLink = nav.locator('a', { hasText: /Dashboard/ });
+    const dashboardLink = nav.getByRole('link', { name: /Dashboard/ });
     await expect(dashboardLink).toBeVisible();
 
-    // Concepts link should also be visible in bottom nav
-    const conceptsLink = nav.locator('a', { hasText: /Concepts/ });
+    const conceptsLink = nav.getByRole('link', { name: /Concepts/ });
     await expect(conceptsLink).toBeVisible();
 
-    // Verify no horizontal overflow at mobile width
+    await page.keyboard.press('Escape');
+    await expect(menuButton).toHaveAttribute('aria-expanded', 'false');
+    await expect(sidebar).not.toHaveClass(/sidebar--open/);
+    await expect(menuButton).toBeFocused();
+
+    await menuButton.click();
+    await expect(menuButton).toHaveAttribute('aria-expanded', 'true');
+    await expect(sidebar).toHaveClass(/sidebar--open/);
+
+    await page.locator('.app-shell__backdrop').click();
+    await expect(menuButton).toHaveAttribute('aria-expanded', 'false');
+    await expect(sidebar).not.toHaveClass(/sidebar--open/);
+    await expect(menuButton).toBeFocused();
+
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow).toBeLessThanOrEqual(0);
 
     expect(errors).toHaveLength(0);
+  });
+
+  test('1024px viewport still uses mobile drawer boundary', async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.goto('/');
+
+    const menuButton = page.locator('.topbar__mobile-btn');
+    const sidebar = page.locator('#sidebar');
+    await expect(menuButton).toBeVisible();
+    await expect(menuButton).toHaveAttribute('aria-expanded', 'false');
+    await expect(sidebar).not.toHaveClass(/sidebar--open/);
+
+    await page.setViewportSize({ width: 1025, height: 768 });
+    await expect(menuButton).toBeHidden();
+    await expect(sidebar).not.toHaveClass(/sidebar--open/);
   });
 });

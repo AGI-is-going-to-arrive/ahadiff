@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 from anyio import to_thread
 from starlette.responses import JSONResponse
 
-from ahadiff.contracts import DueReviewCardResponse, ReviewRateRequest
+from ahadiff.contracts import DueReviewCardResponse, ReviewRateRequest, WeakConceptsResponse
 from ahadiff.review.database import (
     connect_review_db,
     initialize_review_db,
@@ -93,7 +93,7 @@ async def get_weak_concepts(request: Request) -> JSONResponse:
 
 def _weak_concepts_sync(db_path: Path, limit: int) -> dict[str, Any]:
     if not db_path.is_file():
-        return {"concepts": []}
+        return WeakConceptsResponse(concepts=[]).model_dump(mode="json")
     try:
         with connect_review_db(db_path) as conn:
             rows = conn.execute(
@@ -107,20 +107,22 @@ def _weak_concepts_sync(db_path: Path, limit: int) -> dict[str, Any]:
                 (limit,),
             ).fetchall()
     except sqlite3.OperationalError:
-        return {"concepts": []}
-    return {
-        "concepts": [
-            {
-                "card_id": str(row[0]),
-                "concept": str(row[1]),
-                "stability": float(row[2]) if row[2] is not None else 0.0,
-                "difficulty": float(row[3]) if row[3] is not None else 0.0,
-                "scaffolding_level": str(row[4]) if row[4] is not None else "",
-                "display_path": str(row[5]) if row[5] is not None else "",
-            }
-            for row in rows
-        ]
-    }
+        return WeakConceptsResponse(concepts=[]).model_dump(mode="json")
+    return WeakConceptsResponse.model_validate(
+        {
+            "concepts": [
+                {
+                    "card_id": str(row[0]),
+                    "concept": str(row[1]),
+                    "stability": float(row[2]) if row[2] is not None else 0.0,
+                    "difficulty": float(row[3]) if row[3] is not None else 0.0,
+                    "scaffolding_level": str(row[4]) if row[4] is not None else "",
+                    "display_path": str(row[5]) if row[5] is not None else "",
+                }
+                for row in rows
+            ]
+        }
+    ).model_dump(mode="json")
 
 
 async def get_review_mastery(request: Request) -> JSONResponse:

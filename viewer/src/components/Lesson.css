@@ -43,22 +43,335 @@
 }
 
 /* ==========================================================================
-   Lesson Markdown
+   3-Column Layout (Phase 2E)
    ========================================================================== */
 
-.lesson-markdown {
+.lesson__layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) 260px;
+  gap: 32px;
+  align-items: start;
+}
+
+.lesson__center {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+
+.lesson__prose {
   font-family: var(--font-sans);
-  font-size: 14.5px;
-  line-height: 1.72;
+  font-size: 15px;
+  line-height: 1.74;
   color: var(--ink);
-  white-space: pre-wrap;
-  word-break: break-word;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   background: var(--elevated);
   border: 1px solid var(--hair);
   border-radius: var(--radius-10);
-  padding: 24px 28px;
-  margin: 0;
+  padding: 28px 32px;
+}
+
+.lesson__section-heading {
+  scroll-margin-top: 96px;
+  font-family: var(--font-serif);
+  font-weight: 500;
+  line-height: 1.18;
+  color: var(--ink-strong);
+  margin: 32px 0 12px;
+}
+
+.lesson__section-heading:first-child {
+  margin-top: 0;
+}
+
+.lesson__prose h2.lesson__section-heading {
+  font-size: 23px;
+}
+
+.lesson__prose h3.lesson__section-heading {
+  font-size: 19px;
+}
+
+.lesson__prose h4.lesson__section-heading {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.lesson__paragraph {
+  margin: 0 0 16px;
+}
+
+.lesson__paragraph:last-child {
+  margin-bottom: 0;
+}
+
+.lesson__list {
+  margin: 0 0 18px;
+  padding-left: 24px;
+}
+
+.lesson__list li {
+  margin: 0 0 7px;
+  padding-left: 3px;
+}
+
+.lesson__list li:last-child {
+  margin-bottom: 0;
+}
+
+.lesson__prose code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--subtle);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-6);
+  padding: 1px 5px;
+}
+
+.lesson__code-block {
+  margin: 0 0 18px;
+  padding: 16px 18px;
   overflow-x: auto;
+  white-space: pre;
+  background: var(--subtle);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-8);
+}
+
+.lesson__code-block code {
+  display: block;
+  min-width: max-content;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+}
+
+/* --- TOC (left rail) --- */
+
+.lesson__toc,
+.lesson__rail {
+  position: sticky;
+  top: 80px;
+  align-self: start;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+}
+
+.lesson__toc-title,
+.lesson__rail-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+.lesson__toc-empty,
+.lesson__rail-empty {
+  font-size: 13px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.lesson__toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lesson__toc-link {
+  display: block;
+  padding: 4px 8px;
+  border-radius: var(--radius-6);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink);
+  text-decoration: none;
+  transition: background var(--duration-fast) var(--ease-out-quart),
+              color var(--duration-fast) var(--ease-out-quart);
+}
+
+.lesson__toc-link:hover {
+  background: var(--accent-softer);
+  color: var(--accent-ink);
+}
+
+.lesson__toc-link:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
+
+.lesson__toc-item--l2 {
+  padding-left: 12px;
+}
+
+.lesson__toc-item--l3 {
+  padding-left: 24px;
+}
+
+/* --- Rail (right) --- */
+
+.lesson__rail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.lesson__rail-card {
+  border-top: 1px solid var(--hair);
+  padding-top: 14px;
+}
+
+.lesson__rail-card:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.lesson__rail-card-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+
+.lesson__claim-total {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.lesson__claim-total-number {
+  font-family: var(--font-serif);
+  font-size: 30px;
+  line-height: 1;
+  color: var(--ink-strong);
+}
+
+.lesson__claim-total-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.lesson__status-grid,
+.lesson__source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+.lesson__status-row,
+.lesson__source-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.lesson__status-row dt,
+.lesson__source-row dt {
+  color: var(--muted);
+}
+
+.lesson__status-row dd,
+.lesson__source-row dd {
+  margin: 0;
+  color: var(--ink);
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.lesson__status-row dd {
+  font-family: var(--font-mono);
+  color: var(--ink-strong);
+}
+
+.lesson__source-row code,
+.lesson__selected-location {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink);
+  background: var(--subtle);
+  border-radius: var(--radius-6);
+  padding: 2px 6px;
+  overflow-wrap: anywhere;
+}
+
+.lesson__selected-claim {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
+
+.lesson__selected-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.lesson__selected-id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+.lesson__selected-statement {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.52;
+  color: var(--ink);
+}
+
+.lesson__selected-location {
+  display: inline-block;
+  max-width: 100%;
+}
+
+.lesson__selected-evidence {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--subtle);
+  border-radius: var(--radius-6);
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.lesson__notes-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.lesson__notes-list li + li {
+  margin-top: 6px;
 }
 
 /* ==========================================================================
@@ -144,7 +457,7 @@
 
 .evidence-panel__claim-id {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--muted);
   letter-spacing: 0.1em;
   overflow: hidden;
@@ -155,7 +468,7 @@
 }
 
 .evidence-panel__statement {
-  font-size: 13.5px;
+  font-size: 14px;
   line-height: 1.55;
   color: var(--ink);
   margin: 0 0 10px;
@@ -208,7 +521,7 @@
   padding: 2px 8px;
   border-radius: var(--radius-6);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   font-weight: 500;
@@ -306,7 +619,7 @@
 
 .claim-card__id {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--muted);
   letter-spacing: 0.1em;
   overflow: hidden;
@@ -324,7 +637,7 @@
 
 .claim-card__statement {
   margin: 6px 0 0;
-  font-size: 13.5px;
+  font-size: 14px;
   line-height: 1.55;
   color: var(--ink);
 }
@@ -362,6 +675,30 @@
 }
 
 /* ==========================================================================
+   3-Column Responsive Collapse
+   ========================================================================== */
+
+@media (max-width: 1023px) {
+  .lesson__layout {
+    grid-template-columns: minmax(0, 1fr) 280px;
+  }
+  .lesson__toc {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .lesson__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lesson__rail {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+/* ==========================================================================
    Dark mode adjustments
    ========================================================================== */
 
@@ -371,8 +708,13 @@
     background: color-mix(in srgb, var(--warning) 18%, transparent);
   }
 
-  .lesson-markdown {
+  .lesson__prose {
     background: var(--subtle);
+    border-color: var(--hair-strong);
+  }
+
+  .lesson__code-block,
+  .lesson__selected-evidence {
     border-color: var(--hair-strong);
   }
 
@@ -400,10 +742,20 @@
     animation: none;
   }
   .claim-card,
-  .lesson-markdown,
+  .lesson__prose,
   .evidence-panel,
-  .scaffolding-tab {
+  .scaffolding-tab,
+  .lesson__toc-link {
     transition: none;
+  }
+  .claim-card:hover,
+  .claim-card:active,
+  .claim-card--selected,
+  .scaffolding-tab:active {
+    transform: none !important;
+  }
+  html {
+    scroll-behavior: auto;
   }
 }
 
@@ -430,6 +782,15 @@
   }
   .claim-card {
     border: 1px solid CanvasText;
+  }
+  .lesson__toc-link:hover,
+  .lesson__toc-link:focus-visible {
+    color: HighlightText;
+    background: Highlight;
+    forced-color-adjust: none;
+  }
+  .lesson__rail-card {
+    border-color: CanvasText;
   }
 }
 

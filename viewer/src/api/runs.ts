@@ -1,5 +1,13 @@
 import { apiFetch } from './client';
 import type { ApiFetchOptions } from './client';
+import {
+  paginatedConceptsResponseSchema,
+  paginatedRunsResponseSchema,
+  parseResponse,
+  ratchetHistoryResponseSchema,
+  runArtifactEnvelopeSchema,
+  runDetailSchema,
+} from './schemas';
 import type {
   ArtifactKind,
   PaginatedConceptsResponse,
@@ -18,14 +26,16 @@ export async function listRuns(
   if (params.cursor) q.set('cursor', params.cursor);
   if (params.page_size != null) q.set('page_size', String(params.page_size));
   const qs = q.toString();
-  return apiFetch<PaginatedRunsResponse>(`/api/runs${qs ? `?${qs}` : ''}`, opts);
+  const raw = await apiFetch<unknown>(`/api/runs${qs ? `?${qs}` : ''}`, opts);
+  return parseResponse('GET /api/runs', paginatedRunsResponseSchema, raw);
 }
 
 export async function getRun(
   runId: string,
   opts?: Pick<ApiFetchOptions, 'signal'>,
 ): Promise<RunDetail> {
-  return apiFetch<RunDetail>(`/api/run/${encodeURIComponent(runId)}`, opts);
+  const raw = await apiFetch<unknown>(`/api/run/${encodeURIComponent(runId)}`, opts);
+  return parseResponse('GET /api/run/{runId}', runDetailSchema, raw);
 }
 
 export async function getRunLesson(
@@ -34,10 +44,11 @@ export async function getRunLesson(
   opts?: Pick<ApiFetchOptions, 'signal'>,
 ): Promise<RunArtifactEnvelope> {
   const q = new URLSearchParams({ level });
-  return apiFetch<RunArtifactEnvelope>(
+  const raw = await apiFetch<unknown>(
     `/api/run/${encodeURIComponent(runId)}/lesson?${q.toString()}`,
     opts,
   );
+  return parseResponse('GET /api/run/{runId}/lesson', runArtifactEnvelopeSchema, raw);
 }
 
 export async function getRunArtifact(
@@ -45,10 +56,11 @@ export async function getRunArtifact(
   kind: Exclude<ArtifactKind, 'lesson'>,
   opts?: Pick<ApiFetchOptions, 'signal'>,
 ): Promise<RunArtifactEnvelope> {
-  return apiFetch<RunArtifactEnvelope>(
+  const raw = await apiFetch<unknown>(
     `/api/run/${encodeURIComponent(runId)}/${kind}`,
     opts,
   );
+  return parseResponse(`GET /api/run/{runId}/${kind}`, runArtifactEnvelopeSchema, raw);
 }
 
 export async function getGlobalConcepts(
@@ -59,17 +71,19 @@ export async function getGlobalConcepts(
   if (params.cursor) q.set('cursor', params.cursor);
   if (params.page_size != null) q.set('page_size', String(params.page_size));
   const qs = q.toString();
-  return apiFetch<PaginatedConceptsResponse>(`/api/concepts${qs ? `?${qs}` : ''}`, opts);
+  const raw = await apiFetch<unknown>(`/api/concepts${qs ? `?${qs}` : ''}`, opts);
+  return parseResponse('GET /api/concepts', paginatedConceptsResponseSchema, raw);
 }
 
 export async function getRunConcepts(
   runId: string,
   opts?: Pick<ApiFetchOptions, 'signal'>,
 ): Promise<RunArtifactEnvelope> {
-  return apiFetch<RunArtifactEnvelope>(
+  const raw = await apiFetch<unknown>(
     `/api/run/${encodeURIComponent(runId)}/concepts`,
     opts,
   );
+  return parseResponse('GET /api/run/{runId}/concepts', runArtifactEnvelopeSchema, raw);
 }
 
 export async function getRatchetHistory(
@@ -80,5 +94,6 @@ export async function getRatchetHistory(
   if (params.cursor) q.set('cursor', params.cursor);
   if (params.page_size != null) q.set('page_size', String(params.page_size));
   const qs = q.toString();
-  return apiFetch<RatchetHistoryResponse>(`/api/ratchet/history${qs ? `?${qs}` : ''}`, opts);
+  const raw = await apiFetch<unknown>(`/api/ratchet/history${qs ? `?${qs}` : ''}`, opts);
+  return parseResponse('GET /api/ratchet/history', ratchetHistoryResponseSchema, raw);
 }

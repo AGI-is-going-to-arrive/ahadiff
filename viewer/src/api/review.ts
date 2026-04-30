@@ -1,5 +1,10 @@
 import { apiFetch } from './client';
 import type { ApiFetchOptions } from './client';
+import {
+  parseResponse,
+  reviewQueueResponseSchema,
+  reviewRateResponseSchema,
+} from './schemas';
 import type {
   ReviewQueueResponse,
   ReviewRatePayload,
@@ -9,16 +14,18 @@ import type {
 export async function getReviewQueue(
   opts?: Pick<ApiFetchOptions, 'signal'>,
 ): Promise<ReviewQueueResponse> {
-  return apiFetch<ReviewQueueResponse>('/api/review/queue', opts);
+  const raw = await apiFetch<unknown>('/api/review/queue', opts);
+  return parseResponse('GET /api/review/queue', reviewQueueResponseSchema, raw);
 }
 
 export async function submitReviewRate(
   payload: ReviewRatePayload,
   opts?: Pick<ApiFetchOptions, 'signal'>,
 ): Promise<ReviewRateResponse> {
-  return apiFetch<ReviewRateResponse>('/api/review/rate', {
+  const raw = await apiFetch<unknown>('/api/review/rate', {
     method: 'POST',
     body: JSON.stringify(payload),
     signal: opts?.signal,
   });
+  return parseResponse('POST /api/review/rate', reviewRateResponseSchema, raw);
 }

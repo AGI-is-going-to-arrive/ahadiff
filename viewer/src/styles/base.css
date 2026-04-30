@@ -39,7 +39,7 @@ body {
 }
 
 a {
-  color: var(--accent);
+  color: var(--accent-ink);
   text-decoration: none;
   transition: color var(--duration-fast) var(--ease-out-quart);
 }
@@ -65,6 +65,12 @@ button:hover {
 
 button:active:not(:disabled) {
   transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button:active:not(:disabled) {
+    transform: none !important;
+  }
 }
 
 code,

@@ -4,6 +4,7 @@ import re
 import sqlite3
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 
 from ahadiff.core.errors import InputError, StorageError
 
@@ -23,6 +24,7 @@ class SearchResult:
     primary_key: str
     snippet: str
     rank: float
+    href: str | None = None
 
 
 def search_all(
@@ -95,6 +97,32 @@ def _search_fts_table(
     """Search a single FTS5 table."""
     if source_table not in _ALLOWED_FTS_TABLES:
         raise StorageError(f"unknown FTS source table: {source_table}")
+    if source_table == "result_events":
+        rows = connection.execute(
+            f"""
+            SELECT
+                {fts_table}.event_id,
+                result_events.run_id,
+                snippet({fts_table}, -1, '<b>', '</b>', '...', 32),
+                rank
+            FROM {fts_table}
+            JOIN result_events ON result_events.event_id = {fts_table}.event_id
+            WHERE {fts_table} MATCH ?
+            ORDER BY rank, {fts_table}.event_id ASC
+            LIMIT ?
+            """,
+            (query, limit),
+        ).fetchall()
+        return [
+            SearchResult(
+                source_table=source_table,
+                primary_key=str(row[0]),
+                snippet=str(row[2]),
+                rank=float(row[3]),
+                href=f"#/run/{quote(str(row[1]), safe='')}/lesson",
+            )
+            for row in rows
+        ]
     pk_col = _pk_column(source_table)
     snippet_column = -1
     rows = connection.execute(
@@ -147,6 +175,7 @@ def search_all_with_graph(
             primary_key=r.primary_key,
             snippet=r.snippet,
             rank=_normalize_fts_rank(r.rank),
+            href=r.href,
         )
         for r in fts_raw
     ]

@@ -12,7 +12,7 @@ interface BottomMiniPanelProps {
 /**
  * Small stats bar for the diff page.
  * Desktop: fixed overlay at bottom-right.
- * Mobile: sticky bar above the sidebar bottom nav.
+ * Mobile: sticky bar above the page edge while navigation lives in a drawer.
  */
 export default function BottomMiniPanel({ items }: BottomMiniPanelProps) {
   if (items.length === 0) return null;

@@ -10,10 +10,34 @@ export interface Claim {
   line_end: number;
   statement: string;
   evidence?: string;
+  source_hunks?: ReadonlyArray<ClaimSourceHunk>;
+}
+
+export interface ClaimSourceHunk {
+  file: string;
+  display_path?: string;
+  start: number;
+  end: number;
+  side?: 'old' | 'new' | 'either';
 }
 
 interface EvidencePanelProps {
   claim: Claim | null;
+}
+
+function formatLocation(file: string, start: number, end: number): string {
+  if (!file || start <= 0) return file || '';
+  const range = end > 0 && end !== start ? `-${end}` : '';
+  return `${file}:${start}${range}`;
+}
+
+function getClaimLocations(claim: Claim): string[] {
+  const hunkLocations =
+    claim.source_hunks
+      ?.map((hunk) => formatLocation(hunk.display_path ?? hunk.file, hunk.start, hunk.end))
+      .filter(Boolean) ?? [];
+  if (hunkLocations.length > 0) return hunkLocations;
+  return [formatLocation(claim.file, claim.line_start, claim.line_end)].filter(Boolean);
 }
 
 export default function EvidencePanel({ claim }: EvidencePanelProps) {
@@ -30,10 +54,9 @@ export default function EvidencePanel({ claim }: EvidencePanelProps) {
           </div>
           <p className="evidence-panel__statement">{claim.statement}</p>
           <div className="evidence-panel__location">
-            <code>
-              {claim.file}:{claim.line_start}
-              {claim.line_end !== claim.line_start ? `-${claim.line_end}` : ''}
-            </code>
+            {getClaimLocations(claim).map((location) => (
+              <code key={location}>{location}</code>
+            ))}
           </div>
           {claim.evidence ? (
             <pre className="evidence-panel__evidence">{claim.evidence}</pre>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import EvidencePanel from '../components/EvidencePanel';
@@ -8,21 +8,257 @@ import { useTranslation } from '../i18n/useTranslation';
 import { useRunsStore } from '../state/runs-store';
 import { getRunLesson, getRunArtifact } from '../api/runs';
 import type { RunDetail } from '../api/types';
-import type { Claim } from '../components/EvidencePanel';
+import type { Claim, ClaimSourceHunk } from '../components/EvidencePanel';
 import type { ScaffoldLevel } from '../components/ScaffoldingTabs';
 import '../components/Lesson.css';
 
-const CLAIM_VERDICTS: ReadonlySet<Claim['verdict']> = new Set([
+interface TocEntry {
+  id: string;
+  label: string;
+  level: number;
+}
+
+function slugify(text: string): string {
+  // Unicode-aware: keep letters/numbers from any script (including CJK).
+  // Drop punctuation/symbols, normalize whitespace runs to single hyphens.
+  return text
+    .toLowerCase()
+    .normalize('NFKC')
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+function uniqueSlug(label: string, seen: Set<string>): string {
+  const base = slugify(label) || 'section';
+  let id = base;
+  if (seen.has(id)) {
+    let counter = 2;
+    while (seen.has(`${base}-${counter}`)) counter++;
+    id = `${base}-${counter}`;
+  }
+  seen.add(id);
+  return id;
+}
+
+function extractTocEntries(content: string): TocEntry[] {
+  const entries: TocEntry[] = [];
+  const seen = new Set<string>();
+  let inCodeFence = false;
+  for (const line of content.split('\n')) {
+    if (line.trim().startsWith('```')) {
+      inCodeFence = !inCodeFence;
+      continue;
+    }
+    if (inCodeFence) continue;
+    const match = /^(#{1,3})\s+(.+)$/.exec(line);
+    if (!match) continue;
+    const label = match[2].trim();
+    entries.push({ id: uniqueSlug(label, seen), label, level: match[1].length });
+  }
+  return entries;
+}
+
+const CLAIM_VERDICT_ORDER: readonly Claim['verdict'][] = [
   'verified',
   'weak',
   'not_proven',
   'contradicted',
   'rejected',
-]);
+];
+
+const CLAIM_VERDICTS: ReadonlySet<Claim['verdict']> = new Set(CLAIM_VERDICT_ORDER);
+
+interface ClaimSummary {
+  total: number;
+  counts: Record<Claim['verdict'], number>;
+}
 
 function toFiniteInt(value: unknown, fallback: number): number {
   const n = Number(value);
   return Number.isFinite(n) ? Math.trunc(n) : fallback;
+}
+
+function toSourceSide(value: unknown): ClaimSourceHunk['side'] {
+  return value === 'old' || value === 'new' || value === 'either' ? value : 'either';
+}
+
+function parseSourceHunks(raw: Record<string, unknown>): ClaimSourceHunk[] {
+  const rawHunks = Array.isArray(raw.source_hunks) ? raw.source_hunks : [];
+  const hunks = rawHunks
+    .map((entry): ClaimSourceHunk | null => {
+      if (!entry || typeof entry !== 'object') return null;
+      const hunk = entry as Record<string, unknown>;
+      const file = String(hunk.file ?? hunk.display_path ?? '');
+      const start = toFiniteInt(hunk.start ?? hunk.line_start, 0);
+      const end = toFiniteInt(hunk.end ?? hunk.line_end, start);
+      if (!file || start <= 0) return null;
+      return {
+        file,
+        display_path: hunk.display_path != null ? String(hunk.display_path) : undefined,
+        start,
+        end,
+        side: toSourceSide(hunk.side),
+      };
+    })
+    .filter((hunk): hunk is ClaimSourceHunk => hunk !== null);
+
+  if (hunks.length > 0) return hunks;
+  const file = String(raw.file ?? '');
+  const start = toFiniteInt(raw.line_start, 0);
+  const end = toFiniteInt(raw.line_end, start);
+  return file && start > 0 ? [{ file, start, end, side: toSourceSide(raw.side) }] : [];
+}
+
+function summarizeClaims(claims: Claim[]): ClaimSummary {
+  const counts = Object.fromEntries(CLAIM_VERDICT_ORDER.map((verdict) => [verdict, 0])) as Record<
+    Claim['verdict'],
+    number
+  >;
+  for (const claim of claims) counts[claim.verdict] += 1;
+  return { total: claims.length, counts };
+}
+
+function formatClaimLocation(claim: Claim): string {
+  const line =
+    claim.line_start > 0
+      ? claim.line_end !== claim.line_start
+        ? `${claim.line_start}-${claim.line_end}`
+        : String(claim.line_start)
+      : '';
+  if (claim.file && line) return `${claim.file}:${line}`;
+  if (claim.file) return claim.file;
+  return line || claim.claim_id;
+}
+
+function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
+  const nodes: React.ReactNode[] = [];
+  const pattern = /`([^`]+)`/g;
+  let lastIndex = 0;
+  let codeIndex = 0;
+  for (const match of text.matchAll(pattern)) {
+    if (match.index > lastIndex) nodes.push(text.slice(lastIndex, match.index));
+    nodes.push(<code key={`${keyPrefix}-code-${codeIndex++}`}>{match[1]}</code>);
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
+  return nodes.length > 0 ? nodes : [text];
+}
+
+function renderLessonProse(content: string): React.ReactNode[] | null {
+  if (!content) return null;
+  const lines = content.split('\n');
+  const elements: React.ReactNode[] = [];
+  const headingSlugs = new Set<string>();
+  let paragraphLines: string[] = [];
+  let listItems: string[] = [];
+  let listType: 'ul' | 'ol' | null = null;
+  let codeLines: string[] | null = null;
+  let codeLanguage = '';
+  let blockKey = 0;
+
+  const flushParagraph = () => {
+    const text = paragraphLines.join(' ').trim();
+    if (text) {
+      const key = `paragraph-${blockKey++}`;
+      elements.push(
+        <p key={key} className="lesson__paragraph">
+          {renderInline(text, key)}
+        </p>,
+      );
+    }
+    paragraphLines = [];
+  };
+
+  const flushList = () => {
+    if (!listType || listItems.length === 0) return;
+    const key = `list-${blockKey++}`;
+    const ListTag = listType;
+    elements.push(
+      <ListTag key={key} className={`lesson__list lesson__list--${listType}`}>
+        {listItems.map((item, index) => (
+          <li key={`${key}-item-${index}`}>{renderInline(item, `${key}-item-${index}`)}</li>
+        ))}
+      </ListTag>,
+    );
+    listItems = [];
+    listType = null;
+  };
+
+  const flushCode = () => {
+    if (codeLines === null) return;
+    elements.push(
+      <pre
+        key={`code-${blockKey++}`}
+        className="lesson__code-block"
+        data-language={codeLanguage || undefined}
+      >
+        <code>{codeLines.join('\n')}</code>
+      </pre>,
+    );
+    codeLines = null;
+    codeLanguage = '';
+  };
+
+  for (const rawLine of lines) {
+    const trimmedLine = rawLine.trim();
+
+    if (codeLines !== null) {
+      if (trimmedLine.startsWith('```')) flushCode();
+      else codeLines.push(rawLine);
+      continue;
+    }
+
+    const fenceMatch = /^```\s*([\w.-]+)?/.exec(trimmedLine);
+    if (fenceMatch) {
+      flushParagraph();
+      flushList();
+      codeLines = [];
+      codeLanguage = fenceMatch[1] ?? '';
+      continue;
+    }
+
+    if (!trimmedLine) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    const headingMatch = /^(#{1,3})\s+(.+)$/.exec(trimmedLine);
+    if (headingMatch) {
+      flushParagraph();
+      flushList();
+      const label = headingMatch[2].trim();
+      const slug = uniqueSlug(label, headingSlugs);
+      const Tag = (`h${Math.min(headingMatch[1].length + 1, 4)}`) as 'h2' | 'h3' | 'h4';
+      elements.push(
+        <Tag key={`heading-${slug}`} id={slug} className="lesson__section-heading">
+          {label}
+        </Tag>,
+      );
+      continue;
+    }
+
+    const unorderedMatch = /^\s*[-*+]\s+(.+)$/.exec(rawLine);
+    const orderedMatch = /^\s*\d+[.)]\s+(.+)$/.exec(rawLine);
+    if (unorderedMatch || orderedMatch) {
+      flushParagraph();
+      const nextType = orderedMatch ? 'ol' : 'ul';
+      if (listType && listType !== nextType) flushList();
+      listType = nextType;
+      listItems.push((orderedMatch?.[1] ?? unorderedMatch?.[1] ?? '').trim());
+      continue;
+    }
+
+    flushList();
+    paragraphLines.push(trimmedLine);
+  }
+
+  flushParagraph();
+  flushList();
+  flushCode();
+  return elements;
 }
 
 function parseClaims(content: string): Claim[] {
@@ -37,11 +273,11 @@ function parseClaims(content: string): Claim[] {
       const verdict: Claim['verdict'] = CLAIM_VERDICTS.has(rawVerdict as Claim['verdict'])
         ? (rawVerdict as Claim['verdict'])
         : 'not_proven';
-      const hunks = Array.isArray(raw.source_hunks) ? raw.source_hunks : [];
-      const firstHunk = hunks[0] as Record<string, unknown> | undefined;
-      const file = String(firstHunk?.display_path ?? firstHunk?.file ?? raw.file ?? '');
-      const lineStart = toFiniteInt(firstHunk?.start ?? raw.line_start, 0);
-      const lineEnd = toFiniteInt(firstHunk?.end ?? raw.line_end, lineStart);
+      const sourceHunks = parseSourceHunks(raw);
+      const firstHunk = sourceHunks[0];
+      const file = firstHunk?.display_path ?? firstHunk?.file ?? '';
+      const lineStart = firstHunk?.start ?? 0;
+      const lineEnd = firstHunk?.end ?? lineStart;
       result.push({
         claim_id: claimId,
         verdict,
@@ -50,6 +286,7 @@ function parseClaims(content: string): Claim[] {
         line_end: lineEnd,
         statement: String(raw.text ?? raw.statement ?? ''),
         evidence: raw.evidence != null ? String(raw.evidence) : undefined,
+        source_hunks: sourceHunks,
       });
     } catch {
       // Skip malformed JSONL lines
@@ -143,6 +380,22 @@ export default function LessonPage() {
     [],
   );
 
+  const tocEntries = useMemo(() => extractTocEntries(lessonContent), [lessonContent]);
+  const claimSummary = useMemo(() => summarizeClaims(claims), [claims]);
+  const learningNotes = useMemo(() => {
+    const notes: string[] = [];
+    if (runDetail?.weakest_dim) {
+      notes.push(t('Lesson.rail.weakest_dimension', { dim: runDetail.weakest_dim }));
+    }
+    for (const note of runDetail?.graphify_notes ?? []) {
+      const trimmed = note.trim();
+      if (trimmed) notes.push(trimmed);
+    }
+    return notes;
+  }, [runDetail, t]);
+
+  const renderedProse = useMemo(() => renderLessonProse(lessonContent), [lessonContent]);
+
   return (
     <AppShell>
       <div className="lesson-page">
@@ -170,43 +423,147 @@ export default function LessonPage() {
             </button>
           </div>
         ) : (
-          <div className="lesson-page__body">
-            {/* Main content: lesson markdown */}
-            <pre className="lesson-markdown">{lessonContent}</pre>
+          <div className="lesson__layout">
+            <aside className="lesson__toc" aria-label={t('Lesson.toc.title')}>
+              <div className="lesson__toc-title">{t('Lesson.toc.title')}</div>
+              {tocEntries.length === 0 ? (
+                <div className="lesson__toc-empty">{t('Lesson.toc.empty')}</div>
+              ) : (
+                <ol className="lesson__toc-list">
+                  {tocEntries.map((e) => (
+                    <li key={e.id} className={e.level > 1 ? `lesson__toc-item--l${e.level}` : undefined}>
+                      <a href={`#${e.id}`} className="lesson__toc-link">
+                        {e.label}
+                      </a>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </aside>
 
-            {/* Sidebar: evidence + claims */}
-            <aside className="lesson-sidebar">
-              <EvidencePanel claim={selectedClaim} />
+            <div className="lesson__center">
+              <article className="lesson__prose prose">{renderedProse}</article>
 
-              <section>
-                <h2 className="claims-section__title">{t('Lesson.claims_title')}</h2>
-                {claims.length === 0 ? (
-                  <p className="evidence-panel__empty">{t('Serve.empty')}</p>
+              <aside className="lesson-sidebar">
+                <EvidencePanel claim={selectedClaim} />
+
+                <section>
+                  <h2 className="claims-section__title">{t('Lesson.claims_title')}</h2>
+                  {claims.length === 0 ? (
+                    <p className="evidence-panel__empty">{t('Serve.empty')}</p>
+                  ) : (
+                    <ul className="claims-list">
+                      {claims.map((claim) => (
+                        <li key={claim.claim_id}>
+                          <button
+                            type="button"
+                            id={`claim-${claim.claim_id}`}
+                            className={`claim-card${
+                              selectedClaim?.claim_id === claim.claim_id ? ' claim-card--selected' : ''
+                            }`}
+                            onClick={() => handleClaimClick(claim)}
+                            aria-pressed={selectedClaim?.claim_id === claim.claim_id}
+                          >
+                            <div className="claim-card__row">
+                              <span className="claim-card__id">{claim.claim_id}</span>
+                              <ClaimBadge verdict={claim.verdict} />
+                            </div>
+                            <p className="claim-card__statement">{claim.statement}</p>
+                            <div className="claim-card__location">
+                              <code>{formatClaimLocation(claim)}</code>
+                            </div>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              </aside>
+            </div>
+
+            <aside className="lesson__rail" aria-label={t('Lesson.rail.title')}>
+              <div className="lesson__rail-title">{t('Lesson.rail.title')}</div>
+              <section className="lesson__rail-card" aria-labelledby="lesson-rail-claims">
+                <h2 id="lesson-rail-claims" className="lesson__rail-card-title">
+                  {t('Lesson.rail.claims_summary')}
+                </h2>
+                <div className="lesson__claim-total">
+                  <span className="lesson__claim-total-number">{claimSummary.total}</span>
+                  <span className="lesson__claim-total-label">{t('Lesson.rail.total_claims')}</span>
+                </div>
+                <dl className="lesson__status-grid">
+                  {CLAIM_VERDICT_ORDER.map((verdict) => (
+                    <div key={verdict} className={`lesson__status-row lesson__status-row--${verdict}`}>
+                      <dt>{t(`Claim.${verdict}`)}</dt>
+                      <dd>{claimSummary.counts[verdict]}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+
+              <section className="lesson__rail-card" aria-labelledby="lesson-rail-selected">
+                <h2 id="lesson-rail-selected" className="lesson__rail-card-title">
+                  {t('Lesson.rail.selected_evidence')}
+                </h2>
+                {selectedClaim ? (
+                  <div className="lesson__selected-claim">
+                    <div className="lesson__selected-header">
+                      <span className="lesson__selected-id">{selectedClaim.claim_id}</span>
+                      <ClaimBadge verdict={selectedClaim.verdict} />
+                    </div>
+                    <p className="lesson__selected-statement">{selectedClaim.statement}</p>
+                    <code className="lesson__selected-location">
+                      {formatClaimLocation(selectedClaim)}
+                    </code>
+                    {selectedClaim.evidence ? (
+                      <p className="lesson__selected-evidence">{selectedClaim.evidence}</p>
+                    ) : (
+                      <p className="lesson__rail-empty">{t('Lesson.rail.selected_no_evidence')}</p>
+                    )}
+                  </div>
                 ) : (
-                  <ul className="claims-list">
-                    {claims.map((claim) => (
-                      <li key={claim.claim_id}>
-                        <button
-                          type="button"
-                          className={`claim-card${
-                            selectedClaim?.claim_id === claim.claim_id ? ' claim-card--selected' : ''
-                          }`}
-                          onClick={() => handleClaimClick(claim)}
-                          aria-pressed={selectedClaim?.claim_id === claim.claim_id}
-                        >
-                          <div className="claim-card__row">
-                            <span className="claim-card__id">{claim.claim_id}</span>
-                            <ClaimBadge verdict={claim.verdict} />
-                          </div>
-                          <p className="claim-card__statement">{claim.statement}</p>
-                          <div className="claim-card__location">
-                            <code>
-                              {claim.file}:{claim.line_start}
-                              {claim.line_end !== claim.line_start ? `-${claim.line_end}` : ''}
-                            </code>
-                          </div>
-                        </button>
-                      </li>
+                  <p className="lesson__rail-empty">{t('Lesson.rail.selected_empty')}</p>
+                )}
+              </section>
+
+              <section className="lesson__rail-card" aria-labelledby="lesson-rail-sources">
+                <h2 id="lesson-rail-sources" className="lesson__rail-card-title">
+                  {t('Lesson.rail.sources_title')}
+                </h2>
+                <dl className="lesson__source-list">
+                  <div className="lesson__source-row">
+                    <dt>{t('Lesson.rail.source_ref')}</dt>
+                    <dd>
+                      <code>{runDetail?.source_ref ?? '—'}</code>
+                    </dd>
+                  </div>
+                  <div className="lesson__source-row">
+                    <dt>{t('Lesson.rail.base_ref')}</dt>
+                    <dd>
+                      <code>{runDetail?.base_ref ?? '—'}</code>
+                    </dd>
+                  </div>
+                  <div className="lesson__source-row">
+                    <dt>{t('Lesson.rail.language')}</dt>
+                    <dd>{runDetail?.content_lang ?? '—'}</dd>
+                  </div>
+                  <div className="lesson__source-row">
+                    <dt>{t('Lesson.rail.artifacts')}</dt>
+                    <dd>{runDetail?.artifacts?.join(', ') || '—'}</dd>
+                  </div>
+                </dl>
+              </section>
+
+              <section className="lesson__rail-card" aria-labelledby="lesson-rail-notes">
+                <h2 id="lesson-rail-notes" className="lesson__rail-card-title">
+                  {t('Lesson.rail.learning_notes')}
+                </h2>
+                {learningNotes.length === 0 ? (
+                  <p className="lesson__rail-empty">{t('Lesson.rail.notes_empty')}</p>
+                ) : (
+                  <ul className="lesson__notes-list">
+                    {learningNotes.map((note, index) => (
+                      <li key={`${note}-${index}`}>{note}</li>
                     ))}
                   </ul>
                 )}

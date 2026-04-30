@@ -710,6 +710,7 @@ run_id: str
 - `GET /api/providers` — provider 状态
 - `GET /api/serve/status` — serve 运行状态（无 auth）
 - `GET /api/graph/status` — Graphify 当前状态；当前 payload 是 `enabled` / `source_exists` / `has_graph` / `freshness` / `node_count` / `edge_count` / `source_path`，不是完整 provenance API
+- `GET /api/graph/concepts` — ConceptGraph 前端 DTO；返回 sanitized `nodes` / `edges` + `status`，不是完整 Graphify provenance API
 - `PUT /api/config` — 配置更新
 - `POST /api/learn` — 提交后台 learn 任务；当前返回 `202 {"task_id": ...}`，进度/取消走 `/api/tasks*`
 - `GET /api/tasks` — **unstable**，参见 §9.10
@@ -769,6 +770,7 @@ run_id: str
 | **hooks.py** | ⏸ install-only | 当前仅安装 git hook 脚本，不执行用户自定义 hook 命令。hook 执行入口属于后续 Phase |
 | **PUT /api/config** | ✅ session-only | 仅支持 `lang` 键，修改内存中 locale，不持久化到磁盘。这是有意的 serve session 行为 |
 | **GET /api/graph/status** | ✅ 已接线 | 以 workspace root 为基准探测 raw `graphify-out/graph.json` 是否存在；当前 node/edge 统计和 `source_path` 读取的是 imported `.ahadiff/graphify/graph.json`，返回 `enabled/source_exists/has_graph/freshness/node_count/edge_count/source_path(relative)` |
+| **GET /api/graph/concepts** | ✅ 已接线 | 从 imported `.ahadiff/graphify/graph.json` 投影前端 ConceptGraph 所需的 sanitized nodes/edges/status；完整 d3-force UI 和 richer provenance 仍属后续 5D/5E 工作 |
 | **POST /api/learn** | ✅ 已接线 | `core/orchestrator.py` 从 `cli.py` 抽出 learn 主链；route 只接受安全 capture / learn 选项，返回 `202 {"task_id": ...}`，provider override 不从 HTTP 暴露 |
 | **medium APIs** | ✅ 全部真实接线 | search/audit/mastery/weak/alignment/learning stats 均查 SQLite/JSONL，无 mock |
 | **/api/tasks*** | ⏸ internal/unstable | 现在已有真实 submitter（`POST /api/learn`），但 task payload / queue policy / progress surface 仍按低层内部接口处理 |

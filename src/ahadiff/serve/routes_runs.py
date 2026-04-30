@@ -17,6 +17,7 @@ from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
 
 from ahadiff.contracts import (
+    ConceptsTextPageResponse,
     RatchetHistoryEntry,
     RunArtifactEnvelope,
     RunDetail,
@@ -342,7 +343,10 @@ def _concepts_payload(state_dir: Path, limit: int, cursor: str | None) -> dict[s
     payload: dict[str, Any] = {"artifact_type": "concepts", "content": content}
     if next_cursor is not None:
         payload["next_cursor"] = next_cursor
-    return payload
+    return ConceptsTextPageResponse.model_validate(payload).model_dump(
+        mode="json",
+        exclude_none=True,
+    )
 
 
 def _concepts_jsonl_leaf_stat(path: Path) -> tuple[os.stat_result | None, bool]:

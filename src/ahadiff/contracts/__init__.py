@@ -77,7 +77,14 @@ from .serve_app import (
     RunSummary,
     SetLocaleRequest,
 )
+from .serve_audit import AuditLogResponse
+from .serve_doctor import DoctorCheck, DoctorResponse
+from .serve_install import InstallTargetsResponse, InstallTargetSummary
 from .serve_runtime import (
+    ConceptGraphEdge,
+    ConceptGraphNode,
+    ConceptGraphResponse,
+    ConceptsTextPageResponse,
     GraphStatusResponse,
     SearchResponse,
     SearchResultItem,
@@ -86,11 +93,14 @@ from .serve_runtime import (
     TaskListResponse,
     TaskProgressResponse,
     TaskSubmitResponse,
+    WeakConceptItem,
+    WeakConceptsResponse,
 )
 
 __all__ = [
     "AhaDiffError",
     "AllowlistPolicy",
+    "AuditLogResponse",
     "AuthTokenResponse",
     "CardState",
     "ChangeKind",
@@ -98,10 +108,16 @@ __all__ = [
     "ClaimExtractor",
     "ClaimRecord",
     "ClaimStatus",
+    "ConceptGraphEdge",
+    "ConceptGraphNode",
+    "ConceptGraphResponse",
+    "ConceptsTextPageResponse",
     "CostConfidence",
     "DegradedFlag",
     "DegradedRunWarning",
     "DueReviewCardResponse",
+    "DoctorCheck",
+    "DoctorResponse",
     "EVAL_BUNDLE_FILES",
     "EvalBundleInfo",
     "EventType",
@@ -109,6 +125,8 @@ __all__ = [
     "GraphStatusResponse",
     "HelpfulnessRequest",
     "InputError",
+    "InstallTargetSummary",
+    "InstallTargetsResponse",
     "LearnabilityGate",
     "LearnabilityWeights",
     "LearningSignalRequest",
@@ -158,6 +176,8 @@ __all__ = [
     "TERMINAL_RUN_STATUSES",
     "TokenizerEstimation",
     "UsageEvent",
+    "WeakConceptItem",
+    "WeakConceptsResponse",
     "VerificationError",
     "Verdict",
     "compute_eval_bundle_version",

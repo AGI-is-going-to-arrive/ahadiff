@@ -224,6 +224,12 @@
     stroke: CanvasText;
   }
 
+  .concept-graph__node:focus-visible .concept-graph__circle {
+    stroke: Highlight;
+    stroke-width: 4;
+    filter: none;
+  }
+
   .concept-graph__list-item {
     border-color: CanvasText;
     background: Canvas;

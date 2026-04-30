@@ -123,11 +123,24 @@ export default function RatchetPage() {
           </div>
         </div>
 
+        {/*
+         * Phase 4G: Strict-ratchet transparency banner.
+         * Mirrors V6 (AhaDiff Warm v6.html L1562 demo-banner +
+         * L1967 strict-ratchet pull-quote). Surfaces the rule that lower
+         * scores are dropped so users can read the table without thinking
+         * the missing entries are bugs. Phase 5C will swap demo copy for
+         * real benchmark transparency once metrics ship.
+         */}
+        <aside className="ratchet-banner" role="note">
+          <span className="ratchet-banner__tag">{t('Ratchet.banner_tag')}</span>
+          <span className="ratchet-banner__text">{t('Ratchet.banner_text')}</span>
+        </aside>
+
         {/* Chart + Rubric grid */}
         <div className="ratchet-page__grid">
           <div className="ratchet-card">
             <div className="ratchet-card__header">
-              <h3>{t('Dashboard.ratchet_title')}</h3>
+              <h2>{t('Dashboard.ratchet_title')}</h2>
               <span className="ratchet-card__meta">{t('Rubric.overall')}</span>
             </div>
             <div className="ratchet-card__body">
@@ -143,7 +156,7 @@ export default function RatchetPage() {
 
           <div className="ratchet-card">
             <div className="ratchet-card__header">
-              <h3>{t('Rubric.weakest_dim')}</h3>
+              <h2>{t('Rubric.weakest_dim')}</h2>
               <span className="ratchet-card__meta">{t('Ratchet.meta_runs', { count: history.length })}</span>
             </div>
             <div className="ratchet-card__body">
@@ -155,7 +168,7 @@ export default function RatchetPage() {
         {/* Results table */}
         <div className="ratchet-card">
           <div className="ratchet-card__header">
-            <h3>{t('Dashboard.run_list_title')}</h3>
+            <h2>{t('Dashboard.run_list_title')}</h2>
             <span className="ratchet-card__meta">{t('Ratchet.meta_entries', { count: history.length })}</span>
           </div>
           <div className="ratchet-card__body ratchet-card__body--table u-p-0">

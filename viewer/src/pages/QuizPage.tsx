@@ -205,6 +205,47 @@ export default function QuizPage() {
 
   const ratedCount = Object.keys(rated).length;
 
+  /**
+   * Phase 4C: 1/2/3/4 keyboard shortcuts to rate the current quiz card.
+   * Mirrors ReviewPage so muscle-memory transfers between the two surfaces.
+   *
+   * The shortcut delegates to the actual rating buttons via `.click()` so
+   * we inherit `SRSCard`'s `peekReady` / `PEEK_GUARD_MS` (1.5 s) gating —
+   * shortcuts must not bypass the anti-peek guard that the buttons enforce
+   * on revealed cards.
+   */
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!currentQuiz) return;
+      if (rated[currentQuiz.question_id]) return;
+      if (!answered[currentQuiz.question_id]) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      let rating: SrsReviewRating | null = null;
+      if (event.key === '1') rating = 'wrong';
+      else if (event.key === '2') rating = 'hard';
+      else if (event.key === '3') rating = 'good';
+      else if (event.key === '4') rating = 'easy';
+      if (!rating) return;
+      event.preventDefault();
+      const btn = document.querySelector<HTMLButtonElement>(
+        `.srs-card__rating-btn--${rating}`,
+      );
+      if (btn && !btn.disabled) {
+        btn.click();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [answered, currentQuiz, rated]);
+
   return (
     <AppShell>
       <div className="quiz-page">

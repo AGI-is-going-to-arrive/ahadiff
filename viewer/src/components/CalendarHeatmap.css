@@ -1,0 +1,200 @@
+/* ============================================================
+ * Phase 4A — CalendarHeatmap component
+ * Mirrors V6 (AhaDiff Warm v6.html L2228-2244):
+ *   .card { .ch h3 + .meta · .cb { 10×3 grid, 3px gap } }
+ * Color levels are derived from --accent / --hair / --subtle so the
+ * widget tracks paper/dark theme and forced-colors automatically.
+ * ============================================================ */
+
+.calendar-heatmap {
+  background: var(--paper);
+  border: 1px solid var(--hair);
+  border-radius: 12px;
+  padding: 16px 18px 14px;
+  box-shadow: var(--sh-sm);
+}
+
+.calendar-heatmap__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.calendar-heatmap__title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.calendar-heatmap__meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.calendar-heatmap__grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 3px;
+}
+
+.calendar-heatmap__cell {
+  aspect-ratio: 1 / 1;
+  width: 100%;
+  border-radius: 3px;
+  background: var(--subtle);
+  transition:
+    background var(--dur-fast, 0.15s) var(--ease-out, ease),
+    transform var(--dur-fast, 0.15s) var(--ease-out, ease);
+}
+
+.calendar-heatmap__cell--lvl-0 {
+  /* Inactive day; faint marker so the grid still reads as a calendar. */
+  background: var(--subtle);
+  opacity: 0.7;
+}
+
+.calendar-heatmap__cell--lvl-1 {
+  background: var(--accent-softer);
+}
+
+.calendar-heatmap__cell--lvl-2 {
+  background: var(--accent-soft);
+}
+
+.calendar-heatmap__cell--lvl-3 {
+  background: var(--accent);
+  box-shadow: 0 1px 2px var(--accent-softer);
+}
+
+/* Hover focus only on real cells. The pointer is informational so we keep
+ * the cursor as `help`; click activation is reserved for future detail-panel
+ * integration (Phase 4E enrichment). */
+.calendar-heatmap__cell:not(.calendar-heatmap__cell--skeleton):hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+  cursor: help;
+}
+
+/* Skeleton state — no-data placeholder while the API is in flight. */
+.calendar-heatmap__cell--skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--subtle) 0%,
+    var(--paper-deep, var(--subtle)) 50%,
+    var(--subtle) 100%
+  );
+  background-size: 200% 100%;
+  animation: heatmap-skeleton 1.4s linear infinite;
+}
+
+@keyframes heatmap-skeleton {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.calendar-heatmap__legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.calendar-heatmap__legend > span:first-child {
+  margin-right: auto;
+}
+
+.calendar-heatmap__legend > span:last-child {
+  margin-left: 6px;
+}
+
+.calendar-heatmap__legend-cell {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.calendar-heatmap__legend-cell--lvl-0 {
+  background: var(--subtle);
+  opacity: 0.7;
+}
+
+.calendar-heatmap__legend-cell--lvl-1 {
+  background: var(--accent-softer);
+}
+
+.calendar-heatmap__legend-cell--lvl-2 {
+  background: var(--accent-soft);
+}
+
+.calendar-heatmap__legend-cell--lvl-3 {
+  background: var(--accent);
+}
+
+/* Reduced motion: kill the shimmer/hover lift but keep static rendering. */
+@media (prefers-reduced-motion: reduce) {
+  .calendar-heatmap__cell {
+    transition: none;
+  }
+  .calendar-heatmap__cell:hover {
+    transform: none;
+    filter: none;
+  }
+  .calendar-heatmap__cell--skeleton {
+    animation: none;
+    background: var(--subtle);
+  }
+}
+
+/* Forced colors: distinguish levels via border instead of color so the grid
+ * remains legible under high-contrast Windows themes. */
+@media (forced-colors: active) {
+  .calendar-heatmap {
+    border: 1px solid CanvasText;
+  }
+  .calendar-heatmap__cell,
+  .calendar-heatmap__legend-cell {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    opacity: 1;
+    forced-color-adjust: none;
+  }
+  .calendar-heatmap__cell--lvl-1,
+  .calendar-heatmap__legend-cell--lvl-1 {
+    background: GrayText;
+  }
+  .calendar-heatmap__cell--lvl-2,
+  .calendar-heatmap__legend-cell--lvl-2 {
+    background: Highlight;
+  }
+  .calendar-heatmap__cell--lvl-3,
+  .calendar-heatmap__legend-cell--lvl-3 {
+    background: Highlight;
+    border: 2px solid CanvasText;
+  }
+}
+
+/* Phase 2D smaller-screen spacing trim. */
+@media (max-width: 540px) {
+  .calendar-heatmap {
+    padding: 12px 14px;
+  }
+  .calendar-heatmap__title {
+    font-size: 14px;
+  }
+}

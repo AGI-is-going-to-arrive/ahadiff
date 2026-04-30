@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from anyio import to_thread
+from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
 
 from ahadiff.contracts.serve_runtime import SearchResponse, SearchResultItem
@@ -27,6 +28,11 @@ async def search_api(request: Request) -> JSONResponse:
         limit = min(max(int(raw_limit), 1), 200)
     except (ValueError, TypeError):
         limit = 50
+    raw_cursor = request.query_params.get("cursor")
+    try:
+        offset = max(int(raw_cursor), 0) if raw_cursor is not None else 0
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail="search cursor must be an integer") from exc
     tables_raw = request.query_params.get("tables")
     tables: tuple[str, ...] | None = None
     if tables_raw:
@@ -38,6 +44,7 @@ async def search_api(request: Request) -> JSONResponse:
             state.state_dir,
             q,
             limit=limit,
+            offset=offset,
             tables=tables,
             include_graph=_should_include_graph(tables),
         ),
@@ -70,6 +77,7 @@ def _search_sync(
     q: str,
     *,
     limit: int,
+    offset: int,
     tables: tuple[str, ...] | None,
     include_graph: bool,
 ) -> dict[str, Any]:
@@ -79,10 +87,12 @@ def _search_sync(
     results = search_all_with_graph(
         db_path,
         q,
-        limit=limit,
+        limit=limit + offset + 1,
         tables=tables,
         graph=graph,
     )
+    page = results[offset : offset + limit]
+    next_cursor = str(offset + limit) if len(results) > offset + limit else None
     response = SearchResponse(
         results=[
             SearchResultItem(
@@ -90,9 +100,11 @@ def _search_sync(
                 primary_key=r.primary_key,
                 snippet=r.snippet,
                 rank=r.rank,
+                href=r.href,
             )
-            for r in results
-        ]
+            for r in page
+        ],
+        next_cursor=next_cursor,
     )
     return response.model_dump(mode="json")
 

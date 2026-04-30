@@ -76,7 +76,7 @@
 
 .settings-field__label p {
   margin: 4px 0 0;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--muted);
 }
 
@@ -177,11 +177,37 @@
   letter-spacing: 0.08em;
 }
 
-/* ---- Responsive ---- */
+/* ---- Responsive (V6 §2D, --bp-lg 900px) ----
+ * Page CSS scope: only classes that exist in current SettingsPage.tsx are
+ * styled here. When Phase 4D lands the 8-tab refactor it will add
+ * `.settings-layout / .setting-control` collapse rules at this breakpoint —
+ * see V6 line 471. Adding them now would be dead CSS. */
+@media (max-width: 900px) {
+  .settings-field {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .provider-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ---- Responsive: mobile (V6 §2D, --bp-md 768px) ---- */
 @media (max-width: 767px) {
   .settings__title { font-size: 28px; }
   .settings-field { grid-template-columns: 1fr; }
   .provider-grid { grid-template-columns: 1fr; }
+}
+
+/* ---- Responsive: small phones (V6 §2D, --bp-xs 540px) ---- */
+@media (max-width: 540px) {
+  .settings__title { font-size: 24px; }
+  .settings-card {
+    padding: 14px;
+  }
+  .settings-card__header h3 {
+    font-size: 14px;
+  }
 }
 
 @media (forced-colors: active) {

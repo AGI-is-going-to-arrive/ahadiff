@@ -332,6 +332,7 @@ def test_get_doctor_returns_checks_list(tmp_path: Path) -> None:
     assert "application/json" in response.headers["content-type"]
     payload = response.json()
     assert "checks" in payload
+    assert payload["summary_status"] in {"pass", "warn", "fail"}
     assert isinstance(payload["checks"], list)
 
 
@@ -458,7 +459,29 @@ def test_get_doctor_check_entries_have_required_fields(tmp_path: Path) -> None:
         assert "name" in check
         assert "status" in check
         assert "message" in check
+        assert "category" in check
+        assert "details" in check
         assert check["status"] in {"pass", "fail", "warn"}
+
+
+def test_get_doctor_includes_4d_prerequisite_checks(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    client = _client(state_dir)
+
+    response = client.get("/api/doctor")
+
+    names = {check["name"] for check in response.json()["checks"]}
+    assert {
+        "state_dir_path",
+        "sqlite_runtime_gate",
+        "config_unknown_keys",
+        "config_sensitive_keys",
+        "config_precedence_conflicts",
+        "review_db_quick_check",
+        "usage_db",
+        "audit_file",
+    }.issubset(names)
 
 
 def test_get_doctor_is_public_no_token_required(tmp_path: Path) -> None:

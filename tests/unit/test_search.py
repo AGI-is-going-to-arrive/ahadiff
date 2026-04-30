@@ -564,6 +564,70 @@ def test_route_search_returns_public_rank_descending_order(tmp_path: Path) -> No
     assert results[0]["primary_key"] == "task-timeout"
 
 
+def test_route_search_result_events_expose_run_href(tmp_path: Path) -> None:
+    from starlette.testclient import TestClient
+
+    from ahadiff.serve import ServeState, create_app
+
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    db = state_dir / "review.sqlite"
+    initialize_review_db(db)
+    with connect_review_db(db) as conn:
+        conn.execute(
+            """
+            INSERT INTO result_events (
+                event_id,
+                run_id,
+                event_type,
+                timestamp,
+                source_ref,
+                base_ref,
+                prompt_version,
+                eval_bundle_version,
+                rubric_version,
+                overall,
+                verdict,
+                status,
+                weakest_dim,
+                note_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "event-123",
+                "run-real",
+                "score_finalized",
+                "2026-04-30T00:00:00Z",
+                "src/task_timeout.py",
+                None,
+                "prompt-v1",
+                "eval-v1",
+                None,
+                90.0,
+                "PASS",
+                "completed",
+                "task_timeout",
+                '{"summary":"task timeout result"}',
+            ),
+        )
+
+    app = create_app(ServeState(state_dir=state_dir, token="test-token", locale="en"))
+    client = TestClient(app, base_url="http://localhost:8765")
+
+    response = client.get(
+        "/api/search?q=timeout&tables=result_events",
+        headers={"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"},
+    )
+
+    assert response.status_code == 200
+    results = response.json()["results"]
+    assert len(results) == 1
+    assert results[0]["source_table"] == "result_events"
+    assert results[0]["primary_key"] == "event-123"
+    assert results[0]["href"] == "#/run/run-real/lesson"
+    assert "<b>timeout</b>" in results[0]["snippet"]
+
+
 def test_route_search_loads_imported_graph_artifact(tmp_path: Path) -> None:
     from starlette.testclient import TestClient
 

@@ -7,6 +7,72 @@
 import { expect, test, type Page } from '@playwright/test';
 import { installServeMock } from '../fixtures/serve-mock';
 
+const RICH_DIFF = `diff --git a/demo.py b/demo.py
+index 0000001..0000002 100644
+--- a/demo.py
++++ b/demo.py
+@@ -1,3 +1,4 @@
+ def hello():
+-    return "world"
++    return "AhaDiff"
++    # learn-from-diff
+@@ -6,3 +7,4 @@ def explain():
+ def explain():
+-    return "old"
++    return "lesson-ready"
++    # evidence-ready
+`;
+
+async function openSidebarIfCollapsed(page: Page): Promise<void> {
+  // V6 collapses the sidebar into a drawer up to 1024px (matches AhaDiff
+  // Warm v6.html:361 @media max-width:1024px). Use the same boundary so the
+  // helper opens the drawer on tablet (768px) viewports as well.
+  const isMobile = await page.evaluate(
+    () => window.matchMedia('(max-width: 1024px)').matches,
+  );
+  if (!isMobile) return;
+  await expect(page.locator('.app-shell')).toBeVisible();
+  await expect(page.locator('.topbar')).toBeVisible();
+  const menu = page.locator('.topbar__mobile-btn');
+  await expect(menu).toBeAttached();
+  await expect(menu).toBeVisible();
+  if ((await menu.getAttribute('aria-expanded')) !== 'true') {
+    await menu.click();
+    await expect(menu).toHaveAttribute('aria-expanded', 'true');
+  }
+}
+
+async function holdPeekGuardTimer(page: Page): Promise<void> {
+  await page.addInitScript(`
+    (() => {
+      const nativeSetTimeout = window.setTimeout.bind(window);
+      const nativeClearTimeout = window.clearTimeout.bind(window);
+      let nextHeldTimerId = -1;
+      const heldTimers = new Map();
+
+      window.setTimeout = (handler, timeout, ...args) => {
+        if (timeout === 1500 && typeof handler === 'function') {
+          const id = nextHeldTimerId--;
+          heldTimers.set(id, () => handler(...args));
+          return id;
+        }
+        return nativeSetTimeout(handler, timeout, ...args);
+      };
+
+      window.clearTimeout = (timerId) => {
+        if (heldTimers.delete(timerId)) return;
+        nativeClearTimeout(timerId);
+      };
+
+      window.__ahadiffReleasePeekGuardTimers = () => {
+        const callbacks = Array.from(heldTimers.values());
+        heldTimers.clear();
+        callbacks.forEach((callback) => callback());
+      };
+    })();
+  `);
+}
+
 /* ------------------------------------------------------------------ */
 /*  Enhanced mock installer: overrides selected routes with richer data */
 /* ------------------------------------------------------------------ */
@@ -114,6 +180,53 @@ async function installRichMock(page: Page): Promise<void> {
         }),
       }),
   );
+
+  await page.route(
+    (url) => /^\/api\/run\/[^/]+\/diff$/.test(url.pathname),
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          run_id: 'test-run',
+          artifact_type: 'diff',
+          content: RICH_DIFF,
+          content_lang: 'en',
+        }),
+      }),
+  );
+
+  await page.route(
+    (url) => /^\/api\/run\/[^/]+\/lesson$/.test(url.pathname),
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          run_id: 'test-run',
+          artifact_type: 'lesson',
+          content:
+            '# Sample lesson\n\nThis change adds a learn-from-diff comment.\n\n```python\n# Not a lesson heading\nprint("inside fence")\n```\n\n## Evidence\n\nThe verified claim spans two source hunks.',
+          content_lang: 'en',
+        }),
+      }),
+  );
+
+  await page.route(
+    (url) => /^\/api\/run\/[^/]+\/claims$/.test(url.pathname),
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          run_id: 'test-run',
+          artifact_type: 'claims',
+          content:
+            '{"claim_id":"c1","verdict":"verified","source_hunks":[{"file":"demo.py","start":3,"end":3,"side":"new"},{"file":"demo.py","start":8,"end":9,"side":"new"}],"statement":"adds learn-from-diff comment and follow-up evidence"}',
+          content_lang: 'en',
+        }),
+      }),
+  );
 }
 
 /* ================================================================== */
@@ -184,9 +297,11 @@ test.describe('walkthrough: full-app functional test', () => {
     const tabs = page.locator('.scaffolding-tab');
     await expect(tabs).toHaveCount(3); // full, medium, minimal
 
-    // Lesson markdown content
-    await expect(page.locator('.lesson-markdown')).toBeVisible();
-    await expect(page.locator('.lesson-markdown')).toContainText('Sample lesson');
+    // Lesson prose content (V6 3-column layout: prose lives in .lesson__prose)
+    await expect(page.locator('.lesson__prose')).toBeVisible();
+    await expect(page.locator('.lesson__prose')).toContainText('Sample lesson');
+    await expect(page.locator('.lesson__toc')).toContainText('Evidence');
+    await expect(page.locator('.lesson__toc')).not.toContainText('Not a lesson heading');
 
     // Claims list
     const claimCards = page.locator('.claim-card');
@@ -199,6 +314,7 @@ test.describe('walkthrough: full-app functional test', () => {
 
     // Evidence panel should show
     await expect(page.locator('.evidence-panel')).toBeVisible();
+    await expect(page.locator('.evidence-panel__location code')).toHaveCount(2);
 
     // Click claim again to deselect
     await claimCards.first().click();
@@ -241,8 +357,23 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(page.locator('.mini-panel')).toBeVisible();
     await expect(page.locator('.mini-panel__item')).not.toHaveCount(0);
 
-    // Inspector aside
-    await expect(page.locator('.diff-page__aside')).toBeVisible();
+    // Inspector aside (V6 split layout uses ClaimInspector)
+    await expect(page.locator('.claim-inspector')).toBeVisible();
+
+    const linkedClaimLine = page.locator('.diff-line--claim-linked').first();
+    await expect(linkedClaimLine).toContainText('# learn-from-diff');
+    await linkedClaimLine.click();
+    await expect(linkedClaimLine).toHaveClass(/diff-line--claim-selected/);
+    await expect(page.locator('.claim-inspector__item--selected')).toContainText('c1');
+    await expect(page.locator('.claim-inspector__source-group')).toHaveCount(2);
+    const sourceCodes = page.locator('.claim-inspector__source-code');
+    await expect(sourceCodes.nth(0)).toContainText('# learn-from-diff');
+    await expect(sourceCodes.nth(1)).toContainText('lesson-ready');
+    await expect(sourceCodes.nth(1)).toContainText('evidence-ready');
+
+    await linkedClaimLine.focus();
+    await page.keyboard.press('Space');
+    await expect(linkedClaimLine).not.toHaveClass(/diff-line--claim-selected/);
 
     await page.screenshot({ path: `${SCREENSHOT_DIR}/03-diff.png`, fullPage: true });
   });
@@ -252,6 +383,7 @@ test.describe('walkthrough: full-app functional test', () => {
   /* ---------------------------------------------------------------- */
 
   test('Quiz — question, answer, SRS rating gate, next button', async ({ page }) => {
+    await holdPeekGuardTimer(page);
     const srsReviewRequests: Array<Record<string, unknown>> = [];
     page.on('request', (request) => {
       if (new URL(request.url()).pathname !== '/api/signals/srs-review') return;
@@ -290,25 +422,42 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(page.getByText('learn-from-diff marker tags the change')).toBeVisible();
     await expect(page.locator('.quiz-page__misconceptions')).toBeVisible();
 
-    // Rating buttons appear but are disabled during peek guard (1.5s)
+    // Rating buttons appear but are disabled during peek guard (1.5s).
+    // The timer is held by the test to avoid slow-browser timing flakes.
     const ratingBtns = page.locator('.srs-card__rating-btn');
     await expect(ratingBtns).not.toHaveCount(0);
-    await expect(ratingBtns.first()).toBeDisabled();
+    const archiveBtn = page.getByRole('button', { name: /Archive/i });
+    const suspendBtn = page.getByRole('button', { name: /Suspend/i });
+    const easyBtn = page.locator('.srs-card__rating-btn--easy');
+    const goodBtn = page.locator('.srs-card__rating-btn--good');
+    const hardBtn = page.locator('.srs-card__rating-btn--hard');
+    const wrongBtn = page.locator('.srs-card__rating-btn--wrong');
+
+    await expect(easyBtn).toBeDisabled();
+    await expect(goodBtn).toBeDisabled();
+    await expect(hardBtn).toBeDisabled();
+    await expect(wrongBtn).toBeDisabled();
+    await expect(archiveBtn).toBeDisabled();
+    await expect(suspendBtn).toBeDisabled();
+    expect(srsReviewRequests).toHaveLength(0);
 
     // Peek guard hint visible
     await expect(page.locator('.srs-card__peek-hint')).toBeVisible();
 
-    const easyBtn = page.locator('.srs-card__rating-btn--easy');
-    const goodBtn = page.locator('.srs-card__rating-btn--good');
-    const hardBtn = page.locator('.srs-card__rating-btn--hard');
+    await page.evaluate(() => {
+      (window as Window & { __ahadiffReleasePeekGuardTimers?: () => void })
+        .__ahadiffReleasePeekGuardTimers?.();
+    });
 
-    // Wait for peek guard to expire (1.5s). Because the quiz revealed
+    // After peek guard expires. Because the quiz revealed
     // the answer, the backend treats this review as peeked and still rejects
     // Easy/Good. The UI must only allow Hard/Wrong SRS submissions here.
-    await page.waitForTimeout(1600);
     await expect(easyBtn).toBeDisabled();
     await expect(goodBtn).toBeDisabled();
     await expect(hardBtn).toBeEnabled();
+    await expect(wrongBtn).toBeEnabled();
+    await expect(archiveBtn).toBeEnabled();
+    await expect(suspendBtn).toBeEnabled();
 
     await hardBtn.click();
     await expect.poll(() => srsReviewRequests.length, { timeout: 3000 }).toBe(1);
@@ -580,8 +729,11 @@ test.describe('walkthrough: full-app functional test', () => {
     ];
 
     for (const { text, hash } of routes) {
-      const link = sidebar.locator('.sidebar__item', { hasText: text }).first();
+      await page.goto('/');
+      await openSidebarIfCollapsed(page);
+      const link = page.locator('.sidebar .sidebar__item', { hasText: text }).first();
       if (await link.isVisible()) {
+        await link.scrollIntoViewIfNeeded();
         await link.click();
         await page.waitForURL(new RegExp(hash.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
         // Verify heading exists on each page

@@ -258,8 +258,14 @@ class TestUsage:
         assert resp.status_code == 200
         body = resp.json()
         assert body["total_calls"] == 1
+        assert body["total_input_tokens"] == 123
+        assert body["total_output_tokens"] == 45
+        assert body["total_cost_usd"] == 0.67
+        assert body["cache_hits"] == 0
+        assert body["cache_misses"] == 1
         assert body["models"] == [
             {
+                "provider_class": "openai",
                 "model_id": "gpt-5.4-mini",
                 "call_count": 1,
                 "total_input_tokens": 123,
@@ -322,6 +328,45 @@ class TestUsage:
         assert resp.status_code == 500
         assert resp.json()["error"] == "usage database is unavailable"
 
+    def test_usage_invalid_time_filter_returns_400(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch
+    ) -> None:
+        from ahadiff.llm.usage import UsageRecord, record_usage_event
+
+        usage_db = tmp_path / "usage.sqlite"
+        monkeypatch.setattr("ahadiff.core.paths.usage_db_path", _usage_db_factory(usage_db))
+        record_usage_event(
+            UsageRecord(
+                workspace_identity=_workspace_identity_key(tmp_path),
+                provider_class="openai",
+                api_family="responses",
+                api_family_version="v1",
+                model_id="gpt-5.4-mini",
+                prompt_name="quiz.generate",
+                prompt_fingerprint="abc123",
+                prompt_version="abc123",
+                eval_bundle_version="eval-v1",
+                output_lang="en",
+                privacy_mode="strict_local",
+                source_ref="deadbeef",
+                cache_key="cache-key",
+                cache_hit=False,
+                input_tokens=1,
+                output_tokens=1,
+                cost_usd=0.01,
+                pricing_version="pricing-v1",
+                cost_confidence="high",
+                execution_origin="quiz_generate",
+            ),
+            db_path=usage_db,
+        )
+        client = _client(tmp_path / ".ahadiff")
+
+        resp = client.get("/api/usage", params={"from": "not-a-date"}, headers=_AUTH)
+
+        assert resp.status_code == 400
+        assert "ISO-8601" in resp.json()["error"]
+
 
 # ---------------------------------------------------------------------------
 # GET /api/audit
@@ -374,6 +419,54 @@ class TestAudit:
         assert body["total"] == 10
         assert len(body["entries"]) == 3
         assert body["offset"] == 2
+        assert body["page"] == 1
+        assert body["has_more"] is True
+        assert body["next_cursor"] == "5"
+
+    def test_page_limit_and_fields_filter(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir(parents=True)
+        audit_path = state_dir / "audit.jsonl"
+        lines = [
+            json.dumps(
+                {
+                    "timestamp": f"2026-01-0{i}T00:00:00Z",
+                    "event_type": "llm",
+                    "model_id": f"model-{i}",
+                    "secret": "must-not-pass-filter",
+                }
+            )
+            for i in range(1, 6)
+        ]
+        audit_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        client = _client(state_dir)
+
+        resp = client.get(
+            "/api/audit",
+            params={"limit": "2", "page": "2", "fields": "timestamp,model_id"},
+            headers=_AUTH,
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["offset"] == 2
+        assert body["page"] == 2
+        assert body["fields"] == ["timestamp", "model_id"]
+        assert body["entries"] == [
+            {"timestamp": "2026-01-03T00:00:00Z", "model_id": "model-3"},
+            {"timestamp": "2026-01-04T00:00:00Z", "model_id": "model-4"},
+        ]
+
+    def test_unknown_audit_field_is_rejected(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir(parents=True)
+        (state_dir / "audit.jsonl").write_text("{}\n", encoding="utf-8")
+        client = _client(state_dir)
+
+        resp = client.get("/api/audit", params={"fields": "secret"}, headers=_AUTH)
+
+        assert resp.status_code == 400
+        assert "unsupported audit fields" in resp.json()["error"]
 
     def test_malformed_lines_are_skipped_per_line(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".ahadiff"

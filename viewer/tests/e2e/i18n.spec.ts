@@ -1,5 +1,39 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { installServeMock } from '../fixtures/serve-mock';
+
+/* V6 collapses the sidebar into a drawer up to 1024px (matches AhaDiff
+ * Warm v6.html:361 @media max-width:1024px) — keep the helper aligned. */
+const MOBILE_NAV_QUERY = '(max-width: 1024px)';
+
+async function openSidebarIfCollapsed(page: Page): Promise<void> {
+  const isMobile = await page.evaluate(
+    (q) => window.matchMedia(q).matches,
+    MOBILE_NAV_QUERY,
+  );
+  if (!isMobile) return;
+  await expect(page.locator('.app-shell')).toBeVisible();
+  await expect(page.locator('.topbar')).toBeVisible();
+  const menu = page.locator('.topbar__mobile-btn');
+  await expect(menu).toBeVisible();
+  if ((await menu.getAttribute('aria-expanded')) !== 'true') {
+    await menu.click();
+    await expect(menu).toHaveAttribute('aria-expanded', 'true');
+  }
+}
+
+async function closeSidebarIfOpen(page: Page): Promise<void> {
+  const isMobile = await page.evaluate(
+    (q) => window.matchMedia(q).matches,
+    MOBILE_NAV_QUERY,
+  );
+  if (!isMobile) return;
+  const menu = page.locator('.topbar__mobile-btn');
+  await expect(menu).toBeVisible();
+  if ((await menu.getAttribute('aria-expanded')) === 'true') {
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveAttribute('aria-expanded', 'false');
+  }
+}
 
 test.describe('i18n', () => {
   test.beforeEach(async ({ page, context }) => {
@@ -61,11 +95,19 @@ test.describe('i18n', () => {
 
   test('sidebar nav_label switches with locale', async ({ page }) => {
     await page.goto('/');
+    await openSidebarIfCollapsed(page);
     const nav = page.getByRole('navigation', { name: /Navigation|导航/ });
     await expect(nav).toBeVisible();
 
+    await closeSidebarIfOpen(page);
     await page.getByRole('button', { name: '简体中文' }).click();
+    await openSidebarIfCollapsed(page);
     await expect(page.getByRole('navigation', { name: '导航' })).toBeVisible();
+    await expect(page.locator('.sidebar__label-en', { hasText: 'Dashboard' }).first()).toBeVisible();
+    const sidebarOverflow = await page
+      .locator('#sidebar')
+      .evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(sidebarOverflow).toBeLessThanOrEqual(0);
   });
 
   test('Diff route renders localized heading in zh-CN', async ({ page }) => {

@@ -62,7 +62,7 @@
   border-bottom: 1px solid var(--hair);
 }
 
-.ratchet-card__header h3 {
+.ratchet-card__header h2 {
   margin: 0;
   font-family: var(--font-serif);
   font-size: 18px;
@@ -90,7 +90,7 @@
 
 .ratchet-table thead th {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
@@ -120,6 +120,62 @@
   font-feature-settings: "tnum", "lnum";
 }
 
+/* ---- Phase 4G: strict-ratchet transparency banner ----
+ * V6 demo-banner pattern (AhaDiff Warm v6.html L1562 + L1967): pull the
+ * rule out of the table copy and into a visible note so users understand
+ * why "discard" rows aren't bugs. */
+.ratchet-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px 16px;
+  margin: 14px 0 18px;
+  padding: 10px 14px;
+  background: var(--accent-softer);
+  border: 1px solid var(--accent-hair, var(--hair));
+  border-radius: 10px;
+  border-left: 3px solid var(--accent);
+}
+
+.ratchet-banner__tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.ratchet-banner__text {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+@media (forced-colors: active) {
+  .ratchet-banner {
+    border-color: CanvasText;
+    background: Canvas;
+  }
+}
+
+/* ---- Responsive: tablet collapse (V6 §2D, --bp-md2 780px) ----
+ * Chart + rubric grid drops to single column at 780 so the rubric card
+ * doesn't squeeze the chart on narrow tablets. */
+@media (max-width: 780px) {
+  .ratchet-page__grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .ratchet-card__body--table {
+    overflow-x: auto;
+  }
+
+  .ratchet-table {
+    min-width: 540px;
+  }
+}
+
 /* ---- Responsive ---- */
 @media (max-width: 767px) {
   .ratchet-page__grid {
@@ -137,6 +193,27 @@
   .ratchet-table {
     font-size: 12px;
     min-width: 500px;
+  }
+}
+
+/* ---- Responsive: small phones (V6 §2D, --bp-xs 540px) ---- */
+@media (max-width: 540px) {
+  .ratchet-page__title {
+    font-size: 24px;
+  }
+
+  .ratchet-table {
+    font-size: 12px;
+    min-width: 480px;
+  }
+
+  .ratchet-table thead th,
+  .ratchet-table tbody td {
+    padding: 8px 10px;
+  }
+
+  .ratchet-card {
+    padding: 14px 14px 12px;
   }
 }
 

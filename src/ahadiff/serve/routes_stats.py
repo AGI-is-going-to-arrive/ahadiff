@@ -9,7 +9,7 @@ import time
 from collections.abc import Mapping
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 if not TYPE_CHECKING:
     from pathlib import Path
@@ -25,6 +25,8 @@ from ahadiff.contracts.serve_stats import (
     ReviewHeatmapResponse,
     ServeStatusResponse,
     StatsResponse,
+    UsageModelSummary,
+    UsageResponse,
 )
 from ahadiff.review.database import connect_review_db, count_concepts
 
@@ -350,6 +352,113 @@ async def get_review_heatmap(request: Request) -> JSONResponse:
 # ---------------------------------------------------------------------------
 
 
+def _optional_positive_int(mapping: Mapping[str, object], key: str) -> int | None:
+    raw = mapping.get(key)
+    return int(raw) if isinstance(raw, int) and raw > 0 else None
+
+
+def _optional_bool(mapping: Mapping[str, object], key: str) -> bool | None:
+    raw = mapping.get(key)
+    return raw if isinstance(raw, bool) else None
+
+
+def _provider_api_family(provider_class: str) -> tuple[str | None, str | None, str]:
+    if provider_class == "openai_responses":
+        return ("openai", "responses-v1", "openai_responses")
+    if provider_class in {"openai", "newapi", "cherryin"}:
+        return ("openai", "chat-v1", provider_class)
+    if provider_class == "azure":
+        return ("openai", "azure-openai", "azure")
+    if provider_class == "gemini":
+        return ("gemini", "v1beta", "gemini")
+    if provider_class == "anthropic":
+        return ("anthropic", "2023-06-01", "anthropic")
+    if provider_class == "ollama":
+        return ("ollama", "v1", "ollama")
+    return (None, None, provider_class or "legacy")
+
+
+def _provider_key_status(
+    api_key_env: str | None,
+) -> Literal["configured", "missing", "unknown"]:
+    import os
+
+    if not api_key_env:
+        return "unknown"
+    return "configured" if os.environ.get(api_key_env) else "missing"
+
+
+def _provider_summary_from_mapping(
+    alias: str,
+    provider_mapping: Mapping[str, object],
+    *,
+    role: str | None = None,
+) -> ProviderSummary | None:
+    provider_class = str(provider_mapping.get("provider_class") or "")
+    model_name = str(provider_mapping.get("model_name") or "")
+    base_url = str(provider_mapping.get("base_url") or "")
+    if not provider_class or not model_name or not base_url:
+        return None
+    raw_api_key_env = provider_mapping.get("api_key_env")
+    api_key_env = (
+        str(raw_api_key_env) if isinstance(raw_api_key_env, str) and raw_api_key_env else None
+    )
+    api_family, api_family_version, provider_kind = _provider_api_family(provider_class)
+    probed_max_context = _optional_positive_int(provider_mapping, "probed_max_context")
+    probed_tpm = _optional_positive_int(provider_mapping, "probed_tpm")
+    probed_rpm = _optional_positive_int(provider_mapping, "probed_rpm")
+    raw_probe_timestamp = provider_mapping.get("probe_timestamp")
+    probe_timestamp = (
+        str(raw_probe_timestamp)
+        if isinstance(raw_probe_timestamp, str) and raw_probe_timestamp
+        else None
+    )
+    probed = any(
+        value is not None for value in (probed_max_context, probed_tpm, probed_rpm, probe_timestamp)
+    )
+    return ProviderSummary(
+        alias=alias,
+        role=role,
+        provider_class=provider_class,
+        provider_kind=provider_kind,
+        model_name=model_name,
+        base_url=base_url,
+        api_key_env=api_key_env,
+        key_status=_provider_key_status(api_key_env),
+        api_family=api_family,
+        api_family_version=api_family_version,
+        probed=probed,
+        probed_max_context=probed_max_context,
+        probed_tpm=probed_tpm,
+        probed_rpm=probed_rpm,
+        supports_temperature=_optional_bool(provider_mapping, "supports_temperature"),
+        probe_timestamp=probe_timestamp,
+    )
+
+
+def _legacy_provider_summary(
+    alias: str,
+    model_name: str,
+    base_url: str,
+    api_key_env: str | None,
+) -> ProviderSummary:
+    api_family, api_family_version, provider_kind = _provider_api_family("")
+    return ProviderSummary(
+        alias=alias,
+        role=alias,
+        provider_class=alias,
+        provider_kind=provider_kind,
+        model_name=model_name,
+        base_url=base_url,
+        api_key_env=api_key_env,
+        key_status=_provider_key_status(api_key_env),
+        api_family=api_family,
+        api_family_version=api_family_version,
+        probed=False,
+        probed_max_context=None,
+    )
+
+
 def _build_providers(state: ServeState) -> dict[str, Any]:
     from ahadiff.core.config import load_config
 
@@ -359,33 +468,21 @@ def _build_providers(state: ServeState) -> dict[str, Any]:
         values = cast("dict[str, Any]", getattr(cfg, "values", {}))
         providers_config = values.get("providers")
         if isinstance(providers_config, Mapping):
-            for _, provider in sorted(
+            for alias, provider in sorted(
                 cast("dict[str, Any]", providers_config).items(),
                 key=lambda item: str(item[0]),
             ):
                 if not isinstance(provider, Mapping):
                     continue
                 provider_mapping = cast("Mapping[str, object]", provider)
-                provider_class = str(provider_mapping.get("provider_class") or "")
-                model_name = str(provider_mapping.get("model_name") or "")
-                base_url = str(provider_mapping.get("base_url") or "")
-                raw_context = provider_mapping.get("probed_max_context")
-                probed_max_context = (
-                    int(raw_context) if isinstance(raw_context, int) and raw_context > 0 else None
+                raw_role = provider_mapping.get("role")
+                summary = _provider_summary_from_mapping(
+                    str(alias),
+                    provider_mapping,
+                    role=str(raw_role) if isinstance(raw_role, str) and raw_role else None,
                 )
-                probed = probed_max_context is not None or bool(
-                    provider_mapping.get("probe_timestamp")
-                )
-                if provider_class and model_name and base_url:
-                    providers.append(
-                        ProviderSummary(
-                            provider_class=provider_class,
-                            model_name=model_name,
-                            base_url=base_url,
-                            probed=probed,
-                            probed_max_context=probed_max_context,
-                        )
-                    )
+                if summary is not None:
+                    providers.append(summary)
         if providers:
             return ProvidersResponse(providers=providers).model_dump(mode="json")
         llm = values.get("llm", getattr(cfg, "llm", None))
@@ -394,35 +491,32 @@ def _build_providers(state: ServeState) -> dict[str, Any]:
             gen_model = str(llm_mapping.get("generate_model") or "")
             judge_model = str(llm_mapping.get("judge_model") or "")
             base_url = str(llm_mapping.get("base_url") or "")
+            raw_api_key_env = llm_mapping.get("api_key_env")
+            api_key_env = (
+                str(raw_api_key_env)
+                if isinstance(raw_api_key_env, str) and raw_api_key_env
+                else None
+            )
         elif llm is not None:
             gen_model = getattr(llm, "generate_model", None) or ""
             judge_model = getattr(llm, "judge_model", None) or ""
             base_url = getattr(llm, "base_url", None) or ""
+            raw_api_key_env = getattr(llm, "api_key_env", None)
+            api_key_env = (
+                str(raw_api_key_env)
+                if isinstance(raw_api_key_env, str) and raw_api_key_env
+                else None
+            )
         else:
             gen_model = ""
             judge_model = ""
             base_url = ""
+            api_key_env = None
 
         if gen_model:
-            providers.append(
-                ProviderSummary(
-                    provider_class="generate",
-                    model_name=gen_model,
-                    base_url=base_url,
-                    probed=False,
-                    probed_max_context=None,
-                )
-            )
+            providers.append(_legacy_provider_summary("generate", gen_model, base_url, api_key_env))
         if judge_model and judge_model != gen_model:
-            providers.append(
-                ProviderSummary(
-                    provider_class="judge",
-                    model_name=judge_model,
-                    base_url=base_url,
-                    probed=False,
-                    probed_max_context=None,
-                )
-            )
+            providers.append(_legacy_provider_summary("judge", judge_model, base_url, api_key_env))
     except Exception:
         log.debug("failed to load provider config", exc_info=True)
 
@@ -536,52 +630,91 @@ async def get_learning_effectiveness(request: Request) -> JSONResponse:
 # ---------------------------------------------------------------------------
 
 
-def _build_usage(state: ServeState) -> dict[str, Any]:
+def _build_usage(
+    state: ServeState,
+    *,
+    since: str | None,
+    until: str | None,
+) -> dict[str, Any]:
     from ahadiff.core.paths import usage_db_path, workspace_identity_lookup_keys
-    from ahadiff.llm.usage import connect_usage_db
+    from ahadiff.llm.usage import query_usage_by_model, query_usage_summary
 
     db_path = usage_db_path()
     if not db_path.is_file():
-        return {"models": [], "total_calls": 0}
+        return UsageResponse(
+            models=[],
+            total_calls=0,
+            total_input_tokens=0,
+            total_output_tokens=0,
+            total_cost_usd=0.0,
+            cache_hits=0,
+            cache_misses=0,
+        ).model_dump(mode="json")
 
     current_identity, legacy_identity = workspace_identity_lookup_keys(state.state_dir.parent)
     try:
-        with connect_usage_db(db_path) as conn:
-            rows = conn.execute(
-                """
-                SELECT model_id,
-                       COUNT(*) AS call_count,
-                       SUM(input_tokens) AS total_input,
-                       SUM(output_tokens) AS total_output,
-                       SUM(cost_usd) AS total_cost
-                FROM llm_usage
-                WHERE workspace_identity IN (?, ?)
-                GROUP BY model_id
-                ORDER BY call_count DESC
-                """,
-                (current_identity, legacy_identity),
-            ).fetchall()
+        identities = tuple(dict.fromkeys((current_identity, legacy_identity)))
+        total_calls = 0
+        total_input_tokens = 0
+        total_output_tokens = 0
+        total_cost_usd = 0.0
+        cache_hits = 0
+        cache_misses = 0
+        by_model: dict[tuple[str, str], UsageModelSummary] = {}
+        for identity in identities:
+            summary = query_usage_summary(
+                db_path=db_path,
+                workspace_identity=identity,
+                since=since,
+                until=until,
+            )
+            total_calls += summary.total_calls
+            total_input_tokens += summary.total_input_tokens
+            total_output_tokens += summary.total_output_tokens
+            total_cost_usd += summary.total_cost_usd
+            cache_hits += summary.cache_hits
+            cache_misses += summary.cache_misses
+            for item in query_usage_by_model(
+                db_path=db_path,
+                workspace_identity=identity,
+                since=since,
+                until=until,
+            ):
+                key = (item.provider_class, item.model_id)
+                existing = by_model.get(key)
+                if existing is None:
+                    by_model[key] = UsageModelSummary(
+                        provider_class=item.provider_class,
+                        model_id=item.model_id,
+                        call_count=item.call_count,
+                        total_input_tokens=item.input_tokens,
+                        total_output_tokens=item.output_tokens,
+                        total_cost_usd=item.cost_usd,
+                    )
+                else:
+                    by_model[key] = UsageModelSummary(
+                        provider_class=existing.provider_class,
+                        model_id=existing.model_id,
+                        call_count=existing.call_count + item.call_count,
+                        total_input_tokens=existing.total_input_tokens + item.input_tokens,
+                        total_output_tokens=existing.total_output_tokens + item.output_tokens,
+                        total_cost_usd=existing.total_cost_usd + item.cost_usd,
+                    )
     except Exception as error:
         raise RuntimeError("usage database is unavailable") from error
 
-    total_calls = 0
-    models: list[dict[str, Any]] = []
-    for row in rows:
-        count = int(row[1])
-        total_calls += count
-        cost = float(row[4]) if row[4] is not None else None
-        if cost is not None and not math.isfinite(cost):
-            cost = None
-        models.append(
-            {
-                "model_id": str(row[0]),
-                "call_count": count,
-                "total_input_tokens": int(row[2]) if row[2] is not None else 0,
-                "total_output_tokens": int(row[3]) if row[3] is not None else 0,
-                "total_cost_usd": cost,
-            }
-        )
-    return {"models": models, "total_calls": total_calls}
+    if not math.isfinite(total_cost_usd):
+        total_cost_usd = 0.0
+    models = sorted(by_model.values(), key=lambda item: item.call_count, reverse=True)
+    return UsageResponse(
+        models=models,
+        total_calls=total_calls,
+        total_input_tokens=total_input_tokens,
+        total_output_tokens=total_output_tokens,
+        total_cost_usd=total_cost_usd,
+        cache_hits=cache_hits,
+        cache_misses=cache_misses,
+    ).model_dump(mode="json")
 
 
 async def get_usage(request: Request) -> JSONResponse:
@@ -589,9 +722,15 @@ async def get_usage(request: Request) -> JSONResponse:
 
     require_write_token(request)
     state: ServeState = serve_state(request)
+    since = request.query_params.get("from")
+    until = request.query_params.get("to")
     try:
-        payload = await to_thread.run_sync(_build_usage, state)
+        payload = await to_thread.run_sync(lambda: _build_usage(state, since=since, until=until))
     except Exception as error:
+        from ahadiff.core.errors import InputError
+
+        if isinstance(error.__cause__, InputError):
+            raise HTTPException(status_code=400, detail=str(error.__cause__)) from error
         log.warning("usage API failed", exc_info=True)
         raise HTTPException(status_code=500, detail="usage database is unavailable") from error
     return JSONResponse(payload)

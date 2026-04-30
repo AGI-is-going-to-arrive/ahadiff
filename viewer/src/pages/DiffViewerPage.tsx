@@ -1,13 +1,126 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import AppShell from '../components/AppShell';
-import DiffView, { type DiffStats } from '../components/DiffView';
+import DiffView, {
+  type DiffClaimAnchor,
+  getClaimSourceLines,
+  parseUnifiedDiff,
+  type DiffSourceLine,
+  type DiffStats,
+} from '../components/DiffView';
 import BottomMiniPanel, { type MiniPanelItem } from '../components/BottomMiniPanel';
+import ClaimInspector, { type ClaimInspectorClaim, type ClaimSourceLineGroup } from '../components/ClaimInspector';
+import type { ClaimSourceHunk } from '../components/EvidencePanel';
+import type { ClaimVerdict } from '../components/ClaimBadge';
 import { useTranslation } from '../i18n/useTranslation';
 import { getRunArtifact } from '../api/runs';
 import '../components/Diff.css';
 
 type Phase = 'loading' | 'error' | 'empty' | 'ready';
+type SourceHunkSide = 'old' | 'new' | 'either';
+type DiffPageClaim = ClaimInspectorClaim & {
+  source_anchors: DiffClaimAnchor[];
+};
+
+const CLAIM_VERDICTS: ReadonlySet<ClaimVerdict> = new Set([
+  'verified',
+  'weak',
+  'not_proven',
+  'contradicted',
+  'rejected',
+]);
+
+function toFiniteInt(value: unknown, fallback: number): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.trunc(n) : fallback;
+}
+
+function toSourceHunkSide(value: unknown): SourceHunkSide {
+  return value === 'old' || value === 'new' || value === 'either' ? value : 'either';
+}
+
+function parseSourceHunks(
+  raw: Record<string, unknown>,
+  claimId: string,
+): { anchors: DiffClaimAnchor[]; hunks: ClaimSourceHunk[] } {
+  const rawHunks = Array.isArray(raw.source_hunks) ? raw.source_hunks : [];
+  const parsed = rawHunks
+    .map((entry): { anchor: DiffClaimAnchor; hunk: ClaimSourceHunk } | null => {
+      if (!entry || typeof entry !== 'object') return null;
+      const hunk = entry as Record<string, unknown>;
+      const file = String(hunk.display_path ?? hunk.file ?? '');
+      const start = toFiniteInt(hunk.start ?? hunk.line_start, 0);
+      const end = toFiniteInt(hunk.end ?? hunk.line_end, start);
+      if (!file || start <= 0) return null;
+      const side = toSourceHunkSide(hunk.side);
+      return {
+        anchor: {
+          claim_id: claimId,
+          file,
+          line_start: start,
+          line_end: end,
+          source_side: side,
+        },
+        hunk: {
+          file: String(hunk.file ?? file),
+          display_path: hunk.display_path != null ? String(hunk.display_path) : undefined,
+          start,
+          end,
+          side,
+        },
+      };
+    })
+    .filter((entry): entry is { anchor: DiffClaimAnchor; hunk: ClaimSourceHunk } => entry !== null);
+
+  if (parsed.length > 0) {
+    return {
+      anchors: parsed.map((entry) => entry.anchor),
+      hunks: parsed.map((entry) => entry.hunk),
+    };
+  }
+
+  const file = String(raw.file ?? '');
+  const start = toFiniteInt(raw.line_start, 0);
+  const end = toFiniteInt(raw.line_end, start);
+  if (!file || start <= 0) return { anchors: [], hunks: [] };
+  const side = toSourceHunkSide(raw.side);
+  return {
+    anchors: [{ claim_id: claimId, file, line_start: start, line_end: end, source_side: side }],
+    hunks: [{ file, start, end, side }],
+  };
+}
+
+function parseClaims(content: string): DiffPageClaim[] {
+  const result: DiffPageClaim[] = [];
+  for (const line of content.split('\n')) {
+    if (!line) continue;
+    try {
+      const raw = JSON.parse(line) as Record<string, unknown>;
+      const claimId = String(raw.claim_id ?? '');
+      if (!claimId) continue;
+      const rawVerdict = raw.status ?? raw.verdict;
+      const verdict: ClaimVerdict = CLAIM_VERDICTS.has(rawVerdict as ClaimVerdict)
+        ? (rawVerdict as ClaimVerdict)
+        : 'not_proven';
+      const { anchors, hunks } = parseSourceHunks(raw, claimId);
+      const firstAnchor = anchors[0];
+      result.push({
+        claim_id: claimId,
+        verdict,
+        file: firstAnchor?.file ?? '',
+        line_start: firstAnchor?.line_start ?? 0,
+        line_end: firstAnchor?.line_end ?? 0,
+        source_anchors: anchors,
+        source_hunks: hunks,
+        statement: String(raw.text ?? raw.statement ?? ''),
+        evidence: raw.evidence != null ? String(raw.evidence) : undefined,
+      });
+    } catch {
+      // Skip malformed JSONL lines
+    }
+  }
+  return result;
+}
 
 export default function DiffViewerPage() {
   const { runId } = useParams<{ runId: string }>();
@@ -16,9 +129,11 @@ export default function DiffViewerPage() {
   const [phase, setPhase] = useState<Phase>('loading');
   const [content, setContent] = useState('');
   const [stats, setStats] = useState<DiffStats | null>(null);
+  const [claims, setClaims] = useState<DiffPageClaim[]>([]);
+  const [selectedClaimId, setSelectedClaimId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const fetchDiff = useCallback(() => {
+  const fetchAll = useCallback(() => {
     if (!runId) {
       setPhase('empty');
       return;
@@ -28,11 +143,18 @@ export default function DiffViewerPage() {
     const controller = new AbortController();
     abortRef.current = controller;
     setPhase('loading');
+    setSelectedClaimId(null);
 
-    getRunArtifact(runId, 'diff', { signal: controller.signal })
-      .then((envelope) => {
+    Promise.all([
+      getRunArtifact(runId, 'diff', { signal: controller.signal }),
+      getRunArtifact(runId, 'claims', { signal: controller.signal }).catch(() => ({
+        content: '',
+      })),
+    ])
+      .then(([diffEnv, claimsEnv]) => {
         if (controller.signal.aborted) return;
-        const text = envelope.content ?? '';
+        const text = diffEnv.content ?? '';
+        setClaims(parseClaims(claimsEnv.content ?? ''));
         if (text.trim().length === 0) {
           setPhase('empty');
         } else {
@@ -49,13 +171,47 @@ export default function DiffViewerPage() {
   }, [runId]);
 
   useEffect(() => {
-    fetchDiff();
+    fetchAll();
     return () => abortRef.current?.abort();
-  }, [fetchDiff]);
+  }, [fetchAll]);
 
   const handleStats = useCallback((s: DiffStats) => {
     setStats(s);
   }, []);
+
+  const handleSelect = useCallback((claimId: string) => {
+    setSelectedClaimId((prev) => (prev === claimId ? null : claimId));
+  }, []);
+
+  const handleCopyAnchor = useCallback((claimId: string) => {
+    void navigator.clipboard.writeText(`#claim-${claimId}`);
+  }, []);
+
+  const diffLines = useMemo(() => parseUnifiedDiff(content), [content]);
+  const claimsWithSource = useMemo(
+    () =>
+      claims.map((claim) => {
+        const groups: ClaimSourceLineGroup[] = claim.source_anchors
+          .map((anchor) => ({
+            file: anchor.file,
+            line_start: anchor.line_start,
+            line_end: anchor.line_end,
+            side: anchor.source_side,
+            lines: getClaimSourceLines(diffLines, anchor),
+          }))
+          .filter((group) => group.lines.length > 0);
+        return {
+          ...claim,
+          source_line_groups: groups,
+          source_lines: groups.flatMap((group) => group.lines) as DiffSourceLine[],
+        };
+      }),
+    [claims, diffLines],
+  );
+  const claimAnchors = useMemo(
+    () => claims.flatMap((claim) => claim.source_anchors),
+    [claims],
+  );
 
   /* Build mini-panel items from stats */
   const panelItems: MiniPanelItem[] = stats
@@ -84,7 +240,7 @@ export default function DiffViewerPage() {
             {phase === 'error' && (
               <div className="diff-page__error" role="alert">
                 {t('Error.fetch_failed', { resource: t('Diff.title') })}
-                <button type="button" className="retry-btn" onClick={fetchDiff}>
+                <button type="button" className="retry-btn" onClick={fetchAll}>
                   {t('Error.retry')}
                 </button>
               </div>
@@ -95,17 +251,22 @@ export default function DiffViewerPage() {
             )}
 
             {phase === 'ready' && (
-              <DiffView content={content} onStats={handleStats} />
+              <DiffView
+                lines={diffLines}
+                claims={claimAnchors}
+                selectedClaimId={selectedClaimId}
+                onSelectClaim={handleSelect}
+                onStats={handleStats}
+              />
             )}
           </div>
 
-          <aside
-            className="diff-page__aside"
-            aria-label={t('Diff.inspector_title')}
-          >
-            <h2 className="diff-page__aside-title">{t('Diff.inspector_title')}</h2>
-            <p className="diff-page__aside-empty">{t('Diff.inspector_empty')}</p>
-          </aside>
+          <ClaimInspector
+            claims={claimsWithSource}
+            selectedClaimId={selectedClaimId}
+            onSelect={handleSelect}
+            onCopyAnchor={handleCopyAnchor}
+          />
         </div>
 
         {phase === 'ready' && <BottomMiniPanel items={panelItems} />}

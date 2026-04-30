@@ -83,4 +83,28 @@
   .kpi-card {
     border: 1px solid CanvasText;
   }
+
+  /* Verdict badges in forced-colors (moved from Dashboard.css alongside the
+   * cross-page extraction in utility.css). */
+  .verdict-badge {
+    border: 1px solid CanvasText;
+  }
+  .verdict-badge--PASS {
+    color: LinkText;
+    border-color: LinkText;
+    background: Canvas;
+  }
+  /* CAUTION distinguished from default badge via Highlight (system accent) —
+   * without this rule it collapsed to the same look as a default badge in
+   * forced-colors mode (R2-04). */
+  .verdict-badge--CAUTION {
+    color: Highlight;
+    border-color: Highlight;
+    background: Canvas;
+  }
+  .verdict-badge--FAIL {
+    color: CanvasText;
+    border-color: CanvasText;
+    background: Canvas;
+  }
 }

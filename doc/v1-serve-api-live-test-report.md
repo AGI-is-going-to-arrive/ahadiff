@@ -5,16 +5,19 @@
 
 > Current status note (2026-04-30): This document only records the 2026-04-27 live
 > snapshot. Current code now has `POST /api/learn`, `/api/tasks*`
-> status/progress/cancel routes, `GET /api/graph/status`, `GET /api/watch/status`,
-> and a larger route surface (`44 total Route(` in `serve/app.py`, including
-> `42 concrete /api/*` routes, `1` catchall, and `/healthz`). Current
-> verification for the uncommitted branch is: full pytest
-> `1479 passed, 1 skipped`; coverage gate `87.08%`; `ruff check` /
-> `ruff format --check` pass; `pyright` currently reports
-> `0 errors, 0 warnings, 0 informations`; `uv build --wheel` pass. Task status
-> payloads now also carry runtime fields like `error_code` and
-> `elapsed_seconds`. `/api/graph/status` 当前返回的 `source_path` 也已经是 imported
-> `.ahadiff/graphify/graph.json` 相对路径，不再直接回 raw `graphify-out/graph.json`。
+> status/progress/cancel routes, `GET /api/graph/status`,
+> `GET /api/graph/concepts`, `GET /api/watch/status`, and a larger route
+> surface (`45 total Route(` in `serve/app.py`, including `43 concrete /api/*`
+> routes, `1` catchall, and `/healthz`). Current verification for the
+> uncommitted branch is: full pytest `1526 passed, 1 skipped`; `ruff check`
+> pass; full-tree `ruff format --check` pass; `pyright` reports
+> `0 errors, 0 warnings, 0 informations`; frontend `typecheck` / `lint` / unit
+> / build / Playwright pass, with unit `16 passed` and Playwright
+> `1035 passed`. Coverage gate, wheel build, `uv lock --check`, and live judge
+> were not rerun in this follow-up. Task status payloads now also carry runtime
+> fields like `error_code` and `elapsed_seconds`. `/api/graph/status` 当前返回的
+> `source_path` 也已经是 imported `.ahadiff/graphify/graph.json` 相对路径，不再
+> 直接回 raw `graphify-out/graph.json`。
 
 ## 2026-04-27 Live Concrete Endpoints (22)
 
@@ -184,6 +187,11 @@ file_refs: string[]
 
 ### File: `viewer/src/api/types.ts`
 
+This section is historical. Current viewer runtime validation has moved into
+`viewer/src/api/schemas.ts` for the newer search, heatmap, config, providers,
+doctor, install, usage, audit, and graph concepts surfaces; the old `types.ts`
+checks below are still useful for the 2026-04-27 live snapshot only.
+
 | Field / Type | Frontend Definition | Backend Actual | Status |
 |-------------|-------------------|----------------|--------|
 | `PaginatedRunsResponse.next_cursor` | `next_cursor?: string` | Absent when no more pages | **OK** -- optional field, absent = no more pages |
@@ -211,6 +219,10 @@ file_refs: string[]
 ### No Mismatches Found (types.ts vs actual API)
 
 All core types in `types.ts` and `config.ts` match the live API responses. The `ConfigField` interface in `config.ts` is defined but unused by any endpoint response -- it appears to be a leftover from an earlier design (the actual `/api/config` response uses flat fields, not an array of `ConfigField` objects).
+
+Current follow-up note: new runtime schemas no longer retain raw validation
+payloads, and the frontend API client now redacts error body values before
+throwing/logging `ApiError`.
 
 ## Error Response Format
 

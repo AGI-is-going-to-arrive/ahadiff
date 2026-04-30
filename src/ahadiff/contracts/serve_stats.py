@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -32,16 +34,48 @@ class ReviewHeatmapResponse(BaseModel):
 
 class ProviderSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    alias: str
+    role: str | None = None
     provider_class: str
+    provider_kind: str
     model_name: str
     base_url: str
+    api_key_env: str | None = None
+    key_status: Literal["configured", "missing", "unknown"]
+    api_family: str | None = None
+    api_family_version: str | None = None
     probed: bool
     probed_max_context: int | None
+    probed_tpm: int | None = None
+    probed_rpm: int | None = None
+    supports_temperature: bool | None = None
+    probe_timestamp: str | None = None
 
 
 class ProvidersResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     providers: list[ProviderSummary]
+
+
+class UsageModelSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    provider_class: str
+    model_id: str
+    call_count: int
+    total_input_tokens: int
+    total_output_tokens: int
+    total_cost_usd: float
+
+
+class UsageResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    models: list[UsageModelSummary]
+    total_calls: int
+    total_input_tokens: int
+    total_output_tokens: int
+    total_cost_usd: float
+    cache_hits: int
+    cache_misses: int
 
 
 class ServeStatusResponse(BaseModel):
@@ -91,4 +125,6 @@ __all__ = [
     "ServeStatusResponse",
     "StatsResponse",
     "TransferConceptDTO",
+    "UsageModelSummary",
+    "UsageResponse",
 ]

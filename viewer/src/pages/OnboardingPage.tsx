@@ -126,6 +126,48 @@ ahadiff learn HEAD~1..HEAD`}
             </div>
           </div>
         </div>
+
+        {/*
+         * Phase 4G: Step 4 preview card.
+         * Mirrors V6 (AhaDiff Warm v6.html L2452-2475) "first learn run"
+         * preview — three columns showing what AhaDiff produces from a SPEC
+         * + diff: the SPEC anchor, the diff stats, the resulting verdict.
+         * Numbers below are illustrative; real data plugs in once the user
+         * runs `ahadiff learn`.
+         */}
+        <div className="settings-card onboarding__preview">
+          <div className="settings-card__header">
+            <h3>{t('Onboarding.step4_preview_title')}</h3>
+            <span className="ratchet-card__meta">{t('Onboarding.step4_preview_meta')}</span>
+          </div>
+          <div className="settings-card__body">
+            <div className="onboarding__preview-grid">
+              <div className="onboarding__preview-cell">
+                <div className="eyebrow">{t('Onboarding.preview_spec_label')}</div>
+                <div className="onboarding__preview-text mono">
+                  {t('Onboarding.preview_spec_body')}
+                </div>
+              </div>
+              <div className="onboarding__preview-cell">
+                <div className="eyebrow">{t('Onboarding.preview_diff_label')}</div>
+                <div className="onboarding__preview-text mono">
+                  {t('Onboarding.preview_diff_body')}
+                </div>
+              </div>
+              <div className="onboarding__preview-cell">
+                <div className="eyebrow">{t('Onboarding.preview_verdict_label')}</div>
+                <div className="onboarding__preview-verdict">
+                  <span className="verdict-badge verdict-badge--CAUTION">
+                    {t('Verdict.CAUTION')} · 78
+                  </span>
+                  <p className="onboarding__preview-text">
+                    {t('Onboarding.preview_verdict_body')}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </AppShell>
   );

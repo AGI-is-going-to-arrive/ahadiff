@@ -5,9 +5,14 @@
   --elevated: #FFFFFF;
 
   /* Text */
+  /* Light-mode contrast target: WCAG AA (>= 4.5:1) on --paper.
+   * --muted #6A6456 yields ~5.4:1 on --paper #FAF8F2 — meets AA but not AAA.
+   * V6 specifies #6A6456 verbatim, so the viewer matches V6 fidelity at the
+   * cost of dropping from AAA (the prior #5A5447 was 7.0:1). Dark mode keeps
+   * AAA — see the dark override below for rationale. */
   --ink: #1C1B18;
   --ink-strong: #38362F;
-  --muted: #5A5447;
+  --muted: #6A6456;
   --muted-strong: #736D5E;
 
   /* Borders */
@@ -16,12 +21,12 @@
 
   /* Accent */
   --on-accent: #FFFFFF;
-  --accent: #B05436;
+  --accent: #D27050;
   --accent-ink: #B04E28;
   --accent-soft: #F4E4D9;
   --accent-softer: #FAF0E8;
-  --accent-softest: #FBF5EE;
-  --accent-tint: #FBEADD;
+  --accent-softest: #FDF1EC;
+  --accent-tint: #E4B8AE;
   --accent-hair: #EBC3AE;
 
   /* Diff */
@@ -32,15 +37,21 @@
 
   /* Semantic */
   --success: #2F6F4F;
-  --warning: #946216;
+  --warning: #B4791F;
   --danger: #A33D2B;
   --danger-soft: #F7E2DC;
   --info: #2E4A6B;
 
-  /* Typography */
+  /* Typography — V6 fallback order: Latin primary → CJK secondary → generic system.
+   * Caveat: V6 itself preconnects to Google Fonts (Newsreader is not on most
+   * systems). The viewer does NOT load Newsreader via @font-face. On a system
+   * with Noto Serif SC installed but not Newsreader, Latin glyphs fall to
+   * Source Serif 4 via per-glyph matching, which is V6's intent. If a system
+   * lacks both, ui-serif/Georgia takes over. Adding @font-face is a Stage B+
+   * decision per execution plan §6E. */
   --font-sans: "Inter", "PingFang SC", "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Newsreader", "Source Serif 4", "Noto Serif SC", ui-serif, Georgia, serif;
-  --font-mono: "JetBrains Mono", SFMono-Regular, "Sarasa Mono SC", ui-monospace, monospace;
+  --font-serif: "Newsreader", "Noto Serif SC", "Source Serif 4", ui-serif, Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "Sarasa Mono SC", monospace;
 
   /* Radius */
   --radius-6: 6px;
@@ -111,6 +122,25 @@
   --mw-page: 1280px;
   --mw-wide: 1440px;
 
+  /* Phase 2D: V6 responsive breakpoint reference (read-only).
+     CSS variables can't be used inside @media queries — these are the
+     authoritative breakpoint values that page CSS must use. Mirrors V6
+     template (AhaDiff Warm v6.html) and risk register R1/R2.
+     --bp-xs: 540px   -- single-column small phones, body 15px
+     --bp-sm: 720px   -- 2-col card grids collapse to 1-col
+     --bp-md: 768px   -- KPI/agent/states grids collapse to 1-col, topbar search hides
+     --bp-md2: 780px  -- mode-grid 4→2 cols
+     --bp-lg: 900px   -- typography clamp + settings-layout 2-col collapse
+     --bp-lg2: 1024px -- mobile-drawer paradigm switch (≤1024 mobile, ≥1025 desktop)
+     --bp-xl: 1280px  -- large-screen page padding lift */
+  --bp-xs: 540px;
+  --bp-sm: 720px;
+  --bp-md: 768px;
+  --bp-md2: 780px;
+  --bp-lg: 900px;
+  --bp-lg2: 1024px;
+  --bp-xl: 1280px;
+
   /* Ink variants */
   --ink-2: #38362F;
   --ink-3: #6B6559;
@@ -178,6 +208,10 @@
     --hair-strong: #4A473E;
 
     --on-accent: #1C1B18;
+    /* Dark accent intentionally diverges from light --accent #D27050 to a
+     * warmer, slightly higher-luminance hue (#D97757 = brand-anthropic) so it
+     * stays distinguishable on dark surfaces. The lift also gives accent-ink
+     * room to clear AAA on --elevated — see comment below. */
     --accent: #D97757;
     /* Lifted from #E0B89E (6.63:1 on --elevated) to clear AAA 7:1. */
     --accent-ink: #E3C0A8;

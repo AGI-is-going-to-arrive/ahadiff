@@ -206,9 +206,7 @@ def parse_graph_json(path: Path, *, max_bytes: int = _MAX_GRAPH_FILE_BYTES) -> G
     except OSError as exc:
         raise InputError(f"Cannot read graph file {path}: {exc}") from exc
     if size > max_bytes:
-        raise InputError(
-            f"Graph file {path} is {size} bytes, exceeding {max_bytes} byte limit"
-        )
+        raise InputError(f"Graph file {path} is {size} bytes, exceeding {max_bytes} byte limit")
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:

@@ -35,3 +35,373 @@
 .u-display-contents {
   display: contents;
 }
+
+/* ---------------------------------------------------------------------------
+ * Cross-page component primitives (Phase 2G follow-up).
+ *
+ * Some component classes are rendered by multiple pages (e.g. RatchetPage
+ * + ReviewPage both ship the weakest-dimension mastery bars). With route
+ * code splitting, per-page CSS is no longer eagerly loaded, so any rule
+ * shared across routes must live in a globally-imported stylesheet to keep
+ * working when a user lands on the consumer route directly.
+ * ------------------------------------------------------------------------ */
+
+.mastery-grid {
+  display: grid;
+  grid-template-columns: 1fr 80px;
+  gap: 8px;
+  row-gap: 10px;
+  font-size: 13px;
+  align-items: center;
+}
+
+.mastery-bar {
+  height: 6px;
+  background: var(--subtle);
+  border-radius: var(--r-full, 999px);
+  overflow: hidden;
+}
+
+.mastery-bar__fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--r-full, 999px);
+  transition: width var(--dur-base, 0.25s) var(--ease-out, ease);
+}
+
+/* Verdict badges — used by Dashboard + Ratchet pages.
+ * Moved here so direct navigation to /ratchet still styles them under
+ * route code splitting. Forced-colors variant lives in forced-colors.css. */
+.verdict-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  height: 22px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hair-strong);
+  background: var(--elevated);
+  color: var(--ink);
+}
+
+.verdict-badge--PASS {
+  background: var(--add-bg);
+  border-color: var(--add-fg);
+  color: var(--add-fg);
+}
+
+.verdict-badge--CAUTION {
+  background: var(--accent-softer);
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.verdict-badge--FAIL {
+  background: var(--del-bg);
+  border-color: var(--del-fg);
+  color: var(--del-fg);
+}
+
+/* Error banner / panel — consumed by Dashboard, Settings, Skills, Ratchet,
+ * Review pages. Centralised so the failure UI stays styled regardless of
+ * which lazy chunk the user lands on first. */
+.dashboard__error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-12);
+  background: var(--subtle);
+  color: var(--danger);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  padding: 24px;
+  text-align: center;
+}
+
+.dashboard__error-banner {
+  padding: 8px 16px;
+  border-radius: var(--radius-8);
+  background: var(--subtle);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+/* Load-more pagination button — used by Dashboard + Ratchet pages. */
+.load-more-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 var(--sp-6, 24px);
+  border-radius: var(--r-md, 8px);
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--hair-strong);
+  background: var(--elevated);
+  color: var(--ink);
+  cursor: pointer;
+  transition: all var(--dur-fast, 0.15s) var(--ease-out, ease);
+}
+
+.load-more-btn:hover:not(:disabled) {
+  background: var(--accent-softer);
+  border-color: var(--accent-hair);
+  transform: translateY(-1px);
+  box-shadow: var(--sh-md);
+}
+
+.load-more-btn:active:not(:disabled) {
+  transform: translateY(0);
+  transition-duration: 0s;
+}
+
+.load-more-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Reduced-motion guard for cross-page primitives. Placed AFTER the base
+ * rules so source order favours the @media block at equal specificity
+ * (F-02). transform uses !important defensively because hover/active states
+ * also apply translateY. */
+@media (prefers-reduced-motion: reduce) {
+  .mastery-bar__fill,
+  .load-more-btn {
+    transition: none;
+  }
+  .load-more-btn {
+    transform: none !important;
+  }
+}
+
+/* Review-style eyebrow — distinct from .eyebrow because consumers expect
+ * NO line-height/margin/display reset. Five pages (Settings, Skills,
+ * Ratchet, Review, Onboarding) reference this class. */
+.review__eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ---------------------------------------------------------------------------
+ * V6 typography utilities (Phase 0F)
+ * Direct ports from AhaDiff Warm v6.html — see /AhaDiff Warm v6.html lines
+ * 47-48 (.serif/.mono), line 50 + 599 (.eyebrow), 217-223 (.prose).
+ * Goal: any page can opt into V6 prose/eyebrow without duplicating CSS.
+ * ------------------------------------------------------------------------ */
+
+.serif {
+  font-family: var(--font-serif);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: "ss01" 1, "zero" 1, "cv11" 1;
+}
+
+/* Tabular numerals shorthand (V6 line 51 + 885). Independent from .mono so
+ * KPI/serif numbers can stay on their inherited font while still aligning. */
+.num {
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  line-height: 1;
+  margin-bottom: 12px;
+  display: inline-block;
+}
+
+.prose {
+  font-family: var(--font-serif);
+  font-size: 17px;
+  line-height: 1.8;
+  color: var(--ink);
+}
+
+.prose h2 {
+  font-family: var(--font-serif);
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin: 32px 0 12px;
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: 8px;
+}
+
+.prose h3 {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 500;
+  margin: 24px 0 8px;
+}
+
+.prose p {
+  margin: 0 0 14px;
+}
+
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  background: var(--subtle);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.prose ul {
+  padding-left: 22px;
+}
+
+.prose .highlight {
+  background: var(--accent-soft);
+  padding: 1px 4px;
+  border-radius: 3px;
+  cursor: pointer;
+  border-bottom: 1px dashed var(--accent);
+}
+
+@media print {
+  .prose {
+    font-family: "Newsreader", Georgia, serif;
+    font-size: 12pt;
+    color: #111;
+  }
+  .prose h2 {
+    font-size: 16pt;
+    margin-top: 22pt;
+  }
+  .prose h3 {
+    font-size: 13pt;
+  }
+  .prose code,
+  .prose pre,
+  .mono {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5pt;
+    background: #f5f2ec;
+  }
+  .prose a[href]::after {
+    content: " (" attr(href) ")";
+    font-size: 9pt;
+    color: #555;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Phase 2D: V6 7-breakpoint responsive utilities
+ * Mirrors AhaDiff Warm v6.html lines 651-680 generic responsive polish.
+ * Source-of-truth breakpoints documented in tokens.css (--bp-xs .. --bp-xl).
+ * Design intent: page CSS handles structural breakpoints; these globals
+ * handle generic typography/spacing tuning at 540/900/1280.
+ * ------------------------------------------------------------------------ */
+
+/* Large-screen padding lift — gives prose room to breathe ≥1280 */
+@media (min-width: 1280px) {
+  .page,
+  .lesson,
+  .diff-page,
+  .review,
+  .quiz-page,
+  .ratchet-page,
+  .settings,
+  .dashboard,
+  .concepts {
+    padding-left: clamp(28px, 4vw, 56px);
+    padding-right: clamp(28px, 4vw, 56px);
+  }
+}
+
+/* Mid-screen typography clamp — heading sizes shrink fluidly < 900 */
+@media (max-width: 900px) {
+  h1,
+  .lesson__title,
+  .review__title,
+  .ratchet-page__title,
+  .settings__title,
+  .dashboard__title,
+  .quiz-page__title {
+    font-size: clamp(28px, 5.4vw, 36px);
+  }
+  h2 {
+    font-size: clamp(22px, 4vw, 28px);
+  }
+  h3 {
+    font-size: clamp(18px, 3.2vw, 22px);
+  }
+  .prose {
+    font-size: 16px;
+    line-height: 1.7;
+  }
+  .prose h2 {
+    font-size: 24px;
+  }
+  .prose h3 {
+    font-size: 18px;
+  }
+  .card,
+  .ratchet-card,
+  .settings-card,
+  .dashboard__card {
+    border-radius: 10px;
+  }
+}
+
+/* Small-screen body / button polish < 540. V6 line 670. */
+@media (max-width: 540px) {
+  body {
+    font-size: 15px;
+    line-height: 1.65;
+  }
+  .prose {
+    font-size: 15.5px;
+  }
+  .review__eyebrow,
+  .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+  }
+  .retry-btn,
+  .load-more-btn {
+    height: 38px;
+    padding: 0 14px;
+    font-size: 13px;
+  }
+}
+
+/* Hide / show utilities — deliberately keyed to V6 paradigm.
+ * `u-hide-mobile` removes element ≤ 1024 (drawer-paradigm mobile);
+ * `u-hide-desktop` removes element ≥ 1025;
+ * `u-hide-xs` removes element on phone-class screens ≤ 540. */
+@media (max-width: 1024px) {
+  .u-hide-mobile {
+    display: none !important;
+  }
+}
+@media (min-width: 1025px) {
+  .u-hide-desktop {
+    display: none !important;
+  }
+}
+@media (max-width: 540px) {
+  .u-hide-xs {
+    display: none !important;
+  }
+}

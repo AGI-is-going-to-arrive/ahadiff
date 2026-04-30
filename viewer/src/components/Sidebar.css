@@ -1,0 +1,310 @@
+/* ==========================================================================
+   Sidebar — extracted from AppShell.css
+   Uses tokens from styles/tokens.css exclusively.
+   ========================================================================== */
+
+/* ---------- Sidebar ---------- */
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  background: linear-gradient(180deg, var(--subtle) 0%, var(--paper) 100%);
+  border-inline-end: 1px solid var(--hair);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-top: 0;
+}
+
+/* ---------- Brand ---------- */
+
+.sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 14px 12px;
+  border-bottom: 1px solid var(--hair);
+  flex-shrink: 0;
+}
+
+.sidebar__brand-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-8);
+  background: var(--accent);
+  color: var(--on-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-brand);
+}
+
+.sidebar__brand-text {
+  min-width: 0;
+}
+
+.sidebar__brand-name {
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar__brand-en {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+/* ---------- Nav sections ---------- */
+
+.sidebar__section {
+  padding: 8px 12px 4px;
+}
+
+.sidebar__label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-strong);
+  padding: 6px 10px;
+}
+
+/* ---------- Nav items ---------- */
+
+.sidebar__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-8);
+  color: var(--ink);
+  font-size: 14px;
+  cursor: pointer;
+  margin: 1px 0;
+  text-decoration: none;
+  transition: background var(--duration-fast) var(--ease-out-quart),
+    color var(--duration-fast) var(--ease-out-quart);
+}
+
+.sidebar__item:hover {
+  background: var(--accent-softer);
+}
+
+.sidebar__item:active:not(.sidebar__item--disabled) {
+  transform: scale(0.98);
+}
+
+.sidebar__item--active {
+  background: var(--elevated);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm), 0 4px 12px -8px rgba(120, 80, 50, 0.22);
+}
+
+.sidebar__item--active .sidebar__icon {
+  color: var(--accent);
+}
+
+.sidebar__icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  opacity: 0.75;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.sidebar__item--active .sidebar__icon {
+  opacity: 1;
+}
+
+.sidebar__item--disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.sidebar__item--disabled:hover {
+  background: transparent;
+}
+
+/* ---------- Bilingual labels ---------- */
+
+.sidebar__label-main {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar__label-en {
+  flex: none;
+  font-size: 0.75em;
+  color: var(--muted);
+  margin-inline-start: auto;
+  white-space: nowrap;
+}
+
+/* ---------- Status footer ---------- */
+
+.sidebar__status {
+  margin-top: auto;
+  padding: 14px 16px;
+  border-top: 1px solid var(--hair);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.sidebar__status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #3f9f62;
+  box-shadow: 0 0 0 3px rgba(63, 159, 98, 0.14);
+  flex: none;
+}
+
+.sidebar__status-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar__status-mode {
+  color: var(--ink);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar__status-run {
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar__status-version {
+  margin-left: auto;
+  color: var(--muted-strong);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* ---------- Responsive ---------- */
+
+/* Drawer sidebar at <1024px — aligns with V6 (`AhaDiff Warm v6.html:361
+ * @media max-width:1024px`). */
+@media (max-width: 1024px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    inset-inline-start: 0;
+    bottom: auto;
+    width: min(280px, calc(100vw - 48px));
+    height: 100vh;
+    height: 100dvh;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform var(--duration-fast) var(--ease-out-quart);
+    border-inline-end: 1px solid var(--hair);
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.2);
+  }
+
+  .sidebar--open {
+    transform: translateX(0);
+  }
+
+  .sidebar__section {
+    padding: 8px 12px 4px;
+  }
+
+  .sidebar__item {
+    flex-direction: row;
+    gap: 10px;
+    padding: 8px 10px;
+    font-size: 14px;
+    border-radius: var(--radius-8);
+    min-width: 0;
+    min-height: 44px;
+  }
+
+  .sidebar__icon {
+    font-size: 14px;
+    width: 16px;
+    height: 16px;
+  }
+}
+
+@media (max-width: 359px) {
+  .sidebar__item {
+    min-width: 0;
+    min-height: 44px;
+    font-size: 13px;
+    padding: 7px 8px;
+  }
+}
+
+/* ---- Reduced motion ---- */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .sidebar__item {
+    transition: none;
+  }
+
+  .sidebar__item:active:not(.sidebar__item--disabled) {
+    transform: none !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .sidebar__item--active {
+    border: 1px solid LinkText;
+  }
+
+  .sidebar__brand-mark {
+    outline: 1px solid CanvasText;
+  }
+
+  .sidebar__status-mode,
+  .sidebar__status-version {
+    color: CanvasText;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .sidebar {
+    background: linear-gradient(180deg, var(--subtle) 0%, var(--paper) 100%);
+  }
+
+  @media (max-width: 767px) {
+    .sidebar {
+      box-shadow: 0 0 40px rgba(0, 0, 0, 0.32);
+    }
+  }
+}

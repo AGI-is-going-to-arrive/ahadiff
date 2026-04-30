@@ -1,81 +1,194 @@
 import { NavLink, useMatch } from 'react-router-dom';
 import { useTranslation, type MessageKey } from '../i18n/useTranslation';
 import { useRunsStore } from '../state/runs-store';
+import './Sidebar.css';
 
 interface NavEntry {
   to: string;
   icon: string;
   labelKey: MessageKey;
+  labelEn: string;
   end?: boolean;
   disabled?: boolean;
 }
 
-export default function Sidebar() {
-  const { t } = useTranslation();
+interface NavSection {
+  sectionKey: MessageKey;
+  ariaLabel: string;
+  items: NavEntry[];
+}
+
+interface SidebarProps {
+  isOpen: boolean;
+  isMobileNav: boolean;
+  onNavigate?: () => void;
+}
+
+const VIEWER_VERSION = 'v0.1.0';
+
+function formatRelativeTime(isoDate: string, locale: string): string {
+  const date = new Date(isoDate);
+  if (isNaN(date.getTime())) return isoDate;
+  const diffMs = Date.now() - date.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHr = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHr / 24);
+
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+  if (diffDay > 0) return rtf.format(-diffDay, 'day');
+  if (diffHr > 0) return rtf.format(-diffHr, 'hour');
+  if (diffMin > 0) return rtf.format(-diffMin, 'minute');
+  return rtf.format(-diffSec, 'second');
+}
+
+export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProps) {
+  const { t, locale } = useTranslation();
   const runMatch = useMatch('/run/:runId/*');
   const activeRunId = runMatch?.params.runId;
-  const firstRunId = useRunsStore((s) => s.runs[0]?.run_id);
+  const runs = useRunsStore((s) => s.runs);
+  const firstRunId = runs[0]?.run_id;
   const runId = activeRunId ?? firstRunId;
 
-  const navItems: NavEntry[] = [
-    { to: '/', icon: '▤', labelKey: 'Nav.dashboard', end: true },
+  const sections: NavSection[] = [
     {
-      to: runId ? `/run/${runId}/lesson` : '/',
-      icon: '❦',
-      labelKey: 'Nav.lesson',
-      disabled: !runId,
+      sectionKey: 'Sidebar.section.workspace',
+      ariaLabel: 'Workspace',
+      items: [
+        { to: '/', icon: '▤', labelKey: 'Nav.dashboard', labelEn: 'Dashboard', end: true },
+        {
+          to: runId ? `/run/${runId}/lesson` : '/',
+          icon: '❦',
+          labelKey: 'Nav.lesson',
+          labelEn: 'Lesson',
+          disabled: !runId,
+        },
+        {
+          to: runId ? `/run/${runId}/diff` : '/',
+          icon: '⇌',
+          labelKey: 'Nav.diff',
+          labelEn: 'Diff',
+          disabled: !runId,
+        },
+        { to: '/ratchet', icon: '⚡', labelKey: 'Ratchet.title', labelEn: 'Ratchet' },
+      ],
     },
     {
-      to: runId ? `/run/${runId}/diff` : '/',
-      icon: '⇌',
-      labelKey: 'Nav.diff',
-      disabled: !runId,
+      sectionKey: 'Sidebar.section.practice',
+      ariaLabel: 'Practice',
+      items: [
+        {
+          to: runId ? `/run/${runId}/quiz` : '/',
+          icon: '?',
+          labelKey: 'Nav.quiz',
+          labelEn: 'Quiz',
+          disabled: !runId,
+        },
+        { to: '/review', icon: '♻', labelKey: 'Review.title', labelEn: 'Review' },
+        { to: '/concepts', icon: '◈', labelKey: 'Shell.concept_graph', labelEn: 'Concepts' },
+      ],
     },
     {
-      to: runId ? `/run/${runId}/quiz` : '/',
-      icon: '?',
-      labelKey: 'Nav.quiz',
-      disabled: !runId,
+      sectionKey: 'Sidebar.section.system',
+      ariaLabel: 'System',
+      items: [
+        { to: '/onboarding', icon: '▶', labelKey: 'Nav.onboarding', labelEn: 'Get Started' },
+        { to: '/skills', icon: '✦', labelKey: 'Skills.title', labelEn: 'Agent Hub' },
+        { to: '/settings', icon: '⚙', labelKey: 'Settings_page.title', labelEn: 'Settings' },
+        { to: '/welcome', icon: '★', labelKey: 'Nav.welcome', labelEn: 'Welcome' },
+      ],
     },
-    { to: '/concepts', icon: '◈', labelKey: 'Shell.concept_graph' },
-    { to: '/review', icon: '♻', labelKey: 'Review.title' },
-    { to: '/ratchet', icon: '⚡', labelKey: 'Ratchet.title' },
-    { to: '/skills', icon: '⚙', labelKey: 'Skills.title' },
-    { to: '/settings', icon: '☰', labelKey: 'Settings_page.title' },
-    { to: '/welcome', icon: '★', labelKey: 'Nav.welcome' },
-    { to: '/onboarding', icon: '▶', labelKey: 'Nav.onboarding' },
   ];
 
+  const latestRun = runs[0];
+  let statusText: string;
+  if (!latestRun) {
+    statusText = t('Sidebar.status.no_runs');
+  } else if (latestRun.created_at) {
+    statusText = formatRelativeTime(latestRun.created_at, locale);
+  } else {
+    statusText = t('Sidebar.status.healthy');
+  }
+
+  const latestRunText = latestRun
+    ? t('Sidebar.status.latest_run', {
+        run: latestRun.source_ref || latestRun.run_id.slice(0, 8),
+        time: statusText,
+      })
+    : t('Sidebar.status.no_runs');
+  const mobileHidden = isMobileNav && !isOpen;
+
   return (
-    <nav className="sidebar" aria-label={t('Shell.nav_label')}>
-      <div className="sidebar__section">
-        <div className="sidebar__label">{t('Shell.nav_label')}</div>
-        {navItems.map((item) =>
-          item.disabled ? (
-            <span
-              key={item.labelKey}
-              className="sidebar__item sidebar__item--disabled"
-              aria-disabled="true"
-              tabIndex={-1}
-              title={t('Nav.needs_run_hint')}
-            >
-              <span className="sidebar__icon" aria-hidden="true">{item.icon}</span>
-              <span>{t(item.labelKey)}</span>
-            </span>
-          ) : (
-            <NavLink
-              key={item.labelKey}
-              to={item.to}
-              end={item.end}
-              className={({ isActive }) =>
-                `sidebar__item${isActive ? ' sidebar__item--active' : ''}`
-              }
-            >
-              <span className="sidebar__icon" aria-hidden="true">{item.icon}</span>
-              <span>{t(item.labelKey)}</span>
-            </NavLink>
-          ),
-        )}
+    <nav
+      id="sidebar"
+      className={`sidebar${isOpen ? ' sidebar--open' : ''}`}
+      aria-label={t('Shell.nav_label')}
+      aria-hidden={mobileHidden ? true : undefined}
+      inert={mobileHidden ? true : undefined}
+    >
+      <div className="sidebar__brand">
+        <div className="sidebar__brand-mark" aria-hidden="true"><span>&#916;&#30693;</span></div>
+        <div className="sidebar__brand-text">
+          <div className="sidebar__brand-name">{t('Brand.name')}</div>
+          <div className="sidebar__brand-en">{t('Sidebar.tagline_short')}</div>
+        </div>
+      </div>
+
+      {sections.map((section) => (
+        <section
+          key={section.sectionKey}
+          className="sidebar__section"
+          aria-labelledby={`sidebar-section-${section.ariaLabel.toLowerCase()}`}
+        >
+          <div
+            id={`sidebar-section-${section.ariaLabel.toLowerCase()}`}
+            className="sidebar__label"
+          >
+            {t(section.sectionKey)}
+          </div>
+          {section.items.map((item) =>
+            item.disabled ? (
+              <span
+                key={item.labelKey}
+                className="sidebar__item sidebar__item--disabled"
+                aria-disabled="true"
+                tabIndex={-1}
+                title={t('Nav.needs_run_hint')}
+              >
+                <span className="sidebar__icon" aria-hidden="true">{item.icon}</span>
+                <span className="sidebar__label-main">{t(item.labelKey)}</span>
+                <span className="sidebar__label-en" aria-hidden="true">{item.labelEn}</span>
+              </span>
+            ) : (
+              <NavLink
+                key={item.labelKey}
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) =>
+                  `sidebar__item${isActive ? ' sidebar__item--active' : ''}`
+                }
+                onClick={onNavigate}
+              >
+                <span className="sidebar__icon" aria-hidden="true">{item.icon}</span>
+                <span className="sidebar__label-main">{t(item.labelKey)}</span>
+                <span className="sidebar__label-en" aria-hidden="true">{item.labelEn}</span>
+              </NavLink>
+            ),
+          )}
+        </section>
+      ))}
+
+      <div
+        className="sidebar__status"
+        aria-label={t('Sidebar.status.aria_label')}
+        aria-live="polite"
+      >
+        <span className="sidebar__status-dot" aria-hidden="true" />
+        <span className="sidebar__status-copy">
+          <span className="sidebar__status-mode">{t('Sidebar.status.mode')}</span>
+          <span className="sidebar__status-run">{latestRunText}</span>
+        </span>
+        <span className="sidebar__status-version">{VIEWER_VERSION}</span>
       </div>
     </nav>
   );

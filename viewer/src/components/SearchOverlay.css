@@ -1,0 +1,285 @@
+/* ============================================================
+ * Phase 4B — SearchOverlay
+ * V6 references: AhaDiff Warm v6.html L1440 (topbar search shell),
+ * L80-82 (search affordance styling), and the warm-paper modal
+ * pattern reused from settings/dashboard cards. Centred dialog,
+ * blurred backdrop, paper card with brand accent rail.
+ * ============================================================ */
+
+.search-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(48px, 12vh, 120px) 16px 16px;
+}
+
+.search-overlay__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(28, 27, 24, 0.42);
+  backdrop-filter: blur(2px);
+  border: 0;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.search-overlay__panel {
+  position: relative;
+  width: min(560px, 100%);
+  background: var(--paper);
+  border: 1px solid var(--hair);
+  border-radius: 14px;
+  box-shadow: var(--sh-lg, 0 18px 50px -30px rgba(0, 0, 0, 0.4));
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+  animation: search-overlay-pop 160ms var(--ease-out, ease) both;
+}
+
+@keyframes search-overlay-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.search-overlay__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px 0;
+}
+
+.search-overlay__label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.search-overlay__kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  background: var(--subtle);
+  border: 1px solid var(--hair);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.search-overlay__input-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px 12px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.search-overlay__icon {
+  font-size: 18px;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.search-overlay__input {
+  flex: 1 1 auto;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.4;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--ink);
+  padding: 4px 0;
+  letter-spacing: -0.005em;
+  /* Disable user-agent search-input clear "✕"; we handle reset via state. */
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.search-overlay__input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.search-overlay__status {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.search-overlay__results {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  max-height: min(50vh, 360px);
+  overflow-y: auto;
+}
+
+.search-overlay__result {
+  margin: 0;
+  padding: 0;
+}
+
+.search-overlay__result-btn {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "chip title"
+    ".    snippet";
+  column-gap: 12px;
+  row-gap: 4px;
+  padding: 10px 16px;
+  cursor: pointer;
+  font: inherit;
+  color: var(--ink);
+  transition: background 120ms var(--ease-out, ease);
+}
+
+.search-overlay__result--active .search-overlay__result-btn,
+.search-overlay__result-btn:focus-visible {
+  background: var(--accent-softer);
+  outline: none;
+}
+
+.search-overlay__result-btn:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.search-overlay__chip {
+  grid-area: chip;
+  align-self: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: var(--subtle);
+  border: 1px solid var(--hair);
+  border-radius: 4px;
+  padding: 2px 6px;
+  color: var(--muted);
+}
+
+.search-overlay__chip--concept {
+  color: var(--success);
+  border-color: var(--success-hair, var(--hair));
+}
+
+.search-overlay__chip--claim {
+  color: var(--accent-ink);
+  border-color: var(--accent-hair, var(--hair));
+}
+
+.search-overlay__chip--run {
+  color: var(--info, var(--ink-2));
+}
+
+.search-overlay__chip--card {
+  color: var(--warning, var(--accent-ink));
+  border-color: var(--warning-hair, var(--hair));
+}
+
+.search-overlay__title {
+  grid-area: title;
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+  word-break: break-word;
+}
+
+.search-overlay__snippet {
+  grid-area: snippet;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.search-overlay__footer {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 8px 16px 10px;
+  border-top: 1px solid var(--hair);
+  background: var(--subtle);
+}
+
+.search-overlay__hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+/* Reduced motion: skip the pop-in animation. */
+@media (prefers-reduced-motion: reduce) {
+  .search-overlay__panel {
+    animation: none;
+  }
+  .search-overlay__result-btn {
+    transition: none;
+  }
+}
+
+/* Forced colors: panel + chip outlines drawn via CanvasText. */
+@media (forced-colors: active) {
+  .search-overlay__panel {
+    border: 2px solid CanvasText;
+  }
+  .search-overlay__chip {
+    border-color: CanvasText;
+    background: Canvas;
+  }
+  .search-overlay__result--active .search-overlay__result-btn {
+    background: Highlight;
+    color: HighlightText;
+  }
+}
+
+/* Phase 2D small-screen polish. */
+@media (max-width: 540px) {
+  .search-overlay {
+    padding-top: 24px;
+  }
+  .search-overlay__panel {
+    border-radius: 12px;
+  }
+  .search-overlay__title {
+    font-size: 14px;
+  }
+  .search-overlay__snippet {
+    font-size: 12px;
+  }
+  .search-overlay__footer {
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: flex-start;
+  }
+}

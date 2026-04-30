@@ -195,7 +195,7 @@ def test_get_install_targets_returns_empty_when_context_fails(
     response = client.get("/api/install/targets")
 
     assert response.status_code == 200
-    assert response.json() == {"targets": []}
+    assert response.json() == {"targets": [], "total": 0}
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +216,7 @@ def test_get_install_targets_empty_registry(
     response = client.get("/api/install/targets")
 
     assert response.status_code == 200
-    assert response.json() == {"targets": []}
+    assert response.json() == {"targets": [], "total": 0}
 
 
 # ---------------------------------------------------------------------------
@@ -258,9 +258,20 @@ def test_response_schema_matches_frontend_expectations(tmp_path: Path) -> None:
 
     response = client.get("/api/install/targets")
 
-    expected_keys = {"name", "detected", "platform_supported", "description"}
+    assert response.json()["total"] == len(response.json()["targets"])
+    expected_keys = {
+        "name",
+        "display_name",
+        "detected",
+        "platform_supported",
+        "status",
+        "description",
+        "error_message",
+    }
     for target in response.json()["targets"]:
         assert set(target.keys()) == expected_keys
+        assert target["description"]
+        assert target["status"] in {"installed", "available", "unsupported", "error"}
 
 
 def test_all_registered_targets_appear_in_response(tmp_path: Path) -> None:

@@ -751,13 +751,18 @@ class TestGetProviders:
                             "provider_class": "openai",
                             "model_name": "gpt-5.4-mini",
                             "base_url": "https://demo.example.com/v1",
+                            "api_key_env": "AHADIFF_DEMO_KEY",
                             "probed_max_context": 200000,
+                            "probed_tpm": 1000,
+                            "probed_rpm": 60,
+                            "supports_temperature": True,
                             "probe_timestamp": "2026-04-28T00:00:00Z",
                         },
                         "judge": {
                             "provider_class": "anthropic",
                             "model_name": "claude-sonnet-4-6",
                             "base_url": "https://judge.example.com/v1",
+                            "api_key_env": "AHADIFF_JUDGE_KEY",
                         },
                     }
                 },
@@ -767,6 +772,8 @@ class TestGetProviders:
             )
 
         monkeypatch.setattr("ahadiff.core.config.load_config", _mock_load_config)
+        monkeypatch.setenv("AHADIFF_DEMO_KEY", "secret")
+        monkeypatch.delenv("AHADIFF_JUDGE_KEY", raising=False)
         client = _client(state_dir)
 
         resp = client.get("/api/providers", headers=_AUTH)
@@ -774,11 +781,19 @@ class TestGetProviders:
         assert resp.status_code == 200
         providers = cast("list[dict[str, object]]", resp.json()["providers"])
         assert len(providers) == 2
+        assert providers[0]["alias"] == "demo"
         assert providers[0]["provider_class"] == "openai"
+        assert providers[0]["provider_kind"] == "openai"
+        assert providers[0]["api_family"] == "openai"
+        assert providers[0]["key_status"] == "configured"
         assert providers[0]["model_name"] == "gpt-5.4-mini"
         assert providers[0]["probed"] is True
         assert providers[0]["probed_max_context"] == 200000
+        assert providers[0]["probed_tpm"] == 1000
+        assert providers[0]["probed_rpm"] == 60
+        assert providers[0]["supports_temperature"] is True
         assert providers[1]["provider_class"] == "anthropic"
+        assert providers[1]["key_status"] == "missing"
         assert providers[1]["probed"] is False
 
     def test_auth_required(self, tmp_path: Path) -> None:

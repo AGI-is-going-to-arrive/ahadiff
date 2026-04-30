@@ -38,197 +38,8 @@
   min-height: 0;
 }
 
-/* ---------- Topbar ---------- */
-
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 12px 24px;
-  border-bottom: 1px solid var(--hair);
-  /* Token-driven background with safe fallback for Safari < 16.2 (no color-mix). */
-  background: var(--paper);
-  background: color-mix(in srgb, var(--paper) 88%, transparent);
-  backdrop-filter: saturate(1.4) blur(8px);
-  -webkit-backdrop-filter: saturate(1.4) blur(8px);
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-
-.topbar__brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.topbar__brand-mark {
-  width: 34px;
-  height: 34px;
-  border-radius: var(--radius-8);
-  background: var(--accent);
-  color: var(--on-accent);
-  display: grid;
-  place-items: center;
-  font-family: var(--font-serif);
-  font-weight: 600;
-  font-size: 16px;
-  letter-spacing: -0.02em;
-  box-shadow: var(--shadow-brand);
-}
-
-.topbar__brand-name {
-  font-family: var(--font-serif);
-  font-weight: 600;
-  font-size: 17px;
-  letter-spacing: -0.01em;
-  color: var(--ink);
-}
-
-.topbar__spacer {
-  flex: 1;
-}
-
-/* ---------- Language switcher ---------- */
-
-.lang-switcher {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px;
-  border-radius: var(--radius-8);
-  border: 1px solid var(--hair);
-  background: var(--elevated);
-}
-
-.lang-switcher__btn {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  font-family: var(--font-sans);
-  font-size: 12px;
-  letter-spacing: 0.02em;
-  padding: 4px 10px;
-  min-height: 44px;
-  min-width: 44px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-6);
-  cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-out-quart),
-    color var(--duration-fast) var(--ease-out-quart);
-}
-
-.lang-switcher__btn:hover {
-  background: var(--accent-softer);
-  color: var(--ink);
-}
-
-.lang-switcher__btn:active {
-  transform: scale(0.96);
-}
-
-.lang-switcher__btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.lang-switcher__btn--active {
-  background: var(--accent-soft);
-  color: var(--ink-strong);
-  font-weight: 500;
-}
-
-.lang-switcher__btn--active:hover {
-  background: var(--accent-soft);
-}
-
-/* ---------- Sidebar ---------- */
-
-.sidebar {
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  background: linear-gradient(180deg, var(--subtle) 0%, var(--paper) 100%);
-  border-inline-end: 1px solid var(--hair);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding-top: 8px;
-}
-
-.sidebar__section {
-  padding: 12px 12px 4px;
-}
-
-.sidebar__label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--muted-strong);
-  padding: 6px 10px;
-}
-
-.sidebar__item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: var(--radius-8);
-  color: var(--ink);
-  font-size: 14px;
-  cursor: pointer;
-  margin: 1px 0;
-  text-decoration: none;
-  transition: background var(--duration-fast) var(--ease-out-quart),
-    color var(--duration-fast) var(--ease-out-quart);
-}
-
-.sidebar__item:hover {
-  background: var(--accent-softer);
-}
-
-.sidebar__item:active:not(.sidebar__item--disabled) {
-  transform: scale(0.98);
-}
-
-.sidebar__item--active {
-  background: var(--elevated);
-  color: var(--ink);
-  box-shadow: var(--shadow-sm), 0 4px 12px -8px rgba(120, 80, 50, 0.22);
-}
-
-.sidebar__item--active .sidebar__icon {
-  color: var(--accent);
-}
-
-.sidebar__icon {
-  width: 16px;
-  height: 16px;
-  flex: none;
-  opacity: 0.75;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-}
-
-.sidebar__item--active .sidebar__icon {
-  opacity: 1;
-}
-
-.sidebar__item--disabled {
-  color: var(--muted);
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.sidebar__item--disabled:hover {
-  background: transparent;
+.app-shell__backdrop {
+  display: none;
 }
 
 /* ---------- Content ---------- */
@@ -240,143 +51,41 @@
 }
 
 /* ==========================================================================
-   Responsive: >=768px sidebar visible, <768px bottom nav
-   375px breakpoint: bottom nav only
+   Responsive: >=1024px sidebar visible, <1024px drawer navigation
+   Aligns with V6 `AhaDiff Warm v6.html:361 @media (max-width: 1024px)`
+   which fixes the sidebar into a 280px translateX drawer.
    ========================================================================== */
 
-/* Tablet: collapse sidebar at <768px */
-@media (max-width: 767px) {
+@media (max-width: 1024px) {
   .app-shell__body {
     grid-template-columns: 1fr;
-    padding-bottom: 64px; /* room for bottom nav */
-  }
-
-  .sidebar {
-    position: fixed;
-    bottom: 0;
-    inset-inline-start: 0;
-    inset-inline-end: 0;
-    top: auto;
-    height: auto;
-    width: 100%;
-    flex-direction: row;
-    border-inline-end: none;
-    border-top: 1px solid var(--hair);
-    background: var(--paper);
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 0;
-    z-index: 20;
-    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06);
-  }
-
-  .sidebar__section {
-    display: flex;
-    align-items: center;
-    gap: 0;
-    padding: 4px 8px;
-    width: 100%;
-    justify-content: space-around;
-  }
-
-  .sidebar__label {
-    display: none;
-  }
-
-  .sidebar__item {
-    flex-direction: column;
-    gap: 2px;
-    padding: 6px 8px;
-    font-size: 11px;
-    border-radius: var(--radius-6);
-    min-width: 56px;
-    min-height: 44px;
-    text-align: center;
-  }
-
-  .sidebar__icon {
-    font-size: 18px;
-    width: auto;
-    height: auto;
   }
 
   .app-shell__content {
+    padding: 24px 24px 56px;
+  }
+
+  .app-shell__backdrop {
+    position: fixed;
+    inset-block: 0;
+    inset-inline-start: min(280px, calc(100vw - 48px));
+    inset-inline-end: 0;
+    z-index: 45;
+    display: block;
+    padding: 0;
+    border: 0;
+    background: rgba(31, 30, 27, 0.32);
+    cursor: pointer;
+  }
+
+  .app-shell__backdrop[hidden] {
+    display: none;
+  }
+}
+
+/* Phone: tighten content padding under 768px (V6:377). */
+@media (max-width: 767px) {
+  .app-shell__content {
     padding: 20px 16px 24px;
-  }
-
-  .topbar {
-    padding: 10px 14px;
-  }
-}
-
-/* Extra-narrow phones only (legacy iPhone 5/SE 1st gen at 320px).
-   Modern Android baseline starts at 360px; keep lang-switcher visible there.
-   Below 360px we keep the switcher reachable (smaller targets + ellipsis)
-   instead of hiding it — bilingual users on cramped viewports still need a
-   way to flip locale without diving into devtools. The localized labels
-   ("English" / "简体中文") truncate visually but remain readable to AT via
-   the underlying button text. */
-@media (max-width: 359px) {
-  .lang-switcher {
-    /* Tighter padding so it fits next to the brand on a 320-359px topbar. */
-    padding: 1px;
-    gap: 1px;
-  }
-  .lang-switcher__btn {
-    min-height: 36px;
-    /* Drop the min-width: 36px from the wider breakpoint so labels can
-       actually shrink instead of forcing a row overflow. */
-    min-width: 0;
-    max-width: 64px;
-    padding: 4px 8px;
-    font-size: 11px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .sidebar__item {
-    min-width: 48px;
-    min-height: 44px;
-    font-size: 10px;
-    padding: 4px 4px;
-  }
-}
-
-/* ==========================================================================
-   Dark mode adjustments
-   ========================================================================== */
-
-/* ---- Reduced motion ---- */
-@media (prefers-reduced-motion: reduce) {
-  .topbar,
-  .sidebar__item,
-  .lang-switcher__btn {
-    transition: none;
-  }
-}
-
-@media (forced-colors: active) {
-  .sidebar__item--active {
-    border: 1px solid LinkText;
-  }
-  .lang-switcher__btn--active {
-    border: 1px solid LinkText;
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  .topbar {
-    background: rgba(28, 27, 24, 0.88);
-  }
-
-  .sidebar {
-    background: linear-gradient(180deg, var(--subtle) 0%, var(--paper) 100%);
-  }
-
-  @media (max-width: 767px) {
-    .sidebar {
-      box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.2);
-    }
   }
 }
