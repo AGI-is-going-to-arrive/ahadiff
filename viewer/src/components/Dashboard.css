@@ -45,8 +45,17 @@
   grid-template-columns: repeat(3, 1fr);
 }
 
+.kpi-grid--4col {
+  grid-template-columns: repeat(4, 1fr);
+}
+
 .dashboard__empty-hint {
   font-size: 14px;
+}
+
+.dashboard-graphify-placeholder {
+  min-height: 43px;
+  visibility: hidden;
 }
 
 /* ---- KPI card (matches Warm v6 .kpi pattern) ---- */
@@ -351,6 +360,10 @@
   vertical-align: middle;
 }
 
+.run-list td:first-child {
+  padding: 0;
+}
+
 .run-list tbody tr {
   transition: background var(--duration-fast);
 }
@@ -374,7 +387,10 @@
 }
 
 .run-list__link {
-  display: block;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 12px 14px;
   color: inherit;
   text-decoration: none;
 }
@@ -465,7 +481,8 @@
  * paradigm switch. Between 781-1024 we keep 2-col so the dashboard stays
  * scannable on tablet/portrait widths. */
 @media (max-width: 1024px) {
-  .kpi-grid {
+  .kpi-grid,
+  .kpi-grid--4col {
     grid-template-columns: repeat(2, 1fr);
   }
 }

@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import {
   forceCenter,
   forceCollide,
@@ -33,7 +41,6 @@ interface SimNode extends SimulationNodeDatum {
   kind: string | null;
   file_path: string | null;
   freshness: FreshnessProjection | null;
-  metadata: Record<string, unknown>;
 }
 
 interface SimEdge {
@@ -44,11 +51,17 @@ interface SimEdge {
   weight: number;
 }
 
+type KindColorStyle = CSSProperties & {
+  '--concept-kind-color': string;
+};
+
 /* ---------- Constants ---------- */
 
 const SVG_HEIGHT = 560;
 const NODE_RADIUS = 14;
 const LARGE_GRAPH_THRESHOLD = 200;
+const MIN_EDGE_WEIGHT = 0.1;
+const MAX_EDGE_WEIGHT = 3.0;
 
 const KIND_COLORS: Record<string, string> = {
   function: 'var(--accent)',
@@ -62,6 +75,91 @@ const DEFAULT_COLOR = 'var(--accent-soft)';
 function kindColor(kind: string | null): string {
   if (!kind) return DEFAULT_COLOR;
   return KIND_COLORS[kind.toLowerCase()] ?? DEFAULT_COLOR;
+}
+
+function kindColorStyle(kind: string | null): KindColorStyle {
+  return { '--concept-kind-color': kindColor(kind) } as KindColorStyle;
+}
+
+const FRESHNESS_LABEL_KEYS: Record<
+  FreshnessProjection,
+  | 'Graph.freshness_disabled'
+  | 'Graph.freshness_fresh'
+  | 'Graph.freshness_stale'
+  | 'Graph.freshness_unavailable'
+> = {
+  disabled: 'Graph.freshness_disabled',
+  fresh: 'Graph.freshness_fresh',
+  stale: 'Graph.freshness_stale',
+  unavailable: 'Graph.freshness_unavailable',
+};
+
+function freshnessLabelKey(freshness: FreshnessProjection) {
+  return FRESHNESS_LABEL_KEYS[freshness];
+}
+
+function safeEdgeWeight(weight: number): number {
+  if (!Number.isFinite(weight)) return 1.0;
+  return Math.min(MAX_EDGE_WEIGHT, Math.max(MIN_EDGE_WEIGHT, weight));
+}
+
+function toSimEdges(edges: ConceptGraphEdge[]): SimEdge[] {
+  return edges.map((e) => ({
+    id: e.id,
+    source: e.source,
+    target: e.target,
+    relation: e.relation,
+    weight: safeEdgeWeight(e.weight),
+  }));
+}
+
+function layoutStaticNodes(nodes: ConceptGraphNode[], width: number): SimNode[] {
+  if (nodes.length === 0) return [];
+  const safeWidth = Math.max(width, NODE_RADIUS * 2);
+  const centerX = safeWidth / 2;
+  const centerY = SVG_HEIGHT / 2;
+  const radiusX = Math.max(NODE_RADIUS * 2, safeWidth / 2 - NODE_RADIUS * 3);
+  const radiusY = Math.max(NODE_RADIUS * 2, SVG_HEIGHT / 2 - NODE_RADIUS * 4);
+  return nodes.map((node, index) => {
+    const angle = (2 * Math.PI * index) / nodes.length - Math.PI / 2;
+    return {
+      id: node.id,
+      name: node.name,
+      kind: node.kind,
+      file_path: node.file_path,
+      freshness: node.freshness,
+      x: centerX + Math.cos(angle) * radiusX,
+      y: centerY + Math.sin(angle) * radiusY,
+    };
+  });
+}
+
+function emptyMessageKey(
+  status: GraphStatusResponse,
+): 'Concept.empty' | 'Graph.empty_disabled' | 'Graph.empty_graph' | 'Graph.empty_source_missing' | 'Graph.empty_unavailable' {
+  if (!status.enabled) return 'Graph.empty_disabled';
+  if (!status.source_exists) return 'Graph.empty_source_missing';
+  if (!status.has_graph) return 'Graph.empty_unavailable';
+  if (status.node_count === 0) return 'Graph.empty_graph';
+  return 'Concept.empty';
+}
+
+function usePrefersReducedMotion(): boolean {
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const handleChange = () => setPrefersReducedMotion(query.matches);
+    handleChange();
+    query.addEventListener('change', handleChange);
+    return () => query.removeEventListener('change', handleChange);
+  }, []);
+
+  return prefersReducedMotion;
 }
 
 /* ---------- Filter helpers ---------- */
@@ -100,7 +198,8 @@ function ForceGraph({
   const [simNodes, setSimNodes] = useState<SimNode[]>([]);
   const [simEdges, setSimEdges] = useState<SimEdge[]>([]);
   const [svgWidth, setSvgWidth] = useState(640);
-  const tooltipId = useId();
+  const titleId = useId();
+  const prefersReducedMotion = usePrefersReducedMotion();
 
   useEffect(() => {
     const svg = svgRef.current;
@@ -116,6 +215,15 @@ function ForceGraph({
   }, []);
 
   useEffect(() => {
+    if (!prefersReducedMotion) return;
+    simulationRef.current?.stop();
+    simulationRef.current = null;
+    setSimNodes(layoutStaticNodes(nodes, svgWidth));
+    setSimEdges(toSimEdges(edges));
+  }, [edges, nodes, prefersReducedMotion, svgWidth]);
+
+  useEffect(() => {
+    if (prefersReducedMotion) return;
     const w = svgWidth;
     const sNodes: SimNode[] = nodes.map((n) => ({
       id: n.id,
@@ -123,18 +231,11 @@ function ForceGraph({
       kind: n.kind,
       file_path: n.file_path,
       freshness: n.freshness,
-      metadata: n.metadata,
       x: w / 2 + (Math.random() - 0.5) * 100,
       y: SVG_HEIGHT / 2 + (Math.random() - 0.5) * 100,
     }));
 
-    const sEdges: SimEdge[] = edges.map((e) => ({
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      relation: e.relation,
-      weight: e.weight,
-    }));
+    const sEdges: SimEdge[] = toSimEdges(edges);
 
     const nodeMap = new Map(sNodes.map((n) => [n.id, n]));
 
@@ -152,7 +253,7 @@ function ForceGraph({
         forceLink(linkData)
           .id((d) => (d as SimNode).id)
           .distance(80)
-          .strength((l) => (l as { weight: number }).weight * 0.3),
+          .strength((l) => Math.min(1, (l as { weight: number }).weight * 0.3)),
       )
       .force('charge', forceManyBody().strength(-120))
       .force('center', forceCenter(w / 2, SVG_HEIGHT / 2))
@@ -175,15 +276,16 @@ function ForceGraph({
       simulation.stop();
       simulationRef.current = null;
     };
-  }, [nodes, edges]); // svgWidth intentionally excluded — resize handled below
+  }, [nodes, edges, prefersReducedMotion]); // svgWidth intentionally excluded — resize handled below
 
   useEffect(() => {
+    if (prefersReducedMotion) return;
     const sim = simulationRef.current;
     if (sim) {
       sim.force('center', forceCenter(svgWidth / 2, SVG_HEIGHT / 2));
       sim.alpha(0.1).restart();
     }
-  }, [svgWidth]);
+  }, [prefersReducedMotion, svgWidth]);
 
   const nodeById = useMemo(() => {
     const m = new Map<string, SimNode>();
@@ -214,9 +316,10 @@ function ForceGraph({
       className="concept-graph__svg"
       viewBox={`0 0 ${svgWidth} ${SVG_HEIGHT}`}
       role="graphics-document"
-      aria-label={t('Concept.title')}
+      aria-labelledby={titleId}
       onKeyDown={handleKeyDown}
     >
+      <title id={titleId}>{t('Concept.title')}</title>
       {simEdges.map((edge) => {
         const s = nodeById.get(edge.source);
         const t = nodeById.get(edge.target);
@@ -238,7 +341,6 @@ function ForceGraph({
 
       {simNodes.map((node) => {
         const isSelected = selectedId === node.id;
-        const titleId = `${tooltipId}-${node.id}`;
         return (
           <g
             key={node.id}
@@ -246,17 +348,17 @@ function ForceGraph({
             tabIndex={0}
             role="button"
             aria-pressed={isSelected}
-            aria-labelledby={titleId}
+            aria-label={node.name}
             onClick={() => onSelectNode(isSelected ? null : node.id)}
             onKeyDown={(e) => handleNodeKeyDown(e, node.id)}
           >
-            <title id={titleId}>{node.name}</title>
+            <title>{node.name}</title>
             <circle
               className="concept-graph__circle"
               cx={node.x ?? 0}
               cy={node.y ?? 0}
               r={NODE_RADIUS}
-              style={{ fill: kindColor(node.kind) }}
+              style={kindColorStyle(node.kind)}
             />
             <text className="concept-graph__label" x={node.x ?? 0} y={node.y ?? 0}>
               {truncateLabel(node.name, 10)}
@@ -314,7 +416,7 @@ function DetailPanel({
           <span className="concept-graph__detail-label">{t('Graph.kind')}</span>
           <span
             className="concept-graph__kind-badge"
-            style={{ background: kindColor(node.kind) }}
+            style={kindColorStyle(node.kind)}
           >
             {node.kind}
           </span>
@@ -332,7 +434,7 @@ function DetailPanel({
         <div className="concept-graph__detail-row">
           <span className="concept-graph__detail-label">{t('Graph.freshness')}</span>
           <span className={`concept-graph__freshness concept-graph__freshness--${node.freshness}`}>
-            {t(`Graph.freshness_${node.freshness}` as 'Graph.freshness')}
+            {t(freshnessLabelKey(node.freshness))}
           </span>
         </div>
       )}
@@ -366,7 +468,7 @@ function Legend({ kinds }: { kinds: string[] }) {
         <span key={k} className="concept-graph__legend-item">
           <span
             className="concept-graph__legend-swatch"
-            style={{ background: kindColor(k) }}
+            style={kindColorStyle(k)}
             aria-hidden="true"
           />
           {k}
@@ -402,7 +504,7 @@ function FilterChips({
         >
           <span
             className="concept-graph__filter-swatch"
-            style={{ background: kindColor(k) }}
+            style={kindColorStyle(k)}
             aria-hidden="true"
           />
           {k}
@@ -432,7 +534,7 @@ function ListFallback({
         >
           <span className="concept-graph__lnode-name">{n.name}</span>
           {n.kind && (
-            <span className="concept-graph__lnode-kind" style={{ color: kindColor(n.kind) }}>
+            <span className="concept-graph__lnode-kind" style={kindColorStyle(n.kind)}>
               {n.kind}
             </span>
           )}
@@ -441,6 +543,19 @@ function ListFallback({
           )}
         </button>
       ))}
+    </div>
+  );
+}
+
+/* ---------- Filtered-empty state ---------- */
+
+function FilteredEmptyState() {
+  const { t } = useTranslation();
+
+  return (
+    <div className="concept-graph__empty concept-graph__empty--compact" role="status">
+      <span className="concept-graph__empty-icon" aria-hidden="true">◇</span>
+      <span className="concept-graph__empty-text">{t('Graph.empty_filtered')}</span>
     </div>
   );
 }
@@ -458,12 +573,13 @@ function SourceCard({ status }: { status: GraphStatusResponse }) {
         <span>{t('Graph.source_title')}</span>
         {status.freshness && (
           <span className={`concept-graph__freshness concept-graph__freshness--${status.freshness}`}>
-            {t(`Graph.freshness_${status.freshness}` as 'Graph.freshness')}
+            {t(freshnessLabelKey(status.freshness))}
           </span>
         )}
       </div>
       <div className="concept-graph__src-card-stats">
-        {t('Graph.node_count', { count: String(status.node_count) })} ·{' '}
+        {t('Graph.node_count', { count: String(status.node_count) })}
+        {t('Graph.sep')}
         {t('Graph.edge_count', { count: String(status.edge_count) })}
       </div>
       {status.source_path && (
@@ -475,13 +591,13 @@ function SourceCard({ status }: { status: GraphStatusResponse }) {
 
 /* ---------- Empty state ---------- */
 
-function EmptyState() {
+function EmptyState({ status }: { status: GraphStatusResponse }) {
   const { t } = useTranslation();
 
   return (
     <div className="concept-graph__empty" role="status">
       <span className="concept-graph__empty-icon" aria-hidden="true">◇</span>
-      <span className="concept-graph__empty-text">{t('Concept.empty')}</span>
+      <span className="concept-graph__empty-text">{t(emptyMessageKey(status))}</span>
     </div>
   );
 }
@@ -503,6 +619,10 @@ export default function ConceptGraph({ nodes, edges, status, truncated }: Concep
     setSelectedId(null);
   }, [nodes]);
 
+  useEffect(() => {
+    setViewMode(nodes.length > LARGE_GRAPH_THRESHOLD ? 'list' : 'graph');
+  }, [nodes.length]);
+
   const filteredNodes = useMemo(() => {
     if (activeKinds.size === 0) return nodes;
     return nodes.filter((n) => n.kind != null && activeKinds.has(n.kind));
@@ -520,9 +640,15 @@ export default function ConceptGraph({ nodes, edges, status, truncated }: Concep
   }, [edges, filteredNodeIds]);
 
   const selectedNode = useMemo(
-    () => nodes.find((n) => n.id === selectedId) ?? null,
-    [nodes, selectedId],
+    () => filteredNodes.find((n) => n.id === selectedId) ?? null,
+    [filteredNodes, selectedId],
   );
+
+  useEffect(() => {
+    if (selectedId != null && !filteredNodeIds.has(selectedId)) {
+      setSelectedId(null);
+    }
+  }, [filteredNodeIds, selectedId]);
 
   const handleToggleKind = useCallback((kind: string) => {
     setActiveKinds((prev) => {
@@ -533,10 +659,24 @@ export default function ConceptGraph({ nodes, edges, status, truncated }: Concep
     });
   }, []);
 
+  useEffect(() => {
+    if (selectedId == null) return;
+    const handleWindowKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('[role="dialog"][aria-modal="true"]')) return;
+      if (event.key === 'Escape') {
+        setSelectedId(null);
+      }
+    };
+    window.addEventListener('keydown', handleWindowKeyDown);
+    return () => window.removeEventListener('keydown', handleWindowKeyDown);
+  }, [selectedId]);
+
   if (!status.has_graph || nodes.length === 0) {
     return (
       <div className="concept-graph">
-        <EmptyState />
+        <EmptyState status={status} />
       </div>
     );
   }
@@ -569,7 +709,9 @@ export default function ConceptGraph({ nodes, edges, status, truncated }: Concep
 
       <div className={`concept-graph__body${selectedNode ? ' concept-graph__body--with-panel' : ''}`}>
         <div className="concept-graph__main">
-          {viewMode === 'graph' ? (
+          {filteredNodes.length === 0 ? (
+            <FilteredEmptyState />
+          ) : viewMode === 'graph' ? (
             <div className="concept-graph__graph-wrap">
               <ForceGraph
                 nodes={filteredNodes}
@@ -600,8 +742,8 @@ export default function ConceptGraph({ nodes, edges, status, truncated }: Concep
         {selectedNode && (
           <DetailPanel
             node={selectedNode}
-            edges={edges}
-            allNodes={nodes}
+            edges={filteredEdges}
+            allNodes={filteredNodes}
             onClose={() => setSelectedId(null)}
           />
         )}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import AppShell from '../components/AppShell';
 import Skeleton, { SkeletonGroup } from '../components/Skeleton';
 import LanguageSwitcher from '../components/LanguageSwitcher';
@@ -12,6 +12,8 @@ import type {
 import { useTranslation, type MessageKey, type TranslateFn } from '../i18n/useTranslation';
 import { mapDoctorMessage } from '../utils/doctor';
 import '../components/Settings.css';
+
+const GraphifyCard = lazy(() => import('../components/GraphifyCard'));
 
 type TabId = 'account' | 'keys' | 'models' | 'privacy' | 'audit' | 'language' | 'appearance' | 'integrations';
 
@@ -74,11 +76,12 @@ const EMPTY_DATA: SettingsData = {
 type TFn = TranslateFn;
 
 export default function SettingsPage() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const [active, setActive] = useState<TabId>('privacy');
   const [data, setData] = useState<SettingsData>(EMPTY_DATA);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [printMode, setPrintMode] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchAll = useCallback(async () => {
@@ -123,6 +126,19 @@ export default function SettingsPage() {
     return () => abortRef.current?.abort();
   }, [fetchAll]);
 
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined;
+    const media = window.matchMedia('print');
+    const syncPrintMode = () => setPrintMode(media.matches);
+    syncPrintMode();
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', syncPrintMode);
+      return () => media.removeEventListener('change', syncPrintMode);
+    }
+    media.addListener(syncPrintMode);
+    return () => media.removeListener(syncPrintMode);
+  }, []);
+
   if (loading) {
     return (
       <AppShell>
@@ -165,6 +181,7 @@ export default function SettingsPage() {
             doctorFailed={Boolean(data.failed.doctor)}
             usageFailed={Boolean(data.failed.usage)}
             t={t}
+            locale={locale}
             onRetry={retry}
           />
         );
@@ -201,6 +218,7 @@ export default function SettingsPage() {
             audit={data.audit}
             failed={Boolean(data.failed.audit)}
             t={t}
+            locale={locale}
             onRetry={retry}
           />
         );
@@ -213,6 +231,7 @@ export default function SettingsPage() {
           <IntegrationsTab
             targets={data.installTargets}
             failed={Boolean(data.failed.installTargets)}
+            showGraphify={active === 'integrations' || printMode}
             t={t}
             onRetry={retry}
           />
@@ -272,13 +291,13 @@ export default function SettingsPage() {
               <div
                 key={id}
                 id={`spanel-${id}`}
-                className="settings-content"
+                className={`settings-content${active === id ? '' : ' is-inactive'}`}
                 role="tabpanel"
                 aria-labelledby={`stab-${id}`}
-                hidden={active !== id}
                 tabIndex={active === id ? 0 : -1}
+                aria-hidden={active !== id}
               >
-                {active === id ? renderTabPanel(id) : null}
+                {renderTabPanel(id)}
               </div>
             ))}
           </div>
@@ -298,6 +317,7 @@ function AccountTab({
   doctorFailed,
   usageFailed,
   t,
+  locale,
   onRetry,
 }: {
   checks: DoctorCheck[];
@@ -305,6 +325,7 @@ function AccountTab({
   doctorFailed: boolean;
   usageFailed: boolean;
   t: TFn;
+  locale: string;
   onRetry: () => void;
 }) {
   return (
@@ -352,15 +373,15 @@ function AccountTab({
           <div className="settings-card__header"><h3>{t('Settings_page.usage_title')}</h3></div>
           <div className="settings-card__body">
             <div className="mode-grid">
-              <ModeCell eyebrow={t('Settings_page.usage_total_calls')} value={usage.total_calls.toLocaleString()} />
+              <ModeCell eyebrow={t('Settings_page.usage_total_calls')} value={formatNumber(usage.total_calls, locale)} />
               <ModeCell
                 eyebrow={t('Settings_page.usage_total_tokens')}
-                value={(usage.total_input_tokens + usage.total_output_tokens).toLocaleString()}
+                value={formatNumber(usage.total_input_tokens + usage.total_output_tokens, locale)}
               />
               <ModeCell eyebrow={t('Settings_page.usage_total_cost')} value={`$${usage.total_cost_usd.toFixed(4)}`} />
               <ModeCell
                 eyebrow={t('Settings_page.usage_cache_hits')}
-                value={String(usage.cache_hits)}
+                value={formatNumber(usage.cache_hits, locale)}
                 sub={usage.cache_hits + usage.cache_misses > 0
                   ? `${((usage.cache_hits / (usage.cache_hits + usage.cache_misses)) * 100).toFixed(0)}%`
                   : undefined}
@@ -591,11 +612,13 @@ function AuditTab({
   audit,
   failed,
   t,
+  locale,
   onRetry,
 }: {
   audit: AuditResponse | null;
   failed: boolean;
   t: TFn;
+  locale: string;
   onRetry: () => void;
 }) {
   if (failed || !audit) {
@@ -640,7 +663,7 @@ function AuditTab({
               {audit.entries.map((entry, i) => (
                 <tr key={i}>
                   {AUDIT_COLS.map(col => {
-                    const display = formatAuditCell(entry, col, t);
+                    const display = formatAuditCell(entry, col, t, locale);
                     const isNum = col === 'tokens' || col === 'cost';
                     return <td key={col} className={isNum ? 'num' : ''}>{display}</td>;
                   })}
@@ -694,50 +717,60 @@ function AppearanceTab({ t }: { t: TFn }) {
 function IntegrationsTab({
   targets,
   failed,
+  showGraphify,
   t,
   onRetry,
 }: {
   targets: InstallTarget[];
   failed: boolean;
+  showGraphify: boolean;
   t: TFn;
   onRetry: () => void;
 }) {
-  if (failed) {
-    return (
-      <UnavailableCard
-        title={t('Settings_page.section_integrations')}
-        message={t('Settings_page.integration_unavailable')}
-        t={t}
-        onRetry={onRetry}
-      />
-    );
-  }
   return (
-    <div className="settings-card">
-      <div className="settings-card__header"><h3>{t('Settings_page.section_integrations')}</h3></div>
-      <div className="settings-card__body">
-        {targets.length === 0 && <div className="u-muted-sm">{t('Settings_page.integration_empty')}</div>}
-        {targets.map(target => {
-          const statusKey = INTEGRATION_STATUS_KEY[target.status];
-          const badgeVariant = target.status === 'installed'
-            ? 'configured'
-            : target.status === 'available'
-              ? 'unknown'
-              : 'missing';
-          return (
-            <div className="settings-field" key={target.name}>
-              <div className="settings-field__label">
-                <h4>{target.display_name}</h4>
-                <p>{target.description}</p>
+    <>
+      {showGraphify && (
+        <Suspense
+          fallback={<div className="settings-graphify-placeholder" aria-hidden="true" />}
+        >
+          <GraphifyCard />
+        </Suspense>
+      )}
+      {failed ? (
+        <UnavailableCard
+          title={t('Settings_page.section_integrations')}
+          message={t('Settings_page.integration_unavailable')}
+          t={t}
+          onRetry={onRetry}
+        />
+      ) : (
+        <div className="settings-card">
+        <div className="settings-card__header"><h3>{t('Settings_page.section_integrations')}</h3></div>
+        <div className="settings-card__body">
+          {targets.length === 0 && <div className="u-muted-sm">{t('Settings_page.integration_empty')}</div>}
+          {targets.map(target => {
+            const statusKey = INTEGRATION_STATUS_KEY[target.status];
+            const badgeVariant = target.status === 'installed'
+              ? 'configured'
+              : target.status === 'available'
+                ? 'unknown'
+                : 'missing';
+            return (
+              <div className="settings-field" key={target.name}>
+                <div className="settings-field__label">
+                  <h4>{target.display_name}</h4>
+                  <p>{target.description}</p>
+                </div>
+                <span className={`settings-field__badge settings-field__badge--${badgeVariant}`}>
+                  {t(statusKey)}
+                </span>
               </div>
-              <span className={`settings-field__badge settings-field__badge--${badgeVariant}`}>
-                {t(statusKey)}
-              </span>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
-    </div>
+      )}
+    </>
   );
 }
 
@@ -838,39 +871,47 @@ function FieldRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function formatAuditCell(entry: AuditEntry, col: AuditColumn, t: TFn): string {
+function formatNumber(value: number, locale: string): string {
+  try {
+    return value.toLocaleString(locale || 'en');
+  } catch {
+    return value.toLocaleString('en');
+  }
+}
+
+function formatAuditCell(entry: AuditEntry, col: AuditColumn, t: TFn, locale: string): string {
   switch (col) {
     case 'time':
-      return auditScalar(entry, 'timestamp') ?? auditScalar(entry, 'ts') ?? '—';
+      return auditScalar(entry, 'timestamp', locale) ?? auditScalar(entry, 'ts', locale) ?? '—';
     case 'provider':
-      return auditScalar(entry, 'provider_class') ?? auditScalar(entry, 'provider_kind') ?? '—';
+      return auditScalar(entry, 'provider_class', locale) ?? auditScalar(entry, 'provider_kind', locale) ?? '—';
     case 'model':
-      return auditScalar(entry, 'model_id') ?? '—';
+      return auditScalar(entry, 'model_id', locale) ?? '—';
     case 'files_sent':
-      return formatAuditFiles(entry);
+      return formatAuditFiles(entry, locale);
     case 'tokens':
-      return formatAuditTokens(entry);
+      return formatAuditTokens(entry, locale);
     case 'cost':
-      return formatAuditCost(entry);
+      return formatAuditCost(entry, locale);
     case 'purpose':
       return (
-        auditScalar(entry, 'prompt_name')
-        ?? auditScalar(entry, 'event_type')
-        ?? auditScalar(entry, 'action')
-        ?? auditScalar(entry, 'execution_origin')
+        auditScalar(entry, 'prompt_name', locale)
+        ?? auditScalar(entry, 'event_type', locale)
+        ?? auditScalar(entry, 'action', locale)
+        ?? auditScalar(entry, 'execution_origin', locale)
         ?? '—'
       );
     case 'status':
-      return formatAuditStatus(entry, t);
+      return formatAuditStatus(entry, t, locale);
     default:
       return '—';
   }
 }
 
-function auditScalar(entry: AuditEntry, key: keyof AuditEntry): string | null {
+function auditScalar(entry: AuditEntry, key: keyof AuditEntry, locale: string): string | null {
   const value = entry[key];
   if (typeof value === 'string' && value.trim() !== '') return value;
-  if (typeof value === 'number' && Number.isFinite(value)) return value.toLocaleString();
+  if (typeof value === 'number' && Number.isFinite(value)) return formatNumber(value, locale);
   if (typeof value === 'boolean') return value ? 'true' : 'false';
   return null;
 }
@@ -880,35 +921,35 @@ function auditNumber(entry: AuditEntry, key: keyof AuditEntry): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-function formatAuditFiles(entry: AuditEntry): string {
-  const explicit = auditScalar(entry, 'files_sent');
+function formatAuditFiles(entry: AuditEntry, locale: string): string {
+  const explicit = auditScalar(entry, 'files_sent', locale);
   if (explicit) return explicit;
   const fileCount = auditNumber(entry, 'file_count');
-  if (fileCount != null) return fileCount.toLocaleString();
-  if (Array.isArray(entry.files)) return entry.files.length.toLocaleString();
+  if (fileCount != null) return formatNumber(fileCount, locale);
+  if (Array.isArray(entry.files)) return formatNumber(entry.files.length, locale);
   return '—';
 }
 
-function formatAuditTokens(entry: AuditEntry): string {
+function formatAuditTokens(entry: AuditEntry, locale: string): string {
   const input = auditNumber(entry, 'input_tokens');
   const output = auditNumber(entry, 'output_tokens');
-  if (input != null && output != null) return (input + output).toLocaleString();
-  if (input != null) return input.toLocaleString();
-  if (output != null) return output.toLocaleString();
+  if (input != null && output != null) return formatNumber(input + output, locale);
+  if (input != null) return formatNumber(input, locale);
+  if (output != null) return formatNumber(output, locale);
   return '—';
 }
 
-function formatAuditCost(entry: AuditEntry): string {
+function formatAuditCost(entry: AuditEntry, locale: string): string {
   const cost = auditNumber(entry, 'cost_usd');
   if (cost != null) return `$${cost.toFixed(4)}`;
-  return auditScalar(entry, 'cost_usd') ?? '—';
+  return auditScalar(entry, 'cost_usd', locale) ?? '—';
 }
 
-function formatAuditStatus(entry: AuditEntry, t: TFn): string {
-  const explicit = auditScalar(entry, 'status');
+function formatAuditStatus(entry: AuditEntry, t: TFn, locale: string): string {
+  const explicit = auditScalar(entry, 'status', locale);
   if (explicit) return explicit;
-  const event = auditScalar(entry, 'event_type') ?? auditScalar(entry, 'action');
-  const note = auditScalar(entry, 'note')?.toLowerCase();
+  const event = auditScalar(entry, 'event_type', locale) ?? auditScalar(entry, 'action', locale);
+  const note = auditScalar(entry, 'note', locale)?.toLowerCase();
   if (event?.toLowerCase().includes('error') || note?.includes('error')) {
     return t('Settings_page.audit_status_error');
   }

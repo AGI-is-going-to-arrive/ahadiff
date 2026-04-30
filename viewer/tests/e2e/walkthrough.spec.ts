@@ -182,6 +182,26 @@ async function installRichMock(page: Page): Promise<void> {
   );
 
   await page.route(
+    (url) => url.pathname === '/api/stats',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          total_runs: 3,
+          total_lessons: 3,
+          total_quizzes: 2,
+          total_concepts: 12,
+          total_claims: 8,
+          total_reviews: 5,
+          avg_overall_score: 83.7,
+          weakest_dimensions: ['evidence', 'conciseness'],
+          last_run_at: '2026-04-27T08:00:00Z',
+        }),
+      }),
+  );
+
+  await page.route(
     (url) => /^\/api\/run\/[^/]+\/diff$/.test(url.pathname),
     (route) =>
       route.fulfill({
@@ -229,6 +249,39 @@ async function installRichMock(page: Page): Promise<void> {
   );
 }
 
+async function installLargeGraphMock(page: Page): Promise<void> {
+  await page.unroute((url) => url.pathname === '/api/graph/concepts');
+  await page.route(
+    (url) => url.pathname === '/api/graph/concepts',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          status: {
+            enabled: true,
+            source_exists: true,
+            has_graph: true,
+            freshness: 'fresh',
+            node_count: 201,
+            edge_count: 0,
+            source_path: '.ahadiff/graphify/graph.json',
+          },
+          nodes: Array.from({ length: 201 }, (_, index) => ({
+            id: `large-${index + 1}`,
+            name: `large-node-${index + 1}`,
+            kind: index % 2 === 0 ? 'function' : 'module',
+            file_path: `src/large_${index + 1}.py`,
+            freshness: 'fresh',
+            metadata: {},
+          })),
+          edges: [],
+          truncated: false,
+        }),
+      }),
+  );
+}
+
 /* ================================================================== */
 /*  SCREENSHOTS directory                                              */
 /* ================================================================== */
@@ -256,9 +309,18 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(heading).toBeVisible();
     await expect(heading).toContainText(/Dashboard|运行/);
 
-    // KPI cards visible (3-col grid for >= 2 runs)
+    // KPI cards visible (4-col grid for >= 2 runs: runs, avg score, pass rate, concepts)
     const kpiCards = page.locator('.kpi-card');
-    await expect(kpiCards).toHaveCount(3);
+    await expect(kpiCards).toHaveCount(4);
+    await expect(kpiCards.nth(0).locator('.kpi-card__label')).toHaveText('Total runs');
+    await expect(kpiCards.nth(1).locator('.kpi-card__label')).toHaveText('Avg score');
+    await expect(kpiCards.nth(2).locator('.kpi-card__label')).toHaveText('Pass rate');
+    await expect(kpiCards.nth(3).locator('.kpi-card__label')).toHaveText('Concepts learned');
+    // Verify at least one KPI value reflects mock data
+    await expect(kpiCards.nth(0).locator('.kpi-card__value')).toContainText('3');
+
+    // Graphify source card is visible on the Dashboard when the backend has a source.
+    await expect(page.locator('.graphify-card').filter({ hasText: 'Graphify source' })).toBeVisible();
 
     // Run list table
     const runTable = page.locator('table.run-list');
@@ -281,6 +343,29 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(rows).toHaveCount(4, { timeout: 3000 });
 
     await page.screenshot({ path: `${SCREENSHOT_DIR}/01-dashboard.png`, fullPage: true });
+  });
+
+  test('Dashboard — KPI cards disclose stats fallback when stats API fails', async ({ page }) => {
+    await page.unroute((url) => url.pathname === '/api/stats');
+    await page.route(
+      (url) => url.pathname === '/api/stats',
+      (route) => route.fulfill({ status: 500, contentType: 'application/json', body: '{}' }),
+    );
+
+    await page.goto('/');
+
+    const kpiCards = page.locator('.kpi-card');
+    await expect(kpiCards).toHaveCount(4);
+    await expect(kpiCards.nth(0).locator('.kpi-card__hint')).toHaveText(
+      'Stats API unavailable; using loaded runs only',
+    );
+    await expect(kpiCards.nth(1).locator('.kpi-card__hint')).toHaveText(
+      'Stats API unavailable; using loaded runs only',
+    );
+    await expect(kpiCards.nth(2).locator('.kpi-card__hint')).toHaveText('3 loaded runs');
+    await expect(kpiCards.nth(3).locator('.kpi-card__hint')).toHaveText(
+      'Stats API unavailable; using loaded runs only',
+    );
   });
 
   /* ---------------------------------------------------------------- */
@@ -482,7 +567,7 @@ test.describe('walkthrough: full-app functional test', () => {
 
     // Heading
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await expect(page.getByRole('heading', { level: 1 })).toContainText(/Concept|概���/i);
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(/Concept|概念图谱/i);
 
     // Concept graph component with d3-force
     await expect(page.locator('.concept-graph')).toBeVisible();
@@ -502,20 +587,48 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(page.locator('.concept-graph__detail')).toBeVisible();
     await expect(page.locator('.concept-graph__detail-name')).toBeVisible();
 
-    // Close detail panel
-    await page.locator('.concept-graph__detail-close').click();
+    // Escape should close the topmost dialog first, not the graph detail behind it.
+    await page.keyboard.press('Control+K');
+    const searchDialog = page.getByRole('dialog');
+    await expect(searchDialog).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(searchDialog).not.toBeVisible();
+    await expect(page.locator('.concept-graph__detail')).toBeVisible();
+
+    // Escape closes detail from graph focus paths
+    await page.keyboard.press('Escape');
     await expect(page.locator('.concept-graph__detail')).not.toBeVisible();
+
+    // Filtering hides non-matching nodes and clears stale detail selection
+    await svgNodes.first().click();
+    await expect(page.locator('.concept-graph__detail')).toBeVisible();
+    await page.getByRole('button', { name: /module/i }).click();
+    await expect(page.locator('.concept-graph__detail')).not.toBeVisible();
+    await expect(page.locator('.concept-graph__node')).toHaveCount(1);
 
     // View toggle: switch to list view
     const listBtn = page.locator('.concept-graph__view-btn').last();
     await listBtn.click();
     await expect(page.locator('.concept-graph__listg')).toBeVisible();
-    await expect(page.locator('.concept-graph__lnode')).toHaveCount(3);
+    await expect(page.locator('.concept-graph__lnode')).toHaveCount(1);
 
-    // Press Escape
+    // Escape also closes detail from list/detail focus paths
+    await page.locator('.concept-graph__lnode').first().click();
+    await expect(page.locator('.concept-graph__detail')).toBeVisible();
     await page.keyboard.press('Escape');
+    await expect(page.locator('.concept-graph__detail')).not.toBeVisible();
 
     await page.screenshot({ path: `${SCREENSHOT_DIR}/05-concepts.png`, fullPage: true });
+  });
+
+  test('Concepts — large graphs default to list fallback with counts', async ({ page }) => {
+    await installLargeGraphMock(page);
+    await page.goto('/#/concepts');
+
+    await expect(page.locator('.concept-graph__listg')).toBeVisible();
+    await expect(page.locator('.concept-graph__lnode')).toHaveCount(201);
+    await expect(page.locator('.concept-graph__svg')).not.toBeVisible();
+    await expect(page.locator('.concept-graph__counts')).toContainText(/201/);
   });
 
   /* ---------------------------------------------------------------- */
@@ -612,13 +725,13 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(page.locator('.settings-toggle')).toHaveCount(4);
 
     // Default privacy tab shows config fields
-    const fields = page.locator('.settings-field');
+    const fields = page.locator('#spanel-privacy .settings-field');
     await expect(fields).not.toHaveCount(0);
     await expect(fields.first()).toBeVisible();
 
     // Navigate to keys tab for API key badges
     await page.getByRole('tab', { name: /keys/i }).click();
-    await expect(page.locator('.settings-field__badge--configured')).toBeVisible();
+    await expect(page.locator('#spanel-keys .settings-field__badge--configured')).toBeVisible();
 
     // Navigate to models tab for provider grid metadata.
     await page.getByRole('tab', { name: /models/i }).click();
@@ -639,8 +752,9 @@ test.describe('walkthrough: full-app functional test', () => {
 
     // Navigate to integrations tab for install target badges.
     await page.getByRole('tab', { name: /integrations/i }).click();
-    await expect(page.locator('.settings-field__badge--configured')).toBeVisible();
+    await expect(page.locator('#spanel-integrations .settings-field__badge--configured')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Claude Code' })).toBeVisible();
+    await expect(page.locator('.graphify-card').filter({ hasText: 'Graphify source' })).toBeVisible();
 
     // Navigate to account tab for doctor checks
     await page.getByRole('tab', { name: /account/i }).click();

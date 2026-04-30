@@ -4,14 +4,20 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import PureWindowsPath
 from typing import TYPE_CHECKING
 
 import pytest
 from pydantic import ValidationError
 from starlette.testclient import TestClient
 
-from ahadiff.contracts.serve_runtime import ConceptGraphResponse, GraphStatusResponse
+from ahadiff.contracts.serve_runtime import (
+    ConceptGraphEdge,
+    ConceptGraphResponse,
+    GraphStatusResponse,
+)
 from ahadiff.serve import ServeState, create_app
+from ahadiff.serve.routes_graph import api_relative_path
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -82,6 +88,12 @@ class TestGraphStatus:
         assert data["node_count"] == 2
         assert data["edge_count"] == 1
         assert data["source_path"] == ".ahadiff/graphify/graph.json"
+
+    def test_source_path_uses_posix_separators_for_api_stability(self) -> None:
+        path = PureWindowsPath("C:/repo/.ahadiff/graphify/graph.json")
+        root = PureWindowsPath("C:/repo")
+
+        assert api_relative_path(path, root) == ".ahadiff/graphify/graph.json"
 
     def test_raw_graph_without_imported_artifact_is_not_served(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".ahadiff"
@@ -211,6 +223,39 @@ class TestGraphStatus:
                 }
             )
 
+    def test_graph_status_rejects_negative_counts(self) -> None:
+        for patch in (
+            {"node_count": -1},
+            {"edge_count": -1},
+            {"node_count": True},
+            {"edge_count": "1"},
+        ):
+            with pytest.raises(ValidationError):
+                GraphStatusResponse.model_validate(
+                    {
+                        "enabled": True,
+                        "source_exists": True,
+                        "has_graph": True,
+                        "freshness": "fresh",
+                        "node_count": 1,
+                        "edge_count": 0,
+                        "source_path": ".ahadiff/graphify/graph.json",
+                        **patch,
+                    }
+                )
+
+    def test_concept_graph_edge_rejects_invalid_weight(self) -> None:
+        for weight in [float("nan"), float("inf"), float("-inf"), -1, 0, 1e308, True, "1"]:
+            with pytest.raises(ValidationError):
+                ConceptGraphEdge.model_validate(
+                    {
+                        "id": "e1",
+                        "source": "n1",
+                        "target": "n2",
+                        "weight": weight,
+                    }
+                )
+
     def test_concept_graph_endpoint_returns_d3_nodes_and_edges(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".ahadiff"
         state_dir.mkdir()
@@ -234,9 +279,12 @@ class TestGraphStatus:
                             "metadata": {"weight": 2},
                         },
                         {"id": "n2", "label": "Bar", "file_path": "src/bar.py"},
+                        {"id": "n3", "label": "Baz", "file_path": "src/baz.py"},
                     ],
                     "links": [
                         {"source": "n1", "target": "n2", "relation": "calls", "weight": 1.5},
+                        {"source": "n2", "target": "n3", "relation": "imports", "weight": -1},
+                        {"source": "n3", "target": "n1", "relation": "uses", "weight": 1e308},
                         {"source": "n1", "target": "missing", "relation": "dangling"},
                     ],
                 }
@@ -251,7 +299,7 @@ class TestGraphStatus:
         data = resp.json()
         ConceptGraphResponse.model_validate(data)
         assert data["status"]["has_graph"] is True
-        assert [node["id"] for node in data["nodes"]] == ["n1", "n2"]
+        assert [node["id"] for node in data["nodes"]] == ["n1", "n2", "n3"]
         assert data["nodes"][0]["name"] == "Foo"
         assert data["edges"] == [
             {
@@ -260,7 +308,21 @@ class TestGraphStatus:
                 "target": "n2",
                 "relation": "calls",
                 "weight": 1.5,
-            }
+            },
+            {
+                "id": "n2->n3:1",
+                "source": "n2",
+                "target": "n3",
+                "relation": "imports",
+                "weight": 0.1,
+            },
+            {
+                "id": "n3->n1:2",
+                "source": "n3",
+                "target": "n1",
+                "relation": "uses",
+                "weight": 3.0,
+            },
         ]
         assert data["truncated"] is True
 

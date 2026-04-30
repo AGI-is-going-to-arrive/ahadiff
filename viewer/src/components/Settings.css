@@ -39,8 +39,13 @@
   min-width: 0;
 }
 
-.settings-content[hidden] {
+.settings-content.is-inactive {
   display: none;
+}
+
+.settings-graphify-placeholder {
+  min-height: 96px;
+  visibility: hidden;
 }
 
 .stabs {
@@ -542,5 +547,11 @@
   .stabs { display: none; }
   .settings-layout {
     grid-template-columns: 1fr;
+  }
+  .settings-content.is-inactive {
+    display: block;
+  }
+  .settings-content {
+    break-inside: auto;
   }
 }

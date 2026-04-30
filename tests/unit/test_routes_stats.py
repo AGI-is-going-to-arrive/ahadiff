@@ -7,16 +7,26 @@ import json
 import sqlite3
 from typing import TYPE_CHECKING, Any, Literal, cast
 
+import pytest
+from pydantic import ValidationError
 from starlette.testclient import TestClient
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
-
 import ahadiff.serve.routes_runs as routes_runs_module
 import ahadiff.serve.routes_stats as routes_stats_module
-from ahadiff.contracts.serve_stats import ProvidersResponse
+from ahadiff.contracts.serve_stats import (
+    HeatmapEntry,
+    HelpfulnessAggregateDTO,
+    LearningEffectivenessResponse,
+    ProvidersResponse,
+    ServeStatusResponse,
+    StatsResponse,
+    TransferConceptDTO,
+    UsageModelSummary,
+    UsageResponse,
+)
 from ahadiff.review.database import count_concepts, initialize_review_db, upsert_concept
 from ahadiff.serve import ServeState, create_app
 
@@ -121,6 +131,110 @@ def _seed_review_db(db_path: Path, *, reviews: int = 0, events: int = 0) -> None
 # ---------------------------------------------------------------------------
 # /api/stats
 # ---------------------------------------------------------------------------
+
+
+def _valid_stats_payload() -> dict[str, object]:
+    return {
+        "total_runs": 1,
+        "total_lessons": 1,
+        "total_quizzes": 1,
+        "total_concepts": 2,
+        "total_claims": 3,
+        "total_reviews": 4,
+        "avg_overall_score": 82.5,
+        "weakest_dimensions": ["evidence"],
+        "last_run_at": "2026-04-10T12:00:00Z",
+    }
+
+
+def test_stats_response_contract_rejects_extra_negative_and_non_finite_values() -> None:
+    assert (
+        StatsResponse.model_validate(
+            {**_valid_stats_payload(), "avg_overall_score": None}
+        ).avg_overall_score
+        is None
+    )
+
+    for patch in (
+        {"total_runs": -1},
+        {"total_runs": True},
+        {"total_runs": "1"},
+        {"avg_overall_score": float("nan")},
+        {"avg_overall_score": float("inf")},
+        {"avg_overall_score": True},
+        {"avg_overall_score": "82.5"},
+        {"unexpected": True},
+    ):
+        with pytest.raises(ValidationError):
+            StatsResponse.model_validate({**_valid_stats_payload(), **patch})
+
+
+def test_stats_related_contracts_reject_negative_counts_and_non_finite_floats() -> None:
+    with pytest.raises(ValidationError):
+        HeatmapEntry.model_validate({"date": "2026-04-10", "review_count": -1, "avg_rating": 3.0})
+    with pytest.raises(ValidationError):
+        HeatmapEntry.model_validate(
+            {"date": "2026-04-10", "review_count": 1, "avg_rating": float("inf")}
+        )
+    with pytest.raises(ValidationError):
+        UsageModelSummary.model_validate(
+            {
+                "provider_class": "openai",
+                "model_id": "gpt",
+                "call_count": 1,
+                "total_input_tokens": 1,
+                "total_output_tokens": 1,
+                "total_cost_usd": float("nan"),
+            }
+        )
+    with pytest.raises(ValidationError):
+        UsageResponse.model_validate(
+            {
+                "models": [],
+                "total_calls": -1,
+                "total_input_tokens": 0,
+                "total_output_tokens": 0,
+                "total_cost_usd": 0.0,
+                "cache_hits": 0,
+                "cache_misses": 0,
+            }
+        )
+    with pytest.raises(ValidationError):
+        ServeStatusResponse.model_validate(
+            {
+                "version": "0.1.0",
+                "uptime_seconds": float("inf"),
+                "review_db_exists": False,
+                "runs_count": 0,
+            }
+        )
+    with pytest.raises(ValidationError):
+        HelpfulnessAggregateDTO.model_validate(
+            {
+                "target_kind": "section",
+                "target_id": "s1",
+                "signal_count": 1,
+                "positive_count": 1,
+                "negative_count": 0,
+                "helpfulness_score": float("nan"),
+            }
+        )
+    with pytest.raises(ValidationError):
+        TransferConceptDTO.model_validate(
+            {"concept": "dto", "total_reviews": -1, "avg_rating": 3.0, "improving": True}
+        )
+    with pytest.raises(ValidationError):
+        LearningEffectivenessResponse.model_validate(
+            {
+                "total_concepts_reviewed": 0,
+                "concepts_improving": 0,
+                "concepts_stable": 0,
+                "concepts_declining": 0,
+                "transfer_rate": float("nan"),
+                "helpfulness": [],
+                "transfer_metrics": [],
+            }
+        )
 
 
 class TestGetStats:

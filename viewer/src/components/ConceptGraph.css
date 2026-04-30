@@ -83,7 +83,8 @@
   background: var(--accent-softest);
 }
 
-.concept-graph__filter-chip--active {
+.concept-graph__filter-chip--active,
+.concept-graph__filter-chip--active:hover {
   background: var(--accent-softest);
   border-color: var(--accent);
   color: var(--accent-ink);
@@ -94,6 +95,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  background: var(--concept-kind-color, var(--accent-soft));
 }
 
 .concept-graph__view-toggle {
@@ -197,6 +199,7 @@
 }
 
 .concept-graph__circle {
+  fill: var(--concept-kind-color, var(--accent-soft));
   stroke: var(--accent);
   stroke-width: 2;
   transition: stroke-width var(--duration-fast) var(--ease-out-quart),
@@ -225,6 +228,7 @@
   border-radius: 10px;
   padding: 9px 14px;
   font-size: 11.5px;
+  -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
   display: flex;
   gap: 18px;
@@ -256,6 +260,7 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
+  background: var(--concept-kind-color, var(--accent-soft));
 }
 
 /* ---------- Detail panel ---------- */
@@ -365,6 +370,7 @@
   border-radius: var(--radius-6);
   font-family: var(--font-mono);
   font-size: 11px;
+  background: var(--concept-kind-color, var(--accent-soft));
   color: #fff;
 }
 
@@ -433,6 +439,7 @@
   font-family: var(--font-mono);
   font-size: 11px;
   margin-bottom: 2px;
+  color: var(--concept-kind-color, var(--accent));
 }
 
 .concept-graph__lnode-file {
@@ -495,6 +502,10 @@
   font-size: 15px;
 }
 
+.concept-graph__empty--compact {
+  min-height: 220px;
+}
+
 /* ==========================================================================
    Responsive
    ========================================================================== */
@@ -531,6 +542,7 @@
   .concept-graph__legend {
     position: static;
     margin-top: 10px;
+    -webkit-backdrop-filter: none;
     backdrop-filter: none;
     background: var(--elevated);
   }
@@ -567,6 +579,12 @@
     fill: CanvasText;
   }
 
+  .concept-graph__filter-swatch,
+  .concept-graph__legend-swatch {
+    border: 1px solid CanvasText;
+    background: CanvasText;
+  }
+
   .concept-graph__edge {
     stroke: CanvasText;
   }
@@ -591,15 +609,23 @@
     color: CanvasText;
   }
 
-  .concept-graph__filter-chip--active {
-    background: Highlight;
-    color: HighlightText;
+  .concept-graph__filter-chip--active,
+  .concept-graph__filter-chip--active:hover {
+    background: Canvas;
+    color: Highlight;
     border-color: Highlight;
+    box-shadow: inset 0 0 0 1px Highlight;
+    outline: 2px solid Highlight;
+    outline-offset: 1px;
   }
 
   .concept-graph__lnode {
     border-color: CanvasText;
     background: Canvas;
+  }
+
+  .concept-graph__lnode-kind {
+    color: CanvasText;
   }
 
   .concept-graph__detail {
@@ -618,7 +644,10 @@
   }
 
   .concept-graph__kind-badge {
-    forced-color-adjust: none;
+    forced-color-adjust: auto;
+    border: 1px solid CanvasText;
+    background: Canvas !important;
+    color: CanvasText;
   }
 
   .concept-graph__freshness {
@@ -634,8 +663,9 @@
   }
 
   .concept-graph__view-btn--active {
-    background: Highlight;
-    color: HighlightText;
+    background: Canvas;
+    color: Highlight;
+    box-shadow: inset 0 0 0 1px Highlight;
   }
 
   .concept-graph__truncated {
@@ -712,6 +742,10 @@
   .concept-graph__toolbar,
   .concept-graph__detail-close {
     display: none;
+  }
+
+  .concept-graph__detail {
+    display: block !important;
   }
 
   .concept-graph__body--with-panel {

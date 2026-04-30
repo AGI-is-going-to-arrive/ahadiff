@@ -125,9 +125,12 @@ test.describe('smoke', () => {
   });
 
   test('settings shows local fallback states for failed and empty resources', async ({ page }) => {
+    let graphStatusRequests = 0;
     await page.unroute((url) => url.pathname === '/api/config');
     await page.unroute((url) => url.pathname === '/api/providers');
     await page.unroute((url) => url.pathname === '/api/audit');
+    await page.unroute((url) => url.pathname === '/api/install/targets');
+    await page.unroute((url) => url.pathname === '/api/graph/status');
     await page.route(
       (url) => url.pathname === '/api/config',
       (route) => route.fulfill({ status: 500, contentType: 'application/json', body: '{}' }),
@@ -157,15 +160,48 @@ test.describe('smoke', () => {
           }),
         }),
     );
+    await page.route(
+      (url) => url.pathname === '/api/install/targets',
+      (route) => route.fulfill({ status: 500, contentType: 'application/json', body: '{}' }),
+    );
+    await page.route(
+      (url) => url.pathname === '/api/graph/status',
+      (route) => {
+        graphStatusRequests += 1;
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            enabled: true,
+            source_exists: true,
+            has_graph: true,
+            freshness: 'fresh',
+            node_count: 3,
+            edge_count: 2,
+            source_path: '.ahadiff/graphify/graph.json',
+          }),
+        });
+      },
+    );
 
     await page.goto('/#/settings');
-    await expect(page.getByText('Configuration is unavailable right now.')).toBeVisible();
+    await expect(
+      page.locator('#spanel-privacy').getByText('Configuration is unavailable right now.'),
+    ).toBeVisible();
+    expect(graphStatusRequests).toBe(0);
 
     await page.getByRole('tab', { name: /models/i }).click();
     await expect(page.getByText('No providers configured')).toBeVisible();
 
     await page.getByRole('tab', { name: /audit/i }).click();
     await expect(page.getByText('No audit entries yet')).toBeVisible();
+
+    await page.getByRole('tab', { name: /integrations/i }).click();
+    await expect(
+      page.locator('#spanel-integrations').getByText('Integration targets are unavailable right now.'),
+    ).toBeVisible();
+    await expect(page.locator('.graphify-card').filter({ hasText: 'Graphify source' })).toBeVisible();
+    expect(graphStatusRequests).toBe(1);
   });
 
   test('hash router onboarding route renders stepper', async ({ page }) => {

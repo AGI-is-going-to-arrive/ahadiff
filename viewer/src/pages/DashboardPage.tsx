@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AppShell from '../components/AppShell';
 import CalendarHeatmap, { type HeatmapCell } from '../components/CalendarHeatmap';
 import KpiCard from '../components/KpiCard';
@@ -7,12 +6,15 @@ import RatchetChart from '../components/RatchetChart';
 import Skeleton, { SkeletonGroup } from '../components/Skeleton';
 import { ApiError } from '../api/client';
 import { getRatchetHistory } from '../api/runs';
+import { fetchStats } from '../api/stats';
 import { useRunsStore } from '../state/runs-store';
 import { useTranslation, type MessageKey } from '../i18n/useTranslation';
 import { useLocaleStore } from '../state/locale-store';
-import type { RatchetHistoryEntry, Verdict } from '../api/types';
+import type { RatchetHistoryEntry, StatsResponse, Verdict } from '../api/types';
 import { safeVerdict } from '../utils/verdict';
 import '../components/Dashboard.css';
+
+const GraphifyCard = lazy(() => import('../components/GraphifyCard'));
 
 /**
  * Phase 4E: heatmap source-of-truth derivation.
@@ -56,11 +58,20 @@ export default function DashboardPage() {
   const loadingMore = useRunsStore((s) => s.loadingMore);
 
   const [ratchetHistory, setRatchetHistory] = useState<RatchetHistoryEntry[]>([]);
+  const [stats, setStats] = useState<StatsResponse | null>(null);
+  const [statsUnavailable, setStatsUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   /** Phase 4E: verdict filter chips above run list. */
   const [verdictFilter, setVerdictFilter] = useState<VerdictFilter>('ALL');
   const abortRef = useRef<AbortController | null>(null);
+  const graphifyCard = (
+    <Suspense
+      fallback={<div className="dashboard-graphify-placeholder" aria-hidden="true" />}
+    >
+      <GraphifyCard compact />
+    </Suspense>
+  );
 
   const fetchDashboard = useCallback(async () => {
     abortRef.current?.abort();
@@ -68,6 +79,7 @@ export default function DashboardPage() {
     abortRef.current = controller;
     setLoading(true);
     setError(null);
+    setStatsUnavailable(false);
     let failed = false;
     // 401/403 from any apiFetch means the bootstrap token was rejected. Show
     // a single auth-specific message instead of the generic fetch-failed one
@@ -90,6 +102,19 @@ export default function DashboardPage() {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       if (!failed && isAuthErr(err)) { setError('Error.auth_failed'); failed = true; }
       else if (!controller.signal.aborted && !failed) setError('Dashboard.ratchet_title');
+    }
+    try {
+      const s = await fetchStats({ signal: controller.signal });
+      if (!controller.signal.aborted) {
+        setStats(s);
+        setStatsUnavailable(false);
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      if (!controller.signal.aborted) {
+        setStats(null);
+        setStatsUnavailable(true);
+      }
     } finally {
       if (!controller.signal.aborted) {
         setLoading(false);
@@ -112,6 +137,7 @@ export default function DashboardPage() {
             <Skeleton variant="text-short" width="300px" />
           </div>
           <div className="skeleton-grid">
+            <Skeleton variant="card" />
             <Skeleton variant="card" />
             <Skeleton variant="card" />
             <Skeleton variant="card" />
@@ -176,28 +202,36 @@ export default function DashboardPage() {
             <span>{t('Serve.empty')}</span>
             <span className="dashboard__empty-hint">{t('Dashboard.empty_hint')}</span>
           </div>
+          {graphifyCard}
         </div>
       </AppShell>
     );
   }
 
   // ---- KPI computation ----
-  const totalRuns = runs.length;
+  const loadedRunCount = runs.length;
+  const totalRuns = Math.max(stats?.total_runs ?? loadedRunCount, loadedRunCount);
   const passCount = runs.filter((r) => r.verdict === 'PASS').length;
-  const passRate = totalRuns > 0 ? Math.round((passCount / totalRuns) * 100) : 0;
+  // Use runs.length (not totalRuns) as denominator — passCount comes from
+  // the loaded runs array, so both must share the same source to avoid
+  // under-reporting when the run list is paginated (Codex P2 fix).
+  const passRate = loadedRunCount > 0 ? Math.round((passCount / loadedRunCount) * 100) : 0;
 
-  // Weakest dimension: mode across all runs
-  const dimCounts: Record<string, number> = {};
-  for (const r of runs) {
-    if (r.weakest_dim) {
-      dimCounts[r.weakest_dim] = (dimCounts[r.weakest_dim] ?? 0) + 1;
-    }
-  }
-  const weakestDim = Object.entries(dimCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '-';
+  const avgScore = stats?.avg_overall_score != null
+    ? Math.round(stats.avg_overall_score)
+    : null;
+  const totalConcepts = stats?.total_concepts ?? 0;
+  const statsHint = statsUnavailable ? t('Dashboard.kpi_stats_unavailable_hint') : undefined;
 
   const passRateTone =
     passRate >= 80 ? 'success' as const :
     passRate >= 50 ? 'warning' as const :
+    'danger' as const;
+
+  const scoreTone =
+    avgScore == null ? 'default' as const :
+    avgScore >= 80 ? 'success' as const :
+    avgScore >= 60 ? 'warning' as const :
     'danger' as const;
 
   const errorBanner = error ? (
@@ -236,6 +270,8 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          {graphifyCard}
+
           <RunListTable
             runs={runs}
             t={t}
@@ -259,21 +295,30 @@ export default function DashboardPage() {
         </div>
         {errorBanner}
 
-        {/* KPI row */}
-        <div className="kpi-grid kpi-grid--3col">
+        {/* KPI row — 4 cards matching V6 template */}
+        <div className="kpi-grid kpi-grid--4col">
           <KpiCard
             label={t('Dashboard.kpi_total_runs')}
             value={totalRuns}
+            hint={statsHint}
+          />
+          <KpiCard
+            label={t('Dashboard.kpi_avg_score')}
+            value={avgScore != null ? `${avgScore}` : '-'}
+            tone={scoreTone}
+            hint={statsHint}
           />
           <KpiCard
             label={t('Dashboard.kpi_pass_rate')}
             value={`${passRate}%`}
             tone={passRateTone}
+            hint={t('Dashboard.kpi_loaded_runs_hint', { count: loadedRunCount })}
           />
           <KpiCard
-            label={t('Dashboard.kpi_weakest_dim')}
-            value={weakestDim}
-            tone="warning"
+            label={t('Dashboard.kpi_total_concepts')}
+            value={totalConcepts}
+            tone={totalConcepts > 0 ? 'success' : 'default'}
+            hint={statsHint}
           />
         </div>
 
@@ -302,6 +347,9 @@ export default function DashboardPage() {
           </div>
           <CalendarHeatmap cells={deriveHeatmapFromRuns(runs)} />
         </div>
+
+        {/* Graphify status — optional, self-fetching, hidden when disabled */}
+        {graphifyCard}
 
         {/* Run list */}
         <RunListTable
@@ -409,9 +457,9 @@ function RunListTable({
           {sorted.map((run) => (
             <tr key={run.run_id}>
               <td>
-                <Link className="run-list__link mono" to={`/run/${run.run_id}/lesson`}>
+                <a className="run-list__link mono" href={`#/run/${run.run_id}/lesson`}>
                   {run.source_ref || run.run_id.slice(0, 8)}
-                </Link>
+                </a>
               </td>
               <td>
                 <VerdictBadge verdict={safeVerdict(run.verdict)} t={t} />

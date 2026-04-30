@@ -1,11 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import {
+  authTokenResponseSchema,
   conceptGraphEdgeSchema,
   conceptGraphNodeSchema,
   conceptGraphResponseSchema,
   freshnessProjectionSchema,
   graphStatusResponseSchema,
+  statsResponseSchema,
 } from '../../src/api/schemas';
+
+describe('auth token schema', () => {
+  it('accepts token and optional nullable expires_at', () => {
+    expect(authTokenResponseSchema.parse({ token: 'abc' })).toEqual({ token: 'abc' });
+    expect(authTokenResponseSchema.parse({ token: 'abc', expires_at: null })).toEqual({
+      token: 'abc',
+      expires_at: null,
+    });
+  });
+
+  it('rejects empty token and unknown keys', () => {
+    expect(() => authTokenResponseSchema.parse({ token: '' })).toThrow();
+    expect(() => authTokenResponseSchema.parse({ token: 'abc', extra: true })).toThrow();
+  });
+});
 
 describe('graph schemas', () => {
   const validStatus = {
@@ -52,6 +69,13 @@ describe('graph schemas', () => {
     expect(() => conceptGraphNodeSchema.parse({ id: '', name: 'test' })).toThrow();
   });
 
+  it('conceptGraphNodeSchema rejects empty name and unknown keys', () => {
+    expect(() => conceptGraphNodeSchema.parse({ id: 'n1', name: '' })).toThrow();
+    expect(() =>
+      conceptGraphNodeSchema.parse({ id: 'n1', name: 'test', extra: true }),
+    ).toThrow();
+  });
+
   it('conceptGraphEdgeSchema applies default weight', () => {
     const result = conceptGraphEdgeSchema.parse({
       id: 'e1',
@@ -60,6 +84,40 @@ describe('graph schemas', () => {
     });
     expect(result.weight).toBe(1.0);
     expect(result.relation).toBeNull();
+  });
+
+  it('conceptGraphEdgeSchema rejects finite outlier weights', () => {
+    for (const weight of [-1, 0, 1e308]) {
+      expect(() =>
+        conceptGraphEdgeSchema.parse({
+          id: 'e1',
+          source: 'n1',
+          target: 'n2',
+          weight,
+        }),
+      ).toThrow();
+    }
+  });
+
+  it('conceptGraphEdgeSchema rejects empty public ids and unknown keys', () => {
+    for (const patch of [{ id: '' }, { source: '' }, { target: '' }]) {
+      expect(() =>
+        conceptGraphEdgeSchema.parse({
+          id: 'e1',
+          source: 'n1',
+          target: 'n2',
+          ...patch,
+        }),
+      ).toThrow();
+    }
+    expect(() =>
+      conceptGraphEdgeSchema.parse({
+        id: 'e1',
+        source: 'n1',
+        target: 'n2',
+        extra: true,
+      }),
+    ).toThrow();
   });
 
   it('conceptGraphResponseSchema validates full payload', () => {
@@ -89,14 +147,80 @@ describe('graph schemas', () => {
     expect(result.truncated).toBe(false);
   });
 
-  it('rejects NaN/Infinity in edge weight', () => {
+  it('graphStatusResponseSchema rejects missing/null required fields and unknown keys', () => {
     expect(() =>
-      conceptGraphEdgeSchema.parse({
-        id: 'e1',
-        source: 'n1',
-        target: 'n2',
-        weight: NaN,
+      graphStatusResponseSchema.parse({ ...validStatus, node_count: null }),
+    ).toThrow();
+    expect(() =>
+      graphStatusResponseSchema.parse({ ...validStatus, enabled: undefined }),
+    ).toThrow();
+    expect(() =>
+      graphStatusResponseSchema.parse({ ...validStatus, extra: true }),
+    ).toThrow();
+  });
+
+  it('conceptGraphResponseSchema rejects unknown top-level keys', () => {
+    expect(() =>
+      conceptGraphResponseSchema.parse({
+        status: validStatus,
+        nodes: [],
+        edges: [],
+        extra: true,
       }),
+    ).toThrow();
+  });
+
+  it('rejects NaN/Infinity in edge weight', () => {
+    for (const weight of [NaN, Infinity, -Infinity]) {
+      expect(() =>
+        conceptGraphEdgeSchema.parse({
+          id: 'e1',
+          source: 'n1',
+          target: 'n2',
+          weight,
+        }),
+      ).toThrow();
+    }
+  });
+});
+
+describe('stats schema', () => {
+  const validStats = {
+    total_runs: 1,
+    total_lessons: 1,
+    total_quizzes: 1,
+    total_concepts: 2,
+    total_claims: 3,
+    total_reviews: 4,
+    avg_overall_score: 83.5,
+    weakest_dimensions: ['evidence'],
+    last_run_at: '2026-04-10T12:00:00Z',
+  };
+
+  it('accepts null avg_overall_score', () => {
+    const result = statsResponseSchema.parse({
+      ...validStats,
+      avg_overall_score: null,
+    });
+
+    expect(result.avg_overall_score).toBeNull();
+  });
+
+  it('rejects unknown top-level keys', () => {
+    expect(() =>
+      statsResponseSchema.parse({ ...validStats, extra: true }),
+    ).toThrow();
+  });
+
+  it('rejects NaN and Infinity numeric values', () => {
+    for (const avg_overall_score of [NaN, Infinity, -Infinity]) {
+      expect(() =>
+        statsResponseSchema.parse({ ...validStats, avg_overall_score }),
+      ).toThrow();
+    }
+    expect(() => statsResponseSchema.parse({ ...validStats, total_runs: NaN })).toThrow();
+    expect(() =>
+      statsResponseSchema.parse({ ...validStats, total_runs: Infinity }),
     ).toThrow();
   });
 });

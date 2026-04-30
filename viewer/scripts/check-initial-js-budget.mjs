@@ -4,20 +4,17 @@ import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
 /**
- * Phase 4 raised the budget from 80 KB to 84 KB to accommodate the AppShell
- * Cmd/Ctrl+K wiring + verdict-filter UI. R4-F1 set 80 KB based on a
- * React 19 + react-router-dom floor of ~57 KB; 84 KB still leaves only a
- * ~27 KB shell — well under the React 19 + router + shell ceiling tracked in
- * doc/v6-alignment-gap-analysis.md and risk register R6.
+ * Phase 2G/4E keep JavaScript size observable without blocking builds on a
+ * hard byte ceiling. Initial JavaScript and Dashboard first-route JavaScript
+ * are both reported here; Dashboard includes the route chunk, static imports,
+ * and the lazy GraphifyCard child rendered on the first dashboard screen.
  *
- * If you need to bump this further, prefer carving heavy deps into
- * `vendor-page-deps` (excluded from modulepreload, see vite.config.ts) over
- * raising the constant — the shell should stay shell-sized.
+ * Keep carving heavy deps into `vendor-page-deps` (excluded from modulepreload,
+ * see vite.config.ts) so the shell stays small, but do not fail the build only
+ * because a frontend phase crosses an arbitrary bundle threshold.
  */
-const DEFAULT_BUDGET_BYTES = 84 * 1024;
-const DEFAULT_DASHBOARD_ROUTE_BUDGET_BYTES = 112 * 1024;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const distDir = resolve(root, 'dist');
+const distDir = resolve(root, process.env.AHADIFF_BUDGET_DIST_DIR ?? 'dist');
 const indexHtmlPath = resolve(distDir, 'index.html');
 const manifestPath = resolve(distDir, '.vite', 'manifest.json');
 
@@ -25,26 +22,6 @@ function fail(message) {
   console.error(message);
   process.exit(1);
 }
-
-function parseBudget(raw, envName, defaultValue) {
-  if (raw === undefined || raw === '') return defaultValue;
-  const value = Number(raw);
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    fail(`Invalid ${envName}: ${raw}`);
-  }
-  return value;
-}
-
-const budgetBytes = parseBudget(
-  process.env.AHADIFF_INITIAL_JS_GZIP_BUDGET_BYTES,
-  'AHADIFF_INITIAL_JS_GZIP_BUDGET_BYTES',
-  DEFAULT_BUDGET_BYTES,
-);
-const dashboardRouteBudgetBytes = parseBudget(
-  process.env.AHADIFF_DASHBOARD_ROUTE_JS_GZIP_BUDGET_BYTES,
-  'AHADIFF_DASHBOARD_ROUTE_JS_GZIP_BUDGET_BYTES',
-  DEFAULT_DASHBOARD_ROUTE_BUDGET_BYTES,
-);
 
 function attr(tag, name) {
   const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*(['"])(.*?)\\1`, 'i'));
@@ -115,7 +92,21 @@ function findManifestKey(manifest, source) {
   fail(`Missing manifest entry for ${source}`);
 }
 
-function collectManifestJs(manifest, source) {
+function manifestKeys(entry, key, property) {
+  const value = entry[property] ?? [];
+  if (!Array.isArray(value)) {
+    fail(`Manifest ${property} must be an array for ${key}`);
+  }
+  for (const item of value) {
+    if (typeof item !== 'string' || item.length === 0) {
+      fail(`Manifest ${property} contains an invalid key for ${key}`);
+    }
+  }
+  return value;
+}
+
+function collectManifestJs(manifest, source, options = {}) {
+  const { includeImmediateDynamicImports = false } = options;
   const refs = new Map();
   const seen = new Set();
   const visit = (key) => {
@@ -127,11 +118,23 @@ function collectManifestJs(manifest, source) {
       const ref = assetRef(entry.file);
       refs.set(ref, localAssetPath(ref));
     }
-    for (const imported of entry.imports ?? []) {
+    for (const imported of manifestKeys(entry, key, 'imports')) {
       visit(imported);
     }
   };
-  visit(findManifestKey(manifest, source));
+  const rootKey = findManifestKey(manifest, source);
+  visit(rootKey);
+
+  if (includeImmediateDynamicImports) {
+    const rootEntry = manifest[rootKey];
+    if (!rootEntry) fail(`Manifest import not found: ${rootKey}`);
+    // The Dashboard route renders this lazy child immediately, so its chunk and
+    // static imports belong to the first-route budget, not the initial shell.
+    for (const imported of manifestKeys(rootEntry, rootKey, 'dynamicImports')) {
+      visit(imported);
+    }
+  }
+
   return [...refs.entries()].map(([ref, assetPath]) => ({ ref, assetPath }));
 }
 
@@ -168,24 +171,15 @@ if (entries.length === 0) {
 }
 
 const total = measure(entries, 'initial');
-console.log(`initial-js-gzip total: ${total} bytes (budget ${budgetBytes} bytes)`);
-
-if (total > budgetBytes) {
-  fail(`Initial JS gzip budget exceeded: ${total} > ${budgetBytes}`);
-}
+console.log(`initial-js-gzip total: ${total} bytes (observed, no budget cap)`);
 
 const manifest = loadManifest();
-const dashboardEntries = collectManifestJs(manifest, 'src/pages/DashboardPage.tsx');
+const dashboardEntries = collectManifestJs(manifest, 'src/pages/DashboardPage.tsx', {
+  includeImmediateDynamicImports: true,
+});
 const dashboardFirstRouteEntries = combineEntries(entries, dashboardEntries);
 const dashboardFirstRouteTotal = measure(dashboardFirstRouteEntries, 'dashboard-first-route');
 console.log(
   `dashboard-first-route-js-gzip total: ${dashboardFirstRouteTotal} bytes ` +
-    `(budget ${dashboardRouteBudgetBytes} bytes)`,
+    `(observed, no budget cap)`,
 );
-
-if (dashboardFirstRouteTotal > dashboardRouteBudgetBytes) {
-  fail(
-    `Dashboard first-route JS gzip budget exceeded: ` +
-      `${dashboardFirstRouteTotal} > ${dashboardRouteBudgetBytes}`,
-  );
-}

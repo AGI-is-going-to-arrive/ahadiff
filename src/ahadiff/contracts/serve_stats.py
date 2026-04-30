@@ -2,27 +2,31 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal, TypeAlias
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt
+
+NonNegativeCount: TypeAlias = Annotated[StrictInt, Field(ge=0)]
+FiniteNumber: TypeAlias = Annotated[StrictFloat, Field(allow_inf_nan=False)]
+NonNegativeFiniteNumber: TypeAlias = Annotated[StrictFloat, Field(ge=0, allow_inf_nan=False)]
 
 
 class HeatmapEntry(BaseModel):
     model_config = ConfigDict(extra="forbid")
     date: str  # YYYY-MM-DD
-    review_count: int
-    avg_rating: float | None
+    review_count: NonNegativeCount
+    avg_rating: FiniteNumber | None
 
 
 class StatsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    total_runs: int
-    total_lessons: int
-    total_quizzes: int
-    total_concepts: int
-    total_claims: int
-    total_reviews: int
-    avg_overall_score: float | None
+    total_runs: NonNegativeCount
+    total_lessons: NonNegativeCount
+    total_quizzes: NonNegativeCount
+    total_concepts: NonNegativeCount
+    total_claims: NonNegativeCount
+    total_reviews: NonNegativeCount
+    avg_overall_score: FiniteNumber | None
     weakest_dimensions: list[str]
     last_run_at: str | None
 
@@ -61,56 +65,56 @@ class UsageModelSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
     provider_class: str
     model_id: str
-    call_count: int
-    total_input_tokens: int
-    total_output_tokens: int
-    total_cost_usd: float
+    call_count: NonNegativeCount
+    total_input_tokens: NonNegativeCount
+    total_output_tokens: NonNegativeCount
+    total_cost_usd: NonNegativeFiniteNumber
 
 
 class UsageResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     models: list[UsageModelSummary]
-    total_calls: int
-    total_input_tokens: int
-    total_output_tokens: int
-    total_cost_usd: float
-    cache_hits: int
-    cache_misses: int
+    total_calls: NonNegativeCount
+    total_input_tokens: NonNegativeCount
+    total_output_tokens: NonNegativeCount
+    total_cost_usd: NonNegativeFiniteNumber
+    cache_hits: NonNegativeCount
+    cache_misses: NonNegativeCount
 
 
 class ServeStatusResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     version: str
-    uptime_seconds: float
+    uptime_seconds: NonNegativeFiniteNumber
     review_db_exists: bool
-    runs_count: int
+    runs_count: NonNegativeCount
 
 
 class HelpfulnessAggregateDTO(BaseModel):
     model_config = ConfigDict(extra="forbid")
     target_kind: str
     target_id: str
-    signal_count: int
-    positive_count: int
-    negative_count: int
-    helpfulness_score: float
+    signal_count: NonNegativeCount
+    positive_count: NonNegativeCount
+    negative_count: NonNegativeCount
+    helpfulness_score: FiniteNumber
 
 
 class TransferConceptDTO(BaseModel):
     model_config = ConfigDict(extra="forbid")
     concept: str
-    total_reviews: int
-    avg_rating: float
+    total_reviews: NonNegativeCount
+    avg_rating: FiniteNumber
     improving: bool
 
 
 class LearningEffectivenessResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    total_concepts_reviewed: int
-    concepts_improving: int
-    concepts_stable: int
-    concepts_declining: int
-    transfer_rate: float
+    total_concepts_reviewed: NonNegativeCount
+    concepts_improving: NonNegativeCount
+    concepts_stable: NonNegativeCount
+    concepts_declining: NonNegativeCount
+    transfer_rate: FiniteNumber
     helpfulness: list[HelpfulnessAggregateDTO]
     transfer_metrics: list[TransferConceptDTO]
 

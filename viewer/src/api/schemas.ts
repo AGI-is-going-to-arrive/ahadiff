@@ -61,10 +61,12 @@ export const reviewAnswerSchema = z.enum(['easy', 'good', 'hard', 'wrong']);
 
 /* ─────────────── 1. AuthTokenResponse ─────────────── */
 
-export const authTokenResponseSchema = z.object({
-  token: z.string().min(1),
-  expires_at: z.string().nullable().optional(),
-});
+export const authTokenResponseSchema = z
+  .object({
+    token: z.string().min(1),
+    expires_at: z.string().nullable().optional(),
+  })
+  .strict();
 
 /* ─────────────── 2. RunSummary / RunDetail ─────────────── */
 
@@ -377,6 +379,9 @@ export const heatmapResponseSchema = z.object({
 
 /* ─────────────── 14. Graph (Phase 5D /api/graph/*) ─────────────── */
 
+const MIN_GRAPH_EDGE_WEIGHT = 0.1;
+const MAX_GRAPH_EDGE_WEIGHT = 3.0;
+
 export const freshnessProjectionSchema = z.enum([
   'fresh',
   'stale',
@@ -384,41 +389,70 @@ export const freshnessProjectionSchema = z.enum([
   'disabled',
 ]);
 
-export const graphStatusResponseSchema = z.object({
-  enabled: z.boolean(),
-  source_exists: z.boolean(),
-  has_graph: z.boolean(),
-  freshness: freshnessProjectionSchema.nullable(),
-  node_count: z.number().int().nonnegative(),
-  edge_count: z.number().int().nonnegative(),
-  source_path: z.string().nullable(),
-});
+export const graphStatusResponseSchema = z
+  .object({
+    enabled: z.boolean(),
+    source_exists: z.boolean(),
+    has_graph: z.boolean(),
+    freshness: freshnessProjectionSchema.nullable(),
+    node_count: z.number().int().nonnegative(),
+    edge_count: z.number().int().nonnegative(),
+    source_path: z.string().nullable(),
+  })
+  .strict();
 
-export const conceptGraphNodeSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  kind: z.string().nullable().default(null),
-  file_path: z.string().nullable().default(null),
-  freshness: freshnessProjectionSchema.nullable().default(null),
-  metadata: z.record(z.string(), z.unknown()).default({}),
-});
+export const conceptGraphNodeSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    kind: z.string().nullable().default(null),
+    file_path: z.string().nullable().default(null),
+    freshness: freshnessProjectionSchema.nullable().default(null),
+    metadata: z.record(z.string(), z.unknown()).default({}),
+  })
+  .strict();
 
-export const conceptGraphEdgeSchema = z.object({
-  id: z.string().min(1),
-  source: z.string().min(1),
-  target: z.string().min(1),
-  relation: z.string().nullable().default(null),
-  weight: z.number().finite().default(1.0),
-});
+export const conceptGraphEdgeSchema = z
+  .object({
+    id: z.string().min(1),
+    source: z.string().min(1),
+    target: z.string().min(1),
+    relation: z.string().nullable().default(null),
+    weight: z
+      .number()
+      .finite()
+      .min(MIN_GRAPH_EDGE_WEIGHT)
+      .max(MAX_GRAPH_EDGE_WEIGHT)
+      .default(1.0),
+  })
+  .strict();
 
-export const conceptGraphResponseSchema = z.object({
-  status: graphStatusResponseSchema,
-  nodes: z.array(conceptGraphNodeSchema),
-  edges: z.array(conceptGraphEdgeSchema),
-  truncated: z.boolean().default(false),
-});
+export const conceptGraphResponseSchema = z
+  .object({
+    status: graphStatusResponseSchema,
+    nodes: z.array(conceptGraphNodeSchema),
+    edges: z.array(conceptGraphEdgeSchema),
+    truncated: z.boolean().default(false),
+  })
+  .strict();
 
-/* ─────────────── 15. Boundary helper ─────────────── */
+/* ─────────────── 15. Stats (/api/stats) ─────────────── */
+
+export const statsResponseSchema = z
+  .object({
+    total_runs: z.number().int().nonnegative(),
+    total_lessons: z.number().int().nonnegative(),
+    total_quizzes: z.number().int().nonnegative(),
+    total_concepts: z.number().int().nonnegative(),
+    total_claims: z.number().int().nonnegative(),
+    total_reviews: z.number().int().nonnegative(),
+    avg_overall_score: z.number().finite().nullable(),
+    weakest_dimensions: z.array(z.string()),
+    last_run_at: z.string().nullable(),
+  })
+  .strict();
+
+/* ─────────────── 16. Boundary helper ─────────────── */
 
 interface RedactedIssue {
   /** Dot-joined `path` array, "<root>" if empty. */

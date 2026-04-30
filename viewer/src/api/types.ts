@@ -236,3 +236,15 @@ export interface ConceptGraphResponse {
   edges: ConceptGraphEdge[];
   truncated: boolean;
 }
+
+export interface StatsResponse {
+  total_runs: number;
+  total_lessons: number;
+  total_quizzes: number;
+  total_concepts: number;
+  total_claims: number;
+  total_reviews: number;
+  avg_overall_score: number | null;
+  weakest_dimensions: string[];
+  last_run_at: string | null;
+}

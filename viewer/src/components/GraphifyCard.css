@@ -1,0 +1,198 @@
+.graphify-card {
+  background: var(--elevated);
+  border: 1px solid var(--hair);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-md, 8px);
+  padding: 16px 20px;
+}
+
+.graphify-card__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.graphify-card__title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+}
+
+.graphify-card__body {
+  margin-top: 10px;
+}
+
+.graphify-card__stats {
+  display: flex;
+  gap: 16px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.graphify-card__source {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  color: var(--muted-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graphify-card__empty {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.graphify-card--placeholder {
+  min-height: 96px;
+  visibility: hidden;
+}
+
+/* -- Compact variant (inline for Dashboard) -- */
+
+.graphify-card--compact {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  flex-wrap: wrap;
+}
+
+.graphify-card--compact.graphify-card--placeholder {
+  min-height: 43px;
+}
+
+.graphify-card__label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.graphify-card__counts {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+/* -- Freshness badge -- */
+
+.graphify-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 100px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.graphify-badge::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.graphify-badge--success {
+  background: var(--success-soft);
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  color: var(--success);
+}
+
+.graphify-badge--success::before {
+  background: var(--success);
+}
+
+.graphify-badge--warning {
+  background: var(--warning-soft);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  color: var(--warning);
+}
+
+.graphify-badge--warning::before {
+  background: var(--warning);
+}
+
+.graphify-badge--muted {
+  background: var(--subtle);
+  color: var(--muted);
+}
+
+.graphify-badge--muted::before {
+  background: var(--muted-2);
+}
+
+/* -- Responsive -- */
+
+@media (max-width: 540px) {
+  .graphify-card--compact {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+}
+
+/* -- Print -- */
+
+@media print {
+  .graphify-card {
+    background: var(--elevated);
+    border: 1px solid var(--hair-strong);
+    border-left: 3px solid var(--accent);
+    color: var(--ink);
+    break-inside: avoid;
+  }
+
+  .graphify-badge::before {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+/* -- Forced colors -- */
+
+@media (forced-colors: active) {
+  .graphify-card {
+    background: Canvas;
+    border-color: CanvasText;
+    color: CanvasText;
+  }
+
+  .graphify-card__title,
+  .graphify-card__label,
+  .graphify-card__stats,
+  .graphify-card__counts,
+  .graphify-card__source,
+  .graphify-card__empty {
+    color: CanvasText;
+  }
+
+  .graphify-badge {
+    background: Canvas;
+    border: 1px solid CanvasText;
+    color: CanvasText;
+  }
+
+  .graphify-badge--success,
+  .graphify-badge--warning {
+    border-color: Highlight;
+    color: Highlight;
+  }
+
+  .graphify-badge::before {
+    background: currentColor;
+    forced-color-adjust: none;
+  }
+}
+
+/* -- Reduced motion -- */
+
+@media (prefers-reduced-motion: reduce) {
+  .graphify-card,
+  .graphify-badge {
+    transition: none;
+  }
+}

@@ -9,13 +9,13 @@
     animation: none !important;
   }
 
-  header,
-  nav,
-  aside,
-  footer,
   .sidebar,
   .topbar,
   .skip-to-content,
+  .lesson__toc,
+  .lesson-sidebar,
+  .lesson__rail,
+  footer,
   [data-print-hide] {
     display: none !important;
   }

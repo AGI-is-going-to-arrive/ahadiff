@@ -157,6 +157,124 @@ describe('ApiError redaction', () => {
     expect(JSON.stringify(err)).not.toContain('should-not-leak');
     expect(JSON.stringify(err.body)).not.toContain('sk-test-secret-token');
   });
+
+  it('drops prototype keys from sanitized API error bodies', () => {
+    const payload = JSON.parse(
+      '{"__proto__":{"polluted":true},"constructor":{"prototype":{"polluted":true}},"safe":1,"nested":{"prototype":"x","value":2}}',
+    ) as unknown;
+
+    const err = new ApiError(500, payload);
+    expect(Object.getPrototypeOf(err.body)).toBe(Object.prototype);
+    expect((err.body as Record<string, unknown>).safe).toBe(1);
+    expect(Object.prototype.hasOwnProperty.call(err.body, '__proto__')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(err.body, 'constructor')).toBe(false);
+    expect((err.body as Record<string, unknown>).nested).toEqual({ value: 2 });
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+});
+
+describe('auth bootstrap edge cases (Phase 2H)', () => {
+  beforeEach(() => {
+    resetToken();
+    vi.stubGlobal('window', { location: { origin: 'http://localhost:5173' } });
+  });
+
+  afterEach(() => {
+    resetToken();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('surfaces 403 from bootstrap when same-origin gate rejects', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL): Promise<Response> => {
+      if (String(input) === '/api/auth/token') {
+        return Promise.resolve(
+          jsonResponse({ detail: 'same-origin required' }, 403),
+        );
+      }
+      return Promise.resolve(jsonResponse({ runs: [] }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const err = await apiFetch('/api/runs').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).status).toBe(403);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('aborts bootstrap after 8 s timeout', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> =>
+          new Promise<Response>((_resolve, reject) => {
+            if (init?.signal?.aborted) {
+              reject(new DOMException('The operation was aborted.', 'AbortError'));
+              return;
+            }
+            init?.signal?.addEventListener('abort', () => {
+              reject(new DOMException('The operation was aborted.', 'AbortError'));
+            });
+          }),
+      ),
+    );
+
+    const promise = apiFetch<unknown>('/api/runs').catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(8001);
+    const err = await promise;
+    expect(err).toBeInstanceOf(DOMException);
+  });
+
+  it('propagates network errors from bootstrap without retry loop', async () => {
+    const fetchMock = vi.fn((): Promise<Response> =>
+      Promise.reject(new TypeError('Failed to fetch')),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(apiFetch('/api/runs')).rejects.toThrow(TypeError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects malformed bootstrap payloads without leaking token-like values', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL): Promise<Response> => {
+        if (String(input) === '/api/auth/token') {
+          return Promise.resolve(
+            jsonResponse({ token: '', backup_token: 'sk-should-not-leak-token' }),
+          );
+        }
+        return Promise.resolve(jsonResponse({ runs: [] }));
+      }),
+    );
+
+    const err = await apiFetch('/api/runs').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).name).toBe('ValidationError');
+    expect(String(err)).not.toContain('sk-should-not-leak-token');
+    expect(JSON.stringify(err)).not.toContain('sk-should-not-leak-token');
+  });
+
+  it('retries once on 401 from data endpoint after successful bootstrap', async () => {
+    let callCount = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL): Promise<Response> => {
+        if (String(input) === '/api/auth/token') {
+          return Promise.resolve(jsonResponse({ token: `tok-${++callCount}` }));
+        }
+        const token = callCount === 1 ? 'stale' : 'fresh';
+        if (token === 'stale' && callCount <= 2) {
+          return Promise.resolve(jsonResponse({ error: 'unauthorized' }, 401));
+        }
+        return Promise.resolve(jsonResponse({ runs: [] }));
+      }),
+    );
+
+    await expect(apiFetch('/api/runs')).resolves.toEqual({ runs: [] });
+  });
 });
 
 describe('config api', () => {

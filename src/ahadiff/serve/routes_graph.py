@@ -8,6 +8,8 @@ from anyio import to_thread
 from starlette.responses import JSONResponse
 
 from ahadiff.contracts.serve_runtime import (
+    GRAPH_EDGE_WEIGHT_MAX,
+    GRAPH_EDGE_WEIGHT_MIN,
     ConceptGraphEdge,
     ConceptGraphNode,
     ConceptGraphResponse,
@@ -15,10 +17,16 @@ from ahadiff.contracts.serve_runtime import (
 )
 
 if TYPE_CHECKING:
+    from pathlib import PurePath
+
     from starlette.requests import Request
 
 _DEFAULT_CONCEPT_GRAPH_LIMIT = 500
 _MAX_CONCEPT_GRAPH_LIMIT = 2_000
+
+
+def api_relative_path(path: PurePath, root: PurePath) -> str:
+    return path.relative_to(root).as_posix()
 
 
 async def get_graph_status(request: Request) -> JSONResponse:
@@ -78,7 +86,7 @@ def _graph_status_sync(state_dir: object) -> dict[str, Any]:
         freshness=cast("Any", status.freshness),
         node_count=node_count,
         edge_count=edge_count,
-        source_path=(str(status.imported_path.relative_to(root)) if has_graph else None),
+        source_path=(api_relative_path(status.imported_path, root) if has_graph else None),
     )
     return response.model_dump(mode="json")
 
@@ -142,6 +150,7 @@ def _concept_graph_sync(state_dir: object, *, limit: int) -> dict[str, Any]:
         weight = float(weight_value) if isinstance(weight_value, int | float) else 1.0
         if not math.isfinite(weight):
             weight = 1.0
+        weight = min(GRAPH_EDGE_WEIGHT_MAX, max(GRAPH_EDGE_WEIGHT_MIN, weight))
         edges.append(
             ConceptGraphEdge(
                 id=f"{edge.source}->{edge.target}:{index}",

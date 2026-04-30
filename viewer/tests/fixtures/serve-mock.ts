@@ -470,6 +470,25 @@ export async function installServeMock(page: Page): Promise<void> {
       }),
   );
   await page.route(
+    (url) => url.pathname === '/api/stats',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          total_runs: 0,
+          total_lessons: 0,
+          total_quizzes: 0,
+          total_concepts: 0,
+          total_claims: 0,
+          total_reviews: 0,
+          avg_overall_score: null,
+          weakest_dimensions: [],
+          last_run_at: null,
+        }),
+      }),
+  );
+  await page.route(
     (url) => url.pathname === '/api/signals/quiz-answer',
     (route) =>
       route.fulfill({

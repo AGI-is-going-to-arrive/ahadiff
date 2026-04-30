@@ -5,7 +5,7 @@ import { useTranslation } from './i18n/useTranslation';
 
 // Phase 2G: every page is loaded lazily. Initial bundle only carries the
 // shell (HashRouter + ErrorBoundary + Suspense fallback); page modules ship
-// as async chunks. See plan §2G + risk R6 (bundle budget < 80KB gzip).
+// as async chunks. See plan §2G + risk R6 (bundle sizes are observed, not capped).
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const LessonPage = lazy(() => import('./pages/LessonPage'));
 const DiffViewerPage = lazy(() => import('./pages/DiffViewerPage'));

@@ -4,6 +4,7 @@ const REDACTED = '[REDACTED]';
 const SENSITIVE_KEY_RE = /(?:api[_-]?key|authorization|bearer|credential|password|secret|token)/i;
 const SECRET_VALUE_RE =
   /\b(?:Bearer\s+)?(?:sk-[A-Za-z0-9_-]{8,}|[A-Za-z0-9_-]*token[A-Za-z0-9_-]*)\b/i;
+const UNSAFE_OBJECT_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 
 function sanitizeApiErrorBody(body: unknown, depth = 0): unknown {
   if (depth > 8) return '[Truncated]';
@@ -16,6 +17,7 @@ function sanitizeApiErrorBody(body: unknown, depth = 0): unknown {
   if (body && typeof body === 'object') {
     const sanitized: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(body)) {
+      if (UNSAFE_OBJECT_KEYS.has(key)) continue;
       sanitized[key] = SENSITIVE_KEY_RE.test(key)
         ? REDACTED
         : sanitizeApiErrorBody(value, depth + 1);
@@ -107,6 +109,38 @@ async function safeJson(res: Response): Promise<unknown> {
   }
 }
 
+class AuthTokenValidationError extends Error {
+  override readonly name = 'ValidationError';
+
+  constructor(public readonly endpoint: string) {
+    super(`Validation failed for ${endpoint}: token(invalid_type)`);
+  }
+}
+
+function ensureAuthTokenResponse(raw: unknown): AuthTokenResponse {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new AuthTokenValidationError('POST /api/auth/token');
+  }
+  const record = raw as Record<string, unknown>;
+  const allowed = new Set(['token', 'expires_at']);
+  if (Object.keys(record).some((key) => !allowed.has(key))) {
+    throw new AuthTokenValidationError('POST /api/auth/token');
+  }
+  const token = record.token;
+  const expiresAt = record.expires_at;
+  if (typeof token !== 'string' || token.length === 0) {
+    throw new AuthTokenValidationError('POST /api/auth/token');
+  }
+  if (
+    expiresAt !== undefined &&
+    expiresAt !== null &&
+    typeof expiresAt !== 'string'
+  ) {
+    throw new AuthTokenValidationError('POST /api/auth/token');
+  }
+  return { token, expires_at: expiresAt ?? undefined };
+}
+
 function clearToken(): void {
   cachedToken = null;
   tokenPromise = null;
@@ -151,7 +185,7 @@ async function ensureToken(signal?: AbortSignal): Promise<string> {
       });
       if (!res.ok)
         throw new ApiError(res.status, await safeJson(res), 'auth token fetch failed');
-      const data = (await res.json()) as AuthTokenResponse;
+      const data = ensureAuthTokenResponse(await safeJson(res));
       if (generation === tokenGeneration && tokenRequestId === requestId) {
         cachedToken = data.token;
       }

@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt
 
 FreshnessProjection = Literal["fresh", "stale", "unavailable", "disabled"]
+GRAPH_EDGE_WEIGHT_MIN = 0.1
+GRAPH_EDGE_WEIGHT_MAX = 3.0
+NonNegativeCount: TypeAlias = Annotated[StrictInt, Field(ge=0)]
+FiniteNumber: TypeAlias = Annotated[StrictFloat, Field(allow_inf_nan=False)]
+NonNegativeFiniteNumber: TypeAlias = Annotated[StrictFloat, Field(ge=0, allow_inf_nan=False)]
+GraphEdgeWeight: TypeAlias = Annotated[
+    StrictFloat,
+    Field(ge=GRAPH_EDGE_WEIGHT_MIN, le=GRAPH_EDGE_WEIGHT_MAX, allow_inf_nan=False),
+]
 
 
 class SearchResultItem(BaseModel):
@@ -37,8 +46,8 @@ class GraphStatusResponse(BaseModel):
     source_exists: bool
     has_graph: bool
     freshness: FreshnessProjection | None
-    node_count: int
-    edge_count: int
+    node_count: NonNegativeCount
+    edge_count: NonNegativeCount
     source_path: str | None
 
 
@@ -46,8 +55,8 @@ class WeakConceptItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
     card_id: str = Field(min_length=1)
     concept: str
-    stability: float
-    difficulty: float
+    stability: FiniteNumber
+    difficulty: FiniteNumber
     scaffolding_level: str
     display_path: str
 
@@ -73,7 +82,7 @@ class ConceptGraphEdge(BaseModel):
     source: str = Field(min_length=1)
     target: str = Field(min_length=1)
     relation: str | None = None
-    weight: float = 1.0
+    weight: GraphEdgeWeight = 1.0
 
 
 class ConceptGraphResponse(BaseModel):
@@ -86,8 +95,8 @@ class ConceptGraphResponse(BaseModel):
 
 class TaskProgressResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    current: int
-    total: int
+    current: NonNegativeCount
+    total: NonNegativeCount
     message: str
 
 
@@ -103,7 +112,7 @@ class TaskInfoResponse(BaseModel):
     created_at: str
     started_at: str | None = None
     completed_at: str | None = None
-    elapsed_seconds: float | None = None
+    elapsed_seconds: NonNegativeFiniteNumber | None = None
 
 
 class TaskListResponse(BaseModel):
@@ -126,6 +135,8 @@ __all__ = [
     "ConceptGraphNode",
     "ConceptGraphResponse",
     "ConceptsTextPageResponse",
+    "GRAPH_EDGE_WEIGHT_MAX",
+    "GRAPH_EDGE_WEIGHT_MIN",
     "GraphStatusResponse",
     "SearchResponse",
     "SearchResultItem",
