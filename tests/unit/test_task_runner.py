@@ -693,6 +693,49 @@ def test_thread_backed_draining_task_keeps_global_concurrency_slot() -> None:
     _run(_inner())
 
 
+def test_draining_thread_backed_task_updates_status_on_success() -> None:
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=2, task_timeout_seconds=60.0)
+        started = threading.Event()
+        release = threading.Event()
+
+        async def thread_work(handle: TaskHandle) -> str:
+            del handle
+
+            def _sync_job() -> str:
+                started.set()
+                release.wait(timeout=2.0)
+                return "pipeline-ok"
+
+            return await run_sync_in_thread(_sync_job)
+
+        task_id = runner.submit(
+            "learn",
+            thread_work,
+            task_timeout_seconds=0.05,
+            thread_backed=True,
+        )
+        assert await run_sync_in_thread(lambda: started.wait(timeout=1.0))
+        await asyncio.sleep(0.15)
+
+        info = runner.get_task(task_id)
+        assert info is not None
+        assert info.status == TaskStatus.FAILED
+        assert info.error_code == "timeout"
+
+        release.set()
+        await asyncio.sleep(0.3)
+
+        info = runner.get_task(task_id)
+        assert info is not None
+        assert info.status == TaskStatus.COMPLETED
+        assert info.result == "pipeline-ok"
+        assert info.error is None
+        assert info.error_code is None
+
+    _run(_inner())
+
+
 def test_error_code_classification() -> None:
     async def _inner() -> None:
         runner = TaskRunner(max_concurrent=8)

@@ -455,6 +455,10 @@ def _iter_jsonl_entries_with_offsets(
     from ahadiff.core.paths import reject_leaf_symlink_or_reparse
 
     leaf_stat = reject_leaf_symlink_or_reparse(path, label=path.name)
+    import stat as stat_mod
+
+    if not stat_mod.S_ISREG(leaf_stat.st_mode):
+        raise InputError(f"{path.name} is not a regular file")
     if max_bytes is not None and leaf_stat.st_size > max_bytes:
         raise InputError(f"{path.name} exceeds size limit")
     with path.open("r", encoding="utf-8") as handle:
@@ -481,6 +485,8 @@ def _concepts_jsonl_readable(path: Path, *, max_bytes: int | None = None) -> boo
     import stat as stat_mod
 
     if stat_mod.S_ISLNK(leaf_stat.st_mode):
+        return False
+    if not stat_mod.S_ISREG(leaf_stat.st_mode):
         return False
     if bool(getattr(leaf_stat, "st_file_attributes", 0) & 0x400):
         return False
@@ -590,7 +596,17 @@ def export_concepts_from_db(state_dir: Path) -> Path:
 
 
 def _is_ancestor(repo_root: Path, source_ref: str, head_ref: str) -> bool:
-    result = run_git(repo_root, "merge-base", "--is-ancestor", source_ref, head_ref, check=False)
+    if source_ref.startswith("-") or head_ref.startswith("-"):
+        return False
+    result = run_git(
+        repo_root,
+        "merge-base",
+        "--is-ancestor",
+        "--",
+        source_ref,
+        head_ref,
+        check=False,
+    )
     return result.returncode == 0
 
 

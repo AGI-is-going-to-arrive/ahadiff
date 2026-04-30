@@ -342,8 +342,19 @@ class TaskRunner:
     def _on_draining_task_done(self, task_id: str, task: asyncio.Task[Any]) -> None:
         self._draining_tasks.pop(task_id, None)
         self._thread_backed.pop(task_id, None)
+        info = self._tasks.get(task_id)
         try:
-            task.result()
+            result = task.result()
+            if (
+                info is not None
+                and info.status == TaskStatus.FAILED
+                and info.error_code == "timeout"
+            ):
+                info.status = TaskStatus.COMPLETED
+                info.result = result
+                info.error = None
+                info.error_code = None
+                info.completed_at = datetime.now(UTC).isoformat()
         except asyncio.CancelledError:
             pass
         except Exception:

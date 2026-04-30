@@ -228,7 +228,7 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-最近一次验证（2026-04-30）：`pytest tests -q -p no:cacheprovider` = `1514 passed, 1 skipped`；`ruff check src tests` 通过；本轮 touched files 的 `ruff format --check` 通过；`pyright` = `0 errors, 0 warnings, 0 informations`。全仓 `ruff format --check src tests` 仍有既有 `src/ahadiff/graphify/parser.py` 重排遗留；本轮没有修改该文件。
+最近一次验证（2026-04-30）：`pytest tests -q -p no:cacheprovider` = `1517 passed, 1 skipped`；`ruff check src tests` 通过；本轮 touched files 的 `ruff format --check` 通过；`pyright` = `0 errors, 0 warnings, 0 informations`。全仓 `ruff format --check src tests` 仍有既有 `src/ahadiff/graphify/parser.py` 重排遗留；本轮没有修改该文件。
 
 下一步路线图：
 

@@ -376,18 +376,20 @@ def _select_result_rows(db_path: Path) -> tuple[dict[str, object], ...]:
 
 
 def _results_tsv_row(event: ResultEvent) -> dict[str, object]:
+    from ahadiff.core.json_util import safe_tsv_cell
+
     return {
         "timestamp": event.timestamp,
         "run_id": event.run_id,
-        "source_ref": event.source_ref,
-        "base_ref": event.base_ref or "",
+        "source_ref": safe_tsv_cell(event.source_ref),
+        "base_ref": safe_tsv_cell(event.base_ref or ""),
         "prompt_version": event.prompt_version,
         "rubric_version": event.rubric_version or "",
         "overall": f"{event.overall:.2f}",
         "verdict": event.verdict,
         "status": event.status,
         "weakest_dim": event.weakest_dim,
-        "note_json": event.note_json or "",
+        "note_json": safe_tsv_cell(event.note_json or ""),
     }
 
 

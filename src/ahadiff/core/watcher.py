@@ -184,6 +184,8 @@ class FileWatcher:
                     self._timer = None
                 self._pending_paths.clear()
                 self._last_trigger_time = 0.0
+            self._callback_gate.acquire()
+            self._callback_gate.release()
             observer = self._observer
             if observer is not None:
                 observer.stop()

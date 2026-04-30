@@ -607,6 +607,31 @@ def test_finalized_artifact_digest_rejects_hardlinked_artifact(tmp_path: Path) -
 
 
 @pytest.mark.skipif(not hasattr(results_module.os, "symlink"), reason="requires symlink support")
+def test_results_tsv_row_escapes_formula_injection_prefixes() -> None:
+    from ahadiff.eval.results import _results_tsv_row  # pyright: ignore[reportPrivateUsage]
+
+    event = results_module.ResultEvent(
+        event_id="ev-001",
+        event_type="learn",
+        timestamp="2026-01-01T00:00:00Z",
+        run_id="run-001",
+        source_ref="=cmd|'/C calc'!A0",
+        base_ref="+malicious",
+        prompt_version="pv",
+        eval_bundle_version="ebv",
+        rubric_version="rv",
+        overall=95.0,
+        verdict="PASS",
+        status="baseline",
+        weakest_dim="accuracy",
+        note_json='=HYPERLINK("http://evil")',
+    )
+    row = _results_tsv_row(event)
+    assert row["source_ref"] == "'=cmd|'/C calc'!A0"
+    assert row["base_ref"] == "'+malicious"
+    assert row["note_json"] == '\'=HYPERLINK("http://evil")'
+
+
 def test_hash_finalized_artifact_file_rejects_symlink_when_open_may_follow(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

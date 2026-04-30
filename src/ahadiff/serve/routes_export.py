@@ -11,6 +11,7 @@ from anyio import to_thread
 from starlette.responses import Response
 
 from ahadiff.core.errors import InputError
+from ahadiff.core.json_util import safe_tsv_cell
 from ahadiff.review.database import select_result_tsv_rows
 
 if TYPE_CHECKING:
@@ -33,14 +34,6 @@ _TSV_COLUMNS = (
     "weakest_dim",
     "note_json",
 )
-_FORMULA_PREFIX_CHARS = frozenset("=+-@\t\r")
-
-
-def _safe_tsv_cell(value: object) -> str:
-    text = str(value) if value is not None else ""
-    if text and text[0] in _FORMULA_PREFIX_CHARS:
-        return f"'{text}"
-    return text
 
 
 def _render_tsv(state: ServeState) -> str:
@@ -54,7 +47,7 @@ def _render_tsv(state: ServeState) -> str:
     writer = csv.writer(buf, delimiter="\t", lineterminator="\n")
     writer.writerow(_TSV_COLUMNS)
     for row in rows:
-        writer.writerow(_safe_tsv_cell(row.get(col, "")) for col in _TSV_COLUMNS)
+        writer.writerow(safe_tsv_cell(row.get(col, "")) for col in _TSV_COLUMNS)
     return buf.getvalue()
 
 

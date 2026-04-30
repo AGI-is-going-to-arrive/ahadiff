@@ -228,7 +228,7 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-Latest verification (2026-04-30): `pytest tests -q -p no:cacheprovider` = `1514 passed, 1 skipped`; `ruff check src tests` passed; `ruff format --check` passed for this round's touched files; `pyright` = `0 errors, 0 warnings, 0 informations`. The full-tree `ruff format --check src tests` still has the pre-existing `src/ahadiff/graphify/parser.py` reformat drift; this round did not touch that file.
+Latest verification (2026-04-30): `pytest tests -q -p no:cacheprovider` = `1517 passed, 1 skipped`; `ruff check src tests` passed; `ruff format --check` passed for this round's touched files; `pyright` = `0 errors, 0 warnings, 0 informations`. The full-tree `ruff format --check src tests` still has the pre-existing `src/ahadiff/graphify/parser.py` reformat drift; this round did not touch that file.
 
 Roadmap:
 

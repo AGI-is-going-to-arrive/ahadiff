@@ -665,3 +665,15 @@ def test_export_and_reimport_roundtrip(tmp_path: Path) -> None:
         assert entry["term_key"] == f"rt-{i}"
         assert entry["aliases"] == [f"alt-{i}"]
         assert "created_at_utc" not in entry
+
+
+@pytest.mark.skipif(not hasattr(__import__("os"), "mkfifo"), reason="requires FIFO support")
+def test_concepts_jsonl_fifo_rejected(tmp_path: Path) -> None:
+    import os
+
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    fifo_path = state_dir / "concepts.jsonl"
+    os.mkfifo(fifo_path)
+    page = load_concepts_page_from_storage(state_dir, limit=10)
+    assert page.entries == ()

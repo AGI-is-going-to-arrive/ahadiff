@@ -18,6 +18,17 @@ def _parse_finite_float(value: str) -> float:
     return parsed
 
 
+_FORMULA_PREFIX_CHARS = frozenset("=+-@\t\r")
+
+
+def safe_tsv_cell(value: object) -> str:
+    """Escape spreadsheet formula injection prefixes for TSV cells."""
+    text = str(value) if value is not None else ""
+    if text and text[0] in _FORMULA_PREFIX_CHARS:
+        return f"'{text}"
+    return text
+
+
 def safe_json_loads(s: str | bytes, **kwargs: Any) -> Any:
     """Drop-in replacement for ``json.loads`` that rejects non-finite floats."""
     kwargs.pop("parse_constant", None)
