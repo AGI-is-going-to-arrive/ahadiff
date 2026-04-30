@@ -63,6 +63,7 @@ export default defineConfig({
           // vendor-page-deps holds zod + any other page-only async deps.
           // Skip preloading; first navigation pays the latency.
           if (dep.includes('vendor-page-deps')) return false;
+          if (dep.includes('vendor-d3')) return false;
           return true;
         });
       },
@@ -98,6 +99,9 @@ export default defineConfig({
           // deps? Add their substring here; the budget guard fails closed.
           if (id.includes('node_modules/zod')) {
             return 'vendor-page-deps';
+          }
+          if (id.includes('node_modules/d3-')) {
+            return 'vendor-d3';
           }
           // Anything else from node_modules still bucketed for stability.
           return 'vendor-misc';

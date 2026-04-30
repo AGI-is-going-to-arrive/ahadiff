@@ -477,29 +477,42 @@ test.describe('walkthrough: full-app functional test', () => {
   /*  Page 5: Concepts                                                 */
   /* ---------------------------------------------------------------- */
 
-  test('Concepts — heading, concept graph renders (full mode SVG)', async ({ page }) => {
+  test('Concepts — heading, d3-force graph renders, detail panel', async ({ page }) => {
     await page.goto('/#/concepts');
 
     // Heading
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     await expect(page.getByRole('heading', { level: 1 })).toContainText(/Concept|概���/i);
 
-    // Concept graph component
+    // Concept graph component with d3-force
     await expect(page.locator('.concept-graph')).toBeVisible();
 
-    // Full mode badge (mock concept has related_claims → full mode)
-    await expect(page.locator('.concept-graph__mode-badge')).toBeVisible();
+    // Source card (Graphify status)
+    await expect(page.locator('.concept-graph__src-card')).toBeVisible();
 
-    // SVG graph with at least one node group
+    // SVG graph with d3-force nodes (3 mock nodes)
     const svgNodes = page.locator('.concept-graph__node');
-    await expect(svgNodes).not.toHaveCount(0);
+    await expect(svgNodes).toHaveCount(3);
 
-    // Click node to activate tooltip
+    // Legend
+    await expect(page.locator('.concept-graph__legend')).toBeVisible();
+
+    // Click first node to open detail panel
     await svgNodes.first().click();
-    await expect(page.locator('.concept-graph__tooltip--visible')).toBeVisible();
-    await expect(page.locator('.concept-graph__tooltip-name')).toContainText('Learn-from-diff');
+    await expect(page.locator('.concept-graph__detail')).toBeVisible();
+    await expect(page.locator('.concept-graph__detail-name')).toBeVisible();
 
-    // Press Escape to dismiss
+    // Close detail panel
+    await page.locator('.concept-graph__detail-close').click();
+    await expect(page.locator('.concept-graph__detail')).not.toBeVisible();
+
+    // View toggle: switch to list view
+    const listBtn = page.locator('.concept-graph__view-btn').last();
+    await listBtn.click();
+    await expect(page.locator('.concept-graph__listg')).toBeVisible();
+    await expect(page.locator('.concept-graph__lnode')).toHaveCount(3);
+
+    // Press Escape
     await page.keyboard.press('Escape');
 
     await page.screenshot({ path: `${SCREENSHOT_DIR}/05-concepts.png`, fullPage: true });

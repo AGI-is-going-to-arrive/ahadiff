@@ -212,6 +212,85 @@ export async function installServeMock(page: Page): Promise<void> {
       }),
   );
   await page.route(
+    (url) => url.pathname === '/api/graph/status',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          enabled: true,
+          source_exists: true,
+          has_graph: true,
+          freshness: 'fresh',
+          node_count: 3,
+          edge_count: 2,
+          source_path: '.ahadiff/graphify/graph.json',
+        }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/graph/concepts',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          status: {
+            enabled: true,
+            source_exists: true,
+            has_graph: true,
+            freshness: 'fresh',
+            node_count: 3,
+            edge_count: 2,
+            source_path: '.ahadiff/graphify/graph.json',
+          },
+          nodes: [
+            {
+              id: 'n1',
+              name: 'learn-from-diff',
+              kind: 'function',
+              file_path: 'demo.py',
+              freshness: 'fresh',
+              metadata: {},
+            },
+            {
+              id: 'n2',
+              name: 'retry-logic',
+              kind: 'function',
+              file_path: 'retry.py',
+              freshness: 'fresh',
+              metadata: {},
+            },
+            {
+              id: 'n3',
+              name: 'config-parser',
+              kind: 'module',
+              file_path: 'config.py',
+              freshness: 'stale',
+              metadata: {},
+            },
+          ],
+          edges: [
+            {
+              id: 'n1->n2:0',
+              source: 'n1',
+              target: 'n2',
+              relation: 'calls',
+              weight: 1.0,
+            },
+            {
+              id: 'n2->n3:1',
+              source: 'n2',
+              target: 'n3',
+              relation: 'imports',
+              weight: 0.5,
+            },
+          ],
+          truncated: false,
+        }),
+      }),
+  );
+  await page.route(
     (url) => url.pathname === '/api/review/queue',
     (route) =>
       route.fulfill({

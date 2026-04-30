@@ -38,6 +38,23 @@
     "mode_learning_only": "List view",
     "title": "Concept Graph"
   },
+  "Graph": {
+    "connected": "Connected",
+    "edge_count": "{count} edges",
+    "file": "File",
+    "filter": "Filter by kind",
+    "freshness": "Freshness",
+    "freshness_disabled": "Disabled",
+    "freshness_fresh": "Fresh",
+    "freshness_stale": "Stale",
+    "freshness_unavailable": "Unavailable",
+    "kind": "Kind",
+    "legend": "Legend",
+    "node_count": "{count} nodes",
+    "showing": "Showing {shown} of {total}",
+    "source_title": "Graphify source",
+    "truncated": "Graph truncated — showing subset of {count} total nodes"
+  },
   "Dashboard": {
     "col_date": "Date",
     "col_ref": "Ref",

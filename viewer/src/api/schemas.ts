@@ -375,7 +375,50 @@ export const heatmapResponseSchema = z.object({
   entries: z.array(heatmapEntrySchema),
 });
 
-/* ─────────────── 14. Boundary helper ─────────────── */
+/* ─────────────── 14. Graph (Phase 5D /api/graph/*) ─────────────── */
+
+export const freshnessProjectionSchema = z.enum([
+  'fresh',
+  'stale',
+  'unavailable',
+  'disabled',
+]);
+
+export const graphStatusResponseSchema = z.object({
+  enabled: z.boolean(),
+  source_exists: z.boolean(),
+  has_graph: z.boolean(),
+  freshness: freshnessProjectionSchema.nullable(),
+  node_count: z.number().int().nonnegative(),
+  edge_count: z.number().int().nonnegative(),
+  source_path: z.string().nullable(),
+});
+
+export const conceptGraphNodeSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  kind: z.string().nullable().default(null),
+  file_path: z.string().nullable().default(null),
+  freshness: freshnessProjectionSchema.nullable().default(null),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+});
+
+export const conceptGraphEdgeSchema = z.object({
+  id: z.string().min(1),
+  source: z.string().min(1),
+  target: z.string().min(1),
+  relation: z.string().nullable().default(null),
+  weight: z.number().finite().default(1.0),
+});
+
+export const conceptGraphResponseSchema = z.object({
+  status: graphStatusResponseSchema,
+  nodes: z.array(conceptGraphNodeSchema),
+  edges: z.array(conceptGraphEdgeSchema),
+  truncated: z.boolean().default(false),
+});
+
+/* ─────────────── 15. Boundary helper ─────────────── */
 
 interface RedactedIssue {
   /** Dot-joined `path` array, "<root>" if empty. */

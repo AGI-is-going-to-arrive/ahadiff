@@ -198,3 +198,41 @@ export interface PaginatedConceptsResponse {
   content: string;
   next_cursor?: string;
 }
+
+// --- Graph (Phase 5D) ---
+
+export type FreshnessProjection = 'fresh' | 'stale' | 'unavailable' | 'disabled';
+
+export interface GraphStatusResponse {
+  enabled: boolean;
+  source_exists: boolean;
+  has_graph: boolean;
+  freshness: FreshnessProjection | null;
+  node_count: number;
+  edge_count: number;
+  source_path: string | null;
+}
+
+export interface ConceptGraphNode {
+  id: string;
+  name: string;
+  kind: string | null;
+  file_path: string | null;
+  freshness: FreshnessProjection | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface ConceptGraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  relation: string | null;
+  weight: number;
+}
+
+export interface ConceptGraphResponse {
+  status: GraphStatusResponse;
+  nodes: ConceptGraphNode[];
+  edges: ConceptGraphEdge[];
+  truncated: boolean;
+}
