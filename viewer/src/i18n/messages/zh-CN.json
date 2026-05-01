@@ -220,6 +220,20 @@
       "title": "大纲"
     }
   },
+  "Learn": {
+    "cancel": "取消",
+    "cancelled": "运行已取消",
+    "cancelling": "正在取消…",
+    "completed": "Learn 运行完成",
+    "dismiss": "关闭",
+    "failed": "Learn 运行失败",
+    "retry": "重试",
+    "running": "运行中…",
+    "score": "得分：{score}",
+    "step_progress": "步骤 {current}/{total}",
+    "submitting": "正在提交 Learn 运行…",
+    "view_run": "查看运行"
+  },
   "Nav": {
     "dashboard": "运行",
     "diff": "差异",
@@ -499,6 +513,7 @@
     "docs_aria": "打开文档",
     "new_run": "+ 新建 Learn Run",
     "new_run_aria": "新建一次 Learn 运行",
+    "new_run_running": "运行中…",
     "new_run_unavailable": "新建运行暂由 CLI 发起",
     "search_aria": "打开搜索",
     "search_kbd": "⌘K",

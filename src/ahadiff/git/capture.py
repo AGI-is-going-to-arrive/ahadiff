@@ -641,6 +641,7 @@ def import_graphify_artifact(workspace_root: Path, *, force: bool = False) -> Gr
     )
     if len(graph_bytes) > graph_limit:
         raise InputError(f"graphify graph exceeds {graph_limit} bytes")
+    graph_sha256 = hashlib.sha256(graph_bytes).hexdigest()
     graph_text = _decode_text_bytes(graph_bytes, description="graphify graph")
     try:
         raw_graph = safe_json_loads(graph_text)
@@ -659,7 +660,9 @@ def import_graphify_artifact(workspace_root: Path, *, force: bool = False) -> Gr
         status.imported_path,
         json.dumps(sanitized_graph.model_dump(mode="json"), ensure_ascii=False),
     )
-    return detect_graphify_status(workspace_root, use_graphify=True, repo=_repo)
+    final_status = detect_graphify_status(workspace_root, use_graphify=True, repo=_repo)
+    final_status.provenance["graph_sha256"] = graph_sha256
+    return final_status
 
 
 def _sanitize_graphify_value(value: object, *, workspace_root: Path) -> object:

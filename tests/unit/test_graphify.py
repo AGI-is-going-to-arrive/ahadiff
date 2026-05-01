@@ -104,6 +104,12 @@ class TestParseValid:
             "graph": {},
             "nodes": [
                 {
+                    "id": "client",
+                    "label": "Client",
+                    "file_type": "code",
+                    "source_file": "worked/httpx/raw/client.py",
+                },
+                {
                     "id": "client_timeout",
                     "label": "Timeout",
                     "file_type": "code",
@@ -111,7 +117,7 @@ class TestParseValid:
                     "source_location": "L16",
                     "community": 1,
                     "norm_label": "timeout",
-                }
+                },
             ],
             "links": [
                 {
@@ -137,9 +143,10 @@ class TestParseValid:
 
         g = parse_graph_json_text(json.dumps(data))
 
-        assert g.nodes[0].file_path == "worked/httpx/raw/client.py"
-        assert g.nodes[0].kind == "code"
-        assert g.nodes[0].metadata == {
+        timeout_node = next(n for n in g.nodes if n.id == "client_timeout")
+        assert timeout_node.file_path == "worked/httpx/raw/client.py"
+        assert timeout_node.kind == "code"
+        assert timeout_node.metadata == {
             "source_location": "L16",
             "community": 1,
             "norm_label": "timeout",
@@ -636,3 +643,175 @@ def test_project_graphify_maps_legacy_missing_to_canonical_unavailable() -> None
     )
 
     assert projection[1] == "unavailable"
+
+
+# ---------------------------------------------------------------------------
+# Edge count cap (5C)
+# ---------------------------------------------------------------------------
+
+
+class TestEdgeCountCap:
+    def test_within_limit_accepted(self) -> None:
+        data: dict[str, Any] = {
+            "nodes": [{"id": "a", "label": "A"}, {"id": "b", "label": "B"}],
+            "links": [{"source": "a", "target": "b"}],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert len(g.links) == 1
+
+    def test_exceeds_limit_rejected(self) -> None:
+        max_edges = 50_000
+
+        nodes = [{"id": f"n{i}", "label": f"N{i}"} for i in range(max_edges + 2)]
+        links = [
+            {"source": f"n{i}", "target": f"n{i + 1}"}
+            for i in range(max_edges + 1)
+        ]
+        data: dict[str, Any] = {"nodes": nodes, "links": links}
+        with pytest.raises(InputError, match="edge limit"):
+            parse_graph_json_text(json.dumps(data))
+
+
+# ---------------------------------------------------------------------------
+# Duplicate node ID detection (5C)
+# ---------------------------------------------------------------------------
+
+
+class TestDuplicateNodeId:
+    def test_last_occurrence_wins(self) -> None:
+        data: dict[str, Any] = {
+            "nodes": [
+                {"id": "dup", "label": "First"},
+                {"id": "dup", "label": "Second"},
+                {"id": "other", "label": "Other"},
+            ],
+            "links": [],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert len(g.nodes) == 2
+        dup_node = next(n for n in g.nodes if n.id == "dup")
+        assert dup_node.label == "Second"
+
+    def test_no_duplicates_unchanged(self) -> None:
+        data: dict[str, Any] = {
+            "nodes": [
+                {"id": "a", "label": "A"},
+                {"id": "b", "label": "B"},
+            ],
+            "links": [],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert len(g.nodes) == 2
+
+    def test_triple_duplicate_keeps_last(self) -> None:
+        data: dict[str, Any] = {
+            "nodes": [
+                {"id": "x", "label": "V1"},
+                {"id": "x", "label": "V2"},
+                {"id": "x", "label": "V3"},
+            ],
+            "links": [],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert len(g.nodes) == 1
+        assert g.nodes[0].label == "V3"
+
+
+# ---------------------------------------------------------------------------
+# Edge endpoint validation (5C)
+# ---------------------------------------------------------------------------
+
+
+class TestDanglingEdgeRemoval:
+    def test_valid_edges_kept(self) -> None:
+        data: dict[str, Any] = {
+            "nodes": [{"id": "a", "label": "A"}, {"id": "b", "label": "B"}],
+            "links": [{"source": "a", "target": "b"}],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert len(g.links) == 1
+
+    def test_dangling_source_dropped(self) -> None:
+        data: dict[str, Any] = {
+            "nodes": [{"id": "a", "label": "A"}],
+            "links": [{"source": "missing", "target": "a"}],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert len(g.links) == 0
+
+    def test_dangling_target_dropped(self) -> None:
+        data: dict[str, Any] = {
+            "nodes": [{"id": "a", "label": "A"}],
+            "links": [{"source": "a", "target": "missing"}],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert len(g.links) == 0
+
+    def test_mixed_valid_and_dangling(self) -> None:
+        data: dict[str, Any] = {
+            "nodes": [{"id": "a", "label": "A"}, {"id": "b", "label": "B"}],
+            "links": [
+                {"source": "a", "target": "b"},
+                {"source": "a", "target": "ghost"},
+                {"source": "ghost", "target": "b"},
+            ],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert len(g.links) == 1
+        assert g.links[0].source == "a"
+        assert g.links[0].target == "b"
+
+    def test_duplicate_nodes_then_dangling_edges(self) -> None:
+        """Edges referencing a deduplicated node still work if last-wins keeps the ID."""
+        data: dict[str, Any] = {
+            "nodes": [
+                {"id": "dup", "label": "V1"},
+                {"id": "dup", "label": "V2"},
+                {"id": "other", "label": "O"},
+            ],
+            "links": [{"source": "dup", "target": "other"}],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert len(g.nodes) == 2
+        assert len(g.links) == 1
+
+
+# ---------------------------------------------------------------------------
+# Graph SHA256 provenance (5B)
+# ---------------------------------------------------------------------------
+
+
+class TestGraphSha256Provenance:
+    def test_sha256_present_in_provenance(self, tmp_path: Path) -> None:
+        import hashlib
+
+        from ahadiff.git.capture import import_graphify_artifact
+
+        # import_graphify_artifact requires a git repository
+        subprocess.run(["git", "init", str(tmp_path)], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "--allow-empty", "-m", "init"],
+            cwd=str(tmp_path),
+            check=True,
+            capture_output=True,
+            env={**__import__("os").environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+                 "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"},
+        )
+
+        graph_data: dict[str, Any] = {
+            "nodes": [{"id": "n1", "label": "Foo"}],
+            "links": [],
+        }
+        source_dir = tmp_path / "graphify-out"
+        source_dir.mkdir()
+        graph_path = source_dir / "graph.json"
+        graph_text = json.dumps(graph_data)
+        graph_path.write_text(graph_text, encoding="utf-8")
+
+        expected_sha = hashlib.sha256(graph_text.encode("utf-8")).hexdigest()
+
+        status = import_graphify_artifact(tmp_path, force=True)
+
+        assert "graph_sha256" in status.provenance
+        assert status.provenance["graph_sha256"] == expected_sha
+        assert len(expected_sha) == 64

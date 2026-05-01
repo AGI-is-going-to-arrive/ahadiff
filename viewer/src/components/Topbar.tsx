@@ -1,6 +1,7 @@
 import type { Ref } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useTranslation, type TranslationKey } from '../i18n/useTranslation';
+import { useLearnStore } from '../state/learn-store';
 import LanguageSwitcher from './LanguageSwitcher';
 import './Topbar.css';
 
@@ -42,6 +43,9 @@ export default function Topbar({
 }: TopbarProps) {
   const { t } = useTranslation();
   const currentKey = useCurrentPageKey();
+  const learnPhase = useLearnStore((s) => s.phase);
+  const submitLearn = useLearnStore((s) => s.submitLearn);
+  const isBusy = learnPhase === 'submitting' || learnPhase === 'running' || learnPhase === 'cancelling';
 
   return (
     <header className="topbar" data-glass>
@@ -104,13 +108,15 @@ export default function Topbar({
         >
           {t('Topbar.docs')}
         </a>
-        <span
-          className="topbar__btn topbar__btn--primary topbar__btn--inactive"
-          aria-disabled="true"
-          title={t('Topbar.new_run_unavailable')}
+        <button
+          type="button"
+          className={`topbar__btn topbar__btn--primary${isBusy ? ' topbar__btn--busy' : ''}`}
+          disabled={isBusy}
+          aria-label={t('Topbar.new_run_aria')}
+          onClick={() => void submitLearn()}
         >
-          {t('Topbar.new_run')}
-        </span>
+          {isBusy ? t('Topbar.new_run_running') : t('Topbar.new_run')}
+        </button>
         <LanguageSwitcher />
       </div>
     </header>

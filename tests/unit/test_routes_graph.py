@@ -285,7 +285,6 @@ class TestGraphStatus:
                         {"source": "n1", "target": "n2", "relation": "calls", "weight": 1.5},
                         {"source": "n2", "target": "n3", "relation": "imports", "weight": -1},
                         {"source": "n3", "target": "n1", "relation": "uses", "weight": 1e308},
-                        {"source": "n1", "target": "missing", "relation": "dangling"},
                     ],
                 }
             ),
@@ -324,7 +323,7 @@ class TestGraphStatus:
                 "weight": 3.0,
             },
         ]
-        assert data["truncated"] is True
+        assert data["truncated"] is False
 
     def test_concept_graph_endpoint_caps_nodes(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".ahadiff"

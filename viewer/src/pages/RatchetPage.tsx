@@ -155,7 +155,7 @@ export default function RatchetPage() {
 
   return (
     <AppShell>
-      <div className="ratchet-page">
+      <div className="ratchet-page" aria-live="polite">
         {/* Header */}
         <div className="ratchet-page__head">
           <div className="ratchet-page__head-left">

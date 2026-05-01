@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import logging
 import re
 from typing import TYPE_CHECKING, cast
 
@@ -11,6 +12,8 @@ from ahadiff.core.errors import InputError
 from ahadiff.core.json_util import safe_json_loads
 
 from .models import GraphifyGraph
+
+_log = logging.getLogger(__name__)
 
 _SCRIPT_STYLE_TAG_RE = re.compile(
     r"<(script|style)\b[^>]*>.*?(?:</\1>|$)",
@@ -32,6 +35,7 @@ _EVENT_HANDLER_RE = re.compile(
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 _MAX_LABEL_LEN = 500
 _MAX_GRAPH_FILE_BYTES = 50 * 1024 * 1024  # 50 MiB
+_MAX_GRAPH_EDGES = 50_000
 _NODE_FILE_PATH_KEYS = ("file_path", "source_file", "path")
 _NODE_KIND_KEYS = ("kind", "type", "file_type")
 _EDGE_RELATION_KEYS = ("relation", "type")
@@ -190,6 +194,47 @@ def _normalize_graph_object(obj: dict[str, object]) -> dict[str, object]:
     return normalized
 
 
+def _deduplicate_nodes(
+    nodes: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Remove duplicate node IDs, keeping the *last* occurrence.
+
+    When duplicates are found a warning is logged so operators can fix the
+    upstream graph generator.  Last-wins is chosen because later entries are
+    more likely to be corrections.
+    """
+    seen: dict[str, int] = {}
+    for idx, node in enumerate(nodes):
+        node_id = node.get("id")
+        if isinstance(node_id, str) and node_id in seen:
+            _log.warning("Duplicate graph node ID %r (keeping last occurrence)", node_id)
+        if isinstance(node_id, str):
+            seen[node_id] = idx
+    if len(seen) == len(nodes):
+        return nodes  # no duplicates — fast path
+    keep_indices = set(seen.values())
+    return [n for i, n in enumerate(nodes) if i in keep_indices]
+
+
+def _remove_dangling_edges(
+    links: list[dict[str, object]],
+    node_ids: frozenset[str],
+) -> list[dict[str, object]]:
+    """Drop edges whose source or target does not reference an existing node."""
+    valid: list[dict[str, object]] = []
+    dropped = 0
+    for edge in links:
+        src = edge.get("source")
+        tgt = edge.get("target")
+        if isinstance(src, str) and isinstance(tgt, str) and src in node_ids and tgt in node_ids:
+            valid.append(edge)
+        else:
+            dropped += 1
+    if dropped:
+        _log.warning("Dropped %d dangling edge(s) referencing missing nodes", dropped)
+    return valid
+
+
 def parse_graph_json_text(text: str) -> GraphifyGraph:
     try:
         data = safe_json_loads(text)
@@ -202,6 +247,31 @@ def parse_graph_json_text(text: str) -> GraphifyGraph:
     obj = _normalize_graph_object(
         cast("dict[str, object]", _sanitize_json_value(cast("object", data)))
     )
+
+    # --- duplicate node IDs: keep last occurrence ---
+    raw_nodes = obj.get("nodes")
+    if not isinstance(raw_nodes, list):
+        raw_nodes = []
+    deduped_nodes = _deduplicate_nodes(cast("list[dict[str, object]]", raw_nodes))
+    obj["nodes"] = deduped_nodes
+
+    # --- collect valid node IDs (reject empty-string IDs) ---
+    node_ids: frozenset[str] = frozenset(
+        str(n["id"])
+        for n in deduped_nodes
+        if isinstance(n.get("id"), str) and n["id"] != ""
+    )
+
+    # --- edge count cap (check raw count first to bound work) ---
+    raw_links = obj.get("links")
+    if isinstance(raw_links, list):
+        raw_links_typed = cast("list[dict[str, object]]", raw_links)
+        if len(raw_links_typed) > _MAX_GRAPH_EDGES:
+            n = len(raw_links_typed)
+            raise InputError(
+                f"Graph has {n} edges, exceeding the {_MAX_GRAPH_EDGES} edge limit"
+            )
+        obj["links"] = _remove_dangling_edges(raw_links_typed, node_ids)
 
     try:
         return GraphifyGraph.model_validate(obj)

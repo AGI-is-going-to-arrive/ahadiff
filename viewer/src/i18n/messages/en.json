@@ -220,6 +220,20 @@
       "title": "Outline"
     }
   },
+  "Learn": {
+    "cancel": "Cancel",
+    "cancelled": "Run cancelled",
+    "cancelling": "Cancelling…",
+    "completed": "Learn run completed",
+    "dismiss": "Dismiss",
+    "failed": "Learn run failed",
+    "retry": "Retry",
+    "running": "Running…",
+    "score": "Score: {score}",
+    "step_progress": "Step {current}/{total}",
+    "submitting": "Submitting learn run…",
+    "view_run": "View run"
+  },
   "Nav": {
     "dashboard": "Dashboard",
     "diff": "Diff",
@@ -499,6 +513,7 @@
     "docs_aria": "Open documentation",
     "new_run": "+ New Learn Run",
     "new_run_aria": "Start a new learn run",
+    "new_run_running": "Running…",
     "new_run_unavailable": "New runs start from the CLI for now",
     "search_aria": "Open search",
     "search_kbd": "⌘K",

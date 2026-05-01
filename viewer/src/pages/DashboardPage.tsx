@@ -212,6 +212,7 @@ export default function DashboardPage() {
           <div className="dashboard__header">
             <h1 className="dashboard__title">{t('Dashboard.title')}</h1>
           </div>
+
           <div className="dashboard__empty">
             <span>{t('Serve.empty')}</span>
             <span className="dashboard__empty-hint">{t('Dashboard.empty_hint')}</span>
@@ -266,6 +267,7 @@ export default function DashboardPage() {
           </div>
           {errorBanner}
 
+
           <div className="kpi-grid kpi-grid--2col">
             <KpiCard
               label={t('Rubric.overall')}
@@ -302,7 +304,7 @@ export default function DashboardPage() {
   // ---- Full dashboard (>= 2 runs) ----
   return (
     <AppShell>
-      <div className="dashboard">
+      <div className="dashboard" aria-live="polite">
         <div className="dashboard__header">
           <h1 className="dashboard__title">{t('Dashboard.title')}</h1>
           <p className="dashboard__subtitle">{t('Dashboard.subtitle')}</p>

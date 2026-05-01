@@ -15,6 +15,7 @@ if SRC_DIR.is_dir():
     sys.path.insert(0, str(SRC_DIR))
 
 LARGE_FIXTURE_GRAPH = REPO_ROOT / "benchmarks" / "graphify" / "large_graph.json"
+XLARGE_FIXTURE_GRAPH = REPO_ROOT / "benchmarks" / "graphify" / "xlarge_graph.json"
 LEGACY_FIXTURE_GRAPH = (
     REPO_ROOT
     / "benchmarks"
@@ -179,12 +180,8 @@ def bench_slice(graph_path: Path, iterations: int = 50) -> dict[str, Any]:
     }
 
 
-def main() -> None:
-    fixture_graph = LARGE_FIXTURE_GRAPH if LARGE_FIXTURE_GRAPH.is_file() else LEGACY_FIXTURE_GRAPH
-    if not fixture_graph.is_file():
-        print(f"ERROR: fixture not found: {fixture_graph}", file=sys.stderr)
-        sys.exit(1)
-
+def _run_fixture(fixture_graph: Path) -> dict[str, Any]:
+    print(f"\n--- {fixture_graph.name} ---", file=sys.stderr)
     results: list[dict[str, Any]] = []
     for bench_fn in (bench_parse, bench_match, bench_link, bench_search, bench_slice):
         result = bench_fn(fixture_graph)
@@ -193,10 +190,29 @@ def main() -> None:
             f"  {result['operation']}: mean={result['mean_ms']}ms median={result['median_ms']}ms",
             file=sys.stderr,
         )
-
-    payload = {
+    return {
         "benchmarks": results,
         "fixture": str(fixture_graph.name),
+        "status": "ok",
+    }
+
+
+def main() -> None:
+    fixtures: list[Path] = []
+    for candidate in (LARGE_FIXTURE_GRAPH, XLARGE_FIXTURE_GRAPH, LEGACY_FIXTURE_GRAPH):
+        if candidate.is_file():
+            fixtures.append(candidate)
+    if not fixtures:
+        print("ERROR: no benchmark fixtures found", file=sys.stderr)
+        sys.exit(1)
+
+    all_results: list[dict[str, Any]] = [_run_fixture(f) for f in fixtures]
+    # Primary fixture for backward compatibility with run_all.sh / test assertions
+    primary = all_results[0]
+    payload = {
+        "benchmarks": primary["benchmarks"],
+        "fixture": primary["fixture"],
+        "fixtures": all_results,
         "status": "ok",
     }
     json.dump(payload, sys.stdout, indent=2, sort_keys=True, ensure_ascii=False)

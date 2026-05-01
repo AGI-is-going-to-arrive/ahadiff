@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNod
 import { useLocation } from 'react-router-dom';
 import Topbar from './Topbar';
 import Sidebar from './Sidebar';
+import LearnTaskBanner from './LearnTaskBanner';
 import { useTranslation } from '../i18n/useTranslation';
 import './AppShell.css';
 
@@ -116,7 +117,13 @@ export default function AppShell({ children }: AppShellProps) {
           hidden={!isMobileNav || !isSidebarOpen}
           onClick={() => closeSidebar({ restoreFocus: true })}
         />
-        <main id="main-content" className="app-shell__content" tabIndex={-1}>
+        <main
+          id="main-content"
+          className="app-shell__content"
+          tabIndex={-1}
+          inert={isMobileNav && isSidebarOpen ? true : undefined}
+        >
+          <LearnTaskBanner />
           {children}
         </main>
       </div>

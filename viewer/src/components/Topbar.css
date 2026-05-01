@@ -210,6 +210,15 @@
   cursor: not-allowed;
 }
 
+.topbar__btn--primary.topbar__btn--busy {
+  animation: topbar-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes topbar-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.8; }
+}
+
 .topbar__btn--inactive {
   background: var(--subtle);
   color: var(--muted);

@@ -423,14 +423,24 @@ class ManagedProvider:
         )
         if request.privacy_mode == "strict_local" and request_target != "local":
             raise SafetyError("strict_local mode forbids remote transport")
+        # DNS-pinning: resolve + validate once, then connect to the validated
+        # IP directly so a DNS rebinding attack cannot redirect the TCP
+        # connection to a private address between validation and connect.
+        stream_extensions: dict[str, Any] | None = None
         if request_target == "remote":
-            validate_remote_url(url)
+            pinned_ip = validate_remote_url(url)
+            if pinned_ip is not None:
+                url, original_host, sni_hostname = _pin_url_to_ip(url, pinned_ip)
+                headers = {**headers, "Host": original_host}
+                if sni_hostname is not None:
+                    stream_extensions = {"sni_hostname": sni_hostname.encode("ascii")}
         with self.client.stream(
             method,
             url,
             headers=headers,
             json=payload,
             follow_redirects=False,
+            extensions=stream_extensions,
         ) as response:
             if response.is_redirect:
                 raise ProviderError("provider redirects are not allowed")
@@ -724,7 +734,15 @@ def transport_target_for_base_url(
     return "remote"
 
 
-def validate_remote_url(base_url: str) -> None:
+def validate_remote_url(base_url: str) -> str | None:
+    """Validate *base_url* for remote privacy mode.
+
+    Returns the first validated public IP string when DNS resolution was
+    performed (hostname case), or ``None`` when the URL already contains a
+    literal IP address.  The caller can use the returned IP to pin the TCP
+    connection, closing the TOCTOU gap between DNS validation and the actual
+    HTTP request.
+    """
     parsed = urlparse(base_url)
     if parsed.scheme in {"unix", "http+unix", "npipe", "http+npipe"}:
         raise SafetyError(
@@ -739,7 +757,7 @@ def validate_remote_url(base_url: str) -> None:
             raise SafetyError(
                 f"private/reserved IP {hostname} not allowed in remote privacy mode"
             )
-        return
+        return None
     except ValueError:
         pass
     resolved = _resolve_hostname_ips(hostname)
@@ -753,6 +771,38 @@ def validate_remote_url(base_url: str) -> None:
                 f"hostname {hostname!r} resolves to private/reserved IP {addr}, "
                 "not allowed in remote privacy mode"
             )
+    return str(resolved[0])
+
+
+def _pin_url_to_ip(
+    url: str,
+    pinned_ip: str,
+) -> tuple[str, str, str | None]:
+    """Rewrite *url* so the hostname is replaced by *pinned_ip*.
+
+    Returns ``(pinned_url, host_header, sni_hostname_or_none)``.
+
+    * ``pinned_url`` — URL with hostname replaced by the validated IP.
+    * ``host_header`` — original authority for the ``Host`` header
+      (includes port when non-default).
+    * ``sni_hostname_or_none`` — the original hostname when the scheme is
+      ``https`` (used for TLS SNI); ``None`` for plain ``http``.
+    """
+    parsed = urlparse(url)
+    original_hostname = parsed.hostname or ""
+    # Bracket IPv6 addresses in URLs.
+    ip_host = f"[{pinned_ip}]" if ":" in pinned_ip else pinned_ip
+    # Rebuild netloc preserving port and userinfo.
+    port_suffix = f":{parsed.port}" if parsed.port is not None else ""
+    userinfo = f"{parsed.username}@" if parsed.username else ""
+    new_netloc = f"{userinfo}{ip_host}{port_suffix}"
+    pinned_url = parsed._replace(netloc=new_netloc).geturl()
+    sni_hostname = original_hostname if parsed.scheme == "https" else None
+    # Host header must include port when non-default (RFC 7230 §5.4).
+    # Bracket IPv6 hostnames in the Host header per RFC 2732.
+    host_name = f"[{original_hostname}]" if ":" in original_hostname else original_hostname
+    host_header = f"{host_name}{port_suffix}"
+    return pinned_url, host_header, sni_hostname
 
 
 def adapter_conformance_test(provider: Provider) -> None:

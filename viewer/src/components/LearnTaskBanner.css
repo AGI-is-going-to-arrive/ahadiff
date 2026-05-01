@@ -1,0 +1,232 @@
+/* ==========================================================================
+   LearnTaskBanner — inline task progress/result banner for Dashboard.
+   ========================================================================== */
+
+.learn-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--hair);
+  background: var(--elevated);
+  margin-bottom: 20px;
+  animation: fadeUp 0.25s ease-out;
+}
+
+.learn-banner--running,
+.learn-banner--cancelling,
+.learn-banner--submitting {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--elevated));
+}
+
+.learn-banner--completed {
+  border-color: var(--success);
+  background: color-mix(in srgb, var(--success) 6%, var(--elevated));
+}
+
+.learn-banner--failed {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 6%, var(--elevated));
+}
+
+/* ---- Body ---- */
+
+.learn-banner__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.learn-banner__info {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.learn-banner__step {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.learn-banner__msg {
+  font-size: 13px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.learn-banner__error-code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+
+.learn-banner__icon {
+  font-size: 18px;
+  line-height: 1;
+  color: var(--success);
+}
+
+.learn-banner__icon--error {
+  color: var(--danger);
+}
+
+.learn-banner__result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.learn-banner__score {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ---- Progress bar ---- */
+
+.learn-banner__bar-track {
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  overflow: hidden;
+}
+
+.learn-banner__bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width 0.4s ease-out;
+}
+
+/* ---- Spinner ---- */
+
+.learn-banner__spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---- Actions ---- */
+
+.learn-banner__actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.learn-banner__btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  border-radius: var(--r-md);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--hair);
+  background: var(--paper);
+  color: var(--ink);
+  transition: background var(--dur-fast), border-color var(--dur-fast);
+  text-decoration: none;
+}
+
+.learn-banner__btn:hover {
+  background: var(--subtle);
+}
+
+.learn-banner__btn:focus-visible {
+  box-shadow: var(--ring-focus);
+  outline: none;
+}
+
+.learn-banner__btn--cancel {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.learn-banner__btn--cancel:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.learn-banner__btn--retry {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.learn-banner__btn--view {
+  color: var(--success);
+  border-color: var(--success);
+}
+
+/* ---- Responsive ---- */
+
+@media (max-width: 540px) {
+  .learn-banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .learn-banner__actions {
+    justify-content: flex-end;
+  }
+}
+
+/* ---- Forced colors ---- */
+
+@media (forced-colors: active) {
+  .learn-banner {
+    border: 2px solid ButtonText;
+  }
+  .learn-banner__bar-track {
+    background: GrayText;
+  }
+  .learn-banner__bar-fill {
+    background: Highlight;
+  }
+  .learn-banner__btn {
+    border: 1px solid ButtonText;
+  }
+}
+
+/* ---- Reduced motion ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  .learn-banner {
+    animation: none;
+  }
+  .learn-banner__bar-fill {
+    transition: none;
+  }
+  .learn-banner__spinner {
+    animation: none;
+  }
+}
+
+/* ---- Print ---- */
+
+@media print {
+  .learn-banner--running,
+  .learn-banner--submitting,
+  .learn-banner--cancelling {
+    display: none;
+  }
+}
