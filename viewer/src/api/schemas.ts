@@ -471,7 +471,7 @@ export const taskInfoResponseSchema = z
     task_type: z.string(),
     status: z.string(),
     progress: taskProgressResponseSchema,
-    result: z.unknown().nullable().optional(),
+    result: z.unknown().optional(),
     result_summary: taskResultSummarySchema.nullable().optional(),
     error: z.string().nullable().optional(),
     error_code: z.string().nullable().optional(),

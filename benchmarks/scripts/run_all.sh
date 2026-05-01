@@ -125,14 +125,28 @@ run_benchmark "bundle_size" "$tmp_dir/bundle_size.json" \
   bash "$script_dir/bench_bundle_size.sh"
 run_benchmark "graphify" "$tmp_dir/graphify.json" \
   "$benchmark_python" "$script_dir/bench_graphify.py"
+# Run graphify perf gate (separate script with assert thresholds)
+# Gate failure is recorded but does not block aggregate JSON output
+graphify_gate="$repo_root/benchmarks/graphify/bench_graphify.py"
+graphify_gate_status="skip"
+if [ -f "$graphify_gate" ]; then
+  echo "Running graphify perf gate..."
+  if "$benchmark_python" "$graphify_gate" > /dev/null 2>&1; then
+    graphify_gate_status="pass"
+  else
+    graphify_gate_status="fail"
+    echo "WARNING: graphify perf gate exceeded thresholds"
+  fi
+fi
 
-"$benchmark_python" - "$tmp_dir" "$output_path" <<'PY'
+"$benchmark_python" - "$tmp_dir" "$output_path" "$graphify_gate_status" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 tmp_dir = Path(sys.argv[1])
 output_path = Path(sys.argv[2])
+graphify_gate_status = sys.argv[3] if len(sys.argv) > 3 else "skip"
 
 
 def load_payload(name: str) -> object:
@@ -155,6 +169,7 @@ payload = {
     "diff_parse": load_payload("diff_parse"),
     "bundle_size": load_payload("bundle_size"),
     "graphify": load_payload("graphify"),
+    "graphify_perf_gate": graphify_gate_status,
 }
 output_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 print(json.dumps(payload, indent=2, sort_keys=True))

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -21,6 +22,41 @@ from .auth import require_write_token, serve_state
 
 if TYPE_CHECKING:
     from starlette.requests import Request
+
+
+_USER_FACING_ERROR_MESSAGES = {
+    "network_error": "Network connection failed. Check your internet and try again.",
+    "timeout": "Task timed out. Try again or increase the timeout.",
+    "config_error": "Configuration error. Check your provider settings.",
+    "permission_error": "Permission denied. Check file or directory permissions.",
+    "claim_error": "Failed to extract or verify claims from the diff.",
+    "lesson_error": "Failed to generate lesson content.",
+    "quiz_error": "Failed to generate quiz content.",
+    "learnability_error": "Diff was not suitable for learning.",
+    "cancelled": "Task was cancelled.",
+    "internal_error": "Internal error occurred.",
+}
+
+_GENERIC_FALLBACK_MESSAGE = "An unexpected error occurred."
+
+_PATH_PATTERN = re.compile(
+    r"(?:"
+    r"[A-Za-z]:[/\\]"  # drive-letter absolute
+    r"|[/\\]{2}"  # UNC \\server
+    r"|[/\\]"  # POSIX absolute
+    r"|\.\.(?:[/\\])"  # relative traversal ../
+    r")[\w.\-]+(?:[/\\][\w.\-]+)*"
+)
+_URL_HOST_PATTERN = re.compile(r"https?://[^\s/]+")
+_MAX_WARNING_LEN = 200
+
+
+def _sanitize_warning(raw: str) -> str:
+    sanitized = _PATH_PATTERN.sub("<path>", raw)
+    sanitized = _URL_HOST_PATTERN.sub("<url>", sanitized)
+    if len(sanitized) > _MAX_WARNING_LEN:
+        sanitized = sanitized[:_MAX_WARNING_LEN] + "…"
+    return sanitized
 
 
 def _task_runner(request: Request) -> Any:
@@ -50,9 +86,17 @@ def _build_result_summary(result: Any) -> TaskResultSummary | None:
     result_map = cast("Mapping[str, object]", result)
     warnings_raw = result_map.get("warnings")
     warnings_items = cast("list[object]", warnings_raw) if isinstance(warnings_raw, list) else []
-    warnings = [str(item) for item in warnings_items]
+    warnings = [_sanitize_warning(str(item)) for item in warnings_items]
     overall_raw = result_map.get("overall")
-    overall = float(overall_raw) if isinstance(overall_raw, int | float) else None
+    if isinstance(overall_raw, int | float):
+        val = float(overall_raw)
+        overall = (
+            val
+            if val == val and val != float("inf") and val != float("-inf") and 0 <= val <= 100
+            else None
+        )
+    else:
+        overall = None
     return TaskResultSummary(
         run_id=_optional_str(result_map.get("run_id")),
         status=_optional_str(result_map.get("status")),
@@ -66,10 +110,22 @@ def _optional_str(value: object) -> str | None:
     return value if isinstance(value, str) else None
 
 
+def _user_facing_message(error_code: str, raw_error: str) -> str:
+    return _USER_FACING_ERROR_MESSAGES.get(error_code, _GENERIC_FALLBACK_MESSAGE)
+
+
 def _serialize_task(info: Any) -> dict[str, Any]:
-    d = asdict(info)
+    raw_result = getattr(info, "result", None)
+    try:
+        d = asdict(info)
+        d.pop("result", None)
+    except Exception:
+        d = {k: v for k, v in cast("dict[str, Any]", vars(info)).items() if k != "result"}
     d["status"] = info.status.value
-    d["result_summary"] = _build_result_summary(info.result)
+    d["result_summary"] = _build_result_summary(raw_result)
+    if isinstance(info.error, str):
+        code = info.error_code if isinstance(info.error_code, str) else "internal_error"
+        d["error"] = _user_facing_message(code, info.error)
     if info.started_at:
         from datetime import UTC, datetime
 
@@ -95,8 +151,8 @@ async def list_tasks(request: Request) -> JSONResponse:
     if runner is None:
         return JSONResponse({"tasks": []})
     tasks = runner.list_tasks()
-    task_payloads = [TaskInfoResponse.model_validate(_serialize_task(t)) for t in tasks]
-    payload = TaskListResponse(tasks=task_payloads)
+    task_dicts = [_serialize_task(t) for t in tasks]
+    payload = TaskListResponse.model_validate({"tasks": task_dicts})
     return JSONResponse(payload.model_dump(mode="json"))
 
 

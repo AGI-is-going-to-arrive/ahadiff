@@ -311,7 +311,6 @@ export interface TaskInfoResponse {
   task_type: string;
   status: string;
   progress: TaskProgressResponse;
-  result?: unknown | null;
   result_summary?: TaskResultSummary | null;
   error?: string | null;
   error_code?: string | null;

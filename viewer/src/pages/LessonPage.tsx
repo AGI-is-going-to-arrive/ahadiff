@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import EvidencePanel from '../components/EvidencePanel';
 import ClaimBadge from '../components/ClaimBadge';
+import FreshnessBadge from '../components/FreshnessBadge';
 import ScaffoldingTabs from '../components/ScaffoldingTabs';
 import { useTranslation } from '../i18n/useTranslation';
 import { useRunsStore } from '../state/runs-store';
@@ -551,6 +552,12 @@ export default function LessonPage() {
                     <dt>{t('Lesson.rail.artifacts')}</dt>
                     <dd>{runDetail?.artifacts?.join(', ') || '—'}</dd>
                   </div>
+                  {runDetail?.graphify_status && ['fresh', 'stale', 'unavailable', 'disabled'].includes(runDetail.graphify_status) && (
+                    <div className="lesson__source-row">
+                      <dt>{t('Graph.freshness')}</dt>
+                      <dd><FreshnessBadge value={runDetail.graphify_status} /></dd>
+                    </div>
+                  )}
                 </dl>
               </section>
 

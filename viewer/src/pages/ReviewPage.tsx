@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import AppShell from '../components/AppShell';
 import Skeleton from '../components/Skeleton';
 import { useReviewStore } from '../state/review-store';
 import { useTranslation } from '../i18n/useTranslation';
 import type { ReviewAnswer } from '../api/types';
 import '../components/Review.css';
+
+const GraphifyCard = lazy(() => import('../components/GraphifyCard'));
 
 type RatingSummary = Record<ReviewAnswer, number>;
 
@@ -396,6 +398,10 @@ export default function ReviewPage() {
                 </div>
               </div>
             </div>
+
+            <Suspense fallback={null}>
+              <GraphifyCard compact />
+            </Suspense>
           </aside>
         </div>
       </div>

@@ -6,9 +6,11 @@ No rich/typer/console dependencies.
 
 from __future__ import annotations
 
+import json as _json
 import logging
 import os
 import shutil
+import stat
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -473,6 +475,58 @@ def _persist_evaluated_run_sync(
 # ---------------------------------------------------------------------------
 
 
+def _persist_graphify_context(capture: Any, run_path: Path) -> None:
+    """Write graphify metadata to ``runs/<run_id>/graphify_context.json``.
+
+    Failures are logged but never block the pipeline.
+    """
+    gs = getattr(capture, "graphify_status", None)
+    if gs is None or not getattr(gs, "has_graph", False):
+        return
+    provenance: dict[str, str] = getattr(gs, "provenance", {})
+    # Read node count from imported graph if available
+    node_count = 0
+    imported_path: Path | None = getattr(gs, "imported_path", None)
+    if imported_path is not None:
+        try:
+            st = imported_path.lstat()
+            if stat.S_ISREG(st.st_mode):
+                imported_raw: object = _json.loads(imported_path.read_text(encoding="utf-8"))
+                if isinstance(imported_raw, dict):
+                    imported_dict = cast("dict[str, object]", imported_raw)
+                    raw_nodes: object = imported_dict.get("nodes")
+                    if isinstance(raw_nodes, list):
+                        node_count = len(cast("list[object]", raw_nodes))
+        except Exception:
+            pass  # best-effort
+    payload: dict[str, object] = {
+        "graph_source": provenance.get("source", ""),
+        "graph_sha256": provenance.get("graph_sha256", ""),
+        "freshness": getattr(gs, "freshness", ""),
+        "import_time": provenance.get("import_time", ""),
+        "node_count": node_count,
+    }
+    tmp_path: Path | None = None
+    try:
+        run_path.mkdir(parents=True, exist_ok=True)
+        ctx_path = run_path / "graphify_context.json"
+        if ctx_path.exists() and not stat.S_ISREG(ctx_path.lstat().st_mode):
+            log.warning("graphify context path is not a regular file: %s", ctx_path)
+            return
+        tmp_path = ctx_path.with_suffix(".tmp")
+        tmp_path.write_text(
+            _json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        tmp_path.replace(ctx_path)
+        tmp_path = None
+    except Exception:
+        log.warning("failed to persist graphify context to %s", run_path, exc_info=True)
+    finally:
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
+
+
 def _check_cancelled(is_cancelled: CancelledCheck) -> None:
     if is_cancelled():
         raise AhaDiffError("cancelled")
@@ -605,6 +659,9 @@ def run_learn_pipeline(
                 if has_git_repo
                 else (root / ".ahadiff" / "runs" / capture.run_id)
             )
+
+            # Persist graphify context snapshot into run directory
+            _persist_graphify_context(capture, run_path)
 
             _env_retries_raw = os.environ.get(
                 "AHADIFF_PIPELINE_MAX_STEP_RETRIES",

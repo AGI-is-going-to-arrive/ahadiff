@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import AppShell from '../components/AppShell';
 import RatchetChart from '../components/RatchetChart';
 import Skeleton, { SkeletonGroup } from '../components/Skeleton';
@@ -8,6 +8,8 @@ import { useLocaleStore } from '../state/locale-store';
 import type { RatchetHistoryEntry } from '../api/types';
 import { safeVerdict } from '../utils/verdict';
 import '../components/Ratchet.css';
+
+const GraphifyCard = lazy(() => import('../components/GraphifyCard'));
 
 interface RatchetNote {
   runId: string;
@@ -252,6 +254,10 @@ export default function RatchetPage() {
             </div>
           )}
         </div>
+
+        <Suspense fallback={null}>
+          <GraphifyCard compact />
+        </Suspense>
       </div>
     </AppShell>
   );

@@ -662,6 +662,7 @@ def import_graphify_artifact(workspace_root: Path, *, force: bool = False) -> Gr
     )
     final_status = detect_graphify_status(workspace_root, use_graphify=True, repo=_repo)
     final_status.provenance["graph_sha256"] = graph_sha256
+    final_status.provenance["import_time"] = datetime.now(UTC).isoformat()
     return final_status
 
 

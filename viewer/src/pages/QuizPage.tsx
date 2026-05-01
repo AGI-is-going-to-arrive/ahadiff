@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { lazy, Suspense, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import SRSCard from '../components/SRSCard';
@@ -14,6 +14,8 @@ import {
   type QuizItem,
 } from '../utils/quiz-contract';
 import '../components/Quiz.css';
+
+const GraphifyCard = lazy(() => import('../components/GraphifyCard'));
 
 interface AnswerRecord {
   answer: string;
@@ -482,6 +484,10 @@ export default function QuizPage() {
                   </div>
                 </section>
               )}
+
+              <Suspense fallback={null}>
+                <GraphifyCard compact />
+              </Suspense>
             </aside>
           </div>
         )}

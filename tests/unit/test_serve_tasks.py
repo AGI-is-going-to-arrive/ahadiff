@@ -16,6 +16,10 @@ from ahadiff.contracts.serve_runtime import (
 from ahadiff.core.task_runner import TaskInfo, TaskProgress, TaskStatus
 from ahadiff.serve import ServeState, create_app
 from ahadiff.serve.middleware import _request_timeout_for  # pyright: ignore[reportPrivateUsage]
+from ahadiff.serve.routes_tasks import (
+    _sanitize_warning,  # pyright: ignore[reportPrivateUsage]
+    _user_facing_message,  # pyright: ignore[reportPrivateUsage]
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -134,6 +138,118 @@ def test_progress_sse_emits_contract_envelope_for_terminal_task(tmp_path: Path) 
     assert evt.data.result_summary is not None
     assert evt.data.result_summary.run_id == "run-1"
     assert runner.unpinned is True
+
+
+def test_get_task_omits_raw_result_and_exposes_result_summary(tmp_path: Path) -> None:
+    info = TaskInfo(
+        task_id="task-1",
+        task_type="learn",
+        status=TaskStatus.COMPLETED,
+        progress=TaskProgress(current=10, total=10, message="done"),
+        result={
+            "run_id": "run-1",
+            "status": "keep",
+            "overall": 88.0,
+            "verdict": "PASS",
+            "internal_thread_ref": "do-not-expose",
+        },
+        created_at="2026-05-01T00:00:00+00:00",
+    )
+    runner = _StaticTaskRunner(info)
+    app = create_app(ServeState(state_dir=tmp_path, token="tok", task_runner=cast("Any", runner)))
+    client = TestClient(app, base_url="http://localhost:8765")
+
+    resp = client.get("/api/tasks/task-1")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    TaskInfoResponse.model_validate(body)
+    assert "result" not in body
+    assert body["result_summary"] == {
+        "run_id": "run-1",
+        "status": "keep",
+        "overall": 88.0,
+        "verdict": "PASS",
+        "warnings": [],
+    }
+
+
+def test_get_task_maps_error_code_to_user_facing_error(tmp_path: Path) -> None:
+    info = TaskInfo(
+        task_id="task-1",
+        task_type="learn",
+        status=TaskStatus.FAILED,
+        progress=TaskProgress(current=1, total=10, message="failed"),
+        error="connection refused: provider.internal.example",
+        error_code="network_error",
+        created_at="2026-05-01T00:00:00+00:00",
+        started_at="2026-05-01T00:00:01+00:00",
+        completed_at="2026-05-01T00:00:03+00:00",
+    )
+    runner = _StaticTaskRunner(info)
+    app = create_app(ServeState(state_dir=tmp_path, token="tok", task_runner=cast("Any", runner)))
+    client = TestClient(app, base_url="http://localhost:8765")
+
+    resp = client.get("/api/tasks/task-1")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    TaskInfoResponse.model_validate(body)
+    assert body["error"] == "Network connection failed. Check your internet and try again."
+    assert body["error_code"] == "network_error"
+    assert body["elapsed_seconds"] == 2.0
+
+
+@pytest.mark.parametrize(
+    ("error_code", "expected"),
+    [
+        ("network_error", "Network connection failed. Check your internet and try again."),
+        ("timeout", "Task timed out. Try again or increase the timeout."),
+        ("config_error", "Configuration error. Check your provider settings."),
+        ("permission_error", "Permission denied. Check file or directory permissions."),
+        ("claim_error", "Failed to extract or verify claims from the diff."),
+        ("lesson_error", "Failed to generate lesson content."),
+        ("quiz_error", "Failed to generate quiz content."),
+        ("learnability_error", "Diff was not suitable for learning."),
+        ("cancelled", "Task was cancelled."),
+        ("internal_error", "Internal error occurred."),
+        ("unknown_future_code", "An unexpected error occurred."),
+    ],
+)
+def test_user_facing_message_mapping(error_code: str, expected: str) -> None:
+    assert _user_facing_message(error_code, "raw internal detail") == expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "should_not_contain"),
+    [
+        ("/etc/passwd", "/etc/passwd"),
+        ("/home/admin/secret/file.txt", "/home/admin"),
+        ("C:\\Users\\admin\\Desktop", "C:\\Users\\admin"),
+        ("../../secret/data.json", "../../secret"),
+        ("\\\\server\\share\\file", "\\\\server"),
+        ("http://internal:8080/admin", "internal:8080"),
+        ("https://10.0.0.5/api/key", "10.0.0.5"),
+    ],
+)
+def test_sanitize_warning_scrubs_paths(raw: str, should_not_contain: str) -> None:
+    sanitized = _sanitize_warning(raw)
+    assert should_not_contain not in sanitized
+
+
+def test_sanitize_warning_truncates_long_input() -> None:
+    long_warning = "x" * 300
+    sanitized = _sanitize_warning(long_warning)
+    assert len(sanitized) <= 201  # 200 + "…"
+
+
+def test_sanitize_warning_empty_string() -> None:
+    assert _sanitize_warning("") == ""
+
+
+def test_sanitize_warning_no_path() -> None:
+    msg = "something went wrong"
+    assert _sanitize_warning(msg) == msg
 
 
 # --- Stable contract tests ---

@@ -131,8 +131,8 @@ class TaskInfoResponse(BaseModel):
     ``error_code``, ``created_at``, ``started_at``, ``completed_at``,
     ``elapsed_seconds``, ``result_summary``.
 
-    ``result`` is retained for backward compatibility but consumers
-    should migrate to ``result_summary``.
+    Raw task results are intentionally omitted; consumers should use
+    ``result_summary`` instead.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -140,7 +140,6 @@ class TaskInfoResponse(BaseModel):
     task_type: str = Field(description="Task kind (e.g. 'learn').")
     status: str = Field(description="One of: pending, running, completed, failed, cancelled.")
     progress: TaskProgressResponse = Field(description="Current progress snapshot.")
-    result: Any = Field(default=None, description="Raw result (unstable, prefer result_summary).")
     result_summary: TaskResultSummary | None = Field(
         default=None,
         description="Stable result summary for completed tasks.",

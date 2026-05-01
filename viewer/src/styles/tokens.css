@@ -43,14 +43,13 @@
   --info: #2E4A6B;
 
   /* Typography — V6 fallback order: Latin primary → CJK secondary → generic system.
-   * Caveat: V6 itself preconnects to Google Fonts (Newsreader is not on most
-   * systems). The viewer does NOT load Newsreader via @font-face. On a system
-   * with Noto Serif SC installed but not Newsreader, Latin glyphs fall to
-   * Source Serif 4 via per-glyph matching, which is V6's intent. If a system
-   * lacks both, ui-serif/Georgia takes over. Adding @font-face is a Stage B+
-   * decision per execution plan §6E. */
+   * Font strategy (Phase 6E): local-first, no external font loading.
+   * CSP restricts font-src to 'self' data: — external Google Fonts are not
+   * allowed. Newsreader is removed from the serif stack; Georgia provides the
+   * Latin serif baseline on virtually all platforms. CJK falls to Noto Serif SC
+   * or Source Han Serif SC where installed. */
   --font-sans: "Inter", "PingFang SC", "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Newsreader", "Noto Serif SC", "Source Serif 4", ui-serif, Georgia, serif;
+  --font-serif: "Georgia", "Noto Serif SC", "Noto Serif", "Source Han Serif SC", "Source Serif 4", ui-serif, serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "Sarasa Mono SC", monospace;
 
   /* Radius */

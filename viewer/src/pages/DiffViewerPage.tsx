@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import DiffView, {
@@ -15,6 +15,8 @@ import type { ClaimVerdict } from '../components/ClaimBadge';
 import { useTranslation } from '../i18n/useTranslation';
 import { getRunArtifact } from '../api/runs';
 import '../components/Diff.css';
+
+const GraphifyCard = lazy(() => import('../components/GraphifyCard'));
 
 type Phase = 'loading' | 'error' | 'empty' | 'ready';
 type SourceHunkSide = 'old' | 'new' | 'either';
@@ -295,6 +297,9 @@ export default function DiffViewerPage() {
       <div className="diff-page">
         <div className="diff-page__header">
           <h1>{t('Diff.title')}</h1>
+          <Suspense fallback={null}>
+            <GraphifyCard compact />
+          </Suspense>
         </div>
 
         <div className="diff-page__split">

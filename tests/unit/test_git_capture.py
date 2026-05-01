@@ -2541,6 +2541,11 @@ def test_graph_import_populates_review_db_fts(tmp_path: Path) -> None:
     assert count_graph_nodes(review_db) == 1
     [hit] = search_graph_nodes_fts(review_db, "TaskRunner")
     assert hit.primary_key == "node-task-runner"
+    # Full provenance includes graph_sha256 and import_time
+    assert "graph_sha256" in status.provenance
+    assert len(status.provenance["graph_sha256"]) == 64  # SHA-256 hex
+    assert "import_time" in status.provenance
+    assert "T" in status.provenance["import_time"]  # ISO 8601
 
 
 def test_graphify_status_handles_macos_var_alias_without_relative_to_crash(

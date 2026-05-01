@@ -337,7 +337,7 @@ def test_post_learn_coerces_falsey_bool_strings(
         assert resp.status_code == 202
 
         info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
-    assert info["result"] is not None
+    assert info["result_summary"] is not None
     assert captured == {
         "dry_run": False,
         "force_learn": False,
@@ -375,7 +375,7 @@ def test_post_learn_coerces_path_pair_fields(
         assert resp.status_code == 202
 
         info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
-    assert info["result"] is not None
+    assert info["result_summary"] is not None
     pair = captured[field]
     assert isinstance(pair, tuple)
     path_pair = cast("tuple[Path, Path]", pair)
@@ -476,14 +476,12 @@ def test_post_learn_completed_task_preserves_result(
         assert resp.status_code == 202
 
         info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
-    assert info["result"] == {
+    assert info["result_summary"] == {
         "run_id": "run-complete",
         "status": "keep",
         "overall": 88.5,
         "verdict": "PASS",
-        "weakest_dim": "conciseness",
         "warnings": ["warn-1"],
-        "recoverable_errors": 0,
     }
 
 
@@ -726,7 +724,7 @@ async def test_tasks_cancel_cancels_thread_backed_learn_task(
 
         assert info is not None
         assert info["status"] == "cancelled"
-        assert info["result"] is None
+        assert info["result_summary"] is None
         assert info["error_code"] is None
 
 
@@ -800,7 +798,7 @@ async def test_late_cancel_after_publish_boundary_keeps_run_artifacts(
 
     assert info is not None
     assert info["status"] == "cancelled"
-    assert info["result"] is None
+    assert info["result_summary"] is None
     assert (run_path / "finalized.json").exists()
     assert (run_path / "score.json").exists()
 
