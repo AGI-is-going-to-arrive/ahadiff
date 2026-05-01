@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="AhaDiff">
+  <rect width="128" height="128" rx="24" fill="#FAF8F2"/>
+  <path d="M32 30h42c13 0 22 8 22 20 0 8-4 14-11 17 9 3 15 10 15 21 0 13-10 22-25 22H32V30z" fill="#2E2A24"/>
+  <path d="M47 44v20h24c7 0 11-4 11-10s-4-10-11-10H47zm0 33v19h27c7 0 11-4 11-10s-4-9-12-9H47z" fill="#FAF8F2"/>
+  <path d="M28 98h72" stroke="#D27050" stroke-width="8" stroke-linecap="round"/>
+</svg>

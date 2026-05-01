@@ -200,11 +200,18 @@ def test_get_config_handles_load_failure_gracefully(
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload == {}
+    assert payload == {
+        "lang": None,
+        "privacy_mode": None,
+        "generate_model": None,
+        "judge_model": None,
+        "serve_port": None,
+        "key_status": {},
+    }
 
 
-def test_get_config_returns_empty_dict_when_no_git_repo(tmp_path: Path) -> None:
-    """tmp_path is not a git repo, so load_config fails and _safe_config_snapshot returns {}."""
+def test_get_config_returns_nullable_shape_when_no_git_repo(tmp_path: Path) -> None:
+    """tmp_path is not a git repo, so load_config fails and returns the fallback shape."""
     state_dir = tmp_path / ".ahadiff"
     state_dir.mkdir()
     client = _client(state_dir)
@@ -213,7 +220,14 @@ def test_get_config_returns_empty_dict_when_no_git_repo(tmp_path: Path) -> None:
 
     payload = response.json()
     assert response.status_code == 200
-    assert payload == {}
+    assert payload == {
+        "lang": None,
+        "privacy_mode": None,
+        "generate_model": None,
+        "judge_model": None,
+        "serve_port": None,
+        "key_status": {},
+    }
 
 
 def test_get_config_key_status_shows_configured_when_env_set(

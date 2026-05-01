@@ -152,8 +152,75 @@
   color: var(--ink-2);
 }
 
+.ratchet-note-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
+  gap: 18px;
+  align-items: start;
+  margin-bottom: var(--sp-6, 24px);
+  padding: 16px 18px;
+  background: var(--elevated);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg, 12px);
+}
+
+.ratchet-note-card__tag {
+  display: inline-block;
+  margin-bottom: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.ratchet-note-card h2 {
+  margin: 0 0 8px;
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.ratchet-note-card p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.ratchet-note-card__facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.ratchet-note-card__facts div {
+  padding: 10px 12px;
+  background: var(--subtle);
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+}
+
+.ratchet-note-card__facts dt {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ratchet-note-card__facts dd {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 13px;
+}
+
 @media (forced-colors: active) {
-  .ratchet-banner {
+  .ratchet-banner,
+  .ratchet-note-card,
+  .ratchet-note-card__facts div {
     border-color: CanvasText;
     background: Canvas;
   }
@@ -193,6 +260,10 @@
   .ratchet-table {
     font-size: 12px;
     min-width: 500px;
+  }
+
+  .ratchet-note-card {
+    grid-template-columns: 1fr;
   }
 }
 

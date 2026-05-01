@@ -22,6 +22,54 @@ the project name instead of a generic greeting.
 \`demo.py:3\` — evidence: line 3 shows the new return value.`;
 
 const STEP_KEYS = ['01', '02', '03', '04', '05'] as const;
+const FEATURE_CARDS = [
+  {
+    marker: '01',
+    titleKey: 'Landing.feature_claims_title',
+    descKey: 'Landing.feature_claims_desc',
+  },
+  {
+    marker: '02',
+    titleKey: 'Landing.feature_lessons_title',
+    descKey: 'Landing.feature_lessons_desc',
+  },
+  {
+    marker: '03',
+    titleKey: 'Landing.feature_quiz_title',
+    descKey: 'Landing.feature_quiz_desc',
+  },
+  {
+    marker: '04',
+    titleKey: 'Landing.feature_memory_title',
+    descKey: 'Landing.feature_memory_desc',
+  },
+] as const;
+const TRUST_CARDS = [
+  {
+    value: '50',
+    labelKey: 'Landing.bench_pinned',
+    deltaKey: 'Landing.bench_pinned_delta',
+    deltaTone: 'neutral',
+  },
+  {
+    value: '0.82',
+    labelKey: 'Landing.bench_judge_human',
+    deltaKey: 'Landing.bench_judge_human_delta',
+    deltaTone: 'up',
+  },
+  {
+    value: '64%',
+    labelKey: 'Landing.bench_keep_rate',
+    deltaKey: 'Landing.bench_keep_rate_delta',
+    deltaTone: 'neutral',
+  },
+  {
+    value: '$0.018',
+    labelKey: 'Landing.bench_cost',
+    deltaKey: 'Landing.bench_cost_delta',
+    deltaTone: 'neutral',
+  },
+] as const;
 
 export default function LandingPage() {
   const { t } = useTranslation();
@@ -89,6 +137,22 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Features */}
+      <section className="landing-section landing-section--features">
+        <div className="landing-section__eyebrow">{t('Landing.section_features')}</div>
+        <h2>{t('Landing.features_title')}</h2>
+        <div className="landing-section__sub">{t('Landing.features_sub')}</div>
+        <div className="feature-grid" aria-label={t('Landing.features_title')}>
+          {FEATURE_CARDS.map((card) => (
+            <article className="feature-card" key={card.marker}>
+              <div className="feature-card__marker">{card.marker}</div>
+              <h3>{t(card.titleKey)}</h3>
+              <p>{t(card.descKey)}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
       {/* Pipeline */}
       <section className="landing-section">
         <div className="landing-section__eyebrow">{t('Landing.section_workflow')}</div>
@@ -125,6 +189,41 @@ export default function LandingPage() {
               ))}
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Benchmark & Trust */}
+      <section className="landing-section">
+        <div className="landing-section__eyebrow">{t('Landing.section_benchmark')}</div>
+        <h2>{t('Landing.benchmark_title')}</h2>
+        <div className="landing-section__sub">{t('Landing.benchmark_sub')}</div>
+        <div className="demo-banner">
+          <span className="demo-tag">{t('Landing.demo_tag_full')}</span>
+          <span>
+            {t('Landing.demo_banner_lead')}{' '}
+            <strong>{t('Landing.demo_banner_action')}</strong>
+            {t('Landing.demo_banner_tail')}
+          </span>
+        </div>
+        <div className="benchmark-grid" aria-label={t('Landing.bench_demo_note')}>
+          {TRUST_CARDS.map((card) => (
+            <article className="benchmark-card" key={card.labelKey}>
+              <div className="benchmark-card__label-row">
+                <span className="benchmark-card__label">{t(card.labelKey)}</span>
+                <span className="demo-tag benchmark-card__demo">{t('Landing.demo_tag')}</span>
+              </div>
+              <div className="benchmark-card__value">{card.value}</div>
+              <div
+                className={
+                  card.deltaTone === 'up'
+                    ? 'benchmark-card__delta benchmark-card__delta--up'
+                    : 'benchmark-card__delta'
+                }
+              >
+                {t(card.deltaKey)}
+              </div>
+            </article>
+          ))}
         </div>
       </section>
     </div>

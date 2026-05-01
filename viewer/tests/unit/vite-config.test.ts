@@ -19,6 +19,12 @@ type ApiProxyOptions = {
   configure?: (proxy: ProxyEvents) => void;
 };
 
+function pluginName(plugin: unknown): string {
+  if (!plugin || typeof plugin !== 'object' || !('name' in plugin)) return '';
+  const name = (plugin as { name?: unknown }).name;
+  return typeof name === 'string' ? name : '';
+}
+
 function getApiProxy(): ApiProxyOptions {
   const userConfig = config as UserConfig;
   const proxyConfig = userConfig.server?.proxy;
@@ -29,6 +35,17 @@ function getApiProxy(): ApiProxyOptions {
 }
 
 describe('vite dev API proxy', () => {
+  it('registers the PWA plugin for service-worker builds', () => {
+    const userConfig = config as UserConfig;
+    const plugins = Array.isArray(userConfig.plugins) ? userConfig.plugins : [userConfig.plugins];
+    const names = plugins
+      .flat()
+      .filter(Boolean)
+      .map(pluginName);
+
+    expect(names).toContain('vite-plugin-pwa');
+  });
+
   it('preserves production same-origin paths while targeting the loopback backend in dev', () => {
     const apiProxy = getApiProxy();
 

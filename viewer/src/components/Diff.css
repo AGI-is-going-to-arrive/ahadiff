@@ -5,11 +5,11 @@
   min-height: 0;
   overflow: auto;
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 12.5px;
   /* Kept as px intentionally: VirtualList itemHeight (22px) depends on a fixed line-height. */
   line-height: 22px;
-  background: var(--paper);
-  border-radius: var(--radius-8);
+  background: var(--surface-diff);
+  border-radius: var(--radius-10);
   border: 1px solid var(--hair);
 }
 
@@ -51,6 +51,8 @@ button.diff-line {
   background: var(--subtle);
   color: var(--muted);
   font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.08em;
 }
 
 .diff-line--ctx {
@@ -58,8 +60,13 @@ button.diff-line {
   color: var(--ink);
 }
 
+.diff-line--claim-linked {
+  transition: filter var(--dur-micro) var(--ease-out-quart);
+}
+
 .diff-line--claim-linked:hover {
-  filter: brightness(0.98);
+  filter: brightness(0.97);
+  outline: 1px solid var(--accent);
 }
 
 .diff-line--claim-linked:focus-visible {
@@ -68,9 +75,8 @@ button.diff-line {
 }
 
 .diff-line--claim-selected {
-  box-shadow:
-    inset 3px 0 0 var(--accent),
-    inset 0 0 0 999px color-mix(in srgb, var(--accent-soft) 55%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+  filter: brightness(0.98);
 }
 
 /* ── Line numbers ─────────────────────────────────────────── */
@@ -114,9 +120,9 @@ button.diff-line {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 16px 24px;
-  gap: 12px;
-  animation: fadeUp 0.3s ease-out;
+  padding: 32px 40px 88px;
+  gap: 18px;
+  animation: fadeUp 0.28s ease-out;
 }
 
 .diff-page__header {
@@ -135,8 +141,8 @@ button.diff-line {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: 1fr 340px;
-  gap: 16px;
+  grid-template-columns: 1fr 360px;
+  gap: 18px;
 }
 
 .diff-page__body {
@@ -159,6 +165,83 @@ button.diff-line {
 
 .diff-page__error {
   color: var(--danger);
+}
+
+/* ── Selected source hunk panel (outside VirtualList) ───────── */
+
+.diff-page__selected-hunk {
+  margin-top: 18px;
+  background: var(--elevated);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-10);
+  box-shadow: var(--shadow-sm, 0 1px 0 rgba(180, 160, 130, 0.06));
+  overflow: hidden;
+}
+
+.diff-page__selected-hunk--contradicted,
+.diff-page__selected-hunk--rejected {
+  background: var(--danger-soft, #fdf1ec);
+  border-color: var(--danger-hair, #e4b8ae);
+}
+
+.diff-page__selected-hunk-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.diff-page__selected-hunk-header h2 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.diff-page__selected-hunk-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.diff-page__selected-hunk-claim {
+  margin: 14px 16px 0;
+  padding: 5px 14px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-softer, var(--accent-soft));
+  color: var(--ink-2);
+  font-family: var(--font-serif);
+  font-size: 14.5px;
+  line-height: 1.55;
+}
+
+.diff-page__selected-hunk--contradicted .diff-page__selected-hunk-claim,
+.diff-page__selected-hunk--rejected .diff-page__selected-hunk-claim {
+  border-left-color: var(--danger);
+  background: var(--danger-soft, #fdf1ec);
+}
+
+.diff-page__selected-hunk-code {
+  margin: 14px 16px 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-6);
+  background: var(--surface-diff);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-x: auto;
+}
+
+.diff-page__selected-hunk-empty {
+  margin: 12px 16px 16px;
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 /* ── BottomMiniPanel ──────────────────────────────────────── */
@@ -200,6 +283,13 @@ button.diff-line {
 
 /* ── Mobile layout ────────────────────────────────────────── */
 
+/* ── Desktop narrow: shrink padding (V6 §2D, --bp-lg2 1024px) ────── */
+@media (max-width: 1024px) {
+  .diff-page {
+    padding: 20px 20px 80px;
+  }
+}
+
 /* ── Tablet: pull inspector below diff (V6 §2D, --bp-lg 900px) ───── */
 @media (max-width: 900px) {
   .diff-page__split {
@@ -239,6 +329,16 @@ button.diff-line {
     justify-content: center;
     z-index: 20;
   }
+
+  .diff-page__selected-hunk-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .diff-page__selected-hunk-meta {
+    white-space: normal;
+  }
 }
 
 /* ── Small phones (V6 §2D, --bp-xs 540px) ─────────────────── */
@@ -277,13 +377,41 @@ button.diff-line {
   .mini-panel {
     border: 1px solid CanvasText;
   }
+
+  .diff-page__selected-hunk,
+  .diff-page__selected-hunk-code {
+    border: 1px solid CanvasText;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .diff-page,
   .diff-view,
+  .diff-line--claim-linked,
+  .diff-page__selected-hunk,
   .mini-panel {
     animation: none;
     transition: none;
+  }
+}
+
+/* ── Print ───────────────────────────────────────────────── */
+
+@media print {
+  .diff-page {
+    padding: 0;
+  }
+
+  .diff-page__split {
+    grid-template-columns: 1fr;
+  }
+
+  .diff-view,
+  .diff-line {
+    break-inside: avoid;
+  }
+
+  .mini-panel {
+    display: none;
   }
 }

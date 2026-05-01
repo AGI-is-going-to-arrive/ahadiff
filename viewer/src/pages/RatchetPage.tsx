@@ -9,6 +9,17 @@ import type { RatchetHistoryEntry } from '../api/types';
 import { safeVerdict } from '../utils/verdict';
 import '../components/Ratchet.css';
 
+interface RatchetNote {
+  runId: string;
+  phase25?: boolean;
+  phase25Note?: string;
+  triggerReason?: string;
+  targetDimension?: string;
+  targetedPassed?: boolean;
+  targetedBaselineScore?: number;
+  targetedCandidateScore?: number;
+}
+
 function formatDate(iso: string, locale: string): string {
   try {
     return new Date(iso).toLocaleDateString(locale, {
@@ -18,6 +29,37 @@ function formatDate(iso: string, locale: string): string {
     });
   } catch {
     return iso;
+  }
+}
+
+function readStringField(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function readNumberField(record: Record<string, unknown>, key: string): number | undefined {
+  const value = record[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function parseRatchetNote(entry: RatchetHistoryEntry): RatchetNote | null {
+  if (!entry.note_json) return null;
+  try {
+    const parsed = JSON.parse(entry.note_json) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    const record = parsed as Record<string, unknown>;
+    return {
+      runId: entry.run_id,
+      phase25: record.phase25 === true,
+      phase25Note: readStringField(record, 'phase25_note'),
+      triggerReason: readStringField(record, 'trigger_reason'),
+      targetDimension: readStringField(record, 'target_dimension'),
+      targetedPassed: typeof record.targeted_passed === 'boolean' ? record.targeted_passed : undefined,
+      targetedBaselineScore: readNumberField(record, 'targeted_baseline_score'),
+      targetedCandidateScore: readNumberField(record, 'targeted_candidate_score'),
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -124,17 +166,15 @@ export default function RatchetPage() {
         </div>
 
         {/*
-         * Phase 4G: Strict-ratchet transparency banner.
-         * Mirrors V6 (AhaDiff Warm v6.html L1562 demo-banner +
-         * L1967 strict-ratchet pull-quote). Surfaces the rule that lower
-         * scores are dropped so users can read the table without thinking
-         * the missing entries are bugs. Phase 5C will swap demo copy for
-         * real benchmark transparency once metrics ship.
+         * Phase 4G: strict-ratchet transparency plus the latest restricted
+         * note_json payload exposed by /api/ratchet/history.
          */}
         <aside className="ratchet-banner" role="note">
           <span className="ratchet-banner__tag">{t('Ratchet.banner_tag')}</span>
           <span className="ratchet-banner__text">{t('Ratchet.banner_text')}</span>
         </aside>
+
+        <RatchetNoteCard history={history} t={t} />
 
         {/* Chart + Rubric grid */}
         <div className="ratchet-page__grid">
@@ -214,6 +254,68 @@ export default function RatchetPage() {
         </div>
       </div>
     </AppShell>
+  );
+}
+
+function RatchetNoteCard({
+  history,
+  t,
+}: {
+  history: RatchetHistoryEntry[];
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  const note = history.map(parseRatchetNote).find((item): item is RatchetNote => item !== null);
+  if (!note) {
+    return (
+      <section className="ratchet-note-card" aria-label={t('Ratchet.note_title')}>
+        <div>
+          <span className="ratchet-note-card__tag">{t('Ratchet.note_empty_tag')}</span>
+          <h2>{t('Ratchet.note_title')}</h2>
+          <p>{t('Ratchet.note_empty')}</p>
+        </div>
+      </section>
+    );
+  }
+
+  const scoreDelta =
+    note.targetedBaselineScore != null && note.targetedCandidateScore != null
+      ? note.targetedCandidateScore - note.targetedBaselineScore
+      : null;
+
+  return (
+    <section className="ratchet-note-card" aria-label={t('Ratchet.note_title')}>
+      <div>
+        <span className="ratchet-note-card__tag">
+          {note.phase25 ? t('Ratchet.note_phase25_tag') : t('Ratchet.note_payload_tag')}
+        </span>
+        <h2>{t('Ratchet.note_title')}</h2>
+        <p>{note.phase25Note ?? note.triggerReason ?? t('Ratchet.note_payload_available')}</p>
+      </div>
+      <dl className="ratchet-note-card__facts">
+        <div>
+          <dt>{t('Ratchet.note_run')}</dt>
+          <dd className="mono">{note.runId.slice(0, 8)}</dd>
+        </div>
+        {note.targetDimension && (
+          <div>
+            <dt>{t('Ratchet.note_target')}</dt>
+            <dd>{note.targetDimension}</dd>
+          </div>
+        )}
+        {scoreDelta != null && (
+          <div>
+            <dt>{t('Ratchet.note_delta')}</dt>
+            <dd className="num">{scoreDelta >= 0 ? '+' : ''}{scoreDelta.toFixed(1)}</dd>
+          </div>
+        )}
+        {note.targetedPassed != null && (
+          <div>
+            <dt>{t('Ratchet.note_targeted')}</dt>
+            <dd>{note.targetedPassed ? t('Ratchet.note_passed') : t('Ratchet.note_failed')}</dd>
+          </div>
+        )}
+      </dl>
+    </section>
   );
 }
 

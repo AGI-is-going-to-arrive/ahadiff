@@ -19,6 +19,17 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
+def _empty_config_snapshot() -> dict[str, Any]:
+    return {
+        "lang": None,
+        "privacy_mode": None,
+        "generate_model": None,
+        "judge_model": None,
+        "serve_port": None,
+        "key_status": {},
+    }
+
+
 def _object_mapping(value: object) -> dict[str, object]:
     if not isinstance(value, dict):
         return {}
@@ -51,7 +62,7 @@ def _safe_config_snapshot(state: ServeState) -> dict[str, Any]:
     try:
         cfg = load_config(state.state_dir.parent)
     except Exception:
-        return {}
+        return _empty_config_snapshot()
 
     values = getattr(cfg, "values", None)
     if isinstance(values, dict):

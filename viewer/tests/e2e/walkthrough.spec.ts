@@ -175,7 +175,7 @@ async function installRichMock(page: Page): Promise<void> {
           history: [
             { run_id: 'run-001', source_ref: 'HEAD~2', eval_bundle_version: 'bundle-v1', overall: 92, verdict: 'PASS', status: 'baseline', weakest_dim: 'evidence', timestamp: '2026-04-25T10:00:00Z' },
             { run_id: 'run-002', source_ref: 'HEAD~1', eval_bundle_version: 'bundle-v1', overall: 71, verdict: 'CAUTION', status: 'baseline', weakest_dim: 'conciseness', timestamp: '2026-04-26T12:00:00Z' },
-            { run_id: 'run-003', source_ref: 'HEAD', eval_bundle_version: 'bundle-v2', overall: 88, verdict: 'PASS', status: 'baseline', weakest_dim: 'evidence', timestamp: '2026-04-27T08:00:00Z' },
+            { run_id: 'run-003', source_ref: 'HEAD', eval_bundle_version: 'bundle-v2', overall: 88, verdict: 'PASS', status: 'baseline', weakest_dim: 'evidence', timestamp: '2026-04-27T08:00:00Z', note_json: '{"phase25":true,"phase25_note":"PHASE25: consecutive_discard_count=2","trigger_reason":"consecutive_discard_count=2","target_dimension":"learnability","targeted_baseline_score":76,"targeted_candidate_score":88,"targeted_passed":true}' },
           ],
         }),
       }),
@@ -484,6 +484,9 @@ test.describe('walkthrough: full-app functional test', () => {
 
     // Progress indicator
     await expect(page.locator('.quiz-page__progress')).toBeVisible();
+    await expect(page.locator('.quiz-page__progress-bar')).toBeVisible();
+    await expect(page.locator('.quiz-panel--evidence')).toBeVisible();
+    await expect(page.locator('.quiz-evidence__empty')).toBeVisible();
 
     // SRS card with question
     await expect(page.locator('.srs-card')).toBeVisible();
@@ -505,6 +508,8 @@ test.describe('walkthrough: full-app functional test', () => {
     // Expected answer and explanation are shown.
     await expect(page.getByText('Expected answer')).toBeVisible();
     await expect(page.getByText('learn-from-diff marker tags the change')).toBeVisible();
+    await expect(page.locator('.quiz-evidence__item')).toHaveCount(1);
+    await expect(page.locator('.quiz-evidence__ref')).toContainText('demo.py:L4');
     await expect(page.locator('.quiz-page__misconceptions')).toBeVisible();
 
     // Rating buttons appear but are disabled during peek guard (1.5s).
@@ -673,6 +678,13 @@ test.describe('walkthrough: full-app functional test', () => {
 
     // After rating: session complete (only 1 card)
     await expect(page.locator('.review__complete')).toBeVisible();
+    await expect(page.locator('.review__complete-stats')).toBeVisible();
+    await expect(
+      page.locator('.review__complete-stat').filter({ hasText: 'Good/Easy' }),
+    ).toContainText('1');
+    await expect(
+      page.locator('.review__rating-row').filter({ hasText: 'Good' }),
+    ).toContainText('1');
 
     await page.screenshot({ path: `${SCREENSHOT_DIR}/06-review.png`, fullPage: true });
   });
@@ -689,6 +701,8 @@ test.describe('walkthrough: full-app functional test', () => {
 
     // Ratchet chart (>= 2 entries)
     await expect(page.locator('.ratchet-card').first()).toBeVisible();
+    await expect(page.locator('.ratchet-note-card')).toContainText('PHASE25');
+    await expect(page.locator('.ratchet-note-card')).toContainText('+12.0');
 
     // History table
     const table = page.locator('.ratchet-table');
@@ -824,7 +838,7 @@ test.describe('walkthrough: full-app functional test', () => {
   /*  Page 11: Landing / Welcome                                       */
   /* ---------------------------------------------------------------- */
 
-  test('Landing — hero, pipeline steps, before/after, demo tabs', async ({ page }) => {
+  test('Landing — hero, feature cards, trust demo, before/after, demo tabs', async ({ page }) => {
     await page.goto('/#/welcome');
 
     // Hero section
@@ -836,6 +850,11 @@ test.describe('walkthrough: full-app functional test', () => {
 
     // CLI command
     await expect(page.locator('.cli-cmd')).toContainText('pip install ahadiff');
+
+    // Feature cards (4)
+    const featureCards = page.locator('.feature-card');
+    await expect(featureCards).toHaveCount(4);
+    await expect(featureCards.first()).toContainText(/Evidence-bound claims|证据绑定声明/);
 
     // Pipeline steps (5)
     const steps = page.locator('.step');
@@ -855,6 +874,17 @@ test.describe('walkthrough: full-app functional test', () => {
 
     // Before/After section
     await expect(page.locator('.ba-grid')).toBeVisible();
+
+    // V6 trust block keeps an explicit demo boundary and per-card deltas.
+    await expect(page.locator('.demo-banner')).toContainText(/DEMO DATA|演示数据/);
+    const benchmarkCards = page.locator('.benchmark-card');
+    await expect(benchmarkCards).toHaveCount(4);
+    await expect(benchmarkCards.nth(0)).toContainText('50');
+    await expect(benchmarkCards.nth(0).locator('.demo-tag')).toBeVisible();
+    await expect(benchmarkCards.nth(0).locator('.benchmark-card__delta')).toContainText(
+      /8 languages|8 种语言/,
+    );
+    await expect(benchmarkCards.nth(1)).toContainText('0.82');
 
     await page.screenshot({ path: `${SCREENSHOT_DIR}/11-landing.png`, fullPage: true });
   });

@@ -4,6 +4,7 @@ import AppShell from '../components/AppShell';
 import SRSCard from '../components/SRSCard';
 import type { SrsRating, SrsReviewRating } from '../components/SRSCard';
 import { getRunArtifact } from '../api/runs';
+import { updateReviewQueueState } from '../api/review';
 import { quizAnswer, srsReview } from '../api/signals';
 import type { MisconceptionCardItem, ReviewAnswer } from '../api/types';
 import { useTranslation } from '../i18n/useTranslation';
@@ -61,6 +62,10 @@ const PEEKED_REVIEW_RATING_ERROR = 'peeked cards cannot be reviewed as good or e
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function formatEvidenceAnchor(file: string, line: number): string {
+  return `${file}:L${line}`;
 }
 
 export default function QuizPage() {
@@ -169,6 +174,21 @@ export default function QuizPage() {
 
       const qid = currentQuiz.question_id;
 
+      if (rating === 'archive' || rating === 'suspend') {
+        if (!hasQuizReviewCard(currentQuiz)) {
+          return false;
+        }
+        try {
+          await updateReviewQueueState({
+            card_id: currentQuiz.review_card_id,
+            state: rating === 'archive' ? 'archived' : 'suspended',
+          });
+        } catch (err: unknown) {
+          setSignalError(errorMessage(err));
+          return false;
+        }
+      }
+
       if (isReviewRating(rating)) {
         if (!hasQuizReviewCard(currentQuiz)) {
           setRated((prev) => ({ ...prev, [qid]: true }));
@@ -204,6 +224,12 @@ export default function QuizPage() {
   );
 
   const ratedCount = Object.keys(rated).length;
+  const correctCount = Object.values(answered).filter((answer) => answer.correct).length;
+  const currentAnswer = currentQuiz ? answered[currentQuiz.question_id] : null;
+  const currentEvidence = currentQuiz?.evidence ?? [];
+  const currentConcepts = currentQuiz?.concepts ?? [];
+  const currentSourceClaims = currentQuiz?.source_claims ?? [];
+  const progressPercent = quizzes.length > 0 ? ((currentIndex + 1) / quizzes.length) * 100 : 0;
 
   /**
    * Phase 4C: 1/2/3/4 keyboard shortcuts to rate the current quiz card.
@@ -279,71 +305,185 @@ export default function QuizPage() {
         ) : quizzes.length === 0 ? (
           <p className="quiz-page__empty">{t('Serve.empty')}</p>
         ) : (
-          <>
-            {currentQuiz && (
-              <SRSCard
-                key={currentQuiz.question_id}
-                quiz={currentQuiz}
-                onAnswer={handleAnswer}
-                onRate={handleRate}
-                disabledReviewRatings={
-                  hasQuizReviewCard(currentQuiz) ? PEEKED_REVIEW_RATING_BLOCKLIST : undefined
-                }
-              />
-            )}
-
-            {signalError && (
-              <div className="quiz-page__signal-error" role="alert">
-                {t('Quiz.signal_error', { message: signalError })}
-              </div>
-            )}
-
-            {/* Next button when on current card and already rated.
-                Gating on `rated` (not `answered`) ensures the SRS signal
-                has been recorded before advancing — selecting a choice alone
-                is not enough. */}
-            {currentIndex < quizzes.length - 1 && rated[currentQuiz?.question_id ?? ''] && (
-              <div className="quiz-page__nav">
-                <button
-                  type="button"
-                  className="srs-card__btn srs-card__btn--primary"
-                  onClick={() => setCurrentIndex((prev) => prev + 1)}
-                >
-                  {t('Quiz.next')}
-                </button>
-              </div>
-            )}
-
-            {/* Summary when every card has been rated */}
-            {ratedCount === quizzes.length && currentIndex === quizzes.length - 1 && (
-              <p className="quiz-page__progress quiz-page__progress--summary">
-                {t('Quiz.correct')}: {Object.values(answered).filter((a) => a.correct).length} / {quizzes.length}
-              </p>
-            )}
-
-            {misconceptions.length > 0 && (
-              <section
-                className="quiz-page__misconceptions"
-                aria-label={t('Quiz.misconceptions_title')}
+          <div className="quiz-page__learning-grid">
+            <div className="quiz-page__quiz-column">
+              <div
+                className="quiz-page__progress-bar"
+                role="progressbar"
+                aria-valuenow={currentIndex + 1}
+                aria-valuemin={1}
+                aria-valuemax={quizzes.length}
+                aria-label={t('Quiz.progress', {
+                  current: String(currentIndex + 1),
+                  total: String(quizzes.length),
+                })}
               >
-                <p className="quiz-page__misconceptions-title">{t('Quiz.misconceptions_title')}</p>
-                {misconceptions.map((card) => (
-                  <div key={card.card_id} className="quiz-page__misconception">
-                    <strong>{card.concept}</strong>
-                    <p>
-                      {t('Quiz.misconception_label')}: {card.misconception}
-                    </p>
-                    <p>
-                      {t('Quiz.correction_label')}: {card.correction}
-                    </p>
-                    <p>
-                      {t('Quiz.evidence_label')}: {card.evidence_ref} ({card.severity})
-                    </p>
-                  </div>
-                ))}
+                <span
+                  className="quiz-page__progress-fill"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+
+              {currentQuiz && (
+                <SRSCard
+                  key={currentQuiz.question_id}
+                  quiz={currentQuiz}
+                  onAnswer={handleAnswer}
+                  onRate={handleRate}
+                  disabledReviewRatings={
+                    hasQuizReviewCard(currentQuiz) ? PEEKED_REVIEW_RATING_BLOCKLIST : undefined
+                  }
+                />
+              )}
+
+              {signalError && (
+                <div className="quiz-page__signal-error" role="alert">
+                  {t('Quiz.signal_error', { message: signalError })}
+                </div>
+              )}
+
+              {/* Next button when on current card and already rated.
+                  Gating on `rated` (not `answered`) ensures the SRS signal
+                  has been recorded before advancing — selecting a choice alone
+                  is not enough. */}
+              {currentIndex < quizzes.length - 1 && rated[currentQuiz?.question_id ?? ''] && (
+                <div className="quiz-page__nav">
+                  <button
+                    type="button"
+                    className="srs-card__btn srs-card__btn--primary"
+                    onClick={() => setCurrentIndex((prev) => prev + 1)}
+                  >
+                    {t('Quiz.next')}
+                  </button>
+                </div>
+              )}
+
+              {/* Summary when every card has been rated */}
+              {ratedCount === quizzes.length && currentIndex === quizzes.length - 1 && (
+                <p className="quiz-page__progress quiz-page__progress--summary">
+                  {t('Quiz.correct')}: {correctCount} / {quizzes.length}
+                </p>
+              )}
+            </div>
+
+            <aside className="quiz-page__side-panel" aria-label={t('Quiz.sidebar_label')}>
+              <section className="quiz-panel quiz-panel--evidence">
+                <div className="quiz-panel__header">
+                  <h2>{t('Quiz.evidence_panel_title')}</h2>
+                  <span className="quiz-panel__meta">{t('Quiz.evidence_panel_meta')}</span>
+                </div>
+                <div className="quiz-panel__body">
+                  {currentAnswer ? (
+                    <>
+                      <ul className="quiz-evidence" aria-label={t('Quiz.evidence_label')}>
+                        {currentEvidence.map((item) => (
+                          <li
+                            key={`${item.file}:${item.line}`}
+                            className="quiz-evidence__item"
+                          >
+                            <div className="quiz-evidence__ref">
+                              {formatEvidenceAnchor(item.file, item.line)}
+                            </div>
+                            <pre className="quiz-evidence__code">
+                              <code>{formatEvidenceAnchor(item.file, item.line)}</code>
+                            </pre>
+                          </li>
+                        ))}
+                      </ul>
+                      {(currentSourceClaims.length > 0 || currentConcepts.length > 0) && (
+                        <dl className="quiz-evidence__meta">
+                          {currentSourceClaims.length > 0 && (
+                            <>
+                              <dt>{t('Quiz.source_claims_label')}</dt>
+                              <dd>{currentSourceClaims.join(', ')}</dd>
+                            </>
+                          )}
+                          {currentConcepts.length > 0 && (
+                            <>
+                              <dt>{t('Quiz.concepts_label')}</dt>
+                              <dd>{currentConcepts.join(', ')}</dd>
+                            </>
+                          )}
+                        </dl>
+                      )}
+                    </>
+                  ) : (
+                    <p className="quiz-evidence__empty">{t('Quiz.evidence_locked')}</p>
+                  )}
+                </div>
               </section>
-            )}
-          </>
+
+              <section className="quiz-panel">
+                <div className="quiz-panel__header">
+                  <h2>{t('Quiz.progress_panel_title')}</h2>
+                  <span className="quiz-panel__meta">
+                    {t('Quiz.progress_panel_meta', { count: quizzes.length })}
+                  </span>
+                </div>
+                <div className="quiz-panel__body">
+                  <ol className="quiz-progress-list">
+                    {quizzes.map((quiz, index) => {
+                      const isDone = Boolean(rated[quiz.question_id]);
+                      const isCurrent = index === currentIndex && !isDone;
+                      const statusKey = isDone
+                        ? 'Quiz.progress_status_done'
+                        : isCurrent
+                          ? 'Quiz.progress_status_now'
+                          : 'Quiz.progress_status_pending';
+                      return (
+                        <li
+                          key={quiz.question_id}
+                          className={[
+                            'quiz-progress-list__item',
+                            isDone ? 'quiz-progress-list__item--done' : '',
+                            isCurrent ? 'quiz-progress-list__item--current' : '',
+                          ].filter(Boolean).join(' ')}
+                        >
+                          <span className="quiz-progress-list__qid">
+                            {t('Quiz.question_short', { number: index + 1 })}
+                          </span>
+                          <span className="quiz-progress-list__concept">
+                            {quiz.concepts[0] ?? quiz.question_id}
+                          </span>
+                          <span className="quiz-progress-list__status">
+                            {t(statusKey)}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </div>
+              </section>
+
+              {misconceptions.length > 0 && (
+                <section
+                  className="quiz-panel quiz-page__misconceptions"
+                  aria-label={t('Quiz.misconceptions_title')}
+                >
+                  <div className="quiz-panel__header">
+                    <h2>{t('Quiz.misconceptions_title')}</h2>
+                    <span className="quiz-panel__meta">{misconceptions.length}</span>
+                  </div>
+                  <div className="quiz-panel__body">
+                    {misconceptions.map((card) => (
+                      <div key={card.card_id} className="quiz-page__misconception">
+                        <strong>{card.concept}</strong>
+                        <p>
+                          {t('Quiz.misconception_label')}: {card.misconception}
+                        </p>
+                        <p>
+                          {t('Quiz.correction_label')}: {card.correction}
+                        </p>
+                        <p>
+                          {t('Quiz.evidence_label')}: {card.evidence_ref} ({card.severity})
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </aside>
+          </div>
         )}
       </div>
     </AppShell>

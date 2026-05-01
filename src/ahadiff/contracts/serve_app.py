@@ -14,6 +14,7 @@ RunStatus: TypeAlias = event_log_contract.RunStatus
 Verdict: TypeAlias = event_log_contract.Verdict
 
 ReviewAnswer = Literal["easy", "good", "hard", "wrong"]
+ReviewQueueState = Literal["archived", "suspended"]
 GraphifyMode = Literal["full", "learning_only", "empty"]
 
 
@@ -87,6 +88,7 @@ class RatchetHistoryEntry(BaseModel):
     status: RunStatus
     timestamp: str
     weakest_dim: str
+    note_json: str | None = None
 
 
 class DueReviewCardResponse(BaseModel):
@@ -131,6 +133,21 @@ class ReviewRateRequest(LearningSignalRequest):
     peeked_this_session: bool = False
 
 
+class ReviewQueueStateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    card_id: str = Field(min_length=1)
+    state: ReviewQueueState
+
+
+class ReviewQueueStateResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    card_id: str = Field(min_length=1)
+    state: ReviewQueueState
+    updated: bool = True
+
+
 class QuizAnswerRequest(LearningSignalRequest):
     quiz_id: str
     choice: str
@@ -172,6 +189,9 @@ __all__ = [
     "QuizAnswerRequest",
     "RatchetHistoryEntry",
     "ReviewAnswer",
+    "ReviewQueueState",
+    "ReviewQueueStateRequest",
+    "ReviewQueueStateResponse",
     "ReviewRateRequest",
     "ReviewSignalRequest",
     "RunArtifactEnvelope",

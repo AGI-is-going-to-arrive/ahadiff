@@ -134,6 +134,7 @@ export const ratchetHistoryEntrySchema = z.object({
   status: z.string(),
   timestamp: z.string(),
   weakest_dim: z.string(),
+  note_json: z.string().nullable().default(null),
 });
 
 export const ratchetHistoryResponseSchema = z.object({
@@ -192,6 +193,14 @@ export const reviewRateResponseSchema = z.object({
   inserted: z.boolean(),
   review: reviewUpdateSchema.optional(),
 });
+
+export const reviewQueueStateResponseSchema = z
+  .object({
+    card_id: z.string().min(1),
+    state: z.enum(['archived', 'suspended']),
+    updated: z.boolean(),
+  })
+  .strict();
 
 /* ─────────────── 8. SignalResponse (mark-wrong / srs-review / quiz / helpfulness) ─────────────── */
 
@@ -436,7 +445,51 @@ export const conceptGraphResponseSchema = z
   })
   .strict();
 
-/* ─────────────── 15. Stats (/api/stats) ─────────────── */
+/* ─────────────── 15. Learn tasks (/api/learn + /api/tasks*) ─────────────── */
+
+export const taskProgressResponseSchema = z
+  .object({
+    current: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative(),
+    message: z.string(),
+  })
+  .strict();
+
+export const taskInfoResponseSchema = z
+  .object({
+    task_id: z.string().min(1),
+    task_type: z.string(),
+    status: z.string(),
+    progress: taskProgressResponseSchema,
+    result: z.unknown().nullable().optional(),
+    error: z.string().nullable().optional(),
+    error_code: z.string().nullable().optional(),
+    created_at: z.string(),
+    started_at: z.string().nullable().optional(),
+    completed_at: z.string().nullable().optional(),
+    elapsed_seconds: z.number().finite().nonnegative().nullable().optional(),
+  })
+  .strict();
+
+export const taskListResponseSchema = z
+  .object({
+    tasks: z.array(taskInfoResponseSchema),
+  })
+  .strict();
+
+export const taskSubmitResponseSchema = z
+  .object({
+    task_id: z.string().min(1),
+  })
+  .strict();
+
+export const taskCancelResponseSchema = z
+  .object({
+    cancelled: z.boolean(),
+  })
+  .strict();
+
+/* ─────────────── 16. Stats (/api/stats) ─────────────── */
 
 export const statsResponseSchema = z
   .object({

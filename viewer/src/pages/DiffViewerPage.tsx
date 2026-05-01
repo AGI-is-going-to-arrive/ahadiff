@@ -39,6 +39,38 @@ function toSourceHunkSide(value: unknown): SourceHunkSide {
   return value === 'old' || value === 'new' || value === 'either' ? value : 'either';
 }
 
+function parseConfidence(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1) {
+    return value;
+  }
+  if (value === 'high') return 0.9;
+  if (value === 'medium') return 0.6;
+  if (value === 'low') return 0.3;
+  return undefined;
+}
+
+function parseConcepts(raw: Record<string, unknown>): string[] | undefined {
+  const source = Array.isArray(raw.concepts)
+    ? raw.concepts
+    : Array.isArray(raw.symbols)
+      ? raw.symbols
+      : undefined;
+  if (!source) return undefined;
+
+  const seen = new Set<string>();
+  const concepts: string[] = [];
+  for (const item of source) {
+    if (typeof item !== 'string') continue;
+    const label = item.trim();
+    if (!label) continue;
+    const key = label.normalize('NFC');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    concepts.push(label);
+  }
+  return concepts.length > 0 ? concepts : undefined;
+}
+
 function parseSourceHunks(
   raw: Record<string, unknown>,
   claimId: string,
@@ -90,6 +122,24 @@ function parseSourceHunks(
   };
 }
 
+function formatSourceGroupRef(group: ClaimSourceLineGroup): string {
+  const range =
+    group.line_end !== group.line_start && group.line_end > 0 ? `-${group.line_end}` : '';
+  return `${group.file}:${group.line_start}${range}`;
+}
+
+function formatClaimRef(claim: ClaimInspectorClaim): string {
+  if (!claim.file || claim.line_start <= 0) return '';
+  const range =
+    claim.line_end !== claim.line_start && claim.line_end > 0 ? `-${claim.line_end}` : '';
+  return `${claim.file}:${claim.line_start}${range}`;
+}
+
+function formatSourceLine(line: DiffSourceLine): string {
+  const marker = line.type === 'add' ? '+' : line.type === 'del' ? '-' : ' ';
+  return `${marker}${String(line.line_no).padStart(4, ' ')} ${line.text}`;
+}
+
 function parseClaims(content: string): DiffPageClaim[] {
   const result: DiffPageClaim[] = [];
   for (const line of content.split('\n')) {
@@ -104,6 +154,8 @@ function parseClaims(content: string): DiffPageClaim[] {
         : 'not_proven';
       const { anchors, hunks } = parseSourceHunks(raw, claimId);
       const firstAnchor = anchors[0];
+      const confidence = parseConfidence(raw.confidence);
+      const concepts = parseConcepts(raw);
       result.push({
         claim_id: claimId,
         verdict,
@@ -114,6 +166,8 @@ function parseClaims(content: string): DiffPageClaim[] {
         source_hunks: hunks,
         statement: String(raw.text ?? raw.statement ?? ''),
         evidence: raw.evidence != null ? String(raw.evidence) : undefined,
+        confidence,
+        concepts,
       });
     } catch {
       // Skip malformed JSONL lines
@@ -212,6 +266,20 @@ export default function DiffViewerPage() {
     () => claims.flatMap((claim) => claim.source_anchors),
     [claims],
   );
+  const selectedClaim = useMemo(
+    () =>
+      selectedClaimId
+        ? claimsWithSource.find((claim) => claim.claim_id === selectedClaimId) ?? null
+        : null,
+    [claimsWithSource, selectedClaimId],
+  );
+  const selectedSourceGroup = selectedClaim?.source_line_groups?.[0];
+  const selectedSourceLines = selectedSourceGroup?.lines ?? selectedClaim?.source_lines ?? [];
+  const selectedSourceRef = selectedSourceGroup
+    ? formatSourceGroupRef(selectedSourceGroup)
+    : selectedClaim
+      ? formatClaimRef(selectedClaim)
+      : '';
 
   /* Build mini-panel items from stats */
   const panelItems: MiniPanelItem[] = stats
@@ -258,6 +326,33 @@ export default function DiffViewerPage() {
                 onSelectClaim={handleSelect}
                 onStats={handleStats}
               />
+            )}
+
+            {phase === 'ready' && selectedClaim && (
+              <section
+                className={`diff-page__selected-hunk diff-page__selected-hunk--${selectedClaim.verdict}`}
+                aria-label={t('Diff.selected_source_hunk_title')}
+              >
+                <div className="diff-page__selected-hunk-header">
+                  <h2>{t('Diff.selected_source_hunk_title')}</h2>
+                  <div className="diff-page__selected-hunk-meta">
+                    {selectedClaim.claim_id}
+                    {selectedSourceRef ? ` · ${selectedSourceRef}` : ''}
+                  </div>
+                </div>
+                <blockquote className="diff-page__selected-hunk-claim">
+                  {selectedClaim.statement}
+                </blockquote>
+                {selectedSourceLines.length > 0 ? (
+                  <pre className="diff-page__selected-hunk-code">
+                    <code>{selectedSourceLines.map(formatSourceLine).join('\n')}</code>
+                  </pre>
+                ) : (
+                  <p className="diff-page__selected-hunk-empty">
+                    {t('Claim_inspector.source_unavailable')}
+                  </p>
+                )}
+              </section>
             )}
           </div>
 

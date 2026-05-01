@@ -6,6 +6,29 @@ import { useTranslation } from '../i18n/useTranslation';
 import type { ReviewAnswer } from '../api/types';
 import '../components/Review.css';
 
+type RatingSummary = Record<ReviewAnswer, number>;
+
+const REVIEW_RATING_ORDER: ReviewAnswer[] = ['wrong', 'hard', 'good', 'easy'];
+const REVIEW_RATING_LABEL_KEYS: Record<ReviewAnswer, string> = {
+  wrong: 'Review.rating_wrong',
+  hard: 'Review.rating_hard',
+  good: 'Review.rating_good',
+  easy: 'Review.rating_easy',
+};
+
+function createRatingSummary(): RatingSummary {
+  return {
+    wrong: 0,
+    hard: 0,
+    good: 0,
+    easy: 0,
+  };
+}
+
+function countRatings(summary: RatingSummary): number {
+  return REVIEW_RATING_ORDER.reduce((total, answer) => total + summary[answer], 0);
+}
+
 export default function ReviewPage() {
   const { t } = useTranslation();
   const cards = useReviewStore((s) => s.cards);
@@ -19,6 +42,7 @@ export default function ReviewPage() {
   const remaining = useReviewStore((s) => s.remaining);
 
   const [flipped, setFlipped] = useState(false);
+  const [sessionRatings, setSessionRatings] = useState<RatingSummary>(() => createRatingSummary());
   const abortRef = useRef<AbortController | null>(null);
   const flipBtnRef = useRef<HTMLButtonElement | null>(null);
 
@@ -35,9 +59,21 @@ export default function ReviewPage() {
     requestAnimationFrame(() => flipBtnRef.current?.focus());
   }, [currentIndex]);
 
+  useEffect(() => {
+    setSessionRatings(createRatingSummary());
+  }, [cards]);
+
   const handleRate = useCallback(
-    (answer: ReviewAnswer) => {
-      void rate(answer);
+    async (answer: ReviewAnswer) => {
+      const beforeIndex = useReviewStore.getState().currentIndex;
+      await rate(answer);
+      const afterIndex = useReviewStore.getState().currentIndex;
+      if (afterIndex > beforeIndex) {
+        setSessionRatings((prev) => ({
+          ...prev,
+          [answer]: prev[answer] + 1,
+        }));
+      }
     },
     [rate],
   );
@@ -60,10 +96,10 @@ export default function ReviewPage() {
         }
         return;
       }
-      if (e.key === '1') handleRate('wrong');
-      else if (e.key === '2') handleRate('hard');
-      else if (e.key === '3') handleRate('good');
-      else if (e.key === '4') handleRate('easy');
+      if (e.key === '1') void handleRate('wrong');
+      else if (e.key === '2') void handleRate('hard');
+      else if (e.key === '3') void handleRate('good');
+      else if (e.key === '4') void handleRate('easy');
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -126,6 +162,9 @@ export default function ReviewPage() {
   const total = cards.length;
   const card = currentCard();
   const done = currentIndex >= total;
+  const sessionReviewedCount = countRatings(sessionRatings);
+  const confidentCount = sessionRatings.good + sessionRatings.easy;
+  const followupCount = sessionRatings.wrong + sessionRatings.hard;
 
   // --- Empty queue ---
   if (total === 0) {
@@ -164,6 +203,35 @@ export default function ReviewPage() {
             <p className="review__complete-count">
               {t('Review.complete_hint', { count: total })}
             </p>
+            <div
+              className="review__complete-stats"
+              aria-label={t('Review.complete_stats_title')}
+            >
+              <div className="review__complete-stat">
+                <span>{t('Review.stat_completed')}</span>
+                <strong>{sessionReviewedCount || total}</strong>
+              </div>
+              <div className="review__complete-stat">
+                <span>{t('Review.stat_confident')}</span>
+                <strong>{confidentCount}</strong>
+              </div>
+              <div className="review__complete-stat">
+                <span>{t('Review.stat_followup')}</span>
+                <strong>{followupCount}</strong>
+              </div>
+            </div>
+            <div
+              className="review__rating-summary"
+              aria-label={t('Review.rating_summary_title')}
+            >
+              <h3>{t('Review.rating_summary_title')}</h3>
+              {REVIEW_RATING_ORDER.map((answer) => (
+                <div key={answer} className="review__rating-row">
+                  <span>{t(REVIEW_RATING_LABEL_KEYS[answer])}</span>
+                  <strong>{sessionRatings[answer]}</strong>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </AppShell>
@@ -251,7 +319,7 @@ export default function ReviewPage() {
                 <button
                   type="button"
                   className="srs-btn"
-                  onClick={() => handleRate('wrong')}
+                  onClick={() => void handleRate('wrong')}
                   disabled={rating}
                 >
                   <div className="srs-btn__label">{t('Review.rating_wrong')}</div>
@@ -261,7 +329,7 @@ export default function ReviewPage() {
                 <button
                   type="button"
                   className="srs-btn"
-                  onClick={() => handleRate('hard')}
+                  onClick={() => void handleRate('hard')}
                   disabled={rating}
                 >
                   <div className="srs-btn__label">{t('Review.rating_hard')}</div>
@@ -271,7 +339,7 @@ export default function ReviewPage() {
                 <button
                   type="button"
                   className="srs-btn srs-btn--good"
-                  onClick={() => handleRate('good')}
+                  onClick={() => void handleRate('good')}
                   disabled={rating}
                 >
                   <div className="srs-btn__label">{t('Review.rating_good')}</div>
@@ -281,7 +349,7 @@ export default function ReviewPage() {
                 <button
                   type="button"
                   className="srs-btn srs-btn--easy"
-                  onClick={() => handleRate('easy')}
+                  onClick={() => void handleRate('easy')}
                   disabled={rating}
                 >
                   <div className="srs-btn__label">{t('Review.rating_easy')}</div>

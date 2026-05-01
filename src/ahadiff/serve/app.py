@@ -23,7 +23,13 @@ from .routes_graph import get_concept_graph, get_graph_status
 from .routes_install import get_install_targets
 from .routes_learn import post_learn
 from .routes_locale import get_locale, put_locale
-from .routes_review import get_review_mastery, get_review_queue, get_weak_concepts, post_review_rate
+from .routes_review import (
+    get_review_mastery,
+    get_review_queue,
+    get_weak_concepts,
+    post_review_queue_state,
+    post_review_rate,
+)
 from .routes_runs import (
     get_claims,
     get_concepts,
@@ -102,6 +108,7 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
             Route("/api/ratchet/history", get_ratchet_history, methods=["GET"]),
             Route("/api/review/queue", get_review_queue, methods=["GET"]),
             Route("/api/review/rate", post_review_rate, methods=["POST"]),
+            Route("/api/review/queue-state", post_review_queue_state, methods=["POST"]),
             Route("/api/search", search_api, methods=["GET"]),
             Route("/api/concepts/weak", get_weak_concepts, methods=["GET"]),
             Route("/api/review/mastery", get_review_mastery, methods=["GET"]),

@@ -489,6 +489,21 @@ export async function installServeMock(page: Page): Promise<void> {
       }),
   );
   await page.route(
+    (url) => url.pathname === '/api/review/heatmap',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          entries: [
+            { date: '2026-04-25', review_count: 1, avg_rating: 3.0 },
+            { date: '2026-04-26', review_count: 3, avg_rating: 2.7 },
+            { date: '2026-04-27', review_count: 6, avg_rating: 2.9 },
+          ],
+        }),
+      }),
+  );
+  await page.route(
     (url) => url.pathname === '/api/signals/quiz-answer',
     (route) =>
       route.fulfill({
@@ -543,5 +558,23 @@ export async function installServeMock(page: Page): Promise<void> {
         contentType: 'application/json',
         body: JSON.stringify({ inserted: true }),
       }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/review/queue-state',
+    (route) => {
+      const body = route.request().postDataJSON() as {
+        card_id?: string;
+        state?: string;
+      } | null;
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          card_id: body?.card_id ?? 'card-1',
+          state: body?.state ?? 'archived',
+          updated: true,
+        }),
+      });
+    },
   );
 }

@@ -15,6 +15,10 @@
   .lesson__toc,
   .lesson-sidebar,
   .lesson__rail,
+  .search-overlay,
+  .skeleton,
+  .skeleton-group,
+  .loading-spinner,
   footer,
   [data-print-hide] {
     display: none !important;

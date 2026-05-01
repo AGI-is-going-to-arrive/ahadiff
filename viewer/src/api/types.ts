@@ -88,6 +88,7 @@ export interface RatchetHistoryEntry {
   status: RunStatus | string;
   timestamp: string;
   weakest_dim: string;
+  note_json: string | null;
 }
 
 export interface RatchetHistoryResponse {
@@ -130,7 +131,7 @@ export interface QuizAnswerPayload {
 
 export interface HelpfulnessPayload {
   idempotency_key: string;
-  target_kind?: 'file';
+  target_kind?: 'file' | 'section';
   target_id: string;
   payload?: Record<string, unknown>;
 }
@@ -168,6 +169,19 @@ export interface ReviewRatePayload {
   answer: ReviewAnswer;
   idempotency_key: string;
   peeked_this_session?: boolean;
+}
+
+export type ReviewQueueState = 'archived' | 'suspended';
+
+export interface ReviewQueueStatePayload {
+  card_id: string;
+  state: ReviewQueueState;
+}
+
+export interface ReviewQueueStateResponse {
+  card_id: string;
+  state: ReviewQueueState;
+  updated: boolean;
 }
 
 export interface MisconceptionCardItem {
@@ -247,4 +261,65 @@ export interface StatsResponse {
   avg_overall_score: number | null;
   weakest_dimensions: string[];
   last_run_at: string | null;
+}
+
+export interface ReviewHeatmapEntry {
+  date: string;
+  review_count: number;
+  avg_rating: number | null;
+}
+
+export interface ReviewHeatmapResponse {
+  entries: ReviewHeatmapEntry[];
+}
+
+export interface LearnSubmitPayload {
+  revision?: string;
+  last?: boolean;
+  author?: string;
+  staged?: boolean;
+  unstaged?: boolean;
+  include_untracked?: boolean;
+  since?: string;
+  patch?: string;
+  compare?: [string, string];
+  compare_dir?: [string, string];
+  patch_url?: string;
+  dry_run?: boolean;
+  use_graphify?: boolean | null;
+  force_learn?: boolean;
+  lang?: 'auto' | Locale;
+  privacy_mode?: 'strict_local' | 'redacted_remote' | 'explicit_remote';
+}
+
+export interface TaskProgressResponse {
+  current: number;
+  total: number;
+  message: string;
+}
+
+export interface TaskInfoResponse {
+  task_id: string;
+  task_type: string;
+  status: string;
+  progress: TaskProgressResponse;
+  result?: unknown | null;
+  error?: string | null;
+  error_code?: string | null;
+  created_at: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+  elapsed_seconds?: number | null;
+}
+
+export interface TaskListResponse {
+  tasks: TaskInfoResponse[];
+}
+
+export interface TaskSubmitResponse {
+  task_id: string;
+}
+
+export interface TaskCancelResponse {
+  cancelled: boolean;
 }

@@ -64,6 +64,7 @@ def _event(
     source_ref: str = "abc1234",
     event_id: str | None = None,
     timestamp: str | None = None,
+    note_json: str | None = None,
 ) -> ResultEvent:
     return ResultEvent(
         event_id=event_id or f"018f0f52-91c0-7abc-8123-{run_id[-1]:0>12}",
@@ -79,7 +80,7 @@ def _event(
         verdict="PASS",
         status=cast("Any", status),
         weakest_dim="evidence",
-        note_json=None,
+        note_json=note_json,
     )
 
 
@@ -1203,6 +1204,76 @@ def test_ratchet_history_uses_sql_pagination(
     assert calls == [(routes_runs_module._MAX_RATCHET_HISTORY, None)]  # pyright: ignore[reportPrivateUsage]
 
 
+def test_ratchet_history_returns_restricted_note_json(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    _write_run(state_dir, "run-1", finalized=True)
+    sync_result_event(
+        db_path,
+        _event(
+            "run-1",
+            status="keep",
+            note_json=json.dumps(
+                {
+                    "phase25": True,
+                    "phase25_note": "PHASE25: consecutive_discard_count=2",
+                    "trigger_reason": "consecutive_discard_count=2",
+                    "worktree_path": "/tmp/ahadiff-sensitive-worktree",
+                    "target_prompt": "internal prompt text",
+                    "stash_ref": "commit-sha",
+                },
+                sort_keys=True,
+            ),
+        ),
+    )
+    client = _client(state_dir)
+
+    entry = client.get("/api/ratchet/history").json()["history"][0]
+    detail = client.get("/api/run/run-1").json()
+    note = json.loads(entry["note_json"])
+    detail_note = json.loads(detail["note_json"])
+
+    assert note == {
+        "phase25": True,
+        "phase25_note": "PHASE25: consecutive_discard_count=2",
+        "trigger_reason": "consecutive_discard_count=2",
+    }
+    assert detail_note == note
+
+
+def test_ratchet_history_drops_oversized_or_deep_note_json(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    _write_run(state_dir, "run-1", finalized=True)
+    _write_run(state_dir, "run-2", finalized=True)
+    sync_result_event(
+        db_path,
+        _event(
+            "run-1",
+            status="keep",
+            note_json=json.dumps({"phase25_note": "x" * 70_000}),
+        ),
+    )
+    sync_result_event(
+        db_path,
+        _event(
+            "run-2",
+            status="keep",
+            note_json="[" * 20_000 + "0" + "]" * 20_000,
+        ),
+    )
+    client = _client(state_dir)
+
+    history = client.get("/api/ratchet/history").json()["history"]
+
+    assert {entry["run_id"]: entry["note_json"] for entry in history} == {
+        "run-1": None,
+        "run-2": None,
+    }
+
+
 def test_legacy_finalized_marker_without_digest_is_hidden(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     initialize_review_db(state_dir / "review.sqlite")
@@ -2020,6 +2091,11 @@ def test_empty_idempotency_key_is_rejected_before_signal_write(tmp_path: Path) -
             {"card_id": "", "answer": "good", "idempotency_key": "rate-empty-card"},
             "card_id",
         ),
+        (
+            "/api/review/queue-state",
+            {"card_id": "", "state": "archived"},
+            "card_id",
+        ),
     ],
 )
 def test_signal_write_rejects_empty_identifiers_before_db_write(
@@ -2172,6 +2248,56 @@ def test_review_queue_get_is_public_and_rate_requires_token(tmp_path: Path) -> N
     assert accepted.json()["inserted"] is True
     assert accepted.json()["review"]["rating"] == 3
     assert duplicate.json() == {"inserted": False}
+
+
+def test_review_queue_state_updates_card_without_review_log(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    cards_path = state_dir / "runs" / "run-1" / "quiz" / "cards.jsonl"
+    card = ReviewCard(
+        card_id="card-archive",
+        concept="retry loop",
+        run_id="run-1",
+        source_ref="abc1234",
+        fsrs_state="{}",
+        file_id="file-app",
+        display_path="src/app.py",
+        hunk_id="hunk-1",
+        hunk_hash="deadbeefcafe",
+        symbol="retry_once",
+    )
+    cards_path.parent.mkdir(parents=True, exist_ok=True)
+    cards_path.write_text(json.dumps(card.model_dump(mode="json")) + "\n", encoding="utf-8")
+    assert import_cards_from_jsonl(db_path, cards_path) == 1
+    client = _client(state_dir)
+
+    denied = client.post(
+        "/api/review/queue-state",
+        headers={"origin": "http://localhost:8765"},
+        json={"card_id": "card-archive", "state": "archived"},
+    )
+    accepted = client.post(
+        "/api/review/queue-state",
+        headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        json={"card_id": "card-archive", "state": "archived"},
+    )
+
+    assert denied.status_code == 403
+    assert accepted.status_code == 200
+    assert accepted.json() == {
+        "card_id": "card-archive",
+        "state": "archived",
+        "updated": True,
+    }
+    with connect_review_db(db_path) as connection:
+        row = connection.execute(
+            "SELECT card_state, archived_at_utc FROM cards WHERE id = 'card-archive'"
+        ).fetchone()
+        log_count = connection.execute("SELECT COUNT(*) FROM review_logs").fetchone()[0]
+    assert row["card_state"] == "archived"
+    assert row["archived_at_utc"] is not None
+    assert log_count == 0
 
 
 def test_review_rate_rejects_peeked_easy_answer(tmp_path: Path) -> None:

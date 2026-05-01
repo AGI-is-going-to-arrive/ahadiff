@@ -6,7 +6,7 @@ import RatchetChart from '../components/RatchetChart';
 import Skeleton, { SkeletonGroup } from '../components/Skeleton';
 import { ApiError } from '../api/client';
 import { getRatchetHistory } from '../api/runs';
-import { fetchStats } from '../api/stats';
+import { fetchReviewHeatmap, fetchStats } from '../api/stats';
 import { useRunsStore } from '../state/runs-store';
 import { useTranslation, type MessageKey } from '../i18n/useTranslation';
 import { useLocaleStore } from '../state/locale-store';
@@ -17,13 +17,8 @@ import '../components/Dashboard.css';
 const GraphifyCard = lazy(() => import('../components/GraphifyCard'));
 
 /**
- * Phase 4E: heatmap source-of-truth derivation.
- *
- * `/api/review/heatmap` (Phase 1E backend) is not consumed yet — the
- * dashboard derives a 30-day proxy from `runs[].created_at` so the widget
- * shows real activity instead of an empty grid. When the dedicated endpoint
- * lands we swap this helper for the API call without touching the
- * `<CalendarHeatmap>` consumer contract.
+ * Fallback heatmap for older serve instances where `/api/review/heatmap` is
+ * unavailable. Current serve uses the backend route as the source of truth.
  */
 function deriveHeatmapFromRuns(
   runs: ReadonlyArray<{ created_at: string }>,
@@ -59,6 +54,7 @@ export default function DashboardPage() {
 
   const [ratchetHistory, setRatchetHistory] = useState<RatchetHistoryEntry[]>([]);
   const [stats, setStats] = useState<StatsResponse | null>(null);
+  const [heatmapCells, setHeatmapCells] = useState<HeatmapCell[] | null>(null);
   const [statsUnavailable, setStatsUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +76,7 @@ export default function DashboardPage() {
     setLoading(true);
     setError(null);
     setStatsUnavailable(false);
+    setHeatmapCells(null);
     let failed = false;
     // 401/403 from any apiFetch means the bootstrap token was rejected. Show
     // a single auth-specific message instead of the generic fetch-failed one
@@ -114,6 +111,23 @@ export default function DashboardPage() {
       if (!controller.signal.aborted) {
         setStats(null);
         setStatsUnavailable(true);
+      }
+    }
+    try {
+      const heatmap = await fetchReviewHeatmap({ signal: controller.signal });
+      if (!controller.signal.aborted) {
+        setHeatmapCells(
+          heatmap.entries.map((entry) => ({
+            iso_date: entry.date,
+            count: entry.review_count,
+          })),
+        );
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      if (!failed && isAuthErr(err)) { setError('Error.auth_failed'); failed = true; }
+      if (!controller.signal.aborted) {
+        setHeatmapCells(null);
       }
     } finally {
       if (!controller.signal.aborted) {
@@ -322,11 +336,9 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* Ratchet chart + heatmap row.
-         * Phase 4E: 2-col layout pairs the trajectory chart with the new
-         * 30-day heatmap so the dashboard shows both quality and tempo at
-         * a glance. The heatmap derives counts from `runs.created_at`
-         * until `/api/review/heatmap` lands. */}
+        {/* Ratchet chart + heatmap row. The heatmap prefers the backend
+         * review log source and falls back to loaded-run dates when talking
+         * to an older serve process. */}
         <div className="dashboard__chart-row">
           <div className="ratchet-section">
             <div className="ratchet-section__card">
@@ -345,7 +357,7 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
-          <CalendarHeatmap cells={deriveHeatmapFromRuns(runs)} />
+          <CalendarHeatmap cells={heatmapCells ?? deriveHeatmapFromRuns(runs)} />
         </div>
 
         {/* Graphify status — optional, self-fetching, hidden when disabled */}

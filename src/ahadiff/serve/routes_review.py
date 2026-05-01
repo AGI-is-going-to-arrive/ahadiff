@@ -6,12 +6,19 @@ from typing import TYPE_CHECKING, Any
 from anyio import to_thread
 from starlette.responses import JSONResponse
 
-from ahadiff.contracts import DueReviewCardResponse, ReviewRateRequest, WeakConceptsResponse
+from ahadiff.contracts import (
+    DueReviewCardResponse,
+    ReviewQueueStateRequest,
+    ReviewQueueStateResponse,
+    ReviewRateRequest,
+    WeakConceptsResponse,
+)
 from ahadiff.review.database import (
     connect_review_db,
     initialize_review_db,
     list_due_cards,
     record_card_review_once,
+    set_card_queue_state,
 )
 
 from .auth import require_write_token, serve_state
@@ -57,6 +64,20 @@ async def post_review_rate(request: Request) -> JSONResponse:
     return JSONResponse({"inserted": True, "review": update.__dict__})
 
 
+async def post_review_queue_state(request: Request) -> JSONResponse:
+    require_write_token(request)
+    payload = await request.json()
+    body = ReviewQueueStateRequest.model_validate(payload)
+    state = serve_state(request)
+    await to_thread.run_sync(_review_queue_state_sync, state, body)
+    return JSONResponse(
+        ReviewQueueStateResponse(
+            card_id=body.card_id,
+            state=body.state,
+        ).model_dump(mode="json")
+    )
+
+
 def _review_rate_sync(state: ServeState, body: ReviewRateRequest) -> ReviewUpdate | None:
     with serve_repo_write_lock(state, command="serve review-rate"):
         initialize_review_db(state.review_db_path)
@@ -66,6 +87,16 @@ def _review_rate_sync(state: ServeState, body: ReviewRateRequest) -> ReviewUpdat
             answer=body.answer,
             idempotency_key=body.idempotency_key,
             peeked_this_session=body.peeked_this_session,
+        )
+
+
+def _review_queue_state_sync(state: ServeState, body: ReviewQueueStateRequest) -> None:
+    with serve_repo_write_lock(state, command="serve review-queue-state"):
+        initialize_review_db(state.review_db_path)
+        set_card_queue_state(
+            state.review_db_path,
+            card_id=body.card_id,
+            state=body.state,
         )
 
 
@@ -172,4 +203,10 @@ def _mastery_sync(db_path: Path, limit: int) -> dict[str, Any]:
     }
 
 
-__all__ = ["get_review_mastery", "get_review_queue", "get_weak_concepts", "post_review_rate"]
+__all__ = [
+    "get_review_mastery",
+    "get_review_queue",
+    "get_weak_concepts",
+    "post_review_queue_state",
+    "post_review_rate",
+]

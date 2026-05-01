@@ -4,6 +4,7 @@ import errno
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import stat
@@ -72,6 +73,28 @@ _MAX_JSON_OBJECT_BYTES = 1024 * 1024
 _MAX_LIST_RUNS = 500
 _MAX_LIST_RUN_PAGES = 100
 _MAX_RATCHET_HISTORY = 500
+_MAX_RATCHET_NOTE_CHARS = 64 * 1024
+_MAX_RATCHET_NOTE_VALUE_CHARS = 2048
+_MAX_RATCHET_NOTE_LIST_ITEMS = 32
+_RATCHET_HISTORY_NOTE_KEYS = frozenset(
+    {
+        "anchor_run_id",
+        "baseline_overall",
+        "cherry_pick_pending",
+        "degraded_flags",
+        "phase25",
+        "phase25_note",
+        "round",
+        "target_dimension",
+        "targeted_baseline_score",
+        "targeted_candidate_score",
+        "targeted_dimensions",
+        "targeted_failed_gates",
+        "targeted_passed",
+        "targeted_reason",
+        "trigger_reason",
+    }
+)
 _MAX_FINALIZED_ARTIFACTS = 64
 _MAX_FINALIZED_ARTIFACT_DIRS = 64
 _MAX_FINALIZED_ARTIFACT_BYTES = 16 * 1024 * 1024
@@ -299,7 +322,7 @@ def _run_detail_payload(
         base_ref=event.base_ref,
         prompt_version=event.prompt_version,
         eval_bundle_version=event.eval_bundle_version,
-        note_json=event.note_json,
+        note_json=_public_result_event_note_json(event.note_json),
         artifacts=_artifact_names(run_path),
         graphify_mode=cast("Any", graphify_mode),
         graphify_status=graphify_status,
@@ -412,6 +435,7 @@ def _ratchet_history_payload(
                     status=event.status,
                     timestamp=event.timestamp,
                     weakest_dim=event.weakest_dim,
+                    note_json=_public_result_event_note_json(event.note_json),
                 ).model_dump(mode="json")
             )
             if len(entries) >= limit:
@@ -426,6 +450,52 @@ def _ratchet_history_payload(
         if len(entries) >= limit or (pages_scanned >= _MAX_LIST_RUN_PAGES and next_cursor)
         else None,
     )
+
+
+def _public_result_event_note_json(note_json: str | None) -> str | None:
+    if note_json is None:
+        return None
+    if len(note_json) > _MAX_RATCHET_NOTE_CHARS:
+        return None
+    try:
+        parsed = safe_json_loads(note_json)
+    except (JSONDecodeError, RecursionError, ValueError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    payload: dict[str, object] = {}
+    for key, value in cast("dict[object, object]", parsed).items():
+        if not isinstance(key, str) or key not in _RATCHET_HISTORY_NOTE_KEYS:
+            continue
+        accepted, sanitized = _sanitize_ratchet_history_note_value(value)
+        if accepted:
+            payload[key] = sanitized
+    if not payload:
+        return None
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+
+def _sanitize_ratchet_history_note_value(value: object) -> tuple[bool, object]:
+    if value is None or isinstance(value, bool):
+        return True, value
+    if isinstance(value, int) and not isinstance(value, bool):
+        return True, value
+    if isinstance(value, float):
+        if math.isfinite(value):
+            return True, value
+        return False, None
+    if isinstance(value, str):
+        return True, value[:_MAX_RATCHET_NOTE_VALUE_CHARS]
+    if isinstance(value, list):
+        sanitized_items: list[object] = []
+        for item in cast("list[object]", value)[:_MAX_RATCHET_NOTE_LIST_ITEMS]:
+            if isinstance(item, list | dict):
+                continue
+            accepted, sanitized = _sanitize_ratchet_history_note_value(item)
+            if accepted:
+                sanitized_items.append(sanitized)
+        return True, sanitized_items
+    return False, None
 
 
 def _finalized_event_run_path(runs_dir: Path, event: ResultEvent) -> Path | None:

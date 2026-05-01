@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 import type { ClientRequest, IncomingMessage } from 'node:http';
 
 const DEV_API_ORIGIN = 'http://127.0.0.1:8765';
@@ -14,7 +15,22 @@ function rewriteLoopbackProxyHeaders(proxyReq: ClientRequest, _req: IncomingMess
 // Goal: keep initial gzip < 80KB by ensuring vendor / heavy modules ship in
 // their own async chunks. See plan §2G + risk R6 (d3-force / future graph).
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      injectRegister: 'script-defer',
+      manifest: false,
+      devOptions: {
+        enabled: false,
+      },
+      workbox: {
+        cleanupOutdatedCaches: true,
+        navigateFallback: './index.html',
+        globPatterns: ['**/*.{js,css,html,svg,png,json,webmanifest}'],
+      },
+    }),
+  ],
   base: './',
   server: {
     port: 5173,

@@ -2,7 +2,7 @@
 
 .claim-inspector {
   border-left: 1px solid var(--hair);
-  padding: var(--sp-6);
+  padding: 14px 14px 8px;
   position: sticky;
   top: 80px;
   align-self: start;
@@ -12,7 +12,7 @@
   border-radius: var(--radius-10);
   display: flex;
   flex-direction: column;
-  gap: var(--sp-4);
+  gap: var(--sp-3);
 }
 
 .claim-inspector--empty {
@@ -55,6 +55,8 @@
   font-size: 14px;
   cursor: pointer;
   flex-shrink: 0;
+  transition: background var(--dur-micro) var(--ease-out-quart),
+    color var(--dur-micro) var(--ease-out-quart);
 }
 
 .claim-inspector__action:hover {
@@ -65,6 +67,70 @@
 .claim-inspector__action:focus-visible {
   outline: 2px solid var(--accent-ink);
   outline-offset: 2px;
+}
+
+/* ── Filter chips ────────────────────────────────────────── */
+
+.claim-inspector__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.claim-inspector__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 11px;
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-pill);
+  background: var(--subtle);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: all var(--dur-xfast) var(--ease-out-quart);
+}
+
+.claim-inspector__chip:hover {
+  border-color: var(--hair-strong);
+  background: var(--elevated);
+}
+
+.claim-inspector__chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.claim-inspector__chip--on {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  border-color: #e6bfa6;
+}
+
+.claim-inspector__chip--on:hover {
+  background: var(--accent-soft);
+  border-color: #d9a682;
+}
+
+.claim-inspector__chip--rejected {
+  background: var(--danger-soft, #fdf1ec);
+  border-color: var(--danger-hair, #e4b8ae);
+  color: var(--danger);
+}
+
+.claim-inspector__chip--rejected.claim-inspector__chip--on {
+  background: var(--danger-soft, #fdf1ec);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.claim-inspector__chip-count {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
 }
 
 /* ── Claim text ──────────────────────────────────────────── */
@@ -92,6 +158,58 @@
   letter-spacing: 0.04em;
 }
 
+/* ── Confidence score ────────────────────────────────────── */
+
+.claim-inspector__item-conf,
+.claim-inspector__conf-score {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-inline-start: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Concepts ────────────────────────────────────────────── */
+
+.claim-inspector__concepts-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.claim-inspector__concepts-list,
+.claim-inspector__item-concepts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.claim-inspector__concept-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  background: var(--accent-softest);
+  border: 1px solid var(--accent-hair);
+  border-radius: var(--radius-6);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--accent-ink);
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Detail panel ────────────────────────────────────────── */
+
+.claim-inspector__detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  border-top: 1px dashed var(--hair);
+  padding-top: var(--sp-3);
+}
+
 /* ── Source hunk panel ───────────────────────────────────── */
 
 .claim-inspector__source {
@@ -99,7 +217,7 @@
   flex-direction: column;
   gap: var(--sp-2);
   border-top: 1px solid var(--hair);
-  padding-top: var(--sp-4);
+  padding-top: var(--sp-3);
 }
 
 .claim-inspector__source-ref {
@@ -160,17 +278,17 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: var(--sp-2) var(--sp-3);
+  padding: 13px 15px;
   background: var(--paper);
   border: 1px solid var(--hair);
   border-radius: var(--radius-8);
   cursor: pointer;
-  transition: border-color var(--duration-fast) var(--ease-out-quart),
-    box-shadow var(--duration-fast) var(--ease-out-quart);
+  transition: all var(--dur-xfast) var(--ease-out-quart);
 }
 
 .claim-inspector__item:hover {
   border-color: var(--hair-strong);
+  transform: translateX(2px);
 }
 
 .claim-inspector__item:focus-visible {
@@ -180,7 +298,30 @@
 
 .claim-inspector__item--selected {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  transform: translateX(2px);
+}
+
+.claim-inspector__item--contradicted,
+.claim-inspector__item--rejected {
+  background: var(--danger-soft, #fdf1ec);
+  border-color: var(--danger-hair, #e4b8ae);
+}
+
+.claim-inspector__item--contradicted:hover,
+.claim-inspector__item--rejected:hover {
+  border-color: var(--danger);
+}
+
+.claim-inspector__item--contradicted.claim-inspector__item--selected,
+.claim-inspector__item--rejected.claim-inspector__item--selected {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-soft, #fdf1ec), inset 3px 0 0 var(--danger);
+}
+
+.claim-inspector__item--contradicted .claim-inspector__item-id,
+.claim-inspector__item--rejected .claim-inspector__item-id {
+  color: var(--danger);
 }
 
 .claim-inspector__item-row {
@@ -191,14 +332,15 @@
 
 .claim-inspector__item-id {
   font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
   color: var(--muted);
 }
 
 .claim-inspector__item-text {
-  font-size: 0.9rem;
-  line-height: 1.5;
+  font-family: var(--font-serif);
+  font-size: 13.5px;
+  line-height: 1.55;
   color: var(--ink);
   margin: 0;
 }
@@ -207,6 +349,20 @@
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--muted);
+}
+
+/* ── Touch target improvement ───────────────────────────── */
+
+@media (pointer: coarse) {
+  .claim-inspector__chip {
+    min-height: 44px;
+    padding: 0 12px;
+  }
+
+  .claim-inspector__action {
+    width: 44px;
+    height: 44px;
+  }
 }
 
 /* ── Mobile: collapse to stacked ─────────────────────────── */
@@ -235,13 +391,62 @@
   .claim-inspector__source-code {
     border-color: CanvasText;
   }
+
+  .claim-inspector__chip {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .claim-inspector__chip--on {
+    background: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+
+  .claim-inspector__concept-tag {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .claim-inspector__item {
+    border-color: CanvasText;
+  }
+
+  .claim-inspector__item--selected {
+    outline: 2px solid Highlight;
+  }
 }
 
 /* ── Reduced motion ──────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
-  .claim-inspector {
+  .claim-inspector,
+  .claim-inspector__item,
+  .claim-inspector__chip,
+  .claim-inspector__action {
     animation: none;
     transition: none;
+  }
+
+  .claim-inspector__item:hover {
+    transform: none;
+  }
+}
+
+/* ── Print ───────────────────────────────────────────────── */
+
+@media print {
+  .claim-inspector {
+    position: static;
+    max-height: none;
+    border-left: none;
+    break-inside: avoid;
+    box-shadow: none;
+  }
+
+  .claim-inspector__filters {
+    display: none;
   }
 }
