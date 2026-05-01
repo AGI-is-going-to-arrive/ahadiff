@@ -106,14 +106,10 @@ class TestTransportTargetPrivateIPs:
         assert transport_target_for_base_url("http://169.254.1.1:8000", local_hosts=()) == "local"
 
     def test_ipv6_link_local_is_local(self) -> None:
-        assert (
-            transport_target_for_base_url("http://[fe80::1]:8000", local_hosts=()) == "local"
-        )
+        assert transport_target_for_base_url("http://[fe80::1]:8000", local_hosts=()) == "local"
 
     def test_ipv6_ula_is_local(self) -> None:
-        assert (
-            transport_target_for_base_url("http://[fd00::1]:8000", local_hosts=()) == "local"
-        )
+        assert transport_target_for_base_url("http://[fd00::1]:8000", local_hosts=()) == "local"
 
     def test_public_ip_is_remote(self) -> None:
         assert transport_target_for_base_url("http://8.8.8.8:8000", local_hosts=()) == "remote"
@@ -215,43 +211,50 @@ class TestValidateRemoteUrl:
 
 class TestPinUrlToIp:
     def test_http_url_rewrite(self) -> None:
-        pinned_url, host, sni = _pin_url_to_ip(
-            "http://api.example.com:8000/v1/chat", "1.2.3.4"
-        )
+        pinned_url, host, sni = _pin_url_to_ip("http://api.example.com:8000/v1/chat", "1.2.3.4")
         assert pinned_url == "http://1.2.3.4:8000/v1/chat"
         assert host == "api.example.com:8000"
         assert sni is None  # No SNI for plain HTTP.
 
     def test_https_url_rewrite_sets_sni(self) -> None:
-        pinned_url, host, sni = _pin_url_to_ip(
-            "https://api.example.com/v1/chat", "93.184.216.34"
-        )
+        pinned_url, host, sni = _pin_url_to_ip("https://api.example.com/v1/chat", "93.184.216.34")
         assert pinned_url == "https://93.184.216.34/v1/chat"
         assert host == "api.example.com"
         assert sni == "api.example.com"
 
     def test_ipv6_pinned_address_bracketed(self) -> None:
-        pinned_url, host, sni = _pin_url_to_ip(
-            "https://api.example.com:443/v1", "2001:db8::1"
-        )
+        pinned_url, host, sni = _pin_url_to_ip("https://api.example.com:443/v1", "2001:db8::1")
         assert pinned_url == "https://[2001:db8::1]:443/v1"
         assert host == "api.example.com:443"
         assert sni == "api.example.com"
 
     def test_port_preserved(self) -> None:
-        pinned_url, host, _sni = _pin_url_to_ip(
-            "http://api.example.com:9090/path", "10.0.0.1"
-        )
+        pinned_url, host, _sni = _pin_url_to_ip("http://api.example.com:9090/path", "10.0.0.1")
         assert ":9090" in pinned_url
         assert host == "api.example.com:9090"
 
     def test_no_port_in_url(self) -> None:
-        pinned_url, host, sni = _pin_url_to_ip(
-            "https://api.example.com/v1", "8.8.8.8"
-        )
+        pinned_url, host, sni = _pin_url_to_ip("https://api.example.com/v1", "8.8.8.8")
         assert pinned_url == "https://8.8.8.8/v1"
         assert host == "api.example.com"
         assert sni == "api.example.com"
+
+    def test_userinfo_password_is_preserved(self) -> None:
+        pinned_url, host, sni = _pin_url_to_ip(
+            "https://apiuser:secret@api.example.com/v1", "93.184.216.34"
+        )
+        assert pinned_url == "https://apiuser:secret@93.184.216.34/v1"
+        assert host == "api.example.com"
+        assert sni == "api.example.com"
+
+    @pytest.mark.parametrize("bad_url", ["/v1/chat", "https:///v1"])
+    def test_rejects_url_without_hostname(self, bad_url: str) -> None:
+        with pytest.raises(SafetyError, match="unable to determine hostname"):
+            _pin_url_to_ip(bad_url, "93.184.216.34")
+
+    def test_rejects_empty_pinned_ip(self) -> None:
+        with pytest.raises(SafetyError, match="pinned IP must not be empty"):
+            _pin_url_to_ip("https://api.example.com/v1", "")
 
 
 # ---------------------------------------------------------------------------
@@ -291,9 +294,7 @@ class TestDnsRebindingPrevention:
 
         # Use the pinned IP to rewrite the URL — the second DNS
         # lookup never influences the connection target.
-        pinned_url, host, sni = _pin_url_to_ip(
-            "https://evil.example.com/v1", pinned_ip
-        )
+        pinned_url, host, sni = _pin_url_to_ip("https://evil.example.com/v1", pinned_ip)
         assert "93.184.216.34" in pinned_url
         assert "evil.example.com" not in pinned_url
         assert "evil.example.com" in host
@@ -413,10 +414,7 @@ class TestEntropyEdgeCases:
             ".dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"
         )
         result = redaction_pipeline(f"token: {jwt}")
-        assert any(
-            f.secret_type == "jwt_token"
-            for f in result.primary_target.findings
-        )
+        assert any(f.secret_type == "jwt_token" for f in result.primary_target.findings)
 
     def test_short_string_not_flagged(self) -> None:
         from ahadiff.safety.redact import redaction_pipeline
@@ -439,9 +437,7 @@ class TestEntropyEdgeCases:
     def test_hex_hash_exempt_from_entropy(self) -> None:
         from ahadiff.safety.redact import redaction_pipeline
 
-        result = redaction_pipeline(
-            "commit: abcdef1234567890abcdef1234567890abcdef12"
-        )
+        result = redaction_pipeline("commit: abcdef1234567890abcdef1234567890abcdef12")
         high_entropy_findings = [
             f for f in result.primary_target.findings if f.secret_type == "high_entropy_string"
         ]

@@ -8,6 +8,7 @@ type LearnPhase = 'idle' | 'submitting' | 'running' | 'completed' | 'failed' | '
 const POLL_INTERVAL_MS = 1500;
 
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
+let submitGeneration = 0;
 
 interface LearnState {
   phase: LearnPhase;
@@ -77,12 +78,15 @@ export const useLearnStore = create<LearnState>(() => ({
   submitLearn: async (payload) => {
     const { phase } = useLearnStore.getState();
     if (phase === 'submitting' || phase === 'running' || phase === 'cancelling') return;
+    const generation = ++submitGeneration;
     useLearnStore.setState({ phase: 'submitting', error: null, errorCode: null, task: null, taskId: null });
     try {
       const res = await startLearnTask(payload ?? {});
+      if (submitGeneration !== generation || useLearnStore.getState().phase !== 'submitting') return;
       useLearnStore.setState({ phase: 'running', taskId: res.task_id });
       schedulePoll();
     } catch (err: unknown) {
+      if (submitGeneration !== generation || useLearnStore.getState().phase !== 'submitting') return;
       if (err instanceof DOMException && err.name === 'AbortError') return;
       const msg = err instanceof Error ? err.message : 'Submit failed';
       useLearnStore.setState({ phase: 'failed', error: msg, errorCode: 'submit_failed' });
@@ -101,6 +105,7 @@ export const useLearnStore = create<LearnState>(() => ({
   },
 
   dismiss: () => {
+    submitGeneration += 1;
     stopPolling();
     useLearnStore.setState({ phase: 'idle', taskId: null, task: null, error: null, errorCode: null });
   },

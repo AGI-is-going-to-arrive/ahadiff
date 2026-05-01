@@ -754,17 +754,13 @@ def validate_remote_url(base_url: str) -> str | None:
     try:
         addr = ip_address(hostname)
         if _is_non_public_ip(addr):
-            raise SafetyError(
-                f"private/reserved IP {hostname} not allowed in remote privacy mode"
-            )
+            raise SafetyError(f"private/reserved IP {hostname} not allowed in remote privacy mode")
         return None
     except ValueError:
         pass
     resolved = _resolve_hostname_ips(hostname)
     if not resolved:
-        raise SafetyError(
-            f"hostname {hostname!r} could not be resolved in remote privacy mode"
-        )
+        raise SafetyError(f"hostname {hostname!r} could not be resolved in remote privacy mode")
     for addr in resolved:
         if _is_non_public_ip(addr):
             raise SafetyError(
@@ -789,12 +785,18 @@ def _pin_url_to_ip(
       ``https`` (used for TLS SNI); ``None`` for plain ``http``.
     """
     parsed = urlparse(url)
-    original_hostname = parsed.hostname or ""
+    original_hostname = parsed.hostname
+    if not original_hostname:
+        raise SafetyError(f"unable to determine hostname for base_url {url!r}")
+    if not pinned_ip:
+        raise SafetyError("pinned IP must not be empty")
     # Bracket IPv6 addresses in URLs.
     ip_host = f"[{pinned_ip}]" if ":" in pinned_ip else pinned_ip
     # Rebuild netloc preserving port and userinfo.
     port_suffix = f":{parsed.port}" if parsed.port is not None else ""
-    userinfo = f"{parsed.username}@" if parsed.username else ""
+    userinfo = ""
+    if "@" in parsed.netloc:
+        userinfo = parsed.netloc.rsplit("@", 1)[0] + "@"
     new_netloc = f"{userinfo}{ip_host}{port_suffix}"
     pinned_url = parsed._replace(netloc=new_netloc).geturl()
     sni_hostname = original_hostname if parsed.scheme == "https" else None

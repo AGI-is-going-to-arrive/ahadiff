@@ -89,6 +89,30 @@ describe('learn store', () => {
     expect(useLearnStore.getState().error).toBeNull();
   });
 
+  it('dismiss during submit prevents a stale submit response from reviving the task', async () => {
+    let resolveStart: ((v: TaskSubmitResponse) => void) | null = null;
+    mockedStartLearnTask.mockImplementation(
+      () =>
+        new Promise<TaskSubmitResponse>((resolve) => {
+          resolveStart = resolve;
+        }),
+    );
+
+    const promise = useLearnStore.getState().submitLearn();
+    expect(useLearnStore.getState().phase).toBe('submitting');
+
+    useLearnStore.getState().dismiss();
+    expect(useLearnStore.getState().phase).toBe('idle');
+
+    resolveStart!({ task_id: 'task-stale' });
+    await promise;
+
+    expect(useLearnStore.getState().phase).toBe('idle');
+    expect(useLearnStore.getState().taskId).toBeNull();
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(mockedGetTask).not.toHaveBeenCalled();
+  });
+
   // 4. submitLearn while busy
   it('submitLearn is a no-op while already running', async () => {
     useLearnStore.setState({ phase: 'running', taskId: 'task-existing' });

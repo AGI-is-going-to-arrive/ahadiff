@@ -46,6 +46,8 @@ export default function Topbar({
   const learnPhase = useLearnStore((s) => s.phase);
   const submitLearn = useLearnStore((s) => s.submitLearn);
   const isBusy = learnPhase === 'submitting' || learnPhase === 'running' || learnPhase === 'cancelling';
+  const newRunLabel = isBusy ? t('Topbar.new_run_running') : t('Topbar.new_run');
+  const newRunAriaLabel = isBusy ? t('Topbar.new_run_running') : t('Topbar.new_run_aria');
 
   return (
     <header className="topbar" data-glass>
@@ -112,10 +114,10 @@ export default function Topbar({
           type="button"
           className={`topbar__btn topbar__btn--primary${isBusy ? ' topbar__btn--busy' : ''}`}
           disabled={isBusy}
-          aria-label={t('Topbar.new_run_aria')}
+          aria-label={newRunAriaLabel}
           onClick={() => void submitLearn()}
         >
-          {isBusy ? t('Topbar.new_run_running') : t('Topbar.new_run')}
+          {newRunLabel}
         </button>
         <LanguageSwitcher />
       </div>

@@ -374,7 +374,7 @@ class TestLabelSanitization:
     def test_event_handler_in_edge_relation(self) -> None:
         data = {
             "nodes": [{"id": "a", "label": "A"}, {"id": "b", "label": "B"}],
-            "links": [{"source": "a", "target": "b", "relation": 'onerror=alert(1)'}],
+            "links": [{"source": "a", "target": "b", "relation": "onerror=alert(1)"}],
         }
         g = parse_graph_json_text(json.dumps(data))
         assert "onerror" not in (g.links[0].relation or "").lower()
@@ -663,10 +663,7 @@ class TestEdgeCountCap:
         max_edges = 50_000
 
         nodes = [{"id": f"n{i}", "label": f"N{i}"} for i in range(max_edges + 2)]
-        links = [
-            {"source": f"n{i}", "target": f"n{i + 1}"}
-            for i in range(max_edges + 1)
-        ]
+        links = [{"source": f"n{i}", "target": f"n{i + 1}"} for i in range(max_edges + 1)]
         data: dict[str, Any] = {"nodes": nodes, "links": links}
         with pytest.raises(InputError, match="edge limit"):
             parse_graph_json_text(json.dumps(data))
@@ -715,6 +712,26 @@ class TestDuplicateNodeId:
         g = parse_graph_json_text(json.dumps(data))
         assert len(g.nodes) == 1
         assert g.nodes[0].label == "V3"
+
+    def test_empty_string_node_ids_are_dropped(self) -> None:
+        data: dict[str, Any] = {
+            "nodes": [
+                {"id": "", "label": "Empty 1"},
+                {"id": "", "label": "Empty 2"},
+            ],
+            "links": [{"source": "", "target": ""}],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert g.nodes == []
+        assert g.links == []
+
+    def test_integer_node_id_is_dropped(self) -> None:
+        data: dict[str, Any] = {
+            "nodes": [{"id": 123, "label": "Integer ID"}],
+            "links": [],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert g.nodes == []
 
 
 # ---------------------------------------------------------------------------
@@ -775,6 +792,32 @@ class TestDanglingEdgeRemoval:
         assert len(g.nodes) == 2
         assert len(g.links) == 1
 
+    def test_null_edge_endpoints_are_dropped(self) -> None:
+        data: dict[str, Any] = {
+            "nodes": [{"id": "a", "label": "A"}],
+            "links": [
+                {"source": None, "target": "a"},
+                {"source": "a", "target": None},
+            ],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert len(g.links) == 0
+
+    def test_all_dangling_edges_are_dropped(self) -> None:
+        data: dict[str, Any] = {
+            "nodes": [{"id": "a", "label": "A"}],
+            "links": [{"source": "missing", "target": "ghost"}],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert len(g.links) == 0
+
+    @pytest.mark.parametrize("nodes", [None, {"id": "a", "label": "A"}])
+    def test_non_list_nodes_parse_as_empty_graph(self, nodes: object) -> None:
+        data: dict[str, Any] = {"nodes": nodes, "links": []}
+        g = parse_graph_json_text(json.dumps(data))
+        assert g.nodes == []
+        assert g.links == []
+
 
 # ---------------------------------------------------------------------------
 # Graph SHA256 provenance (5B)
@@ -794,8 +837,13 @@ class TestGraphSha256Provenance:
             cwd=str(tmp_path),
             check=True,
             capture_output=True,
-            env={**__import__("os").environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
-                 "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"},
+            env={
+                **__import__("os").environ,
+                "GIT_AUTHOR_NAME": "t",
+                "GIT_AUTHOR_EMAIL": "t@t",
+                "GIT_COMMITTER_NAME": "t",
+                "GIT_COMMITTER_EMAIL": "t@t",
+            },
         )
 
         graph_data: dict[str, Any] = {

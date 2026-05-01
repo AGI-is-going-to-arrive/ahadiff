@@ -19,16 +19,19 @@
 .learn-banner--cancelling,
 .learn-banner--submitting {
   border-color: var(--accent);
+  background: var(--accent-softer);
   background: color-mix(in srgb, var(--accent) 6%, var(--elevated));
 }
 
 .learn-banner--completed {
   border-color: var(--success);
+  background: var(--success-soft);
   background: color-mix(in srgb, var(--success) 6%, var(--elevated));
 }
 
 .learn-banner--failed {
   border-color: var(--danger);
+  background: var(--danger-soft);
   background: color-mix(in srgb, var(--danger) 6%, var(--elevated));
 }
 
@@ -68,6 +71,7 @@
   font-size: 12px;
   padding: 1px 6px;
   border-radius: var(--r-sm);
+  background: var(--danger-soft);
   background: color-mix(in srgb, var(--danger) 12%, transparent);
   color: var(--danger);
 }
@@ -99,6 +103,7 @@
 .learn-banner__bar-track {
   height: 4px;
   border-radius: 2px;
+  background: var(--accent-soft);
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   overflow: hidden;
 }
@@ -116,6 +121,7 @@
   display: inline-block;
   width: 16px;
   height: 16px;
+  border: 2px solid var(--hair-strong);
   border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
   border-top-color: var(--accent);
   border-radius: 50%;

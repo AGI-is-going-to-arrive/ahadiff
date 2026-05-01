@@ -204,15 +204,24 @@ def _deduplicate_nodes(
     more likely to be corrections.
     """
     seen: dict[str, int] = {}
+    missing_id_indices: list[int] = []
+    dropped_invalid_ids = 0
     for idx, node in enumerate(nodes):
         node_id = node.get("id")
-        if isinstance(node_id, str) and node_id in seen:
+        if "id" not in node:
+            missing_id_indices.append(idx)
+            continue
+        if not isinstance(node_id, str) or node_id == "":
+            dropped_invalid_ids += 1
+            continue
+        if node_id in seen:
             _log.warning("Duplicate graph node ID %r (keeping last occurrence)", node_id)
-        if isinstance(node_id, str):
-            seen[node_id] = idx
-    if len(seen) == len(nodes):
+        seen[node_id] = idx
+    if dropped_invalid_ids:
+        _log.warning("Dropped %d graph node(s) with invalid IDs", dropped_invalid_ids)
+    if len(seen) + len(missing_id_indices) == len(nodes):
         return nodes  # no duplicates — fast path
-    keep_indices = set(seen.values())
+    keep_indices = set(seen.values()) | set(missing_id_indices)
     return [n for i, n in enumerate(nodes) if i in keep_indices]
 
 
@@ -257,9 +266,7 @@ def parse_graph_json_text(text: str) -> GraphifyGraph:
 
     # --- collect valid node IDs (reject empty-string IDs) ---
     node_ids: frozenset[str] = frozenset(
-        str(n["id"])
-        for n in deduped_nodes
-        if isinstance(n.get("id"), str) and n["id"] != ""
+        str(n["id"]) for n in deduped_nodes if isinstance(n.get("id"), str) and n["id"] != ""
     )
 
     # --- edge count cap (check raw count first to bound work) ---
@@ -268,9 +275,7 @@ def parse_graph_json_text(text: str) -> GraphifyGraph:
         raw_links_typed = cast("list[dict[str, object]]", raw_links)
         if len(raw_links_typed) > _MAX_GRAPH_EDGES:
             n = len(raw_links_typed)
-            raise InputError(
-                f"Graph has {n} edges, exceeding the {_MAX_GRAPH_EDGES} edge limit"
-            )
+            raise InputError(f"Graph has {n} edges, exceeding the {_MAX_GRAPH_EDGES} edge limit")
         obj["links"] = _remove_dangling_edges(raw_links_typed, node_ids)
 
     try:

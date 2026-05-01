@@ -94,9 +94,7 @@ class _AncestryCache:
                 timeout=15,
             )
             ancestor_list = [
-                line.strip().lower()
-                for line in result.stdout.splitlines()
-                if line.strip()
+                line.strip().lower() for line in result.stdout.splitlines() if line.strip()
             ]
             shas = frozenset(ancestor_list)
             if head_sha is not None and ancestor_list:
@@ -125,10 +123,7 @@ class _AncestryCache:
         if lowered in ancestors:
             self._cache[source_ref] = True
             return True
-        if (
-            self._prefix_index is not None
-            and _SHORT_SHA_RE.fullmatch(source_ref)
-        ):
+        if self._prefix_index is not None and _SHORT_SHA_RE.fullmatch(source_ref):
             indexed_sha = self._prefix_index.get(lowered)
             if indexed_sha is not None and _short_sha_resolves_to(
                 self.workspace_root,

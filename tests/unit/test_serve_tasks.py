@@ -181,9 +181,17 @@ class TestTaskInfoResponseStableFields:
         )
         d = info.model_dump(mode="json")
         stable_keys = {
-            "task_id", "task_type", "status", "progress", "error",
-            "error_code", "created_at", "started_at", "completed_at",
-            "elapsed_seconds", "result_summary",
+            "task_id",
+            "task_type",
+            "status",
+            "progress",
+            "error",
+            "error_code",
+            "created_at",
+            "started_at",
+            "completed_at",
+            "elapsed_seconds",
+            "result_summary",
         }
         for key in stable_keys:
             assert key in d, f"stable field {key} missing"

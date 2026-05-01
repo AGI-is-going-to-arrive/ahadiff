@@ -190,14 +190,16 @@
 }
 
 .topbar__btn--primary {
-  background: var(--accent);
-  color: var(--on-accent);
-  border-color: transparent;
+  background: var(--ink-blackletter);
+  color: #FBF5EE;
+  border-color: var(--ink-blackletter);
+  letter-spacing: 0.01em;
   font-weight: 600;
 }
 
 .topbar__btn--primary:hover:not(:disabled) {
-  filter: brightness(1.08);
+  background: var(--ink-strong);
+  border-color: var(--ink-strong);
 }
 
 .topbar__btn--primary:focus-visible {
@@ -211,7 +213,7 @@
 }
 
 .topbar__btn--primary.topbar__btn--busy {
-  animation: topbar-pulse 1.8s ease-in-out infinite;
+  animation: topbar-pulse 1.8s var(--ease-out-quart) infinite;
 }
 
 @keyframes topbar-pulse {
@@ -322,10 +324,6 @@
     display: none;
   }
 
-  .topbar__btn--primary {
-    display: none;
-  }
-
   .topbar__crumb-root {
     font-size: 14px;
   }
@@ -350,6 +348,13 @@
     flex-shrink: 0;
     min-width: 0;
     max-width: 50vw;
+  }
+
+  .topbar__btn--primary {
+    max-width: 132px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-inline: var(--sp-2);
   }
 
   .lang-switcher {
@@ -408,6 +413,10 @@
   .topbar__btn:active,
   .lang-switcher__btn:active {
     transform: none !important;
+  }
+
+  .topbar__btn--busy {
+    animation: none;
   }
 }
 

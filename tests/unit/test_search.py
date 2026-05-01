@@ -748,10 +748,13 @@ def test_import_graph_nodes_replaces_on_reimport(tmp_path: Path) -> None:
     import_graph_nodes(db, [{"id": "n1", "label": "OldLabel"}])
     assert count_graph_nodes(db) == 1
 
-    import_graph_nodes(db, [
-        {"id": "n2", "label": "NewLabel"},
-        {"id": "n3", "label": "AnotherLabel"},
-    ])
+    import_graph_nodes(
+        db,
+        [
+            {"id": "n2", "label": "NewLabel"},
+            {"id": "n3", "label": "AnotherLabel"},
+        ],
+    )
     assert count_graph_nodes(db) == 2
 
 
@@ -819,13 +822,14 @@ def test_search_all_with_graph_prefers_fts_over_inmemory(tmp_path: Path) -> None
 
     db = tmp_path / "review.sqlite"
     initialize_review_db(db)
-    import_graph_nodes(db, [
-        {"id": "n1", "label": "task_runner", "kind": "class", "file_path": "src/runner.py"},
-    ])
-
-    graph = parse_graph_json_text(
-        '{"nodes": [{"id": "n1", "label": "task_runner"}], "links": []}'
+    import_graph_nodes(
+        db,
+        [
+            {"id": "n1", "label": "task_runner", "kind": "class", "file_path": "src/runner.py"},
+        ],
     )
+
+    graph = parse_graph_json_text('{"nodes": [{"id": "n1", "label": "task_runner"}], "links": []}')
 
     results = search_all_with_graph(
         db,
@@ -844,9 +848,7 @@ def test_search_all_with_graph_falls_back_to_inmemory(tmp_path: Path) -> None:
     db = tmp_path / "review.sqlite"
     initialize_review_db(db)
 
-    graph = parse_graph_json_text(
-        '{"nodes": [{"id": "n1", "label": "task_runner"}], "links": []}'
-    )
+    graph = parse_graph_json_text('{"nodes": [{"id": "n1", "label": "task_runner"}], "links": []}')
 
     results = search_all_with_graph(
         db,
@@ -864,10 +866,7 @@ def test_large_graph_import_and_search(tmp_path: Path) -> None:
 
     db = tmp_path / "review.sqlite"
     initialize_review_db(db)
-    nodes = [
-        {"id": f"node-{i}", "label": f"Component_{i}", "kind": "class"}
-        for i in range(200)
-    ]
+    nodes = [{"id": f"node-{i}", "label": f"Component_{i}", "kind": "class"} for i in range(200)]
     nodes.append({"id": "special", "label": "UniqueSearchTarget", "kind": "function"})
     count = import_graph_nodes(db, nodes)
     assert count == 201

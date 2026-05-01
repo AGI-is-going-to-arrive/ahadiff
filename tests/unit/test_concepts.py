@@ -150,8 +150,7 @@ def test_append_concepts_links_graphify_nodes_for_git_inputs(tmp_path: Path) -> 
 
     assert concepts_path is not None
     [payload] = [
-        json.loads(line)
-        for line in concepts_path.read_text(encoding="utf-8").splitlines()
+        json.loads(line) for line in concepts_path.read_text(encoding="utf-8").splitlines()
     ]
     assert payload["graphify_node_id"] == "node-retry-loop"
     [db_payload] = load_concepts_from_db(workspace_root / ".ahadiff" / "review.sqlite")

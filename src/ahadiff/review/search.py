@@ -198,9 +198,7 @@ def search_graph_nodes_fts(
                 (sanitized, limit),
             ).fetchall()
         except sqlite3.OperationalError as exc:
-            raise StorageError(
-                f"FTS search failed for {_ALLOWED_GRAPH_FTS_TABLE}: {exc}"
-            ) from exc
+            raise StorageError(f"FTS search failed for {_ALLOWED_GRAPH_FTS_TABLE}: {exc}") from exc
     return tuple(
         SearchResult(
             source_table="graph_nodes",

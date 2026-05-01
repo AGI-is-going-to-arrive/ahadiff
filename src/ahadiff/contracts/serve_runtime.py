@@ -113,7 +113,10 @@ class TaskResultSummary(BaseModel):
     run_id: str | None = Field(default=None, description="Run ID produced by learn, if any.")
     status: str | None = Field(default=None, description="Pipeline outcome status string.")
     overall: float | None = Field(
-        default=None, ge=0, le=100, allow_inf_nan=False,
+        default=None,
+        ge=0,
+        le=100,
+        allow_inf_nan=False,
         description="Overall score (0-100).",
     )
     verdict: str | None = Field(default=None, description="Evaluation verdict.")
@@ -135,9 +138,7 @@ class TaskInfoResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     task_id: str = Field(min_length=1, description="Unique task identifier.")
     task_type: str = Field(description="Task kind (e.g. 'learn').")
-    status: str = Field(
-        description="One of: pending, running, completed, failed, cancelled."
-    )
+    status: str = Field(description="One of: pending, running, completed, failed, cancelled.")
     progress: TaskProgressResponse = Field(description="Current progress snapshot.")
     result: Any = Field(default=None, description="Raw result (unstable, prefer result_summary).")
     result_summary: TaskResultSummary | None = Field(
