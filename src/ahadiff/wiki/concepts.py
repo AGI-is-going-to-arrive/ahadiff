@@ -4,6 +4,7 @@ import json
 import re
 import tempfile
 import unicodedata
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -14,6 +15,7 @@ from ahadiff.git.repo import open_repo, run_git
 
 _MAX_VISIBLE_CONCEPTS_BYTES = 10 * 1024 * 1024
 _MAX_ANCESTRY_CHECKS = 200
+_MAX_ANCESTRY_INDEX_COUNT = 10_000
 _EXPORT_CONCEPTS_BATCH_SIZE = 1000
 _SHORT_SHA_RE = re.compile(r"[0-9a-fA-F]{4,39}")
 _DB_CURSOR_PREFIX = "db:"
@@ -44,24 +46,72 @@ class _AncestryCache:
         self.head_ref = head_ref
         self._cache: dict[str, bool] = {}
         self._ancestors: frozenset[str] | None = None
+        self._prefix_index: dict[str, str] | None = None
+        self._head_sha: str | None = None
         self._call_count = 0
+
+    @property
+    def _db_path(self) -> Path:
+        return self.workspace_root / ".ahadiff" / "review.sqlite"
+
+    def _resolve_head_sha(self) -> str | None:
+        if self._head_sha is not None:
+            return self._head_sha
+        try:
+            result = run_git(
+                self.workspace_root,
+                "rev-parse",
+                "--verify",
+                f"{self.head_ref}^{{commit}}",
+                timeout=15,
+            )
+            self._head_sha = result.stdout.strip().lower() or None
+        except Exception:
+            self._head_sha = None
+        return self._head_sha
 
     def _ensure_ancestors(self) -> frozenset[str]:
         if self._ancestors is not None:
             return self._ancestors
         shas: frozenset[str]
+        head_sha = self._resolve_head_sha()
+        if head_sha is not None:
+            with suppress(Exception):
+                from ahadiff.review.database import load_commit_ancestry
+
+                cached = load_commit_ancestry(self._db_path, head_sha=head_sha)
+                if cached:
+                    shas = frozenset(item.lower() for item in cached if item)
+                    self._ancestors = shas
+                    self._prefix_index = _build_prefix_index(shas)
+                    return shas
         try:
             result = run_git(
                 self.workspace_root,
                 "rev-list",
                 self.head_ref,
-                f"--max-count={_MAX_ANCESTRY_CHECKS}",
+                f"--max-count={_MAX_ANCESTRY_INDEX_COUNT}",
                 timeout=15,
             )
-            shas = frozenset(line.strip() for line in result.stdout.splitlines() if line.strip())
+            ancestor_list = [
+                line.strip().lower()
+                for line in result.stdout.splitlines()
+                if line.strip()
+            ]
+            shas = frozenset(ancestor_list)
+            if head_sha is not None and ancestor_list:
+                with suppress(Exception):
+                    from ahadiff.review.database import replace_commit_ancestry
+
+                    replace_commit_ancestry(
+                        self._db_path,
+                        head_sha=head_sha,
+                        ancestors=ancestor_list,
+                    )
         except Exception:
             shas = frozenset()
         self._ancestors = shas
+        self._prefix_index = _build_prefix_index(shas)
         return shas
 
     def is_visible(self, source_ref: object) -> bool:
@@ -71,14 +121,22 @@ class _AncestryCache:
         if cached is not None:
             return cached
         ancestors = self._ensure_ancestors()
-        if source_ref in ancestors:
+        lowered = source_ref.lower()
+        if lowered in ancestors:
             self._cache[source_ref] = True
             return True
-        if _SHORT_SHA_RE.fullmatch(source_ref) and any(
-            a.startswith(source_ref.lower()) for a in ancestors
+        if (
+            self._prefix_index is not None
+            and _SHORT_SHA_RE.fullmatch(source_ref)
         ):
-            self._cache[source_ref] = True
-            return True
+            indexed_sha = self._prefix_index.get(lowered)
+            if indexed_sha is not None and _short_sha_resolves_to(
+                self.workspace_root,
+                source_ref,
+                indexed_sha,
+            ):
+                self._cache[source_ref] = True
+                return True
         self._call_count += 1
         if self._call_count > _MAX_ANCESTRY_CHECKS:
             self._cache[source_ref] = False
@@ -86,6 +144,39 @@ class _AncestryCache:
         visible = _is_ancestor(self.workspace_root, source_ref, self.head_ref)
         self._cache[source_ref] = visible
         return visible
+
+
+def _build_prefix_index(full_shas: frozenset[str]) -> dict[str, str]:
+    """Build a prefix lookup from 4..39-char prefixes to full SHAs.
+
+    Only stores unique prefixes — ambiguous prefixes are excluded.
+    """
+    index: dict[str, str | None] = {}
+    for sha in full_shas:
+        normalized_sha = sha.lower()
+        for length in range(4, min(len(normalized_sha), 40)):
+            prefix = normalized_sha[:length]
+            if prefix in index:
+                if index[prefix] != normalized_sha:
+                    index[prefix] = None
+            else:
+                index[prefix] = normalized_sha
+    return {k: v for k, v in index.items() if v is not None}
+
+
+def _short_sha_resolves_to(workspace_root: Path, source_ref: str, expected_sha: str) -> bool:
+    try:
+        result = run_git(
+            workspace_root,
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            f"{source_ref}^{{commit}}",
+            timeout=15,
+        )
+    except Exception:
+        return False
+    return result.stdout.strip().lower() == expected_sha.lower()
 
 
 def append_concepts(
@@ -145,13 +236,31 @@ def append_concepts(
         )
         if entry.get("branch_hint") is None and branch_hint is not None:
             entry["branch_hint"] = branch_hint
-    ordered = [existing[key] for key in sorted(existing)]
+    ordered = _link_graphify_entries(workspace_root, [existing[key] for key in sorted(existing)])
     _write_jsonl_snapshot(concepts_path, ordered)
     db_path = workspace_root / ".ahadiff" / "review.sqlite"
     from ahadiff.review.database import upsert_concepts_batch
 
     upsert_concepts_batch(db_path, ordered)
     return concepts_path
+
+
+def _link_graphify_entries(
+    workspace_root: Path,
+    entries: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    graph_path = workspace_root / ".ahadiff" / "graphify" / "graph.json"
+    if not entries or not graph_path.exists():
+        return entries
+    try:
+        from ahadiff.core.paths import reject_leaf_symlink_or_reparse
+        from ahadiff.graphify import link_concepts_to_entries, parse_graph_json
+
+        reject_leaf_symlink_or_reparse(graph_path, label="graphify graph")
+        graph = parse_graph_json(graph_path)
+        return link_concepts_to_entries(graph, entries)
+    except (InputError, OSError, ValueError):
+        return entries
 
 
 def load_visible_concepts(
@@ -433,6 +542,7 @@ def _concept_entry(
         "updated_by_runs": [run_id],
         "related_claims": list(occurrence.related_claims),
         "file_refs": list(occurrence.file_refs),
+        "graphify_node_id": None,
     }
 
 

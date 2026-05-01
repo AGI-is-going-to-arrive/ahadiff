@@ -394,7 +394,9 @@ function DiffLineRow({
   isSelected: boolean;
   onSelectClaim?: (claimId: string) => void;
 }) {
-  const cls = `diff-line diff-line--${line.type}${claimId ? ' diff-line--claim-linked' : ''}${isSelected ? ' diff-line--claim-selected' : ''}`;
+  const isHunk = line.type === 'hunk';
+  const cls = `diff-line diff-line--${line.type}${isHunk ? ' diff-hunk-marker' : ''}${claimId ? ' diff-line--claim-linked' : ''}${isSelected ? ' diff-line--claim-selected' : ''}`;
+  const hunkMarkerProps = isHunk ? { 'data-hunk-mark': '§' } : {};
   const body = (
     <>
       <span className="diff-line__lineno" aria-hidden="true">
@@ -416,6 +418,7 @@ function DiffLineRow({
         className={cls}
         data-claim-id={claimId}
         data-line-anchor={formatLineAnchor(line)}
+        {...hunkMarkerProps}
         aria-pressed={isSelected}
         aria-label={`${formatLineAnchor(line)} ${claimId}`}
         onClick={() => onSelectClaim(claimId)}
@@ -426,7 +429,7 @@ function DiffLineRow({
   }
 
   return (
-    <div className={cls} data-line-anchor={formatLineAnchor(line)}>
+    <div className={cls} data-line-anchor={formatLineAnchor(line)} {...hunkMarkerProps}>
       {body}
     </div>
   );

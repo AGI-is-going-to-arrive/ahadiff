@@ -35,8 +35,9 @@ export default function ClaimBadge({ verdict }: ClaimBadgeProps) {
   const { t } = useTranslation();
   const cls = verdictClassMap[verdict] ?? 'claim-badge--not-proven';
   const glyph = verdictGlyphMap[verdict] ?? verdictGlyphMap.not_proven;
+  const stampClass = verdict === 'verified' ? ' badge-stamp' : '';
   return (
-    <span className={`claim-badge ${cls}`}>
+    <span className={`claim-badge ${cls}${stampClass}`}>
       <span aria-hidden="true" className="claim-badge__glyph">{glyph}</span>
       {t(`Claim.${verdict}`)}
     </span>

@@ -28,3 +28,13 @@
   color: var(--danger);
   font-family: var(--font-sans);
 }
+
+/* ---------- Forced-colors (Windows High Contrast) ---------- */
+@media (forced-colors: active) {
+  .concepts-page__error {
+    color: LinkText;
+  }
+  .concepts-page__loading {
+    color: GrayText;
+  }
+}

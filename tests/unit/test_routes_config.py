@@ -450,6 +450,29 @@ def test_get_doctor_review_db_pass_when_present(tmp_path: Path) -> None:
     assert "review.sqlite present" in checks["review_db"]["message"]
 
 
+def test_get_doctor_review_db_oserror_reports_generic_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "review.sqlite").write_bytes(b"not sqlite")
+
+    def blocked_connect(*_args: Any, **_kwargs: Any) -> Any:
+        raise PermissionError(str(state_dir / "review.sqlite"))
+
+    monkeypatch.setattr(routes_config_module, "safe_sqlite_connect", blocked_connect)
+    client = _client(state_dir)
+
+    response = client.get("/api/doctor")
+
+    assert response.status_code == 200
+    checks = {c["name"]: c for c in response.json()["checks"]}
+    assert checks["review_db_quick_check"]["status"] == "fail"
+    assert checks["review_db_quick_check"]["message"] == "review.sqlite quick_check failed"
+    assert str(state_dir) not in response.text
+
+
 def test_get_doctor_review_db_warn_when_missing(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     state_dir.mkdir()

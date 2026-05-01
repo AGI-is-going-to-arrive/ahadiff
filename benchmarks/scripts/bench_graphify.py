@@ -14,7 +14,8 @@ SRC_DIR = REPO_ROOT / "src"
 if SRC_DIR.is_dir():
     sys.path.insert(0, str(SRC_DIR))
 
-FIXTURE_GRAPH = (
+LARGE_FIXTURE_GRAPH = REPO_ROOT / "benchmarks" / "graphify" / "large_graph.json"
+LEGACY_FIXTURE_GRAPH = (
     REPO_ROOT
     / "benchmarks"
     / "fixtures"
@@ -179,20 +180,25 @@ def bench_slice(graph_path: Path, iterations: int = 50) -> dict[str, Any]:
 
 
 def main() -> None:
-    if not FIXTURE_GRAPH.is_file():
-        print(f"ERROR: fixture not found: {FIXTURE_GRAPH}", file=sys.stderr)
+    fixture_graph = LARGE_FIXTURE_GRAPH if LARGE_FIXTURE_GRAPH.is_file() else LEGACY_FIXTURE_GRAPH
+    if not fixture_graph.is_file():
+        print(f"ERROR: fixture not found: {fixture_graph}", file=sys.stderr)
         sys.exit(1)
 
     results: list[dict[str, Any]] = []
     for bench_fn in (bench_parse, bench_match, bench_link, bench_search, bench_slice):
-        result = bench_fn(FIXTURE_GRAPH)
+        result = bench_fn(fixture_graph)
         results.append(result)
         print(
             f"  {result['operation']}: mean={result['mean_ms']}ms median={result['median_ms']}ms",
             file=sys.stderr,
         )
 
-    payload = {"benchmarks": results, "fixture": str(FIXTURE_GRAPH.name)}
+    payload = {
+        "benchmarks": results,
+        "fixture": str(fixture_graph.name),
+        "status": "ok",
+    }
     json.dump(payload, sys.stdout, indent=2, sort_keys=True, ensure_ascii=False)
     sys.stdout.write("\n")
 

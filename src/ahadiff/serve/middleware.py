@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
@@ -269,4 +270,32 @@ def _expected_port(state: object) -> int | None:
     return port if isinstance(port, int) else None
 
 
-__all__ = ["LoopbackGuardMiddleware"]
+_DEFAULT_REQUEST_TIMEOUT = 30.0
+_LONG_REQUEST_TIMEOUT = 600.0
+_LONG_TIMEOUT_PREFIXES = ("/api/learn", "/api/tasks/")
+
+
+class RequestTimeoutMiddleware(BaseHTTPMiddleware):
+    """Abort requests that exceed a wall-clock deadline.
+
+    Default: 30 s for most endpoints, 600 s for ``/api/learn`` and
+    ``/api/tasks/{id}/progress`` (SSE streams and long-running submits).
+    """
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        timeout = _request_timeout_for(request.url.path)
+        try:
+            async with asyncio.timeout(timeout):
+                return await call_next(request)
+        except TimeoutError:
+            return _error_response("request_timeout", status_code=504)
+
+
+def _request_timeout_for(path: str) -> float:
+    for prefix in _LONG_TIMEOUT_PREFIXES:
+        if path.startswith(prefix):
+            return _LONG_REQUEST_TIMEOUT
+    return _DEFAULT_REQUEST_TIMEOUT
+
+
+__all__ = ["LoopbackGuardMiddleware", "RequestTimeoutMiddleware"]

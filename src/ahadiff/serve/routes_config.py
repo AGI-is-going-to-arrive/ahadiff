@@ -10,6 +10,7 @@ from anyio import to_thread
 from starlette.responses import JSONResponse
 
 from ahadiff.contracts.serve_doctor import DoctorCheck, DoctorResponse
+from ahadiff.core.sqlite_util import safe_sqlite_connect
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -242,7 +243,7 @@ def _run_doctor_checks(state: ServeState) -> dict[str, Any]:
     )
     if review_db.is_file():
         try:
-            with sqlite3.connect(review_db) as conn:
+            with safe_sqlite_connect(review_db) as conn:
                 row = conn.execute("PRAGMA quick_check").fetchone()
             quick_check_ok = row is not None and row[0] == "ok"
             checks.append(
@@ -255,7 +256,7 @@ def _run_doctor_checks(state: ServeState) -> dict[str, Any]:
                     category="storage",
                 )
             )
-        except sqlite3.DatabaseError:
+        except (sqlite3.DatabaseError, OSError):
             checks.append(
                 _doctor_check(
                     "review_db_quick_check",

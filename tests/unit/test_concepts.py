@@ -3,13 +3,20 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 import ahadiff.wiki.concepts as concepts_module
 from ahadiff.core.errors import InputError
 from ahadiff.quiz.schemas import QuizEvidence, QuizQuestion
-from ahadiff.review.database import count_concepts, initialize_review_db, upsert_concept
+from ahadiff.review.database import (
+    count_concepts,
+    initialize_review_db,
+    load_commit_ancestry,
+    load_concepts_from_db,
+    upsert_concept,
+)
 from ahadiff.wiki.concepts import (
     append_concepts,
     compute_term_key,
@@ -95,6 +102,60 @@ def test_append_concepts_writes_run_local_file_for_non_git_inputs(tmp_path: Path
     assert payload["lang"] == "en"
     assert payload["aliases"] == []
     assert not (workspace_root / ".ahadiff" / "concepts.jsonl").exists()
+
+
+def test_append_concepts_links_graphify_nodes_for_git_inputs(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "repo"
+    workspace_root.mkdir()
+    _init_git_repo(workspace_root)
+    head_sha = _commit_file(workspace_root, "src/app.py", "value = 1\n", "base")
+    graph_dir = workspace_root / ".ahadiff" / "graphify"
+    graph_dir.mkdir(parents=True)
+    (graph_dir / "graph.json").write_text(
+        json.dumps(
+            {
+                "nodes": [
+                    {
+                        "id": "node-retry-loop",
+                        "label": "retry loop",
+                        "kind": "function",
+                        "file_path": "src/app.py",
+                    }
+                ],
+                "links": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    run_path = workspace_root / ".ahadiff" / "runs" / "run_git"
+    run_path.mkdir(parents=True)
+    questions = (
+        QuizQuestion(
+            question="What changed?",
+            expected_answer="The helper now retries.",
+            source_claims=["claim_1"],
+            concepts=["retry loop"],
+            evidence=[QuizEvidence(file="src/app.py", line=1)],
+        ),
+    )
+
+    concepts_path = append_concepts(
+        workspace_root=workspace_root,
+        run_path=run_path,
+        run_id="run_git",
+        source_kind="git_ref",
+        source_ref=head_sha,
+        questions=questions,
+    )
+
+    assert concepts_path is not None
+    [payload] = [
+        json.loads(line)
+        for line in concepts_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert payload["graphify_node_id"] == "node-retry-loop"
+    [db_payload] = load_concepts_from_db(workspace_root / ".ahadiff" / "review.sqlite")
+    assert db_payload["graphify_node_id"] == "node-retry-loop"
 
 
 def test_compute_term_key_supports_cjk_terms() -> None:
@@ -677,3 +738,106 @@ def test_concepts_jsonl_fifo_rejected(tmp_path: Path) -> None:
     os.mkfifo(fifo_path)
     page = load_concepts_page_from_storage(state_dir, limit=10)
     assert page.entries == ()
+
+
+def test_concept_entry_includes_graphify_node_id_field(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = workspace_root / ".ahadiff" / "runs" / "run_local"
+    run_path.mkdir(parents=True)
+    questions = (
+        QuizQuestion(
+            question="What changed?",
+            expected_answer="A retry loop was added.",
+            source_claims=["claim_1"],
+            concepts=["retry loop"],
+            evidence=[QuizEvidence(file="src/app.py", line=2)],
+        ),
+    )
+    concepts_path = append_concepts(
+        workspace_root=workspace_root,
+        run_path=run_path,
+        run_id="run_local",
+        source_kind="patch_file",
+        source_ref="sha256:deadbeef",
+        questions=questions,
+    )
+    assert concepts_path is not None
+    [entry] = concepts_path.read_text(encoding="utf-8").splitlines()
+    payload = json.loads(entry)
+    assert "graphify_node_id" in payload
+    assert payload["graphify_node_id"] is None
+
+
+def test_ancestry_prefix_index_resolves_short_sha_without_linear_scan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ahadiff.wiki.concepts import _AncestryCache  # pyright: ignore[reportPrivateUsage]
+
+    workspace_root = tmp_path / "repo"
+    workspace_root.mkdir()
+    _init_git_repo(workspace_root)
+    head_sha = _commit_file(workspace_root, "src/app.py", "v = 1\n", "init")
+
+    cache = _AncestryCache(workspace_root, "HEAD")
+    ancestors = cache._ensure_ancestors()  # pyright: ignore[reportPrivateUsage]
+    assert head_sha in ancestors
+
+    assert cache._prefix_index is not None  # pyright: ignore[reportPrivateUsage]
+    assert head_sha[:8] in cache._prefix_index  # pyright: ignore[reportPrivateUsage]
+
+    fallback_calls: list[str] = []
+
+    def fake_is_ancestor(_repo_root: Path, source_ref: str, _head_ref: str) -> bool:
+        fallback_calls.append(source_ref)
+        return False
+
+    monkeypatch.setattr(concepts_module, "_is_ancestor", fake_is_ancestor)
+
+    assert cache.is_visible(head_sha[:8]) is True
+    assert fallback_calls == []
+
+
+def test_ancestry_cache_persists_and_reuses_commit_index(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ahadiff.wiki.concepts import _AncestryCache  # pyright: ignore[reportPrivateUsage]
+
+    workspace_root = tmp_path / "repo"
+    workspace_root.mkdir()
+    _init_git_repo(workspace_root)
+    base_sha = _commit_file(workspace_root, "src/app.py", "v = 1\n", "base")
+    head_sha = _commit_file(workspace_root, "src/app.py", "v = 2\n", "head")
+
+    cache = _AncestryCache(workspace_root, "HEAD")
+    ancestors = cache._ensure_ancestors()  # pyright: ignore[reportPrivateUsage]
+    assert {base_sha, head_sha}.issubset(ancestors)
+    stored = load_commit_ancestry(
+        workspace_root / ".ahadiff" / "review.sqlite",
+        head_sha=head_sha,
+    )
+    assert stored[:2] == (head_sha, base_sha)
+
+    original_run_git = concepts_module.run_git
+
+    def guarded_run_git(repo_root: Path, *args: Any, **kwargs: Any) -> Any:
+        if args and args[0] == "rev-list":
+            raise AssertionError("cached ancestry should avoid git rev-list")
+        return original_run_git(repo_root, *args, **kwargs)
+
+    monkeypatch.setattr(concepts_module, "run_git", guarded_run_git)
+    cached = _AncestryCache(workspace_root, "HEAD")
+    assert head_sha in cached._ensure_ancestors()  # pyright: ignore[reportPrivateUsage]
+    assert cached.is_visible(base_sha[:8]) is True
+
+
+def test_ancestry_prefix_index_excludes_ambiguous_prefixes() -> None:
+    from ahadiff.wiki.concepts import _build_prefix_index  # pyright: ignore[reportPrivateUsage]
+
+    sha_a = "abcdef1234567890abcdef1234567890abcdef12"
+    sha_b = "abcdef9999567890abcdef1234567890abcdef12"
+    index = _build_prefix_index(frozenset({sha_a, sha_b}))
+    assert "abcdef" not in index
+    assert sha_a[:20] in index
+    assert sha_b[:20] in index

@@ -455,6 +455,16 @@ export const taskProgressResponseSchema = z
   })
   .strict();
 
+export const taskResultSummarySchema = z
+  .object({
+    run_id: z.string().nullable(),
+    status: z.string().nullable(),
+    overall: z.number().finite().nullable(),
+    verdict: z.string().nullable(),
+    warnings: z.array(z.string()).default([]),
+  })
+  .strict();
+
 export const taskInfoResponseSchema = z
   .object({
     task_id: z.string().min(1),
@@ -462,6 +472,7 @@ export const taskInfoResponseSchema = z
     status: z.string(),
     progress: taskProgressResponseSchema,
     result: z.unknown().nullable().optional(),
+    result_summary: taskResultSummarySchema.nullable().optional(),
     error: z.string().nullable().optional(),
     error_code: z.string().nullable().optional(),
     created_at: z.string(),

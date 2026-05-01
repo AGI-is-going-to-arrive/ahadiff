@@ -11,10 +11,13 @@ from ahadiff.core.errors import InputError
 from ahadiff.review.database import (
     CURRENT_SCHEMA_VERSION,
     connect_review_db,
+    count_commit_ancestry,
     count_concepts,
     import_concepts_from_jsonl,
     initialize_review_db,
+    load_commit_ancestry,
     load_concepts_from_db,
+    replace_commit_ancestry,
     upsert_concept,
     upsert_concepts_batch,
 )
@@ -53,8 +56,8 @@ class _BarrierConnectionProxy:
         return getattr(self._connection, name)
 
 
-def test_schema_version_is_4() -> None:
-    assert CURRENT_SCHEMA_VERSION == 4
+def test_schema_version_is_7() -> None:
+    assert CURRENT_SCHEMA_VERSION == 7
 
 
 def test_concepts_table_created_on_init(tmp_path: Path) -> None:
@@ -66,6 +69,7 @@ def test_concepts_table_created_on_init(tmp_path: Path) -> None:
             for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
     assert "concepts" in tables
+    assert "commit_ancestry" in tables
 
 
 def test_review_logs_has_review_duration(tmp_path: Path) -> None:
@@ -74,6 +78,22 @@ def test_review_logs_has_review_duration(tmp_path: Path) -> None:
     with connect_review_db(db) as conn:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(review_logs)").fetchall()}
     assert "review_duration" in columns
+
+
+def test_commit_ancestry_helpers_round_trip(tmp_path: Path) -> None:
+    db = tmp_path / "review.sqlite"
+    head_sha = "a" * 40
+    ancestors = ("a" * 40, "b" * 40, "c" * 40)
+
+    inserted = replace_commit_ancestry(db, head_sha=head_sha, ancestors=ancestors)
+
+    assert inserted == 3
+    assert load_commit_ancestry(db, head_sha=head_sha) == ancestors
+    assert count_commit_ancestry(db) == 3
+
+    replace_commit_ancestry(db, head_sha=head_sha, ancestors=("d" * 40,))
+    assert load_commit_ancestry(db, head_sha=head_sha) == ("d" * 40,)
+    assert count_commit_ancestry(db) == 1
 
 
 def test_upsert_concept_insert(tmp_path: Path) -> None:
@@ -490,7 +510,7 @@ def test_migration_v2_to_v3(tmp_path: Path) -> None:
 
     with connect_review_db(db) as conn:
         version = conn.execute("PRAGMA user_version").fetchone()[0]
-        assert version == 4
+        assert version == CURRENT_SCHEMA_VERSION
         # concepts table should exist
         tables = {
             row["name"]
@@ -540,3 +560,236 @@ def test_import_concepts_from_jsonl_fails_fast_on_malformed(tmp_path: Path) -> N
 
     with pytest.raises(InputError, match="invalid concepts JSONL line"):
         import_concepts_from_jsonl(db, bad)
+
+
+def test_graphify_node_id_column_exists_on_fresh_db(tmp_path: Path) -> None:
+    db = tmp_path / "review.sqlite"
+    initialize_review_db(db)
+    with connect_review_db(db) as conn:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(concepts)").fetchall()}
+    assert "graphify_node_id" in columns
+
+
+def test_upsert_concepts_batch_stores_graphify_node_id(tmp_path: Path) -> None:
+    db = tmp_path / "review.sqlite"
+    initialize_review_db(db)
+    entries: list[dict[str, object]] = [
+        {
+            "term_key": "closure",
+            "concept": "Closure",
+            "introduced_by_run": "r1",
+            "source_refs": ["ref1"],
+            "related_claims": [],
+            "file_refs": [],
+            "graphify_node_id": "node-42",
+        },
+    ]
+    upsert_concepts_batch(db, entries)
+    [row] = load_concepts_from_db(db, limit=10)
+    assert row["graphify_node_id"] == "node-42"
+
+
+def test_upsert_concepts_batch_graphify_node_id_defaults_to_none(tmp_path: Path) -> None:
+    db = tmp_path / "review.sqlite"
+    initialize_review_db(db)
+    entries: list[dict[str, object]] = [
+        {
+            "term_key": "closure",
+            "concept": "Closure",
+            "introduced_by_run": "r1",
+            "source_refs": [],
+            "related_claims": [],
+            "file_refs": [],
+        },
+    ]
+    upsert_concepts_batch(db, entries)
+    [row] = load_concepts_from_db(db, limit=10)
+    assert row["graphify_node_id"] is None
+
+
+def test_upsert_preserves_existing_graphify_node_id_when_new_is_none(tmp_path: Path) -> None:
+    db = tmp_path / "review.sqlite"
+    initialize_review_db(db)
+    upsert_concepts_batch(
+        db,
+        [
+            {
+                "term_key": "x",
+                "concept": "X",
+                "introduced_by_run": "r1",
+                "source_refs": [],
+                "related_claims": [],
+                "file_refs": [],
+                "graphify_node_id": "node-1",
+            }
+        ],
+    )
+    upsert_concepts_batch(
+        db,
+        [
+            {
+                "term_key": "x",
+                "concept": "X updated",
+                "introduced_by_run": "r2",
+                "source_refs": [],
+                "related_claims": [],
+                "file_refs": [],
+            }
+        ],
+    )
+    [row] = load_concepts_from_db(db, limit=10)
+    assert row["graphify_node_id"] == "node-1"
+    assert row["concept"] == "X updated"
+
+
+def test_upsert_overwrites_graphify_node_id_when_new_is_provided(tmp_path: Path) -> None:
+    db = tmp_path / "review.sqlite"
+    initialize_review_db(db)
+    upsert_concepts_batch(
+        db,
+        [
+            {
+                "term_key": "x",
+                "concept": "X",
+                "introduced_by_run": "r1",
+                "source_refs": [],
+                "related_claims": [],
+                "file_refs": [],
+                "graphify_node_id": "old-node",
+            }
+        ],
+    )
+    upsert_concepts_batch(
+        db,
+        [
+            {
+                "term_key": "x",
+                "concept": "X",
+                "introduced_by_run": "r2",
+                "source_refs": [],
+                "related_claims": [],
+                "file_refs": [],
+                "graphify_node_id": "new-node",
+            }
+        ],
+    )
+    [row] = load_concepts_from_db(db, limit=10)
+    assert row["graphify_node_id"] == "new-node"
+
+
+def test_migration_v4_to_v5_adds_graphify_node_id(tmp_path: Path) -> None:
+    db = tmp_path / "review.sqlite"
+    from ahadiff.core.sqlite_util import safe_sqlite_connect
+
+    conn = safe_sqlite_connect(db, journal_mode="WAL", foreign_keys=True, defensive=True)
+    conn.execute("PRAGMA user_version=4")
+    conn.execute(
+        "CREATE TABLE scheduler_presets ("
+        "preset_id TEXT PRIMARY KEY, weights TEXT NOT NULL, "
+        "desired_retention REAL NOT NULL DEFAULT 0.9, "
+        "scheduler_version TEXT NOT NULL, "
+        "total_reviews INTEGER NOT NULL DEFAULT 0, "
+        "last_optimized_utc TEXT, created_at_utc TEXT NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO scheduler_presets VALUES "
+        "('default', '[]', 0.9, 'test', 0, NULL, '2024-01-01T00:00:00Z')"
+    )
+    conn.execute(
+        "CREATE TABLE cards ("
+        "id TEXT PRIMARY KEY, concept TEXT NOT NULL, run_id TEXT NOT NULL, "
+        "fsrs_state TEXT NOT NULL, "
+        "card_state TEXT NOT NULL DEFAULT 'active', "
+        "scheduler_preset_id TEXT NOT NULL DEFAULT 'default', "
+        "scheduler_version TEXT NOT NULL, "
+        "desired_retention REAL NOT NULL DEFAULT 0.9, "
+        "due_date TEXT NOT NULL, stability REAL NOT NULL, "
+        "difficulty REAL NOT NULL, reps INTEGER NOT NULL DEFAULT 0, "
+        "lapses INTEGER NOT NULL DEFAULT 0, "
+        "scaffolding_level TEXT NOT NULL DEFAULT 'full', "
+        "last_rating INTEGER, last_review_utc TEXT, "
+        "source_ref TEXT NOT NULL, file_id TEXT NOT NULL, "
+        "display_path TEXT NOT NULL, hunk_id TEXT NOT NULL, "
+        "hunk_hash TEXT NOT NULL, symbol TEXT, change_kind TEXT, "
+        "stale_reason TEXT, created_at_utc TEXT NOT NULL, "
+        "archived_at_utc TEXT, suspended_at_utc TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE review_logs ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "card_id TEXT NOT NULL, rating INTEGER NOT NULL, "
+        "reviewed_at_utc TEXT NOT NULL, elapsed_days REAL NOT NULL, "
+        "scheduled_days REAL NOT NULL, state TEXT NOT NULL, "
+        "review_duration INTEGER)"
+    )
+    conn.execute(
+        "CREATE TABLE result_events ("
+        "event_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, "
+        "event_type TEXT NOT NULL, timestamp TEXT NOT NULL, "
+        "source_ref TEXT NOT NULL, base_ref TEXT, "
+        "prompt_version TEXT NOT NULL, "
+        "eval_bundle_version TEXT NOT NULL, "
+        "rubric_version TEXT, overall REAL NOT NULL, "
+        "verdict TEXT NOT NULL, status TEXT NOT NULL, "
+        "weakest_dim TEXT NOT NULL, note_json TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE learning_signals ("
+        "event_id TEXT PRIMARY KEY, "
+        "idempotency_key TEXT NOT NULL UNIQUE, "
+        "signal_type TEXT NOT NULL, "
+        "payload_json TEXT NOT NULL, "
+        "created_at TEXT NOT NULL)"
+    )
+    conn.execute(
+        "CREATE TABLE concepts ("
+        "term_key TEXT PRIMARY KEY, concept TEXT NOT NULL, "
+        "term TEXT NOT NULL, display_name TEXT NOT NULL, "
+        "lang TEXT NOT NULL DEFAULT 'en', aliases TEXT NOT NULL DEFAULT '[]', "
+        "source_refs TEXT NOT NULL DEFAULT '[]', branch_hint TEXT, "
+        "introduced_by_run TEXT NOT NULL, "
+        "updated_by_runs TEXT NOT NULL DEFAULT '[]', "
+        "related_claims TEXT NOT NULL DEFAULT '[]', "
+        "file_refs TEXT NOT NULL DEFAULT '[]', "
+        "created_at_utc TEXT NOT NULL, updated_at_utc TEXT NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO concepts VALUES "
+        "('closure', 'Closure', 'closure', 'Closure', 'en', '[]', "
+        "'[]', NULL, 'r1', '[]', '[]', '[]', "
+        "'2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z')"
+    )
+    conn.execute(
+        "CREATE VIRTUAL TABLE fts_concepts USING fts5("
+        "term_key UNINDEXED, concept, display_name, aliases, "
+        "content='concepts', content_rowid='rowid')"
+    )
+    conn.execute(
+        "CREATE VIRTUAL TABLE fts_result_events USING fts5("
+        "event_id UNINDEXED, source_ref, weakest_dim, note_json, "
+        "content='result_events', content_rowid='rowid')"
+    )
+    conn.execute(
+        "CREATE VIRTUAL TABLE fts_cards USING fts5("
+        "id UNINDEXED, concept, display_path, symbol, "
+        "content='cards', content_rowid='rowid')"
+    )
+    conn.commit()
+    conn.close()
+
+    initialize_review_db(db)
+
+    with connect_review_db(db) as conn:
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
+        assert version == CURRENT_SCHEMA_VERSION
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(concepts)").fetchall()}
+        assert "graphify_node_id" in columns
+        row = conn.execute(
+            "SELECT graphify_node_id FROM concepts WHERE term_key = 'closure'"
+        ).fetchone()
+        assert row["graphify_node_id"] is None
+        tables = {
+            row["name"]
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        }
+        assert "commit_ancestry" in tables

@@ -649,6 +649,12 @@ def import_graphify_artifact(workspace_root: Path, *, force: bool = False) -> Gr
     protected_graph = _sanitize_graphify_value(raw_graph, workspace_root=workspace_root)
     graph_text = json.dumps(protected_graph, ensure_ascii=False)
     sanitized_graph = parse_graph_json_text(graph_text)
+    from ahadiff.review.database import import_graph_nodes
+
+    import_graph_nodes(
+        workspace_root / ".ahadiff" / "review.sqlite",
+        [node.model_dump(mode="json") for node in sanitized_graph.nodes],
+    )
     _atomic_write_text(
         status.imported_path,
         json.dumps(sanitized_graph.model_dump(mode="json"), ensure_ascii=False),

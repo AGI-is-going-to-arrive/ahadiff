@@ -36,9 +36,9 @@ from .scheduler import (
 from .schemas import DueReviewCard, ReviewAnswer, ReviewDbCheck, ReviewUpdate
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping, Sequence
 
-CURRENT_SCHEMA_VERSION = 4
+CURRENT_SCHEMA_VERSION = 7
 _SQLITE_MIN_VERSION = (3, 51, 3)
 _SQLITE_ALLOWED_BACKPORTS = {(3, 50, 7), (3, 44, 6)}
 _SQLITE_SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
@@ -1162,6 +1162,10 @@ def _initialize_schema(connection: sqlite3.Connection) -> None:
         _ensure_fts_concepts_schema(connection)
         _ensure_fts_result_events_schema(connection)
         _ensure_fts_cards_schema(connection)
+        _ensure_concepts_graphify_node_id(connection)
+        _ensure_graph_nodes_schema(connection)
+        _ensure_fts_graph_nodes_schema(connection)
+        _ensure_commit_ancestry_schema(connection)
         _ensure_default_scheduler_preset(connection, created_at_utc=_utc_now())
         _set_schema_version(connection, CURRENT_SCHEMA_VERSION)
         connection.execute("COMMIT")
@@ -1611,7 +1615,9 @@ def _ensure_fts_cards_schema(connection: sqlite3.Connection) -> None:
     )
 
 
-_ALLOWED_FTS_TABLES = frozenset({"fts_concepts", "fts_result_events", "fts_cards"})
+_ALLOWED_FTS_TABLES = frozenset(
+    {"fts_concepts", "fts_result_events", "fts_cards", "fts_graph_nodes"}
+)
 
 
 def _rebuild_fts_index(connection: sqlite3.Connection, fts_table: str) -> None:
@@ -1631,10 +1637,127 @@ def _migrate_v3_to_v4(connection: sqlite3.Connection) -> None:
     _rebuild_fts_index(connection, "fts_cards")
 
 
+def _migrate_v4_to_v5(connection: sqlite3.Connection) -> None:
+    _ensure_concepts_graphify_node_id(connection)
+
+
+def _ensure_concepts_graphify_node_id(connection: sqlite3.Connection) -> None:
+    _ensure_table_column(connection, "concepts", "graphify_node_id", "TEXT")
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS ix_concepts_graphify_node
+            ON concepts (graphify_node_id)
+            WHERE graphify_node_id IS NOT NULL
+        """
+    )
+
+
+def _ensure_graph_nodes_schema(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS graph_nodes (
+            id TEXT PRIMARY KEY,
+            label TEXT NOT NULL,
+            kind TEXT,
+            file_path TEXT,
+            metadata_json TEXT NOT NULL DEFAULT '{}'
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS ix_graph_nodes_kind
+            ON graph_nodes (kind) WHERE kind IS NOT NULL
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS ix_graph_nodes_file_path
+            ON graph_nodes (file_path) WHERE file_path IS NOT NULL
+        """
+    )
+
+
+def _ensure_fts_graph_nodes_schema(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE VIRTUAL TABLE IF NOT EXISTS fts_graph_nodes USING fts5(
+            id UNINDEXED,
+            label,
+            kind,
+            file_path,
+            content='graph_nodes',
+            content_rowid='rowid'
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS trg_fts_graph_nodes_ai
+        AFTER INSERT ON graph_nodes BEGIN
+            INSERT INTO fts_graph_nodes(rowid, id, label, kind, file_path)
+            VALUES (NEW.rowid, NEW.id, NEW.label, NEW.kind, NEW.file_path);
+        END
+        """
+    )
+    connection.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS trg_fts_graph_nodes_ad
+        AFTER DELETE ON graph_nodes BEGIN
+            INSERT INTO fts_graph_nodes(fts_graph_nodes, rowid, id, label, kind, file_path)
+            VALUES ('delete', OLD.rowid, OLD.id, OLD.label, OLD.kind, OLD.file_path);
+        END
+        """
+    )
+    connection.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS trg_fts_graph_nodes_au
+        AFTER UPDATE ON graph_nodes BEGIN
+            INSERT INTO fts_graph_nodes(fts_graph_nodes, rowid, id, label, kind, file_path)
+            VALUES ('delete', OLD.rowid, OLD.id, OLD.label, OLD.kind, OLD.file_path);
+            INSERT INTO fts_graph_nodes(rowid, id, label, kind, file_path)
+            VALUES (NEW.rowid, NEW.id, NEW.label, NEW.kind, NEW.file_path);
+        END
+        """
+    )
+
+
+def _migrate_v5_to_v6(connection: sqlite3.Connection) -> None:
+    _ensure_graph_nodes_schema(connection)
+    _ensure_fts_graph_nodes_schema(connection)
+
+
+def _ensure_commit_ancestry_schema(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS commit_ancestry (
+            head_sha TEXT NOT NULL,
+            ancestor_sha TEXT NOT NULL,
+            depth INTEGER NOT NULL CHECK(depth >= 0),
+            created_at_utc TEXT NOT NULL,
+            PRIMARY KEY (head_sha, ancestor_sha)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS ix_commit_ancestry_ancestor
+            ON commit_ancestry (ancestor_sha)
+        """
+    )
+
+
+def _migrate_v6_to_v7(connection: sqlite3.Connection) -> None:
+    _ensure_commit_ancestry_schema(connection)
+
+
 _MIGRATIONS: dict[int, MigrationStep] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
     3: _migrate_v3_to_v4,
+    4: _migrate_v4_to_v5,
+    5: _migrate_v5_to_v6,
+    6: _migrate_v6_to_v7,
 }
 
 
@@ -2203,6 +2326,10 @@ def upsert_concepts_batch(
                 if isinstance(aliases_raw, list)
                 else []
             )
+            graphify_node_id_raw = entry.get("graphify_node_id")
+            graphify_node_id = (
+                str(graphify_node_id_raw) if graphify_node_id_raw is not None else None
+            )
             connection.execute(
                 """
                 INSERT INTO concepts (
@@ -2211,6 +2338,7 @@ def upsert_concepts_batch(
                     source_refs, branch_hint,
                     introduced_by_run, updated_by_runs,
                     related_claims, file_refs,
+                    graphify_node_id,
                     created_at_utc, updated_at_utc
                 ) VALUES (
                     ?, ?, ?,
@@ -2218,6 +2346,7 @@ def upsert_concepts_batch(
                     ?, ?,
                     ?, ?,
                     ?, ?,
+                    ?,
                     ?, ?
                 )
                 ON CONFLICT(term_key) DO UPDATE SET
@@ -2248,6 +2377,9 @@ def upsert_concepts_batch(
                         excluded.introduced_by_run
                     ),
                     branch_hint = COALESCE(concepts.branch_hint, excluded.branch_hint),
+                    graphify_node_id = COALESCE(
+                        excluded.graphify_node_id, concepts.graphify_node_id
+                    ),
                     updated_at_utc = excluded.updated_at_utc
                 """,
                 (
@@ -2263,6 +2395,7 @@ def upsert_concepts_batch(
                     json.dumps(updated_by_runs_list, ensure_ascii=False),
                     json.dumps(related_claims_list, ensure_ascii=False),
                     json.dumps(file_refs_list, ensure_ascii=False),
+                    graphify_node_id,
                     now,
                     now,
                 ),
@@ -2294,7 +2427,8 @@ def load_concepts_from_db(
             f"""
             SELECT term_key, concept, term, display_name, lang, aliases,
                    source_refs, branch_hint, introduced_by_run, updated_by_runs,
-                   related_claims, file_refs, created_at_utc, updated_at_utc
+                   related_claims, file_refs, graphify_node_id,
+                   created_at_utc, updated_at_utc
             FROM concepts{where}
             ORDER BY term_key ASC
             LIMIT ?
@@ -2312,6 +2446,7 @@ def load_concepts_from_db(
             "lang",
             "branch_hint",
             "introduced_by_run",
+            "graphify_node_id",
             "created_at_utc",
             "updated_at_utc",
         ):
@@ -2372,6 +2507,114 @@ def import_concepts_from_jsonl(db_path: Path, jsonl_path: Path) -> int:
     return upsert_concepts_batch(db_path, entries)
 
 
+_MAX_GRAPH_NODES_IMPORT = 10_000
+
+
+def import_graph_nodes(
+    db_path: Path,
+    nodes: Sequence[Mapping[str, object]],
+) -> int:
+    if not nodes:
+        return 0
+    if len(nodes) > _MAX_GRAPH_NODES_IMPORT:
+        raise InputError(f"graph node import exceeds {_MAX_GRAPH_NODES_IMPORT} nodes")
+    with connect_review_db(db_path, create_parent=True) as connection:
+        _ensure_schema(connection)
+        connection.execute("DELETE FROM graph_nodes")
+        inserted = 0
+        for node in nodes:
+            node_id = str(node.get("id", ""))
+            label = str(node.get("label", ""))
+            if not node_id or not label:
+                continue
+            metadata = node.get("metadata", {})
+            metadata_json = json.dumps(
+                metadata if isinstance(metadata, dict) else {},
+                ensure_ascii=False,
+            )
+            connection.execute(
+                """
+                INSERT OR REPLACE INTO graph_nodes (id, label, kind, file_path, metadata_json)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    node_id,
+                    label,
+                    node.get("kind"),
+                    node.get("file_path"),
+                    metadata_json,
+                ),
+            )
+            inserted += 1
+    return inserted
+
+
+def replace_commit_ancestry(
+    db_path: Path,
+    *,
+    head_sha: str,
+    ancestors: Sequence[str],
+) -> int:
+    if not head_sha:
+        return 0
+    now = _utc_now()
+    with connect_review_db(db_path, create_parent=True) as connection:
+        _ensure_schema(connection)
+        connection.execute("DELETE FROM commit_ancestry WHERE head_sha = ?", (head_sha,))
+        inserted = 0
+        for depth, ancestor_sha in enumerate(ancestors):
+            if not ancestor_sha:
+                continue
+            connection.execute(
+                """
+                INSERT OR REPLACE INTO commit_ancestry (
+                    head_sha, ancestor_sha, depth, created_at_utc
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (head_sha, ancestor_sha, depth, now),
+            )
+            inserted += 1
+    return inserted
+
+
+def load_commit_ancestry(db_path: Path, *, head_sha: str) -> tuple[str, ...]:
+    if not head_sha or not db_path.exists():
+        return ()
+    with connect_review_db(db_path) as connection:
+        if not _table_exists(connection, "commit_ancestry"):
+            return ()
+        rows = connection.execute(
+            """
+            SELECT ancestor_sha
+            FROM commit_ancestry
+            WHERE head_sha = ?
+            ORDER BY depth ASC
+            """,
+            (head_sha,),
+        ).fetchall()
+    return tuple(str(row["ancestor_sha"]) for row in rows)
+
+
+def count_commit_ancestry(db_path: Path) -> int:
+    if not db_path.exists():
+        return 0
+    with connect_review_db(db_path) as connection:
+        if not _table_exists(connection, "commit_ancestry"):
+            return 0
+        row = connection.execute("SELECT COUNT(*) FROM commit_ancestry").fetchone()
+        return int(row[0]) if row else 0
+
+
+def count_graph_nodes(db_path: Path) -> int:
+    if not db_path.exists():
+        return 0
+    with connect_review_db(db_path) as connection:
+        if not _table_exists(connection, "graph_nodes"):
+            return 0
+        row = connection.execute("SELECT COUNT(*) FROM graph_nodes").fetchone()
+        return int(row[0]) if row else 0
+
+
 __all__ = [
     "CURRENT_SCHEMA_VERSION",
     "LossyImportOutcome",
@@ -2380,17 +2623,21 @@ __all__ = [
     "check_review_db",
     "checkpoint_review_db",
     "connect_review_db",
+    "count_commit_ancestry",
     "count_concepts",
+    "count_graph_nodes",
     "delete_result_event",
     "delete_result_event_and_select_tsv_rows",
     "finalize_targeted_verify_event",
     "import_cards_from_jsonl",
     "import_cards_from_runs",
     "import_concepts_from_jsonl",
+    "import_graph_nodes",
     "import_results_tsv_lossy",
     "initialize_review_db",
     "insert_learning_signal",
     "list_due_cards",
+    "load_commit_ancestry",
     "load_concepts_from_db",
     "load_finalized_ratchet_history_page",
     "load_result_event_by_run_and_id",
@@ -2401,6 +2648,7 @@ __all__ = [
     "mark_run_cards_stale",
     "record_card_review",
     "record_card_review_once",
+    "replace_commit_ancestry",
     "resolve_sqlite_journal_mode",
     "restore_review_db",
     "select_result_tsv_rows",

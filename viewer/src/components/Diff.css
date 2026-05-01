@@ -42,9 +42,24 @@ button.diff-line {
 }
 
 .diff-line--hunk {
+  position: relative;
   background: var(--accent-soft);
   color: var(--muted);
   font-style: italic;
+}
+
+.diff-line--hunk[data-hunk-mark]::before {
+  content: attr(data-hunk-mark);
+  position: absolute;
+  left: -22px;
+  top: 14px;
+  font-family: "Newsreader", serif;
+  font-style: italic;
+  font-size: 22px;
+  color: var(--accent);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  pointer-events: none;
 }
 
 .diff-line--meta {

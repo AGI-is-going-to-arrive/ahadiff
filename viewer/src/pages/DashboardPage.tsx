@@ -476,7 +476,7 @@ function RunListTable({
               <td>
                 <VerdictBadge verdict={safeVerdict(run.verdict)} t={t} />
               </td>
-              <td className="mono">{run.overall}</td>
+              <td className="num">{run.overall}</td>
               <td>{run.weakest_dim || '-'}</td>
               <td className="mono">
                 {formatDate(run.created_at, locale)}

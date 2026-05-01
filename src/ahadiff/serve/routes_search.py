@@ -7,6 +7,7 @@ from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
 
 from ahadiff.contracts.serve_runtime import SearchResponse, SearchResultItem
+from ahadiff.core.errors import StorageError
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -38,22 +39,36 @@ async def search_api(request: Request) -> JSONResponse:
     if tables_raw:
         tables = tuple(t.strip() for t in tables_raw.split(",") if t.strip())
 
-    payload = await to_thread.run_sync(
-        lambda: _search_sync(
-            state.review_db_path,
-            state.state_dir,
-            q,
-            limit=limit,
-            offset=offset,
-            tables=tables,
-            include_graph=_should_include_graph(tables),
-        ),
-    )
+    try:
+        payload = await to_thread.run_sync(
+            lambda: _search_sync(
+                state.review_db_path,
+                state.state_dir,
+                q,
+                limit=limit,
+                offset=offset,
+                tables=tables,
+                include_graph=_should_include_graph(tables),
+            ),
+        )
+    except StorageError as exc:
+        raise HTTPException(status_code=400, detail=_public_storage_error(exc)) from exc
     return JSONResponse(payload)
 
 
 def _should_include_graph(tables: tuple[str, ...] | None) -> bool:
     return tables is None or "graph_nodes" in tables
+
+
+def _public_storage_error(exc: StorageError) -> str:
+    message = str(exc)
+    if message.startswith("review.sqlite is not a valid database"):
+        return "review.sqlite is not a valid database"
+    if message.startswith("SQLite quick_check failed"):
+        return "review.sqlite quick_check failed"
+    if message.startswith("failed to open review.sqlite safely"):
+        return "failed to open review.sqlite safely"
+    return "review storage is unavailable"
 
 
 def _load_graph(state_dir: Path) -> object | None:

@@ -89,3 +89,15 @@
     padding: 20px 16px 24px;
   }
 }
+
+/* ---------- Forced-colors (Windows High Contrast) ---------- */
+@media (forced-colors: active) {
+  .skip-to-content:focus {
+    outline: 2px solid ButtonText;
+    forced-color-adjust: none;
+  }
+  .app-shell__backdrop {
+    background: Canvas;
+    border-inline-start: 2px solid ButtonText;
+  }
+}

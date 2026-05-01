@@ -242,6 +242,34 @@ def _iter_multiline_rule_matches(
     return tuple(matches)
 
 
+_OUTPUT_FENCE_RE = re.compile(
+    r"(?i)<\s*/?\s*(?:system|assistant|developer|tool_result|function_call)\s*>",
+)
+_OUTPUT_CODE_EXEC_RE = re.compile(
+    r"(?i)(?:\b(?:exec|eval|compile|__import__)\s*\(|subprocess\.(?:run|call|Popen)\s*\()",
+)
+_OUTPUT_IGNORABLE_RE = re.compile(r"[\u200b-\u200f\ufeff]")
+
+
+def _normalize_model_output_for_detection(text: str) -> str:
+    return normalize_untrusted_text_for_detection(_OUTPUT_IGNORABLE_RE.sub("", text))
+
+
+def strip_model_output_fences(text: str) -> str:
+    normalized = unicodedata.normalize("NFKC", _OUTPUT_IGNORABLE_RE.sub("", text))
+    return _OUTPUT_FENCE_RE.sub("", normalized)
+
+
+def scan_model_output(text: str) -> list[str]:
+    warnings: list[str] = []
+    detection_text = _normalize_model_output_for_detection(text)
+    if _OUTPUT_FENCE_RE.search(detection_text):
+        warnings.append("model_output_contains_role_fence_tags")
+    if _OUTPUT_CODE_EXEC_RE.search(detection_text):
+        warnings.append("model_output_contains_code_execution_pattern")
+    return warnings
+
+
 __all__ = [
     "InjectionFinding",
     "InjectionReport",
@@ -250,6 +278,8 @@ __all__ = [
     "normalize_untrusted_text",
     "normalize_untrusted_text_for_detection",
     "protect_untrusted_text",
+    "scan_model_output",
+    "strip_model_output_fences",
     "wrap_untrusted_diff",
     "write_injection_report",
 ]

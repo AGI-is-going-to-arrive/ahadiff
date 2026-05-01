@@ -10,9 +10,13 @@
 /* ---- Hero section ---- */
 .hero {
   position: relative;
-  padding: clamp(68px, 8vw, 128px) clamp(20px, 4vw, 64px);
+  padding: clamp(68px, 8vw, 128px) clamp(24px, 5vw, 56px) clamp(56px, 7vw, 104px);
   border-top: 1px solid var(--folio-line, var(--ink));
   overflow: hidden;
+  background:
+    radial-gradient(1200px 320px at 20% -10%, rgba(210, 112, 80, 0.07), transparent 60%),
+    linear-gradient(180deg, rgba(255, 253, 247, 0.95), rgba(255, 253, 247, 0) 40%),
+    var(--paper);
 }
 
 .hero::before {
@@ -46,20 +50,28 @@
 }
 
 .hero__title {
-  font-family: var(--font-serif);
+  font-family: "Newsreader", "Noto Serif SC", var(--font-serif);
   font-style: italic;
   font-weight: var(--bolder-thin, 260);
   font-size: clamp(2.35rem, 3.8vw + 1rem, 5.8rem);
   line-height: 0.98;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.028em;
   margin: 0;
   font-variation-settings: "opsz" 72;
+  color: var(--ink-blackletter);
 }
 
 .hero__title em {
   font-weight: var(--bolder-bold, 760);
   color: var(--accent-ink);
-  font-style: italic;
+  font-style: normal;
+  background-image: linear-gradient(
+    transparent 72%,
+    rgba(210, 112, 80, 0.22) 72%,
+    rgba(210, 112, 80, 0.22) 92%,
+    transparent 92%
+  );
+  padding: 0 0.08em;
 }
 
 .hero__en {
@@ -80,13 +92,17 @@
 }
 
 .hero__lead::first-letter {
-  font-family: var(--font-serif);
+  font-family: "Newsreader", "Noto Serif SC", var(--font-serif);
   font-weight: 700;
+  font-style: normal;
   font-size: 2.6em;
   float: left;
-  line-height: 0.85;
-  padding: 0.08em 0.12em 0 0;
-  color: var(--accent-ink);
+  line-height: 1;
+  padding: 2px 10px 0 0;
+  margin-top: 0.08em;
+  color: var(--ink-blackletter);
+  font-synthesis: none;
+  vertical-align: baseline;
 }
 
 /* ---- CTA buttons ---- */
@@ -107,17 +123,26 @@
   border-radius: var(--r-md, 8px);
   font-size: 14px;
   font-weight: 600;
+  letter-spacing: 0.01em;
   border: none;
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--ink-blackletter);
+  color: #FBF5EE;
   cursor: pointer;
-  transition: all var(--dur-fast, 0.15s) var(--ease-out, ease);
-  box-shadow: var(--shadow-brand);
+  transition:
+    transform 0.22s var(--ease-expo),
+    box-shadow 0.22s var(--ease-expo);
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 8px 22px -14px rgba(28, 27, 24, 0.55);
 }
 
 .hero-ctas .btn-primary:hover {
   transform: translateY(-1px);
-  filter: brightness(1.05);
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 16px 36px -18px rgba(28, 27, 24, 0.6);
 }
 
 .hero-ctas .btn-primary:active {
@@ -188,9 +213,12 @@
 }
 
 .landing-section h2 {
-  font-family: var(--font-serif);
+  font-family: "Newsreader", var(--font-serif);
   font-size: 32px;
-  font-weight: 500;
+  font-weight: 440;
+  letter-spacing: -0.015em;
+  line-height: 1.1;
+  color: var(--ink-blackletter);
   margin: 0 0 var(--sp-2, 8px);
 }
 
@@ -215,6 +243,7 @@
 
 .feature-card {
   position: relative;
+  isolation: isolate;
   min-height: 190px;
   padding: var(--sp-6, 24px);
   border: 1px solid var(--hair);
@@ -224,6 +253,31 @@
   transition:
     border-color var(--dur-fast, 0.15s) var(--ease-out, ease),
     transform var(--dur-fast, 0.15s) var(--ease-out, ease);
+}
+
+.feature-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 18px;
+  bottom: 18px;
+  width: 2px;
+  background: var(--accent);
+  opacity: 0;
+  transform: scaleY(0.25);
+  transform-origin: top center;
+  transition:
+    opacity var(--dur-base, 0.25s) var(--ease-out, cubic-bezier(0.2, 0.8, 0.2, 1)),
+    transform var(--dur-base, 0.25s) var(--ease-out, cubic-bezier(0.2, 0.8, 0.2, 1));
+  pointer-events: none;
+  border-radius: 2px;
+  z-index: 2;
+}
+
+.feature-card:hover::before,
+.feature-card:focus-within::before {
+  opacity: 1;
+  transform: scaleY(1);
 }
 
 .feature-card:hover {
@@ -417,10 +471,13 @@
 }
 
 .benchmark-card__value {
-  font-family: var(--font-serif);
+  font-family: "Newsreader", var(--font-serif);
   font-size: 34px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  font-style: italic;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum", "lnum";
+  letter-spacing: -0.005em;
   color: var(--ink-strong);
   line-height: 1;
   margin-bottom: var(--sp-2, 8px);
@@ -477,6 +534,11 @@
 @media (max-width: 767px) {
   .hero {
     padding: 60px 20px 44px;
+  }
+
+  .hero__lead::first-letter {
+    font-size: 2.3em;
+    padding-right: 8px;
   }
 
   .steps-grid {
@@ -565,6 +627,7 @@
 @media (prefers-reduced-motion: reduce) {
   .hero-ctas .btn-primary,
   .feature-card,
+  .feature-card::before,
   .step {
     transition: none;
     transform: none !important;

@@ -42,6 +42,8 @@ def test_run_all_uses_configured_project_python(tmp_path: Path) -> None:
         assert payload["cli_startup"]["status"] == "ok"
         assert payload["diff_parse"]["status"] == "ok"
         assert payload["sqlite_queries"]["status"] == "ok"
+        assert payload["graphify"]["status"] == "ok"
+        assert payload["graphify"]["fixture"] == "large_graph.json"
     finally:
         if original_output is None:
             BASELINE_PATH.unlink(missing_ok=True)

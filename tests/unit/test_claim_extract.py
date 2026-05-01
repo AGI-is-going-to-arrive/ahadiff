@@ -927,7 +927,7 @@ def test_claims_cli_promotes_remote_extract_privacy_mode(
             run_id,
             "--extract",
             "--base-url",
-            "https://api.example.invalid/v1/chat/completions",
+            "https://8.8.8.8/v1/chat/completions",
             "--model",
             "gpt-5.4-mini",
             "--repo-root",
@@ -941,7 +941,7 @@ def test_claims_cli_promotes_remote_extract_privacy_mode(
     assert captured["privacy_mode"] == "explicit_remote"
     provider_config = captured["provider_config"]
     assert isinstance(provider_config, ProviderConfig)
-    assert provider_config.base_url == "https://api.example.invalid"
+    assert provider_config.base_url == "https://8.8.8.8"
 
 
 def test_claims_cli_preserves_run_redacted_remote_for_explicit_remote_provider(
@@ -989,7 +989,7 @@ def test_claims_cli_preserves_run_redacted_remote_for_explicit_remote_provider(
             run_id,
             "--extract",
             "--base-url",
-            "https://api.example.invalid/v1/chat/completions",
+            "https://8.8.8.8/v1/chat/completions",
             "--model",
             "gpt-5.4-mini",
             "--repo-root",

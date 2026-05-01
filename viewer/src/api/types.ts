@@ -298,12 +298,21 @@ export interface TaskProgressResponse {
   message: string;
 }
 
+export interface TaskResultSummary {
+  run_id: string | null;
+  status: string | null;
+  overall: number | null;
+  verdict: string | null;
+  warnings: string[];
+}
+
 export interface TaskInfoResponse {
   task_id: string;
   task_type: string;
   status: string;
   progress: TaskProgressResponse;
   result?: unknown | null;
+  result_summary?: TaskResultSummary | null;
   error?: string | null;
   error_code?: string | null;
   created_at: string;

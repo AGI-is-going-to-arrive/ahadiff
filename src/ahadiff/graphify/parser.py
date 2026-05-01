@@ -18,7 +18,15 @@ _SCRIPT_STYLE_TAG_RE = re.compile(
 )
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _DANGEROUS_URI_RE = re.compile(
-    r"^\s*(javascript|data|vbscript)\s*:",
+    r"\b(javascript|data|vbscript)\s*:",
+    re.IGNORECASE,
+)
+_EVENT_HANDLER_RE = re.compile(
+    r"\bon(?:abort|blur|change|click|dblclick|error|focus|input|invalid"
+    r"|key(?:down|press|up)|load|mouse(?:down|enter|leave|move|out|over|up)"
+    r"|pointer(?:down|enter|leave|move|up)|reset|resize|scroll|select"
+    r"|submit|touch(?:cancel|end|move|start)|unload|wheel"
+    r"|contextmenu|copy|cut|drag(?:end|enter|leave|over|start)?|drop|paste)\s*=",
     re.IGNORECASE,
 )
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
@@ -38,9 +46,10 @@ def _sanitize_text(raw: str) -> str:
     cleaned = _SCRIPT_STYLE_TAG_RE.sub("", cleaned)
     cleaned = _HTML_TAG_RE.sub("", cleaned)
     cleaned = _DANGEROUS_URI_RE.sub("", cleaned)
+    cleaned = _EVENT_HANDLER_RE.sub("", cleaned)
     if len(cleaned) > _MAX_LABEL_LEN:
         cleaned = cleaned[:_MAX_LABEL_LEN]
-    return html.escape(html.unescape(cleaned), quote=True)
+    return html.unescape(cleaned)
 
 
 def _unescape_html_entities(raw: str) -> str:

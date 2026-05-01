@@ -16,10 +16,12 @@
 }
 
 .dashboard__title {
-  font-family: var(--font-serif);
-  font-size: 26px;
-  font-weight: 500;
-  letter-spacing: -0.012em;
+  font-family: "Newsreader", var(--font-serif);
+  font-size: clamp(1.85rem, 2.6vw + 0.5rem, 2.9rem);
+  font-weight: 420;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  color: var(--ink-blackletter);
   margin: 0 0 4px;
 }
 
@@ -127,13 +129,15 @@
 }
 
 .kpi-card__value {
-  font-family: var(--font-serif);
+  font-family: "Newsreader", var(--font-serif);
   font-size: 34px;
-  font-weight: 500;
-  letter-spacing: -0.024em;
+  font-weight: 400;
+  font-style: italic;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum", "lnum";
+  letter-spacing: -0.005em;
   line-height: 1;
   margin-top: 12px;
-  font-variant-numeric: tabular-nums;
 }
 
 .kpi-card__hint {
@@ -172,10 +176,11 @@
 .ratchet-section__header h2,
 .ratchet-section__header h3 {
   margin: 0;
-  font-family: var(--font-serif);
+  font-family: "Newsreader", var(--font-serif);
   font-size: 18px;
-  font-weight: 500;
-  letter-spacing: -0.012em;
+  font-weight: 440;
+  letter-spacing: -0.015em;
+  color: var(--ink-blackletter);
 }
 
 .ratchet-section__meta {
@@ -243,10 +248,11 @@
 }
 
 .run-list-section__title {
-  font-family: var(--font-serif);
+  font-family: "Newsreader", var(--font-serif);
   font-size: 18px;
-  font-weight: 500;
-  letter-spacing: -0.012em;
+  font-weight: 440;
+  letter-spacing: -0.015em;
+  color: var(--ink-blackletter);
   margin: 0;
 }
 
@@ -384,6 +390,15 @@
 .run-list .mono {
   font-family: var(--font-mono);
   font-size: 13px;
+}
+
+.run-list .num {
+  font-family: "Newsreader", var(--font-serif);
+  font-style: italic;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum", "lnum";
+  font-size: 18px;
+  color: var(--ink-blackletter);
 }
 
 .run-list__link {

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import logging
+import socket
 import sqlite3
 import threading
 import time
@@ -10,7 +12,7 @@ from abc import ABC, abstractmethod
 from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
-from ipaddress import ip_address
+from ipaddress import IPv4Address, IPv6Address, ip_address
 from typing import TYPE_CHECKING, Any, Protocol
 from urllib.parse import urlparse
 
@@ -26,6 +28,7 @@ from ahadiff.core.ids import make_event_id
 from ahadiff.core.paths import path_identity_key, workspace_identity_key
 from ahadiff.safety.audit import append_audit_record, build_provider_audit_record
 from ahadiff.safety.gates import TransportTarget, enforce_privacy_mode
+from ahadiff.safety.injection import scan_model_output, strip_model_output_fences
 
 from .cache import (
     assert_context_bundle_hash,
@@ -227,6 +230,8 @@ class ManagedProvider:
             findings=request.findings,
             is_redacted=request.is_redacted_payload,
         )
+        if transport_target == "remote":
+            validate_remote_url(self.config.base_url)
 
         context_bundle_hash = request.context_bundle_hash
         if request.context_artifacts:
@@ -408,7 +413,27 @@ class ManagedProvider:
 
     def _send_once(self, request: ProviderRequest) -> ProviderResponse:
         method, url, headers, payload = self.adapter.build_request(request, api_key=self.api_key)
-        with self.client.stream(method, url, headers=headers, json=payload) as response:
+        request_target = transport_target_for_base_url(
+            url,
+            local_hosts=local_hosts_for_privacy_mode(
+                self.security_config,
+                request.privacy_mode,
+            ),
+            strict_local=request.privacy_mode == "strict_local",
+        )
+        if request.privacy_mode == "strict_local" and request_target != "local":
+            raise SafetyError("strict_local mode forbids remote transport")
+        if request_target == "remote":
+            validate_remote_url(url)
+        with self.client.stream(
+            method,
+            url,
+            headers=headers,
+            json=payload,
+            follow_redirects=False,
+        ) as response:
+            if response.is_redirect:
+                raise ProviderError("provider redirects are not allowed")
             if response.status_code in {401, 403}:
                 raise SafetyError("provider authentication failed")
             if response.status_code == 429:
@@ -428,9 +453,16 @@ class ManagedProvider:
                 extensions=response.extensions,
             )
         parsed = self.adapter.parse_response(buffered_response)
-        if not parsed.content.strip():
+        guarded_content = strip_model_output_fences(parsed.content)
+        if not guarded_content.strip():
             raise ProviderError("provider returned empty response")
-        return replace(parsed, rate_limits=parse_rate_limit_headers(buffered_response.headers))
+        output_guard_notes = tuple(scan_model_output(parsed.content))
+        return replace(
+            parsed,
+            content=guarded_content,
+            rate_limits=parse_rate_limit_headers(buffered_response.headers),
+            notes=_append_unique_notes(parsed.notes, *output_guard_notes),
+        )
 
     def _read_capped_response_body(self, response: httpx.Response) -> bytes:
         body = bytearray()
@@ -632,6 +664,35 @@ def reset_provider_runtime_state(provider_key: str | None = None) -> None:
         _CIRCUITS.pop(provider_key, None)
 
 
+def _is_non_public_ip(addr: IPv4Address | IPv6Address) -> bool:
+    if isinstance(addr, IPv6Address) and addr.ipv4_mapped is not None:
+        return _is_non_public_ip(addr.ipv4_mapped)
+    return (
+        addr.is_private
+        or addr.is_reserved
+        or addr.is_loopback
+        or addr.is_link_local
+        or addr.is_multicast
+    )
+
+
+def _resolve_hostname_ips(hostname: str) -> list[IPv4Address | IPv6Address]:
+    try:
+        infos = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+    except (socket.gaierror, OSError):
+        return []
+    addrs: list[IPv4Address | IPv6Address] = []
+    seen: set[str] = set()
+    for _family, _type, _proto, _canonname, sockaddr in infos:
+        ip_str: str = str(sockaddr[0])
+        if ip_str in seen:
+            continue
+        seen.add(ip_str)
+        with contextlib.suppress(ValueError):
+            addrs.append(ip_address(ip_str))
+    return addrs
+
+
 def transport_target_for_base_url(
     base_url: str,
     *,
@@ -653,11 +714,45 @@ def transport_target_for_base_url(
     if hostname_normalized in {"localhost", *normalized_local_hosts}:
         return "local"
     try:
-        if ip_address(hostname).is_loopback:
+        addr = ip_address(hostname)
+        if addr.is_loopback:
+            return "local"
+        if _is_non_public_ip(addr):
             return "local"
     except ValueError:
         pass
     return "remote"
+
+
+def validate_remote_url(base_url: str) -> None:
+    parsed = urlparse(base_url)
+    if parsed.scheme in {"unix", "http+unix", "npipe", "http+npipe"}:
+        raise SafetyError(
+            f"local transport scheme {parsed.scheme!r} not allowed in remote privacy mode"
+        )
+    hostname = parsed.hostname
+    if hostname is None:
+        raise SafetyError(f"unable to determine hostname for base_url {base_url!r}")
+    try:
+        addr = ip_address(hostname)
+        if _is_non_public_ip(addr):
+            raise SafetyError(
+                f"private/reserved IP {hostname} not allowed in remote privacy mode"
+            )
+        return
+    except ValueError:
+        pass
+    resolved = _resolve_hostname_ips(hostname)
+    if not resolved:
+        raise SafetyError(
+            f"hostname {hostname!r} could not be resolved in remote privacy mode"
+        )
+    for addr in resolved:
+        if _is_non_public_ip(addr):
+            raise SafetyError(
+                f"hostname {hostname!r} resolves to private/reserved IP {addr}, "
+                "not allowed in remote privacy mode"
+            )
 
 
 def adapter_conformance_test(provider: Provider) -> None:
@@ -774,4 +869,5 @@ __all__ = [
     "make_provider",
     "reset_provider_runtime_state",
     "transport_target_for_base_url",
+    "validate_remote_url",
 ]

@@ -94,25 +94,90 @@ class ConceptGraphResponse(BaseModel):
 
 
 class TaskProgressResponse(BaseModel):
+    """Progress snapshot for a running task."""
+
     model_config = ConfigDict(extra="forbid")
-    current: NonNegativeCount
-    total: NonNegativeCount
-    message: str
+    current: NonNegativeCount = Field(description="Steps completed so far.")
+    total: NonNegativeCount = Field(description="Total steps expected (0 if unknown).")
+    message: str = Field(description="Human-readable progress message.")
+
+
+class TaskResultSummary(BaseModel):
+    """Stable subset of a learn task result exposed to public consumers.
+
+    Fields here are considered part of the public contract.  Internal
+    details (thread refs, raw result dict) are never surfaced.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    run_id: str | None = Field(default=None, description="Run ID produced by learn, if any.")
+    status: str | None = Field(default=None, description="Pipeline outcome status string.")
+    overall: float | None = Field(
+        default=None, ge=0, le=100, allow_inf_nan=False,
+        description="Overall score (0-100).",
+    )
+    verdict: str | None = Field(default=None, description="Evaluation verdict.")
+    warnings: list[str] = Field(default_factory=list, description="Non-fatal warnings.")
 
 
 class TaskInfoResponse(BaseModel):
+    """Public task information.
+
+    **Stable fields** (will not change shape across minor versions):
+    ``task_id``, ``task_type``, ``status``, ``progress``, ``error``,
+    ``error_code``, ``created_at``, ``started_at``, ``completed_at``,
+    ``elapsed_seconds``, ``result_summary``.
+
+    ``result`` is retained for backward compatibility but consumers
+    should migrate to ``result_summary``.
+    """
+
     model_config = ConfigDict(extra="forbid")
-    task_id: str = Field(min_length=1)
-    task_type: str
-    status: str
-    progress: TaskProgressResponse
-    result: Any = None
-    error: str | None = None
-    error_code: str | None = None
-    created_at: str
-    started_at: str | None = None
-    completed_at: str | None = None
-    elapsed_seconds: NonNegativeFiniteNumber | None = None
+    task_id: str = Field(min_length=1, description="Unique task identifier.")
+    task_type: str = Field(description="Task kind (e.g. 'learn').")
+    status: str = Field(
+        description="One of: pending, running, completed, failed, cancelled."
+    )
+    progress: TaskProgressResponse = Field(description="Current progress snapshot.")
+    result: Any = Field(default=None, description="Raw result (unstable, prefer result_summary).")
+    result_summary: TaskResultSummary | None = Field(
+        default=None,
+        description="Stable result summary for completed tasks.",
+    )
+    error: str | None = Field(default=None, description="Error message on failure.")
+    error_code: str | None = Field(
+        default=None,
+        description="Categorized error code (e.g. 'timeout', 'config_error').",
+    )
+    created_at: str = Field(description="ISO-8601 creation timestamp.")
+    started_at: str | None = Field(default=None, description="ISO-8601 start timestamp.")
+    completed_at: str | None = Field(default=None, description="ISO-8601 completion timestamp.")
+    elapsed_seconds: NonNegativeFiniteNumber | None = Field(
+        default=None,
+        description="Wall-clock seconds from start to completion/now.",
+    )
+
+
+class TaskProgressEvent(BaseModel):
+    """SSE progress event payload.
+
+    Sent as ``event: progress`` on the ``/api/tasks/{id}/progress`` SSE
+    stream.  Terminal states (completed/failed/cancelled) close the
+    stream after the final event.
+
+    Cancel semantics: when a task is cancelled while draining (thread-
+    backed work still running after timeout), the SSE stream emits a
+    final event with ``status='failed'`` and ``error_code='timeout'``;
+    if the background thread completes successfully the status is later
+    corrected to ``completed``, but the SSE stream will already have
+    closed.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    event: Literal["progress", "error"] = Field(description="SSE event type.")
+    data: TaskInfoResponse | dict[str, str] = Field(
+        description="TaskInfoResponse for progress events, error dict for error events.",
+    )
 
 
 class TaskListResponse(BaseModel):
@@ -122,12 +187,12 @@ class TaskListResponse(BaseModel):
 
 class TaskSubmitResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    task_id: str = Field(min_length=1)
+    task_id: str = Field(min_length=1, description="ID of the submitted task.")
 
 
 class TaskCancelResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    cancelled: bool
+    cancelled: bool = Field(description="True if the task was successfully cancelled.")
 
 
 __all__ = [
@@ -143,7 +208,9 @@ __all__ = [
     "TaskCancelResponse",
     "TaskInfoResponse",
     "TaskListResponse",
+    "TaskProgressEvent",
     "TaskProgressResponse",
+    "TaskResultSummary",
     "TaskSubmitResponse",
     "WeakConceptItem",
     "WeakConceptsResponse",

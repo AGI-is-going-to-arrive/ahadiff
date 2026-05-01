@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -68,4 +68,39 @@ def link_concepts(
     return tuple(deduped)
 
 
-__all__ = ["ConceptLink", "link_concepts"]
+def link_concepts_to_entries(
+    graph: GraphifyGraph,
+    entries: Sequence[dict[str, Any]],
+    *,
+    threshold: float = 0.5,
+) -> list[dict[str, Any]]:
+    """Link concept entries to graph nodes, writing ``graphify_node_id`` back.
+
+    For each entry, the best-scoring match (highest score) is selected.
+    Entries with no match keep ``graphify_node_id`` as ``None``.
+    Returns a new list — input dicts are not mutated.
+    """
+    if not entries:
+        return []
+    if not graph.nodes:
+        return [{**e, "graphify_node_id": None} for e in entries]
+
+    concepts = [str(e.get("concept", e.get("term", "")))[:_MAX_CONCEPT_LEN] for e in entries]
+    all_links = link_concepts(graph, concepts, threshold=threshold)
+
+    best: dict[str, ConceptLink] = {}
+    for lnk in all_links:
+        existing = best.get(lnk.concept)
+        if existing is None or lnk.score > existing.score:
+            best[lnk.concept] = lnk
+
+    result: list[dict[str, Any]] = []
+    for entry, concept in zip(entries, concepts, strict=True):
+        out = dict(entry)
+        match = best.get(concept)
+        out["graphify_node_id"] = match.node_id if match else None
+        result.append(out)
+    return result
+
+
+__all__ = ["ConceptLink", "link_concepts", "link_concepts_to_entries"]

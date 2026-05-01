@@ -23,12 +23,13 @@
 .ratchet-page__head-left { flex: 1 1 0; }
 
 .ratchet-page__title {
-  font-family: var(--font-serif);
-  font-weight: 500;
-  font-size: 36px;
-  letter-spacing: -0.022em;
+  font-family: "Newsreader", var(--font-serif);
+  font-weight: 420;
+  font-size: clamp(1.85rem, 2.6vw + 0.5rem, 2.9rem);
+  letter-spacing: -0.02em;
   margin: 0;
-  line-height: 1.08;
+  line-height: 1.05;
+  color: var(--ink-blackletter);
 }
 
 .ratchet-page__sub {
@@ -64,9 +65,11 @@
 
 .ratchet-card__header h2 {
   margin: 0;
-  font-family: var(--font-serif);
+  font-family: "Newsreader", var(--font-serif);
   font-size: 18px;
-  font-weight: 500;
+  font-weight: 440;
+  letter-spacing: -0.015em;
+  color: var(--ink-blackletter);
 }
 
 .ratchet-card__meta {
@@ -115,9 +118,12 @@
 }
 
 .ratchet-table .num {
-  font-family: var(--font-serif);
+  font-family: "Newsreader", var(--font-serif);
   font-style: italic;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums lining-nums;
   font-feature-settings: "tnum", "lnum";
+  letter-spacing: -0.005em;
 }
 
 /* ---- Phase 4G: strict-ratchet transparency banner ----

@@ -2505,6 +2505,44 @@ def test_graph_import_invalid_json_raises_input_error(tmp_path: Path) -> None:
         capture_module.import_graphify_artifact(repo_root, force=True)
 
 
+def test_graph_import_populates_review_db_fts(tmp_path: Path) -> None:
+    from ahadiff.review.database import count_graph_nodes
+    from ahadiff.review.search import search_graph_nodes_fts
+
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "tracked.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+
+    graph_dir = repo_root / "graphify-out"
+    graph_dir.mkdir()
+    (graph_dir / "graph.json").write_text(
+        json.dumps(
+            {
+                "nodes": [
+                    {
+                        "id": "node-task-runner",
+                        "label": "TaskRunner",
+                        "kind": "class",
+                        "file_path": "src/task_runner.py",
+                    }
+                ],
+                "links": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    status = capture_module.import_graphify_artifact(repo_root, force=True)
+
+    review_db = repo_root / ".ahadiff" / "review.sqlite"
+    assert status.imported_exists is True
+    assert count_graph_nodes(review_db) == 1
+    [hit] = search_graph_nodes_fts(review_db, "TaskRunner")
+    assert hit.primary_key == "node-task-runner"
+
+
 def test_graphify_status_handles_macos_var_alias_without_relative_to_crash(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

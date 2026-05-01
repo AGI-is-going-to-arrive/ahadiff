@@ -42,6 +42,18 @@ async function openSidebarIfCollapsed(page: Page): Promise<void> {
   }
 }
 
+async function openSearchOverlay(page: Page): Promise<void> {
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await expect(page.locator('.topbar')).toBeVisible();
+  const searchBtn = page.getByRole('button', { name: /Open search/i });
+  if (await searchBtn.isVisible().catch(() => false)) {
+    await searchBtn.click();
+  } else {
+    await page.keyboard.press('Control+K');
+  }
+  await expect(page.getByRole('dialog', { name: /Search|搜索/i })).toBeVisible();
+}
+
 async function holdPeekGuardTimer(page: Page): Promise<void> {
   await page.addInitScript(`
     (() => {
@@ -996,6 +1008,7 @@ test.describe('walkthrough: full-app functional test', () => {
     // Error alert should be visible
     const alert = page.locator('[role="alert"]');
     await expect(alert).toBeVisible();
+    await expect(alert).toContainText(/Failed to fetch Dashboard/);
 
     // Retry button should be present
     const retryBtn = page.locator('.retry-btn');
@@ -1101,5 +1114,127 @@ test.describe('walkthrough: full-app functional test', () => {
     // Should navigate to the lesson page for that run
     await expect(page).toHaveURL(/\/#\/run\/run-003\/lesson/);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  });
+
+  /* ---------------------------------------------------------------- */
+  /*  7E: Error state — 401 unauthorized triggers auth error UI         */
+  /* ---------------------------------------------------------------- */
+
+  test('Error state — 401 on auth endpoint shows auth-specific error', async ({ page }) => {
+    await page.route(
+      (url) => url.pathname === '/api/auth/token',
+      (route) =>
+        route.fulfill({
+          status: 401,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'unauthorized' }),
+        }),
+    );
+    await page.route(
+      (url) => url.pathname === '/api/locale',
+      (route) =>
+        route.fulfill({ status: 200, contentType: 'application/json', body: '{"locale":"en"}' }),
+    );
+
+    await page.goto('/', { timeout: 15_000 });
+    const alert = page.locator('[role="alert"]');
+    await expect(alert).toBeVisible();
+    await expect(alert).toContainText(/Authentication failed/);
+  });
+
+  /* ---------------------------------------------------------------- */
+  /*  7E: Error state — network timeout shows retry UI                  */
+  /* ---------------------------------------------------------------- */
+
+  test('Error state — network timeout on runs shows error + retry', async ({ page }) => {
+    await installRichMock(page);
+    await page.route(
+      (url) => url.pathname === '/api/runs',
+      (route) => route.abort('timedout'),
+    );
+    await page.route(
+      (url) => url.pathname === '/api/ratchet/history',
+      (route) => route.abort('timedout'),
+    );
+
+    await page.goto('/');
+    const alert = page.locator('[role="alert"]');
+    await expect(alert).toBeVisible();
+    await expect(alert).toContainText(/Failed to fetch Dashboard/);
+    const retryBtn = page.locator('.retry-btn');
+    await expect(retryBtn).toBeVisible();
+  });
+
+  test('CC-GAP-3 — SQLite corruption from search endpoint shows recoverable error', async ({ page }) => {
+    await page.route(
+      (url) => url.pathname === '/api/search',
+      (route) =>
+        route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'review.sqlite is not a valid database' }),
+        }),
+    );
+
+    await page.goto('/');
+    await openSearchOverlay(page);
+    await page.locator('#search-overlay-input').fill('sqlite');
+    await expect(page.locator('.search-overlay__status')).toContainText(/Search is unavailable/);
+  });
+
+  /* ---------------------------------------------------------------- */
+  /*  7E: Empty state — zero runs shows fallback                        */
+  /* ---------------------------------------------------------------- */
+
+  test('Empty state — zero runs shows empty fallback UI', async ({ page }) => {
+    await installServeMock(page);
+    await page.goto('/');
+    // With zero runs, dashboard shows an empty-state / no-data indicator
+    // rather than the run table.
+    const runTable = page.locator('table.run-list');
+    const emptyIndicator = page.locator('.dashboard__empty, .kpi-card');
+    // Either the table is absent or we see KPI cards showing zero state
+    const hasTable = await runTable.isVisible().catch(() => false);
+    if (!hasTable) {
+      await expect(emptyIndicator.first()).toBeVisible();
+    }
+  });
+
+  /* ---------------------------------------------------------------- */
+  /*  7E: CC-GAP-10 — Unicode paths don't crash the viewer              */
+  /* ---------------------------------------------------------------- */
+
+  test('CC-GAP-10 — Unicode source_ref renders without crash', async ({ page }) => {
+    await installServeMock(page);
+    await page.route(
+      (url) => url.pathname === '/api/runs',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            runs: [
+              {
+                run_id: 'unicode-run',
+                source_kind: 'git_ref',
+                source_ref: '功能/测试-分支',
+                content_lang: 'zh-CN',
+                capability_level: 3,
+                verdict: 'PASS',
+                overall: 85,
+                status: 'baseline',
+                weakest_dim: 'evidence',
+                created_at: '2026-04-28T00:00:00Z',
+                degraded_flags: {},
+              },
+            ],
+          }),
+        }),
+    );
+
+    await page.goto('/');
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    // The unicode source_ref should render in the run table
+    await expect(page.locator('body')).toContainText('功能');
   });
 });

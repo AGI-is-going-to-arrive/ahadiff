@@ -264,16 +264,15 @@ class TestLabelSanitization:
         g = parse_graph_json_text(json.dumps(data))
         assert g.nodes[0].label == ""
 
-    def test_html_entities_escaped(self) -> None:
+    def test_html_entities_normalized_to_plain_text(self) -> None:
         data = {"nodes": [{"id": "n", "label": "a & b"}], "links": []}
         g = parse_graph_json_text(json.dumps(data))
-        assert "&amp;" in g.nodes[0].label
-        assert g.nodes[0].label == "a &amp; b"
+        assert g.nodes[0].label == "a & b"
 
-    def test_pre_escaped_entities_not_double_encoded(self) -> None:
+    def test_pre_escaped_entities_normalized_to_plain_text(self) -> None:
         data = {"nodes": [{"id": "n", "label": "Tom &amp; Jerry"}], "links": []}
         g = parse_graph_json_text(json.dumps(data))
-        assert g.nodes[0].label == "Tom &amp; Jerry"
+        assert g.nodes[0].label == "Tom & Jerry"
 
     def test_javascript_uri_stripped(self) -> None:
         data = {
@@ -325,14 +324,96 @@ class TestLabelSanitization:
         assert "\x08" not in g.nodes[0].label
         assert "\x0e" not in g.nodes[0].label
 
-    def test_quotes_escaped_in_label(self) -> None:
+    def test_quotes_preserved_as_plain_text(self) -> None:
+        data = {
+            "nodes": [{"id": "n", "label": 'x "quoted" y'}],
+            "links": [],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert g.nodes[0].label == 'x "quoted" y'
+
+    def test_event_handler_stripped_from_label(self) -> None:
         data = {
             "nodes": [{"id": "n", "label": 'onload="alert(1)"'}],
             "links": [],
         }
         g = parse_graph_json_text(json.dumps(data))
-        assert '"' not in g.nodes[0].label
-        assert "&quot;" in g.nodes[0].label
+        assert "onload" not in g.nodes[0].label.lower()
+
+    def test_onerror_handler_stripped(self) -> None:
+        data = {
+            "nodes": [{"id": "n", "label": "img onerror=alert(1)"}],
+            "links": [],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert "onerror" not in g.nodes[0].label.lower()
+
+    def test_onmouseover_handler_stripped(self) -> None:
+        data = {
+            "nodes": [{"id": "n", "label": "text onmouseover=steal()"}],
+            "links": [],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert "onmouseover" not in g.nodes[0].label.lower()
+
+    def test_dangerous_uri_mid_string_stripped(self) -> None:
+        data = {
+            "nodes": [{"id": "n", "label": "click here javascript:alert(1)"}],
+            "links": [],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert "javascript:" not in g.nodes[0].label
+
+    def test_event_handler_in_edge_relation(self) -> None:
+        data = {
+            "nodes": [{"id": "a", "label": "A"}, {"id": "b", "label": "B"}],
+            "links": [{"source": "a", "target": "b", "relation": 'onerror=alert(1)'}],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert "onerror" not in (g.links[0].relation or "").lower()
+
+    def test_event_handler_in_hyperedge_relation(self) -> None:
+        data = {
+            "nodes": [{"id": "a", "label": "A"}, {"id": "b", "label": "B"}],
+            "links": [],
+            "hyperedges": [{"id": "h", "nodes": ["a", "b"], "relation": "onclick=xss()"}],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert "onclick" not in (g.hyperedges[0].relation or "").lower()
+
+    def test_xss_svg_onload_payload(self) -> None:
+        payload = '<svg onload="alert(document.cookie)">'
+        data = {"nodes": [{"id": "n", "label": payload}], "links": []}
+        g = parse_graph_json_text(json.dumps(data))
+        assert "onload" not in g.nodes[0].label.lower()
+        assert "<svg" not in g.nodes[0].label
+
+    def test_data_uri_mid_string_stripped(self) -> None:
+        data = {
+            "nodes": [{"id": "n", "label": "see data:text/html,<script>xss</script>"}],
+            "links": [],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert "data:" not in g.nodes[0].label
+
+    def test_metadata_colon_preserved(self) -> None:
+        data = {
+            "nodes": [{"id": "n", "label": "metadata:value bigdata:analysis"}],
+            "links": [],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert "metadata:value" in g.nodes[0].label
+        assert "bigdata:analysis" in g.nodes[0].label
+
+    def test_legitimate_on_prefix_preserved(self) -> None:
+        data = {
+            "nodes": [{"id": "n", "label": "only=true online=yes ongoing=work"}],
+            "links": [],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        assert "only=true" in g.nodes[0].label
+        assert "online=yes" in g.nodes[0].label
+        assert "ongoing=work" in g.nodes[0].label
 
 
 # ---------------------------------------------------------------------------

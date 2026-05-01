@@ -4,7 +4,7 @@ from .freshness import (
     compute_freshness,
     project_freshness,
 )
-from .linker import ConceptLink, link_concepts
+from .linker import ConceptLink, link_concepts, link_concepts_to_entries
 from .matcher import match_concepts, similarity
 from .models import GraphifyEdge, GraphifyGraph, GraphifyHyperedge, GraphifyNode
 from .parser import parse_graph_json, parse_graph_json_text
@@ -24,6 +24,7 @@ __all__ = [
     "compute_freshness",
     "extract_subgraph",
     "link_concepts",
+    "link_concepts_to_entries",
     "match_concepts",
     "parse_graph_json",
     "parse_graph_json_text",

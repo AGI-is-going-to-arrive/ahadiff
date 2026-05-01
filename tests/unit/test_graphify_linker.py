@@ -5,7 +5,12 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
-from ahadiff.graphify import ConceptLink, link_concepts, parse_graph_json_text
+from ahadiff.graphify import (
+    ConceptLink,
+    link_concepts,
+    link_concepts_to_entries,
+    parse_graph_json_text,
+)
 
 if TYPE_CHECKING:
     from ahadiff.graphify.models import GraphifyGraph
@@ -98,3 +103,71 @@ class TestLinkConcepts:
         assert node_ids == {"n1", "n2"}
         file_paths = {lnk.file_path for lnk in links}
         assert file_paths == {"src/utils.py", "lib/utils.py"}
+
+    def test_html_entities_match_plain_concept(self) -> None:
+        data = {
+            "nodes": [{"id": "n1", "label": "A&amp;B", "file_path": "src/a.py"}],
+            "links": [],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+
+        links = link_concepts(g, ["A&B"])
+
+        assert len(links) == 1
+        assert links[0].node_id == "n1"
+        assert links[0].node_label == "A&B"
+
+
+class TestLinkConceptsToEntries:
+    def test_links_entries_with_graphify_node_id(self) -> None:
+        g = _make_graph()
+        entries = [
+            {"concept": "asyncio", "term_key": "asyncio"},
+            {"concept": "freshness_state", "term_key": "freshness-state"},
+        ]
+        result = link_concepts_to_entries(g, entries, threshold=0.5)
+        assert len(result) == 2
+        assert result[0]["graphify_node_id"] == "n2"
+        assert result[1]["graphify_node_id"] == "n3"
+
+    def test_unmatched_entries_get_none(self) -> None:
+        g = _make_graph()
+        entries = [{"concept": "totally_unknown_xyz", "term_key": "xyz"}]
+        result = link_concepts_to_entries(g, entries, threshold=0.9)
+        assert result[0]["graphify_node_id"] is None
+
+    def test_does_not_mutate_input(self) -> None:
+        g = _make_graph()
+        original = {"concept": "asyncio", "term_key": "asyncio"}
+        result = link_concepts_to_entries(g, [original])
+        assert "graphify_node_id" not in original
+        assert result[0]["graphify_node_id"] == "n2"
+
+    def test_empty_entries(self) -> None:
+        g = _make_graph()
+        assert link_concepts_to_entries(g, []) == []
+
+    def test_empty_graph(self) -> None:
+        g = parse_graph_json_text(json.dumps({"nodes": [], "links": []}))
+        entries = [{"concept": "foo", "term_key": "foo"}]
+        result = link_concepts_to_entries(g, entries)
+        assert result[0]["graphify_node_id"] is None
+
+    def test_uses_term_fallback(self) -> None:
+        g = _make_graph()
+        entries = [{"term": "asyncio", "term_key": "asyncio"}]
+        result = link_concepts_to_entries(g, entries)
+        assert result[0]["graphify_node_id"] == "n2"
+
+    def test_best_score_wins(self) -> None:
+        data = {
+            "nodes": [
+                {"id": "n1", "label": "task_runner", "file_path": "a.py"},
+                {"id": "n2", "label": "task_runner_v2", "file_path": "b.py"},
+            ],
+            "links": [],
+        }
+        g = parse_graph_json_text(json.dumps(data))
+        entries = [{"concept": "task_runner", "term_key": "task-runner"}]
+        result = link_concepts_to_entries(g, entries, threshold=0.3)
+        assert result[0]["graphify_node_id"] == "n1"
