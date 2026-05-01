@@ -44,3 +44,4 @@ build/
 # Development screenshots & test patches (local only)
 *.png
 *.patch
+!benchmarks/fixtures/**/*.patch

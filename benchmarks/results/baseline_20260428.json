@@ -1,127 +1,157 @@
 {
   "api_latency": {
     "benchmark": "api_latency",
-    "endpoints": {
-      "GET /api/auth/token": {
-        "http_status_counts": {
-          "200": 30
-        },
-        "metrics": {
-          "mean_ms": 0.562,
-          "p50_ms": 0.518,
-          "p95_ms": 0.818,
-          "p99_ms": 0.891
-        },
-        "response_bytes": {
-          "max": 62,
-          "mean": 62.0,
-          "min": 62
-        },
-        "samples": 30,
-        "status": "ok"
-      },
-      "GET /api/concepts": {
-        "http_status_counts": {
-          "200": 30
-        },
-        "metrics": {
-          "mean_ms": 57.332,
-          "p50_ms": 57.219,
-          "p95_ms": 60.145,
-          "p99_ms": 61.859
-        },
-        "response_bytes": {
-          "max": 10124,
-          "mean": 10124.0,
-          "min": 10124
-        },
-        "samples": 30,
-        "status": "ok"
-      },
-      "GET /api/config": {
-        "http_status_counts": {
-          "200": 30
-        },
-        "metrics": {
-          "mean_ms": 1.103,
-          "p50_ms": 1.104,
-          "p95_ms": 1.339,
-          "p99_ms": 1.36
-        },
-        "response_bytes": {
-          "max": 184,
-          "mean": 184.0,
-          "min": 184
-        },
-        "samples": 30,
-        "status": "ok"
-      },
-      "GET /api/ratchet/history": {
-        "http_status_counts": {
-          "200": 30
-        },
-        "metrics": {
-          "mean_ms": 5.871,
-          "p50_ms": 5.76,
-          "p95_ms": 6.807,
-          "p99_ms": 7.483
-        },
-        "response_bytes": {
-          "max": 1074,
-          "mean": 1074.0,
-          "min": 1074
-        },
-        "samples": 30,
-        "status": "ok"
-      },
-      "GET /api/runs": {
-        "http_status_counts": {
-          "200": 30
-        },
-        "metrics": {
-          "mean_ms": 5.888,
-          "p50_ms": 5.848,
-          "p95_ms": 6.77,
-          "p99_ms": 7.08
-        },
-        "response_bytes": {
-          "max": 1276,
-          "mean": 1276.0,
-          "min": 1276
-        },
-        "samples": 30,
-        "status": "ok"
-      }
-    },
     "host": "127.0.0.1",
     "port": 18321,
-    "samples_per_endpoint": 30,
-    "status": "ok",
-    "working_directory": "/Users/yangjunjie/Desktop/ahadiff"
+    "reason": "serve_not_running",
+    "status": "skipped"
   },
   "bundle_size": {
     "benchmark": "bundle_size",
     "build_log_tail": [
-      "",
-      "> ahadiff-viewer@0.1.0 build /Users/yangjunjie/Desktop/ahadiff/viewer",
-      "> vite build",
-      "",
-      "vite v5.4.21 building for production...",
-      "transforming...",
-      "\u2713 105 modules transformed.",
-      "rendering chunks...",
-      "computing gzip size...",
-      "dist/index.html                   2.21 kB \u2502 gzip:  1.15 kB",
-      "dist/assets/index-IKRoUsQc.css   65.81 kB \u2502 gzip: 11.94 kB",
-      "dist/assets/index-hz5h83hC.js   302.83 kB \u2502 gzip: 92.90 kB",
-      "\u2713 built in 553ms"
+      "mode      generateSW",
+      "precache  47 entries (638.63 KiB)",
+      "files generated",
+      "  dist/sw.js",
+      "  dist/workbox-4bf5dfea.js",
+      "initial-js-gzip ./assets/index-BqO7mG9I.js: 17099 bytes",
+      "initial-js-gzip ./assets/vendor-react-CdNICIhA.js: 60272 bytes",
+      "initial-js-gzip ./assets/vendor-router-ec1-e7sR.js: 8687 bytes",
+      "initial-js-gzip total: 86058 bytes (observed, no budget cap)",
+      "dashboard-first-route-js-gzip ./assets/index-BqO7mG9I.js: 17099 bytes",
+      "dashboard-first-route-js-gzip ./assets/vendor-react-CdNICIhA.js: 60272 bytes",
+      "dashboard-first-route-js-gzip ./assets/vendor-router-ec1-e7sR.js: 8687 bytes",
+      "dashboard-first-route-js-gzip ./assets/DashboardPage-CgZZvYV5.js: 3714 bytes",
+      "dashboard-first-route-js-gzip ./assets/AppShell-CUPCcDul.js: 7619 bytes",
+      "dashboard-first-route-js-gzip ./assets/vendor-page-deps-BTFeMm7m.js: 19232 bytes",
+      "dashboard-first-route-js-gzip ./assets/RatchetChart-Cwy5v-yC.js: 938 bytes",
+      "dashboard-first-route-js-gzip ./assets/Skeleton-CzUXxJ4H.js: 286 bytes",
+      "dashboard-first-route-js-gzip ./assets/GraphifyCard-Dv4c-60-.js: 873 bytes",
+      "dashboard-first-route-js-gzip ./assets/graph-DSoXneuV.js: 285 bytes",
+      "dashboard-first-route-js-gzip total: 119005 bytes (observed, no budget cap)"
     ],
     "dist_directory": "dist",
-    "dist_total_bytes": 372664,
+    "dist_total_bytes": 682488,
     "js_files": [
       {
-        "bytes": 304604,
-        "path": "dist/assets/index-hz5h83hC.js"
+        "bytes": 24789,
+        "path": "dist/assets/AppShell-CUPCcDul.js"
+      },
+      {
+        "bytes": 12811,
+        "path": "dist/assets/ConceptsPage-Cij2KaJr.js"
+      },
+      {
+        "bytes": 12478,
+        "path": "dist/assets/DashboardPage-CgZZvYV5.js"
+      },
+      {
+        "bytes": 19948,
+        "path": "dist/assets/DiffViewerPage-D61We3qZ.js"
+      },
+      {
+        "bytes": 1741,
+        "path": "dist/assets/EvidencePanel-YBG60zLl.js"
+      },
+      {
+        "bytes": 2241,
+        "path": "dist/assets/GraphifyCard-Dv4c-60-.js"
+      },
+      {
+        "bytes": 6239,
+        "path": "dist/assets/LandingPage-Du5dC8h4.js"
+      },
+      {
+        "bytes": 12731,
+        "path": "dist/assets/LessonPage-BKsb7bgF.js"
+      },
+      {
+        "bytes": 493,
+        "path": "dist/assets/NotFoundPage-Cc_vyWHu.js"
+      },
+      {
+        "bytes": 4407,
+        "path": "dist/assets/OnboardingPage-DlTupWey.js"
+      },
+      {
+        "bytes": 14344,
+        "path": "dist/assets/QuizPage-C22q1fSO.js"
+      },
+      {
+        "bytes": 1876,
+        "path": "dist/assets/RatchetChart-Cwy5v-yC.js"
+      },
+      {
+        "bytes": 8473,
+        "path": "dist/assets/RatchetPage-DrO1tGXH.js"
+      },
+      {
+        "bytes": 10587,
+        "path": "dist/assets/ReviewPage-DndclyOs.js"
+      },
+      {
+        "bytes": 6087,
+        "path": "dist/assets/SearchOverlay-4tLp5pau.js"
+      },
+      {
+        "bytes": 19415,
+        "path": "dist/assets/SettingsPage-RKCvAPbm.js"
+      },
+      {
+        "bytes": 440,
+        "path": "dist/assets/Skeleton-CzUXxJ4H.js"
+      },
+      {
+        "bytes": 3814,
+        "path": "dist/assets/SkillsPage-UC-snNlT.js"
+      },
+      {
+        "bytes": 715,
+        "path": "dist/assets/config-BqRhmvrg.js"
+      },
+      {
+        "bytes": 519,
+        "path": "dist/assets/doctor-ChSlmGvM.js"
+      },
+      {
+        "bytes": 427,
+        "path": "dist/assets/graph-DSoXneuV.js"
+      },
+      {
+        "bytes": 44448,
+        "path": "dist/assets/index-BqO7mG9I.js"
+      },
+      {
+        "bytes": 577,
+        "path": "dist/assets/review-qI072XWk.js"
+      },
+      {
+        "bytes": 13837,
+        "path": "dist/assets/vendor-d3-toBZHlC0.js"
+      },
+      {
+        "bytes": 72183,
+        "path": "dist/assets/vendor-page-deps-BTFeMm7m.js"
+      },
+      {
+        "bytes": 193084,
+        "path": "dist/assets/vendor-react-CdNICIhA.js"
+      },
+      {
+        "bytes": 23330,
+        "path": "dist/assets/vendor-router-ec1-e7sR.js"
+      },
+      {
+        "bytes": 136,
+        "path": "dist/registerSW.js"
+      },
+      {
+        "bytes": 3397,
+        "path": "dist/sw.js"
+      },
+      {
+        "bytes": 15037,
+        "path": "dist/workbox-4bf5dfea.js"
       }
     ],
     "status": "ok",
@@ -136,22 +166,22 @@
       "--version"
     ],
     "metrics": {
-      "mean_ms": 187.38,
-      "min_ms": 180.986,
-      "p50_ms": 186.629,
-      "p95_ms": 193.238
+      "mean_ms": 161.57,
+      "min_ms": 159.234,
+      "p50_ms": 160.885,
+      "p95_ms": 165.128
     },
     "raw_samples_ms": [
-      184.526,
-      180.986,
-      182.934,
-      188.212,
-      185.046,
-      191.567,
-      184.73,
-      194.606,
-      191.21,
-      189.985
+      162.552,
+      160.561,
+      159.234,
+      160.882,
+      167.114,
+      162.7,
+      160.888,
+      160.451,
+      160.251,
+      161.071
     ],
     "runs": 10,
     "status": "ok",
@@ -165,42 +195,42 @@
       "100kb": {
         "actual_bytes": 102570,
         "actual_lines": 2630,
-        "bytes_per_sec": 20507403.494,
+        "bytes_per_sec": 22143324.29,
         "files_parsed": 263,
         "iterations": 40,
-        "lines_per_sec": 525830.859,
+        "lines_per_sec": 567777.546,
         "target_bytes": 102400,
-        "total_elapsed_ms": 200.064
+        "total_elapsed_ms": 185.284
       },
       "10kb": {
         "actual_bytes": 10530,
         "actual_lines": 270,
-        "bytes_per_sec": 22322751.626,
+        "bytes_per_sec": 23429482.096,
         "files_parsed": 27,
         "iterations": 200,
-        "lines_per_sec": 572378.247,
+        "lines_per_sec": 600755.951,
         "target_bytes": 10240,
-        "total_elapsed_ms": 94.343
+        "total_elapsed_ms": 89.887
       },
       "1kb": {
         "actual_bytes": 1170,
         "actual_lines": 30,
-        "bytes_per_sec": 21636148.484,
+        "bytes_per_sec": 23309326.726,
         "files_parsed": 3,
         "iterations": 500,
-        "lines_per_sec": 554773.038,
+        "lines_per_sec": 597675.044,
         "target_bytes": 1024,
-        "total_elapsed_ms": 27.038
+        "total_elapsed_ms": 25.097
       },
       "1mb": {
         "actual_bytes": 1048710,
         "actual_lines": 26890,
-        "bytes_per_sec": 19167792.08,
+        "bytes_per_sec": 20111400.794,
         "files_parsed": 2689,
         "iterations": 5,
-        "lines_per_sec": 491481.848,
+        "lines_per_sec": 515676.943,
         "target_bytes": 1048576,
-        "total_elapsed_ms": 273.56
+        "total_elapsed_ms": 260.725
       }
     },
     "working_directory": "/Users/yangjunjie/Desktop/ahadiff"
@@ -208,75 +238,271 @@
   "graphify": {
     "benchmarks": [
       {
-        "edge_count": 17,
+        "edge_count": 1500,
         "iterations": 100,
-        "mean_ms": 0.298,
-        "median_ms": 0.283,
-        "node_count": 15,
+        "mean_ms": 8.114,
+        "median_ms": 7.967,
+        "node_count": 500,
         "operation": "parse_graph_json",
-        "p95_ms": 0.373,
-        "p99_ms": 0.467
+        "p95_ms": 8.487,
+        "p99_ms": 11.361
       },
       {
         "iterations": 50,
-        "matches_per_round": 10,
-        "mean_ms": 1.438,
-        "median_ms": 1.426,
+        "matches_per_round": 0,
+        "mean_ms": 45.217,
+        "median_ms": 45.185,
         "operation": "match_concepts (10 queries)",
-        "p95_ms": 1.553
+        "p95_ms": 45.637
       },
       {
         "iterations": 50,
-        "links_found": 10,
-        "mean_ms": 1.433,
-        "median_ms": 1.418,
+        "links_found": 0,
+        "mean_ms": 44.739,
+        "median_ms": 44.711,
         "operation": "link_concepts (10 concepts)",
-        "p95_ms": 1.517
+        "p95_ms": 45.025
       },
       {
-        "hits_per_round": 5,
+        "hits_per_round": 0,
         "iterations": 50,
-        "mean_ms": 0.61,
-        "median_ms": 0.601,
+        "mean_ms": 18.056,
+        "median_ms": 18.065,
         "operation": "search_graph_nodes (5 queries)",
-        "p95_ms": 0.702
+        "p95_ms": 18.289
       },
       {
         "iterations": 50,
-        "mean_ms": 0.007,
-        "median_ms": 0.006,
+        "mean_ms": 0.012,
+        "median_ms": 0.012,
         "operation": "slice_by_files (2 files, 2 hops)",
-        "p95_ms": 0.008,
-        "subgraph_nodes": 12
+        "p95_ms": 0.013,
+        "subgraph_nodes": 0
+      },
+      {
+        "measurement_method": "json_length_div_4_full_graph_vs_2_file_2_hop_slice",
+        "operation": "graph_context_token_reduction",
+        "raw_estimated_tokens": 43447,
+        "selected_files": [
+          "src/pkg0/mod0.py",
+          "src/pkg1/mod1.py"
+        ],
+        "sliced_estimated_tokens": 10098,
+        "token_reduction_ratio": 0.7676,
+        "tokens_saved": 33349
       }
     ],
-    "fixture": "graph.json"
+    "fixture": "large_graph.json",
+    "fixtures": [
+      {
+        "benchmarks": [
+          {
+            "edge_count": 1500,
+            "iterations": 100,
+            "mean_ms": 8.114,
+            "median_ms": 7.967,
+            "node_count": 500,
+            "operation": "parse_graph_json",
+            "p95_ms": 8.487,
+            "p99_ms": 11.361
+          },
+          {
+            "iterations": 50,
+            "matches_per_round": 0,
+            "mean_ms": 45.217,
+            "median_ms": 45.185,
+            "operation": "match_concepts (10 queries)",
+            "p95_ms": 45.637
+          },
+          {
+            "iterations": 50,
+            "links_found": 0,
+            "mean_ms": 44.739,
+            "median_ms": 44.711,
+            "operation": "link_concepts (10 concepts)",
+            "p95_ms": 45.025
+          },
+          {
+            "hits_per_round": 0,
+            "iterations": 50,
+            "mean_ms": 18.056,
+            "median_ms": 18.065,
+            "operation": "search_graph_nodes (5 queries)",
+            "p95_ms": 18.289
+          },
+          {
+            "iterations": 50,
+            "mean_ms": 0.012,
+            "median_ms": 0.012,
+            "operation": "slice_by_files (2 files, 2 hops)",
+            "p95_ms": 0.013,
+            "subgraph_nodes": 0
+          },
+          {
+            "measurement_method": "json_length_div_4_full_graph_vs_2_file_2_hop_slice",
+            "operation": "graph_context_token_reduction",
+            "raw_estimated_tokens": 43447,
+            "selected_files": [
+              "src/pkg0/mod0.py",
+              "src/pkg1/mod1.py"
+            ],
+            "sliced_estimated_tokens": 10098,
+            "token_reduction_ratio": 0.7676,
+            "tokens_saved": 33349
+          }
+        ],
+        "fixture": "large_graph.json",
+        "status": "ok"
+      },
+      {
+        "benchmarks": [
+          {
+            "edge_count": 15000,
+            "iterations": 100,
+            "mean_ms": 89.97,
+            "median_ms": 91.086,
+            "node_count": 5000,
+            "operation": "parse_graph_json",
+            "p95_ms": 97.545,
+            "p99_ms": 102.916
+          },
+          {
+            "iterations": 50,
+            "matches_per_round": 0,
+            "mean_ms": 464.939,
+            "median_ms": 465.34,
+            "operation": "match_concepts (10 queries)",
+            "p95_ms": 467.781
+          },
+          {
+            "iterations": 50,
+            "links_found": 0,
+            "mean_ms": 466.972,
+            "median_ms": 466.435,
+            "operation": "link_concepts (10 concepts)",
+            "p95_ms": 471.878
+          },
+          {
+            "hits_per_round": 0,
+            "iterations": 50,
+            "mean_ms": 186.763,
+            "median_ms": 186.155,
+            "operation": "search_graph_nodes (5 queries)",
+            "p95_ms": 189.337
+          },
+          {
+            "iterations": 50,
+            "mean_ms": 0.097,
+            "median_ms": 0.095,
+            "operation": "slice_by_files (2 files, 2 hops)",
+            "p95_ms": 0.098,
+            "subgraph_nodes": 0
+          },
+          {
+            "measurement_method": "json_length_div_4_full_graph_vs_2_file_2_hop_slice",
+            "operation": "graph_context_token_reduction",
+            "raw_estimated_tokens": 435535,
+            "selected_files": [
+              "src/pkg0/mod0.py",
+              "src/pkg1/mod1.py"
+            ],
+            "sliced_estimated_tokens": 101119,
+            "token_reduction_ratio": 0.7678,
+            "tokens_saved": 334416
+          }
+        ],
+        "fixture": "xlarge_graph.json",
+        "status": "ok"
+      },
+      {
+        "benchmarks": [
+          {
+            "edge_count": 17,
+            "iterations": 100,
+            "mean_ms": 0.293,
+            "median_ms": 0.287,
+            "node_count": 15,
+            "operation": "parse_graph_json",
+            "p95_ms": 0.321,
+            "p99_ms": 0.417
+          },
+          {
+            "iterations": 50,
+            "matches_per_round": 10,
+            "mean_ms": 1.369,
+            "median_ms": 1.362,
+            "operation": "match_concepts (10 queries)",
+            "p95_ms": 1.431
+          },
+          {
+            "iterations": 50,
+            "links_found": 8,
+            "mean_ms": 1.373,
+            "median_ms": 1.364,
+            "operation": "link_concepts (10 concepts)",
+            "p95_ms": 1.423
+          },
+          {
+            "hits_per_round": 5,
+            "iterations": 50,
+            "mean_ms": 0.572,
+            "median_ms": 0.563,
+            "operation": "search_graph_nodes (5 queries)",
+            "p95_ms": 0.618
+          },
+          {
+            "iterations": 50,
+            "mean_ms": 0.007,
+            "median_ms": 0.006,
+            "operation": "slice_by_files (2 files, 2 hops)",
+            "p95_ms": 0.007,
+            "subgraph_nodes": 12
+          },
+          {
+            "measurement_method": "json_length_div_4_full_graph_vs_2_file_2_hop_slice",
+            "operation": "graph_context_token_reduction",
+            "raw_estimated_tokens": 1256,
+            "selected_files": [
+              "src/auth/middleware.py",
+              "src/auth/tokens.py"
+            ],
+            "sliced_estimated_tokens": 718,
+            "token_reduction_ratio": 0.4283,
+            "tokens_saved": 538
+          }
+        ],
+        "fixture": "graph.json",
+        "status": "ok"
+      }
+    ],
+    "status": "ok"
   },
+  "graphify_perf_gate": "pass",
   "sqlite_queries": {
     "benchmark": "sqlite_queries",
     "operations": {
       "list_due_cards": {
         "iterations": 100,
-        "mean_ms": 1.93,
-        "min_ms": 1.479,
-        "p50_ms": 1.731,
-        "p95_ms": 2.142,
+        "mean_ms": 1.705,
+        "min_ms": 1.487,
+        "p50_ms": 1.639,
+        "p95_ms": 1.867,
         "result_count": 100
       },
       "load_finalized_ratchet_history_page": {
         "iterations": 100,
-        "mean_ms": 3.022,
-        "min_ms": 2.482,
-        "p50_ms": 2.927,
-        "p95_ms": 4.004,
+        "mean_ms": 2.836,
+        "min_ms": 2.523,
+        "p50_ms": 2.722,
+        "p95_ms": 3.891,
         "result_count": 100
       },
       "load_result_events_page": {
         "iterations": 100,
-        "mean_ms": 2.014,
-        "min_ms": 1.633,
-        "p50_ms": 1.928,
-        "p95_ms": 2.596,
+        "mean_ms": 1.949,
+        "min_ms": 1.63,
+        "p50_ms": 1.858,
+        "p95_ms": 2.808,
         "result_count": 100
       }
     },

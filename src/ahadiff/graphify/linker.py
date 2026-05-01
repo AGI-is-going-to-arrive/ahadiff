@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
     from .models import GraphifyGraph
 
-from .matcher import match_concepts
+from .matcher import DEFAULT_CONCEPT_MATCH_THRESHOLD, match_concepts
 
 
 @dataclass(frozen=True)
@@ -27,7 +27,7 @@ def link_concepts(
     graph: GraphifyGraph,
     concepts: Sequence[str],
     *,
-    threshold: float = 0.5,
+    threshold: float = DEFAULT_CONCEPT_MATCH_THRESHOLD,
 ) -> tuple[ConceptLink, ...]:
     if not concepts or not graph.nodes:
         return ()
@@ -72,7 +72,7 @@ def link_concepts_to_entries(
     graph: GraphifyGraph,
     entries: Sequence[dict[str, Any]],
     *,
-    threshold: float = 0.5,
+    threshold: float = DEFAULT_CONCEPT_MATCH_THRESHOLD,
 ) -> list[dict[str, Any]]:
     """Link concept entries to graph nodes, writing ``graphify_node_id`` back.
 

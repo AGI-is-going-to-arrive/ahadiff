@@ -158,6 +158,9 @@ _ARTIFACT_SET_SCHEMA = "ahadiff.artifact_set"
 _ARTIFACT_SET_SCHEMA_VERSION = 1
 _TEXT_MAP_SCHEMA = "ahadiff.text_map"
 _TEXT_MAP_SCHEMA_VERSION = 1
+_GRAPHIFY_CONTEXT_SCHEMA = "ahadiff.graphify_context"
+_GRAPHIFY_CONTEXT_SCHEMA_VERSION = 1
+_GRAPHIFY_PROVENANCE_MAX_BYTES = 16 * 1024
 log = logging.getLogger(__name__)
 
 
@@ -226,6 +229,19 @@ def capture_patch(
         use_graphify=use_graphify,
         repo=_repo,
     )
+    graphify_provenance_missing = "graph_sha256" not in graphify_status.provenance
+    if graphify_status.has_graph and (
+        not graphify_status.imported_exists or graphify_provenance_missing
+    ):
+        try:
+            graphify_status = import_graphify_artifact(
+                workspace_root,
+                force=not graphify_status.imported_exists or graphify_provenance_missing,
+            )
+        except (InputError, OSError, StorageError):
+            if use_graphify is True:
+                raise
+            log.warning("failed to import optional Graphify artifact", exc_info=True)
 
     redaction_result = redaction_pipeline(
         raw_capture.raw_patch_text,
@@ -349,6 +365,12 @@ def write_input_artifacts(capture: CapturedDiff) -> tuple[Path, Path]:
         "before_text_by_path.json": redacted_before_text,
         "after_text_by_path.json": redacted_after_text,
     }
+    graphify_context_payload = graphify_context_payload_from_capture(capture)
+    if graphify_context_payload is not None:
+        artifact_texts["graphify_context.json"] = _redact_json_artifact(
+            _render_json_text(graphify_context_payload),
+            capture.workspace_root,
+        )
     artifact_set_payload = _artifact_set_payload(
         capture,
         artifact_texts,
@@ -356,6 +378,7 @@ def write_input_artifacts(capture: CapturedDiff) -> tuple[Path, Path]:
         symbols_payload,
         before_text_payload,
         after_text_payload,
+        graphify_context_payload,
     )
     artifact_texts["artifact_set.json"] = _redact_json_artifact(
         _render_json_text(artifact_set_payload),
@@ -427,54 +450,67 @@ def _artifact_set_payload(
     symbols_payload: dict[str, Any],
     before_text_payload: dict[str, Any],
     after_text_payload: dict[str, Any],
+    graphify_context_payload: dict[str, Any] | None,
 ) -> dict[str, Any]:
+    artifacts = [
+        _artifact_descriptor(
+            artifact_type="patch",
+            path="patch.diff",
+            media_type="text/x-diff",
+            text=artifact_texts["patch.diff"],
+        ),
+        _artifact_descriptor(
+            artifact_type="metadata",
+            path="metadata.json",
+            media_type="application/json",
+            text=artifact_texts["metadata.json"],
+        ),
+        _artifact_descriptor(
+            artifact_type="line_map",
+            path="line_map.json",
+            media_type="application/json",
+            text=artifact_texts["line_map.json"],
+            schema=line_map_payload["schema"],
+            schema_version=line_map_payload["schema_version"],
+        ),
+        _artifact_descriptor(
+            artifact_type="symbols",
+            path="symbols.json",
+            media_type="application/json",
+            text=artifact_texts["symbols.json"],
+            schema=symbols_payload["schema"],
+            schema_version=symbols_payload["schema_version"],
+        ),
+        _artifact_descriptor(
+            artifact_type="before_text_by_path",
+            path="before_text_by_path.json",
+            media_type="application/json",
+            text=artifact_texts["before_text_by_path.json"],
+            schema=before_text_payload["schema"],
+            schema_version=before_text_payload["schema_version"],
+        ),
+        _artifact_descriptor(
+            artifact_type="after_text_by_path",
+            path="after_text_by_path.json",
+            media_type="application/json",
+            text=artifact_texts["after_text_by_path.json"],
+            schema=after_text_payload["schema"],
+            schema_version=after_text_payload["schema_version"],
+        ),
+    ]
+    if graphify_context_payload is not None:
+        artifacts.append(
+            _artifact_descriptor(
+                artifact_type="graphify_context",
+                path="graphify_context.json",
+                media_type="application/json",
+                text=artifact_texts["graphify_context.json"],
+                schema=graphify_context_payload["schema"],
+                schema_version=graphify_context_payload["schema_version"],
+            )
+        )
     return {
-        "artifacts": [
-            _artifact_descriptor(
-                artifact_type="patch",
-                path="patch.diff",
-                media_type="text/x-diff",
-                text=artifact_texts["patch.diff"],
-            ),
-            _artifact_descriptor(
-                artifact_type="metadata",
-                path="metadata.json",
-                media_type="application/json",
-                text=artifact_texts["metadata.json"],
-            ),
-            _artifact_descriptor(
-                artifact_type="line_map",
-                path="line_map.json",
-                media_type="application/json",
-                text=artifact_texts["line_map.json"],
-                schema=line_map_payload["schema"],
-                schema_version=line_map_payload["schema_version"],
-            ),
-            _artifact_descriptor(
-                artifact_type="symbols",
-                path="symbols.json",
-                media_type="application/json",
-                text=artifact_texts["symbols.json"],
-                schema=symbols_payload["schema"],
-                schema_version=symbols_payload["schema_version"],
-            ),
-            _artifact_descriptor(
-                artifact_type="before_text_by_path",
-                path="before_text_by_path.json",
-                media_type="application/json",
-                text=artifact_texts["before_text_by_path.json"],
-                schema=before_text_payload["schema"],
-                schema_version=before_text_payload["schema_version"],
-            ),
-            _artifact_descriptor(
-                artifact_type="after_text_by_path",
-                path="after_text_by_path.json",
-                media_type="application/json",
-                text=artifact_texts["after_text_by_path.json"],
-                schema=after_text_payload["schema"],
-                schema_version=after_text_payload["schema_version"],
-            ),
-        ],
+        "artifacts": artifacts,
         "created_at": capture.metadata["created_at"],
         "generation": {
             "redaction": {
@@ -490,6 +526,9 @@ def _artifact_set_payload(
             ],
             "before_text_by_path_from": "capture.before_text_by_path",
             "after_text_by_path_from": "capture.after_text_by_path",
+            "graphify_context_from": (
+                "capture.graphify_status" if graphify_context_payload is not None else None
+            ),
         },
         "manifest_type": "artifact_set",
         "run_id": capture.run_id,
@@ -503,6 +542,36 @@ def _artifact_set_payload(
         "source_kind": capture.run_source.source_kind,
         "source_ref": capture.run_source.source_ref,
     }
+
+
+def graphify_context_payload_from_capture(capture: CapturedDiff) -> dict[str, Any] | None:
+    status = capture.graphify_status
+    if not status.has_graph:
+        return None
+    provenance = dict(status.provenance)
+    if "graph_sha256" not in provenance:
+        return None
+    node_count = _parse_int_provenance(provenance.get("node_count"))
+    edge_count = _parse_int_provenance(provenance.get("edge_count"))
+    return {
+        "edge_count": edge_count,
+        "freshness": status.freshness,
+        "graph_sha256": provenance.get("graph_sha256", ""),
+        "graph_source": provenance.get("source_path") or provenance.get("source", ""),
+        "import_time": provenance.get("import_time", ""),
+        "node_count": node_count,
+        "parser_version": provenance.get("parser_version", ""),
+        "schema": _GRAPHIFY_CONTEXT_SCHEMA,
+        "schema_version": _GRAPHIFY_CONTEXT_SCHEMA_VERSION,
+    }
+
+
+def _parse_int_provenance(value: str | None) -> int:
+    if value is None:
+        return 0
+    with suppress(ValueError):
+        return int(value)
+    return 0
 
 
 def _artifact_descriptor(
@@ -560,6 +629,8 @@ def detect_graphify_status(
         enabled=enabled,
     )
     provenance = {"source": canonicalize_path_text(_GRAPHIFY_RELATIVE_PATH)}
+    if imported_exists:
+        provenance.update(_load_graphify_provenance(_graphify_provenance_path(imported_path)))
     return GraphifyStatus(
         source_path=source_path,
         imported_path=imported_path,
@@ -672,7 +743,40 @@ def import_graphify_artifact(workspace_root: Path, *, force: bool = False) -> Gr
         final_status.provenance["source_path"] = str(status.source_path.relative_to(workspace_root))
     except ValueError:
         final_status.provenance["source_path"] = canonicalize_path_text(_GRAPHIFY_RELATIVE_PATH)
+    _write_graphify_provenance(
+        _graphify_provenance_path(status.imported_path),
+        final_status.provenance,
+    )
     return final_status
+
+
+def _graphify_provenance_path(imported_path: Path) -> Path:
+    return imported_path.parent / "provenance.json"
+
+
+def _load_graphify_provenance(path: Path) -> dict[str, str]:
+    try:
+        raw = _read_regular_file_no_follow_bounded(
+            path,
+            max_bytes=_GRAPHIFY_PROVENANCE_MAX_BYTES,
+            total_budget_bytes=_GRAPHIFY_PROVENANCE_MAX_BYTES,
+            label="graphify provenance",
+        )
+        payload = safe_json_loads(_decode_text_bytes(raw, description="graphify provenance"))
+    except (InputError, TypeError, ValueError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    result: dict[str, str] = {}
+    for key, value in cast("dict[object, object]", payload).items():
+        if isinstance(key, str) and isinstance(value, str):
+            result[key] = value
+    return result
+
+
+def _write_graphify_provenance(path: Path, provenance: dict[str, str]) -> None:
+    payload = {key: str(value) for key, value in provenance.items()}
+    _atomic_write_text(path, _render_json_text(payload))
 
 
 def _sanitize_graphify_value(value: object, *, workspace_root: Path) -> object:
@@ -2467,5 +2571,6 @@ __all__ = [
     "capture_patch",
     "detect_graphify_status",
     "import_graphify_artifact",
+    "graphify_context_payload_from_capture",
     "write_input_artifacts",
 ]

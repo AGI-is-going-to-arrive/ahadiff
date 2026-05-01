@@ -29,6 +29,7 @@ _REQUIRED_INTEGRATION_FILES = (
     "expected_artifacts_manifest.json",
     "expected_results_snapshot.json",
 )
+_OPTIONAL_INTEGRATION_DIGEST_FILES = ("graph.json",)
 
 
 @dataclass(frozen=True)
@@ -154,7 +155,12 @@ def compute_suite_digest(manifest: BenchmarkManifest) -> str:
                 separators=(",", ":"),
             ).encode("utf-8")
         )
-        for filename in entry.required_files:
+        digest_files = list(entry.required_files)
+        if entry.kind == "integration":
+            for filename in _OPTIONAL_INTEGRATION_DIGEST_FILES:
+                if (manifest.root / entry.path / filename).is_file():
+                    digest_files.append(filename)
+        for filename in digest_files:
             fixture_path = manifest.root / entry.path / filename
             if not fixture_path.is_file():
                 raise InputError(

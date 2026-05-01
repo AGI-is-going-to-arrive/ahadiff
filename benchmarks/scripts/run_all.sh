@@ -174,3 +174,8 @@ payload = {
 output_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 print(json.dumps(payload, indent=2, sort_keys=True))
 PY
+
+if [[ "$graphify_gate_status" == "fail" ]]; then
+  echo "graphify perf gate failed" >&2
+  exit 1
+fi

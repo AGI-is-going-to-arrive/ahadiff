@@ -31,7 +31,7 @@ def test_benchmark_manifest_digest_is_frozen() -> None:
     assert manifest.suite_id == "ahadiff-local-v1"
     assert manifest.visibility == "private"
     assert len([entry for entry in manifest.entries if entry.kind == "eval"]) == 20
-    assert len([entry for entry in manifest.entries if entry.kind == "integration"]) == 10
+    assert len([entry for entry in manifest.entries if entry.kind == "integration"]) == 11
     assert verify_suite_digest(manifest) == manifest.suite_digest
 
 
@@ -41,6 +41,22 @@ def test_benchmark_digest_detects_fixture_drift(tmp_path: Path) -> None:
     manifest_path = local_benchmarks / "manifest.json"
     fixture = local_benchmarks / "fixtures" / "eval" / "eval_001_python_retry" / "ground_truth.md"
     fixture.write_text(fixture.read_text(encoding="utf-8") + "\nDrift.\n", encoding="utf-8")
+    manifest = load_benchmark_manifest(manifest_path)
+
+    assert compute_suite_digest(manifest) != manifest.suite_digest
+
+
+def test_benchmark_digest_detects_graph_fixture_drift(tmp_path: Path) -> None:
+    local_benchmarks = tmp_path / "benchmarks"
+    shutil.copytree(_REPO_ROOT / "benchmarks", local_benchmarks)
+    manifest_path = local_benchmarks / "manifest.json"
+    fixture = (
+        local_benchmarks / "fixtures" / "integration" / "pinned_011_graph_present" / "graph.json"
+    )
+    fixture.write_text(
+        fixture.read_text(encoding="utf-8").replace("AuthMiddleware", "AuthMiddlewareDrift"),
+        encoding="utf-8",
+    )
     manifest = load_benchmark_manifest(manifest_path)
 
     assert compute_suite_digest(manifest) != manifest.suite_digest

@@ -371,10 +371,24 @@
         "learn-pipeline",
         "ci-verify"
       ]
+    },
+    {
+      "capability_level": 3,
+      "degraded": false,
+      "group": "pinned_integration",
+      "id": "pinned_011_graph_present",
+      "kind": "integration",
+      "language": "python",
+      "path": "fixtures/integration/pinned_011_graph_present",
+      "tags": [
+        "learn-pipeline",
+        "ci-verify",
+        "graph-present"
+      ]
     }
   ],
   "schema_version": 1,
-  "suite_digest": "c8936a2d3c53fa88792658ecb723b0214345e227fbb5efcbc08dd90af71cb7b6",
+  "suite_digest": "99feae11f8ec303abad533adc82491fbdc0861cf8b9b00e04705bc16552ef1f1",
   "suite_id": "ahadiff-local-v1",
   "visibility": "private"
 }

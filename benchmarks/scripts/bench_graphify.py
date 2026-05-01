@@ -127,6 +127,36 @@ def bench_link(graph_path: Path, iterations: int = 50) -> dict[str, Any]:
     }
 
 
+def _estimate_graph_tokens(graph: Any) -> int:
+    raw = graph.model_dump(mode="json") if hasattr(graph, "model_dump") else graph
+    text = json.dumps(raw, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return max(1, len(text) // 4)
+
+
+def bench_token_reduction(graph_path: Path) -> dict[str, Any]:
+    from ahadiff.graphify import extract_subgraph, parse_graph_json, slice_by_files
+
+    graph = parse_graph_json(graph_path)
+    file_paths = [node.file_path for node in graph.nodes if node.file_path]
+    selected_files = sorted(set(file_paths[:2]))
+    subgraph = extract_subgraph(
+        graph,
+        slice_by_files(graph, selected_files, hop_depth=2),
+    )
+    raw_tokens = _estimate_graph_tokens(graph)
+    sliced_tokens = _estimate_graph_tokens(subgraph)
+    tokens_saved = max(raw_tokens - sliced_tokens, 0)
+    return {
+        "measurement_method": "json_length_div_4_full_graph_vs_2_file_2_hop_slice",
+        "operation": "graph_context_token_reduction",
+        "raw_estimated_tokens": raw_tokens,
+        "selected_files": selected_files,
+        "sliced_estimated_tokens": sliced_tokens,
+        "token_reduction_ratio": round(tokens_saved / raw_tokens, 4),
+        "tokens_saved": tokens_saved,
+    }
+
+
 def bench_search(graph_path: Path, iterations: int = 50) -> dict[str, Any]:
     from ahadiff.graphify import parse_graph_json, search_graph_nodes
 
@@ -190,6 +220,12 @@ def _run_fixture(fixture_graph: Path) -> dict[str, Any]:
             f"  {result['operation']}: mean={result['mean_ms']}ms median={result['median_ms']}ms",
             file=sys.stderr,
         )
+    token_reduction = bench_token_reduction(fixture_graph)
+    results.append(token_reduction)
+    print(
+        f"  graph_context_token_reduction: ratio={token_reduction['token_reduction_ratio']}",
+        file=sys.stderr,
+    )
     return {
         "benchmarks": results,
         "fixture": str(fixture_graph.name),

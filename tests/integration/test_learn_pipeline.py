@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import cast
@@ -60,6 +61,26 @@ def test_pinned_learn_artifact_pipeline_reaches_ci_verified_state(
         else:
             artifact_path = run_path / raw_artifact
         assert artifact_path.exists(), f"missing pinned artifact: {raw_artifact}"
+
+    graph_path = fixture_root / "graph.json"
+    if graph_path.is_file():
+        graph_context = json.loads((run_path / "graphify_context.json").read_text(encoding="utf-8"))
+        graph_context_map = cast("dict[str, object]", graph_context)
+        graph_text = graph_path.read_text(encoding="utf-8")
+        assert graph_context_map["schema"] == "ahadiff.graphify_context"
+        assert (
+            graph_context_map["graph_sha256"]
+            == hashlib.sha256(graph_text.encode("utf-8")).hexdigest()
+        )
+        assert graph_context_map["node_count"] == 15
+        assert graph_context_map["edge_count"] == 17
+        artifact_set = json.loads((run_path / "artifact_set.json").read_text(encoding="utf-8"))
+        artifact_set_map = cast("dict[str, object]", artifact_set)
+        assert artifact_set_map["manifest_type"] == "artifact_set"
+        generation = artifact_set_map["generation"]
+        assert isinstance(generation, dict)
+        generation_map = cast("dict[str, object]", generation)
+        assert generation_map["graphify_context_from"] == "benchmark.fixture.graph.json"
 
     score_payload = json.loads((run_path / "score.json").read_text(encoding="utf-8"))
     snapshot = json.loads(
@@ -125,6 +146,7 @@ def _materialize_pinned_run(workspace_root: Path, run_id: str, fixture_root: Pat
         + "\n",
         encoding="utf-8",
     )
+    _write_graphify_fixture_artifacts(run_path, run_id, fixture_root)
     (run_path / "claims.jsonl").write_text(
         "\n".join(json.dumps(claim.model_dump(mode="json"), ensure_ascii=False) for claim in claims)
         + "\n",
@@ -133,6 +155,54 @@ def _materialize_pinned_run(workspace_root: Path, run_id: str, fixture_root: Pat
     _write_lesson(run_path, run_id)
     _write_quiz(run_path, run_id, claims)
     return run_path
+
+
+def _write_graphify_fixture_artifacts(run_path: Path, run_id: str, fixture_root: Path) -> None:
+    graph_path = fixture_root / "graph.json"
+    if not graph_path.is_file():
+        return
+
+    from ahadiff.graphify import parse_graph_json
+    from ahadiff.graphify.parser import PARSER_VERSION
+
+    graph_text = graph_path.read_text(encoding="utf-8")
+    graph = parse_graph_json(graph_path)
+    graph_sha256 = hashlib.sha256(graph_text.encode("utf-8")).hexdigest()
+    context_payload = {
+        "edge_count": len(graph.links),
+        "freshness": "fresh",
+        "graph_sha256": graph_sha256,
+        "graph_source": "fixture:graph.json",
+        "import_time": "fixture",
+        "node_count": len(graph.nodes),
+        "parser_version": PARSER_VERSION,
+        "schema": "ahadiff.graphify_context",
+        "schema_version": 1,
+    }
+    context_text = json.dumps(context_payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    (run_path / "graphify_context.json").write_text(context_text, encoding="utf-8")
+    artifact_set = {
+        "artifacts": [
+            {
+                "artifact_type": "graphify_context",
+                "bytes": len(context_text.encode("utf-8")),
+                "media_type": "application/json",
+                "path": "graphify_context.json",
+                "schema": "ahadiff.graphify_context",
+                "schema_version": 1,
+                "sha256": hashlib.sha256(context_text.encode("utf-8")).hexdigest(),
+            }
+        ],
+        "generation": {"graphify_context_from": "benchmark.fixture.graph.json"},
+        "manifest_type": "artifact_set",
+        "run_id": run_id,
+        "schema": "ahadiff.artifact_set",
+        "schema_version": 1,
+    }
+    (run_path / "artifact_set.json").write_text(
+        json.dumps(artifact_set, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _write_lesson(run_path: Path, run_id: str) -> None:

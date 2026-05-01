@@ -1,0 +1,12 @@
+diff --git a/src/app.py b/src/app.py
+--- a/src/app.py
++++ b/src/app.py
+@@ -1,2 +1,6 @@
+-def compute(value):
+-    return value
++def compute(value):
++    state = "pinned_011_graph_present"
++    primary = "pipeline_011_graph_present"
++    secondary = "graphify_context_available"
++    return f"{state}:{primary}:{secondary}:{value}"
++

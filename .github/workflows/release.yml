@@ -55,6 +55,9 @@ jobs:
       - name: Gate - tests + coverage
         run: uv run pytest --cov=src/ahadiff --cov-report=term-missing --cov-fail-under=85 tests -q --tb=long
 
+      - name: Gate - Graphify performance
+        run: uv run python benchmarks/graphify/bench_graphify.py
+
       - name: Gate - lint
         run: |
           uv run ruff check src tests

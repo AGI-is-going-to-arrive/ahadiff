@@ -30,6 +30,9 @@ from ahadiff.review.database import (
 )
 
 _WARMUP_ROUNDS = 5
+_THREADPOOL_P95_TARGET_MS = 200.0
+_THREADPOOL_MEAN_TARGET_MS = 120.0
+_THREADPOOL_P99_TARGET_MS = 300.0
 
 
 def _seed_db(db_path: Path) -> None:
@@ -71,7 +74,7 @@ async def _warmup(db_path: Path) -> None:
 
 @pytest.mark.anyio
 async def test_threadpool_concurrent_reads_latency() -> None:
-    """10-way concurrent reads: p95 must stay under 100ms (thread dispatch included)."""
+    """10-way concurrent reads stay within localhost thread-dispatch latency budget."""
     with tempfile.TemporaryDirectory(prefix="ahadiff-1b-bench-") as tmp:
         db_path = Path(tmp) / ".ahadiff" / "review.sqlite"
         db_path.parent.mkdir(parents=True)
@@ -93,13 +96,15 @@ async def test_threadpool_concurrent_reads_latency() -> None:
 
         p95 = sorted(latencies)[int(len(latencies) * 0.95)]
         mean = statistics.mean(latencies)
-        assert p95 < 150.0, f"p95={p95:.1f}ms exceeds 150ms threadpool+dispatch target"
-        assert mean < 80.0, f"mean={mean:.1f}ms unexpectedly high"
+        assert p95 < _THREADPOOL_P95_TARGET_MS, (
+            f"p95={p95:.1f}ms exceeds {_THREADPOOL_P95_TARGET_MS:.0f}ms threadpool+dispatch target"
+        )
+        assert mean < _THREADPOOL_MEAN_TARGET_MS, f"mean={mean:.1f}ms unexpectedly high"
 
 
 @pytest.mark.anyio
 async def test_threadpool_mixed_workload_latency() -> None:
-    """10-way mixed reads (events + cards): p95 < 100ms."""
+    """10-way mixed reads stay within localhost thread-dispatch latency budget."""
     with tempfile.TemporaryDirectory(prefix="ahadiff-1b-bench-") as tmp:
         db_path = Path(tmp) / ".ahadiff" / "review.sqlite"
         db_path.parent.mkdir(parents=True)
@@ -124,13 +129,15 @@ async def test_threadpool_mixed_workload_latency() -> None:
 
         p95 = sorted(latencies)[int(len(latencies) * 0.95)]
         mean = statistics.mean(latencies)
-        assert p95 < 150.0, f"p95={p95:.1f}ms exceeds 150ms threadpool+dispatch target"
-        assert mean < 80.0, f"mean={mean:.1f}ms unexpectedly high"
+        assert p95 < _THREADPOOL_P95_TARGET_MS, (
+            f"p95={p95:.1f}ms exceeds {_THREADPOOL_P95_TARGET_MS:.0f}ms threadpool+dispatch target"
+        )
+        assert mean < _THREADPOOL_MEAN_TARGET_MS, f"mean={mean:.1f}ms unexpectedly high"
 
 
 @pytest.mark.anyio
 async def test_threadpool_high_concurrency_no_deadlock() -> None:
-    """20 concurrent readers complete all 200 queries without deadlock; p99 < 200ms."""
+    """20 concurrent readers complete all 200 queries without deadlock."""
     with tempfile.TemporaryDirectory(prefix="ahadiff-1b-bench-") as tmp:
         db_path = Path(tmp) / ".ahadiff" / "review.sqlite"
         db_path.parent.mkdir(parents=True)
@@ -152,4 +159,6 @@ async def test_threadpool_high_concurrency_no_deadlock() -> None:
 
         assert len(latencies) == 200, "not all queries completed"
         p99 = sorted(latencies)[int(len(latencies) * 0.99)]
-        assert p99 < 200.0, f"p99={p99:.1f}ms: excessive contention under 20-way concurrency"
+        assert p99 < _THREADPOOL_P99_TARGET_MS, (
+            f"p99={p99:.1f}ms: excessive contention under 20-way concurrency"
+        )

@@ -475,39 +475,6 @@ def _persist_evaluated_run_sync(
 # ---------------------------------------------------------------------------
 
 
-_MAX_GRAPHIFY_CONTEXT_RUNS = 10
-
-
-def _cleanup_old_graphify_contexts(runs_dir: Path) -> None:
-    """Remove graphify_context.json from runs older than the most recent N."""
-    try:
-        candidates: list[tuple[float, Path]] = []
-        for entry in runs_dir.iterdir():
-            if entry.is_symlink() or not entry.is_dir():
-                continue
-            ctx = entry / "graphify_context.json"
-            try:
-                st = ctx.lstat()
-            except OSError:
-                continue
-            if not stat.S_ISREG(st.st_mode):
-                continue
-            candidates.append((st.st_mtime, ctx))
-        if len(candidates) <= _MAX_GRAPHIFY_CONTEXT_RUNS:
-            return
-        candidates.sort(key=lambda t: t[0], reverse=True)
-        for _mtime, ctx_path in candidates[_MAX_GRAPHIFY_CONTEXT_RUNS:]:
-            try:
-                leaf_st = ctx_path.lstat()
-            except OSError:
-                continue
-            if not stat.S_ISREG(leaf_st.st_mode):
-                continue
-            ctx_path.unlink(missing_ok=True)
-    except Exception:
-        log.warning("failed to clean up old graphify contexts", exc_info=True)
-
-
 def _persist_graphify_context(capture: Any, run_path: Path) -> None:
     """Write graphify metadata to ``runs/<run_id>/graphify_context.json``.
 
@@ -516,35 +483,18 @@ def _persist_graphify_context(capture: Any, run_path: Path) -> None:
     gs = getattr(capture, "graphify_status", None)
     if gs is None or not getattr(gs, "has_graph", False):
         return
-    provenance: dict[str, str] = getattr(gs, "provenance", {})
-    # Read node count from imported graph if available
-    node_count = 0
-    imported_path: Path | None = getattr(gs, "imported_path", None)
-    if imported_path is not None:
-        try:
-            st = imported_path.lstat()
-            if stat.S_ISREG(st.st_mode):
-                imported_raw: object = _json.loads(imported_path.read_text(encoding="utf-8"))
-                if isinstance(imported_raw, dict):
-                    imported_dict = cast("dict[str, object]", imported_raw)
-                    raw_nodes: object = imported_dict.get("nodes")
-                    if isinstance(raw_nodes, list):
-                        node_count = len(cast("list[object]", raw_nodes))
-        except Exception:
-            pass  # best-effort
-    payload: dict[str, object] = {
-        "graph_source": provenance.get("source", ""),
-        "graph_sha256": provenance.get("graph_sha256", ""),
-        "freshness": getattr(gs, "freshness", ""),
-        "import_time": provenance.get("import_time", ""),
-        "node_count": node_count,
-    }
     tmp_path: Path | None = None
     try:
+        from ahadiff.git.capture import graphify_context_payload_from_capture
+
+        payload = graphify_context_payload_from_capture(capture)
+        if payload is None:
+            return
         run_path.mkdir(parents=True, exist_ok=True)
         ctx_path = run_path / "graphify_context.json"
-        if ctx_path.exists() and not stat.S_ISREG(ctx_path.lstat().st_mode):
-            log.warning("graphify context path is not a regular file: %s", ctx_path)
+        if ctx_path.exists():
+            if not stat.S_ISREG(ctx_path.lstat().st_mode):
+                log.warning("graphify context path is not a regular file: %s", ctx_path)
             return
         tmp_path = ctx_path.with_suffix(".tmp")
         tmp_path.write_text(
@@ -553,9 +503,6 @@ def _persist_graphify_context(capture: Any, run_path: Path) -> None:
         )
         tmp_path.replace(ctx_path)
         tmp_path = None
-        runs_dir = run_path.parent
-        if runs_dir.is_dir():
-            _cleanup_old_graphify_contexts(runs_dir)
     except Exception:
         log.warning("failed to persist graphify context to %s", run_path, exc_info=True)
     finally:

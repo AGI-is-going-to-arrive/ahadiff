@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
 _TOKEN_SPLIT_CHARS = frozenset("_-./\\:() []{}|,;")
 _CAMEL_BOUNDARY_RE = re.compile(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
+DEFAULT_CONCEPT_MATCH_THRESHOLD = 0.85
 
 
 def _strip_control_chars(text: str) -> str:
@@ -85,7 +86,7 @@ def match_concepts(
     concept: str,
     candidates: Sequence[str],
     *,
-    threshold: float = 0.5,
+    threshold: float = DEFAULT_CONCEPT_MATCH_THRESHOLD,
     max_results: int = 5,
 ) -> list[tuple[str, float]]:
     if not concept or not concept.strip() or not candidates:
@@ -101,4 +102,4 @@ def match_concepts(
     return scored[:max_results]
 
 
-__all__ = ["match_concepts", "similarity"]
+__all__ = ["DEFAULT_CONCEPT_MATCH_THRESHOLD", "match_concepts", "similarity"]

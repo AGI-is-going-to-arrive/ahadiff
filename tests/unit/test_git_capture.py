@@ -2337,6 +2337,62 @@ def test_artifact_manifest_describes_line_map_and_symbol_sources_accurately(tmp_
     assert manifest["generation"]["after_text_by_path_from"] == "capture.after_text_by_path"
 
 
+def test_graphify_context_is_manifested_as_per_run_artifact(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    tracked = repo_root / "tracked.py"
+    tracked.write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+    graph_dir = repo_root / "graphify-out"
+    graph_dir.mkdir()
+    graph_text = json.dumps(
+        {
+            "nodes": [
+                {
+                    "id": "node-task-runner",
+                    "label": "TaskRunner",
+                    "kind": "class",
+                    "file_path": "tracked.py",
+                }
+            ],
+            "links": [],
+        }
+    )
+    (graph_dir / "graph.json").write_text(graph_text, encoding="utf-8")
+    tracked.write_text("value = 2\n", encoding="utf-8")
+
+    capture = capture_module.capture_patch(
+        workspace_root=repo_root,
+        unstaged=True,
+        use_graphify=True,
+        max_files=50,
+        hard_limit=5000,
+        max_patch_bytes=10_000_000,
+    )
+    capture_module.write_input_artifacts(capture)
+
+    run_dir = _latest_run_dir(repo_root)
+    context = json.loads((run_dir / "graphify_context.json").read_text(encoding="utf-8"))
+    manifest = json.loads((run_dir / "artifact_set.json").read_text(encoding="utf-8"))
+    descriptors = {item["path"]: item for item in manifest["artifacts"]}
+    expected_sha = hashlib.sha256(graph_text.encode("utf-8")).hexdigest()
+
+    assert context["graph_sha256"] == expected_sha
+    assert context["import_time"]
+    assert context["parser_version"] == "1.0"
+    assert context["node_count"] == 1
+    assert (repo_root / ".ahadiff" / "graphify" / "graph.json").is_file()
+    assert (repo_root / ".ahadiff" / "graphify" / "provenance.json").is_file()
+    assert "graphify_context.json" in descriptors
+    payload = (run_dir / "graphify_context.json").read_text(encoding="utf-8")
+    assert (
+        descriptors["graphify_context.json"]["sha256"]
+        == hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    )
+    assert manifest["generation"]["graphify_context_from"] == "capture.graphify_status"
+
+
 def test_write_input_artifacts_persists_tree_sitter_symbols_without_changing_manifest_shape(
     tmp_path: Path,
 ) -> None:

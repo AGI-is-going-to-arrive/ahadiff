@@ -9,6 +9,7 @@ from ahadiff.graphify import (
     ConceptLink,
     link_concepts,
     link_concepts_to_entries,
+    match_concepts,
     parse_graph_json_text,
 )
 
@@ -35,6 +36,12 @@ def _make_graph() -> GraphifyGraph:
 
 
 class TestLinkConcepts:
+    def test_default_threshold_requires_strong_fuzzy_match(self) -> None:
+        g = _make_graph()
+
+        assert link_concepts(g, ["task"]) == ()
+        assert link_concepts(g, ["TaskRunner"])
+
     def test_exact_match_links(self) -> None:
         g = _make_graph()
         links = link_concepts(g, ["asyncio"])
@@ -119,6 +126,11 @@ class TestLinkConcepts:
 
 
 class TestLinkConceptsToEntries:
+    def test_default_threshold_matches_plan_threshold(self) -> None:
+        matches = match_concepts("task", ["task_runner"])
+
+        assert matches == []
+
     def test_links_entries_with_graphify_node_id(self) -> None:
         g = _make_graph()
         entries = [

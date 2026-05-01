@@ -2,7 +2,7 @@
 
 > Research date: 2026-04-27 | Graphify commit: HEAD of `safishamsi/graphify` | AhaDiff audit target: working tree on top of `a3deaca` (2026-04-29)
 
-> Current status note (2026-04-30): this document started as a 2026-04-27 compatibility baseline. The current branch now already has real `graph.json` parsing/validation, `links`/`edges` normalization, hyperedge handling, matcher/linker/slicer/search helpers, `/api/search` graph-node merge, `GET /api/graph/status`, and `GET /api/graph/concepts`. Serve-time consumers now read only the imported artifact `.ahadiff/graphify/graph.json`; raw `graphify-out/graph.json` remains an untrusted source used for detection/import/freshness only. The new graph concepts endpoint gives the frontend sanitized nodes/edges; full d3-force UI and richer provenance are still pending.
+> Current status note (2026-05-02): this document started as a 2026-04-27 compatibility baseline. The current branch now already has real `graph.json` parsing/validation, `links`/`edges` normalization, hyperedge handling, matcher/linker/slicer/search helpers, `/api/search` graph-node merge, `GET /api/graph/status`, and `GET /api/graph/concepts`. Serve-time consumers now read only the imported artifact `.ahadiff/graphify/graph.json`; raw `graphify-out/graph.json` remains an untrusted source used for detection/import/freshness only. The new graph concepts endpoint gives the frontend sanitized nodes/edges. Graphify import provenance, per-run `graphify_context.json`, token-reduction metrics, and the release perf gate are now wired; 5E cross-page freshness/provenance polish and real large-repo signoff evidence remain.
 
 ## 1. Graphify Official Repo Summary
 
@@ -144,7 +144,7 @@ The design plan (`ahadiff-graphify-integration.md` + review) now has these piece
 - 4-value projection: `{current, recent}` → fresh, `{stale, outdated, unknown}` → stale, `unavailable` → unavailable, `disabled` → disabled
 - Backend helpers for subgraph slicing, fuzzy concept matching, concept linking, and graph search
 - `GET /api/graph/status` and `/api/search` graph-node merge
-- Remaining deeper work is still around richer provenance, persistence, benchmark metrics, and frontend surfacing
+- Remaining deeper work is now around frontend surfacing, optional graph slice emission, and real large-repo signoff evidence
 
 ### 2.6 Test Coverage
 | Test File | Coverage |
@@ -158,6 +158,8 @@ The design plan (`ahadiff-graphify-integration.md` + review) now has these piece
 | `tests/unit/test_routes_graph.py` | `/api/graph/status` payload, workspace-root relative path, missing/invalid graph fallback |
 | `tests/unit/test_serve_app.py` | `_project_graphify` for full/learning_only/empty modes, plus legacy status normalization |
 | `tests/unit/test_contracts.py` | `RunDetail.graphify_notes` field validation |
+| `tests/unit/test_benchmark_scripts.py` | token-reduction metric, release workflow Graphify perf gate, graph-present fixture manifest/parser coverage |
+| `tests/eval/test_benchmark.py` + `tests/integration/test_learn_pipeline.py` | 20 eval fixtures + 11 pinned integration fixtures; graph-present fixture `graph.json` is included in suite digest and materializes `graphify_context.json` / `artifact_set.json` |
 
 ---
 
@@ -187,11 +189,11 @@ The design plan (`ahadiff-graphify-integration.md` + review) now has these piece
 | `GraphifyMode` type | `contracts/serve_app.py:17` | **YES** | LOW | 3-value enum is correct for viewer degradation. |
 | Sanitization pipeline | `import_graphify_artifact` | **YES** | LOW | Correctly treats graph.json as untrusted text. Runs `redaction_pipeline()` + `protect_untrusted_text()`. |
 | Pydantic validation | `graphify/models.py` + `graphify/parser.py` | **YES** | LOW | Models and parser now validate the normalized schema in-process. |
-| Subgraph slicing | `graphify/slicer.py` | **YES** | MED | Extracts changed-files ± N-hop subgraphs in memory; per-run graph artifacts are still not emitted. |
-| Fuzzy concept matching | `graphify/matcher.py` | **YES** | LOW | Matching helper landed; runtime-only by design (no DB persistence). |
-| Concept linking | `graphify/linker.py` | **YES** | LOW | Helper exists; runtime-only by v1.0 design decision (no `graphify_node_id` DB field). |
+| Subgraph slicing | `graphify/slicer.py` | **YES** | MED | Extracts changed-files ± N-hop subgraphs in memory; per-run `graphify_context.json` is emitted, while optional `graph.slice.json` emission is still future work. |
+| Fuzzy concept matching | `graphify/matcher.py` | **YES** | LOW | Matching helper landed; default threshold is `0.85`, with linked concept IDs persisted through JSONL + SQLite derived cache when concept linking runs. |
+| Concept linking | `graphify/linker.py` | **YES** | LOW | Helper and production concept append wiring exist; `concepts.graphify_node_id` is covered by migration/upsert tests. |
 | Graph-node search | `graphify/search.py` + `review/search.py` | **YES** | LOW | `/api/search` merges graph hits at runtime via `search_all_with_graph()`, but only from imported `.ahadiff/graphify/graph.json`; raw `graphify-out/graph.json` is not read directly by the route. |
-| Freshness 7-state helper | `graphify/freshness.py` + `git/capture.py` | **YES** | LOW | Repo-aware helper landed with 7→4 projection; richer provenance deferred to v1.1+. |
+| Freshness 7-state helper | `graphify/freshness.py` + `git/capture.py` | **YES** | LOW | Repo-aware helper landed with 7→4 projection; import provenance now includes `graph_sha256`, `import_time`, `parser_version`, node/edge counts, and source path. |
 | `ahadiff graph status/refresh/import` | `cli.py` | **YES** | LOW | CLI commands exist and use the current runtime wiring |
 | `GET /api/graph/status` | `serve/routes_graph.py` | **YES** | LOW | Returns freshness plus current node/edge counts from imported `.ahadiff/graphify/graph.json`; raw `graphify-out/graph.json` only influences detection/freshness. |
 | `GET /api/graph/concepts` | `serve/routes_graph.py` | **YES** | LOW | Returns sanitized ConceptGraph nodes/edges plus status for frontend consumption; it is not a full Graphify provenance API. |
@@ -215,12 +217,12 @@ The design plan (`ahadiff-graphify-integration.md` + review) now has these piece
 
 | # | Gap | Current State | Resolution |
 |---|-----|---------------|------------|
-| G1 | Freshness provenance is still shallow | Repo-aware 4-value projection is landed, metadata stores source path/projection | **ACCEPTED** for v1.0 — current provenance sufficient; richer imported-at / head-at-import deferred to v1.1+ |
-| G2 | No DB-level Graphify linkage | matcher/linker helpers exist as runtime-only | **CLOSED by design** — v1.0 keeps Graphify as runtime enhancement; no `graphify_node_id` DB columns; concept-to-graph matching at serve time via `matcher.py` |
-| G3 | No per-run graph artifacts | slicing exists in memory only | **ACCEPTED** for v1.0 — `slice_by_files()` operates in memory; per-run `graph.slice.json` emission deferred to v1.1+ |
-| G4 | Graph nodes are not indexed into SQLite FTS | `/api/search` merges graph hits at runtime via `search_all_with_graph()` | **CLOSED by design** — runtime merge is working and performant; DB-level indexing deferred unless runtime merge proves insufficient |
+| G1 | Freshness/import provenance needs backend evidence | Repo-aware 4-value projection and import provenance are landed | **CLOSED for backend v1.0** — remaining work is UI surfacing / 5E polish, not backend provenance capture |
+| G2 | DB-level Graphify linkage | matcher/linker helpers plus concept append wiring exist | **CLOSED** — JSONL + SQLite derived cache carry `graphify_node_id` when linking runs |
+| G3 | Per-run graph artifacts | `graphify_context.json` is emitted and listed in `artifact_set.json` | **CLOSED for context manifest** — optional `graph.slice.json` remains future work |
+| G4 | Graph nodes SQLite FTS indexing | `graph_nodes` + `fts_graph_nodes` import/indexing landed | **CLOSED** — imports above 10k nodes fail explicitly instead of silently truncating |
 | G5 | Community/confidence are not surfaced to UI | parser preserves them in metadata, viewer contract does not consume them | **DEFERRED** to frontend 5D/5E phase; backend already stores them in `GraphifyNode.metadata` |
-| G6 | Benchmark coverage for graph operations | Graphify benchmark fixture and scripts landed in `benchmarks/` | **PARTIAL** — `benchmarks/fixtures/integration/pinned_011_graph_present/graph.json` + `benchmarks/scripts/bench_graphify.py` cover helper-level parse/match/link/search/slice, but the fixture is still synthetic and does not by itself prove full fidelity against every real Graphify v0.5 export |
+| G6 | Benchmark coverage for graph operations | Graphify benchmark fixture, token-reduction metric, release perf gate, and graph-present pinned integration fixture landed | **PARTIAL** — `benchmarks/fixtures/integration/pinned_011_graph_present/graph.json` is included in the suite digest and materializes graph context artifacts, but it is still a synthetic 15-node smoke fixture and does not by itself prove full fidelity against every real Graphify v0.5 export |
 
 ---
 
@@ -273,7 +275,7 @@ def slice_subgraph(graph: GraphifyGraph, changed_files: list[str], hops: int = 2
 ```
 
 ### 5.5 Remaining Priority Order
-1. **Richer provenance**: keep `freshness` but add more explicit imported-at / head-at-import evidence if frontend needs it
-2. **Per-run graph artifacts**: today slicing is in-memory only; emitting `graph.slice.json` remains deferred
+1. **5E frontend polish**: surface freshness/provenance consistently across pages instead of only keeping backend evidence
+2. **Optional graph slice artifact**: `graphify_context.json` is emitted today; a real `graph.slice.json` remains future work
 3. **Frontend surfacing**: expose `community` / `confidence` in viewer phases 5D/5E rather than only preserving them in metadata
-4. **Stronger compatibility evidence**: add at least one benchmark or regression fixture sourced from a real Graphify v0.5 export, not only the synthetic 15-node microbenchmark
+4. **Stronger compatibility evidence**: add at least one benchmark or regression fixture sourced from a real Graphify v0.5 export, not only the synthetic 15-node smoke fixture

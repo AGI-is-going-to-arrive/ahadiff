@@ -1,47 +1,242 @@
 {
   "benchmarks": [
     {
-      "edge_count": 17,
+      "edge_count": 1500,
       "iterations": 100,
-      "mean_ms": 0.303,
-      "median_ms": 0.29,
-      "node_count": 15,
+      "mean_ms": 8.094,
+      "median_ms": 7.941,
+      "node_count": 500,
       "operation": "parse_graph_json",
-      "p95_ms": 0.388,
-      "p99_ms": 0.448
+      "p95_ms": 8.683,
+      "p99_ms": 11.409
     },
     {
       "iterations": 50,
-      "matches_per_round": 10,
-      "mean_ms": 1.465,
-      "median_ms": 1.454,
+      "matches_per_round": 0,
+      "mean_ms": 46.488,
+      "median_ms": 46.338,
       "operation": "match_concepts (10 queries)",
-      "p95_ms": 1.55
+      "p95_ms": 47.31
     },
     {
       "iterations": 50,
-      "links_found": 10,
-      "mean_ms": 1.468,
-      "median_ms": 1.457,
+      "links_found": 0,
+      "mean_ms": 45.008,
+      "median_ms": 44.892,
       "operation": "link_concepts (10 concepts)",
-      "p95_ms": 1.581
+      "p95_ms": 45.968
     },
     {
-      "hits_per_round": 5,
+      "hits_per_round": 0,
       "iterations": 50,
-      "mean_ms": 0.609,
-      "median_ms": 0.601,
+      "mean_ms": 17.881,
+      "median_ms": 17.842,
       "operation": "search_graph_nodes (5 queries)",
-      "p95_ms": 0.679
+      "p95_ms": 18.126
     },
     {
       "iterations": 50,
-      "mean_ms": 0.007,
-      "median_ms": 0.006,
+      "mean_ms": 0.013,
+      "median_ms": 0.012,
       "operation": "slice_by_files (2 files, 2 hops)",
-      "p95_ms": 0.008,
-      "subgraph_nodes": 12
+      "p95_ms": 0.014,
+      "subgraph_nodes": 0
+    },
+    {
+      "measurement_method": "json_length_div_4_full_graph_vs_2_file_2_hop_slice",
+      "operation": "graph_context_token_reduction",
+      "raw_estimated_tokens": 43447,
+      "selected_files": [
+        "src/pkg0/mod0.py",
+        "src/pkg1/mod1.py"
+      ],
+      "sliced_estimated_tokens": 10098,
+      "token_reduction_ratio": 0.7676,
+      "tokens_saved": 33349
     }
   ],
-  "fixture": "graph.json"
+  "fixture": "large_graph.json",
+  "fixtures": [
+    {
+      "benchmarks": [
+        {
+          "edge_count": 1500,
+          "iterations": 100,
+          "mean_ms": 8.094,
+          "median_ms": 7.941,
+          "node_count": 500,
+          "operation": "parse_graph_json",
+          "p95_ms": 8.683,
+          "p99_ms": 11.409
+        },
+        {
+          "iterations": 50,
+          "matches_per_round": 0,
+          "mean_ms": 46.488,
+          "median_ms": 46.338,
+          "operation": "match_concepts (10 queries)",
+          "p95_ms": 47.31
+        },
+        {
+          "iterations": 50,
+          "links_found": 0,
+          "mean_ms": 45.008,
+          "median_ms": 44.892,
+          "operation": "link_concepts (10 concepts)",
+          "p95_ms": 45.968
+        },
+        {
+          "hits_per_round": 0,
+          "iterations": 50,
+          "mean_ms": 17.881,
+          "median_ms": 17.842,
+          "operation": "search_graph_nodes (5 queries)",
+          "p95_ms": 18.126
+        },
+        {
+          "iterations": 50,
+          "mean_ms": 0.013,
+          "median_ms": 0.012,
+          "operation": "slice_by_files (2 files, 2 hops)",
+          "p95_ms": 0.014,
+          "subgraph_nodes": 0
+        },
+        {
+          "measurement_method": "json_length_div_4_full_graph_vs_2_file_2_hop_slice",
+          "operation": "graph_context_token_reduction",
+          "raw_estimated_tokens": 43447,
+          "selected_files": [
+            "src/pkg0/mod0.py",
+            "src/pkg1/mod1.py"
+          ],
+          "sliced_estimated_tokens": 10098,
+          "token_reduction_ratio": 0.7676,
+          "tokens_saved": 33349
+        }
+      ],
+      "fixture": "large_graph.json",
+      "status": "ok"
+    },
+    {
+      "benchmarks": [
+        {
+          "edge_count": 15000,
+          "iterations": 100,
+          "mean_ms": 89.855,
+          "median_ms": 89.761,
+          "node_count": 5000,
+          "operation": "parse_graph_json",
+          "p95_ms": 100.114,
+          "p99_ms": 103.693
+        },
+        {
+          "iterations": 50,
+          "matches_per_round": 0,
+          "mean_ms": 479.759,
+          "median_ms": 479.456,
+          "operation": "match_concepts (10 queries)",
+          "p95_ms": 484.328
+        },
+        {
+          "iterations": 50,
+          "links_found": 0,
+          "mean_ms": 476.795,
+          "median_ms": 476.167,
+          "operation": "link_concepts (10 concepts)",
+          "p95_ms": 483.563
+        },
+        {
+          "hits_per_round": 0,
+          "iterations": 50,
+          "mean_ms": 188.608,
+          "median_ms": 188.04,
+          "operation": "search_graph_nodes (5 queries)",
+          "p95_ms": 192.045
+        },
+        {
+          "iterations": 50,
+          "mean_ms": 0.103,
+          "median_ms": 0.1,
+          "operation": "slice_by_files (2 files, 2 hops)",
+          "p95_ms": 0.113,
+          "subgraph_nodes": 0
+        },
+        {
+          "measurement_method": "json_length_div_4_full_graph_vs_2_file_2_hop_slice",
+          "operation": "graph_context_token_reduction",
+          "raw_estimated_tokens": 435535,
+          "selected_files": [
+            "src/pkg0/mod0.py",
+            "src/pkg1/mod1.py"
+          ],
+          "sliced_estimated_tokens": 101119,
+          "token_reduction_ratio": 0.7678,
+          "tokens_saved": 334416
+        }
+      ],
+      "fixture": "xlarge_graph.json",
+      "status": "ok"
+    },
+    {
+      "benchmarks": [
+        {
+          "edge_count": 17,
+          "iterations": 100,
+          "mean_ms": 0.29,
+          "median_ms": 0.284,
+          "node_count": 15,
+          "operation": "parse_graph_json",
+          "p95_ms": 0.325,
+          "p99_ms": 0.348
+        },
+        {
+          "iterations": 50,
+          "matches_per_round": 10,
+          "mean_ms": 1.394,
+          "median_ms": 1.383,
+          "operation": "match_concepts (10 queries)",
+          "p95_ms": 1.447
+        },
+        {
+          "iterations": 50,
+          "links_found": 8,
+          "mean_ms": 1.388,
+          "median_ms": 1.38,
+          "operation": "link_concepts (10 concepts)",
+          "p95_ms": 1.442
+        },
+        {
+          "hits_per_round": 5,
+          "iterations": 50,
+          "mean_ms": 0.577,
+          "median_ms": 0.574,
+          "operation": "search_graph_nodes (5 queries)",
+          "p95_ms": 0.602
+        },
+        {
+          "iterations": 50,
+          "mean_ms": 0.007,
+          "median_ms": 0.006,
+          "operation": "slice_by_files (2 files, 2 hops)",
+          "p95_ms": 0.007,
+          "subgraph_nodes": 12
+        },
+        {
+          "measurement_method": "json_length_div_4_full_graph_vs_2_file_2_hop_slice",
+          "operation": "graph_context_token_reduction",
+          "raw_estimated_tokens": 1256,
+          "selected_files": [
+            "src/auth/middleware.py",
+            "src/auth/tokens.py"
+          ],
+          "sliced_estimated_tokens": 718,
+          "token_reduction_ratio": 0.4283,
+          "tokens_saved": 538
+        }
+      ],
+      "fixture": "graph.json",
+      "status": "ok"
+    }
+  ],
+  "status": "ok"
 }

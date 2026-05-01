@@ -110,16 +110,7 @@ test.describe('cross-browser corner cases', () => {
     expect(errors).toHaveLength(0);
   });
 
-  test('topbar wires search button + leaves stub New-Run inactive', async ({ page }) => {
-    /* Phase 4B: search is now an interactive button that opens the global
-     * SearchOverlay (Cmd/Ctrl+K). The "+ New Learn Run" affordance remains
-     * an inactive shell because POST /api/learn from the browser is still
-     * gated on the Phase 6B consumer-polish work.
-     *
-     * On mobile (<768px) both surfaces collapse — the search lives behind
-     * Cmd/Ctrl+K only, and the New-Run primary button hides to make room
-     * for the hamburger drawer. We assert the desktop wiring on wide
-     * viewports and the deliberate hide on narrow viewports. */
+  test('topbar wires search button + active New-Run button', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
@@ -127,19 +118,17 @@ test.describe('cross-browser corner cases', () => {
     const isMobile = viewport != null && viewport.width < 768;
 
     const searchBtn = page.getByRole('button', { name: /Open search/i });
-    const newRun = page.locator('.topbar__btn--inactive');
+    const newRun = page.locator('.topbar__btn--primary');
 
     if (isMobile) {
-      /* Search collapses on mobile — Cmd/Ctrl+K still works but the topbar
-       * affordance is hidden via @media (max-width: 767px) display:none. */
       await expect(searchBtn).toHaveCount(0);
-      await expect(newRun).toBeHidden();
       await page.keyboard.press('Control+K');
     } else {
       await expect(searchBtn).toBeVisible();
       await expect(searchBtn).toHaveCount(1);
       await expect(searchBtn).not.toHaveAttribute('aria-disabled', 'true');
-      await expect(newRun).toHaveAttribute('aria-disabled', 'true');
+      await expect(newRun).toBeVisible();
+      await expect(newRun).not.toBeDisabled();
       await searchBtn.click();
     }
 
