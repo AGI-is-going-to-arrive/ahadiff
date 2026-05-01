@@ -15,6 +15,8 @@ from .models import GraphifyGraph
 
 _log = logging.getLogger(__name__)
 
+PARSER_VERSION = "1.0"
+
 _SCRIPT_STYLE_TAG_RE = re.compile(
     r"<(script|style)\b[^>]*>.*?(?:</\1>|$)",
     re.IGNORECASE | re.DOTALL,

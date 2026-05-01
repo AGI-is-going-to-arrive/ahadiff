@@ -700,6 +700,106 @@ def export_concepts_from_db(state_dir: Path) -> Path:
     return concepts_path
 
 
+def rollback_concepts_to_jsonl(db_path: Path, jsonl_path: Path) -> int:
+    """Export all concepts from SQLite to JSONL, overwriting the target file.
+
+    Uses atomic write (tmp -> replace) to avoid partial writes.
+    Returns the number of entries exported.
+
+    ``jsonl_path`` must reside under the same ``.ahadiff/`` tree as
+    ``db_path``.  Callers outside the CLI surface should derive paths
+    from ``concepts_path()`` rather than accepting user input directly.
+    """
+    if not db_path.exists():
+        raise InputError("review.sqlite not found")
+    if jsonl_path.is_symlink():
+        raise InputError("jsonl_path must not be a symlink")
+    try:
+        jsonl_path.resolve().relative_to(db_path.resolve().parent)
+    except ValueError:
+        raise InputError(
+            "jsonl_path must be under the same .ahadiff directory as db_path"
+        ) from None
+    from ahadiff.review.database import load_concepts_from_db
+
+    _DB_ONLY_KEYS = {"created_at_utc", "updated_at_utc"}
+    entries: list[dict[str, Any]] = []
+    cursor: str | None = None
+    while True:
+        rows = load_concepts_from_db(
+            db_path,
+            limit=_EXPORT_CONCEPTS_BATCH_SIZE,
+            after_term_key=cursor,
+        )
+        if not rows:
+            break
+        for row in rows:
+            entry = {k: v for k, v in dict(row).items() if k not in _DB_ONLY_KEYS}
+            term_key = entry.get("term_key")
+            if not isinstance(term_key, str) or not term_key:
+                continue
+            entries.append(entry)
+        last_term_key = rows[-1].get("term_key")
+        if not isinstance(last_term_key, str) or not last_term_key:
+            break
+        cursor = last_term_key
+    _write_jsonl_snapshot(jsonl_path, entries)
+    return len(entries)
+
+
+def verify_concepts_consistency(
+    db_path: Path,
+    jsonl_path: Path,
+) -> tuple[bool, list[str]]:
+    """Compare JSONL and SQLite concept entries by term_key identity.
+
+    Returns (is_consistent, list_of_discrepancies).
+    """
+    discrepancies: list[str] = []
+
+    jsonl_keys: set[str] = set()
+    if jsonl_path.exists():
+        for _idx, entry in _iter_jsonl_entries_with_offsets(jsonl_path):
+            term_key = entry.get("term_key")
+            if isinstance(term_key, str) and term_key:
+                jsonl_keys.add(term_key)
+
+    db_keys: set[str] = set()
+    if db_path.exists():
+        from ahadiff.review.database import load_concepts_from_db
+
+        cursor: str | None = None
+        while True:
+            rows = load_concepts_from_db(
+                db_path,
+                limit=_EXPORT_CONCEPTS_BATCH_SIZE,
+                after_term_key=cursor,
+            )
+            if not rows:
+                break
+            for row in rows:
+                term_key = row.get("term_key")
+                if isinstance(term_key, str) and term_key:
+                    db_keys.add(term_key)
+            last = rows[-1].get("term_key")
+            if not isinstance(last, str) or not last:
+                break
+            cursor = last
+
+    if len(jsonl_keys) != len(db_keys):
+        discrepancies.append(
+            f"count mismatch: JSONL has {len(jsonl_keys)}, SQLite has {len(db_keys)}"
+        )
+    only_jsonl = jsonl_keys - db_keys
+    only_db = db_keys - jsonl_keys
+    if only_jsonl:
+        discrepancies.append(f"only in JSONL ({len(only_jsonl)}): {sorted(only_jsonl)[:10]}")
+    if only_db:
+        discrepancies.append(f"only in SQLite ({len(only_db)}): {sorted(only_db)[:10]}")
+
+    return (len(discrepancies) == 0, discrepancies)
+
+
 def _is_ancestor(repo_root: Path, source_ref: str, head_ref: str) -> bool:
     if source_ref.startswith("-") or head_ref.startswith("-"):
         return False
@@ -726,4 +826,6 @@ __all__ = [
     "load_concepts_page_from_storage",
     "load_visible_concepts",
     "parse_jsonl_concepts_cursor",
+    "rollback_concepts_to_jsonl",
+    "verify_concepts_consistency",
 ]

@@ -663,6 +663,15 @@ def import_graphify_artifact(workspace_root: Path, *, force: bool = False) -> Gr
     final_status = detect_graphify_status(workspace_root, use_graphify=True, repo=_repo)
     final_status.provenance["graph_sha256"] = graph_sha256
     final_status.provenance["import_time"] = datetime.now(UTC).isoformat()
+    from ahadiff.graphify.parser import PARSER_VERSION
+
+    final_status.provenance["parser_version"] = PARSER_VERSION
+    final_status.provenance["node_count"] = str(len(sanitized_graph.nodes))
+    final_status.provenance["edge_count"] = str(len(sanitized_graph.links))
+    try:
+        final_status.provenance["source_path"] = str(status.source_path.relative_to(workspace_root))
+    except ValueError:
+        final_status.provenance["source_path"] = canonicalize_path_text(_GRAPHIFY_RELATIVE_PATH)
     return final_status
 
 
