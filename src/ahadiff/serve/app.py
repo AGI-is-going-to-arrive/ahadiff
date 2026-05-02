@@ -15,7 +15,7 @@ from ahadiff.contracts import AuthTokenResponse
 from ahadiff.core.errors import AhaDiffError, InputError
 
 from .auth import require_token_bootstrap_request, serve_state
-from .middleware import LoopbackGuardMiddleware, RequestTimeoutMiddleware
+from .middleware import LoopbackGuardMiddleware, RequestTimeoutMiddleware, WriteRateLimitMiddleware
 from .routes_audit import get_audit
 from .routes_config import get_config, get_doctor, put_config
 from .routes_export import get_export_results
@@ -153,6 +153,7 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
         },
     )
     app.state.ahadiff = runtime_state
+    app.add_middleware(WriteRateLimitMiddleware)
     app.add_middleware(LoopbackGuardMiddleware)
     app.add_middleware(RequestTimeoutMiddleware)
     mount_viewer_static(app, viewer_dist=viewer_dist)

@@ -5,12 +5,14 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import asdict
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 
 from starlette.responses import JSONResponse, StreamingResponse
 
 from ahadiff.contracts.serve_runtime import (
+    RecoveryHint,
     TaskCancelResponse,
+    TaskErrorCode,
     TaskInfoResponse,
     TaskListResponse,
     TaskProgressEvent,
@@ -38,6 +40,20 @@ _USER_FACING_ERROR_MESSAGES = {
 }
 
 _GENERIC_FALLBACK_MESSAGE = "An unexpected error occurred."
+
+_RECOVERY_HINTS: dict[TaskErrorCode, RecoveryHint] = {
+    "network_error": "retry",
+    "timeout": "retry",
+    "lesson_error": "retry",
+    "quiz_error": "retry",
+    "config_error": "check_config",
+    "permission_error": "check_permissions",
+    "learnability_error": "dismiss",
+    "claim_error": "retry",
+    "cancelled": "none",
+    "internal_error": "none",
+}
+_TASK_ERROR_CODES = frozenset(cast("tuple[str, ...]", get_args(TaskErrorCode)))
 
 _PATH_PATTERN = re.compile(
     r"(?:"
@@ -114,6 +130,12 @@ def _user_facing_message(error_code: str, raw_error: str) -> str:
     return _USER_FACING_ERROR_MESSAGES.get(error_code, _GENERIC_FALLBACK_MESSAGE)
 
 
+def _normalize_task_error_code(value: object) -> TaskErrorCode:
+    if isinstance(value, str) and value in _TASK_ERROR_CODES:
+        return cast("TaskErrorCode", value)
+    return "internal_error"
+
+
 def _serialize_task(info: Any) -> dict[str, Any]:
     raw_result = getattr(info, "result", None)
     try:
@@ -124,8 +146,10 @@ def _serialize_task(info: Any) -> dict[str, Any]:
     d["status"] = info.status.value
     d["result_summary"] = _build_result_summary(raw_result)
     if isinstance(info.error, str):
-        code = info.error_code if isinstance(info.error_code, str) else "internal_error"
+        code = _normalize_task_error_code(info.error_code)
+        d["error_code"] = code
         d["error"] = _user_facing_message(code, info.error)
+        d["recovery_hint"] = _RECOVERY_HINTS[code]
     if info.started_at:
         from datetime import UTC, datetime
 

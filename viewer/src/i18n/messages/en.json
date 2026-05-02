@@ -233,6 +233,7 @@
     "score": "Score: {score}",
     "step_progress": "Step {current}/{total}",
     "submitting": "Submitting learn run…",
+    "rate_limited": "Rate limited. Try again in {seconds} seconds.",
     "too_many_tasks": "A learn task is already running. Please wait for it to finish.",
     "view_run": "View run"
   },

@@ -15,7 +15,11 @@ from ahadiff.contracts.serve_runtime import (
 )
 from ahadiff.core.task_runner import TaskInfo, TaskProgress, TaskStatus
 from ahadiff.serve import ServeState, create_app
-from ahadiff.serve.middleware import _request_timeout_for  # pyright: ignore[reportPrivateUsage]
+from ahadiff.serve import middleware as middleware_mod
+from ahadiff.serve.middleware import (
+    _rate_limit_for_path,  # pyright: ignore[reportPrivateUsage]
+    _request_timeout_for,  # pyright: ignore[reportPrivateUsage]
+)
 from ahadiff.serve.routes_tasks import (
     _sanitize_warning,  # pyright: ignore[reportPrivateUsage]
     _user_facing_message,  # pyright: ignore[reportPrivateUsage]
@@ -303,6 +307,7 @@ class TestTaskInfoResponseStableFields:
             "progress",
             "error",
             "error_code",
+            "recovery_hint",
             "created_at",
             "started_at",
             "completed_at",
@@ -366,3 +371,213 @@ class TestRequestTimeoutRouting:
 
     def test_default_timeout_for_healthz(self) -> None:
         assert _request_timeout_for("/healthz") == 30.0
+
+
+# --- Rate limiting middleware tests ---
+
+
+class TestRateLimitPathMatching:
+    def test_learn_endpoint_is_rate_limited(self) -> None:
+        result = _rate_limit_for_path("/api/learn")
+        assert result is not None
+        limit, key = result
+        assert limit == 10
+        assert key == "/api/learn"
+
+    def test_learn_trailing_slash_is_not_matched(self) -> None:
+        assert _rate_limit_for_path("/api/learn/") is None
+
+    def test_learn_subpath_is_not_matched(self) -> None:
+        assert _rate_limit_for_path("/api/learning") is None
+
+    def test_learn_nested_subpath_is_not_matched(self) -> None:
+        assert _rate_limit_for_path("/api/learn/not-a-route") is None
+
+    def test_tasks_endpoint_is_not_rate_limited(self) -> None:
+        assert _rate_limit_for_path("/api/tasks") is None
+
+    def test_read_endpoint_is_not_rate_limited(self) -> None:
+        assert _rate_limit_for_path("/api/runs") is None
+
+    def test_healthz_is_not_rate_limited(self) -> None:
+        assert _rate_limit_for_path("/healthz") is None
+
+
+class TestRateLimitIntegration:
+    def test_learn_rate_limit_returns_429(self, tmp_path: Path) -> None:
+        app = create_app(ServeState(state_dir=tmp_path, token="tok"))
+        client = TestClient(app, base_url="http://localhost:8765")
+        headers = {"X-AhaDiff-Token": "tok", "origin": "http://localhost:8765"}
+        for _ in range(10):
+            client.post("/api/learn", json={}, headers=headers)
+        resp = client.post("/api/learn", json={}, headers=headers)
+        assert resp.status_code == 429
+        body = resp.json()
+        assert body["error"] == "rate_limited"
+        assert "retry_after" in body
+        assert "Retry-After" in resp.headers
+        assert resp.headers["Retry-After"] == str(body["retry_after"])
+
+    def test_rate_limit_window_expires(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        current_time = 100.0
+        monkeypatch.setattr(middleware_mod.time, "monotonic", lambda: current_time)
+        app = create_app(ServeState(state_dir=tmp_path, token="tok"))
+        client = TestClient(app, base_url="http://localhost:8765")
+        headers = {"X-AhaDiff-Token": "tok", "origin": "http://localhost:8765"}
+        for _ in range(10):
+            client.post("/api/learn", json={}, headers=headers)
+        resp = client.post("/api/learn", json={}, headers=headers)
+        assert resp.status_code == 429
+        assert resp.json()["retry_after"] == 60
+
+        current_time = 161.0
+        resp = client.post("/api/learn", json={}, headers=headers)
+        assert resp.status_code != 429
+
+    def test_invalid_token_does_not_consume_learn_quota(self, tmp_path: Path) -> None:
+        app = create_app(ServeState(state_dir=tmp_path, token="tok"))
+        client = TestClient(app, base_url="http://localhost:8765")
+        bad_headers = {"X-AhaDiff-Token": "bad", "origin": "http://localhost:8765"}
+        good_headers = {"X-AhaDiff-Token": "tok", "origin": "http://localhost:8765"}
+        for _ in range(10):
+            assert client.post("/api/learn", json={}, headers=bad_headers).status_code == 403
+
+        resp = client.post("/api/learn", json={}, headers=good_headers)
+        assert resp.status_code != 429
+
+    def test_unknown_learn_subpath_does_not_consume_learn_quota(self, tmp_path: Path) -> None:
+        app = create_app(ServeState(state_dir=tmp_path, token="tok"))
+        client = TestClient(app, base_url="http://localhost:8765")
+        headers = {"X-AhaDiff-Token": "tok", "origin": "http://localhost:8765"}
+        for _ in range(10):
+            resp = client.post("/api/learn/not-a-route", json={}, headers=headers)
+            assert resp.status_code == 404
+
+        resp = client.post("/api/learn", json={}, headers=headers)
+        assert resp.status_code != 429
+
+    def test_get_requests_not_rate_limited(self, tmp_path: Path) -> None:
+        client = _client(tmp_path)
+        for _ in range(20):
+            resp = client.get("/api/tasks")
+            assert resp.status_code == 200
+
+
+# --- Recovery hint tests ---
+
+
+class TestRecoveryHints:
+    def test_network_error_suggests_retry(self, tmp_path: Path) -> None:
+        info = TaskInfo(
+            task_id="task-1",
+            task_type="learn",
+            status=TaskStatus.FAILED,
+            progress=TaskProgress(current=1, total=10, message="failed"),
+            error="connection refused",
+            error_code="network_error",
+            created_at="2026-05-01T00:00:00+00:00",
+        )
+        runner = _StaticTaskRunner(info)
+        app = create_app(
+            ServeState(state_dir=tmp_path, token="tok", task_runner=cast("Any", runner))
+        )
+        client = TestClient(app, base_url="http://localhost:8765")
+        resp = client.get("/api/tasks/task-1")
+        body = resp.json()
+        assert body["recovery_hint"] == "retry"
+
+    def test_config_error_suggests_check_config(self, tmp_path: Path) -> None:
+        info = TaskInfo(
+            task_id="task-1",
+            task_type="learn",
+            status=TaskStatus.FAILED,
+            progress=TaskProgress(current=0, total=0, message=""),
+            error="missing api key",
+            error_code="config_error",
+            created_at="2026-05-01T00:00:00+00:00",
+        )
+        runner = _StaticTaskRunner(info)
+        app = create_app(
+            ServeState(state_dir=tmp_path, token="tok", task_runner=cast("Any", runner))
+        )
+        client = TestClient(app, base_url="http://localhost:8765")
+        resp = client.get("/api/tasks/task-1")
+        body = resp.json()
+        assert body["recovery_hint"] == "check_config"
+
+    def test_learnability_error_suggests_dismiss(self, tmp_path: Path) -> None:
+        info = TaskInfo(
+            task_id="task-1",
+            task_type="learn",
+            status=TaskStatus.FAILED,
+            progress=TaskProgress(current=0, total=0, message=""),
+            error="diff too small",
+            error_code="learnability_error",
+            created_at="2026-05-01T00:00:00+00:00",
+        )
+        runner = _StaticTaskRunner(info)
+        app = create_app(
+            ServeState(state_dir=tmp_path, token="tok", task_runner=cast("Any", runner))
+        )
+        client = TestClient(app, base_url="http://localhost:8765")
+        resp = client.get("/api/tasks/task-1")
+        body = resp.json()
+        assert body["recovery_hint"] == "dismiss"
+
+    def test_no_recovery_hint_for_completed_tasks(self, tmp_path: Path) -> None:
+        info = TaskInfo(
+            task_id="task-1",
+            task_type="learn",
+            status=TaskStatus.COMPLETED,
+            progress=TaskProgress(current=10, total=10, message="done"),
+            result={"run_id": "r1", "overall": 90.0},
+            created_at="2026-05-01T00:00:00+00:00",
+        )
+        runner = _StaticTaskRunner(info)
+        app = create_app(
+            ServeState(state_dir=tmp_path, token="tok", task_runner=cast("Any", runner))
+        )
+        client = TestClient(app, base_url="http://localhost:8765")
+        resp = client.get("/api/tasks/task-1")
+        body = resp.json()
+        assert body["recovery_hint"] is None
+
+    def test_recovery_hint_in_stable_contract(self) -> None:
+        info = TaskInfoResponse(
+            task_id="abc",
+            task_type="learn",
+            status="failed",
+            progress=TaskProgressResponse(current=0, total=0, message=""),
+            error="timeout",
+            error_code="timeout",
+            recovery_hint="retry",
+            created_at="2026-05-01T00:00:00Z",
+        )
+        d = info.model_dump(mode="json")
+        assert d["recovery_hint"] == "retry"
+
+    def test_unknown_error_code_falls_back_to_internal_error(self, tmp_path: Path) -> None:
+        info = TaskInfo(
+            task_id="task-1",
+            task_type="learn",
+            status=TaskStatus.FAILED,
+            progress=TaskProgress(current=0, total=0, message=""),
+            error="future failure",
+            error_code="future_error_code",
+            created_at="2026-05-01T00:00:00+00:00",
+        )
+        runner = _StaticTaskRunner(info)
+        app = create_app(
+            ServeState(state_dir=tmp_path, token="tok", task_runner=cast("Any", runner))
+        )
+        client = TestClient(app, base_url="http://localhost:8765")
+
+        resp = client.get("/api/tasks/task-1")
+
+        body = resp.json()
+        assert body["error_code"] == "internal_error"
+        assert body["recovery_hint"] == "none"

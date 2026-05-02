@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
+import time
+from collections import deque
+from contextlib import suppress
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -270,6 +273,66 @@ def _expected_port(state: object) -> int | None:
     return port if isinstance(port, int) else None
 
 
+_RATE_LIMIT_WINDOW_SECONDS = 60.0
+_RATE_LIMITS: dict[str, int] = {
+    "/api/learn": 10,
+}
+
+
+class WriteRateLimitMiddleware(BaseHTTPMiddleware):
+    """In-memory sliding-window rate limiter for expensive write endpoints.
+
+    Only limits paths explicitly listed in ``_RATE_LIMITS``.  Local-first
+    design: no per-IP tracking (loopback only).
+    """
+
+    def __init__(self, app: Any) -> None:
+        super().__init__(app)
+        self._windows: dict[str, deque[tuple[float, int]]] = {}
+        self._next_ticket = 0
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        if request.method not in _WRITE_GUARD_METHODS:
+            return await call_next(request)
+        match = _rate_limit_for_path(request.url.path)
+        if match is None:
+            return await call_next(request)
+        limit, key = match
+        now = time.monotonic()
+        window = self._windows.setdefault(key, deque())
+        cutoff = now - _RATE_LIMIT_WINDOW_SECONDS
+        while window and window[0][0] <= cutoff:
+            window.popleft()
+        if len(window) >= limit:
+            remaining = window[0][0] + _RATE_LIMIT_WINDOW_SECONDS - now
+            retry_after = max(1, int(remaining + 0.999))
+            return _rate_limit_response(retry_after)
+        self._next_ticket += 1
+        entry = (now, self._next_ticket)
+        window.append(entry)
+        response = await call_next(request)
+        if response.status_code in {401, 403, 404}:
+            with suppress(ValueError):
+                window.remove(entry)
+        return response
+
+
+def _rate_limit_for_path(path: str) -> tuple[int, str] | None:
+    limit = _RATE_LIMITS.get(path)
+    if limit is not None:
+        return limit, path
+    return None
+
+
+def _rate_limit_response(retry_after: int) -> Response:
+    resp = JSONResponse(
+        {"error": "rate_limited", "status": 429, "retry_after": retry_after},
+        status_code=429,
+    )
+    resp.headers["Retry-After"] = str(retry_after)
+    return _apply_security_headers(resp)
+
+
 _DEFAULT_REQUEST_TIMEOUT = 30.0
 _LONG_REQUEST_TIMEOUT = 600.0
 _LONG_TIMEOUT_PREFIXES = ("/api/learn", "/api/tasks/")
@@ -298,4 +361,4 @@ def _request_timeout_for(path: str) -> float:
     return _DEFAULT_REQUEST_TIMEOUT
 
 
-__all__ = ["LoopbackGuardMiddleware", "RequestTimeoutMiddleware"]
+__all__ = ["LoopbackGuardMiddleware", "RequestTimeoutMiddleware", "WriteRateLimitMiddleware"]

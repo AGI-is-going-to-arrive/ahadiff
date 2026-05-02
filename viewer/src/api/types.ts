@@ -308,6 +308,20 @@ export interface TaskResultSummary {
 
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
+export type TaskErrorCode =
+  | 'network_error'
+  | 'timeout'
+  | 'config_error'
+  | 'permission_error'
+  | 'claim_error'
+  | 'lesson_error'
+  | 'quiz_error'
+  | 'learnability_error'
+  | 'cancelled'
+  | 'internal_error';
+
+export type RecoveryHint = 'retry' | 'check_config' | 'check_permissions' | 'dismiss' | 'none';
+
 export interface TaskInfoResponse {
   task_id: string;
   task_type: string;
@@ -315,11 +329,12 @@ export interface TaskInfoResponse {
   progress: TaskProgressResponse;
   result_summary?: TaskResultSummary | null;
   error?: string | null;
-  error_code?: string | null;
+  error_code?: TaskErrorCode | null;
   created_at: string;
   started_at?: string | null;
   completed_at?: string | null;
   elapsed_seconds?: number | null;
+  recovery_hint?: RecoveryHint | null;
 }
 
 export interface TaskListResponse {

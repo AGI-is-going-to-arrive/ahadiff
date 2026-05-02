@@ -29,6 +29,12 @@ export default function LearnTaskBanner() {
     : 0;
   const resultSummary = task?.result_summary;
   const isTooManyTasks = errorCode === 'too_many_tasks';
+  const isRateLimited = errorCode === 'rate_limited';
+  const recoveryHint = task?.recovery_hint ?? null;
+  const canRetry = retryable && (recoveryHint === null || recoveryHint === 'retry');
+  const rateLimitSeconds = isRateLimited && error?.startsWith('rate_limited:')
+    ? error.split(':')[1] ?? '60'
+    : '60';
 
   return (
     <div
@@ -150,23 +156,27 @@ export default function LearnTaskBanner() {
       {phase === 'failed' && (
         <>
           <div className="learn-banner__body">
-            <span className={`learn-banner__icon${isTooManyTasks ? '' : ' learn-banner__icon--error'}`} aria-hidden="true">
-              {isTooManyTasks ? '⏳' : '✕'}
+            <span className={`learn-banner__icon${isTooManyTasks || isRateLimited ? '' : ' learn-banner__icon--error'}`} aria-hidden="true">
+              {isTooManyTasks || isRateLimited ? '⏳' : '✕'}
             </span>
             <div className="learn-banner__info">
               <span className="learn-banner__step">
-                {isTooManyTasks ? t('Learn.too_many_tasks') : t('Learn.failed')}
+                {isTooManyTasks
+                  ? t('Learn.too_many_tasks')
+                  : isRateLimited
+                    ? t('Learn.rate_limited', { seconds: rateLimitSeconds })
+                    : t('Learn.failed')}
               </span>
-              {errorCode && !isTooManyTasks && (
+              {errorCode && !isTooManyTasks && !isRateLimited && (
                 <code className="learn-banner__error-code">{errorCode}</code>
               )}
-              {error && !isTooManyTasks && (
+              {error && !isTooManyTasks && !isRateLimited && (
                 <span className="learn-banner__msg">{error}</span>
               )}
             </div>
           </div>
           <div className="learn-banner__actions">
-            {retryable && (
+            {canRetry && (
               <button
                 type="button"
                 className="learn-banner__btn learn-banner__btn--retry"

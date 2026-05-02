@@ -378,7 +378,7 @@ describe('learn store', () => {
       task_id: 'task-1',
       status: 'failed',
       error: 'Out of memory',
-      error_code: 'oom',
+      error_code: 'internal_error',
     });
     mockedGetTask.mockResolvedValue(failedTask);
 
@@ -387,8 +387,50 @@ describe('learn store', () => {
 
     expect(useLearnStore.getState().phase).toBe('failed');
     expect(useLearnStore.getState().error).toBe('Out of memory');
-    expect(useLearnStore.getState().errorCode).toBe('oom');
+    expect(useLearnStore.getState().errorCode).toBe('internal_error');
     expect(useLearnStore.getState().task).toEqual(failedTask);
+  });
+
+  it('poll disables retry when recovery_hint is not retry', async () => {
+    mockedStartLearnTask.mockResolvedValue({ task_id: 'task-1' });
+    mockedGetTask.mockResolvedValue(
+      makeTaskInfo({
+        task_id: 'task-1',
+        status: 'failed',
+        error: 'Configuration error. Check your provider settings.',
+        error_code: 'config_error',
+        recovery_hint: 'check_config',
+      }),
+    );
+
+    await useLearnStore.getState().submitLearn({ last: true });
+    await vi.advanceTimersByTimeAsync(1500);
+
+    expect(useLearnStore.getState().phase).toBe('failed');
+    expect(useLearnStore.getState().retryable).toBe(false);
+
+    mockedStartLearnTask.mockClear();
+    await useLearnStore.getState().retryLearn();
+    expect(mockedStartLearnTask).not.toHaveBeenCalled();
+  });
+
+  it('poll keeps retry enabled when recovery_hint is retry', async () => {
+    mockedStartLearnTask.mockResolvedValue({ task_id: 'task-1' });
+    mockedGetTask.mockResolvedValue(
+      makeTaskInfo({
+        task_id: 'task-1',
+        status: 'failed',
+        error: 'Task timed out. Try again or increase the timeout.',
+        error_code: 'timeout',
+        recovery_hint: 'retry',
+      }),
+    );
+
+    await useLearnStore.getState().submitLearn({ last: true });
+    await vi.advanceTimersByTimeAsync(1500);
+
+    expect(useLearnStore.getState().phase).toBe('failed');
+    expect(useLearnStore.getState().retryable).toBe(true);
   });
 
   it('poll transitions to cancelled without invalidating run or graph state', async () => {

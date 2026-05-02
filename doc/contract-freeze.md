@@ -712,7 +712,7 @@ run_id: str
 - `GET /api/graph/status` — Graphify 当前状态；当前 payload 是 `enabled` / `source_exists` / `has_graph` / `freshness` / `node_count` / `edge_count` / `source_path`，不是完整 provenance API
 - `GET /api/graph/concepts` — ConceptGraph 前端 DTO；返回 sanitized `nodes` / `edges` + `status`，不是完整 Graphify provenance API
 - `PUT /api/config` — 配置更新
-- `POST /api/learn` — 提交后台 learn 任务；当前返回 `202 {"task_id": ...}`，进度/取消走 `/api/tasks*`
+- `POST /api/learn` — 提交后台 learn 任务；当前返回 `202 {"task_id": ...}`，进度/取消走 `/api/tasks*`；写请求有 in-memory 10 req/min 滑动窗口限流，429 返回 `{"error":"rate_limited","retry_after":...}` 并带 `Retry-After`
 - `GET /api/tasks` — **unstable**，参见 §9.10
 - `GET /api/tasks/{task_id}` — **unstable**，参见 §9.10
 - `POST /api/tasks/{task_id}/cancel` — **unstable**，参见 §9.10
@@ -771,9 +771,9 @@ run_id: str
 | **PUT /api/config** | ✅ session-only | 仅支持 `lang` 键，修改内存中 locale，不持久化到磁盘。这是有意的 serve session 行为 |
 | **GET /api/graph/status** | ✅ 已接线 | 以 workspace root 为基准探测 raw `graphify-out/graph.json` 是否存在；当前 node/edge 统计和 `source_path` 读取的是 imported `.ahadiff/graphify/graph.json`，返回 `enabled/source_exists/has_graph/freshness/node_count/edge_count/source_path(relative)` |
 | **GET /api/graph/concepts** | ✅ 已接线 | 从 imported `.ahadiff/graphify/graph.json` 投影前端 ConceptGraph 所需的 sanitized nodes/edges/status；5D core d3-force/detail/fallback 已落地，Graphify import provenance 与 per-run `graphify_context.json` artifact 已有后端接线；5E 的基础跨页 freshness/status 卡片已由前端共享 `graph-store` 接住，完整 source/provenance UI、CLI polish 和真实大仓 signoff 仍属后续工作 |
-| **POST /api/learn** | ✅ 已接线 | `core/orchestrator.py` 从 `cli.py` 抽出 learn 主链；route 只接受安全 capture / learn 选项，返回 `202 {"task_id": ...}`，provider override 不从 HTTP 暴露 |
+| **POST /api/learn** | ✅ 已接线 | `core/orchestrator.py` 从 `cli.py` 抽出 learn 主链；route 只接受安全 capture / learn 选项，返回 `202 {"task_id": ...}`，provider override 不从 HTTP 暴露；当前有 10 req/min 写限流，401/403/404 不消耗额度 |
 | **medium APIs** | ✅ 全部真实接线 | search/audit/mastery/weak/alignment/learning stats 均查 SQLite/JSONL，无 mock |
-| **/api/tasks*** | ⏸ internal/unstable | 现在已有真实 submitter（`POST /api/learn`），但 task payload / queue policy / progress surface 仍按低层内部接口处理 |
+| **/api/tasks*** | ⏸ internal/unstable | 现在已有真实 submitter（`POST /api/learn`），但 task payload / queue policy / progress surface 仍按低层内部接口处理；`TaskInfoResponse` 的公开消费字段已收紧到 `result_summary`、枚举化 `error_code` 和 `recovery_hint` |
 
 ### 9.9 Serve 异步 IO 策略（1B）
 
@@ -795,11 +795,15 @@ run_id: str
 **为什么仍不冻结**：task queue 的状态 payload、队列容量策略、进度文案和 SSE 细节都还是低层运行时 surface，后续仍可能继续收口；因此它们继续保留为 internal/unstable。
 
 **当前 runtime 事实**：
-- `GET /api/tasks` / `GET /api/tasks/{task_id}` 的 payload 已经带 `error_code`
+- `GET /api/tasks` / `GET /api/tasks/{task_id}` 的 payload 已经带 `error_code`，类型收紧为 `TaskErrorCode | None`
+- `TaskInfoResponse` 的稳定字段包含 `task_id`、`task_type`、`status`、`progress`、`error`、`error_code`、`recovery_hint`、`created_at`、`started_at`、`completed_at`、`elapsed_seconds`、`result_summary`
+- `RecoveryHint` 取值为 `"retry" | "check_config" | "check_permissions" | "dismiss" | "none"`；它只在失败任务有可判定恢复动作时填充，其他状态可为 `None`
+- raw task `result` 不对前端暴露；完成态使用 `result_summary`
 - 当任务进入运行态后，route 侧会额外投影 `elapsed_seconds`
 - `TaskRunner` 默认 scheduler timeout 是 600 秒，可由 `AHADIFF_DEFAULT_TASK_TIMEOUT_SECONDS` 覆盖
 - `TaskRunner` 支持 per-task `task_timeout_seconds` override
 - `POST /api/learn` 当前不再关闭 timeout；它走 `TaskRunner` 的默认 timeout 语义
+- `POST /api/learn` 的 429 `rate_limited` 是 submit-layer HTTP 状态，不进入 `TaskErrorCode`；前端按 `retry_after` / `Retry-After` 展示等待文案
 - thread-backed learn task 被取消时，取消信号会传进 `run_learn_pipeline()` 的 `is_cancelled` 回调；超时进入 draining 的 worker 不会被 `shutdown()` 提前 untrack
 
 **保留状态**：
@@ -828,3 +832,16 @@ run_id: str
 - contracts DTO 中的 `run_id` / `task_id` / `event_id` / `claim_id` / `card_id` 拒绝空字符串；`source_ref` 等历史引用字段保持兼容。
 
 本轮后端回归基线：`pytest tests -q -p no:cacheprovider` = `1501 passed, 1 skipped`，`ruff check src tests` 通过，`pyright` = `0 errors`。只对本轮 touched files 跑了 `ruff format --check`；全仓 format 仍有既有 `src/ahadiff/graphify/parser.py` 重排遗留，不属于本轮改动。
+
+### 9.12 Phase 6B rate limit / recovery hardening（2026-05-02）
+
+本轮只记录已经由代码和测试验证的收口项：
+
+- `WriteRateLimitMiddleware` 注册在 serve 中间件栈，当前只限制 `POST /api/learn`；key 使用 token 前缀或 client host，窗口为 60 秒内最多 10 次。
+- 认证/授权/路径类失败（401/403/404）不会消耗 `/api/learn` 写额度；真正进入提交面的请求才保留在窗口里。
+- 429 response body 为 `{"error":"rate_limited","status":429,"retry_after":N}`，并同步写 `Retry-After: N`。
+- `TaskErrorCode` 冻结为 `network_error` / `timeout` / `config_error` / `permission_error` / `claim_error` / `lesson_error` / `quiz_error` / `learnability_error` / `cancelled` / `internal_error`。
+- 未知 task error code 会在后端序列化时收敛为 `internal_error`，避免把任意内部字符串变成前端契约。
+- 前端 `taskInfoResponseSchema` 与 `TaskInfoResponse` 对齐，`recovery_hint` 作为稳定可选字段；LearnTaskBanner 用 `recovery_hint` 控制 Retry，并用 `Learn.rate_limited` 渲染 429。
+
+本轮实测：后端全量 `pytest --tb=short` = `1754 passed, 1 skipped in 145.88s`，目标 `tests/unit/test_serve_tasks.py` = `59 passed`，`ruff check` / `ruff format --check` / `pyright` 通过。前端 `pnpm run typecheck` / `pnpm run lint` 通过，`pnpm test -- --run` = `123 passed`，目标 Learn banner/store unit = `42 passed`，i18n key-count probe = `459/459`。coverage、build、全量 Playwright 和 live judge 未在本轮 hardening 后重跑。

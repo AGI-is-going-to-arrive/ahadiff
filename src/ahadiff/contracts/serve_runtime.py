@@ -7,6 +7,19 @@ from typing import Annotated, Any, Literal, TypeAlias
 from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt
 
 FreshnessProjection = Literal["fresh", "stale", "unavailable", "disabled"]
+TaskErrorCode = Literal[
+    "network_error",
+    "timeout",
+    "config_error",
+    "permission_error",
+    "claim_error",
+    "lesson_error",
+    "quiz_error",
+    "learnability_error",
+    "cancelled",
+    "internal_error",
+]
+RecoveryHint = Literal["retry", "check_config", "check_permissions", "dismiss", "none"]
 GRAPH_EDGE_WEIGHT_MIN = 0.1
 GRAPH_EDGE_WEIGHT_MAX = 3.0
 NonNegativeCount: TypeAlias = Annotated[StrictInt, Field(ge=0)]
@@ -128,8 +141,8 @@ class TaskInfoResponse(BaseModel):
 
     **Stable fields** (will not change shape across minor versions):
     ``task_id``, ``task_type``, ``status``, ``progress``, ``error``,
-    ``error_code``, ``created_at``, ``started_at``, ``completed_at``,
-    ``elapsed_seconds``, ``result_summary``.
+    ``error_code``, ``recovery_hint``, ``created_at``, ``started_at``,
+    ``completed_at``, ``elapsed_seconds``, ``result_summary``.
 
     Raw task results are intentionally omitted; consumers should use
     ``result_summary`` instead.
@@ -145,7 +158,7 @@ class TaskInfoResponse(BaseModel):
         description="Stable result summary for completed tasks.",
     )
     error: str | None = Field(default=None, description="Error message on failure.")
-    error_code: str | None = Field(
+    error_code: TaskErrorCode | None = Field(
         default=None,
         description="Categorized error code (e.g. 'timeout', 'config_error').",
     )
@@ -155,6 +168,10 @@ class TaskInfoResponse(BaseModel):
     elapsed_seconds: NonNegativeFiniteNumber | None = Field(
         default=None,
         description="Wall-clock seconds from start to completion/now.",
+    )
+    recovery_hint: RecoveryHint | None = Field(
+        default=None,
+        description="Suggested recovery action on failure.",
     )
 
 
@@ -203,9 +220,11 @@ __all__ = [
     "GRAPH_EDGE_WEIGHT_MAX",
     "GRAPH_EDGE_WEIGHT_MIN",
     "GraphStatusResponse",
+    "RecoveryHint",
     "SearchResponse",
     "SearchResultItem",
     "TaskCancelResponse",
+    "TaskErrorCode",
     "TaskInfoResponse",
     "TaskListResponse",
     "TaskProgressEvent",

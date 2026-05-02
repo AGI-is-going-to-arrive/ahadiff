@@ -91,11 +91,13 @@ async function doPoll(): Promise<void> {
       useLearnStore.setState({ phase: 'cancelled', task: info });
       resetPollState();
     } else if (s === 'failed') {
+      const retryAllowedByTask = (info.recovery_hint ?? 'retry') === 'retry';
       useLearnStore.setState({
         phase: 'failed',
         task: info,
         error: info.error ?? 'Task failed',
         errorCode: info.error_code ?? 'internal_error',
+        retryable: useLearnStore.getState().retryable && retryAllowedByTask,
       });
       resetPollState();
     } else {
@@ -154,7 +156,15 @@ export const useLearnStore = create<LearnState>(() => ({
       }
       let msg = err instanceof Error ? err.message : 'Submit failed';
       let code = 'submit_failed';
-      if (err instanceof ApiError && err.status === 503) {
+      if (err instanceof ApiError && err.status === 429) {
+        const body = err.body;
+        const retryAfter = body && typeof body === 'object' && !Array.isArray(body)
+          ? (body as Record<string, unknown>).retry_after
+          : undefined;
+        code = 'rate_limited';
+        const seconds = typeof retryAfter === 'number' ? String(retryAfter) : '60';
+        msg = `rate_limited:${seconds}`;
+      } else if (err instanceof ApiError && err.status === 503) {
         const body = err.body;
         const errField = body && typeof body === 'object' && !Array.isArray(body)
           ? (body as Record<string, unknown>).error

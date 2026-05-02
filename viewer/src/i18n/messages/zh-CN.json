@@ -233,6 +233,7 @@
     "score": "得分：{score}",
     "step_progress": "步骤 {current}/{total}",
     "submitting": "正在提交 Learn 运行…",
+    "rate_limited": "请求频率超限，请在 {seconds} 秒后重试。",
     "too_many_tasks": "已有 Learn 任务正在运行，请等待完成后再试。",
     "view_run": "查看运行"
   },

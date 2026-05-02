@@ -473,6 +473,27 @@ export const taskStatusSchema = z.enum([
   'cancelled',
 ]);
 
+export const taskErrorCodeSchema = z.enum([
+  'network_error',
+  'timeout',
+  'config_error',
+  'permission_error',
+  'claim_error',
+  'lesson_error',
+  'quiz_error',
+  'learnability_error',
+  'cancelled',
+  'internal_error',
+]);
+
+export const recoveryHintSchema = z.enum([
+  'retry',
+  'check_config',
+  'check_permissions',
+  'dismiss',
+  'none',
+]);
+
 export const taskInfoResponseSchema = z
   .object({
     task_id: z.string().min(1),
@@ -481,11 +502,12 @@ export const taskInfoResponseSchema = z
     progress: taskProgressResponseSchema,
     result_summary: taskResultSummarySchema.nullable().optional(),
     error: z.string().nullable().optional(),
-    error_code: z.string().nullable().optional(),
+    error_code: taskErrorCodeSchema.nullable().optional(),
     created_at: z.string(),
     started_at: z.string().nullable().optional(),
     completed_at: z.string().nullable().optional(),
     elapsed_seconds: z.number().finite().nonnegative().nullable().optional(),
+    recovery_hint: recoveryHintSchema.nullable().optional(),
   })
   .strict();
 
