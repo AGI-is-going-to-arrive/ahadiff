@@ -2,6 +2,8 @@
 
 > Research-only. No code changes. Based on reading all gap analysis docs, V6 HTML reference, Blueprint HTML, and current viewer source.
 
+> Current-state note (2026-05-02): sections 11.4 and 11.6 were written before the latest viewer follow-up. The frontend now has a shared `GraphifyCard` backed by `viewer/src/state/graph-store.ts` with 30s TTL, 15s request timeout, in-flight dedupe, `AbortController`, and invalidate-then-refetch behavior. This closes the basic cross-page freshness/status card gap where the card is mounted. It does **not** close the full V6 Graphify source card, provenance display, CLI polish, or real large-graph signoff work.
+
 ---
 
 ## 1. Proposed Frontend Staging (v1.0 one-shot, internal stages)
@@ -621,9 +623,9 @@ _CANONICAL_GRAPHIFY_STATUSES = frozenset({"fresh", "stale", "unavailable", "disa
 - `RunDetail.graphify_mode`, `RunDetail.graphify_status`, `RunDetail.graphify_notes`
 
 **Frontend display gaps**:
-- The canonical 4-value freshness projection (`fresh` / `stale` / `unavailable` / `disabled`) is defined in the serve backend but **NOT displayed anywhere in the frontend**
-- `RunDetail.graphify_status` is available but the DashboardPage and SettingsPage don't show it
-- No visual indicator for Graphify freshness on the ConceptsPage or Dashboard
+- The canonical 4-value freshness projection (`fresh` / `stale` / `unavailable` / `disabled`) is now surfaced by the shared `GraphifyCard` where that card is mounted
+- `RunDetail.graphify_status` is still a per-run detail field; the new shared card reads `/api/graph/status` through `graph-store` rather than duplicating self-fetching logic per page
+- The remaining gap is the full V6 Graphify source/provenance card and large-repo signoff, not the basic freshness badge
 
 ### 11.5 Graph Rendering Library Recommendation
 
@@ -722,7 +724,7 @@ The current `Concept` interface lacks a **`concept_type`** field needed to deter
 
 ### 11.8 Graphify Freshness Display Recommendations
 
-**Dashboard**: Add a Graphify status badge to the Dashboard header or a small card:
+**Dashboard**: Upgrade the existing shared `GraphifyCard` / `graph-store` status surface into the full V6 source/provenance card; do not treat the basic freshness badge as still missing.
 - `fresh`: Green dot + "Graphify: up to date"
 - `stale`: Amber dot + "Graphify: needs refresh" + link to `ahadiff graph refresh`
 - `unavailable`: Grey dot + "Graphify: unavailable"

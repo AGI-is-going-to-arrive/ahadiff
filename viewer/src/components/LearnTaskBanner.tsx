@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useLearnStore } from '../state/learn-store';
 import { useTranslation, type MessageKey } from '../i18n/useTranslation';
 import { safeVerdict } from '../utils/verdict';
@@ -11,15 +12,23 @@ export default function LearnTaskBanner() {
   const errorCode = useLearnStore((s) => s.errorCode);
   const cancelLearn = useLearnStore((s) => s.cancelLearn);
   const dismiss = useLearnStore((s) => s.dismiss);
-  const submitLearn = useLearnStore((s) => s.submitLearn);
+  const retryLearn = useLearnStore((s) => s.retryLearn);
+  const retryable = useLearnStore((s) => s.retryable);
+  const recoverExistingTask = useLearnStore((s) => s.recoverExistingTask);
+
+  useEffect(() => {
+    void recoverExistingTask();
+  }, [recoverExistingTask]);
 
   if (phase === 'idle') return null;
 
   const progress = task?.progress;
+  const isPending = task?.status === 'pending';
   const pct = progress && progress.total > 0
     ? Math.max(0, Math.min(100, Math.round((progress.current / progress.total) * 100)))
     : 0;
   const resultSummary = task?.result_summary;
+  const isTooManyTasks = errorCode === 'too_many_tasks';
 
   return (
     <div
@@ -41,32 +50,36 @@ export default function LearnTaskBanner() {
           <div className="learn-banner__body">
             <div className="learn-banner__info">
               <span className="learn-banner__step">
-                {progress
-                  ? t('Learn.step_progress', {
-                      current: progress.current,
-                      total: progress.total,
-                    })
-                  : t('Learn.running')}
+                {isPending
+                  ? t('Learn.pending')
+                  : progress
+                    ? t('Learn.step_progress', {
+                        current: progress.current,
+                        total: progress.total,
+                      })
+                    : t('Learn.running')}
               </span>
               {progress?.message && (
                 <span className="learn-banner__msg">{progress.message}</span>
               )}
             </div>
-            <div
-              className="learn-banner__bar-track"
-              role="progressbar"
-              aria-valuenow={pct}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label={progress
-                ? t('Learn.step_progress', { current: progress.current, total: progress.total })
-                : t('Learn.running')}
-            >
+            {!isPending && (
               <div
-                className="learn-banner__bar-fill"
-                style={{ width: `${pct}%` }}
-              />
-            </div>
+                className="learn-banner__bar-track"
+                role="progressbar"
+                aria-valuenow={pct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={progress
+                  ? t('Learn.step_progress', { current: progress.current, total: progress.total })
+                  : t('Learn.running')}
+              >
+                <div
+                  className="learn-banner__bar-fill"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            )}
           </div>
           <div className="learn-banner__actions">
             <button
@@ -82,15 +95,15 @@ export default function LearnTaskBanner() {
       )}
 
       {/* ---- Completed ---- */}
-      {phase === 'completed' && (
+      {(phase === 'completed' || phase === 'cancelled') && (
         <>
           <div className="learn-banner__body">
             <span className="learn-banner__icon" aria-hidden="true">
-              {task?.status === 'cancelled' ? '⊘' : '✓'}
+              {phase === 'cancelled' ? '⊘' : '✓'}
             </span>
             <div className="learn-banner__info">
               <span className="learn-banner__step">
-                {task?.status === 'cancelled'
+                {phase === 'cancelled'
                   ? t('Learn.cancelled')
                   : t('Learn.completed')}
               </span>
@@ -114,7 +127,7 @@ export default function LearnTaskBanner() {
             </div>
           </div>
           <div className="learn-banner__actions">
-            {resultSummary?.run_id && (
+            {phase === 'completed' && resultSummary?.run_id && (
               <a
                 className="learn-banner__btn learn-banner__btn--view"
                 href={`#/run/${resultSummary.run_id}/lesson`}
@@ -137,25 +150,31 @@ export default function LearnTaskBanner() {
       {phase === 'failed' && (
         <>
           <div className="learn-banner__body">
-            <span className="learn-banner__icon learn-banner__icon--error" aria-hidden="true">
-              ✕
+            <span className={`learn-banner__icon${isTooManyTasks ? '' : ' learn-banner__icon--error'}`} aria-hidden="true">
+              {isTooManyTasks ? '⏳' : '✕'}
             </span>
             <div className="learn-banner__info">
-              <span className="learn-banner__step">{t('Learn.failed')}</span>
-              {errorCode && (
+              <span className="learn-banner__step">
+                {isTooManyTasks ? t('Learn.too_many_tasks') : t('Learn.failed')}
+              </span>
+              {errorCode && !isTooManyTasks && (
                 <code className="learn-banner__error-code">{errorCode}</code>
               )}
-              {error && <span className="learn-banner__msg">{error}</span>}
+              {error && !isTooManyTasks && (
+                <span className="learn-banner__msg">{error}</span>
+              )}
             </div>
           </div>
           <div className="learn-banner__actions">
-            <button
-              type="button"
-              className="learn-banner__btn learn-banner__btn--retry"
-              onClick={() => void submitLearn()}
-            >
-              {t('Learn.retry')}
-            </button>
+            {retryable && (
+              <button
+                type="button"
+                className="learn-banner__btn learn-banner__btn--retry"
+                onClick={() => void retryLearn()}
+              >
+                {t('Learn.retry')}
+              </button>
+            )}
             <button
               type="button"
               className="learn-banner__btn learn-banner__btn--dismiss"

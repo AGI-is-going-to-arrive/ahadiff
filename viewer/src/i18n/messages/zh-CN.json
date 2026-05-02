@@ -227,11 +227,13 @@
     "completed": "Learn 运行完成",
     "dismiss": "关闭",
     "failed": "Learn 运行失败",
+    "pending": "已排队，等待启动…",
     "retry": "重试",
     "running": "运行中…",
     "score": "得分：{score}",
     "step_progress": "步骤 {current}/{total}",
     "submitting": "正在提交 Learn 运行…",
+    "too_many_tasks": "已有 Learn 任务正在运行，请等待完成后再试。",
     "view_run": "查看运行"
   },
   "Nav": {

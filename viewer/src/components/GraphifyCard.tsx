@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
-import { fetchGraphStatus } from '../api/graph';
+import { useEffect } from 'react';
+import { useGraphStore } from '../state/graph-store';
 import { useTranslation, type MessageKey } from '../i18n/useTranslation';
-import type { FreshnessProjection, GraphStatusResponse } from '../api/types';
+import type { FreshnessProjection } from '../api/types';
 import './GraphifyCard.css';
 
 const FRESHNESS_TONE: Record<FreshnessProjection, string> = {
@@ -20,36 +20,33 @@ const FRESHNESS_LABEL_KEY: Record<FreshnessProjection, MessageKey> = {
 
 export default function GraphifyCard({ compact }: { compact?: boolean }) {
   const { t } = useTranslation();
-  const [status, setStatus] = useState<GraphStatusResponse | null>(null);
-  const [failed, setFailed] = useState(false);
+  const status = useGraphStore((s) => s.status);
+  const loading = useGraphStore((s) => s.loading);
+  const error = useGraphStore((s) => s.error);
+  const fetchStatus = useGraphStore((s) => s.fetch);
 
   useEffect(() => {
-    const controller = new AbortController();
-    fetchGraphStatus({ signal: controller.signal })
-      .then((s) => { if (!controller.signal.aborted) setStatus(s); })
-      .catch((err) => {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
-        if (!controller.signal.aborted) setFailed(true);
-      });
-    return () => controller.abort();
-  }, []);
+    void fetchStatus();
+  }, [fetchStatus]);
 
   if (!status) {
-    if (failed) return null;
-    const placeholderClassName = [
-      'graphify-card',
-      compact ? 'graphify-card--compact' : '',
-      'graphify-card--placeholder',
-    ].filter(Boolean).join(' ');
-    return <div className={placeholderClassName} aria-hidden="true" />;
+    if (error) return null;
+    if (loading) {
+      const placeholderClassName = [
+        'graphify-card',
+        compact ? 'graphify-card--compact' : '',
+        'graphify-card--placeholder',
+      ].filter(Boolean).join(' ');
+      return <div className={placeholderClassName} aria-hidden="true" />;
+    }
+    return null;
   }
 
-  if (failed) return null;
   if (!status.enabled) return null;
 
   const freshness = status.freshness ?? 'unavailable';
-  const tone = FRESHNESS_TONE[freshness];
-  const freshnessKey = FRESHNESS_LABEL_KEY[freshness];
+  const tone = FRESHNESS_TONE[freshness] ?? 'muted';
+  const freshnessKey = FRESHNESS_LABEL_KEY[freshness] ?? 'Graph.freshness_unavailable';
   const nodeCount = t('Graph.node_count', { count: status.node_count });
   const edgeCount = t('Graph.edge_count', { count: status.edge_count });
 

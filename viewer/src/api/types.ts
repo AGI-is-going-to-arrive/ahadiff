@@ -306,10 +306,12 @@ export interface TaskResultSummary {
   warnings: string[];
 }
 
+export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+
 export interface TaskInfoResponse {
   task_id: string;
   task_type: string;
-  status: string;
+  status: TaskStatus;
   progress: TaskProgressResponse;
   result_summary?: TaskResultSummary | null;
   error?: string | null;

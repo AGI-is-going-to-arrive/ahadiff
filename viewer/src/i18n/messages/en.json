@@ -227,11 +227,13 @@
     "completed": "Learn run completed",
     "dismiss": "Dismiss",
     "failed": "Learn run failed",
+    "pending": "Queued, waiting to start…",
     "retry": "Retry",
     "running": "Running…",
     "score": "Score: {score}",
     "step_progress": "Step {current}/{total}",
     "submitting": "Submitting learn run…",
+    "too_many_tasks": "A learn task is already running. Please wait for it to finish.",
     "view_run": "View run"
   },
   "Nav": {

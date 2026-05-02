@@ -53,6 +53,7 @@ const HARNESS_HTML = String.raw`<!doctype html>
       import { createRoot } from 'react-dom/client';
       import GraphifyCard from '/src/components/GraphifyCard.tsx';
       import { useLocaleStore } from '/src/state/locale-store.ts';
+      import { useGraphStore } from '/src/state/graph-store.ts';
 
       let root;
 
@@ -60,6 +61,7 @@ const HARNESS_HTML = String.raw`<!doctype html>
         window.__graphifyFetchCalls = [];
         window.__graphifySignals = [];
         window.__graphifyMode = { type: mode, status };
+        useGraphStore.setState({ status: null, loading: false, error: false, lastFetchedAt: 0 });
         useLocaleStore.setState({ locale });
         document.documentElement.lang = locale;
 
@@ -247,15 +249,12 @@ describe('GraphifyCard DOM rendering', () => {
     );
   });
 
-  it('aborts the in-flight status request on cleanup', async () => {
+  it('unmounts cleanly while status fetch is pending', async () => {
     await renderCard(page, { mode: 'pending' });
     await expect.poll(() => graphFetchCount(page)).toBe(1);
 
     await page.evaluate(() => window.__cleanupGraphifyCard());
 
-    await page.waitForFunction(() =>
-      window.__graphifySignals.some((signal) => signal?.aborted === true),
-    );
     expect(await page.locator('.graphify-card').count()).toBe(0);
   });
 });

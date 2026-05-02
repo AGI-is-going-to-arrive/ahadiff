@@ -465,13 +465,20 @@ export const taskResultSummarySchema = z
   })
   .strict();
 
+export const taskStatusSchema = z.enum([
+  'pending',
+  'running',
+  'completed',
+  'failed',
+  'cancelled',
+]);
+
 export const taskInfoResponseSchema = z
   .object({
     task_id: z.string().min(1),
     task_type: z.string(),
-    status: z.string(),
+    status: taskStatusSchema,
     progress: taskProgressResponseSchema,
-    result: z.unknown().optional(),
     result_summary: taskResultSummarySchema.nullable().optional(),
     error: z.string().nullable().optional(),
     error_code: z.string().nullable().optional(),

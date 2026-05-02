@@ -6,7 +6,7 @@
 
 知返 AhaDiff 是一个 **local-first 的 verified diff learning layer**。它把 AI 工具写出的 git diff，变成带代码证据链的学习笔记、概念图谱、主动回忆测验、SRS 复习卡和质量棘轮记录。核心差异定位：Code Wiki 解释仓库，知返解释这次改动；而且每句话都能回到代码证据。
 
-**当前阶段**：v0.2 Gate 0-6 底座 + v1.0 后端增量（helpfulness/transfer、misconception cards、Graphify 全栈、learn orchestrator + `POST /api/learn`、watcher core）。Phase 0G 合同边界已收口（2026-04-29）。symbol extraction 顺序 `python_ast -> tree_sitter -> regex -> section_header`。**最新 gate（2026-05-02）**：后端 `1736 passed`、coverage `87.33%`、ruff/pyright/lock 通过；前端 unit `87 passed`（12 files）、Playwright `1320 passed`、i18n `456/456`；44 concrete `/api/*` routes + 1 catchall；benchmark suite digest `99feae11...ef1f1`、Graphify perf gate `ok`。仍未完成：5E 跨页 freshness polish、large-repo signoff、Team。
+**当前阶段**：v0.2 Gate 0-6 底座 + v1.0 后端增量（helpfulness/transfer、misconception cards、Graphify 全栈、learn orchestrator + `POST /api/learn`、watcher core）。Phase 0G 合同边界已收口（2026-04-29）。symbol extraction 顺序 `python_ast -> tree_sitter -> regex -> section_header`。**最新 gate（2026-05-02）**：后端 `1736 passed`、coverage `87.33%`、ruff/pyright/lock 通过；新增 learn-task spec 前的前端完整 gate 基线 unit `87 passed` + Playwright `1320 passed`，本轮 learn/graph follow-up 后 unit `118 passed`、目标 Learn E2E `8 passed`、Playwright 当前配置枚举 `1440`（未全量重跑）、i18n `458/458`；44 concrete `/api/*` routes + 1 catchall；benchmark suite digest `99feae11...ef1f1`、Graphify perf gate `ok`。仍未完成：5E provenance/signoff polish 和 large-repo signoff。
 
 ## 架构总览
 
@@ -87,7 +87,7 @@ graph TD
 | improve | `src/ahadiff/improve/` | improve session、worktree replay、prompt 白名单、Phase 2.5、cherry-pick |
 | i18n | `src/ahadiff/i18n/` | locale resolver、Accept-Language / cookie / config / LANG fallback |
 | benchmarks | `benchmarks/` | 7+3 fixtures（含 500/5000-node + graph-present）、manifest、scripts runner |
-| viewer | `viewer/` | React 19 + Vite + Zustand + HashRouter；12 页面 + 21 组件 + 66 design tokens；Settings 8-tab；learn task UI（LearnTaskBanner + learn-store）；i18n 456/456；Playwright 1320；unit 87 |
+| viewer | `viewer/` | React 19 + Vite + Zustand + HashRouter；12 页面 + 22 组件 + 66 design tokens；Settings 8-tab；learn task UI（LearnTaskBanner + learn-store）；Graphify shared freshness store（graph-store）；i18n 458/458；Playwright 上次全量 1320、当前配置 1440；unit 118 |
 | tests | `tests/unit/eval/integration/live/` | 1736 passed、coverage 87.33%；含跨平台 static guard + live LLM judge（opt-in） |
 | doc | `doc/` | 产品设计文档 |
 | ui | `ui/` | UI 原型 Warm v1-v6 |
@@ -205,5 +205,6 @@ Stage 0-7 对应 Task 0→20 + i18n signoff，详见 `doc/` 设计文档。
 | 04-30 | 文档同步 + 对抗式审查（Codex+Claude 8轨）+ auth/FSRS/watcher closure | 1479→1526 |
 | 05-01 | Phase 4D Settings + 5B concept linking + 5C FTS graph + 6B tasks API + 7B 安全加固 + learn UI + DNS pinning 闭合 | 1526→1689 |
 | 05-02 | Graphify graph-present fixture + 完整 gate 重跑（coverage 87.33%） | 1736 |
+| 05-02 | viewer learn/graph follow-up：safe retry/cancel/recovery、Graphify shared cache、task schema 对齐；前端 unit 118，目标 Learn E2E 8 | 1736 |
 
 > 每条门禁的详细实现笔记见 `git log` 对应 commit message。

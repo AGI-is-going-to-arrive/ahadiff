@@ -2,7 +2,7 @@
 
 > Research date: 2026-04-27 | Graphify commit: HEAD of `safishamsi/graphify` | AhaDiff audit target: working tree on top of `a3deaca` (2026-04-29)
 
-> Current status note (2026-05-02): this document started as a 2026-04-27 compatibility baseline. The current branch now already has real `graph.json` parsing/validation, `links`/`edges` normalization, hyperedge handling, matcher/linker/slicer/search helpers, `/api/search` graph-node merge, `GET /api/graph/status`, and `GET /api/graph/concepts`. Serve-time consumers now read only the imported artifact `.ahadiff/graphify/graph.json`; raw `graphify-out/graph.json` remains an untrusted source used for detection/import/freshness only. The new graph concepts endpoint gives the frontend sanitized nodes/edges. Graphify import provenance, per-run `graphify_context.json`, token-reduction metrics, and the release perf gate are now wired; 5E cross-page freshness/provenance polish and real large-repo signoff evidence remain.
+> Current status note (2026-05-02): this document started as a 2026-04-27 compatibility baseline. The current branch now already has real `graph.json` parsing/validation, `links`/`edges` normalization, hyperedge handling, matcher/linker/slicer/search helpers, `/api/search` graph-node merge, `GET /api/graph/status`, and `GET /api/graph/concepts`. Serve-time consumers now read only the imported artifact `.ahadiff/graphify/graph.json`; raw `graphify-out/graph.json` remains an untrusted source used for detection/import/freshness only. The new graph concepts endpoint gives the frontend sanitized nodes/edges. Graphify import provenance, per-run `graphify_context.json`, token-reduction metrics, and the release perf gate are now wired. The latest viewer follow-up also adds a shared `graph-store` cache for `GraphifyCard` (30s TTL, 15s timeout, in-flight dedupe, invalidate refetch) across Dashboard/Review/Quiz/Diff/Ratchet/Settings. 5E is still partial because full provenance/CLI polish and real large-repo signoff evidence remain.
 
 ## 1. Graphify Official Repo Summary
 
@@ -275,7 +275,7 @@ def slice_subgraph(graph: GraphifyGraph, changed_files: list[str], hops: int = 2
 ```
 
 ### 5.5 Remaining Priority Order
-1. **5E frontend polish**: surface freshness/provenance consistently across pages instead of only keeping backend evidence
+1. **5E frontend polish**: basic cross-page freshness/status now uses the shared `GraphifyCard`; full source/provenance UI, CLI polish, and large-repo signoff are still pending
 2. **Optional graph slice artifact**: `graphify_context.json` is emitted today; a real `graph.slice.json` remains future work
 3. **Frontend surfacing**: expose `community` / `confidence` in viewer phases 5D/5E rather than only preserving them in metadata
 4. **Stronger compatibility evidence**: add at least one benchmark or regression fixture sourced from a real Graphify v0.5 export, not only the synthetic 15-node smoke fixture

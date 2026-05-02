@@ -29,6 +29,11 @@
   background: color-mix(in srgb, var(--success) 6%, var(--elevated));
 }
 
+.learn-banner--cancelled {
+  border-color: var(--hair-strong);
+  background: var(--subtle);
+}
+
 .learn-banner--failed {
   border-color: var(--danger);
   background: var(--danger-soft);
