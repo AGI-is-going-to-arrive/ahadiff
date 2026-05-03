@@ -278,6 +278,7 @@ async function installLargeGraphMock(page: Page): Promise<void> {
             node_count: 201,
             edge_count: 0,
             source_path: '.ahadiff/graphify/graph.json',
+            provenance: null,
           },
           nodes: Array.from({ length: 201 }, (_, index) => ({
             id: `large-${index + 1}`,
@@ -1023,8 +1024,7 @@ test.describe('walkthrough: full-app functional test', () => {
 
   test('404 — unknown route shows not found', async ({ page }) => {
     await page.goto('/#/this-does-not-exist');
-    // NotFoundPage renders h2 (inside AppShell which has no h1)
-    const heading = page.getByRole('heading', { level: 2 });
+    const heading = page.getByRole('heading', { level: 1 });
     await expect(heading).toBeVisible();
     await expect(heading).toContainText(/Not found|未找到/);
 

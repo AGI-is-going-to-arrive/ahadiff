@@ -217,6 +217,12 @@ export interface PaginatedConceptsResponse {
 
 export type FreshnessProjection = 'fresh' | 'stale' | 'unavailable' | 'disabled';
 
+export interface GraphProvenance {
+  graph_sha256: string;
+  import_time: string;
+  parser_version: string;
+}
+
 export interface GraphStatusResponse {
   enabled: boolean;
   source_exists: boolean;
@@ -225,6 +231,7 @@ export interface GraphStatusResponse {
   node_count: number;
   edge_count: number;
   source_path: string | null;
+  provenance: GraphProvenance | null;
 }
 
 export interface ConceptGraphNode {
@@ -327,14 +334,14 @@ export interface TaskInfoResponse {
   task_type: string;
   status: TaskStatus;
   progress: TaskProgressResponse;
-  result_summary?: TaskResultSummary | null;
-  error?: string | null;
-  error_code?: TaskErrorCode | null;
+  result_summary: TaskResultSummary | null;
+  error: string | null;
+  error_code: TaskErrorCode | null;
   created_at: string;
-  started_at?: string | null;
-  completed_at?: string | null;
-  elapsed_seconds?: number | null;
-  recovery_hint?: RecoveryHint | null;
+  started_at: string | null;
+  completed_at: string | null;
+  elapsed_seconds: number | null;
+  recovery_hint: RecoveryHint | null;
 }
 
 export interface TaskListResponse {

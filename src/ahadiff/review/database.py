@@ -2495,13 +2495,14 @@ def import_concepts_from_jsonl(db_path: Path, jsonl_path: Path) -> int:
                 payload = safe_json_loads(stripped)
             except (json.JSONDecodeError, ValueError) as exc:
                 raise InputError(f"invalid concepts JSONL line {index}: {jsonl_path}") from exc
-            if isinstance(payload, dict):
-                row = cast("dict[str, object]", payload)
-                if not row.get("term_key") or not row.get("concept"):
-                    raise InputError(
-                        f"concepts JSONL line {index} missing term_key or concept: {jsonl_path}"
-                    )
-                entries.append(row)
+            if not isinstance(payload, dict):
+                raise InputError(f"concepts JSONL line {index} must be an object: {jsonl_path}")
+            row = cast("dict[str, object]", payload)
+            if not row.get("term_key") or not row.get("concept"):
+                raise InputError(
+                    f"concepts JSONL line {index} missing term_key or concept: {jsonl_path}"
+                )
+            entries.append(row)
     if not entries:
         return 0
     return upsert_concepts_batch(db_path, entries)

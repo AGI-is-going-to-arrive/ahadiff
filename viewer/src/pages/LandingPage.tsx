@@ -71,12 +71,46 @@ const TRUST_CARDS = [
   },
 ] as const;
 
+const DEMO_TABS = ['raw', 'aha'] as const;
+type DemoTabId = typeof DEMO_TABS[number];
+
 export default function LandingPage() {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'raw' | 'aha'>('aha');
+  const [activeTab, setActiveTab] = useState<DemoTabId>('aha');
+
+  function handleDemoTabKeyDown(e: React.KeyboardEvent<HTMLButtonElement>, currentIndex: number) {
+    const len = DEMO_TABS.length;
+    const rtl = getComputedStyle(e.currentTarget).direction === 'rtl';
+    const nextKey = rtl ? 'ArrowLeft' : 'ArrowRight';
+    const prevKey = rtl ? 'ArrowRight' : 'ArrowLeft';
+
+    let targetIndex = -1;
+    switch (e.key) {
+      case nextKey:
+      case 'ArrowDown':
+        targetIndex = (currentIndex + 1) % len;
+        break;
+      case prevKey:
+      case 'ArrowUp':
+        targetIndex = (currentIndex - 1 + len) % len;
+        break;
+      case 'Home':
+        targetIndex = 0;
+        break;
+      case 'End':
+        targetIndex = len - 1;
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+    setActiveTab(DEMO_TABS[targetIndex]);
+    const targetBtn = document.getElementById(`tab-${DEMO_TABS[targetIndex]}`);
+    targetBtn?.focus();
+  }
 
   return (
-    <div className="landing">
+    <main className="landing">
       {/* Hero */}
       <section className="hero">
         <div className="hero-grid">
@@ -98,29 +132,35 @@ export default function LandingPage() {
           </div>
 
           <div className="hero-demo">
-            <div className="hero-demo__tabs" role="tablist">
+            <div className="hero-demo__tabs" role="tablist" aria-label={t('Landing.tabs_label')}>
               <button
                 type="button"
+                id="tab-raw"
                 role="tab"
                 aria-selected={activeTab === 'raw'}
                 aria-controls="demo-panel"
+                tabIndex={activeTab === 'raw' ? 0 : -1}
                 className={`hero-demo__tab${activeTab === 'raw' ? ' hero-demo__tab--active' : ''}`}
                 onClick={() => setActiveTab('raw')}
+                onKeyDown={e => handleDemoTabKeyDown(e, 0)}
               >
                 {t('Landing.tab_raw')}
               </button>
               <button
                 type="button"
+                id="tab-aha"
                 role="tab"
                 aria-selected={activeTab === 'aha'}
                 aria-controls="demo-panel"
+                tabIndex={activeTab === 'aha' ? 0 : -1}
                 className={`hero-demo__tab${activeTab === 'aha' ? ' hero-demo__tab--active' : ''}`}
                 onClick={() => setActiveTab('aha')}
+                onKeyDown={e => handleDemoTabKeyDown(e, 1)}
               >
                 {t('Landing.tab_aha')}
               </button>
             </div>
-            <div className="hero-demo__content" id="demo-panel" role="tabpanel">
+            <div className="hero-demo__content" id="demo-panel" role="tabpanel" aria-labelledby={activeTab === 'raw' ? 'tab-raw' : 'tab-aha'} tabIndex={0}>
               {activeTab === 'raw' ? (
                 <pre style={{ fontFamily: 'var(--font-mono)', fontSize: 12, margin: 0 }}>
                   {SAMPLE_DIFF}
@@ -162,7 +202,7 @@ export default function LandingPage() {
           {STEP_KEYS.map((key) => (
             <div className="step" key={key}>
               <div className="step__number">{t(`Landing.step_${key}` as 'Landing.step_01')}</div>
-              <h4>{t(`Landing.step_${key}_title` as 'Landing.step_01_title')}</h4>
+              <h3>{t(`Landing.step_${key}_title` as 'Landing.step_01_title')}</h3>
               <p>{t(`Landing.step_${key}_desc` as 'Landing.step_01_desc')}</p>
             </div>
           ))}
@@ -226,6 +266,6 @@ export default function LandingPage() {
           ))}
         </div>
       </section>
-    </div>
+    </main>
   );
 }

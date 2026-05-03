@@ -1,22 +1,10 @@
 import { useEffect } from 'react';
 import { useGraphStore } from '../state/graph-store';
-import { useTranslation, type MessageKey } from '../i18n/useTranslation';
-import type { FreshnessProjection } from '../api/types';
+import { useTranslation } from '../i18n/useTranslation';
+import { FRESHNESS_TONE, FRESHNESS_LABEL_KEY } from './freshness-utils';
+import GraphifySourceCard from './GraphifySourceCard';
+export { CopyButton } from './GraphifySourceCard';
 import './GraphifyCard.css';
-
-const FRESHNESS_TONE: Record<FreshnessProjection, string> = {
-  fresh: 'success',
-  stale: 'warning',
-  unavailable: 'muted',
-  disabled: 'muted',
-};
-
-const FRESHNESS_LABEL_KEY: Record<FreshnessProjection, MessageKey> = {
-  fresh: 'Graph.freshness_fresh',
-  stale: 'Graph.freshness_stale',
-  unavailable: 'Graph.freshness_unavailable',
-  disabled: 'Graph.freshness_disabled',
-};
 
 export default function GraphifyCard({ compact }: { compact?: boolean }) {
   const { t } = useTranslation();
@@ -66,29 +54,5 @@ export default function GraphifyCard({ compact }: { compact?: boolean }) {
     );
   }
 
-  return (
-    <div className="graphify-card" role="region" aria-label={t('Graph.source_title')}>
-      <div className="graphify-card__header">
-        <h3 className="graphify-card__title">{t('Graph.source_title')}</h3>
-        <span className={`graphify-badge graphify-badge--${tone}`}>
-          {t(freshnessKey)}
-        </span>
-      </div>
-      {status.has_graph ? (
-        <div className="graphify-card__body">
-          <div className="graphify-card__stats mono">
-            <span>{nodeCount}</span>
-            <span>{edgeCount}</span>
-          </div>
-          {status.source_path && (
-            <p className="graphify-card__source mono">{status.source_path}</p>
-          )}
-        </div>
-      ) : (
-        <p className="graphify-card__empty">
-          {t(status.source_exists ? 'Graph.empty_graph' : 'Graph.empty_source_missing')}
-        </p>
-      )}
-    </div>
-  );
+  return <GraphifySourceCard status={status} />;
 }

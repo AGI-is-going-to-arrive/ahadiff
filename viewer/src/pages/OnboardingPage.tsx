@@ -69,7 +69,7 @@ export default function OnboardingPage() {
                   {state === 'done' ? '✓' : step.key}
                 </div>
                 <div>
-                  <h4>{t(step.titleKey)}</h4>
+                  <h2 className="stepper__title">{t(step.titleKey)}</h2>
                   <p>{t(step.descKey)}</p>
                 </div>
               </div>

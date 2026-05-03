@@ -17,6 +17,26 @@ const HARNESS_HTML = String.raw`<!doctype html>
       window.__graphifyFetchCalls = [];
       window.__graphifySignals = [];
       window.__graphifyMode = { type: 'resolve', status: null };
+      window.__graphifyClipboardAvailable = true;
+      window.__graphifyClipboardWrites = [];
+      window.__graphifyClearTimeoutCalls = 0;
+      const __originalClearTimeout = window.clearTimeout.bind(window);
+      window.clearTimeout = (id) => {
+        window.__graphifyClearTimeoutCalls += 1;
+        return __originalClearTimeout(id);
+      };
+      Object.defineProperty(window.navigator, 'clipboard', {
+        configurable: true,
+        get() {
+          if (!window.__graphifyClipboardAvailable) return undefined;
+          return {
+            writeText(text) {
+              window.__graphifyClipboardWrites.push(String(text));
+              return Promise.resolve();
+            },
+          };
+        },
+      });
       window.fetch = (input, init = {}) => {
         const url = new URL(String(input), window.location.origin);
         if (url.pathname === '/api/auth/token') {
@@ -61,6 +81,9 @@ const HARNESS_HTML = String.raw`<!doctype html>
         window.__graphifyFetchCalls = [];
         window.__graphifySignals = [];
         window.__graphifyMode = { type: mode, status };
+        window.__graphifyClipboardAvailable = true;
+        window.__graphifyClipboardWrites = [];
+        window.__graphifyClearTimeoutCalls = 0;
         useGraphStore.setState({ status: null, loading: false, error: false, lastFetchedAt: 0 });
         useLocaleStore.setState({ locale });
         document.documentElement.lang = locale;
@@ -92,6 +115,9 @@ interface RenderOptions {
 declare global {
   interface Window {
     __cleanupGraphifyCard: () => void;
+    __graphifyClearTimeoutCalls: number;
+    __graphifyClipboardAvailable: boolean;
+    __graphifyClipboardWrites: string[];
     __graphifyFetchCalls: Array<{ path: string }>;
     __graphifyReady?: boolean;
     __graphifySignals: Array<AbortSignal | null>;
@@ -108,6 +134,7 @@ function makeStatus(overrides: Partial<GraphStatusResponse> = {}): GraphStatusRe
     node_count: 48,
     edge_count: 71,
     source_path: '.ahadiff/graphify/graph.json',
+    provenance: null,
     ...overrides,
   };
 }
@@ -192,19 +219,17 @@ describe('GraphifyCard DOM rendering', () => {
     await renderCard(page, { status: makeStatus({ freshness: 'stale' }) });
 
     await page.waitForSelector('.graphify-card[role="region"]');
+    await expect(page.locator('.graphify-card__icon').textContent()).resolves.toBe('◈');
     await expect(page.locator('.graphify-card__title').textContent()).resolves.toBe(
       'Graphify source',
     );
     await expect(page.locator('.graphify-badge').textContent()).resolves.toContain('Stale');
-    await expect(page.locator('.graphify-card__stats').textContent()).resolves.toContain(
-      '48 nodes',
-    );
-    await expect(page.locator('.graphify-card__stats').textContent()).resolves.toContain(
-      '71 edges',
-    );
-    await expect(page.locator('.graphify-card__source').textContent()).resolves.toBe(
-      '.ahadiff/graphify/graph.json',
-    );
+    const body = page.locator('.graphify-card__body');
+    await expect(body.textContent()).resolves.toContain('48 nodes');
+    await expect(body.textContent()).resolves.toContain('71 edges');
+    await expect(body.textContent()).resolves.toContain('.ahadiff/graphify/graph.json');
+    const rows = page.locator('.graphify-card__row');
+    await expect.poll(() => rows.count()).toBeGreaterThanOrEqual(2);
   });
 
   it('does not render when Graphify is disabled', async () => {
@@ -256,5 +281,77 @@ describe('GraphifyCard DOM rendering', () => {
     await page.evaluate(() => window.__cleanupGraphifyCard());
 
     expect(await page.locator('.graphify-card').count()).toBe(0);
+  });
+
+  it('renders provenance rows when provenance data is present', async () => {
+    await renderCard(page, {
+      status: makeStatus({
+        provenance: {
+          graph_sha256: 'a'.repeat(64),
+          import_time: '2026-05-01 12:00',
+          parser_version: '0.3.1',
+        },
+      }),
+    });
+
+    await page.waitForSelector('.graphify-card[role="region"]');
+    const body = page.locator('.graphify-card__body');
+    await expect(body.textContent()).resolves.toContain('imported:');
+    await expect(body.textContent()).resolves.toContain('v0.3.1');
+    await expect(body.textContent()).resolves.toContain('aaaaaaaaaaaa…');
+
+    const copyBtn = page.locator('.graphify-card__copy-btn');
+    await expect.poll(() => copyBtn.count()).toBe(1);
+  });
+
+  it('copies the full SHA and clears the copied-state timer on unmount', async () => {
+    const graphSha = 'b'.repeat(64);
+    await renderCard(page, {
+      status: makeStatus({
+        provenance: {
+          graph_sha256: graphSha,
+          import_time: '2026-05-01 12:00',
+          parser_version: '0.3.1',
+        },
+      }),
+    });
+
+    const copyBtn = page.locator('.graphify-card__copy-btn');
+    await expect.poll(() => copyBtn.getAttribute('aria-live')).toBe('polite');
+    await expect.poll(() => copyBtn.getAttribute('aria-label')).toBe('Copy full SHA-256 hash');
+    await copyBtn.click();
+    await expect.poll(() => copyBtn.textContent()).toBe('✓');
+    await expect.poll(() => copyBtn.getAttribute('aria-label')).toBe('Copied');
+    await expect.poll(() => page.evaluate(() => window.__graphifyClipboardWrites)).toEqual([
+      graphSha,
+    ]);
+
+    const clearCountBefore = await page.evaluate(() => window.__graphifyClearTimeoutCalls);
+    await page.evaluate(() => window.__cleanupGraphifyCard());
+    await expect.poll(() => page.evaluate(() => window.__graphifyClearTimeoutCalls)).toBeGreaterThan(
+      clearCountBefore,
+    );
+  });
+
+  it('does not throw when the Clipboard API is unavailable', async () => {
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+    await renderCard(page, {
+      status: makeStatus({
+        provenance: {
+          graph_sha256: 'c'.repeat(64),
+          import_time: '2026-05-01 12:00',
+          parser_version: '0.3.1',
+        },
+      }),
+    });
+    await page.evaluate(() => { window.__graphifyClipboardAvailable = false; });
+
+    const copyBtn = page.locator('.graphify-card__copy-btn');
+    await copyBtn.click();
+
+    expect(pageErrors).toEqual([]);
+    await expect.poll(() => page.evaluate(() => window.__graphifyClipboardWrites)).toEqual([]);
+    await expect.poll(() => copyBtn.textContent()).toBe('Copy');
   });
 });

@@ -135,12 +135,12 @@ export const ratchetHistoryEntrySchema = z.object({
   timestamp: z.string(),
   weakest_dim: z.string(),
   note_json: z.string().nullable().default(null),
-});
+}).strict();
 
 export const ratchetHistoryResponseSchema = z.object({
   history: z.array(ratchetHistoryEntrySchema),
   next_cursor: z.string().optional(),
-});
+}).strict();
 
 /* ─────────────── 5. Paginated runs / concepts ─────────────── */
 
@@ -398,6 +398,14 @@ export const freshnessProjectionSchema = z.enum([
   'disabled',
 ]);
 
+export const graphProvenanceSchema = z
+  .object({
+    graph_sha256: z.string().length(64).regex(/^[0-9a-f]{64}$/),
+    import_time: z.string().min(1).max(64),
+    parser_version: z.string().min(1).max(64),
+  })
+  .strict();
+
 export const graphStatusResponseSchema = z
   .object({
     enabled: z.boolean(),
@@ -407,6 +415,7 @@ export const graphStatusResponseSchema = z
     node_count: z.number().int().nonnegative(),
     edge_count: z.number().int().nonnegative(),
     source_path: z.string().nullable(),
+    provenance: graphProvenanceSchema.nullable(),
   })
   .strict();
 
@@ -459,7 +468,7 @@ export const taskResultSummarySchema = z
   .object({
     run_id: z.string().nullable(),
     status: z.string().nullable(),
-    overall: z.number().finite().nullable(),
+    overall: z.number().finite().min(0).max(100).nullable(),
     verdict: z.string().nullable(),
     warnings: z.array(z.string()).default([]),
   })
@@ -500,14 +509,14 @@ export const taskInfoResponseSchema = z
     task_type: z.string(),
     status: taskStatusSchema,
     progress: taskProgressResponseSchema,
-    result_summary: taskResultSummarySchema.nullable().optional(),
-    error: z.string().nullable().optional(),
-    error_code: taskErrorCodeSchema.nullable().optional(),
+    result_summary: taskResultSummarySchema.nullable(),
+    error: z.string().nullable(),
+    error_code: taskErrorCodeSchema.nullable(),
     created_at: z.string(),
-    started_at: z.string().nullable().optional(),
-    completed_at: z.string().nullable().optional(),
-    elapsed_seconds: z.number().finite().nonnegative().nullable().optional(),
-    recovery_hint: recoveryHintSchema.nullable().optional(),
+    started_at: z.string().nullable(),
+    completed_at: z.string().nullable(),
+    elapsed_seconds: z.number().finite().nonnegative().nullable(),
+    recovery_hint: recoveryHintSchema.nullable(),
   })
   .strict();
 

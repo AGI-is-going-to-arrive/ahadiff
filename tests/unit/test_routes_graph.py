@@ -14,6 +14,7 @@ from starlette.testclient import TestClient
 from ahadiff.contracts.serve_runtime import (
     ConceptGraphEdge,
     ConceptGraphResponse,
+    GraphProvenance,
     GraphStatusResponse,
 )
 from ahadiff.serve import ServeState, create_app
@@ -206,8 +207,73 @@ class TestGraphStatus:
             "node_count",
             "edge_count",
             "source_path",
+            "provenance",
         }
         assert set(data.keys()) == expected_keys
+
+    def test_graph_status_returns_valid_provenance(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        imported_dir = state_dir / "graphify"
+        imported_dir.mkdir()
+        (imported_dir / "graph.json").write_text(
+            json.dumps({"nodes": [{"id": "n1", "label": "foo"}], "links": []}),
+            encoding="utf-8",
+        )
+        provenance = {
+            "graph_sha256": "a" * 64,
+            "import_time": "2026-05-02T00:00:00+00:00",
+            "parser_version": "1.0",
+        }
+        (imported_dir / "provenance.json").write_text(json.dumps(provenance), encoding="utf-8")
+
+        client = _client(state_dir)
+        resp = client.get("/api/graph/status")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        GraphStatusResponse.model_validate(data)
+        assert data["has_graph"] is True
+        assert data["provenance"] == provenance
+
+    def test_graph_status_drops_malformed_provenance(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        imported_dir = state_dir / "graphify"
+        imported_dir.mkdir()
+        (imported_dir / "graph.json").write_text(
+            json.dumps({"nodes": [{"id": "n1", "label": "foo"}], "links": []}),
+            encoding="utf-8",
+        )
+        (imported_dir / "provenance.json").write_text(
+            json.dumps(
+                {
+                    "graph_sha256": "A" * 64,
+                    "import_time": "2026-05-02T00:00:00+00:00",
+                    "parser_version": "1.0",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        client = _client(state_dir)
+        resp = client.get("/api/graph/status")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        GraphStatusResponse.model_validate(data)
+        assert data["has_graph"] is True
+        assert data["provenance"] is None
+
+    def test_graph_provenance_rejects_malformed_sha(self) -> None:
+        with pytest.raises(ValidationError):
+            GraphProvenance.model_validate(
+                {
+                    "graph_sha256": "g" * 64,
+                    "import_time": "2026-05-02T00:00:00+00:00",
+                    "parser_version": "1.0",
+                }
+            )
 
     def test_graph_status_rejects_unknown_freshness_literal(self) -> None:
         with pytest.raises(ValidationError):
@@ -325,6 +391,30 @@ class TestGraphStatus:
         ]
         assert data["truncated"] is False
 
+    def test_concept_graph_status_includes_valid_provenance(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        imported_dir = state_dir / "graphify"
+        imported_dir.mkdir()
+        (imported_dir / "graph.json").write_text(
+            json.dumps({"nodes": [{"id": "n1", "label": "foo"}], "links": []}),
+            encoding="utf-8",
+        )
+        provenance = {
+            "graph_sha256": "b" * 64,
+            "import_time": "2026-05-02T00:00:00+00:00",
+            "parser_version": "1.0",
+        }
+        (imported_dir / "provenance.json").write_text(json.dumps(provenance), encoding="utf-8")
+        client = _client(state_dir)
+
+        resp = client.get("/api/graph/concepts")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        ConceptGraphResponse.model_validate(data)
+        assert data["status"]["provenance"] == provenance
+
     def test_concept_graph_endpoint_caps_nodes(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".ahadiff"
         state_dir.mkdir()
@@ -384,3 +474,26 @@ class TestGraphStatus:
         data = resp.json()
         ConceptGraphResponse.model_validate(data)
         assert data["nodes"][0]["name"] == "n1"
+
+    def test_concept_graph_parse_failure_clears_provenance_and_source_path(
+        self, tmp_path: Path
+    ) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        imported_dir = state_dir / "graphify"
+        imported_dir.mkdir()
+        (imported_dir / "graph.json").write_text("INVALID JSON", encoding="utf-8")
+        client = _client(state_dir)
+
+        resp = client.get("/api/graph/concepts")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        ConceptGraphResponse.model_validate(data)
+        assert data["status"]["has_graph"] is False
+        assert data["status"]["node_count"] == 0
+        assert data["status"]["edge_count"] == 0
+        assert data["status"]["source_path"] is None
+        assert data["status"]["provenance"] is None
+        assert data["nodes"] == []
+        assert data["edges"] == []

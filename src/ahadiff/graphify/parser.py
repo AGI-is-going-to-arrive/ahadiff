@@ -187,11 +187,18 @@ def _normalize_graph_object(obj: dict[str, object]) -> dict[str, object]:
 
     raw_hyperedges = normalized.get("hyperedges")
     if isinstance(raw_hyperedges, list):
-        normalized["hyperedges"] = [
+        raw_hyperedges_typed = cast("list[object]", raw_hyperedges)
+        if len(raw_hyperedges_typed) > _MAX_GRAPH_EDGES:
+            n = len(raw_hyperedges_typed)
+            raise InputError(
+                f"Graph has {n} hyperedges, exceeding the {_MAX_GRAPH_EDGES} edge limit"
+            )
+        hyperedge_list = [
             _normalize_hyperedge(cast("dict[str, object]", item))
-            for item in cast("list[object]", raw_hyperedges)
+            for item in raw_hyperedges_typed
             if isinstance(item, dict)
         ]
+        normalized["hyperedges"] = hyperedge_list
 
     return normalized
 

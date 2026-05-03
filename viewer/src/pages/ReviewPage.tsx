@@ -226,7 +226,7 @@ export default function ReviewPage() {
               className="review__rating-summary"
               aria-label={t('Review.rating_summary_title')}
             >
-              <h3>{t('Review.rating_summary_title')}</h3>
+              <h2>{t('Review.rating_summary_title')}</h2>
               {REVIEW_RATING_ORDER.map((answer) => (
                 <div key={answer} className="review__rating-row">
                   <span>{t(REVIEW_RATING_LABEL_KEYS[answer])}</span>
@@ -366,7 +366,7 @@ export default function ReviewPage() {
           <aside>
             <div className="review__sidebar-card">
               <div className="review__sidebar-header">
-                <h3>{t('Review.card_concept')}</h3>
+                <h2>{t('Review.card_concept')}</h2>
                 <span className="review__sidebar-meta">{card!.concept}</span>
               </div>
               <div className="review__sidebar-body">
@@ -384,7 +384,7 @@ export default function ReviewPage() {
             {/* Session progress card */}
             <div className="review__sidebar-card">
               <div className="review__sidebar-header">
-                <h3>{t('Review.sidebar_progress')}</h3>
+                <h2>{t('Review.sidebar_progress')}</h2>
                 <span className="review__sidebar-meta">
                   {currentIndex}/{total}
                 </span>

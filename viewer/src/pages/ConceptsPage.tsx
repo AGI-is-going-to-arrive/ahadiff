@@ -87,6 +87,7 @@ export default function ConceptsPage() {
             node_count: 0,
             edge_count: 0,
             source_path: null,
+            provenance: null,
           }}
           truncated={false}
         />

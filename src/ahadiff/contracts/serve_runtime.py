@@ -53,6 +53,15 @@ class ConceptsTextPageResponse(BaseModel):
     next_cursor: str | None = None
 
 
+class GraphProvenance(BaseModel):
+    """Provenance metadata for the imported Graphify artifact."""
+
+    model_config = ConfigDict(extra="forbid")
+    graph_sha256: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+    import_time: str = Field(min_length=1, max_length=64)
+    parser_version: str = Field(min_length=1, max_length=64)
+
+
 class GraphStatusResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     enabled: bool
@@ -62,6 +71,7 @@ class GraphStatusResponse(BaseModel):
     node_count: NonNegativeCount
     edge_count: NonNegativeCount
     source_path: str | None
+    provenance: GraphProvenance | None = None
 
 
 class WeakConceptItem(BaseModel):
@@ -219,6 +229,7 @@ __all__ = [
     "ConceptsTextPageResponse",
     "GRAPH_EDGE_WEIGHT_MAX",
     "GRAPH_EDGE_WEIGHT_MIN",
+    "GraphProvenance",
     "GraphStatusResponse",
     "RecoveryHint",
     "SearchResponse",

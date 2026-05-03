@@ -756,16 +756,23 @@ def verify_concepts_consistency(
     Returns (is_consistent, list_of_discrepancies).
     """
     discrepancies: list[str] = []
+    db_exists = db_path.exists()
+    jsonl_exists = jsonl_path.exists()
+    if not db_exists and not jsonl_exists:
+        return (
+            False,
+            ["No concepts data found: review.sqlite and concepts.jsonl are both missing"],
+        )
 
     jsonl_keys: set[str] = set()
-    if jsonl_path.exists():
+    if jsonl_exists:
         for _idx, entry in _iter_jsonl_entries_with_offsets(jsonl_path):
             term_key = entry.get("term_key")
             if isinstance(term_key, str) and term_key:
                 jsonl_keys.add(term_key)
 
     db_keys: set[str] = set()
-    if db_path.exists():
+    if db_exists:
         from ahadiff.review.database import load_concepts_from_db
 
         cursor: str | None = None

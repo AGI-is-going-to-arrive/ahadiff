@@ -9,11 +9,19 @@ vi.mock('../i18n/useTranslation', () => ({
 }));
 
 describe('FreshnessBadge', () => {
+  const expectedTone = {
+    fresh: 'success',
+    stale: 'warning',
+    unavailable: 'muted',
+    disabled: 'muted',
+  } as const;
+
   it.each(['fresh', 'stale', 'unavailable', 'disabled'] as const)(
     'renders %s projection with correct tone',
     (value) => {
       const html = renderToStaticMarkup(<FreshnessBadge value={value} />);
       expect(html).toContain('graphify-badge');
+      expect(html).toContain(`graphify-badge--${expectedTone[value]}`);
       expect(html).toContain(`Graph.freshness_${value}`);
     },
   );

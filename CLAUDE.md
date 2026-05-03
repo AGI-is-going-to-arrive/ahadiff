@@ -6,11 +6,11 @@
 
 知返 AhaDiff 是一个 **local-first 的 verified diff learning layer**。它把 AI 工具写出的 git diff，变成带代码证据链的学习笔记、概念图谱、主动回忆测验、SRS 复习卡和质量棘轮记录。核心差异定位：Code Wiki 解释仓库，知返解释这次改动；而且每句话都能回到代码证据。
 
-**当前阶段**：v0.2 Gate 0-6 底座 + v1.0 后端增量（helpfulness/transfer、misconception cards、Graphify 全栈、learn orchestrator + `POST /api/learn`、watcher core）。Phase 0G 合同边界已收口（2026-04-29）。symbol extraction 顺序 `python_ast -> tree_sitter -> regex -> section_header`。**最新 gate（2026-05-02）**：后端 `1754 passed, 1 skipped`；coverage 上一次同日 gate 为 `87.33%`，本轮 6B hardening 后未重跑；ruff/pyright/lock 通过；新增 learn-task spec 前的前端完整 gate 基线 unit `87 passed` + Playwright `1320 passed`，本轮 learn/graph follow-up + 6B hardening 后 unit `123 passed`、目标 Learn E2E `8 passed`、Playwright 当前配置枚举 `1440`（未全量重跑）、i18n `459/459`。本轮 6B hardening 给 `POST /api/learn` 加上 10 req/min rate limit，收紧 `TaskInfoResponse.error_code` 为 `TaskErrorCode`，并把 `recovery_hint` 作为稳定字段供前端 Retry gate 使用。当前仍是 44 concrete `/api/*` routes + 1 catchall；benchmark suite digest `99feae11...ef1f1`、Graphify perf gate `ok`。仍未完成：5E provenance/signoff polish 和 large-repo signoff。
+**当前阶段**：v0.2 Gate 0-6 底座 + v1.0 后端增量（helpfulness/transfer、misconception cards、Graphify 全栈、learn orchestrator + `POST /api/learn`、watcher core）。Phase 0G 合同边界已收口（2026-04-29）。symbol extraction 顺序 `python_ast -> tree_sitter -> regex -> section_header`。**最新 gate（2026-05-03）**：后端 `1755 passed`；ruff/pyright 0 errors；前端 unit `130 passed`、E2E `1170 passed`（含 axe-core a11y 12 页面 12/12）、i18n `470/470`。`/api/tasks*` 已提升为 stable product API。`POST /api/learn` 10 req/min rate limit + `TaskErrorCode` + `recovery_hint`。当前仍是 44 concrete `/api/*` routes + 1 catchall；benchmark suite digest `99feae11...ef1f1`、Graphify perf gate `ok`。5E provenance API 已暴露（`GraphProvenance` + `graph_sha256`/`import_time`/`parser_version`，字段收紧为 64-hex/max64），large-repo benchmark gate ok（500/5000-node）。MIT LICENSE 已就位。
 
 ## 架构总览
 
-后端 CLI 主链路（learn/improve/verify/serve/install/benchmark）已跑通：8-provider LLM + diff capture + claims + lesson/quiz/concepts + 8 维 eval + review.sqlite FSRS-6 + serve API（44 routes + catchall）+ 13 install targets + improve loop + i18n-0。`POST /api/learn` 已有 in-memory 10 req/min 写限流，`TaskInfoResponse` 稳定暴露 `result_summary`、`TaskErrorCode` 和 `recovery_hint`，但 `/api/tasks*` 仍是 internal/unstable 状态面。前端 `viewer/` React 19 SPA：12 页面、22 TSX 组件、21 CSS 文件。核心安全 helper 集中在 `core/json_util.py` / `sqlite_util.py`；serve 拒绝 proxy trace headers，token bootstrap 做同源检查。
+后端 CLI 主链路（learn/improve/verify/serve/install/benchmark）已跑通：8-provider LLM + diff capture + claims + lesson/quiz/concepts + 8 维 eval + review.sqlite FSRS-6 + serve API（44 routes + catchall）+ 13 install targets + improve loop + i18n-0。`POST /api/learn` 已有 in-memory 10 req/min 写限流，`TaskInfoResponse` 稳定暴露 `result_summary`、`TaskErrorCode` 和 `recovery_hint`；`/api/tasks*` 已于 2026-05-02 提升为 stable product API（§9.10）。前端 `viewer/` React 19 SPA：12 页面、23 TSX 组件、21 CSS 文件。核心安全 helper 集中在 `core/json_util.py` / `sqlite_util.py`；serve 拒绝 proxy trace headers，token bootstrap 做同源检查。
 
 ### 计划技术栈
 
@@ -82,13 +82,13 @@ graph TD
 | graphify | `src/ahadiff/graphify/` | models/parser/matcher/linker/slicer/search/freshness（7 态 + 4 值投影）；parser：50 MiB 上限 + 50k edge cap + dedup + dangling removal + sanitization + graph_sha256 provenance |
 | eval | `src/ahadiff/eval/` | 8 维评分、hard gates、ratchet、result_events、results.tsv 导出 |
 | review | `src/ahadiff/review/` | review.sqlite schema v1→v7 migration + FTS5（concepts/result_events/cards/graph_nodes）+ FSRS-6（NaN/Inf 拒绝）+ search + optimizer（cold/warm/hot） |
-| serve | `src/ahadiff/serve/` | 44 routes + catchall；auth（token + 同源 bootstrap）/ CORS / CSP / proxy-trace 拒绝；learn/tasks/graph/config/search/usage/audit 端点；`POST /api/learn` 10 req/min 写限流；TaskInfoResponse `TaskErrorCode` + `recovery_hint`；lifespan shutdown hook |
+| serve | `src/ahadiff/serve/` | 44 routes + catchall；auth（token + 同源 bootstrap）/ CORS / CSP / proxy-trace 拒绝；learn/tasks（stable API）/graph/config/search/usage/audit 端点；`POST /api/learn` 10 req/min 写限流；TaskInfoResponse `TaskErrorCode` + `recovery_hint`；GraphProvenance；lifespan shutdown hook |
 | install | `src/ahadiff/install/` | 13 安装目标、Jinja2 模板、InstallManifest、hook leaf no-follow 校验 |
 | improve | `src/ahadiff/improve/` | improve session、worktree replay、prompt 白名单、Phase 2.5、cherry-pick |
 | i18n | `src/ahadiff/i18n/` | locale resolver、Accept-Language / cookie / config / LANG fallback |
 | benchmarks | `benchmarks/` | 7+3 fixtures（含 500/5000-node + graph-present）、manifest、scripts runner |
-| viewer | `viewer/` | React 19 + Vite + Zustand + HashRouter；12 页面 + 22 组件 + 66 design tokens；Settings 8-tab；learn task UI（LearnTaskBanner + learn-store，含 `recovery_hint` Retry gate 与 429 rate_limited 文案）；Graphify shared freshness store（graph-store）；i18n 459/459；Playwright 上次全量 1320、当前配置 1440；unit 123 |
-| tests | `tests/unit/eval/integration/live/` | 1754 passed, 1 skipped；同日上一轮 coverage 87.33%；含跨平台 static guard + live LLM judge（opt-in） |
+| viewer | `viewer/` | React 19 + Vite + Zustand + HashRouter；12 页面 + 23 组件 + 66 design tokens；Settings 8-tab；learn task UI（LearnTaskBanner + learn-store，含 `recovery_hint` Retry gate 与 429 rate_limited 文案）；Graphify shared freshness store（graph-store）+ GraphifySourceCard 共享展示组件 + provenance UI；Landing APG tabs（circular wrap + RTL）；StaticSwitch 只读语义修正；axe-core a11y 12/12；E2E 1170 passed；i18n 470/470；unit 130 |
+| tests | `tests/unit/eval/integration/live/` | 1755 passed；含跨平台 static guard + live LLM judge（opt-in） |
 | doc | `doc/` | 产品设计文档 |
 | ui | `ui/` | UI 原型 Warm v1-v6 |
 | team-plan | `.claude/team-plan/` | v0.1 kickoff + 修订方案 |
@@ -207,5 +207,7 @@ Stage 0-7 对应 Task 0→20 + i18n signoff，详见 `doc/` 设计文档。
 | 05-02 | Graphify graph-present fixture + 完整 gate 重跑（coverage 87.33%） | 1736 |
 | 05-02 | viewer learn/graph follow-up：safe retry/cancel/recovery、Graphify shared cache、task schema 对齐；前端 unit 118，目标 Learn E2E 8 | 1736 |
 | 05-02 | Phase 6B hardening：`/api/learn` 10 req/min rate limit、TaskErrorCode/recovery_hint 合约、LearnTaskBanner 429/retry 文案；后端全量 1754，前端 unit 123，i18n 459/459 | 1754 |
+| 05-02 | R0 真值重建 + P1-P6：`/api/tasks*` 提升 stable API、Graphify 5E provenance API + large-repo signoff、concepts CLI hardening（verify/export/rollback）、watcher circuit breaker + retry backoff、axe-core a11y 测试、MIT LICENSE；前端 unit 123，i18n 462/462 | 1754 |
+| 05-03 | Viewer UI/UX round：Landing APG tabs（circular wrap + RTL + aria-label）、StaticSwitch 只读语义修正（去 role="switch" + sr-only sibling）、GraphifySourceCard 共享展示组件抽取、print demo-boundary 对齐、CopyButton aria-live 反馈；后端 1755，前端 unit 130，i18n 470/470，E2E 1170 | 1755 |
 
 > 每条门禁的详细实现笔记见 `git log` 对应 commit message。

@@ -23,6 +23,11 @@ async def get_watch_status(request: Request) -> JSONResponse:
                 "pending_changes": 0,
                 "restartable": True,
                 "stop_timed_out": False,
+                "consecutive_failures": 0,
+                "total_triggers": 0,
+                "total_failures": 0,
+                "last_error": None,
+                "failure_threshold_hit": False,
             }
         )
     snap = watcher.status()
@@ -34,6 +39,11 @@ async def get_watch_status(request: Request) -> JSONResponse:
             "pending_changes": snap["pending_changes"],
             "restartable": snap["restartable"],
             "stop_timed_out": snap["stop_timed_out"],
+            "consecutive_failures": snap.get("consecutive_failures", 0),
+            "total_triggers": snap.get("total_triggers", 0),
+            "total_failures": snap.get("total_failures", 0),
+            "last_error": snap.get("last_error"),
+            "failure_threshold_hit": snap.get("failure_threshold_hit", False),
         }
     )
 

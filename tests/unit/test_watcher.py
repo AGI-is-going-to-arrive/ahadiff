@@ -21,6 +21,7 @@ from ahadiff.core.watcher import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 
@@ -187,6 +188,31 @@ class TestFileWatcherEventPaths:
             )
             assert watcher._changed_event_paths(event) == (str(tmp_path / "src" / "main.py"),)
 
+    def test_directory_move_event_is_not_discarded(self, tmp_path: Path) -> None:
+        with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
+            watcher = FileWatcher(
+                tmp_path,
+                on_change=lambda _: None,
+                config=WatcherConfig(debounce_seconds=60.0),
+            )
+            event = SimpleNamespace(
+                is_directory=True,
+                src_path=str(tmp_path / "old_pkg"),
+                dest_path=str(tmp_path / "new_pkg"),
+            )
+
+            try:
+                watcher._handle_fs_event(event)
+
+                assert watcher._drain_pending() == frozenset(
+                    {
+                        str(tmp_path / "old_pkg"),
+                        str(tmp_path / "new_pkg"),
+                    }
+                )
+            finally:
+                watcher.stop()
+
 
 class TestFileWatcherDrainPending:
     def test_drain_returns_and_clears(self, tmp_path: Path) -> None:
@@ -261,6 +287,105 @@ class TestFileWatcherTrigger:
             watcher._pending_paths.add("a.py")
             watcher._trigger()
 
+    def test_failure_threshold_hit_after_consecutive_failures(self, tmp_path: Path) -> None:
+        from ahadiff.core.watcher import _FAILURE_LOG_THRESHOLD
+
+        def bad_callback(_event: WatchEvent) -> None:
+            raise RuntimeError("fail")
+
+        with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
+            watcher = FileWatcher(
+                tmp_path,
+                on_change=bad_callback,
+                config=WatcherConfig(cooldown_seconds=0.0),
+            )
+            for i in range(_FAILURE_LOG_THRESHOLD):
+                watcher._pending_paths.add(f"file{i}.py")
+                watcher._trigger()
+            status = watcher.status()
+            assert status["failure_threshold_hit"] is True
+            assert status["consecutive_failures"] == _FAILURE_LOG_THRESHOLD
+            assert status["total_failures"] == _FAILURE_LOG_THRESHOLD
+            assert isinstance(status["last_error"], str)
+
+    def test_failure_counter_auto_resets_and_retries(self, tmp_path: Path) -> None:
+        received: list[WatchEvent] = []
+
+        def callback(e: WatchEvent) -> None:
+            received.append(e)
+
+        with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
+            watcher = FileWatcher(
+                tmp_path,
+                on_change=callback,
+                config=WatcherConfig(cooldown_seconds=0.0),
+            )
+            with watcher._lock:
+                watcher._failure_threshold_hit = True
+                watcher._consecutive_failures = 5
+            watcher._pending_paths.add("retry.py")
+            watcher._trigger()
+            assert len(received) == 1
+            assert watcher.status()["failure_threshold_hit"] is False
+            assert watcher.status()["consecutive_failures"] == 0
+
+    def test_failure_count_resets(self, tmp_path: Path) -> None:
+        def bad_callback(_event: WatchEvent) -> None:
+            raise RuntimeError("fail")
+
+        with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
+            watcher = FileWatcher(
+                tmp_path,
+                on_change=bad_callback,
+                config=WatcherConfig(cooldown_seconds=0.0),
+            )
+            watcher._pending_paths.add("a.py")
+            watcher._trigger()
+            assert watcher.status()["consecutive_failures"] == 1
+            watcher.reset_failure_count()
+            assert watcher.status()["consecutive_failures"] == 0
+            assert watcher.status()["failure_threshold_hit"] is False
+
+    def test_success_resets_consecutive_failures(self, tmp_path: Path) -> None:
+        call_count = 0
+
+        def mixed_callback(_event: WatchEvent) -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count <= 2:
+                raise RuntimeError("fail")
+
+        with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
+            watcher = FileWatcher(
+                tmp_path,
+                on_change=mixed_callback,
+                config=WatcherConfig(cooldown_seconds=0.0),
+            )
+            watcher._pending_paths.add("a.py")
+            watcher._trigger()
+            watcher._pending_paths.add("b.py")
+            watcher._trigger()
+            assert watcher.status()["consecutive_failures"] == 2
+            watcher._pending_paths.add("c.py")
+            watcher._trigger()
+            assert watcher.status()["consecutive_failures"] == 0
+            assert watcher.status()["total_failures"] == 2
+            assert watcher.status()["total_triggers"] == 3
+
+    def test_status_includes_error_tracking_fields(self, tmp_path: Path) -> None:
+        with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
+            watcher = FileWatcher(
+                tmp_path,
+                on_change=lambda e: None,
+                config=WatcherConfig(cooldown_seconds=0.0),
+            )
+            status = watcher.status()
+            assert "consecutive_failures" in status
+            assert "total_triggers" in status
+            assert "total_failures" in status
+            assert "last_error" in status
+            assert "failure_threshold_hit" in status
+
     def test_trigger_skipped_when_stopped(self, tmp_path: Path) -> None:
         received: list[WatchEvent] = []
         with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
@@ -274,7 +399,7 @@ class TestFileWatcherTrigger:
             watcher._trigger()
             assert len(received) == 0
 
-    def test_stop_prevents_callback_waiting_on_gate(self, tmp_path: Path) -> None:
+    def test_stop_completes_after_callback_gate_released(self, tmp_path: Path) -> None:
         received: list[WatchEvent] = []
 
         with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
@@ -285,12 +410,19 @@ class TestFileWatcherTrigger:
             )
             watcher._callback_gate.acquire()
 
-            stop_thread = threading.Thread(target=watcher.stop)
+            stop_done = threading.Event()
+
+            def do_stop() -> None:
+                watcher.stop(timeout=1.0)
+                stop_done.set()
+
+            stop_thread = threading.Thread(target=do_stop)
             stop_thread.start()
-            stop_thread.join(timeout=0.5)
+            time.sleep(0.05)
 
             watcher._callback_gate.release()
-            stop_thread.join(timeout=2.0)
+            assert stop_done.wait(timeout=3.0), "stop() did not complete"
+            stop_thread.join(timeout=1.0)
 
             assert not stop_thread.is_alive()
             assert received == []
@@ -316,6 +448,22 @@ class TestFileWatcherTrigger:
             assert received == []
 
             watcher.stop()
+            watcher._callback_gate.release()
+
+    def test_stop_does_not_block_indefinitely_when_callback_hangs(self, tmp_path: Path) -> None:
+        with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
+            watcher = FileWatcher(
+                tmp_path,
+                on_change=lambda _: None,
+                config=WatcherConfig(cooldown_seconds=0.0),
+            )
+            watcher._callback_gate.acquire()
+
+            stop_thread = threading.Thread(target=lambda: watcher.stop(timeout=0.3))
+            stop_thread.start()
+            stop_thread.join(timeout=2.0)
+
+            assert not stop_thread.is_alive(), "stop() blocked indefinitely"
             watcher._callback_gate.release()
 
 
@@ -456,6 +604,14 @@ class TestFileWatcherStartStop:
 
 
 class TestWatchLearnRunner:
+    def _wait_until(self, predicate: Callable[[], bool], *, timeout: float = 2.0) -> bool:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if predicate():
+                return True
+            time.sleep(0.01)
+        return predicate()
+
     def test_retriggers_after_change_queued_during_run(self) -> None:
         first_started = threading.Event()
         finish_first = threading.Event()
@@ -463,7 +619,7 @@ class TestWatchLearnRunner:
         run_lock = threading.Lock()
         run_count = 0
 
-        def run_learn() -> None:
+        def run_learn() -> bool:
             nonlocal run_count
             with run_lock:
                 run_count += 1
@@ -473,6 +629,7 @@ class TestWatchLearnRunner:
                 assert finish_first.wait(timeout=2.0)
             else:
                 second_done.set()
+            return True
 
         runner = cli_module._WatchLearnRunner(run_learn)
         runner.request(WatchEvent(changed_paths=frozenset({"a.py"}), timestamp=1.0))
@@ -485,5 +642,56 @@ class TestWatchLearnRunner:
         finish_first.set()
         assert second_done.wait(timeout=2.0)
         runner.stop()
+        with run_lock:
+            assert run_count == 2
+
+    def test_stop_clears_running_state_when_learn_hangs(self) -> None:
+        started = threading.Event()
+        release = threading.Event()
+
+        def run_learn() -> bool:
+            started.set()
+            release.wait()
+            return True
+
+        runner = cli_module._WatchLearnRunner(run_learn, run_timeout_seconds=10.0)
+        runner.request(WatchEvent(changed_paths=frozenset({"a.py"}), timestamp=1.0))
+        assert started.wait(timeout=2.0)
+
+        runner.stop()
+
+        assert self._wait_until(lambda: not runner._running)
+        assert runner._retrigger_pending is False
+        release.set()
+
+    def test_timeout_allows_later_request_after_hung_learn(self) -> None:
+        first_started = threading.Event()
+        release_first = threading.Event()
+        second_done = threading.Event()
+        run_lock = threading.Lock()
+        run_count = 0
+
+        def run_learn() -> bool:
+            nonlocal run_count
+            with run_lock:
+                run_count += 1
+                current = run_count
+            if current == 1:
+                first_started.set()
+                release_first.wait()
+            else:
+                second_done.set()
+            return True
+
+        runner = cli_module._WatchLearnRunner(run_learn, run_timeout_seconds=0.05)
+        runner.request(WatchEvent(changed_paths=frozenset({"a.py"}), timestamp=1.0))
+        assert first_started.wait(timeout=2.0)
+        assert self._wait_until(lambda: not runner._running)
+
+        runner.request(WatchEvent(changed_paths=frozenset({"b.py"}), timestamp=2.0))
+
+        assert second_done.wait(timeout=2.0)
+        runner.stop()
+        release_first.set()
         with run_lock:
             assert run_count == 2

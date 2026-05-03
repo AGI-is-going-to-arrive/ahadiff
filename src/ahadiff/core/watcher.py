@@ -34,6 +34,7 @@ _BUILTIN_IGNORE_PATTERNS: tuple[str, ...] = (
     "node_modules",
     ".venv",
 )
+_FAILURE_LOG_THRESHOLD = 5
 
 
 def is_watchdog_available() -> bool:
@@ -87,12 +88,17 @@ class FileWatcher:
         self._pending_paths: set[str] = set()
         self._lock = threading.Lock()
         self._lifecycle_lock = threading.Lock()
-        self._callback_gate = threading.RLock()
+        self._callback_gate = threading.Lock()
         self._timer: threading.Timer | None = None
         self._last_trigger_time: float = 0.0
         self._stop_timed_out = False
         self._stopped = threading.Event()
         self._ignore_patterns = _BUILTIN_IGNORE_PATTERNS + self._config.ignore_patterns
+        self._consecutive_failures = 0
+        self._last_error: str | None = None
+        self._total_triggers = 0
+        self._total_failures = 0
+        self._failure_threshold_hit = False
 
     @property
     def is_running(self) -> bool:
@@ -128,6 +134,18 @@ class FileWatcher:
                 paths.append(path)
         return tuple(paths)
 
+    def _handle_fs_event(self, event: Any) -> None:
+        if self._stopped.is_set():
+            return
+        changed_paths = self._changed_event_paths(event)
+        if not changed_paths:
+            return
+        with self._lock:
+            if self._stopped.is_set():
+                return
+            self._pending_paths.update(changed_paths)
+            self._schedule_trigger()
+
     def start(self) -> None:
         with self._lifecycle_lock:
             if self._observer is not None:
@@ -150,18 +168,7 @@ class FileWatcher:
 
             class _Handler(file_system_event_handler):  # type: ignore[misc, valid-type]
                 def on_any_event(self, event: Any) -> None:
-                    if watcher_ref._stopped.is_set():
-                        return
-                    if event.is_directory:
-                        return
-                    changed_paths = watcher_ref._changed_event_paths(event)
-                    if not changed_paths:
-                        return
-                    with watcher_ref._lock:
-                        if watcher_ref._stopped.is_set():
-                            return
-                        watcher_ref._pending_paths.update(changed_paths)
-                        watcher_ref._schedule_trigger()
+                    watcher_ref._handle_fs_event(event)
 
             self._stopped.clear()
             self._stop_timed_out = False
@@ -175,7 +182,7 @@ class FileWatcher:
             self._observer = observer
             log.info("file watcher started: %s", self._watch_path)
 
-    def stop(self) -> None:
+    def stop(self, *, timeout: float = 10.0) -> None:
         with self._lifecycle_lock:
             self._stopped.set()
             with self._lock:
@@ -184,8 +191,11 @@ class FileWatcher:
                     self._timer = None
                 self._pending_paths.clear()
                 self._last_trigger_time = 0.0
-            self._callback_gate.acquire()
-            self._callback_gate.release()
+            gate_acquired = self._callback_gate.acquire(timeout=timeout)
+            if gate_acquired:
+                self._callback_gate.release()
+            else:
+                log.warning("watcher stop: callback gate not released within %.1fs", timeout)
             observer = self._observer
             if observer is not None:
                 observer.stop()
@@ -246,13 +256,42 @@ class FileWatcher:
                 return
             with self._lock:
                 self._last_trigger_time = now
+                self._total_triggers += 1
+                threshold_hit = self._failure_threshold_hit
+                cf = self._consecutive_failures
+                if threshold_hit and cf >= _FAILURE_LOG_THRESHOLD:
+                    self._failure_threshold_hit = False
+                    self._consecutive_failures = 0
+                    log.warning(
+                        "watcher failure counter reset after %d failures; retrying %d files",
+                        cf,
+                        len(paths),
+                    )
             event = WatchEvent(changed_paths=paths, timestamp=now)
             try:
                 self._on_change(event)
-            except Exception:
+                with self._lock:
+                    self._consecutive_failures = 0
+                    self._failure_threshold_hit = False
+            except Exception as exc:
+                with self._lock:
+                    self._consecutive_failures += 1
+                    self._total_failures += 1
+                    self._last_error = str(exc)[:200]
+                    if self._consecutive_failures >= _FAILURE_LOG_THRESHOLD:
+                        self._failure_threshold_hit = True
+                        log.error(
+                            "watcher failure threshold reached after %d failures",
+                            self._consecutive_failures,
+                        )
                 log.exception("watcher callback failed for %d changed files", len(paths))
         finally:
             self._callback_gate.release()
+
+    def reset_failure_count(self) -> None:
+        with self._lock:
+            self._consecutive_failures = 0
+            self._failure_threshold_hit = False
 
     def status(self) -> dict[str, object]:
         observer = self._observer
@@ -264,6 +303,11 @@ class FileWatcher:
                 "pending_changes": len(self._pending_paths),
                 "restartable": observer is None or not observer_alive,
                 "stop_timed_out": self._stop_timed_out,
+                "consecutive_failures": self._consecutive_failures,
+                "total_triggers": self._total_triggers,
+                "total_failures": self._total_failures,
+                "last_error": self._last_error,
+                "failure_threshold_hit": self._failure_threshold_hit,
             }
 
     def _drain_pending(self) -> frozenset[str]:

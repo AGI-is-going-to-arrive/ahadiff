@@ -62,7 +62,15 @@
     "kind": "类型",
     "legend": "图例",
     "node_count": "{count} 个节点",
+    "row_graph": "图谱：",
+    "row_imported": "导入：",
+    "row_parser": "解析器：",
+    "row_sha256": "校验值：",
+    "row_source": "来源：",
+    "copy": "复制",
     "sep": " · ",
+    "sha_copy": "复制完整 SHA-256 哈希",
+    "sha_copied": "已复制",
     "showing": "显示 {shown} / {total}",
     "source_title": "Graphify 数据源",
     "truncated": "图谱已截断 — 共 {count} 个节点，仅显示部分"
@@ -187,7 +195,8 @@
     "section_evidence": "§ 04 · 证据",
     "section_workflow": "§ 03 · 工作流",
     "tab_aha": "Aha 课程",
-    "tab_raw": "原始 Diff"
+    "tab_raw": "原始 Diff",
+    "tabs_label": "演示视图"
   },
   "Lesson": {
     "claims_title": "声明列表",
@@ -322,6 +331,7 @@
     "note_title": "棘轮备注载荷",
     "no_dimension_data": "暂无维度数据",
     "subtitle": "跨运行分数轨迹",
+    "table_label": "运行历史表格",
     "title": "棘轮历史"
   },
   "Review": {
@@ -463,6 +473,7 @@
     "serve_port": "服务端口",
     "subtitle": "配置与诊断",
     "switch_off": "关闭",
+    "configured_via_cli": "通过 CLI 配置",
     "switch_on": "开启",
     "tab_account": "账户",
     "tab_appearance": "外观",

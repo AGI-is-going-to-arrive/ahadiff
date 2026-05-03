@@ -13,6 +13,7 @@ from ahadiff.contracts.serve_runtime import (
     ConceptGraphEdge,
     ConceptGraphNode,
     ConceptGraphResponse,
+    GraphProvenance,
     GraphStatusResponse,
 )
 
@@ -79,6 +80,22 @@ def _graph_status_sync(state_dir: object) -> dict[str, Any]:
             has_graph = False
             pass
 
+    provenance: GraphProvenance | None = None
+    if has_graph:
+        prov = status.provenance
+        sha = prov.get("graph_sha256", "")
+        imp_time = prov.get("import_time", "")
+        parser_ver = prov.get("parser_version", "")
+        if sha and imp_time and parser_ver:
+            try:
+                provenance = GraphProvenance(
+                    graph_sha256=sha,
+                    import_time=imp_time,
+                    parser_version=parser_ver,
+                )
+            except Exception:
+                provenance = None
+
     response = GraphStatusResponse(
         enabled=status.enabled,
         source_exists=status.source_exists,
@@ -87,6 +104,7 @@ def _graph_status_sync(state_dir: object) -> dict[str, Any]:
         node_count=node_count,
         edge_count=edge_count,
         source_path=(api_relative_path(status.imported_path, root) if has_graph else None),
+        provenance=provenance,
     )
     return response.model_dump(mode="json")
 
@@ -113,7 +131,13 @@ def _concept_graph_sync(state_dir: object, *, limit: int) -> dict[str, Any]:
         graph = parse_graph_json(graph_path)
     except Exception:
         empty_status = status.model_copy(
-            update={"has_graph": False, "node_count": 0, "edge_count": 0}
+            update={
+                "has_graph": False,
+                "node_count": 0,
+                "edge_count": 0,
+                "source_path": None,
+                "provenance": None,
+            }
         )
         return ConceptGraphResponse(
             status=empty_status,

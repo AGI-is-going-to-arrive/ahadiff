@@ -31,7 +31,14 @@ function makeTaskInfo(overrides: Partial<TaskInfoResponse> = {}): TaskInfoRespon
     task_type: 'learn',
     status: 'running',
     progress: { current: 0, total: 10, message: '' },
+    result_summary: null,
+    error: null,
+    error_code: null,
     created_at: '2026-05-01T00:00:00Z',
+    started_at: null,
+    completed_at: null,
+    elapsed_seconds: null,
+    recovery_hint: null,
     ...overrides,
   };
 }

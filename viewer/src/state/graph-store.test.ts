@@ -18,6 +18,7 @@ function makeStatus(overrides: Partial<GraphStatusResponse> = {}): GraphStatusRe
     node_count: 10,
     edge_count: 20,
     source_path: '.ahadiff/graphify/graph.json',
+    provenance: null,
     ...overrides,
   };
 }

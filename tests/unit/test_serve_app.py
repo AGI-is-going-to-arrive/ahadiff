@@ -2707,6 +2707,11 @@ def test_watch_status_disabled_by_default(tmp_path: Path) -> None:
     assert data["pending_changes"] == 0
     assert data["restartable"] is True
     assert data["stop_timed_out"] is False
+    assert data["consecutive_failures"] == 0
+    assert data["total_triggers"] == 0
+    assert data["total_failures"] == 0
+    assert data["last_error"] is None
+    assert data["failure_threshold_hit"] is False
     assert "watch_path" not in data
 
 
@@ -2718,6 +2723,11 @@ class _FakeWatcher:
             "pending_changes": 2,
             "restartable": False,
             "stop_timed_out": True,
+            "consecutive_failures": 3,
+            "total_triggers": 8,
+            "total_failures": 4,
+            "last_error": "boom",
+            "failure_threshold_hit": False,
         }
 
 
@@ -2735,4 +2745,9 @@ def test_watch_status_with_watcher_attached(tmp_path: Path) -> None:
     assert data["last_trigger_time"] == 123.0
     assert data["restartable"] is False
     assert data["stop_timed_out"] is True
+    assert data["consecutive_failures"] == 3
+    assert data["total_triggers"] == 8
+    assert data["total_failures"] == 4
+    assert data["last_error"] == "boom"
+    assert data["failure_threshold_hit"] is False
     assert "watch_path" not in data

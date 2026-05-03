@@ -210,11 +210,11 @@ export default function RatchetPage() {
         {/* Results table */}
         <div className="ratchet-card">
           <div className="ratchet-card__header">
-            <h2>{t('Dashboard.run_list_title')}</h2>
+            <h2 id="ratchet-run-list-heading">{t('Dashboard.run_list_title')}</h2>
             <span className="ratchet-card__meta">{t('Ratchet.meta_entries', { count: history.length })}</span>
           </div>
-          <div className="ratchet-card__body ratchet-card__body--table u-p-0">
-            <table className="ratchet-table" aria-label={t('Ratchet.title')}>
+          <div className="ratchet-card__body ratchet-card__body--table u-p-0" tabIndex={0} role="region" aria-labelledby="ratchet-run-list-heading">
+            <table className="ratchet-table" aria-label={t('Ratchet.table_label')}>
               <thead>
                 <tr>
                   <th scope="col">{t('Dashboard.col_ref')}</th>

@@ -225,6 +225,11 @@ export async function installServeMock(page: Page): Promise<void> {
           node_count: 3,
           edge_count: 2,
           source_path: '.ahadiff/graphify/graph.json',
+          provenance: {
+            graph_sha256: 'abc123def456789012345678901234567890abcdef1234567890abcdef123456',
+            import_time: '2026-05-02T00:00:00Z',
+            parser_version: '1.0',
+          },
         }),
       }),
   );
@@ -243,6 +248,11 @@ export async function installServeMock(page: Page): Promise<void> {
             node_count: 3,
             edge_count: 2,
             source_path: '.ahadiff/graphify/graph.json',
+            provenance: {
+              graph_sha256: 'abc123def456789012345678901234567890abcdef1234567890abcdef123456',
+              import_time: '2026-05-02T00:00:00Z',
+              parser_version: '1.0',
+            },
           },
           nodes: [
             {
@@ -574,6 +584,23 @@ export async function installServeMock(page: Page): Promise<void> {
           state: body?.state ?? 'archived',
           updated: true,
         }),
+      });
+    },
+  );
+  await page.route(
+    (url) => url.pathname === '/api/tasks',
+    (route) => {
+      if (route.request().method() !== 'GET') {
+        return route.fulfill({
+          status: 405,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'method_not_allowed' }),
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ tasks: [] }),
       });
     },
   );

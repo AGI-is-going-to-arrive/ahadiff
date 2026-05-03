@@ -267,7 +267,7 @@
   border-bottom: 1px solid var(--hair);
 }
 
-.review__sidebar-header h3 {
+.review__sidebar-header h2 {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
@@ -368,7 +368,7 @@
   text-align: left;
 }
 
-.review__rating-summary h3 {
+.review__rating-summary h2 {
   margin: 0 0 12px;
   color: var(--ink-strong);
   font-size: 14px;

@@ -6,7 +6,11 @@ import {
   conceptGraphResponseSchema,
   freshnessProjectionSchema,
   graphStatusResponseSchema,
+  ratchetHistoryEntrySchema,
+  ratchetHistoryResponseSchema,
   statsResponseSchema,
+  taskInfoResponseSchema,
+  taskResultSummarySchema,
 } from '../../src/api/schemas';
 
 describe('auth token schema', () => {
@@ -33,6 +37,7 @@ describe('graph schemas', () => {
     node_count: 3,
     edge_count: 2,
     source_path: '.ahadiff/graphify/graph.json',
+    provenance: null,
   };
 
   it('freshnessProjectionSchema accepts all 4 values', () => {
@@ -155,7 +160,32 @@ describe('graph schemas', () => {
       graphStatusResponseSchema.parse({ ...validStatus, enabled: undefined }),
     ).toThrow();
     expect(() =>
+      graphStatusResponseSchema.parse({ ...validStatus, provenance: undefined }),
+    ).toThrow();
+    expect(() =>
       graphStatusResponseSchema.parse({ ...validStatus, extra: true }),
+    ).toThrow();
+  });
+
+  it('task schemas reject out-of-range scores and missing stable fields', () => {
+    expect(() =>
+      taskResultSummarySchema.parse({
+        run_id: 'run-1',
+        status: 'completed',
+        overall: 101,
+        verdict: 'PASS',
+        warnings: [],
+      }),
+    ).toThrow();
+
+    expect(() =>
+      taskInfoResponseSchema.parse({
+        task_id: 'task-1',
+        task_type: 'learn',
+        status: 'running',
+        progress: { current: 0, total: 10, message: '' },
+        created_at: '2026-05-01T00:00:00Z',
+      }),
     ).toThrow();
   });
 
@@ -181,6 +211,30 @@ describe('graph schemas', () => {
         }),
       ).toThrow();
     }
+  });
+});
+
+describe('ratchet history schemas', () => {
+  const validEntry = {
+    run_id: 'run-1',
+    source_ref: 'HEAD',
+    eval_bundle_version: 'bundle-v1',
+    overall: 88,
+    verdict: 'PASS',
+    status: 'keep',
+    timestamp: '2026-05-02T00:00:00Z',
+    weakest_dim: 'evidence',
+    note_json: null,
+  };
+
+  it('rejects unknown entry and response keys', () => {
+    expect(() => ratchetHistoryEntrySchema.parse({ ...validEntry, extra: true })).toThrow();
+    expect(() =>
+      ratchetHistoryResponseSchema.parse({
+        history: [validEntry],
+        extra: true,
+      }),
+    ).toThrow();
   });
 });
 

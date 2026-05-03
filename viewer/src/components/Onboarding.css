@@ -77,7 +77,7 @@
   color: var(--on-accent);
 }
 
-.stepper__step h4 {
+.stepper__step h2 {
   margin: 0;
   font-size: 14px;
   font-weight: 500;

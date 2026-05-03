@@ -1,20 +1,7 @@
-import { useTranslation, type MessageKey } from '../i18n/useTranslation';
+import { useTranslation } from '../i18n/useTranslation';
 import type { FreshnessProjection } from '../api/types';
+import { FRESHNESS_TONE, FRESHNESS_LABEL_KEY } from './freshness-utils';
 import './GraphifyCard.css';
-
-const FRESHNESS_TONE: Record<FreshnessProjection, string> = {
-  fresh: 'success',
-  stale: 'warning',
-  unavailable: 'muted',
-  disabled: 'muted',
-};
-
-const FRESHNESS_LABEL_KEY: Record<FreshnessProjection, MessageKey> = {
-  fresh: 'Graph.freshness_fresh',
-  stale: 'Graph.freshness_stale',
-  unavailable: 'Graph.freshness_unavailable',
-  disabled: 'Graph.freshness_disabled',
-};
 
 const VALID_PROJECTIONS: ReadonlySet<string> = new Set([
   'fresh',

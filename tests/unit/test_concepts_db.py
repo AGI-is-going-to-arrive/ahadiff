@@ -562,6 +562,16 @@ def test_import_concepts_from_jsonl_fails_fast_on_malformed(tmp_path: Path) -> N
         import_concepts_from_jsonl(db, bad)
 
 
+def test_import_concepts_from_jsonl_rejects_non_object_row(tmp_path: Path) -> None:
+    db = tmp_path / "review.sqlite"
+    initialize_review_db(db)
+    bad = tmp_path / "bad.jsonl"
+    bad.write_text('["term_key", "concept"]\n')
+
+    with pytest.raises(InputError, match="line 1 must be an object"):
+        import_concepts_from_jsonl(db, bad)
+
+
 def test_graphify_node_id_column_exists_on_fresh_db(tmp_path: Path) -> None:
     db = tmp_path / "review.sqlite"
     initialize_review_db(db)

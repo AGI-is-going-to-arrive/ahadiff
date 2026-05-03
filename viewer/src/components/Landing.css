@@ -190,6 +190,11 @@
   border-bottom-color: var(--accent);
 }
 
+.hero-demo__tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .hero-demo__content {
   padding: 20px;
   max-height: 400px;
@@ -343,7 +348,7 @@
   margin-bottom: var(--sp-2, 8px);
 }
 
-.step h4 {
+.step h3 {
   font-family: var(--font-serif);
   font-size: 17px;
   font-weight: 500;
@@ -593,6 +598,10 @@
   .benchmark-card {
     border-color: CanvasText;
   }
+
+  .hero-demo__tab--active {
+    border-bottom-color: Highlight;
+  }
 }
 
 /* ---- Print ---- */
@@ -620,6 +629,15 @@
   .step,
   .ba-col {
     break-inside: avoid;
+  }
+
+  .demo-banner,
+  .demo-tag {
+    background: transparent;
+    border: 1px solid #999;
+    color: #000;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 }
 

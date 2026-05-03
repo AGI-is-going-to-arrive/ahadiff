@@ -8,7 +8,7 @@ export default function NotFoundPage() {
   return (
     <AppShell>
       <div className="error-boundary__fallback" role="alert">
-        <h2>{t('Error.not_found')}</h2>
+        <h1>{t('Error.not_found')}</h1>
         <p>
           <Link to="/">{t('Error.back_to_dashboard')}</Link>
         </p>

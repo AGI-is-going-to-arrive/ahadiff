@@ -8,6 +8,7 @@ import sqlite3
 import sys
 import tempfile
 import threading
+import time
 import webbrowser
 from contextlib import ExitStack, suppress
 from functools import cache
@@ -70,11 +71,13 @@ _GRAPH_APP = typer.Typer(help="Inspect Graphify source and imported artifacts.")
 _MAINT_APP = typer.Typer(help="Mutating maintenance tasks kept separate from doctor diagnostics.")
 _PROVIDER_APP = typer.Typer(help="Probe and persist LLM provider capabilities.")
 _DB_APP = typer.Typer(help="Manage review.sqlite migrations, backup, restore, and checks.")
+_CONCEPTS_APP = typer.Typer(help="Export, rollback, and verify the concepts derived cache.")
 _APP.add_typer(_CONFIG_APP, name="config")
 _APP.add_typer(_GRAPH_APP, name="graph")
 _APP.add_typer(_MAINT_APP, name="maint")
 _APP.add_typer(_PROVIDER_APP, name="provider")
 _APP.add_typer(_DB_APP, name="db")
+_APP.add_typer(_CONCEPTS_APP, name="concepts")
 _INSTALL_TARGET_HELP = (
     "Install target: aider, claude, cline, codex, continue, copilot, cursor, gemini, "
     "github-action, hooks, opencode, roo, or windsurf. hooks uses POSIX shell hooks; "
@@ -1840,7 +1843,7 @@ def serve_cmd(
         _handle_cli_error(error)
 
 
-def _run_watch_learn(wroot: Path, dr: bool, fl: bool, ln: str | None) -> None:
+def _run_watch_learn(wroot: Path, dr: bool, fl: bool, ln: str | None) -> bool:
     from .core.orchestrator import LearnRequest, run_learn_pipeline
 
     try:
@@ -1859,19 +1862,36 @@ def _run_watch_learn(wroot: Path, dr: bool, fl: bool, ln: str | None) -> None:
         if result.warnings:
             for w in result.warnings:
                 console.print(f"  [yellow]Warning[/yellow]: {w}")
+        return True
     except AhaDiffError as exc:
         console.print(f"  [red]Learn failed[/red]: {exc}")
+        return False
     except Exception as exc:
         console.print(f"  [red]Unexpected error[/red]: {exc}")
+        return False
+
+
+_WATCH_RETRY_DELAYS = (5.0, 15.0, 30.0)
+_WATCH_LEARN_TIMEOUT_SECONDS = 660.0
+_WATCH_LEARN_POLL_SECONDS = 0.05
 
 
 class _WatchLearnRunner:
-    def __init__(self, run_learn: Callable[[], None]) -> None:
+    def __init__(
+        self,
+        run_learn: Callable[[], bool],
+        *,
+        run_timeout_seconds: float = _WATCH_LEARN_TIMEOUT_SECONDS,
+    ) -> None:
+        if run_timeout_seconds <= 0:
+            raise ValueError("run_timeout_seconds must be positive")
         self._run_learn = run_learn
+        self._run_timeout_seconds = run_timeout_seconds
         self._lock = threading.Lock()
         self._running = False
         self._retrigger_pending = False
         self._stop_requested = threading.Event()
+        self._consecutive_failures = 0
 
     def request(self, event: Any) -> None:
         with self._lock:
@@ -1897,24 +1917,77 @@ class _WatchLearnRunner:
 
     def _run_loop(self) -> None:
         first_run = True
+        try:
+            while True:
+                if self._stop_requested.is_set():
+                    with self._lock:
+                        self._running = False
+                        self._retrigger_pending = False
+                    return
+                if not first_run:
+                    console.print(
+                        "[green]Re-triggering[/green] for changes queued during previous learn..."
+                    )
+                first_run = False
+                outcome = self._run_learn_with_timeout()
+                if outcome is False:
+                    self._consecutive_failures += 1
+                    retry_idx = min(self._consecutive_failures - 1, len(_WATCH_RETRY_DELAYS) - 1)
+                    if self._consecutive_failures <= len(_WATCH_RETRY_DELAYS):
+                        delay = _WATCH_RETRY_DELAYS[retry_idx]
+                        console.print(
+                            f"[yellow]Retry {self._consecutive_failures}/{len(_WATCH_RETRY_DELAYS)}"
+                            f" in {delay:.0f}s[/yellow]"
+                        )
+                        if self._stop_requested.wait(timeout=delay):
+                            with self._lock:
+                                self._running = False
+                            return
+                        continue
+                    console.print("[red]Exhausted retries[/red] — waiting for next file change.")
+                    self._consecutive_failures = 0
+                else:
+                    self._consecutive_failures = 0
+                with self._lock:
+                    if self._stop_requested.is_set() or not self._retrigger_pending:
+                        self._running = False
+                        self._retrigger_pending = False
+                        return
+                    self._retrigger_pending = False
+        finally:
+            with self._lock:
+                self._running = False
+
+    def _run_learn_with_timeout(self) -> bool | None:
+        done = threading.Event()
+        result: bool | None = None
+        errors: list[BaseException] = []
+
+        def _target() -> None:
+            nonlocal result
+            try:
+                result = self._run_learn()
+            except BaseException as exc:
+                errors.append(exc)
+            finally:
+                done.set()
+
+        worker = threading.Thread(target=_target, daemon=True)
+        worker.start()
+        deadline = time.monotonic() + self._run_timeout_seconds
         while True:
             if self._stop_requested.is_set():
-                with self._lock:
-                    self._running = False
-                    self._retrigger_pending = False
-                return
-            if not first_run:
+                return None
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
                 console.print(
-                    "[green]Re-triggering[/green] for changes queued during previous learn..."
+                    "[yellow]Learn run timed out; background worker is still draining[/yellow]"
                 )
-            first_run = False
-            self._run_learn()
-            with self._lock:
-                if self._stop_requested.is_set() or not self._retrigger_pending:
-                    self._running = False
-                    self._retrigger_pending = False
-                    return
-                self._retrigger_pending = False
+                return None
+            if done.wait(timeout=min(_WATCH_LEARN_POLL_SECONDS, remaining)):
+                if errors:
+                    raise errors[0]
+                return bool(result)
 
 
 def _print_watcher_stop_status(watcher: Any) -> None:
@@ -2867,6 +2940,117 @@ def graph_refresh_cmd(
             status = import_graphify_artifact(root, force=True)
         console.print(f"[green]Refreshed[/green] {status.imported_path}")
     except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+@_CONCEPTS_APP.command("verify")
+def concepts_verify_cmd(
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or any path inside it."),
+    ] = Path(),
+) -> None:
+    """Check JSONL ↔ SQLite consistency for the concepts derived cache."""
+    try:
+        from ahadiff.wiki.concepts import verify_concepts_consistency
+
+        root = find_repo_root(repo_root)
+        sd = project_state_dir(root)
+        db_path = sd / "review.sqlite"
+        jsonl_path = sd / "concepts.jsonl"
+        ok, discrepancies = verify_concepts_consistency(db_path, jsonl_path)
+        if ok:
+            console.print("[green]Consistent[/green]: JSONL and SQLite match.")
+        else:
+            console.print(f"[yellow]Drift detected[/yellow]: {len(discrepancies)} discrepancies")
+            for d in discrepancies[:20]:
+                console.print(f"  • {d}")
+            raise typer.Exit(code=1)
+    except typer.Exit:
+        raise
+    except Exception as error:
+        _handle_cli_error(error)
+
+
+@_CONCEPTS_APP.command("export")
+def concepts_export_cmd(
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or any path inside it."),
+    ] = Path(),
+) -> None:
+    """Export concepts from SQLite back to concepts.jsonl (atomic overwrite)."""
+    try:
+        from ahadiff.wiki.concepts import export_concepts_from_db
+
+        root = find_repo_root(repo_root)
+        with repo_write_lock(lock_file_path(root), command="concepts export") as _:
+            exported_path = export_concepts_from_db(project_state_dir(root))
+        console.print(f"[green]Exported[/green] to {exported_path}")
+    except Exception as error:
+        _handle_cli_error(error)
+
+
+@_CONCEPTS_APP.command("sync")
+def concepts_sync_cmd(
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or any path inside it."),
+    ] = Path(),
+) -> None:
+    """Sync concepts.jsonl into review.sqlite."""
+    try:
+        from ahadiff.review import import_concepts_from_jsonl
+
+        root = find_repo_root(repo_root)
+        sd = project_state_dir(root)
+        db_path = sd / "review.sqlite"
+        jsonl_path = sd / "concepts.jsonl"
+        if not jsonl_path.exists():
+            raise InputError(f"concepts JSONL does not exist: {jsonl_path}")
+        with repo_write_lock(lock_file_path(root), command="concepts sync") as _:
+            count = import_concepts_from_jsonl(db_path, jsonl_path)
+        console.print(f"[green]Synced[/green] {count} concepts to {db_path}")
+    except Exception as error:
+        _handle_cli_error(error)
+
+
+@_CONCEPTS_APP.command("rollback")
+def concepts_rollback_cmd(
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or any path inside it."),
+    ] = Path(),
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Show what would be exported without writing."),
+    ] = False,
+) -> None:
+    """Rollback: overwrite concepts.jsonl from SQLite (guarded, atomic)."""
+    try:
+        from ahadiff.wiki.concepts import rollback_concepts_to_jsonl, verify_concepts_consistency
+
+        root = find_repo_root(repo_root)
+        sd = project_state_dir(root)
+        db_path = sd / "review.sqlite"
+        jsonl_path = sd / "concepts.jsonl"
+        if dry_run:
+            ok, discrepancies = verify_concepts_consistency(db_path, jsonl_path)
+            if ok:
+                console.print("[green]Already consistent[/green] — rollback not needed.")
+            else:
+                msg = f"[yellow]Would rollback[/yellow]: {len(discrepancies)} discrepancies"
+                console.print(msg)
+                for d in discrepancies[:20]:
+                    console.print(f"  • {d}")
+                raise typer.Exit(code=1)
+            return
+        with repo_write_lock(lock_file_path(root), command="concepts rollback") as _:
+            count = rollback_concepts_to_jsonl(db_path, jsonl_path)
+        console.print(f"[green]Rolled back[/green] {count} concepts to {jsonl_path}")
+    except typer.Exit:
+        raise
+    except Exception as error:
         _handle_cli_error(error)
 
 

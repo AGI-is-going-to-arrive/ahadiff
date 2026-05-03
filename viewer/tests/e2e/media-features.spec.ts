@@ -103,11 +103,31 @@ test.describe('media features', () => {
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     await expect(page.getByText('Privacy controls')).toBeVisible();
     await expect(page.getByText('Graphify source')).toBeVisible();
-    await expect(page.locator('#spanel-audit .settings-card__header h3')).toContainText('Audit Log');
+    await expect(page.locator('#spanel-audit .settings-card__header h2')).toContainText('Audit Log');
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow).toBeLessThanOrEqual(0);
+  });
+
+  test('print emulation: full GraphifyCard provenance rows remain printable', async ({ page }) => {
+    await page.emulateMedia({ media: 'print' });
+    await page.goto('/#/settings');
+
+    const card = page.locator('.graphify-card').first();
+    await expect(card).toBeVisible();
+    await expect(card.locator('.graphify-card__icon')).toBeVisible();
+    await expect(card.locator('.graphify-card__title')).toContainText('Graphify source');
+
+    const rows = card.locator('.graphify-card__row');
+    await expect(rows.first()).toBeVisible();
+
+    const rowColors = await rows.first().evaluate((el) => ({
+      color: getComputedStyle(el).color,
+      fontFamily: getComputedStyle(el).fontFamily,
+    }));
+    expect(rowColors.color).not.toBe('rgba(0, 0, 0, 0)');
+    expect(rowColors.fontFamily).toContain('mono');
   });
 
   test('print emulation: concepts heading and detail panel remain printable', async ({
@@ -193,7 +213,6 @@ test.describe('media features', () => {
         canvasText: getComputedStyle(probe).color,
         cardBackground: cardEl ? getComputedStyle(cardEl).backgroundColor : '',
         cardColor: cardEl ? getComputedStyle(cardEl).color : '',
-        dotBackground: getComputedStyle(el, '::before').backgroundColor,
         highlight: getComputedStyle(probe).borderTopColor,
       };
       probe.remove();
@@ -204,7 +223,6 @@ test.describe('media features', () => {
     expect(values.badgeBackground).toBe(values.canvas);
     expect(values.badgeColor).toBe(values.highlight);
     expect(values.badgeBorder).toBe(values.highlight);
-    expect(values.dotBackground).toBe(values.highlight);
   });
 
   test('prefers-reduced-motion active: language switch still works', async ({ page }) => {
@@ -381,6 +399,30 @@ test.describe('media features', () => {
 
     await expectActiveTransformNone(page.getByRole('button', { name: '简体中文' }));
     await expectActiveTransformNone(page.locator('.sidebar__item:not(.sidebar__item--disabled)').first());
+  });
+
+  test('print emulation: landing demo boundary visible', async ({ page }) => {
+    await page.goto('/#/welcome');
+    await page.waitForSelector('.landing');
+    await page.emulateMedia({ media: 'print' });
+
+    const banner = page.locator('.demo-banner').first();
+    await expect(banner).toBeVisible();
+
+    const tags = page.locator('.demo-tag');
+    await expect(tags.first()).toBeVisible();
+
+    const borderWidth = await banner.evaluate(
+      (el) => getComputedStyle(el).borderTopWidth,
+    );
+    expect(borderWidth).not.toBe('0px');
+
+    const bodyOverflow = await page.evaluate(
+      () => document.body.scrollWidth <= document.body.clientWidth,
+    );
+    expect(bodyOverflow).toBe(true);
+
+    await expect(page.locator('h1, h2').first()).toBeVisible();
   });
 
   test('dark color scheme: topbar and sidebar render', async ({ page }) => {

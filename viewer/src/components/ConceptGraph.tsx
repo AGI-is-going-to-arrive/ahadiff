@@ -22,6 +22,9 @@ import type {
   GraphStatusResponse,
 } from '../api/types';
 import { useTranslation } from '../i18n/useTranslation';
+import { FRESHNESS_LABEL_KEY } from './freshness-utils';
+import GraphifySourceCard from './GraphifySourceCard';
+import './GraphifyCard.css';
 import './ConceptGraph.css';
 
 /* ---------- Public types ---------- */
@@ -81,22 +84,6 @@ function kindColorStyle(kind: string | null): KindColorStyle {
   return { '--concept-kind-color': kindColor(kind) } as KindColorStyle;
 }
 
-const FRESHNESS_LABEL_KEYS: Record<
-  FreshnessProjection,
-  | 'Graph.freshness_disabled'
-  | 'Graph.freshness_fresh'
-  | 'Graph.freshness_stale'
-  | 'Graph.freshness_unavailable'
-> = {
-  disabled: 'Graph.freshness_disabled',
-  fresh: 'Graph.freshness_fresh',
-  stale: 'Graph.freshness_stale',
-  unavailable: 'Graph.freshness_unavailable',
-};
-
-function freshnessLabelKey(freshness: FreshnessProjection) {
-  return FRESHNESS_LABEL_KEYS[freshness];
-}
 
 function safeEdgeWeight(weight: number): number {
   if (!Number.isFinite(weight)) return 1.0;
@@ -434,7 +421,7 @@ function DetailPanel({
         <div className="concept-graph__detail-row">
           <span className="concept-graph__detail-label">{t('Graph.freshness')}</span>
           <span className={`concept-graph__freshness concept-graph__freshness--${node.freshness}`}>
-            {t(freshnessLabelKey(node.freshness))}
+            {t(FRESHNESS_LABEL_KEY[node.freshness])}
           </span>
         </div>
       )}
@@ -560,34 +547,7 @@ function FilteredEmptyState() {
   );
 }
 
-/* ---------- Graphify source card ---------- */
-
-function SourceCard({ status }: { status: GraphStatusResponse }) {
-  const { t } = useTranslation();
-  if (!status.has_graph) return null;
-
-  return (
-    <div className="concept-graph__src-card">
-      <div className="concept-graph__src-card-header">
-        <span aria-hidden="true">◈</span>
-        <span>{t('Graph.source_title')}</span>
-        {status.freshness && (
-          <span className={`concept-graph__freshness concept-graph__freshness--${status.freshness}`}>
-            {t(freshnessLabelKey(status.freshness))}
-          </span>
-        )}
-      </div>
-      <div className="concept-graph__src-card-stats">
-        {t('Graph.node_count', { count: String(status.node_count) })}
-        {t('Graph.sep')}
-        {t('Graph.edge_count', { count: String(status.edge_count) })}
-      </div>
-      {status.source_path && (
-        <code className="concept-graph__src-card-path">{status.source_path}</code>
-      )}
-    </div>
-  );
-}
+/* ---------- Graphify source card (shared presentational component) ---------- */
 
 /* ---------- Empty state ---------- */
 
@@ -683,7 +643,7 @@ export default function ConceptGraph({ nodes, edges, status, truncated }: Concep
 
   return (
     <div className="concept-graph">
-      <SourceCard status={status} />
+      <GraphifySourceCard status={status} className="concept-graph__src-card" />
 
       <div className="concept-graph__toolbar">
         <FilterChips kinds={allKinds} active={activeKinds} onToggle={handleToggleKind} />

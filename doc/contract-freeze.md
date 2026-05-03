@@ -709,14 +709,14 @@ run_id: str
 - `GET /api/review/heatmap` — 复习热力图
 - `GET /api/providers` — provider 状态
 - `GET /api/serve/status` — serve 运行状态（无 auth）
-- `GET /api/graph/status` — Graphify 当前状态；当前 payload 是 `enabled` / `source_exists` / `has_graph` / `freshness` / `node_count` / `edge_count` / `source_path`，不是完整 provenance API
+- `GET /api/graph/status` — Graphify 当前状态；payload 包含 `enabled` / `source_exists` / `has_graph` / `freshness` / `node_count` / `edge_count` / `source_path` / `provenance`（`GraphProvenance | null`，含 `graph_sha256`/`import_time`/`parser_version`）
 - `GET /api/graph/concepts` — ConceptGraph 前端 DTO；返回 sanitized `nodes` / `edges` + `status`，不是完整 Graphify provenance API
 - `PUT /api/config` — 配置更新
 - `POST /api/learn` — 提交后台 learn 任务；当前返回 `202 {"task_id": ...}`，进度/取消走 `/api/tasks*`；写请求有 in-memory 10 req/min 滑动窗口限流，429 返回 `{"error":"rate_limited","retry_after":...}` 并带 `Retry-After`
-- `GET /api/tasks` — **unstable**，参见 §9.10
-- `GET /api/tasks/{task_id}` — **unstable**，参见 §9.10
-- `POST /api/tasks/{task_id}/cancel` — **unstable**，参见 §9.10
-- `GET /api/tasks/{task_id}/progress` — SSE 事件流，**unstable**，参见 §9.10
+- `GET /api/tasks` — **stable**，参见 §9.10
+- `GET /api/tasks/{task_id}` — **stable**，参见 §9.10
+- `POST /api/tasks/{task_id}/cancel` — **stable**，参见 §9.10
+- `GET /api/tasks/{task_id}/progress` — SSE 事件流（SSE message text 为实现细节），**stable**，参见 §9.10
 
 ### 9.5 Concepts 真相源主从关系（1A）
 
@@ -773,7 +773,7 @@ run_id: str
 | **GET /api/graph/concepts** | ✅ 已接线 | 从 imported `.ahadiff/graphify/graph.json` 投影前端 ConceptGraph 所需的 sanitized nodes/edges/status；5D core d3-force/detail/fallback 已落地，Graphify import provenance 与 per-run `graphify_context.json` artifact 已有后端接线；5E 的基础跨页 freshness/status 卡片已由前端共享 `graph-store` 接住，完整 source/provenance UI、CLI polish 和真实大仓 signoff 仍属后续工作 |
 | **POST /api/learn** | ✅ 已接线 | `core/orchestrator.py` 从 `cli.py` 抽出 learn 主链；route 只接受安全 capture / learn 选项，返回 `202 {"task_id": ...}`，provider override 不从 HTTP 暴露；当前有 10 req/min 写限流，401/403/404 不消耗额度 |
 | **medium APIs** | ✅ 全部真实接线 | search/audit/mastery/weak/alignment/learning stats 均查 SQLite/JSONL，无 mock |
-| **/api/tasks*** | ⏸ internal/unstable | 现在已有真实 submitter（`POST /api/learn`），但 task payload / queue policy / progress surface 仍按低层内部接口处理；`TaskInfoResponse` 的公开消费字段已收紧到 `result_summary`、枚举化 `error_code` 和 `recovery_hint` |
+| **/api/tasks*** | ✅ stable product API | 2026-05-02 R0 决策提升为稳定 API（§9.10）；`TaskInfoResponse` 全部字段、`TaskErrorCode`、`RecoveryHint` 均为稳定合约；SSE message text 为实现细节 |
 
 ### 9.9 Serve 异步 IO 策略（1B）
 
@@ -786,13 +786,23 @@ run_id: str
 - 改写量：`database.py` 1700+ 行 + 6 个 route 文件，收益极低
 - `benchmarks/scripts/bench_sqlite_queries.py` 已验证核心查询 p50/p95 性能基线
 
-### 9.10 /api/tasks* 合约收缩（3C）
+### 9.10 /api/tasks* 合约提升（3C → 稳定产品 API）
 
-**裁决**：`/api/tasks*` 路由继续保持 **internal/unstable**，不纳入稳定公开 API 合约。
+**裁决**（2026-05-02 R0 决策）：`/api/tasks*` 路由提升为 **stable product API**。
 
 **当前状态**：`POST /api/learn` 已经接到真实 learn 主链，会返回 `202 {"task_id": ...}`；进度查看和取消分别走 `GET /api/tasks/{task_id}`、`GET /api/tasks/{task_id}/progress` 和 `POST /api/tasks/{task_id}/cancel`。
 
-**为什么仍不冻结**：task queue 的状态 payload、队列容量策略、进度文案和 SSE 细节都还是低层运行时 surface，后续仍可能继续收口；因此它们继续保留为 internal/unstable。
+**提升依据**：
+- `TaskInfoResponse` 已在 docstring 中声明 stable fields（task_id/task_type/status/progress/error/error_code/recovery_hint/created_at/started_at/completed_at/elapsed_seconds/result_summary）
+- 前端 Zod strict schema 严格消费全部字段，破坏性变更即刻打破产品
+- 59 后端测试 + 42 前端 unit 测试覆盖 tasks 契约
+- SSE progress 端点不被前端消费（前端用 polling），其格式变更不影响产品稳定性
+- Rate limiting (10 req/min) + admission control (max 1 pending) 已就位
+
+**稳定边界**：
+- **稳定**：5 个 REST 端点（POST /api/learn + 4 个 /api/tasks*）的路径、HTTP method、请求/响应 schema
+- **稳定**：TaskInfoResponse 全部字段、TaskErrorCode 枚举、RecoveryHint 枚举、TaskSubmitResponse、TaskCancelResponse
+- **实现细节（可变）**：SSE progress 事件的 text message 内容、队列容量数值、polling 间隔建议、429 retry_after 秒数
 
 **当前 runtime 事实**：
 - `GET /api/tasks` / `GET /api/tasks/{task_id}` 的 payload 已经带 `error_code`，类型收紧为 `TaskErrorCode | None`
@@ -806,10 +816,10 @@ run_id: str
 - `POST /api/learn` 的 429 `rate_limited` 是 submit-layer HTTP 状态，不进入 `TaskErrorCode`；前端按 `retry_after` / `Retry-After` 展示等待文案
 - thread-backed learn task 被取消时，取消信号会传进 `run_learn_pipeline()` 的 `is_cancelled` 回调；超时进入 draining 的 worker 不会被 `shutdown()` 提前 untrack
 
-**保留状态**：
+**实现文件**：
 - `core/task_runner.py`：TaskRunner 类完整保留，Phase 6B 直接使用
 - `serve/routes_tasks.py`：路由实现完整保留，Phase 6B 启用
-- `serve/app.py`：路由注册保留（内部使用），但不纳入稳定合约
+- `serve/app.py`：路由注册；REST 端点路径/method/schema 属稳定合约，内部调度逻辑可变
 - `serve/routes_learn.py`：write-token 保护 + JSON body 校验 + learn submitter 已落地
 
 **当前请求面说明**：
@@ -817,7 +827,7 @@ run_id: str
 - `compare` / `compare_dir` 需要 2 项 path array
 - `patch="-"` 在 serve 层明确拒绝，避免后台任务读取进程 stdin
 
-§9.4 中 `/api/tasks*` 四个端点标注为 **unstable，不纳入稳定合约**。
+§9.4 中 `/api/tasks*` 四个端点已于 2026-05-02 R0 决策提升为 **stable product API**。
 
 ### 9.11 Backend review hardening（2026-04-30）
 

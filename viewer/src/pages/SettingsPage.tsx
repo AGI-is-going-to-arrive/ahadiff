@@ -339,7 +339,7 @@ function AccountTab({
         />
       ) : (
         <div className="settings-card">
-          <div className="settings-card__header"><h3>{t('Settings_page.section_doctor')}</h3></div>
+          <div className="settings-card__header"><h2>{t('Settings_page.section_doctor')}</h2></div>
           <div className="settings-card__body">
             {checks.map(check => (
               <div className="doctor-check" key={check.name}>
@@ -370,7 +370,7 @@ function AccountTab({
 
       {!usageFailed && usage && (
         <div className="settings-card">
-          <div className="settings-card__header"><h3>{t('Settings_page.usage_title')}</h3></div>
+          <div className="settings-card__header"><h2>{t('Settings_page.usage_title')}</h2></div>
           <div className="settings-card__body">
             <div className="mode-grid">
               <ModeCell eyebrow={t('Settings_page.usage_total_calls')} value={formatNumber(usage.total_calls, locale)} />
@@ -422,12 +422,12 @@ function KeysTab({
   const entries = Object.entries(config.key_status);
   return (
     <div className="settings-card">
-      <div className="settings-card__header"><h3>{t('Settings_page.section_keys')}</h3></div>
+      <div className="settings-card__header"><h2>{t('Settings_page.section_keys')}</h2></div>
       <div className="settings-card__body">
         {entries.length === 0 && <div className="u-muted-sm">{t('Settings_page.provider_empty')}</div>}
         {entries.map(([provider, status]) => (
           <div className="settings-field" key={provider}>
-            <div className="settings-field__label"><h4>{t('Settings_page.provider_api_key', { provider })}</h4></div>
+            <div className="settings-field__label"><h3>{t('Settings_page.provider_api_key', { provider })}</h3></div>
             <span className={`settings-field__badge settings-field__badge--${status === 'configured' ? 'configured' : 'missing'}`}>
               {status === 'configured' ? t('Settings_page.key_configured') : t('Settings_page.key_missing')}
             </span>
@@ -465,7 +465,7 @@ function ModelsTab({
   }
   return (
     <div className="settings-card">
-      <div className="settings-card__header"><h3>{t('Settings_page.section_providers')}</h3></div>
+      <div className="settings-card__header"><h2>{t('Settings_page.section_providers')}</h2></div>
       <div className="settings-card__body">
         {providers.length === 0 && <div className="u-muted-sm">{t('Settings_page.provider_empty')}</div>}
         <div className="provider-grid">
@@ -543,7 +543,7 @@ function PrivacyTab({
       </div>
 
       <div className="settings-card">
-        <div className="settings-card__header"><h3>{t('Settings_page.section_privacy_controls')}</h3></div>
+        <div className="settings-card__header"><h2>{t('Settings_page.section_privacy_controls')}</h2></div>
         <div className="settings-card__body">
           <PrivacyControl
             title={t('Settings_page.privacy_local_only')}
@@ -573,7 +573,7 @@ function PrivacyTab({
       </div>
 
       <div className="settings-card">
-        <div className="settings-card__header"><h3>{t('Settings_page.section_config')}</h3></div>
+        <div className="settings-card__header"><h2>{t('Settings_page.section_config')}</h2></div>
         <div className="settings-card__body">
           <FieldRow label={t('Settings.language')} value={config.lang ?? 'en'} />
           <FieldRow label={t('Settings_page.privacy_mode')} value={privacyMode} />
@@ -634,7 +634,7 @@ function AuditTab({
   if (audit.entries.length === 0) {
     return (
       <div className="settings-card">
-        <div className="settings-card__header"><h3>{t('Settings_page.section_audit')}</h3></div>
+        <div className="settings-card__header"><h2>{t('Settings_page.section_audit')}</h2></div>
         <div className="settings-card__body">
           <div className="u-muted-sm">{t('Settings_page.audit_empty')}</div>
         </div>
@@ -645,7 +645,7 @@ function AuditTab({
   return (
     <div className="settings-card">
       <div className="settings-card__header">
-        <h3>{t('Settings_page.section_audit')}</h3>
+        <h2>{t('Settings_page.section_audit')}</h2>
         <span className="u-muted-sm">{t('Settings_page.audit_last_n', { count: String(audit.entries.length) })}</span>
       </div>
       <div className="settings-card__body settings-card__body--flush">
@@ -684,10 +684,10 @@ function AuditTab({
 function LanguageTab({ t }: { t: TFn }) {
   return (
     <div className="settings-card">
-      <div className="settings-card__header"><h3>{t('Settings_page.section_language')}</h3></div>
+      <div className="settings-card__header"><h2>{t('Settings_page.section_language')}</h2></div>
       <div className="settings-card__body">
         <div className="settings-field">
-          <div className="settings-field__label"><h4>{t('Settings.language')}</h4></div>
+          <div className="settings-field__label"><h3>{t('Settings.language')}</h3></div>
           <LanguageSwitcher />
         </div>
       </div>
@@ -702,7 +702,7 @@ function LanguageTab({ t }: { t: TFn }) {
 function AppearanceTab({ t }: { t: TFn }) {
   return (
     <div className="settings-card">
-      <div className="settings-card__header"><h3>{t('Settings_page.section_appearance')}</h3></div>
+      <div className="settings-card__header"><h2>{t('Settings_page.section_appearance')}</h2></div>
       <div className="settings-card__body">
         <div className="u-muted-sm">{t('Settings_page.appearance_coming_soon')}</div>
       </div>
@@ -745,7 +745,7 @@ function IntegrationsTab({
         />
       ) : (
         <div className="settings-card">
-        <div className="settings-card__header"><h3>{t('Settings_page.section_integrations')}</h3></div>
+        <div className="settings-card__header"><h2>{t('Settings_page.section_integrations')}</h2></div>
         <div className="settings-card__body">
           {targets.length === 0 && <div className="u-muted-sm">{t('Settings_page.integration_empty')}</div>}
           {targets.map(target => {
@@ -758,7 +758,7 @@ function IntegrationsTab({
             return (
               <div className="settings-field" key={target.name}>
                 <div className="settings-field__label">
-                  <h4>{target.display_name}</h4>
+                  <h3>{target.display_name}</h3>
                   <p>{target.description}</p>
                 </div>
                 <span className={`settings-field__badge settings-field__badge--${badgeVariant}`}>
@@ -791,7 +791,7 @@ function UnavailableCard({
 }) {
   return (
     <div className="settings-card">
-      <div className="settings-card__header"><h3>{title}</h3></div>
+      <div className="settings-card__header"><h2>{title}</h2></div>
       <div className="settings-card__body">
         <div className="settings-empty" role="status">
           <span>{message}</span>
@@ -818,7 +818,7 @@ function PrivacyControl({
   return (
     <div className="settings-field setting-control">
       <div className="settings-field__label">
-        <h4>{title}</h4>
+        <h3>{title}</h3>
         <p>{description}</p>
       </div>
       <StaticSwitch checked={checked} label={title} t={t} />
@@ -835,18 +835,19 @@ function StaticSwitch({
   label: string;
   t: TFn;
 }) {
-  const stateLabel = checked ? t('Settings_page.switch_on') : t('Settings_page.switch_off');
   return (
-    <span
-      className={`settings-toggle${checked ? ' is-on' : ''}`}
-      role="switch"
-      aria-checked={checked}
-      aria-label={`${label}: ${stateLabel}`}
-      aria-readonly="true"
-    >
-      <span className="settings-toggle__knob" aria-hidden="true" />
-      <span className="u-sr-only">{stateLabel}</span>
-    </span>
+    <>
+      <span
+        className={`settings-toggle settings-toggle--readonly${checked ? ' is-on' : ''}`}
+        aria-hidden="true"
+      >
+        <span className="settings-toggle__knob" aria-hidden="true" />
+      </span>
+      <span className="u-sr-only">
+        {label}: {checked ? t('Settings_page.switch_on') : t('Settings_page.switch_off')}.{' '}
+        {t('Settings_page.configured_via_cli')}
+      </span>
+    </>
   );
 }
 
@@ -865,7 +866,7 @@ function ModeCell({ eyebrow, value, sub }: { eyebrow: string; value: string; sub
 function FieldRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="settings-field">
-      <div className="settings-field__label"><h4>{label}</h4></div>
+      <div className="settings-field__label"><h3>{label}</h3></div>
       <div className="settings-field__value">{value}</div>
     </div>
   );

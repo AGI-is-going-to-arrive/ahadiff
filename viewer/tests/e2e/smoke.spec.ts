@@ -77,6 +77,38 @@ test.describe('smoke', () => {
     await expect(steps).toHaveCount(5);
   });
 
+  test('landing demo tabs support APG keyboard wrap navigation', async ({ page }) => {
+    await page.goto('/#/welcome');
+    const raw = page.locator('#tab-raw');
+    const aha = page.locator('#tab-aha');
+
+    // Focus raw tab and press ArrowRight -> should activate aha
+    await raw.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(aha).toHaveAttribute('aria-selected', 'true');
+    await expect(aha).toBeFocused();
+
+    // ArrowRight on aha -> should wrap to raw (circular)
+    await page.keyboard.press('ArrowRight');
+    await expect(raw).toHaveAttribute('aria-selected', 'true');
+    await expect(raw).toBeFocused();
+
+    // ArrowLeft on raw -> should wrap to aha (circular)
+    await page.keyboard.press('ArrowLeft');
+    await expect(aha).toHaveAttribute('aria-selected', 'true');
+    await expect(aha).toBeFocused();
+
+    // Home -> first tab (raw)
+    await page.keyboard.press('Home');
+    await expect(raw).toHaveAttribute('aria-selected', 'true');
+    await expect(raw).toBeFocused();
+
+    // End -> last tab (aha)
+    await page.keyboard.press('End');
+    await expect(aha).toHaveAttribute('aria-selected', 'true');
+    await expect(aha).toBeFocused();
+  });
+
   test('hash router settings route renders Settings heading', async ({ page }) => {
     await page.goto('/#/settings');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
@@ -179,6 +211,7 @@ test.describe('smoke', () => {
             node_count: 3,
             edge_count: 2,
             source_path: '.ahadiff/graphify/graph.json',
+            provenance: null,
           }),
         });
       },

@@ -62,7 +62,15 @@
     "kind": "Kind",
     "legend": "Legend",
     "node_count": "{count} nodes",
+    "row_graph": "graph:",
+    "row_imported": "imported:",
+    "row_parser": "parser:",
+    "row_sha256": "sha256:",
+    "row_source": "source:",
+    "copy": "Copy",
     "sep": " · ",
+    "sha_copy": "Copy full SHA-256 hash",
+    "sha_copied": "Copied",
     "showing": "Showing {shown} of {total}",
     "source_title": "Graphify source",
     "truncated": "Graph truncated — showing subset of {count} total nodes"
@@ -187,7 +195,8 @@
     "section_evidence": "§ 04 · evidence",
     "section_workflow": "§ 03 · workflow",
     "tab_aha": "Aha Lesson",
-    "tab_raw": "Raw Diff"
+    "tab_raw": "Raw Diff",
+    "tabs_label": "Demo views"
   },
   "Lesson": {
     "claims_title": "Claims",
@@ -322,6 +331,7 @@
     "note_title": "Ratchet note payload",
     "no_dimension_data": "No dimension data yet",
     "subtitle": "Score progression across runs",
+    "table_label": "Run history table",
     "title": "Ratchet History"
   },
   "Review": {
@@ -463,6 +473,7 @@
     "serve_port": "Serve port",
     "subtitle": "Configuration and diagnostics",
     "switch_off": "off",
+    "configured_via_cli": "Configured via CLI",
     "switch_on": "on",
     "tab_account": "Account",
     "tab_appearance": "Appearance",

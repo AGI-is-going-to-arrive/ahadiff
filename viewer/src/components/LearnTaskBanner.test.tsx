@@ -32,7 +32,14 @@ function makeTask(overrides: Partial<TaskInfoResponse> = {}): TaskInfoResponse {
     task_type: 'learn',
     status: 'failed',
     progress: { current: 0, total: 0, message: '' },
+    result_summary: null,
+    error: null,
+    error_code: null,
     created_at: '2026-05-01T00:00:00Z',
+    started_at: null,
+    completed_at: null,
+    elapsed_seconds: null,
+    recovery_hint: null,
     ...overrides,
   };
 }
@@ -90,5 +97,25 @@ describe('LearnTaskBanner', () => {
 
     expect(html).toContain('Rate limited. Try again in 60 seconds.');
     expect(html).not.toContain('⏱');
+  });
+
+  it('renders completed phase with result summary and action buttons', () => {
+    learnState.phase = 'completed';
+    learnState.task = makeTask({
+      status: 'completed',
+      result_summary: {
+        run_id: 'run-abc',
+        status: 'keep',
+        overall: 92,
+        verdict: 'PASS',
+        warnings: [],
+      },
+    });
+
+    const html = renderToStaticMarkup(<LearnTaskBanner />);
+
+    expect(html).toContain('Learn run completed');
+    expect(html).toContain('Dismiss');
+    expect(html).toContain('View run');
   });
 });
