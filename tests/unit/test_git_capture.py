@@ -221,6 +221,30 @@ def test_learn_last_matches_single_commit_semantics(tmp_path: Path) -> None:
     assert patch_last == patch_single
 
 
+def test_learn_without_input_defaults_to_last(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "main.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+    (repo_root / "main.py").write_text("value = 2\n", encoding="utf-8")
+    head_sha = _commit_all(repo_root, "bump")
+
+    runner = CliRunner()
+    default_result = _invoke_repo_cli(runner, repo_root, ["learn", "--dry-run"])
+    assert default_result.exit_code == 0
+    _, default_metadata, default_patch = _load_run_artifacts(repo_root)
+
+    last_result = _invoke_repo_cli(runner, repo_root, ["learn", "--last", "--dry-run"])
+    assert last_result.exit_code == 0
+    _, last_metadata, last_patch = _load_run_artifacts(repo_root)
+
+    assert default_metadata["source_ref"] == head_sha
+    assert default_metadata["source_detail"] == {"type": "last"}
+    assert default_patch == last_patch
+    assert default_metadata["source_ref"] == last_metadata["source_ref"]
+
+
 def test_learn_staged_unstaged_and_combined_modes(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -288,6 +312,46 @@ def test_learn_unstaged_include_untracked_records_new_file(tmp_path: Path) -> No
     assert isinstance(source_detail, dict)
     assert "new_file.py" in patch_text
     assert source_detail["untracked_count"] == 1
+
+
+def test_learn_include_untracked_requires_unstaged_mode(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "main.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+    (repo_root / "new_file.py").write_text("answer = 42\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = _invoke_repo_cli(
+        runner,
+        repo_root,
+        ["learn", "--include-untracked", "--dry-run"],
+    )
+
+    assert result.exit_code != 0
+    assert "--include-untracked can only be used together with --unstaged" in result.output
+
+
+def test_learn_staged_include_untracked_requires_unstaged_mode(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "main.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+    (repo_root / "main.py").write_text("value = 2\n", encoding="utf-8")
+    _git(repo_root, "add", "main.py")
+    (repo_root / "new_file.py").write_text("answer = 42\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = _invoke_repo_cli(
+        runner,
+        repo_root,
+        ["learn", "--staged", "--include-untracked", "--dry-run"],
+    )
+
+    assert result.exit_code != 0
+    assert "--include-untracked can only be used together with --unstaged" in result.output
 
 
 def test_git_capture_preserves_non_ascii_changed_paths(tmp_path: Path) -> None:

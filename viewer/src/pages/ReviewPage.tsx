@@ -1,10 +1,17 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import AppShell from '../components/AppShell';
+import CalendarHeatmap from '../components/CalendarHeatmap';
+import type { HeatmapCell } from '../components/CalendarHeatmap';
+import InfoHint from '../components/InfoHint';
 import Skeleton from '../components/Skeleton';
+import { fetchReviewHeatmap } from '../api/stats';
+import { getReviewMastery, getWeakConcepts } from '../api/review';
+import type { ReviewAnswer, ReviewMasteryItem, WeakConceptItem } from '../api/types';
 import { useReviewStore } from '../state/review-store';
 import { useTranslation } from '../i18n/useTranslation';
-import type { ReviewAnswer } from '../api/types';
 import '../components/Review.css';
+
+type ReviewErrorKind = 'network' | 'auth' | 'unknown';
 
 const GraphifyCard = lazy(() => import('../components/GraphifyCard'));
 
@@ -17,6 +24,21 @@ const REVIEW_RATING_LABEL_KEYS: Record<ReviewAnswer, string> = {
   good: 'Review.rating_good',
   easy: 'Review.rating_easy',
 };
+
+function classifyError(e: unknown): ReviewErrorKind {
+  if (e instanceof TypeError) return 'network';
+  if (e instanceof DOMException && e.name === 'AbortError') return 'network';
+  if (
+    e != null &&
+    typeof e === 'object' &&
+    'status' in e &&
+    typeof (e as { status: unknown }).status === 'number'
+  ) {
+    const status = (e as { status: number }).status;
+    if (status === 401 || status === 403) return 'auth';
+  }
+  return 'unknown';
+}
 
 function createRatingSummary(): RatingSummary {
   return {
@@ -45,21 +67,69 @@ export default function ReviewPage() {
 
   const [flipped, setFlipped] = useState(false);
   const [sessionRatings, setSessionRatings] = useState<RatingSummary>(() => createRatingSummary());
+  const [heatmapCells, setHeatmapCells] = useState<HeatmapCell[]>([]);
+  const [mastery, setMastery] = useState<ReviewMasteryItem[]>([]);
+  const [weakConcepts, setWeakConcepts] = useState<WeakConceptItem[]>([]);
+  const [newConcepts, setNewConcepts] = useState<WeakConceptItem[]>([]);
+  const [summaryOpen, setSummaryOpen] = useState(true);
   const abortRef = useRef<AbortController | null>(null);
+  const refreshAbortRef = useRef<AbortController | null>(null);
   const flipBtnRef = useRef<HTMLButtonElement | null>(null);
+  const firstRatingRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     void loadQueue({ signal: controller.signal });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      // Also abort any in-flight post-rating refresh requests on unmount
+      refreshAbortRef.current?.abort();
+    };
   }, [loadQueue]);
+
+  const fetchOverviewData = useCallback((signal: AbortSignal) => {
+    Promise.allSettled([
+      fetchReviewHeatmap({ signal }),
+      getReviewMastery({ signal }),
+      getWeakConcepts({ signal }),
+    ]).then(([heatRes, masteryRes, weakRes]) => {
+      if (signal.aborted) return;
+      if (heatRes.status === 'fulfilled') {
+        setHeatmapCells(
+          heatRes.value.entries.map((e) => ({
+            iso_date: e.date,
+            count: e.review_count,
+          })),
+        );
+      }
+      if (masteryRes.status === 'fulfilled') setMastery(masteryRes.value.mastery);
+      if (weakRes.status === 'fulfilled') {
+        setWeakConcepts(weakRes.value.concepts);
+        setNewConcepts(weakRes.value.new_concepts ?? []);
+      }
+
+    });
+  }, []);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetchOverviewData(ctrl.signal);
+    return () => ctrl.abort();
+  }, [fetchOverviewData]);
 
   useEffect(() => {
     setFlipped(false);
     requestAnimationFrame(() => flipBtnRef.current?.focus());
   }, [currentIndex]);
+
+  // WARNING 2 fix: move focus to the first SRS rating button after flip
+  useEffect(() => {
+    if (flipped) {
+      requestAnimationFrame(() => firstRatingRef.current?.focus());
+    }
+  }, [flipped]);
 
   useEffect(() => {
     setSessionRatings(createRatingSummary());
@@ -68,7 +138,7 @@ export default function ReviewPage() {
   const handleRate = useCallback(
     async (answer: ReviewAnswer) => {
       const beforeIndex = useReviewStore.getState().currentIndex;
-      await rate(answer);
+      const result = await rate(answer);
       const afterIndex = useReviewStore.getState().currentIndex;
       if (afterIndex > beforeIndex) {
         setSessionRatings((prev) => ({
@@ -76,20 +146,44 @@ export default function ReviewPage() {
           [answer]: prev[answer] + 1,
         }));
       }
+      // Refresh overview sidebar data when a new rating was persisted
+      if (result?.inserted) {
+        refreshAbortRef.current?.abort();
+        const ctrl = new AbortController();
+        refreshAbortRef.current = ctrl;
+        Promise.allSettled([
+          getWeakConcepts({ signal: ctrl.signal }),
+          getReviewMastery({ signal: ctrl.signal }),
+        ]).then(([weakRes, masteryRes]) => {
+          if (ctrl.signal.aborted) return;
+          if (weakRes.status === 'fulfilled') {
+            setWeakConcepts(weakRes.value.concepts);
+            setNewConcepts(weakRes.value.new_concepts ?? []);
+          }
+          if (masteryRes.status === 'fulfilled') {
+            setMastery(masteryRes.value.mastery);
+          }
+        });
+      }
     },
     [rate],
   );
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      const tag = (e.target as HTMLElement)?.tagName;
+      if (e.isComposing) return;
+      const target = e.target as HTMLElement;
+      const tag = target?.tagName;
+      // Allow SRS rating shortcuts (1-4) when focused on a rating button
+      const isSrsBtn = tag === 'BUTTON' && target.classList.contains('srs-btn');
+      const isSrsKey = e.key === '1' || e.key === '2' || e.key === '3' || e.key === '4';
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement ||
         tag === 'SELECT' ||
-        tag === 'BUTTON' ||
+        (tag === 'BUTTON' && !(isSrsBtn && isSrsKey)) ||
         tag === 'A' ||
-        (e.target as HTMLElement)?.isContentEditable
+        target?.isContentEditable
       ) return;
       if (!flipped) {
         if (e.key === ' ' || e.key === 'Enter') {
@@ -136,8 +230,9 @@ export default function ReviewPage() {
     );
   }
 
-  // --- Error state ---
+  // --- Error state (queue load error from store) ---
   if (error) {
+    const errorKind = classifyError(error);
     return (
       <AppShell>
         <div className="review">
@@ -146,15 +241,45 @@ export default function ReviewPage() {
               <h1 className="review__title">{t('Review.title')}</h1>
             </div>
           </div>
-          <div role="alert" className="dashboard__error">
-            {t('Error.fetch_failed', { resource: t('Review.title') })}
-            <button
-              type="button"
-              className="retry-btn"
-              onClick={() => void loadQueue()}
-            >
-              {t('Error.retry')}
-            </button>
+          <div role="alert" aria-live="assertive" className="review__error">
+            {errorKind === 'network' && (
+              <>
+                <p className="review__error-message">{t('Review.error_network')}</p>
+                <p className="review__error-hint">{t('Review.error_network_hint')}</p>
+                <button
+                  type="button"
+                  className="review__error-action"
+                  onClick={() => void loadQueue()}
+                >
+                  {t('Review.error_retry')}
+                </button>
+              </>
+            )}
+            {errorKind === 'auth' && (
+              <>
+                <p className="review__error-message">{t('Review.error_auth')}</p>
+                <p className="review__error-hint">{t('Review.error_auth_hint')}</p>
+                <button
+                  type="button"
+                  className="review__error-action"
+                  onClick={() => window.location.reload()}
+                >
+                  {t('Review.error_refresh')}
+                </button>
+              </>
+            )}
+            {errorKind === 'unknown' && (
+              <>
+                <p className="review__error-message">{t('Review.error_unknown')}</p>
+                <button
+                  type="button"
+                  className="review__error-action"
+                  onClick={() => void loadQueue()}
+                >
+                  {t('Review.error_retry')}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </AppShell>
@@ -182,6 +307,8 @@ export default function ReviewPage() {
           <div className="review__empty">
             <div className="review__empty-icon" aria-hidden="true">✓</div>
             <p>{t('Review.queue_empty')}</p>
+            <p className="review__empty-hint">{t('Review.queue_empty_hint')}</p>
+            <a href="#/" className="review__empty-cta">{t('Review.queue_empty_cta')}</a>
           </div>
         </div>
       </AppShell>
@@ -264,9 +391,100 @@ export default function ReviewPage() {
           </div>
           <div className="review__head-right">
             <span className="review__chip">{t('Review.chip_cards', { count: total })}</span>
-            <span className="review__chip review__chip--active">{t('Review.chip_fsrs')}</span>
+            <span className="review__chip review__chip--active">
+              {t('Review.chip_fsrs')} <InfoHint label={t('Review.fsrs_hint')} />
+            </span>
           </div>
         </div>
+
+        {(heatmapCells.length > 0 || mastery.length > 0 || weakConcepts.length > 0 || newConcepts.length > 0) && (
+          <section className="review__summary">
+            <button
+              type="button"
+              className="review__summary-toggle"
+              onClick={() => setSummaryOpen(!summaryOpen)}
+              aria-expanded={summaryOpen}
+            >
+              <span>{t('Review.summary_title')}</span>
+              <span aria-hidden="true">{summaryOpen ? '−' : '+'}</span>
+            </button>
+            {summaryOpen && (
+              <div className="review__summary-body">
+                {heatmapCells.length > 0 && (
+                  <div className="review__summary-card">
+                    <h2 className="review__summary-card-title">{t('Review.heatmap_title')}</h2>
+                    <CalendarHeatmap cells={heatmapCells} />
+                  </div>
+                )}
+                {mastery.length > 0 && (
+                  <div className="review__summary-card">
+                    <h2 className="review__summary-card-title">
+                      {t('Review.mastery_title')} <InfoHint label={t('Review.mastery_hint')} />
+                    </h2>
+                    <div className="review__mastery-list">
+                      {mastery.slice(0, 10).map((m) => {
+                        const pct = Math.min(100, ((m.avg_rating ?? 0) / 4) * 100);
+                        return (
+                          <div key={m.concept} className="review__mastery-row">
+                            <span className="review__mastery-label">{m.concept}</span>
+                            <div
+                              className="mastery-bar"
+                              role="progressbar"
+                              aria-valuenow={Math.round(pct)}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-label={m.concept}
+                            >
+                              <span
+                                className="mastery-bar__fill"
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                            <span className="review__mastery-count">{m.review_count}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {weakConcepts.length > 0 && (
+                  <div className="review__summary-card">
+                    <h2 className="review__summary-card-title">
+                      {t('Review.weak_title')} <InfoHint label={t('Review.weak_stability_hint')} />
+                    </h2>
+                    <p className="review__summary-subtitle">{t('Review.weak_subtitle')}</p>
+                    <ul className="review__weak-list">
+                      {weakConcepts.slice(0, 8).map((w) => (
+                        <li key={w.card_id} className="review__weak-item">
+                          <span>{w.concept}</span>
+                          <span className="review__weak-meta">
+                            {t('Review.weak_stability')} {w.stability.toFixed(1)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {newConcepts.length > 0 && (
+                  <div className="review__summary-card">
+                    <h2 className="review__summary-card-title">{t('Review.new_concepts_title')}</h2>
+                    <p className="review__summary-subtitle">{t('Review.new_concepts_subtitle')}</p>
+                    <ul className="review__weak-list">
+                      {newConcepts.slice(0, 8).map((w) => (
+                        <li key={w.card_id} className="review__weak-item">
+                          <span>{w.concept}</span>
+                          <span className="review__weak-meta review__weak-meta--new">
+                            {t('Review.stability_new')}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        )}
 
         {/* Main content */}
         <div className="review__grid">
@@ -282,10 +500,15 @@ export default function ReviewPage() {
               )}
               <div className="flashcard__concept">
                 {t('Review.card_concept')} · {card!.concept}
+                <span className="flashcard__source-badge">{t('Review.card_ai_source')}</span>
               </div>
               <div className="flashcard__front">
-                {card!.display_path}
-                {card!.symbol && <> · <span className="mono">{card!.symbol}</span></>}
+                {card!.question?.trim() || (
+                  <>
+                    {card!.display_path}
+                    {card!.symbol && <> · <span className="mono">{card!.symbol}</span></>}
+                  </>
+                )}
               </div>
               <div
                 className="flashcard__back"
@@ -295,15 +518,35 @@ export default function ReviewPage() {
                 <div className="review__eyebrow u-mb-2">
                   {t('Review.answer_label')}
                 </div>
+                {card!.answer?.trim() ? (
+                  <div className="flashcard__answer">{card!.answer}</div>
+                ) : (
+                  <div className="flashcard__meta">
+                    {card!.source_ref && (
+                      <>
+                        {t('Review.card_source')}: <span className="mono">{card!.source_ref}</span>
+                        {' · '}
+                      </>
+                    )}
+                    {t('Review.scaffolding_level', { level: card!.scaffolding_level })}
+                  </div>
+                )}
                 <div className="flashcard__meta">
-                  {card!.source_ref && (
-                    <>
-                      {t('Review.card_source')}: <span className="mono">{card!.source_ref}</span>
-                      {' · '}
-                    </>
-                  )}
-                  {t('Review.scaffolding_level', { level: card!.scaffolding_level })}
+                  {card!.display_path}
+                  {card!.symbol && <> · <span className="mono">{card!.symbol}</span></>}
                 </div>
+                {card!.display_path && (
+                  <a
+                    className="flashcard__evidence"
+                    href={`/#/run/${encodeURIComponent(card!.run_id)}/lesson`}
+                    data-testid="flashcard-evidence-link"
+                  >
+                    <span className="flashcard__evidence-label">{t('Review.evidence_label')}</span>
+                    <span className="flashcard__evidence-path">
+                      {card!.display_path}
+                    </span>
+                  </a>
+                )}
               </div>
             </div>
 
@@ -319,13 +562,16 @@ export default function ReviewPage() {
             ) : (
               <div className="srs-buttons">
                 <button
+                  ref={firstRatingRef}
                   type="button"
                   className="srs-btn"
                   onClick={() => void handleRate('wrong')}
                   disabled={rating}
+                  aria-label={t('Review.srs_aria_wrong')}
+                  aria-describedby="srs-interval-wrong"
                 >
                   <div className="srs-btn__label">{t('Review.rating_wrong')}</div>
-                  <div className="srs-btn__interval">{t('Review.interval_again')}</div>
+                  <div className="srs-btn__interval" id="srs-interval-wrong">{t('Review.interval_again')}</div>
                   <span className="srs-btn__kbd">1</span>
                 </button>
                 <button
@@ -333,9 +579,11 @@ export default function ReviewPage() {
                   className="srs-btn"
                   onClick={() => void handleRate('hard')}
                   disabled={rating}
+                  aria-label={t('Review.srs_aria_hard')}
+                  aria-describedby="srs-interval-hard"
                 >
                   <div className="srs-btn__label">{t('Review.rating_hard')}</div>
-                  <div className="srs-btn__interval">{t('Review.interval_hard')}</div>
+                  <div className="srs-btn__interval" id="srs-interval-hard">{t('Review.interval_hard')}</div>
                   <span className="srs-btn__kbd">2</span>
                 </button>
                 <button
@@ -343,9 +591,11 @@ export default function ReviewPage() {
                   className="srs-btn srs-btn--good"
                   onClick={() => void handleRate('good')}
                   disabled={rating}
+                  aria-label={t('Review.srs_aria_good')}
+                  aria-describedby="srs-interval-good"
                 >
                   <div className="srs-btn__label">{t('Review.rating_good')}</div>
-                  <div className="srs-btn__interval">{t('Review.interval_good')}</div>
+                  <div className="srs-btn__interval" id="srs-interval-good">{t('Review.interval_good')}</div>
                   <span className="srs-btn__kbd">3</span>
                 </button>
                 <button
@@ -353,9 +603,11 @@ export default function ReviewPage() {
                   className="srs-btn srs-btn--easy"
                   onClick={() => void handleRate('easy')}
                   disabled={rating}
+                  aria-label={t('Review.srs_aria_easy')}
+                  aria-describedby="srs-interval-easy"
                 >
                   <div className="srs-btn__label">{t('Review.rating_easy')}</div>
-                  <div className="srs-btn__interval">{t('Review.interval_easy')}</div>
+                  <div className="srs-btn__interval" id="srs-interval-easy">{t('Review.interval_easy')}</div>
                   <span className="srs-btn__kbd">4</span>
                 </button>
               </div>
@@ -374,7 +626,7 @@ export default function ReviewPage() {
                   {card!.display_path}
                   {card!.source_ref && (
                     <div className="u-mt-1">
-                      ref: <span className="mono">{card!.source_ref}</span>
+                      {t('Review.card_source')}: <span className="mono">{card!.source_ref}</span>
                     </div>
                   )}
                 </div>
@@ -390,7 +642,15 @@ export default function ReviewPage() {
                 </span>
               </div>
               <div className="review__sidebar-body">
-                <div className="mastery-bar">
+                <div
+                  className="mastery-bar"
+                  data-testid="review-progress-bar"
+                  role="progressbar"
+                  aria-valuenow={currentIndex}
+                  aria-valuemin={0}
+                  aria-valuemax={total}
+                  aria-label={t('Review.progress_hint')}
+                >
                   <span
                     className="mastery-bar__fill"
                     style={{ width: `${total > 0 ? (currentIndex / total) * 100 : 0}%` }}

@@ -31,6 +31,7 @@ from ahadiff.core.config import (
 from ahadiff.core.errors import AhaDiffError, ConfigError
 from ahadiff.core.paths import (
     assert_local_repo_path,
+    atomic_write_state_text,
     find_repo_root,
     find_workspace_root,
     lock_file_path,
@@ -244,6 +245,40 @@ def _provider_config_from_payload(payload: dict[str, Any]) -> ProviderConfig:
         raise AhaDiffError(f"invalid provider configuration: {message}") from exc
 
 
+def implicit_duplicate_provider_name(
+    *,
+    providers_table: dict[str, Any],
+    configured_names: list[str],
+    model: str | None,
+) -> str | None:
+    config_identities: set[str] = set()
+    for name in configured_names:
+        raw_config_payload = providers_table.get(name)
+        if not isinstance(raw_config_payload, dict):
+            return None
+        normalized_payload = dict(cast("dict[str, Any]", raw_config_payload))
+        try:
+            normalized_payload["base_url"] = _normalize_provider_base_url(
+                str(normalized_payload["base_url"]),
+                provider_class=str(normalized_payload["provider_class"]),
+            )
+            if model is not None:
+                normalized_payload["model_name"] = model
+            provider_config = _provider_config_from_payload(normalized_payload)
+        except (AhaDiffError, KeyError):
+            return None
+        config_identities.add(
+            _json.dumps(
+                provider_config.model_dump(mode="json", exclude={"probe_timestamp"}),
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
+    if len(config_identities) == 1:
+        return configured_names[0]
+    return None
+
+
 def _privacy_mode_for_explicit_provider_call(
     privacy_mode: str,
     *,
@@ -314,10 +349,18 @@ def _resolve_provider_from_config(
         if resolved_name is None:
             configured_names = sorted(providers_table.keys())
             if len(configured_names) != 1:
-                raise AhaDiffError(
-                    f"{operation_label} requires --provider when multiple providers are configured"
+                resolved_name = implicit_duplicate_provider_name(
+                    providers_table=providers_table,
+                    configured_names=configured_names,
+                    model=model,
                 )
-            resolved_name = configured_names[0]
+                if resolved_name is None:
+                    raise AhaDiffError(
+                        f"{operation_label} requires --provider when multiple providers "
+                        "are configured"
+                    )
+            else:
+                resolved_name = configured_names[0]
         raw_config_payload = providers_table.get(resolved_name)
         if not isinstance(raw_config_payload, dict):
             raise AhaDiffError(f"configured provider is missing or invalid: {resolved_name}")
@@ -483,7 +526,6 @@ def _persist_graphify_context(capture: Any, run_path: Path) -> None:
     gs = getattr(capture, "graphify_status", None)
     if gs is None or not getattr(gs, "has_graph", False):
         return
-    tmp_path: Path | None = None
     try:
         from ahadiff.git.capture import graphify_context_payload_from_capture
 
@@ -496,18 +538,12 @@ def _persist_graphify_context(capture: Any, run_path: Path) -> None:
             if not stat.S_ISREG(ctx_path.lstat().st_mode):
                 log.warning("graphify context path is not a regular file: %s", ctx_path)
             return
-        tmp_path = ctx_path.with_suffix(".tmp")
-        tmp_path.write_text(
+        atomic_write_state_text(
+            ctx_path,
             _json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
         )
-        tmp_path.replace(ctx_path)
-        tmp_path = None
     except Exception:
         log.warning("failed to persist graphify context to %s", run_path, exc_info=True)
-    finally:
-        if tmp_path is not None:
-            tmp_path.unlink(missing_ok=True)
 
 
 def _check_cancelled(is_cancelled: CancelledCheck) -> None:
@@ -932,6 +968,18 @@ def run_learn_pipeline(
                         note_payload={"learnability": learnability.as_metadata()},
                     )
 
+                    try:
+                        from ahadiff.review.database import import_cards_from_jsonl
+
+                        import_cards_from_jsonl(
+                            run_path.parent.parent / "review.sqlite",
+                            run_path / "quiz" / "cards.jsonl",
+                        )
+                    except Exception as review_import_error:
+                        learn_warnings.append(
+                            f"review card import failed: {review_import_error}"
+                        )
+
                     # ------------------------------------------------------------------
                     # Step 10: append concepts + register repo
                     # ------------------------------------------------------------------
@@ -992,6 +1040,7 @@ __all__ = [
     "LearnRequest",
     "LearnResult",
     "PipelineErrorBudget",
+    "implicit_duplicate_provider_name",
     "is_recoverable_error",
     "run_learn_pipeline",
     "run_with_retry",

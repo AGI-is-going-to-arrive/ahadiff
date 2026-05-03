@@ -17,6 +17,17 @@ import type {
   RunDetail,
 } from './types';
 
+export async function getRunScore(
+  runId: string,
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<RunArtifactEnvelope> {
+  const raw = await apiFetch<unknown>(
+    `/api/run/${encodeURIComponent(runId)}/score`,
+    opts,
+  );
+  return parseResponse('GET /api/run/{runId}/score', runArtifactEnvelopeSchema, raw);
+}
+
 export async function listRuns(
   params: { source_kind?: string; cursor?: string; page_size?: number } = {},
   opts?: Pick<ApiFetchOptions, 'signal'>,

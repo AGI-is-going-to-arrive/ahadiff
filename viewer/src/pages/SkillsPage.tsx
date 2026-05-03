@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AppShell from '../components/AppShell';
 import Skeleton from '../components/Skeleton';
 import { getInstallTargets } from '../api/config';
@@ -30,10 +30,28 @@ const AGENT_ICONS: Record<string, string> = {
 
 export default function SkillsPage() {
   const { t } = useTranslation();
+  type SkillFilter = 'all' | 'installed' | 'available' | 'unsupported';
   const [targets, setTargets] = useState<InstallTarget[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<SkillFilter>('all');
+  const [selected, setSelected] = useState<InstallTarget | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const selectedCardRef = useRef<HTMLDivElement>(null);
+
+  const filterCounts = useMemo(() => {
+    const counts = { all: targets.length, installed: 0, available: 0, unsupported: 0 };
+    for (const t of targets) {
+      if (t.status === 'installed') counts.installed++;
+      else if (t.status === 'available') counts.available++;
+      else counts.unsupported++;
+    }
+    return counts;
+  }, [targets]);
+
+  const filtered = filter === 'all' ? targets : targets.filter((tgt) =>
+    filter === 'unsupported' ? (tgt.status === 'unsupported' || tgt.status === 'error') : tgt.status === filter
+  );
 
   const fetchTargets = useCallback(async () => {
     abortRef.current?.abort();
@@ -103,10 +121,67 @@ export default function SkillsPage() {
           </div>
         </div>
 
-        <div className="agent-grid">
-          {targets.map((target) => (
-            <AgentCard key={target.name} target={target} t={t} />
+        <div className="skills__filters" role="group" aria-label={t('Skills.filter_label')}>
+          {(['all', 'installed', 'available', 'unsupported'] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              className={`skills__filter-chip${filter === f ? ' skills__filter-chip--active' : ''}`}
+              onClick={() => { setFilter(f); setSelected(null); }}
+              aria-pressed={filter === f}
+            >
+              {t(`Skills.filter_${f}`)} <span className="skills__filter-count">{filterCounts[f]}</span>
+            </button>
           ))}
+        </div>
+
+        <div className={`skills__layout${selected ? '' : ' skills__layout--no-aside'}`}>
+          <div className="agent-grid">
+            {filtered.map((target) => (
+              <AgentCard
+                key={target.name}
+                target={target}
+                t={t}
+                selected={selected?.name === target.name}
+                onSelect={() => setSelected(target)}
+                cardRef={selected?.name === target.name ? selectedCardRef : undefined}
+              />
+            ))}
+            {filtered.length === 0 && (
+              <p className="u-muted-sm">{t('Skills.filter_empty')}</p>
+            )}
+          </div>
+          {selected && (
+            <aside className="skill-preview" aria-label={t('Skills.preview_title')}>
+              <div className="skill-preview__header">
+                <h3>{selected.display_name || selected.name}</h3>
+                <button
+                  type="button"
+                  className="skill-preview__close"
+                  onClick={() => {
+                    const returnTarget = selectedCardRef.current;
+                    setSelected(null);
+                    requestAnimationFrame(() => {
+                      returnTarget?.focus();
+                    });
+                  }}
+                  aria-label={t('Skills.preview_close')}
+                >
+                  ×
+                </button>
+              </div>
+              <span className={`skill-preview__status skill-preview__status--${selected.status}`}>
+                {t(`Skills.status_${selected.status}`)}
+              </span>
+              {selected.description && <p className="skill-preview__desc">{selected.description}</p>}
+              {selected.error_message && <p className="skill-preview__error">{selected.error_message}</p>}
+              {selected.platform_supported && INSTALL_COMMANDS[selected.name] && (
+                <div className="skill-preview__install">
+                  <code>{INSTALL_COMMANDS[selected.name]}</code>
+                </div>
+              )}
+            </aside>
+          )}
         </div>
       </div>
     </AppShell>
@@ -116,9 +191,15 @@ export default function SkillsPage() {
 function AgentCard({
   target,
   t,
+  selected,
+  onSelect,
+  cardRef,
 }: {
   target: InstallTarget;
   t: (key: string, params?: Record<string, string | number>) => string;
+  selected: boolean;
+  onSelect: () => void;
+  cardRef?: React.Ref<HTMLDivElement>;
 }) {
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -142,23 +223,32 @@ function AgentCard({
     }
   }, [cmd]);
 
-  const statusClass = target.detected
-    ? 'installed'
-    : target.platform_supported
-      ? 'available'
-      : 'unsupported';
+  const statusClass = target.status === 'error' ? 'unsupported' : target.status;
 
   return (
-    <div className="agent-card">
+    <div
+      ref={cardRef}
+      className={`agent-card${selected ? ' agent-card--selected' : ''}`}
+      onClick={onSelect}
+      aria-current={selected || undefined}
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.currentTarget !== e.target) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
+    >
       <div className="agent-card__top">
-        <div className={`agent-card__mark${target.detected ? ' agent-card__mark--installed' : ''}`}>
+        <div className={`agent-card__mark${target.status === 'installed' ? ' agent-card__mark--installed' : ''}`}>
           {AGENT_ICONS[target.name] ?? '📦'}
         </div>
         <span className={`agent-card__status agent-card__status--${statusClass}`}>
-          {t(`Skills.${statusClass}`)}
+          {t(`Skills.status_${target.status}`)}
         </span>
       </div>
-      <div className="agent-card__name">{target.name}</div>
+      <div className="agent-card__name">{target.display_name || target.name}</div>
       <div className="agent-card__desc">{target.description}</div>
       {target.platform_supported && (
         <div className="agent-card__cmd">
@@ -166,7 +256,7 @@ function AgentCard({
           <button
             type="button"
             className={`copy-btn${copied ? ' copy-btn--copied' : ''}`}
-            onClick={() => { void handleCopy(); }}
+            onClick={(e) => { e.stopPropagation(); void handleCopy(); }}
           >
             {copied ? t('Skills.copied') : t('Skills.copy')}
           </button>

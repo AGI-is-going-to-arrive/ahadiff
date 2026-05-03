@@ -751,7 +751,7 @@ def verify_concepts_consistency(
     db_path: Path,
     jsonl_path: Path,
 ) -> tuple[bool, list[str]]:
-    """Compare JSONL and SQLite concept entries by term_key identity.
+    """Compare JSONL and SQLite concept entries by term_key and content.
 
     Returns (is_consistent, list_of_discrepancies).
     """
@@ -764,14 +764,16 @@ def verify_concepts_consistency(
             ["No concepts data found: review.sqlite and concepts.jsonl are both missing"],
         )
 
-    jsonl_keys: set[str] = set()
+    jsonl_entries: dict[str, dict[str, object]] = {}
     if jsonl_exists:
         for _idx, entry in _iter_jsonl_entries_with_offsets(jsonl_path):
             term_key = entry.get("term_key")
             if isinstance(term_key, str) and term_key:
-                jsonl_keys.add(term_key)
+                if term_key in jsonl_entries:
+                    discrepancies.append(f"duplicate in JSONL: {term_key}")
+                jsonl_entries[term_key] = entry
 
-    db_keys: set[str] = set()
+    db_entries: dict[str, dict[str, object]] = {}
     if db_exists:
         from ahadiff.review.database import load_concepts_from_db
 
@@ -787,12 +789,14 @@ def verify_concepts_consistency(
             for row in rows:
                 term_key = row.get("term_key")
                 if isinstance(term_key, str) and term_key:
-                    db_keys.add(term_key)
+                    db_entries[term_key] = row
             last = rows[-1].get("term_key")
             if not isinstance(last, str) or not last:
                 break
             cursor = last
 
+    jsonl_keys = set(jsonl_entries)
+    db_keys = set(db_entries)
     if len(jsonl_keys) != len(db_keys):
         discrepancies.append(
             f"count mismatch: JSONL has {len(jsonl_keys)}, SQLite has {len(db_keys)}"
@@ -803,8 +807,40 @@ def verify_concepts_consistency(
         discrepancies.append(f"only in JSONL ({len(only_jsonl)}): {sorted(only_jsonl)[:10]}")
     if only_db:
         discrepancies.append(f"only in SQLite ({len(only_db)}): {sorted(only_db)[:10]}")
+    for term_key in sorted(jsonl_keys & db_keys):
+        jsonl_payload = _normalise_concept_consistency_payload(jsonl_entries[term_key])
+        db_payload = _normalise_concept_consistency_payload(db_entries[term_key])
+        if jsonl_payload != db_payload:
+            changed = sorted(
+                key
+                for key in set(jsonl_payload) | set(db_payload)
+                if jsonl_payload.get(key) != db_payload.get(key)
+            )
+            discrepancies.append(f"content mismatch for {term_key}: fields differ {changed[:10]}")
 
     return (len(discrepancies) == 0, discrepancies)
+
+
+def _normalise_concept_consistency_payload(entry: dict[str, object]) -> dict[str, object]:
+    scalar_keys = (
+        "term_key",
+        "concept",
+        "term",
+        "display_name",
+        "lang",
+        "branch_hint",
+        "introduced_by_run",
+        "graphify_node_id",
+    )
+    list_keys = ("aliases", "source_refs", "updated_by_runs", "related_claims", "file_refs")
+    payload: dict[str, object] = {key: entry.get(key) for key in scalar_keys}
+    for key in list_keys:
+        value = entry.get(key)
+        if isinstance(value, list):
+            payload[key] = sorted(str(item) for item in cast("list[object]", value))
+        else:
+            payload[key] = []
+    return payload
 
 
 def _is_ancestor(repo_root: Path, source_ref: str, head_ref: str) -> bool:

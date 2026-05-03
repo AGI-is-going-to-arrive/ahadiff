@@ -42,12 +42,12 @@ export interface AuthTokenResponse {
 export interface RunSummary {
   run_id: string;
   source_ref: string;
-  source_kind: SourceKind | string;
-  content_lang: Locale | string;
+  source_kind: string;
+  content_lang: string;
   capability_level: 1 | 2 | 3;
-  verdict: Verdict | string;
+  verdict: string;
   overall: number;
-  status: RunStatus | string;
+  status: string;
   weakest_dim: string;
   created_at: string;
   degraded_flags: DegradedFlagsMap;
@@ -70,13 +70,43 @@ export type ArtifactKind =
   | 'quiz'
   | 'misconceptions'
   | 'diff'
-  | 'concepts';
+  | 'concepts'
+  | 'score';
 
 export interface RunArtifactEnvelope {
   run_id: string;
   artifact_type: string;
   content: string;
-  content_lang?: Locale | string | null;
+  content_lang?: string | null;
+}
+
+export interface ScoreDimension {
+  score: number;
+  max_score: number;
+  reason: string;
+}
+
+export interface ScoreHardGate {
+  passed: boolean;
+  detail: string;
+  score?: number;
+  threshold?: number;
+}
+
+export interface ScorePayload {
+  run_id: string;
+  source_ref: string;
+  source_kind: string;
+  capability_level: 1 | 2 | 3;
+  degraded_flags: DegradedFlagsMap;
+  overall: number;
+  verdict: string;
+  weakest_dim: string;
+  eval_bundle_version: string;
+  rubric_version: string;
+  dimensions: Record<string, ScoreDimension>;
+  hard_gates: Record<string, ScoreHardGate>;
+  notes: string[];
 }
 
 export interface RatchetHistoryEntry {
@@ -84,8 +114,8 @@ export interface RatchetHistoryEntry {
   source_ref: string;
   eval_bundle_version: string;
   overall: number;
-  verdict: Verdict | string;
-  status: RunStatus | string;
+  verdict: string;
+  status: string;
   timestamp: string;
   weakest_dim: string;
   note_json: string | null;
@@ -158,6 +188,8 @@ export interface DueReviewCard {
   display_path: string;
   source_ref?: string | null;
   symbol?: string | null;
+  question?: string | null;
+  answer?: string | null;
 }
 
 export interface ReviewQueueResponse {
@@ -182,6 +214,31 @@ export interface ReviewQueueStateResponse {
   card_id: string;
   state: ReviewQueueState;
   updated: boolean;
+}
+
+export interface WeakConceptItem {
+  card_id: string;
+  concept: string;
+  stability: number;
+  difficulty: number;
+  scaffolding_level: string;
+  display_path: string;
+}
+
+export interface WeakConceptsResponse {
+  concepts: WeakConceptItem[];
+  new_concepts: WeakConceptItem[];
+}
+
+export interface ReviewMasteryItem {
+  concept: string;
+  review_count: number;
+  avg_rating: number | null;
+  last_review: string | null;
+}
+
+export interface ReviewMasteryResponse {
+  mastery: ReviewMasteryItem[];
 }
 
 export interface MisconceptionCardItem {
@@ -278,6 +335,59 @@ export interface ReviewHeatmapEntry {
 
 export interface ReviewHeatmapResponse {
   entries: ReviewHeatmapEntry[];
+}
+
+export interface ServeStatusResponse {
+  version: string;
+  uptime_seconds: number;
+  review_db_exists: boolean;
+  runs_count: number;
+}
+
+export interface HelpfulnessAggregate {
+  target_kind: string;
+  target_id: string;
+  signal_count: number;
+  positive_count: number;
+  negative_count: number;
+  helpfulness_score: number;
+}
+
+export interface TransferConcept {
+  concept: string;
+  total_reviews: number;
+  avg_rating: number;
+  improving: boolean;
+}
+
+export interface LearningEffectivenessResponse {
+  total_concepts_reviewed: number;
+  concepts_improving: number;
+  concepts_stable: number;
+  concepts_declining: number;
+  transfer_rate: number;
+  helpfulness: HelpfulnessAggregate[];
+  transfer_metrics: TransferConcept[];
+}
+
+export interface SpecAlignmentResponse {
+  alignment_score: number | null;
+  total_evaluated: number;
+  recent_trend: 'improving' | 'stable' | 'declining' | null;
+}
+
+export interface WatchStatusResponse {
+  enabled: boolean;
+  running: boolean;
+  last_trigger_time: number | null;
+  pending_changes: number;
+  restartable: boolean;
+  stop_timed_out: boolean;
+  consecutive_failures: number;
+  total_triggers: number;
+  total_failures: number;
+  last_error: string | null;
+  failure_threshold_hit: boolean;
 }
 
 export interface LearnSubmitPayload {

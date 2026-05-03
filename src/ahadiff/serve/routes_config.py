@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 from anyio import to_thread
 from starlette.responses import JSONResponse
 
+from ahadiff.contracts.serve_app import ConfigResponse, ConfigUpdateResponse
 from ahadiff.contracts.serve_doctor import DoctorCheck, DoctorResponse
 from ahadiff.core.sqlite_util import safe_sqlite_connect
 
@@ -319,7 +320,7 @@ async def get_config(request: Request) -> JSONResponse:
 
     state: ServeState = serve_state(request)
     snapshot = await to_thread.run_sync(_safe_config_snapshot, state)
-    return JSONResponse(snapshot)
+    return JSONResponse(ConfigResponse.model_validate(snapshot).model_dump(mode="json"))
 
 
 async def get_doctor(request: Request) -> JSONResponse:
@@ -362,4 +363,4 @@ async def put_config(request: Request) -> JSONResponse:
         async with state.write_lock:
             request.app.state.ahadiff = state.with_locale(lang)  # type: ignore[arg-type]
 
-    return JSONResponse({"updated": True, "scope": "session"})
+    return JSONResponse(ConfigUpdateResponse(updated=True, scope="session").model_dump(mode="json"))

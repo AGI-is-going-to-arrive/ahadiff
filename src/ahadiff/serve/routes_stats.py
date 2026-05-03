@@ -24,6 +24,7 @@ from ahadiff.contracts.serve_stats import (
     ProviderSummary,
     ReviewHeatmapResponse,
     ServeStatusResponse,
+    SpecAlignmentResponse,
     StatsResponse,
     UsageModelSummary,
     UsageResponse,
@@ -744,7 +745,11 @@ async def get_usage(request: Request) -> JSONResponse:
 def _build_spec_alignment(state: ServeState) -> dict[str, Any]:
     db_path = state.review_db_path
     if not db_path.is_file():
-        return {"alignment_score": None, "total_evaluated": 0, "recent_trend": None}
+        return SpecAlignmentResponse(
+            alignment_score=None,
+            total_evaluated=0,
+            recent_trend=None,
+        ).model_dump(mode="json")
 
     try:
         with connect_review_db(db_path) as conn:
@@ -756,10 +761,18 @@ def _build_spec_alignment(state: ServeState) -> dict[str, Any]:
                 """
             ).fetchone()
     except sqlite3.OperationalError:
-        return {"alignment_score": None, "total_evaluated": 0, "recent_trend": None}
+        return SpecAlignmentResponse(
+            alignment_score=None,
+            total_evaluated=0,
+            recent_trend=None,
+        ).model_dump(mode="json")
 
     if not row or row[0] == 0:
-        return {"alignment_score": None, "total_evaluated": 0, "recent_trend": None}
+        return SpecAlignmentResponse(
+            alignment_score=None,
+            total_evaluated=0,
+            recent_trend=None,
+        ).model_dump(mode="json")
 
     total = int(row[0])
     avg = float(row[1]) if row[1] is not None else None
@@ -804,7 +817,11 @@ def _build_spec_alignment(state: ServeState) -> dict[str, Any]:
         except sqlite3.OperationalError:
             pass
 
-    return {"alignment_score": avg, "total_evaluated": total, "recent_trend": trend}
+    return SpecAlignmentResponse(
+        alignment_score=avg,
+        total_evaluated=total,
+        recent_trend=trend,
+    ).model_dump(mode="json")
 
 
 async def get_spec_alignment(request: Request) -> JSONResponse:

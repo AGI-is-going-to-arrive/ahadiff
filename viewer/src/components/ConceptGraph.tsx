@@ -34,6 +34,7 @@ export interface ConceptGraphProps {
   edges: ConceptGraphEdge[];
   status: GraphStatusResponse;
   truncated: boolean;
+  onShowAll?: (() => void) | undefined;
 }
 
 /* ---------- Simulation types ---------- */
@@ -54,9 +55,6 @@ interface SimEdge {
   weight: number;
 }
 
-type KindColorStyle = CSSProperties & {
-  '--concept-kind-color': string;
-};
 
 /* ---------- Constants ---------- */
 
@@ -66,28 +64,87 @@ const LARGE_GRAPH_THRESHOLD = 200;
 const MIN_EDGE_WEIGHT = 0.1;
 const MAX_EDGE_WEIGHT = 3.0;
 
-const KIND_COLORS: Record<string, string> = {
-  function: 'var(--accent)',
-  class: 'var(--success)',
-  module: 'var(--warning)',
-  variable: 'var(--info)',
-  type: 'var(--danger)',
-};
-const DEFAULT_COLOR = 'var(--accent-soft)';
-
-function kindColor(kind: string | null): string {
-  if (!kind) return DEFAULT_COLOR;
-  return KIND_COLORS[kind.toLowerCase()] ?? DEFAULT_COLOR;
+interface KindPalette {
+  fill: string;
+  stroke: string;
+  badge: string;
 }
 
-function kindColorStyle(kind: string | null): KindColorStyle {
-  return { '--concept-kind-color': kindColor(kind) } as KindColorStyle;
+const KIND_PALETTES: Record<string, KindPalette> = {
+  code: {
+    fill: 'var(--graph-code-fill, #F4E4D9)',
+    stroke: 'var(--graph-code-stroke, #D27050)',
+    badge: 'var(--graph-code-badge, #D27050)',
+  },
+  rationale: {
+    fill: 'var(--graph-rationale-fill, #F7EED9)',
+    stroke: 'var(--graph-rationale-stroke, #B4791F)',
+    badge: 'var(--graph-rationale-badge, #B4791F)',
+  },
+  function: {
+    fill: 'var(--graph-code-fill, #F4E4D9)',
+    stroke: 'var(--graph-code-stroke, #D27050)',
+    badge: 'var(--graph-code-badge, #D27050)',
+  },
+  class: {
+    fill: 'var(--graph-rationale-fill, #F7EED9)',
+    stroke: 'var(--graph-rationale-stroke, #B4791F)',
+    badge: 'var(--graph-rationale-badge, #B4791F)',
+  },
+  module: {
+    fill: 'var(--graph-module-fill, #E0E8F0)',
+    stroke: 'var(--graph-module-stroke, #2E4A6B)',
+    badge: 'var(--graph-module-badge, #2E4A6B)',
+  },
+  variable: {
+    fill: 'var(--accent-softest)',
+    stroke: 'var(--accent-tint)',
+    badge: 'var(--accent-tint)',
+  },
+  type: {
+    fill: 'var(--danger-soft)',
+    stroke: 'var(--danger)',
+    badge: 'var(--danger)',
+  },
+};
+
+const DEFAULT_PALETTE: KindPalette = {
+  fill: 'var(--accent-softer)',
+  stroke: 'var(--accent-tint)',
+  badge: 'var(--accent-soft)',
+};
+
+function kindPalette(kind: string | null): KindPalette {
+  if (!kind) return DEFAULT_PALETTE;
+  return KIND_PALETTES[kind.toLowerCase()] ?? DEFAULT_PALETTE;
+}
+
+type GraphColorStyle = CSSProperties & {
+  '--concept-kind-fill': string;
+  '--concept-kind-stroke': string;
+  '--concept-kind-badge': string;
+};
+
+function kindColorStyle(kind: string | null): GraphColorStyle {
+  const p = kindPalette(kind);
+  return {
+    '--concept-kind-fill': p.fill,
+    '--concept-kind-stroke': p.stroke,
+    '--concept-kind-badge': p.badge,
+  } as GraphColorStyle;
 }
 
 
 function safeEdgeWeight(weight: number): number {
   if (!Number.isFinite(weight)) return 1.0;
   return Math.min(MAX_EDGE_WEIGHT, Math.max(MIN_EDGE_WEIGHT, weight));
+}
+
+function clampNodeToViewport(node: SimNode, width: number): void {
+  const maxX = Math.max(NODE_RADIUS, width - NODE_RADIUS);
+  const maxY = SVG_HEIGHT - NODE_RADIUS;
+  node.x = Math.min(maxX, Math.max(NODE_RADIUS, node.x ?? width / 2));
+  node.y = Math.min(maxY, Math.max(NODE_RADIUS, node.y ?? SVG_HEIGHT / 2));
 }
 
 function toSimEdges(edges: ConceptGraphEdge[]): SimEdge[] {
@@ -166,6 +223,61 @@ function truncateLabel(text: string, maxLen: number): string {
   return text.slice(0, maxLen - 1) + '…';
 }
 
+function copyComputedProperty(
+  target: SVGElement,
+  style: CSSStyleDeclaration,
+  property: string,
+  attribute = property,
+): void {
+  const value = style.getPropertyValue(property).trim();
+  if (value) target.setAttribute(attribute, value);
+}
+
+function buildExportSvg(sourceSvg: SVGSVGElement): SVGSVGElement {
+  const clone = sourceSvg.cloneNode(true) as SVGSVGElement;
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  clone.setAttribute('version', '1.1');
+
+  const bounds = sourceSvg.getBoundingClientRect();
+  if (Number.isFinite(bounds.width) && bounds.width > 0) {
+    clone.setAttribute('width', String(Math.round(bounds.width)));
+  }
+  if (Number.isFinite(bounds.height) && bounds.height > 0) {
+    clone.setAttribute('height', String(Math.round(bounds.height)));
+  }
+
+  const sourceElements = Array.from(sourceSvg.querySelectorAll<SVGElement>('line,circle,text'));
+  const clonedElements = Array.from(clone.querySelectorAll<SVGElement>('line,circle,text'));
+  sourceElements.forEach((source, index) => {
+    const target = clonedElements[index];
+    if (!target) return;
+    const style = window.getComputedStyle(source);
+    const tagName = source.tagName.toLowerCase();
+    if (tagName === 'line') {
+      copyComputedProperty(target, style, 'stroke');
+      copyComputedProperty(target, style, 'stroke-width');
+      copyComputedProperty(target, style, 'stroke-linecap');
+      return;
+    }
+    if (tagName === 'circle') {
+      copyComputedProperty(target, style, 'fill');
+      copyComputedProperty(target, style, 'stroke');
+      copyComputedProperty(target, style, 'stroke-width');
+      return;
+    }
+    if (tagName === 'text') {
+      copyComputedProperty(target, style, 'fill');
+      copyComputedProperty(target, style, 'font-family');
+      copyComputedProperty(target, style, 'font-size');
+      copyComputedProperty(target, style, 'font-weight');
+      copyComputedProperty(target, style, 'text-anchor');
+      copyComputedProperty(target, style, 'dominant-baseline');
+    }
+  });
+
+  return clone;
+}
+
 /* ---------- Force graph SVG ---------- */
 
 function ForceGraph({
@@ -173,20 +285,73 @@ function ForceGraph({
   edges,
   onSelectNode,
   selectedId,
+  viewBoxOverride,
 }: {
   nodes: ConceptGraphNode[];
   edges: ConceptGraphEdge[];
   onSelectNode: (id: string | null) => void;
   selectedId: string | null;
+  viewBoxOverride: string | null;
 }) {
   const { t } = useTranslation();
   const svgRef = useRef<SVGSVGElement>(null);
+  const gRef = useRef<SVGGElement>(null);
   const simulationRef = useRef<ReturnType<typeof forceSimulation<SimNode>> | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
   const [simNodes, setSimNodes] = useState<SimNode[]>([]);
   const [simEdges, setSimEdges] = useState<SimEdge[]>([]);
   const [svgWidth, setSvgWidth] = useState(640);
   const titleId = useId();
   const prefersReducedMotion = usePrefersReducedMotion();
+
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const panRef = useRef(pan);
+  const zoomRef = useRef(zoom);
+  panRef.current = pan;
+  zoomRef.current = zoom;
+  const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const oldZ = zoomRef.current;
+      const factor = e.deltaY > 0 ? 0.9 : 1.1;
+      const newZ = Math.min(5, Math.max(0.1, oldZ * factor));
+      const p = panRef.current;
+      setPan({
+        x: mx - (mx - p.x) * (newZ / oldZ),
+        y: my - (my - p.y) * (newZ / oldZ),
+      });
+      setZoom(newZ);
+    };
+    svg.addEventListener('wheel', onWheel, { passive: false });
+    return () => svg.removeEventListener('wheel', onWheel);
+  }, []);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if ((e.target as Element).closest('.concept-graph__node')) return;
+    const svg = svgRef.current;
+    if (!svg) return;
+    svg.setPointerCapture(e.pointerId);
+    dragRef.current = { startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y };
+  }, [pan]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragRef.current) return;
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    setPan({ x: dragRef.current.panX + dx, y: dragRef.current.panY + dy });
+  }, []);
+
+  const handlePointerUp = useCallback(() => {
+    dragRef.current = null;
+  }, []);
 
   useEffect(() => {
     const svg = svgRef.current;
@@ -248,22 +413,30 @@ function ForceGraph({
       .alphaDecay(0.03);
 
     simulationRef.current = simulation;
+    setSimNodes([...sNodes]);
+    setSimEdges([...sEdges]);
+
+    const flushNodePositions = () => {
+      animationFrameRef.current = null;
+      setSimNodes([...sNodes]);
+    };
 
     simulation.on('tick', () => {
-      const curW = svgRef.current?.getBoundingClientRect().width ?? w;
-      for (const n of sNodes) {
-        n.x = Math.max(NODE_RADIUS, Math.min(curW - NODE_RADIUS, n.x ?? 0));
-        n.y = Math.max(NODE_RADIUS, Math.min(SVG_HEIGHT - NODE_RADIUS, n.y ?? 0));
+      for (const node of sNodes) clampNodeToViewport(node, w);
+      if (animationFrameRef.current === null) {
+        animationFrameRef.current = window.requestAnimationFrame(flushNodePositions);
       }
-      setSimNodes([...sNodes]);
-      setSimEdges([...sEdges]);
     });
 
     return () => {
       simulation.stop();
       simulationRef.current = null;
+      if (animationFrameRef.current !== null) {
+        window.cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
     };
-  }, [nodes, edges, prefersReducedMotion]); // svgWidth intentionally excluded — resize handled below
+  }, [nodes, edges, prefersReducedMotion, svgWidth]);
 
   useEffect(() => {
     if (prefersReducedMotion) return;
@@ -279,6 +452,16 @@ function ForceGraph({
     for (const n of simNodes) m.set(n.id, n);
     return m;
   }, [simNodes]);
+
+  const connectedIds = useMemo(() => {
+    if (selectedId == null) return null;
+    const ids = new Set<string>([selectedId]);
+    for (const e of simEdges) {
+      if (e.source === selectedId) ids.add(e.target);
+      if (e.target === selectedId) ids.add(e.source);
+    }
+    return ids;
+  }, [selectedId, simEdges]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -297,62 +480,75 @@ function ForceGraph({
     [onSelectNode, selectedId],
   );
 
+  const transform = `translate(${pan.x}, ${pan.y}) scale(${zoom})`;
+
   return (
     <svg
       ref={svgRef}
       className="concept-graph__svg"
-      viewBox={`0 0 ${svgWidth} ${SVG_HEIGHT}`}
+      viewBox={viewBoxOverride ?? `0 0 ${svgWidth} ${SVG_HEIGHT}`}
       role="graphics-document"
       aria-labelledby={titleId}
       onKeyDown={handleKeyDown}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerUp}
+      style={{ cursor: dragRef.current ? 'grabbing' : 'grab', touchAction: 'none' }}
     >
       <title id={titleId}>{t('Concept.title')}</title>
-      {simEdges.map((edge) => {
-        const s = nodeById.get(edge.source);
-        const t = nodeById.get(edge.target);
-        if (!s || !t) return null;
-        const isHighlighted =
-          selectedId != null && (edge.source === selectedId || edge.target === selectedId);
-        return (
-          <line
-            key={edge.id}
-            className={`concept-graph__edge${isHighlighted ? ' concept-graph__edge--highlight' : ''}`}
-            x1={s.x ?? 0}
-            y1={s.y ?? 0}
-            x2={t.x ?? 0}
-            y2={t.y ?? 0}
-            strokeWidth={Math.max(1, Math.min(3, edge.weight))}
-          />
-        );
-      })}
-
-      {simNodes.map((node) => {
-        const isSelected = selectedId === node.id;
-        return (
-          <g
-            key={node.id}
-            className={`concept-graph__node${isSelected ? ' concept-graph__node--selected' : ''}`}
-            tabIndex={0}
-            role="button"
-            aria-pressed={isSelected}
-            aria-label={node.name}
-            onClick={() => onSelectNode(isSelected ? null : node.id)}
-            onKeyDown={(e) => handleNodeKeyDown(e, node.id)}
-          >
-            <title>{node.name}</title>
-            <circle
-              className="concept-graph__circle"
-              cx={node.x ?? 0}
-              cy={node.y ?? 0}
-              r={NODE_RADIUS}
-              style={kindColorStyle(node.kind)}
+      <g ref={gRef} transform={transform}>
+        {simEdges.map((edge) => {
+          const s = nodeById.get(edge.source);
+          const tgt = nodeById.get(edge.target);
+          if (!s || !tgt) return null;
+          const isHighlighted =
+            selectedId != null && (edge.source === selectedId || edge.target === selectedId);
+          const isDimmed = connectedIds != null && !isHighlighted;
+          return (
+            <line
+              key={edge.id}
+              className={`concept-graph__edge${isHighlighted ? ' concept-graph__edge--highlight' : ''}`}
+              x1={s.x ?? 0}
+              y1={s.y ?? 0}
+              x2={tgt.x ?? 0}
+              y2={tgt.y ?? 0}
+              strokeWidth={Math.max(1, Math.min(3, edge.weight))}
+              opacity={isDimmed ? 0.08 : 1}
             />
-            <text className="concept-graph__label" x={node.x ?? 0} y={node.y ?? 0}>
-              {truncateLabel(node.name, 10)}
-            </text>
-          </g>
-        );
-      })}
+          );
+        })}
+
+        {simNodes.map((node) => {
+          const isSelected = selectedId === node.id;
+          const isDimmed = connectedIds != null && !connectedIds.has(node.id);
+          return (
+            <g
+              key={node.id}
+              className={`concept-graph__node${isSelected ? ' concept-graph__node--selected' : ''}`}
+              tabIndex={0}
+              role="button"
+              aria-pressed={isSelected}
+              aria-label={node.name}
+              onClick={() => onSelectNode(isSelected ? null : node.id)}
+              onKeyDown={(e) => handleNodeKeyDown(e, node.id)}
+              opacity={isDimmed ? 0.12 : 1}
+            >
+              <title>{node.name}</title>
+              <circle
+                className="concept-graph__circle"
+                cx={node.x ?? 0}
+                cy={node.y ?? 0}
+                r={NODE_RADIUS}
+                style={kindColorStyle(node.kind)}
+              />
+              <text className="concept-graph__label" x={node.x ?? 0} y={node.y ?? 0}>
+                {truncateLabel(node.name, 10)}
+              </text>
+            </g>
+          );
+        })}
+      </g>
     </svg>
   );
 }
@@ -564,13 +760,58 @@ function EmptyState({ status }: { status: GraphStatusResponse }) {
 
 /* ---------- Main component ---------- */
 
-export default function ConceptGraph({ nodes, edges, status, truncated }: ConceptGraphProps) {
+export default function ConceptGraph({ nodes, edges, status, truncated, onShowAll }: ConceptGraphProps) {
   const { t } = useTranslation();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeKinds, setActiveKinds] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'graph' | 'list'>(
     nodes.length > LARGE_GRAPH_THRESHOLD ? 'list' : 'graph',
   );
+  const [viewBoxOverride, setViewBoxOverride] = useState<string | null>(null);
+  const graphWrapRef = useRef<HTMLDivElement>(null);
+
+  const handleFit = useCallback(() => {
+    const svg = graphWrapRef.current?.querySelector('svg');
+    if (!svg) return;
+    let bbox: DOMRect;
+    try {
+      bbox = svg.getBBox();
+    } catch {
+      return;
+    }
+    if (
+      !Number.isFinite(bbox.x) ||
+      !Number.isFinite(bbox.y) ||
+      !Number.isFinite(bbox.width) ||
+      !Number.isFinite(bbox.height) ||
+      bbox.width <= 0 ||
+      bbox.height <= 0
+    ) {
+      return;
+    }
+    const pad = 40;
+    setViewBoxOverride(`${bbox.x - pad} ${bbox.y - pad} ${bbox.width + pad * 2} ${bbox.height + pad * 2}`);
+  }, []);
+
+  const handleExport = useCallback(() => {
+    const svg = graphWrapRef.current?.querySelector('svg');
+    if (!svg) return;
+    const serializer = new XMLSerializer();
+    const svgStr = serializer.serializeToString(buildExportSvg(svg));
+    const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'concept-graph.svg';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    try {
+      a.click();
+    } finally {
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
+  }, []);
 
   const allKinds = useMemo(() => collectKinds(nodes), [nodes]);
 
@@ -598,6 +839,10 @@ export default function ConceptGraph({ nodes, edges, status, truncated }: Concep
       (e) => filteredNodeIds.has(e.source) && filteredNodeIds.has(e.target),
     );
   }, [edges, filteredNodeIds]);
+
+  useEffect(() => {
+    setViewBoxOverride(null);
+  }, [filteredEdges, filteredNodes, viewMode]);
 
   const selectedNode = useMemo(
     () => filteredNodes.find((n) => n.id === selectedId) ?? null,
@@ -665,6 +910,26 @@ export default function ConceptGraph({ nodes, edges, status, truncated }: Concep
             {t('Concept.mode_learning_only')}
           </button>
         </div>
+        {viewMode === 'graph' && (
+          <div className="concept-graph__actions">
+            <button
+              type="button"
+              className="concept-graph__action-btn"
+              onClick={handleFit}
+              aria-label={t('Concept.fit')}
+            >
+              {t('Concept.fit')}
+            </button>
+            <button
+              type="button"
+              className="concept-graph__action-btn"
+              onClick={handleExport}
+              aria-label={t('Concept.export')}
+            >
+              {t('Concept.export')}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className={`concept-graph__body${selectedNode ? ' concept-graph__body--with-panel' : ''}`}>
@@ -672,12 +937,13 @@ export default function ConceptGraph({ nodes, edges, status, truncated }: Concep
           {filteredNodes.length === 0 ? (
             <FilteredEmptyState />
           ) : viewMode === 'graph' ? (
-            <div className="concept-graph__graph-wrap">
+            <div className="concept-graph__graph-wrap" ref={graphWrapRef}>
               <ForceGraph
                 nodes={filteredNodes}
                 edges={filteredEdges}
                 onSelectNode={setSelectedId}
                 selectedId={selectedId}
+                viewBoxOverride={viewBoxOverride}
               />
               <Legend kinds={allKinds} />
             </div>
@@ -688,6 +954,15 @@ export default function ConceptGraph({ nodes, edges, status, truncated }: Concep
           {truncated && (
             <div className="concept-graph__truncated" role="status">
               {t('Graph.truncated', { count: String(status.node_count) })}
+              {onShowAll && (
+                <button
+                  type="button"
+                  className="concept-graph__show-all-btn"
+                  onClick={onShowAll}
+                >
+                  {t('Graph.show_all')}
+                </button>
+              )}
             </div>
           )}
 

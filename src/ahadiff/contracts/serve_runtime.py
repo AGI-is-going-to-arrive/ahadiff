@@ -87,6 +87,22 @@ class WeakConceptItem(BaseModel):
 class WeakConceptsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     concepts: list[WeakConceptItem]
+    new_concepts: list[WeakConceptItem] = Field(default_factory=lambda: [])
+
+
+class WatchStatusResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool
+    running: bool
+    last_trigger_time: float | None = Field(default=None, allow_inf_nan=False)
+    pending_changes: NonNegativeCount
+    restartable: bool
+    stop_timed_out: bool
+    consecutive_failures: NonNegativeCount
+    total_triggers: NonNegativeCount
+    total_failures: NonNegativeCount
+    last_error: str | None
+    failure_threshold_hit: bool
 
 
 class ConceptGraphNode(BaseModel):
@@ -242,6 +258,7 @@ __all__ = [
     "TaskProgressResponse",
     "TaskResultSummary",
     "TaskSubmitResponse",
+    "WatchStatusResponse",
     "WeakConceptItem",
     "WeakConceptsResponse",
 ]

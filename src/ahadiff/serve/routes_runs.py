@@ -176,6 +176,10 @@ async def get_diff(request: Request) -> JSONResponse:
     return await _artifact_response(request, _ARTIFACT_PATHS["diff"], "diff")
 
 
+async def get_score(request: Request) -> JSONResponse:
+    return await _artifact_response(request, _ARTIFACT_PATHS["score"], "score")
+
+
 async def get_run_concepts(request: Request) -> JSONResponse:
     return await _artifact_response(
         request,
@@ -943,5 +947,6 @@ __all__ = [
     "get_ratchet_history",
     "get_run",
     "get_run_concepts",
+    "get_score",
     "list_runs",
 ]

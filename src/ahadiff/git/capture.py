@@ -847,6 +847,9 @@ def _capture_input(
         patch_url is not None,
         staged or unstaged,
     ]
+    if not any(selections):
+        last = True
+        selections[1] = True
     if sum(1 for item in selections if item) != 1:
         raise InputError(
             "choose exactly one input mode: revision range/single commit, --last, "
@@ -854,6 +857,8 @@ def _capture_input(
         )
     if author is not None and since is None:
         raise InputError("--author can only be used together with --since")
+    if include_untracked and not unstaged:
+        raise InputError("--include-untracked can only be used together with --unstaged")
 
     if patch is not None:
         return _capture_patch_input(

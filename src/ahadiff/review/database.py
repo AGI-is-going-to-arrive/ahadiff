@@ -38,7 +38,7 @@ from .schemas import DueReviewCard, ReviewAnswer, ReviewDbCheck, ReviewUpdate
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
 
-CURRENT_SCHEMA_VERSION = 7
+CURRENT_SCHEMA_VERSION = 8
 _SQLITE_MIN_VERSION = (3, 51, 3)
 _SQLITE_ALLOWED_BACKPORTS = {(3, 50, 7), (3, 44, 6)}
 _SQLITE_SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
@@ -629,12 +629,14 @@ def import_cards_from_jsonl(db_path: Path, cards_path: Path) -> int:
                     hunk_hash,
                     symbol,
                     change_kind,
+                    question,
+                    answer,
                     stale_reason,
                     created_at_utc,
                     archived_at_utc,
                     suspended_at_utc
                 ) VALUES (?, ?, ?, ?, ?, 'default', ?, ?, ?, ?, ?, 0, 0, ?, ?, NULL,
-                          ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
+                          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
                 """,
                 (
                     card.card_id,
@@ -656,6 +658,8 @@ def import_cards_from_jsonl(db_path: Path, cards_path: Path) -> int:
                     card.hunk_hash,
                     card.symbol,
                     card.change_kind,
+                    card.question,
+                    card.answer,
                     card.stale_reason,
                     now,
                 ),
@@ -675,6 +679,8 @@ def import_cards_from_jsonl(db_path: Path, cards_path: Path) -> int:
                         hunk_hash = ?,
                         symbol = ?,
                         change_kind = ?,
+                        question = ?,
+                        answer = ?,
                         card_state = CASE
                             WHEN card_state IN ('archived', 'suspended') THEN card_state
                             ELSE ?
@@ -695,6 +701,8 @@ def import_cards_from_jsonl(db_path: Path, cards_path: Path) -> int:
                         card.hunk_hash,
                         card.symbol,
                         card.change_kind,
+                        card.question,
+                        card.answer,
                         card.card_state,
                         card.stale_reason,
                         card.card_id,
@@ -785,7 +793,9 @@ def list_due_cards(
                 scaffolding_level,
                 display_path,
                 source_ref,
-                symbol
+                symbol,
+                question,
+                answer
             FROM cards
             WHERE card_state = 'active' AND due_date <= ?
             ORDER BY due_date ASC, id ASC
@@ -803,6 +813,8 @@ def list_due_cards(
             display_path=str(row["display_path"]),
             source_ref=cast("str | None", row["source_ref"]),
             symbol=cast("str | None", row["symbol"]),
+            question=cast("str | None", row["question"]),
+            answer=cast("str | None", row["answer"]),
         )
         for row in rows
     )
@@ -1092,8 +1104,10 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
                     f"{CURRENT_SCHEMA_VERSION}; upgrade AhaDiff before opening this database"
                 )
         _run_migrations(connection, legacy_version or 1)
+        _ensure_cards_query_indexes(connection)
         return
     if actual == CURRENT_SCHEMA_VERSION:
+        _ensure_cards_query_indexes(connection)
         return
     if actual > CURRENT_SCHEMA_VERSION:
         raise MigrationError(
@@ -1101,6 +1115,7 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
             f"{CURRENT_SCHEMA_VERSION}; upgrade AhaDiff before opening this database"
         )
     _run_migrations(connection, actual)
+    _ensure_cards_query_indexes(connection)
 
 
 def _get_schema_version(connection: sqlite3.Connection) -> int:
@@ -1240,6 +1255,8 @@ def _ensure_cards_schema(connection: sqlite3.Connection) -> None:
             hunk_hash TEXT NOT NULL,
             symbol TEXT,
             change_kind TEXT,
+            question TEXT,
+            answer TEXT,
             stale_reason TEXT,
             created_at_utc TEXT NOT NULL,
             archived_at_utc TEXT,
@@ -1247,6 +1264,11 @@ def _ensure_cards_schema(connection: sqlite3.Connection) -> None:
         )
         """
     )
+    _ensure_cards_query_indexes(connection)
+    _ensure_cards_contract_triggers(connection)
+
+
+def _ensure_cards_query_indexes(connection: sqlite3.Connection) -> None:
     connection.execute(
         """
         CREATE INDEX IF NOT EXISTS ix_cards_due_active
@@ -1259,7 +1281,13 @@ def _ensure_cards_schema(connection: sqlite3.Connection) -> None:
             ON cards (run_id)
         """
     )
-    _ensure_cards_contract_triggers(connection)
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS ix_cards_weak_active_stability
+            ON cards (card_state, stability ASC, difficulty DESC)
+            WHERE card_state = 'active' AND reps > 0
+        """
+    )
 
 
 def _ensure_cards_contract_triggers(connection: sqlite3.Connection) -> None:
@@ -1751,6 +1779,11 @@ def _migrate_v6_to_v7(connection: sqlite3.Connection) -> None:
     _ensure_commit_ancestry_schema(connection)
 
 
+def _migrate_v7_to_v8(connection: sqlite3.Connection) -> None:
+    _ensure_cards_column(connection, "question", "TEXT")
+    _ensure_cards_column(connection, "answer", "TEXT")
+
+
 _MIGRATIONS: dict[int, MigrationStep] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -1758,6 +1791,7 @@ _MIGRATIONS: dict[int, MigrationStep] = {
     4: _migrate_v4_to_v5,
     5: _migrate_v5_to_v6,
     6: _migrate_v6_to_v7,
+    7: _migrate_v7_to_v8,
 }
 
 

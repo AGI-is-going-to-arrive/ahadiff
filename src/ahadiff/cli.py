@@ -331,10 +331,20 @@ def _resolve_runtime_provider(
         if resolved_name is None:
             configured_names = sorted(providers_table.keys())
             if len(configured_names) != 1:
-                raise AhaDiffError(
-                    f"{operation_label} requires --provider when multiple providers are configured"
+                from ahadiff.core.orchestrator import implicit_duplicate_provider_name
+
+                resolved_name = implicit_duplicate_provider_name(
+                    providers_table=providers_table,
+                    configured_names=configured_names,
+                    model=resolved_model,
                 )
-            resolved_name = configured_names[0]
+                if resolved_name is None:
+                    raise AhaDiffError(
+                        f"{operation_label} requires --provider when multiple providers "
+                        "are configured"
+                    )
+            else:
+                resolved_name = configured_names[0]
         raw_config_payload = providers_table.get(resolved_name)
         if not isinstance(raw_config_payload, dict):
             raise AhaDiffError(f"configured provider is missing or invalid: {resolved_name}")
@@ -1962,6 +1972,7 @@ class _WatchLearnRunner:
         done = threading.Event()
         result: bool | None = None
         errors: list[BaseException] = []
+        timeout_reported = False
 
         def _target() -> None:
             nonlocal result
@@ -1980,11 +1991,15 @@ class _WatchLearnRunner:
                 return None
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                console.print(
-                    "[yellow]Learn run timed out; background worker is still draining[/yellow]"
-                )
-                return None
-            if done.wait(timeout=min(_WATCH_LEARN_POLL_SECONDS, remaining)):
+                if not timeout_reported:
+                    console.print(
+                        "[yellow]Learn run timed out; background worker is still draining[/yellow]"
+                    )
+                    timeout_reported = True
+                wait_for = _WATCH_LEARN_POLL_SECONDS
+            else:
+                wait_for = min(_WATCH_LEARN_POLL_SECONDS, remaining)
+            if done.wait(timeout=wait_for):
                 if errors:
                     raise errors[0]
                 return bool(result)
@@ -2968,6 +2983,59 @@ def concepts_verify_cmd(
             raise typer.Exit(code=1)
     except typer.Exit:
         raise
+    except Exception as error:
+        _handle_cli_error(error)
+
+
+@_CONCEPTS_APP.command("list")
+def concepts_list_cmd(
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or any path inside it."),
+    ] = Path(),
+    limit: Annotated[
+        int,
+        typer.Option("--limit", min=1, max=500, help="Maximum concepts to print."),
+    ] = 50,
+) -> None:
+    """List concepts from review.sqlite, falling back to concepts.jsonl."""
+    try:
+        root = find_repo_root(repo_root)
+        sd = project_state_dir(root)
+        db_path = sd / "review.sqlite"
+        rows: list[dict[str, object]] = []
+        if db_path.exists():
+            from ahadiff.review.database import load_concepts_from_db
+
+            rows = list(load_concepts_from_db(db_path, limit=limit))
+        if not rows:
+            jsonl_path = sd / "concepts.jsonl"
+            if jsonl_path.exists():
+                with jsonl_path.open("r", encoding="utf-8") as handle:
+                    for line in handle:
+                        stripped = line.strip()
+                        if not stripped:
+                            continue
+                        payload = safe_json_loads(stripped)
+                        if isinstance(payload, dict):
+                            rows.append(cast("dict[str, object]", payload))
+                        if len(rows) >= limit:
+                            break
+        if not rows:
+            console.print("[yellow]No concepts found[/yellow]")
+            return
+        table = Table(title="Concepts")
+        table.add_column("term_key")
+        table.add_column("display_name")
+        table.add_column("lang")
+        table.add_column("graphify")
+        for row in rows:
+            term_key = str(row.get("term_key", ""))
+            display_name = str(row.get("display_name") or row.get("concept") or "")
+            lang = str(row.get("lang") or "")
+            graphify = str(row.get("graphify_node_id") or "")
+            table.add_row(term_key, display_name, lang, graphify)
+        console.print(table)
     except Exception as error:
         _handle_cli_error(error)
 

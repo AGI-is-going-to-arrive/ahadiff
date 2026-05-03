@@ -92,7 +92,13 @@ export async function installServeMock(page: Page): Promise<void> {
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ history: [] }),
+        body: JSON.stringify({
+          history: [
+            { run_id: 'run-h1', source_ref: 'HEAD~2', eval_bundle_version: 'bundle-v1', overall: 82, verdict: 'PASS', status: 'baseline', weakest_dim: 'evidence', timestamp: '2026-04-25T10:00:00Z', note_json: null },
+            { run_id: 'run-h2', source_ref: 'HEAD~1', eval_bundle_version: 'bundle-v1', overall: 65, verdict: 'CAUTION', status: 'baseline', weakest_dim: 'conciseness', timestamp: '2026-04-26T12:00:00Z', note_json: null },
+            { run_id: 'run-h3', source_ref: 'HEAD', eval_bundle_version: 'bundle-v2', overall: 78, verdict: 'PASS', status: 'baseline', weakest_dim: 'learnability', timestamp: '2026-04-27T08:00:00Z', note_json: null },
+          ],
+        }),
       }),
   );
   await page.route(
@@ -178,7 +184,7 @@ export async function installServeMock(page: Page): Promise<void> {
           run_id: 'test-run',
           artifact_type: 'quiz',
           content:
-            '{"question_id":"quiz_1","review_card_id":"card_quiz_explicit_1","question":"What does the new comment indicate?","expected_answer":"A learn-from-diff marker","source_claims":["c1"],"concepts":["learn-from-diff"],"evidence":[{"file":"demo.py","line":4}],"explanation":"learn-from-diff marker tags the change for the lesson"}',
+            '{"question_id":"quiz_1","review_card_id":"card_quiz_explicit_1","question":"What does the new comment indicate?","expected_answer":"A learn-from-diff marker","source_claims":["c1"],"concepts":["learn-from-diff"],"evidence":[{"file":"demo.py","line":4}],"explanation":"learn-from-diff marker tags the change for the lesson"}\n{"question_id":"quiz_2","question":"Why was the return value changed?","expected_answer":"To brand the output as AhaDiff","source_claims":["c1"],"concepts":["branding"],"evidence":[{"file":"demo.py","line":3}],"explanation":"The string literal was updated from world to AhaDiff"}',
           content_lang: 'en',
         }),
       }),
@@ -199,6 +205,47 @@ export async function installServeMock(page: Page): Promise<void> {
       }),
   );
   await page.route(
+    (url) => /^\/api\/run\/[^/]+\/score$/.test(url.pathname),
+    (route) => {
+      const runId = new URL(route.request().url()).pathname.split('/')[3] ?? 'test-run';
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          run_id: runId,
+          artifact_type: 'score',
+          content: JSON.stringify({
+            run_id: runId,
+            source_ref: 'HEAD',
+            source_kind: 'git_ref',
+            capability_level: 3,
+            degraded_flags: {},
+            overall: 78,
+            verdict: 'CAUTION',
+            weakest_dim: 'conciseness',
+            eval_bundle_version: 'bundle-v1',
+            rubric_version: 'rubric-v1',
+            dimensions: {
+              accuracy: { score: 18, max_score: 20, reason: 'Strong code evidence linking.' },
+              evidence: { score: 16, max_score: 20, reason: 'Most claims backed by file:line refs.' },
+              diff_coverage: { score: 14, max_score: 20, reason: 'Covered 70% of changed lines.' },
+              learnability: { score: 12, max_score: 15, reason: 'Good scaffolding but could be more concise.' },
+              conciseness: { score: 8, max_score: 10, reason: 'Some sections are verbose.' },
+              quiz_transfer: { score: 4, max_score: 5, reason: 'Quiz questions test understanding.' },
+              spec_alignment: { score: 3, max_score: 5, reason: 'Aligned with program spec.' },
+              safety_privacy: { score: 5, max_score: 5, reason: 'No sensitive data exposed.' },
+            },
+            hard_gates: {
+              no_fabrication: { passed: true, detail: 'No fabricated claims detected.' },
+            },
+            notes: ['Overall strong lesson with good evidence.', 'Conciseness could be improved in section 2.'],
+          }),
+          content_lang: 'en',
+        }),
+      });
+    },
+  );
+  await page.route(
     (url) => url.pathname === '/api/concepts',
     (route) =>
       route.fulfill({
@@ -208,6 +255,21 @@ export async function installServeMock(page: Page): Promise<void> {
           artifact_type: 'concepts',
           content:
             '{"concept":"learn-from-diff","term_key":"learn-from-diff","display_name":"Learn-from-diff","related_claims":["c1"],"file_refs":["demo.py"]}',
+        }),
+      }),
+  );
+  await page.route(
+    (url) => /^\/api\/run\/[^/]+\/concepts$/.test(url.pathname),
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          run_id: 'test-run',
+          artifact_type: 'concepts',
+          content:
+            '{"concept":"learn-from-diff","term_key":"learn-from-diff","display_name":"Learn-from-diff","related_claims":["c1"],"file_refs":["demo.py"]}',
+          content_lang: 'en',
         }),
       }),
   );
@@ -317,6 +379,70 @@ export async function installServeMock(page: Page): Promise<void> {
               display_path: 'demo.py',
               source_ref: 'HEAD',
               symbol: null,
+              question: 'What does the useEffect cleanup function do in React?',
+              answer: 'It runs when the component unmounts or before the effect re-runs, used for cleanup like cancelling subscriptions.',
+            },
+          ],
+        }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/concepts/weak',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          concepts: [
+            {
+              card_id: 'c1',
+              concept: 'circuit breaker',
+              stability: 0.3,
+              difficulty: 7.2,
+              scaffolding_level: 'full',
+              display_path: 'src/retry.py',
+            },
+            {
+              card_id: 'c2',
+              concept: 'backoff strategy',
+              stability: 0.5,
+              difficulty: 6.1,
+              scaffolding_level: 'hint',
+              display_path: 'src/http.py',
+            },
+          ],
+          new_concepts: [
+            {
+              card_id: 'c-new',
+              concept: 'idempotent retry',
+              stability: 0,
+              difficulty: 0,
+              scaffolding_level: 'full',
+              display_path: 'src/retry.py',
+            },
+          ],
+        }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/review/mastery',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          mastery: [
+            {
+              concept: 'idempotency',
+              review_count: 5,
+              avg_rating: 3.5,
+              last_review: '2026-05-03T00:00:00Z',
+            },
+            {
+              concept: 'retry with jitter',
+              review_count: 3,
+              avg_rating: 2.0,
+              last_review: '2026-05-02T00:00:00Z',
             },
           ],
         }),
@@ -324,8 +450,15 @@ export async function installServeMock(page: Page): Promise<void> {
   );
   await page.route(
     (url) => url.pathname === '/api/config',
-    (route) =>
-      route.fulfill({
+    (route) => {
+      if (route.request().method() === 'PUT') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ updated: true, scope: 'session' }),
+        });
+      }
+      return route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
@@ -336,7 +469,8 @@ export async function installServeMock(page: Page): Promise<void> {
           serve_port: 8384,
           key_status: { openai: 'configured' },
         }),
-      }),
+      });
+    },
   );
   await page.route(
     (url) => url.pathname === '/api/doctor',
@@ -345,11 +479,12 @@ export async function installServeMock(page: Page): Promise<void> {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
+          summary_status: 'pass',
           checks: [
-            { name: 'repo_root', status: 'pass', message: '.ahadiff/ exists' },
-            { name: 'sqlite_version', status: 'pass', message: 'SQLite 3.45.0' },
-            { name: 'config_valid', status: 'pass', message: 'Config loaded' },
-            { name: 'review_db', status: 'pass', message: 'review.sqlite present' },
+            { name: 'repo_root', status: 'pass', message: '.ahadiff/ exists', category: 'repo', details: {} },
+            { name: 'sqlite_version', status: 'pass', message: 'SQLite 3.45.0', category: 'runtime', details: { version: '3.45.0' } },
+            { name: 'config_valid', status: 'pass', message: 'Config loaded', category: 'config', details: {} },
+            { name: 'review_db', status: 'pass', message: 'review.sqlite present', category: 'data', details: {} },
           ],
         }),
       }),
@@ -486,15 +621,96 @@ export async function installServeMock(page: Page): Promise<void> {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          total_runs: 0,
-          total_lessons: 0,
-          total_quizzes: 0,
-          total_concepts: 0,
-          total_claims: 0,
-          total_reviews: 0,
-          avg_overall_score: null,
-          weakest_dimensions: [],
-          last_run_at: null,
+          total_runs: 3,
+          total_lessons: 3,
+          total_quizzes: 2,
+          total_concepts: 8,
+          total_claims: 5,
+          total_reviews: 4,
+          avg_overall_score: 75.0,
+          weakest_dimensions: ['conciseness', 'evidence', 'quiz_transfer', 'learnability_and_scaffolding_quality'],
+          last_run_at: '2026-05-03T00:00:00Z',
+        }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/serve/status',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          version: '0.1.0a0',
+          uptime_seconds: 12.5,
+          review_db_exists: true,
+          runs_count: 1,
+        }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/stats/learning',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          total_concepts_reviewed: 1,
+          concepts_improving: 1,
+          concepts_stable: 0,
+          concepts_declining: 0,
+          transfer_rate: 1.0,
+          helpfulness: [
+            {
+              target_kind: 'section',
+              target_id: 'test-run:intro',
+              signal_count: 2,
+              positive_count: 2,
+              negative_count: 0,
+              helpfulness_score: 1.0,
+            },
+          ],
+          transfer_metrics: [
+            {
+              concept: 'learn-from-diff',
+              total_reviews: 3,
+              avg_rating: 2.7,
+              improving: true,
+            },
+          ],
+        }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/spec/alignment',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          alignment_score: 84.2,
+          total_evaluated: 4,
+          recent_trend: 'stable',
+        }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/watch/status',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          enabled: false,
+          running: false,
+          last_trigger_time: null,
+          pending_changes: 0,
+          restartable: true,
+          stop_timed_out: false,
+          consecutive_failures: 0,
+          total_triggers: 0,
+          total_failures: 0,
+          last_error: null,
+          failure_threshold_hit: false,
         }),
       }),
   );
@@ -506,9 +722,9 @@ export async function installServeMock(page: Page): Promise<void> {
         contentType: 'application/json',
         body: JSON.stringify({
           entries: [
-            { date: '2026-04-25', review_count: 1, avg_rating: 3.0 },
-            { date: '2026-04-26', review_count: 3, avg_rating: 2.7 },
-            { date: '2026-04-27', review_count: 6, avg_rating: 2.9 },
+            { date: '2026-05-01', review_count: 3, avg_rating: 3.2 },
+            { date: '2026-05-02', review_count: 5, avg_rating: 2.8 },
+            { date: '2026-05-03', review_count: 1, avg_rating: 4.0 },
           ],
         }),
       }),
@@ -603,5 +819,89 @@ export async function installServeMock(page: Page): Promise<void> {
         body: JSON.stringify({ tasks: [] }),
       });
     },
+  );
+  await page.route(
+    (url) => /^\/api\/tasks\/[^/]+$/.test(url.pathname),
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          task_id: 'mock-task-001',
+          task_type: 'learn',
+          status: 'completed',
+          progress: { current: 10, total: 10, message: 'Done' },
+          result_summary: {
+            run_id: 'test-run',
+            status: 'completed',
+            overall: 88,
+            verdict: 'PASS',
+            warnings: [],
+          },
+          error: null,
+          error_code: null,
+          created_at: '2026-04-27T00:00:00Z',
+          started_at: '2026-04-27T00:00:01Z',
+          completed_at: '2026-04-27T00:00:05Z',
+          elapsed_seconds: 4,
+          recovery_hint: null,
+        }),
+      }),
+  );
+  await page.route(
+    (url) => /^\/api\/tasks\/[^/]+\/cancel$/.test(url.pathname),
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ cancelled: true }),
+      }),
+  );
+  await page.route(
+    (url) => /^\/api\/tasks\/[^/]+\/progress$/.test(url.pathname),
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        body:
+          'event: progress\n' +
+          'data: {"task_id":"mock-task-001","task_type":"learn","status":"completed","progress":{"current":10,"total":10,"message":"Done"},"result_summary":{"run_id":"test-run","status":"completed","overall":88,"verdict":"PASS","warnings":[]},"error":null,"error_code":null,"created_at":"2026-04-27T00:00:00Z","started_at":"2026-04-27T00:00:01Z","completed_at":"2026-04-27T00:00:05Z","elapsed_seconds":4,"recovery_hint":null}\n\n',
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/search',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ results: [], next_cursor: null }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/learn',
+    (route) =>
+      route.fulfill({
+        status: 202,
+        contentType: 'application/json',
+        body: JSON.stringify({ task_id: 'mock-task-001' }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/signals/mark-wrong',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ inserted: true }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/signals/helpfulness',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ inserted: true }),
+      }),
   );
 }

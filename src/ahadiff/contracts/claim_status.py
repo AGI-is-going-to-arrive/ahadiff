@@ -65,6 +65,8 @@ class ReviewCard(BaseModel):
     hunk_hash: str
     symbol: str | None = None
     change_kind: ChangeKind | None = None
+    question: str | None = None
+    answer: str | None = None
 
     @field_validator("fsrs_state")
     @classmethod

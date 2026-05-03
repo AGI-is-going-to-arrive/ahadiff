@@ -816,6 +816,37 @@ def test_misconceptions_route_returns_404_when_artifact_is_missing(tmp_path: Pat
     assert response.json()["error"] == "artifact_not_found"
 
 
+def test_score_route_returns_envelope_when_artifact_exists(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=False)
+    (run_path / "score.json").write_text('{"overall":88}', encoding="utf-8")
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    response = client.get("/api/run/run-1/score")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["artifact_type"] == "score"
+    assert body["run_id"] == "run-1"
+    assert '"overall":88' in body["content"]
+
+
+def test_score_route_returns_400_when_artifact_is_missing(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=False)
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    response = client.get("/api/run/run-1/score")
+
+    assert response.status_code == 400
+
+
 def test_artifact_envelope_uses_none_content_lang_when_metadata_field_missing(
     tmp_path: Path,
 ) -> None:
@@ -2248,6 +2279,41 @@ def test_review_queue_get_is_public_and_rate_requires_token(tmp_path: Path) -> N
     assert accepted.json()["inserted"] is True
     assert accepted.json()["review"]["rating"] == 3
     assert duplicate.json() == {"inserted": False}
+
+
+def test_public_review_queue_does_not_migrate_legacy_db(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    state_dir.mkdir(parents=True)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("CREATE TABLE cards (id TEXT PRIMARY KEY)")
+        conn.execute("PRAGMA user_version=7")
+
+    client = _client(state_dir)
+    response = client.get("/api/review/queue")
+
+    assert response.status_code == 200
+    assert response.json() == {"cards": []}
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 7
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(cards)").fetchall()}
+    assert "question" not in columns
+    assert "answer" not in columns
+
+
+def test_review_queue_reports_current_schema_corruption(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    state_dir.mkdir(parents=True)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("CREATE TABLE result_events (event_id TEXT PRIMARY KEY)")
+        conn.execute("PRAGMA user_version=8")
+
+    client = _client(state_dir)
+    response = client.get("/api/review/queue")
+
+    assert response.status_code == 500
+    assert response.json()["error"] == "review database is unavailable"
 
 
 def test_review_queue_state_updates_card_without_review_log(tmp_path: Path) -> None:

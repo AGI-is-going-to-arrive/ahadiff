@@ -5,7 +5,9 @@ import os
 import re
 import stat
 import sys
+import tempfile
 import unicodedata
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -249,6 +251,32 @@ def ensure_state_parent_dir(path: Path) -> Path:
     return parent
 
 
+def atomic_write_state_text(path: Path, text: str) -> None:
+    ensure_state_parent_dir(path)
+    validate_state_path_no_symlinks(path, allow_missing_leaf=True)
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as tmp_file:
+            tmp_path = Path(tmp_file.name)
+            validate_state_path_no_symlinks(tmp_path, allow_missing_leaf=True)
+            tmp_file.write(text)
+        validate_state_path_no_symlinks(path, allow_missing_leaf=True)
+        tmp_path.replace(path)
+        validate_state_path_no_symlinks(path, allow_missing_leaf=False)
+    except Exception:
+        if tmp_path is not None:
+            with suppress(OSError):
+                tmp_path.unlink(missing_ok=True)
+        raise
+
+
 def _has_windows_reparse_point(path_stat: object) -> bool:
     return bool(getattr(path_stat, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT)
 
@@ -304,6 +332,7 @@ def lock_file_path(repo_root: Path | None = None) -> Path:
 
 __all__ = [
     "PathWarning",
+    "atomic_write_state_text",
     "audit_log_path",
     "ensure_state_parent_dir",
     "assert_local_repo_path",

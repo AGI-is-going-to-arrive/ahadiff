@@ -58,7 +58,9 @@ describe('review store', () => {
 
     expect(useReviewStore.getState().currentIndex).toBe(0);
     expect(useReviewStore.getState().rating).toBe(false);
-    expect(useReviewStore.getState().error).toBe('backend rejected card');
+    const storeError = useReviewStore.getState().error;
+    expect(storeError).toBeInstanceOf(Error);
+    expect((storeError as Error).message).toBe('backend rejected card');
   });
 
   it('loads the review queue through the API contract', async () => {

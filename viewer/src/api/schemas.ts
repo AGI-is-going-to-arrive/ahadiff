@@ -73,15 +73,12 @@ export const authTokenResponseSchema = z
 export const runSummarySchema = z.object({
   run_id: z.string().min(1),
   source_ref: z.string(),
-  /** API may emit unknown source_kind for forward compat. */
-  source_kind: z.string(),
-  content_lang: z.string(),
+  source_kind: z.string().min(1),
+  content_lang: z.string().min(1),
   capability_level: z.union([z.literal(1), z.literal(2), z.literal(3)]),
-  /** API may emit unknown verdict for forward compat. */
-  verdict: z.string(),
+  verdict: z.string().min(1),
   overall: z.number().finite(),
-  /** API may emit unknown status for forward compat. */
-  status: z.string(),
+  status: z.string().min(1),
   weakest_dim: z.string(),
   created_at: z.string(),
   /**
@@ -120,8 +117,60 @@ export const runArtifactEnvelopeSchema = z.object({
   run_id: z.string().min(1),
   artifact_type: z.string().min(1),
   content: z.string(),
-  content_lang: z.string().nullable().optional(),
+  content_lang: z.string().min(1).nullable().optional(),
 });
+
+/* ─────────────── 3b. ScoreReport payload inside RunArtifactEnvelope.content ─────────────── */
+
+export const scoreDimensionSchema = z
+  .object({
+    score: z.number().finite().nonnegative(),
+    max_score: z.number().finite().positive(),
+    reason: z.string(),
+  })
+  .strict()
+  .refine((dimension) => dimension.score <= dimension.max_score, {
+    message: 'score must be <= max_score',
+    path: ['score'],
+  });
+
+export const scoreHardGateSchema = z
+  .object({
+    passed: z.boolean(),
+    detail: z.string(),
+    score: z.number().finite().nonnegative().optional(),
+    threshold: z.number().finite().nonnegative().optional(),
+  })
+  .strict();
+
+export const scorePayloadSchema = z
+  .object({
+    run_id: z.string().min(1),
+    source_ref: z.string(),
+    source_kind: z.string().min(1),
+    capability_level: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+    degraded_flags: z
+      .object({
+        diff_clipped: z.boolean().optional(),
+        binary_only: z.boolean().optional(),
+        file_count_exceeded: z.boolean().optional(),
+        token_exceeded: z.boolean().optional(),
+      })
+      .strict(),
+    overall: z.number().finite().min(0).max(100),
+    verdict: z.string().min(1),
+    weakest_dim: z.string().min(1),
+    eval_bundle_version: z.string().min(1),
+    rubric_version: z.string().min(1),
+    dimensions: z
+      .record(z.string().min(1), scoreDimensionSchema)
+      .refine((dimensions) => Object.keys(dimensions).length > 0, {
+        message: 'dimensions must not be empty',
+      }),
+    hard_gates: z.record(z.string().min(1), scoreHardGateSchema),
+    notes: z.array(z.string()),
+  })
+  .strict();
 
 /* ─────────────── 4. RatchetHistory ─────────────── */
 
@@ -130,8 +179,8 @@ export const ratchetHistoryEntrySchema = z.object({
   source_ref: z.string(),
   eval_bundle_version: z.string(),
   overall: z.number().finite(),
-  verdict: z.string(),
-  status: z.string(),
+  verdict: z.string().min(1),
+  status: z.string().min(1),
   timestamp: z.string(),
   weakest_dim: z.string(),
   note_json: z.string().nullable().default(null),
@@ -183,6 +232,8 @@ export const dueReviewCardSchema = z.object({
   display_path: z.string(),
   source_ref: z.string().nullable().optional(),
   symbol: z.string().nullable().optional(),
+  question: z.string().nullable().optional(),
+  answer: z.string().nullable().optional(),
 });
 
 export const reviewQueueResponseSchema = z.object({
@@ -199,6 +250,39 @@ export const reviewQueueStateResponseSchema = z
     card_id: z.string().min(1),
     state: z.enum(['archived', 'suspended']),
     updated: z.boolean(),
+  })
+  .strict();
+
+export const weakConceptItemSchema = z
+  .object({
+    card_id: z.string().min(1),
+    concept: z.string(),
+    stability: z.number().finite(),
+    difficulty: z.number().finite(),
+    scaffolding_level: z.string(),
+    display_path: z.string(),
+  })
+  .strict();
+
+export const weakConceptsResponseSchema = z
+  .object({
+    concepts: z.array(weakConceptItemSchema),
+    new_concepts: z.array(weakConceptItemSchema).default([]),
+  })
+  .strict();
+
+export const reviewMasteryItemSchema = z
+  .object({
+    concept: z.string(),
+    review_count: z.number().int().nonnegative(),
+    avg_rating: z.number().finite().nullable(),
+    last_review: z.string().nullable(),
+  })
+  .strict();
+
+export const reviewMasteryResponseSchema = z
+  .object({
+    mastery: z.array(reviewMasteryItemSchema),
   })
   .strict();
 
@@ -238,18 +322,22 @@ export const configUpdateResponseSchema = z.object({
   scope: z.enum(['session']),
 });
 
-export const doctorCheckSchema = z.object({
-  name: z.string().min(1),
-  status: z.enum(['pass', 'warn', 'fail']),
-  message: z.string(),
-  category: z.string().optional(),
-  details: z.record(z.string(), z.unknown()).optional(),
-});
+export const doctorCheckSchema = z
+  .object({
+    name: z.string().min(1),
+    status: z.enum(['pass', 'warn', 'fail']),
+    message: z.string(),
+    category: z.string(),
+    details: z.record(z.string(), z.unknown()).optional().default({}),
+  })
+  .strict();
 
-export const doctorResponseSchema = z.object({
-  summary_status: z.enum(['pass', 'warn', 'fail']).optional(),
-  checks: z.array(doctorCheckSchema),
-});
+export const doctorResponseSchema = z
+  .object({
+    summary_status: z.enum(['pass', 'warn', 'fail']),
+    checks: z.array(doctorCheckSchema),
+  })
+  .strict();
 
 export const installTargetSchema = z.object({
   name: z.string().min(1),
@@ -295,7 +383,7 @@ export const usageModelSummarySchema = z.object({
   call_count: z.number().int().nonnegative(),
   total_input_tokens: z.number().int().nonnegative(),
   total_output_tokens: z.number().int().nonnegative(),
-  total_cost_usd: z.number().finite(),
+  total_cost_usd: z.number().finite().nonnegative(),
 });
 
 export const usageResponseSchema = z.object({
@@ -303,7 +391,7 @@ export const usageResponseSchema = z.object({
   total_calls: z.number().int().nonnegative(),
   total_input_tokens: z.number().int().nonnegative(),
   total_output_tokens: z.number().int().nonnegative(),
-  total_cost_usd: z.number().finite(),
+  total_cost_usd: z.number().finite().nonnegative(),
   cache_hits: z.number().int().nonnegative(),
   cache_misses: z.number().int().nonnegative(),
 });
@@ -551,6 +639,71 @@ export const statsResponseSchema = z
     avg_overall_score: z.number().finite().nullable(),
     weakest_dimensions: z.array(z.string()),
     last_run_at: z.string().nullable(),
+  })
+  .strict();
+
+export const serveStatusResponseSchema = z
+  .object({
+    version: z.string(),
+    uptime_seconds: z.number().finite().nonnegative(),
+    review_db_exists: z.boolean(),
+    runs_count: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const helpfulnessAggregateSchema = z
+  .object({
+    target_kind: z.string(),
+    target_id: z.string(),
+    signal_count: z.number().int().nonnegative(),
+    positive_count: z.number().int().nonnegative(),
+    negative_count: z.number().int().nonnegative(),
+    helpfulness_score: z.number().finite(),
+  })
+  .strict();
+
+export const transferConceptSchema = z
+  .object({
+    concept: z.string(),
+    total_reviews: z.number().int().nonnegative(),
+    avg_rating: z.number().finite(),
+    improving: z.boolean(),
+  })
+  .strict();
+
+export const learningEffectivenessResponseSchema = z
+  .object({
+    total_concepts_reviewed: z.number().int().nonnegative(),
+    concepts_improving: z.number().int().nonnegative(),
+    concepts_stable: z.number().int().nonnegative(),
+    concepts_declining: z.number().int().nonnegative(),
+    transfer_rate: z.number().finite(),
+    helpfulness: z.array(helpfulnessAggregateSchema),
+    transfer_metrics: z.array(transferConceptSchema),
+  })
+  .strict();
+
+export const specAlignmentResponseSchema = z
+  .object({
+    alignment_score: z.number().finite().nullable(),
+    total_evaluated: z.number().int().nonnegative(),
+    recent_trend: z.enum(['improving', 'stable', 'declining']).nullable(),
+  })
+  .strict();
+
+export const watchStatusResponseSchema = z
+  .object({
+    enabled: z.boolean(),
+    running: z.boolean(),
+    last_trigger_time: z.number().finite().nullable(),
+    pending_changes: z.number().int().nonnegative(),
+    restartable: z.boolean(),
+    stop_timed_out: z.boolean(),
+    consecutive_failures: z.number().int().nonnegative(),
+    total_triggers: z.number().int().nonnegative(),
+    total_failures: z.number().int().nonnegative(),
+    last_error: z.string().nullable(),
+    failure_threshold_hit: z.boolean(),
   })
   .strict();
 

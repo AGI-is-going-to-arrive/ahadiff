@@ -1,16 +1,17 @@
 import { create } from 'zustand';
 import { getReviewQueue, submitReviewRate } from '../api/review';
-import type { DueReviewCard, ReviewAnswer } from '../api/types';
+import type { DueReviewCard, ReviewAnswer, ReviewRateResponse } from '../api/types';
 
 interface ReviewState {
   cards: DueReviewCard[];
   currentIndex: number;
   loading: boolean;
   rating: boolean;
-  error: string | null;
+  /** Raw error object preserved for classification (status code, type, etc.). */
+  error: unknown;
 
   loadQueue: (opts?: { signal?: AbortSignal }) => Promise<void>;
-  rate: (answer: ReviewAnswer, opts?: { signal?: AbortSignal }) => Promise<void>;
+  rate: (answer: ReviewAnswer, opts?: { signal?: AbortSignal }) => Promise<ReviewRateResponse | null>;
   currentCard: () => DueReviewCard | null;
   remaining: () => number;
   reset: () => void;
@@ -33,18 +34,18 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
         set({ loading: false });
         return;
       }
-      set({ error: e instanceof Error ? e.message : String(e), loading: false });
+      set({ error: e, loading: false });
     }
   },
 
   rate: async (answer, opts) => {
     const { cards, currentIndex, rating } = get();
-    if (rating) return;
+    if (rating) return null;
     const card = cards[currentIndex];
-    if (!card) return;
+    if (!card) return null;
     set({ rating: true, error: null });
     try {
-      await submitReviewRate(
+      const res = await submitReviewRate(
         {
           card_id: card.card_id,
           answer,
@@ -53,12 +54,14 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
         opts ? { signal: opts.signal } : undefined,
       );
       set({ currentIndex: currentIndex + 1, rating: false });
+      return res;
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') {
         set({ rating: false });
-        return;
+        return null;
       }
-      set({ error: e instanceof Error ? e.message : String(e), rating: false });
+      set({ error: e, rating: false });
+      return null;
     }
   },
 

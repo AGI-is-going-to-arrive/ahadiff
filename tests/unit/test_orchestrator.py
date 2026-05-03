@@ -17,10 +17,13 @@ from ahadiff.core.orchestrator import (
     LearnRequest,
     LearnResult,
     PipelineErrorBudget,
+    _persist_graphify_context,  # pyright: ignore[reportPrivateUsage]
+    _resolve_provider_from_config,  # pyright: ignore[reportPrivateUsage]
     is_recoverable_error,
     run_learn_pipeline,
     run_with_retry,
 )
+from ahadiff.git.capture import GraphifyStatus
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
@@ -77,6 +80,84 @@ def test_learn_result_warnings_isolation() -> None:
     r2 = LearnResult(run_id="b", status="ok")
     r1.warnings.append("w1")
     assert r2.warnings == []
+
+
+def test_resolve_provider_allows_duplicate_implicit_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Serve cannot pass --provider, so duplicate aliases should not block learn."""
+    snapshot = _FakeConfigSnapshot()
+    snapshot.values["providers"] = {
+        "local8318": {
+            "provider_class": "openai",
+            "model_name": "gpt-5.4-mini",
+            "base_url": "http://127.0.0.1:8318",
+            "api_key_env": "AHADIFF_PROVIDER_API_KEY",
+            "probed_max_context": 1_000_000,
+            "supports_temperature": True,
+            "probe_timestamp": "2026-04-22T19:31:25Z",
+        },
+        "smoke-test": {
+            "provider_class": "openai",
+            "model_name": "gpt-5.4-mini",
+            "base_url": "http://127.0.0.1:8318/v1/chat/completions",
+            "api_key_env": "AHADIFF_PROVIDER_API_KEY",
+            "probed_max_context": 1_000_000,
+            "supports_temperature": True,
+            "probe_timestamp": "2026-04-22T21:37:44Z",
+        },
+    }
+    monkeypatch.setenv("AHADIFF_PROVIDER_API_KEY", "test-key")
+
+    provider_config, api_key, transport_target, explicit = _resolve_provider_from_config(
+        snapshot=snapshot,
+        operation_label="lesson generation",
+        provider_name=None,
+        provider_class="openai",
+        base_url=None,
+        model=None,
+        api_key_env="AHADIFF_PROVIDER_API_KEY",
+        privacy_mode="strict_local",
+        local_hosts=("127.0.0.1",),
+        strict_local_hosts=("127.0.0.1",),
+    )
+
+    assert provider_config.base_url == "http://127.0.0.1:8318"
+    assert api_key == "test-key"
+    assert transport_target == "local"
+    assert explicit is False
+
+
+def test_resolve_provider_keeps_distinct_implicit_aliases_ambiguous() -> None:
+    snapshot = _FakeConfigSnapshot()
+    snapshot.values["providers"] = {
+        "first": {
+            "provider_class": "openai",
+            "model_name": "gpt-5.4-mini",
+            "base_url": "http://127.0.0.1:8318",
+            "api_key_env": "AHADIFF_PROVIDER_API_KEY",
+        },
+        "second": {
+            "provider_class": "openai",
+            "model_name": "gpt-5.4-mini",
+            "base_url": "http://127.0.0.1:9321",
+            "api_key_env": "AHADIFF_PROVIDER_API_KEY",
+        },
+    }
+
+    with pytest.raises(AhaDiffError, match="requires --provider when multiple providers"):
+        _resolve_provider_from_config(
+            snapshot=snapshot,
+            operation_label="lesson generation",
+            provider_name=None,
+            provider_class="openai",
+            base_url=None,
+            model=None,
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+            privacy_mode="strict_local",
+            local_hosts=("127.0.0.1",),
+            strict_local_hosts=("127.0.0.1",),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -169,6 +250,43 @@ class _FakeProviderConfig:
     base_url: str = "http://localhost:11434"
     api_key_env: str = "FAKE_KEY"
     provider_class: str = "ollama"
+
+
+def _fake_graphify_capture(tmp_path: Path) -> _FakeCapture:
+    capture = _FakeCapture(run_id="run-graphify", state_dir=tmp_path / ".ahadiff")
+    capture.graphify_status = GraphifyStatus(  # type: ignore[attr-defined]
+        source_path=tmp_path / "graphify-out" / "graph.json",
+        imported_path=tmp_path / ".ahadiff" / "graphify" / "graph.json",
+        enabled=True,
+        source_exists=True,
+        imported_exists=True,
+        has_graph=True,
+        freshness="fresh",
+        provenance={
+            "edge_count": "0",
+            "graph_sha256": "abc123",
+            "import_time": "2026-05-04T00:00:00Z",
+            "node_count": "1",
+            "parser_version": "test",
+            "source_path": "graphify-out/graph.json",
+        },
+    )
+    return capture
+
+
+def test_persist_graphify_context_writes_with_random_atomic_temp(tmp_path: Path) -> None:
+    run_path = tmp_path / ".ahadiff" / "runs" / "run-graphify"
+    run_path.mkdir(parents=True)
+    outside = tmp_path / "outside.txt"
+    deterministic_tmp = run_path / "graphify_context.tmp"
+    deterministic_tmp.symlink_to(outside)
+
+    _persist_graphify_context(_fake_graphify_capture(tmp_path), run_path)
+
+    assert not outside.exists()
+    assert deterministic_tmp.is_symlink()
+    payload = (run_path / "graphify_context.json").read_text(encoding="utf-8")
+    assert '"graph_sha256": "abc123"' in payload
 
 
 # ---------------------------------------------------------------------------
@@ -1008,6 +1126,50 @@ def test_append_concepts_contract_error_after_publish_keeps_published_run(
     assert finalized_path.exists()
     assert score_path.exists()
     assert run_path.exists()
+
+
+def test_review_card_import_failure_is_warning_after_publish(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    _patch_learnability(monkeypatch, score=0.7)
+
+    run_path = fake_repo / ".ahadiff" / "runs" / capture.run_id
+    finalized_path = run_path / "finalized.json"
+    score_path = run_path / "score.json"
+
+    def _persist(current_run_path: Path) -> None:
+        current_run_path.mkdir(parents=True, exist_ok=True)
+        finalized_path.write_text("{}\n", encoding="utf-8")
+        score_path.write_text("{}\n", encoding="utf-8")
+
+    def _fail_import_cards(*args: object, **kwargs: object) -> int:
+        del args, kwargs
+        raise RuntimeError("review db locked")
+
+    def _append_concepts(**kwargs: object) -> Path:
+        del kwargs
+        output_path = run_path / "concepts_local.jsonl"
+        output_path.write_text("{}\n", encoding="utf-8")
+        return output_path
+
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        on_persist=_persist,
+    )
+    monkeypatch.setattr("ahadiff.review.database.import_cards_from_jsonl", _fail_import_cards)
+    monkeypatch.setattr("ahadiff.wiki.concepts.append_concepts", _append_concepts)
+
+    result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
+
+    assert result.status == "keep"
+    assert result.warnings == ["review card import failed: review db locked"]
+    assert finalized_path.exists()
+    assert score_path.exists()
 
 
 def test_cleanup_cancelled_run_keeps_artifacts_when_result_rollback_fails(

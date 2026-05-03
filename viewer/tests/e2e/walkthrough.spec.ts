@@ -570,7 +570,23 @@ test.describe('walkthrough: full-app functional test', () => {
       peeked_this_session: true,
     });
 
-    // Since there is only 1 quiz item, the summary should appear
+    // Advance to second quiz item
+    const nextBtn = page.locator('.quiz-page__nav .srs-card__btn--primary');
+    await expect(nextBtn).toBeVisible();
+    await nextBtn.click();
+
+    // Second quiz item (Socratic — no review_card_id)
+    await expect(page.locator('.srs-card__question')).toContainText('return value');
+    const badge = page.locator('.quiz-page__mode-badge');
+    await expect(badge).toContainText(/Socratic/i);
+
+    const answerInput2 = page.locator('.srs-card__answer-input');
+    await expect(answerInput2).toBeVisible();
+    await answerInput2.fill('To brand the output');
+    await page.locator('.srs-card__btn--primary').click();
+    await expect(page.locator('.srs-card__result')).toBeVisible();
+
+    // After both quiz items answered, summary appears
     await expect(page.locator('.quiz-page__progress--summary')).toBeVisible();
 
     await page.screenshot({ path: `${SCREENSHOT_DIR}/04-quiz.png`, fullPage: true });
@@ -663,8 +679,8 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(page.locator('.flashcard')).toBeVisible();
     await expect(page.locator('.flashcard__concept')).toContainText('learn-from-diff');
 
-    // Progress bar
-    await expect(page.locator('.mastery-bar')).toBeVisible();
+    // Progress bar (scoped to sidebar to avoid matching mastery summary bars)
+    await expect(page.getByTestId('review-progress-bar')).toBeVisible();
 
     // Flip button
     const flipBtn = page.locator('.flashcard__flip-btn');
@@ -845,6 +861,141 @@ test.describe('walkthrough: full-app functional test', () => {
     await copyBtns.first().click();
 
     await page.screenshot({ path: `${SCREENSHOT_DIR}/10-skills.png`, fullPage: true });
+  });
+
+  test('Skills — filter chips change visible card count', async ({ page }) => {
+    await page.goto('/#/skills');
+
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+
+    const chips = page.locator('.skills__filter-chip');
+    await expect(chips).not.toHaveCount(0);
+
+    const allCards = page.locator('.agent-card');
+    const allCount = await allCards.count();
+    expect(allCount).toBe(3);
+
+    const installedChip = chips.filter({ hasText: /installed/i });
+    await installedChip.click();
+    await expect(page.locator('.skills__filter-chip--active')).toBeVisible();
+
+    const filteredCount = await page.locator('.agent-card').count();
+    expect(filteredCount).toBeLessThan(allCount);
+  });
+
+  test('Review — flashcard renders question on front and answer on back', async ({ page }) => {
+    await page.goto('/#/review');
+
+    // Wait for flashcard to load
+    await expect(page.locator('.flashcard')).toBeVisible();
+
+    // Verify the question text appears on the flashcard front
+    const front = page.locator('.flashcard__front');
+    await expect(front).toBeVisible();
+    await expect(front).toContainText('What does the useEffect cleanup function do in React?');
+
+    // Verify the AI source badge is visible
+    const sourceBadge = page.locator('.flashcard__source-badge');
+    await expect(sourceBadge).toBeVisible();
+    await expect(page.getByRole('heading', { name: /New Concepts|新概念/i })).toBeVisible();
+    await expect(page.getByText('idempotent retry')).toBeVisible();
+    await expect(page.getByText(/New|新接触/i)).toBeVisible();
+
+    // Verify the answer is hidden before flipping
+    const back = page.locator('.flashcard__back');
+    await expect(back).toBeHidden();
+
+    // Click the flip/show-answer button
+    const flipBtn = page.locator('.flashcard__flip-btn');
+    await expect(flipBtn).toBeVisible();
+    await flipBtn.click();
+
+    // Verify the answer text appears on the flashcard back
+    await expect(back).toBeVisible();
+    const answerEl = page.locator('.flashcard__answer');
+    await expect(answerEl).toBeVisible();
+    await expect(answerEl).toContainText(
+      'It runs when the component unmounts or before the effect re-runs, used for cleanup like cancelling subscriptions.',
+    );
+  });
+
+  test('Review — evidence link visible after flip with correct href', async ({ page }) => {
+    await page.goto('/#/review');
+
+    await expect(page.locator('.flashcard')).toBeVisible();
+
+    // Evidence link should not be visible before flipping (back is hidden)
+    const evidenceLink = page.getByTestId('flashcard-evidence-link');
+    await expect(evidenceLink).toBeHidden();
+
+    // Flip the card
+    const flipBtn = page.locator('.flashcard__flip-btn');
+    await expect(flipBtn).toBeVisible();
+    await flipBtn.click();
+
+    // After flip: evidence block is visible
+    await expect(evidenceLink).toBeVisible();
+
+    // Verify file path is shown
+    await expect(evidenceLink).toContainText('demo.py');
+
+    // Verify the href points to the lesson page for this run
+    const href = await evidenceLink.getAttribute('href');
+    expect(href).toMatch(/^\/#\/run\/test-run\/lesson$/);
+  });
+
+  test('Review — summary section toggles collapsed state', async ({ page }) => {
+    await page.goto('/#/review');
+
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+
+    const summary = page.locator('.review__summary');
+    await expect(summary).toBeVisible();
+
+    const toggle = page.locator('.review__summary-toggle');
+    await expect(toggle).toBeVisible();
+
+    const body = page.locator('.review__summary-body');
+    const wasVisible = await body.isVisible();
+
+    await toggle.click();
+    if (wasVisible) {
+      await expect(body).not.toBeVisible();
+    } else {
+      await expect(body).toBeVisible();
+    }
+  });
+
+  test('Quiz — mode badge shows SRS or Socratic', async ({ page }) => {
+    await page.goto('/#/run/test-run/quiz');
+
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+
+    const badge = page.locator('.quiz-page__mode-badge').first();
+    await expect(badge).toBeVisible();
+    await expect(badge).toContainText(/SRS|Socratic/i);
+  });
+
+  test('Ratchet — benchmark tab renders rubric grid', async ({ page }) => {
+    const scoreRequests: string[] = [];
+    page.on('request', (request) => {
+      const pathname = new URL(request.url()).pathname;
+      if (/^\/api\/run\/[^/]+\/score$/.test(pathname)) scoreRequests.push(pathname);
+    });
+    await page.goto('/#/ratchet');
+
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+
+    const benchmarkTab = page.locator('.ratchet-tabs__tab', { hasText: /Benchmark/i });
+    await expect(benchmarkTab).toBeVisible();
+    await benchmarkTab.click();
+
+    await expect(page.locator('.rubric-grid')).toBeVisible();
+    const rows = page.locator('.rubric-grid__row');
+    await expect(rows).not.toHaveCount(0);
+    await expect(rows.first().locator('.rubric-grid__label')).toBeVisible();
+    await expect(rows.first().locator('.rubric-grid__fraction')).toBeVisible();
+    expect(scoreRequests).toContain('/api/run/run-h1/score');
   });
 
   /* ---------------------------------------------------------------- */
@@ -1095,6 +1246,68 @@ test.describe('walkthrough: full-app functional test', () => {
     await page.keyboard.press('4');
 
     await expect(page.locator('.review__complete')).toBeVisible();
+  });
+
+  test('Review — SRS rating buttons have aria-describedby linking to interval', async ({ page }) => {
+    await page.goto('/#/review');
+    await expect(page.locator('.flashcard')).toBeVisible();
+
+    // Flip to reveal rating buttons
+    await page.locator('.flashcard__flip-btn').click();
+    await expect(page.locator('.srs-buttons')).toBeVisible();
+
+    // Verify each button has aria-describedby pointing to its interval span
+    const srsBtns = page.locator('.srs-btn');
+    await expect(srsBtns).toHaveCount(4);
+
+    // Again button
+    await expect(srsBtns.nth(0)).toHaveAttribute('aria-describedby', 'srs-interval-wrong');
+    await expect(page.locator('#srs-interval-wrong')).toContainText(/10/);
+
+    // Hard button
+    await expect(srsBtns.nth(1)).toHaveAttribute('aria-describedby', 'srs-interval-hard');
+    await expect(page.locator('#srs-interval-hard')).toContainText(/1/);
+
+    // Good button
+    await expect(srsBtns.nth(2)).toHaveAttribute('aria-describedby', 'srs-interval-good');
+    await expect(page.locator('#srs-interval-good')).toContainText(/4/);
+
+    // Easy button
+    await expect(srsBtns.nth(3)).toHaveAttribute('aria-describedby', 'srs-interval-easy');
+    await expect(page.locator('#srs-interval-easy')).toContainText(/7/);
+
+    // Verify aria-label includes full description
+    await expect(srsBtns.nth(0)).toHaveAttribute('aria-label', /Again/);
+    await expect(srsBtns.nth(3)).toHaveAttribute('aria-label', /Easy/);
+  });
+
+  test('Review — InfoHint tooltip keyboard: focus shows, Escape hides, aria-expanded toggles', async ({ page }) => {
+    await page.goto('/#/review');
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+
+    // The Review page has InfoHint components (FSRS chip, mastery bars).
+    // Find an InfoHint trigger button.
+    const infoTrigger = page.locator('.info-hint__trigger').first();
+    await expect(infoTrigger).toBeVisible();
+
+    // Verify tooltip is not visible initially
+    await expect(page.locator('.info-hint__bubble')).not.toBeVisible();
+    await expect(infoTrigger).toHaveAttribute('aria-expanded', 'false');
+
+    // Tab to the InfoHint trigger to give it focus
+    await infoTrigger.focus();
+
+    // Tooltip should appear on focus (role="tooltip")
+    const tooltip = page.locator('[role="tooltip"]').first();
+    await expect(tooltip).toBeVisible();
+    await expect(infoTrigger).toHaveAttribute('aria-expanded', 'true');
+
+    // Press Escape to dismiss the tooltip
+    await page.keyboard.press('Escape');
+
+    // Tooltip should disappear
+    await expect(tooltip).not.toBeVisible();
+    await expect(infoTrigger).toHaveAttribute('aria-expanded', 'false');
   });
 
   /* ---------------------------------------------------------------- */

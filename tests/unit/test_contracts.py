@@ -32,6 +32,7 @@ class TestContractsImport:
             AuthTokenResponse,
             ClaimRecord,
             ClaimStatus,
+            ConfigResponse,
             InputError,
             LearnabilityGate,
             OrchestratorCommand,
@@ -42,13 +43,16 @@ class TestContractsImport:
             RatchetHistoryEntry,
             ResultEvent,
             ReviewCard,
+            ReviewMasteryResponse,
             RunConfig,
             RunDetail,
             RunSource,
             RunSummary,
             ServeConfig,
             SetLocaleRequest,
+            SpecAlignmentResponse,
             UsageEvent,
+            WatchStatusResponse,
         )
 
         assert ClaimStatus
@@ -71,6 +75,10 @@ class TestContractsImport:
         assert RunDetail
         assert RatchetHistoryEntry
         assert SetLocaleRequest
+        assert ConfigResponse
+        assert ReviewMasteryResponse
+        assert SpecAlignmentResponse
+        assert WatchStatusResponse
         assert InputError
 
 
@@ -726,6 +734,73 @@ class TestHelpfulnessRequestContract:
                 idempotency_key="k9",
                 target_kind="section",
                 target_id=" : ",
+            )
+
+
+class TestServeResponseContracts:
+    def test_config_response_rejects_unknown_key_status(self) -> None:
+        from ahadiff.contracts import ConfigResponse
+
+        with pytest.raises(ValidationError):
+            ConfigResponse.model_validate(
+                {
+                    "lang": None,
+                    "privacy_mode": None,
+                    "generate_model": None,
+                    "judge_model": None,
+                    "serve_port": None,
+                    "key_status": {"llm": "unknown"},
+                }
+            )
+
+    def test_review_mastery_response_rejects_negative_counts(self) -> None:
+        from ahadiff.contracts import ReviewMasteryResponse
+
+        with pytest.raises(ValidationError):
+            ReviewMasteryResponse.model_validate(
+                {
+                    "mastery": [
+                        {
+                            "concept": "evidence",
+                            "review_count": -1,
+                            "avg_rating": 3.0,
+                            "last_review": None,
+                        }
+                    ]
+                }
+            )
+
+    def test_spec_alignment_response_rejects_invalid_trend(self) -> None:
+        from ahadiff.contracts import SpecAlignmentResponse
+
+        with pytest.raises(ValidationError):
+            SpecAlignmentResponse.model_validate(
+                {
+                    "alignment_score": 80.0,
+                    "total_evaluated": 3,
+                    "recent_trend": "sideways",
+                }
+            )
+
+    def test_watch_status_response_rejects_private_extra_fields(self) -> None:
+        from ahadiff.contracts import WatchStatusResponse
+
+        with pytest.raises(ValidationError):
+            WatchStatusResponse.model_validate(
+                {
+                    "enabled": False,
+                    "running": False,
+                    "last_trigger_time": None,
+                    "pending_changes": 0,
+                    "restartable": True,
+                    "stop_timed_out": False,
+                    "consecutive_failures": 0,
+                    "total_triggers": 0,
+                    "total_failures": 0,
+                    "last_error": None,
+                    "failure_threshold_hit": False,
+                    "watch_path": "/tmp/private",
+                }
             )
 
 

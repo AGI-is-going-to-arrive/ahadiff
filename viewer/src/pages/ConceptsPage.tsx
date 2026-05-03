@@ -13,16 +13,18 @@ export default function ConceptsPage() {
   const [graphData, setGraphData] = useState<ConceptGraphResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorFlag, setErrorFlag] = useState<ErrorFlag>(null);
+  const [showAll, setShowAll] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (all = false) => {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     setLoading(true);
     setErrorFlag(null);
     try {
-      const data = await fetchGraphConcepts({}, { signal: controller.signal });
+      const params = all ? { limit: 2000 } : {};
+      const data = await fetchGraphConcepts(params, { signal: controller.signal });
       if (controller.signal.aborted) return;
       setGraphData(data);
     } catch (err) {
@@ -36,9 +38,13 @@ export default function ConceptsPage() {
   }, []);
 
   useEffect(() => {
-    void fetchData();
+    void fetchData(showAll);
     return () => abortRef.current?.abort();
-  }, [fetchData]);
+  }, [fetchData, showAll]);
+
+  const handleShowAll = useCallback(() => {
+    setShowAll(true);
+  }, []);
 
   const errorMessage =
     errorFlag === null
@@ -60,7 +66,7 @@ export default function ConceptsPage() {
       {errorMessage && (
         <div role="alert" className="concepts-page__error">
           {errorMessage}
-          <button type="button" className="retry-btn" onClick={() => void fetchData()}>
+          <button type="button" className="retry-btn" onClick={() => void fetchData(showAll)}>
             {t('Error.retry')}
           </button>
         </div>
@@ -72,6 +78,7 @@ export default function ConceptsPage() {
           edges={graphData.edges}
           status={graphData.status}
           truncated={graphData.truncated}
+          onShowAll={graphData.truncated && !showAll ? handleShowAll : undefined}
         />
       )}
 

@@ -107,4 +107,48 @@
     border-color: CanvasText;
     background: Canvas;
   }
+
+  .dashboard__weak-chip {
+    border: 1px solid CanvasText !important;
+    background: Canvas !important;
+    color: CanvasText !important;
+    forced-color-adjust: none;
+  }
+
+  .quiz-page__mode-badge {
+    border: 1px solid CanvasText;
+  }
+
+  .quiz-page__card-wrap--srs .srs-card,
+  .quiz-page__card-wrap--socratic .srs-card {
+    border-left: 3px solid CanvasText;
+  }
+
+  .review__summary {
+    border: 1px solid CanvasText;
+  }
+
+  .review__summary-toggle {
+    border-bottom: 1px solid CanvasText;
+  }
+
+  /* Skills page: filter chips + selected card + preview panel */
+  .skills__filter-chip--active {
+    border: 2px solid Highlight;
+    background: Canvas;
+    color: Highlight;
+  }
+
+  .agent-card--selected {
+    border: 2px solid Highlight;
+  }
+
+  .skill-preview {
+    border: 1px solid CanvasText;
+  }
+
+  .judge-note-card {
+    border: 1px solid CanvasText;
+    background: Canvas;
+  }
 }

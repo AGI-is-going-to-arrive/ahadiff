@@ -223,6 +223,109 @@
   font-size: 13px;
 }
 
+/* ---- Benchmark rubric grid ---- */
+.rubric-grid {
+  display: grid;
+  grid-template-columns: 140px 1fr 44px;
+  gap: 6px 8px;
+  align-items: center;
+}
+
+.rubric-grid__row {
+  display: contents;
+}
+
+.rubric-grid__label {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--ink-2, #38362F);
+  white-space: nowrap;
+}
+
+.rubric-grid__label-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rubric-grid__fraction {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--muted, #6A6456);
+  text-align: right;
+}
+
+@media (max-width: 540px) {
+  .rubric-grid {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .rubric-grid__label {
+    font-weight: 600;
+  }
+  .rubric-grid__fraction {
+    text-align: left;
+    font-size: 11px;
+  }
+}
+
+/* ---- Judge notes ---- */
+.judge-notes {
+  display: grid;
+  gap: 12px;
+}
+
+.judge-note-card {
+  background: var(--elevated, #fff);
+  border: 1px solid var(--hair, #E6E3D8);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.judge-note-card__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink, #1C1B18);
+  margin: 0 0 8px;
+}
+
+.judge-note-card__meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.judge-note-card__dim {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2, #38362F);
+}
+
+.judge-note-card__score {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--muted, #6A6456);
+}
+
+.judge-note-card__reason {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-2, #38362F);
+  margin: 0;
+}
+
+.judge-note-card__list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--ink-2, #38362F);
+}
+
 @media (forced-colors: active) {
   .ratchet-banner,
   .ratchet-note-card,
@@ -270,6 +373,68 @@
 
   .ratchet-note-card {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Tab bar (V6 Ratchet Results/Rubric/Benchmark/Judge chips) ---- */
+
+.ratchet-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.ratchet-tabs__tab {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 14px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-full, 99px);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+
+.ratchet-tabs__tab:hover {
+  background: var(--subtle);
+  color: var(--ink);
+}
+
+.ratchet-tabs__tab--active {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+
+.ratchet-tabs__tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .ratchet-tabs__tab--active {
+    background: var(--accent);
+    color: var(--paper);
+    border-color: var(--accent);
+  }
+}
+
+@media (forced-colors: active) {
+  .ratchet-tabs__tab--active {
+    background: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ratchet-tabs__tab {
+    transition: none;
   }
 }
 

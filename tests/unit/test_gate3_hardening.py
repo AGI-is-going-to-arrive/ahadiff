@@ -387,82 +387,83 @@ def test_gate3_result_event_insert_attempts_must_be_positive(
         )
 
 
-def test_gate3_claim_extraction_rejects_bad_llm_claims() -> None:
+def test_gate3_claim_extraction_passes_bad_llm_claims_to_verifier() -> None:
     line_maps = _line_maps()
-    with pytest.raises(InputError, match="outside patch"):
-        parse_claim_candidates_text(
-            json.dumps(
-                {
-                    "claims": [
-                        _claim_payload(
-                            source_hunks=[{"file": "src/missing.py", "start": 1, "end": 1}]
-                        )
-                    ]
-                }
-            ),
-            default_run_id="run-1",
-            line_maps=line_maps,
-        )
-    with pytest.raises(InputError, match="line outside patch"):
-        parse_claim_candidates_text(
-            json.dumps(
-                {
-                    "claims": [
-                        _claim_payload(
-                            source_hunks=[{"file": "src/app.py", "start": 99, "end": 99}]
-                        )
-                    ]
-                }
-            ),
-            default_run_id="run-1",
-            line_maps=line_maps,
-        )
+    result = parse_claim_candidates_text(
+        json.dumps(
+            {
+                "claims": [
+                    _claim_payload(source_hunks=[{"file": "src/missing.py", "start": 1, "end": 1}])
+                ]
+            }
+        ),
+        default_run_id="run-1",
+    )
+    assert len(result) == 1
+    missing_file = verify_claim_candidate(result[0], line_maps=line_maps, symbols=())
+    assert missing_file.record.status == "rejected"
+    assert missing_file.record.reason_code == "file_not_in_patch"
+
+    result = parse_claim_candidates_text(
+        json.dumps(
+            {
+                "claims": [
+                    _claim_payload(source_hunks=[{"file": "src/app.py", "start": 99, "end": 99}])
+                ]
+            }
+        ),
+        default_run_id="run-1",
+    )
+    assert len(result) == 1
+    outside_hunk = verify_claim_candidate(result[0], line_maps=line_maps, symbols=())
+    assert outside_hunk.record.status == "rejected"
+    assert outside_hunk.record.reason_code == "line_outside_hunk"
+
     with pytest.raises(InputError, match="duplicate claim_id"):
         parse_claim_candidates_text(
             json.dumps({"claims": [_claim_payload(), _claim_payload(text="second")]}),
             default_run_id="run-1",
-            line_maps=line_maps,
         )
     with pytest.raises(InputError, match="claim text must not be empty"):
         parse_claim_candidates_text(
             json.dumps({"claims": [_claim_payload(text="   ")]}),
             default_run_id="run-1",
-            line_maps=line_maps,
         )
     with pytest.raises(InputError, match="claim content exceeds"):
         parse_claim_candidates_text(
             json.dumps({"claims": [_claim_payload(text="x" * (10 * 1024 + 1))]}),
             default_run_id="run-1",
-            line_maps=line_maps,
         )
 
 
-def test_gate3_claim_extraction_rejects_mode_only_file_without_hunks() -> None:
+def test_gate3_claim_extraction_passes_mode_only_file_to_verifier() -> None:
     mode_only_patch = """\
 diff --git a/script.sh b/script.sh
 old mode 100644
 new mode 100755
 """
     line_maps = build_line_map(parse_unified_diff(mode_only_patch))
-    with pytest.raises(InputError, match="without line evidence"):
-        parse_claim_candidates_text(
-            json.dumps(
-                {
-                    "claims": [
-                        {
-                            "claim_id": "claim-mode",
-                            "run_id": "run-1",
-                            "text": "makes script executable",
-                            "source_hunks": [
-                                {"file": "script.sh", "start": 1, "end": 1, "side": "new"}
-                            ],
-                        }
-                    ]
-                }
-            ),
-            default_run_id="run-1",
-            line_maps=line_maps,
-        )
+    result = parse_claim_candidates_text(
+        json.dumps(
+            {
+                "claims": [
+                    {
+                        "claim_id": "claim-mode",
+                        "run_id": "run-1",
+                        "text": "makes script executable",
+                        "source_hunks": [
+                            {"file": "script.sh", "start": 1, "end": 1, "side": "new"}
+                        ],
+                    }
+                ]
+            }
+        ),
+        default_run_id="run-1",
+    )
+    assert len(result) == 1
+    verified = verify_claim_candidate(result[0], line_maps=line_maps, symbols=())
+    assert verified.record.status == "rejected"
+    assert verified.record.reason_code == "line_outside_hunk"
 
 
 def test_gate3_claim_verifier_handles_deleted_binary_and_content_mismatch() -> None:

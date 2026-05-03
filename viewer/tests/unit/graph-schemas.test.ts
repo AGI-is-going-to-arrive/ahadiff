@@ -6,11 +6,20 @@ import {
   conceptGraphResponseSchema,
   freshnessProjectionSchema,
   graphStatusResponseSchema,
+  learningEffectivenessResponseSchema,
   ratchetHistoryEntrySchema,
   ratchetHistoryResponseSchema,
+  reviewMasteryResponseSchema,
+  runSummarySchema,
+  scorePayloadSchema,
+  serveStatusResponseSchema,
+  specAlignmentResponseSchema,
   statsResponseSchema,
   taskInfoResponseSchema,
   taskResultSummarySchema,
+  usageResponseSchema,
+  watchStatusResponseSchema,
+  weakConceptsResponseSchema,
 } from '../../src/api/schemas';
 
 describe('auth token schema', () => {
@@ -238,6 +247,97 @@ describe('ratchet history schemas', () => {
   });
 });
 
+describe('score payload schema', () => {
+  const validScorePayload = {
+    run_id: 'run_0123456789abcdef0123456789abcdef',
+    source_ref: 'HEAD',
+    source_kind: 'git_ref',
+    capability_level: 3,
+    degraded_flags: {},
+    overall: 94.5,
+    verdict: 'PASS',
+    weakest_dim: 'learnability',
+    eval_bundle_version: 'bundle-v1',
+    rubric_version: 'v0.1',
+    dimensions: {
+      accuracy: {
+        score: 18,
+        max_score: 20,
+        reason: 'claim status mix',
+      },
+    },
+    hard_gates: {
+      accuracy: {
+        passed: true,
+        detail: 'accuracy score passed',
+        score: 18,
+        threshold: 14,
+      },
+    },
+    notes: [],
+  };
+
+  it('accepts ScoreReport.to_payload shaped score artifacts', () => {
+    const parsed = scorePayloadSchema.parse(validScorePayload);
+
+    expect(parsed.dimensions.accuracy?.score).toBe(18);
+    expect(parsed.hard_gates.accuracy?.passed).toBe(true);
+  });
+
+  it('rejects unsafe score numbers and missing stable fields', () => {
+    expect(() =>
+      scorePayloadSchema.parse({
+        ...validScorePayload,
+        dimensions: {
+          accuracy: { score: Number.NaN, max_score: 20, reason: 'bad' },
+        },
+      }),
+    ).toThrow();
+
+    expect(() =>
+      scorePayloadSchema.parse({
+        ...validScorePayload,
+        dimensions: {
+          accuracy: { score: 21, max_score: 20, reason: 'bad' },
+        },
+      }),
+    ).toThrow();
+
+    expect(() => scorePayloadSchema.parse({ ...validScorePayload, notes: undefined })).toThrow();
+  });
+
+  it('rejects unknown top-level keys', () => {
+    expect(() => scorePayloadSchema.parse({ ...validScorePayload, extra: true })).toThrow();
+  });
+});
+
+describe('run summary schemas', () => {
+  const validRun = {
+    run_id: 'run-1',
+    source_ref: 'HEAD',
+    source_kind: 'git_ref',
+    content_lang: 'en',
+    capability_level: 3,
+    verdict: 'PASS',
+    overall: 88,
+    status: 'keep',
+    weakest_dim: 'evidence',
+    created_at: '2026-05-02T00:00:00Z',
+    degraded_flags: {},
+  };
+
+  it('keeps display enums forward-compatible at the viewer boundary', () => {
+    expect(runSummarySchema.parse({ ...validRun, source_kind: 'future_source' }).source_kind)
+      .toBe('future_source');
+    expect(runSummarySchema.parse({ ...validRun, content_lang: 'fr' }).content_lang)
+      .toBe('fr');
+    expect(runSummarySchema.parse({ ...validRun, verdict: 'WARN' }).verdict)
+      .toBe('WARN');
+    expect(runSummarySchema.parse({ ...validRun, status: 'completed' }).status)
+      .toBe('completed');
+  });
+});
+
 describe('stats schema', () => {
   const validStats = {
     total_runs: 1,
@@ -276,5 +376,129 @@ describe('stats schema', () => {
     expect(() =>
       statsResponseSchema.parse({ ...validStats, total_runs: Infinity }),
     ).toThrow();
+  });
+});
+
+describe('settings and auxiliary API schemas', () => {
+  it('rejects negative usage costs', () => {
+    const validUsage = {
+      models: [
+        {
+          provider_class: 'openai',
+          model_id: 'gpt-5.4-mini',
+          call_count: 1,
+          total_input_tokens: 10,
+          total_output_tokens: 5,
+          total_cost_usd: 0.01,
+        },
+      ],
+      total_calls: 1,
+      total_input_tokens: 10,
+      total_output_tokens: 5,
+      total_cost_usd: 0.01,
+      cache_hits: 0,
+      cache_misses: 1,
+    };
+
+    expect(() => usageResponseSchema.parse({ ...validUsage, total_cost_usd: -0.01 })).toThrow();
+    expect(() =>
+      usageResponseSchema.parse({
+        ...validUsage,
+        models: [{ ...validUsage.models[0], total_cost_usd: -0.01 }],
+      }),
+    ).toThrow();
+  });
+
+  it('validates serve status, spec alignment, watch, mastery, and weak concepts', () => {
+    expect(
+      serveStatusResponseSchema.parse({
+        version: '0.1.0a0',
+        uptime_seconds: 1.5,
+        review_db_exists: true,
+        runs_count: 1,
+      }),
+    ).toMatchObject({ runs_count: 1 });
+
+    expect(
+      specAlignmentResponseSchema.parse({
+        alignment_score: null,
+        total_evaluated: 0,
+        recent_trend: null,
+      }),
+    ).toMatchObject({ total_evaluated: 0 });
+
+    expect(
+      watchStatusResponseSchema.parse({
+        enabled: false,
+        running: false,
+        last_trigger_time: null,
+        pending_changes: 0,
+        restartable: true,
+        stop_timed_out: false,
+        consecutive_failures: 0,
+        total_triggers: 0,
+        total_failures: 0,
+        last_error: null,
+        failure_threshold_hit: false,
+      }),
+    ).toMatchObject({ enabled: false });
+
+    expect(
+      weakConceptsResponseSchema.parse({
+        concepts: [
+          {
+            card_id: 'card-1',
+            concept: 'learn-from-diff',
+            stability: 1.2,
+            difficulty: 7.3,
+            scaffolding_level: '2',
+            display_path: 'demo.py',
+          },
+        ],
+      }),
+    ).toMatchObject({ concepts: expect.any(Array) });
+
+    expect(
+      reviewMasteryResponseSchema.parse({
+        mastery: [
+          {
+            concept: 'learn-from-diff',
+            review_count: 3,
+            avg_rating: 2.7,
+            last_review: '2026-04-27T00:00:00Z',
+          },
+        ],
+      }),
+    ).toMatchObject({ mastery: expect.any(Array) });
+  });
+
+  it('validates learning effectiveness DTO', () => {
+    expect(
+      learningEffectivenessResponseSchema.parse({
+        total_concepts_reviewed: 1,
+        concepts_improving: 1,
+        concepts_stable: 0,
+        concepts_declining: 0,
+        transfer_rate: 1,
+        helpfulness: [
+          {
+            target_kind: 'section',
+            target_id: 'run-1:intro',
+            signal_count: 2,
+            positive_count: 2,
+            negative_count: 0,
+            helpfulness_score: 1,
+          },
+        ],
+        transfer_metrics: [
+          {
+            concept: 'learn-from-diff',
+            total_reviews: 3,
+            avg_rating: 2.7,
+            improving: true,
+          },
+        ],
+      }),
+    ).toMatchObject({ transfer_rate: 1 });
   });
 });

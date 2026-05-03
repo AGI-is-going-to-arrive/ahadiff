@@ -353,6 +353,41 @@ def test_generate_cards_for_run_writes_review_cards(tmp_path: Path) -> None:
     assert loaded[0].review_card_id == card.card_id
 
 
+def test_generate_cards_for_run_writes_question_and_answer_to_review_cards(
+    tmp_path: Path,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_id = "run_cards_question_answer"
+    run_path = _write_quiz_run_artifacts(workspace_root, run_id)
+    question_text = "What changed in retry_once?"
+    expected_answer = "The helper now retries across attempts."
+    questions = (
+        QuizQuestion(
+            question_id="quiz_question_answer",
+            question=question_text,
+            expected_answer=expected_answer,
+            source_claims=[f"{run_id}-claim-1"],
+            concepts=["retry loop"],
+            evidence=[QuizEvidence(file="src/app.py", line=2)],
+        ),
+    )
+
+    cards_path = generate_cards_for_run(
+        run_path=run_path,
+        questions=questions,
+        verdict="PASS",
+    )
+
+    assert cards_path is not None
+    card = ReviewCard.model_validate_json(cards_path.read_text(encoding="utf-8").strip())
+    assert card.question == question_text
+    assert card.answer == expected_answer
+    loaded = load_quiz_questions(run_path / "quiz" / "quiz.jsonl")
+    assert loaded[0].question == question_text
+    assert loaded[0].expected_answer == expected_answer
+    assert loaded[0].review_card_id == card.card_id
+
+
 @pytest.mark.parametrize(
     ("claim_symbols", "expected_concept"),
     [

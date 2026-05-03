@@ -2,16 +2,20 @@ import { apiFetch } from './client';
 import type { ApiFetchOptions } from './client';
 import {
   parseResponse,
+  reviewMasteryResponseSchema,
   reviewQueueResponseSchema,
   reviewQueueStateResponseSchema,
   reviewRateResponseSchema,
+  weakConceptsResponseSchema,
 } from './schemas';
 import type {
+  ReviewMasteryResponse,
   ReviewQueueResponse,
   ReviewQueueStatePayload,
   ReviewQueueStateResponse,
   ReviewRatePayload,
   ReviewRateResponse,
+  WeakConceptsResponse,
 } from './types';
 
 export async function getReviewQueue(
@@ -19,6 +23,20 @@ export async function getReviewQueue(
 ): Promise<ReviewQueueResponse> {
   const raw = await apiFetch<unknown>('/api/review/queue', opts);
   return parseResponse('GET /api/review/queue', reviewQueueResponseSchema, raw);
+}
+
+export async function getWeakConcepts(
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<WeakConceptsResponse> {
+  const raw = await apiFetch<unknown>('/api/concepts/weak', opts);
+  return parseResponse('GET /api/concepts/weak', weakConceptsResponseSchema, raw);
+}
+
+export async function getReviewMastery(
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<ReviewMasteryResponse> {
+  const raw = await apiFetch<unknown>('/api/review/mastery', opts);
+  return parseResponse('GET /api/review/mastery', reviewMasteryResponseSchema, raw);
 }
 
 export async function submitReviewRate(

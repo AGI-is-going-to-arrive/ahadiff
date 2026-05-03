@@ -333,6 +333,7 @@ def test_initialize_review_db_creates_full_schema_and_pragmas(tmp_path: Path) ->
         table_names
     )
     assert "ux_result_events_run_type_ts" in index_names
+    assert "ix_cards_weak_active_stability" in index_names
     assert busy_timeout == 5000
     assert journal_mode == "wal"
     assert quick_check == "ok"
@@ -919,6 +920,63 @@ def test_import_cards_and_record_fsrs_review(tmp_path: Path) -> None:
     assert tuple(card_row) == (1, 3)
     assert log_row["rating"] == 3
     assert preset_row["total_reviews"] == 1
+
+
+def test_import_cards_persists_question_and_answer_columns(tmp_path: Path) -> None:
+    db_path = tmp_path / "review.sqlite"
+    cards_path = tmp_path / "cards.jsonl"
+    question = "Why does retry_once now loop?"
+    answer = "It retries transient failures before giving up."
+    card = _review_card().model_copy(update={"question": question, "answer": answer})
+    _write_cards_jsonl(cards_path, (card,))
+
+    assert import_cards_from_jsonl(db_path, cards_path) == 1
+
+    with connect_review_db(db_path) as connection:
+        row = connection.execute(
+            "SELECT id, question, answer FROM cards WHERE id = ?",
+            ("card-1",),
+        ).fetchone()
+    assert row is not None
+    assert tuple(row) == ("card-1", question, answer)
+
+
+def test_import_cards_accepts_legacy_rows_without_question_answer_fields(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "review.sqlite"
+    cards_path = tmp_path / "cards.jsonl"
+    legacy_payload = _review_card("card-legacy").model_dump(mode="json")
+    legacy_payload.pop("question", None)
+    legacy_payload.pop("answer", None)
+    cards_path.write_text(json.dumps(legacy_payload) + "\n", encoding="utf-8")
+
+    assert import_cards_from_jsonl(db_path, cards_path) == 1
+
+    with connect_review_db(db_path) as connection:
+        row = connection.execute(
+            "SELECT id, question, answer FROM cards WHERE id = ?",
+            ("card-legacy",),
+        ).fetchone()
+    assert row is not None
+    assert tuple(row) == ("card-legacy", None, None)
+
+
+def test_list_due_cards_preserves_question_and_answer_fields(tmp_path: Path) -> None:
+    db_path = tmp_path / "review.sqlite"
+    cards_path = tmp_path / "cards.jsonl"
+    question = "What makes retry_once review-worthy?"
+    answer = "The retry loop is the concept users need to recall."
+    card = _review_card().model_copy(update={"question": question, "answer": answer})
+    _write_cards_jsonl(cards_path, (card,))
+
+    assert import_cards_from_jsonl(db_path, cards_path) == 1
+    due_cards = list_due_cards(db_path)
+
+    assert len(due_cards) == 1
+    assert due_cards[0].card_id == "card-1"
+    assert due_cards[0].question == question
+    assert due_cards[0].answer == answer
 
 
 def test_record_card_review_once_rejects_duplicate_key_payload_mismatch(tmp_path: Path) -> None:

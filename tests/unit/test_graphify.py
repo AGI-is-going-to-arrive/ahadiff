@@ -6,11 +6,17 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
+import ahadiff.graphify as graphify_package
 from ahadiff.core.errors import InputError
 from ahadiff.git.repo import GitRepo
 from ahadiff.graphify import (
     FreshnessState,
+    GraphifyEdge,
+    GraphifyGraph,
+    GraphifyHyperedge,
+    GraphifyNode,
     compute_freshness,
     parse_graph_json,
     parse_graph_json_text,
@@ -40,6 +46,40 @@ _FULL_GRAPH: dict[str, Any] = {
         {"id": "he1", "nodes": ["n1", "n2"], "relation": "co-change"},
     ],
 }
+
+
+# ---------------------------------------------------------------------------
+# Model/export contracts
+# ---------------------------------------------------------------------------
+
+
+class TestGraphifyModelContracts:
+    def test_models_forbid_extra_fields(self) -> None:
+        with pytest.raises(ValidationError):
+            GraphifyNode.model_validate({"id": "n1", "label": "Node", "unexpected": True})
+        with pytest.raises(ValidationError):
+            GraphifyEdge.model_validate({"source": "n1", "target": "n2", "unexpected": True})
+        with pytest.raises(ValidationError):
+            GraphifyHyperedge.model_validate({"id": "he1", "nodes": ["n1"], "unexpected": True})
+
+    def test_graph_default_collections_are_isolated(self) -> None:
+        first = GraphifyGraph()
+        second = GraphifyGraph()
+
+        first.nodes.append(GraphifyNode(id="n1", label="Node"))
+        first.links.append(GraphifyEdge(source="n1", target="n1"))
+        first.hyperedges.append(GraphifyHyperedge(id="he1", nodes=["n1"]))
+        first.graph["source"] = "first"
+
+        assert second.nodes == []
+        assert second.links == []
+        assert second.hyperedges == []
+        assert second.graph == {}
+
+    def test_public_exports_include_graphify_models(self) -> None:
+        for name in ("GraphifyNode", "GraphifyEdge", "GraphifyHyperedge", "GraphifyGraph"):
+            assert name in graphify_package.__all__
+            assert getattr(graphify_package, name) is globals()[name]
 
 
 # ---------------------------------------------------------------------------

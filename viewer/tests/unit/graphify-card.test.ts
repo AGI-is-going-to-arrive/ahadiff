@@ -232,6 +232,23 @@ describe('GraphifyCard DOM rendering', () => {
     await expect.poll(() => rows.count()).toBeGreaterThanOrEqual(2);
   });
 
+  it('renders long source_path without horizontal overflow', async () => {
+    const longPath = '/very/deep/nested/project/directory/structure/that/goes/on/and/on/.ahadiff/graphify/knowledge-graph-with-extremely-long-filename.json';
+    await renderCard(page, {
+      status: makeStatus({ source_path: longPath }),
+    });
+
+    await page.waitForSelector('.graphify-card[role="region"]');
+    const body = page.locator('.graphify-card__body');
+    await expect(body.textContent()).resolves.toContain('knowledge-graph');
+
+    const card = page.locator('.graphify-card');
+    const overflow = await card.evaluate((el) => {
+      return el.scrollWidth <= el.clientWidth;
+    });
+    expect(overflow).toBe(true);
+  });
+
   it('does not render when Graphify is disabled', async () => {
     await renderCard(page, { status: makeStatus({ enabled: false }) });
 

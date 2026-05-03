@@ -425,6 +425,142 @@ test.describe('media features', () => {
     await expect(page.locator('h1, h2').first()).toBeVisible();
   });
 
+  test('forced-colors active: dashboard weak chips visible', async ({ page }) => {
+    await page.emulateMedia({ forcedColors: 'active' });
+    await installDashboardRunsMock(page);
+    await page.goto('/');
+
+    const chip = page.locator('.dashboard__weak-chip').first();
+    await expect(chip).toBeVisible();
+    const values = await chip.evaluate((el) => {
+      const probe = document.createElement('span');
+      probe.style.color = 'CanvasText';
+      probe.style.backgroundColor = 'Canvas';
+      document.body.append(probe);
+      const result = {
+        color: getComputedStyle(el).color,
+        background: getComputedStyle(el).backgroundColor,
+        borderColor: getComputedStyle(el).borderTopColor,
+        canvasText: getComputedStyle(probe).color,
+        canvas: getComputedStyle(probe).backgroundColor,
+      };
+      probe.remove();
+      return result;
+    });
+    expect(values.color).toBe(values.canvasText);
+    expect(values.background).toBe(values.canvas);
+    expect(values.borderColor).toBe(values.canvasText);
+  });
+
+  test('forced-colors active: skills filter active chip has visible border', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'forced-colors emulation is Chromium-only');
+    await page.emulateMedia({ forcedColors: 'active' });
+    await page.goto('/#/skills');
+
+    const chip = page.locator('.skills__filter-chip').first();
+    await expect(chip).toBeVisible();
+    await chip.click();
+
+    const activeChip = page.locator('.skills__filter-chip--active').first();
+    await expect(activeChip).toBeVisible();
+    const values = await activeChip.evaluate((el) => {
+      const probe = document.createElement('span');
+      probe.style.color = 'Highlight';
+      document.body.append(probe);
+      const result = {
+        borderColor: getComputedStyle(el).borderTopColor,
+        highlight: getComputedStyle(probe).color,
+      };
+      probe.remove();
+      return result;
+    });
+    expect(values.borderColor).toBe(values.highlight);
+  });
+
+  test('forced-colors active: quiz mode badge visible', async ({ page }) => {
+    await page.emulateMedia({ forcedColors: 'active' });
+    await page.goto('/#/run/test-run/quiz');
+
+    const badge = page.locator('.quiz-page__mode-badge').first();
+    await expect(badge).toBeVisible();
+    const values = await badge.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return {
+        color: cs.color,
+        background: cs.backgroundColor,
+        borderStyle: cs.borderTopStyle,
+        borderWidth: cs.borderTopWidth,
+      };
+    });
+    expect(values.color).not.toBe(values.background);
+    expect(values.borderStyle).not.toBe('none');
+    expect(parseInt(values.borderWidth, 10)).toBeGreaterThanOrEqual(1);
+  });
+
+  test('forced-colors active: review summary visible', async ({ page }) => {
+    await page.emulateMedia({ forcedColors: 'active' });
+    await page.goto('/#/review');
+
+    await expect(page.locator('.review__summary')).toBeVisible();
+    const values = await page.locator('.review__summary').evaluate((el) => {
+      const probe = document.createElement('span');
+      probe.style.borderColor = 'CanvasText';
+      document.body.append(probe);
+      const result = {
+        borderColor: getComputedStyle(el).borderTopColor,
+        expected: getComputedStyle(probe).borderTopColor,
+      };
+      probe.remove();
+      return result;
+    });
+    expect(values.borderColor).toBe(values.expected);
+  });
+
+  test('forced-colors active: judge note card visible', async ({ page }) => {
+    await page.emulateMedia({ forcedColors: 'active' });
+    await page.goto('/#/ratchet');
+
+    const judgeTab = page.locator('.ratchet-tabs__tab', { hasText: /Judge/i });
+    await expect(judgeTab).toBeVisible();
+    await judgeTab.click();
+
+    const card = page.locator('.judge-note-card').first();
+    await expect(card).toBeVisible();
+    const values = await card.evaluate((el) => {
+      const probe = document.createElement('span');
+      probe.style.borderColor = 'CanvasText';
+      probe.style.backgroundColor = 'Canvas';
+      document.body.append(probe);
+      const result = {
+        borderColor: getComputedStyle(el).borderTopColor,
+        background: getComputedStyle(el).backgroundColor,
+        expectedBorder: getComputedStyle(probe).borderTopColor,
+        expectedBg: getComputedStyle(probe).backgroundColor,
+      };
+      probe.remove();
+      return result;
+    });
+    expect(values.borderColor).toBe(values.expectedBorder);
+    expect(values.background).toBe(values.expectedBg);
+  });
+
+  test('print emulation: ratchet benchmark rubric grid visible', async ({ page }) => {
+    await page.goto('/#/ratchet');
+
+    const benchmarkTab = page.locator('.ratchet-tabs__tab', { hasText: /Benchmark/i });
+    await expect(benchmarkTab).toBeVisible();
+    await benchmarkTab.click();
+
+    await expect(page.locator('.rubric-grid')).toBeVisible();
+
+    await page.emulateMedia({ media: 'print' });
+    await expect(page.locator('.rubric-grid')).toBeVisible();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+
   test('dark color scheme: topbar and sidebar render', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await page.goto('/');

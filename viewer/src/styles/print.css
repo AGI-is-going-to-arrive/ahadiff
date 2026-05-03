@@ -57,7 +57,9 @@
   .kpi-card,
   .ratchet-section__card,
   .claim-card,
-  .srs-card {
+  .srs-card,
+  .rubric-grid,
+  .judge-note-card {
     page-break-inside: avoid;
   }
 }

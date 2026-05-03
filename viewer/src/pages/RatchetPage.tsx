@@ -1,15 +1,38 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import AppShell from '../components/AppShell';
+import InfoHint from '../components/InfoHint';
 import RatchetChart from '../components/RatchetChart';
 import Skeleton, { SkeletonGroup } from '../components/Skeleton';
-import { getRatchetHistory } from '../api/runs';
-import { useTranslation } from '../i18n/useTranslation';
+import { getRatchetHistory, getRunScore } from '../api/runs';
+import { scorePayloadSchema } from '../api/schemas';
+import { useTranslation, type TranslateFn } from '../i18n/useTranslation';
 import { useLocaleStore } from '../state/locale-store';
-import type { RatchetHistoryEntry } from '../api/types';
+import type { RatchetHistoryEntry, ScoreDimension, ScorePayload } from '../api/types';
 import { safeVerdict } from '../utils/verdict';
 import '../components/Ratchet.css';
 
 const GraphifyCard = lazy(() => import('../components/GraphifyCard'));
+
+type RatchetTab = 'results' | 'rubric' | 'benchmark' | 'judge';
+const RATCHET_TABS: RatchetTab[] = ['results', 'rubric', 'benchmark', 'judge'];
+const TAB_LABEL_KEYS: Record<RatchetTab, string> = {
+  results: 'Ratchet.tab_results',
+  rubric: 'Ratchet.tab_rubric',
+  benchmark: 'Ratchet.tab_benchmark',
+  judge: 'Ratchet.tab_judge',
+};
+const TAB_IDS: Record<RatchetTab, string> = {
+  results: 'ratchet-tab-results',
+  rubric: 'ratchet-tab-rubric',
+  benchmark: 'ratchet-tab-benchmark',
+  judge: 'ratchet-tab-judge',
+};
+const TAB_PANEL_IDS: Record<RatchetTab, string> = {
+  results: 'ratchet-panel-results',
+  rubric: 'ratchet-panel-rubric',
+  benchmark: 'ratchet-panel-benchmark',
+  judge: 'ratchet-panel-judge',
+};
 
 interface RatchetNote {
   runId: string;
@@ -65,6 +88,51 @@ function parseRatchetNote(entry: RatchetHistoryEntry): RatchetNote | null {
   }
 }
 
+function parseScorePayload(content: string): ScorePayload | null {
+  try {
+    const parsed = JSON.parse(content) as unknown;
+    return scorePayloadSchema.parse(parsed);
+  } catch {
+    return null;
+  }
+}
+
+const DIM_HINT_KEYS: Record<string, string> = {
+  accuracy: 'Ratchet.dim_accuracy_hint',
+  evidence: 'Ratchet.dim_evidence_hint',
+  diff_coverage: 'Ratchet.dim_diff_coverage_hint',
+  learnability: 'Ratchet.dim_learnability_hint',
+  quiz_transfer: 'Ratchet.dim_quiz_transfer_hint',
+  spec_alignment: 'Ratchet.dim_spec_alignment_hint',
+  conciseness: 'Ratchet.dim_conciseness_hint',
+  safety_privacy: 'Ratchet.dim_safety_privacy_hint',
+};
+
+const DIM_LABEL_KEYS: Record<string, string> = {
+  accuracy: 'Ratchet.dim_accuracy_label',
+  evidence: 'Ratchet.dim_evidence_label',
+  diff_coverage: 'Ratchet.dim_diff_coverage_label',
+  learnability: 'Ratchet.dim_learnability_label',
+  quiz_transfer: 'Ratchet.dim_quiz_transfer_label',
+  spec_alignment: 'Ratchet.dim_spec_alignment_label',
+  conciseness: 'Ratchet.dim_conciseness_label',
+  safety_privacy: 'Ratchet.dim_safety_privacy_label',
+};
+
+function formatDimensionLabel(
+  dim: string | null | undefined,
+  t: TranslateFn,
+): string {
+  if (!dim) return '-';
+  const labelKey = DIM_LABEL_KEYS[dim];
+  if (labelKey) return t(labelKey);
+  return dim.replace(/_/g, ' ');
+}
+
+function scorePercent(dimension: ScoreDimension): number {
+  return Math.min(100, Math.max(0, (dimension.score / dimension.max_score) * 100));
+}
+
 export default function RatchetPage() {
   const { t } = useTranslation();
   const locale = useLocaleStore((s) => s.locale);
@@ -73,7 +141,50 @@ export default function RatchetPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<RatchetTab>('results');
+  const [scoreData, setScoreData] = useState<ScorePayload | null>(null);
+  const [scoreRunId, setScoreRunId] = useState<string | null>(null);
+  const [scoreLoading, setScoreLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const loadMoreAbortRef = useRef<AbortController | null>(null);
+  const latestRunId = history[0]?.run_id ?? null;
+  const activeScoreData = scoreRunId === latestRunId ? scoreData : null;
+
+  const focusTab = useCallback((tab: RatchetTab) => {
+    window.requestAnimationFrame(() => {
+      document.getElementById(TAB_IDS[tab])?.focus();
+    });
+  }, []);
+
+  const activateTab = useCallback((tab: RatchetTab) => {
+    setActiveTab(tab);
+    focusTab(tab);
+  }, [focusTab]);
+
+  const handleTabKeyDown = useCallback((
+    event: KeyboardEvent<HTMLButtonElement>,
+    tab: RatchetTab,
+  ) => {
+    const currentIndex = RATCHET_TABS.indexOf(tab);
+    let nextTab: RatchetTab | null = null;
+
+    if (event.key === 'ArrowRight') {
+      nextTab = RATCHET_TABS[(currentIndex + 1) % RATCHET_TABS.length];
+    } else if (event.key === 'ArrowLeft') {
+      nextTab = RATCHET_TABS[
+        (currentIndex - 1 + RATCHET_TABS.length) % RATCHET_TABS.length
+      ];
+    } else if (event.key === 'Home') {
+      nextTab = RATCHET_TABS[0];
+    } else if (event.key === 'End') {
+      nextTab = RATCHET_TABS[RATCHET_TABS.length - 1];
+    }
+
+    if (nextTab) {
+      event.preventDefault();
+      activateTab(nextTab);
+    }
+  }, [activateTab]);
 
   const fetchHistory = useCallback(async () => {
     abortRef.current?.abort();
@@ -98,25 +209,50 @@ export default function RatchetPage() {
 
   const loadMore = useCallback(async () => {
     if (!nextCursor || loadingMore) return;
+    loadMoreAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadMoreAbortRef.current = controller;
     const gen = ++loadMoreRef.current;
     const cursorSnapshot = nextCursor;
     setLoadingMore(true);
     try {
-      const res = await getRatchetHistory({ cursor: cursorSnapshot });
-      if (loadMoreRef.current !== gen) return;
+      const res = await getRatchetHistory({ cursor: cursorSnapshot }, { signal: controller.signal });
+      if (controller.signal.aborted || loadMoreRef.current !== gen) return;
       setHistory((prev) => [...prev, ...res.history]);
       setNextCursor(res.next_cursor ?? null);
     } catch {
       // silently fail, user can retry
     } finally {
-      setLoadingMore(false);
+      if (!controller.signal.aborted && loadMoreRef.current === gen) setLoadingMore(false);
     }
   }, [nextCursor, loadingMore]);
 
   useEffect(() => {
     void fetchHistory();
-    return () => abortRef.current?.abort();
+    return () => {
+      abortRef.current?.abort();
+      loadMoreAbortRef.current?.abort();
+      loadMoreRef.current += 1;
+    };
   }, [fetchHistory]);
+
+  useEffect(() => {
+    if ((activeTab !== 'benchmark' && activeTab !== 'judge') || !latestRunId || activeScoreData) return;
+    const controller = new AbortController();
+    const runId = latestRunId;
+    setScoreLoading(true);
+    getRunScore(runId, { signal: controller.signal })
+      .then((envelope) => {
+        if (controller.signal.aborted) return;
+        setScoreRunId(runId);
+        setScoreData(parseScorePayload(envelope.content));
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!controller.signal.aborted) setScoreLoading(false);
+      });
+    return () => controller.abort();
+  }, [activeTab, activeScoreData, latestRunId]);
 
   if (loading) {
     return (
@@ -178,7 +314,7 @@ export default function RatchetPage() {
 
         <RatchetNoteCard history={history} t={t} />
 
-        {/* Chart + Rubric grid */}
+        {/* Chart + Rubric grid — always visible above tabs */}
         <div className="ratchet-page__grid">
           <div className="ratchet-card">
             <div className="ratchet-card__header">
@@ -207,51 +343,199 @@ export default function RatchetPage() {
           </div>
         </div>
 
-        {/* Results table */}
-        <div className="ratchet-card">
-          <div className="ratchet-card__header">
-            <h2 id="ratchet-run-list-heading">{t('Dashboard.run_list_title')}</h2>
-            <span className="ratchet-card__meta">{t('Ratchet.meta_entries', { count: history.length })}</span>
-          </div>
-          <div className="ratchet-card__body ratchet-card__body--table u-p-0" tabIndex={0} role="region" aria-labelledby="ratchet-run-list-heading">
-            <table className="ratchet-table" aria-label={t('Ratchet.table_label')}>
-              <thead>
-                <tr>
-                  <th scope="col">{t('Dashboard.col_ref')}</th>
-                  <th scope="col">{t('Ratchet.col_score')}</th>
-                  <th scope="col">{t('Ratchet.col_verdict')}</th>
-                  <th scope="col">{t('Ratchet.col_weakest')}</th>
-                  <th scope="col">{t('Ratchet.col_date')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.map((entry) => (
-                  <tr key={`${entry.run_id}-${entry.timestamp}`}>
-                    <td className="mono">{entry.source_ref || entry.run_id.slice(0, 8)}</td>
-                    <td className="num">{entry.overall}</td>
-                    <td>
-                      <span className={`verdict-badge verdict-badge--${safeVerdict(entry.verdict)}`}>
-                        {safeVerdict(entry.verdict)}
-                      </span>
-                    </td>
-                    <td>{entry.weakest_dim || '-'}</td>
-                    <td className="mono">{formatDate(entry.timestamp, locale)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {nextCursor && (
-            <div className="u-center-action-row">
-              <button
-                type="button"
-                className="load-more-btn"
-                onClick={() => { loadMore().catch(() => {}); }}
-                disabled={loadingMore}
-              >
-                {loadingMore ? t('Dashboard.loading_more') : t('Ratchet.load_more')}
-              </button>
+        {/* Tab bar — V6 Results/Rubric/Benchmark/Judge */}
+        <div
+          className="ratchet-tabs"
+          role="tablist"
+          aria-label={t('Ratchet.title')}
+        >
+          {RATCHET_TABS.map((tab) => (
+            <button
+              key={tab}
+              id={TAB_IDS[tab]}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab}
+              aria-controls={TAB_PANEL_IDS[tab]}
+              tabIndex={activeTab === tab ? 0 : -1}
+              className={`ratchet-tabs__tab${activeTab === tab ? ' ratchet-tabs__tab--active' : ''}`}
+              onClick={() => setActiveTab(tab)}
+              onKeyDown={(event) => handleTabKeyDown(event, tab)}
+            >
+              {t(TAB_LABEL_KEYS[tab])}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab content */}
+        <div
+          id={TAB_PANEL_IDS.results}
+          className="ratchet-card"
+          role="tabpanel"
+          aria-labelledby={TAB_IDS.results}
+          tabIndex={0}
+          hidden={activeTab !== 'results'}
+        >
+          {activeTab === 'results' && (
+            <>
+            <div className="ratchet-card__header">
+              <h2 id="ratchet-run-list-heading">{t('Dashboard.run_list_title')}</h2>
+              <span className="ratchet-card__meta">{t('Ratchet.meta_entries', { count: history.length })}</span>
             </div>
+            <div className="ratchet-card__body ratchet-card__body--table u-p-0" tabIndex={0} role="region" aria-labelledby="ratchet-run-list-heading">
+              <table className="ratchet-table" aria-label={t('Ratchet.table_label')}>
+                <thead>
+                  <tr>
+                    <th scope="col">{t('Dashboard.col_ref')}</th>
+                    <th scope="col">{t('Ratchet.col_score')}</th>
+                    <th scope="col">{t('Ratchet.col_verdict')}</th>
+                    <th scope="col">{t('Ratchet.col_weakest')}</th>
+                    <th scope="col">{t('Ratchet.col_date')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((entry) => (
+                    <tr key={`${entry.run_id}-${entry.timestamp}`}>
+                      <td className="mono">{entry.source_ref || entry.run_id.slice(0, 8)}</td>
+                      <td className="num">{entry.overall}</td>
+                      <td>
+                        <span className={`verdict-badge verdict-badge--${safeVerdict(entry.verdict)}`}>
+                          {safeVerdict(entry.verdict)}
+                        </span>
+                      </td>
+                      <td>{formatDimensionLabel(entry.weakest_dim, t)}</td>
+                      <td className="mono">{formatDate(entry.timestamp, locale)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {nextCursor && (
+              <div className="u-center-action-row">
+                <button
+                  type="button"
+                  className="load-more-btn"
+                  onClick={() => { loadMore().catch(() => {}); }}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? t('Dashboard.loading_more') : t('Ratchet.load_more')}
+                </button>
+              </div>
+            )}
+            </>
+          )}
+        </div>
+
+        <div
+          id={TAB_PANEL_IDS.rubric}
+          className="ratchet-card"
+          role="tabpanel"
+          aria-labelledby={TAB_IDS.rubric}
+          tabIndex={0}
+          hidden={activeTab !== 'rubric'}
+        >
+          {activeTab === 'rubric' && (
+            <>
+            <div className="ratchet-card__header">
+              <h2>{t('Rubric.weakest_dim')}</h2>
+              <span className="ratchet-card__meta">{t('Ratchet.meta_runs', { count: history.length })}</span>
+            </div>
+            <div className="ratchet-card__body">
+              <WeakestDimSummary history={history} t={t} />
+            </div>
+            </>
+          )}
+        </div>
+
+        <div
+          id={TAB_PANEL_IDS.benchmark}
+          className="ratchet-card"
+          role="tabpanel"
+          aria-labelledby={TAB_IDS.benchmark}
+          tabIndex={0}
+          hidden={activeTab !== 'benchmark'}
+        >
+          {activeTab === 'benchmark' && (
+            scoreLoading ? (
+              <div className="ratchet-card__body">
+                <Skeleton height="200px" />
+              </div>
+            ) : activeScoreData ? (
+              <div className="ratchet-card__body">
+                <div className="rubric-grid">
+                  {Object.entries(activeScoreData.dimensions).map(([dim, d]) => (
+                    <div key={dim} className="rubric-grid__row">
+                      <span className="rubric-grid__label">
+                        <span className="rubric-grid__label-text" title={dim}>
+                          {formatDimensionLabel(dim, t)}
+                        </span>
+                        {DIM_HINT_KEYS[dim] && <InfoHint label={t(DIM_HINT_KEYS[dim])} />}
+                      </span>
+                      <div className="mastery-bar">
+                        <span
+                          className="mastery-bar__fill"
+                          style={{ width: `${scorePercent(d)}%` }}
+                        />
+                      </div>
+                      <span className="rubric-grid__fraction">
+                        {d.score}/{d.max_score}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="ratchet-card__body">
+                <p className="u-muted-sm">{t('Ratchet.tab_benchmark_empty')}</p>
+              </div>
+            )
+          )}
+        </div>
+
+        <div
+          id={TAB_PANEL_IDS.judge}
+          className="ratchet-card"
+          role="tabpanel"
+          aria-labelledby={TAB_IDS.judge}
+          tabIndex={0}
+          hidden={activeTab !== 'judge'}
+        >
+          {activeTab === 'judge' && (
+            scoreLoading ? (
+              <div className="ratchet-card__body">
+                <Skeleton height="200px" />
+              </div>
+            ) : activeScoreData ? (
+              <div className="ratchet-card__body">
+                <div className="judge-notes">
+                  {activeScoreData.notes.length > 0 && (
+                    <div className="judge-note-card">
+                      <h4 className="judge-note-card__title">{t('Ratchet.judge_notes_title')}</h4>
+                      <ul className="judge-note-card__list">
+                        {activeScoreData.notes.map((note, i) => (
+                          <li key={i}>{note}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {Object.entries(activeScoreData.dimensions).map(([dim, d]) =>
+                    d.reason ? (
+                      <div key={dim} className="judge-note-card">
+                        <div className="judge-note-card__meta">
+                          <span className="judge-note-card__dim">{formatDimensionLabel(dim, t)}</span>
+                          <span className="judge-note-card__score">{d.score}/{d.max_score}</span>
+                        </div>
+                        <p className="judge-note-card__reason">{d.reason}</p>
+                      </div>
+                    ) : null
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="ratchet-card__body">
+                <p className="u-muted-sm">{t('Ratchet.tab_judge_empty')}</p>
+              </div>
+            )
           )}
         </div>
 
@@ -341,7 +625,10 @@ function WeakestDimSummary({ history, t }: { history: RatchetHistoryEntry[]; t: 
     <div className="mastery-grid">
       {sorted.slice(0, 8).map(([dim, count]) => (
         <div key={dim} className="u-display-contents">
-          <div>{dim}</div>
+          <div>
+            {formatDimensionLabel(dim, t)}
+            {DIM_HINT_KEYS[dim] && <InfoHint label={t(DIM_HINT_KEYS[dim])} />}
+          </div>
           <div className="mastery-bar">
             <span
               className="mastery-bar__fill"

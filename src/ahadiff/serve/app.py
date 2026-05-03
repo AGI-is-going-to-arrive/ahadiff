@@ -40,6 +40,7 @@ from .routes_runs import (
     get_ratchet_history,
     get_run,
     get_run_concepts,
+    get_score,
     list_runs,
 )
 from .routes_search import search_api
@@ -103,6 +104,7 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
             Route("/api/run/{run_id}/quiz", get_quiz, methods=["GET"]),
             Route("/api/run/{run_id}/misconceptions", get_misconceptions, methods=["GET"]),
             Route("/api/run/{run_id}/diff", get_diff, methods=["GET"]),
+            Route("/api/run/{run_id}/score", get_score, methods=["GET"]),
             Route("/api/run/{run_id}/concepts", get_run_concepts, methods=["GET"]),
             Route("/api/concepts", get_concepts, methods=["GET"]),
             Route("/api/ratchet/history", get_ratchet_history, methods=["GET"]),

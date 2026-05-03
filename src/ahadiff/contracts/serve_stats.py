@@ -119,6 +119,13 @@ class LearningEffectivenessResponse(BaseModel):
     transfer_metrics: list[TransferConceptDTO]
 
 
+class SpecAlignmentResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    alignment_score: FiniteNumber | None
+    total_evaluated: NonNegativeCount
+    recent_trend: Literal["improving", "stable", "declining"] | None
+
+
 __all__ = [
     "HeatmapEntry",
     "HelpfulnessAggregateDTO",
@@ -127,6 +134,7 @@ __all__ = [
     "ProviderSummary",
     "ReviewHeatmapResponse",
     "ServeStatusResponse",
+    "SpecAlignmentResponse",
     "StatsResponse",
     "TransferConceptDTO",
     "UsageModelSummary",

@@ -234,6 +234,41 @@
   }
 }
 
+/* ---- Weak concepts chip cloud (V6 Dashboard bottom half) ---- */
+
+.dashboard__weak-concepts {
+  margin-top: 4px;
+}
+
+.dashboard__section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 10px;
+}
+
+.dashboard__chip-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dashboard__weak-chip {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: var(--r-full, 99px);
+  background: var(--warning-soft, #F7EED9);
+  color: var(--warning, #B4791F);
+  border: 1px solid var(--warning-hair, #E3CDA1);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  vertical-align: middle;
+}
+
 /* ---- Run list ---- */
 .run-list-section {
   margin-top: 24px;

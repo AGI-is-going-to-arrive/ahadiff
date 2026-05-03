@@ -61,6 +61,8 @@ from .run_source import (
 )
 from .serve_app import (
     AuthTokenResponse,
+    ConfigResponse,
+    ConfigUpdateResponse,
     DueReviewCardResponse,
     GraphifyMode,
     HelpfulnessRequest,
@@ -70,6 +72,8 @@ from .serve_app import (
     QuizAnswerRequest,
     RatchetHistoryEntry,
     ReviewAnswer,
+    ReviewMasteryItem,
+    ReviewMasteryResponse,
     ReviewQueueState,
     ReviewQueueStateRequest,
     ReviewQueueStateResponse,
@@ -99,9 +103,11 @@ from .serve_runtime import (
     TaskListResponse,
     TaskProgressResponse,
     TaskSubmitResponse,
+    WatchStatusResponse,
     WeakConceptItem,
     WeakConceptsResponse,
 )
+from .serve_stats import SpecAlignmentResponse
 
 __all__ = [
     "AhaDiffError",
@@ -114,6 +120,8 @@ __all__ = [
     "ClaimExtractor",
     "ClaimRecord",
     "ClaimStatus",
+    "ConfigResponse",
+    "ConfigUpdateResponse",
     "ConceptGraphEdge",
     "ConceptGraphNode",
     "ConceptGraphResponse",
@@ -157,6 +165,8 @@ __all__ = [
     "ResultEvent",
     "ReviewAnswer",
     "ReviewCard",
+    "ReviewMasteryItem",
+    "ReviewMasteryResponse",
     "ReviewQueueState",
     "ReviewQueueStateRequest",
     "ReviewQueueStateResponse",
@@ -177,6 +187,7 @@ __all__ = [
     "SourceHunk",
     "SourceHunkSide",
     "SourceKind",
+    "SpecAlignmentResponse",
     "StaleReason",
     "StorageError",
     "TaskCancelResponse",
@@ -188,6 +199,7 @@ __all__ = [
     "TERMINAL_RUN_STATUSES",
     "TokenizerEstimation",
     "UsageEvent",
+    "WatchStatusResponse",
     "WeakConceptItem",
     "WeakConceptsResponse",
     "VerificationError",

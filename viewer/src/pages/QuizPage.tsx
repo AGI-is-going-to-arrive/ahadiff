@@ -140,6 +140,8 @@ export default function QuizPage() {
     [quizzes, currentIndex],
   );
 
+  const isSrsReview = currentQuiz ? hasQuizReviewCard(currentQuiz) : false;
+
   const handleAnswer = useCallback(
     (questionId: string, answer: string, correct: boolean) => {
       setAnswered((prev) => ({
@@ -326,16 +328,22 @@ export default function QuizPage() {
                 />
               </div>
 
+              <span className={`quiz-page__mode-badge ${isSrsReview ? 'quiz-page__mode-badge--srs' : 'quiz-page__mode-badge--socratic'}`}>
+                {isSrsReview ? t('Quiz.mode_srs') : t('Quiz.mode_socratic')}
+              </span>
+
               {currentQuiz && (
-                <SRSCard
-                  key={currentQuiz.question_id}
-                  quiz={currentQuiz}
-                  onAnswer={handleAnswer}
-                  onRate={handleRate}
-                  disabledReviewRatings={
-                    hasQuizReviewCard(currentQuiz) ? PEEKED_REVIEW_RATING_BLOCKLIST : undefined
-                  }
-                />
+                <div className={`quiz-page__card-wrap ${isSrsReview ? 'quiz-page__card-wrap--srs' : 'quiz-page__card-wrap--socratic'}`}>
+                  <SRSCard
+                    key={currentQuiz.question_id}
+                    quiz={currentQuiz}
+                    onAnswer={handleAnswer}
+                    onRate={handleRate}
+                    disabledReviewRatings={
+                      hasQuizReviewCard(currentQuiz) ? PEEKED_REVIEW_RATING_BLOCKLIST : undefined
+                    }
+                  />
+                </div>
               )}
 
               {signalError && (

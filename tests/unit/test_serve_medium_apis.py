@@ -15,6 +15,7 @@ from ahadiff.core.paths import (
 from ahadiff.core.paths import (
     workspace_identity_key as _workspace_identity_key,
 )
+from ahadiff.review.database import initialize_review_db
 from ahadiff.serve import ServeState, create_app
 
 if TYPE_CHECKING:
@@ -135,6 +136,7 @@ class TestWeakConcepts:
         assert resp.status_code == 200
         body = resp.json()
         assert body["concepts"] == []
+        assert body["new_concepts"] == []
 
     def test_requires_auth(self, tmp_path: Path) -> None:
         client = _client(tmp_path / ".ahadiff")
@@ -155,12 +157,33 @@ class TestWeakConcepts:
         resp = client.get("/api/concepts/weak", headers=_AUTH)
         assert resp.status_code == 200
         body = resp.json()
+        # "concepts" = truly weak (reviewed but struggling, reps > 0)
         assert len(body["concepts"]) > 0
         first = body["concepts"][0]
         assert "card_id" in first
         assert "concept" in first
         assert "stability" in first
         assert "difficulty" in first
+        # "new_concepts" = unreviewed (reps = 0)
+        assert "new_concepts" in body
+        assert len(body["new_concepts"]) > 0
+        new_ids = {c["card_id"] for c in body["new_concepts"]}
+        weak_ids = {c["card_id"] for c in body["concepts"]}
+        # No overlap between weak and new
+        assert new_ids.isdisjoint(weak_ids)
+
+    def test_current_schema_corruption_returns_500(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir(parents=True)
+        with sqlite3.connect(state_dir / "review.sqlite") as conn:
+            conn.execute("CREATE TABLE result_events (event_id TEXT PRIMARY KEY)")
+            conn.execute("PRAGMA user_version=8")
+        client = _client(state_dir)
+
+        resp = client.get("/api/concepts/weak", headers=_AUTH)
+
+        assert resp.status_code == 500
+        assert resp.json()["error"] == "review database is unavailable"
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +222,19 @@ class TestReviewMastery:
         assert "concept" in first
         assert "review_count" in first
         assert "avg_rating" in first
+
+    def test_current_schema_corruption_returns_500(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir(parents=True)
+        with sqlite3.connect(state_dir / "review.sqlite") as conn:
+            conn.execute("CREATE TABLE result_events (event_id TEXT PRIMARY KEY)")
+            conn.execute("PRAGMA user_version=8")
+        client = _client(state_dir)
+
+        resp = client.get("/api/review/mastery", headers=_AUTH)
+
+        assert resp.status_code == 500
+        assert resp.json()["error"] == "review database is unavailable"
 
 
 # ---------------------------------------------------------------------------
@@ -634,31 +670,38 @@ class TestSpecAlignment:
 
 
 def _setup_cards_db(db_path: Path) -> None:
+    initialize_review_db(db_path)
+    _cols = (
+        "id, concept, stability, difficulty, scaffolding_level, display_path,"
+        " card_state, reps, run_id, fsrs_state, scheduler_version,"
+        " due_date, source_ref, file_id, hunk_id, hunk_hash, created_at_utc"
+    )
+    _defaults = (
+        "run-test",
+        "{}",
+        "v6",
+        "2026-01-01",
+        "ref",
+        "f",
+        "h",
+        "hh",
+        "2026-01-01T00:00:00Z",
+    )
     conn = sqlite3.connect(str(db_path))
+    # card-1: reviewed (reps > 0) -> goes to "concepts" (weak)
     conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS cards (
-            id TEXT PRIMARY KEY,
-            concept TEXT NOT NULL,
-            stability REAL DEFAULT 0.4,
-            difficulty REAL DEFAULT 0.3,
-            scaffolding_level TEXT DEFAULT 'full',
-            display_path TEXT DEFAULT '',
-            card_state TEXT DEFAULT 'active'
-        )
-        """
+        f"INSERT INTO cards ({_cols}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("card-1", "closures", 0.2, 0.8, "full", "concepts/closures", "active", 3, *_defaults),
     )
+    # card-2: reviewed (reps > 0) -> goes to "concepts" (weak)
     conn.execute(
-        "INSERT INTO cards"
-        " (id, concept, stability, difficulty, scaffolding_level, display_path, card_state) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        ("card-1", "closures", 0.2, 0.8, "full", "concepts/closures", "active"),
+        f"INSERT INTO cards ({_cols}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("card-2", "generators", 0.5, 0.4, "hint", "concepts/generators", "active", 1, *_defaults),
     )
+    # card-3: never reviewed (reps = 0) -> goes to "new_concepts"
     conn.execute(
-        "INSERT INTO cards"
-        " (id, concept, stability, difficulty, scaffolding_level, display_path, card_state) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        ("card-2", "generators", 0.5, 0.4, "hint", "concepts/generators", "active"),
+        f"INSERT INTO cards ({_cols}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("card-3", "decorators", 0.0, 0.0, "full", "concepts/decorators", "active", 0, *_defaults),
     )
     conn.commit()
     conn.close()
@@ -688,17 +731,18 @@ def _setup_cards_and_reviews(db_path: Path) -> None:
         )
         """
     )
+    _rl_cols = "card_id, rating, reviewed_at_utc, elapsed_days, scheduled_days, state"
     conn.execute(
-        "INSERT INTO review_logs (card_id, rating, reviewed_at_utc) VALUES (?, ?, ?)",
-        ("card-1", 3.0, "2026-04-01T10:00:00Z"),
+        f"INSERT INTO review_logs ({_rl_cols}) VALUES (?, ?, ?, ?, ?, ?)",
+        ("card-1", 3, "2026-04-01T10:00:00Z", 0.0, 1.0, "review"),
     )
     conn.execute(
-        "INSERT INTO review_logs (card_id, rating, reviewed_at_utc) VALUES (?, ?, ?)",
-        ("card-1", 4.0, "2026-04-02T10:00:00Z"),
+        f"INSERT INTO review_logs ({_rl_cols}) VALUES (?, ?, ?, ?, ?, ?)",
+        ("card-1", 4, "2026-04-02T10:00:00Z", 1.0, 3.0, "review"),
     )
     conn.execute(
-        "INSERT INTO review_logs (card_id, rating, reviewed_at_utc) VALUES (?, ?, ?)",
-        ("card-2", 2.0, "2026-04-01T10:00:00Z"),
+        f"INSERT INTO review_logs ({_rl_cols}) VALUES (?, ?, ?, ?, ?, ?)",
+        ("card-2", 2, "2026-04-01T10:00:00Z", 0.0, 1.0, "review"),
     )
     conn.commit()
     conn.close()

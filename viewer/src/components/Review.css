@@ -103,12 +103,24 @@
   color: var(--muted);
   text-transform: uppercase;
   margin-bottom: var(--sp-3, 12px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.flashcard__source-badge {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--accent, #D27050);
+  text-transform: none;
+  opacity: 0.8;
 }
 
 .flashcard__front {
   font-family: var(--font-serif);
-  font-size: 26px;
-  line-height: 1.4;
+  font-size: 22px;
+  line-height: 1.5;
   letter-spacing: -0.01em;
 }
 
@@ -125,6 +137,12 @@
   display: none;
 }
 
+.flashcard__answer {
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--ink);
+}
+
 .flashcard__meta {
   margin-top: 10px;
   font-size: 13px;
@@ -132,15 +150,43 @@
 }
 
 .flashcard__evidence {
-  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
   padding: 8px 10px;
-  background: var(--accent-softest);
-  border: 1px solid var(--danger-hair);
+  background: var(--subtle, #F2EFE7);
+  border: 1px solid var(--hair);
   border-radius: var(--r-sm, 4px);
   font-size: 12px;
   font-family: var(--font-mono);
-  color: var(--danger);
+  color: var(--accent, #D27050);
   line-height: 1.65;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--dur-fast, 0.15s) var(--ease-out, ease);
+  min-width: 0;
+}
+
+.flashcard__evidence:hover {
+  background: var(--accent-softer, rgba(210, 112, 80, 0.08));
+  border-color: var(--accent-hair, rgba(210, 112, 80, 0.3));
+}
+
+.flashcard__evidence-label {
+  font-family: var(--font-sans, sans-serif);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted, #6A6456);
+  flex-shrink: 0;
+}
+
+.flashcard__evidence-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ---- Flip button ---- */
@@ -308,6 +354,50 @@
  * when RatchetPage (which also uses .mastery-bar) is loaded directly under
  * route code splitting. Keep this comment as a breadcrumb for the move. */
 
+/* ---- Error state ---- */
+.review__error {
+  text-align: center;
+  padding: var(--sp-10, 40px) var(--sp-6, 24px);
+  border: 1px solid var(--danger, #B8533A);
+  border-radius: var(--r-lg, 12px);
+  background: var(--danger-soft, rgba(184, 83, 58, 0.08));
+}
+
+.review__error-message {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--ink-strong, #1C1B18);
+  margin: 0 0 6px;
+}
+
+.review__error-hint {
+  font-size: 14px;
+  color: var(--muted, #6A6456);
+  margin: 0 0 16px;
+}
+
+.review__error-action {
+  display: inline-block;
+  padding: 8px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--on-accent, #FFF);
+  background: var(--accent, #D27050);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.review__error-action:hover {
+  opacity: 0.85;
+}
+
+.review__error-action:active {
+  opacity: 0.7;
+}
+
 /* ---- Empty / Complete states ---- */
 .review__empty,
 .review__complete {
@@ -319,6 +409,39 @@
 .review__complete-icon {
   font-size: 48px;
   margin-bottom: var(--sp-4, 16px);
+}
+
+.review__empty-hint {
+  color: var(--muted);
+  font-size: 14px;
+  margin-top: 8px;
+}
+
+.review__empty-cta {
+  display: inline-block;
+  margin-top: 16px;
+  padding: 8px 20px;
+  font-size: 14px;
+  color: var(--on-accent, #FFF);
+  background: var(--accent, #D27050);
+  border-radius: 6px;
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+
+.review__empty-cta:hover {
+  opacity: 0.85;
+}
+
+.review__summary-subtitle {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 2px 0 8px;
+}
+
+.review__weak-meta--new {
+  color: var(--accent, #D27050);
+  font-weight: 500;
 }
 
 .review__complete-count {
@@ -396,6 +519,110 @@
   font-size: 13px;
 }
 
+/* ---- Summary section (Phase D) ---- */
+.review__summary {
+  margin-bottom: 24px;
+  border: 1px solid var(--hair, #E6E3D8);
+  border-radius: 12px;
+  overflow: visible;
+}
+
+.review__summary-toggle {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  border: none;
+  background: var(--elevated, #fff);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink, #1C1B18);
+  cursor: pointer;
+}
+
+.review__summary-toggle:hover {
+  background: var(--subtle, #F2EFE7);
+}
+
+.review__summary-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 0 16px 16px;
+}
+
+@media (max-width: 899px) {
+  .review__summary-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+.review__summary-card {
+  min-width: 0;
+}
+
+.review__summary-card-title {
+  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted, #6A6456);
+  margin: 0 0 10px;
+}
+
+.review__mastery-list {
+  display: grid;
+  gap: 8px;
+}
+
+.review__mastery-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 32px;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.review__mastery-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-2, #38362F);
+}
+
+.review__mastery-count {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--muted, #6A6456);
+  text-align: right;
+}
+
+.review__weak-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.review__weak-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  font-size: 13px;
+  border-bottom: 1px dashed var(--hair, #E6E3D8);
+}
+
+.review__weak-item:last-child {
+  border-bottom: none;
+}
+
+.review__weak-meta {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--muted, #6A6456);
+}
+
 /* ---- Responsive ---- */
 @media (max-width: 767px) {
   .review__grid {
@@ -451,12 +678,42 @@
   .review__rating-summary {
     border: 1px solid CanvasText;
   }
+
+  .flashcard__evidence {
+    border: 1px solid LinkText;
+    color: LinkText;
+    background: Canvas;
+    forced-color-adjust: none;
+  }
+
+  .flashcard__evidence:hover {
+    border-color: CanvasText;
+    background: Canvas;
+  }
+
+  .flashcard__evidence-label {
+    color: CanvasText;
+  }
+
+  .review__error {
+    border: 2px solid CanvasText;
+    background: Canvas;
+  }
+
+  .review__error-action {
+    color: HighlightText;
+    background: Highlight;
+    border: 1px solid Highlight;
+    forced-color-adjust: none;
+  }
 }
 
 /* ---- Reduced motion ---- */
 @media (prefers-reduced-motion: reduce) {
   .srs-btn,
-  .flashcard__flip-btn {
+  .flashcard__flip-btn,
+  .review__error-action,
+  .review__empty-cta {
     transition: none;
     transform: none !important;
   }

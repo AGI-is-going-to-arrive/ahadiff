@@ -208,6 +208,21 @@ class TestVerifyConceptsConsistency:
         assert any("count mismatch" in msg for msg in issues)
         assert any("only in JSONL" in msg for msg in issues)
 
+    def test_same_term_key_content_drift(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "review.sqlite"
+        jsonl_path = tmp_path / "concepts.jsonl"
+        initialize_review_db(db_path)
+        upsert_concepts_batch(db_path, [_make_entry("alpha", concept="SQLite alpha")])
+        jsonl_path.write_text(
+            json.dumps(_make_entry("alpha", concept="JSONL alpha")) + "\n",
+            encoding="utf-8",
+        )
+
+        ok, issues = verify_concepts_consistency(db_path, jsonl_path)
+
+        assert ok is False
+        assert any("content mismatch for alpha" in msg for msg in issues)
+
     def test_both_empty(self, tmp_path: Path) -> None:
         db_path = tmp_path / "review.sqlite"
         jsonl_path = tmp_path / "concepts.jsonl"
@@ -279,6 +294,23 @@ class TestConceptsCli:
         assert result.exit_code == 0
         assert "Synced" in result.output
         assert count_concepts(state_dir / "review.sqlite") == 1
+
+    def test_list_prints_concepts_from_sqlite(self, tmp_path: Path) -> None:
+        repo_root = self._make_repo(tmp_path)
+        state_dir = repo_root / ".ahadiff"
+        state_dir.mkdir()
+        db_path = state_dir / "review.sqlite"
+        initialize_review_db(db_path)
+        upsert_concepts_batch(db_path, [_make_entry("alpha"), _make_entry("beta")])
+
+        result = _RUNNER.invoke(
+            app(),
+            ["concepts", "list", "--repo-root", str(repo_root)],
+        )
+
+        assert result.exit_code == 0
+        assert "alpha" in result.output
+        assert "beta" in result.output
 
     def test_sync_rejects_non_object_jsonl_row(self, tmp_path: Path) -> None:
         repo_root = self._make_repo(tmp_path)

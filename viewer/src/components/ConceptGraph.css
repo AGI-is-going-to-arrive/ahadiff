@@ -66,7 +66,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--concept-kind-color, var(--accent-soft));
+  background: var(--concept-kind-stroke, var(--accent));
 }
 
 .concept-graph__view-toggle {
@@ -102,6 +102,35 @@
   border-left: 1px solid var(--hair);
 }
 
+/* ---------- Fit/Export actions (V6 toolbar) ---------- */
+
+.concept-graph__actions {
+  display: flex;
+  gap: 6px;
+  margin-left: 8px;
+}
+
+.concept-graph__action-btn {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm, 4px);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.concept-graph__action-btn:hover {
+  background: var(--subtle);
+  color: var(--ink);
+}
+
+.concept-graph__action-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* ---------- Body layout: graph + detail panel ---------- */
 
 .concept-graph__body {
@@ -128,6 +157,7 @@
   border-radius: 12px;
   padding: 20px;
   min-height: 560px;
+  overflow: hidden;
 }
 
 /* ---------- SVG ---------- */
@@ -139,14 +169,14 @@
 }
 
 .concept-graph__edge {
-  stroke: var(--hair-strong);
+  stroke: var(--hair);
   fill: none;
   transition: stroke var(--duration-fast) var(--ease-out-quart);
 }
 
 .concept-graph__edge--highlight {
   stroke: var(--accent);
-  stroke-width: 2.5;
+  stroke-width: 2;
 }
 
 .concept-graph__node {
@@ -156,13 +186,14 @@
 
 .concept-graph__node:focus-visible .concept-graph__circle,
 .concept-graph__node:hover .concept-graph__circle {
-  stroke-width: 3;
-  filter: drop-shadow(0 0 4px var(--accent));
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 6px var(--concept-kind-stroke, var(--accent-tint)));
 }
 
 .concept-graph__node--selected .concept-graph__circle {
-  stroke: var(--accent-ink);
-  stroke-width: 3;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 6px var(--accent-tint));
 }
 
 .concept-graph__node:focus-visible {
@@ -170,9 +201,9 @@
 }
 
 .concept-graph__circle {
-  fill: var(--concept-kind-color, var(--accent-soft));
-  stroke: var(--accent);
-  stroke-width: 2;
+  fill: var(--concept-kind-fill, var(--accent-softer));
+  stroke: var(--concept-kind-stroke, var(--accent-tint));
+  stroke-width: 1.5;
   transition: stroke-width var(--duration-fast) var(--ease-out-quart),
               filter var(--duration-fast) var(--ease-out-quart);
 }
@@ -231,7 +262,8 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--concept-kind-color, var(--accent-soft));
+  background: var(--concept-kind-fill, var(--accent-softer));
+  border: 1.5px solid var(--concept-kind-stroke, var(--accent-tint));
 }
 
 /* ---------- Detail panel ---------- */
@@ -243,7 +275,10 @@
   padding: 20px;
   animation: fadeUp 0.2s ease-out;
   overflow-y: auto;
-  max-height: 620px;
+  max-height: calc(100vh - 120px);
+  position: sticky;
+  top: 80px;
+  align-self: start;
 }
 
 .concept-graph__detail-header {
@@ -341,8 +376,8 @@
   border-radius: var(--radius-6);
   font-family: var(--font-mono);
   font-size: 11px;
-  background: var(--concept-kind-color, var(--accent-soft));
-  color: #fff;
+  background: var(--concept-kind-badge, var(--accent));
+  color: var(--on-accent);
 }
 
 /* ---------- Freshness indicator ---------- */
@@ -381,6 +416,7 @@
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
+  overflow: hidden;
 }
 
 .concept-graph__lnode {
@@ -392,6 +428,8 @@
   text-align: left;
   cursor: pointer;
   transition: box-shadow var(--duration-fast) var(--ease-out-quart);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .concept-graph__lnode:hover {
@@ -410,7 +448,7 @@
   font-family: var(--font-mono);
   font-size: 11px;
   margin-bottom: 2px;
-  color: var(--concept-kind-color, var(--accent));
+  color: var(--concept-kind-stroke, var(--accent));
 }
 
 .concept-graph__lnode-file {
@@ -433,6 +471,28 @@
   border-radius: var(--radius-8);
   font-size: 12px;
   color: var(--warning, #e65100);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.concept-graph__show-all-btn {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  border: 1px solid var(--warning, #e65100);
+  border-radius: var(--radius-6);
+  background: transparent;
+  color: var(--warning, #e65100);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out-quart);
+}
+
+.concept-graph__show-all-btn:hover {
+  background: var(--warning, #e65100);
+  color: #fff;
 }
 
 /* ---------- Counts ---------- */
@@ -552,8 +612,8 @@
 
   .concept-graph__filter-swatch,
   .concept-graph__legend-swatch {
-    border: 1px solid CanvasText;
-    background: CanvasText;
+    border: 1px solid CanvasText !important;
+    background: CanvasText !important;
   }
 
   .concept-graph__edge {
@@ -615,10 +675,9 @@
   }
 
   .concept-graph__kind-badge {
-    forced-color-adjust: auto;
     border: 1px solid CanvasText;
     background: Canvas !important;
-    color: CanvasText;
+    color: CanvasText !important;
   }
 
   .concept-graph__freshness {
@@ -694,6 +753,12 @@
 @media (prefers-color-scheme: dark) {
   .concept-graph__graph-wrap {
     background: var(--subtle);
+    --graph-code-fill: rgba(210, 112, 80, 0.18);
+    --graph-code-stroke: #D97757;
+    --graph-rationale-fill: rgba(148, 98, 22, 0.18);
+    --graph-rationale-stroke: #E5C18C;
+    --graph-module-fill: rgba(46, 74, 107, 0.18);
+    --graph-module-stroke: #B3C9E0;
   }
 
   .concept-graph__legend {

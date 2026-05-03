@@ -664,34 +664,48 @@ class TestWatchLearnRunner:
         assert runner._retrigger_pending is False
         release.set()
 
-    def test_timeout_allows_later_request_after_hung_learn(self) -> None:
+    def test_timeout_keeps_runner_busy_until_draining_learn_finishes(self) -> None:
         first_started = threading.Event()
         release_first = threading.Event()
-        second_done = threading.Event()
+        first_done = threading.Event()
         run_lock = threading.Lock()
         run_count = 0
+        active_count = 0
+        max_active = 0
 
         def run_learn() -> bool:
-            nonlocal run_count
+            nonlocal active_count, max_active, run_count
             with run_lock:
                 run_count += 1
+                active_count += 1
+                max_active = max(max_active, active_count)
                 current = run_count
-            if current == 1:
-                first_started.set()
-                release_first.wait()
-            else:
-                second_done.set()
-            return True
+            try:
+                if current == 1:
+                    first_started.set()
+                    release_first.wait()
+                    first_done.set()
+                return True
+            finally:
+                with run_lock:
+                    active_count -= 1
 
         runner = cli_module._WatchLearnRunner(run_learn, run_timeout_seconds=0.05)
         runner.request(WatchEvent(changed_paths=frozenset({"a.py"}), timestamp=1.0))
         assert first_started.wait(timeout=2.0)
-        assert self._wait_until(lambda: not runner._running)
+        time.sleep(0.15)
 
         runner.request(WatchEvent(changed_paths=frozenset({"b.py"}), timestamp=2.0))
 
-        assert second_done.wait(timeout=2.0)
-        runner.stop()
+        assert self._wait_until(lambda: runner._retrigger_pending is True)
+        assert runner._running is True
+        with run_lock:
+            assert run_count == 1
+            assert max_active == 1
         release_first.set()
+        assert first_done.wait(timeout=2.0)
+        assert self._wait_until(lambda: not runner._running)
+        runner.stop()
         with run_lock:
             assert run_count == 2
+            assert max_active == 1

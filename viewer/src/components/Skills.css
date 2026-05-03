@@ -166,3 +166,162 @@
 @media (prefers-reduced-motion: reduce) {
   .agent-card, .copy-btn { transition: none; }
 }
+
+/* ---- Filter chips ---- */
+.skills__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.skills__filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--hair, #E6E3D8);
+  background: var(--subtle, #F2EFE7);
+  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+  color: var(--ink-2, #38362F);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.skills__filter-chip:hover {
+  background: var(--elevated, #fff);
+}
+
+.skills__filter-chip--active {
+  background: var(--accent-soft, #F4E4D9);
+  color: var(--accent-ink, #B04E28);
+  border-color: var(--accent-hair, #EBC3AE);
+}
+
+.skills__filter-count {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* ---- Layout: grid + aside preview ---- */
+.skills__layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 24px;
+  align-items: start;
+}
+
+.skills__layout--no-aside {
+  grid-template-columns: 1fr;
+}
+
+@media (max-width: 899px) {
+  .skills__layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Preview panel ---- */
+.skill-preview {
+  background: var(--elevated, #fff);
+  border: 1px solid var(--hair, #E6E3D8);
+  border-radius: 12px;
+  padding: 20px;
+  position: sticky;
+  top: 80px;
+}
+
+.skill-preview__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.skill-preview__header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.skill-preview__close {
+  border: none;
+  background: none;
+  font-size: 20px;
+  color: var(--muted, #6A6456);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.skill-preview__close:hover {
+  background: var(--subtle, #F2EFE7);
+}
+
+.skill-preview__status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.skill-preview__status--installed {
+  background: var(--success-soft, #ECF4EE);
+  color: var(--success, #2F6F4F);
+}
+
+.skill-preview__status--available {
+  background: var(--accent-soft, #F4E4D9);
+  color: var(--accent-ink, #B04E28);
+}
+
+.skill-preview__status--unsupported {
+  background: var(--subtle, #F2EFE7);
+  color: var(--muted, #6A6456);
+}
+
+.skill-preview__status--error {
+  background: var(--danger-soft, #F7E2DC);
+  color: var(--danger, #A33D2B);
+}
+
+.skill-preview__desc {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-2, #38362F);
+  margin: 0 0 12px;
+}
+
+.skill-preview__error {
+  font-size: 13px;
+  color: var(--danger, #A33D2B);
+  margin: 0 0 12px;
+}
+
+.skill-preview__install {
+  background: var(--subtle, #F2EFE7);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.skill-preview__install code {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+/* ---- Selected card ---- */
+.agent-card--selected {
+  border-color: var(--accent, #D27050);
+  box-shadow: 0 0 0 2px var(--accent-soft, #F4E4D9);
+}
+
+.agent-card[tabindex] {
+  cursor: pointer;
+}

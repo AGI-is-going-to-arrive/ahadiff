@@ -318,7 +318,13 @@ class TaskRunner:
             return "cancelled"
         if "invalid provider" in error_msg or "provider configuration" in error_msg:
             return "config_error"
-        if "claim extraction" in error_msg or "claim verification" in error_msg:
+        _claim = (
+            "claim extraction",
+            "claim_extraction",
+            "claim verification",
+            "references line outside patch",
+        )
+        if any(k in error_msg for k in _claim):
             return "claim_error"
         if "lesson generation" in error_msg:
             return "lesson_error"
@@ -438,6 +444,7 @@ class TaskRunner:
                 info.status = TaskStatus.CANCELLED
                 info.completed_at = datetime.now(UTC).isoformat()
         except Exception as exc:
+            log.error("task %s failed with %s", task_id, type(exc).__name__)
             if handle.is_cancelled():
                 info.status = TaskStatus.CANCELLED
                 info.completed_at = datetime.now(UTC).isoformat()

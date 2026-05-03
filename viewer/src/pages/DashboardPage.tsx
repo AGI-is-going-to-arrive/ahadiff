@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AppShell from '../components/AppShell';
+import InfoHint from '../components/InfoHint';
 import CalendarHeatmap, { type HeatmapCell } from '../components/CalendarHeatmap';
 import KpiCard from '../components/KpiCard';
 import RatchetChart from '../components/RatchetChart';
@@ -8,7 +9,7 @@ import { ApiError } from '../api/client';
 import { getRatchetHistory } from '../api/runs';
 import { fetchReviewHeatmap, fetchStats } from '../api/stats';
 import { useRunsStore } from '../state/runs-store';
-import { useTranslation, type MessageKey } from '../i18n/useTranslation';
+import { useTranslation, type MessageKey, type TranslateFn } from '../i18n/useTranslation';
 import { useLocaleStore } from '../state/locale-store';
 import type { RatchetHistoryEntry, StatsResponse, Verdict } from '../api/types';
 import { safeVerdict } from '../utils/verdict';
@@ -42,6 +43,27 @@ function deriveHeatmapFromRuns(
 
 const VERDICT_FILTERS = ['ALL', 'PASS', 'CAUTION', 'FAIL'] as const;
 type VerdictFilter = (typeof VERDICT_FILTERS)[number];
+
+const DIMENSION_LABEL_KEYS: Record<string, string> = {
+  accuracy: 'Ratchet.dim_accuracy_label',
+  evidence: 'Ratchet.dim_evidence_label',
+  diff_coverage: 'Ratchet.dim_diff_coverage_label',
+  learnability: 'Ratchet.dim_learnability_label',
+  quiz_transfer: 'Ratchet.dim_quiz_transfer_label',
+  spec_alignment: 'Ratchet.dim_spec_alignment_label',
+  conciseness: 'Ratchet.dim_conciseness_label',
+  safety_privacy: 'Ratchet.dim_safety_privacy_label',
+};
+
+function formatDimensionLabel(
+  dim: string | null | undefined,
+  t: TranslateFn,
+): string {
+  if (!dim) return '-';
+  const labelKey = DIMENSION_LABEL_KEYS[dim];
+  if (labelKey) return t(labelKey);
+  return dim.replace(/_/g, ' ');
+}
 
 export default function DashboardPage() {
   const { t } = useTranslation();
@@ -276,7 +298,7 @@ export default function DashboardPage() {
             />
             <KpiCard
               label={t('Rubric.weakest_dim')}
-              value={run.weakest_dim || '-'}
+              value={formatDimensionLabel(run.weakest_dim, t)}
             />
           </div>
 
@@ -345,7 +367,7 @@ export default function DashboardPage() {
           <div className="ratchet-section">
             <div className="ratchet-section__card">
               <div className="ratchet-section__header">
-                <h2>{t('Dashboard.ratchet_title')}</h2>
+                <h2>{t('Dashboard.ratchet_title')} <InfoHint label={t('Dashboard.ratchet_hint')} /></h2>
                 <span className="ratchet-section__meta">{t('Rubric.overall')}</span>
               </div>
               <div className="ratchet-section__body">
@@ -364,6 +386,20 @@ export default function DashboardPage() {
 
         {/* Graphify status — optional, self-fetching, hidden when disabled */}
         {graphifyCard}
+
+        {/* Weakest dimension chip cloud — V6 alignment */}
+        {stats && stats.weakest_dimensions.length > 0 && (
+          <div className="dashboard__weak-concepts">
+            <h2 className="dashboard__section-title">{t('Dashboard.weakest_dimensions_title')} <InfoHint label={t('Dashboard.weakest_dim_hint')} /></h2>
+            <div className="dashboard__chip-cloud">
+              {stats.weakest_dimensions.map((dim) => (
+                <span key={dim} className="dashboard__weak-chip" title={dim} dir="auto">
+                  {formatDimensionLabel(dim, t)}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Run list */}
         <RunListTable
@@ -385,7 +421,7 @@ export default function DashboardPage() {
 
 interface RunListTableProps {
   runs: ReturnType<typeof useRunsStore.getState>['runs'];
-  t: (key: MessageKey, params?: Record<string, string | number>) => string;
+  t: TranslateFn;
   locale: string;
   hasMore?: boolean;
   loadingMore?: boolean;
@@ -429,7 +465,7 @@ function RunListTable({
         {onVerdictFilterChange ? (
           <div
             className="run-list-section__filters"
-            role="tablist"
+            role="group"
             aria-label={t('Dashboard.verdict_filter_label')}
           >
             {VERDICT_FILTERS.map((opt) => {
@@ -439,8 +475,7 @@ function RunListTable({
                 <button
                   key={opt}
                   type="button"
-                  role="tab"
-                  aria-selected={isActive}
+                  aria-pressed={isActive}
                   className={`verdict-chip${isActive ? ' verdict-chip--active' : ''} verdict-chip--${opt}`}
                   onClick={() => onVerdictFilterChange(opt)}
                 >
@@ -471,7 +506,7 @@ function RunListTable({
           {sorted.map((run) => (
             <tr key={run.run_id}>
               <td>
-                <a className="run-list__link mono" href={`#/run/${run.run_id}/lesson`}>
+                <a className="run-list__link mono" href={`#/run/${encodeURIComponent(run.run_id)}/lesson`}>
                   {run.source_ref || run.run_id.slice(0, 8)}
                 </a>
               </td>
@@ -479,7 +514,7 @@ function RunListTable({
                 <VerdictBadge verdict={safeVerdict(run.verdict)} t={t} />
               </td>
               <td className="num">{run.overall}</td>
-              <td>{run.weakest_dim || '-'}</td>
+              <td>{formatDimensionLabel(run.weakest_dim, t)}</td>
               <td className="mono">
                 {formatDate(run.created_at, locale)}
               </td>
@@ -506,7 +541,7 @@ function RunListTable({
 
 /* ---- Verdict badge ---- */
 
-function VerdictBadge({ verdict, t }: { verdict: Verdict; t: (k: MessageKey) => string }) {
+function VerdictBadge({ verdict, t }: { verdict: Verdict; t: TranslateFn }) {
   const label = t(`Verdict.${verdict}`) || verdict;
   return (
     <span className={`verdict-badge verdict-badge--${verdict}`}>

@@ -667,6 +667,40 @@
   }
 }
 
+/* Mode badge (Socratic / SRS) */
+
+.quiz-page__mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.quiz-page__mode-badge--socratic {
+  background: var(--info, #2E4A6B);
+  color: #fff;
+}
+
+.quiz-page__mode-badge--srs {
+  background: var(--accent, #D27050);
+  color: #fff;
+}
+
+.quiz-page__card-wrap--srs .srs-card {
+  border-left: 3px solid var(--accent, #D27050);
+}
+
+.quiz-page__card-wrap--socratic .srs-card {
+  border-left: 3px solid var(--info, #2E4A6B);
+}
+
 /* ---- Dark mode ---- */
 @media (prefers-color-scheme: dark) {
   .quiz-panel {
@@ -723,6 +757,19 @@
 
 /* ---- Forced colors ---- */
 @media (forced-colors: active) {
+  .quiz-page__mode-badge,
+  .quiz-page__mode-badge--socratic,
+  .quiz-page__mode-badge--srs {
+    background: Canvas !important;
+    color: CanvasText !important;
+    border: 1px solid CanvasText !important;
+  }
+
+  .quiz-page__mode-badge--srs {
+    border-color: Highlight !important;
+    color: Highlight !important;
+  }
+
   .srs-card {
     border: 1px solid CanvasText;
   }

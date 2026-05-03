@@ -17,6 +17,8 @@ class DueReviewCard:
     display_path: str
     source_ref: str | None = None
     symbol: str | None = None
+    question: str | None = None
+    answer: str | None = None
 
 
 @dataclass(frozen=True)

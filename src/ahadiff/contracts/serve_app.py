@@ -31,6 +31,24 @@ class LocaleResponse(BaseModel):
     locale: Literal["en", "zh-CN"]
 
 
+class ConfigResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lang: str | None = None
+    privacy_mode: str | None = None
+    generate_model: str | None = None
+    judge_model: str | None = None
+    serve_port: int | None = None
+    key_status: dict[str, Literal["configured", "missing"]] = Field(default_factory=dict)
+
+
+class ConfigUpdateResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    updated: bool
+    scope: Literal["session"]
+
+
 class RunSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -102,6 +120,23 @@ class DueReviewCardResponse(BaseModel):
     display_path: str
     source_ref: str | None = None
     symbol: str | None = None
+    question: str | None = None
+    answer: str | None = None
+
+
+class ReviewMasteryItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    concept: str
+    review_count: int = Field(ge=0)
+    avg_rating: float | None = Field(default=None, allow_inf_nan=False)
+    last_review: str | None = None
+
+
+class ReviewMasteryResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mastery: list[ReviewMasteryItem]
 
 
 class SetLocaleRequest(BaseModel):
@@ -180,6 +215,8 @@ class HelpfulnessRequest(LearningSignalRequest):
 
 __all__ = [
     "AuthTokenResponse",
+    "ConfigResponse",
+    "ConfigUpdateResponse",
     "DueReviewCardResponse",
     "GraphifyMode",
     "HelpfulnessRequest",
@@ -189,6 +226,8 @@ __all__ = [
     "QuizAnswerRequest",
     "RatchetHistoryEntry",
     "ReviewAnswer",
+    "ReviewMasteryItem",
+    "ReviewMasteryResponse",
     "ReviewQueueState",
     "ReviewQueueStateRequest",
     "ReviewQueueStateResponse",

@@ -208,6 +208,8 @@ def generate_cards_for_run(
                 hunk_hash=anchor.hunk_hash,
                 symbol=anchor.symbol,
                 change_kind=cast("Any", anchor.change_kind),
+                question=question.question,
+                answer=question.expected_answer,
             )
         )
     cards_path = run_path / "quiz" / "cards.jsonl"

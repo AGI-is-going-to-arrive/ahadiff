@@ -45,6 +45,13 @@
   font-family: var(--font-mono, 'SF Mono', Monaco, monospace);
   font-size: 12px;
   color: var(--ink-2);
+  min-width: 0;
+}
+
+.graphify-card__row > span:not(.graphify-card__row-label):not(.graphify-card__row-ok) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .graphify-card__row-label {
@@ -169,6 +176,14 @@
     align-items: flex-start;
     gap: 6px;
   }
+
+  .graphify-card__row {
+    flex-wrap: wrap;
+  }
+
+  .graphify-card__row-label {
+    min-width: 70px;
+  }
 }
 
 /* -- Print -- */
@@ -184,6 +199,8 @@
 
   .graphify-card__row {
     color: var(--ink);
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 }
 

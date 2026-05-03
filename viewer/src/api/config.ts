@@ -35,12 +35,12 @@ export interface DoctorCheck {
   name: string;
   status: 'pass' | 'warn' | 'fail';
   message: string;
-  category?: string;
+  category: string;
   details?: Record<string, unknown>;
 }
 
 export interface DoctorResponse {
-  summary_status?: 'pass' | 'warn' | 'fail';
+  summary_status: 'pass' | 'warn' | 'fail';
   checks: DoctorCheck[];
 }
 

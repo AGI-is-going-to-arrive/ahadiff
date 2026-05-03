@@ -4,10 +4,12 @@ import sqlite3
 from typing import TYPE_CHECKING, Any
 
 from anyio import to_thread
+from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
 
 from ahadiff.contracts import (
     DueReviewCardResponse,
+    ReviewMasteryResponse,
     ReviewQueueStateRequest,
     ReviewQueueStateResponse,
     ReviewRateRequest,
@@ -103,7 +105,10 @@ def _review_queue_state_sync(state: ServeState, body: ReviewQueueStateRequest) -
 def _review_queue_sync(state: ServeState) -> tuple[DueReviewCard, ...]:
     if not state.review_db_path.exists():
         return ()
-    return tuple(list_due_cards(state.review_db_path))
+    try:
+        return tuple(list_due_cards(state.review_db_path))
+    except sqlite3.DatabaseError as exc:
+        raise HTTPException(status_code=500, detail="review database is unavailable") from exc
 
 
 _MAX_WEAK_CONCEPTS = 100
@@ -125,33 +130,50 @@ async def get_weak_concepts(request: Request) -> JSONResponse:
 def _weak_concepts_sync(db_path: Path, limit: int) -> dict[str, Any]:
     if not db_path.is_file():
         return WeakConceptsResponse(concepts=[]).model_dump(mode="json")
+    def _rows_to_items(rows: list[Any]) -> list[dict[str, Any]]:
+        return [
+            {
+                "card_id": str(row[0]),
+                "concept": str(row[1]),
+                "stability": float(row[2]) if row[2] is not None else 0.0,
+                "difficulty": float(row[3]) if row[3] is not None else 0.0,
+                "scaffolding_level": str(row[4]) if row[4] is not None else "",
+                "display_path": str(row[5]) if row[5] is not None else "",
+            }
+            for row in rows
+        ]
+
     try:
+        initialize_review_db(db_path)
         with connect_review_db(db_path) as conn:
-            rows = conn.execute(
+            # Truly weak: reviewed at least once but struggling (stability < 30 days)
+            weak_rows = conn.execute(
                 """
                 SELECT id, concept, stability, difficulty, scaffolding_level, display_path
                 FROM cards
-                WHERE card_state = 'active'
+                WHERE card_state = 'active' AND reps > 0 AND stability < 30.0
                 ORDER BY stability ASC, difficulty DESC
                 LIMIT ?
                 """,
                 (limit,),
             ).fetchall()
-    except sqlite3.OperationalError:
-        return WeakConceptsResponse(concepts=[]).model_dump(mode="json")
+            # New/unreviewed: never reviewed yet
+            new_rows = conn.execute(
+                """
+                SELECT id, concept, stability, difficulty, scaffolding_level, display_path
+                FROM cards
+                WHERE card_state = 'active' AND reps = 0
+                ORDER BY created_at_utc DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+    except sqlite3.DatabaseError as exc:
+        raise HTTPException(status_code=500, detail="review database is unavailable") from exc
     return WeakConceptsResponse.model_validate(
         {
-            "concepts": [
-                {
-                    "card_id": str(row[0]),
-                    "concept": str(row[1]),
-                    "stability": float(row[2]) if row[2] is not None else 0.0,
-                    "difficulty": float(row[3]) if row[3] is not None else 0.0,
-                    "scaffolding_level": str(row[4]) if row[4] is not None else "",
-                    "display_path": str(row[5]) if row[5] is not None else "",
-                }
-                for row in rows
-            ]
+            "concepts": _rows_to_items(weak_rows),
+            "new_concepts": _rows_to_items(new_rows),
         }
     ).model_dump(mode="json")
 
@@ -172,6 +194,7 @@ def _mastery_sync(db_path: Path, limit: int) -> dict[str, Any]:
     if not db_path.is_file():
         return {"mastery": []}
     try:
+        initialize_review_db(db_path)
         with connect_review_db(db_path) as conn:
             rows = conn.execute(
                 """
@@ -188,19 +211,21 @@ def _mastery_sync(db_path: Path, limit: int) -> dict[str, Any]:
                 """,
                 (limit,),
             ).fetchall()
-    except sqlite3.OperationalError:
-        return {"mastery": []}
-    return {
-        "mastery": [
-            {
-                "concept": str(row[0]),
-                "review_count": int(row[1]),
-                "avg_rating": float(row[2]) if row[2] is not None else None,
-                "last_review": str(row[3]) if row[3] is not None else None,
-            }
-            for row in rows
-        ]
-    }
+    except sqlite3.DatabaseError as exc:
+        raise HTTPException(status_code=500, detail="review database is unavailable") from exc
+    return ReviewMasteryResponse.model_validate(
+        {
+            "mastery": [
+                {
+                    "concept": str(row[0]),
+                    "review_count": int(row[1]),
+                    "avg_rating": float(row[2]) if row[2] is not None else None,
+                    "last_review": str(row[3]) if row[3] is not None else None,
+                }
+                for row in rows
+            ]
+        }
+    ).model_dump(mode="json")
 
 
 __all__ = [
