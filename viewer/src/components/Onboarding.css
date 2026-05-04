@@ -3,9 +3,9 @@
    ========================================================================== */
 
 .onboarding {
-  max-width: var(--mw-content, 960px);
+  max-width: var(--mw-content);
   margin: 0 auto;
-  padding: 0 0 var(--sp-10, 40px);
+  padding: 0 0 var(--sp-10);
 }
 
 .onboarding__title {
@@ -20,7 +20,7 @@
 .onboarding__sub {
   color: var(--muted);
   font-size: 14px;
-  margin-top: 8px;
+  margin-top: var(--sp-2);
   line-height: 1.65;
 }
 
@@ -28,23 +28,23 @@
 .stepper {
   display: flex;
   gap: 18px;
-  margin: var(--sp-8, 32px) 0;
+  margin: var(--sp-8) 0;
 }
 
 .stepper__step {
   flex: 1;
   display: flex;
   align-items: flex-start;
-  gap: var(--sp-3, 12px);
-  padding: var(--sp-4, 16px);
+  gap: var(--sp-3);
+  padding: var(--sp-4);
   border: 1px solid var(--hair);
-  border-radius: var(--r-lg, 12px);
+  border-radius: var(--r-lg);
   background: var(--elevated);
 }
 
 .stepper__step--done {
   border-color: var(--success);
-  background: var(--success-soft, #ECF4EE);
+  background: var(--success-soft);
 }
 
 .stepper__step--current {
@@ -58,7 +58,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--r-full, 999px);
+  border-radius: var(--r-full);
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 600;
@@ -84,7 +84,7 @@
 }
 
 .stepper__step p {
-  margin: 4px 0 0;
+  margin: var(--sp-1) 0 0;
   font-size: 12px;
   color: var(--muted);
 }
@@ -93,7 +93,7 @@
 .onboarding__grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: var(--sp-6, 24px);
+  gap: var(--sp-6);
 }
 
 /* ---- Phase 4G: Step 4 preview card ----
@@ -101,19 +101,19 @@
  * "first learn run" panel, used as marketing for what AhaDiff produces
  * end-to-end. */
 .onboarding__preview {
-  margin-top: var(--sp-6, 24px);
+  margin-top: var(--sp-6);
 }
 
 .onboarding__preview-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--sp-4, 16px);
+  gap: var(--sp-4);
 }
 
 .onboarding__preview-cell {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
   min-width: 0;
 }
 
@@ -134,7 +134,7 @@
 .onboarding__preview-verdict .verdict-badge {
   align-self: flex-start;
   font-size: 12px;
-  padding: 4px 10px;
+  padding: var(--sp-1) 10px;
 }
 
 /* ---- Responsive ---- */

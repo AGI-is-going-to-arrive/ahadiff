@@ -9,8 +9,8 @@
 .calendar-heatmap {
   background: var(--paper);
   border: 1px solid var(--hair);
-  border-radius: 12px;
-  padding: 16px 18px 14px;
+  border-radius: var(--r-lg);
+  padding: var(--sp-4) 18px 14px;
   box-shadow: var(--sh-sm);
 }
 
@@ -19,7 +19,7 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 12px;
+  margin-bottom: var(--sp-3);
 }
 
 .calendar-heatmap__title {
@@ -51,8 +51,8 @@
   border-radius: 3px;
   background: var(--subtle);
   transition:
-    background var(--dur-fast, 0.15s) var(--ease-out, ease),
-    transform var(--dur-fast, 0.15s) var(--ease-out, ease);
+    background var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 
 .calendar-heatmap__cell--lvl-0 {
@@ -108,7 +108,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 12px;
+  margin-top: var(--sp-3);
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.06em;
@@ -192,7 +192,7 @@
 /* Phase 2D smaller-screen spacing trim. */
 @media (max-width: 540px) {
   .calendar-heatmap {
-    padding: 12px 14px;
+    padding: var(--sp-3) 14px;
   }
   .calendar-heatmap__title {
     font-size: 14px;

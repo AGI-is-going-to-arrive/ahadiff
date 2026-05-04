@@ -1,5 +1,5 @@
 .concepts-page {
-  animation: fadeUp 0.3s ease-out;
+  animation: fadeUp var(--dur-base) ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -9,12 +9,12 @@
 }
 
 .concepts-page__header {
-  margin-bottom: var(--space-4, 16px);
+  margin-bottom: var(--sp-4);
 }
 
 .concepts-page__title {
   font-family: var(--font-serif);
-  font-size: var(--font-size-h1, 24px);
+  font-size: var(--fs-2xl);
   color: var(--ink-strong);
   margin: 0;
 }

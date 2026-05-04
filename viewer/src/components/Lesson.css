@@ -5,22 +5,22 @@
 .lesson-page {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  animation: fadeUp 0.3s ease-out;
+  gap: var(--sp-6);
+  animation: fadeUp var(--dur-base) ease-out;
 }
 
 .lesson-page__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--sp-4);
   flex-wrap: wrap;
 }
 
 .lesson-page__title {
   font-family: var(--font-serif);
   font-weight: 500;
-  font-size: 24px;
+  font-size: var(--fs-2xl);
   letter-spacing: -0.01em;
   color: var(--ink-strong);
   margin: 0;
@@ -29,7 +29,7 @@
 .lesson-page__body {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: var(--sp-6);
 }
 
 /* Desktop: 2-column */
@@ -37,7 +37,7 @@
   .lesson-page__body {
     display: grid;
     grid-template-columns: 1fr 320px;
-    gap: 32px;
+    gap: var(--sp-8);
     align-items: start;
   }
 }
@@ -49,14 +49,14 @@
 .lesson__layout {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr) 260px;
-  gap: 32px;
+  gap: var(--sp-8);
   align-items: start;
 }
 
 .lesson__center {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: var(--sp-6);
   min-width: 0;
 }
 
@@ -70,8 +70,8 @@
   overflow-wrap: anywhere;
   background: var(--elevated);
   border: 1px solid var(--hair);
-  border-radius: var(--radius-10);
-  padding: 28px 32px;
+  border-radius: 10px;
+  padding: 28px var(--sp-8);
 }
 
 .lesson__section-heading {
@@ -80,7 +80,7 @@
   font-weight: 500;
   line-height: 1.18;
   color: var(--ink-strong);
-  margin: 32px 0 12px;
+  margin: var(--sp-8) 0 var(--sp-3);
 }
 
 .lesson__section-heading:first-child {
@@ -104,7 +104,7 @@
 }
 
 .lesson__paragraph {
-  margin: 0 0 16px;
+  margin: 0 0 var(--sp-4);
 }
 
 .lesson__paragraph:last-child {
@@ -113,7 +113,7 @@
 
 .lesson__list {
   margin: 0 0 18px;
-  padding-left: 24px;
+  padding-left: var(--sp-6);
 }
 
 .lesson__list li {
@@ -130,18 +130,18 @@
   font-size: 0.92em;
   background: var(--subtle);
   border: 1px solid var(--hair);
-  border-radius: var(--radius-6);
+  border-radius: 6px;
   padding: 1px 5px;
 }
 
 .lesson__code-block {
   margin: 0 0 18px;
-  padding: 16px 18px;
+  padding: var(--sp-4) 18px;
   overflow-x: auto;
   white-space: pre;
   background: var(--subtle);
   border: 1px solid var(--hair);
-  border-radius: var(--radius-8);
+  border-radius: var(--r-md);
 }
 
 .lesson__code-block code {
@@ -172,7 +172,7 @@
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted);
-  margin-bottom: 12px;
+  margin-bottom: var(--sp-3);
 }
 
 .lesson__toc-empty,
@@ -193,14 +193,14 @@
 
 .lesson__toc-link {
   display: block;
-  padding: 4px 8px;
-  border-radius: var(--radius-6);
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: 6px;
   font-size: 13px;
   line-height: 1.45;
   color: var(--ink);
   text-decoration: none;
-  transition: background var(--duration-fast) var(--ease-out-quart),
-              color var(--duration-fast) var(--ease-out-quart);
+  transition: background var(--dur-fast) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart);
 }
 
 .lesson__toc-link:hover {
@@ -210,15 +210,15 @@
 
 .lesson__toc-link:focus-visible {
   outline: none;
-  box-shadow: var(--ring-focus);
+  box-shadow: var(--sh-ring);
 }
 
 .lesson__toc-item--l2 {
-  padding-left: 12px;
+  padding-left: var(--sp-3);
 }
 
 .lesson__toc-item--l3 {
-  padding-left: 24px;
+  padding-left: var(--sp-6);
 }
 
 /* --- Rail (right) --- */
@@ -251,7 +251,7 @@
 .lesson__claim-total {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--sp-2);
   margin-bottom: 10px;
 }
 
@@ -310,7 +310,7 @@
   font-size: 11px;
   color: var(--ink);
   background: var(--subtle);
-  border-radius: var(--radius-6);
+  border-radius: 6px;
   padding: 2px 6px;
   overflow-wrap: anywhere;
 }
@@ -325,7 +325,7 @@
 .lesson__selected-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   flex-wrap: wrap;
   min-width: 0;
 }
@@ -356,8 +356,8 @@
   line-height: 1.5;
   color: var(--ink);
   background: var(--subtle);
-  border-radius: var(--radius-6);
-  padding: 10px 12px;
+  border-radius: 6px;
+  padding: 10px var(--sp-3);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -385,7 +385,7 @@
 
 .scaffolding-tab {
   padding: 6px 14px;
-  border-radius: var(--radius-8);
+  border-radius: var(--r-md);
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.08em;
@@ -394,8 +394,8 @@
   background: var(--subtle);
   border: none;
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-out-quart),
-              color var(--duration-fast) var(--ease-out-quart);
+  transition: background var(--dur-fast) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart);
 }
 
 .scaffolding-tab:hover {
@@ -414,7 +414,7 @@
 
 .scaffolding-tab:focus-visible {
   outline: none;
-  box-shadow: var(--ring-focus);
+  box-shadow: var(--sh-ring);
 }
 
 /* ==========================================================================
@@ -424,7 +424,7 @@
 .lesson-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--sp-5);
 }
 
 /* ==========================================================================
@@ -434,8 +434,8 @@
 .evidence-panel {
   background: var(--elevated);
   border: 1px solid var(--hair);
-  border-radius: var(--radius-10);
-  padding: 18px 20px;
+  border-radius: 10px;
+  padding: 18px var(--sp-5);
 }
 
 .evidence-panel__title {
@@ -450,7 +450,7 @@
 .evidence-panel__header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   margin-bottom: 10px;
   min-width: 0;
 }
@@ -486,18 +486,18 @@
 .evidence-panel__location code {
   background: var(--subtle);
   padding: 2px 6px;
-  border-radius: var(--radius-6);
+  border-radius: 6px;
 }
 
 .evidence-panel__evidence {
-  margin: 12px 0 0;
+  margin: var(--sp-3) 0 0;
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.5;
   color: var(--ink);
   background: var(--subtle);
-  border-radius: var(--radius-6);
-  padding: 12px 14px;
+  border-radius: 6px;
+  padding: var(--sp-3) 14px;
   white-space: pre-wrap;
   word-break: break-word;
   overflow-x: auto;
@@ -517,9 +517,9 @@
 .claim-badge {
   display: inline-flex;
   align-items: baseline;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: var(--radius-6);
+  gap: var(--sp-1);
+  padding: 2px var(--sp-2);
+  border-radius: 6px;
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.06em;
@@ -574,13 +574,13 @@
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted);
-  margin: 0 0 12px;
+  margin: 0 0 var(--sp-3);
 }
 
 .claims-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
   list-style: none;
   margin: 0;
   padding: 0;
@@ -588,11 +588,11 @@
 
 .claim-card {
   border: 1px solid var(--hair);
-  border-radius: var(--radius-10);
+  border-radius: 10px;
   padding: 13px 15px;
   background: var(--elevated);
   cursor: pointer;
-  transition: all var(--duration-fast) var(--ease-out-quart);
+  transition: all var(--dur-fast) var(--ease-out-quart);
   overflow: hidden;
 }
 
@@ -614,7 +614,7 @@
 
 .claim-card:focus-visible {
   outline: none;
-  box-shadow: var(--ring-focus);
+  box-shadow: var(--sh-ring);
 }
 
 .claim-card__id {
@@ -630,7 +630,7 @@
 .claim-card__row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   min-width: 0;
   flex-wrap: wrap;
 }
@@ -643,7 +643,7 @@
 }
 
 .claim-card__location {
-  margin-top: 8px;
+  margin-top: var(--sp-2);
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--muted);
@@ -660,7 +660,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 64px 0;
+  padding: var(--sp-16) 0;
   color: var(--muted);
   font-size: 14px;
 }
@@ -669,7 +669,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 64px 0;
+  padding: var(--sp-16) 0;
   color: var(--danger);
   font-size: 14px;
 }
@@ -805,6 +805,6 @@
 
   .lesson-sidebar {
     border-top: 1px solid var(--hair);
-    padding-top: 20px;
+    padding-top: var(--sp-5);
   }
 }

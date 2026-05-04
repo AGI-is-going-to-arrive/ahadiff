@@ -7,12 +7,12 @@
 .dashboard {
   max-width: 1120px;
   margin: 0 auto;
-  padding: 0 0 40px;
-  animation: fadeUp 0.3s ease-out;
+  padding: 0 0 var(--sp-10);
+  animation: fadeUp var(--dur-base) ease-out;
 }
 
 .dashboard__header {
-  margin-bottom: 24px;
+  margin-bottom: var(--sp-6);
 }
 
 .dashboard__title {
@@ -22,7 +22,7 @@
   letter-spacing: -0.02em;
   line-height: 1.05;
   color: var(--ink-blackletter);
-  margin: 0 0 4px;
+  margin: 0 0 var(--sp-1);
 }
 
 .dashboard__subtitle {
@@ -35,8 +35,8 @@
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-6);
 }
 
 .kpi-grid--2col {
@@ -64,13 +64,13 @@
 .kpi-card {
   background: var(--elevated);
   border: 1px solid var(--hair);
-  border-radius: var(--radius-12);
-  padding: 18px 20px;
+  border-radius: var(--r-lg);
+  padding: 18px var(--sp-5);
   position: relative;
   overflow: hidden;
-  transition: transform var(--duration-fast) var(--ease-out-quart),
-              box-shadow var(--duration-normal) var(--ease-out-quart),
-              border-color var(--duration-normal);
+  transition: transform var(--dur-fast) var(--ease-out-quart),
+              box-shadow var(--dur-base) var(--ease-out-quart),
+              border-color var(--dur-base);
 }
 
 .kpi-card::before {
@@ -81,19 +81,19 @@
   width: 3px;
   background: var(--accent);
   opacity: 0;
-  transition: opacity var(--duration-normal);
+  transition: opacity var(--dur-base);
 }
 
 .kpi-card:hover,
 .kpi-card:focus-visible {
   transform: translateY(-2px);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--sh-lg);
   border-color: var(--hair-strong);
 }
 
 .kpi-card:active {
   transform: translateY(0);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--sh-sm);
   transition-duration: 0s;
 }
 
@@ -137,7 +137,7 @@
   font-feature-settings: "tnum", "lnum";
   letter-spacing: -0.005em;
   line-height: 1;
-  margin-top: 12px;
+  margin-top: var(--sp-3);
 }
 
 .kpi-card__hint {
@@ -148,25 +148,25 @@
 
 /* ---- Ratchet chart container ---- */
 .ratchet-section {
-  margin-bottom: 24px;
+  margin-bottom: var(--sp-6);
 }
 
 .ratchet-section__card {
   background: var(--elevated);
   border: 1px solid var(--hair);
-  border-radius: var(--radius-12);
-  box-shadow: var(--shadow-md);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-md);
   overflow: hidden;
-  transition: box-shadow var(--duration-normal), border-color var(--duration-normal);
+  transition: box-shadow var(--dur-base), border-color var(--dur-base);
 }
 
 .ratchet-section__card:hover,
 .ratchet-section__card:focus-visible {
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--sh-lg);
 }
 
 .ratchet-section__header {
-  padding: 15px 20px;
+  padding: 15px var(--sp-5);
   border-bottom: 1px solid var(--hair);
   display: flex;
   align-items: center;
@@ -192,7 +192,7 @@
 }
 
 .ratchet-section__body {
-  padding: 20px;
+  padding: var(--sp-5);
 }
 
 .ratchet-chart__svg {
@@ -207,12 +207,12 @@
   justify-content: center;
   min-height: 120px;
   border: 1px dashed var(--hair-strong);
-  border-radius: var(--radius-8);
+  border-radius: var(--r-md);
   background: var(--subtle);
   color: var(--muted);
   font-family: var(--font-serif);
   font-size: 15px;
-  padding: 24px;
+  padding: var(--sp-6);
   text-align: center;
 }
 
@@ -223,9 +223,9 @@
 .dashboard__chart-row {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(220px, 1fr);
-  gap: var(--sp-4, 16px);
+  gap: var(--sp-4);
   align-items: stretch;
-  margin-top: var(--sp-4, 16px);
+  margin-top: var(--sp-4);
 }
 
 @media (max-width: 1024px) {
@@ -237,7 +237,7 @@
 /* ---- Weak concepts chip cloud (V6 Dashboard bottom half) ---- */
 
 .dashboard__weak-concepts {
-  margin-top: 4px;
+  margin-top: var(--sp-1);
 }
 
 .dashboard__section-title {
@@ -250,14 +250,14 @@
 .dashboard__chip-cloud {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .dashboard__weak-chip {
   font-family: var(--font-mono);
   font-size: 12px;
   padding: 3px 10px;
-  border-radius: var(--r-full, 99px);
+  border-radius: var(--r-full);
   background: var(--warning-soft, #F7EED9);
   color: var(--warning, #B4791F);
   border: 1px solid var(--warning-hair, #E3CDA1);
@@ -271,7 +271,7 @@
 
 /* ---- Run list ---- */
 .run-list-section {
-  margin-top: 24px;
+  margin-top: var(--sp-6);
 }
 
 .run-list-section__head {
@@ -279,7 +279,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 10px 14px;
-  margin-bottom: 12px;
+  margin-bottom: var(--sp-3);
 }
 
 .run-list-section__title {
@@ -305,10 +305,10 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  padding: var(--sp-1) 10px;
   background: var(--subtle);
   border: 1px solid var(--hair);
-  border-radius: 999px;
+  border-radius: var(--r-full);
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.08em;
@@ -316,9 +316,9 @@
   color: var(--muted);
   cursor: pointer;
   transition:
-    background var(--dur-fast, 0.15s) var(--ease-out, ease),
-    color var(--dur-fast, 0.15s) var(--ease-out, ease),
-    border-color var(--dur-fast, 0.15s) var(--ease-out, ease);
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
 }
 
 .verdict-chip:hover {
@@ -360,7 +360,7 @@
   font-variant-numeric: tabular-nums;
   background: var(--paper);
   border: 1px solid var(--hair);
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   padding: 0 6px;
   font-size: 11px;
   letter-spacing: 0.04em;
@@ -396,7 +396,7 @@
 }
 
 .run-list td {
-  padding: 12px 14px;
+  padding: var(--sp-3) 14px;
   border-bottom: 1px solid var(--hair);
   vertical-align: middle;
 }
@@ -406,7 +406,7 @@
 }
 
 .run-list tbody tr {
-  transition: background var(--duration-fast);
+  transition: background var(--dur-fast);
 }
 
 .run-list tbody tr:hover td,
@@ -440,7 +440,7 @@
   display: flex;
   align-items: center;
   min-height: 44px;
-  padding: 12px 14px;
+  padding: var(--sp-3) 14px;
   color: inherit;
   text-decoration: none;
 }
@@ -462,14 +462,14 @@
   justify-content: center;
   min-height: 260px;
   border: 1px dashed var(--hair-strong);
-  border-radius: var(--radius-12);
+  border-radius: var(--r-lg);
   background: var(--subtle);
   color: var(--muted);
   font-family: var(--font-serif);
   font-size: 18px;
-  padding: 32px;
+  padding: var(--sp-8);
   text-align: center;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .dashboard__loading {
@@ -507,7 +507,7 @@
 .run-list-section__pagination {
   display: flex;
   justify-content: center;
-  padding: var(--sp-4, 16px) 0;
+  padding: var(--sp-4) 0;
 }
 
 /* .load-more-btn rules moved to utility.css (also used by RatchetPage). */
@@ -566,14 +566,14 @@
   .ratchet-section__header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 4px;
+    gap: var(--sp-1);
   }
 }
 
 /* ---- Responsive: small phones (V6 §2D, --bp-xs 540px) ---- */
 @media (max-width: 540px) {
   .dashboard {
-    gap: 12px;
+    gap: var(--sp-3);
   }
 
   .dashboard__title {
@@ -581,7 +581,7 @@
   }
 
   .kpi-card {
-    padding: 14px 16px;
+    padding: 14px var(--sp-4);
   }
 
   .ratchet-chart__svg {

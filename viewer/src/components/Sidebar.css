@@ -13,7 +13,7 @@
   border-inline-end: 1px solid var(--hair);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sp-1);
   overflow-y: auto;
   overflow-x: hidden;
   padding-top: 0;
@@ -25,7 +25,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 16px 14px 12px;
+  padding: var(--sp-4) 14px var(--sp-3);
   border-bottom: 1px solid var(--hair);
   flex-shrink: 0;
 }
@@ -33,7 +33,7 @@
 .sidebar__brand-mark {
   width: 36px;
   height: 36px;
-  border-radius: var(--radius-8);
+  border-radius: var(--r-md);
   background: var(--accent);
   color: var(--on-accent);
   display: flex;
@@ -72,7 +72,7 @@
 /* ---------- Nav sections ---------- */
 
 .sidebar__section {
-  padding: 8px 12px 4px;
+  padding: var(--sp-2) var(--sp-3) var(--sp-1);
 }
 
 .sidebar__label {
@@ -90,15 +90,15 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
-  border-radius: var(--radius-8);
+  padding: var(--sp-2) 10px;
+  border-radius: var(--r-md);
   color: var(--ink);
   font-size: 14px;
   cursor: pointer;
   margin: 1px 0;
   text-decoration: none;
-  transition: background var(--duration-fast) var(--ease-out-quart),
-    color var(--duration-fast) var(--ease-out-quart);
+  transition: background var(--dur-fast) var(--ease-out-quart),
+    color var(--dur-fast) var(--ease-out-quart);
 }
 
 .sidebar__item:hover {
@@ -112,7 +112,7 @@
 .sidebar__item--active {
   background: var(--elevated);
   color: var(--ink);
-  box-shadow: var(--shadow-sm), 0 4px 12px -8px rgba(120, 80, 50, 0.22);
+  box-shadow: var(--sh-sm), 0 4px 12px -8px rgba(120, 80, 50, 0.22);
 }
 
 .sidebar__item--active .sidebar__icon {
@@ -120,8 +120,8 @@
 }
 
 .sidebar__icon {
-  width: 16px;
-  height: 16px;
+  width: var(--sp-4);
+  height: var(--sp-4);
   flex: none;
   opacity: 0.75;
   display: inline-flex;
@@ -155,7 +155,7 @@
 
 .sidebar__label-en {
   flex: none;
-  font-size: 0.75em;
+  font-size: var(--fs-xs);
   color: var(--muted);
   margin-inline-start: auto;
   white-space: nowrap;
@@ -165,7 +165,7 @@
 
 .sidebar__status {
   margin-top: auto;
-  padding: 14px 16px;
+  padding: 14px var(--sp-4);
   border-top: 1px solid var(--hair);
   display: flex;
   align-items: center;
@@ -176,9 +176,9 @@
 }
 
 .sidebar__status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
+  width: var(--sp-2);
+  height: var(--sp-2);
+  border-radius: var(--r-full);
   background: #3f9f62;
   box-shadow: 0 0 0 3px rgba(63, 159, 98, 0.14);
   flex: none;
@@ -231,7 +231,7 @@
     height: 100dvh;
     z-index: 50;
     transform: translateX(-100%);
-    transition: transform var(--duration-fast) var(--ease-out-quart);
+    transition: transform var(--dur-fast) var(--ease-out-quart);
     border-inline-end: 1px solid var(--hair);
     box-shadow: 0 0 40px rgba(0, 0, 0, 0.2);
   }
@@ -241,23 +241,23 @@
   }
 
   .sidebar__section {
-    padding: 8px 12px 4px;
+    padding: var(--sp-2) var(--sp-3) var(--sp-1);
   }
 
   .sidebar__item {
     flex-direction: row;
     gap: 10px;
-    padding: 8px 10px;
+    padding: var(--sp-2) 10px;
     font-size: 14px;
-    border-radius: var(--radius-8);
+    border-radius: var(--r-md);
     min-width: 0;
     min-height: 44px;
   }
 
   .sidebar__icon {
     font-size: 14px;
-    width: 16px;
-    height: 16px;
+    width: var(--sp-4);
+    height: var(--sp-4);
   }
 }
 
@@ -266,7 +266,7 @@
     min-width: 0;
     min-height: 44px;
     font-size: 13px;
-    padding: 7px 8px;
+    padding: 7px var(--sp-2);
   }
 }
 

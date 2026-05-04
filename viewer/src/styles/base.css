@@ -29,7 +29,7 @@ body {
 
 *:focus-visible {
   outline: none;
-  box-shadow: var(--ring-focus);
+  box-shadow: var(--sh-ring);
   border-radius: var(--radius-6);
 }
 
@@ -41,7 +41,7 @@ body {
 a {
   color: var(--accent-ink);
   text-decoration: none;
-  transition: color var(--duration-fast) var(--ease-out-quart);
+  transition: color var(--dur-fast) var(--ease-out-quart);
 }
 
 a:hover {
@@ -54,9 +54,9 @@ button {
   color: inherit;
   background: transparent;
   border: 1px solid var(--hair);
-  border-radius: var(--radius-8);
+  border-radius: var(--r-md);
   padding: 0.4em 0.9em;
-  transition: border-color var(--duration-fast) var(--ease-out-quart);
+  transition: border-color var(--dur-fast) var(--ease-out-quart);
 }
 
 button:hover {
@@ -96,18 +96,18 @@ kbd {
 }
 
 .error-boundary__fallback {
-  padding: 24px;
-  margin: 24px auto;
+  padding: var(--sp-6);
+  margin: var(--sp-6) auto;
   max-width: 720px;
   border: 1px solid var(--hair);
-  border-radius: var(--radius-8);
+  border-radius: var(--r-md);
   background: var(--elevated);
   color: var(--ink);
 }
 
 .error-boundary__fallback h2 {
   font-family: var(--font-serif);
-  margin: 0 0 12px;
+  margin: 0 0 var(--sp-3);
 }
 
 .error-boundary__fallback p {
@@ -116,13 +116,13 @@ kbd {
 }
 
 .error-boundary__retry {
-  padding: 8px 20px;
+  padding: var(--sp-2) var(--sp-5);
   background: var(--accent);
   color: var(--on-accent);
   border: none;
   border-radius: var(--radius-6);
   cursor: pointer;
-  margin-top: 12px;
+  margin-top: var(--sp-3);
 }
 
 .error-boundary__retry:focus-visible {
@@ -132,13 +132,13 @@ kbd {
 
 /* Reusable retry button for page-level error states */
 .retry-btn {
-  padding: 8px 20px;
+  padding: var(--sp-2) var(--sp-5);
   background: var(--accent);
   color: var(--on-accent);
   border: none;
   border-radius: var(--radius-6);
   cursor: pointer;
-  margin-top: 12px;
+  margin-top: var(--sp-3);
   font-size: 14px;
 }
 
@@ -183,7 +183,7 @@ kbd {
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
-  margin-inline-end: 8px;
+  margin-inline-end: var(--sp-2);
   vertical-align: middle;
 }
 @keyframes spin {

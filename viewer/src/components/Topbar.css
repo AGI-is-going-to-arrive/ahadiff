@@ -39,7 +39,7 @@
   color: var(--ink);
   font-size: 18px;
   padding: var(--sp-1) var(--sp-2);
-  border-radius: var(--radius-6);
+  border-radius: 6px;
   cursor: pointer;
   min-height: 44px;
   min-width: 44px;
@@ -93,7 +93,7 @@
   gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
   border: 1px solid var(--hair);
-  border-radius: var(--radius-8);
+  border-radius: var(--r-md);
   background: var(--elevated);
   color: var(--muted);
   font-family: var(--font-sans);
@@ -101,7 +101,7 @@
   cursor: default;
   appearance: none;
   min-height: 36px;
-  transition: border-color var(--duration-fast) var(--ease-out-quart);
+  transition: border-color var(--dur-fast) var(--ease-out-quart);
 }
 
 .topbar__search:not(.topbar__search--inactive):hover {
@@ -159,7 +159,7 @@
   font-size: 13px;
   font-weight: 500;
   padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--radius-8);
+  border-radius: var(--r-md);
   cursor: pointer;
   white-space: nowrap;
   text-decoration: none;
@@ -168,8 +168,8 @@
   justify-content: center;
   min-height: 36px;
   border: 1px solid transparent;
-  transition: background var(--duration-fast) var(--ease-out-quart),
-    color var(--duration-fast) var(--ease-out-quart);
+  transition: background var(--dur-fast) var(--ease-out-quart),
+    color var(--dur-fast) var(--ease-out-quart);
 }
 
 .topbar__btn--ghost {
@@ -236,7 +236,7 @@
   align-items: center;
   gap: 2px;
   padding: 2px;
-  border-radius: var(--radius-8);
+  border-radius: var(--r-md);
   border: 1px solid var(--hair);
   background: var(--elevated);
 }
@@ -249,16 +249,16 @@
   font-family: var(--font-sans);
   font-size: 12px;
   letter-spacing: 0.02em;
-  padding: 4px 10px;
+  padding: var(--sp-1) 10px;
   min-height: 44px;
   min-width: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-6);
+  border-radius: 6px;
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-out-quart),
-    color var(--duration-fast) var(--ease-out-quart);
+  transition: background var(--dur-fast) var(--ease-out-quart),
+    color var(--dur-fast) var(--ease-out-quart);
 }
 
 .lang-switcher__btn:hover {
@@ -362,7 +362,7 @@
   }
 
   .lang-switcher__btn {
-    padding: 4px 6px;
+    padding: var(--sp-1) 6px;
     font-size: 11px;
     min-height: 32px;
   }
@@ -392,7 +392,7 @@
     min-height: 36px;
     min-width: 0;
     max-width: 64px;
-    padding: 4px 8px;
+    padding: var(--sp-1) var(--sp-2);
     font-size: 11px;
     overflow: hidden;
     text-overflow: ellipsis;

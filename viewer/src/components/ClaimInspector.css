@@ -9,7 +9,7 @@
   max-height: calc(100vh - 96px);
   overflow-y: auto;
   background: var(--elevated);
-  border-radius: var(--radius-10);
+  border-radius: 10px;
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
@@ -49,7 +49,7 @@
   width: 28px;
   height: 28px;
   border: 1px solid var(--hair);
-  border-radius: var(--radius-6);
+  border-radius: 6px;
   background: var(--subtle);
   color: var(--muted);
   font-size: 14px;
@@ -84,7 +84,7 @@
   gap: 6px;
   padding: 3px 11px;
   border: 1px solid var(--hair);
-  border-radius: var(--radius-pill);
+  border-radius: var(--r-full);
   background: var(--subtle);
   color: var(--ink-2);
   font-family: var(--font-mono);
@@ -151,7 +151,7 @@
 }
 
 .claim-inspector__row-label {
-  font-size: 0.82rem;
+  font-size: var(--fs-base);
   font-weight: 600;
   color: var(--muted-strong);
   text-transform: uppercase;
@@ -182,7 +182,7 @@
 .claim-inspector__item-concepts {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--sp-1);
 }
 
 .claim-inspector__concept-tag {
@@ -190,7 +190,7 @@
   padding: 1px 6px;
   background: var(--accent-softest);
   border: 1px solid var(--accent-hair);
-  border-radius: var(--radius-6);
+  border-radius: 6px;
   font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--accent-ink);
@@ -227,7 +227,7 @@
   color: var(--muted);
   background: var(--paper);
   border: 1px solid var(--hair);
-  border-radius: var(--radius-6);
+  border-radius: 6px;
   padding: 2px 6px;
 }
 
@@ -248,7 +248,7 @@
   line-height: 1.6;
   background: var(--subtle);
   border: 1px solid var(--hair);
-  border-radius: var(--radius-6);
+  border-radius: 6px;
   padding: var(--sp-2) var(--sp-3);
   margin: 0;
   overflow-x: auto;
@@ -281,7 +281,7 @@
   padding: 13px 15px;
   background: var(--paper);
   border: 1px solid var(--hair);
-  border-radius: var(--radius-8);
+  border-radius: var(--r-md);
   cursor: pointer;
   transition: all var(--dur-xfast) var(--ease-out-quart);
 }
@@ -356,7 +356,7 @@
 @media (pointer: coarse) {
   .claim-inspector__chip {
     min-height: 44px;
-    padding: 0 12px;
+    padding: 0 var(--sp-3);
   }
 
   .claim-inspector__action {
@@ -373,7 +373,7 @@
     max-height: none;
     border-left: none;
     border-top: 1px solid var(--hair);
-    border-radius: var(--radius-8);
+    border-radius: var(--r-md);
   }
 }
 

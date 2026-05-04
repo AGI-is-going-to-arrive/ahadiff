@@ -3,7 +3,7 @@
    ========================================================================== */
 
 .landing {
-  max-width: var(--mw-wide, 1440px);
+  max-width: var(--mw-wide);
   margin: 0 auto;
 }
 
@@ -22,7 +22,7 @@
 .hero::before {
   content: 'AHADIFF FOLIO · VERIFIED DIFF LEARNING';
   position: absolute;
-  top: 12px;
+  top: var(--sp-3);
   left: clamp(20px, 4vw, 64px);
   font-family: var(--font-mono);
   font-size: 10px;
@@ -34,8 +34,8 @@
 .hero-grid {
   display: grid;
   grid-template-columns: 1.05fr 1fr;
-  gap: var(--sp-16, 64px);
-  max-width: var(--mw-page, 1280px);
+  gap: var(--sp-16);
+  max-width: var(--mw-page);
   margin: 0 auto;
   align-items: center;
 }
@@ -46,7 +46,7 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted);
-  margin-bottom: var(--sp-4, 16px);
+  margin-bottom: var(--sp-4);
 }
 
 .hero__title {
@@ -80,14 +80,14 @@
   font-weight: 400;
   font-size: clamp(15px, 1.3vw + 6px, 22px);
   color: var(--muted);
-  margin-top: var(--sp-3, 12px);
+  margin-top: var(--sp-3);
 }
 
 .hero__lead {
   font-size: clamp(15.5px, 1vw + 10px, 18px);
   line-height: 1.72;
   max-width: 56ch;
-  margin-top: var(--sp-6, 24px);
+  margin-top: var(--sp-6);
   color: var(--ink-2, var(--ink));
 }
 
@@ -108,19 +108,19 @@
 /* ---- CTA buttons ---- */
 .hero-ctas {
   display: flex;
-  gap: var(--sp-3, 12px);
+  gap: var(--sp-3);
   align-items: center;
   flex-wrap: wrap;
-  margin-top: var(--sp-8, 32px);
+  margin-top: var(--sp-8);
 }
 
 .hero-ctas .btn-primary {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   height: 44px;
-  padding: 0 var(--sp-6, 24px);
-  border-radius: var(--r-md, 8px);
+  padding: 0 var(--sp-6);
+  border-radius: var(--r-md);
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -156,7 +156,7 @@
   padding: 6px 14px;
   background: var(--ink-blackletter, #14130F);
   color: var(--accent-tint);
-  border-radius: var(--r-md, 8px);
+  border-radius: var(--r-md);
   border: none;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), inset 0 -1px 0 rgba(0,0,0,0.3);
 }
@@ -165,7 +165,7 @@
 .hero-demo {
   background: var(--elevated);
   border: 1px solid var(--hair);
-  border-radius: var(--r-xl, 16px);
+  border-radius: var(--r-xl);
   box-shadow: var(--sh-lg);
   overflow: hidden;
 }
@@ -176,13 +176,13 @@
 }
 
 .hero-demo__tab {
-  padding: 10px 20px;
+  padding: 10px var(--sp-5);
   font-size: 12px;
   font-family: var(--font-mono);
   color: var(--muted);
   cursor: pointer;
   border-bottom: 2px solid transparent;
-  transition: color var(--dur-fast, 0.15s);
+  transition: color var(--dur-fast);
 }
 
 .hero-demo__tab--active {
@@ -196,15 +196,15 @@
 }
 
 .hero-demo__content {
-  padding: 20px;
+  padding: var(--sp-5);
   max-height: 400px;
   overflow-y: auto;
 }
 
 /* ---- Pipeline section ---- */
 .landing-section {
-  padding: var(--sp-16, 64px) clamp(20px, 4vw, 64px);
-  max-width: var(--mw-page, 1280px);
+  padding: var(--sp-16) clamp(20px, 4vw, 64px);
+  max-width: var(--mw-page);
   margin: 0 auto;
 }
 
@@ -214,7 +214,7 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted);
-  margin-bottom: var(--sp-2, 8px);
+  margin-bottom: var(--sp-2);
 }
 
 .landing-section h2 {
@@ -224,14 +224,14 @@
   letter-spacing: -0.015em;
   line-height: 1.1;
   color: var(--ink-blackletter);
-  margin: 0 0 var(--sp-2, 8px);
+  margin: 0 0 var(--sp-2);
 }
 
 .landing-section__sub {
   color: var(--muted);
   font-size: 15px;
-  max-width: var(--mw-prose, 680px);
-  margin-bottom: var(--sp-8, 32px);
+  max-width: var(--mw-prose);
+  margin-bottom: var(--sp-8);
   line-height: 1.65;
 }
 
@@ -243,21 +243,21 @@
 .feature-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: var(--sp-4, 16px);
+  gap: var(--sp-4);
 }
 
 .feature-card {
   position: relative;
   isolation: isolate;
   min-height: 190px;
-  padding: var(--sp-6, 24px);
+  padding: var(--sp-6);
   border: 1px solid var(--hair);
-  border-radius: var(--r-md, 8px);
+  border-radius: var(--r-md);
   background: linear-gradient(180deg, var(--elevated) 0%, var(--subtle) 140%);
   box-shadow: var(--sh-sm);
   transition:
-    border-color var(--dur-fast, 0.15s) var(--ease-out, ease),
-    transform var(--dur-fast, 0.15s) var(--ease-out, ease);
+    border-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 
 .feature-card::before {
@@ -272,8 +272,8 @@
   transform: scaleY(0.25);
   transform-origin: top center;
   transition:
-    opacity var(--dur-base, 0.25s) var(--ease-out, cubic-bezier(0.2, 0.8, 0.2, 1)),
-    transform var(--dur-base, 0.25s) var(--ease-out, cubic-bezier(0.2, 0.8, 0.2, 1));
+    opacity var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out);
   pointer-events: none;
   border-radius: 2px;
   z-index: 2;
@@ -296,7 +296,7 @@
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--accent-ink);
-  margin-bottom: var(--sp-8, 32px);
+  margin-bottom: var(--sp-8);
 }
 
 .feature-card h3 {
@@ -304,7 +304,7 @@
   font-size: 20px;
   font-weight: 520;
   line-height: 1.18;
-  margin: 0 0 var(--sp-3, 12px);
+  margin: 0 0 var(--sp-3);
 }
 
 .feature-card p {
@@ -320,15 +320,15 @@
   grid-template-columns: repeat(5, 1fr);
   gap: 0;
   border: 1px solid var(--hair);
-  border-radius: var(--r-lg, 12px);
+  border-radius: var(--r-lg);
   overflow: hidden;
   background: var(--elevated);
 }
 
 .step {
-  padding: var(--sp-6, 24px);
+  padding: var(--sp-6);
   border-right: 1px solid var(--hair);
-  transition: background var(--dur-fast, 0.15s);
+  transition: background var(--dur-fast);
 }
 
 .step:last-child {
@@ -345,14 +345,14 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted);
-  margin-bottom: var(--sp-2, 8px);
+  margin-bottom: var(--sp-2);
 }
 
 .step h3 {
   font-family: var(--font-serif);
   font-size: 17px;
   font-weight: 500;
-  margin: 0 0 var(--sp-2, 8px);
+  margin: 0 0 var(--sp-2);
 }
 
 .step p {
@@ -366,18 +366,18 @@
 .ba-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: var(--sp-6, 24px);
-  margin-top: var(--sp-6, 24px);
+  gap: var(--sp-6);
+  margin-top: var(--sp-6);
 }
 
 .ba-col {
   border: 1px solid var(--hair);
-  border-radius: var(--r-lg, 12px);
+  border-radius: var(--r-lg);
   overflow: hidden;
 }
 
 .ba-col__header {
-  padding: 12px 16px;
+  padding: var(--sp-3) var(--sp-4);
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.14em;
@@ -388,7 +388,7 @@
 }
 
 .ba-col__body {
-  padding: 16px;
+  padding: var(--sp-4);
   font-size: 13px;
   line-height: 1.65;
 }
@@ -405,9 +405,9 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 8px;
+  padding: 2px var(--sp-2);
   border: 1px dashed #E3CDA1;
-  border-radius: var(--r-sm, 4px);
+  border-radius: var(--r-sm);
   background: #F7EED9;
   color: var(--warning);
   font-family: var(--font-mono);
@@ -427,7 +427,7 @@
   margin: 0 0 18px;
   padding: 10px 14px;
   border: 1px dashed #E3CDA1;
-  border-radius: var(--r-md, 8px);
+  border-radius: var(--r-md);
   background: #FBF5E6;
   color: var(--warning);
   font-family: var(--font-mono);
@@ -443,16 +443,16 @@
 .benchmark-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: var(--sp-4, 16px);
+  gap: var(--sp-4);
 }
 
 .benchmark-card {
   background: var(--elevated);
   border: 1px solid var(--hair);
-  border-radius: var(--r-md, 8px);
-  padding: var(--sp-6, 24px);
+  border-radius: var(--r-md);
+  padding: var(--sp-6);
   text-align: left;
-  transition: border-color var(--dur-fast, 0.15s);
+  transition: border-color var(--dur-fast);
 }
 
 .benchmark-card:hover {
@@ -463,9 +463,9 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: var(--sp-2, 8px);
+  gap: var(--sp-2);
   min-height: 30px;
-  margin-bottom: var(--sp-4, 16px);
+  margin-bottom: var(--sp-4);
 }
 
 .benchmark-card__demo {
@@ -485,7 +485,7 @@
   letter-spacing: -0.005em;
   color: var(--ink-strong);
   line-height: 1;
-  margin-bottom: var(--sp-2, 8px);
+  margin-bottom: var(--sp-2);
 }
 
 .benchmark-card__label {
@@ -538,12 +538,12 @@
 
 @media (max-width: 767px) {
   .hero {
-    padding: 60px 20px 44px;
+    padding: 60px var(--sp-5) 44px;
   }
 
   .hero__lead::first-letter {
     font-size: 2.3em;
-    padding-right: 8px;
+    padding-right: var(--sp-2);
   }
 
   .steps-grid {
@@ -612,7 +612,7 @@
   }
 
   .hero {
-    padding: 20px 0;
+    padding: var(--sp-5) 0;
     border-top: 1px solid #000;
   }
 

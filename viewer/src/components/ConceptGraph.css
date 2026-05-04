@@ -7,7 +7,7 @@
 
 .concept-graph {
   position: relative;
-  animation: fadeUp 0.3s ease-out;
+  animation: fadeUp var(--dur-base) ease-out;
 }
 
 /* ---------- Graphify source card ---------- */
@@ -23,8 +23,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
   flex-wrap: wrap;
 }
 
@@ -40,14 +40,14 @@
   gap: 6px;
   padding: 3px 11px;
   border: 1px solid var(--hair);
-  border-radius: 99px;
+  border-radius: var(--r-full);
   background: var(--elevated);
   font-family: var(--font-sans);
   font-size: 11.5px;
   color: var(--ink);
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-out-quart),
-              border-color var(--duration-fast) var(--ease-out-quart);
+  transition: background var(--dur-fast) var(--ease-out-quart),
+              border-color var(--dur-fast) var(--ease-out-quart);
 }
 
 .concept-graph__filter-chip:hover {
@@ -73,20 +73,20 @@
   display: flex;
   gap: 0;
   border: 1px solid var(--hair);
-  border-radius: var(--radius-6);
+  border-radius: 6px;
   overflow: hidden;
 }
 
 .concept-graph__view-btn {
-  padding: 4px 12px;
+  padding: var(--sp-1) var(--sp-3);
   border: none;
   background: var(--elevated);
   font-family: var(--font-sans);
   font-size: 11.5px;
   color: var(--muted);
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-out-quart),
-              color var(--duration-fast) var(--ease-out-quart);
+  transition: background var(--dur-fast) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart);
 }
 
 .concept-graph__view-btn:hover {
@@ -107,15 +107,15 @@
 .concept-graph__actions {
   display: flex;
   gap: 6px;
-  margin-left: 8px;
+  margin-left: var(--sp-2);
 }
 
 .concept-graph__action-btn {
   font-family: var(--font-mono);
   font-size: 12px;
-  padding: 4px 10px;
+  padding: var(--sp-1) 10px;
   border: 1px solid var(--hair);
-  border-radius: var(--r-sm, 4px);
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -136,8 +136,8 @@
 .concept-graph__body {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 16px;
-  transition: grid-template-columns var(--duration-base) var(--ease-out-quart);
+  gap: var(--sp-4);
+  transition: grid-template-columns var(--dur-base) var(--ease-out-quart);
 }
 
 .concept-graph__body--with-panel {
@@ -154,8 +154,8 @@
   position: relative;
   background: var(--subtle);
   border: 1px solid var(--hair);
-  border-radius: 12px;
-  padding: 20px;
+  border-radius: var(--r-lg);
+  padding: var(--sp-5);
   min-height: 560px;
   overflow: hidden;
 }
@@ -171,7 +171,7 @@
 .concept-graph__edge {
   stroke: var(--hair);
   fill: none;
-  transition: stroke var(--duration-fast) var(--ease-out-quart);
+  transition: stroke var(--dur-fast) var(--ease-out-quart);
 }
 
 .concept-graph__edge--highlight {
@@ -204,8 +204,8 @@
   fill: var(--concept-kind-fill, var(--accent-softer));
   stroke: var(--concept-kind-stroke, var(--accent-tint));
   stroke-width: 1.5;
-  transition: stroke-width var(--duration-fast) var(--ease-out-quart),
-              filter var(--duration-fast) var(--ease-out-quart);
+  transition: stroke-width var(--dur-fast) var(--ease-out-quart),
+              filter var(--dur-fast) var(--ease-out-quart);
 }
 
 .concept-graph__label {
@@ -222,8 +222,8 @@
 
 .concept-graph__legend {
   position: absolute;
-  left: 16px;
-  right: 16px;
+  left: var(--sp-4);
+  right: var(--sp-4);
   bottom: 14px;
   background: rgba(255, 255, 255, 0.94);
   border: 1px solid var(--hair);
@@ -244,7 +244,7 @@
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--muted);
-  padding-right: 8px;
+  padding-right: var(--sp-2);
   border-right: 1px solid var(--hair);
   margin-right: 2px;
 }
@@ -254,7 +254,7 @@
   align-items: center;
   gap: 7px;
   white-space: nowrap;
-  color: var(--ink, #1f1e1b);
+  color: var(--ink);
 }
 
 .concept-graph__legend-swatch {
@@ -271,8 +271,8 @@
 .concept-graph__detail {
   background: var(--elevated);
   border: 1px solid var(--hair);
-  border-radius: var(--radius-12);
-  padding: 20px;
+  border-radius: var(--r-lg);
+  padding: var(--sp-5);
   animation: fadeUp 0.2s ease-out;
   overflow-y: auto;
   max-height: calc(100vh - 120px);
@@ -285,7 +285,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: var(--sp-4);
 }
 
 .concept-graph__detail-name {
@@ -304,12 +304,12 @@
   width: 28px;
   height: 28px;
   border: 1px solid var(--hair);
-  border-radius: var(--radius-6);
+  border-radius: 6px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
   font-size: 14px;
-  transition: background var(--duration-fast) var(--ease-out-quart);
+  transition: background var(--dur-fast) var(--ease-out-quart);
 }
 
 .concept-graph__detail-close:hover {
@@ -319,8 +319,8 @@
 .concept-graph__detail-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 0;
+  gap: var(--sp-2);
+  padding: var(--sp-2) 0;
   border-bottom: 1px solid var(--hair);
   font-size: 13px;
 }
@@ -339,7 +339,7 @@
 .concept-graph__detail-code {
   font-family: var(--font-mono);
   font-size: 11.5px;
-  background: var(--accent-softer, var(--accent-softest));
+  background: var(--accent-softer);
   padding: 1px 5px;
   border-radius: 3px;
   color: var(--ink);
@@ -347,23 +347,23 @@
 }
 
 .concept-graph__detail-section {
-  padding-top: 12px;
+  padding-top: var(--sp-3);
 }
 
 .concept-graph__detail-connections {
   list-style: none;
-  margin: 8px 0 0;
+  margin: var(--sp-2) 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sp-1);
   font-size: 12.5px;
   color: var(--ink);
 }
 
 .concept-graph__detail-connections li {
-  padding: 4px 8px;
-  border-radius: var(--radius-6);
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: 6px;
   background: var(--subtle);
 }
 
@@ -372,8 +372,8 @@
 .concept-graph__kind-badge {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
-  border-radius: var(--radius-6);
+  padding: 2px var(--sp-2);
+  border-radius: 6px;
   font-family: var(--font-mono);
   font-size: 11px;
   background: var(--concept-kind-badge, var(--accent));
@@ -385,8 +385,8 @@
 .concept-graph__freshness {
   font-family: var(--font-mono);
   font-size: 11px;
-  padding: 2px 8px;
-  border-radius: var(--radius-6);
+  padding: 2px var(--sp-2);
+  border-radius: 6px;
 }
 
 .concept-graph__freshness--fresh {
@@ -420,20 +420,20 @@
 }
 
 .concept-graph__lnode {
-  padding: 10px 12px;
+  padding: 10px var(--sp-3);
   border: 1px solid var(--hair);
   background: var(--elevated);
-  border-radius: var(--radius-8);
+  border-radius: var(--r-md);
   font-size: 12.5px;
   text-align: left;
   cursor: pointer;
-  transition: box-shadow var(--duration-fast) var(--ease-out-quart);
+  transition: box-shadow var(--dur-fast) var(--ease-out-quart);
   min-width: 0;
   overflow: hidden;
 }
 
 .concept-graph__lnode:hover {
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--sh-md);
 }
 
 .concept-graph__lnode-name {
@@ -465,29 +465,29 @@
 
 .concept-graph__truncated {
   margin-top: 10px;
-  padding: 8px 14px;
+  padding: var(--sp-2) 14px;
   background: var(--warning-soft, #fff3e0);
   border: 1px solid var(--warning, #e65100);
-  border-radius: var(--radius-8);
+  border-radius: var(--r-md);
   font-size: 12px;
   color: var(--warning, #e65100);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--sp-3);
 }
 
 .concept-graph__show-all-btn {
   flex-shrink: 0;
-  padding: 4px 12px;
+  padding: var(--sp-1) var(--sp-3);
   border: 1px solid var(--warning, #e65100);
-  border-radius: var(--radius-6);
+  border-radius: 6px;
   background: transparent;
   color: var(--warning, #e65100);
   font-family: var(--font-sans);
   font-size: 12px;
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-out-quart);
+  transition: background var(--dur-fast) var(--ease-out-quart);
 }
 
 .concept-graph__show-all-btn:hover {
@@ -498,7 +498,7 @@
 /* ---------- Counts ---------- */
 
 .concept-graph__counts {
-  margin-top: 8px;
+  margin-top: var(--sp-2);
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--muted);
@@ -513,14 +513,14 @@
   align-items: center;
   justify-content: center;
   min-height: 260px;
-  gap: 12px;
+  gap: var(--sp-3);
   border: 1px dashed var(--hair-strong);
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   background: var(--subtle);
   color: var(--muted);
   font-family: var(--font-serif);
   font-size: 18px;
-  padding: 32px;
+  padding: var(--sp-8);
   text-align: center;
 }
 
@@ -557,7 +557,7 @@
   }
 
   .concept-graph__graph-wrap {
-    padding: 12px;
+    padding: var(--sp-3);
     min-height: 400px;
   }
 

@@ -19,7 +19,7 @@
   letter-spacing: 0.15em;
   text-transform: uppercase;
   padding: 5px 11px;
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   height: auto;
   min-height: 24px;
   white-space: nowrap;
@@ -89,8 +89,8 @@
   transform: scaleY(0.25);
   transform-origin: top center;
   transition:
-    opacity var(--dur-base, 0.25s) var(--ease-out, cubic-bezier(0.2, 0.8, 0.2, 1)),
-    transform var(--dur-base, 0.25s) var(--ease-out, cubic-bezier(0.2, 0.8, 0.2, 1));
+    opacity var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out);
   pointer-events: none;
   border-radius: 2px;
   z-index: 2;
@@ -112,7 +112,7 @@
 .ornament-rule {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: var(--sp-5);
   margin: clamp(40px, 6vw, 96px) 0;
   color: var(--hair-strong);
 }
@@ -251,8 +251,8 @@
   letter-spacing: 0.01em;
   color: var(--ink-blackletter);
   border-bottom: 1px solid var(--folio-line);
-  padding-bottom: 8px;
-  margin-bottom: 12px;
+  padding-bottom: var(--sp-2);
+  margin-bottom: var(--sp-3);
 }
 
 .toc-archival a,

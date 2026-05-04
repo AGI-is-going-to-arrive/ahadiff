@@ -1,21 +1,21 @@
 /* Small shared utilities for repeated token-backed view styles. */
 .u-muted-sm {
   color: var(--muted);
-  font-size: 14px;
+  font-size: var(--fs-base);
 }
 
 .u-muted-xs {
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
 .u-text-sm-relaxed {
-  font-size: 14px;
+  font-size: var(--fs-base);
   line-height: 1.65;
 }
 
 .u-mt-1 {
-  margin-top: 4px;
+  margin-top: var(--sp-1);
 }
 
 .u-mb-2 {
@@ -29,7 +29,7 @@
 .u-center-action-row {
   display: flex;
   justify-content: center;
-  padding: 16px 0;
+  padding: var(--sp-4) 0;
 }
 
 .u-display-contents {
@@ -49,16 +49,16 @@
 .mastery-grid {
   display: grid;
   grid-template-columns: 1fr 80px;
-  gap: 8px;
+  gap: var(--sp-2);
   row-gap: 10px;
-  font-size: 13px;
+  font-size: var(--fs-sm);
   align-items: center;
 }
 
 .mastery-bar {
   height: 6px;
   background: var(--subtle);
-  border-radius: var(--r-full, 999px);
+  border-radius: var(--r-full);
   overflow: hidden;
 }
 
@@ -66,8 +66,8 @@
   display: block;
   height: 100%;
   background: var(--accent);
-  border-radius: var(--r-full, 999px);
-  transition: width var(--dur-base, 0.25s) var(--ease-out, ease);
+  border-radius: var(--r-full);
+  transition: width var(--dur-base) var(--ease-out);
 }
 
 /* Verdict badges — used by Dashboard + Ratchet pages.
@@ -76,14 +76,14 @@
 .verdict-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
+  gap: var(--sp-1);
+  padding: 2px var(--sp-2);
   height: 22px;
-  font-size: 11px;
+  font-size: var(--fs-2xs);
   font-family: var(--font-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  border-radius: var(--radius-pill);
+  border-radius: var(--r-full);
   border: 1px solid var(--hair-strong);
   background: var(--elevated);
   color: var(--ink);
@@ -116,41 +116,41 @@
   justify-content: center;
   min-height: 200px;
   border: 1px solid var(--danger);
-  border-radius: var(--radius-12);
+  border-radius: var(--r-lg);
   background: var(--subtle);
   color: var(--danger);
   font-family: var(--font-sans);
-  font-size: 16px;
-  padding: 24px;
+  font-size: var(--fs-md);
+  padding: var(--sp-6);
   text-align: center;
 }
 
 .dashboard__error-banner {
-  padding: 8px 16px;
-  border-radius: var(--radius-8);
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-md);
   background: var(--subtle);
   border: 1px solid var(--danger);
   color: var(--danger);
   font-family: var(--font-sans);
-  font-size: 14px;
-  margin-bottom: 16px;
+  font-size: var(--fs-base);
+  margin-bottom: var(--sp-4);
 }
 
 /* Load-more pagination button — used by Dashboard + Ratchet pages. */
 .load-more-btn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   height: 36px;
-  padding: 0 var(--sp-6, 24px);
-  border-radius: var(--r-md, 8px);
-  font-size: 13px;
+  padding: 0 var(--sp-6);
+  border-radius: var(--r-md);
+  font-size: var(--fs-sm);
   font-weight: 500;
   border: 1px solid var(--hair-strong);
   background: var(--elevated);
   color: var(--ink);
   cursor: pointer;
-  transition: all var(--dur-fast, 0.15s) var(--ease-out, ease);
+  transition: all var(--dur-fast) var(--ease-out);
 }
 
 .load-more-btn:hover:not(:disabled) {
@@ -189,7 +189,7 @@
  * Ratchet, Review, Onboarding) reference this class. */
 .review__eyebrow {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-2xs);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted);
@@ -208,7 +208,7 @@
 
 .mono {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums slashed-zero;
   font-feature-settings: "ss01" 1, "zero" 1, "cv11" 1;
 }
@@ -221,37 +221,37 @@
 
 .eyebrow {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-2xs);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted);
   line-height: 1;
-  margin-bottom: 12px;
+  margin-bottom: var(--sp-3);
   display: inline-block;
 }
 
 .prose {
   font-family: var(--font-serif);
-  font-size: 17px;
+  font-size: 17px; /* intentionally off-scale — V6 prose baseline */
   line-height: 1.8;
   color: var(--ink);
 }
 
 .prose h2 {
   font-family: var(--font-serif);
-  font-size: 28px;
+  font-size: var(--fs-3xl);
   font-weight: 500;
   letter-spacing: -0.02em;
-  margin: 32px 0 12px;
+  margin: var(--sp-8) 0 var(--sp-3);
   border-bottom: 1px solid var(--hair);
-  padding-bottom: 8px;
+  padding-bottom: var(--sp-2);
 }
 
 .prose h3 {
   font-family: var(--font-serif);
-  font-size: 20px;
+  font-size: var(--fs-xl);
   font-weight: 500;
-  margin: 24px 0 8px;
+  margin: var(--sp-6) 0 var(--sp-2);
 }
 
 .prose p {
@@ -260,10 +260,10 @@
 
 .prose code {
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: var(--fs-base);
   background: var(--subtle);
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--r-sm);
 }
 
 .prose ul {
@@ -272,7 +272,7 @@
 
 .prose .highlight {
   background: var(--accent-soft);
-  padding: 1px 4px;
+  padding: 1px var(--sp-1);
   border-radius: 3px;
   cursor: pointer;
   border-bottom: 1px dashed var(--accent);

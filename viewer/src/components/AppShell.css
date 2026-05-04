@@ -9,17 +9,17 @@
 .skip-to-content {
   position: absolute;
   top: -100%;
-  inset-inline-start: 16px;
+  inset-inline-start: var(--sp-4);
   z-index: 100;
-  padding: 8px 16px;
+  padding: var(--sp-2) var(--sp-4);
   background: var(--accent);
   color: var(--elevated);
-  border-radius: var(--radius-8);
+  border-radius: var(--r-md);
   text-decoration: none;
   font-size: 14px;
 }
 .skip-to-content:focus {
-  top: 8px;
+  top: var(--sp-2);
 }
 
 .app-shell {
@@ -46,8 +46,8 @@
 
 .app-shell__content {
   min-width: 0;
-  padding: 32px 40px 88px;
-  max-width: 1440px;
+  padding: var(--sp-8) var(--sp-10) 88px;
+  max-width: var(--mw-wide);
 }
 
 /* ==========================================================================
@@ -62,7 +62,7 @@
   }
 
   .app-shell__content {
-    padding: 24px 24px 56px;
+    padding: var(--sp-6) var(--sp-6) 56px;
   }
 
   .app-shell__backdrop {
@@ -86,7 +86,7 @@
 /* Phone: tighten content padding under 768px (V6:377). */
 @media (max-width: 767px) {
   .app-shell__content {
-    padding: 20px 16px 24px;
+    padding: var(--sp-5) var(--sp-4) var(--sp-6);
   }
 }
 

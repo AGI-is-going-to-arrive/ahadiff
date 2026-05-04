@@ -13,13 +13,14 @@
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: clamp(48px, 12vh, 120px) 16px 16px;
+  padding: clamp(48px, 12vh, 120px) var(--sp-4) var(--sp-4);
 }
 
 .search-overlay__backdrop {
   position: absolute;
   inset: 0;
   background: rgba(28, 27, 24, 0.42);
+  -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
   border: 0;
   margin: 0;
@@ -33,12 +34,12 @@
   background: var(--paper);
   border: 1px solid var(--hair);
   border-radius: 14px;
-  box-shadow: var(--sh-lg, 0 18px 50px -30px rgba(0, 0, 0, 0.4));
+  box-shadow: var(--sh-lg);
   display: flex;
   flex-direction: column;
   gap: 0;
   overflow: hidden;
-  animation: search-overlay-pop 160ms var(--ease-out, ease) both;
+  animation: search-overlay-pop 160ms var(--ease-out) both;
 }
 
 @keyframes search-overlay-pop {
@@ -56,7 +57,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px 0;
+  padding: var(--sp-3) var(--sp-4) 0;
 }
 
 .search-overlay__label {
@@ -75,14 +76,14 @@
   background: var(--subtle);
   border: 1px solid var(--hair);
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--r-sm);
 }
 
 .search-overlay__input-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 16px 12px;
+  padding: 10px var(--sp-4) var(--sp-3);
   border-bottom: 1px solid var(--hair);
 }
 
@@ -101,7 +102,7 @@
   border: 0;
   outline: 0;
   color: var(--ink);
-  padding: 4px 0;
+  padding: var(--sp-1) 0;
   letter-spacing: -0.005em;
   /* Disable user-agent search-input clear "✕"; we handle reset via state. */
   appearance: none;
@@ -117,14 +118,14 @@
   font-size: 11px;
   letter-spacing: 0.06em;
   color: var(--muted);
-  padding: 8px 16px;
+  padding: var(--sp-2) var(--sp-4);
   border-bottom: 1px solid var(--hair);
 }
 
 .search-overlay__results {
   list-style: none;
   margin: 0;
-  padding: 4px 0;
+  padding: var(--sp-1) 0;
   max-height: min(50vh, 360px);
   overflow-y: auto;
 }
@@ -144,13 +145,13 @@
   grid-template-areas:
     "chip title"
     ".    snippet";
-  column-gap: 12px;
-  row-gap: 4px;
-  padding: 10px 16px;
+  column-gap: var(--sp-3);
+  row-gap: var(--sp-1);
+  padding: 10px var(--sp-4);
   cursor: pointer;
   font: inherit;
   color: var(--ink);
-  transition: background 120ms var(--ease-out, ease);
+  transition: background var(--dur-micro) var(--ease-out);
 }
 
 .search-overlay__result--active .search-overlay__result-btn,
@@ -172,7 +173,7 @@
   text-transform: uppercase;
   background: var(--subtle);
   border: 1px solid var(--hair);
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   padding: 2px 6px;
   color: var(--muted);
 }
@@ -220,10 +221,10 @@
 
 .search-overlay__footer {
   display: flex;
-  gap: 16px;
+  gap: var(--sp-4);
   align-items: center;
   justify-content: flex-end;
-  padding: 8px 16px 10px;
+  padding: var(--sp-2) var(--sp-4) 10px;
   border-top: 1px solid var(--hair);
   background: var(--subtle);
 }
@@ -266,10 +267,10 @@
 /* Phase 2D small-screen polish. */
 @media (max-width: 540px) {
   .search-overlay {
-    padding-top: 24px;
+    padding-top: var(--sp-6);
   }
   .search-overlay__panel {
-    border-radius: 12px;
+    border-radius: var(--r-lg);
   }
   .search-overlay__title {
     font-size: 14px;
