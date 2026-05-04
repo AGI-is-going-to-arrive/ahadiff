@@ -668,6 +668,7 @@ class TestDetectGraphifyStatusFreshness:
             tmp_path,
             repo=self._repo(tmp_path),
             source_exists=True,
+            imported_exists=False,
             enabled=True,
         )
 

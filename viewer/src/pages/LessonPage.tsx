@@ -8,6 +8,7 @@ import ScaffoldingTabs from '../components/ScaffoldingTabs';
 import { useTranslation } from '../i18n/useTranslation';
 import { useRunsStore } from '../state/runs-store';
 import { getRunLesson, getRunArtifact } from '../api/runs';
+import { renderMarkdownProse, uniqueSlug } from '../utils/markdown';
 import type { RunDetail } from '../api/types';
 import type { Claim, ClaimSourceHunk } from '../components/EvidencePanel';
 import type { ScaffoldLevel } from '../components/ScaffoldingTabs';
@@ -19,29 +20,6 @@ interface TocEntry {
   level: number;
 }
 
-function slugify(text: string): string {
-  // Unicode-aware: keep letters/numbers from any script (including CJK).
-  // Drop punctuation/symbols, normalize whitespace runs to single hyphens.
-  return text
-    .toLowerCase()
-    .normalize('NFKC')
-    .replace(/[^\p{L}\p{N}\s-]/gu, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-}
-
-function uniqueSlug(label: string, seen: Set<string>): string {
-  const base = slugify(label) || 'section';
-  let id = base;
-  if (seen.has(id)) {
-    let counter = 2;
-    while (seen.has(`${base}-${counter}`)) counter++;
-    id = `${base}-${counter}`;
-  }
-  seen.add(id);
-  return id;
-}
 
 function extractTocEntries(content: string): TocEntry[] {
   const entries: TocEntry[] = [];
@@ -131,135 +109,6 @@ function formatClaimLocation(claim: Claim): string {
   if (claim.file && line) return `${claim.file}:${line}`;
   if (claim.file) return claim.file;
   return line || claim.claim_id;
-}
-
-function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
-  const nodes: React.ReactNode[] = [];
-  const pattern = /`([^`]+)`/g;
-  let lastIndex = 0;
-  let codeIndex = 0;
-  for (const match of text.matchAll(pattern)) {
-    if (match.index > lastIndex) nodes.push(text.slice(lastIndex, match.index));
-    nodes.push(<code key={`${keyPrefix}-code-${codeIndex++}`}>{match[1]}</code>);
-    lastIndex = match.index + match[0].length;
-  }
-  if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
-  return nodes.length > 0 ? nodes : [text];
-}
-
-function renderLessonProse(content: string): React.ReactNode[] | null {
-  if (!content) return null;
-  const lines = content.split('\n');
-  const elements: React.ReactNode[] = [];
-  const headingSlugs = new Set<string>();
-  let paragraphLines: string[] = [];
-  let listItems: string[] = [];
-  let listType: 'ul' | 'ol' | null = null;
-  let codeLines: string[] | null = null;
-  let codeLanguage = '';
-  let blockKey = 0;
-
-  const flushParagraph = () => {
-    const text = paragraphLines.join(' ').trim();
-    if (text) {
-      const key = `paragraph-${blockKey++}`;
-      elements.push(
-        <p key={key} className="lesson__paragraph">
-          {renderInline(text, key)}
-        </p>,
-      );
-    }
-    paragraphLines = [];
-  };
-
-  const flushList = () => {
-    if (!listType || listItems.length === 0) return;
-    const key = `list-${blockKey++}`;
-    const ListTag = listType;
-    elements.push(
-      <ListTag key={key} className={`lesson__list lesson__list--${listType}`}>
-        {listItems.map((item, index) => (
-          <li key={`${key}-item-${index}`}>{renderInline(item, `${key}-item-${index}`)}</li>
-        ))}
-      </ListTag>,
-    );
-    listItems = [];
-    listType = null;
-  };
-
-  const flushCode = () => {
-    if (codeLines === null) return;
-    elements.push(
-      <pre
-        key={`code-${blockKey++}`}
-        className="lesson__code-block"
-        data-language={codeLanguage || undefined}
-      >
-        <code>{codeLines.join('\n')}</code>
-      </pre>,
-    );
-    codeLines = null;
-    codeLanguage = '';
-  };
-
-  for (const rawLine of lines) {
-    const trimmedLine = rawLine.trim();
-
-    if (codeLines !== null) {
-      if (trimmedLine.startsWith('```')) flushCode();
-      else codeLines.push(rawLine);
-      continue;
-    }
-
-    const fenceMatch = /^```\s*([\w.-]+)?/.exec(trimmedLine);
-    if (fenceMatch) {
-      flushParagraph();
-      flushList();
-      codeLines = [];
-      codeLanguage = fenceMatch[1] ?? '';
-      continue;
-    }
-
-    if (!trimmedLine) {
-      flushParagraph();
-      flushList();
-      continue;
-    }
-
-    const headingMatch = /^(#{1,3})\s+(.+)$/.exec(trimmedLine);
-    if (headingMatch) {
-      flushParagraph();
-      flushList();
-      const label = headingMatch[2].trim();
-      const slug = uniqueSlug(label, headingSlugs);
-      const Tag = (`h${Math.min(headingMatch[1].length + 1, 4)}`) as 'h2' | 'h3' | 'h4';
-      elements.push(
-        <Tag key={`heading-${slug}`} id={slug} className="lesson__section-heading">
-          {label}
-        </Tag>,
-      );
-      continue;
-    }
-
-    const unorderedMatch = /^\s*[-*+]\s+(.+)$/.exec(rawLine);
-    const orderedMatch = /^\s*\d+[.)]\s+(.+)$/.exec(rawLine);
-    if (unorderedMatch || orderedMatch) {
-      flushParagraph();
-      const nextType = orderedMatch ? 'ol' : 'ul';
-      if (listType && listType !== nextType) flushList();
-      listType = nextType;
-      listItems.push((orderedMatch?.[1] ?? unorderedMatch?.[1] ?? '').trim());
-      continue;
-    }
-
-    flushList();
-    paragraphLines.push(trimmedLine);
-  }
-
-  flushParagraph();
-  flushList();
-  flushCode();
-  return elements;
 }
 
 function parseClaims(content: string): Claim[] {
@@ -395,7 +244,7 @@ export default function LessonPage() {
     return notes;
   }, [runDetail, t]);
 
-  const renderedProse = useMemo(() => renderLessonProse(lessonContent), [lessonContent]);
+  const renderedProse = useMemo(() => renderMarkdownProse(lessonContent), [lessonContent]);
 
   return (
     <AppShell>

@@ -332,7 +332,9 @@ export const learnConfigSchema = z.object({
 export const configResponseSchema = z.object({
   lang: z.string().nullable(),
   privacy_mode: z.string().nullable(),
+  generate_provider: z.string().nullable().default(null),
   generate_model: z.string().nullable(),
+  judge_provider: z.string().nullable().default(null),
   judge_model: z.string().nullable(),
   serve_port: z.number().int().nullable(),
   key_status: z.record(z.string(), z.enum(['configured', 'missing'])).default({}),
@@ -390,12 +392,14 @@ export const providerSummarySchema = z
     key_status: z.enum(['configured', 'missing', 'unknown']),
     api_family: z.string().nullable().optional(),
     api_family_version: z.string().nullable().optional(),
+    max_output_tokens: z.number().int().positive().nullable().optional(),
+    thinking_level: z.enum(['none', 'low', 'medium', 'high']).nullable().optional(),
     probed: z.boolean(),
     probed_max_context: z.number().int().positive().nullable(),
     probed_tpm: z.number().int().positive().nullable().optional(),
     probed_rpm: z.number().int().positive().nullable().optional(),
-    supports_temperature: z.boolean().nullable().optional(),
     probe_timestamp: z.string().nullable().optional(),
+  available_models: z.array(z.string()).default([]),
   })
   .strict();
 
@@ -422,6 +426,8 @@ export const providerCreateRequestSchema = z
     model_name: z.string().min(1),
     base_url: z.string().min(1),
     api_key_env: z.string().min(1),
+    max_output_tokens: z.number().int().positive().nullable().optional(),
+    thinking_level: z.enum(['none', 'low', 'medium', 'high']).nullable().optional(),
   })
   .strict();
 
@@ -431,6 +437,8 @@ export const providerUpdateRequestSchema = z
     model_name: z.string().min(1).optional(),
     base_url: z.string().min(1).optional(),
     api_key_env: z.string().min(1).optional(),
+    max_output_tokens: z.number().int().positive().nullable().optional(),
+    thinking_level: z.enum(['none', 'low', 'medium', 'high']).nullable().optional(),
   })
   .strict();
 

@@ -631,6 +631,7 @@ def detect_graphify_status(
         workspace_root,
         repo=repo,
         source_exists=source_exists,
+        imported_exists=imported_exists,
         enabled=enabled,
     )
     provenance = {"source": canonicalize_path_text(_GRAPHIFY_RELATIVE_PATH)}
@@ -653,6 +654,7 @@ def _resolve_graphify_freshness(
     *,
     repo: GitRepo | None,
     source_exists: bool,
+    imported_exists: bool,
     enabled: bool,
 ) -> str | None:
     from ahadiff.graphify.freshness import FreshnessState, compute_freshness, project_freshness
@@ -677,6 +679,11 @@ def _resolve_graphify_freshness(
         )
         graph_commit = graph_log.stdout.strip() if graph_log.returncode == 0 else None
         graph_commit = graph_commit or None
+
+        if graph_commit is None and imported_exists:
+            # Source exists but was never committed — the imported copy is up-to-date
+            # with the on-disk source, so treat as current.
+            return project_freshness(FreshnessState.CURRENT)
 
         commit_count: int | None = None
         if graph_commit is not None:

@@ -64,6 +64,47 @@ export async function deleteProvider(
   );
 }
 
+export async function discoverModels(
+  data: { base_url: string; api_key: string; provider_class: string },
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<{ models: string[] }> {
+  return apiFetch<{ models: string[] }>('/api/providers/discover-models', {
+    method: 'POST',
+    body: JSON.stringify(data),
+    signal: opts?.signal,
+  });
+}
+
+export async function fetchProviderModels(
+  alias: string,
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<{ models: string[] }> {
+  return apiFetch<{ models: string[] }>(
+    `/api/providers/${encodeURIComponent(alias)}/models`,
+    { signal: opts?.signal },
+  );
+}
+
+export async function saveProviderModels(
+  alias: string,
+  models: string[],
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<ProviderMutationResponse> {
+  const raw = await apiFetch<unknown>(
+    `/api/providers/${encodeURIComponent(alias)}/models`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ models }),
+      signal: opts?.signal,
+    },
+  );
+  return parseResponse(
+    'PUT /api/providers/{alias}/models',
+    providerMutationResponseSchema,
+    raw,
+  );
+}
+
 export async function probeProvider(
   alias: string,
   force?: boolean,

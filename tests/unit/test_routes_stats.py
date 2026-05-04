@@ -797,8 +797,21 @@ class TestGetProviders:
                     "llm": {
                         "generate_model": "gpt-5.4-mini",
                         "judge_model": "gpt-5.4",
-                        "base_url": "https://api.example.com",
-                    }
+                    },
+                    "providers": {
+                        "gen": {
+                            "provider_class": "openai",
+                            "model_name": "gpt-5.4-mini",
+                            "base_url": "https://api.example.com/v1",
+                            "api_key_env": "OPENAI_API_KEY",
+                        },
+                        "judge": {
+                            "provider_class": "openai",
+                            "model_name": "gpt-5.4",
+                            "base_url": "https://api.example.com/v1",
+                            "api_key_env": "OPENAI_API_KEY",
+                        },
+                    },
                 },
                 resolved={},
                 repo_config_path=state_dir / "config.toml",
@@ -869,7 +882,6 @@ class TestGetProviders:
                             "probed_max_context": 200000,
                             "probed_tpm": 1000,
                             "probed_rpm": 60,
-                            "supports_temperature": True,
                             "probe_timestamp": "2026-04-28T00:00:00Z",
                         },
                         "judge": {
@@ -905,7 +917,6 @@ class TestGetProviders:
         assert providers[0]["probed_max_context"] == 200000
         assert providers[0]["probed_tpm"] == 1000
         assert providers[0]["probed_rpm"] == 60
-        assert providers[0]["supports_temperature"] is True
         assert providers[1]["provider_class"] == "anthropic"
         assert providers[1]["key_status"] == "missing"
         assert providers[1]["probed"] is False

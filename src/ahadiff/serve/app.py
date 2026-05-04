@@ -26,7 +26,10 @@ from .routes_locale import get_locale, put_locale
 from .routes_providers import (
     create_provider,
     delete_provider,
+    discover_models,
+    fetch_provider_models,
     probe_provider_route,
+    save_provider_models,
     update_provider,
 )
 from .routes_review import (
@@ -132,7 +135,10 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
             Route("/api/export/results", get_export_results, methods=["GET"]),
             Route("/api/providers", get_providers, methods=["GET"]),
             Route("/api/providers", create_provider, methods=["POST"]),
+            Route("/api/providers/discover-models", discover_models, methods=["POST"]),
             Route("/api/providers/{alias}/probe", probe_provider_route, methods=["POST"]),
+            Route("/api/providers/{alias}/models", fetch_provider_models, methods=["GET"]),
+            Route("/api/providers/{alias}/models", save_provider_models, methods=["PUT"]),
             Route("/api/providers/{alias}", update_provider, methods=["PUT"]),
             Route("/api/providers/{alias}", delete_provider, methods=["DELETE"]),
             Route("/api/serve/status", get_serve_status, methods=["GET"]),

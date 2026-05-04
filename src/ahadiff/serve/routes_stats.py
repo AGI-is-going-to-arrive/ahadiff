@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 import sqlite3
 import time
 from collections.abc import Mapping
@@ -359,15 +360,19 @@ def _optional_positive_int(mapping: Mapping[str, object], key: str) -> int | Non
     return int(raw) if isinstance(raw, int) and raw > 0 else None
 
 
-def _optional_bool(mapping: Mapping[str, object], key: str) -> bool | None:
-    raw = mapping.get(key)
-    return raw if isinstance(raw, bool) else None
+def _optional_thinking_level(mapping: Mapping[str, object]) -> str | None:
+    raw = mapping.get("thinking_level")
+    if isinstance(raw, str) and raw in {"none", "low", "medium", "high"}:
+        return raw
+    return None
+
+
 
 
 def _provider_api_family(provider_class: str) -> tuple[str | None, str | None, str]:
     if provider_class == "openai_responses":
         return ("openai", "responses-v1", "openai_responses")
-    if provider_class in {"openai", "newapi", "cherryin"}:
+    if provider_class in {"openai", "newapi", "lmstudio"}:
         return ("openai", "chat-v1", provider_class)
     if provider_class == "azure":
         return ("openai", "azure-openai", "azure")
@@ -380,6 +385,16 @@ def _provider_api_family(provider_class: str) -> tuple[str | None, str | None, s
     return (None, None, provider_class or "legacy")
 
 
+_ENV_VAR_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+
+
+def _parse_available_models(mapping: Mapping[str, Any]) -> list[str]:
+    raw = mapping.get("available_models")
+    if isinstance(raw, (list, tuple)):
+        return [str(m) for m in raw if isinstance(m, str) and m.strip()]
+    return []
+
+
 def _provider_key_status(
     api_key_env: str | None,
 ) -> Literal["configured", "missing", "unknown"]:
@@ -387,7 +402,11 @@ def _provider_key_status(
 
     if not api_key_env:
         return "unknown"
-    return "configured" if os.environ.get(api_key_env) else "missing"
+    if os.environ.get(api_key_env):
+        return "configured"
+    if _ENV_VAR_NAME_RE.fullmatch(api_key_env):
+        return "missing"
+    return "configured"
 
 
 def _provider_summary_from_mapping(
@@ -402,9 +421,14 @@ def _provider_summary_from_mapping(
     if not provider_class or not model_name or not base_url:
         return None
     raw_api_key_env = provider_mapping.get("api_key_env")
-    api_key_env = (
-        str(raw_api_key_env) if isinstance(raw_api_key_env, str) and raw_api_key_env else None
-    )
+    api_key_env: str | None = None
+    if isinstance(raw_api_key_env, str) and raw_api_key_env:
+        if _ENV_VAR_NAME_RE.fullmatch(raw_api_key_env):
+            api_key_env = raw_api_key_env
+        elif len(raw_api_key_env) > 8:
+            api_key_env = raw_api_key_env[:4] + "****" + raw_api_key_env[-4:]
+        else:
+            api_key_env = "****"
     api_family, api_family_version, provider_kind = _provider_api_family(provider_class)
     probed_max_context = _optional_positive_int(provider_mapping, "probed_max_context")
     probed_tpm = _optional_positive_int(provider_mapping, "probed_tpm")
@@ -431,10 +455,12 @@ def _provider_summary_from_mapping(
         api_family_version=api_family_version,
         probed=probed,
         probed_max_context=probed_max_context,
+        max_output_tokens=_optional_positive_int(provider_mapping, "max_output_tokens"),
+        thinking_level=_optional_thinking_level(provider_mapping),
         probed_tpm=probed_tpm,
         probed_rpm=probed_rpm,
-        supports_temperature=_optional_bool(provider_mapping, "supports_temperature"),
         probe_timestamp=probe_timestamp,
+        available_models=_parse_available_models(provider_mapping),
     )
 
 
@@ -490,40 +516,7 @@ def _build_providers(state: ServeState) -> dict[str, Any]:
                 )
                 if summary is not None:
                     providers.append(summary)
-        if providers:
-            return ProvidersResponse(providers=providers).model_dump(mode="json")
-        llm = values.get("llm", getattr(cfg, "llm", None))
-        if isinstance(llm, Mapping):
-            llm_mapping = cast("Mapping[str, object]", llm)
-            gen_model = str(llm_mapping.get("generate_model") or "")
-            judge_model = str(llm_mapping.get("judge_model") or "")
-            base_url = str(llm_mapping.get("base_url") or "")
-            raw_api_key_env = llm_mapping.get("api_key_env")
-            api_key_env = (
-                str(raw_api_key_env)
-                if isinstance(raw_api_key_env, str) and raw_api_key_env
-                else None
-            )
-        elif llm is not None:
-            gen_model = getattr(llm, "generate_model", None) or ""
-            judge_model = getattr(llm, "judge_model", None) or ""
-            base_url = getattr(llm, "base_url", None) or ""
-            raw_api_key_env = getattr(llm, "api_key_env", None)
-            api_key_env = (
-                str(raw_api_key_env)
-                if isinstance(raw_api_key_env, str) and raw_api_key_env
-                else None
-            )
-        else:
-            gen_model = ""
-            judge_model = ""
-            base_url = ""
-            api_key_env = None
-
-        if gen_model:
-            providers.append(_legacy_provider_summary("generate", gen_model, base_url, api_key_env))
-        if judge_model and judge_model != gen_model:
-            providers.append(_legacy_provider_summary("judge", judge_model, base_url, api_key_env))
+        return ProvidersResponse(providers=providers).model_dump(mode="json")
     except Exception:
         log.debug("failed to load provider config", exc_info=True)
 

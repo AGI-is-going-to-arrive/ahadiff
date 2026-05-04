@@ -25,7 +25,9 @@ def _empty_config_snapshot() -> dict[str, Any]:
     return {
         "lang": None,
         "privacy_mode": None,
+        "generate_provider": None,
         "generate_model": None,
+        "judge_provider": None,
         "judge_model": None,
         "serve_port": None,
         "key_status": {},
@@ -93,7 +95,9 @@ def _safe_config_snapshot(state: ServeState) -> dict[str, Any]:
         result: dict[str, Any] = {
             "lang": snapshot_values.get("lang"),
             "privacy_mode": snapshot_values.get("privacy_mode"),
+            "generate_provider": llm_values.get("generate_provider", ""),
             "generate_model": llm_values.get("generate_model"),
+            "judge_provider": llm_values.get("judge_provider", ""),
             "judge_model": llm_values.get("judge_model"),
             "serve_port": serve_values.get("port"),
             "capture": {
@@ -124,7 +128,9 @@ def _safe_config_snapshot(state: ServeState) -> dict[str, Any]:
         result["privacy_mode"] = getattr(cfg, "privacy_mode", None)
 
         llm = getattr(cfg, "llm", None)
+        result["generate_provider"] = getattr(llm, "generate_provider", "") if llm else ""
         result["generate_model"] = getattr(llm, "generate_model", None) if llm else None
+        result["judge_provider"] = getattr(llm, "judge_provider", "") if llm else ""
         result["judge_model"] = getattr(llm, "judge_model", None) if llm else None
 
         serve = getattr(cfg, "serve", None)
@@ -489,7 +495,8 @@ async def put_config(request: Request) -> JSONResponse:
     body = cast("dict[str, Any]", payload)
     allowed_keys: set[str] = {
         "lang", "capture", "privacy_mode",
-        "generate_model", "judge_model", "serve_port", "llm", "learn",
+        "generate_provider", "generate_model", "judge_provider", "judge_model",
+        "serve_port", "llm", "learn",
     }
     unknown: set[str] = set(body.keys()) - allowed_keys
     if unknown:
@@ -521,6 +528,36 @@ async def put_config(request: Request) -> JSONResponse:
                 status_code=400,
             )
         persist_updates["privacy_mode"] = pm
+
+    config_path = state.state_dir / "config.toml"
+    configured_aliases: set[str] = set()
+    if config_path.exists():
+        try:
+            from ahadiff.core.config import read_config_data
+
+            raw = read_config_data(config_path)
+            raw_providers = raw.get("providers")
+            if isinstance(raw_providers, dict):
+                configured_aliases = set(raw_providers.keys())
+        except Exception:
+            pass
+
+    for role in ("generate", "judge"):
+        prov_key = f"{role}_provider"
+        if prov_key in body:
+            pv: object = body[prov_key]
+            if not isinstance(pv, str):
+                return JSONResponse(
+                    {"error": f"{prov_key} must be a string", "status": 400},
+                    status_code=400,
+                )
+            pv_stripped = pv.strip()
+            if pv_stripped and pv_stripped not in configured_aliases:
+                return JSONResponse(
+                    {"error": f"{prov_key} '{pv_stripped}' not found in configured providers", "status": 400},
+                    status_code=400,
+                )
+            persist_updates.setdefault("llm", {})[prov_key] = pv_stripped
 
     if "generate_model" in body:
         gm: object = body["generate_model"]

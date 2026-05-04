@@ -48,12 +48,14 @@ class ProviderSummary(BaseModel):
     key_status: Literal["configured", "missing", "unknown"]
     api_family: str | None = None
     api_family_version: str | None = None
+    max_output_tokens: int | None = None
+    thinking_level: str | None = None
     probed: bool
     probed_max_context: int | None
     probed_tpm: int | None = None
     probed_rpm: int | None = None
-    supports_temperature: bool | None = None
     probe_timestamp: str | None = None
+    available_models: list[str] = Field(default_factory=list)
 
 
 class ProvidersResponse(BaseModel):

@@ -41,7 +41,9 @@ export interface LearnConfig {
 export interface ConfigResponse {
   lang: string | null;
   privacy_mode: string | null;
+  generate_provider: string | null;
   generate_model: string | null;
+  judge_provider: string | null;
   judge_model: string | null;
   serve_port: number | null;
   key_status: Record<string, 'configured' | 'missing'>;
@@ -94,12 +96,14 @@ export interface ProviderSummary {
   key_status: 'configured' | 'missing' | 'unknown';
   api_family?: string | null;
   api_family_version?: string | null;
+  max_output_tokens?: number | null;
+  thinking_level?: string | null;
   probed: boolean;
   probed_max_context: number | null;
   probed_tpm?: number | null;
   probed_rpm?: number | null;
-  supports_temperature?: boolean | null;
   probe_timestamp?: string | null;
+  available_models?: string[];
 }
 
 export interface ProvidersResponse {

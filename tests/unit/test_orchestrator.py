@@ -94,7 +94,6 @@ def test_resolve_provider_allows_duplicate_implicit_aliases(
             "base_url": "http://127.0.0.1:8318",
             "api_key_env": "AHADIFF_PROVIDER_API_KEY",
             "probed_max_context": 1_000_000,
-            "supports_temperature": True,
             "probe_timestamp": "2026-04-22T19:31:25Z",
         },
         "smoke-test": {
@@ -103,7 +102,6 @@ def test_resolve_provider_allows_duplicate_implicit_aliases(
             "base_url": "http://127.0.0.1:8318/v1/chat/completions",
             "api_key_env": "AHADIFF_PROVIDER_API_KEY",
             "probed_max_context": 1_000_000,
-            "supports_temperature": True,
             "probe_timestamp": "2026-04-22T21:37:44Z",
         },
     }
@@ -145,7 +143,7 @@ def test_resolve_provider_keeps_distinct_implicit_aliases_ambiguous() -> None:
         },
     }
 
-    with pytest.raises(AhaDiffError, match="requires --provider when multiple providers"):
+    with pytest.raises(AhaDiffError, match="requires --provider.*when multiple providers"):
         _resolve_provider_from_config(
             snapshot=snapshot,
             operation_label="lesson generation",

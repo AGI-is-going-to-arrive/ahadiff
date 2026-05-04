@@ -316,7 +316,12 @@ class TaskRunner:
             return "internal_error"
         if "cancelled" in error_msg:
             return "cancelled"
-        if "invalid provider" in error_msg or "provider configuration" in error_msg:
+        if (
+            "invalid provider" in error_msg
+            or "provider configuration" in error_msg
+            or "requires --provider" in error_msg
+            or "requires --base-url" in error_msg
+        ):
             return "config_error"
         _claim = (
             "claim extraction",

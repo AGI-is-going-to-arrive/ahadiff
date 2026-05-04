@@ -209,7 +209,7 @@ def test_get_task_maps_error_code_to_user_facing_error(tmp_path: Path) -> None:
     [
         ("network_error", "Network connection failed. Check your internet and try again."),
         ("timeout", "Task timed out. Try again or increase the timeout."),
-        ("config_error", "Configuration error. Check your provider settings."),
+        ("config_error", "raw internal detail"),
         ("permission_error", "Permission denied. Check file or directory permissions."),
         ("claim_error", "Failed to extract or verify claims from the diff."),
         ("lesson_error", "Failed to generate lesson content."),

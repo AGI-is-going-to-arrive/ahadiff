@@ -8,7 +8,6 @@ core fields did not change while the probe was running.
 
 from __future__ import annotations
 
-import os
 from collections.abc import Mapping
 from dataclasses import asdict
 from datetime import UTC, datetime
@@ -22,9 +21,9 @@ from ahadiff.contracts.serve_providers import (
     ProviderCreateRequest,
     ProviderDeleteResponse,
     ProviderMutationResponse,
+    ProviderProbeSubmitResponse,
     ProviderUpdateRequest,
 )
-from ahadiff.contracts.serve_runtime import TaskSubmitResponse
 from ahadiff.core.config import (
     SecurityConfig,
     clear_provider_probe_fields,
@@ -33,9 +32,9 @@ from ahadiff.core.config import (
     normalize_provider_base_url,
     provider_core_fingerprint,
     read_config_data,
+    resolve_provider_api_key,
     validate_provider_alias,
     validate_provider_base_url,
-    validate_repo_api_key_env_name,
     write_config_data,
 )
 from ahadiff.core.errors import ConfigError, ProviderError
@@ -64,7 +63,6 @@ _PROBE_RESULT_FIELDS = (
     "probed_max_context",
     "probed_tpm",
     "probed_rpm",
-    "supports_temperature",
     "probe_timestamp",
 )
 _MAX_PENDING_PROVIDER_PROBE_TASKS = 1
@@ -175,6 +173,9 @@ def _security_config_from_data(data: Mapping[str, object]) -> SecurityConfig:
     )
 
 
+_DEFAULT_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
+
+
 def _normalize_and_validate_base_url(
     base_url: str,
     *,
@@ -185,7 +186,10 @@ def _normalize_and_validate_base_url(
     try:
         validate_provider_base_url(
             normalized,
-            allowed_local_hosts=_provider_allowed_local_hosts(data),
+            allowed_local_hosts=(
+                *_provider_allowed_local_hosts(data),
+                *_DEFAULT_LOCAL_HOSTS,
+            ),
         )
     except ConfigError as exc:
         raise _ProviderBaseUrlError(str(exc)) from exc
@@ -320,11 +324,6 @@ async def create_provider(request: Request) -> JSONResponse:
     except ValidationError as exc:
         return _validation_error(exc)
 
-    try:
-        validate_repo_api_key_env_name(body.api_key_env)
-    except ConfigError as exc:
-        return _error(str(exc), status=422)
-
     config_path = _config_path(state)
 
     def _persist() -> tuple[bool, dict[str, Any] | None]:
@@ -343,6 +342,10 @@ async def create_provider(request: Request) -> JSONResponse:
                 "base_url": normalized_base_url,
                 "api_key_env": body.api_key_env,
             }
+            if body.max_output_tokens is not None:
+                new_provider["max_output_tokens"] = body.max_output_tokens
+            if body.thinking_level is not None:
+                new_provider["thinking_level"] = body.thinking_level
             providers[body.alias] = new_provider
             write_config_data(config_path, data)
             _append_provider_audit_event(
@@ -403,12 +406,6 @@ async def update_provider(request: Request) -> JSONResponse:
     update_payload = body.model_dump(exclude_none=True)
     if not update_payload:
         return _error("at_least_one_field_required", status=422)
-
-    if "api_key_env" in update_payload:
-        try:
-            validate_repo_api_key_env_name(str(update_payload["api_key_env"]))
-        except ConfigError as exc:
-            return _error(str(exc), status=422)
 
     config_path = _config_path(state)
 
@@ -567,10 +564,10 @@ async def probe_provider_route(request: Request) -> JSONResponse:
                 allowed_local_hosts=(
                     *local_hosts_for_privacy_mode(security_config, "explicit_remote"),
                     *local_hosts_for_privacy_mode(security_config, "strict_local"),
+                    *_DEFAULT_LOCAL_HOSTS,
                 ),
             )
-            validate_repo_api_key_env_name(api_key_env)
-            api_key = os.environ.get(api_key_env)
+            api_key = resolve_provider_api_key(api_key_env)
 
             report = await to_thread.run_sync(
                 lambda: probe_provider(
@@ -630,14 +627,174 @@ async def probe_provider_route(request: Request) -> JSONResponse:
             status_code=503,
         )
     return JSONResponse(
-        TaskSubmitResponse(task_id=task_id).model_dump(mode="json"),
+        ProviderProbeSubmitResponse(
+            task_id=task_id,
+            alias=alias,
+            poll_url=f"/api/tasks/{task_id}",
+        ).model_dump(mode="json"),
         status_code=202,
     )
+
+
+async def discover_models(request: Request) -> JSONResponse:
+    """POST /api/providers/discover-models — discover models from any base_url + api_key."""
+    from .auth import require_write_token
+
+    require_write_token(request)
+    try:
+        body = await request.json()
+    except Exception:
+        return _error("invalid JSON", status=400)
+    if not isinstance(body, dict):
+        return _error("expected JSON object", status=400)
+
+    base_url = body.get("base_url", "")
+    api_key = body.get("api_key", "")
+    provider_class = body.get("provider_class", "openai")
+    if not isinstance(base_url, str) or not base_url.strip():
+        return _error("base_url is required", status=400)
+
+    import httpx
+
+    models_url = _build_models_url(base_url.strip(), str(provider_class))
+    headers: dict[str, str] = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0, verify=True) as client:
+            resp = await client.get(models_url, headers=headers)
+        resp.raise_for_status()
+        payload = resp.json()
+    except Exception as exc:
+        return _error(f"Failed to fetch models: {type(exc).__name__}", status=502)
+
+    model_ids = _extract_model_ids(payload, str(provider_class))
+    return JSONResponse({"models": sorted(model_ids)})
+
+
+async def fetch_provider_models(request: Request) -> JSONResponse:
+    """GET /api/providers/{alias}/models — discover models from remote API."""
+    from .auth import require_write_token, serve_state
+
+    require_write_token(request)
+    alias = request.path_params["alias"]
+    state = serve_state(request)
+    config_path = _config_path(state)
+
+    def _load() -> dict[str, Any] | None:
+        _, providers = _read_providers_table(config_path)
+        raw = providers.get(alias)
+        return dict(cast("dict[str, Any]", raw)) if isinstance(raw, dict) else None
+
+    try:
+        provider_data = await to_thread.run_sync(_load)
+    except ConfigError as exc:
+        return _error(str(exc), status=500)
+    if provider_data is None:
+        return _error("provider_not_found", status=404)
+
+    base_url = provider_data.get("base_url", "")
+    api_key_env = provider_data.get("api_key_env", "")
+    provider_class = provider_data.get("provider_class", "openai")
+
+    try:
+        api_key = resolve_provider_api_key(api_key_env)
+    except Exception:
+        return _error("Failed to resolve API key", status=400)
+
+    import httpx
+
+    models_url = _build_models_url(str(base_url), str(provider_class))
+    headers: dict[str, str] = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0, verify=True) as client:
+            resp = await client.get(models_url, headers=headers)
+        resp.raise_for_status()
+        payload = resp.json()
+    except httpx.HTTPStatusError as exc:
+        return _error(f"Models endpoint returned {exc.response.status_code}", status=502)
+    except Exception as exc:
+        return _error(f"Failed to fetch models: {type(exc).__name__}", status=502)
+
+    model_ids = _extract_model_ids(payload, str(provider_class))
+    return JSONResponse({"models": sorted(model_ids)})
+
+
+async def save_provider_models(request: Request) -> JSONResponse:
+    """PUT /api/providers/{alias}/models — save selected available_models."""
+    from .auth import require_write_token, serve_state
+
+    require_write_token(request)
+    alias = request.path_params["alias"]
+    state = serve_state(request)
+    config_path = _config_path(state)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return _error("invalid JSON", status=400)
+    if not isinstance(body, dict):
+        return _error("expected JSON object", status=400)
+    models = body.get("models")
+    if not isinstance(models, list) or not all(isinstance(m, str) and m.strip() for m in models):
+        return _error("models must be a list of non-empty strings", status=400)
+    if len(models) > 100:
+        return _error("too many models (max 100)", status=400)
+
+    cleaned: list[str] = [m.strip() for m in models]
+
+    async with serve_repo_write_lock(state):
+        def _persist() -> dict[str, Any] | None:
+            data, providers = _read_providers_table(config_path)
+            raw = providers.get(alias)
+            if not isinstance(raw, dict):
+                return None
+            raw["available_models"] = cleaned
+            write_config_data(config_path, data)
+            return dict(cast("dict[str, Any]", raw))
+
+        try:
+            result = await to_thread.run_sync(_persist)
+        except ConfigError as exc:
+            return _error(str(exc), status=500)
+        if result is None:
+            return _error("provider_not_found", status=404)
+
+    summary = provider_summary_from_mapping(alias, result)
+    if summary is None:
+        return _error("failed to build summary", status=500)
+    return JSONResponse(summary.model_dump(mode="json"))
+
+
+def _build_models_url(base_url: str, provider_class: str) -> str:
+    """Build the /models endpoint URL for the given provider."""
+    url = base_url.rstrip("/")
+    if provider_class == "ollama":
+        return f"{url}/api/tags"
+    if url.endswith("/v1"):
+        return f"{url}/models"
+    return f"{url}/v1/models"
+
+
+def _extract_model_ids(payload: Any, provider_class: str) -> list[str]:
+    """Extract model IDs from provider-specific response format."""
+    if provider_class == "ollama":
+        models = payload.get("models", []) if isinstance(payload, dict) else []
+        return [m.get("name", "") for m in models if isinstance(m, dict) and m.get("name")]
+    data = payload.get("data", []) if isinstance(payload, dict) else []
+    return [m.get("id", "") for m in data if isinstance(m, dict) and m.get("id")]
 
 
 __all__ = [
     "create_provider",
     "delete_provider",
+    "discover_models",
+    "fetch_provider_models",
     "probe_provider_route",
+    "save_provider_models",
     "update_provider",
 ]

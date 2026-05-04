@@ -28,7 +28,9 @@ def _client(
 
 @dataclass
 class _FakeLlm:
+    generate_provider: str = ""
     generate_model: str | None = "fake-gen"
+    judge_provider: str = ""
     judge_model: str | None = "fake-judge"
     api_key_env: str | None = None
 
@@ -218,7 +220,9 @@ def test_get_config_handles_load_failure_gracefully(
     assert payload == {
         "lang": None,
         "privacy_mode": None,
+        "generate_provider": None,
         "generate_model": None,
+        "judge_provider": None,
         "judge_model": None,
         "serve_port": None,
         "key_status": {},
@@ -241,7 +245,9 @@ def test_get_config_returns_nullable_shape_when_no_git_repo(tmp_path: Path) -> N
     assert payload == {
         "lang": None,
         "privacy_mode": None,
+        "generate_provider": None,
         "generate_model": None,
+        "judge_provider": None,
         "judge_model": None,
         "serve_port": None,
         "key_status": {},

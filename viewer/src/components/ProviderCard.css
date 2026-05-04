@@ -459,3 +459,114 @@
   }
   .provider-card__status-dot { border: 1px solid CanvasText; }
 }
+
+/* ---- Models section ---- */
+.provider-card__models-section {
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--border);
+}
+
+.provider-card__models-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.provider-card__models-label {
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.provider-card__models-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  color: #fff;
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  padding: 0 var(--sp-1);
+}
+
+.provider-card__btn--sm {
+  font-size: var(--fs-xs);
+  padding: var(--sp-1) var(--sp-2);
+}
+
+.provider-card__models-list {
+  margin-top: var(--sp-2);
+}
+
+.provider-card__models-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--sp-1);
+  max-height: 240px;
+  overflow-y: auto;
+  padding: var(--sp-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-page);
+}
+
+.provider-card__model-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-size: var(--fs-xs);
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+.provider-card__model-item:hover {
+  background: var(--bg-hover);
+}
+
+.provider-card__model-name {
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+.provider-card__models-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+.provider-card__models-selected {
+  font-size: var(--fs-xs);
+  color: var(--fg-muted);
+}
+
+.provider-card__model-discover {
+  display: flex;
+  gap: var(--sp-1);
+  align-items: center;
+}
+
+.provider-card__model-discover .provider-card__input,
+.provider-card__model-discover .provider-card__select {
+  flex: 1;
+  min-width: 0;
+}
+
+.provider-card__error--sm {
+  font-size: var(--fs-2xs);
+  margin-top: var(--sp-1);
+}
+
+.provider-card__models-empty {
+  font-size: var(--fs-xs);
+  color: var(--fg-muted);
+  padding: var(--sp-2);
+}

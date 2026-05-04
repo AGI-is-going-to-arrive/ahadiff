@@ -26,9 +26,8 @@ from ahadiff.core.config import (
     load_workspace_config,
     load_workspace_security_config,
     local_hosts_for_privacy_mode,
-    validate_repo_api_key_env_name,
 )
-from ahadiff.core.errors import AhaDiffError, ConfigError
+from ahadiff.core.errors import AhaDiffError
 from ahadiff.core.paths import (
     assert_local_repo_path,
     atomic_write_state_text,
@@ -222,7 +221,7 @@ def _resolve_output_lang_from_snapshot(snapshot: Any, *, cli_lang: str | None) -
 def _normalize_provider_base_url(base_url: str, *, provider_class: str) -> str:
     normalized = base_url.rstrip("/")
     suffixes: tuple[str, ...] = ()
-    if provider_class in {"openai", "openai_responses", "newapi", "cherryin"}:
+    if provider_class in {"openai", "openai_responses", "newapi", "lmstudio"}:
         suffixes = (
             "/v1/chat/completions",
             "/chat/completions",
@@ -317,18 +316,16 @@ def _resolve_provider_from_config(
     privacy_mode: str,
     local_hosts: tuple[str, ...],
     strict_local_hosts: tuple[str, ...],
+    role: str = "generate",
 ) -> tuple[ProviderConfig, str | None, TransportTarget, bool]:
     from ahadiff.llm.provider import transport_target_for_base_url
 
     llm_config = cast("dict[str, Any]", snapshot.values["llm"])
-    resolved_model = model or str(llm_config["generate_model"])
+    model_key = f"{role}_model"
+    resolved_model = model or str(llm_config.get(model_key, llm_config.get("generate_model", "")))
     provider_selection_explicit = base_url is not None or provider_name is not None
 
     if base_url is not None:
-        try:
-            validate_repo_api_key_env_name(api_key_env)
-        except ConfigError as exc:
-            raise AhaDiffError(str(exc)) from exc
         normalized_base_url = _normalize_provider_base_url(base_url, provider_class=provider_class)
         provider_config = _provider_config_from_payload(
             {
@@ -347,6 +344,15 @@ def _resolve_provider_from_config(
         providers_table = cast("dict[str, Any]", raw_providers_table)
         resolved_name = provider_name
         if resolved_name is None:
+            config_provider_key = f"{role}_provider"
+            config_provider = str(llm_config.get(config_provider_key, "")).strip()
+            if config_provider and config_provider in providers_table:
+                resolved_name = config_provider
+            elif config_provider and config_provider not in providers_table:
+                raise AhaDiffError(
+                    f"{role}_provider '{config_provider}' not found in configured providers"
+                )
+        if resolved_name is None:
             configured_names = sorted(providers_table.keys())
             if len(configured_names) != 1:
                 resolved_name = implicit_duplicate_provider_name(
@@ -356,8 +362,8 @@ def _resolve_provider_from_config(
                 )
                 if resolved_name is None:
                     raise AhaDiffError(
-                        f"{operation_label} requires --provider when multiple providers "
-                        "are configured"
+                        f"{operation_label} requires --provider or set {role}_provider "
+                        "in [llm] config when multiple providers are configured"
                     )
             else:
                 resolved_name = configured_names[0]

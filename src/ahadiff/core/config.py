@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, TypeGuard, cast, get_args
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from ahadiff.contracts import ProviderClass
+from ahadiff.contracts import ProviderClass, ThinkingLevel
 from ahadiff.i18n import normalize_locale_preference
 
 from .errors import ConfigError
@@ -35,7 +35,9 @@ _SAFE_PROVIDER_API_KEY_ENVS = frozenset(
     }
 )
 _AHADIFF_PROVIDER_API_KEY_ENV_PATTERN = re.compile(r"^AHADIFF_[A-Z0-9_]*$")
+_ENV_VAR_NAME_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _SUPPORTED_PROVIDER_CLASSES = frozenset(cast("tuple[str, ...]", get_args(ProviderClass)))
+_THINKING_LEVELS = frozenset(cast("tuple[str, ...]", get_args(ThinkingLevel)))
 DEFAULT_CONFIG: dict[str, Any] = {
     "lang": "auto",
     "privacy_mode": "strict_local",
@@ -47,7 +49,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "file_ranking": "learning_value",
     },
     "llm": {
+        "generate_provider": "",
         "generate_model": "gpt-5.4-mini",
+        "judge_provider": "",
         "judge_model": "gpt-5.4-mini",
         "max_concurrent": 3,
         "request_timeout_seconds": 30,
@@ -304,10 +308,11 @@ _PROVIDER_DYNAMIC_FIELDS = frozenset(
         "model_name",
         "base_url",
         "api_key_env",
+        "max_output_tokens",
+        "thinking_level",
         "probed_max_context",
         "probed_tpm",
         "probed_rpm",
-        "supports_temperature",
         "probe_timestamp",
     }
 )
@@ -316,17 +321,17 @@ _DYNAMIC_PROVIDER_FIELD_DEFAULTS: dict[str, Scalar] = {
     "model_name": "",
     "base_url": "",
     "api_key_env": "",
+    "max_output_tokens": 0,
+    "thinking_level": "",
     "probed_max_context": 0,
     "probed_tpm": 0,
     "probed_rpm": 0,
-    "supports_temperature": False,
     "probe_timestamp": "",
 }
 PROVIDER_STALE_PROBE_FIELDS: tuple[str, ...] = (
     "probed_max_context",
     "probed_tpm",
     "probed_rpm",
-    "supports_temperature",
     "probe_timestamp",
 )
 _PROVIDER_CORE_FIELDS: tuple[str, ...] = (
@@ -343,7 +348,7 @@ _PROVIDER_BASE_URL_TRIM_SUFFIXES: tuple[str, ...] = (
     "/responses",
 )
 _PROVIDER_BASE_URL_TRIM_CLASSES: frozenset[str] = frozenset(
-    {"openai", "openai_responses", "newapi", "cherryin"}
+    {"openai", "openai_responses", "newapi", "lmstudio"}
 )
 _PROVIDER_METADATA_HOSTS = frozenset(
     {"169.254.169.254", "metadata.google.internal", "metadata.azure.com", "fd00:ec2::254"}
@@ -707,6 +712,12 @@ def _validate_provider_dynamic_field(key: str, field_name: str, value: Scalar) -
             expected = ", ".join(sorted(_SUPPORTED_PROVIDER_CLASSES))
             raise ConfigError(f"{key} must be one of {expected}, got {provider_class!r}")
         return
+    if field_name == "thinking_level":
+        thinking_level = cast("str", value)
+        if thinking_level and thinking_level not in _THINKING_LEVELS:
+            allowed = ", ".join(sorted(_THINKING_LEVELS))
+            raise ConfigError(f"{key} must be one of {allowed}, got {thinking_level!r}")
+        return
     if field_name == "model_name":
         model_name = cast("str", value)
         if model_name.strip() == "":
@@ -745,7 +756,11 @@ def _flatten_config_file(
                 _DYNAMIC_PROVIDER_FIELD_DEFAULTS[dynamic_field],
             )
             _validate_provider_dynamic_field(key, dynamic_field, coerced)
-            if validate_repo_provider_env and dynamic_field == "api_key_env":
+            if (
+                validate_repo_provider_env
+                and dynamic_field == "api_key_env"
+                and _ENV_VAR_NAME_PATTERN.fullmatch(str(coerced))
+            ):
                 validate_repo_api_key_env_name(str(coerced))
             normalized[key] = coerced
             continue
@@ -1068,6 +1083,20 @@ def validate_repo_api_key_env_name(value: str) -> None:
     )
 
 
+def resolve_provider_api_key(api_key_env: str) -> str | None:
+    """Resolve API key from *api_key_env* value.
+
+    Tries environment variable lookup first; falls back to the raw value
+    so callers can store a direct API key instead of an env-var name.
+    """
+    if not api_key_env:
+        return None
+    env_value = os.environ.get(api_key_env)
+    if env_value:
+        return env_value
+    return api_key_env
+
+
 def _read_model_pricing_table(
     payload: Mapping[str, Any],
     *,
@@ -1122,6 +1151,7 @@ __all__ = [
     "normalize_provider_base_url",
     "provider_core_fingerprint",
     "resolve_effective",
+    "resolve_provider_api_key",
     "validate_provider_alias",
     "validate_provider_base_url",
     "validate_repo_api_key_env_name",

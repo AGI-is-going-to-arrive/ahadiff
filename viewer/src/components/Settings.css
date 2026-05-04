@@ -589,9 +589,23 @@
   gap: var(--sp-4);
 }
 
-/* ---- Model name input (constrained width) ---- */
+/* ---- Model selection (provider select + model input) ---- */
+.settings-model-select {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.settings-model-select .settings-select {
+  min-width: 160px;
+}
+
 .settings-input--model {
-  max-width: 280px;
+  max-width: 200px;
+}
+
+.settings-select--model {
+  min-width: 200px;
 }
 
 /* ---- Capture tab inline copy ---- */

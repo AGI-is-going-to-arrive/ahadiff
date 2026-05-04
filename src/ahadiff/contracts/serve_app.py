@@ -63,7 +63,9 @@ class ConfigResponse(BaseModel):
 
     lang: str | None = None
     privacy_mode: str | None = None
+    generate_provider: str | None = None
     generate_model: str | None = None
+    judge_provider: str | None = None
     judge_model: str | None = None
     serve_port: int | None = None
     key_status: dict[str, Literal["configured", "missing"]] = Field(default_factory=dict)

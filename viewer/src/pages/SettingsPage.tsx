@@ -415,7 +415,9 @@ function AccountTab({
 /* ------------------------------------------------------------------ */
 
 interface ProviderForm {
+  generate_provider: string;
   generate_model: string;
+  judge_provider: string;
   judge_model: string;
   llm: LlmConfig;
 }
@@ -446,7 +448,9 @@ function ProviderTab({
   useEffect(() => {
     if (config) {
       setForm({
+        generate_provider: config.generate_provider ?? '',
         generate_model: config.generate_model ?? '',
+        judge_provider: config.judge_provider ?? '',
         judge_model: config.judge_model ?? '',
         llm: { ...config.llm },
       });
@@ -454,7 +458,9 @@ function ProviderTab({
   }, [config]);
 
   const dirty = config && form && (
-    form.generate_model !== (config.generate_model ?? '')
+    form.generate_provider !== (config.generate_provider ?? '')
+    || form.generate_model !== (config.generate_model ?? '')
+    || form.judge_provider !== (config.judge_provider ?? '')
     || form.judge_model !== (config.judge_model ?? '')
     || form.llm.input_token_budget !== config.llm.input_token_budget
     || form.llm.output_token_budget !== config.llm.output_token_budget
@@ -470,7 +476,9 @@ function ProviderTab({
     setSaveOk(false);
     try {
       await putConfig({
+        generate_provider: form.generate_provider,
         generate_model: form.generate_model,
+        judge_provider: form.judge_provider,
         judge_model: form.judge_model,
         llm: form.llm,
       });
@@ -593,30 +601,70 @@ function ProviderTab({
           <div className="settings-card">
             <div className="settings-card__header"><h2>{t('Settings_page.section_model_selection')}</h2></div>
             <div className="settings-card__body">
-              <div className="settings-field">
-                <div className="settings-field__label">
-                  <h3>{t('Settings_page.generate_model')}</h3>
-                  <p>{t('Settings_page.generate_model_desc')}</p>
-                </div>
-                <input
-                  type="text"
-                  className="settings-input settings-input--model"
-                  value={form.generate_model}
-                  onChange={e => setField('generate_model', e.target.value)}
-                />
-              </div>
-              <div className="settings-field">
-                <div className="settings-field__label">
-                  <h3>{t('Settings_page.judge_model')}</h3>
-                  <p>{t('Settings_page.judge_model_desc')}</p>
-                </div>
-                <input
-                  type="text"
-                  className="settings-input settings-input--model"
-                  value={form.judge_model}
-                  onChange={e => setField('judge_model', e.target.value)}
-                />
-              </div>
+              {(['generate', 'judge'] as const).map(role => {
+                const providerKey = `${role}_provider` as keyof ProviderForm;
+                const modelKey = `${role}_model` as keyof ProviderForm;
+                const selectedAlias = form[providerKey] as string;
+                const selectedProvider = providers.find(p => p.alias === selectedAlias);
+                const modelOptions = selectedProvider?.available_models?.length
+                  ? selectedProvider.available_models
+                  : selectedProvider
+                    ? [selectedProvider.model_name]
+                    : [];
+                const currentModel = form[modelKey] as string;
+                return (
+                  <div className="settings-field" key={role}>
+                    <div className="settings-field__label">
+                      <h3>{t(`Settings_page.${role}_model`)}</h3>
+                      <p>{t(`Settings_page.${role}_model_desc`)}</p>
+                    </div>
+                    <div className="settings-model-select">
+                      <select
+                        className="settings-select"
+                        value={selectedAlias}
+                        onChange={e => {
+                          const alias = e.target.value;
+                          setField(providerKey, alias as ProviderForm[typeof providerKey]);
+                          const p = providers.find(p => p.alias === alias);
+                          if (p) {
+                            const firstModel = p.available_models?.length ? p.available_models[0] : p.model_name;
+                            setField(modelKey, firstModel as ProviderForm[typeof modelKey]);
+                          }
+                        }}
+                      >
+                        <option value="">{t('Settings_page.provider_auto')}</option>
+                        {providers.map(p => (
+                          <option key={p.alias} value={p.alias}>
+                            {p.alias} ({p.provider_class})
+                          </option>
+                        ))}
+                      </select>
+                      {modelOptions.length > 0 ? (
+                        <select
+                          className="settings-select settings-select--model"
+                          value={modelOptions.includes(currentModel) ? currentModel : ''}
+                          onChange={e => setField(modelKey, e.target.value as ProviderForm[typeof modelKey])}
+                        >
+                          {!modelOptions.includes(currentModel) && currentModel && (
+                            <option value="">{currentModel}</option>
+                          )}
+                          {modelOptions.map(m => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          className="settings-input settings-input--model"
+                          value={currentModel}
+                          onChange={e => setField(modelKey, e.target.value as ProviderForm[typeof modelKey])}
+                          placeholder={t('Settings_page.model_name_placeholder')}
+                        />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 

@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from '../i18n/useTranslation';
+import { renderMarkdownProse } from '../utils/markdown';
 import '../components/Landing.css';
 
 const SAMPLE_DIFF = `diff --git a/demo.py b/demo.py
@@ -77,6 +78,7 @@ type DemoTabId = typeof DEMO_TABS[number];
 export default function LandingPage() {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<DemoTabId>('aha');
+  const renderedLesson = useMemo(() => renderMarkdownProse(SAMPLE_LESSON, 'hero-demo'), []);
 
   function handleDemoTabKeyDown(e: React.KeyboardEvent<HTMLButtonElement>, currentIndex: number) {
     const len = DEMO_TABS.length;
@@ -167,9 +169,7 @@ export default function LandingPage() {
                 </pre>
               ) : (
                 <div className="u-text-sm-relaxed">
-                  {SAMPLE_LESSON.split('\n').map((line, i) => (
-                    <p key={i} className="hero-demo__line">{line}</p>
-                  ))}
+                  {renderedLesson}
                 </div>
               )}
             </div>
@@ -224,9 +224,7 @@ export default function LandingPage() {
           <div className="ba-col">
             <div className="ba-col__header">{t('Landing.after_header')}</div>
             <div className="ba-col__body">
-              {SAMPLE_LESSON.split('\n').map((line, i) => (
-                <p key={i} className="ba-col__line">{line}</p>
-              ))}
+              {renderedLesson}
             </div>
           </div>
         </div>
