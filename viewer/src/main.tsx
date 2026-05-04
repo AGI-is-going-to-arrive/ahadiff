@@ -15,6 +15,11 @@ import './styles/reduced-transparency.css';
 import './i18n/bootstrap';
 import App from './App';
 
+const savedTheme = localStorage.getItem('ahadiff-theme');
+if (savedTheme === 'dark' || savedTheme === 'light') {
+  document.documentElement.setAttribute('data-theme', savedTheme);
+}
+
 const container = document.getElementById('root');
 if (!container) {
   throw new Error('Root element #root missing from index.html');

@@ -162,13 +162,13 @@ export default function LandingPage() {
             </div>
             <div className="hero-demo__content" id="demo-panel" role="tabpanel" aria-labelledby={activeTab === 'raw' ? 'tab-raw' : 'tab-aha'} tabIndex={0}>
               {activeTab === 'raw' ? (
-                <pre style={{ fontFamily: 'var(--font-mono)', fontSize: 12, margin: 0 }}>
+                <pre className="hero-demo__pre">
                   {SAMPLE_DIFF}
                 </pre>
               ) : (
                 <div className="u-text-sm-relaxed">
                   {SAMPLE_LESSON.split('\n').map((line, i) => (
-                    <p key={i} style={{ margin: '4px 0' }}>{line}</p>
+                    <p key={i} className="hero-demo__line">{line}</p>
                   ))}
                 </div>
               )}
@@ -225,7 +225,7 @@ export default function LandingPage() {
             <div className="ba-col__header">{t('Landing.after_header')}</div>
             <div className="ba-col__body">
               {SAMPLE_LESSON.split('\n').map((line, i) => (
-                <p key={i} style={{ margin: '4px 0', fontSize: 13, lineHeight: 1.65 }}>{line}</p>
+                <p key={i} className="ba-col__line">{line}</p>
               ))}
             </div>
           </div>

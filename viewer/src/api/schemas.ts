@@ -313,6 +313,7 @@ export const captureConfigSchema = z.object({
   hard_limit: z.number().int().positive(),
   max_patch_bytes: z.number().int().positive(),
   file_ranking: z.string(),
+  symbol_extractor: z.string().default('auto'),
 });
 
 export const llmConfigSchema = z.object({
@@ -321,6 +322,11 @@ export const llmConfigSchema = z.object({
   request_timeout_seconds: z.number().int().positive(),
   max_concurrent: z.number().int().positive(),
   retry_attempts: z.number().int().nonnegative(),
+  output_lang: z.string().default('auto'),
+});
+
+export const learnConfigSchema = z.object({
+  learnability_threshold: z.number().min(0).max(1).default(0.3),
 });
 
 export const configResponseSchema = z.object({
@@ -332,6 +338,7 @@ export const configResponseSchema = z.object({
   key_status: z.record(z.string(), z.enum(['configured', 'missing'])).default({}),
   capture: captureConfigSchema,
   llm: llmConfigSchema,
+  learn: learnConfigSchema,
 });
 
 export const configUpdateResponseSchema = z.object({
@@ -371,28 +378,84 @@ export const installTargetsResponseSchema = z.object({
   total: z.number().int().nonnegative(),
 });
 
-export const providerSummarySchema = z.object({
-  alias: z.string().min(1),
-  role: z.string().nullable().optional(),
-  provider_class: z.string().min(1),
-  provider_kind: z.string().min(1),
-  model_name: z.string().min(1),
-  base_url: z.string(),
-  api_key_env: z.string().nullable().optional(),
-  key_status: z.enum(['configured', 'missing', 'unknown']),
-  api_family: z.string().nullable().optional(),
-  api_family_version: z.string().nullable().optional(),
-  probed: z.boolean(),
-  probed_max_context: z.number().int().positive().nullable(),
-  probed_tpm: z.number().int().positive().nullable().optional(),
-  probed_rpm: z.number().int().positive().nullable().optional(),
-  supports_temperature: z.boolean().nullable().optional(),
-  probe_timestamp: z.string().nullable().optional(),
-});
+export const providerSummarySchema = z
+  .object({
+    alias: z.string().min(1),
+    role: z.string().nullable().optional(),
+    provider_class: z.string().min(1),
+    provider_kind: z.string().min(1),
+    model_name: z.string().min(1),
+    base_url: z.string(),
+    api_key_env: z.string().nullable().optional(),
+    key_status: z.enum(['configured', 'missing', 'unknown']),
+    api_family: z.string().nullable().optional(),
+    api_family_version: z.string().nullable().optional(),
+    probed: z.boolean(),
+    probed_max_context: z.number().int().positive().nullable(),
+    probed_tpm: z.number().int().positive().nullable().optional(),
+    probed_rpm: z.number().int().positive().nullable().optional(),
+    supports_temperature: z.boolean().nullable().optional(),
+    probe_timestamp: z.string().nullable().optional(),
+  })
+  .strict();
 
-export const providersResponseSchema = z.object({
-  providers: z.array(providerSummarySchema),
-});
+export const providersResponseSchema = z
+  .object({
+    providers: z.array(providerSummarySchema),
+  })
+  .strict();
+
+/* ─────────────── 11b. Provider mutations (POST/PUT/DELETE/probe) ─────────────── */
+
+/**
+ * Request body for `POST /api/providers`.
+ *
+ * Mirrors the backend `ProviderCreateRequest` DTO. `alias`, `provider_class`,
+ * `provider_kind`, `model_name`, and `base_url` are required identity fields;
+ * the rest are optional override hints. Secrets are NEVER posted in plaintext —
+ * `api_key_env` carries the env var NAME holding the credential.
+ */
+export const providerCreateRequestSchema = z
+  .object({
+    alias: z.string().min(1),
+    provider_class: z.string().min(1),
+    model_name: z.string().min(1),
+    base_url: z.string().min(1),
+    api_key_env: z.string().min(1),
+  })
+  .strict();
+
+export const providerUpdateRequestSchema = z
+  .object({
+    provider_class: z.string().min(1).optional(),
+    model_name: z.string().min(1).optional(),
+    base_url: z.string().min(1).optional(),
+    api_key_env: z.string().min(1).optional(),
+  })
+  .strict();
+
+export const providerMutationResponseSchema = z
+  .object({
+    updated: z.boolean(),
+    provider: providerSummarySchema,
+  })
+  .strict();
+
+export const providerDeleteResponseSchema = z
+  .object({
+    deleted: z.boolean(),
+    alias: z.string().min(1),
+  })
+  .strict();
+
+export const providerProbeSubmitResponseSchema = z
+  .object({
+    task_id: z.string().min(1),
+    alias: z.string().min(1),
+    status: z.literal('submitted'),
+    poll_url: z.string(),
+  })
+  .strict();
 
 export const usageModelSummarySchema = z.object({
   provider_class: z.string(),

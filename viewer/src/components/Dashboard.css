@@ -52,7 +52,79 @@
 }
 
 .dashboard__empty-hint {
-  font-size: 14px;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  margin: 0;
+}
+
+.dashboard__empty-icon {
+  font-family: "Newsreader", var(--font-serif);
+  font-size: var(--fs-3xl);
+  line-height: 1;
+  color: var(--accent);
+  opacity: 0.3;
+  margin-bottom: var(--sp-2);
+}
+
+.dashboard__empty-title {
+  font-family: "Newsreader", var(--font-serif);
+  font-size: var(--fs-lg);
+  font-weight: 440;
+  letter-spacing: -0.015em;
+  color: var(--ink-blackletter);
+  margin: 0;
+}
+
+.dashboard__empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+}
+
+.dashboard__empty-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--accent);
+  color: var(--paper);
+  border-radius: var(--r-md);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  text-decoration: none;
+  transition: background var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
+}
+
+.dashboard__empty-cta:hover,
+.dashboard__empty-cta:focus-visible {
+  background: var(--accent-ink, var(--accent));
+  transform: translateY(-1px);
+}
+
+.dashboard__empty-cta:active {
+  transform: translateY(0);
+}
+
+.dashboard__empty-or {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.dashboard__empty-cmd {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  background: var(--subtle);
+  color: var(--ink);
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hair);
 }
 
 .dashboard-graphify-placeholder {
@@ -258,9 +330,9 @@
   font-size: 12px;
   padding: 3px 10px;
   border-radius: var(--r-full);
-  background: var(--warning-soft, #F7EED9);
-  color: var(--warning, #B4791F);
-  border: 1px solid var(--warning-hair, #E3CDA1);
+  background: var(--warning-soft);
+  color: var(--warning);
+  border: 1px solid var(--warning-hair);
   max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -460,6 +532,8 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  max-width: 480px;
+  margin: var(--sp-6) auto;
   min-height: 260px;
   border: 1px dashed var(--hair-strong);
   border-radius: var(--r-lg);
@@ -467,7 +541,7 @@
   color: var(--muted);
   font-family: var(--font-serif);
   font-size: 18px;
-  padding: var(--sp-8);
+  padding: var(--sp-8) var(--sp-6);
   text-align: center;
   gap: var(--sp-2);
 }

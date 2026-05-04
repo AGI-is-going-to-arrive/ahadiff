@@ -179,8 +179,8 @@
   width: var(--sp-2);
   height: var(--sp-2);
   border-radius: var(--r-full);
-  background: #3f9f62;
-  box-shadow: 0 0 0 3px rgba(63, 159, 98, 0.14);
+  background: var(--success);
+  box-shadow: 0 0 0 3px var(--success-soft);
   flex: none;
 }
 

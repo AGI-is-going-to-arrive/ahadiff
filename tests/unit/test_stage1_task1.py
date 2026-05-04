@@ -390,6 +390,91 @@ def test_provider_tables_and_security_local_hosts_are_supported_config_keys(tmp_
     assert pricing.model_overrides["openrouter/custom.model"].output_per_million_usd == 1.6
 
 
+@pytest.mark.parametrize(
+    "base_url",
+    (
+        "https://api.example.test/v1",
+        "http://api.example.test",
+    ),
+)
+def test_validate_provider_base_url_accepts_http_and_https(base_url: str) -> None:
+    assert config_module.validate_provider_base_url(base_url) == base_url
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    (
+        "ftp://api.example.test",
+        "https://user:pass@api.example.test/v1",
+        "http://169.254.169.254/latest/meta-data",
+        "http://metadata.google.internal/computeMetadata/v1",
+        "https://metadata.azure.com/metadata/instance",
+        "http://[fd00:ec2::254]/latest/meta-data",
+        "http://localhost:11434",
+        "http://127.0.0.1:8000",
+        "http://[::1]:8000",
+        "http://10.0.0.7:8000",
+        "http://172.16.0.7:8000",
+        "http://192.168.1.7:8000",
+    ),
+)
+def test_validate_provider_base_url_rejects_ssrf_and_secret_url_cases(base_url: str) -> None:
+    with pytest.raises(ConfigError):
+        config_module.validate_provider_base_url(base_url)
+
+
+def test_validate_provider_base_url_allows_explicit_local_host_opt_in() -> None:
+    assert (
+        config_module.validate_provider_base_url(
+            "http://127.0.0.1:11434",
+            allowed_local_hosts=("127.0.0.1",),
+        )
+        == "http://127.0.0.1:11434"
+    )
+
+
+def test_provider_url_normalization_and_probe_helpers_are_stable() -> None:
+    normalized = config_module.normalize_provider_base_url(
+        "HTTPS://API.EXAMPLE.TEST:443/Foo/Bar/",
+        provider_class="anthropic",
+    )
+    assert normalized == "https://api.example.test/Foo/Bar/"
+    assert (
+        config_module.normalize_provider_base_url(
+            "HTTP://API.EXAMPLE.TEST:80/",
+            provider_class="openai",
+        )
+        == "http://api.example.test"
+    )
+    assert (
+        config_module.normalize_provider_base_url(
+            "https://API.EXAMPLE.TEST/v1/chat/completions/",
+            provider_class="openai",
+        )
+        == "https://api.example.test"
+    )
+
+    provider: dict[str, object] = {
+        "provider_class": "openai",
+        "model_name": "gpt-5.4-mini",
+        "base_url": "https://api.example.test/v1",
+        "api_key_env": "AHADIFF_PROVIDER_API_KEY",
+        "api_key": "sk-test-secret",
+        "probed_max_context": 1000,
+        "probe_timestamp": "2026-05-04T00:00:00Z",
+    }
+    fingerprint = config_module.provider_core_fingerprint(provider)
+    provider["api_key"] = "sk-rotated-secret"
+    provider["probed_max_context"] = 2000
+    provider["probe_timestamp"] = "2026-05-05T00:00:00Z"
+    assert config_module.provider_core_fingerprint(provider) == fingerprint
+
+    config_module.clear_provider_probe_fields(provider)
+    config_module.clear_provider_probe_fields(provider)
+    assert "probed_max_context" not in provider
+    assert "probe_timestamp" not in provider
+
+
 def test_repo_provider_api_key_env_rejects_arbitrary_env_var(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()

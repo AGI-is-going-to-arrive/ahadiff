@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -7,9 +8,10 @@ import tempfile
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from ipaddress import ip_address, ip_network
 from pathlib import Path
 from typing import Any, TypeGuard, cast, get_args
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from ahadiff.contracts import ProviderClass
 from ahadiff.i18n import normalize_locale_preference
@@ -320,6 +322,190 @@ _DYNAMIC_PROVIDER_FIELD_DEFAULTS: dict[str, Scalar] = {
     "supports_temperature": False,
     "probe_timestamp": "",
 }
+PROVIDER_STALE_PROBE_FIELDS: tuple[str, ...] = (
+    "probed_max_context",
+    "probed_tpm",
+    "probed_rpm",
+    "supports_temperature",
+    "probe_timestamp",
+)
+_PROVIDER_CORE_FIELDS: tuple[str, ...] = (
+    "provider_class",
+    "model_name",
+    "base_url",
+    "api_key_env",
+)
+_PROVIDER_ALIAS_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
+_PROVIDER_BASE_URL_TRIM_SUFFIXES: tuple[str, ...] = (
+    "/v1/chat/completions",
+    "/chat/completions",
+    "/v1/responses",
+    "/responses",
+)
+_PROVIDER_BASE_URL_TRIM_CLASSES: frozenset[str] = frozenset(
+    {"openai", "openai_responses", "newapi", "cherryin"}
+)
+_PROVIDER_METADATA_HOSTS = frozenset(
+    {"169.254.169.254", "metadata.google.internal", "metadata.azure.com", "fd00:ec2::254"}
+)
+_PROVIDER_LOCALHOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+_PROVIDER_RFC1918_NETWORKS = tuple(
+    ip_network(network) for network in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+)
+_PROVIDER_SENSITIVE_QUERY_KEY_PATTERN = re.compile(
+    r"(api[_-]?key|secret|password|token|credential)",
+    re.IGNORECASE,
+)
+
+
+def validate_provider_alias(alias: str) -> str:
+    if not _PROVIDER_ALIAS_PATTERN.fullmatch(alias):
+        raise ConfigError("provider alias must match ^[A-Za-z][A-Za-z0-9_-]{0,63}$")
+    return alias
+
+
+def normalize_provider_base_url(base_url: str, *, provider_class: str) -> str:
+    raw = base_url.strip()
+    try:
+        parsed = urlsplit(raw)
+    except ValueError:
+        return raw.rstrip("/")
+    if not parsed.scheme or not parsed.netloc or parsed.hostname is None:
+        return raw.rstrip("/")
+
+    scheme = parsed.scheme.lower()
+    host = _normalize_provider_host(parsed.hostname)
+    netloc = _format_provider_host_for_netloc(host)
+    try:
+        port = parsed.port
+    except ValueError:
+        port = None
+    if port is not None and not _is_default_provider_port(scheme, port):
+        netloc = f"{netloc}:{port}"
+    if "@" in parsed.netloc:
+        userinfo = parsed.netloc.rsplit("@", 1)[0]
+        netloc = f"{userinfo}@{netloc}"
+
+    path = "" if parsed.path == "/" else parsed.path
+    if provider_class not in _PROVIDER_BASE_URL_TRIM_CLASSES:
+        return urlunsplit((scheme, netloc, path, parsed.query, parsed.fragment))
+    path_for_suffix = path[:-1] if path.endswith("/") else path
+    for suffix in _PROVIDER_BASE_URL_TRIM_SUFFIXES:
+        if path_for_suffix.endswith(suffix):
+            path = path_for_suffix[: -len(suffix)] or ""
+            break
+    return urlunsplit((scheme, netloc, path, parsed.query, parsed.fragment))
+
+
+def validate_provider_base_url(
+    base_url: str,
+    *,
+    allowed_local_hosts: tuple[str, ...] = (),
+) -> str:
+    raw = base_url.strip()
+    if raw == "" or any(char.isspace() for char in raw):
+        raise ConfigError(f"provider base_url expects valid URL, got {base_url!r}")
+    try:
+        parsed = urlsplit(raw)
+    except ValueError as exc:
+        raise ConfigError(f"provider base_url expects valid URL, got {base_url!r}") from exc
+    if not parsed.scheme or not parsed.netloc or parsed.hostname is None:
+        raise ConfigError(f"provider base_url expects valid URL, got {base_url!r}")
+    scheme = parsed.scheme.lower()
+    if scheme not in {"http", "https"}:
+        raise ConfigError(f"provider base_url expects http or https URL, got {base_url!r}")
+    if parsed.username is not None or parsed.password is not None or "@" in parsed.netloc:
+        raise ConfigError("provider base_url must not include URL userinfo")
+    try:
+        _port = parsed.port
+    except ValueError as exc:
+        raise ConfigError(f"provider base_url expects valid port, got {base_url!r}") from exc
+
+    host = _normalize_provider_host(parsed.hostname)
+    if host in _PROVIDER_METADATA_HOSTS:
+        raise ConfigError("provider base_url points to a blocked metadata host")
+    allowed_hosts = {_normalize_provider_host(item) for item in allowed_local_hosts}
+    if host in _PROVIDER_LOCALHOSTS:
+        if host not in allowed_hosts:
+            raise ConfigError("provider base_url local host requires explicit opt-in")
+        return raw
+    try:
+        addr = ip_address(host)
+    except ValueError:
+        return raw
+    if str(addr) in _PROVIDER_METADATA_HOSTS:
+        raise ConfigError("provider base_url points to a blocked metadata host")
+    if _is_private_provider_ip(addr) and host not in allowed_hosts:
+        raise ConfigError("provider base_url private IP literal requires explicit opt-in")
+    return raw
+
+
+def mask_provider_base_url_for_display(base_url: str) -> str:
+    try:
+        parsed = urlsplit(base_url)
+    except ValueError:
+        return base_url
+    if not parsed.scheme or not parsed.netloc or parsed.hostname is None:
+        return base_url
+    scheme = parsed.scheme.lower()
+    host = _normalize_provider_host(parsed.hostname)
+    netloc = _format_provider_host_for_netloc(host)
+    with_port = True
+    try:
+        port = parsed.port
+    except ValueError:
+        port = None
+        with_port = False
+    if with_port and port is not None and not _is_default_provider_port(scheme, port):
+        netloc = f"{netloc}:{port}"
+    if parsed.username is not None or parsed.password is not None or "@" in parsed.netloc:
+        netloc = f"***@{netloc}"
+    query = _mask_provider_query(parsed.query)
+    return urlunsplit((scheme, netloc, parsed.path, query, parsed.fragment))
+
+
+def _normalize_provider_host(host: str) -> str:
+    return host.strip("[]").rstrip(".").lower()
+
+
+def _format_provider_host_for_netloc(host: str) -> str:
+    return f"[{host}]" if ":" in host else host
+
+
+def _is_default_provider_port(scheme: str, port: int) -> bool:
+    return (scheme == "http" and port == 80) or (scheme == "https" and port == 443)
+
+
+def _is_private_provider_ip(addr: object) -> bool:
+    if getattr(addr, "version", None) == 4:
+        return any(addr in network for network in _PROVIDER_RFC1918_NETWORKS)
+    return bool(getattr(addr, "is_private", False))
+
+
+def _mask_provider_query(query: str) -> str:
+    if not query:
+        return query
+    pairs = parse_qsl(query, keep_blank_values=True)
+    if not pairs:
+        return query
+    masked = [
+        (key, "***" if _PROVIDER_SENSITIVE_QUERY_KEY_PATTERN.search(key) else value)
+        for key, value in pairs
+    ]
+    return urlencode(masked, doseq=True)
+
+
+def clear_provider_probe_fields(provider: dict[str, object]) -> None:
+    for field_name in PROVIDER_STALE_PROBE_FIELDS:
+        provider.pop(field_name, None)
+
+
+def provider_core_fingerprint(provider: Mapping[str, object]) -> str:
+    payload = {field_name: provider.get(field_name, "") for field_name in _PROVIDER_CORE_FIELDS}
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
 _MODEL_PRICING_DYNAMIC_FIELDS: dict[str, Scalar] = {
     "pricing.input_per_million_usd": 0.0,
     "pricing.output_per_million_usd": 0.0,
@@ -891,12 +1077,14 @@ def _read_model_pricing_table(
 
 __all__ = [
     "DEFAULT_CONFIG",
+    "PROVIDER_STALE_PROBE_FIELDS",
     "ConfigConflict",
     "ConfigSnapshot",
     "ModelPriceOverride",
     "PricingSettings",
     "ResolvedSetting",
     "SecurityConfig",
+    "clear_provider_probe_fields",
     "iter_resolved_settings",
     "load_config",
     "read_config_data",
@@ -905,7 +1093,12 @@ __all__ = [
     "load_security_config",
     "load_workspace_security_config",
     "local_hosts_for_privacy_mode",
+    "mask_provider_base_url_for_display",
+    "normalize_provider_base_url",
+    "provider_core_fingerprint",
     "resolve_effective",
+    "validate_provider_alias",
+    "validate_provider_base_url",
     "validate_repo_api_key_env_name",
     "write_config_data",
     "write_default_config",

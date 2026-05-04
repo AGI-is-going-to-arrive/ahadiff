@@ -15,7 +15,7 @@
    * than color-mix() so older browsers (Firefox <113, Safari <16.4, Chrome
    * <111) still get the translucent topbar. The dark-mode override below
    * already follows the same pattern. */
-  background: rgba(250, 248, 242, 0.88);
+  background: var(--surface-veil);
   backdrop-filter: saturate(1.4) blur(8px);
   -webkit-backdrop-filter: saturate(1.4) blur(8px);
   position: sticky;
@@ -191,7 +191,7 @@
 
 .topbar__btn--primary {
   background: var(--ink-blackletter);
-  color: #FBF5EE;
+  color: var(--on-accent);
   border-color: var(--ink-blackletter);
   letter-spacing: 0.01em;
   font-weight: 600;
@@ -464,6 +464,6 @@
 
 @media (prefers-color-scheme: dark) {
   .topbar {
-    background: rgba(28, 27, 24, 0.88);
+    background: var(--surface-veil);
   }
 }

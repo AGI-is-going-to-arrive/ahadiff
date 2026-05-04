@@ -460,14 +460,21 @@ test.describe('walkthrough: full-app functional test', () => {
 
     const linkedClaimLine = page.locator('.diff-line--claim-linked').first();
     await expect(linkedClaimLine).toContainText('# learn-from-diff');
+    // Each linked diff line now has a small verdict-colored gutter dot.
+    await expect(linkedClaimLine.locator('.diff-line__claim-dot')).toHaveCount(1);
     await linkedClaimLine.click();
     await expect(linkedClaimLine).toHaveClass(/diff-line--claim-selected/);
     await expect(page.locator('.claim-inspector__item--selected')).toContainText('c1');
-    await expect(page.locator('.claim-inspector__source-group')).toHaveCount(2);
-    const sourceCodes = page.locator('.claim-inspector__source-code');
-    await expect(sourceCodes.nth(0)).toContainText('# learn-from-diff');
-    await expect(sourceCodes.nth(1)).toContainText('lesson-ready');
-    await expect(sourceCodes.nth(1)).toContainText('evidence-ready');
+    // Source preview moved out of the right inspector panel (which now shows
+    // jump-to-code links instead). The actual source hunk renders below the
+    // diff in `.diff-page__selected-hunk`.
+    const jumpButtons = page.locator('.claim-inspector__jump-btn');
+    await expect(jumpButtons).toHaveCount(2);
+    await expect(jumpButtons.nth(0)).toContainText('demo.py:3');
+    await expect(jumpButtons.nth(1)).toContainText('demo.py:8-9');
+    await expect(page.locator('.diff-page__selected-hunk-code')).toContainText(
+      '# learn-from-diff',
+    );
 
     await linkedClaimLine.focus();
     await page.keyboard.press('Space');

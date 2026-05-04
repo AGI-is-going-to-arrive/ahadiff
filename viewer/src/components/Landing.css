@@ -126,7 +126,7 @@
   letter-spacing: 0.01em;
   border: none;
   background: var(--ink-blackletter);
-  color: #FBF5EE;
+  color: var(--on-accent);
   cursor: pointer;
   transition:
     transform 0.22s var(--ease-expo),
@@ -199,6 +199,25 @@
   padding: var(--sp-5);
   max-height: 400px;
   overflow-y: auto;
+}
+
+/* ---- Hero demo: raw diff preformatted text ---- */
+.hero-demo__pre {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  margin: 0;
+}
+
+/* ---- Hero demo: aha lesson paragraph spacing ---- */
+.hero-demo__line {
+  margin: var(--sp-1) 0;
+}
+
+/* ---- Before/after column: lesson paragraph (post-diff render) ---- */
+.ba-col__line {
+  margin: var(--sp-1) 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-relaxed);
 }
 
 /* ---- Pipeline section ---- */
@@ -406,9 +425,9 @@
   align-items: center;
   gap: 6px;
   padding: 2px var(--sp-2);
-  border: 1px dashed #E3CDA1;
+  border: 1px dashed var(--warning-hair);
   border-radius: var(--r-sm);
-  background: #F7EED9;
+  background: var(--warning-soft);
   color: var(--warning);
   font-family: var(--font-mono);
   font-size: 10px;
@@ -426,9 +445,9 @@
   width: 100%;
   margin: 0 0 18px;
   padding: 10px 14px;
-  border: 1px dashed #E3CDA1;
+  border: 1px dashed var(--warning-hair);
   border-radius: var(--r-md);
-  background: #FBF5E6;
+  background: var(--warning-soft-bg);
   color: var(--warning);
   font-family: var(--font-mono);
   font-size: 12px;

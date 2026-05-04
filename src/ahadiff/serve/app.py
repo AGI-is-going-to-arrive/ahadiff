@@ -23,6 +23,12 @@ from .routes_graph import get_concept_graph, get_graph_status
 from .routes_install import get_install_targets
 from .routes_learn import post_learn
 from .routes_locale import get_locale, put_locale
+from .routes_providers import (
+    create_provider,
+    delete_provider,
+    probe_provider_route,
+    update_provider,
+)
 from .routes_review import (
     get_review_mastery,
     get_review_queue,
@@ -125,6 +131,10 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
             Route("/api/review/heatmap", get_review_heatmap, methods=["GET"]),
             Route("/api/export/results", get_export_results, methods=["GET"]),
             Route("/api/providers", get_providers, methods=["GET"]),
+            Route("/api/providers", create_provider, methods=["POST"]),
+            Route("/api/providers/{alias}/probe", probe_provider_route, methods=["POST"]),
+            Route("/api/providers/{alias}", update_provider, methods=["PUT"]),
+            Route("/api/providers/{alias}", delete_provider, methods=["DELETE"]),
             Route("/api/serve/status", get_serve_status, methods=["GET"]),
             Route("/api/stats/learning", get_learning_effectiveness, methods=["GET"]),
             Route("/api/signals/mark-wrong", mark_wrong, methods=["POST"]),

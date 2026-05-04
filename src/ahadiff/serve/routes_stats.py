@@ -29,6 +29,7 @@ from ahadiff.contracts.serve_stats import (
     UsageModelSummary,
     UsageResponse,
 )
+from ahadiff.core.config import mask_provider_base_url_for_display
 from ahadiff.review.database import connect_review_db, count_concepts
 
 if TYPE_CHECKING:
@@ -397,7 +398,7 @@ def _provider_summary_from_mapping(
 ) -> ProviderSummary | None:
     provider_class = str(provider_mapping.get("provider_class") or "")
     model_name = str(provider_mapping.get("model_name") or "")
-    base_url = str(provider_mapping.get("base_url") or "")
+    base_url = mask_provider_base_url_for_display(str(provider_mapping.get("base_url") or ""))
     if not provider_class or not model_name or not base_url:
         return None
     raw_api_key_env = provider_mapping.get("api_key_env")
@@ -423,7 +424,7 @@ def _provider_summary_from_mapping(
         provider_class=provider_class,
         provider_kind=provider_kind,
         model_name=model_name,
-        base_url=base_url,
+        base_url=mask_provider_base_url_for_display(base_url),
         api_key_env=api_key_env,
         key_status=_provider_key_status(api_key_env),
         api_family=api_family,
@@ -435,6 +436,11 @@ def _provider_summary_from_mapping(
         supports_temperature=_optional_bool(provider_mapping, "supports_temperature"),
         probe_timestamp=probe_timestamp,
     )
+
+
+# Public alias so other route modules (e.g. routes_providers.py) can build
+# ProviderSummary payloads without duplicating the canonical mapping logic.
+provider_summary_from_mapping = _provider_summary_from_mapping
 
 
 def _legacy_provider_summary(
@@ -841,4 +847,5 @@ __all__ = [
     "get_spec_alignment",
     "get_stats",
     "get_usage",
+    "provider_summary_from_mapping",
 ]

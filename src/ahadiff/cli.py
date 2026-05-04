@@ -31,6 +31,7 @@ from .core.config import (
     load_workspace_config,
     load_workspace_security_config,
     local_hosts_for_privacy_mode,
+    normalize_provider_base_url,
     validate_repo_api_key_env_name,
     write_default_config,
 )
@@ -262,21 +263,7 @@ def _resolve_output_lang_from_snapshot(snapshot: Any, *, cli_lang: str | None) -
 
 
 def _normalize_provider_base_url(base_url: str, *, provider_class: str) -> str:
-    normalized = base_url.rstrip("/")
-    suffixes: tuple[str, ...] = ()
-    if provider_class in {"openai", "openai_responses", "newapi", "cherryin"}:
-        suffixes = (
-            "/v1/chat/completions",
-            "/chat/completions",
-            "/v1/responses",
-            "/responses",
-        )
-    for suffix in suffixes:
-        if normalized.endswith(suffix):
-            trimmed = normalized[: -len(suffix)]
-            if trimmed:
-                return trimmed
-    return normalized
+    return normalize_provider_base_url(base_url, provider_class=provider_class)
 
 
 def _provider_config_from_payload(payload: dict[str, Any]) -> ProviderConfig:

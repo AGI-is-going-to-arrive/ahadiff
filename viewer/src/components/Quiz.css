@@ -685,12 +685,12 @@
 
 .quiz-page__mode-badge--socratic {
   background: var(--info);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .quiz-page__mode-badge--srs {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .quiz-page__card-wrap--srs .srs-card {

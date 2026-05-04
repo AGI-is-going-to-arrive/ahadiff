@@ -1,0 +1,461 @@
+/* ==========================================================================
+   ProviderCard — collapsible provider card with summary / detail / edit modes.
+   Used inside the Settings ProviderTab, lives in a 3-column .provider-grid.
+   BEM: provider-card, provider-card__<part>, provider-card--<state>.
+   ========================================================================== */
+
+.provider-card {
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  background: var(--paper);
+  overflow: hidden;
+  transition: border-color var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.provider-card--expanded {
+  border-color: var(--hair-strong);
+}
+
+.provider-card--editing {
+  grid-column: 1 / -1;
+  border-color: var(--accent-hair);
+  box-shadow: var(--sh-md);
+}
+
+.provider-card--new {
+  border-style: dashed;
+  border-color: var(--accent-hair);
+  background: var(--accent-softest);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- Header ---- */
+.provider-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  cursor: pointer;
+  user-select: none;
+}
+
+.provider-card--editing .provider-card__header {
+  cursor: default;
+}
+
+.provider-card__header:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: inherit;
+}
+
+.provider-card__status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-full);
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.provider-card__status-dot--probed {
+  background: var(--success);
+  box-shadow: 0 0 0 2px var(--success-soft);
+}
+
+.provider-card__status-dot--not-probed {
+  background: var(--warning);
+  box-shadow: 0 0 0 2px var(--warning-soft);
+}
+
+.provider-card__status-dot--missing {
+  background: var(--danger);
+  box-shadow: 0 0 0 2px var(--danger-soft);
+}
+
+.provider-card__header-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.provider-card__alias {
+  font-size: var(--fs-base);
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.provider-card__header-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.provider-card__badge {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px var(--sp-2);
+  border-radius: var(--r-full);
+  background: var(--subtle);
+  color: var(--ink-2, var(--ink));
+  white-space: nowrap;
+}
+
+.provider-card__model {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.provider-card__key-badge {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  padding: 2px var(--sp-2);
+  border-radius: var(--r-full);
+  white-space: nowrap;
+}
+
+.provider-card__key-badge--configured {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.provider-card__key-badge--missing {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.provider-card__key-badge--unknown {
+  background: var(--subtle);
+  color: var(--muted);
+}
+
+.provider-card__caret {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  flex-shrink: 0;
+}
+
+/* ---- Body ---- */
+.provider-card__body {
+  padding: var(--sp-4);
+  border-top: 1px solid var(--hair);
+  background: var(--elevated);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.provider-card__fields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--sp-3);
+  margin: 0;
+}
+
+.provider-card__field {
+  display: grid;
+  grid-template-columns: minmax(0, 140px) minmax(0, 1fr);
+  gap: var(--sp-3);
+  align-items: baseline;
+}
+
+.provider-card__field-label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0;
+}
+
+.provider-card__field-value {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  word-break: break-all;
+}
+
+.provider-card__field-value--mono {
+  font-family: var(--font-mono);
+}
+
+/* Probe results — 2-col grid for nicer density */
+.provider-card__probe-results {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--hair);
+}
+
+.provider-card__probe-results .provider-card__field {
+  grid-template-columns: 1fr;
+  gap: var(--sp-1);
+}
+
+/* ---- Actions ---- */
+.provider-card__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.provider-card__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 6px var(--sp-3);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--elevated);
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out),
+              background var(--dur-fast) var(--ease-out);
+}
+
+.provider-card__btn:hover:not(:disabled) {
+  border-color: var(--hair-strong);
+  background: var(--subtle);
+}
+
+.provider-card__btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.provider-card__btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.provider-card__btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.provider-card__btn--primary:hover:not(:disabled) {
+  background: var(--accent-ink);
+  border-color: var(--accent-ink);
+}
+
+.provider-card__btn--secondary {
+  border-color: var(--hair-strong);
+}
+
+.provider-card__btn--danger {
+  color: var(--danger);
+  border-color: var(--danger-hair);
+}
+
+.provider-card__btn--danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+
+.provider-card__btn--danger-solid {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--on-accent);
+}
+
+.provider-card__btn--danger-solid:hover:not(:disabled) {
+  background: var(--danger);
+  filter: brightness(0.92);
+}
+
+/* ---- Inline delete confirmation ---- */
+.provider-card__confirm-delete {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--danger-soft);
+  border: 1px solid var(--danger-hair);
+  border-radius: var(--r-md);
+}
+
+.provider-card__confirm-delete-text {
+  font-size: var(--fs-sm);
+  color: var(--danger);
+}
+
+/* ---- Probe spinner ---- */
+.provider-card__probe-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--hair);
+  border-top-color: var(--accent);
+  border-radius: var(--r-full);
+  animation: provider-card-spin var(--dur-slow) linear infinite;
+}
+
+@keyframes provider-card-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---- Probe / save status messages ---- */
+.provider-card__probe-msg {
+  font-size: var(--fs-sm);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.provider-card__probe-msg--success {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.provider-card__probe-msg--error {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.provider-card__probe-msg-code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  background: var(--elevated);
+  padding: 1px var(--sp-2);
+  border-radius: var(--r-sm);
+  color: var(--ink);
+}
+
+/* ---- Edit form ---- */
+.provider-card__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.provider-card__form-row {
+  display: grid;
+  grid-template-columns: minmax(0, 160px) minmax(0, 1fr);
+  gap: var(--sp-3);
+  align-items: center;
+}
+
+.provider-card__form-label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.provider-card__input,
+.provider-card__select {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  padding: 6px 10px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--elevated);
+  color: var(--ink);
+  width: 100%;
+  min-width: 0;
+}
+
+.provider-card__input:focus-visible,
+.provider-card__select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.provider-card__input[aria-invalid="true"],
+.provider-card__select[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+.provider-card__select {
+  cursor: pointer;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 767px) {
+  .provider-card--editing {
+    grid-column: auto;
+  }
+  .provider-card__form-row {
+    grid-template-columns: 1fr;
+    gap: var(--sp-1);
+  }
+  .provider-card__field {
+    grid-template-columns: 1fr;
+    gap: var(--sp-1);
+  }
+  .provider-card__probe-results {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Reduced motion ---- */
+@media (prefers-reduced-motion: reduce) {
+  .provider-card,
+  .provider-card__btn {
+    transition: none;
+  }
+  .provider-card__probe-spinner {
+    animation: none;
+    border-top-color: var(--hair);
+  }
+}
+
+/* ---- Print ---- */
+@media print {
+  .provider-card {
+    break-inside: avoid;
+  }
+  .provider-card__actions,
+  .provider-card__caret {
+    display: none;
+  }
+  .provider-card__body {
+    border-top: 1px solid CanvasText;
+  }
+}
+
+/* ---- Forced colors ---- */
+@media (forced-colors: active) {
+  .provider-card { border: 1px solid CanvasText; }
+  .provider-card--editing { border: 2px solid Highlight; }
+  .provider-card__btn { border: 1px solid CanvasText; }
+  .provider-card__btn--primary,
+  .provider-card__btn--danger-solid {
+    background: Highlight;
+    color: HighlightText;
+  }
+  .provider-card__status-dot { border: 1px solid CanvasText; }
+}

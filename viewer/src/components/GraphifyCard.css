@@ -1,11 +1,11 @@
 .graphify-card {
-  background: #FDFCF8;
+  background: var(--paper);
   border: 1px solid var(--hair);
   border-left: 3px solid var(--accent);
   border-radius: var(--r-md);
   padding: var(--sp-3) 14px;
   margin-bottom: 14px;
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .graphify-card__header {
@@ -17,7 +17,7 @@
 
 .graphify-card__icon {
   color: var(--accent-ink);
-  font-size: 15px;
+  font-size: var(--fs-md);
   line-height: 1;
 }
 
@@ -27,7 +27,7 @@
 
 .graphify-card__title {
   font-family: var(--font-serif);
-  font-size: 15px;
+  font-size: var(--fs-md);
   font-weight: 500;
   color: var(--ink);
   margin: 0;
@@ -43,7 +43,7 @@
   align-items: center;
   padding: 3px 0;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--ink-2);
   min-width: 0;
 }
@@ -80,7 +80,7 @@
 
 .graphify-card__copy-btn {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-2xs);
   padding: 1px 6px;
   border: 1px solid var(--hair);
   border-radius: var(--r-sm);
@@ -101,7 +101,7 @@
 
 .graphify-card__copy-btn.is-copied {
   background: var(--success);
-  color: #fff;
+  color: var(--on-accent);
   border-color: var(--success);
 }
 
@@ -141,7 +141,7 @@
   display: inline-flex;
   align-items: center;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-2xs);
   font-weight: 600;
   padding: 2px var(--sp-2);
   border-radius: var(--r-sm);
@@ -151,15 +151,15 @@
 }
 
 .graphify-badge--success {
-  background: #E4EFE0;
+  background: var(--success-soft);
   color: var(--success);
-  border-color: #B5D4A8;
+  border-color: var(--success-hair);
 }
 
 .graphify-badge--warning {
-  background: #F7EED9;
+  background: var(--warning-soft);
   color: var(--warning);
-  border-color: #E3CDA1;
+  border-color: var(--warning-hair);
 }
 
 .graphify-badge--muted {

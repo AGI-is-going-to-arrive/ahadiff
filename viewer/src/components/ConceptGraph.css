@@ -43,7 +43,7 @@
   border-radius: var(--r-full);
   background: var(--elevated);
   font-family: var(--font-sans);
-  font-size: 11.5px;
+  font-size: var(--fs-xs);
   color: var(--ink);
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease-out-quart),
@@ -82,7 +82,7 @@
   border: none;
   background: var(--elevated);
   font-family: var(--font-sans);
-  font-size: 11.5px;
+  font-size: var(--fs-xs);
   color: var(--muted);
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease-out-quart),
@@ -112,7 +112,7 @@
 
 .concept-graph__action-btn {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   padding: var(--sp-1) 10px;
   border: 1px solid var(--hair);
   border-radius: var(--r-sm);
@@ -137,7 +137,7 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: var(--sp-4);
-  transition: grid-template-columns var(--dur-base) var(--ease-out-quart);
+  overflow: hidden;
 }
 
 .concept-graph__body--with-panel {
@@ -211,7 +211,7 @@
 .concept-graph__label {
   fill: var(--ink);
   font-family: var(--font-sans);
-  font-size: 10px;
+  font-size: var(--fs-2xs);
   text-anchor: middle;
   dominant-baseline: central;
   pointer-events: none;
@@ -229,7 +229,7 @@
   border: 1px solid var(--hair);
   border-radius: 10px;
   padding: 9px 14px;
-  font-size: 11.5px;
+  font-size: var(--fs-xs);
   -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
   display: flex;
@@ -240,7 +240,7 @@
 
 .concept-graph__legend-label {
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--muted);
@@ -273,12 +273,21 @@
   border: 1px solid var(--hair);
   border-radius: var(--r-lg);
   padding: var(--sp-5);
-  animation: fadeUp 0.2s ease-out;
   overflow-y: auto;
   max-height: calc(100vh - 120px);
   position: sticky;
   top: 80px;
   align-self: start;
+  transform: translateX(100%);
+  opacity: 0;
+  transition: transform var(--dur-base) var(--ease-out-quart),
+              opacity var(--dur-base) var(--ease-out-quart);
+  will-change: transform, opacity;
+}
+
+.concept-graph__body--with-panel .concept-graph__detail {
+  transform: translateX(0);
+  opacity: 1;
 }
 
 .concept-graph__detail-header {
@@ -291,7 +300,7 @@
 .concept-graph__detail-name {
   margin: 0;
   font-family: var(--font-serif);
-  font-size: 18px;
+  font-size: var(--fs-lg);
   font-weight: 500;
   color: var(--ink-strong);
   letter-spacing: -0.005em;
@@ -322,7 +331,7 @@
   gap: var(--sp-2);
   padding: var(--sp-2) 0;
   border-bottom: 1px solid var(--hair);
-  font-size: 13px;
+  font-size: var(--fs-base);
 }
 
 .concept-graph__detail-row:last-child {
@@ -331,14 +340,14 @@
 
 .concept-graph__detail-label {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   min-width: 60px;
   flex-shrink: 0;
 }
 
 .concept-graph__detail-code {
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: var(--fs-xs);
   background: var(--accent-softer);
   padding: 1px 5px;
   border-radius: 3px;
@@ -357,7 +366,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   color: var(--ink);
 }
 
@@ -375,7 +384,7 @@
   padding: 2px var(--sp-2);
   border-radius: 6px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   background: var(--concept-kind-badge, var(--accent));
   color: var(--on-accent);
 }
@@ -384,7 +393,7 @@
 
 .concept-graph__freshness {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   padding: 2px var(--sp-2);
   border-radius: 6px;
 }
@@ -424,7 +433,7 @@
   border: 1px solid var(--hair);
   background: var(--elevated);
   border-radius: var(--r-md);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   text-align: left;
   cursor: pointer;
   transition: box-shadow var(--dur-fast) var(--ease-out-quart);
@@ -446,7 +455,7 @@
 .concept-graph__lnode-kind {
   display: block;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   margin-bottom: 2px;
   color: var(--concept-kind-stroke, var(--accent));
 }
@@ -454,7 +463,7 @@
 .concept-graph__lnode-file {
   display: block;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -466,11 +475,11 @@
 .concept-graph__truncated {
   margin-top: 10px;
   padding: var(--sp-2) 14px;
-  background: var(--warning-soft, #fff3e0);
-  border: 1px solid var(--warning, #e65100);
+  background: var(--warning-soft);
+  border: 1px solid var(--warning);
   border-radius: var(--r-md);
-  font-size: 12px;
-  color: var(--warning, #e65100);
+  font-size: var(--fs-sm);
+  color: var(--warning);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -480,19 +489,19 @@
 .concept-graph__show-all-btn {
   flex-shrink: 0;
   padding: var(--sp-1) var(--sp-3);
-  border: 1px solid var(--warning, #e65100);
+  border: 1px solid var(--warning);
   border-radius: 6px;
   background: transparent;
-  color: var(--warning, #e65100);
+  color: var(--warning);
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease-out-quart);
 }
 
 .concept-graph__show-all-btn:hover {
-  background: var(--warning, #e65100);
-  color: #fff;
+  background: var(--warning);
+  color: var(--on-accent);
 }
 
 /* ---------- Counts ---------- */
@@ -500,7 +509,7 @@
 .concept-graph__counts {
   margin-top: var(--sp-2);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--muted);
   text-align: right;
 }
@@ -519,7 +528,7 @@
   background: var(--subtle);
   color: var(--muted);
   font-family: var(--font-serif);
-  font-size: 18px;
+  font-size: var(--fs-lg);
   padding: var(--sp-8);
   text-align: center;
 }
@@ -530,7 +539,7 @@
 }
 
 .concept-graph__empty-text {
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .concept-graph__empty--compact {
@@ -716,6 +725,9 @@
 
   .concept-graph__detail {
     animation: none;
+    transition: none;
+    transform: none;
+    opacity: 1;
   }
 
   .concept-graph__circle,
@@ -723,8 +735,7 @@
   .concept-graph__filter-chip,
   .concept-graph__view-btn,
   .concept-graph__lnode,
-  .concept-graph__detail-close,
-  .concept-graph__body {
+  .concept-graph__detail-close {
     transition: none;
   }
 
@@ -751,7 +762,7 @@
    ========================================================================== */
 
 @media (prefers-color-scheme: dark) {
-  .concept-graph__graph-wrap {
+  :root:not([data-theme="light"]) .concept-graph__graph-wrap {
     background: var(--subtle);
     --graph-code-fill: rgba(210, 112, 80, 0.18);
     --graph-code-stroke: #D97757;
@@ -761,13 +772,31 @@
     --graph-module-stroke: #B3C9E0;
   }
 
-  .concept-graph__legend {
+  :root:not([data-theme="light"]) .concept-graph__legend {
     background: rgba(30, 30, 30, 0.94);
   }
 
-  .concept-graph__src-card {
+  :root:not([data-theme="light"]) .concept-graph__src-card {
     background: var(--subtle);
   }
+}
+
+[data-theme="dark"] .concept-graph__graph-wrap {
+  background: var(--subtle);
+  --graph-code-fill: rgba(210, 112, 80, 0.18);
+  --graph-code-stroke: #D97757;
+  --graph-rationale-fill: rgba(148, 98, 22, 0.18);
+  --graph-rationale-stroke: #E5C18C;
+  --graph-module-fill: rgba(46, 74, 107, 0.18);
+  --graph-module-stroke: #B3C9E0;
+}
+
+[data-theme="dark"] .concept-graph__legend {
+  background: rgba(30, 30, 30, 0.94);
+}
+
+[data-theme="dark"] .concept-graph__src-card {
+  background: var(--subtle);
 }
 
 /* ==========================================================================

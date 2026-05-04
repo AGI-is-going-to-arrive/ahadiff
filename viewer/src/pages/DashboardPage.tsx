@@ -236,8 +236,16 @@ export default function DashboardPage() {
           </div>
 
           <div className="dashboard__empty">
-            <span>{t('Serve.empty')}</span>
-            <span className="dashboard__empty-hint">{t('Dashboard.empty_hint')}</span>
+            <div className="dashboard__empty-icon" aria-hidden="true">Δ</div>
+            <h2 className="dashboard__empty-title">{t('Dashboard.empty_title')}</h2>
+            <p className="dashboard__empty-hint">{t('Dashboard.empty_hint')}</p>
+            <div className="dashboard__empty-actions">
+              <a href="#/onboarding" className="dashboard__empty-cta">
+                {t('Dashboard.empty_cta')}
+              </a>
+              <span className="dashboard__empty-or">{t('Dashboard.empty_or')}</span>
+              <code className="dashboard__empty-cmd">ahadiff learn HEAD~1..HEAD</code>
+            </div>
           </div>
           {graphifyCard}
         </div>

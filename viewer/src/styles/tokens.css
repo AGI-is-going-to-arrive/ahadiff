@@ -207,7 +207,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --paper: #1C1B18;
     --subtle: #2A2823;
     --elevated: #38362F;
@@ -309,4 +309,74 @@
     /* Focus ring (v6 naming) */
     --ring-halo: 0 0 0 4px rgba(210, 112, 80, 0.30);
   }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #1C1B18;
+  --subtle: #2A2823;
+  --elevated: #38362F;
+  --ink: #E6E3D8;
+  --ink-strong: #F2EFE7;
+  --muted: #D0CABF;
+  --muted-strong: #DBD5CB;
+  --hair: #38362F;
+  --hair-strong: #4A473E;
+  --on-accent: #1C1B18;
+  --accent: #D97757;
+  --accent-ink: #E3C0A8;
+  --accent-soft: rgba(210, 112, 80, 0.15);
+  --accent-softer: rgba(210, 112, 80, 0.08);
+  --accent-softest: rgba(210, 112, 80, 0.04);
+  --accent-tint: rgba(210, 112, 80, 0.12);
+  --accent-hair: rgba(210, 112, 80, 0.25);
+  --add-bg: rgba(47, 111, 79, 0.15);
+  --add-fg: #95D4B4;
+  --del-bg: rgba(163, 61, 43, 0.15);
+  --del-fg: #F4B7AC;
+  --success: #A1D2B8;
+  --warning: #E5C18C;
+  --danger: #ECBCB2;
+  --danger-soft: rgba(163, 61, 43, 0.12);
+  --info: #B3C9E0;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 1px 0 rgba(0, 0, 0, 0.15), 0 4px 20px -16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 28px -18px rgba(0, 0, 0, 0.5);
+  --shadow-brand: 0 2px 6px -2px rgba(210, 112, 80, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --ring-focus: 0 0 0 3px rgba(210, 112, 80, 0.35);
+  --sh-sm: 0 1px 0 rgba(0, 0, 0, 0.15);
+  --sh-md: 0 1px 0 rgba(0, 0, 0, 0.15), 0 4px 20px -16px rgba(0, 0, 0, 0.4);
+  --sh-lg: 0 2px 4px -1px rgba(0, 0, 0, 0.2), 0 18px 50px -30px rgba(0, 0, 0, 0.5);
+  --ink-2: #D8D3C8;
+  --ink-3: #D0CABF;
+  --ink-deep: #EBE8DD;
+  --ink-blackletter: #F5F2E9;
+  --muted-2: #D5D0C5;
+  --muted-3: #CCC7BC;
+  --paper-deep: #1A1918;
+  --surface-diff: #211F1C;
+  --surface-veil: rgba(28, 27, 24, 0.94);
+  --success-soft: rgba(47, 111, 79, 0.10);
+  --success-hair: rgba(47, 111, 79, 0.25);
+  --warning-soft: rgba(148, 98, 22, 0.10);
+  --warning-soft-bg: rgba(148, 98, 22, 0.06);
+  --warning-hair: rgba(148, 98, 22, 0.25);
+  --danger-hair: rgba(163, 61, 43, 0.25);
+  --brand-anthropic: #D97757;
+  --brand-anthropic-ink: #E8A080;
+  --brand-anthropic-soft: rgba(217, 119, 87, 0.12);
+  --stamp-verified: #8FAECF;
+  --stamp-verified-ink: #A8C4DE;
+  --stamp-verified-tint: rgba(143, 174, 207, 0.06);
+  --stamp-verified-frame: rgba(143, 174, 207, 0.30);
+  --stamp-verified-shadow: rgba(0, 0, 0, 0.30);
+  --stamp-red: #E8A090;
+  --stamp-red-ink: #F0B8A8;
+  --folio-line: #E6E3D8;
+  --ornament-ink: #ECBCB2;
+  --ring-halo: 0 0 0 4px rgba(210, 112, 80, 0.30);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
 }

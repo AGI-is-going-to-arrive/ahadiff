@@ -154,7 +154,13 @@ function parseClaims(content: string): DiffPageClaim[] {
       const verdict: ClaimVerdict = CLAIM_VERDICTS.has(rawVerdict as ClaimVerdict)
         ? (rawVerdict as ClaimVerdict)
         : 'not_proven';
-      const { anchors, hunks } = parseSourceHunks(raw, claimId);
+      const { anchors: rawAnchors, hunks } = parseSourceHunks(raw, claimId);
+      // Stamp the claim verdict onto every anchor so DiffView can color the
+      // gutter dot without a separate lookup table.
+      const anchors: DiffClaimAnchor[] = rawAnchors.map((anchor) => ({
+        ...anchor,
+        verdict,
+      }));
       const firstAnchor = anchors[0];
       const confidence = parseConfidence(raw.confidence);
       const concepts = parseConcepts(raw);
@@ -241,6 +247,46 @@ export default function DiffViewerPage() {
 
   const handleCopyAnchor = useCallback((claimId: string) => {
     void navigator.clipboard.writeText(`#claim-${claimId}`);
+  }, []);
+
+  /**
+   * Scroll the diff view to the line corresponding to a claim's source hunk.
+   * The claim card is only shown in the inspector once a claim is selected,
+   * which already auto-expands the host file section in DiffView (see its
+   * `useEffect` keyed on `selectedClaimId`). We defer the scroll to the next
+   * animation frame so the freshly-expanded section is laid out first.
+   *
+   * Falls back to the file header when no exact line anchor is found (e.g.
+   * the line is outside the visible diff range — common for large diffs).
+   */
+  const handleJumpToCode = useCallback((file: string, line: number) => {
+    const tryScroll = () => {
+      const root = document.querySelector<HTMLElement>('.diff-view');
+      if (!root) return false;
+      const target =
+        root.querySelector<HTMLElement>(`[data-line-anchor="${CSS.escape(`${file}:${line}`)}"]`) ??
+        root.querySelector<HTMLElement>(
+          `[data-file-path="${CSS.escape(file)}"] .diff-file-header`,
+        );
+      if (!target) return false;
+      // Honor user's reduced-motion preference: skip smooth scroll animation.
+      const prefersReducedMotion =
+        typeof window !== 'undefined' &&
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      target.scrollIntoView({
+        behavior: prefersReducedMotion ? 'auto' : 'smooth',
+        block: 'center',
+      });
+      return true;
+    };
+    // Two RAFs: first lets React commit any pending state (e.g. expand the
+    // host section), second lets the browser lay out the new DOM.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        tryScroll();
+      });
+    });
   }, []);
 
   const diffLines = useMemo(() => parseUnifiedDiff(content), [content]);
@@ -366,6 +412,7 @@ export default function DiffViewerPage() {
             selectedClaimId={selectedClaimId}
             onSelect={handleSelect}
             onCopyAnchor={handleCopyAnchor}
+            onJumpToCode={handleJumpToCode}
           />
         </div>
 

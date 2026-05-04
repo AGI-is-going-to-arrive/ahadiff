@@ -34,6 +34,7 @@ def _empty_config_snapshot() -> dict[str, Any]:
             "hard_limit": 3000,
             "max_patch_bytes": 5_000_000,
             "file_ranking": "learning_value",
+            "symbol_extractor": "auto",
         },
         "llm": {
             "input_token_budget": 200_000,
@@ -41,6 +42,10 @@ def _empty_config_snapshot() -> dict[str, Any]:
             "request_timeout_seconds": 30,
             "max_concurrent": 3,
             "retry_attempts": 3,
+            "output_lang": "auto",
+        },
+        "learn": {
+            "learnability_threshold": 0.3,
         },
     }
 
@@ -96,6 +101,7 @@ def _safe_config_snapshot(state: ServeState) -> dict[str, Any]:
                 "hard_limit": capture_values.get("hard_limit", 3000),
                 "max_patch_bytes": capture_values.get("max_patch_bytes", 5_000_000),
                 "file_ranking": capture_values.get("file_ranking", "learning_value"),
+                "symbol_extractor": capture_values.get("symbol_extractor", "auto"),
             },
             "llm": {
                 "input_token_budget": llm_values.get("input_token_budget", 200_000),
@@ -103,7 +109,12 @@ def _safe_config_snapshot(state: ServeState) -> dict[str, Any]:
                 "request_timeout_seconds": llm_values.get("request_timeout_seconds", 30),
                 "max_concurrent": llm_values.get("max_concurrent", 3),
                 "retry_attempts": llm_values.get("retry_attempts", 3),
+                "output_lang": llm_values.get("output_lang", "auto"),
             },
+        }
+        learn_values = _object_mapping(snapshot_values.get("learn"))
+        result["learn"] = {
+            "learnability_threshold": learn_values.get("learnability_threshold", 0.3),
         }
         api_key_env = llm_values.get("api_key_env")
         providers = snapshot_values.get("providers")
@@ -123,6 +134,7 @@ def _safe_config_snapshot(state: ServeState) -> dict[str, Any]:
             "hard_limit": 3000,
             "max_patch_bytes": 5_000_000,
             "file_ranking": "learning_value",
+            "symbol_extractor": "auto",
         }
         result["llm"] = {
             "input_token_budget": 200_000,
@@ -130,7 +142,9 @@ def _safe_config_snapshot(state: ServeState) -> dict[str, Any]:
             "request_timeout_seconds": 30,
             "max_concurrent": 3,
             "retry_attempts": 3,
+            "output_lang": "auto",
         }
+        result["learn"] = {"learnability_threshold": 0.3}
         api_key_env = getattr(llm, "api_key_env", None) if llm else None
         providers = getattr(cfg, "providers", None)
 
@@ -386,13 +400,15 @@ _LLM_INT_FIELDS: dict[str, tuple[int, int]] = {
     "max_concurrent": (1, 20),
     "retry_attempts": (0, 10),
 }
+_ALLOWED_SYMBOL_EXTRACTORS = frozenset({"auto", "builtin", "tree_sitter"})
+_ALLOWED_OUTPUT_LANGS = frozenset({"auto", "en", "zh-CN"})
 
 
 def _validate_llm_update(llm: object) -> dict[str, Any] | str:
     if not isinstance(llm, dict):
         return "llm must be a JSON object"
     llm_dict = cast("dict[str, Any]", llm)
-    allowed = set(_LLM_INT_FIELDS)
+    allowed = set(_LLM_INT_FIELDS) | {"output_lang"}
     unknown_llm: set[str] = set(llm_dict.keys()) - allowed
     if unknown_llm:
         return f"unknown llm keys: {sorted(unknown_llm)}"
@@ -405,6 +421,11 @@ def _validate_llm_update(llm: object) -> dict[str, Any] | str:
             if val < lo or val > hi:
                 return f"llm.{field_name} must be between {lo} and {hi}"
             validated[field_name] = val
+    if "output_lang" in llm_dict:
+        ol: object = llm_dict["output_lang"]
+        if not isinstance(ol, str) or ol not in _ALLOWED_OUTPUT_LANGS:
+            return f"llm.output_lang must be one of {sorted(_ALLOWED_OUTPUT_LANGS)}"
+        validated["output_lang"] = ol
     return validated
 
 
@@ -412,7 +433,7 @@ def _validate_capture_update(capture: object) -> dict[str, Any] | str:
     if not isinstance(capture, dict):
         return "capture must be a JSON object"
     capture_dict = cast("dict[str, Any]", capture)
-    allowed = {"max_files", "hard_limit", "max_patch_bytes", "file_ranking"}
+    allowed = {"max_files", "hard_limit", "max_patch_bytes", "file_ranking", "symbol_extractor"}
     unknown_cap: set[str] = set(capture_dict.keys()) - allowed
     if unknown_cap:
         return f"unknown capture keys: {sorted(unknown_cap)}"
@@ -430,6 +451,30 @@ def _validate_capture_update(capture: object) -> dict[str, Any] | str:
         if not isinstance(ranking, str) or ranking not in _ALLOWED_FILE_RANKINGS:
             return f"capture.file_ranking must be one of {sorted(_ALLOWED_FILE_RANKINGS)}"
         validated["file_ranking"] = ranking
+    if "symbol_extractor" in capture_dict:
+        se: object = capture_dict["symbol_extractor"]
+        if not isinstance(se, str) or se not in _ALLOWED_SYMBOL_EXTRACTORS:
+            return f"capture.symbol_extractor must be one of {sorted(_ALLOWED_SYMBOL_EXTRACTORS)}"
+        validated["symbol_extractor"] = se
+    return validated
+
+
+def _validate_learn_update(learn: object) -> dict[str, Any] | str:
+    if not isinstance(learn, dict):
+        return "learn must be a JSON object"
+    learn_dict = cast("dict[str, Any]", learn)
+    allowed = {"learnability_threshold"}
+    unknown_learn: set[str] = set(learn_dict.keys()) - allowed
+    if unknown_learn:
+        return f"unknown learn keys: {sorted(unknown_learn)}"
+    validated: dict[str, Any] = {}
+    if "learnability_threshold" in learn_dict:
+        val: object = learn_dict["learnability_threshold"]
+        if not isinstance(val, (int, float)) or isinstance(val, bool):
+            return "learn.learnability_threshold must be a number"
+        if val < 0.0 or val > 1.0:
+            return "learn.learnability_threshold must be between 0.0 and 1.0"
+        validated["learnability_threshold"] = float(val)
     return validated
 
 
@@ -444,7 +489,7 @@ async def put_config(request: Request) -> JSONResponse:
     body = cast("dict[str, Any]", payload)
     allowed_keys: set[str] = {
         "lang", "capture", "privacy_mode",
-        "generate_model", "judge_model", "serve_port", "llm",
+        "generate_model", "judge_model", "serve_port", "llm", "learn",
     }
     unknown: set[str] = set(body.keys()) - allowed_keys
     if unknown:
@@ -522,6 +567,13 @@ async def put_config(request: Request) -> JSONResponse:
             return JSONResponse({"error": result, "status": 400}, status_code=400)
         if result:
             persist_updates["capture"] = result
+
+    if "learn" in body:
+        learn_result = _validate_learn_update(body["learn"])
+        if isinstance(learn_result, str):
+            return JSONResponse({"error": learn_result, "status": 400}, status_code=400)
+        if learn_result:
+            persist_updates["learn"] = learn_result
 
     if persist_updates:
         from ahadiff.core.config import read_config_data, write_config_data

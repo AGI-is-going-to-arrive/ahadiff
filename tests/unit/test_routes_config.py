@@ -206,12 +206,14 @@ def test_get_config_handles_load_failure_gracefully(
         "request_timeout_seconds": 30,
         "max_concurrent": 3,
         "retry_attempts": 3,
+        "output_lang": "auto",
     }
     _CAPTURE_DEFAULTS = {
         "max_files": 30,
         "hard_limit": 3000,
         "max_patch_bytes": 5_000_000,
         "file_ranking": "learning_value",
+        "symbol_extractor": "auto",
     }
     assert payload == {
         "lang": None,
@@ -222,6 +224,7 @@ def test_get_config_handles_load_failure_gracefully(
         "key_status": {},
         "capture": _CAPTURE_DEFAULTS,
         "llm": _LLM_DEFAULTS,
+        "learn": {"learnability_threshold": 0.3},
     }
 
 
@@ -247,6 +250,7 @@ def test_get_config_returns_nullable_shape_when_no_git_repo(tmp_path: Path) -> N
             "hard_limit": 3000,
             "max_patch_bytes": 5_000_000,
             "file_ranking": "learning_value",
+            "symbol_extractor": "auto",
         },
         "llm": {
             "input_token_budget": 200_000,
@@ -254,7 +258,9 @@ def test_get_config_returns_nullable_shape_when_no_git_repo(tmp_path: Path) -> N
             "request_timeout_seconds": 30,
             "max_concurrent": 3,
             "retry_attempts": 3,
+            "output_lang": "auto",
         },
+        "learn": {"learnability_threshold": 0.3},
     }
 
 

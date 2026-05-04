@@ -2,30 +2,35 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import AppShell from '../components/AppShell';
 import Skeleton, { SkeletonGroup } from '../components/Skeleton';
 import LanguageSwitcher from '../components/LanguageSwitcher';
+import ProviderCard from '../components/ProviderCard';
 import {
   getConfig, getDoctor, getProviders, getUsage, getAudit, getInstallTargets,
   putConfig,
 } from '../api/config';
+import {
+  createProvider, updateProvider, deleteProvider, probeProvider,
+} from '../api/providers';
 import type {
   AuditEntry, CaptureConfig, ConfigResponse, DoctorCheck, LlmConfig, ProviderSummary,
   UsageResponse, AuditResponse, InstallTarget,
 } from '../api/config';
+import type { ProviderCreateInput, ProviderUpdateInput } from '../api/types';
 import { useTranslation, type MessageKey, type TranslateFn } from '../i18n/useTranslation';
 import { mapDoctorMessage } from '../utils/doctor';
 import '../components/Settings.css';
 
 const GraphifyCard = lazy(() => import('../components/GraphifyCard'));
 
-type TabId = 'account' | 'provider' | 'capture' | 'privacy' | 'audit' | 'language' | 'appearance' | 'integrations';
+type TabId = 'account' | 'provider' | 'capture' | 'privacy' | 'audit' | 'preferences' | 'integrations';
 
 const TAB_IDS: TabId[] = [
   'account', 'provider', 'capture', 'privacy',
-  'audit', 'language', 'appearance', 'integrations',
+  'audit', 'preferences', 'integrations',
 ];
 
 const TAB_EN: Record<TabId, string> = {
   account: 'account', provider: 'provider', capture: 'capture', privacy: 'privacy',
-  audit: 'audit', language: 'language', appearance: 'appearance', integrations: 'integrations',
+  audit: 'audit', preferences: 'preferences', integrations: 'integrations',
 };
 
 const TAB_LABEL_KEY: Record<TabId, MessageKey> = {
@@ -34,8 +39,7 @@ const TAB_LABEL_KEY: Record<TabId, MessageKey> = {
   capture: 'Settings_page.tab_capture',
   privacy: 'Settings_page.tab_privacy',
   audit: 'Settings_page.tab_audit',
-  language: 'Settings_page.tab_language',
-  appearance: 'Settings_page.tab_appearance',
+  preferences: 'Settings_page.tab_preferences',
   integrations: 'Settings_page.tab_integrations',
 };
 
@@ -228,10 +232,16 @@ export default function SettingsPage() {
             onRetry={retry}
           />
         );
-      case 'language':
-        return <LanguageTab t={t} />;
-      case 'appearance':
-        return <AppearanceTab t={t} />;
+      case 'preferences':
+        return (
+          <PreferencesTab
+            config={data.config}
+            failed={Boolean(data.failed.config)}
+            t={t}
+            onRetry={retry}
+            onSaved={() => void fetchAll()}
+          />
+        );
       case 'integrations':
         return (
           <IntegrationsTab
@@ -431,6 +441,7 @@ function ProviderTab({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveOk, setSaveOk] = useState(false);
+  const [showNewProvider, setShowNewProvider] = useState(false);
 
   useEffect(() => {
     if (config) {
@@ -482,6 +493,39 @@ function ProviderTab({
     setSaveOk(false);
   };
 
+  const handleProviderSave = async (alias: string, data: ProviderUpdateInput | ProviderCreateInput) => {
+    if ('alias' in data) {
+      await createProvider(data);
+      setShowNewProvider(false);
+    } else {
+      await updateProvider(alias, data);
+    }
+    onSaved();
+  };
+
+  const handleProviderDelete = async (alias: string) => {
+    await deleteProvider(alias);
+    onSaved();
+  };
+
+  const handleProviderProbe = async (alias: string): Promise<string | null> => {
+    const res = await probeProvider(alias);
+    return res.task_id ?? null;
+  };
+
+  // Empty placeholder ProviderSummary for the "new" card
+  const newProviderSeed: ProviderSummary = {
+    alias: '',
+    provider_class: 'openai',
+    provider_kind: 'openai',
+    model_name: '',
+    base_url: '',
+    api_key_env: null,
+    key_status: 'unknown',
+    probed: false,
+    probed_max_context: null,
+  };
+
   return (
     <>
       {/* Provider grid */}
@@ -494,38 +538,42 @@ function ProviderTab({
         />
       ) : (
         <div className="settings-card">
-          <div className="settings-card__header"><h2>{t('Settings_page.section_providers')}</h2></div>
+          <div className="settings-card__header">
+            <h2>{t('Settings_page.section_providers')}</h2>
+            {!showNewProvider && (
+              <button
+                type="button"
+                className="retry-btn"
+                onClick={() => setShowNewProvider(true)}
+              >
+                {t('Settings_page.provider_add')}
+              </button>
+            )}
+          </div>
           <div className="settings-card__body">
-            {providers.length === 0 && <div className="u-muted-sm">{t('Settings_page.provider_empty')}</div>}
+            {providers.length === 0 && !showNewProvider && (
+              <div className="u-muted-sm">{t('Settings_page.provider_empty')}</div>
+            )}
             <div className="provider-grid">
+              {showNewProvider && (
+                <ProviderCard
+                  key="__new__"
+                  provider={newProviderSeed}
+                  isNew
+                  onSave={handleProviderSave}
+                  onDelete={handleProviderDelete}
+                  onProbe={handleProviderProbe}
+                  onCancelNew={() => setShowNewProvider(false)}
+                />
+              )}
               {providers.map(p => (
-                <div className="provider-cell" key={p.alias}>
-                  <div className="provider-cell__eyebrow">{p.role ?? p.provider_kind}</div>
-                  <div className="provider-cell__name">
-                    {p.alias}
-                    <span
-                      className={`settings-field__badge settings-field__badge--${p.key_status === 'configured' ? 'configured' : p.key_status === 'unknown' ? 'unknown' : 'missing'}`}
-                    >
-                      {p.key_status === 'configured' ? t('Settings_page.key_configured')
-                        : p.key_status === 'unknown' ? t('Settings_page.key_unknown')
-                        : t('Settings_page.key_missing')}
-                    </span>
-                  </div>
-                  <dl className="provider-cell__meta">
-                    <dt>{t('Settings_page.provider_model')}</dt>
-                    <dd className="provider-cell__hl">{p.model_name}</dd>
-                    <dt>{t('Settings_page.provider_role')}</dt>
-                    <dd>{p.role ?? '—'}</dd>
-                    {p.probed_max_context != null && (
-                      <>
-                        <dt>{t('Settings_page.provider_context')}</dt>
-                        <dd>{(p.probed_max_context / 1000).toFixed(0)}K</dd>
-                      </>
-                    )}
-                    <dt>{t('Settings_page.provider_probed_label')}</dt>
-                    <dd>{p.probed ? t('Settings_page.provider_probed') : t('Settings_page.provider_not_probed')}</dd>
-                  </dl>
-                </div>
+                <ProviderCard
+                  key={p.alias}
+                  provider={p}
+                  onSave={handleProviderSave}
+                  onDelete={handleProviderDelete}
+                  onProbe={handleProviderProbe}
+                />
               ))}
             </div>
           </div>
@@ -552,10 +600,9 @@ function ProviderTab({
                 </div>
                 <input
                   type="text"
-                  className="settings-input"
+                  className="settings-input settings-input--model"
                   value={form.generate_model}
                   onChange={e => setField('generate_model', e.target.value)}
-                  style={{ maxWidth: 280 }}
                 />
               </div>
               <div className="settings-field">
@@ -565,10 +612,9 @@ function ProviderTab({
                 </div>
                 <input
                   type="text"
-                  className="settings-input"
+                  className="settings-input settings-input--model"
                   value={form.judge_model}
                   onChange={e => setField('judge_model', e.target.value)}
-                  style={{ maxWidth: 280 }}
                 />
               </div>
             </div>
@@ -653,7 +699,7 @@ function ProviderTab({
           </div>
 
           <div className="settings-card">
-            <div className="settings-card__body" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div className="settings-card__body settings-card__actions">
               <button
                 type="button"
                 className="retry-btn"
@@ -821,7 +867,7 @@ function PrivacyTab({
       </div>
 
       <div className="settings-card">
-        <div className="settings-card__body" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div className="settings-card__body settings-card__actions">
           <button
             type="button"
             className="retry-btn"
@@ -931,20 +977,212 @@ function AuditTab({
 }
 
 /* ------------------------------------------------------------------ */
-/*  Tab: Language                                                      */
+/*  Tab: Preferences (merged Language + Appearance)                    */
 /* ------------------------------------------------------------------ */
 
-function LanguageTab({ t }: { t: TFn }) {
+type ThemeMode = 'system' | 'light' | 'dark';
+
+const OUTPUT_LANG_OPTIONS = ['auto', 'en', 'zh-CN'] as const;
+
+const OUTPUT_LANG_LABEL_KEY: Record<string, MessageKey> = {
+  'auto': 'Settings_page.output_lang_auto',
+  'en': 'Settings_page.output_lang_en',
+  'zh-CN': 'Settings_page.output_lang_zh_cn',
+};
+
+interface PreferencesForm {
+  output_lang: string;
+  learnability_threshold: number;
+}
+
+function PreferencesTab({
+  config,
+  failed,
+  t,
+  onRetry,
+  onSaved,
+}: {
+  config: ConfigResponse | null;
+  failed: boolean;
+  t: TFn;
+  onRetry: () => void;
+  onSaved: () => void;
+}) {
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    return (localStorage.getItem('ahadiff-theme') as ThemeMode) || 'system';
+  });
+  const [form, setForm] = useState<PreferencesForm | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveOk, setSaveOk] = useState(false);
+
+  useEffect(() => {
+    if (config) {
+      setForm({
+        output_lang: config.llm.output_lang ?? 'auto',
+        learnability_threshold: config.learn.learnability_threshold ?? 0.3,
+      });
+    }
+  }, [config]);
+
+  const applyTheme = (mode: ThemeMode) => {
+    setTheme(mode);
+    localStorage.setItem('ahadiff-theme', mode);
+    const root = document.documentElement;
+    root.removeAttribute('data-theme');
+    if (mode !== 'system') {
+      root.setAttribute('data-theme', mode);
+    }
+  };
+
+  const dirty = config && form && (
+    form.output_lang !== (config.llm.output_lang ?? 'auto')
+    || form.learnability_threshold !== (config.learn.learnability_threshold ?? 0.3)
+  );
+
+  const handleSave = async () => {
+    if (!form) return;
+    setSaving(true);
+    setSaveError(null);
+    setSaveOk(false);
+    try {
+      await putConfig({
+        llm: { output_lang: form.output_lang },
+        learn: { learnability_threshold: form.learnability_threshold },
+      });
+      setSaveOk(true);
+      onSaved();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const setField = <K extends keyof PreferencesForm>(key: K, value: PreferencesForm[K]) => {
+    setForm(prev => prev ? { ...prev, [key]: value } : prev);
+    setSaveOk(false);
+  };
+
   return (
-    <div className="settings-card">
-      <div className="settings-card__header"><h2>{t('Settings_page.section_language')}</h2></div>
-      <div className="settings-card__body">
-        <div className="settings-field">
-          <div className="settings-field__label"><h3>{t('Settings.language')}</h3></div>
-          <LanguageSwitcher />
+    <>
+      <div className="settings-card">
+        <div className="settings-card__header"><h2>{t('Settings_page.section_language')}</h2></div>
+        <div className="settings-card__body">
+          <div className="settings-field">
+            <div className="settings-field__label"><h3>{t('Settings.language')}</h3></div>
+            <LanguageSwitcher />
+          </div>
         </div>
       </div>
-    </div>
+
+      <div className="settings-card">
+        <div className="settings-card__header"><h2>{t('Settings_page.section_appearance')}</h2></div>
+        <div className="settings-card__body">
+          <div className="settings-field">
+            <div className="settings-field__label">
+              <h3>{t('Settings_page.theme_mode')}</h3>
+              <p>{t('Settings_page.theme_mode_desc')}</p>
+            </div>
+            <div className="settings-theme-buttons">
+              {(['system', 'light', 'dark'] as ThemeMode[]).map(mode => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={`settings-theme-btn${theme === mode ? ' is-active' : ''}`}
+                  onClick={() => applyTheme(mode)}
+                  aria-pressed={theme === mode}
+                >
+                  {t(`Settings_page.theme_${mode}` as MessageKey)}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {failed || !config || !form ? (
+        <UnavailableCard
+          title={t('Settings_page.section_learning')}
+          message={t('Settings_page.config_unavailable')}
+          t={t}
+          onRetry={onRetry}
+        />
+      ) : (
+        <>
+          <div className="settings-card">
+            <div className="settings-card__header"><h2>{t('Settings_page.output_lang')}</h2></div>
+            <div className="settings-card__body">
+              <div className="settings-field">
+                <div className="settings-field__label">
+                  <h3>{t('Settings_page.output_lang')}</h3>
+                  <p>{t('Settings_page.output_lang_desc')}</p>
+                </div>
+                <select
+                  className="settings-select"
+                  value={form.output_lang}
+                  onChange={e => setField('output_lang', e.target.value)}
+                >
+                  {OUTPUT_LANG_OPTIONS.map(opt => (
+                    <option key={opt} value={opt}>{t(OUTPUT_LANG_LABEL_KEY[opt])}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="settings-card">
+            <div className="settings-card__header"><h2>{t('Settings_page.section_learning')}</h2></div>
+            <div className="settings-card__body">
+              <div className="settings-field">
+                <div className="settings-field__label">
+                  <h3>{t('Settings_page.learnability_threshold')}</h3>
+                  <p>{t('Settings_page.learnability_threshold_desc')}</p>
+                </div>
+                <div className="settings-slider">
+                  <span className="settings-slider__legend settings-slider__legend--start">
+                    {t('Settings_page.learnability_more')}
+                  </span>
+                  <input
+                    type="range"
+                    className="settings-slider__input"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={form.learnability_threshold}
+                    onChange={e => setField('learnability_threshold', Math.max(0, Math.min(1, Number(e.target.value) || 0)))}
+                    aria-label={t('Settings_page.learnability_threshold')}
+                    aria-valuemin={0}
+                    aria-valuemax={1}
+                    aria-valuenow={form.learnability_threshold}
+                  />
+                  <span className="settings-slider__legend settings-slider__legend--end">
+                    {t('Settings_page.learnability_fewer')}
+                  </span>
+                  <span className="settings-slider__value">{form.learnability_threshold.toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="settings-card">
+            <div className="settings-card__body settings-card__actions">
+              <button
+                type="button"
+                className="retry-btn"
+                disabled={!dirty || saving}
+                onClick={() => void handleSave()}
+              >
+                {saving ? t('Settings_page.capture_saving') : t('Settings_page.capture_save')}
+              </button>
+              {saveOk && <span className="settings-field__badge settings-field__badge--configured">{t('Settings_page.capture_saved')}</span>}
+              {saveError && <span className="settings-field__badge settings-field__badge--missing">{saveError}</span>}
+              {dirty && <span className="u-muted-sm">{t('Settings_page.capture_unsaved')}</span>}
+            </div>
+          </div>
+        </>
+      )}
+    </>
   );
 }
 
@@ -958,6 +1196,14 @@ const FILE_RANKING_LABEL_KEY: Record<string, MessageKey> = {
   learning_value: 'Settings_page.capture_ranking_learning_value',
   changed_lines: 'Settings_page.capture_ranking_changed_lines',
   path: 'Settings_page.capture_ranking_path',
+};
+
+const SYMBOL_EXTRACTOR_OPTIONS = ['auto', 'builtin', 'tree_sitter'] as const;
+
+const SYMBOL_EXTRACTOR_LABEL_KEY: Record<string, MessageKey> = {
+  auto: 'Settings_page.capture_extractor_auto',
+  builtin: 'Settings_page.capture_extractor_builtin',
+  tree_sitter: 'Settings_page.capture_extractor_tree_sitter',
 };
 
 function CaptureTab({
@@ -999,6 +1245,7 @@ function CaptureTab({
     || form.hard_limit !== capture.hard_limit
     || form.max_patch_bytes !== capture.max_patch_bytes
     || form.file_ranking !== capture.file_ranking
+    || form.symbol_extractor !== capture.symbol_extractor
   );
 
   const handleSave = async () => {
@@ -1028,7 +1275,7 @@ function CaptureTab({
           <h2>{t('Settings_page.section_capture')}</h2>
         </div>
         <div className="settings-card__body">
-          <p className="u-muted-sm" style={{ marginBottom: '1rem' }}>
+          <p className="u-muted-sm settings-card__intro">
             {t('Settings_page.capture_description')}
           </p>
 
@@ -1076,7 +1323,7 @@ function CaptureTab({
               value={form.max_patch_bytes}
               onChange={e => setField('max_patch_bytes', Math.max(10000, Math.min(100000000, Number(e.target.value) || 10000)))}
             />
-            <span className="u-muted-sm" style={{ marginLeft: '0.5rem' }}>
+            <span className="u-muted-sm settings-field__suffix">
               ({(form.max_patch_bytes / 1_000_000).toFixed(1)} MB)
             </span>
           </div>
@@ -1096,11 +1343,27 @@ function CaptureTab({
               ))}
             </select>
           </div>
+
+          <div className="settings-field">
+            <div className="settings-field__label">
+              <h3>{t('Settings_page.capture_symbol_extractor')}</h3>
+              <p>{t('Settings_page.capture_symbol_extractor_desc')}</p>
+            </div>
+            <select
+              className="settings-select"
+              value={form.symbol_extractor}
+              onChange={e => setField('symbol_extractor', e.target.value)}
+            >
+              {SYMBOL_EXTRACTOR_OPTIONS.map(opt => (
+                <option key={opt} value={opt}>{t(SYMBOL_EXTRACTOR_LABEL_KEY[opt])}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
       <div className="settings-card">
-        <div className="settings-card__body" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div className="settings-card__body settings-card__actions">
           <button
             type="button"
             className="retry-btn"
@@ -1115,21 +1378,6 @@ function CaptureTab({
         </div>
       </div>
     </>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Tab: Appearance                                                    */
-/* ------------------------------------------------------------------ */
-
-function AppearanceTab({ t }: { t: TFn }) {
-  return (
-    <div className="settings-card">
-      <div className="settings-card__header"><h2>{t('Settings_page.section_appearance')}</h2></div>
-      <div className="settings-card__body">
-        <div className="u-muted-sm">{t('Settings_page.appearance_coming_soon')}</div>
-      </div>
-    </div>
   );
 }
 

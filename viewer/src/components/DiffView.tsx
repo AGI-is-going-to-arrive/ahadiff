@@ -1,9 +1,20 @@
-import { memo, useMemo, useCallback, useEffect } from 'react';
-import VirtualList from './VirtualList';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import { useTranslation } from '../i18n/useTranslation';
 import './Diff.css';
 
-const VIRTUAL_LIST_STYLE: React.CSSProperties = { height: '100%' };
+/* Files with more than this many content+hunk+meta lines start collapsed. */
+const FILE_AUTO_COLLAPSE_THRESHOLD = 200;
+
+const SUMMARY_BAR_STYLE: CSSProperties = { contain: 'layout' };
 
 /* ── Line model ──────────────────────────────────────────────── */
 
@@ -20,12 +31,24 @@ export interface DiffLine {
   newPath: string | null;
 }
 
+export type DiffClaimVerdict =
+  | 'verified'
+  | 'weak'
+  | 'not_proven'
+  | 'contradicted'
+  | 'rejected';
+
 export interface DiffClaimAnchor {
   claim_id: string;
   file: string;
   line_start: number;
   line_end: number;
   source_side?: SourceSide;
+  /**
+   * Verdict used to color the gutter dot indicator. Optional for
+   * backwards-compatibility with callers that only need claim mapping.
+   */
+  verdict?: DiffClaimVerdict;
 }
 
 export interface DiffSourceLine {
@@ -308,10 +331,123 @@ export function computeDiffStats(lines: ReadonlyArray<DiffLine>): DiffStats {
   return { files, additions, deletions };
 }
 
-/* ── Virtual scroll threshold ────────────────────────────────── */
+/* ── File-section grouping ───────────────────────────────────── */
 
-const VIRTUAL_THRESHOLD = 200;
-const LINE_HEIGHT = 22;
+export interface DiffFileSection {
+  /** Display path (newPath when known, falls back to oldPath). null = pre-amble. */
+  filePath: string | null;
+  /** Original path before rename, when oldPath != newPath. */
+  oldPath: string | null;
+  newPath: string | null;
+  /** True when oldPath/newPath are both set and differ. */
+  isRename: boolean;
+  stats: { added: number; removed: number };
+  lines: DiffLine[];
+}
+
+/**
+ * Group a flat parsed diff into per-file sections. Each `diff --git ...`
+ * meta line opens a new section; lines preceding the first `diff --git`
+ * are grouped into a leading section with `filePath: null` (rare).
+ *
+ * Renames are detected when both `oldPath` and `newPath` are present and
+ * differ; the section header may render "old -> new".
+ */
+export function parseDiffFileSections(
+  lines: ReadonlyArray<DiffLine>,
+): DiffFileSection[] {
+  const sections: DiffFileSection[] = [];
+  let current: DiffFileSection | null = null;
+
+  const flush = () => {
+    if (current && current.lines.length > 0) sections.push(current);
+    current = null;
+  };
+
+  const startSection = (line: DiffLine): DiffFileSection => ({
+    filePath: line.newPath ?? line.oldPath ?? line.filePath,
+    oldPath: line.oldPath,
+    newPath: line.newPath,
+    isRename: Boolean(line.oldPath && line.newPath && line.oldPath !== line.newPath),
+    stats: { added: 0, removed: 0 },
+    lines: [],
+  });
+
+  for (const line of lines) {
+    if (line.type === 'meta' && line.text.startsWith('diff --git')) {
+      flush();
+      current = startSection(line);
+    } else if (current === null) {
+      // Pre-amble lines before any `diff --git` (e.g. raw `--- ` / `+++ `
+      // or commit headers). Bucket into a header-less section so they remain
+      // visible.
+      current = {
+        filePath: null,
+        oldPath: null,
+        newPath: null,
+        isRename: false,
+        stats: { added: 0, removed: 0 },
+        lines: [],
+      };
+    }
+
+    // Update tracked paths from inline `--- ` / `+++ ` headers.
+    if (line.type === 'meta' && line.text.startsWith('--- ') && current && current.oldPath === null) {
+      current.oldPath = line.oldPath;
+      if (current.filePath === null) current.filePath = line.oldPath;
+    }
+    if (line.type === 'meta' && line.text.startsWith('+++ ') && current) {
+      if (line.newPath !== null) {
+        current.newPath = line.newPath;
+        current.filePath = line.newPath;
+        if (current.oldPath !== null && current.oldPath !== line.newPath) {
+          current.isRename = true;
+        }
+      }
+    }
+
+    if (line.type === 'add') current.stats.added += 1;
+    else if (line.type === 'del') current.stats.removed += 1;
+
+    current.lines.push(line);
+  }
+
+  flush();
+  return sections;
+}
+
+/* ── File icon by extension ──────────────────────────────────── */
+
+const EXT_ICON: Record<string, string> = {
+  ts: 'TS',
+  tsx: 'TSX',
+  js: 'JS',
+  jsx: 'JSX',
+  py: 'PY',
+  md: 'MD',
+  json: '{ }',
+  css: 'CSS',
+  scss: 'CSS',
+  html: '<>',
+  yaml: 'YML',
+  yml: 'YML',
+  toml: 'TOML',
+  sh: 'SH',
+  go: 'GO',
+  rs: 'RS',
+  rb: 'RB',
+  java: 'JV',
+  sql: 'SQL',
+  txt: 'TXT',
+};
+
+function getFileIcon(filePath: string | null): string {
+  if (!filePath) return '...';
+  const idx = filePath.lastIndexOf('.');
+  if (idx < 0 || idx === filePath.length - 1) return 'FILE';
+  const ext = filePath.slice(idx + 1).toLowerCase();
+  return EXT_ICON[ext] ?? ext.slice(0, 4).toUpperCase();
+}
 
 /* ── Claim matching ───────────────────────────────────────────── */
 
@@ -366,12 +502,12 @@ export function getClaimSourceLines(
   return result;
 }
 
-function findClaimIdForLine(
+function findClaimForLine(
   line: DiffLine,
   claims: ReadonlyArray<DiffClaimAnchor>,
-): string | null {
+): DiffClaimAnchor | null {
   for (const claim of claims) {
-    if (diffLineMatchesClaim(line, claim)) return claim.claim_id;
+    if (diffLineMatchesClaim(line, claim)) return claim;
   }
   return null;
 }
@@ -385,20 +521,43 @@ function formatLineAnchor(line: DiffLine): string {
 
 function DiffLineRow({
   line,
-  claimId,
+  claim,
   isSelected,
   onSelectClaim,
+  t,
 }: {
   line: DiffLine;
-  claimId: string | null;
+  claim: DiffClaimAnchor | null;
   isSelected: boolean;
   onSelectClaim?: (claimId: string) => void;
+  t?: (key: string, params?: Record<string, string | number>) => string;
 }) {
+  const claimId = claim?.claim_id ?? null;
+  const verdict = claim?.verdict ?? null;
   const isHunk = line.type === 'hunk';
   const cls = `diff-line diff-line--${line.type}${isHunk ? ' diff-hunk-marker' : ''}${claimId ? ' diff-line--claim-linked' : ''}${isSelected ? ' diff-line--claim-selected' : ''}`;
   const hunkMarkerProps = isHunk ? { 'data-hunk-mark': '§' } : {};
+  // Visual gutter dot. The parent .diff-line button already exposes the
+  // claim id via aria-label and is the accessible interaction surface, so
+  // the dot itself stays decorative (aria-hidden) and lets clicks fall
+  // through to the row (CSS sets pointer-events: none). This avoids the
+  // invalid HTML of nesting a focusable element inside another <button>.
+  const dotLabel =
+    claimId && verdict && t
+      ? t('Claim_inspector.claim_dot_label', { claim_id: claimId, verdict })
+      : claimId ?? '';
+  const dot =
+    claimId !== null ? (
+      <span
+        className={`diff-line__claim-dot${verdict ? ` diff-line__claim-dot--${verdict}` : ''}`}
+        aria-hidden="true"
+        title={dotLabel || undefined}
+        data-claim-dot-id={claimId}
+      />
+    ) : null;
   const body = (
     <>
+      {dot}
       <span className="diff-line__lineno" aria-hidden="true">
         {line.oldLineNo ?? ''}
       </span>
@@ -435,6 +594,167 @@ function DiffLineRow({
   );
 }
 
+/* ── File section view ──────────────────────────────────────── */
+
+function DiffFileSectionView({
+  section,
+  index,
+  sectionId,
+  expanded,
+  onToggle,
+  onHeaderRef,
+  claims,
+  selectedClaimId,
+  lineMatchesSelectedClaim,
+  onSelectClaim,
+  t,
+}: {
+  section: DiffFileSection;
+  index: number;
+  sectionId: string;
+  expanded: boolean;
+  onToggle: () => void;
+  onHeaderRef: (el: HTMLElement | null) => void;
+  claims: ReadonlyArray<DiffClaimAnchor>;
+  selectedClaimId: string | null;
+  lineMatchesSelectedClaim: (line: DiffLine) => boolean;
+  onSelectClaim?: (claimId: string) => void;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  const { filePath, oldPath, isRename, stats } = section;
+  const displayName = filePath ?? t('Diff.file_unknown');
+  const renamedFrom = isRename && oldPath && oldPath !== filePath ? oldPath : null;
+  const icon = getFileIcon(filePath);
+  const ariaLabel = `${displayName} (+${stats.added} -${stats.removed})`;
+  const collapsedClass = expanded ? '' : ' diff-file-section--collapsed';
+
+  return (
+    <section
+      className={`diff-file-section${collapsedClass}`}
+      data-file-path={filePath ?? ''}
+      data-file-index={index}
+    >
+      <div className="diff-file-header" ref={onHeaderRef}>
+        <button
+          type="button"
+          className="diff-file-header__toggle"
+          aria-expanded={expanded}
+          aria-controls={sectionId}
+          aria-label={ariaLabel}
+          onClick={onToggle}
+        >
+          <span className="diff-file-header__chevron" aria-hidden="true">
+            {/* CSS rotates this triangle by 90deg when expanded. */}
+            &#x25B6;
+          </span>
+          <span className="diff-file-header__icon" aria-hidden="true">
+            {icon}
+          </span>
+          <span className="diff-file-header__path">
+            {renamedFrom ? (
+              <>
+                <span className="diff-file-header__path-old">{renamedFrom}</span>
+                <span className="diff-file-header__path-arrow" aria-hidden="true">
+                  {' → '}
+                </span>
+                <span className="diff-file-header__path-new">{displayName}</span>
+              </>
+            ) : (
+              displayName
+            )}
+          </span>
+          <span className="diff-file-header__stats" aria-hidden="true">
+            <span className="diff-file-header__stat-add">+{stats.added}</span>
+            <span className="diff-file-header__stat-del">-{stats.removed}</span>
+          </span>
+        </button>
+      </div>
+      <div
+        id={sectionId}
+        className="diff-file-section__body"
+        role="region"
+        aria-label={ariaLabel}
+        hidden={!expanded}
+      >
+        {section.lines.map((line, i) => (
+          <DiffLineRow
+            key={`${line.filePath ?? '_'}:${line.type}:${line.oldLineNo ?? '_'}:${line.newLineNo ?? '_'}:${i}`}
+            line={line}
+            claim={findClaimForLine(line, claims)}
+            isSelected={lineMatchesSelectedClaim(line) && selectedClaimId !== null}
+            onSelectClaim={onSelectClaim}
+            t={t}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ── File summary bar ───────────────────────────────────────── */
+
+function DiffFileSummaryBar({
+  sections,
+  activeIndex,
+  onJump,
+  expandedCount,
+  onExpandAll,
+  onCollapseAll,
+  t,
+}: {
+  sections: ReadonlyArray<DiffFileSection>;
+  activeIndex: number | null;
+  onJump: (index: number) => void;
+  expandedCount: number;
+  onExpandAll: () => void;
+  onCollapseAll: () => void;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  if (sections.length === 0) return null;
+  const allExpanded = expandedCount === sections.length;
+
+  return (
+    <div className="diff-file-summary" style={SUMMARY_BAR_STYLE} role="toolbar" aria-label={t('Diff.summary_label')}>
+      <div className="diff-file-summary__actions">
+        <button
+          type="button"
+          className="diff-file-summary__action"
+          onClick={allExpanded ? onCollapseAll : onExpandAll}
+          aria-pressed={allExpanded}
+        >
+          {allExpanded ? t('Diff.collapse_all') : t('Diff.expand_all')}
+        </button>
+        <span className="diff-file-summary__count" aria-live="polite">
+          {t('Diff.summary_count', { current: expandedCount, total: sections.length })}
+        </span>
+      </div>
+      <ol className="diff-file-summary__list">
+        {sections.map((section, i) => {
+          const name = section.filePath ?? t('Diff.file_unknown');
+          const active = i === activeIndex;
+          return (
+            <li key={`${section.filePath ?? '_'}:${i}`} className="diff-file-summary__item">
+              <button
+                type="button"
+                className={`diff-file-summary__chip${active ? ' diff-file-summary__chip--active' : ''}`}
+                aria-current={active ? 'true' : undefined}
+                onClick={() => onJump(i)}
+                title={name}
+              >
+                <span className="diff-file-summary__chip-name">{name.split('/').pop() ?? name}</span>
+                <span className="diff-file-summary__chip-stats" aria-hidden="true">
+                  <span className="diff-file-summary__chip-add">+{section.stats.added}</span>
+                  <span className="diff-file-summary__chip-del">-{section.stats.removed}</span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
 /* ── DiffView (React.memo) ───────────────────────────────────── */
 
 interface DiffViewProps {
@@ -447,11 +767,20 @@ interface DiffViewProps {
 }
 
 /**
- * Unified diff viewer.
+ * Unified diff viewer with file-level collapsible sections.
  *
  * Wrapped with React.memo to prevent re-renders from locale changes
  * in parent components. The `content` string is the sole render dependency;
- * `useMemo` further caches the parsed line array and stats computation.
+ * `useMemo` caches the parsed line array, file sections, and stats.
+ *
+ * Each file is rendered as a collapsible `<section>` with a sticky header
+ * (file icon + path + add/remove counts + chevron toggle). Files larger
+ * than `FILE_AUTO_COLLAPSE_THRESHOLD` (200) lines start collapsed; the
+ * user can toggle each file or use the summary-bar toolbar to expand /
+ * collapse all. Collapsed sections keep `.diff-line` rows in the DOM via
+ * the `hidden` attribute so existing E2E selectors (`.diff-line--add`,
+ * `.diff-line--meta`, etc.) continue to work and so claim-anchor scroll
+ * targets stay reachable when the host expands the parent file.
  */
 const DiffView = memo(function DiffView({
   content = '',
@@ -462,6 +791,7 @@ const DiffView = memo(function DiffView({
   onStats,
 }: DiffViewProps) {
   const { t } = useTranslation();
+  const reactInstanceId = useId();
 
   /* Parse lines — only recomputed when content changes */
   const lines = useMemo(
@@ -469,6 +799,8 @@ const DiffView = memo(function DiffView({
     [content, providedLines],
   );
   const stats = useMemo(() => computeDiffStats(lines), [lines]);
+  const sections = useMemo(() => parseDiffFileSections(lines), [lines]);
+
   const lineMatchesSelectedClaim = useCallback(
     (line: DiffLine) =>
       selectedClaimId !== null &&
@@ -483,59 +815,202 @@ const DiffView = memo(function DiffView({
     }
   }, [stats, onStats]);
 
-  /* Stable renderItem and key derivation for VirtualList */
-  const renderItem = useCallback(
-    (line: DiffLine) => {
-      const claimId = findClaimIdForLine(line, claims);
-      return (
-        <DiffLineRow
-          line={line}
-          claimId={claimId}
-          isSelected={lineMatchesSelectedClaim(line)}
-          onSelectClaim={onSelectClaim}
-        />
-      );
-    },
-    [claims, lineMatchesSelectedClaim, onSelectClaim],
-  );
-  const getLineKey = useCallback(
-    (line: DiffLine, index: number) =>
-      `${line.filePath ?? '_'}:${line.type}:${line.oldLineNo ?? '_'}:${line.newLineNo ?? '_'}:${index}`,
+  /* Per-file collapse state. Defaults to collapsed for files larger than
+   * FILE_AUTO_COLLAPSE_THRESHOLD. Keyed by `filePath || `__section_${i}__`
+   * so that re-parses (e.g. content edits) preserve user toggle choices
+   * for files that retain their path. */
+  const sectionKeyForIndex = useCallback(
+    (section: DiffFileSection, index: number): string =>
+      section.filePath ?? `__section_${index}__`,
     [],
+  );
+
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  /* Auto-collapse newly-seen large files. Only sets a key the first time
+   * we see it; user toggles persist across re-renders. */
+  useEffect(() => {
+    setCollapsed((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      sections.forEach((section, i) => {
+        const key = sectionKeyForIndex(section, i);
+        if (key in next) return;
+        if (section.lines.length > FILE_AUTO_COLLAPSE_THRESHOLD) {
+          next[key] = true;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [sections, sectionKeyForIndex]);
+
+  const toggleSection = useCallback(
+    (key: string) => {
+      setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
+    },
+    [],
+  );
+
+  const expandAll = useCallback(() => {
+    setCollapsed((prev) => {
+      const next: Record<string, boolean> = { ...prev };
+      sections.forEach((section, i) => {
+        next[sectionKeyForIndex(section, i)] = false;
+      });
+      return next;
+    });
+  }, [sections, sectionKeyForIndex]);
+
+  const collapseAll = useCallback(() => {
+    setCollapsed((prev) => {
+      const next: Record<string, boolean> = { ...prev };
+      sections.forEach((section, i) => {
+        next[sectionKeyForIndex(section, i)] = true;
+      });
+      return next;
+    });
+  }, [sections, sectionKeyForIndex]);
+
+  const expandedCount = useMemo(
+    () => sections.reduce((n, section, i) => (collapsed[sectionKeyForIndex(section, i)] ? n : n + 1), 0),
+    [sections, collapsed, sectionKeyForIndex],
+  );
+
+  /* When a claim becomes selected, ensure its host file is expanded so the
+   * highlighted line is reachable. Only applies once per selectedClaimId. */
+  useEffect(() => {
+    if (!selectedClaimId) return;
+    const claim = claims.find((c) => c.claim_id === selectedClaimId);
+    if (!claim) return;
+    setCollapsed((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      sections.forEach((section, i) => {
+        if (!section.lines.some((line) => diffLineMatchesClaim(line, claim))) return;
+        const key = sectionKeyForIndex(section, i);
+        if (next[key]) {
+          next[key] = false;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [selectedClaimId, claims, sections, sectionKeyForIndex]);
+
+  /* Track active file in viewport for summary-bar highlight. Uses
+   * IntersectionObserver on the sticky headers so we don't re-flow on
+   * every scroll event. */
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const headerRefs = useRef<Array<HTMLElement | null>>([]);
+  const setHeaderRef = useCallback(
+    (index: number) => (el: HTMLElement | null) => {
+      headerRefs.current[index] = el;
+    },
+    [],
+  );
+
+  useEffect(() => {
+    headerRefs.current.length = sections.length;
+    const root = containerRef.current;
+    if (!root || sections.length === 0) return;
+    if (typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Pick the entry currently nearest the top of the scroll viewport.
+        let bestIndex: number | null = null;
+        let bestTop = Number.POSITIVE_INFINITY;
+        for (const entry of entries) {
+          const idxAttr = (entry.target as HTMLElement).dataset.headerIndex;
+          if (idxAttr === undefined) continue;
+          if (!entry.isIntersecting) continue;
+          const top = entry.boundingClientRect.top;
+          if (top >= 0 && top < bestTop) {
+            bestTop = top;
+            bestIndex = Number(idxAttr);
+          }
+        }
+        if (bestIndex !== null) setActiveIndex(bestIndex);
+      },
+      { root, threshold: [0, 1], rootMargin: '0px 0px -70% 0px' },
+    );
+
+    headerRefs.current.forEach((el, i) => {
+      if (!el) return;
+      el.dataset.headerIndex = String(i);
+      observer.observe(el);
+    });
+    return () => observer.disconnect();
+  }, [sections]);
+
+  const jumpToFile = useCallback(
+    (index: number) => {
+      const section = sections[index];
+      if (!section) return;
+      const key = sectionKeyForIndex(section, index);
+      // Expand the target file so the scroll lands inside its body.
+      if (collapsed[key]) {
+        setCollapsed((prev) => ({ ...prev, [key]: false }));
+      }
+      const el = headerRefs.current[index];
+      if (el) {
+        // Honor user's reduced-motion preference: skip smooth scroll animation.
+        const prefersReducedMotion =
+          typeof window !== 'undefined' &&
+          typeof window.matchMedia === 'function' &&
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        el.scrollIntoView({
+          behavior: prefersReducedMotion ? 'auto' : 'smooth',
+          block: 'start',
+        });
+      }
+      setActiveIndex(index);
+    },
+    [sections, collapsed, sectionKeyForIndex],
   );
 
   if (lines.length === 0) {
     return null;
   }
 
-  /* Use virtual scroll for large diffs (>= 200 lines) */
-  if (lines.length >= VIRTUAL_THRESHOLD) {
-    return (
-      <div className="diff-view" role="region" aria-label={t('Diff.title')}>
-        <VirtualList
-          items={lines}
-          itemHeight={LINE_HEIGHT}
-          renderItem={renderItem}
-          getKey={getLineKey}
-          overscan={8}
-          style={VIRTUAL_LIST_STYLE}
-        />
-      </div>
-    );
-  }
-
-  /* Direct render for small diffs */
   return (
-    <div className="diff-view" role="region" aria-label={t('Diff.title')}>
-      {lines.map((line, i) => (
-        <DiffLineRow
-          key={`${line.filePath ?? '_'}:${line.type}:${line.oldLineNo ?? '_'}:${line.newLineNo ?? '_'}:${i}`}
-          line={line}
-          claimId={findClaimIdForLine(line, claims)}
-          isSelected={lineMatchesSelectedClaim(line)}
-          onSelectClaim={onSelectClaim}
+    <div className="diff-view" role="region" aria-label={t('Diff.title')} ref={containerRef}>
+      {sections.length > 1 && (
+        <DiffFileSummaryBar
+          sections={sections}
+          activeIndex={activeIndex}
+          onJump={jumpToFile}
+          expandedCount={expandedCount}
+          onExpandAll={expandAll}
+          onCollapseAll={collapseAll}
+          t={t}
         />
-      ))}
+      )}
+      <div className="diff-view__body">
+        {sections.map((section, index) => {
+          const key = sectionKeyForIndex(section, index);
+          const expanded = !collapsed[key];
+          const sectionId = `diff-file-${reactInstanceId}-${index}`;
+          return (
+            <DiffFileSectionView
+              key={key + ':' + index}
+              section={section}
+              index={index}
+              sectionId={sectionId}
+              expanded={expanded}
+              onToggle={() => toggleSection(key)}
+              onHeaderRef={setHeaderRef(index)}
+              claims={claims}
+              selectedClaimId={selectedClaimId}
+              lineMatchesSelectedClaim={lineMatchesSelectedClaim}
+              onSelectClaim={onSelectClaim}
+              t={t}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 });

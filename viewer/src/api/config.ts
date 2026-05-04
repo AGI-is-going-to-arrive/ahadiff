@@ -22,6 +22,7 @@ export interface CaptureConfig {
   hard_limit: number;
   max_patch_bytes: number;
   file_ranking: string;
+  symbol_extractor: string;
 }
 
 export interface LlmConfig {
@@ -30,6 +31,11 @@ export interface LlmConfig {
   request_timeout_seconds: number;
   max_concurrent: number;
   retry_attempts: number;
+  output_lang: string;
+}
+
+export interface LearnConfig {
+  learnability_threshold: number;
 }
 
 export interface ConfigResponse {
@@ -41,6 +47,7 @@ export interface ConfigResponse {
   key_status: Record<string, 'configured' | 'missing'>;
   capture: CaptureConfig;
   llm: LlmConfig;
+  learn: LearnConfig;
 }
 
 export interface ConfigUpdateResponse {

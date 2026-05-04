@@ -465,3 +465,42 @@ export interface TaskSubmitResponse {
 export interface TaskCancelResponse {
   cancelled: boolean;
 }
+
+/**
+ * Provider mutation contracts — see `viewer/src/api/providers.ts`.
+ *
+ * Mirrors backend DTOs. `ProviderSummary` returned by mutation endpoints lives
+ * in `config.ts` to avoid duplicating the GET-side type; both modules infer
+ * from the same Zod schema (`providerSummarySchema`).
+ */
+export interface ProviderCreateInput {
+  alias: string;
+  provider_class: string;
+  model_name: string;
+  base_url: string;
+  api_key_env: string;
+}
+
+export interface ProviderUpdateInput {
+  provider_class?: string;
+  model_name?: string;
+  base_url?: string;
+  api_key_env?: string;
+}
+
+export interface ProviderMutationResponse {
+  updated: boolean;
+  provider: import('./config').ProviderSummary;
+}
+
+export interface ProviderDeleteResponse {
+  deleted: boolean;
+  alias: string;
+}
+
+export interface ProviderProbeSubmitResponse {
+  task_id: string;
+  alias: string;
+  status: 'submitted';
+  poll_url: string;
+}

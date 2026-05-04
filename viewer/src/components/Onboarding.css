@@ -14,14 +14,25 @@
   font-size: 36px;
   letter-spacing: -0.022em;
   margin: 0;
-  line-height: 1.08;
+  line-height: var(--lh-tight);
 }
 
 .onboarding__sub {
   color: var(--muted);
-  font-size: 14px;
+  font-size: var(--fs-base);
   margin-top: var(--sp-2);
-  line-height: 1.65;
+  line-height: var(--lh-relaxed);
+}
+
+.onboarding__platform-hint {
+  display: inline-block;
+  margin-top: var(--sp-3);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-full);
+  background: var(--subtle);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
 }
 
 /* ---- Stepper ---- */
@@ -29,17 +40,19 @@
   display: flex;
   gap: 18px;
   margin: var(--sp-8) 0;
+  padding: 0;
+  list-style: none;
 }
 
 .stepper__step {
   flex: 1;
   display: flex;
-  align-items: flex-start;
-  gap: var(--sp-3);
-  padding: var(--sp-4);
+  align-items: stretch;
   border: 1px solid var(--hair);
   border-radius: var(--r-lg);
   background: var(--elevated);
+  transition: border-color var(--dur-base) var(--ease-out-quart),
+    background-color var(--dur-base) var(--ease-out-quart);
 }
 
 .stepper__step--done {
@@ -52,6 +65,33 @@
   background: var(--accent-softest);
 }
 
+/* The whole step is a clickable button so users can jump back/forward
+   with both pointer and keyboard. The button stretches to fill the card. */
+.stepper__jump {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  width: 100%;
+  background: none;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  border-radius: var(--r-lg);
+  transition: background-color var(--dur-fast) var(--ease-out-quart);
+}
+
+.stepper__jump:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.stepper__jump:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
+
 .stepper__number {
   width: 24px;
   height: 24px;
@@ -60,7 +100,7 @@
   justify-content: center;
   border-radius: var(--r-full);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-2xs);
   font-weight: 600;
   background: var(--subtle);
   color: var(--muted);
@@ -77,23 +117,195 @@
   color: var(--on-accent);
 }
 
-.stepper__step h2 {
+.stepper__label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.stepper__title {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--fs-base);
   font-weight: 500;
+  color: var(--ink);
 }
 
-.stepper__step p {
-  margin: var(--sp-1) 0 0;
-  font-size: 12px;
+.stepper__desc {
+  font-size: var(--fs-xs);
   color: var(--muted);
+  line-height: var(--lh-snug);
 }
 
-/* ---- Content cards ---- */
-.onboarding__grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--sp-6);
+/* ---- Active step body ---- */
+.onboarding__active-step {
+  margin-top: var(--sp-6);
+}
+
+.onboarding__step-desc {
+  margin: 0 0 var(--sp-4);
+  font-size: var(--fs-base);
+  color: var(--ink-2, var(--ink));
+  line-height: var(--lh-relaxed);
+}
+
+.onboarding__step-ready {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--success-soft);
+  border-radius: var(--r-md);
+  color: var(--success);
+  font-size: var(--fs-sm);
+}
+
+.onboarding__step-ready-icon {
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+/* ---- Command block + copy button ---- */
+.onboarding__command-block {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-2);
+  background: var(--subtle);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  padding: var(--sp-3) var(--sp-4);
+  margin: 0;
+}
+
+.onboarding__command-block-code {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink);
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: var(--lh-normal);
+}
+
+.onboarding__copy-btn {
+  flex-shrink: 0;
+  align-self: flex-start;
+  padding: var(--sp-1) var(--sp-3);
+  background: var(--elevated);
+  color: var(--ink);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out-quart),
+    border-color var(--dur-fast) var(--ease-out-quart),
+    color var(--dur-fast) var(--ease-out-quart);
+}
+
+.onboarding__copy-btn:hover {
+  background: var(--accent-softest);
+  border-color: var(--accent-hair);
+}
+
+.onboarding__copy-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
+
+.onboarding__copy-btn--copied {
+  background: var(--success-soft);
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.onboarding__copy-btn--copied:hover {
+  background: var(--success-soft);
+  border-color: var(--success);
+}
+
+/* ---- Step actions row ---- */
+.onboarding__actions {
+  display: flex;
+  gap: var(--sp-3);
+  margin-top: var(--sp-5);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Spread "Next" to the right of the "Back" / "Skip" cluster. */
+.onboarding__actions > .onboarding__btn--primary {
+  margin-left: auto;
+}
+
+/* ---- Local button styles (scoped to onboarding to avoid global pollution).
+       The repo only ships .btn-primary scoped under .hero-ctas in Landing.css,
+       so we define onboarding-specific variants here using design tokens. */
+.onboarding__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-md);
+  font-family: var(--font-sans, inherit);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  line-height: var(--lh-snug);
+  cursor: pointer;
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: background-color var(--dur-fast) var(--ease-out-quart),
+    border-color var(--dur-fast) var(--ease-out-quart),
+    color var(--dur-fast) var(--ease-out-quart),
+    box-shadow var(--dur-fast) var(--ease-out-quart);
+}
+
+.onboarding__btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
+
+.onboarding__btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.onboarding__btn--primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+
+.onboarding__btn--primary:hover:not(:disabled) {
+  background: var(--accent-ink);
+  border-color: var(--accent-ink);
+}
+
+.onboarding__btn--ghost {
+  background: var(--elevated);
+  color: var(--ink);
+  border-color: var(--hair);
+}
+
+.onboarding__btn--ghost:hover:not(:disabled) {
+  background: var(--subtle);
+  border-color: var(--hair-strong);
+}
+
+.onboarding__deep-link {
+  margin-top: var(--sp-4);
+  align-self: flex-start;
+}
+
+/* ---- Doctor card ---- */
+.onboarding__doctor {
+  margin-top: var(--sp-6);
 }
 
 /* ---- Phase 4G: Step 4 preview card ----
@@ -118,9 +330,9 @@
 }
 
 .onboarding__preview-text {
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--ink-2, var(--ink));
   margin: 0;
   white-space: pre-line;
 }
@@ -133,8 +345,29 @@
 
 .onboarding__preview-verdict .verdict-badge {
   align-self: flex-start;
-  font-size: 12px;
+  font-size: var(--fs-xs);
   padding: var(--sp-1) 10px;
+}
+
+/* ---- Completion card ---- */
+.onboarding__complete {
+  margin-top: var(--sp-6);
+  border: 2px solid var(--accent);
+  background: var(--accent-softest);
+}
+
+.onboarding__complete-title {
+  margin: 0 0 var(--sp-2);
+  font-family: var(--font-serif);
+  font-size: var(--fs-xl);
+  color: var(--ink);
+}
+
+.onboarding__complete-desc {
+  margin: 0 0 var(--sp-4);
+  color: var(--muted);
+  font-size: var(--fs-base);
+  line-height: var(--lh-relaxed);
 }
 
 /* ---- Responsive ---- */
@@ -147,12 +380,37 @@
 @media (max-width: 767px) {
   .onboarding__title { font-size: 28px; }
   .stepper { flex-direction: column; }
-  .onboarding__grid { grid-template-columns: 1fr; }
   .onboarding__preview-grid { grid-template-columns: 1fr; }
+  .onboarding__actions { flex-direction: column; align-items: stretch; }
+  .onboarding__actions > .onboarding__btn--primary { margin-left: 0; }
 }
 
 @media (forced-colors: active) {
   .stepper__step { border: 1px solid CanvasText; }
   .stepper__step--done { border-color: LinkText; }
   .stepper__step--current { border-color: Highlight; }
+  .onboarding__btn--primary {
+    background: Canvas;
+    color: Highlight;
+    border: 2px solid Highlight;
+  }
+  .onboarding__btn--ghost {
+    background: Canvas;
+    color: CanvasText;
+    border: 1px solid CanvasText;
+  }
+  .onboarding__copy-btn--copied {
+    background: Canvas;
+    border: 2px solid Highlight;
+    color: Highlight;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stepper__step,
+  .onboarding__btn,
+  .onboarding__copy-btn,
+  .stepper__jump {
+    transition: none;
+  }
 }

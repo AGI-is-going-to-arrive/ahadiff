@@ -3,14 +3,291 @@
 .diff-view {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
   overflow: auto;
   font-family: var(--font-mono);
   font-size: 12.5px;
-  /* Kept as px intentionally: VirtualList itemHeight (22px) depends on a fixed line-height. */
   line-height: 22px;
   background: var(--surface-diff);
   border-radius: 10px;
   border: 1px solid var(--hair);
+  position: relative;
+  /* Approximate height of the sticky `.diff-file-summary` toolbar. Used as
+     the sticky-offset for per-file headers so they stack *under* the
+     toolbar instead of behind it. Centralized as a custom property so a
+     single tweak adjusts every per-file header. The value is a fixed
+     estimate; if the summary bar wraps (long file names, RTL locales),
+     bump this value. */
+  --diff-summary-h: 52px;
+  /* Sticky-offset for per-file headers. Set to summary-bar height when
+     the summary bar is rendered (see :has() rule below). */
+  --diff-file-header-top: 0px;
+}
+
+/* When the file-summary toolbar is present, push per-file headers down so
+ * they stick *under* the toolbar instead of behind it. Browsers without
+ * :has() simply leave headers stacked under the toolbar. */
+.diff-view:has(.diff-file-summary) {
+  --diff-file-header-top: var(--diff-summary-h);
+}
+
+.diff-view__body {
+  /* container for stacked file sections */
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── File summary bar (top toolbar) ──────────────────────── */
+
+.diff-file-summary {
+  position: sticky;
+  top: 0;
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--elevated);
+  border-bottom: 1px solid var(--hair);
+  font-family: var(--font-sans, var(--font-mono));
+  font-size: var(--fs-xs);
+}
+
+.diff-file-summary__actions {
+  display: flex;
+  gap: var(--sp-3);
+  align-items: center;
+}
+
+.diff-file-summary__action {
+  appearance: none;
+  border: 1px solid var(--hair);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background var(--dur-micro) var(--ease-out-quart),
+    border-color var(--dur-micro) var(--ease-out-quart);
+}
+
+.diff-file-summary__action:hover {
+  background: var(--subtle);
+  border-color: var(--hair-strong);
+}
+
+.diff-file-summary__action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.diff-file-summary__count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.diff-file-summary__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: var(--sp-2);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.diff-file-summary__item {
+  flex: 0 0 auto;
+}
+
+.diff-file-summary__chip {
+  appearance: none;
+  border: 1px solid var(--hair);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  display: inline-flex;
+  gap: var(--sp-2);
+  align-items: baseline;
+  white-space: nowrap;
+  max-width: 240px;
+  transition: background var(--dur-micro) var(--ease-out-quart),
+    border-color var(--dur-micro) var(--ease-out-quart);
+}
+
+.diff-file-summary__chip:hover {
+  background: var(--subtle);
+  border-color: var(--hair-strong);
+}
+
+.diff-file-summary__chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.diff-file-summary__chip--active {
+  background: var(--accent-soft);
+  border-color: var(--accent-hair);
+  color: var(--accent-ink);
+}
+
+.diff-file-summary__chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.diff-file-summary__chip-stats {
+  display: inline-flex;
+  gap: var(--sp-1);
+  font-size: var(--fs-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.diff-file-summary__chip-add {
+  color: var(--add-fg);
+}
+
+.diff-file-summary__chip-del {
+  color: var(--del-fg);
+}
+
+/* ── File section ─────────────────────────────────────────── */
+
+.diff-file-section {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--hair);
+}
+
+.diff-file-section:last-child {
+  border-bottom: 0;
+}
+
+/* ── File section header (sticky per file) ─────────────── */
+
+.diff-file-header {
+  position: sticky;
+  top: var(--diff-file-header-top, 0);
+  z-index: 10;
+  background: var(--elevated);
+  border-bottom: 1px solid var(--hair);
+  font-family: var(--font-sans, var(--font-mono));
+  font-size: var(--fs-sm);
+}
+
+.diff-file-header__toggle {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  font: inherit;
+  color: var(--ink-strong);
+  text-align: start;
+  cursor: pointer;
+  transition: background var(--dur-micro) var(--ease-out-quart);
+}
+
+.diff-file-header__toggle:hover {
+  background: var(--subtle);
+}
+
+.diff-file-header__toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.diff-file-header__chevron {
+  display: inline-block;
+  width: 12px;
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  transition: transform var(--dur-micro) var(--ease-out-quart);
+  transform-origin: 50% 50%;
+  flex-shrink: 0;
+}
+
+.diff-file-section:not(.diff-file-section--collapsed) .diff-file-header__chevron {
+  transform: rotate(90deg);
+}
+
+.diff-file-header__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 18px;
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-sm);
+  background: var(--subtle);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.diff-file-header__path {
+  flex: 1 1 auto;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.diff-file-header__path-old {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.diff-file-header__path-arrow {
+  color: var(--muted);
+}
+
+.diff-file-header__path-new {
+  color: var(--ink-strong);
+}
+
+.diff-file-header__stats {
+  display: inline-flex;
+  gap: var(--sp-2);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-xs);
+  flex-shrink: 0;
+}
+
+.diff-file-header__stat-add {
+  color: var(--add-fg);
+  font-weight: 600;
+}
+
+.diff-file-header__stat-del {
+  color: var(--del-fg);
+  font-weight: 600;
+}
+
+/* ── File section body (collapsible content) ───────────── */
+
+.diff-file-section__body {
+  display: flex;
+  flex-direction: column;
+}
+
+/* `hidden` already removes from layout; this is a defensive backstop. */
+.diff-file-section--collapsed .diff-file-section__body[hidden] {
+  display: none;
 }
 
 /* ── Line row ─────────────────────────────────────────────── */
@@ -20,6 +297,11 @@
   align-items: stretch;
   min-height: 22px;
   padding: 0;
+  /* Anchor for the absolutely-positioned `.diff-line__claim-dot`. The
+     existing `.diff-line--hunk` rule already sets `position: relative`
+     for the marker glyph; making this universal keeps the dot in the
+     gutter without affecting layout. */
+  position: relative;
 }
 
 button.diff-line {
@@ -53,7 +335,7 @@ button.diff-line {
   position: absolute;
   left: -22px;
   top: 14px;
-  font-family: "Newsreader", serif;
+  font-family: var(--font-serif);
   font-style: italic;
   font-size: 22px;
   color: var(--accent);
@@ -110,6 +392,73 @@ button.diff-line {
   flex-shrink: 0;
 }
 
+/* ── Claim dot (gutter indicator) ─────────────────────────── */
+
+/* The dot is rendered as a <span> inside the row's parent <button> so the
+   click bubbles up and selects the claim. We avoid nesting <button> inside
+   <button> (invalid HTML); the dot itself is decorative + acts as a click
+   target via event bubbling. */
+.diff-line__claim-dot {
+  position: absolute;
+  inset-inline-start: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-full);
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  background: var(--muted);
+  /* Halo so the dot stays visible against verdict-colored row backgrounds
+     (add green / del red). */
+  box-shadow: 0 0 0 1px var(--paper);
+  transition: transform var(--dur-xfast) var(--ease-out-quart),
+    box-shadow var(--dur-xfast) var(--ease-out-quart);
+  pointer-events: none;
+}
+
+button.diff-line:hover .diff-line__claim-dot,
+button.diff-line:focus-visible .diff-line__claim-dot {
+  transform: translateY(-50%) scale(1.4);
+  box-shadow: 0 0 0 2px var(--paper), 0 0 0 3px var(--accent-soft);
+}
+
+.diff-line__claim-dot--verified {
+  background: var(--success);
+}
+
+.diff-line__claim-dot--weak {
+  background: var(--warning);
+}
+
+.diff-line__claim-dot--not_proven {
+  background: var(--muted);
+}
+
+.diff-line__claim-dot--rejected,
+.diff-line__claim-dot--contradicted {
+  background: var(--danger);
+}
+
+@media (forced-colors: active) {
+  .diff-line__claim-dot {
+    forced-color-adjust: none;
+    background: LinkText;
+    box-shadow: 0 0 0 1px Canvas;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diff-line__claim-dot {
+    transition: none;
+  }
+  button.diff-line:hover .diff-line__claim-dot,
+  button.diff-line:focus-visible .diff-line__claim-dot {
+    transform: translateY(-50%);
+  }
+}
+
 .diff-line--hunk .diff-line__lineno,
 .diff-line--meta .diff-line__lineno {
   visibility: hidden;
@@ -120,8 +469,9 @@ button.diff-line {
 .diff-line__text {
   flex: 1 1 auto;
   padding: 0 var(--sp-3);
-  white-space: pre;
-  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 .diff-line__text code {
@@ -138,6 +488,7 @@ button.diff-line {
   padding: var(--sp-8) var(--sp-10) 88px;
   gap: 18px;
   animation: fadeUp 0.28s ease-out;
+  overflow: hidden;
 }
 
 .diff-page__header {
@@ -156,12 +507,14 @@ button.diff-line {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: 1fr 360px;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 28vw);
   gap: 18px;
+  scroll-margin-top: 80px;
 }
 
 .diff-page__body {
   min-height: 0;
+  min-width: 0;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -196,7 +549,7 @@ button.diff-line {
 .diff-page__selected-hunk--contradicted,
 .diff-page__selected-hunk--rejected {
   background: var(--danger-soft, #fdf1ec);
-  border-color: var(--danger-hair, #e4b8ae);
+  border-color: var(--danger-hair);
 }
 
 .diff-page__selected-hunk-header {
@@ -421,9 +774,20 @@ button.diff-line {
     grid-template-columns: 1fr;
   }
 
-  .diff-view,
+  .diff-view {
+    overflow: visible;
+  }
+
   .diff-line {
     break-inside: avoid;
+  }
+
+  .diff-file-summary {
+    display: none;
+  }
+
+  .diff-file-header {
+    position: static;
   }
 
   .mini-panel {

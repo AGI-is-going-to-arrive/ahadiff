@@ -267,13 +267,14 @@ describe('ClaimInspector V6 fidelity', () => {
       selectedClaimId: 'c001',
     });
 
-    await expect
-      .poll(() =>
-        page
-          .locator('.claim-inspector__item-concepts .claim-inspector__concept-tag')
-          .allTextContents(),
-      )
-      .toEqual(['retry', longConcept]);
+    // Collapsed claim cards no longer render concept tags inline (they show
+    // only id + badge + truncated summary). Concepts are shown only in the
+    // expanded detail row of the selected claim.
+    expect(
+      await page
+        .locator('.claim-inspector__item .claim-inspector__concept-tag')
+        .count(),
+    ).toBe(0);
     await expect
       .poll(() =>
         page

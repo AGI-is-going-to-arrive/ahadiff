@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useId,
@@ -470,9 +471,20 @@ function ForceGraph({
     [onSelectNode],
   );
 
+  const handleNodeClick = useCallback(
+    (e: React.MouseEvent<SVGGElement>) => {
+      const id = e.currentTarget.dataset.nodeId;
+      if (!id) return;
+      onSelectNode(selectedId === id ? null : id);
+    },
+    [onSelectNode, selectedId],
+  );
+
   const handleNodeKeyDown = useCallback(
-    (e: React.KeyboardEvent, id: string) => {
+    (e: React.KeyboardEvent<SVGGElement>) => {
       if (e.key === 'Enter' || e.key === ' ') {
+        const id = e.currentTarget.dataset.nodeId;
+        if (!id) return;
         e.preventDefault();
         onSelectNode(selectedId === id ? null : id);
       }
@@ -525,13 +537,14 @@ function ForceGraph({
           return (
             <g
               key={node.id}
+              data-node-id={node.id}
               className={`concept-graph__node${isSelected ? ' concept-graph__node--selected' : ''}`}
               tabIndex={0}
               role="button"
               aria-pressed={isSelected}
               aria-label={node.name}
-              onClick={() => onSelectNode(isSelected ? null : node.id)}
-              onKeyDown={(e) => handleNodeKeyDown(e, node.id)}
+              onClick={handleNodeClick}
+              onKeyDown={handleNodeKeyDown}
               opacity={isDimmed ? 0.12 : 1}
             >
               <title>{node.name}</title>
@@ -673,6 +686,14 @@ function FilterChips({
   onToggle: (kind: string) => void;
 }) {
   const { t } = useTranslation();
+  const handleChipClick = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      const kind = e.currentTarget.dataset.kind;
+      if (!kind) return;
+      onToggle(kind);
+    },
+    [onToggle],
+  );
   if (kinds.length <= 1) return null;
 
   return (
@@ -681,8 +702,9 @@ function FilterChips({
         <button
           key={k}
           type="button"
+          data-kind={k}
           className={`concept-graph__filter-chip${active.has(k) ? ' concept-graph__filter-chip--active' : ''}`}
-          onClick={() => onToggle(k)}
+          onClick={handleChipClick}
           aria-pressed={active.has(k)}
         >
           <span
@@ -706,14 +728,23 @@ function ListFallback({
   nodes: ConceptGraphNode[];
   onSelectNode: (id: string) => void;
 }) {
+  const handleNodeClick = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      const id = e.currentTarget.dataset.nodeId;
+      if (!id) return;
+      onSelectNode(id);
+    },
+    [onSelectNode],
+  );
   return (
     <div className="concept-graph__listg">
       {nodes.map((n) => (
         <button
           key={n.id}
           type="button"
+          data-node-id={n.id}
           className="concept-graph__lnode"
-          onClick={() => onSelectNode(n.id)}
+          onClick={handleNodeClick}
         >
           <span className="concept-graph__lnode-name">{n.name}</span>
           {n.kind && (
@@ -760,7 +791,7 @@ function EmptyState({ status }: { status: GraphStatusResponse }) {
 
 /* ---------- Main component ---------- */
 
-export default function ConceptGraph({ nodes, edges, status, truncated, onShowAll }: ConceptGraphProps) {
+function ConceptGraph({ nodes, edges, status, truncated, onShowAll }: ConceptGraphProps) {
   const { t } = useTranslation();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeKinds, setActiveKinds] = useState<Set<string>>(new Set());
@@ -986,3 +1017,5 @@ export default function ConceptGraph({ nodes, edges, status, truncated, onShowAl
     </div>
   );
 }
+
+export default memo(ConceptGraph);

@@ -38,6 +38,7 @@ class CaptureConfig(BaseModel):
     hard_limit: int = 3000
     max_patch_bytes: int = 5_000_000
     file_ranking: str = "learning_value"
+    symbol_extractor: str = "auto"
 
 
 class LlmConfig(BaseModel):
@@ -48,6 +49,13 @@ class LlmConfig(BaseModel):
     request_timeout_seconds: int = 30
     max_concurrent: int = 3
     retry_attempts: int = 3
+    output_lang: str = "auto"
+
+
+class LearnConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    learnability_threshold: float = 0.3
 
 
 class ConfigResponse(BaseModel):
@@ -61,6 +69,7 @@ class ConfigResponse(BaseModel):
     key_status: dict[str, Literal["configured", "missing"]] = Field(default_factory=dict)
     capture: CaptureConfig = Field(default_factory=CaptureConfig)
     llm: LlmConfig = Field(default_factory=LlmConfig)
+    learn: LearnConfig = Field(default_factory=LearnConfig)
 
 
 class ConfigUpdateResponse(BaseModel):

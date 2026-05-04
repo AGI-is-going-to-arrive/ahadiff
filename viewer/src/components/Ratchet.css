@@ -337,7 +337,9 @@
 
 /* ---- Responsive: tablet collapse (V6 §2D, --bp-md2 780px) ----
  * Chart + rubric grid drops to single column at 780 so the rubric card
- * doesn't squeeze the chart on narrow tablets. */
+ * doesn't squeeze the chart on narrow tablets. Table uses overflow-x
+ * with a min-width to keep columns readable; scroll-shadow hint via
+ * background-attachment + linear-gradient (V6 pattern). */
 @media (max-width: 780px) {
   .ratchet-page__grid {
     grid-template-columns: 1fr !important;
@@ -345,10 +347,22 @@
 
   .ratchet-card__body--table {
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    background:
+      linear-gradient(to right, var(--elevated) 30%, color-mix(in srgb, var(--elevated) 0%, transparent)) left center / var(--sp-4) 100% no-repeat local,
+      linear-gradient(to left, var(--elevated) 30%, color-mix(in srgb, var(--elevated) 0%, transparent)) right center / var(--sp-4) 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--ink) 12%, transparent), transparent) left center / var(--sp-3) 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--ink) 12%, transparent), transparent) right center / var(--sp-3) 100% no-repeat scroll;
   }
 
   .ratchet-table {
     min-width: 540px;
+  }
+
+  .ratchet-table thead th,
+  .ratchet-table tbody td {
+    scroll-snap-align: start;
   }
 }
 
@@ -360,10 +374,6 @@
 
   .ratchet-page__title {
     font-size: 28px;
-  }
-
-  .ratchet-card__body--table {
-    overflow-x: auto;
   }
 
   .ratchet-table {
@@ -438,10 +448,26 @@
   }
 }
 
-/* ---- Responsive: small phones (V6 §2D, --bp-xs 540px) ---- */
+/* ---- Responsive: small phones (V6 §2D, --bp-xs 540px) ----
+ * Data tables stay readable via horizontal scroll with edge-fade shadow
+ * affordances (background-attachment local+scroll trick): the gradients
+ * pinned to the scroll container fade in/out as the user scrolls,
+ * signalling that more columns exist. Words must NOT break inside cells.
+ * Inherits scroll-snap from the 780 breakpoint. */
 @media (max-width: 540px) {
   .ratchet-page__title {
     font-size: 24px;
+  }
+
+  .ratchet-card__body--table {
+    overflow-x: auto;
+    background:
+      linear-gradient(90deg, var(--elevated) 30%, transparent) left / 40px 100%,
+      linear-gradient(-90deg, var(--elevated) 30%, transparent) right / 40px 100%,
+      radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.12), transparent) left / 12px 100%,
+      radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.12), transparent) right / 12px 100%;
+    background-repeat: no-repeat;
+    background-attachment: local, local, scroll, scroll;
   }
 
   .ratchet-table {
@@ -451,11 +477,16 @@
 
   .ratchet-table thead th,
   .ratchet-table tbody td {
-    padding: var(--sp-2) 10px;
+    padding: var(--sp-2) var(--sp-2);
+  }
+
+  .ratchet-table thead th {
+    font-size: var(--fs-2xs, 10px);
+    letter-spacing: 0.04em;
   }
 
   .ratchet-card {
-    padding: 14px 14px var(--sp-3);
+    padding: var(--sp-3) var(--sp-3) var(--sp-3);
   }
 }
 

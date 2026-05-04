@@ -13,6 +13,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
+  /* Constrain width so long path/identifier text wraps instead of forcing
+     horizontal scroll inside the narrow split panel. */
+  min-width: 0;
 }
 
 .claim-inspector--empty {
@@ -40,6 +43,10 @@
   font-weight: 600;
   color: var(--ink-strong);
   margin: 0;
+  /* Allow the title to shrink before pushing the InfoHint / action button
+     out of the row. */
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .claim-inspector__action {
@@ -67,6 +74,19 @@
 .claim-inspector__action:focus-visible {
   outline: 2px solid var(--accent-ink);
   outline-offset: 2px;
+}
+
+/* ── Onboarding hint ─────────────────────────────────────── */
+
+.claim-inspector__onboarding {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--accent-softest);
+  border: 1px dashed var(--accent-hair);
+  border-radius: var(--r-md);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
 }
 
 /* ── Filter chips ────────────────────────────────────────── */
@@ -108,12 +128,12 @@
 .claim-inspector__chip--on {
   background: var(--accent-soft);
   color: var(--accent-ink);
-  border-color: #e6bfa6;
+  border-color: var(--accent-hair);
 }
 
 .claim-inspector__chip--on:hover {
   background: var(--accent-soft);
-  border-color: #d9a682;
+  border-color: var(--accent);
 }
 
 .claim-inspector__chip--rejected {
@@ -210,9 +230,9 @@
   padding-top: var(--sp-3);
 }
 
-/* ── Source hunk panel ───────────────────────────────────── */
+/* ── Jump-to-code links (replaces inline source preview) ─── */
 
-.claim-inspector__source {
+.claim-inspector__jumps {
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
@@ -220,39 +240,67 @@
   padding-top: var(--sp-3);
 }
 
-.claim-inspector__source-ref {
-  align-self: flex-start;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--muted);
-  background: var(--paper);
-  border: 1px solid var(--hair);
-  border-radius: 6px;
-  padding: 2px 6px;
-}
-
-.claim-inspector__source-groups,
-.claim-inspector__source-group {
+.claim-inspector__jump-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.claim-inspector__jump-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
   gap: var(--sp-2);
-}
-
-.claim-inspector__source-groups {
-  gap: var(--sp-3);
-}
-
-.claim-inspector__source-code {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.6;
+  padding: 6px 10px;
   background: var(--subtle);
   border: 1px solid var(--hair);
   border-radius: 6px;
-  padding: var(--sp-2) var(--sp-3);
-  margin: 0;
-  overflow-x: auto;
-  color: var(--ink);
+  color: var(--accent-ink);
+  text-align: start;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  /* Ensure long paths wrap rather than overflow horizontally inside the
+     narrow inspector panel. */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-width: 0;
+  transition: background var(--dur-xfast) var(--ease-out-quart),
+    border-color var(--dur-xfast) var(--ease-out-quart);
+}
+
+.claim-inspector__jump-btn:hover:not(:disabled) {
+  background: var(--accent-softest);
+  border-color: var(--accent-hair);
+}
+
+.claim-inspector__jump-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.claim-inspector__jump-btn:disabled {
+  cursor: default;
+  color: var(--muted);
+}
+
+.claim-inspector__jump-icon {
+  flex-shrink: 0;
+  color: var(--accent);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.claim-inspector__jump-ref {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  background: transparent;
+  padding: 0;
+  border: 0;
 }
 
 .claim-inspector__source-empty {
@@ -283,7 +331,17 @@
   border: 1px solid var(--hair);
   border-radius: var(--r-md);
   cursor: pointer;
+  /* Allow long single-token statements to wrap without forcing the panel
+     into horizontal scroll. */
+  overflow: hidden;
+  min-width: 0;
   transition: all var(--dur-xfast) var(--ease-out-quart);
+}
+
+/* Collapsed cards stay compact: only id + badge + one-line summary. */
+.claim-inspector__item--collapsed {
+  padding: 10px 13px;
+  gap: 4px;
 }
 
 .claim-inspector__item:hover {
@@ -296,7 +354,8 @@
   outline-offset: 2px;
 }
 
-.claim-inspector__item--selected {
+.claim-inspector__item--selected,
+.claim-inspector__item--expanded {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
   transform: translateX(2px);
@@ -328,6 +387,7 @@
   display: flex;
   align-items: center;
   gap: var(--sp-2);
+  min-width: 0;
 }
 
 .claim-inspector__item-id {
@@ -335,6 +395,7 @@
   font-size: 10.5px;
   letter-spacing: 0.1em;
   color: var(--muted);
+  flex-shrink: 0;
 }
 
 .claim-inspector__item-text {
@@ -343,12 +404,23 @@
   line-height: 1.55;
   color: var(--ink);
   margin: 0;
+  /* Wrap long words inside narrow panels rather than overflow. */
+  overflow-wrap: anywhere;
+}
+
+/* Collapsed cards truncate the statement to one visual line. */
+.claim-inspector__item-text--collapsed {
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .claim-inspector__item-loc {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
 /* ── Touch target improvement ───────────────────────────── */
@@ -362,6 +434,10 @@
   .claim-inspector__action {
     width: 44px;
     height: 44px;
+  }
+
+  .claim-inspector__jump-btn {
+    min-height: 44px;
   }
 }
 
@@ -388,8 +464,8 @@
     border-color: CanvasText;
   }
 
-  .claim-inspector__source-code {
-    border-color: CanvasText;
+  .claim-inspector__jump-btn {
+    border: 1px solid CanvasText;
   }
 
   .claim-inspector__chip {
@@ -417,6 +493,11 @@
   .claim-inspector__item--selected {
     outline: 2px solid Highlight;
   }
+
+  .claim-inspector__onboarding {
+    border-color: CanvasText;
+    background: Canvas;
+  }
 }
 
 /* ── Reduced motion ──────────────────────────────────────── */
@@ -425,12 +506,15 @@
   .claim-inspector,
   .claim-inspector__item,
   .claim-inspector__chip,
-  .claim-inspector__action {
+  .claim-inspector__action,
+  .claim-inspector__jump-btn {
     animation: none;
     transition: none;
   }
 
-  .claim-inspector__item:hover {
+  .claim-inspector__item:hover,
+  .claim-inspector__item--selected,
+  .claim-inspector__item--expanded {
     transform: none;
   }
 }
