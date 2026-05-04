@@ -2,13 +2,15 @@
 
 CRUD operations on the per-repo ``[providers.<alias>]`` table inside
 ``.ahadiff/config.toml``.  Probe submits an async ``provider_probe:<alias>``
-task to the ``TaskRunner``; the actual probe execution is intentionally
-left as a TODO stub so that contracts and CRUD can land first.
+task to the ``TaskRunner`` and persists probe metadata only if the provider
+core fields did not change while the probe was running.
 """
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
+from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
@@ -22,18 +24,24 @@ from ahadiff.contracts.serve_providers import (
     ProviderMutationResponse,
     ProviderUpdateRequest,
 )
+from ahadiff.contracts.serve_runtime import TaskSubmitResponse
 from ahadiff.core.config import (
+    SecurityConfig,
     clear_provider_probe_fields,
+    local_hosts_for_privacy_mode,
     mask_provider_base_url_for_display,
     normalize_provider_base_url,
+    provider_core_fingerprint,
     read_config_data,
     validate_provider_alias,
     validate_provider_base_url,
     validate_repo_api_key_env_name,
     write_config_data,
 )
-from ahadiff.core.errors import ConfigError
+from ahadiff.core.errors import ConfigError, ProviderError
 from ahadiff.core.ids import make_event_id
+from ahadiff.core.task_runner import TaskStatus
+from ahadiff.llm.probe import probe_provider
 from ahadiff.safety.audit import append_audit_record
 
 from .auth import require_write_token, serve_state
@@ -45,10 +53,22 @@ if TYPE_CHECKING:
 
     from starlette.requests import Request
 
+    from ahadiff.core.task_runner import TaskHandle
+    from ahadiff.llm.schemas import ProbeReport
+
     from .state import ServeState
 
 
 _CORE_FIELDS = ("provider_class", "model_name", "base_url", "api_key_env")
+_PROBE_RESULT_FIELDS = (
+    "probed_max_context",
+    "probed_tpm",
+    "probed_rpm",
+    "supports_temperature",
+    "probe_timestamp",
+)
+_MAX_PENDING_PROVIDER_PROBE_TASKS = 1
+_MAX_GLOBAL_PENDING_PROBE_TASKS = 3
 
 
 class _ProviderBaseUrlError(Exception):
@@ -127,6 +147,34 @@ def _provider_allowed_local_hosts(data: Mapping[str, object]) -> tuple[str, ...]
     return tuple(hosts)
 
 
+def _security_string_tuple(security: Mapping[str, object], key: str) -> tuple[str, ...]:
+    raw_value = security.get(key)
+    if raw_value is None:
+        return ()
+    if not isinstance(raw_value, list | tuple):
+        raise ConfigError(f"security.{key} must be an array of strings")
+    items = cast("list[object] | tuple[object, ...]", raw_value)
+    if not all(isinstance(item, str) for item in items):
+        raise ConfigError(f"security.{key} must be an array of strings")
+    return tuple(cast("tuple[str, ...]", tuple(items)))
+
+
+def _security_config_from_data(data: Mapping[str, object]) -> SecurityConfig:
+    raw_security = data.get("security", {})
+    if raw_security is None:
+        return SecurityConfig()
+    if not isinstance(raw_security, Mapping):
+        raise ConfigError("config key [security] must be a table")
+    security = cast("Mapping[str, object]", raw_security)
+    return SecurityConfig(
+        allow_exact=_security_string_tuple(security, "allow_exact"),
+        allow_paths=_security_string_tuple(security, "allow_paths"),
+        suppress_rules=_security_string_tuple(security, "suppress_rules"),
+        local_hosts=_security_string_tuple(security, "local_hosts"),
+        strict_local_hosts=_security_string_tuple(security, "strict_local_hosts"),
+    )
+
+
 def _normalize_and_validate_base_url(
     base_url: str,
     *,
@@ -164,6 +212,85 @@ def _append_provider_audit_event(
         ),
     }
     append_audit_record(state.state_dir / "audit.jsonl", record)
+
+
+def _provider_required_str(provider_data: Mapping[str, Any], field_name: str) -> str:
+    value = provider_data.get(field_name)
+    if not isinstance(value, str) or not value:
+        raise ConfigError(f"provider {field_name} must be a non-empty string")
+    return value
+
+
+def _probe_report_result(
+    *,
+    alias: str,
+    report: ProbeReport,
+    persisted: bool,
+    stale: bool,
+) -> dict[str, Any]:
+    rate_limits = asdict(report.rate_limits) if report.rate_limits is not None else None
+    notes = list(report.notes)
+    if stale:
+        notes.append("provider config changed before probe results could be persisted")
+    return {
+        "alias": alias,
+        "provider_name": report.provider_name,
+        "connectivity_ok": report.connectivity_ok,
+        "transport_target": report.transport_target,
+        "context_window_source": report.context_window_source,
+        "config": report.config.model_dump(mode="json"),
+        "capabilities": report.capabilities.model_dump(mode="json"),
+        "rate_limits": rate_limits,
+        "notes": notes,
+        "persisted": persisted,
+        "stale": stale,
+    }
+
+
+def _provider_probe_failed_result(alias: str) -> dict[str, Any]:
+    return {
+        "alias": alias,
+        "connectivity_ok": False,
+        "error_code": "provider_probe_failed",
+        "error": "provider probe failed",
+        "persisted": False,
+        "stale": False,
+        "notes": ["provider probe failed"],
+    }
+
+
+def _persist_probe_result_if_current(
+    *,
+    state: ServeState,
+    config_path: Path,
+    alias: str,
+    expected_fingerprint: str,
+    report: ProbeReport,
+) -> bool:
+    with serve_repo_write_lock(state, command="serve provider probe persist"):
+        data, providers = _read_providers_table(config_path)
+        current = providers.get(alias)
+        if not isinstance(current, dict):
+            return False
+        current_typed = cast("dict[str, Any]", current)
+        if provider_core_fingerprint(current_typed) != expected_fingerprint:
+            return False
+
+        updated_provider = dict(current_typed)
+        clear_provider_probe_fields(updated_provider)
+        for field_name in _PROBE_RESULT_FIELDS:
+            value = getattr(report.config, field_name)
+            if value is not None:
+                updated_provider[field_name] = value
+        providers[alias] = updated_provider
+        write_config_data(config_path, data)
+        _append_provider_audit_event(
+            state,
+            event_type="provider_probe",
+            alias=alias,
+            provider_data=updated_provider,
+        )
+        return True
 
 
 # ---------------------------------------------------------------------------
@@ -401,24 +528,111 @@ async def probe_provider_route(request: Request) -> JSONResponse:
     if alias_error is not None:
         return alias_error
 
+    runner = state.task_runner
+    if runner is None:
+        return JSONResponse(
+            {"error": "task_runner_unavailable", "status": 503},
+            status_code=503,
+        )
+
     config_path = _config_path(state)
 
-    def _load_provider() -> dict[str, Any] | None:
-        _data, providers = _read_providers_table(config_path)
+    def _load_provider() -> tuple[dict[str, Any], SecurityConfig] | None:
+        data, providers = _read_providers_table(config_path)
         candidate = providers.get(alias)
         if not isinstance(candidate, dict):
             return None
         candidate_typed = cast("dict[str, Any]", candidate)
-        return dict(candidate_typed)
+        return dict(candidate_typed), _security_config_from_data(data)
 
     try:
-        provider_snapshot = await to_thread.run_sync(_load_provider)
+        loaded = await to_thread.run_sync(_load_provider)
     except ConfigError as exc:
         return _error(str(exc), status=500)
-    if provider_snapshot is None:
+    if loaded is None:
         return _error("provider_not_found", status=404)
 
-    return _error("provider_probe_not_implemented", status=501)
+    provider_snapshot, security_config = loaded
+    start_fingerprint = provider_core_fingerprint(provider_snapshot)
+    workspace_root = state.state_dir.parent
+
+    async def _probe_task(_handle: TaskHandle) -> dict[str, Any]:
+        try:
+            provider_class = _provider_required_str(provider_snapshot, "provider_class")
+            model_name = _provider_required_str(provider_snapshot, "model_name")
+            base_url = _provider_required_str(provider_snapshot, "base_url")
+            api_key_env = _provider_required_str(provider_snapshot, "api_key_env")
+            validate_provider_base_url(
+                base_url,
+                allowed_local_hosts=(
+                    *local_hosts_for_privacy_mode(security_config, "explicit_remote"),
+                    *local_hosts_for_privacy_mode(security_config, "strict_local"),
+                ),
+            )
+            validate_repo_api_key_env_name(api_key_env)
+            api_key = os.environ.get(api_key_env)
+
+            report = await to_thread.run_sync(
+                lambda: probe_provider(
+                    provider_name=alias,
+                    provider_class=provider_class,
+                    model_name=model_name,
+                    base_url=base_url,
+                    api_key=api_key,
+                    api_key_env=api_key_env,
+                    workspace_root=workspace_root,
+                    security_config=security_config,
+                    persist_result=False,
+                )
+            )
+        except (ProviderError, ConfigError):
+            return _provider_probe_failed_result(alias)
+        except Exception:
+            return _provider_probe_failed_result(alias)
+
+        persisted = await to_thread.run_sync(
+            lambda: _persist_probe_result_if_current(
+                state=state,
+                config_path=config_path,
+                alias=alias,
+                expected_fingerprint=start_fingerprint,
+                report=report,
+            )
+        )
+        return _probe_report_result(
+            alias=alias,
+            report=report,
+            persisted=persisted,
+            stale=not persisted,
+        )
+
+    global_probe_count = sum(
+        1
+        for info in runner.list_tasks()
+        if info.task_type.startswith("provider_probe:")
+        and info.status in (TaskStatus.PENDING, TaskStatus.RUNNING)
+    )
+    if global_probe_count >= _MAX_GLOBAL_PENDING_PROBE_TASKS:
+        return JSONResponse(
+            {"error": "too_many_pending_provider_probe_tasks", "status": 503},
+            status_code=503,
+        )
+
+    task_id = runner.submit_if_capacity(
+        f"provider_probe:{alias}",
+        _probe_task,
+        max_pending=_MAX_PENDING_PROVIDER_PROBE_TASKS,
+        thread_backed=True,
+    )
+    if task_id is None:
+        return JSONResponse(
+            {"error": "too_many_pending_provider_probe_tasks", "status": 503},
+            status_code=503,
+        )
+    return JSONResponse(
+        TaskSubmitResponse(task_id=task_id).model_dump(mode="json"),
+        status_code=202,
+    )
 
 
 __all__ = [

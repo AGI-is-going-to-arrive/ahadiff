@@ -416,11 +416,40 @@ def test_validate_provider_base_url_accepts_http_and_https(base_url: str) -> Non
         "http://10.0.0.7:8000",
         "http://172.16.0.7:8000",
         "http://192.168.1.7:8000",
+        "https://api.example.test/v1?api_key=sk-test",
     ),
 )
 def test_validate_provider_base_url_rejects_ssrf_and_secret_url_cases(base_url: str) -> None:
-    with pytest.raises(ConfigError):
+    with pytest.raises(ConfigError) as error:
         config_module.validate_provider_base_url(base_url)
+    message = str(error.value)
+    if "api_key=sk-test" in base_url:
+        assert base_url not in message
+        assert "api_key=sk-test" not in message
+        assert "sk-test" not in message
+    if "user:pass@" in base_url:
+        assert base_url not in message
+        assert "user:pass@" not in message
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    (
+        "https://api.example.test:bad/v1?api_key=sk-test",
+        "https://api.example.test/v1?api_key=sk secret",
+    ),
+)
+def test_validate_provider_base_url_masks_sensitive_url_in_format_errors(base_url: str) -> None:
+    with pytest.raises(ConfigError) as error:
+        config_module.validate_provider_base_url(base_url)
+
+    message = str(error.value)
+    masked = config_module.mask_provider_base_url_for_display(base_url)
+    assert base_url not in message
+    assert "api_key=sk" not in message
+    assert "sk-test" not in message
+    assert "sk secret" not in message
+    assert masked in message
 
 
 def test_validate_provider_base_url_allows_explicit_local_host_opt_in() -> None:
@@ -457,7 +486,7 @@ def test_provider_url_normalization_and_probe_helpers_are_stable() -> None:
     provider: dict[str, object] = {
         "provider_class": "openai",
         "model_name": "gpt-5.4-mini",
-        "base_url": "https://api.example.test/v1",
+        "base_url": "https://api.example.test/v1?token=sk-test-secret",
         "api_key_env": "AHADIFF_PROVIDER_API_KEY",
         "api_key": "sk-test-secret",
         "probed_max_context": 1000,
@@ -465,6 +494,7 @@ def test_provider_url_normalization_and_probe_helpers_are_stable() -> None:
     }
     fingerprint = config_module.provider_core_fingerprint(provider)
     provider["api_key"] = "sk-rotated-secret"
+    provider["base_url"] = "https://api.example.test/v1?token=sk-rotated-secret"
     provider["probed_max_context"] = 2000
     provider["probe_timestamp"] = "2026-05-05T00:00:00Z"
     assert config_module.provider_core_fingerprint(provider) == fingerprint

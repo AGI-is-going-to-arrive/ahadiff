@@ -397,29 +397,40 @@ def normalize_provider_base_url(base_url: str, *, provider_class: str) -> str:
     return urlunsplit((scheme, netloc, path, parsed.query, parsed.fragment))
 
 
+def _safe_url_repr(base_url: str) -> str:
+    """Mask URL for error messages to prevent secret leakage."""
+    try:
+        return mask_provider_base_url_for_display(base_url)
+    except Exception:
+        return "<invalid-url>"
+
+
 def validate_provider_base_url(
     base_url: str,
     *,
     allowed_local_hosts: tuple[str, ...] = (),
 ) -> str:
     raw = base_url.strip()
+    safe_base_url = _safe_url_repr(base_url)
     if raw == "" or any(char.isspace() for char in raw):
-        raise ConfigError(f"provider base_url expects valid URL, got {base_url!r}")
+        raise ConfigError(f"provider base_url expects valid URL, got {safe_base_url!r}")
     try:
         parsed = urlsplit(raw)
     except ValueError as exc:
-        raise ConfigError(f"provider base_url expects valid URL, got {base_url!r}") from exc
+        raise ConfigError(f"provider base_url expects valid URL, got {safe_base_url!r}") from exc
     if not parsed.scheme or not parsed.netloc or parsed.hostname is None:
-        raise ConfigError(f"provider base_url expects valid URL, got {base_url!r}")
+        raise ConfigError(f"provider base_url expects valid URL, got {safe_base_url!r}")
     scheme = parsed.scheme.lower()
     if scheme not in {"http", "https"}:
-        raise ConfigError(f"provider base_url expects http or https URL, got {base_url!r}")
+        raise ConfigError(f"provider base_url expects http or https URL, got {safe_base_url!r}")
     if parsed.username is not None or parsed.password is not None or "@" in parsed.netloc:
         raise ConfigError("provider base_url must not include URL userinfo")
     try:
         _port = parsed.port
     except ValueError as exc:
-        raise ConfigError(f"provider base_url expects valid port, got {base_url!r}") from exc
+        raise ConfigError(f"provider base_url expects valid port, got {safe_base_url!r}") from exc
+    if _provider_query_has_inline_secret(parsed.query):
+        raise ConfigError("provider base_url must not include credential query parameters")
 
     host = _normalize_provider_host(parsed.hostname)
     if host in _PROVIDER_METADATA_HOSTS:
@@ -495,13 +506,27 @@ def _mask_provider_query(query: str) -> str:
     return urlencode(masked, doseq=True)
 
 
+def _provider_query_has_inline_secret(query: str) -> bool:
+    if not query:
+        return False
+    return any(
+        _PROVIDER_SENSITIVE_QUERY_KEY_PATTERN.search(key) is not None
+        for key, _value in parse_qsl(query, keep_blank_values=True)
+    )
+
+
 def clear_provider_probe_fields(provider: dict[str, object]) -> None:
     for field_name in PROVIDER_STALE_PROBE_FIELDS:
         provider.pop(field_name, None)
 
 
 def provider_core_fingerprint(provider: Mapping[str, object]) -> str:
-    payload = {field_name: provider.get(field_name, "") for field_name in _PROVIDER_CORE_FIELDS}
+    payload: dict[str, object] = {}
+    for field_name in _PROVIDER_CORE_FIELDS:
+        value = provider.get(field_name, "")
+        if field_name == "base_url" and isinstance(value, str):
+            value = mask_provider_base_url_for_display(value)
+        payload[field_name] = value
     serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 

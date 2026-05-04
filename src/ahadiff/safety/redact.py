@@ -128,6 +128,21 @@ _SECRET_RULES: tuple[_SecretRule, ...] = (
         ),
     ),
     _SecretRule(
+        rule_id="URL_EMBEDDED_SECRET",
+        secret_type="url_embedded_secret",
+        severity="hard_block",
+        pattern=re.compile(
+            r"https?://[^\s]*[?&](?:api[_-]?key|secret|password|token|credential|auth)[=][^\s&]+",
+            re.IGNORECASE,
+        ),
+    ),
+    _SecretRule(
+        rule_id="URL_USERINFO_SECRET",
+        secret_type="url_userinfo_secret",
+        severity="hard_block",
+        pattern=re.compile(r"https?://[^\s:@]+:[^\s@]+@[^\s]+"),
+    ),
+    _SecretRule(
         rule_id="PEM_PRIVATE_KEY",
         secret_type="pem_private_key",
         severity="hard_block",
