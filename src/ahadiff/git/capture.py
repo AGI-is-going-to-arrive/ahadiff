@@ -183,6 +183,7 @@ def capture_patch(
     hard_limit: int | None = None,
     max_patch_bytes: int | None = None,
     symbol_extractor: SymbolExtractorMode | None = None,
+    file_ranking: str | None = None,
     privacy_mode: str = "strict_local",
     content_lang: str = "en",
 ) -> CapturedDiff:
@@ -191,6 +192,9 @@ def capture_patch(
     )
     effective_hard_limit = (
         int(DEFAULT_CONFIG["capture"]["hard_limit"]) if hard_limit is None else hard_limit
+    )
+    effective_file_ranking = (
+        str(DEFAULT_CONFIG["capture"]["file_ranking"]) if file_ranking is None else file_ranking
     )
     effective_max_patch_bytes = _effective_max_patch_bytes(max_patch_bytes)
     _validate_capture_limits(
@@ -261,6 +265,7 @@ def capture_patch(
         protected_patch,
         max_files=effective_max_files,
         hard_limit=effective_hard_limit,
+        file_ranking=effective_file_ranking,
     )
 
     degraded_flags = dict(raw_capture_extra_degraded_flags(raw_capture))
@@ -1930,7 +1935,50 @@ def _filter_ignored_patch_text(text: str, matcher: IgnoreMatcher) -> str:
         for segment in segments
         if segment.path == "__unknown__" or not is_ignored_path(segment.path, matcher)
     ]
-    return "".join(segment.text for segment in kept_segments)
+    return "".join(
+        seg.text if seg.text.endswith("\n") else seg.text + "\n" for seg in kept_segments
+    )
+
+
+def _learning_value_sort_key(item: _PatchSegment) -> tuple[int, int, int, str]:
+    ext = item.path.rsplit(".", 1)[-1].lower() if "." in item.path else ""
+    path_lower = item.path.lower()
+
+    _SOURCE_EXTS = frozenset({
+        "py", "ts", "tsx", "js", "jsx", "rs", "go", "java", "kt",
+        "c", "cpp", "h", "hpp", "cs", "rb", "swift", "scala",
+    })
+    _CONFIG_EXTS = frozenset({
+        "toml", "yaml", "yml", "json", "ini", "cfg", "conf", "env",
+    })
+    _GENERATED_MARKERS = frozenset({
+        "lock", "min.js", "min.css", "bundle.js", "chunk.js",
+    })
+    _DOC_EXTS = frozenset({"md", "rst", "txt", "adoc"})
+
+    is_generated = (
+        ext in _GENERATED_MARKERS
+        or any(marker in path_lower for marker in ("generated", "vendor/", "node_modules/", ".lock"))
+    )
+    is_test = any(marker in path_lower for marker in ("test", "spec", "__tests__", "fixtures/"))
+    is_doc = ext in _DOC_EXTS
+    is_config = ext in _CONFIG_EXTS
+    is_source = ext in _SOURCE_EXTS and not is_test
+
+    if is_generated:
+        tier = 5
+    elif is_doc:
+        tier = 4
+    elif is_test:
+        tier = 3
+    elif is_config:
+        tier = 2
+    elif is_source:
+        tier = 1
+    else:
+        tier = 3
+
+    return (tier, -item.changed_lines, -item.hunk_count, item.path)
 
 
 def _apply_capture_limits(
@@ -1938,6 +1986,7 @@ def _apply_capture_limits(
     *,
     max_files: int,
     hard_limit: int,
+    file_ranking: str = "learning_value",
 ) -> tuple[str, dict[str, Any]]:
     segments = _split_patch_segments(text)
     if not segments:
@@ -1949,10 +1998,15 @@ def _apply_capture_limits(
             "omitted_files": [],
         }
 
-    ranked = sorted(
-        segments,
-        key=lambda item: (-item.changed_lines, -item.hunk_count, item.path),
-    )
+    if file_ranking == "learning_value":
+        ranked = sorted(segments, key=_learning_value_sort_key)
+    elif file_ranking == "path":
+        ranked = sorted(segments, key=lambda item: item.path)
+    else:
+        ranked = sorted(
+            segments,
+            key=lambda item: (-item.changed_lines, -item.hunk_count, item.path),
+        )
     selected = list(ranked)
     omitted: list[_PatchSegment] = []
     file_count_exceeded = False
@@ -1983,7 +2037,9 @@ def _apply_capture_limits(
     binary_only = all(item.binary_only for item in segments)
     selected_files = [item.path for item in selected]
     omitted_files = sorted({item.path for item in omitted if item.path not in selected_files})
-    persisted = "".join(item.text for item in selected)
+    persisted = "".join(
+        seg.text if seg.text.endswith("\n") else seg.text + "\n" for seg in selected
+    )
     return persisted, {
         "binary_only": binary_only,
         "diff_clipped": diff_clipped,

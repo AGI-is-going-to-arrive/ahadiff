@@ -308,6 +308,21 @@ export const misconceptionCardSchema = z.object({
 
 /* ─────────────── 10. Config / Doctor / Install ─────────────── */
 
+export const captureConfigSchema = z.object({
+  max_files: z.number().int().positive(),
+  hard_limit: z.number().int().positive(),
+  max_patch_bytes: z.number().int().positive(),
+  file_ranking: z.string(),
+});
+
+export const llmConfigSchema = z.object({
+  input_token_budget: z.number().int().positive(),
+  output_token_budget: z.number().int().positive(),
+  request_timeout_seconds: z.number().int().positive(),
+  max_concurrent: z.number().int().positive(),
+  retry_attempts: z.number().int().nonnegative(),
+});
+
 export const configResponseSchema = z.object({
   lang: z.string().nullable(),
   privacy_mode: z.string().nullable(),
@@ -315,6 +330,8 @@ export const configResponseSchema = z.object({
   judge_model: z.string().nullable(),
   serve_port: z.number().int().nullable(),
   key_status: z.record(z.string(), z.enum(['configured', 'missing'])).default({}),
+  capture: captureConfigSchema,
+  llm: llmConfigSchema,
 });
 
 export const configUpdateResponseSchema = z.object({

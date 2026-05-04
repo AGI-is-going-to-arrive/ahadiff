@@ -17,6 +17,21 @@ export interface ConfigField {
   source: string;
 }
 
+export interface CaptureConfig {
+  max_files: number;
+  hard_limit: number;
+  max_patch_bytes: number;
+  file_ranking: string;
+}
+
+export interface LlmConfig {
+  input_token_budget: number;
+  output_token_budget: number;
+  request_timeout_seconds: number;
+  max_concurrent: number;
+  retry_attempts: number;
+}
+
 export interface ConfigResponse {
   lang: string | null;
   privacy_mode: string | null;
@@ -24,6 +39,8 @@ export interface ConfigResponse {
   judge_model: string | null;
   serve_port: number | null;
   key_status: Record<string, 'configured' | 'missing'>;
+  capture: CaptureConfig;
+  llm: LlmConfig;
 }
 
 export interface ConfigUpdateResponse {

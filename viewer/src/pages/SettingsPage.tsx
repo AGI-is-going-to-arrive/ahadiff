@@ -4,9 +4,10 @@ import Skeleton, { SkeletonGroup } from '../components/Skeleton';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import {
   getConfig, getDoctor, getProviders, getUsage, getAudit, getInstallTargets,
+  putConfig,
 } from '../api/config';
 import type {
-  AuditEntry, ConfigResponse, DoctorCheck, ProviderSummary,
+  AuditEntry, CaptureConfig, ConfigResponse, DoctorCheck, LlmConfig, ProviderSummary,
   UsageResponse, AuditResponse, InstallTarget,
 } from '../api/config';
 import { useTranslation, type MessageKey, type TranslateFn } from '../i18n/useTranslation';
@@ -15,22 +16,22 @@ import '../components/Settings.css';
 
 const GraphifyCard = lazy(() => import('../components/GraphifyCard'));
 
-type TabId = 'account' | 'keys' | 'models' | 'privacy' | 'audit' | 'language' | 'appearance' | 'integrations';
+type TabId = 'account' | 'provider' | 'capture' | 'privacy' | 'audit' | 'language' | 'appearance' | 'integrations';
 
 const TAB_IDS: TabId[] = [
-  'account', 'keys', 'models', 'privacy',
+  'account', 'provider', 'capture', 'privacy',
   'audit', 'language', 'appearance', 'integrations',
 ];
 
 const TAB_EN: Record<TabId, string> = {
-  account: 'account', keys: 'keys', models: 'models', privacy: 'privacy',
+  account: 'account', provider: 'provider', capture: 'capture', privacy: 'privacy',
   audit: 'audit', language: 'language', appearance: 'appearance', integrations: 'integrations',
 };
 
 const TAB_LABEL_KEY: Record<TabId, MessageKey> = {
   account: 'Settings_page.tab_account',
-  keys: 'Settings_page.tab_keys',
-  models: 'Settings_page.tab_models',
+  provider: 'Settings_page.tab_provider',
+  capture: 'Settings_page.tab_capture',
   privacy: 'Settings_page.tab_privacy',
   audit: 'Settings_page.tab_audit',
   language: 'Settings_page.tab_language',
@@ -185,22 +186,26 @@ export default function SettingsPage() {
             onRetry={retry}
           />
         );
-      case 'keys':
+      case 'provider':
         return (
-          <KeysTab
+          <ProviderTab
+            config={data.config}
+            providers={data.providers}
+            configFailed={Boolean(data.failed.config)}
+            providersFailed={Boolean(data.failed.providers)}
+            t={t}
+            onRetry={retry}
+            onSaved={() => void fetchAll()}
+          />
+        );
+      case 'capture':
+        return (
+          <CaptureTab
             config={data.config}
             failed={Boolean(data.failed.config)}
             t={t}
             onRetry={retry}
-          />
-        );
-      case 'models':
-        return (
-          <ModelsTab
-            providers={data.providers}
-            failed={Boolean(data.failed.providers)}
-            t={t}
-            onRetry={retry}
+            onSaved={() => void fetchAll()}
           />
         );
       case 'privacy':
@@ -210,6 +215,7 @@ export default function SettingsPage() {
             failed={Boolean(data.failed.config)}
             t={t}
             onRetry={retry}
+            onSaved={() => void fetchAll()}
           />
         );
       case 'audit':
@@ -395,112 +401,275 @@ function AccountTab({
 }
 
 /* ------------------------------------------------------------------ */
-/*  Tab: Keys                                                          */
+/*  Tab: Provider (merged Keys + Models + model config + LLM settings) */
 /* ------------------------------------------------------------------ */
 
-function KeysTab({
-  config,
-  failed,
-  t,
-  onRetry,
-}: {
-  config: ConfigResponse | null;
-  failed: boolean;
-  t: TFn;
-  onRetry: () => void;
-}) {
-  if (failed || !config) {
-    return (
-      <UnavailableCard
-        title={t('Settings_page.section_keys')}
-        message={t('Settings_page.config_unavailable')}
-        t={t}
-        onRetry={onRetry}
-      />
-    );
-  }
-  const entries = Object.entries(config.key_status);
-  return (
-    <div className="settings-card">
-      <div className="settings-card__header"><h2>{t('Settings_page.section_keys')}</h2></div>
-      <div className="settings-card__body">
-        {entries.length === 0 && <div className="u-muted-sm">{t('Settings_page.provider_empty')}</div>}
-        {entries.map(([provider, status]) => (
-          <div className="settings-field" key={provider}>
-            <div className="settings-field__label"><h3>{t('Settings_page.provider_api_key', { provider })}</h3></div>
-            <span className={`settings-field__badge settings-field__badge--${status === 'configured' ? 'configured' : 'missing'}`}>
-              {status === 'configured' ? t('Settings_page.key_configured') : t('Settings_page.key_missing')}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+interface ProviderForm {
+  generate_model: string;
+  judge_model: string;
+  llm: LlmConfig;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Tab: Models (Provider Grid)                                        */
-/* ------------------------------------------------------------------ */
-
-function ModelsTab({
+function ProviderTab({
+  config,
   providers,
-  failed,
+  configFailed,
+  providersFailed,
   t,
   onRetry,
+  onSaved,
 }: {
+  config: ConfigResponse | null;
   providers: ProviderSummary[];
-  failed: boolean;
+  configFailed: boolean;
+  providersFailed: boolean;
   t: TFn;
   onRetry: () => void;
+  onSaved: () => void;
 }) {
-  if (failed) {
-    return (
-      <UnavailableCard
-        title={t('Settings_page.section_providers')}
-        message={t('Settings_page.provider_unavailable')}
-        t={t}
-        onRetry={onRetry}
-      />
-    );
-  }
+  const [form, setForm] = useState<ProviderForm | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveOk, setSaveOk] = useState(false);
+
+  useEffect(() => {
+    if (config) {
+      setForm({
+        generate_model: config.generate_model ?? '',
+        judge_model: config.judge_model ?? '',
+        llm: { ...config.llm },
+      });
+    }
+  }, [config]);
+
+  const dirty = config && form && (
+    form.generate_model !== (config.generate_model ?? '')
+    || form.judge_model !== (config.judge_model ?? '')
+    || form.llm.input_token_budget !== config.llm.input_token_budget
+    || form.llm.output_token_budget !== config.llm.output_token_budget
+    || form.llm.request_timeout_seconds !== config.llm.request_timeout_seconds
+    || form.llm.max_concurrent !== config.llm.max_concurrent
+    || form.llm.retry_attempts !== config.llm.retry_attempts
+  );
+
+  const handleSave = async () => {
+    if (!form) return;
+    setSaving(true);
+    setSaveError(null);
+    setSaveOk(false);
+    try {
+      await putConfig({
+        generate_model: form.generate_model,
+        judge_model: form.judge_model,
+        llm: form.llm,
+      });
+      setSaveOk(true);
+      onSaved();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const setField = <K extends keyof ProviderForm>(key: K, value: ProviderForm[K]) => {
+    setForm(prev => prev ? { ...prev, [key]: value } : prev);
+    setSaveOk(false);
+  };
+
+  const setLlmField = <K extends keyof LlmConfig>(key: K, value: LlmConfig[K]) => {
+    setForm(prev => prev ? { ...prev, llm: { ...prev.llm, [key]: value } } : prev);
+    setSaveOk(false);
+  };
+
   return (
-    <div className="settings-card">
-      <div className="settings-card__header"><h2>{t('Settings_page.section_providers')}</h2></div>
-      <div className="settings-card__body">
-        {providers.length === 0 && <div className="u-muted-sm">{t('Settings_page.provider_empty')}</div>}
-        <div className="provider-grid">
-          {providers.map(p => (
-            <div className="provider-cell" key={p.alias}>
-              <div className="provider-cell__eyebrow">{p.role ?? p.provider_kind}</div>
-              <div className="provider-cell__name">
-                {p.alias}
-                <span
-                  className={`settings-field__badge settings-field__badge--${p.key_status === 'configured' ? 'configured' : p.key_status === 'unknown' ? 'unknown' : 'missing'}`}
-                >
-                  {p.key_status === 'configured' ? t('Settings_page.key_configured')
-                    : p.key_status === 'unknown' ? t('Settings_page.key_unknown')
-                    : t('Settings_page.key_missing')}
-                </span>
-              </div>
-              <dl className="provider-cell__meta">
-                <dt>{t('Settings_page.provider_model')}</dt>
-                <dd className="provider-cell__hl">{p.model_name}</dd>
-                <dt>{t('Settings_page.provider_role')}</dt>
-                <dd>{p.role ?? '—'}</dd>
-                {p.probed_max_context != null && (
-                  <>
-                    <dt>{t('Settings_page.provider_context')}</dt>
-                    <dd>{(p.probed_max_context / 1000).toFixed(0)}K</dd>
-                  </>
-                )}
-                <dt>{t('Settings_page.provider_probed_label')}</dt>
-                <dd>{p.probed ? t('Settings_page.provider_probed') : t('Settings_page.provider_not_probed')}</dd>
-              </dl>
+    <>
+      {/* Provider grid */}
+      {providersFailed ? (
+        <UnavailableCard
+          title={t('Settings_page.section_providers')}
+          message={t('Settings_page.provider_unavailable')}
+          t={t}
+          onRetry={onRetry}
+        />
+      ) : (
+        <div className="settings-card">
+          <div className="settings-card__header"><h2>{t('Settings_page.section_providers')}</h2></div>
+          <div className="settings-card__body">
+            {providers.length === 0 && <div className="u-muted-sm">{t('Settings_page.provider_empty')}</div>}
+            <div className="provider-grid">
+              {providers.map(p => (
+                <div className="provider-cell" key={p.alias}>
+                  <div className="provider-cell__eyebrow">{p.role ?? p.provider_kind}</div>
+                  <div className="provider-cell__name">
+                    {p.alias}
+                    <span
+                      className={`settings-field__badge settings-field__badge--${p.key_status === 'configured' ? 'configured' : p.key_status === 'unknown' ? 'unknown' : 'missing'}`}
+                    >
+                      {p.key_status === 'configured' ? t('Settings_page.key_configured')
+                        : p.key_status === 'unknown' ? t('Settings_page.key_unknown')
+                        : t('Settings_page.key_missing')}
+                    </span>
+                  </div>
+                  <dl className="provider-cell__meta">
+                    <dt>{t('Settings_page.provider_model')}</dt>
+                    <dd className="provider-cell__hl">{p.model_name}</dd>
+                    <dt>{t('Settings_page.provider_role')}</dt>
+                    <dd>{p.role ?? '—'}</dd>
+                    {p.probed_max_context != null && (
+                      <>
+                        <dt>{t('Settings_page.provider_context')}</dt>
+                        <dd>{(p.probed_max_context / 1000).toFixed(0)}K</dd>
+                      </>
+                    )}
+                    <dt>{t('Settings_page.provider_probed_label')}</dt>
+                    <dd>{p.probed ? t('Settings_page.provider_probed') : t('Settings_page.provider_not_probed')}</dd>
+                  </dl>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+
+      {/* Model selection */}
+      {configFailed || !config || !form ? (
+        <UnavailableCard
+          title={t('Settings_page.section_model_selection')}
+          message={t('Settings_page.config_unavailable')}
+          t={t}
+          onRetry={onRetry}
+        />
+      ) : (
+        <>
+          <div className="settings-card">
+            <div className="settings-card__header"><h2>{t('Settings_page.section_model_selection')}</h2></div>
+            <div className="settings-card__body">
+              <div className="settings-field">
+                <div className="settings-field__label">
+                  <h3>{t('Settings_page.generate_model')}</h3>
+                  <p>{t('Settings_page.generate_model_desc')}</p>
+                </div>
+                <input
+                  type="text"
+                  className="settings-input"
+                  value={form.generate_model}
+                  onChange={e => setField('generate_model', e.target.value)}
+                  style={{ maxWidth: 280 }}
+                />
+              </div>
+              <div className="settings-field">
+                <div className="settings-field__label">
+                  <h3>{t('Settings_page.judge_model')}</h3>
+                  <p>{t('Settings_page.judge_model_desc')}</p>
+                </div>
+                <input
+                  type="text"
+                  className="settings-input"
+                  value={form.judge_model}
+                  onChange={e => setField('judge_model', e.target.value)}
+                  style={{ maxWidth: 280 }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="settings-card">
+            <div className="settings-card__header"><h2>{t('Settings_page.section_llm')}</h2></div>
+            <div className="settings-card__body">
+              <div className="settings-field">
+                <div className="settings-field__label">
+                  <h3>{t('Settings_page.llm_input_token_budget')}</h3>
+                  <p>{t('Settings_page.llm_input_token_budget_desc')}</p>
+                </div>
+                <input
+                  type="number"
+                  className="settings-input"
+                  min={1000}
+                  max={10000000}
+                  step={10000}
+                  value={form.llm.input_token_budget}
+                  onChange={e => setLlmField('input_token_budget', Math.max(1000, Math.min(10000000, Number(e.target.value) || 1000)))}
+                />
+              </div>
+              <div className="settings-field">
+                <div className="settings-field__label">
+                  <h3>{t('Settings_page.llm_output_token_budget')}</h3>
+                  <p>{t('Settings_page.llm_output_token_budget_desc')}</p>
+                </div>
+                <input
+                  type="number"
+                  className="settings-input"
+                  min={1000}
+                  max={10000000}
+                  step={10000}
+                  value={form.llm.output_token_budget}
+                  onChange={e => setLlmField('output_token_budget', Math.max(1000, Math.min(10000000, Number(e.target.value) || 1000)))}
+                />
+              </div>
+              <div className="settings-field">
+                <div className="settings-field__label">
+                  <h3>{t('Settings_page.llm_timeout')}</h3>
+                  <p>{t('Settings_page.llm_timeout_desc')}</p>
+                </div>
+                <input
+                  type="number"
+                  className="settings-input"
+                  min={5}
+                  max={600}
+                  value={form.llm.request_timeout_seconds}
+                  onChange={e => setLlmField('request_timeout_seconds', Math.max(5, Math.min(600, Number(e.target.value) || 5)))}
+                />
+              </div>
+              <div className="settings-field">
+                <div className="settings-field__label">
+                  <h3>{t('Settings_page.llm_max_concurrent')}</h3>
+                  <p>{t('Settings_page.llm_max_concurrent_desc')}</p>
+                </div>
+                <input
+                  type="number"
+                  className="settings-input"
+                  min={1}
+                  max={20}
+                  value={form.llm.max_concurrent}
+                  onChange={e => setLlmField('max_concurrent', Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
+                />
+              </div>
+              <div className="settings-field">
+                <div className="settings-field__label">
+                  <h3>{t('Settings_page.llm_retry_attempts')}</h3>
+                  <p>{t('Settings_page.llm_retry_attempts_desc')}</p>
+                </div>
+                <input
+                  type="number"
+                  className="settings-input"
+                  min={0}
+                  max={10}
+                  value={form.llm.retry_attempts}
+                  onChange={e => setLlmField('retry_attempts', Math.max(0, Math.min(10, Number(e.target.value) || 0)))}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="settings-card">
+            <div className="settings-card__body" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <button
+                type="button"
+                className="retry-btn"
+                disabled={!dirty || saving}
+                onClick={() => void handleSave()}
+              >
+                {saving ? t('Settings_page.capture_saving') : t('Settings_page.capture_save')}
+              </button>
+              {saveOk && <span className="settings-field__badge settings-field__badge--configured">{t('Settings_page.capture_saved')}</span>}
+              {saveError && <span className="settings-field__badge settings-field__badge--missing">{saveError}</span>}
+              {dirty && <span className="u-muted-sm">{t('Settings_page.capture_unsaved')}</span>}
+            </div>
+          </div>
+        </>
+      )}
+    </>
   );
 }
 
@@ -508,43 +677,108 @@ function ModelsTab({
 /*  Tab: Privacy                                                       */
 /* ------------------------------------------------------------------ */
 
+const PRIVACY_MODES = ['strict_local', 'redacted_remote', 'explicit_remote'] as const;
+
+const PRIVACY_MODE_LABEL_KEY: Record<string, MessageKey> = {
+  strict_local: 'Settings_page.privacy_mode_strict_local',
+  redacted_remote: 'Settings_page.privacy_mode_redacted_remote',
+  explicit_remote: 'Settings_page.privacy_mode_explicit_remote',
+};
+
+interface PrivacyForm {
+  privacy_mode: string;
+  serve_port: number;
+}
+
 function PrivacyTab({
   config,
   failed,
   t,
   onRetry,
+  onSaved,
 }: {
   config: ConfigResponse | null;
   failed: boolean;
   t: TFn;
   onRetry: () => void;
+  onSaved: () => void;
 }) {
-  if (failed || !config) {
+  const [form, setForm] = useState<PrivacyForm | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveOk, setSaveOk] = useState(false);
+
+  useEffect(() => {
+    if (config) {
+      setForm({
+        privacy_mode: config.privacy_mode ?? 'strict_local',
+        serve_port: config.serve_port ?? 8765,
+      });
+    }
+  }, [config]);
+
+  if (failed || !config || !form) {
     return (
       <UnavailableCard
-        title={t('Settings_page.section_config')}
+        title={t('Settings_page.section_privacy_controls')}
         message={t('Settings_page.config_unavailable')}
         t={t}
         onRetry={onRetry}
       />
     );
   }
-  const privacyMode = config.privacy_mode ?? 'strict_local';
+
+  const dirty = (
+    form.privacy_mode !== (config.privacy_mode ?? 'strict_local')
+    || form.serve_port !== (config.serve_port ?? 8765)
+  );
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError(null);
+    setSaveOk(false);
+    try {
+      await putConfig({
+        privacy_mode: form.privacy_mode,
+        serve_port: form.serve_port,
+      });
+      setSaveOk(true);
+      onSaved();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const setField = <K extends keyof PrivacyForm>(key: K, value: PrivacyForm[K]) => {
+    setForm(prev => prev ? { ...prev, [key]: value } : prev);
+    setSaveOk(false);
+  };
+
+  const privacyMode = form.privacy_mode;
+
   return (
     <>
-      <div className="mode-summary">
-        <div className="mode-grid">
-          <ModeCell eyebrow={t('Settings_page.mode_generate')} value={config.generate_model ?? '—'} />
-          <ModeCell eyebrow={t('Settings_page.mode_judge')} value={config.judge_model ?? '—'} />
-          <ModeCell eyebrow={t('Settings_page.privacy_mode')} value={privacyMode} />
-          <ModeCell eyebrow={t('Settings_page.serve_port')} value={config.serve_port ? String(config.serve_port) : '8384'} />
-        </div>
-        <div className="mode-summary__footer">{t('Settings_page.mode_offline_note')}</div>
-      </div>
-
       <div className="settings-card">
         <div className="settings-card__header"><h2>{t('Settings_page.section_privacy_controls')}</h2></div>
         <div className="settings-card__body">
+          <div className="settings-field">
+            <div className="settings-field__label">
+              <h3>{t('Settings_page.privacy_mode')}</h3>
+              <p>{t('Settings_page.privacy_mode_desc')}</p>
+            </div>
+            <select
+              className="settings-select"
+              value={form.privacy_mode}
+              onChange={e => setField('privacy_mode', e.target.value)}
+            >
+              {PRIVACY_MODES.map(mode => (
+                <option key={mode} value={mode}>{t(PRIVACY_MODE_LABEL_KEY[mode])}</option>
+              ))}
+            </select>
+          </div>
+
           <PrivacyControl
             title={t('Settings_page.privacy_local_only')}
             description={t('Settings_page.privacy_local_only_desc')}
@@ -563,23 +797,42 @@ function PrivacyTab({
             checked
             t={t}
           />
-          <PrivacyControl
-            title={t('Settings_page.privacy_raw_remote')}
-            description={t('Settings_page.privacy_raw_remote_desc')}
-            checked={privacyMode === 'explicit_remote'}
-            t={t}
-          />
         </div>
       </div>
 
       <div className="settings-card">
-        <div className="settings-card__header"><h2>{t('Settings_page.section_config')}</h2></div>
+        <div className="settings-card__header"><h2>{t('Settings_page.section_server')}</h2></div>
         <div className="settings-card__body">
-          <FieldRow label={t('Settings.language')} value={config.lang ?? 'en'} />
-          <FieldRow label={t('Settings_page.privacy_mode')} value={privacyMode} />
-          <FieldRow label={t('Settings_page.generate_model')} value={config.generate_model ?? '—'} />
-          <FieldRow label={t('Settings_page.judge_model')} value={config.judge_model ?? '—'} />
-          <FieldRow label={t('Settings_page.serve_port')} value={config.serve_port ? String(config.serve_port) : '8384'} />
+          <div className="settings-field">
+            <div className="settings-field__label">
+              <h3>{t('Settings_page.serve_port')}</h3>
+              <p>{t('Settings_page.serve_port_desc')}</p>
+            </div>
+            <input
+              type="number"
+              className="settings-input"
+              min={1024}
+              max={65535}
+              value={form.serve_port}
+              onChange={e => setField('serve_port', Math.max(1024, Math.min(65535, Number(e.target.value) || 1024)))}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="settings-card">
+        <div className="settings-card__body" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <button
+            type="button"
+            className="retry-btn"
+            disabled={!dirty || saving}
+            onClick={() => void handleSave()}
+          >
+            {saving ? t('Settings_page.capture_saving') : t('Settings_page.capture_save')}
+          </button>
+          {saveOk && <span className="settings-field__badge settings-field__badge--configured">{t('Settings_page.capture_saved')}</span>}
+          {saveError && <span className="settings-field__badge settings-field__badge--missing">{saveError}</span>}
+          {dirty && <span className="u-muted-sm">{t('Settings_page.capture_unsaved')}</span>}
         </div>
       </div>
     </>
@@ -692,6 +945,176 @@ function LanguageTab({ t }: { t: TFn }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Tab: Capture                                                       */
+/* ------------------------------------------------------------------ */
+
+const FILE_RANKING_OPTIONS = ['learning_value', 'changed_lines', 'path'] as const;
+
+const FILE_RANKING_LABEL_KEY: Record<string, MessageKey> = {
+  learning_value: 'Settings_page.capture_ranking_learning_value',
+  changed_lines: 'Settings_page.capture_ranking_changed_lines',
+  path: 'Settings_page.capture_ranking_path',
+};
+
+function CaptureTab({
+  config,
+  failed,
+  t,
+  onRetry,
+  onSaved,
+}: {
+  config: ConfigResponse | null;
+  failed: boolean;
+  t: TFn;
+  onRetry: () => void;
+  onSaved: () => void;
+}) {
+  const capture = config?.capture;
+  const [form, setForm] = useState<CaptureConfig | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveOk, setSaveOk] = useState(false);
+
+  useEffect(() => {
+    if (capture) setForm({ ...capture });
+  }, [capture]);
+
+  if (failed || !config || !form) {
+    return (
+      <UnavailableCard
+        title={t('Settings_page.section_capture')}
+        message={t('Settings_page.config_unavailable')}
+        t={t}
+        onRetry={onRetry}
+      />
+    );
+  }
+
+  const dirty = capture && (
+    form.max_files !== capture.max_files
+    || form.hard_limit !== capture.hard_limit
+    || form.max_patch_bytes !== capture.max_patch_bytes
+    || form.file_ranking !== capture.file_ranking
+  );
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError(null);
+    setSaveOk(false);
+    try {
+      await putConfig({ capture: form });
+      setSaveOk(true);
+      onSaved();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const setField = <K extends keyof CaptureConfig>(key: K, value: CaptureConfig[K]) => {
+    setForm(prev => prev ? { ...prev, [key]: value } : prev);
+    setSaveOk(false);
+  };
+
+  return (
+    <>
+      <div className="settings-card">
+        <div className="settings-card__header">
+          <h2>{t('Settings_page.section_capture')}</h2>
+        </div>
+        <div className="settings-card__body">
+          <p className="u-muted-sm" style={{ marginBottom: '1rem' }}>
+            {t('Settings_page.capture_description')}
+          </p>
+
+          <div className="settings-field">
+            <div className="settings-field__label">
+              <h3>{t('Settings_page.capture_max_files')}</h3>
+              <p>{t('Settings_page.capture_max_files_desc')}</p>
+            </div>
+            <input
+              type="number"
+              className="settings-input"
+              min={1}
+              max={500}
+              value={form.max_files}
+              onChange={e => setField('max_files', Math.max(1, Math.min(500, Number(e.target.value) || 1)))}
+            />
+          </div>
+
+          <div className="settings-field">
+            <div className="settings-field__label">
+              <h3>{t('Settings_page.capture_hard_limit')}</h3>
+              <p>{t('Settings_page.capture_hard_limit_desc')}</p>
+            </div>
+            <input
+              type="number"
+              className="settings-input"
+              min={100}
+              max={100000}
+              value={form.hard_limit}
+              onChange={e => setField('hard_limit', Math.max(100, Math.min(100000, Number(e.target.value) || 100)))}
+            />
+          </div>
+
+          <div className="settings-field">
+            <div className="settings-field__label">
+              <h3>{t('Settings_page.capture_max_patch_bytes')}</h3>
+              <p>{t('Settings_page.capture_max_patch_bytes_desc')}</p>
+            </div>
+            <input
+              type="number"
+              className="settings-input"
+              min={10000}
+              max={100000000}
+              step={100000}
+              value={form.max_patch_bytes}
+              onChange={e => setField('max_patch_bytes', Math.max(10000, Math.min(100000000, Number(e.target.value) || 10000)))}
+            />
+            <span className="u-muted-sm" style={{ marginLeft: '0.5rem' }}>
+              ({(form.max_patch_bytes / 1_000_000).toFixed(1)} MB)
+            </span>
+          </div>
+
+          <div className="settings-field">
+            <div className="settings-field__label">
+              <h3>{t('Settings_page.capture_file_ranking')}</h3>
+              <p>{t('Settings_page.capture_file_ranking_desc')}</p>
+            </div>
+            <select
+              className="settings-select"
+              value={form.file_ranking}
+              onChange={e => setField('file_ranking', e.target.value)}
+            >
+              {FILE_RANKING_OPTIONS.map(opt => (
+                <option key={opt} value={opt}>{t(FILE_RANKING_LABEL_KEY[opt])}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div className="settings-card">
+        <div className="settings-card__body" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <button
+            type="button"
+            className="retry-btn"
+            disabled={!dirty || saving}
+            onClick={() => void handleSave()}
+          >
+            {saving ? t('Settings_page.capture_saving') : t('Settings_page.capture_save')}
+          </button>
+          {saveOk && <span className="settings-field__badge settings-field__badge--configured">{t('Settings_page.capture_saved')}</span>}
+          {saveError && <span className="settings-field__badge settings-field__badge--missing">{saveError}</span>}
+          {dirty && <span className="u-muted-sm">{t('Settings_page.capture_unsaved')}</span>}
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -859,15 +1282,6 @@ function ModeCell({ eyebrow, value, sub }: { eyebrow: string; value: string; sub
         {value}
         {sub && <span className="mode-cell__sub"> ({sub})</span>}
       </div>
-    </div>
-  );
-}
-
-function FieldRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="settings-field">
-      <div className="settings-field__label"><h3>{label}</h3></div>
-      <div className="settings-field__value">{value}</div>
     </div>
   );
 }

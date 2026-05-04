@@ -200,6 +200,19 @@ def test_get_config_handles_load_failure_gracefully(
 
     assert response.status_code == 200
     payload = response.json()
+    _LLM_DEFAULTS = {
+        "input_token_budget": 200_000,
+        "output_token_budget": 50_000,
+        "request_timeout_seconds": 30,
+        "max_concurrent": 3,
+        "retry_attempts": 3,
+    }
+    _CAPTURE_DEFAULTS = {
+        "max_files": 30,
+        "hard_limit": 3000,
+        "max_patch_bytes": 5_000_000,
+        "file_ranking": "learning_value",
+    }
     assert payload == {
         "lang": None,
         "privacy_mode": None,
@@ -207,6 +220,8 @@ def test_get_config_handles_load_failure_gracefully(
         "judge_model": None,
         "serve_port": None,
         "key_status": {},
+        "capture": _CAPTURE_DEFAULTS,
+        "llm": _LLM_DEFAULTS,
     }
 
 
@@ -227,6 +242,19 @@ def test_get_config_returns_nullable_shape_when_no_git_repo(tmp_path: Path) -> N
         "judge_model": None,
         "serve_port": None,
         "key_status": {},
+        "capture": {
+            "max_files": 30,
+            "hard_limit": 3000,
+            "max_patch_bytes": 5_000_000,
+            "file_ranking": "learning_value",
+        },
+        "llm": {
+            "input_token_budget": 200_000,
+            "output_token_budget": 50_000,
+            "request_timeout_seconds": 30,
+            "max_concurrent": 3,
+            "retry_attempts": 3,
+        },
     }
 
 

@@ -553,6 +553,31 @@
   }
 }
 
+/* ---- Capture form controls ---- */
+.settings-input,
+.settings-select {
+  font-family: var(--font-mono, monospace);
+  font-size: 14px;
+  padding: 6px 10px;
+  border: 1px solid var(--hair, #ddd);
+  border-radius: 6px;
+  background: var(--bg-card, #fff);
+  color: var(--fg, #1a1a1a);
+  min-width: 120px;
+  max-width: 200px;
+}
+
+.settings-input:focus,
+.settings-select:focus {
+  outline: 2px solid var(--accent, #6366f1);
+  outline-offset: 1px;
+}
+
+.settings-select {
+  max-width: 280px;
+  cursor: pointer;
+}
+
 /* ---- Print ---- */
 @media print {
   .stabs { display: none; }

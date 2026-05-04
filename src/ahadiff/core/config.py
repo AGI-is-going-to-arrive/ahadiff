@@ -22,6 +22,7 @@ NestedConfig = dict[str, "Scalar | NestedConfig"]
 _PRIVACY_MODES = {"strict_local", "redacted_remote", "explicit_remote"}
 _LOCALE_PREFERENCE_KEYS = {"lang", "llm.prompt_lang", "llm.output_lang"}
 _CAPTURE_SYMBOL_EXTRACTORS = {"auto", "builtin", "tree_sitter"}
+_CAPTURE_FILE_RANKINGS = {"learning_value", "changed_lines", "path"}
 _POSITIVE_INT_KEYS = {"capture.max_files", "capture.hard_limit", "capture.max_patch_bytes"}
 _SAFE_PROVIDER_API_KEY_ENVS = frozenset(
     {
@@ -37,10 +38,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "lang": "auto",
     "privacy_mode": "strict_local",
     "capture": {
-        "max_files": 50,
-        "hard_limit": 5000,
-        "max_patch_bytes": 10_000_000,
+        "max_files": 30,
+        "hard_limit": 3000,
+        "max_patch_bytes": 5_000_000,
         "symbol_extractor": "auto",
+        "file_ranking": "learning_value",
     },
     "llm": {
         "generate_model": "gpt-5.4-mini",
@@ -238,6 +240,13 @@ def _coerce_value(
             raise ConfigError(f"{key} expects str, got {type(value).__name__}")
         if value not in _CAPTURE_SYMBOL_EXTRACTORS:
             allowed = ", ".join(sorted(_CAPTURE_SYMBOL_EXTRACTORS))
+            raise ConfigError(f"{key} must be one of {allowed}, got {value!r}")
+        return value
+    if key == "capture.file_ranking":
+        if not isinstance(value, str):
+            raise ConfigError(f"{key} expects str, got {type(value).__name__}")
+        if value not in _CAPTURE_FILE_RANKINGS:
+            allowed = ", ".join(sorted(_CAPTURE_FILE_RANKINGS))
             raise ConfigError(f"{key} must be one of {allowed}, got {value!r}")
         return value
     if isinstance(expected, bool):

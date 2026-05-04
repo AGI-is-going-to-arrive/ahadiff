@@ -166,6 +166,8 @@ def protect_untrusted_text(
         protected_lines.append(f"[INJECTION_BLOCKED:{rule.rule_id}]")
 
     protected_text = "\n".join(protected_lines)
+    if text.endswith("\n") and not protected_text.endswith("\n"):
+        protected_text += "\n"
     return InjectionReport(
         source_name=source_name,
         source_kind=source_kind,

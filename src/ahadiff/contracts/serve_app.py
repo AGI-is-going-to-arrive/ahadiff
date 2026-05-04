@@ -31,6 +31,25 @@ class LocaleResponse(BaseModel):
     locale: Literal["en", "zh-CN"]
 
 
+class CaptureConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    max_files: int = 30
+    hard_limit: int = 3000
+    max_patch_bytes: int = 5_000_000
+    file_ranking: str = "learning_value"
+
+
+class LlmConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    input_token_budget: int = 200_000
+    output_token_budget: int = 50_000
+    request_timeout_seconds: int = 30
+    max_concurrent: int = 3
+    retry_attempts: int = 3
+
+
 class ConfigResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -40,6 +59,8 @@ class ConfigResponse(BaseModel):
     judge_model: str | None = None
     serve_port: int | None = None
     key_status: dict[str, Literal["configured", "missing"]] = Field(default_factory=dict)
+    capture: CaptureConfig = Field(default_factory=CaptureConfig)
+    llm: LlmConfig = Field(default_factory=LlmConfig)
 
 
 class ConfigUpdateResponse(BaseModel):
@@ -215,7 +236,9 @@ class HelpfulnessRequest(LearningSignalRequest):
 
 __all__ = [
     "AuthTokenResponse",
+    "CaptureConfig",
     "ConfigResponse",
+    "LlmConfig",
     "ConfigUpdateResponse",
     "DueReviewCardResponse",
     "GraphifyMode",

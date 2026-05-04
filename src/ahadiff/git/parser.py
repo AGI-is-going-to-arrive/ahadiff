@@ -274,6 +274,17 @@ def _build_hunk(
             raw_line.startswith("index ")
             or raw_line.startswith("--- ")
             or raw_line.startswith("+++ ")
+            or raw_line.startswith("old mode ")
+            or raw_line.startswith("new mode ")
+            or raw_line.startswith("new file mode ")
+            or raw_line.startswith("deleted file mode ")
+            or raw_line.startswith("similarity index ")
+            or raw_line.startswith("dissimilarity index ")
+            or raw_line.startswith("rename from ")
+            or raw_line.startswith("rename to ")
+            or raw_line.startswith("copy from ")
+            or raw_line.startswith("copy to ")
+            or raw_line.startswith("diff --git ")
         ):
             continue
         prefix = raw_line[:1]

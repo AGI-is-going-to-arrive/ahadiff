@@ -899,7 +899,7 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(sourceBadge).toBeVisible();
     await expect(page.getByRole('heading', { name: /New Concepts|新概念/i })).toBeVisible();
     await expect(page.getByText('idempotent retry')).toBeVisible();
-    await expect(page.getByText(/New|新接触/i)).toBeVisible();
+    await expect(page.locator('.review__weak-meta--new')).toBeVisible();
 
     // Verify the answer is hidden before flipping
     const back = page.locator('.flashcard__back');
@@ -995,7 +995,7 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(rows).not.toHaveCount(0);
     await expect(rows.first().locator('.rubric-grid__label')).toBeVisible();
     await expect(rows.first().locator('.rubric-grid__fraction')).toBeVisible();
-    expect(scoreRequests).toContain('/api/run/run-h1/score');
+    expect(scoreRequests).toContain('/api/run/run-001/score');
   });
 
   /* ---------------------------------------------------------------- */

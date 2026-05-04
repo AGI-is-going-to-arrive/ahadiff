@@ -445,7 +445,10 @@ class ManagedProvider:
             if response.is_redirect:
                 raise ProviderError("provider redirects are not allowed")
             if response.status_code in {401, 403}:
-                raise SafetyError("provider authentication failed")
+                raise ProviderError(
+                    f"provider authentication failed (HTTP {response.status_code}). "
+                    "Check your api_key and base_url in config."
+                )
             if response.status_code == 429:
                 retry_after = parse_rate_limit_headers(response.headers).retry_after_seconds
                 raise _RetryableProviderError("provider rate limit exceeded", retry_after)

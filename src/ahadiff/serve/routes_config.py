@@ -29,6 +29,19 @@ def _empty_config_snapshot() -> dict[str, Any]:
         "judge_model": None,
         "serve_port": None,
         "key_status": {},
+        "capture": {
+            "max_files": 30,
+            "hard_limit": 3000,
+            "max_patch_bytes": 5_000_000,
+            "file_ranking": "learning_value",
+        },
+        "llm": {
+            "input_token_budget": 200_000,
+            "output_token_budget": 50_000,
+            "request_timeout_seconds": 30,
+            "max_concurrent": 3,
+            "retry_attempts": 3,
+        },
     }
 
 
@@ -71,12 +84,26 @@ def _safe_config_snapshot(state: ServeState) -> dict[str, Any]:
         snapshot_values = _object_mapping(cast("object", values))
         llm_values = _object_mapping(snapshot_values.get("llm"))
         serve_values = _object_mapping(snapshot_values.get("serve"))
+        capture_values = _object_mapping(snapshot_values.get("capture"))
         result: dict[str, Any] = {
             "lang": snapshot_values.get("lang"),
             "privacy_mode": snapshot_values.get("privacy_mode"),
             "generate_model": llm_values.get("generate_model"),
             "judge_model": llm_values.get("judge_model"),
             "serve_port": serve_values.get("port"),
+            "capture": {
+                "max_files": capture_values.get("max_files", 30),
+                "hard_limit": capture_values.get("hard_limit", 3000),
+                "max_patch_bytes": capture_values.get("max_patch_bytes", 5_000_000),
+                "file_ranking": capture_values.get("file_ranking", "learning_value"),
+            },
+            "llm": {
+                "input_token_budget": llm_values.get("input_token_budget", 200_000),
+                "output_token_budget": llm_values.get("output_token_budget", 50_000),
+                "request_timeout_seconds": llm_values.get("request_timeout_seconds", 30),
+                "max_concurrent": llm_values.get("max_concurrent", 3),
+                "retry_attempts": llm_values.get("retry_attempts", 3),
+            },
         }
         api_key_env = llm_values.get("api_key_env")
         providers = snapshot_values.get("providers")
@@ -91,6 +118,19 @@ def _safe_config_snapshot(state: ServeState) -> dict[str, Any]:
 
         serve = getattr(cfg, "serve", None)
         result["serve_port"] = getattr(serve, "port", None) if serve else None
+        result["capture"] = {
+            "max_files": 30,
+            "hard_limit": 3000,
+            "max_patch_bytes": 5_000_000,
+            "file_ranking": "learning_value",
+        }
+        result["llm"] = {
+            "input_token_budget": 200_000,
+            "output_token_budget": 50_000,
+            "request_timeout_seconds": 30,
+            "max_concurrent": 3,
+            "retry_attempts": 3,
+        }
         api_key_env = getattr(llm, "api_key_env", None) if llm else None
         providers = getattr(cfg, "providers", None)
 
@@ -332,6 +372,65 @@ async def get_doctor(request: Request) -> JSONResponse:
 
 
 _ALLOWED_CONFIG_LANG = frozenset({"en", "zh-CN"})
+_ALLOWED_PRIVACY_MODES = frozenset({"strict_local", "redacted_remote", "explicit_remote"})
+_ALLOWED_FILE_RANKINGS = frozenset({"learning_value", "changed_lines", "path"})
+_CAPTURE_INT_FIELDS: dict[str, tuple[int, int]] = {
+    "max_files": (1, 500),
+    "hard_limit": (100, 100_000),
+    "max_patch_bytes": (10_000, 100_000_000),
+}
+_LLM_INT_FIELDS: dict[str, tuple[int, int]] = {
+    "input_token_budget": (1_000, 10_000_000),
+    "output_token_budget": (1_000, 10_000_000),
+    "request_timeout_seconds": (5, 600),
+    "max_concurrent": (1, 20),
+    "retry_attempts": (0, 10),
+}
+
+
+def _validate_llm_update(llm: object) -> dict[str, Any] | str:
+    if not isinstance(llm, dict):
+        return "llm must be a JSON object"
+    llm_dict = cast("dict[str, Any]", llm)
+    allowed = set(_LLM_INT_FIELDS)
+    unknown_llm: set[str] = set(llm_dict.keys()) - allowed
+    if unknown_llm:
+        return f"unknown llm keys: {sorted(unknown_llm)}"
+    validated: dict[str, Any] = {}
+    for field_name, (lo, hi) in _LLM_INT_FIELDS.items():
+        if field_name in llm_dict:
+            val: object = llm_dict[field_name]
+            if not isinstance(val, int) or isinstance(val, bool):
+                return f"llm.{field_name} must be an integer"
+            if val < lo or val > hi:
+                return f"llm.{field_name} must be between {lo} and {hi}"
+            validated[field_name] = val
+    return validated
+
+
+def _validate_capture_update(capture: object) -> dict[str, Any] | str:
+    if not isinstance(capture, dict):
+        return "capture must be a JSON object"
+    capture_dict = cast("dict[str, Any]", capture)
+    allowed = {"max_files", "hard_limit", "max_patch_bytes", "file_ranking"}
+    unknown_cap: set[str] = set(capture_dict.keys()) - allowed
+    if unknown_cap:
+        return f"unknown capture keys: {sorted(unknown_cap)}"
+    validated: dict[str, Any] = {}
+    for field_name, (lo, hi) in _CAPTURE_INT_FIELDS.items():
+        if field_name in capture_dict:
+            val: object = capture_dict[field_name]
+            if not isinstance(val, int) or isinstance(val, bool):
+                return f"capture.{field_name} must be an integer"
+            if val < lo or val > hi:
+                return f"capture.{field_name} must be between {lo} and {hi}"
+            validated[field_name] = val
+    if "file_ranking" in capture_dict:
+        ranking: object = capture_dict["file_ranking"]
+        if not isinstance(ranking, str) or ranking not in _ALLOWED_FILE_RANKINGS:
+            return f"capture.file_ranking must be one of {sorted(_ALLOWED_FILE_RANKINGS)}"
+        validated["file_ranking"] = ranking
+    return validated
 
 
 async def put_config(request: Request) -> JSONResponse:
@@ -343,13 +442,19 @@ async def put_config(request: Request) -> JSONResponse:
         return JSONResponse({"error": "expected JSON object", "status": 400}, status_code=400)
 
     body = cast("dict[str, Any]", payload)
-    allowed_keys: set[str] = {"lang"}
+    allowed_keys: set[str] = {
+        "lang", "capture", "privacy_mode",
+        "generate_model", "judge_model", "serve_port", "llm",
+    }
     unknown: set[str] = set(body.keys()) - allowed_keys
     if unknown:
         return JSONResponse(
             {"error": f"unknown config keys: {sorted(unknown)}", "status": 400},
             status_code=400,
         )
+
+    state = serve_state(request)
+    persist_updates: dict[str, Any] = {}
 
     if "lang" in body:
         lang: str = str(body["lang"])
@@ -358,9 +463,83 @@ async def put_config(request: Request) -> JSONResponse:
                 {"error": f"lang must be one of {sorted(_ALLOWED_CONFIG_LANG)}", "status": 400},
                 status_code=400,
             )
-        state = serve_state(request)
         assert state.write_lock is not None
         async with state.write_lock:
             request.app.state.ahadiff = state.with_locale(lang)  # type: ignore[arg-type]
+        persist_updates["lang"] = lang
+
+    if "privacy_mode" in body:
+        pm: object = body["privacy_mode"]
+        if not isinstance(pm, str) or pm not in _ALLOWED_PRIVACY_MODES:
+            return JSONResponse(
+                {"error": f"privacy_mode must be one of {sorted(_ALLOWED_PRIVACY_MODES)}", "status": 400},
+                status_code=400,
+            )
+        persist_updates["privacy_mode"] = pm
+
+    if "generate_model" in body:
+        gm: object = body["generate_model"]
+        if not isinstance(gm, str) or not gm.strip():
+            return JSONResponse(
+                {"error": "generate_model must be a non-empty string", "status": 400},
+                status_code=400,
+            )
+        persist_updates.setdefault("llm", {})["generate_model"] = gm.strip()
+
+    if "judge_model" in body:
+        jm: object = body["judge_model"]
+        if not isinstance(jm, str) or not jm.strip():
+            return JSONResponse(
+                {"error": "judge_model must be a non-empty string", "status": 400},
+                status_code=400,
+            )
+        persist_updates.setdefault("llm", {})["judge_model"] = jm.strip()
+
+    if "serve_port" in body:
+        sp: object = body["serve_port"]
+        if not isinstance(sp, int) or isinstance(sp, bool):
+            return JSONResponse(
+                {"error": "serve_port must be an integer", "status": 400},
+                status_code=400,
+            )
+        if sp < 1024 or sp > 65535:
+            return JSONResponse(
+                {"error": "serve_port must be between 1024 and 65535", "status": 400},
+                status_code=400,
+            )
+        persist_updates.setdefault("serve", {})["port"] = sp
+
+    if "llm" in body:
+        llm_result = _validate_llm_update(body["llm"])
+        if isinstance(llm_result, str):
+            return JSONResponse({"error": llm_result, "status": 400}, status_code=400)
+        if llm_result:
+            persist_updates.setdefault("llm", {}).update(llm_result)
+
+    if "capture" in body:
+        result = _validate_capture_update(body["capture"])
+        if isinstance(result, str):
+            return JSONResponse({"error": result, "status": 400}, status_code=400)
+        if result:
+            persist_updates["capture"] = result
+
+    if persist_updates:
+        from ahadiff.core.config import read_config_data, write_config_data
+
+        def _persist_config(s: ServeState) -> None:
+            config_path = s.state_dir.parent / ".ahadiff" / "config.toml"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            data = read_config_data(config_path) if config_path.exists() else {}
+            for key, value in persist_updates.items():
+                if isinstance(value, dict):
+                    section = data.setdefault(key, {})
+                    section.update(value)
+                else:
+                    data[key] = value
+            write_config_data(config_path, data)
+
+        assert state.write_lock is not None
+        async with state.write_lock:
+            await to_thread.run_sync(_persist_config, state)
 
     return JSONResponse(ConfigUpdateResponse(updated=True, scope="session").model_dump(mode="json"))
