@@ -21,7 +21,7 @@ from .routes_config import get_config, get_doctor, put_config
 from .routes_export import get_export_results
 from .routes_graph import get_concept_graph, get_graph_status
 from .routes_install import get_install_targets
-from .routes_learn import post_learn
+from .routes_learn import post_learn, post_learn_estimate
 from .routes_locale import get_locale, put_locale
 from .routes_providers import (
     create_provider,
@@ -150,6 +150,7 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
             Route("/api/graph/status", get_graph_status, methods=["GET"]),
             Route("/api/graph/concepts", get_concept_graph, methods=["GET"]),
             Route("/api/learn", post_learn, methods=["POST"]),
+            Route("/api/learn/estimate", post_learn_estimate, methods=["POST"]),
             Route("/api/tasks", list_tasks, methods=["GET"]),
             Route("/api/tasks/{task_id}", get_task, methods=["GET"]),
             Route("/api/tasks/{task_id}/cancel", cancel_task, methods=["POST"]),

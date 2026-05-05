@@ -127,7 +127,7 @@ export function renderMarkdownProse(content: string, classPrefix = 'lesson'): Re
       const slug = uniqueSlug(label, headingSlugs);
       const Tag = (`h${Math.min(headingMatch[1].length + 1, 4)}`) as 'h2' | 'h3' | 'h4';
       elements.push(
-        <Tag key={`heading-${slug}`} id={slug} className={`${classPrefix}__section-heading`}>
+        <Tag key={`heading-${slug}`} id={slug} tabIndex={-1} className={`${classPrefix}__section-heading`}>
           {label}
         </Tag>,
       );

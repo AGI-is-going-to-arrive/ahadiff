@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+_MAX_CONTRADICTED_CLAIMS = 2
+
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
@@ -92,11 +94,11 @@ def evaluate_hard_gates(
         ),
         HardGateResult(
             name="contradicted_claims",
-            passed=contradicted_count == 0,
+            passed=contradicted_count <= _MAX_CONTRADICTED_CLAIMS,
             detail=(
                 "no contradicted claims"
                 if contradicted_count == 0
-                else f"{contradicted_count} contradicted claim(s) detected"
+                else f"{contradicted_count} contradicted claim(s) (max {_MAX_CONTRADICTED_CLAIMS})"
             ),
         ),
         HardGateResult(

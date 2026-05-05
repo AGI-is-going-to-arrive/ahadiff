@@ -97,7 +97,19 @@ export default function AppShell({ children }: AppShellProps) {
 
   return (
     <div className={`app-shell${isSidebarOpen ? ' app-shell--sidebar-open' : ''}`}>
-      <a className="skip-to-content" href="#main-content">{t('A11y.skip_to_content')}</a>
+      <a
+        className="skip-to-content"
+        href="#main-content"
+        onClick={(ev) => {
+          ev.preventDefault();
+          const el = document.getElementById('main-content');
+          if (el) {
+            const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            el.focus({ preventScroll: true });
+            el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+          }
+        }}
+      >{t('A11y.skip_to_content')}</a>
       <Topbar
         isMenuOpen={isSidebarOpen}
         menuButtonRef={menuButtonRef}

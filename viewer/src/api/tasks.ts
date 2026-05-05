@@ -8,12 +8,25 @@ import {
   taskSubmitResponseSchema,
 } from './schemas';
 import type {
+  LearnEstimateResponse,
   LearnSubmitPayload,
   TaskCancelResponse,
   TaskInfoResponse,
   TaskListResponse,
   TaskSubmitResponse,
 } from './types';
+
+export async function estimateLearn(
+  payload: LearnSubmitPayload = {},
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<LearnEstimateResponse> {
+  const raw = await apiFetch<LearnEstimateResponse>('/api/learn/estimate', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    ...opts,
+  });
+  return raw;
+}
 
 export async function startLearnTask(
   payload: LearnSubmitPayload = {},

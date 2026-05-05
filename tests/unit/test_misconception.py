@@ -66,22 +66,18 @@ class TestParseMisconceptionCards:
         assert cards[0].concept == "A"
         assert cards[1].concept == "B"
 
-    def test_parse_invalid_json_raises(self) -> None:
-        with pytest.raises(InputError, match="not valid JSON"):
-            parse_misconception_cards("{not json")
+    def test_parse_invalid_json_returns_empty(self) -> None:
+        assert parse_misconception_cards("{not json") == []
 
-    def test_parse_non_array_raises(self) -> None:
-        with pytest.raises(InputError, match="must be a JSON array"):
-            parse_misconception_cards('{"key": "value"}')
+    def test_parse_non_array_returns_empty(self) -> None:
+        assert parse_misconception_cards('{"key": "value"}') == []
 
-    def test_parse_non_object_element_raises(self) -> None:
-        with pytest.raises(InputError, match="must be a JSON object"):
-            parse_misconception_cards('["not an object"]')
+    def test_parse_non_object_element_skipped(self) -> None:
+        assert parse_misconception_cards('["not an object"]') == []
 
-    def test_parse_missing_required_key_raises(self) -> None:
+    def test_parse_missing_required_key_skipped(self) -> None:
         incomplete = {"concept": "x"}
-        with pytest.raises(InputError, match="missing required key"):
-            parse_misconception_cards(json.dumps([incomplete]))
+        assert parse_misconception_cards(json.dumps([incomplete])) == []
 
     def test_auto_generated_card_id(self) -> None:
         card_dict = _make_raw_card()
@@ -90,15 +86,13 @@ class TestParseMisconceptionCards:
         cards = parse_misconception_cards(raw)
         assert cards[0].card_id.startswith("misc_")
 
-    def test_non_string_card_id_raises(self) -> None:
+    def test_non_string_card_id_skipped(self) -> None:
         raw = _make_valid_json([_make_raw_card(card_id=["bad"])])
-        with pytest.raises(InputError, match="card_id must be a string"):
-            parse_misconception_cards(raw)
+        assert parse_misconception_cards(raw) == []
 
-    def test_non_string_run_id_raises(self) -> None:
+    def test_non_string_run_id_skipped(self) -> None:
         raw = _make_valid_json([_make_raw_card(run_id={"bad": True})])
-        with pytest.raises(InputError, match="run_id must be a string"):
-            parse_misconception_cards(raw)
+        assert parse_misconception_cards(raw) == []
 
 
 class TestSeverityValidation:
@@ -108,10 +102,9 @@ class TestSeverityValidation:
         cards = parse_misconception_cards(raw)
         assert cards[0].severity == severity
 
-    def test_invalid_severity_raises(self) -> None:
+    def test_invalid_severity_skipped(self) -> None:
         raw = _make_valid_json([_make_raw_card(severity="critical")])
-        with pytest.raises(InputError, match="severity must be low/medium/high"):
-            parse_misconception_cards(raw)
+        assert parse_misconception_cards(raw) == []
 
 
 class TestSafetyTags:
@@ -125,15 +118,13 @@ class TestSafetyTags:
         cards = parse_misconception_cards(raw)
         assert cards[0].safety_tags == ("security", "injection", "overflow")
 
-    def test_non_list_safety_tags_raises(self) -> None:
+    def test_non_list_safety_tags_skipped(self) -> None:
         raw = _make_valid_json([_make_raw_card(safety_tags="not_a_list")])
-        with pytest.raises(InputError, match="safety_tags must be a list"):
-            parse_misconception_cards(raw)
+        assert parse_misconception_cards(raw) == []
 
-    def test_non_string_safety_tag_element_raises(self) -> None:
+    def test_non_string_safety_tag_element_skipped(self) -> None:
         raw = _make_valid_json([_make_raw_card(safety_tags=["security", 42])])
-        with pytest.raises(InputError, match=r"safety_tags\[1\] must be a string"):
-            parse_misconception_cards(raw)
+        assert parse_misconception_cards(raw) == []
 
     def test_default_empty_safety_tags(self) -> None:
         card_dict = _make_raw_card()
@@ -145,22 +136,19 @@ class TestSafetyTags:
 
 class TestNonEmptyStringValidation:
     @pytest.mark.parametrize("field", ["concept", "misconception", "correction", "evidence_ref"])
-    def test_empty_string_raises(self, field: str) -> None:
+    def test_empty_string_skipped(self, field: str) -> None:
         raw = _make_valid_json([_make_raw_card(**{field: ""})])
-        with pytest.raises(InputError, match=f"{field} must be a non-empty string"):
-            parse_misconception_cards(raw)
+        assert parse_misconception_cards(raw) == []
 
     @pytest.mark.parametrize("field", ["concept", "misconception", "correction", "evidence_ref"])
-    def test_whitespace_only_raises(self, field: str) -> None:
+    def test_whitespace_only_skipped(self, field: str) -> None:
         raw = _make_valid_json([_make_raw_card(**{field: "   "})])
-        with pytest.raises(InputError, match=f"{field} must be a non-empty string"):
-            parse_misconception_cards(raw)
+        assert parse_misconception_cards(raw) == []
 
     @pytest.mark.parametrize("field", ["concept", "misconception", "correction", "evidence_ref"])
-    def test_non_string_raises(self, field: str) -> None:
+    def test_non_string_skipped(self, field: str) -> None:
         raw = _make_valid_json([_make_raw_card(**{field: 42})])
-        with pytest.raises(InputError, match=f"{field} must be a non-empty string"):
-            parse_misconception_cards(raw)
+        assert parse_misconception_cards(raw) == []
 
 
 class TestWriteAndLoadRoundTrip:

@@ -16,6 +16,7 @@ Verdict: TypeAlias = event_log_contract.Verdict
 ReviewAnswer = Literal["easy", "good", "hard", "wrong"]
 ReviewQueueState = Literal["archived", "suspended"]
 GraphifyMode = Literal["full", "learning_only", "empty"]
+LearnEstimateRiskLevel = Literal["ok", "warn", "danger"]
 
 
 class AuthTokenResponse(BaseModel):
@@ -79,6 +80,19 @@ class ConfigUpdateResponse(BaseModel):
 
     updated: bool
     scope: Literal["session"]
+
+
+class LearnEstimateResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    patch_bytes: int
+    file_count: int
+    total_lines: int
+    estimated_tokens: int
+    provider_context_window: int
+    provider_max_output: int | None
+    risk_level: LearnEstimateRiskLevel
+    warnings: list[str]
 
 
 class RunSummary(BaseModel):
@@ -254,6 +268,8 @@ __all__ = [
     "DueReviewCardResponse",
     "GraphifyMode",
     "HelpfulnessRequest",
+    "LearnEstimateResponse",
+    "LearnEstimateRiskLevel",
     "LearningSignalRequest",
     "LocaleResponse",
     "MarkWrongRequest",

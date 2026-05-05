@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { startLearnTask, getTask, cancelTask, listTasks } from '../api/tasks';
+import { startLearnTask, estimateLearn, getTask, cancelTask, listTasks } from '../api/tasks';
 import { ApiError } from '../api/client';
 import { useRunsStore } from './runs-store';
 import { useLearnStore } from './learn-store';
@@ -9,6 +9,7 @@ const graphInvalidateMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../api/tasks', () => ({
   startLearnTask: vi.fn(),
+  estimateLearn: vi.fn(),
   getTask: vi.fn(),
   cancelTask: vi.fn(),
   listTasks: vi.fn(),
@@ -51,9 +52,11 @@ describe('learn store', () => {
       phase: 'idle',
       taskId: null,
       task: null,
+      estimate: null,
       error: null,
       errorCode: null,
       lastPayload: null,
+      pendingPayload: null,
       retryable: true,
     });
     useRunsStore.setState({ lastLoadedAt: Date.now() });

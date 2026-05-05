@@ -34,13 +34,26 @@ function formatElapsed(s: number): string {
   return m > 0 ? `${m}:${String(sec).padStart(2, '0')}` : `${sec}s`;
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatTokens(n: number): string {
+  if (n < 1000) return String(n);
+  return `${(n / 1000).toFixed(1)}K`;
+}
+
 export default function LearnTaskBanner() {
   const { t } = useTranslation();
   const phase = useLearnStore((s) => s.phase);
   const task = useLearnStore((s) => s.task);
+  const estimate = useLearnStore((s) => s.estimate);
   const error = useLearnStore((s) => s.error);
   const errorCode = useLearnStore((s) => s.errorCode);
   const cancelLearn = useLearnStore((s) => s.cancelLearn);
+  const confirmLearn = useLearnStore((s) => s.confirmLearn);
   const dismiss = useLearnStore((s) => s.dismiss);
   const retryLearn = useLearnStore((s) => s.retryLearn);
   const retryable = useLearnStore((s) => s.retryable);
@@ -78,6 +91,47 @@ export default function LearnTaskBanner() {
       role="status"
       aria-live="polite"
     >
+      {/* ---- Estimating ---- */}
+      {phase === 'estimating' && (
+        <div className="learn-banner__body">
+          <span className="learn-banner__spinner" aria-hidden="true" />
+          <span>{t('Learn.estimating')}</span>
+        </div>
+      )}
+
+      {/* ---- Confirming (preflight warning) ---- */}
+      {phase === 'confirming' && estimate && (
+        <div className="learn-banner__body learn-banner__confirm">
+          <div className="learn-banner__confirm-header">
+            <span className={`learn-banner__risk learn-banner__risk--${estimate.risk_level}`}>
+              {estimate.risk_level === 'danger' ? '⚠' : '△'}
+            </span>
+            <strong>{t('Learn.preflight_title')}</strong>
+          </div>
+          <div className="learn-banner__confirm-stats">
+            <span>{t('Learn.preflight_files', { count: estimate.file_count })}</span>
+            <span>{t('Learn.preflight_size', { size: formatBytes(estimate.patch_bytes) })}</span>
+            <span>{t('Learn.preflight_tokens', {
+              estimated: formatTokens(estimate.estimated_tokens),
+              limit: formatTokens(estimate.provider_context_window),
+            })}</span>
+          </div>
+          {estimate.warnings.length > 0 && (
+            <ul className="learn-banner__confirm-warnings">
+              {estimate.warnings.map((w, i) => <li key={i}>{w}</li>)}
+            </ul>
+          )}
+          <div className="learn-banner__confirm-actions">
+            <button type="button" className="learn-banner__btn learn-banner__btn--primary" onClick={() => void confirmLearn()}>
+              {t('Learn.preflight_continue')}
+            </button>
+            <button type="button" className="learn-banner__btn" onClick={dismiss}>
+              {t('Learn.preflight_cancel')}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ---- Submitting ---- */}
       {phase === 'submitting' && (
         <div className="learn-banner__body">

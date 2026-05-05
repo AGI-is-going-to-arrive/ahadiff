@@ -404,6 +404,9 @@ async def update_provider(request: Request) -> JSONResponse:
         return _validation_error(exc)
 
     update_payload = body.model_dump(exclude_none=True)
+    masked_key = update_payload.get("api_key_env")
+    if isinstance(masked_key, str) and "****" in masked_key:
+        del update_payload["api_key_env"]
     if not update_payload:
         return _error("at_least_one_field_required", status=422)
 
@@ -417,7 +420,12 @@ async def update_provider(request: Request) -> JSONResponse:
                 return False, None
             existing_typed = cast("dict[str, Any]", existing)
             updated_provider: dict[str, Any] = dict(existing_typed)
-            updated_provider.update(update_payload)
+            safe_update = {
+                k: v
+                for k, v in update_payload.items()
+                if not (k == "api_key_env" and isinstance(v, str) and "****" in v)
+            }
+            updated_provider.update(safe_update)
             # Recompute base_url normalization if either base_url or
             # provider_class changed (so suffix stripping stays aligned).
             if "base_url" in update_payload or "provider_class" in update_payload:

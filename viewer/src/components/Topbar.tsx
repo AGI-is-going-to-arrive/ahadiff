@@ -44,8 +44,8 @@ export default function Topbar({
   const { t } = useTranslation();
   const currentKey = useCurrentPageKey();
   const learnPhase = useLearnStore((s) => s.phase);
-  const submitLearn = useLearnStore((s) => s.submitLearn);
-  const isBusy = learnPhase === 'submitting' || learnPhase === 'running' || learnPhase === 'cancelling';
+  const requestLearn = useLearnStore((s) => s.requestLearn);
+  const isBusy = learnPhase === 'submitting' || learnPhase === 'running' || learnPhase === 'cancelling' || learnPhase === 'estimating' || learnPhase === 'confirming';
   const newRunLabel = isBusy ? t('Topbar.new_run_running') : t('Topbar.new_run');
   const newRunAriaLabel = isBusy ? t('Topbar.new_run_running') : t('Topbar.new_run_aria');
 
@@ -115,7 +115,7 @@ export default function Topbar({
           className={`topbar__btn topbar__btn--primary${isBusy ? ' topbar__btn--busy' : ''}`}
           disabled={isBusy}
           aria-label={newRunAriaLabel}
-          onClick={() => void submitLearn()}
+          onClick={() => void requestLearn()}
         >
           {newRunLabel}
         </button>

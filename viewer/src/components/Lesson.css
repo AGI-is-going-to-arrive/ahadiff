@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Lesson Page Layout
+   Lesson Page Layout — V6 editorial alignment
    ========================================================================== */
 
 .lesson-page {
@@ -11,45 +11,65 @@
 
 .lesson-page__header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--sp-4);
   flex-wrap: wrap;
+  padding-bottom: var(--sp-5);
+  margin-bottom: var(--sp-4);
+  border-bottom: 1px solid var(--hair);
+}
+
+.lesson-page__header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  flex: 1;
+}
+
+.lesson-page__eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-top: 2px solid var(--folio-line);
+  padding-top: var(--sp-2);
+  margin-bottom: var(--sp-2);
 }
 
 .lesson-page__title {
   font-family: var(--font-serif);
-  font-weight: 500;
-  font-size: var(--fs-2xl);
-  letter-spacing: -0.01em;
-  color: var(--ink-strong);
+  font-weight: 420;
+  font-size: clamp(1.6rem, 2vw + 0.5rem, 2.4rem);
+  letter-spacing: -0.02em;
+  color: var(--ink-blackletter);
   margin: 0;
+  line-height: 1.18;
 }
 
-.lesson-page__body {
+.lesson-page__sub {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: var(--sp-1);
+}
+
+.lesson-page__header-right {
   display: flex;
-  flex-direction: column;
-  gap: var(--sp-6);
-}
-
-/* Desktop: 2-column */
-@media (min-width: 1024px) {
-  .lesson-page__body {
-    display: grid;
-    grid-template-columns: 1fr 320px;
-    gap: var(--sp-8);
-    align-items: start;
-  }
+  align-items: center;
+  gap: var(--sp-3);
+  flex-shrink: 0;
 }
 
 /* ==========================================================================
-   3-Column Layout (Phase 2E)
+   3-Column Layout — V6: 220 / 1fr / 320 with 28px gap
    ========================================================================== */
 
 .lesson__layout {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr) 260px;
-  gap: var(--sp-8);
+  grid-template-columns: 220px minmax(0, 1fr) 320px;
+  gap: 28px;
   align-items: start;
 }
 
@@ -60,18 +80,22 @@
   min-width: 0;
 }
 
+/* --- Prose: V6 serif 17px/1.8, no card wrapper --- */
+
 .lesson__prose {
-  font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.74;
+  font-family: var(--font-serif);
+  font-size: 17px;
+  line-height: 1.8;
   color: var(--ink);
   min-width: 0;
   max-width: 100%;
   overflow-wrap: anywhere;
-  background: var(--elevated);
-  border: 1px solid var(--hair);
-  border-radius: 10px;
-  padding: 28px var(--sp-8);
+  hanging-punctuation: first last;
+}
+
+:lang(zh-Hans) .lesson__prose,
+:lang(zh-CN) .lesson__prose {
+  line-height: 1.75;
 }
 
 .lesson__section-heading {
@@ -83,16 +107,27 @@
   margin: var(--sp-8) 0 var(--sp-3);
 }
 
+.lesson__section-heading:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 .lesson__section-heading:first-child {
   margin-top: 0;
 }
 
+/* V6: h2 = 28px with bottom separator */
 .lesson__prose h2.lesson__section-heading {
-  font-size: 23px;
+  font-size: 28px;
+  letter-spacing: -0.02em;
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: var(--sp-2);
+  margin-bottom: var(--sp-3);
 }
 
 .lesson__prose h3.lesson__section-heading {
-  font-size: 19px;
+  font-size: 20px;
 }
 
 .lesson__prose h4.lesson__section-heading {
@@ -104,7 +139,7 @@
 }
 
 .lesson__paragraph {
-  margin: 0 0 var(--sp-4);
+  margin: 0 0 14px;
 }
 
 .lesson__paragraph:last-child {
@@ -113,7 +148,7 @@
 
 .lesson__list {
   margin: 0 0 18px;
-  padding-left: var(--sp-6);
+  padding-left: 22px;
 }
 
 .lesson__list li {
@@ -127,11 +162,10 @@
 
 .lesson__prose code {
   font-family: var(--font-mono);
-  font-size: 0.92em;
+  font-size: 14px;
   background: var(--subtle);
-  border: 1px solid var(--hair);
-  border-radius: 6px;
-  padding: 1px 5px;
+  border-radius: var(--r-sm);
+  padding: 1px 6px;
 }
 
 .lesson__code-block {
@@ -154,18 +188,29 @@
   color: var(--ink);
 }
 
-/* --- TOC (left rail) --- */
+/* --- TOC (left rail) — V6 archival index with tick decorations --- */
 
 .lesson__toc,
 .lesson__rail {
   position: sticky;
-  top: 80px;
+  top: 72px;
   align-self: start;
-  max-height: calc(100vh - 96px);
+  max-height: calc(100vh - 92px);
   overflow-y: auto;
 }
 
-.lesson__toc-title,
+.lesson__toc-title {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+  border-bottom: 1px solid var(--folio-line);
+  padding-bottom: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+
 .lesson__rail-title {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -188,24 +233,54 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0;
 }
 
 .lesson__toc-link {
   display: block;
-  padding: var(--sp-1) var(--sp-2);
-  border-radius: 6px;
-  font-size: 13px;
-  line-height: 1.45;
+  position: relative;
+  padding: 4px 0 4px 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
   color: var(--ink);
   text-decoration: none;
-  transition: background var(--dur-fast) var(--ease-out-quart),
-              color var(--dur-fast) var(--ease-out-quart);
+  transition: color var(--dur-fast) var(--ease-out-quart);
+}
+
+/* V6: tick decoration before each TOC link */
+.lesson__toc-link::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 1px;
+  background: var(--hair-strong);
+  transition: width var(--dur-fast) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart);
 }
 
 .lesson__toc-link:hover {
-  background: var(--accent-softer);
   color: var(--accent-ink);
+}
+
+.lesson__toc-link:hover::before {
+  width: 12px;
+  background: var(--accent);
+}
+
+.lesson__toc-link--active {
+  color: var(--accent-ink);
+  font-weight: 500;
+  border-left: 2px solid var(--accent);
+  padding-left: 8px;
+}
+
+.lesson__toc-link--active::before {
+  display: none;
 }
 
 .lesson__toc-link:focus-visible {
@@ -242,10 +317,12 @@
 .lesson__rail-card-title {
   font-family: var(--font-mono);
   font-size: 11px;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted);
   margin: 0 0 10px;
+  display: flex;
+  justify-content: space-between;
 }
 
 .lesson__claim-total {
@@ -303,6 +380,12 @@
   font-family: var(--font-mono);
   color: var(--ink-strong);
 }
+
+/* V6: per-verdict status row colors */
+.lesson__status-row--verified dt { color: var(--add-fg); }
+.lesson__status-row--weak dt { color: var(--warning); }
+.lesson__status-row--contradicted dt { color: var(--danger); }
+.lesson__status-row--rejected dt { color: var(--muted); text-decoration: line-through; }
 
 .lesson__source-row code,
 .lesson__selected-location {
@@ -375,23 +458,28 @@
 }
 
 /* ==========================================================================
-   Scaffolding Tabs
+   Scaffolding Tabs — V6: pill group in subtle background
    ========================================================================== */
 
 .scaffolding-tabs {
   display: flex;
-  gap: 6px;
+  gap: 4px;
+  background: var(--subtle);
+  border-radius: 6px;
+  padding: 3px;
+  border: 1px solid var(--hair);
 }
 
 .scaffolding-tab {
-  padding: 6px 14px;
-  border-radius: var(--r-md);
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border-radius: 4px;
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
-  background: var(--subtle);
+  background: transparent;
   border: none;
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease-out-quart),
@@ -399,8 +487,7 @@
 }
 
 .scaffolding-tab:hover {
-  background: var(--accent-softer);
-  color: var(--accent-ink);
+  color: var(--ink);
 }
 
 .scaffolding-tab:active {
@@ -408,8 +495,9 @@
 }
 
 .scaffolding-tab--active {
-  background: var(--accent-soft);
-  color: var(--accent-ink);
+  background: var(--elevated);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .scaffolding-tab:focus-visible {
@@ -418,100 +506,7 @@
 }
 
 /* ==========================================================================
-   Right Sidebar: Evidence + Claims
-   ========================================================================== */
-
-.lesson-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-5);
-}
-
-/* ==========================================================================
-   Evidence Panel
-   ========================================================================== */
-
-.evidence-panel {
-  background: var(--elevated);
-  border: 1px solid var(--hair);
-  border-radius: 10px;
-  padding: 18px var(--sp-5);
-}
-
-.evidence-panel__title {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin: 0 0 14px;
-}
-
-.evidence-panel__header {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  margin-bottom: 10px;
-  min-width: 0;
-}
-
-.evidence-panel__claim-id {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--muted);
-  letter-spacing: 0.1em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-  flex: 1;
-}
-
-.evidence-panel__statement {
-  font-size: 14px;
-  line-height: 1.55;
-  color: var(--ink);
-  margin: 0 0 10px;
-}
-
-.evidence-panel__location {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--muted);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.evidence-panel__location code {
-  background: var(--subtle);
-  padding: 2px 6px;
-  border-radius: 6px;
-}
-
-.evidence-panel__evidence {
-  margin: var(--sp-3) 0 0;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--ink);
-  background: var(--subtle);
-  border-radius: 6px;
-  padding: var(--sp-3) 14px;
-  white-space: pre-wrap;
-  word-break: break-word;
-  overflow-x: auto;
-}
-
-.evidence-panel__empty {
-  font-size: 13px;
-  color: var(--muted);
-  margin: 0;
-  font-style: italic;
-}
-
-/* ==========================================================================
-   Claim Badge
+   Claim Badge — V6 stamp styling
    ========================================================================== */
 
 .claim-badge {
@@ -519,7 +514,7 @@
   align-items: baseline;
   gap: var(--sp-1);
   padding: 2px var(--sp-2);
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.06em;
@@ -528,34 +523,53 @@
   line-height: 1.4;
 }
 
-/* Glyph paired with the localized verdict text per WCAG 1.4.1, so the verdict
-   stays distinguishable in monochrome / forced-colors / printed output. */
 .claim-badge__glyph {
   font-family: var(--font-mono);
   font-weight: 700;
   font-size: 11px;
 }
 
+/* V6: verified badge uses Archive Indigo "passport stamp" */
 .claim-badge--verified {
-  background: var(--add-bg);
-  color: var(--add-fg);
+  background: var(--stamp-verified-tint);
+  color: var(--stamp-verified-ink);
+  border: 2px solid var(--stamp-verified);
+  border-radius: var(--r-sm);
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  transform: rotate(-3deg);
+  position: relative;
+}
+
+.claim-badge--verified::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border: 1px solid var(--stamp-verified-frame);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.claim-badge--verified:hover {
+  transform: rotate(-1.2deg) scale(1.02);
 }
 
 .claim-badge--weak {
-  /* Fallback for Safari < 16.2 / older browsers without color-mix support. */
-  background: var(--accent-softest);
-  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  background: var(--warning-soft);
   color: var(--warning);
+  border: 1px solid var(--warning-hair);
 }
 
 .claim-badge--not-proven {
   background: var(--subtle);
   color: var(--muted);
+  border: 1px solid var(--hair-strong);
 }
 
 .claim-badge--contradicted {
   background: var(--del-bg);
   color: var(--danger);
+  border: 1px solid var(--danger-hair);
 }
 
 .claim-badge--rejected {
@@ -653,6 +667,89 @@
 }
 
 /* ==========================================================================
+   Evidence Panel
+   ========================================================================== */
+
+.evidence-panel {
+  background: var(--elevated);
+  border: 1px solid var(--hair);
+  border-radius: 10px;
+  padding: 18px var(--sp-5);
+}
+
+.evidence-panel__title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 14px;
+}
+
+.evidence-panel__header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: 10px;
+  min-width: 0;
+}
+
+.evidence-panel__claim-id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+}
+
+.evidence-panel__statement {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink);
+  margin: 0 0 10px;
+}
+
+.evidence-panel__location {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.evidence-panel__location code {
+  background: var(--subtle);
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.evidence-panel__evidence {
+  margin: var(--sp-3) 0 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--subtle);
+  border-radius: 6px;
+  padding: var(--sp-3) 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+.evidence-panel__empty {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+  font-style: italic;
+}
+
+/* ==========================================================================
    Loading / Error states
    ========================================================================== */
 
@@ -685,6 +782,9 @@
   .lesson__toc {
     display: none;
   }
+  .lesson-page__eyebrow {
+    min-width: auto;
+  }
 }
 
 @media (max-width: 767px) {
@@ -696,6 +796,9 @@
     max-height: none;
     overflow: visible;
   }
+  .lesson-page__header {
+    flex-direction: column;
+  }
 }
 
 /* ==========================================================================
@@ -706,11 +809,6 @@
   .claim-badge--weak {
     background: var(--subtle);
     background: color-mix(in srgb, var(--warning) 18%, transparent);
-  }
-
-  .lesson__prose {
-    background: var(--subtle);
-    border-color: var(--hair-strong);
   }
 
   .lesson__code-block,
@@ -745,17 +843,18 @@
   .lesson__prose,
   .evidence-panel,
   .scaffolding-tab,
-  .lesson__toc-link {
+  .lesson__toc-link,
+  .lesson__toc-link::before,
+  .claim-badge--verified {
     transition: none;
   }
   .claim-card:hover,
   .claim-card:active,
   .claim-card--selected,
-  .scaffolding-tab:active {
+  .scaffolding-tab:active,
+  .claim-badge--verified,
+  .claim-badge--verified:hover {
     transform: none !important;
-  }
-  html {
-    scroll-behavior: auto;
   }
 }
 
@@ -770,6 +869,7 @@
   .claim-badge--verified {
     color: LinkText;
     border-color: LinkText;
+    transform: rotate(-2deg);
   }
   .claim-badge--weak {
     color: CanvasText;
@@ -789,22 +889,37 @@
     background: Highlight;
     forced-color-adjust: none;
   }
+  .lesson__toc-link::before {
+    background: CanvasText;
+  }
   .lesson__rail-card {
     border-color: CanvasText;
   }
 }
 
 /* ==========================================================================
-   Mobile: stack layout
+   Print — V6: clean lesson-only output
    ========================================================================== */
 
-@media (max-width: 1023px) {
-  .lesson-page__body {
-    flex-direction: column;
+@media print {
+  .lesson__toc,
+  .lesson__rail,
+  .scaffolding-tabs,
+  .lesson-page__header-right {
+    display: none !important;
   }
-
-  .lesson-sidebar {
-    border-top: 1px solid var(--hair);
-    padding-top: var(--sp-5);
+  .lesson__layout {
+    display: block;
+  }
+  .lesson__prose {
+    font-size: 11pt;
+    line-height: 1.55;
+  }
+  .lesson__prose code {
+    font-size: 9.5pt;
+  }
+  .claim-badge--verified {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 }

@@ -36,6 +36,10 @@ function extractTocEntries(content: string): TocEntry[] {
     const label = match[2].trim();
     entries.push({ id: uniqueSlug(label, seen), label, level: match[1].length });
   }
+  const minLevel = entries.length > 0 ? Math.min(...entries.map(e => e.level)) : 1;
+  if (minLevel > 1) {
+    for (const e of entries) e.level -= minLevel - 1;
+  }
   return entries;
 }
 
@@ -250,15 +254,30 @@ export default function LessonPage() {
     <AppShell>
       <div className="lesson-page">
         <header className="lesson-page__header">
-          <h1 className="lesson-page__title">
-            {runDetail
-              ? t('Lesson.title_with_ref', {
-                  title: t('Lesson.title'),
-                  ref: runDetail.source_ref,
-                })
-              : t('Lesson.title')}
-          </h1>
-          <ScaffoldingTabs level={level} onChange={handleLevelChange} />
+          <div className="lesson-page__header-left">
+            <div className="lesson-page__eyebrow">
+              {t('Lesson.eyebrow', { ref: runDetail?.source_ref?.slice(0, 7) ?? '—' })}
+            </div>
+            <h1 className="lesson-page__title">
+              {runDetail
+                ? t('Lesson.title_with_ref', {
+                    title: t('Lesson.title'),
+                    ref: runDetail.source_ref,
+                  })
+                : t('Lesson.title')}
+            </h1>
+            {runDetail && (
+              <div className="lesson-page__sub">
+                {[
+                  runDetail.content_lang,
+                  runDetail.artifacts ? `${runDetail.artifacts.length} ${t('Lesson.rail.artifacts').toLowerCase()}` : null,
+                ].filter(Boolean).join(' · ')}
+              </div>
+            )}
+          </div>
+          <div className="lesson-page__header-right">
+            <ScaffoldingTabs level={level} onChange={handleLevelChange} />
+          </div>
         </header>
 
         {loading ? (
@@ -282,7 +301,18 @@ export default function LessonPage() {
                 <ol className="lesson__toc-list">
                   {tocEntries.map((e) => (
                     <li key={e.id} className={e.level > 1 ? `lesson__toc-item--l${e.level}` : undefined}>
-                      <a href={`#${e.id}`} className="lesson__toc-link">
+                      <a
+                        href={`#${e.id}`}
+                        className="lesson__toc-link"
+                        onClick={(ev) => {
+                          ev.preventDefault();
+                          const el = document.getElementById(e.id);
+                          if (!el) return;
+                          const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                          el.focus({ preventScroll: true });
+                          el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+                        }}
+                      >
                         {e.label}
                       </a>
                     </li>
@@ -292,43 +322,7 @@ export default function LessonPage() {
             </aside>
 
             <div className="lesson__center">
-              <article className="lesson__prose prose">{renderedProse}</article>
-
-              <aside className="lesson-sidebar">
-                <EvidencePanel claim={selectedClaim} />
-
-                <section>
-                  <h2 className="claims-section__title">{t('Lesson.claims_title')}</h2>
-                  {claims.length === 0 ? (
-                    <p className="evidence-panel__empty">{t('Serve.empty')}</p>
-                  ) : (
-                    <ul className="claims-list">
-                      {claims.map((claim) => (
-                        <li key={claim.claim_id}>
-                          <button
-                            type="button"
-                            id={`claim-${claim.claim_id}`}
-                            className={`claim-card${
-                              selectedClaim?.claim_id === claim.claim_id ? ' claim-card--selected' : ''
-                            }`}
-                            onClick={() => handleClaimClick(claim)}
-                            aria-pressed={selectedClaim?.claim_id === claim.claim_id}
-                          >
-                            <div className="claim-card__row">
-                              <span className="claim-card__id">{claim.claim_id}</span>
-                              <ClaimBadge verdict={claim.verdict} />
-                            </div>
-                            <p className="claim-card__statement">{claim.statement}</p>
-                            <div className="claim-card__location">
-                              <code>{formatClaimLocation(claim)}</code>
-                            </div>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
-              </aside>
+              <article className="lesson__prose">{renderedProse}</article>
             </div>
 
             <aside className="lesson__rail" aria-label={t('Lesson.rail.title')}>
@@ -351,26 +345,46 @@ export default function LessonPage() {
                 </dl>
               </section>
 
-              <section className="lesson__rail-card" aria-labelledby="lesson-rail-selected">
-                <h2 id="lesson-rail-selected" className="lesson__rail-card-title">
+              <section className="lesson__rail-card" aria-labelledby="lesson-rail-claims-list">
+                <h2 id="lesson-rail-claims-list" className="lesson__rail-card-title">
+                  {t('Lesson.claims_title')}
+                </h2>
+                {claims.length === 0 ? (
+                  <p className="lesson__rail-empty">{t('Serve.empty')}</p>
+                ) : (
+                  <ul className="claims-list">
+                    {claims.map((claim) => (
+                      <li key={claim.claim_id}>
+                        <button
+                          type="button"
+                          id={`claim-${claim.claim_id}`}
+                          className={`claim-card${
+                            selectedClaim?.claim_id === claim.claim_id ? ' claim-card--selected' : ''
+                          }`}
+                          onClick={() => handleClaimClick(claim)}
+                          aria-pressed={selectedClaim?.claim_id === claim.claim_id}
+                        >
+                          <div className="claim-card__row">
+                            <span className="claim-card__id">{claim.claim_id}</span>
+                            <ClaimBadge verdict={claim.verdict} />
+                          </div>
+                          <p className="claim-card__statement">{claim.statement}</p>
+                          <div className="claim-card__location">
+                            <code>{formatClaimLocation(claim)}</code>
+                          </div>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section className="lesson__rail-card" aria-labelledby="lesson-rail-evidence">
+                <h2 id="lesson-rail-evidence" className="lesson__rail-card-title">
                   {t('Lesson.rail.selected_evidence')}
                 </h2>
                 {selectedClaim ? (
-                  <div className="lesson__selected-claim">
-                    <div className="lesson__selected-header">
-                      <span className="lesson__selected-id">{selectedClaim.claim_id}</span>
-                      <ClaimBadge verdict={selectedClaim.verdict} />
-                    </div>
-                    <p className="lesson__selected-statement">{selectedClaim.statement}</p>
-                    <code className="lesson__selected-location">
-                      {formatClaimLocation(selectedClaim)}
-                    </code>
-                    {selectedClaim.evidence ? (
-                      <p className="lesson__selected-evidence">{selectedClaim.evidence}</p>
-                    ) : (
-                      <p className="lesson__rail-empty">{t('Lesson.rail.selected_no_evidence')}</p>
-                    )}
-                  </div>
+                  <EvidencePanel claim={selectedClaim} />
                 ) : (
                   <p className="lesson__rail-empty">{t('Lesson.rail.selected_empty')}</p>
                 )}

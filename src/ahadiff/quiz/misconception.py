@@ -33,24 +33,79 @@ class MisconceptionCard:
 
 def parse_misconception_cards(raw: str) -> list[MisconceptionCard]:
     try:
-        parsed = safe_json_loads(raw)
-    except (json.JSONDecodeError, ValueError) as exc:
-        raise InputError(f"misconception cards payload is not valid JSON: {exc}") from exc
+        parsed = _extract_json_value(raw)
+    except InputError:
+        return []
     if isinstance(parsed, dict):
         parsed_map = cast("dict[str, Any]", parsed)
         for key in ("cards", "misconceptions", "misconception_cards", "items", "data"):
             if key in parsed_map and isinstance(parsed_map[key], list):
                 parsed = parsed_map[key]
                 break
+        else:
+            _card_keys = {"concept", "misconception", "correction"}
+            if _card_keys <= set(parsed_map.keys()):
+                parsed = [parsed_map]
     if not isinstance(parsed, list):
-        raise InputError("misconception cards payload must be a JSON array")
+        return []
     items = cast("list[Any]", parsed)
     cards: list[MisconceptionCard] = []
     for index, item in enumerate(items):
         if not isinstance(item, dict):
-            raise InputError(f"misconception card at index {index} must be a JSON object")
-        cards.append(_validate_card_dict(cast("dict[str, Any]", item), index))
+            continue
+        try:
+            cards.append(_validate_card_dict(cast("dict[str, Any]", item), index))
+        except InputError:
+            continue
     return cards
+
+
+def _extract_json_value(raw: str) -> Any:
+    for candidate in _json_candidates(raw):
+        try:
+            return safe_json_loads(candidate)
+        except (json.JSONDecodeError, ValueError):
+            continue
+    jsonl = _try_parse_jsonl(raw)
+    if jsonl is not None:
+        return jsonl
+    raise InputError("misconception cards payload contains no valid JSON")
+
+
+def _json_candidates(raw: str) -> list[str]:
+    candidates: list[str] = []
+    in_fence = False
+    fence_lines: list[str] = []
+    for line in raw.splitlines():
+        marker = line.strip()
+        if not in_fence and marker.startswith("```"):
+            in_fence = True
+            fence_lines = []
+            continue
+        if in_fence and marker == "```":
+            block = "\n".join(fence_lines).strip()
+            if block:
+                candidates.append(block)
+            in_fence = False
+            fence_lines = []
+            continue
+        if in_fence:
+            fence_lines.append(line)
+    candidates.append(raw.strip())
+    return candidates
+
+
+def _try_parse_jsonl(raw: str) -> list[Any] | None:
+    lines = [line.strip() for line in raw.splitlines() if line.strip()]
+    if not lines:
+        return None
+    objects: list[Any] = []
+    for line in lines:
+        try:
+            objects.append(json.loads(line))
+        except (json.JSONDecodeError, ValueError):
+            return None
+    return objects
 
 
 def write_misconception_cards(cards: list[MisconceptionCard], output_path: Path) -> Path:

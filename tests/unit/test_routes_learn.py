@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 import anyio
@@ -12,10 +13,11 @@ import pytest
 from anyio.to_thread import run_sync as run_sync_in_thread
 from starlette.testclient import TestClient
 
+from ahadiff.contracts.serve_app import LearnEstimateResponse
 from ahadiff.contracts.serve_runtime import TaskInfoResponse, TaskSubmitResponse
 from ahadiff.core.orchestrator import LearnRequest, LearnResult
 from ahadiff.core.task_runner import TaskRunner
-from ahadiff.serve import ServeState, create_app
+from ahadiff.serve import ServeState, create_app, routes_learn
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -51,6 +53,19 @@ def _post_learn(
         content=b"not json",
         headers={**headers, "content-type": content_type},
     )
+
+
+def _post_learn_estimate(
+    client: TestClient,
+    body: object | None = None,
+    *,
+    token: str = "test-token",
+) -> httpx.Response:
+    headers = {
+        "X-AhaDiff-Token": token,
+        "origin": "http://localhost:8765",
+    }
+    return client.post("/api/learn/estimate", json={} if body is None else body, headers=headers)
 
 
 def _json_object(response: httpx.Response) -> dict[str, object]:
@@ -111,6 +126,110 @@ def test_post_learn_wrong_token(tmp_path: Path) -> None:
         },
     )
     assert resp.status_code == 403
+
+
+def test_post_learn_estimate_requires_token(tmp_path: Path) -> None:
+    client = _client(tmp_path / ".ahadiff")
+    resp = client.post("/api/learn/estimate", json={})
+    assert resp.status_code == 403
+
+
+def test_post_learn_estimate_wrong_token(tmp_path: Path) -> None:
+    client = _client(tmp_path / ".ahadiff", token="correct")
+    resp = _post_learn_estimate(client, token="wrong")
+    assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Estimate
+# ---------------------------------------------------------------------------
+
+
+def test_post_learn_estimate_happy_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path / ".ahadiff")
+    patch_text = "diff --git a/a.py b/a.py\n+print('hello')\n"
+
+    monkeypatch.setattr(
+        routes_learn,
+        "capture_patch",
+        lambda **_: SimpleNamespace(
+            persisted_patch_text=patch_text,
+            metadata={"selected_files": ["a.py"]},
+        ),
+    )
+    monkeypatch.setattr(routes_learn, "estimate_text_tokens", lambda _text, _strategy: 10)
+    monkeypatch.setattr(
+        routes_learn,
+        "_provider_limits_from_config",
+        lambda **_: (16_000, 4_000),
+    )
+
+    resp = _post_learn_estimate(client)
+
+    assert resp.status_code == 200
+    payload = LearnEstimateResponse.model_validate(_json_object(resp))
+    assert payload.patch_bytes == len(patch_text.encode("utf-8"))
+    assert payload.file_count == 1
+    assert payload.total_lines == 2
+    assert payload.estimated_tokens == 10
+    assert payload.provider_context_window == 16_000
+    assert payload.provider_max_output == 4_000
+    assert payload.risk_level == "ok"
+    assert payload.warnings == []
+
+
+@pytest.mark.parametrize(
+    ("estimated_tokens", "context_window", "file_count", "risk_level"),
+    [
+        (4_000, 10_000, 2, "ok"),
+        (5_001, 10_000, 2, "warn"),
+        (8_001, 10_000, 2, "danger"),
+        (4_000, 10_000, 31, "warn"),
+        (4_000, 10_000, 51, "danger"),
+    ],
+)
+def test_post_learn_estimate_risk_levels(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    estimated_tokens: int,
+    context_window: int,
+    file_count: int,
+    risk_level: Literal["ok", "warn", "danger"],
+) -> None:
+    client = _client(tmp_path / ".ahadiff")
+    patch_text = "x\n"
+
+    monkeypatch.setattr(
+        routes_learn,
+        "capture_patch",
+        lambda **_: SimpleNamespace(
+            persisted_patch_text=patch_text,
+            metadata={"selected_files": [f"f{i}.py" for i in range(file_count)]},
+        ),
+    )
+    monkeypatch.setattr(
+        routes_learn,
+        "estimate_text_tokens",
+        lambda _text, _strategy: estimated_tokens,
+    )
+    monkeypatch.setattr(
+        routes_learn,
+        "_provider_limits_from_config",
+        lambda **_: (context_window, None),
+    )
+
+    resp = _post_learn_estimate(client)
+
+    assert resp.status_code == 200
+    payload = LearnEstimateResponse.model_validate(_json_object(resp))
+    assert payload.risk_level == risk_level
+    if risk_level == "ok":
+        assert payload.warnings == []
+    else:
+        assert payload.warnings
 
 
 # ---------------------------------------------------------------------------

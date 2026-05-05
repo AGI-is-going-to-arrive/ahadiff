@@ -274,7 +274,12 @@ def _coerce_claim_candidates(
         except ValidationError as exc:
             raise InputError(f"invalid claim candidate #{index}: {exc}") from exc
         if candidate.claim_id in seen_claim_ids:
-            raise InputError(f"duplicate claim_id is not allowed: {candidate.claim_id}")
+            dedup_suffix = 2
+            while f"{candidate.claim_id}_{dedup_suffix}" in seen_claim_ids:
+                dedup_suffix += 1
+            candidate = candidate.model_copy(
+                update={"claim_id": f"{candidate.claim_id}_{dedup_suffix}"}
+            )
         _validate_claim_candidate_shape(candidate)
         seen_claim_ids.add(candidate.claim_id)
         candidates.append(candidate)

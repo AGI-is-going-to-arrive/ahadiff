@@ -409,6 +409,19 @@ export interface LearnSubmitPayload {
   privacy_mode?: 'strict_local' | 'redacted_remote' | 'explicit_remote';
 }
 
+export type LearnRiskLevel = 'ok' | 'warn' | 'danger';
+
+export interface LearnEstimateResponse {
+  patch_bytes: number;
+  file_count: number;
+  total_lines: number;
+  estimated_tokens: number;
+  provider_context_window: number;
+  provider_max_output: number | null;
+  risk_level: LearnRiskLevel;
+  warnings: string[];
+}
+
 export interface TaskProgressResponse {
   current: number;
   total: number;

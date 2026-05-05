@@ -1,12 +1,14 @@
 import { create } from 'zustand';
-import { startLearnTask, getTask, cancelTask, listTasks } from '../api/tasks';
+import { startLearnTask, estimateLearn, getTask, cancelTask, listTasks } from '../api/tasks';
 import { ApiError } from '../api/client';
 import { useRunsStore } from './runs-store';
 import { useGraphStore } from './graph-store';
-import type { TaskInfoResponse, LearnSubmitPayload } from '../api/types';
+import type { TaskInfoResponse, LearnSubmitPayload, LearnEstimateResponse } from '../api/types';
 
 type LearnPhase =
   | 'idle'
+  | 'estimating'
+  | 'confirming'
   | 'submitting'
   | 'running'
   | 'completed'
@@ -27,11 +29,15 @@ interface LearnState {
   phase: LearnPhase;
   taskId: string | null;
   task: TaskInfoResponse | null;
+  estimate: LearnEstimateResponse | null;
   error: string | null;
   errorCode: string | null;
   lastPayload: LearnSubmitPayload | null;
+  pendingPayload: LearnSubmitPayload | null;
   retryable: boolean;
 
+  requestLearn: (payload?: LearnSubmitPayload) => Promise<void>;
+  confirmLearn: () => Promise<void>;
   submitLearn: (payload?: LearnSubmitPayload) => Promise<void>;
   retryLearn: () => Promise<void>;
   cancelLearn: () => Promise<void>;
@@ -116,10 +122,51 @@ export const useLearnStore = create<LearnState>(() => ({
   phase: 'idle',
   taskId: null,
   task: null,
+  estimate: null,
   error: null,
   errorCode: null,
   lastPayload: null,
+  pendingPayload: null,
   retryable: true,
+
+  requestLearn: async (payload) => {
+    const { phase } = useLearnStore.getState();
+    if (phase === 'submitting' || phase === 'running' || phase === 'cancelling' || phase === 'estimating' || phase === 'confirming') return;
+    const generation = ++submitGeneration;
+    const effectivePayload = payload ?? {};
+    const { patch: _p, patch_url: _u, ...safePayload } = effectivePayload;
+    const retryable = _p === undefined && _u === undefined;
+    useLearnStore.setState({
+      phase: 'estimating',
+      error: null,
+      errorCode: null,
+      task: null,
+      taskId: null,
+      estimate: null,
+      lastPayload: safePayload,
+      pendingPayload: effectivePayload,
+      retryable,
+    });
+    try {
+      const est = await estimateLearn(effectivePayload);
+      if (submitGeneration !== generation) return;
+      if (est.risk_level === 'ok') {
+        useLearnStore.setState({ estimate: est });
+        await useLearnStore.getState().submitLearn(effectivePayload);
+      } else {
+        useLearnStore.setState({ phase: 'confirming', estimate: est });
+      }
+    } catch {
+      if (submitGeneration !== generation) return;
+      await useLearnStore.getState().submitLearn(effectivePayload);
+    }
+  },
+
+  confirmLearn: async () => {
+    const { pendingPayload } = useLearnStore.getState();
+    useLearnStore.setState({ pendingPayload: null });
+    await useLearnStore.getState().submitLearn(pendingPayload ?? {});
+  },
 
   submitLearn: async (payload) => {
     const { phase } = useLearnStore.getState();
@@ -200,7 +247,7 @@ export const useLearnStore = create<LearnState>(() => ({
   dismiss: () => {
     submitGeneration += 1;
     resetPollState();
-    useLearnStore.setState({ phase: 'idle', taskId: null, task: null, error: null, errorCode: null });
+    useLearnStore.setState({ phase: 'idle', taskId: null, task: null, estimate: null, error: null, errorCode: null, pendingPayload: null });
   },
 
   recoverExistingTask: async () => {

@@ -246,6 +246,7 @@
     },
     "title": "课程",
     "title_with_ref": "{title} · {ref}",
+    "eyebrow": "§ 课程 · {ref}",
     "toc": {
       "empty": "暂无章节",
       "title": "大纲"
@@ -271,7 +272,14 @@
     "step_hint_5": "正在从 diff 中提取证据 claim — 使用思考模型通常需要 1–3 分钟。",
     "step_hint_6": "正在根据已验证的 claim 生成学习笔记 — 通常需要 1–3 分钟。",
     "step_hint_7": "正在生成测验题和易错卡片 — 通常需要 1–2 分钟。",
-    "step_hint_8": "正在进行 8 维质量评估 — 通常不超过 1 分钟。"
+    "step_hint_8": "正在进行 8 维质量评估 — 通常不超过 1 分钟。",
+    "estimating": "正在估算 diff 大小…",
+    "preflight_title": "检测到大型 diff",
+    "preflight_files": "{count} 个文件",
+    "preflight_size": "补丁大小：{size}",
+    "preflight_tokens": "预估 token：{estimated} / {limit} 上下文",
+    "preflight_continue": "仍然继续",
+    "preflight_cancel": "取消"
   },
   "Nav": {
     "dashboard": "运行",

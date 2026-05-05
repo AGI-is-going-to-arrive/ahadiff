@@ -35,7 +35,7 @@ def test_hard_gates_fail_for_contradicted_claims_and_secret_leaks() -> None:
     summary = evaluate_hard_gates(
         rubric=load_rubric(),
         dimension_scores={"accuracy": 19.0, "evidence": 16.0},
-        claims=(_claim(status="contradicted"),),
+        claims=tuple(_claim(status="contradicted") for _ in range(3)),
         secret_leak_detected=True,
         injection_unresolved=False,
     )

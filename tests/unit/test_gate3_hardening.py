@@ -419,11 +419,12 @@ def test_gate3_claim_extraction_passes_bad_llm_claims_to_verifier() -> None:
     assert outside_hunk.record.status == "rejected"
     assert outside_hunk.record.reason_code == "line_outside_hunk"
 
-    with pytest.raises(InputError, match="duplicate claim_id"):
-        parse_claim_candidates_text(
-            json.dumps({"claims": [_claim_payload(), _claim_payload(text="second")]}),
-            default_run_id="run-1",
-        )
+    dedup_result = parse_claim_candidates_text(
+        json.dumps({"claims": [_claim_payload(), _claim_payload(text="second")]}),
+        default_run_id="run-1",
+    )
+    assert len(dedup_result) == 2
+    assert dedup_result[0].claim_id != dedup_result[1].claim_id
     with pytest.raises(InputError, match="claim text must not be empty"):
         parse_claim_candidates_text(
             json.dumps({"claims": [_claim_payload(text="   ")]}),

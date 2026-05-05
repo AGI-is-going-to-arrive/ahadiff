@@ -143,6 +143,7 @@ def is_recoverable_error(exc: Exception) -> bool:
     _recoverable = (
         "connection", "timeout", "transport", "rate limit",
         "503", "429", "retry", "decompression failed", "decompressing",
+        "does not contain", "not valid json", "extra data",
     )
     return any(p in msg for p in _recoverable)
 

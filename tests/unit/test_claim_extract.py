@@ -1432,7 +1432,7 @@ def test_extract_claim_candidates_from_run_requires_context_metadata_fields(
     assert not (run_path / "claims.raw.jsonl").exists()
 
 
-def test_parse_claim_candidates_rejects_duplicate_claim_ids() -> None:
+def test_parse_claim_candidates_deduplicates_claim_ids() -> None:
     payload = [
         {
             "claim_id": "dup",
@@ -1448,8 +1448,10 @@ def test_parse_claim_candidates_rejects_duplicate_claim_ids() -> None:
         },
     ]
 
-    with pytest.raises(Exception, match="duplicate claim_id"):
-        parse_claim_candidates_text(json.dumps(payload))
+    candidates = parse_claim_candidates_text(json.dumps(payload))
+    assert len(candidates) == 2
+    assert candidates[0].claim_id == "dup"
+    assert candidates[1].claim_id == "dup_2"
 
 
 def test_load_text_map_rejects_wrong_schema_version(tmp_path: Path) -> None:
