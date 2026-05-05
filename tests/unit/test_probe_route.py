@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, cast
 from starlette.testclient import TestClient
 
 from ahadiff.contracts import ProviderCapabilities, ProviderConfig
-from ahadiff.contracts.serve_runtime import TaskSubmitResponse
+from ahadiff.contracts.serve_providers import ProviderProbeSubmitResponse
 from ahadiff.core.config import read_config_data
 from ahadiff.core.task_runner import TaskRunner, TaskStatus
 from ahadiff.llm.schemas import ProbeReport
@@ -84,7 +84,6 @@ def test_probe_provider_route_submits_task_and_persists_probe_result(
                 probed_max_context=12345,
                 probed_tpm=678,
                 probed_rpm=9,
-                supports_temperature=True,
                 probe_timestamp="2026-05-04T00:00:00Z",
             ),
             capabilities=ProviderCapabilities(
@@ -109,7 +108,7 @@ def test_probe_provider_route_submits_task_and_persists_probe_result(
     with _client(state_dir, runner=runner) as client:
         response = client.post("/api/providers/demo/probe", headers=_AUTH)
         assert response.status_code == 202
-        submit = TaskSubmitResponse.model_validate(_json_object(response))
+        submit = ProviderProbeSubmitResponse.model_validate(_json_object(response))
         result = _wait_for_task(runner, submit.task_id, TaskStatus.COMPLETED)
 
     assert isinstance(result, dict)
@@ -122,7 +121,6 @@ def test_probe_provider_route_submits_task_and_persists_probe_result(
     config = read_config_data(state_dir / "config.toml")
     provider = cast("dict[str, object]", cast("dict[str, object]", config["providers"])["demo"])
     assert provider["probed_max_context"] == 12345
-    assert provider["supports_temperature"] is True
 
 
 def test_probe_provider_route_alias_not_found_returns_404(tmp_path: Path) -> None:

@@ -85,7 +85,6 @@ def _provider_config(provider_class: ProviderClass, *, base_url: str, model: str
         base_url=_normalize_openai_base_url(base_url),
         api_key_env="AHADIFF_LIVE_LLM_API_KEY",
         probed_max_context=_configured_context_window(model),
-        supports_temperature=True,
     )
 
 

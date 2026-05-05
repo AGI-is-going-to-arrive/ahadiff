@@ -63,8 +63,10 @@ def build_cache_key(parts: CacheKeyInput) -> str:
         "prompt_name": parts.prompt_name,
         "prompt_version": parts.prompt_version,
         "redaction_config": parts.redaction_config,
+        "max_output_tokens": parts.max_output_tokens,
         "request_payload_sha256": parts.request_payload_sha256,
         "source_ref": parts.source_ref,
+        "thinking_level": parts.thinking_level or "none",
     }
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()

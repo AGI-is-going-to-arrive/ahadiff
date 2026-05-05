@@ -263,7 +263,8 @@ def _coerce_claim_candidates(
     seen_claim_ids: set[str] = set()
     for index, item in enumerate(items, start=1):
         normalized: dict[str, Any] = dict(item)
-        normalized.setdefault("claim_id", _default_claim_id(default_run_id, index))
+        if not normalized.get("claim_id"):
+            normalized["claim_id"] = _default_claim_id(default_run_id, index)
         if not normalized.get("run_id"):
             if default_run_id is None:
                 raise InputError(f"claim candidate #{index} is missing run_id")

@@ -281,14 +281,15 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 
 `ProviderConfig` 冻结字段：
 
-- `provider_class = openai | openai_responses | gemini | anthropic | azure | newapi | cherryin | ollama`
+- `provider_class = openai | openai_responses | gemini | anthropic | azure | newapi | lmstudio | ollama`
 - `model_name`
 - `base_url`
 - `api_key_env`
+- `max_output_tokens`
+- `thinking_level = none | low | medium | high`
 - `probed_max_context`
 - `probed_tpm`
 - `probed_rpm`
-- `supports_temperature`
 - `probe_timestamp`
 
 `ProviderCapabilities` 冻结字段：

@@ -101,6 +101,8 @@ def generate_lesson(
     qps_limit: int = 3,
     retry_attempts: int = 3,
     privacy_mode: PrivacyMode | None = None,
+    input_token_budget: int | None = None,
+    output_token_budget: int | None = None,
 ) -> LessonFull:
     payload = _generate_variant_payload(
         variant="full",
@@ -115,6 +117,8 @@ def generate_lesson(
         qps_limit=qps_limit,
         retry_attempts=retry_attempts,
         privacy_mode=privacy_mode,
+        input_token_budget=input_token_budget,
+        output_token_budget=output_token_budget,
     )
     parsed = parse_lesson_payload(payload, schema=LessonFull)
     return cast("LessonFull", parsed)
@@ -133,6 +137,8 @@ def generate_hint(
     qps_limit: int = 3,
     retry_attempts: int = 3,
     privacy_mode: PrivacyMode | None = None,
+    input_token_budget: int | None = None,
+    output_token_budget: int | None = None,
 ) -> LessonHint:
     payload = _generate_variant_payload(
         variant="hint",
@@ -147,6 +153,8 @@ def generate_hint(
         qps_limit=qps_limit,
         retry_attempts=retry_attempts,
         privacy_mode=privacy_mode,
+        input_token_budget=input_token_budget,
+        output_token_budget=output_token_budget,
     )
     parsed = parse_lesson_payload(payload, schema=LessonHint)
     return cast("LessonHint", parsed)
@@ -165,6 +173,8 @@ def generate_compact(
     qps_limit: int = 3,
     retry_attempts: int = 3,
     privacy_mode: PrivacyMode | None = None,
+    input_token_budget: int | None = None,
+    output_token_budget: int | None = None,
 ) -> LessonCompact:
     payload = _generate_variant_payload(
         variant="compact",
@@ -179,6 +189,8 @@ def generate_compact(
         qps_limit=qps_limit,
         retry_attempts=retry_attempts,
         privacy_mode=privacy_mode,
+        input_token_budget=input_token_budget,
+        output_token_budget=output_token_budget,
     )
     parsed = parse_lesson_payload(payload, schema=LessonCompact)
     return cast("LessonCompact", parsed)
@@ -200,6 +212,8 @@ def generate_lessons_from_run(
     qps_limit: int = 3,
     retry_attempts: int = 3,
     privacy_mode: PrivacyMode | None = None,
+    input_token_budget: int | None = None,
+    output_token_budget: int | None = None,
 ) -> LessonArtifactPaths:
     bundle = load_redacted_run_bundle(
         run_id=run_id,
@@ -218,6 +232,8 @@ def generate_lessons_from_run(
         qps_limit=qps_limit,
         retry_attempts=retry_attempts,
         privacy_mode=privacy_mode,
+        input_token_budget=input_token_budget,
+        output_token_budget=output_token_budget,
     )
     hint = generate_hint(
         bundle=bundle,
@@ -231,6 +247,8 @@ def generate_lessons_from_run(
         qps_limit=qps_limit,
         retry_attempts=retry_attempts,
         privacy_mode=privacy_mode,
+        input_token_budget=input_token_budget,
+        output_token_budget=output_token_budget,
     )
     compact = generate_compact(
         bundle=bundle,
@@ -244,6 +262,8 @@ def generate_lessons_from_run(
         qps_limit=qps_limit,
         retry_attempts=retry_attempts,
         privacy_mode=privacy_mode,
+        input_token_budget=input_token_budget,
+        output_token_budget=output_token_budget,
     )
     return write_lesson_artifacts(
         run_path=run_path,
@@ -358,6 +378,8 @@ def _generate_variant_payload(
     qps_limit: int,
     retry_attempts: int,
     privacy_mode: PrivacyMode | None,
+    input_token_budget: int | None = None,
+    output_token_budget: int | None = None,
 ) -> str:
     prompt_text = load_lesson_prompt(variant)
     payload_text = build_lesson_payload(
@@ -381,6 +403,11 @@ def _generate_variant_payload(
         )
         redacted_payload_text = redaction.redacted_text
         findings = redaction.findings
+    budget_kwargs: dict[str, int] = {}
+    if input_token_budget is not None:
+        budget_kwargs["input_token_budget"] = input_token_budget
+    if output_token_budget is not None:
+        budget_kwargs["output_token_budget"] = output_token_budget
     provider = make_provider(
         provider_config,
         api_key=api_key,
@@ -392,6 +419,7 @@ def _generate_variant_payload(
         retry_attempts=retry_attempts,
         request_timeout_seconds=request_timeout_seconds,
         execution_origin=f"lesson_{variant}",
+        **budget_kwargs,
     )
     try:
         response = provider.generate(
@@ -409,7 +437,9 @@ def _generate_variant_payload(
                 redacted_payload_text=redacted_payload_text,
                 findings=findings,
                 response_format="json",
-                max_output_tokens=4000 if variant == "full" else 1800,
+                max_output_tokens=provider_config.max_output_tokens
+                or (4000 if variant == "full" else 1800),
+                thinking_level=provider_config.thinking_level,
             )
         )
     finally:

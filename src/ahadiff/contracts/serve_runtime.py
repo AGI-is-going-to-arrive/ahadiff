@@ -139,6 +139,10 @@ class TaskProgressResponse(BaseModel):
     current: NonNegativeCount = Field(description="Steps completed so far.")
     total: NonNegativeCount = Field(description="Total steps expected (0 if unknown).")
     message: str = Field(description="Human-readable progress message.")
+    step_started_at: str = Field(
+        default="",
+        description="ISO-8601 timestamp when this step started.",
+    )
 
 
 class TaskResultSummary(BaseModel):

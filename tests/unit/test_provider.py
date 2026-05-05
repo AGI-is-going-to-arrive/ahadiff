@@ -69,7 +69,6 @@ def _provider_config(
         base_url=base_url,
         api_key_env="AHADIFF_PROVIDER_API_KEY",
         probed_max_context=max_context,
-        supports_temperature=True,
     )
 
 
@@ -168,8 +167,8 @@ class _FailingByteStream(httpx.SyncByteStream):
         "anthropic",
         "azure",
         "newapi",
-        "cherryin",
         "ollama",
+        "lmstudio",
     ],
 )
 def test_make_provider_builds_all_frozen_adapters(provider_class: str) -> None:
@@ -1301,11 +1300,11 @@ def test_azure_adapter_accepts_api_version_override_in_base_url() -> None:
 
 
 def test_openai_compat_adapters_share_common_base() -> None:
-    from ahadiff.llm.adapters.cherryin import CherryINAdapter
+    from ahadiff.llm.adapters.lmstudio import LMStudioAdapter
     from ahadiff.llm.adapters.newapi import NewAPIAdapter
 
     assert issubclass(NewAPIAdapter, OpenAICompatAdapter)
-    assert issubclass(CherryINAdapter, OpenAICompatAdapter)
+    assert issubclass(LMStudioAdapter, OpenAICompatAdapter)
 
 
 def test_make_provider_rejects_max_concurrent_below_one() -> None:
@@ -1558,3 +1557,128 @@ def test_probe_context_window_returns_fallback_on_transport_error() -> None:
 
     assert source == "fallback"
     assert context_window > 0
+
+
+# ---------------------------------------------------------------------------
+# DecodingError / decompression regression tests
+# ---------------------------------------------------------------------------
+
+
+class _DecodingErrorByteStream(httpx.SyncByteStream):
+    """Simulates corrupt gzip body that triggers httpx.DecodingError."""
+
+    def __iter__(self) -> Iterator[bytes]:
+        raise httpx.DecodingError("Error -3 while decompressing data: incorrect header check")
+
+
+def test_retry_succeeds_after_decoding_error() -> None:
+    calls = {"count": 0}
+    sleep_calls: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return httpx.Response(
+                200,
+                stream=_DecodingErrorByteStream(),
+                headers={"content-encoding": "gzip"},
+            )
+        return _openai_success_response(content="Recovered after decompression error")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        client=client,
+        retry_attempts=1,
+        sleep=sleep,
+    )
+    try:
+        response = provider.generate(_request())
+    finally:
+        provider.close()
+
+    assert response.content == "Recovered after decompression error"
+    assert calls["count"] == 2
+    assert len(sleep_calls) == 1
+
+
+def test_decoding_error_exhausts_retries() -> None:
+    sleep_calls: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            stream=_DecodingErrorByteStream(),
+            headers={"content-encoding": "gzip"},
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        client=client,
+        retry_attempts=2,
+        sleep=sleep,
+    )
+    try:
+        with pytest.raises(ProviderError, match="decompression"):
+            provider.generate(_request())
+    finally:
+        provider.close()
+
+
+def test_buffered_response_strips_content_encoding() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return _openai_success_response(content="OK-stripped")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        client=client,
+    )
+    try:
+        response = provider.generate(_request())
+    finally:
+        provider.close()
+
+    assert response.content == "OK-stripped"
+    assert response.rate_limits is not None
+    assert response.rate_limits.rpm_limit == 9
+
+
+def test_rate_limit_headers_preserved_after_encoding_strip() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        resp = _openai_success_response(content="rate-limit-check")
+        return httpx.Response(
+            resp.status_code,
+            content=resp.content,
+            headers={
+                **dict(resp.headers),
+                "content-encoding": "identity",
+                "x-ratelimit-limit-requests": "42",
+                "x-ratelimit-remaining-requests": "41",
+            },
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        client=client,
+    )
+    try:
+        response = provider.generate(_request())
+    finally:
+        provider.close()
+
+    assert response.rate_limits is not None
+    assert response.rate_limits.rpm_limit == 42
+    assert response.rate_limits.rpm_remaining == 41

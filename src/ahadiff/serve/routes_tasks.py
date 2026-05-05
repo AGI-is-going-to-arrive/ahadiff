@@ -127,6 +127,8 @@ def _optional_str(value: object) -> str | None:
 
 
 def _user_facing_message(error_code: str, raw_error: str) -> str:
+    if error_code in ("config_error", "internal_error") and raw_error:
+        return _sanitize_warning(raw_error)
     return _USER_FACING_ERROR_MESSAGES.get(error_code, _GENERIC_FALLBACK_MESSAGE)
 
 

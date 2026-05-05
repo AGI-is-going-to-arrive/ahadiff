@@ -86,6 +86,8 @@ def generate_quiz_from_run(
     qps_limit: int = 3,
     retry_attempts: int = 3,
     privacy_mode: PrivacyMode | None = None,
+    input_token_budget: int | None = None,
+    output_token_budget: int | None = None,
 ) -> tuple[QuizArtifactPaths, tuple[QuizQuestion, ...]]:
     bundle = load_redacted_run_bundle(
         run_id=run_id,
@@ -106,6 +108,8 @@ def generate_quiz_from_run(
         qps_limit=qps_limit,
         retry_attempts=retry_attempts,
         privacy_mode=privacy_mode,
+        input_token_budget=input_token_budget,
+        output_token_budget=output_token_budget,
     )
     question_set = parse_quiz_payload(payload)
     questions = _materialize_question_ids(run_id, question_set.questions)
@@ -123,6 +127,8 @@ def generate_quiz_from_run(
         qps_limit=qps_limit,
         retry_attempts=retry_attempts,
         privacy_mode=privacy_mode,
+        input_token_budget=input_token_budget,
+        output_token_budget=output_token_budget,
     )
     quiz_dir = run_path / "quiz"
     quiz_path = quiz_dir / "quiz.jsonl"
@@ -294,6 +300,8 @@ def _generate_quiz_payload(
     qps_limit: int,
     retry_attempts: int,
     privacy_mode: PrivacyMode | None,
+    input_token_budget: int | None = None,
+    output_token_budget: int | None = None,
 ) -> str:
     prompt_text = load_quiz_prompt()
     payload_text = build_quiz_payload(
@@ -323,6 +331,11 @@ def _generate_quiz_payload(
         )
         redacted_payload_text = redaction.redacted_text
         findings = redaction.findings
+    budget_kwargs: dict[str, int] = {}
+    if input_token_budget is not None:
+        budget_kwargs["input_token_budget"] = input_token_budget
+    if output_token_budget is not None:
+        budget_kwargs["output_token_budget"] = output_token_budget
     provider = make_provider(
         provider_config,
         api_key=api_key,
@@ -334,6 +347,7 @@ def _generate_quiz_payload(
         retry_attempts=retry_attempts,
         request_timeout_seconds=request_timeout_seconds,
         execution_origin="quiz_generate",
+        **budget_kwargs,
     )
     try:
         response = provider.generate(
@@ -351,7 +365,8 @@ def _generate_quiz_payload(
                 redacted_payload_text=redacted_payload_text,
                 findings=findings,
                 response_format="json",
-                max_output_tokens=2500,
+                max_output_tokens=provider_config.max_output_tokens or 2500,
+                thinking_level=provider_config.thinking_level,
             )
         )
     finally:
@@ -374,6 +389,8 @@ def _generate_misconception_cards(
     qps_limit: int,
     retry_attempts: int,
     privacy_mode: PrivacyMode | None,
+    input_token_budget: int | None = None,
+    output_token_budget: int | None = None,
 ) -> tuple[MisconceptionCard, ...]:
     prompt_text = load_misconception_prompt()
     concept_terms = _dedupe_concept_terms(questions)
@@ -405,6 +422,11 @@ def _generate_misconception_cards(
         )
         redacted_payload_text = redaction.redacted_text
         findings = redaction.findings
+    mc_budget_kwargs: dict[str, int] = {}
+    if input_token_budget is not None:
+        mc_budget_kwargs["input_token_budget"] = input_token_budget
+    if output_token_budget is not None:
+        mc_budget_kwargs["output_token_budget"] = output_token_budget
     provider = make_provider(
         provider_config,
         api_key=api_key,
@@ -416,6 +438,7 @@ def _generate_misconception_cards(
         retry_attempts=retry_attempts,
         request_timeout_seconds=request_timeout_seconds,
         execution_origin="quiz_generate",
+        **mc_budget_kwargs,
     )
     try:
         response = provider.generate(
@@ -433,7 +456,8 @@ def _generate_misconception_cards(
                 redacted_payload_text=redacted_payload_text,
                 findings=findings,
                 response_format="json",
-                max_output_tokens=2000,
+                max_output_tokens=provider_config.max_output_tokens or 2000,
+                thinking_level=provider_config.thinking_level,
             )
         )
     finally:

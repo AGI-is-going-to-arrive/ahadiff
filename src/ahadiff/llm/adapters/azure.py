@@ -7,6 +7,7 @@ from ahadiff.contracts import ProviderCapabilities
 
 from ..provider import AdapterBase
 from ..schemas import ProviderRequest, ProviderResponse
+from .thinking import normalize_thinking_level
 
 if TYPE_CHECKING:
     import httpx
@@ -37,25 +38,39 @@ class AzureOpenAIAdapter(AdapterBase):
         api_key: str | None,
     ) -> tuple[str, str, dict[str, str], dict[str, Any]]:
         headers = {"content-type": "application/json"}
+        v1_compat = self._is_v1_compat()
         if api_key:
-            headers["api-key"] = api_key
+            if v1_compat:
+                headers["authorization"] = f"Bearer {api_key}"
+            else:
+                headers["api-key"] = api_key
         payload: dict[str, Any] = {
             "messages": [{"role": "user", "content": request.effective_payload()}],
             "stream": False,
         }
+        if v1_compat:
+            payload["model"] = request.model
+        thinking = normalize_thinking_level(request.thinking_level)
         if request.temperature is not None:
             payload["temperature"] = request.temperature
         if request.max_output_tokens is not None:
-            payload["max_tokens"] = request.max_output_tokens
+            token_key = "max_completion_tokens" if thinking != "none" else "max_tokens"
+            payload[token_key] = request.max_output_tokens
+        if thinking != "none":
+            payload["reasoning_effort"] = thinking
         url = self._build_url(request.model)
         return "POST", url, headers, payload
 
     def parse_response(self, response: httpx.Response) -> ProviderResponse:
         payload = response.json()
         choice = payload["choices"][0]
+        message = choice.get("message", {})
         usage = payload.get("usage", {})
+        content = str(message.get("content") or "")
+        if not content:
+            content = str(message.get("reasoning_content") or "")
         return ProviderResponse(
-            content=str(choice.get("message", {}).get("content", "")),
+            content=content,
             model_id=str(payload.get("model", self.config.model_name)),
             input_tokens=int(usage.get("prompt_tokens", 0)),
             output_tokens=int(usage.get("completion_tokens", 0)),
@@ -66,16 +81,19 @@ class AzureOpenAIAdapter(AdapterBase):
 
     def _build_url(self, deployment: str) -> str:
         parsed = urlsplit(self.config.base_url)
+        base_path = parsed.path.rstrip("/")
+        if base_path.endswith("/v1"):
+            path = f"{base_path}/chat/completions"
+            return urlunsplit((parsed.scheme, parsed.netloc, path, parsed.query, ""))
         query = parse_qs(parsed.query, keep_blank_values=True)
         api_version = query.get("api-version", [self.DEFAULT_API_VERSION])[-1]
         query["api-version"] = [api_version]
-        path = f"{parsed.path.rstrip('/')}/{deployment}/chat/completions"
+        if "/deployments" not in base_path:
+            base_path = f"{base_path}/deployments"
+        path = f"{base_path}/{deployment}/chat/completions"
         return urlunsplit(
-            (
-                parsed.scheme,
-                parsed.netloc,
-                path,
-                urlencode(query, doseq=True),
-                parsed.fragment,
-            )
+            (parsed.scheme, parsed.netloc, path, urlencode(query, doseq=True), "")
         )
+
+    def _is_v1_compat(self) -> bool:
+        return self.config.base_url.rstrip("/").endswith("/v1")

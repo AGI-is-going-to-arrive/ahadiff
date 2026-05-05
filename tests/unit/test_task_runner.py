@@ -972,6 +972,44 @@ def test_classify_error_oserror_not_network() -> None:
     _run(_inner())
 
 
+def test_classify_provider_error_decompression_is_network() -> None:
+    from ahadiff.core.errors import ProviderError
+
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=2)
+
+        async def fail_decomp(handle: TaskHandle) -> None:
+            raise ProviderError("provider response decompression failed: Error -3")
+
+        task_id = runner.submit("test", fail_decomp)
+        await asyncio.sleep(0.2)
+        info = runner.get_task(task_id)
+        assert info is not None
+        assert info.status == TaskStatus.FAILED
+        assert info.error_code == "network_error"
+
+    _run(_inner())
+
+
+def test_classify_provider_error_auth_is_config() -> None:
+    from ahadiff.core.errors import ProviderError
+
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=2)
+
+        async def fail_auth(handle: TaskHandle) -> None:
+            raise ProviderError("provider authentication failed (HTTP 401)")
+
+        task_id = runner.submit("test", fail_auth)
+        await asyncio.sleep(0.2)
+        info = runner.get_task(task_id)
+        assert info is not None
+        assert info.status == TaskStatus.FAILED
+        assert info.error_code == "config_error"
+
+    _run(_inner())
+
+
 def test_cancel_before_timeout_preserves_cancelled() -> None:
     async def _inner() -> None:
         runner = TaskRunner(max_concurrent=2, task_timeout_seconds=0.2)

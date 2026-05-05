@@ -1144,7 +1144,8 @@ def _mutate_prompt_in_worktree(
                 output_lang=output_lang or "en",
                 privacy_mode=cast("Any", privacy_mode),
                 response_format="json",
-                max_output_tokens=6000,
+                max_output_tokens=provider_config.max_output_tokens or 6000,
+                thinking_level=provider_config.thinking_level,
             )
         )
     finally:

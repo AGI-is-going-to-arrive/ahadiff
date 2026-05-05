@@ -32,7 +32,7 @@ from .core.config import (
     load_workspace_security_config,
     local_hosts_for_privacy_mode,
     normalize_provider_base_url,
-    validate_repo_api_key_env_name,
+    resolve_provider_api_key,
     write_default_config,
 )
 from .core.errors import AhaDiffError, ConfigError, InputError, StorageError
@@ -294,10 +294,6 @@ def _resolve_runtime_provider(
     resolved_model = model or str(llm_config["generate_model"])
     provider_selection_explicit = base_url is not None or provider_name is not None
     if base_url is not None:
-        try:
-            validate_repo_api_key_env_name(api_key_env)
-        except ConfigError as exc:
-            raise AhaDiffError(str(exc)) from exc
         normalized_base_url = _normalize_provider_base_url(base_url, provider_class=provider_class)
         provider_config = _provider_config_from_payload(
             {
@@ -365,7 +361,7 @@ def _resolve_runtime_provider(
             f"{operation_label} requires --provider or --base-url to use a remote provider "
             "while privacy_mode is strict_local"
         )
-    effective_api_key = os.environ.get(provider_config.api_key_env)
+    effective_api_key = resolve_provider_api_key(provider_config.api_key_env)
     if (
         effective_api_key is None
         and provider_config.provider_class != "ollama"
@@ -3167,10 +3163,6 @@ def provider_test_cmd(
         provider_limits = cast("dict[str, Any]", snapshot.values["provider"])
         resolved_model = model or str(llm_config["generate_model"])
         normalized_base_url = _normalize_provider_base_url(base_url, provider_class=provider_class)
-        try:
-            validate_repo_api_key_env_name(api_key_env)
-        except ConfigError as exc:
-            raise AhaDiffError(str(exc)) from exc
         _provider_config_from_payload(
             {
                 "provider_class": provider_class,
@@ -3239,7 +3231,6 @@ def provider_test_cmd(
         capabilities.add_row("supports_stream", str(report.capabilities.supports_stream))
         capabilities.add_row("supports_json_mode", str(report.capabilities.supports_json_mode))
         capabilities.add_row("supports_tool_use", str(report.capabilities.supports_tool_use))
-        capabilities.add_row("supports_temperature", str(report.config.supports_temperature))
         capabilities.add_row(
             "supports_rate_limit_headers",
             str(report.capabilities.supports_rate_limit_headers),

@@ -369,7 +369,7 @@ def test_provider_tables_and_security_local_hosts_are_supported_config_keys(tmp_
         '[pricing.output_per_million_usd]\n"openrouter/custom.model" = 1.6\n\n'
         '[providers.demo]\nprovider_class = "openai"\nmodel_name = "gpt-5.4-mini"\n'
         'base_url = "http://127.0.0.1:8000"\napi_key_env = "AHADIFF_PROVIDER_API_KEY"\n'
-        "probed_max_context = 1000000\nsupports_temperature = true\n",
+        "probed_max_context = 1000000\n",
         encoding="utf-8",
     )
 

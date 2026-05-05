@@ -47,6 +47,8 @@ class CacheKeyInput:
     redaction_config: str
     context_bundle_hash: str
     request_payload_sha256: str
+    max_output_tokens: int | None = None
+    thinking_level: str = "none"
 
 
 @dataclass(frozen=True)
@@ -69,6 +71,7 @@ class ProviderRequest:
     )
     temperature: float | None = None
     max_output_tokens: int | None = None
+    thinking_level: str | None = None
     response_format: RequestFormat = "text"
     findings: tuple[SecretFinding, ...] = ()
 

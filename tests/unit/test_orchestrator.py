@@ -1320,7 +1320,7 @@ class TestPipelineErrorBudget:
     def test_defaults(self) -> None:
         b = PipelineErrorBudget()
         assert b.max_step_retries == 2
-        assert b.max_total_errors == 3
+        assert b.max_total_errors == 8
         assert b.error_count == 0
         assert b.exhausted() is False
 

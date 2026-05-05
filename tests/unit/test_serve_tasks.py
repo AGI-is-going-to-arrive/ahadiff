@@ -216,7 +216,7 @@ def test_get_task_maps_error_code_to_user_facing_error(tmp_path: Path) -> None:
         ("quiz_error", "Failed to generate quiz content."),
         ("learnability_error", "Diff was not suitable for learning."),
         ("cancelled", "Task was cancelled."),
-        ("internal_error", "Internal error occurred."),
+        ("internal_error", "raw internal detail"),
         ("unknown_future_code", "An unexpected error occurred."),
     ],
 )

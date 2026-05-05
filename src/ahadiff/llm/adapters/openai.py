@@ -6,6 +6,7 @@ from ahadiff.contracts import ProviderCapabilities
 
 from ..provider import AdapterBase
 from ..schemas import ProviderRequest, ProviderResponse
+from .thinking import reject_unsupported_thinking
 
 if TYPE_CHECKING:
     import httpx
@@ -33,6 +34,7 @@ class OpenAIChatAdapter(AdapterBase):
         *,
         api_key: str | None,
     ) -> tuple[str, str, dict[str, str], dict[str, Any]]:
+        reject_unsupported_thinking(self.config.provider_class, request.thinking_level)
         headers = {"content-type": "application/json"}
         if api_key:
             headers["authorization"] = f"Bearer {api_key}"
@@ -47,7 +49,9 @@ class OpenAIChatAdapter(AdapterBase):
             payload["max_tokens"] = request.max_output_tokens
         if request.response_format == "json":
             payload["response_format"] = {"type": "json_object"}
-        url = f"{self.config.base_url.rstrip('/')}/v1/chat/completions"
+        base = self.config.base_url.rstrip("/")
+        prefix = base if base.endswith("/v1") else f"{base}/v1"
+        url = f"{prefix}/chat/completions"
         return "POST", url, headers, payload
 
     def parse_response(self, response: httpx.Response) -> ProviderResponse:
@@ -55,8 +59,11 @@ class OpenAIChatAdapter(AdapterBase):
         choice = payload["choices"][0]
         message = choice.get("message", {})
         usage = payload.get("usage", {})
+        content = str(message.get("content") or "")
+        if not content:
+            content = str(message.get("reasoning_content") or "")
         return ProviderResponse(
-            content=str(message.get("content", "")),
+            content=content,
             model_id=str(payload.get("model", self.config.model_name)),
             input_tokens=int(usage.get("prompt_tokens", 0)),
             output_tokens=int(usage.get("completion_tokens", 0)),
@@ -74,7 +81,9 @@ class OpenAIChatAdapter(AdapterBase):
         headers: dict[str, str] = {}
         if api_key:
             headers["authorization"] = f"Bearer {api_key}"
-        return "GET", f"{self.config.base_url.rstrip('/')}/v1/models", headers
+        base = self.config.base_url.rstrip("/")
+        prefix = base if base.endswith("/v1") else f"{base}/v1"
+        return "GET", f"{prefix}/models", headers
 
     def parse_context_probe(self, response: httpx.Response, *, model_name: str) -> int | None:
         payload = response.json()

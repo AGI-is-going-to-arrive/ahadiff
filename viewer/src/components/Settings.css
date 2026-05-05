@@ -457,6 +457,20 @@
   font-size: 13px;
 }
 
+.doctor-check__details {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-xs);
+  color: var(--ink-muted);
+}
+
+.doctor-check__details code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--elevated);
+  padding: 1px var(--sp-1);
+  border-radius: var(--r-xs);
+}
+
 .doctor-check__status {
   font-family: var(--font-mono);
   font-size: 11px;

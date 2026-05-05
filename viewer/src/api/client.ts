@@ -27,6 +27,14 @@ function sanitizeApiErrorBody(body: unknown, depth = 0): unknown {
   return body;
 }
 
+function extractApiErrorMessage(body: unknown, status: number): string {
+  if (body && typeof body === 'object' && 'error' in body) {
+    const error = (body as Record<string, unknown>).error;
+    if (typeof error === 'string') return error;
+  }
+  return `API ${status}`;
+}
+
 export class ApiError extends Error {
   public readonly status: number;
   public readonly body: unknown;
@@ -36,7 +44,7 @@ export class ApiError extends Error {
     body: unknown,
     message?: string,
   ) {
-    super(message ?? `API ${status}`);
+    super(message ?? extractApiErrorMessage(body, status));
     this.status = status;
     this.body = sanitizeApiErrorBody(body);
   }

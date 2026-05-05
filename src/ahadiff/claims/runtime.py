@@ -97,6 +97,8 @@ def extract_claim_candidates_from_run(
     request_timeout_seconds: int = 30,
     client: httpx.Client | None = None,
     privacy_mode: PrivacyMode | None = None,
+    input_token_budget: int | None = None,
+    output_token_budget: int | None = None,
 ) -> tuple[Path, tuple[ClaimCandidate, ...]]:
     prompt_text = load_claim_extract_prompt()
     metadata = _load_run_json(run_path / "metadata.json")
@@ -130,6 +132,11 @@ def extract_claim_candidates_from_run(
         )
         redacted_payload_text = redaction.redacted_text
         findings = redaction.findings
+    budget_kwargs: dict[str, int] = {}
+    if input_token_budget is not None:
+        budget_kwargs["input_token_budget"] = input_token_budget
+    if output_token_budget is not None:
+        budget_kwargs["output_token_budget"] = output_token_budget
     provider = make_provider(
         provider_config,
         api_key=api_key,
@@ -141,6 +148,7 @@ def extract_claim_candidates_from_run(
         retry_attempts=retry_attempts,
         request_timeout_seconds=request_timeout_seconds,
         execution_origin="claims_extract",
+        **budget_kwargs,
     )
     try:
         response = provider.generate(
@@ -157,7 +165,8 @@ def extract_claim_candidates_from_run(
                 redacted_payload_text=redacted_payload_text,
                 findings=findings,
                 response_format="json",
-                max_output_tokens=4000,
+                max_output_tokens=provider_config.max_output_tokens or 4000,
+                thinking_level=provider_config.thinking_level,
             )
         )
     finally:

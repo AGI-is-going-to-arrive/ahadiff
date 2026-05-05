@@ -801,11 +801,16 @@ def _dynamic_model_pricing_field(key: str) -> str | None:
     return None
 
 
+_SENSITIVE_KEY_FALSE_POSITIVES = re.compile(
+    r"(token_budget|token_limit|output_tokens|input_tokens|max_tokens)", re.IGNORECASE
+)
+
+
 def _is_sensitive_key(key: str, value: Scalar) -> bool:
     lowered = key.lower()
     if lowered.endswith("_env") or lowered.endswith("_env_var"):
         return False
-    if _SENSITIVE_KEY_PATTERN.search(key):
+    if _SENSITIVE_KEY_PATTERN.search(key) and not _SENSITIVE_KEY_FALSE_POSITIVES.search(key):
         return True
     if isinstance(value, str):
         return any(pattern.search(value) for pattern in _SECRET_VALUE_PATTERNS)

@@ -9,7 +9,6 @@ from ahadiff.core.config import (
     SecurityConfig,
     local_hosts_for_privacy_mode,
     read_config_data,
-    validate_repo_api_key_env_name,
     write_config_data,
 )
 from ahadiff.core.errors import InputError, ProviderError
@@ -73,11 +72,6 @@ def probe_provider(
                 privacy_mode=privacy_mode,
             )
         )
-        supports_temperature = _probe_temperature_support(
-            provider,
-            model_name=model_name,
-            privacy_mode=privacy_mode,
-        )
         context_window, context_source = _probe_context_window(provider, model_name=model_name)
         config = ProviderConfig(
             provider_class=base_config.provider_class,
@@ -87,7 +81,6 @@ def probe_provider(
             probed_max_context=context_window,
             probed_tpm=response.rate_limits.tpm_limit if response.rate_limits else None,
             probed_rpm=response.rate_limits.rpm_limit if response.rate_limits else None,
-            supports_temperature=supports_temperature,
             probe_timestamp=_utc_now(),
         )
         report = ProbeReport(
@@ -113,7 +106,6 @@ def persist_probe_result(
 ) -> Path:
     if "." in provider_name:
         raise InputError("provider alias must not contain '.' because it becomes a TOML table path")
-    validate_repo_api_key_env_name(config.api_key_env)
     config_path = workspace_root / ".ahadiff" / "config.toml"
     lock_path = workspace_root / ".ahadiff" / "ahadiff.lock"
     with repo_write_lock(lock_path, command="provider probe persist"):
@@ -128,48 +120,16 @@ def persist_probe_result(
                 "model_name": config.model_name,
                 "base_url": config.base_url,
                 "api_key_env": config.api_key_env,
+                "max_output_tokens": config.max_output_tokens,
+                "thinking_level": config.thinking_level,
                 "probed_max_context": config.probed_max_context,
                 "probed_tpm": config.probed_tpm,
                 "probed_rpm": config.probed_rpm,
-                "supports_temperature": config.supports_temperature,
                 "probe_timestamp": config.probe_timestamp,
             }.items()
             if value is not None
         }
         return write_config_data(config_path, payload)
-
-
-def _probe_temperature_support(
-    provider: Any, *, model_name: str, privacy_mode: PrivacyMode
-) -> bool:
-    if not provider.capabilities.supports_temperature:
-        return False
-    try:
-        low = provider.generate(
-            _build_probe_request(
-                model_name=model_name,
-                prompt_name="provider.temperature",
-                prompt_fingerprint="provider-temperature-v1",
-                source_ref="provider_temperature_low",
-                payload_text="Return a short token.",
-                privacy_mode=privacy_mode,
-                temperature=0.0,
-            )
-        )
-        high = provider.generate(
-            _build_probe_request(
-                model_name=model_name,
-                prompt_name="provider.temperature",
-                prompt_fingerprint="provider-temperature-v1",
-                source_ref="provider_temperature_high",
-                payload_text="Return a short token.",
-                privacy_mode=privacy_mode,
-                temperature=1.0,
-            )
-        )
-    except ProviderError:
-        return False
-    return low.content != "" and high.content != ""
 
 
 def _build_probe_request(

@@ -26,6 +26,7 @@ from ahadiff.core.config import (
     load_workspace_config,
     load_workspace_security_config,
     local_hosts_for_privacy_mode,
+    resolve_provider_api_key,
 )
 from ahadiff.core.errors import AhaDiffError
 from ahadiff.core.paths import (
@@ -109,7 +110,7 @@ CancelledCheck = Callable[[], bool]
 _TOTAL_STEPS = 10
 
 _DEFAULT_MAX_STEP_RETRIES = 2
-_DEFAULT_ERROR_BUDGET = 3
+_DEFAULT_ERROR_BUDGET = 8
 _MAX_BACKOFF_SECONDS = 30.0
 
 
@@ -139,7 +140,10 @@ def is_recoverable_error(exc: Exception) -> bool:
         msg = str(exc).lower()
     except Exception:
         return False
-    _recoverable = ("connection", "timeout", "transport", "rate limit", "503", "429", "retry")
+    _recoverable = (
+        "connection", "timeout", "transport", "rate limit",
+        "503", "429", "retry", "decompression failed", "decompressing",
+    )
     return any(p in msg for p in _recoverable)
 
 
@@ -402,9 +406,9 @@ def _resolve_provider_from_config(
             "remote provider while privacy_mode is strict_local"
         )
 
-    effective_api_key = os.environ.get(provider_config.api_key_env)
+    effective_api_key = resolve_provider_api_key(provider_config.api_key_env)
     if (
-        effective_api_key is None
+        not effective_api_key
         and provider_config.provider_class != "ollama"
         and transport_target == "remote"
     ):
@@ -757,6 +761,13 @@ def run_learn_pipeline(
                 assert provider_config is not None  # noqa: S101
                 assert resolved_privacy_mode is not None  # noqa: S101
 
+                output_budget = int(llm_config.get("output_token_budget", 50000))
+                provider_max_out = getattr(provider_config, "max_output_tokens", None)
+                if provider_max_out and provider_max_out > output_budget:
+                    provider_config = provider_config.model_copy(
+                        update={"max_output_tokens": output_budget}
+                    )
+
                 # ------------------------------------------------------------------
                 # Step 5: extract and verify claims
                 # ------------------------------------------------------------------
@@ -790,6 +801,10 @@ def run_learn_pipeline(
                             qps_limit=int(provider_limits["qps_limit"]),
                             retry_attempts=int(llm_config["retry_attempts"]),
                             request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
+                            input_token_budget=int(
+                                    llm_config.get("input_token_budget", 200000)
+                                ),
+                            output_token_budget=output_budget,
                         )
                         raw_claims_path = result_path
                         return result_path
@@ -838,8 +853,6 @@ def run_learn_pipeline(
                         raw_claims_path=raw_claims_path,
                         claims_output_path=claims_output_path,
                     )
-                    if isinstance(exc, AhaDiffError):
-                        raise
                     raise AhaDiffError(f"claim extraction failed: {exc}") from exc
 
                 if lesson_skip_reason is not None:
@@ -876,6 +889,10 @@ def run_learn_pipeline(
                                 retry_attempts=int(llm_config["retry_attempts"]),
                                 privacy_mode=cast("PrivacyMode", resolved_privacy_mode),
                                 output_lang=resolved_content_lang,
+                                input_token_budget=int(
+                                    llm_config.get("input_token_budget", 200000)
+                                ),
+                                output_token_budget=output_budget,
                             )
 
                         run_with_retry(
@@ -890,8 +907,6 @@ def run_learn_pipeline(
                             raw_claims_path=raw_claims_path,
                             claims_output_path=claims_output_path,
                         )
-                        if isinstance(exc, AhaDiffError):
-                            raise
                         raise AhaDiffError(f"lesson generation failed: {exc}") from exc
 
                     # ------------------------------------------------------------------
@@ -922,6 +937,10 @@ def run_learn_pipeline(
                                 retry_attempts=int(llm_config["retry_attempts"]),
                                 privacy_mode=cast("PrivacyMode", resolved_privacy_mode),
                                 output_lang=resolved_content_lang,
+                                input_token_budget=int(
+                                    llm_config.get("input_token_budget", 200000)
+                                ),
+                                output_token_budget=output_budget,
                             )
                             quiz_questions_holder[:] = [questions]
 
@@ -938,8 +957,6 @@ def run_learn_pipeline(
                             raw_claims_path=raw_claims_path,
                             claims_output_path=claims_output_path,
                         )
-                        if isinstance(exc, AhaDiffError):
-                            raise
                         raise AhaDiffError(f"quiz generation failed: {exc}") from exc
 
                     # ------------------------------------------------------------------

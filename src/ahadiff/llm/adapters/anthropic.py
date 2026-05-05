@@ -3,9 +3,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from ahadiff.contracts import ProviderCapabilities
+from ahadiff.core.errors import ProviderError
 
 from ..provider import AdapterBase
 from ..schemas import ProviderRequest, ProviderResponse
+from .thinking import anthropic_budget_tokens
 
 if TYPE_CHECKING:
     import httpx
@@ -40,14 +42,26 @@ class AnthropicAdapter(AdapterBase):
         if api_key:
             headers["x-api-key"] = api_key
         default_max_tokens = self.config.probed_max_context or 4096
+        max_tokens = request.max_output_tokens or max(256, min(4096, default_max_tokens // 4))
+        budget = anthropic_budget_tokens(request.thinking_level)
+        if budget is not None:
+            if request.max_output_tokens is not None and request.max_output_tokens <= budget:
+                raise ProviderError(
+                    f"anthropic thinking requires max_output_tokens > budget_tokens={budget}"
+                )
+            max_tokens = max(max_tokens, budget + 1)
         payload: dict[str, Any] = {
             "model": request.model,
             "messages": [{"role": "user", "content": request.effective_payload()}],
-            "max_tokens": request.max_output_tokens or max(256, min(4096, default_max_tokens // 4)),
+            "max_tokens": max_tokens,
         }
-        if request.temperature is not None:
+        if budget is not None:
+            payload["thinking"] = {"type": "enabled", "budget_tokens": budget}
+        elif request.temperature is not None:
             payload["temperature"] = request.temperature
-        url = f"{self.config.base_url.rstrip('/')}/v1/messages"
+        base = self.config.base_url.rstrip("/")
+        prefix = base if base.endswith("/v1") else f"{base}/v1"
+        url = f"{prefix}/messages"
         return "POST", url, headers, payload
 
     def parse_response(self, response: httpx.Response) -> ProviderResponse:

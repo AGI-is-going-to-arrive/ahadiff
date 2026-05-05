@@ -637,6 +637,7 @@ export const taskProgressResponseSchema = z
     current: z.number().int().nonnegative(),
     total: z.number().int().nonnegative(),
     message: z.string(),
+    step_started_at: z.string().default(""),
   })
   .strict();
 

@@ -27,6 +27,7 @@ class TaskProgress:
     current: int = 0
     total: int = 0
     message: str = ""
+    step_started_at: str = ""
 
 
 @dataclass
@@ -74,7 +75,7 @@ _MAX_COMPLETED_HISTORY = 100
 _MAX_ARCHIVED_LOOKUP = 32
 
 
-_DEFAULT_TASK_TIMEOUT_SECONDS = 600.0
+_DEFAULT_TASK_TIMEOUT_SECONDS = 1800.0
 _DEFAULT_TASK_TIMEOUT_ENV = "AHADIFF_DEFAULT_TASK_TIMEOUT_SECONDS"
 _TaskTimeoutValue = str | bytes | bytearray | SupportsFloat | SupportsIndex
 
@@ -198,7 +199,16 @@ class TaskRunner:
     def apply_progress_update(self, task_id: str, current: int, total: int, message: str) -> None:
         info = self.get_task(task_id)
         if info is not None:
-            info.progress = TaskProgress(current=current, total=total, message=message)
+            prev = info.progress
+            step_changed = prev.current != current or prev.total != total
+            info.progress = TaskProgress(
+                current=current,
+                total=total,
+                message=message,
+                step_started_at=(
+                    datetime.now(UTC).isoformat() if step_changed else prev.step_started_at
+                ),
+            )
 
     def get_task(self, task_id: str) -> TaskInfo | None:
         return self._tasks.get(task_id) or self._archived_tasks.get(task_id)
@@ -303,6 +313,16 @@ class TaskRunner:
         if isinstance(exc, ConfigError):
             return "config_error"
         if isinstance(exc, ProviderError):
+            try:
+                provider_msg = str(exc).lower()
+            except Exception:
+                provider_msg = ""
+            _transient = (
+                "transport", "decompression", "rate limit", "timeout",
+                "connection", "503", "429", "retryable status",
+            )
+            if any(t in provider_msg for t in _transient):
+                return "network_error"
             return "config_error"
         if isinstance(exc, SafetyError):
             return "permission_error"
@@ -449,7 +469,7 @@ class TaskRunner:
                 info.status = TaskStatus.CANCELLED
                 info.completed_at = datetime.now(UTC).isoformat()
         except Exception as exc:
-            log.error("task %s failed with %s", task_id, type(exc).__name__)
+            log.error("task %s failed with %s: %s", task_id, type(exc).__name__, exc)
             if handle.is_cancelled():
                 info.status = TaskStatus.CANCELLED
                 info.completed_at = datetime.now(UTC).isoformat()

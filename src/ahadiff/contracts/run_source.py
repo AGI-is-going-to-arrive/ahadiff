@@ -28,10 +28,11 @@ ProviderClass: TypeAlias = Literal[
     "anthropic",
     "azure",
     "newapi",
-    "cherryin",
     "ollama",
+    "lmstudio",
 ]
 TokenizerEstimation: TypeAlias = Literal["tiktoken", "char_div_4", "probe_cached"]
+ThinkingLevel: TypeAlias = Literal["none", "low", "medium", "high"]
 DegradedFlagsMap: TypeAlias = dict[DegradedFlag, bool]
 
 
@@ -55,10 +56,11 @@ class ProviderConfig(BaseModel):
     model_name: str
     base_url: str
     api_key_env: str
+    max_output_tokens: int | None = None
+    thinking_level: ThinkingLevel | None = None
     probed_max_context: int | None = None
     probed_tpm: int | None = None
     probed_rpm: int | None = None
-    supports_temperature: bool | None = None
     probe_timestamp: str | None = None
 
 
@@ -101,5 +103,6 @@ __all__ = [
     "ProviderCapabilities",
     "AllowlistPolicy",
     "DegradedFlagsMap",
+    "ThinkingLevel",
     "empty_degraded_flags",
 ]

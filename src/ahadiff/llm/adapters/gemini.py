@@ -6,6 +6,7 @@ from ahadiff.contracts import ProviderCapabilities
 
 from ..provider import AdapterBase
 from ..schemas import ProviderRequest, ProviderResponse
+from .thinking import gemini_thinking_level
 
 if TYPE_CHECKING:
     import httpx
@@ -39,8 +40,16 @@ class GeminiAdapter(AdapterBase):
         payload: dict[str, Any] = {
             "contents": [{"role": "user", "parts": [{"text": request.effective_payload()}]}],
         }
+        generation_config: dict[str, Any] = {}
         if request.temperature is not None:
-            payload["generationConfig"] = {"temperature": request.temperature}
+            generation_config["temperature"] = request.temperature
+        if request.max_output_tokens is not None:
+            generation_config["maxOutputTokens"] = request.max_output_tokens
+        thinking = gemini_thinking_level(request.thinking_level)
+        if thinking is not None:
+            generation_config["thinkingConfig"] = {"thinkingLevel": thinking}
+        if generation_config:
+            payload["generationConfig"] = generation_config
         url = f"{self.config.base_url.rstrip('/')}/v1beta/models/{request.model}:generateContent"
         return "POST", url, headers, payload
 

@@ -57,6 +57,7 @@ from .run_source import (
     ProviderConfig,
     RunSource,
     SourceKind,
+    ThinkingLevel,
     TokenizerEstimation,
 )
 from .serve_app import (
@@ -197,6 +198,7 @@ __all__ = [
     "TaskProgressResponse",
     "TaskSubmitResponse",
     "TERMINAL_RUN_STATUSES",
+    "ThinkingLevel",
     "TokenizerEstimation",
     "UsageEvent",
     "WatchStatusResponse",

@@ -1,8 +1,38 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useLearnStore } from '../state/learn-store';
 import { useTranslation, type MessageKey } from '../i18n/useTranslation';
 import { safeVerdict } from '../utils/verdict';
 import './LearnTaskBanner.css';
+
+const LLM_STEPS = new Set([5, 6, 7, 8]);
+
+function useElapsed(startIso: string | undefined | null): number {
+  const [elapsed, setElapsed] = useState(0);
+  const rafRef = useRef(0);
+  const startRef = useRef(0);
+
+  useEffect(() => {
+    if (!startIso) { setElapsed(0); return; }
+    const t0 = new Date(startIso).getTime();
+    if (Number.isNaN(t0)) { setElapsed(0); return; }
+    startRef.current = t0;
+
+    const tick = () => {
+      setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [startIso]);
+
+  return elapsed;
+}
+
+function formatElapsed(s: number): string {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return m > 0 ? `${m}:${String(sec).padStart(2, '0')}` : `${sec}s`;
+}
 
 export default function LearnTaskBanner() {
   const { t } = useTranslation();
@@ -20,9 +50,14 @@ export default function LearnTaskBanner() {
     void recoverExistingTask();
   }, [recoverExistingTask]);
 
+  const progress = task?.progress;
+  const stepStartedAt = progress?.step_started_at || null;
+  const elapsed = useElapsed(
+    phase === 'running' || phase === 'cancelling' ? stepStartedAt : null,
+  );
+
   if (phase === 'idle') return null;
 
-  const progress = task?.progress;
   const isPending = task?.status === 'pending';
   const pct = progress && progress.total > 0
     ? Math.max(0, Math.min(100, Math.round((progress.current / progress.total) * 100)))
@@ -35,6 +70,7 @@ export default function LearnTaskBanner() {
   const rateLimitSeconds = isRateLimited && error?.startsWith('rate_limited:')
     ? error.split(':')[1] ?? '60'
     : '60';
+  const isLlmStep = progress ? LLM_STEPS.has(progress.current) : false;
 
   return (
     <div
@@ -55,6 +91,9 @@ export default function LearnTaskBanner() {
         <>
           <div className="learn-banner__body">
             <div className="learn-banner__info">
+              {isLlmStep && (
+                <span className="learn-banner__pulse" aria-hidden="true" />
+              )}
               <span className="learn-banner__step">
                 {isPending
                   ? t('Learn.pending')
@@ -68,10 +107,20 @@ export default function LearnTaskBanner() {
               {progress?.message && (
                 <span className="learn-banner__msg">{progress.message}</span>
               )}
+              {!isPending && elapsed > 0 && (
+                <span className="learn-banner__elapsed" aria-hidden="true">
+                  {formatElapsed(elapsed)}
+                </span>
+              )}
             </div>
+            {isLlmStep && !isPending && (
+              <div className="learn-banner__hint">
+                {t(`Learn.step_hint_${progress!.current}` as MessageKey)}
+              </div>
+            )}
             {!isPending && (
               <div
-                className="learn-banner__bar-track"
+                className={`learn-banner__bar-track${isLlmStep ? ' learn-banner__bar-track--active' : ''}`}
                 role="progressbar"
                 aria-valuenow={pct}
                 aria-valuemin={0}
@@ -96,6 +145,15 @@ export default function LearnTaskBanner() {
             >
               {phase === 'cancelling' ? t('Learn.cancelling') : t('Learn.cancel')}
             </button>
+            {phase === 'cancelling' && (
+              <button
+                type="button"
+                className="learn-banner__btn learn-banner__btn--dismiss"
+                onClick={dismiss}
+              >
+                {t('Learn.dismiss')}
+              </button>
+            )}
           </div>
         </>
       )}

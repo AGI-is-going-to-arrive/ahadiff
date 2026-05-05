@@ -221,7 +221,6 @@ def test_provider_cli_outputs_capabilities_table_and_persists_probe_result(
             probed_max_context=123456,
             probed_tpm=222,
             probed_rpm=33,
-            supports_temperature=True,
             probe_timestamp="2026-04-22T00:00:00Z",
         )
         persist_probe_result(repo_root, provider_name="demo", config=config)
@@ -273,7 +272,7 @@ def test_provider_cli_outputs_capabilities_table_and_persists_probe_result(
     assert load_config(repo_root, env={"HOME": str(tmp_path / "home")}).repo_unknown_keys == ()
 
 
-@pytest.mark.parametrize("provider_class", ["openai", "newapi", "cherryin"])
+@pytest.mark.parametrize("provider_class", ["openai", "newapi", "lmstudio"])
 def test_provider_cli_normalizes_chat_completions_base_url_before_probe(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -296,7 +295,6 @@ def test_provider_cli_normalizes_chat_completions_base_url_before_probe(
             base_url=str(kwargs["base_url"]),
             api_key_env="AHADIFF_PROVIDER_API_KEY",
             probed_max_context=123456,
-            supports_temperature=True,
             probe_timestamp="2026-04-22T00:00:00Z",
         )
         return ProbeReport(
@@ -362,7 +360,6 @@ def test_provider_cli_normalizes_openai_responses_base_url_before_probe(
             base_url=str(kwargs["base_url"]),
             api_key_env="AHADIFF_PROVIDER_API_KEY",
             probed_max_context=123456,
-            supports_temperature=True,
             probe_timestamp="2026-04-22T00:00:00Z",
         )
         return ProbeReport(
@@ -421,7 +418,6 @@ def test_provider_cli_can_fallback_to_api_key_env(
             base_url="http://127.0.0.1:8000",
             api_key_env="AHADIFF_PROVIDER_API_KEY",
             probed_max_context=123456,
-            supports_temperature=True,
             probe_timestamp="2026-04-22T00:00:00Z",
         )
         return ProbeReport(
@@ -477,7 +473,6 @@ def test_provider_cli_allows_local_provider_without_api_key_env(
             base_url="http://127.0.0.1:8000",
             api_key_env="AHADIFF_PROVIDER_API_KEY",
             probed_max_context=123456,
-            supports_temperature=True,
             probe_timestamp="2026-04-22T00:00:00Z",
         )
         return ProbeReport(
@@ -534,7 +529,6 @@ def test_provider_cli_defaults_remote_probe_to_explicit_remote(
             base_url="https://api.openai.com",
             api_key_env="AHADIFF_PROVIDER_API_KEY",
             probed_max_context=123456,
-            supports_temperature=True,
             probe_timestamp="2026-04-22T00:00:00Z",
         )
         return ProbeReport(

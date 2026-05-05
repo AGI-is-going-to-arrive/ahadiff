@@ -266,7 +266,12 @@
     "submitting": "正在提交 Learn 运行…",
     "rate_limited": "请求频率超限，请在 {seconds} 秒后重试。",
     "too_many_tasks": "已有 Learn 任务正在运行，请等待完成后再试。",
-    "view_run": "查看运行"
+    "view_run": "查看运行",
+    "elapsed": "已耗时",
+    "step_hint_5": "正在从 diff 中提取证据 claim — 使用思考模型通常需要 1–3 分钟。",
+    "step_hint_6": "正在根据已验证的 claim 生成学习笔记 — 通常需要 1–3 分钟。",
+    "step_hint_7": "正在生成测验题和易错卡片 — 通常需要 1–2 分钟。",
+    "step_hint_8": "正在进行 8 维质量评估 — 通常不超过 1 分钟。"
   },
   "Nav": {
     "dashboard": "运行",

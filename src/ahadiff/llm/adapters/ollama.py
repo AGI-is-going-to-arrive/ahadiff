@@ -6,6 +6,7 @@ from ahadiff.contracts import ProviderCapabilities
 
 from ..provider import AdapterBase
 from ..schemas import ProviderRequest, ProviderResponse
+from .thinking import normalize_thinking_level
 
 if TYPE_CHECKING:
     import httpx
@@ -38,6 +39,7 @@ class OllamaAdapter(AdapterBase):
             "model": request.model,
             "messages": [{"role": "user", "content": request.effective_payload()}],
             "stream": False,
+            "think": normalize_thinking_level(request.thinking_level) != "none",
         }
         if request.temperature is not None:
             payload["options"] = {"temperature": request.temperature}
@@ -46,8 +48,12 @@ class OllamaAdapter(AdapterBase):
 
     def parse_response(self, response: httpx.Response) -> ProviderResponse:
         payload = response.json()
+        message = payload.get("message", {})
+        content = str(message.get("content") or "")
+        if not content:
+            content = str(message.get("reasoning_content") or "")
         return ProviderResponse(
-            content=str(payload.get("message", {}).get("content", "")),
+            content=content,
             model_id=str(payload.get("model", self.config.model_name)),
             input_tokens=int(payload.get("prompt_eval_count", 0)),
             output_tokens=int(payload.get("eval_count", 0)),

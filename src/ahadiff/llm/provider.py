@@ -295,6 +295,8 @@ class ManagedProvider:
             request_payload_sha256=hashlib.sha256(
                 request_to_send.effective_payload().encode("utf-8")
             ).hexdigest(),
+            max_output_tokens=request.max_output_tokens,
+            thinking_level=request.thinking_level or "none",
         )
         cache_key = build_cache_key(cache_parts)
         if self.workspace_root is not None:
@@ -340,6 +342,14 @@ class ManagedProvider:
                     continue
                 except httpx.TransportError as error:
                     last_error = ProviderError(f"provider transport failed: {error}")
+                    if attempt >= self.retry_attempts:
+                        break
+                    self.sleep(min(2**attempt, 8))
+                    continue
+                except httpx.DecodingError as error:
+                    last_error = ProviderError(
+                        f"provider response decompression failed: {error}"
+                    )
                     if attempt >= self.retry_attempts:
                         break
                     self.sleep(min(2**attempt, 8))
@@ -434,6 +444,8 @@ class ManagedProvider:
                 headers = {**headers, "Host": original_host}
                 if sni_hostname is not None:
                     stream_extensions = {"sni_hostname": sni_hostname.encode("ascii")}
+        headers = {k: v for k, v in headers.items() if k.lower() != "accept-encoding"}
+        headers["accept-encoding"] = "identity"
         with self.client.stream(
             method,
             url,
@@ -458,10 +470,20 @@ class ManagedProvider:
                 )
             if response.status_code >= 400:
                 raise ProviderError(f"provider request failed with status {response.status_code}")
+            raw_body = self._read_capped_response_body(response)
+            # iter_bytes() already decoded content-encoding; strip it
+            # to prevent the buffered Response from re-decoding
+            buffered_headers = httpx.Headers(
+                [
+                    (k, v)
+                    for k, v in response.headers.raw
+                    if k.lower() not in (b"content-encoding", b"transfer-encoding")
+                ]
+            )
             buffered_response = httpx.Response(
                 response.status_code,
-                headers=response.headers,
-                content=self._read_capped_response_body(response),
+                headers=buffered_headers,
+                content=raw_body,
                 request=response.request,
                 extensions=response.extensions,
             )
@@ -814,11 +836,6 @@ def adapter_conformance_test(provider: Provider) -> None:
     capabilities = provider.capabilities
     if not capabilities.provider_kind:
         raise ProviderError("provider_kind must not be empty")
-    if (
-        provider.config.supports_temperature is not None
-        and provider.config.supports_temperature != capabilities.supports_temperature
-    ):
-        raise ProviderError("ProviderConfig.supports_temperature disagrees with capabilities")
     if capabilities.tokenizer_estimation not in {"tiktoken", "char_div_4", "probe_cached"}:
         raise ProviderError("tokenizer_estimation is outside the frozen contract")
 
@@ -847,8 +864,8 @@ def make_provider(
 ) -> ManagedProvider:
     from .adapters.anthropic import AnthropicAdapter
     from .adapters.azure import AzureOpenAIAdapter
-    from .adapters.cherryin import CherryINAdapter
     from .adapters.gemini import GeminiAdapter
+    from .adapters.lmstudio import LMStudioAdapter
     from .adapters.newapi import NewAPIAdapter
     from .adapters.ollama import OllamaAdapter
     from .adapters.openai import OpenAIChatAdapter
@@ -857,8 +874,8 @@ def make_provider(
     registry: dict[str, type[AdapterBase]] = {
         "anthropic": AnthropicAdapter,
         "azure": AzureOpenAIAdapter,
-        "cherryin": CherryINAdapter,
         "gemini": GeminiAdapter,
+        "lmstudio": LMStudioAdapter,
         "newapi": NewAPIAdapter,
         "ollama": OllamaAdapter,
         "openai": OpenAIChatAdapter,

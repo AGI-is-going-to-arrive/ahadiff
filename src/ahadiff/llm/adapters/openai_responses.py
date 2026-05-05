@@ -6,6 +6,7 @@ from ahadiff.contracts import ProviderCapabilities
 
 from ..provider import AdapterBase
 from ..schemas import ProviderRequest, ProviderResponse
+from .thinking import normalize_thinking_level
 
 if TYPE_CHECKING:
     import httpx
@@ -44,9 +45,14 @@ class OpenAIResponsesAdapter(AdapterBase):
             payload["temperature"] = request.temperature
         if request.max_output_tokens is not None:
             payload["max_output_tokens"] = request.max_output_tokens
+        thinking = normalize_thinking_level(request.thinking_level)
+        if thinking != "none":
+            payload["reasoning"] = {"effort": thinking}
         if request.response_format == "json":
             payload["text"] = {"format": {"type": "json_object"}}
-        url = f"{self.config.base_url.rstrip('/')}/v1/responses"
+        base = self.config.base_url.rstrip("/")
+        prefix = base if base.endswith("/v1") else f"{base}/v1"
+        url = f"{prefix}/responses"
         return "POST", url, headers, payload
 
     def parse_response(self, response: httpx.Response) -> ProviderResponse:
@@ -79,7 +85,9 @@ class OpenAIResponsesAdapter(AdapterBase):
         headers: dict[str, str] = {}
         if api_key:
             headers["authorization"] = f"Bearer {api_key}"
-        return "GET", f"{self.config.base_url.rstrip('/')}/v1/models", headers
+        base = self.config.base_url.rstrip("/")
+        prefix = base if base.endswith("/v1") else f"{base}/v1"
+        return "GET", f"{prefix}/models", headers
 
     def parse_context_probe(self, response: httpx.Response, *, model_name: str) -> int | None:
         payload = response.json()

@@ -3,5 +3,5 @@ from __future__ import annotations
 from .openai_compat import OpenAICompatAdapter
 
 
-class CherryINAdapter(OpenAICompatAdapter):
+class LMStudioAdapter(OpenAICompatAdapter):
     pass

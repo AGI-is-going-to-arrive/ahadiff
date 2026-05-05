@@ -232,7 +232,7 @@ pytest tests/live/test_llm_judge_live.py -q
 
 下一步路线图：
 
-- [ ] `v0.1`（MVP）：CLI + Lesson + Evaluator + Ratchet 全链路 + React 19 WebUI（`ahadiff serve`）+ 8 种 LLM Provider + 8 种 diff 捕获（含 --unstaged / git show）+ 6 个 install target + i18n + 阶段门禁
+- [ ] `v0.1`（MVP）：CLI + Lesson + Evaluator + Ratchet 全链路 + React 19 WebUI（`ahadiff serve`）+ 8 种 LLM Provider（OpenAI Chat/Responses/Gemini/Anthropic/Azure/NewAPI/LMStudio/Ollama）+ 8 种 diff 捕获（含 --unstaged / git show）+ 6 个 install target + i18n + 阶段门禁
 - [ ] `v0.2`：--compare-dir + --patch-url + 7 个 IDE install target + watchdog 增量重生 + section-level helpfulness + Team 功能（已完成：后端 Gate 0-6 + medium APIs + helpfulness / learning transfer + misconception cards + Graphify 后端基础与部分深一层能力 + concept linking / derived ancestry / graph_nodes FTS import / 500-node + 5000-node benchmark fixtures + Graphify import provenance + per-run `graphify_context.json` artifact manifest + token-reduction metric + release Graphify perf gate + graph-present pinned fixture + watch mode + 前端 Phase 1-4 + Phase 4D Settings UI + 5D ConceptGraph core UI + learn task UI（全局 LearnTaskBanner + Topbar 按钮 + Zustand polling/retry/cancel/recovery store + `recovery_hint` Retry gate + 429 rate_limited 文案） + `/api/learn` 10 req/min rate limit + Graphify shared freshness store + 13 install targets + LLM cache + usage.sqlite + Phase 2 gate follow-up + DNS rebinding TOCTOU closure（provider connection-level IP pinning） + Graphify parser hardening（edge cap 50k、dup node dedup、invalid node ID 丢弃、dangling edge removal、graph_sha256 provenance） + a11y 改进（ARIA progressbar、mobile drawer inert focus trap、aria-live）；待做：Team / 5E provenance/signoff polish / 真实 large-repo signoff evidence / 更深的前端 V6 signoff）
 - [ ] `v1.0`：PWA + public benchmark suite
 

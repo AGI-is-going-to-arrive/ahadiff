@@ -413,6 +413,7 @@ export interface TaskProgressResponse {
   current: number;
   total: number;
   message: string;
+  step_started_at: string;
 }
 
 export interface TaskResultSummary {
@@ -479,6 +480,8 @@ export interface ProviderCreateInput {
   model_name: string;
   base_url: string;
   api_key_env: string;
+  max_output_tokens?: number | null;
+  thinking_level?: string | null;
 }
 
 export interface ProviderUpdateInput {
@@ -486,6 +489,8 @@ export interface ProviderUpdateInput {
   model_name?: string;
   base_url?: string;
   api_key_env?: string;
+  max_output_tokens?: number | null;
+  thinking_level?: string | null;
 }
 
 export interface ProviderMutationResponse {

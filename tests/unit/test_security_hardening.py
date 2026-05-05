@@ -460,7 +460,6 @@ def _remote_provider_config(
         base_url=base_url,
         api_key_env="AHADIFF_PROVIDER_API_KEY",
         probed_max_context=4096,
-        supports_temperature=True,
     )
 
 

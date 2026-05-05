@@ -552,7 +552,6 @@ export async function installServeMock(page: Page): Promise<void> {
               probed_max_context: 128000,
               probed_tpm: 1000000,
               probed_rpm: 500,
-              supports_temperature: true,
               probe_timestamp: '2026-04-30T11:59:00Z',
             },
           ],

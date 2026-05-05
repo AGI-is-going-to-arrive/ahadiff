@@ -111,7 +111,6 @@ def test_provider_create_alias_validation_returns_400_before_registry_mutation(
         "https://user:pass@api.example.test/v1",
         "http://169.254.169.254/latest/meta-data",
         "http://metadata.google.internal/computeMetadata/v1",
-        "http://127.0.0.1:11434",
         "http://10.0.0.7:8000",
     ),
 )

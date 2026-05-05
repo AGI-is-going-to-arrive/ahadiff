@@ -36,6 +36,12 @@ def parse_misconception_cards(raw: str) -> list[MisconceptionCard]:
         parsed = safe_json_loads(raw)
     except (json.JSONDecodeError, ValueError) as exc:
         raise InputError(f"misconception cards payload is not valid JSON: {exc}") from exc
+    if isinstance(parsed, dict):
+        parsed_map = cast("dict[str, Any]", parsed)
+        for key in ("cards", "misconceptions", "misconception_cards", "items", "data"):
+            if key in parsed_map and isinstance(parsed_map[key], list):
+                parsed = parsed_map[key]
+                break
     if not isinstance(parsed, list):
         raise InputError("misconception cards payload must be a JSON array")
     items = cast("list[Any]", parsed)

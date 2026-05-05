@@ -8,6 +8,7 @@ from . import run_source as run_source_contract
 from . import serve_stats as serve_stats_contract
 
 ProviderClass: TypeAlias = run_source_contract.ProviderClass
+ThinkingLevel: TypeAlias = run_source_contract.ThinkingLevel
 ProviderSummary: TypeAlias = serve_stats_contract.ProviderSummary
 
 ProviderAlias = Annotated[
@@ -24,6 +25,8 @@ class ProviderCreateRequest(BaseModel):
     model_name: str = Field(min_length=1, max_length=200)
     base_url: str = Field(min_length=1, max_length=2048)
     api_key_env: str = Field(min_length=1, max_length=128)
+    max_output_tokens: int | None = Field(default=None, ge=1, le=1_000_000)
+    thinking_level: ThinkingLevel | None = None
 
 
 class ProviderUpdateRequest(BaseModel):
@@ -33,6 +36,8 @@ class ProviderUpdateRequest(BaseModel):
     model_name: str | None = Field(default=None, min_length=1, max_length=200)
     base_url: str | None = Field(default=None, min_length=1, max_length=2048)
     api_key_env: str | None = Field(default=None, min_length=1, max_length=128)
+    max_output_tokens: int | None = Field(default=None, ge=1, le=1_000_000)
+    thinking_level: ThinkingLevel | None = None
 
 
 class ProviderMutationResponse(BaseModel):
