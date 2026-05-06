@@ -494,6 +494,21 @@ def _normalize_quiz_answer(value: str) -> str:
     return " ".join(value.strip().casefold().split())
 
 
+def _normalize_quiz_choice_label(value: str) -> str | None:
+    normalized = value.strip().upper()
+    if normalized in {"A", "B", "C", "D"}:
+        return normalized
+    return None
+
+
+def _prompt_quiz_choice_label() -> str:
+    while True:
+        label = _normalize_quiz_choice_label(typer.prompt("Your answer"))
+        if label is not None:
+            return label
+        console.print("[red]Please answer A, B, C, or D.[/red]")
+
+
 def _parse_review_answer(value: str) -> ReviewAnswer:
     normalized = value.strip().casefold()
     if normalized in {"easy", "good", "hard", "wrong"}:
@@ -1117,12 +1132,33 @@ def quiz_cmd(
         correct = 0
         for index, question in enumerate(questions, start=1):
             console.print(f"[bold]Question {index}[/bold]: {question.question}")
-            answer = typer.prompt("Your answer")
-            if _normalize_quiz_answer(answer) == _normalize_quiz_answer(question.expected_answer):
-                correct += 1
-                console.print("[green]Correct[/green]")
+            if question.answer_mode == "multiple_choice" and question.choices:
+                for choice in question.choices:
+                    console.print(f"  [bold]{choice.label}[/bold]. {choice.text}")
+                selected_label = _prompt_quiz_choice_label()
+                selected_choice = next(
+                    choice for choice in question.choices if choice.label == selected_label
+                )
+                if selected_choice.is_correct:
+                    correct += 1
+                    console.print("[green]Correct[/green]")
+                else:
+                    expected_choice = next(
+                        choice for choice in question.choices if choice.is_correct
+                    )
+                    console.print(
+                        f"[yellow]Expected[/yellow]: "
+                        f"{expected_choice.label}. {expected_choice.text}"
+                    )
             else:
-                console.print(f"[yellow]Expected[/yellow]: {question.expected_answer}")
+                answer = typer.prompt("Your answer")
+                if _normalize_quiz_answer(answer) == _normalize_quiz_answer(
+                    question.expected_answer
+                ):
+                    correct += 1
+                    console.print("[green]Correct[/green]")
+                else:
+                    console.print(f"[yellow]Expected[/yellow]: {question.expected_answer}")
             claims_text = ", ".join(question.source_claims)
             evidence_text = ", ".join(f"{item.file}:{item.line}" for item in question.evidence)
             console.print(f"[bold]Claims[/bold]: {claims_text}")

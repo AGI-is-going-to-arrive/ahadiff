@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AppShell from '../components/AppShell';
 import CalendarHeatmap from '../components/CalendarHeatmap';
 import type { HeatmapCell } from '../components/CalendarHeatmap';
@@ -6,7 +6,13 @@ import InfoHint from '../components/InfoHint';
 import Skeleton from '../components/Skeleton';
 import { fetchReviewHeatmap } from '../api/stats';
 import { getReviewMastery, getWeakConcepts } from '../api/review';
-import type { ReviewAnswer, ReviewMasteryItem, WeakConceptItem } from '../api/types';
+import type {
+  DueReviewCard,
+  ReviewAnswer,
+  ReviewChoice,
+  ReviewMasteryItem,
+  WeakConceptItem,
+} from '../api/types';
 import { useReviewStore } from '../state/review-store';
 import { useTranslation } from '../i18n/useTranslation';
 import '../components/Review.css';
@@ -24,6 +30,28 @@ const REVIEW_RATING_LABEL_KEYS: Record<ReviewAnswer, string> = {
   good: 'Review.rating_good',
   easy: 'Review.rating_easy',
 };
+
+const CHOICE_KEY_LABELS: Record<string, string> = {
+  a: 'A',
+  b: 'B',
+  c: 'C',
+  d: 'D',
+};
+
+/**
+ * A card renders as ABCD multiple choice when the backend explicitly says so
+ * AND ships a non-empty `choices` array. Cards with `answer_mode === 'open'`
+ * or no choices keep the existing flip-card flow unchanged.
+ */
+function isChoiceCard(
+  card: DueReviewCard,
+): card is DueReviewCard & { choices: ReviewChoice[] } {
+  return (
+    card.answer_mode === 'multiple_choice' &&
+    Array.isArray(card.choices) &&
+    card.choices.length > 0
+  );
+}
 
 function classifyError(e: unknown): ReviewErrorKind {
   if (e instanceof TypeError) return 'network';
@@ -66,6 +94,7 @@ export default function ReviewPage() {
   const remaining = useReviewStore((s) => s.remaining);
 
   const [flipped, setFlipped] = useState(false);
+  const [selectedChoiceLabel, setSelectedChoiceLabel] = useState<string | null>(null);
   const [sessionRatings, setSessionRatings] = useState<RatingSummary>(() => createRatingSummary());
   const [heatmapCells, setHeatmapCells] = useState<HeatmapCell[]>([]);
   const [mastery, setMastery] = useState<ReviewMasteryItem[]>([]);
@@ -121,15 +150,17 @@ export default function ReviewPage() {
 
   useEffect(() => {
     setFlipped(false);
+    setSelectedChoiceLabel(null);
     requestAnimationFrame(() => flipBtnRef.current?.focus());
   }, [currentIndex]);
 
-  // WARNING 2 fix: move focus to the first SRS rating button after flip
+  // WARNING 2 fix: move focus to the first SRS rating button after flip.
+  // Choice cards reveal via `selectedChoiceLabel`; same focus migration.
   useEffect(() => {
-    if (flipped) {
+    if (flipped || selectedChoiceLabel !== null) {
       requestAnimationFrame(() => firstRatingRef.current?.focus());
     }
-  }, [flipped]);
+  }, [flipped, selectedChoiceLabel]);
 
   useEffect(() => {
     setSessionRatings(createRatingSummary());
@@ -137,8 +168,16 @@ export default function ReviewPage() {
 
   const handleRate = useCallback(
     async (answer: ReviewAnswer) => {
+      const card = useReviewStore.getState().currentCard();
       const beforeIndex = useReviewStore.getState().currentIndex;
-      const result = await rate(answer);
+      // For multiple_choice cards: the user committed to a label without
+      // peeking, so forward the selected label and peeked=false. For open
+      // cards: the user clicked "Show answer" before rating, so peeked=true.
+      const isChoice = card ? isChoiceCard(card) : false;
+      const result = await rate(answer, {
+        peekedThisSession: isChoice ? false : true,
+        selectedChoiceLabel: isChoice ? selectedChoiceLabel : null,
+      });
       const afterIndex = useReviewStore.getState().currentIndex;
       if (afterIndex > beforeIndex) {
         setSessionRatings((prev) => ({
@@ -166,31 +205,64 @@ export default function ReviewPage() {
         });
       }
     },
-    [rate],
+    [rate, selectedChoiceLabel],
   );
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.isComposing) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       const target = e.target as HTMLElement;
       const tag = target?.tagName;
-      // Allow SRS rating shortcuts (1-4) when focused on a rating button
+      // Allow SRS rating shortcuts (1-4) when focused on a rating button.
+      // Allow A-D shortcuts when focused on a choice button.
       const isSrsBtn = tag === 'BUTTON' && target.classList.contains('srs-btn');
       const isSrsKey = e.key === '1' || e.key === '2' || e.key === '3' || e.key === '4';
+      const isChoiceBtn = tag === 'BUTTON' && target.classList.contains('review__choice');
+      const isChoiceKey = !!CHOICE_KEY_LABELS[e.key.toLowerCase()];
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement ||
         tag === 'SELECT' ||
-        (tag === 'BUTTON' && !(isSrsBtn && isSrsKey)) ||
+        (tag === 'BUTTON' && !(isSrsBtn && isSrsKey) && !(isChoiceBtn && isChoiceKey)) ||
         tag === 'A' ||
         target?.isContentEditable
       ) return;
-      if (!flipped) {
+      const card = useReviewStore.getState().currentCard();
+      const isChoice = card ? isChoiceCard(card) : false;
+      // Choice cards use answer_mode='multiple_choice'; question phase shows
+      // ABCD buttons. After a selection (selectedChoiceLabel != null) the card
+      // is "revealed" and 1-4 rating shortcuts apply.
+      const choiceRevealed = isChoice && selectedChoiceLabel !== null;
+      const isRevealed = isChoice ? choiceRevealed : flipped;
+      if (!isRevealed) {
+        if (isChoice && card) {
+          const label = CHOICE_KEY_LABELS[e.key.toLowerCase()];
+          if (label) {
+            const choice = card.choices?.find((c) => c.label === label);
+            if (choice) {
+              e.preventDefault();
+              setSelectedChoiceLabel(label);
+              return;
+            }
+          }
+          return;
+        }
         if (e.key === ' ' || e.key === 'Enter') {
           e.preventDefault();
           setFlipped(true);
         }
         return;
+      }
+      // Wrong-answer guard for choice cards: Easy/Good are disabled and the
+      // shortcut should not bypass that. Test the same gate the buttons use.
+      if (isChoice && card) {
+        const correctChoice = card.choices?.find((c) => c.is_correct);
+        const isAnswerCorrect =
+          correctChoice !== undefined && correctChoice.label === selectedChoiceLabel;
+        if (!isAnswerCorrect && (e.key === '3' || e.key === '4')) {
+          return;
+        }
       }
       if (e.key === '1') void handleRate('wrong');
       else if (e.key === '2') void handleRate('hard');
@@ -199,7 +271,7 @@ export default function ReviewPage() {
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [flipped, handleRate]);
+  }, [flipped, handleRate, selectedChoiceLabel]);
 
   // --- Loading skeleton (preserves 2-column layout) ---
   if (loading) {
@@ -292,6 +364,27 @@ export default function ReviewPage() {
   const sessionReviewedCount = countRatings(sessionRatings);
   const confidentCount = sessionRatings.good + sessionRatings.easy;
   const followupCount = sessionRatings.wrong + sessionRatings.hard;
+  // Multiple-choice mode: derive `choiceCard`, the correct/wrong status, and
+  // a synthetic `revealed` flag that drives the same render branch as `flipped`
+  // for open cards. Computed via useMemo so the keyboard handler closure stays
+  // stable across re-renders.
+  const choiceCard = useMemo(
+    () => (card && isChoiceCard(card) ? card : null),
+    [card],
+  );
+  const correctChoice = useMemo<ReviewChoice | null>(() => {
+    if (!choiceCard) return null;
+    return choiceCard.choices.find((c) => c.is_correct) ?? null;
+  }, [choiceCard]);
+  const isAnswerCorrect =
+    choiceCard !== null &&
+    correctChoice !== null &&
+    selectedChoiceLabel === correctChoice.label;
+  const choiceRevealed = choiceCard !== null && selectedChoiceLabel !== null;
+  // For choice cards: the rating block (Easy/Good/Hard/Wrong) replaces flip.
+  // Easy/Good are disabled when the user picked wrong (per plan: keep manual
+  // rating, force at least Hard or Wrong on incorrect selections).
+  const ratingsBlocked = choiceCard !== null && !isAnswerCorrect;
 
   // --- Empty queue ---
   if (total === 0) {
@@ -510,15 +603,84 @@ export default function ReviewPage() {
                   </>
                 )}
               </div>
+              {/* Choice mode: ABCD buttons. Question phase shows interactive
+                  options; reveal phase highlights correct/wrong. */}
+              {choiceCard && (
+                <div className="review__choices-block">
+                  <p className="review__choice-prompt">{t('Review.select_prompt')}</p>
+                  <div
+                    className="review__choices"
+                    role="radiogroup"
+                    aria-label={t('Review.select_prompt')}
+                  >
+                    {choiceCard.choices.map((choice) => {
+                      const isSelected = selectedChoiceLabel === choice.label;
+                      const isCorrect = choice.is_correct;
+                      const isWrongSelected = isSelected && !isCorrect;
+                      const stateClass = choiceRevealed
+                        ? isCorrect
+                          ? ' review__choice--correct'
+                          : isWrongSelected
+                            ? ' review__choice--wrong'
+                            : ''
+                        : '';
+                      const ariaLabel = t('Review.choice_a11y', {
+                        label: choice.label,
+                        text: choice.text,
+                      });
+                      return (
+                        <button
+                          key={choice.label}
+                          type="button"
+                          role="radio"
+                          aria-checked={isSelected}
+                          aria-label={ariaLabel}
+                          className={`review__choice${
+                            isSelected ? ' review__choice--selected' : ''
+                          }${choiceRevealed ? ' review__choice--disabled' : ''}${stateClass}`}
+                          disabled={choiceRevealed}
+                          onClick={() => {
+                            if (choiceRevealed) return;
+                            setSelectedChoiceLabel(choice.label);
+                          }}
+                        >
+                          <span className="review__choice-letter" aria-hidden="true">
+                            {choice.label}
+                          </span>
+                          <span className="review__choice-content">
+                            <span className="review__choice-text">{choice.text}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <div
                 className="flashcard__back"
-                hidden={!flipped}
+                hidden={choiceCard ? !choiceRevealed : !flipped}
                 aria-live="polite"
               >
                 <div className="review__eyebrow u-mb-2">
                   {t('Review.answer_label')}
                 </div>
-                {card!.answer?.trim() ? (
+                {choiceCard && correctChoice ? (
+                  <>
+                    <p
+                      className={`review__result ${
+                        isAnswerCorrect ? 'review__result--correct' : 'review__result--wrong'
+                      }`}
+                    >
+                      {isAnswerCorrect ? t('Quiz.correct') : t('Quiz.wrong')}
+                    </p>
+                    <div className="flashcard__answer">
+                      <span className="review__correct-label">
+                        {t('Quiz.correct_answer_is')}
+                      </span>{' '}
+                      {correctChoice.label}. {correctChoice.text}
+                    </div>
+                  </>
+                ) : card!.answer?.trim() ? (
                   <div className="flashcard__answer">{card!.answer}</div>
                 ) : (
                   <div className="flashcard__meta">
@@ -550,7 +712,67 @@ export default function ReviewPage() {
               </div>
             </div>
 
-            {!flipped ? (
+            {/* Action area:
+                - Choice cards: question phase shows nothing here (the ABCD
+                  buttons inside the flashcard ARE the action). Reveal phase
+                  shows SRS rating buttons with Easy/Good disabled if the
+                  user picked wrong.
+                - Open cards: keep flip-then-rate flow unchanged. */}
+            {choiceCard ? (
+              choiceRevealed ? (
+                <div className="srs-buttons">
+                  <button
+                    ref={firstRatingRef}
+                    type="button"
+                    className="srs-btn"
+                    onClick={() => void handleRate('wrong')}
+                    disabled={rating}
+                    aria-label={t('Review.srs_aria_wrong')}
+                    aria-describedby="srs-interval-wrong"
+                  >
+                    <div className="srs-btn__label">{t('Review.rating_wrong')}</div>
+                    <div className="srs-btn__interval" id="srs-interval-wrong">{t('Review.interval_again')}</div>
+                    <span className="srs-btn__kbd">1</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="srs-btn"
+                    onClick={() => void handleRate('hard')}
+                    disabled={rating}
+                    aria-label={t('Review.srs_aria_hard')}
+                    aria-describedby="srs-interval-hard"
+                  >
+                    <div className="srs-btn__label">{t('Review.rating_hard')}</div>
+                    <div className="srs-btn__interval" id="srs-interval-hard">{t('Review.interval_hard')}</div>
+                    <span className="srs-btn__kbd">2</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="srs-btn srs-btn--good"
+                    onClick={() => void handleRate('good')}
+                    disabled={rating || ratingsBlocked}
+                    aria-label={t('Review.srs_aria_good')}
+                    aria-describedby="srs-interval-good"
+                  >
+                    <div className="srs-btn__label">{t('Review.rating_good')}</div>
+                    <div className="srs-btn__interval" id="srs-interval-good">{t('Review.interval_good')}</div>
+                    <span className="srs-btn__kbd">3</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="srs-btn srs-btn--easy"
+                    onClick={() => void handleRate('easy')}
+                    disabled={rating || ratingsBlocked}
+                    aria-label={t('Review.srs_aria_easy')}
+                    aria-describedby="srs-interval-easy"
+                  >
+                    <div className="srs-btn__label">{t('Review.rating_easy')}</div>
+                    <div className="srs-btn__interval" id="srs-interval-easy">{t('Review.interval_easy')}</div>
+                    <span className="srs-btn__kbd">4</span>
+                  </button>
+                </div>
+              ) : null
+            ) : !flipped ? (
               <button
                 ref={flipBtnRef}
                 type="button"

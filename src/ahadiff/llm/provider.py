@@ -347,9 +347,7 @@ class ManagedProvider:
                     self.sleep(min(2**attempt, 8))
                     continue
                 except httpx.DecodingError as error:
-                    last_error = ProviderError(
-                        f"provider response decompression failed: {error}"
-                    )
+                    last_error = ProviderError(f"provider response decompression failed: {error}")
                     if attempt >= self.retry_attempts:
                         break
                     self.sleep(min(2**attempt, 8))

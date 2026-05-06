@@ -14,7 +14,7 @@ from typer.testing import CliRunner
 
 from ahadiff import cli as cli_module
 from ahadiff.cli import app
-from ahadiff.contracts import ResultEvent, ReviewCard
+from ahadiff.contracts import QuizChoice, ResultEvent, ReviewCard
 from ahadiff.core.errors import InputError, MigrationError, StorageError
 from ahadiff.core.paths import is_wsl2_mnt, lock_file_path, review_db_path
 from ahadiff.llm import usage as usage_module
@@ -41,7 +41,7 @@ from ahadiff.review.database import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 _RUNNER = CliRunner()
 
@@ -91,6 +91,28 @@ def _review_card(card_id: str = "card-1") -> ReviewCard:
         hunk_id="hunk-1",
         hunk_hash="deadbeefcafe",
         symbol="retry_once",
+    )
+
+
+def _quiz_choices(
+    correct_text: str = "It retries transient failures before giving up.",
+) -> list[QuizChoice]:
+    return [
+        QuizChoice(label="A", text=correct_text, is_correct=True),
+        QuizChoice(label="B", text="It removes all exception handling.", is_correct=False),
+        QuizChoice(label="C", text="It disables retry behavior entirely.", is_correct=False),
+        QuizChoice(label="D", text="It changes the public function name.", is_correct=False),
+    ]
+
+
+def _multiple_choice_review_card(card_id: str = "card-mc") -> ReviewCard:
+    answer = "It retries transient failures before giving up."
+    return _review_card(card_id).model_copy(
+        update={
+            "answer": answer,
+            "answer_mode": "multiple_choice",
+            "choices": _quiz_choices(answer),
+        }
     )
 
 
@@ -186,6 +208,103 @@ def _create_v1_review_db_without_stale_reason(db_path: Path) -> None:
                 signal_type TEXT NOT NULL,
                 payload_json TEXT NOT NULL,
                 created_at TEXT NOT NULL
+            );
+            """
+        )
+
+
+def _create_v8_review_db_without_choice_columns(db_path: Path) -> None:
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(db_path) as connection:
+        connection.executescript(
+            """
+            PRAGMA user_version=8;
+
+            CREATE TABLE scheduler_presets (
+                preset_id TEXT PRIMARY KEY,
+                weights TEXT NOT NULL,
+                desired_retention REAL NOT NULL DEFAULT 0.9,
+                scheduler_version TEXT NOT NULL,
+                total_reviews INTEGER NOT NULL DEFAULT 0,
+                last_optimized_utc TEXT,
+                created_at_utc TEXT NOT NULL
+            );
+            INSERT INTO scheduler_presets (
+                preset_id,
+                weights,
+                desired_retention,
+                scheduler_version,
+                created_at_utc
+            ) VALUES ('default', '[0.0]', 0.9, 'fsrs-v1', '2026-04-24T00:00:00Z');
+
+            CREATE TABLE cards (
+                id TEXT PRIMARY KEY,
+                concept TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                fsrs_state TEXT NOT NULL,
+                card_state TEXT NOT NULL DEFAULT 'active'
+                    CHECK (card_state IN ('active', 'stale', 'archived', 'suspended')),
+                scheduler_preset_id TEXT NOT NULL DEFAULT 'default',
+                scheduler_version TEXT NOT NULL,
+                desired_retention REAL NOT NULL DEFAULT 0.9,
+                due_date TEXT NOT NULL,
+                stability REAL NOT NULL,
+                difficulty REAL NOT NULL,
+                reps INTEGER NOT NULL DEFAULT 0,
+                lapses INTEGER NOT NULL DEFAULT 0,
+                scaffolding_level TEXT NOT NULL DEFAULT 'full',
+                last_rating INTEGER,
+                last_review_utc TEXT,
+                source_ref TEXT NOT NULL,
+                file_id TEXT NOT NULL,
+                display_path TEXT NOT NULL,
+                hunk_id TEXT NOT NULL,
+                hunk_hash TEXT NOT NULL,
+                symbol TEXT,
+                change_kind TEXT,
+                question TEXT,
+                answer TEXT,
+                stale_reason TEXT,
+                created_at_utc TEXT NOT NULL,
+                archived_at_utc TEXT,
+                suspended_at_utc TEXT
+            );
+            INSERT INTO cards (
+                id,
+                concept,
+                run_id,
+                fsrs_state,
+                scheduler_version,
+                due_date,
+                stability,
+                difficulty,
+                source_ref,
+                file_id,
+                display_path,
+                hunk_id,
+                hunk_hash,
+                symbol,
+                question,
+                answer,
+                created_at_utc
+            ) VALUES (
+                'legacy-card',
+                'retry loop',
+                'run-legacy',
+                '{}',
+                'fsrs-v1',
+                '2026-04-25T00:00:00Z',
+                1.0,
+                2.0,
+                'abc1234',
+                'file-app',
+                'src/app.py',
+                'hunk-1',
+                'deadbeefcafe',
+                'retry_once',
+                'Why did retry_once change?',
+                'It retries transient failures before giving up.',
+                '2026-04-24T00:00:00Z'
             );
             """
         )
@@ -347,6 +466,12 @@ def test_initialize_review_db_creates_full_schema_and_pragmas(tmp_path: Path) ->
             "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'cards'"
         ).fetchone()[0]
     assert "stale_reason" in card_info
+    assert "answer_mode" in card_info
+    assert "choices_json" in card_info
+    assert schema_version == 9
+    assert str(card_info["answer_mode"]["dflt_value"]) == "'open'"
+    assert int(card_info["answer_mode"]["notnull"]) == 1
+    assert "CHECK (answer_mode IN ('open', 'multiple_choice'))" in str(cards_sql)
     assert "CHECK (card_state IN ('active', 'stale', 'archived', 'suspended'))" in str(cards_sql)
     for column in ("source_ref", "file_id", "display_path", "hunk_id", "hunk_hash"):
         assert int(card_info[column]["notnull"]) == 1
@@ -710,6 +835,62 @@ def test_migration_v1_to_v2_preserves_data(tmp_path: Path) -> None:
     )
 
 
+def test_migration_v8_to_v9_defaults_legacy_cards_to_open_answer_mode(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "review.sqlite"
+    _create_v8_review_db_without_choice_columns(db_path)
+
+    initialize_review_db(db_path)
+
+    with connect_review_db(db_path) as connection:
+        user_version = connection.execute("PRAGMA user_version").fetchone()[0]
+        card_columns = {row["name"] for row in connection.execute("PRAGMA table_info(cards)")}
+        legacy_card = connection.execute(
+            "SELECT answer_mode, choices_json FROM cards WHERE id = 'legacy-card'"
+        ).fetchone()
+
+    assert user_version == 9
+    assert {"answer_mode", "choices_json"} <= card_columns
+    assert legacy_card is not None
+    assert tuple(legacy_card) == ("open", None)
+
+
+def test_migration_v8_to_v9_rolls_back_partial_choice_column_step(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "review.sqlite"
+    _create_v8_review_db_without_choice_columns(db_path)
+
+    def failing_v8_to_v9(connection: sqlite3.Connection) -> None:
+        connection.execute(
+            """
+            ALTER TABLE cards ADD COLUMN answer_mode TEXT NOT NULL DEFAULT 'open'
+                CHECK (answer_mode IN ('open', 'multiple_choice'))
+            """
+        )
+        connection.execute("ALTER TABLE cards ADD COLUMN choices_json TEXT")
+        raise RuntimeError("boom during v9 migration")
+
+    migrations = cast(
+        "dict[int, Callable[[sqlite3.Connection], None]]",
+        vars(review_database_module)["_MIGRATIONS"],
+    )
+    monkeypatch.setitem(migrations, 8, failing_v8_to_v9)
+
+    with pytest.raises(RuntimeError, match="boom during v9 migration"):
+        initialize_review_db(db_path)
+
+    with sqlite3.connect(db_path) as connection:
+        user_version = connection.execute("PRAGMA user_version").fetchone()[0]
+        card_columns = {row[1] for row in connection.execute("PRAGMA table_info(cards)")}
+
+    assert user_version == 8
+    assert "answer_mode" not in card_columns
+    assert "choices_json" not in card_columns
+
+
 def test_legacy_schema_version_newer_than_supported_is_rejected(tmp_path: Path) -> None:
     db_path = tmp_path / "review.sqlite"
     _create_v1_review_db_without_stale_reason(db_path)
@@ -922,6 +1103,44 @@ def test_import_cards_and_record_fsrs_review(tmp_path: Path) -> None:
     assert preset_row["total_reviews"] == 1
 
 
+def test_fsrs_scheduling_is_identical_for_open_and_multiple_choice_cards(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "review.sqlite"
+    cards_path = tmp_path / "cards.jsonl"
+    open_card = _review_card("card-open").model_copy(
+        update={"answer": "It retries transient failures before giving up."}
+    )
+    multiple_choice_card = _multiple_choice_review_card("card-mc")
+    _write_cards_jsonl(cards_path, (open_card, multiple_choice_card))
+    assert import_cards_from_jsonl(db_path, cards_path) == 2
+
+    reviewed_at = datetime(2026, 4, 24, tzinfo=UTC)
+    open_update = record_card_review(
+        db_path,
+        card_id=open_card.card_id,
+        answer="good",
+        reviewed_at_utc=reviewed_at,
+    )
+    multiple_choice_update = record_card_review(
+        db_path,
+        card_id=multiple_choice_card.card_id,
+        answer="good",
+        reviewed_at_utc=reviewed_at,
+    )
+
+    assert multiple_choice_update.rating == open_update.rating
+    assert multiple_choice_update.due_date == open_update.due_date
+    assert multiple_choice_update.stability == open_update.stability
+    assert multiple_choice_update.difficulty == open_update.difficulty
+    assert multiple_choice_update.scaffolding_level == open_update.scaffolding_level
+    open_state = json.loads(open_update.fsrs_state)
+    multiple_choice_state = json.loads(multiple_choice_update.fsrs_state)
+    open_state.pop("card_id", None)
+    multiple_choice_state.pop("card_id", None)
+    assert multiple_choice_state == open_state
+
+
 def test_import_cards_persists_question_and_answer_columns(tmp_path: Path) -> None:
     db_path = tmp_path / "review.sqlite"
     cards_path = tmp_path / "cards.jsonl"
@@ -977,6 +1196,78 @@ def test_list_due_cards_preserves_question_and_answer_fields(tmp_path: Path) -> 
     assert due_cards[0].card_id == "card-1"
     assert due_cards[0].question == question
     assert due_cards[0].answer == answer
+
+
+def test_import_multiple_choice_card_persists_choices_and_daos_round_trip(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "review.sqlite"
+    cards_path = tmp_path / "cards.jsonl"
+    card = _multiple_choice_review_card()
+    expected_choices = [choice.model_dump(mode="json") for choice in card.choices or ()]
+    _write_cards_jsonl(cards_path, (card,))
+
+    assert import_cards_from_jsonl(db_path, cards_path) == 1
+
+    with connect_review_db(db_path) as connection:
+        row = connection.execute(
+            "SELECT answer_mode, choices_json FROM cards WHERE id = ?",
+            (card.card_id,),
+        ).fetchone()
+    assert row is not None
+    assert row["answer_mode"] == "multiple_choice"
+    assert json.loads(str(row["choices_json"])) == expected_choices
+
+    due_cards = list_due_cards(db_path)
+    assert len(due_cards) == 1
+    assert due_cards[0].answer_mode == "multiple_choice"
+    assert due_cards[0].choices is not None
+    assert [choice.model_dump(mode="json") for choice in due_cards[0].choices] == expected_choices
+
+    loaded_card = review_database_module.get_card(db_path, card.card_id)
+    assert loaded_card is not None
+    assert loaded_card.answer_mode == "multiple_choice"
+    assert loaded_card.choices is not None
+    assert [choice.model_dump(mode="json") for choice in loaded_card.choices] == expected_choices
+
+
+def test_list_due_cards_rejects_corrupt_choices_json_with_storage_error(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "review.sqlite"
+    cards_path = tmp_path / "cards.jsonl"
+    card = _multiple_choice_review_card()
+    _write_cards_jsonl(cards_path, (card,))
+    assert import_cards_from_jsonl(db_path, cards_path) == 1
+
+    with connect_review_db(db_path) as connection:
+        connection.execute(
+            "UPDATE cards SET choices_json = ? WHERE id = ?",
+            ("{not valid json", card.card_id),
+        )
+
+    with pytest.raises((InputError, StorageError), match="choices_json"):
+        list_due_cards(db_path)
+
+    with pytest.raises((InputError, StorageError), match="choices_json"):
+        review_database_module.get_card(db_path, card.card_id)
+
+
+def test_import_cards_rejects_invalid_multiple_choice_before_db_write(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "review.sqlite"
+    cards_path = tmp_path / "cards.jsonl"
+    payload = _review_card("card-invalid").model_dump(mode="json")
+    payload["answer"] = "It retries transient failures before giving up."
+    payload["answer_mode"] = "multiple_choice"
+    payload["choices"] = None
+    cards_path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+    with pytest.raises(InputError, match="choices"):
+        import_cards_from_jsonl(db_path, cards_path)
+
+    assert not db_path.exists()
 
 
 def test_record_card_review_once_rejects_duplicate_key_payload_mismatch(tmp_path: Path) -> None:

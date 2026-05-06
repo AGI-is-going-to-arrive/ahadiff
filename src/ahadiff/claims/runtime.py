@@ -4,7 +4,7 @@ import hashlib
 import json
 from importlib.resources import files
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 from ahadiff.core.errors import InputError
 from ahadiff.core.json_util import safe_json_loads
@@ -35,6 +35,13 @@ _REQUIRED_CONTEXT_METADATA_FIELDS = (
     "source_ref",
     "capability_level",
 )
+
+
+class _BudgetKwargs(TypedDict, total=False):
+    input_token_budget: int
+    output_token_budget: int
+
+
 _FALLBACK_CLAIM_EXTRACT_PROMPT = """
 # Claim Extract Prompt
 
@@ -132,7 +139,7 @@ def extract_claim_candidates_from_run(
         )
         redacted_payload_text = redaction.redacted_text
         findings = redaction.findings
-    budget_kwargs: dict[str, int] = {}
+    budget_kwargs: _BudgetKwargs = {}
     if input_token_budget is not None:
         budget_kwargs["input_token_budget"] = input_token_budget
     if output_token_budget is not None:

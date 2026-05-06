@@ -128,8 +128,11 @@ def _optional_str(value: object) -> str | None:
 
 def _user_facing_message(error_code: str, raw_error: str) -> str:
     if raw_error and error_code in (
-        "config_error", "internal_error",
-        "lesson_error", "quiz_error", "claim_error",
+        "config_error",
+        "internal_error",
+        "lesson_error",
+        "quiz_error",
+        "claim_error",
     ):
         return _sanitize_warning(raw_error)
     return _USER_FACING_ERROR_MESSAGES.get(error_code, _GENERIC_FALLBACK_MESSAGE)

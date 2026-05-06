@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from . import event_log as event_log_contract
 from . import run_source as run_source_contract
+from .quiz_choice import AnswerMode, QuizChoice, QuizChoiceLabel  # noqa: TC001
 
 DegradedFlag: TypeAlias = run_source_contract.DegradedFlag
 DegradedFlagsMap: TypeAlias = run_source_contract.DegradedFlagsMap
@@ -168,6 +169,8 @@ class DueReviewCardResponse(BaseModel):
     symbol: str | None = None
     question: str | None = None
     answer: str | None = None
+    answer_mode: AnswerMode = "open"
+    choices: list[QuizChoice] | None = None
 
 
 class ReviewMasteryItem(BaseModel):
@@ -206,12 +209,14 @@ class ReviewSignalRequest(LearningSignalRequest):
     card_id: str = Field(min_length=1)
     answer: ReviewAnswer
     peeked_this_session: bool = False
+    selected_choice_label: QuizChoiceLabel | None = None
 
 
 class ReviewRateRequest(LearningSignalRequest):
     card_id: str = Field(min_length=1)
     answer: ReviewAnswer
     peeked_this_session: bool = False
+    selected_choice_label: QuizChoiceLabel | None = None
 
 
 class ReviewQueueStateRequest(BaseModel):
@@ -233,6 +238,7 @@ class QuizAnswerRequest(LearningSignalRequest):
     quiz_id: str
     choice: str
     correct: bool
+    selected_choice_label: QuizChoiceLabel | None = None
 
 
 class HelpfulnessRequest(LearningSignalRequest):

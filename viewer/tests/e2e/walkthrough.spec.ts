@@ -512,21 +512,21 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(page.locator('.srs-card')).toBeVisible();
     await expect(page.locator('.srs-card__question')).toContainText('new comment');
 
-    // Real quiz.jsonl is open-answer, not legacy choices/answer_index.
-    const answerInput = page.locator('.srs-card__answer-input');
-    await expect(answerInput).toBeVisible();
-    await answerInput.fill('A learn-from-diff marker');
+    // First quiz is multiple-choice with ABCD options.
+    const choiceButtons = page.locator('.srs-card__choice');
+    await expect(choiceButtons).toHaveCount(4);
 
-    // "Show Answer" button should now be enabled; click it
-    const showAnswerBtn = page.locator('.srs-card__btn--primary');
-    await expect(showAnswerBtn).toBeEnabled();
-    await showAnswerBtn.click();
+    // Click a wrong choice (B) to test wrong-answer flow
+    const choiceB = choiceButtons.nth(1);
+    await expect(choiceB).toBeVisible();
+    await choiceB.click();
 
-    // After reveal: result indicator appears
-    await expect(page.locator('.srs-card__result')).toBeVisible();
+    // After reveal: wrong choice highlighted, correct choice highlighted
+    await expect(choiceB).toHaveClass(/srs-card__choice--wrong/);
+    const choiceA = choiceButtons.nth(0);
+    await expect(choiceA).toHaveClass(/srs-card__choice--correct/);
 
-    // Expected answer and explanation are shown.
-    await expect(page.getByText('Expected answer')).toBeVisible();
+    // Explanation is shown.
     await expect(page.getByText('learn-from-diff marker tags the change')).toBeVisible();
     await expect(page.locator('.quiz-evidence__item')).toHaveCount(1);
     await expect(page.locator('.quiz-evidence__ref')).toContainText('demo.py:L4');
@@ -559,9 +559,8 @@ test.describe('walkthrough: full-app functional test', () => {
         .__ahadiffReleasePeekGuardTimers?.();
     });
 
-    // After peek guard expires. Because the quiz revealed
-    // the answer, the backend treats this review as peeked and still rejects
-    // Easy/Good. The UI must only allow Hard/Wrong SRS submissions here.
+    // After peek guard expires. Choice mode answered wrong → Easy/Good still
+    // disabled. Hard/Wrong are the only valid SRS ratings for a wrong answer.
     await expect(easyBtn).toBeDisabled();
     await expect(goodBtn).toBeDisabled();
     await expect(hardBtn).toBeEnabled();
@@ -574,7 +573,7 @@ test.describe('walkthrough: full-app functional test', () => {
     expect(srsReviewRequests[0]).toMatchObject({
       answer: 'hard',
       card_id: 'card_quiz_explicit_1',
-      peeked_this_session: true,
+      peeked_this_session: false,
     });
 
     // Advance to second quiz item

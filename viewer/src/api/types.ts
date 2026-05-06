@@ -150,6 +150,7 @@ export interface SrsReviewPayload {
   card_id: string;
   answer: ReviewAnswer;
   peeked_this_session?: boolean;
+  selected_choice_label?: string | null;
 }
 
 export interface QuizAnswerPayload {
@@ -157,6 +158,7 @@ export interface QuizAnswerPayload {
   quiz_id: string;
   choice: string;
   correct: boolean;
+  selected_choice_label?: string | null;
 }
 
 export interface HelpfulnessPayload {
@@ -179,6 +181,14 @@ export interface ReviewUpdate {
   scaffolding_level: string;
 }
 
+export type ReviewAnswerMode = 'open' | 'multiple_choice';
+
+export interface ReviewChoice {
+  label: string;
+  text: string;
+  is_correct: boolean;
+}
+
 export interface DueReviewCard {
   card_id: string;
   concept: string;
@@ -190,6 +200,8 @@ export interface DueReviewCard {
   symbol?: string | null;
   question?: string | null;
   answer?: string | null;
+  answer_mode?: ReviewAnswerMode;
+  choices?: ReviewChoice[] | null;
 }
 
 export interface ReviewQueueResponse {
@@ -201,6 +213,7 @@ export interface ReviewRatePayload {
   answer: ReviewAnswer;
   idempotency_key: string;
   peeked_this_session?: boolean;
+  selected_choice_label?: string | null;
 }
 
 export type ReviewQueueState = 'archived' | 'suspended';

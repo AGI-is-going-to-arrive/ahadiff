@@ -31,7 +31,7 @@ function makeTask(overrides: Partial<TaskInfoResponse> = {}): TaskInfoResponse {
     task_id: 'task-1',
     task_type: 'learn',
     status: 'failed',
-    progress: { current: 0, total: 0, message: '' },
+    progress: { current: 0, total: 0, message: '', step_started_at: '' },
     result_summary: null,
     error: null,
     error_code: null,

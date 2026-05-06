@@ -223,6 +223,35 @@ export const reviewUpdateSchema = z.object({
   scaffolding_level: z.string(),
 });
 
+const reviewChoiceLabels = ['A', 'B', 'C', 'D'] as const;
+
+export const reviewAnswerModeSchema = z.enum(['open', 'multiple_choice']);
+export const reviewChoiceLabelSchema = z.enum(reviewChoiceLabels);
+
+export const reviewChoiceSchema = z.object({
+  label: reviewChoiceLabelSchema,
+  text: z.string().min(1),
+  is_correct: z.boolean(),
+});
+
+const reviewChoicesSchema = z
+  .array(reviewChoiceSchema)
+  .length(reviewChoiceLabels.length)
+  .refine(
+    (choices) => choices.every((choice, index) => choice.label === reviewChoiceLabels[index]),
+    { message: 'review choices must be ordered A, B, C, D' },
+  )
+  .refine((choices) => choices.filter((choice) => choice.is_correct).length === 1, {
+    message: 'review choices must contain exactly one correct choice',
+  })
+  .refine(
+    (choices) => {
+      const textKeys = choices.map((choice) => choice.text.trim().replace(/\s+/g, ' ').toLocaleLowerCase());
+      return new Set(textKeys).size === textKeys.length;
+    },
+    { message: 'review choice text must be unique' },
+  );
+
 export const dueReviewCardSchema = z.object({
   card_id: z.string().min(1),
   concept: z.string(),
@@ -234,6 +263,8 @@ export const dueReviewCardSchema = z.object({
   symbol: z.string().nullable().optional(),
   question: z.string().nullable().optional(),
   answer: z.string().nullable().optional(),
+  answer_mode: reviewAnswerModeSchema.optional(),
+  choices: reviewChoicesSchema.nullable().optional(),
 });
 
 export const reviewQueueResponseSchema = z.object({

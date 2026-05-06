@@ -5,12 +5,13 @@ import json
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from pydantic import ValidationError
 from typer.testing import CliRunner
 
 from ahadiff.claims.extract import write_claim_candidates_jsonl
 from ahadiff.claims.schema import ClaimCandidate, VerifiedClaim
 from ahadiff.cli import app
-from ahadiff.contracts import ClaimRecord, ProviderConfig, ReviewCard, SourceHunk
+from ahadiff.contracts import ClaimRecord, ProviderConfig, QuizChoice, ReviewCard, SourceHunk
 from ahadiff.core.config import SecurityConfig
 from ahadiff.core.errors import InputError
 from ahadiff.lesson.generator import write_lesson_artifacts
@@ -25,7 +26,7 @@ from ahadiff.quiz.generator import (
     write_quiz_questions_jsonl,
 )
 from ahadiff.quiz.misconception import load_misconception_cards
-from ahadiff.quiz.schemas import QuizEvidence, QuizQuestion
+from ahadiff.quiz.schemas import QuizEvidence, QuizQuestion, parse_quiz_payload
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -159,8 +160,18 @@ diff --git a/src/app.py b/src/app.py
 
 
 class _FakeQuizProvider:
-    def __init__(self) -> None:
+    def __init__(self, *, include_choices: bool = True) -> None:
+        self.include_choices = include_choices
         self.requests: list[ProviderRequest] = []
+
+    @staticmethod
+    def _choices_for(expected_answer: str) -> list[dict[str, object]]:
+        return [
+            {"label": "A", "text": expected_answer, "is_correct": True},
+            {"label": "B", "text": "It removes the changed control flow.", "is_correct": False},
+            {"label": "C", "text": "It only renames a local symbol.", "is_correct": False},
+            {"label": "D", "text": "It proves exponential backoff.", "is_correct": False},
+        ]
 
     def generate(self, request: object) -> object:
         from ahadiff.llm.schemas import ProviderResponse
@@ -180,40 +191,36 @@ class _FakeQuizProvider:
                 ]
             )
         else:
-            content = json.dumps(
+            questions: list[dict[str, object]] = [
                 {
-                    "questions": [
-                        {
-                            "question": "What structural change was added to retry_once?",
-                            "expected_answer": (
-                                "It now loops across attempts and continues after exceptions."
-                            ),
-                            "source_claims": ["run_quiz-claim-1"],
-                            "concepts": ["retry loop"],
-                            "evidence": [{"file": "src/app.py", "line": 2}],
-                            "explanation": "The loop is the new teaching surface.",
-                        },
-                        {
-                            "question": "Which branch is new in the helper?",
-                            "expected_answer": (
-                                "The exception branch now continues to the next attempt."
-                            ),
-                            "source_claims": ["run_quiz-claim-1"],
-                            "concepts": ["exception handling"],
-                            "evidence": [{"file": "src/app.py", "line": 5}],
-                        },
-                        {
-                            "question": "What should you not overclaim from this diff?",
-                            "expected_answer": (
-                                "The diff does not prove backoff or reliability gains."
-                            ),
-                            "source_claims": ["run_quiz-claim-1"],
-                            "concepts": ["evidence boundary"],
-                            "evidence": [{"file": "src/app.py", "line": 2}],
-                        },
-                    ]
-                }
-            )
+                    "question": "What structural change was added to retry_once?",
+                    "expected_answer": (
+                        "It now loops across attempts and continues after exceptions."
+                    ),
+                    "source_claims": ["run_quiz-claim-1"],
+                    "concepts": ["retry loop"],
+                    "evidence": [{"file": "src/app.py", "line": 2}],
+                    "explanation": "The loop is the new teaching surface.",
+                },
+                {
+                    "question": "Which branch is new in the helper?",
+                    "expected_answer": "The exception branch now continues to the next attempt.",
+                    "source_claims": ["run_quiz-claim-1"],
+                    "concepts": ["exception handling"],
+                    "evidence": [{"file": "src/app.py", "line": 5}],
+                },
+                {
+                    "question": "What should you not overclaim from this diff?",
+                    "expected_answer": "The diff does not prove backoff or reliability gains.",
+                    "source_claims": ["run_quiz-claim-1"],
+                    "concepts": ["evidence boundary"],
+                    "evidence": [{"file": "src/app.py", "line": 2}],
+                },
+            ]
+            if self.include_choices:
+                for question in questions:
+                    question["choices"] = self._choices_for(str(question["expected_answer"]))
+            content = json.dumps({"questions": questions})
         return ProviderResponse(
             content=content,
             model_id="gpt-5.4-mini",
@@ -255,6 +262,179 @@ def _sample_lessons() -> tuple[LessonFull, LessonHint, LessonCompact]:
     )
 
 
+def _quiz_choice_payloads(
+    *,
+    correct_labels: tuple[str, ...] = ("A",),
+    labels: tuple[str, ...] = ("A", "B", "C", "D"),
+    texts: tuple[str, ...] = (
+        "It now loops across attempts and continues after exceptions.",
+        "It disables retry after the first exception.",
+        "It only renames a local variable.",
+        "It removes exception handling.",
+    ),
+) -> list[dict[str, object]]:
+    return [
+        {"label": label, "text": text, "is_correct": label in correct_labels}
+        for label, text in zip(labels, texts, strict=False)
+    ]
+
+
+def _quiz_choice_models(
+    *,
+    correct_labels: tuple[str, ...] = ("A",),
+    labels: tuple[str, ...] = ("A", "B", "C", "D"),
+    texts: tuple[str, ...] = (
+        "It now loops across attempts and continues after exceptions.",
+        "It disables retry after the first exception.",
+        "It only renames a local variable.",
+        "It removes exception handling.",
+    ),
+) -> list[QuizChoice]:
+    return [
+        QuizChoice.model_validate(choice)
+        for choice in _quiz_choice_payloads(
+            correct_labels=correct_labels,
+            labels=labels,
+            texts=texts,
+        )
+    ]
+
+
+def _quiz_question_payload(**overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "question_id": "quiz_1",
+        "question": "What structural change was added to retry_once?",
+        "expected_answer": "It now loops across attempts and continues after exceptions.",
+        "source_claims": ["claim_1"],
+        "concepts": ["retry loop"],
+        "evidence": [{"file": "src/app.py", "line": 2}],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_load_quiz_questions_keeps_legacy_open_answer_rows(tmp_path: Path) -> None:
+    quiz_path = tmp_path / "quiz.jsonl"
+    quiz_path.write_text(
+        json.dumps(_quiz_question_payload(), ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    loaded = load_quiz_questions(quiz_path)
+
+    assert len(loaded) == 1
+    assert loaded[0].question == "What structural change was added to retry_once?"
+    assert loaded[0].expected_answer == (
+        "It now loops across attempts and continues after exceptions."
+    )
+    assert loaded[0].answer_mode == "open"
+    assert loaded[0].choices is None
+
+
+def test_parse_quiz_payload_keeps_legacy_open_answer_rows_when_choices_not_required() -> None:
+    parsed = parse_quiz_payload(json.dumps({"questions": [_quiz_question_payload()]}))
+
+    assert len(parsed.questions) == 1
+    assert parsed.questions[0].answer_mode == "open"
+    assert parsed.questions[0].choices is None
+
+
+def test_parse_quiz_payload_require_choices_rejects_open_answer_rows() -> None:
+    with pytest.raises((ValidationError, ValueError)):
+        parse_quiz_payload(
+            json.dumps({"questions": [_quiz_question_payload()]}),
+            require_choices=True,
+        )
+
+
+def test_quiz_question_infers_multiple_choice_when_choices_are_present() -> None:
+    question = QuizQuestion.model_validate(_quiz_question_payload(choices=_quiz_choice_payloads()))
+
+    assert question.answer_mode == "multiple_choice"
+    assert question.choices is not None
+    assert [choice.label for choice in question.choices] == ["A", "B", "C", "D"]
+
+
+def test_parse_quiz_payload_accepts_multiple_choice_rows_when_choices_are_required() -> None:
+    parsed = parse_quiz_payload(
+        json.dumps({"questions": [_quiz_question_payload(choices=_quiz_choice_payloads())]}),
+        require_choices=True,
+    )
+
+    assert parsed.questions[0].answer_mode == "multiple_choice"
+    assert parsed.questions[0].choices is not None
+
+
+@pytest.mark.parametrize(
+    "choices",
+    [
+        _quiz_choice_payloads(texts=("correct", "wrong", "wrong")),
+        _quiz_choice_payloads(
+            labels=("A", "B", "C", "D", "A"),
+            texts=("correct", "wrong 1", "wrong 2", "wrong 3", "wrong 4"),
+        ),
+    ],
+)
+def test_quiz_question_rejects_wrong_choice_count(
+    choices: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ValidationError):
+        QuizQuestion.model_validate(_quiz_question_payload(choices=choices))
+
+
+@pytest.mark.parametrize(
+    "choices",
+    [
+        _quiz_choice_payloads(correct_labels=()),
+        _quiz_choice_payloads(correct_labels=("A", "B")),
+    ],
+)
+def test_quiz_question_rejects_zero_or_multiple_correct_choices(
+    choices: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ValidationError):
+        QuizQuestion.model_validate(_quiz_question_payload(choices=choices))
+
+
+@pytest.mark.parametrize(
+    "choices",
+    [
+        _quiz_choice_payloads(labels=("A", "B", "D", "C")),
+        _quiz_choice_payloads(labels=("A", "B", "B", "D")),
+        [
+            {"label": "A", "text": "correct", "is_correct": True},
+            {"label": "B", "text": "wrong 1", "is_correct": False},
+            {"label": "C", "text": "wrong 2", "is_correct": False},
+            {"text": "wrong 3", "is_correct": False},
+        ],
+    ],
+)
+def test_quiz_question_rejects_missing_duplicate_or_unordered_choice_labels(
+    choices: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ValidationError):
+        QuizQuestion.model_validate(_quiz_question_payload(choices=choices))
+
+
+def test_quiz_question_rejects_duplicate_choice_text_casefolded() -> None:
+    choices = _quiz_choice_payloads(
+        texts=(
+            "It now loops across attempts and continues after exceptions.",
+            " it now loops across attempts and continues after exceptions. ",
+            "It only renames a local variable.",
+            "It removes exception handling.",
+        )
+    )
+
+    with pytest.raises(ValidationError):
+        QuizQuestion.model_validate(_quiz_question_payload(choices=choices))
+
+
+def test_quiz_question_rejects_unknown_fields() -> None:
+    with pytest.raises(ValidationError):
+        QuizQuestion.model_validate(_quiz_question_payload(unexpected="blocked"))
+
+
 def test_generate_quiz_from_run_writes_expected_artifact(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -293,13 +473,47 @@ def test_generate_quiz_from_run_writes_expected_artifact(
     assert len(misconceptions) == 1
     assert misconceptions[0].run_id == "run_quiz"
     assert questions[0].question_id is not None
+    assert loaded[0].answer_mode == "multiple_choice"
+    assert loaded[0].choices is not None
+    assert [choice.label for choice in loaded[0].choices] == ["A", "B", "C", "D"]
     assert loaded[0].source_claims == ["run_quiz-claim-1"]
     assert fake_provider.requests
     assert [request.prompt_name for request in fake_provider.requests] == [
         "quiz.generate",
         "quiz.misconception_card",
     ]
+    assert fake_provider.requests[0].max_output_tokens == 4000
     assert "Simplified Chinese (zh-CN)" in fake_provider.requests[0].payload_text
+
+
+def test_generate_quiz_from_run_rejects_provider_payload_without_choices(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz")
+    fake_provider = _FakeQuizProvider(include_choices=False)
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
+        return fake_provider
+
+    monkeypatch.setattr("ahadiff.quiz.generator.make_provider", fake_provider_factory)
+
+    with pytest.raises((ValidationError, ValueError)):
+        generate_quiz_from_run(
+            run_id="run_quiz",
+            run_path=run_path,
+            workspace_root=workspace_root,
+            provider_config=ProviderConfig(
+                provider_class="openai",
+                model_name="gpt-5.4-mini",
+                base_url="http://127.0.0.1:8318",
+                api_key_env="AHADIFF_PROVIDER_API_KEY",
+            ),
+            api_key=None,
+            security_config=SecurityConfig(),
+        )
+    assert not (run_path / "quiz" / "quiz.jsonl").exists()
 
 
 def test_quiz_payload_includes_requested_output_language(tmp_path: Path) -> None:
@@ -526,6 +740,43 @@ def test_quiz_cli_runs_questions_and_scores_answers(tmp_path: Path) -> None:
     assert "1/1" in result.stdout
 
 
+def test_quiz_cli_displays_multiple_choice_labels_and_scores_label_answer(
+    tmp_path: Path,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = workspace_root / ".ahadiff" / "runs" / "run_cli_choice_quiz"
+    run_path.mkdir(parents=True)
+    quiz_path = run_path / "quiz" / "quiz.jsonl"
+    questions = (
+        QuizQuestion(
+            question_id="quiz_1",
+            question="What structural change was added to retry_once?",
+            expected_answer="It now loops across attempts and continues after exceptions.",
+            source_claims=["claim_1"],
+            concepts=["retry loop"],
+            evidence=[QuizEvidence(file="src/app.py", line=2)],
+            choices=_quiz_choice_models(),
+        ),
+    )
+    write_quiz_questions_jsonl(quiz_path, questions)
+
+    result = _RUNNER.invoke(
+        app(),
+        ["quiz", "run_cli_choice_quiz", "--repo-root", str(workspace_root)],
+        input="A\n",
+    )
+
+    assert result.exit_code == 0
+    assert "Question 1" in result.stdout
+    assert "It now loops across attempts and continues after exceptions." in result.stdout
+    assert "It disables retry after the first exception." in result.stdout
+    assert "It only renames a local variable." in result.stdout
+    assert "It removes exception handling." in result.stdout
+    assert "Correct" in result.stdout
+    assert "Expected" not in result.stdout
+    assert "1/1" in result.stdout
+
+
 def test_learn_command_writes_quiz_cards_and_local_concepts_for_patch_input(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -612,6 +863,14 @@ diff --git a/src/app.py b/src/app.py
                 source_claims=[f"{cast('str', kwargs['run_id'])}-claim-1"],
                 concepts=["stdout update"],
                 evidence=[QuizEvidence(file="src/app.py", line=2)],
+                choices=_quiz_choice_models(
+                    texts=(
+                        "The module now prints the updated value.",
+                        "The module now suppresses all stdout.",
+                        "The module only changes whitespace.",
+                        "The module deletes the value assignment.",
+                    )
+                ),
             ),
         )
         quiz_path = run_path / "quiz" / "quiz.jsonl"

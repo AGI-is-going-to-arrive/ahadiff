@@ -18,8 +18,8 @@ from ahadiff.review.database import (
 from ahadiff.review.search import search_all, search_all_with_graph
 
 
-def test_schema_version_is_8() -> None:
-    assert CURRENT_SCHEMA_VERSION == 8
+def test_schema_version_is_9() -> None:
+    assert CURRENT_SCHEMA_VERSION == 9
 
 
 def test_fts_tables_created(tmp_path: Path) -> None:

@@ -16,10 +16,11 @@ import ahadiff.serve.middleware as middleware_module
 import ahadiff.serve.routes_locale as routes_locale_module
 import ahadiff.serve.routes_review as routes_review_module
 import ahadiff.serve.routes_runs as routes_runs_module
-from ahadiff.contracts import ResultEvent, ReviewCard, RunArtifactEnvelope
+from ahadiff.contracts import QuizChoice, ResultEvent, ReviewCard, RunArtifactEnvelope
 from ahadiff.eval.results import finalized_artifact_digest
 from ahadiff.git.repo import repo_write_lock
 from ahadiff.review.database import (
+    CURRENT_SCHEMA_VERSION,
     connect_review_db,
     import_cards_from_jsonl,
     initialize_review_db,
@@ -50,6 +51,9 @@ def _client(
 ) -> TestClient:
     app = create_app(ServeState(state_dir=state_dir, token=token, locale=locale))
     return TestClient(app, base_url="http://localhost:8765")
+
+
+_WRITE_HEADERS = {"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"}
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -2055,24 +2059,89 @@ def test_signal_write_respects_repo_write_lock(tmp_path: Path) -> None:
     assert accepted.json() == {"inserted": True}
 
 
+def _quiz_choices(correct_text: str = "Retry loop") -> list[QuizChoice]:
+    return [
+        QuizChoice(label="A", text=correct_text, is_correct=True),
+        QuizChoice(label="B", text="It removes exception handling.", is_correct=False),
+        QuizChoice(label="C", text="It disables retry behavior.", is_correct=False),
+        QuizChoice(label="D", text="It changes only comments.", is_correct=False),
+    ]
+
+
+def _serve_review_card(
+    card_id: str,
+    *,
+    answer_mode: Literal["open", "multiple_choice"] = "open",
+) -> ReviewCard:
+    answer = "Retry loop"
+    return ReviewCard(
+        card_id=card_id,
+        concept="retry loop",
+        run_id="run-1",
+        source_ref="abc1234",
+        fsrs_state="{}",
+        file_id="file-app",
+        display_path="src/app.py",
+        hunk_id=f"hunk-{card_id}",
+        hunk_hash=f"deadbeef{card_id}",
+        symbol="retry_once",
+        question="What changed?",
+        answer=answer,
+        answer_mode=answer_mode,
+        choices=_quiz_choices(answer) if answer_mode == "multiple_choice" else None,
+    )
+
+
+def _write_review_cards(
+    db_path: Path,
+    cards_path: Path,
+    cards: list[ReviewCard | dict[str, Any]],
+) -> None:
+    cards_path.parent.mkdir(parents=True, exist_ok=True)
+    lines: list[str] = []
+    for card in cards:
+        payload = card.model_dump(mode="json") if isinstance(card, ReviewCard) else card
+        lines.append(json.dumps(payload, sort_keys=True))
+    cards_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    assert import_cards_from_jsonl(db_path, cards_path) == len(cards)
+
+
+def _legacy_open_card_payload(card_id: str) -> dict[str, Any]:
+    payload = _serve_review_card(card_id).model_dump(mode="json")
+    payload.pop("answer_mode", None)
+    payload.pop("choices", None)
+    return payload
+
+
+def _learning_signal_payload(db_path: Path, idempotency_key: str) -> dict[str, Any]:
+    with connect_review_db(db_path) as connection:
+        row = connection.execute(
+            "SELECT payload_json FROM learning_signals WHERE idempotency_key = ?",
+            (idempotency_key,),
+        ).fetchone()
+    assert row is not None
+    return cast("dict[str, Any]", json.loads(str(row["payload_json"])))
+
+
 def test_quiz_answer_signal_validates_dto_and_records_payload(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     client = _client(state_dir)
     payload = {
         "idempotency_key": "quiz:run-1:q1",
         "quiz_id": "q1",
-        "choice": "B",
-        "correct": True,
+        "choice": "Retry loop answer text",
+        "correct": False,
+        "selected_choice_label": "B",
     }
 
     first = client.post(
         "/api/signals/quiz-answer",
-        headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        headers=_WRITE_HEADERS,
         json=payload,
     )
     second = client.post(
         "/api/signals/quiz-answer",
-        headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        headers=_WRITE_HEADERS,
         json=payload,
     )
 
@@ -2084,9 +2153,10 @@ def test_quiz_answer_signal_validates_dto_and_records_payload(tmp_path: Path) ->
         ).fetchone()
     assert row["signal_type"] == "quiz_answer"
     assert json.loads(row["payload_json"]) == {
-        "choice": "B",
-        "correct": True,
+        "choice": "Retry loop answer text",
+        "correct": False,
         "quiz_id": "q1",
+        "selected_choice_label": "B",
     }
 
 
@@ -2195,6 +2265,35 @@ def test_srs_review_records_card_review(tmp_path: Path) -> None:
     assert json.loads(str(payload[0]))["peeked_this_session"] is False
 
 
+def test_srs_review_accepts_selected_choice_label(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    _write_review_cards(
+        db_path,
+        state_dir / "runs" / "run-1" / "quiz" / "cards.jsonl",
+        [_serve_review_card("card-1", answer_mode="multiple_choice")],
+    )
+    client = _client(state_dir)
+
+    response = client.post(
+        "/api/signals/srs-review",
+        headers=_WRITE_HEADERS,
+        json={
+            "card_id": "card-1",
+            "answer": "wrong",
+            "selected_choice_label": "C",
+            "idempotency_key": "review-srs-choice-c",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["inserted"] is True
+    payload = _learning_signal_payload(db_path, "review-srs-choice-c")
+    assert payload["selected_choice_label"] == "C"
+    assert payload["choice_correct"] is False
+
+
 def test_srs_review_rejects_peeked_good_answer(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     db_path = state_dir / "review.sqlite"
@@ -2281,6 +2380,162 @@ def test_review_queue_get_is_public_and_rate_requires_token(tmp_path: Path) -> N
     assert duplicate.json() == {"inserted": False}
 
 
+def test_review_queue_returns_answer_mode_and_choices_for_due_cards(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    _write_review_cards(
+        db_path,
+        state_dir / "runs" / "run-1" / "quiz" / "cards.jsonl",
+        [
+            _legacy_open_card_payload("card-open"),
+            _serve_review_card("card-multiple", answer_mode="multiple_choice"),
+        ],
+    )
+    client = _client(state_dir)
+
+    response = client.get("/api/review/queue")
+
+    assert response.status_code == 200
+    cards_by_id = {card["card_id"]: card for card in response.json()["cards"]}
+    assert cards_by_id["card-open"]["answer_mode"] == "open"
+    assert cards_by_id["card-open"]["choices"] is None
+    multiple_choice = cards_by_id["card-multiple"]
+    assert multiple_choice["answer_mode"] == "multiple_choice"
+    assert multiple_choice["choices"] == [
+        {"label": "A", "text": "Retry loop", "is_correct": True},
+        {"label": "B", "text": "It removes exception handling.", "is_correct": False},
+        {"label": "C", "text": "It disables retry behavior.", "is_correct": False},
+        {"label": "D", "text": "It changes only comments.", "is_correct": False},
+    ]
+
+
+def test_review_rate_selected_choice_label_records_choice_correct(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    _write_review_cards(
+        db_path,
+        state_dir / "runs" / "run-1" / "quiz" / "cards.jsonl",
+        [_serve_review_card("card-1", answer_mode="multiple_choice")],
+    )
+    client = _client(state_dir)
+
+    response = client.post(
+        "/api/review/rate",
+        headers=_WRITE_HEADERS,
+        json={
+            "card_id": "card-1",
+            "answer": "wrong",
+            "selected_choice_label": "B",
+            "idempotency_key": "review-api-choice-b",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["inserted"] is True
+    payload = _learning_signal_payload(db_path, "review-api-choice-b")
+    assert payload["selected_choice_label"] == "B"
+    assert payload["choice_correct"] is False
+
+
+def test_review_rate_invalid_selected_choice_label_does_not_write_review_log(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    _write_review_cards(
+        db_path,
+        state_dir / "runs" / "run-1" / "quiz" / "cards.jsonl",
+        [_serve_review_card("card-1", answer_mode="multiple_choice")],
+    )
+    client = _client(state_dir)
+
+    response = client.post(
+        "/api/review/rate",
+        headers=_WRITE_HEADERS,
+        json={
+            "card_id": "card-1",
+            "answer": "wrong",
+            "selected_choice_label": "Z",
+            "idempotency_key": "review-api-invalid-label",
+        },
+    )
+
+    assert response.status_code == 422
+    with connect_review_db(db_path) as connection:
+        review_log_count = connection.execute("SELECT COUNT(*) FROM review_logs").fetchone()[0]
+        signal_count = connection.execute("SELECT COUNT(*) FROM learning_signals").fetchone()[0]
+    assert review_log_count == 0
+    assert signal_count == 0
+
+
+def test_review_rate_open_card_rejects_selected_choice_label_without_review_log(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    _write_review_cards(
+        db_path,
+        state_dir / "runs" / "run-1" / "quiz" / "cards.jsonl",
+        [_serve_review_card("card-1")],
+    )
+    client = _client(state_dir)
+
+    response = client.post(
+        "/api/review/rate",
+        headers=_WRITE_HEADERS,
+        json={
+            "card_id": "card-1",
+            "answer": "wrong",
+            "selected_choice_label": "A",
+            "idempotency_key": "review-api-open-choice",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "selected_choice_label is only valid" in response.json()["error"]
+    with connect_review_db(db_path) as connection:
+        review_log_count = connection.execute("SELECT COUNT(*) FROM review_logs").fetchone()[0]
+        signal_count = connection.execute("SELECT COUNT(*) FROM learning_signals").fetchone()[0]
+    assert review_log_count == 0
+    assert signal_count == 0
+
+
+def test_review_rate_duplicate_key_changed_selected_choice_label_rejects(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    _write_review_cards(
+        db_path,
+        state_dir / "runs" / "run-1" / "quiz" / "cards.jsonl",
+        [_serve_review_card("card-1", answer_mode="multiple_choice")],
+    )
+    client = _client(state_dir)
+    payload = {
+        "card_id": "card-1",
+        "answer": "good",
+        "selected_choice_label": "A",
+        "idempotency_key": "review-api-same-key",
+    }
+
+    first = client.post("/api/review/rate", headers=_WRITE_HEADERS, json=payload)
+    changed_choice = client.post(
+        "/api/review/rate",
+        headers=_WRITE_HEADERS,
+        json={**payload, "selected_choice_label": "B"},
+    )
+
+    assert first.status_code == 200
+    assert first.json()["inserted"] is True
+    assert changed_choice.status_code == 400
+    assert "idempotency key already used" in changed_choice.json()["error"]
+
+
 def test_public_review_queue_does_not_migrate_legacy_db(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     db_path = state_dir / "review.sqlite"
@@ -2307,7 +2562,7 @@ def test_review_queue_reports_current_schema_corruption(tmp_path: Path) -> None:
     state_dir.mkdir(parents=True)
     with sqlite3.connect(db_path) as conn:
         conn.execute("CREATE TABLE result_events (event_id TEXT PRIMARY KEY)")
-        conn.execute("PRAGMA user_version=8")
+        conn.execute(f"PRAGMA user_version={CURRENT_SCHEMA_VERSION}")
 
     client = _client(state_dir)
     response = client.get("/api/review/queue")

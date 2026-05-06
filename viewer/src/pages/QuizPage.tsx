@@ -9,6 +9,7 @@ import { quizAnswer, srsReview } from '../api/signals';
 import type { MisconceptionCardItem, ReviewAnswer } from '../api/types';
 import { useTranslation } from '../i18n/useTranslation';
 import {
+  hasChoices,
   hasQuizReviewCard,
   parseQuizJsonl,
   type QuizItem,
@@ -58,7 +59,6 @@ function isReviewRating(rating: SrsRating): rating is ReviewAnswer {
   return rating === 'easy' || rating === 'good' || rating === 'hard' || rating === 'wrong';
 }
 
-const QUIZ_REVIEW_PEEKED_THIS_SESSION = true;
 const PEEKED_REVIEW_RATING_BLOCKLIST = new Set<SrsReviewRating>(['easy', 'good']);
 const PEEKED_REVIEW_RATING_ERROR = 'peeked cards cannot be reviewed as good or easy; use hard or wrong';
 
@@ -68,6 +68,11 @@ function errorMessage(err: unknown): string {
 
 function formatEvidenceAnchor(file: string, line: number): string {
   return `${file}:L${line}`;
+}
+
+function selectedChoiceLabelFor(quiz: QuizItem, answer: string): string | null {
+  if (!hasChoices(quiz)) return null;
+  return quiz.choices.find((choice) => choice.label === answer)?.label ?? null;
 }
 
 export default function QuizPage() {
@@ -158,11 +163,16 @@ export default function QuizPage() {
       setSignalError(null);
 
       if (runId) {
+        const selectedChoiceLabel =
+          currentQuiz && currentQuiz.question_id === questionId
+            ? selectedChoiceLabelFor(currentQuiz, answer)
+            : null;
         void quizAnswer({
           idempotency_key: makeStableKey(runId, 'qa', questionId, answer),
           quiz_id: questionId,
           choice: answer,
           correct,
+          ...(selectedChoiceLabel ? { selected_choice_label: selectedChoiceLabel } : {}),
         }).catch((err: unknown) => {
           setSignalError(errorMessage(err));
         });
@@ -199,9 +209,20 @@ export default function QuizPage() {
           return true;
         }
 
-        if (QUIZ_REVIEW_PEEKED_THIS_SESSION && PEEKED_REVIEW_RATING_BLOCKLIST.has(rating)) {
-          setSignalError(PEEKED_REVIEW_RATING_ERROR);
-          return false;
+          // Choice-mode quizzes: the user committed to an answer without seeing
+          // it first, so the card was not "peeked". Open-answer fallback still
+          // counts as peeked (the user clicks "Show answer" before rating).
+          const peekedThisSession = !hasChoices(currentQuiz);
+          const selectedChoiceLabel = hasChoices(currentQuiz)
+            ? selectedChoiceLabelFor(currentQuiz, answered[qid]?.answer ?? '')
+            : null;
+          if (hasChoices(currentQuiz) && selectedChoiceLabel === null) {
+            setSignalError('selected choice is missing');
+            return false;
+          }
+          if (peekedThisSession && PEEKED_REVIEW_RATING_BLOCKLIST.has(rating)) {
+            setSignalError(PEEKED_REVIEW_RATING_ERROR);
+            return false;
         }
 
         try {
@@ -210,7 +231,8 @@ export default function QuizPage() {
             idempotency_key: makeStableKey(runId, 'srs', cardId, rating),
             card_id: cardId,
             answer: rating,
-            peeked_this_session: QUIZ_REVIEW_PEEKED_THIS_SESSION,
+            peeked_this_session: peekedThisSession,
+            ...(selectedChoiceLabel ? { selected_choice_label: selectedChoiceLabel } : {}),
           });
         } catch (err: unknown) {
           setSignalError(errorMessage(err));
@@ -224,7 +246,7 @@ export default function QuizPage() {
       setRated((prev) => ({ ...prev, [qid]: true }));
       return true;
     },
-    [currentQuiz, runId],
+    [answered, currentQuiz, runId],
   );
 
   const ratedCount = Object.keys(rated).length;
@@ -340,7 +362,17 @@ export default function QuizPage() {
                     onAnswer={handleAnswer}
                     onRate={handleRate}
                     disabledReviewRatings={
-                      hasQuizReviewCard(currentQuiz) ? PEEKED_REVIEW_RATING_BLOCKLIST : undefined
+                      hasQuizReviewCard(currentQuiz)
+                        ? hasChoices(currentQuiz)
+                          ? // Choice mode: only block Easy/Good after a wrong answer.
+                            // A correct selection means the user can self-grade freely.
+                            currentAnswer && !currentAnswer.correct
+                            ? PEEKED_REVIEW_RATING_BLOCKLIST
+                            : undefined
+                          : // Textarea fallback: every reveal is a peek, so Easy/Good
+                            // stays blocked across the session.
+                            PEEKED_REVIEW_RATING_BLOCKLIST
+                        : undefined
                     }
                   />
                 </div>

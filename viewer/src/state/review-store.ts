@@ -2,6 +2,21 @@ import { create } from 'zustand';
 import { getReviewQueue, submitReviewRate } from '../api/review';
 import type { DueReviewCard, ReviewAnswer, ReviewRateResponse } from '../api/types';
 
+interface RateOptions {
+  signal?: AbortSignal;
+  /**
+   * Selected choice label for multiple_choice cards (A/B/C/D). Forwarded to
+   * `POST /api/review/rate` so the backend can verify correctness server-side
+   * and record `choice_correct` in the learning signal payload.
+   */
+  selectedChoiceLabel?: string | null;
+  /**
+   * Whether the answer was peeked (revealed before rating). Choice cards never
+   * peek (the user commits to a choice first), open cards always peek.
+   */
+  peekedThisSession?: boolean;
+}
+
 interface ReviewState {
   cards: DueReviewCard[];
   currentIndex: number;
@@ -11,7 +26,7 @@ interface ReviewState {
   error: unknown;
 
   loadQueue: (opts?: { signal?: AbortSignal }) => Promise<void>;
-  rate: (answer: ReviewAnswer, opts?: { signal?: AbortSignal }) => Promise<ReviewRateResponse | null>;
+  rate: (answer: ReviewAnswer, opts?: RateOptions) => Promise<ReviewRateResponse | null>;
   currentCard: () => DueReviewCard | null;
   remaining: () => number;
   reset: () => void;
@@ -50,8 +65,14 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
           card_id: card.card_id,
           answer,
           idempotency_key: crypto.randomUUID(),
+          ...(opts?.peekedThisSession !== undefined
+            ? { peeked_this_session: opts.peekedThisSession }
+            : {}),
+          ...(opts?.selectedChoiceLabel !== undefined
+            ? { selected_choice_label: opts.selectedChoiceLabel }
+            : {}),
         },
-        opts ? { signal: opts.signal } : undefined,
+        opts?.signal ? { signal: opts.signal } : undefined,
       );
       set({ currentIndex: currentIndex + 1, rating: false });
       return res;

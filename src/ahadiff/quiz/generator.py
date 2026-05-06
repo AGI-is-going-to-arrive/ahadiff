@@ -21,7 +21,12 @@ from ahadiff.core.json_util import safe_json_loads
 from ahadiff.i18n import prompt_language_instruction
 from ahadiff.lesson.generator import load_redacted_run_bundle
 from ahadiff.lesson.scaffolding import compute_scaffolding_level
-from ahadiff.llm import ProviderRequest, make_provider
+from ahadiff.llm import (
+    DEFAULT_INPUT_TOKEN_BUDGET,
+    DEFAULT_OUTPUT_TOKEN_BUDGET,
+    ProviderRequest,
+    make_provider,
+)
 from ahadiff.safety.ignore import AllowlistPolicy
 from ahadiff.safety.redact import redaction_pipeline
 
@@ -111,7 +116,7 @@ def generate_quiz_from_run(
         input_token_budget=input_token_budget,
         output_token_budget=output_token_budget,
     )
-    question_set = parse_quiz_payload(payload)
+    question_set = parse_quiz_payload(payload, require_choices=True)
     questions = _materialize_question_ids(run_id, question_set.questions)
     misconception_cards = _generate_misconception_cards(
         run_id=run_id,
@@ -216,6 +221,8 @@ def generate_cards_for_run(
                 change_kind=cast("Any", anchor.change_kind),
                 question=question.question,
                 answer=question.expected_answer,
+                answer_mode=question.answer_mode,
+                choices=question.choices,
             )
         )
     cards_path = run_path / "quiz" / "cards.jsonl"
@@ -331,11 +338,6 @@ def _generate_quiz_payload(
         )
         redacted_payload_text = redaction.redacted_text
         findings = redaction.findings
-    budget_kwargs: dict[str, int] = {}
-    if input_token_budget is not None:
-        budget_kwargs["input_token_budget"] = input_token_budget
-    if output_token_budget is not None:
-        budget_kwargs["output_token_budget"] = output_token_budget
     provider = make_provider(
         provider_config,
         api_key=api_key,
@@ -347,7 +349,12 @@ def _generate_quiz_payload(
         retry_attempts=retry_attempts,
         request_timeout_seconds=request_timeout_seconds,
         execution_origin="quiz_generate",
-        **budget_kwargs,
+        input_token_budget=(
+            input_token_budget if input_token_budget is not None else DEFAULT_INPUT_TOKEN_BUDGET
+        ),
+        output_token_budget=(
+            output_token_budget if output_token_budget is not None else DEFAULT_OUTPUT_TOKEN_BUDGET
+        ),
     )
     try:
         response = provider.generate(
@@ -365,7 +372,7 @@ def _generate_quiz_payload(
                 redacted_payload_text=redacted_payload_text,
                 findings=findings,
                 response_format="json",
-                max_output_tokens=provider_config.max_output_tokens or 2500,
+                max_output_tokens=provider_config.max_output_tokens or 4000,
                 thinking_level=provider_config.thinking_level,
             )
         )
@@ -422,11 +429,6 @@ def _generate_misconception_cards(
         )
         redacted_payload_text = redaction.redacted_text
         findings = redaction.findings
-    mc_budget_kwargs: dict[str, int] = {}
-    if input_token_budget is not None:
-        mc_budget_kwargs["input_token_budget"] = input_token_budget
-    if output_token_budget is not None:
-        mc_budget_kwargs["output_token_budget"] = output_token_budget
     provider = make_provider(
         provider_config,
         api_key=api_key,
@@ -438,7 +440,12 @@ def _generate_misconception_cards(
         retry_attempts=retry_attempts,
         request_timeout_seconds=request_timeout_seconds,
         execution_origin="quiz_generate",
-        **mc_budget_kwargs,
+        input_token_budget=(
+            input_token_budget if input_token_budget is not None else DEFAULT_INPUT_TOKEN_BUDGET
+        ),
+        output_token_budget=(
+            output_token_budget if output_token_budget is not None else DEFAULT_OUTPUT_TOKEN_BUDGET
+        ),
     )
     try:
         response = provider.generate(

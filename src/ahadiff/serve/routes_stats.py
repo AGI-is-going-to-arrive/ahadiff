@@ -367,8 +367,6 @@ def _optional_thinking_level(mapping: Mapping[str, object]) -> str | None:
     return None
 
 
-
-
 def _provider_api_family(provider_class: str) -> tuple[str | None, str | None, str]:
     if provider_class == "openai_responses":
         return ("openai", "responses-v1", "openai_responses")
@@ -390,8 +388,9 @@ _ENV_VAR_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 def _parse_available_models(mapping: Mapping[str, Any]) -> list[str]:
     raw = mapping.get("available_models")
-    if isinstance(raw, (list, tuple)):
-        return [str(m) for m in raw if isinstance(m, str) and m.strip()]
+    if isinstance(raw, list | tuple):
+        items = cast("list[object] | tuple[object, ...]", raw)
+        return [str(item) for item in items if isinstance(item, str) and item.strip()]
     return []
 
 
@@ -469,7 +468,7 @@ def _provider_summary_from_mapping(
 provider_summary_from_mapping = _provider_summary_from_mapping
 
 
-def _legacy_provider_summary(
+def _legacy_provider_summary(  # pyright: ignore[reportUnusedFunction]
     alias: str,
     model_name: str,
     base_url: str,

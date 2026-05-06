@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { startLearnTask, estimateLearn, getTask, cancelTask, listTasks } from '../api/tasks';
+import { startLearnTask, getTask, cancelTask, listTasks } from '../api/tasks';
 import { ApiError } from '../api/client';
 import { useRunsStore } from './runs-store';
 import { useLearnStore } from './learn-store';
@@ -31,7 +31,7 @@ function makeTaskInfo(overrides: Partial<TaskInfoResponse> = {}): TaskInfoRespon
     task_id: 'task-1',
     task_type: 'learn',
     status: 'running',
-    progress: { current: 0, total: 10, message: '' },
+    progress: { current: 0, total: 10, message: '', step_started_at: '' },
     result_summary: null,
     error: null,
     error_code: null,

@@ -9,6 +9,8 @@ from ahadiff.core.paths import path_identity_key
 from ahadiff.safety.injection import protect_untrusted_text
 from ahadiff.safety.redact import redaction_pipeline
 
+_QUIZ_CHOICE_LABELS = ("A", "B", "C", "D")
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -184,10 +186,20 @@ def _quiz_transfer_score(
     claim_ratio = _quiz_claim_link_ratio(quiz_entries, claims)
     evidence_ratio = _quiz_evidence_link_ratio(quiz_entries, line_maps)
     concept_ratio = _field_presence_ratio(quiz_entries, ("concepts", "concept_ids"))
+    choice_shape_ratio = _quiz_choice_shape_ratio(quiz_entries)
+    choice_answer_ratio = _quiz_choice_answer_ratio(quiz_entries)
     composite_ratio = (
-        0.3 * count_ratio + 0.35 * claim_ratio + 0.25 * evidence_ratio + 0.1 * concept_ratio
+        0.20 * count_ratio
+        + 0.25 * claim_ratio
+        + 0.20 * evidence_ratio
+        + 0.10 * concept_ratio
+        + 0.15 * choice_shape_ratio
+        + 0.10 * choice_answer_ratio
     )
-    return round(10.0 * composite_ratio, 2), "quiz artifact count and validated anchor richness"
+    return round(10.0 * composite_ratio, 2), (
+        "quiz artifact count, validated anchors, and multiple-choice quality "
+        f"(choice_shape={choice_shape_ratio:.2f}, choice_answer={choice_answer_ratio:.2f})"
+    )
 
 
 def _quiz_claim_link_ratio(
@@ -205,6 +217,80 @@ def _quiz_claim_link_ratio(
         if claim_ids and all(claim_id in known_claim_ids for claim_id in claim_ids):
             valid_entries += 1
     return valid_entries / len(quiz_entries)
+
+
+def _quiz_choice_shape_ratio(quiz_entries: Sequence[Mapping[str, Any]]) -> float:
+    if not quiz_entries:
+        return 0.0
+    valid_entries = 0
+    for entry in quiz_entries:
+        if _valid_quiz_choices(entry) is not None:
+            valid_entries += 1
+    return valid_entries / len(quiz_entries)
+
+
+def _quiz_choice_answer_ratio(quiz_entries: Sequence[Mapping[str, Any]]) -> float:
+    if not quiz_entries:
+        return 0.0
+    aligned_entries = 0
+    for entry in quiz_entries:
+        choices = _valid_quiz_choices(entry)
+        if choices is None:
+            continue
+        expected_answer = _normalized_quiz_text(entry.get("expected_answer"))
+        if expected_answer is None:
+            continue
+        correct_text = next((text for _label, text, is_correct in choices if is_correct), None)
+        if correct_text is not None and correct_text.casefold() == expected_answer.casefold():
+            aligned_entries += 1
+    return aligned_entries / len(quiz_entries)
+
+
+def _valid_quiz_choices(
+    entry: Mapping[str, Any],
+) -> tuple[tuple[str, str, bool], ...] | None:
+    raw_choices = entry.get("choices")
+    if not isinstance(raw_choices, list | tuple):
+        return None
+    choices = cast("list[object] | tuple[object, ...]", raw_choices)
+    if len(choices) != len(_QUIZ_CHOICE_LABELS):
+        return None
+
+    parsed_choices: list[tuple[str, str, bool]] = []
+    seen_texts: set[str] = set()
+    correct_count = 0
+    for expected_label, raw_choice in zip(_QUIZ_CHOICE_LABELS, choices, strict=True):
+        if not isinstance(raw_choice, Mapping):
+            return None
+        choice = cast("Mapping[str, object]", raw_choice)
+        if choice.get("label") != expected_label:
+            return None
+        text = _normalized_quiz_text(choice.get("text"))
+        if text is None:
+            return None
+        text_key = text.casefold()
+        if text_key in seen_texts:
+            return None
+        seen_texts.add(text_key)
+        raw_is_correct = choice.get("is_correct")
+        if not isinstance(raw_is_correct, bool):
+            return None
+        if raw_is_correct:
+            correct_count += 1
+        parsed_choices.append((expected_label, text, raw_is_correct))
+
+    if correct_count != 1:
+        return None
+    return tuple(parsed_choices)
+
+
+def _normalized_quiz_text(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = " ".join(value.strip().split())
+    if not normalized:
+        return None
+    return normalized
 
 
 def _quiz_evidence_link_ratio(

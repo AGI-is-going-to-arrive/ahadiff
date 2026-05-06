@@ -48,6 +48,7 @@ from .orchestrator import (
     RunConfig,
     ServeConfig,
 )
+from .quiz_choice import AnswerMode, QuizChoice, QuizChoiceLabel, validate_quiz_choices
 from .run_source import (
     AllowlistPolicy,
     DegradedFlag,
@@ -113,6 +114,7 @@ from .serve_stats import SpecAlignmentResponse
 __all__ = [
     "AhaDiffError",
     "AllowlistPolicy",
+    "AnswerMode",
     "AuditLogResponse",
     "AuthTokenResponse",
     "CardState",
@@ -158,6 +160,8 @@ __all__ = [
     "ProviderConfig",
     "ProviderError",
     "QuizAnswerRequest",
+    "QuizChoice",
+    "QuizChoiceLabel",
     "RATCHET_COUNTED_STATUSES",
     "RUBRIC_WEIGHTS",
     "RatchetHistoryEntry",
@@ -208,4 +212,5 @@ __all__ = [
     "Verdict",
     "compute_eval_bundle_version",
     "compute_runtime_eval_bundle_version",
+    "validate_quiz_choices",
 ]

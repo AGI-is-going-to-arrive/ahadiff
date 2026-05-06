@@ -90,22 +90,26 @@ def _srs_review_sync(state: ServeState, body: ReviewSignalRequest) -> ReviewUpda
             answer=body.answer,
             idempotency_key=body.idempotency_key,
             peeked_this_session=body.peeked_this_session,
+            selected_choice_label=body.selected_choice_label,
         )
 
 
 def _quiz_answer_sync(state: ServeState, body: QuizAnswerRequest) -> bool:
     with serve_repo_write_lock(state, command="serve quiz-answer"):
         initialize_review_db(state.review_db_path)
+        payload: dict[str, object] = {
+            "quiz_id": body.quiz_id,
+            "choice": body.choice,
+            "correct": body.correct,
+        }
+        if body.selected_choice_label is not None:
+            payload["selected_choice_label"] = body.selected_choice_label
         return insert_learning_signal(
             state.review_db_path,
             event_id=make_uuid7(),
             idempotency_key=body.idempotency_key,
             signal_type="quiz_answer",
-            payload={
-                "quiz_id": body.quiz_id,
-                "choice": body.choice,
-                "correct": body.correct,
-            },
+            payload=payload,
         )
 
 

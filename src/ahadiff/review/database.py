@@ -19,6 +19,12 @@ from typing import TYPE_CHECKING, Any, cast
 from pydantic import ValidationError
 
 from ahadiff.contracts import ResultEvent, ReviewCard
+from ahadiff.contracts.quiz_choice import (
+    AnswerMode,
+    QuizChoice,
+    QuizChoiceLabel,
+    validate_quiz_choices,
+)
 from ahadiff.core.errors import InputError, MigrationError, StorageError
 from ahadiff.core.json_util import safe_json_loads
 from ahadiff.core.paths import is_wsl2_mnt
@@ -38,12 +44,13 @@ from .schemas import DueReviewCard, ReviewAnswer, ReviewDbCheck, ReviewUpdate
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
 
-CURRENT_SCHEMA_VERSION = 8
+CURRENT_SCHEMA_VERSION = 9
 _SQLITE_MIN_VERSION = (3, 51, 3)
 _SQLITE_ALLOWED_BACKPORTS = {(3, 50, 7), (3, 44, 6)}
 _SQLITE_SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
 _SQLITE_SIDECAR_REMOVE_ATTEMPTS = 5
 _SQLITE_SIDECAR_REMOVE_DELAY_SECONDS = 0.05
+_VALID_ANSWER_MODES: tuple[AnswerMode, ...] = ("open", "multiple_choice")
 _RESULT_EVENT_COLUMNS = (
     "event_id",
     "run_id",
@@ -591,6 +598,7 @@ def import_cards_from_jsonl(db_path: Path, cards_path: Path) -> int:
     cards = _load_review_cards(cards_path)
     if not cards:
         return 0
+    card_choice_payloads = tuple(_serialize_card_choices(card) for card in cards)
     now = _utc_now()
     inserted = 0
     with connect_review_db(db_path) as connection:
@@ -598,7 +606,7 @@ def import_cards_from_jsonl(db_path: Path, cards_path: Path) -> int:
         _ensure_default_scheduler_preset(connection, created_at_utc=now)
         run_ids = tuple(sorted({card.run_id for card in cards}))
         card_ids = {card.card_id for card in cards}
-        for card in cards:
+        for card, (answer_mode, choices_json) in zip(cards, card_choice_payloads, strict=True):
             normalized_state = normalize_fsrs_state(card.fsrs_state)
             fsrs_state, due_date, stability, difficulty, scaffolding = snapshot_card_state(
                 normalized_state
@@ -631,12 +639,14 @@ def import_cards_from_jsonl(db_path: Path, cards_path: Path) -> int:
                     change_kind,
                     question,
                     answer,
+                    answer_mode,
+                    choices_json,
                     stale_reason,
                     created_at_utc,
                     archived_at_utc,
                     suspended_at_utc
                 ) VALUES (?, ?, ?, ?, ?, 'default', ?, ?, ?, ?, ?, 0, 0, ?, ?, NULL,
-                          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
+                          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
                 """,
                 (
                     card.card_id,
@@ -660,6 +670,8 @@ def import_cards_from_jsonl(db_path: Path, cards_path: Path) -> int:
                     card.change_kind,
                     card.question,
                     card.answer,
+                    answer_mode,
+                    choices_json,
                     card.stale_reason,
                     now,
                 ),
@@ -681,6 +693,8 @@ def import_cards_from_jsonl(db_path: Path, cards_path: Path) -> int:
                         change_kind = ?,
                         question = ?,
                         answer = ?,
+                        answer_mode = ?,
+                        choices_json = ?,
                         card_state = CASE
                             WHEN card_state IN ('archived', 'suspended') THEN card_state
                             ELSE ?
@@ -703,6 +717,8 @@ def import_cards_from_jsonl(db_path: Path, cards_path: Path) -> int:
                         card.change_kind,
                         card.question,
                         card.answer,
+                        answer_mode,
+                        choices_json,
                         card.card_state,
                         card.stale_reason,
                         card.card_id,
@@ -795,7 +811,9 @@ def list_due_cards(
                 source_ref,
                 symbol,
                 question,
-                answer
+                answer,
+                answer_mode,
+                choices_json
             FROM cards
             WHERE card_state = 'active' AND due_date <= ?
             ORDER BY due_date ASC, id ASC
@@ -803,21 +821,37 @@ def list_due_cards(
             """,
             (now_text, limit),
         ).fetchall()
-    return tuple(
-        DueReviewCard(
-            card_id=str(row["id"]),
-            concept=str(row["concept"]),
-            run_id=str(row["run_id"]),
-            due_date=str(row["due_date"]),
-            scaffolding_level=str(row["scaffolding_level"]),
-            display_path=str(row["display_path"]),
-            source_ref=cast("str | None", row["source_ref"]),
-            symbol=cast("str | None", row["symbol"]),
-            question=cast("str | None", row["question"]),
-            answer=cast("str | None", row["answer"]),
-        )
-        for row in rows
-    )
+    return tuple(_row_to_due_review_card(row) for row in rows)
+
+
+def get_card(db_path: Path, card_id: str) -> DueReviewCard | None:
+    if not db_path.exists():
+        return None
+    with connect_review_db(db_path) as connection:
+        if _get_schema_version(connection) != CURRENT_SCHEMA_VERSION:
+            return None
+        row = connection.execute(
+            """
+            SELECT
+                id,
+                concept,
+                run_id,
+                due_date,
+                scaffolding_level,
+                display_path,
+                source_ref,
+                symbol,
+                question,
+                answer,
+                answer_mode,
+                choices_json
+            FROM cards
+            WHERE id = ?
+            LIMIT 1
+            """,
+            (card_id,),
+        ).fetchone()
+    return None if row is None else _row_to_due_review_card(row)
 
 
 def record_card_review(
@@ -847,11 +881,17 @@ def record_card_review_once(
     answer: ReviewAnswer,
     idempotency_key: str,
     peeked_this_session: bool = False,
+    selected_choice_label: QuizChoiceLabel | None = None,
     reviewed_at_utc: datetime | None = None,
 ) -> ReviewUpdate | None:
     reviewed_at = reviewed_at_utc or datetime.now(UTC)
     with connect_review_db(db_path) as connection:
         _ensure_schema(connection)
+        choice_payload = _review_choice_signal_payload(
+            connection,
+            card_id=card_id,
+            selected_choice_label=selected_choice_label,
+        )
         inserted = _insert_learning_signal(
             connection,
             event_id=make_uuid7(),
@@ -861,6 +901,7 @@ def record_card_review_once(
                 "card_id": card_id,
                 "answer": answer,
                 "peeked_this_session": peeked_this_session,
+                **choice_payload,
             },
             created_at_utc=reviewed_at,
         )
@@ -873,6 +914,44 @@ def record_card_review_once(
             peeked_this_session=peeked_this_session,
             reviewed_at=reviewed_at,
         )
+
+
+def _review_choice_signal_payload(
+    connection: sqlite3.Connection,
+    *,
+    card_id: str,
+    selected_choice_label: QuizChoiceLabel | None,
+) -> dict[str, object]:
+    if selected_choice_label is None:
+        return {}
+
+    row = connection.execute(
+        """
+        SELECT answer, answer_mode, choices_json
+        FROM cards
+        WHERE id = ? AND card_state = 'active'
+        """,
+        (card_id,),
+    ).fetchone()
+    if row is None:
+        raise InputError(f"active review card does not exist: {card_id}")
+
+    answer_mode, choices = _deserialize_card_choices(
+        row["answer_mode"],
+        row["choices_json"],
+        expected_answer=cast("str | None", row["answer"]),
+    )
+    if answer_mode != "multiple_choice" or choices is None:
+        raise InputError("selected_choice_label is only valid for multiple_choice review cards")
+
+    for choice in choices:
+        if choice.label == selected_choice_label:
+            return {
+                "selected_choice_label": selected_choice_label,
+                "choice_correct": choice.is_correct,
+            }
+
+    raise InputError(f"selected_choice_label is not valid for review card choices: {card_id}")
 
 
 def set_card_queue_state(
@@ -1257,6 +1336,9 @@ def _ensure_cards_schema(connection: sqlite3.Connection) -> None:
             change_kind TEXT,
             question TEXT,
             answer TEXT,
+            answer_mode TEXT NOT NULL DEFAULT 'open'
+                CHECK (answer_mode IN ('open', 'multiple_choice')),
+            choices_json TEXT,
             stale_reason TEXT,
             created_at_utc TEXT NOT NULL,
             archived_at_utc TEXT,
@@ -1784,6 +1866,15 @@ def _migrate_v7_to_v8(connection: sqlite3.Connection) -> None:
     _ensure_cards_column(connection, "answer", "TEXT")
 
 
+def _migrate_v8_to_v9(connection: sqlite3.Connection) -> None:
+    _ensure_cards_column(
+        connection,
+        "answer_mode",
+        "TEXT NOT NULL DEFAULT 'open' CHECK (answer_mode IN ('open', 'multiple_choice'))",
+    )
+    _ensure_cards_column(connection, "choices_json", "TEXT")
+
+
 _MIGRATIONS: dict[int, MigrationStep] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -1792,6 +1883,7 @@ _MIGRATIONS: dict[int, MigrationStep] = {
     5: _migrate_v5_to_v6,
     6: _migrate_v6_to_v7,
     7: _migrate_v7_to_v8,
+    8: _migrate_v8_to_v9,
 }
 
 
@@ -1847,14 +1939,119 @@ def _load_review_cards(cards_path: Path) -> tuple[ReviewCard, ...]:
         if not stripped:
             continue
         try:
-            payload = safe_json_loads(stripped)
-        except (json.JSONDecodeError, ValueError) as exc:
-            raise InputError(f"invalid cards JSONL line {index}: {cards_path}") from exc
-        try:
-            cards.append(ReviewCard.model_validate(payload))
+            cards.append(ReviewCard.model_validate_json(stripped))
         except ValidationError as exc:
-            raise InputError(f"invalid cards JSONL line {index}: {cards_path}") from exc
+            message = exc.errors(include_context=False, include_input=False)[0]["msg"]
+            raise InputError(f"invalid cards JSONL line {index}: {cards_path} ({message})") from exc
     return tuple(cards)
+
+
+def _serialize_card_choices(card: ReviewCard) -> tuple[AnswerMode, str | None]:
+    answer_mode = _coerce_answer_mode(card.answer_mode, error_type=InputError)
+    raw_choices = card.choices
+    if answer_mode == "open":
+        if raw_choices is not None:
+            raise InputError("open review cards must not include choices")
+        return answer_mode, None
+    expected_answer = _coerce_choice_expected_answer(card.answer, error_type=InputError)
+    choices = _coerce_quiz_choices(
+        raw_choices,
+        expected_answer=expected_answer,
+        error_type=InputError,
+    )
+    payload = [choice.model_dump(mode="json") for choice in choices]
+    return answer_mode, json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+
+def _deserialize_card_choices(
+    answer_mode: object,
+    choices_json: object,
+    *,
+    expected_answer: str | None,
+) -> tuple[AnswerMode, tuple[QuizChoice, ...] | None]:
+    mode = _coerce_answer_mode(answer_mode, error_type=StorageError)
+    if mode == "open":
+        if choices_json not in (None, ""):
+            raise StorageError("open review card unexpectedly stores choices_json")
+        return mode, None
+    if not isinstance(choices_json, str) or not choices_json.strip():
+        raise StorageError("multiple_choice review card is missing choices_json")
+    expected_answer_text = _coerce_choice_expected_answer(
+        expected_answer,
+        error_type=StorageError,
+    )
+    try:
+        payload = safe_json_loads(choices_json)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise StorageError("review card choices_json is not valid JSON") from exc
+    choices = _coerce_quiz_choices(
+        payload,
+        expected_answer=expected_answer_text,
+        error_type=StorageError,
+    )
+    return mode, choices
+
+
+def _coerce_answer_mode(
+    raw_mode: object,
+    *,
+    error_type: type[InputError] | type[StorageError],
+) -> AnswerMode:
+    if isinstance(raw_mode, str) and raw_mode in _VALID_ANSWER_MODES:
+        return raw_mode
+    raise error_type(f"invalid review card answer_mode: {raw_mode!r}")
+
+
+def _coerce_choice_expected_answer(
+    raw_answer: object,
+    *,
+    error_type: type[InputError] | type[StorageError],
+) -> str:
+    if isinstance(raw_answer, str) and raw_answer.strip():
+        return raw_answer
+    raise error_type("multiple_choice review cards require a non-empty answer")
+
+
+def _coerce_quiz_choices(
+    raw_choices: object,
+    *,
+    expected_answer: str | None,
+    error_type: type[InputError] | type[StorageError],
+) -> tuple[QuizChoice, ...]:
+    if not isinstance(raw_choices, list | tuple):
+        raise error_type("multiple_choice review cards require a choices array")
+    choice_items = cast("Iterable[object]", raw_choices)
+    try:
+        choices = tuple(
+            item if isinstance(item, QuizChoice) else QuizChoice.model_validate(item)
+            for item in choice_items
+        )
+        return validate_quiz_choices(choices, expected_answer=expected_answer)
+    except (TypeError, ValueError, ValidationError) as exc:
+        raise error_type("invalid review card choices") from exc
+
+
+def _row_to_due_review_card(row: sqlite3.Row) -> DueReviewCard:
+    answer = cast("str | None", row["answer"])
+    answer_mode, choices = _deserialize_card_choices(
+        row["answer_mode"],
+        row["choices_json"],
+        expected_answer=answer,
+    )
+    return DueReviewCard(
+        card_id=str(row["id"]),
+        concept=str(row["concept"]),
+        run_id=str(row["run_id"]),
+        due_date=str(row["due_date"]),
+        scaffolding_level=str(row["scaffolding_level"]),
+        display_path=str(row["display_path"]),
+        source_ref=cast("str | None", row["source_ref"]),
+        symbol=cast("str | None", row["symbol"]),
+        question=cast("str | None", row["question"]),
+        answer=answer,
+        answer_mode=answer_mode,
+        choices=choices,
+    )
 
 
 def _ensure_cards_column(connection: sqlite3.Connection, column_name: str, ddl: str) -> None:
@@ -2664,6 +2861,7 @@ __all__ = [
     "delete_result_event",
     "delete_result_event_and_select_tsv_rows",
     "finalize_targeted_verify_event",
+    "get_card",
     "import_cards_from_jsonl",
     "import_cards_from_runs",
     "import_concepts_from_jsonl",

@@ -63,6 +63,43 @@ describe('review store', () => {
     expect((storeError as Error).message).toBe('backend rejected card');
   });
 
+  it('forwards selected_choice_label and peeked_this_session for choice cards', async () => {
+    mockedSubmitReviewRate.mockResolvedValue({ inserted: true });
+
+    await useReviewStore.getState().rate('hard', {
+      selectedChoiceLabel: 'B',
+      peekedThisSession: false,
+    });
+
+    expect(mockedSubmitReviewRate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        card_id: 'card-1',
+        answer: 'hard',
+        idempotency_key: expect.any(String),
+        peeked_this_session: false,
+        selected_choice_label: 'B',
+      }),
+      undefined,
+    );
+  });
+
+  it('omits selected_choice_label when not provided (open card)', async () => {
+    mockedSubmitReviewRate.mockResolvedValue({ inserted: true });
+
+    await useReviewStore.getState().rate('good', {
+      peekedThisSession: true,
+    });
+
+    const lastCall = mockedSubmitReviewRate.mock.calls.at(-1);
+    expect(lastCall).toBeDefined();
+    expect(lastCall![0]).toMatchObject({
+      card_id: 'card-1',
+      answer: 'good',
+      peeked_this_session: true,
+    });
+    expect(lastCall![0]).not.toHaveProperty('selected_choice_label');
+  });
+
   it('loads the review queue through the API contract', async () => {
     mockedGetReviewQueue.mockResolvedValue({
       cards: [

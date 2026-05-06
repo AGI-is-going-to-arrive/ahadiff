@@ -476,7 +476,7 @@ def _validate_learn_update(learn: object) -> dict[str, Any] | str:
     validated: dict[str, Any] = {}
     if "learnability_threshold" in learn_dict:
         val: object = learn_dict["learnability_threshold"]
-        if not isinstance(val, (int, float)) or isinstance(val, bool):
+        if not isinstance(val, int | float) or isinstance(val, bool):
             return "learn.learnability_threshold must be a number"
         if val < 0.0 or val > 1.0:
             return "learn.learnability_threshold must be between 0.0 and 1.0"
@@ -494,9 +494,16 @@ async def put_config(request: Request) -> JSONResponse:
 
     body = cast("dict[str, Any]", payload)
     allowed_keys: set[str] = {
-        "lang", "capture", "privacy_mode",
-        "generate_provider", "generate_model", "judge_provider", "judge_model",
-        "serve_port", "llm", "learn",
+        "lang",
+        "capture",
+        "privacy_mode",
+        "generate_provider",
+        "generate_model",
+        "judge_provider",
+        "judge_model",
+        "serve_port",
+        "llm",
+        "learn",
     }
     unknown: set[str] = set(body.keys()) - allowed_keys
     if unknown:
@@ -524,7 +531,10 @@ async def put_config(request: Request) -> JSONResponse:
         pm: object = body["privacy_mode"]
         if not isinstance(pm, str) or pm not in _ALLOWED_PRIVACY_MODES:
             return JSONResponse(
-                {"error": f"privacy_mode must be one of {sorted(_ALLOWED_PRIVACY_MODES)}", "status": 400},
+                {
+                    "error": f"privacy_mode must be one of {sorted(_ALLOWED_PRIVACY_MODES)}",
+                    "status": 400,
+                },
                 status_code=400,
             )
         persist_updates["privacy_mode"] = pm
@@ -538,7 +548,8 @@ async def put_config(request: Request) -> JSONResponse:
             raw = read_config_data(config_path)
             raw_providers = raw.get("providers")
             if isinstance(raw_providers, dict):
-                configured_aliases = set(raw_providers.keys())
+                providers = cast("dict[str, object]", raw_providers)
+                configured_aliases = set(providers)
         except Exception:
             pass
 
@@ -554,7 +565,10 @@ async def put_config(request: Request) -> JSONResponse:
             pv_stripped = pv.strip()
             if pv_stripped and pv_stripped not in configured_aliases:
                 return JSONResponse(
-                    {"error": f"{prov_key} '{pv_stripped}' not found in configured providers", "status": 400},
+                    {
+                        "error": (f"{prov_key} '{pv_stripped}' not found in configured providers"),
+                        "status": 400,
+                    },
                     status_code=400,
                 )
             persist_updates.setdefault("llm", {})[prov_key] = pv_stripped

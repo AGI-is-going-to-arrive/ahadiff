@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from ahadiff.contracts.quiz_choice import AnswerMode, QuizChoice  # noqa: TC001
+
 ReviewAnswer = Literal["easy", "good", "hard", "wrong"]
 CardQueueAction = Literal["archive", "suspend"]
 
@@ -19,6 +21,8 @@ class DueReviewCard:
     symbol: str | None = None
     question: str | None = None
     answer: str | None = None
+    answer_mode: AnswerMode = "open"
+    choices: tuple[QuizChoice, ...] | None = None
 
 
 @dataclass(frozen=True)

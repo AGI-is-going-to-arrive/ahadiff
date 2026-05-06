@@ -318,8 +318,14 @@ class TaskRunner:
             except Exception:
                 provider_msg = ""
             _transient = (
-                "transport", "decompression", "rate limit", "timeout",
-                "connection", "503", "429", "retryable status",
+                "transport",
+                "decompression",
+                "rate limit",
+                "timeout",
+                "connection",
+                "503",
+                "429",
+                "retryable status",
             )
             if any(t in provider_msg for t in _transient):
                 return "network_error"

@@ -91,9 +91,7 @@ class AzureOpenAIAdapter(AdapterBase):
         if "/deployments" not in base_path:
             base_path = f"{base_path}/deployments"
         path = f"{base_path}/{deployment}/chat/completions"
-        return urlunsplit(
-            (parsed.scheme, parsed.netloc, path, urlencode(query, doseq=True), "")
-        )
+        return urlunsplit((parsed.scheme, parsed.netloc, path, urlencode(query, doseq=True), ""))
 
     def _is_v1_compat(self) -> bool:
         return self.config.base_url.rstrip("/").endswith("/v1")

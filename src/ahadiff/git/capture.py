@@ -1951,21 +1951,52 @@ def _learning_value_sort_key(item: _PatchSegment) -> tuple[int, int, int, str]:
     ext = item.path.rsplit(".", 1)[-1].lower() if "." in item.path else ""
     path_lower = item.path.lower()
 
-    _SOURCE_EXTS = frozenset({
-        "py", "ts", "tsx", "js", "jsx", "rs", "go", "java", "kt",
-        "c", "cpp", "h", "hpp", "cs", "rb", "swift", "scala",
-    })
-    _CONFIG_EXTS = frozenset({
-        "toml", "yaml", "yml", "json", "ini", "cfg", "conf", "env",
-    })
-    _GENERATED_MARKERS = frozenset({
-        "lock", "min.js", "min.css", "bundle.js", "chunk.js",
-    })
+    _SOURCE_EXTS = frozenset(
+        {
+            "py",
+            "ts",
+            "tsx",
+            "js",
+            "jsx",
+            "rs",
+            "go",
+            "java",
+            "kt",
+            "c",
+            "cpp",
+            "h",
+            "hpp",
+            "cs",
+            "rb",
+            "swift",
+            "scala",
+        }
+    )
+    _CONFIG_EXTS = frozenset(
+        {
+            "toml",
+            "yaml",
+            "yml",
+            "json",
+            "ini",
+            "cfg",
+            "conf",
+            "env",
+        }
+    )
+    _GENERATED_MARKERS = frozenset(
+        {
+            "lock",
+            "min.js",
+            "min.css",
+            "bundle.js",
+            "chunk.js",
+        }
+    )
     _DOC_EXTS = frozenset({"md", "rst", "txt", "adoc"})
 
-    is_generated = (
-        ext in _GENERATED_MARKERS
-        or any(marker in path_lower for marker in ("generated", "vendor/", "node_modules/", ".lock"))
+    is_generated = ext in _GENERATED_MARKERS or any(
+        marker in path_lower for marker in ("generated", "vendor/", "node_modules/", ".lock")
     )
     is_test = any(marker in path_lower for marker in ("test", "spec", "__tests__", "fixtures/"))
     is_doc = ext in _DOC_EXTS

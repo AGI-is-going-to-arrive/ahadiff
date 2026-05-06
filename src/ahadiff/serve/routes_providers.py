@@ -211,9 +211,7 @@ def _append_provider_audit_event(
         "alias": alias,
         "provider_class": str(provider_data.get("provider_class") or ""),
         "model_name": str(provider_data.get("model_name") or ""),
-        "base_url": mask_provider_base_url_for_display(
-            str(provider_data.get("base_url") or "")
-        ),
+        "base_url": mask_provider_base_url_for_display(str(provider_data.get("base_url") or "")),
     }
     append_audit_record(state.state_dir / "audit.jsonl", record)
 
@@ -369,9 +367,9 @@ async def create_provider(request: Request) -> JSONResponse:
     if summary is None:
         return _error("provider_summary_unavailable", status=500)
     return JSONResponse(
-        ProviderMutationResponse.model_validate(
-            {"updated": True, "provider": summary}
-        ).model_dump(mode="json"),
+        ProviderMutationResponse.model_validate({"updated": True, "provider": summary}).model_dump(
+            mode="json"
+        ),
         status_code=201,
     )
 
@@ -464,9 +462,9 @@ async def update_provider(request: Request) -> JSONResponse:
     if summary is None:
         return _error("provider_summary_unavailable", status=500)
     return JSONResponse(
-        ProviderMutationResponse.model_validate(
-            {"updated": True, "provider": summary}
-        ).model_dump(mode="json")
+        ProviderMutationResponse.model_validate({"updated": True, "provider": summary}).model_dump(
+            mode="json"
+        )
     )
 
 
@@ -512,9 +510,9 @@ async def delete_provider(request: Request) -> JSONResponse:
         return _error("provider_not_found", status=404)
 
     return JSONResponse(
-        ProviderDeleteResponse.model_validate(
-            {"deleted": True, "alias": alias}
-        ).model_dump(mode="json")
+        ProviderDeleteResponse.model_validate({"deleted": True, "alias": alias}).model_dump(
+            mode="json"
+        )
     )
 
 
@@ -655,10 +653,11 @@ async def discover_models(request: Request) -> JSONResponse:
         return _error("invalid JSON", status=400)
     if not isinstance(body, dict):
         return _error("expected JSON object", status=400)
+    body_data = cast("dict[str, object]", body)
 
-    base_url = body.get("base_url", "")
-    api_key = body.get("api_key", "")
-    provider_class = body.get("provider_class", "openai")
+    base_url = body_data.get("base_url", "")
+    api_key = body_data.get("api_key", "")
+    provider_class = body_data.get("provider_class", "openai")
     if not isinstance(base_url, str) or not base_url.strip():
         return _error("base_url is required", status=400)
 
@@ -666,7 +665,7 @@ async def discover_models(request: Request) -> JSONResponse:
 
     models_url = _build_models_url(base_url.strip(), str(provider_class))
     headers: dict[str, str] = {}
-    if api_key:
+    if isinstance(api_key, str) and api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
     try:
@@ -747,16 +746,20 @@ async def save_provider_models(request: Request) -> JSONResponse:
         return _error("invalid JSON", status=400)
     if not isinstance(body, dict):
         return _error("expected JSON object", status=400)
-    models = body.get("models")
-    if not isinstance(models, list) or not all(isinstance(m, str) and m.strip() for m in models):
+    body_data = cast("dict[str, object]", body)
+    models = body_data.get("models")
+    if not isinstance(models, list):
         return _error("models must be a list of non-empty strings", status=400)
-    if len(models) > 100:
+    model_items = cast("list[object]", models)
+    if not all(isinstance(item, str) and item.strip() for item in model_items):
+        return _error("models must be a list of non-empty strings", status=400)
+    if len(model_items) > 100:
         return _error("too many models (max 100)", status=400)
 
-    cleaned: list[str] = [m.strip() for m in models]
+    cleaned = [cast("str", item).strip() for item in model_items]
 
-    async with serve_repo_write_lock(state):
-        def _persist() -> dict[str, Any] | None:
+    def _persist() -> dict[str, Any] | None:
+        with serve_repo_write_lock(state, command="serve save-provider-models"):
             data, providers = _read_providers_table(config_path)
             raw = providers.get(alias)
             if not isinstance(raw, dict):
@@ -765,12 +768,12 @@ async def save_provider_models(request: Request) -> JSONResponse:
             write_config_data(config_path, data)
             return dict(cast("dict[str, Any]", raw))
 
-        try:
-            result = await to_thread.run_sync(_persist)
-        except ConfigError as exc:
-            return _error(str(exc), status=500)
-        if result is None:
-            return _error("provider_not_found", status=404)
+    try:
+        result = await to_thread.run_sync(_persist)
+    except ConfigError as exc:
+        return _error(str(exc), status=500)
+    if result is None:
+        return _error("provider_not_found", status=404)
 
     summary = provider_summary_from_mapping(alias, result)
     if summary is None:
@@ -790,11 +793,32 @@ def _build_models_url(base_url: str, provider_class: str) -> str:
 
 def _extract_model_ids(payload: Any, provider_class: str) -> list[str]:
     """Extract model IDs from provider-specific response format."""
+    if not isinstance(payload, dict):
+        return []
+    payload_mapping = cast("Mapping[str, object]", payload)
     if provider_class == "ollama":
-        models = payload.get("models", []) if isinstance(payload, dict) else []
-        return [m.get("name", "") for m in models if isinstance(m, dict) and m.get("name")]
-    data = payload.get("data", []) if isinstance(payload, dict) else []
-    return [m.get("id", "") for m in data if isinstance(m, dict) and m.get("id")]
+        models = payload_mapping.get("models", [])
+        if not isinstance(models, list):
+            return []
+        model_items = cast("list[object]", models)
+        return [
+            str(model_mapping["name"])
+            for model in model_items
+            if isinstance(model, dict)
+            and isinstance((model_mapping := cast("Mapping[str, object]", model)).get("name"), str)
+            and model_mapping["name"]
+        ]
+    data = payload_mapping.get("data", [])
+    if not isinstance(data, list):
+        return []
+    data_items = cast("list[object]", data)
+    return [
+        str(model_mapping["id"])
+        for model in data_items
+        if isinstance(model, dict)
+        and isinstance((model_mapping := cast("Mapping[str, object]", model)).get("id"), str)
+        and model_mapping["id"]
+    ]
 
 
 __all__ = [

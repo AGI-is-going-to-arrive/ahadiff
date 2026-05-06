@@ -4,7 +4,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from ahadiff.contracts import ReviewCard
+from ahadiff.contracts import QuizChoice, ReviewCard
 from ahadiff.lesson.transfer import validate_learning_transfer
 from ahadiff.review.database import connect_review_db, import_cards_from_jsonl
 
@@ -12,8 +12,17 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def _make_card(concept: str) -> ReviewCard:
-    return ReviewCard(
+def _quiz_choices(expected_answer: str) -> list[QuizChoice]:
+    return [
+        QuizChoice(label="A", text=expected_answer, is_correct=True),
+        QuizChoice(label="B", text="It removes the tested behavior.", is_correct=False),
+        QuizChoice(label="C", text="It changes unrelated documentation.", is_correct=False),
+        QuizChoice(label="D", text="It skips the review scheduler.", is_correct=False),
+    ]
+
+
+def _make_card(concept: str, *, multiple_choice: bool = False) -> ReviewCard:
+    card = ReviewCard(
         card_id=f"card-{concept}",
         concept=concept,
         run_id="run-1",
@@ -23,6 +32,16 @@ def _make_card(concept: str) -> ReviewCard:
         display_path="src/app.py",
         hunk_id="hunk-1",
         hunk_hash="deadbeefcafe",
+    )
+    if not multiple_choice:
+        return card
+    answer = f"{concept} transfer answer"
+    return card.model_copy(
+        update={
+            "answer": answer,
+            "answer_mode": "multiple_choice",
+            "choices": _quiz_choices(answer),
+        }
     )
 
 
@@ -101,6 +120,44 @@ def test_transfer_stable_concept(tmp_path: Path) -> None:
     db_path = _setup_db_with_reviews(tmp_path, {"arrays": [3, 3, 3, 3, 3, 3]})
     result = validate_learning_transfer(db_path, min_reviews=3)
     assert result.concepts_stable == 1
+
+
+def test_transfer_counts_multiple_choice_cards_like_open_cards(tmp_path: Path) -> None:
+    db_path = tmp_path / "review.sqlite"
+    cards_path = tmp_path / "cards.jsonl"
+    cards = [
+        _make_card("closures"),
+        _make_card("choices", multiple_choice=True),
+    ]
+    _write_cards_jsonl(cards_path, cards)
+    import_cards_from_jsonl(db_path, cards_path)
+
+    base_time = datetime(2026, 1, 1, tzinfo=UTC)
+    with connect_review_db(db_path) as conn:
+        for card in cards:
+            for index, rating in enumerate([1, 2, 3]):
+                conn.execute(
+                    """
+                    INSERT INTO review_logs (
+                        card_id, rating, reviewed_at_utc,
+                        elapsed_days, scheduled_days, state
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        card.card_id,
+                        rating,
+                        (base_time + timedelta(days=index)).isoformat(),
+                        float(index),
+                        1.0,
+                        "Review",
+                    ),
+                )
+        conn.commit()
+
+    result = validate_learning_transfer(db_path, min_reviews=3)
+
+    assert result.total_concepts_reviewed == 2
+    assert result.concepts_improving == 2
 
 
 def test_transfer_three_reviews_can_still_show_improving_trend(tmp_path: Path) -> None:

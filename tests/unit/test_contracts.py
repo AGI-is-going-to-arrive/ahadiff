@@ -16,6 +16,13 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from ahadiff.contracts.serve_app import (  # noqa: E402
+    DueReviewCardResponse,
+    QuizAnswerRequest,
+    ReviewRateRequest,
+    ReviewSignalRequest,
+)
+
 
 class TestContractsImport:
     def test_wildcard_import(self) -> None:
@@ -132,6 +139,67 @@ class TestSerialization:
         with pytest.raises(ValidationError):
             RunDetail.model_validate({**detail.model_dump(mode="json"), "extra": "blocked"})
 
+    def test_due_review_card_response_serializes_choice_mode_contract(self) -> None:
+        from ahadiff.contracts.quiz_choice import QuizChoice
+        from ahadiff.contracts.serve_app import DueReviewCardResponse
+
+        card = DueReviewCardResponse(
+            card_id="card-1",
+            concept="retry loop",
+            run_id="run-1",
+            due_date="2026-04-22T00:00:00Z",
+            scaffolding_level="full",
+            display_path="src/a.py",
+            answer_mode="multiple_choice",
+            choices=[
+                QuizChoice(label="A", text="Retry loop", is_correct=True),
+                QuizChoice(label="B", text="Disables retry", is_correct=False),
+                QuizChoice(label="C", text="Only renames a variable", is_correct=False),
+                QuizChoice(label="D", text="Removes exception handling", is_correct=False),
+            ],
+        )
+
+        assert card.model_dump(mode="json")["answer_mode"] == "multiple_choice"
+        assert card.model_dump(mode="json")["choices"][0] == {
+            "label": "A",
+            "text": "Retry loop",
+            "is_correct": True,
+        }
+
+    def test_due_review_card_response_defaults_to_open_mode(self) -> None:
+        from ahadiff.contracts.serve_app import DueReviewCardResponse
+
+        card = DueReviewCardResponse(
+            card_id="card-1",
+            concept="retry loop",
+            run_id="run-1",
+            due_date="2026-04-22T00:00:00Z",
+            scaffolding_level="full",
+            display_path="src/a.py",
+        )
+
+        assert card.model_dump(mode="json")["answer_mode"] == "open"
+        assert card.model_dump(mode="json")["choices"] is None
+
+    def test_review_signal_requests_accept_optional_selected_choice_label(self) -> None:
+        from ahadiff.contracts.serve_app import ReviewRateRequest, ReviewSignalRequest
+
+        signal = ReviewSignalRequest(
+            idempotency_key="review:card-1:A",
+            card_id="card-1",
+            answer="good",
+            selected_choice_label="A",
+        )
+        rate = ReviewRateRequest(
+            idempotency_key="rate:card-1:B",
+            card_id="card-1",
+            answer="hard",
+            selected_choice_label="B",
+        )
+
+        assert signal.model_dump(mode="json")["selected_choice_label"] == "A"
+        assert rate.model_dump(mode="json")["selected_choice_label"] == "B"
+
     def test_quiz_answer_request_serializes_viewer_payload(self) -> None:
         from ahadiff.contracts import QuizAnswerRequest
 
@@ -140,6 +208,7 @@ class TestSerialization:
             quiz_id="q1",
             choice="B",
             correct=True,
+            selected_choice_label="B",
         )
 
         assert request.model_dump(mode="json") == {
@@ -147,7 +216,79 @@ class TestSerialization:
             "quiz_id": "q1",
             "choice": "B",
             "correct": True,
+            "selected_choice_label": "B",
         }
+
+    @pytest.mark.parametrize(
+        ("model_type", "payload"),
+        [
+            (
+                DueReviewCardResponse,
+                {
+                    "card_id": "card-1",
+                    "concept": "retry loop",
+                    "run_id": "run-1",
+                    "due_date": "2026-04-22T00:00:00Z",
+                    "scaffolding_level": "full",
+                    "display_path": "src/a.py",
+                },
+            ),
+            (
+                ReviewSignalRequest,
+                {"idempotency_key": "review-1", "card_id": "card-1", "answer": "good"},
+            ),
+            (
+                ReviewRateRequest,
+                {"idempotency_key": "rate-1", "card_id": "card-1", "answer": "hard"},
+            ),
+            (
+                QuizAnswerRequest,
+                {
+                    "idempotency_key": "quiz-1",
+                    "quiz_id": "q1",
+                    "choice": "B",
+                    "correct": True,
+                },
+            ),
+        ],
+    )
+    def test_serve_review_choice_dtos_reject_unknown_fields(
+        self,
+        model_type: type[BaseModel],
+        payload: dict[str, object],
+    ) -> None:
+        with pytest.raises(ValidationError):
+            model_type.model_validate({**payload, "unexpected": "blocked"})
+
+    @pytest.mark.parametrize(
+        ("model_type", "payload"),
+        [
+            (
+                ReviewSignalRequest,
+                {"idempotency_key": "review-1", "card_id": "card-1", "answer": "good"},
+            ),
+            (
+                ReviewRateRequest,
+                {"idempotency_key": "rate-1", "card_id": "card-1", "answer": "hard"},
+            ),
+            (
+                QuizAnswerRequest,
+                {
+                    "idempotency_key": "quiz-1",
+                    "quiz_id": "q1",
+                    "choice": "B",
+                    "correct": True,
+                },
+            ),
+        ],
+    )
+    def test_serve_review_choice_dtos_reject_invalid_selected_choice_label(
+        self,
+        model_type: type[BaseModel],
+        payload: dict[str, object],
+    ) -> None:
+        with pytest.raises(ValidationError):
+            model_type.model_validate({**payload, "selected_choice_label": "E"})
 
     def test_run_artifact_envelope_accepts_legacy_payload_without_content_lang(self) -> None:
         from ahadiff.contracts import RunArtifactEnvelope
@@ -295,6 +436,50 @@ class TestSerialization:
                 hunk_hash="deadbeef",
             )
 
+    def test_review_card_enforces_multiple_choice_contract(self) -> None:
+        from ahadiff.contracts import QuizChoice, ReviewCard
+
+        base_payload = {
+            "card_id": "card-1",
+            "concept": "retry loop",
+            "run_id": "run-1",
+            "source_ref": "abc1234",
+            "fsrs_state": "{}",
+            "file_id": "file-1",
+            "display_path": "src/a.py",
+            "hunk_id": "h1",
+            "hunk_hash": "deadbeef",
+        }
+        choices = [
+            QuizChoice(label="A", text="Retry loop", is_correct=True),
+            QuizChoice(label="B", text="Disables retry", is_correct=False),
+            QuizChoice(label="C", text="Only renames a variable", is_correct=False),
+            QuizChoice(label="D", text="Removes exception handling", is_correct=False),
+        ]
+
+        valid = ReviewCard.model_validate(
+            {
+                **base_payload,
+                "answer": "Retry loop",
+                "answer_mode": "multiple_choice",
+                "choices": choices,
+            }
+        )
+        assert valid.choices == choices
+
+        with pytest.raises(ValidationError, match="non-empty answer"):
+            ReviewCard.model_validate(
+                {**base_payload, "answer_mode": "multiple_choice", "choices": choices}
+            )
+
+        with pytest.raises(ValidationError, match="must include choices"):
+            ReviewCard.model_validate(
+                {**base_payload, "answer": "Retry loop", "answer_mode": "multiple_choice"}
+            )
+
+        with pytest.raises(ValidationError, match="must not include choices"):
+            ReviewCard.model_validate({**base_payload, "answer": "Retry loop", "choices": choices})
+
     def test_claim_record_enforces_reason_code_and_source_hunk_shape(self) -> None:
         from ahadiff.contracts import ClaimRecord
 
@@ -388,6 +573,160 @@ class TestSerialization:
         from ahadiff.contracts import CardState
 
         assert set(get_args(CardState)) == {"active", "stale", "archived", "suspended"}
+
+    def test_quiz_choice_contract_exports_validate_and_normalize_choices(self) -> None:
+        from ahadiff.contracts import (
+            AnswerMode,
+            QuizChoice,
+            QuizChoiceLabel,
+            validate_quiz_choices,
+        )
+
+        choices = validate_quiz_choices(
+            [
+                QuizChoice(label="A", text="  Retry loop  ", is_correct=True),
+                QuizChoice(label="B", text="Disables retry", is_correct=False),
+                QuizChoice(label="C", text="Only renames a variable", is_correct=False),
+                QuizChoice(label="D", text="Removes exception handling", is_correct=False),
+            ],
+            expected_answer="Retry loop",
+        )
+
+        assert set(get_args(AnswerMode)) == {"open", "multiple_choice"}
+        assert set(get_args(QuizChoiceLabel)) == {"A", "B", "C", "D"}
+        assert [choice.label for choice in choices] == ["A", "B", "C", "D"]
+        assert choices[0].text == "Retry loop"
+
+    @pytest.mark.parametrize(
+        "raw_choices",
+        [
+            [
+                {"label": "A", "text": "Retry loop", "is_correct": True},
+                {"label": "B", "text": "Disables retry", "is_correct": False},
+                {"label": "C", "text": "Only renames a variable", "is_correct": False},
+            ],
+            [
+                {"label": "A", "text": "Retry loop", "is_correct": True},
+                {"label": "B", "text": "Disables retry", "is_correct": False},
+                {"label": "C", "text": "Only renames a variable", "is_correct": False},
+                {"label": "D", "text": "Removes exception handling", "is_correct": False},
+                {"label": "A", "text": "Changes comments only", "is_correct": False},
+            ],
+        ],
+    )
+    def test_quiz_choice_validation_rejects_wrong_choice_count(
+        self,
+        raw_choices: list[dict[str, object]],
+    ) -> None:
+        from ahadiff.contracts import QuizChoice, validate_quiz_choices
+
+        choices = [QuizChoice.model_validate(choice) for choice in raw_choices]
+
+        with pytest.raises(ValueError, match="exactly 4"):
+            validate_quiz_choices(choices)
+
+    @pytest.mark.parametrize(
+        "raw_choices",
+        [
+            [
+                {"label": "A", "text": "Retry loop", "is_correct": False},
+                {"label": "B", "text": "Disables retry", "is_correct": False},
+                {"label": "C", "text": "Only renames a variable", "is_correct": False},
+                {"label": "D", "text": "Removes exception handling", "is_correct": False},
+            ],
+            [
+                {"label": "A", "text": "Retry loop", "is_correct": True},
+                {"label": "B", "text": "Disables retry", "is_correct": True},
+                {"label": "C", "text": "Only renames a variable", "is_correct": False},
+                {"label": "D", "text": "Removes exception handling", "is_correct": False},
+            ],
+        ],
+    )
+    def test_quiz_choice_validation_rejects_zero_or_multiple_correct_choices(
+        self,
+        raw_choices: list[dict[str, object]],
+    ) -> None:
+        from ahadiff.contracts import QuizChoice, validate_quiz_choices
+
+        choices = [QuizChoice.model_validate(choice) for choice in raw_choices]
+
+        with pytest.raises(ValueError, match="exactly one correct"):
+            validate_quiz_choices(choices)
+
+    @pytest.mark.parametrize(
+        "raw_choices",
+        [
+            [
+                {"label": "A", "text": "Retry loop", "is_correct": True},
+                {"label": "B", "text": "Disables retry", "is_correct": False},
+                {"label": "D", "text": "Removes exception handling", "is_correct": False},
+                {"label": "C", "text": "Only renames a variable", "is_correct": False},
+            ],
+            [
+                {"label": "A", "text": "Retry loop", "is_correct": True},
+                {"label": "B", "text": "Disables retry", "is_correct": False},
+                {"label": "B", "text": "Only renames a variable", "is_correct": False},
+                {"label": "D", "text": "Removes exception handling", "is_correct": False},
+            ],
+            [
+                {"label": "A", "text": "Retry loop", "is_correct": True},
+                {"label": "B", "text": "Disables retry", "is_correct": False},
+                {"label": "C", "text": "Only renames a variable", "is_correct": False},
+                {"text": "Missing label", "is_correct": False},
+            ],
+        ],
+    )
+    def test_quiz_choice_validation_rejects_missing_duplicate_or_unordered_labels(
+        self,
+        raw_choices: list[dict[str, object]],
+    ) -> None:
+        from ahadiff.contracts import QuizChoice, validate_quiz_choices
+
+        with pytest.raises((ValidationError, ValueError), match="label|A/B/C/D"):
+            choices = [QuizChoice.model_validate(choice) for choice in raw_choices]
+            validate_quiz_choices(choices)
+
+    def test_quiz_choice_validation_rejects_casefold_duplicate_text(self) -> None:
+        from ahadiff.contracts import QuizChoice, validate_quiz_choices
+
+        choices = [
+            QuizChoice(label="A", text="Retry loop", is_correct=True),
+            QuizChoice(label="B", text="retry   loop", is_correct=False),
+            QuizChoice(label="C", text="Only renames a variable", is_correct=False),
+            QuizChoice(label="D", text="Removes exception handling", is_correct=False),
+        ]
+
+        with pytest.raises(ValueError, match="duplicate"):
+            validate_quiz_choices(choices)
+
+    def test_quiz_choice_validation_rejects_expected_answer_mismatch(self) -> None:
+        from ahadiff.contracts import QuizChoice, validate_quiz_choices
+
+        choices = [
+            QuizChoice(label="A", text="Retry loop", is_correct=True),
+            QuizChoice(label="B", text="Disables retry", is_correct=False),
+            QuizChoice(label="C", text="Only renames a variable", is_correct=False),
+            QuizChoice(label="D", text="Removes exception handling", is_correct=False),
+        ]
+
+        with pytest.raises(ValueError, match="expected_answer"):
+            validate_quiz_choices(choices, expected_answer="Backoff was added")
+
+        with pytest.raises(ValueError, match="expected_answer"):
+            validate_quiz_choices(choices, expected_answer="retry loop")
+
+    def test_quiz_choice_rejects_unknown_fields(self) -> None:
+        from ahadiff.contracts import QuizChoice
+
+        with pytest.raises(ValidationError):
+            QuizChoice.model_validate(
+                {
+                    "label": "A",
+                    "text": "Retry loop",
+                    "is_correct": True,
+                    "metadata": "blocked",
+                }
+            )
 
     def test_public_identifier_fields_reject_empty_strings(self) -> None:
         from ahadiff.contracts import (

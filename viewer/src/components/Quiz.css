@@ -313,11 +313,21 @@
   outline: none;
 }
 
+.srs-card__choice-prompt {
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0 0 var(--sp-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .srs-card__choice {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 14px;
   background: var(--elevated);
   border: 1px solid var(--hair);
   border-radius: var(--r-md);
@@ -326,14 +336,25 @@
   font-size: 0.95rem;
   color: var(--ink);
   line-height: 1.45;
+  text-align: left;
+  width: 100%;
   transition:
     background var(--dur-fast) var(--ease-out-quart),
-    border-color var(--dur-fast) var(--ease-out-quart);
+    border-color var(--dur-fast) var(--ease-out-quart),
+    transform var(--dur-fast) var(--ease-out-quart),
+    box-shadow var(--dur-fast) var(--ease-out-quart);
 }
 
 .srs-card__choice:hover:not(.srs-card__choice--disabled) {
   background: var(--accent-softer);
   border-color: var(--accent-hair);
+  transform: translateX(2px);
+  box-shadow: 0 2px 8px rgba(210, 112, 80, 0.08);
+}
+
+.srs-card__choice:focus-visible {
+  box-shadow: var(--sh-ring);
+  outline: none;
 }
 
 .srs-card__choice:active:not(.srs-card__choice--disabled) {
@@ -348,16 +369,63 @@
 .srs-card__choice--disabled {
   cursor: default;
   pointer-events: none;
+  opacity: 0.85;
 }
 
 .srs-card__choice--correct {
-  background: var(--add-bg);
+  background: var(--success-soft);
   border-color: var(--add-fg);
+  opacity: 1;
 }
 
 .srs-card__choice--wrong {
-  background: var(--del-bg);
+  background: var(--danger-soft);
   border-color: var(--del-fg);
+  opacity: 1;
+}
+
+.srs-card__choice-letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-sm);
+  background: var(--subtle);
+  color: var(--ink-strong);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: 0;
+  transition: background var(--dur-fast) var(--ease-out-quart);
+}
+
+.srs-card__choice--selected .srs-card__choice-letter {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.srs-card__choice--correct .srs-card__choice-letter {
+  background: var(--success);
+  color: var(--on-accent);
+}
+
+.srs-card__choice--wrong .srs-card__choice-letter {
+  background: var(--danger);
+  color: var(--on-accent);
+}
+
+.srs-card__choice-content {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+}
+
+.srs-card__choice-text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
 }
 
 .srs-card__choice input[type="radio"] {

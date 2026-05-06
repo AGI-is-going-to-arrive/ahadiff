@@ -5,6 +5,8 @@ from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
 
+from ahadiff.contracts.quiz_choice import AnswerMode, QuizChoice, validate_quiz_choices
+
 
 def _normalize_text(value: str) -> str:
     return " ".join(value.strip().split())
@@ -48,10 +50,26 @@ class QuizQuestion(BaseModel):
     review_card_id: str | None = None
     question: str
     expected_answer: str
+    answer_mode: AnswerMode = "open"
+    choices: list[QuizChoice] | None = None
     source_claims: list[str] = Field(default_factory=list)
     concepts: list[str] = Field(default_factory=list)
     evidence: list[QuizEvidence]
     explanation: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def infer_answer_mode(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        data_map = cast("dict[str, Any]", data)
+        if (
+            "answer_mode" not in data_map
+            and "choices" in data_map
+            and data_map.get("choices") is not None
+        ):
+            return {**data_map, "answer_mode": "multiple_choice"}
+        return data_map
 
     @field_validator("question", "expected_answer")
     @classmethod
@@ -83,11 +101,20 @@ class QuizQuestion(BaseModel):
         return normalized or None
 
     @model_validator(mode="after")
-    def validate_links(self) -> QuizQuestion:
+    def validate_links_and_choices(self) -> QuizQuestion:
         if not self.source_claims:
             raise ValueError("quiz question must link to at least one source claim")
         if not self.evidence:
             raise ValueError("quiz question must include at least one evidence anchor")
+        if self.choices is None:
+            if self.answer_mode == "multiple_choice":
+                raise ValueError("multiple_choice quiz questions must include choices")
+            return self
+        if self.answer_mode != "multiple_choice":
+            raise ValueError("quiz choices are only allowed for multiple_choice questions")
+        self.choices = list(
+            validate_quiz_choices(self.choices, expected_answer=self.expected_answer)
+        )
         return self
 
 
@@ -104,25 +131,43 @@ class QuizSet(BaseModel):
         return values
 
 
-def parse_quiz_payload(payload: str) -> QuizSet:
+def parse_quiz_payload(payload: str, *, require_choices: bool = False) -> QuizSet:
     last_error: Exception | None = None
     for candidate in _extract_json_candidates(payload):
         try:
             if isinstance(candidate, list):
-                return QuizSet.model_validate({"questions": candidate})
+                return _validate_required_choices(
+                    QuizSet.model_validate({"questions": candidate}),
+                    require_choices=require_choices,
+                )
             if isinstance(candidate, dict):
                 candidate_map = cast("dict[str, Any]", candidate)
                 if "questions" in candidate_map:
-                    return QuizSet.model_validate(candidate_map)
+                    return _validate_required_choices(
+                        QuizSet.model_validate(candidate_map),
+                        require_choices=require_choices,
+                    )
                 required_keys = {"question", "expected_answer", "source_claims", "evidence"}
                 if required_keys <= set(candidate_map.keys()):
-                    return QuizSet.model_validate({"questions": [candidate_map]})
+                    return _validate_required_choices(
+                        QuizSet.model_validate({"questions": [candidate_map]}),
+                        require_choices=require_choices,
+                    )
         except Exception as exc:
             last_error = exc
             continue
     if last_error is not None:
         raise last_error
     raise ValueError("payload does not contain a valid quiz JSON object")
+
+
+def _validate_required_choices(quiz_set: QuizSet, *, require_choices: bool) -> QuizSet:
+    if not require_choices:
+        return quiz_set
+    for question in quiz_set.questions:
+        if question.answer_mode != "multiple_choice" or not question.choices:
+            raise ValueError("quiz payload must include choices for every question")
+    return quiz_set
 
 
 def _extract_json_candidates(payload: str) -> tuple[Any, ...]:

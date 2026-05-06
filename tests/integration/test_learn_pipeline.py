@@ -226,6 +226,20 @@ def _write_lesson(run_path: Path, run_id: str) -> None:
     )
 
 
+def _quiz_choices(
+    correct_answer: str,
+    distractor_b: str,
+    distractor_c: str,
+    distractor_d: str,
+) -> list[dict[str, object]]:
+    return [
+        {"label": "A", "text": correct_answer, "is_correct": True},
+        {"label": "B", "text": distractor_b, "is_correct": False},
+        {"label": "C", "text": distractor_c, "is_correct": False},
+        {"label": "D", "text": distractor_d, "is_correct": False},
+    ]
+
+
 def _write_quiz(run_path: Path, run_id: str, claims: tuple[ClaimRecord, ...]) -> None:
     quiz_dir = run_path / "quiz"
     quiz_dir.mkdir()
@@ -236,6 +250,12 @@ def _write_quiz(run_path: Path, run_id: str, claims: tuple[ClaimRecord, ...]) ->
             "source_claims": [claims[0].claim_id],
             "evidence": [{"file": "src/app.py", "line": 2}],
             "concepts": ["pinned-pipeline"],
+            "choices": _quiz_choices(
+                "src/app.py",
+                "README.md",
+                "pyproject.toml",
+                "tests/unit/test_cli.py",
+            ),
         },
         {
             "question": "Which marker proves finalization?",
@@ -243,6 +263,12 @@ def _write_quiz(run_path: Path, run_id: str, claims: tuple[ClaimRecord, ...]) ->
             "source_claims": [claims[1].claim_id],
             "evidence": [{"file": "src/app.py", "line": 3}],
             "concepts": ["artifact-finalization"],
+            "choices": _quiz_choices(
+                "finalized.json",
+                "claims.raw.jsonl",
+                "graph.json",
+                "provider_probe.json",
+            ),
         },
         {
             "question": "Which command re-checks finalized artifacts?",
@@ -250,6 +276,12 @@ def _write_quiz(run_path: Path, run_id: str, claims: tuple[ClaimRecord, ...]) ->
             "source_claims": [claims[1].claim_id],
             "evidence": [{"file": "src/app.py", "line": 4}],
             "concepts": ["ci-verify"],
+            "choices": _quiz_choices(
+                "ahadiff verify --ci",
+                "ahadiff init --force",
+                "ahadiff quiz --all",
+                "ahadiff graph refresh",
+            ),
         },
     ]
     (quiz_dir / "quiz.jsonl").write_text(

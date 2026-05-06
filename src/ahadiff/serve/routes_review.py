@@ -60,8 +60,6 @@ async def post_review_rate(request: Request) -> JSONResponse:
     state = serve_state(request)
     update = await to_thread.run_sync(_review_rate_sync, state, body)
     if update is None:
-        # TODO(v0.2): record_card_review_once stores card_id/answer in learning_signals,
-        # but duplicate keys are still treated as replay without comparing that payload.
         return JSONResponse({"inserted": False})
     return JSONResponse({"inserted": True, "review": update.__dict__})
 
@@ -89,6 +87,7 @@ def _review_rate_sync(state: ServeState, body: ReviewRateRequest) -> ReviewUpdat
             answer=body.answer,
             idempotency_key=body.idempotency_key,
             peeked_this_session=body.peeked_this_session,
+            selected_choice_label=body.selected_choice_label,
         )
 
 
@@ -130,6 +129,7 @@ async def get_weak_concepts(request: Request) -> JSONResponse:
 def _weak_concepts_sync(db_path: Path, limit: int) -> dict[str, Any]:
     if not db_path.is_file():
         return WeakConceptsResponse(concepts=[]).model_dump(mode="json")
+
     def _rows_to_items(rows: list[Any]) -> list[dict[str, Any]]:
         return [
             {

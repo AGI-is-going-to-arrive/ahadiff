@@ -152,19 +152,24 @@ def test_post_learn_estimate_happy_path(
     client = _client(tmp_path / ".ahadiff")
     patch_text = "diff --git a/a.py b/a.py\n+print('hello')\n"
 
-    monkeypatch.setattr(
-        routes_learn,
-        "capture_patch",
-        lambda **_: SimpleNamespace(
+    def fake_capture_patch(**_: object) -> SimpleNamespace:
+        return SimpleNamespace(
             persisted_patch_text=patch_text,
             metadata={"selected_files": ["a.py"]},
-        ),
-    )
-    monkeypatch.setattr(routes_learn, "estimate_text_tokens", lambda _text, _strategy: 10)
+        )
+
+    def fake_estimate_text_tokens(_text: str, _strategy: object) -> int:
+        return 10
+
+    def fake_provider_limits_from_config(**_: object) -> tuple[int, int]:
+        return 16_000, 4_000
+
+    monkeypatch.setattr(routes_learn, "capture_patch", fake_capture_patch)
+    monkeypatch.setattr(routes_learn, "estimate_text_tokens", fake_estimate_text_tokens)
     monkeypatch.setattr(
         routes_learn,
         "_provider_limits_from_config",
-        lambda **_: (16_000, 4_000),
+        fake_provider_limits_from_config,
     )
 
     resp = _post_learn_estimate(client)
@@ -202,23 +207,28 @@ def test_post_learn_estimate_risk_levels(
     client = _client(tmp_path / ".ahadiff")
     patch_text = "x\n"
 
-    monkeypatch.setattr(
-        routes_learn,
-        "capture_patch",
-        lambda **_: SimpleNamespace(
+    def fake_capture_patch(**_: object) -> SimpleNamespace:
+        return SimpleNamespace(
             persisted_patch_text=patch_text,
             metadata={"selected_files": [f"f{i}.py" for i in range(file_count)]},
-        ),
-    )
+        )
+
+    def fake_estimate_text_tokens(_text: str, _strategy: object) -> int:
+        return estimated_tokens
+
+    def fake_provider_limits_from_config(**_: object) -> tuple[int, None]:
+        return context_window, None
+
+    monkeypatch.setattr(routes_learn, "capture_patch", fake_capture_patch)
     monkeypatch.setattr(
         routes_learn,
         "estimate_text_tokens",
-        lambda _text, _strategy: estimated_tokens,
+        fake_estimate_text_tokens,
     )
     monkeypatch.setattr(
         routes_learn,
         "_provider_limits_from_config",
-        lambda **_: (context_window, None),
+        fake_provider_limits_from_config,
     )
 
     resp = _post_learn_estimate(client)

@@ -48,6 +48,8 @@ if TYPE_CHECKING:
     )
     from .schemas import CardQueueAction, DueReviewCard, ReviewAnswer, ReviewDbCheck, ReviewUpdate
 
+    get_card: Any
+
 _DATABASE_EXPORTS = {
     "CURRENT_SCHEMA_VERSION",
     "LossyImportOutcome",
@@ -58,6 +60,7 @@ _DATABASE_EXPORTS = {
     "count_concepts",
     "delete_result_event",
     "finalize_targeted_verify_event",
+    "get_card",
     "import_cards_from_jsonl",
     "import_cards_from_runs",
     "import_concepts_from_jsonl",
@@ -119,6 +122,7 @@ __all__ = [
     "delete_result_event",
     "DueReviewCard",
     "finalize_targeted_verify_event",
+    "get_card",
     "import_cards_from_jsonl",
     "import_cards_from_runs",
     "import_concepts_from_jsonl",

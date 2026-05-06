@@ -4,6 +4,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
 
+from ahadiff.contracts.quiz_choice import (  # noqa: TC001
+    AnswerMode,
+    QuizChoice,
+    validate_quiz_choices,
+)
 from ahadiff.core.json_util import safe_json_loads
 
 ClaimStatus = Literal["verified", "weak", "not_proven", "contradicted", "rejected"]
@@ -67,6 +72,8 @@ class ReviewCard(BaseModel):
     change_kind: ChangeKind | None = None
     question: str | None = None
     answer: str | None = None
+    answer_mode: AnswerMode = "open"
+    choices: list[QuizChoice] | None = None
 
     @field_validator("fsrs_state")
     @classmethod
@@ -91,6 +98,19 @@ class ReviewCard(BaseModel):
             raise ValueError("stale cards require stale_reason")
         if self.card_state != "stale" and self.stale_reason is not None:
             raise ValueError("stale_reason is only allowed when card_state is stale")
+        return self
+
+    @model_validator(mode="after")
+    def validate_choice_contract(self) -> ReviewCard:
+        if self.answer_mode == "open":
+            if self.choices is not None:
+                raise ValueError("open review cards must not include choices")
+            return self
+        if self.answer is None or not self.answer.strip():
+            raise ValueError("multiple_choice review cards require a non-empty answer")
+        if self.choices is None:
+            raise ValueError("multiple_choice review cards must include choices")
+        self.choices = list(validate_quiz_choices(self.choices, expected_answer=self.answer))
         return self
 
 

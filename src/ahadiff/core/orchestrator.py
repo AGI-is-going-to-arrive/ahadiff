@@ -141,9 +141,18 @@ def is_recoverable_error(exc: Exception) -> bool:
     except Exception:
         return False
     _recoverable = (
-        "connection", "timeout", "transport", "rate limit",
-        "503", "429", "retry", "decompression failed", "decompressing",
-        "does not contain", "not valid json", "extra data",
+        "connection",
+        "timeout",
+        "transport",
+        "rate limit",
+        "503",
+        "429",
+        "retry",
+        "decompression failed",
+        "decompressing",
+        "does not contain",
+        "not valid json",
+        "extra data",
     )
     return any(p in msg for p in _recoverable)
 
@@ -802,9 +811,7 @@ def run_learn_pipeline(
                             qps_limit=int(provider_limits["qps_limit"]),
                             retry_attempts=int(llm_config["retry_attempts"]),
                             request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
-                            input_token_budget=int(
-                                    llm_config.get("input_token_budget", 200000)
-                                ),
+                            input_token_budget=int(llm_config.get("input_token_budget", 200000)),
                             output_token_budget=output_budget,
                         )
                         raw_claims_path = result_path
@@ -1000,9 +1007,7 @@ def run_learn_pipeline(
                             run_path / "quiz" / "cards.jsonl",
                         )
                     except Exception as review_import_error:
-                        learn_warnings.append(
-                            f"review card import failed: {review_import_error}"
-                        )
+                        learn_warnings.append(f"review card import failed: {review_import_error}")
 
                     # ------------------------------------------------------------------
                     # Step 10: append concepts + register repo

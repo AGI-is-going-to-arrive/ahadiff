@@ -25,6 +25,7 @@ def _write_run_fixture(
     learnability_score: float,
     with_lesson: bool,
     with_quiz: bool,
+    quiz_entries: list[dict[str, object]] | None = None,
 ) -> Path:
     run_path = workspace_root / ".ahadiff" / "runs" / run_id
     run_path.mkdir(parents=True, exist_ok=True)
@@ -65,31 +66,129 @@ def _write_run_fixture(
     if with_quiz:
         quiz_dir = run_path / "quiz"
         quiz_dir.mkdir()
-        entries = [
-            {
-                "question": "What changed?",
-                "source_claims": [claims[0].claim_id],
-                "evidence": [{"file": "src/app.py", "line": 2}],
-                "concepts": ["retry"],
-            },
-            {
-                "question": "Why does it matter?",
-                "source_claims": [claims[0].claim_id],
-                "evidence": [{"file": "src/app.py", "line": 3}],
-                "concepts": ["control-flow"],
-            },
-            {
-                "question": "What edge case is covered?",
-                "source_claims": [claims[-1].claim_id],
-                "evidence": [{"file": "src/app.py", "line": 4}],
-                "concepts": ["exception"],
-            },
-        ]
+        entries = (
+            quiz_entries
+            if quiz_entries is not None
+            else [
+                {
+                    "question": "What changed?",
+                    "source_claims": [claims[0].claim_id],
+                    "evidence": [{"file": "src/app.py", "line": 2}],
+                    "concepts": ["retry"],
+                },
+                {
+                    "question": "Why does it matter?",
+                    "source_claims": [claims[0].claim_id],
+                    "evidence": [{"file": "src/app.py", "line": 3}],
+                    "concepts": ["control-flow"],
+                },
+                {
+                    "question": "What edge case is covered?",
+                    "source_claims": [claims[-1].claim_id],
+                    "evidence": [{"file": "src/app.py", "line": 4}],
+                    "concepts": ["exception"],
+                },
+            ]
+        )
         (quiz_dir / "quiz.jsonl").write_text(
             "\n".join(json.dumps(item, ensure_ascii=False) for item in entries) + "\n",
             encoding="utf-8",
         )
     return run_path
+
+
+def _standard_quiz_patch_text() -> str:
+    return """\
+diff --git a/src/app.py b/src/app.py
+--- a/src/app.py
++++ b/src/app.py
+@@ -1,2 +1,8 @@
+-def retry_once():
+-    return 1
++def retry_once():
++    for attempt in range(3):
++        try:
++            return attempt
++        except Exception:
++            continue
++    return 0
++# end
+"""
+
+
+def _standard_quiz_claims(run_id: str) -> list[ClaimRecord]:
+    return [
+        ClaimRecord(
+            claim_id="claim_retry_loop",
+            run_id=run_id,
+            text="The retry helper now iterates up to three attempts.",
+            status="verified",
+            confidence="high",
+            source_hunks=[SourceHunk(file="src/app.py", start=1, end=6, side="new")],
+        ),
+        ClaimRecord(
+            claim_id="claim_default_return",
+            run_id=run_id,
+            text="The helper now returns 0 after exhausting attempts.",
+            status="verified",
+            confidence="high",
+            source_hunks=[SourceHunk(file="src/app.py", start=7, end=8, side="new")],
+        ),
+    ]
+
+
+def _choice_options(correct_text: str) -> list[dict[str, object]]:
+    return [
+        {"label": "A", "text": correct_text, "is_correct": True},
+        {"label": "B", "text": "It removes the retry helper.", "is_correct": False},
+        {"label": "C", "text": "It changes the module import path.", "is_correct": False},
+        {"label": "D", "text": "It updates only comments.", "is_correct": False},
+    ]
+
+
+def _anchored_quiz_entries(
+    claims: list[ClaimRecord],
+    *,
+    include_choices: bool,
+    invalid_choices: bool = False,
+) -> list[dict[str, object]]:
+    rows = (
+        (
+            "What changed?",
+            claims[0].claim_id,
+            2,
+            "retry",
+            "The retry helper now iterates up to three attempts.",
+        ),
+        (
+            "Why does it matter?",
+            claims[0].claim_id,
+            3,
+            "control-flow",
+            "The loop can return a successful attempt before falling back.",
+        ),
+        (
+            "What edge case is covered?",
+            claims[-1].claim_id,
+            4,
+            "exception",
+            "The helper now returns 0 after exhausting attempts.",
+        ),
+    )
+    entries: list[dict[str, object]] = []
+    for question, claim_id, line, concept, expected_answer in rows:
+        entry: dict[str, object] = {
+            "question": question,
+            "expected_answer": expected_answer,
+            "source_claims": [claim_id],
+            "evidence": [{"file": "src/app.py", "line": line}],
+            "concepts": [concept],
+        }
+        if include_choices:
+            choices = _choice_options(expected_answer)
+            entry["choices"] = choices[:3] if invalid_choices else choices
+        entries.append(entry)
+    return entries
 
 
 def test_evaluate_run_requires_lesson_and_quiz_to_reach_pass(tmp_path: Path) -> None:
@@ -255,8 +354,120 @@ diff --git a/src/app.py b/src/app.py
     report = evaluate_run(run_path)
     dimensions = cast("dict[str, dict[str, object]]", report.to_payload()["dimensions"])
 
-    assert dimensions["quiz_transfer"]["score"] == 4.0
+    assert dimensions["quiz_transfer"]["score"] == 3.0
     assert report.verdict == "CAUTION"
+
+
+def test_quiz_transfer_open_quiz_keeps_choice_subscores_zero(tmp_path: Path) -> None:
+    run_id = "run_open_quiz"
+    claims = _standard_quiz_claims(run_id)
+    run_path = _write_run_fixture(
+        tmp_path,
+        run_id=run_id,
+        claims=claims,
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+        quiz_entries=_anchored_quiz_entries(claims, include_choices=False),
+    )
+
+    report = evaluate_run(run_path)
+    dimensions = cast("dict[str, dict[str, object]]", report.to_payload()["dimensions"])
+    quiz_transfer = dimensions["quiz_transfer"]
+
+    assert report.rubric_version == "v0.2"
+    assert quiz_transfer["score"] == 7.5
+    assert "choice_shape=0.00" in str(quiz_transfer["reason"])
+    assert "choice_answer=0.00" in str(quiz_transfer["reason"])
+
+
+def test_quiz_transfer_valid_multiple_choice_scores_above_equal_open_quiz(
+    tmp_path: Path,
+) -> None:
+    open_run_id = "run_open_quiz_baseline"
+    open_claims = _standard_quiz_claims(open_run_id)
+    open_run_path = _write_run_fixture(
+        tmp_path,
+        run_id=open_run_id,
+        claims=open_claims,
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+        quiz_entries=_anchored_quiz_entries(open_claims, include_choices=False),
+    )
+    choice_run_id = "run_choice_quiz"
+    choice_claims = _standard_quiz_claims(choice_run_id)
+    choice_run_path = _write_run_fixture(
+        tmp_path,
+        run_id=choice_run_id,
+        claims=choice_claims,
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+        quiz_entries=_anchored_quiz_entries(choice_claims, include_choices=True),
+    )
+
+    open_report = evaluate_run(open_run_path)
+    choice_report = evaluate_run(choice_run_path)
+    open_dimensions = cast("dict[str, dict[str, object]]", open_report.to_payload()["dimensions"])
+    choice_dimensions = cast(
+        "dict[str, dict[str, object]]",
+        choice_report.to_payload()["dimensions"],
+    )
+
+    assert open_dimensions["quiz_transfer"]["score"] == 7.5
+    assert choice_dimensions["quiz_transfer"]["score"] == 10.0
+    assert choice_report.overall > open_report.overall
+
+
+def test_quiz_transfer_invalid_choice_shape_lowers_score_without_crashing(
+    tmp_path: Path,
+) -> None:
+    valid_run_id = "run_valid_choice_quiz"
+    valid_claims = _standard_quiz_claims(valid_run_id)
+    valid_run_path = _write_run_fixture(
+        tmp_path,
+        run_id=valid_run_id,
+        claims=valid_claims,
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+        quiz_entries=_anchored_quiz_entries(valid_claims, include_choices=True),
+    )
+    invalid_run_id = "run_invalid_choice_quiz"
+    invalid_claims = _standard_quiz_claims(invalid_run_id)
+    invalid_run_path = _write_run_fixture(
+        tmp_path,
+        run_id=invalid_run_id,
+        claims=invalid_claims,
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+        quiz_entries=_anchored_quiz_entries(
+            invalid_claims,
+            include_choices=True,
+            invalid_choices=True,
+        ),
+    )
+
+    valid_report = evaluate_run(valid_run_path)
+    invalid_report = evaluate_run(invalid_run_path)
+    valid_dimensions = cast("dict[str, dict[str, object]]", valid_report.to_payload()["dimensions"])
+    invalid_dimensions = cast(
+        "dict[str, dict[str, object]]",
+        invalid_report.to_payload()["dimensions"],
+    )
+    valid_score = cast("float", valid_dimensions["quiz_transfer"]["score"])
+    invalid_score = cast("float", invalid_dimensions["quiz_transfer"]["score"])
+
+    assert invalid_score == 7.5
+    assert invalid_score < valid_score
+    assert invalid_report.verdict in {"PASS", "CAUTION"}
 
 
 def test_evaluate_run_does_not_pass_without_lesson_and_quiz_even_when_other_dims_are_high(

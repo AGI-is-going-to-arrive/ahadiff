@@ -1,8 +1,11 @@
-import { useState, useEffect, useCallback, useId, type FormEvent } from 'react';
+import { useState, useEffect, useCallback, useId, useMemo, type FormEvent } from 'react';
 import { useTranslation } from '../i18n/useTranslation';
 import {
+  hasChoices,
   hasQuizReviewCard,
   isQuizAnswerCorrect,
+  type QuizChoice,
+  type QuizChoiceLabel,
   type QuizItem,
 } from '../utils/quiz-contract';
 
@@ -20,6 +23,12 @@ type CardPhase = 'question' | 'reveal' | 'rate';
 
 const PEEK_GUARD_MS = 1500;
 const EMPTY_DISABLED_REVIEW_RATINGS = new Set<SrsReviewRating>();
+const CHOICE_KEY_LABELS: Record<string, QuizChoiceLabel> = {
+  a: 'A',
+  b: 'B',
+  c: 'C',
+  d: 'D',
+};
 
 function isReviewRating(rating: SrsRating): rating is SrsReviewRating {
   return rating === 'easy' || rating === 'good' || rating === 'hard' || rating === 'wrong';
@@ -34,11 +43,19 @@ export default function SRSCard({
   const { t } = useTranslation();
   const questionId = useId();
   const answerId = useId();
+  const choicesId = useId();
   const disabledRatings = disabledReviewRatings ?? EMPTY_DISABLED_REVIEW_RATINGS;
   const reviewable = hasQuizReviewCard(quiz);
+  const choiceMode = hasChoices(quiz);
+  const choices: QuizChoice[] = choiceMode ? quiz.choices : [];
+  const correctChoice = useMemo<QuizChoice | null>(() => {
+    if (!choiceMode) return null;
+    return choices.find((choice) => choice.is_correct) ?? null;
+  }, [choiceMode, choices]);
 
   const [answerText, setAnswerText] = useState('');
   const [submittedAnswer, setSubmittedAnswer] = useState('');
+  const [selectedLabel, setSelectedLabel] = useState<QuizChoiceLabel | null>(null);
   const [phase, setPhase] = useState<CardPhase>('question');
   const [peekReady, setPeekReady] = useState(false);
   const [ratingPending, setRatingPending] = useState(false);
@@ -47,6 +64,7 @@ export default function SRSCard({
   useEffect(() => {
     setAnswerText('');
     setSubmittedAnswer('');
+    setSelectedLabel(null);
     setPhase('question');
     setPeekReady(false);
     setRatingPending(false);
@@ -61,6 +79,18 @@ export default function SRSCard({
     }, PEEK_GUARD_MS);
     return () => clearTimeout(timer);
   }, [phase]);
+
+  const handleSelectChoice = useCallback(
+    (choice: QuizChoice) => {
+      if (phase !== 'question') return;
+      const correct = choice.is_correct;
+      setSelectedLabel(choice.label);
+      setSubmittedAnswer(choice.text);
+      onAnswer(quiz.question_id, choice.label, correct);
+      setPhase('reveal');
+    },
+    [onAnswer, phase, quiz.question_id],
+  );
 
   const handleShowAnswer = useCallback(() => {
     const submitted = answerText.trim();
@@ -78,6 +108,33 @@ export default function SRSCard({
     },
     [handleShowAnswer],
   );
+
+  // A/B/C/D keyboard shortcuts: question phase only, choices required.
+  // Skips when typing into a text field so other shortcuts are unaffected.
+  useEffect(() => {
+    if (!choiceMode) return;
+    if (phase !== 'question') return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const label = CHOICE_KEY_LABELS[event.key.toLowerCase()];
+      if (!label) return;
+      const choice = choices.find((c) => c.label === label);
+      if (!choice) return;
+      event.preventDefault();
+      handleSelectChoice(choice);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [choiceMode, choices, handleSelectChoice, phase]);
 
   const handleRate = useCallback(
     async (rating: SrsRating) => {
@@ -97,8 +154,9 @@ export default function SRSCard({
     [disabledRatings, peekReady, ratingPending, reviewable, onRate],
   );
 
-  const isCorrect =
-    submittedAnswer.length > 0 && isQuizAnswerCorrect(submittedAnswer, quiz.expected_answer);
+  const isCorrect = choiceMode
+    ? selectedLabel !== null && correctChoice?.label === selectedLabel
+    : submittedAnswer.length > 0 && isQuizAnswerCorrect(submittedAnswer, quiz.expected_answer);
   const isRevealed = phase === 'reveal' || phase === 'rate';
   const isReviewButtonDisabled = (rating: SrsReviewRating) =>
     !reviewable || !peekReady || ratingPending || disabledRatings.has(rating);
@@ -108,7 +166,47 @@ export default function SRSCard({
     <div className="srs-card">
       <p className="srs-card__question" id={questionId}>{quiz.question}</p>
 
-      {!isRevealed && (
+      {!isRevealed && choiceMode && (
+        <>
+          <p className="srs-card__choice-prompt" id={choicesId}>
+            {t('Quiz.select_prompt')}
+          </p>
+          <div
+            className="srs-card__choices"
+            role="radiogroup"
+            aria-labelledby={`${questionId} ${choicesId}`}
+          >
+            {choices.map((choice) => {
+              const ariaLabel = t('Quiz.choice_a11y', {
+                label: choice.label,
+                text: choice.text,
+              });
+              return (
+                <button
+                  key={choice.label}
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedLabel === choice.label}
+                  aria-label={ariaLabel}
+                  className={`srs-card__choice${
+                    selectedLabel === choice.label ? ' srs-card__choice--selected' : ''
+                  }`}
+                  onClick={() => handleSelectChoice(choice)}
+                >
+                  <span className="srs-card__choice-letter" aria-hidden="true">
+                    {choice.label}
+                  </span>
+                  <span className="srs-card__choice-content">
+                    <span className="srs-card__choice-text">{choice.text}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {!isRevealed && !choiceMode && (
         <form className="srs-card__answer-form" onSubmit={handleSubmit}>
           <label className="srs-card__answer-label" htmlFor={answerId}>
             {t('Quiz.answer_label')}
@@ -134,6 +232,50 @@ export default function SRSCard({
       {/* Revealed: explanation + rating */}
       {isRevealed && (
         <>
+          {/* In choice mode, show all options with correct/wrong markers. */}
+          {choiceMode && (
+            <div
+              className="srs-card__choices srs-card__choices--revealed"
+              role="radiogroup"
+              aria-label={t('Quiz.select_prompt')}
+            >
+              {choices.map((choice) => {
+                const isThisCorrect = choice.is_correct;
+                const isThisSelected = selectedLabel === choice.label;
+                const isThisWrong = isThisSelected && !isThisCorrect;
+                const stateClass = isThisCorrect
+                  ? ' srs-card__choice--correct'
+                  : isThisWrong
+                    ? ' srs-card__choice--wrong'
+                    : '';
+                const ariaLabel = t('Quiz.choice_a11y', {
+                  label: choice.label,
+                  text: choice.text,
+                });
+                return (
+                  <button
+                    key={choice.label}
+                    type="button"
+                    role="radio"
+                    aria-checked={isThisSelected}
+                    aria-label={ariaLabel}
+                    className={`srs-card__choice srs-card__choice--disabled${stateClass}${
+                      isThisSelected ? ' srs-card__choice--selected' : ''
+                    }`}
+                    disabled
+                  >
+                    <span className="srs-card__choice-letter" aria-hidden="true">
+                      {choice.label}
+                    </span>
+                    <span className="srs-card__choice-content">
+                      <span className="srs-card__choice-text">{choice.text}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {/* Correct/Wrong indicator */}
           <p
             className={`srs-card__result ${isCorrect ? 'srs-card__result--correct' : 'srs-card__result--wrong'}`}
@@ -142,10 +284,16 @@ export default function SRSCard({
           </p>
 
           <div className="srs-card__explanation">
-            <p className="srs-card__explanation-title">{t('Quiz.expected_answer')}</p>
-            <p className="srs-card__explanation-body">{quiz.expected_answer}</p>
+            <p className="srs-card__explanation-title">
+              {choiceMode ? t('Quiz.correct_answer_is') : t('Quiz.expected_answer')}
+            </p>
+            <p className="srs-card__explanation-body">
+              {choiceMode && correctChoice
+                ? `${correctChoice.label}. ${correctChoice.text}`
+                : quiz.expected_answer}
+            </p>
             <p className="srs-card__answer-meta">
-              {t('Quiz.your_answer')}: {submittedAnswer}
+              {choiceMode ? t('Quiz.selected_choice') : t('Quiz.your_answer')}: {submittedAnswer}
             </p>
           </div>
 
