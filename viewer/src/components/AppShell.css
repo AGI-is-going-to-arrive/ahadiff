@@ -46,6 +46,7 @@
 
 .app-shell__content {
   min-width: 0;
+  overflow-x: hidden;
   padding: var(--sp-8) var(--sp-10) 88px;
   max-width: var(--mw-wide);
 }

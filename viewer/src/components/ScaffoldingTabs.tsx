@@ -8,12 +8,18 @@ interface ScaffoldingTabsProps {
   onChange: (level: ScaffoldLevel) => void;
 }
 
-const LEVELS: ScaffoldLevel[] = ['full', 'hint', 'compact'];
+const LEVELS: ScaffoldLevel[] = ['compact', 'hint', 'full'];
 
 const levelKeyMap: Record<ScaffoldLevel, MessageKey> = {
   full: 'Lesson.level_full',
   hint: 'Lesson.level_hint',
   compact: 'Lesson.level_compact',
+};
+
+const hintKeyMap: Record<ScaffoldLevel, MessageKey> = {
+  full: 'Lesson.level_full_hint',
+  hint: 'Lesson.level_hint_hint',
+  compact: 'Lesson.level_compact_hint',
 };
 
 export default function ScaffoldingTabs({ level, onChange }: ScaffoldingTabsProps) {
@@ -52,24 +58,31 @@ export default function ScaffoldingTabs({ level, onChange }: ScaffoldingTabsProp
   );
 
   return (
-    <div className="scaffolding-tabs" role="tablist" aria-label={t('Lesson.title')}>
-      {LEVELS.map((lvl, i) => {
-        const selected = lvl === level;
-        return (
-          <button
-            key={lvl}
-            ref={(el) => { tabRefs.current[i] = el; }}
-            role="tab"
-            aria-selected={selected}
-            tabIndex={selected ? 0 : -1}
-            className={`scaffolding-tab${selected ? ' scaffolding-tab--active' : ''}`}
-            onClick={() => onChange(lvl)}
-            onKeyDown={handleKeyDown}
-          >
-            {t(levelKeyMap[lvl])}
-          </button>
-        );
-      })}
+    <div className="scaffolding-tabs-wrapper">
+      <div className="scaffolding-tabs" role="tablist" aria-label={t('Lesson.title')}>
+        {LEVELS.map((lvl, i) => {
+          const selected = lvl === level;
+          return (
+            <button
+              key={lvl}
+              ref={(el) => { tabRefs.current[i] = el; }}
+              role="tab"
+              aria-selected={selected}
+              aria-describedby={selected ? 'scaffolding-hint' : undefined}
+              tabIndex={selected ? 0 : -1}
+              title={t(hintKeyMap[lvl])}
+              className={`scaffolding-tab${selected ? ' scaffolding-tab--active' : ''}`}
+              onClick={() => onChange(lvl)}
+              onKeyDown={handleKeyDown}
+            >
+              {t(levelKeyMap[lvl])}
+            </button>
+          );
+        })}
+      </div>
+      <p className="scaffolding-hint" id="scaffolding-hint" aria-live="polite">
+        {t(hintKeyMap[level])}
+      </p>
     </div>
   );
 }

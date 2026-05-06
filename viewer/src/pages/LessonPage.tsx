@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import EvidencePanel from '../components/EvidencePanel';
@@ -153,11 +154,13 @@ export default function LessonPage() {
   const { runId } = useParams<{ runId: string }>();
   const { t } = useTranslation();
 
-  const [level, setLevel] = useState<ScaffoldLevel>('full');
+  const [level, setLevel] = useState<ScaffoldLevel>('compact');
   const [runDetail, setRunDetail] = useState<RunDetail | null>(null);
   const [lessonContent, setLessonContent] = useState<string>('');
   const [claims, setClaims] = useState<Claim[]>([]);
   const [selectedClaim, setSelectedClaim] = useState<Claim | null>(null);
+  const [popoverPos, setPopoverPos] = useState<{ top: number; right: number } | null>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Monotonic token for level-change fetches; losers are ignored
@@ -175,7 +178,7 @@ export default function LessonPage() {
     try {
       const [detail, lessonEnv, claimsEnv] = await Promise.all([
         useRunsStore.getState().loadDetail(runId, { signal: controller.signal }),
-        getRunLesson(runId, 'full', { signal: controller.signal }),
+        getRunLesson(runId, 'compact', { signal: controller.signal }),
         getRunArtifact(runId, 'claims', { signal: controller.signal }),
       ]);
       if (controller.signal.aborted) return;
@@ -228,11 +231,45 @@ export default function LessonPage() {
   );
 
   const handleClaimClick = useCallback(
-    (claim: Claim) => {
-      setSelectedClaim((prev) => (prev?.claim_id === claim.claim_id ? null : claim));
+    (claim: Claim, e: React.MouseEvent<HTMLButtonElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      setSelectedClaim((prev) => {
+        if (prev?.claim_id === claim.claim_id) {
+          setPopoverPos(null);
+          return null;
+        }
+        const maxTop = window.innerHeight - 320;
+        const top = Math.min(Math.max(72, rect.top), maxTop);
+        const right = window.innerWidth - rect.left + 12;
+        setPopoverPos({ top, right });
+        return claim;
+      });
     },
     [],
   );
+
+  // Close popover on Escape or click outside
+  useEffect(() => {
+    if (!selectedClaim) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setSelectedClaim(null); setPopoverPos(null); }
+    };
+    const onClick = (e: MouseEvent) => {
+      const popover = popoverRef.current;
+      if (!popover) return;
+      const target = e.target as Node;
+      if (!popover.contains(target) && !(target as Element).closest?.('.claim-card')) {
+        setSelectedClaim(null);
+        setPopoverPos(null);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onClick);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onClick);
+    };
+  }, [selectedClaim]);
 
   const tocEntries = useMemo(() => extractTocEntries(lessonContent), [lessonContent]);
   const claimSummary = useMemo(() => summarizeClaims(claims), [claims]);
@@ -361,7 +398,7 @@ export default function LessonPage() {
                           className={`claim-card${
                             selectedClaim?.claim_id === claim.claim_id ? ' claim-card--selected' : ''
                           }`}
-                          onClick={() => handleClaimClick(claim)}
+                          onClick={(e) => handleClaimClick(claim, e)}
                           aria-pressed={selectedClaim?.claim_id === claim.claim_id}
                         >
                           <div className="claim-card__row">
@@ -376,17 +413,6 @@ export default function LessonPage() {
                       </li>
                     ))}
                   </ul>
-                )}
-              </section>
-
-              <section className="lesson__rail-card" aria-labelledby="lesson-rail-evidence">
-                <h2 id="lesson-rail-evidence" className="lesson__rail-card-title">
-                  {t('Lesson.rail.selected_evidence')}
-                </h2>
-                {selectedClaim ? (
-                  <EvidencePanel claim={selectedClaim} />
-                ) : (
-                  <p className="lesson__rail-empty">{t('Lesson.rail.selected_empty')}</p>
                 )}
               </section>
 
@@ -442,6 +468,26 @@ export default function LessonPage() {
           </div>
         )}
       </div>
+      {selectedClaim && popoverPos && createPortal(
+        <div
+          ref={popoverRef}
+          className="claim-popover"
+          style={{ top: popoverPos.top, right: popoverPos.right }}
+          role="dialog"
+          aria-label={t('Lesson.rail.selected_evidence')}
+        >
+          <button
+            type="button"
+            className="claim-popover__close"
+            aria-label={t('LearnTask.close')}
+            onClick={() => { setSelectedClaim(null); setPopoverPos(null); }}
+          >
+            ×
+          </button>
+          <EvidencePanel claim={selectedClaim} />
+        </div>,
+        document.body,
+      )}
     </AppShell>
   );
 }
