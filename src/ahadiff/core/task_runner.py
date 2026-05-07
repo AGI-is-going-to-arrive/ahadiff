@@ -6,7 +6,7 @@ import math
 import os
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import TYPE_CHECKING, Any, SupportsFloat, SupportsIndex, cast
 
@@ -42,6 +42,8 @@ class TaskInfo:
     created_at: str = ""
     started_at: str | None = None
     completed_at: str | None = None
+    timeout_seconds: float | None = None
+    deadline_at: str | None = None
 
 
 class TaskHandle:
@@ -77,6 +79,7 @@ _MAX_ARCHIVED_LOOKUP = 32
 
 _DEFAULT_TASK_TIMEOUT_SECONDS = 1800.0
 _DEFAULT_TASK_TIMEOUT_ENV = "AHADIFF_DEFAULT_TASK_TIMEOUT_SECONDS"
+_MAX_TASK_TIMEOUT_SECONDS = 86400.0 * 7  # 7 days max, prevents overflow in datetime arithmetic
 _TaskTimeoutValue = str | bytes | bytearray | SupportsFloat | SupportsIndex
 
 log = logging.getLogger(__name__)
@@ -91,6 +94,8 @@ def _coerce_task_timeout_seconds(value: object, *, source: str) -> float:
         raise ValueError(f"{source} must be a positive finite number") from exc
     if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
         raise ValueError(f"{source} must be a positive finite number")
+    if timeout_seconds > _MAX_TASK_TIMEOUT_SECONDS:
+        timeout_seconds = _MAX_TASK_TIMEOUT_SECONDS
     return timeout_seconds
 
 
@@ -180,10 +185,13 @@ class TaskRunner:
             else _coerce_task_timeout_seconds(task_timeout_seconds, source="task_timeout_seconds")
         )
         task_id = uuid.uuid4().hex[:12]
+        now = datetime.now(UTC)
         info = TaskInfo(
             task_id=task_id,
             task_type=task_type,
-            created_at=datetime.now(UTC).isoformat(),
+            created_at=now.isoformat(),
+            timeout_seconds=task_timeout,
+            deadline_at=None,
         )
         handle = TaskHandle(task_id, self, loop)
         self._tasks[task_id] = info
@@ -200,7 +208,7 @@ class TaskRunner:
         info = self.get_task(task_id)
         if info is not None:
             prev = info.progress
-            step_changed = prev.current != current or prev.total != total
+            step_changed = prev.current != current or prev.total != total or prev.message != message
             info.progress = TaskProgress(
                 current=current,
                 total=total,
@@ -379,19 +387,8 @@ class TaskRunner:
     def _on_draining_task_done(self, task_id: str, task: asyncio.Task[Any]) -> None:
         self._draining_tasks.pop(task_id, None)
         self._thread_backed.pop(task_id, None)
-        info = self._tasks.get(task_id)
         try:
-            result = task.result()
-            if (
-                info is not None
-                and info.status == TaskStatus.FAILED
-                and info.error_code == "timeout"
-            ):
-                info.status = TaskStatus.COMPLETED
-                info.result = result
-                info.error = None
-                info.error_code = None
-                info.completed_at = datetime.now(UTC).isoformat()
+            task.result()
         except asyncio.CancelledError:
             pass
         except Exception:
@@ -407,7 +404,8 @@ class TaskRunner:
             return
 
         await self._semaphore.acquire()
-        task_timeout = self._task_timeouts.get(task_id, self._task_timeout)
+        stored_timeout = self._task_timeouts.get(task_id, self._task_timeout)
+        task_timeout: float = self._task_timeout if stored_timeout is None else stored_timeout
         timeout_cm: asyncio.Timeout | None = None
         thread_backed = self._thread_backed.get(task_id, False)
         worker_task: asyncio.Task[Any] | None = None
@@ -419,8 +417,10 @@ class TaskRunner:
                     info.completed_at = datetime.now(UTC).isoformat()
                 return
 
+            now = datetime.now(UTC)
             info.status = TaskStatus.RUNNING
-            info.started_at = datetime.now(UTC).isoformat()
+            info.started_at = now.isoformat()
+            info.deadline_at = (now + timedelta(seconds=task_timeout)).isoformat()
             worker_task = asyncio.create_task(coro_factory(handle))
 
             async with asyncio.timeout(task_timeout) as timeout_cm:

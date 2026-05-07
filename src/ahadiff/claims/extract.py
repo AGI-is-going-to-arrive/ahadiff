@@ -60,6 +60,15 @@ def parse_claim_candidates_text(
         except InputError as exc:
             last_error = exc
             continue
+
+    for payload_text in _candidate_payload_texts(stripped):
+        recovered = _try_recover_truncated_json(payload_text)
+        if recovered:
+            return _coerce_claim_candidates(
+                recovered,
+                default_run_id=default_run_id,
+            )
+
     if last_error is not None:
         raise last_error
     raise InputError("claim candidate payload is empty")
@@ -208,6 +217,65 @@ def _try_parse_json(text: str) -> Any | None:
         return safe_json_loads(text)
     except (json.JSONDecodeError, ValueError):
         return None
+
+
+def _count_unquoted_delimiters(text: str) -> tuple[int, int]:
+    """Count unmatched ``{}`` and ``[]`` outside JSON strings."""
+    braces = 0
+    brackets = 0
+    in_string = False
+    escape = False
+    for ch in text:
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            if in_string:
+                escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "{":
+            braces += 1
+        elif ch == "}":
+            braces -= 1
+        elif ch == "[":
+            brackets += 1
+        elif ch == "]":
+            brackets -= 1
+    return braces, brackets
+
+
+def _try_recover_truncated_json(text: str) -> list[dict[str, Any]] | None:
+    """Recover complete claim objects from token-capped truncated JSON."""
+    stripped = text.strip()
+    if not stripped.startswith("{") and not stripped.startswith("["):
+        return None
+    last_complete = stripped.rfind("}")
+    if last_complete < 0:
+        return None
+    candidate = stripped[: last_complete + 1]
+    if not candidate.endswith("}"):
+        return None
+    open_braces, open_brackets = _count_unquoted_delimiters(candidate)
+    candidate += "]" * max(open_brackets, 0) + "}" * max(open_braces, 0)
+    parsed = _try_parse_json(candidate)
+    if parsed is None:
+        return None
+    if isinstance(parsed, dict):
+        envelope = cast("dict[str, Any]", parsed)
+        claims_value = envelope.get("claims")
+        if isinstance(claims_value, list) and claims_value:
+            cv = cast("list[Any]", claims_value)
+            return [cast("dict[str, Any]", item) for item in cv if isinstance(item, dict)]
+        return None
+    if isinstance(parsed, list) and parsed:
+        items = cast("list[Any]", parsed)
+        return [cast("dict[str, Any]", item) for item in items if isinstance(item, dict)]
+    return None
 
 
 def _parse_jsonl_candidates(

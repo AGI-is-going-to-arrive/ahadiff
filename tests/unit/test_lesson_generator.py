@@ -241,6 +241,7 @@ def test_generate_lessons_from_run_writes_expected_artifacts(
     workspace_root = tmp_path / "workspace"
     run_path = _write_lesson_run_artifacts(workspace_root, "run_lesson")
     fake_provider = _FakeLessonProvider()
+    progress_messages: list[str] = []
 
     def fake_provider_factory(*args: object, **kwargs: object) -> _FakeLessonProvider:
         return fake_provider
@@ -260,6 +261,7 @@ def test_generate_lessons_from_run_writes_expected_artifacts(
         api_key=None,
         security_config=SecurityConfig(),
         output_lang="zh-CN",
+        on_sub_progress=progress_messages.append,
     )
 
     assert isinstance(paths, LessonArtifactPaths)
@@ -277,13 +279,84 @@ def test_generate_lessons_from_run_writes_expected_artifacts(
         "lesson.compact",
     ]
     assert fake_provider.requests
+    assert [item.max_output_tokens for item in fake_provider.requests] == [24000, 3000, 2500]
     assert all("Simplified Chinese (zh-CN)" in item.payload_text for item in fake_provider.requests)
+    assert progress_messages == [
+        "Generating full lesson (1/3)",
+        "Generating hint lesson (2/3)",
+        "Generating compact lesson (3/3)",
+    ]
     bundle = load_redacted_run_bundle(
         run_id="run_lesson",
         run_path=run_path,
         workspace_root=workspace_root,
     )
     assert bundle.claims_text
+
+
+def test_generate_lessons_from_run_allows_output_token_cap_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_lesson_run_artifacts(workspace_root, "run_lesson_caps")
+    fake_provider = _FakeLessonProvider()
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeLessonProvider:
+        return fake_provider
+
+    monkeypatch.setattr("ahadiff.lesson.generator.make_provider", fake_provider_factory)
+
+    generate_lessons_from_run(
+        run_id="run_lesson_caps",
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+            max_output_tokens=2000,
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        output_token_budget=5000,
+        lesson_output_token_caps={"full": 5000, "hint": 1700, "compact": 1600},
+    )
+
+    assert [item.max_output_tokens for item in fake_provider.requests] == [2000, 1700, 1600]
+
+
+def test_generate_lessons_from_run_ignores_non_positive_output_token_values(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_lesson_run_artifacts(workspace_root, "run_lesson_non_positive_caps")
+    fake_provider = _FakeLessonProvider()
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeLessonProvider:
+        return fake_provider
+
+    monkeypatch.setattr("ahadiff.lesson.generator.make_provider", fake_provider_factory)
+
+    generate_lessons_from_run(
+        run_id="run_lesson_non_positive_caps",
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        output_token_budget=-1,
+        lesson_output_token_caps={"full": 0, "hint": -1, "compact": 0},
+    )
+
+    assert [item.max_output_tokens for item in fake_provider.requests] == [24000, 3000, 2500]
 
 
 def test_hint_and_compact_prompts_match_schema_contracts() -> None:

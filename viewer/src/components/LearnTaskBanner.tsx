@@ -5,6 +5,8 @@ import { safeVerdict } from '../utils/verdict';
 import './LearnTaskBanner.css';
 
 const LLM_STEPS = new Set([5, 6, 7, 8]);
+/** Show "running longer than usual" hint after this many seconds. */
+const LONG_RUNNING_THRESHOLD_S = 300;
 
 function useElapsed(startIso: string | undefined | null): number {
   const [elapsed, setElapsed] = useState(0);
@@ -68,6 +70,14 @@ export default function LearnTaskBanner() {
   const elapsed = useElapsed(
     phase === 'running' || phase === 'cancelling' ? stepStartedAt : null,
   );
+  // Total task elapsed (since the backend marked the task as started).
+  // Falls back to `created_at` for pending tasks so the banner has a clock
+  // even before the worker picks it up. Used for the "long running" hint
+  // and for computing remaining time against `deadline_at`.
+  const taskStartedAt = task?.started_at || task?.created_at || null;
+  const totalElapsed = useElapsed(
+    phase === 'running' || phase === 'cancelling' ? taskStartedAt : null,
+  );
 
   if (phase === 'idle') return null;
 
@@ -78,12 +88,28 @@ export default function LearnTaskBanner() {
   const resultSummary = task?.result_summary;
   const isTooManyTasks = errorCode === 'too_many_tasks';
   const isRateLimited = errorCode === 'rate_limited';
+  const isPollConnectionLost = errorCode === 'poll_connection_lost' || errorCode === 'poll_server_error';
   const recoveryHint = task?.recovery_hint ?? null;
   const canRetry = retryable && (recoveryHint === null || recoveryHint === 'retry');
   const rateLimitSeconds = isRateLimited && error?.startsWith('rate_limited:')
     ? error.split(':')[1] ?? '60'
     : '60';
   const isLlmStep = progress ? LLM_STEPS.has(progress.current) : false;
+  const isLongRunning =
+    (phase === 'running' || phase === 'cancelling')
+    && !isPending
+    && totalElapsed >= LONG_RUNNING_THRESHOLD_S;
+  // Compute remaining seconds from backend `deadline_at` when available.
+  // Use `Date.parse` (cross-browser; both Chrome/Firefox/WebKit/Node parse
+  // ISO 8601). Hide if deadline has passed or parsing fails.
+  let remainingSeconds: number | null = null;
+  if (task?.deadline_at && (phase === 'running' || phase === 'cancelling')) {
+    const deadlineMs = Date.parse(task.deadline_at);
+    if (Number.isFinite(deadlineMs)) {
+      const remaining = Math.floor((deadlineMs - Date.now()) / 1000);
+      if (remaining > 0) remainingSeconds = remaining;
+    }
+  }
 
   return (
     <div
@@ -166,10 +192,23 @@ export default function LearnTaskBanner() {
                   {formatElapsed(elapsed)}
                 </span>
               )}
+              {!isPending && totalElapsed > 0 && (
+                <span className="learn-banner__total-elapsed">
+                  {t('Learn.elapsed_time')}: {formatElapsed(totalElapsed)}
+                  {remainingSeconds !== null && (
+                    <> · {t('Learn.remaining_time', { time: formatElapsed(remainingSeconds) })}</>
+                  )}
+                </span>
+              )}
             </div>
             {isLlmStep && !isPending && (
               <div className="learn-banner__hint">
                 {t(`Learn.step_hint_${progress!.current}` as MessageKey)}
+              </div>
+            )}
+            {isLongRunning && (
+              <div className="learn-banner__hint learn-banner__hint--long-running">
+                {t('Learn.long_running_hint')}
               </div>
             )}
             {!isPending && (
@@ -268,8 +307,8 @@ export default function LearnTaskBanner() {
       {phase === 'failed' && (
         <>
           <div className="learn-banner__body">
-            <span className={`learn-banner__icon${isTooManyTasks || isRateLimited ? '' : ' learn-banner__icon--error'}`} aria-hidden="true">
-              {isTooManyTasks || isRateLimited ? '⏳' : '✕'}
+            <span className={`learn-banner__icon${isTooManyTasks || isRateLimited || isPollConnectionLost ? '' : ' learn-banner__icon--error'}`} aria-hidden="true">
+              {isTooManyTasks || isRateLimited ? '⏳' : isPollConnectionLost ? '⚠' : '✕'}
             </span>
             <div className="learn-banner__info">
               <span className="learn-banner__step">
@@ -277,12 +316,14 @@ export default function LearnTaskBanner() {
                   ? t('Learn.too_many_tasks')
                   : isRateLimited
                     ? t('Learn.rate_limited', { seconds: rateLimitSeconds })
-                    : t('Learn.failed')}
+                    : isPollConnectionLost
+                      ? t('Learn.poll_connection_lost')
+                      : t('Learn.failed')}
               </span>
-              {errorCode && !isTooManyTasks && !isRateLimited && (
+              {errorCode && !isTooManyTasks && !isRateLimited && !isPollConnectionLost && (
                 <code className="learn-banner__error-code">{errorCode}</code>
               )}
-              {error && !isTooManyTasks && !isRateLimited && (
+              {error && !isTooManyTasks && !isRateLimited && !isPollConnectionLost && (
                 <span className="learn-banner__msg">{error}</span>
               )}
             </div>

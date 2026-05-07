@@ -312,6 +312,25 @@ def test_load_config_resolves_five_layer_precedence(
     assert "llm.generate_model" in keys
 
 
+def test_load_config_resolves_llm_step_output_cap_env(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+
+    snapshot = load_config(
+        repo_root,
+        env={
+            "HOME": str(tmp_path / "home"),
+            "AHADIFF_LLM_CLAIM_EXTRACTION_OUTPUT_CAP": "7000",
+        },
+    )
+
+    assert snapshot.values["llm"]["claim_extraction_output_cap"] == 7000
+    resolved = resolve_effective("llm.claim_extraction_output_cap", snapshot=snapshot)
+    assert resolved.value == 7000
+    assert resolved.source == "env:AHADIFF_LLM_CLAIM_EXTRACTION_OUTPUT_CAP"
+
+
 def test_locale_config_values_are_schema_checked(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()

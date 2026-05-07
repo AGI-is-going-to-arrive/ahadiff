@@ -18,12 +18,39 @@ type LearnPhase =
 
 const POLL_INTERVAL_MS = 1500;
 const MAX_POLL_INTERVAL_MS = 30_000;
-const MAX_POLL_DURATION_MS = 660_000;
+/**
+ * Maximum number of consecutive polling errors before we surface an error
+ * to the user. With exponential backoff (1500, 3000, 6000, 12000, 24000,
+ * 30000, 30000, 30000, 30000, 30000) this corresponds to roughly 2.5
+ * minutes of unrecoverable backend connectivity issues. Below this
+ * threshold we keep retrying silently with backoff, since transient 5xx /
+ * network blips are normal during long-running learn tasks.
+ */
+const MAX_CONSECUTIVE_POLL_ERRORS = 10;
+
+/**
+ * NOTE: We deliberately do NOT track a frontend-side polling deadline.
+ *
+ * Source-of-truth for task timeout is the backend `task_runner` (currently
+ * 1800s). The backend exposes `timeout_seconds` + `deadline_at` on
+ * `TaskInfoResponse`; the UI may use those fields for display only.
+ *
+ * Previously we forced phase=failed after 660s of local polling, which
+ * triggered before the backend gave up — users saw "Learn run timed out"
+ * while the task was still running on the server. The fix is to keep polling
+ * as long as the backend reports running/pending, and only treat
+ * completed/failed/cancelled (driven by the backend) as terminal.
+ *
+ * However we DO surface an error after MAX_CONSECUTIVE_POLL_ERRORS
+ * consecutive failures so users aren't left staring at a silent spinner
+ * when the backend is unreachable. The task may still be running on the
+ * server side; the UI message reflects that and offers a retry that
+ * reconnects polling.
+ */
 
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let submitGeneration = 0;
 let consecutiveErrors = 0;
-let pollStartedAt = 0;
 
 interface LearnState {
   phase: LearnPhase;
@@ -43,6 +70,7 @@ interface LearnState {
   cancelLearn: () => Promise<void>;
   dismiss: () => void;
   recoverExistingTask: () => Promise<void>;
+  reconnectPoll: () => void;
 }
 
 function stopPolling(): void {
@@ -55,30 +83,38 @@ function stopPolling(): void {
 function resetPollState(): void {
   stopPolling();
   consecutiveErrors = 0;
-  pollStartedAt = 0;
 }
 
-function schedulePoll(): void {
-  stopPolling();
-  const interval = consecutiveErrors === 0
+function nextPollIntervalMs(): number {
+  return consecutiveErrors === 0
     ? POLL_INTERVAL_MS
     : Math.min(POLL_INTERVAL_MS * 2 ** consecutiveErrors, MAX_POLL_INTERVAL_MS);
-  pollTimer = setTimeout(() => void doPoll(), interval);
+}
+
+function schedulePoll(delayMs = nextPollIntervalMs()): void {
+  stopPolling();
+  pollTimer = setTimeout(() => void doPoll(), delayMs);
+}
+
+function retryAfterDelayMs(err: ApiError): number | null {
+  const body = err.body;
+  const retryAfter = body && typeof body === 'object' && !Array.isArray(body)
+    ? (body as Record<string, unknown>).retry_after
+    : undefined;
+  if (typeof retryAfter === 'number' && Number.isFinite(retryAfter) && retryAfter > 0) {
+    return retryAfter * 1000;
+  }
+  if (typeof retryAfter === 'string' && retryAfter.trim() !== '') {
+    const parsed = Number(retryAfter);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed * 1000;
+  }
+  return null;
 }
 
 async function doPoll(): Promise<void> {
   const state = useLearnStore.getState();
   const { taskId, phase } = state;
   if (!taskId || (phase !== 'running' && phase !== 'cancelling')) {
-    resetPollState();
-    return;
-  }
-  if (pollStartedAt > 0 && Date.now() - pollStartedAt > MAX_POLL_DURATION_MS) {
-    useLearnStore.setState({
-      phase: 'failed',
-      error: 'Learn run timed out',
-      errorCode: 'timeout',
-    });
     resetPollState();
     return;
   }
@@ -110,10 +146,51 @@ async function doPoll(): Promise<void> {
       useLearnStore.setState({ task: info });
       schedulePoll();
     }
-  } catch {
+  } catch (err: unknown) {
     const current = useLearnStore.getState();
     if (current.taskId !== capturedTaskId || (current.phase !== 'running' && current.phase !== 'cancelling')) return;
+    if (err instanceof ApiError) {
+      if (err.status === 401 || err.status === 403) {
+        useLearnStore.setState({
+          phase: 'failed',
+          error: err.message,
+          errorCode: 'poll_auth_error',
+          retryable: false,
+        });
+        resetPollState();
+        return;
+      }
+      if (err.status === 404) {
+        useLearnStore.setState({
+          phase: 'failed',
+          error: err.message,
+          errorCode: 'poll_task_not_found',
+          retryable: false,
+        });
+        resetPollState();
+        return;
+      }
+      if (err.status === 429) {
+        const retryAfterMs = retryAfterDelayMs(err);
+        schedulePoll(Math.max(retryAfterMs ?? MAX_POLL_INTERVAL_MS, nextPollIntervalMs()));
+        return;
+      }
+    }
     consecutiveErrors += 1;
+    if (consecutiveErrors >= MAX_CONSECUTIVE_POLL_ERRORS) {
+      // Distinguish API errors (backend reachable but returned retryable 5xx) from
+      // network failures (backend unreachable). Both surface the same
+      // banner copy but differ in error code so logs / tests can tell.
+      const isApiError = err instanceof ApiError;
+      useLearnStore.setState({
+        phase: 'failed',
+        error: 'poll_connection_lost',
+        errorCode: isApiError ? 'poll_server_error' : 'poll_connection_lost',
+        retryable: true,
+      });
+      resetPollState();
+      return;
+    }
     schedulePoll();
   }
 }
@@ -187,7 +264,6 @@ export const useLearnStore = create<LearnState>(() => ({
     try {
       const res = await startLearnTask(effectivePayload);
       if (submitGeneration !== generation || useLearnStore.getState().phase !== 'submitting') return;
-      pollStartedAt = Date.now();
       consecutiveErrors = 0;
       useLearnStore.setState({ phase: 'running', taskId: res.task_id });
       schedulePoll();
@@ -226,9 +302,29 @@ export const useLearnStore = create<LearnState>(() => ({
   },
 
   retryLearn: async () => {
-    const { lastPayload, retryable } = useLearnStore.getState();
+    const { lastPayload, retryable, errorCode, taskId } = useLearnStore.getState();
     if (!retryable) return;
+    // When polling lost contact with the backend, the task may still be
+    // running server-side. Reconnect by resuming polling on the existing
+    // taskId rather than submitting a new one (which would hit the 10
+    // req/min rate limit and create a duplicate task).
+    if (taskId && (errorCode === 'poll_connection_lost' || errorCode === 'poll_server_error')) {
+      useLearnStore.getState().reconnectPoll();
+      return;
+    }
     await useLearnStore.getState().submitLearn(lastPayload ?? {});
+  },
+
+  reconnectPoll: () => {
+    const { taskId } = useLearnStore.getState();
+    if (!taskId) return;
+    consecutiveErrors = 0;
+    useLearnStore.setState({
+      phase: 'running',
+      error: null,
+      errorCode: null,
+    });
+    schedulePoll();
   },
 
   cancelLearn: async () => {
@@ -260,7 +356,6 @@ export const useLearnStore = create<LearnState>(() => ({
       );
       if (!active) return;
       if (useLearnStore.getState().phase !== 'idle') return;
-      pollStartedAt = Date.now();
       consecutiveErrors = 0;
       useLearnStore.setState({
         phase: 'running',

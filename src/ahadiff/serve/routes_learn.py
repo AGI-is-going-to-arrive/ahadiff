@@ -277,6 +277,11 @@ async def post_learn_estimate(request: Request) -> JSONResponse:
 
     workspace_root = state.state_dir.parent
     root, has_git_repo = _resolve_workspace_root_for_estimate(workspace_root)
+    if not params.get("lang"):
+        cookie_lang = request.cookies.get("ahadiff_lang")
+        if cookie_lang in {"en", "zh-CN"}:
+            params["lang"] = cookie_lang
+
     cli_overrides = {"privacy_mode": params.get("privacy_mode"), "lang": params.get("lang")}
     snapshot = (
         load_config(root, cli_overrides=cli_overrides)
@@ -285,9 +290,12 @@ async def post_learn_estimate(request: Request) -> JSONResponse:
     )
     capture_config = cast("dict[str, Any]", snapshot.values["capture"])
     max_patch_bytes = int(capture_config["max_patch_bytes"])
-    content_lang = str(snapshot.values.get("lang", "en"))
-    if content_lang not in {"en", "zh-CN"}:
-        content_lang = "en"
+    from ahadiff.i18n import resolve_locale
+
+    content_lang = resolve_locale(
+        cli_lang=cast("str | None", params.get("lang")),
+        config_lang=str(snapshot.values.get("lang", "en")),
+    )
 
     capture = capture_patch(
         workspace_root=root,
@@ -356,6 +364,11 @@ async def post_learn(request: Request) -> JSONResponse:
     assert params is not None  # noqa: S101
 
     workspace_root = state.state_dir.parent
+
+    if not params.get("lang"):
+        cookie_lang = request.cookies.get("ahadiff_lang")
+        if cookie_lang in {"en", "zh-CN"}:
+            params["lang"] = cookie_lang
 
     from ahadiff.core.orchestrator import LearnRequest, run_learn_pipeline
 

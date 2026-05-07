@@ -153,6 +153,8 @@ def _serialize_task(info: Any) -> dict[str, Any]:
         d = {k: v for k, v in cast("dict[str, Any]", vars(info)).items() if k != "result"}
     d["status"] = info.status.value
     d["result_summary"] = _build_result_summary(raw_result)
+    d["timeout_seconds"] = info.timeout_seconds
+    d["deadline_at"] = info.deadline_at
     if isinstance(info.error, str):
         code = _normalize_task_error_code(info.error_code)
         d["error_code"] = code

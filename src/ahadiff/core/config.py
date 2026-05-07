@@ -25,7 +25,17 @@ _PRIVACY_MODES = {"strict_local", "redacted_remote", "explicit_remote"}
 _LOCALE_PREFERENCE_KEYS = {"lang", "llm.prompt_lang", "llm.output_lang"}
 _CAPTURE_SYMBOL_EXTRACTORS = {"auto", "builtin", "tree_sitter"}
 _CAPTURE_FILE_RANKINGS = {"learning_value", "changed_lines", "path"}
-_POSITIVE_INT_KEYS = {"capture.max_files", "capture.hard_limit", "capture.max_patch_bytes"}
+_POSITIVE_INT_KEYS = {
+    "capture.max_files",
+    "capture.hard_limit",
+    "capture.max_patch_bytes",
+    "llm.claim_extraction_output_cap",
+    "llm.lesson_full_output_cap",
+    "llm.lesson_hint_output_cap",
+    "llm.lesson_compact_output_cap",
+    "llm.quiz_generation_output_cap",
+    "llm.misconception_cards_output_cap",
+}
 _SAFE_PROVIDER_API_KEY_ENVS = frozenset(
     {
         "OPENAI_API_KEY",
@@ -58,6 +68,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "retry_attempts": 3,
         "input_token_budget": 200_000,
         "output_token_budget": 50_000,
+        "claim_extraction_output_cap": 16_000,
+        "lesson_full_output_cap": 24_000,
+        "lesson_hint_output_cap": 3_000,
+        "lesson_compact_output_cap": 2_500,
+        "quiz_generation_output_cap": 6_000,
+        "misconception_cards_output_cap": 3_000,
         "prompt_lang": "auto",
         "output_lang": "auto",
     },

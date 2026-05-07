@@ -165,10 +165,22 @@
   white-space: nowrap;
 }
 
+.learn-banner__total-elapsed {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 .learn-banner__hint {
   font-size: var(--fs-xs);
   color: var(--muted);
   line-height: 1.4;
+}
+
+.learn-banner__hint--long-running {
+  color: var(--ink);
+  font-style: italic;
 }
 
 .learn-banner__pulse {

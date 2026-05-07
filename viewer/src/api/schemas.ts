@@ -725,8 +725,10 @@ export const taskInfoResponseSchema = z
     completed_at: z.string().nullable(),
     elapsed_seconds: z.number().finite().nonnegative().nullable(),
     recovery_hint: recoveryHintSchema.nullable(),
+    timeout_seconds: z.number().finite().positive().nullable().optional(),
+    deadline_at: z.string().nullable().optional(),
   })
-  .strict();
+  .passthrough();
 
 export const taskListResponseSchema = z
   .object({

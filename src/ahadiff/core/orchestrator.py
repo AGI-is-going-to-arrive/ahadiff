@@ -14,7 +14,7 @@ import stat
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Literal, TypeVar, cast
 
 from pydantic import ValidationError
 
@@ -28,7 +28,7 @@ from ahadiff.core.config import (
     local_hosts_for_privacy_mode,
     resolve_provider_api_key,
 )
-from ahadiff.core.errors import AhaDiffError
+from ahadiff.core.errors import AhaDiffError, ConfigError
 from ahadiff.core.paths import (
     assert_local_repo_path,
     atomic_write_state_text,
@@ -110,8 +110,62 @@ CancelledCheck = Callable[[], bool]
 _TOTAL_STEPS = 10
 
 _DEFAULT_MAX_STEP_RETRIES = 2
+_LLM_STEP_MAX_RETRIES = 1
 _DEFAULT_ERROR_BUDGET = 8
 _MAX_BACKOFF_SECONDS = 30.0
+_TIMEOUT_OR_NETWORK_ERROR_MARKERS = (
+    "connection",
+    "timeout",
+    "transport",
+    "rate limit",
+    "retryable status",
+    "network",
+    "decompression failed",
+    "decompressing",
+)
+_STEP_OUTPUT_CAPS = {
+    "claim_extraction": 16_000,
+    "lesson_full": 24_000,
+    "lesson_hint": 3_000,
+    "lesson_compact": 2_500,
+    "quiz_generation": 6_000,
+    "misconception_cards": 3_000,
+}
+
+
+def _llm_positive_int(
+    llm_config: dict[str, Any],
+    key: str,
+    default: int,
+) -> int:
+    raw_value = llm_config.get(key, default)
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError) as exc:
+        raise ConfigError(f"llm.{key} expects int, got {raw_value!r}") from exc
+    if value < 1:
+        raise ConfigError(f"llm.{key} must be >= 1")
+    return value
+
+
+def _step_output_cap(
+    *,
+    provider_config: ProviderConfig,
+    llm_config: dict[str, Any],
+    output_budget: int,
+    step_name: str,
+) -> int:
+    step_default = _STEP_OUTPUT_CAPS[step_name]
+    step_cap = _llm_positive_int(
+        llm_config,
+        f"{step_name}_output_cap",
+        step_default,
+    )
+    candidates = [output_budget, step_cap]
+    provider_max = getattr(provider_config, "max_output_tokens", None)
+    if provider_max is not None and provider_max > 0:
+        candidates.append(int(provider_max))
+    return min(candidates)
 
 
 @dataclass
@@ -157,6 +211,16 @@ def is_recoverable_error(exc: Exception) -> bool:
     return any(p in msg for p in _recoverable)
 
 
+def is_timeout_or_network_error(exc: Exception) -> bool:
+    if isinstance(exc, ConnectionError | TimeoutError):
+        return True
+    try:
+        msg = str(exc).lower()
+    except Exception:
+        return False
+    return any(p in msg for p in _TIMEOUT_OR_NETWORK_ERROR_MARKERS)
+
+
 _CANCEL_POLL_INTERVAL = 0.25
 
 
@@ -176,9 +240,13 @@ def run_with_retry(
     step_name: str,
     budget: PipelineErrorBudget,
     is_cancelled: CancelledCheck,
+    max_retries_override: int | None = None,
 ) -> _T:
     last_exc: Exception | None = None
-    for attempt in range(budget.max_step_retries + 1):
+    max_step_retries = (
+        budget.max_step_retries if max_retries_override is None else max(0, max_retries_override)
+    )
+    for attempt in range(max_step_retries + 1):
         _check_cancelled(is_cancelled)
         try:
             return step_fn()
@@ -192,14 +260,16 @@ def run_with_retry(
                     f"pipeline error budget exhausted ({budget.error_count} recoverable errors, "
                     f"last failure in step '{step_name}'): {exc}"
                 ) from exc
-            if attempt >= budget.max_step_retries:
+            if max_retries_override is not None and is_timeout_or_network_error(exc):
+                raise
+            if attempt >= max_step_retries:
                 raise
             wait = min(2.0**attempt, _MAX_BACKOFF_SECONDS)
             log.warning(
                 "step '%s' failed (attempt %d/%d, budget %d/%d), retrying in %.1fs: %s",
                 step_name,
                 attempt + 1,
-                budget.max_step_retries + 1,
+                max_step_retries + 1,
                 budget.error_count,
                 budget.max_total_errors,
                 wait,
@@ -771,17 +841,50 @@ def run_learn_pipeline(
                 assert provider_config is not None  # noqa: S101
                 assert resolved_privacy_mode is not None  # noqa: S101
 
-                output_budget = int(llm_config.get("output_token_budget", 50000))
-                provider_max_out = getattr(provider_config, "max_output_tokens", None)
-                if provider_max_out and provider_max_out > output_budget:
-                    provider_config = provider_config.model_copy(
-                        update={"max_output_tokens": output_budget}
-                    )
+                output_budget = _llm_positive_int(llm_config, "output_token_budget", 50_000)
+                claim_output_cap = _step_output_cap(
+                    provider_config=provider_config,
+                    llm_config=llm_config,
+                    output_budget=output_budget,
+                    step_name="claim_extraction",
+                )
+                lesson_output_caps: dict[Literal["full", "hint", "compact"], int] = {
+                    "full": _step_output_cap(
+                        provider_config=provider_config,
+                        llm_config=llm_config,
+                        output_budget=output_budget,
+                        step_name="lesson_full",
+                    ),
+                    "hint": _step_output_cap(
+                        provider_config=provider_config,
+                        llm_config=llm_config,
+                        output_budget=output_budget,
+                        step_name="lesson_hint",
+                    ),
+                    "compact": _step_output_cap(
+                        provider_config=provider_config,
+                        llm_config=llm_config,
+                        output_budget=output_budget,
+                        step_name="lesson_compact",
+                    ),
+                }
+                quiz_output_cap = _step_output_cap(
+                    provider_config=provider_config,
+                    llm_config=llm_config,
+                    output_budget=output_budget,
+                    step_name="quiz_generation",
+                )
+                misconception_output_cap = _step_output_cap(
+                    provider_config=provider_config,
+                    llm_config=llm_config,
+                    output_budget=output_budget,
+                    step_name="misconception_cards",
+                )
 
                 # ------------------------------------------------------------------
                 # Step 5: extract and verify claims
                 # ------------------------------------------------------------------
-                _emit(5, "Extracting claims")
+                _emit(5, "Extracting claims from diff (1/2)")
                 _check_cancelled(_cancelled)
 
                 try:
@@ -801,7 +904,9 @@ def run_learn_pipeline(
                             run_id=capture.run_id,
                             run_path=run_path,
                             workspace_root=root,
-                            provider_config=provider_config,
+                            provider_config=provider_config.model_copy(
+                                update={"max_output_tokens": claim_output_cap}
+                            ),
                             api_key=effective_api_key,
                             security_config=security_config,
                             output_path=run_path / "claims.raw.jsonl",
@@ -813,6 +918,7 @@ def run_learn_pipeline(
                             request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
                             input_token_budget=int(llm_config.get("input_token_budget", 200000)),
                             output_token_budget=output_budget,
+                            claim_output_token_cap=claim_output_cap,
                         )
                         raw_claims_path = result_path
                         return result_path
@@ -822,9 +928,12 @@ def run_learn_pipeline(
                         step_name="claim_extraction",
                         budget=error_budget,
                         is_cancelled=_cancelled,
+                        max_retries_override=_LLM_STEP_MAX_RETRIES,
                     )
                     assert raw_claims_path is not None  # noqa: S101
 
+                    _emit(5, "Verifying extracted claims (2/2)")
+                    _check_cancelled(_cancelled)
                     candidates = load_claim_candidates(
                         raw_claims_path,
                         default_run_id=capture.run_id,
@@ -877,7 +986,6 @@ def run_learn_pipeline(
                     # ------------------------------------------------------------------
                     # Step 6: generate lessons
                     # ------------------------------------------------------------------
-                    _emit(6, "Generating lessons")
                     _check_cancelled(_cancelled)
 
                     try:
@@ -888,7 +996,9 @@ def run_learn_pipeline(
                                 run_id=capture.run_id,
                                 run_path=run_path,
                                 workspace_root=root,
-                                provider_config=provider_config,
+                                provider_config=provider_config.model_copy(
+                                    update={"max_output_tokens": max(lesson_output_caps.values())}
+                                ),
                                 api_key=effective_api_key,
                                 security_config=security_config,
                                 request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
@@ -901,6 +1011,8 @@ def run_learn_pipeline(
                                     llm_config.get("input_token_budget", 200000)
                                 ),
                                 output_token_budget=output_budget,
+                                lesson_output_token_caps=lesson_output_caps,
+                                on_sub_progress=lambda message: _emit(6, message),
                             )
 
                         run_with_retry(
@@ -908,6 +1020,7 @@ def run_learn_pipeline(
                             step_name="lesson_generation",
                             budget=error_budget,
                             is_cancelled=_cancelled,
+                            max_retries_override=_LLM_STEP_MAX_RETRIES,
                         )
                     except Exception as exc:
                         _cleanup_lesson_generation_artifacts(
@@ -920,7 +1033,6 @@ def run_learn_pipeline(
                     # ------------------------------------------------------------------
                     # Step 7: generate quiz
                     # ------------------------------------------------------------------
-                    _emit(7, "Generating quiz")
                     _check_cancelled(_cancelled)
 
                     try:
@@ -936,7 +1048,14 @@ def run_learn_pipeline(
                                 run_id=capture.run_id,
                                 run_path=run_path,
                                 workspace_root=root,
-                                provider_config=provider_config,
+                                provider_config=provider_config.model_copy(
+                                    update={
+                                        "max_output_tokens": max(
+                                            quiz_output_cap,
+                                            misconception_output_cap,
+                                        )
+                                    }
+                                ),
                                 api_key=effective_api_key,
                                 security_config=security_config,
                                 request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
@@ -949,6 +1068,9 @@ def run_learn_pipeline(
                                     llm_config.get("input_token_budget", 200000)
                                 ),
                                 output_token_budget=output_budget,
+                                quiz_output_token_cap=quiz_output_cap,
+                                misconception_output_token_cap=misconception_output_cap,
+                                on_sub_progress=lambda message: _emit(7, message),
                             )
                             quiz_questions_holder[:] = [questions]
 
@@ -957,6 +1079,7 @@ def run_learn_pipeline(
                             step_name="quiz_generation",
                             budget=error_budget,
                             is_cancelled=_cancelled,
+                            max_retries_override=_LLM_STEP_MAX_RETRIES,
                         )
                         quiz_questions = quiz_questions_holder[0]
                     except Exception as exc:
@@ -1071,6 +1194,7 @@ __all__ = [
     "PipelineErrorBudget",
     "implicit_duplicate_provider_name",
     "is_recoverable_error",
+    "is_timeout_or_network_error",
     "run_learn_pipeline",
     "run_with_retry",
 ]

@@ -216,7 +216,61 @@ def _decode_json_objects(text: str, decoder: json.JSONDecoder) -> list[dict[str,
             continue
         if isinstance(parsed, dict):
             objects.append(cast("dict[str, Any]", parsed))
+    if not objects:
+        recovered = _try_recover_truncated_object(text)
+        if recovered is not None:
+            objects.append(recovered)
     return objects
+
+
+def _try_recover_truncated_object(text: str) -> dict[str, Any] | None:
+    """Recover a JSON object from token-capped truncated output."""
+    stripped = text.strip()
+    if not stripped.startswith("{"):
+        return None
+    last_brace = stripped.rfind("}")
+    if last_brace < 0:
+        return None
+    candidate = stripped[: last_brace + 1]
+    open_braces, open_brackets = _count_unquoted_delimiters(candidate)
+    candidate += "]" * max(open_brackets, 0) + "}" * max(open_braces, 0)
+    try:
+        parsed = json.loads(candidate)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if isinstance(parsed, dict):
+        return cast("dict[str, Any]", parsed)
+    return None
+
+
+def _count_unquoted_delimiters(text: str) -> tuple[int, int]:
+    """Count unmatched ``{}`` and ``[]`` outside JSON strings."""
+    braces = 0
+    brackets = 0
+    in_string = False
+    escape = False
+    for ch in text:
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            if in_string:
+                escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "{":
+            braces += 1
+        elif ch == "}":
+            braces -= 1
+        elif ch == "[":
+            brackets += 1
+        elif ch == "]":
+            brackets -= 1
+    return braces, brackets
 
 
 __all__ = [

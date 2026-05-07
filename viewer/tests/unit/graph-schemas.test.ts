@@ -198,6 +198,26 @@ describe('graph schemas', () => {
     ).toThrow();
   });
 
+  it('taskInfoResponseSchema tolerates forward-compatible top-level keys', () => {
+    const result = taskInfoResponseSchema.parse({
+      task_id: 'task-1',
+      task_type: 'learn',
+      status: 'running',
+      progress: { current: 1, total: 10, message: 'Running' },
+      result_summary: null,
+      error: null,
+      error_code: null,
+      created_at: '2026-05-01T00:00:00Z',
+      started_at: '2026-05-01T00:00:01Z',
+      completed_at: null,
+      elapsed_seconds: 1,
+      recovery_hint: null,
+      future_field: 'ok',
+    });
+
+    expect(result.future_field).toBe('ok');
+  });
+
   it('conceptGraphResponseSchema rejects unknown top-level keys', () => {
     expect(() =>
       conceptGraphResponseSchema.parse({

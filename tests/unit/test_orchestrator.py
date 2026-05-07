@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import MagicMock
@@ -20,6 +20,7 @@ from ahadiff.core.orchestrator import (
     _persist_graphify_context,  # pyright: ignore[reportPrivateUsage]
     _resolve_provider_from_config,  # pyright: ignore[reportPrivateUsage]
     is_recoverable_error,
+    is_timeout_or_network_error,
     run_learn_pipeline,
     run_with_retry,
 )
@@ -248,6 +249,10 @@ class _FakeProviderConfig:
     base_url: str = "http://localhost:11434"
     api_key_env: str = "FAKE_KEY"
     provider_class: str = "ollama"
+    max_output_tokens: int | None = None
+
+    def model_copy(self, *, update: dict[str, object]) -> _FakeProviderConfig:
+        return replace(self, **update)
 
 
 def _fake_graphify_capture(tmp_path: Path) -> _FakeCapture:
@@ -407,13 +412,17 @@ def _patch_completed_pipeline(
     fake_repo: Path,
     capture: _FakeCapture,
     *,
+    provider_config: _FakeProviderConfig | None = None,
+    on_extract_claims: Callable[[dict[str, object]], None] | None = None,
+    on_generate_lessons: Callable[[dict[str, object]], None] | None = None,
+    on_generate_quiz: Callable[[dict[str, object]], None] | None = None,
     on_generate_cards: Callable[[], None] | None = None,
     on_persist: Callable[[Path], None] | None = None,
 ) -> None:
     def _resolve_provider_from_config(
         **kwargs: object,
     ) -> tuple[_FakeProviderConfig, str, str, bool]:
-        return _FakeProviderConfig(), "key", "local", False
+        return provider_config or _FakeProviderConfig(), "key", "local", False
 
     monkeypatch.setattr(
         f"{_ORCH}._resolve_provider_from_config",
@@ -429,6 +438,8 @@ def _patch_completed_pipeline(
         record: _FakeVerifiedRecord = field(default_factory=_FakeVerifiedRecord)
 
     def _extract_claim_candidates_from_run(**kw: object) -> tuple[Path, int]:
+        if on_extract_claims is not None:
+            on_extract_claims(kw)
         output_path = fake_repo / ".ahadiff" / "runs" / capture.run_id / "claims.raw.jsonl"
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text("{}\n", encoding="utf-8")
@@ -466,9 +477,23 @@ def _patch_completed_pipeline(
         return [_FakeVerifiedClaim()]
 
     def _generate_lessons_from_run(**kwargs: object) -> None:
-        return None
+        if on_generate_lessons is not None:
+            on_generate_lessons(kwargs)
+        sub_progress = kwargs.get("on_sub_progress")
+        if callable(sub_progress):
+            callback = cast("Callable[[str], None]", sub_progress)
+            callback("Generating full lesson (1/3)")
+            callback("Generating hint lesson (2/3)")
+            callback("Generating compact lesson (3/3)")
 
     def _generate_quiz_from_run(**kwargs: object) -> tuple[Path, list[object]]:
+        if on_generate_quiz is not None:
+            on_generate_quiz(kwargs)
+        sub_progress = kwargs.get("on_sub_progress")
+        if callable(sub_progress):
+            callback = cast("Callable[[str], None]", sub_progress)
+            callback("Generating quiz questions (1/2)")
+            callback("Generating misconception cards (2/2)")
         return fake_repo / ".ahadiff" / "runs" / capture.run_id / "quiz.json", []
 
     def _evaluate_run(_run_path: Path) -> MagicMock:
@@ -710,6 +735,30 @@ def test_progress_callback_called(
     assert all(t == 10 for _s, t, _m in collected)
 
 
+def test_progress_callback_emits_lesson_substeps(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    _patch_learnability(monkeypatch, score=0.7)
+    _patch_completed_pipeline(monkeypatch, fake_repo, capture)
+    collected: list[tuple[int, int, str]] = []
+
+    run_learn_pipeline(
+        LearnRequest(workspace_root=fake_repo),
+        on_progress=lambda step, total, message: collected.append((step, total, message)),
+    )
+
+    step6_messages = [message for step, _total, message in collected if step == 6]
+    assert step6_messages == [
+        "Generating full lesson (1/3)",
+        "Generating hint lesson (2/3)",
+        "Generating compact lesson (3/3)",
+    ]
+    assert all(total == 10 for step, total, _message in collected if step == 6)
+
+
 def test_no_verified_claims_skip(
     monkeypatch: pytest.MonkeyPatch,
     fake_repo: Path,
@@ -799,6 +848,76 @@ def test_no_verified_claims_skip(
     assert result.status == "no_verified_claims"
     assert "no verified claims" in result.warnings[0]
     assert register_calls == [(fake_repo, fake_repo / ".ahadiff")]
+
+
+def test_pipeline_passes_step_specific_output_caps(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    snapshot = _FakeConfigSnapshot()
+    snapshot.values["llm"].update(
+        {
+            "output_token_budget": 50_000,
+            "claim_extraction_output_cap": 7_000,
+            "lesson_full_output_cap": 11_000,
+            "lesson_hint_output_cap": 2_900,
+            "lesson_compact_output_cap": 2_400,
+            "quiz_generation_output_cap": 5_500,
+            "misconception_cards_output_cap": 2_800,
+        }
+    )
+
+    def _load_config(
+        _root: Path,
+        cli_overrides: dict[str, object] | None = None,
+    ) -> _FakeConfigSnapshot:
+        del cli_overrides
+        return snapshot
+
+    monkeypatch.setattr(f"{_ORCH}.load_config", _load_config)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    _patch_learnability(monkeypatch, score=0.7)
+    seen: dict[str, dict[str, object]] = {}
+
+    def _record(name: str) -> Callable[[dict[str, object]], None]:
+        def _inner(kwargs: dict[str, object]) -> None:
+            seen[name] = kwargs
+
+        return _inner
+
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        provider_config=_FakeProviderConfig(max_output_tokens=131_072),
+        on_extract_claims=_record("claims"),
+        on_generate_lessons=_record("lessons"),
+        on_generate_quiz=_record("quiz"),
+    )
+
+    result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
+
+    assert result.status == "keep"
+    claim_provider = cast("_FakeProviderConfig", seen["claims"]["provider_config"])
+    assert claim_provider.max_output_tokens == 7_000
+    assert seen["claims"]["claim_output_token_cap"] == 7_000
+    assert seen["claims"]["output_token_budget"] == 50_000
+
+    lesson_provider = cast("_FakeProviderConfig", seen["lessons"]["provider_config"])
+    assert lesson_provider.max_output_tokens == 11_000
+    assert seen["lessons"]["lesson_output_token_caps"] == {
+        "full": 11_000,
+        "hint": 2_900,
+        "compact": 2_400,
+    }
+    assert seen["lessons"]["output_token_budget"] == 50_000
+
+    quiz_provider = cast("_FakeProviderConfig", seen["quiz"]["provider_config"])
+    assert quiz_provider.max_output_tokens == 5_500
+    assert seen["quiz"]["quiz_output_token_cap"] == 5_500
+    assert seen["quiz"]["misconception_output_token_cap"] == 2_800
+    assert seen["quiz"]["output_token_budget"] == 50_000
 
 
 def test_cancellation_before_persist_skips_finalized_and_result_events(
@@ -1365,6 +1484,18 @@ class TestIsRecoverableError:
     def test_value_error_not_recoverable(self) -> None:
         assert is_recoverable_error(ValueError("bad value")) is False
 
+    def test_timeout_or_network_error_detects_provider_transport_failures(self) -> None:
+        assert is_timeout_or_network_error(ConnectionError("refused")) is True
+        assert is_timeout_or_network_error(TimeoutError("timed out")) is True
+        assert is_timeout_or_network_error(RuntimeError("provider transport failed")) is True
+        assert is_timeout_or_network_error(RuntimeError("rate limit exceeded")) is True
+        assert is_timeout_or_network_error(RuntimeError("retryable status 500")) is True
+
+    def test_timeout_or_network_error_excludes_format_failures(self) -> None:
+        assert is_timeout_or_network_error(ValueError("payload does not contain JSON")) is False
+        assert is_timeout_or_network_error(ValueError("not valid json")) is False
+        assert is_timeout_or_network_error(ValueError("not valid json at char 500")) is False
+
 
 class TestRunWithRetry:
     def test_success_on_first_try(self) -> None:
@@ -1436,6 +1567,68 @@ class TestRunWithRetry:
             )
         assert call_count == 3  # 1 initial + 2 retries
         assert budget.error_count == 3
+
+    def test_max_retries_override_limits_attempts(self) -> None:
+        call_count = 0
+
+        def _always_fail() -> str:
+            nonlocal call_count
+            call_count += 1
+            raise RuntimeError(f"not valid json #{call_count}")
+
+        budget = PipelineErrorBudget(max_step_retries=5, max_total_errors=10)
+        with pytest.raises(RuntimeError, match="not valid json #2"):
+            run_with_retry(
+                _always_fail,
+                step_name="llm_step",
+                budget=budget,
+                is_cancelled=lambda: False,
+                max_retries_override=1,
+            )
+        assert call_count == 2  # 1 initial + 1 override retry
+        assert budget.error_count == 2
+
+    def test_max_retries_override_allows_format_retry(self) -> None:
+        call_count = 0
+
+        def _format_flaky() -> str:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise ValueError("payload does not contain a JSON object")
+            return "ok"
+
+        budget = PipelineErrorBudget(max_step_retries=2)
+        result = run_with_retry(
+            _format_flaky,
+            step_name="llm_step",
+            budget=budget,
+            is_cancelled=lambda: False,
+            max_retries_override=1,
+        )
+        assert result == "ok"
+        assert call_count == 2
+        assert budget.error_count == 1
+
+    def test_max_retries_override_does_not_retry_network_failure(self) -> None:
+        call_count = 0
+
+        def _provider_timeout() -> str:
+            nonlocal call_count
+            call_count += 1
+            raise TimeoutError("provider request timed out")
+
+        budget = PipelineErrorBudget(max_step_retries=2)
+        with pytest.raises(TimeoutError, match="provider request timed out"):
+            run_with_retry(
+                _provider_timeout,
+                step_name="llm_step",
+                budget=budget,
+                is_cancelled=lambda: False,
+                max_retries_override=1,
+            )
+        assert call_count == 1
+        assert budget.error_count == 1
 
     def test_budget_exhausted_raises_ahadiff_error(self) -> None:
         call_count = 0
@@ -1579,6 +1772,46 @@ class TestPipelineRetryIntegration:
 
         with pytest.raises(AhaDiffError, match="error budget exhausted|claim extraction failed"):
             run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
+
+    def test_llm_generation_steps_use_single_step_retry_override(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_repo: Path,
+    ) -> None:
+        _patch_config_and_paths(monkeypatch, fake_repo)
+        capture = _patch_capture(monkeypatch, fake_repo)
+        _patch_learnability(monkeypatch, score=0.7)
+        _patch_completed_pipeline(monkeypatch, fake_repo, capture)
+
+        overrides: dict[str, int | None] = {}
+
+        def _recording_run_with_retry(
+            step_fn: Callable[[], object],
+            *,
+            step_name: str,
+            budget: PipelineErrorBudget,
+            is_cancelled: Callable[[], bool],
+            max_retries_override: int | None = None,
+        ) -> object:
+            overrides[step_name] = max_retries_override
+            return run_with_retry(
+                step_fn,
+                step_name=step_name,
+                budget=budget,
+                is_cancelled=is_cancelled,
+                max_retries_override=max_retries_override,
+            )
+
+        monkeypatch.setattr(f"{_ORCH}.run_with_retry", _recording_run_with_retry)
+
+        result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
+
+        assert result.status == "keep"
+        assert overrides == {
+            "claim_extraction": 1,
+            "lesson_generation": 1,
+            "quiz_generation": 1,
+        }
 
 
 __all__: list[str] = []

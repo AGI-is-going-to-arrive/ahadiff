@@ -264,11 +264,15 @@
     "running": "Running…",
     "score": "Score: {score}",
     "step_progress": "Step {current}/{total}",
+    "sub_step": "{current}/{total}",
     "submitting": "Submitting learn run…",
     "rate_limited": "Rate limited. Try again in {seconds} seconds.",
     "too_many_tasks": "A learn task is already running. Please wait for it to finish.",
     "view_run": "View run",
     "elapsed": "Elapsed",
+    "elapsed_time": "Elapsed time",
+    "long_running_hint": "Task is taking longer than usual. Please wait — the backend may still be processing.",
+    "remaining_time": "{time} remaining",
     "step_hint_5": "Extracting evidence claims from the diff — typically 1–3 min with thinking models.",
     "step_hint_6": "Generating lesson notes from verified claims — typically 1–3 min.",
     "step_hint_7": "Generating quiz questions and misconception cards — typically 1–2 min.",
@@ -279,7 +283,8 @@
     "preflight_size": "Patch size: {size}",
     "preflight_tokens": "Estimated tokens: {estimated} / {limit} context",
     "preflight_continue": "Continue anyway",
-    "preflight_cancel": "Cancel"
+    "preflight_cancel": "Cancel",
+    "poll_connection_lost": "Unable to reach backend. The task may still be running. Check your connection and retry."
   },
   "Nav": {
     "dashboard": "Dashboard",

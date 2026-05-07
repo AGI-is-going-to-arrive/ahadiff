@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -35,6 +36,13 @@ def _default_task_timeout_seconds() -> float:
     return timeout
 
 
+def _parse_utc_datetime(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    assert parsed.tzinfo is not None
+    assert parsed.utcoffset() == timedelta(0)
+    return parsed
+
+
 def test_submit_and_complete() -> None:
     async def _inner() -> None:
         runner = TaskRunner(max_concurrent=2)
@@ -50,6 +58,102 @@ def test_submit_and_complete() -> None:
         assert info.result == "done"
         assert info.completed_at is not None
         assert info.started_at is not None
+
+    _run(_inner())
+
+
+def test_submit_sets_task_timeout_and_deadline_metadata() -> None:
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=1, task_timeout_seconds=60.0)
+        release = asyncio.Event()
+
+        async def work(handle: TaskHandle) -> None:
+            await release.wait()
+
+        task_id = runner.submit("learn", work, task_timeout_seconds=12.5)
+        try:
+            # Pending tasks have timeout metadata but no deadline yet.
+            info = runner.get_task(task_id)
+            assert info is not None
+            assert info.timeout_seconds == 12.5
+            assert info.status == TaskStatus.PENDING
+            assert info.deadline_at is None
+
+            # Once the task acquires the semaphore and transitions to
+            # RUNNING, deadline_at is computed from started_at.
+            for _ in range(50):
+                await asyncio.sleep(0.01)
+                info = runner.get_task(task_id)
+                assert info is not None
+                if info.status == TaskStatus.RUNNING:
+                    break
+            assert info is not None
+            assert info.status == TaskStatus.RUNNING
+            timeout_seconds = info.timeout_seconds
+            deadline_at = info.deadline_at
+            started_at_str = info.started_at
+            assert timeout_seconds is not None
+            assert timeout_seconds == 12.5
+            assert isinstance(deadline_at, str)
+            assert isinstance(started_at_str, str)
+
+            started_at = _parse_utc_datetime(started_at_str)
+            deadline = _parse_utc_datetime(deadline_at)
+            assert abs((deadline - started_at).total_seconds() - timeout_seconds) <= 0.5
+        finally:
+            release.set()
+            await asyncio.sleep(0.05)
+
+    _run(_inner())
+
+
+def test_pending_task_has_no_deadline() -> None:
+    """C1: deadline_at must reflect actual run start, not submit time.
+
+    A queued (PENDING) task waiting on a saturated semaphore has no
+    meaningful deadline yet — deadline_at must be None until the task
+    transitions to RUNNING.
+    """
+
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=1, task_timeout_seconds=60.0)
+        release_first = asyncio.Event()
+        first_running = asyncio.Event()
+
+        async def first_work(handle: TaskHandle) -> None:
+            first_running.set()
+            await release_first.wait()
+
+        async def queued_work(handle: TaskHandle) -> None:
+            return None
+
+        first_id = runner.submit("learn", first_work, task_timeout_seconds=30.0)
+        await first_running.wait()
+        queued_id = runner.submit("learn", queued_work, task_timeout_seconds=12.5)
+        try:
+            # Give the event loop a turn so _run_task can run up to the
+            # semaphore acquire for the queued task.
+            await asyncio.sleep(0.05)
+            queued_info = runner.get_task(queued_id)
+            assert queued_info is not None
+            assert queued_info.status == TaskStatus.PENDING
+            assert queued_info.deadline_at is None
+            assert queued_info.timeout_seconds == 12.5
+            assert queued_info.started_at is None
+        finally:
+            release_first.set()
+            # Drain to completion.
+            for _ in range(100):
+                await asyncio.sleep(0.01)
+                first_info = runner.get_task(first_id)
+                queued_info = runner.get_task(queued_id)
+                if (
+                    first_info is not None
+                    and queued_info is not None
+                    and first_info.status == TaskStatus.COMPLETED
+                    and queued_info.status == TaskStatus.COMPLETED
+                ):
+                    break
 
     _run(_inner())
 
@@ -693,7 +797,7 @@ def test_thread_backed_draining_task_keeps_global_concurrency_slot() -> None:
     _run(_inner())
 
 
-def test_draining_thread_backed_task_updates_status_on_success() -> None:
+def test_draining_thread_backed_task_keeps_timeout_failure_on_success() -> None:
     async def _inner() -> None:
         runner = TaskRunner(max_concurrent=2, task_timeout_seconds=60.0)
         started = threading.Event()
@@ -728,10 +832,10 @@ def test_draining_thread_backed_task_updates_status_on_success() -> None:
 
         info = runner.get_task(task_id)
         assert info is not None
-        assert info.status == TaskStatus.COMPLETED
-        assert info.result == "pipeline-ok"
-        assert info.error is None
-        assert info.error_code is None
+        assert info.status == TaskStatus.FAILED
+        assert info.result is None
+        assert info.error is not None
+        assert info.error_code == "timeout"
 
     _run(_inner())
 

@@ -40,7 +40,7 @@ from .misconception import (
 from .schemas import QuizQuestion, parse_quiz_payload
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
     import httpx
 
@@ -73,6 +73,8 @@ _MISCONCEPTION_PROMPT_NAME = "quiz.misconception_card"
 _MISCONCEPTION_ARTIFACT_NAME = "misconception_cards.jsonl"
 _VALID_PRIVACY_MODES = frozenset({"strict_local", "redacted_remote", "explicit_remote"})
 _MAX_RUN_ARTIFACT_TEXT_BYTES = 16 * 1024 * 1024
+_QUIZ_OUTPUT_TOKEN_CAP = 6000
+_MISCONCEPTION_OUTPUT_TOKEN_CAP = 3000
 
 
 def generate_quiz_from_run(
@@ -93,6 +95,9 @@ def generate_quiz_from_run(
     privacy_mode: PrivacyMode | None = None,
     input_token_budget: int | None = None,
     output_token_budget: int | None = None,
+    quiz_output_token_cap: int | None = None,
+    misconception_output_token_cap: int | None = None,
+    on_sub_progress: Callable[[str], None] | None = None,
 ) -> tuple[QuizArtifactPaths, tuple[QuizQuestion, ...]]:
     bundle = load_redacted_run_bundle(
         run_id=run_id,
@@ -100,6 +105,8 @@ def generate_quiz_from_run(
         workspace_root=workspace_root,
     )
     lesson_text = _read_required_text(run_path / "lesson" / "lesson.full.md")
+    if on_sub_progress is not None:
+        on_sub_progress("Generating quiz questions (1/2)")
     payload = _generate_quiz_payload(
         bundle=bundle,
         lesson_text=lesson_text,
@@ -115,9 +122,12 @@ def generate_quiz_from_run(
         privacy_mode=privacy_mode,
         input_token_budget=input_token_budget,
         output_token_budget=output_token_budget,
+        output_token_cap=quiz_output_token_cap,
     )
     question_set = parse_quiz_payload(payload, require_choices=True)
     questions = _materialize_question_ids(run_id, question_set.questions)
+    if on_sub_progress is not None:
+        on_sub_progress("Generating misconception cards (2/2)")
     misconception_cards = _generate_misconception_cards(
         run_id=run_id,
         bundle=bundle,
@@ -134,6 +144,7 @@ def generate_quiz_from_run(
         privacy_mode=privacy_mode,
         input_token_budget=input_token_budget,
         output_token_budget=output_token_budget,
+        output_token_cap=misconception_output_token_cap,
     )
     quiz_dir = run_path / "quiz"
     quiz_path = quiz_dir / "quiz.jsonl"
@@ -309,6 +320,7 @@ def _generate_quiz_payload(
     privacy_mode: PrivacyMode | None,
     input_token_budget: int | None = None,
     output_token_budget: int | None = None,
+    output_token_cap: int | None = None,
 ) -> str:
     prompt_text = load_quiz_prompt()
     payload_text = build_quiz_payload(
@@ -352,8 +364,9 @@ def _generate_quiz_payload(
         input_token_budget=(
             input_token_budget if input_token_budget is not None else DEFAULT_INPUT_TOKEN_BUDGET
         ),
-        output_token_budget=(
-            output_token_budget if output_token_budget is not None else DEFAULT_OUTPUT_TOKEN_BUDGET
+        output_token_budget=_positive_output_token_value(
+            output_token_budget,
+            DEFAULT_OUTPUT_TOKEN_BUDGET,
         ),
     )
     try:
@@ -372,7 +385,12 @@ def _generate_quiz_payload(
                 redacted_payload_text=redacted_payload_text,
                 findings=findings,
                 response_format="json",
-                max_output_tokens=provider_config.max_output_tokens or 4000,
+                max_output_tokens=_resolve_request_output_tokens(
+                    provider_config=provider_config,
+                    output_token_budget=output_token_budget,
+                    output_token_cap=output_token_cap,
+                    default_output_token_cap=_QUIZ_OUTPUT_TOKEN_CAP,
+                ),
                 thinking_level=provider_config.thinking_level,
             )
         )
@@ -398,6 +416,7 @@ def _generate_misconception_cards(
     privacy_mode: PrivacyMode | None,
     input_token_budget: int | None = None,
     output_token_budget: int | None = None,
+    output_token_cap: int | None = None,
 ) -> tuple[MisconceptionCard, ...]:
     prompt_text = load_misconception_prompt()
     concept_terms = _dedupe_concept_terms(questions)
@@ -443,8 +462,9 @@ def _generate_misconception_cards(
         input_token_budget=(
             input_token_budget if input_token_budget is not None else DEFAULT_INPUT_TOKEN_BUDGET
         ),
-        output_token_budget=(
-            output_token_budget if output_token_budget is not None else DEFAULT_OUTPUT_TOKEN_BUDGET
+        output_token_budget=_positive_output_token_value(
+            output_token_budget,
+            DEFAULT_OUTPUT_TOKEN_BUDGET,
         ),
     )
     try:
@@ -463,7 +483,12 @@ def _generate_misconception_cards(
                 redacted_payload_text=redacted_payload_text,
                 findings=findings,
                 response_format="json",
-                max_output_tokens=provider_config.max_output_tokens or 2000,
+                max_output_tokens=_resolve_request_output_tokens(
+                    provider_config=provider_config,
+                    output_token_budget=output_token_budget,
+                    output_token_cap=output_token_cap,
+                    default_output_token_cap=_MISCONCEPTION_OUTPUT_TOKEN_CAP,
+                ),
                 thinking_level=provider_config.thinking_level,
             )
         )
@@ -471,6 +496,28 @@ def _generate_misconception_cards(
         provider.close()
     cards = parse_misconception_cards(response.content)
     return tuple(replace(card, run_id=card.run_id or run_id) for card in cards)
+
+
+def _resolve_request_output_tokens(
+    *,
+    provider_config: ProviderConfig,
+    output_token_budget: int | None,
+    output_token_cap: int | None,
+    default_output_token_cap: int,
+) -> int:
+    request_budget = _positive_output_token_value(output_token_budget, DEFAULT_OUTPUT_TOKEN_BUDGET)
+    per_call_cap = (
+        output_token_cap
+        if output_token_cap is not None and output_token_cap > 0
+        else default_output_token_cap
+    )
+    if not provider_config.max_output_tokens or provider_config.max_output_tokens <= 0:
+        return min(request_budget, per_call_cap)
+    return min(provider_config.max_output_tokens, request_budget, per_call_cap)
+
+
+def _positive_output_token_value(value: int | None, default: int) -> int:
+    return value if value is not None and value > 0 else default
 
 
 def _materialize_question_ids(

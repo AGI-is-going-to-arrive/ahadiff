@@ -442,6 +442,7 @@ def test_generate_quiz_from_run_writes_expected_artifact(
     workspace_root = tmp_path / "workspace"
     run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz")
     fake_provider = _FakeQuizProvider()
+    progress_messages: list[str] = []
 
     def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
         return fake_provider
@@ -461,6 +462,7 @@ def test_generate_quiz_from_run_writes_expected_artifact(
         api_key=None,
         security_config=SecurityConfig(),
         output_lang="zh-CN",
+        on_sub_progress=progress_messages.append,
     )
 
     assert isinstance(artifacts, QuizArtifactPaths)
@@ -482,8 +484,89 @@ def test_generate_quiz_from_run_writes_expected_artifact(
         "quiz.generate",
         "quiz.misconception_card",
     ]
-    assert fake_provider.requests[0].max_output_tokens == 4000
+    assert [request.max_output_tokens for request in fake_provider.requests] == [6000, 3000]
+    assert progress_messages == [
+        "Generating quiz questions (1/2)",
+        "Generating misconception cards (2/2)",
+    ]
     assert "Simplified Chinese (zh-CN)" in fake_provider.requests[0].payload_text
+
+
+@pytest.mark.parametrize(
+    ("provider_max_output_tokens", "expected_max_tokens"),
+    [
+        (None, [2000, 1200]),
+        (1000, [1000, 1000]),
+        (0, [2000, 1200]),
+    ],
+)
+def test_generate_quiz_from_run_clamps_output_token_caps_with_overrides(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    provider_max_output_tokens: int | None,
+    expected_max_tokens: list[int],
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz")
+    fake_provider = _FakeQuizProvider()
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
+        return fake_provider
+
+    monkeypatch.setattr("ahadiff.quiz.generator.make_provider", fake_provider_factory)
+
+    generate_quiz_from_run(
+        run_id="run_quiz",
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+            max_output_tokens=provider_max_output_tokens,
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        output_token_budget=2000,
+        quiz_output_token_cap=2500,
+        misconception_output_token_cap=1200,
+    )
+
+    assert [request.max_output_tokens for request in fake_provider.requests] == expected_max_tokens
+
+
+def test_generate_quiz_from_run_ignores_non_positive_output_token_values(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_non_positive_caps")
+    fake_provider = _FakeQuizProvider()
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
+        return fake_provider
+
+    monkeypatch.setattr("ahadiff.quiz.generator.make_provider", fake_provider_factory)
+
+    generate_quiz_from_run(
+        run_id="run_quiz_non_positive_caps",
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        output_token_budget=-1,
+        quiz_output_token_cap=0,
+        misconception_output_token_cap=-1,
+    )
+
+    assert [request.max_output_tokens for request in fake_provider.requests] == [6000, 3000]
 
 
 def test_generate_quiz_from_run_rejects_provider_payload_without_choices(

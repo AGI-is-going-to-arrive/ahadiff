@@ -273,6 +273,21 @@ export default function ReviewPage() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [flipped, handleRate, selectedChoiceLabel]);
 
+  const total = cards.length;
+  const card = currentCard();
+  const done = currentIndex >= total;
+  const sessionReviewedCount = countRatings(sessionRatings);
+  const confidentCount = sessionRatings.good + sessionRatings.easy;
+  const followupCount = sessionRatings.wrong + sessionRatings.hard;
+  const choiceCard = useMemo(
+    () => (card && isChoiceCard(card) ? card : null),
+    [card],
+  );
+  const correctChoice = useMemo<ReviewChoice | null>(() => {
+    if (!choiceCard) return null;
+    return choiceCard.choices.find((c) => c.is_correct) ?? null;
+  }, [choiceCard]);
+
   // --- Loading skeleton (preserves 2-column layout) ---
   if (loading) {
     return (
@@ -357,25 +372,6 @@ export default function ReviewPage() {
       </AppShell>
     );
   }
-
-  const total = cards.length;
-  const card = currentCard();
-  const done = currentIndex >= total;
-  const sessionReviewedCount = countRatings(sessionRatings);
-  const confidentCount = sessionRatings.good + sessionRatings.easy;
-  const followupCount = sessionRatings.wrong + sessionRatings.hard;
-  // Multiple-choice mode: derive `choiceCard`, the correct/wrong status, and
-  // a synthetic `revealed` flag that drives the same render branch as `flipped`
-  // for open cards. Computed via useMemo so the keyboard handler closure stays
-  // stable across re-renders.
-  const choiceCard = useMemo(
-    () => (card && isChoiceCard(card) ? card : null),
-    [card],
-  );
-  const correctChoice = useMemo<ReviewChoice | null>(() => {
-    if (!choiceCard) return null;
-    return choiceCard.choices.find((c) => c.is_correct) ?? null;
-  }, [choiceCard]);
   const isAnswerCorrect =
     choiceCard !== null &&
     correctChoice !== null &&

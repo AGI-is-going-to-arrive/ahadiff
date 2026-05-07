@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 from ahadiff.core.errors import InputError
 from ahadiff.core.json_util import safe_json_loads
-from ahadiff.llm import ProviderRequest, make_provider
+from ahadiff.llm import DEFAULT_OUTPUT_TOKEN_BUDGET, ProviderRequest, make_provider
 from ahadiff.safety.ignore import AllowlistPolicy
 from ahadiff.safety.redact import redaction_pipeline
 
@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 _CLAIM_EXTRACT_EVAL_VERSION = "claim-extract-runtime-v1"
 _VALID_PRIVACY_MODES = frozenset({"strict_local", "redacted_remote", "explicit_remote"})
 _MAX_RUN_ARTIFACT_TEXT_BYTES = 16 * 1024 * 1024
+_DEFAULT_CLAIM_OUTPUT_TOKEN_CAP = 16_000
 _REQUIRED_CONTEXT_METADATA_FIELDS = (
     "run_id",
     "source_kind",
@@ -106,6 +107,7 @@ def extract_claim_candidates_from_run(
     privacy_mode: PrivacyMode | None = None,
     input_token_budget: int | None = None,
     output_token_budget: int | None = None,
+    claim_output_token_cap: int | None = None,
 ) -> tuple[Path, tuple[ClaimCandidate, ...]]:
     prompt_text = load_claim_extract_prompt()
     metadata = _load_run_json(run_path / "metadata.json")
@@ -143,7 +145,10 @@ def extract_claim_candidates_from_run(
     if input_token_budget is not None:
         budget_kwargs["input_token_budget"] = input_token_budget
     if output_token_budget is not None:
-        budget_kwargs["output_token_budget"] = output_token_budget
+        budget_kwargs["output_token_budget"] = _positive_output_token_value(
+            output_token_budget,
+            DEFAULT_OUTPUT_TOKEN_BUDGET,
+        )
     provider = make_provider(
         provider_config,
         api_key=api_key,
@@ -172,7 +177,11 @@ def extract_claim_candidates_from_run(
                 redacted_payload_text=redacted_payload_text,
                 findings=findings,
                 response_format="json",
-                max_output_tokens=provider_config.max_output_tokens or 4000,
+                max_output_tokens=_resolve_claim_request_max_output_tokens(
+                    provider_max_output_tokens=provider_config.max_output_tokens,
+                    output_token_budget=output_token_budget,
+                    claim_output_token_cap=claim_output_token_cap,
+                ),
                 thinking_level=provider_config.thinking_level,
             )
         )
@@ -183,6 +192,27 @@ def extract_claim_candidates_from_run(
         default_run_id=run_id,
     )
     return write_claim_candidates_jsonl(output_path, candidates, overwrite=overwrite), candidates
+
+
+def _resolve_claim_request_max_output_tokens(
+    *,
+    provider_max_output_tokens: int | None,
+    output_token_budget: int | None,
+    claim_output_token_cap: int | None,
+) -> int:
+    output_budget = _positive_output_token_value(output_token_budget, DEFAULT_OUTPUT_TOKEN_BUDGET)
+    cap = _positive_output_token_value(
+        claim_output_token_cap,
+        _DEFAULT_CLAIM_OUTPUT_TOKEN_CAP,
+    )
+    limits = [output_budget, cap]
+    if provider_max_output_tokens and provider_max_output_tokens > 0:
+        limits.append(provider_max_output_tokens)
+    return min(limits)
+
+
+def _positive_output_token_value(value: int | None, default: int) -> int:
+    return value if value is not None and value > 0 else default
 
 
 def build_claim_extract_payload(

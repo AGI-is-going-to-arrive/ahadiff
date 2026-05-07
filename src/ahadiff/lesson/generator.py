@@ -14,13 +14,15 @@ from ahadiff.contracts import PrivacyMode, ProviderConfig, compute_runtime_eval_
 from ahadiff.core.errors import InputError
 from ahadiff.core.json_util import safe_json_loads
 from ahadiff.i18n import prompt_language_instruction
-from ahadiff.llm import ProviderRequest, make_provider
+from ahadiff.llm import DEFAULT_OUTPUT_TOKEN_BUDGET, ProviderRequest, make_provider
 from ahadiff.safety.ignore import AllowlistPolicy
 from ahadiff.safety.redact import redaction_pipeline
 
 from .schemas import LessonCompact, LessonFull, LessonHint, parse_lesson_payload
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
+
     import httpx
 
     from ahadiff.core.config import SecurityConfig
@@ -41,6 +43,11 @@ _VARIANT_TITLES: dict[LessonVariant, str] = {
     "full": "Full lesson",
     "hint": "Hint lesson",
     "compact": "Compact lesson",
+}
+_VARIANT_OUTPUT_CAPS: dict[LessonVariant, int] = {
+    "full": 24_000,
+    "hint": 3000,
+    "compact": 2500,
 }
 
 
@@ -108,6 +115,7 @@ def generate_lesson(
     privacy_mode: PrivacyMode | None = None,
     input_token_budget: int | None = None,
     output_token_budget: int | None = None,
+    output_token_cap: int | None = None,
 ) -> LessonFull:
     payload = _generate_variant_payload(
         variant="full",
@@ -124,6 +132,7 @@ def generate_lesson(
         privacy_mode=privacy_mode,
         input_token_budget=input_token_budget,
         output_token_budget=output_token_budget,
+        output_token_cap=output_token_cap,
     )
     parsed = parse_lesson_payload(payload, schema=LessonFull)
     return cast("LessonFull", parsed)
@@ -144,6 +153,7 @@ def generate_hint(
     privacy_mode: PrivacyMode | None = None,
     input_token_budget: int | None = None,
     output_token_budget: int | None = None,
+    output_token_cap: int | None = None,
 ) -> LessonHint:
     payload = _generate_variant_payload(
         variant="hint",
@@ -160,6 +170,7 @@ def generate_hint(
         privacy_mode=privacy_mode,
         input_token_budget=input_token_budget,
         output_token_budget=output_token_budget,
+        output_token_cap=output_token_cap,
     )
     parsed = parse_lesson_payload(payload, schema=LessonHint)
     return cast("LessonHint", parsed)
@@ -180,6 +191,7 @@ def generate_compact(
     privacy_mode: PrivacyMode | None = None,
     input_token_budget: int | None = None,
     output_token_budget: int | None = None,
+    output_token_cap: int | None = None,
 ) -> LessonCompact:
     payload = _generate_variant_payload(
         variant="compact",
@@ -196,6 +208,7 @@ def generate_compact(
         privacy_mode=privacy_mode,
         input_token_budget=input_token_budget,
         output_token_budget=output_token_budget,
+        output_token_cap=output_token_cap,
     )
     parsed = parse_lesson_payload(payload, schema=LessonCompact)
     return cast("LessonCompact", parsed)
@@ -219,12 +232,16 @@ def generate_lessons_from_run(
     privacy_mode: PrivacyMode | None = None,
     input_token_budget: int | None = None,
     output_token_budget: int | None = None,
+    lesson_output_token_caps: Mapping[LessonVariant, int] | None = None,
+    on_sub_progress: Callable[[str], None] | None = None,
 ) -> LessonArtifactPaths:
     bundle = load_redacted_run_bundle(
         run_id=run_id,
         run_path=run_path,
         workspace_root=workspace_root,
     )
+    if on_sub_progress is not None:
+        on_sub_progress("Generating full lesson (1/3)")
     full = generate_lesson(
         bundle=bundle,
         provider_config=provider_config,
@@ -239,7 +256,10 @@ def generate_lessons_from_run(
         privacy_mode=privacy_mode,
         input_token_budget=input_token_budget,
         output_token_budget=output_token_budget,
+        output_token_cap=_output_token_cap_for_variant("full", lesson_output_token_caps),
     )
+    if on_sub_progress is not None:
+        on_sub_progress("Generating hint lesson (2/3)")
     hint = generate_hint(
         bundle=bundle,
         provider_config=provider_config,
@@ -254,7 +274,10 @@ def generate_lessons_from_run(
         privacy_mode=privacy_mode,
         input_token_budget=input_token_budget,
         output_token_budget=output_token_budget,
+        output_token_cap=_output_token_cap_for_variant("hint", lesson_output_token_caps),
     )
+    if on_sub_progress is not None:
+        on_sub_progress("Generating compact lesson (3/3)")
     compact = generate_compact(
         bundle=bundle,
         provider_config=provider_config,
@@ -269,6 +292,7 @@ def generate_lessons_from_run(
         privacy_mode=privacy_mode,
         input_token_budget=input_token_budget,
         output_token_budget=output_token_budget,
+        output_token_cap=_output_token_cap_for_variant("compact", lesson_output_token_caps),
     )
     return write_lesson_artifacts(
         run_path=run_path,
@@ -385,6 +409,7 @@ def _generate_variant_payload(
     privacy_mode: PrivacyMode | None,
     input_token_budget: int | None = None,
     output_token_budget: int | None = None,
+    output_token_cap: int | None = None,
 ) -> str:
     prompt_text = load_lesson_prompt(variant)
     payload_text = build_lesson_payload(
@@ -412,7 +437,10 @@ def _generate_variant_payload(
     if input_token_budget is not None:
         budget_kwargs["input_token_budget"] = input_token_budget
     if output_token_budget is not None:
-        budget_kwargs["output_token_budget"] = output_token_budget
+        budget_kwargs["output_token_budget"] = _positive_output_token_value(
+            output_token_budget,
+            DEFAULT_OUTPUT_TOKEN_BUDGET,
+        )
     provider = make_provider(
         provider_config,
         api_key=api_key,
@@ -442,14 +470,50 @@ def _generate_variant_payload(
                 redacted_payload_text=redacted_payload_text,
                 findings=findings,
                 response_format="json",
-                max_output_tokens=provider_config.max_output_tokens
-                or (4000 if variant == "full" else 1800),
+                max_output_tokens=_resolve_request_max_output_tokens(
+                    provider_config=provider_config,
+                    output_token_budget=output_token_budget,
+                    output_token_cap=(
+                        output_token_cap
+                        if output_token_cap is not None
+                        else _VARIANT_OUTPUT_CAPS[variant]
+                    ),
+                    default_output_token_cap=_VARIANT_OUTPUT_CAPS[variant],
+                ),
                 thinking_level=provider_config.thinking_level,
             )
         )
     finally:
         provider.close()
     return response.content
+
+
+def _output_token_cap_for_variant(
+    variant: LessonVariant,
+    caps: Mapping[LessonVariant, int] | None,
+) -> int:
+    if caps is None:
+        return _VARIANT_OUTPUT_CAPS[variant]
+    return caps.get(variant, _VARIANT_OUTPUT_CAPS[variant])
+
+
+def _resolve_request_max_output_tokens(
+    *,
+    provider_config: ProviderConfig,
+    output_token_budget: int | None,
+    output_token_cap: int,
+    default_output_token_cap: int,
+) -> int:
+    output_budget = _positive_output_token_value(output_token_budget, DEFAULT_OUTPUT_TOKEN_BUDGET)
+    cap = output_token_cap if output_token_cap > 0 else default_output_token_cap
+    limits = [output_budget, cap]
+    if provider_config.max_output_tokens and provider_config.max_output_tokens > 0:
+        limits.append(provider_config.max_output_tokens)
+    return min(limits)
+
+
+def _positive_output_token_value(value: int | None, default: int) -> int:
+    return value if value is not None and value > 0 else default
 
 
 def _load_run_json(path: Path) -> dict[str, Any]:

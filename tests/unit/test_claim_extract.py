@@ -267,6 +267,48 @@ def test_parse_claim_candidates_text_rejects_invalid_jsonl() -> None:
         parse_claim_candidates_text("not-json")
 
 
+def test_parse_claim_candidates_text_recovers_truncated_envelope() -> None:
+    """Truncated JSON envelope with complete claims should recover."""
+    truncated = (
+        '{"claims":['
+        '{"claim_id":"c1","run_id":"run-t","text":"first claim",'
+        '"source_hunks":[{"file":"a.py","start":1,"end":2}]},'
+        '{"claim_id":"c2","run_id":"run-t","text":"second claim",'
+        '"source_hunks":[{"file":"b.py","start":3,"end":4}]},'
+        '{"claim_id":"c3","run_id":"run-t","text":"truncat'
+    )
+    candidates = parse_claim_candidates_text(truncated, default_run_id="run-t")
+    assert len(candidates) == 2
+    assert candidates[0].claim_id == "c1"
+    assert candidates[1].claim_id == "c2"
+
+
+def test_parse_claim_candidates_text_recovers_truncated_array() -> None:
+    """Truncated top-level array with complete claims should recover."""
+    truncated = (
+        '[{"claim_id":"c1","run_id":"run-a","text":"claim one",'
+        '"source_hunks":[{"file":"x.py","start":1,"end":2}]},'
+        '{"claim_id":"c2","run_id":"run-a","text":"inc'
+    )
+    candidates = parse_claim_candidates_text(truncated, default_run_id="run-a")
+    assert len(candidates) == 1
+    assert candidates[0].claim_id == "c1"
+
+
+def test_parse_claim_candidates_text_recovers_truncated_with_braces_in_strings() -> None:
+    """Braces inside JSON string values must not confuse delimiter counting."""
+    truncated = (
+        '{"claims":['
+        '{"claim_id":"c1","run_id":"run-b","text":"added {init} block",'
+        '"source_hunks":[{"file":"a.py","start":1,"end":2}]},'
+        '{"claim_id":"c2","run_id":"run-b","text":"trunc'
+    )
+    candidates = parse_claim_candidates_text(truncated, default_run_id="run-b")
+    assert len(candidates) == 1
+    assert candidates[0].claim_id == "c1"
+    assert "{init}" in candidates[0].text
+
+
 def test_parse_claim_candidates_text_requires_run_id_without_default() -> None:
     payload = json.dumps(
         [
@@ -714,6 +756,62 @@ diff --git a/src/app.py b/src/app.py
     raw_payload = json.loads(output_path.read_text(encoding="utf-8").splitlines()[0])
     assert raw_payload["run_id"] == "run_extract"
     assert raw_payload["symbols"] == ["retry_once"]
+
+
+@pytest.mark.parametrize(
+    (
+        "provider_max_output_tokens",
+        "output_token_budget",
+        "claim_output_token_cap",
+        "expected_max_tokens",
+    ),
+    [
+        (131_072, 50_000, None, 16_000),
+        (0, 50_000, None, 16_000),
+        (None, 3_000, None, 3_000),
+        (131_072, 50_000, 7_000, 7_000),
+        (None, -1, -1, 16_000),
+    ],
+)
+def test_extract_claim_candidates_from_run_caps_request_max_output_tokens(
+    tmp_path: Path,
+    provider_max_output_tokens: int | None,
+    output_token_budget: int,
+    claim_output_token_cap: int | None,
+    expected_max_tokens: int,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_id = f"run_extract_cap_{expected_max_tokens}"
+    run_path = _write_claim_run_artifacts(workspace_root, run_id)
+    sent_max_tokens: list[int | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        sent_max_tokens.append(payload.get("max_tokens"))
+        assert payload["max_tokens"] == expected_max_tokens
+        return httpx.Response(200, json=_claim_extract_response(run_id))
+
+    with httpx.Client(transport=httpx.MockTransport(handler), trust_env=False) as client:
+        extract_claim_candidates_from_run(
+            run_id=run_id,
+            run_path=run_path,
+            workspace_root=workspace_root,
+            provider_config=ProviderConfig(
+                provider_class="openai",
+                model_name="gpt-5.4-mini",
+                base_url="http://127.0.0.1:8000",
+                api_key_env="AHADIFF_PROVIDER_API_KEY",
+                max_output_tokens=provider_max_output_tokens,
+            ),
+            api_key="test-key",
+            security_config=SecurityConfig(),
+            output_path=run_path / "claims.raw.jsonl",
+            output_token_budget=output_token_budget,
+            claim_output_token_cap=claim_output_token_cap,
+            client=client,
+        )
+
+    assert sent_max_tokens == [expected_max_tokens]
 
 
 def test_claims_cli_extracts_with_one_off_provider_and_normalizes_chat_completions_url(

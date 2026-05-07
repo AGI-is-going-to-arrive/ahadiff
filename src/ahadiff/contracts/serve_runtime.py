@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import math
 from typing import Annotated, Any, Literal, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, field_validator
 
 FreshnessProjection = Literal["fresh", "stale", "unavailable", "disabled"]
 TaskErrorCode = Literal[
@@ -172,7 +173,8 @@ class TaskInfoResponse(BaseModel):
     **Stable fields** (will not change shape across minor versions):
     ``task_id``, ``task_type``, ``status``, ``progress``, ``error``,
     ``error_code``, ``recovery_hint``, ``created_at``, ``started_at``,
-    ``completed_at``, ``elapsed_seconds``, ``result_summary``.
+    ``completed_at``, ``elapsed_seconds``, ``timeout_seconds``,
+    ``deadline_at``, ``result_summary``.
 
     Raw task results are intentionally omitted; consumers should use
     ``result_summary`` instead.
@@ -199,10 +201,21 @@ class TaskInfoResponse(BaseModel):
         default=None,
         description="Wall-clock seconds from start to completion/now.",
     )
+    timeout_seconds: float | None = None
+    deadline_at: str | None = None
     recovery_hint: RecoveryHint | None = Field(
         default=None,
         description="Suggested recovery action on failure.",
     )
+
+    @field_validator("timeout_seconds")
+    @classmethod
+    def _validate_timeout_seconds(cls, value: float | None) -> float | None:
+        if value is None:
+            return None
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError("timeout_seconds must be a positive finite number")
+        return value
 
 
 class TaskProgressEvent(BaseModel):

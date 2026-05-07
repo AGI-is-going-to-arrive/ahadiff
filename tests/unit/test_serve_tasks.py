@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 import pytest
@@ -46,6 +47,13 @@ def _parse_sse_data(body: str) -> dict[str, object]:
             assert isinstance(payload, dict)
             return cast("dict[str, object]", payload)
     raise AssertionError(f"SSE body has no data line: {body}")
+
+
+def _parse_utc_datetime(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    assert parsed.tzinfo is not None
+    assert parsed.utcoffset() == timedelta(0)
+    return parsed
 
 
 class _StaticTaskRunner:
@@ -178,6 +186,34 @@ def test_get_task_omits_raw_result_and_exposes_result_summary(tmp_path: Path) ->
     }
 
 
+def test_get_task_exposes_timeout_and_deadline_metadata(tmp_path: Path) -> None:
+    info = TaskInfo(
+        task_id="task-1",
+        task_type="learn",
+        status=TaskStatus.PENDING,
+        progress=TaskProgress(current=0, total=10, message="queued"),
+        created_at="2026-05-01T00:00:00+00:00",
+        timeout_seconds=12.5,
+        deadline_at="2026-05-01T00:00:12.500000+00:00",
+    )
+    runner = _StaticTaskRunner(info)
+    app = create_app(ServeState(state_dir=tmp_path, token="tok", task_runner=cast("Any", runner)))
+    client = TestClient(app, base_url="http://localhost:8765")
+
+    resp = client.get("/api/tasks/task-1")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    TaskInfoResponse.model_validate(body)
+    timeout_seconds = body["timeout_seconds"]
+    assert isinstance(timeout_seconds, int | float)
+    assert float(timeout_seconds) == 12.5
+    assert isinstance(body["deadline_at"], str)
+    created_at = _parse_utc_datetime(body["created_at"])
+    deadline_at = _parse_utc_datetime(body["deadline_at"])
+    assert abs((deadline_at - created_at).total_seconds() - float(timeout_seconds)) <= 0.5
+
+
 def test_get_task_maps_error_code_to_user_facing_error(tmp_path: Path) -> None:
     info = TaskInfo(
         task_id="task-1",
@@ -297,6 +333,8 @@ class TestTaskInfoResponseStableFields:
             status="completed",
             progress=TaskProgressResponse(current=10, total=10, message="done"),
             created_at="2026-05-01T00:00:00Z",
+            timeout_seconds=600.0,
+            deadline_at="2026-05-01T00:10:00Z",
             result_summary=TaskResultSummary(run_id="r1", verdict="PASS"),
         )
         d = info.model_dump(mode="json")
@@ -312,6 +350,8 @@ class TestTaskInfoResponseStableFields:
             "started_at",
             "completed_at",
             "elapsed_seconds",
+            "timeout_seconds",
+            "deadline_at",
             "result_summary",
         }
         for key in stable_keys:

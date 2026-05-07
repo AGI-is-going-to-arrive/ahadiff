@@ -479,6 +479,8 @@ export interface TaskInfoResponse {
   completed_at: string | null;
   elapsed_seconds: number | null;
   recovery_hint: RecoveryHint | null;
+  timeout_seconds?: number | null;
+  deadline_at?: string | null;
 }
 
 export interface TaskListResponse {
