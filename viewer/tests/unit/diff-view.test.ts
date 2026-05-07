@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildClaimLookup,
   diffLineMatchesClaim,
   getClaimSourceLines,
+  getRenderedDiffLines,
+  lookupClaimsForLine,
   parseDiffFileSections,
   parseUnifiedDiff,
   type DiffClaimAnchor,
@@ -16,6 +19,12 @@ function claim(file: string): DiffClaimAnchor {
     line_end: 1,
     source_side: 'new',
   };
+}
+
+function largeDiff(lineCount: number): string {
+  const body = Array.from({ length: lineCount }, (_, i) => ` line ${i + 1}`);
+  return ['diff --git a/large.txt b/large.txt', `@@ -1,${lineCount} +1,${lineCount} @@`, ...body]
+    .join('\n');
 }
 
 describe('DiffView path normalization', () => {
@@ -162,5 +171,52 @@ describe('parseDiffFileSections', () => {
     expect(sections).toHaveLength(1);
     expect(sections[0]?.filePath).toBe('src/c.ts');
     expect(sections[0]?.stats).toEqual({ added: 1, removed: 1 });
+  });
+});
+
+describe('DiffView claim lookup', () => {
+  it('preserves multiple claims on the same line while deduping duplicate claim ids', () => {
+    const lines = parseUnifiedDiff(
+      ['diff --git a/src/a.ts b/src/a.ts', '@@ -1 +1 @@', '-old', '+new'].join('\n'),
+    );
+    const add = lines.find((line) => line.type === 'add');
+    const lookup = buildClaimLookup([
+      { claim_id: 'c1', file: 'src/a.ts', line_start: 1, line_end: 1, source_side: 'new' },
+      { claim_id: 'c2', file: 'src/a.ts', line_start: 1, line_end: 1, source_side: 'new' },
+      { claim_id: 'c1', file: 'src/a.ts', line_start: 1, line_end: 1, source_side: 'new' },
+    ]);
+
+    expect(add && lookupClaimsForLine(add, lookup).map((c) => c.claim_id)).toEqual(['c1', 'c2']);
+  });
+
+  it('keeps lookup construction bounded for abnormal claim ranges', () => {
+    const lookup = buildClaimLookup([
+      {
+        claim_id: 'huge',
+        file: 'src/a.ts',
+        line_start: 1,
+        line_end: 200_000,
+        source_side: 'either',
+      },
+    ]);
+
+    expect(lookup.size).toBeGreaterThan(0);
+    expect(lookup.size).toBeLessThanOrEqual(10_000);
+  });
+});
+
+describe('DiffView rendered line budget', () => {
+  it('does not mount rows for collapsed file sections', () => {
+    const lines = parseUnifiedDiff(largeDiff(300));
+
+    expect(getRenderedDiffLines(lines, false, false)).toHaveLength(0);
+    expect(getRenderedDiffLines(lines, true, false)).toHaveLength(lines.length);
+  });
+
+  it('truncates very large expanded files until the user opts into show all', () => {
+    const lines = parseUnifiedDiff(largeDiff(5001));
+
+    expect(getRenderedDiffLines(lines, true, false)).toHaveLength(1000);
+    expect(getRenderedDiffLines(lines, true, true)).toHaveLength(lines.length);
   });
 });

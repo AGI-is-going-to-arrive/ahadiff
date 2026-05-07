@@ -14,6 +14,16 @@ import './Diff.css';
 /* Files with more than this many content+hunk+meta lines start collapsed. */
 const FILE_AUTO_COLLAPSE_THRESHOLD = 200;
 
+/* Files with more than this many content+hunk+meta lines are rendered in a
+ * truncated form (only LARGE_FILE_RENDER_LIMIT lines) when expanded; the
+ * remainder is gated behind a "Show all N lines" button. This protects the
+ * DOM from explosion when the user expands a single huge file (e.g. a
+ * lockfile or generated diff). The truncation itself is the guard — no
+ * confirm modal — so the user can always opt-in to the full render. */
+const LARGE_FILE_THRESHOLD = 5000;
+const LARGE_FILE_RENDER_LIMIT = 1000;
+const MAX_CLAIM_LOOKUP_RANGE_LINES = LARGE_FILE_THRESHOLD;
+
 const SUMMARY_BAR_STYLE: CSSProperties = { contain: 'layout' };
 
 /* ── Line model ──────────────────────────────────────────────── */
@@ -502,14 +512,126 @@ export function getClaimSourceLines(
   return result;
 }
 
-function findClaimForLine(
-  line: DiffLine,
-  claims: ReadonlyArray<DiffClaimAnchor>,
-): DiffClaimAnchor | null {
+/**
+ * Precomputed claim lookup: maps `"normalizedPath:side:lineNo"` to the
+ * full list of claims that cover that position. Built once per `claims`
+ * array, then queried per row in O(1) Map.get + O(k) array work where
+ * k is the number of claims on that exact line (typically 1).
+ *
+ * Storing an array (not a single claim) preserves *every* claim that
+ * references the same file:line. The previous single-claim map silently
+ * dropped duplicates because the keying was lossy. Per-line consumers
+ * (gutter dot, claim-linked styling, selected-claim highlight) decide
+ * how to fold the array — see `lookupClaimsForLine` callers.
+ *
+ * Side is one of `"new"` / `"old"`. The lookup is queried twice per row
+ * (once for each side present on the line) to mirror the
+ * `matchingSide()` precedence in `diffLineMatchesClaim` (new before old
+ * when `source_side === 'either'`).
+ *
+ * Path normalization mirrors `claimMatchesFile()` so quoted/Windows /
+ * Unicode-NFD paths key identically regardless of how the diff or claim
+ * spelled them.
+ */
+export type ClaimLookup = ReadonlyMap<string, DiffClaimAnchor[]>;
+
+function normalizeClaimLookupRange(
+  claim: DiffClaimAnchor,
+): { start: number; end: number } | null {
+  const start = Number.isFinite(claim.line_start) ? Math.trunc(claim.line_start) : 0;
+  if (start <= 0) return null;
+  const rawEnd =
+    Number.isFinite(claim.line_end) && claim.line_end > 0
+      ? Math.trunc(claim.line_end)
+      : start;
+  const orderedEnd = Math.max(start, rawEnd);
+  return {
+    start,
+    end: Math.min(orderedEnd, start + MAX_CLAIM_LOOKUP_RANGE_LINES - 1),
+  };
+}
+
+export function buildClaimLookup(claims: ReadonlyArray<DiffClaimAnchor>): ClaimLookup {
+  const map = new Map<string, DiffClaimAnchor[]>();
+  const pushUnique = (key: string, claim: DiffClaimAnchor): void => {
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, [claim]);
+      return;
+    }
+    // Dedupe by claim_id so the same claim record indexed multiple times
+    // (e.g. multi-line range overlap) is not double-counted, but distinct
+    // claims pointing at the same file:line are all preserved.
+    if (existing.some((c) => c.claim_id === claim.claim_id)) return;
+    existing.push(claim);
+  };
   for (const claim of claims) {
-    if (diffLineMatchesClaim(line, claim)) return claim;
+    const claimPath = normalizeClaimPath(claim.file);
+    const range = normalizeClaimLookupRange(claim);
+    if (!claimPath || !range) continue;
+    const side = claim.source_side ?? 'either';
+    for (let n = range.start; n <= range.end; n += 1) {
+      if (side !== 'old') {
+        pushUnique(`${claimPath}:new:${n}`, claim);
+      }
+      if (side !== 'new') {
+        pushUnique(`${claimPath}:old:${n}`, claim);
+      }
+    }
   }
-  return null;
+  return map;
+}
+
+export function lookupClaimsForLine(line: DiffLine, lookup: ClaimLookup): DiffClaimAnchor[] {
+  if (!isContentLine(line)) return [];
+  // Mirror matchingSide() precedence: prefer "new" before "old" when the
+  // line carries both line numbers (context line). Each line has at most
+  // one filePath/oldPath/newPath spelling that could match a claim, so
+  // probing all three under both sides is cheap and avoids missing a
+  // match when the diff header lists `oldPath !== newPath` (rename).
+  const paths: string[] = [];
+  for (const raw of [line.filePath, line.newPath, line.oldPath]) {
+    if (!raw) continue;
+    const normalized = normalizeClaimPath(raw);
+    if (normalized && !paths.includes(normalized)) paths.push(normalized);
+  }
+  if (paths.length === 0) return [];
+  // Collect from every (path, side) probe and dedupe by claim_id while
+  // preserving order (new-side hits first to mirror prior precedence).
+  const seen = new Set<string>();
+  const result: DiffClaimAnchor[] = [];
+  const pushFrom = (key: string): void => {
+    const hits = lookup.get(key);
+    if (!hits) return;
+    for (const hit of hits) {
+      if (seen.has(hit.claim_id)) continue;
+      seen.add(hit.claim_id);
+      result.push(hit);
+    }
+  };
+  if (line.newLineNo != null) {
+    for (const path of paths) {
+      pushFrom(`${path}:new:${line.newLineNo}`);
+    }
+  }
+  if (line.oldLineNo != null) {
+    for (const path of paths) {
+      pushFrom(`${path}:old:${line.oldLineNo}`);
+    }
+  }
+  return result;
+}
+
+export function getRenderedDiffLines(
+  lines: ReadonlyArray<DiffLine>,
+  expanded: boolean,
+  showAllLines: boolean,
+): ReadonlyArray<DiffLine> {
+  if (!expanded) return [];
+  if (lines.length > LARGE_FILE_THRESHOLD && !showAllLines) {
+    return lines.slice(0, LARGE_FILE_RENDER_LIMIT);
+  }
+  return lines;
 }
 
 function formatLineAnchor(line: DiffLine): string {
@@ -521,43 +643,71 @@ function formatLineAnchor(line: DiffLine): string {
 
 function DiffLineRow({
   line,
-  claim,
-  isSelected,
+  claims: rowClaims,
+  selectedClaimId,
   onSelectClaim,
   t,
 }: {
   line: DiffLine;
-  claim: DiffClaimAnchor | null;
-  isSelected: boolean;
+  /**
+   * All claims that anchor to this line. Empty when the line has no
+   * associated claims; multiple entries are preserved so we never
+   * silently drop a claim that shares a file:line with another.
+   */
+  claims: ReadonlyArray<DiffClaimAnchor>;
+  /** Currently-selected claim id, or null when nothing is selected. */
+  selectedClaimId: string | null;
   onSelectClaim?: (claimId: string) => void;
   t?: (key: string, params?: Record<string, string | number>) => string;
 }) {
-  const claimId = claim?.claim_id ?? null;
-  const verdict = claim?.verdict ?? null;
+  const hasClaims = rowClaims.length > 0;
+  // Prefer the selected claim when this row carries it (so the dot color
+  // and aria-label reflect what the user clicked). Otherwise fall back
+  // to the first claim — that mirrors the previous single-claim map's
+  // behavior for the common 1-claim-per-line case.
+  const selectedOnRow = selectedClaimId
+    ? rowClaims.find((c) => c.claim_id === selectedClaimId) ?? null
+    : null;
+  const primary = selectedOnRow ?? (rowClaims[0] ?? null);
+  const isSelected = selectedOnRow !== null;
+  const primaryClaimId = primary?.claim_id ?? null;
   const isHunk = line.type === 'hunk';
-  const cls = `diff-line diff-line--${line.type}${isHunk ? ' diff-hunk-marker' : ''}${claimId ? ' diff-line--claim-linked' : ''}${isSelected ? ' diff-line--claim-selected' : ''}`;
+  const cls = `diff-line diff-line--${line.type}${isHunk ? ' diff-hunk-marker' : ''}${hasClaims ? ' diff-line--claim-linked' : ''}${isSelected ? ' diff-line--claim-selected' : ''}`;
   const hunkMarkerProps = isHunk ? { 'data-hunk-mark': '§' } : {};
   // Visual gutter dot. The parent .diff-line button already exposes the
   // claim id via aria-label and is the accessible interaction surface, so
   // the dot itself stays decorative (aria-hidden) and lets clicks fall
   // through to the row (CSS sets pointer-events: none). This avoids the
   // invalid HTML of nesting a focusable element inside another <button>.
-  const dotLabel =
-    claimId && verdict && t
-      ? t('Claim_inspector.claim_dot_label', { claim_id: claimId, verdict })
-      : claimId ?? '';
-  const dot =
-    claimId !== null ? (
-      <span
-        className={`diff-line__claim-dot${verdict ? ` diff-line__claim-dot--${verdict}` : ''}`}
-        aria-hidden="true"
-        title={dotLabel || undefined}
-        data-claim-dot-id={claimId}
-      />
-    ) : null;
+  //
+  // When more than one claim anchors to this line we render one dot per
+  // claim (capped to keep the gutter readable) so every claim remains
+  // discoverable. The first dot mirrors the previous single-dot styling
+  // for backward compatibility.
+  const verdictTitle = (claim: DiffClaimAnchor): string => {
+    if (claim.verdict && t) {
+      return t('Claim_inspector.claim_dot_label', {
+        claim_id: claim.claim_id,
+        verdict: claim.verdict,
+      });
+    }
+    return claim.claim_id;
+  };
+  const dotNodes = hasClaims
+    ? rowClaims.map((claim, claimIndex) => (
+        <span
+          key={`dot:${claim.claim_id}`}
+          className={`diff-line__claim-dot${claim.verdict ? ` diff-line__claim-dot--${claim.verdict}` : ''}`}
+          aria-hidden="true"
+          style={{ '--claim-dot-offset': `${claimIndex * 8}px` } as CSSProperties}
+          title={verdictTitle(claim) || undefined}
+          data-claim-dot-id={claim.claim_id}
+        />
+      ))
+    : null;
   const body = (
     <>
-      {dot}
+      {dotNodes}
       <span className="diff-line__lineno" aria-hidden="true">
         {line.oldLineNo ?? ''}
       </span>
@@ -570,17 +720,25 @@ function DiffLineRow({
     </>
   );
 
-  if (claimId && onSelectClaim) {
+  if (primaryClaimId && onSelectClaim) {
+    // Click selects the primary claim. Additional claims on the same
+    // line are still discoverable via their dots' titles and via the
+    // ClaimInspector list; we cannot expose multiple click targets
+    // without nesting buttons (invalid HTML).
+    const claimDescription = rowClaims.map(verdictTitle).join(', ');
+    const ariaLabel = `${formatLineAnchor(line)} ${claimDescription}`;
     return (
       <button
         type="button"
         className={cls}
-        data-claim-id={claimId}
+        data-claim-id={primaryClaimId}
+        data-claim-ids={rowClaims.map((c) => c.claim_id).join(',')}
         data-line-anchor={formatLineAnchor(line)}
         {...hunkMarkerProps}
         aria-pressed={isSelected}
-        aria-label={`${formatLineAnchor(line)} ${claimId}`}
-        onClick={() => onSelectClaim(claimId)}
+        aria-label={ariaLabel}
+        title={claimDescription || undefined}
+        onClick={() => onSelectClaim(primaryClaimId)}
       >
         {body}
       </button>
@@ -603,10 +761,12 @@ function DiffFileSectionView({
   expanded,
   onToggle,
   onHeaderRef,
-  claims,
+  claimLookup,
   selectedClaimId,
   lineMatchesSelectedClaim,
   onSelectClaim,
+  showAllLines,
+  onShowAllLines,
   t,
 }: {
   section: DiffFileSection;
@@ -615,10 +775,12 @@ function DiffFileSectionView({
   expanded: boolean;
   onToggle: () => void;
   onHeaderRef: (el: HTMLElement | null) => void;
-  claims: ReadonlyArray<DiffClaimAnchor>;
+  claimLookup: ClaimLookup;
   selectedClaimId: string | null;
   lineMatchesSelectedClaim: (line: DiffLine) => boolean;
   onSelectClaim?: (claimId: string) => void;
+  showAllLines: boolean;
+  onShowAllLines: () => void;
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
   const { filePath, oldPath, isRename, stats } = section;
@@ -627,6 +789,19 @@ function DiffFileSectionView({
   const icon = getFileIcon(filePath);
   const ariaLabel = `${displayName} (+${stats.added} -${stats.removed})`;
   const collapsedClass = expanded ? '' : ' diff-file-section--collapsed';
+
+  // Large-file truncation guard. When a single file holds more than
+  // LARGE_FILE_THRESHOLD parsed lines and the user has not opted to
+  // render the full list, only the first LARGE_FILE_RENDER_LIMIT lines
+  // are mounted. The remainder stays unmounted (not just hidden) so the
+  // DOM cost stays bounded for lockfiles and generated diffs. Claim
+  // anchor selectors continue to work for the rendered prefix; the
+  // overflow is exposed via a "Show all N lines" button at the bottom.
+  const totalLineCount = section.lines.length;
+  const isLargeFile = totalLineCount > LARGE_FILE_THRESHOLD;
+  const truncated = expanded && isLargeFile && !showAllLines;
+  const renderedLines = getRenderedDiffLines(section.lines, expanded, showAllLines);
+  const hiddenLineCount = truncated ? totalLineCount - renderedLines.length : 0;
 
   return (
     <section
@@ -676,16 +851,35 @@ function DiffFileSectionView({
         aria-label={ariaLabel}
         hidden={!expanded}
       >
-        {section.lines.map((line, i) => (
+        {renderedLines.map((line, i) => (
           <DiffLineRow
             key={`${line.filePath ?? '_'}:${line.type}:${line.oldLineNo ?? '_'}:${line.newLineNo ?? '_'}:${i}`}
             line={line}
-            claim={findClaimForLine(line, claims)}
-            isSelected={lineMatchesSelectedClaim(line) && selectedClaimId !== null}
+            claims={lookupClaimsForLine(line, claimLookup)}
+            selectedClaimId={
+              lineMatchesSelectedClaim(line) ? selectedClaimId : null
+            }
             onSelectClaim={onSelectClaim}
             t={t}
           />
         ))}
+        {truncated && (
+          <div className="diff-file-section__truncation" data-file-truncation="true">
+            <p className="diff-file-section__truncation-msg">
+              {t('Diff.large_file_truncated', {
+                shown: renderedLines.length,
+                total: totalLineCount,
+              })}
+            </p>
+            <button
+              type="button"
+              className="diff-file-section__truncation-action"
+              onClick={onShowAllLines}
+            >
+              {t('Diff.show_all_lines', { hidden: hiddenLineCount })}
+            </button>
+          </div>
+        )}
       </div>
     </section>
   );
@@ -801,6 +995,14 @@ const DiffView = memo(function DiffView({
   const stats = useMemo(() => computeDiffStats(lines), [lines]);
   const sections = useMemo(() => parseDiffFileSections(lines), [lines]);
 
+  /* Precompute claim → line lookup once per claims array.
+   * Replaces the previous per-row `findClaimForLine` linear scan
+   * (O(rows × claims)) with a O(1) Map.get() per row. The map keys cover
+   * every (file, side, lineNo) position the claim covers, so a single
+   * lookup also encodes the side-precedence rules from
+   * `diffLineMatchesClaim`. */
+  const claimLookup = useMemo(() => buildClaimLookup(claims), [claims]);
+
   const lineMatchesSelectedClaim = useCallback(
     (line: DiffLine) =>
       selectedClaimId !== null &&
@@ -826,6 +1028,18 @@ const DiffView = memo(function DiffView({
   );
 
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  /* Per-section "render full file" override for large-file truncation
+   * (Fix 2). A section keyed `true` here renders all of its lines; the
+   * default (missing key) means truncate to LARGE_FILE_RENDER_LIMIT
+   * when total > LARGE_FILE_THRESHOLD. Small files ignore this map.
+   * This is independent of the collapsed map so the user's truncate /
+   * show-all choice persists across collapse + re-expand cycles. */
+  const [showAllLinesMap, setShowAllLinesMap] = useState<Record<string, boolean>>({});
+
+  const setShowAllLinesForKey = useCallback((key: string) => {
+    setShowAllLinesMap((prev) => (prev[key] ? prev : { ...prev, [key]: true }));
+  }, []);
 
   /* Auto-collapse newly-seen large files. Only sets a key the first time
    * we see it; user toggles persist across re-renders. */
@@ -878,7 +1092,10 @@ const DiffView = memo(function DiffView({
   );
 
   /* When a claim becomes selected, ensure its host file is expanded so the
-   * highlighted line is reachable. Only applies once per selectedClaimId. */
+   * highlighted line is reachable. Also opts the host section into "show
+   * all" when the claim's matched row falls outside the truncated
+   * prefix, so claim-to-row scroll targets remain reachable in
+   * large-file mode (Fix 2). Only applies once per selectedClaimId. */
   useEffect(() => {
     if (!selectedClaimId) return;
     const claim = claims.find((c) => c.claim_id === selectedClaimId);
@@ -891,6 +1108,23 @@ const DiffView = memo(function DiffView({
         const key = sectionKeyForIndex(section, i);
         if (next[key]) {
           next[key] = false;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+    setShowAllLinesMap((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      sections.forEach((section, i) => {
+        if (section.lines.length <= LARGE_FILE_THRESHOLD) return;
+        const key = sectionKeyForIndex(section, i);
+        if (next[key]) return;
+        // Probe only the truncated tail; if the claim only matches there,
+        // we have to opt the file into full render so the row exists.
+        const matchIdx = section.lines.findIndex((line) => diffLineMatchesClaim(line, claim));
+        if (matchIdx >= LARGE_FILE_RENDER_LIMIT) {
+          next[key] = true;
           changed = true;
         }
       });
@@ -1002,10 +1236,12 @@ const DiffView = memo(function DiffView({
               expanded={expanded}
               onToggle={() => toggleSection(key)}
               onHeaderRef={setHeaderRef(index)}
-              claims={claims}
+              claimLookup={claimLookup}
               selectedClaimId={selectedClaimId}
               lineMatchesSelectedClaim={lineMatchesSelectedClaim}
               onSelectClaim={onSelectClaim}
+              showAllLines={showAllLinesMap[key] === true}
+              onShowAllLines={() => setShowAllLinesForKey(key)}
               t={t}
             />
           );

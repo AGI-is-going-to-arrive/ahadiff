@@ -41,15 +41,17 @@ export default function GraphifyCard({ compact }: { compact?: boolean }) {
   if (compact) {
     return (
       <div className="graphify-card graphify-card--compact">
-        <span className="graphify-card__label">{t('Graph.source_title')}</span>
-        <span className={`graphify-badge graphify-badge--${tone}`}>
-          {t(freshnessKey)}
-        </span>
-        {status.has_graph && (
-          <span className="graphify-card__counts mono">
-            {nodeCount}{t('Graph.sep')}{edgeCount}
+        <div className="graphify-card__compact-inner">
+          <span className="graphify-card__label">{t('Graph.source_title')}</span>
+          <span className={`graphify-badge graphify-badge--${tone}`}>
+            {t(freshnessKey)}
           </span>
-        )}
+          {status.has_graph && (
+            <span className="graphify-card__counts mono">
+              {nodeCount}{t('Graph.sep')}{edgeCount}
+            </span>
+          )}
+        </div>
       </div>
     );
   }

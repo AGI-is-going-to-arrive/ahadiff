@@ -5,6 +5,7 @@
    ========================================================================== */
 
 .provider-card {
+  container-type: inline-size;
   border: 1px solid var(--hair);
   border-radius: var(--r-md);
   background: var(--paper);
@@ -404,10 +405,16 @@
 }
 
 /* ---- Responsive ---- */
+/* `provider-card--editing { grid-column: auto }` stays viewport-scoped
+   because it depends on the parent `.provider-grid` layout (the card sets
+   `grid-column: 1 / -1` against its grid parent), not the card's own width. */
 @media (max-width: 767px) {
   .provider-card--editing {
     grid-column: auto;
   }
+}
+
+@container (max-width: 767px) {
   .provider-card__form-row {
     grid-template-columns: 1fr;
     gap: var(--sp-1);

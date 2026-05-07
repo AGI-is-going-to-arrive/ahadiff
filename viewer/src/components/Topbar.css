@@ -300,9 +300,11 @@
   .topbar__search-placeholder {
     display: none;
   }
+}
 
-  /* V6 paradigm switch: hamburger lives all the way up to 1024px so the
-   * sidebar drawer can be opened on tablets, not just phones. */
+/* Hamburger only at <=768px — between 769-1024px the sidebar collapses to an
+ * icon rail (purely CSS, see Sidebar.css), so no drawer toggle is needed. */
+@media (max-width: 768px) {
   .topbar__mobile-btn {
     display: inline-flex;
     flex-shrink: 0;

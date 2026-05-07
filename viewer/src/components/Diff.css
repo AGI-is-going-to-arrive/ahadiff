@@ -300,6 +300,60 @@
   display: none;
 }
 
+/* ── Large file truncation banner ─────────────────────────── */
+/* Rendered at the bottom of a section's body when the file exceeds
+ * LARGE_FILE_THRESHOLD lines and the user has not opted to render the
+ * full file. Styled like a soft footer; the action button is the
+ * single opt-in to mount the remaining rows. */
+.diff-file-section__truncation {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  align-items: flex-start;
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--subtle);
+  border-top: 1px dashed var(--hair);
+  font-family: var(--font-sans, var(--font-mono));
+}
+
+.diff-file-section__truncation-msg {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.diff-file-section__truncation-action {
+  appearance: none;
+  border: 1px solid var(--hair);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--fs-xs);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background var(--dur-micro) var(--ease-out-quart),
+    border-color var(--dur-micro) var(--ease-out-quart);
+}
+
+.diff-file-section__truncation-action:hover {
+  background: var(--subtle);
+  border-color: var(--hair-strong);
+}
+
+.diff-file-section__truncation-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@media (pointer: coarse) {
+  .diff-file-section__truncation-action {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
 /* ── Line row ─────────────────────────────────────────────── */
 
 .diff-line {
@@ -410,7 +464,7 @@ button.diff-line {
    target via event bubbling. */
 .diff-line__claim-dot {
   position: absolute;
-  inset-inline-start: 4px;
+  inset-inline-start: calc(4px + var(--claim-dot-offset, 0px));
   top: 50%;
   transform: translateY(-50%);
   width: 6px;

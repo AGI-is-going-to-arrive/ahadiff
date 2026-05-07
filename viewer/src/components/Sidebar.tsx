@@ -1,11 +1,25 @@
 import { NavLink, useMatch } from 'react-router-dom';
+import {
+  BookOpen,
+  CircleHelp,
+  GitCompareArrows,
+  LayoutDashboard,
+  Network,
+  Play,
+  RefreshCw,
+  Settings as SettingsIcon,
+  Sparkles,
+  Star,
+  TrendingUp,
+  type LucideIcon,
+} from 'lucide-react';
 import { useTranslation, type MessageKey } from '../i18n/useTranslation';
 import { useRunsStore } from '../state/runs-store';
 import './Sidebar.css';
 
 interface NavEntry {
   to: string;
-  icon: string;
+  Icon: LucideIcon;
   labelKey: MessageKey;
   labelEn: string;
   end?: boolean;
@@ -55,22 +69,22 @@ export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProp
       sectionKey: 'Sidebar.section.workspace',
       ariaLabel: 'Workspace',
       items: [
-        { to: '/', icon: '▤', labelKey: 'Nav.dashboard', labelEn: 'Dashboard', end: true },
+        { to: '/', Icon: LayoutDashboard, labelKey: 'Nav.dashboard', labelEn: 'Dashboard', end: true },
         {
           to: runId ? `/run/${runId}/lesson` : '/',
-          icon: '❦',
+          Icon: BookOpen,
           labelKey: 'Nav.lesson',
           labelEn: 'Lesson',
           disabled: !runId,
         },
         {
           to: runId ? `/run/${runId}/diff` : '/',
-          icon: '⇌',
+          Icon: GitCompareArrows,
           labelKey: 'Nav.diff',
           labelEn: 'Diff',
           disabled: !runId,
         },
-        { to: '/ratchet', icon: '⚡', labelKey: 'Ratchet.title', labelEn: 'Ratchet' },
+        { to: '/ratchet', Icon: TrendingUp, labelKey: 'Ratchet.title', labelEn: 'Ratchet' },
       ],
     },
     {
@@ -79,23 +93,23 @@ export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProp
       items: [
         {
           to: runId ? `/run/${runId}/quiz` : '/',
-          icon: '?',
+          Icon: CircleHelp,
           labelKey: 'Nav.quiz',
           labelEn: 'Quiz',
           disabled: !runId,
         },
-        { to: '/review', icon: '♻', labelKey: 'Review.title', labelEn: 'Review' },
-        { to: '/concepts', icon: '◈', labelKey: 'Shell.concept_graph', labelEn: 'Concepts' },
+        { to: '/review', Icon: RefreshCw, labelKey: 'Review.title', labelEn: 'Review' },
+        { to: '/concepts', Icon: Network, labelKey: 'Shell.concept_graph', labelEn: 'Concepts' },
       ],
     },
     {
       sectionKey: 'Sidebar.section.system',
       ariaLabel: 'System',
       items: [
-        { to: '/onboarding', icon: '▶', labelKey: 'Nav.onboarding', labelEn: 'Get Started' },
-        { to: '/skills', icon: '✦', labelKey: 'Skills.title', labelEn: 'Agent Hub' },
-        { to: '/settings', icon: '⚙', labelKey: 'Settings_page.title', labelEn: 'Settings' },
-        { to: '/welcome', icon: '★', labelKey: 'Nav.welcome', labelEn: 'Welcome' },
+        { to: '/onboarding', Icon: Play, labelKey: 'Nav.onboarding', labelEn: 'Get Started' },
+        { to: '/skills', Icon: Sparkles, labelKey: 'Skills.title', labelEn: 'Agent Hub' },
+        { to: '/settings', Icon: SettingsIcon, labelKey: 'Settings_page.title', labelEn: 'Settings' },
+        { to: '/welcome', Icon: Star, labelKey: 'Nav.welcome', labelEn: 'Welcome' },
       ],
     },
   ];
@@ -146,17 +160,24 @@ export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProp
           >
             {t(section.sectionKey)}
           </div>
-          {section.items.map((item) =>
-            item.disabled ? (
+          {section.items.map((item) => {
+            const label = t(item.labelKey);
+            const Icon = item.Icon;
+            const disabledHint = t('Nav.needs_run_hint');
+            return item.disabled ? (
               <span
                 key={item.labelKey}
                 className="sidebar__item sidebar__item--disabled"
+                role="link"
                 aria-disabled="true"
                 tabIndex={-1}
-                title={t('Nav.needs_run_hint')}
+                title={`${label} — ${disabledHint}`}
+                aria-label={`${label} (${disabledHint})`}
               >
-                <span className="sidebar__icon" aria-hidden="true">{item.icon}</span>
-                <span className="sidebar__label-main">{t(item.labelKey)}</span>
+                <span className="sidebar__icon" aria-hidden="true">
+                  <Icon size={18} strokeWidth={1.75} aria-hidden="true" />
+                </span>
+                <span className="sidebar__label-main">{label}</span>
                 <span className="sidebar__label-en" aria-hidden="true">{item.labelEn}</span>
               </span>
             ) : (
@@ -168,13 +189,17 @@ export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProp
                   `sidebar__item${isActive ? ' sidebar__item--active' : ''}`
                 }
                 onClick={onNavigate}
+                title={label}
+                aria-label={label}
               >
-                <span className="sidebar__icon" aria-hidden="true">{item.icon}</span>
-                <span className="sidebar__label-main">{t(item.labelKey)}</span>
+                <span className="sidebar__icon" aria-hidden="true">
+                  <Icon size={18} strokeWidth={1.75} aria-hidden="true" />
+                </span>
+                <span className="sidebar__label-main">{label}</span>
                 <span className="sidebar__label-en" aria-hidden="true">{item.labelEn}</span>
               </NavLink>
-            ),
-          )}
+            );
+          })}
         </section>
       ))}
 

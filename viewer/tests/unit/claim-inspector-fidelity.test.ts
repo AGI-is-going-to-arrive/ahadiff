@@ -308,7 +308,7 @@ describe('ClaimInspector V6 fidelity', () => {
       .toContain('c-rejected-single');
   });
 
-  it('renders selected source hunk outside the 22px VirtualList diff area', async () => {
+  it('renders selected source hunk outside the 22px diff area', async () => {
     await renderDiffPage(page);
     await page.locator('.diff-line[data-claim-id="c007"]').first().click();
 

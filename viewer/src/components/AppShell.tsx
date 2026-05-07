@@ -16,11 +16,13 @@ interface AppShellProps {
   children: ReactNode;
 }
 
-/* V6 (`AhaDiff Warm v6.html:361`) collapses the sidebar into a drawer at
- * `max-width: 1024px`, not 768px. Honor that so 768px-1024px tablets get the
- * paradigm-switching mobile drawer + hamburger trigger instead of a desktop
- * sidebar that would dominate the viewport. */
-const MOBILE_NAV_QUERY = '(max-width: 1024px)';
+/* Three-state sidebar paradigm:
+ *   - >1024px: full sidebar (248px)
+ *   - 769-1024px: icon-only rail (56px) — purely CSS, sidebar always visible
+ *   - <=768px: drawer overlay with hamburger trigger
+ * The `isMobileNav` JS state only flips to `true` for the drawer mode (<=768px).
+ * Icon-rail is handled in CSS via media query so no JS state is needed. */
+const DRAWER_QUERY = '(max-width: 768px)';
 
 export default function AppShell({ children }: AppShellProps) {
   const { t } = useTranslation();
@@ -29,11 +31,11 @@ export default function AppShell({ children }: AppShellProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMobileNav, setIsMobileNav] = useState(() =>
-    typeof window === 'undefined' ? false : window.matchMedia(MOBILE_NAV_QUERY).matches,
+    typeof window === 'undefined' ? false : window.matchMedia(DRAWER_QUERY).matches,
   );
 
   useEffect(() => {
-    const media = window.matchMedia(MOBILE_NAV_QUERY);
+    const media = window.matchMedia(DRAWER_QUERY);
     const sync = () => setIsMobileNav(media.matches);
     sync();
     media.addEventListener('change', sync);

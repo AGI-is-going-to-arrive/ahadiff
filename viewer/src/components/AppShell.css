@@ -52,12 +52,27 @@
 }
 
 /* ==========================================================================
-   Responsive: >=1024px sidebar visible, <1024px drawer navigation
-   Aligns with V6 `AhaDiff Warm v6.html:361 @media (max-width: 1024px)`
-   which fixes the sidebar into a 280px translateX drawer.
+   Responsive 3-state sidebar:
+     >1024px      full sidebar (248px) — default rule above
+     769-1024px   icon-only rail (56px) — sidebar always visible, narrow
+     <=768px      drawer overlay with hamburger
    ========================================================================== */
 
-@media (max-width: 1024px) {
+/* Tablet / narrow desktop: collapse to icon rail (56px). The sidebar stays in
+ * the grid (no drawer), so no backdrop is rendered. Width changes are handled
+ * in Sidebar.css. */
+@media (max-width: 1024px) and (min-width: 769px) {
+  .app-shell__body {
+    grid-template-columns: 56px 1fr;
+  }
+
+  .app-shell__content {
+    padding: var(--sp-6) var(--sp-6) 56px;
+  }
+}
+
+/* Phone: drawer paradigm — sidebar leaves the grid flow. */
+@media (max-width: 768px) {
   .app-shell__body {
     grid-template-columns: 1fr;
   }

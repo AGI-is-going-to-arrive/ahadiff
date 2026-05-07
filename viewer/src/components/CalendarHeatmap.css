@@ -6,7 +6,15 @@
  * widget tracks paper/dark theme and forced-colors automatically.
  * ============================================================ */
 
+.calendar-heatmap-shell {
+  container-type: inline-size;
+  height: 100%;
+  min-width: 0;
+}
+
 .calendar-heatmap {
+  box-sizing: border-box;
+  height: 100%;
   background: var(--paper);
   border: 1px solid var(--hair);
   border-radius: var(--r-lg);
@@ -190,7 +198,7 @@
 }
 
 /* Phase 2D smaller-screen spacing trim. */
-@media (max-width: 540px) {
+@container (max-width: 540px) {
   .calendar-heatmap {
     padding: var(--sp-3) 14px;
   }

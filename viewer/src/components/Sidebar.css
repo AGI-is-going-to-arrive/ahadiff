@@ -219,9 +219,77 @@
 
 /* ---------- Responsive ---------- */
 
-/* Drawer sidebar at <1024px — aligns with V6 (`AhaDiff Warm v6.html:361
- * @media max-width:1024px`). */
-@media (max-width: 1024px) {
+/* Default sidebar width tracks the AppShell grid column (248px). The shell
+ * grid sets the column, so the sidebar simply fills it via flex. */
+
+/* Icon-only rail: 769-1024px. The sidebar stays in document flow (no drawer);
+ * labels and brand text collapse, leaving an icon column. */
+@media (max-width: 1024px) and (min-width: 769px) {
+  .sidebar {
+    /* Use width transition for the rail collapse. The grid column already
+     * shrinks to 56px in AppShell.css, so width here matches that. */
+    width: 100%;
+    transition: none;
+    /* Preserve vertical scroll on short viewports (e.g., 600px tall tablet
+     * landscape) so the rail does not clip its bottom items. The base rule
+     * sets this too; restating it inside the rail block makes the contract
+     * explicit and resistant to future refactors. */
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .sidebar__brand {
+    justify-content: center;
+    padding: var(--sp-4) var(--sp-1) var(--sp-3);
+    gap: 0;
+  }
+
+  .sidebar__brand-text {
+    display: none;
+  }
+
+  .sidebar__section {
+    padding: var(--sp-2) var(--sp-1) var(--sp-1);
+  }
+
+  .sidebar__label {
+    /* Hide section headings (Workspace / Practice / System) but keep them
+     * accessible to screen readers via the parent <section aria-labelledby>. */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .sidebar__item {
+    justify-content: center;
+    gap: 0;
+    padding: var(--sp-2);
+    margin: 2px 4px;
+    min-height: 40px;
+  }
+
+  .sidebar__label-main,
+  .sidebar__label-en {
+    display: none;
+  }
+
+  .sidebar__status {
+    /* The status footer is bilingual + multi-line; hide in icon mode rather
+     * than truncate. Screen readers still see the full sidebar in non-rail
+     * widths. */
+    display: none;
+  }
+}
+
+/* Drawer sidebar at <=768px — aligns with V6 (`AhaDiff Warm v6.html:361`)
+ * but tightened from 1024px so 769-1024px gets the icon rail instead. */
+@media (max-width: 768px) {
   .sidebar {
     position: fixed;
     top: 0;
@@ -238,7 +306,15 @@
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
+  :dir(rtl) .sidebar {
+    transform: translateX(100%);
+  }
+
   .sidebar--open {
+    transform: translateX(0);
+  }
+
+  :dir(rtl) .sidebar.sidebar--open {
     transform: translateX(0);
   }
 

@@ -24,13 +24,12 @@ index 0000001..0000002 100644
 `;
 
 async function openSidebarIfCollapsed(page: Page): Promise<void> {
-  // V6 collapses the sidebar into a drawer up to 1024px (matches AhaDiff
-  // Warm v6.html:361 @media max-width:1024px). Use the same boundary so the
-  // helper opens the drawer on tablet (768px) viewports as well.
-  const isMobile = await page.evaluate(
-    () => window.matchMedia('(max-width: 1024px)').matches,
+  // Drawer paradigm only engages at <=768px now. Between 769-1024px the
+  // sidebar collapses to an icon rail (no drawer) and stays in flow.
+  const isDrawer = await page.evaluate(
+    () => window.matchMedia('(max-width: 768px)').matches,
   );
-  if (!isMobile) return;
+  if (!isDrawer) return;
   await expect(page.locator('.app-shell')).toBeVisible();
   await expect(page.locator('.topbar')).toBeVisible();
   const menu = page.locator('.topbar__mobile-btn');
@@ -123,7 +122,7 @@ async function installRichMock(page: Page): Promise<void> {
               },
               {
                 run_id: 'run-002',
-                source_kind: 'git_ref',
+                source_kind: 'git_unstaged',
                 source_ref: 'HEAD~1',
                 content_lang: 'en',
                 capability_level: 2,
@@ -136,7 +135,7 @@ async function installRichMock(page: Page): Promise<void> {
               },
               {
                 run_id: 'run-003',
-                source_kind: 'git_ref',
+                source_kind: 'patch_file',
                 source_ref: 'HEAD',
                 content_lang: 'en',
                 capability_level: 3,
@@ -159,7 +158,7 @@ async function installRichMock(page: Page): Promise<void> {
           runs: [
               {
                 run_id: 'run-004',
-                source_kind: 'git_ref',
+                source_kind: 'file_compare',
                 source_ref: 'v0.1',
                 content_lang: 'en',
                 capability_level: 1,
@@ -168,6 +167,19 @@ async function installRichMock(page: Page): Promise<void> {
                 status: 'baseline',
                 weakest_dim: 'accuracy',
                 created_at: '2026-04-20T06:00:00Z',
+                degraded_flags: {},
+              },
+              {
+                run_id: 'run-005',
+                source_kind: 'future_source',
+                source_ref: 'external-run',
+                content_lang: 'en',
+                capability_level: 1,
+                verdict: 'PASS',
+                overall: 81,
+                status: 'baseline',
+                weakest_dim: 'spec_alignment',
+                created_at: '2026-04-19T06:00:00Z',
                 degraded_flags: {},
               },
           ],
@@ -341,6 +353,27 @@ test.describe('walkthrough: full-app functional test', () => {
     const rows = runTable.locator('tbody tr');
     await expect(rows).toHaveCount(3);
 
+    const sourceFilters = page.getByRole('group', { name: /Filter loaded runs by source/i });
+    await expect(sourceFilters).toBeVisible();
+    await expect(sourceFilters.getByRole('button', { name: /All Sources\s+3/i })).toHaveAttribute('aria-pressed', 'true');
+    await expect(sourceFilters.getByRole('button', { name: /Commits\s+1/i })).toBeVisible();
+    await expect(sourceFilters.getByRole('button', { name: /Working Tree\s+1/i })).toBeVisible();
+    await expect(sourceFilters.getByRole('button', { name: /Patch\s+1/i })).toBeVisible();
+    const compareChip = sourceFilters.getByRole('button', { name: /Compare\s+0/i });
+    await expect(compareChip).toBeVisible();
+
+    await sourceFilters.getByRole('button', { name: /Patch\s+1/i }).click();
+    await expect(sourceFilters.getByRole('button', { name: /Patch\s+1/i })).toHaveAttribute('aria-pressed', 'true');
+    await expect(rows).toHaveCount(1);
+    await expect(runTable).toContainText('patch');
+
+    await compareChip.click();
+    await expect(compareChip).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('.run-list-section').getByRole('status')).toContainText(/Load more/i);
+
+    await sourceFilters.getByRole('button', { name: /All Sources/i }).click();
+    await expect(rows).toHaveCount(3);
+
     // Verdict badges
     await expect(page.locator('.verdict-badge--PASS').first()).toBeVisible();
     await expect(page.locator('.verdict-badge--CAUTION').first()).toBeVisible();
@@ -352,8 +385,10 @@ test.describe('walkthrough: full-app functional test', () => {
     const loadMoreBtn = page.locator('.load-more-btn');
     await expect(loadMoreBtn).toBeVisible();
     await loadMoreBtn.click();
-    // After click: 4 rows total (the store merges runs de-duped by run_id)
-    await expect(rows).toHaveCount(4, { timeout: 3000 });
+    // After click: 5 rows total (the store merges the next cursor page).
+    await expect(rows).toHaveCount(5, { timeout: 3000 });
+    await expect(runTable).toContainText('compare');
+    await expect(runTable).toContainText('future_source');
 
     await page.screenshot({ path: `${SCREENSHOT_DIR}/01-dashboard.png`, fullPage: true });
   });
@@ -577,7 +612,8 @@ test.describe('walkthrough: full-app functional test', () => {
     // Advance to second quiz item
     const nextBtn = page.locator('.quiz-page__nav .srs-card__btn--primary');
     await expect(nextBtn).toBeVisible();
-    await nextBtn.click();
+    await nextBtn.focus();
+    await page.keyboard.press('Enter');
 
     // Second quiz item (Socratic — no review_card_id)
     await expect(page.locator('.srs-card__question')).toContainText('return value');
@@ -1098,24 +1134,21 @@ test.describe('walkthrough: full-app functional test', () => {
     const langSwitcher = page.locator('.lang-switcher');
     // Language switcher may be a button or select; try clicking the zh-CN option
     const zhBtn = langSwitcher.locator('button', { hasText: /中文|zh-CN/i });
-    if (await zhBtn.isVisible()) {
-      await zhBtn.click();
-      // After locale switch, page should reload or re-render
-      await page.waitForTimeout(500);
+    await expect(zhBtn).toBeVisible();
+    await zhBtn.click();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
 
-      // Verify Chinese text appears
-      await expect(page.getByRole('heading', { level: 1 })).toContainText('运行');
+    // Verify Chinese text appears
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('运行');
 
-      await page.screenshot({ path: `${SCREENSHOT_DIR}/13-i18n-zh.png`, fullPage: true });
+    await page.screenshot({ path: `${SCREENSHOT_DIR}/13-i18n-zh.png`, fullPage: true });
 
-      // Switch back to English
-      const enBtn = langSwitcher.locator('button', { hasText: /English|EN/i });
-      if (await enBtn.isVisible()) {
-        await enBtn.click();
-        await page.waitForTimeout(500);
-        await expect(page.getByRole('heading', { level: 1 })).toContainText(/Dashboard/);
-      }
-    }
+    // Switch back to English
+    const enBtn = langSwitcher.locator('button', { hasText: /English|EN/i });
+    await expect(enBtn).toBeVisible();
+    await enBtn.click();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(/Dashboard/);
 
     await page.screenshot({ path: `${SCREENSHOT_DIR}/14-i18n-en.png`, fullPage: true });
   });

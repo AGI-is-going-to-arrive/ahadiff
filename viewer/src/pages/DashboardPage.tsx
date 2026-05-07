@@ -49,6 +49,22 @@ function deriveHeatmapFromRuns(
 const VERDICT_FILTERS = ['ALL', 'PASS', 'CAUTION', 'FAIL'] as const;
 type VerdictFilter = (typeof VERDICT_FILTERS)[number];
 
+const SOURCE_GROUPS = [
+  { key: 'ALL', kinds: null, labelKey: 'Dashboard.source_all' as const },
+  { key: 'COMMITS', kinds: ['git_ref', 'git_since'], labelKey: 'Dashboard.source_git_commits' as const },
+  { key: 'WORKING', kinds: ['git_staged', 'git_staged_unstaged', 'git_unstaged'], labelKey: 'Dashboard.source_git_working' as const },
+  { key: 'PATCH', kinds: ['patch_file', 'patch_stdin'], labelKey: 'Dashboard.source_patch' as const },
+  { key: 'COMPARE', kinds: ['file_compare'], labelKey: 'Dashboard.source_file_compare' as const },
+] as const;
+type SourceFilter = (typeof SOURCE_GROUPS)[number]['key'];
+
+function sourceGroupLabel(sourceKind: string): string {
+  for (const g of SOURCE_GROUPS) {
+    if (g.kinds?.includes(sourceKind as never)) return g.key;
+  }
+  return 'ALL';
+}
+
 const DIMENSION_LABEL_KEYS: Record<string, string> = {
   accuracy: 'Ratchet.dim_accuracy_label',
   evidence: 'Ratchet.dim_evidence_label',
@@ -88,6 +104,7 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   /** Phase 4E: verdict filter chips above run list. */
   const [verdictFilter, setVerdictFilter] = useState<VerdictFilter>('ALL');
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('ALL');
   const abortRef = useRef<AbortController | null>(null);
   const graphifyCard = (
     <Suspense
@@ -458,6 +475,8 @@ export default function DashboardPage() {
           loadingMore={loadingMore}
           verdictFilter={verdictFilter}
           onVerdictFilterChange={setVerdictFilter}
+          sourceFilter={sourceFilter}
+          onSourceFilterChange={setSourceFilter}
           onLoadMore={() => { loadMoreRuns().catch(() => { /* handled by store */ }); }}
         />
       </div>
@@ -475,6 +494,8 @@ interface RunListTableProps {
   loadingMore?: boolean;
   verdictFilter?: VerdictFilter;
   onVerdictFilterChange?: (next: VerdictFilter) => void;
+  sourceFilter?: SourceFilter;
+  onSourceFilterChange?: (next: SourceFilter) => void;
   onLoadMore?: () => void;
 }
 
@@ -486,22 +507,45 @@ function RunListTable({
   loadingMore,
   verdictFilter = 'ALL',
   onVerdictFilterChange,
+  sourceFilter = 'ALL',
+  onSourceFilterChange,
   onLoadMore,
 }: RunListTableProps) {
-  /* Sort descending by created_at, then apply verdict filter. */
+  /* Sort descending by created_at, then apply verdict + source filters. */
   const sorted = useMemo(() => {
     const base = [...runs].sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
     );
-    if (verdictFilter === 'ALL') return base;
-    return base.filter((r) => safeVerdict(r.verdict) === verdictFilter);
-  }, [runs, verdictFilter]);
+    let result = base;
+    if (verdictFilter !== 'ALL') {
+      result = result.filter((r) => safeVerdict(r.verdict) === verdictFilter);
+    }
+    if (sourceFilter !== 'ALL') {
+      const group = SOURCE_GROUPS.find((g) => g.key === sourceFilter);
+      if (group?.kinds) {
+        result = result.filter((r) => (group.kinds as readonly string[]).includes(r.source_kind));
+      }
+    }
+    return result;
+  }, [runs, verdictFilter, sourceFilter]);
 
   const counts = useMemo(() => {
     const map: Record<VerdictFilter, number> = { ALL: runs.length, PASS: 0, CAUTION: 0, FAIL: 0 };
     for (const r of runs) {
       const v = safeVerdict(r.verdict);
       if (v === 'PASS' || v === 'CAUTION' || v === 'FAIL') map[v] += 1;
+    }
+    return map;
+  }, [runs]);
+
+  const sourceCounts = useMemo(() => {
+    const map: Record<string, number> = { ALL: runs.length };
+    for (const g of SOURCE_GROUPS) {
+      if (g.key !== 'ALL') map[g.key] = 0;
+    }
+    for (const r of runs) {
+      const gk = sourceGroupLabel(r.source_kind);
+      if (gk !== 'ALL' && map[gk] != null) map[gk] += 1;
     }
     return map;
   }, [runs]);
@@ -535,15 +579,46 @@ function RunListTable({
           </div>
         ) : null}
       </div>
+      {onSourceFilterChange ? (
+        <div
+          className="run-list-section__source-filters"
+          role="group"
+          aria-label={t('Dashboard.source_filter_label')}
+        >
+          {SOURCE_GROUPS.map((g) => {
+            const isActive = sourceFilter === g.key;
+            const count = sourceCounts[g.key] ?? 0;
+            if (g.key !== 'ALL' && !isActive && count === 0 && !hasMore) return null;
+            return (
+              <button
+                key={g.key}
+                type="button"
+                aria-pressed={isActive}
+                className={`source-chip${isActive ? ' source-chip--active' : ''}`}
+                onClick={() => onSourceFilterChange(g.key)}
+              >
+                <span>{t(g.labelKey)}</span>
+                <span className="source-chip__count">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
       {sorted.length === 0 ? (
         <p className="u-muted-sm" role="status">
-          {t('Dashboard.filter_empty', { filter: t(verdictFilter === 'ALL' ? 'Dashboard.filter_all' : (`Verdict.${verdictFilter}` as const)) })}
+          {sourceFilter !== 'ALL'
+            ? t(hasMore ? 'Dashboard.filter_empty_with_source_has_more' : 'Dashboard.filter_empty_with_source', {
+                verdict: t(verdictFilter === 'ALL' ? 'Dashboard.filter_all' : (`Verdict.${verdictFilter}` as const)),
+                source: t(SOURCE_GROUPS.find((g) => g.key === sourceFilter)?.labelKey ?? 'Dashboard.source_all'),
+              })
+            : t('Dashboard.filter_empty', { filter: t(verdictFilter === 'ALL' ? 'Dashboard.filter_all' : (`Verdict.${verdictFilter}` as const)) })}
         </p>
       ) : (
       <table className="run-list" aria-label={t('Dashboard.run_list_title')}>
         <thead>
           <tr>
             <th scope="col">{t('Dashboard.col_ref')}</th>
+            <th scope="col">{t('Dashboard.col_source')}</th>
             <th scope="col">{t('Dashboard.col_verdict')}</th>
             <th scope="col">{t('Rubric.overall')}</th>
             <th scope="col">{t('Rubric.weakest_dim')}</th>
@@ -557,6 +632,9 @@ function RunListTable({
                 <a className="run-list__link mono" href={`#/run/${encodeURIComponent(run.run_id)}/lesson`}>
                   {run.source_ref || run.run_id.slice(0, 8)}
                 </a>
+              </td>
+              <td>
+                <SourceBadge sourceKind={run.source_kind} t={t} />
               </td>
               <td>
                 <VerdictBadge verdict={safeVerdict(run.verdict)} t={t} />
@@ -584,6 +662,30 @@ function RunListTable({
         </div>
       )}
     </div>
+  );
+}
+
+/* ---- Source badge ---- */
+
+const SOURCE_KIND_I18N_KEYS: Record<string, string> = {
+  git_ref: 'Dashboard.source_badge_git_ref',
+  git_since: 'Dashboard.source_badge_git_since',
+  git_staged: 'Dashboard.source_badge_git_staged',
+  git_staged_unstaged: 'Dashboard.source_badge_git_staged_unstaged',
+  git_unstaged: 'Dashboard.source_badge_git_unstaged',
+  patch_file: 'Dashboard.source_badge_patch_file',
+  patch_stdin: 'Dashboard.source_badge_patch_stdin',
+  file_compare: 'Dashboard.source_badge_file_compare',
+};
+
+function SourceBadge({ sourceKind, t }: { sourceKind: string; t: TranslateFn }) {
+  const i18nKey = SOURCE_KIND_I18N_KEYS[sourceKind];
+  const label = i18nKey ? t(i18nKey) : sourceKind;
+  const group = sourceGroupLabel(sourceKind);
+  return (
+    <span className={`source-badge source-badge--${group}`} title={sourceKind} aria-label={label}>
+      {label}
+    </span>
   );
 }
 

@@ -75,56 +75,58 @@ export default function CalendarHeatmap({
   const meta = t('Heatmap.meta_30d', { count: String(totalActivity) });
 
   return (
-    <section
-      className="calendar-heatmap"
-      aria-label={headerTitle}
-      data-loading={loading ? 'true' : undefined}
-    >
-      <header className="calendar-heatmap__header">
-        <h3 className="calendar-heatmap__title">{headerTitle}</h3>
-        <span className="calendar-heatmap__meta">{meta}</span>
-      </header>
-      <div
-        className="calendar-heatmap__grid"
-        role="img"
-        aria-label={t('Heatmap.aria_grid', {
-          total: String(totalActivity),
-        })}
+    <div className="calendar-heatmap-shell">
+      <section
+        className="calendar-heatmap"
+        aria-label={headerTitle}
+        data-loading={loading ? 'true' : undefined}
       >
-        {loading
-          ? Array.from({ length: TOTAL_CELLS }, (_, i) => (
-              <span
-                key={`skel-${i}`}
-                className="calendar-heatmap__cell calendar-heatmap__cell--skeleton"
-                aria-hidden="true"
-              />
-            ))
-          : padded.map((cell) => {
-              const level = bucket(cell.count, thresholds);
-              return (
+        <header className="calendar-heatmap__header">
+          <h3 className="calendar-heatmap__title">{headerTitle}</h3>
+          <span className="calendar-heatmap__meta">{meta}</span>
+        </header>
+        <div
+          className="calendar-heatmap__grid"
+          role="img"
+          aria-label={t('Heatmap.aria_grid', {
+            total: String(totalActivity),
+          })}
+        >
+          {loading
+            ? Array.from({ length: TOTAL_CELLS }, (_, i) => (
                 <span
-                  key={cell.iso_date}
-                  className={`calendar-heatmap__cell calendar-heatmap__cell--lvl-${level}`}
-                  data-date={cell.iso_date}
-                  data-count={cell.count}
-                  title={t('Heatmap.cell_title', {
-                    date: cell.iso_date.startsWith('pad-')
-                      ? '—'
-                      : cell.iso_date,
-                    count: String(cell.count),
-                  })}
+                  key={`skel-${i}`}
+                  className="calendar-heatmap__cell calendar-heatmap__cell--skeleton"
+                  aria-hidden="true"
                 />
-              );
-            })}
-      </div>
-      <footer className="calendar-heatmap__legend" aria-hidden="true">
-        <span>{t('Heatmap.legend_less')}</span>
-        <span className="calendar-heatmap__legend-cell calendar-heatmap__legend-cell--lvl-0" />
-        <span className="calendar-heatmap__legend-cell calendar-heatmap__legend-cell--lvl-1" />
-        <span className="calendar-heatmap__legend-cell calendar-heatmap__legend-cell--lvl-2" />
-        <span className="calendar-heatmap__legend-cell calendar-heatmap__legend-cell--lvl-3" />
-        <span>{t('Heatmap.legend_more')}</span>
-      </footer>
-    </section>
+              ))
+            : padded.map((cell) => {
+                const level = bucket(cell.count, thresholds);
+                return (
+                  <span
+                    key={cell.iso_date}
+                    className={`calendar-heatmap__cell calendar-heatmap__cell--lvl-${level}`}
+                    data-date={cell.iso_date}
+                    data-count={cell.count}
+                    title={t('Heatmap.cell_title', {
+                      date: cell.iso_date.startsWith('pad-')
+                        ? '—'
+                        : cell.iso_date,
+                      count: String(cell.count),
+                    })}
+                  />
+                );
+              })}
+        </div>
+        <footer className="calendar-heatmap__legend" aria-hidden="true">
+          <span>{t('Heatmap.legend_less')}</span>
+          <span className="calendar-heatmap__legend-cell calendar-heatmap__legend-cell--lvl-0" />
+          <span className="calendar-heatmap__legend-cell calendar-heatmap__legend-cell--lvl-1" />
+          <span className="calendar-heatmap__legend-cell calendar-heatmap__legend-cell--lvl-2" />
+          <span className="calendar-heatmap__legend-cell calendar-heatmap__legend-cell--lvl-3" />
+          <span>{t('Heatmap.legend_more')}</span>
+        </footer>
+      </section>
+    </div>
   );
 }

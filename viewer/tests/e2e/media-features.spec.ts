@@ -120,7 +120,9 @@ test.describe('media features', () => {
     await expect(card.locator('.graphify-card__title')).toContainText('Graphify source');
 
     const rows = card.locator('.graphify-card__row');
-    await expect(rows.first()).toBeVisible();
+    const firstRowLabel = rows.first().locator('.graphify-card__row-label');
+    await expect(firstRowLabel).toBeVisible();
+    await expect(firstRowLabel).toContainText('source:');
 
     const rowColors = await rows.first().evaluate((el) => ({
       color: getComputedStyle(el).color,
@@ -133,11 +135,13 @@ test.describe('media features', () => {
   test('print emulation: concepts heading and detail panel remain printable', async ({
     page,
   }) => {
-    await page.emulateMedia({ media: 'print' });
     await page.goto('/#/concepts');
 
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await page.locator('.concept-graph__node').first().click();
+    await page.locator('.concept-graph__node').first().focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.concept-graph__detail')).toBeVisible();
+    await page.emulateMedia({ media: 'print' });
     await expect(page.locator('.concept-graph__detail')).toBeVisible();
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -552,10 +556,11 @@ test.describe('media features', () => {
     await expect(benchmarkTab).toBeVisible();
     await benchmarkTab.click();
 
-    await expect(page.locator('.rubric-grid')).toBeVisible();
+    const rubricFirstLabel = page.locator('.rubric-grid__label-text').first();
+    await expect(rubricFirstLabel).toBeVisible();
 
     await page.emulateMedia({ media: 'print' });
-    await expect(page.locator('.rubric-grid')).toBeVisible();
+    await expect(rubricFirstLabel).toBeVisible();
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );

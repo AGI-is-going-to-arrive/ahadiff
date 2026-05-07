@@ -176,28 +176,29 @@ test.describe('cross-browser corner cases', () => {
     await page.goto('/#/run/test-run/lesson');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
-    const tablist = page.getByRole('tablist', { name: /Lesson|/i });
+    const tablist = page.getByRole('tablist', { name: /Lesson/i });
     await expect(tablist).toBeVisible();
 
-    // Initial state: "Full" tab is selected
-    const fullTab = tablist.getByRole('tab', { name: /Full/i });
-    const hintTab = tablist.getByRole('tab', { name: /Hint/i });
+    // Tab order: compact → hint → full (simple-to-complex)
+    // Mock weak concepts return scaffolding_level='full', so auto-recommendation selects Full
     const compactTab = tablist.getByRole('tab', { name: /Compact/i });
+    const hintTab = tablist.getByRole('tab', { name: /Hint/i });
+    const fullTab = tablist.getByRole('tab', { name: /Full/i });
 
     await expect(fullTab).toHaveAttribute('aria-selected', 'true');
 
-    // Focus the active tab then use ArrowRight to move
+    // Focus the active tab then use ArrowLeft (full is rightmost, move left)
     await fullTab.focus();
-    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowLeft');
     await expect(hintTab).toHaveAttribute('aria-selected', 'true');
     await expect(hintTab).toBeFocused();
 
-    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowLeft');
     await expect(compactTab).toHaveAttribute('aria-selected', 'true');
     await expect(compactTab).toBeFocused();
 
-    // ArrowLeft should move back
-    await page.keyboard.press('ArrowLeft');
+    // ArrowRight should move back
+    await page.keyboard.press('ArrowRight');
     await expect(hintTab).toHaveAttribute('aria-selected', 'true');
     await expect(hintTab).toBeFocused();
 
@@ -291,18 +292,83 @@ test.describe('cross-browser corner cases', () => {
     expect(errors).toHaveLength(0);
   });
 
-  test('1024px viewport still uses mobile drawer boundary', async ({ page }) => {
+  test('769-1024px viewport shows icon-only sidebar rail (no drawer)', async ({ page }) => {
+    /* Three-state sidebar paradigm (matches AppShell.tsx + Sidebar.css):
+     *   <=768px:    drawer overlay with hamburger (JS-driven, isMobileNav=true)
+     *   769-1024px: icon-only rail (~56px, sidebar always visible, hamburger hidden)
+     *   >1024px:    full sidebar (~248px, hamburger hidden, labels visible)
+     */
     await page.setViewportSize({ width: 1024, height: 768 });
     await page.goto('/');
 
     const menuButton = page.locator('.topbar__mobile-btn');
     const sidebar = page.locator('#sidebar');
-    await expect(menuButton).toBeVisible();
-    await expect(menuButton).toHaveAttribute('aria-expanded', 'false');
-    await expect(sidebar).not.toHaveClass(/sidebar--open/);
 
-    await page.setViewportSize({ width: 1025, height: 768 });
+    // -- Top boundary (1024px): still icon rail, hamburger hidden.
     await expect(menuButton).toBeHidden();
+    await expect(sidebar).toBeVisible();
     await expect(sidebar).not.toHaveClass(/sidebar--open/);
+    const sidebarBox = await sidebar.boundingBox();
+    expect(sidebarBox?.width).toBeGreaterThanOrEqual(50);
+    expect(sidebarBox?.width).toBeLessThanOrEqual(70);
+
+    // -- Mid-rail (~900px): explicit assertion that the icon rail is the
+    //    visible paradigm (not the drawer). Brand text + nav labels collapse,
+    //    but icons remain visible and NavLinks keep aria-label semantics.
+    await page.setViewportSize({ width: 900, height: 800 });
+    await expect(menuButton).toBeHidden();
+    await expect(sidebar).toBeVisible();
+    await expect(sidebar.locator('.sidebar__brand-text')).toBeHidden();
+    await expect(sidebar.locator('.sidebar__label-main').first()).toBeHidden();
+    await expect(sidebar.locator('.sidebar__icon').first()).toBeVisible();
+    const dashboardRailLink = sidebar.getByRole('link', { name: /Dashboard/ });
+    await expect(dashboardRailLink).toBeVisible();
+    await dashboardRailLink.focus();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/#\/?$/);
+    const disabledLesson = sidebar.locator('.sidebar__item--disabled[aria-label^="Lesson"]').first();
+    await expect(disabledLesson).toHaveAttribute('title', /Lesson.*run/i);
+    const railOverflow = await sidebar.evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(railOverflow).toBeLessThanOrEqual(0);
+
+    // -- Bottom boundary (769px): still icon rail.
+    await page.setViewportSize({ width: 769, height: 768 });
+    await expect(menuButton).toBeHidden();
+    await expect(sidebar).toBeVisible();
+
+    // -- 768px crosses into drawer mode: hamburger appears, sidebar closed.
+    await page.setViewportSize({ width: 768, height: 1024 });
+    await expect(menuButton).toBeVisible();
+    await expect(sidebar).not.toHaveClass(/sidebar--open/);
+    await page.evaluate(() => {
+      document.documentElement.setAttribute('dir', 'rtl');
+    });
+    await expect
+      .poll(() => sidebar.evaluate((el) => new DOMMatrixReadOnly(getComputedStyle(el).transform).m41))
+      .toBeGreaterThan(0);
+    await menuButton.click();
+    await expect(menuButton).toHaveAttribute('aria-expanded', 'true');
+    await expect
+      .poll(() => sidebar.evaluate((el) => Math.round(new DOMMatrixReadOnly(getComputedStyle(el).transform).m41)))
+      .toBe(0);
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => {
+      document.documentElement.removeAttribute('dir');
+    });
+
+    // -- Above 1024px: full sidebar returns with labels visible.
+    await page.setViewportSize({ width: 1025, height: 800 });
+    await expect(menuButton).toBeHidden();
+    await expect(sidebar).toBeVisible();
+    const justFullBox = await sidebar.boundingBox();
+    expect(justFullBox?.width).toBeGreaterThan(200);
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(menuButton).toBeHidden();
+    await expect(sidebar).toBeVisible();
+    const fullBox = await sidebar.boundingBox();
+    expect(fullBox?.width).toBeGreaterThan(200);
+    await expect(sidebar.locator('.sidebar__brand-text')).toBeVisible();
+    await expect(sidebar.locator('.sidebar__label-main').first()).toBeVisible();
   });
 });

@@ -1,16 +1,17 @@
 import { expect, test, type Page } from '@playwright/test';
 import { installServeMock } from '../fixtures/serve-mock';
 
-/* V6 collapses the sidebar into a drawer up to 1024px (matches AhaDiff
- * Warm v6.html:361 @media max-width:1024px) — keep the helper aligned. */
-const MOBILE_NAV_QUERY = '(max-width: 1024px)';
+/* Drawer paradigm engages at <=768px. Between 769-1024px the sidebar collapses
+ * to an icon rail (no drawer, no hamburger). >1024px shows the full sidebar. */
+const DRAWER_QUERY = '(max-width: 768px)';
+const ICON_RAIL_QUERY = '(max-width: 1024px) and (min-width: 769px)';
 
 async function openSidebarIfCollapsed(page: Page): Promise<void> {
-  const isMobile = await page.evaluate(
+  const isDrawer = await page.evaluate(
     (q) => window.matchMedia(q).matches,
-    MOBILE_NAV_QUERY,
+    DRAWER_QUERY,
   );
-  if (!isMobile) return;
+  if (!isDrawer) return;
   await expect(page.locator('.app-shell')).toBeVisible();
   await expect(page.locator('.topbar')).toBeVisible();
   const menu = page.locator('.topbar__mobile-btn');
@@ -22,17 +23,21 @@ async function openSidebarIfCollapsed(page: Page): Promise<void> {
 }
 
 async function closeSidebarIfOpen(page: Page): Promise<void> {
-  const isMobile = await page.evaluate(
+  const isDrawer = await page.evaluate(
     (q) => window.matchMedia(q).matches,
-    MOBILE_NAV_QUERY,
+    DRAWER_QUERY,
   );
-  if (!isMobile) return;
+  if (!isDrawer) return;
   const menu = page.locator('.topbar__mobile-btn');
   await expect(menu).toBeVisible();
   if ((await menu.getAttribute('aria-expanded')) === 'true') {
     await page.keyboard.press('Escape');
     await expect(menu).toHaveAttribute('aria-expanded', 'false');
   }
+}
+
+async function isIconRail(page: Page): Promise<boolean> {
+  return page.evaluate((q) => window.matchMedia(q).matches, ICON_RAIL_QUERY);
 }
 
 test.describe('i18n', () => {
@@ -103,7 +108,13 @@ test.describe('i18n', () => {
     await page.getByRole('button', { name: '简体中文' }).click();
     await openSidebarIfCollapsed(page);
     await expect(page.getByRole('navigation', { name: '导航' })).toBeVisible();
-    await expect(page.locator('.sidebar__label-en', { hasText: 'Dashboard' }).first()).toBeVisible();
+    /* Icon-rail mode (769-1024px) hides bilingual labels by design — only
+     * assert label visibility outside the rail. */
+    if (!(await isIconRail(page))) {
+      await expect(
+        page.locator('.sidebar__label-en', { hasText: 'Dashboard' }).first(),
+      ).toBeVisible();
+    }
     const sidebarOverflow = await page
       .locator('#sidebar')
       .evaluate((el) => el.scrollWidth - el.clientWidth);
@@ -122,7 +133,7 @@ test.describe('i18n', () => {
     await page.goto('/#/settings');
     await expect(page.getByRole('tab', { name: /privacy/i })).toBeVisible();
 
-    await page.getByRole('tab', { name: /language/i }).click();
+    await page.getByRole('tab', { name: /preferences/i }).click();
     const putWait = page.waitForResponse(
       (res) => res.url().endsWith('/api/locale') && res.request().method() === 'PUT',
     );
@@ -132,7 +143,7 @@ test.describe('i18n', () => {
     await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(/设置/);
     await expect(page.getByRole('tab', { name: /隐私/ })).toBeVisible();
-    await expect(page.getByRole('tab', { name: /语言/ })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: /偏好/ })).toHaveAttribute('aria-selected', 'true');
   });
 
   test('DiffView does not re-parse diff content across locale switch', async ({ page }) => {

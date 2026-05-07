@@ -452,6 +452,112 @@
   }
 }
 
+/* ---- Source kind filter chips ---- */
+.run-list-section__source-filters {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: var(--sp-2);
+  max-width: 100%;
+}
+
+.source-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--sp-1) 10px;
+  background: var(--subtle);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-full);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.source-chip:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.source-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.source-chip--active {
+  background: var(--paper);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+.source-chip__count {
+  font-variant-numeric: tabular-nums;
+  background: var(--paper);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  padding: 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+/* ---- Source badge (table cell) ---- */
+.source-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.04em;
+  background: var(--subtle);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.source-badge--COMMITS {
+  background: var(--info-subtle, var(--subtle));
+  color: var(--info, var(--accent));
+}
+
+.source-badge--WORKING {
+  background: var(--warning-subtle, var(--subtle));
+  color: var(--warning-fg, var(--warning));
+}
+
+.source-badge--PATCH {
+  background: var(--success-subtle, var(--subtle));
+  color: var(--success);
+}
+
+.source-badge--COMPARE {
+  background: var(--accent-softer, var(--subtle));
+  color: var(--accent-ink, var(--accent));
+}
+
+@media (forced-colors: active) {
+  .source-chip {
+    border: 1px solid CanvasText;
+  }
+  .source-chip--active {
+    border: 2px solid Highlight;
+  }
+  .source-badge {
+    border: 1px solid CanvasText;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .source-chip {
+    transition: none;
+  }
+}
+
 .run-list {
   width: 100%;
   border-collapse: collapse;

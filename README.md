@@ -20,9 +20,9 @@
 
 Stage 0 / Task 0 到 Stage 6 主线现在都已经有实际产物，Stage 7 的 i18n signoff 也已通过。当前代码已经能稳定产出 Lesson / Claims / Quiz / Misconception Cards / Cards / Score / Ratchet；review 流的 SRS runtime、serve backend、install targets、GitHub Action 模板、benchmark suite、improve loop core、Task 17 targeted verification、Phase 2.5 runtime、i18n-0 后端以及前端 `viewer/` React SPA 都已落地。
 
-本轮改动主要收口两类问题：后端配置和运行时边界，以及前端学习体验。后端现在会在 serve runtime 里按当前 workspace 读取 config，`learn.desired_retention` 和 `learn.learnability_threshold` 都有有限数和范围校验；review rate / SRS signal 会用同一个 retention 配置；watcher 在 FSEvents 不可用时会退到 polling observer。前端则补上了 v0.1 要求的三档 SRS UI（Easy 仍保留在后端/类型层，但不在 v0.1 界面显示）、Lesson scaffolding 自动推荐、Settings Preferences 里的 retention/learnability 滑杆、Ratchet TSV 下载、ConceptGraph 聚类和 200+ 节点 list fallback，以及 Dashboard 学习指标失败隔离。
+本轮改动集中在 `viewer/` 前端：侧栏改成三档响应式（`>1024px` 完整侧栏、`769-1024px` 56px icon rail、`<=768px` drawer），导航图标换成 `lucide-react`；DiffView 用预构建 claim lookup 取代逐行线性扫描，并给大文件增加 5000/1000 行渲染预算；Dashboard runs 增加 4 组 source filter 和 SourceBadge；CalendarHeatmap / ClaimInspector / GraphifyCard / ProviderCard 收口 container query。后端代码本轮没有修改。
 
-本轮真实验证已经覆盖后端和前端：后端 unit 全量 `2005 passed`，`ruff` / `pyright` / wheel build / `git diff --check` 通过；前端 Vitest `195 passed`，`typecheck` / build 通过，Playwright smoke `315 passed`，walkthrough chromium `34 passed`，media-features chromium `23 passed`。完整 Playwright 全浏览器全视口本轮没有重跑。
+本轮真实验证覆盖了当前改动面：前端 `typecheck`、Vitest `199 passed`、build 通过；目标 Playwright 组合 `1070 passed, 10 skipped`；Dashboard a11y 子集 `60 passed`，icon rail 跨浏览器子集 `15 passed`，i18n Settings 子集 `15 passed`；显式真实 LLM judge smoke 使用已配置的 `gpt-5.5` OpenAI Responses 路径，`1 passed`。完整 Playwright 全浏览器全视口本轮跑过一次，结果是 `1880 passed, 10 skipped, 45 failed`；失败集中在 Landing / Settings / Onboarding 的既有 page-level a11y 问题，本轮只在后续重跑了受影响子集。
 
 > Code Wiki 解释仓库，知返解释这次改动 —— 而且每一句话都能回到代码证据。
 
@@ -180,7 +180,7 @@ ahadiff/
 ├─ tests/eval/                  # benchmark suite 测试
 ├─ tests/integration/           # pinned integration fixtures
 ├─ tests/live/                  # 需要显式环境变量开启的真实 LLM judge smoke
-├─ viewer/                      # React 19 + Vite + Zustand + vanilla CSS 前端（12 页面 / 37 个页面+组件 TSX / 23 个页面+组件 CSS / 717 i18n keys / 本轮 Vitest 195 passed + smoke 315 + walkthrough chromium 34 + media-features chromium 23）
+├─ viewer/                      # React 19 + Vite + Zustand + vanilla CSS 前端（12 页面 / 36 个页面+组件 TSX / 23 个页面+组件 CSS / 736 i18n keys / 本轮 Vitest 199 passed + 目标 Playwright 1070 passed + Dashboard a11y 60 passed；完整 Playwright 当前 1880 passed / 10 skipped / 45 既有 page-a11y failures）
 ├─ ui/                          # HTML 原型 v1–v6（设计迭代史）
 └─ CLAUDE.md                    # 项目 AI 上下文索引
 ```
@@ -233,12 +233,12 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-最近一次验证（2026-05-07，本 session）：`uv run pytest tests/unit -x -q` = `2005 passed in 185.64s`；`uv run ruff check src tests` 通过；`uv run ruff format --check src tests` = `234 files already formatted`；`uv run pyright` = `0 errors, 0 warnings, 0 informations`；`uv build --wheel` 成功生成 wheel；`pnpm exec vitest run` = `20 files, 195 tests passed`；`pnpm run typecheck` 通过；`pnpm run build` 通过（本次观察值：initial JS gzip `93,583` bytes，Dashboard first-route JS gzip `132,569` bytes，不设硬 cap）；`pnpm exec playwright test tests/e2e/smoke.spec.ts` = `315 passed`；`pnpm exec playwright test tests/e2e/walkthrough.spec.ts --project=chromium-desktop` = `34 passed`；`pnpm exec playwright test tests/e2e/media-features.spec.ts --project=chromium-desktop` = `23 passed`；`git diff --check` 通过。coverage gate 上一次同日结果仍是 `87.33%`，本轮未重跑 coverage；完整 Playwright 全浏览器全视口本轮也未重跑。
+最近一次验证（2026-05-08，本 session）：`pnpm run typecheck` 通过；`pnpm exec vitest run` = `20 files, 199 tests passed`；`pnpm run build` 通过（本次观察值：initial JS gzip `94,061` bytes，Dashboard first-route JS gzip `136,026` bytes，不设硬 cap）；`pnpm exec playwright test tests/e2e/cross-browser.spec.ts tests/e2e/walkthrough.spec.ts tests/e2e/media-features.spec.ts tests/e2e/i18n.spec.ts --reporter=dot` = `1070 passed, 10 skipped`；后续受影响回归：Dashboard a11y 子集 `60 passed`，icon rail 跨浏览器子集 `15 passed`，i18n Settings 子集 `15 passed`；`git diff --check` 通过。显式真实 LLM judge smoke 使用已配置的 `gpt-5.5` OpenAI Responses 路径，`tests/live/test_llm_judge_live.py -q` = `1 passed in 3.80s`。完整 Playwright 全浏览器全视口本轮跑过一次，结果为 `1880 passed, 10 skipped, 45 failed`；失败集中在 Landing / Settings / Onboarding 的既有 page-level a11y 问题。后端全量、ruff、pyright、wheel 和 coverage 本轮未因 viewer 改动重跑；coverage gate 上一次同日结果仍是 `87.33%`。
 
 下一步路线图：
 
 - [ ] `v0.1`（MVP）：CLI + Lesson + Evaluator + Ratchet 全链路 + React 19 WebUI（`ahadiff serve`）+ 8 种 LLM Provider（OpenAI Chat/Responses/Gemini/Anthropic/Azure/NewAPI/LMStudio/Ollama）+ 8 种 diff 捕获（含 --unstaged / git show）+ 6 个 install target + i18n + 阶段门禁
-- [ ] `v0.2`：--compare-dir + --patch-url + 7 个 IDE install target + watchdog 增量重生 + section-level helpfulness + Team 功能（已完成：后端 Gate 0-6 + medium APIs + helpfulness / learning transfer + misconception cards + Graphify 后端基础与 concept linking / FTS / provenance / perf gate + watch mode + 13 install targets + provider/model settings + learn task UI + `/api/learn` rate limit + DNS pinning + LLM judge + 当前前端学习面收口：三档 SRS UI、自动 scaffolding、retention 设置、Ratchet TSV、ConceptGraph cluster/list fallback、Dashboard learning metric 隔离、cross-platform CSS/a11y 修复；待做：Team / 真实 large-repo signoff evidence / 更深的 V6 frontend signoff）
+- [ ] `v0.2`：--compare-dir + --patch-url + 7 个 IDE install target + watchdog 增量重生 + section-level helpfulness + Team 功能（已完成：后端 Gate 0-6 + medium APIs + helpfulness / learning transfer + misconception cards + Graphify 后端基础与 concept linking / FTS / provenance / perf gate + watch mode + 13 install targets + provider/model settings + learn task UI + `/api/learn` rate limit + DNS pinning + LLM judge + 当前前端学习面收口：三档 SRS UI、自动 scaffolding、retention 设置、Ratchet TSV、ConceptGraph cluster/list fallback、Dashboard learning metric 隔离、三档侧栏、Diff 大文件渲染预算、Dashboard source filter、container query hardening；待做：Team / 真实 large-repo signoff evidence / 更深的 V6 frontend signoff）
 - [ ] `v1.0`：PWA + public benchmark suite
 
 ## 灵感来源

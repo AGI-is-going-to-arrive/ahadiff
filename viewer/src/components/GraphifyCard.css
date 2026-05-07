@@ -1,4 +1,5 @@
 .graphify-card {
+  container-type: inline-size;
   background: var(--paper);
   border: 1px solid var(--hair);
   border-left: 3px solid var(--accent);
@@ -113,11 +114,15 @@
 /* -- Compact variant (inline for Dashboard) -- */
 
 .graphify-card--compact {
+  padding: 10px var(--sp-4);
+}
+
+.graphify-card__compact-inner {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px var(--sp-4);
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .graphify-card--compact.graphify-card--placeholder {
@@ -170,8 +175,8 @@
 
 /* -- Responsive -- */
 
-@media (max-width: 540px) {
-  .graphify-card--compact {
+@container (max-width: 540px) {
+  .graphify-card__compact-inner {
     flex-direction: column;
     align-items: flex-start;
     gap: 6px;

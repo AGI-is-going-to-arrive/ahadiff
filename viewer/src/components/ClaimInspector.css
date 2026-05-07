@@ -1,6 +1,7 @@
 /* ── ClaimInspector ─────────────────────────────────────────── */
 
 .claim-inspector {
+  container-type: inline-size;
   border-left: 1px solid var(--hair);
   padding: 14px 14px 8px;
   position: sticky;
@@ -447,6 +448,9 @@
 }
 
 /* ── Mobile: collapse to stacked ─────────────────────────── */
+/* Kept as `@media` because the rule disables sticky positioning, swaps the
+   border side, and clears the panel max-height — these depend on the
+   layout shell collapsing the split, not the inspector's own width. */
 
 @media (max-width: 767px) {
   .claim-inspector {
