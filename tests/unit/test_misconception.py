@@ -66,6 +66,34 @@ class TestParseMisconceptionCards:
         assert cards[0].concept == "A"
         assert cards[1].concept == "B"
 
+    def test_parse_unwraps_provider_output_cards(self) -> None:
+        raw = json.dumps({"output": {"cards": [_make_raw_card(concept="wrapped")]}})
+
+        cards = parse_misconception_cards(raw)
+
+        assert len(cards) == 1
+        assert cards[0].concept == "wrapped"
+
+    def test_parse_unwraps_escaped_output_string(self) -> None:
+        raw = json.dumps({"output": json.dumps({"cards": [_make_raw_card(concept="escaped")]})})
+
+        cards = parse_misconception_cards(raw)
+
+        assert len(cards) == 1
+        assert cards[0].concept == "escaped"
+
+    def test_parse_scans_prose_for_wrapped_cards(self) -> None:
+        raw = (
+            "Here are the misconception cards:\n"
+            + json.dumps({"output": {"cards": [_make_raw_card(concept="prose")]}})
+            + "\nUse these for review."
+        )
+
+        cards = parse_misconception_cards(raw)
+
+        assert len(cards) == 1
+        assert cards[0].concept == "prose"
+
     def test_parse_invalid_json_returns_empty(self) -> None:
         assert parse_misconception_cards("{not json") == []
 

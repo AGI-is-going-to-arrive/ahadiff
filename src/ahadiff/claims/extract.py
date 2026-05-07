@@ -33,6 +33,7 @@ _JSON_FENCE_RE = re.compile(
     r"```(?P<lang>[^\r\n`]*)\r?\n(?P<body>[\s\S]*?)```",
     re.IGNORECASE,
 )
+_INVALID_JSON_ESCAPE_RE = re.compile(r'\\(?!["\\/bfnrtu])')
 
 
 def parse_claim_candidates_text(
@@ -44,18 +45,32 @@ def parse_claim_candidates_text(
     if not stripped:
         raise InputError("claim candidate payload is empty")
 
+    parsed_candidates: list[tuple[int, tuple[ClaimCandidate, ...]]] = []
+    order = 0
     last_error: InputError | None = None
     for payload_text in _candidate_payload_texts(stripped):
         json_payload = _try_parse_json(payload_text)
         if json_payload is not None:
-            return _coerce_claim_candidates(
-                json_payload,
-                default_run_id=default_run_id,
-            )
+            try:
+                order = _append_candidate_batch(
+                    parsed_candidates,
+                    order=order,
+                    candidates=_coerce_claim_candidates(
+                        json_payload,
+                        default_run_id=default_run_id,
+                    ),
+                )
+                continue
+            except InputError as exc:
+                last_error = exc
         try:
-            return _parse_jsonl_candidates(
-                payload_text,
-                default_run_id=default_run_id,
+            order = _append_candidate_batch(
+                parsed_candidates,
+                order=order,
+                candidates=_parse_jsonl_candidates(
+                    payload_text,
+                    default_run_id=default_run_id,
+                ),
             )
         except InputError as exc:
             last_error = exc
@@ -64,14 +79,38 @@ def parse_claim_candidates_text(
     for payload_text in _candidate_payload_texts(stripped):
         recovered = _try_recover_truncated_json(payload_text)
         if recovered:
-            return _coerce_claim_candidates(
-                recovered,
-                default_run_id=default_run_id,
-            )
+            try:
+                order = _append_candidate_batch(
+                    parsed_candidates,
+                    order=order,
+                    candidates=_coerce_claim_candidates(
+                        recovered,
+                        default_run_id=default_run_id,
+                    ),
+                )
+            except InputError as exc:
+                last_error = exc
+
+    if parsed_candidates:
+        return max(
+            parsed_candidates,
+            key=lambda item: (len(item[1]), item[0]),
+        )[1]
 
     if last_error is not None:
         raise last_error
     raise InputError("claim candidate payload is empty")
+
+
+def _append_candidate_batch(
+    batches: list[tuple[int, tuple[ClaimCandidate, ...]]],
+    *,
+    order: int,
+    candidates: tuple[ClaimCandidate, ...],
+) -> int:
+    if candidates:
+        batches.append((order, candidates))
+    return order + 1
 
 
 def load_claim_candidates(
@@ -207,16 +246,35 @@ def _candidate_payload_texts(text: str) -> tuple[str, ...]:
         if language and language != "json":
             continue
         fence_payloads.append(match.group("body").strip())
-    if not fence_payloads:
-        return (text,)
-    return (*fence_payloads, text)
+    embedded_payloads = _embedded_json_payload_texts(text)
+    return tuple(dict.fromkeys((*fence_payloads, *embedded_payloads, text)))
+
+
+def _embedded_json_payload_texts(text: str) -> tuple[str, ...]:
+    decoder = json.JSONDecoder()
+    payloads: list[str] = []
+    for index, character in enumerate(text):
+        if character not in "{[":
+            continue
+        try:
+            _parsed, end_offset = decoder.raw_decode(text[index:])
+        except json.JSONDecodeError:
+            continue
+        payloads.append(text[index : index + end_offset].strip())
+    return tuple(payloads)
 
 
 def _try_parse_json(text: str) -> Any | None:
-    try:
-        return safe_json_loads(text)
-    except (json.JSONDecodeError, ValueError):
-        return None
+    for candidate in (text, _escape_invalid_json_string_backslashes(text)):
+        try:
+            return safe_json_loads(candidate)
+        except (json.JSONDecodeError, ValueError):
+            continue
+    return None
+
+
+def _escape_invalid_json_string_backslashes(text: str) -> str:
+    return _INVALID_JSON_ESCAPE_RE.sub(r"\\\\", text)
 
 
 def _count_unquoted_delimiters(text: str) -> tuple[int, int]:
@@ -253,29 +311,91 @@ def _try_recover_truncated_json(text: str) -> list[dict[str, Any]] | None:
     """Recover complete claim objects from token-capped truncated JSON."""
     stripped = text.strip()
     if not stripped.startswith("{") and not stripped.startswith("["):
-        return None
+        return _try_recover_leading_truncated_claim_array(stripped)
     last_complete = stripped.rfind("}")
     if last_complete < 0:
         return None
-    candidate = stripped[: last_complete + 1]
-    if not candidate.endswith("}"):
-        return None
+    for candidate in _truncated_json_candidates(stripped, last_complete=last_complete):
+        parsed = _try_parse_json(candidate)
+        items = _claim_dicts_from_recovered_payload(parsed)
+        if items:
+            return items
+    return None
+
+
+def _try_recover_leading_truncated_claim_array(text: str) -> list[dict[str, Any]] | None:
+    """Recover arrays where generation started in the middle of the first claim."""
+    for match in re.finditer(r'\{\s*"(?:claim_id|run_id|text|source_hunks)"\s*:', text):
+        candidate = "[" + text[match.start() :]
+        recovered = _try_recover_truncated_json(candidate)
+        if recovered:
+            return recovered
+    return None
+
+
+def _truncated_json_candidates(text: str, *, last_complete: int) -> tuple[str, ...]:
+    candidates: list[str] = []
+    if text.startswith("["):
+        last_array_end = text.rfind("]")
+        if last_array_end >= 0:
+            candidates.append(text[: last_array_end + 1])
+    candidate = text[: last_complete + 1]
     open_braces, open_brackets = _count_unquoted_delimiters(candidate)
     candidate += "]" * max(open_brackets, 0) + "}" * max(open_braces, 0)
-    parsed = _try_parse_json(candidate)
-    if parsed is None:
-        return None
+    candidates.append(candidate)
+    return tuple(dict.fromkeys(candidates))
+
+
+def _claim_dicts_from_recovered_payload(parsed: Any) -> list[dict[str, Any]] | None:
+    items = _claim_dicts_from_payload(parsed)
+    if items:
+        return items
+    return None
+
+
+def _claim_dicts_from_payload(parsed: Any) -> list[dict[str, Any]] | None:
     if isinstance(parsed, dict):
         envelope = cast("dict[str, Any]", parsed)
         claims_value = envelope.get("claims")
         if isinstance(claims_value, list) and claims_value:
             cv = cast("list[Any]", claims_value)
-            return [cast("dict[str, Any]", item) for item in cv if isinstance(item, dict)]
+            claim_items: list[dict[str, Any]] = []
+            for item in cv:
+                if not isinstance(item, dict):
+                    continue
+                item_map = cast("dict[str, Any]", item)
+                if _looks_like_claim_candidate(item_map):
+                    claim_items.append(item_map)
+            return claim_items or None
+        output_value = envelope.get("output")
+        if isinstance(output_value, dict | list):
+            nested = _claim_dicts_from_payload(output_value)
+            if nested:
+                return nested
+        if isinstance(output_value, str):
+            nested_payload = _try_parse_json(output_value)
+            nested = _claim_dicts_from_payload(nested_payload)
+            if nested:
+                return nested
         return None
     if isinstance(parsed, list) and parsed:
         items = cast("list[Any]", parsed)
-        return [cast("dict[str, Any]", item) for item in items if isinstance(item, dict)]
+        claim_items: list[dict[str, Any]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            item_map = cast("dict[str, Any]", item)
+            if _looks_like_claim_candidate(item_map):
+                claim_items.append(item_map)
+        return claim_items or None
     return None
+
+
+def _looks_like_claim_candidate(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    value_map = cast("dict[str, object]", value)
+    return any(key in value_map for key in ("text", "source_hunks", "claim_id"))
 
 
 def _parse_jsonl_candidates(
@@ -308,17 +428,8 @@ def _coerce_claim_candidates(
     items: list[dict[str, Any]]
     if isinstance(payload, dict):
         envelope = cast("dict[str, Any]", payload)
-        claims_value = envelope.get("claims")
-        if claims_value is None:
-            items = [envelope]
-        elif isinstance(claims_value, list):
-            items = []
-            for index, item in enumerate(cast("list[Any]", claims_value), start=1):
-                if not isinstance(item, dict):
-                    raise InputError(f"claim candidate #{index} must be a JSON object")
-                items.append(cast("dict[str, Any]", item))
-        else:
-            raise InputError("claim candidate envelope field 'claims' must be a JSON array")
+        wrapped_items = _claim_dicts_from_payload(envelope)
+        items = wrapped_items if wrapped_items is not None else [envelope]
     elif isinstance(payload, list):
         items = []
         for index, item in enumerate(cast("list[Any]", payload), start=1):
@@ -327,6 +438,7 @@ def _coerce_claim_candidates(
             items.append(cast("dict[str, Any]", item))
     else:
         raise InputError("claim candidate payload must be a JSON object, array, or JSONL")
+
     candidates: list[ClaimCandidate] = []
     seen_claim_ids: set[str] = set()
     for index, item in enumerate(items, start=1):

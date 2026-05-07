@@ -4,12 +4,15 @@ import json
 from pathlib import Path
 from typing import cast
 
+import httpx
 from typer.testing import CliRunner
 
 from ahadiff.cli import app
-from ahadiff.contracts import ClaimRecord, SourceHunk, compute_eval_bundle_version
+from ahadiff.contracts import ClaimRecord, ProviderConfig, SourceHunk, compute_eval_bundle_version
 from ahadiff.contracts.eval_bundle import compute_runtime_eval_bundle_version
+from ahadiff.core.config import SecurityConfig
 from ahadiff.eval import evaluate_run
+from ahadiff.eval.evaluator import run_llm_judge_for_run
 from ahadiff.git.line_map import build_line_map, serialize_line_map_payload
 
 _RUNNER = CliRunner()
@@ -287,6 +290,72 @@ diff --git a/src/app.py b/src/app.py
     assert report.verdict == "PASS"
     assert report.overall >= 80.0
     assert report.hard_gates.passed is True
+
+
+def test_run_llm_judge_for_run_writes_judge_artifact(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_run_fixture(
+        workspace_root,
+        run_id="run-judge",
+        claims=_standard_quiz_claims("run-judge"),
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+    )
+    deterministic_report = evaluate_run(run_path)
+    dimensions = {
+        dimension.name: {"score": dimension.max_score, "reason": "ok"}
+        for dimension in deterministic_report.dimensions
+    }
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["payload"] = json.loads(request.content.decode("utf-8"))
+        return httpx.Response(
+            200,
+            headers={"x-request-id": "req-judge"},
+            json={
+                "id": "resp_judge",
+                "model": "gpt-5.5",
+                "status": "completed",
+                "output_text": json.dumps({"dimensions": dimensions}),
+                "usage": {"input_tokens": 11, "output_tokens": 22},
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler), trust_env=False) as client:
+        report = run_llm_judge_for_run(
+            run_path=run_path,
+            workspace_root=workspace_root,
+            provider_config=ProviderConfig(
+                provider_class="openai_responses",
+                model_name="gpt-5.5",
+                base_url="http://127.0.0.1:8318",
+                api_key_env="AHADIFF_GPT55_KEY",
+            ),
+            api_key="test-key",
+            security_config=SecurityConfig(),
+            privacy_mode="strict_local",
+            output_lang="en",
+            deterministic_report=deterministic_report,
+            request_timeout_seconds=30,
+            max_concurrent=1,
+            qps_limit=10,
+            retry_attempts=0,
+            client=client,
+        )
+
+    assert captured["url"] == "http://127.0.0.1:8318/v1/responses"
+    request_payload = cast("dict[str, object]", captured["payload"])
+    assert request_payload["model"] == "gpt-5.5"
+    assert request_payload["text"] == {"format": {"type": "json_object"}}
+    assert report.model_id == "gpt-5.5"
+    payload = json.loads((run_path / "judge.json").read_text(encoding="utf-8"))
+    assert payload["artifact"] == "llm_judge"
+    assert payload["model_id"] == "gpt-5.5"
+    assert payload["usage"] == {"input_tokens": 11, "output_tokens": 22}
 
 
 def test_evaluate_run_does_not_pass_with_unlinked_quiz_artifacts(

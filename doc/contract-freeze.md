@@ -189,7 +189,7 @@ eval_bundle_version = sha256(b"\n---\n".join(chunks)).hexdigest()[:12]
 - 任一文件变更，包括空白，都会产生新的 `eval_bundle_version`
 - `rubric.yaml` 与其余 bundle 文件统一放在 `src/ahadiff/eval/` 下，避免 `eval/` 与 `evals/` 双口径漂移
 - `rubric_version` 仅是派生显示字段，不再参与真相判定或缓存失效
-- `prompts/*.md` 是 improve loop 唯一允许写入的命名空间，但实际可写白名单只包含 `lesson_generate.md`、`lesson_hint.md`、`lesson_compact.md`、`quiz_generate.md`、`claim_extract.md`；`prompts/improve_program.md` 为 human-written immutable state machine，不属于 improve loop 可写面
+- `prompts/*.md` 是 improve loop 唯一允许写入的命名空间，但实际可写白名单只包含 `lesson_generate.md`、`lesson_hint.md`、`lesson_compact.md`、`quiz_generate.md`、`claim_extract.md`；`eval_judge.md` 是 packaged prompt resource，用于可选 LLM judge，不属于 improve loop 可写面；`prompts/improve_program.md` 为 human-written immutable state machine，不属于 improve loop 可写面
 
 ### 3.3 ResultEvent / result_events
 
@@ -200,6 +200,29 @@ eval_bundle_version = sha256(b"\n---\n".join(chunks)).hexdigest()[:12]
 - `event_type=learn` 是 learn ratchet 的基线 lane；`score` / `verify` 只做临时评估，不参与 learn baseline 选择
 - `prompt_version` 记录的是 **AhaDiff 自带 prompt 资源** 的 tree hash：source checkout / improve worktree 读取该 checkout 内的 `src/ahadiff/prompts`，wheel 安装态读取包内 `ahadiff/prompts`；目标仓库顶层自己的 `prompts/` 不参与哈希
 - `note_json` 允许记录 ratchet 原因、learnability metadata 和 `degraded_flags`
+
+### 3.3.1 `judge.json`（可选 LLM judge artifact）
+
+`score.json` 仍是 deterministic evaluator 的发布评分，`judge.json` 只在配置了 `judge_provider` 的 learn run 中额外生成。它不替代 `result_events`，用于保存一次 LLM-as-judge 的旁路评分证据。
+
+冻结字段：
+
+- `artifact = "llm_judge"`
+- `schema_version`
+- `run_id`
+- `source_ref`
+- `source_kind`
+- `model_id`
+- `provider_class`
+- `prompt_fingerprint`
+- `eval_bundle_version`
+- `overall`
+- `dimensions`（8 维，字段与 rubric 维度一致）
+- `usage.input_tokens`
+- `usage.output_tokens`
+- `finish_reason`
+- `request_id`
+- `notes`
 
 最小列集：
 
@@ -309,6 +332,12 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 
 - `generate_model = gpt-5.4-mini`
 - `judge_model = gpt-5.4-mini`
+
+角色模型解析：
+
+- `generate_provider` / `judge_provider` 分别选择生成与评判 provider。
+- `generate_model` / `judge_model` 的非默认配置会覆盖 provider alias 中的 `model_name`。
+- 未配置 `judge_provider` 时，learn pipeline 不运行 LLM judge，也不写 `judge.json`。
 
 ### 3.6 UsageEvent（预留）
 
@@ -855,4 +884,4 @@ run_id: str
 - 未知 task error code 会在后端序列化时收敛为 `internal_error`，避免把任意内部字符串变成前端契约。
 - 前端 `taskInfoResponseSchema` 与 `TaskInfoResponse` 对齐，`recovery_hint` 作为稳定可选字段；LearnTaskBanner 用 `recovery_hint` 控制 Retry，并用 `Learn.rate_limited` 渲染 429。
 
-本轮实测：后端全量 `pytest --tb=short` = `1754 passed, 1 skipped in 145.88s`，目标 `tests/unit/test_serve_tasks.py` = `59 passed`，`ruff check` / `ruff format --check` / `pyright` 通过。前端 `pnpm run typecheck` / `pnpm run lint` 通过，`pnpm test -- --run` = `123 passed`，目标 Learn banner/store unit = `42 passed`，i18n key-count probe = `459/459`。coverage、build、全量 Playwright 和 live judge 未在本轮 hardening 后重跑。
+本轮实测：targeted parser / judge / orchestrator / lesson 回归 `230 passed in 11.67s`；后端全量 `pytest --tb=short` = `1993 passed, 1 skipped in 178.87s`；`ruff check` / `ruff format --check` / `pyright` / `git diff --check` 通过。真实 WebUI learn run 使用 `gpt-5.5` 生成和 judge，`score.json=94.96/PASS`，`judge.json model_id=gpt-5.5`，浏览器 console 无 error/warn；live judge smoke `1 passed in 4.30s`。coverage、前端 build 和全量 Playwright 未在本轮后重跑。

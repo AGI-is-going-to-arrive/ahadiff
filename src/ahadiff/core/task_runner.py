@@ -475,7 +475,7 @@ class TaskRunner:
                 info.status = TaskStatus.CANCELLED
                 info.completed_at = datetime.now(UTC).isoformat()
         except Exception as exc:
-            log.error("task %s failed with %s: %s", task_id, type(exc).__name__, exc)
+            log.error("task %s failed with %s", task_id, type(exc).__name__)
             if handle.is_cancelled():
                 info.status = TaskStatus.CANCELLED
                 info.completed_at = datetime.now(UTC).isoformat()

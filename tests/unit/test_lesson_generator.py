@@ -294,6 +294,121 @@ def test_generate_lessons_from_run_writes_expected_artifacts(
     assert bundle.claims_text
 
 
+def test_generate_lessons_from_run_fills_missing_full_quiz_and_sources(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_lesson_run_artifacts(workspace_root, "run_lesson_fallback")
+    fake_provider = _FakeLessonProvider()
+
+    def fake_generate(request: ProviderRequest) -> ProviderResponse:
+        if request.prompt_name != "lesson.generate":
+            return _FakeLessonProvider.generate(fake_provider, request)
+        fake_provider.prompt_names.append(request.prompt_name)
+        fake_provider.requests.append(request)
+        return ProviderResponse(
+            content=json.dumps(
+                {
+                    "tl_dr": "The retry helper now loops and handles transient failures.",
+                    "what_changed": ["retry_once now iterates across attempts."],
+                    "why": ["The diff adds a retry-oriented control-flow path."],
+                    "walkthrough": ["Read the new for-loop first."],
+                    "claims": ["The helper now loops over attempts."],
+                    "concepts": ["Retries re-run an operation after a failure."],
+                    "misconceptions": [],
+                    "not_proven": ["The diff does not prove runtime reliability improved."],
+                }
+            ),
+            model_id="gpt-5.4-mini",
+            input_tokens=10,
+            output_tokens=20,
+        )
+
+    fake_provider.generate = fake_generate  # type: ignore[method-assign]
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeLessonProvider:
+        return fake_provider
+
+    monkeypatch.setattr("ahadiff.lesson.generator.make_provider", fake_provider_factory)
+
+    paths = generate_lessons_from_run(
+        run_id="run_lesson_fallback",
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+    )
+
+    full_text = paths.full_path.read_text(encoding="utf-8")
+    assert "What source evidence supports this claim" in full_text
+    assert "src/app.py:new:1-6" in full_text
+
+
+def test_generate_lessons_from_run_repairs_section_shaped_full_lesson(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_lesson_run_artifacts(workspace_root, "run_lesson_sections")
+    fake_provider = _FakeLessonProvider()
+
+    def fake_generate(request: ProviderRequest) -> ProviderResponse:
+        if request.prompt_name != "lesson.generate":
+            return _FakeLessonProvider.generate(fake_provider, request)
+        fake_provider.prompt_names.append(request.prompt_name)
+        fake_provider.requests.append(request)
+        return ProviderResponse(
+            content=json.dumps(
+                {
+                    "tl_dr": "The retry helper now loops and handles transient failures.",
+                    "sections": [
+                        {"title": "What Changed", "bullets": ["retry_once now loops."]},
+                        {"title": "Why", "bullets": ["The diff changes control flow."]},
+                        {"title": "Walkthrough", "bullets": ["Follow the new loop."]},
+                        {"title": "Claims", "bullets": ["The helper loops over attempts."]},
+                        {"title": "Concepts", "bullets": ["retry_once"]},
+                    ],
+                    "sources": ["src/app.py:new:1-6"],
+                }
+            ),
+            model_id="gpt-5.5",
+            input_tokens=10,
+            output_tokens=20,
+        )
+
+    fake_provider.generate = fake_generate  # type: ignore[method-assign]
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeLessonProvider:
+        return fake_provider
+
+    monkeypatch.setattr("ahadiff.lesson.generator.make_provider", fake_provider_factory)
+
+    paths = generate_lessons_from_run(
+        run_id="run_lesson_sections",
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.5",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+    )
+
+    full_text = paths.full_path.read_text(encoding="utf-8")
+    assert "retry_once now loops." in full_text
+    assert "What source evidence supports this claim: The helper loops over attempts." in full_text
+
+
 def test_generate_lessons_from_run_allows_output_token_cap_override(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -455,6 +570,232 @@ def test_parse_lesson_payload_uses_first_candidate_matching_schema() -> None:
     parsed = cast("LessonHint", parse_lesson_payload(payload, schema=LessonHint))
 
     assert parsed.claims == ["The helper loops over attempts."]
+
+
+def test_parse_lesson_payload_strips_thinking_blocks_before_json() -> None:
+    payload = (
+        '<think>{"tl_dr":"wrong","key_points":["wrong"]}</think>\n'
+        "The final answer is:\n"
+        "{\n"
+        '  "tl_dr": "Remember the new retry loop and exception branch.",\n'
+        '  "key_points": ["Focus on the added for-loop."],\n'
+        '  "claims": ["The helper loops over attempts."],\n'
+        '  "sources": ["src/app.py:new:1-6"]\n'
+        "}"
+    )
+
+    parsed = cast("LessonHint", parse_lesson_payload(payload, schema=LessonHint))
+
+    assert parsed.tl_dr == "Remember the new retry loop and exception branch."
+
+
+def test_parse_lesson_payload_accepts_unfenced_markdown_prose_wrapping_json() -> None:
+    payload = (
+        "Here is the lesson object you asked for.\n\n"
+        "{\n"
+        '  "headline": "Retry loop reminder",\n'
+        '  "summary": ["Loop over attempts, then continue on exception."],\n'
+        '  "concepts": ["retry loop"],\n'
+        '  "sources": ["src/app.py:new:1-6"]\n'
+        "}\n\n"
+        "This is the complete JSON payload."
+    )
+
+    parsed = cast("LessonCompact", parse_lesson_payload(payload, schema=LessonCompact))
+
+    assert parsed.headline == "Retry loop reminder"
+
+
+@pytest.mark.parametrize(
+    "trailing_fragment",
+    [
+        ', "not_proven": ["The output was truncated inside this string',
+        ', "misconcep',
+        ",",
+    ],
+)
+def test_parse_lesson_payload_recovers_after_complete_pairs_before_truncated_tail(
+    trailing_fragment: str,
+) -> None:
+    payload = (
+        "{\n"
+        '  "tl_dr": "The retry helper now loops and handles transient failures.",\n'
+        '  "what_changed": ["retry_once now iterates across attempts."],\n'
+        '  "why": ["The diff adds a retry-oriented control-flow path."],\n'
+        '  "walkthrough": ["Read the new for-loop and exception handling path first."],\n'
+        '  "claims": ["The helper now loops over attempts."],\n'
+        '  "concepts": ["Retries re-run an operation after a failure."],\n'
+        '  "quiz": ["Why is the exception branch part of the teaching surface?"],\n'
+        '  "sources": ["src/app.py:new:1-6"]'
+        f"{trailing_fragment}"
+    )
+
+    parsed = cast("LessonFull", parse_lesson_payload(payload, schema=LessonFull))
+
+    assert parsed.tl_dr == "The retry helper now loops and handles transient failures."
+    assert parsed.sources == ["src/app.py:new:1-6"]
+
+
+def test_parse_lesson_payload_skips_empty_object_mixed_with_real_content() -> None:
+    payload = (
+        "```json\n{}\n```\n\n"
+        "```json\n"
+        "{\n"
+        '  "tl_dr": "Remember the new retry loop and exception branch.",\n'
+        '  "key_points": ["Focus on the added for-loop."],\n'
+        '  "claims": ["The helper loops over attempts."],\n'
+        '  "sources": ["src/app.py:new:1-6"]\n'
+        "}\n"
+        "```"
+    )
+
+    parsed = cast("LessonHint", parse_lesson_payload(payload, schema=LessonHint))
+
+    assert parsed.key_points == ["Focus on the added for-loop."]
+
+
+def test_parse_lesson_payload_accepts_unclosed_fenced_json_block() -> None:
+    payload = (
+        "```json\n"
+        "{\n"
+        '  "headline": "Retry loop reminder",\n'
+        '  "summary": ["Loop over attempts, then continue on exception."],\n'
+        '  "concepts": ["retry loop"],\n'
+        '  "sources": ["src/app.py:new:1-6"]\n'
+        "}\n"
+    )
+
+    parsed = cast("LessonCompact", parse_lesson_payload(payload, schema=LessonCompact))
+
+    assert parsed.concepts == ["retry loop"]
+
+
+def test_parse_lesson_payload_unwraps_nested_output_object_from_reasoning_model() -> None:
+    payload = json.dumps(
+        {
+            "output": {
+                "tl_dr": "Remember the new retry loop and exception branch.",
+                "key_points": ["Focus on the added for-loop."],
+                "claims": ["The helper loops over attempts."],
+                "sources": ["src/app.py:new:1-6"],
+            }
+        }
+    )
+
+    parsed = cast("LessonHint", parse_lesson_payload(payload, schema=LessonHint))
+
+    assert parsed.claims == ["The helper loops over attempts."]
+
+
+def test_parse_lesson_payload_unwraps_escaped_output_string() -> None:
+    payload = json.dumps(
+        {
+            "output": json.dumps(
+                {
+                    "tl_dr": "Remember the new retry loop and exception branch.",
+                    "key_points": ["Focus on the added for-loop."],
+                    "claims": ["The helper loops over attempts."],
+                    "sources": ["src/app.py:new:1-6"],
+                }
+            )
+        }
+    )
+
+    parsed = cast("LessonHint", parse_lesson_payload(payload, schema=LessonHint))
+
+    assert parsed.key_points == ["Focus on the added for-loop."]
+
+
+def test_parse_lesson_payload_unwraps_openai_responses_envelope() -> None:
+    payload = json.dumps(
+        {
+            "output": [
+                {
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": json.dumps(
+                                {
+                                    "tl_dr": "Remember the new retry loop and exception branch.",
+                                    "key_points": ["Focus on the added for-loop."],
+                                    "claims": ["The helper loops over attempts."],
+                                    "sources": ["src/app.py:new:1-6"],
+                                }
+                            ),
+                        }
+                    ]
+                }
+            ]
+        }
+    )
+
+    parsed = cast("LessonHint", parse_lesson_payload(payload, schema=LessonHint))
+
+    assert parsed.sources == ["src/app.py:new:1-6"]
+
+
+def test_parse_lesson_payload_prefers_final_valid_json_after_echoed_schema() -> None:
+    echoed_schema = {
+        "tl_dr": "SCHEMA EXAMPLE SHOULD NOT WIN",
+        "key_points": ["wrong"],
+        "claims": ["wrong"],
+        "sources": ["wrong"],
+    }
+    final_answer = {
+        "tl_dr": "Remember the new retry loop and exception branch.",
+        "key_points": ["Focus on the added for-loop."],
+        "claims": ["The helper loops over attempts."],
+        "sources": ["src/app.py:new:1-6"],
+    }
+    payload = (
+        "The schema shape is:\n"
+        "```json\n"
+        f"{json.dumps(echoed_schema)}\n"
+        "```\n\n"
+        "The final JSON is:\n"
+        "```json\n"
+        f"{json.dumps(final_answer)}\n"
+        "```"
+    )
+
+    parsed = cast("LessonHint", parse_lesson_payload(payload, schema=LessonHint))
+
+    assert parsed.tl_dr == "Remember the new retry loop and exception branch."
+
+
+def test_parse_lesson_payload_accepts_single_object_array_root() -> None:
+    payload = json.dumps(
+        [
+            {
+                "tl_dr": "Remember the new retry loop and exception branch.",
+                "key_points": ["Focus on the added for-loop."],
+                "claims": ["The helper loops over attempts."],
+                "sources": ["src/app.py:new:1-6"],
+            }
+        ]
+    )
+
+    parsed = cast("LessonHint", parse_lesson_payload(payload, schema=LessonHint))
+
+    assert parsed.sources == ["src/app.py:new:1-6"]
+
+
+def test_parse_lesson_payload_rejects_missing_required_fields() -> None:
+    with pytest.raises(ValueError):
+        parse_lesson_payload(json.dumps({"tl_dr": "Too short."}), schema=LessonHint)
+
+
+def test_parse_lesson_payload_rejects_truncated_required_source_marker() -> None:
+    payload = (
+        "{\n"
+        '  "tl_dr": "Remember the new retry loop and exception branch.",\n'
+        '  "key_points": ["Focus on the added for-loop."],\n'
+        '  "claims": ["The helper loops over attempts."],\n'
+        '  "sources": ["src/app.py:new:1-'
+    )
+
+    with pytest.raises(ValueError):
+        parse_lesson_payload(payload, schema=LessonHint)
 
 
 def test_write_lesson_artifacts_rejects_overwrite_before_creating_new_files(tmp_path: Path) -> None:

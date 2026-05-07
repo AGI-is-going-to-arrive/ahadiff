@@ -12,6 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from ahadiff.core.config import ResolvedSetting
 from ahadiff.core.errors import AhaDiffError, ConfigError, SafetyError
 from ahadiff.core.orchestrator import (
     LearnRequest,
@@ -25,6 +26,7 @@ from ahadiff.core.orchestrator import (
     run_with_retry,
 )
 from ahadiff.git.capture import GraphifyStatus
+from ahadiff.lesson.schemas import LessonHint
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
@@ -159,6 +161,45 @@ def test_resolve_provider_keeps_distinct_implicit_aliases_ambiguous() -> None:
         )
 
 
+def test_resolve_provider_uses_configured_role_model_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = _FakeConfigSnapshot()
+    snapshot.values["llm"]["generate_provider"] = "gpt"
+    snapshot.values["llm"]["generate_model"] = "gpt-5.5"
+    snapshot.values["providers"] = {
+        "gpt": {
+            "provider_class": "openai",
+            "model_name": "provider-default-model",
+            "base_url": "http://127.0.0.1:8318",
+            "api_key_env": "AHADIFF_PROVIDER_API_KEY",
+        }
+    }
+    snapshot.resolved = {
+        "llm.generate_model": ResolvedSetting(
+            key="llm.generate_model",
+            value="gpt-5.5",
+            source="repo:/tmp/repo/.ahadiff/config.toml",
+        )
+    }
+    monkeypatch.setenv("AHADIFF_PROVIDER_API_KEY", "test-key")
+
+    provider_config, _, _, _ = _resolve_provider_from_config(
+        snapshot=snapshot,
+        operation_label="lesson generation",
+        provider_name=None,
+        provider_class="openai",
+        base_url=None,
+        model=None,
+        api_key_env="AHADIFF_PROVIDER_API_KEY",
+        privacy_mode="strict_local",
+        local_hosts=("127.0.0.1",),
+        strict_local_hosts=("127.0.0.1",),
+    )
+
+    assert provider_config.model_name == "gpt-5.5"
+
+
 # ---------------------------------------------------------------------------
 # Fake objects for mocking the pipeline
 # ---------------------------------------------------------------------------
@@ -236,6 +277,7 @@ class _FakeConfigSnapshot:
             "privacy_mode": "strict_local",
             "lang": "en",
         }
+        self.resolved: dict[str, ResolvedSetting] = {}
 
 
 @dataclass(frozen=True)
@@ -759,6 +801,40 @@ def test_progress_callback_emits_lesson_substeps(
     assert all(total == 10 for step, total, _message in collected if step == 6)
 
 
+def test_configured_judge_provider_runs_after_deterministic_evaluation(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    snapshot = _FakeConfigSnapshot()
+    snapshot.values["llm"]["judge_provider"] = "judge"
+
+    def _load_config(
+        _root: Path,
+        cli_overrides: dict[str, object] | None = None,
+    ) -> _FakeConfigSnapshot:
+        return snapshot
+
+    monkeypatch.setattr(f"{_ORCH}.load_config", _load_config)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    _patch_learnability(monkeypatch, score=0.7)
+    _patch_completed_pipeline(monkeypatch, fake_repo, capture)
+    judge_calls: list[dict[str, object]] = []
+
+    def _run_llm_judge_for_run(**kwargs: object) -> None:
+        judge_calls.append(kwargs)
+
+    monkeypatch.setattr("ahadiff.eval.evaluator.run_llm_judge_for_run", _run_llm_judge_for_run)
+
+    result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
+
+    assert result.status == "keep"
+    assert len(judge_calls) == 1
+    assert judge_calls[0]["run_path"] == fake_repo / ".ahadiff" / "runs" / capture.run_id
+    assert judge_calls[0]["output_lang"] == "en"
+    assert cast("MagicMock", judge_calls[0]["deterministic_report"]).verdict == "PASS"
+
+
 def test_no_verified_claims_skip(
     monkeypatch: pytest.MonkeyPatch,
     fake_repo: Path,
@@ -1120,6 +1196,73 @@ def test_failed_lesson_artifact_cleanup_runs_inside_repo_write_lock(
     assert not (run_path / "claims.raw.jsonl").exists()
     assert not (run_path / "claims.jsonl").exists()
     assert not (run_path / "lesson").exists()
+
+
+def test_lesson_schema_validation_failure_retries_once_then_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    _patch_learnability(monkeypatch, score=0.7)
+    call_count = 0
+
+    def _generate_lessons(kwargs: dict[str, object]) -> None:
+        del kwargs
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            LessonHint.model_validate({"tl_dr": "Missing required lists."})
+
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        on_generate_lessons=_generate_lessons,
+    )
+
+    result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
+
+    assert result.status == "keep"
+    assert result.recoverable_errors == 1
+    assert call_count == 2
+
+
+def test_failed_quiz_artifact_cleanup_removes_lesson_and_quiz_outputs(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    _patch_learnability(monkeypatch, score=0.7)
+    run_path = fake_repo / ".ahadiff" / "runs" / capture.run_id
+
+    def _write_lesson_artifact(kwargs: dict[str, object]) -> None:
+        del kwargs
+        (run_path / "lesson").mkdir(parents=True, exist_ok=True)
+        (run_path / "lesson" / "lesson.full.md").write_text("partial\n", encoding="utf-8")
+
+    def _fail_generate_quiz(kwargs: dict[str, object]) -> None:
+        del kwargs
+        (run_path / "quiz").mkdir(parents=True, exist_ok=True)
+        (run_path / "quiz" / "quiz.jsonl").write_text("partial\n", encoding="utf-8")
+        raise RuntimeError("invalid quiz payload")
+
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        on_generate_lessons=_write_lesson_artifact,
+        on_generate_quiz=_fail_generate_quiz,
+    )
+
+    with pytest.raises(AhaDiffError, match="quiz generation failed"):
+        run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
+
+    assert not (run_path / "claims.raw.jsonl").exists()
+    assert not (run_path / "claims.jsonl").exists()
+    assert not (run_path / "lesson").exists()
+    assert not (run_path / "quiz").exists()
 
 
 def test_cancellation_after_append_concepts_commits_published_run(
@@ -1496,6 +1639,12 @@ class TestIsRecoverableError:
         assert is_timeout_or_network_error(ValueError("not valid json")) is False
         assert is_timeout_or_network_error(ValueError("not valid json at char 500")) is False
 
+    def test_schema_validation_error_is_recoverable_format_failure(self) -> None:
+        with pytest.raises(Exception) as exc_info:
+            LessonHint.model_validate({"tl_dr": "Missing required lists."})
+
+        assert is_recoverable_error(exc_info.value) is True
+
 
 class TestRunWithRetry:
     def test_success_on_first_try(self) -> None:
@@ -1602,6 +1751,28 @@ class TestRunWithRetry:
         result = run_with_retry(
             _format_flaky,
             step_name="llm_step",
+            budget=budget,
+            is_cancelled=lambda: False,
+            max_retries_override=1,
+        )
+        assert result == "ok"
+        assert call_count == 2
+        assert budget.error_count == 1
+
+    def test_max_retries_override_allows_schema_validation_retry(self) -> None:
+        call_count = 0
+
+        def _format_flaky() -> str:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                LessonHint.model_validate({"tl_dr": "Missing required lists."})
+            return "ok"
+
+        budget = PipelineErrorBudget(max_step_retries=2)
+        result = run_with_retry(
+            _format_flaky,
+            step_name="lesson_generation",
             budget=budget,
             is_cancelled=lambda: False,
             max_retries_override=1,

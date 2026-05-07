@@ -188,6 +188,8 @@ def is_recoverable_error(exc: Exception) -> bool:
 
     if isinstance(exc, ConfigError | SafetyError):
         return False
+    if isinstance(exc, ValidationError):
+        return True
     if isinstance(exc, ConnectionError | TimeoutError):
         return True
     try:
@@ -407,6 +409,11 @@ def _resolve_provider_from_config(
     llm_config = cast("dict[str, Any]", snapshot.values["llm"])
     model_key = f"{role}_model"
     resolved_model = model or str(llm_config.get(model_key, llm_config.get("generate_model", "")))
+    configured_model_override = _configured_model_override(
+        snapshot=snapshot,
+        role=role,
+        model=model,
+    )
     provider_selection_explicit = base_url is not None or provider_name is not None
 
     if base_url is not None:
@@ -442,7 +449,7 @@ def _resolve_provider_from_config(
                 resolved_name = implicit_duplicate_provider_name(
                     providers_table=providers_table,
                     configured_names=configured_names,
-                    model=model,
+                    model=configured_model_override,
                 )
                 if resolved_name is None:
                     raise AhaDiffError(
@@ -460,8 +467,8 @@ def _resolve_provider_from_config(
             str(normalized_payload["base_url"]),
             provider_class=str(normalized_payload["provider_class"]),
         )
-        if model is not None:
-            normalized_payload["model_name"] = model
+        if configured_model_override is not None:
+            normalized_payload["model_name"] = configured_model_override
         provider_config = _provider_config_from_payload(normalized_payload)
 
     transport_target: TransportTarget = transport_target_for_base_url(
@@ -497,6 +504,25 @@ def _resolve_provider_from_config(
         )
 
     return provider_config, effective_api_key, transport_target, provider_selection_explicit
+
+
+def _configured_model_override(
+    *,
+    snapshot: Any,
+    role: str,
+    model: str | None,
+) -> str | None:
+    if model is not None:
+        return model
+    resolved = getattr(snapshot, "resolved", None)
+    if not isinstance(resolved, dict):
+        return None
+    resolved_settings = cast("dict[str, Any]", resolved)
+    setting = resolved_settings.get(f"llm.{role}_model")
+    if setting is None or getattr(setting, "source", "default") == "default":
+        return None
+    value = str(getattr(setting, "value", "")).strip()
+    return value or None
 
 
 def _cleanup_lesson_generation_artifacts(
@@ -970,7 +996,7 @@ def run_learn_pipeline(
                         raw_claims_path=raw_claims_path,
                         claims_output_path=claims_output_path,
                     )
-                    raise AhaDiffError(f"claim extraction failed: {exc}") from exc
+                    raise AhaDiffError("claim extraction failed") from exc
 
                 if lesson_skip_reason is not None:
                     early_result = LearnResult(
@@ -1028,7 +1054,7 @@ def run_learn_pipeline(
                             raw_claims_path=raw_claims_path,
                             claims_output_path=claims_output_path,
                         )
-                        raise AhaDiffError(f"lesson generation failed: {exc}") from exc
+                        raise AhaDiffError("lesson generation failed") from exc
 
                     # ------------------------------------------------------------------
                     # Step 7: generate quiz
@@ -1088,7 +1114,7 @@ def run_learn_pipeline(
                             raw_claims_path=raw_claims_path,
                             claims_output_path=claims_output_path,
                         )
-                        raise AhaDiffError(f"quiz generation failed: {exc}") from exc
+                        raise AhaDiffError("quiz generation failed") from exc
 
                     # ------------------------------------------------------------------
                     # Step 8: evaluate run
@@ -1096,9 +1122,69 @@ def run_learn_pipeline(
                     _emit(8, "Evaluating run")
                     _check_cancelled(_cancelled)
 
-                    from ahadiff.eval.evaluator import evaluate_run
+                    from ahadiff.eval.evaluator import evaluate_run, run_llm_judge_for_run
 
                     learn_report = evaluate_run(run_path)
+
+                    judge_provider_name = str(llm_config.get("judge_provider", "")).strip()
+                    if judge_provider_name:
+                        try:
+                            (
+                                judge_provider_config,
+                                judge_api_key,
+                                judge_transport_target,
+                                judge_provider_selection_explicit,
+                            ) = _resolve_provider_from_config(
+                                snapshot=snapshot,
+                                operation_label="LLM judge evaluation",
+                                provider_name=None,
+                                provider_class=request.provider_class,
+                                base_url=None,
+                                model=None,
+                                api_key_env=request.api_key_env,
+                                privacy_mode=effective_privacy_mode,
+                                local_hosts=security_config.local_hosts,
+                                strict_local_hosts=security_config.strict_local_hosts,
+                                role="judge",
+                            )
+                            judge_privacy_mode = _privacy_mode_for_explicit_provider_call(
+                                effective_privacy_mode,
+                                transport_target=judge_transport_target,
+                                provider_selection_explicit=judge_provider_selection_explicit,
+                            )
+
+                            def _run_llm_judge() -> None:
+                                run_llm_judge_for_run(
+                                    run_path=run_path,
+                                    workspace_root=root,
+                                    provider_config=judge_provider_config,
+                                    api_key=judge_api_key,
+                                    security_config=security_config,
+                                    privacy_mode=cast("PrivacyMode", judge_privacy_mode),
+                                    output_lang=resolved_content_lang,
+                                    deterministic_report=learn_report,
+                                    request_timeout_seconds=int(
+                                        llm_config["request_timeout_seconds"]
+                                    ),
+                                    max_concurrent=int(llm_config["max_concurrent"]),
+                                    qps_limit=int(provider_limits["qps_limit"]),
+                                    retry_attempts=int(llm_config["retry_attempts"]),
+                                    input_token_budget=int(
+                                        llm_config.get("input_token_budget", 200000)
+                                    ),
+                                    output_token_budget=output_budget,
+                                )
+
+                            _emit(8, "Evaluating run with LLM judge")
+                            run_with_retry(
+                                _run_llm_judge,
+                                step_name="llm_judge",
+                                budget=error_budget,
+                                is_cancelled=_cancelled,
+                                max_retries_override=_LLM_STEP_MAX_RETRIES,
+                            )
+                        except Exception as judge_error:
+                            learn_warnings.append(f"LLM judge evaluation failed: {judge_error}")
 
                     generate_cards_for_run(
                         run_path=run_path,

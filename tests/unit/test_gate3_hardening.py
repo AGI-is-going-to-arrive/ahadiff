@@ -168,6 +168,16 @@ def test_gate3_llm_judge_output_rejects_malformed_scores() -> None:
     }
 
     assert parse_llm_judge_output(json.dumps({"dimensions": valid_dimensions}))
+    assert parse_llm_judge_output(
+        "```json\n" + json.dumps({"dimensions": valid_dimensions}) + "\n```"
+    )
+    assert parse_llm_judge_output(json.dumps({"output": {"dimensions": valid_dimensions}}))
+    early_example = json.dumps({"dimensions": {"accuracy": {"score": 1, "reason": "example"}}})
+    final_payload = json.dumps({"dimensions": valid_dimensions})
+    assert (
+        parse_llm_judge_output(f"```json\n{early_example}\n```\n\n{final_payload}")[0].score
+        == load_rubric().dimensions[0].max_score
+    )
 
     with pytest.raises(InputError, match="invalid LLM judge JSON"):
         parse_llm_judge_output("{not-json")

@@ -10,7 +10,7 @@ from typer.testing import CliRunner
 from ahadiff import cli as cli_module
 from ahadiff.cli import app
 from ahadiff.contracts import ProviderConfig
-from ahadiff.core.config import write_default_config
+from ahadiff.core.config import ResolvedSetting, write_default_config
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -58,6 +58,48 @@ def _provider_config() -> ProviderConfig:
 def test_lazy_class_helpers_resolve_real_classes() -> None:
     assert inspect.isclass(cli_module._install_context_cls())  # pyright: ignore[reportPrivateUsage]
     assert inspect.isclass(cli_module._serve_state_cls())  # pyright: ignore[reportPrivateUsage]
+
+
+def test_runtime_provider_uses_configured_generate_model_override(
+    monkeypatch: Any,
+) -> None:
+    snapshot = SimpleNamespace(
+        values={
+            "llm": {"generate_model": "gpt-5.5"},
+            "providers": {
+                "gpt": {
+                    "provider_class": "openai_responses",
+                    "model_name": "provider-default",
+                    "base_url": "http://127.0.0.1:8318",
+                    "api_key_env": "AHADIFF_PROVIDER_API_KEY",
+                }
+            },
+        },
+        resolved={
+            "llm.generate_model": ResolvedSetting(
+                key="llm.generate_model",
+                value="gpt-5.5",
+                source="repo:/tmp/repo/.ahadiff/config.toml",
+            )
+        },
+    )
+    monkeypatch.setenv("AHADIFF_PROVIDER_API_KEY", "test-key")
+
+    provider_config, _api_key, _target, _explicit = cli_module._resolve_runtime_provider(  # pyright: ignore[reportPrivateUsage]
+        snapshot=snapshot,
+        operation_label="lesson generation",
+        provider_name=None,
+        provider_class="openai",
+        base_url=None,
+        model=None,
+        api_key_env="AHADIFF_PROVIDER_API_KEY",
+        privacy_mode="strict_local",
+        stdin_interactive=False,
+        local_hosts=("127.0.0.1",),
+        strict_local_hosts=("127.0.0.1",),
+    )
+
+    assert provider_config.model_name == "gpt-5.5"
 
 
 def test_improve_lang_is_passed_to_run_improve_loop(tmp_path: Path, monkeypatch: Any) -> None:

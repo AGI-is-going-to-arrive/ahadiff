@@ -247,9 +247,9 @@ def test_get_task_maps_error_code_to_user_facing_error(tmp_path: Path) -> None:
         ("timeout", "Task timed out. Try again or increase the timeout."),
         ("config_error", "raw internal detail"),
         ("permission_error", "Permission denied. Check file or directory permissions."),
-        ("claim_error", "raw internal detail"),
-        ("lesson_error", "raw internal detail"),
-        ("quiz_error", "raw internal detail"),
+        ("claim_error", "Failed to extract or verify claims from the diff."),
+        ("lesson_error", "Failed to generate lesson content."),
+        ("quiz_error", "Failed to generate quiz content."),
         ("learnability_error", "Diff was not suitable for learning."),
         ("cancelled", "Task was cancelled."),
         ("internal_error", "raw internal detail"),
@@ -258,6 +258,32 @@ def test_get_task_maps_error_code_to_user_facing_error(tmp_path: Path) -> None:
 )
 def test_user_facing_message_mapping(error_code: str, expected: str) -> None:
     assert _user_facing_message(error_code, "raw internal detail") == expected
+
+
+def test_lesson_error_does_not_echo_raw_llm_payload(tmp_path: Path) -> None:
+    sentinel = "SECRET_TOKEN_TEST"
+    info = TaskInfo(
+        task_id="task-1",
+        task_type="learn",
+        status=TaskStatus.FAILED,
+        progress=TaskProgress(current=6, total=10, message="failed"),
+        error=f"lesson generation failed: invalid payload {sentinel}",
+        error_code="lesson_error",
+        created_at="2026-05-01T00:00:00+00:00",
+        started_at="2026-05-01T00:00:01+00:00",
+        completed_at="2026-05-01T00:00:03+00:00",
+    )
+    runner = _StaticTaskRunner(info)
+    app = create_app(ServeState(state_dir=tmp_path, token="tok", task_runner=cast("Any", runner)))
+    client = TestClient(app, base_url="http://localhost:8765")
+
+    resp = client.get("/api/tasks/task-1")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    TaskInfoResponse.model_validate(body)
+    assert sentinel not in body["error"]
+    assert body["error"] == "Failed to generate lesson content."
 
 
 @pytest.mark.parametrize(

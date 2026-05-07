@@ -289,9 +289,16 @@ def _resolve_runtime_provider(
     stdin_interactive: bool,
     local_hosts: tuple[str, ...],
     strict_local_hosts: tuple[str, ...],
+    role: str = "generate",
 ) -> tuple[ProviderConfig, str | None, TransportTarget, bool]:
     llm_config = cast("dict[str, Any]", snapshot.values["llm"])
-    resolved_model = model or str(llm_config["generate_model"])
+    model_key = f"{role}_model"
+    resolved_model = model or str(llm_config.get(model_key, llm_config["generate_model"]))
+    configured_model_override = _configured_model_override_from_snapshot(
+        snapshot=snapshot,
+        role=role,
+        model=model,
+    )
     provider_selection_explicit = base_url is not None or provider_name is not None
     if base_url is not None:
         normalized_base_url = _normalize_provider_base_url(base_url, provider_class=provider_class)
@@ -319,7 +326,7 @@ def _resolve_runtime_provider(
                 resolved_name = implicit_duplicate_provider_name(
                     providers_table=providers_table,
                     configured_names=configured_names,
-                    model=resolved_model,
+                    model=configured_model_override or resolved_model,
                 )
                 if resolved_name is None:
                     raise AhaDiffError(
@@ -337,8 +344,8 @@ def _resolve_runtime_provider(
             str(normalized_payload["base_url"]),
             provider_class=str(normalized_payload["provider_class"]),
         )
-        if model is not None:
-            normalized_payload["model_name"] = model
+        if configured_model_override is not None:
+            normalized_payload["model_name"] = configured_model_override
         provider_config = _provider_config_from_payload(normalized_payload)
 
     transport_target = transport_target_for_base_url(
@@ -374,6 +381,25 @@ def _resolve_runtime_provider(
                 "--api-key-env must point to a set env var when stdin is non-interactive"
             )
     return provider_config, effective_api_key, transport_target, provider_selection_explicit
+
+
+def _configured_model_override_from_snapshot(
+    *,
+    snapshot: Any,
+    role: str,
+    model: str | None,
+) -> str | None:
+    if model is not None:
+        return model
+    resolved = getattr(snapshot, "resolved", None)
+    if not isinstance(resolved, dict):
+        return None
+    resolved_settings = cast("dict[str, Any]", resolved)
+    setting = resolved_settings.get(f"llm.{role}_model")
+    if setting is None or getattr(setting, "source", "default") == "default":
+        return None
+    value = str(getattr(setting, "value", "")).strip()
+    return value or None
 
 
 def _resolve_claim_extract_provider(

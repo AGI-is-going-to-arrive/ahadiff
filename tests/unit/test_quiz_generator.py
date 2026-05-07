@@ -365,6 +365,166 @@ def test_parse_quiz_payload_accepts_multiple_choice_rows_when_choices_are_requir
     assert parsed.questions[0].choices is not None
 
 
+def test_parse_quiz_payload_accepts_unclosed_fenced_json_block() -> None:
+    payload = "```json\n" + json.dumps(
+        {"questions": [_quiz_question_payload(choices=_quiz_choice_payloads())]}
+    )
+
+    parsed = parse_quiz_payload(payload, require_choices=True)
+
+    assert parsed.questions[0].question == "What structural change was added to retry_once?"
+
+
+def test_parse_quiz_payload_recovers_truncated_questions_array() -> None:
+    first_question = json.dumps(_quiz_question_payload(choices=_quiz_choice_payloads()))
+    payload = f'{{"questions":[{first_question},{{"question":"This second question was truncated",'
+
+    parsed = parse_quiz_payload(payload, require_choices=True)
+
+    assert len(parsed.questions) == 1
+    assert parsed.questions[0].question == "What structural change was added to retry_once?"
+
+
+@pytest.mark.parametrize(
+    "trailing_fragment",
+    [
+        ', {"question": "The second question mentions {retry} and then truncates',
+        ', {"quest',
+        ",",
+    ],
+)
+def test_parse_quiz_payload_recovers_first_question_before_truncated_tail(
+    trailing_fragment: str,
+) -> None:
+    first_question = json.dumps(_quiz_question_payload(choices=_quiz_choice_payloads()))
+    payload = f'{{"questions":[{first_question}{trailing_fragment}'
+
+    parsed = parse_quiz_payload(payload, require_choices=True)
+
+    assert len(parsed.questions) == 1
+    assert parsed.questions[0].choices is not None
+
+
+def test_parse_quiz_payload_skips_empty_object_mixed_with_real_content() -> None:
+    payload = "```json\n{}\n```\n\n" + json.dumps(
+        {"questions": [_quiz_question_payload(choices=_quiz_choice_payloads())]}
+    )
+
+    parsed = parse_quiz_payload(payload, require_choices=True)
+
+    assert parsed.questions[0].source_claims == ["claim_1"]
+
+
+def test_parse_quiz_payload_unwraps_reasoning_model_output_key() -> None:
+    payload = '<think>{"questions":[]}</think>\n' + json.dumps(
+        {"output": {"questions": [_quiz_question_payload(choices=_quiz_choice_payloads())]}}
+    )
+
+    parsed = parse_quiz_payload(payload, require_choices=True)
+
+    assert parsed.questions[0].expected_answer == (
+        "It now loops across attempts and continues after exceptions."
+    )
+
+
+def test_parse_quiz_payload_unwraps_escaped_output_string() -> None:
+    payload = json.dumps(
+        {
+            "output": json.dumps(
+                {"questions": [_quiz_question_payload(choices=_quiz_choice_payloads())]}
+            )
+        }
+    )
+
+    parsed = parse_quiz_payload(payload, require_choices=True)
+
+    assert parsed.questions[0].question == "What structural change was added to retry_once?"
+
+
+def test_parse_quiz_payload_unwraps_openai_responses_envelope() -> None:
+    payload = json.dumps(
+        {
+            "output": [
+                {
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": json.dumps(
+                                {
+                                    "questions": [
+                                        _quiz_question_payload(choices=_quiz_choice_payloads())
+                                    ]
+                                }
+                            ),
+                        }
+                    ]
+                }
+            ]
+        }
+    )
+
+    parsed = parse_quiz_payload(payload, require_choices=True)
+
+    assert parsed.questions[0].source_claims == ["claim_1"]
+
+
+def test_parse_quiz_payload_prefers_final_valid_json_after_echoed_schema() -> None:
+    echoed_schema = {
+        "questions": [
+            _quiz_question_payload(
+                question="SCHEMA EXAMPLE SHOULD NOT WIN",
+                choices=_quiz_choice_payloads(),
+            )
+        ]
+    }
+    final_answer = {"questions": [_quiz_question_payload(choices=_quiz_choice_payloads())]}
+    payload = (
+        "The schema shape is:\n"
+        "```json\n"
+        f"{json.dumps(echoed_schema)}\n"
+        "```\n\n"
+        "The final JSON is:\n"
+        "```json\n"
+        f"{json.dumps(final_answer)}\n"
+        "```"
+    )
+
+    parsed = parse_quiz_payload(payload, require_choices=True)
+
+    assert parsed.questions[0].question == "What structural change was added to retry_once?"
+
+
+def test_parse_quiz_payload_accepts_valid_array_root() -> None:
+    parsed = parse_quiz_payload(
+        json.dumps([_quiz_question_payload(choices=_quiz_choice_payloads())]),
+        require_choices=True,
+    )
+
+    assert parsed.questions[0].question == "What structural change was added to retry_once?"
+
+
+def test_parse_quiz_payload_rejects_missing_required_fields() -> None:
+    with pytest.raises(ValueError):
+        parse_quiz_payload(json.dumps({"questions": [{"question": "Missing fields."}]}))
+
+
+def test_parse_quiz_payload_rejects_bad_evidence_line() -> None:
+    with pytest.raises(ValidationError):
+        parse_quiz_payload(
+            json.dumps(
+                {
+                    "questions": [
+                        _quiz_question_payload(
+                            choices=_quiz_choice_payloads(),
+                            evidence=[{"file": "src/app.py", "line": 0}],
+                        )
+                    ]
+                }
+            ),
+            require_choices=True,
+        )
+
+
 @pytest.mark.parametrize(
     "choices",
     [

@@ -28,6 +28,9 @@ build/
 .venv/
 *.egg
 
+# JavaScript
+node_modules/
+
 # IDE
 .idea/
 .vscode/

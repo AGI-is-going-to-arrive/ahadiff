@@ -91,6 +91,7 @@
 | `review.sqlite` | SQLite (WAL) | 唯一真相源：SRS cards / result_events / learning_signals |
 | `claims.jsonl` | JSONL | 可验证断言，含 source_hunks / status / confidence |
 | `score.json` | JSON | 8 维评分 + verdict + hard_gates |
+| `judge.json` | JSON | 可选 LLM judge 8 维评分；仅配置 `judge_provider` 后生成，不替代 `score.json` |
 | `results.tsv` | TSV | 人类可读导出视图，11 列（从 review.sqlite 导出） |
 | `concepts.jsonl` | JSONL | branch-aware 概念累积（per-repo） |
 | `audit.jsonl` | JSONL | LLM 调用审计（schema_version + rotation） |
@@ -109,7 +110,7 @@ CLI 全局安装（`pip install ahadiff`），per-repo 运用。核心原则：*
 
 文档通过人工评审和 AI 辅助迭代完成质量保障。前端设计手册包含 20 条自查 Checklist。
 
-当前仓库最近一轮实测（2026-05-02，本 session）：后端完整 gate 为 `UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pytest --tb=short` = `1754 passed, 1 skipped in 145.88s (0:02:25)`；目标 `tests/unit/test_serve_tasks.py` = `59 passed`；`ruff check` / `ruff format --check` / `pyright` 通过。coverage gate 上一次同日结果仍是 `1736 passed, 1 skipped`，总覆盖率 `87.33%`，本轮 6B hardening 后未重跑 coverage。新增 learn-task spec 前的前端完整 gate 基线 `pnpm run typecheck && pnpm run lint && pnpm run test:unit && pnpm run build` 通过，其中 unit 为 `87 passed`，完整 Playwright `CI=1 pnpm run test:e2e` 为 `1320 passed (10.7m)`。本轮 learn/graph follow-up 与 6B hardening 后又重跑 `pnpm run typecheck`、`pnpm run lint`、`pnpm test -- --run` = `123 passed`、目标 Learn banner/store unit = `42 passed`、目标 `learn-task.spec.ts --project=chromium-laptop` = `8 passed`（hardening 前目标回归）、i18n = `459/459`、`git diff --check` 通过；当前 Playwright 配置枚举为 `1440 tests in 7 files`，hardening 后未重跑完整 Playwright / build / live judge。
+当前仓库最近一轮实测（2026-05-07，本 session）：targeted parser / judge / orchestrator / lesson 回归 `230 passed in 11.67s`；后端完整 gate 为 `UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pytest --tb=short` = `1993 passed, 1 skipped in 178.87s (0:02:58)`；`ruff check src tests`、`ruff format --check src tests`、`pyright` 和 `git diff --check` 通过。真实 WebUI learn run 使用 `gpt-5.5` 生成和 judge，成功生成 lesson，`score.json=94.96/PASS`，`judge.json model_id=gpt-5.5`，浏览器 console 无 error/warn；显式 live judge smoke `AHADIFF_LIVE_LLM_JUDGE=1 ... AHADIFF_LIVE_LLM_MODELS=gpt-5.5 ... pytest tests/live/test_llm_judge_live.py -q` = `1 passed in 4.30s`。coverage gate 上一次同日结果仍为 `87.33%`；本轮未重跑 coverage、前端 build 或全量 Playwright。
 
 ## 常见问题 (FAQ)
 
@@ -117,7 +118,7 @@ CLI 全局安装（`pip install ahadiff`），per-repo 运用。核心原则：*
 A: GitHub 已有功能近乎 1:1 重叠的 `mohi-devhub/antivibe`，"Antivibe" 是至少 3 家公司的注册商标，且 Substack 有同名框架预告。改名为 知返 AhaDiff 避免命名冲突。
 
 **Q: N-文件契约具体指什么？**
-A: 概念改编自 Karpathy/autoresearch 三文件契约（原版为 prepare.py + train.py，改 Python 代码）。AhaDiff 版本（N-文件契约）：`program.md` / `improve_program.md`（自然语言状态机，人类写）+ evaluation bundle（不可改的评估尺子）+ 可写 prompt 白名单（当前为 `lesson_generate.md`、`lesson_hint.md`、`lesson_compact.md`、`quiz_generate.md`、`claim_extract.md`，agent 只改这些 Markdown prompt）。核心循环由 Python CLI 编排，但可变面仍限制在 prompt，不改用户代码。
+A: 概念改编自 Karpathy/autoresearch 三文件契约（原版为 prepare.py + train.py，改 Python 代码）。AhaDiff 版本（N-文件契约）：`program.md` / `improve_program.md`（自然语言状态机，人类写）+ evaluation bundle（不可改的评估尺子）+ 可写 prompt 白名单（当前为 `lesson_generate.md`、`lesson_hint.md`、`lesson_compact.md`、`quiz_generate.md`、`claim_extract.md`，agent 只改这些 Markdown prompt）。`eval_judge.md` 是 packaged prompt resource，用于可选 LLM judge，不属于 improve loop 可写白名单。核心循环由 Python CLI 编排，但可变面仍限制在 prompt，不改用户代码。
 
 **Q: 文档间的阅读顺序？**
 A: 当前先读 `contract-freeze.md`，再读根目录 `CLAUDE.md` 和 `.claude/team-plan/`（kickoff + stages-4-9 + implementation plan）。前端视觉见「前端设计手册」。早期三份文档（设计思路/改名方案/最终方案）已归档，仅供历史参考。
@@ -170,3 +171,4 @@ A: 当前先读 `contract-freeze.md`，再读根目录 `CLAUDE.md` 和 `.claude/
 | 2026-05-02 | 同步 viewer learn/graph follow-up：`learn-store` 增加 backoff / timeout / safe retry / cancel/recovery 保护，`graph-store` 作为 GraphifyCard 共享 freshness cache，task schema 对齐后端 status enum；本轮前端 unit `118 passed`、目标 Learn E2E `8 passed`、i18n `458/458`，当前 Playwright 配置 `1440 tests`，完整 Playwright/build 未在 follow-up 后重跑。 |
 | 2026-05-02 | 同步 Phase 6B hardening：`POST /api/learn` 增加 10 req/min 写限流，401/403/404 不消耗额度；`TaskInfoResponse.error_code` 收紧为 `TaskErrorCode`，新增稳定 `recovery_hint` 字段；LearnTaskBanner 使用 429 `rate_limited` 双语文案和 `recovery_hint` 控制 Retry。当前实测后端 `1754 passed, 1 skipped`，目标 serve tasks `59 passed`，前端 unit `123 passed`，目标 Learn banner/store unit `42 passed`，i18n `459/459`；coverage/build/全量 Playwright 未在 hardening 后重跑。 |
 | 2026-05-06 | 同步 Viewer 侧栏溢出修复 + Lesson UX 优化：Diff/Lesson 右侧栏水平溢出修复（根因为 `.claim-card` button 默认 `inline-block` 不受 flex 父容器宽度约束，改 `display: block` + grid 列 `minmax(0, 320px)` + AppShell `overflow-x: hidden`）；Lesson claim 浮动面板（`createPortal` + fixed 定位 EvidencePanel，Escape/click-outside 关闭）；scaffolding tabs 默认精简模式（compact→hint→full 顺序 + 模式描述文字）。前端 unit `166 passed`（18 files），后端未变仍为 `1848 passed`。 |
+| 2026-05-07 | 同步 LLM judge + 鲁棒解析 + 真实 gpt-5.5 WebUI 验证：新增 `eval_judge.md`（源码 + wheel prompt resource）、可选 `judge.json` artifact、learn Step 8 LLM judge 接线、`generate_model`/`judge_model` 角色模型覆盖修复；claims/lesson/quiz/misconception/judge 解析增强 provider envelope、fenced JSON、JSONL、示例块和截断 JSON 容错；真实 WebUI learn run `score.json=94.96/PASS`、`judge.json model_id=gpt-5.5`、console 无 error/warn；targeted `230 passed`，后端全量 `1993 passed, 1 skipped`，live judge `1 passed`，ruff/format/pyright/diff-check 通过。 |

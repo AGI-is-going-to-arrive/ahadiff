@@ -262,6 +262,62 @@ print("not json")
     assert candidates[0].run_id == "run-fence"
 
 
+def test_parse_claim_candidates_text_prefers_later_real_claims_over_schema_example() -> None:
+    payload = """\
+The response contains an example first.
+
+```json
+{
+  "claims": [
+    {
+      "text": "SCHEMA EXAMPLE SHOULD NOT WIN",
+      "source_hunks": [{"file": "schema.py", "start": 1, "end": 1}]
+    }
+  ]
+}
+```
+
+Final answer:
+{
+  "claims": [
+    {
+      "text": "real generated claim",
+      "source_hunks": [{"file": "src/app.py", "start": 2, "end": 3, "side": "new"}]
+    }
+  ]
+}
+"""
+
+    candidates = parse_claim_candidates_text(payload, default_run_id="run-final")
+
+    assert len(candidates) == 1
+    assert candidates[0].text == "real generated claim"
+    assert candidates[0].source_hunks[0].file == "src/app.py"
+
+
+def test_parse_claim_candidates_text_unwraps_provider_output_claims() -> None:
+    payload = json.dumps(
+        {
+            "output": {
+                "claims": [
+                    {
+                        "text": "wrapped claim",
+                        "source_hunks": [
+                            {"file": "src/app.py", "start": 4, "end": 5, "side": "new"}
+                        ],
+                    }
+                ]
+            }
+        }
+    )
+
+    candidates = parse_claim_candidates_text(payload, default_run_id="run-wrapper")
+
+    assert len(candidates) == 1
+    assert candidates[0].text == "wrapped claim"
+    assert candidates[0].run_id == "run-wrapper"
+
+
 def test_parse_claim_candidates_text_rejects_invalid_jsonl() -> None:
     with pytest.raises(Exception, match="invalid claim candidate JSONL line 1"):
         parse_claim_candidates_text("not-json")
@@ -307,6 +363,38 @@ def test_parse_claim_candidates_text_recovers_truncated_with_braces_in_strings()
     assert len(candidates) == 1
     assert candidates[0].claim_id == "c1"
     assert "{init}" in candidates[0].text
+
+
+def test_parse_claim_candidates_text_recovers_leading_truncated_claim_array() -> None:
+    """A token-capped response can start in the middle of the first claim."""
+    truncated = (
+        'part of a broken first claim","source_hunks":['
+        '{"file":"broken.py","start":1,"end":2}]},'
+        '{"text":"second complete claim",'
+        '"source_hunks":[{"file":"b.py","start":3,"end":4,"side":"new"}]},'
+        '{"text":"third complete claim",'
+        '"source_hunks":[{"file":"c.py","start":5,"end":6,"side":"new"}]}]}'
+    )
+
+    candidates = parse_claim_candidates_text(truncated, default_run_id="run-leading")
+
+    assert [candidate.text for candidate in candidates] == [
+        "second complete claim",
+        "third complete claim",
+    ]
+    assert candidates[0].claim_id == "run-leading-claim-001"
+
+
+def test_parse_claim_candidates_text_escapes_invalid_json_backslashes() -> None:
+    payload = (
+        '{"claims":[{"text":"regex `<think\\b[^>]*>[\\s\\S]*?</think>` is used",'
+        '"source_hunks":[{"file":"src/app.py","start":1,"end":2,"side":"new"}]}]}'
+    )
+
+    candidates = parse_claim_candidates_text(payload, default_run_id="run-regex")
+
+    assert len(candidates) == 1
+    assert "\\s\\S" in candidates[0].text
 
 
 def test_parse_claim_candidates_text_requires_run_id_without_default() -> None:

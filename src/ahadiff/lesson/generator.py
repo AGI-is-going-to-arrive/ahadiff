@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import tempfile
+from collections.abc import Mapping
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
@@ -18,10 +19,16 @@ from ahadiff.llm import DEFAULT_OUTPUT_TOKEN_BUDGET, ProviderRequest, make_provi
 from ahadiff.safety.ignore import AllowlistPolicy
 from ahadiff.safety.redact import redaction_pipeline
 
-from .schemas import LessonCompact, LessonFull, LessonHint, parse_lesson_payload
+from .schemas import (
+    LessonCompact,
+    LessonFull,
+    LessonHint,
+    extract_json_object_candidates,
+    parse_lesson_payload,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable
 
     import httpx
 
@@ -134,7 +141,7 @@ def generate_lesson(
         output_token_budget=output_token_budget,
         output_token_cap=output_token_cap,
     )
-    parsed = parse_lesson_payload(payload, schema=LessonFull)
+    parsed = _parse_lesson_payload_with_fallbacks(payload, schema=LessonFull, bundle=bundle)
     return cast("LessonFull", parsed)
 
 
@@ -172,7 +179,7 @@ def generate_hint(
         output_token_budget=output_token_budget,
         output_token_cap=output_token_cap,
     )
-    parsed = parse_lesson_payload(payload, schema=LessonHint)
+    parsed = _parse_lesson_payload_with_fallbacks(payload, schema=LessonHint, bundle=bundle)
     return cast("LessonHint", parsed)
 
 
@@ -210,8 +217,321 @@ def generate_compact(
         output_token_budget=output_token_budget,
         output_token_cap=output_token_cap,
     )
-    parsed = parse_lesson_payload(payload, schema=LessonCompact)
+    parsed = _parse_lesson_payload_with_fallbacks(payload, schema=LessonCompact, bundle=bundle)
     return cast("LessonCompact", parsed)
+
+
+def _parse_lesson_payload_with_fallbacks(
+    payload: str,
+    *,
+    schema: type[LessonFull] | type[LessonHint] | type[LessonCompact],
+    bundle: RedactedRunBundle,
+) -> LessonFull | LessonHint | LessonCompact:
+    try:
+        return cast(
+            "LessonFull | LessonHint | LessonCompact",
+            parse_lesson_payload(payload, schema=schema),
+        )
+    except Exception as original_exc:
+        last_error: Exception = original_exc
+
+    fallback_sources = _fallback_sources_from_claims_text(bundle.claims_text)
+    fallback_claims = _fallback_claim_texts_from_claims_text(bundle.claims_text)
+    fallback_concepts = _fallback_concepts_from_claims_text(bundle.claims_text)
+    for candidate in extract_json_object_candidates(payload):
+        repaired = _repair_lesson_candidate(
+            candidate,
+            schema=schema,
+            fallback_sources=fallback_sources,
+            fallback_claims=fallback_claims,
+            fallback_concepts=fallback_concepts,
+        )
+        try:
+            return schema.model_validate(repaired)
+        except Exception as exc:
+            last_error = exc
+    raise last_error
+
+
+def _repair_lesson_candidate(
+    candidate: Mapping[str, Any],
+    *,
+    schema: type[LessonFull] | type[LessonHint] | type[LessonCompact],
+    fallback_sources: list[str],
+    fallback_claims: list[str],
+    fallback_concepts: list[str],
+) -> dict[str, Any]:
+    repaired: dict[str, Any] = dict(candidate)
+    sections = _lesson_sections(candidate)
+    if "sources" in schema.model_fields and not _lesson_list(repaired.get("sources")):
+        repaired["sources"] = fallback_sources
+    if schema is LessonFull:
+        _ensure_lesson_list(
+            repaired,
+            "what_changed",
+            sections=sections,
+            aliases=("what_changed", "what changed", "changes", "changed", "summary"),
+            fallback=fallback_claims,
+        )
+        _ensure_lesson_list(
+            repaired,
+            "why",
+            sections=sections,
+            aliases=("why", "why it matters", "rationale", "reason"),
+            fallback=["The verified claims define the learning boundary for this diff."],
+        )
+        _ensure_lesson_list(
+            repaired,
+            "walkthrough",
+            sections=sections,
+            aliases=("walkthrough", "code walkthrough", "implementation", "details"),
+            fallback=["Review the cited source hunks in order and keep claims tied to evidence."],
+        )
+        _ensure_lesson_list(
+            repaired,
+            "claims",
+            sections=sections,
+            aliases=("claims", "verified claims", "evidence claims"),
+            fallback=fallback_claims,
+        )
+        _ensure_lesson_list(
+            repaired,
+            "concepts",
+            sections=sections,
+            aliases=("concepts", "key concepts", "learning concepts"),
+            fallback=fallback_concepts,
+        )
+        _ensure_lesson_list(
+            repaired,
+            "not_proven",
+            sections=sections,
+            aliases=("not_proven", "not proven", "limitations", "gaps"),
+            fallback=["No high-risk unproven claims were shipped in this lesson."],
+        )
+        if not _lesson_list(repaired.get("misconceptions")):
+            repaired["misconceptions"] = []
+        if not _lesson_list(repaired.get("quiz")):
+            repaired["quiz"] = _fallback_full_lesson_quiz(repaired)
+    elif schema is LessonHint:
+        _ensure_lesson_list(
+            repaired,
+            "key_points",
+            sections=sections,
+            aliases=("key_points", "key points", "points", "summary"),
+            fallback=fallback_claims,
+        )
+        _ensure_lesson_list(
+            repaired,
+            "claims",
+            sections=sections,
+            aliases=("claims", "verified claims"),
+            fallback=fallback_claims,
+        )
+        if not _lesson_list(repaired.get("watch_fors")):
+            repaired["watch_fors"] = []
+    elif schema is LessonCompact:
+        headline = str(repaired.get("headline") or repaired.get("tl_dr") or "").strip()
+        if headline:
+            repaired["headline"] = headline
+        _ensure_lesson_list(
+            repaired,
+            "summary",
+            sections=sections,
+            aliases=("summary", "what changed", "changes", "key points"),
+            fallback=fallback_claims,
+        )
+        _ensure_lesson_list(
+            repaired,
+            "concepts",
+            sections=sections,
+            aliases=("concepts", "key concepts"),
+            fallback=fallback_concepts,
+        )
+    return {key: value for key, value in repaired.items() if key in schema.model_fields}
+
+
+def _lesson_sections(candidate: Mapping[str, Any]) -> dict[str, list[str]]:
+    raw_sections = candidate.get("sections")
+    sections: dict[str, list[str]] = {}
+    if isinstance(raw_sections, Mapping):
+        for key, value in cast("Mapping[object, object]", raw_sections).items():
+            values = _lesson_list(value)
+            if values:
+                sections[_lesson_key(str(key))] = values
+    elif isinstance(raw_sections, list):
+        for raw_item in cast("list[object]", raw_sections):
+            if not isinstance(raw_item, Mapping):
+                continue
+            item = cast("Mapping[str, object]", raw_item)
+            title = _first_text_value(item, ("title", "heading", "name", "key", "section"))
+            if not title:
+                continue
+            values = _lesson_list(
+                item.get("items")
+                or item.get("bullets")
+                or item.get("points")
+                or item.get("content")
+                or item.get("text")
+            )
+            if values:
+                sections[_lesson_key(title)] = values
+    return sections
+
+
+def _ensure_lesson_list(
+    repaired: dict[str, Any],
+    field_name: str,
+    *,
+    sections: Mapping[str, list[str]],
+    aliases: tuple[str, ...],
+    fallback: list[str],
+) -> None:
+    existing = _lesson_list(repaired.get(field_name))
+    if existing:
+        repaired[field_name] = existing
+        return
+    for alias in aliases:
+        values = _lesson_list(repaired.get(alias))
+        if values:
+            repaired[field_name] = values
+            return
+        values = sections.get(_lesson_key(alias))
+        if values:
+            repaired[field_name] = values
+            return
+    repaired[field_name] = fallback
+
+
+def _lesson_list(value: object) -> list[str]:
+    if isinstance(value, str):
+        line = value.strip()
+        return [line] if line else []
+    if not isinstance(value, list | tuple):
+        return []
+    values: list[str] = []
+    for item in cast("list[object] | tuple[object, ...]", value):
+        if isinstance(item, str):
+            text = item.strip()
+        elif isinstance(item, Mapping):
+            text = _first_text_value(
+                cast("Mapping[str, object]", item),
+                ("text", "content", "summary", "claim", "question"),
+            )
+        else:
+            text = str(item).strip()
+        if text:
+            values.append(text)
+    return values
+
+
+def _first_text_value(payload: Mapping[str, object], keys: tuple[str, ...]) -> str:
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _lesson_key(value: str) -> str:
+    return "".join(ch for ch in value.casefold() if ch.isalnum())
+
+
+def _fallback_full_lesson_quiz(candidate: Mapping[str, Any]) -> list[str]:
+    claims = candidate.get("claims")
+    if isinstance(claims, list):
+        for item in cast("list[object]", claims):
+            claim = str(item).strip()
+            if claim:
+                return [f"What source evidence supports this claim: {claim}"]
+    return ["Which source hunk supports the main lesson claim?"]
+
+
+def _fallback_claim_texts_from_claims_text(claims_text: str) -> list[str]:
+    claims: list[str] = []
+    for line in claims_text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            payload: object = safe_json_loads(stripped)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if not isinstance(payload, Mapping):
+            continue
+        payload_map = cast("Mapping[str, object]", payload)
+        text = payload_map.get("text")
+        if isinstance(text, str) and text.strip():
+            claims.append(text.strip())
+    return list(dict.fromkeys(claims)) or ["Review the verified claims for this diff."]
+
+
+def _fallback_concepts_from_claims_text(claims_text: str) -> list[str]:
+    concepts: list[str] = []
+    for line in claims_text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            payload: object = safe_json_loads(stripped)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if not isinstance(payload, Mapping):
+            continue
+        payload_map = cast("Mapping[str, object]", payload)
+        raw_symbols = payload_map.get("symbols")
+        if isinstance(raw_symbols, list):
+            for item in cast("list[object]", raw_symbols):
+                if isinstance(item, str) and item.strip():
+                    concepts.append(item.strip())
+    return list(dict.fromkeys(concepts)) or ["evidence-bound diff learning"]
+
+
+def _fallback_sources_from_claims_text(claims_text: str) -> list[str]:
+    refs: list[str] = []
+    for line in claims_text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            payload: object = safe_json_loads(stripped)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        payload_map = cast("Mapping[str, object]", payload)
+        source_hunks = payload_map.get("source_hunks")
+        if not isinstance(source_hunks, list):
+            continue
+        for hunk in cast("list[object]", source_hunks):
+            if not isinstance(hunk, dict):
+                continue
+            ref = _source_hunk_ref(cast("Mapping[str, object]", hunk))
+            if ref:
+                refs.append(ref)
+    return list(dict.fromkeys(refs)) or ["claims.jsonl"]
+
+
+def _source_hunk_ref(hunk: Mapping[str, object]) -> str | None:
+    path = str(hunk.get("file", "")).strip()
+    side = str(hunk.get("side", "new")).strip() or "new"
+    start = _source_hunk_int(hunk.get("start"))
+    end = _source_hunk_int(hunk.get("end"))
+    if start is None or end is None:
+        return None
+    if not path:
+        return None
+    return f"{path}:{side}:{start}-{end}"
+
+
+def _source_hunk_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | str | bytes | bytearray):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
 
 
 def generate_lessons_from_run(
