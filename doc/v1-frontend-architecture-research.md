@@ -3,7 +3,7 @@
 > Research-only. No code changes. Based on reading all gap analysis docs, V6 HTML reference, Blueprint HTML, and current viewer source.
 
 > Current-state note (2026-05-02): sections 11.4 and 11.6 were written before the latest viewer follow-up. The frontend now has a shared `GraphifyCard` backed by `viewer/src/state/graph-store.ts` with 30s TTL, 15s request timeout, in-flight dedupe, `AbortController`, and invalidate-then-refetch behavior. This closes the basic cross-page freshness/status card gap where the card is mounted. It does **not** close the full V6 Graphify source card, provenance display, CLI polish, or real large-graph signoff work.
-> Current-state note (2026-05-07): this remains a research snapshot, not the current implementation ledger. The v0.1 SRS UI now intentionally hides Easy and keeps only Wrong / Hard / Good visible; Settings has a 7-tab shape with Preferences for language, appearance, `learnability_threshold`, and `desired_retention`; Ratchet TSV export and ConceptGraph cluster/list fallback are implemented. See `doc/FRONTEND_GAP_REPORT.md` for the current closed/open gap list.
+> Current-state note (2026-05-08): this remains a research snapshot, not the current implementation ledger. The v0.1 SRS UI intentionally hides Easy and keeps only Wrong / Hard / Good visible; Settings has a 7-tab shape with Preferences for language, appearance, `learnability_threshold`, and `desired_retention`; Ratchet TSV export is implemented. ConceptGraph no longer has cluster/group-by-kind mode: it now exposes Graph / List only, defaults 201+ nodes to List, keeps Full graph available, and supports full-graph pan/zoom without hard viewport bounds. See `doc/FRONTEND_GAP_REPORT.md` for the current closed/open gap list.
 
 ---
 
@@ -551,60 +551,43 @@ Current 5 viewports are sufficient. May add `1280px` to match V6's `min-width:12
 
 ### 11.1 Current State of ConceptGraph Component
 
-The current `ConceptGraph.tsx` (~200 lines) is a **functional but basic SVG renderer** — NOT a placeholder. Key characteristics:
+The current `ConceptGraph.tsx` is a **functional SVG + d3-force graph renderer** — NOT a placeholder. Key characteristics:
 
 **What it does render**:
-- **Pure SVG** (no external library): Hand-rolled circular layout via `computeCircularLayout()` that places nodes equally spaced on a circle
-- **Nodes**: Circles with `r=14`, positioned in a ring. Each node shows a truncated `display_name` label. Selected node gets accent fill
-- **Edges**: Derived from shared `related_claims` between concepts — if two concepts share at least one `related_claims` entry, they get an edge. Uses `<line>` elements (straight lines, no curves)
-- **Click interaction**: Click node to select → shows concept details below the graph
-- **3-mode display**: `GraphifyMode` (`full` | `learning_only` | `empty`) controls rendering:
-  - `full`: Shows all concepts
-  - `learning_only`: Shows concepts (same as full currently — no Graphify source differentiation)
-  - `empty`: Shows empty state message
-- **Graphify source banner**: When `mode === 'full'`, displays "Graphify" badge with status info. When `mode === 'empty'`, shows i18n message for missing Graphify data
+- **SVG graph with d3-force**: Uses `forceSimulation`, `forceLink`, `forceManyBody`, `forceCenter`, and `forceCollide`; reduced-motion falls back to a static radial layout.
+- **Graph / List views**: The UI has only Graph and List. 201+ nodes default to List, but the Full graph button remains enabled.
+- **Nodes and edges**: Nodes are circles colored by `kind`; edges are weighted straight SVG lines from sanitized `/api/graph/concepts` data.
+- **Filtering and legend**: Kind chips filter the graph/list; the legend mirrors the visible kind palette.
+- **Node detail panel**: Click or keyboard-activate a node to show kind, file path, freshness, and connected nodes in the side panel.
+- **Graphify source card**: The shared `GraphifySourceCard` shows status, freshness, counts, and provenance where available.
+- **Pan/zoom and fit/export**: Wheel zoom and background drag update the graph `<g>` transform; drag pauses simulation and uses `requestAnimationFrame` to avoid React re-rendering every pointer move. Fit-to-view uses the graph layer bounding box. Export writes an SVG.
 
 **What it does NOT have** (compared to V6):
-- No force-directed physics simulation (circular layout only)
 - No typed node shapes (all nodes are identical circles)
-- No color differentiation by concept category
-- No filter chips
-- No legend bar
 - No edge curves or arrow markers
-- No node detail panel (sidebar)
-- No zoom/pan
-- No list fallback view
-- No "48 nodes · 71 edges" counter
-- No Graphify source card with file status rows
-- No "Fit" or "Export JSON" buttons
+- No cluster/community grouping UI
+- No confidence/community filter surface yet, although backend metadata is preserved
+- No full V6 Graphify source/provenance card with CLI command polish
+- No true Canvas/WebGL renderer or minimap; current implementation stays SVG
 
 ### 11.2 ConceptsPage Current State
 
-`ConceptsPage.tsx` (~120 lines):
-- Fetches from `GET /api/concepts` which returns `PaginatedConceptsResponse { artifact_type: 'concepts', content: string, next_cursor?: string }`
-- The `content` field is **raw JSONL text** — the page parses it client-side via `parseConceptsJsonl()` into `Concept[]` objects
-- Each concept entry has: `concept`, `term_key`, `display_name`, `surface?`, `related_claims?`, `file_refs?`, `aliases?`
-- Passes parsed concepts + Graphify mode to `<ConceptGraph />` component
-- Supports cursor-based pagination with "Load more" button
-- Has a toggle chip bar: "Graph" (active) / "List" (currently switches to a simple `<ul>` list of concept names)
+`ConceptsPage.tsx`:
+- Fetches from `GET /api/graph/concepts` through `fetchGraphConcepts()`.
+- Passes `ConceptGraphResponse { status, nodes, edges, truncated }` directly to `<ConceptGraph />`.
+- Uses an `AbortController` when refetching or unmounting.
+- If the response is truncated, the page can request `limit=2000` through the "show all" path.
 
-### 11.3 Backend API: What `/api/concepts` Currently Returns
+### 11.3 Backend API: What `/api/graph/concepts` Currently Returns
 
-The serve route at `routes_runs.py:286` wraps `load_concepts_page()` via `anyio.to_thread.run_sync`:
+The serve route in `routes_graph.py` returns a typed graph payload:
 
 ```
-GET /api/concepts?cursor=N&page_size=M
-→ { artifact_type: "concepts", content: "<raw JSONL lines>", next_cursor: "42" }
+GET /api/graph/concepts?limit=N
+→ { status, nodes, edges, truncated }
 ```
 
-The JSONL `content` string contains one JSON object per line with fields from `concepts.jsonl`:
-- `concept`, `term_key`, `term`, `display_name`, `lang`
-- `aliases`, `source_refs`, `branch_hint`
-- `introduced_by_run`, `updated_by_runs`
-- `related_claims`, `file_refs`
-- `parents`, `children`, `relationship_type`
-
-**Important**: The frontend `Concept` interface only extracts a **subset**: `concept`, `term_key`, `display_name`, `surface`, `related_claims`, `file_refs`, `aliases`. The `parents`, `children`, `relationship_type`, `source_refs`, `introduced_by_run`, `updated_by_runs` fields are **available in the API response but discarded by the frontend parser**.
+Each node has `id`, `name`, `kind`, `file_path`, `freshness`, and `metadata`; each edge has `id`, `source`, `target`, `relation`, and `weight`. This endpoint is the current ConceptGraph data source. The older `/api/concepts` JSONL pagination path still exists for concept ledger browsing, but it is not what the current graph page renders.
 
 ### 11.4 Graphify Freshness: 4-Value Projection
 
@@ -646,14 +629,13 @@ Rationale:
 1. V6 reference uses hand-rolled SVG with force-directed positioning (the JS in V6 HTML doesn't use d3, but uses a custom force simulation). `d3-force` provides production-quality force simulation without the full d3 bundle
 2. Bundle impact is minimal (~15KB vs current 0KB)
 3. Keeps SVG rendering in React JSX — no canvas escape hatch needed
-4. The current `ConceptGraph.tsx` already renders SVG; migration is incremental: replace `computeCircularLayout()` with `d3-force` simulation, keep the rest of the SVG rendering
+4. The current `ConceptGraph.tsx` already uses `d3-force`; remaining work is V6 visual parity, provenance polish, and real large-repo signoff rather than replacing a circular layout
 5. Full control over node shapes (circles, rects, different fills/strokes per type) — matches V6's typed node design
 6. `@react-force-graph-2d` is overkill (180KB) and abstracts away the SVG, making V6 visual fidelity harder
 
-**Implementation approach**:
+**Implementation status**:
 ```
-New dep: d3-force (~15KB) + d3-quadtree (~3KB, peer dep)
-NOT needed: d3-selection, d3-scale, d3-shape (all manual SVG via React JSX)
+d3-force is already in use. The current graph still renders manual SVG via React JSX; d3-selection, d3-scale, and d3-shape are still not needed.
 ```
 
 ### 11.6 Deep Integration: Current → V6 Target
@@ -688,16 +670,16 @@ Header: [Graph|List] chips + [Fit|Export JSON] buttons + "48 nodes · 71 edges" 
 | Step | Current | Target | LOC | Priority |
 |------|---------|--------|-----|----------|
 | 1. 2-column layout | Single column | `grid-template-columns: 1fr 320px` | ~30 CSS | P0 |
-| 2. Replace circular → force-directed | `computeCircularLayout()` | `d3-force` simulation with `forceSimulation`, `forceManyBody`, `forceLink`, `forceCenter` | ~120 TSX | P0 |
+| 2. Replace circular → force-directed | Landed for normal mode; reduced-motion keeps a static layout | Further tune d3-force for real large graphs | ~40 TSX | P1 |
 | 3. Typed node shapes | All identical circles | 5 node types with different shapes/colors per V6 spec | ~80 TSX + ~40 CSS | P0 |
 | 4. Edge curves + arrows | Straight `<line>` elements | `<path>` curves with `<marker>` arrowheads | ~40 TSX + ~10 CSS | P1 |
-| 5. Filter chips | Not present | 5 filter chips toggling concept categories | ~60 TSX + ~30 CSS | P1 |
-| 6. Legend bar | Not present | Positioned at graph bottom, shows 5 node types with labels | ~40 TSX + ~20 CSS | P1 |
-| 7. Node detail panel | Click → inline display below graph | Click → sticky right sidebar card with metadata grid | ~80 TSX + ~40 CSS | P1 |
-| 8. Graphify source card | Simple badge | Full `.src-card` with file status rows + CLI commands | ~50 TSX + ~20 CSS | P2 |
-| 9. Header controls | Graph/List toggle only | + Fit/Export JSON buttons + "N nodes · M edges" counter | ~30 TSX + ~10 CSS | P2 |
-| 10. Zoom/Pan | Not present | SVG viewBox manipulation via mouse/touch | ~60 TSX | P2 |
-| 11. List fallback | Basic `<ul>` | Grid of `.lnode` items with name + metadata + scaffolding badge | ~50 TSX + ~20 CSS | P2 |
+| 5. Filter chips | Kind filters landed | V6 semantic filters: All / This Diff / From Graphify / Learning Memory / Weak Claims | ~40 TSX + ~20 CSS | P1 |
+| 6. Legend bar | Landed for kind palette | Align labels and placement with final V6 visual spec | ~20 CSS | P2 |
+| 7. Node detail panel | Landed as side panel | Add richer descriptions / claim links when backend provides them | ~40 TSX + ~20 CSS | P1 |
+| 8. Graphify source card | Shared card landed | Full `.src-card` with CLI commands and deeper provenance rows | ~40 TSX + ~20 CSS | P2 |
+| 9. Header controls | Graph/List + Fit/Export landed | Add explicit "N nodes · M edges" header counter | ~15 TSX | P2 |
+| 10. Zoom/Pan | Landed with unbounded transform pan/zoom | Add touch gesture polish / minimap only if still needed | ~40 TSX | P2 |
+| 11. List fallback | Grid list landed and used by default for 201+ nodes | Add richer metadata/scaffolding badges | ~30 TSX + ~20 CSS | P2 |
 
 **Total Graphify frontend LOC**: ~640 TSX + ~220 CSS = **~860 LOC**
 
@@ -748,7 +730,7 @@ The Graphify frontend integration (~860 LOC) is part of the same v1.0 milestone.
 |-------|-------------|-----|
 | F2 | 2-column layout + node detail panel (structural) | ~150 |
 | F3 | Force-directed simulation + typed nodes + filter chips + legend + freshness display | ~580 |
-| F4 | Zoom/pan + Graphify source card + Export JSON + list fallback polish | ~130 |
+| F4 | Zoom/pan + Graphify source card + Export SVG + list fallback polish | Mostly landed; remaining work is provenance/CLI polish and large-repo signoff |
 
 **Updated totals** (with Graphify):
 | Stage | Original LOC | + Graphify | New Total |

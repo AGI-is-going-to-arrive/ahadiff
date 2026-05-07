@@ -4,6 +4,8 @@
 **Auditor**: Claude Opus 4.6 (automated)
 **Scope**: All 11 v6 pages, tokens, typography, components, features, tests
 
+> 2026-05-08 update: this remains a historical V6 fidelity audit. Current ConceptGraph has moved past several rows below: it is SVG + d3-force, has Graph/List views, a side detail panel, a list fallback for large graphs, Fit/Export controls, and unbounded pan/zoom. It does not have cluster/community grouping.
+
 ---
 
 ## V6 Fidelity Score: 38 / 100
@@ -203,12 +205,12 @@ The viewer is a **functional application framework** with solid engineering (err
 
 | Feature | Status | Notes |
 |---|---|---|
-| ConceptGraph component | Implemented | Canvas-based visualization |
-| Concept list | Partial | ConceptsPage with graph |
-| v6: SVG force-directed graph with nodes/edges | Partial | Canvas rendering, not SVG |
-| v6: Node detail panel (click to see definition) | **Missing** | Not implemented |
-| v6: List fallback (tabular concept list) | **Missing** | Not implemented |
-| v6: 48 nodes / 71 edges count display | **Missing** | Not shown |
+| ConceptGraph component | Implemented | SVG + d3-force visualization |
+| Concept list | Implemented | Graph/List toggle; 201+ nodes default to List |
+| v6: SVG force-directed graph with nodes/edges | Implemented | SVG + d3-force; edge curves/markers still differ |
+| v6: Node detail panel (click to see definition) | Partial | Side detail panel exists; richer descriptions depend on backend data |
+| v6: List fallback (tabular concept list) | Implemented | Grid list fallback, not final V6 table styling |
+| v6: 48 nodes / 71 edges count display | Partial | Showing-count text exists; final header counter still missing |
 
 ### 2.10 Skills Page
 
@@ -267,7 +269,7 @@ The viewer is a **functional application framework** with solid engineering (err
 9. **Sidebar sections** -- V6 grouped nav into Workspace/Practice/System with labels. Viewer has flat list.
 10. **Sidebar status bar** -- V6 had "Hybrid . Local embed . BYOK" with online indicator. Missing.
 11. **Ratchet page depth** -- V6 had results.tsv raw view, Phase 2.5 display, benchmark transparency. Viewer has simplified history.
-12. **Graph/Concepts detail** -- V6 had node detail panel, list fallback, node/edge counts. Viewer has bare graph only.
+12. **Graph/Concepts detail** -- Current viewer has node detail panel, Graph/List fallback, Fit/Export, and showing-count text; remaining V6 gap is richer provenance/count placement and final visual polish.
 13. **Diff page panels** -- V6 had Claim Inspector + Source hunk in a side panel. Viewer shows inline diff only.
 14. **Export CSV** -- Dashboard export button missing.
 15. **New Learn Run** -- Dashboard action button missing.
@@ -306,7 +308,7 @@ The viewer introduces several features that go beyond the v6 prototype:
 
 1. **DiffViewerPage** -- The DiffView component has unified diff parsing but the DiffViewerPage itself does not reference "unified", "line numbers", or "claims overlay". The page is a thin wrapper that fetches and displays. Line numbers are not rendered.
 
-2. **ConceptsPage** -- Very thin page. Only renders ConceptGraph. No list fallback, no pagination UI, no node detail panel. The ConceptGraph component renders to a canvas but the page provides no interactive detail views.
+2. **ConceptsPage** -- Current page renders typed `/api/graph/concepts` data through ConceptGraph, with Graph/List views, large-graph List default, node detail panel, and SVG pan/zoom. Remaining gap is deeper provenance/CLI polish and real large-repo signoff.
 
 3. **Sidebar** -- No section grouping. All 11 nav items in a flat list. No brand mark in sidebar (it is in topbar instead). No status bar at bottom.
 

@@ -131,7 +131,7 @@
 | G8 | Graphify slicer (sub-graph extraction) | Blueprint | IMPL | N/A | IMPL | `graphify/slicer.py`; `tests/unit/test_graphify_slicer.py` |
 | G9 | Graphify search (FTS on graph nodes) | Blueprint | IMPL | N/A | IMPL | `graphify/search.py`; `tests/unit/test_graphify_search.py` |
 | G10 | Graphify freshness (7 internal states + 4-value external projection) | Blueprint | IMPL | IMPL | IMPL | `graphify/freshness.py`; `viewer/src/components/FreshnessBadge.tsx` (+ test) |
-| G11 | ConceptGraph UI (>20 nodes auto-cluster) | Blueprint | N/A | IMPL | IMPL | `viewer/src/components/ConceptGraph.tsx` (753 lines) |
+| G11 | ConceptGraph UI (Graph/List views, large graphs default to List, Full graph stays available) | Blueprint | N/A | IMPL | IMPL | `viewer/src/components/ConceptGraph.tsx`; `viewer/src/components/ConceptGraph.test.tsx` |
 | G12 | ConceptsPage UI | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/ConceptsPage.tsx` |
 | G13 | GraphifyCard UI | Blueprint | N/A | IMPL | IMPL | `viewer/src/components/GraphifyCard.tsx` |
 | G14 | Graphify shared freshness store (graph-store) | Blueprint | N/A | IMPL | IMPL | `viewer/src/api/graph.ts` |

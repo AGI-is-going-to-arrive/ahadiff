@@ -1,12 +1,12 @@
 # AhaDiff 前端差距报告
 
-> 更新日期：2026-05-07 | 基于当前代码、后端 API、前端源码和本 session 实测结果
+> 更新日期：2026-05-08 | 基于当前代码、后端 API、前端源码和本 session 实测结果
 
 ## 审计范围
 
 - 后端 `src/ahadiff/serve/app.py` 当前注册：53 个 concrete `/api/*` route + 1 个 `/api/{rest_of_path:path}` catchall，另有 `/healthz`
-- 前端 `viewer/src/` 当前统计：12 页面；`components/` + `pages/` 下 37 个生产 TSX；23 个页面/组件 CSS；i18n `717/717`
-- 本轮真实验证：后端 unit 全量 `2005 passed`；前端 Vitest `195 passed`；typecheck / build 通过；Playwright smoke `315 passed`，walkthrough chromium `34 passed`，media-features chromium `23 passed`
+- 前端 `viewer/src/` 当前统计：12 页面；`components/` + `pages/` 下 36 个生产 TSX；23 个页面/组件 CSS；i18n `731/731`
+- 本轮真实验证：ConceptGraph 目标 Vitest `3 passed`；前端 Vitest `198 passed`；typecheck / build 通过；Concepts Playwright chromium `2 passed`；`git diff --check` 通过。后端 unit、完整 Playwright 和真实 LLM judge smoke 本轮未因图谱改动重跑
 
 ---
 
@@ -18,7 +18,7 @@
 | Lesson scaffolding 自动推荐 | Lesson 会按 weak concepts / stability 自动推荐 full / hint / compact；空数据默认 compact | `LessonPage.tsx`, `LessonPage.test.tsx` |
 | FSRS `desired_retention` | Settings 的 Preferences tab 可调 70%-99%；后端 config / serve runtime / review rate / signal review 都读取同一配置 | `SettingsPage.tsx`, `routes_config.py`, `config_runtime.py`, `routes_review.py`, `routes_signals.py` |
 | TSV 导出 | Ratchet 页通过 `apiFetchBlob()` 下载 `/api/export/results?format=tsv`，token 走 header，不放 query string | `RatchetPage.tsx`, `api/runs.ts`, `api/client.ts` |
-| ConceptGraph 聚类和大图降级 | 20+ 节点进入 cluster 视图；200+ 过滤节点强制 list，graph 按钮禁用 | `ConceptGraph.tsx`, `ConceptGraph.test.tsx` |
+| ConceptGraph 完整图谱和大图降级 | 不再提供 cluster/group-by-kind；大图默认 List 但 Full graph 仍可打开；完整图谱不设硬边界，拖拽用 rAF 更新 SVG transform 并暂停 d3 simulation | `ConceptGraph.tsx`, `ConceptGraph.test.tsx` |
 | Warning 颜色 / forced-colors / 触控目标 | warning token 改为可访问 fallback；Topbar / Ratchet tab 等触控目标和 forced-colors 已覆盖 | `tokens.css`, `Topbar.css`, `Ratchet.css`, `media-features.spec.ts` |
 | safe-area / 100dvh / z-index | Topbar safe-area、100dvh、popover/backdrop z-index 已按当前实现验证 | `AppShell.css`, `Topbar.css`, `ClaimInspector.css`, `media-features.spec.ts` |
 
@@ -43,5 +43,5 @@
 
 - `dangerouslySetInnerHTML`：当前关键渲染路径未使用；markdown 通过 JSX 构建。
 - 焦点陷阱、inert、skip-to-content、aria-live、ErrorBoundary：当前实现仍成立。
-- forced-colors / reduced-motion / print / mobile media：本轮至少跑了 `media-features.spec.ts --project=chromium-desktop`，结果 `23 passed`。
-- 完整 Playwright 全浏览器全视口本轮未重跑；本轮只重跑了 smoke、chromium walkthrough 和 chromium media features。
+- forced-colors / reduced-motion / print / mobile media：相关实现未在本轮图谱改动中触碰；上一轮 media-features chromium 回归仍保留为历史验证记录。
+- 完整 Playwright 全浏览器全视口本轮未重跑；本轮只重跑了 ConceptGraph 目标单测、前端全量 Vitest、typecheck/build 和 Concepts 页 chromium Playwright。

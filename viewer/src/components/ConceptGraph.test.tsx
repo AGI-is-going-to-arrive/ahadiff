@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { buildClusterPlan } from './ConceptGraph';
 import ConceptGraph from './ConceptGraph';
 import type { ConceptGraphEdge, ConceptGraphNode } from '../api/types';
 
@@ -29,36 +28,35 @@ function makeChainEdges(count: number): ConceptGraphEdge[] {
   }));
 }
 
-describe('ConceptGraph clustering', () => {
-  it('groups large mixed-kind graphs by kind and aggregates inter-cluster edges', () => {
-    const nodes = makeNodes(24, (index) => (index % 2 === 0 ? 'code' : 'rationale'));
-    const plan = buildClusterPlan(nodes, makeChainEdges(nodes.length));
-
-    expect(plan.groupedBy).toBe('kind');
-    expect(plan.clusters).toHaveLength(2);
-    expect(plan.clusters.map((cluster) => cluster.members.length).sort((a, b) => a - b)).toEqual([
-      12,
-      12,
-    ]);
-    expect(plan.edges).toHaveLength(1);
-    expect(plan.edges[0]?.count).toBe(23);
-  });
-
-  it('falls back to prefix grouping for a single-kind large graph', () => {
-    const nodes = makeNodes(24, () => 'code', (index) =>
-      index < 12 ? `Alpha ${index}` : `Beta ${index}`,
-    );
-    const plan = buildClusterPlan(nodes, makeChainEdges(nodes.length));
-
-    expect(plan.groupedBy).toBe('prefix');
-    expect(plan.clusters.map((cluster) => cluster.label).sort()).toEqual(['ALP', 'BET']);
-    expect(plan.nodeToCluster.get('n-0')).toBe('cluster:prefix:alp');
-    expect(plan.nodeToCluster.get('n-23')).toBe('cluster:prefix:bet');
-  });
-});
-
 describe('ConceptGraph rendering guards', () => {
-  it('disables graph mode for very large graphs', () => {
+  it('keeps medium graphs in full graph mode without cluster controls', () => {
+    const nodes = makeNodes(24, (index) => (index % 2 === 0 ? 'code' : 'rationale'));
+    const html = renderToStaticMarkup(
+      <ConceptGraph
+        status={{
+          enabled: true,
+          source_exists: true,
+          has_graph: true,
+          freshness: 'fresh',
+          node_count: nodes.length,
+          edge_count: nodes.length - 1,
+          source_path: null,
+          provenance: null,
+        }}
+        nodes={nodes}
+        edges={makeChainEdges(nodes.length)}
+        truncated={false}
+      />,
+    );
+
+    expect(html).toContain('Full graph');
+    expect(html).toContain('List view');
+    expect(html).toContain('Fit to view');
+    expect(html).not.toContain('Group by kind');
+    expect(html).not.toContain('Ungroup');
+  });
+
+  it('defaults very large graphs to the list while still allowing the full graph control', () => {
     const nodes = makeNodes(201, () => 'code');
     const html = renderToStaticMarkup(
       <ConceptGraph
@@ -80,7 +78,8 @@ describe('ConceptGraph rendering guards', () => {
 
     expect(html).toContain('Full graph');
     expect(html).toContain('List view');
-    expect(html).toContain('disabled=""');
+    expect(html).not.toContain('disabled=""');
+    expect(html).toContain('Concept 0');
   });
 
   it('escapes concept labels when large graphs render as a list', () => {

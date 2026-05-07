@@ -2,7 +2,7 @@
 
 > Research date: 2026-04-27 | Graphify commit: HEAD of `safishamsi/graphify` | AhaDiff audit target: working tree on top of `a3deaca` (2026-04-29)
 
-> Current status note (2026-05-02): this document started as a 2026-04-27 compatibility baseline. The current branch now already has real `graph.json` parsing/validation, `links`/`edges` normalization, hyperedge handling, matcher/linker/slicer/search helpers, `/api/search` graph-node merge, `GET /api/graph/status`, and `GET /api/graph/concepts`. Serve-time consumers now read only the imported artifact `.ahadiff/graphify/graph.json`; raw `graphify-out/graph.json` remains an untrusted source used for detection/import/freshness only. The new graph concepts endpoint gives the frontend sanitized nodes/edges. Graphify import provenance, per-run `graphify_context.json`, token-reduction metrics, and the release perf gate are now wired. The latest viewer follow-up also adds a shared `graph-store` cache for `GraphifyCard` (30s TTL, 15s timeout, in-flight dedupe, invalidate refetch) across Dashboard/Review/Quiz/Diff/Ratchet/Settings. 5E is still partial because full provenance/CLI polish and real large-repo signoff evidence remain.
+> Current status note (2026-05-08): this document started as a 2026-04-27 compatibility baseline. The current branch now already has real `graph.json` parsing/validation, `links`/`edges` normalization, hyperedge handling, matcher/linker/slicer/search helpers, `/api/search` graph-node merge, `GET /api/graph/status`, and `GET /api/graph/concepts`. Serve-time consumers now read only the imported artifact `.ahadiff/graphify/graph.json`; raw `graphify-out/graph.json` remains an untrusted source used for detection/import/freshness only. The graph concepts endpoint gives the frontend sanitized nodes/edges. The current ConceptGraph UI has Graph / List views only: it does not use cluster/community grouping, keeps large graphs in List by default, still allows Full graph, and supports pan/zoom without hard viewport bounds. Graphify import provenance, per-run `graphify_context.json`, token-reduction metrics, and the release perf gate are wired. 5E is still partial because full provenance/CLI polish and real large-repo signoff evidence remain.
 
 ## 1. Graphify Official Repo Summary
 
@@ -127,8 +127,8 @@ GraphifyMode = Literal["full", "learning_only", "empty"]
 ```
 - `_project_graphify(metadata)` reads the `graphify` dict from run metadata
 - Accepts both canonical values and legacy metadata inputs, but normalizes API output to the canonical 4-value set
-- Projects to 3 modes: `full` (mode=full or freshness=fresh), `learning_only` (mode=learning_only or freshness in {stale, unavailable}), `empty` (fallback)
-- Frontend viewer uses these 3 modes for ConceptGraph degradation
+- Projects to 3 API modes for run-detail compatibility: `full` (mode=full or freshness=fresh), `learning_only` (mode=learning_only or freshness in {stale, unavailable}), `empty` (fallback)
+- Current ConceptGraph UI does not expose those values as UI modes; it renders `/api/graph/concepts` with Graph / List controls and uses `GraphStatusResponse` for status/empty states
 
 ### 2.4 Contracts
 - `GraphifyMode = Literal["full", "learning_only", "empty"]` in `contracts/serve_app.py`
@@ -175,7 +175,7 @@ The design plan (`ahadiff-graphify-integration.md` + review) now has these piece
 | Edge key name | `links` (NetworkX serialization) | Parser accepts `links` or `edges` and normalizes to `links` | **YES** | LOW | No further adaptation required for v1.0 |
 | Edge fields | `source`, `target`, `relation`, `confidence`, `weight`, `_src`, `_tgt`, `source_file`, `source_location` | Design plan: `source`, `target`, `relation` | **YES** | LOW | Core fields match; extras are bonus |
 | Confidence tags | `EXTRACTED`, `INFERRED`, `AMBIGUOUS` | Not in current design | **NEEDS_NEW** | LOW | Useful for trust-level filtering in viewer |
-| Community IDs | Integer on each node | Not in current design | **NEEDS_NEW** | LOW | Useful for ConceptGraph clustering in viewer |
+| Community IDs | Integer on each node | Preserved in metadata when present; current viewer does not cluster by community | **NEEDS_NEW** | LOW | Useful for a future community/filter view, not for the current Graph/List UI |
 | Version detection | No version field in JSON | Structural parsing/validation; no `SUPPORTED_VERSIONS` whitelist in runtime | **YES** | LOW | Keep structure-based compatibility instead of version-string checks |
 
 ### Functional Compatibility
@@ -186,7 +186,7 @@ The design plan (`ahadiff-graphify-integration.md` + review) now has these piece
 | `import_graphify_artifact()` | `git/capture.py:547` | **YES** | LOW | Import now parses, sanitizes, validates, and writes the normalized `.ahadiff/graphify/graph.json` artifact up front. |
 | `_project_graphify()` | `serve/routes_runs.py:571` | **YES** | LOW | Reads `freshness` first, still accepts legacy `status` inputs, and normalizes legacy values to canonical API output |
 | `GraphifyStatus` dataclass | `git/capture.py:99` | **YES** | LOW | `freshness` now carries canonical 4-value output computed from repo context when available |
-| `GraphifyMode` type | `contracts/serve_app.py:17` | **YES** | LOW | 3-value enum is correct for viewer degradation. |
+| `GraphifyMode` type | `contracts/serve_app.py:17` | **YES** | LOW | 3-value enum remains correct for run-detail projection; current ConceptGraph uses Graph/List UI state separately. |
 | Sanitization pipeline | `import_graphify_artifact` | **YES** | LOW | Correctly treats graph.json as untrusted text. Runs `redaction_pipeline()` + `protect_untrusted_text()`. |
 | Pydantic validation | `graphify/models.py` + `graphify/parser.py` | **YES** | LOW | Models and parser now validate the normalized schema in-process. |
 | Subgraph slicing | `graphify/slicer.py` | **YES** | MED | Extracts changed-files ± N-hop subgraphs in memory; per-run `graphify_context.json` is emitted, while optional `graph.slice.json` emission is still future work. |
@@ -203,7 +203,7 @@ The design plan (`ahadiff-graphify-integration.md` + review) now has these piece
 | Graphify Function | Can AhaDiff Use It? | Notes |
 |-------------------|---------------------|-------|
 | `build_from_json(extraction)` | **YES** | Parses JSON dict → NetworkX graph. Handles `links`/`edges`, legacy `source` field, ID normalization. AhaDiff could use this directly for subgraph slicing. |
-| `cluster(G)` | **MAYBE** | Returns `{community_id: [node_ids]}`. AhaDiff could use for ConceptGraph but would add `graphifyy` as dependency. |
+| `cluster(G)` | **MAYBE** | Returns `{community_id: [node_ids]}`. Current AhaDiff viewer does not use clustering; this would only be relevant for a future community/filter view and would add `graphifyy` as dependency. |
 | `god_nodes(G)` | **MAYBE** | Returns high-centrality nodes. Useful for context enrichment but adds dependency. |
 | `validate_extraction(extraction)` | **YES** | Schema validation. AhaDiff should use or replicate this. |
 | `sanitize_label(text)` | **NO** | XSS-focused (HTML escaping). AhaDiff has its own security pipeline. |
@@ -221,7 +221,7 @@ The design plan (`ahadiff-graphify-integration.md` + review) now has these piece
 | G2 | DB-level Graphify linkage | matcher/linker helpers plus concept append wiring exist | **CLOSED** — JSONL + SQLite derived cache carry `graphify_node_id` when linking runs |
 | G3 | Per-run graph artifacts | `graphify_context.json` is emitted and listed in `artifact_set.json` | **CLOSED for context manifest** — optional `graph.slice.json` remains future work |
 | G4 | Graph nodes SQLite FTS indexing | `graph_nodes` + `fts_graph_nodes` import/indexing landed | **CLOSED** — imports above 10k nodes fail explicitly instead of silently truncating |
-| G5 | Community/confidence are not surfaced to UI | parser preserves them in metadata, viewer contract does not consume them | **DEFERRED** to frontend 5D/5E phase; backend already stores them in `GraphifyNode.metadata` |
+| G5 | Community/confidence are not surfaced as first-class UI filters | parser preserves them in metadata; current viewer does not cluster by them | **DEFERRED** to a future filter/detail view; backend already stores them in `GraphifyNode.metadata` |
 | G6 | Benchmark coverage for graph operations | Graphify benchmark fixture, token-reduction metric, release perf gate, and graph-present pinned integration fixture landed | **PARTIAL** — `benchmarks/fixtures/integration/pinned_011_graph_present/graph.json` is included in the suite digest and materializes graph context artifacts, but it is still a synthetic 15-node smoke fixture and does not by itself prove full fidelity against every real Graphify v0.5 export |
 
 ---
@@ -277,5 +277,5 @@ def slice_subgraph(graph: GraphifyGraph, changed_files: list[str], hops: int = 2
 ### 5.5 Remaining Priority Order
 1. **5E frontend polish**: basic cross-page freshness/status now uses the shared `GraphifyCard`; full source/provenance UI, CLI polish, and large-repo signoff are still pending
 2. **Optional graph slice artifact**: `graphify_context.json` is emitted today; a real `graph.slice.json` remains future work
-3. **Frontend surfacing**: expose `community` / `confidence` in viewer phases 5D/5E rather than only preserving them in metadata
+3. **Frontend surfacing**: expose `community` / `confidence` in a future filter/detail view rather than only preserving them in metadata; do not treat clustering as current UI behavior
 4. **Stronger compatibility evidence**: add at least one benchmark or regression fixture sourced from a real Graphify v0.5 export, not only the synthetic 15-node smoke fixture

@@ -52,11 +52,6 @@
     "title": "Concept Graph"
   },
   "Graph": {
-    "click_collapse": "Click to collapse",
-    "click_expand": "Click to expand",
-    "cluster_count": "{count} concepts",
-    "cluster_off": "Ungroup",
-    "cluster_on": "Group by kind",
     "connected": "Connected",
     "edge_count": "{count} edges",
     "empty_disabled": "Graphify integration is disabled",

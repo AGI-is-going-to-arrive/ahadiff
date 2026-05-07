@@ -52,11 +52,6 @@
     "title": "概念图谱"
   },
   "Graph": {
-    "click_collapse": "点击收起",
-    "click_expand": "点击展开",
-    "cluster_count": "{count} 个概念",
-    "cluster_off": "取消分组",
-    "cluster_on": "按类型分组",
     "connected": "关联节点",
     "edge_count": "{count} 条边",
     "empty_disabled": "Graphify 集成已禁用",

@@ -4,6 +4,7 @@
 > 2026-04-27 Codex update: this gap analysis is now v1.0 Full Scope input, not a v0.2/Core shortlist. Default serve port is `8765`; UI should read host:port from serve status/config. Diff, ConceptGraph, tokens, and Review scaffolding rows must be rechecked against current Viewer before implementation tasks are frozen.
 > 2026-05-01 update: §8 Settings was rechecked against the current React viewer after Phase 4D. The old flat-layout findings are no longer current; remaining Settings gaps are called out row by row.
 > 2026-05-07 update: Settings is now a 7-tab surface (`Account / Provider / Capture / Privacy / Audit / Preferences / Integrations`). Preferences owns language, appearance, `learnability_threshold`, and `desired_retention`. For the latest closed/open frontend gaps, use `doc/FRONTEND_GAP_REPORT.md`; older rows below remain historical V6 comparison notes unless explicitly updated.
+> 2026-05-08 update: ConceptGraph was rechecked after the current viewer graph change. It now uses SVG + d3-force, has Graph/List views, defaults 201+ nodes to List while keeping Full graph available, includes a side detail panel, and supports full-graph pan/zoom without hard viewport bounds. It does not have cluster/community grouping.
 
 ---
 
@@ -260,10 +261,10 @@
 
 | Element | V6 Reference | Viewer Current | Gap |
 |---------|-------------|---------------|-----|
-| Force-directed graph | V6: SVG with nodes/edges, markers | Canvas-based ConceptGraph | **PARTIAL**: Works but different rendering |
-| Node count display | "48 nodes, 71 edges" | Not shown | **MISSING** |
-| Node detail panel | Click node → definition | Not implemented | **MISSING** |
-| List fallback | Tabular concept list alternative | Not implemented | **MISSING** |
+| Force-directed graph | V6: SVG with nodes/edges, markers | SVG + d3-force ConceptGraph | **PARTIAL**: Works; edge curves/markers still differ |
+| Node count display | "48 nodes, 71 edges" | Showing-count text exists | **PARTIAL**: Header placement still differs |
+| Node detail panel | Click node → definition | Side detail panel exists | **PARTIAL**: Rich descriptions depend on backend data |
+| List fallback | Tabular concept list alternative | Graph/List toggle; 201+ nodes default to List | **OK** |
 
 **Work estimate**:
 - Node/edge count: ~10 LOC TSX. **P2**
@@ -371,8 +372,8 @@ Estimated new keys needed for full V6 alignment:
 | Diff claim inspector sidebar | TSX + CSS + API | ~180 | Partial |
 | Settings tab sidebar | TSX + CSS + i18n | ~128 | No |
 | Settings mode summary card | TSX + CSS | ~90 | No |
-| Graph node detail panel | TSX + CSS | ~120 | No |
-| Graph list fallback | TSX + CSS | ~90 | No |
+| Graph node detail panel | TSX + CSS | ~120 | Partial |
+| Graph list fallback | TSX + CSS | ~90 | Yes |
 | Quiz evidence side panel | TSX + CSS | ~90 | No |
 | **P1 Total** | | **~1,207** | |
 
