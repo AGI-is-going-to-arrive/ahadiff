@@ -131,6 +131,31 @@ def test_review_fsrs_card_easy_produces_valid_schedule() -> None:
     assert result.scaffolding_level in {"full", "guided", "hint", "minimal", "none"}
 
 
+def test_review_fsrs_card_passes_non_default_desired_retention(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reviewed_at = datetime(2026, 4, 24, tzinfo=UTC)
+    initial_state = normalize_fsrs_state(None, now=reviewed_at)
+    fake_card = _FakeCardWithMissingAttribute(missing="")
+    seen: dict[str, object] = {}
+
+    def fake_make_scheduler(**kwargs: object) -> _FakeScheduler:
+        seen.update(kwargs)
+        return _FakeScheduler(fake_card)
+
+    monkeypatch.setattr(scheduler_module, "_make_scheduler", fake_make_scheduler)
+
+    result = review_fsrs_card(
+        fsrs_state=initial_state,
+        answer="good",
+        reviewed_at=reviewed_at,
+        desired_retention=0.84,
+    )
+
+    assert result.rating == 3
+    assert seen["desired_retention"] == 0.84
+
+
 def test_review_fsrs_card_rejects_peeked_easy() -> None:
     reviewed_at = datetime(2026, 4, 24, tzinfo=UTC)
     initial_state = normalize_fsrs_state(None, now=reviewed_at)

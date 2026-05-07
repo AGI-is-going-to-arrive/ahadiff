@@ -52,6 +52,11 @@
     "title": "Concept Graph"
   },
   "Graph": {
+    "click_collapse": "Click to collapse",
+    "click_expand": "Click to expand",
+    "cluster_count": "{count} concepts",
+    "cluster_off": "Ungroup",
+    "cluster_on": "Group by kind",
     "connected": "Connected",
     "edge_count": "{count} edges",
     "empty_disabled": "Graphify integration is disabled",
@@ -113,7 +118,11 @@
     "title": "Dashboard",
     "verdict_filter_label": "Filter by verdict",
     "weakest_dim_hint": "The evaluation dimension with the lowest score in this run",
-    "weakest_dimensions_title": "Weakest dimensions"
+    "weakest_dimensions_title": "Weakest dimensions",
+    "learning_effectiveness_title": "Learning effectiveness",
+    "learning_transfer_rate": "Transfer rate",
+    "concepts_improving": "Concepts improving",
+    "concepts_declining": "Concepts declining"
   },
   "Diff": {
     "collapse_all": "Collapse all",
@@ -244,6 +253,7 @@
       "total_claims": "claims",
       "weakest_dimension": "Weakest dimension: {dim}"
     },
+    "scaffolding_auto_hint": "Auto-selected based on your mastery",
     "title": "Lesson",
     "title_with_ref": "{title} — {ref}",
     "eyebrow": "§ Lesson · {ref}",
@@ -415,7 +425,15 @@
     "tab_judge_empty": "No judge notes available yet. Run an evaluation to generate judge feedback.",
     "judge_notes_title": "Evaluator Notes",
     "table_label": "Run history table",
-    "title": "Ratchet History"
+    "title": "Ratchet History",
+    "export_tsv": "Export TSV",
+    "export_failed": "Export failed",
+    "spec_alignment": "Spec alignment",
+    "alignment_score": "Score",
+    "recent_trend": "Trend",
+    "trend_improving": "improving",
+    "trend_stable": "stable",
+    "trend_declining": "declining"
   },
   "Review": {
     "answer_label": "Answer",
@@ -581,6 +599,8 @@
     "judge_model_desc": "Provider and model for evaluation and scoring.",
     "model_name_placeholder": "model name",
     "provider_auto": "Auto (single provider)",
+    "desired_retention_label": "FSRS Desired Retention",
+    "desired_retention_hint": "Higher = more reviews, better retention (default: 90%)",
     "learnability_fewer": "Fewer, higher quality",
     "learnability_more": "More lessons",
     "learnability_threshold": "Learning Sensitivity",

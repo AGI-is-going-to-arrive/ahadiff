@@ -592,7 +592,12 @@ def import_results_tsv_lossy(db_path: Path, tsv_path: Path) -> LossyImportOutcom
     return LossyImportOutcome(imported=imported, skipped=skipped)
 
 
-def import_cards_from_jsonl(db_path: Path, cards_path: Path) -> int:
+def import_cards_from_jsonl(
+    db_path: Path,
+    cards_path: Path,
+    *,
+    desired_retention: float = DEFAULT_DESIRED_RETENTION,
+) -> int:
     if not cards_path.exists():
         return 0
     cards = _load_review_cards(cards_path)
@@ -655,7 +660,7 @@ def import_cards_from_jsonl(db_path: Path, cards_path: Path) -> int:
                     fsrs_state,
                     card.card_state,
                     scheduler_version(),
-                    DEFAULT_DESIRED_RETENTION,
+                    desired_retention,
                     due_date,
                     stability,
                     difficulty,
@@ -695,6 +700,10 @@ def import_cards_from_jsonl(db_path: Path, cards_path: Path) -> int:
                         answer = ?,
                         answer_mode = ?,
                         choices_json = ?,
+                        desired_retention = CASE
+                            WHEN card_state IN ('archived', 'suspended') THEN desired_retention
+                            ELSE ?
+                        END,
                         card_state = CASE
                             WHEN card_state IN ('archived', 'suspended') THEN card_state
                             ELSE ?
@@ -719,6 +728,7 @@ def import_cards_from_jsonl(db_path: Path, cards_path: Path) -> int:
                         card.answer,
                         answer_mode,
                         choices_json,
+                        desired_retention,
                         card.card_state,
                         card.stale_reason,
                         card.card_id,
@@ -752,6 +762,7 @@ def import_cards_from_runs(
     db_path: Path,
     state_dir: Path,
     *,
+    desired_retention: float = DEFAULT_DESIRED_RETENTION,
     on_error: Callable[[Path, Exception], None] | None = None,
 ) -> int:
     runs_dir = state_dir / "runs"
@@ -761,7 +772,11 @@ def import_cards_from_runs(
     inserted = 0
     for cards_path in sorted(runs_dir.glob("*/quiz/cards.jsonl")):
         try:
-            inserted += import_cards_from_jsonl(db_path, cards_path)
+            inserted += import_cards_from_jsonl(
+                db_path,
+                cards_path,
+                desired_retention=desired_retention,
+            )
         except (InputError, StorageError) as exc:
             if on_error is not None:
                 on_error(cards_path, exc)
@@ -861,6 +876,7 @@ def record_card_review(
     answer: ReviewAnswer,
     peeked_this_session: bool = False,
     reviewed_at_utc: datetime | None = None,
+    desired_retention: float | None = None,
 ) -> ReviewUpdate:
     reviewed_at = reviewed_at_utc or datetime.now(UTC)
     with connect_review_db(db_path) as connection:
@@ -871,6 +887,7 @@ def record_card_review(
             answer=answer,
             peeked_this_session=peeked_this_session,
             reviewed_at=reviewed_at,
+            desired_retention=desired_retention,
         )
 
 
@@ -883,6 +900,7 @@ def record_card_review_once(
     peeked_this_session: bool = False,
     selected_choice_label: QuizChoiceLabel | None = None,
     reviewed_at_utc: datetime | None = None,
+    desired_retention: float | None = None,
 ) -> ReviewUpdate | None:
     reviewed_at = reviewed_at_utc or datetime.now(UTC)
     with connect_review_db(db_path) as connection:
@@ -913,6 +931,7 @@ def record_card_review_once(
             answer=answer,
             peeked_this_session=peeked_this_session,
             reviewed_at=reviewed_at,
+            desired_retention=desired_retention,
         )
 
 
@@ -984,6 +1003,7 @@ def _record_card_review(
     answer: ReviewAnswer,
     peeked_this_session: bool,
     reviewed_at: datetime,
+    desired_retention: float | None,
 ) -> ReviewUpdate:
     reviewed_at_text = _datetime_to_utc_text(reviewed_at)
     row = connection.execute(
@@ -1007,12 +1027,15 @@ def _record_card_review(
         raise InputError(f"active review card does not exist: {card_id}")
     weights = _scheduler_weights_for_card(connection, str(row["scheduler_preset_id"]))
     recent_successes = _recent_success_count(connection, card_id)
+    effective_desired_retention = (
+        float(row["desired_retention"]) if desired_retention is None else desired_retention
+    )
     scheduled = review_fsrs_card(
         fsrs_state=str(row["fsrs_state"]),
         answer=answer,
         peeked_this_session=peeked_this_session,
         reviewed_at=reviewed_at,
-        desired_retention=float(row["desired_retention"]),
+        desired_retention=effective_desired_retention,
         weights=weights,
         recent_successes=recent_successes,
     )
@@ -1032,6 +1055,7 @@ def _record_card_review(
             due_date = ?,
             stability = ?,
             difficulty = ?,
+            desired_retention = ?,
             reps = reps + 1,
             lapses = lapses + ?,
             scaffolding_level = ?,
@@ -1045,6 +1069,7 @@ def _record_card_review(
             scheduled.due_date,
             scheduled.stability,
             scheduled.difficulty,
+            effective_desired_retention,
             lapses_increment,
             scheduled.scaffolding_level,
             scheduled.rating,

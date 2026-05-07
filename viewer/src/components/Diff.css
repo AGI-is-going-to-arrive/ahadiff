@@ -156,6 +156,16 @@
   color: var(--del-fg);
 }
 
+/* ── Touch targets: expand to 44x44 on coarse pointers ────── */
+@media (pointer: coarse) {
+  .diff-file-summary__chip,
+  .diff-file-summary__action {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
 /* ── File section ─────────────────────────────────────────── */
 
 .diff-file-section {
@@ -535,7 +545,7 @@ button.diff-line:focus-visible .diff-line__claim-dot {
   color: var(--danger);
 }
 
-/* ── Selected source hunk panel (outside VirtualList) ───────── */
+/* ── Selected source hunk panel ───────── */
 
 .diff-page__selected-hunk {
   margin-top: 18px;
@@ -696,6 +706,7 @@ button.diff-line:focus-visible .diff-line__claim-dot {
     box-shadow: var(--sh-md);
     justify-content: center;
     z-index: 20;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
   .diff-page__selected-hunk-header {

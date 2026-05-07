@@ -9,6 +9,7 @@
   position: sticky;
   top: 0;
   height: 100vh;
+  height: 100dvh;
   background: linear-gradient(180deg, var(--subtle) 0%, var(--paper) 100%);
   border-inline-end: 1px solid var(--hair);
   display: flex;
@@ -234,6 +235,7 @@
     transition: transform var(--dur-fast) var(--ease-out-quart);
     border-inline-end: 1px solid var(--hair);
     box-shadow: 0 0 40px rgba(0, 0, 0, 0.2);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
   .sidebar--open {

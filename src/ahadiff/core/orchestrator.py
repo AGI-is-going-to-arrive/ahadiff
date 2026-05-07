@@ -1214,6 +1214,7 @@ def run_learn_pipeline(
                         import_cards_from_jsonl(
                             run_path.parent.parent / "review.sqlite",
                             run_path / "quiz" / "cards.jsonl",
+                            desired_retention=float(learn_config["desired_retention"]),
                         )
                     except Exception as review_import_error:
                         learn_warnings.append(f"review card import failed: {review_import_error}")

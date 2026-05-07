@@ -57,7 +57,8 @@ class LlmConfig(BaseModel):
 class LearnConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    learnability_threshold: float = 0.3
+    learnability_threshold: float = Field(default=0.3, ge=0.0, le=1.0, allow_inf_nan=False)
+    desired_retention: float = Field(default=0.9, ge=0.7, le=0.99, allow_inf_nan=False)
 
 
 class ConfigResponse(BaseModel):

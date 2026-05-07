@@ -71,7 +71,7 @@
     inset-block: 0;
     inset-inline-start: min(280px, calc(100vw - 48px));
     inset-inline-end: 0;
-    z-index: 45;
+    z-index: 60;
     display: block;
     padding: 0;
     border: 0;

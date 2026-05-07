@@ -358,6 +358,7 @@ export const llmConfigSchema = z.object({
 
 export const learnConfigSchema = z.object({
   learnability_threshold: z.number().min(0).max(1).default(0.3),
+  desired_retention: z.number().min(0.7).max(0.99).optional(),
 });
 
 export const configResponseSchema = z.object({

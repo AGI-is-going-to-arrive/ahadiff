@@ -160,7 +160,6 @@ export default function SRSCard({
   const isRevealed = phase === 'reveal' || phase === 'rate';
   const isReviewButtonDisabled = (rating: SrsReviewRating) =>
     !reviewable || !peekReady || ratingPending || disabledRatings.has(rating);
-  const isSecondaryButtonDisabled = reviewable ? !peekReady || ratingPending : ratingPending;
 
   return (
     <div className="srs-card">
@@ -313,18 +312,13 @@ export default function SRSCard({
             </div>
           )}
 
-          {/* Rating buttons with peek guard */}
+          {/* Rating buttons with peek guard.
+              v0.1: only Good / Hard / Wrong are shown. Easy / Archive / Suspend
+              are intentionally hidden (kept in the SrsRating type for future
+              compatibility but not rendered). */}
           {phase === 'reveal' && reviewable && (
             <>
               <div className="srs-card__rating">
-                <button
-                  type="button"
-                  className="srs-card__rating-btn srs-card__rating-btn--easy"
-                  disabled={isReviewButtonDisabled('easy')}
-                  onClick={() => void handleRate('easy')}
-                >
-                  {t('SRS.easy')}
-                </button>
                 <button
                   type="button"
                   className="srs-card__rating-btn srs-card__rating-btn--good"
@@ -354,25 +348,6 @@ export default function SRSCard({
               {!peekReady && (
                 <p className="srs-card__peek-hint">{t('Quiz.peek_guard_hint')}</p>
               )}
-
-              <div className="srs-card__secondary">
-                <button
-                  type="button"
-                  className="srs-card__secondary-btn"
-                  disabled={isSecondaryButtonDisabled}
-                  onClick={() => void handleRate('archive')}
-                >
-                  {t('SRS.archive')}
-                </button>
-                <button
-                  type="button"
-                  className="srs-card__secondary-btn"
-                  disabled={isSecondaryButtonDisabled}
-                  onClick={() => void handleRate('suspend')}
-                >
-                  {t('SRS.suspend')}
-                </button>
-              </div>
             </>
           )}
 

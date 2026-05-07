@@ -16,6 +16,7 @@ import ahadiff.serve.middleware as middleware_module
 import ahadiff.serve.routes_locale as routes_locale_module
 import ahadiff.serve.routes_review as routes_review_module
 import ahadiff.serve.routes_runs as routes_runs_module
+import ahadiff.serve.routes_signals as routes_signals_module
 from ahadiff.contracts import QuizChoice, ResultEvent, ReviewCard, RunArtifactEnvelope
 from ahadiff.eval.results import finalized_artifact_digest
 from ahadiff.git.repo import repo_write_lock
@@ -2378,6 +2379,107 @@ def test_review_queue_get_is_public_and_rate_requires_token(tmp_path: Path) -> N
     assert accepted.json()["inserted"] is True
     assert accepted.json()["review"]["rating"] == 3
     assert duplicate.json() == {"inserted": False}
+
+
+def test_review_rate_uses_configured_desired_retention(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    (repo_root / ".git").mkdir(parents=True)
+    state_dir = repo_root / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        "[learn]\ndesired_retention = 0.84\n",
+        encoding="utf-8",
+    )
+    seen: dict[str, object] = {}
+
+    def fake_record_card_review_once(*_args: object, **kwargs: object) -> None:
+        seen.update(kwargs)
+
+    monkeypatch.setattr(
+        routes_review_module,
+        "record_card_review_once",
+        fake_record_card_review_once,
+    )
+    client = _client(state_dir)
+
+    response = client.post(
+        "/api/review/rate",
+        headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        json={"card_id": "card-1", "answer": "good", "idempotency_key": "review-api-1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"inserted": False}
+    assert seen["desired_retention"] == 0.84
+
+
+def test_review_rate_uses_workspace_config_outside_git_repo(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        "[learn]\ndesired_retention = 0.84\n",
+        encoding="utf-8",
+    )
+    seen: dict[str, object] = {}
+
+    def fake_record_card_review_once(*_args: object, **kwargs: object) -> None:
+        seen.update(kwargs)
+
+    monkeypatch.setattr(
+        routes_review_module,
+        "record_card_review_once",
+        fake_record_card_review_once,
+    )
+    client = _client(state_dir)
+
+    response = client.post(
+        "/api/review/rate",
+        headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        json={"card_id": "card-1", "answer": "good", "idempotency_key": "review-api-1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"inserted": False}
+    assert seen["desired_retention"] == 0.84
+
+
+def test_srs_review_signal_uses_configured_desired_retention(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        "[learn]\ndesired_retention = 0.84\n",
+        encoding="utf-8",
+    )
+    seen: dict[str, object] = {}
+
+    def fake_record_card_review_once(*_args: object, **kwargs: object) -> None:
+        seen.update(kwargs)
+
+    monkeypatch.setattr(
+        routes_signals_module,
+        "record_card_review_once",
+        fake_record_card_review_once,
+    )
+    client = _client(state_dir)
+
+    response = client.post(
+        "/api/signals/srs-review",
+        headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        json={"card_id": "card-1", "answer": "hard", "idempotency_key": "signal-api-1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"inserted": False}
+    assert seen["desired_retention"] == 0.84
 
 
 def test_review_queue_returns_answer_mode_and_choices_for_due_cards(tmp_path: Path) -> None:

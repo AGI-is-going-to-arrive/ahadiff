@@ -1055,6 +1055,7 @@ const OUTPUT_LANG_LABEL_KEY: Record<string, MessageKey> = {
 interface PreferencesForm {
   output_lang: string;
   learnability_threshold: number;
+  desired_retention: number;
 }
 
 function PreferencesTab({
@@ -1083,6 +1084,7 @@ function PreferencesTab({
       setForm({
         output_lang: config.llm.output_lang ?? 'auto',
         learnability_threshold: config.learn.learnability_threshold ?? 0.3,
+        desired_retention: config.learn.desired_retention ?? 0.9,
       });
     }
   }, [config]);
@@ -1100,6 +1102,7 @@ function PreferencesTab({
   const dirty = config && form && (
     form.output_lang !== (config.llm.output_lang ?? 'auto')
     || form.learnability_threshold !== (config.learn.learnability_threshold ?? 0.3)
+    || form.desired_retention !== (config.learn.desired_retention ?? 0.9)
   );
 
   const handleSave = async () => {
@@ -1110,7 +1113,10 @@ function PreferencesTab({
     try {
       await putConfig({
         llm: { output_lang: form.output_lang },
-        learn: { learnability_threshold: form.learnability_threshold },
+        learn: {
+          learnability_threshold: form.learnability_threshold,
+          desired_retention: form.desired_retention,
+        },
       });
       setSaveOk(true);
       onSaved();
@@ -1222,6 +1228,29 @@ function PreferencesTab({
                     {t('Settings_page.learnability_fewer')}
                   </span>
                   <span className="settings-slider__value">{form.learnability_threshold.toFixed(2)}</span>
+                </div>
+              </div>
+
+              <div className="settings-field">
+                <div className="settings-field__label">
+                  <h3>{t('Settings_page.desired_retention_label')}</h3>
+                  <p>{t('Settings_page.desired_retention_hint')}</p>
+                </div>
+                <div className="settings-slider">
+                  <input
+                    type="range"
+                    className="settings-slider__input"
+                    min={0.7}
+                    max={0.99}
+                    step={0.01}
+                    value={form.desired_retention}
+                    onChange={e => setField('desired_retention', Math.max(0.7, Math.min(0.99, Number(e.target.value) || 0.9)))}
+                    aria-label={t('Settings_page.desired_retention_label')}
+                    aria-valuemin={0.7}
+                    aria-valuemax={0.99}
+                    aria-valuenow={form.desired_retention}
+                  />
+                  <span className="settings-slider__value">{Math.round(form.desired_retention * 100)}%</span>
                 </div>
               </div>
             </div>

@@ -9,8 +9,9 @@ import ScaffoldingTabs from '../components/ScaffoldingTabs';
 import { useTranslation } from '../i18n/useTranslation';
 import { useRunsStore } from '../state/runs-store';
 import { getRunLesson, getRunArtifact } from '../api/runs';
+import { getWeakConcepts } from '../api/review';
 import { renderMarkdownProse, uniqueSlug } from '../utils/markdown';
-import type { RunDetail } from '../api/types';
+import type { RunDetail, WeakConceptsResponse } from '../api/types';
 import type { Claim, ClaimSourceHunk } from '../components/EvidencePanel';
 import type { ScaffoldLevel } from '../components/ScaffoldingTabs';
 import '../components/Lesson.css';
@@ -116,6 +117,21 @@ function formatClaimLocation(claim: Claim): string {
   return line || claim.claim_id;
 }
 
+// Determine recommended scaffolding level from weak concepts.
+// Backend pre-computes per-concept scaffolding_level using FSRS stability:
+//   full     -- Learning/Relearning, or stability < 3 days
+//   hint     -- Review state, 3d <= stability < 14d
+//   compact  -- stability >= 14d AND 2+ recent successes
+// Page-level recommendation = max-scaffolding across concepts (worst weakness wins).
+export function recommendScaffoldLevel(weak: WeakConceptsResponse | null): ScaffoldLevel {
+  if (!weak) return 'compact';
+  const all = [...weak.concepts, ...weak.new_concepts];
+  if (all.length === 0) return 'compact';
+  if (all.some((c) => c.scaffolding_level === 'full')) return 'full';
+  if (all.some((c) => c.scaffolding_level === 'hint')) return 'hint';
+  return 'compact';
+}
+
 function parseClaims(content: string): Claim[] {
   const result: Claim[] = [];
   const lines = content.split('\n').filter(Boolean);
@@ -155,6 +171,10 @@ export default function LessonPage() {
   const { t } = useTranslation();
 
   const [level, setLevel] = useState<ScaffoldLevel>('compact');
+  // Tracks whether `level` is currently the auto-recommended value (i.e. the
+  // user has not manually overridden via tab click). Used to render a small
+  // hint badge near the tabs.
+  const [autoSelected, setAutoSelected] = useState<boolean>(false);
   const [runDetail, setRunDetail] = useState<RunDetail | null>(null);
   const [lessonContent, setLessonContent] = useState<string>('');
   const [claims, setClaims] = useState<Claim[]>([]);
@@ -176,9 +196,29 @@ export default function LessonPage() {
     setLoading(true);
     setError(null);
     try {
+      // Fetch weak concepts first so we can derive the auto-recommended
+      // scaffolding level before the initial lesson fetch. Failures degrade
+      // silently to 'compact' (no UX disruption).
+      let recommended: ScaffoldLevel = 'compact';
+      try {
+        const weak = await getWeakConcepts({ signal: controller.signal });
+        if (controller.signal.aborted) return;
+        recommended = recommendScaffoldLevel(weak);
+      } catch (weakErr) {
+        if (weakErr instanceof DOMException && weakErr.name === 'AbortError') return;
+        if (controller.signal.aborted) return;
+        // eslint-disable-next-line no-console
+        if (import.meta.env.DEV) {
+          console.warn('[LessonPage] weak concepts fetch failed, defaulting to compact:', weakErr);
+        }
+      }
+      // Apply auto-selected level before the lesson fetch so the UI reflects
+      // the recommended value as soon as content lands.
+      setLevel(recommended);
+      setAutoSelected(true);
       const [detail, lessonEnv, claimsEnv] = await Promise.all([
         useRunsStore.getState().loadDetail(runId, { signal: controller.signal }),
-        getRunLesson(runId, 'compact', { signal: controller.signal }),
+        getRunLesson(runId, recommended, { signal: controller.signal }),
         getRunArtifact(runId, 'claims', { signal: controller.signal }),
       ]);
       if (controller.signal.aborted) return;
@@ -212,6 +252,8 @@ export default function LessonPage() {
   const handleLevelChange = useCallback(
     async (newLevel: ScaffoldLevel) => {
       setLevel(newLevel);
+      // Manual override -- clear the auto-selected hint.
+      setAutoSelected(false);
       if (!runId) return;
       levelAbortRef.current?.abort();
       const controller = new AbortController();
@@ -314,6 +356,11 @@ export default function LessonPage() {
           </div>
           <div className="lesson-page__header-right">
             <ScaffoldingTabs level={level} onChange={handleLevelChange} />
+            {autoSelected && (
+              <p className="scaffolding-auto-hint" aria-live="polite">
+                {t('Lesson.scaffolding_auto_hint')}
+              </p>
+            )}
           </div>
         </header>
 

@@ -1390,6 +1390,7 @@ def regenerate_cmd(
             raise AhaDiffError(f"run artifacts do not exist: {run_path}")
         snapshot = load_config(root) if has_git_repo else load_workspace_config(root)
         llm_config = cast("dict[str, Any]", snapshot.values["llm"])
+        learn_config = cast("dict[str, Any]", snapshot.values["learn"])
         provider_limits = cast("dict[str, Any]", snapshot.values["provider"])
         effective_privacy_mode = str(snapshot.values["privacy_mode"])
         security_config = (
@@ -1463,7 +1464,11 @@ def regenerate_cmd(
                     cards_target_path.unlink(missing_ok=True)
                     mark_run_cards_stale(state_dir / "review.sqlite", run_id=run_id)
                 else:
-                    import_cards_from_jsonl(state_dir / "review.sqlite", cards_path)
+                    import_cards_from_jsonl(
+                        state_dir / "review.sqlite",
+                        cards_path,
+                        desired_retention=float(learn_config["desired_retention"]),
+                    )
             except Exception:
                 _restore_artifact_from_backup(target=quiz_path, backup_path=quiz_backup)
                 _restore_artifact_from_backup(target=cards_target_path, backup_path=cards_backup)
@@ -1552,6 +1557,7 @@ def review_cmd(
             cli_lang=lang,
             config_lang=str(snapshot.values["lang"]),
         )  # wired in a future task.
+        learn_config = cast("dict[str, Any]", snapshot.values["learn"])
         state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
         db_path = state_dir / "review.sqlite"
         _, lock_path = _state_dir_and_lock_path(repo_root)
@@ -1562,7 +1568,12 @@ def review_cmd(
             def _on_card_import_error(path: Path, exc: Exception) -> None:
                 import_warnings.append(f"skipped {path.name}: {exc}")
 
-            imported = import_cards_from_runs(db_path, state_dir, on_error=_on_card_import_error)
+            imported = import_cards_from_runs(
+                db_path,
+                state_dir,
+                desired_retention=float(learn_config["desired_retention"]),
+                on_error=_on_card_import_error,
+            )
             if action is not None:
                 if not card_id:
                     raise AhaDiffError("--action requires --card-id")
@@ -1585,6 +1596,7 @@ def review_cmd(
                     card_id=card_id,
                     answer=normalized_answer,
                     peeked_this_session=peeked,
+                    desired_retention=float(learn_config["desired_retention"]),
                 )
                 console.print(f"[green]Reviewed[/green] {update.card_id}")
                 console.print(f"[bold]Rating[/bold]: {update.rating}")

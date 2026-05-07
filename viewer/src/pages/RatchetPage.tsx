@@ -3,11 +3,17 @@ import AppShell from '../components/AppShell';
 import InfoHint from '../components/InfoHint';
 import RatchetChart from '../components/RatchetChart';
 import Skeleton, { SkeletonGroup } from '../components/Skeleton';
-import { getRatchetHistory, getRunScore } from '../api/runs';
+import { getExportResultsTsvBlob, getRatchetHistory, getRunScore } from '../api/runs';
 import { scorePayloadSchema } from '../api/schemas';
+import { fetchSpecAlignment } from '../api/stats';
 import { useTranslation, type TranslateFn } from '../i18n/useTranslation';
 import { useLocaleStore } from '../state/locale-store';
-import type { RatchetHistoryEntry, ScoreDimension, ScorePayload } from '../api/types';
+import type {
+  RatchetHistoryEntry,
+  ScoreDimension,
+  ScorePayload,
+  SpecAlignmentResponse,
+} from '../api/types';
 import { safeVerdict } from '../utils/verdict';
 import '../components/Ratchet.css';
 
@@ -145,6 +151,8 @@ export default function RatchetPage() {
   const [scoreData, setScoreData] = useState<ScorePayload | null>(null);
   const [scoreRunId, setScoreRunId] = useState<string | null>(null);
   const [scoreLoading, setScoreLoading] = useState(false);
+  const [specAlignment, setSpecAlignment] = useState<SpecAlignmentResponse | null>(null);
+  const [exportError, setExportError] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const loadMoreAbortRef = useRef<AbortController | null>(null);
   const latestRunId = history[0]?.run_id ?? null;
@@ -236,6 +244,42 @@ export default function RatchetPage() {
     };
   }, [fetchHistory]);
 
+  // Spec alignment summary — surfaced near the page header so users see
+  // overall rubric drift without paging through individual run scores.
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchSpecAlignment({ signal: controller.signal })
+      .then((data) => {
+        if (!controller.signal.aborted) setSpecAlignment(data);
+      })
+      .catch(() => {
+        // best-effort metric; leave card hidden on failure
+      });
+    return () => controller.abort();
+  }, []);
+
+  // Fetch through the token-aware API client, then trigger a local Blob
+  // download. A direct anchor navigation cannot attach X-AhaDiff-Token.
+  const handleExport = useCallback(() => {
+    setExportError(false);
+    void getExportResultsTsvBlob()
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'results.tsv';
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        try {
+          a.click();
+        } finally {
+          a.remove();
+          window.setTimeout(() => URL.revokeObjectURL(url), 0);
+        }
+      })
+      .catch(() => setExportError(true));
+  }, []);
+
   useEffect(() => {
     if ((activeTab !== 'benchmark' && activeTab !== 'judge') || !latestRunId || activeScoreData) return;
     const controller = new AbortController();
@@ -300,6 +344,44 @@ export default function RatchetPage() {
             <div className="review__eyebrow">§ {t('Ratchet.title')}</div>
             <h1 className="ratchet-page__title">{t('Ratchet.title')}</h1>
             <div className="ratchet-page__sub">{t('Ratchet.subtitle')}</div>
+          </div>
+          <div className="ratchet-page__head-right">
+            {specAlignment && (
+              <div
+                className="ratchet-page__spec-summary"
+                aria-label={t('Ratchet.spec_alignment')}
+              >
+                <span className="ratchet-page__spec-label">
+                  {t('Ratchet.spec_alignment')}
+                </span>
+                <span className="ratchet-page__spec-score">
+                  {t('Ratchet.alignment_score')}:{' '}
+                  <span className="num">
+                    {specAlignment.alignment_score != null
+                      ? specAlignment.alignment_score.toFixed(1)
+                      : '-'}
+                  </span>
+                </span>
+                <span className="ratchet-page__spec-trend">
+                  {t('Ratchet.recent_trend')}:{' '}
+                  {specAlignment.recent_trend
+                    ? t(`Ratchet.trend_${specAlignment.recent_trend}`)
+                    : '-'}
+                </span>
+              </div>
+            )}
+            <button
+              type="button"
+              className="load-more-btn"
+              onClick={handleExport}
+            >
+              {t('Ratchet.export_tsv')}
+            </button>
+            {exportError && (
+              <span className="ratchet-page__export-error" role="alert">
+                {t('Ratchet.export_failed')}
+              </span>
+            )}
           </div>
         </div>
 

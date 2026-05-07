@@ -22,6 +22,38 @@
 
 .ratchet-page__head-left { flex: 1 1 0; }
 
+.ratchet-page__head-right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.ratchet-page__spec-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  background: var(--elevated);
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.ratchet-page__spec-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ratchet-page__spec-score,
+.ratchet-page__spec-trend {
+  white-space: nowrap;
+}
+
 .ratchet-page__title {
   font-family: "Newsreader", var(--font-serif);
   font-weight: 420;
@@ -396,6 +428,11 @@
 }
 
 .ratchet-tabs__tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 600;
@@ -408,6 +445,11 @@
   letter-spacing: 0.02em;
   transition: background var(--dur-fast) var(--ease-out),
               color var(--dur-fast) var(--ease-out);
+}
+
+.ratchet-page__export-error {
+  color: var(--danger);
+  font-size: 12px;
 }
 
 .ratchet-tabs__tab:hover {

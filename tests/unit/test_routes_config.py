@@ -5,14 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
+import pytest
+from pydantic import ValidationError
 from starlette.testclient import TestClient
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
-
 import ahadiff.serve.routes_config as routes_config_module
+from ahadiff.contracts.serve_app import LearnConfig
 from ahadiff.serve import ServeState, create_app
 
 
@@ -68,6 +69,12 @@ def _mock_load_config_factory(
 # ---------------------------------------------------------------------------
 # GET /api/config
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -0.1, 1.1])
+def test_learn_config_contract_rejects_invalid_threshold(value: float) -> None:
+    with pytest.raises(ValidationError, match="learnability_threshold"):
+        LearnConfig.model_validate({"learnability_threshold": value})
 
 
 def test_get_config_returns_json_with_expected_keys(
@@ -195,7 +202,7 @@ def test_get_config_handles_load_failure_gracefully(
     def _raise_boom(*_a: Any, **_kw: Any) -> None:
         raise RuntimeError("boom")
 
-    monkeypatch.setattr("ahadiff.core.config.load_config", _raise_boom)
+    monkeypatch.setattr("ahadiff.serve.config_runtime.load_serve_config_snapshot", _raise_boom)
     client = _client(state_dir)
 
     response = client.get("/api/config")
@@ -228,12 +235,12 @@ def test_get_config_handles_load_failure_gracefully(
         "key_status": {},
         "capture": _CAPTURE_DEFAULTS,
         "llm": _LLM_DEFAULTS,
-        "learn": {"learnability_threshold": 0.3},
+        "learn": {"learnability_threshold": 0.3, "desired_retention": 0.9},
     }
 
 
 def test_get_config_returns_nullable_shape_when_no_git_repo(tmp_path: Path) -> None:
-    """tmp_path is not a git repo, so load_config fails and returns the fallback shape."""
+    """Non-git workspaces still expose defaults through load_workspace_config."""
     state_dir = tmp_path / ".ahadiff"
     state_dir.mkdir()
     client = _client(state_dir)
@@ -242,32 +249,27 @@ def test_get_config_returns_nullable_shape_when_no_git_repo(tmp_path: Path) -> N
 
     payload = response.json()
     assert response.status_code == 200
-    assert payload == {
-        "lang": None,
-        "privacy_mode": None,
-        "generate_provider": None,
-        "generate_model": None,
-        "judge_provider": None,
-        "judge_model": None,
-        "serve_port": None,
-        "key_status": {},
-        "capture": {
-            "max_files": 30,
-            "hard_limit": 3000,
-            "max_patch_bytes": 5_000_000,
-            "file_ranking": "learning_value",
-            "symbol_extractor": "auto",
-        },
-        "llm": {
-            "input_token_budget": 200_000,
-            "output_token_budget": 50_000,
-            "request_timeout_seconds": 30,
-            "max_concurrent": 3,
-            "retry_attempts": 3,
-            "output_lang": "auto",
-        },
-        "learn": {"learnability_threshold": 0.3},
-    }
+    assert payload["lang"] == "auto"
+    assert payload["privacy_mode"] == "strict_local"
+    assert payload["generate_model"] == "gpt-5.4-mini"
+    assert payload["judge_model"] == "gpt-5.4-mini"
+    assert payload["serve_port"] == 8765
+    assert payload["learn"] == {"learnability_threshold": 0.3, "desired_retention": 0.9}
+
+
+def test_get_config_reads_workspace_config_when_no_git_repo(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        "[learn]\ndesired_retention = 0.84\n",
+        encoding="utf-8",
+    )
+    client = _client(state_dir)
+
+    response = client.get("/api/config")
+
+    assert response.status_code == 200
+    assert response.json()["learn"]["desired_retention"] == 0.84
 
 
 def test_get_config_key_status_shows_configured_when_env_set(

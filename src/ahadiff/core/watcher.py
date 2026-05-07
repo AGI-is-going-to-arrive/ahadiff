@@ -163,6 +163,9 @@ class FileWatcher:
             observers_module = cast("Any", importlib.import_module("watchdog.observers"))
             file_system_event_handler: type[Any] = events_module.FileSystemEventHandler
             observer_class: type[Any] = observers_module.Observer
+            if str(getattr(observer_class, "__module__", "")).endswith(".fsevents"):
+                polling_module = cast("Any", importlib.import_module("watchdog.observers.polling"))
+                observer_class = polling_module.PollingObserver
 
             watcher_ref = self
 

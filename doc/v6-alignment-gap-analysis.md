@@ -3,6 +3,7 @@
 > Generated 2026-04-27. Covers all 12 pages, 30 components, 5 CSS token files, state/API layer, i18n catalog.
 > 2026-04-27 Codex update: this gap analysis is now v1.0 Full Scope input, not a v0.2/Core shortlist. Default serve port is `8765`; UI should read host:port from serve status/config. Diff, ConceptGraph, tokens, and Review scaffolding rows must be rechecked against current Viewer before implementation tasks are frozen.
 > 2026-05-01 update: §8 Settings was rechecked against the current React viewer after Phase 4D. The old flat-layout findings are no longer current; remaining Settings gaps are called out row by row.
+> 2026-05-07 update: Settings is now a 7-tab surface (`Account / Provider / Capture / Privacy / Audit / Preferences / Integrations`). Preferences owns language, appearance, `learnability_threshold`, and `desired_retention`. For the latest closed/open frontend gaps, use `doc/FRONTEND_GAP_REPORT.md`; older rows below remain historical V6 comparison notes unless explicitly updated.
 
 ---
 
@@ -212,18 +213,18 @@
 | Config display | Present | ConfigField component | **OK** |
 | Doctor checks | Present | Implemented with icons | **OK** |
 | API key status | Present | Configured/missing badges | **OK** |
-| Tab sidebar | V6: Account / Keys / Models / Privacy / Audit / Language / Appearance / Integrations | Implemented in `SettingsPage.tsx` with `role=tablist/tab/tabpanel`, roving keyboard focus, bilingual label + mono English suffix | **OK** |
-| Mode summary card | V6: 4-cell mode summary with accent left border and footer | Implemented in `SettingsPage.tsx` / `Settings.css` from config + usage data | **OK** |
-| Privacy toggle | V6: switch UI with 38×22px knob | Implemented as switch-style status controls for current privacy/cache/network behavior | **PARTIAL**: UI present, but not all switches write config yet |
+| Tab sidebar | V6: Account / Keys / Models / Privacy / Audit / Language / Appearance / Integrations | Implemented as 7 tabs: Account / Provider / Capture / Privacy / Audit / Preferences / Integrations. Language + Appearance are merged into Preferences. | **OK, current shape differs from old V6 split** |
+| Mode summary card | V6: 4-cell mode summary with accent left border and footer | No longer rendered in `SettingsPage.tsx`; privacy mode is edited directly in Privacy, while usage/provider summary lives in Provider/Audit surfaces. | **DIVERGENT, intentional current UI** |
+| Privacy toggle | V6: switch UI with 38×22px knob | Privacy mode and serve port are writable; local-only/redaction/audit rows are status-style controls derived from current config. | **PARTIAL** |
 | Provider grid | V6: 3-column Generate/Judge/Embed matrix | Implemented provider grid from `/api/providers`, with eyebrow/meta rows and accent highlight | **OK** |
 | Audit log table | V6: Last 20 provider calls with time/model/tokens/cost | Implemented from `/api/audit?limit=20`, with 8 visible columns and real audit field projection | **OK** |
 
 **Work estimate**:
-- Tab sidebar layout: landed in Phase 4D.
-- Mode summary card: landed in Phase 4D.
+- Tab sidebar layout: landed; current implementation uses 7 tabs, not the older 8-tab split.
+- Mode summary card: superseded by direct Privacy + Provider/Audit sections.
 - Provider grid: landed in Phase 4D against existing `/api/providers`.
 - Audit log table: landed in Phase 4D against `/api/audit?limit=20`.
-- Privacy toggle: UI landed; follow-up is wiring write behavior for controls that should mutate config.
+- Privacy controls: privacy mode and serve port are writable; derived status rows remain read-only by design.
 
 ---
 

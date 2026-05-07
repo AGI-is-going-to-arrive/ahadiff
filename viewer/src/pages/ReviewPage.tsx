@@ -214,10 +214,11 @@ export default function ReviewPage() {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const target = e.target as HTMLElement;
       const tag = target?.tagName;
-      // Allow SRS rating shortcuts (1-4) when focused on a rating button.
+      // Allow SRS rating shortcuts (1-3) when focused on a rating button.
+      // v0.1 hides Easy, so '4' is no longer a rating shortcut.
       // Allow A-D shortcuts when focused on a choice button.
       const isSrsBtn = tag === 'BUTTON' && target.classList.contains('srs-btn');
-      const isSrsKey = e.key === '1' || e.key === '2' || e.key === '3' || e.key === '4';
+      const isSrsKey = e.key === '1' || e.key === '2' || e.key === '3';
       const isChoiceBtn = tag === 'BUTTON' && target.classList.contains('review__choice');
       const isChoiceKey = !!CHOICE_KEY_LABELS[e.key.toLowerCase()];
       if (
@@ -254,20 +255,20 @@ export default function ReviewPage() {
         }
         return;
       }
-      // Wrong-answer guard for choice cards: Easy/Good are disabled and the
-      // shortcut should not bypass that. Test the same gate the buttons use.
+      // Wrong-answer guard for choice cards: Good is disabled (Easy hidden in
+      // v0.1) and the shortcut should not bypass that. Test the same gate the
+      // buttons use.
       if (isChoice && card) {
         const correctChoice = card.choices?.find((c) => c.is_correct);
         const isAnswerCorrect =
           correctChoice !== undefined && correctChoice.label === selectedChoiceLabel;
-        if (!isAnswerCorrect && (e.key === '3' || e.key === '4')) {
+        if (!isAnswerCorrect && e.key === '3') {
           return;
         }
       }
       if (e.key === '1') void handleRate('wrong');
       else if (e.key === '2') void handleRate('hard');
       else if (e.key === '3') void handleRate('good');
-      else if (e.key === '4') void handleRate('easy');
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -754,18 +755,7 @@ export default function ReviewPage() {
                     <div className="srs-btn__interval" id="srs-interval-good">{t('Review.interval_good')}</div>
                     <span className="srs-btn__kbd">3</span>
                   </button>
-                  <button
-                    type="button"
-                    className="srs-btn srs-btn--easy"
-                    onClick={() => void handleRate('easy')}
-                    disabled={rating || ratingsBlocked}
-                    aria-label={t('Review.srs_aria_easy')}
-                    aria-describedby="srs-interval-easy"
-                  >
-                    <div className="srs-btn__label">{t('Review.rating_easy')}</div>
-                    <div className="srs-btn__interval" id="srs-interval-easy">{t('Review.interval_easy')}</div>
-                    <span className="srs-btn__kbd">4</span>
-                  </button>
+                  {/* v0.1: Easy button intentionally hidden (kept in type for future). */}
                 </div>
               ) : null
             ) : !flipped ? (
@@ -816,18 +806,7 @@ export default function ReviewPage() {
                   <div className="srs-btn__interval" id="srs-interval-good">{t('Review.interval_good')}</div>
                   <span className="srs-btn__kbd">3</span>
                 </button>
-                <button
-                  type="button"
-                  className="srs-btn srs-btn--easy"
-                  onClick={() => void handleRate('easy')}
-                  disabled={rating}
-                  aria-label={t('Review.srs_aria_easy')}
-                  aria-describedby="srs-interval-easy"
-                >
-                  <div className="srs-btn__label">{t('Review.rating_easy')}</div>
-                  <div className="srs-btn__interval" id="srs-interval-easy">{t('Review.interval_easy')}</div>
-                  <span className="srs-btn__kbd">4</span>
-                </button>
+                {/* v0.1: Easy button intentionally hidden (kept in type for future). */}
               </div>
             )}
           </div>

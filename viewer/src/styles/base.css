@@ -192,3 +192,10 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
   .loading-spinner { animation: none; opacity: 0.5; }
 }
+
+/* ---- Safe-area insets (iOS home indicator) ---- */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .app-shell__content {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}

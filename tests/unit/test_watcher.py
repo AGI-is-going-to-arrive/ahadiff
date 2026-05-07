@@ -582,6 +582,49 @@ class TestFileWatcherStartStop:
             assert len(started_observers) == 1
             watcher.stop()
 
+    def test_fsevents_observer_falls_back_to_polling_observer(self, tmp_path: Path) -> None:
+        started_observers: list[object] = []
+
+        class _FseventsObserver:
+            __module__ = "watchdog.observers.fsevents"
+
+        class _PollingObserver:
+            def schedule(self, *args: object, **kwargs: object) -> None:
+                del args, kwargs
+
+            def start(self) -> None:
+                started_observers.append(self)
+
+            def stop(self) -> None:
+                return None
+
+            def join(self, timeout: float | None = None) -> None:
+                del timeout
+
+            def is_alive(self) -> bool:
+                return False
+
+        def _fake_import_module(name: str) -> SimpleNamespace:
+            if name == "watchdog.events":
+                return SimpleNamespace(FileSystemEventHandler=object)
+            if name == "watchdog.observers":
+                return SimpleNamespace(Observer=_FseventsObserver)
+            if name == "watchdog.observers.polling":
+                return SimpleNamespace(PollingObserver=_PollingObserver)
+            raise AssertionError(f"unexpected module import: {name}")
+
+        with (
+            patch("ahadiff.core.watcher.is_watchdog_available", return_value=True),
+            patch("ahadiff.core.watcher.importlib.import_module", _fake_import_module),
+        ):
+            watcher = FileWatcher(tmp_path, on_change=lambda _: None)
+
+            watcher.start()
+            watcher.stop()
+
+        assert len(started_observers) == 1
+        assert isinstance(started_observers[0], _PollingObserver)
+
     def test_cli_stop_status_does_not_report_timeout_as_clean_stop(
         self,
         monkeypatch: pytest.MonkeyPatch,

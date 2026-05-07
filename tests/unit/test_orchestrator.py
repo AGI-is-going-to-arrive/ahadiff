@@ -265,7 +265,7 @@ class _FakeConfigSnapshot:
                 "hard_limit": 100,
                 "max_patch_bytes": 500_000,
             },
-            "learn": {"learnability_threshold": 0.3},
+            "learn": {"learnability_threshold": 0.3, "desired_retention": 0.9},
             "llm": {
                 "generate_model": "test-model",
                 "output_lang": "auto",

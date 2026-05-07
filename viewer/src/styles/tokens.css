@@ -37,7 +37,7 @@
 
   /* Semantic */
   --success: #2F6F4F;
-  --warning: #B4791F;
+  --warning: #955D13;
   --danger: #A33D2B;
   --danger-soft: #F7E2DC;
   --info: #2E4A6B;
@@ -204,6 +204,12 @@
   --ring-offset: 3px;
   --ring-color: var(--accent-ink);
   --ring-halo: 0 0 0 4px rgba(210, 112, 80, 0.18);
+
+  /* BOLDER v1 editorial overlay */
+  --ink-display: #15130F;
+  --accent-deep: #8C3A1A;
+  --shadow-editorial: inset 0 1px 0 rgba(210,112,80,.08), 0 28px 40px -12px rgba(28,27,24,.12), 0 4px 12px -2px rgba(28,27,24,.06);
+  --ease-editorial: cubic-bezier(.22,.61,.36,1);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -308,6 +314,11 @@
 
     /* Focus ring (v6 naming) */
     --ring-halo: 0 0 0 4px rgba(210, 112, 80, 0.30);
+
+    /* BOLDER v1 editorial overlay (dark) */
+    --ink-display: #F5F3EE;
+    --accent-deep: #E8A080;
+    --shadow-editorial: inset 0 1px 0 rgba(210,112,80,.12), 0 28px 40px -12px rgba(0,0,0,.3), 0 4px 12px -2px rgba(0,0,0,.15);
   }
 }
 
@@ -375,6 +386,9 @@
   --folio-line: #E6E3D8;
   --ornament-ink: #ECBCB2;
   --ring-halo: 0 0 0 4px rgba(210, 112, 80, 0.30);
+  --ink-display: #F5F3EE;
+  --accent-deep: #E8A080;
+  --shadow-editorial: inset 0 1px 0 rgba(210,112,80,.12), 0 28px 40px -12px rgba(0,0,0,.3), 0 4px 12px -2px rgba(0,0,0,.15);
 }
 
 :root[data-theme="light"] {

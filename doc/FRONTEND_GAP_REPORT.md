@@ -1,0 +1,47 @@
+# AhaDiff 前端差距报告
+
+> 更新日期：2026-05-07 | 基于当前代码、后端 API、前端源码和本 session 实测结果
+
+## 审计范围
+
+- 后端 `src/ahadiff/serve/app.py` 当前注册：53 个 concrete `/api/*` route + 1 个 `/api/{rest_of_path:path}` catchall，另有 `/healthz`
+- 前端 `viewer/src/` 当前统计：12 页面；`components/` + `pages/` 下 37 个生产 TSX；23 个页面/组件 CSS；i18n `717/717`
+- 本轮真实验证：后端 unit 全量 `2005 passed`；前端 Vitest `195 passed`；typecheck / build 通过；Playwright smoke `315 passed`，walkthrough chromium `34 passed`，media-features chromium `23 passed`
+
+---
+
+## 已闭合的 P0 / P1
+
+| 项目 | 当前状态 | 代码依据 |
+|---|---|---|
+| SRS Easy 前端暴露 | v0.1 UI 只显示 Good / Hard / Wrong；Easy 仍保留在后端和类型层，供 CLI / 未来 UI 使用 | `SRSCard.tsx`, `ReviewPage.tsx`, `QuizPage.tsx`, `walkthrough.spec.ts` |
+| Lesson scaffolding 自动推荐 | Lesson 会按 weak concepts / stability 自动推荐 full / hint / compact；空数据默认 compact | `LessonPage.tsx`, `LessonPage.test.tsx` |
+| FSRS `desired_retention` | Settings 的 Preferences tab 可调 70%-99%；后端 config / serve runtime / review rate / signal review 都读取同一配置 | `SettingsPage.tsx`, `routes_config.py`, `config_runtime.py`, `routes_review.py`, `routes_signals.py` |
+| TSV 导出 | Ratchet 页通过 `apiFetchBlob()` 下载 `/api/export/results?format=tsv`，token 走 header，不放 query string | `RatchetPage.tsx`, `api/runs.ts`, `api/client.ts` |
+| ConceptGraph 聚类和大图降级 | 20+ 节点进入 cluster 视图；200+ 过滤节点强制 list，graph 按钮禁用 | `ConceptGraph.tsx`, `ConceptGraph.test.tsx` |
+| Warning 颜色 / forced-colors / 触控目标 | warning token 改为可访问 fallback；Topbar / Ratchet tab 等触控目标和 forced-colors 已覆盖 | `tokens.css`, `Topbar.css`, `Ratchet.css`, `media-features.spec.ts` |
+| safe-area / 100dvh / z-index | Topbar safe-area、100dvh、popover/backdrop z-index 已按当前实现验证 | `AppShell.css`, `Topbar.css`, `ClaimInspector.css`, `media-features.spec.ts` |
+
+## API 覆盖现状
+
+- 已展示或调用：`/api/export/results`、`/api/stats/learning`、`/api/review/heatmap`、`/api/search`、`/api/graph/status`、`/api/graph/concepts`、provider / config / audit / usage / install targets。
+- `GET /api/tasks/{id}/progress` 是 SSE 流；当前前端仍用 polling，这是有意选择。
+- `GET /healthz` 不属于 viewer 必须调用的产品 API。
+- `GET /api/spec/alignment` 和 `GET /api/watch/status` 仍没有一等页面展示；前者适合后续放到 Dashboard / Ratchet，后者目前仍偏 internal status。
+
+## 仍保留的产品差距
+
+| 优先级 | 差距 | 当前判断 |
+|---|---|---|
+| P1 | Dashboard 仍不是完整四车道模型 | 当前已经有 runs / ratchet / stats / heatmap / learning 并做了失败隔离，但还不是 L3/L2/L1 lane 视图 |
+| P1 | Lesson 仍不是完整三栏 reader | 已有 editorial 排版、claim 浮层和 scaffolding 推荐；TOC / prose / rail 的完整 V6 reader 还没完全落地 |
+| P2 | Diff 仍没有虚拟列表 | 当前是文件折叠和 sticky header；超大 diff 虚拟滚动仍待做 |
+| P2 | `judge.json` 仍不是独立详情面板 | Ratchet 已有 Judge notes tab 文案和 score 读取链路，但还不是完整 judge artifact browser |
+| P2 | Landing 仍以样例内容为主 | 还没有接真实 benchmark / demo API |
+
+## 安全 / 可访问性
+
+- `dangerouslySetInnerHTML`：当前关键渲染路径未使用；markdown 通过 JSX 构建。
+- 焦点陷阱、inert、skip-to-content、aria-live、ErrorBoundary：当前实现仍成立。
+- forced-colors / reduced-motion / print / mobile media：本轮至少跑了 `media-features.spec.ts --project=chromium-desktop`，结果 `23 passed`。
+- 完整 Playwright 全浏览器全视口本轮未重跑；本轮只重跑了 smoke、chromium walkthrough 和 chromium media features。

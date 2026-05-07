@@ -4,7 +4,6 @@ import AppShell from '../components/AppShell';
 import SRSCard from '../components/SRSCard';
 import type { SrsRating, SrsReviewRating } from '../components/SRSCard';
 import { getRunArtifact } from '../api/runs';
-import { updateReviewQueueState } from '../api/review';
 import { quizAnswer, srsReview } from '../api/signals';
 import type { MisconceptionCardItem, ReviewAnswer } from '../api/types';
 import { useTranslation } from '../i18n/useTranslation';
@@ -188,41 +187,26 @@ export default function QuizPage() {
 
       const qid = currentQuiz.question_id;
 
-      if (rating === 'archive' || rating === 'suspend') {
-        if (!hasQuizReviewCard(currentQuiz)) {
-          return false;
-        }
-        try {
-          await updateReviewQueueState({
-            card_id: currentQuiz.review_card_id,
-            state: rating === 'archive' ? 'archived' : 'suspended',
-          });
-        } catch (err: unknown) {
-          setSignalError(errorMessage(err));
-          return false;
-        }
-      }
-
       if (isReviewRating(rating)) {
         if (!hasQuizReviewCard(currentQuiz)) {
           setRated((prev) => ({ ...prev, [qid]: true }));
           return true;
         }
 
-          // Choice-mode quizzes: the user committed to an answer without seeing
-          // it first, so the card was not "peeked". Open-answer fallback still
-          // counts as peeked (the user clicks "Show answer" before rating).
-          const peekedThisSession = !hasChoices(currentQuiz);
-          const selectedChoiceLabel = hasChoices(currentQuiz)
-            ? selectedChoiceLabelFor(currentQuiz, answered[qid]?.answer ?? '')
-            : null;
-          if (hasChoices(currentQuiz) && selectedChoiceLabel === null) {
-            setSignalError('selected choice is missing');
-            return false;
-          }
-          if (peekedThisSession && PEEKED_REVIEW_RATING_BLOCKLIST.has(rating)) {
-            setSignalError(PEEKED_REVIEW_RATING_ERROR);
-            return false;
+        // Choice-mode quizzes: the user committed to an answer without seeing
+        // it first, so the card was not "peeked". Open-answer fallback still
+        // counts as peeked (the user clicks "Show answer" before rating).
+        const peekedThisSession = !hasChoices(currentQuiz);
+        const selectedChoiceLabel = hasChoices(currentQuiz)
+          ? selectedChoiceLabelFor(currentQuiz, answered[qid]?.answer ?? '')
+          : null;
+        if (hasChoices(currentQuiz) && selectedChoiceLabel === null) {
+          setSignalError('selected choice is missing');
+          return false;
+        }
+        if (peekedThisSession && PEEKED_REVIEW_RATING_BLOCKLIST.has(rating)) {
+          setSignalError(PEEKED_REVIEW_RATING_ERROR);
+          return false;
         }
 
         try {
@@ -258,8 +242,9 @@ export default function QuizPage() {
   const progressPercent = quizzes.length > 0 ? ((currentIndex + 1) / quizzes.length) * 100 : 0;
 
   /**
-   * Phase 4C: 1/2/3/4 keyboard shortcuts to rate the current quiz card.
+   * Phase 4C: 1/2/3 keyboard shortcuts to rate the current quiz card.
    * Mirrors ReviewPage so muscle-memory transfers between the two surfaces.
+   * v0.1 hides the Easy button, so '4' is no longer a rating shortcut.
    *
    * The shortcut delegates to the actual rating buttons via `.click()` so
    * we inherit `SRSCard`'s `peekReady` / `PEEK_GUARD_MS` (1.5 s) gating —
@@ -284,7 +269,6 @@ export default function QuizPage() {
       if (event.key === '1') rating = 'wrong';
       else if (event.key === '2') rating = 'hard';
       else if (event.key === '3') rating = 'good';
-      else if (event.key === '4') rating = 'easy';
       if (!rating) return;
       event.preventDefault();
       const btn = document.querySelector<HTMLButtonElement>(

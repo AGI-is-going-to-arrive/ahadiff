@@ -485,10 +485,31 @@ export async function installServeMock(page: Page): Promise<void> {
         body: JSON.stringify({
           lang: 'en',
           privacy_mode: 'strict_local',
+          generate_provider: null,
           generate_model: 'gpt-5.4-mini',
+          judge_provider: null,
           judge_model: 'gpt-5.4-mini',
           serve_port: 8384,
           key_status: { openai: 'configured' },
+          capture: {
+            max_files: 30,
+            hard_limit: 3000,
+            max_patch_bytes: 5000000,
+            file_ranking: 'learning_value',
+            symbol_extractor: 'auto',
+          },
+          llm: {
+            input_token_budget: 100000,
+            output_token_budget: 16000,
+            request_timeout_seconds: 120,
+            max_concurrent: 4,
+            retry_attempts: 2,
+            output_lang: 'auto',
+          },
+          learn: {
+            learnability_threshold: 0.3,
+            desired_retention: 0.9,
+          },
         }),
       });
     },

@@ -323,7 +323,7 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(heading).toContainText(/Dashboard|运行/);
 
     // KPI cards visible (4-col grid for >= 2 runs: runs, avg score, pass rate, concepts)
-    const kpiCards = page.locator('.kpi-card');
+    const kpiCards = page.locator('.kpi-grid--4col > .kpi-card');
     await expect(kpiCards).toHaveCount(4);
     await expect(kpiCards.nth(0).locator('.kpi-card__label')).toHaveText('Total runs');
     await expect(kpiCards.nth(1).locator('.kpi-card__label')).toHaveText('Avg score');
@@ -367,7 +367,7 @@ test.describe('walkthrough: full-app functional test', () => {
 
     await page.goto('/');
 
-    const kpiCards = page.locator('.kpi-card');
+    const kpiCards = page.locator('.kpi-grid--4col > .kpi-card');
     await expect(kpiCards).toHaveCount(4);
     await expect(kpiCards.nth(0).locator('.kpi-card__hint')).toHaveText(
       'Stats API unavailable; using loaded runs only',
@@ -534,21 +534,21 @@ test.describe('walkthrough: full-app functional test', () => {
 
     // Rating buttons appear but are disabled during peek guard (1.5s).
     // The timer is held by the test to avoid slow-browser timing flakes.
+    // v0.1: SRSCard only renders Good/Hard/Wrong (Easy/Archive/Suspend removed).
     const ratingBtns = page.locator('.srs-card__rating-btn');
     await expect(ratingBtns).not.toHaveCount(0);
-    const archiveBtn = page.getByRole('button', { name: /Archive/i });
-    const suspendBtn = page.getByRole('button', { name: /Suspend/i });
-    const easyBtn = page.locator('.srs-card__rating-btn--easy');
     const goodBtn = page.locator('.srs-card__rating-btn--good');
     const hardBtn = page.locator('.srs-card__rating-btn--hard');
     const wrongBtn = page.locator('.srs-card__rating-btn--wrong');
 
-    await expect(easyBtn).toBeDisabled();
+    // Easy / Archive / Suspend buttons must NOT exist in v0.1 DOM.
+    await expect(page.locator('.srs-card__rating-btn--easy')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Archive/i })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Suspend/i })).toHaveCount(0);
+
     await expect(goodBtn).toBeDisabled();
     await expect(hardBtn).toBeDisabled();
     await expect(wrongBtn).toBeDisabled();
-    await expect(archiveBtn).toBeDisabled();
-    await expect(suspendBtn).toBeDisabled();
     expect(srsReviewRequests).toHaveLength(0);
 
     // Peek guard hint visible
@@ -559,14 +559,12 @@ test.describe('walkthrough: full-app functional test', () => {
         .__ahadiffReleasePeekGuardTimers?.();
     });
 
-    // After peek guard expires. Choice mode answered wrong → Easy/Good still
+    // After peek guard expires. Choice mode answered wrong → Good still
     // disabled. Hard/Wrong are the only valid SRS ratings for a wrong answer.
-    await expect(easyBtn).toBeDisabled();
+    // (Easy/Archive/Suspend removed in v0.1.)
     await expect(goodBtn).toBeDisabled();
     await expect(hardBtn).toBeEnabled();
     await expect(wrongBtn).toBeEnabled();
-    await expect(archiveBtn).toBeEnabled();
-    await expect(suspendBtn).toBeEnabled();
 
     await hardBtn.click();
     await expect.poll(() => srsReviewRequests.length, { timeout: 3000 }).toBe(1);
@@ -697,13 +695,12 @@ test.describe('walkthrough: full-app functional test', () => {
     const srsButtons = page.locator('.srs-buttons');
     await expect(srsButtons).toBeVisible();
     const srsBtns = page.locator('.srs-btn');
-    await expect(srsBtns).toHaveCount(4);
+    await expect(srsBtns).toHaveCount(3);
 
-    // Verify button labels (en: Again / Hard / Good / Easy)
+    // Verify button labels (en: Again / Hard / Good; Easy is hidden in v0.1)
     await expect(srsBtns.nth(0)).toContainText(/Again|重来/);
     await expect(srsBtns.nth(1)).toContainText(/Hard|困难/);
     await expect(srsBtns.nth(2)).toContainText(/Good|掌握/);
-    await expect(srsBtns.nth(3)).toContainText(/Easy|简单/);
 
     // Keyboard shortcuts shown
     await expect(srsBtns.nth(0).locator('.srs-btn__kbd')).toContainText('1');
@@ -711,15 +708,9 @@ test.describe('walkthrough: full-app functional test', () => {
     // Click Good
     await srsBtns.nth(2).click();
 
-    // After rating: session complete (only 1 card)
-    await expect(page.locator('.review__complete')).toBeVisible();
-    await expect(page.locator('.review__complete-stats')).toBeVisible();
-    await expect(
-      page.locator('.review__complete-stat').filter({ hasText: 'Good/Easy' }),
-    ).toContainText('1');
-    await expect(
-      page.locator('.review__rating-row').filter({ hasText: 'Good' }),
-    ).toContainText('1');
+    // After rating: advances to the next due card in the mock queue.
+    await expect(page.locator('.review__complete')).toHaveCount(0);
+    await expect(page.locator('.flashcard')).toContainText('What does the new comment indicate?');
 
     await page.screenshot({ path: `${SCREENSHOT_DIR}/06-review.png`, fullPage: true });
   });
@@ -759,33 +750,28 @@ test.describe('walkthrough: full-app functional test', () => {
   /*  Page 8: Settings                                                 */
   /* ---------------------------------------------------------------- */
 
-  test('Settings — 8 tabs, provider grid, audit log, doctor checks', async ({ page }) => {
+  test('Settings — tabs, provider grid, audit log, doctor checks', async ({ page }) => {
     await page.goto('/#/settings');
 
     // Heading
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
-    // Tab sidebar with 8 tabs
+    // Tab sidebar with current Settings sections.
     await expect(page.locator('.stabs')).toBeVisible();
-    await expect(page.locator('.st')).toHaveCount(8);
+    await expect(page.locator('.st')).toHaveCount(7);
 
-    // Default privacy tab shows V6 mode summary + switch controls.
-    await expect(page.locator('.mode-summary')).toBeVisible();
-    await expect(page.locator('.settings-toggle')).toHaveCount(4);
+    // Default privacy tab shows privacy controls.
+    await expect(page.locator('.settings-toggle')).toHaveCount(3);
 
     // Default privacy tab shows config fields
     const fields = page.locator('#spanel-privacy .settings-field');
     await expect(fields).not.toHaveCount(0);
     await expect(fields.first()).toBeVisible();
 
-    // Navigate to keys tab for API key badges
-    await page.getByRole('tab', { name: /keys/i }).click();
-    await expect(page.locator('#spanel-keys .settings-field__badge--configured')).toBeVisible();
-
-    // Navigate to models tab for provider grid metadata.
-    await page.getByRole('tab', { name: /models/i }).click();
+    // Navigate to provider tab for provider grid metadata.
+    await page.getByRole('tab', { name: /provider/i }).click();
     await expect(page.locator('.provider-grid')).toBeVisible();
-    await expect(page.locator('.provider-cell__hl')).toContainText('gpt-5.4-mini');
+    await expect(page.locator('.provider-card').first()).toContainText('gpt-5.4-mini');
 
     // Navigate to audit tab for the 8-column recent provider log.
     await page.getByRole('tab', { name: /audit/i }).click();
@@ -793,11 +779,10 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(page.locator('.audit-table')).toContainText('lesson_generate');
     await expect(page.locator('.audit-table')).toContainText('700');
 
-    // Navigate to language and appearance tabs.
-    await page.getByRole('tab', { name: /language/i }).click();
+    // Navigate to preferences tab for language, appearance and learning controls.
+    await page.getByRole('tab', { name: /preferences/i }).click();
     await expect(page.locator('.settings-content').getByRole('group', { name: /Language/i })).toBeVisible();
-    await page.getByRole('tab', { name: /appearance/i }).click();
-    await expect(page.getByText('Theme customization coming soon')).toBeVisible();
+    await expect(page.getByText('Learning Sensitivity')).toBeVisible();
 
     // Navigate to integrations tab for install target badges.
     await page.getByRole('tab', { name: /integrations/i }).click();
@@ -831,9 +816,9 @@ test.describe('walkthrough: full-app functional test', () => {
     // At least one step should be done (since doctor checks pass)
     await expect(page.locator('.stepper__step--done').first()).toBeVisible();
 
-    // CLI commands card
+    // CLI commands card; doctor all-pass opens on the learn step.
     await expect(page.locator('pre')).toBeVisible();
-    await expect(page.locator('pre').first()).toContainText('pip install ahadiff');
+    await expect(page.locator('pre').first()).toContainText('ahadiff learn HEAD~1..HEAD');
 
     // Doctor checks in the onboarding grid
     await expect(page.locator('.doctor-check').first()).toBeVisible();
@@ -1238,20 +1223,23 @@ test.describe('walkthrough: full-app functional test', () => {
     // Press 3 for Good rating
     await page.keyboard.press('3');
 
-    // Session complete
-    await expect(page.locator('.review__complete')).toBeVisible();
+    // The first rating advances to the second due card in the mock queue.
+    await expect(page.locator('.review__complete')).toHaveCount(0);
+    await expect(page.locator('.flashcard')).toContainText('What does the new comment indicate?');
   });
 
-  test('Review — keyboard shortcuts: 4 for Easy', async ({ page }) => {
+  test('Review — keyboard shortcut 4 is ignored because Easy is hidden', async ({ page }) => {
     await page.goto('/#/review');
     await expect(page.locator('.flashcard')).toBeVisible();
 
     await page.keyboard.press('Space');
     await expect(page.locator('.srs-buttons')).toBeVisible();
+    await expect(page.locator('.srs-btn')).toHaveCount(3);
 
     await page.keyboard.press('4');
 
-    await expect(page.locator('.review__complete')).toBeVisible();
+    await expect(page.locator('.review__complete')).toHaveCount(0);
+    await expect(page.locator('.srs-buttons')).toBeVisible();
   });
 
   test('Review — SRS rating buttons have aria-describedby linking to interval', async ({ page }) => {
@@ -1264,7 +1252,7 @@ test.describe('walkthrough: full-app functional test', () => {
 
     // Verify each button has aria-describedby pointing to its interval span
     const srsBtns = page.locator('.srs-btn');
-    await expect(srsBtns).toHaveCount(4);
+    await expect(srsBtns).toHaveCount(3);
 
     // Again button
     await expect(srsBtns.nth(0)).toHaveAttribute('aria-describedby', 'srs-interval-wrong');
@@ -1278,13 +1266,12 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(srsBtns.nth(2)).toHaveAttribute('aria-describedby', 'srs-interval-good');
     await expect(page.locator('#srs-interval-good')).toContainText(/4/);
 
-    // Easy button
-    await expect(srsBtns.nth(3)).toHaveAttribute('aria-describedby', 'srs-interval-easy');
-    await expect(page.locator('#srs-interval-easy')).toContainText(/7/);
+    // Easy button is intentionally absent in v0.1.
+    await expect(page.locator('#srs-interval-easy')).toHaveCount(0);
 
     // Verify aria-label includes full description
     await expect(srsBtns.nth(0)).toHaveAttribute('aria-label', /Again/);
-    await expect(srsBtns.nth(3)).toHaveAttribute('aria-label', /Easy/);
+    await expect(srsBtns.nth(2)).toHaveAttribute('aria-label', /Good/);
   });
 
   test('Review — InfoHint tooltip keyboard: focus shows, Escape hides, aria-expanded toggles', async ({ page }) => {

@@ -3,6 +3,7 @@
 > Research-only. No code changes. Based on reading all gap analysis docs, V6 HTML reference, Blueprint HTML, and current viewer source.
 
 > Current-state note (2026-05-02): sections 11.4 and 11.6 were written before the latest viewer follow-up. The frontend now has a shared `GraphifyCard` backed by `viewer/src/state/graph-store.ts` with 30s TTL, 15s request timeout, in-flight dedupe, `AbortController`, and invalidate-then-refetch behavior. This closes the basic cross-page freshness/status card gap where the card is mounted. It does **not** close the full V6 Graphify source card, provenance display, CLI polish, or real large-graph signoff work.
+> Current-state note (2026-05-07): this remains a research snapshot, not the current implementation ledger. The v0.1 SRS UI now intentionally hides Easy and keeps only Wrong / Hard / Good visible; Settings has a 7-tab shape with Preferences for language, appearance, `learnability_threshold`, and `desired_retention`; Ratchet TSV export and ConceptGraph cluster/list fallback are implemented. See `doc/FRONTEND_GAP_REPORT.md` for the current closed/open gap list.
 
 ---
 

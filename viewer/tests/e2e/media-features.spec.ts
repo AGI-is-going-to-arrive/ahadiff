@@ -153,7 +153,8 @@ test.describe('media features', () => {
     await expect(page.locator('.lesson__prose')).toBeVisible();
     await expect(page.locator('.lesson__toc')).toBeHidden();
     await expect(page.locator('.lesson-sidebar')).toBeHidden();
-    await expect(page.locator('.lesson__rail')).toBeHidden();
+    // Per blueprint: lesson rail (claims/sources/notes) stays visible in print.
+    await expect(page.locator('.lesson__rail')).toBeVisible();
   });
 
   test('forced-colors active: key elements remain in DOM', async ({ page }) => {

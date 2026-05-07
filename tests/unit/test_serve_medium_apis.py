@@ -629,6 +629,114 @@ class TestPutConfig:
         )
         assert resp.status_code == 400
 
+    def test_learn_desired_retention_round_trips(self, tmp_path: Path) -> None:
+        repo_root = tmp_path / "repo"
+        (repo_root / ".git").mkdir(parents=True)
+        state_dir = repo_root / ".ahadiff"
+        client = _client(state_dir)
+
+        put_resp = client.put(
+            "/api/config",
+            json={"learn": {"desired_retention": 0.84}},
+            headers={**_AUTH, "origin": "http://localhost:8765"},
+        )
+        get_resp = client.get("/api/config")
+
+        assert put_resp.status_code == 200
+        assert get_resp.status_code == 200
+        assert get_resp.json()["learn"]["desired_retention"] == 0.84
+
+    @pytest.mark.parametrize("value", [0.7, 0.99])
+    def test_learn_desired_retention_accepts_boundaries(
+        self,
+        tmp_path: Path,
+        value: float,
+    ) -> None:
+        client = _client(tmp_path / ".ahadiff")
+        resp = client.put(
+            "/api/config",
+            json={"learn": {"desired_retention": value}},
+            headers={**_AUTH, "origin": "http://localhost:8765"},
+        )
+
+        assert resp.status_code == 200
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"learn": {"desired_retention": 0.5}},
+            {"learn": {"desired_retention": 1.0}},
+            {"learn": {"desired_retention": True}},
+            {"learn": {"desired_retention": "0.84"}},
+            {"learn": {"desired_retention": None}},
+        ],
+    )
+    def test_learn_desired_retention_out_of_range_rejected(
+        self,
+        tmp_path: Path,
+        payload: dict[str, object],
+    ) -> None:
+        client = _client(tmp_path / ".ahadiff")
+        resp = client.put(
+            "/api/config",
+            json=payload,
+            headers={**_AUTH, "origin": "http://localhost:8765"},
+        )
+
+        assert resp.status_code == 400
+        assert "learn.desired_retention" in resp.json()["error"]
+
+    @pytest.mark.parametrize("raw_value", ["NaN", "Infinity"])
+    def test_learn_desired_retention_non_finite_rejected(
+        self,
+        tmp_path: Path,
+        raw_value: str,
+    ) -> None:
+        client = _client(tmp_path / ".ahadiff")
+        resp = client.put(
+            "/api/config",
+            content=f'{{"learn":{{"desired_retention":{raw_value}}}}}'.encode(),
+            headers={
+                **_AUTH,
+                "origin": "http://localhost:8765",
+                "content-type": "application/json",
+            },
+        )
+
+        assert resp.status_code == 400
+        assert "learn.desired_retention" in resp.json()["error"]
+
+    @pytest.mark.parametrize("raw_value", ["NaN", "Infinity"])
+    def test_learnability_threshold_non_finite_rejected(
+        self,
+        tmp_path: Path,
+        raw_value: str,
+    ) -> None:
+        client = _client(tmp_path / ".ahadiff")
+        resp = client.put(
+            "/api/config",
+            content=f'{{"learn":{{"learnability_threshold":{raw_value}}}}}'.encode(),
+            headers={
+                **_AUTH,
+                "origin": "http://localhost:8765",
+                "content-type": "application/json",
+            },
+        )
+
+        assert resp.status_code == 400
+        assert "learn.learnability_threshold" in resp.json()["error"]
+
+    def test_learn_unknown_nested_key_rejected(self, tmp_path: Path) -> None:
+        client = _client(tmp_path / ".ahadiff")
+        resp = client.put(
+            "/api/config",
+            json={"learn": {"desired_retention": 0.84, "extra": 1}},
+            headers={**_AUTH, "origin": "http://localhost:8765"},
+        )
+
+        assert resp.status_code == 400
+        assert "unknown learn keys" in resp.json()["error"]
+
     def test_non_object_rejected(self, tmp_path: Path) -> None:
         client = _client(tmp_path / ".ahadiff")
         resp = client.put(

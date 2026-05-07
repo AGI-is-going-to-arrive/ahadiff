@@ -52,6 +52,11 @@
     "title": "概念图谱"
   },
   "Graph": {
+    "click_collapse": "点击收起",
+    "click_expand": "点击展开",
+    "cluster_count": "{count} 个概念",
+    "cluster_off": "取消分组",
+    "cluster_on": "按类型分组",
     "connected": "关联节点",
     "edge_count": "{count} 条边",
     "empty_disabled": "Graphify 集成已禁用",
@@ -113,7 +118,11 @@
     "title": "运行面板",
     "verdict_filter_label": "按判定筛选",
     "weakest_dim_hint": "该运行中评分最低的评估维度",
-    "weakest_dimensions_title": "薄弱维度"
+    "weakest_dimensions_title": "薄弱维度",
+    "learning_effectiveness_title": "学习效果",
+    "learning_transfer_rate": "迁移率",
+    "concepts_improving": "进步中的概念",
+    "concepts_declining": "退步中的概念"
   },
   "Diff": {
     "collapse_all": "全部折叠",
@@ -244,6 +253,7 @@
       "total_claims": "条声明",
       "weakest_dimension": "最弱维度：{dim}"
     },
+    "scaffolding_auto_hint": "根据掌握程度自动选择",
     "title": "课程",
     "title_with_ref": "{title} · {ref}",
     "eyebrow": "§ 课程 · {ref}",
@@ -415,7 +425,15 @@
     "tab_judge_empty": "暂无评审笔记。运行评估以生成评审反馈。",
     "judge_notes_title": "评估备注",
     "table_label": "运行历史表格",
-    "title": "棘轮历史"
+    "title": "棘轮历史",
+    "export_tsv": "导出 TSV",
+    "export_failed": "导出失败",
+    "spec_alignment": "规范对齐",
+    "alignment_score": "分数",
+    "recent_trend": "趋势",
+    "trend_improving": "上升",
+    "trend_stable": "持平",
+    "trend_declining": "下降"
   },
   "Review": {
     "answer_label": "答案",
@@ -581,6 +599,8 @@
     "judge_model_desc": "用于评估和打分的提供商和模型。",
     "model_name_placeholder": "模型名称",
     "provider_auto": "自动（单一提供商）",
+    "desired_retention_label": "FSRS 目标保留率",
+    "desired_retention_hint": "越高 = 复习越频繁，记忆越牢固（默认：90%）",
     "learnability_fewer": "更少但更精",
     "learnability_more": "更多课程",
     "learnability_threshold": "学习灵敏度",

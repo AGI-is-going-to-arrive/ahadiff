@@ -312,6 +312,10 @@
   margin-top: var(--sp-1);
 }
 
+.dashboard__learning {
+  margin-top: var(--sp-1);
+}
+
 .dashboard__section-title {
   font-size: 15px;
   font-weight: 600;

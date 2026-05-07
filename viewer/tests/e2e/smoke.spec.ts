@@ -57,12 +57,33 @@ test.describe('smoke', () => {
     await page.locator('.flashcard__flip-btn').click();
     await expect(page.locator('.srs-buttons')).toBeVisible();
     const buttons = page.locator('.srs-btn');
-    await expect(buttons).toHaveCount(4);
+    await expect(buttons).toHaveCount(3);
   });
 
   test('hash router ratchet route renders Ratchet heading', async ({ page }) => {
     await page.goto('/#/ratchet');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  });
+
+  test('ratchet TSV export uses token-aware API fetch', async ({ page }) => {
+    let exportToken: string | undefined;
+    await page.route(
+      (url) => url.pathname === '/api/export/results',
+      (route) => {
+        exportToken = route.request().headers()['x-ahadiff-token'];
+        expect(new URL(route.request().url()).searchParams.get('format')).toBe('tsv');
+        return route.fulfill({
+          status: 200,
+          contentType: 'text/tab-separated-values',
+          body: 'timestamp\trun_id\n',
+        });
+      },
+    );
+
+    await page.goto('/#/ratchet');
+    await page.getByRole('button', { name: /Export TSV/i }).click();
+
+    await expect.poll(() => exportToken).toBe('test-token-xxx');
   });
 
   test('hash router welcome/landing route renders hero', async ({ page }) => {
@@ -117,12 +138,12 @@ test.describe('smoke', () => {
   test('settings page shows tab sidebar and config fields', async ({ page }) => {
     await page.goto('/#/settings');
     await expect(page.getByRole('tablist', { name: /settings/i })).toBeVisible();
-    await expect(page.getByRole('tab')).toHaveCount(8);
+    await expect(page.getByRole('tab')).toHaveCount(7);
     await expect(page.locator('.settings-field')).not.toHaveCount(0);
-    await expect(page.locator('.settings-toggle')).toHaveCount(4);
+    await expect(page.locator('.settings-toggle')).toHaveCount(3);
 
-    await page.getByRole('tab', { name: /models/i }).click();
-    await expect(page.locator('.provider-cell')).toBeVisible();
+    await page.getByRole('tab', { name: /provider/i }).click();
+    await expect(page.locator('.provider-card').first()).toBeVisible();
 
     await page.getByRole('tab', { name: /audit/i }).click();
     await expect(page.locator('.audit-table')).toBeVisible();
@@ -136,7 +157,7 @@ test.describe('smoke', () => {
     await page.goto('/#/settings');
 
     const tabs = page.getByRole('tab');
-    await expect(tabs).toHaveCount(8);
+    await expect(tabs).toHaveCount(7);
     const controls = await tabs.evaluateAll((nodes) =>
       nodes.map((node) => node.getAttribute('aria-controls') ?? ''),
     );
@@ -223,7 +244,7 @@ test.describe('smoke', () => {
     ).toBeVisible();
     expect(graphStatusRequests).toBe(0);
 
-    await page.getByRole('tab', { name: /models/i }).click();
+    await page.getByRole('tab', { name: /provider/i }).click();
     await expect(page.getByText('No providers configured')).toBeVisible();
 
     await page.getByRole('tab', { name: /audit/i }).click();

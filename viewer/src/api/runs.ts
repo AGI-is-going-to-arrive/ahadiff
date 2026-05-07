@@ -1,4 +1,4 @@
-import { apiFetch } from './client';
+import { apiFetch, apiFetchBlob } from './client';
 import type { ApiFetchOptions } from './client';
 import {
   paginatedConceptsResponseSchema,
@@ -107,4 +107,8 @@ export async function getRatchetHistory(
   const qs = q.toString();
   const raw = await apiFetch<unknown>(`/api/ratchet/history${qs ? `?${qs}` : ''}`, opts);
   return parseResponse('GET /api/ratchet/history', ratchetHistoryResponseSchema, raw);
+}
+
+export async function getExportResultsTsvBlob(opts?: Pick<RequestInit, 'signal'>): Promise<Blob> {
+  return apiFetchBlob('/api/export/results?format=tsv', opts);
 }

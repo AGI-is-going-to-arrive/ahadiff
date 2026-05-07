@@ -7,11 +7,16 @@ import RatchetChart from '../components/RatchetChart';
 import Skeleton, { SkeletonGroup } from '../components/Skeleton';
 import { ApiError } from '../api/client';
 import { getRatchetHistory } from '../api/runs';
-import { fetchReviewHeatmap, fetchStats } from '../api/stats';
+import { fetchLearningEffectiveness, fetchReviewHeatmap, fetchStats } from '../api/stats';
 import { useRunsStore } from '../state/runs-store';
 import { useTranslation, type MessageKey, type TranslateFn } from '../i18n/useTranslation';
 import { useLocaleStore } from '../state/locale-store';
-import type { RatchetHistoryEntry, StatsResponse, Verdict } from '../api/types';
+import type {
+  LearningEffectivenessResponse,
+  RatchetHistoryEntry,
+  StatsResponse,
+  Verdict,
+} from '../api/types';
 import { safeVerdict } from '../utils/verdict';
 import '../components/Dashboard.css';
 
@@ -76,6 +81,7 @@ export default function DashboardPage() {
 
   const [ratchetHistory, setRatchetHistory] = useState<RatchetHistoryEntry[]>([]);
   const [stats, setStats] = useState<StatsResponse | null>(null);
+  const [learning, setLearning] = useState<LearningEffectivenessResponse | null>(null);
   const [heatmapCells, setHeatmapCells] = useState<HeatmapCell[] | null>(null);
   const [statsUnavailable, setStatsUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -99,63 +105,64 @@ export default function DashboardPage() {
     setError(null);
     setStatsUnavailable(false);
     setHeatmapCells(null);
+    setLearning(null);
     let failed = false;
     // 401/403 from any apiFetch means the bootstrap token was rejected. Show
     // a single auth-specific message instead of the generic fetch-failed one
     // (G1: distinguishes "serve process gone" from "network error").
     const isAuthErr = (e: unknown): boolean =>
       e instanceof ApiError && (e.status === 401 || e.status === 403);
-    try {
-      await loadRuns(undefined, { signal: controller.signal });
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return;
-      if (isAuthErr(err)) { setError('Error.auth_failed'); failed = true; }
-      else if (!controller.signal.aborted) { setError('Nav.dashboard'); failed = true; }
+
+    const [runsResult, ratchetResult, statsResult, heatmapResult, learningResult] =
+      await Promise.allSettled([
+        loadRuns(undefined, { signal: controller.signal }),
+        getRatchetHistory({}, { signal: controller.signal }),
+        fetchStats({ signal: controller.signal }),
+        fetchReviewHeatmap({ signal: controller.signal }),
+        fetchLearningEffectiveness({ signal: controller.signal }),
+      ]);
+
+    if (controller.signal.aborted) return;
+
+    if (runsResult.status === 'rejected') {
+      if (isAuthErr(runsResult.reason)) { setError('Error.auth_failed'); failed = true; }
+      else { setError('Nav.dashboard'); failed = true; }
     }
-    try {
-      const res = await getRatchetHistory({}, { signal: controller.signal });
-      if (!controller.signal.aborted) {
-        setRatchetHistory(res.history);
-      }
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return;
-      if (!failed && isAuthErr(err)) { setError('Error.auth_failed'); failed = true; }
-      else if (!controller.signal.aborted && !failed) setError('Dashboard.ratchet_title');
+
+    if (ratchetResult.status === 'fulfilled') {
+      setRatchetHistory(ratchetResult.value.history);
+    } else if (!failed && isAuthErr(ratchetResult.reason)) {
+      setError('Error.auth_failed');
+      failed = true;
+    } else if (!failed) {
+      setError('Dashboard.ratchet_title');
     }
-    try {
-      const s = await fetchStats({ signal: controller.signal });
-      if (!controller.signal.aborted) {
-        setStats(s);
-        setStatsUnavailable(false);
-      }
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return;
-      if (!controller.signal.aborted) {
-        setStats(null);
-        setStatsUnavailable(true);
-      }
+
+    if (statsResult.status === 'fulfilled') {
+      setStats(statsResult.value);
+      setStatsUnavailable(false);
+    } else {
+      setStats(null);
+      setStatsUnavailable(true);
     }
-    try {
-      const heatmap = await fetchReviewHeatmap({ signal: controller.signal });
-      if (!controller.signal.aborted) {
-        setHeatmapCells(
-          heatmap.entries.map((entry) => ({
-            iso_date: entry.date,
-            count: entry.review_count,
-          })),
-        );
+
+    if (heatmapResult.status === 'fulfilled') {
+      setHeatmapCells(
+        heatmapResult.value.entries.map((entry) => ({
+          iso_date: entry.date,
+          count: entry.review_count,
+        })),
+      );
+    } else {
+      if (!failed && isAuthErr(heatmapResult.reason)) {
+        setError('Error.auth_failed');
+        failed = true;
       }
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return;
-      if (!failed && isAuthErr(err)) { setError('Error.auth_failed'); failed = true; }
-      if (!controller.signal.aborted) {
-        setHeatmapCells(null);
-      }
-    } finally {
-      if (!controller.signal.aborted) {
-        setLoading(false);
-      }
+      setHeatmapCells(null);
     }
+
+    setLearning(learningResult.status === 'fulfilled' ? learningResult.value : null);
+    setLoading(false);
   }, [loadRuns]);
 
   useEffect(() => {
@@ -394,6 +401,39 @@ export default function DashboardPage() {
 
         {/* Graphify status — optional, self-fetching, hidden when disabled */}
         {graphifyCard}
+
+        {/* Learning effectiveness summary — surfaces /api/stats/learning so
+         * users can see whether SRS reviews are converting into transfer. */}
+        {learning && (
+          <div className="dashboard__learning">
+            <h2 className="dashboard__section-title">
+              {t('Dashboard.learning_effectiveness_title')}
+            </h2>
+            <div className="kpi-grid kpi-grid--3col">
+              <KpiCard
+                label={t('Dashboard.learning_transfer_rate')}
+                value={`${Math.round(learning.transfer_rate * 100)}%`}
+                tone={
+                  learning.transfer_rate >= 0.6
+                    ? 'success'
+                    : learning.transfer_rate >= 0.3
+                      ? 'warning'
+                      : 'default'
+                }
+              />
+              <KpiCard
+                label={t('Dashboard.concepts_improving')}
+                value={learning.concepts_improving}
+                tone={learning.concepts_improving > 0 ? 'success' : 'default'}
+              />
+              <KpiCard
+                label={t('Dashboard.concepts_declining')}
+                value={learning.concepts_declining}
+                tone={learning.concepts_declining > 0 ? 'warning' : 'default'}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Weakest dimension chip cloud — V6 alignment */}
         {stats && stats.weakest_dimensions.length > 0 && (

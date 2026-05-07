@@ -24,6 +24,7 @@ from ahadiff.review.database import (
 )
 
 from .auth import require_write_token, serve_state
+from .config_runtime import configured_desired_retention
 from .lock import serve_repo_write_lock
 
 if TYPE_CHECKING:
@@ -88,6 +89,7 @@ def _review_rate_sync(state: ServeState, body: ReviewRateRequest) -> ReviewUpdat
             idempotency_key=body.idempotency_key,
             peeked_this_session=body.peeked_this_session,
             selected_choice_label=body.selected_choice_label,
+            desired_retention=configured_desired_retention(state),
         )
 
 

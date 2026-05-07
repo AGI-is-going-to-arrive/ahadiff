@@ -36,6 +36,7 @@ export interface LlmConfig {
 
 export interface LearnConfig {
   learnability_threshold: number;
+  desired_retention?: number;
 }
 
 export interface ConfigResponse {

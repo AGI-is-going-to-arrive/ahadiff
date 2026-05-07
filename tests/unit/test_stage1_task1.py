@@ -277,7 +277,7 @@ def test_load_config_resolves_five_layer_precedence(
     global_path = global_config_dir(env=env) / "config.toml"
     global_path.parent.mkdir(parents=True)
     global_path.write_text(
-        'lang = "zh-CN"\n\n[learn]\nlearnability_threshold = 0.5\n',
+        'lang = "zh-CN"\n\n[learn]\nlearnability_threshold = 0.5\ndesired_retention = 0.82\n',
         encoding="utf-8",
     )
 
@@ -305,11 +305,59 @@ def test_load_config_resolves_five_layer_precedence(
     assert resolve_effective("learn.learnability_threshold", snapshot=snapshot).value == 0.5
     global_source = resolve_effective("learn.learnability_threshold", snapshot=snapshot).source
     assert global_source == f"global:{global_path}"
+    assert resolve_effective("learn.desired_retention", snapshot=snapshot).value == 0.82
+    retention_source = resolve_effective("learn.desired_retention", snapshot=snapshot).source
+    assert retention_source == f"global:{global_path}"
     assert resolve_effective("llm.judge_model", snapshot=snapshot).value == "gpt-5.4-mini"
     assert resolve_effective("llm.judge_model", snapshot=snapshot).source == "default"
 
     keys = [setting.key for setting in iter_resolved_settings(snapshot)]
     assert "llm.generate_model" in keys
+
+
+def test_learn_desired_retention_defaults_to_point_nine_when_unset(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+
+    snapshot = load_config(repo_root, env={"HOME": str(tmp_path / "home")})
+
+    assert snapshot.values["learn"]["desired_retention"] == 0.9
+    resolved = resolve_effective("learn.desired_retention", snapshot=snapshot)
+    assert resolved.value == 0.9
+    assert resolved.source == "default"
+
+
+@pytest.mark.parametrize("raw_value", ["0.5", "1.0", "nan", "inf"])
+def test_learn_desired_retention_rejects_invalid_values(
+    tmp_path: Path,
+    raw_value: str,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    repo_path = repo_config_path(repo_root)
+    repo_path.parent.mkdir(parents=True)
+    repo_path.write_text(f"[learn]\ndesired_retention = {raw_value}\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="learn\\.desired_retention"):
+        load_config(repo_root, env={"HOME": str(tmp_path / "home")})
+
+
+@pytest.mark.parametrize("raw_value", ["-0.1", "1.1", "nan", "inf"])
+def test_learnability_threshold_rejects_invalid_values(
+    tmp_path: Path,
+    raw_value: str,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    repo_path = repo_config_path(repo_root)
+    repo_path.parent.mkdir(parents=True)
+    repo_path.write_text(f"[learn]\nlearnability_threshold = {raw_value}\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="learn\\.learnability_threshold"):
+        load_config(repo_root, env={"HOME": str(tmp_path / "home")})
 
 
 def test_load_config_resolves_llm_step_output_cap_env(tmp_path: Path) -> None:

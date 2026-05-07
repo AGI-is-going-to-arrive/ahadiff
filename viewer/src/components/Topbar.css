@@ -6,10 +6,11 @@
 /* ---------- Topbar ---------- */
 
 .topbar {
+  --topbar-pad-inline: var(--sp-6);
   display: flex;
   align-items: center;
   gap: var(--sp-4);
-  padding: var(--sp-3) var(--sp-6);
+  padding: var(--sp-3) var(--topbar-pad-inline);
   border-bottom: 1px solid var(--hair);
   /* V6 (`AhaDiff Warm v6.html:80-82`) uses an opaque rgba() fallback rather
    * than color-mix() so older browsers (Firefox <113, Safari <16.4, Chrome
@@ -20,7 +21,7 @@
   -webkit-backdrop-filter: saturate(1.4) blur(8px);
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 50;
 }
 
 @media (prefers-reduced-transparency: reduce) {
@@ -100,7 +101,7 @@
   font-size: 13px;
   cursor: default;
   appearance: none;
-  min-height: 36px;
+  min-height: 44px;
   transition: border-color var(--dur-fast) var(--ease-out-quart);
 }
 
@@ -166,7 +167,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 36px;
+  min-height: 44px;
   border: 1px solid transparent;
   transition: background var(--dur-fast) var(--ease-out-quart),
     color var(--dur-fast) var(--ease-out-quart);
@@ -310,7 +311,8 @@
 
 @media (max-width: 767px) {
   .topbar {
-    padding: var(--sp-2) var(--sp-3);
+    --topbar-pad-inline: var(--sp-3);
+    padding: var(--sp-2) var(--topbar-pad-inline);
     gap: var(--sp-2);
     min-width: 0;
     overflow: hidden;
@@ -364,7 +366,7 @@
   .lang-switcher__btn {
     padding: var(--sp-1) 6px;
     font-size: 11px;
-    min-height: 32px;
+    min-height: 44px;
   }
 }
 
@@ -389,8 +391,8 @@
     gap: 1px;
   }
   .lang-switcher__btn {
-    min-height: 36px;
-    min-width: 0;
+    min-height: 44px;
+    min-width: 44px;
     max-width: 64px;
     padding: var(--sp-1) var(--sp-2);
     font-size: 11px;
@@ -465,5 +467,13 @@
 @media (prefers-color-scheme: dark) {
   .topbar {
     background: var(--surface-veil);
+  }
+}
+
+/* ---- Safe-area insets (iOS notch / landscape) ---- */
+@supports (padding-left: env(safe-area-inset-left)) {
+  .topbar {
+    padding-left: max(var(--topbar-pad-inline), env(safe-area-inset-left, 0px));
+    padding-right: max(var(--topbar-pad-inline), env(safe-area-inset-right, 0px));
   }
 }

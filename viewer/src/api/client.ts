@@ -257,6 +257,21 @@ export async function apiFetch<T>(path: string, init?: ApiFetchOptions): Promise
   return (await res.json()) as T;
 }
 
+export async function apiFetchBlob(path: string, init?: ApiFetchOptions): Promise<Blob> {
+  const apiPath = normalizeApiPath(path);
+  const signal = init?.signal ?? undefined;
+  let token = await ensureToken(signal);
+  let res = await rawFetch(apiPath, token, init);
+
+  if (res.status === 401 || res.status === 403) {
+    token = await refreshToken(token, signal);
+    res = await rawFetch(apiPath, token, init);
+  }
+
+  if (!res.ok) throw new ApiError(res.status, await safeJson(res));
+  return await res.blob();
+}
+
 /** Variant for endpoints that may legitimately return 204 No Content. */
 export async function apiFetchVoid(path: string, init?: RequestInit): Promise<void> {
   const apiPath = normalizeApiPath(path);

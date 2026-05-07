@@ -621,15 +621,6 @@
   color: var(--add-fg);
 }
 
-.srs-card__rating-btn--easy {
-  border-color: var(--success);
-  color: var(--success);
-}
-
-.srs-card__rating-btn--easy:hover:not(:disabled) {
-  background: var(--add-bg);
-}
-
 .srs-card__rating-btn--good:hover:not(:disabled) {
   background: var(--add-bg);
 }
@@ -874,11 +865,6 @@
   }
 
   .srs-card__rating-btn--good {
-    border-color: LinkText;
-    color: LinkText;
-  }
-
-  .srs-card__rating-btn--easy {
     border-color: LinkText;
     color: LinkText;
   }

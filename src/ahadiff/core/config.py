@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import tempfile
@@ -89,6 +90,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "learn": {
         "learnability_threshold": 0.3,
+        "desired_retention": 0.9,
     },
     "serve": {
         "port": 8765,
@@ -298,14 +300,27 @@ def _coerce_value(
             raise ConfigError(f"{key} must be >= 1")
         return coerced
     if isinstance(expected, float):
+        parsed_float: float
         if isinstance(value, int | float) and not isinstance(value, bool):
-            return float(value)
-        if coerce_strings and isinstance(value, str):
+            parsed_float = float(value)
+        elif coerce_strings and isinstance(value, str):
             try:
-                return float(value)
+                parsed_float = float(value)
             except ValueError as exc:
                 raise ConfigError(f"{key} expects float, got {value!r}") from exc
-        raise ConfigError(f"{key} expects float, got {type(value).__name__}")
+        else:
+            raise ConfigError(f"{key} expects float, got {type(value).__name__}")
+        if key == "learn.learnability_threshold":
+            if not math.isfinite(parsed_float):
+                raise ConfigError(f"{key} must be a finite number")
+            if parsed_float < 0.0 or parsed_float > 1.0:
+                raise ConfigError(f"{key} must be between 0.0 and 1.0")
+        if key == "learn.desired_retention":
+            if not math.isfinite(parsed_float):
+                raise ConfigError(f"{key} must be a finite number")
+            if parsed_float < 0.7 or parsed_float > 0.99:
+                raise ConfigError(f"{key} must be between 0.7 and 0.99")
+        return parsed_float
     if isinstance(value, str):
         return value
     raise ConfigError(f"{key} expects str, got {type(value).__name__}")

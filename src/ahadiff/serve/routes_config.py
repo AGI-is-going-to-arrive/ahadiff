@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import sqlite3
 from typing import TYPE_CHECKING, Any, cast
 
@@ -48,6 +49,7 @@ def _empty_config_snapshot() -> dict[str, Any]:
         },
         "learn": {
             "learnability_threshold": 0.3,
+            "desired_retention": 0.9,
         },
     }
 
@@ -79,10 +81,10 @@ def _add_legacy_llm_key_status(key_status: dict[str, str], api_key_env: object) 
 
 
 def _safe_config_snapshot(state: ServeState) -> dict[str, Any]:
-    from ahadiff.core.config import load_config
+    from .config_runtime import load_serve_config_snapshot
 
     try:
-        cfg = load_config(state.state_dir.parent)
+        cfg = load_serve_config_snapshot(state)
     except Exception:
         return _empty_config_snapshot()
 
@@ -119,6 +121,7 @@ def _safe_config_snapshot(state: ServeState) -> dict[str, Any]:
         learn_values = _object_mapping(snapshot_values.get("learn"))
         result["learn"] = {
             "learnability_threshold": learn_values.get("learnability_threshold", 0.3),
+            "desired_retention": learn_values.get("desired_retention", 0.9),
         }
         api_key_env = llm_values.get("api_key_env")
         providers = snapshot_values.get("providers")
@@ -150,7 +153,7 @@ def _safe_config_snapshot(state: ServeState) -> dict[str, Any]:
             "retry_attempts": 3,
             "output_lang": "auto",
         }
-        result["learn"] = {"learnability_threshold": 0.3}
+        result["learn"] = {"learnability_threshold": 0.3, "desired_retention": 0.9}
         api_key_env = getattr(llm, "api_key_env", None) if llm else None
         providers = getattr(cfg, "providers", None)
 
@@ -469,7 +472,7 @@ def _validate_learn_update(learn: object) -> dict[str, Any] | str:
     if not isinstance(learn, dict):
         return "learn must be a JSON object"
     learn_dict = cast("dict[str, Any]", learn)
-    allowed = {"learnability_threshold"}
+    allowed = {"learnability_threshold", "desired_retention"}
     unknown_learn: set[str] = set(learn_dict.keys()) - allowed
     if unknown_learn:
         return f"unknown learn keys: {sorted(unknown_learn)}"
@@ -478,9 +481,22 @@ def _validate_learn_update(learn: object) -> dict[str, Any] | str:
         val: object = learn_dict["learnability_threshold"]
         if not isinstance(val, int | float) or isinstance(val, bool):
             return "learn.learnability_threshold must be a number"
-        if val < 0.0 or val > 1.0:
+        parsed = float(val)
+        if not math.isfinite(parsed):
+            return "learn.learnability_threshold must be a finite number"
+        if parsed < 0.0 or parsed > 1.0:
             return "learn.learnability_threshold must be between 0.0 and 1.0"
-        validated["learnability_threshold"] = float(val)
+        validated["learnability_threshold"] = parsed
+    if "desired_retention" in learn_dict:
+        val = learn_dict["desired_retention"]
+        if not isinstance(val, int | float) or isinstance(val, bool):
+            return "learn.desired_retention must be a number"
+        parsed = float(val)
+        if not math.isfinite(parsed):
+            return "learn.desired_retention must be a finite number"
+        if parsed < 0.7 or parsed > 0.99:
+            return "learn.desired_retention must be between 0.7 and 0.99"
+        validated["desired_retention"] = parsed
     return validated
 
 

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError, apiFetch, resetToken, setToken } from '../../src/api/client';
+import { ApiError, apiFetch, apiFetchBlob, resetToken, setToken } from '../../src/api/client';
 import { putConfig } from '../../src/api/config';
 import { ValidationError } from '../../src/api/schemas';
 
@@ -327,5 +327,39 @@ describe('config api', () => {
     );
 
     await expect(putConfig({ lang: 'zh-CN' })).rejects.toBeInstanceOf(ValidationError);
+  });
+});
+
+describe('api client blob downloads', () => {
+  beforeEach(() => {
+    resetToken();
+    setToken('unit-test-token');
+    vi.stubGlobal('window', { location: { origin: 'http://localhost:5173' } });
+  });
+
+  afterEach(() => {
+    resetToken();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('fetches file exports with the write token header', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      expect(String(input)).toBe('/api/export/results?format=tsv');
+      const headers = new Headers(init?.headers);
+      expect(headers.get('x-ahadiff-token')).toBe('unit-test-token');
+      return Promise.resolve(
+        new Response('timestamp\trun_id\n', {
+          status: 200,
+          headers: { 'content-type': 'text/tab-separated-values' },
+        }),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const blob = await apiFetchBlob('/api/export/results?format=tsv');
+
+    await expect(blob.text()).resolves.toBe('timestamp\trun_id\n');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
