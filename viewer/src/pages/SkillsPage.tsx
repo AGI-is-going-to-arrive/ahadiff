@@ -154,7 +154,7 @@ export default function SkillsPage() {
           {selected && (
             <aside className="skill-preview" aria-label={t('Skills.preview_title')}>
               <div className="skill-preview__header">
-                <h3>{selected.display_name || selected.name}</h3>
+                <h2>{selected.display_name || selected.name}</h2>
                 <button
                   type="button"
                   className="skill-preview__close"
@@ -248,7 +248,7 @@ function AgentCard({
           {t(`Skills.status_${target.status}`)}
         </span>
       </div>
-      <div className="agent-card__name">{target.display_name || target.name}</div>
+      <h2 className="agent-card__name">{target.display_name || target.name}</h2>
       <div className="agent-card__desc">{target.description}</div>
       {target.platform_supported && (
         <div className="agent-card__cmd">

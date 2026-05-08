@@ -226,6 +226,38 @@ function truncateLabel(text: string, maxLen: number): string {
   return text.slice(0, maxLen - 1) + '…';
 }
 
+/**
+ * Strip absolute home/system path prefix from a file path so the UI never
+ * leaks the user's username or local FS layout. Recognizes:
+ *   - POSIX home: `/Users/<name>/...`, `/home/<name>/...`, `/root/...`
+ *   - Windows home: `C:\Users\<name>\...`, `C:/Users/<name>/...`
+ *   - Generic absolute roots — falls back to last 3 path segments.
+ * Repo-relative paths (no leading `/` or drive letter) pass through unchanged.
+ */
+function shortenFilePath(filePath: string): string {
+  if (!filePath) return filePath;
+  const normalized = filePath.replace(/\\/g, '/');
+  // Bare home root without child content — redact entirely
+  if (/^\/(?:Users|home)\/[^/]+\/?$/.test(normalized)) return '~';
+  if (/^\/root\/?$/.test(normalized)) return '~';
+  if (/^[A-Za-z]:\/Users\/[^/]+\/?$/.test(normalized)) return '~';
+  // POSIX home patterns: /Users/<name>/..., /home/<name>/...
+  const posixHome = normalized.match(/^\/(?:Users|home)\/[^/]+\/(.+)$/);
+  if (posixHome) return posixHome[1];
+  const rootHome = normalized.match(/^\/root\/(.+)$/);
+  if (rootHome) return rootHome[1];
+  // Windows: C:/Users/<name>/...
+  const winHome = normalized.match(/^[A-Za-z]:\/Users\/[^/]+\/(.+)$/);
+  if (winHome) return winHome[1];
+  // Other absolute paths: keep last 3 segments to avoid leaking arbitrary roots.
+  if (normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized)) {
+    const parts = normalized.split('/').filter(Boolean);
+    if (parts.length > 3) return parts.slice(-3).join('/');
+    return parts.join('/');
+  }
+  return filePath;
+}
+
 function copyComputedProperty(
   target: SVGElement,
   style: CSSStyleDeclaration,
@@ -673,7 +705,7 @@ function DetailPanel({
       {node.file_path && (
         <div className="concept-graph__detail-row">
           <span className="concept-graph__detail-label">{t('Graph.file')}</span>
-          <code className="concept-graph__detail-code">{node.file_path}</code>
+          <code className="concept-graph__detail-code">{shortenFilePath(node.file_path)}</code>
         </div>
       )}
 
@@ -804,7 +836,7 @@ function ListFallback({
             </span>
           )}
           {n.file_path && (
-            <span className="concept-graph__lnode-file">{n.file_path}</span>
+            <span className="concept-graph__lnode-file">{shortenFilePath(n.file_path)}</span>
           )}
         </button>
       ))}

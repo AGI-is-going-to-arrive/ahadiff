@@ -56,6 +56,16 @@ const INTEGRATION_STATUS_KEY: Record<InstallTarget['status'], MessageKey> = {
   error: 'Settings_page.integration_error',
 };
 
+const PROVIDER_SELECT_ARIA_KEY = {
+  generate: 'Settings_page.generate_provider_select_aria',
+  judge: 'Settings_page.judge_provider_select_aria',
+} as const satisfies Record<'generate' | 'judge', MessageKey>;
+
+const MODEL_SELECT_ARIA_KEY = {
+  generate: 'Settings_page.generate_model_select_aria',
+  judge: 'Settings_page.judge_model_select_aria',
+} as const satisfies Record<'generate' | 'judge', MessageKey>;
+
 type SettingsResource = 'config' | 'doctor' | 'providers' | 'usage' | 'audit' | 'installTargets';
 
 interface SettingsData {
@@ -635,6 +645,7 @@ function ProviderTab({
                     <div className="settings-model-select">
                       <select
                         className="settings-select"
+                        aria-label={t(PROVIDER_SELECT_ARIA_KEY[role])}
                         value={selectedAlias}
                         onChange={e => {
                           const alias = e.target.value;
@@ -656,6 +667,7 @@ function ProviderTab({
                       {modelOptions.length > 0 ? (
                         <select
                           className="settings-select settings-select--model"
+                          aria-label={t(MODEL_SELECT_ARIA_KEY[role])}
                           value={modelOptions.includes(currentModel) ? currentModel : ''}
                           onChange={e => setField(modelKey, e.target.value as ProviderForm[typeof modelKey])}
                         >
@@ -670,6 +682,7 @@ function ProviderTab({
                         <input
                           type="text"
                           className="settings-input settings-input--model"
+                          aria-label={t(MODEL_SELECT_ARIA_KEY[role])}
                           value={currentModel}
                           onChange={e => setField(modelKey, e.target.value as ProviderForm[typeof modelKey])}
                           placeholder={t('Settings_page.model_name_placeholder')}
@@ -693,6 +706,7 @@ function ProviderTab({
                 <input
                   type="number"
                   className="settings-input"
+                  aria-label={t('Settings_page.llm_input_token_budget')}
                   min={1000}
                   max={10000000}
                   step={10000}
@@ -708,6 +722,7 @@ function ProviderTab({
                 <input
                   type="number"
                   className="settings-input"
+                  aria-label={t('Settings_page.llm_output_token_budget')}
                   min={1000}
                   max={10000000}
                   step={10000}
@@ -723,6 +738,7 @@ function ProviderTab({
                 <input
                   type="number"
                   className="settings-input"
+                  aria-label={t('Settings_page.llm_timeout')}
                   min={5}
                   max={600}
                   value={form.llm.request_timeout_seconds}
@@ -737,6 +753,7 @@ function ProviderTab({
                 <input
                   type="number"
                   className="settings-input"
+                  aria-label={t('Settings_page.llm_max_concurrent')}
                   min={1}
                   max={20}
                   value={form.llm.max_concurrent}
@@ -751,6 +768,7 @@ function ProviderTab({
                 <input
                   type="number"
                   className="settings-input"
+                  aria-label={t('Settings_page.llm_retry_attempts')}
                   min={0}
                   max={10}
                   value={form.llm.retry_attempts}
@@ -878,6 +896,7 @@ function PrivacyTab({
             </div>
             <select
               className="settings-select"
+              aria-label={t('Settings_page.privacy_mode')}
               value={form.privacy_mode}
               onChange={e => setField('privacy_mode', e.target.value)}
             >
@@ -919,6 +938,7 @@ function PrivacyTab({
             <input
               type="number"
               className="settings-input"
+              aria-label={t('Settings_page.serve_port')}
               min={1024}
               max={65535}
               value={form.serve_port}
@@ -1188,6 +1208,7 @@ function PreferencesTab({
                 </div>
                 <select
                   className="settings-select"
+                  aria-label={t('Settings_page.output_lang')}
                   value={form.output_lang}
                   onChange={e => setField('output_lang', e.target.value)}
                 >
@@ -1378,6 +1399,7 @@ function CaptureTab({
             <input
               type="number"
               className="settings-input"
+              aria-label={t('Settings_page.capture_max_files')}
               min={1}
               max={500}
               value={form.max_files}
@@ -1393,6 +1415,7 @@ function CaptureTab({
             <input
               type="number"
               className="settings-input"
+              aria-label={t('Settings_page.capture_hard_limit')}
               min={100}
               max={100000}
               value={form.hard_limit}
@@ -1408,6 +1431,7 @@ function CaptureTab({
             <input
               type="number"
               className="settings-input"
+              aria-label={t('Settings_page.capture_max_patch_bytes')}
               min={10000}
               max={100000000}
               step={100000}
@@ -1426,6 +1450,7 @@ function CaptureTab({
             </div>
             <select
               className="settings-select"
+              aria-label={t('Settings_page.capture_file_ranking')}
               value={form.file_ranking}
               onChange={e => setField('file_ranking', e.target.value)}
             >
@@ -1442,6 +1467,7 @@ function CaptureTab({
             </div>
             <select
               className="settings-select"
+              aria-label={t('Settings_page.capture_symbol_extractor')}
               value={form.symbol_extractor}
               onChange={e => setField('symbol_extractor', e.target.value)}
             >

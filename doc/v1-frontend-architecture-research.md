@@ -3,7 +3,7 @@
 > Research-only. No code changes. Based on reading all gap analysis docs, V6 HTML reference, Blueprint HTML, and current viewer source.
 
 > Current-state note (2026-05-02): sections 11.4 and 11.6 were written before the latest viewer follow-up. The frontend now has a shared `GraphifyCard` backed by `viewer/src/state/graph-store.ts` with 30s TTL, 15s request timeout, in-flight dedupe, `AbortController`, and invalidate-then-refetch behavior. This closes the basic cross-page freshness/status card gap where the card is mounted. It does **not** close the full V6 Graphify source card, provenance display, CLI polish, or real large-graph signoff work.
-> Current-state note (2026-05-08): this remains a research snapshot, not the current implementation ledger. The v0.1 SRS UI intentionally hides Easy and keeps only Wrong / Hard / Good visible; Settings has a 7-tab shape with Preferences for language, appearance, `learnability_threshold`, and `desired_retention`; Ratchet TSV export is implemented. ConceptGraph no longer has cluster/group-by-kind mode: it now exposes Graph / List only, defaults 201+ nodes to List, keeps Full graph available, and supports full-graph pan/zoom without hard viewport bounds. See `doc/FRONTEND_GAP_REPORT.md` for the current closed/open gap list.
+> Current-state note (2026-05-08): this remains a research snapshot, not the current implementation ledger. The v0.1 SRS UI intentionally hides Easy and keeps only Wrong / Hard / Good visible; Topbar Learn Run now opens the lazy-loaded Learn Mode Dialog with 10 capture modes and `/api/learn/estimate` preflight; Settings has a 7-tab shape with Preferences for language, appearance, `learnability_threshold`, and `desired_retention`; Ratchet TSV export is implemented. ConceptGraph no longer has cluster/group-by-kind mode: it now exposes Graph / List only, defaults 201+ nodes to List, keeps Full graph available, supports full-graph pan/zoom without hard viewport bounds, and strips local home/system prefixes from displayed node file paths. See `doc/FRONTEND_GAP_REPORT.md` for the current closed/open gap list.
 
 ---
 
@@ -558,7 +558,7 @@ The current `ConceptGraph.tsx` is a **functional SVG + d3-force graph renderer**
 - **Graph / List views**: The UI has only Graph and List. 201+ nodes default to List, but the Full graph button remains enabled.
 - **Nodes and edges**: Nodes are circles colored by `kind`; edges are weighted straight SVG lines from sanitized `/api/graph/concepts` data.
 - **Filtering and legend**: Kind chips filter the graph/list; the legend mirrors the visible kind palette.
-- **Node detail panel**: Click or keyboard-activate a node to show kind, file path, freshness, and connected nodes in the side panel.
+- **Node detail panel**: Click or keyboard-activate a node to show kind, shortened file path, freshness, and connected nodes in the side panel.
 - **Graphify source card**: The shared `GraphifySourceCard` shows status, freshness, counts, and provenance where available.
 - **Pan/zoom and fit/export**: Wheel zoom and background drag update the graph `<g>` transform; drag pauses simulation and uses `requestAnimationFrame` to avoid React re-rendering every pointer move. Fit-to-view uses the graph layer bounding box. Export writes an SVG.
 

@@ -311,7 +311,7 @@ export default function OnboardingPage() {
         {/* Doctor card — always shown so the user can re-check status. */}
         <div className="settings-card onboarding__doctor">
           <div className="settings-card__header">
-            <h3>{t('Settings_page.section_doctor')}</h3>
+            <h2>{t('Settings_page.section_doctor')}</h2>
           </div>
           <div className="settings-card__body">
             {doctor.loading ? (
@@ -338,7 +338,7 @@ export default function OnboardingPage() {
          */}
         <div className="settings-card onboarding__preview">
           <div className="settings-card__header">
-            <h3>{t('Onboarding.step4_preview_title')}</h3>
+            <h2>{t('Onboarding.step4_preview_title')}</h2>
             <span className="ratchet-card__meta">{t('Onboarding.step4_preview_meta')}</span>
           </div>
           <div className="settings-card__body">
@@ -374,7 +374,7 @@ export default function OnboardingPage() {
         {isComplete && (
           <div className="settings-card onboarding__complete" role="status">
             <div className="settings-card__body">
-              <h3 className="onboarding__complete-title">{t('Onboarding.complete_title')}</h3>
+              <h2 className="onboarding__complete-title">{t('Onboarding.complete_title')}</h2>
               <p className="onboarding__complete-desc">{t('Onboarding.complete_desc')}</p>
               <a href="#/" className="onboarding__btn onboarding__btn--primary">
                 {t('Onboarding.complete_cta')}
@@ -395,7 +395,7 @@ function Step1Install({
   return (
     <div className="settings-card">
       <div className="settings-card__header">
-        <h3>{t('Onboarding.step1_title')}</h3>
+        <h2>{t('Onboarding.step1_title')}</h2>
         <span className="ratchet-card__meta">
           {t('Onboarding.install_shell_hint', { shell: shellHint })}
         </span>
@@ -411,7 +411,7 @@ function Step2Init({ initCmd, t }: { initCmd: string; t: TranslateFn }) {
   return (
     <div className="settings-card">
       <div className="settings-card__header">
-        <h3>{t('Onboarding.step2_title')}</h3>
+        <h2>{t('Onboarding.step2_title')}</h2>
       </div>
       <div className="settings-card__body">
         <p className="onboarding__step-desc">{t('Onboarding.init_desc')}</p>
@@ -427,7 +427,7 @@ function Step3Configure({
   return (
     <div className="settings-card">
       <div className="settings-card__header">
-        <h3>{t('Onboarding.step3_title')}</h3>
+        <h2>{t('Onboarding.step3_title')}</h2>
         <span className="ratchet-card__meta">{platformLabel}</span>
       </div>
       <div className="settings-card__body">
@@ -456,7 +456,7 @@ function Step4Learn({
   return (
     <div className="settings-card">
       <div className="settings-card__header">
-        <h3>{t('Onboarding.step4_title')}</h3>
+        <h2>{t('Onboarding.step4_title')}</h2>
       </div>
       <div className="settings-card__body">
         <p className="onboarding__step-desc">{t('Onboarding.learn_desc')}</p>

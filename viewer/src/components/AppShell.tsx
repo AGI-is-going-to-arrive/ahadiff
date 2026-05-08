@@ -11,6 +11,7 @@ import './AppShell.css';
  * api/search dependency stays out of the < 80KB initial gzip budget.
  */
 const SearchOverlay = lazy(() => import('./SearchOverlay'));
+const LearnModeDialog = lazy(() => import('./LearnModeDialog'));
 
 interface AppShellProps {
   children: ReactNode;
@@ -30,6 +31,7 @@ export default function AppShell({ children }: AppShellProps) {
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isLearnDialogOpen, setIsLearnDialogOpen] = useState(false);
   const [isMobileNav, setIsMobileNav] = useState(() =>
     typeof window === 'undefined' ? false : window.matchMedia(DRAWER_QUERY).matches,
   );
@@ -71,6 +73,7 @@ export default function AppShell({ children }: AppShellProps) {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'k' && event.key !== 'K') return;
       if (!(event.metaKey || event.ctrlKey)) return;
+      if (isLearnDialogOpen) return;
       const target = event.target as HTMLElement | null;
       if (
         target &&
@@ -86,7 +89,7 @@ export default function AppShell({ children }: AppShellProps) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [isLearnDialogOpen]);
 
   /* Close search on route change so it doesn't bleed across pages. */
   useEffect(() => {
@@ -117,6 +120,7 @@ export default function AppShell({ children }: AppShellProps) {
         menuButtonRef={menuButtonRef}
         onMenuToggle={() => setIsSidebarOpen((open) => !open)}
         onSearchOpen={() => setIsSearchOpen(true)}
+        onLearnDialogOpen={() => setIsLearnDialogOpen(true)}
       />
       <div className="app-shell__body">
         <Sidebar
@@ -144,6 +148,11 @@ export default function AppShell({ children }: AppShellProps) {
       {isSearchOpen ? (
         <Suspense fallback={null}>
           <SearchOverlay open={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
+        </Suspense>
+      ) : null}
+      {isLearnDialogOpen ? (
+        <Suspense fallback={null}>
+          <LearnModeDialog open={isLearnDialogOpen} onClose={() => setIsLearnDialogOpen(false)} />
         </Suspense>
       ) : null}
     </div>

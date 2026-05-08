@@ -72,6 +72,7 @@
   font-family: var(--font-serif);
   font-size: 18px;
   font-weight: 500;
+  margin-top: 0;
   margin-bottom: var(--sp-1);
 }
 
@@ -240,7 +241,7 @@
   margin-bottom: var(--sp-3);
 }
 
-.skill-preview__header h3 {
+.skill-preview__header h2 {
   margin: 0;
   font-size: 16px;
   font-weight: 600;

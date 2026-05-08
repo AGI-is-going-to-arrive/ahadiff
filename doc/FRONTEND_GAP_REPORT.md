@@ -5,8 +5,8 @@
 ## 审计范围
 
 - 后端 `src/ahadiff/serve/app.py` 当前注册：53 个 concrete `/api/*` route + 1 个 `/api/{rest_of_path:path}` catchall，另有 `/healthz`
-- 前端 `viewer/src/` 当前统计：12 页面；`components/` + `pages/` 下 36 个生产 TSX；23 个页面/组件 CSS；i18n `731/731`
-- 本轮真实验证：ConceptGraph 目标 Vitest `3 passed`；前端 Vitest `198 passed`；typecheck / build 通过；Concepts Playwright chromium `2 passed`；`git diff --check` 通过。后端 unit、完整 Playwright 和真实 LLM judge smoke 本轮未因图谱改动重跑
+- 前端 `viewer/src/` 当前统计：12 页面；`components/` + `pages/` 下 37 个生产 TSX；24 个页面/组件 CSS；i18n `783/783`
+- 本轮真实验证：LearnModeDialog Playwright-backed 单测 `28 passed`；前端 Vitest `226 passed`；typecheck / build 通过；Learn E2E chromium `10 passed`；i18n catalog parity `783/783`；`git diff --check -- viewer` 通过。后端 unit、完整 Playwright 和真实 LLM judge smoke 本轮未因 viewer 前端改动重跑
 
 ---
 
@@ -18,7 +18,9 @@
 | Lesson scaffolding 自动推荐 | Lesson 会按 weak concepts / stability 自动推荐 full / hint / compact；空数据默认 compact | `LessonPage.tsx`, `LessonPage.test.tsx` |
 | FSRS `desired_retention` | Settings 的 Preferences tab 可调 70%-99%；后端 config / serve runtime / review rate / signal review 都读取同一配置 | `SettingsPage.tsx`, `routes_config.py`, `config_runtime.py`, `routes_review.py`, `routes_signals.py` |
 | TSV 导出 | Ratchet 页通过 `apiFetchBlob()` 下载 `/api/export/results?format=tsv`，token 走 header，不放 query string | `RatchetPage.tsx`, `api/runs.ts`, `api/client.ts` |
-| ConceptGraph 完整图谱和大图降级 | 不再提供 cluster/group-by-kind；大图默认 List 但 Full graph 仍可打开；完整图谱不设硬边界，拖拽用 rAF 更新 SVG transform 并暂停 d3 simulation | `ConceptGraph.tsx`, `ConceptGraph.test.tsx` |
+| ConceptGraph 完整图谱和大图降级 | 不再提供 cluster/group-by-kind；大图默认 List 但 Full graph 仍可打开；完整图谱不设硬边界，拖拽用 rAF 更新 SVG transform 并暂停 d3 simulation；节点文件路径展示会剥离本机 home/system 前缀 | `ConceptGraph.tsx`, `ConceptGraph.test.tsx` |
+| Learn Mode Dialog | Topbar Learn Run 打开懒加载对话框；支持 10 种 capture mode、`/api/learn/estimate` preflight、force / Graphify / dry-run / lang / privacy 选项、patch 4096 bytes 前端上限、focus trap、Escape 和 body sibling inert | `AppShell.tsx`, `Topbar.tsx`, `LearnModeDialog.tsx`, `learn-mode-dialog.test.ts`, `learn-task.spec.ts` |
+| Settings / Lesson / Skills heading 与 aria | Settings provider/model 控件有角色化 aria-label；Lesson rail heading 降级为 h3；Onboarding/Skills/markdown heading outline 已按页面层级收口 | `SettingsPage.tsx`, `LessonPage.tsx`, `OnboardingPage.tsx`, `SkillsPage.tsx`, `markdown.tsx` |
 | Warning 颜色 / forced-colors / 触控目标 | warning token 改为可访问 fallback；Topbar / Ratchet tab 等触控目标和 forced-colors 已覆盖 | `tokens.css`, `Topbar.css`, `Ratchet.css`, `media-features.spec.ts` |
 | safe-area / 100dvh / z-index | Topbar safe-area、100dvh、popover/backdrop z-index 已按当前实现验证 | `AppShell.css`, `Topbar.css`, `ClaimInspector.css`, `media-features.spec.ts` |
 
@@ -42,6 +44,6 @@
 ## 安全 / 可访问性
 
 - `dangerouslySetInnerHTML`：当前关键渲染路径未使用；markdown 通过 JSX 构建。
-- 焦点陷阱、inert、skip-to-content、aria-live、ErrorBoundary：当前实现仍成立。
-- forced-colors / reduced-motion / print / mobile media：相关实现未在本轮图谱改动中触碰；上一轮 media-features chromium 回归仍保留为历史验证记录。
-- 完整 Playwright 全浏览器全视口本轮未重跑；本轮只重跑了 ConceptGraph 目标单测、前端全量 Vitest、typecheck/build 和 Concepts 页 chromium Playwright。
+- 焦点陷阱、inert、skip-to-content、aria-live、ErrorBoundary：当前实现仍成立。Learn Mode Dialog 会对 body sibling 设置 inert，并在关闭时恢复原值。
+- forced-colors / reduced-motion / print / mobile media：本轮只新增 Learn Mode Dialog 相关 CSS 覆盖；上一轮 media-features chromium 回归仍保留为历史验证记录。
+- 完整 Playwright 全浏览器全视口本轮未重跑；本轮只重跑了 LearnModeDialog 单测、前端全量 Vitest、typecheck/build、Learn E2E chromium、i18n parity 和 viewer diff-check。

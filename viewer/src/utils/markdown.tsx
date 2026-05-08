@@ -125,7 +125,12 @@ export function renderMarkdownProse(content: string, classPrefix = 'lesson'): Re
       flushList();
       const label = headingMatch[2].trim();
       const slug = uniqueSlug(label, headingSlugs);
-      const Tag = (`h${Math.min(headingMatch[1].length + 1, 4)}`) as 'h2' | 'h3' | 'h4';
+      // Markdown headings inside an article render below the page-level <h1>.
+      // Lesson markdown emits `##` for top-level sections (TL;DR / What
+      // Changed / Walkthrough / Claims), so map `#`/`##` -> h2 and `###` -> h3
+      // to keep the document outline as h1 > h2 > h3 (sidebar uses h3 too).
+      const headingLevel = Math.max(2, Math.min(headingMatch[1].length, 3));
+      const Tag = (`h${headingLevel}`) as 'h2' | 'h3';
       elements.push(
         <Tag key={`heading-${slug}`} id={slug} tabIndex={-1} className={`${classPrefix}__section-heading`}>
           {label}

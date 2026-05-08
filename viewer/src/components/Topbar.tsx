@@ -11,6 +11,7 @@ interface TopbarProps {
   onMenuToggle: () => void;
   /** Phase 4B: opens the global Cmd/Ctrl+K search overlay. */
   onSearchOpen?: () => void;
+  onLearnDialogOpen?: () => void;
 }
 
 const ROUTE_TO_KEY: Array<[RegExp, TranslationKey]> = [
@@ -40,6 +41,7 @@ export default function Topbar({
   menuButtonRef,
   onMenuToggle,
   onSearchOpen,
+  onLearnDialogOpen,
 }: TopbarProps) {
   const { t } = useTranslation();
   const currentKey = useCurrentPageKey();
@@ -115,7 +117,7 @@ export default function Topbar({
           className={`topbar__btn topbar__btn--primary${isBusy ? ' topbar__btn--busy' : ''}`}
           disabled={isBusy}
           aria-label={newRunAriaLabel}
-          onClick={() => void requestLearn()}
+          onClick={onLearnDialogOpen ?? (() => void requestLearn())}
         >
           {newRunLabel}
         </button>

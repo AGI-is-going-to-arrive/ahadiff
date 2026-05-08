@@ -4,6 +4,7 @@ import { installServeMock } from '../fixtures/serve-mock';
 const TASK_ID = 'task-e2e-learn-001';
 
 interface LearnMockCalls {
+  estimate: number;
   submit: number;
   task: number;
   cancel: number;
@@ -36,6 +37,8 @@ async function installLearnMocks(
     taskSequence?: Array<Record<string, unknown>>;
     cancelOk?: boolean;
     listTasks?: unknown[];
+    estimateRiskLevel?: 'ok' | 'warn' | 'danger';
+    estimateWarnings?: string[];
   } = {},
 ): Promise<LearnMockCalls> {
   const {
@@ -44,10 +47,37 @@ async function installLearnMocks(
     taskSequence = [],
     cancelOk = true,
     listTasks = [],
+    estimateRiskLevel = 'ok',
+    estimateWarnings = [],
   } = opts;
 
   let pollIndex = 0;
-  const calls: LearnMockCalls = { submit: 0, task: 0, cancel: 0, list: 0 };
+  const calls: LearnMockCalls = { estimate: 0, submit: 0, task: 0, cancel: 0, list: 0 };
+
+  // Mock estimate endpoint; warning tests can force the preflight branch.
+  await page.route(
+    (url) => url.pathname === '/api/learn/estimate',
+    (route) => {
+      if (route.request().method() !== 'POST') {
+        return route.fulfill({ status: 405, contentType: 'application/json', body: '{}' });
+      }
+      calls.estimate += 1;
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          patch_bytes: 1024,
+          file_count: 3,
+          total_lines: 50,
+          estimated_tokens: 2000,
+          provider_context_window: 128000,
+          provider_max_output: 8192,
+          risk_level: estimateRiskLevel,
+          warnings: estimateWarnings,
+        }),
+      });
+    },
+  );
 
   await page.route(
     (url) => url.pathname === '/api/learn',
@@ -131,6 +161,20 @@ async function installLearnMocks(
   return calls;
 }
 
+/** Click "Learn Run" in topbar, wait for the LearnModeDialog, then click "Start Run". */
+async function triggerLearnViaDialog(page: Page): Promise<void> {
+  const learnBtn = page.locator('button:has-text("Learn Run")');
+  await learnBtn.click();
+  // Wait for dialog to appear
+  const dialog = page.locator('[role="dialog"]');
+  await expect(dialog).toBeVisible({ timeout: 5000 });
+  // Click "Start Run" in the dialog (default mode = working)
+  const startBtn = dialog.locator('.learn-dialog__btn--primary');
+  await startBtn.click();
+  // Dialog closes
+  await expect(dialog).not.toBeVisible({ timeout: 3000 });
+}
+
 test.describe('learn task flow', () => {
   test.beforeEach(async ({ page }) => {
     await installServeMock(page);
@@ -150,8 +194,7 @@ test.describe('learn task flow', () => {
     });
     await page.goto('/');
 
-    const learnBtn = page.locator('button:has-text("Learn Run")');
-    await learnBtn.click();
+    await triggerLearnViaDialog(page);
 
     const banner = page.locator('.learn-banner');
     await expect(banner).toBeVisible();
@@ -182,7 +225,7 @@ test.describe('learn task flow', () => {
     });
     await page.goto('/');
 
-    await page.locator('button:has-text("Learn Run")').click();
+    await triggerLearnViaDialog(page);
     const banner = page.locator('.learn-banner');
     await expect(banner).toBeVisible();
 
@@ -201,7 +244,7 @@ test.describe('learn task flow', () => {
     });
     await page.goto('/');
 
-    await page.locator('button:has-text("Learn Run")').click();
+    await triggerLearnViaDialog(page);
 
     const banner = page.locator('.learn-banner');
     await expect(banner).toHaveClass(/learn-banner--failed/);
@@ -216,7 +259,7 @@ test.describe('learn task flow', () => {
     });
     await page.goto('/');
 
-    await page.locator('button:has-text("Learn Run")').click();
+    await triggerLearnViaDialog(page);
 
     const banner = page.locator('.learn-banner');
     await expect(banner).toHaveClass(/learn-banner--failed/);
@@ -234,12 +277,58 @@ test.describe('learn task flow', () => {
     });
     await page.goto('/');
 
-    await page.locator('button:has-text("Learn Run")').click();
+    await triggerLearnViaDialog(page);
 
     const bar = page.locator('.learn-banner__bar-track');
     await expect(bar).toBeVisible();
 
     await expect(bar).toHaveAttribute('aria-valuenow', '50', { timeout: 5000 });
+  });
+
+  test('warn estimate shows preflight and continue submits once', async ({ page }) => {
+    const calls = await installLearnMocks(page, {
+      estimateRiskLevel: 'warn',
+      estimateWarnings: ['Large patch may be clipped'],
+      taskSequence: [
+        { status: 'running', progress: { current: 1, total: 10, message: 'Starting' } },
+      ],
+    });
+    await page.goto('/');
+
+    await triggerLearnViaDialog(page);
+
+    const banner = page.locator('.learn-banner');
+    await expect(banner).toBeVisible();
+    await expect(banner).toHaveClass(/learn-banner--confirming/);
+    await expect(banner.locator('.learn-banner__risk')).toHaveClass(/learn-banner__risk--warn/);
+    await expect(banner).toContainText('Large diff detected');
+    await expect(banner).toContainText('Large patch may be clipped');
+    expect(calls.submit).toBe(0);
+
+    await banner.locator('button:has-text("Continue anyway")').click();
+    await expect(banner).toHaveClass(/learn-banner--running/);
+    expect(calls.submit).toBe(1);
+  });
+
+  test('danger estimate can be cancelled without submitting', async ({ page }) => {
+    const calls = await installLearnMocks(page, {
+      estimateRiskLevel: 'danger',
+      estimateWarnings: ['Provider context window may be exceeded'],
+    });
+    await page.goto('/');
+
+    await triggerLearnViaDialog(page);
+
+    const banner = page.locator('.learn-banner');
+    await expect(banner).toBeVisible();
+    await expect(banner).toHaveClass(/learn-banner--confirming/);
+    await expect(banner.locator('.learn-banner__risk')).toHaveClass(/learn-banner__risk--danger/);
+    await expect(banner).toContainText('Provider context window may be exceeded');
+    expect(calls.submit).toBe(0);
+
+    await banner.locator('button:has-text("Cancel")').click();
+    await expect(banner).not.toBeVisible();
+    expect(calls.submit).toBe(0);
   });
 
   test('task recovery on page load', async ({ page }) => {
@@ -266,7 +355,7 @@ test.describe('learn task flow', () => {
     });
     await page.goto('/');
 
-    await page.locator('button:has-text("Learn Run")').click();
+    await triggerLearnViaDialog(page);
 
     const banner = page.locator('.learn-banner');
     await expect(banner).toHaveClass(/learn-banner--failed/);
@@ -274,7 +363,7 @@ test.describe('learn task flow', () => {
     await banner.locator('.learn-banner__btn--dismiss').click();
     await expect(banner).not.toBeVisible();
 
-    await page.locator('button:has-text("Learn Run")').click();
+    await triggerLearnViaDialog(page);
     await expect(banner).toBeVisible();
   });
 
@@ -286,9 +375,9 @@ test.describe('learn task flow', () => {
     });
     await page.goto('/');
 
-    const primaryBtn = page.locator('.topbar__btn--primary');
-    await primaryBtn.click();
+    await triggerLearnViaDialog(page);
 
+    const primaryBtn = page.locator('.topbar__btn--primary');
     await expect(primaryBtn).toHaveClass(/topbar__btn--busy/);
     await expect(primaryBtn).toBeDisabled();
   });
