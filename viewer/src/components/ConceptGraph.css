@@ -34,6 +34,47 @@
   flex-wrap: wrap;
 }
 
+.concept-graph__large-warning {
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--warning-soft);
+  border: 1px solid var(--warning-hair);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.concept-graph__large-warning--severe {
+  border-color: var(--warning);
+}
+
+.concept-graph__large-warning-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.concept-graph__large-warning-action {
+  flex: 0 0 auto;
+  padding: var(--sp-1) var(--sp-3);
+  border: 1px solid var(--warning);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  color: var(--warning);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out-quart);
+}
+
+.concept-graph__large-warning-action:hover {
+  background: var(--warning-soft-bg);
+}
+
 .concept-graph__filter-chip {
   display: inline-flex;
   align-items: center;

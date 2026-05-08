@@ -132,7 +132,12 @@ _SECRET_RULES: tuple[_SecretRule, ...] = (
         secret_type="url_embedded_secret",
         severity="hard_block",
         pattern=re.compile(
-            r"https?://[^\s]*[?&](?:api[_-]?key|secret|password|token|credential|auth)[=][^\s&]+",
+            r"https?://[^\s]*[?&#](?:"
+            r"api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|"
+            r"client[_-]?secret|auth[_-]?token|bearer[_-]?token|api[_-]?secret|"
+            r"app[_-]?secret|oauth[_-]?token(?:[_-]?secret)?|secret|password|"
+            r"token|credential|auth"
+            r")=[^\s&]+",
             re.IGNORECASE,
         ),
     ),

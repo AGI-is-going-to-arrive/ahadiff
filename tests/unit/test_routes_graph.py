@@ -40,6 +40,19 @@ def _client(state_dir: Path, *, token: str = "test-token") -> TestClient:
     return TestClient(app, base_url="http://localhost:8765")
 
 
+def _write_imported_graph_with_provenance(
+    state_dir: Path,
+    provenance: dict[str, str],
+) -> None:
+    imported_dir = state_dir / "graphify"
+    imported_dir.mkdir()
+    (imported_dir / "graph.json").write_text(
+        json.dumps({"nodes": [{"id": "n1", "label": "foo"}], "links": []}),
+        encoding="utf-8",
+    )
+    (imported_dir / "provenance.json").write_text(json.dumps(provenance), encoding="utf-8")
+
+
 class TestGraphStatus:
     def test_no_graph_returns_disabled(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".ahadiff"
@@ -265,12 +278,107 @@ class TestGraphStatus:
         assert data["has_graph"] is True
         assert data["provenance"] is None
 
+    def test_graph_status_round_trips_strong_graph_provenance(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        provenance = {
+            "graph_sha256": "0123456789abcdef" * 4,
+            "import_time": "2026-05-02T00:00:00+00:00",
+            "parser_version": "1.0",
+        }
+        _write_imported_graph_with_provenance(state_dir, provenance)
+
+        resp = _client(state_dir).get("/api/graph/status")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        GraphStatusResponse.model_validate(data)
+        assert data["provenance"] == provenance
+
+    def test_graph_status_drops_provenance_with_short_sha(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        _write_imported_graph_with_provenance(
+            state_dir,
+            {
+                "graph_sha256": "a" * 63,
+                "import_time": "2026-05-02T00:00:00+00:00",
+                "parser_version": "1.0",
+            },
+        )
+
+        resp = _client(state_dir).get("/api/graph/status")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        GraphStatusResponse.model_validate(data)
+        assert data["provenance"] is None
+
+    def test_graph_status_drops_provenance_with_non_hex_sha(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        _write_imported_graph_with_provenance(
+            state_dir,
+            {
+                "graph_sha256": "z" * 64,
+                "import_time": "2026-05-02T00:00:00+00:00",
+                "parser_version": "1.0",
+            },
+        )
+
+        resp = _client(state_dir).get("/api/graph/status")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        GraphStatusResponse.model_validate(data)
+        assert data["provenance"] is None
+
+    def test_graph_status_drops_provenance_with_invalid_import_time(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        _write_imported_graph_with_provenance(
+            state_dir,
+            {
+                "graph_sha256": "a" * 64,
+                "import_time": "not-a-datetime",
+                "parser_version": "1.0",
+            },
+        )
+
+        resp = _client(state_dir).get("/api/graph/status")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        GraphStatusResponse.model_validate(data)
+        assert data["provenance"] is None
+
+    def test_graph_provenance_accepts_strong_values(self) -> None:
+        provenance = GraphProvenance.model_validate(
+            {
+                "graph_sha256": "0123456789abcdef" * 4,
+                "import_time": "2026-05-02T00:00:00+00:00",
+                "parser_version": "1.0",
+            }
+        )
+
+        assert provenance.graph_sha256 == "0123456789abcdef" * 4
+
     def test_graph_provenance_rejects_malformed_sha(self) -> None:
         with pytest.raises(ValidationError):
             GraphProvenance.model_validate(
                 {
                     "graph_sha256": "g" * 64,
                     "import_time": "2026-05-02T00:00:00+00:00",
+                    "parser_version": "1.0",
+                }
+            )
+
+    def test_graph_provenance_rejects_invalid_import_time(self) -> None:
+        with pytest.raises(ValidationError):
+            GraphProvenance.model_validate(
+                {
+                    "graph_sha256": "a" * 64,
+                    "import_time": "not-a-datetime",
                     "parser_version": "1.0",
                 }
             )

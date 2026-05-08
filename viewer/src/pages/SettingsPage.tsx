@@ -323,8 +323,8 @@ export default function SettingsPage() {
                 className={`settings-content${active === id ? '' : ' is-inactive'}`}
                 role="tabpanel"
                 aria-labelledby={`stab-${id}`}
-                tabIndex={active === id ? 0 : -1}
-                aria-hidden={active !== id}
+                tabIndex={active === id ? 0 : undefined}
+                hidden={active !== id || undefined}
               >
                 {renderTabPanel(id)}
               </div>

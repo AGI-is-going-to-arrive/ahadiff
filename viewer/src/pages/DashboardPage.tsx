@@ -6,6 +6,8 @@ import KpiCard from '../components/KpiCard';
 import RatchetChart from '../components/RatchetChart';
 import Skeleton, { SkeletonGroup } from '../components/Skeleton';
 import { ApiError } from '../api/client';
+import { getUsage } from '../api/config';
+import { getWeakConcepts } from '../api/review';
 import { getRatchetHistory } from '../api/runs';
 import { fetchLearningEffectiveness, fetchReviewHeatmap, fetchStats } from '../api/stats';
 import { useRunsStore } from '../state/runs-store';
@@ -16,7 +18,9 @@ import type {
   RatchetHistoryEntry,
   StatsResponse,
   Verdict,
+  WeakConceptItem,
 } from '../api/types';
+import type { UsageResponse } from '../api/config';
 import { safeVerdict } from '../utils/verdict';
 import '../components/Dashboard.css';
 
@@ -101,6 +105,9 @@ export default function DashboardPage() {
   const [learning, setLearning] = useState<LearningEffectivenessResponse | null>(null);
   const [heatmapCells, setHeatmapCells] = useState<HeatmapCell[] | null>(null);
   const [statsUnavailable, setStatsUnavailable] = useState(false);
+  const [usageUnavailable, setUsageUnavailable] = useState(false);
+  const [weakConcepts, setWeakConcepts] = useState<WeakConceptItem[]>([]);
+  const [usage, setUsage] = useState<UsageResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isLearnDialogOpen, setIsLearnDialogOpen] = useState(false);
@@ -123,8 +130,11 @@ export default function DashboardPage() {
     setLoading(true);
     setError(null);
     setStatsUnavailable(false);
+    setUsageUnavailable(false);
     setHeatmapCells(null);
     setLearning(null);
+    setWeakConcepts([]);
+    setUsage(null);
     let failed = false;
     // 401/403 from any apiFetch means the bootstrap token was rejected. Show
     // a single auth-specific message instead of the generic fetch-failed one
@@ -132,13 +142,23 @@ export default function DashboardPage() {
     const isAuthErr = (e: unknown): boolean =>
       e instanceof ApiError && (e.status === 401 || e.status === 403);
 
-    const [runsResult, ratchetResult, statsResult, heatmapResult, learningResult] =
+    const [
+      runsResult,
+      ratchetResult,
+      statsResult,
+      heatmapResult,
+      learningResult,
+      weakResult,
+      usageResult,
+    ] =
       await Promise.allSettled([
         loadRuns(undefined, { signal: controller.signal }),
         getRatchetHistory({}, { signal: controller.signal }),
         fetchStats({ signal: controller.signal }),
         fetchReviewHeatmap({ signal: controller.signal }),
         fetchLearningEffectiveness({ signal: controller.signal }),
+        getWeakConcepts({ signal: controller.signal }),
+        getUsage({ signal: controller.signal }),
       ]);
 
     if (controller.signal.aborted) return;
@@ -181,6 +201,16 @@ export default function DashboardPage() {
     }
 
     setLearning(learningResult.status === 'fulfilled' ? learningResult.value : null);
+    setWeakConcepts(
+      weakResult.status === 'fulfilled' ? weakResult.value.concepts : [],
+    );
+    if (usageResult.status === 'fulfilled') {
+      setUsage(usageResult.value);
+      setUsageUnavailable(false);
+    } else {
+      setUsage(null);
+      setUsageUnavailable(true);
+    }
     setLoading(false);
   }, [loadRuns]);
 
@@ -306,6 +336,8 @@ export default function DashboardPage() {
     : null;
   const totalConcepts = stats?.total_concepts ?? 0;
   const statsHint = statsUnavailable ? t('Dashboard.kpi_stats_unavailable_hint') : undefined;
+  const totalLlmCalls: string | number = usage ? usage.total_calls : '-';
+  const usageHint = usageUnavailable ? t('Dashboard.kpi_usage_unavailable_hint') : undefined;
 
   const passRateTone =
     passRate >= 80 ? 'success' as const :
@@ -337,7 +369,7 @@ export default function DashboardPage() {
           {errorBanner}
 
 
-          <div className="kpi-grid kpi-grid--2col">
+          <div className="kpi-grid kpi-grid--3col">
             <KpiCard
               label={t('Rubric.overall')}
               value={run.overall}
@@ -346,6 +378,11 @@ export default function DashboardPage() {
             <KpiCard
               label={t('Rubric.weakest_dim')}
               value={formatDimensionLabel(run.weakest_dim, t)}
+            />
+            <KpiCard
+              label={t('Dashboard.kpi_llm_calls')}
+              value={totalLlmCalls}
+              hint={usageHint}
             />
           </div>
 
@@ -356,6 +393,51 @@ export default function DashboardPage() {
           </div>
 
           {graphifyCard}
+
+          {/* Weak concepts section also surfaces in the single-run path so
+           * users see learning gaps even on cold start. */}
+          {weakConcepts.length > 0 && (
+            <div className="dashboard__weak-list-section">
+              <h2 className="dashboard__section-title">
+                {t('Dashboard.weak_concepts_title')}
+              </h2>
+              <ul className="dashboard__weak-list">
+                {weakConcepts.slice(0, 8).map((wc) => {
+                  const mastery = Math.max(
+                    0,
+                    Math.min(100, Math.round((wc.stability / 30) * 100)),
+                  );
+                  return (
+                    <li key={wc.card_id} className="dashboard__weak-list-item">
+                      <span className="dashboard__weak-list-name" title={wc.concept}>
+                        {wc.concept}
+                      </span>
+                      <div
+                        className="dashboard__weak-list-bar"
+                        role="progressbar"
+                        aria-label={t('Dashboard.weak_concepts_mastery_label', {
+                          concept: wc.concept,
+                        })}
+                        aria-valuenow={mastery}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuetext={`${mastery}%`}
+                      >
+                        <div
+                          className="dashboard__weak-list-bar-fill"
+                          style={{ width: `${mastery}%` }}
+                        />
+                      </div>
+                      <span className="dashboard__weak-list-pct mono">{mastery}%</span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <a className="dashboard__weak-list-link" href="#/concepts">
+                {t('Dashboard.weak_concepts_view_all')}
+              </a>
+            </div>
+          )}
 
           <RunListTable
             runs={runs}
@@ -380,8 +462,9 @@ export default function DashboardPage() {
         </div>
         {errorBanner}
 
-        {/* KPI row — 4 cards matching V6 template */}
-        <div className="kpi-grid kpi-grid--4col">
+        {/* KPI row — 5 cards (V6 4-card row + LLM Calls). Uses --5col grid
+         * variant; collapses to 2-col then 1-col responsively. */}
+        <div className="kpi-grid kpi-grid--5col">
           <KpiCard
             label={t('Dashboard.kpi_total_runs')}
             value={totalRuns}
@@ -404,6 +487,11 @@ export default function DashboardPage() {
             value={totalConcepts}
             tone={totalConcepts > 0 ? 'success' : 'default'}
             hint={statsHint}
+          />
+          <KpiCard
+            label={t('Dashboard.kpi_llm_calls')}
+            value={totalLlmCalls}
+            hint={usageHint}
           />
         </div>
 
@@ -478,6 +566,52 @@ export default function DashboardPage() {
                 </span>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Weak concepts list — sourced from /api/concepts/weak. Mastery
+         * % bar is a 0-100 proxy from FSRS stability, capped at ~30 day
+         * retention. */}
+        {weakConcepts.length > 0 && (
+          <div className="dashboard__weak-list-section">
+            <h2 className="dashboard__section-title">
+              {t('Dashboard.weak_concepts_title')}
+            </h2>
+            <ul className="dashboard__weak-list">
+              {weakConcepts.slice(0, 8).map((wc) => {
+                const mastery = Math.max(
+                  0,
+                  Math.min(100, Math.round((wc.stability / 30) * 100)),
+                );
+                return (
+                  <li key={wc.card_id} className="dashboard__weak-list-item">
+                    <span className="dashboard__weak-list-name" title={wc.concept}>
+                      {wc.concept}
+                    </span>
+                    <div
+                      className="dashboard__weak-list-bar"
+                      role="progressbar"
+                      aria-label={t('Dashboard.weak_concepts_mastery_label', {
+                        concept: wc.concept,
+                      })}
+                      aria-valuenow={mastery}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuetext={`${mastery}%`}
+                    >
+                      <div
+                        className="dashboard__weak-list-bar-fill"
+                        style={{ width: `${mastery}%` }}
+                      />
+                    </div>
+                    <span className="dashboard__weak-list-pct mono">{mastery}%</span>
+                  </li>
+                );
+              })}
+            </ul>
+            <a className="dashboard__weak-list-link" href="#/concepts">
+              {t('Dashboard.weak_concepts_view_all')}
+            </a>
           </div>
         )}
 

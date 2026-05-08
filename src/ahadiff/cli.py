@@ -54,7 +54,7 @@ from .core.sqlite_util import safe_sqlite_connect
 from .i18n import normalize_locale, resolve_locale
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
 
     from .contracts import PrivacyMode
     from .review.schemas import ReviewAnswer
@@ -1851,27 +1851,19 @@ def serve_cmd(
                 def _on_watch_change(event: Any) -> None:
                     token = serve_state.token
                     try:
-                        import httpx
-
                         self_origin = f"http://127.0.0.1:{resolved_port}"
-                        resp = httpx.post(
-                            f"{self_origin}/api/learn",
-                            json={},
-                            headers={
-                                "X-AhaDiff-Token": token,
-                                "Origin": self_origin,
-                            },
-                            timeout=5.0,
+                        status_code = _post_watch_learn_request(
+                            self_origin,
+                            token,
+                            event.changed_paths,
                         )
-                        if resp.status_code == 202:
+                        if status_code == 202:
                             console.print(
                                 f"[dim]Watch: learn submitted "
                                 f"({len(event.changed_paths)} files changed)[/dim]"
                             )
                         else:
-                            console.print(
-                                f"[dim]Watch: learn request returned {resp.status_code}[/dim]"
-                            )
+                            console.print(f"[dim]Watch: learn request returned {status_code}[/dim]")
                     except Exception as exc:
                         console.print(f"[dim]Watch: learn request failed: {exc}[/dim]")
 
@@ -1936,6 +1928,29 @@ def _run_watch_learn(wroot: Path, dr: bool, fl: bool, ln: str | None) -> bool:
     except Exception as exc:
         console.print(f"  [red]Unexpected error[/red]: {exc}")
         return False
+
+
+def _post_watch_learn_request(
+    self_origin: str,
+    token: str,
+    changed_paths: Iterable[str],
+) -> int:
+    import httpx
+
+    resp = httpx.post(
+        f"{self_origin}/api/learn",
+        json={
+            "changed_paths": list(changed_paths),
+            "unstaged": True,
+            "include_untracked": True,
+        },
+        headers={
+            "X-AhaDiff-Token": token,
+            "Origin": self_origin,
+        },
+        timeout=5.0,
+    )
+    return resp.status_code
 
 
 _WATCH_RETRY_DELAYS = (5.0, 15.0, 30.0)
@@ -2009,6 +2024,7 @@ class _WatchLearnRunner:
                         if self._stop_requested.wait(timeout=delay):
                             with self._lock:
                                 self._running = False
+                                self._retrigger_pending = False
                             return
                         continue
                     console.print("[red]Exhausted retries[/red] — waiting for next file change.")

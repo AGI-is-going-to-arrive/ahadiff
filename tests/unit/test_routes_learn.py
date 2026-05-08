@@ -407,6 +407,39 @@ def test_post_learn_drops_provider_fields_before_request_construction(
     assert "unknown_fields" in str(body.get("error", ""))
 
 
+def test_post_learn_accepts_changed_paths_without_passing_to_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ahadiff.core.orchestrator as orchestrator_module
+
+    constructed_kwargs: dict[str, Any] = {}
+
+    def recording_learn_request(**kwargs: Any) -> LearnRequest:
+        constructed_kwargs.update(kwargs)
+        assert "changed_paths" not in kwargs
+        return LearnRequest(**kwargs)
+
+    def fake_run_learn_pipeline(request: LearnRequest, **_: object) -> LearnResult:
+        return LearnResult(run_id="run-watch-change", status="completed")
+
+    monkeypatch.setattr(orchestrator_module, "LearnRequest", recording_learn_request)
+    monkeypatch.setattr(orchestrator_module, "run_learn_pipeline", fake_run_learn_pipeline)
+
+    with _client(tmp_path) as client:
+        resp = _post_learn(
+            client,
+            body={"changed_paths": ["src/app.py", "tests/test_app.py"]},
+        )
+        assert resp.status_code == 202
+
+        info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
+
+    assert info["status"] == "completed"
+    assert constructed_kwargs["workspace_root"] == tmp_path.parent
+    assert "changed_paths" not in constructed_kwargs
+
+
 # ---------------------------------------------------------------------------
 # H3: Queue depth limit
 # ---------------------------------------------------------------------------

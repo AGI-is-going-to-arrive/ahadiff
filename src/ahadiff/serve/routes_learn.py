@@ -39,8 +39,10 @@ _ACCEPTED_FIELDS = frozenset(
         "use_graphify",
         "lang",
         "privacy_mode",
+        "changed_paths",
     }
 )
+_IGNORED_FIELDS = frozenset({"changed_paths"})
 
 _BOOL_FIELDS = frozenset(
     {"last", "staged", "unstaged", "include_untracked", "dry_run", "force_learn"}
@@ -54,6 +56,7 @@ _ENUM_FIELDS = {
 _TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 _FALSE_VALUES = frozenset({"", "0", "false", "no", "off"})
 _MAX_STRING_LENGTH = 4096
+_MAX_CHANGED_PATHS = 500
 
 _MAX_PENDING_TASKS = 1
 _DANGER_CONTEXT_RATIO = 0.8
@@ -112,7 +115,22 @@ def _coerce_path_pair(key: str, value: object) -> tuple[Path, Path]:
     return coerced[0], coerced[1]
 
 
+def _coerce_changed_paths(value: object) -> None:
+    if not isinstance(value, list | tuple):
+        raise TypeError("changed_paths expects a path array")
+    raw_paths = cast("tuple[object, ...] | list[object]", value)
+    if len(raw_paths) > _MAX_CHANGED_PATHS:
+        raise ValueError("changed_paths exceeds max length")
+    for item in raw_paths:
+        if not isinstance(item, str):
+            raise TypeError("changed_paths entries must be strings")
+        if len(item) > _MAX_STRING_LENGTH:
+            raise ValueError("changed_paths entry exceeds max length")
+
+
 def _coerce_field(key: str, value: object) -> object:
+    if key == "changed_paths":
+        return _coerce_changed_paths(value)
     if key in _BOOL_FIELDS:
         return _coerce_bool(value)
     if key in _OPTIONAL_BOOL_FIELDS:
@@ -151,12 +169,14 @@ async def _parse_learn_request_body(
     for k, v in raw_body.items():
         if k in _ACCEPTED_FIELDS and v is not None:
             try:
-                params[k] = _coerce_field(k, v)
+                coerced = _coerce_field(k, v)
             except (ValueError, TypeError):
                 return None, JSONResponse(
                     {"error": f"invalid_value_for_{k}", "status": 422},
                     status_code=422,
                 )
+            if k not in _IGNORED_FIELDS:
+                params[k] = coerced
     if params.get("patch") == "-":
         return None, JSONResponse(
             {"error": "invalid_value_for_patch", "status": 422},

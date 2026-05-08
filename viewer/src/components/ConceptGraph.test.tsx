@@ -108,4 +108,29 @@ describe('ConceptGraph rendering guards', () => {
     expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
     expect(html).not.toContain('<img src=x onerror=alert(1)>');
   });
+
+  it('does not mount the SVG force graph for extreme graphs before explicit consent', () => {
+    const nodes = makeNodes(1001, () => 'code');
+    const html = renderToStaticMarkup(
+      <ConceptGraph
+        status={{
+          enabled: true,
+          source_exists: true,
+          has_graph: true,
+          freshness: 'fresh',
+          node_count: nodes.length,
+          edge_count: nodes.length - 1,
+          source_path: null,
+          provenance: null,
+        }}
+        nodes={nodes}
+        edges={makeChainEdges(nodes.length)}
+        truncated={false}
+      />,
+    );
+
+    expect(html).toContain('Full graph');
+    expect(html).toContain('Concept 0');
+    expect(html).not.toContain('<svg');
+  });
 });

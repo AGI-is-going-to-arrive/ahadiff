@@ -68,6 +68,8 @@ interface GraphViewport {
 const SVG_HEIGHT = 560;
 const NODE_RADIUS = 14;
 const LARGE_GRAPH_THRESHOLD = 200;
+const VERY_LARGE_GRAPH_THRESHOLD = 500;
+const EXTREMELY_LARGE_GRAPH_THRESHOLD = 1000;
 const MIN_EDGE_WEIGHT = 0.1;
 const MAX_EDGE_WEIGHT = 3.0;
 
@@ -882,6 +884,7 @@ function ConceptGraph({ nodes, edges, status, truncated, onShowAll }: ConceptGra
     nodes.length > LARGE_GRAPH_THRESHOLD ? 'list' : 'graph',
   );
   const [viewBoxOverride, setViewBoxOverride] = useState<string | null>(null);
+  const [allowExtremeGraphRender, setAllowExtremeGraphRender] = useState(false);
   const graphWrapRef = useRef<HTMLDivElement>(null);
 
   const handleFit = useCallback(() => {
@@ -939,6 +942,7 @@ function ConceptGraph({ nodes, edges, status, truncated, onShowAll }: ConceptGra
 
   useEffect(() => {
     setViewMode(nodes.length > LARGE_GRAPH_THRESHOLD ? 'list' : 'graph');
+    setAllowExtremeGraphRender(false);
   }, [nodes.length]);
 
   const filteredNodes = useMemo(() => {
@@ -965,6 +969,9 @@ function ConceptGraph({ nodes, edges, status, truncated, onShowAll }: ConceptGra
     () => filteredNodes.find((n) => n.id === selectedId) ?? null,
     [filteredNodes, selectedId],
   );
+  const isExtremelyLargeGraph = filteredNodes.length >= EXTREMELY_LARGE_GRAPH_THRESHOLD;
+  const shouldBlockExtremeGraph =
+    viewMode === 'graph' && isExtremelyLargeGraph && !allowExtremeGraphRender;
 
   useEffect(() => {
     if (selectedId != null && !filteredNodeIds.has(selectedId)) {
@@ -1013,7 +1020,10 @@ function ConceptGraph({ nodes, edges, status, truncated, onShowAll }: ConceptGra
           <button
             type="button"
             className={`concept-graph__view-btn${viewMode === 'graph' ? ' concept-graph__view-btn--active' : ''}`}
-            onClick={() => setViewMode('graph')}
+            onClick={() => {
+              setAllowExtremeGraphRender(false);
+              setViewMode('graph');
+            }}
             aria-pressed={viewMode === 'graph'}
           >
             {t('Concept.mode_full')}
@@ -1021,13 +1031,16 @@ function ConceptGraph({ nodes, edges, status, truncated, onShowAll }: ConceptGra
           <button
             type="button"
             className={`concept-graph__view-btn${viewMode === 'list' ? ' concept-graph__view-btn--active' : ''}`}
-            onClick={() => setViewMode('list')}
+            onClick={() => {
+              setAllowExtremeGraphRender(false);
+              setViewMode('list');
+            }}
             aria-pressed={viewMode === 'list'}
           >
             {t('Concept.mode_learning_only')}
           </button>
         </div>
-        {viewMode === 'graph' && (
+        {viewMode === 'graph' && !shouldBlockExtremeGraph && (
           <div className="concept-graph__actions">
             <button
               type="button"
@@ -1054,16 +1067,66 @@ function ConceptGraph({ nodes, edges, status, truncated, onShowAll }: ConceptGra
           {filteredNodes.length === 0 ? (
             <FilteredEmptyState />
           ) : viewMode === 'graph' ? (
-            <div className="concept-graph__graph-wrap" ref={graphWrapRef}>
-              <ForceGraph
-                nodes={filteredNodes}
-                edges={filteredEdges}
-                onSelectNode={setSelectedId}
-                selectedId={selectedId}
-                viewBoxOverride={viewBoxOverride}
-              />
-              <Legend kinds={allKinds} />
-            </div>
+            <>
+              {shouldBlockExtremeGraph ? (
+                <div
+                  className="concept-graph__large-warning concept-graph__large-warning--severe"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <span className="concept-graph__large-warning-text">
+                    {t('Concept.very_large_graph_warning', {
+                      count: String(filteredNodes.length),
+                    })}
+                  </span>
+                  <button
+                    type="button"
+                    className="concept-graph__large-warning-action"
+                    onClick={() => setViewMode('list')}
+                  >
+                    {t('Concept.switch_to_list')}
+                  </button>
+                  <button
+                    type="button"
+                    className="concept-graph__large-warning-action"
+                    onClick={() => setAllowExtremeGraphRender(true)}
+                  >
+                    {t('Concept.render_anyway')}
+                  </button>
+                </div>
+              ) : filteredNodes.length >= VERY_LARGE_GRAPH_THRESHOLD ? (
+                <div
+                  className="concept-graph__large-warning"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <span className="concept-graph__large-warning-text">
+                    {t('Concept.large_graph_warning', {
+                      count: String(filteredNodes.length),
+                    })}
+                  </span>
+                  <button
+                    type="button"
+                    className="concept-graph__large-warning-action"
+                    onClick={() => setViewMode('list')}
+                  >
+                    {t('Concept.switch_to_list')}
+                  </button>
+                </div>
+              ) : null}
+              {!shouldBlockExtremeGraph && (
+                <div className="concept-graph__graph-wrap" ref={graphWrapRef}>
+                  <ForceGraph
+                    nodes={filteredNodes}
+                    edges={filteredEdges}
+                    onSelectNode={setSelectedId}
+                    selectedId={selectedId}
+                    viewBoxOverride={viewBoxOverride}
+                  />
+                  <Legend kinds={allKinds} />
+                </div>
+              )}
+            </>
           ) : (
             <ListFallback nodes={filteredNodes} onSelectNode={setSelectedId} />
           )}

@@ -592,7 +592,7 @@ export default function RatchetPage() {
                 <div className="judge-notes">
                   {activeScoreData.notes.length > 0 && (
                     <div className="judge-note-card">
-                      <h4 className="judge-note-card__title">{t('Ratchet.judge_notes_title')}</h4>
+                      <h3 className="judge-note-card__title">{t('Ratchet.judge_notes_title')}</h3>
                       <ul className="judge-note-card__list">
                         {activeScoreData.notes.map((note, i) => (
                           <li key={i}>{note}</li>

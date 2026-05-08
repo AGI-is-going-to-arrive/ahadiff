@@ -739,7 +739,7 @@ run_id: str
 - `GET /api/review/heatmap` — 复习热力图
 - `GET /api/providers` — provider 状态
 - `GET /api/serve/status` — serve 运行状态（无 auth）
-- `GET /api/graph/status` — Graphify 当前状态；payload 包含 `enabled` / `source_exists` / `has_graph` / `freshness` / `node_count` / `edge_count` / `source_path` / `provenance`（`GraphProvenance | null`，含 `graph_sha256`/`import_time`/`parser_version`）
+- `GET /api/graph/status` — Graphify 当前状态；payload 包含 `enabled` / `source_exists` / `has_graph` / `freshness` / `node_count` / `edge_count` / `source_path` / `provenance`（`GraphProvenance | null`，含 `graph_sha256`/`import_time`/`parser_version`；`graph_sha256` 必须是 64 位小写 hex，`import_time` 必须是 ISO 8601 datetime）
 - `GET /api/graph/concepts` — ConceptGraph 前端 DTO；返回 sanitized `nodes` / `edges` + `status`，不是完整 Graphify provenance API
 - `PUT /api/config` — 配置更新
 - `POST /api/learn` — 提交后台 learn 任务；当前返回 `202 {"task_id": ...}`，进度/取消走 `/api/tasks*`；写请求有 in-memory 10 req/min 滑动窗口限流，429 返回 `{"error":"rate_limited","retry_after":...}` 并带 `Retry-After`

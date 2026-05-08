@@ -1,10 +1,10 @@
 .graphify-card {
   container-type: inline-size;
-  background: var(--paper);
+  background: var(--surface-diff);
   border: 1px solid var(--hair);
   border-left: 3px solid var(--accent);
   border-radius: var(--r-md);
-  padding: var(--sp-3) 14px;
+  padding: 12px 14px;
   margin-bottom: 14px;
   font-size: var(--fs-sm);
 }
@@ -44,7 +44,7 @@
   align-items: center;
   padding: 3px 0;
   font-family: var(--font-mono);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-2xs);
   color: var(--ink-2);
   min-width: 0;
 }

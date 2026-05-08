@@ -6,6 +6,8 @@ import json
 import multiprocessing as mp
 from typing import TYPE_CHECKING, Any
 
+import pytest
+
 from ahadiff.safety import audit as audit_module
 from ahadiff.safety import redact as redact_module
 from ahadiff.safety.audit import append_audit_record, build_redaction_audit_record
@@ -155,6 +157,100 @@ def test_high_entropy_exemptions_cover_bundle_and_sourcemap_fragments() -> None:
     assert redact_module._is_high_entropy_exempt(  # pyright: ignore[reportPrivateUsage]
         "AAAACAACEAAEGAAGIAAI"
     )
+
+
+@pytest.mark.parametrize(
+    "query",
+    (
+        "access_token=secret123",
+        "refresh_token=secret123",
+        "id_token=secret123",
+        "client_secret=secret123",
+        "auth_token=secret123",
+        "bearer_token=secret123",
+        "api_secret=secret123",
+        "app_secret=secret123",
+        "oauth_token=secret123",
+        "oauth-token=secret123",
+        "oauth_token_secret=secret123",
+        "OAUTH_TOKEN_SECRET=secret123",
+        "access-token=secret123",
+        "CLIENT_SECRET=secret123",
+    ),
+)
+def test_url_embedded_secret_redacts_oauth_query_names(query: str) -> None:
+    url = f"https://api.example.test/callback?{query}&state=ok"
+
+    result = redaction_pipeline(url, policy=AllowlistPolicy())
+
+    assert "URL_EMBEDDED_SECRET" in {finding.rule_id for finding in result.findings}
+    assert "[REDACTED:url_embedded_secret]" in result.redacted_text
+    assert "secret123" not in result.redacted_text
+
+
+@pytest.mark.parametrize(
+    "query",
+    (
+        "api_key=secret123",
+        "secret=secret123",
+        "password=secret123",
+        "token=secret123",
+        "credential=secret123",
+        "auth=secret123",
+    ),
+)
+def test_url_embedded_secret_still_redacts_existing_query_names(query: str) -> None:
+    url = f"https://api.example.test/v1?safe=1&{query}"
+
+    result = redaction_pipeline(url, policy=AllowlistPolicy())
+
+    assert "URL_EMBEDDED_SECRET" in {finding.rule_id for finding in result.findings}
+    assert "secret123" not in result.redacted_text
+
+
+def test_url_embedded_secret_does_not_match_partial_query_names() -> None:
+    url = "https://api.example.test/v1?xaccess_token=secret123&safe=1"
+
+    result = redaction_pipeline(url, policy=AllowlistPolicy())
+
+    assert "URL_EMBEDDED_SECRET" not in {finding.rule_id for finding in result.findings}
+
+
+@pytest.mark.parametrize(
+    "fragment",
+    (
+        "access_token=secret123",
+        "id_token=secret123",
+        "refresh_token=secret123",
+        "oauth_token=secret123",
+        "oauth_token_secret=secret123",
+    ),
+)
+def test_url_embedded_secret_redacts_fragment_tokens(fragment: str) -> None:
+    url = f"https://api.example.test/callback#{fragment}&state=ok"
+
+    result = redaction_pipeline(url, policy=AllowlistPolicy())
+
+    assert "URL_EMBEDDED_SECRET" in {finding.rule_id for finding in result.findings}
+    assert "secret123" not in result.redacted_text
+
+
+def test_url_embedded_secret_does_not_match_partial_fragment_names() -> None:
+    url = "https://api.example.test/callback#xaccess_token=secret123&state=ok"
+
+    result = redaction_pipeline(url, policy=AllowlistPolicy())
+
+    assert "URL_EMBEDDED_SECRET" not in {finding.rule_id for finding in result.findings}
+
+
+def test_url_userinfo_secret_redaction_is_unchanged() -> None:
+    url = "https://user:secret123@api.example.test/v1?safe=1"
+
+    result = redaction_pipeline(url, policy=AllowlistPolicy())
+
+    assert "URL_USERINFO_SECRET" in {finding.rule_id for finding in result.findings}
+    assert "[REDACTED:url_userinfo_secret]" in result.redacted_text
+    assert "secret123" not in result.redacted_text
 
 
 def test_audit_record_rotates_when_size_threshold_is_exceeded(tmp_path: Path) -> None:

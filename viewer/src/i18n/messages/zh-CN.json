@@ -48,8 +48,12 @@
     "mode_full": "完整图谱",
     "export": "导出 SVG",
     "fit": "适应视图",
+    "large_graph_warning": "大型图谱（{count} 节点）。性能可能较慢。",
     "mode_learning_only": "列表视图",
-    "title": "概念图谱"
+    "render_anyway": "仍然渲染",
+    "switch_to_list": "切换到列表",
+    "title": "概念图谱",
+    "very_large_graph_warning": "超大图谱（{count} 节点）。图形视图在某些设备上可能较慢。"
   },
   "Graph": {
     "connected": "关联节点",
@@ -70,10 +74,10 @@
     "legend": "图例",
     "node_count": "{count} 个节点",
     "row_graph": "图谱：",
-    "row_imported": "导入：",
+    "row_imported": "导入于：",
     "row_parser": "解析器：",
-    "row_sha256": "校验值：",
-    "row_source": "来源：",
+    "row_sha256": "哈希校验：",
+    "row_source": "数据来源：",
     "copy": "复制",
     "sep": " · ",
     "sha_copy": "复制完整 SHA-256 哈希",
@@ -97,9 +101,11 @@
     "filter_all": "全部",
     "filter_empty": "没有匹配 {filter} 的运行",
     "kpi_avg_score": "平均分数",
+    "kpi_llm_calls": "LLM 调用",
     "kpi_loaded_runs_hint": "已加载 {count} 次运行",
     "kpi_pass_rate": "通过率",
     "kpi_stats_unavailable_hint": "统计接口不可用，仅使用已加载运行",
+    "kpi_usage_unavailable_hint": "用量接口不可用",
     "kpi_total_concepts": "已学概念",
     "kpi_total_runs": "运行总数",
     "kpi_weakest_dim": "最弱维度",
@@ -136,7 +142,10 @@
     "source_badge_patch_stdin": "管道",
     "source_badge_file_compare": "对比",
     "filter_empty_with_source": "已加载运行中没有匹配 {verdict} + {source} 的结果",
-    "filter_empty_with_source_has_more": "已加载运行中没有匹配 {verdict} + {source} 的结果。可加载更多旧运行继续检查。"
+    "filter_empty_with_source_has_more": "已加载运行中没有匹配 {verdict} + {source} 的结果。可加载更多旧运行继续检查。",
+    "weak_concepts_mastery_label": "{concept} 的掌握度",
+    "weak_concepts_title": "薄弱概念",
+    "weak_concepts_view_all": "查看全部 →"
   },
   "Diff": {
     "collapse_all": "全部折叠",

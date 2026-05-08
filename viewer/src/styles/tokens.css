@@ -19,10 +19,12 @@
   --hair: #E6E3D8;
   --hair-strong: #D5D0BF;
 
-  /* Accent */
+  /* Accent — light-mode accent must give >= 4.5:1 with --on-accent #FFFFFF.
+   * #BE5236 on white ≈ 4.7:1 (AA). Prior #D27050 was only 3.3:1.
+   * accent-ink on accent-soft (#F4E4D9): #9B4420 ≈ 5.2:1 (AA). */
   --on-accent: #FFFFFF;
-  --accent: #D27050;
-  --accent-ink: #B04E28;
+  --accent: #BE5236;
+  --accent-ink: #9B4420;
   --accent-soft: #F4E4D9;
   --accent-softer: #FAF0E8;
   --accent-softest: #FDF1EC;

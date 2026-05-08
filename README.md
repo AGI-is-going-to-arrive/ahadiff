@@ -20,9 +20,9 @@
 
 Stage 0 / Task 0 到 Stage 6 主线现在都已经有实际产物，Stage 7 的 i18n signoff 也已通过。当前代码已经能稳定产出 Lesson / Claims / Quiz / Misconception Cards / Cards / Score / Ratchet；review 流的 SRS runtime、serve backend、install targets、GitHub Action 模板、benchmark suite、improve loop core、Task 17 targeted verification、Phase 2.5 runtime、i18n-0 后端以及前端 `viewer/` React SPA 都已落地。
 
-这次未提交改动仍只在 `viewer/` 前端。上一轮 Learn Mode Dialog 的主链不变；这一轮补的是 review / runtime / signal 小闭环和浏览器兼容性：`index.html` 新增 AhaDiff Δ favicon，HashRouter 打开 React Router v7 future flags，`api/runs.ts` 移除已无引用的 concepts 死代码；Lesson scaffolding tab 切换会按 section contract 写入 helpfulness signal，Quiz 答错时会在有 source claim 的情况下写入 mark-wrong signal；Review 卡片新增 Suspend / Archive 操作，调用 `/api/review/queue-state` 后刷新队列并给出 live 状态；Settings 新增 Serve / Watch runtime status 卡片；前端 idempotency key 统一走 `createIdempotencyKey()`，在没有 `crypto.randomUUID()` 的浏览器里也能降级。后端代码本轮没有修改。
+这次 v1.1 未提交改动跨后端 Python、`viewer/` 前端、测试、benchmark 和文档。后端收口 watch 自触发 learn 的工作区 diff 模式、provider model discovery 的 SSRF 加固且保留本地 provider discovery、URL embedded secret 的 OAuth query/fragment 覆盖、GraphProvenance 强校验，以及 concepts JSONL 导出的 symlink / reparse guard。前端收口 Dashboard LLM Calls / Weak Concepts、ConceptGraph 500+/1000+ 大图提示与 1000+ 二次确认、a11y heading / tab panel / nested-interactive 修复、accent contrast token、GraphifyCard V6 fidelity 和 Skills 焦点恢复。
 
-本轮真实验证覆盖了当前改动面：`cd viewer && pnpm typecheck` 通过；`cd viewer && pnpm vitest run` = `21 files, 226 tests passed`；`cd viewer && pnpm build` 通过，观察值为 initial JS gzip `95,549` bytes、Dashboard first-route JS gzip `137,892` bytes；i18n catalog parity 为 `805/805`，placeholder parity OK；`git diff --check -- viewer` 通过；`viewer/src` 下已无 `crypto.randomUUID()` 直用；`api/runs.ts` 移除的 `getGlobalConcepts` / `getRunConcepts` 在 `viewer/src` 下零引用。后端测试、Playwright E2E/a11y/cross-browser 和真实 LLM judge smoke 没有因这次纯前端改动重跑。
+本轮 review 修复后的真实验证：`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pytest tests/unit -x -q` = `2055 passed`；`ruff check src tests`、`ruff format --check src tests`、`pyright` 通过；`cd viewer && pnpm typecheck` 通过；`cd viewer && pnpm vitest run` = `21 files, 227 tests passed`；`cd viewer && pnpm exec playwright test tests/e2e/a11y.spec.ts --project=chromium-desktop --reporter=line` = `17 passed`；Graphify 10k benchmark parse avg `165.25ms`、peak `42.44MiB`、gate OK。完整跨浏览器 Playwright、wheel build、coverage 和真实 LLM judge smoke 本轮未重跑。
 
 > Code Wiki 解释仓库，知返解释这次改动 —— 而且每一句话都能回到代码证据。
 
@@ -180,7 +180,7 @@ ahadiff/
 ├─ tests/eval/                  # benchmark suite 测试
 ├─ tests/integration/           # pinned integration fixtures
 ├─ tests/live/                  # 需要显式环境变量开启的真实 LLM judge smoke
-├─ viewer/                      # React 19 + Vite + Zustand + vanilla CSS 前端（12 页面 / 37 个生产页面+组件 TSX / 24 个页面+组件 CSS / 805 i18n keys / 本轮 typecheck + build + 前端全量 Vitest 226 passed + diff-check 通过）
+├─ viewer/                      # React 19 + Vite + Zustand + vanilla CSS 前端（12 页面 / 37 个生产页面+组件 TSX / 24 个页面+组件 CSS / 833 i18n keys / 本轮 typecheck + 前端全量 Vitest 227 passed + Chromium a11y 17 passed）
 ├─ ui/                          # HTML 原型 v1–v6（设计迭代史）
 └─ CLAUDE.md                    # 项目 AI 上下文索引
 ```
@@ -233,7 +233,7 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-最近一次验证（2026-05-08，本 session）：`cd viewer && pnpm typecheck` 通过；`cd viewer && pnpm vitest run` = `21 files, 226 tests passed`；`cd viewer && pnpm build` 通过（本次观察值：initial JS gzip `95,549` bytes，Dashboard first-route JS gzip `137,892` bytes，不设硬 cap）；i18n catalog parity 为 `805/805` 且 placeholder parity OK；`git diff --check -- viewer` 通过；`rg -n "crypto\\.randomUUID\\(" viewer/src` 无结果；`getGlobalConcepts` / `getRunConcepts` 在 `viewer/src` 下零引用。后端全量、ruff、pyright、wheel、coverage、Playwright E2E/a11y/cross-browser 和真实 LLM judge smoke 本轮未因 viewer 前端改动重跑。
+最近一次验证（2026-05-08，本 session）：`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pytest tests/unit -x -q` = `2055 passed`；`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync ruff check src tests` 通过；`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync ruff format --check src tests` 通过；`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pyright` = `0 errors`；`cd viewer && pnpm typecheck` 通过；`cd viewer && pnpm vitest run` = `21 files, 227 tests passed`；Chromium a11y 目标回归 `17 passed`；Graphify 10k benchmark gate OK（parse avg `165.25ms`、peak `42.44MiB`）。完整跨浏览器 Playwright、wheel build、coverage 和真实 LLM judge smoke 本轮未重跑。
 
 下一步路线图：
 

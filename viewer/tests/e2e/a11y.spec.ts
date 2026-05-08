@@ -30,7 +30,6 @@ test.describe('accessibility', () => {
         page.locator('main, [role="main"], h1').first(),
       ).toBeVisible({ timeout: 5_000 });
       const results = await new AxeBuilder({ page })
-        .disableRules(['color-contrast'])
         .analyze();
       expect(results.violations).toEqual([]);
     });
@@ -41,6 +40,41 @@ test.describe('accessibility', () => {
     await expect(
       page.getByRole('complementary', { name: 'Review details' }),
     ).toBeVisible({ timeout: 5_000 });
+  });
+
+  test('Dashboard weak concept progress bars pass axe-core audit', async ({ page }) => {
+    await page.route(
+      (url) => url.pathname === '/api/runs',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            runs: [
+              {
+                run_id: 'weak-run',
+                source_kind: 'git_ref',
+                source_ref: 'HEAD',
+                content_lang: 'en',
+                capability_level: 3,
+                verdict: 'PASS',
+                overall: 88,
+                status: 'baseline',
+                weakest_dim: 'evidence',
+                created_at: '2026-05-08T00:00:00Z',
+                degraded_flags: {},
+              },
+            ],
+          }),
+        }),
+    );
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+    await expect(
+      page.getByRole('progressbar', { name: /circuit breaker/i }),
+    ).toBeVisible({ timeout: 5_000 });
+    const results = await new AxeBuilder({ page }).analyze();
+    expect(results.violations).toEqual([]);
   });
 
   const learnTaskStates = [
@@ -114,7 +148,6 @@ test.describe('accessibility', () => {
         page.locator('main, [role="main"], h1').first(),
       ).toBeVisible({ timeout: 5_000 });
       const results = await new AxeBuilder({ page })
-        .disableRules(['color-contrast'])
         .analyze();
       expect(results.violations).toEqual([]);
     });

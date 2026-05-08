@@ -6,6 +6,7 @@ import json
 import sys
 import tempfile
 import time
+import tracemalloc
 from pathlib import Path
 from typing import Any
 
@@ -14,12 +15,15 @@ sys.path.insert(0, str(ROOT / "src"))
 
 LARGE_GRAPH_PATH = Path(__file__).parent / "large_graph.json"
 XLARGE_GRAPH_PATH = Path(__file__).parent / "xlarge_graph.json"
+ULTRA_GRAPH_PATH = Path(__file__).parent / "ultra_graph.json"
 
 # Perf gate thresholds (avg milliseconds)
 _GATE_PARSE_500 = 500.0
 _GATE_PARSE_5000 = 5000.0
+_GATE_PARSE_10000 = 750.0
 _GATE_FTS_BUILD = 2000.0
 _GATE_FTS_SEARCH = 100.0
+_GATE_PARSE_10000_PEAK_MIB = 96.0
 
 
 def _bench(label: str, fn, *, repeat: int = 5) -> dict[str, object]:  # noqa: ANN001
@@ -53,6 +57,51 @@ def bench_parse(graph_path: Path, label_suffix: str) -> dict[str, object]:
         parse_graph_json_text(raw)
 
     return _bench(f"Parse graph.json ({label_suffix})", do_parse)
+
+
+def measure_parse_memory(graph_path: Path, label_suffix: str) -> dict[str, object]:
+    from ahadiff.graphify import parse_graph_json_text
+
+    raw = graph_path.read_text(encoding="utf-8")
+    tracemalloc.start()
+    try:
+        parse_graph_json_text(raw)
+        current_bytes, peak_bytes = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    current_mib = current_bytes / (1024 * 1024)
+    peak_mib = peak_bytes / (1024 * 1024)
+    print(
+        f"  Memory ({label_suffix} parse): current={current_mib:.2f}MiB  peak={peak_mib:.2f}MiB",
+        file=sys.stderr,
+    )
+    return {
+        "measurement_method": "tracemalloc_parse_graph_json_text",
+        "operation": f"Parse memory ({label_suffix})",
+        "current_bytes": current_bytes,
+        "current_mib": round(current_mib, 3),
+        "peak_bytes": peak_bytes,
+        "peak_mib": round(peak_mib, 3),
+    }
+
+
+def _ensure_ultra_graph_fixture() -> Path:
+    if ULTRA_GRAPH_PATH.exists():
+        return ULTRA_GRAPH_PATH
+
+    from gen_large_graph import _generate_graph  # pyright: ignore[reportPrivateUsage]
+
+    generated = _generate_graph(node_count=10000, edge_density=3)
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        prefix="ahadiff-ultra-graph-",
+        suffix=".json",
+        delete=False,
+    ) as handle:
+        json.dump(generated, handle, separators=(",", ":"))
+        return Path(handle.name)
 
 
 def bench_fts_index_build(graph_path: Path, label_suffix: str) -> dict[str, object]:
@@ -165,6 +214,14 @@ def _apply_perf_gates(results: list[dict[str, object]]) -> list[str]:
     failures: list[str] = []
     for r in results:
         op = str(r["operation"])
+        if "Parse memory" in op and "10000 nodes" in op:
+            peak_mib = r.get("peak_mib")
+            if isinstance(peak_mib, int | float) and peak_mib > _GATE_PARSE_10000_PEAK_MIB:
+                failures.append(
+                    "PERF GATE FAIL: "
+                    f"{op} peak={peak_mib:.1f}MiB > {_GATE_PARSE_10000_PEAK_MIB}MiB"
+                )
+            continue
         if "avg_ms" not in r:
             continue
         avg = float(r["avg_ms"])  # type: ignore[arg-type]
@@ -173,6 +230,8 @@ def _apply_perf_gates(results: list[dict[str, object]]) -> list[str]:
             failures.append(f"PERF GATE FAIL: {op} avg={avg:.1f}ms > {_GATE_PARSE_500}ms")
         elif "Parse" in op and "5000 nodes" in op and avg > _GATE_PARSE_5000:
             failures.append(f"PERF GATE FAIL: {op} avg={avg:.1f}ms > {_GATE_PARSE_5000}ms")
+        elif "Parse" in op and "10000 nodes" in op and avg > _GATE_PARSE_10000:
+            failures.append(f"PERF GATE FAIL: {op} avg={avg:.1f}ms > {_GATE_PARSE_10000}ms")
         elif "FTS index build" in op and avg > _GATE_FTS_BUILD:
             failures.append(f"PERF GATE FAIL: {op} avg={avg:.1f}ms > {_GATE_FTS_BUILD}ms")
         elif "FTS search" in op and avg > _GATE_FTS_SEARCH:
@@ -186,44 +245,56 @@ def main() -> None:
         print(f"Missing fixture: {LARGE_GRAPH_PATH}", file=sys.stderr)
         print("Run: python benchmarks/graphify/gen_large_graph.py", file=sys.stderr)
         sys.exit(1)
+    ultra_graph_path = _ensure_ultra_graph_fixture()
+    generated_ultra_graph = ultra_graph_path != ULTRA_GRAPH_PATH
 
-    all_results: list[dict[str, object]] = []
-    fixtures_used: list[str] = []
+    try:
+        all_results: list[dict[str, object]] = []
+        fixtures_used: list[str] = []
 
-    # 500-node fixture (required)
-    print("--- 500-node fixture ---", file=sys.stderr)
-    all_results.extend(_run_fixture(LARGE_GRAPH_PATH, "500 nodes"))
-    fixtures_used.append(str(LARGE_GRAPH_PATH.name))
+        # 500-node fixture (required)
+        print("--- 500-node fixture ---", file=sys.stderr)
+        all_results.extend(_run_fixture(LARGE_GRAPH_PATH, "500 nodes"))
+        fixtures_used.append(str(LARGE_GRAPH_PATH.name))
 
-    # 5000-node fixture (optional)
-    if XLARGE_GRAPH_PATH.exists():
-        print("--- 5000-node fixture ---", file=sys.stderr)
-        all_results.extend(_run_fixture(XLARGE_GRAPH_PATH, "5000 nodes"))
-        fixtures_used.append(str(XLARGE_GRAPH_PATH.name))
-    else:
-        print(
-            f"WARNING: 5000-node fixture not found at {XLARGE_GRAPH_PATH}, skipping",
-            file=sys.stderr,
-        )
+        # 5000-node fixture (optional)
+        if XLARGE_GRAPH_PATH.exists():
+            print("--- 5000-node fixture ---", file=sys.stderr)
+            all_results.extend(_run_fixture(XLARGE_GRAPH_PATH, "5000 nodes"))
+            fixtures_used.append(str(XLARGE_GRAPH_PATH.name))
+        else:
+            print(
+                f"WARNING: 5000-node fixture not found at {XLARGE_GRAPH_PATH}, skipping",
+                file=sys.stderr,
+            )
 
-    # Perf gate assertions
-    failures = _apply_perf_gates(all_results)
-    gate_status = "fail" if failures else "ok"
-    for msg in failures:
-        print(msg, file=sys.stderr)
+        # 10000-node fixture (required stress gate)
+        print("--- 10000-node fixture ---", file=sys.stderr)
+        all_results.extend(_run_fixture(ultra_graph_path, "10000 nodes"))
+        all_results.append(measure_parse_memory(ultra_graph_path, "10000 nodes"))
+        fixtures_used.append(str(ultra_graph_path.name))
 
-    payload = {
-        "benchmarks": all_results,
-        "fixtures": fixtures_used,
-        "gate_status": gate_status,
-        "gate_failures": failures,
-        "status": "ok",
-    }
-    json.dump(payload, sys.stdout, indent=2, sort_keys=True)
-    sys.stdout.write("\n")
+        # Perf gate assertions
+        failures = _apply_perf_gates(all_results)
+        gate_status = "fail" if failures else "ok"
+        for msg in failures:
+            print(msg, file=sys.stderr)
 
-    if failures:
-        sys.exit(1)
+        payload = {
+            "benchmarks": all_results,
+            "fixtures": fixtures_used,
+            "gate_status": gate_status,
+            "gate_failures": failures,
+            "status": "ok",
+        }
+        json.dump(payload, sys.stdout, indent=2, sort_keys=True)
+        sys.stdout.write("\n")
+
+        if failures:
+            sys.exit(1)
+    finally:
+        if generated_ultra_graph:
+            ultra_graph_path.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

@@ -112,9 +112,8 @@
 .flashcard__source-badge {
   font-size: var(--fs-2xs);
   letter-spacing: 0.06em;
-  color: var(--accent);
+  color: var(--accent-ink);
   text-transform: none;
-  opacity: 0.8;
 }
 
 .flashcard__queue-actions {

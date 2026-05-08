@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type Ref, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AppShell from '../components/AppShell';
 import Skeleton from '../components/Skeleton';
 import { getInstallTargets } from '../api/config';
@@ -37,7 +37,7 @@ export default function SkillsPage() {
   const [filter, setFilter] = useState<SkillFilter>('all');
   const [selected, setSelected] = useState<InstallTarget | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const selectedCardRef = useRef<HTMLDivElement>(null);
+  const selectedCardRef = useRef<HTMLButtonElement>(null);
 
   const filterCounts = useMemo(() => {
     const counts = { all: targets.length, installed: 0, available: 0, unsupported: 0 };
@@ -199,7 +199,7 @@ function AgentCard({
   t: (key: string, params?: Record<string, string | number>) => string;
   selected: boolean;
   onSelect: () => void;
-  cardRef?: React.Ref<HTMLDivElement>;
+  cardRef?: Ref<HTMLButtonElement>;
 }) {
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -227,18 +227,9 @@ function AgentCard({
 
   return (
     <div
-      ref={cardRef}
       className={`agent-card${selected ? ' agent-card--selected' : ''}`}
       onClick={onSelect}
       aria-current={selected || undefined}
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.currentTarget !== e.target) return;
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onSelect();
-        }
-      }}
     >
       <div className="agent-card__top">
         <div className={`agent-card__mark${target.status === 'installed' ? ' agent-card__mark--installed' : ''}`}>
@@ -248,7 +239,16 @@ function AgentCard({
           {t(`Skills.status_${target.status}`)}
         </span>
       </div>
-      <h2 className="agent-card__name">{target.display_name || target.name}</h2>
+      <h2 className="agent-card__name">
+        <button
+          ref={cardRef}
+          type="button"
+          className="agent-card__name-btn"
+          aria-current={selected || undefined}
+        >
+          {target.display_name || target.name}
+        </button>
+      </h2>
       <div className="agent-card__desc">{target.description}</div>
       {target.platform_supported && (
         <div className="agent-card__cmd">

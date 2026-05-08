@@ -1,8 +1,11 @@
+# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false
 from __future__ import annotations
 
 import json
+import stat
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -495,6 +498,81 @@ def test_export_concepts_from_db_paginates_until_exhausted(
         (1000, "term-1"),
         (1000, "term-2"),
     ]
+
+
+@pytest.mark.skipif(not hasattr(__import__("os"), "symlink"), reason="requires symlink support")
+def test_export_concepts_from_db_rejects_symlink_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "review.sqlite").write_text("", encoding="utf-8")
+    outside = tmp_path / "outside.jsonl"
+    outside.write_text("victim\n", encoding="utf-8")
+    (state_dir / "concepts.jsonl").symlink_to(outside)
+
+    monkeypatch.setattr(
+        "ahadiff.review.database.load_concepts_from_db",
+        lambda *_args, **_kwargs: (),
+    )
+
+    with pytest.raises(InputError, match="symlink"):
+        export_concepts_from_db(state_dir)
+
+    assert (state_dir / "concepts.jsonl").is_symlink()
+    assert outside.read_text(encoding="utf-8") == "victim\n"
+
+
+def test_export_concepts_from_db_rejects_path_traversal_state_dir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    (repo_dir / ".ahadiff").mkdir()
+    resolved_state_dir = repo_dir / "outside"
+    resolved_state_dir.mkdir()
+    (resolved_state_dir / "review.sqlite").write_text("", encoding="utf-8")
+    traversing_state_dir = repo_dir / ".ahadiff" / ".." / "outside"
+
+    monkeypatch.setattr(
+        "ahadiff.review.database.load_concepts_from_db",
+        lambda *_args, **_kwargs: (),
+    )
+
+    with pytest.raises(InputError, match="path traversal"):
+        export_concepts_from_db(traversing_state_dir)
+
+    assert not (resolved_state_dir / "concepts.jsonl").exists()
+
+
+def test_export_concepts_from_db_rejects_windows_reparse_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "review.sqlite").write_text("", encoding="utf-8")
+    concepts_path = state_dir / "concepts.jsonl"
+    concepts_path.write_text("victim\n", encoding="utf-8")
+    real_lstat = Path.lstat
+
+    def fake_lstat(self: Path) -> object:
+        if self == concepts_path:
+            return SimpleNamespace(st_mode=stat.S_IFREG | 0o600, st_file_attributes=0x400)
+        return real_lstat(self)
+
+    monkeypatch.setattr(Path, "lstat", fake_lstat)
+    monkeypatch.setattr(
+        "ahadiff.review.database.load_concepts_from_db",
+        lambda *_args, **_kwargs: (),
+    )
+
+    with pytest.raises(InputError, match="Windows reparse point"):
+        export_concepts_from_db(state_dir)
+
+    assert concepts_path.read_text(encoding="utf-8") == "victim\n"
 
 
 def test_parse_jsonl_concepts_cursor_rejects_invalid_values() -> None:

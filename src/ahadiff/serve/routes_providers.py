@@ -13,6 +13,7 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
+import httpx
 from anyio import to_thread
 from pydantic import ValidationError
 from starlette.responses import JSONResponse
@@ -24,6 +25,7 @@ from ahadiff.contracts.serve_providers import (
     ProviderProbeSubmitResponse,
     ProviderUpdateRequest,
 )
+from ahadiff.core import config as config_module
 from ahadiff.core.config import (
     SecurityConfig,
     clear_provider_probe_fields,
@@ -37,9 +39,10 @@ from ahadiff.core.config import (
     validate_provider_base_url,
     write_config_data,
 )
-from ahadiff.core.errors import ConfigError, ProviderError
+from ahadiff.core.errors import ConfigError, ProviderError, SafetyError
 from ahadiff.core.ids import make_event_id
 from ahadiff.core.task_runner import TaskStatus
+from ahadiff.llm import provider as provider_module
 from ahadiff.llm.probe import probe_provider
 from ahadiff.safety.audit import append_audit_record
 
@@ -67,6 +70,8 @@ _PROBE_RESULT_FIELDS = (
 )
 _MAX_PENDING_PROVIDER_PROBE_TASKS = 1
 _MAX_GLOBAL_PENDING_PROBE_TASKS = 3
+_MODEL_DISCOVERY_RESPONSE_BYTE_CAP = 1_048_576
+_MODEL_DISCOVERY_TIMEOUT_SECONDS = 5.0
 
 
 class _ProviderBaseUrlError(Exception):
@@ -114,6 +119,13 @@ def _build_summary(
 
 def _error(message: str, *, status: int) -> JSONResponse:
     return JSONResponse({"error": message, "status": status}, status_code=status)
+
+
+def _provider_base_url_error(prefix: str, base_url: str) -> str:
+    safe_base_url = config_module._safe_url_repr(base_url)  # pyright: ignore[reportPrivateUsage]
+    if safe_base_url == base_url.strip():
+        return prefix
+    return f"{prefix}: {safe_base_url}"
 
 
 def _validation_error(exc: ValidationError, *, status: int = 422) -> JSONResponse:
@@ -642,6 +654,101 @@ async def probe_provider_route(request: Request) -> JSONResponse:
     )
 
 
+async def _read_capped_models_response_body(response: httpx.Response) -> bytes:
+    body = bytearray()
+    total_bytes = 0
+    async for chunk in response.aiter_bytes(chunk_size=65_536):
+        total_bytes += len(chunk)
+        if total_bytes > _MODEL_DISCOVERY_RESPONSE_BYTE_CAP:
+            raise ProviderError(
+                "provider models response exceeded byte cap "
+                f"({_MODEL_DISCOVERY_RESPONSE_BYTE_CAP} bytes)"
+            )
+        body.extend(chunk)
+    return bytes(body)
+
+
+async def _fetch_provider_models_payload(
+    *,
+    base_url: str,
+    provider_class: str,
+    api_key: str | None,
+    allowed_local_hosts: tuple[str, ...] = (),
+) -> Any:
+    stripped_base_url = base_url.strip()
+    try:
+        validated_base_url = validate_provider_base_url(
+            stripped_base_url,
+            allowed_local_hosts=allowed_local_hosts,
+        )
+    except ConfigError as exc:
+        raise ValueError(
+            _provider_base_url_error("invalid provider base_url", stripped_base_url)
+        ) from exc
+
+    models_url = _build_models_url(validated_base_url, provider_class)
+    headers: dict[str, str] = {"Accept-Encoding": "identity"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    request_url = models_url
+    stream_extensions: dict[str, Any] | None = None
+    try:
+        request_target = provider_module.transport_target_for_base_url(
+            models_url,
+            local_hosts=allowed_local_hosts,
+        )
+        if request_target == "remote":
+            pinned_ip = provider_module.validate_remote_url(models_url)
+            if pinned_ip is not None:
+                request_url, original_host, sni_hostname = provider_module._pin_url_to_ip(  # pyright: ignore[reportPrivateUsage]
+                    models_url,
+                    pinned_ip,
+                )
+                headers["Host"] = original_host
+                if sni_hostname is not None:
+                    stream_extensions = {"sni_hostname": sni_hostname.encode("ascii")}
+        elif request_target != "local":
+            raise SafetyError(f"unknown provider transport target {request_target!r}")
+    except SafetyError as exc:
+        raise ValueError(
+            _provider_base_url_error("provider base_url is not allowed", stripped_base_url)
+        ) from exc
+
+    async with (
+        httpx.AsyncClient(
+            trust_env=False,
+            follow_redirects=False,
+            timeout=_MODEL_DISCOVERY_TIMEOUT_SECONDS,
+        ) as client,
+        client.stream(
+            "GET",
+            request_url,
+            headers=headers,
+            extensions=stream_extensions,
+        ) as response,
+    ):
+        if response.is_redirect:
+            raise ProviderError("provider redirects are not allowed")
+        response.raise_for_status()
+        raw_body = await _read_capped_models_response_body(response)
+        buffered_headers = httpx.Headers(
+            [
+                (key, value)
+                for key, value in response.headers.raw
+                if key.lower() not in (b"content-encoding", b"transfer-encoding")
+            ]
+        )
+        buffered_response = httpx.Response(
+            response.status_code,
+            headers=buffered_headers,
+            content=raw_body,
+            request=response.request,
+            extensions=response.extensions,
+        )
+    return buffered_response.json()
+
+
 async def discover_models(request: Request) -> JSONResponse:
     """POST /api/providers/discover-models — discover models from any base_url + api_key."""
     from .auth import require_write_token
@@ -661,18 +768,27 @@ async def discover_models(request: Request) -> JSONResponse:
     if not isinstance(base_url, str) or not base_url.strip():
         return _error("base_url is required", status=400)
 
-    import httpx
+    state = serve_state(request)
+    config_path = _config_path(state)
 
-    models_url = _build_models_url(base_url.strip(), str(provider_class))
-    headers: dict[str, str] = {}
-    if isinstance(api_key, str) and api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
+    def _load_allowed_local_hosts() -> tuple[str, ...]:
+        data = read_config_data(config_path) if config_path.exists() else {}
+        return (*_provider_allowed_local_hosts(data), *_DEFAULT_LOCAL_HOSTS)
 
     try:
-        async with httpx.AsyncClient(timeout=15.0, verify=True) as client:
-            resp = await client.get(models_url, headers=headers)
-        resp.raise_for_status()
-        payload = resp.json()
+        allowed_local_hosts = await to_thread.run_sync(_load_allowed_local_hosts)
+    except ConfigError as exc:
+        return _error(str(exc), status=500)
+
+    try:
+        payload = await _fetch_provider_models_payload(
+            base_url=base_url,
+            provider_class=str(provider_class),
+            api_key=api_key if isinstance(api_key, str) and api_key else None,
+            allowed_local_hosts=allowed_local_hosts,
+        )
+    except ValueError as exc:
+        return _error(f"Failed to fetch models: {exc}", status=400)
     except Exception as exc:
         return _error(f"Failed to fetch models: {type(exc).__name__}", status=502)
 
@@ -689,18 +805,22 @@ async def fetch_provider_models(request: Request) -> JSONResponse:
     state = serve_state(request)
     config_path = _config_path(state)
 
-    def _load() -> dict[str, Any] | None:
-        _, providers = _read_providers_table(config_path)
+    def _load() -> tuple[dict[str, Any], tuple[str, ...]] | None:
+        data, providers = _read_providers_table(config_path)
         raw = providers.get(alias)
-        return dict(cast("dict[str, Any]", raw)) if isinstance(raw, dict) else None
+        if not isinstance(raw, dict):
+            return None
+        allowed_local_hosts = (*_provider_allowed_local_hosts(data), *_DEFAULT_LOCAL_HOSTS)
+        return dict(cast("dict[str, Any]", raw)), allowed_local_hosts
 
     try:
-        provider_data = await to_thread.run_sync(_load)
+        loaded = await to_thread.run_sync(_load)
     except ConfigError as exc:
         return _error(str(exc), status=500)
-    if provider_data is None:
+    if loaded is None:
         return _error("provider_not_found", status=404)
 
+    provider_data, allowed_local_hosts = loaded
     base_url = provider_data.get("base_url", "")
     api_key_env = provider_data.get("api_key_env", "")
     provider_class = provider_data.get("provider_class", "openai")
@@ -710,18 +830,15 @@ async def fetch_provider_models(request: Request) -> JSONResponse:
     except Exception:
         return _error("Failed to resolve API key", status=400)
 
-    import httpx
-
-    models_url = _build_models_url(str(base_url), str(provider_class))
-    headers: dict[str, str] = {}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-
     try:
-        async with httpx.AsyncClient(timeout=15.0, verify=True) as client:
-            resp = await client.get(models_url, headers=headers)
-        resp.raise_for_status()
-        payload = resp.json()
+        payload = await _fetch_provider_models_payload(
+            base_url=str(base_url),
+            provider_class=str(provider_class),
+            api_key=api_key,
+            allowed_local_hosts=allowed_local_hosts,
+        )
+    except ValueError as exc:
+        return _error(f"Failed to fetch models: {exc}", status=400)
     except httpx.HTTPStatusError as exc:
         return _error(f"Models endpoint returned {exc.response.status_code}", status=502)
     except Exception as exc:

@@ -421,9 +421,9 @@ export default function LessonPage() {
             <aside className="lesson__rail" aria-label={t('Lesson.rail.title')}>
               <div className="lesson__rail-title">{t('Lesson.rail.title')}</div>
               <section className="lesson__rail-card" aria-labelledby="lesson-rail-claims">
-                <h3 id="lesson-rail-claims" className="lesson__rail-card-title">
+                <h2 id="lesson-rail-claims" className="lesson__rail-card-title">
                   {t('Lesson.rail.claims_summary')}
-                </h3>
+                </h2>
                 <div className="lesson__claim-total">
                   <span className="lesson__claim-total-number">{claimSummary.total}</span>
                   <span className="lesson__claim-total-label">{t('Lesson.rail.total_claims')}</span>
@@ -439,9 +439,9 @@ export default function LessonPage() {
               </section>
 
               <section className="lesson__rail-card" aria-labelledby="lesson-rail-claims-list">
-                <h3 id="lesson-rail-claims-list" className="lesson__rail-card-title">
+                <h2 id="lesson-rail-claims-list" className="lesson__rail-card-title">
                   {t('Lesson.claims_title')}
-                </h3>
+                </h2>
                 {claims.length === 0 ? (
                   <p className="lesson__rail-empty">{t('Serve.empty')}</p>
                 ) : (
@@ -473,9 +473,9 @@ export default function LessonPage() {
               </section>
 
               <section className="lesson__rail-card" aria-labelledby="lesson-rail-sources">
-                <h3 id="lesson-rail-sources" className="lesson__rail-card-title">
+                <h2 id="lesson-rail-sources" className="lesson__rail-card-title">
                   {t('Lesson.rail.sources_title')}
-                </h3>
+                </h2>
                 <dl className="lesson__source-list">
                   <div className="lesson__source-row">
                     <dt>{t('Lesson.rail.source_ref')}</dt>
@@ -507,9 +507,9 @@ export default function LessonPage() {
               </section>
 
               <section className="lesson__rail-card" aria-labelledby="lesson-rail-notes">
-                <h3 id="lesson-rail-notes" className="lesson__rail-card-title">
+                <h2 id="lesson-rail-notes" className="lesson__rail-card-title">
                   {t('Lesson.rail.learning_notes')}
-                </h3>
+                </h2>
                 {learningNotes.length === 0 ? (
                   <p className="lesson__rail-empty">{t('Lesson.rail.notes_empty')}</p>
                 ) : (

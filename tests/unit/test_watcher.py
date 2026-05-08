@@ -1,12 +1,12 @@
 """Tests for core/watcher.py (Phase 6A)."""
-# pyright: reportPrivateUsage=false
+# pyright: reportPrivateUsage=false, reportUnknownLambdaType=false, reportUnknownArgumentType=false
 
 from __future__ import annotations
 
 import threading
 import time
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import pytest
@@ -655,6 +655,49 @@ class TestWatchLearnRunner:
             time.sleep(0.01)
         return predicate()
 
+    def test_post_watch_learn_request_includes_changed_paths(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        captured: dict[str, Any] = {}
+
+        class FakeResponse:
+            status_code = 202
+
+        def fake_post(
+            url: str,
+            *,
+            json: object,
+            headers: dict[str, str],
+            timeout: float,
+        ) -> FakeResponse:
+            captured["url"] = url
+            captured["json"] = json
+            captured["headers"] = headers
+            captured["timeout"] = timeout
+            return FakeResponse()
+
+        monkeypatch.setattr("httpx.post", fake_post)
+
+        status_code = cli_module._post_watch_learn_request(
+            "http://127.0.0.1:8765",
+            "test-token",
+            frozenset({"src/app.py", "tests/test_app.py"}),
+        )
+
+        assert status_code == 202
+        assert captured["url"] == "http://127.0.0.1:8765/api/learn"
+        payload = captured["json"]
+        assert isinstance(payload, dict)
+        assert set(payload["changed_paths"]) == {"src/app.py", "tests/test_app.py"}
+        assert payload["unstaged"] is True
+        assert payload["include_untracked"] is True
+        assert captured["headers"] == {
+            "X-AhaDiff-Token": "test-token",
+            "Origin": "http://127.0.0.1:8765",
+        }
+        assert captured["timeout"] == 5.0
+
     def test_retriggers_after_change_queued_during_run(self) -> None:
         first_started = threading.Event()
         finish_first = threading.Event()
@@ -706,6 +749,41 @@ class TestWatchLearnRunner:
         assert self._wait_until(lambda: not runner._running)
         assert runner._retrigger_pending is False
         release.set()
+
+    def test_stop_during_retry_delay_clears_queued_retrigger(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(cli_module, "_WATCH_RETRY_DELAYS", (5.0,))
+        started = threading.Event()
+        release = threading.Event()
+        run_lock = threading.Lock()
+        run_count = 0
+
+        def run_learn() -> bool:
+            nonlocal run_count
+            with run_lock:
+                run_count += 1
+            started.set()
+            assert release.wait(timeout=2.0)
+            return False
+
+        runner = cli_module._WatchLearnRunner(run_learn)
+        runner.request(WatchEvent(changed_paths=frozenset({"a.py"}), timestamp=1.0))
+        assert started.wait(timeout=2.0)
+
+        runner.request(WatchEvent(changed_paths=frozenset({"b.py"}), timestamp=2.0))
+        assert self._wait_until(lambda: runner._retrigger_pending is True)
+
+        release.set()
+        assert self._wait_until(lambda: runner._consecutive_failures == 1 and runner._running)
+
+        runner.stop()
+
+        assert self._wait_until(lambda: not runner._running)
+        assert runner._retrigger_pending is False
+        with run_lock:
+            assert run_count == 1
 
     def test_timeout_keeps_runner_busy_until_draining_learn_finishes(self) -> None:
         first_started = threading.Event()

@@ -41,7 +41,8 @@
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 19px;
+  line-height: 1;
   flex-shrink: 0;
   box-shadow: var(--shadow-brand);
 }

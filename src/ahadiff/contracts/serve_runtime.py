@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from datetime import datetime
 from typing import Annotated, Any, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, field_validator
@@ -61,6 +62,23 @@ class GraphProvenance(BaseModel):
     graph_sha256: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
     import_time: str = Field(min_length=1, max_length=64)
     parser_version: str = Field(min_length=1, max_length=64)
+
+    @field_validator("graph_sha256")
+    @classmethod
+    def _validate_graph_sha256(cls, value: str) -> str:
+        if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
+            raise ValueError("graph_sha256 must be exactly 64 lowercase hex characters")
+        return value
+
+    @field_validator("import_time")
+    @classmethod
+    def _validate_import_time(cls, value: str) -> str:
+        candidate = f"{value[:-1]}+00:00" if value.endswith("Z") else value
+        try:
+            datetime.fromisoformat(candidate)
+        except ValueError as exc:
+            raise ValueError("import_time must be a valid ISO 8601 datetime string") from exc
+        return value
 
 
 class GraphStatusResponse(BaseModel):

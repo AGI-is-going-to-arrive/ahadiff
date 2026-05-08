@@ -678,6 +678,7 @@ def export_concepts_from_db(state_dir: Path) -> Path:
     concepts_path = state_dir / "concepts.jsonl"
     if not db_path.exists():
         raise InputError("review.sqlite not found")
+    _guard_concepts_jsonl_write_target(db_path, concepts_path)
     from ahadiff.review.database import load_concepts_from_db
 
     _DB_ONLY_KEYS = {"created_at_utc", "updated_at_utc"}
@@ -712,14 +713,7 @@ def rollback_concepts_to_jsonl(db_path: Path, jsonl_path: Path) -> int:
     """
     if not db_path.exists():
         raise InputError("review.sqlite not found")
-    if jsonl_path.is_symlink():
-        raise InputError("jsonl_path must not be a symlink")
-    try:
-        jsonl_path.resolve().relative_to(db_path.resolve().parent)
-    except ValueError:
-        raise InputError(
-            "jsonl_path must be under the same .ahadiff directory as db_path"
-        ) from None
+    _guard_concepts_jsonl_write_target(db_path, jsonl_path)
     from ahadiff.review.database import load_concepts_from_db
 
     _DB_ONLY_KEYS = {"created_at_utc", "updated_at_utc"}
@@ -745,6 +739,25 @@ def rollback_concepts_to_jsonl(db_path: Path, jsonl_path: Path) -> int:
         cursor = last_term_key
     _write_jsonl_snapshot(jsonl_path, entries)
     return len(entries)
+
+
+def _guard_concepts_jsonl_write_target(db_path: Path, jsonl_path: Path) -> None:
+    if ".." in jsonl_path.parts:
+        raise InputError("jsonl_path must not contain path traversal")
+    if jsonl_path.is_symlink():
+        raise InputError("jsonl_path must not be a symlink")
+    from ahadiff.core.paths import validate_state_path_no_symlinks
+
+    validate_state_path_no_symlinks(
+        jsonl_path if jsonl_path.is_absolute() else jsonl_path.absolute(),
+        allow_missing_leaf=True,
+    )
+    try:
+        jsonl_path.resolve().relative_to(db_path.resolve().parent)
+    except ValueError:
+        raise InputError(
+            "jsonl_path must be under the same .ahadiff directory as db_path"
+        ) from None
 
 
 def verify_concepts_consistency(

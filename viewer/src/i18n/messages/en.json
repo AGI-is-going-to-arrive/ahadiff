@@ -48,8 +48,12 @@
     "mode_full": "Full graph",
     "export": "Export SVG",
     "fit": "Fit to view",
+    "large_graph_warning": "Large graph ({count} nodes). Performance may be slower.",
     "mode_learning_only": "List view",
-    "title": "Concept Graph"
+    "render_anyway": "Render anyway",
+    "switch_to_list": "Switch to List",
+    "title": "Concept Graph",
+    "very_large_graph_warning": "Very large graph ({count} nodes). Graph view may be slow on some devices."
   },
   "Graph": {
     "connected": "Connected",
@@ -97,9 +101,11 @@
     "filter_all": "All",
     "filter_empty": "No runs match {filter}",
     "kpi_avg_score": "Avg score",
+    "kpi_llm_calls": "LLM Calls",
     "kpi_loaded_runs_hint": "{count} loaded runs",
     "kpi_pass_rate": "Pass rate",
     "kpi_stats_unavailable_hint": "Stats API unavailable; using loaded runs only",
+    "kpi_usage_unavailable_hint": "Usage API unavailable",
     "kpi_total_concepts": "Concepts learned",
     "kpi_total_runs": "Total runs",
     "kpi_weakest_dim": "Weakest dimension",
@@ -136,7 +142,10 @@
     "source_badge_patch_stdin": "stdin",
     "source_badge_file_compare": "compare",
     "filter_empty_with_source": "No loaded runs match {verdict} + {source}",
-    "filter_empty_with_source_has_more": "No loaded runs match {verdict} + {source}. Load more to check older runs."
+    "filter_empty_with_source_has_more": "No loaded runs match {verdict} + {source}. Load more to check older runs.",
+    "weak_concepts_mastery_label": "Mastery for {concept}",
+    "weak_concepts_title": "Weak Concepts",
+    "weak_concepts_view_all": "View all →"
   },
   "Diff": {
     "collapse_all": "Collapse all",

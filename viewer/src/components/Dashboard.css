@@ -51,6 +51,10 @@
   grid-template-columns: repeat(4, 1fr);
 }
 
+.kpi-grid--5col {
+  grid-template-columns: repeat(5, 1fr);
+}
+
 .dashboard__empty-hint {
   font-size: var(--fs-sm);
   color: var(--muted);
@@ -371,6 +375,71 @@
   white-space: nowrap;
   display: inline-block;
   vertical-align: middle;
+}
+
+/* ---- Weak concepts list (Dashboard P1-08) ---- */
+.dashboard__weak-list-section {
+  margin-top: var(--sp-4);
+  padding: var(--sp-4);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg);
+  background: var(--elevated);
+}
+
+.dashboard__weak-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.dashboard__weak-list-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 200px) 48px;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: var(--fs-sm);
+}
+
+.dashboard__weak-list-name {
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard__weak-list-bar {
+  height: 6px;
+  background: var(--hair);
+  border-radius: var(--r-full);
+  overflow: hidden;
+}
+
+.dashboard__weak-list-bar-fill {
+  height: 100%;
+  background: var(--warning);
+  border-radius: var(--r-full);
+  transition: width var(--dur-normal) var(--ease-out);
+}
+
+.dashboard__weak-list-pct {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  text-align: right;
+}
+
+.dashboard__weak-list-link {
+  display: inline-block;
+  margin-top: var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.dashboard__weak-list-link:hover {
+  text-decoration: underline;
 }
 
 /* ---- Run list ---- */
@@ -744,7 +813,8 @@
  * scannable on tablet/portrait widths. */
 @media (max-width: 1024px) {
   .kpi-grid,
-  .kpi-grid--4col {
+  .kpi-grid--4col,
+  .kpi-grid--5col {
     grid-template-columns: repeat(2, 1fr);
   }
 }
@@ -798,5 +868,26 @@
 
   .ratchet-chart__svg {
     height: 160px;
+  }
+
+  /* Stack weak-list rows so the bar gets enough horizontal room. */
+  .dashboard__weak-list-item {
+    grid-template-columns: minmax(0, 1fr) 48px;
+    grid-template-areas:
+      "name pct"
+      "bar bar";
+    row-gap: var(--sp-1);
+  }
+
+  .dashboard__weak-list-name {
+    grid-area: name;
+  }
+
+  .dashboard__weak-list-pct {
+    grid-area: pct;
+  }
+
+  .dashboard__weak-list-bar {
+    grid-area: bar;
   }
 }
