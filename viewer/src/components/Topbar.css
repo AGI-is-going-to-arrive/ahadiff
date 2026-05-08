@@ -230,6 +230,11 @@
   pointer-events: none;
 }
 
+/* ---------- Responsive label toggle ---------- */
+
+.topbar__btn-full { display: inline; }
+.topbar__btn-short { display: none; }
+
 /* ---------- Language switcher ---------- */
 
 .lang-switcher {
@@ -339,6 +344,7 @@
   .topbar__crumb {
     min-width: 0;
     overflow: hidden;
+    flex: 1 1 0;
   }
 
   .topbar__crumb ol {
@@ -351,15 +357,16 @@
   .topbar__actions {
     flex-shrink: 0;
     min-width: 0;
-    max-width: 50vw;
   }
 
   .topbar__btn--primary {
-    max-width: 132px;
-    overflow: hidden;
-    text-overflow: ellipsis;
     padding-inline: var(--sp-2);
+    font-size: 12px;
+    white-space: nowrap;
   }
+
+  .topbar__btn-full { display: none; }
+  .topbar__btn-short { display: inline; }
 
   .lang-switcher {
     gap: 2px;

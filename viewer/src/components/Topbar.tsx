@@ -49,6 +49,7 @@ export default function Topbar({
   const requestLearn = useLearnStore((s) => s.requestLearn);
   const isBusy = learnPhase === 'submitting' || learnPhase === 'running' || learnPhase === 'cancelling' || learnPhase === 'estimating' || learnPhase === 'confirming';
   const newRunLabel = isBusy ? t('Topbar.new_run_running') : t('Topbar.new_run');
+  const newRunShort = isBusy ? t('Topbar.new_run_running') : t('Topbar.new_run_short');
   const newRunAriaLabel = isBusy ? t('Topbar.new_run_running') : t('Topbar.new_run_aria');
 
   return (
@@ -119,7 +120,8 @@ export default function Topbar({
           aria-label={newRunAriaLabel}
           onClick={onLearnDialogOpen ?? (() => void requestLearn())}
         >
-          {newRunLabel}
+          <span className="topbar__btn-full">{newRunLabel}</span>
+          <span className="topbar__btn-short">{newRunShort}</span>
         </button>
         <LanguageSwitcher />
       </div>
