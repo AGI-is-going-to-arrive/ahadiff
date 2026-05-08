@@ -21,6 +21,7 @@ import { safeVerdict } from '../utils/verdict';
 import '../components/Dashboard.css';
 
 const GraphifyCard = lazy(() => import('../components/GraphifyCard'));
+const LearnModeDialog = lazy(() => import('../components/LearnModeDialog'));
 
 /**
  * Fallback heatmap for older serve instances where `/api/review/heatmap` is
@@ -102,6 +103,7 @@ export default function DashboardPage() {
   const [statsUnavailable, setStatsUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isLearnDialogOpen, setIsLearnDialogOpen] = useState(false);
   /** Phase 4E: verdict filter chips above run list. */
   const [verdictFilter, setVerdictFilter] = useState<VerdictFilter>('ALL');
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('ALL');
@@ -253,7 +255,7 @@ export default function DashboardPage() {
   // ---- Empty state (0 runs) ----
   if (runs.length === 0) {
     return (
-      <AppShell>
+      <AppShell globalShortcutsDisabled={isLearnDialogOpen}>
         <div className="dashboard">
           <div className="dashboard__header">
             <h1 className="dashboard__title">{t('Dashboard.title')}</h1>
@@ -264,13 +266,26 @@ export default function DashboardPage() {
             <h2 className="dashboard__empty-title">{t('Dashboard.empty_title')}</h2>
             <p className="dashboard__empty-hint">{t('Dashboard.empty_hint')}</p>
             <div className="dashboard__empty-actions">
-              <a href="#/onboarding" className="dashboard__empty-cta">
+              <button
+                type="button"
+                className="dashboard__empty-cta dashboard__empty-cta--primary"
+                aria-label={t('Dashboard.empty_first_run_aria')}
+                onClick={() => setIsLearnDialogOpen(true)}
+              >
+                {t('Dashboard.empty_first_run')}
+              </button>
+              <a href="#/onboarding" className="dashboard__empty-cta dashboard__empty-cta--secondary">
                 {t('Dashboard.empty_cta')}
               </a>
               <span className="dashboard__empty-or">{t('Dashboard.empty_or')}</span>
               <code className="dashboard__empty-cmd">ahadiff learn HEAD~1..HEAD</code>
             </div>
           </div>
+          {isLearnDialogOpen ? (
+            <Suspense fallback={null}>
+              <LearnModeDialog open={isLearnDialogOpen} onClose={() => setIsLearnDialogOpen(false)} />
+            </Suspense>
+          ) : null}
           {graphifyCard}
         </div>
       </AppShell>

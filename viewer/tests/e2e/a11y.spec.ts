@@ -36,6 +36,13 @@ test.describe('accessibility', () => {
     });
   }
 
+  test('Review page exposes a named details sidebar landmark', async ({ page }) => {
+    await page.goto('/#/review');
+    await expect(
+      page.getByRole('complementary', { name: 'Review details' }),
+    ).toBeVisible({ timeout: 5_000 });
+  });
+
   const learnTaskStates = [
     {
       label: 'running',

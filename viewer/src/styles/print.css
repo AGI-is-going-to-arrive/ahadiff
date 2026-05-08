@@ -23,6 +23,11 @@
     display: none !important;
   }
 
+  .lesson__rail {
+    display: block !important;
+    page-break-inside: avoid;
+  }
+
   a {
     color: black;
     text-decoration: underline;

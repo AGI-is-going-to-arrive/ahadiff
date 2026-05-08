@@ -31,7 +31,7 @@
 | A11 | L6: Learning Core (quiz + SRS review + concepts + helpfulness) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/quiz/`, `src/ahadiff/wiki/concepts.py`, `src/ahadiff/lesson/helpfulness.py`; `tests/unit/test_helpfulness.py` |
 | A12 | L6: Graphify (models/parser/matcher/linker/slicer/search/freshness) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/graphify/` (7 files: models, parser, matcher, linker, slicer, search, freshness); `tests/unit/test_graphify*.py` (5 test files) |
 | A13 | L7: Serve API (44 routes + catchall, Starlette + Uvicorn) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/serve/app.py` (47 route entries); 14 route modules; `tests/unit/test_serve*.py` |
-| A14 | L7: React 19 SPA (Vite + vanilla CSS) | Blueprint | N/A | IMPL | IMPL | `viewer/src/` (12 pages, 22+ components, 21 CSS files); `viewer/vitest.config.ts` + Playwright |
+| A14 | L7: React 19 SPA (Vite + vanilla CSS) | Blueprint | N/A | IMPL | IMPL | `viewer/src/` (12 pages, 37 production page+component TSX, 24 page+component CSS); `viewer/vitest.config.ts` + Playwright |
 
 ---
 
@@ -176,7 +176,7 @@
 
 | # | Feature | Source | Backend Status | Frontend Status | Test Status | Evidence |
 |---|---------|--------|---------------|-----------------|-------------|----------|
-| J1 | Locale priority chain: cookie -> Accept-Language -> AHADIFF_LANG -> CLI --lang -> config.toml -> LANG -> en | Blueprint+Comp | IMPL | IMPL | IMPL | `i18n/`; `serve/routes_locale.py`; `viewer/src/i18n/`; 459/459 i18n keys |
+| J1 | Locale priority chain: cookie -> Accept-Language -> AHADIFF_LANG -> CLI --lang -> config.toml -> LANG -> en | Blueprint+Comp | IMPL | IMPL | IMPL | `i18n/`; `serve/routes_locale.py`; `viewer/src/i18n/`; 786/786 i18n keys |
 | J2 | Supported locales: en + zh-CN | Blueprint | IMPL | IMPL | IMPL | `i18n/`; `viewer/src/i18n/` |
 | J3 | Zustand atom store for i18n re-render (no React Context) | Blueprint | N/A | IMPL | IMPL | `viewer/src/i18n/useTranslation.ts` |
 | J4 | LLM OUTPUT_LANGUAGE prefix in prompts | Blueprint | IMPL | N/A | IMPL | Orchestrator resolves output_lang |
@@ -208,11 +208,11 @@
 
 | # | Feature | Source | Backend Status | Frontend Status | Test Status | Evidence |
 |---|---------|--------|---------------|-----------------|-------------|----------|
-| L1 | DashboardPage (KPI cards + calendar heatmap) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/DashboardPage.tsx`; `components/KpiCard.tsx` (20 lines), `CalendarHeatmap.tsx` (130 lines) |
+| L1 | DashboardPage (KPI cards + calendar heatmap) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/DashboardPage.tsx`; `components/KpiCard.tsx`, `CalendarHeatmap.tsx`; empty state can open Learn Mode Dialog |
 | L2 | LessonPage (3-level scaffolding tabs) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/LessonPage.tsx`; `components/ScaffoldingTabs.tsx` |
 | L3 | DiffViewerPage (side-by-side / unified) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/DiffViewerPage.tsx`; `components/DiffView.tsx` |
 | L4 | QuizPage (active recall quiz) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/QuizPage.tsx` |
-| L5 | ReviewPage (SRS 4-button review) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/ReviewPage.tsx`; `components/SRSCard.tsx` |
+| L5 | ReviewPage (SRS review) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/ReviewPage.tsx`; `components/SRSCard.tsx`; sidebar landmark label covered by a11y E2E |
 | L6 | ConceptsPage (concept graph + list) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/ConceptsPage.tsx`; `components/ConceptGraph.tsx` (753 lines) |
 | L7 | SettingsPage (8-tab settings) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/SettingsPage.tsx` |
 | L8 | RatchetPage (score history chart) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/RatchetPage.tsx`; `components/RatchetChart.tsx` |
@@ -261,7 +261,7 @@
 | N2 | **MOAT 02: Claim -> 5-state Evidence** (no competitor has structured claim verification) | Others: "natural language with line numbers, unstructured" | IMPL | `claims/` module with 5 statuses |
 | N3 | **MOAT 03: Git Ratchet** (no competitor has monotonic quality ratchet) | autoresearch has it for ML, none for learning notes | IMPL | `eval/ratchet.py`, `improve/` |
 | N4 | **MOAT 04: Local-First Privacy** (competitors are all SaaS) | CodeRabbit/Greptile/DeepWiki = cloud only | IMPL | Per-repo `.ahadiff/`, privacy 3-tier, raw never persisted |
-| N5 | **MOAT 05: i18n Learning Notes** (no competitor generates multilingual diff learning notes) | 10 competitors verified: none have this | IMPL | `i18n/`, 459/459 keys, en + zh-CN |
+| N5 | **MOAT 05: i18n Learning Notes** (no competitor generates multilingual diff learning notes) | 10 competitors verified: none have this | IMPL | `i18n/`, 786/786 keys, en + zh-CN |
 | N6 | **ENG 01: Local-first offline** (strict_local + Ollama) | Competitors need internet | IMPL | strict_local mode + Ollama adapter |
 | N7 | **ENG 02: Serve architecture** (CLI starts local server, no cloud dependency) | Competitors rely on cloud | IMPL | `serve/app.py`, Starlette + Uvicorn |
 | N8 | **ENG 03: Privacy 3-tier grading** (strict_local/redacted_remote/explicit_remote) | Competitors have no privacy tiers | IMPL | `safety/gates.py` |

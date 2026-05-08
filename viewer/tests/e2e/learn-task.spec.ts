@@ -163,7 +163,7 @@ async function installLearnMocks(
 
 /** Click "Learn Run" in topbar, wait for the LearnModeDialog, then click "Start Run". */
 async function triggerLearnViaDialog(page: Page): Promise<void> {
-  const learnBtn = page.locator('button:has-text("Learn Run")');
+  const learnBtn = page.getByRole('button', { name: 'Start a new learn run', exact: true });
   await learnBtn.click();
   // Wait for dialog to appear
   const dialog = page.locator('[role="dialog"]');

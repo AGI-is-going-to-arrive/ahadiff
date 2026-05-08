@@ -1348,11 +1348,25 @@ test.describe('walkthrough: full-app functional test', () => {
     // so the first row is run-003 (newest, source_ref=HEAD).
     const runLink = page.locator('.run-list__link').first();
     await expect(runLink).toBeVisible();
-    await runLink.click();
+    await runLink.scrollIntoViewIfNeeded();
+    // The narrow Firefox project occasionally needs extra time for HashRouter
+    // to flush the hashchange listener after viewport-constrained interaction.
+    // Keep other projects on the original 5s budget so the suite stays fast.
+    const isFirefoxMobile = test.info().project.name === 'firefox-mobile';
+    const navigationTimeout = isFirefoxMobile ? 20_000 : 5_000;
+    await Promise.all([
+      page.waitForURL(/\/#\/run\/run-003\/lesson/, { timeout: navigationTimeout }),
+      runLink.click(),
+    ]);
 
     // Should navigate to the lesson page for that run
     await expect(page).toHaveURL(/\/#\/run\/run-003\/lesson/);
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible({
+      timeout: isFirefoxMobile ? 15_000 : 5_000,
+    });
+    await expect(page.locator('.lesson__prose')).toContainText('Sample lesson', {
+      timeout: isFirefoxMobile ? 15_000 : 5_000,
+    });
   });
 
   /* ---------------------------------------------------------------- */

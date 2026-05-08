@@ -4,7 +4,7 @@
 **Auditor**: Claude Opus 4.6 (automated)
 **Scope**: All 11 v6 pages, tokens, typography, components, features, tests
 
-> 2026-05-08 update: this remains a historical V6 fidelity audit. Current ConceptGraph has moved past several rows below: it is SVG + d3-force, has Graph/List views, a side detail panel, a list fallback for large graphs, Fit/Export controls, and unbounded pan/zoom. It does not have cluster/community grouping.
+> 2026-05-08 update: this remains a historical V6 fidelity audit. Current ConceptGraph has moved past several rows below: it is SVG + d3-force, has Graph/List views, a side detail panel, a list fallback for large graphs, Fit/Export controls, and unbounded pan/zoom. Current chrome also has global search and Learn Run entry points; Dashboard empty state can open Learn Mode Dialog. Current i18n parity is 786/786. Rows below are not a current gap list.
 
 ---
 

@@ -295,7 +295,7 @@
     transform var(--dur-base) var(--ease-out);
   pointer-events: none;
   border-radius: 2px;
-  z-index: 2;
+  z-index: var(--z-base);
 }
 
 .feature-card:hover::before,

@@ -68,6 +68,18 @@
   /* Focus ring */
   --ring-focus: 0 0 0 3px var(--accent-softer);
 
+  /* Layering */
+  --z-base: 2;
+  --z-content-sticky: 10;
+  --z-content-sticky-raised: 11;
+  --z-floating: 20;
+  --z-sticky: 50;
+  --z-sticky-raised: 55;
+  --z-overlay: 60;
+  --z-dropdown: 70;
+  --z-modal: 80;
+  --z-toast: 100;
+
   /* Motion */
   --duration-fast: var(--dur-fast);
   --duration-normal: var(--dur-base);

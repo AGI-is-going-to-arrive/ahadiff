@@ -10,7 +10,7 @@
   position: absolute;
   top: -100%;
   inset-inline-start: var(--sp-4);
-  z-index: 100;
+  z-index: var(--z-toast);
   padding: var(--sp-2) var(--sp-4);
   background: var(--accent);
   color: var(--elevated);
@@ -86,7 +86,7 @@
     inset-block: 0;
     inset-inline-start: min(280px, calc(100vw - 48px));
     inset-inline-end: 0;
-    z-index: 60;
+    z-index: var(--z-overlay);
     display: block;
     padding: 0;
     border: 0;

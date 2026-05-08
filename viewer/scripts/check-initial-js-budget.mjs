@@ -7,7 +7,7 @@ import { gzipSync } from 'node:zlib';
  * Phase 2G/4E keep JavaScript size observable without blocking builds on a
  * hard byte ceiling. Initial JavaScript and Dashboard first-route JavaScript
  * are both reported here; Dashboard includes the route chunk, static imports,
- * and the lazy GraphifyCard child rendered on the first dashboard screen.
+ * and lazy children that are rendered on the first dashboard screen.
  *
  * Keep carving heavy deps into `vendor-page-deps` (excluded from modulepreload,
  * see vite.config.ts) so the shell stays small, but do not fail the build only
@@ -106,7 +106,8 @@ function manifestKeys(entry, key, property) {
 }
 
 function collectManifestJs(manifest, source, options = {}) {
-  const { includeImmediateDynamicImports = false } = options;
+  const { immediateDynamicImports = [] } = options;
+  const immediateDynamicImportSet = new Set(immediateDynamicImports);
   const refs = new Map();
   const seen = new Set();
   const visit = (key) => {
@@ -125,12 +126,11 @@ function collectManifestJs(manifest, source, options = {}) {
   const rootKey = findManifestKey(manifest, source);
   visit(rootKey);
 
-  if (includeImmediateDynamicImports) {
+  if (immediateDynamicImportSet.size > 0) {
     const rootEntry = manifest[rootKey];
     if (!rootEntry) fail(`Manifest import not found: ${rootKey}`);
-    // The Dashboard route renders this lazy child immediately, so its chunk and
-    // static imports belong to the first-route budget, not the initial shell.
     for (const imported of manifestKeys(rootEntry, rootKey, 'dynamicImports')) {
+      if (!immediateDynamicImportSet.has(imported)) continue;
       visit(imported);
     }
   }
@@ -175,7 +175,10 @@ console.log(`initial-js-gzip total: ${total} bytes (observed, no budget cap)`);
 
 const manifest = loadManifest();
 const dashboardEntries = collectManifestJs(manifest, 'src/pages/DashboardPage.tsx', {
-  includeImmediateDynamicImports: true,
+  // GraphifyCard is rendered immediately on Dashboard. LearnModeDialog is also
+  // a Dashboard dynamic import, but it is user-triggered after the first route
+  // is interactive, so it stays out of this first-route observation.
+  immediateDynamicImports: ['src/components/GraphifyCard.tsx'],
 });
 const dashboardFirstRouteEntries = combineEntries(entries, dashboardEntries);
 const dashboardFirstRouteTotal = measure(dashboardFirstRouteEntries, 'dashboard-first-route');

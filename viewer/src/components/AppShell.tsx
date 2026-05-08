@@ -15,6 +15,7 @@ const LearnModeDialog = lazy(() => import('./LearnModeDialog'));
 
 interface AppShellProps {
   children: ReactNode;
+  globalShortcutsDisabled?: boolean;
 }
 
 /* Three-state sidebar paradigm:
@@ -25,7 +26,7 @@ interface AppShellProps {
  * Icon-rail is handled in CSS via media query so no JS state is needed. */
 const DRAWER_QUERY = '(max-width: 768px)';
 
-export default function AppShell({ children }: AppShellProps) {
+export default function AppShell({ children, globalShortcutsDisabled = false }: AppShellProps) {
   const { t } = useTranslation();
   const location = useLocation();
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -73,7 +74,7 @@ export default function AppShell({ children }: AppShellProps) {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'k' && event.key !== 'K') return;
       if (!(event.metaKey || event.ctrlKey)) return;
-      if (isLearnDialogOpen) return;
+      if (isLearnDialogOpen || globalShortcutsDisabled) return;
       const target = event.target as HTMLElement | null;
       if (
         target &&
@@ -89,7 +90,7 @@ export default function AppShell({ children }: AppShellProps) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isLearnDialogOpen]);
+  }, [globalShortcutsDisabled, isLearnDialogOpen]);
 
   /* Close search on route change so it doesn't bleed across pages. */
   useEffect(() => {

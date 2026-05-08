@@ -298,7 +298,7 @@
     width: min(280px, calc(100vw - 48px));
     height: 100vh;
     height: 100dvh;
-    z-index: 50;
+    z-index: var(--z-sticky);
     transform: translateX(-100%);
     transition: transform var(--dur-fast) var(--ease-out-quart);
     border-inline-end: 1px solid var(--hair);

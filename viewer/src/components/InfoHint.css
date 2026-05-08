@@ -34,7 +34,7 @@
 .info-hint__bubble {
   position: absolute;
   left: 50%;
-  z-index: 70;
+  z-index: var(--z-dropdown);
   transform: translateX(-50%);
   min-width: 180px;
   max-width: min(320px, 90vw);

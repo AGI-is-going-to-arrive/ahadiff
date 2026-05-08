@@ -110,6 +110,21 @@ test.describe('cross-browser corner cases', () => {
     expect(errors).toHaveLength(0);
   });
 
+  test('Dashboard empty Learn dialog suppresses global search shortcut', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: /Start your first Learn Run/i }).click();
+
+    const learnDialog = page.getByRole('dialog', { name: /Start a Learn Run/i });
+    await expect(learnDialog).toBeVisible();
+    await learnDialog.getByRole('button', { name: /More options/i }).focus();
+
+    await page.keyboard.press('Control+K');
+
+    await expect(page.getByRole('dialog')).toHaveCount(1);
+    await expect(learnDialog).toBeVisible();
+    await expect(page.getByRole('dialog', { name: /Search|搜索/i })).toHaveCount(0);
+  });
+
   test('topbar wires search button + active New-Run button', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();

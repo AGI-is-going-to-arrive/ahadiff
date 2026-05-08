@@ -309,7 +309,7 @@ export default function ReviewPage() {
                 <Skeleton variant="row" />
               </div>
             </div>
-            <aside>
+            <aside aria-label={t('Review.sidebar_label')}>
               <Skeleton variant="card" height="120px" />
             </aside>
           </div>
@@ -812,7 +812,7 @@ export default function ReviewPage() {
           </div>
 
           {/* Right: Sidebar */}
-          <aside>
+          <aside aria-label={t('Review.sidebar_label')}>
             <div className="review__sidebar-card">
               <div className="review__sidebar-header">
                 <h2>{t('Review.card_concept')}</h2>

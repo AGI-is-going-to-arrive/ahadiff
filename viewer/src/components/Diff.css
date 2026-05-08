@@ -42,7 +42,7 @@
 .diff-file-summary {
   position: sticky;
   top: 0;
-  z-index: 11;
+  z-index: var(--z-content-sticky-raised);
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
@@ -183,7 +183,7 @@
 .diff-file-header {
   position: sticky;
   top: var(--diff-file-header-top, 0);
-  z-index: 10;
+  z-index: var(--z-content-sticky);
   background: var(--elevated);
   border-bottom: 1px solid var(--hair);
   font-family: var(--font-sans, var(--font-mono));
@@ -693,7 +693,7 @@ button.diff-line:focus-visible .diff-line__claim-dot {
   position: fixed;
   inset-inline-end: var(--sp-6);
   bottom: var(--sp-6);
-  z-index: 20;
+  z-index: var(--z-floating);
 }
 
 .mini-panel__item {
@@ -759,7 +759,7 @@ button.diff-line:focus-visible .diff-line__claim-dot {
     border-radius: 0;
     box-shadow: var(--sh-md);
     justify-content: center;
-    z-index: 20;
+    z-index: var(--z-floating);
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 

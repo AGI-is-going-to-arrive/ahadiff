@@ -93,7 +93,7 @@
     transform var(--dur-base) var(--ease-out);
   pointer-events: none;
   border-radius: 2px;
-  z-index: 2;
+  z-index: var(--z-base);
 }
 
 .card-accent:hover::before,
