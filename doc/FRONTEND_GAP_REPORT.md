@@ -5,8 +5,8 @@
 ## 审计范围
 
 - 后端 `src/ahadiff/serve/app.py` 当前注册：53 个 concrete `/api/*` route + 1 个 `/api/{rest_of_path:path}` catchall，另有 `/healthz`
-- 前端 `viewer/src/` 当前统计：12 页面；`components/` + `pages/` 下 37 个生产 TSX；24 个页面/组件 CSS；i18n `786/786`
-- 本轮真实验证：CSP hash 精确匹配当前 inline script；临时目录 Vite build 通过，生产 `index.html` 只保留 1 个 inline script；LearnModeDialog Playwright-backed 单测 `28 passed`；前端 Vitest `226 passed`；typecheck 通过；Learn E2E chromium `10 passed`；cross-browser `30 passed`；a11y `16 passed`；media features `23 passed`；walkthrough mobile 三浏览器目标用例 `3 passed`；i18n catalog parity `786/786`；`git diff --check -- viewer` 通过。后端 unit、完整 Playwright 和真实 LLM judge smoke 本轮未因 viewer 前端改动重跑
+- 前端 `viewer/src/` 当前统计：12 页面；`components/` + `pages/` 下 37 个生产 TSX；24 个页面/组件 CSS；i18n `833/833`
+- 最近已记录验证：后端 unit `2055 passed`；integration `11 passed`；eval `9 passed`；`ruff check`、`ruff format --check`、`pyright`、wheel build 通过；前端 `pnpm typecheck`、`pnpm vitest run`（`227 passed`）和 `pnpm build` 通过；完整跨浏览器 Playwright `2000 passed, 10 skipped`；GPT-5.5 live LLM judge smoke `1 passed`；Graphify 10k benchmark gate OK（parse avg `172.399ms`、peak `42.435MiB`）。coverage 本轮未重跑
 
 ---
 
@@ -24,13 +24,27 @@
 | Warning 颜色 / forced-colors / 触控目标 | warning token 改为可访问 fallback；Topbar / Ratchet tab 等触控目标和 forced-colors 已覆盖 | `tokens.css`, `Topbar.css`, `Ratchet.css`, `media-features.spec.ts` |
 | CSP / z-index / print | `index.html` inline script 改 CSP hash；z-index 数字集中成 `--z-*` token；print 下 lesson rail 保持 block 并避免分页切断 | `index.html`, `tokens.css`, `AppShell.css`, `Topbar.css`, `SearchOverlay.css`, `print.css`, `media-features.spec.ts` |
 | safe-area / 100dvh | Topbar safe-area、100dvh 已按当前实现验证 | `AppShell.css`, `Topbar.css`, `media-features.spec.ts` |
+| 前端 CI | 新增 GitHub Actions workflow，前端 PR/push 跑 typecheck、Vitest、build 和 Chromium desktop smoke/a11y/cross-browser/learn-task Playwright 子集 | `.github/workflows/frontend-ci.yml` |
 
 ## API 覆盖现状
 
 - 已展示或调用：`/api/export/results`、`/api/stats/learning`、`/api/review/heatmap`、`/api/search`、`/api/graph/status`、`/api/graph/concepts`、provider / config / audit / usage / install targets。
-- `GET /api/tasks/{id}/progress` 是 SSE 流；当前前端仍用 polling，这是有意选择。
+- `GET /api/tasks/{id}/progress` 是 SSE 流；`viewer/src/api/tasks.ts` 当前只封装 learn submit / estimate、task list / get / cancel，还没有 EventSource/stream client。短期 polling 可接受，但如果要降低长任务心智负担，应升级为一等进度流。
 - `GET /healthz` 不属于 viewer 必须调用的产品 API。
 - `GET /api/spec/alignment` 和 `GET /api/watch/status` 仍没有一等页面展示；前者适合后续放到 Dashboard / Ratchet，后者目前仍偏 internal status。
+- `GET /api/concepts` 和 `GET /api/run/{run_id}/concepts` 后端存在，但 viewer 当前主要使用 `/api/graph/concepts`，缺少 concepts JSONL / run-local concepts 的页面级入口。
+
+## 后端能力前端入口路线图
+
+| 优先级 | 后端能力 | 推荐前端入口 | 边界 |
+|---|---|---|---|
+| P1 | Task progress SSE：`GET /api/tasks/{id}/progress` | LearnTaskBanner / Learn Mode Dialog 内从 polling 升级为 SSE 优先、polling fallback | 不改变后端任务模型；只改善长任务反馈 |
+| P1 | Improve / targeted verify / Phase 2.5 | Ratchet 页增加“Improve this run”向导；先做只读 preflight，再显式确认写入 worktree | 当前只有 CLI：`ahadiff improve --suite local --rounds N`、`--resume`、`ahadiff db finalize-targeted <run_id>`；serve 还没有 `/api/improve*` 写入口，需要先设计写保护 API |
+| P1 | Install / uninstall target | Skills 页从“复制命令”升级为 dry-run manifest 预览；真实写入仍要求明确确认 | 当前 serve 只有 `GET /api/install/targets`；CLI 才有 `install` / `uninstall` 写操作。浏览器写文件风险高，必须保留 token + Origin gate 和二次确认 |
+| P1 | Watch 配置和状态 | Settings / Dashboard 增加 watch 状态、debounce/cooldown/force/dry-run/lang 配置说明，以及“如何启动 `serve --watch`”指引 | CLI 已有 `ahadiff watch` / `ahadiff serve --watch`；`/api/watch/status` 仍偏 internal，不承诺远程控制 |
+| P2 | Benchmark / judge stability / CI verify | Ratchet 或 Settings 增加 benchmark status / last-run artifact viewer | 当前是 CLI：`ahadiff benchmark --suite local`；serve 还没有 benchmark report route，不把长 benchmark 直接塞进默认 Dashboard |
+| P2 | Concepts JSONL / run concepts | Concepts 页增加“Ledger”或“Run concepts”标签，展示 `/api/concepts` 和 `/api/run/{id}/concepts` | CLI 已有 `concepts list/verify/sync/export/rollback`；前端先做只读 browser，不改完整图谱布局；完整图谱大改必须单独 plan |
+| P2 | Audit / usage / heatmap 查询参数 | Settings / Ratchet 增加分页、时间范围、字段筛选 | 先暴露最小筛选，避免把维护面变成复杂控制台 |
 
 ## 仍保留的产品差距
 
@@ -41,10 +55,13 @@
 | P2 | Diff 仍没有虚拟列表 | 当前是文件折叠和 sticky header；超大 diff 虚拟滚动仍待做 |
 | P2 | `judge.json` 仍不是独立详情面板 | Ratchet 已有 Judge notes tab 文案和 score 读取链路，但还不是完整 judge artifact browser |
 | P2 | Landing 仍以样例内容为主 | 还没有接真实 benchmark / demo API |
+| P2 | 搜索深链只生成不消费 | `SearchOverlay` 会生成概念、claim、review card 深链，但目标页尚未消费 query 参数并聚焦目标 |
+| P2 | Onboarding provider tab 深链未消费 | Onboarding 链到 `#/settings?tab=provider`，Settings 当前仍默认打开 Privacy |
 
 ## 安全 / 可访问性
 
 - `dangerouslySetInnerHTML`：当前关键渲染路径未使用；markdown 通过 JSX 构建。
 - 焦点陷阱、inert、skip-to-content、aria-live、ErrorBoundary：当前实现仍成立。Learn Mode Dialog 会对 body sibling 设置 inert，并在关闭时恢复原值。
-- forced-colors / reduced-motion / print / mobile media：本轮重跑了 chromium media-features，并用浏览器探针确认 Dashboard 空态移动宽度无横向溢出、print rail 的 `display:block` 和 `break-inside:avoid` 生效。
-- 完整 Playwright 全浏览器全视口本轮未重跑；本轮重跑了 LearnModeDialog 单测、前端全量 Vitest、typecheck/build、Learn E2E chromium、cross-browser 三项目、a11y chromium、media-features chromium、walkthrough mobile 三项目目标用例、i18n parity 和 viewer diff-check。
+- forced-colors / reduced-motion / print / mobile media：完整 Playwright 已覆盖全浏览器/全视口矩阵；二次全量结果为 `2000 passed, 10 skipped`。先前一次 `firefox-mobile` forced-colors 单点失败未在 targeted rerun 和第二次完整矩阵中复现，未改生产样式。
+- Diff claim 选中：walkthrough 仍走真实点击路径；为避免 WebKit 全量并行下偶发漏掉首次 click，测试只在未选中时重试点击，单用例和第二次完整矩阵均通过。
+- 本轮还重跑了 LearnModeDialog 单测、前端全量 Vitest、typecheck/build、Learn E2E chromium、cross-browser 三项目、a11y chromium、media-features chromium、walkthrough mobile 三项目目标用例、i18n parity 和 viewer diff-check。

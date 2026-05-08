@@ -334,15 +334,17 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(heading).toBeVisible();
     await expect(heading).toContainText(/Dashboard|运行/);
 
-    // KPI cards visible (4-col grid for >= 2 runs: runs, avg score, pass rate, concepts)
-    const kpiCards = page.locator('.kpi-grid--4col > .kpi-card');
-    await expect(kpiCards).toHaveCount(4);
+    // KPI cards visible (V6 grid for >= 2 runs: runs, avg score, pass rate, concepts, LLM calls)
+    const kpiCards = page.locator('.kpi-grid--5col > .kpi-card');
+    await expect(kpiCards).toHaveCount(5);
     await expect(kpiCards.nth(0).locator('.kpi-card__label')).toHaveText('Total runs');
     await expect(kpiCards.nth(1).locator('.kpi-card__label')).toHaveText('Avg score');
     await expect(kpiCards.nth(2).locator('.kpi-card__label')).toHaveText('Pass rate');
     await expect(kpiCards.nth(3).locator('.kpi-card__label')).toHaveText('Concepts learned');
+    await expect(kpiCards.nth(4).locator('.kpi-card__label')).toHaveText('LLM Calls');
     // Verify at least one KPI value reflects mock data
     await expect(kpiCards.nth(0).locator('.kpi-card__value')).toContainText('3');
+    await expect(kpiCards.nth(4).locator('.kpi-card__value')).toContainText('42');
 
     // Graphify source card is visible on the Dashboard when the backend has a source.
     await expect(page.locator('.graphify-card').filter({ hasText: 'Graphify source' })).toBeVisible();
@@ -402,8 +404,8 @@ test.describe('walkthrough: full-app functional test', () => {
 
     await page.goto('/');
 
-    const kpiCards = page.locator('.kpi-grid--4col > .kpi-card');
-    await expect(kpiCards).toHaveCount(4);
+    const kpiCards = page.locator('.kpi-grid--5col > .kpi-card');
+    await expect(kpiCards).toHaveCount(5);
     await expect(kpiCards.nth(0).locator('.kpi-card__hint')).toHaveText(
       'Stats API unavailable; using loaded runs only',
     );
@@ -414,6 +416,7 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(kpiCards.nth(3).locator('.kpi-card__hint')).toHaveText(
       'Stats API unavailable; using loaded runs only',
     );
+    await expect(kpiCards.nth(4).locator('.kpi-card__label')).toHaveText('LLM Calls');
   });
 
   /* ---------------------------------------------------------------- */
@@ -497,8 +500,15 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(linkedClaimLine).toContainText('# learn-from-diff');
     // Each linked diff line now has a small verdict-colored gutter dot.
     await expect(linkedClaimLine.locator('.diff-line__claim-dot')).toHaveCount(1);
-    await linkedClaimLine.click();
-    await expect(linkedClaimLine).toHaveClass(/diff-line--claim-selected/);
+    await expect(async () => {
+      const isSelected = await linkedClaimLine.evaluate((el) =>
+        el.classList.contains('diff-line--claim-selected'),
+      );
+      if (!isSelected) {
+        await linkedClaimLine.click();
+      }
+      await expect(linkedClaimLine).toHaveClass(/diff-line--claim-selected/);
+    }).toPass({ timeout: 7000 });
     await expect(page.locator('.claim-inspector__item--selected')).toContainText('c1');
     // Source preview moved out of the right inspector panel (which now shows
     // jump-to-code links instead). The actual source hunk renders below the

@@ -20,9 +20,9 @@ It's not a PR summary, not a repo wiki, not yet another "code explainer." It rea
 
 The main line from Stage 0 / Task 0 through Stage 6 now has real shipped artifacts, and Stage 7 i18n signoff has also passed. The current code reliably produces Lesson / Claims / Quiz / Misconception Cards / Cards / Score / Ratchet. The review-flow SRS runtime, serve backend, install targets, GitHub Action templates, benchmark suite, improve-loop core, Task 17 targeted verification, Phase 2.5 runtime, i18n-0 backend, and the `viewer/` React SPA are all landed.
 
-The current v1.1 uncommitted work spans backend Python, the `viewer/` frontend, tests, benchmarks, and docs. Backend changes close the watch self-trigger worktree diff mode, harden provider model discovery against SSRF while preserving local provider discovery, expand URL embedded-secret redaction for OAuth query and fragment tokens, strengthen GraphProvenance validation, and guard concepts JSONL export against symlink / reparse targets. Frontend changes add Dashboard LLM Calls / Weak Concepts, ConceptGraph 500+ / 1000+ large-graph warnings with a 1000+ explicit render confirmation, a11y heading / tab-panel / nested-interactive fixes, accent contrast tokens, GraphifyCard V6 fidelity, and Skills focus restoration.
+This v1.1 review-fix pass spans backend Python, the `viewer/` frontend, tests, benchmarks, and docs. Backend changes close the watch self-trigger worktree diff mode, harden provider model discovery against SSRF while preserving local provider discovery, expand URL embedded-secret redaction for OAuth query and fragment tokens, strengthen GraphProvenance validation, and guard concepts JSONL export against symlink / reparse targets. Frontend changes add Dashboard LLM Calls / Weak Concepts, ConceptGraph 500+ / 1000+ large-graph warnings with a 1000+ explicit render confirmation, a11y heading / tab-panel / nested-interactive fixes, accent contrast tokens, GraphifyCard V6 fidelity, and Skills focus restoration. This cleanup also aligns the Dashboard KPI E2E contract with the five-card UI, adds a real-click retry for the Diff claim selection E2E path, and adds the frontend CI workflow.
 
-This review-fix pass verified the changed surface: `UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pytest tests/unit -x -q` = `2055 passed`; `ruff check src tests`, `ruff format --check src tests`, and `pyright` passed; `cd viewer && pnpm typecheck` passed; `cd viewer && pnpm vitest run` = `21 files, 227 tests passed`; `cd viewer && pnpm exec playwright test tests/e2e/a11y.spec.ts --project=chromium-desktop --reporter=line` = `17 passed`; Graphify 10k benchmark parse avg was `165.25ms`, peak memory was `42.44MiB`, and the gate passed. Full cross-browser Playwright, wheel build, coverage, and live LLM judge smoke were not rerun in this pass.
+This review-fix pass verified the changed surface: `UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pytest tests/unit -x -q` = `2055 passed`; `pytest tests/integration -q` = `11 passed`; `pytest tests/eval -q` = `9 passed`; `ruff check src tests`, `ruff format --check src tests`, and `pyright` passed; `uv build --wheel` passed; `cd viewer && pnpm typecheck`, `pnpm vitest run` (`21 files, 227 tests passed`), and `pnpm build` passed; full cross-browser Playwright = `2000 passed, 10 skipped`; `AHADIFF_LIVE_LLM_MODELS=gpt-5.5 pytest tests/live/test_llm_judge_live.py -q` = `1 passed`; Graphify 10k benchmark parse avg was `172.399ms`, peak memory was `42.435MiB`, and the gate passed. Coverage was not rerun in this pass.
 
 > Code Wiki explains a repo. AhaDiff teaches you what changed — and verifies every claim against the diff.
 
@@ -47,45 +47,148 @@ Extends the Karpathy / autoresearch three-file contract into an N-file variant:
 
 LOOP: edit → commit → evaluate → keep if better, reset if worse → write to `review.sqlite` (single source of truth; `results.tsv` is an export view).
 
-## Quickstart (Planned)
+## Quickstart
+
+The commands below match the current CLI. In a source checkout, use `uv run ahadiff ...`; after wheel / pipx installation, use `ahadiff ...` directly.
 
 ```bash
 pipx install ahadiff
 
-# Learn the last commit
+# Initialize .ahadiff/ for the current repo
+ahadiff init
+ahadiff doctor
+ahadiff config show --resolved
+
+# Learn the latest commit
+ahadiff learn --last
+
+# Learn a commit range
 ahadiff learn HEAD~1..HEAD
 
 # Learn staged changes
 ahadiff learn --staged
 
-# Learn against a spec
-ahadiff learn HEAD~1..HEAD --against .ahadiff/specs/oauth-login/SPEC.md
+# Learn unstaged worktree changes; include untracked files when needed
+ahadiff learn --unstaged
+ahadiff learn --unstaged --include-untracked
 
-# Review
-ahadiff quiz abc123
+# Learn from a patch file, URL patch, or directory comparison
+ahadiff learn --patch change.diff
+ahadiff learn --patch-url "https://example.com/change.diff"
+ahadiff learn --compare old.py new.py
+ahadiff learn --compare-dir old/ new/
+
+# Review and browse
+ahadiff quiz <run_id>
 ahadiff review
-
-# Interactive browser UI (Quiz/SRS/Dashboard)
+ahadiff mark <claim_id> wrong
 ahadiff serve
+ahadiff serve --port 8765 --no-browser
+ahadiff serve --watch
 
-# Ratcheted self-improvement (Task 16/17 backend is landed; requires an existing finalized run and provider configuration)
+# Background watch mode (requires the watchdog extra)
+ahadiff watch --debounce 2 --cooldown 30
+
+# Ratcheted self-improvement; requires an existing finalized run and provider configuration
 ahadiff improve --suite local --rounds 6
+```
 
-# Install into AI tools and automation (13 targets)
-ahadiff install claude    # Claude Code → .claude/skills/
-ahadiff install codex     # Codex CLI → AGENTS.md
-ahadiff install gemini    # Gemini CLI → GEMINI.md
-ahadiff install opencode  # OpenCode → AGENTS.md + .opencode/agents/
-ahadiff install hooks     # POSIX shell git hooks (Windows is rejected in v0.1)
-ahadiff install github-action          # verify-only workflow
-ahadiff install github-action --layer2 # opt-in generate workflow (requires provider secret)
-ahadiff install cursor    # Cursor → .cursor/rules/
-ahadiff install windsurf  # Windsurf → .windsurf/rules/
-ahadiff install copilot   # GitHub Copilot → .github/copilot-instructions.md
-ahadiff install continue  # Continue → .continue/rules/
-ahadiff install aider     # Aider → .aider.conf.yml
-ahadiff install cline     # Cline → .clinerules
-ahadiff install roo       # Roo Code → .roo/rules/
+In a source checkout, use the equivalent local commands:
+
+```bash
+uv sync --locked --dev
+uv run python -m ahadiff --version
+uv run python -m ahadiff learn --last
+```
+
+When configuring a remote or local OpenAI-compatible provider, do not write real keys into commands, README files, manifests, or git-tracked files. Store only the environment-variable name. `provider test` sends a small probe request and persists the provider into `.ahadiff/config.toml`.
+
+```bash
+export AHADIFF_PROVIDER_BASE_URL="https://api.example.com/v1"
+export AHADIFF_PROVIDER_API_KEY="<provider-api-key>"
+
+ahadiff provider test \
+  --name gpt55 \
+  --provider-class openai_responses \
+  --base-url "$AHADIFF_PROVIDER_BASE_URL" \
+  --model gpt-5.5 \
+  --api-key-env AHADIFF_PROVIDER_API_KEY \
+  --privacy-mode explicit_remote
+
+ahadiff learn --last --provider gpt55 --model gpt-5.5 --privacy-mode explicit_remote
+```
+
+The real LLM judge smoke is opt-in. To use GPT-5.5, pass it explicitly through environment variables; do not hardcode keys or real endpoints into docs:
+
+```bash
+AHADIFF_LIVE_LLM_JUDGE=1 \
+AHADIFF_LIVE_LLM_API_KEY="$AHADIFF_LIVE_LLM_API_KEY" \
+AHADIFF_LIVE_LLM_BASE_URL="$AHADIFF_LIVE_LLM_BASE_URL" \
+AHADIFF_LIVE_LLM_MODELS="gpt-5.5" \
+pytest tests/live/test_llm_judge_live.py -q
+```
+
+## AI Tool and Automation Installs
+
+Use `--dry-run --manifest` first to see the exact file writes:
+
+```bash
+ahadiff install --detect
+ahadiff install claude --dry-run --manifest
+
+ahadiff install <target>
+ahadiff uninstall <target>
+```
+
+The 13 targets write to these paths:
+
+| target | command | write path |
+|---|---|---|
+| `aider` | `ahadiff install aider` | marked section in `CONVENTIONS.md` |
+| `claude` | `ahadiff install claude` | `.claude/skills/ahadiff/SKILL.md` + marked section in `CLAUDE.md` |
+| `cline` | `ahadiff install cline` | `.clinerules/ahadiff.md` |
+| `codex` | `ahadiff install codex` | marked section in `AGENTS.md` |
+| `continue` | `ahadiff install continue` | `.continue/rules/ahadiff.md` |
+| `copilot` | `ahadiff install copilot` | marked section in `.github/copilot-instructions.md` |
+| `cursor` | `ahadiff install cursor` | `.cursor/rules/ahadiff.mdc` |
+| `gemini` | `ahadiff install gemini` | marked section in `GEMINI.md` |
+| `github-action` | `ahadiff install github-action` | `.github/workflows/ahadiff-verify.yml`; with `--layer2`, also writes `.github/workflows/ahadiff-generate.yml` |
+| `hooks` | `ahadiff install hooks` | git hooks path, usually `.git/hooks/post-commit` + `.git/hooks/pre-push`; Windows is rejected in v0.1 |
+| `opencode` | `ahadiff install opencode` | marked section in `AGENTS.md` + `.opencode/agents/ahadiff.md` |
+| `roo` | `ahadiff install roo` | `.roo/rules/ahadiff.md` |
+| `windsurf` | `ahadiff install windsurf` | `.windsurf/rules/ahadiff.md` |
+
+These targets currently generate rule files, hooks, or GitHub workflows. Tests cover template rendering, writes, overwrite protection, detection, and uninstall behavior; they do not launch each IDE/CLI to prove the tool loads the generated files. `hooks` is a non-blocking reminder, not an automatic `learn` runner. The GitHub Action verify workflow exits successfully with “no run artifacts found” when there are no `.ahadiff/runs` artifacts to verify.
+
+Advanced / maintenance commands are available, but they are meant for maintainers, CI, or users who understand the state files they touch:
+
+```bash
+# improve / targeted finalize
+ahadiff improve --suite local --rounds 6
+ahadiff improve --resume <session_id>
+ahadiff db finalize-targeted <run_id>
+
+# scoring, CI verification, and export
+ahadiff score <run_id>
+ahadiff verify <run_id>
+ahadiff verify --ci
+ahadiff export-results
+
+# benchmark / DB / Graphify / concepts derived cache
+ahadiff benchmark --suite local
+ahadiff db check
+ahadiff db backup
+ahadiff db restore <backup_path>
+ahadiff db import-results results.tsv --i-understand-this-is-lossy
+ahadiff graph status
+ahadiff graph import
+ahadiff graph refresh
+ahadiff concepts list
+ahadiff concepts verify
+ahadiff concepts sync
+ahadiff concepts export
+ahadiff concepts rollback --dry-run
+ahadiff maint clean-orphans --dry-run
 ```
 
 Current output layout:
@@ -180,7 +283,7 @@ ahadiff/
 ├─ tests/eval/                  # benchmark suite tests
 ├─ tests/integration/           # pinned integration fixtures
 ├─ tests/live/                  # Opt-in real LLM judge smoke
-├─ viewer/                      # React 19 + Vite + Zustand + vanilla CSS frontend (12 pages / 37 production page+component TSX / 24 page+component CSS / 833 i18n keys / this session: typecheck + full frontend Vitest 227 passed + Chromium a11y 17 passed)
+├─ viewer/                      # React 19 + Vite + Zustand + vanilla CSS frontend (12 pages / 37 production page+component TSX / 24 page+component CSS / 833 i18n keys / this session: typecheck + Vitest 227 passed + full Playwright 2000 passed / 10 skipped)
 ├─ ui/                          # HTML prototypes v1–v6 (design history)
 └─ CLAUDE.md                    # Project AI context index
 ```
@@ -195,9 +298,9 @@ ahadiff/
 - `ahadiff score`, `ahadiff verify`, and `ahadiff export-results`, backed by `review.sqlite` as the single source of truth and `results.tsv` as an export view
 - `ahadiff review`, `ahadiff mark <claim_id> wrong`, and `ahadiff db {backup,restore,check,import-results,finalize-targeted}` for the landed review.sqlite review / signals / result-events / lossy-import / targeted-finalize path
 - `ahadiff serve`: the localhost-only serve backend is available. Read routes expose finalized runs only; write routes require token plus Origin/Referer checks. `/api/auth/token` requires a same-origin browser signal, keeps GET compatibility, and supports POST bootstrap. The current route surface is 53 concrete `/api/*` routes plus one `/api/{rest_of_path:path}` catchall, with `/healthz` outside the API surface. `POST /api/learn` has an in-memory 10 req/min sliding-window rate limit with `retry_after` / `Retry-After`; `/api/tasks*` is stable product API, while `/api/watch/status` remains internal/unstable. `GET/PUT /api/config` now includes `learnability_threshold` and `desired_retention`, and serve runtime reads config from the active workspace.
-- `ahadiff install`: Claude / Codex / Gemini / OpenCode / hooks / GitHub Action targets are available. Hooks are POSIX-shell targets and are explicitly rejected on Windows in v0.1. Existing hook files are now read through no-follow regular-file checks, so symlink / reparse-point hook paths are rejected. Generated GitHub workflows cover macOS + Linux; Windows remains deferred. The generate workflow uses `AHADIFF_PROVIDER_API_KEY` and uploads `.ahadiff/` outputs as an artifact
+- `ahadiff install` / `ahadiff uninstall`: all 13 targets are available (Aider / Claude / Cline / Codex / Continue / Copilot / Cursor / Gemini / GitHub Action / hooks / OpenCode / Roo / Windsurf); the real write paths are listed in the install target table above. Hooks are POSIX-shell targets and are explicitly rejected on Windows in v0.1. Existing hook files are now read through no-follow regular-file checks, so symlink / reparse-point hook paths are rejected. Generated GitHub workflows cover macOS + Linux; Windows remains deferred. The generate workflow uses `AHADIFF_PROVIDER_API_KEY` and uploads `.ahadiff/` outputs as an artifact
 - `ahadiff benchmark`: the local benchmark manifest, 20 eval fixtures, 11 pinned integration fixtures, and `ground_truth.md` consistency checks are available; the 11th fixture is a graph-present smoke fixture proving a Graphify-style `graph.json` is covered by the suite digest, parses through the real parser, and materializes `graphify_context.json` / `artifact_set.json` in the fixture path. The production per-run Graphify context path is covered by `test_git_capture.py`; this fixture is not proof of full real large Graphify export fidelity
-- the repo also now ships repo-level Backend CI / `nightly-eval` / `release` workflows: PR runs unit + pinned integration (`ubuntu py311/py312 + macOS py312`) with a separate Windows runtime guard, and the release gate now blocks on `doctor`, wheel install smoke, and coverage `>= 85%`. `pyproject.toml` also now carries `watchdog` / `tree-sitter` optional extras and `pytest-cov` as a dev dependency; `ahadiff watch`, `serve --watch`, and `/api/watch/status` are landed, while `/api/watch/status` remains internal/unstable. `tree-sitter` is no longer just optional wiring: the runtime consumer is now connected at the symbol-extraction layer for JS/TS/TSX + Go + Java + Rust + PHP + Ruby + C#; Python stays AST-first, unsupported languages still fall back to regex / section header, and no downstream lesson / quiz / claims business logic changed
+- the repo also now ships repo-level Backend CI / `nightly-eval` / `release` workflows: PR runs unit + pinned integration (`ubuntu py311/py312 + macOS py312`) with a separate Windows runtime guard, and the release gate now blocks on `doctor`, wheel install smoke, and coverage `>= 85%`. This pass also adds `.github/workflows/frontend-ci.yml`: frontend PR/push checks run `pnpm typecheck`, `pnpm vitest run`, `pnpm build`, and the Chromium desktop smoke/a11y/cross-browser/learn-task Playwright subset. `pyproject.toml` also now carries `watchdog` / `tree-sitter` optional extras and `pytest-cov` as a dev dependency; `ahadiff watch`, `serve --watch`, and `/api/watch/status` are landed, while `/api/watch/status` remains internal/unstable. `tree-sitter` is no longer just optional wiring: the runtime consumer is now connected at the symbol-extraction layer for JS/TS/TSX + Go + Java + Rust + PHP + Ruby + C#; Python stays AST-first, unsupported languages still fall back to regex / section header, and no downstream lesson / quiz / claims business logic changed
 - The Phase 0 follow-up is now reflected in the branch: the contract authority, the `safe_sqlite_connect` SQLite connection helper, reparse/hardlink protections, serve CORS and `X-Frame-Options` headers, CLI cold start, and local baseline scripts all have matching implementation
 - i18n-0: the locale resolver supports cookie / Accept-Language / CLI / config / `AHADIFF_LANG` / `LANG` fallback, and lesson/quiz prompt payloads carry the requested output-language instruction
 - `ahadiff improve --suite local --rounds N`, which currently supports only `--suite local`. It selects a baseline from an existing finalized run, edits only an allowlisted prompt in a git worktree, replays the same diff, and rescores the candidate; the candidate must improve the target dimension plus `accuracy`, `evidence`, and `safety_privacy`, and hard gates must still pass. Passing candidates are cherry-picked back when possible and recorded as `event_type=improve` / `status=targeted_verify`; non-improving rounds are recorded as `discard`; cherry-pick conflicts leave a pending worktree without finalizing the run; two consecutive `discard` rounds in the same session trigger one Phase 2.5 worktree rewrite
@@ -223,7 +326,7 @@ source .venv/bin/activate && python -m ahadiff db check --help
 source .venv/bin/activate && python -m ahadiff install github-action --help
 ```
 
-The live LLM judge smoke is opt-in. Its default model order is `gpt-5.3-codex-spark,gpt-5.4-mini`; each model tries OpenAI Responses before Chat Completions:
+The live LLM judge smoke is opt-in. Its default model order is `gpt-5.3-codex-spark,gpt-5.4-mini`; each model tries OpenAI Responses before Chat Completions. To use GPT-5.5, set `AHADIFF_LIVE_LLM_MODELS` explicitly as shown in the quickstart:
 
 ```bash
 AHADIFF_LIVE_LLM_JUDGE=1 \
@@ -233,11 +336,11 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-Latest verification (2026-05-08, this session): `UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pytest tests/unit -x -q` = `2055 passed`; `UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync ruff check src tests` passed; `UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync ruff format --check src tests` passed; `UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pyright` = `0 errors`; `cd viewer && pnpm typecheck` passed; `cd viewer && pnpm vitest run` = `21 files, 227 tests passed`; Chromium a11y target regression = `17 passed`; Graphify 10k benchmark gate passed (parse avg `165.25ms`, peak `42.44MiB`). Full cross-browser Playwright, wheel build, coverage, and live LLM judge smoke were not rerun in this pass.
+Latest verification (2026-05-08, this session): `UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pytest tests/unit -x -q` = `2055 passed`; `UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pytest tests/integration -q` = `11 passed`; `UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pytest tests/eval -q` = `9 passed`; `UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync ruff check src tests` passed; `UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync ruff format --check src tests` passed; `UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run --frozen --no-sync pyright` = `0 errors`; `UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv build --wheel` passed; `cd viewer && pnpm typecheck` passed; `cd viewer && pnpm vitest run` = `21 files, 227 tests passed`; `cd viewer && pnpm build` passed; `cd viewer && pnpm exec playwright test --reporter=line` = `2000 passed, 10 skipped`; `AHADIFF_LIVE_LLM_MODELS=gpt-5.5 ... pytest tests/live/test_llm_judge_live.py -q` = `1 passed`; Graphify 10k benchmark gate passed (parse avg `172.399ms`, peak `42.435MiB`). Coverage was not rerun in this pass.
 
 Roadmap:
 
-- [ ] `v0.1` (MVP): CLI + Lesson + Evaluator + Ratchet end-to-end + React 19 WebUI (`ahadiff serve`) + 8 LLM Providers + 8 diff capture modes (incl. --unstaged / git show) + 6 install targets + i18n + stage gates
+- [ ] `v0.1` (MVP): CLI + Lesson + Evaluator + Ratchet end-to-end + React 19 WebUI (`ahadiff serve`) + 8 LLM Providers + 8 diff capture modes (incl. --unstaged / git show) + 13 install targets + i18n + stage gates
 - [ ] `v0.2`: --compare-dir + --patch-url + 7 IDE install targets + watchdog incremental regeneration + section-level helpfulness + Team features (done: backend Gates 0-6 + medium APIs + helpfulness / learning transfer + misconception cards + Graphify backend foundations with concept linking / FTS / provenance / perf gate + watch mode + 13 install targets + provider/model settings + Learn Mode Dialog + `/api/learn` rate limit + DNS pinning + LLM judge + current frontend learning-surface closure: three-button SRS UI, automatic scaffolding, retention settings, Ratchet TSV, ConceptGraph Graph/List views with unbounded full-graph interaction, Dashboard learning-metric isolation and empty-state Learn CTA, three-state sidebar, Diff large-file render budget, Dashboard source filters, container-query hardening, Settings/Lesson/Skills/Review heading and aria cleanup, CSP hash / z-index token / favicon / runtime status / queue-state / signals / idempotency fallback hardening; remaining: Team / real large-repo signoff evidence / deeper V6 frontend signoff)
 - [ ] `v1.0`: PWA + public benchmark suite
 
