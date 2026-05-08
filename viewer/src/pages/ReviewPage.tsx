@@ -5,12 +5,13 @@ import type { HeatmapCell } from '../components/CalendarHeatmap';
 import InfoHint from '../components/InfoHint';
 import Skeleton from '../components/Skeleton';
 import { fetchReviewHeatmap } from '../api/stats';
-import { getReviewMastery, getWeakConcepts } from '../api/review';
+import { getReviewMastery, getWeakConcepts, updateReviewQueueState } from '../api/review';
 import type {
   DueReviewCard,
   ReviewAnswer,
   ReviewChoice,
   ReviewMasteryItem,
+  ReviewQueueState,
   WeakConceptItem,
 } from '../api/types';
 import { useReviewStore } from '../state/review-store';
@@ -101,8 +102,12 @@ export default function ReviewPage() {
   const [weakConcepts, setWeakConcepts] = useState<WeakConceptItem[]>([]);
   const [newConcepts, setNewConcepts] = useState<WeakConceptItem[]>([]);
   const [summaryOpen, setSummaryOpen] = useState(true);
+  const [queueStateBusy, setQueueStateBusy] = useState(false);
+  const [queueStateMessage, setQueueStateMessage] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const refreshAbortRef = useRef<AbortController | null>(null);
+  const queueStateAbortRef = useRef<AbortController | null>(null);
+  const queueStateBusyRef = useRef(false);
   const flipBtnRef = useRef<HTMLButtonElement | null>(null);
   const firstRatingRef = useRef<HTMLButtonElement | null>(null);
 
@@ -207,6 +212,52 @@ export default function ReviewPage() {
     },
     [rate, selectedChoiceLabel],
   );
+
+  const handleQueueState = useCallback(
+    async (state: ReviewQueueState) => {
+      const card = useReviewStore.getState().currentCard();
+      if (!card || queueStateBusyRef.current) return;
+      queueStateBusyRef.current = true;
+      queueStateAbortRef.current?.abort();
+      const ctrl = new AbortController();
+      queueStateAbortRef.current = ctrl;
+      setQueueStateBusy(true);
+      setQueueStateMessage(
+        state === 'suspended'
+          ? t('Review.card_suspending')
+          : t('Review.card_archiving'),
+      );
+      try {
+        await updateReviewQueueState(
+          { card_id: card.card_id, state },
+          { signal: ctrl.signal },
+        );
+        if (ctrl.signal.aborted) return;
+        setQueueStateMessage(
+          state === 'suspended'
+            ? t('Review.card_suspended')
+            : t('Review.card_archived'),
+        );
+        await useReviewStore.getState().loadQueue();
+      } catch (e) {
+        if (e instanceof DOMException && e.name === 'AbortError') return;
+        setQueueStateMessage(t('Review.error_unknown'));
+      } finally {
+        if (!ctrl.signal.aborted) {
+          queueStateBusyRef.current = false;
+          setQueueStateBusy(false);
+        }
+      }
+    },
+    [t],
+  );
+
+  useEffect(() => {
+    return () => {
+      queueStateBusyRef.current = false;
+      queueStateAbortRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -591,6 +642,34 @@ export default function ReviewPage() {
               <div className="flashcard__concept">
                 {t('Review.card_concept')} · {card!.concept}
                 <span className="flashcard__source-badge">{t('Review.card_ai_source')}</span>
+              </div>
+              <div className="flashcard__queue-actions">
+                <button
+                  type="button"
+                  className="flashcard__queue-action"
+                  onClick={() => void handleQueueState('suspended')}
+                  disabled={queueStateBusy}
+                >
+                  {t('Review.suspend_card')}
+                </button>
+                <button
+                  type="button"
+                  className="flashcard__queue-action"
+                  onClick={() => void handleQueueState('archived')}
+                  disabled={queueStateBusy}
+                >
+                  {t('Review.archive_card')}
+                </button>
+                {queueStateMessage && (
+                  <span
+                    className="flashcard__queue-status"
+                    role="status"
+                    aria-live="polite"
+                    aria-busy={queueStateBusy}
+                  >
+                    {queueStateMessage}
+                  </span>
+                )}
               </div>
               <div className="flashcard__front">
                 {card!.question?.trim() || (

@@ -20,9 +20,9 @@
 
 Stage 0 / Task 0 到 Stage 6 主线现在都已经有实际产物，Stage 7 的 i18n signoff 也已通过。当前代码已经能稳定产出 Lesson / Claims / Quiz / Misconception Cards / Cards / Score / Ratchet；review 流的 SRS runtime、serve backend、install targets、GitHub Action 模板、benchmark suite、improve loop core、Task 17 targeted verification、Phase 2.5 runtime、i18n-0 后端以及前端 `viewer/` React SPA 都已落地。
 
-这次未提交改动仍只在 `viewer/` 前端。上一轮 Learn Mode Dialog 的主链不变：Topbar 的 “Learn Run” 仍会打开懒加载对话框，支持 10 种捕获模式和 `/api/learn/estimate` preflight。这一轮主要补硬化和收口：`index.html` 的 inline script 改用 CSP hash；z-index 数字集中成 CSS token；Dashboard 空态新增 “Start your first Learn Run” 按钮，打开同一个 Learn Mode Dialog，并挡掉对话框内 `Ctrl/Cmd+K` 误开全局搜索；Review 右栏补 landmark label；print 样式保留 lesson rail；walkthrough 的 lesson 跳转断言改到真实内容加载。后端代码本轮没有修改。
+这次未提交改动仍只在 `viewer/` 前端。上一轮 Learn Mode Dialog 的主链不变；这一轮补的是 review / runtime / signal 小闭环和浏览器兼容性：`index.html` 新增 AhaDiff Δ favicon，HashRouter 打开 React Router v7 future flags，`api/runs.ts` 移除已无引用的 concepts 死代码；Lesson scaffolding tab 切换会按 section contract 写入 helpfulness signal，Quiz 答错时会在有 source claim 的情况下写入 mark-wrong signal；Review 卡片新增 Suspend / Archive 操作，调用 `/api/review/queue-state` 后刷新队列并给出 live 状态；Settings 新增 Serve / Watch runtime status 卡片；前端 idempotency key 统一走 `createIdempotencyKey()`，在没有 `crypto.randomUUID()` 的浏览器里也能降级。后端代码本轮没有修改。
 
-本轮真实验证覆盖了当前改动面：CSP hash 精确匹配当前 inline script；临时目录 Vite build 通过，生产 `index.html` 只保留 1 个 inline script；`pnpm exec vitest run tests/unit/learn-mode-dialog.test.ts --reporter=dot` = `28 passed`；`pnpm vitest run` = `21 files, 226 tests passed`；`pnpm typecheck` 通过；`pnpm exec playwright test tests/e2e/learn-task.spec.ts --project=chromium-desktop` = `10 passed`；`pnpm exec playwright test tests/e2e/cross-browser.spec.ts --project=chromium-desktop --project=firefox-mobile --project=webkit-mobile` = `30 passed`；`pnpm exec playwright test tests/e2e/a11y.spec.ts --project=chromium-desktop` = `16 passed`；`pnpm exec playwright test tests/e2e/media-features.spec.ts --project=chromium-desktop` = `23 passed`；walkthrough 目标用例在 Chromium / Firefox / WebKit mobile 项目下 `3 passed`；i18n catalog parity 为 `786/786`；`git diff --check -- viewer` 通过。后端测试、完整 Playwright 和真实 LLM judge smoke 没有因这次纯前端改动重跑。
+本轮真实验证覆盖了当前改动面：`cd viewer && pnpm typecheck` 通过；`cd viewer && pnpm vitest run` = `21 files, 226 tests passed`；`cd viewer && pnpm build` 通过，观察值为 initial JS gzip `95,549` bytes、Dashboard first-route JS gzip `137,892` bytes；i18n catalog parity 为 `805/805`，placeholder parity OK；`git diff --check -- viewer` 通过；`viewer/src` 下已无 `crypto.randomUUID()` 直用；`api/runs.ts` 移除的 `getGlobalConcepts` / `getRunConcepts` 在 `viewer/src` 下零引用。后端测试、Playwright E2E/a11y/cross-browser 和真实 LLM judge smoke 没有因这次纯前端改动重跑。
 
 > Code Wiki 解释仓库，知返解释这次改动 —— 而且每一句话都能回到代码证据。
 
@@ -180,7 +180,7 @@ ahadiff/
 ├─ tests/eval/                  # benchmark suite 测试
 ├─ tests/integration/           # pinned integration fixtures
 ├─ tests/live/                  # 需要显式环境变量开启的真实 LLM judge smoke
-├─ viewer/                      # React 19 + Vite + Zustand + vanilla CSS 前端（12 页面 / 37 个生产页面+组件 TSX / 24 个页面+组件 CSS / 786 i18n keys / 本轮 LearnModeDialog 单测 28 passed + 前端全量 Vitest 226 passed + Learn E2E 10 passed + cross-browser 30 passed）
+├─ viewer/                      # React 19 + Vite + Zustand + vanilla CSS 前端（12 页面 / 37 个生产页面+组件 TSX / 24 个页面+组件 CSS / 805 i18n keys / 本轮 typecheck + build + 前端全量 Vitest 226 passed + diff-check 通过）
 ├─ ui/                          # HTML 原型 v1–v6（设计迭代史）
 └─ CLAUDE.md                    # 项目 AI 上下文索引
 ```
@@ -233,12 +233,12 @@ AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
-最近一次验证（2026-05-08，本 session）：`cd viewer && pnpm exec vitest run tests/unit/learn-mode-dialog.test.ts --reporter=dot` = `28 passed`；`cd viewer && pnpm vitest run` = `21 files, 226 tests passed`；`cd viewer && pnpm typecheck` 通过；临时目录 `vite build` 通过（本次观察值：initial JS gzip `95,107` bytes，Dashboard first-route JS gzip `137,378` bytes，不设硬 cap）；`cd viewer && pnpm exec playwright test tests/e2e/learn-task.spec.ts --project=chromium-desktop` = `10 passed`；`cd viewer && pnpm exec playwright test tests/e2e/cross-browser.spec.ts --project=chromium-desktop --project=firefox-mobile --project=webkit-mobile` = `30 passed`；`cd viewer && pnpm exec playwright test tests/e2e/a11y.spec.ts --project=chromium-desktop` = `16 passed`；`cd viewer && pnpm exec playwright test tests/e2e/media-features.spec.ts --project=chromium-desktop` = `23 passed`；walkthrough 目标用例在 chromium/firefox/webkit mobile 项目下 `3 passed`；i18n catalog parity 为 `786/786`；`git diff --check -- viewer` 通过。后端全量、ruff、pyright、wheel、coverage、完整 Playwright 和真实 LLM judge smoke 本轮未因 viewer 前端改动重跑。
+最近一次验证（2026-05-08，本 session）：`cd viewer && pnpm typecheck` 通过；`cd viewer && pnpm vitest run` = `21 files, 226 tests passed`；`cd viewer && pnpm build` 通过（本次观察值：initial JS gzip `95,549` bytes，Dashboard first-route JS gzip `137,892` bytes，不设硬 cap）；i18n catalog parity 为 `805/805` 且 placeholder parity OK；`git diff --check -- viewer` 通过；`rg -n "crypto\\.randomUUID\\(" viewer/src` 无结果；`getGlobalConcepts` / `getRunConcepts` 在 `viewer/src` 下零引用。后端全量、ruff、pyright、wheel、coverage、Playwright E2E/a11y/cross-browser 和真实 LLM judge smoke 本轮未因 viewer 前端改动重跑。
 
 下一步路线图：
 
 - [ ] `v0.1`（MVP）：CLI + Lesson + Evaluator + Ratchet 全链路 + React 19 WebUI（`ahadiff serve`）+ 8 种 LLM Provider（OpenAI Chat/Responses/Gemini/Anthropic/Azure/NewAPI/LMStudio/Ollama）+ 8 种 diff 捕获（含 --unstaged / git show）+ 6 个 install target + i18n + 阶段门禁
-- [ ] `v0.2`：--compare-dir + --patch-url + 7 个 IDE install target + watchdog 增量重生 + section-level helpfulness + Team 功能（已完成：后端 Gate 0-6 + medium APIs + helpfulness / learning transfer + misconception cards + Graphify 后端基础与 concept linking / FTS / provenance / perf gate + watch mode + 13 install targets + provider/model settings + Learn Mode Dialog + `/api/learn` rate limit + DNS pinning + LLM judge + 当前前端学习面收口：三档 SRS UI、自动 scaffolding、retention 设置、Ratchet TSV、ConceptGraph Graph/List 视图与不设硬边界的完整图谱交互、Dashboard learning metric 隔离和空态 Learn CTA、三档侧栏、Diff 大文件渲染预算、Dashboard source filter、container query hardening、Settings/Lesson/Skills/Review heading 与 aria 收口、CSP hash 与 z-index token 硬化；待做：Team / 真实 large-repo signoff evidence / 更深的 V6 frontend signoff）
+- [ ] `v0.2`：--compare-dir + --patch-url + 7 个 IDE install target + watchdog 增量重生 + section-level helpfulness + Team 功能（已完成：后端 Gate 0-6 + medium APIs + helpfulness / learning transfer + misconception cards + Graphify 后端基础与 concept linking / FTS / provenance / perf gate + watch mode + 13 install targets + provider/model settings + Learn Mode Dialog + `/api/learn` rate limit + DNS pinning + LLM judge + 当前前端学习面收口：三档 SRS UI、自动 scaffolding、retention 设置、Ratchet TSV、ConceptGraph Graph/List 视图与不设硬边界的完整图谱交互、Dashboard learning metric 隔离和空态 Learn CTA、三档侧栏、Diff 大文件渲染预算、Dashboard source filter、container query hardening、Settings/Lesson/Skills/Review heading 与 aria 收口、CSP hash / z-index token / favicon / runtime status / queue-state / signals / idempotency fallback 硬化；待做：Team / 真实 large-repo signoff evidence / 更深的 V6 frontend signoff）
 - [ ] `v1.0`：PWA + public benchmark suite
 
 ## 灵感来源

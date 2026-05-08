@@ -10,7 +10,9 @@ import { useTranslation } from '../i18n/useTranslation';
 import { useRunsStore } from '../state/runs-store';
 import { getRunLesson, getRunArtifact } from '../api/runs';
 import { getWeakConcepts } from '../api/review';
+import { helpfulness } from '../api/signals';
 import { renderMarkdownProse, uniqueSlug } from '../utils/markdown';
+import { createIdempotencyKey } from '../utils/idempotency';
 import type { RunDetail, WeakConceptsResponse } from '../api/types';
 import type { Claim, ClaimSourceHunk } from '../components/EvidencePanel';
 import type { ScaffoldLevel } from '../components/ScaffoldingTabs';
@@ -251,10 +253,17 @@ export default function LessonPage() {
   }, [fetchAll]);
   const handleLevelChange = useCallback(
     async (newLevel: ScaffoldLevel) => {
+      const previousLevel = level;
       setLevel(newLevel);
       // Manual override -- clear the auto-selected hint.
       setAutoSelected(false);
       if (!runId) return;
+      void helpfulness({
+        idempotency_key: createIdempotencyKey(),
+        target_kind: 'section',
+        target_id: `${runId}:scaffolding`,
+        payload: { helpful: true, level: newLevel, previous_level: previousLevel },
+      }).catch(() => {});
       levelAbortRef.current?.abort();
       const controller = new AbortController();
       levelAbortRef.current = controller;
@@ -269,7 +278,7 @@ export default function LessonPage() {
         setError('fetch_failed');
       }
     },
-    [runId],
+    [runId, level],
   );
 
   const handleClaimClick = useCallback(

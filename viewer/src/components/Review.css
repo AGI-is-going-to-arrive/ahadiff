@@ -117,6 +117,42 @@
   opacity: 0.8;
 }
 
+.flashcard__queue-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.flashcard__queue-action {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.flashcard__queue-action:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.flashcard__queue-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.flashcard__queue-status {
+  color: var(--accent);
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
 .flashcard__front {
   font-family: var(--font-serif);
   font-size: var(--fs-2xl);
@@ -726,9 +762,9 @@
   align-items: flex-start;
   gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
-  background: var(--surface-1);
-  border: 1px solid var(--border-1);
-  border-radius: var(--r-12);
+  background: var(--surface-1, var(--paper));
+  border: 1px solid var(--border-1, var(--hair));
+  border-radius: var(--r-12, var(--radius-12));
   cursor: pointer;
   text-align: left;
   width: 100%;
@@ -781,9 +817,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--r-8);
-  background: var(--surface-2);
-  color: var(--ink-1);
+  border-radius: var(--r-8, var(--radius-8));
+  background: var(--surface-2, var(--accent-softer));
+  color: var(--ink-1, var(--ink));
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: var(--fs-sm);
   font-weight: 600;
@@ -813,7 +849,7 @@
 
 .review__choice-text {
   font-size: var(--fs-sm);
-  color: var(--ink-1);
+  color: var(--ink-1, var(--ink));
   word-break: break-word;
 }
 

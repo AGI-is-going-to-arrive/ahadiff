@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { getReviewQueue, submitReviewRate } from '../api/review';
 import type { DueReviewCard, ReviewAnswer, ReviewRateResponse } from '../api/types';
+import { createIdempotencyKey } from '../utils/idempotency';
 
 interface RateOptions {
   signal?: AbortSignal;
@@ -64,7 +65,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
         {
           card_id: card.card_id,
           answer,
-          idempotency_key: crypto.randomUUID(),
+          idempotency_key: createIdempotencyKey(),
           ...(opts?.peekedThisSession !== undefined
             ? { peeked_this_session: opts.peekedThisSession }
             : {}),

@@ -1,7 +1,6 @@
 import { apiFetch, apiFetchBlob } from './client';
 import type { ApiFetchOptions } from './client';
 import {
-  paginatedConceptsResponseSchema,
   paginatedRunsResponseSchema,
   parseResponse,
   ratchetHistoryResponseSchema,
@@ -10,7 +9,6 @@ import {
 } from './schemas';
 import type {
   ArtifactKind,
-  PaginatedConceptsResponse,
   PaginatedRunsResponse,
   RatchetHistoryResponse,
   RunArtifactEnvelope,
@@ -72,29 +70,6 @@ export async function getRunArtifact(
     opts,
   );
   return parseResponse(`GET /api/run/{runId}/${kind}`, runArtifactEnvelopeSchema, raw);
-}
-
-export async function getGlobalConcepts(
-  params: { cursor?: string; page_size?: number } = {},
-  opts?: Pick<ApiFetchOptions, 'signal'>,
-): Promise<PaginatedConceptsResponse> {
-  const q = new URLSearchParams();
-  if (params.cursor) q.set('cursor', params.cursor);
-  if (params.page_size != null) q.set('page_size', String(params.page_size));
-  const qs = q.toString();
-  const raw = await apiFetch<unknown>(`/api/concepts${qs ? `?${qs}` : ''}`, opts);
-  return parseResponse('GET /api/concepts', paginatedConceptsResponseSchema, raw);
-}
-
-export async function getRunConcepts(
-  runId: string,
-  opts?: Pick<ApiFetchOptions, 'signal'>,
-): Promise<RunArtifactEnvelope> {
-  const raw = await apiFetch<unknown>(
-    `/api/run/${encodeURIComponent(runId)}/concepts`,
-    opts,
-  );
-  return parseResponse('GET /api/run/{runId}/concepts', runArtifactEnvelopeSchema, raw);
 }
 
 export async function getRatchetHistory(

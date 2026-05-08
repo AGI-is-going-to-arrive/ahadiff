@@ -4,7 +4,7 @@ import AppShell from '../components/AppShell';
 import SRSCard from '../components/SRSCard';
 import type { SrsRating, SrsReviewRating } from '../components/SRSCard';
 import { getRunArtifact } from '../api/runs';
-import { quizAnswer, srsReview } from '../api/signals';
+import { markWrong, quizAnswer, srsReview } from '../api/signals';
 import type { MisconceptionCardItem, ReviewAnswer } from '../api/types';
 import { useTranslation } from '../i18n/useTranslation';
 import {
@@ -13,6 +13,7 @@ import {
   parseQuizJsonl,
   type QuizItem,
 } from '../utils/quiz-contract';
+import { createIdempotencyKey } from '../utils/idempotency';
 import '../components/Quiz.css';
 
 const GraphifyCard = lazy(() => import('../components/GraphifyCard'));
@@ -175,6 +176,22 @@ export default function QuizPage() {
         }).catch((err: unknown) => {
           setSignalError(errorMessage(err));
         });
+
+        if (
+          !correct &&
+          currentQuiz &&
+          currentQuiz.question_id === questionId &&
+          currentQuiz.source_claims.length > 0
+        ) {
+          const claimId = currentQuiz.source_claims[0];
+          if (claimId) {
+            void markWrong({
+              idempotency_key: createIdempotencyKey(),
+              claim_id: claimId,
+              reason: 'quiz_wrong_answer',
+            }).catch(() => {});
+          }
+        }
       }
     },
     [currentQuiz, runId],

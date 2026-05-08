@@ -10,11 +10,14 @@ import {
 import {
   createProvider, updateProvider, deleteProvider, probeProvider,
 } from '../api/providers';
+import { fetchServeStatus, fetchWatchStatus } from '../api/stats';
 import type {
   AuditEntry, CaptureConfig, ConfigResponse, DoctorCheck, LlmConfig, ProviderSummary,
   UsageResponse, AuditResponse, InstallTarget,
 } from '../api/config';
-import type { ProviderCreateInput, ProviderUpdateInput } from '../api/types';
+import type {
+  ProviderCreateInput, ProviderUpdateInput, ServeStatusResponse, WatchStatusResponse,
+} from '../api/types';
 import { useTranslation, type MessageKey, type TranslateFn } from '../i18n/useTranslation';
 import { mapDoctorMessage } from '../utils/doctor';
 import '../components/Settings.css';
@@ -356,6 +359,8 @@ function AccountTab({
 }) {
   return (
     <>
+      <RuntimeStatusCard t={t} locale={locale} />
+
       {doctorFailed ? (
         <UnavailableCard
           title={t('Settings_page.section_doctor')}
@@ -1565,6 +1570,110 @@ function IntegrationsTab({
 /* ------------------------------------------------------------------ */
 /*  Shared sub-components                                              */
 /* ------------------------------------------------------------------ */
+
+function RuntimeStatusCard({ t, locale }: { t: TFn; locale: string }) {
+  const [serve, setServe] = useState<ServeStatusResponse | null>(null);
+  const [watch, setWatch] = useState<WatchStatusResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [errored, setErrored] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const opts = { signal: controller.signal };
+    let cancelled = false;
+    setLoading(true);
+    setErrored(false);
+    void Promise.allSettled([fetchServeStatus(opts), fetchWatchStatus(opts)])
+      .then(([s, w]) => {
+        if (cancelled || controller.signal.aborted) return;
+        const serveOk = s.status === 'fulfilled';
+        const watchOk = w.status === 'fulfilled';
+        if (!serveOk && !watchOk) {
+          setErrored(true);
+        } else {
+          setServe(serveOk ? s.value : null);
+          setWatch(watchOk ? w.value : null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled && !controller.signal.aborted) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, []);
+
+  if (errored) return null;
+
+  const dash = '—';
+  const servePort = (typeof window !== 'undefined' && window.location?.port) || dash;
+  const repoPath = dash;
+  const uptime = loading || !serve
+    ? dash
+    : formatUptime(serve.uptime_seconds, locale, t);
+  const watcherRunning = loading || !watch
+    ? null
+    : watch.running;
+  const watcherTriggers = loading || !watch
+    ? dash
+    : formatNumber(watch.total_triggers, locale);
+  const watcherFailures = loading || !watch
+    ? dash
+    : formatNumber(watch.consecutive_failures, locale);
+
+  return (
+    <div className="settings-card">
+      <div className="settings-card__header"><h2>{t('Settings_page.runtime_title')}</h2></div>
+      <div className="settings-card__body">
+        <div className="mode-grid">
+          <ModeCell eyebrow={t('Settings_page.runtime_serve_port')} value={servePort} />
+          <ModeCell eyebrow={t('Settings_page.runtime_repo_path')} value={repoPath} />
+          <ModeCell eyebrow={t('Settings_page.runtime_uptime')} value={uptime} />
+          <ModeCell
+            eyebrow={t('Settings_page.runtime_watcher')}
+            value={watcherRunning === null
+              ? dash
+              : watcherRunning
+                ? t('Settings_page.runtime_watcher_running')
+                : t('Settings_page.runtime_watcher_stopped')}
+          />
+          <ModeCell eyebrow={t('Settings_page.runtime_watcher_triggers')} value={watcherTriggers} />
+          <ModeCell eyebrow={t('Settings_page.runtime_watcher_failures')} value={watcherFailures} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatUptime(seconds: number, locale: string, t: TFn): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '—';
+  const total = Math.floor(seconds);
+  const d = Math.floor(total / 86400);
+  const h = Math.floor((total % 86400) / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (d > 0) {
+    return t('Settings_page.runtime_uptime_days_hours_minutes', {
+      days: formatNumber(d, locale),
+      hours: formatNumber(h, locale),
+      minutes: formatNumber(m, locale),
+    });
+  }
+  if (h > 0) {
+    return t('Settings_page.runtime_uptime_hours_minutes', {
+      hours: formatNumber(h, locale),
+      minutes: formatNumber(m, locale),
+    });
+  }
+  if (m > 0) {
+    return t('Settings_page.runtime_uptime_minutes_seconds', {
+      minutes: formatNumber(m, locale),
+      seconds: formatNumber(s, locale),
+    });
+  }
+  return t('Settings_page.runtime_uptime_seconds', { seconds: formatNumber(s, locale) });
+}
 
 function UnavailableCard({
   title,
