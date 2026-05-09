@@ -32,13 +32,37 @@ function parseHashParams(): { tab?: string; focus?: string; run?: string } {
   };
 }
 
+function writeHashParams(
+  currentTab: ConceptsTab,
+  next: { tab?: ConceptsTab; focus?: string | null; run?: string | null },
+) {
+  const [hashPath, rawQuery = ''] = window.location.hash.split('?');
+  const params = new URLSearchParams(rawQuery);
+  params.set('tab', next.tab ?? currentTab);
+  if ('focus' in next) {
+    if (next.focus) params.set('focus', next.focus);
+    else params.delete('focus');
+  }
+  if ('run' in next) {
+    if (next.run) params.set('run', next.run);
+    else params.delete('run');
+  }
+  const query = params.toString();
+  const nextHash = `${hashPath || '#/concepts'}${query ? `?${query}` : ''}`;
+  window.history.replaceState(
+    null,
+    '',
+    `${window.location.pathname}${window.location.search}${nextHash}`,
+  );
+}
+
 type ErrorFlag = 'fetch_failed' | string | null;
 
 export default function ConceptsPage() {
   const { t } = useTranslation();
   const hashParams = parseHashParams();
   const initialTab: ConceptsTab =
-    hashParams.tab === 'graph' ? 'graph' : 'ledger';
+    hashParams.tab === 'graph' || hashParams.focus ? 'graph' : 'ledger';
   const [activeTab, setActiveTab] = useState<ConceptsTab>(initialTab);
 
   const [graphData, setGraphData] = useState<ConceptGraphResponse | null>(null);
@@ -48,7 +72,7 @@ export default function ConceptsPage() {
   const [focusNodeId, setFocusNodeId] = useState<string | null>(
     () => hashParams.focus ?? null,
   );
-  const [runFilter] = useState<string | undefined>(hashParams.run);
+  const [runFilter, setRunFilter] = useState<string | undefined>(hashParams.run);
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchGraphData = useCallback(async (all = false) => {
@@ -80,12 +104,14 @@ export default function ConceptsPage() {
   }, [activeTab, fetchGraphData, showAll]);
 
   useEffect(() => {
-    const syncFocus = () => {
+    const syncHashState = () => {
       const params = parseHashParams();
+      setActiveTab(params.tab === 'graph' || params.focus ? 'graph' : 'ledger');
       setFocusNodeId(params.focus ?? null);
+      setRunFilter(params.run);
     };
-    window.addEventListener('hashchange', syncFocus);
-    return () => window.removeEventListener('hashchange', syncFocus);
+    window.addEventListener('hashchange', syncHashState);
+    return () => window.removeEventListener('hashchange', syncHashState);
   }, []);
 
   useEffect(() => {
@@ -99,6 +125,16 @@ export default function ConceptsPage() {
   const handleShowAll = useCallback(() => {
     setShowAll(true);
   }, []);
+
+  const activateTab = useCallback((tab: ConceptsTab) => {
+    setActiveTab(tab);
+    writeHashParams(activeTab, { tab, focus: tab === 'ledger' ? null : undefined });
+  }, [activeTab]);
+
+  const handleRunFilterChange = useCallback((run: string | undefined) => {
+    setRunFilter(run);
+    writeHashParams(activeTab, { run: run ?? null });
+  }, [activeTab]);
 
   const handleTabKeyDown = useCallback(
     (e: KeyboardEvent<HTMLButtonElement>) => {
@@ -116,10 +152,10 @@ export default function ConceptsPage() {
         return;
       }
       e.preventDefault();
-      setActiveTab(CONCEPTS_TABS[next]);
+      activateTab(CONCEPTS_TABS[next]);
       document.getElementById(TAB_IDS[CONCEPTS_TABS[next]])?.focus();
     },
-    [activeTab],
+    [activeTab, activateTab],
   );
 
   const graphErrorMessage =
@@ -144,7 +180,7 @@ export default function ConceptsPage() {
             aria-selected={activeTab === tab}
             aria-controls={TAB_PANEL_IDS[tab]}
             tabIndex={activeTab === tab ? 0 : -1}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => activateTab(tab)}
             onKeyDown={handleTabKeyDown}
           >
             {t(TAB_LABEL_KEYS[tab])}
@@ -158,7 +194,9 @@ export default function ConceptsPage() {
         aria-labelledby={TAB_IDS.ledger}
         hidden={activeTab !== 'ledger'}
       >
-        {activeTab === 'ledger' && <ConceptLedger runFilter={runFilter} />}
+        {activeTab === 'ledger' && (
+          <ConceptLedger runFilter={runFilter} onRunFilterChange={handleRunFilterChange} />
+        )}
       </section>
 
       <section

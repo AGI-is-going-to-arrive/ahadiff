@@ -11,7 +11,7 @@ const judgeDimensionSchema = z.record(z.string(), z.object({
 
 const judgeReportSchema = z.object({
   model_id: z.string().optional(),
-  notes: z.string().optional(),
+  notes: z.union([z.string(), z.array(z.string())]).optional(),
   dimensions: judgeDimensionSchema.optional(),
 }).passthrough();
 
@@ -84,7 +84,13 @@ export default function JudgeReport({ runId }: JudgeReportProps) {
   }
 
   const modelId = typeof data.model_id === 'string' ? data.model_id : null;
-  const overallNotes = typeof data.notes === 'string' ? data.notes : null;
+  const rawNotes = data.notes;
+  const overallNotes =
+    typeof rawNotes === 'string'
+      ? [rawNotes]
+      : Array.isArray(rawNotes) && rawNotes.every((note) => typeof note === 'string')
+        ? rawNotes
+        : [];
   const rawDims = data.dimensions;
   const dimsParsed = judgeDimensionSchema.safeParse(rawDims);
   const dimensions = dimsParsed.success ? dimsParsed.data : undefined;
@@ -111,10 +117,16 @@ export default function JudgeReport({ runId }: JudgeReportProps) {
         </dl>
       )}
 
-      {overallNotes && (
+      {overallNotes.length > 0 && (
         <div className="judge-report__notes">
           <h3 className="judge-report__notes-title">{t('RunDetail.notes')}</h3>
-          <p className="judge-report__notes-text">{overallNotes}</p>
+          <ul className="judge-report__notes-list">
+            {overallNotes.map((note, index) => (
+              <li key={index} className="judge-report__notes-text">
+                {note}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

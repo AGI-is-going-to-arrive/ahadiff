@@ -7,9 +7,24 @@ const MAX_CHIPS = 3;
 
 interface ConceptLedgerProps {
   runFilter?: string;
+  onRunFilterChange?: (run: string | undefined) => void;
 }
 
-export default function ConceptLedger({ runFilter }: ConceptLedgerProps) {
+function updateHashRunFilter(run: string | undefined) {
+  const [hashPath, rawQuery = ''] = window.location.hash.split('?');
+  const params = new URLSearchParams(rawQuery);
+  if (run) params.set('run', run);
+  else params.delete('run');
+  const nextQuery = params.toString();
+  const nextHash = `${hashPath || '#/concepts'}${nextQuery ? `?${nextQuery}` : ''}`;
+  window.history.replaceState(
+    null,
+    '',
+    `${window.location.pathname}${window.location.search}${nextHash}`,
+  );
+}
+
+export default function ConceptLedger({ runFilter, onRunFilterChange }: ConceptLedgerProps) {
   const { t } = useTranslation();
   const entries = useConceptsStore((s) => s.entries);
   const loading = useConceptsStore((s) => s.loading);
@@ -27,21 +42,24 @@ export default function ConceptLedger({ runFilter }: ConceptLedgerProps) {
   }, [loadLedger, runFilter]);
 
   const handleClearFilter = useCallback(() => {
+    if (onRunFilterChange) {
+      onRunFilterChange(undefined);
+      return;
+    }
     setRunFilter(undefined);
-    const url = new URL(window.location.href);
-    url.hash = url.hash.replace(/[?&]run=[^&]*/g, '');
-    window.history.replaceState(null, '', url.toString());
-  }, [setRunFilter]);
+    updateHashRunFilter(undefined);
+  }, [onRunFilterChange, setRunFilter]);
 
   const handleRunClick = useCallback(
     (run: string) => {
+      if (onRunFilterChange) {
+        onRunFilterChange(run);
+        return;
+      }
       setRunFilter(run);
-      const base = window.location.hash.split('?')[0];
-      const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
-      params.set('run', run);
-      window.history.replaceState(null, '', `${window.location.pathname}${base}?${params.toString()}`);
+      updateHashRunFilter(run);
     },
-    [setRunFilter],
+    [onRunFilterChange, setRunFilter],
   );
 
   if (loading) {

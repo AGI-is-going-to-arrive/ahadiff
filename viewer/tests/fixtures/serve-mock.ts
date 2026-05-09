@@ -118,12 +118,16 @@ export async function installServeMock(page: Page): Promise<void> {
   // RunDetail (used by Lesson page initial fetch)
   await page.route(
     (url) => /^\/api\/run\/[^/]+$/.test(url.pathname),
-    (route) =>
-      route.fulfill({
+    (route) => {
+      const runId = new URL(route.request().url()).pathname.split('/')[3] ?? 'test-run';
+      const artifacts = runId === 'no-score-run'
+        ? ['patch.diff', 'metadata.json', 'claims.jsonl', 'concepts.jsonl']
+        : ['patch.diff', 'metadata.json', 'claims.jsonl', 'score.json', 'judge.json', 'concepts.jsonl'];
+      return route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          run_id: 'test-run',
+          run_id: runId,
           source_kind: 'git_ref',
           source_ref: 'HEAD',
           content_lang: 'en',
@@ -138,12 +142,13 @@ export async function installServeMock(page: Page): Promise<void> {
           prompt_version: 'abc1234',
           eval_bundle_version: 'v1',
           note_json: null,
-          artifacts: ['patch.diff', 'metadata.json', 'claims.jsonl', 'score.json', 'judge.json', 'concepts.jsonl'],
+          artifacts,
           graphify_mode: null,
           graphify_status: null,
           graphify_notes: null,
         }),
-      }),
+      });
+    },
   );
   await page.route(
     (url) => /^\/api\/run\/[^/]+\/lesson$/.test(url.pathname),
@@ -208,6 +213,13 @@ export async function installServeMock(page: Page): Promise<void> {
     (url) => /^\/api\/run\/[^/]+\/score$/.test(url.pathname),
     (route) => {
       const runId = new URL(route.request().url()).pathname.split('/')[3] ?? 'test-run';
+      if (runId === 'no-score-run') {
+        return route.fulfill({
+          status: 404,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'artifact_not_found', status: 404 }),
+        });
+      }
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -247,16 +259,39 @@ export async function installServeMock(page: Page): Promise<void> {
   );
   await page.route(
     (url) => /^\/api\/run\/[^/]+\/judge$/.test(url.pathname),
-    (route) =>
-      route.fulfill({
+    (route) => {
+      const runId = new URL(route.request().url()).pathname.split('/')[3] ?? 'test-run';
+      if (runId === 'missing-judge') {
+        return route.fulfill({
+          status: 404,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'artifact_not_found', status: 404 }),
+        });
+      }
+      if (runId === 'invalid-judge') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            run_id: runId,
+            artifact_type: 'judge',
+            content: '{not json',
+            content_lang: 'en',
+          }),
+        });
+      }
+      return route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          run_id: 'test-run',
+          run_id: runId,
           artifact_type: 'judge',
           content: JSON.stringify({
             model_id: 'gpt-5.5',
-            notes: 'Overall strong lesson with good evidence.',
+            notes: [
+              'Overall strong lesson with good evidence.',
+              'Second judge note confirms array rendering.',
+            ],
             dimensions: {
               accuracy: { score: 18, reason: 'Strong code evidence linking.' },
               evidence: { score: 16, reason: 'Most claims backed by file:line refs.' },
@@ -264,7 +299,8 @@ export async function installServeMock(page: Page): Promise<void> {
           }),
           content_lang: 'en',
         }),
-      }),
+      });
+    },
   );
   await page.route(
     (url) => url.pathname === '/api/improve/preflight',
@@ -323,35 +359,46 @@ export async function installServeMock(page: Page): Promise<void> {
   );
   await page.route(
     (url) => url.pathname === '/api/concepts/ledger',
-    (route) =>
-      route.fulfill({
+    (route) => {
+      const url = new URL(route.request().url());
+      const runFilter = url.searchParams.get('run');
+      const cursor = Number(url.searchParams.get('cursor') ?? '0');
+      const limit = Number(url.searchParams.get('limit') ?? '50');
+      const allEntries = [
+        {
+          term_key: 'learn-from-diff',
+          concept: 'learn-from-diff',
+          display_name: 'Learn-from-diff',
+          related_claims: ['c1'],
+          file_refs: ['demo.py'],
+          source_refs: ['abc123'],
+          updated_by_runs: ['test-run'],
+        },
+        {
+          term_key: 'branding',
+          concept: 'branding',
+          display_name: 'Branding',
+          related_claims: ['c2'],
+          file_refs: ['demo.py', 'config.py'],
+          source_refs: ['def456'],
+          updated_by_runs: ['test-run', 'test-run-2'],
+        },
+      ];
+      const filtered = runFilter
+        ? allEntries.filter((entry) => entry.updated_by_runs.includes(runFilter))
+        : allEntries;
+      const entries = filtered.slice(cursor, cursor + limit);
+      const nextCursor = cursor + limit < filtered.length ? String(cursor + limit) : null;
+      return route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          entries: [
-            {
-              term_key: 'learn-from-diff',
-              concept: 'learn-from-diff',
-              display_name: 'Learn-from-diff',
-              related_claims: ['c1'],
-              file_refs: ['demo.py'],
-              source_refs: ['abc123'],
-              updated_by_runs: ['test-run'],
-            },
-            {
-              term_key: 'branding',
-              concept: 'branding',
-              display_name: 'Branding',
-              related_claims: ['c2'],
-              file_refs: ['demo.py', 'config.py'],
-              source_refs: ['def456'],
-              updated_by_runs: ['test-run', 'test-run-2'],
-            },
-          ],
-          next_cursor: null,
-          total_count: 2,
+          entries,
+          next_cursor: nextCursor,
+          total_count: filtered.length,
         }),
-      }),
+      });
+    },
   );
   await page.route(
     (url) => url.pathname === '/api/concepts',

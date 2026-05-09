@@ -63,13 +63,8 @@
 }
 
 .run-detail__tab--active {
-  color: var(--accent);
+  color: var(--accent-ink);
   border-bottom-color: var(--accent);
-}
-
-.run-detail__tab--disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
 }
 
 /* ---------- Overview meta ---------- */
@@ -97,9 +92,19 @@
 
 .run-detail__meta-row dd {
   flex: 1;
+  min-width: 0;
   margin: 0;
   font-size: var(--fs-sm);
   color: var(--ink);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.run-detail__meta-row code,
+.run-detail__run-id,
+.run-detail__artifact-item code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* ---------- Artifacts ---------- */
@@ -125,7 +130,7 @@
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   background: var(--surface);
-  color: var(--accent);
+  color: var(--accent-ink);
   font-family: var(--font-sans);
   font-size: var(--fs-sm);
   font-weight: 500;
@@ -171,5 +176,16 @@
   }
   .run-detail__artifact-link {
     border-color: LinkText;
+  }
+}
+
+@media (max-width: 540px) {
+  .run-detail__meta-row {
+    flex-direction: column;
+    gap: var(--sp-1);
+  }
+
+  .run-detail__meta-row dt {
+    flex-basis: auto;
   }
 }

@@ -80,4 +80,39 @@ test.describe('Run Detail page', () => {
     const scoreTab = page.getByRole('tab', { name: /score|评分/i });
     await expect(scoreTab).toHaveAttribute('aria-selected', 'true');
   });
+
+  test('clears stale score data when the next run has no score artifact', async ({ page }) => {
+    await page.goto('/#/run/test-run?tab=score');
+    await expect(page.locator('.score-breakdown__overall-value')).toBeVisible();
+
+    await page.evaluate(() => {
+      window.location.hash = '#/run/no-score-run?tab=score';
+    });
+
+    const scoreTab = page.getByRole('tab', { name: /score|评分/i });
+    await expect(scoreTab).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('.score-breakdown__overall-value')).toHaveCount(0);
+    await expect(page.locator('.run-detail__empty')).toBeVisible();
+  });
+
+  test('same-route tab query changes sync the selected tab', async ({ page }) => {
+    await page.goto('/#/run/test-run?tab=judge');
+    const judgeTab = page.getByRole('tab', { name: /judge|评审/i });
+    await expect(judgeTab).toHaveAttribute('aria-selected', 'true');
+
+    await page.evaluate(() => {
+      window.location.hash = '#/run/test-run?tab=score';
+    });
+
+    const scoreTab = page.getByRole('tab', { name: /score|评分/i });
+    await expect(scoreTab).toHaveAttribute('aria-selected', 'true');
+  });
+
+  test('shows judge unavailable on 404 and error on malformed JSON', async ({ page }) => {
+    await page.goto('/#/run/missing-judge?tab=judge');
+    await expect(page.getByText(/No judge report|无评审报告/i)).toBeVisible();
+
+    await page.goto('/#/run/invalid-judge?tab=judge');
+    await expect(page.getByRole('alert')).toContainText(/Failed to load judge|加载评审报告失败/i);
+  });
 });

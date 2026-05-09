@@ -204,21 +204,25 @@ export const paginatedConceptsResponseSchema = z.object({
   next_cursor: z.string().optional(),
 });
 
-export const conceptLedgerEntrySchema = z.object({
-  term_key: z.string().min(1),
-  concept: z.string().min(1),
-  display_name: z.string().default(''),
-  related_claims: z.array(z.string()).default([]),
-  file_refs: z.array(z.string()).default([]),
-  source_refs: z.array(z.string()).default([]),
-  updated_by_runs: z.array(z.string()).default([]),
-});
+export const conceptLedgerEntrySchema = z
+  .object({
+    term_key: z.string().min(1),
+    concept: z.string().min(1),
+    display_name: z.string().default(''),
+    related_claims: z.array(z.string()).default([]),
+    file_refs: z.array(z.string()).default([]),
+    source_refs: z.array(z.string()).default([]),
+    updated_by_runs: z.array(z.string()).default([]),
+  })
+  .strict();
 
-export const conceptLedgerResponseSchema = z.object({
-  entries: z.array(conceptLedgerEntrySchema),
-  next_cursor: z.string().nullable().optional(),
-  total_count: z.number().int().nonnegative().default(0),
-});
+export const conceptLedgerResponseSchema = z
+  .object({
+    entries: z.array(conceptLedgerEntrySchema),
+    next_cursor: z.string().nullable().optional(),
+    total_count: z.number().int().nonnegative().default(0),
+  })
+  .strict();
 
 /* ─────────────── 6. Locale ─────────────── */
 
@@ -893,30 +897,36 @@ export const watchStatusResponseSchema = z
 
 /* ─────────────── 16. Improve preflight ─────────────── */
 
-export const improveRunSnapshotSchema = z.object({
-  run_id: z.string().min(1),
-  source_ref: z.string(),
-  overall: z.number().finite(),
-  weakest_dim: z.string().nullable().optional(),
-  finalized: z.boolean(),
-});
+export const improveRunSnapshotSchema = z
+  .object({
+    run_id: z.string().min(1),
+    source_ref: z.string(),
+    overall: z.number().finite(),
+    weakest_dim: z.string().nullable().optional(),
+    finalized: z.boolean(),
+  })
+  .strict();
 
-export const improveSessionSummarySchema = z.object({
-  session_id: z.string().min(1),
-  rounds_completed: z.number().int().nonnegative(),
-  last_status: z.string().nullable().optional(),
-  phase25_attempted: z.boolean(),
-  has_pending_worktree: z.boolean(),
-  interrupted_round: z.number().int().nullable().optional(),
-  interrupted_stage: z.string().nullable().optional(),
-  updated_at: z.string(),
-});
+export const improveSessionSummarySchema = z
+  .object({
+    session_id: z.string().min(1),
+    rounds_completed: z.number().int().nonnegative(),
+    last_status: z.string().nullable().optional(),
+    phase25_attempted: z.boolean(),
+    has_pending_worktree: z.boolean(),
+    interrupted_round: z.number().int().nullable().optional(),
+    interrupted_stage: z.string().nullable().optional(),
+    updated_at: z.string(),
+  })
+  .strict();
 
-export const improveRepoStateSchema = z.object({
-  branch: z.string().nullable().optional(),
-  head_sha: z.string().nullable().optional(),
-  prompts_dirty: z.boolean(),
-});
+export const improveRepoStateSchema = z
+  .object({
+    branch: z.string().nullable().optional(),
+    head_sha: z.string().nullable().optional(),
+    prompts_dirty: z.boolean(),
+  })
+  .strict();
 
 export const improvePreflightResponseSchema = z.object({
   available: z.boolean(),

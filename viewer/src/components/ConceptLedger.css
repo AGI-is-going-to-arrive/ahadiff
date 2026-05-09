@@ -70,7 +70,7 @@
 
 .concept-ledger__chip--run {
   background: var(--accent-faint);
-  color: var(--accent);
+  color: var(--accent-ink);
   cursor: pointer;
 }
 
@@ -149,7 +149,7 @@
   padding: var(--sp-1) var(--sp-3);
   border-radius: var(--r-full);
   background: var(--accent-faint);
-  color: var(--accent);
+  color: var(--accent-ink);
   font-size: var(--fs-xs);
   font-family: var(--font-mono);
 }
@@ -163,7 +163,7 @@
   border: none;
   border-radius: var(--r-full);
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-ink);
   cursor: pointer;
   padding: 0;
   font-size: var(--fs-sm);

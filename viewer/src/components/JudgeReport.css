@@ -74,10 +74,15 @@
   margin: 0 0 var(--sp-2);
 }
 
+.judge-report__notes-list {
+  margin: 0;
+  padding-inline-start: var(--sp-4);
+}
+
 .judge-report__notes-text {
   font-size: var(--fs-sm);
   color: var(--ink);
-  margin: 0;
+  margin: 0 0 var(--sp-1);
   white-space: pre-wrap;
 }
 

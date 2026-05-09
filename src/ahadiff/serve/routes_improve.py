@@ -20,8 +20,9 @@ worktree-related field, and it is a boolean derived from ``Path.exists()``.
 from __future__ import annotations
 
 import functools
-import json
 import logging
+import os
+import stat
 from typing import TYPE_CHECKING, Any, cast
 
 from anyio import to_thread
@@ -34,6 +35,7 @@ from ahadiff.contracts.serve_improve import (
     ImproveRunSnapshot,
     ImproveSessionSummary,
 )
+from ahadiff.core.json_util import safe_json_loads
 from ahadiff.improve.preflight import current_branch, current_head, prompts_are_dirty
 from ahadiff.improve.program import (
     mutable_prompt_for_dimension,
@@ -55,6 +57,8 @@ __all__ = ["get_improve_preflight"]
 
 _FINALIZED_STATUSES = frozenset({"baseline", "keep", "keep_final"})
 _MAX_SESSION_SUMMARIES = 20
+_MAX_SESSION_BYTES = 256 * 1024
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 
 
 async def get_improve_preflight(request: Request) -> JSONResponse:
@@ -137,7 +141,11 @@ def _resolve_runs(
     # so index 0 is the most recent. Restrict to learn events with a finalized
     # status; non-ratcheted/crash/discard runs are not anchor candidates.
     learn_events = [
-        ev for ev in events if ev.event_type == "learn" and ev.status in _FINALIZED_STATUSES
+        ev
+        for ev in events
+        if ev.event_type == "learn"
+        and ev.status in _FINALIZED_STATUSES
+        and _has_finalized_run_marker(state_dir, ev.run_id, ev.event_id)
     ]
     if not learn_events:
         return None, None, False, "no_finalized_runs"
@@ -211,7 +219,7 @@ def _list_sessions(state_dir: Path) -> list[ImproveSessionSummary]:
     try:
         candidates = sorted(
             (p for p in session_dir.glob("*.json") if not p.name.startswith(".")),
-            key=lambda p: p.stat().st_mtime,
+            key=_safe_session_mtime,
             reverse=True,
         )
     except OSError:
@@ -227,8 +235,8 @@ def _list_sessions(state_dir: Path) -> list[ImproveSessionSummary]:
 
 def _summary_from_path(path: Path) -> ImproveSessionSummary | None:
     try:
-        raw = path.read_text(encoding="utf-8")
-        loaded = json.loads(raw)
+        raw = _read_session_json(path)
+        loaded = safe_json_loads(raw)
     except (OSError, ValueError):
         return None
     if not isinstance(loaded, dict):
@@ -287,3 +295,75 @@ def _summary_from_path(path: Path) -> ImproveSessionSummary | None:
         )
     except ValueError:
         return None
+
+
+def _safe_session_mtime(path: Path) -> float:
+    try:
+        path_stat = path.lstat()
+    except OSError:
+        return 0.0
+    return float(getattr(path_stat, "st_mtime", 0.0))
+
+
+def _read_session_json(path: Path) -> str:
+    path_stat = path.lstat()
+    if (
+        stat.S_ISLNK(path_stat.st_mode)
+        or _has_windows_reparse_point(path_stat)
+        or not stat.S_ISREG(path_stat.st_mode)
+        or _is_hardlinked_regular_file(path_stat)
+        or path_stat.st_size > _MAX_SESSION_BYTES
+    ):
+        raise ValueError("invalid improve session file")
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(str(path), flags)
+    try:
+        opened_stat = os.fstat(fd)
+        if (
+            not stat.S_ISREG(opened_stat.st_mode)
+            or _has_windows_reparse_point(opened_stat)
+            or _is_hardlinked_regular_file(opened_stat)
+            or opened_stat.st_size > _MAX_SESSION_BYTES
+            or (opened_stat.st_dev, opened_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino)
+        ):
+            raise ValueError("invalid improve session file")
+        with os.fdopen(fd, "r", encoding="utf-8") as handle:
+            fd = -1
+            return handle.read()
+    finally:
+        if fd != -1:
+            os.close(fd)
+
+
+def _has_windows_reparse_point(path_stat: object) -> bool:
+    if os.name != "nt":
+        return False
+    return bool(getattr(path_stat, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def _is_hardlinked_regular_file(path_stat: os.stat_result) -> bool:
+    return stat.S_ISREG(path_stat.st_mode) and getattr(path_stat, "st_nlink", 1) > 1
+
+
+def _has_finalized_run_marker(state_dir: Path, run_id: str, event_id: str) -> bool:
+    run_path = state_dir / "runs" / run_id
+    try:
+        run_stat = run_path.lstat()
+    except OSError:
+        return False
+    if (
+        not stat.S_ISDIR(run_stat.st_mode)
+        or stat.S_ISLNK(run_stat.st_mode)
+        or _has_windows_reparse_point(run_stat)
+    ):
+        return False
+    marker_path = run_path / "finalized.json"
+    try:
+        marker_text = _read_session_json(marker_path)
+        marker = safe_json_loads(marker_text)
+    except (OSError, ValueError):
+        return False
+    if not isinstance(marker, dict):
+        return False
+    marker_map = cast("dict[str, Any]", marker)
+    return marker_map.get("run_id") == run_id and marker_map.get("event_id") == event_id

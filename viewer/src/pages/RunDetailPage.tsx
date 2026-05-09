@@ -38,6 +38,17 @@ function parseTabParam(): DetailTab {
   return 'overview';
 }
 
+function writeTabParam(tab: DetailTab) {
+  const [hashPath, rawQuery = ''] = window.location.hash.split('?');
+  const params = new URLSearchParams(rawQuery);
+  params.set('tab', tab);
+  window.history.replaceState(
+    null,
+    '',
+    `${window.location.pathname}${window.location.search}${hashPath}?${params.toString()}`,
+  );
+}
+
 function formatDate(iso: string, locale: string): string {
   try {
     return new Date(iso).toLocaleDateString(locale, {
@@ -77,6 +88,8 @@ export default function RunDetailPage() {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setRun(null);
+    setScore(null);
 
     Promise.allSettled([
       getRun(runId),
@@ -90,15 +103,29 @@ export default function RunDetailPage() {
         setRun(runResult.value);
       } else {
         setError(runResult.reason instanceof Error ? runResult.reason.message : 'fetch_failed');
+        setRun(null);
         setScore(null);
       }
       if (scoreResult.status === 'fulfilled') {
         setScore(scoreResult.value);
+      } else {
+        setScore(null);
       }
       setLoading(false);
     });
     return () => { cancelled = true; };
   }, [runId]);
+
+  useEffect(() => {
+    const syncTab = () => setActiveTab(parseTabParam());
+    window.addEventListener('hashchange', syncTab);
+    return () => window.removeEventListener('hashchange', syncTab);
+  }, []);
+
+  const activateTab = useCallback((tab: DetailTab) => {
+    setActiveTab(tab);
+    writeTabParam(tab);
+  }, []);
 
   const handleTabKeyDown = useCallback(
     (e: KeyboardEvent<HTMLButtonElement>) => {
@@ -116,10 +143,10 @@ export default function RunDetailPage() {
         return;
       }
       e.preventDefault();
-      setActiveTab(TABS[next]);
+      activateTab(TABS[next]);
       document.getElementById(TAB_IDS[TABS[next]])?.focus();
     },
-    [activeTab],
+    [activeTab, activateTab],
   );
 
   if (!runId) {
@@ -141,7 +168,7 @@ export default function RunDetailPage() {
     return (
       <AppShell>
         <div role="alert" className="run-detail__error">
-          {t('Error.fetch_failed', { resource: 'run' })}
+          {t('Error.fetch_failed', { resource: t('RunDetail.resource_run') })}
         </div>
       </AppShell>
     );
@@ -162,21 +189,17 @@ export default function RunDetailPage() {
 
       <div className="run-detail__tabs" role="tablist" aria-label={t('RunDetail.title')}>
         {TABS.map((tab) => {
-          const disabled =
-            (tab === 'judge' && !hasJudge) ||
-            (tab === 'score' && !hasScore);
           return (
             <button
               key={tab}
               id={TAB_IDS[tab]}
               role="tab"
               type="button"
-              className={`run-detail__tab${activeTab === tab ? ' run-detail__tab--active' : ''}${disabled ? ' run-detail__tab--disabled' : ''}`}
+              className={`run-detail__tab${activeTab === tab ? ' run-detail__tab--active' : ''}`}
               aria-selected={activeTab === tab}
               aria-controls={TAB_PANEL_IDS[tab]}
-              aria-disabled={disabled || undefined}
               tabIndex={activeTab === tab ? 0 : -1}
-              onClick={() => !disabled && setActiveTab(tab)}
+              onClick={() => activateTab(tab)}
               onKeyDown={handleTabKeyDown}
             >
               {t(TAB_KEYS[tab])}

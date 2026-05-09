@@ -37,7 +37,7 @@ export const useConceptsStore = create<ConceptsState>(() => ({
 
   loadLedger: async (runFilter?: string) => {
     const state = useConceptsStore.getState();
-    if (state.loading) return;
+    if (state.loading && state.runFilter === runFilter) return;
     if (
       state.entries.length > 0 &&
       Date.now() - state.lastFetchedAt < CACHE_TTL_MS &&
@@ -45,7 +45,12 @@ export const useConceptsStore = create<ConceptsState>(() => ({
     ) return;
 
     const gen = ++fetchGeneration;
-    useConceptsStore.setState({ loading: true, error: false, runFilter });
+    useConceptsStore.setState({
+      loading: true,
+      loadingMore: false,
+      error: false,
+      runFilter,
+    });
     try {
       const data = await getConceptLedger({ limit: PAGE_SIZE, run: runFilter });
       if (fetchGeneration !== gen) return;
@@ -96,6 +101,9 @@ export const useConceptsStore = create<ConceptsState>(() => ({
       nextCursor: undefined,
       hasMore: false,
       totalCount: 0,
+      loading: false,
+      loadingMore: false,
+      error: false,
       lastFetchedAt: 0,
       runFilter: run,
     });
@@ -109,6 +117,9 @@ export const useConceptsStore = create<ConceptsState>(() => ({
       nextCursor: undefined,
       hasMore: false,
       totalCount: 0,
+      loading: false,
+      loadingMore: false,
+      error: false,
       lastFetchedAt: 0,
     });
   },

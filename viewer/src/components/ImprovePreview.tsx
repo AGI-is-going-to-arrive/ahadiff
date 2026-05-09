@@ -4,6 +4,13 @@ import type { ImprovePreflightResponse } from '../api/types';
 import { useTranslation } from '../i18n/useTranslation';
 import './ImprovePreview.css';
 
+function phase25ReasonKey(reason: string | null | undefined) {
+  if (reason === 'latest_session_discarded') {
+    return 'Improve.phase25_reason_latest_session_discarded';
+  }
+  return 'Improve.phase25_reason_unknown';
+}
+
 export default function ImprovePreview() {
   const { t } = useTranslation();
   const [data, setData] = useState<ImprovePreflightResponse | null>(null);
@@ -105,10 +112,12 @@ export default function ImprovePreview() {
 
           {data.phase25_eligible && (
             <div className="improve-preview__phase25">
-              <span className="improve-preview__phase25-badge">Phase 2.5</span>
+              <span className="improve-preview__phase25-badge">
+                {t('Improve.phase25_badge')}
+              </span>
               {data.phase25_trigger_reason && (
                 <span className="improve-preview__phase25-reason">
-                  {data.phase25_trigger_reason}
+                  {t(phase25ReasonKey(data.phase25_trigger_reason))}
                 </span>
               )}
             </div>
@@ -181,7 +190,9 @@ export default function ImprovePreview() {
                 <div className="improve-preview__session-meta">
                   {t('Improve.session_rounds')}: {s.rounds_completed}
                   {s.phase25_attempted && (
-                    <span className="improve-preview__phase25-badge">P2.5</span>
+                    <span className="improve-preview__phase25-badge">
+                      {t('Improve.phase25_badge_short')}
+                    </span>
                   )}
                   {s.has_pending_worktree && (
                     <span className="improve-preview__warn-badge">

@@ -504,6 +504,10 @@
     "section_repo": "仓库状态",
     "section_provider": "供应商",
     "section_sessions": "现有会话",
+    "phase25_badge": "Phase 2.5",
+    "phase25_badge_short": "P2.5",
+    "phase25_reason_latest_session_discarded": "最近一次会话已被丢弃。",
+    "phase25_reason_unknown": "Phase 2.5 可用。",
     "anchor_run": "锚点运行",
     "baseline_run": "基线运行",
     "target_dim": "目标维度",
@@ -522,6 +526,7 @@
   },
   "RunDetail": {
     "title": "运行详情",
+    "resource_run": "运行",
     "tab_overview": "概览",
     "tab_score": "评分",
     "tab_judge": "评审",

@@ -504,6 +504,10 @@
     "section_repo": "Repository State",
     "section_provider": "Provider",
     "section_sessions": "Existing Sessions",
+    "phase25_badge": "Phase 2.5",
+    "phase25_badge_short": "P2.5",
+    "phase25_reason_latest_session_discarded": "The latest session was discarded.",
+    "phase25_reason_unknown": "Phase 2.5 eligibility is available.",
     "anchor_run": "Anchor Run",
     "baseline_run": "Baseline Run",
     "target_dim": "Target Dimension",
@@ -522,6 +526,7 @@
   },
   "RunDetail": {
     "title": "Run Detail",
+    "resource_run": "run",
     "tab_overview": "Overview",
     "tab_score": "Score",
     "tab_judge": "Judge",

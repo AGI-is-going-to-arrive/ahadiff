@@ -82,6 +82,18 @@ test.describe('Improve Preview tab on Ratchet page', () => {
   });
 
   test('no write action buttons exist in improve preview', async ({ page }) => {
+    const forbiddenWrites: string[] = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      const method = request.method();
+      if (
+        method !== 'GET' &&
+        url.pathname !== '/api/auth/token' &&
+        /^\/api\/(improve|learn|install|config|providers|signals|review)/.test(url.pathname)
+      ) {
+        forbiddenWrites.push(`${method} ${url.pathname}`);
+      }
+    });
     await page.goto('/#/ratchet');
 
     const improveTab = page.getByRole('tab', { name: /improve|改进/i });
@@ -93,5 +105,6 @@ test.describe('Improve Preview tab on Ratchet page', () => {
     for (const text of buttonTexts) {
       expect(text.toLowerCase()).not.toMatch(/run|start|trigger|execute|improve now/);
     }
+    expect(forbiddenWrites).toEqual([]);
   });
 });

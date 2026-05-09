@@ -57,7 +57,7 @@
 }
 
 .concepts-page__tab--active {
-  color: var(--accent);
+  color: var(--accent-ink);
   border-bottom-color: var(--accent);
 }
 

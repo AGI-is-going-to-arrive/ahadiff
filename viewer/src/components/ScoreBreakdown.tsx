@@ -69,10 +69,16 @@ export default function ScoreBreakdown({ payload }: ScoreBreakdownProps) {
         </div>
       )}
 
-      {payload.notes && (
+      {payload.notes.length > 0 && (
         <div className="score-breakdown__notes">
           <h3 className="score-breakdown__notes-title">{t('RunDetail.notes')}</h3>
-          <p className="score-breakdown__notes-text">{payload.notes}</p>
+          <ul className="score-breakdown__notes-list">
+            {payload.notes.map((note, index) => (
+              <li key={index} className="score-breakdown__notes-text">
+                {note}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>

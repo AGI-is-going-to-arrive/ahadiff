@@ -63,29 +63,28 @@ def current_head(repo_root: Path) -> str | None:
 
 
 def prompts_are_dirty(repo_root: Path) -> bool:
-    """Return True if ``prompts/`` has unstaged or staged uncommitted changes.
-
-    ``git diff --quiet`` returns 0 when clean, 1 when dirty. We also re-check
-    the index with ``--cached`` so committed-but-staged changes count too.
-    """
-    if _git_diff_dirty(repo_root, cached=False):
-        return True
-    return _git_diff_dirty(repo_root, cached=True)
-
-
-def _git_diff_dirty(repo_root: Path, *, cached: bool) -> bool:
-    args = ["git", "diff", "--quiet"]
-    if cached:
-        args.append("--cached")
-    args.extend(["--", "prompts/"])
+    """Return True if mutable prompt files have any git-visible local changes."""
+    args = [
+        "git",
+        "status",
+        "--porcelain",
+        "--",
+        "prompts",
+        "src/ahadiff/prompts",
+    ]
     try:
         result = subprocess.run(
             args,
             capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=repo_root,
             timeout=_GIT_TIMEOUT_SECONDS,
             check=False,
         )
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return False
-    return result.returncode == 1
+    if result.returncode != 0:
+        return False
+    return bool(result.stdout.strip())
