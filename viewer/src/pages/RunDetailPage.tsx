@@ -90,6 +90,7 @@ export default function RunDetailPage() {
         setRun(runResult.value);
       } else {
         setError(runResult.reason instanceof Error ? runResult.reason.message : 'fetch_failed');
+        setScore(null);
       }
       if (scoreResult.status === 'fulfilled') {
         setScore(scoreResult.value);

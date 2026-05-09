@@ -153,6 +153,8 @@ def _resolve_runs(
 
     baseline_run: ImproveRunSnapshot | None = None
     for ev in learn_events[1:]:
+        if ev.source_ref != latest.source_ref:
+            continue
         baseline_run = ImproveRunSnapshot(
             run_id=ev.run_id,
             source_ref=ev.source_ref,
