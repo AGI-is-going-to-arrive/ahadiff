@@ -72,6 +72,22 @@ export async function getRunArtifact(
   return parseResponse(`GET /api/run/{runId}/${kind}`, runArtifactEnvelopeSchema, raw);
 }
 
+export async function getRunConcepts(
+  runId: string,
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<string> {
+  const raw = await apiFetch<unknown>(
+    `/api/run/${encodeURIComponent(runId)}/concepts`,
+    opts,
+  );
+  const env = parseResponse(
+    'GET /api/run/{runId}/concepts',
+    runArtifactEnvelopeSchema,
+    raw,
+  );
+  return env.content;
+}
+
 export async function getRatchetHistory(
   params: { cursor?: string; page_size?: number } = {},
   opts?: Pick<ApiFetchOptions, 'signal'>,

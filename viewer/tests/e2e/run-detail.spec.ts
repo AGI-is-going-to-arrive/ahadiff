@@ -81,6 +81,53 @@ test.describe('Run Detail page', () => {
     await expect(scoreTab).toHaveAttribute('aria-selected', 'true');
   });
 
+  test('loads per-run concepts from concepts tab', async ({ page }) => {
+    await page.goto('/#/run/test-run?tab=concepts');
+
+    const conceptsTab = page.getByRole('tab', { name: /concepts|概念/i });
+    await expect(conceptsTab).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('td').filter({ hasText: /^Learn-from-diff$/ })).toBeVisible();
+    await expect(page.locator('.run-detail__loading')).toHaveCount(0);
+  });
+
+  test('falls back from concepts deep link when run has no concepts artifact', async ({ page }) => {
+    await page.route(
+      (url) => url.pathname === '/api/run/no-concepts-run',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            run_id: 'no-concepts-run',
+            source_kind: 'git_ref',
+            source_ref: 'HEAD',
+            content_lang: 'en',
+            capability_level: 3,
+            verdict: 'PASS',
+            overall: 88,
+            status: 'baseline',
+            weakest_dim: 'evidence',
+            created_at: '2026-04-25T00:00:00Z',
+            degraded_flags: {},
+            base_ref: 'HEAD~1',
+            prompt_version: 'abc1234',
+            eval_bundle_version: 'v1',
+            note_json: null,
+            artifacts: ['patch.diff', 'metadata.json', 'claims.jsonl', 'score.json'],
+            graphify_mode: null,
+            graphify_status: null,
+            graphify_notes: null,
+          }),
+        }),
+    );
+
+    await page.goto('/#/run/no-concepts-run?tab=concepts');
+
+    const overviewTab = page.getByRole('tab', { name: /overview|概览/i });
+    await expect(overviewTab).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: /concepts|概念/i })).toHaveCount(0);
+  });
+
   test('clears stale score data when the next run has no score artifact', async ({ page }) => {
     await page.goto('/#/run/test-run?tab=score');
     await expect(page.locator('.score-breakdown__overall-value')).toBeVisible();

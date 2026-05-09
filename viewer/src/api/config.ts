@@ -4,6 +4,7 @@ import {
   auditResponseSchema,
   configResponseSchema,
   configUpdateResponseSchema,
+  dbCheckResultSchema,
   doctorResponseSchema,
   installTargetMutationResponseSchema,
   installTargetPreviewResponseSchema,
@@ -71,6 +72,14 @@ export interface DoctorCheck {
 export interface DoctorResponse {
   summary_status: 'pass' | 'warn' | 'fail';
   checks: DoctorCheck[];
+}
+
+export interface DbCheckResult {
+  healthy: boolean;
+  schema_version: number;
+  quick_check: string;
+  event_count: number;
+  card_count: number;
 }
 
 export interface InstallTarget {
@@ -206,6 +215,13 @@ export async function getDoctor(
 ): Promise<DoctorResponse> {
   const raw = await apiFetch<unknown>('/api/doctor', opts);
   return parseResponse('GET /api/doctor', doctorResponseSchema, raw);
+}
+
+export async function fetchDbCheck(
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<DbCheckResult> {
+  const raw = await apiFetch<unknown>('/api/db/check', { method: 'POST', ...opts });
+  return parseResponse('POST /api/db/check', dbCheckResultSchema, raw);
 }
 
 export async function getInstallTargets(

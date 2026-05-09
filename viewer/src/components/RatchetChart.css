@@ -1,0 +1,23 @@
+.ratchet-chart__svg {
+  width: 100%;
+  height: 240px;
+  display: block;
+}
+
+@media (max-width: 780px) {
+  .ratchet-chart__svg {
+    height: 200px;
+  }
+}
+
+@media (max-width: 767px) {
+  .ratchet-chart__svg {
+    height: 180px;
+  }
+}
+
+@media (max-width: 540px) {
+  .ratchet-chart__svg {
+    height: 160px;
+  }
+}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { fetchGraphConcepts } from '../api/graph';
+import { fetchGraphConcepts, refreshGraph } from '../api/graph';
 import type { ConceptGraphResponse } from '../api/types';
 import AppShell from '../components/AppShell';
 import ConceptGraph from '../components/ConceptGraph';
@@ -73,7 +73,13 @@ export default function ConceptsPage() {
     () => hashParams.focus ?? null,
   );
   const [runFilter, setRunFilter] = useState<string | undefined>(hashParams.run);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState<{
+    kind: 'success' | 'error';
+    text: string;
+  } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const refreshAbortRef = useRef<AbortController | null>(null);
 
   const fetchGraphData = useCallback(async (all = false) => {
     abortRef.current?.abort();
@@ -125,6 +131,34 @@ export default function ConceptsPage() {
   const handleShowAll = useCallback(() => {
     setShowAll(true);
   }, []);
+
+  const handleRefreshGraph = useCallback(async () => {
+    refreshAbortRef.current?.abort();
+    const controller = new AbortController();
+    refreshAbortRef.current = controller;
+    setRefreshing(true);
+    setRefreshMessage(null);
+    try {
+      const result = await refreshGraph({ signal: controller.signal });
+      if (controller.signal.aborted) return;
+      setRefreshMessage({
+        kind: 'success',
+        text: t('Concept.refresh_success', {
+          nodes: result.nodes,
+          edges: result.edges,
+        }),
+      });
+      await fetchGraphData(showAll);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      if (controller.signal.aborted) return;
+      setRefreshMessage({ kind: 'error', text: t('Concept.refresh_failed') });
+    } finally {
+      if (!controller.signal.aborted) setRefreshing(false);
+    }
+  }, [fetchGraphData, showAll, t]);
+
+  useEffect(() => () => refreshAbortRef.current?.abort(), []);
 
   const activateTab = useCallback((tab: ConceptsTab) => {
     setActiveTab(tab);
@@ -207,6 +241,28 @@ export default function ConceptsPage() {
       >
         {activeTab === 'graph' && (
           <>
+            <div className="concepts-page__graph-toolbar">
+              <button
+                type="button"
+                className="concepts-page__refresh-btn"
+                onClick={() => void handleRefreshGraph()}
+                disabled={refreshing}
+                aria-busy={refreshing}
+              >
+                {refreshing && <span className="loading-spinner" aria-hidden="true" />}
+                {t('Concept.refresh_graph')}
+              </button>
+              {refreshMessage && (
+                <span
+                  role={refreshMessage.kind === 'error' ? 'alert' : 'status'}
+                  aria-live="polite"
+                  className={`concepts-page__refresh-msg concepts-page__refresh-msg--${refreshMessage.kind}`}
+                >
+                  {refreshMessage.text}
+                </span>
+              )}
+            </div>
+
             {graphLoading && (
               <div role="status" aria-live="polite" className="concepts-page__loading">
                 <span className="loading-spinner" />

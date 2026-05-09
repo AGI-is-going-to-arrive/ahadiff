@@ -2,10 +2,15 @@ import { apiFetch } from './client';
 import type { ApiFetchOptions } from './client';
 import {
   conceptGraphResponseSchema,
+  graphRefreshResponseSchema,
   graphStatusResponseSchema,
   parseResponse,
 } from './schemas';
-import type { ConceptGraphResponse, GraphStatusResponse } from './types';
+import type {
+  ConceptGraphResponse,
+  GraphRefreshResponse,
+  GraphStatusResponse,
+} from './types';
 
 export async function fetchGraphStatus(
   opts?: Pick<ApiFetchOptions, 'signal'>,
@@ -23,4 +28,14 @@ export async function fetchGraphConcepts(
   const qs = q.toString();
   const raw = await apiFetch<unknown>(`/api/graph/concepts${qs ? `?${qs}` : ''}`, opts);
   return parseResponse('GET /api/graph/concepts', conceptGraphResponseSchema, raw);
+}
+
+export async function refreshGraph(
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<GraphRefreshResponse> {
+  const raw = await apiFetch<unknown>('/api/graph/refresh', {
+    method: 'POST',
+    ...opts,
+  });
+  return parseResponse('POST /api/graph/refresh', graphRefreshResponseSchema, raw);
 }

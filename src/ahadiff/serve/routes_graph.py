@@ -22,6 +22,8 @@ if TYPE_CHECKING:
 
     from starlette.requests import Request
 
+    from .state import ServeState
+
 _DEFAULT_CONCEPT_GRAPH_LIMIT = 500
 _MAX_CONCEPT_GRAPH_LIMIT = 2_000
 
@@ -49,6 +51,44 @@ async def get_concept_graph(request: Request) -> JSONResponse:
         limit = _DEFAULT_CONCEPT_GRAPH_LIMIT
     payload = await to_thread.run_sync(lambda: _concept_graph_sync(state.state_dir, limit=limit))
     return JSONResponse(payload)
+
+
+async def post_graph_refresh(request: Request) -> JSONResponse:
+    from .auth import require_write_token, serve_state
+
+    require_write_token(request)
+    state = serve_state(request)
+    payload = await to_thread.run_sync(_graph_refresh_sync, state)
+    return JSONResponse(payload)
+
+
+def _graph_refresh_sync(state: ServeState) -> dict[str, Any]:
+    from ahadiff.core.paths import validate_state_path_no_symlinks
+    from ahadiff.git.capture import import_graphify_artifact
+
+    from .lock import serve_repo_write_lock
+
+    root = state.state_dir.parent
+    imported_path = state.state_dir / "graphify" / "graph.json"
+    with serve_repo_write_lock(state, command="serve graph refresh"):
+        validate_state_path_no_symlinks(imported_path, allow_missing_leaf=True)
+        status = import_graphify_artifact(root, force=True)
+        validate_state_path_no_symlinks(status.imported_path, allow_missing_leaf=False)
+    return {
+        "status": "ok",
+        "nodes": _int_provenance_value(status.provenance.get("node_count")),
+        "edges": _int_provenance_value(status.provenance.get("edge_count")),
+    }
+
+
+def _int_provenance_value(value: object) -> int:
+    if not isinstance(value, str):
+        return 0
+    try:
+        parsed = int(value)
+    except ValueError:
+        return 0
+    return max(parsed, 0)
 
 
 def _graph_status_sync(state_dir: object) -> dict[str, Any]:
@@ -192,4 +232,4 @@ def _concept_graph_sync(state_dir: object, *, limit: int) -> dict[str, Any]:
     ).model_dump(mode="json")
 
 
-__all__ = ["get_concept_graph", "get_graph_status"]
+__all__ = ["get_concept_graph", "get_graph_status", "post_graph_refresh"]

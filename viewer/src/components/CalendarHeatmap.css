@@ -7,9 +7,14 @@
  * ============================================================ */
 
 .calendar-heatmap-shell {
-  container-type: inline-size;
   height: 100%;
   min-width: 0;
+}
+
+@supports (container-type: inline-size) {
+  .calendar-heatmap-shell {
+    container-type: inline-size;
+  }
 }
 
 .calendar-heatmap {
@@ -198,11 +203,26 @@
 }
 
 /* Phase 2D smaller-screen spacing trim. */
-@container (max-width: 540px) {
-  .calendar-heatmap {
-    padding: var(--sp-3) 14px;
+@supports (container-type: inline-size) {
+  @container (max-width: 540px) {
+    .calendar-heatmap {
+      padding: var(--sp-3) 14px;
+    }
+    .calendar-heatmap__title {
+      font-size: 14px;
+    }
   }
-  .calendar-heatmap__title {
-    font-size: 14px;
+}
+
+/* Fallback for browsers without container queries (Firefox <110, Safari <16,
+   Chrome <105): approximate the same trim using viewport width. */
+@supports not (container-type: inline-size) {
+  @media (max-width: 540px) {
+    .calendar-heatmap {
+      padding: var(--sp-3) 14px;
+    }
+    .calendar-heatmap__title {
+      font-size: 14px;
+    }
   }
 }

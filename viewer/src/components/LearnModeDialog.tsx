@@ -363,7 +363,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
   if (!open) return null;
 
   return createPortal(
-    <div ref={overlayRef} className="learn-dialog__overlay" onClick={onClose}>
+    <div ref={overlayRef} className="learn-dialog__overlay" role="presentation" onClick={onClose}>
       <div
         ref={dialogRef}
         className="learn-dialog"
@@ -465,6 +465,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
               {/* Since */}
               <div
                 className="learn-dialog__radio-row"
+                role="presentation"
                 onClick={() => handleModeSelect('since')}
               >
                 <input
@@ -495,7 +496,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
               </div>
 
               {/* Author filter (qualifier for since) */}
-              <div className="learn-dialog__author-row" onClick={() => handleModeSelect('since')}>
+              <div className="learn-dialog__author-row" role="presentation" onClick={() => handleModeSelect('since')}>
                 <label
                   htmlFor="learn-mode-author"
                   className="learn-dialog__author-label"
@@ -520,6 +521,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
               {/* Revision */}
               <div
                 className="learn-dialog__radio-row"
+                role="presentation"
                 onClick={() => handleModeSelect('revision')}
               >
                 <input
@@ -552,6 +554,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
               {/* Patch URL */}
               <div
                 className="learn-dialog__radio-row"
+                role="presentation"
                 onClick={() => handleModeSelect('patch_url')}
               >
                 <input
@@ -584,6 +587,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
               {/* Compare refs */}
               <div
                 className="learn-dialog__radio-row"
+                role="presentation"
                 onClick={() => handleModeSelect('compare')}
               >
                 <input
@@ -632,6 +636,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
               {/* Compare dirs */}
               <div
                 className="learn-dialog__radio-row"
+                role="presentation"
                 onClick={() => handleModeSelect('compare_dir')}
               >
                 <input
@@ -680,6 +685,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
               {/* Paste patch */}
               <div
                 className="learn-dialog__radio-row learn-dialog__radio-row--block"
+                role="presentation"
                 onClick={() => handleModeSelect('patch')}
               >
                 <input

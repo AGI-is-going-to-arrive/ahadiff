@@ -806,25 +806,61 @@ function ProviderEditForm({
   const [discoveredModels, setDiscoveredModels] = useState<string[] | null>(null);
   const [discoveringModels, setDiscoveringModels] = useState(false);
   const [discoverError, setDiscoverError] = useState<string | null>(null);
+  const discoverAbortRef = useRef<AbortController | null>(null);
+  const discoverRequestRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      discoverRequestRef.current += 1;
+      discoverAbortRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    discoverRequestRef.current += 1;
+    discoverAbortRef.current?.abort();
+    setDiscoveredModels(null);
+    setDiscoverError(null);
+    setDiscoveringModels(false);
+  }, [draft.api_key_env, draft.base_url, draft.provider_class]);
 
   const handleDiscoverModels = async () => {
-    if (!draft.base_url.trim() || !draft.api_key_env.trim()) return;
+    const requestDraft = {
+      base_url: draft.base_url.trim(),
+      api_key: draft.api_key_env.trim(),
+      provider_class: draft.provider_class,
+    };
+    if (!requestDraft.base_url || !requestDraft.api_key) return;
+
+    discoverAbortRef.current?.abort();
+    const controller = new AbortController();
+    discoverAbortRef.current = controller;
+    const requestId = discoverRequestRef.current + 1;
+    discoverRequestRef.current = requestId;
     setDiscoveringModels(true);
     setDiscoverError(null);
     try {
-      const result = await discoverModels({
-        base_url: draft.base_url.trim(),
-        api_key: draft.api_key_env.trim(),
-        provider_class: draft.provider_class,
-      });
+      const result = await discoverModels(requestDraft, { signal: controller.signal });
+      if (controller.signal.aborted || discoverRequestRef.current !== requestId) return;
       setDiscoveredModels(result.models);
-      if (result.models.length > 0 && !draft.model_name.trim()) {
-        setDraft(prev => ({ ...prev, model_name: result.models[0] }));
+      const firstModel = result.models[0];
+      if (firstModel && !draft.model_name.trim()) {
+        setDraft((prev) => {
+          const stillSameProvider =
+            prev.base_url.trim() === requestDraft.base_url
+            && prev.api_key_env.trim() === requestDraft.api_key
+            && prev.provider_class === requestDraft.provider_class;
+          if (!stillSameProvider || prev.model_name.trim()) return prev;
+          return { ...prev, model_name: firstModel };
+        });
       }
     } catch (e) {
+      if (controller.signal.aborted || discoverRequestRef.current !== requestId) return;
       setDiscoverError(e instanceof Error ? e.message : 'fetch_failed');
     } finally {
-      setDiscoveringModels(false);
+      if (!controller.signal.aborted && discoverRequestRef.current === requestId) {
+        setDiscoveringModels(false);
+      }
     }
   };
 
@@ -857,7 +893,7 @@ function ProviderEditForm({
             className="provider-card__input"
             value={draft.alias}
             onChange={(e) => setField('alias', e.target.value)}
-            placeholder="my-provider"
+            placeholder={t('Settings_page.provider_alias_ph')}
             required
             aria-invalid={aliasInvalid}
             autoFocus
@@ -982,7 +1018,7 @@ function ProviderEditForm({
           className="provider-card__input"
           value={draft.max_output_tokens}
           onChange={(e) => setField('max_output_tokens', e.target.value)}
-          placeholder="4096"
+          placeholder={t('Settings_page.provider_max_output_ph')}
           min={1}
         />
       </div>

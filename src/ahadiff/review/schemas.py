@@ -43,6 +43,7 @@ class ReviewDbCheck:
     quick_check: str
     foreign_key_issues: int
     event_count: int
+    card_count: int
     event_id_unique: bool
 
 

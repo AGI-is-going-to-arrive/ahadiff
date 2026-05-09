@@ -1,35 +1,83 @@
-import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import ScoreBreakdown from '../components/ScoreBreakdown';
 import JudgeReport from '../components/JudgeReport';
-import { getRun, getRunScore } from '../api/runs';
+import { getRun, getRunScore, getRunConcepts } from '../api/runs';
+import { ApiError } from '../api/client';
 import { scorePayloadSchema } from '../api/schemas';
 import { useTranslation, type TranslateFn } from '../i18n/useTranslation';
 import type { RunDetail, ScorePayload } from '../api/types';
 import { safeVerdict } from '../utils/verdict';
 import './RunDetailPage.css';
 
-type DetailTab = 'overview' | 'score' | 'judge' | 'artifacts';
-const TABS: DetailTab[] = ['overview', 'score', 'judge', 'artifacts'];
+type DetailTab = 'overview' | 'score' | 'judge' | 'concepts' | 'artifacts';
+const TABS: DetailTab[] = ['overview', 'score', 'judge', 'concepts', 'artifacts'];
 const TAB_KEYS: Record<DetailTab, string> = {
   overview: 'RunDetail.tab_overview',
   score: 'RunDetail.tab_score',
   judge: 'RunDetail.tab_judge',
+  concepts: 'RunDetail.tab_concepts',
   artifacts: 'RunDetail.tab_artifacts',
 };
 const TAB_IDS: Record<DetailTab, string> = {
   overview: 'rd-tab-overview',
   score: 'rd-tab-score',
   judge: 'rd-tab-judge',
+  concepts: 'rd-tab-concepts',
   artifacts: 'rd-tab-artifacts',
 };
 const TAB_PANEL_IDS: Record<DetailTab, string> = {
   overview: 'rd-panel-overview',
   score: 'rd-panel-score',
   judge: 'rd-panel-judge',
+  concepts: 'rd-panel-concepts',
   artifacts: 'rd-panel-artifacts',
 };
+
+interface RunConceptRow {
+  term_key: string;
+  display_name: string;
+  file_refs: string[];
+  related_claims: string[];
+}
+
+function parseConceptsJsonl(text: string): RunConceptRow[] {
+  const rows: RunConceptRow[] = [];
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    let raw: unknown;
+    try {
+      raw = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+    if (!raw || typeof raw !== 'object') continue;
+    const obj = raw as Record<string, unknown>;
+    const termKey = typeof obj.term_key === 'string' ? obj.term_key : '';
+    const displayName =
+      typeof obj.display_name === 'string' && obj.display_name
+        ? obj.display_name
+        : typeof obj.concept === 'string'
+          ? obj.concept
+          : termKey;
+    const fileRefs = Array.isArray(obj.file_refs)
+      ? obj.file_refs.filter((f): f is string => typeof f === 'string')
+      : [];
+    const relatedClaims = Array.isArray(obj.related_claims)
+      ? obj.related_claims.filter((c): c is string => typeof c === 'string')
+      : [];
+    if (!termKey && !displayName) continue;
+    rows.push({
+      term_key: termKey,
+      display_name: displayName,
+      file_refs: fileRefs,
+      related_claims: relatedClaims,
+    });
+  }
+  return rows;
+}
 
 function parseTabParam(): DetailTab {
   const query = window.location.hash.split('?')[1] ?? '';
@@ -82,6 +130,11 @@ export default function RunDetailPage() {
   const [score, setScore] = useState<ScorePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [concepts, setConcepts] = useState<RunConceptRow[] | null>(null);
+  const [conceptsLoading, setConceptsLoading] = useState(false);
+  const [conceptsNotFound, setConceptsNotFound] = useState(false);
+  const [conceptsError, setConceptsError] = useState(false);
+  const conceptsAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!runId) return;
@@ -90,6 +143,10 @@ export default function RunDetailPage() {
     setError(null);
     setRun(null);
     setScore(null);
+    setConcepts(null);
+    setConceptsLoading(false);
+    setConceptsNotFound(false);
+    setConceptsError(false);
 
     Promise.allSettled([
       getRun(runId),
@@ -122,29 +179,82 @@ export default function RunDetailPage() {
     return () => window.removeEventListener('hashchange', syncTab);
   }, []);
 
+  const fetchConcepts = useCallback(
+    () => {
+      if (!runId) return;
+      conceptsAbortRef.current?.abort();
+      const ctrl = new AbortController();
+      conceptsAbortRef.current = ctrl;
+      const signal = ctrl.signal;
+      setConceptsLoading(true);
+      setConceptsError(false);
+      setConceptsNotFound(false);
+      getRunConcepts(runId, { signal })
+        .then((text) => {
+          if (signal.aborted) return;
+          setConcepts(parseConceptsJsonl(text));
+        })
+        .catch((err: unknown) => {
+          if (signal.aborted) return;
+          if (err instanceof ApiError && err.status === 404) {
+            setConceptsNotFound(true);
+            setConcepts([]);
+          } else {
+            setConceptsError(true);
+            setConcepts(null);
+          }
+        })
+        .finally(() => {
+          if (signal.aborted) return;
+          setConceptsLoading(false);
+        });
+    },
+    [runId],
+  );
+
+  useEffect(() => {
+    if (activeTab !== 'concepts' || !runId) return;
+    if (concepts !== null) return;
+    fetchConcepts();
+  }, [activeTab, runId, concepts, fetchConcepts]);
+
+  useEffect(() => {
+    if (activeTab !== 'concepts') conceptsAbortRef.current?.abort();
+  }, [activeTab]);
+
+  useEffect(() => () => conceptsAbortRef.current?.abort(), []);
+
+  useEffect(() => {
+    if (loading || !run || activeTab !== 'concepts') return;
+    if (run.artifacts.includes('concepts.jsonl')) return;
+    setActiveTab('overview');
+    writeTabParam('overview');
+  }, [activeTab, loading, run]);
+
   const activateTab = useCallback((tab: DetailTab) => {
     setActiveTab(tab);
     writeTabParam(tab);
   }, []);
 
   const handleTabKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLButtonElement>) => {
-      const idx = TABS.indexOf(activeTab);
+    (tabs: DetailTab[]) => (e: KeyboardEvent<HTMLButtonElement>) => {
+      if (tabs.length === 0) return;
+      const idx = Math.max(0, tabs.indexOf(activeTab));
       let next = idx;
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-        next = (idx + 1) % TABS.length;
+        next = (idx + 1) % tabs.length;
       } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-        next = (idx - 1 + TABS.length) % TABS.length;
+        next = (idx - 1 + tabs.length) % tabs.length;
       } else if (e.key === 'Home') {
         next = 0;
       } else if (e.key === 'End') {
-        next = TABS.length - 1;
+        next = tabs.length - 1;
       } else {
         return;
       }
       e.preventDefault();
-      activateTab(TABS[next]);
-      document.getElementById(TAB_IDS[TABS[next]])?.focus();
+      activateTab(tabs[next]);
+      document.getElementById(TAB_IDS[tabs[next]])?.focus();
     },
     [activeTab, activateTab],
   );
@@ -176,6 +286,8 @@ export default function RunDetailPage() {
 
   const hasJudge = run.artifacts.includes('judge.json');
   const hasScore = score != null;
+  const hasConcepts = run.artifacts.includes('concepts.jsonl');
+  const visibleTabs = TABS.filter((tab) => tab !== 'concepts' || hasConcepts);
   const links = artifactLinks(run.artifacts, runId, t);
 
   return (
@@ -188,19 +300,20 @@ export default function RunDetailPage() {
       </header>
 
       <div className="run-detail__tabs" role="tablist" aria-label={t('RunDetail.title')}>
-        {TABS.map((tab) => {
+        {visibleTabs.map((tab) => {
+          const isActive = activeTab === tab;
           return (
             <button
               key={tab}
               id={TAB_IDS[tab]}
               role="tab"
               type="button"
-              className={`run-detail__tab${activeTab === tab ? ' run-detail__tab--active' : ''}`}
-              aria-selected={activeTab === tab}
+              className={`run-detail__tab${isActive ? ' run-detail__tab--active' : ''}`}
+              aria-selected={isActive}
               aria-controls={TAB_PANEL_IDS[tab]}
-              tabIndex={activeTab === tab ? 0 : -1}
+              tabIndex={isActive ? 0 : -1}
               onClick={() => activateTab(tab)}
-              onKeyDown={handleTabKeyDown}
+              onKeyDown={handleTabKeyDown(visibleTabs)}
             >
               {t(TAB_KEYS[tab])}
             </button>
@@ -282,6 +395,85 @@ export default function RunDetailPage() {
         {activeTab === 'judge' && !hasJudge && (
           <p className="run-detail__empty">{t('RunDetail.judge_unavailable')}</p>
         )}
+      </section>
+
+      <section
+        id={TAB_PANEL_IDS.concepts}
+        role="tabpanel"
+        aria-labelledby={TAB_IDS.concepts}
+        hidden={activeTab !== 'concepts'}
+      >
+        {activeTab === 'concepts' && hasConcepts && conceptsLoading && (
+          <div role="status" aria-live="polite" className="run-detail__loading">
+            <span className="loading-spinner" />
+            {t('RunDetail.concepts_loading')}
+          </div>
+        )}
+        {activeTab === 'concepts' && hasConcepts && !conceptsLoading && conceptsError && (
+          <div role="alert" className="run-detail__error">
+            {t('RunDetail.concepts_load_failed')}
+            <button
+              type="button"
+              className="retry-btn"
+              onClick={() => fetchConcepts()}
+            >
+              {t('Error.retry')}
+            </button>
+          </div>
+        )}
+        {activeTab === 'concepts' &&
+          hasConcepts &&
+          !conceptsLoading &&
+          !conceptsError &&
+          (conceptsNotFound || (concepts !== null && concepts.length === 0)) && (
+            <p className="run-detail__empty">{t('RunDetail.concepts_unavailable')}</p>
+          )}
+        {activeTab === 'concepts' &&
+          hasConcepts &&
+          !conceptsLoading &&
+          !conceptsError &&
+          !conceptsNotFound &&
+          concepts !== null &&
+          concepts.length > 0 && (
+            <table className="run-detail__concepts-table">
+              <thead>
+                <tr>
+                  <th scope="col">{t('RunDetail.concepts_col_name')}</th>
+                  <th scope="col">{t('RunDetail.concepts_col_id')}</th>
+                  <th scope="col">{t('RunDetail.concepts_col_files')}</th>
+                  <th scope="col" className="run-detail__concepts-count">
+                    {t('RunDetail.concepts_col_claims')}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {concepts.map((row) => (
+                  <tr key={row.term_key || row.display_name}>
+                    <td>{row.display_name}</td>
+                    <td>
+                      <code>{row.term_key}</code>
+                    </td>
+                    <td>
+                      {row.file_refs.length === 0 ? (
+                        '—'
+                      ) : (
+                        <ul className="run-detail__concepts-files">
+                          {row.file_refs.map((f) => (
+                            <li key={f} title={f}>
+                              <code>{f.split('/').pop() || f}</code>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
+                    <td className="run-detail__concepts-count">
+                      {row.related_claims.length}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
       </section>
 
       <section

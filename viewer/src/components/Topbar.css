@@ -379,6 +379,32 @@
   }
 }
 
+/* ---- Small phones (320-599px) ---- *
+ * 767px already collapses search/ghost-btn and shrinks crumb/primary. This
+ * block tightens action gap and crumb max-width so 320-540px notch widths
+ * keep the primary CTA reachable without horizontal overflow. */
+@media (max-width: 599px) {
+  .topbar {
+    gap: var(--sp-1);
+  }
+
+  .topbar__actions {
+    gap: var(--sp-1);
+  }
+
+  .topbar__crumb-root {
+    font-size: 13px;
+  }
+
+  .topbar__crumb li[aria-current="page"] {
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 140px;
+  }
+}
+
 @media (max-width: 359px) {
   .topbar__crumb {
     overflow: hidden;

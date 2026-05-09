@@ -299,12 +299,6 @@
   padding: var(--sp-5);
 }
 
-.ratchet-chart__svg {
-  width: 100%;
-  height: 240px;
-  display: block;
-}
-
 .ratchet-section__fallback {
   display: flex;
   align-items: center;
@@ -826,9 +820,6 @@
     grid-template-columns: 1fr !important;
   }
 
-  .ratchet-chart__svg {
-    height: 200px;
-  }
 }
 
 /* ---- Responsive: mobile single column ---- */
@@ -841,14 +832,59 @@
     overflow-x: auto;
   }
 
-  .ratchet-chart__svg {
-    height: 180px;
-  }
-
   .ratchet-section__header {
     flex-direction: column;
     align-items: flex-start;
     gap: var(--sp-1);
+  }
+}
+
+/* ---- Responsive: small phones / phablets (320-599px) ----
+ * Sits above the existing 540px block (which handles the strictest
+ * single-column form). This block extends the same intent up to 599px so
+ * 541-599px viewports also get tighter padding and stacked filters, then
+ * the 540px block below applies the smallest title and KPI compaction. */
+@media (max-width: 599px) {
+  .dashboard {
+    padding-bottom: var(--sp-6);
+  }
+
+  .dashboard__header {
+    margin-bottom: var(--sp-4);
+  }
+
+  .dashboard__subtitle {
+    font-size: 13px;
+  }
+
+  .run-list-section__head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--sp-2);
+  }
+
+  .run-list-section__filters,
+  .run-list-section__source-filters {
+    margin-left: 0;
+  }
+
+  .dashboard__weak-list-section {
+    padding: var(--sp-3);
+  }
+
+  .dashboard__empty {
+    padding: var(--sp-5) var(--sp-4);
+    font-size: 16px;
+  }
+
+  .dashboard__empty-actions {
+    flex-direction: column;
+    gap: var(--sp-2);
+  }
+
+  .dashboard__empty-cta {
+    width: 100%;
+    justify-content: center;
   }
 }
 
@@ -864,10 +900,6 @@
 
   .kpi-card {
     padding: 14px var(--sp-4);
-  }
-
-  .ratchet-chart__svg {
-    height: 160px;
   }
 
   /* Stack weak-list rows so the bar gets enough horizontal room. */

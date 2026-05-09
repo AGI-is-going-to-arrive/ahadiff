@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { useTranslation } from '../i18n/useTranslation';
 import type { RatchetHistoryEntry } from '../api/types';
+import './RatchetChart.css';
 
 export interface RatchetChartProps {
   history: RatchetHistoryEntry[];
@@ -60,9 +61,8 @@ function RatchetChartInner({ history }: RatchetChartProps) {
       role="img"
       aria-label={ariaLabel}
     >
-      <title>{ariaLabel}</title>
       {/* Horizontal grid lines */}
-      <g stroke="var(--hair)" strokeDasharray="2 4" strokeWidth="1">
+      <g stroke="var(--hair)" strokeDasharray="2 4" strokeWidth="1" aria-hidden="true">
         {[0, 25, 50, 75, 100].map((v) => (
           <line key={v} x1={PAD_L} y1={toY(v)} x2={SVG_W - PAD_R} y2={toY(v)} />
         ))}

@@ -244,25 +244,60 @@ def restore_review_db(*, db_path: Path, backup_path: Path) -> None:
         temp_path.unlink(missing_ok=True)
 
 
-def check_review_db(db_path: Path) -> ReviewDbCheck:
+def check_review_db(db_path: Path, *, ensure_schema: bool = True) -> ReviewDbCheck:
     if not db_path.exists():
         raise InputError(f"review.sqlite does not exist: {db_path}")
-    with connect_review_db(db_path) as connection:
-        _ensure_schema(connection)
+    with _connect_review_db_for_check(db_path, read_only=not ensure_schema) as connection:
+        if ensure_schema:
+            _ensure_schema(connection)
         quick_check_row = connection.execute("PRAGMA quick_check").fetchone()
         quick_check = "unknown" if quick_check_row is None else str(quick_check_row[0])
         foreign_key_issues = len(connection.execute("PRAGMA foreign_key_check").fetchall())
-        event_count = int(connection.execute("SELECT COUNT(*) FROM result_events").fetchone()[0])
-        distinct_event_count = int(
-            connection.execute("SELECT COUNT(DISTINCT event_id) FROM result_events").fetchone()[0]
+        event_count = _count_table_rows(connection, "result_events")
+        card_count = _count_table_rows(connection, "cards")
+        distinct_event_count = (
+            int(
+                connection.execute("SELECT COUNT(DISTINCT event_id) FROM result_events").fetchone()[
+                    0
+                ]
+            )
+            if _table_exists(connection, "result_events")
+            else 0
         )
         return ReviewDbCheck(
             schema_version=_schema_version(connection),
             quick_check=quick_check,
             foreign_key_issues=foreign_key_issues,
             event_count=event_count,
+            card_count=card_count,
             event_id_unique=event_count == distinct_event_count,
         )
+
+
+def _connect_review_db_for_check(db_path: Path, *, read_only: bool) -> sqlite3.Connection:
+    if not read_only:
+        return connect_review_db(db_path)
+    _assert_sqlite_runtime_supported()
+    try:
+        return safe_sqlite_connect(
+            db_path,
+            read_only=True,
+            row_factory=sqlite3.Row,
+            foreign_keys=True,
+            defensive=True,
+        )
+    except sqlite3.DatabaseError as exc:
+        raise StorageError(f"review.sqlite is not a valid database: {db_path} ({exc})") from exc
+    except OSError as exc:
+        raise StorageError(f"failed to open review.sqlite safely: {db_path} ({exc})") from exc
+
+
+def _count_table_rows(connection: sqlite3.Connection, table_name: str) -> int:
+    if table_name not in {"result_events", "cards"}:
+        raise ValueError(f"unsupported review table count: {table_name}")
+    if not _table_exists(connection, table_name):
+        return 0
+    return int(connection.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0])
 
 
 def sync_result_event(db_path: Path, event: ResultEvent) -> bool:

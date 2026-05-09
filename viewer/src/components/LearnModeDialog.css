@@ -529,6 +529,46 @@
   }
 }
 
+/* Small phones (320-599px) — extends 540px block intent to 599px and adds
+ * stacking for footer buttons + tighter header/body padding so the dialog
+ * fits inside narrow viewports without horizontal scroll. */
+@media (max-width: 599px) {
+  .learn-dialog {
+    width: calc(100vw - 16px);
+    max-height: calc(100vh - 32px);
+    border-radius: var(--r-md, 8px);
+  }
+
+  .learn-dialog__header {
+    padding: var(--sp-md, 16px) var(--sp-md, 16px) var(--sp-2xs, 4px);
+  }
+
+  .learn-dialog__title {
+    font-size: var(--fs-md, 1rem);
+    padding-right: var(--sp-xl, 32px);
+  }
+
+  .learn-dialog__body {
+    padding: 0 var(--sp-md, 16px) var(--sp-sm, 12px);
+  }
+
+  .learn-dialog__esc {
+    top: var(--sp-sm, 12px);
+    right: var(--sp-sm, 12px);
+  }
+
+  .learn-dialog__footer {
+    flex-direction: column;
+    gap: var(--sp-xs, 8px);
+    padding: var(--sp-sm, 12px) var(--sp-md, 16px) var(--sp-md, 16px);
+  }
+
+  .learn-dialog__btn {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
 /* Mobile responsive */
 @media (max-width: 540px) {
   .learn-dialog__tiles {

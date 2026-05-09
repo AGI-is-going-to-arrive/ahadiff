@@ -417,6 +417,16 @@ export const doctorResponseSchema = z
   })
   .strict();
 
+export const dbCheckResultSchema = z
+  .object({
+    healthy: z.boolean(),
+    schema_version: z.number().int().nonnegative(),
+    quick_check: z.string(),
+    event_count: z.number().int().nonnegative(),
+    card_count: z.number().int().nonnegative(),
+  })
+  .strict();
+
 export const installManifestActionSchema = z.object({
   action: z.string().min(1),
   file_strategy: z.enum(['generated', 'user-managed']),
@@ -709,6 +719,14 @@ export const conceptGraphResponseSchema = z
     nodes: z.array(conceptGraphNodeSchema),
     edges: z.array(conceptGraphEdgeSchema),
     truncated: z.boolean().default(false),
+  })
+  .strict();
+
+export const graphRefreshResponseSchema = z
+  .object({
+    status: z.string().min(1),
+    nodes: z.number().int().nonnegative(),
+    edges: z.number().int().nonnegative(),
   })
   .strict();
 

@@ -251,6 +251,53 @@ def test_proxy_trace_headers_are_rejected(tmp_path: Path) -> None:
     assert write.json() == {"error": "proxy_headers_not_allowed", "status": 400}
 
 
+def test_db_check_endpoint_requires_token_and_reports_counts(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    blocked = client.post("/api/db/check", headers={"origin": "http://localhost:8765"})
+    response = client.post("/api/db/check", headers=_WRITE_HEADERS)
+
+    assert blocked.status_code == 403
+    assert response.status_code == 200
+    assert response.json() == {
+        "healthy": True,
+        "schema_version": CURRENT_SCHEMA_VERSION,
+        "quick_check": "ok",
+        "event_count": 1,
+        "card_count": 0,
+    }
+
+
+def test_db_check_endpoint_does_not_initialize_empty_database(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    db_path = state_dir / "review.sqlite"
+    sqlite3.connect(db_path).close()
+    client = _client(state_dir)
+
+    response = client.post("/api/db/check", headers=_WRITE_HEADERS)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "healthy": False,
+        "schema_version": 0,
+        "quick_check": "ok",
+        "event_count": 0,
+        "card_count": 0,
+    }
+    with sqlite3.connect(db_path) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 0
+        assert (
+            connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+            ).fetchall()
+            == []
+        )
+
+
 def test_origin_guard_rejects_non_loopback_write_origin(tmp_path: Path) -> None:
     client = _client(tmp_path / ".ahadiff")
 

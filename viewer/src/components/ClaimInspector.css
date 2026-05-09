@@ -1,7 +1,6 @@
 /* ── ClaimInspector ─────────────────────────────────────────── */
 
 .claim-inspector {
-  container-type: inline-size;
   border-left: 1px solid var(--hair);
   padding: 14px 14px 8px;
   position: sticky;
@@ -18,6 +17,12 @@
   /* Constrain width so long path/identifier text wraps instead of forcing
      horizontal scroll inside the narrow split panel. */
   min-width: 0;
+}
+
+@supports (container-type: inline-size) {
+  .claim-inspector {
+    container-type: inline-size;
+  }
 }
 
 .claim-inspector--empty {

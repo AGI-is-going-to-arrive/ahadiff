@@ -135,7 +135,7 @@ test.describe('media features', () => {
   test('print emulation: concepts heading and detail panel remain printable', async ({
     page,
   }) => {
-    await page.goto('/#/concepts');
+    await page.goto('/#/concepts?tab=graph');
 
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     await page.locator('.concept-graph__node').first().focus();
@@ -261,7 +261,7 @@ test.describe('media features', () => {
     page,
   }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.goto('/#/concepts');
+    await page.goto('/#/concepts?tab=graph');
 
     await expect(page.locator('.concept-graph__node')).toHaveCount(3);
     const before = await page
@@ -288,7 +288,7 @@ test.describe('media features', () => {
     page,
   }) => {
     await page.emulateMedia({ forcedColors: 'active' });
-    await page.goto('/#/concepts');
+    await page.goto('/#/concepts?tab=graph');
 
     await page.locator('.concept-graph__node').first().click();
     const badge = page.locator('.concept-graph__kind-badge').first();

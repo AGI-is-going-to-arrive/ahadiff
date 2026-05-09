@@ -345,6 +345,12 @@ export interface ConceptGraphResponse {
   truncated: boolean;
 }
 
+export interface GraphRefreshResponse {
+  status: string;
+  nodes: number;
+  edges: number;
+}
+
 export interface StatsResponse {
   total_runs: number;
   total_lessons: number;

@@ -1,5 +1,4 @@
 .graphify-card {
-  container-type: inline-size;
   background: var(--surface-diff);
   border: 1px solid var(--hair);
   border-left: 3px solid var(--accent);
@@ -7,6 +6,12 @@
   padding: 12px 14px;
   margin-bottom: 14px;
   font-size: var(--fs-sm);
+}
+
+@supports (container-type: inline-size) {
+  .graphify-card {
+    container-type: inline-size;
+  }
 }
 
 .graphify-card__header {
@@ -175,19 +180,41 @@
 
 /* -- Responsive -- */
 
-@container (max-width: 540px) {
-  .graphify-card__compact-inner {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
-  }
+@supports (container-type: inline-size) {
+  @container (max-width: 540px) {
+    .graphify-card__compact-inner {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+    }
 
-  .graphify-card__row {
-    flex-wrap: wrap;
-  }
+    .graphify-card__row {
+      flex-wrap: wrap;
+    }
 
-  .graphify-card__row-label {
-    min-width: 70px;
+    .graphify-card__row-label {
+      min-width: 70px;
+    }
+  }
+}
+
+/* Fallback for browsers without container queries (Firefox <110, Safari <16,
+   Chrome <105): approximate via viewport width. */
+@supports not (container-type: inline-size) {
+  @media (max-width: 540px) {
+    .graphify-card__compact-inner {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+    }
+
+    .graphify-card__row {
+      flex-wrap: wrap;
+    }
+
+    .graphify-card__row-label {
+      min-width: 70px;
+    }
   }
 }
 

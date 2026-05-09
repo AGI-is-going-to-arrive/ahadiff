@@ -3,8 +3,8 @@ import AppShell from '../components/AppShell';
 import Skeleton from '../components/Skeleton';
 import { useTranslation } from '../i18n/useTranslation';
 import type { TranslateFn } from '../i18n/useTranslation';
-import { getDoctor } from '../api/config';
-import type { DoctorCheck } from '../api/config';
+import { fetchDbCheck, getDoctor } from '../api/config';
+import type { DbCheckResult, DoctorCheck } from '../api/config';
 import { mapDoctorMessage } from '../utils/doctor';
 import {
   detectPlatform,
@@ -114,6 +114,11 @@ interface DoctorState {
   loading: boolean;
 }
 
+interface DbCheckState {
+  result: DbCheckResult | null;
+  loading: boolean;
+}
+
 /**
  * Compute the active onboarding step from doctor checks.
  *
@@ -138,6 +143,7 @@ function computeCurrentStep(checks: DoctorCheck[]): StepNumber {
 export default function OnboardingPage() {
   const { t } = useTranslation();
   const [doctor, setDoctor] = useState<DoctorState>({ checks: [], loading: true });
+  const [dbCheck, setDbCheck] = useState<DbCheckState>({ result: null, loading: true });
   const [activeStep, setActiveStep] = useState<StepNumber>(1);
   const [activeStepTouched, setActiveStepTouched] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -151,22 +157,32 @@ export default function OnboardingPage() {
   const shellHint = getShellHint(platform);
   const platformLabel = getPlatformLabel(platform);
 
-  const fetchDoctor = useCallback(async () => {
+  const fetchDoctor = useCallback(() => {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     setDoctor((prev) => ({ ...prev, loading: true }));
-    try {
-      const res = await getDoctor({ signal: controller.signal });
-      if (!controller.signal.aborted) {
+    setDbCheck((prev) => ({ ...prev, loading: true }));
+
+    void getDoctor({ signal: controller.signal })
+      .then((res) => {
+        if (controller.signal.aborted) return;
         setDoctor({ checks: res.checks, loading: false });
-      }
-    } catch {
-      // doctor is optional — proceed with empty checks
-      if (!controller.signal.aborted) {
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
         setDoctor({ checks: [], loading: false });
-      }
-    }
+      });
+
+    void fetchDbCheck({ signal: controller.signal })
+      .then((res) => {
+        if (controller.signal.aborted) return;
+        setDbCheck({ result: res, loading: false });
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setDbCheck({ result: null, loading: false });
+      });
   }, []);
 
   useEffect(() => {
@@ -327,6 +343,58 @@ export default function OnboardingPage() {
               ))
             ) : (
               <div className="u-muted-sm">{t('Onboarding.step2_desc')}</div>
+            )}
+          </div>
+        </div>
+
+        {/*
+         * Database health card — surfaces /api/db/check so the user can see
+         * review.sqlite schema version, integrity quick_check, and counts of
+         * accumulated events / cards. Independent of /api/doctor so a flaky
+         * sub-endpoint never hides the rest of the page.
+         */}
+        <div className="settings-card onboarding__db-check">
+          <div className="settings-card__header">
+            <h2>{t('Doctor.db_title')}</h2>
+          </div>
+          <div className="settings-card__body">
+            {dbCheck.loading ? (
+              <Skeleton variant="card" height="80px" />
+            ) : dbCheck.result ? (
+              <>
+                <div className="doctor-check">
+                  <div
+                    className={`doctor-check__icon doctor-check__icon--${
+                      dbCheck.result.healthy ? 'pass' : 'fail'
+                    }`}
+                  >
+                    {dbCheck.result.healthy ? '✓' : '✗'}
+                  </div>
+                  <div className="doctor-check__text">
+                    {dbCheck.result.healthy
+                      ? t('Doctor.db_healthy')
+                      : t('Doctor.db_unhealthy')}
+                  </div>
+                </div>
+                <div className="doctor-check">
+                  <div className="doctor-check__icon doctor-check__icon--pass">i</div>
+                  <div className="doctor-check__text">
+                    {t('Doctor.db_schema', { version: String(dbCheck.result.schema_version) })}
+                    {' · '}
+                    {dbCheck.result.quick_check}
+                  </div>
+                </div>
+                <div className="doctor-check">
+                  <div className="doctor-check__icon doctor-check__icon--pass">i</div>
+                  <div className="doctor-check__text">
+                    {t('Doctor.db_events', { count: String(dbCheck.result.event_count) })}
+                    {' · '}
+                    {t('Doctor.db_cards', { count: String(dbCheck.result.card_count) })}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="u-muted-sm">{t('Doctor.db_unhealthy')}</div>
             )}
           </div>
         </div>

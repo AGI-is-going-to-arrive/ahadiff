@@ -727,3 +727,56 @@
   min-width: 3ch;
   text-align: right;
 }
+
+/* ---- Responsive: small phones / phablets (320-599px) ----
+ * Placed after all base rules to win the CSS cascade. */
+@media (max-width: 599px) {
+  .settings {
+    padding-bottom: var(--sp-6);
+  }
+
+  .settings__head {
+    margin-bottom: var(--sp-5);
+    padding-bottom: var(--sp-4);
+  }
+
+  .settings-card {
+    margin-bottom: var(--sp-4);
+  }
+
+  .settings-card__header {
+    padding: var(--sp-3) var(--sp-4);
+  }
+
+  .settings-card__actions {
+    justify-content: stretch;
+  }
+
+  .settings-card__actions > * {
+    width: 100%;
+  }
+
+  .settings-input,
+  .settings-select,
+  .settings-input--model,
+  .settings-select--model {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .settings-model-select {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--sp-2);
+  }
+
+  .settings-model-select .settings-select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .settings-slider {
+    max-width: 100%;
+  }
+}

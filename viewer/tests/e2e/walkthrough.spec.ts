@@ -647,7 +647,7 @@ test.describe('walkthrough: full-app functional test', () => {
   /* ---------------------------------------------------------------- */
 
   test('Concepts — heading, d3-force graph renders, detail panel', async ({ page }) => {
-    await page.goto('/#/concepts');
+    await page.goto('/#/concepts?tab=graph');
 
     // Heading
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
@@ -707,7 +707,7 @@ test.describe('walkthrough: full-app functional test', () => {
 
   test('Concepts — large graphs default to list fallback with counts', async ({ page }) => {
     await installLargeGraphMock(page);
-    await page.goto('/#/concepts');
+    await page.goto('/#/concepts?tab=graph');
 
     await expect(page.locator('.concept-graph__listg')).toBeVisible();
     await expect(page.locator('.concept-graph__lnode')).toHaveCount(201);

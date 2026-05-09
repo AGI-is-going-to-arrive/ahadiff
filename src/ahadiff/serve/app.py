@@ -18,8 +18,9 @@ from .auth import require_token_bootstrap_request, serve_state
 from .middleware import LoopbackGuardMiddleware, RequestTimeoutMiddleware, WriteRateLimitMiddleware
 from .routes_audit import get_audit
 from .routes_config import get_config, get_doctor, put_config
+from .routes_db import post_db_check
 from .routes_export import get_export_results
-from .routes_graph import get_concept_graph, get_graph_status
+from .routes_graph import get_concept_graph, get_graph_status, post_graph_refresh
 from .routes_improve import get_improve_preflight
 from .routes_install import (
     get_install_targets,
@@ -163,6 +164,8 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
             Route("/api/signals/helpfulness", helpfulness, methods=["POST"]),
             Route("/api/graph/status", get_graph_status, methods=["GET"]),
             Route("/api/graph/concepts", get_concept_graph, methods=["GET"]),
+            Route("/api/graph/refresh", post_graph_refresh, methods=["POST"]),
+            Route("/api/db/check", post_db_check, methods=["POST"]),
             Route("/api/learn", post_learn, methods=["POST"]),
             Route("/api/learn/estimate", post_learn_estimate, methods=["POST"]),
             Route("/api/tasks", list_tasks, methods=["GET"]),

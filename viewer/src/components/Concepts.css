@@ -61,6 +61,66 @@
   border-bottom-color: var(--accent);
 }
 
+/* ---------- Graph tab toolbar ---------- */
+.concepts-page__graph-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.concepts-page__refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--accent);
+  color: var(--on-accent);
+  border: none;
+  border-radius: var(--radius-6);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+  min-height: 36px;
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.concepts-page__refresh-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.concepts-page__refresh-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.concepts-page__refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.concepts-page__refresh-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.concepts-page__refresh-msg {
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+.concepts-page__refresh-msg--success {
+  color: var(--ink);
+}
+
+.concepts-page__refresh-msg--error {
+  color: var(--danger);
+}
+
 /* ---------- Forced-colors (Windows High Contrast) ---------- */
 @media (forced-colors: active) {
   .concepts-page__error {
@@ -71,5 +131,11 @@
   }
   .concepts-page__tab--active {
     border-bottom-color: Highlight;
+  }
+  .concepts-page__refresh-btn {
+    border: 1px solid ButtonText;
+  }
+  .concepts-page__refresh-msg--error {
+    color: LinkText;
   }
 }

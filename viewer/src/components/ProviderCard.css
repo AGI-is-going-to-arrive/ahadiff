@@ -5,13 +5,18 @@
    ========================================================================== */
 
 .provider-card {
-  container-type: inline-size;
   border: 1px solid var(--hair);
   border-radius: var(--r-md);
   background: var(--paper);
   overflow: hidden;
   transition: border-color var(--dur-fast) var(--ease-out),
               box-shadow var(--dur-fast) var(--ease-out);
+}
+
+@supports (container-type: inline-size) {
+  .provider-card {
+    container-type: inline-size;
+  }
 }
 
 .provider-card--expanded {
@@ -414,17 +419,38 @@
   }
 }
 
-@container (max-width: 767px) {
-  .provider-card__form-row {
-    grid-template-columns: 1fr;
-    gap: var(--sp-1);
+@supports (container-type: inline-size) {
+  @container (max-width: 767px) {
+    .provider-card__form-row {
+      grid-template-columns: 1fr;
+      gap: var(--sp-1);
+    }
+    .provider-card__field {
+      grid-template-columns: 1fr;
+      gap: var(--sp-1);
+    }
+    .provider-card__probe-results {
+      grid-template-columns: 1fr;
+    }
   }
-  .provider-card__field {
-    grid-template-columns: 1fr;
-    gap: var(--sp-1);
-  }
-  .provider-card__probe-results {
-    grid-template-columns: 1fr;
+}
+
+/* Fallback for browsers without container queries (Firefox <110, Safari <16,
+   Chrome <105): approximate via viewport width — most narrow provider cards
+   appear under the same viewport widths where the grid collapses. */
+@supports not (container-type: inline-size) {
+  @media (max-width: 767px) {
+    .provider-card__form-row {
+      grid-template-columns: 1fr;
+      gap: var(--sp-1);
+    }
+    .provider-card__field {
+      grid-template-columns: 1fr;
+      gap: var(--sp-1);
+    }
+    .provider-card__probe-results {
+      grid-template-columns: 1fr;
+    }
   }
 }
 
