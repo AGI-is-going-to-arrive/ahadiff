@@ -746,7 +746,7 @@ run_id: str
 - `GET /api/tasks` — **stable**，参见 §9.10
 - `GET /api/tasks/{task_id}` — **stable**，参见 §9.10
 - `POST /api/tasks/{task_id}/cancel` — **stable**，参见 §9.10
-- `GET /api/tasks/{task_id}/progress` — SSE 事件流（SSE message text 为实现细节），**stable**，参见 §9.10
+- `GET /api/tasks/{task_id}/progress` — SSE 事件流（`TaskProgressEvent` JSON data payload 稳定；SSE framing text 为实现细节），**stable**，参见 §9.10
 
 ### 9.5 Concepts 真相源主从关系（1A）
 
@@ -803,7 +803,7 @@ run_id: str
 | **GET /api/graph/concepts** | ✅ 已接线 | 从 imported `.ahadiff/graphify/graph.json` 投影前端 ConceptGraph 所需的 sanitized nodes/edges/status；5D core d3-force/detail/fallback 已落地，Graphify import provenance 与 per-run `graphify_context.json` artifact 已有后端接线；5E 的基础跨页 freshness/status 卡片已由前端共享 `graph-store` 接住，完整 source/provenance UI、CLI polish 和真实大仓 signoff 仍属后续工作 |
 | **POST /api/learn** | ✅ 已接线 | `core/orchestrator.py` 从 `cli.py` 抽出 learn 主链；route 只接受安全 capture / learn 选项，返回 `202 {"task_id": ...}`，provider override 不从 HTTP 暴露；当前有 10 req/min 写限流，401/403/404 不消耗额度 |
 | **medium APIs** | ✅ 全部真实接线 | search/audit/mastery/weak/alignment/learning stats 均查 SQLite/JSONL，无 mock |
-| **/api/tasks*** | ✅ stable product API | 2026-05-02 R0 决策提升为稳定 API（§9.10）；`TaskInfoResponse` 全部字段、`TaskErrorCode`、`RecoveryHint` 均为稳定合约；SSE message text 为实现细节 |
+| **/api/tasks*** | ✅ stable product API | 2026-05-02 R0 决策提升为稳定 API（§9.10）；`TaskInfoResponse` 全部字段、`TaskErrorCode`、`RecoveryHint`、`TaskProgressEvent` JSON payload 均为稳定合约；SSE framing text 为实现细节 |
 
 ### 9.9 Serve 异步 IO 策略（1B）
 
@@ -826,13 +826,13 @@ run_id: str
 - `TaskInfoResponse` 已在 docstring 中声明 stable fields（task_id/task_type/status/progress/error/error_code/recovery_hint/created_at/started_at/completed_at/elapsed_seconds/result_summary）
 - 前端 Zod strict schema 严格消费全部字段，破坏性变更即刻打破产品
 - 59 后端测试 + 42 前端 unit 测试覆盖 tasks 契约
-- SSE progress 端点不被前端消费（前端用 polling），其格式变更不影响产品稳定性
+- SSE progress 端点已被前端以 EventSource 优先消费，并保留 polling fallback；JSON data payload 由 `TaskProgressEvent` 表达，SSE framing text 仍不作为产品文案承诺
 - Rate limiting (10 req/min) + admission control (max 1 pending) 已就位
 
 **稳定边界**：
 - **稳定**：5 个 REST 端点（POST /api/learn + 4 个 /api/tasks*）的路径、HTTP method、请求/响应 schema
-- **稳定**：TaskInfoResponse 全部字段、TaskErrorCode 枚举、RecoveryHint 枚举、TaskSubmitResponse、TaskCancelResponse
-- **实现细节（可变）**：SSE progress 事件的 text message 内容、队列容量数值、polling 间隔建议、429 retry_after 秒数
+- **稳定**：TaskInfoResponse 全部字段、TaskErrorCode 枚举、RecoveryHint 枚举、TaskSubmitResponse、TaskCancelResponse、TaskProgressEvent JSON payload
+- **实现细节（可变）**：SSE framing text 的具体拼接、队列容量数值、polling 间隔建议、429 retry_after 秒数
 
 **当前 runtime 事实**：
 - `GET /api/tasks` / `GET /api/tasks/{task_id}` 的 payload 已经带 `error_code`，类型收紧为 `TaskErrorCode | None`

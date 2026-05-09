@@ -2,11 +2,25 @@
   "name": "AhaDiff",
   "short_name": "AhaDiff",
   "description": "Verified diff learning layer — Ship with AI, Learn it back.",
+  "id": "./",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#FAF8F2",
   "theme_color": "#D27050",
   "icons": [
+    {
+      "src": "./icons/ahadiff-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icons/ahadiff-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
     {
       "src": "./icons/ahadiff.svg",
       "sizes": "any",

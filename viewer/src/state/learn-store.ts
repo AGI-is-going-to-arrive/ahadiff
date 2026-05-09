@@ -1,9 +1,17 @@
 import { create } from 'zustand';
-import { startLearnTask, estimateLearn, getTask, cancelTask, listTasks } from '../api/tasks';
+import {
+  startLearnTask,
+  estimateLearn,
+  getTask,
+  cancelTask,
+  listTasks,
+  subscribeTaskProgress,
+} from '../api/tasks';
 import { ApiError } from '../api/client';
 import { useRunsStore } from './runs-store';
 import { useGraphStore } from './graph-store';
 import type { TaskInfoResponse, LearnSubmitPayload, LearnEstimateResponse } from '../api/types';
+import type { TaskProgressSubscription } from '../api/tasks';
 
 type LearnPhase =
   | 'idle'
@@ -49,6 +57,7 @@ const MAX_CONSECUTIVE_POLL_ERRORS = 10;
  */
 
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
+let progressSubscription: TaskProgressSubscription | null = null;
 let submitGeneration = 0;
 let consecutiveErrors = 0;
 
@@ -80,8 +89,14 @@ function stopPolling(): void {
   }
 }
 
+function stopProgressSubscription(): void {
+  progressSubscription?.close();
+  progressSubscription = null;
+}
+
 function resetPollState(): void {
   stopPolling();
+  stopProgressSubscription();
   consecutiveErrors = 0;
 }
 
@@ -111,6 +126,69 @@ function retryAfterDelayMs(err: ApiError): number | null {
   return null;
 }
 
+function applyTaskInfo(capturedTaskId: string, info: TaskInfoResponse): boolean {
+  const current = useLearnStore.getState();
+  if (
+    current.taskId !== capturedTaskId ||
+    (current.phase !== 'running' && current.phase !== 'cancelling')
+  ) {
+    return true;
+  }
+  consecutiveErrors = 0;
+  const s = info.status;
+  if (s === 'completed') {
+    useLearnStore.setState({ phase: 'completed', task: info });
+    useRunsStore.setState({ lastLoadedAt: null });
+    useGraphStore.getState().invalidate();
+    resetPollState();
+    return true;
+  }
+  if (s === 'cancelled') {
+    useLearnStore.setState({ phase: 'cancelled', task: info });
+    resetPollState();
+    return true;
+  }
+  if (s === 'failed') {
+    const retryAllowedByTask = (info.recovery_hint ?? 'retry') === 'retry';
+    useLearnStore.setState({
+      phase: 'failed',
+      task: info,
+      error: info.error ?? 'Task failed',
+      errorCode: info.error_code ?? 'internal_error',
+      retryable: useLearnStore.getState().retryable && retryAllowedByTask,
+    });
+    resetPollState();
+    return true;
+  }
+  useLearnStore.setState({ task: info });
+  return false;
+}
+
+function startProgressTracking(taskId: string): void {
+  resetPollState();
+  try {
+    progressSubscription = subscribeTaskProgress(taskId, {
+      onProgress: (info) => {
+        applyTaskInfo(taskId, info);
+      },
+      onError: () => {
+        const current = useLearnStore.getState();
+        if (
+          current.taskId !== taskId ||
+          (current.phase !== 'running' && current.phase !== 'cancelling')
+        ) {
+          return;
+        }
+        stopProgressSubscription();
+        schedulePoll();
+      },
+    });
+  } catch {
+    progressSubscription = null;
+  }
+  if (progressSubscription === null) schedulePoll();
+}
+
 async function doPoll(): Promise<void> {
   const state = useLearnStore.getState();
   const { taskId, phase } = state;
@@ -121,29 +199,7 @@ async function doPoll(): Promise<void> {
   const capturedTaskId = taskId;
   try {
     const info = await getTask(capturedTaskId);
-    if (useLearnStore.getState().taskId !== capturedTaskId) return;
-    consecutiveErrors = 0;
-    const s = info.status;
-    if (s === 'completed') {
-      useLearnStore.setState({ phase: 'completed', task: info });
-      useRunsStore.setState({ lastLoadedAt: null });
-      useGraphStore.getState().invalidate();
-      resetPollState();
-    } else if (s === 'cancelled') {
-      useLearnStore.setState({ phase: 'cancelled', task: info });
-      resetPollState();
-    } else if (s === 'failed') {
-      const retryAllowedByTask = (info.recovery_hint ?? 'retry') === 'retry';
-      useLearnStore.setState({
-        phase: 'failed',
-        task: info,
-        error: info.error ?? 'Task failed',
-        errorCode: info.error_code ?? 'internal_error',
-        retryable: useLearnStore.getState().retryable && retryAllowedByTask,
-      });
-      resetPollState();
-    } else {
-      useLearnStore.setState({ task: info });
+    if (!applyTaskInfo(capturedTaskId, info)) {
       schedulePoll();
     }
   } catch (err: unknown) {
@@ -266,7 +322,7 @@ export const useLearnStore = create<LearnState>(() => ({
       if (submitGeneration !== generation || useLearnStore.getState().phase !== 'submitting') return;
       consecutiveErrors = 0;
       useLearnStore.setState({ phase: 'running', taskId: res.task_id });
-      schedulePoll();
+      startProgressTracking(res.task_id);
     } catch (err: unknown) {
       if (submitGeneration !== generation || useLearnStore.getState().phase !== 'submitting') return;
       if (err instanceof DOMException && err.name === 'AbortError') {
@@ -324,7 +380,7 @@ export const useLearnStore = create<LearnState>(() => ({
       error: null,
       errorCode: null,
     });
-    schedulePoll();
+    startProgressTracking(taskId);
   },
 
   cancelLearn: async () => {
@@ -364,7 +420,7 @@ export const useLearnStore = create<LearnState>(() => ({
         lastPayload: null,
         retryable: false,
       });
-      schedulePoll();
+      startProgressTracking(active.task_id);
     } catch {
       // Recovery is best-effort
     }

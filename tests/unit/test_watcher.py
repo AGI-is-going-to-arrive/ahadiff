@@ -698,18 +698,54 @@ class TestWatchLearnRunner:
         }
         assert captured["timeout"] == 5.0
 
+    def test_run_watch_learn_passes_changed_paths_to_request(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import ahadiff.core.orchestrator as orchestrator_module
+
+        captured: dict[str, Any] = {}
+
+        def fake_run_learn_pipeline(request: object) -> SimpleNamespace:
+            captured["request"] = request
+            return SimpleNamespace(
+                status="completed",
+                overall=None,
+                recoverable_errors=(),
+                warnings=(),
+            )
+
+        monkeypatch.setattr(orchestrator_module, "run_learn_pipeline", fake_run_learn_pipeline)
+
+        ok = cli_module._run_watch_learn(
+            tmp_path,
+            True,
+            False,
+            None,
+            frozenset({"src/app.py"}),
+        )
+
+        assert ok is True
+        request = captured["request"]
+        assert request.changed_paths == ("src/app.py",)
+        assert request.unstaged is True
+        assert request.include_untracked is True
+
     def test_retriggers_after_change_queued_during_run(self) -> None:
         first_started = threading.Event()
         finish_first = threading.Event()
         second_done = threading.Event()
         run_lock = threading.Lock()
         run_count = 0
+        seen_paths: list[frozenset[str]] = []
 
-        def run_learn() -> bool:
+        def run_learn(changed_paths: frozenset[str]) -> bool:
             nonlocal run_count
             with run_lock:
                 run_count += 1
                 current = run_count
+                seen_paths.append(changed_paths)
             if current == 1:
                 first_started.set()
                 assert finish_first.wait(timeout=2.0)
@@ -730,12 +766,13 @@ class TestWatchLearnRunner:
         runner.stop()
         with run_lock:
             assert run_count == 2
+            assert seen_paths == [frozenset({"a.py"}), frozenset({"b.py"})]
 
     def test_stop_clears_running_state_when_learn_hangs(self) -> None:
         started = threading.Event()
         release = threading.Event()
 
-        def run_learn() -> bool:
+        def run_learn(_changed_paths: frozenset[str]) -> bool:
             started.set()
             release.wait()
             return True
@@ -760,7 +797,7 @@ class TestWatchLearnRunner:
         run_lock = threading.Lock()
         run_count = 0
 
-        def run_learn() -> bool:
+        def run_learn(_changed_paths: frozenset[str]) -> bool:
             nonlocal run_count
             with run_lock:
                 run_count += 1
@@ -794,7 +831,7 @@ class TestWatchLearnRunner:
         active_count = 0
         max_active = 0
 
-        def run_learn() -> bool:
+        def run_learn(_changed_paths: frozenset[str]) -> bool:
             nonlocal active_count, max_active, run_count
             with run_lock:
                 run_count += 1

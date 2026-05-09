@@ -46,5 +46,7 @@ node_modules/
 
 # Development screenshots & test patches (local only)
 *.png
+!viewer/public/icons/ahadiff-192.png
+!viewer/public/icons/ahadiff-512.png
 *.patch
 !benchmarks/fixtures/**/*.patch

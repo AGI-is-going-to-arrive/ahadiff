@@ -772,6 +772,15 @@ def learn_cmd(
         bool,
         typer.Option("--include-untracked", help="Include untracked files in worktree capture."),
     ] = False,
+    changed_paths: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--changed-path",
+            help=(
+                "Limit a worktree learn run to this repo-relative path. Repeat for multiple paths."
+            ),
+        ),
+    ] = None,
     patch: Annotated[
         str | None,
         typer.Option("--patch", help="Read a unified diff from FILE or '-' for stdin."),
@@ -887,6 +896,7 @@ def learn_cmd(
                 staged=staged,
                 unstaged=unstaged,
                 include_untracked=include_untracked,
+                changed_paths=changed_paths,
                 patch=patch,
                 compare=compare,
                 compare_dir=compare_dir,
@@ -1902,12 +1912,21 @@ def serve_cmd(
         _handle_cli_error(error)
 
 
-def _run_watch_learn(wroot: Path, dr: bool, fl: bool, ln: str | None) -> bool:
+def _run_watch_learn(
+    wroot: Path,
+    dr: bool,
+    fl: bool,
+    ln: str | None,
+    changed_paths: frozenset[str],
+) -> bool:
     from .core.orchestrator import LearnRequest, run_learn_pipeline
 
     try:
         request = LearnRequest(
             workspace_root=wroot,
+            unstaged=True,
+            include_untracked=True,
+            changed_paths=tuple(sorted(changed_paths)),
             dry_run=dr,
             force_learn=fl,
             lang=ln,
@@ -1961,7 +1980,7 @@ _WATCH_LEARN_POLL_SECONDS = 0.05
 class _WatchLearnRunner:
     def __init__(
         self,
-        run_learn: Callable[[], bool],
+        run_learn: Callable[[frozenset[str]], bool],
         *,
         run_timeout_seconds: float = _WATCH_LEARN_TIMEOUT_SECONDS,
     ) -> None:
@@ -1972,21 +1991,26 @@ class _WatchLearnRunner:
         self._lock = threading.Lock()
         self._running = False
         self._retrigger_pending = False
+        self._active_changed_paths: frozenset[str] = frozenset()
+        self._queued_changed_paths: set[str] = set()
         self._stop_requested = threading.Event()
         self._consecutive_failures = 0
 
     def request(self, event: Any) -> None:
+        event_paths = frozenset(str(path) for path in event.changed_paths)
         with self._lock:
             if self._stop_requested.is_set():
                 return
             if self._running:
                 self._retrigger_pending = True
+                self._queued_changed_paths.update(event_paths)
                 console.print(
                     f"[dim]Queued retrigger ({len(event.changed_paths)} files)"
                     " — learn already in progress[/dim]"
                 )
                 return
             self._running = True
+            self._active_changed_paths = event_paths
         console.print(
             f"[green]Changes detected[/green]: "
             f"{len(event.changed_paths)} file(s), triggering learn..."
@@ -2005,13 +2029,16 @@ class _WatchLearnRunner:
                     with self._lock:
                         self._running = False
                         self._retrigger_pending = False
+                        self._queued_changed_paths.clear()
                     return
                 if not first_run:
                     console.print(
                         "[green]Re-triggering[/green] for changes queued during previous learn..."
                     )
                 first_run = False
-                outcome = self._run_learn_with_timeout()
+                with self._lock:
+                    active_changed_paths = self._active_changed_paths
+                outcome = self._run_learn_with_timeout(active_changed_paths)
                 if outcome is False:
                     self._consecutive_failures += 1
                     retry_idx = min(self._consecutive_failures - 1, len(_WATCH_RETRY_DELAYS) - 1)
@@ -2025,6 +2052,7 @@ class _WatchLearnRunner:
                             with self._lock:
                                 self._running = False
                                 self._retrigger_pending = False
+                                self._queued_changed_paths.clear()
                             return
                         continue
                     console.print("[red]Exhausted retries[/red] — waiting for next file change.")
@@ -2035,13 +2063,16 @@ class _WatchLearnRunner:
                     if self._stop_requested.is_set() or not self._retrigger_pending:
                         self._running = False
                         self._retrigger_pending = False
+                        self._queued_changed_paths.clear()
                         return
+                    self._active_changed_paths = frozenset(self._queued_changed_paths)
+                    self._queued_changed_paths.clear()
                     self._retrigger_pending = False
         finally:
             with self._lock:
                 self._running = False
 
-    def _run_learn_with_timeout(self) -> bool | None:
+    def _run_learn_with_timeout(self, changed_paths: frozenset[str]) -> bool | None:
         done = threading.Event()
         result: bool | None = None
         errors: list[BaseException] = []
@@ -2050,7 +2081,7 @@ class _WatchLearnRunner:
         def _target() -> None:
             nonlocal result
             try:
-                result = self._run_learn()
+                result = self._run_learn(changed_paths)
             except BaseException as exc:
                 errors.append(exc)
             finally:
@@ -2128,7 +2159,9 @@ def watch_cmd(
             debounce_seconds=debounce,
             cooldown_seconds=cooldown,
         )
-        runner = _WatchLearnRunner(lambda: _run_watch_learn(root, dry_run, force_learn, lang))
+        runner = _WatchLearnRunner(
+            lambda paths: _run_watch_learn(root, dry_run, force_learn, lang, paths)
+        )
 
         watcher = FileWatcher(root, on_change=runner.request, config=config)
         watcher.start()

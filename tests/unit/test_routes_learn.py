@@ -186,6 +186,43 @@ def test_post_learn_estimate_happy_path(
     assert payload.warnings == []
 
 
+def test_post_learn_estimate_passes_changed_paths_to_capture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path / ".ahadiff")
+    captured_kwargs: dict[str, object] = {}
+
+    def fake_capture_patch(**kwargs: object) -> SimpleNamespace:
+        captured_kwargs.update(kwargs)
+        return SimpleNamespace(
+            persisted_patch_text="diff --git a/src/app.py b/src/app.py\n+print('hello')\n",
+            metadata={"selected_files": ["src/app.py"]},
+        )
+
+    def fake_estimate_text_tokens(_text: str, _strategy: object) -> int:
+        return 10
+
+    def fake_provider_limits_from_config(**_: object) -> tuple[int, int]:
+        return 16_000, 4_000
+
+    monkeypatch.setattr(routes_learn, "capture_patch", fake_capture_patch)
+    monkeypatch.setattr(routes_learn, "estimate_text_tokens", fake_estimate_text_tokens)
+    monkeypatch.setattr(
+        routes_learn,
+        "_provider_limits_from_config",
+        fake_provider_limits_from_config,
+    )
+
+    resp = _post_learn_estimate(
+        client,
+        body={"changed_paths": ["src/app.py"], "unstaged": True},
+    )
+
+    assert resp.status_code == 200
+    assert captured_kwargs["changed_paths"] == ("src/app.py",)
+
+
 @pytest.mark.parametrize(
     ("estimated_tokens", "context_window", "file_count", "risk_level"),
     [
@@ -407,7 +444,7 @@ def test_post_learn_drops_provider_fields_before_request_construction(
     assert "unknown_fields" in str(body.get("error", ""))
 
 
-def test_post_learn_accepts_changed_paths_without_passing_to_request(
+def test_post_learn_passes_changed_paths_to_request(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -417,7 +454,7 @@ def test_post_learn_accepts_changed_paths_without_passing_to_request(
 
     def recording_learn_request(**kwargs: Any) -> LearnRequest:
         constructed_kwargs.update(kwargs)
-        assert "changed_paths" not in kwargs
+        assert kwargs["changed_paths"] == ("src/app.py", "tests/test_app.py")
         return LearnRequest(**kwargs)
 
     def fake_run_learn_pipeline(request: LearnRequest, **_: object) -> LearnResult:
@@ -437,7 +474,7 @@ def test_post_learn_accepts_changed_paths_without_passing_to_request(
 
     assert info["status"] == "completed"
     assert constructed_kwargs["workspace_root"] == tmp_path.parent
-    assert "changed_paths" not in constructed_kwargs
+    assert constructed_kwargs["changed_paths"] == ("src/app.py", "tests/test_app.py")
 
 
 # ---------------------------------------------------------------------------

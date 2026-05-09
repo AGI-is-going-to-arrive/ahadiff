@@ -15,6 +15,10 @@ const browsers = [
   { name: 'webkit', device: devices['Desktop Safari'] },
 ];
 
+const devServerPort = Number(process.env.AHADIFF_VIEWER_E2E_PORT ?? '5173');
+const devServerUrl = `http://localhost:${devServerPort}`;
+const reuseExistingDevServer = !process.env.CI && process.env.AHADIFF_VIEWER_E2E_PORT === undefined;
+
 const projects = viewports.flatMap((v) =>
   browsers.map((b) => ({
     name: `${b.name}-${v.name}`,
@@ -33,7 +37,7 @@ export default defineConfig({
   workers: process.env.CI ? 2 : undefined,
   reporter: [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: devServerUrl,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     locale: 'en-US',
@@ -41,9 +45,9 @@ export default defineConfig({
   },
   projects,
   webServer: {
-    command: 'pnpm run dev',
-    url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
+    command: `pnpm exec vite --port ${devServerPort} --strictPort`,
+    url: devServerUrl,
+    reuseExistingServer: reuseExistingDevServer,
     timeout: 120_000,
     stdout: 'pipe',
     stderr: 'pipe',

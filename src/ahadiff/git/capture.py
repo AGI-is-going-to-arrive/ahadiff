@@ -174,6 +174,7 @@ def capture_patch(
     staged: bool = False,
     unstaged: bool = False,
     include_untracked: bool = False,
+    changed_paths: Iterable[str] | None = None,
     patch: str | None = None,
     compare: tuple[Path, Path] | None = None,
     compare_dir: tuple[Path, Path] | None = None,
@@ -216,6 +217,7 @@ def capture_patch(
         staged=staged,
         unstaged=unstaged,
         include_untracked=include_untracked,
+        changed_paths=changed_paths,
         patch=patch,
         compare=compare,
         compare_dir=compare_dir,
@@ -841,6 +843,7 @@ def _capture_input(
     staged: bool,
     unstaged: bool,
     include_untracked: bool,
+    changed_paths: Iterable[str] | None,
     patch: str | None,
     compare: tuple[Path, Path] | None,
     compare_dir: tuple[Path, Path] | None,
@@ -849,6 +852,22 @@ def _capture_input(
     max_patch_bytes: int | None,
 ) -> _RawCapture:
     effective_max_patch_bytes = _effective_max_patch_bytes(max_patch_bytes)
+    path_scoped = changed_paths is not None
+    if path_scoped and not any(
+        (
+            revision is not None,
+            last,
+            since is not None,
+            patch is not None,
+            compare is not None,
+            compare_dir is not None,
+            patch_url is not None,
+            staged,
+            unstaged,
+        )
+    ):
+        unstaged = True
+        include_untracked = True
     selections = [
         revision is not None,
         last,
@@ -871,6 +890,8 @@ def _capture_input(
         raise InputError("--author can only be used together with --since")
     if include_untracked and not unstaged:
         raise InputError("--include-untracked can only be used together with --unstaged")
+    if path_scoped and not (staged or unstaged):
+        raise InputError("--changed-path can only be used with worktree captures")
 
     if patch is not None:
         return _capture_patch_input(
@@ -918,6 +939,7 @@ def _capture_input(
             staged=staged,
             unstaged=unstaged,
             include_untracked=include_untracked,
+            changed_paths=changed_paths,
             max_files=max_files,
             max_patch_bytes=effective_max_patch_bytes,
         )
@@ -1145,10 +1167,13 @@ def _capture_worktree(
     staged: bool,
     unstaged: bool,
     include_untracked: bool,
+    changed_paths: Iterable[str] | None,
     max_files: int,
     max_patch_bytes: int,
 ) -> _RawCapture:
     head_sha = ensure_head_exists(repo)
+    changed_path_scope = _normalize_changed_path_scope(repo.root, changed_paths)
+    pathspecs = _git_literal_pathspecs(changed_path_scope)
     combined_mode = staged and unstaged
     args = ["diff", "--no-ext-diff"]
     if combined_mode:
@@ -1165,8 +1190,12 @@ def _capture_worktree(
         source_kind = "git_unstaged"
         base_ref = "INDEX"
         head_ref = "WORKTREE"
+    if pathspecs:
+        args.extend(["--", *pathspecs])
     patch_text = _run_git_patch_text(repo.root, *args, max_patch_bytes=max_patch_bytes)
-    untracked_files = _list_untracked_files(repo.root) if include_untracked else []
+    untracked_files = (
+        _list_untracked_files(repo.root, pathspecs=pathspecs) if include_untracked else []
+    )
     if untracked_files:
         patch_text = patch_text + _build_untracked_patch(
             repo.root,
@@ -1176,7 +1205,7 @@ def _capture_worktree(
         _ensure_patch_text_size(patch_text, max_patch_bytes=max_patch_bytes)
 
     changed_paths = _limit_text_map_paths(
-        _changed_paths_in_worktree(repo.root, staged, unstaged),
+        _changed_paths_in_worktree(repo.root, staged, unstaged, pathspecs=pathspecs),
         max_files=max_files,
     )
     if combined_mode:
@@ -1231,6 +1260,8 @@ def _capture_worktree(
         source_detail["head_detached"] = True
     if untracked_files:
         source_detail["untracked_count"] = len(untracked_files)
+    if changed_path_scope is not None:
+        source_detail["changed_path_scope_count"] = len(changed_path_scope)
     return _RawCapture(
         source_kind=source_kind,
         source_ref=source_ref,
@@ -2338,14 +2369,63 @@ def _changed_paths_for_commit(repo_root: Path, revision: str) -> list[str]:
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
-def _changed_paths_in_worktree(repo_root: Path, staged: bool, unstaged: bool) -> list[str]:
+def _changed_paths_in_worktree(
+    repo_root: Path,
+    staged: bool,
+    unstaged: bool,
+    *,
+    pathspecs: list[str] | None = None,
+) -> list[str]:
+    suffix = ["--", *(pathspecs or [])] if pathspecs else []
     if staged and unstaged:
-        result = run_git(repo_root, "diff", "--name-only", "HEAD")
+        result = run_git(repo_root, "diff", "--name-only", "HEAD", *suffix)
     elif staged:
-        result = run_git(repo_root, "diff", "--cached", "--name-only")
+        result = run_git(repo_root, "diff", "--cached", "--name-only", *suffix)
     else:
-        result = run_git(repo_root, "diff", "--name-only")
+        result = run_git(repo_root, "diff", "--name-only", *suffix)
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
+def _normalize_changed_path_scope(
+    repo_root: Path,
+    changed_paths: Iterable[str] | None,
+) -> tuple[str, ...] | None:
+    if changed_paths is None:
+        return None
+    root = repo_root.resolve()
+    normalized: list[str] = []
+    for raw_path in changed_paths:
+        raw = str(raw_path)
+        if not raw or raw.strip() == "":
+            raise InputError("changed path must not be empty")
+        if any(ord(ch) < 32 or ord(ch) == 127 for ch in raw):
+            raise InputError("changed path contains control characters")
+        raw = raw.replace("\\", "/")
+        candidate = Path(raw)
+        if candidate.is_absolute():
+            try:
+                relative = candidate.resolve(strict=False).relative_to(root)
+            except ValueError as exc:
+                raise InputError("changed path escapes repository root") from exc
+        else:
+            relative = candidate
+        if not relative.parts or relative.as_posix() in {"", "."}:
+            raise InputError("changed path must not be empty")
+        if any(part in {"", ".", ".."} for part in relative.parts):
+            raise InputError("changed path escapes repository root")
+        posix_path = relative.as_posix()
+        if posix_path.startswith((".git/", ".ahadiff/")) or posix_path in {".git", ".ahadiff"}:
+            raise InputError("changed path targets an internal repository directory")
+        if posix_path.startswith(":"):
+            raise InputError("changed path must be a literal repository-relative path")
+        normalized.append(posix_path)
+    return tuple(dict.fromkeys(normalized))
+
+
+def _git_literal_pathspecs(paths: tuple[str, ...] | None) -> list[str]:
+    if not paths:
+        return []
+    return [f":(top,literal){path}" for path in paths]
 
 
 def _limit_text_map_paths(paths: list[str], *, max_files: int) -> list[str]:
@@ -2460,8 +2540,9 @@ def _resolve_index_files(
     return resolved
 
 
-def _list_untracked_files(repo_root: Path) -> list[str]:
-    result = run_git(repo_root, "ls-files", "--others", "--exclude-standard")
+def _list_untracked_files(repo_root: Path, *, pathspecs: list[str] | None = None) -> list[str]:
+    suffix = ["--", *(pathspecs or [])] if pathspecs else []
+    result = run_git(repo_root, "ls-files", "--others", "--exclude-standard", *suffix)
     return [
         line.strip()
         for line in result.stdout.splitlines()

@@ -253,6 +253,30 @@ describe('LearnModeDialog', () => {
     await expect.poll(() => page.locator('#learn-dialog-advanced').count()).toBe(0);
   });
 
+  it('advanced section explains path scope and uncommon sources', async () => {
+    await renderDialog(page);
+    await page.waitForSelector('[role="dialog"]');
+
+    await page.locator('.learn-dialog__advanced-toggle').click();
+    await page.waitForSelector('#learn-dialog-advanced');
+
+    await expect.poll(() => page.locator('#learn-mode-path-scope-hint').textContent()).toContain(
+      'Leave empty for all paths',
+    );
+    await expect.poll(() => page.locator('.learn-dialog__advanced-group-label').textContent()).toBe(
+      'Other sources',
+    );
+    await expect.poll(() => page.locator('label[for="learn-mode-since"]').textContent()).toContain(
+      'Recent commit window',
+    );
+    await expect.poll(() => page.locator('label[for="learn-mode-patch"]').textContent()).toContain(
+      'Unified diff text',
+    );
+    await expect.poll(() => page.locator('#learn-mode-path-scope').getAttribute('aria-describedby')).toBe(
+      'learn-mode-path-scope-hint',
+    );
+  });
+
   it('inerts all body siblings while open and restores existing inert state', async () => {
     await page.goto(`${baseUrl}${TEST_PATH}`);
     await page.waitForFunction(() => Boolean(window.__learnModeDialogReady));
@@ -279,7 +303,7 @@ describe('LearnModeDialog', () => {
     await expect.poll(() => page.locator('#already-inert-panel').getAttribute('inert')).toBe('');
   });
 
-  it('selecting "Since" radio enables its input and deselects quick tiles', async () => {
+  it('selecting or focusing "Since" input selects that source and deselects quick tiles', async () => {
     await renderDialog(page);
     await page.waitForSelector('[role="dialog"]');
 
@@ -291,14 +315,10 @@ describe('LearnModeDialog', () => {
     const sinceRow = page.locator('.learn-dialog__radio-row').nth(0);
     const sinceInput = sinceRow.locator('input[type="text"]');
 
-    // Input starts disabled (working mode is active)
-    await expect(sinceInput.isDisabled()).resolves.toBe(true);
-
-    // Click the label (triggers the radio via htmlFor)
-    await page.locator('label[for="learn-mode-since"]').click();
-
-    // Input becomes enabled
+    // Input is directly focusable; focusing or typing also selects this source.
     await expect.poll(() => sinceInput.isDisabled()).toBe(false);
+    await sinceInput.focus();
+    await expect.poll(() => page.locator('#learn-mode-since').isChecked()).toBe(true);
 
     // Quick tiles should all be deselected
     const tiles = page.locator('.learn-dialog__tile');
@@ -317,6 +337,56 @@ describe('LearnModeDialog', () => {
       { staged: true, unstaged: true, include_untracked: true },
     ]);
     await expect.poll(() => getCloseCount(page)).toBe(1);
+  });
+
+  it('path scope input sends deduped changed_paths for working mode', async () => {
+    await renderDialog(page);
+    await page.waitForSelector('[role="dialog"]');
+
+    await page.locator('.learn-dialog__advanced-toggle').click();
+    await page.waitForSelector('#learn-dialog-advanced');
+    await page.locator('#learn-mode-path-scope').fill('  src/app.py\n\nsrc/app.py\nviewer/src/App.tsx  ');
+    await page.locator('.learn-dialog__btn--primary').click();
+
+    await expect.poll(() => getPayloads(page)).toEqual([
+      {
+        staged: true,
+        unstaged: true,
+        include_untracked: true,
+        changed_paths: ['src/app.py', 'viewer/src/App.tsx'],
+      },
+    ]);
+  });
+
+  it('path scope is ignored when a non-worktree mode is submitted', async () => {
+    await renderDialog(page);
+    await page.waitForSelector('[role="dialog"]');
+
+    await page.locator('.learn-dialog__advanced-toggle').click();
+    await page.waitForSelector('#learn-dialog-advanced');
+    await page.locator('#learn-mode-path-scope').fill('src/app.py');
+    await page.locator('.learn-dialog__tile').nth(3).click();
+
+    await expect.poll(() => page.locator('#learn-mode-path-scope').isDisabled()).toBe(true);
+    await page.locator('.learn-dialog__btn--primary').click();
+
+    await expect.poll(() => getPayloads(page)).toEqual([{ last: true }]);
+  });
+
+  it('path scope rejects more than 500 unique paths', async () => {
+    await renderDialog(page);
+    await page.waitForSelector('[role="dialog"]');
+
+    await page.locator('.learn-dialog__advanced-toggle').click();
+    await page.waitForSelector('#learn-dialog-advanced');
+    await page.locator('#learn-mode-path-scope').fill(
+      Array.from({ length: 501 }, (_value, index) => `src/file-${index}.py`).join('\n'),
+    );
+
+    await expect.poll(() => page.locator('.learn-dialog__btn--primary').isDisabled()).toBe(true);
+    await expect.poll(() => page.locator('#learn-mode-path-scope-error').textContent()).toContain(
+      '500',
+    );
   });
 
   it('Start button calls requestLearn with { unstaged, include_untracked } for unstaged mode', async () => {
@@ -477,6 +547,23 @@ describe('LearnModeDialog', () => {
     ]);
   });
 
+  it('typing an inactive advanced source input selects that source', async () => {
+    await renderDialog(page);
+    await page.waitForSelector('[role="dialog"]');
+
+    await page.locator('.learn-dialog__advanced-toggle').click();
+    await page.waitForSelector('#learn-dialog-advanced');
+
+    await page.locator('#learn-mode-revision-value').fill('  def456  ');
+
+    await expect.poll(() => page.locator('#learn-mode-revision').isChecked()).toBe(true);
+    await page.locator('.learn-dialog__btn--primary').click();
+
+    await expect.poll(() => getPayloads(page)).toEqual([
+      { revision: 'def456' },
+    ]);
+  });
+
   it('advanced collapse preserves selected advanced mode and payload', async () => {
     await renderDialog(page);
     await page.waitForSelector('[role="dialog"]');
@@ -623,6 +710,24 @@ describe('LearnModeDialog', () => {
     await expect.poll(() => getPayloads(page)).toEqual([
       { staged: true, unstaged: true, include_untracked: true, dry_run: true },
     ]);
+  });
+
+  it('advanced run options explain backend behavior', async () => {
+    await renderDialog(page);
+    await page.waitForSelector('[role="dialog"]');
+
+    await page.locator('.learn-dialog__advanced-toggle').click();
+    await page.waitForSelector('#learn-dialog-advanced');
+
+    await expect.poll(() => page.locator('.learn-dialog__options-title').textContent()).toBe(
+      'Run options',
+    );
+    await expect.poll(() => page.locator('.learn-dialog__checkbox-hint').nth(0).textContent())
+      .toContain('Backend still captures and checks safety');
+    await expect.poll(() => page.locator('.learn-dialog__checkbox-hint').nth(1).textContent())
+      .toContain('Graphify code-map context');
+    await expect.poll(() => page.locator('.learn-dialog__checkbox-hint').nth(2).textContent())
+      .toContain('No lesson or quiz is generated');
   });
 
   it('lang and privacy controls are included in payload when explicitly selected', async () => {

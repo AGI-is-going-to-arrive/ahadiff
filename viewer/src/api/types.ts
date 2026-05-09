@@ -410,6 +410,7 @@ export interface LearnSubmitPayload {
   staged?: boolean;
   unstaged?: boolean;
   include_untracked?: boolean;
+  changed_paths?: string[];
   since?: string;
   patch?: string;
   compare?: [string, string];
@@ -482,6 +483,10 @@ export interface TaskInfoResponse {
   timeout_seconds?: number | null;
   deadline_at?: string | null;
 }
+
+export type TaskProgressEvent =
+  | { event: 'progress'; data: TaskInfoResponse }
+  | { event: 'error'; data: { error: string } };
 
 export interface TaskListResponse {
   tasks: TaskInfoResponse[];

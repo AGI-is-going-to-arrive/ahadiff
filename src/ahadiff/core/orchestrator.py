@@ -12,7 +12,7 @@ import os
 import shutil
 import stat
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, TypeVar, cast
 
@@ -66,6 +66,7 @@ class LearnRequest:
     staged: bool = False
     unstaged: bool = False
     include_untracked: bool = False
+    changed_paths: Iterable[str] | None = None
     patch: str | None = None
     compare: tuple[Path, Path] | None = None
     compare_dir: tuple[Path, Path] | None = None
@@ -760,6 +761,7 @@ def run_learn_pipeline(
                 staged=request.staged,
                 unstaged=request.unstaged,
                 include_untracked=request.include_untracked,
+                changed_paths=request.changed_paths,
                 patch=request.patch,
                 compare=request.compare,
                 compare_dir=request.compare_dir,

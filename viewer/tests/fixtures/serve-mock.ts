@@ -906,7 +906,7 @@ export async function installServeMock(page: Page): Promise<void> {
         contentType: 'text/event-stream',
         body:
           'event: progress\n' +
-          'data: {"task_id":"mock-task-001","task_type":"learn","status":"completed","progress":{"current":10,"total":10,"message":"Done"},"result_summary":{"run_id":"test-run","status":"completed","overall":88,"verdict":"PASS","warnings":[]},"error":null,"error_code":null,"created_at":"2026-04-27T00:00:00Z","started_at":"2026-04-27T00:00:01Z","completed_at":"2026-04-27T00:00:05Z","elapsed_seconds":4,"recovery_hint":null}\n\n',
+          'data: {"event":"progress","data":{"task_id":"mock-task-001","task_type":"learn","status":"completed","progress":{"current":10,"total":10,"message":"Done"},"result_summary":{"run_id":"test-run","status":"completed","overall":88,"verdict":"PASS","warnings":[]},"error":null,"error_code":null,"created_at":"2026-04-27T00:00:00Z","started_at":"2026-04-27T00:00:01Z","completed_at":"2026-04-27T00:00:05Z","elapsed_seconds":4,"recovery_hint":null}}\n\n',
       }),
   );
   await page.route(

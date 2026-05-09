@@ -3,10 +3,11 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import type { ClientRequest, IncomingMessage } from 'node:http';
 
-const DEV_API_ORIGIN = 'http://127.0.0.1:8765';
+const DEV_API_ORIGIN = process.env.AHADIFF_DEV_API_ORIGIN ?? 'http://127.0.0.1:8765';
+const DEV_API_HOST = new URL(DEV_API_ORIGIN).host;
 
 function rewriteLoopbackProxyHeaders(proxyReq: ClientRequest, _req: IncomingMessage): void {
-  proxyReq.setHeader('Host', '127.0.0.1:8765');
+  proxyReq.setHeader('Host', DEV_API_HOST);
   proxyReq.setHeader('Origin', DEV_API_ORIGIN);
   proxyReq.setHeader('Referer', DEV_API_ORIGIN);
 }

@@ -1,9 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { startLearnTask, getTask, cancelTask, listTasks } from '../api/tasks';
+import {
+  startLearnTask,
+  getTask,
+  cancelTask,
+  listTasks,
+  subscribeTaskProgress,
+} from '../api/tasks';
 import { ApiError } from '../api/client';
 import { useRunsStore } from './runs-store';
 import { useLearnStore } from './learn-store';
-import type { TaskInfoResponse, TaskSubmitResponse } from '../api/types';
+import type { LearnSubmitPayload, TaskInfoResponse, TaskSubmitResponse } from '../api/types';
 
 const graphInvalidateMock = vi.hoisted(() => vi.fn());
 
@@ -13,6 +19,7 @@ vi.mock('../api/tasks', () => ({
   getTask: vi.fn(),
   cancelTask: vi.fn(),
   listTasks: vi.fn(),
+  subscribeTaskProgress: vi.fn(),
 }));
 
 vi.mock('./graph-store', () => ({
@@ -25,6 +32,7 @@ const mockedStartLearnTask = vi.mocked(startLearnTask);
 const mockedGetTask = vi.mocked(getTask);
 const mockedCancelTask = vi.mocked(cancelTask);
 const mockedListTasks = vi.mocked(listTasks);
+const mockedSubscribeTaskProgress = vi.mocked(subscribeTaskProgress);
 
 function makeTaskInfo(overrides: Partial<TaskInfoResponse> = {}): TaskInfoResponse {
   return {
@@ -61,6 +69,7 @@ describe('learn store', () => {
     });
     useRunsStore.setState({ lastLoadedAt: Date.now() });
     graphInvalidateMock.mockClear();
+    mockedSubscribeTaskProgress.mockReturnValue(null);
   });
 
   afterEach(() => {
@@ -80,6 +89,69 @@ describe('learn store', () => {
     expect(useLearnStore.getState().phase).toBe('running');
     expect(useLearnStore.getState().taskId).toBe('task-1');
     expect(mockedStartLearnTask).toHaveBeenCalledWith({});
+  });
+
+  it('submitLearn streams task progress without polling while SSE is active', async () => {
+    const close = vi.fn();
+    let handlers: Parameters<typeof subscribeTaskProgress>[1] | null = null;
+    mockedStartLearnTask.mockResolvedValue({ task_id: 'task-1' } satisfies TaskSubmitResponse);
+    mockedSubscribeTaskProgress.mockImplementation((taskId, nextHandlers) => {
+      expect(taskId).toBe('task-1');
+      handlers = nextHandlers;
+      return { close };
+    });
+
+    await useLearnStore.getState().submitLearn();
+    expect(useLearnStore.getState().phase).toBe('running');
+
+    handlers!.onProgress(
+      makeTaskInfo({
+        progress: {
+          current: 4,
+          total: 10,
+          message: 'Generating quiz',
+          step_started_at: '2026-05-01T00:00:01Z',
+        },
+      }),
+    );
+    expect(useLearnStore.getState().task?.progress.current).toBe(4);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(mockedGetTask).not.toHaveBeenCalled();
+
+    handlers!.onProgress(
+      makeTaskInfo({
+        status: 'completed',
+        result_summary: {
+          run_id: 'run-1',
+          status: 'finalized',
+          overall: 91,
+          verdict: 'pass',
+          warnings: [],
+        },
+      }),
+    );
+    expect(useLearnStore.getState().phase).toBe('completed');
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(graphInvalidateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('submitLearn falls back to polling when the progress stream errors', async () => {
+    const close = vi.fn();
+    let handlers: Parameters<typeof subscribeTaskProgress>[1] | null = null;
+    mockedStartLearnTask.mockResolvedValue({ task_id: 'task-1' } satisfies TaskSubmitResponse);
+    mockedSubscribeTaskProgress.mockImplementation((_taskId, nextHandlers) => {
+      handlers = nextHandlers;
+      return { close };
+    });
+    mockedGetTask.mockResolvedValue(makeTaskInfo({ status: 'completed' }));
+
+    await useLearnStore.getState().submitLearn();
+    handlers!.onError(new Error('stream closed'));
+    await vi.advanceTimersByTimeAsync(1500);
+
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(mockedGetTask).toHaveBeenCalledWith('task-1');
+    expect(useLearnStore.getState().phase).toBe('completed');
   });
 
   it('submitLearn sets phase to failed on rejection', async () => {
@@ -159,7 +231,12 @@ describe('learn store', () => {
 
   it('submitLearn stores lastPayload', async () => {
     mockedStartLearnTask.mockResolvedValue({ task_id: 'task-1' });
-    const payload = { last: true, lang: 'en' as const };
+    const payload = {
+      unstaged: true,
+      include_untracked: true,
+      changed_paths: ['src/app.py'],
+      lang: 'en',
+    } satisfies LearnSubmitPayload;
 
     await useLearnStore.getState().submitLearn(payload);
 

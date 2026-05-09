@@ -3,7 +3,7 @@
 > Research-only. No code changes. Based on reading all gap analysis docs, V6 HTML reference, Blueprint HTML, and current viewer source.
 
 > Current-state note (2026-05-02): sections 11.4 and 11.6 were written before the latest viewer follow-up. The frontend now has a shared `GraphifyCard` backed by `viewer/src/state/graph-store.ts` with 30s TTL, 15s request timeout, in-flight dedupe, `AbortController`, and invalidate-then-refetch behavior. This closes the basic cross-page freshness/status card gap where the card is mounted. It does **not** close the full V6 Graphify source card, provenance display, CLI polish, or real large-graph signoff work.
-> Current-state note (2026-05-08): this remains a research snapshot, not the current implementation ledger. The v0.1 SRS UI intentionally hides Easy and keeps only Wrong / Hard / Good visible; Topbar Learn Run now opens the lazy-loaded Learn Mode Dialog with 10 capture modes and `/api/learn/estimate` preflight; Settings has a 7-tab shape with Preferences for language, appearance, `learnability_threshold`, and `desired_retention`; Ratchet TSV export is implemented. ConceptGraph no longer has cluster/group-by-kind mode: it now exposes Graph / List only, defaults 201+ nodes to List, keeps Full graph available, supports full-graph pan/zoom without hard viewport bounds, and strips local home/system prefixes from displayed node file paths. See `doc/FRONTEND_GAP_REPORT.md` for the current closed/open gap list.
+> Current-state note (2026-05-09): this remains a research snapshot, not the current implementation ledger. The v0.1 SRS UI intentionally hides Easy and keeps only Wrong / Hard / Good visible; Topbar Learn Run now opens the lazy-loaded Learn Mode Dialog with 10 capture modes, `/api/learn/estimate` preflight, and working-tree Path scope; Settings has a 7-tab shape with Preferences for language, appearance, `learnability_threshold`, and `desired_retention`; Ratchet TSV export is implemented. ConceptGraph no longer has cluster/group-by-kind mode: it now exposes Graph / List only, defaults 201+ nodes to List, keeps Full graph available, supports full-graph pan/zoom without hard viewport bounds, and strips local home/system prefixes from displayed node file paths. Task progress now uses SSE first with polling fallback. The PWA manifest has same-origin `id` / `scope` and SVG + 192/512 PNG icons; the offline shell still needs its own E2E/signoff. See `doc/FRONTEND_GAP_REPORT.md` for the current closed/open gap list.
 
 ---
 
@@ -458,7 +458,7 @@ There is no `misconception` card type in the backend. `DueReviewCard` has a `sca
 | `walkthrough.spec.ts` | Extend with: settings tab switch, lesson TOC click, diff claim-inspector click | +6 |
 | `i18n.spec.ts` | New keys coverage, sidebar bilingual labels in both locales | +4 |
 | `media-features.spec.ts` | Drawer/hamburger in forced-colors, search overlay in dark mode | +3 |
-| `pwa.spec.ts` (NEW) | manifest.json served, service worker registered, offline shell loads | +3 |
+| `manifest.test.ts` (LANDED) + future `pwa.spec.ts` | manifest shape + icon files are covered; service worker registration / offline shell still need browser E2E | +1 landed / +2 future |
 | `a11y.spec.ts` (NEW) | axe-core audit on Dashboard, Lesson, Review, Settings (0 violations) | +4 |
 
 **Total new tests**: ~66
@@ -473,11 +473,13 @@ Current 5 viewports are sufficient. May add `1280px` to match V6's `min-width:12
 
 ## 10. PWA Assessment
 
+Current implementation note (2026-05-09): the app already uses `vite-plugin-pwa` in `viewer/vite.config.ts`, with `manifest: false` so the checked-in `viewer/public/manifest.json` is the manifest source. This follow-up added same-origin `id` / `scope`, 192/512 PNG icons, and `manifest.test.ts`. `pnpm build` currently generates `sw.js`; offline-shell behavior is still not covered by E2E, so only manifest/installability is counted as closed here.
+
 ### What's Needed
 
-1. **`manifest.json`** (~30 lines):
+1. **`manifest.json`** (~30 lines, current manifest basics closed):
    - `name`, `short_name`, `start_url: "./"`, `display: "standalone"`, `theme_color`, `background_color`
-   - Icons: 192x192 + 512x512 PNG (need to generate from brand mark)
+   - Icons: 192x192 + 512x512 PNG
    - `scope: "./"` (HashRouter compatible)
 
 2. **Service Worker** via `vite-plugin-pwa`:
@@ -513,7 +515,7 @@ Current 5 viewports are sufficient. May add `1280px` to match V6's `min-width:12
 - **New dependency**: `vite-plugin-pwa` (devDependency)
 - **Build size**: +~5KB for service worker registration
 - **Vite config**: ~20 lines added
-- **Testing**: Need `pwa.spec.ts` to verify manifest + SW registration
+- **Testing**: manifest shape and icon files are covered by `viewer/tests/unit/manifest.test.ts`; SW registration/offline shell still needs E2E coverage
 - **Risk**: Low. `vite-plugin-pwa` is mature (8M+ weekly downloads). Service worker only caches; doesn't modify app behavior. HashRouter is PWA-compatible.
 
 **Estimated total LOC**: ~80 (config + manifest + offline UI indicators)

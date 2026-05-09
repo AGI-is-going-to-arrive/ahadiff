@@ -39,6 +39,7 @@ async function installLearnMocks(
     listTasks?: unknown[];
     estimateRiskLevel?: 'ok' | 'warn' | 'danger';
     estimateWarnings?: string[];
+    progressSequence?: Array<Record<string, unknown>>;
   } = {},
 ): Promise<LearnMockCalls> {
   const {
@@ -49,6 +50,7 @@ async function installLearnMocks(
     listTasks = [],
     estimateRiskLevel = 'ok',
     estimateWarnings = [],
+    progressSequence,
   } = opts;
 
   let pollIndex = 0;
@@ -116,6 +118,34 @@ async function installLearnMocks(
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify(info),
+      });
+    },
+  );
+
+  await page.route(
+    (url) => /^\/api\/tasks\/[^/]+\/progress$/.test(url.pathname),
+    (route) => {
+      if (route.request().method() !== 'GET') {
+        return route.fulfill({
+          status: 405,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'method_not_allowed' }),
+        });
+      }
+      const events = progressSequence ?? [];
+      const body = events.length === 0
+        ? 'event: error\n' +
+          'data: {"event":"error","data":{"error":"progress stream unavailable"}}\n\n'
+        : events
+          .map((event) => {
+            const info = makeTaskInfo(event);
+            return `event: progress\ndata: ${JSON.stringify({ event: 'progress', data: info })}\n\n`;
+          })
+          .join('');
+      return route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        body,
       });
     },
   );
@@ -268,6 +298,9 @@ test.describe('learn task flow', () => {
 
   test('progress bar updates aria-valuenow', async ({ page }) => {
     await installLearnMocks(page, {
+      progressSequence: [
+        { status: 'running', progress: { current: 5, total: 10, message: 'Halfway' } },
+      ],
       taskSequence: [
         { status: 'running', progress: { current: 0, total: 10, message: 'Starting' } },
         { status: 'running', progress: { current: 5, total: 10, message: 'Halfway' } },

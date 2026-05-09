@@ -314,6 +314,90 @@ def test_learn_unstaged_include_untracked_records_new_file(tmp_path: Path) -> No
     assert source_detail["untracked_count"] == 1
 
 
+def test_learn_changed_path_limits_worktree_capture(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    src_dir = repo_root / "src"
+    src_dir.mkdir()
+    (src_dir / "scoped.py").write_text("value = 1\n", encoding="utf-8")
+    (src_dir / "ignored.py").write_text("other = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+
+    (src_dir / "scoped.py").write_text("value = 2\n", encoding="utf-8")
+    (src_dir / "ignored.py").write_text("other = 2\n", encoding="utf-8")
+    (src_dir / "new_scoped.py").write_text("created = True\n", encoding="utf-8")
+    (src_dir / "new_ignored.py").write_text("created = False\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = _invoke_repo_cli(
+        runner,
+        repo_root,
+        [
+            "learn",
+            "--changed-path",
+            "src/scoped.py",
+            "--changed-path",
+            "src/new_scoped.py",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
+    run_dir, metadata, patch_text = _load_run_artifacts(repo_root)
+    before_text_by_path = json.loads(
+        (run_dir / "before_text_by_path.json").read_text(encoding="utf-8")
+    )
+    after_text_by_path = json.loads(
+        (run_dir / "after_text_by_path.json").read_text(encoding="utf-8")
+    )
+    assert metadata["source_kind"] == "git_unstaged"
+    assert "src/scoped.py" in patch_text
+    assert "src/new_scoped.py" in patch_text
+    assert "src/ignored.py" not in patch_text
+    assert "src/new_ignored.py" not in patch_text
+    assert set(before_text_by_path["texts"]) == {"src/scoped.py"}
+    assert set(after_text_by_path["texts"]) == {"src/scoped.py", "src/new_scoped.py"}
+
+
+def test_capture_changed_paths_rejects_outside_repo_path(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "app.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+    (repo_root / "app.py").write_text("value = 2\n", encoding="utf-8")
+
+    with pytest.raises(InputError, match="changed path escapes repository root"):
+        capture_module.capture_patch(
+            workspace_root=repo_root,
+            unstaged=True,
+            changed_paths=["../outside.py"],
+        )
+
+
+def test_capture_changed_paths_treats_glob_chars_as_literal(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    src_dir = repo_root / "src"
+    src_dir.mkdir()
+    (src_dir / "app.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+    (src_dir / "app.py").write_text("value = 2\n", encoding="utf-8")
+
+    capture = capture_module.capture_patch(
+        workspace_root=repo_root,
+        unstaged=True,
+        changed_paths=["src/*.py"],
+        privacy_mode="explicit_remote",
+    )
+
+    assert "src/app.py" not in capture.raw_patch_text
+    assert capture.before_text_by_path == {}
+    assert capture.after_text_by_path == {}
+
+
 def test_learn_include_untracked_requires_unstaged_mode(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()

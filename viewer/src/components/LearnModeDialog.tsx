@@ -28,6 +28,8 @@ interface LearnModeDialogProps {
 const QUICK_MODES: CaptureMode[] = ['working', 'unstaged', 'staged', 'last'];
 const MAX_TEXT_INPUT_LENGTH = 4096;
 const MAX_PATCH_TEXT_BYTES = 4096;
+const MAX_CHANGED_PATHS = 500;
+const MAX_PATH_SCOPE_TEXT_LENGTH = 64 * 1024;
 
 interface BuildPayloadArgs {
   mode: CaptureMode;
@@ -40,6 +42,7 @@ interface BuildPayloadArgs {
   compareB: string;
   compareDirA: string;
   compareDirB: string;
+  pathScope: string;
   forceLearn: boolean;
   useGraphify: boolean;
   dryRun: boolean;
@@ -59,6 +62,7 @@ function buildPayload(args: BuildPayloadArgs): LearnSubmitPayload {
     compareB,
     compareDirA,
     compareDirB,
+    pathScope,
     forceLearn,
     useGraphify,
     dryRun,
@@ -111,6 +115,10 @@ function buildPayload(args: BuildPayloadArgs): LearnSubmitPayload {
   if (dryRun) base.dry_run = true;
   if (lang !== 'auto') base.lang = lang;
   if (privacyMode !== '') base.privacy_mode = privacyMode;
+  if (isPathScopeMode(mode)) {
+    const changedPaths = parseChangedPaths(pathScope);
+    if (changedPaths.length > 0) base.changed_paths = changedPaths;
+  }
   return base;
 }
 
@@ -123,6 +131,18 @@ function isAdvancedMode(mode: CaptureMode): boolean {
     mode === 'compare_dir' ||
     mode === 'patch'
   );
+}
+
+function isPathScopeMode(mode: CaptureMode): boolean {
+  return mode === 'working' || mode === 'unstaged' || mode === 'staged';
+}
+
+function parseChangedPaths(value: string): string[] {
+  const paths = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  return Array.from(new Set(paths));
 }
 
 function utf8ByteLength(value: string): number {
@@ -148,6 +168,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
   const [compareB, setCompareB] = useState('');
   const [compareDirA, setCompareDirA] = useState('');
   const [compareDirB, setCompareDirB] = useState('');
+  const [pathScope, setPathScope] = useState('');
   const [forceLearn, setForceLearn] = useState(false);
   const [useGraphify, setUseGraphify] = useState(false);
   const [dryRun, setDryRun] = useState(false);
@@ -161,6 +182,17 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
   const patchErrorId = patchTooLarge ? 'learn-mode-patch-error' : undefined;
   const patchValidationMessage = patchTooLarge
     ? t('LearnDialog.error_patch_too_large', { max: MAX_PATCH_TEXT_BYTES })
+    : null;
+  const pathScopeDisabled = !isPathScopeMode(mode);
+  const pathScopePathCount = parseChangedPaths(pathScope).length;
+  const pathScopeTooMany = !pathScopeDisabled && pathScopePathCount > MAX_CHANGED_PATHS;
+  const pathScopeErrorId = pathScopeTooMany ? 'learn-mode-path-scope-error' : undefined;
+  const pathScopeDescriptionId = 'learn-mode-path-scope-hint';
+  const pathScopeDescribedBy = pathScopeErrorId
+    ? `${pathScopeDescriptionId} ${pathScopeErrorId}`
+    : pathScopeDescriptionId;
+  const pathScopeValidationMessage = pathScopeTooMany
+    ? t('LearnDialog.error_path_scope_too_many', { max: MAX_CHANGED_PATHS })
     : null;
 
   let needsValidInput = false;
@@ -187,7 +219,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
       needsValidInput = true;
       break;
   }
-  const canSubmit = !isBusy && needsValidInput;
+  const canSubmit = !isBusy && needsValidInput && !pathScopeTooMany;
 
   // Preserve any pre-existing inert state while this portal dialog is open.
   useEffect(() => {
@@ -226,6 +258,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
       setCompareB('');
       setCompareDirA('');
       setCompareDirB('');
+      setPathScope('');
       setForceLearn(false);
       setUseGraphify(false);
       setDryRun(false);
@@ -296,6 +329,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
       compareB,
       compareDirA,
       compareDirB,
+      pathScope,
       forceLearn,
       useGraphify,
       dryRun,
@@ -316,6 +350,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
     compareB,
     compareDirA,
     compareDirB,
+    pathScope,
     forceLearn,
     useGraphify,
     dryRun,
@@ -391,8 +426,47 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
           {/* Advanced section */}
           {advancedOpen && (
             <div id="learn-dialog-advanced" className="learn-dialog__advanced">
+              <div className="learn-dialog__path-scope-row">
+                <div className="learn-dialog__path-scope-copy">
+                  <label htmlFor="learn-mode-path-scope" className="learn-dialog__path-scope-label">
+                    {t('LearnDialog.path_scope')}
+                  </label>
+                  <p id={pathScopeDescriptionId} className="learn-dialog__path-scope-hint">
+                    {t('LearnDialog.path_scope_hint')}
+                  </p>
+                </div>
+                <textarea
+                  id="learn-mode-path-scope"
+                  className="learn-dialog__path-scope-input"
+                  aria-describedby={pathScopeDescribedBy}
+                  aria-invalid={pathScopeTooMany || undefined}
+                  placeholder={t('LearnDialog.path_scope_ph')}
+                  disabled={pathScopeDisabled}
+                  value={pathScope}
+                  onChange={(e) => setPathScope(e.target.value)}
+                  maxLength={MAX_PATH_SCOPE_TEXT_LENGTH}
+                  rows={3}
+                />
+                {pathScopeValidationMessage && (
+                  <p
+                    id="learn-mode-path-scope-error"
+                    className="learn-dialog__error"
+                    role="alert"
+                  >
+                    {pathScopeValidationMessage}
+                  </p>
+                )}
+              </div>
+
+              <div className="learn-dialog__advanced-group-label">
+                {t('LearnDialog.advanced_sources_title')}
+              </div>
+
               {/* Since */}
-              <div className="learn-dialog__radio-row">
+              <div
+                className="learn-dialog__radio-row"
+                onClick={() => handleModeSelect('since')}
+              >
                 <input
                   id="learn-mode-since"
                   type="radio"
@@ -400,21 +474,28 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                   checked={mode === 'since'}
                   onChange={() => handleModeSelect('since')}
                 />
-                <label id="learn-mode-since-label" htmlFor="learn-mode-since" className="learn-dialog__radio-label">{t('LearnDialog.mode_since')}</label>
+                <label id="learn-mode-since-label" htmlFor="learn-mode-since" className="learn-dialog__radio-label">
+                  <span className="learn-dialog__radio-label-main">{t('LearnDialog.mode_since')}</span>
+                  <span className="learn-dialog__radio-hint">{t('LearnDialog.mode_since_hint')}</span>
+                </label>
                 <input
+                  id="learn-mode-since-value"
                   type="text"
                   className="learn-dialog__input"
                   aria-labelledby="learn-mode-since-label"
                   placeholder={t('LearnDialog.mode_since_ph')}
-                  disabled={mode !== 'since'}
                   maxLength={MAX_TEXT_INPUT_LENGTH}
                   value={since}
-                  onChange={(e) => setSince(e.target.value)}
+                  onFocus={() => handleModeSelect('since')}
+                  onChange={(e) => {
+                    handleModeSelect('since');
+                    setSince(e.target.value);
+                  }}
                 />
               </div>
 
               {/* Author filter (qualifier for since) */}
-              <div className="learn-dialog__author-row">
+              <div className="learn-dialog__author-row" onClick={() => handleModeSelect('since')}>
                 <label
                   htmlFor="learn-mode-author"
                   className="learn-dialog__author-label"
@@ -426,15 +507,21 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                   type="text"
                   className="learn-dialog__input"
                   placeholder={t('LearnDialog.author_filter_ph')}
-                  disabled={mode !== 'since'}
                   maxLength={MAX_TEXT_INPUT_LENGTH}
                   value={author}
-                  onChange={(e) => setAuthor(e.target.value)}
+                  onFocus={() => handleModeSelect('since')}
+                  onChange={(e) => {
+                    handleModeSelect('since');
+                    setAuthor(e.target.value);
+                  }}
                 />
               </div>
 
               {/* Revision */}
-              <div className="learn-dialog__radio-row">
+              <div
+                className="learn-dialog__radio-row"
+                onClick={() => handleModeSelect('revision')}
+              >
                 <input
                   id="learn-mode-revision"
                   type="radio"
@@ -442,21 +529,31 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                   checked={mode === 'revision'}
                   onChange={() => handleModeSelect('revision')}
                 />
-                <label id="learn-mode-revision-label" htmlFor="learn-mode-revision" className="learn-dialog__radio-label">{t('LearnDialog.mode_revision')}</label>
+                <label id="learn-mode-revision-label" htmlFor="learn-mode-revision" className="learn-dialog__radio-label">
+                  <span className="learn-dialog__radio-label-main">{t('LearnDialog.mode_revision')}</span>
+                  <span className="learn-dialog__radio-hint">{t('LearnDialog.mode_revision_hint')}</span>
+                </label>
                 <input
+                  id="learn-mode-revision-value"
                   type="text"
                   className="learn-dialog__input"
                   aria-labelledby="learn-mode-revision-label"
                   placeholder={t('LearnDialog.mode_revision_ph')}
-                  disabled={mode !== 'revision'}
                   maxLength={MAX_TEXT_INPUT_LENGTH}
                   value={revision}
-                  onChange={(e) => setRevision(e.target.value)}
+                  onFocus={() => handleModeSelect('revision')}
+                  onChange={(e) => {
+                    handleModeSelect('revision');
+                    setRevision(e.target.value);
+                  }}
                 />
               </div>
 
               {/* Patch URL */}
-              <div className="learn-dialog__radio-row">
+              <div
+                className="learn-dialog__radio-row"
+                onClick={() => handleModeSelect('patch_url')}
+              >
                 <input
                   id="learn-mode-patch-url"
                   type="radio"
@@ -464,21 +561,31 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                   checked={mode === 'patch_url'}
                   onChange={() => handleModeSelect('patch_url')}
                 />
-                <label id="learn-mode-patch-url-label" htmlFor="learn-mode-patch-url" className="learn-dialog__radio-label">{t('LearnDialog.mode_patch_url')}</label>
+                <label id="learn-mode-patch-url-label" htmlFor="learn-mode-patch-url" className="learn-dialog__radio-label">
+                  <span className="learn-dialog__radio-label-main">{t('LearnDialog.mode_patch_url')}</span>
+                  <span className="learn-dialog__radio-hint">{t('LearnDialog.mode_patch_url_hint')}</span>
+                </label>
                 <input
+                  id="learn-mode-patch-url-value"
                   type="text"
                   className="learn-dialog__input"
                   aria-labelledby="learn-mode-patch-url-label"
                   placeholder={t('LearnDialog.mode_patch_url_ph')}
-                  disabled={mode !== 'patch_url'}
                   maxLength={MAX_TEXT_INPUT_LENGTH}
                   value={patchUrl}
-                  onChange={(e) => setPatchUrl(e.target.value)}
+                  onFocus={() => handleModeSelect('patch_url')}
+                  onChange={(e) => {
+                    handleModeSelect('patch_url');
+                    setPatchUrl(e.target.value);
+                  }}
                 />
               </div>
 
               {/* Compare refs */}
-              <div className="learn-dialog__radio-row">
+              <div
+                className="learn-dialog__radio-row"
+                onClick={() => handleModeSelect('compare')}
+              >
                 <input
                   id="learn-mode-compare"
                   type="radio"
@@ -486,33 +593,47 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                   checked={mode === 'compare'}
                   onChange={() => handleModeSelect('compare')}
                 />
-                <label htmlFor="learn-mode-compare" className="learn-dialog__radio-label">{t('LearnDialog.mode_compare')}</label>
+                <label htmlFor="learn-mode-compare" className="learn-dialog__radio-label">
+                  <span className="learn-dialog__radio-label-main">{t('LearnDialog.mode_compare')}</span>
+                  <span className="learn-dialog__radio-hint">{t('LearnDialog.mode_compare_hint')}</span>
+                </label>
                 <div className="learn-dialog__dual-input">
                   <input
+                    id="learn-mode-compare-a"
                     type="text"
                     className="learn-dialog__input"
                     aria-label={t('LearnDialog.mode_compare_a_aria')}
                     placeholder={t('LearnDialog.mode_compare_a_ph')}
-                    disabled={mode !== 'compare'}
                     maxLength={MAX_TEXT_INPUT_LENGTH}
                     value={compareA}
-                    onChange={(e) => setCompareA(e.target.value)}
+                    onFocus={() => handleModeSelect('compare')}
+                    onChange={(e) => {
+                      handleModeSelect('compare');
+                      setCompareA(e.target.value);
+                    }}
                   />
                   <input
+                    id="learn-mode-compare-b"
                     type="text"
                     className="learn-dialog__input"
                     aria-label={t('LearnDialog.mode_compare_b_aria')}
                     placeholder={t('LearnDialog.mode_compare_b_ph')}
-                    disabled={mode !== 'compare'}
                     maxLength={MAX_TEXT_INPUT_LENGTH}
                     value={compareB}
-                    onChange={(e) => setCompareB(e.target.value)}
+                    onFocus={() => handleModeSelect('compare')}
+                    onChange={(e) => {
+                      handleModeSelect('compare');
+                      setCompareB(e.target.value);
+                    }}
                   />
                 </div>
               </div>
 
               {/* Compare dirs */}
-              <div className="learn-dialog__radio-row">
+              <div
+                className="learn-dialog__radio-row"
+                onClick={() => handleModeSelect('compare_dir')}
+              >
                 <input
                   id="learn-mode-compare-dir"
                   type="radio"
@@ -520,33 +641,47 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                   checked={mode === 'compare_dir'}
                   onChange={() => handleModeSelect('compare_dir')}
                 />
-                <label htmlFor="learn-mode-compare-dir" className="learn-dialog__radio-label">{t('LearnDialog.mode_compare_dir')}</label>
+                <label htmlFor="learn-mode-compare-dir" className="learn-dialog__radio-label">
+                  <span className="learn-dialog__radio-label-main">{t('LearnDialog.mode_compare_dir')}</span>
+                  <span className="learn-dialog__radio-hint">{t('LearnDialog.mode_compare_dir_hint')}</span>
+                </label>
                 <div className="learn-dialog__dual-input">
                   <input
+                    id="learn-mode-compare-dir-a"
                     type="text"
                     className="learn-dialog__input"
                     aria-label={t('LearnDialog.mode_compare_dir_a_aria')}
                     placeholder={t('LearnDialog.mode_compare_dir_a_ph')}
-                    disabled={mode !== 'compare_dir'}
                     maxLength={MAX_TEXT_INPUT_LENGTH}
                     value={compareDirA}
-                    onChange={(e) => setCompareDirA(e.target.value)}
+                    onFocus={() => handleModeSelect('compare_dir')}
+                    onChange={(e) => {
+                      handleModeSelect('compare_dir');
+                      setCompareDirA(e.target.value);
+                    }}
                   />
                   <input
+                    id="learn-mode-compare-dir-b"
                     type="text"
                     className="learn-dialog__input"
                     aria-label={t('LearnDialog.mode_compare_dir_b_aria')}
                     placeholder={t('LearnDialog.mode_compare_dir_b_ph')}
-                    disabled={mode !== 'compare_dir'}
                     maxLength={MAX_TEXT_INPUT_LENGTH}
                     value={compareDirB}
-                    onChange={(e) => setCompareDirB(e.target.value)}
+                    onFocus={() => handleModeSelect('compare_dir')}
+                    onChange={(e) => {
+                      handleModeSelect('compare_dir');
+                      setCompareDirB(e.target.value);
+                    }}
                   />
                 </div>
               </div>
 
               {/* Paste patch */}
-              <div className="learn-dialog__radio-row learn-dialog__radio-row--block">
+              <div
+                className="learn-dialog__radio-row learn-dialog__radio-row--block"
+                onClick={() => handleModeSelect('patch')}
+              >
                 <input
                   id="learn-mode-patch"
                   type="radio"
@@ -554,16 +689,23 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                   checked={mode === 'patch'}
                   onChange={() => handleModeSelect('patch')}
                 />
-                <label id="learn-mode-patch-label" htmlFor="learn-mode-patch" className="learn-dialog__radio-label">{t('LearnDialog.mode_patch')}</label>
+                <label id="learn-mode-patch-label" htmlFor="learn-mode-patch" className="learn-dialog__radio-label">
+                  <span className="learn-dialog__radio-label-main">{t('LearnDialog.mode_patch')}</span>
+                  <span className="learn-dialog__radio-hint">{t('LearnDialog.mode_patch_hint')}</span>
+                </label>
                 <textarea
+                  id="learn-mode-patch-text"
                   className="learn-dialog__textarea"
                   aria-labelledby="learn-mode-patch-label"
                   aria-describedby={patchErrorId}
                   aria-invalid={patchTooLarge || undefined}
                   placeholder={t('LearnDialog.mode_patch_ph')}
-                  disabled={mode !== 'patch'}
                   value={patchText}
-                  onChange={(e) => setPatchText(e.target.value)}
+                  onFocus={() => handleModeSelect('patch')}
+                  onChange={(e) => {
+                    handleModeSelect('patch');
+                    setPatchText(e.target.value);
+                  }}
                   rows={6}
                 />
                 {patchValidationMessage && (
@@ -579,13 +721,19 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
 
               {/* Options */}
               <div className="learn-dialog__options">
+                <div className="learn-dialog__options-title">{t('LearnDialog.options_title')}</div>
                 <label className="learn-dialog__checkbox">
                   <input
                     type="checkbox"
                     checked={forceLearn}
                     onChange={(e) => setForceLearn(e.target.checked)}
                   />
-                  <span>{t('LearnDialog.opt_force')}</span>
+                  <span className="learn-dialog__checkbox-copy">
+                    <span className="learn-dialog__checkbox-label">{t('LearnDialog.opt_force')}</span>
+                    <span className="learn-dialog__checkbox-hint">
+                      {t('LearnDialog.opt_force_hint')}
+                    </span>
+                  </span>
                 </label>
                 <label className="learn-dialog__checkbox">
                   <input
@@ -593,7 +741,14 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                     checked={useGraphify}
                     onChange={(e) => setUseGraphify(e.target.checked)}
                   />
-                  <span>{t('LearnDialog.opt_graphify')}</span>
+                  <span className="learn-dialog__checkbox-copy">
+                    <span className="learn-dialog__checkbox-label">
+                      {t('LearnDialog.opt_graphify')}
+                    </span>
+                    <span className="learn-dialog__checkbox-hint">
+                      {t('LearnDialog.opt_graphify_hint')}
+                    </span>
+                  </span>
                 </label>
                 <label className="learn-dialog__checkbox">
                   <input
@@ -601,7 +756,14 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                     checked={dryRun}
                     onChange={(e) => setDryRun(e.target.checked)}
                   />
-                  <span>{t('LearnDialog.opt_dry_run')}</span>
+                  <span className="learn-dialog__checkbox-copy">
+                    <span className="learn-dialog__checkbox-label">
+                      {t('LearnDialog.opt_dry_run')}
+                    </span>
+                    <span className="learn-dialog__checkbox-hint">
+                      {t('LearnDialog.opt_dry_run_hint')}
+                    </span>
+                  </span>
                 </label>
                 <div className="learn-dialog__select-row">
                   <label htmlFor="learn-opt-lang" className="learn-dialog__select-label">

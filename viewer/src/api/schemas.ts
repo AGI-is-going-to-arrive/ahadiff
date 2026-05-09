@@ -731,6 +731,21 @@ export const taskInfoResponseSchema = z
   })
   .passthrough();
 
+export const taskProgressEventSchema = z.discriminatedUnion('event', [
+  z
+    .object({
+      event: z.literal('progress'),
+      data: taskInfoResponseSchema,
+    })
+    .strict(),
+  z
+    .object({
+      event: z.literal('error'),
+      data: z.object({ error: z.string() }).passthrough(),
+    })
+    .strict(),
+]);
+
 export const taskListResponseSchema = z
   .object({
     tasks: z.array(taskInfoResponseSchema),

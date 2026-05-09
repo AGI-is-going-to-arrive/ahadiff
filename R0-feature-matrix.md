@@ -201,6 +201,7 @@
 | K10 | `--no-browser` flag for serve | Blueprint | IMPL | N/A | IMPL | `cli.py:1719` (serve_cmd) |
 | K11 | `--open` flag (auto-open browser after learn) | Blueprint | IMPL | N/A | IMPL | CLI flags |
 | K12 | AGENTS.md for async VM auto-read | Blueprint | IMPL | N/A | N/A | Mentioned in blueprint |
+| K13 | `ahadiff learn --changed-path` path-scoped worktree capture | User follow-up | IMPL | N/A | IMPL | `cli.py`; `git/capture.py`; `tests/unit/test_git_capture.py` |
 
 ---
 
@@ -214,7 +215,7 @@
 | L4 | QuizPage (active recall quiz) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/QuizPage.tsx` |
 | L5 | ReviewPage (SRS review) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/ReviewPage.tsx`; `components/SRSCard.tsx`; sidebar landmark label covered by a11y E2E |
 | L6 | ConceptsPage (concept graph + list) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/ConceptsPage.tsx`; `components/ConceptGraph.tsx` (753 lines) |
-| L7 | SettingsPage (8-tab settings) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/SettingsPage.tsx` |
+| L7 | SettingsPage (7-tab settings) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/SettingsPage.tsx` |
 | L8 | RatchetPage (score history chart) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/RatchetPage.tsx`; `components/RatchetChart.tsx` |
 | L9 | OnboardingPage (stepper wizard) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/OnboardingPage.tsx` |
 | L10 | LandingPage | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/LandingPage.tsx` |
@@ -227,6 +228,8 @@
 | L17 | Skeleton loading states | Blueprint | N/A | IMPL | IMPL | `components/Skeleton.tsx` |
 | L18 | LearnTaskBanner (learn task status + retry/cancel + 429 rate_limited copy) | Blueprint | N/A | IMPL | IMPL | `components/LearnTaskBanner.tsx` (+ test) |
 | L19 | FreshnessBadge (Graphify freshness indicator) | Blueprint | N/A | IMPL | IMPL | `components/FreshnessBadge.tsx` (+ test) |
+| L20 | Learn Mode Dialog path scope and advanced-source guidance | User follow-up | IMPL | IMPL | IMPL | `components/LearnModeDialog.tsx`; `learn-mode-dialog.test.ts` |
+| L21 | PWA manifest id/scope + PNG install icons | Frontend research | N/A | IMPL | IMPL | `viewer/public/manifest.json`; `viewer/public/icons/*.png`; `manifest.test.ts` |
 
 ---
 
@@ -234,8 +237,8 @@
 
 | # | Feature | Source | Backend Status | Frontend Status | Test Status | Evidence |
 |---|---------|--------|---------------|-----------------|-------------|----------|
-| M1 | POST /api/learn (trigger learn pipeline from UI, 10 req/min rate limit) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_learn.py`; LearnTaskBanner |
-| M2 | /api/tasks (list/get/cancel/SSE progress) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_tasks.py` |
+| M1 | POST /api/learn (trigger learn pipeline from UI, 10 req/min rate limit, `changed_paths`) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_learn.py`; `LearnModeDialog.tsx`; LearnTaskBanner |
+| M2 | /api/tasks (list/get/cancel/SSE progress) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_tasks.py`; `viewer/src/api/tasks.ts`; `learn-store.test.ts` |
 | M3 | /api/graph/* (graph status, FTS) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_graph.py` |
 | M4 | /api/config (show resolved config) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_config.py` |
 | M5 | /api/search (FTS5 full-text search) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_search.py` |

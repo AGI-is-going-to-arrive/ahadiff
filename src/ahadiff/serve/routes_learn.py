@@ -42,7 +42,7 @@ _ACCEPTED_FIELDS = frozenset(
         "changed_paths",
     }
 )
-_IGNORED_FIELDS = frozenset({"changed_paths"})
+_IGNORED_FIELDS: frozenset[str] = frozenset()
 
 _BOOL_FIELDS = frozenset(
     {"last", "staged", "unstaged", "include_untracked", "dry_run", "force_learn"}
@@ -115,17 +115,20 @@ def _coerce_path_pair(key: str, value: object) -> tuple[Path, Path]:
     return coerced[0], coerced[1]
 
 
-def _coerce_changed_paths(value: object) -> None:
+def _coerce_changed_paths(value: object) -> tuple[str, ...]:
     if not isinstance(value, list | tuple):
         raise TypeError("changed_paths expects a path array")
     raw_paths = cast("tuple[object, ...] | list[object]", value)
     if len(raw_paths) > _MAX_CHANGED_PATHS:
         raise ValueError("changed_paths exceeds max length")
+    coerced: list[str] = []
     for item in raw_paths:
         if not isinstance(item, str):
             raise TypeError("changed_paths entries must be strings")
         if len(item) > _MAX_STRING_LENGTH:
             raise ValueError("changed_paths entry exceeds max length")
+        coerced.append(item)
+    return tuple(coerced)
 
 
 def _coerce_field(key: str, value: object) -> object:
@@ -326,6 +329,7 @@ async def post_learn_estimate(request: Request) -> JSONResponse:
         staged=bool(params.get("staged", False)),
         unstaged=bool(params.get("unstaged", False)),
         include_untracked=bool(params.get("include_untracked", False)),
+        changed_paths=cast("tuple[str, ...] | None", params.get("changed_paths")),
         patch=cast("str | None", params.get("patch")),
         compare=cast("tuple[Path, Path] | None", params.get("compare")),
         compare_dir=cast("tuple[Path, Path] | None", params.get("compare_dir")),
