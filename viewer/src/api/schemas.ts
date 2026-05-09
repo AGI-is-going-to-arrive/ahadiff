@@ -931,7 +931,7 @@ export const improvePreflightResponseSchema = z.object({
   existing_sessions: z.array(improveSessionSummarySchema).default([]),
   repo_state: improveRepoStateSchema,
   provider_configured: z.boolean(),
-});
+}).strict();
 
 /* ─────────────── 17. Boundary helper ─────────────── */
 

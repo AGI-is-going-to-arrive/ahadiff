@@ -1,7 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
+import { z } from 'zod';
 import { getRunArtifact } from '../api/runs';
 import { useTranslation } from '../i18n/useTranslation';
 import './JudgeReport.css';
+
+const judgeDimensionSchema = z.record(z.string(), z.object({
+  reason: z.string().optional(),
+  score: z.number().optional(),
+}).passthrough());
+
+const judgeReportSchema = z.object({
+  model_id: z.string().optional(),
+  notes: z.string().optional(),
+  dimensions: judgeDimensionSchema.optional(),
+}).passthrough();
 
 interface JudgeReportProps {
   runId: string;
@@ -25,8 +37,9 @@ export default function JudgeReport({ runId }: JudgeReportProps) {
     setNotFound(false);
     try {
       const envelope = await getRunArtifact(runId, 'judge');
-      const parsed = JSON.parse(envelope.content) as JudgeData;
-      setData(parsed);
+      const raw = JSON.parse(envelope.content);
+      const result = judgeReportSchema.safeParse(raw);
+      setData(result.success ? result.data as JudgeData : raw as JudgeData);
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'status' in err && (err as { status: number }).status === 404) {
         setNotFound(true);
@@ -72,7 +85,9 @@ export default function JudgeReport({ runId }: JudgeReportProps) {
 
   const modelId = typeof data.model_id === 'string' ? data.model_id : null;
   const overallNotes = typeof data.notes === 'string' ? data.notes : null;
-  const dimensions = data.dimensions as Record<string, { reason?: string; score?: number }> | undefined;
+  const rawDims = data.dimensions;
+  const dimsParsed = judgeDimensionSchema.safeParse(rawDims);
+  const dimensions = dimsParsed.success ? dimsParsed.data : undefined;
 
   return (
     <div className="judge-report">

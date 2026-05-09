@@ -28,11 +28,18 @@ export default function ConceptLedger({ runFilter }: ConceptLedgerProps) {
 
   const handleClearFilter = useCallback(() => {
     setRunFilter(undefined);
+    const url = new URL(window.location.href);
+    url.hash = url.hash.replace(/[?&]run=[^&]*/g, '');
+    window.history.replaceState(null, '', url.toString());
   }, [setRunFilter]);
 
   const handleRunClick = useCallback(
     (run: string) => {
       setRunFilter(run);
+      const base = window.location.hash.split('?')[0];
+      const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
+      params.set('run', run);
+      window.history.replaceState(null, '', `${window.location.pathname}${base}?${params.toString()}`);
     },
     [setRunFilter],
   );
