@@ -1,0 +1,121 @@
+.judge-report {
+  font-family: var(--font-sans);
+}
+
+.judge-report__loading,
+.judge-report__empty,
+.judge-report__error {
+  padding: var(--sp-4);
+  color: var(--muted);
+}
+
+.judge-report__error {
+  color: var(--danger);
+}
+
+.judge-report__model {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-4);
+}
+
+.judge-report__model-label {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.judge-report__model-value {
+  font-size: var(--fs-sm);
+  padding: var(--sp-0-5) var(--sp-2);
+  background: var(--surface);
+  border-radius: var(--r-sm);
+}
+
+.judge-report__feedback {
+  margin: 0 0 var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.judge-report__feedback-row {
+  padding: var(--sp-3);
+  background: var(--surface);
+  border-radius: var(--r-md);
+}
+
+.judge-report__feedback-dim {
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  color: var(--ink-strong);
+  margin-bottom: var(--sp-1);
+}
+
+.judge-report__feedback-reason {
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  margin: 0;
+  line-height: var(--lh-relaxed);
+  white-space: pre-wrap;
+}
+
+.judge-report__notes {
+  margin-bottom: var(--sp-4);
+}
+
+.judge-report__notes-title {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink-strong);
+  margin: 0 0 var(--sp-2);
+}
+
+.judge-report__notes-text {
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.judge-report__raw {
+  margin-top: var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+
+.judge-report__raw-summary {
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+.judge-report__raw-content {
+  padding: var(--sp-3);
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  overflow-x: auto;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 var(--r-md) var(--r-md);
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+@media (forced-colors: active) {
+  .judge-report__raw {
+    border-color: CanvasText;
+  }
+  .judge-report__feedback-row {
+    border: 1px solid CanvasText;
+  }
+}

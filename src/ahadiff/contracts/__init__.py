@@ -87,7 +87,14 @@ from .serve_app import (
     SetLocaleRequest,
 )
 from .serve_audit import AuditLogResponse
+from .serve_concepts import ConceptLedgerEntry, ConceptLedgerPageResponse
 from .serve_doctor import DoctorCheck, DoctorResponse
+from .serve_improve import (
+    ImprovePreflightResponse,
+    ImproveRepoState,
+    ImproveRunSnapshot,
+    ImproveSessionSummary,
+)
 from .serve_install import InstallTargetsResponse, InstallTargetSummary
 from .serve_runtime import (
     ConceptGraphEdge,
@@ -128,6 +135,8 @@ __all__ = [
     "ConceptGraphEdge",
     "ConceptGraphNode",
     "ConceptGraphResponse",
+    "ConceptLedgerEntry",
+    "ConceptLedgerPageResponse",
     "ConceptsTextPageResponse",
     "CostConfidence",
     "DegradedFlag",
@@ -142,6 +151,10 @@ __all__ = [
     "GraphifyMode",
     "GraphStatusResponse",
     "HelpfulnessRequest",
+    "ImprovePreflightResponse",
+    "ImproveRepoState",
+    "ImproveRunSnapshot",
+    "ImproveSessionSummary",
     "InputError",
     "InstallTargetSummary",
     "InstallTargetsResponse",

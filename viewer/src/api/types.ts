@@ -71,7 +71,24 @@ export type ArtifactKind =
   | 'misconceptions'
   | 'diff'
   | 'concepts'
-  | 'score';
+  | 'score'
+  | 'judge';
+
+export interface ConceptLedgerEntry {
+  term_key: string;
+  concept: string;
+  display_name: string;
+  related_claims: string[];
+  file_refs: string[];
+  source_refs: string[];
+  updated_by_runs: string[];
+}
+
+export interface ConceptLedgerResponse {
+  entries: ConceptLedgerEntry[];
+  next_cursor?: string | null;
+  total_count: number;
+}
 
 export interface RunArtifactEnvelope {
   run_id: string;
@@ -541,4 +558,44 @@ export interface ProviderProbeSubmitResponse {
   alias: string;
   status: 'submitted';
   poll_url: string;
+}
+
+export interface ImproveRunSnapshot {
+  run_id: string;
+  source_ref: string;
+  overall: number;
+  weakest_dim?: string | null;
+  finalized: boolean;
+}
+
+export interface ImproveSessionSummary {
+  session_id: string;
+  rounds_completed: number;
+  last_status?: string | null;
+  phase25_attempted: boolean;
+  has_pending_worktree: boolean;
+  interrupted_round?: number | null;
+  interrupted_stage?: string | null;
+  updated_at: string;
+}
+
+export interface ImproveRepoState {
+  branch?: string | null;
+  head_sha?: string | null;
+  prompts_dirty: boolean;
+}
+
+export interface ImprovePreflightResponse {
+  available: boolean;
+  reason?: string | null;
+  anchor_run?: ImproveRunSnapshot | null;
+  baseline_run?: ImproveRunSnapshot | null;
+  target_dimension?: string | null;
+  target_prompt_file?: string | null;
+  mutable_prompts: string[];
+  phase25_eligible: boolean;
+  phase25_trigger_reason?: string | null;
+  existing_sessions: ImproveSessionSummary[];
+  repo_state: ImproveRepoState;
+  provider_configured: boolean;
 }

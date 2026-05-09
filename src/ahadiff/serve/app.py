@@ -20,6 +20,7 @@ from .routes_audit import get_audit
 from .routes_config import get_config, get_doctor, put_config
 from .routes_export import get_export_results
 from .routes_graph import get_concept_graph, get_graph_status
+from .routes_improve import get_improve_preflight
 from .routes_install import (
     get_install_targets,
     install_target,
@@ -47,7 +48,9 @@ from .routes_review import (
 from .routes_runs import (
     get_claims,
     get_concepts,
+    get_concepts_ledger,
     get_diff,
+    get_judge,
     get_lesson,
     get_misconceptions,
     get_quiz,
@@ -119,9 +122,12 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
             Route("/api/run/{run_id}/misconceptions", get_misconceptions, methods=["GET"]),
             Route("/api/run/{run_id}/diff", get_diff, methods=["GET"]),
             Route("/api/run/{run_id}/score", get_score, methods=["GET"]),
+            Route("/api/run/{run_id}/judge", get_judge, methods=["GET"]),
             Route("/api/run/{run_id}/concepts", get_run_concepts, methods=["GET"]),
+            Route("/api/concepts/ledger", get_concepts_ledger, methods=["GET"]),
             Route("/api/concepts", get_concepts, methods=["GET"]),
             Route("/api/ratchet/history", get_ratchet_history, methods=["GET"]),
+            Route("/api/improve/preflight", get_improve_preflight, methods=["GET"]),
             Route("/api/review/queue", get_review_queue, methods=["GET"]),
             Route("/api/review/rate", post_review_rate, methods=["POST"]),
             Route("/api/review/queue-state", post_review_queue_state, methods=["POST"]),

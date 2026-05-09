@@ -18,26 +18,30 @@ import { safeVerdict } from '../utils/verdict';
 import '../components/Ratchet.css';
 
 const GraphifyCard = lazy(() => import('../components/GraphifyCard'));
+const ImprovePreview = lazy(() => import('../components/ImprovePreview'));
 
-type RatchetTab = 'results' | 'rubric' | 'benchmark' | 'judge';
-const RATCHET_TABS: RatchetTab[] = ['results', 'rubric', 'benchmark', 'judge'];
+type RatchetTab = 'results' | 'rubric' | 'benchmark' | 'judge' | 'improve';
+const RATCHET_TABS: RatchetTab[] = ['results', 'rubric', 'benchmark', 'judge', 'improve'];
 const TAB_LABEL_KEYS: Record<RatchetTab, string> = {
   results: 'Ratchet.tab_results',
   rubric: 'Ratchet.tab_rubric',
   benchmark: 'Ratchet.tab_benchmark',
   judge: 'Ratchet.tab_judge',
+  improve: 'Improve.tab_preview',
 };
 const TAB_IDS: Record<RatchetTab, string> = {
   results: 'ratchet-tab-results',
   rubric: 'ratchet-tab-rubric',
   benchmark: 'ratchet-tab-benchmark',
   judge: 'ratchet-tab-judge',
+  improve: 'ratchet-tab-improve',
 };
 const TAB_PANEL_IDS: Record<RatchetTab, string> = {
   results: 'ratchet-panel-results',
   rubric: 'ratchet-panel-rubric',
   benchmark: 'ratchet-panel-benchmark',
   judge: 'ratchet-panel-judge',
+  improve: 'ratchet-panel-improve',
 };
 
 interface RatchetNote {
@@ -618,6 +622,21 @@ export default function RatchetPage() {
                 <p className="u-muted-sm">{t('Ratchet.tab_judge_empty')}</p>
               </div>
             )
+          )}
+        </div>
+
+        <div
+          id={TAB_PANEL_IDS.improve}
+          className="ratchet-card"
+          role="tabpanel"
+          aria-labelledby={TAB_IDS.improve}
+          tabIndex={0}
+          hidden={activeTab !== 'improve'}
+        >
+          {activeTab === 'improve' && (
+            <Suspense fallback={<div className="ratchet-card__body"><Skeleton height="200px" /></div>}>
+              <ImprovePreview />
+            </Suspense>
           )}
         </div>
 

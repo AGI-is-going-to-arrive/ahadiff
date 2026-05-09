@@ -138,7 +138,7 @@ export async function installServeMock(page: Page): Promise<void> {
           prompt_version: 'abc1234',
           eval_bundle_version: 'v1',
           note_json: null,
-          artifacts: ['patch.diff', 'metadata.json', 'claims.jsonl'],
+          artifacts: ['patch.diff', 'metadata.json', 'claims.jsonl', 'score.json', 'judge.json', 'concepts.jsonl'],
           graphify_mode: null,
           graphify_status: null,
           graphify_notes: null,
@@ -244,6 +244,114 @@ export async function installServeMock(page: Page): Promise<void> {
         }),
       });
     },
+  );
+  await page.route(
+    (url) => /^\/api\/run\/[^/]+\/judge$/.test(url.pathname),
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          run_id: 'test-run',
+          artifact_type: 'judge',
+          content: JSON.stringify({
+            model_id: 'gpt-5.5',
+            notes: 'Overall strong lesson with good evidence.',
+            dimensions: {
+              accuracy: { score: 18, reason: 'Strong code evidence linking.' },
+              evidence: { score: 16, reason: 'Most claims backed by file:line refs.' },
+            },
+          }),
+          content_lang: 'en',
+        }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/improve/preflight',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          available: true,
+          reason: null,
+          anchor_run: {
+            run_id: 'test-run',
+            source_ref: 'abc123',
+            overall: 80.5,
+            weakest_dim: 'conciseness',
+            finalized: true,
+          },
+          baseline_run: {
+            run_id: 'baseline-run',
+            source_ref: 'def456',
+            overall: 75.2,
+            weakest_dim: 'evidence',
+            finalized: true,
+          },
+          target_dimension: 'conciseness',
+          target_prompt_file: 'lesson_compact.md',
+          mutable_prompts: [
+            'claim_extract.md',
+            'lesson_generate.md',
+            'lesson_hint.md',
+            'lesson_compact.md',
+            'quiz_generate.md',
+          ],
+          phase25_eligible: false,
+          phase25_trigger_reason: null,
+          existing_sessions: [
+            {
+              session_id: 'session-001',
+              rounds_completed: 1,
+              last_status: 'discard',
+              phase25_attempted: false,
+              has_pending_worktree: false,
+              interrupted_round: null,
+              interrupted_stage: null,
+              updated_at: '2026-05-08T10:00:00Z',
+            },
+          ],
+          repo_state: {
+            branch: 'main',
+            head_sha: 'abc123def456',
+            prompts_dirty: false,
+          },
+          provider_configured: true,
+        }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/concepts/ledger',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          entries: [
+            {
+              term_key: 'learn-from-diff',
+              concept: 'learn-from-diff',
+              display_name: 'Learn-from-diff',
+              related_claims: ['c1'],
+              file_refs: ['demo.py'],
+              source_refs: ['abc123'],
+              updated_by_runs: ['test-run'],
+            },
+            {
+              term_key: 'branding',
+              concept: 'branding',
+              display_name: 'Branding',
+              related_claims: ['c2'],
+              file_refs: ['demo.py', 'config.py'],
+              source_refs: ['def456'],
+              updated_by_runs: ['test-run', 'test-run-2'],
+            },
+          ],
+          next_cursor: null,
+          total_count: 2,
+        }),
+      }),
   );
   await page.route(
     (url) => url.pathname === '/api/concepts',

@@ -18,6 +18,8 @@ from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
 
 from ahadiff.contracts import (
+    ConceptLedgerEntry,
+    ConceptLedgerPageResponse,
     ConceptsTextPageResponse,
     RatchetHistoryEntry,
     RunArtifactEnvelope,
@@ -34,13 +36,14 @@ from ahadiff.review.database import (
     load_result_events_page,
 )
 from ahadiff.wiki.concepts import (
+    load_concepts_page,
     load_concepts_page_from_db,
     load_concepts_page_from_storage,
     load_visible_concepts,
     parse_jsonl_concepts_cursor,
 )
 
-from .auth import serve_state
+from .auth import require_write_token, serve_state
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -54,6 +57,7 @@ _ARTIFACT_PATHS = {
     "claims": "claims.jsonl",
     "concepts": "concepts.jsonl",
     "diff": "patch.diff",
+    "judge": "judge.json",
     "misconceptions": "quiz/misconception_cards.jsonl",
     "quiz": "quiz/quiz.jsonl",
     "score": "score.json",
@@ -98,6 +102,17 @@ _RATCHET_HISTORY_NOTE_KEYS = frozenset(
 _MAX_FINALIZED_ARTIFACTS = 64
 _MAX_FINALIZED_ARTIFACT_DIRS = 64
 _MAX_FINALIZED_ARTIFACT_BYTES = 16 * 1024 * 1024
+_CONCEPT_LEDGER_FIELDS = frozenset(
+    {
+        "term_key",
+        "concept",
+        "display_name",
+        "related_claims",
+        "file_refs",
+        "source_refs",
+        "updated_by_runs",
+    }
+)
 _CANONICAL_RUN_ID_RE = re.compile(r"^run_[0-9a-f]{32}$")
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 log = logging.getLogger(__name__)
@@ -105,6 +120,7 @@ _ALLOWED_ARTIFACTS = frozenset(
     {
         "claims.jsonl",
         "concepts.jsonl",
+        "judge.json",
         "patch.diff",
         "quiz/misconception_cards.jsonl",
         "quiz/quiz.jsonl",
@@ -180,6 +196,12 @@ async def get_score(request: Request) -> JSONResponse:
     return await _artifact_response(request, _ARTIFACT_PATHS["score"], "score")
 
 
+async def get_judge(request: Request) -> JSONResponse:
+    return await _artifact_response(
+        request, _ARTIFACT_PATHS["judge"], "judge", not_found_status_code=404
+    )
+
+
 async def get_run_concepts(request: Request) -> JSONResponse:
     return await _artifact_response(
         request,
@@ -200,6 +222,25 @@ async def get_concepts(request: Request) -> JSONResponse:
         raw_cursor,
     )
     return JSONResponse(payload)
+
+
+async def get_concepts_ledger(request: Request) -> JSONResponse:
+    try:
+        require_write_token(request)
+    except PermissionError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    state = serve_state(request)
+    limit = _query_limit(request, default=50, max_value=200)
+    cursor = request.query_params.get("cursor")
+    run_filter = request.query_params.get("run")
+    result = await to_thread.run_sync(
+        _concepts_ledger_sync,
+        state,
+        limit,
+        cursor,
+        run_filter,
+    )
+    return JSONResponse(result)
 
 
 async def get_ratchet_history(request: Request) -> JSONResponse:
@@ -374,6 +415,63 @@ def _concepts_payload(state_dir: Path, limit: int, cursor: str | None) -> dict[s
         mode="json",
         exclude_none=True,
     )
+
+
+def _concepts_ledger_sync(
+    state: ServeState,
+    limit: int,
+    cursor: str | None,
+    run_filter: str | None,
+) -> dict[str, Any]:
+    offset = parse_jsonl_concepts_cursor(cursor)
+    all_concepts = _concepts_ledger_entries(state)
+    if run_filter:
+        all_concepts = [
+            entry
+            for entry in all_concepts
+            if run_filter in _string_list(entry.get("updated_by_runs", []))
+        ]
+    page_entries = all_concepts[offset : offset + limit]
+    next_cursor = None
+    if offset + limit < len(all_concepts):
+        next_cursor = str(offset + limit)
+    response = ConceptLedgerPageResponse(
+        entries=[_concept_ledger_entry(entry) for entry in page_entries],
+        next_cursor=next_cursor,
+        total_count=len(all_concepts),
+    )
+    return response.model_dump(mode="json")
+
+
+def _concepts_ledger_entries(state: ServeState) -> list[dict[str, Any]]:
+    workspace_root = state.state_dir.parent
+    if (workspace_root / ".git").exists():
+        return list(load_visible_concepts(workspace_root=workspace_root))
+    entries: list[dict[str, Any]] = []
+    cursor = 0
+    while True:
+        page = load_concepts_page(
+            state.state_dir / "concepts.jsonl",
+            limit=1000,
+            cursor=cursor,
+            max_bytes=_MAX_TEXT_ARTIFACT_BYTES,
+        )
+        entries.extend(page.entries)
+        if page.next_cursor is None:
+            return entries
+        cursor = parse_jsonl_concepts_cursor(page.next_cursor)
+
+
+def _concept_ledger_entry(entry: dict[str, Any]) -> ConceptLedgerEntry:
+    payload = {key: entry[key] for key in _CONCEPT_LEDGER_FIELDS if key in entry}
+    return ConceptLedgerEntry.model_validate(payload)
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    items = cast("list[object]", value)
+    return [item for item in items if isinstance(item, str)]
 
 
 def _concepts_jsonl_leaf_stat(path: Path) -> tuple[os.stat_result | None, bool]:
@@ -940,7 +1038,9 @@ def _artifact_names(run_path: Path) -> list[str]:
 __all__ = [
     "get_claims",
     "get_concepts",
+    "get_concepts_ledger",
     "get_diff",
+    "get_judge",
     "get_lesson",
     "get_misconceptions",
     "get_quiz",
