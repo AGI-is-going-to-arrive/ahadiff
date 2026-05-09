@@ -34,6 +34,7 @@
 
 .topbar__mobile-btn {
   display: none;
+  -webkit-appearance: none;
   appearance: none;
   border: 1px solid var(--hair);
   background: transparent;
@@ -100,6 +101,7 @@
   font-family: var(--font-sans);
   font-size: 13px;
   cursor: default;
+  -webkit-appearance: none;
   appearance: none;
   min-height: 44px;
   transition: border-color var(--dur-fast) var(--ease-out-quart);
@@ -248,6 +250,7 @@
 }
 
 .lang-switcher__btn {
+  -webkit-appearance: none;
   appearance: none;
   border: none;
   background: transparent;

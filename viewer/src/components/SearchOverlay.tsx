@@ -26,6 +26,8 @@ import './SearchOverlay.css';
 
 const DEBOUNCE_MS = 200;
 const MIN_QUERY = 2;
+const TABLE_FILTERS = ['', 'concepts', 'cards', 'result_events', 'graph_nodes'] as const;
+type TableFilter = (typeof TABLE_FILTERS)[number];
 
 /** Resolve a result to its in-app navigation target. */
 function hrefFor(result: SearchResult): string | null {
@@ -59,6 +61,7 @@ export default function SearchOverlay({ open, onClose }: SearchOverlayProps) {
   const navigate = useNavigate();
   const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const filterRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const debounceRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -69,6 +72,7 @@ export default function SearchOverlay({ open, onClose }: SearchOverlayProps) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'error' | 'empty' | 'ready'>(
     'idle',
   );
+  const [tableFilter, setTableFilter] = useState<TableFilter>('');
 
   /* Reset on open/close so the next invocation starts from a clean state. */
   useEffect(() => {
@@ -79,6 +83,7 @@ export default function SearchOverlay({ open, onClose }: SearchOverlayProps) {
       setResults([]);
       setActive(0);
       setStatus('idle');
+      setTableFilter('');
       return undefined;
     }
     restoreFocusRef.current = document.activeElement as HTMLElement | null;
@@ -143,7 +148,11 @@ export default function SearchOverlay({ open, onClose }: SearchOverlayProps) {
     const controller = new AbortController();
     abortRef.current = controller;
     debounceRef.current = window.setTimeout(() => {
-      void searchAll(trimmed, { signal: controller.signal, limit: 20 })
+      void searchAll(trimmed, {
+        signal: controller.signal,
+        limit: 20,
+        tables: tableFilter || undefined,
+      })
         .then((res: SearchResponse) => {
           if (controller.signal.aborted) return;
           setResults(res.results);
@@ -172,7 +181,7 @@ export default function SearchOverlay({ open, onClose }: SearchOverlayProps) {
       controller.abort();
       if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
     };
-  }, [open, query]);
+  }, [open, query, tableFilter]);
 
   const close = useCallback(() => {
     onClose();
@@ -187,6 +196,49 @@ export default function SearchOverlay({ open, onClose }: SearchOverlayProps) {
       close();
     },
     [close, navigate],
+  );
+
+  const tableFilterOptions = useMemo(
+    () => [
+      { value: '', label: t('SearchOverlay.filter_all') },
+      { value: 'concepts', label: t('SearchOverlay.filter_concepts') },
+      { value: 'cards', label: t('SearchOverlay.filter_cards') },
+      { value: 'result_events', label: t('SearchOverlay.filter_events') },
+      { value: 'graph_nodes', label: t('SearchOverlay.filter_graph') },
+    ] satisfies Array<{ value: TableFilter; label: string }>,
+    [t],
+  );
+
+  const focusFilterAt = useCallback(
+    (index: number) => {
+      const next = tableFilterOptions[index];
+      if (!next) return;
+      setTableFilter(next.value);
+      window.requestAnimationFrame(() => filterRefs.current[index]?.focus());
+    },
+    [tableFilterOptions],
+  );
+
+  const onFilterKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLButtonElement>) => {
+      const current = Math.max(0, tableFilterOptions.findIndex((f) => f.value === tableFilter));
+      let next = current;
+      if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+        next = (current + 1) % tableFilterOptions.length;
+      } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+        next = (current - 1 + tableFilterOptions.length) % tableFilterOptions.length;
+      } else if (event.key === 'Home') {
+        next = 0;
+      } else if (event.key === 'End') {
+        next = tableFilterOptions.length - 1;
+      } else {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      focusFilterAt(next);
+    },
+    [focusFilterAt, tableFilter, tableFilterOptions],
   );
 
   const onKeyDown = useCallback(
@@ -290,6 +342,29 @@ export default function SearchOverlay({ open, onClose }: SearchOverlayProps) {
             spellCheck={false}
             onChange={(e) => setQuery(e.target.value)}
           />
+        </div>
+        <div
+          className="search-overlay__filters"
+          role="radiogroup"
+          aria-label={t('SearchOverlay.filter_label')}
+        >
+          {tableFilterOptions.map((f, index) => (
+            <button
+              key={f.value || 'all'}
+              ref={(el) => {
+                filterRefs.current[index] = el;
+              }}
+              type="button"
+              role="radio"
+              aria-checked={tableFilter === f.value}
+              tabIndex={tableFilter === f.value ? 0 : -1}
+              className={`search-overlay__filter-chip${tableFilter === f.value ? ' search-overlay__filter-chip--active' : ''}`}
+              onClick={() => setTableFilter(f.value)}
+              onKeyDown={onFilterKeyDown}
+            >
+              {f.label}
+            </button>
+          ))}
         </div>
         <div className="search-overlay__status" role="status" aria-live="polite">
           {announce}

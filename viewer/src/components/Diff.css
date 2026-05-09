@@ -60,6 +60,7 @@
 }
 
 .diff-file-summary__action {
+  -webkit-appearance: none;
   appearance: none;
   border: 1px solid var(--hair);
   background: var(--paper);
@@ -102,6 +103,7 @@
 }
 
 .diff-file-summary__chip {
+  -webkit-appearance: none;
   appearance: none;
   border: 1px solid var(--hair);
   background: var(--paper);
@@ -191,6 +193,7 @@
 }
 
 .diff-file-header__toggle {
+  -webkit-appearance: none;
   appearance: none;
   border: 0;
   background: transparent;
@@ -323,6 +326,7 @@
 }
 
 .diff-file-section__truncation-action {
+  -webkit-appearance: none;
   appearance: none;
   border: 1px solid var(--hair);
   background: var(--paper);
@@ -371,6 +375,7 @@
 button.diff-line {
   width: 100%;
   border: 0;
+  -webkit-appearance: none;
   appearance: none;
   font: inherit;
   text-align: start;

@@ -158,10 +158,24 @@ test.describe('cross-browser corner cases', () => {
     });
     expect(backgroundTookFocus).toBe(false);
 
+    const allFilter = page.getByRole('radio', { name: /^All$/ });
+    const conceptsFilter = page.getByRole('radio', { name: /^Concepts$/ });
+    await expect(allFilter).toHaveAttribute('aria-checked', 'true');
+    await allFilter.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(conceptsFilter).toBeFocused();
+    await expect(conceptsFilter).toHaveAttribute('aria-checked', 'true');
+    await page.keyboard.press('ArrowLeft');
+    await expect(allFilter).toBeFocused();
+    await expect(allFilter).toHaveAttribute('aria-checked', 'true');
+    await page.keyboard.press('ArrowRight');
+
+    const searchTablesSeen: string[] = [];
     await page.route(
       (url) => url.pathname === '/api/search',
-      (route) =>
-        route.fulfill({
+      (route) => {
+        searchTablesSeen.push(new URL(route.request().url()).searchParams.get('tables') ?? '');
+        return route.fulfill({
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({
@@ -175,11 +189,13 @@ test.describe('cross-browser corner cases', () => {
               },
             ],
           }),
-        }),
+        });
+      },
     );
     await page.locator('#search-overlay-input').fill('timeout');
     const resultButton = page.locator('.search-overlay__result-btn').first();
     await expect(resultButton).toContainText('task timeout result');
+    expect(searchTablesSeen.at(-1)).toBe('concepts');
     await resultButton.click();
     await expect(page).toHaveURL(/#\/run\/run-real\/lesson/);
   });

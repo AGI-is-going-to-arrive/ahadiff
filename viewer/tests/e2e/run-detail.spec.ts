@@ -18,6 +18,45 @@ test.describe('Run Detail page', () => {
     expect(await metaRows.count()).toBeGreaterThanOrEqual(4);
   });
 
+  test('renders degraded flags as localized labels', async ({ page }) => {
+    await page.route(
+      (url) => url.pathname === '/api/run/degraded-run',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            run_id: 'degraded-run',
+            source_kind: 'git_ref',
+            source_ref: 'HEAD',
+            content_lang: 'en',
+            capability_level: 2,
+            verdict: 'CAUTION',
+            overall: 72,
+            status: 'baseline',
+            weakest_dim: 'diff_coverage',
+            created_at: '2026-04-25T00:00:00Z',
+            degraded_flags: { diff_clipped: true, file_count_exceeded: true },
+            base_ref: 'HEAD~1',
+            prompt_version: 'abc1234',
+            eval_bundle_version: 'v1',
+            note_json: null,
+            artifacts: ['patch.diff', 'metadata.json', 'claims.jsonl'],
+            graphify_mode: null,
+            graphify_status: null,
+            graphify_notes: null,
+          }),
+        }),
+    );
+
+    await page.goto('/#/run/degraded-run');
+
+    const flags = page.locator('.run-detail__degraded-list');
+    await expect(flags).toContainText('Diff clipped');
+    await expect(flags).toContainText('File count exceeded');
+    await expect(flags).not.toContainText('diff_clipped');
+  });
+
   test('switches to score tab and shows dimension bars', async ({ page }) => {
     await page.goto('/#/run/test-run');
 

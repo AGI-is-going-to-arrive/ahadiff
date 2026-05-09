@@ -19,11 +19,6 @@
   min-width: 0;
 }
 
-@supports (container-type: inline-size) {
-  .claim-inspector {
-    container-type: inline-size;
-  }
-}
 
 .claim-inspector--empty {
   color: var(--muted);
@@ -329,6 +324,7 @@
 .claim-inspector__item {
   width: 100%;
   text-align: start;
+  -webkit-appearance: none;
   appearance: none;
   display: flex;
   flex-direction: column;

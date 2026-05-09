@@ -300,9 +300,15 @@ export async function getUsage(
 }
 
 export async function getAudit(
+  limit = 20,
+  offset = 0,
   opts?: Pick<ApiFetchOptions, 'signal'>,
 ): Promise<AuditResponse> {
-  const raw = await apiFetch<unknown>('/api/audit?limit=20', opts);
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+  });
+  const raw = await apiFetch<unknown>(`/api/audit?${params.toString()}`, opts);
   return parseResponse('GET /api/audit', auditResponseSchema, raw);
 }
 

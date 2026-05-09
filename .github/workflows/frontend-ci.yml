@@ -59,8 +59,8 @@ jobs:
       - name: Build
         run: pnpm build
 
-  playwright-chromium:
-    name: Playwright Chromium layered
+  playwright-browser-suite:
+    name: Playwright browser suite
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -84,17 +84,22 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Chromium browser
-        run: pnpm exec playwright install --with-deps chromium
+      - name: Install Chromium and Firefox browsers
+        run: pnpm exec playwright install --with-deps chromium firefox
 
-      - name: Chromium desktop smoke/a11y/cross-browser/learn-task
+      - name: Chromium desktop full E2E suite
+        run: |
+          pnpm exec playwright test \
+            tests/e2e/ \
+            --project=chromium-desktop \
+            --reporter=line
+
+      - name: Firefox desktop smoke/a11y
         run: |
           pnpm exec playwright test \
             tests/e2e/smoke.spec.ts \
             tests/e2e/a11y.spec.ts \
-            tests/e2e/cross-browser.spec.ts \
-            tests/e2e/learn-task.spec.ts \
-            --project=chromium-desktop \
+            --project=firefox-desktop \
             --reporter=line
 
       - uses: actions/upload-artifact@v4

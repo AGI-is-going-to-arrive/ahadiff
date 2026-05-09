@@ -699,3 +699,9 @@
 :root[data-theme="dark"] .learn-dialog__overlay {
   background: rgb(0 0 0 / 0.6);
 }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .learn-dialog__overlay {
+    background: rgb(0 0 0 / 0.6);
+  }
+}

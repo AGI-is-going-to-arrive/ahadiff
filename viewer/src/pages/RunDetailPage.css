@@ -107,6 +107,23 @@
   word-break: break-word;
 }
 
+.run-detail__degraded-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}
+
+.run-detail__degraded-list li {
+  background: var(--warning-soft);
+  color: var(--warning);
+  padding: var(--sp-0-5) var(--sp-2);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-xs);
+}
+
 /* ---------- Artifacts ---------- */
 .run-detail__artifacts-title {
   font-family: var(--font-sans);

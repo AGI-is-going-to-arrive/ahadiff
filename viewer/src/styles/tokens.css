@@ -224,10 +224,27 @@
   --accent-deep: #8C3A1A;
   --shadow-editorial: inset 0 1px 0 rgba(210,112,80,.08), 0 28px 40px -12px rgba(28,27,24,.12), 0 4px 12px -2px rgba(28,27,24,.06);
   --ease-editorial: cubic-bezier(.22,.61,.36,1);
+
+  /* Compatibility aliases — map alternative naming conventions to canonical tokens.
+     These are lazy-resolved, so dark-mode overrides of the underlying tokens apply automatically. */
+  --surface: var(--elevated);
+  --border: var(--hair);
+  --border-subtle: var(--hair);
+  --ink-muted: var(--muted);
+  --bg-page: var(--paper);
+  --bg-hover: var(--subtle);
+  --fg-muted: var(--muted);
+  --accent-faint: var(--accent-softest);
+  --success-faint: #E8F5E9;
+  --danger-faint: #FFEBEE;
+  --sp-0-5: 2px;
+  --r-xs: 2px;
+  --dur-normal: var(--dur-base);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --paper: #1C1B18;
     --subtle: #2A2823;
     --elevated: #38362F;
@@ -333,6 +350,10 @@
     --ink-display: #F5F3EE;
     --accent-deep: #E8A080;
     --shadow-editorial: inset 0 1px 0 rgba(210,112,80,.12), 0 28px 40px -12px rgba(0,0,0,.3), 0 4px 12px -2px rgba(0,0,0,.15);
+
+    /* Compatibility aliases — dark overrides */
+    --success-faint: rgba(47, 111, 79, 0.08);
+    --danger-faint: rgba(163, 61, 43, 0.08);
   }
 }
 
@@ -403,6 +424,10 @@
   --ink-display: #F5F3EE;
   --accent-deep: #E8A080;
   --shadow-editorial: inset 0 1px 0 rgba(210,112,80,.12), 0 28px 40px -12px rgba(0,0,0,.3), 0 4px 12px -2px rgba(0,0,0,.15);
+
+  /* Compatibility aliases — dark overrides */
+  --success-faint: rgba(47, 111, 79, 0.08);
+  --danger-faint: rgba(163, 61, 43, 0.08);
 }
 
 :root[data-theme="light"] {

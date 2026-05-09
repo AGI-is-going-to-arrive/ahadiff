@@ -382,10 +382,10 @@
     -webkit-overflow-scrolling: touch;
     scroll-snap-type: x proximity;
     background:
-      linear-gradient(to right, var(--elevated) 30%, color-mix(in srgb, var(--elevated) 0%, transparent)) left center / var(--sp-4) 100% no-repeat local,
-      linear-gradient(to left, var(--elevated) 30%, color-mix(in srgb, var(--elevated) 0%, transparent)) right center / var(--sp-4) 100% no-repeat local,
-      radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--ink) 12%, transparent), transparent) left center / var(--sp-3) 100% no-repeat scroll,
-      radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--ink) 12%, transparent), transparent) right center / var(--sp-3) 100% no-repeat scroll;
+      linear-gradient(to right, var(--elevated), transparent) left center / var(--sp-4) 100% no-repeat local,
+      linear-gradient(to left, var(--elevated), transparent) right center / var(--sp-4) 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.08), transparent) left center / var(--sp-3) 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.08), transparent) right center / var(--sp-3) 100% no-repeat scroll;
   }
 
   .ratchet-table {
@@ -466,6 +466,26 @@
 .ratchet-tabs__tab:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+@media (max-width: 780px) and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ratchet-card__body--table {
+    background:
+      linear-gradient(to right, var(--elevated), transparent) left center / var(--sp-4) 100% no-repeat local,
+      linear-gradient(to left, var(--elevated), transparent) right center / var(--sp-4) 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, rgba(255, 255, 255, 0.06), transparent) left center / var(--sp-3) 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, rgba(255, 255, 255, 0.06), transparent) right center / var(--sp-3) 100% no-repeat scroll;
+  }
+}
+
+@media (max-width: 780px) {
+  :root[data-theme="dark"] .ratchet-card__body--table {
+    background:
+      linear-gradient(to right, var(--elevated), transparent) left center / var(--sp-4) 100% no-repeat local,
+      linear-gradient(to left, var(--elevated), transparent) right center / var(--sp-4) 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, rgba(255, 255, 255, 0.06), transparent) left center / var(--sp-3) 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, rgba(255, 255, 255, 0.06), transparent) right center / var(--sp-3) 100% no-repeat scroll;
+  }
 }
 
 @media (prefers-color-scheme: dark) {

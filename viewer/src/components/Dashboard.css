@@ -31,6 +31,14 @@
   margin: 0;
 }
 
+.dashboard__last-run {
+  display: inline-block;
+  margin-top: var(--sp-1);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  font-family: var(--font-sans);
+}
+
 /* ---- KPI grid ---- */
 .kpi-grid {
   display: grid;

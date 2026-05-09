@@ -6,8 +6,8 @@ import JudgeReport from '../components/JudgeReport';
 import { getRun, getRunScore, getRunConcepts } from '../api/runs';
 import { ApiError } from '../api/client';
 import { scorePayloadSchema } from '../api/schemas';
-import { useTranslation, type TranslateFn } from '../i18n/useTranslation';
-import type { RunDetail, ScorePayload } from '../api/types';
+import { useTranslation, type MessageKey, type TranslateFn } from '../i18n/useTranslation';
+import type { DegradedFlag, RunDetail, ScorePayload } from '../api/types';
 import { safeVerdict } from '../utils/verdict';
 import './RunDetailPage.css';
 
@@ -33,6 +33,13 @@ const TAB_PANEL_IDS: Record<DetailTab, string> = {
   judge: 'rd-panel-judge',
   concepts: 'rd-panel-concepts',
   artifacts: 'rd-panel-artifacts',
+};
+
+const DEGRADED_FLAG_LABEL_KEYS: Record<DegradedFlag, MessageKey> = {
+  diff_clipped: 'RunDetail.degraded_flag_diff_clipped',
+  binary_only: 'RunDetail.degraded_flag_binary_only',
+  file_count_exceeded: 'RunDetail.degraded_flag_file_count_exceeded',
+  token_exceeded: 'RunDetail.degraded_flag_token_exceeded',
 };
 
 interface RunConceptRow {
@@ -120,6 +127,12 @@ function artifactLinks(artifacts: string[], runId: string, t: TranslateFn) {
   return routes.filter((r) =>
     artifacts.some((a) => a.includes(r.name)),
   );
+}
+
+function activeDegradedFlags(flags: RunDetail['degraded_flags']): DegradedFlag[] {
+  return (Object.entries(flags) as Array<[DegradedFlag, boolean | undefined]>)
+    .filter(([, enabled]) => enabled)
+    .map(([flag]) => flag);
 }
 
 export default function RunDetailPage() {
@@ -289,6 +302,7 @@ export default function RunDetailPage() {
   const hasConcepts = run.artifacts.includes('concepts.jsonl');
   const visibleTabs = TABS.filter((tab) => tab !== 'concepts' || hasConcepts);
   const links = artifactLinks(run.artifacts, runId, t);
+  const degradedFlags = activeDegradedFlags(run.degraded_flags);
 
   return (
     <AppShell>
@@ -369,6 +383,44 @@ export default function RunDetailPage() {
               <dt>{t('RunDetail.source_kind')}</dt>
               <dd>{run.source_kind}</dd>
             </div>
+            {run.prompt_version && (
+              <div className="run-detail__meta-row">
+                <dt>{t('RunDetail.prompt_version')}</dt>
+                <dd><code>{run.prompt_version}</code></dd>
+              </div>
+            )}
+            {run.eval_bundle_version && (
+              <div className="run-detail__meta-row">
+                <dt>{t('RunDetail.eval_bundle_version')}</dt>
+                <dd><code>{run.eval_bundle_version}</code></dd>
+              </div>
+            )}
+            {run.graphify_mode && (
+              <div className="run-detail__meta-row">
+                <dt>{t('RunDetail.graphify_mode')}</dt>
+                <dd>{run.graphify_mode}</dd>
+              </div>
+            )}
+            {run.graphify_status && (
+              <div className="run-detail__meta-row">
+                <dt>{t('RunDetail.graphify_status')}</dt>
+                <dd>{run.graphify_status}</dd>
+              </div>
+            )}
+            {degradedFlags.length > 0 && (
+              <div className="run-detail__meta-row">
+                <dt>{t('RunDetail.degraded_flags')}</dt>
+                <dd>
+                  <ul className="run-detail__degraded-list">
+                    {degradedFlags.map((flag) => (
+                      <li key={flag} title={flag}>
+                        {t(DEGRADED_FLAG_LABEL_KEYS[flag])}
+                      </li>
+                    ))}
+                  </ul>
+                </dd>
+              </div>
+            )}
           </dl>
         )}
       </section>

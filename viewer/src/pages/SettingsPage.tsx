@@ -128,7 +128,7 @@ export default function SettingsPage() {
       const s = { signal: controller.signal };
       const [cfg, doc, prov, usg, aud, inst] = await Promise.allSettled([
         getConfig(s), getDoctor(s), getProviders(s),
-        getUsage(s), getAudit(s), getInstallTargets(s),
+        getUsage(s), getAudit(20, 0, s), getInstallTargets(s),
       ]);
       if (controller.signal.aborted) return;
       setData({
@@ -478,6 +478,37 @@ function AccountTab({
                   : undefined}
               />
             </div>
+            {usage.models && usage.models.length > 0 && (
+              <details className="settings-usage__details">
+                <summary>{t('Settings_page.usage_per_model')}</summary>
+                <div className="settings-usage__table-wrap">
+                  <table className="settings-usage__table">
+                    <thead>
+                      <tr>
+                        <th>{t('Settings_page.usage_model')}</th>
+                        <th>{t('Settings_page.usage_provider')}</th>
+                        <th className="settings-usage__num">{t('Settings_page.usage_calls')}</th>
+                        <th className="settings-usage__num">{t('Settings_page.usage_tokens_in')}</th>
+                        <th className="settings-usage__num">{t('Settings_page.usage_tokens_out')}</th>
+                        <th className="settings-usage__num">{t('Settings_page.usage_cost')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {usage.models.map((m) => (
+                        <tr key={`${m.provider_class}-${m.model_id}`}>
+                          <td><code>{m.model_id}</code></td>
+                          <td>{m.provider_class}</td>
+                          <td className="settings-usage__num">{formatNumber(m.call_count, locale)}</td>
+                          <td className="settings-usage__num">{formatNumber(m.total_input_tokens, locale)}</td>
+                          <td className="settings-usage__num">{formatNumber(m.total_output_tokens, locale)}</td>
+                          <td className="settings-usage__num">{`$${m.total_cost_usd.toFixed(4)}`}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            )}
           </div>
         </div>
       )}
@@ -1053,6 +1084,63 @@ function AuditTab({
   locale: string;
   onRetry: () => void;
 }) {
+  const [entries, setEntries] = useState<AuditEntry[]>([]);
+  const [auditOffset, setAuditOffset] = useState(0);
+  const [auditHasMore, setAuditHasMore] = useState(false);
+  const [auditLoadingMore, setAuditLoadingMore] = useState(false);
+  const [auditLoadError, setAuditLoadError] = useState(false);
+  const loadGenRef = useRef(0);
+  const auditRequestRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    loadGenRef.current += 1;
+    auditRequestRef.current?.abort();
+    setAuditLoadingMore(false);
+    setAuditLoadError(false);
+    if (audit) {
+      setEntries(audit.entries);
+      setAuditOffset(audit.offset ?? 0);
+      setAuditHasMore(Boolean(audit.has_more));
+    } else {
+      setEntries([]);
+      setAuditOffset(0);
+      setAuditHasMore(false);
+    }
+  }, [audit]);
+
+  useEffect(() => () => {
+    loadGenRef.current += 1;
+    auditRequestRef.current?.abort();
+  }, []);
+
+  const loadMore = useCallback(async () => {
+    if (auditLoadingMore || !auditHasMore) return;
+    const gen = ++loadGenRef.current;
+    const controller = new AbortController();
+    auditRequestRef.current?.abort();
+    auditRequestRef.current = controller;
+    setAuditLoadingMore(true);
+    setAuditLoadError(false);
+    try {
+      const newOffset = auditOffset + 20;
+      const more = await getAudit(20, newOffset, { signal: controller.signal });
+      if (controller.signal.aborted || gen !== loadGenRef.current) return;
+      setEntries((prev) => [...prev, ...more.entries]);
+      setAuditOffset(more.offset);
+      setAuditHasMore(Boolean(more.has_more));
+    } catch {
+      if (controller.signal.aborted || gen !== loadGenRef.current) return;
+      setAuditLoadError(true);
+    } finally {
+      if (!controller.signal.aborted && gen === loadGenRef.current) {
+        setAuditLoadingMore(false);
+        if (auditRequestRef.current === controller) {
+          auditRequestRef.current = null;
+        }
+      }
+    }
+  }, [auditHasMore, auditLoadingMore, auditOffset]);
+
   if (failed || !audit) {
     return (
       <UnavailableCard
@@ -1063,7 +1151,7 @@ function AuditTab({
       />
     );
   }
-  if (audit.entries.length === 0) {
+  if (entries.length === 0) {
     return (
       <div className="settings-card">
         <div className="settings-card__header"><h2>{t('Settings_page.section_audit')}</h2></div>
@@ -1078,7 +1166,7 @@ function AuditTab({
     <div className="settings-card">
       <div className="settings-card__header">
         <h2>{t('Settings_page.section_audit')}</h2>
-        <span className="u-muted-sm">{t('Settings_page.audit_last_n', { count: String(audit.entries.length) })}</span>
+        <span className="u-muted-sm">{t('Settings_page.audit_last_n', { count: String(entries.length) })}</span>
       </div>
       <div className="settings-card__body settings-card__body--flush">
         <div className="audit-table-wrap">
@@ -1092,7 +1180,7 @@ function AuditTab({
               </tr>
             </thead>
             <tbody>
-              {audit.entries.map((entry, i) => (
+              {entries.map((entry, i) => (
                 <tr key={i}>
                   {AUDIT_COLS.map(col => {
                     const display = formatAuditCell(entry, col, t, locale);
@@ -1104,6 +1192,23 @@ function AuditTab({
             </tbody>
           </table>
         </div>
+        {auditHasMore && (
+          <div className="settings-audit__load-more">
+            <button
+              type="button"
+              className="settings-audit__load-more-btn"
+              disabled={auditLoadingMore}
+              onClick={() => { void loadMore(); }}
+            >
+              {auditLoadingMore ? t('Settings_page.audit_loading') : t('Settings_page.audit_load_more')}
+            </button>
+            {auditLoadError && (
+              <span role="alert" className="settings-audit__load-error">
+                {t('Error.fetch_failed', { resource: t('Settings_page.section_audit') })}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

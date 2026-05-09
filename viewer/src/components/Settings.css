@@ -418,6 +418,40 @@
   text-align: right;
 }
 
+.settings-audit__load-more {
+  text-align: center;
+  padding: var(--sp-4) 0;
+}
+
+.settings-audit__load-more-btn {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 1px solid var(--hair);
+  background: var(--elevated);
+  color: var(--ink);
+  padding: var(--sp-2) var(--sp-6);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+.settings-audit__load-more-btn:hover {
+  background: var(--subtle);
+}
+
+.settings-audit__load-more-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.settings-audit__load-error {
+  display: block;
+  margin-top: var(--sp-2);
+  color: var(--danger);
+  font-size: var(--fs-xs);
+}
+
 /* ---- Doctor checks ---- */
 .doctor-check {
   display: flex;
@@ -779,4 +813,50 @@
   .settings-slider {
     max-width: 100%;
   }
+}
+
+.settings-usage__details {
+  margin-top: var(--sp-4);
+}
+
+.settings-usage__details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  padding: var(--sp-2) 0;
+  user-select: none;
+}
+
+.settings-usage__table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-top: var(--sp-2);
+}
+
+.settings-usage__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+
+.settings-usage__table th,
+.settings-usage__table td {
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--hair);
+  text-align: left;
+}
+
+.settings-usage__table th {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.settings-usage__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }

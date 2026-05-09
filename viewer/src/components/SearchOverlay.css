@@ -110,7 +110,47 @@
 }
 
 .search-overlay__input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
   appearance: none;
+}
+
+.search-overlay__filters {
+  display: flex;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-4);
+  border-bottom: 1px solid var(--hair);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.search-overlay__filter-chip {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 1px solid var(--hair);
+  background: transparent;
+  color: var(--muted);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-full);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--dur-fast) var(--ease-out);
+}
+
+.search-overlay__filter-chip:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.search-overlay__filter-chip--active {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+
+.search-overlay__filter-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
 }
 
 .search-overlay__status {
@@ -247,6 +287,9 @@
   .search-overlay__result-btn {
     transition: none;
   }
+  .search-overlay__filter-chip {
+    transition: none;
+  }
 }
 
 /* Forced colors: panel + chip outlines drawn via CanvasText. */
@@ -257,6 +300,16 @@
   .search-overlay__chip {
     border-color: CanvasText;
     background: Canvas;
+  }
+  .search-overlay__filter-chip {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+  .search-overlay__filter-chip--active {
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
   }
   .search-overlay__result--active .search-overlay__result-btn {
     background: Highlight;

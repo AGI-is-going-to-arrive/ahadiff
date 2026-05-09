@@ -13,10 +13,11 @@ export type SearchResult = SearchResponse['results'][number];
 
 export async function searchAll(
   query: string,
-  opts?: Pick<ApiFetchOptions, 'signal'> & { limit?: number },
+  opts?: Pick<ApiFetchOptions, 'signal'> & { limit?: number; tables?: string },
 ): Promise<SearchResponse> {
   const q = new URLSearchParams({ q: query });
   if (opts?.limit != null) q.set('limit', String(opts.limit));
+  if (opts?.tables) q.set('tables', opts.tables);
   const raw = await apiFetch<unknown>(`/api/search?${q.toString()}`, {
     signal: opts?.signal,
   });

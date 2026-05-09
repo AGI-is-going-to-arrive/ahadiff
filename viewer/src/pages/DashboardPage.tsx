@@ -459,6 +459,11 @@ export default function DashboardPage() {
         <div className="dashboard__header">
           <h1 className="dashboard__title">{t('Dashboard.title')}</h1>
           <p className="dashboard__subtitle">{t('Dashboard.subtitle')}</p>
+          {stats?.last_run_at && (
+            <span className="dashboard__last-run">
+              {t('Dashboard.last_run_at', { time: formatDate(stats.last_run_at, locale) })}
+            </span>
+          )}
         </div>
         {errorBanner}
 
@@ -529,7 +534,7 @@ export default function DashboardPage() {
             <h2 className="dashboard__section-title">
               {t('Dashboard.learning_effectiveness_title')}
             </h2>
-            <div className="kpi-grid kpi-grid--3col">
+            <div className="kpi-grid kpi-grid--4col">
               <KpiCard
                 label={t('Dashboard.learning_transfer_rate')}
                 value={`${Math.round(learning.transfer_rate * 100)}%`}
@@ -545,6 +550,11 @@ export default function DashboardPage() {
                 label={t('Dashboard.concepts_improving')}
                 value={learning.concepts_improving}
                 tone={learning.concepts_improving > 0 ? 'success' : 'default'}
+              />
+              <KpiCard
+                label={t('Dashboard.concepts_stable')}
+                value={learning.concepts_stable}
+                tone={learning.concepts_stable > 0 ? 'success' : 'default'}
               />
               <KpiCard
                 label={t('Dashboard.concepts_declining')}
@@ -851,9 +861,11 @@ function VerdictBadge({ verdict, t }: { verdict: Verdict; t: TranslateFn }) {
 
 /* ---- Date formatting ---- */
 
-function formatDate(iso: string, locale: string): string {
+function formatDate(iso: string | null | undefined, locale: string): string {
+  if (!iso) return '';
   try {
     const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
     return d.toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' });
   } catch {
     return iso;
