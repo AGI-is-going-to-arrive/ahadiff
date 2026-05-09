@@ -20,7 +20,7 @@
 > 直接回 raw `graphify-out/graph.json`。
 
 > Current status note (2026-05-09): this file is still a historical live
-> snapshot, but the current code now has 56 concrete `/api/*` routes, one
+> snapshot, but the current code now has 59 concrete `/api/*` routes, one
 > `/api/{rest_of_path:path}` catchall, and `/healthz`. This follow-up adds a
 > browser-backed real-serve contract test in `viewer/tests/real-serve/` that
 > starts `ahadiff serve` against a temporary git repo, then checks
@@ -34,6 +34,14 @@
 > routes. They require the local write token plus confirmed manifest hash and
 > write only for the repo that started `ahadiff serve`; no install/uninstall
 > write was run against the real current repo in this validation.
+> The later P1 read-only follow-up also adds `/api/concepts/ledger`,
+> `/api/run/{run_id}/judge`, and `/api/improve/preflight`, all consumed by the
+> React viewer. Its final verification reran targeted backend route tests
+> (`18 passed`), full backend unit tests (`2088 passed`), ruff/format/pyright,
+> frontend Vitest (`245 passed`), typecheck/build, the P1 E2E matrix
+> (`390 passed`), mobile target E2E (`52 passed`), and Concepts/Ratchet
+> axe-core checks (`2 passed`). Integration, eval, live judge, and coverage were
+> not rerun in that follow-up.
 
 ## 2026-04-27 Live Concrete Endpoints (22)
 
