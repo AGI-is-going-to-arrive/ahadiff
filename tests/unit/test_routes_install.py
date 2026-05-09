@@ -269,6 +269,7 @@ def test_response_schema_matches_frontend_expectations(tmp_path: Path) -> None:
         "install_command",
         "uninstall_command",
         "manifest",
+        "manifest_hash",
         "manifest_error",
         "error_message",
     }
@@ -278,6 +279,9 @@ def test_response_schema_matches_frontend_expectations(tmp_path: Path) -> None:
         assert target["install_command"] == f"ahadiff install {target['name']}"
         assert target["uninstall_command"] == f"ahadiff uninstall {target['name']}"
         assert target["status"] in {"installed", "available", "unsupported", "error"}
+        if target["manifest"] is not None:
+            assert isinstance(target["manifest_hash"], str)
+            assert len(target["manifest_hash"]) == 64
 
 
 def test_get_install_targets_returns_manifest_preview(tmp_path: Path) -> None:
@@ -290,6 +294,7 @@ def test_get_install_targets_returns_manifest_preview(tmp_path: Path) -> None:
     targets_by_name = {t["name"]: t for t in response.json()["targets"]}
     codex = targets_by_name["codex"]
     assert codex["manifest_error"] is None
+    assert len(codex["manifest_hash"]) == 64
     assert codex["manifest"]["write"] == [
         {"action": "merge-section", "file_strategy": "user-managed", "path": "AGENTS.md"}
     ]
@@ -310,3 +315,161 @@ def test_all_registered_targets_appear_in_response(tmp_path: Path) -> None:
     response_names = {t["name"] for t in response.json()["targets"]}
     for name in available_targets():
         assert name in response_names
+
+
+def test_detect_timeout_marks_error_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    original_get_target = routes_install_module.get_target
+
+    def timeout_get_target(name: str) -> Any:
+        target = original_get_target(name)
+        if name == "codex":
+
+            class TimeoutTarget:
+                def detect(self, _ctx: Any) -> bool:
+                    raise routes_install_module.subprocess.TimeoutExpired(["detect"], 1)
+
+            return TimeoutTarget()
+        return target
+
+    monkeypatch.setattr(routes_install_module, "get_target", timeout_get_target)
+    client = _client(state_dir)
+
+    response = client.get("/api/install/targets")
+
+    codex = {t["name"]: t for t in response.json()["targets"]}["codex"]
+    assert codex["status"] == "error"
+    assert codex["error_message"] == "target detection timed out"
+
+
+def test_manifest_preview_exception_sets_manifest_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    original_get_target = routes_install_module.get_target
+
+    def failing_manifest_get_target(name: str) -> Any:
+        target = original_get_target(name)
+        if name == "codex":
+
+            class FailingManifestTarget:
+                name = "codex"
+
+                def detect(self, _ctx: Any) -> bool:
+                    return False
+
+                def preview(self, _ctx: Any) -> str:
+                    raise RuntimeError("preview failed")
+
+            return FailingManifestTarget()
+        return target
+
+    monkeypatch.setattr(routes_install_module, "get_target", failing_manifest_get_target)
+    client = _client(state_dir)
+
+    response = client.get("/api/install/targets")
+
+    codex = {t["name"]: t for t in response.json()["targets"]}["codex"]
+    assert codex["status"] == "available"
+    assert codex["manifest"] is None
+    assert codex["manifest_hash"] is None
+    assert codex["manifest_error"] == "target manifest preview failed"
+
+
+def test_install_preview_returns_manifest_hash_and_is_read_only(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    client = _client(state_dir)
+
+    response = client.post(
+        "/api/install/codex/preview",
+        headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        json={},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["target"]["name"] == "codex"
+    assert len(payload["manifest_hash"]) == 64
+    assert payload["manifest_hash"] == payload["target"]["manifest_hash"]
+    assert not (state_dir.parent / "AGENTS.md").exists()
+
+
+def test_install_mutation_requires_token_and_manifest_confirmation(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    client = _client(state_dir)
+    headers = {"origin": "http://localhost:8765"}
+
+    denied = client.post(
+        "/api/install/codex",
+        headers=headers,
+        json={"confirmed_manifest_hash": "0" * 64},
+    )
+    mismatch = client.post(
+        "/api/install/codex",
+        headers={**headers, "X-AhaDiff-Token": "test-token"},
+        json={"confirmed_manifest_hash": "0" * 64},
+    )
+
+    assert denied.status_code == 403
+    assert mismatch.status_code == 400
+    assert "confirmed_manifest_hash" in mismatch.json()["error"]
+    assert not (state_dir.parent / "AGENTS.md").exists()
+
+
+def test_install_and_uninstall_mutations_write_only_tmp_repo(tmp_path: Path) -> None:
+    state_dir = tmp_path / "repo" / ".ahadiff"
+    state_dir.mkdir(parents=True)
+    client = _client(state_dir)
+    headers = {"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"}
+
+    preview = client.post("/api/install/codex/preview", headers=headers, json={}).json()
+    installed = client.post(
+        "/api/install/codex",
+        headers=headers,
+        json={"confirmed_manifest_hash": preview["manifest_hash"]},
+    )
+    uninstall_preview = client.post("/api/install/codex/preview", headers=headers, json={}).json()
+    uninstalled = client.post(
+        "/api/install/codex/uninstall",
+        headers=headers,
+        json={"confirmed_manifest_hash": uninstall_preview["manifest_hash"]},
+    )
+
+    agents_path = state_dir.parent / "AGENTS.md"
+    assert installed.status_code == 200
+    assert installed.json()["operation"] == "install"
+    assert installed.json()["updated_paths"] == ["AGENTS.md"]
+    assert installed.json()["target"]["status"] == "installed"
+    assert agents_path.exists()
+    assert uninstalled.status_code == 200
+    assert uninstalled.json()["operation"] == "uninstall"
+    assert uninstalled.json()["updated_paths"] == ["AGENTS.md"]
+    assert "AHADIFF:BEGIN target=codex" not in agents_path.read_text(encoding="utf-8")
+
+
+def test_install_mutation_rejects_repo_root_override(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    client = _client(state_dir)
+    headers = {"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"}
+    preview = client.post("/api/install/codex/preview", headers=headers, json={}).json()
+
+    response = client.post(
+        "/api/install/codex",
+        headers=headers,
+        json={
+            "confirmed_manifest_hash": preview["manifest_hash"],
+            "repo_root": str(tmp_path / "other"),
+        },
+    )
+
+    assert response.status_code == 422
+    assert not (tmp_path / "other" / "AGENTS.md").exists()

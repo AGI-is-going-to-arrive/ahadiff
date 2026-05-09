@@ -442,6 +442,9 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 - `GET /api/config`
 - `GET /api/doctor`
 - `GET /api/install/targets`
+- `POST /api/install/:target/preview`
+- `POST /api/install/:target`
+- `POST /api/install/:target/uninstall`
 - `POST /api/signals/mark-wrong`
 - `POST /api/signals/quiz-answer`
 - `POST /api/signals/srs-review`
@@ -472,11 +475,15 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 - `RatchetHistoryEntry`
 - `InstallManifestActionSummary`：`action`、`file_strategy: Literal["generated","user-managed"]`、`path`
 - `InstallManifestSummary`：`preview`、`write`、`uninstall`
-- `InstallTargetSummary`：`name`、`display_name`、`detected`、`platform_supported`、`status`、`description`、`install_command`、`uninstall_command`、`manifest`、`manifest_error`、`error_message`
+- `InstallTargetSummary`：`name`、`display_name`、`detected`、`platform_supported`、`status`、`description`、`install_command`、`uninstall_command`、`manifest`、`manifest_hash`、`manifest_error`、`error_message`
+- `InstallTargetPreviewResponse`：`target`、`manifest_hash`
+- `InstallTargetMutationResponse`：`target`、`operation`、`updated`、`updated_paths`、`manifest_hash`
 
 Stage 0 同时冻结最小写请求 DTO：
 
 - `SetLocaleRequest`
+- `InstallPreviewRequest`：`force`、`layer2`
+- `InstallMutationRequest`：`force`、`layer2`、`confirmed_manifest_hash`
 - `LearningSignalRequest`
 - `MarkWrongRequest`
 - `ReviewSignalRequest`
@@ -486,7 +493,9 @@ Stage 0 同时冻结最小写请求 DTO：
 
 - Request DTO 只冻结最小标识字段；后续 payload 扩展不能破坏现有字段语义
 - `run_id` / `task_id` / `event_id` / `claim_id` / `card_id` 这类公开标识字段必须拒绝空字符串；`source_ref` 这类历史引用字段不在本轮一刀切收紧范围内
-- `GET /api/install/targets` 是只读展示 contract；manifest preview 用于前端展示和用户确认，不代表浏览器已获得真实写文件能力
+- `GET /api/install/targets` 仍是只读展示 contract；浏览器真实写入只能走 `POST /api/install/:target` 和 `POST /api/install/:target/uninstall`
+- install 写操作只允许当前 `ahadiff serve` repo，不接受浏览器传入任意 `repo_root` / path；写入必须带 `X-AhaDiff-Token`，继续走 Origin / Referer 写保护、localhost-only 边界和 repo 写锁
+- manifest preview 是确认门：前端先拿 `manifest_hash`，install / uninstall 时必须回传 `confirmed_manifest_hash`；hash 不匹配时拒绝写入
 - `src/ahadiff/contracts/serve_app.py` 是**契约文件**，不是后续真正的 `src/ahadiff/serve/app.py` 实现文件
 
 ### 4.4 Locale 解析顺序

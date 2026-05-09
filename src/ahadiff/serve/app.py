@@ -20,7 +20,12 @@ from .routes_audit import get_audit
 from .routes_config import get_config, get_doctor, put_config
 from .routes_export import get_export_results
 from .routes_graph import get_concept_graph, get_graph_status
-from .routes_install import get_install_targets
+from .routes_install import (
+    get_install_targets,
+    install_target,
+    preview_install_target,
+    uninstall_target,
+)
 from .routes_learn import post_learn, post_learn_estimate
 from .routes_locale import get_locale, put_locale
 from .routes_providers import (
@@ -130,6 +135,9 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
             Route("/api/config", put_config, methods=["PUT"]),
             Route("/api/doctor", get_doctor, methods=["GET"]),
             Route("/api/install/targets", get_install_targets, methods=["GET"]),
+            Route("/api/install/{target}/preview", preview_install_target, methods=["POST"]),
+            Route("/api/install/{target}", install_target, methods=["POST"]),
+            Route("/api/install/{target}/uninstall", uninstall_target, methods=["POST"]),
             Route("/api/stats", get_stats, methods=["GET"]),
             Route("/api/review/heatmap", get_review_heatmap, methods=["GET"]),
             Route("/api/export/results", get_export_results, methods=["GET"]),

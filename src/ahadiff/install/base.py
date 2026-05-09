@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import contextlib
+import errno
 import json
+import os
 import re
+import stat
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol
 
@@ -18,6 +21,7 @@ SECTION_RE = re.compile(
     r"<!-- AHADIFF:END -->\n?",
     re.DOTALL,
 )
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 
 
 @dataclass(frozen=True)
@@ -131,16 +135,18 @@ def with_file_strategy(action: InstallAction) -> InstallAction:
 
 
 def has_marker(path: Path, target: str) -> bool:
-    if not path.exists():
-        return False
     marker = f"<!-- AHADIFF:BEGIN target={target} -->"
-    return marker in path.read_text(encoding="utf-8")
+    try:
+        return marker in _read_text_no_follow_regular(path, "install target")
+    except FileNotFoundError:
+        return False
 
 
 def merge_marked_section(path: Path, target: str, section: str) -> str:
-    if not path.exists():
+    try:
+        original = _read_text_no_follow_regular(path, "install target")
+    except FileNotFoundError:
         return section
-    original = path.read_text(encoding="utf-8")
     marker = f"<!-- AHADIFF:BEGIN target={target} -->"
     if marker in original:
         return _replace_marked_section(original, target, section)
@@ -149,14 +155,15 @@ def merge_marked_section(path: Path, target: str, section: str) -> str:
 
 
 def write_marked_section(path: Path, target: str, section: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    _prepare_install_file_write(path, "install target")
     _atomic_write(path, merge_marked_section(path, target, section))
 
 
 def remove_marked_section(path: Path, target: str) -> bool:
-    if not path.exists():
+    try:
+        original = _read_text_no_follow_regular(path, "install target")
+    except FileNotFoundError:
         return False
-    original = path.read_text(encoding="utf-8")
     pattern = re.compile(
         rf"\n?<!-- AHADIFF:BEGIN target={re.escape(target)} -->.*?"
         r"<!-- AHADIFF:END -->\n?",
@@ -165,6 +172,7 @@ def remove_marked_section(path: Path, target: str) -> bool:
     updated, count = pattern.subn("\n", original)
     if count == 0:
         return False
+    _prepare_install_file_write(path, "install target")
     _atomic_write(path, updated.strip() + "\n" if updated.strip() else "")
     return True
 
@@ -175,17 +183,24 @@ def write_generated_file(
     content: str,
     force: bool,
 ) -> None:
-    if path.exists() and not force and "AHADIFF:GENERATED" not in path.read_text(encoding="utf-8"):
+    try:
+        existing = _read_text_no_follow_regular(path, "generated install target")
+    except FileNotFoundError:
+        existing = None
+    if existing is not None and not force and "AHADIFF:GENERATED" not in existing:
         raise InputError(f"refusing to overwrite user-managed file without --force: {path}")
-    path.parent.mkdir(parents=True, exist_ok=True)
+    _prepare_install_file_write(path, "generated install target")
     _atomic_write(path, content)
 
 
 def remove_generated_file(path: Path) -> bool:
-    if not path.exists():
+    try:
+        content = _read_text_no_follow_regular(path, "generated install target")
+    except FileNotFoundError:
         return False
-    if "AHADIFF:GENERATED" not in path.read_text(encoding="utf-8"):
+    if "AHADIFF:GENERATED" not in content:
         return False
+    _prepare_install_file_write(path, "generated install target")
     path.unlink()
     return True
 
@@ -217,8 +232,101 @@ def _manifest_action(action: InstallAction, repo_root: Path) -> dict[str, str]:
     }
 
 
+def _has_windows_reparse_point(path_stat: os.stat_result) -> bool:
+    return bool(getattr(path_stat, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def _ensure_no_symlink_or_reparse(path: Path, path_stat: os.stat_result, description: str) -> None:
+    if stat.S_ISLNK(path_stat.st_mode):
+        raise OSError(errno.ELOOP, f"refusing to follow {description} symlink", str(path))
+    if _has_windows_reparse_point(path_stat):
+        raise OSError(errno.ELOOP, f"refusing to follow {description} reparse point", str(path))
+
+
+def _read_text_no_follow_regular(path: Path, description: str) -> str:
+    _ensure_existing_directory_chain_safe(path.parent, description)
+    path_stat = path.lstat()
+    _ensure_no_symlink_or_reparse(path, path_stat, description)
+    if not stat.S_ISREG(path_stat.st_mode):
+        raise OSError(errno.EINVAL, f"{description} must be a regular file", str(path))
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(str(path), flags)
+    try:
+        opened_stat = os.fstat(fd)
+        if not stat.S_ISREG(opened_stat.st_mode):
+            raise OSError(errno.EINVAL, f"{description} must be a regular file", str(path))
+        _ensure_no_symlink_or_reparse(path, opened_stat, description)
+        if (opened_stat.st_dev, opened_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
+            raise OSError(errno.ELOOP, f"{description} changed during validation", str(path))
+        with os.fdopen(fd, "r", encoding="utf-8", errors="replace") as handle:
+            fd = -1
+            return handle.read()
+    finally:
+        if fd != -1:
+            os.close(fd)
+
+
+def _prepare_install_file_write(path: Path, description: str) -> None:
+    _ensure_safe_parent_dir(path.parent, description)
+    try:
+        path_stat = path.lstat()
+    except FileNotFoundError:
+        return
+    _ensure_no_symlink_or_reparse(path, path_stat, description)
+    if not stat.S_ISREG(path_stat.st_mode):
+        raise OSError(errno.EINVAL, f"{description} must be a regular file", str(path))
+
+
+def _ensure_safe_parent_dir(parent: Path, description: str) -> None:
+    if parent.exists():
+        _ensure_existing_directory_chain_safe(parent, description)
+        return
+    missing: list[Path] = []
+    current = parent
+    while True:
+        try:
+            current_stat = current.lstat()
+        except FileNotFoundError:
+            missing.append(current)
+            current = current.parent
+            if current == current.parent:
+                raise
+            continue
+        _ensure_no_symlink_or_reparse(current, current_stat, f"{description} parent")
+        if not stat.S_ISDIR(current_stat.st_mode):
+            raise OSError(errno.ENOTDIR, f"{description} parent must be a directory", str(current))
+        break
+    for directory in reversed(missing):
+        try:
+            directory_stat = directory.lstat()
+        except FileNotFoundError:
+            directory.mkdir()
+            directory_stat = directory.lstat()
+        _ensure_no_symlink_or_reparse(directory, directory_stat, f"{description} parent")
+        if not stat.S_ISDIR(directory_stat.st_mode):
+            raise OSError(
+                errno.ENOTDIR,
+                f"{description} parent must be a directory",
+                str(directory),
+            )
+
+
+def _ensure_existing_directory_safe(path: Path, description: str) -> None:
+    path_stat = path.lstat()
+    _ensure_no_symlink_or_reparse(path, path_stat, f"{description} parent")
+    if not stat.S_ISDIR(path_stat.st_mode):
+        raise OSError(errno.ENOTDIR, f"{description} parent must be a directory", str(path))
+
+
+def _ensure_existing_directory_chain_safe(path: Path, description: str) -> None:
+    chain = [path, *path.parents]
+    for directory in reversed(chain):
+        if not directory.exists():
+            continue
+        _ensure_existing_directory_safe(directory, description)
+
+
 def _atomic_write(path: Path, content: str) -> None:
-    import os
     import tempfile
     from pathlib import Path as _Path
 

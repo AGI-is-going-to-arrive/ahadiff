@@ -39,6 +39,11 @@ const CHOICE_KEY_LABELS: Record<string, string> = {
   d: 'D',
 };
 
+function currentReviewCardParam(): string | null {
+  const query = window.location.hash.split('?')[1] ?? '';
+  return new URLSearchParams(query).get('card');
+}
+
 /**
  * A card renders as ABCD multiple choice when the backend explicitly says so
  * AND ships a non-empty `choices` array. Cards with `answer_mode === 'open'`
@@ -93,6 +98,7 @@ export default function ReviewPage() {
   const rate = useReviewStore((s) => s.rate);
   const currentCard = useReviewStore((s) => s.currentCard);
   const remaining = useReviewStore((s) => s.remaining);
+  const selectCard = useReviewStore((s) => s.selectCard);
 
   const [flipped, setFlipped] = useState(false);
   const [selectedChoiceLabel, setSelectedChoiceLabel] = useState<string | null>(null);
@@ -108,6 +114,7 @@ export default function ReviewPage() {
   const refreshAbortRef = useRef<AbortController | null>(null);
   const queueStateAbortRef = useRef<AbortController | null>(null);
   const queueStateBusyRef = useRef(false);
+  const deepLinkCardRef = useRef<string | null>(currentReviewCardParam());
   const flipBtnRef = useRef<HTMLButtonElement | null>(null);
   const firstRatingRef = useRef<HTMLButtonElement | null>(null);
 
@@ -152,6 +159,22 @@ export default function ReviewPage() {
     fetchOverviewData(ctrl.signal);
     return () => ctrl.abort();
   }, [fetchOverviewData]);
+
+  useEffect(() => {
+    const syncCardDeepLink = () => {
+      deepLinkCardRef.current = currentReviewCardParam();
+      const cardId = deepLinkCardRef.current;
+      if (cardId) selectCard(cardId);
+    };
+    window.addEventListener('hashchange', syncCardDeepLink);
+    return () => window.removeEventListener('hashchange', syncCardDeepLink);
+  }, [selectCard]);
+
+  useEffect(() => {
+    const cardId = deepLinkCardRef.current;
+    if (!cardId || cards.length === 0) return;
+    if (selectCard(cardId)) deepLinkCardRef.current = null;
+  }, [cards, selectCard]);
 
   useEffect(() => {
     setFlipped(false);

@@ -1,7 +1,12 @@
 import { type Ref, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AppShell from '../components/AppShell';
 import Skeleton from '../components/Skeleton';
-import { getInstallTargets } from '../api/config';
+import {
+  applyInstallTarget,
+  getInstallTargets,
+  previewInstallTarget,
+  removeInstallTarget,
+} from '../api/config';
 import type { InstallManifestAction, InstallTarget } from '../api/config';
 import { useTranslation } from '../i18n/useTranslation';
 import '../components/Skills.css';
@@ -12,6 +17,14 @@ const AGENT_ICONS: Record<string, string> = {
   aider: '🛠', cline: '📝', roo: '🦘', hooks: '🪝', 'github-action': '🔄',
 };
 
+type InstallActionKind = 'preview' | 'install' | 'uninstall';
+
+interface InstallActionState {
+  pending?: InstallActionKind;
+  message?: string;
+  error?: string;
+}
+
 export default function SkillsPage() {
   const { t } = useTranslation();
   type SkillFilter = 'all' | 'installed' | 'available' | 'unsupported';
@@ -20,6 +33,7 @@ export default function SkillsPage() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<SkillFilter>('all');
   const [selected, setSelected] = useState<InstallTarget | null>(null);
+  const [actionState, setActionState] = useState<Record<string, InstallActionState>>({});
   const abortRef = useRef<AbortController | null>(null);
   const selectedCardRef = useRef<HTMLButtonElement>(null);
 
@@ -37,15 +51,25 @@ export default function SkillsPage() {
     filter === 'unsupported' ? (tgt.status === 'unsupported' || tgt.status === 'error') : tgt.status === filter
   );
 
-  const fetchTargets = useCallback(async () => {
+  const upsertTarget = useCallback((target: InstallTarget) => {
+    setTargets((current) => current.map((item) => (item.name === target.name ? target : item)));
+    setSelected((current) => (current?.name === target.name ? target : current));
+  }, []);
+
+  const fetchTargets = useCallback(async (opts?: { silent?: boolean }) => {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-    setLoading(true);
+    if (!opts?.silent) setLoading(true);
     setError(null);
     try {
       const res = await getInstallTargets({ signal: controller.signal });
-      if (!controller.signal.aborted) setTargets(res.targets);
+      if (!controller.signal.aborted) {
+        setTargets(res.targets);
+        setSelected((current) => (
+          current ? (res.targets.find((target) => target.name === current.name) ?? null) : null
+        ));
+      }
     } catch (e) {
       if (controller.signal.aborted) return;
       setError(e instanceof Error ? e.message : 'fetch_failed');
@@ -53,6 +77,44 @@ export default function SkillsPage() {
       if (!controller.signal.aborted) setLoading(false);
     }
   }, []);
+
+  const runAction = useCallback(async (target: InstallTarget, kind: InstallActionKind) => {
+    setActionState((current) => ({
+      ...current,
+      [target.name]: { pending: kind },
+    }));
+    try {
+      const preview = await previewInstallTarget(target.name);
+      upsertTarget(preview.target);
+      if (kind === 'preview') {
+        setActionState((current) => ({
+          ...current,
+          [target.name]: { message: t('Skills.preview_success') },
+        }));
+        return;
+      }
+      const result = kind === 'install'
+        ? await applyInstallTarget(target.name, preview.manifest_hash)
+        : await removeInstallTarget(target.name, preview.manifest_hash);
+      upsertTarget(result.target);
+      setActionState((current) => ({
+        ...current,
+        [target.name]: {
+          message: kind === 'install'
+            ? t('Skills.install_success')
+            : t('Skills.uninstall_success'),
+        },
+      }));
+      await fetchTargets({ silent: true });
+    } catch (e) {
+      setActionState((current) => ({
+        ...current,
+        [target.name]: {
+          error: e instanceof Error ? e.message : t('Skills.action_failed'),
+        },
+      }));
+    }
+  }, [fetchTargets, t, upsertTarget]);
 
   useEffect(() => {
     void fetchTargets();
@@ -178,6 +240,14 @@ export default function SkillsPage() {
                   <ManifestActions actions={selected.manifest.write} />
                 </div>
               )}
+              {selected.platform_supported && (
+                <SkillPreviewActions
+                  target={selected}
+                  state={actionState[selected.name] ?? {}}
+                  t={t}
+                  onRun={(kind) => void runAction(selected, kind)}
+                />
+              )}
             </aside>
           )}
         </div>
@@ -270,6 +340,52 @@ function installCommand(target: InstallTarget): string {
 
 function uninstallCommand(target: InstallTarget): string {
   return target.uninstall_command ?? `ahadiff uninstall ${target.name}`;
+}
+
+function SkillPreviewActions({
+  target,
+  state,
+  t,
+  onRun,
+}: {
+  target: InstallTarget;
+  state: InstallActionState;
+  t: (key: string, params?: Record<string, string | number>) => string;
+  onRun: (kind: InstallActionKind) => void;
+}) {
+  const isPending = state.pending != null;
+  const primaryAction: InstallActionKind = target.status === 'installed' ? 'uninstall' : 'install';
+  const primaryLabel = target.status === 'installed'
+    ? t('Skills.uninstall_action')
+    : t('Skills.install_action');
+  return (
+    <div className="skill-preview__actions">
+      <button
+        type="button"
+        className="retry-btn"
+        disabled={isPending || target.status === 'unsupported' || target.status === 'error'}
+        onClick={() => onRun('preview')}
+      >
+        {state.pending === 'preview' ? t('Skills.previewing') : t('Skills.preview_action')}
+      </button>
+      <button
+        type="button"
+        className="btn-primary"
+        disabled={isPending || target.status === 'unsupported' || target.status === 'error'}
+        onClick={() => onRun(primaryAction)}
+      >
+        {state.pending === primaryAction
+          ? (primaryAction === 'install' ? t('Skills.installing') : t('Skills.uninstalling'))
+          : primaryLabel}
+      </button>
+      {state.message && (
+        <div className="skill-preview__message" role="status">{state.message}</div>
+      )}
+      {state.error && (
+        <div className="skill-preview__error" role="alert">{state.error}</div>
+      )}
+    </div>
+  );
 }
 
 function ManifestActions({ actions }: { actions: InstallManifestAction[] }) {

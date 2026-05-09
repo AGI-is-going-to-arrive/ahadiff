@@ -336,6 +336,19 @@
   word-break: break-all;
 }
 
+.skill-preview__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.skill-preview__message {
+  flex-basis: 100%;
+  font-size: 13px;
+  color: var(--success);
+}
+
 /* ---- Selected card ---- */
 .agent-card--selected {
   border-color: var(--accent);

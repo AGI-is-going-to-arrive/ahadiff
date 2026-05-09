@@ -20,7 +20,7 @@
 > 直接回 raw `graphify-out/graph.json`。
 
 > Current status note (2026-05-09): this file is still a historical live
-> snapshot, but the current code now has 53 concrete `/api/*` routes, one
+> snapshot, but the current code now has 56 concrete `/api/*` routes, one
 > `/api/{rest_of_path:path}` catchall, and `/healthz`. This follow-up adds a
 > browser-backed real-serve contract test in `viewer/tests/real-serve/` that
 > starts `ahadiff serve` against a temporary git repo, then checks
@@ -30,6 +30,10 @@
 > `POST /api/learn` and `POST /api/learn/estimate` also now accept
 > `changed_paths` for worktree path scoping; the viewer consumes task progress
 > SSE first and falls back to polling.
+> Install targets also now expose protected preview/install/uninstall POST
+> routes. They require the local write token plus confirmed manifest hash and
+> write only for the repo that started `ahadiff serve`; no install/uninstall
+> write was run against the real current repo in this validation.
 
 ## 2026-04-27 Live Concrete Endpoints (22)
 

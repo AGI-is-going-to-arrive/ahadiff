@@ -35,6 +35,7 @@ export interface ConceptGraphProps {
   edges: ConceptGraphEdge[];
   status: GraphStatusResponse;
   truncated: boolean;
+  focusNodeId?: string | null;
   onShowAll?: (() => void) | undefined;
 }
 
@@ -876,7 +877,14 @@ function EmptyState({ status }: { status: GraphStatusResponse }) {
 
 /* ---------- Main component ---------- */
 
-function ConceptGraph({ nodes, edges, status, truncated, onShowAll }: ConceptGraphProps) {
+function ConceptGraph({
+  nodes,
+  edges,
+  status,
+  truncated,
+  focusNodeId,
+  onShowAll,
+}: ConceptGraphProps) {
   const { t } = useTranslation();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeKinds, setActiveKinds] = useState<Set<string>>(new Set());
@@ -939,6 +947,14 @@ function ConceptGraph({ nodes, edges, status, truncated, onShowAll }: ConceptGra
     setActiveKinds(new Set());
     setSelectedId(null);
   }, [nodes]);
+
+  useEffect(() => {
+    if (!focusNodeId) return;
+    const focused = nodes.find((node) => node.id === focusNodeId || node.name === focusNodeId);
+    if (!focused) return;
+    setActiveKinds(new Set());
+    setSelectedId(focused.id);
+  }, [focusNodeId, nodes]);
 
   useEffect(() => {
     setViewMode(nodes.length > LARGE_GRAPH_THRESHOLD ? 'list' : 'graph');

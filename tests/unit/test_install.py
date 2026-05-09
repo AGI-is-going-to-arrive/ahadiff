@@ -276,6 +276,60 @@ def test_claude_install_writes_generated_skill_and_refuses_user_file(
     assert not skill_path.exists()
 
 
+def test_codex_install_refuses_agents_symlink(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    outside_path = tmp_path / "outside-agents.md"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    outside_path.write_text("outside\n", encoding="utf-8")
+    try:
+        (repo_root / "AGENTS.md").symlink_to(outside_path)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
+
+    result = _RUNNER.invoke(app(), ["install", "codex", "--repo-root", str(repo_root)])
+
+    assert result.exit_code != 0
+    assert (repo_root / "AGENTS.md").is_symlink()
+    assert outside_path.read_text(encoding="utf-8") == "outside\n"
+
+
+def test_claude_install_refuses_generated_parent_symlink(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    outside_dir = tmp_path / "outside-claude"
+    repo_root.mkdir()
+    outside_dir.mkdir()
+    _init_git_repo(repo_root)
+    try:
+        (repo_root / ".claude").symlink_to(outside_dir, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
+
+    result = _RUNNER.invoke(app(), ["install", "claude", "--repo-root", str(repo_root)])
+
+    assert result.exit_code != 0
+    assert (repo_root / ".claude").is_symlink()
+    assert not (outside_dir / "skills" / "ahadiff" / "SKILL.md").exists()
+
+
+def test_claude_install_refuses_existing_symlinked_parent_chain(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    outside_dir = tmp_path / "outside-claude"
+    repo_root.mkdir()
+    (outside_dir / "skills" / "ahadiff").mkdir(parents=True)
+    _init_git_repo(repo_root)
+    try:
+        (repo_root / ".claude").symlink_to(outside_dir, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
+
+    result = _RUNNER.invoke(app(), ["install", "claude", "--repo-root", str(repo_root)])
+
+    assert result.exit_code != 0
+    assert (repo_root / ".claude").is_symlink()
+    assert not (outside_dir / "skills" / "ahadiff" / "SKILL.md").exists()
+
+
 def test_opencode_install_writes_agents_and_agent_file(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()

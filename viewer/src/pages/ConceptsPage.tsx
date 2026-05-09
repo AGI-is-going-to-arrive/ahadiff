@@ -8,12 +8,18 @@ import '../components/Concepts.css';
 
 type ErrorFlag = 'fetch_failed' | string | null;
 
+function currentFocusParam(): string | null {
+  const query = window.location.hash.split('?')[1] ?? '';
+  return new URLSearchParams(query).get('focus');
+}
+
 export default function ConceptsPage() {
   const { t } = useTranslation();
   const [graphData, setGraphData] = useState<ConceptGraphResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorFlag, setErrorFlag] = useState<ErrorFlag>(null);
   const [showAll, setShowAll] = useState(false);
+  const [focusNodeId, setFocusNodeId] = useState<string | null>(() => currentFocusParam());
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchData = useCallback(async (all = false) => {
@@ -41,6 +47,18 @@ export default function ConceptsPage() {
     void fetchData(showAll);
     return () => abortRef.current?.abort();
   }, [fetchData, showAll]);
+
+  useEffect(() => {
+    const syncFocus = () => setFocusNodeId(currentFocusParam());
+    window.addEventListener('hashchange', syncFocus);
+    return () => window.removeEventListener('hashchange', syncFocus);
+  }, []);
+
+  useEffect(() => {
+    if (!focusNodeId || !graphData?.truncated || showAll) return;
+    const visible = graphData.nodes.some((node) => node.id === focusNodeId || node.name === focusNodeId);
+    if (!visible) setShowAll(true);
+  }, [focusNodeId, graphData, showAll]);
 
   const handleShowAll = useCallback(() => {
     setShowAll(true);
@@ -78,6 +96,7 @@ export default function ConceptsPage() {
           edges={graphData.edges}
           status={graphData.status}
           truncated={graphData.truncated}
+          focusNodeId={focusNodeId}
           onShowAll={graphData.truncated && !showAll ? handleShowAll : undefined}
         />
       )}

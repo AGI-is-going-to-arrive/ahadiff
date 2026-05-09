@@ -5,6 +5,8 @@ import {
   configResponseSchema,
   configUpdateResponseSchema,
   doctorResponseSchema,
+  installTargetMutationResponseSchema,
+  installTargetPreviewResponseSchema,
   installTargetsResponseSchema,
   parseResponse,
   providersResponseSchema,
@@ -81,6 +83,7 @@ export interface InstallTarget {
   install_command?: string;
   uninstall_command?: string;
   manifest?: InstallManifestSummary | null;
+  manifest_hash?: string | null;
   manifest_error?: string | null;
   error_message?: string | null;
 }
@@ -100,6 +103,19 @@ export interface InstallManifestSummary {
 export interface InstallTargetsResponse {
   targets: InstallTarget[];
   total: number;
+}
+
+export interface InstallTargetPreviewResponse {
+  target: InstallTarget;
+  manifest_hash: string;
+}
+
+export interface InstallTargetMutationResponse {
+  target: InstallTarget;
+  operation: 'install' | 'uninstall';
+  updated: boolean;
+  updated_paths: string[];
+  manifest_hash: string;
 }
 
 export interface ProviderSummary {
@@ -197,6 +213,60 @@ export async function getInstallTargets(
 ): Promise<InstallTargetsResponse> {
   const raw = await apiFetch<unknown>('/api/install/targets', opts);
   return parseResponse('GET /api/install/targets', installTargetsResponseSchema, raw);
+}
+
+function installTargetPath(name: string, suffix = ''): string {
+  return `/api/install/${encodeURIComponent(name)}${suffix}`;
+}
+
+export async function previewInstallTarget(
+  name: string,
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<InstallTargetPreviewResponse> {
+  const raw = await apiFetch<unknown>(installTargetPath(name, '/preview'), {
+    method: 'POST',
+    body: JSON.stringify({}),
+    signal: opts?.signal,
+  });
+  return parseResponse(
+    `POST /api/install/${name}/preview`,
+    installTargetPreviewResponseSchema,
+    raw,
+  );
+}
+
+export async function applyInstallTarget(
+  name: string,
+  confirmedManifestHash: string,
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<InstallTargetMutationResponse> {
+  const raw = await apiFetch<unknown>(installTargetPath(name), {
+    method: 'POST',
+    body: JSON.stringify({ confirmed_manifest_hash: confirmedManifestHash }),
+    signal: opts?.signal,
+  });
+  return parseResponse(
+    `POST /api/install/${name}`,
+    installTargetMutationResponseSchema,
+    raw,
+  );
+}
+
+export async function removeInstallTarget(
+  name: string,
+  confirmedManifestHash: string,
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<InstallTargetMutationResponse> {
+  const raw = await apiFetch<unknown>(installTargetPath(name, '/uninstall'), {
+    method: 'POST',
+    body: JSON.stringify({ confirmed_manifest_hash: confirmedManifestHash }),
+    signal: opts?.signal,
+  });
+  return parseResponse(
+    `POST /api/install/${name}/uninstall`,
+    installTargetMutationResponseSchema,
+    raw,
+  );
 }
 
 export async function getProviders(

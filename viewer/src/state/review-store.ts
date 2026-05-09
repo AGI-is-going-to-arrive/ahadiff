@@ -30,6 +30,7 @@ interface ReviewState {
   rate: (answer: ReviewAnswer, opts?: RateOptions) => Promise<ReviewRateResponse | null>;
   currentCard: () => DueReviewCard | null;
   remaining: () => number;
+  selectCard: (cardId: string) => boolean;
   reset: () => void;
 }
 
@@ -95,6 +96,14 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   remaining: () => {
     const { cards, currentIndex } = get();
     return Math.max(0, cards.length - currentIndex);
+  },
+
+  selectCard: (cardId) => {
+    const { cards } = get();
+    const index = cards.findIndex((card) => card.card_id === cardId);
+    if (index < 0) return false;
+    set({ currentIndex: index });
+    return true;
   },
 
   reset: () => set({ cards: [], currentIndex: 0, loading: false, rating: false, error: null }),

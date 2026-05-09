@@ -601,6 +601,8 @@
   display: flex;
   align-items: center;
   gap: var(--sp-4);
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 /* ---- Model selection (provider select + model input) ---- */

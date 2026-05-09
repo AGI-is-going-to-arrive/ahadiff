@@ -419,6 +419,7 @@ export const installTargetSchema = z.object({
   install_command: z.string().min(1).optional(),
   uninstall_command: z.string().min(1).optional(),
   manifest: installManifestSummarySchema.nullable().optional(),
+  manifest_hash: z.string().length(64).nullable().optional(),
   manifest_error: z.string().nullable().optional(),
   error_message: z.string().nullable().optional(),
 });
@@ -426,6 +427,19 @@ export const installTargetSchema = z.object({
 export const installTargetsResponseSchema = z.object({
   targets: z.array(installTargetSchema),
   total: z.number().int().nonnegative(),
+});
+
+export const installTargetPreviewResponseSchema = z.object({
+  target: installTargetSchema,
+  manifest_hash: z.string().length(64),
+});
+
+export const installTargetMutationResponseSchema = z.object({
+  target: installTargetSchema,
+  operation: z.enum(['install', 'uninstall']),
+  updated: z.boolean(),
+  updated_paths: z.array(z.string()),
+  manifest_hash: z.string().length(64),
 });
 
 export const providerSummarySchema = z

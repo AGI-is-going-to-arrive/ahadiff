@@ -4,8 +4,11 @@ import Skeleton, { SkeletonGroup } from '../components/Skeleton';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import ProviderCard from '../components/ProviderCard';
 import {
+  applyInstallTarget,
   getConfig, getDoctor, getProviders, getUsage, getAudit, getInstallTargets,
+  previewInstallTarget,
   putConfig,
+  removeInstallTarget,
 } from '../api/config';
 import {
   createProvider, updateProvider, deleteProvider, probeProvider,
@@ -70,6 +73,13 @@ const MODEL_SELECT_ARIA_KEY = {
 } as const satisfies Record<'generate' | 'judge', MessageKey>;
 
 type SettingsResource = 'config' | 'doctor' | 'providers' | 'usage' | 'audit' | 'installTargets';
+type InstallActionKind = 'preview' | 'install' | 'uninstall';
+
+interface InstallActionState {
+  pending?: InstallActionKind;
+  message?: string;
+  error?: string;
+}
 
 interface SettingsData {
   config: ConfigResponse | null;
@@ -145,10 +155,31 @@ export default function SettingsPage() {
     }
   }, []);
 
+  const refreshInstallTargets = useCallback(async () => {
+    const inst = await getInstallTargets();
+    setData((current) => ({
+      ...current,
+      installTargets: inst.targets,
+      failed: {
+        ...current.failed,
+        installTargets: false,
+      },
+    }));
+  }, []);
+
   useEffect(() => {
     void fetchAll();
     return () => abortRef.current?.abort();
   }, [fetchAll]);
+
+  useEffect(() => {
+    const syncHashTab = () => {
+      const next = initialSettingsTab();
+      setActive((current) => (current === next ? current : next));
+    };
+    window.addEventListener('hashchange', syncHashTab);
+    return () => window.removeEventListener('hashchange', syncHashTab);
+  }, []);
 
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return undefined;
@@ -161,6 +192,14 @@ export default function SettingsPage() {
     }
     media.addListener(syncPrintMode);
     return () => media.removeListener(syncPrintMode);
+  }, []);
+
+  const selectTab = useCallback((id: TabId) => {
+    setActive(id);
+    const [hashPath] = window.location.hash.split('?');
+    if (hashPath === '#/settings' || hashPath === '') {
+      window.history.replaceState(null, '', `#/settings?tab=${id}`);
+    }
   }, []);
 
   if (loading) {
@@ -269,6 +308,7 @@ export default function SettingsPage() {
             showGraphify={active === 'integrations' || printMode}
             t={t}
             onRetry={retry}
+            onRefreshTargets={refreshInstallTargets}
           />
         );
       default:
@@ -298,7 +338,7 @@ export default function SettingsPage() {
                 aria-selected={active === id}
                 aria-controls={`spanel-${id}`}
                 tabIndex={active === id ? 0 : -1}
-                onClick={() => setActive(id)}
+                onClick={() => selectTab(id)}
                 onKeyDown={(e) => {
                   let next = idx;
                   switch (e.key) {
@@ -311,7 +351,7 @@ export default function SettingsPage() {
                     default: return;
                   }
                   e.preventDefault();
-                  setActive(TAB_IDS[next]);
+                  selectTab(TAB_IDS[next]);
                   (e.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]'))?.[next]?.focus();
                 }}
               >
@@ -1519,14 +1559,28 @@ function IntegrationsTab({
   showGraphify,
   t,
   onRetry,
+  onRefreshTargets,
 }: {
   targets: InstallTarget[];
   failed: boolean;
   showGraphify: boolean;
   t: TFn;
   onRetry: () => void;
+  onRefreshTargets: () => Promise<void>;
 }) {
   const [copiedTarget, setCopiedTarget] = useState<string | null>(null);
+  const [localTargets, setLocalTargets] = useState<InstallTarget[]>(targets);
+  const [actionState, setActionState] = useState<Record<string, InstallActionState>>({});
+
+  useEffect(() => {
+    setLocalTargets(targets);
+  }, [targets]);
+
+  const upsertTarget = useCallback((target: InstallTarget) => {
+    setLocalTargets((current) => current.map((item) => (
+      item.name === target.name ? target : item
+    )));
+  }, []);
 
   const copyInstallCommand = useCallback(async (target: InstallTarget) => {
     try {
@@ -1537,6 +1591,44 @@ function IntegrationsTab({
       // Clipboard access can be unavailable in restricted browser contexts.
     }
   }, []);
+
+  const runAction = useCallback(async (target: InstallTarget, kind: InstallActionKind) => {
+    setActionState((current) => ({
+      ...current,
+      [target.name]: { pending: kind },
+    }));
+    try {
+      const preview = await previewInstallTarget(target.name);
+      upsertTarget(preview.target);
+      if (kind === 'preview') {
+        setActionState((current) => ({
+          ...current,
+          [target.name]: { message: t('Skills.preview_success') },
+        }));
+        return;
+      }
+      const result = kind === 'install'
+        ? await applyInstallTarget(target.name, preview.manifest_hash)
+        : await removeInstallTarget(target.name, preview.manifest_hash);
+      upsertTarget(result.target);
+      setActionState((current) => ({
+        ...current,
+        [target.name]: {
+          message: kind === 'install'
+            ? t('Skills.install_success')
+            : t('Skills.uninstall_success'),
+        },
+      }));
+      await onRefreshTargets();
+    } catch (e) {
+      setActionState((current) => ({
+        ...current,
+        [target.name]: {
+          error: e instanceof Error ? e.message : t('Skills.action_failed'),
+        },
+      }));
+    }
+  }, [onRefreshTargets, t, upsertTarget]);
 
   return (
     <>
@@ -1558,14 +1650,17 @@ function IntegrationsTab({
         <div className="settings-card">
         <div className="settings-card__header"><h2>{t('Settings_page.section_integrations')}</h2></div>
         <div className="settings-card__body">
-          {targets.length === 0 && <div className="u-muted-sm">{t('Settings_page.integration_empty')}</div>}
-          {targets.map(target => {
+          {localTargets.length === 0 && <div className="u-muted-sm">{t('Settings_page.integration_empty')}</div>}
+          {localTargets.map(target => {
             const statusKey = INTEGRATION_STATUS_KEY[target.status];
             const badgeVariant = target.status === 'installed'
               ? 'configured'
               : target.status === 'available'
                 ? 'unknown'
                 : 'missing';
+            const state = actionState[target.name] ?? {};
+            const isPending = state.pending != null;
+            const primaryAction: InstallActionKind = target.status === 'installed' ? 'uninstall' : 'install';
             return (
               <div className="settings-field" key={target.name}>
                 <div className="settings-field__label">
@@ -1579,16 +1674,38 @@ function IntegrationsTab({
                       {target.manifest.write.map(action => action.path).join(' · ')}
                     </p>
                   )}
+                  {state.message && <p role="status">{state.message}</p>}
+                  {state.error && <p role="alert">{state.error}</p>}
                 </div>
                 <div className="settings-card__actions">
                   {target.platform_supported && (
-                    <button
-                      type="button"
-                      className="retry-btn"
-                      onClick={() => void copyInstallCommand(target)}
-                    >
-                      {copiedTarget === target.name ? t('Skills.copied') : t('Skills.copy')}
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="retry-btn"
+                        disabled={isPending || target.status === 'unsupported' || target.status === 'error'}
+                        onClick={() => void runAction(target, 'preview')}
+                      >
+                        {state.pending === 'preview' ? t('Skills.previewing') : t('Skills.preview_action')}
+                      </button>
+                      <button
+                        type="button"
+                        className="retry-btn"
+                        disabled={isPending || target.status === 'unsupported' || target.status === 'error'}
+                        onClick={() => void runAction(target, primaryAction)}
+                      >
+                        {state.pending === primaryAction
+                          ? (primaryAction === 'install' ? t('Skills.installing') : t('Skills.uninstalling'))
+                          : (primaryAction === 'install' ? t('Skills.install_action') : t('Skills.uninstall_action'))}
+                      </button>
+                      <button
+                        type="button"
+                        className="retry-btn"
+                        onClick={() => void copyInstallCommand(target)}
+                      >
+                        {copiedTarget === target.name ? t('Skills.copied') : t('Skills.copy')}
+                      </button>
+                    </>
                   )}
                   <span className={`settings-field__badge settings-field__badge--${badgeVariant}`}>
                     {t(statusKey)}

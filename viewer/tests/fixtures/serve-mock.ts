@@ -531,6 +531,41 @@ export async function installServeMock(page: Page): Promise<void> {
         }),
       }),
   );
+  const manifestHashes: Record<string, string> = {
+    claude: 'a'.repeat(64),
+    codex: 'b'.repeat(64),
+    cursor: 'c'.repeat(64),
+  };
+  const installState: Record<string, 'installed' | 'available'> = {
+    claude: 'installed',
+    codex: 'available',
+    cursor: 'available',
+  };
+  const manifestFor = (name: string) => ({
+    preview: [
+      { action: 'preview', file_strategy: 'user-managed', path: name === 'codex' ? 'AGENTS.md' : `${name}/manifest.md` },
+    ],
+    write: [
+      { action: name === 'codex' ? 'append-section' : 'write', file_strategy: name === 'codex' ? 'user-managed' : 'generated', path: name === 'codex' ? 'AGENTS.md' : `${name}/manifest.md` },
+    ],
+    uninstall: [
+      { action: name === 'codex' ? 'remove-section' : 'remove', file_strategy: name === 'codex' ? 'user-managed' : 'generated', path: name === 'codex' ? 'AGENTS.md' : `${name}/manifest.md` },
+    ],
+  });
+  const targetFor = (name: string) => ({
+    name,
+    display_name: name === 'claude' ? 'Claude Code' : name === 'codex' ? 'Codex CLI' : 'Cursor',
+    detected: installState[name] === 'installed',
+    platform_supported: true,
+    status: installState[name] ?? 'available',
+    description: name === 'claude' ? 'Claude Code CLI' : name === 'codex' ? 'Codex CLI' : 'Cursor IDE',
+    install_command: `ahadiff install ${name}`,
+    uninstall_command: `ahadiff uninstall ${name}`,
+    manifest: manifestFor(name),
+    manifest_hash: manifestHashes[name],
+    manifest_error: null,
+    error_message: null,
+  });
   await page.route(
     (url) => url.pathname === '/api/install/targets',
     (route) =>
@@ -538,38 +573,55 @@ export async function installServeMock(page: Page): Promise<void> {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          targets: [
-            {
-              name: 'claude',
-              display_name: 'Claude Code',
-              detected: true,
-              platform_supported: true,
-              status: 'installed',
-              description: 'Claude Code CLI',
-              error_message: null,
-            },
-            {
-              name: 'codex',
-              display_name: 'Codex CLI',
-              detected: false,
-              platform_supported: true,
-              status: 'available',
-              description: 'Codex CLI',
-              error_message: null,
-            },
-            {
-              name: 'cursor',
-              display_name: 'Cursor',
-              detected: false,
-              platform_supported: true,
-              status: 'available',
-              description: 'Cursor IDE',
-              error_message: null,
-            },
-          ],
+          targets: ['claude', 'codex', 'cursor'].map(targetFor),
           total: 3,
         }),
       }),
+  );
+  await page.route(
+    (url) =>
+      url.pathname !== '/api/install/targets' &&
+      /^\/api\/install\/[^/]+(?:\/preview|\/uninstall)?$/.test(url.pathname),
+    async (route) => {
+      const req = route.request();
+      if (req.method() !== 'POST') {
+        await route.fulfill({ status: 405, contentType: 'application/json', body: JSON.stringify({ error: 'method_not_allowed' }) });
+        return;
+      }
+      const parts = new URL(req.url()).pathname.split('/').filter(Boolean);
+      const name = decodeURIComponent(parts[2] ?? '');
+      if (!(name in installState)) {
+        await route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'unknown target' }) });
+        return;
+      }
+      if (parts[3] === 'preview') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ target: targetFor(name), manifest_hash: manifestHashes[name] }),
+        });
+        return;
+      }
+      const body = (req.postDataJSON() ?? {}) as { confirmed_manifest_hash?: string };
+      if (body.confirmed_manifest_hash !== manifestHashes[name]) {
+        await route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'confirmed_manifest_hash mismatch' }) });
+        return;
+      }
+      const operation = parts[3] === 'uninstall' ? 'uninstall' : 'install';
+      installState[name] = operation === 'install' ? 'installed' : 'available';
+      const manifest = manifestFor(name);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          target: targetFor(name),
+          operation,
+          updated: true,
+          updated_paths: manifest[operation === 'install' ? 'write' : 'uninstall'].map((action) => action.path),
+          manifest_hash: manifestHashes[name],
+        }),
+      });
+    },
   );
   await page.route(
     (url) => url.pathname === '/api/providers',

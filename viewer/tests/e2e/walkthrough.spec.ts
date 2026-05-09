@@ -900,6 +900,22 @@ test.describe('walkthrough: full-app functional test', () => {
     await page.screenshot({ path: `${SCREENSHOT_DIR}/10-skills.png`, fullPage: true });
   });
 
+  test('Skills — preview and install mutation refresh detected state', async ({ page }) => {
+    await page.goto('/#/skills');
+
+    await page.getByRole('button', { name: 'Codex CLI' }).click();
+    const panel = page.locator('.skill-preview');
+    await expect(panel).toBeVisible();
+    await expect(panel).toContainText('AGENTS.md');
+
+    await panel.getByRole('button', { name: 'Preview', exact: true }).click();
+    await expect(panel.getByRole('status')).toContainText('Preview refreshed');
+
+    await panel.getByRole('button', { name: 'Install' }).click();
+    await expect(panel.getByRole('status')).toContainText('Installed');
+    await expect(panel.locator('.skill-preview__status--installed')).toBeVisible();
+  });
+
   test('Skills — filter chips change visible card count', async ({ page }) => {
     await page.goto('/#/skills');
 
@@ -918,6 +934,38 @@ test.describe('walkthrough: full-app functional test', () => {
 
     const filteredCount = await page.locator('.agent-card').count();
     expect(filteredCount).toBeLessThan(allCount);
+  });
+
+  test('Deep links — settings tabs, concept focus, and review card restore', async ({ page }) => {
+    await page.goto('/#/settings?tab=provider');
+    await expect(page.locator('#spanel-provider .provider-grid')).toBeVisible();
+
+    await page.goto('/#/settings?tab=capture');
+    await expect(page.locator('#spanel-capture .settings-field').first()).toBeVisible();
+
+    await page.goto('/#/concepts?focus=n2');
+    await expect(page.locator('.concept-graph__detail')).toContainText('retry-logic');
+
+    await page.goto('/#/review?card=card-2-mc');
+    await expect(page.locator('.flashcard__front')).toContainText('What does the new comment indicate?');
+  });
+
+  test('Settings integrations — preview install uninstall mutation loop', async ({ page }) => {
+    await page.goto('/#/settings?tab=integrations');
+
+    const codexRow = page.locator('.settings-field').filter({ hasText: 'Codex CLI' });
+    await expect(codexRow).toBeVisible();
+
+    await codexRow.getByRole('button', { name: 'Preview' }).click();
+    await expect(codexRow.getByRole('status')).toContainText('Preview refreshed');
+
+    await codexRow.getByRole('button', { name: 'Install' }).click();
+    await expect(codexRow.getByRole('status')).toContainText('Installed');
+    await expect(codexRow.locator('.settings-field__badge')).toContainText('installed');
+
+    await codexRow.getByRole('button', { name: 'Uninstall' }).click();
+    await expect(codexRow.getByRole('status')).toContainText('Uninstalled');
+    await expect(codexRow.locator('.settings-field__badge')).toContainText('available');
   });
 
   test('Review — flashcard renders question on front and answer on back', async ({ page }) => {
