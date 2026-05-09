@@ -266,12 +266,36 @@ def test_response_schema_matches_frontend_expectations(tmp_path: Path) -> None:
         "platform_supported",
         "status",
         "description",
+        "install_command",
+        "uninstall_command",
+        "manifest",
+        "manifest_error",
         "error_message",
     }
     for target in response.json()["targets"]:
         assert set(target.keys()) == expected_keys
         assert target["description"]
+        assert target["install_command"] == f"ahadiff install {target['name']}"
+        assert target["uninstall_command"] == f"ahadiff uninstall {target['name']}"
         assert target["status"] in {"installed", "available", "unsupported", "error"}
+
+
+def test_get_install_targets_returns_manifest_preview(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    client = _client(state_dir)
+
+    response = client.get("/api/install/targets")
+
+    targets_by_name = {t["name"]: t for t in response.json()["targets"]}
+    codex = targets_by_name["codex"]
+    assert codex["manifest_error"] is None
+    assert codex["manifest"]["write"] == [
+        {"action": "merge-section", "file_strategy": "user-managed", "path": "AGENTS.md"}
+    ]
+    assert codex["manifest"]["uninstall"] == [
+        {"action": "remove-section", "file_strategy": "user-managed", "path": "AGENTS.md"}
+    ]
 
 
 def test_all_registered_targets_appear_in_response(tmp_path: Path) -> None:

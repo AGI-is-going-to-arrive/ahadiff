@@ -7,6 +7,20 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class InstallManifestActionSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    action: str = Field(min_length=1)
+    file_strategy: Literal["generated", "user-managed"]
+    path: str = Field(min_length=1)
+
+
+class InstallManifestSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    preview: list[InstallManifestActionSummary]
+    write: list[InstallManifestActionSummary]
+    uninstall: list[InstallManifestActionSummary]
+
+
 class InstallTargetSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1)
@@ -15,6 +29,10 @@ class InstallTargetSummary(BaseModel):
     platform_supported: bool
     status: Literal["installed", "available", "unsupported", "error"]
     description: str
+    install_command: str = Field(min_length=1)
+    uninstall_command: str = Field(min_length=1)
+    manifest: InstallManifestSummary | None = None
+    manifest_error: str | None = None
     error_message: str | None = None
 
 
@@ -24,4 +42,9 @@ class InstallTargetsResponse(BaseModel):
     total: int
 
 
-__all__ = ["InstallTargetSummary", "InstallTargetsResponse"]
+__all__ = [
+    "InstallManifestActionSummary",
+    "InstallManifestSummary",
+    "InstallTargetSummary",
+    "InstallTargetsResponse",
+]

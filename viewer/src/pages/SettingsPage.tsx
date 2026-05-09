@@ -93,9 +93,15 @@ const EMPTY_DATA: SettingsData = {
 
 type TFn = TranslateFn;
 
+function initialSettingsTab(): TabId {
+  const query = window.location.hash.split('?')[1] ?? '';
+  const tab = new URLSearchParams(query).get('tab');
+  return TAB_IDS.includes(tab as TabId) ? (tab as TabId) : 'privacy';
+}
+
 export default function SettingsPage() {
   const { t, locale } = useTranslation();
-  const [active, setActive] = useState<TabId>('privacy');
+  const [active, setActive] = useState<TabId>(() => initialSettingsTab());
   const [data, setData] = useState<SettingsData>(EMPTY_DATA);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1520,6 +1526,18 @@ function IntegrationsTab({
   t: TFn;
   onRetry: () => void;
 }) {
+  const [copiedTarget, setCopiedTarget] = useState<string | null>(null);
+
+  const copyInstallCommand = useCallback(async (target: InstallTarget) => {
+    try {
+      await navigator.clipboard.writeText(installCommand(target));
+      setCopiedTarget(target.name);
+      window.setTimeout(() => setCopiedTarget(null), 1400);
+    } catch {
+      // Clipboard access can be unavailable in restricted browser contexts.
+    }
+  }, []);
+
   return (
     <>
       {showGraphify && (
@@ -1553,10 +1571,29 @@ function IntegrationsTab({
                 <div className="settings-field__label">
                   <h3>{target.display_name}</h3>
                   <p>{target.description}</p>
+                  {target.platform_supported && (
+                    <code>{installCommand(target)}</code>
+                  )}
+                  {target.manifest && target.manifest.write.length > 0 && (
+                    <p>
+                      {target.manifest.write.map(action => action.path).join(' · ')}
+                    </p>
+                  )}
                 </div>
-                <span className={`settings-field__badge settings-field__badge--${badgeVariant}`}>
-                  {t(statusKey)}
-                </span>
+                <div className="settings-card__actions">
+                  {target.platform_supported && (
+                    <button
+                      type="button"
+                      className="retry-btn"
+                      onClick={() => void copyInstallCommand(target)}
+                    >
+                      {copiedTarget === target.name ? t('Skills.copied') : t('Skills.copy')}
+                    </button>
+                  )}
+                  <span className={`settings-field__badge settings-field__badge--${badgeVariant}`}>
+                    {t(statusKey)}
+                  </span>
+                </div>
               </div>
             );
           })}
@@ -1565,6 +1602,10 @@ function IntegrationsTab({
       )}
     </>
   );
+}
+
+function installCommand(target: InstallTarget): string {
+  return target.install_command ?? `ahadiff install ${target.name}`;
 }
 
 /* ------------------------------------------------------------------ */

@@ -78,7 +78,23 @@ export interface InstallTarget {
   platform_supported: boolean;
   status: 'installed' | 'available' | 'unsupported' | 'error';
   description: string;
+  install_command?: string;
+  uninstall_command?: string;
+  manifest?: InstallManifestSummary | null;
+  manifest_error?: string | null;
   error_message?: string | null;
+}
+
+export interface InstallManifestAction {
+  action: string;
+  file_strategy: 'generated' | 'user-managed';
+  path: string;
+}
+
+export interface InstallManifestSummary {
+  preview: InstallManifestAction[];
+  write: InstallManifestAction[];
+  uninstall: InstallManifestAction[];
 }
 
 export interface InstallTargetsResponse {

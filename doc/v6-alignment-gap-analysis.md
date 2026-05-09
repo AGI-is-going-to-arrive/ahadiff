@@ -5,6 +5,7 @@
 > 2026-05-01 update: §8 Settings was rechecked against the current React viewer after Phase 4D. The old flat-layout findings are no longer current; remaining Settings gaps are called out row by row.
 > 2026-05-07 update: Settings is now a 7-tab surface (`Account / Provider / Capture / Privacy / Audit / Preferences / Integrations`). Preferences owns language, appearance, `learnability_threshold`, and `desired_retention`. For the latest closed/open frontend gaps, use `doc/FRONTEND_GAP_REPORT.md`; older rows below remain historical V6 comparison notes unless explicitly updated.
 > 2026-05-08 update: ConceptGraph was rechecked after the current viewer graph change. It now uses SVG + d3-force, has Graph/List views, defaults 201+ nodes to List while keeping Full graph available, includes a side detail panel, and supports full-graph pan/zoom without hard viewport bounds. It does not have cluster/community grouping.
+> 2026-05-09 update: Skills now reads install/uninstall commands and manifest previews from `/api/install/targets`. Settings Integrations can be opened with `?tab=integrations`, copies the install command, and shows manifest write paths. The WebUI still does not execute real install/uninstall writes.
 
 ---
 
@@ -219,6 +220,7 @@
 | Privacy toggle | V6: switch UI with 38×22px knob | Privacy mode and serve port are writable; local-only/redaction/audit rows are status-style controls derived from current config. | **PARTIAL** |
 | Provider grid | V6: 3-column Generate/Judge/Embed matrix | Implemented provider grid from `/api/providers`, with eyebrow/meta rows and accent highlight | **OK** |
 | Audit log table | V6: Last 20 provider calls with time/model/tokens/cost | Implemented from `/api/audit?limit=20`, with 8 visible columns and real audit field projection | **OK** |
+| Integrations target list | V6: AI tool integrations | Implemented from `/api/install/targets`; supports `?tab=integrations`, install command copy, and manifest write-path preview. Real writes remain CLI-only. | **OK for read-only preview** |
 
 **Work estimate**:
 - Tab sidebar layout: landed; current implementation uses 7 tabs, not the older 8-tab split.
@@ -249,7 +251,7 @@
 |---------|-------------|---------------|-----|
 | Agent card grid | 3-column grid with icons | Implemented with 13 agents | **OK** |
 | Copy button with feedback | "copied ✓" animation | Implemented | **OK** |
-| Install/detected status | Badge states | Implemented (installed/available/unsupported) | **OK** |
+| Install/detected status | Badge states | Implemented (installed/available/unsupported), with server-provided install/uninstall commands and manifest preview in the details panel | **OK** |
 | V6: Agent state machine diagram | States strip (idle/reading/diffing/...) | Not present | **MISSING** |
 
 **Work estimate**:

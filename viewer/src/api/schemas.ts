@@ -397,6 +397,18 @@ export const doctorResponseSchema = z
   })
   .strict();
 
+export const installManifestActionSchema = z.object({
+  action: z.string().min(1),
+  file_strategy: z.enum(['generated', 'user-managed']),
+  path: z.string().min(1),
+});
+
+export const installManifestSummarySchema = z.object({
+  preview: z.array(installManifestActionSchema),
+  write: z.array(installManifestActionSchema),
+  uninstall: z.array(installManifestActionSchema),
+});
+
 export const installTargetSchema = z.object({
   name: z.string().min(1),
   display_name: z.string().min(1),
@@ -404,6 +416,10 @@ export const installTargetSchema = z.object({
   platform_supported: z.boolean(),
   status: z.enum(['installed', 'available', 'unsupported', 'error']),
   description: z.string(),
+  install_command: z.string().min(1).optional(),
+  uninstall_command: z.string().min(1).optional(),
+  manifest: installManifestSummarySchema.nullable().optional(),
+  manifest_error: z.string().nullable().optional(),
   error_message: z.string().nullable().optional(),
 });
 

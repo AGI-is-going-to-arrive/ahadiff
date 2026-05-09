@@ -890,6 +890,7 @@
     "filter_unsupported": "Unsupported",
     "install_cmd": "Install command",
     "installed": "installed",
+    "manifest_preview": "Manifest preview",
     "preview_close": "Close preview",
     "preview_title": "Skill details",
     "status_available": "Available",
@@ -898,6 +899,7 @@
     "status_unsupported": "Unsupported",
     "subtitle": "Install AhaDiff into your AI tools",
     "title": "Agent Hub",
+    "uninstall_cmd": "Uninstall command",
     "unsupported": "unsupported"
   },
   "Topbar": {

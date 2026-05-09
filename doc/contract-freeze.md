@@ -470,6 +470,9 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 - `RunDetail`
 - `RunArtifactEnvelope`：`run_id`、`artifact_type`、`content`、`content_lang: Literal["en","zh-CN"] | None`
 - `RatchetHistoryEntry`
+- `InstallManifestActionSummary`：`action`、`file_strategy: Literal["generated","user-managed"]`、`path`
+- `InstallManifestSummary`：`preview`、`write`、`uninstall`
+- `InstallTargetSummary`：`name`、`display_name`、`detected`、`platform_supported`、`status`、`description`、`install_command`、`uninstall_command`、`manifest`、`manifest_error`、`error_message`
 
 Stage 0 同时冻结最小写请求 DTO：
 
@@ -483,6 +486,7 @@ Stage 0 同时冻结最小写请求 DTO：
 
 - Request DTO 只冻结最小标识字段；后续 payload 扩展不能破坏现有字段语义
 - `run_id` / `task_id` / `event_id` / `claim_id` / `card_id` 这类公开标识字段必须拒绝空字符串；`source_ref` 这类历史引用字段不在本轮一刀切收紧范围内
+- `GET /api/install/targets` 是只读展示 contract；manifest preview 用于前端展示和用户确认，不代表浏览器已获得真实写文件能力
 - `src/ahadiff/contracts/serve_app.py` 是**契约文件**，不是后续真正的 `src/ahadiff/serve/app.py` 实现文件
 
 ### 4.4 Locale 解析顺序

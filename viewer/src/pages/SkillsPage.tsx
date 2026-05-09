@@ -2,25 +2,9 @@ import { type Ref, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import AppShell from '../components/AppShell';
 import Skeleton from '../components/Skeleton';
 import { getInstallTargets } from '../api/config';
-import type { InstallTarget } from '../api/config';
+import type { InstallManifestAction, InstallTarget } from '../api/config';
 import { useTranslation } from '../i18n/useTranslation';
 import '../components/Skills.css';
-
-const INSTALL_COMMANDS: Record<string, string> = {
-  claude: 'ahadiff install claude',
-  codex: 'ahadiff install codex',
-  gemini: 'ahadiff install gemini',
-  opencode: 'ahadiff install opencode',
-  cursor: 'ahadiff install cursor',
-  windsurf: 'ahadiff install windsurf',
-  copilot: 'ahadiff install copilot',
-  continue: 'ahadiff install continue',
-  aider: 'ahadiff install aider',
-  cline: 'ahadiff install cline',
-  roo: 'ahadiff install roo',
-  hooks: 'ahadiff install hooks',
-  'github-action': 'ahadiff install github-action',
-};
 
 const AGENT_ICONS: Record<string, string> = {
   claude: '🤖', codex: '⌨', gemini: '✨', opencode: '📦',
@@ -175,9 +159,23 @@ export default function SkillsPage() {
               </span>
               {selected.description && <p className="skill-preview__desc">{selected.description}</p>}
               {selected.error_message && <p className="skill-preview__error">{selected.error_message}</p>}
-              {selected.platform_supported && INSTALL_COMMANDS[selected.name] && (
+              {selected.manifest_error && <p className="skill-preview__error">{selected.manifest_error}</p>}
+              {selected.platform_supported && (
                 <div className="skill-preview__install">
-                  <code>{INSTALL_COMMANDS[selected.name]}</code>
+                  <div className="u-muted-sm">{t('Skills.install_cmd')}</div>
+                  <code>{installCommand(selected)}</code>
+                </div>
+              )}
+              {selected.platform_supported && (
+                <div className="skill-preview__install">
+                  <div className="u-muted-sm">{t('Skills.uninstall_cmd')}</div>
+                  <code>{uninstallCommand(selected)}</code>
+                </div>
+              )}
+              {selected.manifest && (
+                <div className="skill-preview__install">
+                  <div className="u-muted-sm">{t('Skills.manifest_preview')}</div>
+                  <ManifestActions actions={selected.manifest.write} />
                 </div>
               )}
             </aside>
@@ -203,7 +201,7 @@ function AgentCard({
 }) {
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cmd = INSTALL_COMMANDS[target.name] ?? `ahadiff install ${target.name}`;
+  const cmd = installCommand(target);
 
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -263,5 +261,26 @@ function AgentCard({
         </div>
       )}
     </div>
+  );
+}
+
+function installCommand(target: InstallTarget): string {
+  return target.install_command ?? `ahadiff install ${target.name}`;
+}
+
+function uninstallCommand(target: InstallTarget): string {
+  return target.uninstall_command ?? `ahadiff uninstall ${target.name}`;
+}
+
+function ManifestActions({ actions }: { actions: InstallManifestAction[] }) {
+  if (actions.length === 0) return <div className="u-muted-sm">-</div>;
+  return (
+    <ul className="u-muted-sm">
+      {actions.map((action) => (
+        <li key={`${action.action}:${action.path}`}>
+          <code>{action.action}</code> {action.path}
+        </li>
+      ))}
+    </ul>
   );
 }

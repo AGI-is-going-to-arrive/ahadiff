@@ -890,6 +890,7 @@
     "filter_unsupported": "不支持",
     "install_cmd": "安装命令",
     "installed": "已安装",
+    "manifest_preview": "清单预览",
     "preview_close": "关闭预览",
     "preview_title": "技能详情",
     "status_available": "可安装",
@@ -898,6 +899,7 @@
     "status_unsupported": "不支持",
     "subtitle": "将 AhaDiff 安装到你的 AI 工具",
     "title": "工具集成",
+    "uninstall_cmd": "卸载命令",
     "unsupported": "不支持"
   },
   "Topbar": {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import subprocess
 from typing import TYPE_CHECKING, Any
@@ -11,6 +12,7 @@ from starlette.responses import JSONResponse
 
 from ahadiff.contracts.serve_install import InstallTargetsResponse
 from ahadiff.install.base import InstallContext
+from ahadiff.install.common import manifest_preview_for
 from ahadiff.install.registry import available_targets, get_target
 
 if TYPE_CHECKING:
@@ -65,8 +67,22 @@ def _normalize_install_target_entry(entry: dict[str, Any]) -> dict[str, Any]:
         "platform_supported": platform_supported,
         "status": status,
         "description": description,
+        "install_command": str(entry.get("install_command") or _install_command(name)),
+        "uninstall_command": str(entry.get("uninstall_command") or _uninstall_command(name)),
+        "manifest": entry.get("manifest") if isinstance(entry.get("manifest"), dict) else None,
+        "manifest_error": (
+            str(entry["manifest_error"]) if isinstance(entry.get("manifest_error"), str) else None
+        ),
         "error_message": str(error_message) if isinstance(error_message, str) else None,
     }
+
+
+def _install_command(name: str) -> str:
+    return f"ahadiff install {name}"
+
+
+def _uninstall_command(name: str) -> str:
+    return f"ahadiff uninstall {name}"
 
 
 def _detect_all_targets(state: ServeState) -> list[dict[str, Any]]:
@@ -85,12 +101,23 @@ def _detect_all_targets(state: ServeState) -> list[dict[str, Any]]:
             "platform_supported": True,
             "status": "available",
             "description": _TARGET_DESCRIPTIONS.get(name, f"Install AhaDiff guidance for {name}."),
+            "install_command": _install_command(name),
+            "uninstall_command": _uninstall_command(name),
+            "manifest": None,
+            "manifest_error": None,
             "error_message": None,
         }
         try:
             target = get_target(name)
             entry["detected"] = target.detect(context)
             entry["status"] = "installed" if entry["detected"] else "available"
+            try:
+                manifest_payload = json.loads(manifest_preview_for(target, context))
+                actions = manifest_payload.get("actions")
+                if isinstance(actions, dict):
+                    entry["manifest"] = actions
+            except Exception:
+                entry["manifest_error"] = "target manifest preview failed"
         except NotImplementedError:
             entry["platform_supported"] = False
             entry["status"] = "unsupported"
