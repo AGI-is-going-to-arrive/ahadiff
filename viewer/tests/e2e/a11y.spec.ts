@@ -18,7 +18,7 @@ test.describe('accessibility', () => {
     ['/#/concepts', 'Concepts'],
     ['/#/settings', 'Settings'],
     ['/#/onboarding', 'Onboarding'],
-    ['/#/skills', 'Skills'],
+    ['/#/guide', 'Guide'],
     ['/#/nonexistent-path', 'NotFound'],
   ];
 

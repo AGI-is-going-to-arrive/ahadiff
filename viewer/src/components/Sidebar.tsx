@@ -8,7 +8,6 @@ import {
   Play,
   RefreshCw,
   Settings as SettingsIcon,
-  Sparkles,
   Star,
   TrendingUp,
   type LucideIcon,
@@ -107,7 +106,7 @@ export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProp
       ariaLabel: 'System',
       items: [
         { to: '/onboarding', Icon: Play, labelKey: 'Nav.onboarding', labelEn: 'Get Started' },
-        { to: '/skills', Icon: Sparkles, labelKey: 'Skills.title', labelEn: 'Agent Hub' },
+        { to: '/guide', Icon: BookOpen, labelKey: 'Nav.guide', labelEn: 'Guide' },
         { to: '/settings', Icon: SettingsIcon, labelKey: 'Settings_page.title', labelEn: 'Settings' },
         { to: '/welcome', Icon: Star, labelKey: 'Nav.welcome', labelEn: 'Welcome' },
       ],

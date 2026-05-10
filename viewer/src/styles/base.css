@@ -79,6 +79,15 @@ kbd {
   font-family: var(--font-mono);
 }
 
+.route-fallback {
+  min-height: 60vh;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+}
+
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--hair-strong) var(--paper);

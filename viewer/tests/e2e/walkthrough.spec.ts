@@ -873,67 +873,62 @@ test.describe('walkthrough: full-app functional test', () => {
   });
 
   /* ---------------------------------------------------------------- */
-  /*  Page 10: Skills                                                  */
+  /*  Page 10: Guide                                                   */
   /* ---------------------------------------------------------------- */
 
-  test('Skills — agent grid, install commands, copy button', async ({ page }) => {
-    await page.goto('/#/skills');
+  test('Guide — workflow steps, command grid, copy button', async ({ page }) => {
+    await page.goto('/#/guide');
 
     // Heading
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
-    // Agent cards
-    const cards = page.locator('.agent-card');
-    await expect(cards).toHaveCount(3); // claude, codex, cursor
+    // Workflow section with steps
+    const workflow = page.locator('.guide-workflow');
+    await expect(workflow).toBeVisible();
+    const steps = page.locator('.guide-workflow__step-item');
+    await expect(steps).toHaveCount(4);
 
-    // Detected badge on claude
-    await expect(page.locator('.agent-card__status--installed').first()).toBeVisible();
+    // Command cards in core section
+    const cards = page.locator('.guide-card');
+    await expect(cards.first()).toBeVisible();
 
-    // Copy button visible
-    const copyBtns = page.locator('.copy-btn');
+    // Copy button on at least one command block
+    const copyBtns = page.locator('.command-block__copy-btn');
     await expect(copyBtns.first()).toBeVisible();
 
     // Click copy on first card (clipboard API may not be available in test, but
     // the click should not throw)
     await copyBtns.first().click();
 
-    await page.screenshot({ path: `${SCREENSHOT_DIR}/10-skills.png`, fullPage: true });
+    await page.screenshot({ path: `${SCREENSHOT_DIR}/10-guide.png`, fullPage: true });
   });
 
-  test('Skills — preview and install mutation refresh detected state', async ({ page }) => {
-    await page.goto('/#/skills');
+  test('Guide — accordion sections expand on click', async ({ page }) => {
+    await page.goto('/#/guide');
 
-    await page.getByRole('button', { name: 'Codex CLI' }).click();
-    const panel = page.locator('.skill-preview');
-    await expect(panel).toBeVisible();
-    await expect(panel).toContainText('AGENTS.md');
+    const accordions = page.locator('.guide-accordion');
+    await expect(accordions.first()).toBeVisible();
 
-    await panel.getByRole('button', { name: 'Preview', exact: true }).click();
-    await expect(panel.getByRole('status')).toContainText('Preview refreshed');
+    const firstSummary = page.locator('.guide-accordion__summary').first();
+    await firstSummary.click();
 
-    await panel.getByRole('button', { name: 'Install' }).click();
-    await expect(panel.getByRole('status')).toContainText('Installed');
-    await expect(panel.locator('.skill-preview__status--installed')).toBeVisible();
+    // After expanding, the body should be visible
+    await expect(page.locator('.guide-accordion__body').first()).toBeVisible();
   });
 
-  test('Skills — filter chips change visible card count', async ({ page }) => {
-    await page.goto('/#/skills');
+  test('Guide — command blocks are present and copyable', async ({ page }) => {
+    await page.goto('/#/guide');
 
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
-    const chips = page.locator('.skills__filter-chip');
-    await expect(chips).not.toHaveCount(0);
+    const commandBlocks = page.locator('.command-block');
+    const count = await commandBlocks.count();
+    expect(count).toBeGreaterThan(5);
 
-    const allCards = page.locator('.agent-card');
-    const allCount = await allCards.count();
-    expect(allCount).toBe(3);
-
-    const installedChip = chips.filter({ hasText: /installed/i });
-    await installedChip.click();
-    await expect(page.locator('.skills__filter-chip--active')).toBeVisible();
-
-    const filteredCount = await page.locator('.agent-card').count();
-    expect(filteredCount).toBeLessThan(allCount);
+    // Each command block should have a copy button
+    const copyBtns = page.locator('.command-block__copy-btn');
+    const copyCount = await copyBtns.count();
+    expect(copyCount).toBeGreaterThan(0);
   });
 
   test('Deep links — settings tabs, concept focus, and review card restore', async ({ page }) => {
@@ -1158,7 +1153,7 @@ test.describe('walkthrough: full-app functional test', () => {
       { text: /Concept|概念/, hash: '#/concepts' },
       { text: /Review|复习/, hash: '#/review' },
       { text: /Ratchet|棘轮/, hash: '#/ratchet' },
-      { text: /Skills|技能/, hash: '#/skills' },
+      { text: /Guide|使用指南/, hash: '#/guide' },
       { text: /Settings|设置/, hash: '#/settings' },
       { text: /Welcome|欢迎/, hash: '#/welcome' },
       { text: /Onboarding|上手/, hash: '#/onboarding' },

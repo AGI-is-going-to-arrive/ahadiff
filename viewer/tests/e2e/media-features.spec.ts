@@ -457,29 +457,68 @@ test.describe('media features', () => {
     expect(values.borderColor).toBe(values.canvasText);
   });
 
-  test('forced-colors active: skills filter active chip has visible border', async ({ page, browserName }) => {
+  test('forced-colors active: guide accordion summary remains visible', async ({ page, browserName }) => {
     test.skip(browserName !== 'chromium', 'forced-colors emulation is Chromium-only');
     await page.emulateMedia({ forcedColors: 'active' });
-    await page.goto('/#/skills');
+    await page.goto('/#/guide');
 
-    const chip = page.locator('.skills__filter-chip').first();
-    await expect(chip).toBeVisible();
-    await chip.click();
+    const summary = page.locator('.guide-accordion__summary').first();
+    await expect(summary).toBeVisible();
 
-    const activeChip = page.locator('.skills__filter-chip--active').first();
-    await expect(activeChip).toBeVisible();
-    const values = await activeChip.evaluate((el) => {
+    // Summary text/icon must remain visible under forced-colors
+    const values = await summary.evaluate((el) => {
       const probe = document.createElement('span');
-      probe.style.color = 'Highlight';
+      probe.style.color = 'CanvasText';
+      probe.style.backgroundColor = 'Canvas';
       document.body.append(probe);
       const result = {
-        borderColor: getComputedStyle(el).borderTopColor,
-        highlight: getComputedStyle(probe).color,
+        color: getComputedStyle(el).color,
+        canvasText: getComputedStyle(probe).color,
       };
       probe.remove();
       return result;
     });
-    expect(values.borderColor).toBe(values.highlight);
+    expect(values.color).toBe(values.canvasText);
+
+    // Copy button on a command block should also be visible
+    const copyBtn = page.locator('.command-block__copy-btn').first();
+    await expect(copyBtn).toBeVisible();
+  });
+
+  test('prefers-reduced-motion active: guide accordion chevrons do not transform', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('/#/guide');
+
+    const summary = page.locator('.guide-accordion__summary').first();
+    const chevron = page.locator('.guide-accordion__chevron').first();
+    await expect(summary).toBeVisible();
+    await summary.click();
+
+    const transform = await chevron.evaluate((el) => getComputedStyle(el).transform);
+    expect(transform).toBe('none');
+  });
+
+  test('small viewports: guide command blocks do not create horizontal overflow', async ({
+    page,
+  }) => {
+    for (const width of [320, 360, 375]) {
+      await page.setViewportSize({ width, height: 700 });
+      await page.goto('/#/guide');
+      await expect(page.locator('.guide')).toBeVisible();
+
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+      expect(overflow).toBeLessThanOrEqual(0);
+
+      const firstCardBox = await page.locator('.guide-card').first().boundingBox();
+      expect(firstCardBox).not.toBeNull();
+      if (firstCardBox) {
+        expect(firstCardBox.width).toBeLessThanOrEqual(width);
+      }
+    }
   });
 
   test('forced-colors active: quiz mode badge visible', async ({ page }) => {

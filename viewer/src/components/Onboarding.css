@@ -12,7 +12,7 @@
   font-family: var(--font-serif);
   font-weight: 500;
   font-size: 36px;
-  letter-spacing: -0.022em;
+  letter-spacing: 0;
   margin: 0;
   line-height: var(--lh-tight);
 }
@@ -164,68 +164,6 @@
 .onboarding__step-ready-icon {
   font-family: var(--font-mono);
   font-weight: 700;
-}
-
-/* ---- Command block + copy button ---- */
-.onboarding__command-block {
-  position: relative;
-  display: flex;
-  align-items: stretch;
-  gap: var(--sp-2);
-  background: var(--subtle);
-  border: 1px solid var(--hair);
-  border-radius: var(--r-md);
-  padding: var(--sp-3) var(--sp-4);
-  margin: 0;
-}
-
-.onboarding__command-block-code {
-  flex: 1;
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  color: var(--ink);
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-all;
-  line-height: var(--lh-normal);
-}
-
-.onboarding__copy-btn {
-  flex-shrink: 0;
-  align-self: flex-start;
-  padding: var(--sp-1) var(--sp-3);
-  background: var(--elevated);
-  color: var(--ink);
-  border: 1px solid var(--hair);
-  border-radius: var(--r-md);
-  font-family: var(--font-mono);
-  font-size: var(--fs-2xs);
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color var(--dur-fast) var(--ease-out-quart),
-    border-color var(--dur-fast) var(--ease-out-quart),
-    color var(--dur-fast) var(--ease-out-quart);
-}
-
-.onboarding__copy-btn:hover {
-  background: var(--accent-softest);
-  border-color: var(--accent-hair);
-}
-
-.onboarding__copy-btn:focus-visible {
-  outline: none;
-  box-shadow: var(--ring-focus);
-}
-
-.onboarding__copy-btn--copied {
-  background: var(--success-soft);
-  border-color: var(--success);
-  color: var(--success);
-}
-
-.onboarding__copy-btn--copied:hover {
-  background: var(--success-soft);
-  border-color: var(--success);
 }
 
 /* ---- Step actions row ---- */
@@ -399,17 +337,11 @@
     color: CanvasText;
     border: 1px solid CanvasText;
   }
-  .onboarding__copy-btn--copied {
-    background: Canvas;
-    border: 2px solid Highlight;
-    color: Highlight;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .stepper__step,
   .onboarding__btn,
-  .onboarding__copy-btn,
   .stepper__jump {
     transition: none;
   }

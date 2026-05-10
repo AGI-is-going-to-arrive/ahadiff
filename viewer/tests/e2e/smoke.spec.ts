@@ -264,14 +264,43 @@ test.describe('smoke', () => {
     await expect(page.locator('.stepper__step')).toHaveCount(4);
   });
 
-  test('hash router skills route renders agent grid', async ({ page }) => {
-    await page.goto('/#/skills');
+  test('hash router guide route renders workflow section and command blocks', async ({ page }) => {
+    await page.goto('/#/guide');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await expect(page.locator('.agent-card')).not.toHaveCount(0);
+    await expect(page.locator('.guide')).toBeVisible();
+    await expect(page.locator('.guide-workflow')).toBeVisible();
+    await expect(page.locator('.guide-card').first()).toBeVisible();
   });
 
-  test('skills page shows copy button for supported targets', async ({ page }) => {
+  test('guide page shows copy button on command blocks', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: async (value: string) => {
+            (window as typeof window & { __ahadiffCopiedText?: string })
+              .__ahadiffCopiedText = value;
+          },
+        },
+      });
+    });
+    await page.goto('/#/guide');
+    const copyButton = page.locator('.command-block__copy-btn').first();
+    await expect(copyButton).toBeVisible();
+    await copyButton.click();
+    await expect(copyButton).toHaveAccessibleName(/Copied!/);
+    await expect.poll(
+      () => page.evaluate(
+        () => (window as typeof window & { __ahadiffCopiedText?: string })
+          .__ahadiffCopiedText,
+      ),
+    ).toBe('pip install ahadiff');
+  });
+
+  test('legacy /#/skills redirects to /#/guide', async ({ page }) => {
     await page.goto('/#/skills');
-    await expect(page.locator('.copy-btn').first()).toBeVisible();
+    await page.waitForURL(/#\/guide/);
+    expect(page.url()).toMatch(/#\/guide$/);
+    await expect(page.locator('.guide')).toBeVisible();
   });
 });

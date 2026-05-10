@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AppShell from '../components/AppShell';
 import Skeleton from '../components/Skeleton';
+import { CommandBlock } from '../components/CommandBlock';
 import { useTranslation } from '../i18n/useTranslation';
 import type { TranslateFn } from '../i18n/useTranslation';
 import { fetchDbCheck, getDoctor } from '../api/config';
@@ -24,90 +25,6 @@ const STEPS = [
 ] as const;
 
 type StepNumber = 1 | 2 | 3 | 4;
-
-/**
- * CopyButton — small clipboard button with brief "Copied!" feedback.
- *
- * Uses `navigator.clipboard.writeText()` when available and falls back to
- * the legacy `document.execCommand('copy')` path for environments where the
- * async clipboard API is gated (e.g. insecure contexts or some embedded
- * webviews). Failure is silent — copy is a non-essential affordance and the
- * underlying command text is always visible in the adjacent <pre>.
- */
-function CopyButton({ text, label, copiedLabel }: { text: string; label: string; copiedLabel: string }) {
-  const [copied, setCopied] = useState(false);
-  const resetTimerRef = useRef<number | null>(null);
-
-  useEffect(() => () => {
-    if (resetTimerRef.current !== null) {
-      window.clearTimeout(resetTimerRef.current);
-      resetTimerRef.current = null;
-    }
-  }, []);
-
-  const flashCopied = useCallback(() => {
-    if (resetTimerRef.current !== null) {
-      window.clearTimeout(resetTimerRef.current);
-    }
-    setCopied(true);
-    resetTimerRef.current = window.setTimeout(() => {
-      setCopied(false);
-      resetTimerRef.current = null;
-    }, 1400);
-  }, []);
-
-  const handleCopy = useCallback(() => {
-    const clipboard: Clipboard | undefined = navigator.clipboard;
-    if (clipboard && typeof clipboard.writeText === 'function') {
-      clipboard.writeText(text).then(flashCopied, () => fallbackCopy(text, flashCopied));
-      return;
-    }
-    fallbackCopy(text, flashCopied);
-  }, [text, flashCopied]);
-
-  return (
-    <button
-      type="button"
-      className={`onboarding__copy-btn${copied ? ' onboarding__copy-btn--copied' : ''}`}
-      aria-label={copied ? copiedLabel : label}
-      aria-live="polite"
-      onClick={handleCopy}
-    >
-      {copied ? `✓ ${copiedLabel}` : label}
-    </button>
-  );
-}
-
-/**
- * Legacy clipboard fallback using a hidden textarea + execCommand.
- * Kept entirely synchronous so it works inside the same user gesture frame.
- */
-function fallbackCopy(text: string, onSuccess: () => void): void {
-  try {
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.setAttribute('readonly', '');
-    textarea.style.position = 'absolute';
-    textarea.style.left = '-9999px';
-    document.body.appendChild(textarea);
-    textarea.select();
-    const ok = document.execCommand('copy');
-    document.body.removeChild(textarea);
-    if (ok) onSuccess();
-  } catch {
-    // copy is a non-essential affordance — fail silently
-  }
-}
-
-/** A reusable command block that pairs a <pre> with a CopyButton. */
-function CommandBlock({ command, t }: { command: string; t: TranslateFn }) {
-  return (
-    <div className="onboarding__command-block">
-      <pre className="onboarding__command-block-code">{command}</pre>
-      <CopyButton text={command} label={t('Onboarding.copy')} copiedLabel={t('Onboarding.copied')} />
-    </div>
-  );
-}
 
 interface DoctorState {
   checks: DoctorCheck[];
@@ -151,9 +68,11 @@ export default function OnboardingPage() {
   const platform = useMemo<Platform>(() => detectPlatform(), []);
 
   const installCmd = getInstallCommand(platform);
-  const initCmd = 'cd your-repo && ahadiff init';
+  const initCmd = platform === 'windows'
+    ? 'Set-Location .\\your-repo\nahadiff init'
+    : 'cd your-repo\nahadiff init';
   const learnCmd = 'ahadiff learn HEAD~1..HEAD';
-  const envCmd = getEnvVarCommand(platform, 'OPENAI_API_KEY', 'sk-...');
+  const envCmd = getEnvVarCommand(platform, 'OPENAI_API_KEY', '<your-key>');
   const shellHint = getShellHint(platform);
   const platformLabel = getPlatformLabel(platform);
 
@@ -469,7 +388,11 @@ function Step1Install({
         </span>
       </div>
       <div className="settings-card__body">
-        <CommandBlock command={installCmd} t={t} />
+        <CommandBlock
+          command={installCmd}
+          copyLabel={t('Onboarding.copy')}
+          copiedLabel={t('Onboarding.copied')}
+        />
       </div>
     </div>
   );
@@ -483,7 +406,11 @@ function Step2Init({ initCmd, t }: { initCmd: string; t: TranslateFn }) {
       </div>
       <div className="settings-card__body">
         <p className="onboarding__step-desc">{t('Onboarding.init_desc')}</p>
-        <CommandBlock command={initCmd} t={t} />
+        <CommandBlock
+          command={initCmd}
+          copyLabel={t('Onboarding.copy')}
+          copiedLabel={t('Onboarding.copied')}
+        />
       </div>
     </div>
   );
@@ -500,7 +427,11 @@ function Step3Configure({
       </div>
       <div className="settings-card__body">
         <p className="onboarding__step-desc">{t('Onboarding.configure_hint')}</p>
-        <CommandBlock command={envCmd} t={t} />
+        <CommandBlock
+          command={envCmd}
+          copyLabel={t('Onboarding.copy')}
+          copiedLabel={t('Onboarding.copied')}
+        />
         <a
           href="#/settings?tab=provider"
           className="onboarding__btn onboarding__btn--primary onboarding__deep-link"
@@ -528,7 +459,11 @@ function Step4Learn({
       </div>
       <div className="settings-card__body">
         <p className="onboarding__step-desc">{t('Onboarding.learn_desc')}</p>
-        <CommandBlock command={learnCmd} t={t} />
+        <CommandBlock
+          command={learnCmd}
+          copyLabel={t('Onboarding.copy')}
+          copiedLabel={t('Onboarding.copied')}
+        />
         {loading && <Skeleton variant="card" height="60px" />}
         {!loading && isComplete && checks.length > 0 && (
           <div className="onboarding__step-ready">

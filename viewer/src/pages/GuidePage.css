@@ -1,0 +1,490 @@
+/* ==========================================================================
+   GuidePage — daily AhaDiff workflow reference. Companion to OnboardingPage:
+   onboarding sets up the repo, guide explains day-to-day usage. Layout uses
+   flexbox/grid only (no container queries) so the page degrades cleanly on
+   older engines and forced-colors mode. All radii capped at 12px to match
+   the project's surface tokens.
+   ========================================================================== */
+
+.guide {
+  max-width: var(--mw-content);
+  margin: 0 auto;
+  padding: 0 0 var(--sp-10);
+}
+
+/* ---- Header ---- */
+.guide__head {
+  margin-bottom: var(--sp-8);
+}
+
+.guide__eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 0;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: var(--sp-2);
+}
+
+.guide__title {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: 36px;
+  letter-spacing: 0;
+  line-height: var(--lh-tight);
+  margin: 0;
+}
+
+.guide__subtitle {
+  color: var(--muted);
+  font-size: var(--fs-base);
+  margin: var(--sp-2) 0 0;
+  line-height: var(--lh-relaxed);
+}
+
+/* ---- Sections shared ---- */
+.guide-section {
+  margin-top: var(--sp-8);
+}
+
+.guide-section__title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: var(--fs-xl);
+  letter-spacing: 0;
+  line-height: var(--lh-tight);
+  margin: 0 0 var(--sp-4);
+  color: var(--ink);
+}
+
+.guide-section__icon {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+/* ---- Workflow steps ---- */
+.guide-workflow__steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guide-workflow__step-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.guide-workflow__step {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  flex: 1;
+  padding: var(--sp-4);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg);
+  background: var(--elevated);
+  min-width: 0;
+  transition: border-color var(--dur-base) var(--ease-out-quart),
+    box-shadow var(--dur-base) var(--ease-out-quart);
+}
+
+.guide-workflow__step:hover {
+  border-color: var(--accent-tint);
+  box-shadow: var(--shadow-sm);
+}
+
+.guide-workflow__step-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-md);
+  background: var(--accent-softest);
+  color: var(--accent-ink);
+}
+
+.guide-workflow__step-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.guide-workflow__step-title {
+  font-weight: 600;
+  font-size: var(--fs-base);
+  color: var(--ink);
+  margin-bottom: var(--sp-1);
+  line-height: var(--lh-snug);
+}
+
+.guide-workflow__step-desc {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  line-height: var(--lh-normal);
+}
+
+.guide-workflow__arrow {
+  flex-shrink: 0;
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+/* ---- Command grid ---- */
+.guide-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--sp-3);
+}
+
+.guide-grid--compact {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--sp-2);
+}
+
+.guide-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  background: var(--elevated);
+  min-width: 0;
+  transition: border-color var(--dur-base) var(--ease-out-quart);
+}
+
+.guide-card:hover {
+  border-color: var(--accent-tint);
+}
+
+.guide-card__label {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  font-weight: 500;
+}
+
+/* Command block within guide cards must wrap long commands instead of
+   horizontal scrolling. Without this override the inner <pre> would force
+   horizontal overflow on narrow screens. */
+.guide-card .command-block,
+.guide-grid .command-block {
+  min-width: 0;
+}
+
+.guide-card .command-block__code,
+.guide-grid .command-block__code {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* ---- Notes ---- */
+.guide-notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin: var(--sp-4) 0 0;
+  padding: var(--sp-3) var(--sp-4);
+  list-style: none;
+  border-left: 3px solid var(--accent-tint);
+  background: var(--accent-softest);
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+}
+
+.guide-notes__item {
+  font-size: var(--fs-sm);
+  color: var(--ink-strong);
+  line-height: var(--lh-normal);
+}
+
+.guide-notes__item::before {
+  content: '· ';
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+/* ---- Env vars dual-track ---- */
+.guide-env {
+  margin-top: var(--sp-6);
+  padding: var(--sp-4);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg);
+  background: var(--subtle);
+}
+
+.guide-env__label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  letter-spacing: 0;
+  margin-bottom: var(--sp-3);
+}
+
+.guide-env__panes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--sp-3);
+}
+
+.guide-env__pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  background: var(--elevated);
+  transition: border-color var(--dur-base) var(--ease-out-quart);
+}
+
+.guide-env__pane--active {
+  border-color: var(--accent);
+}
+
+.guide-env__pane-label {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.guide-env__pane--active .guide-env__pane-label {
+  color: var(--accent-ink);
+}
+
+/* ---- Accordion ---- */
+.guide-accordion {
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg);
+  background: var(--elevated);
+  overflow: hidden;
+}
+
+.guide-accordion__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  cursor: pointer;
+  list-style: none;
+  font-weight: 500;
+  font-size: var(--fs-base);
+  color: var(--ink);
+  user-select: none;
+  transition: background-color var(--dur-fast) var(--ease-out-quart);
+}
+
+.guide-accordion__summary::-webkit-details-marker {
+  display: none;
+}
+
+.guide-accordion__summary:hover {
+  background: var(--subtle);
+}
+
+.guide-accordion__summary:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
+
+.guide-accordion__summary-text {
+  flex: 1;
+}
+
+.guide-accordion__chevron {
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: transform var(--dur-base) var(--ease-out-quart);
+}
+
+.guide-accordion[open] > .guide-accordion__summary .guide-accordion__chevron {
+  transform: rotate(90deg);
+}
+
+.guide-accordion__body {
+  padding: var(--sp-4);
+  border-top: 1px solid var(--hair);
+  background: var(--paper);
+}
+
+/* ---- Integrations ---- */
+.guide-integrations__desc {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  line-height: var(--lh-relaxed);
+}
+
+.guide-integrations__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-3);
+  padding: 0;
+  list-style: none;
+}
+
+.guide-integrations__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  background: var(--elevated);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  min-width: 0;
+}
+
+.guide-integrations__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.guide-integrations__badge {
+  display: inline-block;
+  padding: 2px var(--sp-2);
+  border-radius: var(--r-full);
+  background: var(--accent-softest);
+  color: var(--accent-ink);
+  font-family: var(--font-sans);
+  font-size: var(--fs-2xs);
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.guide-integrations__hint {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--accent-softest);
+  font-size: var(--fs-sm);
+  color: var(--ink-strong);
+}
+
+.guide-integrations__hint-icon {
+  flex-shrink: 0;
+  color: var(--accent-ink);
+}
+
+.guide-integrations__hint-link {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  color: var(--accent-ink);
+  text-decoration: none;
+  border-radius: var(--r-sm);
+  padding: 2px;
+}
+
+.guide-integrations__hint-link:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 768px) {
+  .guide-workflow__steps {
+    flex-direction: column;
+  }
+  .guide-workflow__step-item {
+    flex: 1 1 auto;
+  }
+  .guide-workflow__arrow {
+    transform: rotate(90deg);
+    align-self: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .guide__title {
+    font-size: 28px;
+  }
+  .guide-grid {
+    grid-template-columns: 1fr;
+  }
+  .guide-grid--compact {
+    grid-template-columns: 1fr;
+  }
+  .guide-env__panes {
+    grid-template-columns: 1fr;
+  }
+  .guide-integrations__list {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Forced-colors (Windows high-contrast) ---- */
+@media (forced-colors: active) {
+  .guide-workflow__step,
+  .guide-card,
+  .guide-env__pane,
+  .guide-accordion,
+  .guide-integrations__item,
+  .guide-notes,
+  .guide-integrations__hint {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+  .guide-workflow__step-icon,
+  .guide-section__icon,
+  .guide-integrations__hint-icon,
+  .guide-integrations__hint-link,
+  .guide-accordion__chevron {
+    color: LinkText;
+  }
+  .guide-integrations__badge {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+  .guide-env__pane--active {
+    border: 2px solid Highlight;
+  }
+  .guide-accordion__summary:focus-visible,
+  .guide-integrations__hint-link:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}
+
+/* ---- Reduced motion ---- */
+@media (prefers-reduced-motion: reduce) {
+  .guide-workflow__step,
+  .guide-card,
+  .guide-env__pane,
+  .guide-accordion__summary,
+  .guide-accordion__chevron {
+    transition: none;
+  }
+  .guide-accordion[open] > .guide-accordion__summary .guide-accordion__chevron {
+    transform: none;
+  }
+}

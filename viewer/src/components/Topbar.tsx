@@ -23,7 +23,7 @@ const ROUTE_TO_KEY: Array<[RegExp, TranslationKey]> = [
   [/^\/concepts/, 'Shell.concept_graph'],
   [/^\/review/, 'Review.title'],
   [/^\/ratchet/, 'Ratchet.title'],
-  [/^\/skills/, 'Skills.title'],
+  [/^\/guide/, 'Nav.guide'],
   [/^\/settings/, 'Settings_page.title'],
   [/^\/welcome/, 'Nav.welcome'],
   [/^\/onboarding/, 'Nav.onboarding'],

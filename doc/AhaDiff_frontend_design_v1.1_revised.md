@@ -551,7 +551,7 @@ npx shadcn@latest add button card dialog sheet tabs tooltip popover \
     "quiz": "Quiz",
     "review": "Review",
     "graph": "Graph",
-    "skills": "Agent Skills",
+    "guide": "Guide",
     "settings": "Settings"
   },
   "Claim": {
@@ -589,7 +589,7 @@ npx shadcn@latest add button card dialog sheet tabs tooltip popover \
     "quiz": "测验",
     "review": "复习",
     "graph": "图谱",
-    "skills": "Agent 技能",
+    "guide": "使用指南",
     "settings": "设置"
   },
   "Claim": {
@@ -675,7 +675,7 @@ After:
 
 ### 共通结构
 
-- Sidebar：Runs / Lessons / Ratchet / Quiz / Review / Graph / Skills / Settings。
+- Sidebar：Runs / Lessons / Ratchet / Quiz / Review / Graph / Guide / Settings。
 - Header：repo switch、CmdK、`New Learn Run`。
 - Row 1：Score、Claims verified、Review due、Spec alignment。
 - Row 2：quality history line chart。

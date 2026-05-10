@@ -6,11 +6,11 @@
 
 知返 AhaDiff 是一个 **local-first 的 verified diff learning layer**。把 AI 写出的 git diff 变成带代码证据链的学习笔记、概念图谱、主动回忆测验、SRS 复习卡和质量棘轮记录。核心差异：Code Wiki 解释仓库，知返解释这次改动；每句话都能回到代码证据。
 
-**当前状态（2026-05-10）**：本轮 error / locale / i18n hardening 已同步。后端完整 unit `2136 passed`，目标回归 `455 passed`，ruff/format/pyright 通过；前端 Vitest `253 passed`，typecheck/build 通过；i18n scalar keys `1011/1011`，`errors.*` 覆盖 `27/27` 个 error code，`Format.*` 覆盖 6 个格式化文案；`git diff --check` 通过。
+**当前状态（2026-05-10）**：本轮 Guide follow-up 已同步。旧 Skills 页已替换为 Guide 页，`/#/skills` 会 replace 到 `/#/guide`；实际 install / uninstall 仍由 Settings → Integrations 负责。后端最新完整 unit 仍是上一轮 `2136 passed`；本轮前端 Guide 目标 Playwright `7 passed`，Vitest `253 passed`，typecheck/build 通过；i18n scalar keys `1050/1050`，`errors.*` 覆盖 `27/27` 个 error code，`Format.*` 覆盖 6 个格式化文案；`git diff --check` 通过。
 
 ## 架构总览
 
-后端 CLI（learn/improve/verify/serve/install/benchmark）：8-provider LLM + diff capture + claims + lesson/quiz/concepts + 8 维 eval + 可选 LLM judge + review.sqlite FSRS-6 + serve API（61 routes + catchall，稳定 `error_code` payload）+ 13 install targets + improve loop。前端 React 19 SPA：13 页面、45 TSX + 38 CSS 文件，当前 i18n key parity 为 `1011/1011`。
+后端 CLI（learn/improve/verify/serve/install/benchmark）：8-provider LLM + diff capture + claims + lesson/quiz/concepts + 8 维 eval + 可选 LLM judge + review.sqlite FSRS-6 + serve API（61 routes + catchall，稳定 `error_code` payload）+ 13 install targets + improve loop。前端 React 19 SPA：13 页面、43 个生产 page/component TSX + 31 个相关 CSS 文件，当前 i18n scalar key parity 为 `1050/1050`。
 
 ### 技术栈
 
@@ -69,7 +69,7 @@ global_config_dir()                   ← Global（派生/索引/偏好，非真
 | improve | `src/ahadiff/improve/` | improve session、worktree replay、prompt 白名单、Phase 2.5、preflight |
 | i18n | `src/ahadiff/i18n/` | locale resolver（cookie → Accept-Language → `AHADIFF_LANG` → CLI → config → `LANG`）和 prompt language helper |
 | benchmarks | `benchmarks/` | 10 fixtures、Graphify 10k gate（parse 750ms + peak 96MiB） |
-| viewer | `viewer/` | React 19 SPA；13 页面；Learn Mode Dialog + Dashboard + Lesson + Quiz + Review + Concepts + Ratchet + RunDetail + Settings + Skills + Diff + Search；错误码本地化；locale-aware byte/token 格式化；侧栏三档；container query；PWA |
+| viewer | `viewer/` | React 19 SPA；13 页面；Learn Mode Dialog + Dashboard + Lesson + Quiz + Review + Concepts + Ratchet + RunDetail + Settings + Guide + Diff + Search；错误码本地化；locale-aware byte/token 格式化；侧栏三档；container query；PWA |
 | tests | `tests/` | unit/integration/eval/live；本轮 unit `2136 passed`；CI: PR unit + eval + nightly eval + release coverage ≥85% |
 | doc | `doc/` | 产品设计文档 |
 | ui | `ui/` | UI 原型 Warm v1-v6 |
