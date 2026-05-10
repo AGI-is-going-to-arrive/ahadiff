@@ -84,8 +84,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Chromium and Firefox browsers
-        run: pnpm exec playwright install --with-deps chromium firefox
+      - name: Install Chromium, Firefox and WebKit browsers
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
 
       - name: Chromium desktop full E2E suite
         run: |
@@ -100,6 +100,14 @@ jobs:
             tests/e2e/smoke.spec.ts \
             tests/e2e/a11y.spec.ts \
             --project=firefox-desktop \
+            --reporter=line
+
+      - name: WebKit desktop smoke/a11y
+        run: |
+          pnpm exec playwright test \
+            tests/e2e/smoke.spec.ts \
+            tests/e2e/a11y.spec.ts \
+            --project=webkit-desktop \
             --reporter=line
 
       - uses: actions/upload-artifact@v4

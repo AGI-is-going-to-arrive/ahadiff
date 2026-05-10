@@ -758,7 +758,6 @@
     "language_zh_CN": "简体中文"
   },
   "Settings_page": {
-    "appearance_coming_soon": "Theme customization coming soon",
     "audit_col_cost": "Cost",
     "audit_col_files": "Files sent",
     "audit_col_model": "Model",
@@ -1035,7 +1034,8 @@
     "new_run_running": "Running…",
     "new_run_unavailable": "New runs start from the CLI for now",
     "search_aria": "Open search",
-    "search_kbd": "⌘K",
+    "search_kbd_mac": "⌘K",
+    "search_kbd_other": "Ctrl+K",
     "search_placeholder": "Search claim / concept / commit…",
     "search_unavailable": "Search is not connected yet"
   },

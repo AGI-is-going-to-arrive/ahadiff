@@ -1688,6 +1688,9 @@ function IntegrationsTab({
   }, []);
 
   const copyInstallCommand = useCallback(async (target: InstallTarget) => {
+    if (!navigator.clipboard?.writeText) {
+      return;
+    }
     try {
       await navigator.clipboard.writeText(installCommand(target));
       setCopiedTarget(target.name);
@@ -2025,9 +2028,9 @@ function ModeCell({ eyebrow, value, sub }: { eyebrow: string; value: string; sub
 
 function formatNumber(value: number, locale: string): string {
   try {
-    return value.toLocaleString(locale || 'en');
+    return value.toLocaleString(locale || undefined);
   } catch {
-    return value.toLocaleString('en');
+    return value.toLocaleString();
   }
 }
 

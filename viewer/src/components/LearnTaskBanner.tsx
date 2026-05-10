@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useLearnStore } from '../state/learn-store';
 import { useTranslation, type MessageKey } from '../i18n/useTranslation';
+import { formatBytes, formatCompactNumber } from '../utils/format';
 import { safeVerdict } from '../utils/verdict';
 import './LearnTaskBanner.css';
 
@@ -36,19 +37,8 @@ function formatElapsed(s: number): string {
   return m > 0 ? `${m}:${String(sec).padStart(2, '0')}` : `${sec}s`;
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatTokens(n: number): string {
-  if (n < 1000) return String(n);
-  return `${(n / 1000).toFixed(1)}K`;
-}
-
 export default function LearnTaskBanner() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const phase = useLearnStore((s) => s.phase);
   const task = useLearnStore((s) => s.task);
   const estimate = useLearnStore((s) => s.estimate);
@@ -136,10 +126,10 @@ export default function LearnTaskBanner() {
           </div>
           <div className="learn-banner__confirm-stats">
             <span>{t('Learn.preflight_files', { count: estimate.file_count })}</span>
-            <span>{t('Learn.preflight_size', { size: formatBytes(estimate.patch_bytes) })}</span>
+            <span>{t('Learn.preflight_size', { size: formatBytes(estimate.patch_bytes, locale) })}</span>
             <span>{t('Learn.preflight_tokens', {
-              estimated: formatTokens(estimate.estimated_tokens),
-              limit: formatTokens(estimate.provider_context_window),
+              estimated: formatCompactNumber(estimate.estimated_tokens, locale),
+              limit: formatCompactNumber(estimate.provider_context_window, locale),
             })}</span>
           </div>
           {estimate.warnings.length > 0 && (

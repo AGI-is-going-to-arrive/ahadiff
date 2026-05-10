@@ -442,13 +442,14 @@ function ForceGraph({
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
+    setSvgWidth(svg.getBoundingClientRect().width);
+    if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         setSvgWidth(entry.contentRect.width);
       }
     });
     observer.observe(svg);
-    setSvgWidth(svg.getBoundingClientRect().width);
     return () => observer.disconnect();
   }, []);
 

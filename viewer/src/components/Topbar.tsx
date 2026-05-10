@@ -2,6 +2,7 @@ import type { Ref } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useTranslation, type TranslationKey } from '../i18n/useTranslation';
 import { useLearnStore } from '../state/learn-store';
+import { detectPlatform } from '../utils/platform';
 import LanguageSwitcher from './LanguageSwitcher';
 import './Topbar.css';
 
@@ -51,6 +52,7 @@ export default function Topbar({
   const newRunLabel = isBusy ? t('Topbar.new_run_running') : t('Topbar.new_run');
   const newRunShort = isBusy ? t('Topbar.new_run_running') : t('Topbar.new_run_short');
   const newRunAriaLabel = isBusy ? t('Topbar.new_run_running') : t('Topbar.new_run_aria');
+  const searchKbdKey: TranslationKey = detectPlatform() === 'macos' ? 'Topbar.search_kbd_mac' : 'Topbar.search_kbd_other';
 
   return (
     <header className="topbar" data-glass>
@@ -87,7 +89,7 @@ export default function Topbar({
         >
           <span className="topbar__search-icon" aria-hidden="true">⌕</span>
           <span className="topbar__search-placeholder">{t('Topbar.search_placeholder')}</span>
-          <kbd className="topbar__search-kbd">{t('Topbar.search_kbd')}</kbd>
+          <kbd className="topbar__search-kbd">{t(searchKbdKey)}</kbd>
         </button>
       ) : (
         <div
@@ -99,7 +101,7 @@ export default function Topbar({
         >
           <span className="topbar__search-icon" aria-hidden="true">⌕</span>
           <span className="topbar__search-placeholder">{t('Topbar.search_placeholder')}</span>
-          <kbd className="topbar__search-kbd">{t('Topbar.search_kbd')}</kbd>
+          <kbd className="topbar__search-kbd">{t(searchKbdKey)}</kbd>
         </div>
       )}
 

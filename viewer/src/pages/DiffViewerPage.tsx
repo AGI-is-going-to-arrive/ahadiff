@@ -246,7 +246,9 @@ export default function DiffViewerPage() {
   }, []);
 
   const handleCopyAnchor = useCallback((claimId: string) => {
-    void navigator.clipboard.writeText(`#claim-${claimId}`);
+    if (navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(`#claim-${claimId}`);
+    }
   }, []);
 
   /**

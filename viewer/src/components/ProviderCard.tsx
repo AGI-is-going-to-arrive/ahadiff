@@ -216,7 +216,7 @@ export default function ProviderCard({
   onProbe,
   onCancelNew,
 }: ProviderCardProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const [expanded, setExpanded] = useState<boolean>(isNew);
   const [editing, setEditing] = useState<boolean>(isNew);
   const [draft, setDraft] = useState<DraftFields>(() => (isNew ? DEFAULT_DRAFT : toDraft(provider)));
@@ -541,6 +541,7 @@ export default function ProviderCard({
               onToggleModel={toggleModel}
               onCancelModels={() => setRemoteModels(null)}
               t={t}
+              locale={locale}
             />
           )}
         </div>
@@ -574,6 +575,7 @@ interface DetailProps {
   onToggleModel: (id: string) => void;
   onCancelModels: () => void;
   t: ReturnType<typeof useTranslation>['t'];
+  locale: string;
 }
 
 function ProviderDetailView({
@@ -599,6 +601,7 @@ function ProviderDetailView({
   onToggleModel,
   onCancelModels,
   t,
+  locale,
 }: DetailProps) {
   return (
     <>
@@ -619,7 +622,7 @@ function ProviderDetailView({
           mono
         />
         {provider.max_output_tokens != null && (
-          <Field label={t('Settings_page.provider_max_output_label')} value={provider.max_output_tokens.toLocaleString('en')} mono />
+          <Field label={t('Settings_page.provider_max_output_label')} value={formatTokenCount(provider.max_output_tokens, locale)} mono />
         )}
         {provider.thinking_level != null && provider.thinking_level !== 'none' && (
           <Field label={t('Settings_page.provider_thinking_label')} value={t(`Settings_page.provider_thinking_level_${provider.thinking_level}` as MessageKey)} mono />
@@ -631,7 +634,7 @@ function ProviderDetailView({
           {provider.probed_max_context != null && (
             <Field
               label={t('Settings_page.provider_context_label')}
-              value={`${(provider.probed_max_context / 1000).toFixed(0)}K`}
+              value={formatTokenCount(provider.probed_max_context, locale)}
               mono
             />
           )}
@@ -1068,6 +1071,14 @@ function ProviderEditForm({
       </div>
     </form>
   );
+}
+
+function formatTokenCount(value: number, locale: string): string {
+  try {
+    return value.toLocaleString(locale || undefined);
+  } catch {
+    return value.toLocaleString();
+  }
 }
 
 function Field({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {

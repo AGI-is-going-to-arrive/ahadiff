@@ -758,7 +758,6 @@
     "language_zh_CN": "简体中文"
   },
   "Settings_page": {
-    "appearance_coming_soon": "主题自定义即将推出",
     "audit_col_cost": "成本",
     "audit_col_files": "发送文件",
     "audit_col_model": "模型",
@@ -1035,7 +1034,8 @@
     "new_run_running": "运行中…",
     "new_run_unavailable": "新建运行暂由 CLI 发起",
     "search_aria": "打开搜索",
-    "search_kbd": "⌘K",
+    "search_kbd_mac": "⌘K",
+    "search_kbd_other": "Ctrl+K",
     "search_placeholder": "搜索 claim / concept / commit…",
     "search_unavailable": "搜索尚未接入"
   },

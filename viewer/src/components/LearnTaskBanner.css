@@ -249,6 +249,8 @@
 }
 
 .learn-banner__bar-track--active .learn-banner__bar-fill {
+  /* fallback for older browsers without color-mix() (Firefox <113, Safari <16.4, Chrome <111) */
+  background: var(--accent);
   background: linear-gradient(
     90deg,
     var(--accent) 0%,

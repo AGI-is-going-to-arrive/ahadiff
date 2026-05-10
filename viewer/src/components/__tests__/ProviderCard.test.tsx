@@ -4,8 +4,11 @@ import ProviderCard, { createProviderProbePoller } from '../ProviderCard';
 import type { ProviderSummary } from '../../api/config';
 import type { TaskInfoResponse } from '../../api/types';
 
+let mockLocale = 'en-US';
+
 vi.mock('../../i18n/useTranslation', () => ({
   useTranslation: () => ({
+    locale: mockLocale,
     t: (key: string) => {
       const messages: Record<string, string> = {
         'Settings_page.key_configured': 'configured',

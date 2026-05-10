@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import Topbar from './Topbar';
@@ -17,6 +17,10 @@ describe('Topbar', () => {
   beforeEach(() => {
     learnPhase = 'idle';
     submitLearn.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('uses the busy label as the accessible name while a learn run is active', () => {
@@ -38,5 +42,21 @@ describe('Topbar', () => {
 
     expect(reducedMotionBlock?.[0]).toContain('.topbar__btn--busy');
     expect(reducedMotionBlock?.[0]).toContain('animation: none');
+  });
+
+  it.each([
+    ['Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', '⌘K'],
+    ['Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Ctrl+K'],
+    ['Mozilla/5.0 (X11; Linux x86_64)', 'Ctrl+K'],
+  ])('renders platform shortcut for %s', (userAgent, expectedShortcut) => {
+    vi.stubGlobal('navigator', { userAgent });
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <Topbar isMenuOpen={false} onMenuToggle={() => undefined} onSearchOpen={() => undefined} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain(`<kbd class="topbar__search-kbd">${expectedShortcut}</kbd>`);
   });
 });

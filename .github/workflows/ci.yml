@@ -69,7 +69,7 @@ jobs:
 
       - run: python -c "import sqlite3; print(sqlite3.sqlite_version)"
       - run: uv sync --locked --dev --python ${{ env.PYTHON_VERSION }}
-      - run: uv run pytest tests/unit tests/integration/test_learn_pipeline.py -q --tb=long
+      - run: uv run pytest tests/unit tests/eval tests/integration/test_learn_pipeline.py -q --tb=long
       - run: uv run ruff check src tests
       - run: uv run ruff format --check src tests
       - run: uv run pyright
