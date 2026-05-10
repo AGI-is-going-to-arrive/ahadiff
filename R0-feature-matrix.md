@@ -31,7 +31,7 @@
 | A11 | L6: Learning Core (quiz + SRS review + concepts + helpfulness) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/quiz/`, `src/ahadiff/wiki/concepts.py`, `src/ahadiff/lesson/helpfulness.py`; `tests/unit/test_helpfulness.py` |
 | A12 | L6: Graphify (models/parser/matcher/linker/slicer/search/freshness) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/graphify/` (7 files: models, parser, matcher, linker, slicer, search, freshness); `tests/unit/test_graphify*.py` (5 test files) |
 | A13 | L7: Serve API (44 routes + catchall, Starlette + Uvicorn) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/serve/app.py` (47 route entries); 14 route modules; `tests/unit/test_serve*.py` |
-| A14 | L7: React 19 SPA (Vite + vanilla CSS) | Blueprint | N/A | IMPL | IMPL | `viewer/src/` (13 pages, 43 production page+component TSX, 31 page+component CSS); `viewer/vitest.config.ts` + Playwright |
+| A14 | L7: React 19 SPA (Vite + vanilla CSS) | Blueprint | N/A | IMPL | IMPL | `viewer/src/` (13 pages, 49 production page+component TSX, 32 page+component CSS); `viewer/vitest.config.ts` + Playwright |
 
 ---
 
@@ -176,7 +176,7 @@
 
 | # | Feature | Source | Backend Status | Frontend Status | Test Status | Evidence |
 |---|---------|--------|---------------|-----------------|-------------|----------|
-| J1 | Locale priority chain: cookie -> Accept-Language -> AHADIFF_LANG -> CLI --lang -> config.toml -> LANG -> en | Blueprint+Comp | IMPL | IMPL | IMPL | `i18n/`; `serve/routes_locale.py`; `viewer/src/i18n/`; 1050/1050 i18n scalar keys |
+| J1 | Locale priority chain: cookie -> Accept-Language -> AHADIFF_LANG -> CLI --lang -> config.toml -> LANG -> en | Blueprint+Comp | IMPL | IMPL | IMPL | `i18n/`; `serve/routes_locale.py`; `viewer/src/i18n/`; 1090/1090 i18n scalar keys |
 | J2 | Supported locales: en + zh-CN | Blueprint | IMPL | IMPL | IMPL | `i18n/`; `viewer/src/i18n/` |
 | J3 | Zustand atom store for i18n re-render (no React Context) | Blueprint | N/A | IMPL | IMPL | `viewer/src/i18n/useTranslation.ts` |
 | J4 | LLM OUTPUT_LANGUAGE prefix in prompts | Blueprint | IMPL | N/A | IMPL | Orchestrator resolves output_lang |
@@ -217,9 +217,9 @@
 | L6 | ConceptsPage (concept graph + list) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/ConceptsPage.tsx`; `components/ConceptGraph.tsx` (753 lines) |
 | L7 | SettingsPage (7-tab settings) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/SettingsPage.tsx` |
 | L8 | RatchetPage (score history chart) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/RatchetPage.tsx`; `components/RatchetChart.tsx` |
-| L9 | OnboardingPage (stepper wizard) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/OnboardingPage.tsx` |
+| L9 | OnboardingPage (stepper wizard) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/OnboardingPage.tsx`; `viewer/src/components/DiagnosticRow.tsx`; `viewer/src/pages/__tests__/OnboardingPage.test.tsx`; `viewer/tests/e2e/onboarding.spec.ts` |
 | L10 | LandingPage | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/LandingPage.tsx` |
-| L11 | GuidePage | Current viewer | N/A | IMPL | IMPL | `viewer/src/pages/GuidePage.tsx`; legacy `/#/skills` redirects to `/#/guide` |
+| L11 | GuidePage | Current viewer | N/A | IMPL | IMPL | `viewer/src/pages/GuidePage.tsx`; maintenance commands default to `--dry-run`; legacy `/#/skills` redirects to `/#/guide` |
 | L12 | NotFoundPage (404) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/NotFoundPage.tsx` |
 | L13 | AppShell (Sidebar + Topbar + BottomMiniPanel) | Blueprint | N/A | IMPL | IMPL | `components/AppShell.tsx`, `Sidebar.tsx`, `Topbar.tsx`, `BottomMiniPanel.tsx` |
 | L14 | SearchOverlay (global search) | Blueprint | N/A | IMPL | IMPL | `components/SearchOverlay.tsx` |
