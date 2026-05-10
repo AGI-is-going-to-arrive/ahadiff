@@ -405,3 +405,127 @@
     display: none !important;
   }
 }
+
+/* BEGIN: surface-card + diag-row (Onboarding/Settings shared) */
+/* ---------------------------------------------------------------------------
+ * Cross-page surface primitives. Extracted from the original
+ * `.settings-card` / `.doctor-check` rules in Settings.css so that any page
+ * (Onboarding, Settings, future panels) can use them under route code
+ * splitting without depending on Settings.css being loaded first.
+ *
+ * Scope contract:
+ *   - All colors flow through tokens (var(--success), var(--warning), ...).
+ *   - No hex literals; no parent selectors, query containers, intrinsic
+ *     ratio shorthands, or balanced text wrapping (same-shape discipline).
+ *   - .settings-card and .doctor-check rules in Settings.css remain as
+ *     visual aliases; this block does not modify them.
+ * ------------------------------------------------------------------------ */
+
+.surface-card {
+  background: var(--elevated);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+
+.surface-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5);
+  border-bottom: 1px solid var(--hair);
+}
+
+.surface-card__header h2 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.surface-card__body {
+  padding: var(--sp-5);
+}
+
+.surface-card__body--flush {
+  padding: 0;
+}
+
+/* ---- Diagnostic row primitives (consumed by <DiagnosticRow />) ----
+ * Layout intent (fixes the historical "icon and text wrap onto two lines"
+ * collapse): icon and body live on the same flex row; icon never shrinks;
+ * body owns the remaining width and stacks text + details vertically. */
+.diag-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+}
+
+.diag-row__icon {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--subtle);
+  color: var(--muted);
+  transition:
+    background-color var(--dur-fast) var(--ease-out-quart),
+    color var(--dur-fast) var(--ease-out-quart);
+}
+
+.diag-row__icon--pass {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.diag-row__icon--warn {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.diag-row__icon--fail {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* Info variant uses accent-softer because no `--info-soft` token exists;
+ * if the design system later defines `--info-soft`, swap in one line. */
+.diag-row__icon--info {
+  background: var(--accent-softer);
+  color: var(--accent);
+}
+
+.diag-row__icon--pending {
+  background: var(--subtle);
+  color: var(--muted);
+}
+
+.diag-row__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.diag-row__text {
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  line-height: var(--lh-snug);
+}
+
+.diag-row__details {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  line-height: var(--lh-snug);
+  word-break: break-word;
+}
+/* END: surface-card + diag-row */

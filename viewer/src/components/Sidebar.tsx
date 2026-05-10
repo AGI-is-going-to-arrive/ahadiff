@@ -105,10 +105,10 @@ export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProp
       sectionKey: 'Sidebar.section.system',
       ariaLabel: 'System',
       items: [
+        { to: '/welcome', Icon: Star, labelKey: 'Nav.welcome', labelEn: 'Welcome' },
         { to: '/onboarding', Icon: Play, labelKey: 'Nav.onboarding', labelEn: 'Get Started' },
         { to: '/guide', Icon: BookOpen, labelKey: 'Nav.guide', labelEn: 'Guide' },
         { to: '/settings', Icon: SettingsIcon, labelKey: 'Settings_page.title', labelEn: 'Settings' },
-        { to: '/welcome', Icon: Star, labelKey: 'Nav.welcome', labelEn: 'Welcome' },
       ],
     },
   ];

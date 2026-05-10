@@ -1,10 +1,12 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import {
   BookOpen,
   Brain,
   ChevronRight,
   Code,
+  ExternalLink,
   GraduationCap,
+  Hash,
   Puzzle,
   RotateCcw,
   Settings,
@@ -101,18 +103,24 @@ const ADVANCED_COMMANDS: ReadonlyArray<CommandEntry> = [
   },
 ];
 
-const MAINTENANCE_COMMANDS: ReadonlyArray<{ command: string }> = [
-  { command: 'ahadiff db upgrade' },
-  { command: 'ahadiff db backup' },
-  { command: 'ahadiff db restore' },
-  { command: 'ahadiff db import-results' },
-  { command: 'ahadiff db finalize-targeted' },
-  { command: 'ahadiff concepts export' },
-  { command: 'ahadiff concepts sync' },
-  { command: 'ahadiff concepts rollback' },
-  { command: 'ahadiff maint clean-orphans' },
-  { command: 'ahadiff unlock' },
-  { command: 'ahadiff mark' },
+const MAINTENANCE_COMMANDS: ReadonlyArray<CommandEntry> = [
+  { command: 'ahadiff db upgrade', labelKey: 'Guide.maintenance_db_upgrade' },
+  { command: 'ahadiff db backup', labelKey: 'Guide.maintenance_db_backup' },
+  { command: 'ahadiff db restore', labelKey: 'Guide.maintenance_db_restore' },
+  { command: 'ahadiff db import-results', labelKey: 'Guide.maintenance_db_import_results' },
+  { command: 'ahadiff db finalize-targeted', labelKey: 'Guide.maintenance_db_finalize_targeted' },
+  { command: 'ahadiff concepts export', labelKey: 'Guide.maintenance_concepts_export' },
+  { command: 'ahadiff concepts sync', labelKey: 'Guide.maintenance_concepts_sync' },
+  {
+    command: 'ahadiff concepts rollback --dry-run',
+    labelKey: 'Guide.maintenance_concepts_rollback',
+  },
+  {
+    command: 'ahadiff maint clean-orphans --dry-run',
+    labelKey: 'Guide.maintenance_clean_orphans',
+  },
+  { command: 'ahadiff unlock', labelKey: 'Guide.maintenance_unlock' },
+  { command: 'ahadiff mark', labelKey: 'Guide.maintenance_mark' },
 ];
 
 interface IntegrationTarget {
@@ -136,6 +144,20 @@ const INTEGRATION_TARGETS: ReadonlyArray<IntegrationTarget> = [
   { name: 'windsurf' },
 ];
 
+interface NavTarget {
+  id: string;
+  labelKey: MessageKey;
+}
+
+const NAV_TARGETS: ReadonlyArray<NavTarget> = [
+  { id: 'workflow', labelKey: 'Guide.nav_workflow' },
+  { id: 'commands', labelKey: 'Guide.nav_commands' },
+  { id: 'setup', labelKey: 'Guide.nav_setup' },
+  { id: 'advanced', labelKey: 'Guide.nav_advanced' },
+  { id: 'maintenance', labelKey: 'Guide.nav_maintenance' },
+  { id: 'integrations', labelKey: 'Guide.nav_integrations' },
+];
+
 export default function GuidePage() {
   const { t } = useTranslation();
   const platform = useMemo<Platform>(() => detectPlatform(), []);
@@ -149,10 +171,12 @@ export default function GuidePage() {
     <AppShell>
       <div className="guide">
         <header className="guide__head">
-          <div className="guide__eyebrow">§ {t('Guide.eyebrow')}</div>
+          <p className="guide__eyebrow">§ {t('Guide.eyebrow')}</p>
           <h1 className="guide__title">{t('Guide.title')}</h1>
           <p className="guide__subtitle">{t('Guide.subtitle')}</p>
         </header>
+
+        <SectionNav t={t} />
 
         <WorkflowSection t={t} />
 
@@ -187,9 +211,46 @@ export default function GuidePage() {
 
 /* ------------------------------- Sections ------------------------------- */
 
+function SectionNav({ t }: { t: TranslateFn }) {
+  const handleJump = useCallback((sectionId: string) => {
+    const target = document.getElementById(sectionId);
+    if (!target) return;
+    const prefersReduced = typeof window !== 'undefined'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    target.scrollIntoView({
+      behavior: prefersReduced ? 'auto' : 'smooth',
+      block: 'start',
+    });
+  }, []);
+
+  return (
+    <nav
+      className="guide-nav"
+      aria-label={t('Guide.nav_label')}
+    >
+      <ul className="guide-nav__list" role="list">
+        {NAV_TARGETS.map((target) => (
+          <li className="guide-nav__item" key={target.id}>
+            <button
+              type="button"
+              className="guide-nav__chip"
+              data-section={target.id}
+              onClick={() => handleJump(target.id)}
+            >
+              <Hash className="guide-nav__chip-icon" aria-hidden="true" size={12} />
+              {t(target.labelKey)}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
 function WorkflowSection({ t }: { t: TranslateFn }) {
   return (
     <section
+      id="workflow"
       className="guide-section guide-workflow"
       aria-labelledby="guide-workflow-title"
     >
@@ -201,11 +262,14 @@ function WorkflowSection({ t }: { t: TranslateFn }) {
         {WORKFLOW_STEPS.map((step, index) => {
           const Icon = step.icon;
           const isLast = index === WORKFLOW_STEPS.length - 1;
+          const stepNumber = index + 1;
+          const stepAria = t('Guide.workflow_step_aria', { n: stepNumber });
           return (
             <li className="guide-workflow__step-item" key={step.titleKey}>
-              <div className="guide-workflow__step">
+              <div className="guide-workflow__step" aria-label={stepAria}>
                 <div className="guide-workflow__step-icon" aria-hidden="true">
                   <Icon size={22} />
+                  <span className="guide-workflow__step-number">{stepNumber}</span>
                 </div>
                 <div className="guide-workflow__step-body">
                   <div className="guide-workflow__step-title">{t(step.titleKey)}</div>
@@ -241,6 +305,7 @@ function CoreCommandsSection({
 
   return (
     <section
+      id="commands"
       className="guide-section"
       aria-labelledby="guide-commands-title"
     >
@@ -296,6 +361,7 @@ function SetupSection({
 }) {
   return (
     <section
+      id="setup"
       className="guide-section"
       aria-labelledby="guide-setup-title"
     >
@@ -323,6 +389,7 @@ function AdvancedSection({
 }) {
   return (
     <section
+      id="advanced"
       className="guide-section"
       aria-labelledby={titleId}
     >
@@ -370,6 +437,7 @@ function MaintenanceSection({
 }) {
   return (
     <section
+      id="maintenance"
       className="guide-section"
       aria-labelledby={titleId}
     >
@@ -390,11 +458,12 @@ function MaintenanceSection({
           />
         </summary>
         <div className="guide-accordion__body">
-          <div className="guide-grid guide-grid--compact">
+          <div className="guide-grid">
             {MAINTENANCE_COMMANDS.map((entry) => (
-              <CommandBlock
+              <CommandCard
                 key={entry.command}
-                command={entry.command}
+                entry={entry}
+                t={t}
                 {...copyLabels}
               />
             ))}
@@ -408,6 +477,7 @@ function MaintenanceSection({
 function IntegrationsSection({ t, titleId }: { t: TranslateFn; titleId: string }) {
   return (
     <section
+      id="integrations"
       className="guide-section"
       aria-labelledby={titleId}
     >
@@ -441,17 +511,19 @@ function IntegrationsSection({ t, titleId }: { t: TranslateFn; titleId: string }
               </li>
             ))}
           </ul>
-          <div className="guide-integrations__hint">
+          <a
+            href="#/settings?tab=integrations"
+            className="guide-integrations__hint"
+          >
             <Brain className="guide-integrations__hint-icon" aria-hidden="true" size={16} />
-            <span>{t('Guide.integrations_manage_hint')}</span>
-            <a
-              href="#/settings?tab=integrations"
-              className="guide-integrations__hint-link"
-              aria-label={t('Guide.integrations_manage_hint')}
-            >
-              <ChevronRight aria-hidden="true" size={14} />
-            </a>
-          </div>
+            <span className="guide-integrations__hint-text">
+              {t('Guide.integrations_manage_hint')}
+            </span>
+            <span className="guide-integrations__hint-cta">
+              {t('Guide.integrations_manage_link')}
+              <ExternalLink aria-hidden="true" size={14} />
+            </span>
+          </a>
         </div>
       </details>
     </section>

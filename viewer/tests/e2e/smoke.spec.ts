@@ -150,7 +150,7 @@ test.describe('smoke', () => {
     await expect(page.locator('.audit-table')).toContainText('lesson_generate');
 
     await page.getByRole('tab', { name: /account/i }).click();
-    await expect(page.locator('.doctor-check')).not.toHaveCount(0);
+    await expect(page.locator('#spanel-account .diag-row')).not.toHaveCount(0);
   });
 
   test('settings tabs expose stable ARIA panels and keyboard navigation', async ({ page }) => {
@@ -261,7 +261,9 @@ test.describe('smoke', () => {
   test('hash router onboarding route renders stepper', async ({ page }) => {
     await page.goto('/#/onboarding');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await expect(page.locator('.stepper__step')).toHaveCount(4);
+    await expect(
+      page.locator('[data-testid="onboarding-stepper"] .onboarding-steps__item'),
+    ).toHaveCount(4);
   });
 
   test('hash router guide route renders workflow section and command blocks', async ({ page }) => {

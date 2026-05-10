@@ -838,9 +838,9 @@ test.describe('walkthrough: full-app functional test', () => {
 
     // Navigate to account tab for doctor checks
     await page.getByRole('tab', { name: /account/i }).click();
-    const checks = page.locator('.doctor-check');
+    const checks = page.locator('#spanel-account .diag-row');
     await expect(checks).toHaveCount(4);
-    await expect(page.locator('.doctor-check__icon--pass').first()).toBeVisible();
+    await expect(page.locator('#spanel-account .diag-row__icon--pass').first()).toBeVisible();
 
     await page.screenshot({ path: `${SCREENSHOT_DIR}/08-settings.png`, fullPage: true });
   });
@@ -856,18 +856,22 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
     // Stepper with 4 steps
-    const steps = page.locator('.stepper__step');
+    const steps = page.locator('[data-testid="onboarding-stepper"] .onboarding-steps__item');
     await expect(steps).toHaveCount(4);
 
     // At least one step should be done (since doctor checks pass)
-    await expect(page.locator('.stepper__step--done').first()).toBeVisible();
+    await expect(
+      page.locator('.onboarding-steps__item[data-state="done"]').first(),
+    ).toBeVisible();
 
     // CLI commands card; doctor all-pass opens on the learn step.
     await expect(page.locator('pre')).toBeVisible();
     await expect(page.locator('pre').first()).toContainText('ahadiff learn HEAD~1..HEAD');
 
     // Doctor checks in the onboarding grid
-    await expect(page.locator('.doctor-check').first()).toBeVisible();
+    await expect(
+      page.locator('[data-testid="onboarding-diagnostics"] .diag-row').first(),
+    ).toBeVisible();
 
     await page.screenshot({ path: `${SCREENSHOT_DIR}/09-onboarding.png`, fullPage: true });
   });
@@ -1407,13 +1411,10 @@ test.describe('walkthrough: full-app functional test', () => {
     // Keep other projects on the original 5s budget so the suite stays fast.
     const isFirefoxMobile = test.info().project.name === 'firefox-mobile';
     const navigationTimeout = isFirefoxMobile ? 20_000 : 5_000;
-    await Promise.all([
-      page.waitForURL(/\/#\/run\/run-003\/lesson/, { timeout: navigationTimeout }),
-      runLink.click(),
-    ]);
+    await runLink.click();
 
     // Should navigate to the lesson page for that run
-    await expect(page).toHaveURL(/\/#\/run\/run-003\/lesson/);
+    await expect(page).toHaveURL(/\/#\/run\/run-003\/lesson/, { timeout: navigationTimeout });
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible({
       timeout: isFirefoxMobile ? 15_000 : 5_000,
     });

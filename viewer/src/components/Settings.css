@@ -452,66 +452,6 @@
   font-size: var(--fs-xs);
 }
 
-/* ---- Doctor checks ---- */
-.doctor-check {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-2) 0;
-}
-
-.doctor-check__icon {
-  width: var(--sp-6);
-  height: var(--sp-6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--r-full);
-  font-size: 12px;
-  flex-shrink: 0;
-}
-
-.doctor-check__icon--pass {
-  background: var(--success-soft, #ECF4EE);
-  color: var(--success);
-}
-
-.doctor-check__icon--warn {
-  background: var(--warning-soft, #F7EED9);
-  color: var(--warning);
-}
-
-.doctor-check__icon--fail {
-  background: var(--danger-soft);
-  color: var(--danger);
-}
-
-.doctor-check__text {
-  flex: 1;
-  font-size: 13px;
-}
-
-.doctor-check__details {
-  margin-top: var(--sp-1);
-  font-size: var(--fs-xs);
-  color: var(--ink-muted);
-}
-
-.doctor-check__details code {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  background: var(--elevated);
-  padding: 1px var(--sp-1);
-  border-radius: var(--r-xs);
-}
-
-.doctor-check__status {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
 /* ---- Responsive: <=1024px — tabs go horizontal ---- */
 @media (max-width: 1024px) {
   .settings-layout {
@@ -582,7 +522,6 @@
 /* ---- Forced colors (a11y) ---- */
 @media (forced-colors: active) {
   .settings-card { border: 1px solid CanvasText; }
-  .doctor-check__icon { border: 1px solid CanvasText; }
   .st.on { border: 2px solid Highlight; }
   .mode-summary { border-left: 3px solid Highlight; }
   .settings-toggle { border: 1px solid CanvasText; }

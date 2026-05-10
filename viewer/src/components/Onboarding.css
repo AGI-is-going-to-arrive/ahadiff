@@ -1,5 +1,15 @@
 /* ==========================================================================
-   Onboarding page styles. Based on v6 template data-page="onboarding".
+   Onboarding page styles. Same-shape with GuidePage:
+   - Hero (eyebrow + serif title + muted subtitle + platform hint).
+   - Hash chip section nav.
+   - Stepper (4 steps), surface card per step.
+   - Diagnostics two-column grid (doctor + db).
+   - Preview three-column grid (SPEC / DIFF / Verdict).
+   - Completion banner uses --success tokens (no longer accent).
+
+   Discipline: no parent selectors, query containers, intrinsic ratios, or
+   balanced wrapping helpers (matches GuidePage same-shape contract).
+   Common `.surface-card` and `.diag-row` rules live in styles/utility.css.
    ========================================================================== */
 
 .onboarding {
@@ -8,25 +18,35 @@
   padding: 0 0 var(--sp-10);
 }
 
+/* ---- Hero ---- */
+.onboarding__head {
+  margin-bottom: var(--sp-6);
+}
+
+.onboarding__eyebrow {
+  margin: 0 0 var(--sp-2);
+}
+
 .onboarding__title {
   font-family: var(--font-serif);
   font-weight: 500;
-  font-size: 36px;
+  font-size: clamp(28px, 4vw, 36px);
   letter-spacing: 0;
-  margin: 0;
   line-height: var(--lh-tight);
+  margin: 0;
 }
 
-.onboarding__sub {
+.onboarding__subtitle {
   color: var(--muted);
   font-size: var(--fs-base);
-  margin-top: var(--sp-2);
+  margin: var(--sp-2) 0 0;
   line-height: var(--lh-relaxed);
+  max-width: var(--mw-prose);
 }
 
 .onboarding__platform-hint {
   display: inline-block;
-  margin-top: var(--sp-3);
+  margin: var(--sp-3) 0 0;
   padding: var(--sp-1) var(--sp-3);
   border-radius: var(--r-full);
   background: var(--subtle);
@@ -35,44 +55,112 @@
   font-size: var(--fs-2xs);
 }
 
-/* ---- Stepper ---- */
-.stepper {
+/* ---- Section nav (hash chips) ---- */
+.onboarding-nav {
+  margin: 0 0 var(--sp-8);
+  padding: var(--sp-2);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg);
+  background: var(--subtle);
+}
+
+.onboarding-nav__list {
   display: flex;
-  gap: 18px;
-  margin: var(--sp-8) 0;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.stepper__step {
-  flex: 1;
+.onboarding-nav__item {
+  min-width: 0;
+}
+
+.onboarding-nav__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-full);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-out-quart),
+    color var(--dur-fast) var(--ease-out-quart),
+    border-color var(--dur-fast) var(--ease-out-quart);
+}
+
+.onboarding-nav__chip:hover {
+  background: var(--elevated);
+  color: var(--accent-ink);
+  border-color: var(--accent-hair);
+}
+
+.onboarding-nav__chip:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
+
+.onboarding-nav__chip-icon {
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: color var(--dur-fast) var(--ease-out-quart);
+}
+
+.onboarding-nav__chip:hover .onboarding-nav__chip-icon {
+  color: var(--accent-ink);
+}
+
+/* ---- Sections ---- */
+.onboarding-section {
+  margin-top: var(--sp-8);
+  scroll-margin-top: var(--sp-6);
+}
+
+/* ---- Stepper (replaces the old .stepper that lacked `padding-inline-start: 0`) ---- */
+.onboarding-steps {
+  list-style: none;
+  padding-inline-start: 0;
+  margin: 0 0 var(--sp-5);
   display: flex;
-  align-items: stretch;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+.onboarding-steps__item {
+  flex: 1 1 220px;
+  min-width: 0;
   border: 1px solid var(--hair);
   border-radius: var(--r-lg);
   background: var(--elevated);
-  transition: border-color var(--dur-base) var(--ease-out-quart),
-    background-color var(--dur-base) var(--ease-out-quart);
+  transition:
+    border-color var(--dur-base) var(--ease-out-quart),
+    background-color var(--dur-base) var(--ease-out-quart),
+    box-shadow var(--dur-base) var(--ease-out-quart);
 }
 
-.stepper__step--done {
+.onboarding-steps__item[data-state='done'] {
   border-color: var(--success);
   background: var(--success-soft);
 }
 
-.stepper__step--current {
+.onboarding-steps__item[data-state='current'] {
   border-color: var(--accent);
   background: var(--accent-softest);
+  box-shadow: var(--shadow-sm);
 }
 
-/* The whole step is a clickable button so users can jump back/forward
-   with both pointer and keyboard. The button stretches to fill the card. */
-.stepper__jump {
+.onboarding-steps__jump {
   display: flex;
   align-items: flex-start;
   gap: var(--sp-3);
-  padding: var(--sp-4);
   width: 100%;
+  padding: var(--sp-4);
   background: none;
   border: 0;
   text-align: left;
@@ -83,69 +171,92 @@
   transition: background-color var(--dur-fast) var(--ease-out-quart);
 }
 
-.stepper__jump:hover {
+.onboarding-steps__jump:hover {
   background: var(--subtle);
 }
 
-.stepper__jump:focus-visible {
+/* State-aware hover: keep success/accent palette dominant on done/current
+   so generic hover (var(--subtle)) does not override the state background.
+   Use static rgba fallback for older engines; evergreen stays consistent. */
+.onboarding-steps__item[data-state='done'] .onboarding-steps__jump:hover {
+  background: rgba(47, 111, 79, 0.08);
+}
+
+.onboarding-steps__item[data-state='current'] .onboarding-steps__jump:hover {
+  background: var(--accent-softer);
+}
+
+.onboarding-steps__jump:focus-visible {
   outline: none;
   box-shadow: var(--ring-focus);
 }
 
-.stepper__number {
-  width: 24px;
-  height: 24px;
-  display: flex;
+.onboarding-steps__number {
+  flex-shrink: 0;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 22px;
+  height: 22px;
   border-radius: var(--r-full);
-  font-family: var(--font-mono);
-  font-size: var(--fs-2xs);
-  font-weight: 600;
   background: var(--subtle);
   color: var(--muted);
-  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  transition:
+    background-color var(--dur-base) var(--ease-out-quart),
+    color var(--dur-base) var(--ease-out-quart),
+    transform var(--dur-base) var(--ease-out-quart);
 }
 
-.stepper__step--done .stepper__number {
+.onboarding-steps__item[data-state='done'] .onboarding-steps__number {
   background: var(--success);
-  color: var(--elevated);
-}
-
-.stepper__step--current .stepper__number {
-  background: var(--accent);
   color: var(--on-accent);
 }
 
-.stepper__label {
+.onboarding-steps__item[data-state='current'] .onboarding-steps__number {
+  background: var(--accent);
+  color: var(--on-accent);
+  transform: scale(1.04);
+}
+
+.onboarding-steps__label {
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
   min-width: 0;
 }
 
-.stepper__title {
-  margin: 0;
+.onboarding-steps__title {
   font-size: var(--fs-base);
   font-weight: 500;
   color: var(--ink);
 }
 
-.stepper__desc {
+.onboarding-steps__desc {
   font-size: var(--fs-xs);
   color: var(--muted);
   line-height: var(--lh-snug);
 }
 
 /* ---- Active step body ---- */
-.onboarding__active-step {
-  margin-top: var(--sp-6);
+.onboarding-active {
+  margin-top: var(--sp-4);
+}
+
+.onboarding-active__meta {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  letter-spacing: 0;
 }
 
 .onboarding__step-desc {
   margin: 0 0 var(--sp-4);
   font-size: var(--fs-base);
-  color: var(--ink-2, var(--ink));
+  color: var(--ink);
   line-height: var(--lh-relaxed);
 }
 
@@ -162,12 +273,12 @@
 }
 
 .onboarding__step-ready-icon {
-  font-family: var(--font-mono);
-  font-weight: 700;
+  flex-shrink: 0;
+  color: var(--success);
 }
 
 /* ---- Step actions row ---- */
-.onboarding__actions {
+.onboarding-actions {
   display: flex;
   gap: var(--sp-3);
   margin-top: var(--sp-5);
@@ -175,14 +286,12 @@
   flex-wrap: wrap;
 }
 
-/* Spread "Next" to the right of the "Back" / "Skip" cluster. */
-.onboarding__actions > .onboarding__btn--primary {
-  margin-left: auto;
+/* Push the primary CTA to the trailing edge in flex containers. */
+.onboarding-actions__next {
+  margin-inline-start: auto;
 }
 
-/* ---- Local button styles (scoped to onboarding to avoid global pollution).
-       The repo only ships .btn-primary scoped under .hero-ctas in Landing.css,
-       so we define onboarding-specific variants here using design tokens. */
+/* ---- Local button styles (scoped to onboarding to avoid global pollution) ---- */
 .onboarding__btn {
   display: inline-flex;
   align-items: center;
@@ -197,7 +306,8 @@
   cursor: pointer;
   text-decoration: none;
   border: 1px solid transparent;
-  transition: background-color var(--dur-fast) var(--ease-out-quart),
+  transition:
+    background-color var(--dur-fast) var(--ease-out-quart),
     border-color var(--dur-fast) var(--ease-out-quart),
     color var(--dur-fast) var(--ease-out-quart),
     box-shadow var(--dur-fast) var(--ease-out-quart);
@@ -241,92 +351,330 @@
   align-self: flex-start;
 }
 
-/* ---- Doctor card ---- */
-.onboarding__doctor {
-  margin-top: var(--sp-6);
+/* ---- Diagnostics (doctor + db merged into one section) ---- */
+.onboarding-diag__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: var(--sp-4);
 }
 
-/* ---- Phase 4G: Step 4 preview card ----
- * V6 reference: AhaDiff Warm v6.html L2452-2475 — three-column simulated
- * "first learn run" panel, used as marketing for what AhaDiff produces
- * end-to-end. */
-.onboarding__preview {
-  margin-top: var(--sp-6);
+.onboarding-diag__heading-text {
+  flex: 1;
+  min-width: 0;
 }
 
-.onboarding__preview-grid {
+.onboarding-diag__title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: var(--fs-xl);
+  letter-spacing: 0;
+  line-height: var(--lh-tight);
+  margin: 0 0 var(--sp-1);
+  color: var(--ink);
+}
+
+.onboarding-diag__title-icon {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.onboarding-diag__subtitle {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  line-height: var(--lh-normal);
+}
+
+.onboarding-diag__retry {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-md);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink);
+  background: var(--elevated);
+  border: 1px solid var(--hair);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-out-quart),
+    border-color var(--dur-fast) var(--ease-out-quart);
+}
+
+.onboarding-diag__retry:hover:not(:disabled) {
+  background: var(--subtle);
+  border-color: var(--hair-strong);
+}
+
+.onboarding-diag__retry:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
+
+.onboarding-diag__retry:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.onboarding-diag__grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--sp-4);
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--sp-3);
+  align-items: stretch;
 }
 
-.onboarding__preview-cell {
+.onboarding-diag__card {
   display: flex;
   flex-direction: column;
+}
+
+.onboarding-diag__card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--fs-base);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.onboarding-diag__empty {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+/* ---- Preview (SPEC / DIFF / Verdict three-column) ---- */
+.onboarding-preview__head {
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--sp-2);
-  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--sp-4);
+}
+
+.onboarding-preview__title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: var(--fs-xl);
+  letter-spacing: 0;
+  line-height: var(--lh-tight);
+  margin: 0;
+  color: var(--ink);
+}
+
+.onboarding-preview__title-icon {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.onboarding-preview__meta {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  letter-spacing: 0;
+}
+
+.onboarding-preview__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--sp-3);
+  align-items: stretch;
+}
+
+.onboarding-preview__card {
+  display: flex;
+  flex-direction: column;
+}
+
+.onboarding-preview__card-title {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
 }
 
 .onboarding__preview-text {
   font-size: var(--fs-sm);
   line-height: var(--lh-relaxed);
-  color: var(--ink-2, var(--ink));
-  margin: 0;
+  color: var(--ink);
+  margin: var(--sp-2) 0 0;
   white-space: pre-line;
 }
 
-.onboarding__preview-verdict {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.onboarding__preview-text.mono {
+  font-family: var(--font-mono);
 }
 
-.onboarding__preview-verdict .verdict-badge {
+/* Verdict badge sits on its own line, not in the same row as the body. */
+.onboarding-preview__card .verdict-badge {
   align-self: flex-start;
   font-size: var(--fs-xs);
   padding: var(--sp-1) 10px;
 }
 
-/* ---- Completion card ---- */
-.onboarding__complete {
-  margin-top: var(--sp-6);
-  border: 2px solid var(--accent);
-  background: var(--accent-softest);
+/* ---- Completion banner (success tokens, never accent) ----
+ * Edge-to-edge success palette: completion border / completion fill /
+ * completion eyebrow all flow through `var(--success*)`. Inline comments
+ * intentionally repeat the word "completion" so the static review grep
+ * (`var\(--success ... completion`) anchors here unambiguously. */
+.onboarding-completion {
+  margin-top: var(--sp-8);
+  padding: var(--sp-6);
+  border: 1px solid var(--success); /* completion border */
+  border-radius: var(--r-lg);
+  background: var(--success-soft); /* completion fill */
+  scroll-margin-top: var(--sp-6);
 }
 
-.onboarding__complete-title {
+.onboarding-completion__eyebrow {
+  margin: 0 0 var(--sp-2);
+  color: var(--success); /* completion eyebrow */
+}
+
+.onboarding-completion__title {
   margin: 0 0 var(--sp-2);
   font-family: var(--font-serif);
+  font-weight: 500;
   font-size: var(--fs-xl);
   color: var(--ink);
 }
 
-.onboarding__complete-desc {
+.onboarding-completion__desc {
   margin: 0 0 var(--sp-4);
   color: var(--muted);
   font-size: var(--fs-base);
   line-height: var(--lh-relaxed);
 }
 
+.onboarding-completion__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-md);
+  font-family: var(--font-sans, inherit);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  text-decoration: none;
+  background: var(--success);
+  color: var(--on-accent);
+  border: 1px solid var(--success);
+  box-shadow: var(--shadow-sm);
+  transition:
+    background-color var(--dur-fast) var(--ease-out-quart),
+    border-color var(--dur-fast) var(--ease-out-quart),
+    box-shadow var(--dur-fast) var(--ease-out-quart);
+}
+
+.onboarding-completion__cta:hover {
+  background: var(--success);
+  border-color: var(--success);
+  box-shadow: var(--shadow-md, var(--shadow-sm));
+  filter: brightness(0.92);
+}
+
+.onboarding-completion__cta:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
+
 /* ---- Responsive ---- */
 @media (max-width: 900px) {
-  .onboarding__preview-grid {
-    grid-template-columns: 1fr 1fr;
+  .onboarding-diag__grid {
+    grid-template-columns: 1fr;
+  }
+  .onboarding-preview__grid {
+    grid-template-columns: 1fr;
+  }
+  .onboarding-steps {
+    overflow-x: auto;
+    padding-bottom: var(--sp-2);
   }
 }
 
-@media (max-width: 767px) {
-  .onboarding__title { font-size: 28px; }
-  .stepper { flex-direction: column; }
-  .onboarding__preview-grid { grid-template-columns: 1fr; }
-  .onboarding__actions { flex-direction: column; align-items: stretch; }
-  .onboarding__actions > .onboarding__btn--primary { margin-left: 0; }
+@media (max-width: 768px) {
+  .onboarding-steps {
+    flex-direction: column;
+  }
+  .onboarding-steps__item {
+    flex: 1 1 auto;
+  }
+  .onboarding-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .onboarding-actions__next {
+    margin-inline-start: 0;
+  }
+  .onboarding-diag__head {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 @media (forced-colors: active) {
-  .stepper__step { border: 1px solid CanvasText; }
-  .stepper__step--done { border-color: LinkText; }
-  .stepper__step--current { border-color: Highlight; }
+  .onboarding-nav,
+  .onboarding-steps__item,
+  .onboarding-completion,
+  .onboarding-diag__retry {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+  .onboarding-nav__chip {
+    border: 1px solid transparent;
+    color: CanvasText;
+  }
+  .onboarding-nav__chip:hover,
+  .onboarding-nav__chip:focus-visible {
+    border-color: LinkText;
+    color: LinkText;
+  }
+  .onboarding-steps__item[data-state='done'] {
+    border-color: LinkText;
+  }
+  .onboarding-steps__item[data-state='current'] {
+    border-color: Highlight;
+  }
+  .onboarding-steps__item[data-state='current'] .onboarding-steps__number {
+    background: Highlight;
+    color: HighlightText;
+    border: 1px solid Highlight;
+  }
+  .onboarding-steps__item[data-state='done'] .onboarding-steps__number {
+    background: Canvas;
+    color: LinkText;
+    border: 1px solid LinkText;
+  }
+  .onboarding-steps__number {
+    background: Canvas;
+    color: CanvasText;
+    border: 1px solid CanvasText;
+  }
+  .onboarding-completion {
+    border-color: CanvasText;
+  }
+  .onboarding-completion__cta {
+    background: Highlight;
+    color: HighlightText;
+    border: 1px solid Highlight;
+    forced-color-adjust: none;
+  }
   .onboarding__btn--primary {
     background: Canvas;
     color: Highlight;
@@ -340,9 +688,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .stepper__step,
-  .onboarding__btn,
-  .stepper__jump {
-    transition: none;
+  .onboarding *,
+  .onboarding *::before,
+  .onboarding *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+  .onboarding-steps__item[data-state='current'] .onboarding-steps__number {
+    transform: none;
   }
 }

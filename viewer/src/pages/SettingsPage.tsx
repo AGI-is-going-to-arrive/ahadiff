@@ -3,6 +3,7 @@ import AppShell from '../components/AppShell';
 import Skeleton, { SkeletonGroup } from '../components/Skeleton';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import ProviderCard from '../components/ProviderCard';
+import DiagnosticRow, { type DiagnosticStatus } from '../components/DiagnosticRow';
 import {
   applyInstallTarget,
   getConfig, getDoctor, getProviders, getUsage, getAudit, getInstallTargets,
@@ -418,33 +419,35 @@ function AccountTab({
         <div className="settings-card">
           <div className="settings-card__header"><h2>{t('Settings_page.section_doctor')}</h2></div>
           <div className="settings-card__body">
-            {checks.map(check => (
-              <div className="doctor-check" key={check.name}>
-                <div className={`doctor-check__icon doctor-check__icon--${check.status}`} aria-hidden="true">
-                  {check.status === 'pass' ? '✓' : check.status === 'warn' ? '!' : '✗'}
-                </div>
-                <div className="doctor-check__text">
-                  {mapDoctorMessage(check, t)}
-                  {check.status !== 'pass' && check.details && (() => {
-                    const d = check.details;
-                    const keys = Array.isArray(d.keys) ? (d.keys as string[]) : [];
-                    const msg = typeof d.message === 'string' ? d.message : '';
-                    if (!keys.length && !msg) return null;
-                    return (
-                      <div className="doctor-check__details">
-                        {keys.length > 0 && <code>{keys.join(', ')}</code>}
-                        {msg && <span>{msg}</span>}
-                      </div>
-                    );
-                  })()}
-                </div>
-                <div className="doctor-check__status">
-                  {t(CHECK_STATUS_KEY[check.status])}
-                </div>
-              </div>
-            ))}
+            {checks.map(check => {
+              const status: DiagnosticStatus = check.status;
+              let detailText: string | null = null;
+              if (check.status !== 'pass' && check.details) {
+                const d = check.details;
+                const keys = Array.isArray(d.keys) ? (d.keys as string[]) : [];
+                const msg = typeof d.message === 'string' ? d.message : '';
+                const parts: string[] = [];
+                if (keys.length > 0) parts.push(keys.join(', '));
+                if (msg) parts.push(msg);
+                detailText = parts.length > 0 ? parts.join(' · ') : null;
+              }
+              return (
+                <DiagnosticRow
+                  key={check.name}
+                  status={status}
+                  text={mapDoctorMessage(check, t)}
+                  details={detailText}
+                  statusLabel={t(CHECK_STATUS_KEY[check.status])}
+                  data-testid={`settings-doctor-check-${check.name}`}
+                />
+              );
+            })}
             {checks.length === 0 && (
-              <div className="u-muted-sm">{t('Settings_page.doctor_running')}</div>
+              <DiagnosticRow
+                status="pending"
+                text={t('Settings_page.doctor_running')}
+                data-testid="settings-doctor-check-pending"
+              />
             )}
           </div>
         </div>
