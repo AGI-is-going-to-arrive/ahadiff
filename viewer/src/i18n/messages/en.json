@@ -223,6 +223,14 @@
     "retry": "Retry",
     "validation_failed": "{endpoint} returned an unexpected payload. Reload, or update the viewer to match this serve version."
   },
+  "Format": {
+    "bytes_b": "B",
+    "bytes_kb": "KB",
+    "bytes_mb": "MB",
+    "compact_k": "K",
+    "compact_m": "M",
+    "compact_b": "B"
+  },
   "Heatmap": {
     "aria_grid": "30-day review activity, total {total} reviews",
     "cell_title": "{date}: {count} reviews",
@@ -424,7 +432,16 @@
     "preflight_tokens": "Estimated tokens: {estimated} / {limit} context",
     "preflight_continue": "Continue anyway",
     "preflight_cancel": "Cancel",
-    "poll_connection_lost": "Unable to reach backend. The task may still be running. Check your connection and retry."
+    "poll_connection_lost": "Unable to reach backend. The task may still be running. Check your connection and retry.",
+    "error_submit_failed": "Could not start the learn run. Please retry.",
+    "error_submit_aborted": "Learn request was cancelled before it started.",
+    "error_poll_auth_error": "Authentication expired. Reload the page and retry.",
+    "error_poll_task_not_found": "The learn task no longer exists.",
+    "error_poll_server_error": "Backend returned an error while polling. The task may still be running.",
+    "error_internal_error": "The learn run failed inside AhaDiff.",
+    "error_cancelled": "Learn run was cancelled.",
+    "error_config_error": "Configuration error. Check your provider settings.",
+    "error_timeout": "Task timed out. Try again or increase the timeout."
   },
   "Nav": {
     "dashboard": "Dashboard",
@@ -1043,5 +1060,34 @@
     "CAUTION": "Caution",
     "FAIL": "Fail",
     "PASS": "Pass"
+  },
+  "errors": {
+    "LOCALE_INVALID": "Selected language is not supported.",
+    "INPUT_INVALID_JSON": "Request body must be valid JSON.",
+    "INPUT_VALIDATION": "Request body did not match the expected schema.",
+    "INPUT_BAD_FIELD": "One or more fields are invalid.",
+    "INPUT_UNKNOWN_KEYS": "Request includes unsupported fields.",
+    "INPUT_PAGINATION": "Pagination parameters are invalid.",
+    "RUN_NOT_FOUND": "Requested run was not found.",
+    "RUN_ARTIFACT_NOT_FOUND": "Requested run artifact was not found.",
+    "RUN_ARTIFACT_TOO_LARGE": "Requested artifact is too large to return.",
+    "RUN_ARTIFACT_INVALID": "Requested run artifact is invalid.",
+    "RUN_ID_INVALID": "Run ID is invalid.",
+    "INSTALL_INVALID_MANIFEST": "Install manifest is invalid.",
+    "PROVIDER_NOT_FOUND": "Provider configuration was not found.",
+    "PROVIDER_TRANSPORT": "Could not reach provider.",
+    "PROVIDER_HTTP": "Provider returned an error response.",
+    "AUTH_REQUIRED": "Authentication is required for this action.",
+    "LOOPBACK_DENIED": "Request was blocked by local access protection.",
+    "RATE_LIMITED": "Too many requests. Try again later.",
+    "REQUEST_TIMEOUT": "Request timed out.",
+    "STORAGE_REVIEW_DB": "Review database is unavailable.",
+    "STORAGE_USAGE_DB": "Usage database is unavailable.",
+    "STORAGE_FS": "Local storage is unavailable.",
+    "LOCK_CONFLICT": "Another AhaDiff process is already running.",
+    "LESSON_LEVEL_INVALID": "Lesson level is not supported.",
+    "EXPORT_FORMAT_UNSUPPORTED": "Export format is not supported.",
+    "NOT_FOUND": "Requested resource was not found.",
+    "INTERNAL_ERROR": "Something went wrong inside AhaDiff."
   }
 }

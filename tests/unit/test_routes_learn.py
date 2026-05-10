@@ -125,7 +125,7 @@ def test_post_learn_wrong_token(tmp_path: Path) -> None:
             "origin": "http://localhost:8765",
         },
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 def test_post_learn_estimate_requires_token(tmp_path: Path) -> None:
@@ -137,7 +137,7 @@ def test_post_learn_estimate_requires_token(tmp_path: Path) -> None:
 def test_post_learn_estimate_wrong_token(tmp_path: Path) -> None:
     client = _client(tmp_path / ".ahadiff", token="correct")
     resp = _post_learn_estimate(client, token="wrong")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------

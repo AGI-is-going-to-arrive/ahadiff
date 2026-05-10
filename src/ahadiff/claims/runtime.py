@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 from ahadiff.core.errors import InputError
 from ahadiff.core.json_util import safe_json_loads
+from ahadiff.i18n import prompt_language_instruction
 from ahadiff.llm import DEFAULT_OUTPUT_TOKEN_BUDGET, ProviderRequest, make_provider
 from ahadiff.safety.ignore import AllowlistPolicy
 from ahadiff.safety.redact import redaction_pipeline
@@ -108,6 +109,7 @@ def extract_claim_candidates_from_run(
     input_token_budget: int | None = None,
     output_token_budget: int | None = None,
     claim_output_token_cap: int | None = None,
+    output_lang: str = "en",
 ) -> tuple[Path, tuple[ClaimCandidate, ...]]:
     prompt_text = load_claim_extract_prompt()
     metadata = _load_run_json(run_path / "metadata.json")
@@ -120,6 +122,7 @@ def extract_claim_candidates_from_run(
         patch_text=patch_text,
         line_map_text=line_map_text,
         symbols_text=symbols_text,
+        output_lang=output_lang,
     )
     prompt_fingerprint = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()[:12]
     metadata_privacy_mode = _privacy_mode_from_metadata(metadata)
@@ -177,6 +180,7 @@ def extract_claim_candidates_from_run(
                 redacted_payload_text=redacted_payload_text,
                 findings=findings,
                 response_format="json",
+                output_lang=output_lang,
                 max_output_tokens=_resolve_claim_request_max_output_tokens(
                     provider_max_output_tokens=provider_config.max_output_tokens,
                     output_token_budget=output_token_budget,
@@ -222,11 +226,13 @@ def build_claim_extract_payload(
     patch_text: str,
     line_map_text: str,
     symbols_text: str,
+    output_lang: str = "en",
 ) -> str:
     context_metadata = _claim_extract_context_metadata(metadata)
     return "\n\n".join(
         (
             prompt_text.strip(),
+            "## Output language\n" + prompt_language_instruction(output_lang),
             "## Run metadata\n```json\n"
             + json.dumps(context_metadata, ensure_ascii=False, indent=2, sort_keys=True)
             + "\n```",

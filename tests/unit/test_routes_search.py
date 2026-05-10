@@ -30,7 +30,7 @@ def test_search_without_token_returns_403(tmp_path: Path) -> None:
 
     response = client.get("/api/search")
 
-    assert response.status_code == 403
+    assert response.status_code == 401
 
 
 def test_search_empty_query_returns_empty_results(tmp_path: Path) -> None:

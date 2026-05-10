@@ -35,9 +35,18 @@ function extractApiErrorMessage(body: unknown, status: number): string {
   return `API ${status}`;
 }
 
+function extractApiErrorCode(body: unknown): string | null {
+  if (body && typeof body === 'object' && !Array.isArray(body) && 'error_code' in body) {
+    const code = (body as Record<string, unknown>).error_code;
+    if (typeof code === 'string' && code.trim() !== '') return code;
+  }
+  return null;
+}
+
 export class ApiError extends Error {
   public readonly status: number;
   public readonly body: unknown;
+  public readonly errorCode: string | null;
 
   constructor(
     status: number,
@@ -47,6 +56,7 @@ export class ApiError extends Error {
     super(message ?? extractApiErrorMessage(body, status));
     this.status = status;
     this.body = sanitizeApiErrorBody(body);
+    this.errorCode = extractApiErrorCode(body);
   }
 }
 

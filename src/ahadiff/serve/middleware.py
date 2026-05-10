@@ -8,7 +8,11 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse, Response
+from starlette.responses import Response
+
+from ahadiff.contracts import ErrorCode
+
+from ._errors import error_response
 
 if TYPE_CHECKING:
     from starlette.middleware.base import RequestResponseEndpoint
@@ -40,9 +44,9 @@ class LoopbackGuardMiddleware(BaseHTTPMiddleware):
         state = getattr(request.app.state, "ahadiff", None)
         expected_port = _expected_port(state)
         if _has_proxy_trace_headers(request):
-            return _error_response("proxy_headers_not_allowed", status_code=400)
+            return _error_response(ErrorCode.INPUT_BAD_FIELD, "proxy_headers_not_allowed")
         if not _is_allowed_host(request.headers.get("host", ""), expected_port=expected_port):
-            return _error_response("host_not_allowed", status_code=400)
+            return _error_response(ErrorCode.INPUT_BAD_FIELD, "host_not_allowed")
         origin = request.headers.get("origin")
         cors_origin = (
             origin
@@ -54,29 +58,34 @@ class LoopbackGuardMiddleware(BaseHTTPMiddleware):
                 origin,
                 expected_port=expected_port,
             ):
-                return _error_response("origin_not_allowed", status_code=403)
+                return _error_response(ErrorCode.LOOPBACK_DENIED, "origin_not_allowed")
             if not _is_allowed_preflight_method(
                 request.headers.get("access-control-request-method")
             ):
-                return _error_response("method_not_allowed", status_code=405)
+                return _error_response(
+                    ErrorCode.INPUT_BAD_FIELD,
+                    "method_not_allowed",
+                    status_code=405,
+                )
             if not _are_allowed_preflight_headers(
                 request.headers.get("access-control-request-headers")
             ):
-                return _error_response("headers_not_allowed", status_code=400)
+                return _error_response(ErrorCode.INPUT_BAD_FIELD, "headers_not_allowed")
             assert origin is not None
             return _preflight_response(origin)
         if request.method in _WRITE_GUARD_METHODS:
             referer = request.headers.get("referer")
             if origin is None and referer is None:
-                return _error_response("origin_or_referer_required", status_code=403)
+                return _error_response(ErrorCode.LOOPBACK_DENIED, "origin_or_referer_required")
             if origin is not None and not _is_allowed_origin(origin, expected_port=expected_port):
-                return _error_response("origin_not_allowed", status_code=403)
+                return _error_response(ErrorCode.LOOPBACK_DENIED, "origin_not_allowed")
             if referer is not None and not _is_allowed_origin(referer, expected_port=expected_port):
-                return _error_response("referer_not_allowed", status_code=403)
+                return _error_response(ErrorCode.LOOPBACK_DENIED, "referer_not_allowed")
         if request.method in _JSON_BODY_METHODS:
             has_body = _declares_request_body(request)
             if has_body and not _is_json_content_type(request.headers.get("content-type", "")):
                 return _error_response(
+                    ErrorCode.INPUT_BAD_FIELD,
                     "unsupported_media_type",
                     status_code=415,
                     cors_origin=cors_origin,
@@ -88,14 +97,14 @@ class LoopbackGuardMiddleware(BaseHTTPMiddleware):
                 and int(content_length) > _MAX_BODY_BYTES
             ):
                 return _error_response(
+                    ErrorCode.RUN_ARTIFACT_TOO_LARGE,
                     "payload_too_large",
-                    status_code=413,
                     cors_origin=cors_origin,
                 )
             if has_body and not await _cache_limited_body(request):
                 return _error_response(
+                    ErrorCode.RUN_ARTIFACT_TOO_LARGE,
                     "payload_too_large",
-                    status_code=413,
                     cors_origin=cors_origin,
                 )
         response = await call_next(request)
@@ -104,8 +113,14 @@ class LoopbackGuardMiddleware(BaseHTTPMiddleware):
         return _apply_security_headers(response)
 
 
-def _error_response(error: str, *, status_code: int, cors_origin: str | None = None) -> Response:
-    response = JSONResponse({"error": error, "status": status_code}, status_code=status_code)
+def _error_response(
+    code: ErrorCode,
+    error: str,
+    *,
+    status_code: int | None = None,
+    cors_origin: str | None = None,
+) -> Response:
+    response = error_response(code, error, status=status_code)
     if cors_origin is not None:
         _apply_cors_headers(response, cors_origin)
     return _apply_security_headers(response)
@@ -325,9 +340,10 @@ def _rate_limit_for_path(path: str) -> tuple[int, str] | None:
 
 
 def _rate_limit_response(retry_after: int) -> Response:
-    resp = JSONResponse(
-        {"error": "rate_limited", "status": 429, "retry_after": retry_after},
-        status_code=429,
+    resp = error_response(
+        ErrorCode.RATE_LIMITED,
+        "rate_limited",
+        extra={"retry_after": retry_after},
     )
     resp.headers["Retry-After"] = str(retry_after)
     return _apply_security_headers(resp)
@@ -351,7 +367,11 @@ class RequestTimeoutMiddleware(BaseHTTPMiddleware):
             async with asyncio.timeout(timeout):
                 return await call_next(request)
         except TimeoutError:
-            return _error_response("request_timeout", status_code=504)
+            return _error_response(
+                ErrorCode.REQUEST_TIMEOUT,
+                "request_timeout",
+                status_code=504,
+            )
 
 
 def _request_timeout_for(path: str) -> float:

@@ -2,19 +2,24 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from anyio import to_thread
 from starlette.responses import JSONResponse
 
 from ahadiff.contracts import LocaleResponse, SetLocaleRequest
-from ahadiff.i18n import Locale, resolve_locale
 
 from .auth import require_write_token, serve_state
+from .locale import request_locale
 
 if TYPE_CHECKING:
     from starlette.requests import Request
 
+    from ahadiff.i18n import Locale
+
+    from .state import ServeState
+
 
 async def get_locale(request: Request) -> JSONResponse:
-    response = LocaleResponse(locale=_resolve_request_locale(request))
+    response = LocaleResponse(locale=request_locale(request))
     return JSONResponse(response.model_dump(mode="json"))
 
 
@@ -25,6 +30,7 @@ async def put_locale(request: Request) -> JSONResponse:
     current = serve_state(request)
     assert current.write_lock is not None
     async with current.write_lock:
+        await to_thread.run_sync(_persist_lang, current, update.lang)
         request.app.state.ahadiff = current.with_locale(update.lang)
     response = JSONResponse(LocaleResponse(locale=update.lang).model_dump(mode="json"))
     response.set_cookie(
@@ -36,14 +42,14 @@ async def put_locale(request: Request) -> JSONResponse:
     return response
 
 
-def _resolve_request_locale(request: Request) -> Locale:
-    state = serve_state(request)
-    return resolve_locale(
-        cookie_lang=request.cookies.get("ahadiff_lang"),
-        accept_language=request.headers.get("accept-language"),
-        cli_lang=state.cli_lang,
-        config_lang=state.config_lang or state.locale,
-    )
+def _persist_lang(state: ServeState, lang: Locale) -> None:
+    from ahadiff.core.config import read_config_data, write_config_data
+
+    config_path = state.state_dir.parent / ".ahadiff" / "config.toml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    data = read_config_data(config_path) if config_path.exists() else {}
+    data["lang"] = lang
+    write_config_data(config_path, data)
 
 
 __all__ = ["get_locale", "put_locale"]

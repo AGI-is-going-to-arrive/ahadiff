@@ -54,6 +54,15 @@ def _assert_linux_macos_matrix(workflow: dict[str, Any], job_name: str) -> None:
     assert "windows-latest" not in matrix["os"]
 
 
+def _assert_linux_macos_windows_matrix(workflow: dict[str, Any], job_name: str) -> None:
+    job = cast("dict[str, Any]", cast("dict[str, Any]", workflow["jobs"])[job_name])
+    strategy = cast("dict[str, Any]", job["strategy"])
+    matrix = cast("dict[str, Any]", strategy["matrix"])
+    assert job["runs-on"] == "${{ matrix.os }}"
+    assert strategy["fail-fast"] is False
+    assert matrix["os"] == ["macos-latest", "ubuntu-latest", "windows-latest"]
+
+
 def _assert_platform_bootstrap_steps(workflow_text: str) -> None:
     assert "if: runner.os == 'macOS'" in workflow_text
     assert "if: runner.os == 'Linux'" in workflow_text
@@ -129,8 +138,12 @@ def test_github_action_install_default_writes_verify_only_workflow(tmp_path: Pat
     assert "AHADIFF_PROVIDER_API_KEY" not in verify_text
     verify_workflow = _load_workflow(verify_path)
     assert verify_workflow["name"] == "AhaDiff Verify"
-    _assert_linux_macos_matrix(verify_workflow, "verify")
+    _assert_linux_macos_windows_matrix(verify_workflow, "verify")
     _assert_platform_bootstrap_steps(verify_text)
+    assert "if: runner.os != 'macOS'" in verify_text
+    assert "if: runner.os != 'Windows'" in verify_text
+    assert "if: runner.os == 'Windows'" in verify_text
+    assert "ahadiff --version" in verify_text
 
 
 def test_github_action_layer2_writes_opt_in_generate_workflow(tmp_path: Path) -> None:

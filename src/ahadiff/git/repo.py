@@ -4,15 +4,17 @@ import collections.abc as _collections_abc
 import errno
 import os
 import pathlib as _pathlib
+import shutil
 import stat
 import subprocess
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, TextIO
+from typing import TYPE_CHECKING
 
 import portalocker
 
+from ahadiff.contracts import ErrorCode
 from ahadiff.core.errors import InputError, StorageError
 from ahadiff.core.paths import find_repo_root
 
@@ -52,6 +54,24 @@ class LockMetadata:
 _DEFAULT_GIT_TIMEOUT_SECONDS = 120
 
 
+def git_executable() -> str:
+    """Locate the git executable on PATH.
+
+    Raises ``InputError`` with a clear message when git is unavailable
+    (e.g. on Windows hosts where git was never installed) so callers
+    surface an actionable error instead of an opaque OSError.
+    """
+
+    git_path = shutil.which("git")
+    if git_path is None:
+        raise InputError("git executable not found on PATH; install git and ensure it is on PATH")
+    return git_path
+
+
+def _git_executable() -> str:
+    return git_executable()
+
+
 def run_git(
     repo_root: Path,
     *args: str,
@@ -59,7 +79,7 @@ def run_git(
     check: bool = True,
     timeout: int | None = _DEFAULT_GIT_TIMEOUT_SECONDS,
 ) -> subprocess.CompletedProcess[str]:
-    command = ["git", "-c", "core.quotePath=false", "-C", str(repo_root), *args]
+    command = [_git_executable(), "-c", "core.quotePath=false", "-C", str(repo_root), *args]
     try:
         result = subprocess.run(
             command,
@@ -87,7 +107,7 @@ def run_git_bytes(
 ) -> subprocess.CompletedProcess[bytes]:
     try:
         return subprocess.run(
-            ["git", "-c", "core.quotePath=false", "-C", str(repo_root), *args],
+            [_git_executable(), "-c", "core.quotePath=false", "-C", str(repo_root), *args],
             input=input_bytes,
             capture_output=True,
             text=False,
@@ -214,11 +234,6 @@ def _lock_metadata_from_text(text: str) -> LockMetadata:
     return LockMetadata(pid=pid, start_time_iso=started, command=command)
 
 
-def _read_lock_metadata_from_handle(handle: TextIO) -> LockMetadata:
-    handle.seek(0)
-    return _lock_metadata_from_text(handle.read())
-
-
 @contextmanager
 def repo_write_lock(lock_path: Path, *, command: str) -> Iterator[Path]:
     lock_path.parent.mkdir(parents=True, exist_ok=True)
@@ -258,9 +273,10 @@ def repo_write_lock(lock_path: Path, *, command: str) -> Iterator[Path]:
             portalocker.lock(handle, portalocker.LOCK_EX | portalocker.LOCK_NB)
         except portalocker.exceptions.LockException as exc:
             handle.flush()
-            metadata = _read_lock_metadata_from_handle(handle)
-            suffix = f" (PID={metadata.pid})" if metadata.pid else ""
-            raise StorageError(f"another ahadiff process is already running{suffix}") from exc
+            raise StorageError(
+                "another ahadiff process is already running",
+                code=ErrorCode.LOCK_CONFLICT,
+            ) from exc
 
         handle.seek(0)
         handle.truncate(0)
@@ -356,6 +372,7 @@ __all__ = [
     "ensure_head_exists",
     "ensure_no_merge_conflicts",
     "first_parent_or_empty_tree",
+    "git_executable",
     "open_repo",
     "parent_count",
     "read_lock_metadata",

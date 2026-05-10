@@ -11,6 +11,7 @@ import pytest
 from pydantic import ValidationError
 from starlette.testclient import TestClient
 
+import ahadiff.serve.locale as serve_locale_module
 import ahadiff.serve.lock as serve_lock_module
 import ahadiff.serve.middleware as middleware_module
 import ahadiff.serve.routes_locale as routes_locale_module
@@ -55,6 +56,15 @@ def _client(
 
 
 _WRITE_HEADERS = {"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"}
+
+
+def _validation_errors(body: dict[str, Any]) -> list[dict[str, Any]]:
+    details_obj = body.get("details")
+    assert isinstance(details_obj, dict)
+    details = cast("dict[str, Any]", details_obj)
+    errors = details.get("errors")
+    assert isinstance(errors, list)
+    return cast("list[dict[str, Any]]", errors)
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -228,7 +238,10 @@ def test_loopback_guard_error_responses_include_status(tmp_path: Path) -> None:
 
     for response, error, status in cases:
         assert response.status_code == status
-        assert response.json() == {"error": error, "status": status}
+        body = response.json()
+        assert body["error"] == error
+        assert body["status"] == status
+        assert "error_code" in body
 
 
 def test_proxy_trace_headers_are_rejected(tmp_path: Path) -> None:
@@ -246,9 +259,11 @@ def test_proxy_trace_headers_are_rejected(tmp_path: Path) -> None:
     )
 
     assert health.status_code == 400
-    assert health.json() == {"error": "proxy_headers_not_allowed", "status": 400}
+    assert health.json()["error"] == "proxy_headers_not_allowed"
+    assert health.json()["error_code"] == "INPUT_BAD_FIELD"
     assert write.status_code == 400
-    assert write.json() == {"error": "proxy_headers_not_allowed", "status": 400}
+    assert write.json()["error"] == "proxy_headers_not_allowed"
+    assert write.json()["error_code"] == "INPUT_BAD_FIELD"
 
 
 def test_db_check_endpoint_requires_token_and_reports_counts(tmp_path: Path) -> None:
@@ -260,7 +275,7 @@ def test_db_check_endpoint_requires_token_and_reports_counts(tmp_path: Path) -> 
     blocked = client.post("/api/db/check", headers={"origin": "http://localhost:8765"})
     response = client.post("/api/db/check", headers=_WRITE_HEADERS)
 
-    assert blocked.status_code == 403
+    assert blocked.status_code == 401
     assert response.status_code == 200
     assert response.json() == {
         "healthy": True,
@@ -379,12 +394,66 @@ def test_write_routes_require_token(tmp_path: Path) -> None:
         json={"lang": "zh-CN"},
     )
 
-    assert denied.status_code == 403
+    assert denied.status_code == 401
     assert accepted.status_code == 200
     assert accepted.headers["access-control-allow-origin"] == "http://localhost:8765"
     assert accepted.headers["access-control-allow-credentials"] == "true"
     assert "ahadiff_lang=zh-CN" in accepted.headers["set-cookie"]
     assert client.get("/api/locale").json() == {"locale": "zh-CN"}
+
+
+def test_put_locale_persists_and_updates_config_lang(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    app = create_app(
+        ServeState(state_dir=state_dir, token="test-token", locale="en", config_lang="en")
+    )
+    client = TestClient(app, base_url="http://localhost:8765")
+
+    accepted = client.put(
+        "/api/locale",
+        headers=_WRITE_HEADERS,
+        json={"lang": "zh-CN"},
+    )
+    client.cookies.clear()
+    resolved = client.get("/api/locale")
+    accept_language = client.get("/api/locale", headers={"accept-language": "en"})
+    runtime_state = cast("ServeState", app.state.ahadiff)
+
+    assert accepted.status_code == 200
+    assert resolved.json() == {"locale": "zh-CN"}
+    assert accept_language.json() == {"locale": "en"}
+    assert runtime_state.config_lang == "zh-CN"
+    assert 'lang = "zh-CN"' in (state_dir / "config.toml").read_text(encoding="utf-8")
+
+
+def test_put_locale_does_not_update_runtime_when_persist_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    app = create_app(
+        ServeState(state_dir=state_dir, token="test-token", locale="en", config_lang="en")
+    )
+    client = TestClient(app, base_url="http://localhost:8765", raise_server_exceptions=False)
+
+    def fail_persist(_state: ServeState, _lang: str) -> None:
+        raise PermissionError("permission denied: /tmp/private/config.toml")
+
+    monkeypatch.setattr(routes_locale_module, "_persist_lang", fail_persist)
+
+    response = client.put(
+        "/api/locale",
+        headers=_WRITE_HEADERS,
+        json={"lang": "zh-CN"},
+    )
+    runtime_state = cast("ServeState", app.state.ahadiff)
+
+    assert response.status_code == 500
+    assert response.json()["error_code"] == "STORAGE_FS"
+    assert "/tmp/private" not in response.json()["error"]
+    assert runtime_state.locale == "en"
+    assert runtime_state.config_lang == "en"
+    assert client.get("/api/locale").json() == {"locale": "en"}
 
 
 def test_locale_resolves_cookie_accept_language_and_serve_state(tmp_path: Path) -> None:
@@ -413,7 +482,7 @@ def test_locale_resolver_receives_cli_and_config_lang_separately(
         captured.update(kwargs)
         return "zh-CN"
 
-    monkeypatch.setattr(routes_locale_module, "resolve_locale", fake_resolve_locale)
+    monkeypatch.setattr(serve_locale_module, "resolve_locale", fake_resolve_locale)
     app = create_app(
         ServeState(
             state_dir=tmp_path / ".ahadiff",
@@ -444,6 +513,7 @@ def test_serve_state_locale_update_preserves_runtime_fields(tmp_path: Path) -> N
     updated = state.with_locale("zh-CN")
 
     assert updated.locale == "zh-CN"
+    assert updated.config_lang == "zh-CN"
     assert updated.state_dir == state.state_dir
     assert updated.token == state.token
     assert updated.bind_host == state.bind_host
@@ -494,9 +564,9 @@ def test_auth_token_bootstrap_requires_same_origin_browser_signal(tmp_path: Path
         headers={"referer": "http://127.0.0.1:9123/app"},
     )
 
-    assert missing.status_code == 403
-    assert missing.json()["error"] == "auth token bootstrap requires a same-origin browser request"
-    assert cross_site.status_code == 403
+    assert missing.status_code == 401
+    assert missing.json()["error_code"] == "AUTH_REQUIRED"
+    assert cross_site.status_code == 401
     assert same_origin.status_code == 200
     assert same_origin.json()["token"] == "bootstrap-token"
     assert referer.status_code == 200
@@ -2101,8 +2171,9 @@ def test_signal_write_respects_repo_write_lock(tmp_path: Path) -> None:
         json=payload,
     )
 
-    assert blocked.status_code == 400
-    assert "another ahadiff process is already running" in blocked.json()["error"]
+    assert blocked.status_code == 409
+    assert blocked.json()["error_code"] == "LOCK_CONFLICT"
+    assert blocked.json()["error"] == "another_ahadiff_process_is_running"
     assert accepted.status_code == 200
     assert accepted.json() == {"inserted": True}
 
@@ -2219,7 +2290,9 @@ def test_empty_idempotency_key_is_rejected_before_signal_write(tmp_path: Path) -
     )
 
     assert response.status_code == 422
-    assert response.json()["error"][0]["loc"] == ["idempotency_key"]
+    body = response.json()
+    errors = _validation_errors(body)
+    assert errors[0]["loc"] == ["idempotency_key"]
 
 
 @pytest.mark.parametrize(
@@ -2263,7 +2336,9 @@ def test_signal_write_rejects_empty_identifiers_before_db_write(
     )
 
     assert response.status_code == 422
-    assert response.json()["error"][0]["loc"] == [field]
+    body = response.json()
+    errors = _validation_errors(body)
+    assert errors[0]["loc"] == [field]
     assert not (state_dir / "review.sqlite").exists()
 
 
@@ -2420,7 +2495,7 @@ def test_review_queue_get_is_public_and_rate_requires_token(tmp_path: Path) -> N
 
     assert queue.status_code == 200
     assert queue.json()["cards"][0]["card_id"] == "card-1"
-    assert denied.status_code == 403
+    assert denied.status_code == 401
     assert "X-AhaDiff-Token" in denied.json()["error"]
     assert accepted.status_code == 200
     assert accepted.json()["inserted"] is True
@@ -2717,7 +2792,7 @@ def test_review_queue_reports_current_schema_corruption(tmp_path: Path) -> None:
     response = client.get("/api/review/queue")
 
     assert response.status_code == 500
-    assert response.json()["error"] == "review database is unavailable"
+    assert response.json()["error"] == "review_database_unavailable"
 
 
 def test_review_queue_state_updates_card_without_review_log(tmp_path: Path) -> None:
@@ -2753,7 +2828,7 @@ def test_review_queue_state_updates_card_without_review_log(tmp_path: Path) -> N
         json={"card_id": "card-archive", "state": "archived"},
     )
 
-    assert denied.status_code == 403
+    assert denied.status_code == 401
     assert accepted.status_code == 200
     assert accepted.json() == {
         "card_id": "card-archive",
@@ -2867,7 +2942,8 @@ def test_malformed_json_write_body_returns_400(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 400
-    assert "Expecting property name enclosed in double quotes" in response.json()["error"]
+    assert response.json()["error_code"] == "INPUT_INVALID_JSON"
+    assert response.json()["error"] == "invalid_json"
 
 
 def test_viewer_static_serves_spa_fallback_without_viewer_source_changes(tmp_path: Path) -> None:
@@ -2899,7 +2975,8 @@ def test_api_unknown_returns_json_404(tmp_path: Path) -> None:
     assert response.status_code == 404
     assert "application/json" in response.headers["content-type"]
     assert response.json()["error"] == "not_found"
-    assert response.json()["path"] == "/api/does-not-exist"
+    assert response.json()["error_code"] == "NOT_FOUND"
+    assert response.json()["details"]["path"] == "/api/does-not-exist"
 
 
 def test_api_unknown_post_returns_json_404(tmp_path: Path) -> None:
@@ -2960,7 +3037,9 @@ def test_helpfulness_signal_invalid_payload(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 422
-    assert response.json()["error"][0]["loc"] == ["target_id"]
+    body = response.json()
+    errors = _validation_errors(body)
+    assert errors[0]["loc"] == ["target_id"]
 
 
 def test_helpfulness_signal_invalid_section_target_id_returns_422(tmp_path: Path) -> None:
@@ -2979,9 +3058,11 @@ def test_helpfulness_signal_invalid_section_target_id_returns_422(tmp_path: Path
     )
 
     assert response.status_code == 422
-    error = response.json()["error"][0]
-    assert "ctx" not in error
-    assert "target_id must contain ':'" in error["msg"]
+    body = response.json()
+    errors = _validation_errors(body)
+    err_item = errors[0]
+    assert "ctx" not in err_item
+    assert "target_id must contain ':'" in err_item["msg"]
 
 
 def test_helpfulness_signal_normalizes_section_target_id(tmp_path: Path) -> None:

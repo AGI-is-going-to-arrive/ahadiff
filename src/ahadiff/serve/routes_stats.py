@@ -19,6 +19,7 @@ from anyio import to_thread
 from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
 
+from ahadiff.contracts import ErrorCode
 from ahadiff.contracts.serve_stats import (
     HeatmapEntry,
     ProvidersResponse,
@@ -31,6 +32,7 @@ from ahadiff.contracts.serve_stats import (
     UsageResponse,
 )
 from ahadiff.core.config import mask_provider_base_url_for_display
+from ahadiff.core.errors import StorageError
 from ahadiff.review.database import connect_review_db, count_concepts
 
 if TYPE_CHECKING:
@@ -139,7 +141,7 @@ def _count_concepts(state_dir: Path, db_path: Path) -> int:
         db_count = count_concepts(db_path)
     except Exception as exc:
         log.debug("failed to count concepts from %s", db_path, exc_info=True)
-        raise HTTPException(status_code=500, detail="failed to count concepts") from exc
+        raise StorageError("failed to count concepts", code=ErrorCode.STORAGE_REVIEW_DB) from exc
     return max(db_count, jsonl_count)
 
 
@@ -149,7 +151,7 @@ def _is_missing_table_error(exc: sqlite3.OperationalError) -> bool:
 
 def _raise_stats_backend_error(detail: str, exc: Exception) -> None:
     log.debug("%s", detail, exc_info=True)
-    raise HTTPException(status_code=500, detail=detail) from exc
+    raise StorageError(detail, code=ErrorCode.STORAGE_REVIEW_DB) from exc
 
 
 def _query_review_stats(db_path: Path) -> dict[str, Any]:
@@ -731,7 +733,10 @@ async def get_usage(request: Request) -> JSONResponse:
         if isinstance(error.__cause__, InputError):
             raise HTTPException(status_code=400, detail=str(error.__cause__)) from error
         log.warning("usage API failed", exc_info=True)
-        raise HTTPException(status_code=500, detail="usage database is unavailable") from error
+        raise StorageError(
+            "usage database is unavailable",
+            code=ErrorCode.STORAGE_USAGE_DB,
+        ) from error
     return JSONResponse(payload)
 
 

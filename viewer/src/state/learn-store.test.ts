@@ -175,7 +175,7 @@ describe('learn store', () => {
     await promise;
     expect(useLearnStore.getState().phase).toBe('failed');
     expect(useLearnStore.getState().errorCode).toBe('submit_aborted');
-    expect(useLearnStore.getState().error).toBe('Learn request was aborted. Please retry.');
+    expect(useLearnStore.getState().error).toBeNull();
     expect(useLearnStore.getState().retryable).toBe(true);
   });
 
@@ -277,6 +277,17 @@ describe('learn store', () => {
     await useLearnStore.getState().submitLearn();
 
     expect(useLearnStore.getState().errorCode).toBe('submit_failed');
+  });
+
+  it('submitLearn preserves backend API error codes for localization', async () => {
+    mockedStartLearnTask.mockRejectedValue(
+      new ApiError(400, { error_code: 'INPUT_BAD_FIELD', error: 'bad field', status: 400 }),
+    );
+
+    await useLearnStore.getState().submitLearn();
+
+    expect(useLearnStore.getState().errorCode).toBe('INPUT_BAD_FIELD');
+    expect(useLearnStore.getState().error).toBe('bad field');
   });
 
   // ---------- retryLearn ----------

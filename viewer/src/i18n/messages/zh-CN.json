@@ -223,6 +223,14 @@
     "retry": "重试",
     "validation_failed": "{endpoint} 返回的载荷与当前 viewer 不一致，请刷新或升级 viewer 以匹配 serve 版本。"
   },
+  "Format": {
+    "bytes_b": "字节",
+    "bytes_kb": "KB",
+    "bytes_mb": "MB",
+    "compact_k": "千",
+    "compact_m": "百万",
+    "compact_b": "十亿"
+  },
   "Heatmap": {
     "aria_grid": "近 30 天复习活动，共 {total} 次复习",
     "cell_title": "{date}：{count} 次复习",
@@ -424,7 +432,16 @@
     "preflight_tokens": "预估 token：{estimated} / {limit} 上下文",
     "preflight_continue": "仍然继续",
     "preflight_cancel": "取消",
-    "poll_connection_lost": "无法连接后端服务，任务可能仍在后台运行。请检查网络连接后重试。"
+    "poll_connection_lost": "无法连接后端服务，任务可能仍在后台运行。请检查网络连接后重试。",
+    "error_submit_failed": "无法启动 Learn 运行，请重试。",
+    "error_submit_aborted": "Learn 请求在启动前已取消。",
+    "error_poll_auth_error": "认证已失效，请刷新页面后重试。",
+    "error_poll_task_not_found": "该 Learn 任务已不存在。",
+    "error_poll_server_error": "轮询时后端返回错误，任务可能仍在后台运行。",
+    "error_internal_error": "Learn 运行在 AhaDiff 内部失败。",
+    "error_cancelled": "Learn 运行已取消。",
+    "error_config_error": "配置错误，请检查 Provider 设置。",
+    "error_timeout": "任务超时，请重试或调高超时时间。"
   },
   "Nav": {
     "dashboard": "运行",
@@ -1043,5 +1060,34 @@
     "CAUTION": "警示",
     "FAIL": "未通过",
     "PASS": "通过"
+  },
+  "errors": {
+    "LOCALE_INVALID": "不支持所选语言。",
+    "INPUT_INVALID_JSON": "请求正文必须是有效 JSON。",
+    "INPUT_VALIDATION": "请求内容不符合预期格式。",
+    "INPUT_BAD_FIELD": "一个或多个字段无效。",
+    "INPUT_UNKNOWN_KEYS": "请求包含不支持的字段。",
+    "INPUT_PAGINATION": "分页参数无效。",
+    "RUN_NOT_FOUND": "未找到请求的运行。",
+    "RUN_ARTIFACT_NOT_FOUND": "未找到请求的运行产物。",
+    "RUN_ARTIFACT_TOO_LARGE": "请求的产物过大，无法返回。",
+    "RUN_ARTIFACT_INVALID": "请求的运行产物无效。",
+    "RUN_ID_INVALID": "Run ID 无效。",
+    "INSTALL_INVALID_MANIFEST": "安装清单无效。",
+    "PROVIDER_NOT_FOUND": "未找到 Provider 配置。",
+    "PROVIDER_TRANSPORT": "无法连接到 Provider。",
+    "PROVIDER_HTTP": "Provider 返回了错误响应。",
+    "AUTH_REQUIRED": "此操作需要认证。",
+    "LOOPBACK_DENIED": "请求已被本地访问保护拦截。",
+    "RATE_LIMITED": "请求过于频繁，请稍后再试。",
+    "REQUEST_TIMEOUT": "请求超时。",
+    "STORAGE_REVIEW_DB": "Review 数据库不可用。",
+    "STORAGE_USAGE_DB": "Usage 数据库不可用。",
+    "STORAGE_FS": "本地存储不可用。",
+    "LOCK_CONFLICT": "已有另一个 AhaDiff 进程正在运行。",
+    "LESSON_LEVEL_INVALID": "不支持该课程层级。",
+    "EXPORT_FORMAT_UNSUPPORTED": "不支持该导出格式。",
+    "NOT_FOUND": "未找到请求的资源。",
+    "INTERNAL_ERROR": "AhaDiff 内部出现错误。"
   }
 }

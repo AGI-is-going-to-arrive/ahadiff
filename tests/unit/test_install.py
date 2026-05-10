@@ -13,6 +13,7 @@ from typer.testing import CliRunner
 
 import ahadiff.install.hooks as hooks_module
 from ahadiff.cli import app
+from ahadiff.core.errors import InputError
 from ahadiff.install.base import InstallContext
 from ahadiff.install.template_loader import render_template
 
@@ -511,11 +512,58 @@ def test_hooks_git_path_uses_utf8_when_cjk_locale_would_fail(
         "hooks/pre-push",
     )
 
-    assert calls["command"] == ["git", "rev-parse", "--git-path", "hooks/pre-push"]
+    assert len(calls["command"]) == 4
+    assert Path(calls["command"][0]).name in {"git", "git.exe"}
+    assert calls["command"][1:] == ["rev-parse", "--git-path", "hooks/pre-push"]
     assert calls["kwargs"]["text"] is True
     assert calls["kwargs"]["encoding"] == "utf-8"
     assert calls["kwargs"]["errors"] == "replace"
+    assert calls["kwargs"]["timeout"] == 30
     assert hook_path == repo_root / ".git" / "hooks" / "预推送😀"
+
+
+def test_hooks_git_path_preserves_legitimate_spaces_before_newline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+
+    def fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=".git/hooks/pre push \n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(hooks_module.subprocess, "run", fake_run)
+
+    hook_path = hooks_module._git_path(  # pyright: ignore[reportPrivateUsage]
+        InstallContext(repo_root=repo_root),
+        "hooks/pre-push",
+    )
+
+    assert hook_path == repo_root / ".git" / "hooks" / "pre push "
+
+
+def test_hooks_git_path_reports_git_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+
+    def fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        raise subprocess.TimeoutExpired(command, timeout=30)
+
+    monkeypatch.setattr(hooks_module.subprocess, "run", fake_run)
+
+    with pytest.raises(InputError, match="hooks target requires a git repository"):
+        hooks_module._git_path(  # pyright: ignore[reportPrivateUsage]
+            InstallContext(repo_root=repo_root),
+            "hooks/pre-push",
+        )
 
 
 def test_hooks_install_rejects_hooks_path_outside_repo_or_git_dir(tmp_path: Path) -> None:

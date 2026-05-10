@@ -77,7 +77,8 @@ describe('LearnTaskBanner', () => {
     const html = renderToStaticMarkup(<LearnTaskBanner />);
 
     expect(html).not.toContain('Retry');
-    expect(html).toContain('config_error');
+    expect(html).toContain('Configuration error. Check your provider settings.');
+    expect(html).not.toContain('config_error');
   });
 
   it('keeps Retry when task recovery_hint is retry', () => {

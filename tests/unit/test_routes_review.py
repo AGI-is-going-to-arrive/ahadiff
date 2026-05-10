@@ -137,7 +137,7 @@ def test_protected_review_endpoints_without_token_return_403(
     else:
         response = client.post(path, headers=_ORIGIN, json=payload)
 
-    assert response.status_code == 403
+    assert response.status_code == 401
 
 
 def test_review_read_endpoints_with_auth_return_empty_db_state(tmp_path: Path) -> None:
@@ -194,7 +194,10 @@ def test_review_rate_invalid_payload_returns_422(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 422
-    assert response.json()["error"][0]["loc"] == ["answer"]
+    body = response.json()
+    errors = body.get("details", {}).get("errors", body.get("error"))
+    assert isinstance(errors, list)
+    assert errors[0]["loc"] == ["answer"]
 
 
 def test_review_rate_valid_payload_for_missing_card_returns_400(tmp_path: Path) -> None:
@@ -256,7 +259,10 @@ def test_review_queue_state_invalid_payload_returns_422(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 422
-    assert response.json()["error"][0]["loc"] == ["state"]
+    body = response.json()
+    errors = body.get("details", {}).get("errors", body.get("error"))
+    assert isinstance(errors, list)
+    assert errors[0]["loc"] == ["state"]
 
 
 def test_weak_concepts_and_mastery_with_seeded_reviews(tmp_path: Path) -> None:

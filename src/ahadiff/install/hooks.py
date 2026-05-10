@@ -3,6 +3,7 @@ from __future__ import annotations
 import errno
 import os
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -32,6 +33,7 @@ _VALID_HOOK_NAMES = frozenset(
     }
 )
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+_GIT_TIMEOUT_SECONDS = 30
 
 HOOKS_JSON_SCHEMA: dict[str, object] = {
     "type": "object",
@@ -298,20 +300,34 @@ def _ensure_posix_hooks_supported() -> None:
         )
 
 
+def _git_executable() -> str:
+    """Locate the git executable on PATH.
+
+    Raises ``InputError`` when git is missing so callers surface an
+    actionable error instead of an opaque OSError.
+    """
+
+    git_path = shutil.which("git")
+    if git_path is None:
+        raise InputError("git executable not found on PATH; install git and ensure it is on PATH")
+    return git_path
+
+
 def _git_path(context: InstallContext, relative: str) -> Path:
     try:
         result = subprocess.run(
-            ["git", "rev-parse", "--git-path", relative],
+            [_git_executable(), "rev-parse", "--git-path", relative],
             cwd=context.repo_root,
             check=True,
             capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
+            timeout=_GIT_TIMEOUT_SECONDS,
         )
-    except (OSError, subprocess.CalledProcessError) as exc:
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         raise InputError("hooks target requires a git repository") from exc
-    raw_path = Path(result.stdout.strip())
+    raw_path = Path(result.stdout.rstrip("\r\n"))
     hook_path = raw_path if raw_path.is_absolute() else repo_path(context, raw_path.as_posix())
     return _validate_git_hook_path(context, hook_path)
 
@@ -341,16 +357,17 @@ def _git_common_dir(context: InstallContext) -> Path:
 def _git_directory_path(context: InstallContext, option: str) -> Path:
     try:
         result = subprocess.run(
-            ["git", "rev-parse", option],
+            [_git_executable(), "rev-parse", option],
             cwd=context.repo_root,
             check=True,
             capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
+            timeout=_GIT_TIMEOUT_SECONDS,
         )
-    except (OSError, subprocess.CalledProcessError) as exc:
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         raise InputError("hooks target requires a git repository") from exc
-    raw_path = Path(result.stdout.strip())
+    raw_path = Path(result.stdout.rstrip("\r\n"))
     path = raw_path if raw_path.is_absolute() else repo_path(context, raw_path.as_posix())
     return path.resolve(strict=False)

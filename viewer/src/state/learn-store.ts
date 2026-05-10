@@ -148,15 +148,15 @@ function applyTaskInfo(capturedTaskId: string, info: TaskInfoResponse): boolean 
     resetPollState();
     return true;
   }
-  if (s === 'failed') {
-    const retryAllowedByTask = (info.recovery_hint ?? 'retry') === 'retry';
-    useLearnStore.setState({
-      phase: 'failed',
-      task: info,
-      error: info.error ?? 'Task failed',
-      errorCode: info.error_code ?? 'internal_error',
-      retryable: useLearnStore.getState().retryable && retryAllowedByTask,
-    });
+      if (s === 'failed') {
+        const retryAllowedByTask = (info.recovery_hint ?? 'retry') === 'retry';
+        useLearnStore.setState({
+          phase: 'failed',
+          task: info,
+          error: info.error,
+          errorCode: info.error_code ?? 'internal_error',
+          retryable: useLearnStore.getState().retryable && retryAllowedByTask,
+        });
     resetPollState();
     return true;
   }
@@ -209,8 +209,8 @@ async function doPoll(): Promise<void> {
       if (err.status === 401 || err.status === 403) {
         useLearnStore.setState({
           phase: 'failed',
-          error: err.message,
-          errorCode: 'poll_auth_error',
+          error: null,
+          errorCode: err.errorCode ?? 'poll_auth_error',
           retryable: false,
         });
         resetPollState();
@@ -219,8 +219,8 @@ async function doPoll(): Promise<void> {
       if (err.status === 404) {
         useLearnStore.setState({
           phase: 'failed',
-          error: err.message,
-          errorCode: 'poll_task_not_found',
+          error: null,
+          errorCode: err.errorCode ?? 'poll_task_not_found',
           retryable: false,
         });
         resetPollState();
@@ -328,7 +328,7 @@ export const useLearnStore = create<LearnState>(() => ({
       if (err instanceof DOMException && err.name === 'AbortError') {
         useLearnStore.setState({
           phase: 'failed',
-          error: 'Learn request was aborted. Please retry.',
+          error: null,
           errorCode: 'submit_aborted',
         });
         return;
@@ -352,6 +352,9 @@ export const useLearnStore = create<LearnState>(() => ({
           code = 'too_many_tasks';
           msg = 'A learn task is already running';
         }
+      } else if (err instanceof ApiError && err.errorCode) {
+        code = err.errorCode;
+        msg = err.message;
       }
       useLearnStore.setState({ phase: 'failed', error: msg, errorCode: code });
     }

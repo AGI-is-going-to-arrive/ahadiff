@@ -12,6 +12,7 @@ from .claim_status import (
     SourceHunkSide,
     StaleReason,
 )
+from .error_codes import ERROR_STATUS, ErrorCode, ErrorPayload
 from .error_types import (
     AhaDiffError,
     DegradedRunWarning,
@@ -145,7 +146,10 @@ __all__ = [
     "DoctorCheck",
     "DoctorResponse",
     "EVAL_BUNDLE_FILES",
+    "ERROR_STATUS",
     "EvalBundleInfo",
+    "ErrorCode",
+    "ErrorPayload",
     "EventType",
     "GraphProvenance",
     "GraphifyMode",

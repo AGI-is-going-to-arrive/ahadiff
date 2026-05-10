@@ -123,7 +123,8 @@ def test_repo_write_lock_contention_reads_metadata_from_open_handle(
         raise AssertionError("lock acquisition should have failed")
 
     message = str(error.value)
-    assert "PID=123" in message
+    assert message == "another ahadiff process is already running"
+    assert "PID=123" not in message
     assert "leaked-replacement" not in message
 
 

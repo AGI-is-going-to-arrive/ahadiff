@@ -947,6 +947,7 @@ def run_learn_pipeline(
                             input_token_budget=int(llm_config.get("input_token_budget", 200000)),
                             output_token_budget=output_budget,
                             claim_output_token_cap=claim_output_cap,
+                            output_lang=resolved_content_lang,
                         )
                         raw_claims_path = result_path
                         return result_path

@@ -136,7 +136,7 @@ def test_signal_endpoints_without_token_return_403(
 
     response = client.post(path, headers=_ORIGIN, json=payload)
 
-    assert response.status_code == 403
+    assert response.status_code == 401
 
 
 def test_mark_wrong_signal_valid_submission(tmp_path: Path) -> None:
@@ -284,7 +284,10 @@ def test_signal_endpoints_missing_required_fields_return_422(
     response = client.post(path, headers=_AUTH, json=payload)
 
     assert response.status_code == 422
-    assert response.json()["error"][0]["loc"] == [field]
+    body = response.json()
+    errors = body.get("details", {}).get("errors", body.get("error"))
+    assert isinstance(errors, list)
+    assert errors[0]["loc"] == [field]
 
 
 @pytest.mark.parametrize(
@@ -330,4 +333,7 @@ def test_signal_endpoints_invalid_payloads_return_422(
     response = client.post(path, headers=_AUTH, json=payload)
 
     assert response.status_code == 422
-    assert response.json()["error"][0]["loc"] == [field]
+    body = response.json()
+    errors = body.get("details", {}).get("errors", body.get("error"))
+    assert isinstance(errors, list)
+    assert errors[0]["loc"] == [field]

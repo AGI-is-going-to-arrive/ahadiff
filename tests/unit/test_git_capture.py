@@ -487,8 +487,8 @@ def test_run_git_uses_utf8_when_cjk_locale_would_fail(
 
     result = repo_module.run_git(Path("repo"), "diff", "--name-only")
 
-    assert calls["command"] == [
-        "git",
+    assert Path(calls["command"][0]).name in {"git", "git.exe"}
+    assert calls["command"][1:] == [
         "-c",
         "core.quotePath=false",
         "-C",
@@ -2310,7 +2310,27 @@ def test_git_patch_streaming_uses_quote_path_false(
     )
 
     assert result == ""
-    assert seen_command[:4] == ["git", "-c", "core.quotePath=false", "-C"]
+    assert Path(seen_command[0]).name == "git"
+    assert seen_command[1:4] == ["-c", "core.quotePath=false", "-C"]
+
+
+def test_git_patch_streaming_reports_missing_git(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def missing_git() -> str:
+        raise InputError("git executable not found on PATH")
+
+    monkeypatch.setattr(capture_module, "git_executable", missing_git)
+
+    with pytest.raises(InputError, match="git executable not found on PATH"):
+        cast("Any", capture_module)._run_git_patch_text(  # pyright: ignore[reportPrivateUsage]
+            tmp_path,
+            "show",
+            "--format=",
+            "HEAD",
+            max_patch_bytes=1024,
+        )
 
 
 def test_git_patch_streaming_kills_process_when_output_exceeds_cap(

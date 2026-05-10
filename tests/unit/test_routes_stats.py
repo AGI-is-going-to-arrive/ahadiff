@@ -360,7 +360,8 @@ class TestGetStats:
         resp = client.get("/api/stats", headers=_AUTH)
 
         assert resp.status_code == 500
-        assert resp.json()["error"] == "failed to query review stats"
+        assert resp.json()["error_code"] == "STORAGE_REVIEW_DB"
+        assert resp.json()["error"] == "review_database_unavailable"
 
     def test_stats_ignores_unfinalized_run_directories(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".ahadiff"
@@ -394,7 +395,7 @@ class TestGetStats:
 
         resp = client.get("/api/stats")
 
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
     def test_wrong_token(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".ahadiff"
@@ -403,7 +404,7 @@ class TestGetStats:
 
         resp = client.get("/api/stats", headers={"X-AhaDiff-Token": "wrong"})
 
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
     def test_uses_anyio_threadpool(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         state_dir = tmp_path / ".ahadiff"
@@ -486,7 +487,8 @@ class TestGetReviewHeatmap:
         resp = client.get("/api/review/heatmap", headers=_AUTH)
 
         assert resp.status_code == 500
-        assert resp.json()["error"] == "failed to query review heatmap"
+        assert resp.json()["error_code"] == "STORAGE_REVIEW_DB"
+        assert resp.json()["error"] == "review_database_unavailable"
 
     def test_date_range_params(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".ahadiff"
@@ -523,7 +525,7 @@ class TestGetReviewHeatmap:
 
         resp = client.get("/api/review/heatmap")
 
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
     def test_max_span_clamped(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".ahadiff"
@@ -624,7 +626,7 @@ class TestGetExportResults:
         client = _client(state_dir)
         resp = client.get("/api/export/results")
 
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
     def test_empty_db_returns_header_only(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".ahadiff"
@@ -928,7 +930,7 @@ class TestGetProviders:
 
         resp = client.get("/api/providers")
 
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------

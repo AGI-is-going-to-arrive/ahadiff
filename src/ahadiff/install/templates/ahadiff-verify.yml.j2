@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        os: [macos-latest, ubuntu-latest, windows-latest]
     env:
       PYTHON_VERSION: "3.12"
       SQLITE_AUTOCONF_VERSION: "3510300"
@@ -36,7 +36,7 @@ jobs:
           echo "$(brew --prefix python@${PYTHON_VERSION})/bin" >> "$GITHUB_PATH"
 
       - uses: actions/setup-python@v5
-        if: runner.os == 'Linux'
+        if: runner.os != 'macOS'
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -59,4 +59,9 @@ jobs:
           enable-cache: true
 
       - name: Validate AhaDiff artifacts
+        if: runner.os != 'Windows'
         run: uvx --python python3.12 --from ahadiff ahadiff verify --ci
+
+      - name: Validate AhaDiff CLI loads on Windows
+        if: runner.os == 'Windows'
+        run: uvx --python python3.12 --from ahadiff ahadiff --version

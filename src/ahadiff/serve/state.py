@@ -62,7 +62,7 @@ class ServeState:
         )
 
     def with_locale(self, locale: Literal["en", "zh-CN"]) -> ServeState:
-        return replace(self, locale=locale)
+        return replace(self, locale=locale, config_lang=locale)
 
 
 __all__ = ["ServeState"]

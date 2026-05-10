@@ -56,6 +56,7 @@ from .repo import (
     ensure_head_exists,
     ensure_no_merge_conflicts,
     first_parent_or_empty_tree,
+    git_executable,
     open_repo,
     parent_count,
     resolve_commitish,
@@ -2298,7 +2299,7 @@ def _single_commit_patch(
 
 
 def _run_git_patch_text(repo_root: Path, *args: str, max_patch_bytes: int) -> str:
-    command = ["git", "-c", "core.quotePath=false", "-C", str(repo_root), *args]
+    command = [git_executable(), "-c", "core.quotePath=false", "-C", str(repo_root), *args]
     try:
         with subprocess.Popen(
             command,

@@ -88,6 +88,15 @@ class TestContractsImport:
         assert WatchStatusResponse
         assert InputError
 
+    def test_error_code_status_mapping_is_complete(self) -> None:
+        from ahadiff.contracts import ERROR_STATUS, ErrorCode
+
+        assert set(ERROR_STATUS) == set(ErrorCode)
+        assert ERROR_STATUS[ErrorCode.AUTH_REQUIRED] == 401
+        assert ERROR_STATUS[ErrorCode.LOOPBACK_DENIED] == 403
+        assert ERROR_STATUS[ErrorCode.INPUT_VALIDATION] == 422
+        assert ERROR_STATUS[ErrorCode.LOCK_CONFLICT] == 409
+
 
 class TestSerialization:
     def test_run_source_roundtrip(self) -> None:

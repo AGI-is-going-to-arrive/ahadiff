@@ -11,9 +11,10 @@ from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from ahadiff.contracts import AuthTokenResponse
+from ahadiff.contracts import AuthTokenResponse, ErrorCode
 from ahadiff.core.errors import AhaDiffError, InputError
 
+from ._errors import error_response
 from .auth import require_token_bootstrap_request, serve_state
 from .middleware import LoopbackGuardMiddleware, RequestTimeoutMiddleware, WriteRateLimitMiddleware
 from .routes_audit import get_audit
@@ -86,6 +87,32 @@ if TYPE_CHECKING:
 
 
 _log = logging.getLogger(__name__)
+
+_HTTP_TO_CODE: dict[int, ErrorCode] = {
+    400: ErrorCode.INPUT_BAD_FIELD,
+    401: ErrorCode.AUTH_REQUIRED,
+    403: ErrorCode.LOOPBACK_DENIED,
+    404: ErrorCode.NOT_FOUND,
+    405: ErrorCode.INPUT_BAD_FIELD,
+    408: ErrorCode.REQUEST_TIMEOUT,
+    413: ErrorCode.RUN_ARTIFACT_TOO_LARGE,
+    415: ErrorCode.INPUT_BAD_FIELD,
+    422: ErrorCode.INPUT_VALIDATION,
+    429: ErrorCode.RATE_LIMITED,
+    500: ErrorCode.INTERNAL_ERROR,
+    502: ErrorCode.PROVIDER_TRANSPORT,
+    503: ErrorCode.REQUEST_TIMEOUT,
+    504: ErrorCode.REQUEST_TIMEOUT,
+}
+
+_GENERIC_MESSAGES: dict[ErrorCode, str] = {
+    ErrorCode.INTERNAL_ERROR: "internal_error",
+    ErrorCode.STORAGE_REVIEW_DB: "review_database_unavailable",
+    ErrorCode.STORAGE_USAGE_DB: "usage_database_unavailable",
+    ErrorCode.STORAGE_FS: "local_storage_unavailable",
+    ErrorCode.PROVIDER_TRANSPORT: "provider_transport_error",
+    ErrorCode.PROVIDER_HTTP: "provider_http_error",
+}
 
 
 def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlette:
@@ -209,33 +236,54 @@ async def auth_token(request: Request) -> JSONResponse:
 
 
 async def api_not_found(request: Request) -> JSONResponse:
-    return JSONResponse(
-        {"error": "not_found", "status": 404, "path": request.url.path},
-        status_code=404,
+    return error_response(
+        ErrorCode.NOT_FOUND,
+        "not_found",
+        details={"path": request.url.path},
     )
 
 
 async def _handled_error(_request: Request, exc: Exception) -> JSONResponse:
-    return JSONResponse({"error": str(exc), "status": 400}, status_code=400)
+    if isinstance(exc, AhaDiffError):
+        return error_response(
+            exc.code,
+            _public_error_message(exc.code, str(exc)),
+            details=exc.details or None,
+        )
+    if isinstance(exc, JSONDecodeError):
+        return error_response(ErrorCode.INPUT_INVALID_JSON, "invalid_json")
+    return error_response(ErrorCode.INTERNAL_ERROR, _GENERIC_MESSAGES[ErrorCode.INTERNAL_ERROR])
 
 
 async def _permission_error(_request: Request, exc: Exception) -> JSONResponse:
-    return JSONResponse({"error": str(exc), "status": 403}, status_code=403)
+    del exc
+    return error_response(ErrorCode.STORAGE_FS, _GENERIC_MESSAGES[ErrorCode.STORAGE_FS])
 
 
 async def _validation_error(_request: Request, exc: Exception) -> JSONResponse:
     if isinstance(exc, ValidationError):
-        return JSONResponse(
-            {"error": exc.errors(include_context=False, include_input=False), "status": 422},
-            status_code=422,
+        return error_response(
+            ErrorCode.INPUT_VALIDATION,
+            "validation_error",
+            details={"errors": exc.errors(include_context=False, include_input=False)},
         )
-    return JSONResponse({"error": str(exc), "status": 422}, status_code=422)
+    return error_response(ErrorCode.INPUT_VALIDATION, str(exc))
 
 
 async def _http_error(_request: Request, exc: Exception) -> JSONResponse:
     status_code = exc.status_code if isinstance(exc, HTTPException) else 500
     detail: Any = exc.detail if isinstance(exc, HTTPException) else str(exc)
-    return JSONResponse({"error": detail, "status": status_code}, status_code=status_code)
+    code = _HTTP_TO_CODE.get(status_code, ErrorCode.INTERNAL_ERROR)
+    message = detail if isinstance(detail, str) else str(detail)
+    return error_response(code, _public_error_message(code, message), status=status_code)
+
+
+def _public_error_message(code: ErrorCode, message: str) -> str:
+    if code in _GENERIC_MESSAGES:
+        return _GENERIC_MESSAGES[code]
+    if code is ErrorCode.LOCK_CONFLICT:
+        return "another_ahadiff_process_is_running"
+    return message or code.value.lower()
 
 
 __all__ = ["create_app"]

@@ -510,7 +510,7 @@ class TestRateLimitIntegration:
         bad_headers = {"X-AhaDiff-Token": "bad", "origin": "http://localhost:8765"}
         good_headers = {"X-AhaDiff-Token": "tok", "origin": "http://localhost:8765"}
         for _ in range(10):
-            assert client.post("/api/learn", json={}, headers=bad_headers).status_code == 403
+            assert client.post("/api/learn", json={}, headers=bad_headers).status_code == 401
 
         resp = client.post("/api/learn", json={}, headers=good_headers)
         assert resp.status_code != 429

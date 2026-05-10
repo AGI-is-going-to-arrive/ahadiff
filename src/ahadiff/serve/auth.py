@@ -4,7 +4,8 @@ import hmac
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
-from ahadiff.core.errors import InputError
+from ahadiff.contracts import ErrorCode
+from ahadiff.core.errors import AhaDiffError, InputError
 
 from .state import ServeState
 
@@ -13,6 +14,12 @@ if TYPE_CHECKING:
 
 WRITE_TOKEN_HEADER = "X-AhaDiff-Token"
 _LOOPBACK_BOOTSTRAP_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
+class AuthRequiredError(AhaDiffError):
+    """Raised when a protected local write route is missing a valid token."""
+
+    code = ErrorCode.AUTH_REQUIRED
 
 
 def serve_state(request: Request) -> ServeState:
@@ -26,7 +33,7 @@ def require_write_token(request: Request) -> None:
     state = serve_state(request)
     supplied = request.headers.get(WRITE_TOKEN_HEADER)
     if not supplied or not hmac.compare_digest(supplied, state.token):
-        raise PermissionError("write route requires a valid X-AhaDiff-Token header")
+        raise AuthRequiredError("write route requires a valid X-AhaDiff-Token header")
 
 
 def require_token_bootstrap_request(request: Request) -> None:
@@ -34,7 +41,7 @@ def require_token_bootstrap_request(request: Request) -> None:
     state = serve_state(request)
     if _has_same_origin_bootstrap_signal(request, expected_port=state.port):
         return
-    raise PermissionError("auth token bootstrap requires a same-origin browser request")
+    raise AuthRequiredError("auth token bootstrap requires a same-origin browser request")
 
 
 def _has_same_origin_bootstrap_signal(request: Request, *, expected_port: int | None) -> bool:
@@ -62,6 +69,7 @@ def _is_loopback_origin(value: str, *, expected_port: int | None) -> bool:
 
 
 __all__ = [
+    "AuthRequiredError",
     "WRITE_TOKEN_HEADER",
     "require_token_bootstrap_request",
     "require_write_token",

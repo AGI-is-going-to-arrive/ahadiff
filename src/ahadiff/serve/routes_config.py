@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import math
 import sqlite3
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from anyio import to_thread
 from starlette.responses import JSONResponse
@@ -530,6 +530,7 @@ async def put_config(request: Request) -> JSONResponse:
 
     state = serve_state(request)
     persist_updates: dict[str, Any] = {}
+    lang_update: Literal["en", "zh-CN"] | None = None
 
     if "lang" in body:
         lang: str = str(body["lang"])
@@ -538,9 +539,7 @@ async def put_config(request: Request) -> JSONResponse:
                 {"error": f"lang must be one of {sorted(_ALLOWED_CONFIG_LANG)}", "status": 400},
                 status_code=400,
             )
-        assert state.write_lock is not None
-        async with state.write_lock:
-            request.app.state.ahadiff = state.with_locale(lang)  # type: ignore[arg-type]
+        lang_update = cast("Literal['en', 'zh-CN']", lang)
         persist_updates["lang"] = lang
 
     if "privacy_mode" in body:
@@ -660,5 +659,7 @@ async def put_config(request: Request) -> JSONResponse:
         assert state.write_lock is not None
         async with state.write_lock:
             await to_thread.run_sync(_persist_config, state)
+            if lang_update is not None:
+                request.app.state.ahadiff = state.with_locale(lang_update)
 
     return JSONResponse(ConfigUpdateResponse(updated=True, scope="session").model_dump(mode="json"))

@@ -63,7 +63,7 @@ class TestSearchAPI:
     def test_requires_auth(self, tmp_path: Path) -> None:
         client = _client(tmp_path / ".ahadiff")
         resp = client.get("/api/search", params={"q": "test"})
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
     def test_limit_capped(self, tmp_path: Path) -> None:
         client = _client(tmp_path / ".ahadiff")
@@ -141,7 +141,7 @@ class TestWeakConcepts:
     def test_requires_auth(self, tmp_path: Path) -> None:
         client = _client(tmp_path / ".ahadiff")
         resp = client.get("/api/concepts/weak")
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
     def test_limit_capped_at_100(self, tmp_path: Path) -> None:
         client = _client(tmp_path / ".ahadiff")
@@ -183,7 +183,8 @@ class TestWeakConcepts:
         resp = client.get("/api/concepts/weak", headers=_AUTH)
 
         assert resp.status_code == 500
-        assert resp.json()["error"] == "review database is unavailable"
+        assert resp.json()["error_code"] == "STORAGE_REVIEW_DB"
+        assert resp.json()["error"] == "review_database_unavailable"
 
 
 # ---------------------------------------------------------------------------
@@ -201,7 +202,7 @@ class TestReviewMastery:
     def test_requires_auth(self, tmp_path: Path) -> None:
         client = _client(tmp_path / ".ahadiff")
         resp = client.get("/api/review/mastery")
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
     def test_limit_capped_at_200(self, tmp_path: Path) -> None:
         client = _client(tmp_path / ".ahadiff")
@@ -234,7 +235,8 @@ class TestReviewMastery:
         resp = client.get("/api/review/mastery", headers=_AUTH)
 
         assert resp.status_code == 500
-        assert resp.json()["error"] == "review database is unavailable"
+        assert resp.json()["error_code"] == "STORAGE_REVIEW_DB"
+        assert resp.json()["error"] == "review_database_unavailable"
 
 
 # ---------------------------------------------------------------------------
@@ -256,7 +258,7 @@ class TestUsage:
     def test_requires_auth(self, tmp_path: Path) -> None:
         client = _client(tmp_path / ".ahadiff")
         resp = client.get("/api/usage")
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
     def test_usage_reads_llm_usage_rows(self, tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
         from ahadiff.llm.usage import UsageRecord, record_usage_event
@@ -362,7 +364,8 @@ class TestUsage:
         resp = client.get("/api/usage", headers=_AUTH)
 
         assert resp.status_code == 500
-        assert resp.json()["error"] == "usage database is unavailable"
+        assert resp.json()["error_code"] == "STORAGE_USAGE_DB"
+        assert resp.json()["error"] == "usage_database_unavailable"
 
     def test_usage_invalid_time_filter_returns_400(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
@@ -423,7 +426,7 @@ class TestAudit:
     def test_requires_auth(self, tmp_path: Path) -> None:
         client = _client(tmp_path / ".ahadiff")
         resp = client.get("/api/audit")
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
     def test_with_audit_file(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".ahadiff"
@@ -609,7 +612,7 @@ class TestPutConfig:
             json={"lang": "en"},
             headers={"origin": "http://localhost:8765"},
         )
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
     def test_invalid_lang_rejected(self, tmp_path: Path) -> None:
         client = _client(tmp_path / ".ahadiff")
@@ -769,7 +772,7 @@ class TestSpecAlignment:
     def test_requires_auth(self, tmp_path: Path) -> None:
         client = _client(tmp_path / ".ahadiff")
         resp = client.get("/api/spec/alignment")
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------

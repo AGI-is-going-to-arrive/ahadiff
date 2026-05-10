@@ -30,7 +30,7 @@ def test_db_check_without_token_returns_403(tmp_path: Path) -> None:
 
     response = client.post("/api/db/check", headers=_ORIGIN)
 
-    assert response.status_code == 403
+    assert response.status_code == 401
     assert response.json()["error"] == "write route requires a valid X-AhaDiff-Token header"
 
 

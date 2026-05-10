@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { useLearnStore } from '../state/learn-store';
 import { useTranslation, type MessageKey } from '../i18n/useTranslation';
-import { formatBytes, formatCompactNumber } from '../utils/format';
+import { getErrorMessage } from '../utils/error-codes';
+import { buildFormatTexts, formatBytes, formatCompactNumber } from '../utils/format';
 import { safeVerdict } from '../utils/verdict';
 import './LearnTaskBanner.css';
 
@@ -84,6 +85,15 @@ export default function LearnTaskBanner() {
   const rateLimitSeconds = isRateLimited && error?.startsWith('rate_limited:')
     ? error.split(':')[1] ?? '60'
     : '60';
+  const shouldShowGenericError = !isTooManyTasks && !isRateLimited && !isPollConnectionLost;
+  const failureMessageKey: MessageKey | null = shouldShowGenericError && errorCode
+    ? (`Learn.error_${errorCode}` as MessageKey)
+    : null;
+  const failureMessage = failureMessageKey && t(failureMessageKey) !== failureMessageKey
+    ? t(failureMessageKey)
+    : shouldShowGenericError
+      ? getErrorMessage(t, errorCode, error || t('Learn.error_submit_failed'))
+      : '';
   const isLlmStep = progress ? LLM_STEPS.has(progress.current) : false;
   const isLongRunning =
     (phase === 'running' || phase === 'cancelling')
@@ -126,10 +136,10 @@ export default function LearnTaskBanner() {
           </div>
           <div className="learn-banner__confirm-stats">
             <span>{t('Learn.preflight_files', { count: estimate.file_count })}</span>
-            <span>{t('Learn.preflight_size', { size: formatBytes(estimate.patch_bytes, locale) })}</span>
+            <span>{t('Learn.preflight_size', { size: formatBytes(estimate.patch_bytes, locale, buildFormatTexts(t)) })}</span>
             <span>{t('Learn.preflight_tokens', {
-              estimated: formatCompactNumber(estimate.estimated_tokens, locale),
-              limit: formatCompactNumber(estimate.provider_context_window, locale),
+              estimated: formatCompactNumber(estimate.estimated_tokens, locale, buildFormatTexts(t)),
+              limit: formatCompactNumber(estimate.provider_context_window, locale, buildFormatTexts(t)),
             })}</span>
           </div>
           {estimate.warnings.length > 0 && (
@@ -310,11 +320,8 @@ export default function LearnTaskBanner() {
                       ? t('Learn.poll_connection_lost')
                       : t('Learn.failed')}
               </span>
-              {errorCode && !isTooManyTasks && !isRateLimited && !isPollConnectionLost && (
-                <code className="learn-banner__error-code">{errorCode}</code>
-              )}
-              {error && !isTooManyTasks && !isRateLimited && !isPollConnectionLost && (
-                <span className="learn-banner__msg">{error}</span>
+              {(error || errorCode) && !isTooManyTasks && !isRateLimited && !isPollConnectionLost && (
+                <span className="learn-banner__msg">{failureMessage}</span>
               )}
             </div>
           </div>

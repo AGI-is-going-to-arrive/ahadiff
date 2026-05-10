@@ -1,4 +1,23 @@
-export function formatBytes(bytes: number, locale: string): string {
+export interface FormatTexts {
+  bytes_b: string;
+  bytes_kb: string;
+  bytes_mb: string;
+  compact_k: string;
+  compact_m: string;
+  compact_b: string;
+}
+
+const DEFAULT_TEXTS: FormatTexts = {
+  bytes_b: 'B',
+  bytes_kb: 'KB',
+  bytes_mb: 'MB',
+  compact_k: 'K',
+  compact_m: 'M',
+  compact_b: 'B',
+};
+
+export function formatBytes(bytes: number, locale: string, texts?: FormatTexts): string {
+  const t = texts ?? DEFAULT_TEXTS;
   const fmt = (n: number) => {
     try {
       return n.toLocaleString(locale || undefined, {
@@ -9,12 +28,12 @@ export function formatBytes(bytes: number, locale: string): string {
       return n.toFixed(1);
     }
   };
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${fmt(bytes / 1024)} KB`;
-  return `${fmt(bytes / (1024 * 1024))} MB`;
+  if (bytes < 1024) return `${bytes} ${t.bytes_b}`;
+  if (bytes < 1024 * 1024) return `${fmt(bytes / 1024)} ${t.bytes_kb}`;
+  return `${fmt(bytes / (1024 * 1024))} ${t.bytes_mb}`;
 }
 
-export function formatCompactNumber(value: number, locale: string): string {
+export function formatCompactNumber(value: number, locale: string, texts?: FormatTexts): string {
   try {
     const formatter = new Intl.NumberFormat(locale || undefined, {
       notation: 'compact',
@@ -26,17 +45,17 @@ export function formatCompactNumber(value: number, locale: string): string {
   } catch {
     // Fall through to the deterministic fallback below.
   }
-  return formatCompactFallback(value, locale);
+  return formatCompactFallback(value, locale, texts ?? DEFAULT_TEXTS);
 }
 
-function formatCompactFallback(value: number, locale: string): string {
+function formatCompactFallback(value: number, locale: string, texts: FormatTexts): string {
   const abs = Math.abs(value);
   if (abs < 1000) return formatNumberPart(value, locale, 0);
 
   const units: Array<[number, string]> = [
-    [1_000_000_000, 'B'],
-    [1_000_000, 'M'],
-    [1_000, 'K'],
+    [1_000_000_000, texts.compact_b],
+    [1_000_000, texts.compact_m],
+    [1_000, texts.compact_k],
   ];
   const [divisor, suffix] = units.find(([threshold]) => abs >= threshold) ?? [1, ''];
   const scaled = value / divisor;
@@ -67,4 +86,19 @@ export function formatCurrency(value: number, locale: string, currency = 'USD'):
   } catch {
     return `$${value.toFixed(4)}`;
   }
+}
+
+/**
+ * Build a {@link FormatTexts} bundle from an i18n translate function.
+ * Use this in components that already call `useTranslation()`.
+ */
+export function buildFormatTexts(t: (key: string) => string): FormatTexts {
+  return {
+    bytes_b: t('Format.bytes_b'),
+    bytes_kb: t('Format.bytes_kb'),
+    bytes_mb: t('Format.bytes_mb'),
+    compact_k: t('Format.compact_k'),
+    compact_m: t('Format.compact_m'),
+    compact_b: t('Format.compact_b'),
+  };
 }

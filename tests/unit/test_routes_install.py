@@ -418,7 +418,7 @@ def test_install_mutation_requires_token_and_manifest_confirmation(tmp_path: Pat
         json={"confirmed_manifest_hash": "0" * 64},
     )
 
-    assert denied.status_code == 403
+    assert denied.status_code == 401
     assert mismatch.status_code == 400
     assert "confirmed_manifest_hash" in mismatch.json()["error"]
     assert not (state_dir.parent / "AGENTS.md").exists()

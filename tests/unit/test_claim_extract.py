@@ -766,6 +766,7 @@ diff --git a/src/app.py b/src/app.py
                 "run_id": "run_extract",
                 "source_kind": "git_ref",
                 "source_ref": "abc1234",
+                "content_lang": "zh-CN",
                 "capability_level": 3,
                 "degraded_flags": {},
                 "privacy_mode": "strict_local",
@@ -932,6 +933,7 @@ diff --git a/src/app.py b/src/app.py
                 "run_id": "run_cli_extract",
                 "source_kind": "git_ref",
                 "source_ref": "abc1234",
+                "content_lang": "zh-CN",
                 "capability_level": 3,
                 "degraded_flags": {},
                 "privacy_mode": "strict_local",
@@ -980,6 +982,7 @@ diff --git a/src/app.py b/src/app.py
 
     def fake_extract_claim_candidates_from_run(**kwargs: object):
         captured["provider_config"] = kwargs["provider_config"]
+        captured["output_lang"] = kwargs["output_lang"]
         write_claim_candidates_jsonl(
             run_path / "claims.raw.jsonl",
             [
@@ -1022,6 +1025,7 @@ diff --git a/src/app.py b/src/app.py
     provider_config = captured["provider_config"]
     assert isinstance(provider_config, ProviderConfig)
     assert provider_config.base_url == "http://127.0.0.1:8318"
+    assert captured["output_lang"] == "zh-CN"
     payload = json.loads((run_path / "claims.jsonl").read_text(encoding="utf-8").splitlines()[0])
     assert payload["status"] == "verified"
 

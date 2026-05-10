@@ -970,6 +970,7 @@ def learn_cmd(
                         qps_limit=int(provider_limits["qps_limit"]),
                         retry_attempts=int(llm_config["retry_attempts"]),
                         request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
+                        output_lang=resolved_content_lang,
                     )
                     candidates = load_claim_candidates(
                         raw_claims_path,
@@ -1340,19 +1341,22 @@ def _restore_artifact_from_backup(*, target: Path, backup_path: Path | None) -> 
 
 
 def _run_content_lang(run_path: Path) -> str:
+    return _run_content_lang_or_none(run_path) or "en"
+
+
+def _run_content_lang_or_none(run_path: Path) -> str | None:
     metadata_path = run_path / "metadata.json"
     if not metadata_path.exists():
-        return "en"
+        return None
     try:
         payload = safe_json_loads(metadata_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, ValueError, OSError, UnicodeDecodeError):
-        return "en"
+        return None
     if not isinstance(payload, dict):
-        return "en"
+        return None
     metadata = cast("dict[str, object]", payload)
     value = metadata.get("content_lang")
-    locale = normalize_locale(value) if isinstance(value, str) else None
-    return locale or "en"
+    return normalize_locale(value) if isinstance(value, str) else None
 
 
 @_APP.command("regenerate")
@@ -2362,6 +2366,12 @@ def claims_cmd(
             extract_output_path = candidate_path
             if candidate_path_preexisted:
                 extract_output_path = _temporary_sibling_path(candidate_path)
+            verify_content_lang = _run_content_lang_or_none(
+                run_path
+            ) or _resolve_output_lang_from_snapshot(
+                snapshot,
+                cli_lang=None,
+            )
             raw_claims_path, _ = extract_claim_candidates_from_run(
                 run_id=run_id,
                 run_path=run_path,
@@ -2376,6 +2386,7 @@ def claims_cmd(
                 qps_limit=int(provider_limits["qps_limit"]),
                 retry_attempts=int(llm_config["retry_attempts"]),
                 request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
+                output_lang=verify_content_lang,
             )
             extracted_candidate_path = raw_claims_path
             candidate_load_path = raw_claims_path

@@ -834,7 +834,7 @@ def test_run_improve_loop_propagates_output_lang_to_replay_and_provider_request(
 
     def fake_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
         command = cast("list[str]", args[0])
-        if command and command[0] == "git":
+        if command and Path(command[0]).name in {"git", "git.exe"}:
             return cast("subprocess.CompletedProcess[str]", real_subprocess_run(*args, **kwargs))
         seen_commands.append(command)
         cwd = kwargs.get("cwd")
@@ -1077,7 +1077,7 @@ def test_run_improve_loop_cleans_worktree_on_replay_failure(
 
     def fake_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
         command = cast("list[str]", args[0])
-        if command and command[0] == "git":
+        if command and Path(command[0]).name in {"git", "git.exe"}:
             return cast("subprocess.CompletedProcess[str]", real_subprocess_run(*args, **kwargs))
         return subprocess.CompletedProcess(
             command,

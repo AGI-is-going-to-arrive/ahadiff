@@ -44,6 +44,7 @@ from ahadiff.wiki.concepts import (
 )
 
 from .auth import require_write_token, serve_state
+from .locale import request_locale
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -136,6 +137,7 @@ _ALLOWED_ARTIFACTS = frozenset(
 
 async def list_runs(request: Request) -> JSONResponse:
     state = serve_state(request)
+    locale = request_locale(request)
     source_kind_filter = request.query_params.get("source_kind")
     limit = _query_limit(request, default=_MAX_LIST_RUNS, max_value=_MAX_LIST_RUNS)
     cursor = _query_cursor(request)
@@ -143,7 +145,7 @@ async def list_runs(request: Request) -> JSONResponse:
         _list_runs_payload,
         state.runs_dir,
         state.review_db_path,
-        state.locale,
+        locale,
         source_kind_filter,
         limit,
         cursor,
@@ -153,12 +155,13 @@ async def list_runs(request: Request) -> JSONResponse:
 
 async def get_run(request: Request) -> JSONResponse:
     state = serve_state(request)
+    locale = request_locale(request)
     run_id = str(request.path_params["run_id"])
     payload = await to_thread.run_sync(
         _run_detail_payload,
         state.runs_dir,
         state.review_db_path,
-        state.locale,
+        locale,
         run_id,
     )
     return JSONResponse(payload)
@@ -265,6 +268,7 @@ async def _artifact_response(
     not_found_status_code: int | None = None,
 ) -> JSONResponse:
     state = serve_state(request)
+    locale = request_locale(request)
     run_id = str(request.path_params["run_id"])
     payload = await to_thread.run_sync(
         lambda: _artifact_payload(
@@ -273,6 +277,7 @@ async def _artifact_response(
             relative_path,
             artifact_type,
             not_found_status_code=not_found_status_code,
+            default_locale=locale,
         )
     )
     return JSONResponse(payload, status_code=payload.pop("_status_code", 200))
@@ -285,6 +290,7 @@ def _artifact_payload(
     artifact_type: str,
     *,
     not_found_status_code: int | None = None,
+    default_locale: str | None = None,
 ) -> dict[str, Any]:
     run_path = _finalized_run_path(state.runs_dir, run_id)
     event = _event_for_finalized_run(state.review_db_path, run_path)
@@ -301,7 +307,7 @@ def _artifact_payload(
         run_id=run_id,
         artifact_type=artifact_type,
         content=_read_text_capped(artifact_path, max_bytes=_MAX_TEXT_ARTIFACT_BYTES),
-        content_lang=_artifact_content_lang(state, run_path, event),
+        content_lang=_artifact_content_lang(state, run_path, event, default_locale=default_locale),
     )
     return envelope.model_dump(mode="json")
 
@@ -630,6 +636,8 @@ def _artifact_content_lang(
     state: ServeState,
     run_path: Path,
     event: ResultEvent,
+    *,
+    default_locale: str | None = None,
 ) -> Literal["en", "zh-CN"] | None:
     if not (run_path / "metadata.json").exists():
         return None
@@ -641,7 +649,7 @@ def _artifact_content_lang(
     content_lang = metadata.get("content_lang")
     if content_lang is None:
         return None
-    return _normalize_content_lang(content_lang, default_locale=state.locale)
+    return _normalize_content_lang(content_lang, default_locale=default_locale or state.locale)
 
 
 def _finalized_run_path(runs_dir: Path, run_id: str) -> Path:

@@ -4,17 +4,18 @@ import sqlite3
 from typing import TYPE_CHECKING, Any
 
 from anyio import to_thread
-from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
 
 from ahadiff.contracts import (
     DueReviewCardResponse,
+    ErrorCode,
     ReviewMasteryResponse,
     ReviewQueueStateRequest,
     ReviewQueueStateResponse,
     ReviewRateRequest,
     WeakConceptsResponse,
 )
+from ahadiff.core.errors import StorageError
 from ahadiff.review.database import (
     connect_review_db,
     initialize_review_db,
@@ -109,7 +110,10 @@ def _review_queue_sync(state: ServeState) -> tuple[DueReviewCard, ...]:
     try:
         return tuple(list_due_cards(state.review_db_path))
     except sqlite3.DatabaseError as exc:
-        raise HTTPException(status_code=500, detail="review database is unavailable") from exc
+        raise StorageError(
+            "review database is unavailable",
+            code=ErrorCode.STORAGE_REVIEW_DB,
+        ) from exc
 
 
 _MAX_WEAK_CONCEPTS = 100
@@ -171,7 +175,10 @@ def _weak_concepts_sync(db_path: Path, limit: int) -> dict[str, Any]:
                 (limit,),
             ).fetchall()
     except sqlite3.DatabaseError as exc:
-        raise HTTPException(status_code=500, detail="review database is unavailable") from exc
+        raise StorageError(
+            "review database is unavailable",
+            code=ErrorCode.STORAGE_REVIEW_DB,
+        ) from exc
     return WeakConceptsResponse.model_validate(
         {
             "concepts": _rows_to_items(weak_rows),
@@ -214,7 +221,10 @@ def _mastery_sync(db_path: Path, limit: int) -> dict[str, Any]:
                 (limit,),
             ).fetchall()
     except sqlite3.DatabaseError as exc:
-        raise HTTPException(status_code=500, detail="review database is unavailable") from exc
+        raise StorageError(
+            "review database is unavailable",
+            code=ErrorCode.STORAGE_REVIEW_DB,
+        ) from exc
     return ReviewMasteryResponse.model_validate(
         {
             "mastery": [
