@@ -97,7 +97,6 @@ export default function ReviewPage() {
   const loadQueue = useReviewStore((s) => s.loadQueue);
   const rate = useReviewStore((s) => s.rate);
   const currentCard = useReviewStore((s) => s.currentCard);
-  const remaining = useReviewStore((s) => s.remaining);
   const selectCard = useReviewStore((s) => s.selectCard);
 
   const [flipped, setFlipped] = useState(false);
@@ -288,11 +287,10 @@ export default function ReviewPage() {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const target = e.target as HTMLElement;
       const tag = target?.tagName;
-      // Allow SRS rating shortcuts (1-3) when focused on a rating button.
-      // v0.1 hides Easy, so '4' is no longer a rating shortcut.
+      // Allow SRS rating shortcuts (1-4) when focused on a rating button.
       // Allow A-D shortcuts when focused on a choice button.
       const isSrsBtn = tag === 'BUTTON' && target.classList.contains('srs-btn');
-      const isSrsKey = e.key === '1' || e.key === '2' || e.key === '3';
+      const isSrsKey = e.key === '1' || e.key === '2' || e.key === '3' || e.key === '4';
       const isChoiceBtn = tag === 'BUTTON' && target.classList.contains('review__choice');
       const isChoiceKey = !!CHOICE_KEY_LABELS[e.key.toLowerCase()];
       if (
@@ -329,20 +327,21 @@ export default function ReviewPage() {
         }
         return;
       }
-      // Wrong-answer guard for choice cards: Good is disabled (Easy hidden in
-      // v0.1) and the shortcut should not bypass that. Test the same gate the
-      // buttons use.
+      // Wrong-answer guard for choice cards: Good and Easy are disabled and
+      // the shortcuts should not bypass that. Test the same gate the buttons
+      // use.
       if (isChoice && card) {
         const correctChoice = card.choices?.find((c) => c.is_correct);
         const isAnswerCorrect =
           correctChoice !== undefined && correctChoice.label === selectedChoiceLabel;
-        if (!isAnswerCorrect && e.key === '3') {
+        if (!isAnswerCorrect && (e.key === '3' || e.key === '4')) {
           return;
         }
       }
       if (e.key === '1') void handleRate('wrong');
       else if (e.key === '2') void handleRate('hard');
       else if (e.key === '3') void handleRate('good');
+      else if (e.key === '4') void handleRate('easy');
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -378,6 +377,7 @@ export default function ReviewPage() {
             <div>
               <Skeleton variant="card" height="300px" />
               <div className="srs-buttons" style={{ marginTop: 14 }}>
+                <Skeleton variant="row" />
                 <Skeleton variant="row" />
                 <Skeleton variant="row" />
                 <Skeleton variant="row" />
@@ -548,9 +548,12 @@ export default function ReviewPage() {
               </span>
             </h1>
             <div className="review__sub">
-              {remaining() === 1
-                ? t('Review.card_remaining', { count: remaining() })
-                : t('Review.cards_remaining', { count: remaining() })}
+              {t('Review.sub_forgetting')}
+              {weakConcepts.length > 0 && (
+                <span className="review__sub-risk">
+                  {' '}{t('Review.sub_risk_count', { count: weakConcepts.length })}
+                </span>
+              )}
             </div>
           </div>
           <div className="review__head-right">
@@ -558,6 +561,11 @@ export default function ReviewPage() {
             <span className="review__chip review__chip--active">
               {t('Review.chip_fsrs')} <InfoHint label={t('Review.fsrs_hint')} />
             </span>
+            {weakConcepts.length > 0 && (
+              <span className="review__chip review__chip--warn">
+                {t('Review.chip_at_risk', { count: weakConcepts.length })}
+              </span>
+            )}
           </div>
         </div>
 
@@ -588,6 +596,7 @@ export default function ReviewPage() {
                     <div className="review__mastery-list">
                       {mastery.slice(0, 10).map((m) => {
                         const pct = Math.min(100, ((m.avg_rating ?? 0) / 4) * 100);
+                        const tier = pct >= 70 ? '' : pct >= 40 ? ' mastery-bar__fill--warn' : ' mastery-bar__fill--danger';
                         return (
                           <div key={m.concept} className="review__mastery-row">
                             <span className="review__mastery-label">{m.concept}</span>
@@ -600,7 +609,7 @@ export default function ReviewPage() {
                               aria-label={m.concept}
                             >
                               <span
-                                className="mastery-bar__fill"
+                                className={`mastery-bar__fill${tier}`}
                                 style={{ width: `${pct}%` }}
                               />
                             </div>
@@ -857,7 +866,18 @@ export default function ReviewPage() {
                     <div className="srs-btn__interval" id="srs-interval-good">{t('Review.interval_good')}</div>
                     <span className="srs-btn__kbd">3</span>
                   </button>
-                  {/* v0.1: Easy button intentionally hidden (kept in type for future). */}
+                  <button
+                    type="button"
+                    className="srs-btn srs-btn--easy"
+                    onClick={() => void handleRate('easy')}
+                    disabled={rating || ratingsBlocked}
+                    aria-label={t('Review.srs_aria_easy')}
+                    aria-describedby="srs-interval-easy"
+                  >
+                    <div className="srs-btn__label">{t('Review.rating_easy')}</div>
+                    <div className="srs-btn__interval" id="srs-interval-easy">{t('Review.interval_easy')}</div>
+                    <span className="srs-btn__kbd">4</span>
+                  </button>
                 </div>
               ) : null
             ) : !flipped ? (
@@ -908,7 +928,18 @@ export default function ReviewPage() {
                   <div className="srs-btn__interval" id="srs-interval-good">{t('Review.interval_good')}</div>
                   <span className="srs-btn__kbd">3</span>
                 </button>
-                {/* v0.1: Easy button intentionally hidden (kept in type for future). */}
+                <button
+                  type="button"
+                  className="srs-btn srs-btn--easy"
+                  onClick={() => void handleRate('easy')}
+                  disabled={rating}
+                  aria-label={t('Review.srs_aria_easy')}
+                  aria-describedby="srs-interval-easy"
+                >
+                  <div className="srs-btn__label">{t('Review.rating_easy')}</div>
+                  <div className="srs-btn__interval" id="srs-interval-easy">{t('Review.interval_easy')}</div>
+                  <span className="srs-btn__kbd">4</span>
+                </button>
               </div>
             )}
           </div>

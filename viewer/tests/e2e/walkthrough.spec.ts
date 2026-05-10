@@ -620,7 +620,7 @@ test.describe('walkthrough: full-app functional test', () => {
     });
 
     // Advance to second quiz item
-    const nextBtn = page.locator('.quiz-page__nav .srs-card__btn--primary');
+    const nextBtn = page.getByRole('button', { name: /Next|下一题/i });
     await expect(nextBtn).toBeVisible();
     await nextBtn.focus();
     await page.keyboard.press('Enter');
@@ -741,12 +741,13 @@ test.describe('walkthrough: full-app functional test', () => {
     const srsButtons = page.locator('.srs-buttons');
     await expect(srsButtons).toBeVisible();
     const srsBtns = page.locator('.srs-btn');
-    await expect(srsBtns).toHaveCount(3);
+    await expect(srsBtns).toHaveCount(4);
 
-    // Verify button labels (en: Again / Hard / Good; Easy is hidden in v0.1)
+    // Verify button labels (en: Again / Hard / Good / Easy)
     await expect(srsBtns.nth(0)).toContainText(/Again|重来/);
     await expect(srsBtns.nth(1)).toContainText(/Hard|困难/);
     await expect(srsBtns.nth(2)).toContainText(/Good|掌握/);
+    await expect(srsBtns.nth(3)).toContainText(/Easy|简单/);
 
     // Keyboard shortcuts shown
     await expect(srsBtns.nth(0).locator('.srs-btn__kbd')).toContainText('1');
@@ -1318,18 +1319,18 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(page.locator('.flashcard')).toContainText('What does the new comment indicate?');
   });
 
-  test('Review — keyboard shortcut 4 is ignored because Easy is hidden', async ({ page }) => {
+  test('Review — keyboard shortcut 4 rates Easy', async ({ page }) => {
     await page.goto('/#/review');
     await expect(page.locator('.flashcard')).toBeVisible();
 
     await page.keyboard.press('Space');
     await expect(page.locator('.srs-buttons')).toBeVisible();
-    await expect(page.locator('.srs-btn')).toHaveCount(3);
+    await expect(page.locator('.srs-btn')).toHaveCount(4);
 
     await page.keyboard.press('4');
 
     await expect(page.locator('.review__complete')).toHaveCount(0);
-    await expect(page.locator('.srs-buttons')).toBeVisible();
+    await expect(page.locator('.flashcard')).toContainText('What does the new comment indicate?');
   });
 
   test('Review — SRS rating buttons have aria-describedby linking to interval', async ({ page }) => {
@@ -1342,7 +1343,7 @@ test.describe('walkthrough: full-app functional test', () => {
 
     // Verify each button has aria-describedby pointing to its interval span
     const srsBtns = page.locator('.srs-btn');
-    await expect(srsBtns).toHaveCount(3);
+    await expect(srsBtns).toHaveCount(4);
 
     // Again button
     await expect(srsBtns.nth(0)).toHaveAttribute('aria-describedby', 'srs-interval-wrong');
@@ -1356,12 +1357,14 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(srsBtns.nth(2)).toHaveAttribute('aria-describedby', 'srs-interval-good');
     await expect(page.locator('#srs-interval-good')).toContainText(/4/);
 
-    // Easy button is intentionally absent in v0.1.
-    await expect(page.locator('#srs-interval-easy')).toHaveCount(0);
+    // Easy button
+    await expect(srsBtns.nth(3)).toHaveAttribute('aria-describedby', 'srs-interval-easy');
+    await expect(page.locator('#srs-interval-easy')).toContainText(/7/);
 
     // Verify aria-label includes full description
     await expect(srsBtns.nth(0)).toHaveAttribute('aria-label', /Again/);
     await expect(srsBtns.nth(2)).toHaveAttribute('aria-label', /Good/);
+    await expect(srsBtns.nth(3)).toHaveAttribute('aria-label', /Easy/);
   });
 
   test('Review — InfoHint tooltip keyboard: focus shows, Escape hides, aria-expanded toggles', async ({ page }) => {

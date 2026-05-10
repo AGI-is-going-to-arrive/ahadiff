@@ -70,6 +70,16 @@
   border-color: var(--accent-hair);
 }
 
+.review__chip--warn {
+  color: var(--danger, #A33D2B);
+  border-color: var(--danger, #A33D2B);
+}
+
+.review__sub-risk {
+  color: var(--danger, #A33D2B);
+  font-weight: 500;
+}
+
 /* ---- 2-column grid ---- */
 .review__grid {
   display: grid;
@@ -88,6 +98,14 @@
   flex-direction: column;
   justify-content: center;
   position: relative;
+  box-shadow: 0 1px 0 rgba(180, 160, 130, 0.06),
+    0 4px 20px -16px rgba(120, 80, 40, 0.18);
+  transition: box-shadow 0.2s ease-out, border-color 0.2s ease-out;
+}
+
+.flashcard:hover {
+  box-shadow: 0 1px 0 rgba(180, 160, 130, 0.06),
+    0 8px 28px -18px rgba(120, 80, 40, 0.28);
 }
 
 .flashcard__tag {
@@ -252,7 +270,7 @@
 /* ---- SRS Rating buttons ---- */
 .srs-buttons {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   margin-top: 14px;
 }
@@ -286,6 +304,10 @@
 .srs-btn--good {
   background: var(--accent-soft);
   border-color: var(--accent-hair);
+}
+
+.srs-btn--easy {
+  /* No special background — same as default srs-btn. */
 }
 
 .srs-btn__label {
@@ -325,6 +347,14 @@
   border: 1px solid var(--hair);
   border-radius: var(--r-lg);
   overflow: hidden;
+  box-shadow: 0 1px 0 rgba(180, 160, 130, 0.06),
+    0 4px 20px -16px rgba(120, 80, 40, 0.18);
+  transition: box-shadow 0.2s ease-out;
+}
+
+.review__sidebar-card:hover {
+  box-shadow: 0 1px 0 rgba(180, 160, 130, 0.06),
+    0 8px 28px -18px rgba(120, 80, 40, 0.28);
 }
 
 .review__sidebar-card + .review__sidebar-card {
@@ -677,6 +707,10 @@
     font-size: 20px;
   }
 
+  .srs-buttons {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
   .review__complete-stats {
     grid-template-columns: 1fr;
   }
@@ -873,6 +907,8 @@
 
 /* ---- Reduced motion ---- */
 @media (prefers-reduced-motion: reduce) {
+  .flashcard,
+  .review__sidebar-card,
   .srs-btn,
   .flashcard__flip-btn,
   .review__error-action,

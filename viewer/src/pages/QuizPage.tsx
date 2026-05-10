@@ -91,6 +91,11 @@ export default function QuizPage() {
   // review.sqlite cards that were never generated.
   const [rated, setRated] = useState<Record<string, boolean>>({});
   const abortRef = useRef<AbortController | null>(null);
+  // Tracks signal idempotency keys already dispatched within this session so
+  // the "Mark wrong (override)" button cannot fire duplicates if the user
+  // double-clicks. Mirrors the qa/srs key shape so the backend dedup window
+  // stays consistent across signal types.
+  const sentMarkWrongKeys = useRef<Set<string>>(new Set());
 
   const fetchQuiz = useCallback(() => {
     if (!runId) return;
@@ -355,6 +360,22 @@ export default function QuizPage() {
                 {isSrsReview ? t('Quiz.mode_srs') : t('Quiz.mode_socratic')}
               </span>
 
+              {/* Visual mode chips matching Warm v6 template. The backend
+                  currently only emits Recall-mode quizzes, so guided/transfer
+                  remain inactive placeholders. They surface the broader
+                  pedagogy roadmap without changing any quiz logic. */}
+              <div
+                className="quiz-page__mode-chips"
+                role="presentation"
+                aria-hidden="true"
+              >
+                <span className="quiz-page__mode-chip">{t('Quiz.mode_guided')}</span>
+                <span className="quiz-page__mode-chip quiz-page__mode-chip--active">
+                  {t('Quiz.mode_recall')}
+                </span>
+                <span className="quiz-page__mode-chip">{t('Quiz.mode_transfer')}</span>
+              </div>
+
               {currentQuiz && (
                 <div className={`quiz-page__card-wrap ${isSrsReview ? 'quiz-page__card-wrap--srs' : 'quiz-page__card-wrap--socratic'}`}>
                   <SRSCard
@@ -385,19 +406,65 @@ export default function QuizPage() {
                 </div>
               )}
 
-              {/* Next button when on current card and already rated.
+              {/* Nav row: Prev / Mark wrong (override) / Next.
                   Gating on `rated` (not `answered`) ensures the SRS signal
                   has been recorded before advancing — selecting a choice alone
-                  is not enough. */}
-              {currentIndex < quizzes.length - 1 && rated[currentQuiz?.question_id ?? ''] && (
+                  is not enough. Mark wrong only appears when the user already
+                  scored the card as correct, letting them downgrade their
+                  self-grading without a separate "redo" flow. */}
+              {rated[currentQuiz?.question_id ?? ''] && (
                 <div className="quiz-page__nav">
                   <button
                     type="button"
-                    className="srs-card__btn srs-card__btn--primary"
-                    onClick={() => setCurrentIndex((prev) => prev + 1)}
+                    className="quiz-page__nav-btn"
+                    onClick={() => setCurrentIndex((prev) => Math.max(0, prev - 1))}
+                    disabled={currentIndex === 0}
                   >
-                    {t('Quiz.next')}
+                    {t('Quiz.prev')}
                   </button>
+                  {currentQuiz &&
+                    answered[currentQuiz.question_id]?.correct &&
+                    currentQuiz.source_claims.length > 0 && (
+                      <button
+                        type="button"
+                        className="quiz-page__nav-btn quiz-page__nav-btn--ghost"
+                        onClick={() => {
+                          const qid = currentQuiz.question_id;
+                          const claimId = currentQuiz.source_claims[0];
+                          if (!claimId) return;
+                          const key = makeStableKey(runId ?? '', 'mw', qid, claimId);
+                          if (sentMarkWrongKeys.current.has(key)) return;
+                          sentMarkWrongKeys.current.add(key);
+                          setSignalError(null);
+                          markWrong({
+                            idempotency_key: key,
+                            claim_id: claimId,
+                            reason: 'quiz_self_override',
+                          }).then(() => {
+                            setAnswered((prev) => {
+                              const existing = prev[qid];
+                              if (!existing) return prev;
+                              return { ...prev, [qid]: { ...existing, correct: false } };
+                            });
+                            setSignalError(null);
+                          }).catch((err: unknown) => {
+                            sentMarkWrongKeys.current.delete(key);
+                            setSignalError(errorMessage(err));
+                          });
+                        }}
+                      >
+                        {t('Quiz.mark_wrong')}
+                      </button>
+                    )}
+                  {currentIndex < quizzes.length - 1 && (
+                    <button
+                      type="button"
+                      className="quiz-page__nav-btn quiz-page__nav-btn--primary"
+                      onClick={() => setCurrentIndex((prev) => Math.min(quizzes.length - 1, prev + 1))}
+                    >
+                      {t('Quiz.next')}
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -464,37 +531,54 @@ export default function QuizPage() {
                   </span>
                 </div>
                 <div className="quiz-panel__body">
-                  <ol className="quiz-progress-list">
-                    {quizzes.map((quiz, index) => {
-                      const isDone = Boolean(rated[quiz.question_id]);
-                      const isCurrent = index === currentIndex && !isDone;
-                      const statusKey = isDone
-                        ? 'Quiz.progress_status_done'
-                        : isCurrent
-                          ? 'Quiz.progress_status_now'
-                          : 'Quiz.progress_status_pending';
-                      return (
-                        <li
-                          key={quiz.question_id}
-                          className={[
-                            'quiz-progress-list__item',
-                            isDone ? 'quiz-progress-list__item--done' : '',
-                            isCurrent ? 'quiz-progress-list__item--current' : '',
-                          ].filter(Boolean).join(' ')}
-                        >
-                          <span className="quiz-progress-list__qid">
-                            {t('Quiz.question_short', { number: index + 1 })}
-                          </span>
-                          <span className="quiz-progress-list__concept">
-                            {quiz.concepts[0] ?? quiz.question_id}
-                          </span>
-                          <span className="quiz-progress-list__status">
-                            {t(statusKey)}
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ol>
+                  <table className="quiz-progress-table">
+                    <thead className="sr-only">
+                      <tr>
+                        <th scope="col">{t('Quiz.progress_col_question')}</th>
+                        <th scope="col">{t('Quiz.progress_col_concept')}</th>
+                        <th scope="col">{t('Quiz.progress_col_status')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {quizzes.map((quiz, index) => {
+                        const isDone = Boolean(rated[quiz.question_id]);
+                        const isCurrent = index === currentIndex && !isDone;
+                        const statusKey = isDone
+                          ? 'Quiz.progress_status_done'
+                          : isCurrent
+                            ? 'Quiz.progress_status_now'
+                            : 'Quiz.progress_status_pending';
+                        const statusClass = isDone
+                          ? 'quiz-progress-badge--done'
+                          : isCurrent
+                            ? 'quiz-progress-badge--current'
+                            : '';
+                        return (
+                          <tr
+                            key={quiz.question_id}
+                            className={isCurrent ? 'quiz-progress-table__row--current' : ''}
+                          >
+                            <td className="quiz-progress-table__qid">
+                              {t('Quiz.question_short', { number: index + 1 })}
+                            </td>
+                            <td className="quiz-progress-table__concept">
+                              {quiz.concepts[0] ?? quiz.question_id}
+                            </td>
+                            <td>
+                              <span className={`quiz-progress-badge ${statusClass}`}>
+                                {isDone && (
+                                  <span aria-hidden="true" className="quiz-progress-badge__check">
+                                    ✓{' '}
+                                  </span>
+                                )}
+                                {t(statusKey)}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </section>
 

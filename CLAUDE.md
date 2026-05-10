@@ -6,11 +6,11 @@
 
 知返 AhaDiff 是一个 **local-first 的 verified diff learning layer**。把 AI 写出的 git diff 变成带代码证据链的学习笔记、概念图谱、主动回忆测验、SRS 复习卡和质量棘轮记录。核心差异：Code Wiki 解释仓库，知返解释这次改动；每句话都能回到代码证据。
 
-**当前状态（2026-05-11）**：本轮 Onboarding / Guide QA follow-up 已同步。旧 Skills 页仍 replace 到 `/#/guide`，实际 install / uninstall 仍由 Settings → Integrations 负责；Guide 维护命令默认展示 `--dry-run`。Onboarding 新增共享 `DiagnosticRow`，doctor / DB check 的状态图标、`sr-only` 文案和 `aria-live` 统一处理，并补齐 HashRouter 锚点、reduced-motion、forced-colors、414px 窄屏和 renderToStaticMarkup 覆盖。后端完整 unit `2136 passed`；`ruff format --check src tests`、`ruff check src tests`、`pyright`、wheel、version、doctor 通过；前端 Vitest `268 passed`，typecheck/lint/build 通过，完整 Playwright `2630 passed, 10 skipped`；i18n scalar keys `1090/1090`，`errors.*` 覆盖 `27/27` 个 error code，`Format.*` 覆盖 6 个格式化文案；Vite preview 与 `ahadiff serve` 本机 smoke 无安全 console error/warning；`git diff --check` 通过。integration、eval、live judge、coverage 和远端 GitHub Actions 未在本轮重跑。
+**当前状态（2026-05-11）**：本轮 viewer review-fix 只改前端学习面和测试。Learn Mode Dialog 的输出语言默认跟随当前 viewer locale；Review 页面恢复 Again / Hard / Good / Easy 四档评分和 `1`-`4` 快捷键，并补高风险概念 chip、遗忘曲线说明和 mastery warning / danger 色阶；Quiz 页面补 Prev / Mark wrong / Next、mode chips、progress table 和 mark-wrong idempotency，Quiz SRSCard 仍保留 Good / Hard / Wrong 与 peek guard。当前真实验证：`cd viewer && pnpm typecheck` 通过；`pnpm vitest run` = `25 files, 269 tests passed`；`pnpm build` 通过；完整 Playwright `2630 passed, 10 skipped`；i18n scalar keys `1101/1101`；`git diff --check` 通过。Playwright 只有 `NO_COLOR` / `FORCE_COLOR` 环境提示，退出码为 0。后端、integration、eval、live judge、coverage、wheel 和远端 GitHub Actions 未在本轮重跑。
 
 ## 架构总览
 
-后端 CLI（learn/improve/verify/serve/install/benchmark）：8-provider LLM + diff capture + claims + lesson/quiz/concepts + 8 维 eval + 可选 LLM judge + review.sqlite FSRS-6 + serve API（61 routes + catchall，稳定 `error_code` payload）+ 13 install targets + improve loop。前端 React 19 SPA：13 页面、49 个生产 page/component TSX + 32 个相关 CSS 文件，当前 i18n scalar key parity 为 `1090/1090`。
+后端 CLI（learn/improve/verify/serve/install/benchmark）：8-provider LLM + diff capture + claims + lesson/quiz/concepts + 8 维 eval + 可选 LLM judge + review.sqlite FSRS-6 + serve API（61 routes + catchall，稳定 `error_code` payload）+ 13 install targets + improve loop。前端 React 19 SPA：13 页面、47 个生产 TSX + 40 个 CSS 文件，当前 i18n scalar key parity 为 `1101/1101`。
 
 ### 技术栈
 
@@ -69,7 +69,7 @@ global_config_dir()                   ← Global（派生/索引/偏好，非真
 | improve | `src/ahadiff/improve/` | improve session、worktree replay、prompt 白名单、Phase 2.5、preflight |
 | i18n | `src/ahadiff/i18n/` | locale resolver（cookie → Accept-Language → `AHADIFF_LANG` → CLI → config → `LANG`）和 prompt language helper |
 | benchmarks | `benchmarks/` | 10 fixtures、Graphify 10k gate（parse 750ms + peak 96MiB） |
-| viewer | `viewer/` | React 19 SPA；13 页面；Learn Mode Dialog + Dashboard + Lesson + Quiz + Review + Concepts + Ratchet + RunDetail + Settings + Guide + Diff + Search；Onboarding DiagnosticRow；错误码本地化；locale-aware byte/token 格式化；侧栏三档；container query；PWA |
+| viewer | `viewer/` | React 19 SPA；13 页面；Learn Mode Dialog 默认跟随 viewer locale；Review 四档 SRS + 高风险概念；Quiz 导航 / mark-wrong / progress table；Dashboard + Lesson + Concepts + Ratchet + RunDetail + Settings + Guide + Diff + Search；Onboarding DiagnosticRow；错误码本地化；locale-aware byte/token 格式化；侧栏三档；container query；PWA |
 | tests | `tests/` | unit/integration/eval/live；本轮 unit `2136 passed`；CI: PR unit + eval + nightly eval + release coverage ≥85% |
 | doc | `doc/` | 产品设计文档 |
 | ui | `ui/` | UI 原型 Warm v1-v6 |
@@ -191,3 +191,4 @@ pytest tests/live/test_llm_judge_live.py -q
 | 05-09 | Path-scoped learn + SSE progress + PWA + install 写闭环 + P1 功能增量 | 2055→2088 |
 | 05-10 | Graph refresh + DB check + frontend review-fix + CI coverage + compatibility + error/locale/i18n hardening | 2088→2136 |
 | 05-11 | Onboarding / Guide QA follow-up + DiagnosticRow + full Playwright rerun | backend 2136 / frontend 268 / Playwright 2630 |
+| 05-11 | Viewer Review / Quiz / Learn polish + full Playwright rerun | frontend 269 / Playwright 2630 / i18n 1101 |

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from '../i18n/useTranslation';
 import { useLearnStore } from '../state/learn-store';
+import { useLocaleStore } from '../state/locale-store';
 import type { LearnSubmitPayload, Locale } from '../api/types';
 import './LearnModeDialog.css';
 
@@ -172,7 +173,8 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
   const [forceLearn, setForceLearn] = useState(false);
   const [useGraphify, setUseGraphify] = useState(false);
   const [dryRun, setDryRun] = useState(false);
-  const [lang, setLang] = useState<LangOption>('auto');
+  const viewerLocale = useLocaleStore((s) => s.locale);
+  const [lang, setLang] = useState<LangOption>(viewerLocale);
   const [privacyMode, setPrivacyMode] = useState<PrivacyOption>('');
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
@@ -262,7 +264,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
       setForceLearn(false);
       setUseGraphify(false);
       setDryRun(false);
-      setLang('auto');
+      setLang(useLocaleStore.getState().locale);
       setPrivacyMode('');
       setAdvancedOpen(false);
       const raf = requestAnimationFrame(() => firstFocusRef.current?.focus());

@@ -6,6 +6,7 @@
 > 2026-05-07 update: Settings is now a 7-tab surface (`Account / Provider / Capture / Privacy / Audit / Preferences / Integrations`). Preferences owns language, appearance, `learnability_threshold`, and `desired_retention`. For the latest closed/open frontend gaps, use `doc/FRONTEND_GAP_REPORT.md`; older rows below remain historical V6 comparison notes unless explicitly updated.
 > 2026-05-08 update: ConceptGraph was rechecked after the current viewer graph change. It now uses SVG + d3-force, has Graph/List views, defaults 201+ nodes to List while keeping Full graph available, includes a side detail panel, and supports full-graph pan/zoom without hard viewport bounds. It does not have cluster/community grouping.
 > 2026-05-09 update: Skills and Settings Integrations now use the protected install API. They preview the manifest, confirm the manifest hash on install/uninstall, show pending/success/error states, and re-detect after writes. Settings also consumes `?tab=provider` / `?tab=capture` / `?tab=integrations`; Concepts consumes `?focus=...`; Review consumes `?card=...`. Real-current-repo install/uninstall was not executed during validation; write tests used temp repos and browser mocks.
+> 2026-05-11 update: Review was rechecked after the viewer review-fix. Review now has Again / Hard / Good / Easy buttons with `1`-`4` shortcuts, at-risk concept copy, and mastery tier bars. Quiz now has Prev / Mark wrong / Next, mode chips, and a progress table; it still does not have the V6 side evidence panel, and its SRSCard still renders Good / Hard / Wrong.
 
 ---
 
@@ -161,13 +162,13 @@
 | SRS rating | good/hard/wrong | Implemented with `rated` gate | **OK** |
 | Progress counter | `Q x/y` | Implemented in header | **OK** |
 | Evidence panel alongside | Side panel in V6 | Not present | **MISSING** |
-| Visual progress bar | V6 had visual bar | Only text counter | **MISSING** |
-| Keyboard shortcuts | V6 had keyboard nav | Not in QuizPage (SRSCard has some) | **PARTIAL** |
+| Visual progress bar | V6 had visual bar | Header counter + progress table | **PARTIAL** |
+| Keyboard shortcuts | V6 had keyboard nav | A-D answer shortcuts and 1/2/3 SRS shortcuts; no Quiz Easy shortcut because SRSCard still hides Easy | **PARTIAL** |
 
 **Work estimate**:
 - Evidence side panel: ~60 LOC TSX + ~30 LOC CSS. **P1**
-- Visual progress bar: ~30 LOC TSX + ~20 LOC CSS. **P2**
-- Keyboard shortcuts: ~40 LOC TSX. **P2**
+- V6-style visual bar: ~30 LOC TSX + ~20 LOC CSS. **P2** (current table already covers readable progress)
+- Remaining keyboard polish: mostly V6 parity details. **P2**
 
 ---
 
@@ -176,15 +177,14 @@
 | Element | V6 Reference | Viewer Current | Gap |
 |---------|-------------|---------------|-----|
 | Flashcard flip | Flip button + space key | Implemented | **OK** |
-| SRS 3-button rating | Wrong/Hard/Good with intervals | Implemented | **OK** |
+| SRS rating | Wrong/Hard/Good/Easy with intervals | Implemented with `1`-`4` shortcuts | **OK** |
 | Progress + remaining count | Card x/y + remaining | Implemented | **OK** |
 | Calendar heatmap | V6 had review calendar | Not present | **MISSING** |
-| Concept mastery bars | V6 had mastery visualization | Not present | **MISSING** |
+| Concept mastery bars | V6 had mastery visualization | Implemented with warning/danger tiers | **OK** |
 | Session summary | V6 had end-of-session stats | Basic "all done" message | **PARTIAL** |
 
 **Work estimate**:
 - Calendar heatmap: ~150 LOC TSX + ~60 LOC CSS + new API. **P2** (backend dependency)
-- Concept mastery bars: ~80 LOC TSX + ~40 LOC CSS. **P2**
 - Session summary enhancement: ~40 LOC TSX + ~3 i18n keys. **P2**
 
 ---
@@ -387,12 +387,12 @@ Estimated new keys needed for full V6 alignment:
 | Dashboard audit cost section | TSX + CSS + API | ~110 | Yes |
 | Dashboard spec alignment card | TSX + CSS | ~90 | Yes |
 | Review calendar heatmap | TSX + CSS + API | ~210 | Yes |
-| Review concept mastery bars | TSX + CSS | ~120 | No |
+| Review concept mastery bars | Implemented 2026-05-11 | 0 | No |
 | Settings provider grid | TSX + CSS | ~120 | No |
 | Settings audit log table | TSX + CSS + API | ~140 | Yes |
 | Ratchet results.tsv section | TSX + CSS + API | ~90 | Yes |
 | Ratchet iteration timeline | TSX + CSS | ~150 | No |
-| Quiz visual progress bar | TSX + CSS | ~50 | No |
+| Quiz visual progress table | Implemented 2026-05-11 | 0 | No |
 | Landing feature cards | TSX + CSS + i18n | ~96 | No |
 | Graph node/edge count | TSX | ~10 | No |
 | V6 extended CSS tokens | CSS | ~30 | No |

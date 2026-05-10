@@ -334,9 +334,24 @@ describe('LearnModeDialog', () => {
     await startBtn.click();
 
     await expect.poll(() => getPayloads(page)).toEqual([
-      { staged: true, unstaged: true, include_untracked: true },
+      { staged: true, unstaged: true, include_untracked: true, lang: 'en' },
     ]);
     await expect.poll(() => getCloseCount(page)).toBe(1);
+  });
+
+  it('defaults learn output language to the active viewer locale', async () => {
+    await renderDialog(page, { locale: 'zh-CN' });
+    await page.waitForSelector('[role="dialog"]');
+
+    await page.locator('.learn-dialog__advanced-toggle').click();
+    await page.waitForSelector('#learn-dialog-advanced');
+    await expect.poll(() => page.locator('#learn-opt-lang').inputValue()).toBe('zh-CN');
+
+    await page.locator('.learn-dialog__btn--primary').click();
+
+    await expect.poll(() => getPayloads(page)).toEqual([
+      { staged: true, unstaged: true, include_untracked: true, lang: 'zh-CN' },
+    ]);
   });
 
   it('path scope input sends deduped changed_paths for working mode', async () => {
@@ -354,6 +369,7 @@ describe('LearnModeDialog', () => {
         unstaged: true,
         include_untracked: true,
         changed_paths: ['src/app.py', 'viewer/src/App.tsx'],
+        lang: 'en',
       },
     ]);
   });
@@ -370,7 +386,7 @@ describe('LearnModeDialog', () => {
     await expect.poll(() => page.locator('#learn-mode-path-scope').isDisabled()).toBe(true);
     await page.locator('.learn-dialog__btn--primary').click();
 
-    await expect.poll(() => getPayloads(page)).toEqual([{ last: true }]);
+    await expect.poll(() => getPayloads(page)).toEqual([{ last: true, lang: 'en' }]);
   });
 
   it('path scope rejects more than 500 unique paths', async () => {
@@ -397,7 +413,7 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__btn--primary').click();
 
     await expect.poll(() => getPayloads(page)).toEqual([
-      { unstaged: true, include_untracked: true },
+      { unstaged: true, include_untracked: true, lang: 'en' },
     ]);
     await expect.poll(() => getCloseCount(page)).toBe(1);
   });
@@ -409,7 +425,7 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__tile').nth(2).click();
     await page.locator('.learn-dialog__btn--primary').click();
 
-    await expect.poll(() => getPayloads(page)).toEqual([{ staged: true }]);
+    await expect.poll(() => getPayloads(page)).toEqual([{ staged: true, lang: 'en' }]);
     await expect.poll(() => getCloseCount(page)).toBe(1);
   });
 
@@ -420,7 +436,7 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__tile').nth(3).click();
     await page.locator('.learn-dialog__btn--primary').click();
 
-    await expect.poll(() => getPayloads(page)).toEqual([{ last: true }]);
+    await expect.poll(() => getPayloads(page)).toEqual([{ last: true, lang: 'en' }]);
     await expect.poll(() => getCloseCount(page)).toBe(1);
   });
 
@@ -483,7 +499,7 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__btn--primary').click();
 
     await expect.poll(() => getPayloads(page)).toEqual([
-      { staged: true, unstaged: true, include_untracked: true, force_learn: true },
+      { staged: true, unstaged: true, include_untracked: true, force_learn: true, lang: 'en' },
     ]);
   });
 
@@ -505,7 +521,7 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__btn--primary').click();
 
     await expect.poll(() => getPayloads(page)).toEqual([
-      { compare: ['main', 'feature-branch'] },
+      { compare: ['main', 'feature-branch'], lang: 'en' },
     ]);
   });
 
@@ -525,7 +541,7 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__btn--primary').click();
 
     await expect.poll(() => getPayloads(page)).toEqual([
-      { compare_dir: ['/old/dir', '/new/dir'] },
+      { compare_dir: ['/old/dir', '/new/dir'], lang: 'en' },
     ]);
   });
 
@@ -543,7 +559,7 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__btn--primary').click();
 
     await expect.poll(() => getPayloads(page)).toEqual([
-      { revision: 'abc123' },
+      { revision: 'abc123', lang: 'en' },
     ]);
   });
 
@@ -560,7 +576,7 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__btn--primary').click();
 
     await expect.poll(() => getPayloads(page)).toEqual([
-      { revision: 'def456' },
+      { revision: 'def456', lang: 'en' },
     ]);
   });
 
@@ -581,7 +597,7 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__btn--primary').click();
 
     await expect.poll(() => getPayloads(page)).toEqual([
-      { revision: 'def456' },
+      { revision: 'def456', lang: 'en' },
     ]);
   });
 
@@ -599,7 +615,7 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__btn--primary').click();
 
     await expect.poll(() => getPayloads(page)).toEqual([
-      { patch_url: 'https://example.test/file.patch' },
+      { patch_url: 'https://example.test/file.patch', lang: 'en' },
     ]);
   });
 
@@ -618,7 +634,7 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__btn--primary').click();
 
     await expect.poll(() => getPayloads(page)).toEqual([
-      { patch: '--- a/file.py\n+++ b/file.py\n@@ -1 +1 @@\n-old\n+new' },
+      { patch: '--- a/file.py\n+++ b/file.py\n@@ -1 +1 @@\n-old\n+new', lang: 'en' },
     ]);
   });
 
@@ -668,7 +684,7 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__btn--primary').click();
 
     await expect.poll(() => getPayloads(page)).toEqual([
-      { since: '2 hours ago', author: 'alice' },
+      { since: '2 hours ago', author: 'alice', lang: 'en' },
     ]);
   });
 
@@ -690,7 +706,7 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__btn--primary').click();
 
     await expect.poll(() => getPayloads(page)).toEqual([
-      { revision: 'abc123' },
+      { revision: 'abc123', lang: 'en' },
     ]);
   });
 
@@ -708,7 +724,7 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__btn--primary').click();
 
     await expect.poll(() => getPayloads(page)).toEqual([
-      { staged: true, unstaged: true, include_untracked: true, dry_run: true },
+      { staged: true, unstaged: true, include_untracked: true, dry_run: true, lang: 'en' },
     ]);
   });
 
