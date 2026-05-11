@@ -330,12 +330,15 @@ export interface ConceptGraphNode {
   metadata: Record<string, unknown>;
 }
 
+export type ConceptGraphEdgeConfidence = 'EXTRACTED' | 'INFERRED' | 'AMBIGUOUS';
+
 export interface ConceptGraphEdge {
   id: string;
   source: string;
   target: string;
   relation: string | null;
   weight: number;
+  confidence?: ConceptGraphEdgeConfidence | null;
 }
 
 export interface ConceptGraphResponse {

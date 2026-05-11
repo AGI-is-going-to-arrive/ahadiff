@@ -43,6 +43,19 @@
 > axe-core checks (`2 passed`). Integration, eval, live judge, and coverage were
 > not rerun in that follow-up.
 
+> Current status note (2026-05-11 ConceptGraph follow-up): this file remains a
+> historical 2026-04-27 live snapshot. Current serve has 61 concrete `/api/*`
+> routes plus one `/api/{rest_of_path:path}` catchall and `/healthz`.
+> `/api/graph/concepts` now emits optional edge `confidence` only for the
+> allowlisted `EXTRACTED` / `INFERRED` / `AMBIGUOUS` values and keeps node
+> `metadata` pass-through. Imported Graphify reads now use no-follow
+> regular-file / reparse / size / UTF-8 guards. The matching follow-up
+> verification was: graph route/parser backend target `117 passed`, target
+> ruff/pyright passed, viewer Vitest `270 passed`, target Playwright
+> `62 passed`, i18n `1131/1131`, and `git diff --check` passed. Integration,
+> eval, live judge, coverage, wheel build, full Playwright, and remote GitHub
+> Actions were not rerun.
+
 ## 2026-04-27 Live Concrete Endpoints (22)
 
 ### Public GET Endpoints (no auth required)

@@ -646,28 +646,31 @@ test.describe('walkthrough: full-app functional test', () => {
   /*  Page 5: Concepts                                                 */
   /* ---------------------------------------------------------------- */
 
-  test('Concepts — heading, d3-force graph renders, detail panel', async ({ page }) => {
+  test('Concepts — heading, Canvas graph renders, detail panel', async ({ page }) => {
     await page.goto('/#/concepts?tab=graph');
 
     // Heading
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     await expect(page.getByRole('heading', { level: 1 })).toContainText(/Concept|概念图谱/i);
 
-    // Concept graph component with d3-force
+    // Concept graph component with Canvas renderer
     await expect(page.locator('.concept-graph')).toBeVisible();
 
     // Source card (Graphify status)
     await expect(page.locator('.concept-graph__src-card')).toBeVisible();
 
-    // SVG graph with d3-force nodes (3 mock nodes)
-    const svgNodes = page.locator('.concept-graph__node');
-    await expect(svgNodes).toHaveCount(3);
+    await expect(page.locator('.concept-graph__canvas canvas')).toBeVisible();
+
+    // Canvas graph exposes a keyboard-accessible node list (3 mock nodes)
+    const graphNodes = page.locator('.concept-graph__a11y-node');
+    await expect(graphNodes).toHaveCount(3);
 
     // Legend
     await expect(page.locator('.concept-graph__legend')).toBeVisible();
 
     // Click first node to open detail panel
-    await svgNodes.first().click();
+    await graphNodes.first().focus();
+    await page.keyboard.press('Enter');
     await expect(page.locator('.concept-graph__detail')).toBeVisible();
     await expect(page.locator('.concept-graph__detail-name')).toBeVisible();
 
@@ -684,16 +687,17 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(page.locator('.concept-graph__detail')).not.toBeVisible();
 
     // Filtering hides non-matching nodes and clears stale detail selection
-    await svgNodes.first().click();
+    await graphNodes.first().focus();
+    await page.keyboard.press('Enter');
     await expect(page.locator('.concept-graph__detail')).toBeVisible();
     await page.getByRole('button', { name: /module/i }).click();
     await expect(page.locator('.concept-graph__detail')).not.toBeVisible();
-    await expect(page.locator('.concept-graph__node')).toHaveCount(1);
+    await expect(page.locator('.concept-graph__a11y-node')).toHaveCount(1);
 
     // View toggle: switch to list view
     const listBtn = page.locator('.concept-graph__view-btn').last();
     await listBtn.click();
-    await expect(page.locator('.concept-graph__listg')).toBeVisible();
+    await expect(page.locator('.concept-graph__listg').first()).toBeVisible();
     await expect(page.locator('.concept-graph__lnode')).toHaveCount(1);
 
     // Escape also closes detail from list/detail focus paths
@@ -709,9 +713,9 @@ test.describe('walkthrough: full-app functional test', () => {
     await installLargeGraphMock(page);
     await page.goto('/#/concepts?tab=graph');
 
-    await expect(page.locator('.concept-graph__listg')).toBeVisible();
+    await expect(page.locator('.concept-graph__listg').first()).toBeVisible();
     await expect(page.locator('.concept-graph__lnode')).toHaveCount(201);
-    await expect(page.locator('.concept-graph__svg')).not.toBeVisible();
+    await expect(page.locator('.concept-graph__canvas canvas')).not.toBeVisible();
     await expect(page.locator('.concept-graph__counts')).toContainText(/201/);
   });
 

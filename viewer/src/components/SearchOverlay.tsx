@@ -54,9 +54,16 @@ function hrefFor(result: SearchResult): string | null {
 interface SearchOverlayProps {
   open: boolean;
   onClose: () => void;
+  /**
+   * Optional query string to seed the input on each open transition. When
+   * provided the overlay also debounces a search immediately so the user
+   * sees results without typing. Cleared on close (next open with no
+   * `initialQuery` starts fresh).
+   */
+  initialQuery?: string;
 }
 
-export default function SearchOverlay({ open, onClose }: SearchOverlayProps) {
+export default function SearchOverlay({ open, onClose, initialQuery }: SearchOverlayProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -79,7 +86,6 @@ export default function SearchOverlay({ open, onClose }: SearchOverlayProps) {
     if (!open) {
       if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
       abortRef.current?.abort();
-      setQuery('');
       setResults([]);
       setActive(0);
       setStatus('idle');
@@ -132,6 +138,14 @@ export default function SearchOverlay({ open, onClose }: SearchOverlayProps) {
       restoreFocusRef.current?.focus({ preventScroll: true });
     };
   }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      setQuery('');
+      return;
+    }
+    setQuery(initialQuery ?? '');
+  }, [initialQuery, open]);
 
   /* Debounced fetch when query changes. */
   useEffect(() => {

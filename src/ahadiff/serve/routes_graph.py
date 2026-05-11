@@ -13,6 +13,7 @@ from ahadiff.contracts.serve_runtime import (
     ConceptGraphEdge,
     ConceptGraphNode,
     ConceptGraphResponse,
+    GraphEdgeConfidence,
     GraphProvenance,
     GraphStatusResponse,
 )
@@ -26,6 +27,9 @@ if TYPE_CHECKING:
 
 _DEFAULT_CONCEPT_GRAPH_LIMIT = 500
 _MAX_CONCEPT_GRAPH_LIMIT = 2_000
+_GRAPH_EDGE_CONFIDENCE_VALUES: frozenset[GraphEdgeConfidence] = frozenset(
+    {"EXTRACTED", "INFERRED", "AMBIGUOUS"}
+)
 
 
 def api_relative_path(path: PurePath, root: PurePath) -> str:
@@ -196,7 +200,7 @@ def _concept_graph_sync(state_dir: object, *, limit: int) -> dict[str, Any]:
             kind=node.kind,
             file_path=node.file_path,
             freshness=freshness,
-            metadata=node.metadata,
+            metadata=dict(node.metadata),
         )
         for node in selected_nodes
     ]
@@ -210,11 +214,9 @@ def _concept_graph_sync(state_dir: object, *, limit: int) -> dict[str, Any]:
         if len(edges) >= max_edges:
             dangling_or_truncated_edges += 1
             continue
-        weight_value = edge.metadata.get("weight")
-        weight = float(weight_value) if isinstance(weight_value, int | float) else 1.0
-        if not math.isfinite(weight):
-            weight = 1.0
-        weight = min(GRAPH_EDGE_WEIGHT_MAX, max(GRAPH_EDGE_WEIGHT_MIN, weight))
+        weight = _coerce_graph_edge_weight(edge.metadata.get("weight"))
+        edge_metadata = edge.metadata or {}
+        confidence = _coerce_graph_edge_confidence(edge_metadata.get("confidence"))
         edges.append(
             ConceptGraphEdge(
                 id=f"{edge.source}->{edge.target}:{index}",
@@ -222,14 +224,38 @@ def _concept_graph_sync(state_dir: object, *, limit: int) -> dict[str, Any]:
                 target=edge.target,
                 relation=edge.relation,
                 weight=weight,
+                confidence=confidence,
             )
         )
-    return ConceptGraphResponse(
+    response_payload = ConceptGraphResponse(
         status=status,
         nodes=nodes,
         edges=edges,
         truncated=len(graph.nodes) > len(nodes) or dangling_or_truncated_edges > 0,
     ).model_dump(mode="json")
+    for edge_payload in response_payload.get("edges", []):
+        if isinstance(edge_payload, dict):
+            edge_dict = cast("dict[str, Any]", edge_payload)
+            if edge_dict.get("confidence") is None:
+                edge_dict.pop("confidence", None)
+    return response_payload
+
+
+def _coerce_graph_edge_weight(value: object) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return 1.0
+    weight = float(value)
+    if not math.isfinite(weight):
+        return 1.0
+    return min(GRAPH_EDGE_WEIGHT_MAX, max(GRAPH_EDGE_WEIGHT_MIN, weight))
+
+
+def _coerce_graph_edge_confidence(value: object) -> GraphEdgeConfidence | None:
+    if not isinstance(value, str):
+        return None
+    if value not in _GRAPH_EDGE_CONFIDENCE_VALUES:
+        return None
+    return value
 
 
 __all__ = ["get_concept_graph", "get_graph_status", "post_graph_refresh"]

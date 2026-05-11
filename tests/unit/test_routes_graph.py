@@ -430,7 +430,29 @@ class TestGraphStatus:
                     }
                 )
 
-    def test_concept_graph_endpoint_returns_d3_nodes_and_edges(self, tmp_path: Path) -> None:
+    def test_concept_graph_edge_rejects_invalid_confidence(self) -> None:
+        edge = ConceptGraphEdge.model_validate(
+            {
+                "id": "e1",
+                "source": "n1",
+                "target": "n2",
+                "confidence": "EXTRACTED",
+            }
+        )
+        assert edge.confidence == "EXTRACTED"
+
+        for confidence in ["BROKEN", "", 1, True]:
+            with pytest.raises(ValidationError):
+                ConceptGraphEdge.model_validate(
+                    {
+                        "id": "e1",
+                        "source": "n1",
+                        "target": "n2",
+                        "confidence": confidence,
+                    }
+                )
+
+    def test_concept_graph_endpoint_returns_nodes_and_edges(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".ahadiff"
         state_dir.mkdir()
         graph_dir = tmp_path / "graphify-out"
@@ -456,9 +478,28 @@ class TestGraphStatus:
                         {"id": "n3", "label": "Baz", "file_path": "src/baz.py"},
                     ],
                     "links": [
-                        {"source": "n1", "target": "n2", "relation": "calls", "weight": 1.5},
-                        {"source": "n2", "target": "n3", "relation": "imports", "weight": -1},
-                        {"source": "n3", "target": "n1", "relation": "uses", "weight": 1e308},
+                        {
+                            "source": "n1",
+                            "target": "n2",
+                            "relation": "calls",
+                            "weight": 1.5,
+                            "confidence": "EXTRACTED",
+                        },
+                        {
+                            "source": "n2",
+                            "target": "n3",
+                            "relation": "imports",
+                            "weight": False,
+                            "confidence": "BROKEN",
+                        },
+                        {
+                            "source": "n3",
+                            "target": "n1",
+                            "relation": "observes",
+                            "weight": True,
+                            "confidence": 1,
+                        },
+                        {"source": "n1", "target": "n3", "relation": "uses", "weight": 1e308},
                     ],
                 }
             ),
@@ -481,18 +522,26 @@ class TestGraphStatus:
                 "target": "n2",
                 "relation": "calls",
                 "weight": 1.5,
+                "confidence": "EXTRACTED",
             },
             {
                 "id": "n2->n3:1",
                 "source": "n2",
                 "target": "n3",
                 "relation": "imports",
-                "weight": 0.1,
+                "weight": 1.0,
             },
             {
                 "id": "n3->n1:2",
                 "source": "n3",
                 "target": "n1",
+                "relation": "observes",
+                "weight": 1.0,
+            },
+            {
+                "id": "n1->n3:3",
+                "source": "n1",
+                "target": "n3",
                 "relation": "uses",
                 "weight": 3.0,
             },

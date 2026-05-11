@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { ApiError } from '../api/client';
 import { fetchGraphConcepts, refreshGraph } from '../api/graph';
 import type { ConceptGraphResponse } from '../api/types';
 import AppShell from '../components/AppShell';
@@ -80,6 +81,11 @@ export default function ConceptsPage() {
   } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const refreshAbortRef = useRef<AbortController | null>(null);
+  const refreshRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showAllRef = useRef(showAll);
+
+  const REFRESH_MAX_RETRIES = 2;
+  const REFRESH_RETRY_DELAY_MS = 2000;
 
   const fetchGraphData = useCallback(async (all = false) => {
     abortRef.current?.abort();
@@ -101,6 +107,10 @@ export default function ConceptsPage() {
       if (!controller.signal.aborted) setGraphLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    showAllRef.current = showAll;
+  }, [showAll]);
 
   useEffect(() => {
     if (activeTab === 'graph') {
@@ -132,33 +142,94 @@ export default function ConceptsPage() {
     setShowAll(true);
   }, []);
 
-  const handleRefreshGraph = useCallback(async () => {
-    refreshAbortRef.current?.abort();
-    const controller = new AbortController();
-    refreshAbortRef.current = controller;
-    setRefreshing(true);
-    setRefreshMessage(null);
-    try {
-      const result = await refreshGraph({ signal: controller.signal });
-      if (controller.signal.aborted) return;
-      setRefreshMessage({
-        kind: 'success',
-        text: t('Concept.refresh_success', {
-          nodes: result.nodes,
-          edges: result.edges,
-        }),
-      });
-      await fetchGraphData(showAll);
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return;
-      if (controller.signal.aborted) return;
-      setRefreshMessage({ kind: 'error', text: t('Concept.refresh_failed') });
-    } finally {
-      if (!controller.signal.aborted) setRefreshing(false);
-    }
-  }, [fetchGraphData, showAll, t]);
+  const runRefreshOnce = useCallback(
+    async (attempt: number): Promise<void> => {
+      refreshAbortRef.current?.abort();
+      const controller = new AbortController();
+      refreshAbortRef.current = controller;
+      setRefreshing(true);
+      if (attempt === 0) setRefreshMessage(null);
+      try {
+        const result = await refreshGraph({ signal: controller.signal });
+        if (controller.signal.aborted) return;
+        setRefreshMessage({
+          kind: 'success',
+          text: t('Concept.refresh_success', {
+            nodes: result.nodes,
+            edges: result.edges,
+          }),
+        });
+        await fetchGraphData(showAllRef.current);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (controller.signal.aborted) return;
 
-  useEffect(() => () => refreshAbortRef.current?.abort(), []);
+        const isLockConflict =
+          err instanceof ApiError && (err.errorCode === 'LOCK_CONFLICT' || err.status === 409);
+        const isNetworkError =
+          err instanceof TypeError ||
+          (err instanceof ApiError && err.status === 0);
+
+        if (isLockConflict && attempt < REFRESH_MAX_RETRIES) {
+          const nextAttempt = attempt + 1;
+          setRefreshMessage({
+            kind: 'error',
+            text: t('Concept.refresh_retrying', {
+              attempt: nextAttempt,
+              max: REFRESH_MAX_RETRIES,
+            }),
+          });
+          refreshRetryTimerRef.current = setTimeout(() => {
+            refreshRetryTimerRef.current = null;
+            void runRefreshOnce(nextAttempt);
+          }, REFRESH_RETRY_DELAY_MS);
+          // keep refreshing=true while waiting for retry
+          return;
+        }
+
+        let key: string;
+        if (isLockConflict) key = 'Concept.refresh_lock_conflict';
+        else if (isNetworkError) key = 'Concept.refresh_network_error';
+        else key = 'Concept.refresh_failed';
+
+        let text = t(key);
+        const apiMsg = err instanceof Error ? err.message : '';
+        if (
+          !isLockConflict &&
+          apiMsg &&
+          !text.includes(apiMsg) &&
+          !apiMsg.startsWith('API ')
+        ) {
+          text = `${text} (${apiMsg})`;
+        }
+        setRefreshMessage({ kind: 'error', text });
+      } finally {
+        if (!controller.signal.aborted && !refreshRetryTimerRef.current) {
+          setRefreshing(false);
+        }
+      }
+    },
+    [fetchGraphData, t],
+  );
+
+  const handleRefreshGraph = useCallback(async () => {
+    if (refreshRetryTimerRef.current) {
+      clearTimeout(refreshRetryTimerRef.current);
+      refreshRetryTimerRef.current = null;
+    }
+    await runRefreshOnce(0);
+  }, [runRefreshOnce]);
+
+  useEffect(
+    () => () => {
+      refreshAbortRef.current?.abort();
+      if (refreshRetryTimerRef.current) {
+        clearTimeout(refreshRetryTimerRef.current);
+        refreshRetryTimerRef.current = null;
+      }
+    },
+    [],
+  );
 
   const activateTab = useCallback((tab: ConceptsTab) => {
     setActiveTab(tab);
@@ -291,6 +362,7 @@ export default function ConceptsPage() {
                 truncated={graphData.truncated}
                 focusNodeId={focusNodeId}
                 onShowAll={graphData.truncated && !showAll ? handleShowAll : undefined}
+                currentRun={runFilter}
               />
             )}
 

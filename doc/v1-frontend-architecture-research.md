@@ -3,10 +3,11 @@
 > Research-only. No code changes. Based on reading all gap analysis docs, V6 HTML reference, Blueprint HTML, and current viewer source.
 
 > Current-state note (2026-05-02): sections 11.4 and 11.6 were written before the latest viewer follow-up. The frontend now has a shared `GraphifyCard` backed by `viewer/src/state/graph-store.ts` with 30s TTL, 15s request timeout, in-flight dedupe, `AbortController`, and invalidate-then-refetch behavior. This closes the basic cross-page freshness/status card gap where the card is mounted. It does **not** close the full V6 Graphify source card, provenance display, CLI polish, or real large-graph signoff work.
-> Current-state note (2026-05-09): this remains a research snapshot, not the current implementation ledger. The v0.1 SRS UI intentionally hides Easy and keeps only Wrong / Hard / Good visible; Topbar Learn Run now opens the lazy-loaded Learn Mode Dialog with 10 capture modes, `/api/learn/estimate` preflight, and working-tree Path scope; Settings has a 7-tab shape with Preferences for language, appearance, `learnability_threshold`, and `desired_retention`. Settings tabs consume `?tab=provider` / `?tab=capture` / `?tab=integrations`; Settings Integrations uses the protected install API for preview/install/uninstall with manifest-hash confirmation, pending/success/error states, and re-detect after writes. Ratchet TSV export is implemented. SearchOverlay-generated `#/concepts?focus=...` and `#/review?card=...` links are consumed by the target pages. ConceptGraph no longer has cluster/group-by-kind mode: it now exposes Graph / List only, defaults 201+ nodes to List, keeps Full graph available, supports full-graph pan/zoom without hard viewport bounds, and strips local home/system prefixes from displayed node file paths. Task progress now uses SSE first with polling fallback. The PWA manifest has same-origin `id` / `scope` and SVG + 192/512 PNG icons; the offline shell still needs its own E2E/signoff. See `doc/FRONTEND_GAP_REPORT.md` for the current closed/open gap list.
+> Current-state note (2026-05-09): this remains a research snapshot, not the current implementation ledger. The v0.1 SRS UI intentionally hides Easy and keeps only Wrong / Hard / Good visible; Topbar Learn Run now opens the lazy-loaded Learn Mode Dialog with 10 capture modes, `/api/learn/estimate` preflight, and working-tree Path scope; Settings has a 7-tab shape with Preferences for language, appearance, `learnability_threshold`, and `desired_retention`. Settings tabs consume `?tab=provider` / `?tab=capture` / `?tab=integrations`; Settings Integrations uses the protected install API for preview/install/uninstall with manifest-hash confirmation, pending/success/error states, and re-detect after writes. Ratchet TSV export is implemented. SearchOverlay-generated `#/concepts?focus=...` and `#/review?card=...` links are consumed by the target pages. At that point, ConceptGraph no longer had cluster/group-by-kind mode: it exposed Graph / List only, defaulted 201+ nodes to List, kept Full graph available, supported full-graph pan/zoom without hard viewport bounds, and stripped local home/system prefixes from displayed node file paths. Task progress now uses SSE first with polling fallback. The PWA manifest has same-origin `id` / `scope` and SVG + 192/512 PNG icons; the offline shell still needs its own E2E/signoff. See `doc/FRONTEND_GAP_REPORT.md` for the current closed/open gap list.
 > Current-state note (2026-05-10): SearchOverlay now has table scope filter chips wired to `/api/search?tables=...` with radio-style arrow-key navigation. Settings now shows usage per model and audit load-more pagination. Run Detail shows extra metadata plus localized degraded flags, and Dashboard shows stable concepts / last run KPI. The CI description in this research note is older than the current workflow; `.github/workflows/frontend-ci.yml` now runs Chromium desktop full E2E plus Firefox and WebKit desktop smoke/a11y.
 > Current-state note (2026-05-10 Guide follow-up): the old Skills page is now a Guide page. `/#/guide` shows workflow, command, maintenance, and integration reference sections; `/#/skills` redirects to `/#/guide`. Real preview/install/uninstall remains in Settings → Integrations, and Guide does not import the install API.
 > Current-state note (2026-05-11 viewer review-fix): section 6.1 is now historical for Review. The Review page renders Again / Hard / Good / Easy with `1`-`4` shortcuts; the Quiz SRSCard still renders Good / Hard / Wrong with the peek guard. Learn Mode Dialog defaults output language to the active viewer locale. Quiz now has Prev / Mark wrong / Next navigation, mode chips, and a progress table. See `doc/FRONTEND_GAP_REPORT.md` for the current closed/open gap list.
+> Current-state note (2026-05-11 ConceptGraph follow-up): section 11.1 / 11.5 has been updated to the current graph implementation. ConceptGraph now uses `react-force-graph-2d` Canvas rendering instead of SVG + direct d3-force, keeps Graph / List with large graphs defaulting to List, adds community fill, edge confidence display metadata, forced-colors support, a screen-reader list fallback, Windows-safe file basenames, and cross-view search events. Vite chunks the graph renderer into `vendor-graph` and excludes it from initial modulepreload. This pass verified the changed graph surface only; full Playwright and real large-repo browser signoff were not rerun.
 
 ---
 
@@ -556,24 +557,24 @@ Current implementation note (2026-05-09): the app already uses `vite-plugin-pwa`
 
 ### 11.1 Current State of ConceptGraph Component
 
-The current `ConceptGraph.tsx` is a **functional SVG + d3-force graph renderer** — NOT a placeholder. Key characteristics:
+The current `ConceptGraph.tsx` is a **functional Canvas graph renderer backed by `react-force-graph-2d`** — NOT a placeholder. Key characteristics:
 
 **What it does render**:
-- **SVG graph with d3-force**: Uses `forceSimulation`, `forceLink`, `forceManyBody`, `forceCenter`, and `forceCollide`; reduced-motion falls back to a static radial layout.
-- **Graph / List views**: The UI has only Graph and List. 201+ nodes default to List, but the Full graph button remains enabled.
-- **Nodes and edges**: Nodes are circles colored by `kind`; edges are weighted straight SVG lines from sanitized `/api/graph/concepts` data.
-- **Filtering and legend**: Kind chips filter the graph/list; the legend mirrors the visible kind palette.
-- **Node detail panel**: Click or keyboard-activate a node to show kind, shortened file path, freshness, and connected nodes in the side panel.
+- **Canvas force graph**: Uses `react-force-graph-2d` for simulation, pan, zoom, and custom `nodeCanvasObject` / `linkCanvasObject` drawing.
+- **Graph / List views**: The UI has only Graph and List. Large graphs default to List, but the Full graph button remains enabled.
+- **Nodes and edges**: Nodes use community fill plus kind stroke; edges use sanitized `/api/graph/concepts` data with bounded `weight` and optional allowlisted `confidence`.
+- **Filtering and legend**: Kind and community filter chips drive both graph and list; community chips are capped so large graphs do not explode the toolbar.
+- **Node detail panel**: Click, canvas hit-test, or list activation shows kind, shortened file path, freshness, community/confidence metadata, connected nodes, and cross-view search links.
 - **Graphify source card**: The shared `GraphifySourceCard` shows status, freshness, counts, and provenance where available.
-- **Pan/zoom and fit/export**: Wheel zoom and background drag update the graph `<g>` transform; drag pauses simulation and uses `requestAnimationFrame` to avoid React re-rendering every pointer move. Fit-to-view uses the graph layer bounding box. Export writes an SVG.
+- **Pan/zoom and fit/export**: Canvas pan/zoom comes from the graph library. Export currently writes the graph data view, not an SVG DOM snapshot.
+- **Accessibility fallback**: Canvas nodes are mirrored into an off-screen/semantic list region so screen readers and forced-colors users are not left with a purely visual canvas.
 
 **What it does NOT have** (compared to V6):
-- No typed node shapes (all nodes are identical circles)
-- No edge curves or arrow markers
-- No cluster/community grouping UI
-- No confidence/community filter surface yet, although backend metadata is preserved
+- No typed node shapes beyond the current circle/ring treatment
+- No edge arrow markers or minimap
+- No cluster/group-by-kind mode; community is exposed as color/filter metadata, not a separate cluster layout
 - No full V6 Graphify source/provenance card with CLI command polish
-- No true Canvas/WebGL renderer or minimap; current implementation stays SVG
+- No real large-repo browser signoff for the Canvas renderer yet
 
 ### 11.2 ConceptsPage Current State
 
@@ -592,7 +593,7 @@ GET /api/graph/concepts?limit=N
 → { status, nodes, edges, truncated }
 ```
 
-Each node has `id`, `name`, `kind`, `file_path`, `freshness`, and `metadata`; each edge has `id`, `source`, `target`, `relation`, and `weight`. This endpoint is the current ConceptGraph data source. The older `/api/concepts` JSONL pagination path still exists for concept ledger browsing, but it is not what the current graph page renders.
+Each node has `id`, `name`, `kind`, `file_path`, `freshness`, and `metadata`; each edge has `id`, `source`, `target`, `relation`, `weight`, and optional `confidence`. `confidence` is emitted only for allowlisted values: `EXTRACTED`, `INFERRED`, or `AMBIGUOUS`. This endpoint is the current ConceptGraph data source. The older `/api/concepts` JSONL pagination path still exists for concept ledger browsing, but it is not what the current graph page renders.
 
 ### 11.4 Graphify Freshness: 4-Value Projection
 
@@ -622,25 +623,24 @@ _CANONICAL_GRAPHIFY_STATUSES = frozenset({"fresh", "stale", "unavailable", "disa
 
 | Library | Bundle Size | Force-directed | React Integration | Typed Nodes | Zoom/Pan | LOC to implement |
 |---------|------------|----------------|-------------------|-------------|----------|-----------------|
-| **Custom SVG** (current) | 0 KB | No (circular only) | Native | Manual | Manual | ~400 for V6 parity |
-| **d3-force** (modular) | ~15 KB | Yes, excellent | Requires ref bridging | Manual SVG | Manual | ~300 for V6 parity |
-| **@react-force-graph-2d** | ~180 KB | Yes (uses d3-force) | Native React | Built-in | Built-in | ~150 for V6 parity |
+| **Custom SVG** (old) | 0 KB | No (circular only) | Native | Manual | Manual | ~400 for V6 parity |
+| **d3-force** (old direct path) | ~15 KB | Yes, excellent | Requires ref bridging | Manual SVG | Manual | ~300 for V6 parity |
+| **@react-force-graph-2d** (current) | async `vendor-graph` chunk | Yes (uses d3-force-3d stack) | Native React wrapper | Built-in canvas hooks | Built-in | Landed for current graph surface |
 | **vis-network** | ~300 KB | Yes | Wrapper needed | Built-in | Built-in | ~120 for V6 parity |
 | **reactflow** | ~90 KB | No (dagre layout) | Native React | Built-in | Built-in | Not suited for force-directed |
 
-**Recommendation: `d3-force` (modular import)**
+**Current implementation: `@react-force-graph-2d` in an async graph chunk**
 
 Rationale:
-1. V6 reference uses hand-rolled SVG with force-directed positioning (the JS in V6 HTML doesn't use d3, but uses a custom force simulation). `d3-force` provides production-quality force simulation without the full d3 bundle
-2. Bundle impact is minimal (~15KB vs current 0KB)
-3. Keeps SVG rendering in React JSX — no canvas escape hatch needed
-4. The current `ConceptGraph.tsx` already uses `d3-force`; remaining work is V6 visual parity, provenance polish, and real large-repo signoff rather than replacing a circular layout
-5. Full control over node shapes (circles, rects, different fills/strokes per type) — matches V6's typed node design
-6. `@react-force-graph-2d` is overkill (180KB) and abstracts away the SVG, making V6 visual fidelity harder
+1. The previous SVG + direct d3-force path left too much DOM/CSS work in the hottest graph surface.
+2. Canvas avoids creating one DOM node per graph node/edge while keeping built-in pan/zoom/hit testing.
+3. The renderer is isolated in `vendor-graph` and excluded from initial modulepreload, so the shell does not eagerly pay the graph-library cost.
+4. Visual parity now comes from custom canvas draw callbacks plus list/detail DOM, not SVG child nodes.
+5. Accessibility has to be explicit because Canvas has no per-node DOM; the current implementation mirrors graph nodes into a semantic list fallback.
 
 **Implementation status**:
 ```
-d3-force is already in use. The current graph still renders manual SVG via React JSX; d3-selection, d3-scale, and d3-shape are still not needed.
+`react-force-graph-2d` is now in use. Direct `d3-force` is no longer a first-order viewer dependency; the graph stack's transitive force packages live in `vendor-graph`.
 ```
 
 ### 11.6 Deep Integration: Current → V6 Target
@@ -654,7 +654,7 @@ Header: [Graph|List] chips + [Fit|Export JSON] buttons + "48 nodes · 71 edges" 
 │   │   └── border-left accent, file status rows, CLI commands
 │   └── Graph Container (.graph-wrap)
 │       ├── Filter Chips: All(on) | This Diff | From Graphify | Learning Memory | Weak Claims
-│       ├── SVG Force-directed Graph (900×560 viewBox)
+│       ├── Canvas Force-directed Graph (560px high)
 │       │   ├── Edges: curved paths with arrow markers
 │       │   └── Nodes (5 types):
 │       │       ├── Repo context: grey (#A8A39A) circles, stroke only
@@ -675,16 +675,16 @@ Header: [Graph|List] chips + [Fit|Export JSON] buttons + "48 nodes · 71 edges" 
 | Step | Current | Target | LOC | Priority |
 |------|---------|--------|-----|----------|
 | 1. 2-column layout | Single column | `grid-template-columns: 1fr 320px` | ~30 CSS | P0 |
-| 2. Replace circular → force-directed | Landed for normal mode; reduced-motion keeps a static layout | Further tune d3-force for real large graphs | ~40 TSX | P1 |
-| 3. Typed node shapes | All identical circles | 5 node types with different shapes/colors per V6 spec | ~80 TSX + ~40 CSS | P0 |
-| 4. Edge curves + arrows | Straight `<line>` elements | `<path>` curves with `<marker>` arrowheads | ~40 TSX + ~10 CSS | P1 |
-| 5. Filter chips | Kind filters landed | V6 semantic filters: All / This Diff / From Graphify / Learning Memory / Weak Claims | ~40 TSX + ~20 CSS | P1 |
-| 6. Legend bar | Landed for kind palette | Align labels and placement with final V6 visual spec | ~20 CSS | P2 |
+| 2. Replace circular → force-directed | Landed through Canvas renderer | Real large-repo browser signoff still needed | done | P1 |
+| 3. Typed node shapes | Community fill + kind stroke landed | 5 exact V6 shapes remain optional polish | partial | P1 |
+| 4. Edge curves + arrows | Canvas links landed, no SVG markers | Add arrows only if they stay readable at scale | optional | P2 |
+| 5. Filter chips | Kind + community filters landed | Add V6 semantic filters only when backend sends stable origin/risk fields | partial | P1 |
+| 6. Legend bar | Landed for kind/community palette | Align labels and placement with final V6 visual spec | ~20 CSS | P2 |
 | 7. Node detail panel | Landed as side panel | Add richer descriptions / claim links when backend provides them | ~40 TSX + ~20 CSS | P1 |
 | 8. Graphify source card | Shared card landed | Full `.src-card` with CLI commands and deeper provenance rows | ~40 TSX + ~20 CSS | P2 |
 | 9. Header controls | Graph/List + Fit/Export landed | Add explicit "N nodes · M edges" header counter | ~15 TSX | P2 |
-| 10. Zoom/Pan | Landed with unbounded transform pan/zoom | Add touch gesture polish / minimap only if still needed | ~40 TSX | P2 |
-| 11. List fallback | Grid list landed and used by default for 201+ nodes | Add richer metadata/scaffolding badges | ~30 TSX + ~20 CSS | P2 |
+| 10. Zoom/Pan | Landed through graph library | Add touch gesture polish / minimap only if still needed | ~40 TSX | P2 |
+| 11. List fallback | Grid/list fallback landed and used by default for large graphs | Add richer metadata/scaffolding badges | ~30 TSX + ~20 CSS | P2 |
 
 **Total Graphify frontend LOC**: ~640 TSX + ~220 CSS = **~860 LOC**
 
@@ -735,7 +735,7 @@ The Graphify frontend integration (~860 LOC) is part of the same v1.0 milestone.
 |-------|-------------|-----|
 | F2 | 2-column layout + node detail panel (structural) | ~150 |
 | F3 | Force-directed simulation + typed nodes + filter chips + legend + freshness display | ~580 |
-| F4 | Zoom/pan + Graphify source card + Export SVG + list fallback polish | Mostly landed; remaining work is provenance/CLI polish and large-repo signoff |
+| F4 | Zoom/pan + Graphify source card + export/data action + list fallback polish | Mostly landed; remaining work is provenance/CLI polish and large-repo signoff |
 
 **Updated totals** (with Graphify):
 | Stage | Original LOC | + Graphify | New Total |

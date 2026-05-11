@@ -1,6 +1,8 @@
 /* ==========================================================================
-   ConceptGraph — Phase 5D d3-force graph + detail panel + list fallback
+   ConceptGraph — Canvas force graph + detail panel + list fallback
    V6 aligned: .graph-wrap 560px, legend overlay, .src-card, .listg grid
+   Visual overhaul: degree-sized nodes, curved edges, semantic palette,
+   glassmorphic legend, kind-grouped list cards, slide-in detail panel.
    ========================================================================== */
 
 /* ---------- Container ---------- */
@@ -28,10 +30,200 @@
   flex-wrap: wrap;
 }
 
+.concept-graph__toolbar-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .concept-graph__filters {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+/* ---------- Community filter chips ---------- */
+
+.concept-graph__community-filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.concept-graph__community-filters-label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding-right: var(--sp-2);
+}
+
+/* Inline info marker next to the COMMUNITIES label.
+   Title attribute carries the help copy on hover; aria-label on the role=img
+   span exposes it to screen readers without needing focusable interaction. */
+.concept-graph__community-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--muted);
+  background: var(--subtle, #f2efe7);
+  cursor: help;
+  margin-left: 6px;
+  vertical-align: middle;
+  user-select: none;
+}
+
+.concept-graph__filter-chip--community {
+  border-style: dashed;
+}
+
+.concept-graph__filter-chip--community.concept-graph__filter-chip--active {
+  border-style: solid;
+  background: transparent;
+}
+
+.concept-graph__community-overflow {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px dashed var(--hair);
+  border-radius: 16px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+/* ---------- Hop selector + focus controls ---------- */
+
+.concept-graph__hop-selector {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.concept-graph__hop-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  background: var(--elevated);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out-quart),
+              border-color var(--dur-fast) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart);
+}
+
+.concept-graph__hop-btn:hover {
+  background: var(--accent-softest);
+  color: var(--ink);
+}
+
+.concept-graph__hop-btn--active,
+.concept-graph__hop-btn--active:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.concept-graph__hop-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-left: 4px;
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart);
+}
+
+.concept-graph__hop-clear:hover:not(:disabled) {
+  background: var(--subtle);
+  color: var(--ink);
+}
+
+.concept-graph__hop-clear:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---------- Community link in detail panel ---------- */
+
+.concept-graph__community-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid currentColor;
+  border-radius: 12px;
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out-quart);
+}
+
+.concept-graph__community-link:hover {
+  background: var(--subtle);
+}
+
+.concept-graph__community-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.concept-graph__community-link-count {
+  color: var(--muted);
+  font-size: var(--fs-2xs);
+}
+
+/* ---------- Community ring on graph nodes ---------- */
+
+.concept-graph__community-ring {
+  pointer-events: none;
+  transition: opacity var(--dur-fast) var(--ease-out-quart);
+}
+
+/* ---------- Focus mode layer transition ---------- */
+
+.concept-graph__layer {
+  transition: opacity 0.3s ease-out;
+}
+
+.concept-graph__filters-sep {
+  display: inline-block;
+  width: 1px;
+  height: 16px;
+  background: var(--hair);
+  margin: 0 4px;
 }
 
 .concept-graph__large-warning {
@@ -79,16 +271,17 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 11px;
+  padding: 4px 12px;
   border: 1px solid var(--hair);
-  border-radius: var(--r-full);
+  border-radius: 16px;
   background: var(--elevated);
   font-family: var(--font-sans);
   font-size: var(--fs-xs);
   color: var(--ink);
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease-out-quart),
-              border-color var(--dur-fast) var(--ease-out-quart);
+              border-color var(--dur-fast) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart);
 }
 
 .concept-graph__filter-chip:hover {
@@ -97,9 +290,30 @@
 
 .concept-graph__filter-chip--active,
 .concept-graph__filter-chip--active:hover {
-  background: var(--accent-softest);
+  background: var(--concept-kind-fill, var(--accent-soft));
+  border-color: var(--concept-kind-stroke, var(--accent));
+  color: var(--ink-strong);
+}
+
+.concept-graph__filter-chip--all.concept-graph__filter-chip--active,
+.concept-graph__filter-chip--all.concept-graph__filter-chip--active:hover {
+  background: var(--accent-soft);
   border-color: var(--accent);
   color: var(--accent-ink);
+}
+
+.concept-graph__filter-chip--freshness-fresh.concept-graph__filter-chip--active,
+.concept-graph__filter-chip--freshness-fresh.concept-graph__filter-chip--active:hover {
+  background: var(--success-soft);
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.concept-graph__filter-chip--freshness-stale.concept-graph__filter-chip--active,
+.concept-graph__filter-chip--freshness-stale.concept-graph__filter-chip--active:hover {
+  background: var(--warning-soft);
+  border-color: var(--warning);
+  color: var(--warning);
 }
 
 .concept-graph__filter-swatch {
@@ -108,6 +322,14 @@
   height: 8px;
   border-radius: 50%;
   background: var(--concept-kind-stroke, var(--accent));
+}
+
+.concept-graph__filter-swatch--fresh {
+  background: var(--success);
+}
+
+.concept-graph__filter-swatch--stale {
+  background: var(--warning);
 }
 
 .concept-graph__view-toggle {
@@ -182,7 +404,7 @@
 }
 
 .concept-graph__body--with-panel {
-  grid-template-columns: 1fr 320px;
+  grid-template-columns: 1fr 340px;
 }
 
 .concept-graph__main {
@@ -201,71 +423,93 @@
   overflow: hidden;
 }
 
-/* ---------- SVG ---------- */
+/* ---------- Canvas graph + accessible node list ---------- */
 
-.concept-graph__svg {
+.concept-graph__canvas {
   display: block;
   width: 100%;
   height: 560px;
+  animation: graphFadeIn 320ms ease-out;
 }
 
-.concept-graph__edge {
-  stroke: var(--hair);
-  fill: none;
-  transition: stroke var(--dur-fast) var(--ease-out-quart);
+@keyframes graphFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
-.concept-graph__edge--highlight {
-  stroke: var(--accent);
-  stroke-width: 2;
+.concept-graph__a11y-list {
+  position: absolute;
+  top: var(--sp-3);
+  left: var(--sp-3);
+  z-index: 2;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+  clip: rect(0, 0, 0, 0);
 }
 
-.concept-graph__node {
+.concept-graph__a11y-list:focus-within {
+  width: min(360px, calc(100% - var(--sp-6)));
+  height: auto;
+  max-height: 260px;
+  padding: var(--sp-2);
+  overflow: auto;
+  clip: auto;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  background: var(--elevated);
+  box-shadow: var(--sh-lg);
+}
+
+.concept-graph__a11y-node {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
   cursor: pointer;
-  outline: none;
 }
 
-.concept-graph__node:focus-visible .concept-graph__circle,
-.concept-graph__node:hover .concept-graph__circle {
-  stroke-width: 2.5;
-  filter: drop-shadow(0 0 6px var(--concept-kind-stroke, var(--accent-tint)));
+.concept-graph__a11y-node:hover,
+.concept-graph__a11y-node:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  background: var(--accent-softest);
 }
 
-.concept-graph__node--selected .concept-graph__circle {
-  stroke: var(--accent);
-  stroke-width: 2.5;
-  filter: drop-shadow(0 0 6px var(--accent-tint));
+.concept-graph__a11y-node-name,
+.concept-graph__a11y-node-file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.concept-graph__node:focus-visible {
-  outline: none;
+.concept-graph__a11y-node-file {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--muted);
 }
 
-.concept-graph__circle {
-  fill: var(--concept-kind-fill, var(--accent-softer));
-  stroke: var(--concept-kind-stroke, var(--accent-tint));
-  stroke-width: 1.5;
-  transition: stroke-width var(--dur-fast) var(--ease-out-quart),
-              filter var(--dur-fast) var(--ease-out-quart);
-}
-
-.concept-graph__label {
-  fill: var(--ink);
-  font-family: var(--font-sans);
-  font-size: var(--fs-2xs);
-  text-anchor: middle;
-  dominant-baseline: central;
-  pointer-events: none;
-  user-select: none;
-}
-
-/* ---------- Legend (V6: .legend) ---------- */
+/* ---------- Legend (V6: .legend) — glassmorphic bottom bar ---------- */
 
 .concept-graph__legend {
   position: absolute;
-  left: var(--sp-4);
-  right: var(--sp-4);
-  bottom: 14px;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
   background: rgba(255, 255, 255, 0.94);
   border: 1px solid var(--hair);
   border-radius: 10px;
@@ -277,6 +521,8 @@
   gap: 18px;
   flex-wrap: wrap;
   align-items: center;
+  max-width: calc(100% - var(--sp-6));
+  z-index: 1;
 }
 
 .concept-graph__legend-label {
@@ -303,17 +549,25 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--concept-kind-fill, var(--accent-softer));
-  border: 1.5px solid var(--concept-kind-stroke, var(--accent-tint));
+  background: var(--concept-kind-fill, #F2EFE7);
+  border: 2px solid var(--concept-kind-stroke, #8E8778);
 }
 
-/* ---------- Detail panel ---------- */
+.concept-graph__legend-swatch--ring {
+  background: var(--subtle, #F2EFE7);
+  border-color: var(--muted, #8E8778);
+  border-width: 2px;
+}
+
+/* ---------- Detail panel — slide-in with kind-colored header bar ---------- */
 
 .concept-graph__detail {
+  position: relative;
   background: var(--elevated);
   border: 1px solid var(--hair);
   border-radius: var(--r-lg);
   padding: var(--sp-5);
+  padding-top: calc(var(--sp-5) + 6px);
   overflow-y: auto;
   max-height: calc(100vh - 120px);
   max-height: calc(100dvh - 120px);
@@ -322,8 +576,8 @@
   align-self: start;
   transform: translateX(100%);
   opacity: 0;
-  transition: transform var(--dur-base) var(--ease-out-quart),
-              opacity var(--dur-base) var(--ease-out-quart);
+  transition: transform 200ms ease-out,
+              opacity 200ms ease-out;
   will-change: transform, opacity;
 }
 
@@ -332,11 +586,24 @@
   opacity: 1;
 }
 
+/* Colored header strip matching the node's kind color */
+.concept-graph__detail-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--concept-kind-stroke, var(--accent));
+  border-top-left-radius: var(--r-lg);
+  border-top-right-radius: var(--r-lg);
+}
+
 .concept-graph__detail-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: var(--sp-4);
+  gap: var(--sp-2);
 }
 
 .concept-graph__detail-name {
@@ -346,6 +613,9 @@
   font-weight: 500;
   color: var(--ink-strong);
   letter-spacing: -0.005em;
+  word-break: break-word;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .concept-graph__detail-close {
@@ -361,6 +631,7 @@
   cursor: pointer;
   font-size: 14px;
   transition: background var(--dur-fast) var(--ease-out-quart);
+  flex: 0 0 auto;
 }
 
 .concept-graph__detail-close:hover {
@@ -374,6 +645,7 @@
   padding: var(--sp-2) 0;
   border-bottom: 1px solid var(--hair);
   font-size: var(--fs-base);
+  flex-wrap: wrap;
 }
 
 .concept-graph__detail-row:last-child {
@@ -383,8 +655,13 @@
 .concept-graph__detail-label {
   color: var(--muted);
   font-size: var(--fs-sm);
-  min-width: 60px;
+  min-width: 70px;
   flex-shrink: 0;
+}
+
+.concept-graph__detail-value {
+  color: var(--ink);
+  font-size: var(--fs-sm);
 }
 
 .concept-graph__detail-code {
@@ -401,21 +678,147 @@
   padding-top: var(--sp-3);
 }
 
+.concept-graph__detail-meta {
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  font-size: var(--fs-xs);
+}
+
+.concept-graph__detail-meta-row {
+  display: grid;
+  grid-template-columns: minmax(70px, 30%) 1fr;
+  gap: var(--sp-2);
+  padding: 4px var(--sp-2);
+  border-radius: 4px;
+  background: var(--subtle);
+}
+
+.concept-graph__detail-meta-key {
+  margin: 0;
+  font-family: var(--font-mono);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.concept-graph__detail-meta-val {
+  margin: 0;
+  color: var(--ink);
+  word-break: break-word;
+}
+
+.concept-graph__detail-rel-groups {
+  margin-top: var(--sp-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.concept-graph__detail-rel-group {
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  padding: var(--sp-2);
+  background: var(--surface, var(--elevated));
+}
+
+.concept-graph__detail-rel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.concept-graph__detail-rel-name {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--accent-ink);
+}
+
+.concept-graph__detail-rel-count {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
 .concept-graph__detail-connections {
   list-style: none;
-  margin: var(--sp-2) 0 0;
+  margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
+  gap: 3px;
   font-size: var(--fs-sm);
   color: var(--ink);
 }
 
-.concept-graph__detail-connections li {
+.concept-graph__detail-conn-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: var(--sp-1) var(--sp-2);
-  border-radius: 6px;
+  border-radius: 4px;
   background: var(--subtle);
+  word-break: break-word;
+}
+
+.concept-graph__detail-conn-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--concept-kind-stroke, var(--accent));
+}
+
+.concept-graph__detail-conn-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* ---------- Quick links (cross-view navigation from detail panel) ---------- */
+
+.concept-graph__quick-links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--hair);
+}
+
+.concept-graph__quick-links .concept-graph__detail-label {
+  margin-bottom: 2px;
+}
+
+.concept-graph__quick-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  color: var(--accent-ink, #B04E28);
+  text-decoration: none;
+  transition: background var(--dur-fast) var(--ease-out-quart);
+}
+
+.concept-graph__quick-link::before {
+  content: '→';
+  font-size: 12px;
+  opacity: 0.6;
+  flex: 0 0 auto;
+}
+
+.concept-graph__quick-link:hover {
+  background: var(--accent-softer, var(--accent-softest));
+}
+
+.concept-graph__quick-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* ---------- Kind badge ---------- */
@@ -461,45 +864,173 @@
   opacity: 0.6;
 }
 
-/* ---------- List fallback (V6: .listg) ---------- */
+/* ---------- List view (V6: .listg) — search, groups, cards ---------- */
+
+.concept-graph__list-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.concept-graph__list-search {
+  display: block;
+}
+
+.concept-graph__list-search-input {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  background: var(--elevated);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  transition: border-color var(--dur-fast) var(--ease-out-quart);
+}
+
+.concept-graph__list-search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.concept-graph__list-empty {
+  padding: var(--sp-5) var(--sp-4);
+  border: 1px dashed var(--hair-strong);
+  border-radius: var(--r-md);
+  text-align: center;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.concept-graph__list-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.concept-graph__list-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: var(--sp-1) var(--sp-2);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  color: var(--ink-strong);
+  text-align: left;
+  border-radius: 6px;
+  transition: background var(--dur-fast) var(--ease-out-quart);
+}
+
+.concept-graph__list-group-header:hover {
+  background: var(--subtle);
+}
+
+.concept-graph__list-group-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--concept-kind-fill, #F2EFE7);
+  border: 1.5px solid var(--concept-kind-stroke, #8E8778);
+  flex: 0 0 auto;
+}
+
+.concept-graph__list-group-name {
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.concept-graph__list-group-count {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.concept-graph__list-group-chev {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
 
 .concept-graph__listg {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 10px;
   overflow: hidden;
 }
 
 .concept-graph__lnode {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   padding: 10px var(--sp-3);
   border: 1px solid var(--hair);
+  border-left: 3px solid var(--concept-kind-stroke, var(--accent));
   background: var(--elevated);
   border-radius: var(--r-md);
   font-size: var(--fs-sm);
   text-align: left;
   cursor: pointer;
-  transition: box-shadow var(--dur-fast) var(--ease-out-quart);
+  transition: box-shadow var(--dur-fast) var(--ease-out-quart),
+              transform var(--dur-fast) var(--ease-out-quart),
+              border-color var(--dur-fast) var(--ease-out-quart);
   min-width: 0;
   overflow: hidden;
 }
 
 .concept-graph__lnode:hover {
   box-shadow: var(--sh-md);
+  transform: translateY(-1px);
+}
+
+.concept-graph__lnode-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: space-between;
 }
 
 .concept-graph__lnode-name {
   display: block;
   font-weight: 500;
   color: var(--ink-strong);
-  margin-bottom: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.concept-graph__lnode-fresh {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.concept-graph__lnode-fresh--fresh {
+  background: var(--success);
+}
+
+.concept-graph__lnode-fresh--stale {
+  background: var(--warning);
 }
 
 .concept-graph__lnode-kind {
-  display: block;
+  display: inline-block;
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  margin-bottom: 2px;
-  color: var(--concept-kind-stroke, var(--accent));
+  font-size: var(--fs-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--concept-kind-fill, var(--accent-soft));
+  color: var(--concept-kind-badge, var(--accent));
+  align-self: flex-start;
 }
 
 .concept-graph__lnode-file {
@@ -510,6 +1041,44 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.concept-graph__lnode-deg {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+}
+
+.concept-graph__list-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px dashed var(--hair);
+  border-radius: var(--r-md);
+  background: var(--subtle);
+}
+
+.concept-graph__list-more-text {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.concept-graph__list-more-btn {
+  padding: var(--sp-1) var(--sp-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--accent);
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
+.concept-graph__list-more-btn:hover {
+  background: var(--accent-softest);
 }
 
 /* ---------- Truncation notice ---------- */
@@ -604,7 +1173,7 @@
 
 @media (max-width: 768px) {
   .concept-graph__listg {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   }
 
   .concept-graph__graph-wrap {
@@ -612,7 +1181,7 @@
     min-height: 400px;
   }
 
-  .concept-graph__svg {
+  .concept-graph__canvas {
     height: 400px;
   }
 
@@ -623,10 +1192,12 @@
 
   .concept-graph__legend {
     position: static;
+    transform: none;
     margin-top: 10px;
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     background: var(--elevated);
+    max-width: none;
   }
 }
 
@@ -647,72 +1218,104 @@
    ========================================================================== */
 
 @media (forced-colors: active) {
-  .concept-graph__svg {
+  .concept-graph__canvas {
     border: 2px solid CanvasText;
     background: Canvas;
   }
 
-  .concept-graph__circle {
-    fill: Canvas;
-    stroke: CanvasText;
-  }
-
-  .concept-graph__label {
-    fill: CanvasText;
-  }
-
-  .concept-graph__filter-swatch,
-  .concept-graph__legend-swatch {
-    border: 1px solid CanvasText !important;
-    background: CanvasText !important;
-  }
-
-  .concept-graph__edge {
-    stroke: CanvasText;
-  }
-
-  .concept-graph__edge--highlight {
-    stroke: Highlight;
-  }
-
-  .concept-graph__node:focus-visible .concept-graph__circle {
-    stroke: Highlight;
-    stroke-width: 4;
-    filter: none;
-  }
-
-  .concept-graph__node--selected .concept-graph__circle {
-    stroke: Highlight;
-  }
-
-  .concept-graph__filter-chip {
+  .concept-graph__a11y-list:focus-within,
+  .concept-graph__a11y-node {
     border-color: CanvasText;
     background: Canvas;
     color: CanvasText;
   }
 
+  .concept-graph__filter-swatch,
+  .concept-graph__legend-swatch,
+  .concept-graph__list-group-dot {
+    border: 1px solid CanvasText !important;
+    background: CanvasText !important;
+  }
+
+  .concept-graph__legend-swatch--ring {
+    border: 2px solid CanvasText !important;
+    background: Canvas !important;
+  }
+
+  .concept-graph__legend-swatch--ring::after {
+    background: Canvas !important;
+    opacity: 0 !important;
+  }
+
+  .concept-graph__filter-swatch--fresh,
+  .concept-graph__filter-swatch--stale {
+    background: CanvasText !important;
+  }
+
+  .concept-graph__filter-chip {
+    border-color: CanvasText !important;
+    background: Canvas !important;
+    color: CanvasText !important;
+  }
+
   .concept-graph__filter-chip--active,
   .concept-graph__filter-chip--active:hover {
-    background: Canvas;
-    color: Highlight;
-    border-color: Highlight;
-    box-shadow: inset 0 0 0 1px Highlight;
-    outline: 2px solid Highlight;
+    background: Canvas !important;
+    color: Highlight !important;
+    border-color: Highlight !important;
+    box-shadow: inset 0 0 0 1px Highlight !important;
+    outline: 2px solid Highlight !important;
     outline-offset: 1px;
   }
 
   .concept-graph__lnode {
     border-color: CanvasText;
     background: Canvas;
+    border-left-color: CanvasText;
   }
 
   .concept-graph__lnode-kind {
     color: CanvasText;
+    background: Canvas;
+    border: 1px solid CanvasText;
+  }
+
+  .concept-graph__lnode-fresh--fresh,
+  .concept-graph__lnode-fresh--stale {
+    background: CanvasText;
+    outline: 1px solid CanvasText;
   }
 
   .concept-graph__detail {
     border-color: CanvasText;
     background: Canvas;
+  }
+
+  .concept-graph__detail-bar {
+    background: Highlight;
+  }
+
+  .concept-graph__detail-meta-row {
+    border: 1px solid CanvasText;
+    background: Canvas;
+  }
+
+  .concept-graph__detail-rel-group {
+    border-color: CanvasText;
+    background: Canvas;
+  }
+
+  .concept-graph__detail-rel-name {
+    color: Highlight;
+  }
+
+  .concept-graph__detail-conn-item {
+    border: 1px solid CanvasText;
+    background: Canvas;
+  }
+
+  .concept-graph__detail-conn-dot {
+    background: CanvasText;
   }
 
   .concept-graph__legend {
@@ -754,6 +1357,71 @@
     background: Canvas;
     color: CanvasText;
   }
+
+  .concept-graph__list-search-input {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .concept-graph__list-more {
+    border-color: CanvasText;
+    background: Canvas;
+  }
+
+  .concept-graph__list-more-btn {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .concept-graph__quick-links {
+    border-top-color: CanvasText;
+  }
+
+  .concept-graph__quick-link {
+    color: LinkText;
+    background: Canvas;
+  }
+
+  .concept-graph__quick-link:hover,
+  .concept-graph__quick-link:focus-visible {
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .concept-graph__hop-btn,
+  .concept-graph__hop-clear {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .concept-graph__hop-btn--active,
+  .concept-graph__hop-btn--active:hover {
+    background: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+
+  .concept-graph__community-link {
+    border-color: CanvasText !important;
+    background: Canvas;
+    color: CanvasText !important;
+  }
+
+  .concept-graph__community-dot,
+  .concept-graph__community-ring {
+    background: CanvasText !important;
+    stroke: CanvasText !important;
+  }
+
+  .concept-graph__filter-chip--community,
+  .concept-graph__filter-chip--community.concept-graph__filter-chip--active {
+    border-color: CanvasText !important;
+    background: Canvas !important;
+    color: CanvasText !important;
+  }
 }
 
 /* ==========================================================================
@@ -765,6 +1433,10 @@
     animation: none;
   }
 
+  .concept-graph__canvas {
+    animation: none;
+  }
+
   .concept-graph__detail {
     animation: none;
     transition: none;
@@ -772,19 +1444,23 @@
     opacity: 1;
   }
 
-  .concept-graph__circle,
-  .concept-graph__edge,
   .concept-graph__filter-chip,
   .concept-graph__view-btn,
   .concept-graph__lnode,
-  .concept-graph__detail-close {
+  .concept-graph__detail-close,
+  .concept-graph__quick-link,
+  .concept-graph__layer,
+  .concept-graph__hop-btn,
+  .concept-graph__hop-clear,
+  .concept-graph__community-link,
+  .concept-graph__community-ring {
     transition: none;
   }
 
-  .concept-graph__node:focus-visible .concept-graph__circle,
-  .concept-graph__node:hover .concept-graph__circle {
-    filter: none;
+  .concept-graph__lnode:hover {
+    transform: none;
   }
+
 }
 
 /* ==========================================================================
@@ -806,12 +1482,6 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .concept-graph__graph-wrap {
     background: var(--subtle);
-    --graph-code-fill: rgba(210, 112, 80, 0.18);
-    --graph-code-stroke: #D97757;
-    --graph-rationale-fill: rgba(148, 98, 22, 0.18);
-    --graph-rationale-stroke: #E5C18C;
-    --graph-module-fill: rgba(46, 74, 107, 0.18);
-    --graph-module-stroke: #B3C9E0;
   }
 
   :root:not([data-theme="light"]) .concept-graph__legend {
@@ -825,12 +1495,6 @@
 
 [data-theme="dark"] .concept-graph__graph-wrap {
   background: var(--subtle);
-  --graph-code-fill: rgba(210, 112, 80, 0.18);
-  --graph-code-stroke: #D97757;
-  --graph-rationale-fill: rgba(148, 98, 22, 0.18);
-  --graph-rationale-stroke: #E5C18C;
-  --graph-module-fill: rgba(46, 74, 107, 0.18);
-  --graph-module-stroke: #B3C9E0;
 }
 
 [data-theme="dark"] .concept-graph__legend {
@@ -840,7 +1504,6 @@
 [data-theme="dark"] .concept-graph__src-card {
   background: var(--subtle);
 }
-
 /* ==========================================================================
    Print
    ========================================================================== */

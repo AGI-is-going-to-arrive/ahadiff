@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import Topbar from './Topbar';
 import Sidebar from './Sidebar';
 import LearnTaskBanner from './LearnTaskBanner';
+import { OPEN_SEARCH_EVENT, type OpenSearchEventDetail } from './open-search-event';
 import { useTranslation } from '../i18n/useTranslation';
 import './AppShell.css';
 
@@ -32,6 +33,7 @@ export default function AppShell({ children, globalShortcutsDisabled = false }: 
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchInitialQuery, setSearchInitialQuery] = useState<string>('');
   const [isLearnDialogOpen, setIsLearnDialogOpen] = useState(false);
   const [isMobileNav, setIsMobileNav] = useState(() =>
     typeof window === 'undefined' ? false : window.matchMedia(DRAWER_QUERY).matches,
@@ -41,8 +43,12 @@ export default function AppShell({ children, globalShortcutsDisabled = false }: 
     const media = window.matchMedia(DRAWER_QUERY);
     const sync = () => setIsMobileNav(media.matches);
     sync();
-    media.addEventListener('change', sync);
-    return () => media.removeEventListener('change', sync);
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', sync);
+      return () => media.removeEventListener('change', sync);
+    }
+    media.addListener(sync);
+    return () => media.removeListener(sync);
   }, []);
 
   useEffect(() => {
@@ -86,7 +92,12 @@ export default function AppShell({ children, globalShortcutsDisabled = false }: 
         return;
       }
       event.preventDefault();
-      setIsSearchOpen((open) => !open);
+      setIsSearchOpen((open) => {
+        if (open) return false;
+        /* Fresh keyboard-driven open should not reuse a stale concept seed. */
+        setSearchInitialQuery('');
+        return true;
+      });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -96,6 +107,23 @@ export default function AppShell({ children, globalShortcutsDisabled = false }: 
   useEffect(() => {
     setIsSearchOpen(false);
   }, [location.pathname]);
+
+  /**
+   * Listen for `OPEN_SEARCH_EVENT` dispatched by ConceptGraph's detail panel
+   * "Search this concept" link. Opens the global overlay and seeds the input
+   * with the concept name. We coerce the detail to string to defend against
+   * arbitrary dispatchers.
+   */
+  useEffect(() => {
+    const onOpenSearch = (event: Event) => {
+      const detail = (event as CustomEvent<OpenSearchEventDetail>).detail;
+      const query = typeof detail?.query === 'string' ? detail.query : '';
+      setSearchInitialQuery(query);
+      setIsSearchOpen(true);
+    };
+    window.addEventListener(OPEN_SEARCH_EVENT, onOpenSearch);
+    return () => window.removeEventListener(OPEN_SEARCH_EVENT, onOpenSearch);
+  }, []);
 
   useEffect(() => {
     if (!isMobileNav && isSidebarOpen) setIsSidebarOpen(false);
@@ -120,7 +148,10 @@ export default function AppShell({ children, globalShortcutsDisabled = false }: 
         isMenuOpen={isSidebarOpen}
         menuButtonRef={menuButtonRef}
         onMenuToggle={() => setIsSidebarOpen((open) => !open)}
-        onSearchOpen={() => setIsSearchOpen(true)}
+        onSearchOpen={() => {
+          setSearchInitialQuery('');
+          setIsSearchOpen(true);
+        }}
         onLearnDialogOpen={() => setIsLearnDialogOpen(true)}
       />
       <div className="app-shell__body">
@@ -148,7 +179,14 @@ export default function AppShell({ children, globalShortcutsDisabled = false }: 
       </div>
       {isSearchOpen ? (
         <Suspense fallback={null}>
-          <SearchOverlay open={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
+          <SearchOverlay
+            open={isSearchOpen}
+            initialQuery={searchInitialQuery}
+            onClose={() => {
+              setIsSearchOpen(false);
+              setSearchInitialQuery('');
+            }}
+          />
         </Suspense>
       ) : null}
       {isLearnDialogOpen ? (

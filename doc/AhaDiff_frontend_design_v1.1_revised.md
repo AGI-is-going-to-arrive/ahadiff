@@ -1148,7 +1148,7 @@ allowed-tools: Read, Grep, Bash
 
 ## 7.11 Learning Graph Explorer
 
-> 当前 React Viewer（2026-05-08）没有实现 cluster/community grouping：ConceptGraph 只有 Graph / List；201+ 节点默认 List 但 Full graph 可打开；完整图谱支持不设硬边界的拖拽/缩放。下面仍是设计参考，不等同当前实现。
+> 当前 React Viewer（2026-05-11）没有实现 cluster/group-by-kind 模式：ConceptGraph 只有 Graph / List；大图默认 List 但 Full graph 可打开；完整图谱已改为 `react-force-graph-2d` Canvas renderer，并补 community fill、legend/filter、节点详情、跨视图搜索链接和可访问列表 fallback。下面仍是设计参考，不等同当前实现。
 
 ### 共通结构
 

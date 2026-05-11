@@ -14,7 +14,24 @@ function rewriteLoopbackProxyHeaders(proxyReq: ClientRequest, _req: IncomingMess
 
 // Phase 2G: route-based code splitting + manualChunks budget guard.
 // Goal: keep initial gzip < 80KB by ensuring vendor / heavy modules ship in
-// their own async chunks. See plan §2G + risk R6 (d3-force / future graph).
+// their own async chunks. See plan §2G + risk R6 (graph renderer).
+const GRAPH_RENDERER_VENDOR_MARKERS = [
+  'node_modules/@tweenjs/tween.js',
+  'node_modules/accessor-fn',
+  'node_modules/bezier-js',
+  'node_modules/canvas-color-tracker',
+  'node_modules/d3-',
+  'node_modules/float-tooltip',
+  'node_modules/force-graph',
+  'node_modules/index-array-by',
+  'node_modules/internmap',
+  'node_modules/jerrypick',
+  'node_modules/kapsule',
+  'node_modules/lodash-es',
+  'node_modules/react-force-graph-2d',
+  'node_modules/react-kapsule',
+];
+
 export default defineConfig({
   plugins: [
     react(),
@@ -54,7 +71,7 @@ export default defineConfig({
     manifest: true,
     chunkSizeWarningLimit: 250,
     /**
-     * Phase 4F: Strip page-only async dependencies (zod, future d3-force,
+     * Phase 4F: Strip page-only async dependencies (zod, graph renderer,
      * future prismjs) from the synchronous modulepreload set. Without this,
      * any vendor chunk imported transitively by a single lazy page would be
      * preloaded on initial HTML and counted against the < 80KB initial-gzip
@@ -80,7 +97,7 @@ export default defineConfig({
           // vendor-page-deps holds zod + any other page-only async deps.
           // Skip preloading; first navigation pays the latency.
           if (dep.includes('vendor-page-deps')) return false;
-          if (dep.includes('vendor-d3')) return false;
+          if (dep.includes('vendor-graph')) return false;
           return true;
         });
       },
@@ -110,15 +127,15 @@ export default defineConfig({
           ) {
             return 'vendor-router';
           }
-          // Page-only deps (zod runtime validation, future d3-force,
+          // Page-only deps (zod runtime validation, graph renderer,
           // future prismjs) are excluded from modulepreload above so they
           // don't enter the < 80KB initial budget. Adding more lazy-only
           // deps? Add their substring here; the budget guard fails closed.
           if (id.includes('node_modules/zod')) {
             return 'vendor-page-deps';
           }
-          if (id.includes('node_modules/d3-')) {
-            return 'vendor-d3';
+          if (GRAPH_RENDERER_VENDOR_MARKERS.some((marker) => id.includes(marker))) {
+            return 'vendor-graph';
           }
           // Anything else from node_modules still bucketed for stability.
           return 'vendor-misc';

@@ -3,6 +3,11 @@
 Date: 2026-05-08
 Platform: macOS Darwin 25.4.0, Python 3.13, SQLite 3.51.3
 
+> 2026-05-11 note: the backend parse numbers below are still the parser evidence
+> for this fixture. The frontend graph renderer has since moved from SVG to
+> `react-force-graph-2d` Canvas. This file no longer claims current Canvas
+> frame-time or real large-repo browser signoff.
+
 ## Backend Parse Performance (parse_graph_json)
 
 | Dataset | Nodes | Links | File Size | mean | p50 | p95 |
@@ -27,10 +32,11 @@ Iterations: 10 per dataset.
 
 ## Frontend Handling
 
-- `LARGE_GRAPH_THRESHOLD = 200`: >200 nodes defaults to List view
+- `LARGE_GRAPH_THRESHOLD = 150`: large graphs default to List view
 - Manual "Full graph" toggle available for Graph view
-- RAF-optimized rendering for SVG graph
-- Current real data (1785 nodes) renders List view in <100ms, DOM nodes ~2200
+- Current product graph view uses Canvas through `react-force-graph-2d`
+- Canvas graph has a semantic list fallback for accessibility
+- Current real data (1785 nodes) still defaults to List view; Canvas frame-time needs a separate browser signoff
 
 ## API Response
 
@@ -40,4 +46,4 @@ Iterations: 10 per dataset.
 
 ## Verdict
 
-**PASS** — 5000-node parse completes in <130ms with <25MB peak memory. Real repo (1785 nodes) performs within budget. Frontend gracefully degrades to List view for large graphs.
+**PASS for backend parser budget** — 5000-node parse completes in <130ms with <25MB peak memory. Real repo (1785 nodes) remains within the parser budget. Frontend still degrades to List view for large graphs, but current Canvas rendering performance should be signed off separately.

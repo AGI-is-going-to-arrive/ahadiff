@@ -9,6 +9,7 @@ from typing import Annotated, Any, Literal, TypeAlias
 from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, field_validator
 
 FreshnessProjection = Literal["fresh", "stale", "unavailable", "disabled"]
+GraphEdgeConfidence = Literal["EXTRACTED", "INFERRED", "AMBIGUOUS"]
 TaskErrorCode = Literal[
     "network_error",
     "timeout",
@@ -141,6 +142,7 @@ class ConceptGraphEdge(BaseModel):
     target: str = Field(min_length=1)
     relation: str | None = None
     weight: GraphEdgeWeight = 1.0
+    confidence: GraphEdgeConfidence | None = None
 
 
 class ConceptGraphResponse(BaseModel):

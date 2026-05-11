@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,7 @@ import pytest
 from pydantic import ValidationError
 
 import ahadiff.graphify as graphify_package
+import ahadiff.graphify.parser as graphify_parser_module
 from ahadiff.core.errors import InputError
 from ahadiff.git.repo import GitRepo
 from ahadiff.graphify import (
@@ -233,6 +235,51 @@ class TestParseInvalid:
     def test_file_not_found(self, tmp_path: Path) -> None:
         with pytest.raises(InputError, match="Cannot read graph file"):
             parse_graph_json(tmp_path / "nonexistent.json")
+
+    def test_symlink_file_rejected(self, tmp_path: Path) -> None:
+        if not hasattr(os, "symlink"):
+            pytest.skip("os.symlink is unavailable on this platform")
+        target = tmp_path / "target.json"
+        target.write_text(json.dumps(_MINIMAL_GRAPH), encoding="utf-8")
+        link = tmp_path / "graph.json"
+        os.symlink(target, link)
+
+        with pytest.raises(InputError, match="must not be a symlink"):
+            parse_graph_json(link)
+
+    def test_lstat_open_symlink_swap_rejected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        if not hasattr(os, "symlink"):
+            pytest.skip("os.symlink is unavailable on this platform")
+        graph = tmp_path / "graph.json"
+        graph.write_text(json.dumps(_MINIMAL_GRAPH), encoding="utf-8")
+        replacement = tmp_path / "replacement.json"
+        replacement.write_text(json.dumps(_MINIMAL_GRAPH), encoding="utf-8")
+
+        original_open = graphify_parser_module.os.open
+        swapped = False
+
+        def swapping_open(
+            path: str,
+            flags: int,
+            mode: int = 0o777,
+            *,
+            dir_fd: int | None = None,
+        ) -> int:
+            nonlocal swapped
+            if not swapped and Path(path) == graph and dir_fd is None:
+                graph.unlink()
+                os.symlink(replacement, graph)
+                swapped = True
+            if dir_fd is None:
+                return original_open(path, flags, mode)
+            return original_open(path, flags, mode, dir_fd=dir_fd)
+
+        monkeypatch.setattr(graphify_parser_module.os, "open", swapping_open)
+
+        with pytest.raises(InputError, match="symlink|changed during validation"):
+            parse_graph_json(graph)
 
     def test_nan_rejected(self) -> None:
         raw = '{"nodes": [], "links": [], "graph": {"val": NaN}}'

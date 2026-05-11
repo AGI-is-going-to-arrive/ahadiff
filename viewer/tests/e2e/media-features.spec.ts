@@ -138,7 +138,7 @@ test.describe('media features', () => {
     await page.goto('/#/concepts?tab=graph');
 
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await page.locator('.concept-graph__node').first().focus();
+    await page.locator('.concept-graph__a11y-node').first().focus();
     await page.keyboard.press('Enter');
     await expect(page.locator('.concept-graph__detail')).toBeVisible();
     await page.emulateMedia({ media: 'print' });
@@ -263,24 +263,12 @@ test.describe('media features', () => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/#/concepts?tab=graph');
 
-    await expect(page.locator('.concept-graph__node')).toHaveCount(3);
-    const before = await page
-      .locator('.concept-graph__circle')
-      .evaluateAll((nodes) =>
-        nodes.map((node) => ({
-          cx: node.getAttribute('cx'),
-          cy: node.getAttribute('cy'),
-        })),
-      );
+    const canvas = page.locator('.concept-graph__canvas canvas');
+    await expect(canvas).toBeVisible();
+    await expect(page.locator('.concept-graph__a11y-node')).toHaveCount(3);
+    const before = await canvas.boundingBox();
     await page.waitForTimeout(250);
-    const after = await page
-      .locator('.concept-graph__circle')
-      .evaluateAll((nodes) =>
-        nodes.map((node) => ({
-          cx: node.getAttribute('cx'),
-          cy: node.getAttribute('cy'),
-        })),
-      );
+    const after = await canvas.boundingBox();
     expect(after).toEqual(before);
   });
 
@@ -290,7 +278,8 @@ test.describe('media features', () => {
     await page.emulateMedia({ forcedColors: 'active' });
     await page.goto('/#/concepts?tab=graph');
 
-    await page.locator('.concept-graph__node').first().click();
+    await page.locator('.concept-graph__a11y-node').first().focus();
+    await page.keyboard.press('Enter');
     const badge = page.locator('.concept-graph__kind-badge').first();
     await expect(badge).toBeVisible();
     const values = await badge.evaluate((el) => {
@@ -298,22 +287,22 @@ test.describe('media features', () => {
       probe.style.color = 'CanvasText';
       probe.style.backgroundColor = 'Canvas';
       document.body.append(probe);
-      const circle = document.querySelector('.concept-graph__circle');
+      const graphCanvas = document.querySelector('.concept-graph__canvas');
       const result = {
         badgeColor: getComputedStyle(el).color,
         canvasText: getComputedStyle(probe).color,
         badgeBackground: getComputedStyle(el).backgroundColor,
         canvasBackground: getComputedStyle(probe).backgroundColor,
-        circleFill: circle ? getComputedStyle(circle).fill : '',
+        graphBorder: graphCanvas ? getComputedStyle(graphCanvas).borderTopColor : '',
       };
       probe.remove();
       return result;
     });
     expect(values.badgeColor).toBe(values.canvasText);
     expect(values.badgeBackground).toBe(values.canvasBackground);
-    expect(values.circleFill).toBe(values.canvasBackground);
+    expect(values.graphBorder).toBe(values.canvasText);
 
-    const chip = page.locator('.concept-graph__filter-chip').first();
+    const chip = page.locator('.concept-graph__filter-chip[data-kind="module"]');
     await expect(chip).toBeVisible();
     const inactiveChipColors = await chip.evaluate((el) => {
       const probe = document.createElement('span');
@@ -333,25 +322,33 @@ test.describe('media features', () => {
     expect(inactiveChipColors.background).toBe(inactiveChipColors.canvas);
 
     await chip.click();
+    await expect(chip).toHaveAttribute('aria-pressed', 'true');
     const activeChipColors = await chip.evaluate((el) => {
       const probe = document.createElement('span');
       probe.style.color = 'Highlight';
       probe.style.backgroundColor = 'Canvas';
+      const textProbe = document.createElement('span');
+      textProbe.style.color = 'CanvasText';
       document.body.append(probe);
+      document.body.append(textProbe);
       const result = {
         color: getComputedStyle(el).color,
         background: getComputedStyle(el).backgroundColor,
         outline: getComputedStyle(el).outlineColor,
         highlight: getComputedStyle(probe).color,
+        canvasText: getComputedStyle(textProbe).color,
         canvas: getComputedStyle(probe).backgroundColor,
       };
       probe.remove();
+      textProbe.remove();
       return result;
     });
-    expect(activeChipColors.color).toBe(activeChipColors.highlight);
+    expect([activeChipColors.highlight, activeChipColors.canvasText]).toContain(
+      activeChipColors.color,
+    );
     expect(activeChipColors.outline).toBe(activeChipColors.highlight);
     expect(activeChipColors.background).toBe(activeChipColors.canvas);
-    await expect(page.getByRole('group', { name: /Filter by kind|按类型筛选/i })).toBeVisible();
+    await expect(page.getByRole('group', { name: /Filter graph|筛选图谱/i })).toBeVisible();
   });
 
   test('settings responsive layout has reachable tabs and no horizontal overflow', async ({

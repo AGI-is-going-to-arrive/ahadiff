@@ -710,6 +710,7 @@ export const conceptGraphEdgeSchema = z
       .min(MIN_GRAPH_EDGE_WEIGHT)
       .max(MAX_GRAPH_EDGE_WEIGHT)
       .default(1.0),
+    confidence: z.enum(['EXTRACTED', 'INFERRED', 'AMBIGUOUS']).nullable().optional(),
   })
   .strict();
 

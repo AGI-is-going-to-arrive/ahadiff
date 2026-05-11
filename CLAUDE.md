@@ -6,11 +6,11 @@
 
 知返 AhaDiff 是一个 **local-first 的 verified diff learning layer**。把 AI 写出的 git diff 变成带代码证据链的学习笔记、概念图谱、主动回忆测验、SRS 复习卡和质量棘轮记录。核心差异：Code Wiki 解释仓库，知返解释这次改动；每句话都能回到代码证据。
 
-**当前状态（2026-05-11）**：本轮 viewer review-fix 只改前端学习面和测试。Learn Mode Dialog 的输出语言默认跟随当前 viewer locale；Review 页面恢复 Again / Hard / Good / Easy 四档评分和 `1`-`4` 快捷键，并补高风险概念 chip、遗忘曲线说明和 mastery warning / danger 色阶；Quiz 页面补 Prev / Mark wrong / Next、mode chips、progress table 和 mark-wrong idempotency，Quiz SRSCard 仍保留 Good / Hard / Wrong 与 peek guard。当前真实验证：`cd viewer && pnpm typecheck` 通过；`pnpm vitest run` = `25 files, 269 tests passed`；`pnpm build` 通过；完整 Playwright `2630 passed, 10 skipped`；i18n scalar keys `1101/1101`；`git diff --check` 通过。Playwright 只有 `NO_COLOR` / `FORCE_COLOR` 环境提示，退出码为 0。后端、integration、eval、live judge、coverage、wheel 和远端 GitHub Actions 未在本轮重跑。
+**当前状态（2026-05-11）**：本轮 ConceptGraph Canvas 迁移和 graph hardening follow-up 只改图谱链路。后端 `ConceptGraphEdge` 增加 `confidence`，`/api/graph/concepts` 只透传 allowlist 内的 `EXTRACTED` / `INFERRED` / `AMBIGUOUS`，节点 `metadata` 继续透传；Graphify parser 读取 imported graph 时补 no-follow regular-file、reparse、大小和 UTF-8 guard。前端 ConceptGraph 从 SVG + d3-force 改成 `react-force-graph-2d` Canvas renderer，保留 Graph / List、大图默认 List、Full graph、节点详情和跨页搜索跳转，并补 community fill、legend/filter、Canvas 可访问列表 fallback、forced-colors 样式和 Windows 路径 basename 处理。SearchOverlay / AppShell 通过同一个 open-search event 做跨视图搜索，Concepts graph refresh 遇到 `409 LOCK_CONFLICT` 会做一次延迟重试，Vite 把 graph renderer 依赖放到 `vendor-graph` 并从初始 modulepreload 中排除。当前真实验证：viewer typecheck 通过；前端 Vitest `25 files, 270 tests passed`；viewer build 通过；目标 Playwright `62 passed`；graph route/parser 后端目标 `117 passed`；目标 ruff/pyright 通过；i18n scalar keys `1131/1131`；`git diff --check` 通过。integration、eval、live judge、coverage、wheel、完整 Playwright 和远端 GitHub Actions 未在本轮重跑。
 
 ## 架构总览
 
-后端 CLI（learn/improve/verify/serve/install/benchmark）：8-provider LLM + diff capture + claims + lesson/quiz/concepts + 8 维 eval + 可选 LLM judge + review.sqlite FSRS-6 + serve API（61 routes + catchall，稳定 `error_code` payload）+ 13 install targets + improve loop。前端 React 19 SPA：13 页面、47 个生产 TSX + 40 个 CSS 文件，当前 i18n scalar key parity 为 `1101/1101`。
+后端 CLI（learn/improve/verify/serve/install/benchmark）：8-provider LLM + diff capture + claims + lesson/quiz/concepts + 8 维 eval + 可选 LLM judge + review.sqlite FSRS-6 + serve API（61 routes + catchall，稳定 `error_code` payload）+ 13 install targets + improve loop。前端 React 19 SPA：13 页面、47 个生产 TSX + 40 个 CSS 文件，当前 i18n scalar key parity 为 `1131/1131`；ConceptGraph 当前是 Canvas renderer + 可访问列表 fallback。
 
 ### 技术栈
 
@@ -69,7 +69,7 @@ global_config_dir()                   ← Global（派生/索引/偏好，非真
 | improve | `src/ahadiff/improve/` | improve session、worktree replay、prompt 白名单、Phase 2.5、preflight |
 | i18n | `src/ahadiff/i18n/` | locale resolver（cookie → Accept-Language → `AHADIFF_LANG` → CLI → config → `LANG`）和 prompt language helper |
 | benchmarks | `benchmarks/` | 10 fixtures、Graphify 10k gate（parse 750ms + peak 96MiB） |
-| viewer | `viewer/` | React 19 SPA；13 页面；Learn Mode Dialog 默认跟随 viewer locale；Review 四档 SRS + 高风险概念；Quiz 导航 / mark-wrong / progress table；Dashboard + Lesson + Concepts + Ratchet + RunDetail + Settings + Guide + Diff + Search；Onboarding DiagnosticRow；错误码本地化；locale-aware byte/token 格式化；侧栏三档；container query；PWA |
+| viewer | `viewer/` | React 19 SPA；13 页面；Learn Mode Dialog 默认跟随 viewer locale；Review 四档 SRS + 高风险概念；Quiz 导航 / mark-wrong / progress table；ConceptGraph Canvas renderer + community fill + a11y list fallback；Dashboard + Lesson + Concepts + Ratchet + RunDetail + Settings + Guide + Diff + Search；Onboarding DiagnosticRow；错误码本地化；locale-aware byte/token 格式化；侧栏三档；container query；PWA |
 | tests | `tests/` | unit/integration/eval/live；本轮 unit `2136 passed`；CI: PR unit + eval + nightly eval + release coverage ≥85% |
 | doc | `doc/` | 产品设计文档 |
 | ui | `ui/` | UI 原型 Warm v1-v6 |
@@ -192,3 +192,4 @@ pytest tests/live/test_llm_judge_live.py -q
 | 05-10 | Graph refresh + DB check + frontend review-fix + CI coverage + compatibility + error/locale/i18n hardening | 2088→2136 |
 | 05-11 | Onboarding / Guide QA follow-up + DiagnosticRow + full Playwright rerun | backend 2136 / frontend 268 / Playwright 2630 |
 | 05-11 | Viewer Review / Quiz / Learn polish + full Playwright rerun | frontend 269 / Playwright 2630 / i18n 1101 |
+| 05-11 | ConceptGraph Canvas migration + graph confidence hardening | frontend 270 / graph route+parser 117 / target Playwright 62 |

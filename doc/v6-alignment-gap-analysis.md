@@ -4,9 +4,10 @@
 > 2026-04-27 Codex update: this gap analysis is now v1.0 Full Scope input, not a v0.2/Core shortlist. Default serve port is `8765`; UI should read host:port from serve status/config. Diff, ConceptGraph, tokens, and Review scaffolding rows must be rechecked against current Viewer before implementation tasks are frozen.
 > 2026-05-01 update: §8 Settings was rechecked against the current React viewer after Phase 4D. The old flat-layout findings are no longer current; remaining Settings gaps are called out row by row.
 > 2026-05-07 update: Settings is now a 7-tab surface (`Account / Provider / Capture / Privacy / Audit / Preferences / Integrations`). Preferences owns language, appearance, `learnability_threshold`, and `desired_retention`. For the latest closed/open frontend gaps, use `doc/FRONTEND_GAP_REPORT.md`; older rows below remain historical V6 comparison notes unless explicitly updated.
-> 2026-05-08 update: ConceptGraph was rechecked after the current viewer graph change. It now uses SVG + d3-force, has Graph/List views, defaults 201+ nodes to List while keeping Full graph available, includes a side detail panel, and supports full-graph pan/zoom without hard viewport bounds. It does not have cluster/community grouping.
+> 2026-05-08 update: ConceptGraph was rechecked after the then-current viewer graph change. At that point it used SVG + d3-force, had Graph/List views, defaulted 201+ nodes to List while keeping Full graph available, included a side detail panel, and supported full-graph pan/zoom without hard viewport bounds. That note is now historical.
 > 2026-05-09 update: Skills and Settings Integrations now use the protected install API. They preview the manifest, confirm the manifest hash on install/uninstall, show pending/success/error states, and re-detect after writes. Settings also consumes `?tab=provider` / `?tab=capture` / `?tab=integrations`; Concepts consumes `?focus=...`; Review consumes `?card=...`. Real-current-repo install/uninstall was not executed during validation; write tests used temp repos and browser mocks.
 > 2026-05-11 update: Review was rechecked after the viewer review-fix. Review now has Again / Hard / Good / Easy buttons with `1`-`4` shortcuts, at-risk concept copy, and mastery tier bars. Quiz now has Prev / Mark wrong / Next, mode chips, and a progress table; it still does not have the V6 side evidence panel, and its SRSCard still renders Good / Hard / Wrong.
+> 2026-05-11 ConceptGraph update: ConceptGraph now uses `react-force-graph-2d` Canvas, keeps Graph/List with large graphs defaulting to List, adds community fill, legend/filter UI, node details, cross-view search links, and a semantic list fallback for Canvas accessibility. It still does not have the exact V6 SVG markers/minimap or full source/provenance polish.
 
 ---
 
@@ -263,10 +264,10 @@
 
 | Element | V6 Reference | Viewer Current | Gap |
 |---------|-------------|---------------|-----|
-| Force-directed graph | V6: SVG with nodes/edges, markers | SVG + d3-force ConceptGraph | **PARTIAL**: Works; edge curves/markers still differ |
+| Force-directed graph | V6: SVG with nodes/edges, markers | Canvas ConceptGraph via `react-force-graph-2d` | **PARTIAL**: Works; V6 SVG markers/minimap still differ |
 | Node count display | "48 nodes, 71 edges" | Showing-count text exists | **PARTIAL**: Header placement still differs |
 | Node detail panel | Click node → definition | Side detail panel exists | **PARTIAL**: Rich descriptions depend on backend data |
-| List fallback | Tabular concept list alternative | Graph/List toggle; 201+ nodes default to List | **OK** |
+| List fallback | Tabular concept list alternative | Graph/List toggle; large graphs default to List; Canvas nodes have semantic a11y list fallback | **OK** |
 
 **Work estimate**:
 - Node/edge count: ~10 LOC TSX. **P2**

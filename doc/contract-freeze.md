@@ -753,7 +753,7 @@ run_id: str
 - `GET /api/providers` — provider 状态
 - `GET /api/serve/status` — serve 运行状态（无 auth）
 - `GET /api/graph/status` — Graphify 当前状态；payload 包含 `enabled` / `source_exists` / `has_graph` / `freshness` / `node_count` / `edge_count` / `source_path` / `provenance`（`GraphProvenance | null`，含 `graph_sha256`/`import_time`/`parser_version`；`graph_sha256` 必须是 64 位小写 hex，`import_time` 必须是 ISO 8601 datetime）
-- `GET /api/graph/concepts` — ConceptGraph 前端 DTO；返回 sanitized `nodes` / `edges` + `status`，不是完整 Graphify provenance API
+- `GET /api/graph/concepts` — ConceptGraph 前端 DTO；返回 sanitized `nodes` / `edges` + `status`，edge 可带 allowlist 内的 `confidence`，node `metadata` 继续透传；它不是完整 Graphify provenance API
 - `POST /api/graph/refresh` — 受写 token 保护；在 repo 写锁内重新导入 Graphify artifact，校验 `.ahadiff/graphify/graph.json` 的 symlink/reparse 边界，返回 `status` / `nodes` / `edges`
 - `POST /api/db/check` — 受写 token 保护；在 repo 写锁内调用 read-only `check_review_db(..., ensure_schema=False)`，不初始化空库，返回 `healthy` / `schema_version` / `quick_check` / `event_count` / `card_count`
 - `PUT /api/config` — 配置更新
@@ -815,7 +815,7 @@ run_id: str
 | **hooks.py** | ⏸ install-only | 当前仅安装 git hook 脚本，不执行用户自定义 hook 命令。hook 执行入口属于后续 Phase |
 | **PUT /api/config** | ✅ persistent | 支持 `lang`/`privacy_mode`/`generate_model`/`judge_model`/`serve_port`/`capture`/`llm` 七组字段，`lang` 同时更新 session locale，其余字段持久化到 per-repo `.ahadiff/config.toml`。`capture` 含 `max_files`/`hard_limit`/`max_patch_bytes`/`file_ranking`；`llm` 含 `input_token_budget`/`output_token_budget`/`request_timeout_seconds`/`max_concurrent`/`retry_attempts`。所有字段带范围校验 |
 | **GET /api/graph/status** | ✅ 已接线 | 以 workspace root 为基准探测 raw `graphify-out/graph.json` 是否存在；当前 node/edge 统计和 `source_path` 读取的是 imported `.ahadiff/graphify/graph.json`，返回 `enabled/source_exists/has_graph/freshness/node_count/edge_count/source_path(relative)` |
-| **GET /api/graph/concepts** | ✅ 已接线 | 从 imported `.ahadiff/graphify/graph.json` 投影前端 ConceptGraph 所需的 sanitized nodes/edges/status；5D core d3-force/detail/fallback 已落地，Graphify import provenance 与 per-run `graphify_context.json` artifact 已有后端接线；5E 的基础跨页 freshness/status 卡片已由前端共享 `graph-store` 接住，完整 source/provenance UI、CLI polish 和真实大仓 signoff 仍属后续工作 |
+| **GET /api/graph/concepts** | ✅ 已接线 | 从 imported `.ahadiff/graphify/graph.json` 投影前端 ConceptGraph 所需的 sanitized nodes/edges/status；node `metadata` 继续透传，edge `confidence` 只接受 `EXTRACTED` / `INFERRED` / `AMBIGUOUS`，非法值不出现在响应里；前端已从 SVG + d3-force 迁到 `react-force-graph-2d` Canvas renderer，并保留 Graph/List、大图默认 List、Full graph、节点详情和可访问列表 fallback；Graphify import provenance 与 per-run `graphify_context.json` artifact 已有后端接线；完整 source/provenance UI、CLI polish 和真实大仓 signoff 仍属后续工作 |
 | **POST /api/graph/refresh** | ✅ 已接线 | 写 token + Origin/Referer 写保护 + repo 写锁；调用 `import_graphify_artifact(root, force=True)` 重新导入 raw Graphify artifact，并在导入前后用 no-symlink state-path guard 校验 `.ahadiff/graphify/graph.json` |
 | **POST /api/db/check** | ✅ 已接线 | 写 token + Origin/Referer 写保护 + repo 写锁；使用 `check_review_db(state.review_db_path, ensure_schema=False)` 走 read-only SQLite 检查，不调用 `_ensure_schema()`，缺表时计数为 0，不顺手创建或迁移空库 |
 | **POST /api/learn** | ✅ 已接线 | `core/orchestrator.py` 从 `cli.py` 抽出 learn 主链；route 只接受安全 capture / learn 选项，返回 `202 {"task_id": ...}`，provider override 不从 HTTP 暴露；当前有 10 req/min 写限流，401/403/404 不消耗额度 |

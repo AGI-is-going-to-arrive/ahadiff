@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import errno
 import html
 import logging
+import os
 import re
+import stat
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
@@ -38,6 +41,7 @@ _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 _MAX_LABEL_LEN = 500
 _MAX_GRAPH_FILE_BYTES = 50 * 1024 * 1024  # 50 MiB
 _MAX_GRAPH_EDGES = 50_000
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 _NODE_FILE_PATH_KEYS = ("file_path", "source_file", "path")
 _NODE_KIND_KEYS = ("kind", "type", "file_type")
 _EDGE_RELATION_KEYS = ("relation", "type")
@@ -294,15 +298,68 @@ def parse_graph_json_text(text: str) -> GraphifyGraph:
 
 
 def parse_graph_json(path: Path, *, max_bytes: int = _MAX_GRAPH_FILE_BYTES) -> GraphifyGraph:
+    text = _read_graph_json_text_no_follow(path, max_bytes=max_bytes)
+    return parse_graph_json_text(text)
+
+
+def _read_graph_json_text_no_follow(path: Path, *, max_bytes: int) -> str:
     try:
-        size = path.stat().st_size
+        path_stat = os.lstat(path)
     except OSError as exc:
         raise InputError(f"Cannot read graph file {path}: {exc}") from exc
-    if size > max_bytes:
-        raise InputError(f"Graph file {path} is {size} bytes, exceeding {max_bytes} byte limit")
+    if stat.S_ISLNK(path_stat.st_mode):
+        raise InputError(f"Graph file {path} must not be a symlink")
+    if _has_windows_reparse_point(path_stat):
+        raise InputError(f"Graph file {path} must not be a Windows reparse point or junction")
+    if not stat.S_ISREG(path_stat.st_mode):
+        raise InputError(f"Graph file {path} must be a regular file")
+
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     try:
-        text = path.read_text(encoding="utf-8")
+        fd = os.open(str(path), flags)
     except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise InputError(f"Graph file {path} must not be a symlink") from exc
         raise InputError(f"Cannot read graph file {path}: {exc}") from exc
 
-    return parse_graph_json_text(text)
+    try:
+        file_stat = os.fstat(fd)
+        if not stat.S_ISREG(file_stat.st_mode):
+            raise InputError(f"Graph file {path} must be a regular file")
+        if _has_windows_reparse_point(file_stat):
+            raise InputError(f"Graph file {path} must not be a Windows reparse point or junction")
+        if (file_stat.st_dev, file_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
+            raise InputError(f"Graph file {path} changed during validation")
+        if file_stat.st_size > max_bytes:
+            raise InputError(
+                f"Graph file {path} is {file_stat.st_size} bytes, exceeding {max_bytes} byte limit"
+            )
+        chunks: list[bytes] = []
+        total_bytes = 0
+        while True:
+            chunk_size = min(65_536, max_bytes + 1 - total_bytes)
+            if chunk_size <= 0:
+                break
+            chunk = os.read(fd, chunk_size)
+            if chunk == b"":
+                break
+            chunks.append(chunk)
+            total_bytes += len(chunk)
+            if total_bytes > max_bytes:
+                raise InputError(
+                    f"Graph file {path} is larger than {max_bytes} byte limit"
+                )
+        try:
+            return b"".join(chunks).decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise InputError(f"Graph file {path} is not valid UTF-8") from exc
+    except InputError:
+        raise
+    except OSError as exc:
+        raise InputError(f"Cannot read graph file {path}: {exc}") from exc
+    finally:
+        os.close(fd)
+
+
+def _has_windows_reparse_point(path_stat: object) -> bool:
+    return bool(getattr(path_stat, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT)

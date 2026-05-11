@@ -1,5 +1,40 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+
+vi.mock('react-force-graph-2d', async () => {
+  const React = await import('react');
+  type ForceGraphMockProps = {
+    graphData?: {
+      nodes?: Array<Record<string, unknown>>;
+      links?: Array<Record<string, unknown>>;
+    };
+    nodeLabel?: (node: Record<string, unknown>) => string;
+    linkLabel?: (link: Record<string, unknown>) => string;
+  };
+  const ForceGraph2D = React.forwardRef<unknown, ForceGraphMockProps>(
+    function ForceGraph2DMock(props, ref) {
+      React.useImperativeHandle(ref, () => ({ zoomToFit: () => undefined }));
+      const nodes = props.graphData?.nodes ?? [];
+      const links = props.graphData?.links ?? [];
+      const nodeLabels = nodes.map((node) => props.nodeLabel?.(node) ?? '').join('|');
+      const linkLabels = links.map((link) => props.linkLabel?.(link) ?? '').join('|');
+      return (
+        <canvas
+          data-testid="force-graph-2d"
+          data-node-count={String(nodes.length)}
+          data-link-count={String(links.length)}
+          data-node-labels={nodeLabels}
+          data-link-labels={linkLabels}
+        />
+      );
+    },
+  );
+  return {
+    default: ForceGraph2D,
+    __esModule: true,
+  };
+});
+
 import ConceptGraph from './ConceptGraph';
 import type { ConceptGraphEdge, ConceptGraphNode } from '../api/types';
 
@@ -52,8 +87,39 @@ describe('ConceptGraph rendering guards', () => {
     expect(html).toContain('Full graph');
     expect(html).toContain('List view');
     expect(html).toContain('Fit to view');
+    expect(html).toContain('data-testid="force-graph-2d"');
+    expect(html).toContain('data-node-count="24"');
+    expect(html).toContain('Accessible graph node list');
     expect(html).not.toContain('Group by kind');
     expect(html).not.toContain('Ungroup');
+  });
+
+  it('escapes concept labels before passing them to canvas tooltips', () => {
+    const maliciousLabel = '<img src=x onerror=alert(1)>';
+    const nodes = makeNodes(24, () => 'code', (index) =>
+      index === 0 ? maliciousLabel : `Concept ${index}`,
+    );
+    const html = renderToStaticMarkup(
+      <ConceptGraph
+        status={{
+          enabled: true,
+          source_exists: true,
+          has_graph: true,
+          freshness: 'fresh',
+          node_count: nodes.length,
+          edge_count: 0,
+          source_path: null,
+          provenance: null,
+        }}
+        nodes={nodes}
+        edges={[]}
+        truncated={false}
+      />,
+    );
+
+    expect(html).toContain('data-testid="force-graph-2d"');
+    expect(html).toContain('&amp;lt;img src=x onerror=alert(1)&amp;gt;');
+    expect(html).not.toContain('<img src=x onerror=alert(1)>');
   });
 
   it('defaults very large graphs to the list while still allowing the full graph control', () => {
@@ -109,7 +175,7 @@ describe('ConceptGraph rendering guards', () => {
     expect(html).not.toContain('<img src=x onerror=alert(1)>');
   });
 
-  it('does not mount the SVG force graph for extreme graphs before explicit consent', () => {
+  it('does not mount the force graph for extreme graphs before explicit consent', () => {
     const nodes = makeNodes(1001, () => 'code');
     const html = renderToStaticMarkup(
       <ConceptGraph
@@ -131,6 +197,6 @@ describe('ConceptGraph rendering guards', () => {
 
     expect(html).toContain('Full graph');
     expect(html).toContain('Concept 0');
-    expect(html).not.toContain('<svg');
+    expect(html).not.toContain('<canvas');
   });
 });

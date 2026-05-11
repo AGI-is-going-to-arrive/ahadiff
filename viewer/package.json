@@ -15,10 +15,10 @@
     "test:e2e:real-serve": "playwright test -c playwright.real-serve.config.ts"
   },
   "dependencies": {
-    "d3-force": "^3.0.0",
     "lucide-react": "^1.14.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-force-graph-2d": "^1.29.1",
     "react-router-dom": "^6.28.0",
     "zod": "^4.4.1",
     "zustand": "^5.0.0"
@@ -26,7 +26,6 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.10.0",
     "@playwright/test": "^1.49.0",
-    "@types/d3-force": "^3.0.10",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
