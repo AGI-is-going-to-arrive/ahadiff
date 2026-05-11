@@ -103,8 +103,7 @@ def _read_audit_sync(
     except OSError:
         return _audit_response([], total=0, limit=limit, offset=offset, fields=fields)
 
-    page_entries: list[dict[str, Any]] = []
-    total = 0
+    parsed_entries: list[dict[str, Any]] = []
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped:
@@ -114,13 +113,15 @@ def _read_audit_sync(
         except (ValueError, TypeError):
             continue
         if isinstance(parsed, dict):
-            if total >= offset and len(page_entries) < limit:
-                entry = cast("dict[str, Any]", parsed)
-                if fields is not None:
-                    entry = {field: entry[field] for field in fields if field in entry}
-                page_entries.append(entry)
-            total += 1
+            parsed_entries.append(cast("dict[str, Any]", parsed))
 
+    total = len(parsed_entries)
+    page_entries: list[dict[str, Any]] = []
+    entries_newest_first = list(reversed(parsed_entries))
+    for entry in entries_newest_first[offset : offset + limit]:
+        if fields is not None:
+            entry = {field: entry[field] for field in fields if field in entry}
+        page_entries.append(entry)
     return _audit_response(page_entries, total=total, limit=limit, offset=offset, fields=fields)
 
 

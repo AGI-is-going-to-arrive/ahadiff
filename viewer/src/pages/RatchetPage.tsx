@@ -3,7 +3,12 @@ import AppShell from '../components/AppShell';
 import InfoHint from '../components/InfoHint';
 import RatchetChart from '../components/RatchetChart';
 import Skeleton, { SkeletonGroup } from '../components/Skeleton';
-import { getExportResultsTsvBlob, getRatchetHistory, getRunScore } from '../api/runs';
+import {
+  getExportResultsJsonBlob,
+  getExportResultsTsvBlob,
+  getRatchetHistory,
+  getRunScore,
+} from '../api/runs';
 import { scorePayloadSchema } from '../api/schemas';
 import { fetchSpecAlignment } from '../api/stats';
 import { useTranslation, type TranslateFn } from '../i18n/useTranslation';
@@ -264,25 +269,34 @@ export default function RatchetPage() {
 
   // Fetch through the token-aware API client, then trigger a local Blob
   // download. A direct anchor navigation cannot attach X-AhaDiff-Token.
-  const handleExport = useCallback(() => {
+  const downloadBlob = useCallback((blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    try {
+      a.click();
+    } finally {
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
+  }, []);
+
+  const handleExportTsv = useCallback(() => {
     setExportError(false);
     void getExportResultsTsvBlob()
-      .then((blob) => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'results.tsv';
-        a.rel = 'noopener';
-        document.body.appendChild(a);
-        try {
-          a.click();
-        } finally {
-          a.remove();
-          window.setTimeout(() => URL.revokeObjectURL(url), 0);
-        }
-      })
+      .then((blob) => downloadBlob(blob, 'results.tsv'))
       .catch(() => setExportError(true));
-  }, []);
+  }, [downloadBlob]);
+
+  const handleExportJson = useCallback(() => {
+    setExportError(false);
+    void getExportResultsJsonBlob()
+      .then((blob) => downloadBlob(blob, 'results.json'))
+      .catch(() => setExportError(true));
+  }, [downloadBlob]);
 
   useEffect(() => {
     if ((activeTab !== 'benchmark' && activeTab !== 'judge') || !latestRunId || activeScoreData) return;
@@ -377,9 +391,16 @@ export default function RatchetPage() {
             <button
               type="button"
               className="load-more-btn"
-              onClick={handleExport}
+              onClick={handleExportTsv}
             >
               {t('Ratchet.export_tsv')}
+            </button>
+            <button
+              type="button"
+              className="load-more-btn"
+              onClick={handleExportJson}
+            >
+              {t('Ratchet.export_json')}
             </button>
             {exportError && (
               <span className="ratchet-page__export-error" role="alert">

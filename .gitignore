@@ -44,6 +44,9 @@ node_modules/
 # Claude Code local dev artifacts (review reports, team plans, memory)
 .claude/
 
+# CCG local dev artifacts (review reports, team plans, scratch)
+.ccg/
+
 # Development screenshots & test patches (local only)
 *.png
 !viewer/public/icons/ahadiff-192.png

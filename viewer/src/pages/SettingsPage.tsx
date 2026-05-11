@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState } from 'react';
 import AppShell from '../components/AppShell';
 import Skeleton, { SkeletonGroup } from '../components/Skeleton';
 import LanguageSwitcher from '../components/LanguageSwitcher';
@@ -17,7 +17,7 @@ import {
 import { fetchServeStatus, fetchWatchStatus } from '../api/stats';
 import type {
   AuditEntry, CaptureConfig, ConfigResponse, DoctorCheck, LlmConfig, ProviderSummary,
-  UsageResponse, AuditResponse, InstallTarget,
+  UsageResponse, AuditResponse, InstallManifestAction, InstallTarget,
 } from '../api/config';
 import type {
   ProviderCreateInput, ProviderUpdateInput, ServeStatusResponse, WatchStatusResponse,
@@ -37,7 +37,7 @@ const TAB_IDS: TabId[] = [
 
 const TAB_EN: Record<TabId, string> = {
   account: 'account', provider: 'provider', capture: 'capture', privacy: 'privacy',
-  audit: 'audit', preferences: 'preferences', integrations: 'integrations',
+  audit: 'audit', preferences: 'preferences', integrations: 'guidance',
 };
 
 const TAB_LABEL_KEY: Record<TabId, MessageKey> = {
@@ -80,6 +80,9 @@ interface InstallActionState {
   pending?: InstallActionKind;
   message?: string;
   error?: string;
+  previewTarget?: InstallTarget;
+  manifestHash?: string;
+  previewCollapsed?: boolean;
 }
 
 interface SettingsData {
@@ -1690,13 +1693,16 @@ function IntegrationsTab({
     )));
   }, []);
 
-  const copyInstallCommand = useCallback(async (target: InstallTarget) => {
+  const copyTargetCommand = useCallback(async (
+    target: InstallTarget,
+    kind: 'install' | 'uninstall',
+  ) => {
     if (!navigator.clipboard?.writeText) {
       return;
     }
     try {
-      await navigator.clipboard.writeText(installCommand(target));
-      setCopiedTarget(target.name);
+      await navigator.clipboard.writeText(commandFor(target, kind));
+      setCopiedTarget(`${target.name}:${kind}`);
       window.setTimeout(() => setCopiedTarget(null), 1400);
     } catch {
       // Clipboard access can be unavailable in restricted browser contexts.
@@ -1706,7 +1712,11 @@ function IntegrationsTab({
   const runAction = useCallback(async (target: InstallTarget, kind: InstallActionKind) => {
     setActionState((current) => ({
       ...current,
-      [target.name]: { pending: kind },
+      [target.name]: {
+        ...current[target.name],
+        pending: kind,
+        error: undefined,
+      },
     }));
     try {
       const preview = await previewInstallTarget(target.name);
@@ -1714,7 +1724,12 @@ function IntegrationsTab({
       if (kind === 'preview') {
         setActionState((current) => ({
           ...current,
-          [target.name]: { message: t('Skills.preview_success') },
+          [target.name]: {
+            message: t('Settings_page.integration_preview_success_project'),
+            previewTarget: preview.target,
+            manifestHash: preview.manifest_hash,
+            previewCollapsed: false,
+          },
         }));
         return;
       }
@@ -1726,8 +1741,11 @@ function IntegrationsTab({
         ...current,
         [target.name]: {
           message: kind === 'install'
-            ? t('Skills.install_success')
-            : t('Skills.uninstall_success'),
+            ? t('Settings_page.integration_install_success_project')
+            : t('Settings_page.integration_uninstall_success_project'),
+          previewTarget: result.target,
+          manifestHash: result.manifest_hash,
+          previewCollapsed: true,
         },
       }));
       await onRefreshTargets();
@@ -1735,11 +1753,30 @@ function IntegrationsTab({
       setActionState((current) => ({
         ...current,
         [target.name]: {
+          ...current[target.name],
+          pending: undefined,
+          message: undefined,
           error: e instanceof Error ? e.message : t('Skills.action_failed'),
         },
       }));
     }
   }, [onRefreshTargets, t, upsertTarget]);
+
+  const togglePreview = useCallback((target: InstallTarget) => {
+    const state = actionState[target.name] ?? {};
+    const hasPreview = Boolean(state.previewTarget || state.manifestHash);
+    if (hasPreview) {
+      setActionState((current) => ({
+        ...current,
+        [target.name]: {
+          ...current[target.name],
+          previewCollapsed: !(current[target.name]?.previewCollapsed ?? false),
+        },
+      }));
+      return;
+    }
+    void runAction(target, 'preview');
+  }, [actionState, runAction]);
 
   return (
     <>
@@ -1759,72 +1796,141 @@ function IntegrationsTab({
         />
       ) : (
         <div className="settings-card">
-        <div className="settings-card__header"><h2>{t('Settings_page.section_integrations')}</h2></div>
+        <div className="settings-card__header">
+          <h2>{t('Settings_page.section_integrations')}</h2>
+          <span className="integration-card-count">{localTargets.length}</span>
+        </div>
         <div className="settings-card__body">
+          <p className="integration-intro">
+            <strong>{t('Settings_page.integration_scope_current')}</strong>
+            {t('Settings_page.integration_intro_project')}
+          </p>
           {localTargets.length === 0 && <div className="u-muted-sm">{t('Settings_page.integration_empty')}</div>}
-          {localTargets.map(target => {
-            const statusKey = INTEGRATION_STATUS_KEY[target.status];
-            const badgeVariant = target.status === 'installed'
-              ? 'configured'
-              : target.status === 'available'
-                ? 'unknown'
-                : 'missing';
-            const state = actionState[target.name] ?? {};
-            const isPending = state.pending != null;
-            const primaryAction: InstallActionKind = target.status === 'installed' ? 'uninstall' : 'install';
-            return (
-              <div className="settings-field" key={target.name}>
-                <div className="settings-field__label">
-                  <h3>{target.display_name}</h3>
-                  <p>{target.description}</p>
-                  {target.platform_supported && (
-                    <code>{installCommand(target)}</code>
-                  )}
-                  {target.manifest && target.manifest.write.length > 0 && (
-                    <p>
-                      {target.manifest.write.map(action => action.path).join(' · ')}
+          <div className="integration-grid">
+            {localTargets.map(target => {
+              const statusKey = INTEGRATION_STATUS_KEY[target.status];
+              const badgeVariant = target.status === 'installed'
+                ? 'configured'
+                : target.status === 'available'
+                  ? 'unknown'
+                  : 'missing';
+              const state = actionState[target.name] ?? {};
+              const isPending = state.pending != null;
+              const primaryAction: InstallActionKind = target.status === 'installed' ? 'uninstall' : 'install';
+              const primaryCommandKind = primaryAction === 'uninstall' ? 'uninstall' : 'install';
+              const previewTarget = state.previewTarget ?? target;
+              const manifest = previewTarget.manifest ?? target.manifest ?? null;
+              const hasPreview = Boolean((state.previewTarget || state.manifestHash) && manifest);
+              const isPreviewOpen = hasPreview && !state.previewCollapsed;
+              const currentActions = manifest?.[primaryAction === 'install' ? 'write' : 'uninstall'] ?? [];
+              const copiedKey = `${target.name}:${primaryCommandKind}`;
+              const titleId = `integration-title-${target.name}`;
+              const previewId = `integration-preview-${target.name}`;
+              return (
+                <article
+                  className={`integration-card integration-card--${target.status}`}
+                  key={target.name}
+                  aria-labelledby={titleId}
+                >
+                  <div className="integration-card__top">
+                    <div className="integration-mark" aria-hidden="true">
+                      {targetMark(target)}
+                    </div>
+                    <span className={`settings-field__badge settings-field__badge--${badgeVariant}`}>
+                      {t(statusKey)}
+                    </span>
+                  </div>
+                  <div className="integration-card__main">
+                    <h3 id={titleId} className="integration-card__name">{target.display_name}</h3>
+                    <p className="integration-card__description">{target.description}</p>
+                    <p className="integration-card__scope">
+                      <span>{t('Settings_page.integration_scope_current')}</span>
+                      {t('Settings_page.integration_scope_note')}
                     </p>
-                  )}
-                  {state.message && <p role="status">{state.message}</p>}
-                  {state.error && <p role="alert">{state.error}</p>}
-                </div>
-                <div className="settings-card__actions">
-                  {target.platform_supported && (
-                    <>
-                      <button
-                        type="button"
-                        className="retry-btn"
-                        disabled={isPending || target.status === 'unsupported' || target.status === 'error'}
-                        onClick={() => void runAction(target, 'preview')}
+                    {currentActions.length > 0 && (
+                      <p className="integration-card__paths">
+                        {currentActions.map(action => action.path).join(' · ')}
+                      </p>
+                    )}
+                    {target.platform_supported && (
+                      <div className="integration-command" aria-label={t(
+                        primaryCommandKind === 'install'
+                          ? 'Settings_page.integration_install_command'
+                          : 'Settings_page.integration_uninstall_command',
+                      )}
                       >
-                        {state.pending === 'preview' ? t('Skills.previewing') : t('Skills.preview_action')}
-                      </button>
-                      <button
-                        type="button"
-                        className="retry-btn"
-                        disabled={isPending || target.status === 'unsupported' || target.status === 'error'}
-                        onClick={() => void runAction(target, primaryAction)}
-                      >
-                        {state.pending === primaryAction
-                          ? (primaryAction === 'install' ? t('Skills.installing') : t('Skills.uninstalling'))
-                          : (primaryAction === 'install' ? t('Skills.install_action') : t('Skills.uninstall_action'))}
-                      </button>
-                      <button
-                        type="button"
-                        className="retry-btn"
-                        onClick={() => void copyInstallCommand(target)}
-                      >
-                        {copiedTarget === target.name ? t('Skills.copied') : t('Skills.copy')}
-                      </button>
-                    </>
-                  )}
-                  <span className={`settings-field__badge settings-field__badge--${badgeVariant}`}>
-                    {t(statusKey)}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
+                        <code>$ {commandFor(target, primaryCommandKind)}</code>
+                        <button
+                          type="button"
+                          className="integration-copy-btn"
+                          aria-label={t(
+                            primaryCommandKind === 'install'
+                              ? 'Settings_page.integration_copy_install_aria'
+                              : 'Settings_page.integration_copy_uninstall_aria',
+                            { target: target.display_name },
+                          )}
+                          onClick={() => void copyTargetCommand(target, primaryCommandKind)}
+                        >
+                          {copiedTarget === copiedKey ? t('Skills.copied') : t('Skills.copy')}
+                        </button>
+                      </div>
+                    )}
+                    {state.message && <p className="integration-message" role="status">{state.message}</p>}
+                    {state.error && <p className="integration-message integration-message--error" role="alert">{state.error}</p>}
+                    {isPreviewOpen && manifest && (
+                      <IntegrationPreviewPanel
+                        id={previewId}
+                        target={previewTarget}
+                        manifestHash={state.manifestHash}
+                        t={t}
+                      />
+                    )}
+                  </div>
+                  <div className="integration-actions">
+                    {target.platform_supported && (
+                      <>
+                        <button
+                          type="button"
+                          className="integration-btn integration-btn--secondary"
+                          disabled={isPending || target.status === 'unsupported' || target.status === 'error'}
+                          aria-controls={hasPreview ? previewId : undefined}
+                          aria-expanded={isPreviewOpen}
+                          aria-label={previewButtonAriaLabel(target, state, hasPreview, isPreviewOpen, t)}
+                          onClick={() => togglePreview(target)}
+                        >
+                          {previewButtonLabel(state, hasPreview, isPreviewOpen, t)}
+                        </button>
+                        <button
+                          type="button"
+                          className={
+                            primaryAction === 'install'
+                              ? 'integration-btn integration-btn--primary'
+                              : 'integration-btn integration-btn--danger'
+                          }
+                          disabled={isPending || target.status === 'unsupported' || target.status === 'error'}
+                          aria-label={t(
+                            primaryAction === 'install'
+                              ? 'Settings_page.integration_install_project_aria'
+                              : 'Settings_page.integration_uninstall_project_aria',
+                            { target: target.display_name },
+                          )}
+                          onClick={() => void runAction(target, primaryAction)}
+                        >
+                          {state.pending === primaryAction
+                            ? (primaryAction === 'install'
+                              ? t('Settings_page.integration_writing_guidance')
+                              : t('Settings_page.integration_removing_guidance'))
+                            : (primaryAction === 'install'
+                              ? t('Settings_page.integration_install_project_action')
+                              : t('Settings_page.integration_uninstall_project_action'))}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         </div>
       </div>
       )}
@@ -1834,6 +1940,168 @@ function IntegrationsTab({
 
 function installCommand(target: InstallTarget): string {
   return target.install_command ?? `ahadiff install ${target.name}`;
+}
+
+function uninstallCommand(target: InstallTarget): string {
+  return target.uninstall_command ?? `ahadiff uninstall ${target.name}`;
+}
+
+function commandFor(target: InstallTarget, kind: 'install' | 'uninstall'): string {
+  return kind === 'install' ? installCommand(target) : uninstallCommand(target);
+}
+
+function targetMark(target: InstallTarget): string {
+  const knownMarks: Record<string, string> = {
+    claude: 'CC',
+    codex: 'CD',
+    copilot: 'CP',
+    gemini: 'GM',
+    opencode: 'OC',
+  };
+  if (knownMarks[target.name]) return knownMarks[target.name];
+  const words = target.display_name
+    .split(/[^A-Za-z0-9]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const mark = words.slice(0, 2).map((part) => part[0]).join('');
+  return (mark || target.name.slice(0, 2)).toUpperCase();
+}
+
+function previewButtonLabel(
+  state: InstallActionState,
+  hasPreview: boolean,
+  isPreviewOpen: boolean,
+  t: TFn,
+): string {
+  if (state.pending === 'preview') return t('Skills.previewing');
+  if (isPreviewOpen) return t('Settings_page.integration_collapse_preview');
+  if (hasPreview) return t('Settings_page.integration_show_preview');
+  return t('Skills.preview_action');
+}
+
+function previewButtonAriaLabel(
+  target: InstallTarget,
+  state: InstallActionState,
+  hasPreview: boolean,
+  isPreviewOpen: boolean,
+  t: TFn,
+): string {
+  if (state.pending === 'preview') {
+    return t('Settings_page.integration_preview_aria', { target: target.display_name });
+  }
+  if (isPreviewOpen) {
+    return t('Settings_page.integration_collapse_preview_aria', { target: target.display_name });
+  }
+  if (hasPreview) {
+    return t('Settings_page.integration_show_preview_aria', { target: target.display_name });
+  }
+  return t('Settings_page.integration_preview_aria', { target: target.display_name });
+}
+
+function shortManifestHash(hash?: string | null): string | null {
+  return hash ? `${hash.slice(0, 10)}…` : null;
+}
+
+function actionLabel(action: InstallManifestAction, t: TFn): string {
+  switch (action.action) {
+    case 'merge-section':
+    case 'append-section':
+      return t('Settings_page.integration_action_merge_section');
+    case 'remove-section':
+      return t('Settings_page.integration_action_remove_section');
+    case 'write':
+      return t('Settings_page.integration_action_write_file');
+    case 'remove':
+      return t('Settings_page.integration_action_remove_file');
+    default:
+      return action.action;
+  }
+}
+
+function strategyLabel(action: InstallManifestAction, t: TFn): string {
+  return action.file_strategy === 'generated'
+    ? t('Settings_page.integration_strategy_generated')
+    : t('Settings_page.integration_strategy_user_managed');
+}
+
+function IntegrationPreviewPanel({
+  id,
+  target,
+  manifestHash,
+  t,
+}: {
+  id: string;
+  target: InstallTarget;
+  manifestHash?: string | null;
+  t: TFn;
+}) {
+  const idBase = useId().replace(/:/g, '');
+  const manifest = target.manifest;
+  if (!manifest) return null;
+  const titleId = `${idBase}-preview-title`;
+  const hash = shortManifestHash(manifestHash ?? target.manifest_hash);
+  return (
+    <section
+      id={id}
+      className="integration-preview"
+      aria-labelledby={titleId}
+    >
+      <div className="integration-preview__header">
+        <h4 id={titleId} className="integration-preview__title">
+          {t('Settings_page.integration_preview_title')}
+        </h4>
+        {hash && <code>{t('Settings_page.integration_manifest_hash', { hash })}</code>}
+      </div>
+      <div className="integration-preview__grid">
+        <IntegrationActionList
+          title={t('Settings_page.integration_preview_install_title')}
+          actions={manifest.write}
+          titleId={`${idBase}-install-title`}
+          t={t}
+        />
+        <IntegrationActionList
+          title={t('Settings_page.integration_preview_uninstall_title')}
+          actions={manifest.uninstall}
+          titleId={`${idBase}-uninstall-title`}
+          t={t}
+        />
+      </div>
+      <p className="integration-preview__note">
+        {t('Settings_page.integration_preview_note')}
+      </p>
+    </section>
+  );
+}
+
+function IntegrationActionList({
+  title,
+  actions,
+  titleId,
+  t,
+}: {
+  title: string;
+  actions: InstallManifestAction[];
+  titleId: string;
+  t: TFn;
+}) {
+  return (
+    <section className="integration-plan" aria-labelledby={titleId}>
+      <h5 id={titleId} className="integration-plan__title">{title}</h5>
+      {actions.length > 0 ? (
+        <ul className="integration-plan__list">
+          {actions.map((action, index) => (
+            <li className="integration-plan__item" key={`${action.path}:${action.action}:${index}`}>
+              <span>{actionLabel(action, t)}</span>
+              <code>{action.path}</code>
+              <em>{strategyLabel(action, t)}</em>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p>{t('Settings_page.integration_no_actions')}</p>
+      )}
+    </section>
+  );
 }
 
 /* ------------------------------------------------------------------ */

@@ -654,15 +654,43 @@ class TestGetExportResults:
             "overall\tverdict\tstatus\tweakest_dim\tnote_json\n"
         )
 
-    def test_rejects_non_tsv_export_format(self, tmp_path: Path) -> None:
+    def test_json_export_format(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".ahadiff"
         state_dir.mkdir()
+        _seed_review_db(state_dir / "review.sqlite", events=2)
         client = _client(state_dir)
 
         resp = client.get("/api/export/results?format=json", headers=_AUTH)
 
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("application/json")
+        assert "results.json" in resp.headers.get("content-disposition", "")
+        data = resp.json()
+        assert data["format"] == "json"
+        assert len(data["results"]) == 2
+        assert data["results"][0]["run_id"].startswith("run_")
+        assert "overall" in data["results"][0]
+
+    def test_json_export_empty_sqlite_returns_empty_results(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        sqlite3.connect(state_dir / "review.sqlite").close()
+        client = _client(state_dir)
+
+        resp = client.get("/api/export/results?format=json", headers=_AUTH)
+
+        assert resp.status_code == 200
+        assert resp.json() == {"format": "json", "results": []}
+
+    def test_rejects_unknown_export_format(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        client = _client(state_dir)
+
+        resp = client.get("/api/export/results?format=csv", headers=_AUTH)
+
         assert resp.status_code == 400
-        assert "only 'tsv' export format is supported" in resp.json()["error"]
+        assert "export format must be 'tsv' or 'json'" in resp.json()["error"]
 
     def test_formula_injection_escaped(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".ahadiff"

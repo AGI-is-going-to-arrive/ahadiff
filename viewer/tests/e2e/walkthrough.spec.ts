@@ -835,8 +835,8 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(page.locator('.settings-content').getByRole('group', { name: /Language/i })).toBeVisible();
     await expect(page.getByText('Learning Sensitivity')).toBeVisible();
 
-    // Navigate to integrations tab for install target badges.
-    await page.getByRole('tab', { name: /integrations/i }).click();
+    // Navigate to AI tool guidance tab for target badges.
+    await page.getByRole('tab', { name: /AI Tool Guidance/i }).click();
     await expect(page.locator('#spanel-integrations .settings-field__badge--configured')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Claude Code' })).toBeVisible();
     await expect(page.locator('.graphify-card').filter({ hasText: 'Graphify source' })).toBeVisible();
@@ -900,6 +900,8 @@ test.describe('walkthrough: full-app functional test', () => {
     // Command cards in core section
     const cards = page.locator('.guide-card');
     await expect(cards.first()).toBeVisible();
+    await expect(page.locator('.guide-install-model')).toContainText('AhaDiff CLI');
+    await expect(page.locator('.guide-install-model')).toContainText('Project agent instructions');
 
     // Copy button on at least one command block
     const copyBtns = page.locator('.command-block__copy-btn');
@@ -954,22 +956,45 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(page.locator('.flashcard__front')).toContainText('What does the new comment indicate?');
   });
 
-  test('Settings integrations — preview install uninstall mutation loop', async ({ page }) => {
+  test('Settings AI tool guidance — preview write remove mutation loop', async ({ page }) => {
     await page.goto('/#/settings?tab=integrations');
 
-    const codexRow = page.locator('.settings-field').filter({ hasText: 'Codex CLI' });
+    const codexRow = page.getByRole('article', { name: 'Codex CLI' });
     await expect(codexRow).toBeVisible();
+    await expect(page.locator('.integration-intro')).toContainText('repo-local instruction files');
+    await expect(codexRow).toContainText('Scope: current project');
+    await expect(codexRow).toContainText('It does not write user-level or global CLI/IDE directories.');
 
     await codexRow.getByRole('button', { name: 'Preview' }).click();
-    await expect(codexRow.getByRole('status')).toContainText('Preview refreshed');
+    await expect(codexRow.getByRole('status')).toContainText('Project guidance preview refreshed');
+    await expect(codexRow.getByRole('region', { name: 'Inline preview' })).toBeVisible();
+    await expect(codexRow).toContainText('Writing guidance will');
+    await expect(codexRow).toContainText('Removing guidance will');
+    await expect(codexRow).toContainText('AGENTS.md');
+    await expect(codexRow).toContainText('merge marked section');
+    await expect(codexRow.getByRole('button', { name: 'Write Codex CLI guidance to the current project' })).toBeVisible();
+    await expect(codexRow.getByRole('button', { name: 'Copy write-guidance command for Codex CLI' })).toBeVisible();
 
-    await codexRow.getByRole('button', { name: 'Install' }).click();
-    await expect(codexRow.getByRole('status')).toContainText('Installed');
-    await expect(codexRow.locator('.settings-field__badge')).toContainText('installed');
+    await codexRow.getByRole('button', { name: 'Collapse preview for Codex CLI' }).click();
+    await expect(codexRow.getByRole('region', { name: 'Inline preview' })).toHaveCount(0);
+    await expect(codexRow.getByRole('button', { name: 'Show preview for Codex CLI' })).toBeVisible();
 
-    await codexRow.getByRole('button', { name: 'Uninstall' }).click();
-    await expect(codexRow.getByRole('status')).toContainText('Uninstalled');
-    await expect(codexRow.locator('.settings-field__badge')).toContainText('available');
+    await codexRow.getByRole('button', { name: 'Show preview for Codex CLI' }).click();
+    await expect(codexRow.getByRole('region', { name: 'Inline preview' })).toBeVisible();
+
+    await codexRow.getByRole('button', { name: 'Write Codex CLI guidance to the current project' }).click();
+    await expect(codexRow.getByRole('status')).toContainText('Guidance written to the current project');
+    await expect(codexRow).toContainText('guidance written');
+    await expect(codexRow.getByRole('region', { name: 'Inline preview' })).toHaveCount(0);
+    await expect(codexRow.getByRole('button', { name: 'Show preview for Codex CLI' })).toBeVisible();
+    await expect(codexRow).toContainText('$ ahadiff uninstall codex');
+    await expect(codexRow.getByRole('button', { name: 'Remove Codex CLI guidance from the current project' })).toBeVisible();
+    await expect(codexRow.getByRole('button', { name: 'Copy remove-guidance command for Codex CLI' })).toBeVisible();
+
+    await codexRow.getByRole('button', { name: 'Remove Codex CLI guidance from the current project' }).click();
+    await expect(codexRow.getByRole('status')).toContainText('Guidance removed from the current project');
+    await expect(codexRow).toContainText('ready');
+    await expect(codexRow.getByRole('region', { name: 'Inline preview' })).toHaveCount(0);
   });
 
   test('Review — flashcard renders question on front and answer on back', async ({ page }) => {

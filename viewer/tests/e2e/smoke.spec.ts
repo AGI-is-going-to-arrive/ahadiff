@@ -65,25 +65,27 @@ test.describe('smoke', () => {
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   });
 
-  test('ratchet TSV export uses token-aware API fetch', async ({ page }) => {
-    let exportToken: string | undefined;
+  test('ratchet exports use token-aware API fetch', async ({ page }) => {
+    const requests: Array<{ format: string | null; token: string | undefined }> = [];
     await page.route(
       (url) => url.pathname === '/api/export/results',
       (route) => {
-        exportToken = route.request().headers()['x-ahadiff-token'];
-        expect(new URL(route.request().url()).searchParams.get('format')).toBe('tsv');
+        const format = new URL(route.request().url()).searchParams.get('format');
+        requests.push({ format, token: route.request().headers()['x-ahadiff-token'] });
         return route.fulfill({
           status: 200,
-          contentType: 'text/tab-separated-values',
-          body: 'timestamp\trun_id\n',
+          contentType: format === 'json' ? 'application/json' : 'text/tab-separated-values',
+          body: format === 'json' ? '{"format":"json","results":[]}' : 'timestamp\trun_id\n',
         });
       },
     );
 
     await page.goto('/#/ratchet');
     await page.getByRole('button', { name: /Export TSV/i }).click();
+    await page.getByRole('button', { name: /Export JSON/i }).click();
 
-    await expect.poll(() => exportToken).toBe('test-token-xxx');
+    await expect.poll(() => requests.map((request) => request.format).join(',')).toBe('tsv,json');
+    expect(requests.every((request) => request.token === 'test-token-xxx')).toBe(true);
   });
 
   test('hash router welcome/landing route renders hero', async ({ page }) => {
@@ -172,7 +174,7 @@ test.describe('smoke', () => {
     await page.keyboard.press('ArrowRight');
     await expect(page.getByRole('tab', { name: /audit/i })).toHaveAttribute('aria-selected', 'true');
     await page.keyboard.press('End');
-    await expect(page.getByRole('tab', { name: /integrations/i })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: /AI Tool Guidance/i })).toHaveAttribute('aria-selected', 'true');
     await page.keyboard.press('Home');
     await expect(page.getByRole('tab', { name: /account/i })).toHaveAttribute('aria-selected', 'true');
   });
@@ -250,9 +252,9 @@ test.describe('smoke', () => {
     await page.getByRole('tab', { name: /audit/i }).click();
     await expect(page.getByText('No audit entries yet')).toBeVisible();
 
-    await page.getByRole('tab', { name: /integrations/i }).click();
+    await page.getByRole('tab', { name: /AI Tool Guidance/i }).click();
     await expect(
-      page.locator('#spanel-integrations').getByText('Integration targets are unavailable right now.'),
+      page.locator('#spanel-integrations').getByText('AI tool guidance targets are unavailable right now.'),
     ).toBeVisible();
     await expect(page.locator('.graphify-card').filter({ hasText: 'Graphify source' })).toBeVisible();
     expect(graphStatusRequests).toBe(1);

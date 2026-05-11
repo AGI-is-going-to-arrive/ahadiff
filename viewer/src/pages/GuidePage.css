@@ -294,6 +294,37 @@
   word-break: break-word;
 }
 
+/* ---- Install model explainer ---- */
+.guide-install-model {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.guide-install-model__item {
+  padding: var(--sp-3);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  background: var(--subtle);
+}
+
+.guide-install-model__item span {
+  display: block;
+  color: var(--ink-2, var(--ink));
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.guide-install-model__item p {
+  margin: var(--sp-1) 0 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+}
+
 /* ---- Notes ---- */
 .guide-notes {
   display: flex;
@@ -440,6 +471,17 @@
   color: var(--muted);
   line-height: var(--lh-relaxed);
   max-width: var(--mw-prose);
+}
+
+.guide-integrations__scope {
+  margin: 0 0 var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  background: var(--subtle);
+  color: var(--ink-strong);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
 }
 
 .guide-integrations__list {

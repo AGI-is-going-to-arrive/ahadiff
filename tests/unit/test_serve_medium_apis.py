@@ -444,6 +444,7 @@ class TestAudit:
         body = resp.json()
         assert body["total"] == 3
         assert len(body["entries"]) == 3
+        assert [entry["action"] for entry in body["entries"]] == ["review", "quiz", "learn"]
 
     def test_pagination(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".ahadiff"
@@ -461,6 +462,7 @@ class TestAudit:
         assert body["page"] == 1
         assert body["has_more"] is True
         assert body["next_cursor"] == "5"
+        assert [entry["i"] for entry in body["entries"]] == [7, 6, 5]
 
     def test_page_limit_and_fields_filter(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".ahadiff"
@@ -518,9 +520,9 @@ class TestAudit:
                 "execution_origin": "serve",
             },
             {
-                "timestamp": "2026-01-04T00:00:00Z",
+                "timestamp": "2026-01-02T00:00:00Z",
                 "provider_class": "openai",
-                "model_id": "model-4",
+                "model_id": "model-2",
                 "prompt_name": "lesson_generate",
                 "cost_confidence": "estimated",
                 "execution_origin": "serve",
@@ -548,7 +550,7 @@ class TestAudit:
         assert resp.status_code == 200
         body = resp.json()
         assert body["total"] == 2
-        assert [entry["i"] for entry in body["entries"]] == [1, 2]
+        assert [entry["i"] for entry in body["entries"]] == [2, 1]
 
     def test_limit_capped(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".ahadiff"

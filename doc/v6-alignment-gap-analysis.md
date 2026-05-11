@@ -8,6 +8,7 @@
 > 2026-05-09 update: Skills and Settings Integrations now use the protected install API. They preview the manifest, confirm the manifest hash on install/uninstall, show pending/success/error states, and re-detect after writes. Settings also consumes `?tab=provider` / `?tab=capture` / `?tab=integrations`; Concepts consumes `?focus=...`; Review consumes `?card=...`. Real-current-repo install/uninstall was not executed during validation; write tests used temp repos and browser mocks.
 > 2026-05-11 update: Review was rechecked after the viewer review-fix. Review now has Again / Hard / Good / Easy buttons with `1`-`4` shortcuts, at-risk concept copy, and mastery tier bars. Quiz now has Prev / Mark wrong / Next, mode chips, and a progress table; it still does not have the V6 side evidence panel, and its SRSCard still renders Good / Hard / Wrong.
 > 2026-05-11 ConceptGraph update: ConceptGraph now uses `react-force-graph-2d` Canvas, keeps Graph/List with large graphs defaulting to List, adds community fill, legend/filter UI, node details, cross-view search links, and a semantic list fallback for Canvas accessibility. It still does not have the exact V6 SVG markers/minimap or full source/provenance polish.
+> 2026-05-11 AI Tool Guidance update: Settings still uses the internal `integrations` tab id and `?tab=integrations` deep link, but the visible UX is now “AI 工具指引 / AI Tool Guidance”. The page writes or removes repo-local agent guidance only; it does not install the AhaDiff CLI again and does not write global user directories. Target cards now include scope copy, write/remove commands, inline manifest preview, manifest hash, and action lists. Ratchet also has TSV + JSON export buttons, and Audit entries are displayed newest-first.
 
 ---
 
@@ -197,13 +198,13 @@
 | Trajectory chart | SVG chart present | RatchetChart implemented | **OK** |
 | 8-dim radar | Rubric dimensions display | Shows all 8 dimensions | **OK** |
 | History list | Paginated with verdict badges | Implemented with cursor pagination | **OK** |
-| results.tsv raw table | V6 had downloadable raw data section | Not present | **MISSING** |
+| results.tsv / results.json raw export | V6 had downloadable raw data section | TSV and JSON download buttons are present on Ratchet; neither is a full inline raw table. | **PARTIAL** |
 | Phase 2.5 section | Structural rewrite history | Not present | **MISSING** |
 | Benchmark transparency | V6 had benchmark section | Not present | **MISSING** |
 | Iteration timeline (kept/reverted) | Visual timeline | Simplified list only | **PARTIAL** |
 
 **Work estimate**:
-- results.tsv section: ~60 LOC TSX + ~30 LOC CSS + API. **P2**
+- results TSV/JSON inline preview: ~60 LOC TSX + ~30 LOC CSS + API if needed later. **P2**
 - Phase 2.5 display: ~40 LOC TSX. **P3**
 - Iteration timeline: ~100 LOC TSX + ~50 LOC CSS. **P2**
 
@@ -216,18 +217,18 @@
 | Config display | Present | ConfigField component | **OK** |
 | Doctor checks | Present | Implemented with icons | **OK** |
 | API key status | Present | Configured/missing badges | **OK** |
-| Tab sidebar | V6: Account / Keys / Models / Privacy / Audit / Language / Appearance / Integrations | Implemented as 7 tabs: Account / Provider / Capture / Privacy / Audit / Preferences / Integrations. Language + Appearance are merged into Preferences. | **OK, current shape differs from old V6 split** |
+| Tab sidebar | V6: Account / Keys / Models / Privacy / Audit / Language / Appearance / Integrations | Implemented as 7 tabs: Account / Provider / Capture / Privacy / Audit / Preferences / AI Tool Guidance. Language + Appearance are merged into Preferences; deep link remains `?tab=integrations`. | **OK, current shape differs from old V6 split** |
 | Mode summary card | V6: 4-cell mode summary with accent left border and footer | No longer rendered in `SettingsPage.tsx`; privacy mode is edited directly in Privacy, while usage/provider summary lives in Provider/Audit surfaces. | **DIVERGENT, intentional current UI** |
 | Privacy toggle | V6: switch UI with 38×22px knob | Privacy mode and serve port are writable; local-only/redaction/audit rows are status-style controls derived from current config. | **PARTIAL** |
 | Provider grid | V6: 3-column Generate/Judge/Embed matrix | Implemented provider grid from `/api/providers`, with eyebrow/meta rows and accent highlight | **OK** |
-| Audit log table | V6: Last 20 provider calls with time/model/tokens/cost | Implemented from `/api/audit?limit=20`, with 8 visible columns and real audit field projection | **OK** |
-| Integrations target list | V6: AI tool integrations | Implemented from `/api/install/targets` plus protected preview/install/uninstall POST routes; supports `?tab=integrations`, install command copy, manifest write-path preview, manifest-hash confirmation, pending/success/error, and re-detect after writes. | **OK** |
+| Audit log table | V6: Last 20 provider calls with time/model/tokens/cost | Implemented from `/api/audit?limit=20`, newest-first, with 8 visible columns and real audit field projection | **OK** |
+| AI Tool Guidance target list | V6: AI tool integrations | Implemented from `/api/install/targets` plus protected preview/install/uninstall POST routes; supports `?tab=integrations`, write/remove command copy, inline manifest preview, manifest-hash confirmation, pending/success/error, and re-detect after writes. Copy now says project guidance, not CLI install. | **OK** |
 
 **Work estimate**:
 - Tab sidebar layout: landed; current implementation uses 7 tabs, not the older 8-tab split.
 - Mode summary card: superseded by direct Privacy + Provider/Audit sections.
 - Provider grid: landed in Phase 4D against existing `/api/providers`.
-- Audit log table: landed in Phase 4D against `/api/audit?limit=20`.
+- Audit log table: landed in Phase 4D against `/api/audit?limit=20`; current ordering is newest-first.
 - Privacy controls: privacy mode and serve port are writable; derived status rows remain read-only by design.
 
 ---
@@ -252,7 +253,7 @@
 |---------|-------------|---------------|-----|
 | Agent card grid | 3-column grid with icons | Implemented with 13 agents | **OK** |
 | Copy button with feedback | "copied ✓" animation | Implemented | **OK** |
-| Install/detected status | Badge states | Implemented (installed/available/unsupported), with server-provided install/uninstall commands, manifest preview/hash, protected install/uninstall actions, pending/success/error, and re-detect after writes | **OK** |
+| Install/detected status | Badge states | Implemented (installed/available/unsupported), with server-provided write/remove commands, manifest preview/hash, protected install/uninstall actions, pending/success/error, and re-detect after writes | **OK** |
 | V6: Agent state machine diagram | States strip (idle/reading/diffing/...) | Not present | **MISSING** |
 
 **Work estimate**:
@@ -391,7 +392,7 @@ Estimated new keys needed for full V6 alignment:
 | Review concept mastery bars | Implemented 2026-05-11 | 0 | No |
 | Settings provider grid | TSX + CSS | ~120 | No |
 | Settings audit log table | TSX + CSS + API | ~140 | Yes |
-| Ratchet results.tsv section | TSX + CSS + API | ~90 | Yes |
+| Ratchet TSV/JSON export section | TSX + CSS + API | ~90 | Yes |
 | Ratchet iteration timeline | TSX + CSS | ~150 | No |
 | Quiz visual progress table | Implemented 2026-05-11 | 0 | No |
 | Landing feature cards | TSX + CSS + i18n | ~96 | No |
@@ -427,7 +428,7 @@ The original table below was the V6 visual/frontend-only estimate. For v1.0 plan
 |----------|-------------|--------------|-------------------|
 | **P0** | ~705 | ~18 | 0 |
 | **P1** | ~1,207 | ~20 | 2 (serve status, weak concepts) |
-| **P2** | ~1,619 | ~10 | 5 (search, audit, spec, calendar, results.tsv) |
+| **P2** | ~1,619 | ~10 | 5 (search, audit, spec, calendar, results.tsv/results.json) |
 | **P3** | ~398 | ~6 | 1 (privacy toggle) |
 | **Original visual-only total** | **~3,929** | **~54** | **8** |
 | **v1.0 Full Scope planning total** | **~5,900 frontend LOC** | **TBD after i18n freeze** | **12+ backend items** |

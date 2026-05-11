@@ -314,6 +314,17 @@ function CoreCommandsSection({
         {t('Guide.commands_title')}
       </h2>
 
+      <div className="guide-install-model" aria-label={t('Guide.install_model_label')}>
+        <div className="guide-install-model__item">
+          <span>{t('Guide.install_model_cli_title')}</span>
+          <p>{t('Guide.install_model_cli_desc')}</p>
+        </div>
+        <div className="guide-install-model__item">
+          <span>{t('Guide.install_model_agent_title')}</span>
+          <p>{t('Guide.install_model_agent_desc')}</p>
+        </div>
+      </div>
+
       <div className="guide-grid">
         {CORE_COMMANDS.map((entry) => (
           <CommandCard key={entry.command} entry={entry} t={t} {...copyLabels} />
@@ -499,6 +510,7 @@ function IntegrationsSection({ t, titleId }: { t: TranslateFn; titleId: string }
         </summary>
         <div className="guide-accordion__body">
           <p className="guide-integrations__desc">{t('Guide.integrations_desc')}</p>
+          <p className="guide-integrations__scope">{t('Guide.integrations_scope_note')}</p>
           <ul className="guide-integrations__list" role="list">
             {INTEGRATION_TARGETS.map((target) => (
               <li className="guide-integrations__item" key={target.name}>

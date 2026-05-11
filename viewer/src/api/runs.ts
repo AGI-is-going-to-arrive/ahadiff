@@ -103,3 +103,7 @@ export async function getRatchetHistory(
 export async function getExportResultsTsvBlob(opts?: Pick<RequestInit, 'signal'>): Promise<Blob> {
   return apiFetchBlob('/api/export/results?format=tsv', opts);
 }
+
+export async function getExportResultsJsonBlob(opts?: Pick<RequestInit, 'signal'>): Promise<Blob> {
+  return apiFetchBlob('/api/export/results?format=json', opts);
+}

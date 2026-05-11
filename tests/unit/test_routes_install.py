@@ -293,6 +293,9 @@ def test_get_install_targets_returns_manifest_preview(tmp_path: Path) -> None:
 
     targets_by_name = {t["name"]: t for t in response.json()["targets"]}
     codex = targets_by_name["codex"]
+    assert codex["display_name"] == "Codex CLI"
+    assert targets_by_name["gemini"]["display_name"] == "Gemini CLI"
+    assert targets_by_name["copilot"]["display_name"] == "Copilot / VS Code"
     assert codex["manifest_error"] is None
     assert len(codex["manifest_hash"]) == 64
     assert codex["manifest"]["write"] == [

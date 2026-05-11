@@ -34,26 +34,33 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _TARGET_DESCRIPTIONS = {
-    "aider": "Install AhaDiff guidance for Aider.",
-    "claude": "Install Claude Code project instructions and skills.",
-    "cline": "Install AhaDiff instructions for Cline.",
-    "codex": "Install Codex AGENTS.md guidance.",
-    "continue": "Install AhaDiff instructions for Continue.",
-    "copilot": "Install GitHub Copilot instructions.",
-    "cursor": "Install Cursor rules for AhaDiff.",
-    "gemini": "Install Gemini CLI guidance.",
-    "github-action": "Install the GitHub Actions workflow template.",
-    "hooks": "Install local git hook integration.",
-    "opencode": "Install OpenCode agent instructions.",
-    "roo": "Install AhaDiff instructions for Roo.",
-    "windsurf": "Install Windsurf rules for AhaDiff.",
+    "aider": "Write AhaDiff guidance for Aider.",
+    "claude": "Write Claude Code project instructions and skills.",
+    "cline": "Write AhaDiff instructions for Cline.",
+    "codex": "Write Codex AGENTS.md guidance.",
+    "continue": "Write AhaDiff instructions for Continue.",
+    "copilot": "Write GitHub Copilot instructions.",
+    "cursor": "Write Cursor rules for AhaDiff.",
+    "gemini": "Write Gemini CLI guidance.",
+    "github-action": "Write the GitHub Actions workflow template.",
+    "hooks": "Write local git hook integration files.",
+    "opencode": "Write OpenCode agent instructions.",
+    "roo": "Write AhaDiff instructions for Roo.",
+    "windsurf": "Write Windsurf rules for AhaDiff.",
+}
+
+_TARGET_DISPLAY_NAMES = {
+    "claude": "Claude Code",
+    "codex": "Codex CLI",
+    "copilot": "Copilot / VS Code",
+    "gemini": "Gemini CLI",
+    "github-action": "GitHub Action",
+    "opencode": "OpenCode",
 }
 
 
 def _display_name(name: str) -> str:
-    if name == "github-action":
-        return "GitHub Action"
-    return name.replace("-", " ").title()
+    return _TARGET_DISPLAY_NAMES.get(name, name.replace("-", " ").title())
 
 
 def _normalize_install_target_entry(entry: dict[str, Any]) -> dict[str, Any]:
@@ -69,7 +76,7 @@ def _normalize_install_target_entry(entry: dict[str, Any]) -> dict[str, Any]:
         status = "installed" if detected else "available"
     description = str(entry.get("description") or "")
     if not description:
-        description = _TARGET_DESCRIPTIONS.get(name, f"Install AhaDiff guidance for {name}.")
+        description = _TARGET_DESCRIPTIONS.get(name, f"Write AhaDiff guidance for {name}.")
     error_message = entry.get("error_message")
     return {
         "name": name,
@@ -147,7 +154,7 @@ def _target_entry(name: str, state: ServeState, context: InstallContext) -> dict
         "detected": False,
         "platform_supported": True,
         "status": "available",
-        "description": _TARGET_DESCRIPTIONS.get(name, f"Install AhaDiff guidance for {name}."),
+        "description": _TARGET_DESCRIPTIONS.get(name, f"Write AhaDiff guidance for {name}."),
         "install_command": _install_command(name),
         "uninstall_command": _uninstall_command(name),
         "manifest": None,
