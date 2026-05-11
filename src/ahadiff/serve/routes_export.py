@@ -10,9 +10,13 @@ from typing import TYPE_CHECKING
 from anyio import to_thread
 from starlette.responses import JSONResponse, Response
 
+from ahadiff.contracts import ErrorCode
 from ahadiff.core.errors import InputError
 from ahadiff.core.json_util import safe_tsv_cell
+from ahadiff.review.apkg_export import export_apkg
 from ahadiff.review.database import select_result_tsv_rows
+
+from ._errors import error_response
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -81,4 +85,20 @@ async def get_export_results(request: Request) -> Response:
     )
 
 
-__all__ = ["get_export_results"]
+async def get_export_apkg(request: Request) -> Response:
+    from .auth import require_write_token, serve_state
+
+    require_write_token(request)
+    state: ServeState = serve_state(request)
+    try:
+        apkg_bytes = await to_thread.run_sync(export_apkg, state.review_db_path)
+    except ImportError as exc:
+        return error_response(ErrorCode.FEATURE_UNAVAILABLE, str(exc), status=501)
+    return Response(
+        content=apkg_bytes,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": 'attachment; filename="ahadiff_review.apkg"'},
+    )
+
+
+__all__ = ["get_export_apkg", "get_export_results"]

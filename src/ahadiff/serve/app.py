@@ -20,7 +20,7 @@ from .middleware import LoopbackGuardMiddleware, RequestTimeoutMiddleware, Write
 from .routes_audit import get_audit
 from .routes_config import get_config, get_doctor, put_config
 from .routes_db import post_db_check
-from .routes_export import get_export_results
+from .routes_export import get_export_apkg, get_export_results
 from .routes_graph import get_concept_graph, get_graph_status, post_graph_refresh
 from .routes_improve import get_improve_preflight
 from .routes_install import (
@@ -100,6 +100,7 @@ _HTTP_TO_CODE: dict[int, ErrorCode] = {
     422: ErrorCode.INPUT_VALIDATION,
     429: ErrorCode.RATE_LIMITED,
     500: ErrorCode.INTERNAL_ERROR,
+    501: ErrorCode.FEATURE_UNAVAILABLE,
     502: ErrorCode.PROVIDER_TRANSPORT,
     503: ErrorCode.REQUEST_TIMEOUT,
     504: ErrorCode.REQUEST_TIMEOUT,
@@ -175,6 +176,7 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
             Route("/api/stats", get_stats, methods=["GET"]),
             Route("/api/review/heatmap", get_review_heatmap, methods=["GET"]),
             Route("/api/export/results", get_export_results, methods=["GET"]),
+            Route("/api/export/apkg", get_export_apkg, methods=["GET"]),
             Route("/api/providers", get_providers, methods=["GET"]),
             Route("/api/providers", create_provider, methods=["POST"]),
             Route("/api/providers/discover-models", discover_models, methods=["POST"]),

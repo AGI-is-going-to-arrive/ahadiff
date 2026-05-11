@@ -49,6 +49,7 @@ from .core.paths import (
     review_db_path,
     run_dir,
     validate_run_id,
+    validate_state_dir_path,
 )
 from .core.sqlite_util import safe_sqlite_connect
 from .i18n import normalize_locale, resolve_locale
@@ -176,6 +177,7 @@ set_card_queue_state = _lazy_attr("review.database", "set_card_queue_state")
 upgrade_review_db = _lazy_attr("review.database", "upgrade_review_db")
 mark_claim_wrong = _lazy_attr("review.signal", "mark_claim_wrong")
 create_app = _lazy_attr("serve", "create_app")
+run_mcp_server = _lazy_attr("mcp.server", "run_mcp_server")
 append_concepts = _lazy_attr("wiki", "append_concepts")
 
 
@@ -233,7 +235,7 @@ def _state_dir_and_lock_path(repo_root: Path) -> tuple[Path, Path]:
     root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
     if has_git_repo:
         return project_state_dir(root), lock_file_path(root)
-    state_dir = root / ".ahadiff"
+    state_dir = validate_state_dir_path(root / ".ahadiff")
     return state_dir, state_dir / "ahadiff.lock"
 
 
@@ -250,7 +252,7 @@ def _should_open_serve_browser(*, no_browser: bool) -> bool:
 
 
 def _state_dir_for_root(root: Path, *, has_git_repo: bool) -> Path:
-    return project_state_dir(root) if has_git_repo else root / ".ahadiff"
+    return project_state_dir(root) if has_git_repo else validate_state_dir_path(root / ".ahadiff")
 
 
 def _resolve_output_lang_from_snapshot(snapshot: Any, *, cli_lang: str | None) -> str:
@@ -1913,6 +1915,24 @@ def serve_cmd(
             if file_watcher is not None:
                 file_watcher.stop()
     except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+@_APP.command("mcp-server")
+def mcp_server_cmd(
+    repo_root: Annotated[
+        Path | None,
+        typer.Option("--repo-root", help="Repository root or workspace root."),
+    ] = None,
+) -> None:
+    try:
+        root, has_git_repo = _resolve_learn_workspace_root(
+            Path() if repo_root is None else repo_root,
+            allow_non_git=True,
+        )
+        state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
+        run_mcp_server(state_dir)
+    except Exception as error:  # pragma: no cover - exercised through MCP clients
         _handle_cli_error(error)
 
 

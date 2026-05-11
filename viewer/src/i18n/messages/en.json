@@ -246,7 +246,13 @@
   "Error": {
     "auth_failed": "Authentication failed. Make sure `ahadiff serve` is running, then reload.",
     "back_to_dashboard": "Back to Dashboard",
-    "boundary_body": "Please refresh the page. The error has been logged to the console.",
+    "boundary_body": "This view crashed while rendering. The rest of AhaDiff is still running.",
+    "boundary_copy": "Copy error",
+    "boundary_copied": "Copied",
+    "boundary_details": "Technical details",
+    "boundary_exhausted": "Retry limit reached. Reload the page or copy the error and report it.",
+    "boundary_reload": "Reload page",
+    "boundary_retry_n": "Retry ({n} left)",
     "boundary_title": "Something went wrong",
     "fetch_failed": "Failed to fetch {resource}",
     "not_found": "Not found",
@@ -794,6 +800,7 @@
     "title": "Ratchet History",
     "export_tsv": "Export TSV",
     "export_json": "Export JSON",
+    "export_apkg": "Export Anki (.apkg)",
     "export_failed": "Export failed",
     "spec_alignment": "Spec alignment",
     "alignment_score": "Score",
@@ -912,6 +919,10 @@
     "status_idle": "Type at least {min} characters",
     "status_loading": "Searching…",
     "status_ready": "{count} results",
+    "back_to_results": "Back to results",
+    "preview_empty": "Pick a result to preview",
+    "preview_excerpt": "Excerpt",
+    "preview_id": "ID",
     "title": "Search"
   },
   "Serve": {

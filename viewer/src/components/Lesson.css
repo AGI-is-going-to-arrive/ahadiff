@@ -569,11 +569,20 @@
   background: var(--stamp-verified-tint);
   color: var(--stamp-verified-ink);
   border: 2px solid var(--stamp-verified);
-  border-radius: var(--r-sm);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.15em;
+  text-transform: uppercase;
+  padding: 5px 11px;
+  min-height: 24px;
+  white-space: nowrap;
+  align-items: center;
   transform: rotate(-3deg);
   position: relative;
+  box-shadow: inset 0 0 0 1px var(--stamp-verified-shadow);
+  transition: transform 0.32s var(--ease-out-quart);
 }
 
 .claim-badge--verified::after {
@@ -587,6 +596,28 @@
 
 .claim-badge--verified:hover {
   transform: rotate(-1.2deg) scale(1.02);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .claim-badge--verified {
+    transition: none;
+    transform: none;
+  }
+}
+
+/* Inline stamp in lesson prose */
+.prose .claim-badge--verified {
+  font-size: 10px;
+  padding: 3px 8px;
+  letter-spacing: 0.12em;
+  min-height: 20px;
+  transform: rotate(-2deg);
+  vertical-align: middle;
+  margin-inline-end: 2px;
+}
+
+.prose .claim-badge--verified::after {
+  inset: 2px;
 }
 
 .claim-badge--weak {

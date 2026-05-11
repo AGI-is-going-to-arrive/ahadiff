@@ -25,6 +25,7 @@ export interface TaskProgressSubscription {
 export interface TaskProgressHandlers {
   onProgress: (info: TaskInfoResponse) => void;
   onError: (error: Error) => void;
+  onTransientError?: () => void;
 }
 
 export async function estimateLearn(
@@ -78,54 +79,93 @@ function parseTaskProgressEvent(rawData: string): TaskProgressEvent {
   );
 }
 
+const SSE_MAX_RETRIES = 5;
+const SSE_BASE_DELAY_MS = 1000;
+
 export function subscribeTaskProgress(
   taskId: string,
   handlers: TaskProgressHandlers,
 ): TaskProgressSubscription | null {
   if (typeof EventSource === 'undefined') return null;
-  const source = new EventSource(`/api/tasks/${encodeURIComponent(taskId)}/progress`);
+
   let closed = false;
+  let retries = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let source: EventSource | null = null;
+
   const close = () => {
     if (closed) return;
     closed = true;
-    source.close();
+    if (retryTimer !== null) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
+    source?.close();
+    source = null;
   };
 
-  source.addEventListener('progress', (event) => {
+  function connect() {
     if (closed) return;
-    try {
-      const payload = parseTaskProgressEvent((event as MessageEvent<string>).data);
-      if (payload.event !== 'progress') throw new Error('unexpected_task_progress_event');
-      handlers.onProgress(payload.data);
-      if (
-        payload.data.status === 'completed' ||
-        payload.data.status === 'failed' ||
-        payload.data.status === 'cancelled'
-      ) {
+    retryTimer = null;
+    source?.close();
+    const es = new EventSource(`/api/tasks/${encodeURIComponent(taskId)}/progress`);
+    source = es;
+
+    es.addEventListener('progress', (event) => {
+      if (closed || source !== es) return;
+      try {
+        const payload = parseTaskProgressEvent((event as MessageEvent<string>).data);
+        if (payload.event !== 'progress') throw new Error('unexpected_task_progress_event');
+        retries = 0;
+        handlers.onProgress(payload.data);
+        if (
+          payload.data.status === 'completed' ||
+          payload.data.status === 'failed' ||
+          payload.data.status === 'cancelled'
+        ) {
+          close();
+        }
+      } catch (err: unknown) {
         close();
+        handlers.onError(errorFromUnknown(err));
       }
-    } catch (err: unknown) {
-      close();
-      handlers.onError(errorFromUnknown(err));
-    }
-  });
+    });
 
-  source.addEventListener('error', (event) => {
-    if (closed) return;
-    let error = new Error('task_progress_stream_error');
-    try {
-      const rawData = 'data' in event && typeof event.data === 'string' ? event.data : '';
-      if (rawData) {
-        const payload = parseTaskProgressEvent(rawData);
-        if (payload.event === 'error') error = new Error(payload.data.error);
+    es.addEventListener('error', (event) => {
+      if (closed || source !== es) return;
+      const hasData = 'data' in event && typeof event.data === 'string' && event.data !== '';
+      if (hasData) {
+        let error = new Error('task_progress_stream_error');
+        try {
+          const payload = parseTaskProgressEvent(event.data as string);
+          if (payload.event === 'error') error = new Error(payload.data.error);
+        } catch (err: unknown) {
+          error = errorFromUnknown(err);
+        }
+        close();
+        handlers.onError(error);
+        return;
       }
-    } catch (err: unknown) {
-      error = errorFromUnknown(err);
-    }
-    close();
-    handlers.onError(error);
-  });
+      // Transient network error — notify caller immediately so it can
+      // start polling fallback, then retry SSE in the background.
+      es.close();
+      source = null;
+      if (retries === 0) {
+        handlers.onTransientError?.();
+      }
+      if (retries >= SSE_MAX_RETRIES) {
+        close();
+        handlers.onError(new Error('task_progress_stream_error'));
+        return;
+      }
+      const delay = SSE_BASE_DELAY_MS * Math.pow(2, retries);
+      retries += 1;
+      if (retryTimer !== null) clearTimeout(retryTimer);
+      retryTimer = setTimeout(connect, delay);
+    });
+  }
 
+  connect();
   return { close };
 }
 

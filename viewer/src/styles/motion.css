@@ -1,0 +1,55 @@
+/* Reusable motion primitives. All honor prefers-reduced-motion. */
+
+@keyframes ahadiff-page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ahadiff-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.motion-page {
+  animation: ahadiff-page-enter 220ms var(--ease-content-in, cubic-bezier(0.16, 1, 0.3, 1)) both;
+}
+
+.motion-lift {
+  transition:
+    transform 180ms var(--ease-out, ease-out),
+    box-shadow 180ms var(--ease-out, ease-out);
+}
+
+.motion-lift:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--sh-md);
+}
+
+.motion-lift:active {
+  transform: translateY(0);
+  transition-duration: 80ms;
+}
+
+.motion-crossfade-in {
+  animation: ahadiff-fade-in 240ms var(--ease-out, ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-page,
+  .motion-crossfade-in {
+    animation: none;
+  }
+  .motion-lift {
+    transition: none;
+  }
+  .motion-lift:hover,
+  .motion-lift:active {
+    transform: none;
+  }
+}

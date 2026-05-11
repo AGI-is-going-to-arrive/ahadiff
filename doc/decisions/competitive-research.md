@@ -4,7 +4,7 @@
 
 | # | Feature | Source | Effort | Priority |
 |---|---------|--------|--------|----------|
-| 1 | AnkiConnect / `.apkg` export | Anki | S (1-2d) | High |
+| 1 | `.apkg` export（WebUI download） | Anki | DONE (2026-05-12) | High |
 | 2 | Cloze deletion quiz type | Anki/SuperMemo | M (3-4d) | High |
 | 3 | Easy Days + deeper retention tuning | Anki FSRS | S (1d) | High |
 | 4 | Freshness → review priority weight | CogDebt + Graphify | S (1-2d) | High |
@@ -27,8 +27,9 @@
 
 ## Current Session Status
 
-These features are logged for future planning. They are not claimed as landed by
-this research note.
+These features are logged for planning. Row 1 is now partially landed as WebUI
+`.apkg` download from active review cards; it is not AnkiConnect and it is not a
+CLI `export-apkg` command.
 
 This session landed a narrower hardening slice instead:
 

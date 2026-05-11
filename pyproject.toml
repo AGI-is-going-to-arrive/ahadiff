@@ -12,6 +12,7 @@ dependencies = [
   "fsrs>=6.3.1,<7",
   "httpx>=0.28,<1",
   "jinja2>=3.1,<4",
+  "mcp>=1.0,<2",
   "portalocker>=3.1,<4",
   "pydantic>=2.11,<3",
   "rich>=14,<15",
@@ -24,6 +25,9 @@ dependencies = [
 ahadiff = "ahadiff.cli:main"
 
 [project.optional-dependencies]
+anki = [
+  "genanki>=0.13,<1",
+]
 optimizer = [
   "fsrs[optimizer]>=6.3.1,<7",
 ]

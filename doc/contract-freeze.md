@@ -819,6 +819,7 @@ run_id: str
 | **POST /api/graph/refresh** | ✅ 已接线 | 写 token + Origin/Referer 写保护 + repo 写锁；调用 `import_graphify_artifact(root, force=True)` 重新导入 raw Graphify artifact，并在导入前后用 no-symlink state-path guard 校验 `.ahadiff/graphify/graph.json` |
 | **POST /api/db/check** | ✅ 已接线 | 写 token + Origin/Referer 写保护 + repo 写锁；使用 `check_review_db(state.review_db_path, ensure_schema=False)` 走 read-only SQLite 检查，不调用 `_ensure_schema()`，缺表时计数为 0，不顺手创建或迁移空库 |
 | **POST /api/learn** | ✅ 已接线 | `core/orchestrator.py` 从 `cli.py` 抽出 learn 主链；route 只接受安全 capture / learn 选项，返回 `202 {"task_id": ...}`，provider override 不从 HTTP 暴露；当前有 10 req/min 写限流，401/403/404 不消耗额度 |
+| **GET /api/export/apkg** | ✅ 已接线 | 写 token + Origin/Referer 写保护；读取 review.sqlite active cards 并生成 `ahadiff_review.apkg`；依赖可选 `genanki`，缺依赖返回 `501 FEATURE_UNAVAILABLE`；空卡组允许导出，上限 10,000 张 active cards |
 | **medium APIs** | ✅ 全部真实接线 | search/audit/mastery/weak/alignment/learning stats 均查 SQLite/JSONL，无 mock |
 | **/api/tasks*** | ✅ stable product API | 2026-05-02 R0 决策提升为稳定 API（§9.10）；`TaskInfoResponse` 全部字段、`TaskErrorCode`、`RecoveryHint`、`TaskProgressEvent` JSON payload 均为稳定合约；SSE framing text 为实现细节 |
 
@@ -862,6 +863,7 @@ run_id: str
 - `POST /api/learn` 当前不再关闭 timeout；它走 `TaskRunner` 的默认 timeout 语义
 - `POST /api/learn` 的 429 `rate_limited` 是 submit-layer HTTP 状态，不进入 `TaskErrorCode`；前端按 `retry_after` / `Retry-After` 展示等待文案
 - thread-backed learn task 被取消时，取消信号会传进 `run_learn_pipeline()` 的 `is_cancelled` 回调；超时进入 draining 的 worker 不会被 `shutdown()` 提前 untrack
+- 前端 EventSource client 对瞬断做最多 5 次后台重连，按 1s/2s/4s/8s/16s 退避；这只是 client 恢复策略，不改变 SSE payload 合约
 
 **实现文件**：
 - `core/task_runner.py`：TaskRunner 类完整保留，Phase 6B 直接使用
@@ -902,3 +904,15 @@ run_id: str
 - 前端 `taskInfoResponseSchema` 与 `TaskInfoResponse` 对齐，`recovery_hint` 作为稳定可选字段；LearnTaskBanner 用 `recovery_hint` 控制 Retry，并用 `Learn.rate_limited` 渲染 429。
 
 本轮实测：targeted parser / judge / orchestrator / lesson 回归 `230 passed in 11.67s`；后端全量 `pytest --tb=short` = `1993 passed, 1 skipped in 178.87s`；`ruff check` / `ruff format --check` / `pyright` / `git diff --check` 通过。真实 WebUI learn run 使用 `gpt-5.5` 生成和 judge，`score.json=94.96/PASS`，`judge.json model_id=gpt-5.5`，浏览器 console 无 error/warn；live judge smoke `1 passed in 4.30s`。coverage、前端 build 和全量 Playwright 未在本轮后重跑。
+
+### 9.13 APKG export 与 FEATURE_UNAVAILABLE（2026-05-12）
+
+本轮只记录已经由代码和测试验证的收口项：
+
+- `GET /api/export/apkg` 是 WebUI/serve 下载能力，不新增 CLI `export-apkg` 命令，也不是 AnkiConnect 自动写入。
+- APKG export 只读取 `cards` 表中 `card_state='active'` 的 review cards；空卡组会生成可下载的空 deck；超过 10,000 张 active cards 会拒绝导出，避免本地请求一次性生成过大的包。
+- `genanki` 是 optional extra：用户需要安装 `ahadiff[anki]`。缺依赖时 route 返回统一错误 payload，`status=501` 且 `error_code=FEATURE_UNAVAILABLE`。
+- `FEATURE_UNAVAILABLE` 是稳定 `ErrorCode`，用于“服务可用，但本地缺可选依赖或能力未安装”的情况；它不表示鉴权失败，也不表示用户输入错误。
+- APKG note front/back 会做 HTML escape；front 为空时拒绝导出，避免把不可复习的卡片塞进 deck。
+
+本轮实测：`tests/unit/test_apkg_export.py` 覆盖 active-card export、空 deck、empty front、10,000+ 上限、缺 `genanki` 的 501、旧 schema storage error 和 route 下载；完整 unit suite `2150 passed`，`ruff check` 和目标 `pyright` 通过。

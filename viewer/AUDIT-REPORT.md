@@ -4,7 +4,7 @@
 **Scope**: `/viewer/src/` (46 source files, 225 Playwright tests passing, 0 typecheck errors, 258.66 KB build, 80/80 i18n parity)
 **Auditor**: Full 6-dimension code review covering all TSX, TS, and CSS files
 
-> 2026-05-08 update: this remains a historical audit snapshot. Current viewer has moved past the scope above: 12 pages, 37 production page+component TSX files, 24 page+component CSS files, 786/786 i18n parity, CSP hash hardening, z-index tokens, Dashboard empty-state Learn CTA, Review sidebar labels, and current targeted Playwright/Vitest coverage. Use root docs for the latest gate.
+> 2026-05-12 update: this remains a historical audit snapshot. Current viewer has moved past the scope above: 13 pages, 48 production TSX files, 43 CSS files, 1187/1187 i18n parity, Canvas ConceptGraph, two-column SearchOverlay, Ratchet TSV/JSON/APKG export, ErrorBoundary diagnostics with clipboard fallback, motion/elevation CSS primitives, and current targeted Playwright/Vitest/coverage runs. Use root docs for the latest gate.
 
 ---
 

@@ -5,6 +5,8 @@ import './styles/tokens.css';
 import './styles/base.css';
 import './styles/bolder.css';
 import './styles/utility.css';
+import './styles/elevation.css';
+import './styles/motion.css';
 // Media-query overrides must load AFTER the base utility/component CSS so
 // their @media rules (print / forced-colors / reduced-transparency) win at
 // equal specificity in the cascade. Placing them earlier would let later-

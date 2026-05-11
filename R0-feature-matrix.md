@@ -30,8 +30,8 @@
 | A10 | L5: review.sqlite (FSRS-6 + schema v1-v7 migration + FTS5) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/review/database.py`, `scheduler.py`, `optimizer.py`, `search.py`; `tests/unit/test_review_*.py` |
 | A11 | L6: Learning Core (quiz + SRS review + concepts + helpfulness) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/quiz/`, `src/ahadiff/wiki/concepts.py`, `src/ahadiff/lesson/helpfulness.py`; `tests/unit/test_helpfulness.py` |
 | A12 | L6: Graphify (models/parser/matcher/linker/slicer/search/freshness) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/graphify/` (7 files: models, parser, matcher, linker, slicer, search, freshness); `tests/unit/test_graphify*.py` (5 test files) |
-| A13 | L7: Serve API (44 routes + catchall, Starlette + Uvicorn) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/serve/app.py` (47 route entries); 14 route modules; `tests/unit/test_serve*.py` |
-| A14 | L7: React 19 SPA (Vite + vanilla CSS) | Blueprint | N/A | IMPL | IMPL | `viewer/src/` (13 pages, 49 production page+component TSX, 32 page+component CSS); `viewer/vitest.config.ts` + Playwright |
+| A13 | L7: Serve API (62 concrete API routes + catchall, Starlette + Uvicorn) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/serve/app.py`; route modules; `tests/unit/test_serve*.py`, `test_routes_*.py` |
+| A14 | L7: React 19 SPA (Vite + vanilla CSS) | Blueprint | N/A | IMPL | IMPL | `viewer/src/` (13 pages, 48 production TSX, 43 CSS); `viewer/vitest.config.ts` + Vitest coverage + Playwright |
 
 ---
 
@@ -79,6 +79,7 @@
 | D4 | Learning transfer validation | Blueprint | IMPL | N/A | IMPL | `lesson/transfer.py`; transfer_rate metric |
 | D5 | Learnability gate | Blueprint | IMPL | N/A | IMPL | `lesson/learnability.py`; `tests/unit/test_learnability.py` |
 | D6 | ScaffoldingTabs UI | Blueprint | N/A | IMPL | IMPL | `viewer/src/components/ScaffoldingTabs.tsx` |
+| D7 | Full lesson walkthrough TL;DR | User follow-up | IMPL | N/A | IMPL | `lesson/schemas.py` (`walkthrough_tldr`), `lesson/generator.py`, `lesson_generate.md`; `test_lesson_generator.py` |
 
 ---
 
@@ -113,7 +114,8 @@
 | F9 | LLM-as-judge evaluation | Blueprint | IMPL | N/A | IMPL | `eval/evaluator.py`; `tests/live/test_llm_judge_live.py` |
 | F10 | Cross-model evaluation (generate != judge) | Blueprint | IMPL | N/A | IMPL | `eval/evaluator.py`, config support for separate models |
 | F11 | Benchmark suite (7 Python + 3 non-Python fixtures) | Blueprint | IMPL | N/A | IMPL | `benchmarks/fixtures/eval/` (10 fixture dirs); `benchmarks/scripts/`; `tests/eval/test_benchmark.py` |
-| F12 | results.tsv export view (11 columns, derived from SQLite) | Blueprint | IMPL | N/A | IMPL | `eval/results.py`; routes_export |
+| F12 | results.tsv / JSON export views (derived from SQLite) | Blueprint | IMPL | IMPL | IMPL | `eval/results.py`; `serve/routes_export.py`; `viewer/src/pages/RatchetPage.tsx` |
+| F13 | Anki `.apkg` download from active review cards | Competitor research | IMPL | IMPL | IMPL | `review/apkg_export.py`; `serve/routes_export.py`; `viewer/src/pages/RatchetPage.tsx`; `tests/unit/test_apkg_export.py` |
 
 ---
 
@@ -176,7 +178,7 @@
 
 | # | Feature | Source | Backend Status | Frontend Status | Test Status | Evidence |
 |---|---------|--------|---------------|-----------------|-------------|----------|
-| J1 | Locale priority chain: cookie -> Accept-Language -> AHADIFF_LANG -> CLI --lang -> config.toml -> LANG -> en | Blueprint+Comp | IMPL | IMPL | IMPL | `i18n/`; `serve/routes_locale.py`; `viewer/src/i18n/`; Learn Mode Dialog defaults to active viewer locale; 1101/1101 i18n scalar keys |
+| J1 | Locale priority chain: cookie -> Accept-Language -> AHADIFF_LANG -> CLI --lang -> config.toml -> LANG -> en | Blueprint+Comp | IMPL | IMPL | IMPL | `i18n/`; `serve/routes_locale.py`; `viewer/src/i18n/`; Learn Mode Dialog defaults to active viewer locale; 1187/1187 i18n scalar keys |
 | J2 | Supported locales: en + zh-CN | Blueprint | IMPL | IMPL | IMPL | `i18n/`; `viewer/src/i18n/` |
 | J3 | Zustand atom store for i18n re-render (no React Context) | Blueprint | N/A | IMPL | IMPL | `viewer/src/i18n/useTranslation.ts` |
 | J4 | LLM OUTPUT_LANGUAGE prefix in prompts | Blueprint | IMPL | N/A | IMPL | Orchestrator resolves output_lang |
@@ -202,6 +204,7 @@
 | K11 | `--open` flag (auto-open browser after learn) | Blueprint | IMPL | N/A | IMPL | CLI flags |
 | K12 | AGENTS.md for async VM auto-read | Blueprint | IMPL | N/A | N/A | Mentioned in blueprint |
 | K13 | `ahadiff learn --changed-path` path-scoped worktree capture | User follow-up | IMPL | N/A | IMPL | `cli.py`; `git/capture.py`; `tests/unit/test_git_capture.py` |
+| K14 | `ahadiff mcp-server --repo-root` read-only stdio MCP server | User follow-up | IMPL | N/A | IMPL | `cli.py`; `src/ahadiff/mcp/server.py`; `tests/unit/test_cli.py` |
 
 ---
 
@@ -222,9 +225,9 @@
 | L11 | GuidePage | Current viewer | N/A | IMPL | IMPL | `viewer/src/pages/GuidePage.tsx`; maintenance commands default to `--dry-run`; legacy `/#/skills` redirects to `/#/guide` |
 | L12 | NotFoundPage (404) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/NotFoundPage.tsx` |
 | L13 | AppShell (Sidebar + Topbar + BottomMiniPanel) | Blueprint | N/A | IMPL | IMPL | `components/AppShell.tsx`, `Sidebar.tsx`, `Topbar.tsx`, `BottomMiniPanel.tsx` |
-| L14 | SearchOverlay (global search) | Blueprint | N/A | IMPL | IMPL | `components/SearchOverlay.tsx` |
+| L14 | SearchOverlay (global search, table filters, two-column preview) | Blueprint | N/A | IMPL | IMPL | `components/SearchOverlay.tsx`; `components/SearchOverlay.css`; `SearchOverlay.test.tsx`; `viewer/tests/e2e/search-overlay.spec.ts` |
 | L15 | VirtualList (performance for long lists) | Blueprint | N/A | IMPL | IMPL | `components/VirtualList.tsx` |
-| L16 | ErrorBoundary | Blueprint | N/A | IMPL | IMPL | `components/ErrorBoundary.tsx` |
+| L16 | ErrorBoundary | Blueprint | N/A | IMPL | IMPL | `components/ErrorBoundary.tsx`; `components/ErrorBoundary.css`; `ErrorBoundary.test.tsx`; `viewer/tests/e2e/error-boundary.spec.ts` |
 | L17 | Skeleton loading states | Blueprint | N/A | IMPL | IMPL | `components/Skeleton.tsx` |
 | L18 | LearnTaskBanner (learn task status + retry/cancel + 429 rate_limited copy) | Blueprint | N/A | IMPL | IMPL | `components/LearnTaskBanner.tsx` (+ test) |
 | L19 | FreshnessBadge (Graphify freshness indicator) | Blueprint | N/A | IMPL | IMPL | `components/FreshnessBadge.tsx` (+ test) |
@@ -238,7 +241,7 @@
 | # | Feature | Source | Backend Status | Frontend Status | Test Status | Evidence |
 |---|---------|--------|---------------|-----------------|-------------|----------|
 | M1 | POST /api/learn (trigger learn pipeline from UI, 10 req/min rate limit, `changed_paths`) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_learn.py`; `LearnModeDialog.tsx`; LearnTaskBanner |
-| M2 | /api/tasks (list/get/cancel/SSE progress) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_tasks.py`; `viewer/src/api/tasks.ts`; `learn-store.test.ts` |
+| M2 | /api/tasks (list/get/cancel/SSE progress) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_tasks.py`; `viewer/src/api/tasks.ts` (5 retry exponential backoff + polling fallback); `learn-store.test.ts` |
 | M3 | /api/graph/* (graph status, FTS) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_graph.py` |
 | M4 | /api/config (show resolved config) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_config.py` |
 | M5 | /api/search (FTS5 full-text search) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_search.py` |
@@ -250,7 +253,7 @@
 | M11 | /api/signals/* (learning signals, write-token protected) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_signals.py` |
 | M12 | /api/locale (get/put, cookie ahadiff_lang) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_locale.py` |
 | M13 | /api/install (install targets) | Blueprint | IMPL | N/A | IMPL | `serve/routes_install.py` |
-| M14 | /api/export (results.tsv) | Blueprint | IMPL | N/A | IMPL | `serve/routes_export.py` |
+| M14 | /api/export (results TSV/JSON + APKG) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_export.py`; `review/apkg_export.py`; `RatchetPage.tsx`; `test_apkg_export.py` |
 | M15 | /api/watch/status | Blueprint | IMPL | N/A | IMPL | `serve/routes_watch.py` |
 | M16 | TaskInfoResponse: TaskErrorCode + recovery_hint stable fields | Blueprint | IMPL | IMPL | IMPL | `contracts/`, `serve/routes_tasks.py` |
 

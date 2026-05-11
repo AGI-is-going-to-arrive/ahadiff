@@ -1,0 +1,55 @@
+/* Elevation system — luminance-based in dark mode (Material-3 / iOS paradigm).
+ * Cards "above" the page are LIGHTER, not darker. Light mode keeps the
+ * existing paper→elevated scale. */
+
+:root {
+  --surface-0: var(--paper);
+  --surface-1: var(--paper);
+  --surface-2: var(--elevated);
+  --surface-3: #FFFFFF;
+  --surface-4: #FFFFFF;
+  --surface-overlay: rgba(28, 27, 24, 0.42);
+
+  --elev-1: var(--sh-sm);
+  --elev-2: var(--sh-md);
+  --elev-3: var(--sh-lg);
+  --elev-4: 0 14px 40px -10px rgba(120, 80, 40, 0.32);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface-0: #161512;
+    --surface-1: #1C1B18;
+    --surface-2: #24221E;
+    --surface-3: #2C2925;
+    --surface-4: #36322B;
+    --surface-overlay: rgba(0, 0, 0, 0.58);
+
+    --elev-1: 0 1px 0 rgba(255, 255, 255, 0.03),
+              0 1px 2px rgba(0, 0, 0, 0.35);
+    --elev-2: 0 1px 0 rgba(255, 255, 255, 0.04),
+              0 4px 16px -4px rgba(0, 0, 0, 0.5);
+    --elev-3: 0 1px 0 rgba(255, 255, 255, 0.05),
+              0 18px 40px -16px rgba(0, 0, 0, 0.6);
+    --elev-4: 0 1px 0 rgba(255, 255, 255, 0.06),
+              0 28px 60px -20px rgba(0, 0, 0, 0.7);
+  }
+}
+
+:root[data-theme="dark"] {
+  --surface-0: #161512;
+  --surface-1: #1C1B18;
+  --surface-2: #24221E;
+  --surface-3: #2C2925;
+  --surface-4: #36322B;
+  --surface-overlay: rgba(0, 0, 0, 0.58);
+
+  --elev-1: 0 1px 0 rgba(255, 255, 255, 0.03),
+            0 1px 2px rgba(0, 0, 0, 0.35);
+  --elev-2: 0 1px 0 rgba(255, 255, 255, 0.04),
+            0 4px 16px -4px rgba(0, 0, 0, 0.5);
+  --elev-3: 0 1px 0 rgba(255, 255, 255, 0.05),
+            0 18px 40px -16px rgba(0, 0, 0, 0.6);
+  --elev-4: 0 1px 0 rgba(255, 255, 255, 0.06),
+            0 28px 60px -20px rgba(0, 0, 0, 0.7);
+}

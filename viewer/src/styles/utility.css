@@ -549,3 +549,33 @@
   word-break: break-word;
 }
 /* END: surface-card + diag-row */
+
+/* ---- V6 wiki tree (used in Guide/Skills pages) ---- */
+.tree {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.75;
+  color: var(--ink-2, var(--ink));
+}
+
+.tree .tr-dir {
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.tree .tr-file {
+  color: var(--ink-2, var(--ink));
+  padding-inline-start: 14px;
+  display: block;
+}
+
+.tree .tr-sub {
+  padding-inline-start: 28px;
+  display: block;
+  color: var(--muted);
+}
+
+.tree .tr-new {
+  color: var(--success);
+  font-weight: 500;
+}

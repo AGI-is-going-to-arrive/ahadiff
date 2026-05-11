@@ -4,6 +4,7 @@ import InfoHint from '../components/InfoHint';
 import RatchetChart from '../components/RatchetChart';
 import Skeleton, { SkeletonGroup } from '../components/Skeleton';
 import {
+  getExportApkgBlob,
   getExportResultsJsonBlob,
   getExportResultsTsvBlob,
   getRatchetHistory,
@@ -298,6 +299,13 @@ export default function RatchetPage() {
       .catch(() => setExportError(true));
   }, [downloadBlob]);
 
+  const handleExportApkg = useCallback(() => {
+    setExportError(false);
+    void getExportApkgBlob()
+      .then((blob) => downloadBlob(blob, 'ahadiff_review.apkg'))
+      .catch(() => setExportError(true));
+  }, [downloadBlob]);
+
   useEffect(() => {
     if ((activeTab !== 'benchmark' && activeTab !== 'judge') || !latestRunId || activeScoreData) return;
     const controller = new AbortController();
@@ -401,6 +409,13 @@ export default function RatchetPage() {
               onClick={handleExportJson}
             >
               {t('Ratchet.export_json')}
+            </button>
+            <button
+              type="button"
+              className="load-more-btn"
+              onClick={handleExportApkg}
+            >
+              {t('Ratchet.export_apkg')}
             </button>
             {exportError && (
               <span className="ratchet-page__export-error" role="alert">

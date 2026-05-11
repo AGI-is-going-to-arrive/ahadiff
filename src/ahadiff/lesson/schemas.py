@@ -36,6 +36,7 @@ class _LessonModel(BaseModel):
 
 class LessonFull(_LessonModel):
     tl_dr: str
+    walkthrough_tldr: str = ""
     what_changed: list[str]
     why: list[str]
     walkthrough: list[str]
@@ -53,6 +54,11 @@ class LessonFull(_LessonModel):
         if not normalized:
             raise ValueError("tl_dr must not be empty")
         return normalized
+
+    @field_validator("walkthrough_tldr")
+    @classmethod
+    def validate_walkthrough_tldr(cls, value: str) -> str:
+        return _normalize_line(value) if value else ""
 
     @field_validator("what_changed", "why", "walkthrough", "claims", "concepts", "quiz")
     @classmethod
@@ -74,20 +80,26 @@ class LessonFull(_LessonModel):
             self._render_heading("TL;DR", self.tl_dr),
             self._render_bullets("What Changed", self.what_changed),
             self._render_bullets("Why", self.why),
-            self._render_bullets("Walkthrough", self.walkthrough),
-            self._render_bullets("Claims", self.claims),
-            self._render_bullets("Concepts", self.concepts),
-            self._render_bullets(
-                "Misconceptions",
-                self.misconceptions or ["None recorded for this run."],
-            ),
-            self._render_bullets(
-                "Not Proven",
-                self.not_proven or ["No explicitly unproven claims were recorded."],
-            ),
-            self._render_bullets("Quiz", self.quiz),
-            self._render_bullets("Sources", self.sources),
         ]
+        if self.walkthrough_tldr.strip():
+            sections.append(self._render_heading("Walkthrough Summary", self.walkthrough_tldr))
+        sections.extend(
+            [
+                self._render_bullets("Walkthrough", self.walkthrough),
+                self._render_bullets("Claims", self.claims),
+                self._render_bullets("Concepts", self.concepts),
+                self._render_bullets(
+                    "Misconceptions",
+                    self.misconceptions or ["None recorded for this run."],
+                ),
+                self._render_bullets(
+                    "Not Proven",
+                    self.not_proven or ["No explicitly unproven claims were recorded."],
+                ),
+                self._render_bullets("Quiz", self.quiz),
+                self._render_bullets("Sources", self.sources),
+            ]
+        )
         return "\n\n".join(sections) + "\n"
 
     def render_misconceptions_markdown(self) -> str:

@@ -13,6 +13,7 @@ You are writing a full teaching lesson from a redacted diff package.
 ```json
 {
   "tl_dr": "short paragraph or one sentence",
+  "walkthrough_tldr": "A 2-3 sentence risk-graded summary of the key changes. Start with the most important change. Mention if any changes are security-sensitive or breaking.",
   "what_changed": ["..."],
   "why": ["..."],
   "walkthrough": ["..."],

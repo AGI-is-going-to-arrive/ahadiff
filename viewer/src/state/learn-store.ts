@@ -148,15 +148,15 @@ function applyTaskInfo(capturedTaskId: string, info: TaskInfoResponse): boolean 
     resetPollState();
     return true;
   }
-      if (s === 'failed') {
-        const retryAllowedByTask = (info.recovery_hint ?? 'retry') === 'retry';
-        useLearnStore.setState({
-          phase: 'failed',
-          task: info,
-          error: info.error,
-          errorCode: info.error_code ?? 'internal_error',
-          retryable: useLearnStore.getState().retryable && retryAllowedByTask,
-        });
+  if (s === 'failed') {
+    const retryAllowedByTask = (info.recovery_hint ?? 'retry') === 'retry';
+    useLearnStore.setState({
+      phase: 'failed',
+      task: info,
+      error: info.error,
+      errorCode: info.error_code ?? 'internal_error',
+      retryable: useLearnStore.getState().retryable && retryAllowedByTask,
+    });
     resetPollState();
     return true;
   }
@@ -169,6 +169,7 @@ function startProgressTracking(taskId: string): void {
   try {
     progressSubscription = subscribeTaskProgress(taskId, {
       onProgress: (info) => {
+        stopPolling();
         applyTaskInfo(taskId, info);
       },
       onError: () => {
@@ -180,6 +181,16 @@ function startProgressTracking(taskId: string): void {
           return;
         }
         stopProgressSubscription();
+        schedulePoll();
+      },
+      onTransientError: () => {
+        const current = useLearnStore.getState();
+        if (
+          current.taskId !== taskId ||
+          (current.phase !== 'running' && current.phase !== 'cancelling')
+        ) {
+          return;
+        }
         schedulePoll();
       },
     });

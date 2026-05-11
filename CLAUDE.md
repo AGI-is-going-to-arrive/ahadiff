@@ -6,11 +6,11 @@
 
 知返 AhaDiff 是一个 **local-first 的 verified diff learning layer**。把 AI 写出的 git diff 变成带代码证据链的学习笔记、概念图谱、主动回忆测验、SRS 复习卡和质量棘轮记录。核心差异：Code Wiki 解释仓库，知返解释这次改动；每句话都能回到代码证据。
 
-**当前状态（2026-05-11）**：本轮 ConceptGraph Canvas 迁移和 graph hardening follow-up 只改图谱链路。后端 `ConceptGraphEdge` 增加 `confidence`，`/api/graph/concepts` 只透传 allowlist 内的 `EXTRACTED` / `INFERRED` / `AMBIGUOUS`，节点 `metadata` 继续透传；Graphify parser 读取 imported graph 时补 no-follow regular-file、reparse、大小和 UTF-8 guard。前端 ConceptGraph 从 SVG + d3-force 改成 `react-force-graph-2d` Canvas renderer，保留 Graph / List、大图默认 List、Full graph、节点详情和跨页搜索跳转，并补 community fill、legend/filter、Canvas 可访问列表 fallback、forced-colors 样式和 Windows 路径 basename 处理。SearchOverlay / AppShell 通过同一个 open-search event 做跨视图搜索，Concepts graph refresh 遇到 `409 LOCK_CONFLICT` 会做一次延迟重试，Vite 把 graph renderer 依赖放到 `vendor-graph` 并从初始 modulepreload 中排除。随后 AI 工具指引 / Ratchet export / Audit follow-up 把 Settings 的可见页签改成“AI 工具指引”（深链仍是 `?tab=integrations`），明确这里写的是当前 repo 的 Claude / Codex / Aider 等项目级指引，不是再次安装 AhaDiff CLI；每个 target 改成卡片式范围说明、写入/移除命令、复制按钮、inline manifest preview、manifest hash 和动作列表。Ratchet 新增 JSON 下载，复用 token-header blob 请求 `/api/export/results?format=json`；`GET /api/audit` 改为最新记录优先，分页和字段过滤都作用在倒序结果上。当前真实验证：后端目标回归 `116 passed`；`ruff check`、`pyright`、改动 Python 文件 format check 通过；viewer typecheck、前端 Vitest `25 files, 270 tests passed`、viewer build 通过；目标 Playwright `59 passed`；i18n scalar keys `1176/1176`；全量 `ruff format --check` 仍发现未触及的 `src/ahadiff/graphify/parser.py` 会被 formatter 重排，所以未计入通过项。integration、eval、live judge、coverage、wheel、完整 Playwright 和远端 GitHub Actions 未在本轮重跑。
+**当前状态（2026-05-12）**：本轮 adversarial review fix 只同步当前未提交改动对应的真实状态。后端 full lesson 增加 `walkthrough_tldr`，旧 lesson JSON 缺字段仍能反序列化，full lesson 会在 walkthrough 前渲染 `Walkthrough Summary`；`GET /api/export/apkg` 可下载 `ahadiff_review.apkg`，只导出 active review cards，上限 10,000 张，缺 `genanki` 时返回 `501 FEATURE_UNAVAILABLE`，安装时需要 `ahadiff[anki]` extra；新增 read-only stdio MCP server，入口是 `ahadiff mcp-server --repo-root <repo>`，工具为 `list_runs`、`get_run_summary`、`list_due_cards`、`search`、`get_concepts`、`get_stats`。前端 Ratchet 增加 APKG 下载按钮；任务进度 SSE 增加指数退避重连和 polling fallback；SearchOverlay 改为双栏结果/预览，并补移动端返回、Escape 和 focus trap；ErrorBoundary 增加诊断脱敏、copy retry 状态和非 HTTPS clipboard fallback；ConceptGraph 暗色 canvas 颜色、motion/elevation CSS primitives、V6 fidelity CSS 和 Vitest coverage config 已接入。当前真实验证：后端完整 unit `2150 passed`；`ruff check`、目标 `pyright`、`uv lock --check` 通过；viewer `pnpm install --frozen-lockfile`、typecheck、Vitest `28 files, 310 tests passed`、`pnpm t`、coverage、build 通过；coverage 汇总为 statements/lines `26.3%`、branches `72.16%`、functions `45.28%`；SearchOverlay desktop+mobile Playwright `6 passed`，ErrorBoundary desktop+mobile Playwright `4 passed`；`git diff --check HEAD` 通过。integration、eval、live judge、wheel、完整 Playwright 和远端 GitHub Actions 未在本轮重跑。
 
 ## 架构总览
 
-后端 CLI（learn/improve/verify/serve/install/benchmark）：8-provider LLM + diff capture + claims + lesson/quiz/concepts + 8 维 eval + 可选 LLM judge + review.sqlite FSRS-6 + serve API（61 routes + catchall，稳定 `error_code` payload）+ 13 install targets + improve loop。前端 React 19 SPA：13 页面、47 个生产 TSX + 40 个 CSS 文件，当前 i18n scalar key parity 为 `1176/1176`；ConceptGraph 当前是 Canvas renderer + 可访问列表 fallback；Settings 的项目级 AI 工具指引仍沿用 `?tab=integrations` 深链。
+后端 CLI（learn/improve/verify/serve/install/benchmark/mcp-server）：8-provider LLM + diff capture + claims + lesson/quiz/concepts + 8 维 eval + 可选 LLM judge + review.sqlite FSRS-6 + serve API（62 routes + catchall，28 个稳定 `ErrorCode`）+ APKG export + read-only MCP server + 13 install targets + improve loop。前端 React 19 SPA：13 页面、48 个生产 TSX + 43 个 CSS 文件，当前 i18n scalar key parity 为 `1187/1187`；ConceptGraph 当前是 Canvas renderer + 可访问列表 fallback；Settings 的项目级 AI 工具指引仍沿用 `?tab=integrations` 深链。
 
 ### 技术栈
 
@@ -52,25 +52,26 @@ global_config_dir()                   ← Global（派生/索引/偏好，非真
 
 | 模块 | 路径 | 核心职责 |
 |------|------|----------|
-| contracts | `src/ahadiff/contracts/` | 枚举、DTO、契约 helper、错误类型、QuizChoice/AnswerMode、27 个稳定 `ErrorCode` + `ERROR_STATUS` |
+| contracts | `src/ahadiff/contracts/` | 枚举、DTO、契约 helper、错误类型、QuizChoice/AnswerMode、28 个稳定 `ErrorCode` + `ERROR_STATUS` |
 | core | `src/ahadiff/core/` | CLI 配置、路径、ID、json_util/sqlite_util 安全 helper、task_runner（1800s timeout + 终态单调）、orchestrator（error budget 8 + per-step output caps + changed_paths）、watcher |
 | safety | `src/ahadiff/safety/` | ignore / redaction（URL-embedded secret）/ injection / gates / audit |
 | llm | `src/ahadiff/llm/` | provider（streaming byte cap + DNS IP pinning + DecodingError 重试）、probe、cache、cost、adapters（thinking.py）、usage |
 | git | `src/ahadiff/git/` | diff capture、parser、line map、symbols、hunk hash、`git` 可执行文件检测和 repo write lock |
 | claims | `src/ahadiff/claims/` | claim 解析（容错 + 截断 JSON 恢复）、runtime、negative scan、deterministic verifier、`output_lang` 透传 |
-| lesson | `src/ahadiff/lesson/` | learnability gate、三档 lesson（full/hint/compact）、section helpfulness |
+| lesson | `src/ahadiff/lesson/` | learnability gate、三档 lesson（full/hint/compact）、full lesson `walkthrough_tldr`、section helpfulness |
 | quiz | `src/ahadiff/quiz/` | quiz/cards/misconception_cards（ABCD 选项 + 容错解析）、review_card_id 回填 |
 | wiki | `src/ahadiff/wiki/` | concepts.jsonl 累积、streaming reader、ancestry cache、DB/JSONL cursor 分页 |
 | graphify | `src/ahadiff/graphify/` | parser（50 MiB + 50k edge cap + provenance）/ matcher / linker / freshness（7 态 + 4 值投影） |
 | eval | `src/ahadiff/eval/` | 8 维评分、hard gates（contradicted ≤2）、ratchet、可选 LLM judge |
-| review | `src/ahadiff/review/` | review.sqlite v9 + FTS5 + FSRS-6 + search + optimizer + ABCD 卡片 |
-| serve | `src/ahadiff/serve/` | 61 routes；auth/CORS/CSP；learn/tasks/graph/config/search/usage/audit/review/install/providers 端点；`/api/export/results?format=tsv\|json`；audit 最新优先分页；统一 `{error_code,error,status,details?}`；per-request locale；SSE progress；写保护 |
+| review | `src/ahadiff/review/` | review.sqlite v9 + FTS5 + FSRS-6 + search + optimizer + ABCD 卡片 + APKG active-card export |
+| serve | `src/ahadiff/serve/` | 62 routes；auth/CORS/CSP；learn/tasks/graph/config/search/usage/audit/review/install/providers 端点；`/api/export/results?format=tsv\|json`；`/api/export/apkg`；audit 最新优先分页；统一 `{error_code,error,status,details?}`；per-request locale；SSE progress；写保护 |
 | install | `src/ahadiff/install/` | 13 安装目标、项目级 AI 工具指引写入、通用写入层（no-follow/reparse/symlink guard）、hooks git 检测/timeout、verify workflow macOS/Linux/Windows matrix |
 | improve | `src/ahadiff/improve/` | improve session、worktree replay、prompt 白名单、Phase 2.5、preflight |
 | i18n | `src/ahadiff/i18n/` | locale resolver（cookie → Accept-Language → `AHADIFF_LANG` → CLI → config → `LANG`）和 prompt language helper |
+| mcp | `src/ahadiff/mcp/` | read-only stdio MCP server，读取 runs/cards/search/concepts/stats |
 | benchmarks | `benchmarks/` | 10 fixtures、Graphify 10k gate（parse 750ms + peak 96MiB） |
-| viewer | `viewer/` | React 19 SPA；13 页面；Learn Mode Dialog 默认跟随 viewer locale；Review 四档 SRS + 高风险概念；Quiz 导航 / mark-wrong / progress table；ConceptGraph Canvas renderer + community fill + a11y list fallback；Ratchet TSV/JSON 导出；Settings 项目级 AI 工具指引；Dashboard + Lesson + Concepts + Ratchet + RunDetail + Settings + Guide + Diff + Search；Onboarding DiagnosticRow；错误码本地化；locale-aware byte/token 格式化；侧栏三档；container query；PWA |
-| tests | `tests/` | unit/integration/eval/live；本轮 unit `2136 passed`；CI: PR unit + eval + nightly eval + release coverage ≥85% |
+| viewer | `viewer/` | React 19 SPA；13 页面；SearchOverlay 双栏预览；ErrorBoundary 诊断脱敏和复制 fallback；Learn Mode Dialog 默认跟随 viewer locale；Review 四档 SRS + 高风险概念；Quiz 导航 / mark-wrong / progress table；ConceptGraph Canvas renderer + community fill + a11y list fallback；Ratchet TSV/JSON/APKG 导出；Settings 项目级 AI 工具指引；Dashboard + Lesson + Concepts + Ratchet + RunDetail + Settings + Guide + Diff + Search；Onboarding DiagnosticRow；错误码本地化；locale-aware byte/token 格式化；motion/elevation CSS；侧栏三档；container query；PWA |
+| tests | `tests/` | unit/integration/eval/live；本轮 unit `2150 passed`；CI: PR unit + eval + nightly eval + release coverage ≥85% |
 | doc | `doc/` | 产品设计文档 |
 | ui | `ui/` | UI 原型 Warm v1-v6 |
 
@@ -194,6 +195,7 @@ pytest tests/live/test_llm_judge_live.py -q
 | 05-11 | Viewer Review / Quiz / Learn polish + full Playwright rerun | frontend 269 / Playwright 2630 / i18n 1101 |
 | 05-11 | ConceptGraph Canvas migration + graph confidence hardening | frontend 270 / graph route+parser 117 / target Playwright 62 |
 | 05-11 | AI 工具指引命名与交互收口 + Ratchet JSON export + Audit 最新优先 | backend target 116 / frontend 270 / target Playwright 59 / i18n 1176 |
+| 05-12 | APKG export + read-only MCP server + lesson walkthrough_tldr + SSE/SearchOverlay/ErrorBoundary/CSS hardening | backend 2150 / frontend 310 / target Playwright 10 / coverage run |
 
 
 <!-- AHADIFF:BEGIN target=claude -->

@@ -246,7 +246,13 @@
   "Error": {
     "auth_failed": "认证失败。请确认 `ahadiff serve` 正在运行后重试。",
     "back_to_dashboard": "返回运行面板",
-    "boundary_body": "请刷新页面，错误详情已记录到控制台。",
+    "boundary_body": "此视图在渲染时崩溃，AhaDiff 其余部分仍在正常运行。",
+    "boundary_copy": "复制错误",
+    "boundary_copied": "已复制",
+    "boundary_details": "技术详情",
+    "boundary_exhausted": "已达重试上限。请重新加载页面，或复制错误信息进行反馈。",
+    "boundary_reload": "重新加载",
+    "boundary_retry_n": "重试（剩余 {n} 次）",
     "boundary_title": "出现错误",
     "fetch_failed": "拉取 {resource} 失败",
     "not_found": "未找到",
@@ -794,6 +800,7 @@
     "title": "棘轮历史",
     "export_tsv": "导出 TSV",
     "export_json": "导出 JSON",
+    "export_apkg": "导出 Anki (.apkg)",
     "export_failed": "导出失败",
     "spec_alignment": "规范对齐",
     "alignment_score": "分数",
@@ -912,6 +919,10 @@
     "status_idle": "至少输入 {min} 个字符",
     "status_loading": "搜索中…",
     "status_ready": "共 {count} 条结果",
+    "back_to_results": "返回结果",
+    "preview_empty": "选择一项查看预览",
+    "preview_excerpt": "摘要",
+    "preview_id": "ID",
     "title": "搜索"
   },
   "Serve": {

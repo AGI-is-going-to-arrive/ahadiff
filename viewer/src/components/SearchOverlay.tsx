@@ -28,6 +28,7 @@ const DEBOUNCE_MS = 200;
 const MIN_QUERY = 2;
 const TABLE_FILTERS = ['', 'concepts', 'cards', 'result_events', 'graph_nodes'] as const;
 type TableFilter = (typeof TABLE_FILTERS)[number];
+const KIND_ORDER: SearchResult['kind'][] = ['run', 'concept', 'claim', 'card'];
 
 /** Resolve a result to its in-app navigation target. */
 function hrefFor(result: SearchResult): string | null {
@@ -68,6 +69,7 @@ export default function SearchOverlay({ open, onClose, initialQuery }: SearchOve
   const navigate = useNavigate();
   const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const previewBackRef = useRef<HTMLButtonElement>(null);
   const filterRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const debounceRef = useRef<number | null>(null);
@@ -80,6 +82,7 @@ export default function SearchOverlay({ open, onClose, initialQuery }: SearchOve
     'idle',
   );
   const [tableFilter, setTableFilter] = useState<TableFilter>('');
+  const [mobilePreview, setMobilePreview] = useState(false);
 
   /* Reset on open/close so the next invocation starts from a clean state. */
   useEffect(() => {
@@ -90,8 +93,10 @@ export default function SearchOverlay({ open, onClose, initialQuery }: SearchOve
       setActive(0);
       setStatus('idle');
       setTableFilter('');
+      setMobilePreview(false);
       return undefined;
     }
+    setMobilePreview(false);
     restoreFocusRef.current = document.activeElement as HTMLElement | null;
     /* aria-modal=true alone does not stop tab navigation in WCAG-compliant
      * browsers; mark the rest of the page as inert while the overlay is open
@@ -147,6 +152,14 @@ export default function SearchOverlay({ open, onClose, initialQuery }: SearchOve
     setQuery(initialQuery ?? '');
   }, [initialQuery, open]);
 
+  useEffect(() => {
+    if (!open || !mobilePreview) return undefined;
+    const handle = window.requestAnimationFrame(() => {
+      previewBackRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(handle);
+  }, [mobilePreview, open]);
+
   /* Debounced fetch when query changes. */
   useEffect(() => {
     if (!open) return undefined;
@@ -156,9 +169,11 @@ export default function SearchOverlay({ open, onClose, initialQuery }: SearchOve
     if (trimmed.length < MIN_QUERY) {
       setResults([]);
       setStatus('idle');
+      setMobilePreview(false);
       return undefined;
     }
     setStatus('loading');
+    setMobilePreview(false);
     const controller = new AbortController();
     abortRef.current = controller;
     debounceRef.current = window.setTimeout(() => {
@@ -171,6 +186,7 @@ export default function SearchOverlay({ open, onClose, initialQuery }: SearchOve
           if (controller.signal.aborted) return;
           setResults(res.results);
           setActive(0);
+          setMobilePreview(false);
           setStatus(res.results.length === 0 ? 'empty' : 'ready');
         })
         .catch((err: unknown) => {
@@ -179,15 +195,18 @@ export default function SearchOverlay({ open, onClose, initialQuery }: SearchOve
           if (err instanceof ApiError && err.status === 404) {
             /* Endpoint not yet shipped — degrade gracefully to empty. */
             setResults([]);
+            setMobilePreview(false);
             setStatus('empty');
             return;
           }
           if (err instanceof ValidationError) {
             setResults([]);
+            setMobilePreview(false);
             setStatus('error');
             return;
           }
           setResults([]);
+          setMobilePreview(false);
           setStatus('error');
         });
     }, DEBOUNCE_MS);
@@ -196,6 +215,24 @@ export default function SearchOverlay({ open, onClose, initialQuery }: SearchOve
       if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
     };
   }, [open, query, tableFilter]);
+
+  const grouped = useMemo(() => {
+    const map = new Map<SearchResult['kind'], SearchResult[]>();
+    for (const r of results) {
+      const arr = map.get(r.kind) ?? [];
+      arr.push(r);
+      map.set(r.kind, arr);
+    }
+    const rank = new Map(KIND_ORDER.map((kind, idx) => [kind, idx]));
+    return Array.from(map.keys())
+      .sort((a, b) => (rank.get(a) ?? KIND_ORDER.length) - (rank.get(b) ?? KIND_ORDER.length))
+      .map((k) => ({ kind: k, items: map.get(k)! }));
+  }, [results]);
+
+  const flatResults = useMemo(
+    () => grouped.flatMap((g) => g.items),
+    [grouped],
+  );
 
   const close = useCallback(() => {
     onClose();
@@ -228,6 +265,7 @@ export default function SearchOverlay({ open, onClose, initialQuery }: SearchOve
       const next = tableFilterOptions[index];
       if (!next) return;
       setTableFilter(next.value);
+      setMobilePreview(false);
       window.requestAnimationFrame(() => filterRefs.current[index]?.focus());
     },
     [tableFilterOptions],
@@ -259,6 +297,11 @@ export default function SearchOverlay({ open, onClose, initialQuery }: SearchOve
     (event: React.KeyboardEvent<HTMLDivElement>) => {
       if (event.key === 'Escape') {
         event.preventDefault();
+        if (mobilePreview) {
+          setMobilePreview(false);
+          inputRef.current?.focus();
+          return;
+        }
         close();
         return;
       }
@@ -267,9 +310,11 @@ export default function SearchOverlay({ open, onClose, initialQuery }: SearchOve
        * input + result buttons + footer; we cycle between the first and last
        * focusable. */
       if (event.key === 'Tab' && dialogRef.current) {
-        const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        );
+        const focusables = Array.from(
+          dialogRef.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]):not([tabindex="-1"]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          ),
+        ).filter((el) => el.offsetParent !== null || el === document.activeElement);
         if (focusables.length === 0) return;
         const first = focusables[0]!;
         const last = focusables[focusables.length - 1]!;
@@ -285,21 +330,23 @@ export default function SearchOverlay({ open, onClose, initialQuery }: SearchOve
           return;
         }
       }
-      if (status !== 'ready' || results.length === 0) return;
+      if (status !== 'ready' || flatResults.length === 0) return;
       if (event.key === 'ArrowDown') {
         event.preventDefault();
-        setActive((i) => (i + 1) % results.length);
+        setActive((i) => (i + 1) % flatResults.length);
       } else if (event.key === 'ArrowUp') {
         event.preventDefault();
-        setActive((i) => (i - 1 + results.length) % results.length);
+        setActive((i) => (i - 1 + flatResults.length) % flatResults.length);
       } else if (event.key === 'Enter') {
         event.preventDefault();
-        const target = results[active];
+        const target = flatResults[active];
         if (target) commit(target);
       }
     },
-    [active, close, commit, results, status],
+    [active, close, commit, flatResults, mobilePreview, status],
   );
+
+  const activeResult = flatResults[active] ?? null;
 
   const announce = useMemo(() => {
     switch (status) {
@@ -311,12 +358,12 @@ export default function SearchOverlay({ open, onClose, initialQuery }: SearchOve
         return t('SearchOverlay.status_empty', { query });
       case 'ready':
         return t('SearchOverlay.status_ready', {
-          count: String(results.length),
+          count: String(flatResults.length),
         });
       default:
         return t('SearchOverlay.status_idle', { min: String(MIN_QUERY) });
     }
-  }, [query, results.length, status, t]);
+  }, [query, flatResults.length, status, t]);
 
   if (!open) return null;
 
@@ -333,9 +380,13 @@ export default function SearchOverlay({ open, onClose, initialQuery }: SearchOve
         type="button"
         className="search-overlay__backdrop"
         aria-label={t('A11y.close')}
+        tabIndex={-1}
         onClick={close}
       />
-      <div className="search-overlay__panel">
+      <div
+        className={`search-overlay__panel${flatResults.length > 0 ? ' search-overlay__panel--wide' : ''}`}
+        data-mobile-view={mobilePreview ? 'preview' : undefined}
+      >
         <header className="search-overlay__header">
           <label id="search-overlay-label" className="search-overlay__label" htmlFor="search-overlay-input">
             {t('SearchOverlay.title')}
@@ -373,7 +424,10 @@ export default function SearchOverlay({ open, onClose, initialQuery }: SearchOve
               aria-checked={tableFilter === f.value}
               tabIndex={tableFilter === f.value ? 0 : -1}
               className={`search-overlay__filter-chip${tableFilter === f.value ? ' search-overlay__filter-chip--active' : ''}`}
-              onClick={() => setTableFilter(f.value)}
+              onClick={() => {
+                setTableFilter(f.value);
+                setMobilePreview(false);
+              }}
               onKeyDown={onFilterKeyDown}
             >
               {f.label}
@@ -383,39 +437,105 @@ export default function SearchOverlay({ open, onClose, initialQuery }: SearchOve
         <div className="search-overlay__status" role="status" aria-live="polite">
           {announce}
         </div>
-        <ul
-          id="search-overlay-results"
-          className="search-overlay__results"
-          role="listbox"
-          aria-label={t('SearchOverlay.results_label')}
-        >
-          {results.map((result, idx) => {
-            const isActive = idx === active;
-            return (
-              <li
-                key={`${result.kind}-${result.id}`}
-                className={`search-overlay__result${isActive ? ' search-overlay__result--active' : ''}`}
-                role="option"
-                aria-selected={isActive}
+        <div className="search-overlay__body">
+          <ul
+            id="search-overlay-results"
+            className="search-overlay__results"
+            role="listbox"
+            aria-label={t('SearchOverlay.results_label')}
+          >
+            {grouped.map((group) => {
+              const kindLabel = t(`SearchOverlay.kind_${group.kind}` as never);
+              return group.items.map((result, idxInGroup) => {
+                const globalIdx = flatResults.indexOf(result);
+                const isActive = globalIdx === active;
+                const showHeader = idxInGroup === 0;
+                return (
+                  <li
+                    key={`${result.kind}-${result.id}`}
+                    className={`search-overlay__result${isActive ? ' search-overlay__result--active' : ''}`}
+                    role="option"
+                    aria-selected={isActive}
+                  >
+                    {showHeader && (
+                      <div className="search-overlay__section-header" aria-hidden="true">
+                        {kindLabel}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      className="search-overlay__result-btn"
+                      onMouseEnter={() => setActive(globalIdx)}
+                      onClick={() => {
+                        if (window.innerWidth <= 768) {
+                          setActive(globalIdx);
+                          setMobilePreview(true);
+                        } else {
+                          commit(result);
+                        }
+                      }}
+                    >
+                      <span className={`search-overlay__chip search-overlay__chip--${result.kind}`}>
+                        {kindLabel}
+                      </span>
+                      <span className="search-overlay__title">{result.title}</span>
+                      {result.snippet ? (
+                        <span className="search-overlay__snippet">{result.snippet}</span>
+                      ) : null}
+                    </button>
+                  </li>
+                );
+              });
+            })}
+          </ul>
+          <div className="search-overlay__preview-col">
+            {mobilePreview && (
+              <button
+                ref={previewBackRef}
+                type="button"
+                className="search-overlay__preview-back"
+                onClick={() => {
+                  setMobilePreview(false);
+                  inputRef.current?.focus();
+                }}
               >
-                <button
-                  type="button"
-                  className="search-overlay__result-btn"
-                  onMouseEnter={() => setActive(idx)}
-                  onClick={() => commit(result)}
-                >
-                  <span className={`search-overlay__chip search-overlay__chip--${result.kind}`}>
-                    {t(`SearchOverlay.kind_${result.kind}` as never)}
-                  </span>
-                  <span className="search-overlay__title">{result.title}</span>
-                  {result.snippet ? (
-                    <span className="search-overlay__snippet">{result.snippet}</span>
-                  ) : null}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+                ← {t('SearchOverlay.back_to_results')}
+              </button>
+            )}
+            {activeResult ? (
+              <div className="search-overlay__preview">
+                <span className={`search-overlay__chip search-overlay__chip--${activeResult.kind}`}>
+                  {t(`SearchOverlay.kind_${activeResult.kind}` as never)}
+                </span>
+                <h3 className="search-overlay__preview-title">{activeResult.title}</h3>
+                <dl className="search-overlay__preview-meta">
+                  <dt>{t('SearchOverlay.preview_id')}</dt>
+                  <dd className="search-overlay__preview-mono">{activeResult.id}</dd>
+                  {activeResult.snippet && (
+                    <>
+                      <dt>{t('SearchOverlay.preview_excerpt')}</dt>
+                      <dd>{activeResult.snippet}</dd>
+                    </>
+                  )}
+                </dl>
+                <div className="search-overlay__preview-actions">
+                  <button
+                    type="button"
+                    className="search-overlay__preview-btn"
+                    onClick={() => commit(activeResult)}
+                  >
+                    {t('SearchOverlay.hint_open')} ⏎
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="search-overlay__preview-empty">
+                <span className="search-overlay__preview-empty-icon" aria-hidden="true">⌕</span>
+                <p>{t('SearchOverlay.preview_empty')}</p>
+              </div>
+            )}
+          </div>
+        </div>
         <footer className="search-overlay__footer" aria-hidden="true">
           <span className="search-overlay__hint">
             <span className="search-overlay__kbd">↑</span>

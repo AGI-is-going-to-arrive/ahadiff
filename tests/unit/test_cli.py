@@ -291,6 +291,24 @@ def test_verify_ci_rejects_finalized_event_from_different_run(
     assert "finalized result event does not exist for run: run_b" in result.stderr
 
 
+def test_non_git_state_dir_rejects_symlink(tmp_path: Path) -> None:
+    import pytest
+
+    from ahadiff.core.errors import InputError
+
+    workspace = tmp_path / "workspace"
+    outside = tmp_path / "outside-state"
+    workspace.mkdir()
+    outside.mkdir()
+    try:
+        (workspace / ".ahadiff").symlink_to(outside, target_is_directory=True)
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
+
+    with pytest.raises(InputError, match="state dir must not be a symlink"):
+        cli_module._state_dir_for_root(workspace, has_git_repo=False)  # pyright: ignore[reportPrivateUsage]
+
+
 def test_review_lang_is_resolved_inside_handler(tmp_path: Path, monkeypatch: Any) -> None:
     repo_root = _repo_root(tmp_path, monkeypatch)
     captured: dict[str, str | None] = {}

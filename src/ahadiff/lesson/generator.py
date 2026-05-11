@@ -142,7 +142,10 @@ def generate_lesson(
         output_token_cap=output_token_cap,
     )
     parsed = _parse_lesson_payload_with_fallbacks(payload, schema=LessonFull, bundle=bundle)
-    return cast("LessonFull", parsed)
+    lesson = cast("LessonFull", parsed)
+    if not lesson.walkthrough_tldr.strip():
+        lesson = lesson.model_copy(update={"walkthrough_tldr": lesson.tl_dr})
+    return lesson
 
 
 def generate_hint(
@@ -266,6 +269,7 @@ def _repair_lesson_candidate(
     if "sources" in schema.model_fields and not _lesson_list(repaired.get("sources")):
         repaired["sources"] = fallback_sources
     if schema is LessonFull:
+        _ensure_walkthrough_tldr(repaired)
         _ensure_lesson_list(
             repaired,
             "what_changed",
@@ -348,6 +352,16 @@ def _repair_lesson_candidate(
             fallback=fallback_concepts,
         )
     return {key: value for key, value in repaired.items() if key in schema.model_fields}
+
+
+def _ensure_walkthrough_tldr(repaired: dict[str, Any]) -> None:
+    walkthrough_tldr = str(repaired.get("walkthrough_tldr") or "").strip()
+    if walkthrough_tldr:
+        repaired["walkthrough_tldr"] = walkthrough_tldr
+        return
+    tl_dr = str(repaired.get("tl_dr") or "").strip()
+    if tl_dr:
+        repaired["walkthrough_tldr"] = tl_dr
 
 
 def _lesson_sections(candidate: Mapping[str, Any]) -> dict[str, list[str]]:

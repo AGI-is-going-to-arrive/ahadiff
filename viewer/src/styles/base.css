@@ -208,3 +208,50 @@ kbd {
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
+
+/* ---- data-state overlay (V6 empty/loading/error pattern) ---- */
+.page[data-state="empty"]   .page-content::before,
+.page[data-state="loading"] .page-content::before,
+.page[data-state="error"]   .page-content::before {
+  content: attr(data-state-msg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 260px;
+  border: 1px dashed var(--hair-strong);
+  border-radius: var(--r-lg);
+  background: var(--subtle);
+  color: var(--muted);
+  font-family: var(--font-serif);
+  font-size: 18px;
+  padding: var(--sp-8);
+  text-align: center;
+  margin-bottom: var(--sp-4);
+}
+
+.page[data-state="loading"] .page-content::before {
+  background: var(--warning-soft-bg, #fbf5e6);
+  border-color: var(--warning-hair, #e3cda1);
+  color: var(--warning);
+}
+
+.page[data-state="error"] .page-content::before {
+  background: var(--accent-softest, #fdf1ec);
+  border-color: var(--danger-hair, #e4b8ae);
+  color: var(--danger);
+}
+
+.page[data-state="empty"]   .page-content > *:not(.page-head),
+.page[data-state="loading"] .page-content > *:not(.page-head),
+.page[data-state="error"]   .page-content > *:not(.page-head) {
+  opacity: 0.25;
+  pointer-events: none;
+  filter: grayscale(0.3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page[data-state="loading"] .page-content::before,
+  .page[data-state="error"]   .page-content::before {
+    transition: none;
+  }
+}

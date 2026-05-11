@@ -96,6 +96,7 @@ class TestContractsImport:
         assert ERROR_STATUS[ErrorCode.LOOPBACK_DENIED] == 403
         assert ERROR_STATUS[ErrorCode.INPUT_VALIDATION] == 422
         assert ERROR_STATUS[ErrorCode.LOCK_CONFLICT] == 409
+        assert ERROR_STATUS[ErrorCode.FEATURE_UNAVAILABLE] == 501
 
 
 class TestSerialization:

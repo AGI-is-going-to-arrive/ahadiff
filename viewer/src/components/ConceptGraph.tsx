@@ -529,6 +529,9 @@ function ForceGraph({
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const forcedColors = useMediaQuery('(forced-colors: active)');
+  const prefersDark = useMediaQuery('(prefers-color-scheme: dark)');
+  const explicitTheme = typeof document !== 'undefined' ? document.documentElement.getAttribute('data-theme') : null;
+  const isDark = explicitTheme === 'dark' || (explicitTheme !== 'light' && prefersDark);
   const [dimensions, setDimensions] = useState({
     width: 800,
     height: GRAPH_CANVAS_HEIGHT,
@@ -623,7 +626,7 @@ function ForceGraph({
       // Kind stroke
       ctx.strokeStyle = forcedColors
         ? (isSelected ? 'Highlight' : 'CanvasText')
-        : (isSelected ? '#D27050' : node.kindStrokeColor);
+        : (isSelected ? (isDark ? '#D97757' : '#D27050') : node.kindStrokeColor);
       ctx.lineWidth = (isSelected ? 3 : 2) / globalScale;
       ctx.stroke();
 
@@ -631,7 +634,7 @@ function ForceGraph({
       if (isSelected) {
         ctx.beginPath();
         ctx.arc(x, y, r + 4 / globalScale, 0, 2 * Math.PI);
-        ctx.strokeStyle = forcedColors ? 'Highlight' : 'rgba(210, 112, 80, 0.4)';
+        ctx.strokeStyle = forcedColors ? 'Highlight' : (isDark ? 'rgba(217, 119, 87, 0.5)' : 'rgba(210, 112, 80, 0.4)');
         ctx.lineWidth = 1.5 / globalScale;
         ctx.stroke();
       }
@@ -643,17 +646,17 @@ function ForceGraph({
         ctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.strokeStyle = forcedColors ? 'Canvas' : 'rgba(242, 239, 231, 0.92)';
+        ctx.strokeStyle = forcedColors ? 'Canvas' : (isDark ? 'rgba(28, 27, 24, 0.85)' : 'rgba(242, 239, 231, 0.92)');
         ctx.lineWidth = 3 / globalScale;
         ctx.lineJoin = 'round';
         ctx.strokeText(label, x, y);
-        ctx.fillStyle = forcedColors ? 'CanvasText' : '#1C1B18';
+        ctx.fillStyle = forcedColors ? 'CanvasText' : (isDark ? '#E6E3D8' : '#1C1B18');
         ctx.fillText(label, x, y);
       }
 
       ctx.globalAlpha = 1;
     },
-    [selectedId, focusedIds, connectedIds, forcedColors],
+    [selectedId, focusedIds, connectedIds, forcedColors, isDark],
   );
 
   const nodePointerAreaPaint = useCallback(
@@ -704,7 +707,7 @@ function ForceGraph({
       ctx.lineTo(tx, ty);
       ctx.strokeStyle = forcedColors
         ? (isHighlighted ? 'Highlight' : 'CanvasText')
-        : (isHighlighted ? '#D27050' : '#C9C4B3');
+        : (isHighlighted ? (isDark ? '#D97757' : '#D27050') : (isDark ? '#4A473E' : '#C9C4B3'));
       ctx.lineWidth = Math.max(0.5, Math.min(2.5, link.weight ?? 1)) / globalScale;
       ctx.stroke();
 
@@ -716,17 +719,17 @@ function ForceGraph({
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.globalAlpha = 0.85;
-        ctx.strokeStyle = forcedColors ? 'Canvas' : 'rgba(242, 239, 231, 0.9)';
+        ctx.strokeStyle = forcedColors ? 'Canvas' : (isDark ? 'rgba(28, 27, 24, 0.85)' : 'rgba(242, 239, 231, 0.9)');
         ctx.lineWidth = 3 / globalScale;
         ctx.lineJoin = 'round';
         ctx.strokeText(link.relation, mx, my);
-        ctx.fillStyle = forcedColors ? 'CanvasText' : '#6A6456';
+        ctx.fillStyle = forcedColors ? 'CanvasText' : (isDark ? '#D0CABF' : '#6A6456');
         ctx.fillText(link.relation, mx, my);
       }
 
       ctx.globalAlpha = 1;
     },
-    [selectedId, focusedIds, connectedIds, forcedColors],
+    [selectedId, focusedIds, connectedIds, forcedColors, isDark],
   );
 
   const handleNodeClick = useCallback(

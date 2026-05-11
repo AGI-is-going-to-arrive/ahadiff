@@ -16,7 +16,7 @@ AhaDiff 已有 FSRS-6 + ABCD 卡片 + review.sqlite。**真正缺的是生态、
 
 | Feature | 来源 | 工作机制 | AhaDiff 实现路径 |
 |---|---|---|---|
-| **AnkiConnect 导出 / `.apkg` 导入导出** | Anki | HTTP API（默认 `localhost:8765`），让外部工具往 Anki deck 加卡 | 新增 `ahadiff export --target anki` 子命令；把 review.sqlite 中的 quiz 卡（front=问题/back=答案+evidence link）转成 Anki note model。**ROI 极高**：一行命令把验证过的卡片塞进用户主 SRS，降低迁移阻力。 |
+| **`.apkg` 导出** | Anki | `.apkg` 文件可导入 Anki deck；AnkiConnect 是另一条自动写入路径 | 已落地 WebUI 下载：Ratchet 调 `GET /api/export/apkg` 生成 `ahadiff_review.apkg`，只导出 review.sqlite 中 active review cards，上限 10,000 张，缺 `genanki` 时返回 `501 FEATURE_UNAVAILABLE`。这不是 AnkiConnect，也不是 CLI `export-apkg`。 |
 | **Cloze deletion 卡片类型** | Anki / SuperMemo / Migaku | 把句子里 1+ 个 token 用 `{{c1::xxx}}` 隐藏，从一句话生成多张卡 | 在 `quiz_generate.md` prompt 里增加 cloze 模板；扩 `QuizChoice` contract 支持 `mode: "cloze"`；前端 Quiz 页加填空 UI。比 ABCD 更适合记 API 签名、shell flag、SQL 关键字。 |
 | **Image Occlusion（图像遮罩）** | SuperMemo 19 / Anki Image Occlusion Enhanced | 在图片上画矩形，遮住部分内容，从一张图生成多张卡 | AhaDiff 的"diff 图"天然适合：把 unified diff 渲染成图，遮掉关键 hunk → "下面这个 patch 的第 3 行应该是？"。需要 `viewer/src/pages/Quiz.tsx` 加 SVG overlay。 |
 | **Desired Retention 深调 + Easy Days（轻松日）** | Anki FSRS / RemNote | 用户能选目标记忆率，也能选择一周中某些天减少复习量 | AhaDiff 当前 Settings/config 已有 `desired_retention` 基础入口；后续缺的是更细的调度说明、Easy Days，以及 review queue 按 weekday 调整 `due_date`。 |
@@ -134,7 +134,7 @@ AhaDiff 已有 FSRS-6 + ABCD 卡片 + review.sqlite。**真正缺的是生态、
 
 | 排序 | Feature | 来源 | 估算工作量 | 依赖 |
 |---|---|---|---|---|
-| 1 | AnkiConnect / `.apkg` export | Anki | S（1-2 天） | review.sqlite → note model 映射 |
+| 1 | `.apkg` export | Anki | DONE（2026-05-12 WebUI download） | review.sqlite active cards → note model 映射；AnkiConnect / CLI export 仍未做 |
 | 2 | Cloze deletion quiz 类型 | Anki/SuperMemo | M（3-4 天） | quiz_generate.md prompt 扩展 + Quiz.tsx 填空 UI |
 | 3 | Desired Retention 深调 + Easy Days | Anki FSRS | S（1 天） | 现有 Settings/config 基础上补调度说明 + weekday shifting |
 | 4 | freshness → review priority | CogDebt + Graphify | S（1-2 天） | review/optimizer.py weight |

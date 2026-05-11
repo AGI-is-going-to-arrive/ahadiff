@@ -107,3 +107,7 @@ export async function getExportResultsTsvBlob(opts?: Pick<RequestInit, 'signal'>
 export async function getExportResultsJsonBlob(opts?: Pick<RequestInit, 'signal'>): Promise<Blob> {
   return apiFetchBlob('/api/export/results?format=json', opts);
 }
+
+export async function getExportApkgBlob(opts?: Pick<RequestInit, 'signal'>): Promise<Blob> {
+  return apiFetchBlob('/api/export/apkg', opts);
+}
