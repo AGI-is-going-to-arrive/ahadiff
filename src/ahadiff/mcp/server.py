@@ -4,40 +4,73 @@ import asyncio
 import json
 import logging
 import math
+import re
 import sqlite3
-from collections.abc import Callable
+import stat
+from collections.abc import Callable, Iterable
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import quote
 
 from mcp import types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
+from pydantic import ValidationError
 
-from ahadiff.core.errors import AhaDiffError, InputError
+from ahadiff.contracts import ErrorCode, ResultEvent
+from ahadiff.contracts.quiz_choice import (
+    AnswerMode,
+    QuizChoice,
+    validate_quiz_choices,
+)
+from ahadiff.core.errors import AhaDiffError, InputError, StorageError
 from ahadiff.core.json_util import safe_json_loads
-from ahadiff.core.paths import validate_run_id, validate_state_path_no_symlinks
-from ahadiff.review.database import (
-    connect_review_db,
-    load_result_events_page,
+from ahadiff.core.paths import (
+    reject_leaf_symlink_or_reparse,
+    validate_run_id,
+    validate_state_path_no_symlinks,
 )
-from ahadiff.review.database import (
-    list_due_cards as db_list_due_cards,
-)
-from ahadiff.review.search import search_all_with_graph
+from ahadiff.core.sqlite_util import mcp_readonly_connect
+from ahadiff.review.schemas import DueReviewCard
 from ahadiff.wiki.concepts import load_concepts_page
+
+from ._lesson_search import (
+    DEFAULT_TOP_K as _ASK_LESSON_DEFAULT_TOP_K,
+)
+from ._lesson_search import (
+    MAX_QUESTION_LENGTH as _ASK_LESSON_MAX_QUESTION,
+)
+from ._lesson_search import (
+    MAX_TOP_K as _ASK_LESSON_MAX_TOP_K,
+)
+from ._lesson_search import (
+    bounded_top_k,
+    evidence_for_fragments,
+    search_lesson,
+    validate_question,
+)
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ahadiff.review.schemas import DueReviewCard
-
 _DEFAULT_LIMIT = 20
 _MAX_LIMIT = 200
 _MAX_CONCEPTS_JSONL_BYTES = 16 * 1024 * 1024
 _LESSON_SUMMARY_CHARS = 1200
+_ASK_LESSON_MAX_LESSON_BYTES = 2 * 1024 * 1024
+_ASK_LESSON_MAX_CLAIMS_BYTES = 5 * 1024 * 1024
+_ASK_LESSON_LESSON_FILES: tuple[str, ...] = (
+    "lesson.full.md",
+    "lesson.hint.md",
+    "lesson.compact.md",
+)
 _ALLOWED_TABLES = frozenset({"result_events", "review_logs", "cards", "concepts"})
+_ALLOWED_FTS_TABLES = frozenset({"concepts", "result_events", "cards"})
+_ALLOWED_GRAPH_FTS_TABLE = "fts_graph_nodes"
+_FTS_MAX_QUERY_LENGTH = 500
+_FTS_TOKEN_RE = re.compile(r"\w+", re.UNICODE)
 _RESULT_EVENT_COLUMNS = (
     "event_id",
     "run_id",
@@ -53,6 +86,20 @@ _RESULT_EVENT_COLUMNS = (
     "status",
     "weakest_dim",
     "note_json",
+)
+_DUE_CARD_COLUMNS = (
+    "id",
+    "concept",
+    "run_id",
+    "due_date",
+    "scaffolding_level",
+    "display_path",
+    "source_ref",
+    "symbol",
+    "question",
+    "answer",
+    "answer_mode",
+    "choices_json",
 )
 
 ToolHandler = Callable[[dict[str, Any]], dict[str, Any]]
@@ -162,6 +209,30 @@ def create_mcp_server(state_dir: Path) -> Server[Any, Any]:
                 description="Return aggregate AhaDiff run, review, card, concept, and score stats.",
                 inputSchema=_object_schema({}),
             ),
+            types.Tool(
+                name="ask_lesson",
+                description=(
+                    "Return ranked lesson fragments and verified claim evidence "
+                    "for a natural-language question about a specific run."
+                ),
+                inputSchema=_object_schema(
+                    {
+                        "run_id": {"type": "string", "description": "AhaDiff run id."},
+                        "question": {
+                            "type": "string",
+                            "description": "Natural language question about the run lesson.",
+                            "maxLength": _ASK_LESSON_MAX_QUESTION,
+                        },
+                        "top_k": _integer_schema(
+                            "Maximum number of lesson fragments to return.",
+                            default=_ASK_LESSON_DEFAULT_TOP_K,
+                            minimum=1,
+                            maximum=_ASK_LESSON_MAX_TOP_K,
+                        ),
+                    },
+                    required=("run_id", "question"),
+                ),
+            ),
         ]
 
     @server.call_tool()
@@ -174,10 +245,26 @@ def create_mcp_server(state_dir: Path) -> Server[Any, Any]:
             return [_text_json({"error": f"unknown tool: {name}"})]
         try:
             return [_text_json(handler(arguments))]
-        except (AhaDiffError, sqlite3.DatabaseError, OSError, ValueError, TypeError) as exc:
-            return [_text_json({"error": str(exc), "tool": name})]
+        except AhaDiffError as exc:
+            payload: dict[str, Any] = {
+                "error": _public_mcp_error_message(exc),
+                "tool": name,
+                "error_code": exc.code.value,
+            }
+            return [_text_json(payload)]
+        except (sqlite3.DatabaseError, OSError, ValueError, TypeError):
+            logger.debug("MCP tool failed: %s", name, exc_info=True)
+            return [_text_json({"error": "mcp_tool_failed", "tool": name})]
 
     return server
+
+
+def _public_mcp_error_message(exc: AhaDiffError) -> str:
+    if isinstance(exc, StorageError):
+        return "storage_unavailable"
+    if exc.code is ErrorCode.INPUT_VALIDATION:
+        return "invalid input"
+    return exc.code.value.lower()
 
 
 async def run_mcp_stdio_server(state_dir: Path) -> None:
@@ -198,12 +285,13 @@ def _tool_handlers(state_dir: Path, review_db: Path) -> dict[str, ToolHandler]:
         "search": lambda arguments: _search(state_dir, review_db, arguments),
         "get_concepts": lambda arguments: _get_concepts(state_dir, arguments),
         "get_stats": lambda _arguments: _get_stats(state_dir, review_db),
+        "ask_lesson": lambda arguments: _ask_lesson(state_dir, arguments),
     }
 
 
 def _list_runs(db_path: Path, arguments: dict[str, Any]) -> dict[str, Any]:
     limit = _limit_from_args(arguments)
-    events = load_result_events_page(db_path, limit=limit)
+    events = _load_recent_result_events(db_path, limit=limit)
     return {
         "runs": [_result_event_payload(event.model_dump(mode="json")) for event in events],
     }
@@ -225,7 +313,7 @@ def _list_due_cards(db_path: Path, arguments: dict[str, Any]) -> dict[str, Any]:
     if not db_path.exists():
         return {"cards": []}
     limit = _limit_from_args(arguments)
-    cards = db_list_due_cards(db_path, limit=limit)
+    cards = _read_due_cards(db_path, limit=limit)
     return {"cards": [_due_card_payload(card) for card in cards]}
 
 
@@ -235,19 +323,15 @@ def _search(state_dir: Path, db_path: Path, arguments: dict[str, Any]) -> dict[s
     tables = _optional_tables(arguments.get("tables"))
     include_graph = _optional_bool(arguments.get("include_graph"), default=True)
     graph = _load_graph(state_dir) if include_graph else None
-    results = search_all_with_graph(db_path, query, limit=limit, tables=tables, graph=graph)
-    return {
-        "results": [
-            {
-                "source_table": result.source_table,
-                "primary_key": result.primary_key,
-                "snippet": result.snippet,
-                "rank": result.rank,
-                "href": result.href,
-            }
-            for result in results
-        ]
-    }
+    results = _search_with_graph(
+        db_path,
+        query,
+        limit=limit,
+        tables=tables,
+        include_graph=include_graph,
+        graph=graph,
+    )
+    return {"results": results}
 
 
 def _get_concepts(state_dir: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -285,7 +369,9 @@ def _get_stats(state_dir: Path, db_path: Path) -> dict[str, Any]:
     }
     if not db_path.exists():
         return stats
-    with connect_review_db(db_path) as connection:
+    connection = mcp_readonly_connect(db_path)
+    connection.row_factory = sqlite3.Row
+    try:
         stats["total_result_events"] = _count_table_rows(connection, "result_events")
         stats["total_runs"] = _count_distinct_runs(connection)
         stats["total_reviews"] = _count_table_rows(connection, "review_logs")
@@ -297,13 +383,163 @@ def _get_stats(state_dir: Path, db_path: Path) -> dict[str, Any]:
             int(stats["total_concepts"]),
             _count_table_rows(connection, "concepts"),
         )
+    finally:
+        connection.close()
     return stats
+
+
+def _ask_lesson(state_dir: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    raw_run_id = arguments.get("run_id")
+    if not isinstance(raw_run_id, str) or not raw_run_id.strip():
+        raise InputError("run_id is required", code=ErrorCode.INPUT_VALIDATION)
+    run_id = raw_run_id.strip()
+    try:
+        validate_run_id(run_id)
+    except InputError as exc:
+        raise InputError(str(exc), code=ErrorCode.INPUT_VALIDATION) from exc
+    raw_question = arguments.get("question")
+    if not isinstance(raw_question, str):
+        raise InputError("question is required", code=ErrorCode.INPUT_VALIDATION)
+    try:
+        question = validate_question(raw_question)
+    except ValueError as exc:
+        raise InputError(str(exc), code=ErrorCode.INPUT_VALIDATION) from exc
+    top_k = bounded_top_k(arguments.get("top_k"), default=_ASK_LESSON_DEFAULT_TOP_K)
+
+    run_dir = state_dir / "runs" / run_id
+    if not run_dir.exists() or not run_dir.is_dir():
+        raise InputError(f"run not found: {run_id}", code=ErrorCode.RUN_NOT_FOUND)
+
+    finalized_path = run_dir / "finalized.json"
+    if not finalized_path.exists():
+        raise InputError(
+            f"run is not finalized: {run_id}",
+            code=ErrorCode.RUN_NOT_FOUND,
+        )
+    try:
+        finalized_stat = reject_leaf_symlink_or_reparse(
+            finalized_path,
+            label="mcp finalized marker",
+        )
+    except InputError as exc:
+        raise InputError(
+            f"run is not finalized: {run_id}",
+            code=ErrorCode.RUN_NOT_FOUND,
+        ) from exc
+    if not stat.S_ISREG(finalized_stat.st_mode):
+        raise InputError(
+            f"run is not finalized: {run_id}",
+            code=ErrorCode.RUN_NOT_FOUND,
+        )
+
+    lesson_text, lesson_file = _read_first_lesson_file(state_dir, run_id)
+    run_meta: dict[str, Any] = {"run_id": run_id, "lesson_file": lesson_file}
+
+    if lesson_text is None:
+        return {"fragments": [], "evidence": [], "run_meta": run_meta}
+
+    fragments = search_lesson(lesson_text, question, top_k=top_k)
+    if not fragments:
+        return {"fragments": [], "evidence": [], "run_meta": run_meta}
+
+    claims = _read_claims_jsonl(run_dir)
+    evidence = evidence_for_fragments(fragments, claims) if claims else []
+    return {"fragments": fragments, "evidence": evidence, "run_meta": run_meta}
+
+
+def _read_first_lesson_file(state_dir: Path, run_id: str) -> tuple[str | None, str | None]:
+    lesson_dir = state_dir / "runs" / run_id / "lesson"
+    for name in _ASK_LESSON_LESSON_FILES:
+        path = lesson_dir / name
+        if not path.exists():
+            continue
+        try:
+            validate_state_path_no_symlinks(path, allow_missing_leaf=False)
+        except InputError as exc:
+            logger.warning("rejected lesson path %s: %s", path, exc)
+            continue
+        try:
+            text = _read_lesson_text(path)
+        except InputError as exc:
+            logger.warning("failed to read lesson %s: %s", path, exc)
+            continue
+        return text, name
+    return None, None
+
+
+def _read_lesson_text(path: Path) -> str:
+    leaf_stat = reject_leaf_symlink_or_reparse(path, label="mcp lesson artifact")
+    if not stat.S_ISREG(leaf_stat.st_mode):
+        raise InputError(f"lesson file is not a regular file: {path}")
+    try:
+        with path.open("rb") as handle:
+            raw_bytes = handle.read(_ASK_LESSON_MAX_LESSON_BYTES + 1)
+    except OSError as exc:
+        raise InputError(f"lesson file is unreadable: {path}") from exc
+    if len(raw_bytes) > _ASK_LESSON_MAX_LESSON_BYTES:
+        raise InputError(
+            f"lesson file too large (>{_ASK_LESSON_MAX_LESSON_BYTES} bytes): {path}",
+        )
+    try:
+        return raw_bytes.decode("utf-8", errors="replace")
+    except UnicodeDecodeError as exc:
+        raise InputError(f"lesson file is not valid UTF-8: {path}") from exc
+
+
+def _read_claims_jsonl(run_dir: Path) -> list[dict[str, Any]]:
+    claims_path = run_dir / "claims.jsonl"
+    if not claims_path.exists():
+        return []
+    try:
+        validate_state_path_no_symlinks(claims_path, allow_missing_leaf=False)
+    except InputError as exc:
+        logger.warning("rejected claims path %s: %s", claims_path, exc)
+        return []
+    try:
+        leaf_stat = reject_leaf_symlink_or_reparse(
+            claims_path,
+            label="mcp claims artifact",
+        )
+    except InputError as exc:
+        logger.warning("rejected claims path %s: %s", claims_path, exc)
+        return []
+    if not stat.S_ISREG(leaf_stat.st_mode):
+        logger.warning("claims.jsonl is not a regular file at %s; skipping", claims_path)
+        return []
+    try:
+        with claims_path.open("rb") as handle:
+            raw_bytes = handle.read(_ASK_LESSON_MAX_CLAIMS_BYTES + 1)
+    except OSError as exc:
+        logger.warning("failed to read claims.jsonl at %s: %s", claims_path, exc)
+        return []
+    if len(raw_bytes) > _ASK_LESSON_MAX_CLAIMS_BYTES:
+        logger.warning(
+            "claims.jsonl too large (>%d bytes) at %s; skipping",
+            _ASK_LESSON_MAX_CLAIMS_BYTES,
+            claims_path,
+        )
+        return []
+    text = raw_bytes.decode("utf-8", errors="replace")
+    records: list[dict[str, Any]] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            payload = safe_json_loads(stripped)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(payload, dict):
+            records.append(cast("dict[str, Any]", payload))
+    return records
 
 
 def _load_latest_result_event_for_run(db_path: Path, run_id: str) -> dict[str, Any] | None:
     if not db_path.exists():
         return None
-    with connect_review_db(db_path) as connection:
+    connection = mcp_readonly_connect(db_path)
+    connection.row_factory = sqlite3.Row
+    try:
         if not _table_exists(connection, "result_events"):
             return None
         row = connection.execute(
@@ -316,7 +552,307 @@ def _load_latest_result_event_for_run(db_path: Path, run_id: str) -> dict[str, A
             """,
             (run_id,),
         ).fetchone()
+    finally:
+        connection.close()
     return None if row is None else dict(row)
+
+
+def _load_recent_result_events(db_path: Path, *, limit: int) -> tuple[ResultEvent, ...]:
+    if limit <= 0 or not db_path.exists():
+        return ()
+    connection = mcp_readonly_connect(db_path)
+    connection.row_factory = sqlite3.Row
+    try:
+        if not _table_exists(connection, "result_events"):
+            return ()
+        rows = connection.execute(
+            f"""
+            SELECT {", ".join(_RESULT_EVENT_COLUMNS)}
+            FROM result_events
+            ORDER BY timestamp DESC, event_id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    finally:
+        connection.close()
+    return tuple(ResultEvent.model_validate(dict(row)) for row in rows)
+
+
+def _read_due_cards(db_path: Path, *, limit: int) -> tuple[DueReviewCard, ...]:
+    connection = mcp_readonly_connect(db_path)
+    connection.row_factory = sqlite3.Row
+    try:
+        if not _table_exists(connection, "cards"):
+            return ()
+        rows = connection.execute(
+            f"""
+            SELECT {", ".join(_DUE_CARD_COLUMNS)}
+            FROM cards
+            WHERE card_state = 'active'
+              AND due_date <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            ORDER BY due_date ASC, id ASC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    finally:
+        connection.close()
+    return tuple(_row_to_due_review_card(row) for row in rows)
+
+
+def _search_with_graph(
+    db_path: Path,
+    query: str,
+    *,
+    limit: int,
+    tables: tuple[str, ...] | None,
+    include_graph: bool,
+    graph: object | None,
+) -> list[dict[str, Any]]:
+    if not query.strip() or not db_path.exists() or limit < 1:
+        return []
+    if len(query) > _FTS_MAX_QUERY_LENGTH:
+        raise InputError(f"search query exceeds {_FTS_MAX_QUERY_LENGTH} characters")
+    sanitized = _sanitize_fts_query(query)
+    if not sanitized:
+        return []
+
+    target_tables: tuple[str, ...] = (
+        ("concepts", "result_events", "cards") if tables is None else tables
+    )
+
+    raw_results: list[tuple[str, str, str, float, str | None]] = []
+    graph_fts_rows: list[tuple[str, str, str, float, str | None]] = []
+    connection = mcp_readonly_connect(db_path)
+    try:
+        for table_name in target_tables:
+            if table_name not in _ALLOWED_FTS_TABLES:
+                continue
+            fts_table = f"fts_{table_name}"
+            if not _fts_table_exists(connection, fts_table):
+                continue
+            raw_results.extend(
+                _fts_query_table(connection, table_name, fts_table, sanitized, limit)
+            )
+
+        if (
+            include_graph
+            and (tables is None or "graph_nodes" in tables)
+            and _fts_table_exists(connection, _ALLOWED_GRAPH_FTS_TABLE)
+        ):
+            try:
+                rows = connection.execute(
+                    f"""
+                    SELECT id,
+                           snippet({_ALLOWED_GRAPH_FTS_TABLE}, -1, '<b>', '</b>', '...', 32),
+                           rank
+                    FROM {_ALLOWED_GRAPH_FTS_TABLE}
+                    WHERE {_ALLOWED_GRAPH_FTS_TABLE} MATCH ?
+                    ORDER BY rank, id ASC
+                    LIMIT ?
+                    """,
+                    (sanitized, limit),
+                ).fetchall()
+            except sqlite3.OperationalError as exc:
+                raise StorageError(
+                    f"FTS search failed for {_ALLOWED_GRAPH_FTS_TABLE}: {exc}"
+                ) from exc
+            graph_fts_rows = [
+                ("graph_nodes", str(row[0]), str(row[1]), float(row[2]), None) for row in rows
+            ]
+    finally:
+        connection.close()
+
+    raw_results.sort(key=lambda r: (r[3], r[0], r[1]))
+    raw_results = raw_results[:limit]
+
+    merged: list[dict[str, Any]] = [
+        {
+            "source_table": r[0],
+            "primary_key": r[1],
+            "snippet": r[2],
+            "rank": _normalize_fts_rank(r[3]),
+            "href": r[4],
+        }
+        for r in raw_results
+    ]
+
+    if include_graph and (tables is None or "graph_nodes" in tables):
+        seen_ids: set[str] = {r[1] for r in graph_fts_rows}
+        for r in graph_fts_rows:
+            merged.append(
+                {
+                    "source_table": r[0],
+                    "primary_key": r[1],
+                    "snippet": r[2],
+                    "rank": _normalize_fts_rank(r[3]),
+                    "href": r[4],
+                }
+            )
+        if graph is not None:
+            from ahadiff.graphify.search import search_graph_nodes
+
+            graph_results = search_graph_nodes(graph, query, limit=limit)  # type: ignore[arg-type]
+            for gr in graph_results:
+                if gr.node_id not in seen_ids:
+                    merged.append(
+                        {
+                            "source_table": "graph_nodes",
+                            "primary_key": gr.node_id,
+                            "snippet": gr.label,
+                            "rank": gr.score,
+                            "href": None,
+                        }
+                    )
+
+    merged.sort(
+        key=lambda r: (
+            -float(cast("float", r["rank"])),
+            str(r["source_table"]),
+            str(r["primary_key"]),
+        )
+    )
+    return merged[:limit]
+
+
+def _fts_query_table(
+    connection: sqlite3.Connection,
+    source_table: str,
+    fts_table: str,
+    query: str,
+    limit: int,
+) -> list[tuple[str, str, str, float, str | None]]:
+    if source_table == "result_events":
+        try:
+            rows = connection.execute(
+                f"""
+                SELECT
+                    {fts_table}.event_id,
+                    result_events.run_id,
+                    snippet({fts_table}, -1, '<b>', '</b>', '...', 32),
+                    rank
+                FROM {fts_table}
+                JOIN result_events ON result_events.event_id = {fts_table}.event_id
+                WHERE {fts_table} MATCH ?
+                ORDER BY rank, {fts_table}.event_id ASC
+                LIMIT ?
+                """,
+                (query, limit),
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            raise StorageError(f"FTS search failed for {fts_table}: {exc}") from exc
+        return [
+            (
+                source_table,
+                str(row[0]),
+                str(row[2]),
+                float(row[3]),
+                f"#/run/{quote(str(row[1]), safe='')}/lesson",
+            )
+            for row in rows
+        ]
+    pk_col = _pk_column(source_table)
+    try:
+        rows = connection.execute(
+            f"""
+            SELECT {pk_col}, snippet({fts_table}, -1, '<b>', '</b>', '...', 32), rank
+            FROM {fts_table}
+            WHERE {fts_table} MATCH ?
+            ORDER BY rank, {pk_col} ASC
+            LIMIT ?
+            """,
+            (query, limit),
+        ).fetchall()
+    except sqlite3.OperationalError as exc:
+        raise StorageError(f"FTS search failed for {fts_table}: {exc}") from exc
+    return [(source_table, str(row[0]), str(row[1]), float(row[2]), None) for row in rows]
+
+
+def _pk_column(source_table: str) -> str:
+    if source_table == "concepts":
+        return "term_key"
+    if source_table == "result_events":
+        return "event_id"
+    if source_table == "cards":
+        return "id"
+    return "rowid"
+
+
+def _normalize_fts_rank(rank: float) -> float:
+    return 1.0 - 1.0 / (1.0 + abs(rank))
+
+
+def _sanitize_fts_query(query: str) -> str:
+    tokens = _FTS_TOKEN_RE.findall(query)
+    if not tokens:
+        return ""
+    return " OR ".join(f'"{token}"' for token in tokens)
+
+
+def _fts_table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
+    row = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
+def _row_to_due_review_card(row: sqlite3.Row) -> DueReviewCard:
+    answer = cast("str | None", row["answer"])
+    answer_mode, choices = _deserialize_card_choices(
+        row["answer_mode"],
+        row["choices_json"],
+        expected_answer=answer,
+    )
+    return DueReviewCard(
+        card_id=str(row["id"]),
+        concept=str(row["concept"]),
+        run_id=str(row["run_id"]),
+        due_date=str(row["due_date"]),
+        scaffolding_level=str(row["scaffolding_level"]),
+        display_path=str(row["display_path"]),
+        source_ref=cast("str | None", row["source_ref"]),
+        symbol=cast("str | None", row["symbol"]),
+        question=cast("str | None", row["question"]),
+        answer=answer,
+        answer_mode=answer_mode,
+        choices=choices,
+    )
+
+
+def _deserialize_card_choices(
+    answer_mode: object,
+    choices_json: object,
+    *,
+    expected_answer: str | None,
+) -> tuple[AnswerMode, tuple[QuizChoice, ...] | None]:
+    if not isinstance(answer_mode, str) or answer_mode not in {"open", "multiple_choice"}:
+        raise StorageError(f"invalid review card answer_mode: {answer_mode!r}")
+    mode = cast("AnswerMode", answer_mode)
+    if mode == "open":
+        if choices_json not in (None, ""):
+            raise StorageError("open review card unexpectedly stores choices_json")
+        return mode, None
+    if not isinstance(choices_json, str) or not choices_json.strip():
+        raise StorageError("multiple_choice review card is missing choices_json")
+    if not isinstance(expected_answer, str) or not expected_answer.strip():
+        raise StorageError("multiple_choice review cards require a non-empty answer")
+    try:
+        payload = safe_json_loads(choices_json)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise StorageError("review card choices_json is not valid JSON") from exc
+    if not isinstance(payload, list | tuple):
+        raise StorageError("multiple_choice review cards require a choices array")
+    raw_items: list[object] = list(cast("Iterable[object]", payload))
+    try:
+        choices = tuple(
+            item if isinstance(item, QuizChoice) else QuizChoice.model_validate(item)
+            for item in raw_items
+        )
+        return mode, validate_quiz_choices(choices, expected_answer=expected_answer)
+    except (TypeError, ValueError, ValidationError) as exc:
+        raise StorageError("invalid review card choices") from exc
 
 
 def _read_lesson_summary(state_dir: Path, run_id: str) -> str | None:

@@ -924,10 +924,23 @@ run_id: str
 - git revision / pathspec 调用补 `--end-of-options`，并拒绝 leading dash 输入；git subprocess env 清洗按大小写不敏感方式移除 `GIT_*`，再设置 `GIT_TERMINAL_PROMPT=0`。
 - `--patch-url` 拒绝 URL userinfo；这是下载入口的边界，不等同于 provider URL helper 的全部 SSRF 边界。
 - `safe_json_loads()` 默认拒绝超过 50 MiB 的输入；调用方仍可传更小上限。
-- MCP stats 动态表名走 allowlist；read-only stdio MCP server 当前仍是 6 个工具。
+- MCP stats 动态表名走 allowlist；这一轮 read-only stdio MCP server 仍是 6 个工具，后续 9.15 已升到 7 个工具。
 - prompt injection 检测补 soft hyphen、variation selectors 和 TAG chars；claim artifact 读取补 no-follow、Windows reparse、hardlink、大小和 TOCTOU guard。
 - `/api/improve/preflight` 改用共享 git wrapper，避免污染环境隐藏 dirty prompt 状态。
 - 项目根新增 `.gitattributes`：文本 LF，常见图片、字体、视频和 PDF 标记 binary。
 - viewer 已配置 browserslist 和 Vite `build.target`；前端复制逻辑收敛到共享 `copyToClipboard()`，支持 Clipboard API、textarea fallback、SSR/sandbox guard 和焦点恢复。
 
 本轮实测：后端 unit `2188 passed`；`ruff check`、`ruff format --check`、`pyright` 通过；viewer typecheck、Vitest `318 passed`、build 通过；`git diff --check HEAD` 通过。integration、eval、live judge、wheel、完整 Playwright 和远端 GitHub Actions 未在本轮重跑。
+
+### 9.15 Phase 2 本地学习面收口（2026-05-12）
+
+本轮只记录已经由代码和测试验证的收口项：
+
+- `review.sqlite` schema 升到 v10，新增 `concept_status` 和 `concept_lint_runs`。`ahadiff concepts lint` 当前只实现 deterministic 模式，会标记 orphan、deleted-file stale、line drift 和 contradicted claim；LLM-assisted maintenance loop 仍未落地。
+- `ahadiff export preview` 和 `POST /api/export/preview` 生成本地 static preview：`README.txt`、`index.html`、`data/run.json`、`data/concepts.json`、`manifest.json`，并按 manifest allowlist / size / hash 写 deterministic zip。API 固定 strict-local，CLI 可传 privacy mode。
+- Challenge loop 默认 disabled。CLI 只有 `build` / `status`；serve 提供 build/get/advance/abort/review/feedback 六个 routes，禁用时返回 `FEATURE_UNAVAILABLE`。review 是 deterministic learner diff 与 canonical diff gap 对比，不执行 shell、测试或用户代码。
+- MCP read-only server 现在是 7 个工具，新增 `ask_lesson`。它只读取 finalized run 的 lesson 文件和 claims，用本地 token overlap 返回片段，不调用 LLM。
+- APKG export 已改用 packaged CSS 资源；GUID 当前仍是 `genanki.guid_for(card_id)`，stable namespace GUID 未落地，不能写成已完成。
+- serve 当前为 69 个 concrete `/api/*` routes + 1 个 catchall；前端为 16 页面、62 个生产 TSX、46 个 CSS，i18n scalar keys `1261/1261`。
+
+本轮实测：后端 unit `2338 passed`；`ruff check`、`ruff format --check`、`pyright` 通过；viewer typecheck、Vitest `320 passed`、build 通过；i18n `1261/1261`；`git diff --check HEAD` 通过。integration、eval、live judge、wheel、完整 Playwright 和远端 GitHub Actions 未在本轮重跑。

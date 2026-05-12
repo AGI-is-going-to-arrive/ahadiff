@@ -1,9 +1,16 @@
 # RFC 2.1 — Karpathy LLM Wiki Maintenance Loop
 
-**Status**: DRAFT — §5 DECIDED: Option B (LLM-assisted) per user decision 2026-05-12
+**Status**: IMPLEMENTED SUBSET — deterministic lint + schema v10 landed; Option B (LLM-assisted) remains deferred
 **Owner**: AhaDiff core
-**Inspiration**: Karpathy LLM Wiki (append-only) + Graphify 7-state freshness
-**Goal**: keep long-lived `concepts.jsonl` from silently rotting. Detect stale / contradicted / orphan / missing concepts and surface them without violating append-only or local-first.
+**Inspiration**: Karpathy LLM Wiki (append-only idea) + current AhaDiff concept snapshot + Graphify freshness projection
+**Goal**: keep long-lived concepts from silently rotting. Detect stale / contradicted / orphan / missing concepts and surface them without violating local-first.
+
+**Current-code truth (2026-05-12)**:
+- `src/ahadiff/wiki/concepts.py` still treats `concepts.jsonl` as a snapshot: it loads existing concepts, merges by `term_key`, then rewrites via temp-file replace. It is **not** an append-only event log today.
+- The implemented path chose snapshot + SQLite derived state, not event-log marker replay.
+- `review.sqlite` is now schema version 10 with `concept_status` and `concept_lint_runs`.
+- `ahadiff concepts lint` currently implements deterministic lint only: orphan, deleted-file stale, line drift, and contradicted claim. LLM-assisted NLI / Option B is not implemented.
+- Current Graphify external projection is `fresh / stale / unavailable / disabled`; do not invent unimplemented public freshness states.
 
 ## 1. Target Users
 
@@ -25,24 +32,23 @@
 
 | Surface | Constraint | Maintenance Extension |
 |---|---|---|
-| `concepts.jsonl` | Append-only (Karpathy) | never edit/delete; append `concept_marker` `{concept_id, marker: stale\|contradicted\|orphan\|dismissed, evidence_run_id, ts, suggested_successor?}` |
-| `review.sqlite` | Derived state | new `concept_status` (concept_id PK, latest_marker, stale_since, contradicted_by_run, refcount, updated_at) — rebuilt from JSONL |
-| `review.sqlite` | — | new `concept_lint_run` (lint_id PK, started_at, finished_at, mode, findings_count) |
-| Graphify projection | 4-value (fresh/aging/stale/missing) | read-only consumer |
+| `concepts.jsonl` | Current snapshot rewrite | keep snapshot behavior, or explicitly migrate to an event log before adding markers |
+| `review.sqlite` | Derived state | implemented `concept_status` table rebuilt from snapshot + deterministic lint source |
+| `review.sqlite` | — | implemented `concept_lint_runs` table for lint run metadata |
+| Graphify projection | Current public values: fresh/stale/unavailable/disabled | read-only consumer; missing/orphan is a lint finding, not an existing Graphify public status |
 
-Append-only preserved: markers are *new* records pointing at old ids. Reset == replay JSONL.
+Open design decision: marker storage can be a new JSONL event log or SQLite-only derived state. Do not claim reset == replay until this is chosen and tested.
 
 ## 4. State Transitions
 
-| Graphify 7-state | Action |
+| Current source signal | Action |
 |---|---|
-| fresh / verified-fresh | no-op |
-| aging | warn after N runs without re-evidence |
-| stale | append `stale` marker (auto) |
-| missing | append `orphan` marker (auto) |
-| contradicted | append `contradicted` marker (gated — see §5) |
-| unknown | log only |
-| superseded | append `stale` + `suggested_successor` (no merge) |
+| Graphify `fresh` | no-op |
+| Graphify `stale` | mark `stale` if concept has no newer supporting evidence |
+| Graphify `unavailable` / `disabled` | log only; do not mark stale based solely on missing Graphify |
+| concept has zero current references | mark `orphan` |
+| newer claims contradict older concept evidence | mark `contradicted` (gated — see §5) |
+| user dismisses a finding | append/store `dismissed` marker with reason and timestamp |
 
 Trigger: explicit `ahadiff concepts lint` CLI, post-`improve` hook (opt-in), or viewer button. Never automatic on `learn`.
 
@@ -59,9 +65,9 @@ Trigger: explicit `ahadiff concepts lint` CLI, post-`improve` hook (opt-in), or 
 | Determinism | reproducible | non-deterministic; needs LLM judge cache |
 | Implementation surface | claims index + sqlite joins | reuse `llm/provider.py` + `eval_judge.md`-style prompt |
 
-**Shared invariant**: maintenance only appends markers + suggestions — never edits or deletes existing records. Data integrity comes from append-only, independent of detection mode.
+**Shared invariant**: maintenance records markers + suggestions without silently deleting concept history. Current implementation stores derived state in SQLite and does not add an append-only marker JSONL.
 
-Decision: use Option B for semantic contradiction detection, gated by the existing privacy tier. `strict_local` skips remote-assisted NLI; `redacted_remote` and `explicit_remote` may use the configured BYOK provider with per-lint cost/rate caps and cacheable judge inputs.
+Decision for future work: Option B can be added later for semantic contradiction detection, gated by the existing privacy tier. Current code does not call an LLM from concept lint.
 
 ## 6. Local-First Privacy
 
@@ -74,7 +80,12 @@ Decision: use Option B for semantic contradiction detection, gated by the existi
 
 ## 7. Cross-Platform Impact
 
-None special. Pure Python writes via existing `json_util` / `sqlite_util` (WAL, busy_timeout) under the repo write lock. No new fs primitives or shell-outs.
+Pure Python + SQLite, but not "no impact": schema migration must cover macOS/Linux/Windows. Required before implementation:
+
+- schema v10 migration registered, with upgrade tests;
+- Windows NTFS reparse / symlink guards on any new concept-state artifact;
+- macOS case-insensitive path collisions tested for concept ids / source paths;
+- Linux CI covers WAL / busy_timeout / rollback behavior.
 
 ## 8. Frontend Interaction
 
@@ -82,7 +93,7 @@ None special. Pure Python writes via existing `json_util` / `sqlite_util` (WAL, 
 |---|---|
 | Concepts row | badge `Stale` / `Contradicted` / `Orphan` + tooltip (evidence run, ts) |
 | Concepts filter | new "Health" facet (all / healthy / needs-attention) |
-| Concept detail | marker history (append-only timeline) |
+| Concept detail | marker history timeline |
 | Settings | manual "Run concept lint" + last-lint summary |
 | i18n | new `concepts.health.*` scalar keys; en/zh-CN parity required |
 | Destructive UI | none. "Dismiss marker" itself appends a `dismissed` marker |
@@ -91,7 +102,7 @@ None special. Pure Python writes via existing `json_util` / `sqlite_util` (WAL, 
 
 | Layer | Coverage |
 |---|---|
-| unit | deterministic contradiction; orphan (refcount=0); missing (Graphify=missing); marker idempotency; JSONL replay rebuilds `concept_status` exactly; append-only mutation attempts fail fast |
+| unit | deterministic contradiction; orphan (refcount=0); Graphify unavailable/disabled does not become stale; marker idempotency; derived `concept_status` rebuilds exactly; event-log migration tests only if chosen |
 | integration | seed → contradicting run → `concepts lint` → marker appended + viewer payload reflects badge; strict_local skips Option B |
 | live (opt-in, Option B) | LLM judge smoke under `AHADIFF_LIVE_LLM_JUDGE=1` |
 
@@ -103,23 +114,23 @@ Excluded: no perf SLA in v1; benchmark deferred until refcount > 10k.
 |---|---|
 | Eval bundle impact | none (markers stay out of 8-dim rubric) |
 | Frozen enum changes | none (`ClaimStatus`/`RunSource`/`EvalBundle`/`EventLog` untouched) |
-| New ErrorCode | +1 `CONCEPT_LINT_BLOCKED` (fit stable-28 cap or bump policy) |
-| Schema migration | sqlite additive, forward-compatible |
+| New ErrorCode | not approved yet. Either reuse existing stable ErrorCode values or make an explicit ErrorCode bump plan with status mapping, frontend/i18n, and tests |
+| Schema migration | implemented as schema v10 with `concept_status` / `concept_lint_runs` |
 | Docs sync | CLAUDE.md modules table + viewer pages list |
 
 ## 11. What NOT to Do
 
 | Forbidden | Reason |
 |---|---|
-| Auto-merge concepts | breaks append-only; silent semantic loss |
+| Auto-merge concepts | silent semantic loss |
 | Auto-delete concepts | same |
 | Remote sync of markers | violates per-repo truth + local-first |
 | Background daemon | out of scope; trigger must be explicit |
-| Edit `concepts.jsonl` in place | breaks Karpathy invariant |
+| Edit `concepts.jsonl` in place without a migration decision | current code rewrites snapshots; marker semantics must be explicit before implementation |
 | Write back into Graphify | projection is read-only |
 | Inflate eval bundle | markers are governance, not evaluation |
 | Run Option B under `strict_local` or without a configured privacy/cost gate | violates the §5 decision boundary |
 
 ---
 
-**Next step**: produce the module plan + UNITS.csv for Option B, including the `strict_local` skip path and cost/rate gate tests.
+**Next step**: decide whether Option B is still worth implementing. If yes, produce the module plan + UNITS.csv for LLM-assisted contradiction detection, including the `strict_local` skip path and cost/rate gate tests.

@@ -6,11 +6,11 @@
 
 知返 AhaDiff 是一个 **local-first 的 verified diff learning layer**。把 AI 写出的 git diff 变成带代码证据链的学习笔记、概念图谱、主动回忆测验、SRS 复习卡和质量棘轮记录。核心差异：Code Wiki 解释仓库，知返解释这次改动；每句话都能回到代码证据。
 
-**当前状态（2026-05-12）**：本轮 v1.1 security / cross-platform follow-up 基于上一轮 adversarial review fix 继续收口。后端版本同步到 `1.1.0a0`，前端版本同步到 `1.1.0-alpha.0`；git 调用补 `--end-of-options`、leading-dash 拒绝和大小写不敏感的 `GIT_*` 环境清洗；`--patch-url` 拒绝 URL userinfo；`safe_json_loads` 增加 50 MiB cap；MCP stats 表名走 allowlist；prompt injection 检测扩展 soft hyphen / variation selector / TAG chars；claim extraction 读取 run artifacts 和 `claims.raw.jsonl` 时补 no-follow、Windows reparse、hardlink、大小和 TOCTOU guard；`/api/improve/preflight` 改用共享 git wrapper，避免污染环境隐藏 dirty prompt。前端抽出共享 `copyToClipboard()`，支持 Clipboard API、textarea fallback、SSR/sandbox guard 和焦点恢复；`CommandBlock`、Graphify source card、Diff viewer、Settings 复用同一逻辑；`.gitattributes` 已强制文本 LF 并标记常见二进制资源；viewer 已配置 `browserslist` 和 Vite `build.target`。当前真实验证：后端完整 unit `2188 passed`；`ruff check src tests`、`ruff format --check src tests`、`pyright` 通过；viewer typecheck、Vitest `29 files, 318 tests passed`、build 通过；`git diff --check HEAD` 通过。integration、eval、live judge、wheel、完整 Playwright 和远端 GitHub Actions 未在本轮重跑。
+**当前状态（2026-05-12）**：v1.1 security / cross-platform follow-up 之后，Phase 2 follow-up 已补上本地学习闭环的几块产品面。后端仍是 `1.1.0a0`，前端仍是 `1.1.0-alpha.0`；`review.sqlite` schema 已升到 v10，新增 deterministic concept health lint 和 `concept_status` / `concept_lint_runs`；新增 `ahadiff export preview` 与 `POST /api/export/preview`，只生成本地 strict-local 静态预览和 deterministic zip manifest；read-only MCP server 现在是 7 个工具，新增 `ask_lesson`，只做本地 lesson fragment token search；Challenge loop 默认关闭，需要配置 opt-in，CLI 只有 `build` / `status`，serve/WebUI 提供 build/get/advance/abort/review/feedback，review 是 deterministic diff gap 对比，不执行代码；APKG 已改用 packaged CSS，但 GUID 仍是 `genanki.guid_for(card_id)`，stable namespace GUID 未落地。前端新增 Challenge 页面、Export modal、Concept health badge/filter、Ratchet locale-aware 分数/日期和前端 API error best-effort 脱敏。当前真实验证：后端完整 unit `2338 passed`；`ruff check src tests`、`ruff format --check src tests`、`pyright` 通过；viewer typecheck、Vitest `29 files, 320 tests passed`、build 通过；i18n scalar keys `1261/1261`；`git diff --check HEAD` 通过。integration、eval、live judge、wheel、完整 Playwright 和远端 GitHub Actions 未在本轮重跑。
 
 ## 架构总览
 
-后端 CLI（learn/improve/verify/serve/install/benchmark/mcp-server）：8-provider LLM + diff capture + claims + lesson/quiz/concepts + 8 维 eval + 可选 LLM judge + review.sqlite FSRS-6 + serve API（62 routes + catchall，28 个稳定 `ErrorCode`）+ APKG export + read-only MCP server + 13 install targets + improve loop。前端 React 19 SPA：13 页面、48 个生产 TSX + 43 个 CSS 文件，当前 i18n scalar key parity 为 `1187/1187`；ConceptGraph 当前是 Canvas renderer + 可访问列表 fallback；Settings 的项目级 AI 工具指引仍沿用 `?tab=integrations` 深链。
+后端 CLI（learn/improve/verify/serve/install/benchmark/mcp-server）：8-provider LLM + diff capture + claims + lesson/quiz/concepts + concept health lint + 8 维 eval + 可选 LLM judge + review.sqlite v10/FSRS-6 + serve API（69 concrete `/api/*` routes + catchall，28 个稳定 `ErrorCode`）+ APKG export + local static preview export + opt-in Challenge loop + read-only MCP server / `ask_lesson` + 13 install targets + improve loop。前端 React 19 SPA：16 页面、62 个生产 TSX + 46 个 CSS 文件，当前 i18n scalar key parity 为 `1261/1261`；ConceptGraph 当前是 Canvas renderer + 可访问列表 fallback；Settings 的项目级 AI 工具指引仍沿用 `?tab=integrations` 深链。
 
 ### 技术栈
 
@@ -60,18 +60,20 @@ global_config_dir()                   ← Global（派生/索引/偏好，非真
 | claims | `src/ahadiff/claims/` | claim 解析（容错 + 截断 JSON 恢复）、runtime、negative scan、deterministic verifier、`output_lang` 透传 |
 | lesson | `src/ahadiff/lesson/` | learnability gate、三档 lesson（full/hint/compact）、full lesson `walkthrough_tldr`、section helpfulness |
 | quiz | `src/ahadiff/quiz/` | quiz/cards/misconception_cards（ABCD 选项 + 容错解析）、review_card_id 回填 |
-| wiki | `src/ahadiff/wiki/` | concepts.jsonl 累积、streaming reader、ancestry cache、DB/JSONL cursor 分页 |
+| wiki | `src/ahadiff/wiki/` | concepts.jsonl 累积、streaming reader、ancestry cache、DB/JSONL cursor 分页、deterministic health lint |
+| challenge | `src/ahadiff/challenge/` | opt-in challenge state machine、manifest、deterministic diff gap review、adapt signal |
+| export | `src/ahadiff/export/` | local static preview writer、manifest digest、deterministic zip |
 | graphify | `src/ahadiff/graphify/` | parser（50 MiB + 50k edge cap + provenance）/ matcher / linker / freshness（7 态 + 4 值投影） |
 | eval | `src/ahadiff/eval/` | 8 维评分、hard gates（contradicted ≤2）、ratchet、可选 LLM judge |
-| review | `src/ahadiff/review/` | review.sqlite v9 + FTS5 + FSRS-6 + search + optimizer + ABCD 卡片 + APKG active-card export |
-| serve | `src/ahadiff/serve/` | 62 routes；auth/CORS/CSP；learn/tasks/graph/config/search/usage/audit/review/install/providers 端点；`/api/export/results?format=tsv\|json`；`/api/export/apkg`；audit 最新优先分页；统一 `{error_code,error,status,details?}`；per-request locale；SSE progress；写保护 |
+| review | `src/ahadiff/review/` | review.sqlite v10 + FTS5 + FSRS-6 + search + optimizer + ABCD 卡片 + concept health tables + APKG active-card export / packaged CSS |
+| serve | `src/ahadiff/serve/` | 69 concrete `/api/*` routes；auth/CORS/CSP；learn/tasks/graph/config/search/usage/audit/review/install/providers/export/challenge 端点；`/api/export/results?format=tsv\|json`；`/api/export/apkg`；`/api/export/preview`；challenge feature flag；audit 最新优先分页；统一 `{error_code,error,status,details?}`；per-request locale；SSE progress；写保护 |
 | install | `src/ahadiff/install/` | 13 安装目标、项目级 AI 工具指引写入、通用写入层（no-follow/reparse/symlink guard）、hooks git 检测/timeout、verify workflow macOS/Linux/Windows matrix |
 | improve | `src/ahadiff/improve/` | improve session、worktree replay、prompt 白名单、Phase 2.5、preflight |
 | i18n | `src/ahadiff/i18n/` | locale resolver（cookie → Accept-Language → `AHADIFF_LANG` → CLI → config → `LANG`）和 prompt language helper |
-| mcp | `src/ahadiff/mcp/` | read-only stdio MCP server，6 个工具：`list_runs` / `get_run_summary` / `list_due_cards` / `search` / `get_concepts` / `get_stats` |
+| mcp | `src/ahadiff/mcp/` | read-only stdio MCP server，7 个工具：`list_runs` / `get_run_summary` / `list_due_cards` / `search` / `get_concepts` / `get_stats` / `ask_lesson` |
 | benchmarks | `benchmarks/` | 10 fixtures、Graphify 10k gate（parse 750ms + peak 96MiB） |
-| viewer | `viewer/` | React 19 SPA；13 页面；SearchOverlay 双栏预览；ErrorBoundary 诊断脱敏和复制 fallback；Learn Mode Dialog 默认跟随 viewer locale；Review 四档 SRS + 高风险概念；Quiz 导航 / mark-wrong / progress table；ConceptGraph Canvas renderer + community fill + a11y list fallback；Ratchet TSV/JSON/APKG 导出；Settings 项目级 AI 工具指引；Dashboard + Lesson + Concepts + Ratchet + RunDetail + Settings + Guide + Diff + Search；Onboarding DiagnosticRow；错误码本地化；locale-aware byte/token 格式化；motion/elevation CSS；侧栏三档；container query；PWA |
-| tests | `tests/` | unit/integration/eval/live；本轮 unit `2188 passed`；CI: PR unit + eval + nightly eval + release coverage ≥85% |
+| viewer | `viewer/` | React 19 SPA；16 页面；SearchOverlay 双栏预览；ErrorBoundary 诊断脱敏和复制 fallback；Learn Mode Dialog 默认跟随 viewer locale；Review 四档 SRS + 高风险概念；Quiz 导航 / mark-wrong / progress table；Challenge Mode；Export modal；HealthBadge；ConceptGraph Canvas renderer + community fill + a11y list fallback；Ratchet TSV/JSON/APKG 导出；Settings 项目级 AI 工具指引；Dashboard + Lesson + Concepts + Ratchet + RunDetail + Settings + Guide + Diff + Search；Onboarding DiagnosticRow；错误码本地化；locale-aware byte/token 格式化；motion/elevation CSS；侧栏三档；container query；PWA |
+| tests | `tests/` | unit/integration/eval/live；本轮 unit `2338 passed`；CI: PR unit + eval + nightly eval + release coverage ≥85% |
 | doc | `doc/` | 产品设计文档 |
 | ui | `ui/` | UI 原型 Warm v1-v6 |
 
@@ -147,15 +149,19 @@ pytest tests/live/test_llm_judge_live.py -q
 - **SKILL0**（ZJU-REAL）→ section helpfulness
 - **darwin-skill** → 8 维 rubric + Phase 2.5
 - **Graphify** → 7 态新鲜度 + 4 值投影
-- **LLM Wiki**（Karpathy）→ concepts.jsonl append-only
+- **LLM Wiki**（Karpathy）→ persistent wiki 思路；当前 `concepts.jsonl` 是 snapshot-style 累积，append-only marker/event-log 仍是 RFC 设计项
 
 ## 多模型协作策略
 
 | 模型 | 角色 | 职责 |
 |------|------|------|
 | **Claude** | 编排 + 前端 | 任务编排、前端实现、文档、集成 |
-| **Codex** | 后端 | Python CLI、测试、包发布 |
-| **Gemini** | 前端评审 | UI/UX 评审（不写代码），`gemini-3.1-pro-preview` |
+| **Codex** | 后端 | Python CLI、测试、包发布；通过 `codex-plugin-cc` 调用 |
+| **Gemini** | 前端评审 | UI/UX 评审（不写代码）；通过 `codeagent-wrapper` 调用 `gemini-3.1-pro-preview` |
+
+调用规则：
+- Codex：实现/修复/调查用 `/codex:rescue`，常规 review 用 `/codex:review --background`，对抗式 review 用 `/codex:adversarial-review --background`，状态/结果用 `/codex:status` / `/codex:result`；使用 plugin 默认模型，不加 `--model` / `--effort`，不要通过 `Skill(codex:review)` 调用。
+- Gemini：`$HOME/.claude/bin/codeagent-wrapper --backend gemini --gemini-model gemini-3.1-pro-preview`；429 时 Claude 兜底并记录 `gemini-429-fallback=claude`。
 
 ### 文件所有权
 
@@ -171,7 +177,7 @@ pytest tests/live/test_llm_judge_live.py -q
 - **CONDITIONAL GO**：0 Critical + ≤3 High
 - **NO GO**：≥1 Critical 或 >3 High
 
-审查清单：功能正确性、覆盖率、文档同步、pyright/ruff、安全扫描、跨平台、集成点。
+审查清单：功能正确性、覆盖率、文档同步、pyright/ruff、安全扫描、跨平台、集成点。每个大 Stage/Phase 结束后先做最小相关测试，再触发 Codex 对抗式审查和常规 review；前端 UI/UX 相关改动还需要 Gemini/Claude 视觉与浏览器实测。
 
 ## 变更记录 (Changelog)
 
@@ -196,7 +202,7 @@ pytest tests/live/test_llm_judge_live.py -q
 | 05-11 | ConceptGraph Canvas migration + graph confidence hardening | frontend 270 / graph route+parser 117 / target Playwright 62 |
 | 05-11 | AI 工具指引命名与交互收口 + Ratchet JSON export + Audit 最新优先 | backend target 116 / frontend 270 / target Playwright 59 / i18n 1176 |
 | 05-12 | APKG export + read-only MCP server + lesson walkthrough_tldr + SSE/SearchOverlay/ErrorBoundary/CSS hardening | backend 2150 / frontend 310 / target Playwright 10 / coverage run |
-| 05-12 | v1.1 security + cross-platform hardening + version sync | backend 2188 / frontend 318 / ruff+format+pyright+typecheck+build+diffcheck |
+| 05-12 | v1.1 security + cross-platform hardening + Phase 2 challenge/export/concept-health/MCP ask_lesson | backend 2338 / frontend 320 / i18n 1261 / ruff+format+pyright+typecheck+build+diffcheck |
 
 
 <!-- AHADIFF:BEGIN target=claude -->

@@ -103,6 +103,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "suppress_rules": [],
         "local_hosts": [],
     },
+    "challenge": {
+        "enabled": False,
+    },
 }
 
 _SENSITIVE_KEY_PATTERN = re.compile(r"(api_key|secret|password|token)", re.IGNORECASE)

@@ -74,12 +74,18 @@ _MAINT_APP = typer.Typer(help="Mutating maintenance tasks kept separate from doc
 _PROVIDER_APP = typer.Typer(help="Probe and persist LLM provider capabilities.")
 _DB_APP = typer.Typer(help="Manage review.sqlite migrations, backup, restore, and checks.")
 _CONCEPTS_APP = typer.Typer(help="Export, rollback, and verify the concepts derived cache.")
+_EXPORT_APP = typer.Typer(help="Static preview and review export bundles.")
+_CHALLENGE_APP = typer.Typer(
+    help="Opt-in Diffity-style challenge loop (build/status/abort/advance).",
+)
 _APP.add_typer(_CONFIG_APP, name="config")
 _APP.add_typer(_GRAPH_APP, name="graph")
 _APP.add_typer(_MAINT_APP, name="maint")
 _APP.add_typer(_PROVIDER_APP, name="provider")
 _APP.add_typer(_DB_APP, name="db")
 _APP.add_typer(_CONCEPTS_APP, name="concepts")
+_APP.add_typer(_EXPORT_APP, name="export")
+_APP.add_typer(_CHALLENGE_APP, name="challenge")
 _INSTALL_TARGET_HELP = (
     "Install target: aider, claude, cline, codex, continue, copilot, cursor, gemini, "
     "github-action, hooks, opencode, roo, or windsurf. hooks uses POSIX shell hooks; "
@@ -2882,6 +2888,53 @@ def export_results_cmd(
         _handle_cli_error(error)
 
 
+@_EXPORT_APP.command("preview")
+def export_preview_cmd(
+    run_id: Annotated[
+        str,
+        typer.Argument(help="Run ID (e.g. run_019dc3...)."),
+    ],
+    out: Annotated[
+        Path,
+        typer.Option("--out", help="Output directory for the static preview bundle."),
+    ],
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or workspace root."),
+    ] = Path(),
+    privacy_mode: Annotated[
+        str,
+        typer.Option(
+            "--privacy-mode",
+            help="strict_local | redacted_remote | explicit_remote.",
+        ),
+    ] = "strict_local",
+) -> None:
+    from .export.preview import build_zip_bytes, export_preview
+    from .export.writer import safe_write_export_file
+
+    try:
+        root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
+        output_dir = out.expanduser().resolve()
+        _, lock_path = _state_dir_and_lock_path(repo_root)
+        with repo_write_lock(lock_path, command="export preview") as _:
+            manifest = export_preview(
+                run_id=run_id,
+                output_path=output_dir,
+                state_dir=state_dir,
+                privacy_mode=privacy_mode,
+            )
+            zip_bytes = build_zip_bytes(output_dir)
+            zip_path = output_dir.with_suffix(output_dir.suffix + ".zip")
+            safe_write_export_file(zip_path.parent, zip_path.name, zip_bytes)
+        console.print(f"[green]Preview[/green] {output_dir}")
+        console.print(f"[green]Archive[/green] {zip_path}")
+        console.print(f"[dim]digest[/dim] {manifest.digest}")
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
 @_DB_APP.command("upgrade")
 def db_upgrade_cmd(
     repo_root: Annotated[
@@ -3259,6 +3312,147 @@ def concepts_rollback_cmd(
         _handle_cli_error(error)
 
 
+@_CONCEPTS_APP.command("lint")
+def concepts_lint_cmd(
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or any path inside it."),
+    ] = Path(),
+    mode: Annotated[
+        str,
+        typer.Option(
+            "--mode",
+            help="Lint mode (only 'deterministic' is implemented).",
+        ),
+    ] = "deterministic",
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Print findings only; do not write to review.sqlite."),
+    ] = False,
+    orphan_threshold: Annotated[
+        int,
+        typer.Option(
+            "--orphan-threshold",
+            min=0,
+            max=1000,
+            help="Concept is orphaned if not referenced by the last N runs.",
+        ),
+    ] = 5,
+    line_drift_threshold: Annotated[
+        int,
+        typer.Option(
+            "--line-drift-threshold",
+            min=0,
+            max=10000,
+            help="Mark stale when source_refs line drifts by more than N lines.",
+        ),
+    ] = 50,
+) -> None:
+    """Run deterministic concept health checks (orphan / stale)."""
+    try:
+        if mode != "deterministic":
+            raise InputError("only --mode=deterministic is implemented in this phase")
+        from ahadiff.review.database import (
+            connect_review_db,
+            load_concepts_from_db,
+        )
+        from ahadiff.wiki.lint import run_deterministic_lint
+
+        root = find_repo_root(repo_root)
+        sd = project_state_dir(root)
+        db_path = sd / "review.sqlite"
+
+        concepts: list[dict[str, Any]] = []
+        if db_path.exists():
+            cursor: str | None = None
+            while True:
+                rows = load_concepts_from_db(db_path, limit=500, after_term_key=cursor)
+                if not rows:
+                    break
+                concepts.extend(dict(row) for row in rows)
+                last_key = rows[-1].get("term_key")
+                if not isinstance(last_key, str) or not last_key:
+                    break
+                cursor = last_key
+        else:
+            jsonl_path = sd / "concepts.jsonl"
+            if jsonl_path.exists():
+                with jsonl_path.open("r", encoding="utf-8") as handle:
+                    for line in handle:
+                        stripped = line.strip()
+                        if not stripped:
+                            continue
+                        payload = safe_json_loads(stripped)
+                        if isinstance(payload, dict):
+                            concepts.append(cast("dict[str, Any]", payload))
+
+        recent_runs: list[str] = []
+        if db_path.exists():
+            try:
+                with connect_review_db(db_path) as connection:
+                    rows_cursor = connection.execute(
+                        """
+                        SELECT DISTINCT run_id FROM result_events
+                        ORDER BY timestamp DESC
+                        LIMIT 50
+                        """
+                    )
+                    for row in rows_cursor.fetchall():
+                        run_id = row[0] if not hasattr(row, "keys") else row["run_id"]
+                        if isinstance(run_id, str) and run_id:
+                            recent_runs.append(run_id)
+            except Exception:
+                recent_runs = []
+
+        if dry_run:
+            summary = run_deterministic_lint(
+                concepts=concepts,
+                recent_runs=recent_runs,
+                repo_root=root,
+                db_path=None,
+                dry_run=True,
+                orphan_threshold=orphan_threshold,
+                line_drift_threshold=line_drift_threshold,
+            )
+        else:
+            with repo_write_lock(lock_file_path(root), command="concepts lint") as _:
+                summary = run_deterministic_lint(
+                    concepts=concepts,
+                    recent_runs=recent_runs,
+                    repo_root=root,
+                    db_path=db_path,
+                    dry_run=False,
+                    orphan_threshold=orphan_threshold,
+                    line_drift_threshold=line_drift_threshold,
+                )
+
+        if not summary.findings:
+            console.print("[green]No concept health findings[/green]")
+            console.print(f"lint_id: {summary.lint_id}")
+            return
+
+        table = Table(title=f"Concept lint findings ({len(summary.findings)})")
+        table.add_column("term_key")
+        table.add_column("current")
+        table.add_column("new")
+        table.add_column("reason")
+        for finding in summary.findings:
+            table.add_row(
+                finding.term_key,
+                finding.current_status,
+                finding.new_status,
+                finding.reason,
+            )
+        console.print(table)
+        console.print(f"lint_id: {summary.lint_id} (mode={summary.mode})")
+        if dry_run:
+            console.print("[yellow]Dry run[/yellow]: no DB writes")
+    except typer.Exit:
+        raise
+    except Exception as error:
+        _handle_cli_error(error)
+
+
 @_PROVIDER_APP.command("test")
 def provider_test_cmd(
     name: Annotated[
@@ -3416,12 +3610,120 @@ def provider_test_cmd(
         _handle_cli_error(error)
 
 
+@_CHALLENGE_APP.command("build")
+def challenge_build_cmd(
+    run_id: Annotated[str, typer.Argument(help="Source run id to challenge from.")],
+    challenge_id: Annotated[
+        str | None,
+        typer.Option("--challenge-id", help="Optional preset challenge id."),
+    ] = None,
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or workspace root."),
+    ] = Path(),
+) -> None:
+    try:
+        root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        snapshot = load_config(root) if has_git_repo else load_workspace_config(root)
+        from ahadiff.challenge import (
+            build_challenge,
+            create_state,
+            is_feature_enabled,
+            write_manifest,
+            write_state,
+        )
+
+        if not is_feature_enabled(snapshot):
+            raise InputError(
+                "challenge engine is disabled; set [challenge] enabled = true in config.toml "
+                "to opt in"
+            )
+        state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
+        _, lock_path = _state_dir_and_lock_path(repo_root)
+        with repo_write_lock(lock_path, command="challenge build") as _:
+            manifest = build_challenge(
+                source_run_id=run_id,
+                state_dir=state_dir,
+                challenge_id=challenge_id,
+            )
+            challenge_state = create_state(
+                challenge_id=manifest.challenge_id,
+                source_run_id=run_id,
+            )
+            write_state(state_dir, challenge_state)
+            write_manifest(state_dir, manifest)
+        console.print(f"[green]Built challenge[/green] {manifest.challenge_id}")
+        console.print(f"[bold]Source run[/bold]: {run_id}")
+        console.print(f"[bold]Canonical claims[/bold]: {len(manifest.canonical_claim_ids)}")
+        console.print(f"[bold]Stage[/bold]: {challenge_state.stage.value}")
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+@_CHALLENGE_APP.command("status")
+def challenge_status_cmd(
+    challenge_id: Annotated[
+        str | None,
+        typer.Argument(help="Challenge id to inspect; omit to list all challenges."),
+    ] = None,
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root or workspace root."),
+    ] = Path(),
+) -> None:
+    try:
+        root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        snapshot = load_config(root) if has_git_repo else load_workspace_config(root)
+        from ahadiff.challenge import is_feature_enabled, read_state
+        from ahadiff.challenge.state import validate_challenge_id
+
+        if not is_feature_enabled(snapshot):
+            raise InputError(
+                "challenge engine is disabled; set [challenge] enabled = true in config.toml "
+                "to opt in"
+            )
+        state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
+        challenges_dir = state_dir / "challenges"
+        if challenge_id is None:
+            if not challenges_dir.exists():
+                console.print("[yellow]no challenges found[/yellow]")
+                return
+            entries = sorted(p.name for p in challenges_dir.iterdir() if p.is_dir())
+            if not entries:
+                console.print("[yellow]no challenges found[/yellow]")
+                return
+            for entry in entries:
+                try:
+                    validate_challenge_id(entry)
+                    challenge_state = read_state(state_dir, entry)
+                except Exception:
+                    continue
+                console.print(
+                    f"[bold]{challenge_state.challenge_id}[/bold]: "
+                    f"stage={challenge_state.stage.value} "
+                    f"source_run={challenge_state.source_run_id}"
+                )
+            return
+
+        validate_challenge_id(challenge_id)
+        challenge_state = read_state(state_dir, challenge_id)
+        console.print(f"[bold]Challenge[/bold]: {challenge_state.challenge_id}")
+        console.print(f"[bold]Stage[/bold]: {challenge_state.stage.value}")
+        console.print(f"[bold]Source run[/bold]: {challenge_state.source_run_id}")
+        console.print(f"[bold]Created[/bold]: {challenge_state.created_at_utc}")
+        console.print(f"[bold]Updated[/bold]: {challenge_state.updated_at_utc}")
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
 def main() -> None:
     app()()
 
 
 __all__ = [
     "app",
+    "challenge_build_cmd",
+    "challenge_status_cmd",
     "claims_cmd",
     "config_show_cmd",
     "doctor_cmd",

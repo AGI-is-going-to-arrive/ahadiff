@@ -37,6 +37,10 @@
 .concept-ledger__name {
   font-weight: 500;
   color: var(--ink-strong);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
 }
 
 .concept-ledger__term-key {
@@ -176,6 +180,70 @@
   color: var(--on-accent);
 }
 
+.concept-ledger__health-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-3);
+  padding: var(--sp-2) 0;
+}
+
+.concept-ledger__health-filter-label {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.concept-ledger__health-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}
+
+.concept-ledger__health-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-full);
+  border: 1px solid var(--hair);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  min-height: 28px;
+  transition: background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.concept-ledger__health-chip:hover {
+  background: var(--elevated);
+  border-color: var(--hair-strong);
+}
+
+.concept-ledger__health-chip--active {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  border-color: var(--accent-hair);
+}
+
+.concept-ledger__health-chip-count {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  padding-inline-start: var(--sp-1);
+  border-inline-start: 1px solid var(--hair);
+}
+
+.concept-ledger__health-chip--active .concept-ledger__health-chip-count {
+  color: var(--accent-ink);
+  border-inline-start-color: var(--accent-hair);
+}
+
 /* ---------- Forced-colors (Windows High Contrast) ---------- */
 @media (forced-colors: active) {
   .concept-ledger__table th {
@@ -189,5 +257,12 @@
   }
   .concept-ledger__filter-pill {
     border: 1px solid Highlight;
+  }
+  .concept-ledger__health-chip {
+    border-color: CanvasText;
+  }
+  .concept-ledger__health-chip--active {
+    border-color: Highlight;
+    color: Highlight;
   }
 }

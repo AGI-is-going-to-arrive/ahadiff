@@ -1,12 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import AppShell from '../components/AppShell';
+import ExportModal from '../components/ExportModal';
 import InfoHint from '../components/InfoHint';
 import RatchetChart from '../components/RatchetChart';
 import Skeleton, { SkeletonGroup } from '../components/Skeleton';
 import {
-  getExportApkgBlob,
-  getExportResultsJsonBlob,
-  getExportResultsTsvBlob,
   getRatchetHistory,
   getRunScore,
 } from '../api/runs';
@@ -70,6 +68,17 @@ function formatDate(iso: string, locale: string): string {
     });
   } catch {
     return iso;
+  }
+}
+
+function formatScore(value: number, locale: string, fractionDigits = 1): string {
+  try {
+    return new Intl.NumberFormat(locale, {
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
+    }).format(value);
+  } catch {
+    return value.toFixed(fractionDigits);
   }
 }
 
@@ -162,7 +171,7 @@ export default function RatchetPage() {
   const [scoreRunId, setScoreRunId] = useState<string | null>(null);
   const [scoreLoading, setScoreLoading] = useState(false);
   const [specAlignment, setSpecAlignment] = useState<SpecAlignmentResponse | null>(null);
-  const [exportError, setExportError] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const loadMoreAbortRef = useRef<AbortController | null>(null);
   const latestRunId = history[0]?.run_id ?? null;
@@ -268,44 +277,6 @@ export default function RatchetPage() {
     return () => controller.abort();
   }, []);
 
-  // Fetch through the token-aware API client, then trigger a local Blob
-  // download. A direct anchor navigation cannot attach X-AhaDiff-Token.
-  const downloadBlob = useCallback((blob: Blob, filename: string) => {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.rel = 'noopener';
-    document.body.appendChild(a);
-    try {
-      a.click();
-    } finally {
-      a.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    }
-  }, []);
-
-  const handleExportTsv = useCallback(() => {
-    setExportError(false);
-    void getExportResultsTsvBlob()
-      .then((blob) => downloadBlob(blob, 'results.tsv'))
-      .catch(() => setExportError(true));
-  }, [downloadBlob]);
-
-  const handleExportJson = useCallback(() => {
-    setExportError(false);
-    void getExportResultsJsonBlob()
-      .then((blob) => downloadBlob(blob, 'results.json'))
-      .catch(() => setExportError(true));
-  }, [downloadBlob]);
-
-  const handleExportApkg = useCallback(() => {
-    setExportError(false);
-    void getExportApkgBlob()
-      .then((blob) => downloadBlob(blob, 'ahadiff_review.apkg'))
-      .catch(() => setExportError(true));
-  }, [downloadBlob]);
-
   useEffect(() => {
     if ((activeTab !== 'benchmark' && activeTab !== 'judge') || !latestRunId || activeScoreData) return;
     const controller = new AbortController();
@@ -384,7 +355,7 @@ export default function RatchetPage() {
                   {t('Ratchet.alignment_score')}:{' '}
                   <span className="num">
                     {specAlignment.alignment_score != null
-                      ? specAlignment.alignment_score.toFixed(1)
+                      ? formatScore(specAlignment.alignment_score, locale)
                       : '-'}
                   </span>
                 </span>
@@ -399,29 +370,10 @@ export default function RatchetPage() {
             <button
               type="button"
               className="load-more-btn"
-              onClick={handleExportTsv}
+              onClick={() => setExportOpen(true)}
             >
-              {t('Ratchet.export_tsv')}
+              {t('Export.button')}
             </button>
-            <button
-              type="button"
-              className="load-more-btn"
-              onClick={handleExportJson}
-            >
-              {t('Ratchet.export_json')}
-            </button>
-            <button
-              type="button"
-              className="load-more-btn"
-              onClick={handleExportApkg}
-            >
-              {t('Ratchet.export_apkg')}
-            </button>
-            {exportError && (
-              <span className="ratchet-page__export-error" role="alert">
-                {t('Ratchet.export_failed')}
-              </span>
-            )}
           </div>
         </div>
 
@@ -434,7 +386,7 @@ export default function RatchetPage() {
           <span className="ratchet-banner__text">{t('Ratchet.banner_text')}</span>
         </aside>
 
-        <RatchetNoteCard history={history} t={t} />
+        <RatchetNoteCard history={history} locale={locale} t={t} />
 
         {/* Chart + Rubric grid — always visible above tabs */}
         <div className="ratchet-page__grid">
@@ -519,7 +471,7 @@ export default function RatchetPage() {
                   {history.map((entry) => (
                     <tr key={`${entry.run_id}-${entry.timestamp}`}>
                       <td className="mono">{entry.source_ref || entry.run_id.slice(0, 8)}</td>
-                      <td className="num">{entry.overall}</td>
+                      <td className="num">{formatScore(entry.overall, locale)}</td>
                       <td>
                         <span className={`verdict-badge verdict-badge--${safeVerdict(entry.verdict)}`}>
                           {safeVerdict(entry.verdict)}
@@ -600,7 +552,7 @@ export default function RatchetPage() {
                         />
                       </div>
                       <span className="rubric-grid__fraction">
-                        {d.score}/{d.max_score}
+                        {formatScore(d.score, locale)}/{formatScore(d.max_score, locale)}
                       </span>
                     </div>
                   ))}
@@ -645,7 +597,9 @@ export default function RatchetPage() {
                       <div key={dim} className="judge-note-card">
                         <div className="judge-note-card__meta">
                           <span className="judge-note-card__dim">{formatDimensionLabel(dim, t)}</span>
-                          <span className="judge-note-card__score">{d.score}/{d.max_score}</span>
+                          <span className="judge-note-card__score">
+                            {formatScore(d.score, locale)}/{formatScore(d.max_score, locale)}
+                          </span>
                         </div>
                         <p className="judge-note-card__reason">{d.reason}</p>
                       </div>
@@ -680,15 +634,22 @@ export default function RatchetPage() {
           <GraphifyCard compact />
         </Suspense>
       </div>
+      <ExportModal
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        runId={latestRunId ?? undefined}
+      />
     </AppShell>
   );
 }
 
 function RatchetNoteCard({
   history,
+  locale,
   t,
 }: {
   history: RatchetHistoryEntry[];
+  locale: string;
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
   const note = history.map(parseRatchetNote).find((item): item is RatchetNote => item !== null);
@@ -732,7 +693,9 @@ function RatchetNoteCard({
         {scoreDelta != null && (
           <div>
             <dt>{t('Ratchet.note_delta')}</dt>
-            <dd className="num">{scoreDelta >= 0 ? '+' : ''}{scoreDelta.toFixed(1)}</dd>
+            <dd className="num">
+              {scoreDelta >= 0 ? '+' : ''}{formatScore(scoreDelta, locale)}
+            </dd>
           </div>
         )}
         {note.targetedPassed != null && (

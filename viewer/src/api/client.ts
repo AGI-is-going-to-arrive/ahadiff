@@ -53,10 +53,11 @@ export class ApiError extends Error {
     body: unknown,
     message?: string,
   ) {
-    super(message ?? extractApiErrorMessage(body, status));
+    const sanitizedBody = sanitizeApiErrorBody(body);
+    super(message ?? extractApiErrorMessage(sanitizedBody, status));
     this.status = status;
-    this.body = sanitizeApiErrorBody(body);
-    this.errorCode = extractApiErrorCode(body);
+    this.body = sanitizedBody;
+    this.errorCode = extractApiErrorCode(sanitizedBody);
   }
 }
 
@@ -280,6 +281,38 @@ export async function apiFetchBlob(path: string, init?: ApiFetchOptions): Promis
 
   if (!res.ok) throw new ApiError(res.status, await safeJson(res));
   return await res.blob();
+}
+
+export interface ExportPreviewManifest {
+  path: string;
+  manifest_digest: string;
+  file_count: number;
+  total_bytes: number;
+  created_at_utc: string;
+  privacy_mode: string;
+  run_id: string;
+}
+
+export async function exportPreview(
+  runId: string,
+  opts?: Pick<RequestInit, 'signal'>,
+): Promise<ExportPreviewManifest> {
+  return apiFetch<ExportPreviewManifest>('/api/export/preview', {
+    ...opts,
+    method: 'POST',
+    body: JSON.stringify({ run_id: runId }),
+  });
+}
+
+export async function exportResults(
+  format: 'tsv' | 'json',
+  opts?: Pick<RequestInit, 'signal'>,
+): Promise<Blob> {
+  return apiFetchBlob(`/api/export/results?format=${format}`, opts);
+}
+
+export async function exportApkg(opts?: Pick<RequestInit, 'signal'>): Promise<Blob> {
+  return apiFetchBlob('/api/export/apkg', opts);
 }
 
 /** Variant for endpoints that may legitimately return 204 No Content. */

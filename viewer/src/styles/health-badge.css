@@ -1,0 +1,68 @@
+.health-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+  font-size: 0.75rem;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  vertical-align: middle;
+}
+
+.health-badge__dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.health-badge--healthy {
+  background: var(--success-soft);
+  color: var(--success);
+  border-color: var(--success-hair);
+}
+
+.health-badge--orphan {
+  background: var(--subtle);
+  color: var(--muted-strong);
+  border-color: var(--hair-strong);
+}
+
+.health-badge--stale {
+  background: var(--warning-soft);
+  color: var(--warning);
+  border-color: var(--warning-hair);
+}
+
+.health-badge--contradicted {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: var(--danger-hair);
+}
+
+.health-badge--dismissed {
+  background: var(--subtle);
+  color: var(--muted);
+  border-color: var(--hair);
+}
+
+@media (forced-colors: active) {
+  .health-badge {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+  .health-badge--contradicted {
+    border-color: Mark;
+    color: Mark;
+  }
+  .health-badge__dot {
+    background: CanvasText;
+  }
+}

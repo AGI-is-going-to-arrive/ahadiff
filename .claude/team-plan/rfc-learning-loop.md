@@ -1,9 +1,17 @@
 # RFC 2.3 — Diffity-style Learning Loop
 
-**Status**: DRAFT — design only, no implementation
+**Status**: IMPLEMENTED SUBSET — opt-in challenge state machine, CLI build/status, serve/WebUI flow landed
 **Date**: 2026-05-12
 **Authors**: Claude (orchestrator)
 **Scope**: Optional hands-on track layered above existing `learn → quiz → review`; zero impact on N-file contract, evaluation bundle, or `result_events`.
+
+**Current-code truth (2026-05-12)**:
+- Current lesson artifacts live under `runs/<run_id>/lesson/`, e.g. `lesson.full.md`, `lesson.hint.md`, `lesson.compact.md`. Do not use a root-level `runs/<run_id>/lesson.md` path.
+- Challenge implementation exists under `src/ahadiff/challenge/` and `src/ahadiff/serve/routes_challenge.py`.
+- Challenge is disabled by default and requires `challenge.enabled` opt-in.
+- CLI currently exposes only `ahadiff challenge build` and `ahadiff challenge status`; advance/abort/review/feedback are serve routes.
+- Review compares learner diff text to canonical diff/hunks deterministically. There is no shell-command challenge runner, no tests execution, no LLM semantic equivalence check.
+- Adapt goes through existing learning signal paths and does not add DB tables or card states.
 
 ## 1. Motivation & Target Users
 
@@ -19,7 +27,7 @@ Non-goal: replace `learn`/`quiz`/`review`. Opt-in, never gates release.
 
 | Stage | Purpose | Source | Output |
 |-------|---------|--------|--------|
-| **build** | Pre-stage challenge from a `run_id` | `runs/<run_id>/{patch.diff, claims.jsonl, lesson.md}` | `manifest.json` |
+| **build** | Pre-stage challenge from a `run_id` | `runs/<run_id>/patch.diff`, `claims.jsonl`, `lesson/lesson.full.md` | `manifest.json` |
 | **tour** | Read-only guided walkthrough | manifest + lesson `walkthrough_tldr` | UI state only |
 | **challenge** | Learner edits baseline tree toward target | `.ahadiff/challenges/<id>/work/` | `attempts/<aid>/result.json` |
 | **review** | Diff attempt vs canonical, map gaps to claims | attempt + claims | `attempts/<aid>/feedback.json` |
@@ -34,12 +42,12 @@ Transitions unidirectional; any stage may abort to `idle`. State persisted in `.
 
 `AttemptResult`: `attempt_id, challenge_id, started_at, finished_at, learner_diff_path, status, gap_claim_ids[]`.
 
-FSRS relationship: `adapt` only **inserts/updates** existing cards via the `signals` API (`mark-wrong`, `srs-review`). No new tables, no new card states; preserves `review.sqlite` v9. Gap claims map to concept ids via `concepts.jsonl`.
+FSRS relationship: `adapt` only records existing signal types such as `mark_wrong`. No new tables, no new card states; current DB is `review.sqlite` v10. Gap claims map to claim ids and, where available, concepts.
 
 ## 4. Security & Sandbox Boundary
 
 - **No code execution.** Challenge is text-edit comparison; no `npm test`, no shell run. Learner edits files in `.ahadiff/challenges/<id>/work/`; `git diff` is parsed and structurally compared against canonical hunks.
-- Worktree is gitignored, write-locked by the repo lock, removed on `adapt`. Reuses `improve/` no-follow / reparse / symlink-parent guards.
+- Worktree is gitignored, write-locked by the repo lock, removed on `adapt`. Reuses current no-follow / reparse / symlink-parent guards; if a helper is not shareable yet, the implementation plan must add it first.
 - All learner input flows through `UNTRUSTED_DIFF`: `redaction_pipeline()` before any prompt/log/render.
 - No new auth surface; serve endpoints reuse `X-AhaDiff-Token`.
 
@@ -51,13 +59,15 @@ All artifacts under `<repo>/.ahadiff/challenges/`. Zero network in stages 1–4;
 
 Manifests carry **structural hunks** (path + symbol + line offset), not shell commands. The single optional verify is `git diff --no-color` parsed by AhaDiff — no `bash`/`PowerShell` divergence. Copy actions reuse the POSIX/PowerShell split block.
 
+Implementation must test Windows/macOS/Linux path handling: spaces, non-ASCII names, case-insensitive collisions, symlink/reparse parents, and path separator normalization in feedback.
+
 ## 7. Frontend Interaction
 
 New `/#/challenge/<id>` route with five panels keyed to stages. Each is keyboard-navigable, exposes `aria-current="step"`, degrades to a list when canvas unavailable, follows existing motion/elevation tokens. SearchOverlay deep-links by challenge id.
 
 ## 8. Test Strategy
 
-- **Unit**: state-machine transitions (legal/illegal edges), manifest schema, attempt diff matcher.
+- **Unit**: state-machine transitions (legal/illegal edges), manifest schema, attempt diff matcher, real artifact-path discovery for `lesson/lesson.full.md`.
 - **Integration**: build-from-run on a pinned fixture; assert `feedback.json` claim mapping.
 - **E2E (Playwright)**: full five-stage flow on a synthetic 3-hunk diff.
 - **Property**: `adapt → review` round-trip never corrupts existing FSRS rows.

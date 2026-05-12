@@ -468,7 +468,7 @@ def test_initialize_review_db_creates_full_schema_and_pragmas(tmp_path: Path) ->
     assert "stale_reason" in card_info
     assert "answer_mode" in card_info
     assert "choices_json" in card_info
-    assert schema_version == 9
+    assert schema_version == 10
     assert str(card_info["answer_mode"]["dflt_value"]) == "'open'"
     assert int(card_info["answer_mode"]["notnull"]) == 1
     assert "CHECK (answer_mode IN ('open', 'multiple_choice'))" in str(cards_sql)
@@ -850,7 +850,7 @@ def test_migration_v8_to_v9_defaults_legacy_cards_to_open_answer_mode(
             "SELECT answer_mode, choices_json FROM cards WHERE id = 'legacy-card'"
         ).fetchone()
 
-    assert user_version == 9
+    assert user_version == 10
     assert {"answer_mode", "choices_json"} <= card_columns
     assert legacy_card is not None
     assert tuple(legacy_card) == ("open", None)

@@ -5,16 +5,21 @@ from __future__ import annotations
 import csv
 import io
 import logging
-from typing import TYPE_CHECKING
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, cast
 
 from anyio import to_thread
 from starlette.responses import JSONResponse, Response
 
 from ahadiff.contracts import ErrorCode
-from ahadiff.core.errors import InputError
-from ahadiff.core.json_util import safe_tsv_cell
+from ahadiff.core.errors import AhaDiffError, InputError, StorageError
+from ahadiff.core.ids import make_event_id
+from ahadiff.core.json_util import safe_json_loads, safe_tsv_cell
+from ahadiff.core.paths import validate_run_id
+from ahadiff.export.preview import ExportManifest, export_preview
 from ahadiff.review.apkg_export import export_apkg
 from ahadiff.review.database import select_result_tsv_rows
+from ahadiff.safety.audit import append_audit_record
 
 from ._errors import error_response
 
@@ -101,4 +106,87 @@ async def get_export_apkg(request: Request) -> Response:
     )
 
 
-__all__ = ["get_export_apkg", "get_export_results"]
+def _parse_preview_payload(raw_body: bytes) -> str:
+    if not raw_body:
+        raise InputError("request body must include a run_id")
+    try:
+        body = safe_json_loads(raw_body)
+    except ValueError as exc:
+        raise InputError(f"invalid JSON body: {exc}") from exc
+    if not isinstance(body, dict):
+        raise InputError("request body must be a JSON object")
+    body_dict: dict[str, Any] = cast("dict[str, Any]", body)
+    run_id = body_dict.get("run_id")
+    if not isinstance(run_id, str) or not run_id:
+        raise InputError("run_id must be a non-empty string")
+    validate_run_id(run_id)
+    return run_id
+
+
+def _run_preview_export_sync(
+    state: ServeState,
+    run_id: str,
+) -> dict[str, Any]:
+    exports_root = state.state_dir / "exports" / run_id
+    if exports_root.exists() and not exports_root.is_dir():
+        raise InputError("export target is not a directory")
+    manifest: ExportManifest = export_preview(
+        run_id=run_id,
+        output_path=exports_root,
+        state_dir=state.state_dir,
+        privacy_mode="strict_local",
+    )
+    audit_record = {
+        "event_id": make_event_id(),
+        "schema_version": 1,
+        "event_type": "export.preview",
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "run_id": run_id,
+        "privacy_mode": manifest.privacy_mode,
+        "digest": manifest.digest,
+        "file_count": manifest.file_count,
+        "total_bytes": manifest.total_bytes,
+    }
+    append_audit_record(state.state_dir / "audit.jsonl", audit_record)
+    return {
+        "path": f"exports/{run_id}",
+        "manifest_digest": manifest.digest,
+        "file_count": manifest.file_count,
+        "total_bytes": manifest.total_bytes,
+        "created_at_utc": manifest.created_at_utc,
+        "privacy_mode": manifest.privacy_mode,
+        "run_id": manifest.run_id,
+    }
+
+
+async def post_export_preview(request: Request) -> Response:
+    from .auth import require_write_token, serve_state
+
+    require_write_token(request)
+    state: ServeState = serve_state(request)
+    raw_body = await request.body()
+    try:
+        run_id = _parse_preview_payload(raw_body)
+    except InputError as exc:
+        return error_response(ErrorCode.INPUT_VALIDATION, str(exc))
+    try:
+        payload = await to_thread.run_sync(_run_preview_export_sync, state, run_id)
+    except InputError as exc:
+        message = str(exc)
+        if "run not found" in message or "not finalized" in message:
+            return error_response(ErrorCode.RUN_NOT_FOUND, message)
+        log.warning("export preview rejected invalid input: %s", type(exc).__name__)
+        return error_response(ErrorCode.INPUT_VALIDATION, "export preview input is invalid")
+    except StorageError as exc:
+        log.warning("export preview storage failure: %s", type(exc).__name__)
+        return error_response(ErrorCode.STORAGE_FS, "export preview storage is unavailable")
+    except AhaDiffError as exc:
+        log.warning("export preview failed: %s", type(exc).__name__)
+        return error_response(ErrorCode.INTERNAL_ERROR, "export preview failed")
+    except OSError as exc:
+        log.warning("export preview filesystem failure: %s", type(exc).__name__)
+        return error_response(ErrorCode.STORAGE_FS, "export preview storage is unavailable")
+    return JSONResponse(payload)
+
+
+__all__ = ["get_export_apkg", "get_export_results", "post_export_preview"]

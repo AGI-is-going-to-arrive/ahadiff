@@ -56,8 +56,8 @@ class _BarrierConnectionProxy:
         return getattr(self._connection, name)
 
 
-def test_schema_version_is_9() -> None:
-    assert CURRENT_SCHEMA_VERSION == 9
+def test_schema_version_is_10() -> None:
+    assert CURRENT_SCHEMA_VERSION == 10
 
 
 def test_concepts_table_created_on_init(tmp_path: Path) -> None:

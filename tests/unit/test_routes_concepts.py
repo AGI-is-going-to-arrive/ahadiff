@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from starlette.testclient import TestClient
 
+from ahadiff.review.database import connect_review_db, initialize_review_db
 from ahadiff.serve.app import create_app
 from ahadiff.serve.state import ServeState
 
@@ -181,6 +182,42 @@ def test_concepts_ledger_run_filter(tmp_path: Path) -> None:
     data = response.json()
     assert data["total_count"] == 1
     assert [entry["term_key"] for entry in data["entries"]] == ["concept_1"]
+
+
+def test_concepts_ledger_includes_health_status_from_db(tmp_path: Path) -> None:
+    state_dir, head_sha = _init_repo_with_head(tmp_path)
+    _write_concepts(
+        state_dir,
+        [
+            {
+                "term_key": "concept_1",
+                "concept": "concept_1",
+                "display_name": "Concept One",
+                "source_refs": [head_sha],
+                "updated_by_runs": ["run-1"],
+                "related_claims": ["c1"],
+                "file_refs": ["src/foo.py"],
+            }
+        ],
+    )
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    with connect_review_db(db_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO concept_status (
+                term_key, health_status, refcount, updated_at_utc
+            ) VALUES (?, ?, ?, ?)
+            """,
+            ("concept_1", "contradicted", 0, "2026-05-12T00:00:00Z"),
+        )
+    client = _client(state_dir)
+
+    response = client.get("/api/concepts/ledger", headers=_AUTH)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["entries"][0]["health_status"] == "contradicted"
 
 
 def test_concepts_ledger_401_without_token(tmp_path: Path) -> None:

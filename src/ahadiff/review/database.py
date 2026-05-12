@@ -44,7 +44,7 @@ from .schemas import DueReviewCard, ReviewAnswer, ReviewDbCheck, ReviewUpdate
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
 
-CURRENT_SCHEMA_VERSION = 9
+CURRENT_SCHEMA_VERSION = 10
 _SQLITE_MIN_VERSION = (3, 51, 3)
 _SQLITE_ALLOWED_BACKPORTS = {(3, 50, 7), (3, 44, 6)}
 _SQLITE_SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
@@ -1320,6 +1320,8 @@ def _initialize_schema(connection: sqlite3.Connection) -> None:
         _ensure_graph_nodes_schema(connection)
         _ensure_fts_graph_nodes_schema(connection)
         _ensure_commit_ancestry_schema(connection)
+        _ensure_concept_status_schema(connection)
+        _ensure_concept_lint_runs_schema(connection)
         _ensure_default_scheduler_preset(connection, created_at_utc=_utc_now())
         _set_schema_version(connection, CURRENT_SCHEMA_VERSION)
         connection.execute("COMMIT")
@@ -1935,6 +1937,58 @@ def _migrate_v8_to_v9(connection: sqlite3.Connection) -> None:
     _ensure_cards_column(connection, "choices_json", "TEXT")
 
 
+def _ensure_concept_status_schema(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS concept_status (
+            term_key TEXT PRIMARY KEY,
+            health_status TEXT NOT NULL DEFAULT 'healthy'
+                CHECK (health_status IN (
+                    'healthy', 'stale', 'contradicted', 'orphan', 'dismissed'
+                )),
+            stale_since TEXT,
+            contradicted_by_run TEXT,
+            refcount INTEGER NOT NULL DEFAULT 0,
+            dismissed_reason TEXT,
+            dismissed_at_utc TEXT,
+            updated_at_utc TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS ix_concept_status_health
+            ON concept_status (health_status)
+        """
+    )
+
+
+def _ensure_concept_lint_runs_schema(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS concept_lint_runs (
+            lint_id TEXT PRIMARY KEY,
+            started_at_utc TEXT NOT NULL,
+            finished_at_utc TEXT,
+            mode TEXT NOT NULL CHECK (mode IN ('deterministic', 'llm_assisted')),
+            findings_count INTEGER NOT NULL DEFAULT 0,
+            run_summary_json TEXT
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS ix_concept_lint_runs_started
+            ON concept_lint_runs (started_at_utc DESC)
+        """
+    )
+
+
+def _migrate_v9_to_v10(connection: sqlite3.Connection) -> None:
+    _ensure_concept_status_schema(connection)
+    _ensure_concept_lint_runs_schema(connection)
+
+
 _MIGRATIONS: dict[int, MigrationStep] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -1944,6 +1998,7 @@ _MIGRATIONS: dict[int, MigrationStep] = {
     6: _migrate_v6_to_v7,
     7: _migrate_v7_to_v8,
     8: _migrate_v8_to_v9,
+    9: _migrate_v9_to_v10,
 }
 
 

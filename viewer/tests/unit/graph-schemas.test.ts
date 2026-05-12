@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   authTokenResponseSchema,
+  challengeFeedbackSchema,
   conceptGraphEdgeSchema,
   conceptGraphNodeSchema,
   conceptGraphResponseSchema,
@@ -34,6 +35,44 @@ describe('auth token schema', () => {
   it('rejects empty token and unknown keys', () => {
     expect(() => authTokenResponseSchema.parse({ token: '' })).toThrow();
     expect(() => authTokenResponseSchema.parse({ token: 'abc', extra: true })).toThrow();
+  });
+});
+
+describe('challenge schemas', () => {
+  const validFeedback = {
+    challenge_id: 'c1',
+    source_run_id: 'run_123',
+    missing_files: [],
+    extra_files: [],
+    hunk_coverage: [
+      {
+        path: 'src/foo.py',
+        canonical_hunks: 1,
+        matched_hunks: 1,
+        missing_hunks: 0,
+      },
+    ],
+    gap_claim_ids: [],
+    all_canonical_claim_ids: ['claim-1'],
+    adapt: {
+      challenge_id: 'c1',
+      inserted_claim_ids: [],
+      duplicate_claim_ids: [],
+      signal_count: 0,
+    },
+    state: {
+      challenge_id: 'c1',
+      source_run_id: 'run_123',
+      stage: 'idle',
+      created_at_utc: '2026-05-12T00:00:00Z',
+      updated_at_utc: '2026-05-12T00:00:00Z',
+    },
+  };
+
+  it('requires gap_claim_ids so stale backend feedback cannot look perfect', () => {
+    expect(challengeFeedbackSchema.parse(validFeedback).gap_claim_ids).toEqual([]);
+    const { gap_claim_ids: _gapClaimIds, ...missingGapIds } = validFeedback;
+    expect(() => challengeFeedbackSchema.parse(missingGapIds)).toThrow();
   });
 });
 

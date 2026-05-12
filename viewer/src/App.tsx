@@ -18,6 +18,7 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const OnboardingPage = lazy(() => import('./pages/OnboardingPage'));
 const GuidePage = lazy(() => import('./pages/GuidePage'));
 const RunDetailPage = lazy(() => import('./pages/RunDetailPage'));
+const ChallengePage = lazy(() => import('./pages/ChallengePage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 // Token-backed splash so the lazy boundary doesn't flash a white frame on
@@ -54,6 +55,7 @@ export default function App() {
             <Route path="/run/:runId/lesson" element={<ErrorBoundary><LessonPage /></ErrorBoundary>} />
             <Route path="/run/:runId/diff" element={<ErrorBoundary><DiffViewerPage /></ErrorBoundary>} />
             <Route path="/run/:runId/quiz" element={<ErrorBoundary><QuizPage /></ErrorBoundary>} />
+            <Route path="/challenge/:challengeId?" element={<ErrorBoundary><ChallengePage /></ErrorBoundary>} />
             <Route path="*" element={<ErrorBoundary><NotFoundPage /></ErrorBoundary>} />
           </Routes>
         </Suspense>

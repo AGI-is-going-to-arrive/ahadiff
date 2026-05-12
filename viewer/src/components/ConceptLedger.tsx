@@ -1,9 +1,29 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useConceptsStore } from '../state/concepts-store';
 import { useTranslation } from '../i18n/useTranslation';
+import type { ConceptHealthStatus } from '../api/types';
+import HealthBadge from './HealthBadge';
 import './ConceptLedger.css';
 
 const MAX_CHIPS = 3;
+
+type HealthFilter = 'all' | ConceptHealthStatus;
+const HEALTH_FILTER_OPTIONS: HealthFilter[] = [
+  'all',
+  'healthy',
+  'orphan',
+  'stale',
+  'contradicted',
+  'dismissed',
+];
+const HEALTH_FILTER_LABEL_KEYS: Record<HealthFilter, string> = {
+  all: 'Concept.health_filter_all',
+  healthy: 'Concept.health_healthy',
+  orphan: 'Concept.health_orphan',
+  stale: 'Concept.health_stale',
+  contradicted: 'Concept.health_contradicted',
+  dismissed: 'Concept.health_dismissed',
+};
 
 interface ConceptLedgerProps {
   runFilter?: string;
@@ -37,9 +57,35 @@ export default function ConceptLedger({ runFilter, onRunFilterChange }: ConceptL
   const loadMoreLedger = useConceptsStore((s) => s.loadMoreLedger);
   const setRunFilter = useConceptsStore((s) => s.setRunFilter);
 
+  const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
+
   useEffect(() => {
     void loadLedger(runFilter);
   }, [loadLedger, runFilter]);
+
+  const filteredEntries = useMemo(() => {
+    if (healthFilter === 'all') return entries;
+    return entries.filter((entry) => entry.health_status === healthFilter);
+  }, [entries, healthFilter]);
+
+  const healthSummary = useMemo(() => {
+    const counts: Record<ConceptHealthStatus, number> = {
+      healthy: 0,
+      orphan: 0,
+      stale: 0,
+      contradicted: 0,
+      dismissed: 0,
+    };
+    for (const entry of entries) {
+      if (entry.health_status) counts[entry.health_status] += 1;
+    }
+    return counts;
+  }, [entries]);
+
+  const hasAnyHealth = useMemo(
+    () => entries.some((entry) => Boolean(entry.health_status)),
+    [entries],
+  );
 
   const handleClearFilter = useCallback(() => {
     if (onRunFilterChange) {
@@ -113,6 +159,39 @@ export default function ConceptLedger({ runFilter, onRunFilterChange }: ConceptL
         </div>
       )}
 
+      {hasAnyHealth && (
+        <div
+          className="concept-ledger__health-filter"
+          role="group"
+          aria-label={t('Concept.health_filter_label')}
+        >
+          <span className="concept-ledger__health-filter-label">
+            {t('Concept.health_filter_label')}
+          </span>
+          <div className="concept-ledger__health-filter-chips">
+            {HEALTH_FILTER_OPTIONS.map((option) => {
+              const isActive = healthFilter === option;
+              const count =
+                option === 'all' ? entries.length : healthSummary[option];
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  className={`concept-ledger__health-chip${
+                    isActive ? ' concept-ledger__health-chip--active' : ''
+                  }`}
+                  onClick={() => setHealthFilter(option)}
+                  aria-pressed={isActive}
+                >
+                  {t(HEALTH_FILTER_LABEL_KEYS[option])}
+                  <span className="concept-ledger__health-chip-count">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <table className="concept-ledger__table">
         <thead>
           <tr>
@@ -125,10 +204,13 @@ export default function ConceptLedger({ runFilter, onRunFilterChange }: ConceptL
           </tr>
         </thead>
         <tbody>
-          {entries.map((entry) => (
+          {filteredEntries.map((entry) => (
             <tr key={entry.term_key}>
               <td>
-                <div className="concept-ledger__name">{entry.display_name || entry.concept}</div>
+                <div className="concept-ledger__name">
+                  <span>{entry.display_name || entry.concept}</span>
+                  <HealthBadge status={entry.health_status} />
+                </div>
                 {entry.display_name && entry.display_name !== entry.concept && (
                   <div className="concept-ledger__term-key">{entry.concept}</div>
                 )}
@@ -181,7 +263,7 @@ export default function ConceptLedger({ runFilter, onRunFilterChange }: ConceptL
       </table>
 
       <div className="concept-ledger__total">
-        {entries.length} / {totalCount}
+        {filteredEntries.length} / {totalCount}
       </div>
 
       {hasMore && (

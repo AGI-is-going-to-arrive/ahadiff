@@ -1,9 +1,15 @@
 # RFC 2.4 — MCP `ask_lesson` Extension
 
-**Status**: Draft
+**Status**: IMPLEMENTED — read-only `ask_lesson` registered as tool 7
 **Date**: 2026-05-12
 **Module**: `src/ahadiff/mcp/`
-**Scope**: Add one read-only tool to the existing stdio MCP server. Current code registers 6 tools (`list_runs`, `get_run_summary`, `list_due_cards`, `search`, `get_concepts`, `get_stats`); this RFC must not modify their schemas or outputs.
+**Scope**: Add one read-only tool to the existing stdio MCP server. Current code registers 7 tools (`list_runs`, `get_run_summary`, `list_due_cards`, `search`, `get_concepts`, `get_stats`, `ask_lesson`); the existing 6 tools' schemas and outputs remain unchanged.
+
+**Current-code truth (2026-05-12)**:
+- The current server has 7 tools and a stdio entrypoint.
+- MCP DB access now has an MCP-specific read-only helper using URI `mode=ro` and `PRAGMA query_only=ON`; stats/search table access also uses allowlists.
+- Stable `ErrorCode` still has 28 values. `ask_lesson` uses existing validation/not-found errors; no new ErrorCode was added.
+- `ask_lesson` reads finalized run lesson files in priority order (`lesson.full.md`, `lesson.hint.md`, `lesson.compact.md`) and joins local `claims.jsonl` evidence. It does not call an LLM and does not write to SQLite.
 
 ## 1. Target Users
 
@@ -25,7 +31,9 @@ Retrieval uses the existing `review.sqlite` FTS5 index only for the tables that 
 
 ## 3. Security Boundary
 
-The stdio MCP transport stays read-only. The tool opens `review.sqlite` with the existing `query_only=ON` pragma path and never touches `runs/*/audit.private.jsonl`. Input is bounded (`run_id` validated against `RUN_ID_RE`, `question` truncated at 512 chars, `top_k` clamped to [1, 10]) to prevent FTS pathological queries. All input goes through `redaction_pipeline()` before being used in log lines. Returned snippets inherit the run's already-redacted lesson body — no fresh raw content is exposed.
+The stdio MCP transport stays read-only. MCP DB reads use the MCP-specific read-only DB helper with `PRAGMA query_only=ON`; the tool never touches `runs/*/audit.private.jsonl`.
+
+Input is bounded (`run_id` validated through the existing safe run path validation, `question` rejected above 512 chars, `top_k` clamped to [1, 10]) to prevent pathological queries. All input goes through `redaction_pipeline()` before being used in log lines. Returned snippets inherit the run's already-redacted lesson body — no fresh raw content is exposed.
 
 ## 4. Local-First Privacy
 
@@ -33,18 +41,18 @@ The stdio MCP transport stays read-only. The tool opens `review.sqlite` with the
 
 ## 5. Cross-Platform
 
-stdio MCP is already validated on macOS/Linux/Windows by the existing server. Path handling reuses `core.paths` (Pathlib + reparse-point guards). No new platform surface.
+stdio MCP exists today, but Windows stdio is not proven by the current CI matrix. Path handling reuses `core.paths` (Pathlib + reparse-point guards). Add a Windows smoke or explicitly mark Windows stdio as not locally verified in release notes.
 
 ## 6. Test Strategy
 
-- Unit: `tests/unit/mcp/test_ask_lesson.py` covers (a) exact-heading match, (b) multi-fragment ranking, (c) empty repo / missing run_id → `ErrorCode.RUN_NOT_FOUND`, (d) oversized question → `ErrorCode.INPUT_TOO_LARGE`, (e) punctuation / regex-like query text as plain tokens, (f) evidence join with all 5 claim statuses.
-- Integration: `tests/integration/test_mcp_server.py` adds an end-to-end stdio fixture asserting the existing 6 tools' responses are byte-identical with and without the new tool registered.
+- Unit: implemented in `tests/unit/test_mcp_ask_lesson.py` and `tests/unit/test_mcp_server.py`, covering fragment ranking, missing run, bounded query/top_k behavior, plain-token regex-like text, finalized-run gate, and evidence join.
+- Integration-style stdio snapshot for all existing tools remains a future hardening item.
 - No live LLM tests required (pure retrieval).
 
 ## 7. Release Gate
 
-- Existing 6 tools' JSON schemas and outputs unchanged (snapshot-tested).
-- New tool gated behind a single registration line; `tests/unit/mcp/test_tool_registry.py` asserts the registry length is exactly 7.
+- Existing 6 tools' JSON schemas and outputs unchanged.
+- Registry test asserts the tool count is 7.
 - ruff + pyright strict clean; coverage for `mcp/` module ≥ 90%.
 - CHANGELOG entry under v1.2 once merged.
 

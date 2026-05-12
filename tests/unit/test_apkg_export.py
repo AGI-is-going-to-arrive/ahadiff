@@ -36,10 +36,18 @@ class _FakeModel:
 
 
 class _FakeNote:
-    def __init__(self, *, model: _FakeModel, fields: list[str], guid: str) -> None:
+    def __init__(
+        self,
+        *,
+        model: _FakeModel,
+        fields: list[str],
+        guid: str,
+        tags: list[str] | None = None,
+    ) -> None:
         self.model = model
         self.fields = fields
         self.guid = guid
+        self.tags = list(tags) if tags is not None else []
 
 
 class _FakeDeck:
@@ -61,7 +69,12 @@ class _FakePackage:
             "deck_id": self.deck.deck_id,
             "deck_name": self.deck.name,
             "notes": [
-                {"fields": note.fields, "guid": note.guid, "model_id": note.model.model_id}
+                {
+                    "fields": note.fields,
+                    "guid": note.guid,
+                    "model_id": note.model.model_id,
+                    "tags": note.tags,
+                }
                 for note in self.deck.notes
             ],
         }
@@ -161,6 +174,7 @@ def test_export_apkg_builds_deterministic_notes_and_writes_output(
             ],
             "guid": "guid:card-1",
             "model_id": 249423608,
+            "tags": ["ahadiff"],
         }
     ]
 
@@ -249,7 +263,9 @@ def test_export_apkg_route_returns_download(
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/octet-stream")
     assert "ahadiff_review.apkg" in response.headers["content-disposition"]
-    assert json.loads(response.content.decode("utf-8"))["notes"][0]["guid"] == "guid:card-1"
+    note = json.loads(response.content.decode("utf-8"))["notes"][0]
+    assert note["guid"] == "guid:card-1"
+    assert note["tags"] == ["ahadiff"]
 
 
 def test_export_apkg_route_returns_501_when_dependency_missing(
@@ -296,3 +312,173 @@ def test_export_apkg_route_returns_storage_error_for_old_cards_schema(
     assert response.status_code == 500
     assert response.json()["error_code"] == "STORAGE_REVIEW_DB"
     assert response.json()["error"] == "review_database_unavailable"
+
+
+class TestAPKGGUIDStability:
+    def test_guid_uses_bare_card_id_and_ahadiff_tag(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from ahadiff.review.apkg_export import export_apkg
+
+        captured: list[str] = []
+
+        def _install_capturing_genanki() -> None:
+            module = types.ModuleType("genanki")
+
+            def guid_for(value: object) -> str:
+                text = str(value)
+                captured.append(text)
+                return f"guid:{text}"
+
+            module.__dict__.update(
+                {
+                    "Deck": _FakeDeck,
+                    "Model": _FakeModel,
+                    "Note": _FakeNote,
+                    "Package": _FakePackage,
+                    "guid_for": guid_for,
+                }
+            )
+            monkeypatch.setitem(sys.modules, "genanki", module)
+
+        _install_capturing_genanki()
+        db_path = tmp_path / "review.sqlite"
+        cards_path = tmp_path / "cards.jsonl"
+        _write_cards_jsonl(cards_path, (_review_card("card-1"),))
+        assert import_cards_from_jsonl(db_path, cards_path) == 1
+
+        payload = json.loads(export_apkg(db_path).decode("utf-8"))
+
+        assert captured == ["card-1"]
+        assert payload["notes"][0]["tags"] == ["ahadiff"]
+
+    def test_same_card_id_same_guid(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from ahadiff.review.apkg_export import export_apkg
+
+        _install_fake_genanki(monkeypatch)
+        db_path = tmp_path / "review.sqlite"
+        cards_path = tmp_path / "cards.jsonl"
+        _write_cards_jsonl(cards_path, (_review_card("card-1"),))
+        assert import_cards_from_jsonl(db_path, cards_path) == 1
+
+        first = json.loads(export_apkg(db_path).decode("utf-8"))
+        second = json.loads(export_apkg(db_path).decode("utf-8"))
+
+        assert first["notes"][0]["guid"] == second["notes"][0]["guid"]
+        assert first["notes"][0]["guid"] == "guid:card-1"
+
+    def test_different_card_id_different_guid(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from ahadiff.review.apkg_export import export_apkg
+
+        _install_fake_genanki(monkeypatch)
+        db_path = tmp_path / "review.sqlite"
+        cards_path = tmp_path / "cards.jsonl"
+        _write_cards_jsonl(
+            cards_path,
+            (_review_card("card-1"), _review_card("card-2")),
+        )
+        assert import_cards_from_jsonl(db_path, cards_path) == 2
+
+        payload = json.loads(export_apkg(db_path).decode("utf-8"))
+
+        guids = [note["guid"] for note in payload["notes"]]
+        assert guids == ["guid:card-1", "guid:card-2"]
+        assert guids[0] != guids[1]
+
+
+class TestAPKGCSS:
+    def test_css_loaded_from_package(self) -> None:
+        from ahadiff.review.apkg_export import _load_card_css  # pyright: ignore[reportPrivateUsage]
+
+        css = _load_card_css()
+
+        assert css != ""
+        assert ".card" in css
+
+    def test_css_version_comment_exists(self) -> None:
+        from ahadiff.review.apkg_export import _load_card_css  # pyright: ignore[reportPrivateUsage]
+
+        css = _load_card_css()
+
+        assert "/* ahadiff-css-version: 1 */" in css
+
+    def test_dark_mode_media_rule(self) -> None:
+        from ahadiff.review.apkg_export import _load_card_css  # pyright: ignore[reportPrivateUsage]
+
+        css = _load_card_css()
+
+        assert "@media (prefers-color-scheme: dark)" in css
+
+    def test_css_load_failure_returns_empty(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import ahadiff.review.apkg_export as apkg_export
+
+        class _BrokenFiles:
+            def joinpath(self, _name: str) -> Any:
+                raise FileNotFoundError("missing")
+
+        def _broken_files(_package: str) -> _BrokenFiles:
+            return _BrokenFiles()
+
+        monkeypatch.setattr(apkg_export.importlib.resources, "files", _broken_files)
+
+        with caplog.at_level("WARNING"):
+            css = apkg_export._load_card_css()  # pyright: ignore[reportPrivateUsage]
+
+        assert css == ""
+        assert any("anki_card.css" in record.getMessage() for record in caplog.records)
+
+    def test_css_resource_is_packaged_under_ahadiff_review_templates(self) -> None:
+        import importlib.resources as resources
+
+        package = resources.files("ahadiff.review.templates")
+        assert package.joinpath("anki_card.css").is_file()
+        assert package.joinpath("__init__.py").is_file()
+
+    def test_export_uses_packaged_css_not_inline(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from ahadiff.review.apkg_export import export_apkg
+
+        captured: dict[str, str] = {}
+
+        class _RecordingModel(_FakeModel):
+            def __init__(
+                self,
+                model_id: int,
+                name: str,
+                *,
+                fields: list[dict[str, str]],
+                templates: list[dict[str, str]],
+                css: str | None = None,
+            ) -> None:
+                super().__init__(model_id, name, fields=fields, templates=templates, css=css)
+                captured["css"] = css or ""
+
+        def _guid_for(value: object) -> str:
+            return f"guid:{value}"
+
+        module = types.ModuleType("genanki")
+        module.__dict__.update(
+            {
+                "Deck": _FakeDeck,
+                "Model": _RecordingModel,
+                "Note": _FakeNote,
+                "Package": _FakePackage,
+                "guid_for": _guid_for,
+            }
+        )
+        monkeypatch.setitem(sys.modules, "genanki", module)
+
+        db_path = tmp_path / "review.sqlite"
+        cards_path = tmp_path / "cards.jsonl"
+        _write_cards_jsonl(cards_path, (_review_card("card-1"),))
+        assert import_cards_from_jsonl(db_path, cards_path) == 1
+
+        export_apkg(db_path)
+
+        assert "/* ahadiff-css-version: 1 */" in captured["css"]
+        assert "@media (prefers-color-scheme: dark)" in captured["css"]

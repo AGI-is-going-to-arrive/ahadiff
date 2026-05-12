@@ -213,14 +213,99 @@ export const conceptLedgerEntrySchema = z
     file_refs: z.array(z.string()).default([]),
     source_refs: z.array(z.string()).default([]),
     updated_by_runs: z.array(z.string()).default([]),
+    health_status: z
+      .enum(['healthy', 'orphan', 'stale', 'contradicted', 'dismissed'])
+      .optional(),
   })
-  .strict();
+  .passthrough();
 
 export const conceptLedgerResponseSchema = z
   .object({
     entries: z.array(conceptLedgerEntrySchema),
     next_cursor: z.string().nullable().optional(),
     total_count: z.number().int().nonnegative().default(0),
+  })
+  .strict();
+
+/* ─────────────── 5b. Challenge ─────────────── */
+
+export const challengeStageSchema = z.enum([
+  'idle',
+  'build',
+  'tour',
+  'challenge',
+  'review',
+  'adapt',
+]);
+
+export const challengeStateSchema = z
+  .object({
+    challenge_id: z.string().min(1),
+    source_run_id: z.string().min(1),
+    stage: challengeStageSchema,
+    created_at: z.string().optional(),
+    updated_at: z.string().optional(),
+    created_at_utc: z.string().optional(),
+    updated_at_utc: z.string().optional(),
+  })
+  .passthrough();
+
+export const challengeManifestSchema = z
+  .object({
+    challenge_id: z.string().min(1),
+    source_run_id: z.string().min(1),
+    canonical_patch: z.string(),
+  })
+  .passthrough();
+
+export const challengeEnvelopeSchema = z
+  .object({
+    state: challengeStateSchema,
+    manifest: challengeManifestSchema.nullable().optional(),
+  })
+  .strict();
+
+export const challengeStateEnvelopeSchema = z
+  .object({
+    state: challengeStateSchema,
+  })
+  .strict();
+
+export const challengeHunkCoverageSchema = z
+  .object({
+    path: z.string().min(1),
+    canonical_hunks: z.number().int().nonnegative(),
+    matched_hunks: z.number().int().nonnegative(),
+    missing_hunks: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const challengeAdaptSummarySchema = z
+  .object({
+    challenge_id: z.string().min(1),
+    inserted_claim_ids: z.array(z.string()),
+    duplicate_claim_ids: z.array(z.string()),
+    signal_count: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const challengeFeedbackSchema = z
+  .object({
+    challenge_id: z.string().min(1),
+    source_run_id: z.string().min(1),
+    missing_files: z.array(z.string()),
+    extra_files: z.array(z.string()),
+    hunk_coverage: z.array(challengeHunkCoverageSchema),
+    gap_claim_ids: z.array(z.string()),
+    all_canonical_claim_ids: z.array(z.string()),
+    adapt: challengeAdaptSummarySchema,
+    state: challengeStateSchema,
+  })
+  .strict();
+
+export const challengeFeedbackEnvelopeSchema = z
+  .object({
+    feedback: challengeFeedbackSchema.nullable(),
   })
   .strict();
 

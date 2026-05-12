@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import html
+import importlib.resources
+import logging
 import sqlite3
 import tempfile
 from importlib import import_module
@@ -12,10 +14,13 @@ from ahadiff.contracts import ErrorCode
 from ahadiff.core.errors import InputError, StorageError
 from ahadiff.review.database import connect_review_db
 
+logger = logging.getLogger(__name__)
+
 _DECK_ID = int(hashlib.sha256(b"ahadiff-review").hexdigest()[:8], 16)
 _MODEL_ID = int(hashlib.sha256(b"ahadiff-review-basic-model").hexdigest()[:8], 16)
 _DECK_NAME = "AhaDiff Review"
 _GENANKI_MISSING = "genanki not installed. Install with: pip install ahadiff[anki]"
+_AHADIFF_TAG = "ahadiff"
 _MAX_APKG_CARDS = 10_000
 _REQUIRED_CARD_COLUMNS = frozenset(
     {
@@ -55,13 +60,7 @@ def export_apkg(db_path: Path, output: Path | None = None) -> bytes:
                 "afmt": '{{FrontSide}}<hr id="answer">{{Back}}',
             }
         ],
-        css="""
-.card {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 18px;
-  line-height: 1.5;
-}
-""",
+        css=_load_card_css(),
     )
 
     for row in _load_active_cards(db_path):
@@ -70,6 +69,7 @@ def export_apkg(db_path: Path, output: Path | None = None) -> bytes:
                 model=model,
                 fields=[_front(row), _back(row)],
                 guid=genanki.guid_for(row["card_id"]),
+                tags=[_AHADIFF_TAG],
             )
         )
 
@@ -85,6 +85,18 @@ def _load_genanki() -> Any:
         return import_module("genanki")
     except ImportError as exc:
         raise ImportError(_GENANKI_MISSING) from exc
+
+
+def _load_card_css() -> str:
+    try:
+        return (
+            importlib.resources.files("ahadiff.review.templates")
+            .joinpath("anki_card.css")
+            .read_text(encoding="utf-8")
+        )
+    except (FileNotFoundError, ModuleNotFoundError, OSError):
+        logger.warning("Failed to load anki_card.css, using empty CSS")
+        return ""
 
 
 def _load_active_cards(db_path: Path) -> tuple[_CardRow, ...]:

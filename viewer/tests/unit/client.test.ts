@@ -171,6 +171,15 @@ describe('ApiError redaction', () => {
     expect((err.body as Record<string, unknown>).nested).toEqual({ value: 2 });
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
   });
+
+  it('derives Error.message from the sanitized body', () => {
+    const err = new ApiError(500, {
+      error: 'provider failed with sk-live-secret-token',
+    });
+
+    expect(err.message).toBe('[REDACTED]');
+    expect(err.message).not.toContain('sk-live-secret-token');
+  });
 });
 
 describe('auth bootstrap edge cases (Phase 2H)', () => {

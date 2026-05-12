@@ -1,0 +1,265 @@
+.export-modal__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 0.4);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  animation: export-modal-fade-in var(--dur-micro, 120ms) var(--ease-out-quart, ease-out);
+}
+
+.export-modal {
+  position: relative;
+  width: min(640px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  background: var(--paper);
+  border-radius: var(--r-lg, 12px);
+  box-shadow: var(--sh-lg, 0 8px 32px rgb(0 0 0 / 0.12));
+  animation: export-modal-pop-in var(--dur-micro, 120ms) var(--ease-out-quart, ease-out);
+}
+
+.export-modal__header {
+  padding: var(--sp-lg, 24px) var(--sp-lg, 24px) var(--sp-sm, 12px);
+  position: relative;
+}
+
+.export-modal__title {
+  font-family: var(--font-serif, 'Newsreader', serif);
+  font-size: var(--fs-lg, 1.25rem);
+  font-weight: 600;
+  color: var(--ink-strong);
+  margin: 0;
+}
+
+.export-modal__subtitle {
+  font-size: var(--fs-sm, 0.875rem);
+  color: var(--ink-muted);
+  margin: var(--sp-2xs, 4px) 0 0;
+}
+
+.export-modal__esc {
+  position: absolute;
+  top: var(--sp-md, 16px);
+  right: var(--sp-md, 16px);
+  font-size: var(--fs-xs, 0.75rem);
+  color: var(--ink-muted);
+  background: var(--elevated, var(--paper));
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm, 6px);
+  padding: 2px 6px;
+}
+
+.export-modal__body {
+  padding: 0 var(--sp-lg, 24px) var(--sp-md, 16px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-sm, 12px);
+}
+
+.export-modal__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-sm, 12px);
+  grid-template-columns: 1fr 1fr;
+}
+
+.export-modal__item {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--sp-sm, 12px);
+  padding: var(--sp-md, 16px);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md, 8px);
+  background: var(--paper);
+  min-height: 132px;
+}
+
+.export-modal__item--disabled {
+  opacity: 0.6;
+}
+
+.export-modal__item-copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2xs, 4px);
+}
+
+.export-modal__item-title {
+  font-size: var(--fs-sm, 0.875rem);
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.export-modal__item-desc {
+  font-size: var(--fs-xs, 0.75rem);
+  color: var(--ink-muted);
+  line-height: var(--lh-normal, 1.5);
+}
+
+.export-modal__btn {
+  padding: var(--sp-xs, 8px) var(--sp-md, 16px);
+  border-radius: var(--r-md, 8px);
+  font-size: var(--fs-sm, 0.875rem);
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  min-height: 36px;
+  transition: background var(--dur-micro, 120ms);
+}
+
+.export-modal__btn--primary {
+  background: var(--accent, #d27050);
+  color: #fff;
+  align-self: flex-start;
+}
+
+.export-modal__btn--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent, #d27050) 85%, #000);
+}
+
+.export-modal__btn--primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.export-modal__btn--ghost {
+  background: transparent;
+  color: var(--ink-muted);
+}
+
+.export-modal__btn--ghost:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.export-modal__btn-busy {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2xs, 4px);
+}
+
+.export-modal__spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid color-mix(in srgb, #fff 40%, transparent);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: export-modal-spin 720ms linear infinite;
+}
+
+.export-modal__success {
+  margin: 0;
+  padding: var(--sp-sm, 12px);
+  font-size: var(--fs-xs, 0.75rem);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--success, #4a8a55) 8%, var(--paper));
+  border-left: 3px solid var(--success, #4a8a55);
+  border-radius: var(--r-sm, 6px);
+  word-break: break-all;
+  line-height: var(--lh-normal, 1.5);
+}
+
+.export-modal__error {
+  margin: 0;
+  padding: var(--sp-sm, 12px);
+  font-size: var(--fs-xs, 0.75rem);
+  color: var(--danger, #a3362d);
+  background: color-mix(in srgb, var(--danger, #a3362d) 6%, var(--paper));
+  border-left: 3px solid var(--danger, #a3362d);
+  border-radius: var(--r-sm, 6px);
+  line-height: var(--lh-normal, 1.5);
+}
+
+.export-modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-sm, 12px);
+  padding: var(--sp-sm, 12px) var(--sp-lg, 24px) var(--sp-lg, 24px);
+}
+
+@keyframes export-modal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes export-modal-pop-in {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes export-modal-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .export-modal__overlay,
+  .export-modal,
+  .export-modal__spinner {
+    animation: none;
+  }
+}
+
+/* Mobile: stack the grid */
+@media (max-width: 599px) {
+  .export-modal {
+    width: calc(100vw - 16px);
+    max-height: calc(100vh - 32px);
+    border-radius: var(--r-md, 8px);
+  }
+
+  .export-modal__header {
+    padding: var(--sp-md, 16px) var(--sp-md, 16px) var(--sp-2xs, 4px);
+  }
+
+  .export-modal__title {
+    font-size: var(--fs-md, 1rem);
+    padding-right: var(--sp-xl, 32px);
+  }
+
+  .export-modal__body {
+    padding: 0 var(--sp-md, 16px) var(--sp-sm, 12px);
+  }
+
+  .export-modal__list {
+    grid-template-columns: 1fr;
+  }
+
+  .export-modal__footer {
+    padding: var(--sp-sm, 12px) var(--sp-md, 16px) var(--sp-md, 16px);
+  }
+
+  .export-modal__btn {
+    min-height: 44px;
+  }
+}
+
+@media (forced-colors: active) {
+  .export-modal {
+    border: 2px solid CanvasText;
+  }
+
+  .export-modal__item {
+    border-color: CanvasText;
+  }
+
+  .export-modal__btn--primary {
+    border: 2px solid ButtonText;
+  }
+}
+
+:root[data-theme="dark"] .export-modal__overlay {
+  background: rgb(0 0 0 / 0.6);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .export-modal__overlay {
+    background: rgb(0 0 0 / 0.6);
+  }
+}

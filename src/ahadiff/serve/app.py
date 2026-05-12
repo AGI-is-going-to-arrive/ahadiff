@@ -18,9 +18,17 @@ from ._errors import error_response
 from .auth import require_token_bootstrap_request, serve_state
 from .middleware import LoopbackGuardMiddleware, RequestTimeoutMiddleware, WriteRateLimitMiddleware
 from .routes_audit import get_audit
+from .routes_challenge import (
+    get_challenge,
+    get_challenge_feedback,
+    post_challenge_abort,
+    post_challenge_advance,
+    post_challenge_build,
+    post_challenge_review,
+)
 from .routes_config import get_config, get_doctor, put_config
 from .routes_db import post_db_check
-from .routes_export import get_export_apkg, get_export_results
+from .routes_export import get_export_apkg, get_export_results, post_export_preview
 from .routes_graph import get_concept_graph, get_graph_status, post_graph_refresh
 from .routes_improve import get_improve_preflight
 from .routes_install import (
@@ -177,6 +185,7 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
             Route("/api/review/heatmap", get_review_heatmap, methods=["GET"]),
             Route("/api/export/results", get_export_results, methods=["GET"]),
             Route("/api/export/apkg", get_export_apkg, methods=["GET"]),
+            Route("/api/export/preview", post_export_preview, methods=["POST"]),
             Route("/api/providers", get_providers, methods=["GET"]),
             Route("/api/providers", create_provider, methods=["POST"]),
             Route("/api/providers/discover-models", discover_models, methods=["POST"]),
@@ -202,6 +211,28 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
             Route("/api/tasks/{task_id}/cancel", cancel_task, methods=["POST"]),
             Route("/api/tasks/{task_id}/progress", task_progress_sse, methods=["GET"]),
             Route("/api/watch/status", get_watch_status, methods=["GET"]),
+            Route("/api/challenge/build", post_challenge_build, methods=["POST"]),
+            Route("/api/challenge/{challenge_id}", get_challenge, methods=["GET"]),
+            Route(
+                "/api/challenge/{challenge_id}/advance",
+                post_challenge_advance,
+                methods=["POST"],
+            ),
+            Route(
+                "/api/challenge/{challenge_id}/abort",
+                post_challenge_abort,
+                methods=["POST"],
+            ),
+            Route(
+                "/api/challenge/{challenge_id}/review",
+                post_challenge_review,
+                methods=["POST"],
+            ),
+            Route(
+                "/api/challenge/{challenge_id}/feedback",
+                get_challenge_feedback,
+                methods=["GET"],
+            ),
             Route(
                 "/api/{rest_of_path:path}",
                 api_not_found,

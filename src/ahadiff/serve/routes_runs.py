@@ -31,6 +31,7 @@ from ahadiff.core.errors import InputError
 from ahadiff.core.json_util import safe_json_loads
 from ahadiff.core.paths import validate_run_id
 from ahadiff.review.database import (
+    connect_review_db,
     load_finalized_ratchet_history_page,
     load_result_event_by_run_and_id,
     load_result_events_page,
@@ -112,8 +113,10 @@ _CONCEPT_LEDGER_FIELDS = frozenset(
         "file_refs",
         "source_refs",
         "updated_by_runs",
+        "health_status",
     }
 )
+_CONCEPT_HEALTH_STATUSES = frozenset({"healthy", "orphan", "stale", "contradicted", "dismissed"})
 _CANONICAL_RUN_ID_RE = re.compile(r"^run_[0-9a-f]{32}$")
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 log = logging.getLogger(__name__)
@@ -446,13 +449,25 @@ def _concepts_ledger_sync(
         next_cursor=next_cursor,
         total_count=len(all_concepts),
     )
-    return response.model_dump(mode="json")
+    payload = response.model_dump(mode="json")
+    entries_payload = payload.get("entries")
+    if isinstance(entries_payload, list):
+        for item in cast("list[Any]", entries_payload):
+            if not isinstance(item, dict):
+                continue
+            entry = cast("dict[str, Any]", item)
+            if entry.get("health_status") is None:
+                entry.pop("health_status", None)
+    return payload
 
 
 def _concepts_ledger_entries(state: ServeState) -> list[dict[str, Any]]:
     workspace_root = state.state_dir.parent
     if (workspace_root / ".git").exists():
-        return list(load_visible_concepts(workspace_root=workspace_root))
+        return _merge_concept_health(
+            state.review_db_path,
+            list(load_visible_concepts(workspace_root=workspace_root)),
+        )
     entries: list[dict[str, Any]] = []
     cursor = 0
     while True:
@@ -464,12 +479,42 @@ def _concepts_ledger_entries(state: ServeState) -> list[dict[str, Any]]:
         )
         entries.extend(page.entries)
         if page.next_cursor is None:
-            return entries
+            return _merge_concept_health(state.review_db_path, entries)
         cursor = parse_jsonl_concepts_cursor(page.next_cursor)
+
+
+def _merge_concept_health(db_path: Path, entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not entries or not db_path.exists():
+        return entries
+    try:
+        with connect_review_db(db_path) as connection:
+            rows = connection.execute(
+                "SELECT term_key, health_status FROM concept_status"
+            ).fetchall()
+    except Exception:
+        return entries
+    health_by_key: dict[str, str] = {}
+    for row in rows:
+        term_key = row["term_key"]
+        health_status = row["health_status"]
+        if isinstance(term_key, str) and isinstance(health_status, str):
+            health_by_key[term_key] = health_status
+    merged: list[dict[str, Any]] = []
+    for entry in entries:
+        term_key = entry.get("term_key")
+        if isinstance(term_key, str) and term_key in health_by_key:
+            next_entry = dict(entry)
+            next_entry["health_status"] = health_by_key[term_key]
+            merged.append(next_entry)
+        else:
+            merged.append(entry)
+    return merged
 
 
 def _concept_ledger_entry(entry: dict[str, Any]) -> ConceptLedgerEntry:
     payload = {key: entry[key] for key in _CONCEPT_LEDGER_FIELDS if key in entry}
+    if payload.get("health_status") not in _CONCEPT_HEALTH_STATUSES:
+        payload.pop("health_status", None)
     return ConceptLedgerEntry.model_validate(payload)
 
 

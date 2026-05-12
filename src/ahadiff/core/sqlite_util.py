@@ -13,6 +13,8 @@ from pathlib import Path, PurePath
 from typing import Any, cast
 from urllib.parse import quote
 
+from ahadiff.core.errors import StorageError
+
 _VALID_JOURNAL_MODES = frozenset({"DELETE", "WAL", "TRUNCATE", "PERSIST", "MEMORY", "OFF"})
 _SQLITE_SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
 _OPEN_VERIFICATION_RETRIES = 8
@@ -116,6 +118,40 @@ def safe_sqlite_connect(
             _close_nofollow_fd(attempt_state.nofollow_fd)
 
     raise PermissionError(f"database path changed during open: {p}")
+
+
+def mcp_readonly_connect(db_path: Path) -> sqlite3.Connection:
+    """Open a strictly read-only SQLite connection for the MCP server.
+
+    Combines ``mode=ro`` URI access with an enforced ``PRAGMA query_only=ON``
+    so every statement on this connection is rejected by SQLite if it would
+    write. Raises ``StorageError`` if the database does not exist or if
+    ``query_only`` cannot be verified.
+    """
+    if not db_path.exists():
+        raise StorageError(f"MCP read-only DB does not exist: {db_path}")
+    try:
+        connection = safe_sqlite_connect(
+            db_path,
+            read_only=True,
+            busy_timeout_ms=5000,
+        )
+    except sqlite3.DatabaseError as exc:
+        raise StorageError(f"MCP read-only DB open failed: {db_path} ({exc})") from exc
+    except OSError as exc:
+        raise StorageError(f"MCP read-only DB open failed: {db_path} ({exc})") from exc
+    try:
+        connection.execute("PRAGMA query_only = ON")
+        row = connection.execute("PRAGMA query_only").fetchone()
+        if row is None or int(row[0]) != 1:
+            actual = "unknown" if row is None else str(row[0])
+            raise StorageError(
+                f"MCP read-only DB failed query_only=ON verification: {db_path} ({actual})"
+            )
+    except Exception:
+        connection.close()
+        raise
+    return connection
 
 
 def reject_symlink_path(path: Path | str) -> None:
@@ -494,4 +530,4 @@ def _close_nofollow_fd(fd: int | None) -> None:
     os.close(fd)
 
 
-__all__ = ["reject_symlink_path", "safe_sqlite_connect"]
+__all__ = ["mcp_readonly_connect", "reject_symlink_path", "safe_sqlite_connect"]

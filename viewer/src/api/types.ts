@@ -74,6 +74,13 @@ export type ArtifactKind =
   | 'score'
   | 'judge';
 
+export type ConceptHealthStatus =
+  | 'healthy'
+  | 'orphan'
+  | 'stale'
+  | 'contradicted'
+  | 'dismissed';
+
 export interface ConceptLedgerEntry {
   term_key: string;
   concept: string;
@@ -82,6 +89,7 @@ export interface ConceptLedgerEntry {
   file_refs: string[];
   source_refs: string[];
   updated_by_runs: string[];
+  health_status?: ConceptHealthStatus;
 }
 
 export interface ConceptLedgerResponse {
