@@ -23,6 +23,7 @@ import type {
   ProviderCreateInput, ProviderUpdateInput, ServeStatusResponse, WatchStatusResponse,
 } from '../api/types';
 import { useTranslation, type MessageKey, type TranslateFn } from '../i18n/useTranslation';
+import { copyToClipboard } from '../utils/clipboard';
 import { mapDoctorMessage } from '../utils/doctor';
 import '../components/Settings.css';
 
@@ -1697,16 +1698,10 @@ function IntegrationsTab({
     target: InstallTarget,
     kind: 'install' | 'uninstall',
   ) => {
-    if (!navigator.clipboard?.writeText) {
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(commandFor(target, kind));
-      setCopiedTarget(`${target.name}:${kind}`);
-      window.setTimeout(() => setCopiedTarget(null), 1400);
-    } catch {
-      // Clipboard access can be unavailable in restricted browser contexts.
-    }
+    const ok = await copyToClipboard(commandFor(target, kind));
+    if (!ok) return;
+    setCopiedTarget(`${target.name}:${kind}`);
+    window.setTimeout(() => setCopiedTarget(null), 1400);
   }, []);
 
   const runAction = useCallback(async (target: InstallTarget, kind: InstallActionKind) => {

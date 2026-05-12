@@ -13,6 +13,7 @@ import ClaimInspector, { type ClaimInspectorClaim, type ClaimSourceLineGroup } f
 import type { ClaimSourceHunk } from '../components/EvidencePanel';
 import type { ClaimVerdict } from '../components/ClaimBadge';
 import { useTranslation } from '../i18n/useTranslation';
+import { copyToClipboard } from '../utils/clipboard';
 import { getRunArtifact } from '../api/runs';
 import '../components/Diff.css';
 
@@ -246,9 +247,7 @@ export default function DiffViewerPage() {
   }, []);
 
   const handleCopyAnchor = useCallback((claimId: string) => {
-    if (navigator.clipboard?.writeText) {
-      void navigator.clipboard.writeText(`#claim-${claimId}`);
-    }
+    void copyToClipboard(`#claim-${claimId}`);
   }, []);
 
   /**

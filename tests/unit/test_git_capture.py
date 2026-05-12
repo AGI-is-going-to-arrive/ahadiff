@@ -103,6 +103,114 @@ def _invoke_repo_cli(
     )
 
 
+def test_git_clean_env_strips_dangerous_git_vars_and_sets_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GIT_DIR", "/tmp/evil")
+    monkeypatch.setenv("GIT_WORK_TREE", "/tmp/evil-worktree")
+    monkeypatch.setenv("GIT_SSH_COMMAND", "ssh -i /tmp/evil_key")
+    monkeypatch.setenv("GIT_ASKPASS", "/tmp/askpass")
+
+    clean_env: dict[str, str] = cast("Any", repo_module).git_clean_env()
+
+    assert "GIT_DIR" not in clean_env
+    assert "GIT_WORK_TREE" not in clean_env
+    assert "GIT_SSH_COMMAND" not in clean_env
+    assert "GIT_ASKPASS" not in clean_env
+    assert clean_env["GIT_TERMINAL_PROMPT"] == "0"
+    assert os.environ["GIT_DIR"] == "/tmp/evil"
+
+
+def test_git_clean_env_strips_git_exec_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GIT_EXEC_PATH", "/opt/git/libexec/git-core")
+
+    clean_env: dict[str, str] = cast("Any", repo_module).git_clean_env()
+
+    assert "GIT_EXEC_PATH" not in clean_env
+    assert clean_env["GIT_TERMINAL_PROMPT"] == "0"
+
+
+def test_git_clean_env_strips_git_vars_case_insensitively(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("git_dir", "/tmp/lowercase-evil")
+    monkeypatch.setenv("Git_Work_Tree", "/tmp/mixedcase-evil")
+
+    clean_env: dict[str, str] = cast("Any", repo_module).git_clean_env()
+
+    assert "git_dir" not in clean_env
+    assert "Git_Work_Tree" not in clean_env
+    assert clean_env["GIT_TERMINAL_PROMPT"] == "0"
+
+
+def test_git_env_sanitization_does_not_break_real_git_capture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    target = repo_root / "app.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+    target.write_text("value = 2\n", encoding="utf-8")
+
+    monkeypatch.setenv("GIT_DIR", "/tmp/evil")
+    monkeypatch.setenv("GIT_WORK_TREE", "/tmp/evil-worktree")
+    monkeypatch.setenv("GIT_SSH_COMMAND", "ssh -i /tmp/evil_key")
+    monkeypatch.setenv("GIT_ASKPASS", "/tmp/askpass")
+
+    name_result = repo_module.run_git(repo_root, "diff", "--name-only", "HEAD")
+    capture = capture_module.capture_patch(
+        workspace_root=repo_root,
+        unstaged=True,
+        privacy_mode="explicit_remote",
+    )
+
+    assert name_result.stdout.strip() == "app.py"
+    assert "diff --git a/app.py b/app.py" in capture.raw_patch_text
+
+
+@pytest.mark.parametrize("revision", ["--upload-pack=/tmp/helper", "-rf", "--exec=sh"])
+def test_capture_revision_rejects_leading_dash_options(tmp_path: Path, revision: str) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "app.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+
+    with pytest.raises(InputError, match="revision must not start with a dash"):
+        capture_module.capture_patch(workspace_root=repo_root, revision=revision)
+
+
+def test_capture_revision_range_rejects_leading_dash_segment(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "app.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+
+    with pytest.raises(InputError, match="revision range segment must not start with a dash"):
+        capture_module.capture_patch(workspace_root=repo_root, revision="HEAD..--exec=sh")
+
+
+@pytest.mark.parametrize("revision", ["HEAD", "main", "abc123", "v1.0", "feature/x"])
+def test_resolve_commitish_allows_valid_revision_names(tmp_path: Path, revision: str) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "app.py").write_text("value = 1\n", encoding="utf-8")
+    commit_sha = _commit_all(repo_root, "base")
+    _git(repo_root, "branch", "main")
+    _git(repo_root, "branch", "abc123")
+    _git(repo_root, "branch", "feature/x")
+    _git(repo_root, "tag", "v1.0")
+
+    repo = repo_module.open_repo(repo_root)
+
+    assert repo_module.resolve_commitish(repo, revision) == commit_sha
+
+
 class _FakeHTTPSocket:
     def __init__(self, response: bytes) -> None:
         self._response = io.BytesIO(response)
@@ -124,6 +232,17 @@ class _FakeHTTPSocket:
 
     def close(self) -> None:
         self.closed = True
+
+
+class _FakeSSLContext:
+    def wrap_socket(
+        self,
+        sock: _FakeHTTPSocket,
+        *,
+        server_hostname: str | None = None,
+    ) -> _FakeHTTPSocket:
+        assert server_hostname == "example.com"
+        return sock
 
 
 def _install_fake_http(
@@ -734,6 +853,61 @@ def test_patch_url_download_redacts_secret_like_url_metadata(
     assert "[REDACTED:openai_api_key]" in url_targets["patch_url"]
     assert connections[0].connected_to == ("93.184.216.34", 80)
     assert b"Host: patch.example\r\n" in connections[0].sent
+
+
+def test_patch_url_rejects_userinfo_with_password(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_getaddrinfo(*_args: object, **_kwargs: object) -> NoReturn:
+        raise AssertionError("userinfo URL should be rejected before DNS lookup")
+
+    monkeypatch.setattr(download_module.socket, "getaddrinfo", fake_getaddrinfo)
+
+    with pytest.raises(InputError, match="userinfo"):
+        download_module.download_patch_url(
+            "http://user:pass@example.com/patch.diff",
+            max_patch_bytes=10_000,
+        )
+
+
+def test_patch_url_rejects_userinfo_without_password(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_getaddrinfo(*_args: object, **_kwargs: object) -> NoReturn:
+        raise AssertionError("userinfo URL should be rejected before DNS lookup")
+
+    monkeypatch.setattr(download_module.socket, "getaddrinfo", fake_getaddrinfo)
+
+    with pytest.raises(InputError, match="userinfo"):
+        download_module.download_patch_url(
+            "http://user@example.com/patch.diff",
+            max_patch_bytes=10_000,
+        )
+
+
+def test_patch_url_allows_https_url_without_userinfo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    patch_text = "--- a/sample.py\n+++ b/sample.py\n@@ -1 +1 @@\n-value = 1\n+value = 2\n"
+    response = (
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain; charset=utf-8\r\n"
+        f"Content-Length: {len(patch_text.encode('utf-8'))}\r\n"
+        "\r\n"
+    ).encode("ascii") + patch_text.encode("utf-8")
+    connections = _install_fake_http(monkeypatch, [response])
+    monkeypatch.setattr(
+        download_module.ssl,
+        "create_default_context",
+        lambda: _FakeSSLContext(),
+    )
+
+    downloaded = download_module.download_patch_url(
+        "https://example.com/patch.diff",
+        max_patch_bytes=10_000,
+    )
+
+    assert downloaded.body == patch_text.encode("utf-8")
+    assert downloaded.final_url == "https://example.com/patch.diff"
+    assert downloaded.redirect_count == 0
+    assert connections[0].connected_to == ("93.184.216.34", 443)
+    assert b"Host: example.com\r\n" in connections[0].sent
 
 
 def test_patch_url_blocks_private_ip(tmp_path: Path) -> None:

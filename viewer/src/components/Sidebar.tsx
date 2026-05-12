@@ -37,7 +37,7 @@ interface SidebarProps {
   onNavigate?: () => void;
 }
 
-const VIEWER_VERSION = 'v0.1.0';
+const VIEWER_VERSION = 'v1.1.0-alpha.0';
 
 function formatRelativeTime(isoDate: string, locale: string): string {
   const date = new Date(isoDate);

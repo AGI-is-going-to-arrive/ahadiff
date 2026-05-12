@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { GraphStatusResponse } from '../api/types';
 import { useTranslation } from '../i18n/useTranslation';
+import { copyToClipboard } from '../utils/clipboard';
 import { FRESHNESS_TONE, FRESHNESS_LABEL_KEY } from './freshness-utils';
 import './GraphifyCard.css';
 
@@ -17,22 +18,17 @@ export function CopyButton({ text, label }: { text: string; label: string }) {
   }, []);
 
   const handleCopy = useCallback(() => {
-    const clipboard: Clipboard | undefined = navigator.clipboard;
-    if (!clipboard || typeof clipboard.writeText !== 'function') return;
-
-    clipboard.writeText(text).then(
-      () => {
-        if (resetTimerRef.current !== null) {
-          window.clearTimeout(resetTimerRef.current);
-        }
-        setCopied(true);
-        resetTimerRef.current = window.setTimeout(() => {
-          setCopied(false);
-          resetTimerRef.current = null;
-        }, 1400);
-      },
-      () => {},
-    );
+    void copyToClipboard(text).then((ok) => {
+      if (!ok) return;
+      if (resetTimerRef.current !== null) {
+        window.clearTimeout(resetTimerRef.current);
+      }
+      setCopied(true);
+      resetTimerRef.current = window.setTimeout(() => {
+        setCopied(false);
+        resetTimerRef.current = null;
+      }, 1400);
+    });
   }, [text]);
   return (
     <button

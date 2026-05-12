@@ -218,8 +218,7 @@ def _apply_perf_gates(results: list[dict[str, object]]) -> list[str]:
             peak_mib = r.get("peak_mib")
             if isinstance(peak_mib, int | float) and peak_mib > _GATE_PARSE_10000_PEAK_MIB:
                 failures.append(
-                    "PERF GATE FAIL: "
-                    f"{op} peak={peak_mib:.1f}MiB > {_GATE_PARSE_10000_PEAK_MIB}MiB"
+                    f"PERF GATE FAIL: {op} peak={peak_mib:.1f}MiB > {_GATE_PARSE_10000_PEAK_MIB}MiB"
                 )
             continue
         if "avg_ms" not in r:

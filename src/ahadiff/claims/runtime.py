@@ -15,6 +15,7 @@ from ahadiff.safety.redact import redaction_pipeline
 
 from .extract import (
     parse_claim_candidates_text,
+    read_artifact_text_no_follow,
     write_claim_candidates_jsonl,
 )
 
@@ -301,19 +302,19 @@ def _load_run_json(path: Path) -> dict[str, Any]:
 
 
 def _read_required_text(path: Path) -> str:
-    if not path.exists():
-        raise InputError(f"required run artifact is missing: {path}")
     try:
-        with path.open("rb") as handle:
-            data = handle.read(_MAX_RUN_ARTIFACT_TEXT_BYTES + 1)
-    except OSError as exc:
-        raise InputError(f"required run artifact is unreadable: {path}") from exc
-    if len(data) > _MAX_RUN_ARTIFACT_TEXT_BYTES:
-        raise InputError(f"required run artifact exceeds size limit: {path}")
-    try:
-        return data.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise InputError(f"required run artifact is not valid UTF-8: {path}") from exc
+        return read_artifact_text_no_follow(path, max_bytes=_MAX_RUN_ARTIFACT_TEXT_BYTES)
+    except InputError as exc:
+        message = str(exc)
+        if "does not exist" in message:
+            raise InputError(f"required run artifact is missing: {path}") from exc
+        if "too large" in message:
+            raise InputError(f"required run artifact exceeds size limit: {path}") from exc
+        if "not valid UTF-8" in message:
+            raise InputError(f"required run artifact is not valid UTF-8: {path}") from exc
+        if "unreadable" in message:
+            raise InputError(f"required run artifact is unreadable: {path}") from exc
+        raise InputError(f"required run artifact is unsafe: {path}: {message}") from exc
 
 
 __all__ = [

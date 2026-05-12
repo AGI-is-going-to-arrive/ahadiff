@@ -75,6 +75,10 @@ _INJECTION_RULES: tuple[_InjectionRule, ...] = (
     ),
 )
 _UNTRUSTED_WRAPPER_TAG = re.compile(r"(?i)</?untrusted_diff>")
+_IGNORABLE_RE = re.compile(
+    r"[\u00ad\u180e\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff\ufe00-\ufe0f"
+    r"\U000E0001-\U000E007F]"
+)
 _COMBINING_MARK_RE = re.compile(r"[\u0300-\u036f]")
 _MULTILINE_DETECTION_WINDOW = 3
 _CONFUSABLE_TRANSLATION = str.maketrans(
@@ -120,7 +124,9 @@ def normalize_untrusted_text(text: str) -> str:
 
 
 def normalize_untrusted_text_for_detection(text: str) -> str:
-    normalized = unicodedata.normalize("NFKC", text).translate(_CONFUSABLE_TRANSLATION)
+    normalized = unicodedata.normalize("NFKC", _IGNORABLE_RE.sub("", text)).translate(
+        _CONFUSABLE_TRANSLATION
+    )
     decomposed = unicodedata.normalize("NFKD", normalized)
     stripped = _COMBINING_MARK_RE.sub("", decomposed)
     return stripped.casefold()
@@ -250,15 +256,14 @@ _OUTPUT_FENCE_RE = re.compile(
 _OUTPUT_CODE_EXEC_RE = re.compile(
     r"(?i)(?:\b(?:exec|eval|compile|__import__)\s*\(|subprocess\.(?:run|call|Popen)\s*\()",
 )
-_OUTPUT_IGNORABLE_RE = re.compile(r"[\u200b-\u200f\ufeff]")
 
 
 def _normalize_model_output_for_detection(text: str) -> str:
-    return normalize_untrusted_text_for_detection(_OUTPUT_IGNORABLE_RE.sub("", text))
+    return normalize_untrusted_text_for_detection(text)
 
 
 def strip_model_output_fences(text: str) -> str:
-    normalized = unicodedata.normalize("NFKC", _OUTPUT_IGNORABLE_RE.sub("", text))
+    normalized = unicodedata.normalize("NFKC", _IGNORABLE_RE.sub("", text))
     return _OUTPUT_FENCE_RE.sub("", normalized)
 
 

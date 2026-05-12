@@ -985,7 +985,9 @@ class TestGetServeStatus:
 
         body = resp.json()
         assert "version" in body
-        assert body["version"] == "0.1.0a0"
+        from ahadiff import __version__
+
+        assert body["version"] == __version__
 
     def test_returns_uptime(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".ahadiff"

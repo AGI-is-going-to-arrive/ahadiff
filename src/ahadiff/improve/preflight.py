@@ -9,8 +9,10 @@ useful payload even when git is missing or the repo is in an unusual state.
 
 from __future__ import annotations
 
-import subprocess
 from typing import TYPE_CHECKING
+
+from ahadiff.core.errors import InputError
+from ahadiff.git.repo import run_git
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -23,17 +25,15 @@ _GIT_TIMEOUT_SECONDS = 10
 def current_branch(repo_root: Path) -> str | None:
     """Return the current branch name (``HEAD`` for detached) or ``None`` on failure."""
     try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            cwd=repo_root,
+        result = run_git(
+            repo_root,
+            "rev-parse",
+            "--abbrev-ref",
+            "HEAD",
             timeout=_GIT_TIMEOUT_SECONDS,
             check=False,
         )
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+    except (InputError, OSError):
         return None
     if result.returncode != 0:
         return None
@@ -44,17 +44,16 @@ def current_branch(repo_root: Path) -> str | None:
 def current_head(repo_root: Path) -> str | None:
     """Return the current HEAD SHA (40 hex) or ``None`` if git is unavailable."""
     try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            cwd=repo_root,
+        result = run_git(
+            repo_root,
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            "HEAD",
             timeout=_GIT_TIMEOUT_SECONDS,
             check=False,
         )
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+    except (InputError, OSError):
         return None
     if result.returncode != 0:
         return None
@@ -65,7 +64,6 @@ def current_head(repo_root: Path) -> str | None:
 def prompts_are_dirty(repo_root: Path) -> bool:
     """Return True if mutable prompt files have any git-visible local changes."""
     args = [
-        "git",
         "status",
         "--porcelain",
         "--",
@@ -73,17 +71,13 @@ def prompts_are_dirty(repo_root: Path) -> bool:
         "src/ahadiff/prompts",
     ]
     try:
-        result = subprocess.run(
-            args,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            cwd=repo_root,
+        result = run_git(
+            repo_root,
+            *args,
             timeout=_GIT_TIMEOUT_SECONDS,
             check=False,
         )
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+    except (InputError, OSError):
         return False
     if result.returncode != 0:
         return False

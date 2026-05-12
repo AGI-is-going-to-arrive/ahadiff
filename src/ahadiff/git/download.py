@@ -112,6 +112,8 @@ def _request_once(url: str, *, max_patch_bytes: int, deadline: float) -> _HttpRe
         raise InputError("patch URL scheme must be http or https")
     if not parsed.hostname:
         raise InputError("patch URL must include a hostname")
+    if parsed.username is not None or parsed.password is not None:
+        raise InputError("patch URL must not include userinfo")
 
     port = _port_for_url(parsed)
     addresses = _resolve_public_addresses(parsed.hostname, port)

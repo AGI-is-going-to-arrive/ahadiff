@@ -14,6 +14,7 @@ from typing import Any, cast
 
 from ahadiff.core.errors import InputError
 from ahadiff.core.json_util import safe_json_loads
+from ahadiff.git.repo import git_clean_env
 
 from .base import (
     InstallAction,
@@ -324,6 +325,7 @@ def _git_path(context: InstallContext, relative: str) -> Path:
             encoding="utf-8",
             errors="replace",
             timeout=_GIT_TIMEOUT_SECONDS,
+            env=git_clean_env(),
         )
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         raise InputError("hooks target requires a git repository") from exc
@@ -365,6 +367,7 @@ def _git_directory_path(context: InstallContext, option: str) -> Path:
             encoding="utf-8",
             errors="replace",
             timeout=_GIT_TIMEOUT_SECONDS,
+            env=git_clean_env(),
         )
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         raise InputError("hooks target requires a git repository") from exc

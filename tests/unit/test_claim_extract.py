@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import json
+import os
 from importlib.resources import files
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
 from typer.testing import CliRunner
 
 from ahadiff import cli as cli_module
+from ahadiff.claims import extract as extract_module
 from ahadiff.claims import runtime as claim_runtime_module
 from ahadiff.claims.extract import (
+    load_claim_candidates,
     load_line_map_records,
     load_symbol_records,
     load_text_map,
@@ -172,6 +176,129 @@ def test_packaged_claim_extract_prompt_matches_repo_prompt() -> None:
     assert package_prompt.is_file()
     assert package_prompt.read_text(encoding="utf-8") == repo_prompt
     assert load_claim_extract_prompt() == repo_prompt
+
+
+def test_load_json_rejects_symlink_artifact(tmp_path: Path) -> None:
+    target = tmp_path / "target.json"
+    target.write_text('{"ok": true}', encoding="utf-8")
+    link = tmp_path / "link.json"
+    try:
+        link.symlink_to(target)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
+
+    with pytest.raises(InputError, match="must not be a symlink"):
+        extract_module._load_json(link)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_load_claim_candidates_rejects_symlink_artifact(tmp_path: Path) -> None:
+    target = tmp_path / "target.jsonl"
+    target.write_text(
+        json.dumps(
+            {
+                "claim_id": "claim-1",
+                "run_id": "run-1",
+                "text": "updates retry logic",
+                "source_hunks": [{"file": "src/app.py", "start": 1, "end": 1}],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    link = tmp_path / "claims.raw.jsonl"
+    try:
+        link.symlink_to(target)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
+
+    with pytest.raises(InputError, match="must not be a symlink"):
+        load_claim_candidates(link, default_run_id="run-1")
+
+
+def test_load_json_rejects_file_swapped_after_lstat(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "target.json"
+    replacement = tmp_path / "replacement.json"
+    target.write_text('{"ok": true}', encoding="utf-8")
+    replacement.write_text('{"evil": true}', encoding="utf-8")
+    real_open = extract_module.os.open
+
+    def fake_open(
+        path_arg: str | bytes | os.PathLike[str],
+        flags: int,
+        *args: Any,
+        **kwargs: Any,
+    ) -> int:
+        if os.fspath(path_arg) == str(target):
+            return real_open(str(replacement), flags, *args, **kwargs)
+        return real_open(path_arg, flags, *args, **kwargs)
+
+    monkeypatch.setattr(extract_module.os, "open", fake_open)
+
+    with pytest.raises(InputError, match="changed during validation"):
+        extract_module._load_json(target)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_load_json_rejects_oversized_artifact_before_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "target.json"
+    target.write_text('{"ok": true}', encoding="utf-8")
+    monkeypatch.setattr(extract_module, "_MAX_ARTIFACT_BYTES", 4)
+
+    def fail_open(*_args: object, **_kwargs: object) -> int:
+        raise AssertionError("oversized artifact should be rejected before open")
+
+    monkeypatch.setattr(extract_module.os, "open", fail_open)
+
+    with pytest.raises(InputError, match="artifact file too large"):
+        extract_module._load_json(target)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_extract_claim_candidates_from_run_rejects_symlink_patch_before_provider(
+    tmp_path: Path,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_id = "run_symlink_patch"
+    run_path = _write_claim_run_artifacts(workspace_root, run_id)
+    external = tmp_path / "outside.diff"
+    external.write_text("SECRET-FROM-OUTSIDE\n", encoding="utf-8")
+    (run_path / "patch.diff").unlink()
+    try:
+        (run_path / "patch.diff").symlink_to(external)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
+    provider_called = False
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal provider_called
+        provider_called = True
+        return httpx.Response(200, json=_claim_extract_response(run_id))
+
+    with (
+        httpx.Client(transport=httpx.MockTransport(handler), trust_env=False) as client,
+        pytest.raises(InputError, match="must not be a symlink"),
+    ):
+        extract_claim_candidates_from_run(
+            run_id=run_id,
+            run_path=run_path,
+            workspace_root=workspace_root,
+            provider_config=ProviderConfig(
+                provider_class="openai",
+                model_name="gpt-5.4-mini",
+                base_url="http://127.0.0.1:8000",
+                api_key_env="AHADIFF_PROVIDER_API_KEY",
+            ),
+            api_key="test-key",
+            security_config=SecurityConfig(),
+            output_path=run_path / "claims.raw.jsonl",
+            client=client,
+        )
+
+    assert provider_called is False
 
 
 def test_parse_claim_candidates_text_handles_fenced_json() -> None:

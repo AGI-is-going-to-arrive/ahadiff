@@ -65,6 +65,7 @@ export default defineConfig({
     },
   },
   build: {
+    target: ['es2022', 'chrome111', 'edge111', 'firefox121', 'safari16.4', 'ios16.4'],
     outDir: 'dist',
     sourcemap: false,
     emptyOutDir: true,

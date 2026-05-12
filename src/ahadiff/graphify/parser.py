@@ -346,9 +346,7 @@ def _read_graph_json_text_no_follow(path: Path, *, max_bytes: int) -> str:
             chunks.append(chunk)
             total_bytes += len(chunk)
             if total_bytes > max_bytes:
-                raise InputError(
-                    f"Graph file {path} is larger than {max_bytes} byte limit"
-                )
+                raise InputError(f"Graph file {path} is larger than {max_bytes} byte limit")
         try:
             return b"".join(chunks).decode("utf-8")
         except UnicodeDecodeError as exc:

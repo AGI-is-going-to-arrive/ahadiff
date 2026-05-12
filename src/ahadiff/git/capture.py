@@ -56,6 +56,7 @@ from .repo import (
     ensure_head_exists,
     ensure_no_merge_conflicts,
     first_parent_or_empty_tree,
+    git_clean_env,
     git_executable,
     open_repo,
     parent_count,
@@ -695,6 +696,7 @@ def _resolve_graphify_freshness(
                 "rev-list",
                 "--count",
                 f"--max-count={_GRAPHIFY_REV_LIST_MAX_COUNT}",
+                "--end-of-options",
                 f"{graph_commit}..{repo.head_sha}",
                 check=False,
             )
@@ -967,6 +969,7 @@ def _capture_revision(
             repo.root,
             "diff",
             "--no-ext-diff",
+            "--end-of-options",
             base_ref,
             head_ref,
             max_patch_bytes=max_patch_bytes,
@@ -1080,9 +1083,10 @@ def _capture_since(
     max_patch_bytes: int,
 ) -> _RawCapture:
     ensure_head_exists(repo)
-    args = ["rev-list", "--first-parent", f"--since={since}", "HEAD"]
+    args = ["rev-list", "--first-parent", f"--since={since}"]
     if author is not None:
         args.insert(2, f"--author={author}")
+    args.extend(["--end-of-options", "HEAD"])
     result = run_git(repo.root, *args)
     matched_commits = [line.strip() for line in result.stdout.splitlines() if line.strip()]
     if not matched_commits:
@@ -1119,6 +1123,7 @@ def _capture_since(
         repo.root,
         "diff",
         "--no-ext-diff",
+        "--end-of-options",
         base_ref,
         head_ref,
         max_patch_bytes=max_patch_bytes,
@@ -2275,6 +2280,7 @@ def _single_commit_patch(
             "show",
             "--format=",
             "--root",
+            "--end-of-options",
             revision,
             max_patch_bytes=max_patch_bytes,
         )
@@ -2284,6 +2290,7 @@ def _single_commit_patch(
             "show",
             "--format=",
             "--first-parent",
+            "--end-of-options",
             revision,
             max_patch_bytes=max_patch_bytes,
         )
@@ -2292,6 +2299,7 @@ def _single_commit_patch(
             repo.root,
             "show",
             "--format=",
+            "--end-of-options",
             revision,
             max_patch_bytes=max_patch_bytes,
         )
@@ -2305,6 +2313,7 @@ def _run_git_patch_text(repo_root: Path, *args: str, max_patch_bytes: int) -> st
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            env=git_clean_env(),
         ) as process:
             if process.stdout is None:
                 raise InputError(f"git command failed: {' '.join(args)}")
@@ -2357,7 +2366,15 @@ def _branch_names(repo: GitRepo) -> tuple[str, ...]:
 
 
 def _changed_paths_between(repo_root: Path, base_ref: str, head_ref: str) -> list[str]:
-    result = run_git(repo_root, "diff", "--name-only", "--no-ext-diff", base_ref, head_ref)
+    result = run_git(
+        repo_root,
+        "diff",
+        "--name-only",
+        "--no-ext-diff",
+        "--end-of-options",
+        base_ref,
+        head_ref,
+    )
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
@@ -2365,6 +2382,7 @@ def _changed_paths_for_commit(repo_root: Path, revision: str) -> list[str]:
     args = ["show", "--format=", "--name-only"]
     if parent_count(repo_root, revision) > 1:
         args.append("--first-parent")
+    args.append("--end-of-options")
     args.append(revision)
     result = run_git(repo_root, *args)
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
@@ -2379,7 +2397,7 @@ def _changed_paths_in_worktree(
 ) -> list[str]:
     suffix = ["--", *(pathspecs or [])] if pathspecs else []
     if staged and unstaged:
-        result = run_git(repo_root, "diff", "--name-only", "HEAD", *suffix)
+        result = run_git(repo_root, "diff", "--name-only", "--end-of-options", "HEAD", *suffix)
     elif staged:
         result = run_git(repo_root, "diff", "--cached", "--name-only", *suffix)
     else:
@@ -2464,7 +2482,7 @@ def _resolve_git_files_serial(
         size = _git_object_size(repo_root, object_spec)
         if size is None or size > max_file_bytes:
             continue
-        result = run_git_bytes(repo_root, "show", f"{revision}:{path}")
+        result = run_git_bytes(repo_root, "show", "--end-of-options", object_spec)
         if result.returncode != 0 or b"\x00" in result.stdout:
             continue
         if len(result.stdout) > max_file_bytes:
@@ -2478,7 +2496,7 @@ def _resolve_git_files_serial(
 
 
 def _git_object_size(repo_root: Path, object_spec: str) -> int | None:
-    result = run_git(repo_root, "cat-file", "-s", object_spec, check=False)
+    result = run_git(repo_root, "cat-file", "-s", "--end-of-options", object_spec, check=False)
     if result.returncode != 0:
         return None
     try:
@@ -2528,7 +2546,7 @@ def _resolve_index_files(
         size = _git_object_size(repo_root, object_spec)
         if size is None or size > max_file_bytes:
             continue
-        result = run_git_bytes(repo_root, "show", f":{path}")
+        result = run_git_bytes(repo_root, "show", "--end-of-options", object_spec)
         if result.returncode != 0 or b"\x00" in result.stdout:
             continue
         if len(result.stdout) > max_file_bytes:

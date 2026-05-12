@@ -43,8 +43,8 @@
 > axe-core checks (`2 passed`). Integration, eval, live judge, and coverage were
 > not rerun in that follow-up.
 
-> Current status note (2026-05-11 ConceptGraph follow-up): this file remains a
-> historical 2026-04-27 live snapshot. Current serve has 61 concrete `/api/*`
+> Current status note (2026-05-12 security / cross-platform follow-up): this file remains a
+> historical 2026-04-27 live snapshot. Current serve has 62 concrete `/api/*`
 > routes plus one `/api/{rest_of_path:path}` catchall and `/healthz`.
 > `/api/graph/concepts` now emits optional edge `confidence` only for the
 > allowlisted `EXTRACTED` / `INFERRED` / `AMBIGUOUS` values and keeps node
@@ -56,19 +56,18 @@
 > eval, live judge, coverage, wheel build, full Playwright, and remote GitHub
 > Actions were not rerun.
 
-> Current status note (2026-05-11 AI Tool Guidance follow-up): this file remains
-> a historical 2026-04-27 live snapshot. Current serve still has 61 concrete
+> Current status note (2026-05-12 security / cross-platform follow-up): this file remains
+> a historical 2026-04-27 live snapshot. Current serve has 62 concrete
 > `/api/*` routes plus one catchall and `/healthz`. `GET /api/export/results`
 > now accepts `format=tsv|json`; JSON returns `{format:"json",results:[...]}`
 > and downloads as `results.json`. `GET /api/audit` now returns newest entries
 > first, then applies `offset`, `limit`, and `fields`. Install target metadata
 > now uses project guidance wording so the WebUI describes repo-local guidance
-> writes/removals instead of another CLI install. Matching verification reran
-> the target backend route tests (`116 passed`), `ruff check`, `pyright`,
-> changed-file format check, viewer typecheck/Vitest (`270 passed`)/build,
-> i18n `1176/1176`, and target Playwright (`59 passed`). Full `ruff format
-> --check` still reports formatting drift in untouched
-> `src/ahadiff/graphify/parser.py`; it is not counted as a pass here.
+> writes/removals instead of another CLI install. The latest matching
+> verification reran backend unit (`2188 passed`), `ruff check`, full
+> `ruff format --check`, `pyright`, viewer typecheck/Vitest (`318 passed`)/build,
+> and `git diff --check HEAD`. Integration, eval, live judge, wheel build, full
+> Playwright, and remote GitHub Actions were not rerun in that pass.
 
 ## 2026-04-27 Live Concrete Endpoints (22)
 

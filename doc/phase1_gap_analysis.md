@@ -24,7 +24,7 @@ wheel build, Playwright, and remote GitHub Actions workflows.
 
 | Backend Route | Frontend Consumer | Gap? |
 |--------------|-------------------|------|
-| 61 concrete `/api/*` routes + 1 catch-all | main product surfaces covered | See below |
+| 62 concrete `/api/*` routes + 1 catch-all | main product surfaces covered | See below |
 
 ### Covered
 

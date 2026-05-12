@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import math
 import sqlite3
 from collections.abc import Callable
@@ -25,6 +26,8 @@ from ahadiff.review.database import (
 from ahadiff.review.search import search_all_with_graph
 from ahadiff.wiki.concepts import load_concepts_page
 
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -34,6 +37,7 @@ _DEFAULT_LIMIT = 20
 _MAX_LIMIT = 200
 _MAX_CONCEPTS_JSONL_BYTES = 16 * 1024 * 1024
 _LESSON_SUMMARY_CHARS = 1200
+_ALLOWED_TABLES = frozenset({"result_events", "review_logs", "cards", "concepts"})
 _RESULT_EVENT_COLUMNS = (
     "event_id",
     "run_id",
@@ -252,7 +256,9 @@ def _get_concepts(state_dir: Path, arguments: dict[str, Any]) -> dict[str, Any]:
     cursor = (
         int(raw_cursor)
         if isinstance(raw_cursor, int)
-        else int(str(raw_cursor)) if raw_cursor else 0
+        else int(str(raw_cursor))
+        if raw_cursor
+        else 0
     )
     page = load_concepts_page(
         state_dir / "concepts.jsonl",
@@ -328,6 +334,8 @@ def _read_lesson_summary(state_dir: Path, run_id: str) -> str | None:
 
 def _load_graph(state_dir: Path) -> object | None:
     graph_path = state_dir / "graphify" / "graph.json"
+    if not graph_path.exists():
+        return None
     try:
         validate_state_path_no_symlinks(graph_path, allow_missing_leaf=False)
         if not graph_path.is_file():
@@ -335,7 +343,8 @@ def _load_graph(state_dir: Path) -> object | None:
         from ahadiff.graphify import parse_graph_json
 
         return parse_graph_json(graph_path)
-    except Exception:
+    except Exception as exc:
+        logger.warning("failed to load graph: %s", exc)
         return None
 
 
@@ -363,6 +372,8 @@ def _count_concepts_jsonl(state_dir: Path) -> int:
 
 
 def _count_table_rows(connection: sqlite3.Connection, table_name: str) -> int:
+    if table_name not in _ALLOWED_TABLES:
+        raise ValueError("table not in allowlist")
     if not _table_exists(connection, table_name):
         return 0
     row = connection.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()

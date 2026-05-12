@@ -34,6 +34,26 @@ class TestSafeJsonLoads:
     def test_valid_json_bytes(self) -> None:
         assert safe_json_loads(b'{"x": 1}') == {"x": 1}
 
+    def test_rejects_oversized_string_input(self) -> None:
+        with pytest.raises(ValueError, match="JSON input too large"):
+            safe_json_loads('"abcdef"', max_input_bytes=4)
+
+    def test_rejects_oversized_bytes_input(self) -> None:
+        with pytest.raises(ValueError, match="JSON input too large"):
+            safe_json_loads(b'"abcdef"', max_input_bytes=4)
+
+    def test_normal_sized_string_input_parses_with_size_check(self) -> None:
+        assert safe_json_loads('{"x": "ok"}', max_input_bytes=32) == {"x": "ok"}
+
+    def test_normal_sized_bytes_input_parses_with_size_check(self) -> None:
+        assert safe_json_loads(b'{"x": "ok"}', max_input_bytes=32) == {"x": "ok"}
+
+    def test_custom_max_input_bytes_accepts_exact_limit(self) -> None:
+        payload = '{"x": 1}'
+        assert safe_json_loads(payload, max_input_bytes=len(payload.encode("utf-8"))) == {"x": 1}
+        with pytest.raises(ValueError, match="JSON input too large"):
+            safe_json_loads(payload, max_input_bytes=len(payload.encode("utf-8")) - 1)
+
     def test_rejects_nan(self) -> None:
         with pytest.raises(ValueError, match="Disallowed JSON constant"):
             safe_json_loads('{"x": NaN}')

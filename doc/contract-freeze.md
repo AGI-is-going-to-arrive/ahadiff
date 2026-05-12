@@ -915,4 +915,19 @@ run_id: str
 - `FEATURE_UNAVAILABLE` 是稳定 `ErrorCode`，用于“服务可用，但本地缺可选依赖或能力未安装”的情况；它不表示鉴权失败，也不表示用户输入错误。
 - APKG note front/back 会做 HTML escape；front 为空时拒绝导出，避免把不可复习的卡片塞进 deck。
 
-本轮实测：`tests/unit/test_apkg_export.py` 覆盖 active-card export、空 deck、empty front、10,000+ 上限、缺 `genanki` 的 501、旧 schema storage error 和 route 下载；完整 unit suite `2150 passed`，`ruff check` 和目标 `pyright` 通过。
+本轮实测：`tests/unit/test_apkg_export.py` 覆盖 active-card export、空 deck、empty front、10,000+ 上限、缺 `genanki` 的 501、旧 schema storage error 和 route 下载；后续 v1.1 security / cross-platform follow-up 后完整 unit suite 为 `2188 passed`，`ruff check`、`ruff format --check` 和 `pyright` 通过。
+
+### 9.14 v1.1 security / cross-platform contract 收口（2026-05-12）
+
+本轮只记录已经由代码和测试验证的收口项：
+
+- git revision / pathspec 调用补 `--end-of-options`，并拒绝 leading dash 输入；git subprocess env 清洗按大小写不敏感方式移除 `GIT_*`，再设置 `GIT_TERMINAL_PROMPT=0`。
+- `--patch-url` 拒绝 URL userinfo；这是下载入口的边界，不等同于 provider URL helper 的全部 SSRF 边界。
+- `safe_json_loads()` 默认拒绝超过 50 MiB 的输入；调用方仍可传更小上限。
+- MCP stats 动态表名走 allowlist；read-only stdio MCP server 当前仍是 6 个工具。
+- prompt injection 检测补 soft hyphen、variation selectors 和 TAG chars；claim artifact 读取补 no-follow、Windows reparse、hardlink、大小和 TOCTOU guard。
+- `/api/improve/preflight` 改用共享 git wrapper，避免污染环境隐藏 dirty prompt 状态。
+- 项目根新增 `.gitattributes`：文本 LF，常见图片、字体、视频和 PDF 标记 binary。
+- viewer 已配置 browserslist 和 Vite `build.target`；前端复制逻辑收敛到共享 `copyToClipboard()`，支持 Clipboard API、textarea fallback、SSR/sandbox guard 和焦点恢复。
+
+本轮实测：后端 unit `2188 passed`；`ruff check`、`ruff format --check`、`pyright` 通过；viewer typecheck、Vitest `318 passed`、build 通过；`git diff --check HEAD` 通过。integration、eval、live judge、wheel、完整 Playwright 和远端 GitHub Actions 未在本轮重跑。

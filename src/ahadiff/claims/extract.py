@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import errno
 import json
+import os
 import re
+import stat
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -29,6 +32,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
 _MAX_CLAIM_TEXT_BYTES = 10 * 1024
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 _JSON_FENCE_RE = re.compile(
     r"```(?P<lang>[^\r\n`]*)\r?\n(?P<body>[\s\S]*?)```",
     re.IGNORECASE,
@@ -119,10 +123,8 @@ def load_claim_candidates(
     default_run_id: str | None = None,
     enforce_run_id_match: bool = False,
 ) -> tuple[ClaimCandidate, ...]:
-    if not path.exists():
-        raise InputError(f"claim candidate file does not exist: {path}")
     candidates = parse_claim_candidates_text(
-        path.read_text(encoding="utf-8"),
+        read_artifact_text_no_follow(path, max_bytes=_MAX_ARTIFACT_BYTES),
         default_run_id=default_run_id,
     )
     # When enforce_run_id_match is True, every claim candidate must already
@@ -478,16 +480,85 @@ def _default_claim_id(run_id: str | None, index: int) -> str:
     return f"{prefix}-claim-{index:03d}"
 
 
+_MAX_ARTIFACT_BYTES = 50 * 1024 * 1024
+
+
 def _load_json(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        raise InputError(f"artifact file does not exist: {path}")
     try:
-        payload = safe_json_loads(path.read_text(encoding="utf-8"))
+        raw_text = read_artifact_text_no_follow(path, max_bytes=_MAX_ARTIFACT_BYTES)
+        payload = safe_json_loads(raw_text, max_input_bytes=_MAX_ARTIFACT_BYTES)
     except (json.JSONDecodeError, ValueError) as exc:
         raise InputError(f"invalid JSON in artifact file: {path}: {exc}") from exc
     if not isinstance(payload, dict):
         raise InputError(f"artifact payload must be a JSON object: {path}")
     return cast("dict[str, Any]", payload)
+
+
+def read_artifact_text_no_follow(path: Path, *, max_bytes: int) -> str:
+    try:
+        path_stat = os.lstat(path)
+    except FileNotFoundError:
+        raise InputError(f"artifact file does not exist: {path}") from None
+    except OSError as exc:
+        raise InputError(f"artifact file is unreadable: {path}") from exc
+    _validate_artifact_stat(path, path_stat)
+    if path_stat.st_size > max_bytes:
+        raise InputError(f"artifact file too large ({path_stat.st_size} bytes): {path}")
+
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    try:
+        fd = os.open(str(path), flags)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise InputError(f"artifact file must not be a symlink: {path}") from exc
+        raise InputError(f"artifact file is unreadable: {path}") from exc
+
+    try:
+        file_stat = os.fstat(fd)
+        _validate_artifact_stat(path, file_stat)
+        if (file_stat.st_dev, file_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
+            raise InputError(f"artifact file changed during validation: {path}")
+        if file_stat.st_size > max_bytes:
+            raise InputError(f"artifact file too large ({file_stat.st_size} bytes): {path}")
+
+        chunks: list[bytes] = []
+        total_bytes = 0
+        while True:
+            chunk_size = min(65_536, max_bytes + 1 - total_bytes)
+            if chunk_size <= 0:
+                break
+            chunk = os.read(fd, chunk_size)
+            if chunk == b"":
+                break
+            chunks.append(chunk)
+            total_bytes += len(chunk)
+            if total_bytes > max_bytes:
+                raise InputError(f"artifact file too large ({total_bytes} bytes): {path}")
+        try:
+            return b"".join(chunks).decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise InputError(f"artifact file is not valid UTF-8: {path}") from exc
+    except InputError:
+        raise
+    except OSError as exc:
+        raise InputError(f"artifact file is unreadable: {path}") from exc
+    finally:
+        os.close(fd)
+
+
+def _validate_artifact_stat(path: Path, path_stat: os.stat_result) -> None:
+    if stat.S_ISLNK(path_stat.st_mode):
+        raise InputError(f"artifact file must not be a symlink: {path}")
+    if _has_windows_reparse_point(path_stat):
+        raise InputError(f"artifact file must not be a Windows reparse point or junction: {path}")
+    if not stat.S_ISREG(path_stat.st_mode):
+        raise InputError(f"artifact file must be a regular file: {path}")
+    if getattr(path_stat, "st_nlink", 1) > 1:
+        raise InputError(f"artifact file must not be a hardlink: {path}")
+
+
+def _has_windows_reparse_point(path_stat: object) -> bool:
+    return bool(getattr(path_stat, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT)
 
 
 def _write_jsonl(
@@ -546,6 +617,7 @@ __all__ = [
     "load_symbol_records",
     "load_text_map",
     "parse_claim_candidates_text",
+    "read_artifact_text_no_follow",
     "write_claim_candidates_jsonl",
     "write_verified_claims_jsonl",
 ]

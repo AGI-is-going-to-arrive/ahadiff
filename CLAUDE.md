@@ -6,7 +6,7 @@
 
 知返 AhaDiff 是一个 **local-first 的 verified diff learning layer**。把 AI 写出的 git diff 变成带代码证据链的学习笔记、概念图谱、主动回忆测验、SRS 复习卡和质量棘轮记录。核心差异：Code Wiki 解释仓库，知返解释这次改动；每句话都能回到代码证据。
 
-**当前状态（2026-05-12）**：本轮 adversarial review fix 只同步当前未提交改动对应的真实状态。后端 full lesson 增加 `walkthrough_tldr`，旧 lesson JSON 缺字段仍能反序列化，full lesson 会在 walkthrough 前渲染 `Walkthrough Summary`；`GET /api/export/apkg` 可下载 `ahadiff_review.apkg`，只导出 active review cards，上限 10,000 张，缺 `genanki` 时返回 `501 FEATURE_UNAVAILABLE`，安装时需要 `ahadiff[anki]` extra；新增 read-only stdio MCP server，入口是 `ahadiff mcp-server --repo-root <repo>`，工具为 `list_runs`、`get_run_summary`、`list_due_cards`、`search`、`get_concepts`、`get_stats`。前端 Ratchet 增加 APKG 下载按钮；任务进度 SSE 增加指数退避重连和 polling fallback；SearchOverlay 改为双栏结果/预览，并补移动端返回、Escape 和 focus trap；ErrorBoundary 增加诊断脱敏、copy retry 状态和非 HTTPS clipboard fallback；ConceptGraph 暗色 canvas 颜色、motion/elevation CSS primitives、V6 fidelity CSS 和 Vitest coverage config 已接入。当前真实验证：后端完整 unit `2150 passed`；`ruff check`、目标 `pyright`、`uv lock --check` 通过；viewer `pnpm install --frozen-lockfile`、typecheck、Vitest `28 files, 310 tests passed`、`pnpm t`、coverage、build 通过；coverage 汇总为 statements/lines `26.3%`、branches `72.16%`、functions `45.28%`；SearchOverlay desktop+mobile Playwright `6 passed`，ErrorBoundary desktop+mobile Playwright `4 passed`；`git diff --check HEAD` 通过。integration、eval、live judge、wheel、完整 Playwright 和远端 GitHub Actions 未在本轮重跑。
+**当前状态（2026-05-12）**：本轮 v1.1 security / cross-platform follow-up 基于上一轮 adversarial review fix 继续收口。后端版本同步到 `1.1.0a0`，前端版本同步到 `1.1.0-alpha.0`；git 调用补 `--end-of-options`、leading-dash 拒绝和大小写不敏感的 `GIT_*` 环境清洗；`--patch-url` 拒绝 URL userinfo；`safe_json_loads` 增加 50 MiB cap；MCP stats 表名走 allowlist；prompt injection 检测扩展 soft hyphen / variation selector / TAG chars；claim extraction 读取 run artifacts 和 `claims.raw.jsonl` 时补 no-follow、Windows reparse、hardlink、大小和 TOCTOU guard；`/api/improve/preflight` 改用共享 git wrapper，避免污染环境隐藏 dirty prompt。前端抽出共享 `copyToClipboard()`，支持 Clipboard API、textarea fallback、SSR/sandbox guard 和焦点恢复；`CommandBlock`、Graphify source card、Diff viewer、Settings 复用同一逻辑；`.gitattributes` 已强制文本 LF 并标记常见二进制资源；viewer 已配置 `browserslist` 和 Vite `build.target`。当前真实验证：后端完整 unit `2188 passed`；`ruff check src tests`、`ruff format --check src tests`、`pyright` 通过；viewer typecheck、Vitest `29 files, 318 tests passed`、build 通过；`git diff --check HEAD` 通过。integration、eval、live judge、wheel、完整 Playwright 和远端 GitHub Actions 未在本轮重跑。
 
 ## 架构总览
 
@@ -68,10 +68,10 @@ global_config_dir()                   ← Global（派生/索引/偏好，非真
 | install | `src/ahadiff/install/` | 13 安装目标、项目级 AI 工具指引写入、通用写入层（no-follow/reparse/symlink guard）、hooks git 检测/timeout、verify workflow macOS/Linux/Windows matrix |
 | improve | `src/ahadiff/improve/` | improve session、worktree replay、prompt 白名单、Phase 2.5、preflight |
 | i18n | `src/ahadiff/i18n/` | locale resolver（cookie → Accept-Language → `AHADIFF_LANG` → CLI → config → `LANG`）和 prompt language helper |
-| mcp | `src/ahadiff/mcp/` | read-only stdio MCP server，读取 runs/cards/search/concepts/stats |
+| mcp | `src/ahadiff/mcp/` | read-only stdio MCP server，6 个工具：`list_runs` / `get_run_summary` / `list_due_cards` / `search` / `get_concepts` / `get_stats` |
 | benchmarks | `benchmarks/` | 10 fixtures、Graphify 10k gate（parse 750ms + peak 96MiB） |
 | viewer | `viewer/` | React 19 SPA；13 页面；SearchOverlay 双栏预览；ErrorBoundary 诊断脱敏和复制 fallback；Learn Mode Dialog 默认跟随 viewer locale；Review 四档 SRS + 高风险概念；Quiz 导航 / mark-wrong / progress table；ConceptGraph Canvas renderer + community fill + a11y list fallback；Ratchet TSV/JSON/APKG 导出；Settings 项目级 AI 工具指引；Dashboard + Lesson + Concepts + Ratchet + RunDetail + Settings + Guide + Diff + Search；Onboarding DiagnosticRow；错误码本地化；locale-aware byte/token 格式化；motion/elevation CSS；侧栏三档；container query；PWA |
-| tests | `tests/` | unit/integration/eval/live；本轮 unit `2150 passed`；CI: PR unit + eval + nightly eval + release coverage ≥85% |
+| tests | `tests/` | unit/integration/eval/live；本轮 unit `2188 passed`；CI: PR unit + eval + nightly eval + release coverage ≥85% |
 | doc | `doc/` | 产品设计文档 |
 | ui | `ui/` | UI 原型 Warm v1-v6 |
 
@@ -196,6 +196,7 @@ pytest tests/live/test_llm_judge_live.py -q
 | 05-11 | ConceptGraph Canvas migration + graph confidence hardening | frontend 270 / graph route+parser 117 / target Playwright 62 |
 | 05-11 | AI 工具指引命名与交互收口 + Ratchet JSON export + Audit 最新优先 | backend target 116 / frontend 270 / target Playwright 59 / i18n 1176 |
 | 05-12 | APKG export + read-only MCP server + lesson walkthrough_tldr + SSE/SearchOverlay/ErrorBoundary/CSS hardening | backend 2150 / frontend 310 / target Playwright 10 / coverage run |
+| 05-12 | v1.1 security + cross-platform hardening + version sync | backend 2188 / frontend 318 / ruff+format+pyright+typecheck+build+diffcheck |
 
 
 <!-- AHADIFF:BEGIN target=claude -->

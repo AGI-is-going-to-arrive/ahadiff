@@ -54,6 +54,14 @@ class LockMetadata:
 _DEFAULT_GIT_TIMEOUT_SECONDS = 120
 
 
+def git_clean_env() -> dict[str, str]:
+    clean_env = {
+        key: value for key, value in os.environ.items() if not key.upper().startswith("GIT_")
+    }
+    clean_env["GIT_TERMINAL_PROMPT"] = "0"
+    return clean_env
+
+
 def git_executable() -> str:
     """Locate the git executable on PATH.
 
@@ -90,6 +98,7 @@ def run_git(
             errors="replace",
             check=False,
             timeout=timeout,
+            env=git_clean_env(),
         )
     except subprocess.TimeoutExpired as exc:
         raise InputError(f"git command timed out after {timeout}s: {' '.join(args)}") from exc
@@ -113,6 +122,7 @@ def run_git_bytes(
             text=False,
             check=False,
             timeout=timeout,
+            env=git_clean_env(),
         )
     except subprocess.TimeoutExpired as exc:
         raise InputError(f"git command timed out after {timeout}s: {' '.join(args)}") from exc
@@ -162,6 +172,9 @@ def resolve_ref_range(repo: GitRepo, revision_range: str) -> tuple[str, str]:
         raise InputError("commit range must use '..' syntax such as HEAD~1..HEAD")
 
     base_ref, head_ref = revision_range.split("..", 1)
+    for ref in (base_ref, head_ref):
+        if ref.startswith("-"):
+            raise InputError("revision range segment must not start with a dash")
     base_resolved = _resolve_commitish(repo.root, base_ref)
     head_resolved = _resolve_commitish(repo.root, head_ref)
     return base_resolved, head_resolved
@@ -172,13 +185,13 @@ def resolve_commitish(repo: GitRepo, revision: str) -> str:
 
 
 def parent_count(repo_root: Path, revision: str) -> int:
-    result = run_git(repo_root, "show", "-s", "--format=%P", revision)
+    result = run_git(repo_root, "show", "-s", "--format=%P", "--end-of-options", revision)
     parents = [item for item in result.stdout.strip().split() if item]
     return len(parents)
 
 
 def first_parent_or_empty_tree(repo_root: Path, revision: str) -> str:
-    result = run_git(repo_root, "show", "-s", "--format=%P", revision)
+    result = run_git(repo_root, "show", "-s", "--format=%P", "--end-of-options", revision)
     parents = [item for item in result.stdout.strip().split() if item]
     if not parents:
         if _is_shallow_boundary(repo_root, revision):
@@ -191,6 +204,7 @@ def first_parent_or_empty_tree(repo_root: Path, revision: str) -> str:
         repo_root,
         "cat-file",
         "-e",
+        "--end-of-options",
         f"{first_parent}^{{commit}}",
         check=False,
     )
@@ -359,7 +373,16 @@ def unlock_repo_write_lock(lock_path: Path) -> bool:
 
 
 def _resolve_commitish(repo_root: Path, revision: str) -> str:
-    result = run_git(repo_root, "rev-parse", "--verify", f"{revision}^{{commit}}", check=False)
+    if revision.startswith("-"):
+        raise InputError("revision must not start with a dash")
+    result = run_git(
+        repo_root,
+        "rev-parse",
+        "--verify",
+        "--end-of-options",
+        f"{revision}^{{commit}}",
+        check=False,
+    )
     if result.returncode != 0:
         message = result.stderr.strip() or result.stdout.strip()
         raise InputError(message or f"unknown commit reference: {revision}")

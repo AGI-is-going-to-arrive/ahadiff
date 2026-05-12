@@ -917,7 +917,9 @@ def test_cli_version_flag_is_reachable() -> None:
     runner = CliRunner()
     result = runner.invoke(app(), ["--version"], catch_exceptions=False)
     assert result.exit_code == 0
-    assert "ahadiff 0.1.0a0" in result.stdout
+    from ahadiff import __version__
+
+    assert f"ahadiff {__version__}" in result.stdout
 
 
 def test_cli_without_subcommand_still_shows_help() -> None:

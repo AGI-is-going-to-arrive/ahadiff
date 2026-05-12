@@ -1,28 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { copyToClipboard } from '../utils/clipboard';
 import './CommandBlock.css';
-
-function fallbackCopy(text: string, onSuccess: () => void): void {
-  let textarea: HTMLTextAreaElement | null = null;
-  try {
-    if (!document.body) return;
-    textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.readOnly = true;
-    textarea.tabIndex = -1;
-    textarea.setAttribute('aria-hidden', 'true');
-    textarea.className = 'command-block__clipboard-sink';
-    document.body.appendChild(textarea);
-    textarea.focus({ preventScroll: true });
-    textarea.select();
-    textarea.setSelectionRange(0, text.length);
-    const ok = document.execCommand('copy');
-    if (ok) onSuccess();
-  } catch {
-    // copy is a non-essential affordance — fail silently
-  } finally {
-    textarea?.parentNode?.removeChild(textarea);
-  }
-}
 
 export interface CopyButtonProps {
   text: string;
@@ -65,12 +43,9 @@ export function CopyButton({
   }, []);
 
   const handleCopy = useCallback(() => {
-    const clipboard: Clipboard | undefined = navigator.clipboard;
-    if (clipboard && typeof clipboard.writeText === 'function') {
-      clipboard.writeText(text).then(flashCopied, () => fallbackCopy(text, flashCopied));
-      return;
-    }
-    fallbackCopy(text, flashCopied);
+    void copyToClipboard(text).then((ok) => {
+      if (ok) flashCopied();
+    });
   }, [text, flashCopied]);
 
   const baseClass = 'command-block__copy-btn';

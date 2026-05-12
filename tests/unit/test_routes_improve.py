@@ -211,6 +211,32 @@ def test_improve_preflight_detects_untracked_prompt_changes(tmp_path: Path) -> N
     assert response.json()["repo_state"]["prompts_dirty"] is True
 
 
+def test_improve_preflight_ignores_polluted_git_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Repo preflight git probes must not inherit caller-controlled GIT_* variables."""
+    state_dir = _init_repo(tmp_path)
+    state_dir.mkdir()
+    prompts_dir = tmp_path / "prompts"
+    prompts_dir.mkdir()
+    (prompts_dir / "lesson_generate.md").write_text("local draft\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_DIR", "/tmp/ahadiff-nonexistent-git-dir")
+    monkeypatch.setenv("GIT_WORK_TREE", "/tmp/ahadiff-nonexistent-worktree")
+    monkeypatch.setenv("GIT_ASKPASS", "/tmp/ahadiff-nonexistent-askpass")
+    client = _client(state_dir)
+
+    response = client.get("/api/improve/preflight", headers=_AUTH)
+
+    assert response.status_code == 200
+    repo_state = response.json()["repo_state"]
+    assert isinstance(repo_state["branch"], str)
+    assert repo_state["branch"]
+    assert isinstance(repo_state["head_sha"], str)
+    assert len(repo_state["head_sha"]) == 40
+    assert repo_state["prompts_dirty"] is True
+
+
 def test_improve_preflight_requires_persisted_finalized_run(tmp_path: Path) -> None:
     """DB rows without finalized run artifacts are not valid improve anchors."""
     state_dir = _init_repo(tmp_path)
