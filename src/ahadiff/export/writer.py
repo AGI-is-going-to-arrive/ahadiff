@@ -7,7 +7,7 @@ import errno
 import os
 import re
 import stat
-import tempfile
+import uuid
 from pathlib import Path
 
 from ahadiff.core.errors import InputError
@@ -143,6 +143,60 @@ def _reject_unsafe_dir(path: Path) -> None:
         )
 
 
+def _dir_identity(path_stat: os.stat_result) -> tuple[int, int]:
+    return int(path_stat.st_dev), int(path_stat.st_ino)
+
+
+def _open_safe_parent_dir(parent: Path) -> tuple[int, tuple[int, int]]:
+    parent_stat = parent.lstat()
+    _reject_unsafe_dir(parent)
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(str(parent), flags)
+    except OSError:
+        raise
+    try:
+        fd_stat = os.fstat(fd)
+        if not stat.S_ISDIR(fd_stat.st_mode):
+            raise OSError(errno.ENOTDIR, "export parent must be a directory", str(parent))
+        if bool(getattr(fd_stat, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT):
+            raise OSError(
+                errno.ELOOP,
+                "refusing to follow export parent reparse point",
+                str(parent),
+            )
+        if _dir_identity(fd_stat) != _dir_identity(parent_stat):
+            raise OSError(errno.EAGAIN, "export parent changed during validation", str(parent))
+        return fd, _dir_identity(fd_stat)
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def _parent_identity_unchanged(parent: Path, expected: tuple[int, int]) -> None:
+    parent_stat = parent.lstat()
+    _reject_unsafe_dir(parent)
+    if _dir_identity(parent_stat) != expected:
+        raise OSError(errno.EAGAIN, "export parent changed during validation", str(parent))
+
+
+def _replace_from_parent_fd(
+    *,
+    parent_fd: int,
+    parent: Path,
+    parent_identity: tuple[int, int],
+    tmp_name: str,
+    target_name: str,
+) -> None:
+    _parent_identity_unchanged(parent, parent_identity)
+    try:
+        os.replace(tmp_name, target_name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+    except TypeError:
+        _parent_identity_unchanged(parent, parent_identity)
+        (parent / tmp_name).replace(parent / target_name)
+        _parent_identity_unchanged(parent, parent_identity)
+
+
 def _ensure_parent(output_root: Path, target: Path) -> None:
     parent = target.parent
     if parent == target:
@@ -191,20 +245,31 @@ def safe_write_export_file(
     _reject_unsafe_existing(target)
 
     data = content.encode("utf-8") if isinstance(content, str) else content
-    fd, tmp_name = tempfile.mkstemp(
-        dir=str(target.parent),
-        prefix=f".{target.name}.",
-        suffix=".ahadiff-export.tmp",
-    )
-    tmp_path = Path(tmp_name)
+    parent_fd, parent_identity = _open_safe_parent_dir(target.parent)
+    tmp_name = f".{target.name}.{uuid.uuid4().hex}.ahadiff-export.tmp"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    fd = -1
     try:
+        fd = os.open(tmp_name, flags, 0o600, dir_fd=parent_fd)
         with os.fdopen(fd, "wb") as fh:
+            fd = -1
             fh.write(data)
-        tmp_path.replace(target)
+        _replace_from_parent_fd(
+            parent_fd=parent_fd,
+            parent=target.parent,
+            parent_identity=parent_identity,
+            tmp_name=tmp_name,
+            target_name=target.name,
+        )
     except BaseException:
+        if fd >= 0:
+            with contextlib.suppress(OSError):
+                os.close(fd)
         with contextlib.suppress(OSError):
-            tmp_path.unlink()
+            os.unlink(tmp_name, dir_fd=parent_fd)
         raise
+    finally:
+        os.close(parent_fd)
     return target
 
 

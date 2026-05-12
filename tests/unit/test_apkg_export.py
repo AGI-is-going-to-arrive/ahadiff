@@ -196,6 +196,23 @@ def test_export_apkg_empty_cards_still_returns_package_bytes(
     assert payload["notes"] == []
 
 
+def test_export_apkg_missing_db_returns_empty_package_without_sqlite_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ahadiff.review.apkg_export import export_apkg
+
+    _install_fake_genanki(monkeypatch)
+    db_path = tmp_path / "review.sqlite"
+
+    payload = json.loads(export_apkg(db_path).decode("utf-8"))
+
+    assert payload["notes"] == []
+    assert not db_path.exists()
+    for suffix in ("-wal", "-shm", "-journal"):
+        assert not db_path.with_name(f"{db_path.name}{suffix}").exists()
+
+
 def test_export_apkg_rejects_active_card_with_empty_front(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

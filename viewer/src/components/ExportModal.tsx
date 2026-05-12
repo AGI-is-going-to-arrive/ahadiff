@@ -107,7 +107,9 @@ export default function ExportModal({ open, onClose, runId }: ExportModalProps) 
     });
     return () => {
       cancelAnimationFrame(raf);
-      restoreFocusRef.current?.focus({ preventScroll: true });
+      if (restoreFocusRef.current?.isConnected) {
+        restoreFocusRef.current.focus({ preventScroll: true });
+      }
       restoreFocusRef.current = null;
     };
   }, [open, resetTransient]);
@@ -186,6 +188,8 @@ export default function ExportModal({ open, onClose, runId }: ExportModalProps) 
   );
 
   if (!open) return null;
+
+  const clearedStaleFiles = state.previewManifest?.cleared_stale_files ?? [];
 
   const items: Array<{
     key: ExportKey;
@@ -267,6 +271,14 @@ export default function ExportModal({ open, onClose, runId }: ExportModalProps) 
               {t('Export.preview_written', {
                 path: state.previewManifest.path,
                 files: state.previewManifest.file_count,
+              })}
+            </p>
+          )}
+
+          {clearedStaleFiles.length > 0 && (
+            <p className="export-modal__warning" role="alert">
+              {t('Export.preview_cleared_stale_files', {
+                count: clearedStaleFiles.length,
               })}
             </p>
           )}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 import subprocess
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -10,7 +11,12 @@ from typer.testing import CliRunner
 from ahadiff import cli as cli_module
 from ahadiff.cli import app
 from ahadiff.contracts import ProviderConfig
-from ahadiff.core.config import ResolvedSetting, write_default_config
+from ahadiff.core.config import (
+    DEFAULT_CONFIG,
+    ResolvedSetting,
+    write_config_data,
+    write_default_config,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -35,6 +41,45 @@ def _write_repo_config(repo_root: Path) -> None:
     state_dir = repo_root / ".ahadiff"
     state_dir.mkdir()
     write_default_config(state_dir / "config.toml")
+
+
+def _write_challenge_enabled_config(repo_root: Path) -> None:
+    config = {**DEFAULT_CONFIG, "challenge": {**DEFAULT_CONFIG["challenge"], "enabled": True}}
+    write_config_data(repo_root / ".ahadiff" / "config.toml", config)
+
+
+def _write_cli_qualifying_run(repo_root: Path, run_id: str) -> None:
+    run_path = repo_root / ".ahadiff" / "runs" / run_id
+    run_path.mkdir(parents=True)
+    (run_path / "score.json").write_text(
+        json.dumps({"overall": 88.5, "verdict": "pass"}),
+        encoding="utf-8",
+    )
+    (run_path / "metadata.json").write_text(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "source_ref": "HEAD~1..HEAD",
+                "hunks": [
+                    {
+                        "file": "foo.py",
+                        "new_start": 1,
+                        "new_count": 1,
+                        "claim_ids": ["claim-1"],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run_path / "patch.diff").write_text(
+        "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1,1 +1,1 @@\n-old\n+new\n",
+        encoding="utf-8",
+    )
+    (run_path / "claims.jsonl").write_text(
+        json.dumps({"claim_id": "claim-1", "status": "verified"}) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _repo_root(tmp_path: Path, monkeypatch: Any) -> Path:
@@ -307,6 +352,48 @@ def test_non_git_state_dir_rejects_symlink(tmp_path: Path) -> None:
 
     with pytest.raises(InputError, match="state dir must not be a symlink"):
         cli_module._state_dir_for_root(workspace, has_git_repo=False)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_challenge_build_cli_rejects_rebuild_of_active_challenge(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    from ahadiff.challenge import ChallengeStage, read_state
+
+    repo_root = _repo_root(tmp_path, monkeypatch)
+    _write_challenge_enabled_config(repo_root)
+    _write_cli_qualifying_run(repo_root, "good-run")
+
+    first = _RUNNER.invoke(
+        app(),
+        [
+            "challenge",
+            "build",
+            "good-run",
+            "--challenge-id",
+            "cli-rebuild",
+            "--repo-root",
+            str(repo_root),
+        ],
+    )
+    assert first.exit_code == 0, first.stderr
+
+    second = _RUNNER.invoke(
+        app(),
+        [
+            "challenge",
+            "build",
+            "good-run",
+            "--challenge-id",
+            "cli-rebuild",
+            "--repo-root",
+            str(repo_root),
+        ],
+    )
+
+    assert second.exit_code == 1
+    assert "challenge rebuild is only allowed" in second.stderr
+    assert read_state(repo_root / ".ahadiff", "cli-rebuild").stage is ChallengeStage.BUILD
 
 
 def test_review_lang_is_resolved_inside_handler(tmp_path: Path, monkeypatch: Any) -> None:

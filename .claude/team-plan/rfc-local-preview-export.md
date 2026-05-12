@@ -9,6 +9,7 @@
 - The implemented bundle is a minimal local static preview: `README.txt`, `index.html`, `data/run.json`, `data/concepts.json`, `manifest.json`, plus a deterministic zip built from the manifest allowlist.
 - API export preview is fixed to `strict_local`; CLI exposes `--privacy-mode`.
 - The writer rejects path traversal, Windows reserved names, ADS `:`, symlink/reparse/non-regular/hardlink/FIFO and zip entries not present in the manifest.
+- Current hardening validates the run before cleanup, writes the preview with parent fd/identity checks where supported, rejects stale-file cleanup races, adds `noindex,nofollow` to `index.html`, and re-runs prompt-injection checks before redaction/export.
 - Not implemented yet: a full Vite export/offline mode with copied hashed viewer assets, `file://` browser E2E, or a self-hosting doc.
 
 ## 1. Motivation
@@ -71,7 +72,7 @@ A single "Export Preview" button per run surfaces a modal: redaction summary, pr
 
 ## 8. Test Strategy
 
-- Unit: manifest digests stable across runs (deterministic ordering); symlink/reparse/non-regular/hardlink/FIFO refusal; strict-local API behavior; manifest allowlist zip writing.
+- Unit: manifest digests stable across runs (deterministic ordering); symlink/reparse/non-regular/hardlink/FIFO refusal; strict-local API behavior; manifest allowlist zip writing; stale-file cleanup and parent-swap guard coverage.
 - Not yet verified: export → unzip → open full React viewer via headless browser with zero HTTP(S) requests.
 - Cross-platform smoke in CI matrix (ubuntu/macos/windows): zip determinism + open-in-browser sanity.
 - Negative: export with active `redact_failed` flag must abort with stable `ErrorCode`.

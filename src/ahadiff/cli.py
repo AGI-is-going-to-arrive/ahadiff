@@ -3628,6 +3628,7 @@ def challenge_build_cmd(
         from ahadiff.challenge import (
             build_challenge,
             create_state,
+            ensure_rebuild_allowed,
             is_feature_enabled,
             write_manifest,
             write_state,
@@ -3646,6 +3647,7 @@ def challenge_build_cmd(
                 state_dir=state_dir,
                 challenge_id=challenge_id,
             )
+            ensure_rebuild_allowed(state_dir, manifest.challenge_id)
             challenge_state = create_state(
                 challenge_id=manifest.challenge_id,
                 source_run_id=run_id,

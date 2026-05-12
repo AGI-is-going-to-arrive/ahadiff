@@ -81,8 +81,11 @@ test.describe('smoke', () => {
     );
 
     await page.goto('/#/ratchet');
-    await page.getByRole('button', { name: /Export TSV/i }).click();
-    await page.getByRole('button', { name: /Export JSON/i }).click();
+    await page.getByRole('button', { name: /^Export$/i }).click();
+    const modal = page.getByRole('dialog');
+    await expect(modal).toBeVisible();
+    await modal.locator('li').filter({ hasText: 'Results TSV' }).getByRole('button').click();
+    await modal.locator('li').filter({ hasText: 'Results JSON' }).getByRole('button').click();
 
     await expect.poll(() => requests.map((request) => request.format).join(',')).toBe('tsv,json');
     expect(requests.every((request) => request.token === 'test-token-xxx')).toBe(true);

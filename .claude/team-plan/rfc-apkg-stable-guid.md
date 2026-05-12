@@ -15,7 +15,7 @@ Current-code truth (2026-05-12):
 Devs who already review AhaDiff cards in Anki Desktop / AnkiDroid / AnkiMobile. They re-export after each learn run and expect updates to *replace* prior cards, not duplicate them.
 
 ## 2. Problem
-`apkg_export.py` already uses `genanki.guid_for(row["card_id"])`, but the spec is not pinned. If we later derive cards from `(run_id, concept)` or recycle `card_id`s during DB migration, GUIDs silently shift and Anki creates duplicates. CSS is a single inline literal — no diff-aware styling (changed/added/removed lines), no dark-mode hook, no template versioning.
+`apkg_export.py` still uses `genanki.guid_for(row["card_id"])`, and the namespace migration is intentionally deferred. If we later derive cards from `(run_id, concept)` or recycle `card_id`s during DB migration, GUIDs can still shift and Anki can create duplicates. Packaged CSS has landed, so the remaining open product risk in this RFC is the GUID namespace decision and its one-time duplicate-card UX.
 
 ## 3. Design
 

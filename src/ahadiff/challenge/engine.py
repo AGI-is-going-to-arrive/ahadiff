@@ -128,19 +128,25 @@ def _resolve_gap_claim_ids(
     """Map missing files / hunks to manifest claim ids using ``hunks`` metadata."""
 
     gap: set[str] = set()
+    canonical_ids = set(manifest.canonical_claim_ids)
+    attributed_canonical_ids: set[str] = set()
     missing_file_set = set(missing_files)
-    any_entry_attributes_claims = False
+    attributed_missing_files: set[str] = set()
+    attributed_missing_hunk_indexes: set[int] = set()
 
     for entry in manifest.hunks:
         path = _optional_str(entry.get("file") or entry.get("path"))
         if path is None:
             continue
-        attributed_ids = _claim_ids_for_hunk_entry(entry)
-        if attributed_ids:
-            any_entry_attributes_claims = True
+        attributed_ids = [
+            claim_id for claim_id in _claim_ids_for_hunk_entry(entry) if claim_id in canonical_ids
+        ]
+        attributed_canonical_ids.update(attributed_ids)
         if path in missing_file_set:
             for claim_id in attributed_ids:
                 gap.add(claim_id)
+            if attributed_ids:
+                attributed_missing_files.add(path)
             continue
         new_start = _coerce_int(entry.get("new_start") or entry.get("start"))
         new_count = _coerce_int(entry.get("new_count") or entry.get("count"))
@@ -152,15 +158,23 @@ def _resolve_gap_claim_ids(
             old_start=_coerce_int(entry.get("old_start")) or 0,
             old_count=_coerce_int(entry.get("old_count")) or 0,
         )
-        if _hunk_in_missing(path, canonical_hunk, missing_hunks):
+        for missing_index, (missing_path, missing_hunk) in enumerate(missing_hunks):
+            if missing_path != path or not _ranges_overlap(missing_hunk, canonical_hunk):
+                continue
             for claim_id in attributed_ids:
                 gap.add(claim_id)
+            if attributed_ids:
+                attributed_missing_hunk_indexes.add(missing_index)
 
-    # When manifest hunks lack claim attribution, fall back to canonical_claim_ids:
-    # any missing file or any missing hunk in the canonical patch implies the
-    # learner did not exercise the canonical claims.
-    if not any_entry_attributes_claims and (missing_files or missing_hunks):
-        gap.update(manifest.canonical_claim_ids)
+    # Fallback is per missing item, not global. Mixed manifests can attribute
+    # one hunk while leaving another un-attributed; those un-attributed misses
+    # still need to drive canonical review signals.
+    missing_hunk_indexes = set(range(len(missing_hunks)))
+    if (missing_file_set - attributed_missing_files) or (
+        missing_hunk_indexes - attributed_missing_hunk_indexes
+    ):
+        fallback_ids = canonical_ids - attributed_canonical_ids
+        gap.update(fallback_ids or canonical_ids)
 
     return sorted(gap)
 
@@ -171,19 +185,6 @@ def _claim_ids_for_hunk_entry(entry: dict[str, Any]) -> list[str]:
         return []
     items = cast("list[Any]", raw)
     return [item for item in items if isinstance(item, str) and item]
-
-
-def _hunk_in_missing(
-    path: str,
-    canonical_hunk: _FileHunk,
-    missing_hunks: list[tuple[str, _FileHunk]],
-) -> bool:
-    for missing_path, missing_hunk in missing_hunks:
-        if missing_path != path:
-            continue
-        if _ranges_overlap(missing_hunk, canonical_hunk):
-            return True
-    return False
 
 
 def _ranges_overlap(left: _FileHunk, right: _FileHunk) -> bool:

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import json
 import logging
 import math
+import os
 import re
 import sqlite3
 import stat
@@ -213,7 +215,8 @@ def create_mcp_server(state_dir: Path) -> Server[Any, Any]:
                 name="ask_lesson",
                 description=(
                     "Return ranked lesson fragments and verified claim evidence "
-                    "for a natural-language question about a specific run."
+                    "for a natural-language question about a specific run. "
+                    'privacy: "strict_local"; read-only; no network or LLM calls.'
                 ),
                 inputSchema=_object_schema(
                     {
@@ -433,7 +436,12 @@ def _ask_lesson(state_dir: Path, arguments: dict[str, Any]) -> dict[str, Any]:
         )
 
     lesson_text, lesson_file = _read_first_lesson_file(state_dir, run_id)
-    run_meta: dict[str, Any] = {"run_id": run_id, "lesson_file": lesson_file}
+    run_meta: dict[str, Any] = {
+        "run_id": run_id,
+        "generated_at": _read_run_generated_at(state_dir, finalized_path),
+        "lesson_tier": _lesson_tier_from_file(lesson_file),
+        "lesson_file": lesson_file,
+    }
 
     if lesson_text is None:
         return {"fragments": [], "evidence": [], "run_meta": run_meta}
@@ -442,9 +450,41 @@ def _ask_lesson(state_dir: Path, arguments: dict[str, Any]) -> dict[str, Any]:
     if not fragments:
         return {"fragments": [], "evidence": [], "run_meta": run_meta}
 
-    claims = _read_claims_jsonl(run_dir)
+    claims = _read_claims_jsonl(state_dir, run_dir)
     evidence = evidence_for_fragments(fragments, claims) if claims else []
     return {"fragments": fragments, "evidence": evidence, "run_meta": run_meta}
+
+
+def _read_run_generated_at(state_dir: Path, finalized_path: Path) -> str | None:
+    try:
+        raw_bytes = _read_mcp_regular_bytes(
+            finalized_path,
+            label="mcp finalized marker",
+            max_bytes=1_000_000,
+            state_dir=state_dir,
+        )
+        payload = safe_json_loads(raw_bytes.decode("utf-8", errors="replace"))
+    except (InputError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    finalized = cast("dict[str, Any]", payload)
+    for key in ("generated_at", "finalized_at", "timestamp", "created_at_utc"):
+        value = finalized.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _lesson_tier_from_file(lesson_file: str | None) -> str | None:
+    if lesson_file is None:
+        return None
+    mapping = {
+        "lesson.full.md": "full",
+        "lesson.hint.md": "hint",
+        "lesson.compact.md": "compact",
+    }
+    return mapping.get(lesson_file)
 
 
 def _read_first_lesson_file(state_dir: Path, run_id: str) -> tuple[str | None, str | None]:
@@ -459,7 +499,7 @@ def _read_first_lesson_file(state_dir: Path, run_id: str) -> tuple[str | None, s
             logger.warning("rejected lesson path %s: %s", path, exc)
             continue
         try:
-            text = _read_lesson_text(path)
+            text = _read_lesson_text(path, state_dir=state_dir)
         except InputError as exc:
             logger.warning("failed to read lesson %s: %s", path, exc)
             continue
@@ -467,26 +507,200 @@ def _read_first_lesson_file(state_dir: Path, run_id: str) -> tuple[str | None, s
     return None, None
 
 
-def _read_lesson_text(path: Path) -> str:
-    leaf_stat = reject_leaf_symlink_or_reparse(path, label="mcp lesson artifact")
-    if not stat.S_ISREG(leaf_stat.st_mode):
-        raise InputError(f"lesson file is not a regular file: {path}")
-    try:
-        with path.open("rb") as handle:
-            raw_bytes = handle.read(_ASK_LESSON_MAX_LESSON_BYTES + 1)
-    except OSError as exc:
-        raise InputError(f"lesson file is unreadable: {path}") from exc
-    if len(raw_bytes) > _ASK_LESSON_MAX_LESSON_BYTES:
-        raise InputError(
-            f"lesson file too large (>{_ASK_LESSON_MAX_LESSON_BYTES} bytes): {path}",
-        )
+def _read_lesson_text(path: Path, *, state_dir: Path | None = None) -> str:
+    raw_bytes = _read_mcp_regular_bytes(
+        path,
+        label="mcp lesson artifact",
+        max_bytes=_ASK_LESSON_MAX_LESSON_BYTES,
+        state_dir=state_dir,
+    )
     try:
         return raw_bytes.decode("utf-8", errors="replace")
     except UnicodeDecodeError as exc:
         raise InputError(f"lesson file is not valid UTF-8: {path}") from exc
 
 
-def _read_claims_jsonl(run_dir: Path) -> list[dict[str, Any]]:
+def _read_mcp_regular_bytes(
+    path: Path,
+    *,
+    label: str,
+    max_bytes: int,
+    state_dir: Path | None = None,
+) -> bytes:
+    if state_dir is not None and _supports_secure_relative_open():
+        return _read_mcp_regular_bytes_from_state_dir(
+            state_dir,
+            path,
+            label=label,
+            max_bytes=max_bytes,
+        )
+    return _read_mcp_regular_bytes_by_path(path, label=label, max_bytes=max_bytes)
+
+
+def _read_mcp_regular_bytes_by_path(path: Path, *, label: str, max_bytes: int) -> bytes:
+    leaf_stat = reject_leaf_symlink_or_reparse(path, label=label)
+    _validate_mcp_regular_stat(leaf_stat, path=path, label=label, max_bytes=max_bytes)
+
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    try:
+        fd = os.open(os.fspath(path), flags)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise InputError(f"{label} must not be a symlink: {path}") from exc
+        raise InputError(f"{label} is unreadable: {path}") from exc
+
+    try:
+        file_stat = os.fstat(fd)
+        _validate_mcp_regular_stat(file_stat, path=path, label=label, max_bytes=max_bytes)
+        if (file_stat.st_dev, file_stat.st_ino) != (leaf_stat.st_dev, leaf_stat.st_ino):
+            raise InputError(f"{label} changed during validation: {path}")
+        return _read_bounded_fd(fd, path=path, label=label, max_bytes=max_bytes)
+    finally:
+        os.close(fd)
+
+
+def _read_mcp_regular_bytes_from_state_dir(
+    state_dir: Path,
+    path: Path,
+    *,
+    label: str,
+    max_bytes: int,
+) -> bytes:
+    validate_state_path_no_symlinks(path, allow_missing_leaf=False)
+    leaf_stat = reject_leaf_symlink_or_reparse(path, label=label)
+    _validate_mcp_regular_stat(leaf_stat, path=path, label=label, max_bytes=max_bytes)
+
+    root = state_dir if state_dir.is_absolute() else state_dir.absolute()
+    target = path if path.is_absolute() else path.absolute()
+    try:
+        relative = target.relative_to(root)
+    except ValueError as exc:
+        raise InputError(f"{label} must stay under state dir: {path}") from exc
+    parts = relative.parts
+    if not parts or any(part in {"", ".", ".."} for part in parts):
+        raise InputError(f"{label} path is invalid: {path}")
+
+    validate_state_path_no_symlinks(root, allow_missing_leaf=False)
+    root_stat = root.lstat()
+    if not stat.S_ISDIR(root_stat.st_mode):
+        raise InputError(f"mcp state dir is not a directory: {root}")
+
+    dir_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    file_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    current_fd = os.open(os.fspath(root), dir_flags)
+    try:
+        opened_root_stat = os.fstat(current_fd)
+        if (opened_root_stat.st_dev, opened_root_stat.st_ino) != (
+            root_stat.st_dev,
+            root_stat.st_ino,
+        ):
+            raise InputError(f"mcp state dir changed during validation: {root}")
+
+        for part in parts[:-1]:
+            parent_fd = current_fd
+            current_fd = _open_mcp_child_dir(parent_fd, part, path=path, label=label)
+            os.close(parent_fd)
+
+        leaf_name = parts[-1]
+        relative_leaf_stat = os.stat(leaf_name, dir_fd=current_fd, follow_symlinks=False)
+        _validate_mcp_regular_stat(
+            relative_leaf_stat,
+            path=path,
+            label=label,
+            max_bytes=max_bytes,
+        )
+        try:
+            file_fd = os.open(leaf_name, file_flags, dir_fd=current_fd)
+        except OSError as exc:
+            if exc.errno == errno.ELOOP:
+                raise InputError(f"{label} must not be a symlink: {path}") from exc
+            raise InputError(f"{label} is unreadable: {path}") from exc
+        try:
+            file_stat = os.fstat(file_fd)
+            _validate_mcp_regular_stat(file_stat, path=path, label=label, max_bytes=max_bytes)
+            if (file_stat.st_dev, file_stat.st_ino) != (
+                relative_leaf_stat.st_dev,
+                relative_leaf_stat.st_ino,
+            ):
+                raise InputError(f"{label} changed during validation: {path}")
+            return _read_bounded_fd(file_fd, path=path, label=label, max_bytes=max_bytes)
+        finally:
+            os.close(file_fd)
+    finally:
+        os.close(current_fd)
+
+
+def _supports_secure_relative_open() -> bool:
+    return (
+        hasattr(os, "O_DIRECTORY")
+        and hasattr(os, "O_NOFOLLOW")
+        and os.open in os.supports_dir_fd
+        and os.stat in os.supports_dir_fd
+        and os.stat in os.supports_follow_symlinks
+    )
+
+
+def _open_mcp_child_dir(parent_fd: int, name: str, *, path: Path, label: str) -> int:
+    dir_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        child_fd = os.open(name, dir_flags, dir_fd=parent_fd)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise InputError(f"{label} parent must not be a symlink: {path}") from exc
+        raise InputError(f"{label} parent is unreadable: {path}") from exc
+    try:
+        child_stat = os.fstat(child_fd)
+        if not stat.S_ISDIR(child_stat.st_mode):
+            raise InputError(f"{label} parent is not a directory: {path}")
+        if _stat_has_windows_reparse_point(child_stat):
+            raise InputError(f"{label} parent must not be a Windows reparse point: {path}")
+        return child_fd
+    except Exception:
+        os.close(child_fd)
+        raise
+
+
+def _validate_mcp_regular_stat(
+    file_stat: os.stat_result,
+    *,
+    path: Path,
+    label: str,
+    max_bytes: int,
+) -> None:
+    if stat.S_ISLNK(file_stat.st_mode):
+        raise InputError(f"{label} must not be a symlink: {path}")
+    if _stat_has_windows_reparse_point(file_stat):
+        raise InputError(f"{label} must not be a Windows reparse point: {path}")
+    if not stat.S_ISREG(file_stat.st_mode):
+        raise InputError(f"{label} is not a regular file: {path}")
+    if getattr(file_stat, "st_nlink", 1) > 1:
+        raise InputError(f"{label} must not be a hardlink: {path}")
+    if file_stat.st_size > max_bytes:
+        raise InputError(f"{label} too large (>{max_bytes} bytes): {path}")
+
+
+def _stat_has_windows_reparse_point(file_stat: object) -> bool:
+    return bool(getattr(file_stat, "st_file_attributes", 0) & 0x400)
+
+
+def _read_bounded_fd(fd: int, *, path: Path, label: str, max_bytes: int) -> bytes:
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk_size = min(65_536, max_bytes + 1 - total)
+        if chunk_size <= 0:
+            break
+        chunk = os.read(fd, chunk_size)
+        if not chunk:
+            break
+        chunks.append(chunk)
+        total += len(chunk)
+        if total > max_bytes:
+            raise InputError(f"{label} too large (>{max_bytes} bytes): {path}")
+    return b"".join(chunks)
+
+
+def _read_claims_jsonl(state_dir: Path, run_dir: Path) -> list[dict[str, Any]]:
     claims_path = run_dir / "claims.jsonl"
     if not claims_path.exists():
         return []
@@ -496,28 +710,14 @@ def _read_claims_jsonl(run_dir: Path) -> list[dict[str, Any]]:
         logger.warning("rejected claims path %s: %s", claims_path, exc)
         return []
     try:
-        leaf_stat = reject_leaf_symlink_or_reparse(
+        raw_bytes = _read_mcp_regular_bytes(
             claims_path,
             label="mcp claims artifact",
+            max_bytes=_ASK_LESSON_MAX_CLAIMS_BYTES,
+            state_dir=state_dir,
         )
     except InputError as exc:
         logger.warning("rejected claims path %s: %s", claims_path, exc)
-        return []
-    if not stat.S_ISREG(leaf_stat.st_mode):
-        logger.warning("claims.jsonl is not a regular file at %s; skipping", claims_path)
-        return []
-    try:
-        with claims_path.open("rb") as handle:
-            raw_bytes = handle.read(_ASK_LESSON_MAX_CLAIMS_BYTES + 1)
-    except OSError as exc:
-        logger.warning("failed to read claims.jsonl at %s: %s", claims_path, exc)
-        return []
-    if len(raw_bytes) > _ASK_LESSON_MAX_CLAIMS_BYTES:
-        logger.warning(
-            "claims.jsonl too large (>%d bytes) at %s; skipping",
-            _ASK_LESSON_MAX_CLAIMS_BYTES,
-            claims_path,
-        )
         return []
     text = raw_bytes.decode("utf-8", errors="replace")
     records: list[dict[str, Any]] = []
@@ -861,8 +1061,12 @@ def _read_lesson_summary(state_dir: Path, run_id: str) -> str | None:
         path = lesson_dir / name
         if not path.exists():
             continue
-        validate_state_path_no_symlinks(path, allow_missing_leaf=False)
-        text = path.read_text(encoding="utf-8", errors="replace").strip()
+        try:
+            validate_state_path_no_symlinks(path, allow_missing_leaf=False)
+            text = _read_lesson_text(path, state_dir=state_dir).strip()
+        except InputError as exc:
+            logger.warning("failed to read lesson summary %s: %s", path, exc)
+            continue
         if text:
             return text[:_LESSON_SUMMARY_CHARS]
     return None

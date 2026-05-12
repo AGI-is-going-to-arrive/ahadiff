@@ -10,7 +10,6 @@ import os
 import stat
 import zipfile
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
@@ -18,8 +17,12 @@ if TYPE_CHECKING:
 
 from ahadiff.core.errors import InputError
 from ahadiff.core.json_util import safe_json_loads
-from ahadiff.core.paths import reject_leaf_symlink_or_reparse, validate_run_id
-from ahadiff.safety.injection import normalize_untrusted_text
+from ahadiff.core.paths import (
+    reject_leaf_symlink_or_reparse,
+    validate_run_id,
+    validate_state_path_no_symlinks,
+)
+from ahadiff.safety.injection import protect_untrusted_text
 from ahadiff.safety.redact import redaction_pipeline
 
 from .writer import (
@@ -51,6 +54,7 @@ _INDEX_HTML = (
     '<meta charset="utf-8">\n'
     "<title>AhaDiff Local Preview</title>\n"
     '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+    '<meta name="robots" content="noindex,nofollow">\n'
     "</head>\n"
     "<body>\n"
     "<h1>AhaDiff Local Preview</h1>\n"
@@ -107,10 +111,6 @@ class ExportManifest:
         }
 
 
-def _utc_now_iso() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
-
-
 def _safe_stat_artifact(path: Path) -> os.stat_result | None:
     """lstat an artifact path, rejecting symlinks/reparse points.
 
@@ -118,6 +118,11 @@ def _safe_stat_artifact(path: Path) -> os.stat_result | None:
     symlinks, Windows reparse points, or non-regular files.
     """
     try:
+        try:
+            path.parent.lstat()
+        except FileNotFoundError:
+            return None
+        validate_state_path_no_symlinks(path.parent, allow_missing_leaf=False)
         leaf_stat = reject_leaf_symlink_or_reparse(path, label="export artifact")
     except InputError as exc:
         if "does not exist" in str(exc):
@@ -129,6 +134,13 @@ def _safe_stat_artifact(path: Path) -> os.stat_result | None:
 
 
 def _read_regular_bytes(path: Path, *, label: str, max_bytes: int) -> bytes | None:
+    try:
+        path.parent.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise InputError(f"{label} parent is unreadable: {path.parent.name}") from exc
+    validate_state_path_no_symlinks(path.parent, allow_missing_leaf=False)
     try:
         path_stat = os.lstat(path)
     except FileNotFoundError:
@@ -218,8 +230,12 @@ def _read_jsonl(path: Path, *, max_bytes: int = 5_000_000) -> list[dict[str, Any
 def _scrub_string(value: str) -> str:
     if not value:
         return value
-    normalized = normalize_untrusted_text(value)
-    result = redaction_pipeline(normalized)
+    injection_report = protect_untrusted_text(
+        value,
+        source_name="export_preview",
+        source_kind="markdown",
+    )
+    result = redaction_pipeline(injection_report.protected_text)
     return result.primary_target.redacted_text
 
 
@@ -376,6 +392,33 @@ def _compute_top_level_digest(files: list[tuple[str, str, int]]) -> str:
     return hasher.hexdigest()
 
 
+def validate_preview_run(run_id: str, state_dir: Path) -> Path:
+    """Validate that a run can be exported before touching output paths."""
+
+    validate_run_id(run_id)
+    validate_state_path_no_symlinks(state_dir, allow_missing_leaf=False)
+    run_dir = state_dir / "runs" / run_id
+    try:
+        run_stat = os.lstat(run_dir)
+    except FileNotFoundError:
+        raise InputError(f"run not found: {run_id}") from None
+    except OSError as exc:
+        raise InputError(f"run path is unreadable: {run_id}") from exc
+    if (
+        stat.S_ISLNK(run_stat.st_mode)
+        or bool(getattr(run_stat, "st_file_attributes", 0) & 0x400)
+        or not stat.S_ISDIR(run_stat.st_mode)
+    ):
+        raise InputError(f"run not found: {run_id}")
+    validate_state_path_no_symlinks(run_dir, allow_missing_leaf=False)
+    finalized_stat = _safe_stat_artifact(run_dir / "finalized.json")
+    if finalized_stat is None:
+        raise InputError(f"run is not finalized (missing finalized.json): {run_id}")
+    if finalized_stat.st_size > 5_000_000:
+        raise InputError(f"finalized.json too large: {run_id}")
+    return run_dir
+
+
 def export_preview(
     run_id: str,
     output_path: Path,
@@ -383,14 +426,11 @@ def export_preview(
     privacy_mode: str = "strict_local",
 ) -> ExportManifest:
     """Export a finalized run as a self-contained static HTML bundle."""
-    validate_run_id(run_id)
     if privacy_mode not in {"strict_local", "redacted_remote", "explicit_remote"}:
         raise InputError(
             "privacy_mode must be one of strict_local, redacted_remote, explicit_remote"
         )
-    run_dir = state_dir / "runs" / run_id
-    if not run_dir.exists() or not run_dir.is_dir():
-        raise InputError(f"run not found: {run_id}")
+    run_dir = validate_preview_run(run_id, state_dir)
 
     payload = _load_run_payload(run_dir)
 
@@ -399,11 +439,12 @@ def export_preview(
     scrubbed_payload = _scrub_value(payload)
     if not isinstance(scrubbed_payload, dict):
         raise InputError("export payload must be a JSON object after scrubbing")
+    scrubbed_run_payload = cast("dict[str, Any]", scrubbed_payload)
 
     concept_entries = _filter_concepts(state_dir, run_id, payload)
     scrubbed_concepts = [_scrub_value(entry) for entry in concept_entries]
 
-    run_json = json.dumps(scrubbed_payload, ensure_ascii=False, indent=2, sort_keys=True)
+    run_json = json.dumps(scrubbed_run_payload, ensure_ascii=False, indent=2, sort_keys=True)
     concepts_json = json.dumps(
         {"schema_version": 1, "run_id": run_id, "concepts": scrubbed_concepts},
         ensure_ascii=False,
@@ -432,7 +473,7 @@ def export_preview(
         file_count=len(file_entries),
         total_bytes=total_bytes,
         digest=digest,
-        created_at_utc=_utc_now_iso(),
+        created_at_utc=_export_created_at(scrubbed_run_payload),
         privacy_mode=privacy_mode,
         files=tuple(file_entries),
     )
@@ -441,6 +482,17 @@ def export_preview(
     ).encode("utf-8")
     safe_write_export_file(output_path, "manifest.json", manifest_bytes)
     return manifest
+
+
+def _export_created_at(payload: dict[str, Any]) -> str:
+    finalized_raw = payload.get("finalized")
+    if isinstance(finalized_raw, dict):
+        finalized = cast("dict[str, Any]", finalized_raw)
+        for key in ("finalized_at", "timestamp", "created_at_utc"):
+            value = finalized.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return "1970-01-01T00:00:00Z"
 
 
 _ZIP_MAX_ENTRY_BYTES = 50_000_000
@@ -538,4 +590,4 @@ def _is_sha256_hex(value: str) -> bool:
     return len(value) == 64 and all(char in "0123456789abcdefABCDEF" for char in value)
 
 
-__all__ = ["ExportManifest", "build_zip_bytes", "export_preview"]
+__all__ = ["ExportManifest", "build_zip_bytes", "export_preview", "validate_preview_run"]

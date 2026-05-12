@@ -140,4 +140,16 @@ describe('ConceptLedger', () => {
     const html = renderToStaticMarkup(<ConceptLedger />);
     expect(html).toContain('module.py');
   });
+
+  it('renders Windows and Unicode file refs as basename chips', async () => {
+    const entry: ConceptLedgerEntry = {
+      ...MOCK_ENTRIES[0],
+      file_refs: ['src\\模块\\配置.py'],
+    };
+    Object.assign(mockState, { entries: [entry], totalCount: 1 });
+    const { default: ConceptLedger } = await import('../ConceptLedger');
+    const html = renderToStaticMarkup(<ConceptLedger />);
+    expect(html).toContain('配置.py');
+    expect(html).not.toContain('src\\模块\\配置.py</span>');
+  });
 });

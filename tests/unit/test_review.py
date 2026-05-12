@@ -1070,6 +1070,25 @@ def test_sync_result_event_is_idempotent_under_review_db_owner(tmp_path: Path) -
     assert rows[0].event_id == event.event_id
 
 
+@pytest.mark.parametrize("overall", [float("nan"), float("inf"), float("-inf"), float("1e309")])
+def test_sync_result_event_rejects_non_finite_overall(
+    tmp_path: Path,
+    overall: float,
+) -> None:
+    db_path = tmp_path / "review.sqlite"
+    event = _result_event().model_copy(
+        update={
+            "event_id": f"event-{str(overall).replace('-', 'neg-')}",
+            "overall": overall,
+        }
+    )
+
+    with pytest.raises(InputError, match="overall score must be finite"):
+        sync_result_event(db_path, event)
+
+    assert load_result_events_from_db(db_path) == ()
+
+
 def test_import_cards_and_record_fsrs_review(tmp_path: Path) -> None:
     db_path = tmp_path / "review.sqlite"
     cards_path = tmp_path / "cards.jsonl"
@@ -2143,6 +2162,29 @@ def test_import_results_tsv_lossy_rolls_back_partial_batch_on_invalid_row(tmp_pa
         "91.50\tPASS\tbaseline\tevidence\t\n"
         "2026-04-24T00:00:01Z\trun-2\tdef5678\t\tprompt123\trubric-v1\t"
         "not-a-number\tPASS\tnon_ratcheted\tcoverage\t\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(InputError, match="invalid overall score"):
+        import_results_tsv_lossy(db_path, tsv_path)
+
+    assert load_result_events_from_db(db_path) == ()
+
+
+@pytest.mark.parametrize("overall", ["nan", "inf", "-inf", "1e309"])
+def test_import_results_tsv_lossy_rejects_non_finite_overall_and_rolls_back(
+    tmp_path: Path,
+    overall: str,
+) -> None:
+    db_path = tmp_path / "review.sqlite"
+    tsv_path = tmp_path / "results.tsv"
+    tsv_path.write_text(
+        "timestamp\trun_id\tsource_ref\tbase_ref\tprompt_version\trubric_version\t"
+        "overall\tverdict\tstatus\tweakest_dim\tnote_json\n"
+        "2026-04-24T00:00:00Z\trun-1\tabc1234\t\tprompt123\trubric-v1\t"
+        "91.50\tPASS\tbaseline\tevidence\t\n"
+        "2026-04-24T00:00:01Z\trun-2\tdef5678\t\tprompt123\trubric-v1\t"
+        f"{overall}\tPASS\tnon_ratcheted\tcoverage\t\n",
         encoding="utf-8",
     )
 

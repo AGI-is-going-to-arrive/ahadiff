@@ -329,6 +329,7 @@
     "json_desc": "Structured evaluation data",
     "json_title": "Results JSON",
     "preview_desc": "Offline HTML bundle with lesson, claims and concepts",
+    "preview_cleared_stale_files": "Re-export cleared {count} stale preview files before writing the new bundle.",
     "preview_requires_run": "no run available to export",
     "preview_title": "Static Preview",
     "preview_written": "Bundle written to {path} ({files} files)",

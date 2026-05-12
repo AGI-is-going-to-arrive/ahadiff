@@ -176,6 +176,17 @@
   line-height: var(--lh-normal, 1.5);
 }
 
+.export-modal__warning {
+  margin: 0;
+  padding: var(--sp-sm, 12px);
+  font-size: var(--fs-xs, 0.75rem);
+  color: var(--warning-strong, #8a5a00);
+  background: color-mix(in srgb, var(--warning, #c28a1a) 10%, var(--paper));
+  border-left: 3px solid var(--warning, #c28a1a);
+  border-radius: var(--r-sm, 6px);
+  line-height: var(--lh-normal, 1.5);
+}
+
 .export-modal__footer {
   display: flex;
   justify-content: flex-end;

@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import os
+import queue
 import sqlite3
+import sys
+import threading
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from mcp import types
 
 from ahadiff.contracts import ResultEvent
 from ahadiff.core.errors import StorageError
@@ -13,6 +19,7 @@ from ahadiff.core.sqlite_util import mcp_readonly_connect
 from ahadiff.graphify import GraphifyGraph
 from ahadiff.mcp.server import (
     _count_table_rows,  # pyright: ignore[reportPrivateUsage]
+    _get_run_summary,  # pyright: ignore[reportPrivateUsage]
     _get_stats,  # pyright: ignore[reportPrivateUsage]
     _list_due_cards,  # pyright: ignore[reportPrivateUsage]
     _list_runs,  # pyright: ignore[reportPrivateUsage]
@@ -20,6 +27,7 @@ from ahadiff.mcp.server import (
     _load_latest_result_event_for_run,  # pyright: ignore[reportPrivateUsage]
     _search,  # pyright: ignore[reportPrivateUsage]
     _tool_handlers,  # pyright: ignore[reportPrivateUsage]
+    create_mcp_server,
 )
 from ahadiff.review.database import initialize_review_db, sync_result_event
 
@@ -319,3 +327,68 @@ def test_mcp_server_registers_seven_tools(tmp_path: Path) -> None:
         "ask_lesson",
     }
     assert len(handlers) == 7
+
+
+def test_mcp_server_advertises_exactly_seven_tools(tmp_path: Path) -> None:
+    async def list_tools_payload() -> dict[str, Any]:
+        server = create_mcp_server(tmp_path)
+        handler = server.request_handlers[types.ListToolsRequest]
+        result = await handler(types.ListToolsRequest())
+        return cast("dict[str, Any]", result.model_dump(mode="python"))
+
+    payload = asyncio.run(list_tools_payload())
+    tools = cast("list[dict[str, Any]]", payload["tools"])
+    assert [tool["name"] for tool in tools] == [
+        "list_runs",
+        "get_run_summary",
+        "list_due_cards",
+        "search",
+        "get_concepts",
+        "get_stats",
+        "ask_lesson",
+    ]
+
+    ask_lesson = next(tool for tool in tools if tool["name"] == "ask_lesson")
+    assert 'privacy: "strict_local"' in str(ask_lesson["description"])
+    input_schema = cast("dict[str, Any]", ask_lesson["inputSchema"])
+    assert input_schema["required"] == ["run_id", "question"]
+    properties = cast("dict[str, Any]", input_schema["properties"])
+    assert set(properties) == {"run_id", "question", "top_k"}
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32" or not hasattr(os, "mkfifo"),
+    reason="POSIX FIFOs are not available on this platform",
+)
+def test_get_run_summary_skips_fifo_lesson_summary(tmp_path: Path) -> None:
+    db_path = tmp_path / "review.sqlite"
+    _seed_review_db(db_path)
+    lesson_dir = tmp_path / "runs" / "run-mcp-1" / "lesson"
+    lesson_dir.mkdir(parents=True)
+    fifo_path = lesson_dir / "lesson.compact.md"
+    os.mkfifo(fifo_path)
+    (lesson_dir / "lesson.hint.md").write_text("bounded hint summary\n", encoding="utf-8")
+
+    results: queue.Queue[dict[str, Any] | BaseException] = queue.Queue()
+
+    def read_summary() -> None:
+        try:
+            results.put(_get_run_summary(tmp_path, db_path, {"run_id": "run-mcp-1"}))
+        except BaseException as exc:  # pragma: no cover - re-raised in the test thread
+            results.put(exc)
+
+    thread = threading.Thread(target=read_summary, daemon=True)
+    thread.start()
+    thread.join(timeout=0.5)
+    blocked = thread.is_alive()
+    if blocked:
+        with fifo_path.open("w", encoding="utf-8") as handle:
+            handle.write("old implementation blocks here\n")
+        thread.join(timeout=1.0)
+
+    assert not blocked, "get_run_summary blocked while reading a FIFO lesson summary"
+    result = results.get_nowait()
+    if isinstance(result, BaseException):
+        raise result
+    assert result["found"] is True
+    assert result["lesson_summary"] == "bounded hint summary"

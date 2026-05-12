@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from typing import TYPE_CHECKING, Any
 
@@ -169,6 +170,40 @@ def test_canonical_term_key_nfc_casefold() -> None:
 def test_canonical_term_key_empty_raises() -> None:
     with pytest.raises(InputError):
         canonical_term_key("   ")
+
+
+def test_repo_path_normalization_keeps_valid_relative_refs(tmp_path: Path) -> None:
+    stale_findings = detect_stale_by_file_deletion(
+        [{"term_key": "valid-ref", "file_refs": ["./src\\foo.py"]}],
+        repo_root=tmp_path,
+        tracked_files=frozenset({"src/foo.py"}),
+    )
+    drift_findings = detect_stale_by_line_drift(
+        [{"term_key": "valid-line-ref", "source_refs": ["./src\\foo.py:500"]}],
+        repo_root=tmp_path,
+        drift_threshold=10,
+        file_line_counts={"src/foo.py": 1},
+    )
+
+    assert stale_findings == []
+    assert {finding.term_key for finding in drift_findings} == {"valid-line-ref"}
+
+
+def test_path_traversal_refs_do_not_alias_repo_files(tmp_path: Path) -> None:
+    stale_findings = detect_stale_by_file_deletion(
+        [{"term_key": "bad-ref", "file_refs": ["../src/foo.py", "/src/foo.py"]}],
+        repo_root=tmp_path,
+        tracked_files=frozenset({"src/foo.py"}),
+    )
+    drift_findings = detect_stale_by_line_drift(
+        [{"term_key": "bad-line-ref", "source_refs": ["../src/foo.py:500"]}],
+        repo_root=tmp_path,
+        drift_threshold=10,
+        file_line_counts={"src/foo.py": 1},
+    )
+
+    assert stale_findings == []
+    assert drift_findings == []
 
 
 def test_detect_orphans_when_no_recent_references() -> None:
@@ -374,6 +409,29 @@ def test_run_deterministic_lint_persists_findings(tmp_path: Path) -> None:
     assert statuses == {"orphaned": "orphan", "deleted-file": "stale"}
 
 
+def test_run_deterministic_lint_initializes_full_v10_db_when_missing(tmp_path: Path) -> None:
+    db_path = tmp_path / ".ahadiff" / "review.sqlite"
+    summary = run_deterministic_lint(
+        concepts=[{"term_key": "orphaned", "updated_by_runs": ["run-old"]}],
+        recent_runs=["run-new"],
+        repo_root=tmp_path,
+        db_path=db_path,
+        dry_run=False,
+    )
+
+    assert summary.findings[0].new_status == "orphan"
+    with connect_review_db(db_path) as connection:
+        user_version = connection.execute("PRAGMA user_version").fetchone()[0]
+        tables = {
+            row["name"]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+    assert user_version == CURRENT_SCHEMA_VERSION
+    assert {"concepts", "result_events", "concept_status", "concept_lint_runs"} <= tables
+
+
 def test_run_deterministic_lint_stale_wins_over_orphan(tmp_path: Path) -> None:
     """When a concept is both orphan and stale, stale (file_deleted) takes precedence."""
 
@@ -396,6 +454,69 @@ def test_run_deterministic_lint_stale_wins_over_orphan(tmp_path: Path) -> None:
     assert len(relevant) == 1
     assert relevant[0].new_status == "stale"
     assert relevant[0].stale_reason == "file_deleted"
+
+
+def test_run_deterministic_lint_contradicted_wins_over_stale_and_orphan(tmp_path: Path) -> None:
+    concepts = [
+        {
+            "term_key": "all-three",
+            "updated_by_runs": ["run-old"],
+            "file_refs": ["src/gone.py"],
+            "related_claims": ["claim-bad"],
+        }
+    ]
+    summary = run_deterministic_lint(
+        concepts=concepts,
+        recent_runs=["run-new"],
+        repo_root=tmp_path,
+        db_path=None,
+        dry_run=True,
+        tracked_files=frozenset(),
+        claims=[{"claim_id": "claim-bad", "status": "contradicted", "run_id": "run-b"}],
+    )
+
+    relevant = [f for f in summary.findings if f.term_key == "all-three"]
+    assert len(relevant) == 1
+    assert relevant[0].new_status == "contradicted"
+    assert relevant[0].stale_reason is None
+    assert relevant[0].contradicted_by_run == "run-b"
+
+
+def test_run_deterministic_lint_orders_findings_by_documented_precedence(
+    tmp_path: Path,
+) -> None:
+    concepts = [
+        {
+            "term_key": "contradicted-concept",
+            "updated_by_runs": ["run-current"],
+            "related_claims": ["claim-bad"],
+        },
+        {
+            "term_key": "stale-concept",
+            "updated_by_runs": ["run-current"],
+            "file_refs": ["src/gone.py"],
+        },
+        {
+            "term_key": "orphan-concept",
+            "updated_by_runs": ["run-old"],
+        },
+    ]
+
+    summary = run_deterministic_lint(
+        concepts=concepts,
+        recent_runs=["run-current"],
+        repo_root=tmp_path,
+        db_path=None,
+        dry_run=True,
+        tracked_files=frozenset(),
+        claims=[{"claim_id": "claim-bad", "status": "contradicted", "run_id": "run-b"}],
+    )
+
+    assert [(finding.term_key, finding.new_status) for finding in summary.findings] == [
+        ("contradicted-concept", "contradicted"),
+        ("stale-concept", "stale"),
+        ("orphan-concept", "orphan"),
+    ]
 
 
 def test_detect_contradictions_flags_related_contradicted_claim() -> None:
@@ -500,6 +621,85 @@ def test_run_deterministic_lint_persists_contradicted_by_run(tmp_path: Path) -> 
     assert row["contradicted_by_run"] == "run-b"
 
 
+def test_run_deterministic_lint_restores_resolved_status_to_healthy(tmp_path: Path) -> None:
+    db_path = tmp_path / "review.sqlite"
+    initialize_review_db(db_path)
+    concepts = [
+        {
+            "term_key": "maybe-stale",
+            "file_refs": ["src/gone.py"],
+            "updated_by_runs": ["run-current"],
+        }
+    ]
+    first = run_deterministic_lint(
+        concepts=concepts,
+        recent_runs=["run-current"],
+        repo_root=tmp_path,
+        db_path=db_path,
+        dry_run=False,
+        tracked_files=frozenset(),
+    )
+    assert first.findings[0].new_status == "stale"
+
+    second = run_deterministic_lint(
+        concepts=concepts,
+        recent_runs=["run-current"],
+        repo_root=tmp_path,
+        db_path=db_path,
+        dry_run=False,
+        tracked_files=frozenset({"src/gone.py"}),
+    )
+
+    assert second.findings == ()
+    with connect_review_db(db_path) as connection:
+        row = connection.execute(
+            """
+            SELECT health_status, stale_since, contradicted_by_run
+            FROM concept_status WHERE term_key = ?
+            """,
+            ("maybe-stale",),
+        ).fetchone()
+    assert row is not None
+    assert tuple(row) == ("healthy", None, None)
+
+
+def test_run_deterministic_lint_clears_contradiction_metadata_on_status_change(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "review.sqlite"
+    initialize_review_db(db_path)
+    run_deterministic_lint(
+        concepts=[{"term_key": "flip", "related_claims": ["claim-bad"]}],
+        recent_runs=[],
+        repo_root=tmp_path,
+        db_path=db_path,
+        dry_run=False,
+        claims=[{"claim_id": "claim-bad", "status": "contradicted", "run_id": "run-b"}],
+    )
+    run_deterministic_lint(
+        concepts=[{"term_key": "flip", "file_refs": ["src/gone.py"]}],
+        recent_runs=[],
+        repo_root=tmp_path,
+        db_path=db_path,
+        dry_run=False,
+        tracked_files=frozenset(),
+        claims=[],
+    )
+
+    with connect_review_db(db_path) as connection:
+        row = connection.execute(
+            """
+            SELECT health_status, stale_since, contradicted_by_run
+            FROM concept_status WHERE term_key = ?
+            """,
+            ("flip",),
+        ).fetchone()
+    assert row is not None
+    assert row["health_status"] == "stale"
+    assert row["stale_since"] is not None
+    assert row["contradicted_by_run"] is None
+
+
 def test_run_deterministic_lint_idempotent_lint_id_unique(tmp_path: Path) -> None:
     db_path = tmp_path / "review.sqlite"
     initialize_review_db(db_path)
@@ -527,7 +727,205 @@ def test_run_deterministic_lint_idempotent_lint_id_unique(tmp_path: Path) -> Non
     assert first.lint_id != second.lint_id
     with connect_review_db(db_path) as connection:
         rows = connection.execute("SELECT lint_id FROM concept_lint_runs").fetchall()
+        status_rows = connection.execute(
+            """
+            SELECT term_key, health_status, contradicted_by_run
+            FROM concept_status
+            WHERE term_key = ?
+            """,
+            ("alpha",),
+        ).fetchall()
     assert len(rows) == 2
+    assert len(status_rows) == 1
+    assert tuple(status_rows[0]) == ("alpha", "orphan", None)
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlink support")
+def test_claim_loader_rejects_symlinked_run_parent(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    runs_dir = state_dir / "runs"
+    runs_dir.mkdir(parents=True)
+    outside_run = tmp_path / "outside-run"
+    outside_run.mkdir()
+    (outside_run / "claims.jsonl").write_text(
+        '{"claim_id":"claim-out","status":"contradicted","run_id":"outside"}\n',
+        encoding="utf-8",
+    )
+    (runs_dir / "linked-run").symlink_to(outside_run, target_is_directory=True)
+
+    summary = run_deterministic_lint(
+        concepts=[
+            {
+                "term_key": "safe",
+                "related_claims": ["claim-out"],
+                "updated_by_runs": ["run-current"],
+            }
+        ],
+        recent_runs=["linked-run", "run-current"],
+        repo_root=tmp_path,
+        db_path=state_dir / "review.sqlite",
+        dry_run=True,
+    )
+
+    assert summary.findings == ()
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlink support")
+def test_claim_loader_rejects_leaf_symlink(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    run_dir = state_dir / "runs" / "run-safe"
+    run_dir.mkdir(parents=True)
+    outside_claims = tmp_path / "outside-claims.jsonl"
+    outside_claims.write_text(
+        '{"claim_id":"claim-out","status":"contradicted","run_id":"outside"}\n',
+        encoding="utf-8",
+    )
+    (run_dir / "claims.jsonl").symlink_to(outside_claims)
+
+    summary = run_deterministic_lint(
+        concepts=[
+            {
+                "term_key": "safe",
+                "related_claims": ["claim-out"],
+                "updated_by_runs": ["run-current"],
+            }
+        ],
+        recent_runs=["run-safe", "run-current"],
+        repo_root=tmp_path,
+        db_path=state_dir / "review.sqlite",
+        dry_run=True,
+    )
+
+    assert summary.findings == ()
+
+
+@pytest.mark.skipif(not hasattr(os, "link"), reason="requires hardlink support")
+def test_claim_loader_rejects_hardlinked_claims_file(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    run_dir = state_dir / "runs" / "run-safe"
+    run_dir.mkdir(parents=True)
+    outside_claims = tmp_path / "outside-claims.jsonl"
+    outside_claims.write_text(
+        '{"claim_id":"claim-out","status":"contradicted","run_id":"outside"}\n',
+        encoding="utf-8",
+    )
+    os.link(outside_claims, run_dir / "claims.jsonl")
+
+    summary = run_deterministic_lint(
+        concepts=[
+            {
+                "term_key": "safe",
+                "related_claims": ["claim-out"],
+                "updated_by_runs": ["run-current"],
+            }
+        ],
+        recent_runs=["run-safe", "run-current"],
+        repo_root=tmp_path,
+        db_path=state_dir / "review.sqlite",
+        dry_run=True,
+    )
+
+    assert summary.findings == ()
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="requires FIFO support")
+def test_claim_loader_rejects_fifo_claims_file(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    run_dir = state_dir / "runs" / "run-safe"
+    run_dir.mkdir(parents=True)
+    os.mkfifo(run_dir / "claims.jsonl")
+
+    summary = run_deterministic_lint(
+        concepts=[
+            {
+                "term_key": "safe",
+                "related_claims": ["claim-out"],
+                "updated_by_runs": ["run-current"],
+            }
+        ],
+        recent_runs=["run-safe", "run-current"],
+        repo_root=tmp_path,
+        db_path=state_dir / "review.sqlite",
+        dry_run=True,
+    )
+
+    assert summary.findings == ()
+
+
+def test_claim_loader_rejects_oversized_claims_file(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    run_dir = state_dir / "runs" / "run-safe"
+    run_dir.mkdir(parents=True)
+    claims_path = run_dir / "claims.jsonl"
+    with claims_path.open("wb") as handle:
+        handle.truncate(6 * 1024 * 1024)
+
+    summary = run_deterministic_lint(
+        concepts=[
+            {
+                "term_key": "safe",
+                "related_claims": ["claim-out"],
+                "updated_by_runs": ["run-current"],
+            }
+        ],
+        recent_runs=["run-safe", "run-current"],
+        repo_root=tmp_path,
+        db_path=state_dir / "review.sqlite",
+        dry_run=True,
+    )
+
+    assert summary.findings == ()
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlink support")
+def test_claim_loader_rejects_toctou_leaf_symlink_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    run_dir = state_dir / "runs" / "run-safe"
+    run_dir.mkdir(parents=True)
+    claims_path = run_dir / "claims.jsonl"
+    claims_path.write_text(
+        '{"claim_id":"claim-safe","status":"verified","run_id":"run-safe"}\n',
+        encoding="utf-8",
+    )
+    outside_claims = tmp_path / "outside-claims.jsonl"
+    outside_claims.write_text(
+        '{"claim_id":"claim-out","status":"contradicted","run_id":"outside"}\n',
+        encoding="utf-8",
+    )
+    path_type = type(claims_path)
+    original_resolve = path_type.resolve
+    swapped = False
+
+    def swap_after_resolve(path: Path, *args: Any, **kwargs: Any) -> Path:
+        nonlocal swapped
+        result = original_resolve(path, *args, **kwargs)
+        if path == claims_path and not swapped:
+            path.unlink()
+            path.symlink_to(outside_claims)
+            swapped = True
+        return result
+
+    monkeypatch.setattr(path_type, "resolve", swap_after_resolve)
+
+    summary = run_deterministic_lint(
+        concepts=[
+            {
+                "term_key": "safe",
+                "related_claims": ["claim-out"],
+                "updated_by_runs": ["run-current"],
+            }
+        ],
+        recent_runs=["run-safe", "run-current"],
+        repo_root=tmp_path,
+        db_path=state_dir / "review.sqlite",
+        dry_run=True,
+    )
+
+    assert swapped is True
+    assert summary.findings == ()
 
 
 def test_lint_finding_dataclass_immutable() -> None:

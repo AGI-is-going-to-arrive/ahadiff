@@ -10,6 +10,7 @@
 - The implemented path chose snapshot + SQLite derived state, not event-log marker replay.
 - `review.sqlite` is now schema version 10 with `concept_status` and `concept_lint_runs`.
 - `ahadiff concepts lint` currently implements deterministic lint only: orphan, deleted-file stale, line drift, and contradicted claim. LLM-assisted NLI / Option B is not implemented.
+- Current lint hardening rejects absolute / traversal / Windows drive concept paths, reads claims JSONL with no-follow + regular-file + size + hardlink/reparse/TOCTOU guards, and documents finding precedence as contradicted > stale > orphan.
 - Current Graphify external projection is `fresh / stale / unavailable / disabled`; do not invent unimplemented public freshness states.
 
 ## 1. Target Users
@@ -102,7 +103,7 @@ Pure Python + SQLite, but not "no impact": schema migration must cover macOS/Lin
 
 | Layer | Coverage |
 |---|---|
-| unit | deterministic contradiction; orphan (refcount=0); Graphify unavailable/disabled does not become stale; marker idempotency; derived `concept_status` rebuilds exactly; event-log migration tests only if chosen |
+| unit | deterministic contradiction; orphan (refcount=0); Graphify unavailable/disabled does not become stale; marker idempotency; derived `concept_status` rebuilds exactly; JSONL path/TOCTOU guards; event-log migration tests only if chosen |
 | integration | seed → contradicting run → `concepts lint` → marker appended + viewer payload reflects badge; strict_local skips Option B |
 | live (opt-in, Option B) | LLM judge smoke under `AHADIFF_LIVE_LLM_JUDGE=1` |
 

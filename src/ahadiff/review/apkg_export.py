@@ -12,7 +12,7 @@ from typing import Any, TypedDict
 
 from ahadiff.contracts import ErrorCode
 from ahadiff.core.errors import InputError, StorageError
-from ahadiff.review.database import connect_review_db
+from ahadiff.core.sqlite_util import safe_sqlite_connect
 
 logger = logging.getLogger(__name__)
 
@@ -100,8 +100,10 @@ def _load_card_css() -> str:
 
 
 def _load_active_cards(db_path: Path) -> tuple[_CardRow, ...]:
+    if not db_path.exists():
+        return ()
     try:
-        with connect_review_db(db_path) as connection:
+        with _connect_review_db_readonly(db_path) as connection:
             if not _cards_table_exists(connection):
                 return ()
             _validate_cards_schema(connection)
@@ -134,6 +136,11 @@ def _load_active_cards(db_path: Path) -> tuple[_CardRow, ...]:
             f"review.sqlite cannot be exported to APKG: {exc}",
             code=ErrorCode.STORAGE_REVIEW_DB,
         ) from exc
+    except OSError as exc:
+        raise StorageError(
+            f"review.sqlite cannot be exported to APKG: {exc}",
+            code=ErrorCode.STORAGE_REVIEW_DB,
+        ) from exc
     cards = tuple(
         _CardRow(
             card_id=_required_text(row["card_id"]),
@@ -149,6 +156,29 @@ def _load_active_cards(db_path: Path) -> tuple[_CardRow, ...]:
     for row in cards:
         _front(row)
     return cards
+
+
+def _connect_review_db_readonly(db_path: Path) -> sqlite3.Connection:
+    connection = safe_sqlite_connect(
+        db_path,
+        read_only=True,
+        row_factory=sqlite3.Row,
+        busy_timeout_ms=5000,
+        defensive=True,
+    )
+    try:
+        connection.execute("PRAGMA query_only = ON")
+        row = connection.execute("PRAGMA query_only").fetchone()
+        if row is None or int(row[0]) != 1:
+            actual = "unknown" if row is None else str(row[0])
+            raise StorageError(
+                f"review.sqlite APKG export failed query_only=ON verification: {actual}",
+                code=ErrorCode.STORAGE_REVIEW_DB,
+            )
+    except Exception:
+        connection.close()
+        raise
+    return connection
 
 
 def _cards_table_exists(connection: sqlite3.Connection) -> bool:

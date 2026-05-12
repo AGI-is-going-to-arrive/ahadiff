@@ -1,4 +1,7 @@
+import { exportPreviewManifestSchema, parseResponse } from './schemas';
+import type { ExportPreviewManifest } from './schemas';
 import type { AuthTokenResponse } from './types';
+export type { ExportPreviewManifest } from './schemas';
 
 const REDACTED = '[REDACTED]';
 const SENSITIVE_KEY_RE = /(?:api[_-]?key|authorization|bearer|credential|password|secret|token)/i;
@@ -283,25 +286,16 @@ export async function apiFetchBlob(path: string, init?: ApiFetchOptions): Promis
   return await res.blob();
 }
 
-export interface ExportPreviewManifest {
-  path: string;
-  manifest_digest: string;
-  file_count: number;
-  total_bytes: number;
-  created_at_utc: string;
-  privacy_mode: string;
-  run_id: string;
-}
-
 export async function exportPreview(
   runId: string,
   opts?: Pick<RequestInit, 'signal'>,
 ): Promise<ExportPreviewManifest> {
-  return apiFetch<ExportPreviewManifest>('/api/export/preview', {
+  const raw = await apiFetch<unknown>('/api/export/preview', {
     ...opts,
     method: 'POST',
     body: JSON.stringify({ run_id: runId }),
   });
+  return parseResponse('POST /api/export/preview', exportPreviewManifestSchema, raw);
 }
 
 export async function exportResults(

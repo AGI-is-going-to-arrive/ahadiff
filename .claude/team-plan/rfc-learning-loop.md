@@ -12,6 +12,7 @@
 - CLI currently exposes only `ahadiff challenge build` and `ahadiff challenge status`; advance/abort/review/feedback are serve routes.
 - Review compares learner diff text to canonical diff/hunks deterministically. There is no shell-command challenge runner, no tests execution, no LLM semantic equivalence check.
 - Adapt goes through existing learning signal paths and does not add DB tables or card states.
+- Current hardening refuses rebuild unless an existing challenge is `IDLE`, rejects non-object JSON route bodies, validates manifest/score finite numbers, and keeps review retryable until adapt signals and `feedback.json` write succeed.
 
 ## 1. Motivation & Target Users
 
@@ -67,7 +68,7 @@ New `/#/challenge/<id>` route with five panels keyed to stages. Each is keyboard
 
 ## 8. Test Strategy
 
-- **Unit**: state-machine transitions (legal/illegal edges), manifest schema, attempt diff matcher, real artifact-path discovery for `lesson/lesson.full.md`.
+- **Unit**: state-machine transitions (legal/illegal edges), rebuild guard, manifest finite-number schema, attempt diff matcher, real artifact-path discovery for `lesson/lesson.full.md`, non-object JSON rejection, and review/adapt retryability.
 - **Integration**: build-from-run on a pinned fixture; assert `feedback.json` claim mapping.
 - **E2E (Playwright)**: full five-stage flow on a synthetic 3-hunk diff.
 - **Property**: `adapt → review` round-trip never corrupts existing FSRS rows.

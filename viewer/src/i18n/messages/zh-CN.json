@@ -329,6 +329,7 @@
     "json_desc": "结构化评估数据",
     "json_title": "结果 JSON",
     "preview_desc": "包含课程、断言和概念的离线 HTML 包",
+    "preview_cleared_stale_files": "重新导出前已清理 {count} 个旧预览文件。",
     "preview_requires_run": "没有可导出的 run",
     "preview_title": "静态预览",
     "preview_written": "包已写入 {path}（{files} 个文件）",

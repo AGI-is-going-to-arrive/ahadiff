@@ -255,6 +255,8 @@ def evidence_for_fragments(
             if len(matched) < min_matched_tokens:
                 continue
             score = len(matched) / max(len(claim_tokens), 1)
+            source_hunks = _truncate_source_hunks(claim.get("source_hunks"))
+            primary_hunk = source_hunks[0] if source_hunks else {}
             bucket.setdefault(section_id, []).append(
                 {
                     "section_id": section_id,
@@ -262,7 +264,11 @@ def evidence_for_fragments(
                     "status": str(claim.get("status", "")),
                     "confidence": str(claim.get("confidence", "")),
                     "text": claim_text,
-                    "source_hunks": _truncate_source_hunks(claim.get("source_hunks")),
+                    "file": str(primary_hunk.get("file", "")),
+                    "line_start": int(primary_hunk.get("start", 0)),
+                    "line_end": int(primary_hunk.get("end", 0)),
+                    "hunk_hash": str(primary_hunk.get("hunk_hash", "")),
+                    "source_hunks": source_hunks,
                     "matched_tokens": matched,
                     "score": float(score),
                 }
@@ -305,13 +311,28 @@ def _truncate_source_hunks(raw: Any, *, limit: int = 5) -> list[dict[str, Any]]:
         hunks.append(
             {
                 "file": str(entry.get("file") or entry.get("display_path", "")),
-                "start": int(entry.get("start", 0) or 0),
-                "end": int(entry.get("end", 0) or 0),
+                "start": _safe_hunk_int(entry.get("start", entry.get("line_start", 0))),
+                "end": _safe_hunk_int(entry.get("end", entry.get("line_end", 0))),
                 "side": str(entry.get("side", "")),
                 "hunk_id": str(entry.get("hunk_id", "")),
+                "hunk_hash": str(entry.get("hunk_hash", "")),
             }
         )
     return hunks
+
+
+def _safe_hunk_int(raw: object) -> int:
+    if isinstance(raw, bool):
+        return 0
+    if isinstance(raw, int):
+        return max(raw, 0)
+    if not isinstance(raw, float | str):
+        return 0
+    try:
+        value = int(raw or 0)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    return max(value, 0)
 
 
 MAX_QUESTION_LENGTH = _MAX_QUESTION_LENGTH

@@ -11,6 +11,7 @@ import pytest
 
 from ahadiff.contracts import ErrorCode
 from ahadiff.core.errors import InputError
+from ahadiff.mcp import server as mcp_server_module
 from ahadiff.mcp._lesson_search import (  # pyright: ignore[reportPrivateUsage]
     DEFAULT_TOP_K,
     MAX_QUESTION_LENGTH,
@@ -356,13 +357,19 @@ class TestAskLessonTool:
         assert isinstance(result["fragments"], list)
         assert result["evidence"] == []
         assert result["run_meta"]["lesson_file"] == "lesson.full.md"
+        assert result["run_meta"]["lesson_tier"] == "full"
 
     def test_missing_lesson_dir_returns_null_lesson_file(self, tmp_path: Path) -> None:
         _write_run(tmp_path, "run_OK")
         result = _ask_lesson(tmp_path, {"run_id": "run_OK", "question": "anything"})
         assert result["fragments"] == []
         assert result["evidence"] == []
-        assert result["run_meta"] == {"run_id": "run_OK", "lesson_file": None}
+        assert result["run_meta"] == {
+            "run_id": "run_OK",
+            "generated_at": None,
+            "lesson_tier": None,
+            "lesson_file": None,
+        }
 
     def test_lesson_full_preferred_over_hint_and_compact(self, tmp_path: Path) -> None:
         _write_run(
@@ -374,16 +381,19 @@ class TestAskLessonTool:
         )
         result = _ask_lesson(tmp_path, {"run_id": "run_OK", "question": "throughput"})
         assert result["run_meta"]["lesson_file"] == "lesson.full.md"
+        assert result["run_meta"]["lesson_tier"] == "full"
 
     def test_falls_back_to_hint_when_full_absent(self, tmp_path: Path) -> None:
         _write_run(tmp_path, "run_OK", lesson_hint="## Hint\nbody\n")
         result = _ask_lesson(tmp_path, {"run_id": "run_OK", "question": "body"})
         assert result["run_meta"]["lesson_file"] == "lesson.hint.md"
+        assert result["run_meta"]["lesson_tier"] == "hint"
 
     def test_falls_back_to_compact_when_full_and_hint_absent(self, tmp_path: Path) -> None:
         _write_run(tmp_path, "run_OK", lesson_compact="## Compact\nbody\n")
         result = _ask_lesson(tmp_path, {"run_id": "run_OK", "question": "body"})
         assert result["run_meta"]["lesson_file"] == "lesson.compact.md"
+        assert result["run_meta"]["lesson_tier"] == "compact"
 
     def test_top_k_respects_limit(self, tmp_path: Path) -> None:
         lesson = "\n".join(f"## Section {i}\nbody {i}" for i in range(15))
@@ -446,6 +456,51 @@ class TestAskLessonTool:
         evidence = result["evidence"]
         assert len(evidence) == 1
         assert evidence[0]["claim_id"] == "c-1"
+
+    def test_bad_source_hunk_coordinates_do_not_break_ask_lesson(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        _write_run(
+            tmp_path,
+            "run_OK",
+            lesson_full="## Throughput\nthroughput improves retries\n",
+            claims=[
+                _claim(
+                    "claim-throughput",
+                    "throughput improves retries",
+                    source_hunks=[
+                        {
+                            "file": "src/app.py",
+                            "start": "not-an-int",
+                            "end": "also-bad",
+                            "side": "new",
+                            "hunk_id": "hunk-bad",
+                        }
+                    ],
+                )
+            ],
+        )
+
+        result = _ask_lesson(tmp_path, {"run_id": "run_OK", "question": "throughput"})
+
+        evidence = result["evidence"]
+        assert len(evidence) == 1
+        assert evidence[0]["claim_id"] == "claim-throughput"
+        assert evidence[0]["file"] == "src/app.py"
+        assert evidence[0]["line_start"] == 0
+        assert evidence[0]["line_end"] == 0
+        assert evidence[0]["hunk_hash"] == ""
+        assert evidence[0]["source_hunks"] == [
+            {
+                "file": "src/app.py",
+                "start": 0,
+                "end": 0,
+                "side": "new",
+                "hunk_id": "hunk-bad",
+                "hunk_hash": "",
+            }
+        ]
 
     def test_oversized_lesson_is_skipped(self, tmp_path: Path) -> None:
         # Write a >2MB lesson and expect lesson_file None (logged but no crash).
@@ -527,3 +582,230 @@ class TestAskLessonTool:
         result = _ask_lesson(tmp_path, {"run_id": "run_OK", "question": "throughput"})
         assert result["evidence"] == []
         assert result["run_meta"]["lesson_file"] == "lesson.full.md"
+
+    @pytest.mark.skipif(
+        not hasattr(os, "symlink") or not hasattr(os, "O_NOFOLLOW"),
+        reason="symlink no-follow checks are not available on this platform",
+    )
+    def test_lesson_toctou_symlink_swap_is_skipped(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _write_run(tmp_path, "run_OK", lesson_full=_SAMPLE_LESSON)
+        lesson_path = tmp_path / "runs" / "run_OK" / "lesson" / "lesson.full.md"
+        outside = tmp_path / "outside-lesson.md"
+        outside.write_text("## Secret\nSECRET_OUTSIDE\n", encoding="utf-8")
+        original = mcp_server_module.reject_leaf_symlink_or_reparse
+        swapped = False
+
+        def swap_after_lstat(path: Path, *, label: str):
+            nonlocal swapped
+            path_stat = original(path, label=label)
+            if path == lesson_path and not swapped:
+                lesson_path.unlink()
+                lesson_path.symlink_to(outside)
+                swapped = True
+            return path_stat
+
+        monkeypatch.setattr(
+            mcp_server_module,
+            "reject_leaf_symlink_or_reparse",
+            swap_after_lstat,
+        )
+
+        result = _ask_lesson(tmp_path, {"run_id": "run_OK", "question": "secret"})
+
+        assert swapped
+        assert result["fragments"] == []
+        assert result["run_meta"]["lesson_file"] is None
+
+    @pytest.mark.skipif(
+        not hasattr(os, "symlink") or not hasattr(os, "O_NOFOLLOW"),
+        reason="symlink no-follow checks are not available on this platform",
+    )
+    def test_claims_toctou_symlink_swap_is_skipped(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _write_run(
+            tmp_path,
+            "run_OK",
+            lesson_full=_SAMPLE_LESSON,
+            claims=[
+                _claim(
+                    "claim-throughput",
+                    "throughput is improved",
+                    source_hunks=[{"file": "src/app.py", "line_start": 1, "line_end": 2}],
+                )
+            ],
+        )
+        claims_path = tmp_path / "runs" / "run_OK" / "claims.jsonl"
+        outside = tmp_path / "outside-claims.jsonl"
+        outside.write_text(
+            json.dumps(_claim("secret", "SECRET_OUTSIDE"), ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        original = mcp_server_module.reject_leaf_symlink_or_reparse
+        swapped = False
+
+        def swap_after_lstat(path: Path, *, label: str):
+            nonlocal swapped
+            path_stat = original(path, label=label)
+            if path == claims_path and not swapped:
+                claims_path.unlink()
+                claims_path.symlink_to(outside)
+                swapped = True
+            return path_stat
+
+        monkeypatch.setattr(
+            mcp_server_module,
+            "reject_leaf_symlink_or_reparse",
+            swap_after_lstat,
+        )
+
+        result = _ask_lesson(tmp_path, {"run_id": "run_OK", "question": "throughput"})
+
+        assert swapped
+        assert result["fragments"]
+        assert result["evidence"] == []
+
+    @pytest.mark.skipif(
+        not hasattr(os, "link"),
+        reason="hardlinks are not available on this platform",
+    )
+    def test_lesson_hardlink_is_skipped(self, tmp_path: Path) -> None:
+        _write_run(tmp_path, "run_OK")
+        lesson_dir = tmp_path / "runs" / "run_OK" / "lesson"
+        lesson_dir.mkdir(parents=True, exist_ok=True)
+        outside_dir = tmp_path.parent / f"{tmp_path.name}-outside-lesson"
+        outside_dir.mkdir(exist_ok=True)
+        outside = outside_dir / "lesson.full.md"
+        outside.write_text("## Secret\nSECRET_OUTSIDE\n", encoding="utf-8")
+        try:
+            os.link(outside, lesson_dir / "lesson.full.md")
+        except OSError as exc:
+            pytest.skip(f"hardlink creation failed: {exc}")
+
+        result = _ask_lesson(tmp_path, {"run_id": "run_OK", "question": "secret"})
+
+        assert result["fragments"] == []
+        assert result["run_meta"]["lesson_file"] is None
+
+    @pytest.mark.skipif(
+        not hasattr(os, "link"),
+        reason="hardlinks are not available on this platform",
+    )
+    def test_claims_hardlink_is_skipped(self, tmp_path: Path) -> None:
+        _write_run(tmp_path, "run_OK", lesson_full=_SAMPLE_LESSON)
+        outside_dir = tmp_path.parent / f"{tmp_path.name}-outside-claims"
+        outside_dir.mkdir(exist_ok=True)
+        outside = outside_dir / "claims.jsonl"
+        outside.write_text(
+            json.dumps(_claim("secret", "throughput SECRET_OUTSIDE"), ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        try:
+            os.link(outside, tmp_path / "runs" / "run_OK" / "claims.jsonl")
+        except OSError as exc:
+            pytest.skip(f"hardlink creation failed: {exc}")
+
+        result = _ask_lesson(tmp_path, {"run_id": "run_OK", "question": "throughput"})
+
+        assert result["fragments"]
+        assert result["evidence"] == []
+
+    @pytest.mark.skipif(
+        not hasattr(os, "symlink") or not hasattr(os, "O_NOFOLLOW"),
+        reason="symlink no-follow checks are not available on this platform",
+    )
+    def test_lesson_parent_toctou_symlink_swap_is_skipped(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _write_run(tmp_path, "run_OK", lesson_full=_SAMPLE_LESSON)
+        lesson_dir = tmp_path / "runs" / "run_OK" / "lesson"
+        lesson_path = lesson_dir / "lesson.full.md"
+        outside_dir = tmp_path / "outside-lesson-dir"
+        outside_dir.mkdir()
+        (outside_dir / "lesson.full.md").write_text(
+            "## Secret\nSECRET_OUTSIDE\n",
+            encoding="utf-8",
+        )
+        original = mcp_server_module.validate_state_path_no_symlinks
+        swapped = False
+
+        def swap_parent_after_validation(path: Path, *, allow_missing_leaf: bool = True):
+            nonlocal swapped
+            result = original(path, allow_missing_leaf=allow_missing_leaf)
+            if path == lesson_path and not swapped:
+                lesson_path.unlink()
+                lesson_dir.rmdir()
+                lesson_dir.symlink_to(outside_dir, target_is_directory=True)
+                swapped = True
+            return result
+
+        monkeypatch.setattr(
+            mcp_server_module,
+            "validate_state_path_no_symlinks",
+            swap_parent_after_validation,
+        )
+
+        result = _ask_lesson(tmp_path, {"run_id": "run_OK", "question": "secret"})
+
+        assert swapped
+        assert result["fragments"] == []
+        assert result["run_meta"]["lesson_file"] is None
+
+    @pytest.mark.skipif(
+        not hasattr(os, "symlink") or not hasattr(os, "O_NOFOLLOW"),
+        reason="symlink no-follow checks are not available on this platform",
+    )
+    def test_claims_parent_toctou_symlink_swap_is_skipped(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _write_run(
+            tmp_path,
+            "run_OK",
+            lesson_full=_SAMPLE_LESSON,
+            claims=[_claim("claim-throughput", "throughput is improved")],
+        )
+        run_dir = tmp_path / "runs" / "run_OK"
+        claims_path = run_dir / "claims.jsonl"
+        outside_run_dir = tmp_path / "outside-run-dir"
+        outside_run_dir.mkdir()
+        (outside_run_dir / "claims.jsonl").write_text(
+            json.dumps(_claim("secret", "throughput SECRET_OUTSIDE"), ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        original = mcp_server_module.validate_state_path_no_symlinks
+        swapped = False
+
+        def swap_parent_after_validation(path: Path, *, allow_missing_leaf: bool = True):
+            nonlocal swapped
+            result = original(path, allow_missing_leaf=allow_missing_leaf)
+            if path == claims_path and not swapped:
+                (run_dir / "lesson" / "lesson.full.md").unlink()
+                (run_dir / "lesson").rmdir()
+                (run_dir / "finalized.json").unlink()
+                claims_path.unlink()
+                run_dir.rmdir()
+                run_dir.symlink_to(outside_run_dir, target_is_directory=True)
+                swapped = True
+            return result
+
+        monkeypatch.setattr(
+            mcp_server_module,
+            "validate_state_path_no_symlinks",
+            swap_parent_after_validation,
+        )
+
+        result = _ask_lesson(tmp_path, {"run_id": "run_OK", "question": "throughput"})
+
+        assert swapped
+        assert result["fragments"]
+        assert result["evidence"] == []

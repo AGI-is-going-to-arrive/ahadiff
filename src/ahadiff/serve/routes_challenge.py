@@ -1,14 +1,15 @@
 """Read/write surfaces for the opt-in Diffity-style learning loop.
 
-Routes are not registered when ``challenge.enabled`` is false; the
-:func:`require_feature_enabled` check below returns ``FEATURE_UNAVAILABLE``
-so probing them yields a stable 501 instead of leaking a 404 that could be
-mistaken for a stale build.
+Routes are registered unconditionally; each handler checks
+``challenge.enabled`` per-request and returns ``FEATURE_UNAVAILABLE``
+(501) when disabled, so probing yields a stable 501 instead of leaking
+a 404 that could be mistaken for a stale build.
 """
 
 from __future__ import annotations
 
 import errno
+import logging
 import os
 import stat
 from typing import TYPE_CHECKING, Any, cast
@@ -22,6 +23,7 @@ from ahadiff.challenge import (
     adapt_from_gaps,
     build_challenge,
     create_state,
+    ensure_rebuild_allowed,
     is_feature_enabled,
     read_manifest,
     read_state,
@@ -36,6 +38,8 @@ from ._errors import error_response
 from .auth import require_write_token, serve_state
 from .config_runtime import load_serve_config_snapshot
 from .lock import serve_repo_write_lock
+
+_log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -71,9 +75,9 @@ def _feature_unavailable() -> JSONResponse:
 
 async def post_challenge_build(request: Request) -> JSONResponse:
     state = serve_state(request)
+    require_write_token(request)
     if not _feature_enabled(state):
         return _feature_unavailable()
-    require_write_token(request)
     raw_payload: Any = await request.json()
     if not isinstance(raw_payload, dict):
         raise InputError("request body must be a JSON object")
@@ -84,15 +88,38 @@ async def post_challenge_build(request: Request) -> JSONResponse:
     run_id = raw_run_id.strip()
     requested_challenge_id_raw: Any = payload.get("challenge_id")
     requested_challenge_id: str | None = None
-    if isinstance(requested_challenge_id_raw, str) and requested_challenge_id_raw.strip():
-        requested_challenge_id = requested_challenge_id_raw.strip()
+    if requested_challenge_id_raw is not None:
+        if not isinstance(requested_challenge_id_raw, str):
+            raise InputError("challenge_id must be a string if provided")
+        if (
+            requested_challenge_id_raw
+            and requested_challenge_id_raw != requested_challenge_id_raw.strip()
+        ):
+            raise InputError("challenge_id must not contain leading or trailing whitespace")
+        if requested_challenge_id_raw:
+            requested_challenge_id = requested_challenge_id_raw
 
-    manifest, challenge_state = await to_thread.run_sync(
-        _build_challenge_sync,
-        state,
-        run_id,
-        requested_challenge_id,
-    )
+    try:
+        manifest, challenge_state = await to_thread.run_sync(
+            _build_challenge_sync,
+            state,
+            run_id,
+            requested_challenge_id,
+        )
+    except InvalidTransitionError as exc:
+        return error_response(ErrorCode.INPUT_VALIDATION, str(exc))
+    except InputError as exc:
+        _log.warning("challenge build rejected: %s", type(exc).__name__)
+        msg = str(exc)
+        if "not found" in msg or "not finalized" in msg:
+            return error_response(ErrorCode.RUN_NOT_FOUND, msg)
+        if "does not qualify" in msg:
+            return error_response(
+                ErrorCode.INPUT_VALIDATION,
+                "challenge source run does not qualify",
+                details={"reason": "source_run_not_qualifying"},
+            )
+        return error_response(ErrorCode.INPUT_VALIDATION, "challenge build input is invalid")
     return JSONResponse(
         {
             "state": challenge_state.to_payload(),
@@ -121,27 +148,35 @@ async def get_challenge(request: Request) -> JSONResponse:
 
 async def post_challenge_advance(request: Request) -> JSONResponse:
     state = serve_state(request)
+    require_write_token(request)
     if not _feature_enabled(state):
         return _feature_unavailable()
-    require_write_token(request)
     challenge_id = _challenge_id_from_path(request)
-    raw_payload: Any = await request.json() if await _has_body(request) else {}
-    payload = cast("dict[str, Any]", raw_payload if isinstance(raw_payload, dict) else {})
+    if await _has_body(request):
+        raw_payload: Any = await request.json()
+        if not isinstance(raw_payload, dict):
+            raise InputError("request body must be a JSON object")
+        payload = cast("dict[str, Any]", raw_payload)
+    else:
+        payload = {}
     target_stage = _parse_target_stage(payload, key="target_stage")
-    next_state = await to_thread.run_sync(
-        _advance_challenge_sync,
-        state,
-        challenge_id,
-        target_stage,
-    )
+    try:
+        next_state = await to_thread.run_sync(
+            _advance_challenge_sync,
+            state,
+            challenge_id,
+            target_stage,
+        )
+    except InvalidTransitionError as exc:
+        return error_response(ErrorCode.INPUT_VALIDATION, str(exc))
     return JSONResponse({"state": next_state.to_payload()})
 
 
 async def post_challenge_abort(request: Request) -> JSONResponse:
     state = serve_state(request)
+    require_write_token(request)
     if not _feature_enabled(state):
         return _feature_unavailable()
-    require_write_token(request)
     challenge_id = _challenge_id_from_path(request)
     next_state = await to_thread.run_sync(_abort_challenge_sync, state, challenge_id)
     return JSONResponse({"state": next_state.to_payload()})
@@ -149,9 +184,9 @@ async def post_challenge_abort(request: Request) -> JSONResponse:
 
 async def post_challenge_review(request: Request) -> JSONResponse:
     state = serve_state(request)
+    require_write_token(request)
     if not _feature_enabled(state):
         return _feature_unavailable()
-    require_write_token(request)
     challenge_id = _challenge_id_from_path(request)
     raw_payload: Any = await request.json()
     if not isinstance(raw_payload, dict):
@@ -161,12 +196,18 @@ async def post_challenge_review(request: Request) -> JSONResponse:
     if not isinstance(learner_diff_raw, str):
         raise InputError("learner_diff must be a string")
 
-    result = await to_thread.run_sync(
-        _review_challenge_sync,
-        state,
-        challenge_id,
-        learner_diff_raw,
-    )
+    try:
+        result = await to_thread.run_sync(
+            _review_challenge_sync,
+            state,
+            challenge_id,
+            learner_diff_raw,
+        )
+    except InvalidTransitionError as exc:
+        return error_response(ErrorCode.INPUT_VALIDATION, str(exc))
+    except InputError as exc:
+        _log.warning("challenge review rejected: %s", type(exc).__name__)
+        return error_response(ErrorCode.INPUT_VALIDATION, "challenge review input is invalid")
     return JSONResponse(result)
 
 
@@ -182,9 +223,11 @@ async def get_challenge_feedback(request: Request) -> JSONResponse:
 def _challenge_id_from_path(request: Request) -> str:
     path_params = cast("dict[str, Any]", getattr(request, "path_params", {}) or {})
     raw_id = path_params.get("challenge_id")
-    if not isinstance(raw_id, str) or not raw_id.strip():
+    if not isinstance(raw_id, str) or not raw_id:
         raise InputError("challenge_id path parameter is required")
-    return raw_id.strip()
+    if raw_id != raw_id.strip():
+        raise InputError("challenge_id must not contain leading or trailing whitespace")
+    return raw_id
 
 
 async def _has_body(request: Request) -> bool:
@@ -215,6 +258,7 @@ def _build_challenge_sync(
             state_dir=state.state_dir,
             challenge_id=requested_challenge_id,
         )
+        ensure_rebuild_allowed(state.state_dir, manifest.challenge_id)
         challenge_state = create_state(
             challenge_id=manifest.challenge_id,
             source_run_id=run_id,
@@ -293,25 +337,23 @@ def _review_challenge_sync(
             )
         manifest = read_manifest(state.state_dir, challenge_id)
         feedback = review_attempt(manifest=manifest, learner_diff=learner_diff)
-        next_state = current.transition(ChallengeStage.REVIEW)
-        write_state(state.state_dir, next_state)
-
+        final_state = (
+            current.transition(ChallengeStage.REVIEW)
+            .transition(ChallengeStage.ADAPT)
+            .transition(ChallengeStage.IDLE)
+        )
         adapt_summary = adapt_from_gaps(
             challenge_id=challenge_id,
             gap_claim_ids=feedback.get("gap_claim_ids", []),
             db_path=state.review_db_path,
         )
-        after_adapt = next_state.transition(ChallengeStage.ADAPT)
-        write_state(state.state_dir, after_adapt)
-        final_state = after_adapt.transition(ChallengeStage.IDLE)
-        write_state(state.state_dir, final_state)
-
         feedback_payload = {
             **feedback,
             "adapt": adapt_summary,
             "state": final_state.to_payload(),
         }
         _write_feedback(state, challenge_id, feedback_payload)
+        write_state(state.state_dir, final_state)
         return feedback_payload
 
 

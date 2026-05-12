@@ -169,6 +169,25 @@ def write_state(state_dir: Path, state: ChallengeState) -> Path:
     return state_path
 
 
+def ensure_rebuild_allowed(state_dir: Path, challenge_id: str) -> None:
+    """Refuse overwriting an in-flight challenge with the same id."""
+
+    target_dir = challenge_dir(state_dir, challenge_id)
+    state_path = target_dir / "state.json"
+    try:
+        os.lstat(state_path)
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise InputError("existing challenge state is unreadable") from exc
+
+    existing = read_state(state_dir, challenge_id)
+    if existing.stage is not ChallengeStage.IDLE:
+        raise InvalidTransitionError(
+            "challenge rebuild is only allowed when the existing challenge state is idle"
+        )
+
+
 def read_state(state_dir: Path, challenge_id: str) -> ChallengeState:
     target_dir = challenge_dir(state_dir, challenge_id)
     state_path = target_dir / "state.json"
@@ -279,6 +298,7 @@ __all__ = [
     "VALID_TRANSITIONS",
     "challenge_dir",
     "create_state",
+    "ensure_rebuild_allowed",
     "is_feature_enabled",
     "read_state",
     "validate_challenge_id",

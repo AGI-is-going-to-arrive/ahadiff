@@ -7,6 +7,8 @@ network calls or LLM requests. The LLM-assisted (Option B) path lives elsewhere.
 
 from __future__ import annotations
 
+import errno
+import os
 import sqlite3
 import stat
 import unicodedata
@@ -17,6 +19,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 from ahadiff.core.errors import InputError
 from ahadiff.core.json_util import safe_json_loads
+from ahadiff.core.paths import reject_leaf_symlink_or_reparse, validate_state_path_no_symlinks
 from ahadiff.git.repo import run_git
 
 if TYPE_CHECKING:
@@ -33,6 +36,13 @@ _DEFAULT_LINE_DRIFT_THRESHOLD = 50
 _MAX_LS_FILES_BYTES = 64 * 1024 * 1024
 _MAX_CLAIMS_JSONL_BYTES = 5 * 1024 * 1024
 _MAX_CLAIM_FILES = 500
+_FINDING_STATUS_RANK: dict[HealthStatus, int] = {
+    "contradicted": 0,
+    "stale": 1,
+    "orphan": 2,
+    "healthy": 3,
+    "dismissed": 4,
+}
 
 
 @dataclass(frozen=True)
@@ -73,7 +83,20 @@ def canonical_term_key(value: str) -> str:
 def _normalize_repo_path(value: str) -> str:
     """Normalize a repo-relative path for Windows-friendly comparison."""
 
-    return value.replace("\\", "/").lstrip("./").strip()
+    normalized = value.strip().replace("\\", "/")
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    if (
+        not normalized
+        or normalized.startswith("/")
+        or normalized.startswith("//")
+        or (len(normalized) >= 3 and normalized[1] == ":" and normalized[2] == "/")
+    ):
+        return ""
+    parts = normalized.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        return ""
+    return normalized
 
 
 def _coerce_status(value: object) -> HealthStatus:
@@ -395,12 +418,15 @@ def run_deterministic_lint(
     if not dry_run and db_path is None:
         raise InputError("db_path is required when dry_run=False")
 
+    state_dir = db_path.parent if db_path is not None else repo_root / ".ahadiff"
+    status_db_path = db_path or state_dir / "review.sqlite"
+
     status_map: dict[str, HealthStatus] = {}
-    if db_path is not None and db_path.exists():
-        status_map = _load_status_map(db_path)
+    if status_db_path.exists():
+        status_map = _load_status_map(status_db_path)
     claim_records = list(claims) if claims is not None else []
-    if claims is None and db_path is not None:
-        claim_records = _load_claims_from_state_dir(db_path.parent)
+    if claims is None:
+        claim_records = _load_claims_from_state_dir(state_dir)
 
     findings = _collect_findings(
         concepts=concepts,
@@ -426,6 +452,7 @@ def run_deterministic_lint(
             started_at=started_at,
             finished_at=finished_at,
             findings=findings,
+            concepts=concepts,
         )
 
     return LintRunSummary(
@@ -449,6 +476,12 @@ def _collect_findings(
     tracked_files: frozenset[str] | None,
     file_line_counts: dict[str, int] | None,
 ) -> list[LintFinding]:
+    """Collect one finding per concept using fixed severity precedence.
+
+    A concept can satisfy multiple deterministic checks in the same lint run.
+    Keep the highest-signal status by insertion order: contradicted findings
+    win over stale findings, and stale findings win over orphan findings.
+    """
     contradiction_findings = detect_contradictions(
         concepts,
         claims,
@@ -483,7 +516,7 @@ def _collect_findings(
         merged.setdefault(finding.term_key, finding)
     return sorted(
         merged.values(),
-        key=lambda item: (item.new_status, item.term_key),
+        key=lambda item: (_FINDING_STATUS_RANK[item.new_status], item.term_key),
     )
 
 
@@ -511,6 +544,10 @@ def _load_status_map(db_path: Path) -> dict[str, HealthStatus]:
 
 def _load_claims_from_state_dir(state_dir: Path) -> list[dict[str, Any]]:
     runs_dir = state_dir / "runs"
+    try:
+        validate_state_path_no_symlinks(runs_dir, allow_missing_leaf=False)
+    except InputError:
+        return []
     if not runs_dir.is_dir():
         return []
     records: list[dict[str, Any]] = []
@@ -524,18 +561,18 @@ def _load_claims_from_state_dir(state_dir: Path) -> list[dict[str, Any]]:
             break
         scanned += 1
         try:
-            leaf_stat = claims_path.lstat()
-        except OSError:
+            validate_state_path_no_symlinks(claims_path.parent, allow_missing_leaf=False)
+            leaf_stat = reject_leaf_symlink_or_reparse(claims_path, label="claims.jsonl")
+            claims_path.resolve().relative_to(runs_dir.resolve())
+        except (InputError, OSError, ValueError):
             continue
-        if (
-            stat.S_ISLNK(leaf_stat.st_mode)
-            or not stat.S_ISREG(leaf_stat.st_mode)
-            or bool(getattr(leaf_stat, "st_file_attributes", 0) & 0x400)
-            or leaf_stat.st_size > _MAX_CLAIMS_JSONL_BYTES
-        ):
+        if not _is_safe_claims_jsonl_stat(leaf_stat):
             continue
         try:
-            lines = claims_path.read_text(encoding="utf-8").splitlines()
+            payload = _read_claims_jsonl_bytes(claims_path, expected_stat=leaf_stat)
+            if payload is None:
+                continue
+            lines = payload.decode("utf-8").splitlines()
         except (OSError, UnicodeDecodeError):
             continue
         run_id = claims_path.parent.name
@@ -555,6 +592,51 @@ def _load_claims_from_state_dir(state_dir: Path) -> list[dict[str, Any]]:
     return records
 
 
+def _is_safe_claims_jsonl_stat(path_stat: os.stat_result) -> bool:
+    return (
+        stat.S_ISREG(path_stat.st_mode)
+        and not bool(getattr(path_stat, "st_file_attributes", 0) & 0x400)
+        and getattr(path_stat, "st_nlink", 1) == 1
+        and path_stat.st_size <= _MAX_CLAIMS_JSONL_BYTES
+    )
+
+
+def _same_file_identity(left: os.stat_result, right: os.stat_result) -> bool:
+    return (left.st_dev, left.st_ino) == (right.st_dev, right.st_ino)
+
+
+def _read_claims_jsonl_bytes(path: Path, *, expected_stat: os.stat_result) -> bytes | None:
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    try:
+        fd = os.open(os.fspath(path), flags)
+    except OSError as exc:
+        if exc.errno in {errno.ELOOP, errno.ENXIO, errno.EACCES, errno.EPERM}:
+            return None
+        return None
+    try:
+        opened_stat = os.fstat(fd)
+        if not _is_safe_claims_jsonl_stat(opened_stat):
+            return None
+        if not _same_file_identity(expected_stat, opened_stat):
+            return None
+
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            chunk = os.read(fd, min(64 * 1024, _MAX_CLAIMS_JSONL_BYTES + 1 - total))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+            if total > _MAX_CLAIMS_JSONL_BYTES:
+                return None
+        return b"".join(chunks)
+    except OSError:
+        return None
+    finally:
+        os.close(fd)
+
+
 def _persist_lint_results(
     *,
     db_path: Path,
@@ -563,10 +645,14 @@ def _persist_lint_results(
     started_at: str,
     finished_at: str,
     findings: Iterable[LintFinding],
+    concepts: Sequence[dict[str, Any]],
 ) -> None:
-    from ahadiff.review.database import connect_review_db
+    from ahadiff.review.database import connect_review_db, initialize_review_db
 
     findings_list = list(findings)
+    finding_keys = {finding.term_key for finding in findings_list}
+    concept_keys = _concept_term_keys(concepts)
+    initialize_review_db(db_path)
     with connect_review_db(db_path, create_parent=True) as connection:
         connection.execute("BEGIN IMMEDIATE")
         try:
@@ -587,7 +673,10 @@ def _persist_lint_results(
                 ),
             )
             for finding in findings_list:
-                stale_since = finished_at if finding.stale_reason is not None else None
+                stale_since = finished_at if finding.new_status == "stale" else None
+                contradicted_by_run = (
+                    finding.contradicted_by_run if finding.new_status == "contradicted" else None
+                )
                 connection.execute(
                     """
                     INSERT INTO concept_status (
@@ -596,30 +685,59 @@ def _persist_lint_results(
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(term_key) DO UPDATE SET
                         health_status = excluded.health_status,
-                        stale_since = COALESCE(
-                            excluded.stale_since, concept_status.stale_since
-                        ),
-                        contradicted_by_run = COALESCE(
-                            excluded.contradicted_by_run,
-                            concept_status.contradicted_by_run
-                        ),
+                        stale_since = CASE
+                            WHEN excluded.health_status = 'stale' THEN excluded.stale_since
+                            ELSE NULL
+                        END,
+                        contradicted_by_run = CASE
+                            WHEN excluded.health_status = 'contradicted'
+                            THEN excluded.contradicted_by_run
+                            ELSE NULL
+                        END,
                         updated_at_utc = excluded.updated_at_utc
                     """,
                     (
                         finding.term_key,
                         finding.new_status,
                         stale_since,
-                        finding.contradicted_by_run,
+                        contradicted_by_run,
                         0,
                         None,
                         None,
                         finished_at,
                     ),
                 )
+            for term_key in sorted(concept_keys - finding_keys):
+                connection.execute(
+                    """
+                    UPDATE concept_status
+                    SET
+                        health_status = 'healthy',
+                        stale_since = NULL,
+                        contradicted_by_run = NULL,
+                        updated_at_utc = ?
+                    WHERE term_key = ?
+                        AND health_status NOT IN ('healthy', 'dismissed')
+                    """,
+                    (finished_at, term_key),
+                )
             connection.execute("COMMIT")
         except Exception:
             connection.execute("ROLLBACK")
             raise
+
+
+def _concept_term_keys(concepts: Sequence[dict[str, Any]]) -> set[str]:
+    keys: set[str] = set()
+    for entry in concepts:
+        term_key_raw = entry.get("term_key")
+        if not isinstance(term_key_raw, str) or not term_key_raw:
+            continue
+        try:
+            keys.add(canonical_term_key(term_key_raw))
+        except InputError:
+            continue
+    return keys
 
 
 def _utc_now_iso() -> str:

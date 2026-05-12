@@ -941,6 +941,7 @@ run_id: str
 - Challenge loop 默认 disabled。CLI 只有 `build` / `status`；serve 提供 build/get/advance/abort/review/feedback 六个 routes，禁用时返回 `FEATURE_UNAVAILABLE`。review 是 deterministic learner diff 与 canonical diff gap 对比，不执行 shell、测试或用户代码。
 - MCP read-only server 现在是 7 个工具，新增 `ask_lesson`。它只读取 finalized run 的 lesson 文件和 claims，用本地 token overlap 返回片段，不调用 LLM。
 - APKG export 已改用 packaged CSS 资源；GUID 当前仍是 `genanki.guid_for(card_id)`，stable namespace GUID 未落地，不能写成已完成。
-- serve 当前为 69 个 concrete `/api/*` routes + 1 个 catchall；前端为 16 页面、62 个生产 TSX、46 个 CSS，i18n scalar keys `1261/1261`。
+- 本轮 adversarial review 又补上 Challenge rebuild/review 原子性、manifest 有限数校验、export preview noindex / 注入重扫 / stale cleanup TOCTOU、MCP `ask_lesson` 输出契约和只读路径 guard、concept lint JSONL 读取与路径归一化、review 评分非有限数拒绝。
+- serve 当前为 69 个 concrete `/api/*` routes + 1 个 catchall；前端为 16 页面、62 个生产 TSX、46 个 CSS，i18n scalar keys `1262/1262`。
 
-本轮实测：后端 unit `2338 passed`；`ruff check`、`ruff format --check`、`pyright` 通过；viewer typecheck、Vitest `320 passed`、build 通过；i18n `1261/1261`；`git diff --check HEAD` 通过。integration、eval、live judge、wheel、完整 Playwright 和远端 GitHub Actions 未在本轮重跑。
+本轮实测：后端 unit `2409 passed`；integration `11 passed`；eval `9 passed`；`ruff check`、`ruff format --check`、`pyright` 通过；viewer typecheck、Vitest `326 passed`、build 通过；i18n `1262/1262`；`git diff --check HEAD` 通过。live judge、wheel、完整 Playwright 和远端 GitHub Actions 未在本轮重跑。

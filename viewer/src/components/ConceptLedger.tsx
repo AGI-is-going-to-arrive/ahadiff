@@ -44,6 +44,15 @@ function updateHashRunFilter(run: string | undefined) {
   );
 }
 
+export function fileRefBasename(path: string): string {
+  const trimmed = path.replace(/[\\/]+$/, '');
+  if (!trimmed) return path;
+  const slashIndex = trimmed.lastIndexOf('/');
+  const backslashIndex = trimmed.lastIndexOf('\\');
+  const separatorIndex = Math.max(slashIndex, backslashIndex);
+  return separatorIndex >= 0 ? trimmed.slice(separatorIndex + 1) : trimmed;
+}
+
 export default function ConceptLedger({ runFilter, onRunFilterChange }: ConceptLedgerProps) {
   const { t } = useTranslation();
   const entries = useConceptsStore((s) => s.entries);
@@ -243,7 +252,7 @@ export default function ConceptLedger({ runFilter, onRunFilterChange }: ConceptL
                   {entry.file_refs.slice(0, MAX_CHIPS).map((f) => (
                     <li key={f}>
                       <span className="concept-ledger__chip" title={f}>
-                        {f.split('/').pop() ?? f}
+                        {fileRefBasename(f)}
                       </span>
                     </li>
                   ))}

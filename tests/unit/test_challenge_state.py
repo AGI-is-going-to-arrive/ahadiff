@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+import os
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from starlette.testclient import TestClient
@@ -25,7 +26,7 @@ from ahadiff.challenge.state import (
     VALID_TRANSITIONS,
     validate_challenge_id,
 )
-from ahadiff.core.errors import InputError
+from ahadiff.core.errors import InputError, StorageError
 from ahadiff.serve import ServeState, create_app
 
 if TYPE_CHECKING:
@@ -232,6 +233,58 @@ def test_build_challenge_requires_pass_verdict(tmp_path: Path) -> None:
         build_challenge(source_run_id="caution-run", state_dir=state_dir)
 
 
+@pytest.mark.parametrize("overall", ["nan", "inf", "-inf"])
+def test_build_challenge_rejects_non_finite_overall(tmp_path: Path, overall: str) -> None:
+    state_dir = _state_dir(tmp_path)
+    run_path = _write_qualifying_run(state_dir, "nonfinite-run")
+    (run_path / "score.json").write_text(
+        json.dumps({"overall": overall, "verdict": "pass"}),
+        encoding="utf-8",
+    )
+    with pytest.raises(InputError, match="finite"):
+        build_challenge(source_run_id="nonfinite-run", state_dir=state_dir)
+
+
+@pytest.mark.parametrize("overall_json", ["NaN", "Infinity", "-Infinity", "1e309"])
+def test_build_challenge_rejects_non_finite_json_number(
+    tmp_path: Path,
+    overall_json: str,
+) -> None:
+    state_dir = _state_dir(tmp_path)
+    run_path = _write_qualifying_run(state_dir, "nonfinite-json-run")
+    (run_path / "score.json").write_text(
+        f'{{"overall": {overall_json}, "verdict": "pass"}}',
+        encoding="utf-8",
+    )
+    with pytest.raises(InputError, match="valid finite JSON"):
+        build_challenge(source_run_id="nonfinite-json-run", state_dir=state_dir)
+
+
+def test_manifest_read_allows_inline_patch_at_patch_limit(tmp_path: Path) -> None:
+    state_dir = _state_dir(tmp_path)
+    run_path = _write_qualifying_run(state_dir, "large-patch-run")
+    large_patch = (
+        "diff --git a/large.py b/large.py\n"
+        "--- a/large.py\n"
+        "+++ b/large.py\n"
+        "@@ -1,1 +1,1 @@\n"
+        "-old\n"
+        "+new\n" + ("# padding\n" * 120_000)
+    )
+    assert len(large_patch.encode("utf-8")) > 1_000_000
+    (run_path / "patch.diff").write_text(large_patch, encoding="utf-8")
+
+    manifest = build_challenge(
+        source_run_id="large-patch-run",
+        state_dir=state_dir,
+        challenge_id="large-patch",
+    )
+    write_manifest(state_dir, manifest)
+
+    persisted = read_manifest(state_dir, "large-patch")
+    assert persisted.canonical_patch == large_patch
+
+
 def test_review_attempt_reports_missing_file(tmp_path: Path) -> None:
     state_dir = _state_dir(tmp_path)
     _write_qualifying_run(state_dir, "good-run")
@@ -247,6 +300,24 @@ def test_review_attempt_reports_no_gap_when_diff_matches(tmp_path: Path) -> None
     manifest = build_challenge(source_run_id="good-run", state_dir=state_dir)
     feedback = review_attempt(manifest=manifest, learner_diff=_CANONICAL_PATCH)
     assert feedback["missing_files"] == []
+    assert feedback["extra_files"] == []
+    assert feedback["gap_claim_ids"] == []
+
+
+def test_review_attempt_reports_extra_files_without_false_gap(tmp_path: Path) -> None:
+    state_dir = _state_dir(tmp_path)
+    _write_qualifying_run(state_dir, "good-run")
+    manifest = build_challenge(source_run_id="good-run", state_dir=state_dir)
+    extra_patch = """diff --git a/bar.py b/bar.py
+--- a/bar.py
++++ b/bar.py
+@@ -1,1 +1,1 @@
+-old
++new
+"""
+    feedback = review_attempt(manifest=manifest, learner_diff=_CANONICAL_PATCH + "\n" + extra_patch)
+    assert feedback["missing_files"] == []
+    assert feedback["extra_files"] == ["bar.py"]
     assert feedback["gap_claim_ids"] == []
 
 
@@ -263,6 +334,81 @@ def test_review_attempt_detects_missing_hunk_via_manifest_metadata(tmp_path: Pat
 """
     feedback = review_attempt(manifest=manifest, learner_diff=learner_diff)
     assert "claim-1" in feedback["gap_claim_ids"]
+
+
+def test_review_attempt_filters_noncanonical_gap_claim_ids() -> None:
+    manifest = ChallengeManifest(
+        challenge_id="noncanonical-gap",
+        source_run_id="run-gap",
+        baseline_sha=None,
+        target_sha=None,
+        canonical_patch=_CANONICAL_PATCH,
+        canonical_claim_ids=["claim-1"],
+        hunks=[
+            {
+                "file": "foo.py",
+                "new_start": 2,
+                "new_count": 2,
+                "claim_ids": ["claim-not-canonical"],
+            }
+        ],
+        created_at_utc="2026-05-12T00:00:00Z",
+    )
+
+    feedback = review_attempt(manifest=manifest, learner_diff="")
+
+    assert "claim-not-canonical" not in feedback["gap_claim_ids"]
+    assert feedback["gap_claim_ids"] == ["claim-1"]
+
+
+def test_review_attempt_does_not_drop_mixed_unattributed_missing_hunks() -> None:
+    canonical_patch = """diff --git a/a.py b/a.py
+--- a/a.py
++++ b/a.py
+@@ -1,1 +1,1 @@
+-old-a
++new-a
+diff --git a/b.py b/b.py
+--- a/b.py
++++ b/b.py
+@@ -1,1 +1,1 @@
+-old-b
++new-b
+"""
+    learner_diff = """diff --git a/a.py b/a.py
+--- a/a.py
++++ b/a.py
+@@ -1,1 +1,1 @@
+-old-a
++new-a
+"""
+    manifest = ChallengeManifest(
+        challenge_id="mixed-gap",
+        source_run_id="run-gap",
+        baseline_sha=None,
+        target_sha=None,
+        canonical_patch=canonical_patch,
+        canonical_claim_ids=["claim-a", "claim-b"],
+        hunks=[
+            {
+                "file": "a.py",
+                "new_start": 1,
+                "new_count": 1,
+                "claim_ids": ["claim-a"],
+            },
+            {
+                "file": "b.py",
+                "new_start": 1,
+                "new_count": 1,
+            },
+        ],
+        created_at_utc="2026-05-12T00:00:00Z",
+    )
+
+    feedback = review_attempt(manifest=manifest, learner_diff=learner_diff)
+
+    assert feedback["missing_files"] == ["b.py"]
+    assert feedback["gap_claim_ids"] == ["claim-b"]
 
 
 def test_review_attempt_rejects_oversized_diff(tmp_path: Path) -> None:
@@ -330,6 +476,34 @@ def test_routes_return_feature_unavailable_when_disabled(tmp_path: Path) -> None
     body = response.json()
     assert body["error_code"] == "FEATURE_UNAVAILABLE"
     assert body["details"]["feature"] == "challenge"
+
+
+def test_mutating_routes_require_token_before_feature_probe(tmp_path: Path) -> None:
+    state_dir = _state_dir(tmp_path)
+    client = TestClient(
+        create_app(ServeState(state_dir=state_dir, token="test-token")),
+        base_url="http://localhost:8765",
+    )
+
+    origin_only = {"Origin": "http://localhost:8765"}
+    requests = [
+        client.post("/api/challenge/build", json={"run_id": "some-run"}, headers=origin_only),
+        client.post(
+            "/api/challenge/demo/advance",
+            json={"target_stage": "tour"},
+            headers=origin_only,
+        ),
+        client.post("/api/challenge/demo/abort", headers=origin_only),
+        client.post(
+            "/api/challenge/demo/review",
+            json={"learner_diff": ""},
+            headers=origin_only,
+        ),
+    ]
+
+    for response in requests:
+        assert response.status_code == 401
+        assert response.json()["error_code"] == "AUTH_REQUIRED"
 
 
 def test_routes_full_loop_when_enabled(
@@ -404,6 +578,280 @@ def test_routes_full_loop_when_enabled(
     assert feedback_resp.json()["feedback"]["gap_claim_ids"] == ["claim-1"]
 
 
+def test_route_rejects_challenge_id_with_trailing_space(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = _state_dir(tmp_path)
+    _write_qualifying_run(state_dir, "good-run")
+
+    from ahadiff.serve import routes_challenge
+
+    class _Snapshot:
+        values = {"challenge": {"enabled": True}}
+
+    monkeypatch.setattr(
+        routes_challenge,
+        "load_serve_config_snapshot",
+        lambda _state: _Snapshot(),  # type: ignore[arg-type]
+    )
+
+    client = TestClient(
+        create_app(ServeState(state_dir=state_dir, token="test-token")),
+        base_url="http://localhost:8765",
+    )
+
+    build_resp = client.post(
+        "/api/challenge/build",
+        json={"run_id": "good-run", "challenge_id": "space-1 "},
+        headers=_AUTH,
+    )
+    assert build_resp.status_code == 400
+    assert build_resp.json()["error_code"] == "INPUT_BAD_FIELD"
+    assert not (state_dir / "challenges" / "space-1").exists()
+
+    path_resp = client.get("/api/challenge/space-1%20", headers=_AUTH)
+    assert path_resp.status_code == 400
+    assert path_resp.json()["error_code"] == "INPUT_BAD_FIELD"
+
+
+def test_route_rejects_rebuild_of_in_flight_challenge(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = _state_dir(tmp_path)
+    _write_qualifying_run(state_dir, "good-run")
+
+    from ahadiff.serve import routes_challenge
+
+    class _Snapshot:
+        values = {"challenge": {"enabled": True}}
+
+    monkeypatch.setattr(
+        routes_challenge,
+        "load_serve_config_snapshot",
+        lambda _state: _Snapshot(),  # type: ignore[arg-type]
+    )
+
+    client = TestClient(
+        create_app(ServeState(state_dir=state_dir, token="test-token")),
+        base_url="http://localhost:8765",
+    )
+
+    first = client.post(
+        "/api/challenge/build",
+        json={"run_id": "good-run", "challenge_id": "rebuild-1"},
+        headers=_AUTH,
+    )
+    assert first.status_code == 200, first.text
+
+    second = client.post(
+        "/api/challenge/build",
+        json={"run_id": "good-run", "challenge_id": "rebuild-1"},
+        headers=_AUTH,
+    )
+    assert second.status_code == 422
+    assert second.json()["error_code"] == "INPUT_VALIDATION"
+    assert read_state(state_dir, "rebuild-1").stage is ChallengeStage.BUILD
+
+
+@pytest.mark.parametrize("overall_json", ["NaN", "Infinity", "-Infinity", "1e309"])
+def test_route_rejects_non_finite_score_with_precise_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    overall_json: str,
+) -> None:
+    state_dir = _state_dir(tmp_path)
+    run_path = _write_qualifying_run(state_dir, "nonfinite-route-run")
+    (run_path / "score.json").write_text(
+        f'{{"overall": {overall_json}, "verdict": "pass"}}',
+        encoding="utf-8",
+    )
+
+    from ahadiff.serve import routes_challenge
+
+    class _Snapshot:
+        values = {"challenge": {"enabled": True}}
+
+    monkeypatch.setattr(
+        routes_challenge,
+        "load_serve_config_snapshot",
+        lambda _state: _Snapshot(),  # type: ignore[arg-type]
+    )
+
+    client = TestClient(
+        create_app(ServeState(state_dir=state_dir, token="test-token")),
+        base_url="http://localhost:8765",
+    )
+
+    response = client.post(
+        "/api/challenge/build",
+        json={"run_id": "nonfinite-route-run", "challenge_id": "nonfinite-route"},
+        headers=_AUTH,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error_code"] == "INPUT_VALIDATION"
+    assert not (state_dir / "challenges" / "nonfinite-route" / "state.json").exists()
+
+
+def test_review_keeps_challenge_state_if_idle_persist_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = _state_dir(tmp_path)
+    _write_qualifying_run(state_dir, "good-run")
+    manifest = build_challenge(
+        source_run_id="good-run",
+        state_dir=state_dir,
+        challenge_id="review-fail",
+    )
+    write_manifest(state_dir, manifest)
+    challenge_state = (
+        create_state(challenge_id="review-fail", source_run_id="good-run")
+        .transition(ChallengeStage.TOUR)
+        .transition(ChallengeStage.CHALLENGE)
+    )
+    write_state(state_dir, challenge_state)
+
+    from ahadiff.serve import routes_challenge
+
+    def fail_write_state(_state_dir: Path, _state: object) -> Path:
+        raise OSError("simulated state write failure")
+
+    monkeypatch.setattr(routes_challenge, "write_state", fail_write_state)
+
+    serve_state = ServeState(state_dir=state_dir, token="test-token").with_runtime_lock()
+    with pytest.raises(OSError, match="simulated state write failure"):
+        routes_challenge._review_challenge_sync(  # pyright: ignore[reportPrivateUsage]
+            serve_state,
+            "review-fail",
+            "",
+        )
+
+    persisted = read_state(state_dir, "review-fail")
+    assert persisted.stage is ChallengeStage.CHALLENGE
+    assert serve_state.review_db_path.exists()
+    assert (state_dir / "challenges" / "review-fail" / "feedback.json").exists()
+
+
+def test_review_keeps_challenge_state_if_adapt_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = _state_dir(tmp_path)
+    _write_qualifying_run(state_dir, "good-run")
+    manifest = build_challenge(
+        source_run_id="good-run",
+        state_dir=state_dir,
+        challenge_id="adapt-fail",
+    )
+    write_manifest(state_dir, manifest)
+    challenge_state = (
+        create_state(challenge_id="adapt-fail", source_run_id="good-run")
+        .transition(ChallengeStage.TOUR)
+        .transition(ChallengeStage.CHALLENGE)
+    )
+    write_state(state_dir, challenge_state)
+
+    from ahadiff.serve import routes_challenge
+
+    def fail_adapt(**_kwargs: object) -> dict[str, object]:
+        raise StorageError("simulated adapt failure")
+
+    monkeypatch.setattr(routes_challenge, "adapt_from_gaps", fail_adapt)
+
+    serve_state = ServeState(state_dir=state_dir, token="test-token").with_runtime_lock()
+    with pytest.raises(StorageError, match="simulated adapt failure"):
+        routes_challenge._review_challenge_sync(  # pyright: ignore[reportPrivateUsage]
+            serve_state,
+            "adapt-fail",
+            "",
+        )
+
+    persisted = read_state(state_dir, "adapt-fail")
+    assert persisted.stage is ChallengeStage.CHALLENGE
+    assert not (state_dir / "challenges" / "adapt-fail" / "feedback.json").exists()
+
+
+def test_review_keeps_challenge_state_if_feedback_write_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = _state_dir(tmp_path)
+    _write_qualifying_run(state_dir, "good-run")
+    manifest = build_challenge(
+        source_run_id="good-run",
+        state_dir=state_dir,
+        challenge_id="feedback-fail",
+    )
+    write_manifest(state_dir, manifest)
+    challenge_state = (
+        create_state(challenge_id="feedback-fail", source_run_id="good-run")
+        .transition(ChallengeStage.TOUR)
+        .transition(ChallengeStage.CHALLENGE)
+    )
+    write_state(state_dir, challenge_state)
+
+    from ahadiff.serve import routes_challenge
+
+    def fail_write_feedback(*_args: object, **_kwargs: object) -> None:
+        raise StorageError("simulated feedback write failure")
+
+    monkeypatch.setattr(routes_challenge, "_write_feedback", fail_write_feedback)
+
+    serve_state = ServeState(state_dir=state_dir, token="test-token").with_runtime_lock()
+    with pytest.raises(StorageError, match="simulated feedback write failure"):
+        routes_challenge._review_challenge_sync(  # pyright: ignore[reportPrivateUsage]
+            serve_state,
+            "feedback-fail",
+            "",
+        )
+
+    persisted = read_state(state_dir, "feedback-fail")
+    assert persisted.stage is ChallengeStage.CHALLENGE
+    assert not (state_dir / "challenges" / "feedback-fail" / "feedback.json").exists()
+
+
+def test_review_final_state_failure_keeps_challenge_retryable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = _state_dir(tmp_path)
+    _write_qualifying_run(state_dir, "good-run")
+    manifest = build_challenge(
+        source_run_id="good-run",
+        state_dir=state_dir,
+        challenge_id="atomic-fail",
+    )
+    write_manifest(state_dir, manifest)
+    challenge_state = (
+        create_state(challenge_id="atomic-fail", source_run_id="good-run")
+        .transition(ChallengeStage.TOUR)
+        .transition(ChallengeStage.CHALLENGE)
+    )
+    write_state(state_dir, challenge_state)
+
+    from ahadiff.serve import routes_challenge
+
+    def fail_write_state(_state_dir: Path, _state: object) -> Path:
+        raise OSError("simulated final state write failure")
+
+    monkeypatch.setattr(routes_challenge, "write_state", fail_write_state)
+
+    serve_state = ServeState(state_dir=state_dir, token="test-token").with_runtime_lock()
+    with pytest.raises(OSError, match="simulated final state write failure"):
+        routes_challenge._review_challenge_sync(  # pyright: ignore[reportPrivateUsage]
+            serve_state,
+            "atomic-fail",
+            "",
+        )
+
+    persisted = read_state(state_dir, "atomic-fail")
+    assert persisted.stage is ChallengeStage.CHALLENGE
+    assert (state_dir / "challenges" / "atomic-fail" / "feedback.json").exists()
+
+
 def test_abort_route_returns_state_to_idle(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -472,6 +920,110 @@ def test_state_file_rejects_invalid_payload(tmp_path: Path) -> None:
     target.write_text("not json", encoding="utf-8")
     with pytest.raises(InputError):
         read_state(state_dir, "bad")
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlink support")
+def test_state_file_rejects_symlink(tmp_path: Path) -> None:
+    state_dir = _state_dir(tmp_path)
+    state = create_state(challenge_id="link-state", source_run_id="r1")
+    write_state(state_dir, state)
+    state_path = state_dir / "challenges" / "link-state" / "state.json"
+    real_path = state_path.with_name("state.real.json")
+    state_path.rename(real_path)
+    state_path.symlink_to(real_path)
+
+    with pytest.raises(InputError, match="symlink"):
+        read_state(state_dir, "link-state")
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="requires FIFO support")
+def test_state_file_rejects_fifo(tmp_path: Path) -> None:
+    state_dir = _state_dir(tmp_path)
+    state = create_state(challenge_id="fifo-state", source_run_id="r1")
+    write_state(state_dir, state)
+    state_path = state_dir / "challenges" / "fifo-state" / "state.json"
+    state_path.unlink()
+    os.mkfifo(state_path)
+
+    with pytest.raises(InputError, match="regular file"):
+        read_state(state_dir, "fifo-state")
+
+
+@pytest.mark.skipif(not hasattr(os, "link"), reason="requires hardlink support")
+def test_state_file_rejects_hardlink(tmp_path: Path) -> None:
+    state_dir = _state_dir(tmp_path)
+    state = create_state(challenge_id="hardlink-state", source_run_id="r1")
+    write_state(state_dir, state)
+    state_path = state_dir / "challenges" / "hardlink-state" / "state.json"
+    os.link(state_path, state_path.with_name("state.other.json"))
+
+    with pytest.raises(InputError, match="hardlink"):
+        read_state(state_dir, "hardlink-state")
+
+
+def test_state_file_rejects_windows_reparse_attribute(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = _state_dir(tmp_path)
+    state = create_state(challenge_id="reparse-state", source_run_id="r1")
+    write_state(state_dir, state)
+    state_path = state_dir / "challenges" / "reparse-state" / "state.json"
+
+    from ahadiff.challenge import state as challenge_state_module
+
+    original_lstat = challenge_state_module.os.lstat
+    original_stat = original_lstat(state_path)
+
+    class _ReparseStat:
+        st_mode = original_stat.st_mode
+        st_size = original_stat.st_size
+        st_dev = original_stat.st_dev
+        st_ino = original_stat.st_ino
+        st_nlink = 1
+        st_file_attributes = 0x400
+
+    def fake_lstat(path: Any) -> object:
+        if os.fspath(path) == os.fspath(state_path):
+            return _ReparseStat()
+        return original_lstat(path)
+
+    monkeypatch.setattr(challenge_state_module.os, "lstat", fake_lstat)
+
+    with pytest.raises(InputError, match="reparse"):
+        read_state(state_dir, "reparse-state")
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlink support")
+def test_state_file_rejects_toctou_symlink_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = _state_dir(tmp_path)
+    state = create_state(challenge_id="swap-state", source_run_id="r1")
+    write_state(state_dir, state)
+    state_path = state_dir / "challenges" / "swap-state" / "state.json"
+    outside = tmp_path / "outside-state.json"
+    outside.write_text(state_path.read_text(encoding="utf-8"), encoding="utf-8")
+
+    from ahadiff.challenge import state as challenge_state_module
+
+    original_open = challenge_state_module.os.open
+    swapped = False
+
+    def swapping_open(path: Any, flags: int, mode: int = 0o777) -> int:
+        nonlocal swapped
+        if os.fspath(path) == os.fspath(state_path) and not swapped:
+            state_path.unlink()
+            state_path.symlink_to(outside)
+            swapped = True
+        return original_open(path, flags, mode)
+
+    monkeypatch.setattr(challenge_state_module.os, "open", swapping_open)
+
+    with pytest.raises(InputError, match="symlink|changed during validation"):
+        read_state(state_dir, "swap-state")
+    assert swapped is True
 
 
 def test_review_attempt_marks_empty_body_overlap_as_gap(tmp_path: Path) -> None:
@@ -641,7 +1193,7 @@ def test_advance_cannot_skip_review_via_explicit_target(
         json={"target_stage": "review"},
         headers=_AUTH,
     )
-    assert blocked.status_code >= 400
+    assert blocked.status_code == 422
     # And the persisted stage must still be 'challenge' — no state mutation.
     after = client.get("/api/challenge/guard-1", headers=_AUTH)
     assert after.status_code == 200
@@ -690,9 +1242,49 @@ def test_advance_cannot_skip_review_via_default_next_stage(
         content=b"",
         headers=_AUTH,
     )
-    assert blocked.status_code >= 400
+    assert blocked.status_code == 422
     after = client.get("/api/challenge/guard-2", headers=_AUTH)
     assert after.json()["state"]["stage"] == "challenge"
+
+
+def test_advance_rejects_non_object_json_without_mutating_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = _state_dir(tmp_path)
+    _write_qualifying_run(state_dir, "good-run")
+
+    from ahadiff.serve import routes_challenge
+
+    class _Snapshot:
+        values = {"challenge": {"enabled": True}}
+
+    monkeypatch.setattr(
+        routes_challenge,
+        "load_serve_config_snapshot",
+        lambda _state: _Snapshot(),  # type: ignore[arg-type]
+    )
+
+    client = TestClient(
+        create_app(ServeState(state_dir=state_dir, token="test-token")),
+        base_url="http://localhost:8765",
+    )
+    build_resp = client.post(
+        "/api/challenge/build",
+        json={"run_id": "good-run", "challenge_id": "bad-body"},
+        headers=_AUTH,
+    )
+    assert build_resp.status_code == 200, build_resp.text
+
+    response = client.post(
+        "/api/challenge/bad-body/advance",
+        json=[],
+        headers=_AUTH,
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "INPUT_BAD_FIELD"
+    assert read_state(state_dir, "bad-body").stage is ChallengeStage.BUILD
 
 
 def test_advance_to_idle_from_challenge_still_allowed(

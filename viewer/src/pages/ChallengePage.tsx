@@ -26,7 +26,7 @@ import {
 } from '../api/challenge';
 import { listRuns } from '../api/runs';
 import type { RunSummary } from '../api/types';
-import { useTranslation } from '../i18n/useTranslation';
+import { useTranslation, type TranslateFn } from '../i18n/useTranslation';
 import '../styles/challenge.css';
 
 const RUN_PAGE_SIZE = 25;
@@ -36,26 +36,48 @@ interface PageState {
   feedback: ChallengeFeedback | null;
 }
 
+export interface ChallengeErrorMessage {
+  key: string;
+  resourceKey?: string;
+}
+
 function stageOf(state: ChallengeState | null): ChallengeStage {
   return state?.stage ?? 'idle';
 }
 
-function deriveErrorKey(err: unknown): string {
+export function buildAdvanceFallbackEnvelope(
+  advancedState: ChallengeState,
+  currentEnvelope: ChallengeEnvelope | null,
+): ChallengeEnvelope {
+  return {
+    state: advancedState,
+    manifest: currentEnvelope?.manifest ?? null,
+  };
+}
+
+const CHALLENGE_ERROR_KEYS: Record<string, string> = {
+  FEATURE_UNAVAILABLE: 'errors.FEATURE_UNAVAILABLE',
+  INPUT_VALIDATION: 'errors.INPUT_VALIDATION',
+  RUN_NOT_FOUND: 'errors.RUN_NOT_FOUND',
+};
+
+export function deriveChallengeErrorMessage(err: unknown): ChallengeErrorMessage {
   if (err instanceof ApiError) {
-    switch (err.errorCode) {
-      case 'RUN_NOT_FOUND':
-        return 'Challenge.error_run_not_found';
-      case 'CHALLENGE_RUN_NOT_QUALIFYING':
-      case 'NOT_QUALIFYING':
-        return 'Challenge.error_not_qualifying';
-      case 'INVALID_TRANSITION':
-      case 'CHALLENGE_INVALID_TRANSITION':
-        return 'Challenge.error_invalid_transition';
-      default:
-        return 'Error.fetch_failed';
+    if (err.errorCode && err.errorCode in CHALLENGE_ERROR_KEYS) {
+      return { key: CHALLENGE_ERROR_KEYS[err.errorCode] };
     }
   }
-  return 'Error.fetch_failed';
+  return { key: 'Error.fetch_failed', resourceKey: 'Challenge.title' };
+}
+
+export function renderChallengeErrorMessage(
+  t: TranslateFn,
+  message: ChallengeErrorMessage,
+): string {
+  if (message.resourceKey) {
+    return t(message.key, { resource: t(message.resourceKey) });
+  }
+  return t(message.key);
 }
 
 export default function ChallengePage() {
@@ -68,7 +90,7 @@ export default function ChallengePage() {
   const [selectedRunId, setSelectedRunId] = useState<string>('');
   const [learnerDiff, setLearnerDiff] = useState<string>('');
   const [busy, setBusy] = useState(false);
-  const [errorKey, setErrorKey] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<ChallengeErrorMessage | null>(null);
   const [initializing, setInitializing] = useState(true);
   const [statusKey, setStatusKey] = useState<string | null>(null);
   const [abortDialogOpen, setAbortDialogOpen] = useState(false);
@@ -93,7 +115,7 @@ export default function ChallengePage() {
       setFeatureUnavailable(true);
       return true;
     }
-    setErrorKey(deriveErrorKey(err));
+    setErrorMessage(deriveChallengeErrorMessage(err));
     if (import.meta.env.DEV) {
       // eslint-disable-next-line no-console
       console.error('[ChallengePage]', err);
@@ -109,7 +131,7 @@ export default function ChallengePage() {
   useEffect(() => {
     const controller = replaceController();
     setInitializing(true);
-    setErrorKey(null);
+    setErrorMessage(null);
     const loadInitial = async () => {
       if (routeChallengeId) {
         const envelope = await getChallenge(routeChallengeId, { signal: controller.signal });
@@ -181,7 +203,7 @@ export default function ChallengePage() {
   const onBuild = useCallback(async () => {
     if (!selectedRunId) return;
     setBusy(true);
-    setErrorKey(null);
+    setErrorMessage(null);
     try {
       const envelope = await buildChallenge(selectedRunId);
       setPage({ envelope, feedback: null });
@@ -198,14 +220,23 @@ export default function ChallengePage() {
     async (target?: ChallengeStage) => {
       if (!state) return;
       setBusy(true);
-      setErrorKey(null);
+      setErrorMessage(null);
       try {
         const next = await advanceChallenge(state.challenge_id, target);
+        let envelope = buildAdvanceFallbackEnvelope(next.state, page.envelope);
         // After advance, re-fetch the full envelope so manifest stays in sync.
-        const full = await getChallenge(state.challenge_id);
+        // If the refresh fails, still keep the already-advanced backend state.
+        try {
+          envelope = await getChallenge(state.challenge_id);
+        } catch (refreshErr) {
+          if (import.meta.env.DEV) {
+            // eslint-disable-next-line no-console
+            console.warn('[ChallengePage] envelope refresh failed', refreshErr);
+          }
+        }
         setPage((prev) => ({
           ...prev,
-          envelope: full ?? { state: next.state, manifest: prev.envelope?.manifest ?? null },
+          envelope,
         }));
         setStatusKey('Challenge.status_advanced');
       } catch (err) {
@@ -214,14 +245,14 @@ export default function ChallengePage() {
         setBusy(false);
       }
     },
-    [handleApiError, state],
+    [handleApiError, page.envelope, state],
   );
 
   const onSubmitReview = useCallback(async () => {
     if (!state) return;
     if (learnerDiff.trim().length === 0) return;
     setBusy(true);
-    setErrorKey(null);
+    setErrorMessage(null);
     try {
       // Capture feedback FIRST. The backend transitions CHALLENGE → REVIEW →
       // ADAPT → IDLE inside this single call, so a subsequent getChallenge()
@@ -275,7 +306,7 @@ export default function ChallengePage() {
     if (!state) return;
     setAbortDialogOpen(false);
     setBusy(true);
-    setErrorKey(null);
+    setErrorMessage(null);
     try {
       await abortChallenge(state.challenge_id);
       setPage({ envelope: null, feedback: null });
@@ -363,9 +394,9 @@ export default function ChallengePage() {
           {statusKey ? t(statusKey) : ''}
         </div>
 
-        {errorKey ? (
+        {errorMessage ? (
           <div className="challenge-page__error" role="alert">
-            {t(errorKey)}
+            {renderChallengeErrorMessage(t, errorMessage)}
           </div>
         ) : null}
 

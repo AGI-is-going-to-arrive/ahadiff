@@ -6,11 +6,11 @@
 
 知返 AhaDiff 是一个 **local-first 的 verified diff learning layer**。把 AI 写出的 git diff 变成带代码证据链的学习笔记、概念图谱、主动回忆测验、SRS 复习卡和质量棘轮记录。核心差异：Code Wiki 解释仓库，知返解释这次改动；每句话都能回到代码证据。
 
-**当前状态（2026-05-12）**：v1.1 security / cross-platform follow-up 之后，Phase 2 follow-up 已补上本地学习闭环的几块产品面。后端仍是 `1.1.0a0`，前端仍是 `1.1.0-alpha.0`；`review.sqlite` schema 已升到 v10，新增 deterministic concept health lint 和 `concept_status` / `concept_lint_runs`；新增 `ahadiff export preview` 与 `POST /api/export/preview`，只生成本地 strict-local 静态预览和 deterministic zip manifest；read-only MCP server 现在是 7 个工具，新增 `ask_lesson`，只做本地 lesson fragment token search；Challenge loop 默认关闭，需要配置 opt-in，CLI 只有 `build` / `status`，serve/WebUI 提供 build/get/advance/abort/review/feedback，review 是 deterministic diff gap 对比，不执行代码；APKG 已改用 packaged CSS，但 GUID 仍是 `genanki.guid_for(card_id)`，stable namespace GUID 未落地。前端新增 Challenge 页面、Export modal、Concept health badge/filter、Ratchet locale-aware 分数/日期和前端 API error best-effort 脱敏。当前真实验证：后端完整 unit `2338 passed`；`ruff check src tests`、`ruff format --check src tests`、`pyright` 通过；viewer typecheck、Vitest `29 files, 320 tests passed`、build 通过；i18n scalar keys `1261/1261`；`git diff --check HEAD` 通过。integration、eval、live judge、wheel、完整 Playwright 和远端 GitHub Actions 未在本轮重跑。
+**当前状态（2026-05-12）**：v1.1 security / cross-platform follow-up 之后，Phase 2 follow-up 已补上本地学习闭环的几块产品面。后端仍是 `1.1.0a0`，前端仍是 `1.1.0-alpha.0`；`review.sqlite` schema 已升到 v10，新增 deterministic concept health lint 和 `concept_status` / `concept_lint_runs`；新增 `ahadiff export preview` 与 `POST /api/export/preview`，只生成本地 strict-local 静态预览和 deterministic zip manifest；read-only MCP server 现在是 7 个工具，新增 `ask_lesson`，只做本地 lesson fragment token search；Challenge loop 默认关闭，需要配置 opt-in，CLI 只有 `build` / `status`，serve/WebUI 提供 build/get/advance/abort/review/feedback，review 是 deterministic diff gap 对比，不执行代码；APKG 已改用 packaged CSS，但 GUID 仍是 `genanki.guid_for(card_id)`，stable namespace GUID 未落地。前端新增 Challenge 页面、Export modal、Concept health badge/filter、Ratchet locale-aware 分数/日期和前端 API error best-effort 脱敏。随后 adversarial review 又收口 Challenge rebuild/review 原子性、manifest 有限数校验、export preview noindex / 注入重扫 / stale cleanup TOCTOU、MCP `ask_lesson` 输出契约和只读路径 guard、concept lint JSONL 读取与路径归一化、review 评分非有限数拒绝。当前真实验证：后端完整 unit `2409 passed`；integration `11 passed`；eval `9 passed`；`ruff check src tests`、`ruff format --check src tests`、`pyright` 通过；viewer typecheck、Vitest `32 files, 326 tests passed`、build 通过；i18n scalar keys `1262/1262`；`git diff --check HEAD` 通过。live judge、wheel、完整 Playwright 和远端 GitHub Actions 未在本轮重跑。
 
 ## 架构总览
 
-后端 CLI（learn/improve/verify/serve/install/benchmark/mcp-server）：8-provider LLM + diff capture + claims + lesson/quiz/concepts + concept health lint + 8 维 eval + 可选 LLM judge + review.sqlite v10/FSRS-6 + serve API（69 concrete `/api/*` routes + catchall，28 个稳定 `ErrorCode`）+ APKG export + local static preview export + opt-in Challenge loop + read-only MCP server / `ask_lesson` + 13 install targets + improve loop。前端 React 19 SPA：16 页面、62 个生产 TSX + 46 个 CSS 文件，当前 i18n scalar key parity 为 `1261/1261`；ConceptGraph 当前是 Canvas renderer + 可访问列表 fallback；Settings 的项目级 AI 工具指引仍沿用 `?tab=integrations` 深链。
+后端 CLI（learn/improve/verify/serve/install/benchmark/mcp-server）：8-provider LLM + diff capture + claims + lesson/quiz/concepts + concept health lint + 8 维 eval + 可选 LLM judge + review.sqlite v10/FSRS-6 + serve API（69 concrete `/api/*` routes + catchall，28 个稳定 `ErrorCode`）+ APKG export + local static preview export + opt-in Challenge loop + read-only MCP server / `ask_lesson` + 13 install targets + improve loop。前端 React 19 SPA：16 页面、62 个生产 TSX + 46 个 CSS 文件，当前 i18n scalar key parity 为 `1262/1262`；ConceptGraph 当前是 Canvas renderer + 可访问列表 fallback；Settings 的项目级 AI 工具指引仍沿用 `?tab=integrations` 深链。
 
 ### 技术栈
 
@@ -73,7 +73,7 @@ global_config_dir()                   ← Global（派生/索引/偏好，非真
 | mcp | `src/ahadiff/mcp/` | read-only stdio MCP server，7 个工具：`list_runs` / `get_run_summary` / `list_due_cards` / `search` / `get_concepts` / `get_stats` / `ask_lesson` |
 | benchmarks | `benchmarks/` | 10 fixtures、Graphify 10k gate（parse 750ms + peak 96MiB） |
 | viewer | `viewer/` | React 19 SPA；16 页面；SearchOverlay 双栏预览；ErrorBoundary 诊断脱敏和复制 fallback；Learn Mode Dialog 默认跟随 viewer locale；Review 四档 SRS + 高风险概念；Quiz 导航 / mark-wrong / progress table；Challenge Mode；Export modal；HealthBadge；ConceptGraph Canvas renderer + community fill + a11y list fallback；Ratchet TSV/JSON/APKG 导出；Settings 项目级 AI 工具指引；Dashboard + Lesson + Concepts + Ratchet + RunDetail + Settings + Guide + Diff + Search；Onboarding DiagnosticRow；错误码本地化；locale-aware byte/token 格式化；motion/elevation CSS；侧栏三档；container query；PWA |
-| tests | `tests/` | unit/integration/eval/live；本轮 unit `2338 passed`；CI: PR unit + eval + nightly eval + release coverage ≥85% |
+| tests | `tests/` | unit/integration/eval/live；本轮 unit `2409 passed`，integration `11 passed`，eval `9 passed`；CI: PR unit + eval + nightly eval + release coverage ≥85% |
 | doc | `doc/` | 产品设计文档 |
 | ui | `ui/` | UI 原型 Warm v1-v6 |
 
@@ -202,7 +202,7 @@ pytest tests/live/test_llm_judge_live.py -q
 | 05-11 | ConceptGraph Canvas migration + graph confidence hardening | frontend 270 / graph route+parser 117 / target Playwright 62 |
 | 05-11 | AI 工具指引命名与交互收口 + Ratchet JSON export + Audit 最新优先 | backend target 116 / frontend 270 / target Playwright 59 / i18n 1176 |
 | 05-12 | APKG export + read-only MCP server + lesson walkthrough_tldr + SSE/SearchOverlay/ErrorBoundary/CSS hardening | backend 2150 / frontend 310 / target Playwright 10 / coverage run |
-| 05-12 | v1.1 security + cross-platform hardening + Phase 2 challenge/export/concept-health/MCP ask_lesson | backend 2338 / frontend 320 / i18n 1261 / ruff+format+pyright+typecheck+build+diffcheck |
+| 05-12 | v1.1 security + cross-platform hardening + Phase 2 challenge/export/concept-health/MCP ask_lesson + adversarial hardening | backend 2409 / integration 11 / eval 9 / frontend 326 / i18n 1262 / ruff+format+pyright+typecheck+build+diffcheck |
 
 
 <!-- AHADIFF:BEGIN target=claude -->

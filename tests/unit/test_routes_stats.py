@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -126,6 +127,16 @@ def _seed_review_db(db_path: Path, *, reviews: int = 0, events: int = 0) -> None
         )
     conn.commit()
     conn.close()
+
+
+def _sqlite_artifact_hashes(db_path: Path) -> dict[str, str]:
+    suffixes = ("", "-wal", "-shm", "-journal")
+    hashes: dict[str, str] = {}
+    for suffix in suffixes:
+        path = db_path.with_name(db_path.name + suffix)
+        if path.exists():
+            hashes[path.name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashes
 
 
 # ---------------------------------------------------------------------------
@@ -690,7 +701,22 @@ class TestGetExportResults:
         resp = client.get("/api/export/results?format=csv", headers=_AUTH)
 
         assert resp.status_code == 400
+        assert resp.json()["error_code"] == "EXPORT_FORMAT_UNSUPPORTED"
+        assert resp.json()["status"] == 400
         assert "export format must be 'tsv' or 'json'" in resp.json()["error"]
+
+    def test_export_results_does_not_write_review_sqlite(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        db_path = state_dir / "review.sqlite"
+        _seed_review_db(db_path, events=2)
+        before = _sqlite_artifact_hashes(db_path)
+
+        client = _client(state_dir)
+        resp = client.get("/api/export/results", headers=_AUTH)
+
+        assert resp.status_code == 200
+        assert _sqlite_artifact_hashes(db_path) == before
 
     def test_formula_injection_escaped(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".ahadiff"

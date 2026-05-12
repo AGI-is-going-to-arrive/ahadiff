@@ -5,6 +5,7 @@ import json
 import math
 import os
 import sqlite3
+import stat
 import tempfile
 import threading
 import time
@@ -15,6 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import quote
 
 from pydantic import ValidationError
 
@@ -122,6 +124,78 @@ def connect_review_db(db_path: Path, *, create_parent: bool = False) -> sqlite3.
     except Exception:
         connection.close()
         raise
+
+
+def _connect_review_db_readonly(db_path: Path) -> sqlite3.Connection:
+    if not db_path.exists():
+        raise InputError(f"review.sqlite does not exist: {db_path}")
+    _assert_sqlite_runtime_supported()
+    _reject_readonly_sqlite_path(db_path)
+    try:
+        connection = sqlite3.connect(_read_only_immutable_sqlite_uri(db_path), uri=True)
+        connection.row_factory = sqlite3.Row
+    except sqlite3.DatabaseError as exc:
+        raise StorageError(f"review.sqlite read-only open failed: {db_path} ({exc})") from exc
+    except OSError as exc:
+        raise StorageError(f"review.sqlite read-only open failed: {db_path} ({exc})") from exc
+    try:
+        connection.execute("PRAGMA query_only = ON")
+        query_only = connection.execute("PRAGMA query_only").fetchone()
+        if query_only is None or int(query_only[0]) != 1:
+            actual = "unknown" if query_only is None else str(query_only[0])
+            raise StorageError(
+                f"review.sqlite read-only query_only verification failed: {db_path} ({actual})"
+            )
+        quick_check = connection.execute("PRAGMA quick_check").fetchone()
+        if quick_check is None or quick_check[0] != "ok":
+            value = "unknown" if quick_check is None else str(quick_check[0])
+            raise StorageError(f"SQLite quick_check failed for {db_path}: {value}")
+        return connection
+    except Exception:
+        connection.close()
+        raise
+
+
+def _read_only_immutable_sqlite_uri(db_path: Path) -> str:
+    path_text = os.path.abspath(os.fspath(db_path)).replace("\\", "/")  # noqa: PTH100
+    if len(path_text) >= 2 and path_text[1] == ":" and path_text[0].isalpha():
+        path_text = f"/{path_text}"
+    return f"file:{quote(path_text, safe='/:')}?mode=ro&immutable=1"
+
+
+def _reject_readonly_sqlite_path(db_path: Path) -> None:
+    absolute = Path(os.path.abspath(os.fspath(db_path)))  # noqa: PTH100
+    if not absolute.anchor:
+        raise InputError("review.sqlite path must be absolute")
+    cursor = Path(absolute.anchor)
+    for part in absolute.parts[1:-1]:
+        cursor = cursor / part
+        try:
+            path_stat = os.lstat(cursor)
+        except FileNotFoundError as exc:
+            raise InputError(f"review DB parent directory does not exist: {cursor}") from exc
+        _reject_readonly_sqlite_stat(path_stat, label="review DB parent", require_regular=False)
+    try:
+        db_stat = os.lstat(absolute)
+    except FileNotFoundError as exc:
+        raise InputError(f"review.sqlite does not exist: {db_path}") from exc
+    _reject_readonly_sqlite_stat(db_stat, label="review.sqlite", require_regular=True)
+
+
+def _reject_readonly_sqlite_stat(
+    path_stat: os.stat_result,
+    *,
+    label: str,
+    require_regular: bool,
+) -> None:
+    if stat.S_ISLNK(path_stat.st_mode):
+        raise InputError(f"{label} must not be a symlink")
+    if bool(getattr(path_stat, "st_file_attributes", 0) & 0x400):
+        raise InputError(f"{label} must not be a Windows reparse point or junction")
+    if require_regular and not stat.S_ISREG(path_stat.st_mode):
+        raise InputError(f"{label} must be a regular file")
+    if require_regular and getattr(path_stat, "st_nlink", 1) > 1:
+        raise InputError(f"{label} must not be a hardlink")
 
 
 def _connect_review_db_maintenance(
@@ -462,27 +536,39 @@ def select_result_tsv_rows(db_path: Path) -> tuple[dict[str, object], ...]:
     if not db_path.exists():
         raise InputError(f"review.sqlite does not exist: {db_path}")
     with connect_review_db(db_path) as connection:
-        if not _result_events_table_exists(connection):
-            raise InputError("result_events table does not exist yet")
-        rows = connection.execute(
-            """
-            SELECT
-                timestamp,
-                run_id,
-                source_ref,
-                base_ref,
-                prompt_version,
-                rubric_version,
-                overall,
-                verdict,
-                status,
-                weakest_dim,
-                note_json
-            FROM result_events
-            ORDER BY timestamp ASC, event_id ASC
-            """
-        ).fetchall()
+        rows = _select_result_tsv_rows_from_connection(connection)
     return tuple(dict(row) for row in rows)
+
+
+def select_result_tsv_rows_readonly(db_path: Path) -> tuple[dict[str, object], ...]:
+    with _connect_review_db_readonly(db_path) as connection:
+        rows = _select_result_tsv_rows_from_connection(connection)
+    return tuple(dict(row) for row in rows)
+
+
+def _select_result_tsv_rows_from_connection(
+    connection: sqlite3.Connection,
+) -> list[sqlite3.Row]:
+    if not _result_events_table_exists(connection):
+        raise InputError("result_events table does not exist yet")
+    return connection.execute(
+        """
+        SELECT
+            timestamp,
+            run_id,
+            source_ref,
+            base_ref,
+            prompt_version,
+            rubric_version,
+            overall,
+            verdict,
+            status,
+            weakest_dim,
+            note_json
+        FROM result_events
+        ORDER BY timestamp ASC, event_id ASC
+        """
+    ).fetchall()
 
 
 def delete_result_event(db_path: Path, event_id: str) -> None:
@@ -2224,6 +2310,8 @@ def _lossy_event_from_tsv_row(row: dict[str, str]) -> ResultEvent:
         overall = float(row["overall"])
     except (KeyError, ValueError) as exc:
         raise InputError("results TSV row has invalid overall score") from exc
+    if not math.isfinite(overall):
+        raise InputError("results TSV row has invalid overall score")
     try:
         return ResultEvent(
             event_id=make_uuid7(),
@@ -2245,7 +2333,13 @@ def _lossy_event_from_tsv_row(row: dict[str, str]) -> ResultEvent:
         raise InputError(f"results TSV row is missing required column: {exc.args[0]}") from exc
 
 
+def _validate_finite_overall(overall: float) -> None:
+    if not math.isfinite(overall):
+        raise InputError("result event overall score must be finite")
+
+
 def _sync_result_event(connection: sqlite3.Connection, event: ResultEvent) -> sqlite3.Cursor:
+    _validate_finite_overall(event.overall)
     return connection.execute(
         """
         INSERT OR IGNORE INTO result_events (
@@ -3000,6 +3094,7 @@ __all__ = [
     "resolve_sqlite_journal_mode",
     "restore_review_db",
     "select_result_tsv_rows",
+    "select_result_tsv_rows_readonly",
     "set_card_queue_state",
     "sync_result_event",
     "upgrade_review_db",

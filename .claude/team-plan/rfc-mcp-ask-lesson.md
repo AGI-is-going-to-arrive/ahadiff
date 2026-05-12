@@ -10,6 +10,7 @@
 - MCP DB access now has an MCP-specific read-only helper using URI `mode=ro` and `PRAGMA query_only=ON`; stats/search table access also uses allowlists.
 - Stable `ErrorCode` still has 28 values. `ask_lesson` uses existing validation/not-found errors; no new ErrorCode was added.
 - `ask_lesson` reads finalized run lesson files in priority order (`lesson.full.md`, `lesson.hint.md`, `lesson.compact.md`) and joins local `claims.jsonl` evidence. It does not call an LLM and does not write to SQLite.
+- Current hardening keeps the tool count at 7, advertises `privacy: "strict_local"`, returns flat evidence fields plus run metadata, tolerates bad hunk coordinates, and reads run artifacts with no-follow / hardlink / ancestor symlink-race guards.
 
 ## 1. Target Users
 
@@ -45,7 +46,7 @@ stdio MCP exists today, but Windows stdio is not proven by the current CI matrix
 
 ## 6. Test Strategy
 
-- Unit: implemented in `tests/unit/test_mcp_ask_lesson.py` and `tests/unit/test_mcp_server.py`, covering fragment ranking, missing run, bounded query/top_k behavior, plain-token regex-like text, finalized-run gate, and evidence join.
+- Unit: implemented in `tests/unit/test_mcp_ask_lesson.py` and `tests/unit/test_mcp_server.py`, covering fragment ranking, missing run, bounded query/top_k behavior, plain-token regex-like text, finalized-run gate, evidence join, list-tools count, privacy description, bad hunk coordinates, and path race guards.
 - Integration-style stdio snapshot for all existing tools remains a future hardening item.
 - No live LLM tests required (pure retrieval).
 

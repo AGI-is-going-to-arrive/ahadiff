@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import errno
 import json
+import math
 import os
 import secrets
 import stat
@@ -39,6 +40,7 @@ CHALLENGE_MANIFEST_VERSION = "1"
 MIN_QUALIFYING_OVERALL = 80.0
 _PATCH_MAX_BYTES = 5_000_000
 _JSON_ARTIFACT_MAX_BYTES = 1_000_000
+_MANIFEST_MAX_BYTES = _PATCH_MAX_BYTES + _JSON_ARTIFACT_MAX_BYTES
 _CLAIMS_MAX_BYTES = 5_000_000
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 
@@ -138,11 +140,11 @@ def read_manifest(state_dir: Path, challenge_id: str) -> ChallengeManifest:
     raw = _read_regular_text(
         manifest_path,
         label="challenge manifest file",
-        max_bytes=_JSON_ARTIFACT_MAX_BYTES,
+        max_bytes=_MANIFEST_MAX_BYTES,
     )
     try:
         payload = safe_json_loads(raw)
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, ValueError) as exc:
         raise InputError(f"challenge manifest is not valid JSON: {challenge_id}") from exc
     if not isinstance(payload, dict):
         raise InputError("challenge manifest must be a JSON object")
@@ -189,13 +191,16 @@ def _read_score(run_path: Path) -> dict[str, Any]:
     score_path = run_path / "score.json"
     if not score_path.exists():
         raise InputError("source run is missing score.json; cannot evaluate qualification")
-    payload = safe_json_loads(
-        _read_regular_text(
-            score_path,
-            label="run score file",
-            max_bytes=_JSON_ARTIFACT_MAX_BYTES,
+    try:
+        payload = safe_json_loads(
+            _read_regular_text(
+                score_path,
+                label="run score file",
+                max_bytes=_JSON_ARTIFACT_MAX_BYTES,
+            )
         )
-    )
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise InputError("score.json must contain valid finite JSON") from exc
     if not isinstance(payload, dict):
         raise InputError("score.json must contain a JSON object")
     return cast("dict[str, Any]", payload)
@@ -205,13 +210,16 @@ def _read_metadata(run_path: Path) -> dict[str, Any]:
     metadata_path = run_path / "metadata.json"
     if not metadata_path.exists():
         return {}
-    payload = safe_json_loads(
-        _read_regular_text(
-            metadata_path,
-            label="run metadata file",
-            max_bytes=_JSON_ARTIFACT_MAX_BYTES,
+    try:
+        payload = safe_json_loads(
+            _read_regular_text(
+                metadata_path,
+                label="run metadata file",
+                max_bytes=_JSON_ARTIFACT_MAX_BYTES,
+            )
         )
-    )
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise InputError("metadata.json must contain valid finite JSON") from exc
     if not isinstance(payload, dict):
         raise InputError("metadata.json must contain a JSON object")
     return cast("dict[str, Any]", payload)
@@ -254,14 +262,19 @@ def _coerce_overall(score: dict[str, Any]) -> float:
     raw = score.get("overall")
     if isinstance(raw, bool):
         raise InputError("score.overall must be numeric, got bool")
+    value: float
     if isinstance(raw, int | float):
-        return float(raw)
-    if isinstance(raw, str):
+        value = float(raw)
+    elif isinstance(raw, str):
         try:
-            return float(raw)
+            value = float(raw)
         except ValueError as exc:
             raise InputError(f"score.overall is not numeric: {raw!r}") from exc
-    raise InputError(f"score.overall is missing or invalid: {raw!r}")
+    else:
+        raise InputError(f"score.overall is missing or invalid: {raw!r}")
+    if not math.isfinite(value):
+        raise InputError(f"score.overall must be finite: {raw!r}")
+    return value
 
 
 def _extract_sha_pair(metadata: dict[str, Any]) -> tuple[str | None, str | None]:

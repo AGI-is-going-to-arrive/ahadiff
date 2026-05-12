@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, TypeAlias
+from typing import Annotated, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt
 
@@ -20,6 +20,7 @@ RunStatus: TypeAlias = Literal[
 Verdict: TypeAlias = Literal["PASS", "CAUTION", "FAIL"]
 EventType: TypeAlias = str
 CostConfidence: TypeAlias = Literal["high", "medium", "low"]
+FiniteScore: TypeAlias = Annotated[StrictFloat, Field(allow_inf_nan=False)]
 
 TERMINAL_RUN_STATUSES = frozenset(
     {"baseline", "keep", "discard", "crash", "keep_final", "non_ratcheted"}
@@ -39,7 +40,7 @@ class ResultEvent(BaseModel):
     prompt_version: str
     eval_bundle_version: str
     rubric_version: str | None = None
-    overall: StrictFloat
+    overall: FiniteScore
     verdict: Verdict
     status: RunStatus
     weakest_dim: str

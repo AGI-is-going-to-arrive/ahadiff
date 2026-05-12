@@ -1047,6 +1047,21 @@ export const improvePreflightResponseSchema = z.object({
   provider_configured: z.boolean(),
 }).strict();
 
+export const exportPreviewManifestSchema = z
+  .object({
+    path: z.string().min(1),
+    manifest_digest: z.string().regex(/^[a-f0-9]{64}$/),
+    file_count: z.number().int().nonnegative(),
+    total_bytes: z.number().int().nonnegative(),
+    created_at_utc: z.string().min(1),
+    privacy_mode: z.string().min(1),
+    run_id: z.string().min(1),
+    cleared_stale_files: z.array(z.string()),
+  })
+  .strict();
+
+export type ExportPreviewManifest = z.infer<typeof exportPreviewManifestSchema>;
+
 /* ─────────────── 17. Boundary helper ─────────────── */
 
 interface RedactedIssue {
