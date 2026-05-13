@@ -1,15 +1,16 @@
 # AhaDiff 前端差距报告
 
-> 更新日期：2026-05-13 | 基于当前代码、后端 API、前端源码和本 session 实测结果
+> 更新日期：2026-05-14 | 基于当前代码、后端 API、前端源码和本 session 实测结果
 
 ## 审计范围
 
 - 后端 `src/ahadiff/serve/app.py` 当前注册：69 个 concrete `/api/*` route + 1 个 `/api/{rest_of_path:path}` catchall，另有 `/healthz`
-- 前端 `viewer/src/` 当前统计：17 个 page TSX（含 NotFound）；51 个非测试 TSX；47 个 CSS；i18n scalar keys `1273/1273`
+- 前端 `viewer/src/` 当前统计：14 个生产 page TSX（含 NotFound）；51 个非测试 TSX；47 个 CSS；i18n scalar keys `1297/1297`
 - 最近已记录完整 gate：后端 unit `2055 passed`；integration `11 passed`；eval `9 passed`；`ruff check`、`ruff format --check`、`pyright`、wheel build 通过；前端 `pnpm typecheck`、`pnpm vitest run`（`227 passed`）和 `pnpm build` 通过；完整跨浏览器 Playwright `2000 passed, 10 skipped`；GPT-5.5 live LLM judge smoke `1 passed`；Graphify 10k benchmark gate OK（parse avg `172.399ms`、peak `42.435MiB`）。后续前端主线已多轮重跑：P1 E2E 全矩阵 `390 passed`、05-10 Chromium desktop `166 passed` / WebKit smoke+a11y `38 passed` / Chromium mobile `166 passed`、Guide 目标 Playwright `7 passed`、Onboarding / Guide QA 完整 Playwright `2630 passed, 10 skipped`、viewer review-fix `269 passed` + 完整 Playwright `2630 passed, 10 skipped`。ConceptGraph Canvas follow-up 又重跑 viewer typecheck、前端 Vitest `270 passed`、viewer build、目标 Playwright `62 passed`、graph route/parser 后端目标 `117 passed`、目标 ruff/pyright、i18n `1131/1131` 和 `git diff --check`。AI 工具指引 / Ratchet export / Audit follow-up 重跑后端目标 `116 passed`、`ruff check`、`pyright`、改动 Python 文件 format check、viewer typecheck、前端 Vitest `270 passed`、viewer build、i18n `1176/1176` 和目标 Playwright `59 passed`。较早的 adversarial review fix 重跑后端 unit `2150 passed`、`ruff check`、目标 `pyright`、`uv lock --check`、viewer install/typecheck/Vitest `310 passed`/`pnpm t`/coverage/build、SearchOverlay + ErrorBoundary 目标 Playwright `10 passed` 和 `git diff --check HEAD`；integration/eval/live judge/wheel/完整 Playwright/GitHub Actions 远端 workflow 没有在那轮重跑
 - 最新 Phase 2 adversarial review hardening 又重跑后端 unit `2409 passed`、integration `11 passed`、eval `9 passed`、ruff/format/pyright、viewer typecheck、前端 Vitest `326 passed`、viewer build、i18n `1262/1262` 和 `git diff --check HEAD`。这轮在 Challenge 页面、Export modal、HealthBadge、API error best-effort 脱敏和 Ratchet locale-aware 格式化基础上，补了 Challenge rebuild/review 原子性、export preview noindex / 注入重扫 / stale cleanup TOCTOU、MCP 输出契约、concept lint 路径/JSONL guard 和 review 非有限分数拒绝；没有重跑完整 Playwright、live judge、wheel 或远端 GitHub Actions。
 - 2026-05-13 review-fix 只重跑改动面：后端目标 pytest `199 passed`、目标 pyright 0 errors、目标 ruff check / format check 通过；viewer typecheck 通过，前端 Vitest `336 passed`，SearchOverlay Playwright `60 passed`，i18n `1271/1271`，`git diff --check HEAD` 通过。本轮补的是 `RunDetail.learnability`、lesson/claims/quiz artifact 404、SearchOverlay graph-node → Concepts Ledger focus、ConceptLedger graph link/focus highlight/reduced-motion、ConceptGraph forced-colors/focus persistence 和 Lesson skipped/error state；没有重跑 integration、eval、live judge、wheel、viewer build、完整 Playwright 或远端 GitHub Actions。
 - 2026-05-13 frontend V6 alignment review-fix 只改 `viewer/src/`：AppShell / Sidebar / Topbar / `components.css` 接入 V6 scoped shell；Dashboard 空态和完整态都在 Learn dialog 打开时禁用全局快捷键；Landing / Lesson 补 `data-page`，Landing feature cards 改为响应式 CSS；Lesson reader 补三栏 TOC / prose / rail、IntersectionObserver fallback、TOC `aria-current`、Scaffolding tabpanel 关联和长文本换行；Settings / Dashboard / ProviderCard 补 forced-colors、reduced-motion 和长错误文本 fallback。真实验证：`cd viewer && pnpm typecheck` 通过；`cd viewer && pnpm vitest run` = `33 files, 336 tests passed`；`cd viewer && pnpm build` 通过；i18n scalar keys `1273/1273`；`git diff --check HEAD` 通过。后端、integration、eval、live judge、wheel、完整 Playwright 和远端 GitHub Actions 没有在本轮重跑。
+- 2026-05-14 Lesson reader follow-up 继续只改 `viewer/` 学习面：Lesson header 增加 verdict / score、打印和本地“标记已学”；右侧 rail 从当前 run 的 lesson、claims、concepts、quiz artifact 派生声明汇总、知识记忆、证据、学习进度、脚手架、未证明、被反驳和来源列表。本轮真实验证：viewer typecheck 通过；前端 Vitest `336 passed`；viewer build 通过；i18n `1297/1297`；Lesson walkthrough 目标 E2E `1 passed`。后端、integration、eval、live judge、wheel、完整 Playwright 和远端 GitHub Actions 没有在本轮重跑。
 
 ---
 
@@ -39,6 +40,7 @@
 | Settings usage / audit | Usage 表按 model 展示 calls / tokens / latency / cost；Audit 支持 offset load-more，带 generation guard 和 unmount cleanup；后端 `/api/audit` 最新记录优先，字段过滤和分页都基于这个顺序 | `SettingsPage.tsx`, `Settings.css`, `routes_audit.py`, `api/config.ts`, `settings-page.test.tsx` |
 | SearchOverlay 双栏预览 / table filter | SearchOverlay 可用 table scope chips 筛选结果，`/api/search` 会收到 `tables` 参数；桌面是结果列表 + 预览双栏，移动端先看列表、选中后进入预览并显示返回按钮；concept 结果保留 backend `primary_key` 作为稳定 id，graph node 使用纯文本 `focusText` 跳到 Concepts Ledger；安全 `#/` href 优先，同 hash 时才手动派发 `hashchange`；Escape 会先退出移动预览再关闭面板；focus trap 排除隐藏节点和 `tabindex="-1"`，WebKit 关闭后会恢复到原触发点 | `SearchOverlay.tsx`, `SearchOverlay.css`, `api/search.ts`, `SearchOverlay.test.tsx`, `search-overlay.spec.ts` |
 | Lesson skipped / artifact 404 | Lesson 页现在区分 run detail 404 与 lesson artifact skipped：run detail 不存在仍是加载失败，lesson artifact 缺失会展示 skipped empty state；claims 404 会清空旧 claims，避免切换 run 后残留上一个 run 的 assertions | `LessonPage.tsx`, `Lesson.css`, `api/types.ts`, `api/schemas.ts`, `LessonPage.test.tsx` |
+| Lesson 动态学习 rail / 标记已学 | Lesson header 显示 verdict / score、打印按钮和本地“标记已学”；右侧 rail 会从当前 run 的 lesson、claims、concepts、quiz artifact 派生声明汇总、知识记忆、证据、学习进度、脚手架、未证明、被反驳和来源，不是固定文案。标记已学目前只存在于当前浏览器 session，不写回 review.sqlite | `LessonPage.tsx`, `Lesson.css`, `messages/en.json`, `messages/zh-CN.json`, `walkthrough.spec.ts` |
 | ErrorBoundary 诊断与复制 | ErrorBoundary 会展示可复制诊断，复制前会脱敏 token/key/secret、本机路径和常见 bearer/key 前缀；Clipboard API 不可用或非 HTTPS 拒绝时使用临时 textarea + `execCommand('copy')` fallback，重复点击会清理旧 timer | `ErrorBoundary.tsx`, `ErrorBoundary.css`, `ErrorBoundary.test.tsx`, `error-boundary.spec.ts` |
 | ApiError 脱敏 | 前端 API 错误对象会对响应体和默认错误消息做 best-effort 脱敏，覆盖敏感 key、token-like 字符串和 prototype pollution key；显式传入的 message 参数不被统一重写 | `api/client.ts`, `client.test.ts` |
 | Challenge Mode | Challenge Mode 是基于后端 challenge API 的 WebUI 记忆重构流程。页面可从最近 run 构建挑战、深链加载 challenge、按 Build / Tour / Challenge / Review / Adapt stepper 展示 canonical diff、learner diff、gap 和 adapt signal 计数；前端只调用 API 并展示结果，不计算语义覆盖，也不执行代码 | `ChallengePage.tsx`, `ChallengeStepper.tsx`, `api/challenge.ts`, `schemas.ts`, `challenge.css` |
@@ -72,7 +74,7 @@
 | 优先级 | 差距 | 当前判断 |
 |---|---|---|
 | P1 | Dashboard 仍不是完整四车道模型 | 当前已经有 runs / ratchet / stats / heatmap / learning 并做了失败隔离，但还不是 L3/L2/L1 lane 视图 |
-| P1 | Lesson reader 仍有 V6 polish 差距 | 当前已是 TOC / prose / rail 三栏 reader，并有 scroll-spy、`aria-current`、Scaffolding tabpanel 和 rail cards；仍不是 V6 HTML 的逐像素复刻，source/provenance polish 和窄屏阅读细节还可继续打磨 |
+| P1 | Lesson reader 仍有 V6 polish 差距 | 当前已是 TOC / prose / rail 三栏 reader，rail 内容来自 lesson/claims/concepts/quiz artifact，并有 scroll-spy、`aria-current`、Scaffolding tabpanel、打印和本地标记已学；仍不是 V6 HTML 的逐像素复刻，source/provenance polish、持久化 learned signal 和窄屏阅读细节还可继续打磨 |
 | P2 | Diff 仍没有虚拟列表 | 当前是文件折叠和 sticky header；超大 diff 虚拟滚动仍待做 |
 | P2 | Benchmark / judge stability 仍没有报告页 | 单个 run 的 `judge.json` 已在 Run Detail 可看；benchmark status / judge stability 还没有完整报告页 |
 | P2 | Landing 仍以样例内容为主 | 还没有接真实 benchmark / demo API |
@@ -88,3 +90,4 @@
 - 最新 Phase 2 adversarial review hardening 重跑后端 unit `2409 passed`、integration `11 passed`、eval `9 passed`、ruff/format/pyright、viewer typecheck、前端 Vitest `326 passed`、viewer build、i18n `1262/1262` 和 `git diff --check HEAD`。这轮没有重跑完整 Playwright、live judge、wheel 或远端 GitHub Actions。
 - 2026-05-13 review-fix 只重跑改动面：后端目标 pytest `199 passed`，目标 pyright 0 errors，目标 ruff check / format check 通过；viewer typecheck 通过，前端 Vitest `336 passed`，SearchOverlay Playwright `60 passed`，i18n `1271/1271`，`git diff --check HEAD` 通过。integration/eval/live judge/wheel/viewer build/完整 Playwright/远端 GitHub Actions 未在本轮重跑。
 - 2026-05-13 frontend V6 alignment review-fix 重跑 viewer typecheck、前端 Vitest `336 passed`、viewer build、i18n `1273/1273` 和 `git diff --check HEAD`。本轮没有重跑后端、integration、eval、live judge、wheel、完整 Playwright 或远端 GitHub Actions。
+- 2026-05-14 Lesson reader follow-up 重跑 viewer typecheck、前端 Vitest `336 passed`、viewer build、i18n `1297/1297` 和 Lesson walkthrough 目标 E2E `1 passed`。本轮没有重跑后端、integration、eval、live judge、wheel、完整 Playwright 或远端 GitHub Actions。

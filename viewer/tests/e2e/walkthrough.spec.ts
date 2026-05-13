@@ -266,7 +266,7 @@ async function installRichMock(page: Page): Promise<void> {
           run_id: 'test-run',
           artifact_type: 'claims',
           content:
-            '{"claim_id":"c1","verdict":"verified","source_hunks":[{"file":"demo.py","start":3,"end":3,"side":"new"},{"file":"demo.py","start":8,"end":9,"side":"new"}],"statement":"adds learn-from-diff comment and follow-up evidence"}',
+            '{"claim_id":"c1","verdict":"verified","source_hunks":[{"file":"demo.py","start":3,"end":3,"side":"new"},{"file":"demo.py","start":8,"end":9,"side":"new"}],"statement":"adds learn-from-diff comment and follow-up evidence"}\n{"claim_id":"c2","verdict":"weak","file":"demo.py","line_start":7,"line_end":7,"statement":"return value was changed for lesson-ready output"}\n{"claim_id":"c3","verdict":"not_proven","file":"demo.py","line_start":9,"line_end":9,"statement":"evidence-ready comment changes runtime behavior"}\n{"claim_id":"c4","verdict":"rejected","statement":"the diff removes the hello function"}',
           content_lang: 'en',
         }),
       }),
@@ -335,22 +335,22 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(heading).toContainText(/Dashboard|运行/);
 
     // KPI cards visible (V6 grid for >= 2 runs: runs, avg score, pass rate, concepts, LLM calls)
-    const kpiCards = page.locator('.kpi-grid--5col > .kpi-card');
+    const kpiCards = page.locator('.kpi-grid--5col > .kpi');
     await expect(kpiCards).toHaveCount(5);
-    await expect(kpiCards.nth(0).locator('.kpi-card__label')).toHaveText('Total runs');
-    await expect(kpiCards.nth(1).locator('.kpi-card__label')).toHaveText('Avg score');
-    await expect(kpiCards.nth(2).locator('.kpi-card__label')).toHaveText('Pass rate');
-    await expect(kpiCards.nth(3).locator('.kpi-card__label')).toHaveText('Concepts learned');
-    await expect(kpiCards.nth(4).locator('.kpi-card__label')).toHaveText('LLM Calls');
+    await expect(kpiCards.nth(0).locator('.lb')).toHaveText('Total runs');
+    await expect(kpiCards.nth(1).locator('.lb')).toHaveText('Avg score');
+    await expect(kpiCards.nth(2).locator('.lb')).toHaveText('Pass rate');
+    await expect(kpiCards.nth(3).locator('.lb')).toHaveText('Concepts learned');
+    await expect(kpiCards.nth(4).locator('.lb')).toHaveText('LLM Calls');
     // Verify at least one KPI value reflects mock data
-    await expect(kpiCards.nth(0).locator('.kpi-card__value')).toContainText('3');
-    await expect(kpiCards.nth(4).locator('.kpi-card__value')).toContainText('42');
+    await expect(kpiCards.nth(0).locator('.vl')).toContainText('3');
+    await expect(kpiCards.nth(4).locator('.vl')).toContainText('42');
 
     // Graphify source card is visible on the Dashboard when the backend has a source.
     await expect(page.locator('.graphify-card').filter({ hasText: 'Graphify source' })).toBeVisible();
 
     // Run list table
-    const runTable = page.locator('table.run-list');
+    const runTable = page.getByRole('table', { name: 'Recent runs' });
     await expect(runTable).toBeVisible();
     const rows = runTable.locator('tbody tr');
     await expect(rows).toHaveCount(3);
@@ -371,7 +371,7 @@ test.describe('walkthrough: full-app functional test', () => {
 
     await compareChip.click();
     await expect(compareChip).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.locator('.run-list-section').getByRole('status')).toContainText(/Load more/i);
+    await expect(page.getByRole('status').filter({ hasText: /Load more/i })).toBeVisible();
 
     await sourceFilters.getByRole('button', { name: /All Sources/i }).click();
     await expect(rows).toHaveCount(3);
@@ -384,7 +384,7 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(page.locator('.ratchet-section')).toBeVisible();
 
     // Load more button (mock returns next_cursor on first page)
-    const loadMoreBtn = page.locator('.load-more-btn');
+    const loadMoreBtn = page.getByRole('button', { name: /Load more/i });
     await expect(loadMoreBtn).toBeVisible();
     await loadMoreBtn.click();
     // After click: 5 rows total (the store merges the next cursor page).
@@ -404,19 +404,19 @@ test.describe('walkthrough: full-app functional test', () => {
 
     await page.goto('/');
 
-    const kpiCards = page.locator('.kpi-grid--5col > .kpi-card');
+    const kpiCards = page.locator('.kpi-grid--5col > .kpi');
     await expect(kpiCards).toHaveCount(5);
-    await expect(kpiCards.nth(0).locator('.kpi-card__hint')).toHaveText(
+    await expect(kpiCards.nth(0).locator('.delta')).toHaveText(
       'Stats API unavailable; using loaded runs only',
     );
-    await expect(kpiCards.nth(1).locator('.kpi-card__hint')).toHaveText(
+    await expect(kpiCards.nth(1).locator('.delta')).toHaveText(
       'Stats API unavailable; using loaded runs only',
     );
-    await expect(kpiCards.nth(2).locator('.kpi-card__hint')).toHaveText('3 loaded runs');
-    await expect(kpiCards.nth(3).locator('.kpi-card__hint')).toHaveText(
+    await expect(kpiCards.nth(2).locator('.delta')).toHaveText('3 loaded runs');
+    await expect(kpiCards.nth(3).locator('.delta')).toHaveText(
       'Stats API unavailable; using loaded runs only',
     );
-    await expect(kpiCards.nth(4).locator('.kpi-card__label')).toHaveText('LLM Calls');
+    await expect(kpiCards.nth(4).locator('.lb')).toHaveText('LLM Calls');
   });
 
   /* ---------------------------------------------------------------- */
@@ -428,10 +428,12 @@ test.describe('walkthrough: full-app functional test', () => {
 
     // Heading
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await expect(page.locator('.lesson-page__verdict')).toContainText('PASS · 88');
+    await expect(page.getByRole('button', { name: /Print/i })).toBeVisible();
 
     // Scaffolding tabs
     const tabs = page.locator('.scaffolding-tab');
-    await expect(tabs).toHaveCount(3); // full, medium, minimal
+    await expect(tabs).toHaveCount(3); // full, hint, compact
 
     // Lesson prose content (V6 3-column layout: prose lives in .lesson__prose)
     await expect(page.locator('.lesson__prose')).toBeVisible();
@@ -441,8 +443,15 @@ test.describe('walkthrough: full-app functional test', () => {
 
     // Claims list
     const claimCards = page.locator('.claim-card');
-    await expect(claimCards).toHaveCount(1);
+    await expect(claimCards).toHaveCount(4);
     await expect(claimCards.first()).toContainText('c1');
+    await expect(page.locator('.lesson__rail')).toContainText('Wiki memory');
+    await expect(page.locator('.lesson__rail')).toContainText('Evidence');
+    await expect(page.locator('.lesson__rail')).toContainText('Learning');
+    await expect(page.locator('.lesson__rail')).toContainText('Not proven');
+    await expect(page.locator('.lesson__rail')).toContainText('Rejected');
+    await expect(page.locator('.lesson__concept-chip')).toContainText('Learn-from-diff');
+    await expect(page.locator('.lesson__evidence-list li')).toHaveCount(4);
 
     // Click claim to select it
     await claimCards.first().click();
@@ -459,6 +468,10 @@ test.describe('walkthrough: full-app functional test', () => {
     // Keyboard nav: Tab to a scaffolding tab, press ArrowRight
     await tabs.first().focus();
     await page.keyboard.press('ArrowRight');
+
+    const learnedBtn = page.getByRole('button', { name: /Mark as learned/i });
+    await learnedBtn.click();
+    await expect(page.getByRole('button', { name: /^Learned$/i })).toBeDisabled();
 
     await page.screenshot({ path: `${SCREENSHOT_DIR}/02-lesson.png`, fullPage: true });
   });
@@ -1431,11 +1444,12 @@ test.describe('walkthrough: full-app functional test', () => {
 
   test('Dashboard — clicking run link navigates to Lesson page', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('table.run-list')).toBeVisible();
+    const runTable = page.getByRole('table', { name: 'Recent runs' });
+    await expect(runTable).toBeVisible();
 
     // Click the first run link — table is sorted DESC by created_at,
     // so the first row is run-003 (newest, source_ref=HEAD).
-    const runLink = page.locator('.run-list__link').first();
+    const runLink = runTable.getByRole('link').first();
     await expect(runLink).toBeVisible();
     await runLink.scrollIntoViewIfNeeded();
     // The narrow Firefox project occasionally needs extra time for HashRouter
@@ -1530,8 +1544,8 @@ test.describe('walkthrough: full-app functional test', () => {
     await page.goto('/');
     // With zero runs, dashboard shows an empty-state / no-data indicator
     // rather than the run table.
-    const runTable = page.locator('table.run-list');
-    const emptyIndicator = page.locator('.dashboard__empty, .kpi-card');
+    const runTable = page.getByRole('table', { name: 'Recent runs' });
+    const emptyIndicator = page.locator('.dashboard__empty, .kpi');
     // Either the table is absent or we see KPI cards showing zero state
     const hasTable = await runTable.isVisible().catch(() => false);
     if (!hasTable) {

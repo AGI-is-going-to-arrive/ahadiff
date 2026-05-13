@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { CheckCircle2, Printer } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import EvidencePanel from '../components/EvidencePanel';
@@ -63,6 +64,40 @@ interface ClaimSummary {
   counts: Record<Claim['verdict'], number>;
 }
 
+interface ConceptSummaryItem {
+  term_key: string;
+  display_name: string;
+  file_refs: string[];
+  related_claims: string[];
+}
+
+interface QuizSummary {
+  total: number;
+  linked_claims: number;
+}
+
+interface EvidenceRef {
+  key: string;
+  file: string;
+  range: string;
+}
+
+type MarkLearnedState = 'idle' | 'saving' | 'saved' | 'error';
+
+const SHIPPED_VERDICTS: ReadonlySet<Claim['verdict']> = new Set([
+  'verified',
+  'weak',
+  'not_proven',
+]);
+const REJECTED_VERDICTS: ReadonlySet<Claim['verdict']> = new Set([
+  'contradicted',
+  'rejected',
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function toFiniteInt(value: unknown, fallback: number): number {
   const n = Number(value);
   return Number.isFinite(n) ? Math.trunc(n) : fallback;
@@ -108,6 +143,21 @@ function summarizeClaims(claims: Claim[]): ClaimSummary {
   return { total: claims.length, counts };
 }
 
+function parseJsonlObjects(content: string): Record<string, unknown>[] {
+  const rows: Record<string, unknown>[] = [];
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      if (isRecord(parsed)) rows.push(parsed);
+    } catch {
+      // Skip malformed JSONL lines from older or partial artifacts.
+    }
+  }
+  return rows;
+}
+
 function formatClaimLocation(claim: Claim): string {
   const line =
     claim.line_start > 0
@@ -118,6 +168,59 @@ function formatClaimLocation(claim: Claim): string {
   if (claim.file && line) return `${claim.file}:${line}`;
   if (claim.file) return claim.file;
   return line || claim.claim_id;
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+}
+
+function parseConcepts(content: string): ConceptSummaryItem[] {
+  return parseJsonlObjects(content)
+    .map((raw): ConceptSummaryItem | null => {
+      const termKey = String(raw.term_key ?? raw.concept ?? '').trim();
+      const displayName = String(raw.display_name ?? raw.concept ?? raw.term_key ?? '').trim();
+      if (!termKey && !displayName) return null;
+      return {
+        term_key: termKey || displayName,
+        display_name: displayName || termKey,
+        file_refs: stringList(raw.file_refs),
+        related_claims: stringList(raw.related_claims),
+      };
+    })
+    .filter((item): item is ConceptSummaryItem => item !== null);
+}
+
+function parseQuizSummary(content: string): QuizSummary {
+  const rows = parseJsonlObjects(content);
+  const linkedClaims = new Set<string>();
+  for (const row of rows) {
+    for (const claimId of stringList(row.source_claims)) linkedClaims.add(claimId);
+  }
+  return { total: rows.length, linked_claims: linkedClaims.size };
+}
+
+function collectEvidenceRefs(claims: Claim[]): EvidenceRef[] {
+  const seen = new Set<string>();
+  const refs: EvidenceRef[] = [];
+  for (const claim of claims) {
+    const hunks =
+      claim.source_hunks && claim.source_hunks.length > 0
+        ? claim.source_hunks
+        : claim.file && claim.line_start > 0
+          ? [{ file: claim.file, start: claim.line_start, end: claim.line_end, side: 'either' as const }]
+          : [];
+    for (const hunk of hunks) {
+      const file = hunk.display_path ?? hunk.file;
+      if (!file || hunk.start <= 0) continue;
+      const range = hunk.end > 0 && hunk.end !== hunk.start ? `${hunk.start}-${hunk.end}` : String(hunk.start);
+      const key = `${file}:${range}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      refs.push({ key, file, range });
+    }
+  }
+  return refs;
 }
 
 // Determine recommended scaffolding level from weak concepts.
@@ -181,11 +284,14 @@ export default function LessonPage() {
   const [runDetail, setRunDetail] = useState<RunDetail | null>(null);
   const [lessonContent, setLessonContent] = useState<string>('');
   const [claims, setClaims] = useState<Claim[]>([]);
+  const [concepts, setConcepts] = useState<ConceptSummaryItem[]>([]);
+  const [quizSummary, setQuizSummary] = useState<QuizSummary | null>(null);
   const [selectedClaim, setSelectedClaim] = useState<Claim | null>(null);
   const [popoverPos, setPopoverPos] = useState<{ top: number; right: number } | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [markLearnedState, setMarkLearnedState] = useState<MarkLearnedState>('idle');
   // Monotonic token for level-change fetches; losers are ignored
   const levelFetchRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
@@ -201,8 +307,11 @@ export default function LessonPage() {
     setRunDetail(null);
     setLessonContent('');
     setClaims([]);
+    setConcepts([]);
+    setQuizSummary(null);
     setSelectedClaim(null);
     setPopoverPos(null);
+    setMarkLearnedState('idle');
     try {
       let recommended: ScaffoldLevel = 'compact';
       try {
@@ -235,12 +344,20 @@ export default function LessonPage() {
       if (controller.signal.aborted) return;
       setRunDetail(detail);
 
-      const [lessonEnv, claimsEnv] = await Promise.all([
+      const [lessonEnv, claimsEnv, conceptsEnv, quizEnv] = await Promise.all([
         getRunLesson(runId, recommended, { signal: controller.signal }).catch((err: unknown) => {
           if (err instanceof ApiError && err.status === 404) return null;
           throw err;
         }),
         getRunArtifact(runId, 'claims', { signal: controller.signal }).catch((err: unknown) => {
+          if (err instanceof ApiError && err.status === 404) return null;
+          throw err;
+        }),
+        getRunArtifact(runId, 'concepts', { signal: controller.signal }).catch((err: unknown) => {
+          if (err instanceof ApiError && err.status === 404) return null;
+          throw err;
+        }),
+        getRunArtifact(runId, 'quiz', { signal: controller.signal }).catch((err: unknown) => {
           if (err instanceof ApiError && err.status === 404) return null;
           throw err;
         }),
@@ -258,6 +375,8 @@ export default function LessonPage() {
       } else {
         setClaims([]);
       }
+      setConcepts(conceptsEnv ? parseConcepts(conceptsEnv.content) : []);
+      setQuizSummary(quizEnv ? parseQuizSummary(quizEnv.content) : null);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       if (controller.signal.aborted) return;
@@ -317,6 +436,31 @@ export default function LessonPage() {
     [runId, level],
   );
 
+  const handlePrint = useCallback(() => {
+    window.print();
+  }, []);
+
+  const handleMarkLearned = useCallback(async () => {
+    if (!runId || markLearnedState === 'saving' || markLearnedState === 'saved') return;
+    setMarkLearnedState('saving');
+    try {
+      await helpfulness({
+        idempotency_key: createIdempotencyKey(),
+        target_kind: 'section',
+        target_id: `${runId}:lesson`,
+        payload: {
+          learned: true,
+          level,
+          claims_total: claims.length,
+          quiz_total: quizSummary?.total ?? 0,
+        },
+      });
+      setMarkLearnedState('saved');
+    } catch {
+      setMarkLearnedState('error');
+    }
+  }, [claims.length, level, markLearnedState, quizSummary?.total, runId]);
+
   const handleClaimClick = useCallback(
     (claim: Claim, e: React.MouseEvent<HTMLButtonElement>) => {
       const rect = e.currentTarget.getBoundingClientRect();
@@ -360,6 +504,21 @@ export default function LessonPage() {
 
   const tocEntries = useMemo(() => extractTocEntries(lessonContent), [lessonContent]);
   const claimSummary = useMemo(() => summarizeClaims(claims), [claims]);
+  const shippedClaims = useMemo(
+    () => claims.filter((claim) => SHIPPED_VERDICTS.has(claim.verdict)),
+    [claims],
+  );
+  const rejectedClaims = useMemo(
+    () => claims.filter((claim) => REJECTED_VERDICTS.has(claim.verdict)),
+    [claims],
+  );
+  const notProvenClaims = useMemo(
+    () => claims.filter((claim) => claim.verdict === 'not_proven'),
+    [claims],
+  );
+  const evidenceRefs = useMemo(() => collectEvidenceRefs(claims), [claims]);
+  const shippedPercent =
+    claimSummary.total > 0 ? Math.round((shippedClaims.length / claimSummary.total) * 100) : 0;
   const learningNotes = useMemo(() => {
     const notes: string[] = [];
     if (runDetail?.weakest_dim) {
@@ -375,6 +534,12 @@ export default function LessonPage() {
   const renderedProse = useMemo(() => renderMarkdownProse(lessonContent), [lessonContent]);
   const scaffoldingPanelId = 'lesson-scaffolding-panel';
   const scaffoldingTabIdBase = 'lesson-scaffolding-tab';
+  const markLearnedLabel =
+    markLearnedState === 'saving'
+      ? t('Lesson.mark_learned_saving')
+      : markLearnedState === 'saved'
+        ? t('Lesson.mark_learned_done')
+        : t('Lesson.mark_learned');
 
   const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
   useEffect(() => {
@@ -433,6 +598,40 @@ export default function LessonPage() {
             )}
           </div>
           <div className="lesson-page__header-right">
+            {runDetail && (
+              <div className="lesson-page__actions" aria-label={t('Lesson.header_actions')}>
+                <span
+                  className={`lesson-page__verdict lesson-page__verdict--${runDetail.verdict.toLowerCase()}`}
+                >
+                  {t('Lesson.header_status', {
+                    verdict: runDetail.verdict,
+                    score: String(Math.round(runDetail.overall)),
+                  })}
+                </span>
+                <button
+                  type="button"
+                  className="lesson-page__action-btn"
+                  onClick={handlePrint}
+                >
+                  <Printer size={16} aria-hidden="true" />
+                  {t('Lesson.print')}
+                </button>
+                <button
+                  type="button"
+                  className="lesson-page__action-btn lesson-page__action-btn--primary"
+                  onClick={() => void handleMarkLearned()}
+                  disabled={markLearnedState === 'saving' || markLearnedState === 'saved'}
+                >
+                  <CheckCircle2 size={16} aria-hidden="true" />
+                  {markLearnedLabel}
+                </button>
+              </div>
+            )}
+            {markLearnedState === 'error' && (
+              <p className="lesson-page__action-error" role="status">
+                {t('Lesson.mark_learned_failed')}
+              </p>
+            )}
             <ScaffoldingTabs
               level={level}
               onChange={handleLevelChange}
@@ -530,6 +729,14 @@ export default function LessonPage() {
                   <span className="lesson__claim-total-number">{claimSummary.total}</span>
                   <span className="lesson__claim-total-label">{t('Lesson.rail.total_claims')}</span>
                 </div>
+                <div className="lesson__rail-chip-list" aria-label={t('Lesson.rail.claims_summary')}>
+                  {CLAIM_VERDICT_ORDER.map((verdict) => (
+                    <span key={verdict} className="lesson__summary-chip">
+                      <ClaimBadge verdict={verdict} />
+                      <span className="lesson__summary-chip-count">{claimSummary.counts[verdict]}</span>
+                    </span>
+                  ))}
+                </div>
                 <dl className="lesson__status-grid">
                   {CLAIM_VERDICT_ORDER.map((verdict) => (
                     <div key={verdict} className={`lesson__status-row lesson__status-row--${verdict}`}>
@@ -538,6 +745,100 @@ export default function LessonPage() {
                     </div>
                   ))}
                 </dl>
+                <div className="lesson__claims-meta">
+                  {t('Lesson.rail.claims_meta', {
+                    shipped: String(shippedClaims.length),
+                    rejected: String(rejectedClaims.length),
+                  })}
+                </div>
+              </section>
+
+              <section className="lesson__rail-card" aria-labelledby="lesson-rail-wiki">
+                <h2 id="lesson-rail-wiki" className="lesson__rail-card-title">
+                  {t('Lesson.rail.wiki_memory')}
+                </h2>
+                <div className="lesson__tree" aria-label={t('Lesson.rail.artifact_tree')}>
+                  <span className="lesson__tree-dir">.ahadiff/</span>
+                  <span className="lesson__tree-file">review.sqlite</span>
+                  <span className="lesson__tree-file">concepts.jsonl</span>
+                  <span className="lesson__tree-file">runs/{runDetail?.run_id ?? 'run'}/</span>
+                  {runDetail?.artifacts?.slice(0, 4).map((artifact) => (
+                    <span key={artifact} className="lesson__tree-sub">{artifact}</span>
+                  ))}
+                </div>
+                {concepts.length === 0 ? (
+                  <p className="lesson__rail-empty">{t('Lesson.rail.concepts_empty')}</p>
+                ) : (
+                  <>
+                    <p className="lesson__concept-count">
+                      {t('Lesson.rail.concepts_linked', { count: String(concepts.length) })}
+                    </p>
+                    <ul className="lesson__concept-list">
+                      {concepts.slice(0, 6).map((concept) => (
+                        <li key={concept.term_key} className="lesson__concept-chip">
+                          <span>{concept.display_name}</span>
+                          {concept.file_refs[0] && <code>{concept.file_refs[0]}</code>}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </section>
+
+              <section className="lesson__rail-card" aria-labelledby="lesson-rail-evidence">
+                <h2 id="lesson-rail-evidence" className="lesson__rail-card-title">
+                  {t('Lesson.rail.evidence_title')} <span className="kbd" aria-hidden="true">↵</span>
+                </h2>
+                {evidenceRefs.length === 0 ? (
+                  <p className="lesson__rail-empty">{t('Lesson.rail.evidence_empty')}</p>
+                ) : (
+                  <ul className="lesson__evidence-list">
+                    {evidenceRefs.slice(0, 6).map((ref) => (
+                      <li key={ref.key}>
+                        <span>{ref.file}</span>
+                        <code>L{ref.range}</code>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section className="lesson__rail-card" aria-labelledby="lesson-rail-learning">
+                <h2 id="lesson-rail-learning" className="lesson__rail-card-title">
+                  {t('Lesson.rail.learning_title')}
+                </h2>
+                <div className="lesson__progress-row">
+                  <span>{t('Lesson.rail.shipped_claims')}</span>
+                  <span className="mono">{shippedClaims.length} / {claimSummary.total}</span>
+                </div>
+                <div className="lesson__progress-bar" aria-hidden="true">
+                  <span style={{ width: `${shippedPercent}%` }} />
+                </div>
+                <div className="lesson__progress-row">
+                  <span>{t('Lesson.rail.quiz_questions')}</span>
+                  <span className="mono">{quizSummary?.total ?? 0}</span>
+                </div>
+                <div className="lesson__progress-row">
+                  <span>{t('Lesson.rail.linked_claims')}</span>
+                  <span className="mono">{quizSummary?.linked_claims ?? 0}</span>
+                </div>
+              </section>
+
+              <section className="lesson__rail-card" aria-labelledby="lesson-rail-scaffolding">
+                <h2 id="lesson-rail-scaffolding" className="lesson__rail-card-title">
+                  {t('Lesson.rail.scaffolding_title')}
+                </h2>
+                <p className="lesson__rail-note">{t('Lesson.rail.scaffolding_desc')}</p>
+                <div className="lesson__scaffold-mini" aria-hidden="true">
+                  {(['full', 'hint', 'compact'] as const).map((lvl) => (
+                    <span
+                      key={lvl}
+                      className={`lesson__scaffold-pill${level === lvl ? ' lesson__scaffold-pill--active' : ''}`}
+                    >
+                      {t(`Lesson.level_${lvl}`)}
+                    </span>
+                  ))}
+                </div>
               </section>
 
               <section className="lesson__rail-card" aria-labelledby="lesson-rail-claims-list">
@@ -568,6 +869,39 @@ export default function LessonPage() {
                             <code>{formatClaimLocation(claim)}</code>
                           </div>
                         </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section className="lesson__rail-card" aria-labelledby="lesson-rail-not-proven">
+                <h2 id="lesson-rail-not-proven" className="lesson__rail-card-title">
+                  {t('Lesson.rail.not_proven_title')}
+                </h2>
+                {notProvenClaims.length === 0 ? (
+                  <p className="lesson__rail-empty">{t('Lesson.rail.not_proven_empty')}</p>
+                ) : (
+                  <ul className="lesson__compact-list">
+                    {notProvenClaims.slice(0, 4).map((claim) => (
+                      <li key={claim.claim_id}>{claim.statement}</li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section className="lesson__rail-card" aria-labelledby="lesson-rail-rejected">
+                <h2 id="lesson-rail-rejected" className="lesson__rail-card-title">
+                  {t('Lesson.rail.rejected_title')}
+                </h2>
+                {rejectedClaims.length === 0 ? (
+                  <p className="lesson__rail-empty">{t('Lesson.rail.rejected_empty')}</p>
+                ) : (
+                  <ul className="lesson__risk-list">
+                    {rejectedClaims.slice(0, 4).map((claim) => (
+                      <li key={claim.claim_id}>
+                        <span>{claim.claim_id}</span>
+                        {claim.statement}
                       </li>
                     ))}
                   </ul>

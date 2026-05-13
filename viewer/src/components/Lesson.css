@@ -70,6 +70,97 @@
   min-width: 0;
 }
 
+.lesson-page__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lesson-page__verdict,
+.lesson-page__action-btn {
+  min-height: 36px;
+  border-radius: 7px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.lesson-page__verdict {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  border: 1px solid var(--hair);
+  background: var(--subtle);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.lesson-page__verdict--pass {
+  border-color: var(--success-hair);
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.lesson-page__verdict--caution {
+  border-color: var(--warning-hair);
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.lesson-page__verdict--fail {
+  border-color: var(--danger-hair);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.lesson-page__action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--hair);
+  background: var(--elevated);
+  color: var(--ink);
+  padding: 0 12px;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-out-quart),
+    border-color var(--dur-fast) var(--ease-out-quart),
+    transform var(--dur-fast) var(--ease-out-quart);
+}
+
+.lesson-page__action-btn:hover:not(:disabled) {
+  border-color: var(--hair-strong);
+  background: var(--accent-softer);
+  transform: translateY(-1px);
+}
+
+.lesson-page__action-btn:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.lesson-page__action-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--sh-ring);
+}
+
+.lesson-page__action-btn--primary {
+  border-color: var(--success-hair);
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.lesson-page__action-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .lesson-scaffolding-panel {
   min-width: 0;
 }
@@ -349,6 +440,13 @@
   margin: 0;
 }
 
+.lesson__rail-note {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
 /* --- Claim Summary --- */
 
 .lesson__claim-total {
@@ -402,8 +500,233 @@
 
 .lesson__status-row--verified dd { color: var(--stamp-verified-ink); }
 .lesson__status-row--weak dd { color: var(--warning); }
+.lesson__status-row--not_proven dd { color: var(--accent-ink); }
 .lesson__status-row--contradicted dd { color: var(--danger); }
 .lesson__status-row--rejected dd { color: var(--muted); }
+
+.lesson__rail-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+
+.lesson__summary-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+}
+
+.lesson__summary-chip-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink);
+}
+
+.lesson__claims-meta,
+.lesson__concept-count {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* --- Wiki Memory / Evidence / Learning Rail --- */
+
+.lesson__tree {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.lesson__tree-dir,
+.lesson__tree-file,
+.lesson__tree-sub {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.lesson__tree-dir {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.lesson__tree-file {
+  padding-left: 14px;
+}
+
+.lesson__tree-sub {
+  padding-left: 28px;
+}
+
+.lesson__concept-list,
+.lesson__evidence-list,
+.lesson__compact-list,
+.lesson__risk-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+
+.lesson__concept-list,
+.lesson__compact-list,
+.lesson__risk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.lesson__concept-chip {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 9px;
+  border: 1px solid var(--hair);
+  border-radius: 7px;
+  background: var(--subtle);
+  font-size: 12.5px;
+  line-height: 1.35;
+  min-width: 0;
+}
+
+.lesson__concept-chip span {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.lesson__concept-chip code,
+.lesson__evidence-list code,
+.lesson__progress-row .mono {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.lesson__concept-chip code {
+  color: var(--muted);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.lesson__evidence-list {
+  display: grid;
+  gap: 6px;
+}
+
+.lesson__evidence-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+}
+
+.lesson__evidence-list span {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.lesson__evidence-list code {
+  color: var(--accent-ink);
+  background: var(--accent-softer);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.lesson__progress-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 7px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.lesson__progress-row .mono {
+  color: var(--ink);
+}
+
+.lesson__progress-bar {
+  height: 7px;
+  border-radius: 999px;
+  background: var(--subtle);
+  border: 1px solid var(--hair);
+  overflow: hidden;
+  margin: 0 0 11px;
+}
+
+.lesson__progress-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--success);
+}
+
+.lesson__scaffold-mini {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.lesson__scaffold-pill {
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--subtle);
+}
+
+.lesson__scaffold-pill--active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.lesson__compact-list li,
+.lesson__risk-list li {
+  position: relative;
+  padding-left: 14px;
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.lesson__compact-list li::before,
+.lesson__risk-list li::before {
+  content: "";
+  position: absolute;
+  top: 0.72em;
+  left: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.lesson__risk-list li::before {
+  background: var(--danger);
+}
+
+.lesson__risk-list span {
+  display: inline-block;
+  margin-inline-end: 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--danger);
+  text-transform: uppercase;
+}
 
 /* --- Sources --- */
 
@@ -631,6 +954,10 @@
     align-items: flex-start;
     width: 100%;
   }
+  .lesson-page__actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
   .scaffolding-tabs-wrapper {
     align-items: stretch;
     width: 100%;
@@ -650,7 +977,6 @@
 
 @media print {
   .lesson__toc,
-  .lesson__rail,
   .lesson-page__header-right {
     display: none !important;
   }
@@ -663,6 +989,12 @@
   }
   .lesson__prose code {
     font-size: 9.5pt;
+  }
+  .lesson__rail {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    margin-top: 18pt;
   }
 }
 
@@ -890,7 +1222,10 @@
 
 @media (max-width: 767px) {
   .claim-popover {
-    inset: auto var(--sp-3) var(--sp-3) var(--sp-3);
+    top: auto !important;
+    right: var(--sp-3) !important;
+    bottom: var(--sp-3);
+    left: var(--sp-3);
     width: auto;
     max-height: 60vh;
     animation-name: claimPopoverUp;
@@ -912,6 +1247,39 @@
   .evidence-panel {
     background: var(--subtle);
     border-color: var(--hair-strong);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lesson-page,
+  .lesson-page__action-btn,
+  .claim-card,
+  .claim-popover {
+    animation: none;
+    transition: none;
+  }
+  .lesson-page__action-btn:hover:not(:disabled),
+  .claim-card:hover,
+  .claim-card--selected {
+    transform: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .lesson-page__verdict,
+  .lesson-page__action-btn,
+  .lesson__concept-chip,
+  .lesson__evidence-list code,
+  .lesson__scaffold-pill,
+  .lesson__progress-bar {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+  .lesson__progress-bar span,
+  .lesson__compact-list li::before,
+  .lesson__risk-list li::before {
+    background: CanvasText;
   }
 }
 
