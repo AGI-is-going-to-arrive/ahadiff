@@ -6,6 +6,7 @@ import RatchetChart from '../components/RatchetChart';
 import Skeleton, { SkeletonGroup } from '../components/Skeleton';
 import {
   getRatchetHistory,
+  getRatchetTransparency,
   getRunScore,
 } from '../api/runs';
 import { scorePayloadSchema } from '../api/schemas';
@@ -14,7 +15,8 @@ import { useTranslation, type TranslateFn } from '../i18n/useTranslation';
 import { useLocaleStore } from '../state/locale-store';
 import type {
   RatchetHistoryEntry,
-  ScoreDimension,
+  RatchetResultRow,
+  RatchetTransparencyResponse,
   ScorePayload,
   SpecAlignmentResponse,
 } from '../api/types';
@@ -59,6 +61,13 @@ interface RatchetNote {
   targetedCandidateScore?: number;
 }
 
+interface RatchetNoteSource {
+  run_id: string;
+  note_json: string | null;
+}
+
+const KEPT_STATUSES = new Set(['baseline', 'keep', 'keep_final']);
+
 function formatDate(iso: string, locale: string): string {
   try {
     return new Date(iso).toLocaleDateString(locale, {
@@ -92,7 +101,7 @@ function readNumberField(record: Record<string, unknown>, key: string): number |
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
-function parseRatchetNote(entry: RatchetHistoryEntry): RatchetNote | null {
+function parseRatchetNote(entry: RatchetNoteSource): RatchetNote | null {
   if (!entry.note_json) return null;
   try {
     const parsed = JSON.parse(entry.note_json) as unknown;
@@ -119,6 +128,74 @@ function parseScorePayload(content: string): ScorePayload | null {
     return scorePayloadSchema.parse(parsed);
   } catch {
     return null;
+  }
+}
+
+function historyEntryToResultRow(entry: RatchetHistoryEntry): RatchetResultRow {
+  return {
+    run_id: entry.run_id,
+    source_ref: entry.source_ref,
+    base_ref: null,
+    prompt_version: '-',
+    eval_bundle_version: entry.eval_bundle_version,
+    rubric_version: null,
+    overall: entry.overall,
+    verdict: entry.verdict,
+    status: entry.status,
+    timestamp: entry.timestamp,
+    weakest_dim: entry.weakest_dim,
+    note_json: entry.note_json,
+  };
+}
+
+function statusTone(status: string): 'kept' | 'discarded' | 'other' {
+  if (KEPT_STATUSES.has(status)) return 'kept';
+  if (status === 'discard' || status === 'crash') return 'discarded';
+  return 'other';
+}
+
+function statusLabel(status: string, t: TranslateFn): string {
+  switch (status) {
+    case 'baseline':
+      return t('Ratchet.status_baseline');
+    case 'keep':
+      return t('Ratchet.status_keep');
+    case 'keep_final':
+      return t('Ratchet.status_keep_final');
+    case 'discard':
+      return t('Ratchet.status_discard');
+    case 'crash':
+      return t('Ratchet.status_crash');
+    case 'targeted_verify':
+      return t('Ratchet.status_targeted_verify');
+    case 'phase25_rewrite':
+      return t('Ratchet.status_phase25_rewrite');
+    case 'non_ratcheted':
+      return t('Ratchet.status_non_ratcheted');
+    default:
+      return status.replace(/_/g, ' ');
+  }
+}
+
+function noteSummary(row: RatchetResultRow, t: TranslateFn): string {
+  if (!row.note_json) return t('Ratchet.note_row_empty');
+  try {
+    const parsed = JSON.parse(row.note_json) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return t('Ratchet.note_row_available');
+    }
+    const record = parsed as Record<string, unknown>;
+    const phase25Note = readStringField(record, 'phase25_note');
+    if (phase25Note) return phase25Note;
+    const targetedReason = readStringField(record, 'targeted_reason');
+    if (targetedReason) return targetedReason;
+    const triggerReason = readStringField(record, 'trigger_reason');
+    if (triggerReason) return triggerReason;
+    const baseline = readNumberField(record, 'baseline_overall');
+    if (baseline != null) return t('Ratchet.note_row_baseline', { score: baseline });
+    return t('Ratchet.note_row_available');
+  } catch {
+    return t('Ratchet.note_row_available');
   }
 }
 
@@ -154,10 +231,6 @@ function formatDimensionLabel(
   return dim.replace(/_/g, ' ');
 }
 
-function scorePercent(dimension: ScoreDimension): number {
-  return Math.min(100, Math.max(0, (dimension.score / dimension.max_score) * 100));
-}
-
 export default function RatchetPage() {
   const { t } = useTranslation();
   const locale = useLocaleStore((s) => s.locale);
@@ -171,11 +244,18 @@ export default function RatchetPage() {
   const [scoreRunId, setScoreRunId] = useState<string | null>(null);
   const [scoreLoading, setScoreLoading] = useState(false);
   const [specAlignment, setSpecAlignment] = useState<SpecAlignmentResponse | null>(null);
+  const [transparency, setTransparency] = useState<RatchetTransparencyResponse | null>(null);
+  const [transparencyLoading, setTransparencyLoading] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const loadMoreAbortRef = useRef<AbortController | null>(null);
-  const latestRunId = history[0]?.run_id ?? null;
+  const transparencyAbortRef = useRef<AbortController | null>(null);
+  const resultRows = transparency?.results.length
+    ? transparency.results
+    : history.map(historyEntryToResultRow);
+  const latestRunId = resultRows[0]?.run_id ?? null;
   const activeScoreData = scoreRunId === latestRunId ? scoreData : null;
+  const latestNote = resultRows.map(parseRatchetNote).find((item): item is RatchetNote => item !== null) ?? null;
 
   const focusTab = useCallback((tab: RatchetTab) => {
     window.requestAnimationFrame(() => {
@@ -259,9 +339,28 @@ export default function RatchetPage() {
     return () => {
       abortRef.current?.abort();
       loadMoreAbortRef.current?.abort();
+      transparencyAbortRef.current?.abort();
       loadMoreRef.current += 1;
     };
   }, [fetchHistory]);
+
+  useEffect(() => {
+    transparencyAbortRef.current?.abort();
+    const controller = new AbortController();
+    transparencyAbortRef.current = controller;
+    setTransparencyLoading(true);
+    getRatchetTransparency({ signal: controller.signal })
+      .then((payload) => {
+        if (!controller.signal.aborted) setTransparency(payload);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setTransparency(null);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setTransparencyLoading(false);
+      });
+    return () => controller.abort();
+  }, []);
 
   // Spec alignment summary — surfaced near the page header so users see
   // overall rubric drift without paging through individual run scores.
@@ -278,7 +377,7 @@ export default function RatchetPage() {
   }, []);
 
   useEffect(() => {
-    if ((activeTab !== 'benchmark' && activeTab !== 'judge') || !latestRunId || activeScoreData) return;
+    if (activeTab !== 'judge' || !latestRunId || activeScoreData) return;
     const controller = new AbortController();
     const runId = latestRunId;
     setScoreLoading(true);
@@ -386,7 +485,8 @@ export default function RatchetPage() {
           <span className="ratchet-banner__text">{t('Ratchet.banner_text')}</span>
         </aside>
 
-        <RatchetNoteCard history={history} locale={locale} t={t} />
+        <RatchetNoteCard entries={resultRows} locale={locale} t={t} />
+        {latestNote?.phase25 && <Phase25Readout note={latestNote} locale={locale} t={t} />}
 
         {/* Chart + Rubric grid — always visible above tabs */}
         <div className="ratchet-page__grid">
@@ -396,8 +496,8 @@ export default function RatchetPage() {
               <span className="ratchet-card__meta">{t('Rubric.overall')}</span>
             </div>
             <div className="ratchet-card__body">
-              {history.length >= 2 ? (
-                <RatchetChart history={history} />
+              {resultRows.length >= 2 ? (
+                <RatchetChart history={resultRows} />
               ) : (
                 <div className="u-muted-sm">
                   {t('Dashboard.ratchet_not_enough')}
@@ -453,23 +553,33 @@ export default function RatchetPage() {
           {activeTab === 'results' && (
             <>
             <div className="ratchet-card__header">
-              <h2 id="ratchet-run-list-heading">{t('Dashboard.run_list_title')}</h2>
-              <span className="ratchet-card__meta">{t('Ratchet.meta_entries', { count: history.length })}</span>
+              <h2 id="ratchet-run-list-heading">results.tsv</h2>
+              <span className="ratchet-card__meta">{t('Ratchet.meta_entries', { count: resultRows.length })}</span>
             </div>
             <div className="ratchet-card__body ratchet-card__body--table u-p-0" tabIndex={0} role="region" aria-labelledby="ratchet-run-list-heading">
               <table className="ratchet-table" aria-label={t('Ratchet.table_label')}>
                 <thead>
                   <tr>
+                    <th scope="col">{t('Ratchet.col_time')}</th>
                     <th scope="col">{t('Dashboard.col_ref')}</th>
                     <th scope="col">{t('Ratchet.col_score')}</th>
                     <th scope="col">{t('Ratchet.col_verdict')}</th>
+                    <th scope="col">{t('Ratchet.col_status')}</th>
                     <th scope="col">{t('Ratchet.col_weakest')}</th>
-                    <th scope="col">{t('Ratchet.col_date')}</th>
+                    <th scope="col">{t('Ratchet.col_note')}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {history.map((entry) => (
-                    <tr key={`${entry.run_id}-${entry.timestamp}`}>
+                  {resultRows.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="ratchet-table__empty">
+                        {t('Ratchet.no_results')}
+                      </td>
+                    </tr>
+                  )}
+                  {resultRows.map((entry) => (
+                    <tr key={`${entry.run_id}-${entry.timestamp}-${entry.status}`}>
+                      <td className="mono">{formatDate(entry.timestamp, locale)}</td>
                       <td className="mono">{entry.source_ref || entry.run_id.slice(0, 8)}</td>
                       <td className="num">{formatScore(entry.overall, locale)}</td>
                       <td>
@@ -477,14 +587,19 @@ export default function RatchetPage() {
                           {safeVerdict(entry.verdict)}
                         </span>
                       </td>
+                      <td>
+                        <span className={`ratchet-status ratchet-status--${statusTone(entry.status)}`}>
+                          {statusLabel(entry.status, t)}
+                        </span>
+                      </td>
                       <td>{formatDimensionLabel(entry.weakest_dim, t)}</td>
-                      <td className="mono">{formatDate(entry.timestamp, locale)}</td>
+                      <td className="ratchet-note-summary">{noteSummary(entry, t)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            {nextCursor && (
+            {!transparency?.results.length && nextCursor && (
               <div className="u-center-action-row">
                 <button
                   type="button"
@@ -530,34 +645,16 @@ export default function RatchetPage() {
           hidden={activeTab !== 'benchmark'}
         >
           {activeTab === 'benchmark' && (
-            scoreLoading ? (
+            transparencyLoading ? (
               <div className="ratchet-card__body">
                 <Skeleton height="200px" />
               </div>
-            ) : activeScoreData ? (
-              <div className="ratchet-card__body">
-                <div className="rubric-grid">
-                  {Object.entries(activeScoreData.dimensions).map(([dim, d]) => (
-                    <div key={dim} className="rubric-grid__row">
-                      <span className="rubric-grid__label">
-                        <span className="rubric-grid__label-text" title={dim}>
-                          {formatDimensionLabel(dim, t)}
-                        </span>
-                        {DIM_HINT_KEYS[dim] && <InfoHint label={t(DIM_HINT_KEYS[dim])} />}
-                      </span>
-                      <div className="mastery-bar">
-                        <span
-                          className="mastery-bar__fill"
-                          style={{ width: `${scorePercent(d)}%` }}
-                        />
-                      </div>
-                      <span className="rubric-grid__fraction">
-                        {formatScore(d.score, locale)}/{formatScore(d.max_score, locale)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            ) : transparency?.benchmark ? (
+              <BenchmarkTransparencyPanel
+                benchmark={transparency.benchmark}
+                locale={locale}
+                t={t}
+              />
             ) : (
               <div className="ratchet-card__body">
                 <p className="u-muted-sm">{t('Ratchet.tab_benchmark_empty')}</p>
@@ -644,15 +741,15 @@ export default function RatchetPage() {
 }
 
 function RatchetNoteCard({
-  history,
+  entries,
   locale,
   t,
 }: {
-  history: RatchetHistoryEntry[];
+  entries: RatchetNoteSource[];
   locale: string;
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
-  const note = history.map(parseRatchetNote).find((item): item is RatchetNote => item !== null);
+  const note = entries.map(parseRatchetNote).find((item): item is RatchetNote => item !== null);
   if (!note) {
     return (
       <section className="ratchet-note-card" aria-label={t('Ratchet.note_title')}>
@@ -706,6 +803,163 @@ function RatchetNoteCard({
         )}
       </dl>
     </section>
+  );
+}
+
+function Phase25Readout({
+  note,
+  locale,
+  t,
+}: {
+  note: RatchetNote;
+  locale: string;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  const scoreDelta =
+    note.targetedBaselineScore != null && note.targetedCandidateScore != null
+      ? note.targetedCandidateScore - note.targetedBaselineScore
+      : null;
+  return (
+    <section className="phase25-readout">
+      <div className="ratchet-card__header">
+        <h2>{t('Ratchet.phase25_title')}</h2>
+        <span className="ratchet-card__meta">
+          {note.triggerReason ?? t('Ratchet.phase25_reason_unknown')}
+        </span>
+      </div>
+      <div className="ratchet-card__body phase25-readout__body">
+        <pre className="code-block phase25-readout__code">
+{`PHASE25: ${note.triggerReason ?? 'available'}
+target_dimension=${note.targetDimension ?? '-'}
+targeted_gate=${note.targetedPassed == null ? '-' : note.targetedPassed ? 'passed' : 'failed'}
+score_delta=${scoreDelta == null ? '-' : `${scoreDelta >= 0 ? '+' : ''}${formatScore(scoreDelta, locale)}`}`}
+        </pre>
+        <dl className="phase25-readout__facts">
+          <div>
+            <dt>{t('Ratchet.phase25_target')}</dt>
+            <dd>{note.targetDimension ?? '-'}</dd>
+          </div>
+          <div>
+            <dt>{t('Ratchet.note_targeted')}</dt>
+            <dd>{note.targetedPassed == null ? '-' : note.targetedPassed ? t('Ratchet.note_passed') : t('Ratchet.note_failed')}</dd>
+          </div>
+          <div>
+            <dt>{t('Ratchet.note_delta')}</dt>
+            <dd className="num">
+              {scoreDelta == null
+                ? '-'
+                : `${scoreDelta >= 0 ? '+' : ''}${formatScore(scoreDelta, locale)}`}
+            </dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+  );
+}
+
+function BenchmarkTransparencyPanel({
+  benchmark,
+  locale,
+  t,
+}: {
+  benchmark: RatchetTransparencyResponse['benchmark'];
+  locale: string;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  const manifest = benchmark.manifest;
+  const report = benchmark.report;
+  const warningText = benchmark.warnings
+    .map((warning) => t(`Ratchet.${warning}`))
+    .join(' · ');
+  return (
+    <div className="ratchet-card__body benchmark-transparency">
+      {warningText && (
+        <div className="demo-banner benchmark-transparency__warning">
+          <span className="demo-tag">{t('Ratchet.benchmark_warning_tag')}</span>
+          <span>{warningText}</span>
+        </div>
+      )}
+
+      <div className="benchmark-grid">
+        <BenchmarkMetric
+          label={t('Ratchet.benchmark_suite')}
+          value={manifest?.suite_id ?? report?.suite_id ?? '-'}
+          detail={manifest?.visibility ? t('Ratchet.benchmark_visibility', { visibility: manifest.visibility }) : undefined}
+        />
+        <BenchmarkMetric
+          label={t('Ratchet.benchmark_entries')}
+          value={manifest ? String(manifest.eval_entry_count) : '-'}
+          detail={manifest ? t('Ratchet.benchmark_entries_detail', {
+            integration: manifest.integration_entry_count,
+            degraded: manifest.degraded_entry_count,
+          }) : undefined}
+        />
+        <BenchmarkMetric
+          label={t('Ratchet.benchmark_languages')}
+          value={manifest ? String(manifest.language_count) : '-'}
+          detail={manifest ? t('Ratchet.benchmark_groups', { count: manifest.group_count }) : undefined}
+        />
+        <BenchmarkMetric
+          label={t('Ratchet.benchmark_mean_score')}
+          value={report?.mean_score != null ? formatScore(report.mean_score, locale) : '-'}
+          detail={report?.comparable_entry_count != null ? t('Ratchet.benchmark_comparable', {
+            comparable: report.comparable_entry_count,
+            excluded: report.excluded_degraded_count ?? 0,
+          }) : undefined}
+        />
+        <BenchmarkMetric
+          label={t('Ratchet.benchmark_claim_rate')}
+          value={report?.claim_verification_rate != null
+            ? `${formatScore(report.claim_verification_rate * 100, locale, 1)}%`
+            : '-'}
+          detail={report?.eval_bundle_version ?? undefined}
+        />
+        <BenchmarkMetric
+          label={t('Ratchet.benchmark_digest')}
+          value={(report?.suite_digest ?? manifest?.suite_digest ?? '-').slice(0, 12)}
+          detail={t('Ratchet.benchmark_digest_detail')}
+        />
+      </div>
+
+      {report?.entries.length ? (
+        <>
+          <hr className="rule" />
+          <div className="benchmark-entry-list" aria-label={t('Ratchet.benchmark_entries_label')}>
+            {report.entries.map((entry) => (
+              <div key={`${entry.id ?? 'entry'}-${entry.group ?? ''}`} className="benchmark-entry-list__row">
+                <span className="mono">{entry.id ?? '-'}</span>
+                <span>{entry.language ?? '-'}</span>
+                <span className={`ratchet-status ratchet-status--${entry.degraded ? 'other' : 'kept'}`}>
+                  {entry.degraded ? t('Ratchet.benchmark_degraded') : t('Ratchet.benchmark_comparable_short')}
+                </span>
+                <span className="num">
+                  {entry.overall != null ? formatScore(entry.overall, locale) : '-'}
+                </span>
+                <span>{entry.weakest_dim ? formatDimensionLabel(entry.weakest_dim, t) : '-'}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function BenchmarkMetric({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string;
+  detail?: string;
+}) {
+  return (
+    <div className="benchmark-card">
+      <div className="eyebrow">{label}</div>
+      <div className="benchmark-card__value">{value}</div>
+      {detail && <div className="benchmark-card__delta">{detail}</div>}
+    </div>
   );
 }
 

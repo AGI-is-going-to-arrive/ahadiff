@@ -4,6 +4,7 @@ import {
   paginatedRunsResponseSchema,
   parseResponse,
   ratchetHistoryResponseSchema,
+  ratchetTransparencyResponseSchema,
   runArtifactEnvelopeSchema,
   runDetailSchema,
 } from './schemas';
@@ -11,6 +12,7 @@ import type {
   ArtifactKind,
   PaginatedRunsResponse,
   RatchetHistoryResponse,
+  RatchetTransparencyResponse,
   RunArtifactEnvelope,
   RunDetail,
 } from './types';
@@ -98,6 +100,17 @@ export async function getRatchetHistory(
   const qs = q.toString();
   const raw = await apiFetch<unknown>(`/api/ratchet/history${qs ? `?${qs}` : ''}`, opts);
   return parseResponse('GET /api/ratchet/history', ratchetHistoryResponseSchema, raw);
+}
+
+export async function getRatchetTransparency(
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<RatchetTransparencyResponse> {
+  const raw = await apiFetch<unknown>('/api/ratchet/transparency', opts);
+  return parseResponse(
+    'GET /api/ratchet/transparency',
+    ratchetTransparencyResponseSchema,
+    raw,
+  );
 }
 
 export async function getExportResultsTsvBlob(opts?: Pick<RequestInit, 'signal'>): Promise<Blob> {

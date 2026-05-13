@@ -1472,6 +1472,244 @@ def test_ratchet_history_returns_restricted_note_json(tmp_path: Path) -> None:
     assert detail_note == note
 
 
+def test_ratchet_transparency_requires_write_token(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    client = _client(state_dir)
+
+    response = client.get("/api/ratchet/transparency")
+
+    assert response.status_code == 401
+
+
+def test_ratchet_transparency_returns_result_events_and_benchmark_truth(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    sync_result_event(db_path, _event("run-1", status="keep", timestamp="2026-04-24T00:00:01Z"))
+    sync_result_event(
+        db_path,
+        _event(
+            "run-2",
+            status="discard",
+            timestamp="2026-04-24T00:00:02Z",
+            note_json=json.dumps(
+                {
+                    "phase25": True,
+                    "phase25_note": "PHASE25: consecutive_discard_count=2",
+                    "trigger_reason": "consecutive_discard_count=2",
+                    "worktree_path": str(tmp_path / "sensitive-worktree"),
+                },
+                sort_keys=True,
+            ),
+        ),
+    )
+    _write_json(
+        tmp_path / "benchmarks" / "manifest.json",
+        {
+            "schema_version": 1,
+            "suite_id": "ahadiff-local-v1",
+            "suite_digest": "abc123",
+            "visibility": "private",
+            "entries": [
+                {"id": "eval-1", "kind": "eval", "language": "python", "group": "main"},
+                {
+                    "id": "eval-2",
+                    "kind": "eval",
+                    "language": "typescript",
+                    "group": "main",
+                    "degraded": True,
+                },
+                {"id": "int-1", "kind": "integration", "language": "python", "group": "api"},
+            ],
+        },
+    )
+    _write_json(
+        state_dir / "benchmarks" / "local-report.json",
+        {
+            "suite_id": "ahadiff-local-v1",
+            "suite_digest": "abc123",
+            "eval_bundle_version": "bundle-v1",
+            "model_id": "none",
+            "api_family_version": "none",
+            "output_lang": "en",
+            "comparable_entry_count": 2,
+            "excluded_degraded_count": 1,
+            "mean_score": 87.25,
+            "claim_verification_rate": 1.0,
+            "entries": [
+                {
+                    "id": "eval-1",
+                    "group": "main",
+                    "language": "python",
+                    "degraded": False,
+                    "overall": 91.0,
+                    "verdict": "PASS",
+                    "weakest_dim": "evidence",
+                    "claim_verification_rate": 1.0,
+                    "ground_truth_digest": "f" * 64,
+                }
+            ],
+        },
+    )
+    client = _client(state_dir)
+
+    response = client.get("/api/ratchet/transparency", headers=_WRITE_HEADERS)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [row["status"] for row in body["results"][:2]] == ["discard", "keep"]
+    note = json.loads(body["results"][0]["note_json"])
+    assert note == {
+        "phase25": True,
+        "phase25_note": "PHASE25: consecutive_discard_count=2",
+        "trigger_reason": "consecutive_discard_count=2",
+    }
+    assert body["benchmark"]["warnings"] == []
+    assert body["benchmark"]["manifest"] == {
+        "schema_version": 1,
+        "suite_id": "ahadiff-local-v1",
+        "suite_digest": "abc123",
+        "visibility": "private",
+        "entry_count": 3,
+        "eval_entry_count": 2,
+        "integration_entry_count": 1,
+        "degraded_entry_count": 1,
+        "language_count": 2,
+        "group_count": 2,
+    }
+    report = body["benchmark"]["report"]
+    assert report["mean_score"] == 87.25
+    assert report["entries"][0]["ground_truth_digest"] == "f" * 64
+
+
+def test_ratchet_transparency_preserves_legacy_status_without_validation_crash(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    with connect_review_db(db_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO result_events (
+                event_id, run_id, event_type, timestamp, source_ref, base_ref,
+                prompt_version, eval_bundle_version, rubric_version, overall,
+                verdict, status, weakest_dim, note_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "evt-legacy",
+                "run-legacy",
+                "learn",
+                "2026-04-24T00:00:03Z",
+                "abc1234",
+                "base1234",
+                "prompt123",
+                "eval123",
+                "rubric-v1",
+                81.0,
+                "PASS",
+                "legacy_done",
+                "novel_dimension",
+                json.dumps(
+                    {
+                        "phase25": True,
+                        "worktree_path": str(tmp_path / "sensitive-worktree"),
+                        "api_key": "must-not-leak",
+                    },
+                    sort_keys=True,
+                ),
+            ),
+        )
+    client = _client(state_dir)
+
+    response = client.get("/api/ratchet/transparency", headers=_WRITE_HEADERS)
+
+    assert response.status_code == 200
+    row = response.json()["results"][0]
+    assert row["status"] == "legacy_done"
+    assert row["weakest_dim"] == "novel_dimension"
+    assert json.loads(row["note_json"]) == {"phase25": True}
+
+
+def test_ratchet_transparency_sanitizes_corrupt_benchmark_report_values(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    _write_json(
+        tmp_path / "benchmarks" / "manifest.json",
+        {
+            "schema_version": 1,
+            "suite_id": "ahadiff-local-v1",
+            "suite_digest": "abc123",
+            "visibility": "private",
+            "entries": [{"id": "eval-1", "kind": "eval", "language": "python", "group": "main"}],
+        },
+    )
+    _write_json(
+        state_dir / "benchmarks" / "local-report.json",
+        {
+            "suite_id": "ahadiff-local-v1",
+            "suite_digest": "abc123",
+            "eval_bundle_version": "bundle-v1",
+            "comparable_entry_count": -1,
+            "excluded_degraded_count": -2,
+            "mean_score": 88.0,
+            "claim_verification_rate": 1.0,
+            "entries": [
+                {
+                    "id": "bad-degraded",
+                    "group": "main",
+                    "language": "python",
+                    "degraded": "false",
+                    "overall": 88.0,
+                },
+                {
+                    "id": "good-entry",
+                    "group": "main",
+                    "language": "python",
+                    "degraded": False,
+                    "overall": 91.0,
+                },
+            ],
+        },
+    )
+    client = _client(state_dir)
+
+    response = client.get("/api/ratchet/transparency", headers=_WRITE_HEADERS)
+
+    assert response.status_code == 200
+    report = response.json()["benchmark"]["report"]
+    assert report["comparable_entry_count"] is None
+    assert report["excluded_degraded_count"] is None
+    assert [entry["id"] for entry in report["entries"]] == ["good-entry"]
+
+
+def test_ratchet_transparency_blocks_symlinked_benchmark_report(tmp_path: Path) -> None:
+    if not hasattr(os, "symlink"):
+        pytest.skip("os.symlink is unavailable")
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    report_path = state_dir / "benchmarks" / "local-report.json"
+    report_path.parent.mkdir(parents=True)
+    outside = tmp_path / "outside-report.json"
+    outside.write_text('{"suite_id":"leak"}\n', encoding="utf-8")
+    try:
+        os.symlink(outside, report_path)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlink unavailable: {exc}")
+    client = _client(state_dir)
+
+    response = client.get("/api/ratchet/transparency", headers=_WRITE_HEADERS)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["benchmark"]["report"] is None
+    assert "benchmark_report_unreadable" in body["benchmark"]["warnings"]
+
+
 def test_ratchet_history_drops_oversized_or_deep_note_json(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     db_path = state_dir / "review.sqlite"

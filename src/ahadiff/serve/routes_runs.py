@@ -80,9 +80,25 @@ _MAX_JSON_OBJECT_BYTES = 1024 * 1024
 _MAX_LIST_RUNS = 500
 _MAX_LIST_RUN_PAGES = 100
 _MAX_RATCHET_HISTORY = 500
+_MAX_RATCHET_TRANSPARENCY_RESULTS = 500
+_MAX_BENCHMARK_ENTRIES = 8
 _MAX_RATCHET_NOTE_CHARS = 64 * 1024
 _MAX_RATCHET_NOTE_VALUE_CHARS = 2048
 _MAX_RATCHET_NOTE_LIST_ITEMS = 32
+_RATCHET_RESULT_COLUMNS = (
+    "run_id",
+    "source_ref",
+    "base_ref",
+    "prompt_version",
+    "eval_bundle_version",
+    "rubric_version",
+    "overall",
+    "verdict",
+    "status",
+    "timestamp",
+    "weakest_dim",
+    "note_json",
+)
 _RATCHET_HISTORY_NOTE_KEYS = frozenset(
     {
         "anchor_run_id",
@@ -276,6 +292,13 @@ async def get_ratchet_history(request: Request) -> JSONResponse:
         limit,
         cursor,
     )
+    return JSONResponse(payload)
+
+
+async def get_ratchet_transparency(request: Request) -> JSONResponse:
+    require_write_token(request)
+    state = serve_state(request)
+    payload = await to_thread.run_sync(_ratchet_transparency_payload, state)
     return JSONResponse(payload)
 
 
@@ -621,6 +644,203 @@ def _ratchet_history_payload(
         if len(entries) >= limit or (pages_scanned >= _MAX_LIST_RUN_PAGES and next_cursor)
         else None,
     )
+
+
+def _ratchet_transparency_payload(state: ServeState) -> dict[str, Any]:
+    return {
+        "results": _ratchet_result_rows(state.review_db_path),
+        "benchmark": _benchmark_transparency_payload(state),
+    }
+
+
+def _ratchet_result_rows(db_path: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    if not db_path.exists():
+        return rows
+    with connect_review_db(db_path) as connection:
+        if (
+            connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'result_events'"
+            ).fetchone()
+            is None
+        ):
+            return rows
+        records = connection.execute(
+            f"""
+            SELECT {", ".join(_RATCHET_RESULT_COLUMNS)}
+            FROM result_events
+            ORDER BY timestamp DESC, event_id DESC
+            LIMIT ?
+            """,
+            (_MAX_RATCHET_TRANSPARENCY_RESULTS,),
+        ).fetchall()
+    for record in records:
+        event = dict(record)
+        overall = _finite_float(event.get("overall"))
+        if overall is None:
+            continue
+        run_id = _string_or_none(event.get("run_id"))
+        source_ref = _string_or_none(event.get("source_ref"))
+        timestamp = _string_or_none(event.get("timestamp"))
+        if run_id is None or source_ref is None or timestamp is None:
+            continue
+        note_json_value = event.get("note_json")
+        note_json = note_json_value if isinstance(note_json_value, str) else None
+        rows.append(
+            {
+                "run_id": run_id,
+                "source_ref": source_ref,
+                "base_ref": _string_or_none(event.get("base_ref")),
+                "prompt_version": _string_or_none(event.get("prompt_version")) or "-",
+                "eval_bundle_version": _string_or_none(event.get("eval_bundle_version")) or "-",
+                "rubric_version": _string_or_none(event.get("rubric_version")),
+                "overall": overall,
+                "verdict": _string_or_none(event.get("verdict")) or "UNKNOWN",
+                "status": _string_or_none(event.get("status")) or "unknown",
+                "timestamp": timestamp,
+                "weakest_dim": _string_or_none(event.get("weakest_dim")) or "unknown",
+                "note_json": _public_result_event_note_json(note_json),
+            }
+        )
+    return rows
+
+
+def _benchmark_transparency_payload(state: ServeState) -> dict[str, Any]:
+    manifest_summary, manifest_warnings = _benchmark_manifest_summary(
+        state.state_dir.parent / "benchmarks" / "manifest.json"
+    )
+    report_summary, report_warnings = _benchmark_report_summary(
+        state.state_dir / "benchmarks" / "local-report.json"
+    )
+    return {
+        "manifest": manifest_summary,
+        "report": report_summary,
+        "warnings": [*manifest_warnings, *report_warnings],
+    }
+
+
+def _benchmark_manifest_summary(path: Path) -> tuple[dict[str, Any] | None, list[str]]:
+    if not path.exists():
+        return None, ["benchmark_manifest_missing"]
+    try:
+        payload = _load_json_object(path)
+    except (HTTPException, InputError, OSError, UnicodeDecodeError, ValueError):
+        return None, ["benchmark_manifest_unreadable"]
+
+    raw_entries = payload.get("entries")
+    if not isinstance(raw_entries, list):
+        return None, ["benchmark_manifest_invalid"]
+
+    eval_count = 0
+    integration_count = 0
+    degraded_count = 0
+    languages: set[str] = set()
+    groups: set[str] = set()
+    for item in cast("list[object]", raw_entries):
+        if not isinstance(item, dict):
+            continue
+        entry = cast("dict[str, object]", item)
+        kind = entry.get("kind")
+        if kind == "eval":
+            eval_count += 1
+        elif kind == "integration":
+            integration_count += 1
+        language = entry.get("language")
+        if isinstance(language, str) and language:
+            languages.add(language)
+        group = entry.get("group")
+        if isinstance(group, str) and group:
+            groups.add(group)
+        if entry.get("degraded") is True:
+            degraded_count += 1
+
+    return (
+        {
+            "schema_version": _finite_int(payload.get("schema_version")),
+            "suite_id": _string_or_none(payload.get("suite_id")),
+            "suite_digest": _string_or_none(payload.get("suite_digest")),
+            "visibility": _string_or_none(payload.get("visibility")),
+            "entry_count": eval_count + integration_count,
+            "eval_entry_count": eval_count,
+            "integration_entry_count": integration_count,
+            "degraded_entry_count": degraded_count,
+            "language_count": len(languages),
+            "group_count": len(groups),
+        },
+        [],
+    )
+
+
+def _benchmark_report_summary(path: Path) -> tuple[dict[str, Any] | None, list[str]]:
+    if not path.exists():
+        return None, ["benchmark_report_missing"]
+    try:
+        payload = _load_json_object(path)
+    except (HTTPException, InputError, OSError, UnicodeDecodeError, ValueError):
+        return None, ["benchmark_report_unreadable"]
+
+    raw_entries = payload.get("entries")
+    entries: list[dict[str, Any]] = []
+    if isinstance(raw_entries, list):
+        for item in cast("list[object]", raw_entries)[:_MAX_BENCHMARK_ENTRIES]:
+            entry = _benchmark_report_entry(item)
+            if entry is not None:
+                entries.append(entry)
+
+    return (
+        {
+            "suite_id": _string_or_none(payload.get("suite_id")),
+            "suite_digest": _string_or_none(payload.get("suite_digest")),
+            "eval_bundle_version": _string_or_none(payload.get("eval_bundle_version")),
+            "model_id": _string_or_none(payload.get("model_id")),
+            "api_family_version": _string_or_none(payload.get("api_family_version")),
+            "output_lang": _string_or_none(payload.get("output_lang")),
+            "comparable_entry_count": _finite_int(payload.get("comparable_entry_count")),
+            "excluded_degraded_count": _finite_int(payload.get("excluded_degraded_count")),
+            "mean_score": _finite_float(payload.get("mean_score")),
+            "claim_verification_rate": _finite_float(payload.get("claim_verification_rate")),
+            "entries": entries,
+        },
+        [],
+    )
+
+
+def _benchmark_report_entry(value: object) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    entry = cast("dict[str, object]", value)
+    degraded = entry.get("degraded")
+    if not isinstance(degraded, bool):
+        return None
+    return {
+        "id": _string_or_none(entry.get("id")),
+        "group": _string_or_none(entry.get("group")),
+        "language": _string_or_none(entry.get("language")),
+        "degraded": degraded,
+        "overall": _finite_float(entry.get("overall")),
+        "verdict": _string_or_none(entry.get("verdict")),
+        "weakest_dim": _string_or_none(entry.get("weakest_dim")),
+        "claim_verification_rate": _finite_float(entry.get("claim_verification_rate")),
+        "ground_truth_digest": _string_or_none(entry.get("ground_truth_digest")),
+    }
+
+
+def _string_or_none(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
+def _finite_float(value: object) -> float | None:
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        numeric = float(value)
+        if math.isfinite(numeric):
+            return numeric
+    return None
+
+
+def _finite_int(value: object) -> int | None:
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return None
 
 
 def _public_result_event_note_json(note_json: str | None) -> str | None:
@@ -1159,6 +1379,7 @@ __all__ = [
     "get_misconceptions",
     "get_quiz",
     "get_ratchet_history",
+    "get_ratchet_transparency",
     "get_run",
     "get_run_concepts",
     "get_score",

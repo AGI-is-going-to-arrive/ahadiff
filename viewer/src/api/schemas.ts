@@ -199,6 +199,69 @@ export const ratchetHistoryResponseSchema = z.object({
   next_cursor: z.string().optional(),
 }).strict();
 
+const ratchetResultRowSchema = z.object({
+  run_id: z.string().min(1),
+  source_ref: z.string(),
+  base_ref: z.string().nullable().optional(),
+  prompt_version: z.string().min(1),
+  eval_bundle_version: z.string().min(1),
+  rubric_version: z.string().nullable().optional(),
+  overall: z.number().finite(),
+  verdict: z.string().min(1),
+  status: z.string().min(1),
+  timestamp: z.string(),
+  weakest_dim: z.string(),
+  note_json: z.string().nullable().default(null),
+}).strict();
+
+const benchmarkManifestSummarySchema = z.object({
+  schema_version: z.number().int().nullable().optional(),
+  suite_id: z.string().nullable().optional(),
+  suite_digest: z.string().nullable().optional(),
+  visibility: z.string().nullable().optional(),
+  entry_count: z.number().int().nonnegative(),
+  eval_entry_count: z.number().int().nonnegative(),
+  integration_entry_count: z.number().int().nonnegative(),
+  degraded_entry_count: z.number().int().nonnegative(),
+  language_count: z.number().int().nonnegative(),
+  group_count: z.number().int().nonnegative(),
+}).strict();
+
+const benchmarkReportEntrySchema = z.object({
+  id: z.string().nullable().optional(),
+  group: z.string().nullable().optional(),
+  language: z.string().nullable().optional(),
+  degraded: z.boolean(),
+  overall: z.number().finite().nullable().optional(),
+  verdict: z.string().nullable().optional(),
+  weakest_dim: z.string().nullable().optional(),
+  claim_verification_rate: z.number().finite().nullable().optional(),
+  ground_truth_digest: z.string().nullable().optional(),
+}).strict();
+
+const benchmarkReportSummarySchema = z.object({
+  suite_id: z.string().nullable().optional(),
+  suite_digest: z.string().nullable().optional(),
+  eval_bundle_version: z.string().nullable().optional(),
+  model_id: z.string().nullable().optional(),
+  api_family_version: z.string().nullable().optional(),
+  output_lang: z.string().nullable().optional(),
+  comparable_entry_count: z.number().int().nonnegative().nullable().optional(),
+  excluded_degraded_count: z.number().int().nonnegative().nullable().optional(),
+  mean_score: z.number().finite().nullable().optional(),
+  claim_verification_rate: z.number().finite().nullable().optional(),
+  entries: z.array(benchmarkReportEntrySchema),
+}).strict();
+
+export const ratchetTransparencyResponseSchema = z.object({
+  results: z.array(ratchetResultRowSchema),
+  benchmark: z.object({
+    manifest: benchmarkManifestSummarySchema.nullable().optional(),
+    report: benchmarkReportSummarySchema.nullable().optional(),
+    warnings: z.array(z.string()),
+  }).strict(),
+}).strict();
+
 /* ─────────────── 5. Paginated runs / concepts ─────────────── */
 
 export const paginatedRunsResponseSchema = z.object({

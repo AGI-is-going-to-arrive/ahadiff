@@ -63,6 +63,7 @@
   .claim-card,
   .srs-card,
   .rubric-grid,
+  .ratchet-page .benchmark-card,
   .judge-note-card {
     page-break-inside: avoid;
   }

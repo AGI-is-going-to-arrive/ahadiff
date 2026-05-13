@@ -585,18 +585,18 @@ test.describe('media features', () => {
     expect(values.background).toBe(values.expectedBg);
   });
 
-  test('print emulation: ratchet benchmark rubric grid visible', async ({ page }) => {
+  test('print emulation: ratchet benchmark transparency grid visible', async ({ page }) => {
     await page.goto('/#/ratchet');
 
     const benchmarkTab = page.locator('.ratchet-tabs__tab', { hasText: /Benchmark/i });
     await expect(benchmarkTab).toBeVisible();
     await benchmarkTab.click();
 
-    const rubricFirstLabel = page.locator('.rubric-grid__label-text').first();
-    await expect(rubricFirstLabel).toBeVisible();
+    const firstMetric = page.locator('.benchmark-card').first();
+    await expect(firstMetric).toBeVisible();
 
     await page.emulateMedia({ media: 'print' });
-    await expect(rubricFirstLabel).toBeVisible();
+    await expect(firstMetric).toBeVisible();
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );

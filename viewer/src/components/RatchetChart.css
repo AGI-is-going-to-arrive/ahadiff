@@ -1,7 +1,81 @@
+.ratchet-chart {
+  display: grid;
+  gap: var(--sp-3);
+}
+
 .ratchet-chart__svg {
   width: 100%;
   height: 240px;
   display: block;
+}
+
+.ratchet-chart__baseline {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 6 5;
+  opacity: 0.75;
+}
+
+.ratchet-chart__dot {
+  stroke-width: 2;
+}
+
+.ratchet-chart__dot--baseline {
+  fill: var(--elevated);
+  stroke: var(--accent-ink);
+}
+
+.ratchet-chart__dot--kept {
+  fill: var(--success);
+  stroke: var(--success);
+}
+
+.ratchet-chart__dot--discarded {
+  fill: var(--danger);
+  stroke: var(--danger);
+}
+
+.ratchet-chart__dot--other {
+  fill: var(--warning);
+  stroke: var(--warning);
+}
+
+.ratchet-chart__legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.ratchet-chart__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ratchet-chart__legend-mark {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.ratchet-chart__legend-mark--kept {
+  background: var(--success);
+}
+
+.ratchet-chart__legend-mark--discarded {
+  background: var(--danger);
+}
+
+.ratchet-chart__legend-line {
+  width: 18px;
+  border-top: 1px dashed var(--muted);
+  display: inline-block;
 }
 
 @media (max-width: 780px) {
@@ -19,5 +93,21 @@
 @media (max-width: 540px) {
   .ratchet-chart__svg {
     height: 160px;
+  }
+}
+
+@media (forced-colors: active) {
+  .ratchet-chart__baseline,
+  .ratchet-chart__dot,
+  .ratchet-chart__legend-line {
+    stroke: CanvasText;
+    border-color: CanvasText;
+  }
+
+  .ratchet-chart__dot,
+  .ratchet-chart__legend-mark {
+    fill: Canvas;
+    background: CanvasText;
+    border: 1px solid CanvasText;
   }
 }

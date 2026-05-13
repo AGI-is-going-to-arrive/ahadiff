@@ -199,14 +199,15 @@
 | Trajectory chart | SVG chart present | RatchetChart implemented | **OK** |
 | 8-dim radar | Rubric dimensions display | Shows all 8 dimensions | **OK** |
 | History list | Paginated with verdict badges | Implemented with cursor pagination | **OK** |
-| results.tsv / results.json raw export | V6 had downloadable raw data section | TSV and JSON download buttons are present on Ratchet; neither is a full inline raw table. | **PARTIAL** |
-| Phase 2.5 section | Structural rewrite history | Not present | **MISSING** |
-| Benchmark transparency | V6 had benchmark section | Not present | **MISSING** |
+| results.tsv / results.json raw export | V6 had downloadable raw data section | Implemented: Ratchet now renders an inline `results.tsv` table from `/api/ratchet/transparency`, falls back to paged history if transparency is unavailable, and still downloads TSV/JSON through `/api/export/results`. | **OK** |
+| Phase 2.5 section | Structural rewrite history | Implemented for the current backend semantics: the UI reads `targeted_verify` / `discard` rows with `note_json.phase25`, not a standalone `phase25_rewrite` event. | **OK** |
+| Benchmark transparency | V6 had benchmark section | Implemented: Benchmark tab shows suite id, digest, entry counts, language/group counts, comparable/degraded counts, mean score, claim rate, warnings, and sample entries from real manifest/report data. | **OK** |
 | Iteration timeline (kept/reverted) | Visual timeline | Simplified list only | **PARTIAL** |
 
 **Work estimate**:
-- results TSV/JSON inline preview: ~60 LOC TSX + ~30 LOC CSS + API if needed later. **P2**
-- Phase 2.5 display: ~40 LOC TSX. **P3**
+- results TSV/JSON inline preview: landed via `/api/ratchet/transparency`; no remaining estimate.
+- Phase 2.5 display: landed for current `targeted_verify` / `discard` + `note_json.phase25` semantics.
+- Benchmark transparency: landed with real manifest/report projection and no mock fallback.
 - Iteration timeline: ~100 LOC TSX + ~50 LOC CSS. **P2**
 
 ---
@@ -393,7 +394,7 @@ Estimated new keys needed for full V6 alignment:
 | Review concept mastery bars | Implemented 2026-05-11 | 0 | No |
 | Settings provider grid | TSX + CSS | ~120 | No |
 | Settings audit log table | TSX + CSS + API | ~140 | Yes |
-| Ratchet TSV/JSON export section | TSX + CSS + API | ~90 | Yes |
+| Ratchet TSV/JSON export + inline table | Implemented 2026-05-14 | 0 | Yes (`/api/ratchet/transparency`, `/api/export/results`) |
 | Ratchet iteration timeline | TSX + CSS | ~150 | No |
 | Quiz visual progress table | Implemented 2026-05-11 | 0 | No |
 | Landing feature cards | TSX + CSS + i18n | ~96 | No |
@@ -412,7 +413,7 @@ Estimated new keys needed for full V6 alignment:
 | Landing FOLIO badge | CSS | ~30 | No |
 | Landing drop cap | CSS | ~10 | No |
 | Skills agent state machine | TSX + CSS | ~120 | No |
-| Ratchet Phase 2.5 display | TSX | ~40 | No |
+| Ratchet Phase 2.5 display | TSX | Landed | No |
 | Settings privacy toggle | TSX + API | ~30 | Yes |
 | Review session summary | TSX + i18n | ~43 | No |
 | Quiz keyboard shortcuts | TSX | ~40 | No |

@@ -159,6 +159,71 @@ export interface RatchetHistoryResponse {
   next_cursor?: string;
 }
 
+export interface RatchetResultRow {
+  run_id: string;
+  source_ref: string;
+  base_ref?: string | null;
+  prompt_version: string;
+  eval_bundle_version: string;
+  rubric_version?: string | null;
+  overall: number;
+  verdict: string;
+  status: string;
+  timestamp: string;
+  weakest_dim: string;
+  note_json: string | null;
+}
+
+export interface BenchmarkManifestSummary {
+  schema_version?: number | null;
+  suite_id?: string | null;
+  suite_digest?: string | null;
+  visibility?: string | null;
+  entry_count: number;
+  eval_entry_count: number;
+  integration_entry_count: number;
+  degraded_entry_count: number;
+  language_count: number;
+  group_count: number;
+}
+
+export interface BenchmarkReportEntry {
+  id?: string | null;
+  group?: string | null;
+  language?: string | null;
+  degraded: boolean;
+  overall?: number | null;
+  verdict?: string | null;
+  weakest_dim?: string | null;
+  claim_verification_rate?: number | null;
+  ground_truth_digest?: string | null;
+}
+
+export interface BenchmarkReportSummary {
+  suite_id?: string | null;
+  suite_digest?: string | null;
+  eval_bundle_version?: string | null;
+  model_id?: string | null;
+  api_family_version?: string | null;
+  output_lang?: string | null;
+  comparable_entry_count?: number | null;
+  excluded_degraded_count?: number | null;
+  mean_score?: number | null;
+  claim_verification_rate?: number | null;
+  entries: BenchmarkReportEntry[];
+}
+
+export interface BenchmarkTransparency {
+  manifest?: BenchmarkManifestSummary | null;
+  report?: BenchmarkReportSummary | null;
+  warnings: string[];
+}
+
+export interface RatchetTransparencyResponse {
+  results: RatchetResultRow[];
+  benchmark: BenchmarkTransparency;
+}
+
 export interface LocaleGetResponse {
   locale: Locale;
 }

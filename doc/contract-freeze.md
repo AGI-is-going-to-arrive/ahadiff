@@ -108,8 +108,9 @@ Task 16 补充：
 Task 17 补充：
 
 - targeted verification 只比较目标维度 + `accuracy` + `evidence` + `safety_privacy` 四个维度的合计分；候选还必须通过 hard gates，才允许从 `discard` 升级为 `targeted_verify`
-- Phase 2.5 只在同一 improve session 内连续两次 `discard` 后触发一次；触发时先写 `status=phase25_rewrite`，并在 `note_json` 中记录 `phase25=true`、`phase25_note`、`stash_ref` 与 `trigger_reason`
-- Phase 2.5 的最终结果仍回到 improve 链路：通过写 `targeted_verify`，不通过写 `discard`；它不使用 learn 链路的 `keep`
+- Phase 2.5 只在同一 improve session 内连续两次 `discard` 后触发一次，且每个 session 最多一次
+- 当前运行时不单独写 `status=phase25_rewrite` 事件；Phase 2.5 的最终结果仍回到 improve 链路，通过写 `targeted_verify`，不通过写 `discard`，并在最终事件的 `note_json` 中记录 `phase25=true`、`phase25_note`、`stash_ref` 与 `trigger_reason`
+- `phase25_rewrite` 仍保留为 contract status 值，用于兼容旧数据或后续显式事件语义；当前代码和测试不把它作为 Phase 2.5 的实际落库事件
 
 ### 2.4 CardState / StaleReason
 
@@ -437,6 +438,7 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 - `GET /api/run/:id/concepts`
 - `GET /api/concepts`
 - `GET /api/ratchet/history`
+- `GET /api/ratchet/transparency`
 - `GET /api/review/queue`
 - `POST /api/review/rate`
 - `GET /api/config`
@@ -474,6 +476,7 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 - `LearnabilityInfo`：`score: float(0..1)`、`threshold: float(0..1)`、`skip_lesson_quiz: bool`、`reasons: list[str]`
 - `RunArtifactEnvelope`：`run_id`、`artifact_type`、`content`、`content_lang: Literal["en","zh-CN"] | None`
 - `RatchetHistoryEntry`
+- `RatchetTransparencyResponse`：从 `review.sqlite/result_events` 投影最近结果行，并从 `benchmarks/manifest.json` 与 `.ahadiff/benchmarks/local-report.json` 投影 benchmark 摘要；结果行的 `note_json` 只暴露 allowlist 字段
 - `InstallManifestActionSummary`：`action`、`file_strategy: Literal["generated","user-managed"]`、`path`
 - `InstallManifestSummary`：`preview`、`write`、`uninstall`
 - `InstallTargetSummary`：`name`、`display_name`、`detected`、`platform_supported`、`status`、`description`、`install_command`、`uninstall_command`、`manifest`、`manifest_hash`、`manifest_error`、`error_message`
@@ -497,6 +500,7 @@ Stage 0 同时冻结最小写请求 DTO：
 - `GET /api/install/targets` 仍是只读展示 contract；浏览器真实写入只能走 `POST /api/install/:target` 和 `POST /api/install/:target/uninstall`
 - install 写操作只允许当前 `ahadiff serve` repo，不接受浏览器传入任意 `repo_root` / path；写入必须带 `X-AhaDiff-Token`，继续走 Origin / Referer 写保护、localhost-only 边界和 repo 写锁
 - manifest preview 是确认门：前端先拿 `manifest_hash`，install / uninstall 时必须回传 `confirmed_manifest_hash`；hash 不匹配时拒绝写入
+- `GET /api/ratchet/transparency` 当前也要求 `X-AhaDiff-Token`，因为它会投影 benchmark report 摘要；manifest/report 读取必须经过 no-follow、regular-file、reparse、hardlink、大小和 JSON object guard，缺失或损坏时返回 warning 而不是 mock 数据
 - `RunDetail.learnability` 是可选字段，用于把 run metadata 中的 learnability gate 结果投影给 viewer；旧 run 没有该 metadata 时必须保持 `null` / omitted 兼容
 - `lesson` / `claims` / `quiz` artifact 缺失时返回 404 `artifact_not_found`，不再用 400 表示“artifact 不存在”；这不改变 run 本身不存在时的 404 语义
 - `src/ahadiff/contracts/serve_app.py` 是**契约文件**，不是后续真正的 `src/ahadiff/serve/app.py` 实现文件

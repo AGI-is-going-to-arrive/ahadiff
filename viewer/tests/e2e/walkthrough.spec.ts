@@ -206,6 +206,101 @@ async function installRichMock(page: Page): Promise<void> {
   );
 
   await page.route(
+    (url) => url.pathname === '/api/ratchet/transparency',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          results: [
+            {
+              run_id: 'run-003',
+              source_ref: 'HEAD',
+              base_ref: 'HEAD~1',
+              prompt_version: 'prompt-v2',
+              eval_bundle_version: 'bundle-v2',
+              rubric_version: 'rubric-v1',
+              overall: 88,
+              verdict: 'PASS',
+              status: 'keep',
+              weakest_dim: 'evidence',
+              timestamp: '2026-04-27T08:00:00Z',
+              note_json: '{"phase25":true,"phase25_note":"PHASE25: consecutive_discard_count=2","trigger_reason":"consecutive_discard_count=2","target_dimension":"learnability","targeted_baseline_score":76,"targeted_candidate_score":88,"targeted_passed":true}',
+            },
+            {
+              run_id: 'run-002',
+              source_ref: 'HEAD~1',
+              base_ref: 'HEAD~2',
+              prompt_version: 'prompt-v1',
+              eval_bundle_version: 'bundle-v1',
+              rubric_version: 'rubric-v1',
+              overall: 71,
+              verdict: 'CAUTION',
+              status: 'discard',
+              weakest_dim: 'conciseness',
+              timestamp: '2026-04-26T12:00:00Z',
+              note_json: '{"targeted_reason":"score did not beat baseline"}',
+            },
+            {
+              run_id: 'run-001',
+              source_ref: 'HEAD~2',
+              base_ref: null,
+              prompt_version: 'prompt-v1',
+              eval_bundle_version: 'bundle-v1',
+              rubric_version: 'rubric-v1',
+              overall: 92,
+              verdict: 'PASS',
+              status: 'baseline',
+              weakest_dim: 'evidence',
+              timestamp: '2026-04-25T10:00:00Z',
+              note_json: null,
+            },
+          ],
+          benchmark: {
+            manifest: {
+              schema_version: 1,
+              suite_id: 'ahadiff-local-v1',
+              suite_digest: 'abc123def4567890',
+              visibility: 'private',
+              entry_count: 31,
+              eval_entry_count: 20,
+              integration_entry_count: 11,
+              degraded_entry_count: 6,
+              language_count: 8,
+              group_count: 3,
+            },
+            report: {
+              suite_id: 'ahadiff-local-v1',
+              suite_digest: 'abc123def4567890',
+              eval_bundle_version: 'bundle-v2',
+              model_id: 'none',
+              api_family_version: 'none',
+              output_lang: 'en',
+              comparable_entry_count: 14,
+              excluded_degraded_count: 6,
+              mean_score: 87.25,
+              claim_verification_rate: 1,
+              entries: [
+                {
+                  id: 'eval_001_python_retry',
+                  group: 'benchmark_main',
+                  language: 'python',
+                  degraded: false,
+                  overall: 91,
+                  verdict: 'PASS',
+                  weakest_dim: 'evidence',
+                  claim_verification_rate: 1,
+                  ground_truth_digest: 'f'.repeat(64),
+                },
+              ],
+            },
+            warnings: [],
+          },
+        }),
+      }),
+  );
+
+  await page.route(
     (url) => url.pathname === '/api/stats',
     (route) =>
       route.fulfill({
@@ -783,7 +878,7 @@ test.describe('walkthrough: full-app functional test', () => {
   /*  Page 7: Ratchet                                                  */
   /* ---------------------------------------------------------------- */
 
-  test('Ratchet — chart, weakest dim summary, history table', async ({ page }) => {
+  test('Ratchet — chart, weakest dim summary, results table', async ({ page }) => {
     await page.goto('/#/ratchet');
 
     // Heading
@@ -793,12 +888,16 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(page.locator('.ratchet-card').first()).toBeVisible();
     await expect(page.locator('.ratchet-note-card')).toContainText('PHASE25');
     await expect(page.locator('.ratchet-note-card')).toContainText('+12.0');
+    await expect(page.locator('.phase25-readout')).toContainText('target_dimension=learnability');
+    await expect(page.locator('.ratchet-chart__legend')).toContainText(/kept/i);
 
-    // History table
+    // Results table includes result_events statuses, including discarded rows.
     const table = page.locator('.ratchet-table');
     await expect(table).toBeVisible();
     const rows = table.locator('tbody tr');
     await expect(rows).toHaveCount(3);
+    await expect(table).toContainText('discard');
+    await expect(table).toContainText('score did not beat baseline');
 
     // Verdict badges in table
     await expect(page.locator('.verdict-badge').first()).toBeVisible();
@@ -1103,7 +1202,7 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(badge).toContainText(/SRS|Socratic/i);
   });
 
-  test('Ratchet — benchmark tab renders rubric grid', async ({ page }) => {
+  test('Ratchet — benchmark tab renders transparency grid', async ({ page }) => {
     const scoreRequests: string[] = [];
     page.on('request', (request) => {
       const pathname = new URL(request.url()).pathname;
@@ -1117,12 +1216,12 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(benchmarkTab).toBeVisible();
     await benchmarkTab.click();
 
-    await expect(page.locator('.rubric-grid')).toBeVisible();
-    const rows = page.locator('.rubric-grid__row');
-    await expect(rows).not.toHaveCount(0);
-    await expect(rows.first().locator('.rubric-grid__label')).toBeVisible();
-    await expect(rows.first().locator('.rubric-grid__fraction')).toBeVisible();
-    expect(scoreRequests).toContain('/api/run/run-001/score');
+    await expect(page.locator('.benchmark-grid')).toBeVisible();
+    const cards = page.locator('.benchmark-card');
+    await expect(cards).toHaveCount(6);
+    await expect(cards.first()).toContainText('ahadiff-local-v1');
+    await expect(page.locator('.benchmark-entry-list')).toContainText('eval_001_python_retry');
+    expect(scoreRequests).toEqual([]);
   });
 
   /* ---------------------------------------------------------------- */

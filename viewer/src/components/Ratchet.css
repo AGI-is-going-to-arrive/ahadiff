@@ -158,6 +158,50 @@
   letter-spacing: -0.005em;
 }
 
+.ratchet-table__empty {
+  color: var(--muted);
+  text-align: center;
+}
+
+.ratchet-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--hair);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.ratchet-status--kept {
+  color: var(--success);
+  background: var(--add-bg);
+  border-color: var(--success);
+}
+
+.ratchet-status--discarded {
+  color: var(--danger);
+  background: var(--del-bg);
+  border-color: var(--danger);
+}
+
+.ratchet-status--other {
+  color: var(--warning);
+  background: var(--warning-soft);
+  border-color: var(--warning);
+}
+
+.ratchet-note-summary {
+  max-width: 260px;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 /* ---- Phase 4G: strict-ratchet transparency banner ----
  * V6 demo-banner pattern (AhaDiff Warm v6.html L1562 + L1967): pull the
  * rule out of the table copy and into a visible note so users understand
@@ -253,6 +297,112 @@
   margin: var(--sp-1) 0 0;
   color: var(--ink);
   font-size: 13px;
+}
+
+.phase25-readout {
+  margin-bottom: var(--sp-6);
+  background: var(--elevated);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+
+.phase25-readout__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(240px, 0.9fr);
+  gap: var(--sp-4);
+}
+
+.phase25-readout__code {
+  min-width: 0;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.phase25-readout__facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-3);
+  margin: 0;
+}
+
+.phase25-readout__facts div {
+  padding: 10px var(--sp-3);
+  background: var(--subtle);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+}
+
+.phase25-readout__facts dt {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.phase25-readout__facts dd {
+  margin: var(--sp-1) 0 0;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+/* ---- Benchmark transparency ---- */
+.ratchet-page .benchmark-transparency {
+  display: grid;
+  gap: var(--sp-4);
+}
+
+.ratchet-page .benchmark-transparency__warning {
+  margin: 0;
+}
+
+.ratchet-page .benchmark-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+
+.ratchet-page .benchmark-card {
+  padding: var(--sp-4);
+  background: var(--subtle);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  min-width: 0;
+}
+
+.ratchet-page .benchmark-card__value {
+  margin-top: var(--sp-2);
+  font-family: "Newsreader", var(--font-serif);
+  font-size: 28px;
+  line-height: 1.05;
+  color: var(--ink-blackletter);
+  overflow-wrap: anywhere;
+}
+
+.ratchet-page .benchmark-card__delta {
+  margin-top: var(--sp-2);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ratchet-page .benchmark-entry-list {
+  display: grid;
+  gap: 1px;
+  overflow-x: auto;
+}
+
+.ratchet-page .benchmark-entry-list__row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(90px, 0.7fr) auto minmax(70px, 0.5fr) minmax(120px, 0.8fr);
+  gap: var(--sp-3);
+  align-items: center;
+  min-width: 720px;
+  padding: 9px var(--sp-3);
+  background: var(--subtle);
+  font-size: 12px;
 }
 
 /* ---- Benchmark rubric grid ---- */
@@ -389,7 +539,7 @@
   }
 
   .ratchet-table {
-    min-width: 540px;
+    min-width: 760px;
   }
 
   .ratchet-table thead th,
@@ -414,6 +564,12 @@
   }
 
   .ratchet-note-card {
+    grid-template-columns: 1fr;
+  }
+
+  .phase25-readout__body,
+  .phase25-readout__facts,
+  .ratchet-page .benchmark-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -534,7 +690,7 @@
 
   .ratchet-table {
     font-size: 12px;
-    min-width: 480px;
+    min-width: 760px;
   }
 
   .ratchet-table thead th,
@@ -556,5 +712,15 @@
 @media (forced-colors: active) {
   .ratchet-card {
     border: 1px solid CanvasText;
+  }
+
+  .ratchet-status,
+  .phase25-readout,
+  .phase25-readout__facts div,
+  .ratchet-page .benchmark-card,
+  .ratchet-page .benchmark-entry-list__row {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
   }
 }
