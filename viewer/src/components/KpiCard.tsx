@@ -11,10 +11,10 @@ export interface KpiCardProps {
  */
 export default function KpiCard({ label, value, hint, tone = 'default' }: KpiCardProps) {
   return (
-    <div className={`kpi-card kpi-card--${tone}`}>
-      <div className="kpi-card__label">{label}</div>
-      <div className="kpi-card__value">{value}</div>
-      {hint && <div className="kpi-card__hint">{hint}</div>}
+    <div className={`kpi kpi--${tone}`}>
+      <div className="lb">{label}</div>
+      <div className="vl">{value}</div>
+      {hint && <div className="delta">{hint}</div>}
     </div>
   );
 }

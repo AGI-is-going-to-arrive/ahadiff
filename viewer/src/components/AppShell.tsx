@@ -130,7 +130,7 @@ export default function AppShell({ children, globalShortcutsDisabled = false }: 
   }, [isMobileNav, isSidebarOpen]);
 
   return (
-    <div className={`app-shell${isSidebarOpen ? ' app-shell--sidebar-open' : ''}`}>
+    <div className={`app${isSidebarOpen ? ' nav-open' : ''}`}>
       <a
         className="skip-to-content"
         href="#main-content"
@@ -144,32 +144,32 @@ export default function AppShell({ children, globalShortcutsDisabled = false }: 
           }
         }}
       >{t('A11y.skip_to_content')}</a>
-      <Topbar
-        isMenuOpen={isSidebarOpen}
-        menuButtonRef={menuButtonRef}
-        onMenuToggle={() => setIsSidebarOpen((open) => !open)}
-        onSearchOpen={() => {
-          setSearchInitialQuery('');
-          setIsSearchOpen(true);
-        }}
-        onLearnDialogOpen={() => setIsLearnDialogOpen(true)}
+      <Sidebar
+        isOpen={isSidebarOpen}
+        isMobileNav={isMobileNav}
+        onNavigate={closeSidebar}
       />
-      <div className="app-shell__body">
-        <Sidebar
-          isOpen={isSidebarOpen}
-          isMobileNav={isMobileNav}
-          onNavigate={closeSidebar}
-        />
-        <button
-          type="button"
-          className="app-shell__backdrop"
-          aria-label={t('A11y.close_menu')}
-          hidden={!isMobileNav || !isSidebarOpen}
-          onClick={() => closeSidebar({ restoreFocus: true })}
+      <button
+        type="button"
+        className="app-shell__backdrop"
+        aria-label={t('A11y.close_menu')}
+        hidden={!isMobileNav || !isSidebarOpen}
+        onClick={() => closeSidebar({ restoreFocus: true })}
+      />
+      <div className="main">
+        <Topbar
+          isMenuOpen={isSidebarOpen}
+          menuButtonRef={menuButtonRef}
+          onMenuToggle={() => setIsSidebarOpen((open) => !open)}
+          onSearchOpen={() => {
+            setSearchInitialQuery('');
+            setIsSearchOpen(true);
+          }}
+          onLearnDialogOpen={() => setIsLearnDialogOpen(true)}
         />
         <main
           id="main-content"
-          className="app-shell__content"
+          className="app-content"
           tabIndex={-1}
           inert={isMobileNav && isSidebarOpen ? true : undefined}
         >

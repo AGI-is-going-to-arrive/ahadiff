@@ -373,10 +373,43 @@ export default function LessonPage() {
   }, [runDetail, t]);
 
   const renderedProse = useMemo(() => renderMarkdownProse(lessonContent), [lessonContent]);
+  const scaffoldingPanelId = 'lesson-scaffolding-panel';
+  const scaffoldingTabIdBase = 'lesson-scaffolding-tab';
+
+  const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
+  useEffect(() => {
+    if (tocEntries.length === 0) {
+      setActiveHeadingId(null);
+      return;
+    }
+    setActiveHeadingId((current) =>
+      current && tocEntries.some((entry) => entry.id === current)
+        ? current
+        : tocEntries[0]?.id ?? null,
+    );
+    if (typeof IntersectionObserver === 'undefined') return;
+    const ids = tocEntries.map((e) => e.id);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setActiveHeadingId(entry.target.id);
+            break;
+          }
+        }
+      },
+      { rootMargin: '-72px 0px -60% 0px', threshold: 0 },
+    );
+    for (const id of ids) {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    }
+    return () => observer.disconnect();
+  }, [tocEntries]);
 
   return (
     <AppShell>
-      <div className="lesson-page">
+      <div className="lesson-page" data-page="lesson">
         <header className="lesson-page__header">
           <div className="lesson-page__header-left">
             <div className="lesson-page__eyebrow">
@@ -386,7 +419,7 @@ export default function LessonPage() {
               {runDetail
                 ? t('Lesson.title_with_ref', {
                     title: t('Lesson.title'),
-                    ref: runDetail.source_ref,
+                    ref: runDetail.source_ref.slice(0, 7),
                   })
                 : t('Lesson.title')}
             </h1>
@@ -400,7 +433,12 @@ export default function LessonPage() {
             )}
           </div>
           <div className="lesson-page__header-right">
-            <ScaffoldingTabs level={level} onChange={handleLevelChange} />
+            <ScaffoldingTabs
+              level={level}
+              onChange={handleLevelChange}
+              idBase={scaffoldingTabIdBase}
+              panelId={scaffoldingPanelId}
+            />
             {autoSelected && (
               <p className="scaffolding-auto-hint" aria-live="polite">
                 {t('Lesson.scaffolding_auto_hint')}
@@ -409,38 +447,45 @@ export default function LessonPage() {
           </div>
         </header>
 
-        {loading ? (
-          <div className="lesson-page__loading" role="status" aria-live="polite">
-            <span className="loading-spinner" /><span>{t('Serve.loading')}</span>
-          </div>
-        ) : error === 'lesson_skipped' ? (
-          <div className="lesson-page__skipped" role="status">
-            <div className="lesson-page__skipped-icon" aria-hidden="true">
-              <svg width="56" height="56" viewBox="0 0 56 56" fill="none"><circle cx="28" cy="28" r="27" stroke="var(--muted)" strokeWidth="2" opacity=".35"/><path d="M20 28h16M28 20v16" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" opacity=".3"/></svg>
+        <section
+          id={scaffoldingPanelId}
+          className="lesson-scaffolding-panel"
+          role="tabpanel"
+          aria-labelledby={`${scaffoldingTabIdBase}-${level}`}
+          tabIndex={0}
+        >
+          {loading ? (
+            <div className="lesson-page__loading" role="status" aria-live="polite">
+              <span className="loading-spinner" /><span>{t('Serve.loading')}</span>
             </div>
-            <h2 className="lesson-page__skipped-title">{t('Lesson.skipped_title')}</h2>
-            <p className="lesson-page__skipped-reason">
-              {runDetail?.learnability?.reasons?.includes('empty_diff')
-                ? t('Lesson.skipped_reason_empty_diff')
-                : runDetail?.learnability?.skip_lesson_quiz
-                  ? t('Lesson.skipped_reason_low_score', {
-                      score: String(Math.round((runDetail.learnability.score ?? 0) * 100)),
-                      threshold: String(Math.round((runDetail.learnability.threshold ?? 0) * 100)),
-                    })
-                  : t('Lesson.skipped_reason_generic')}
-            </p>
-            <p className="lesson-page__skipped-hint">{t('Lesson.skipped_hint')}</p>
-            <code className="lesson-page__skipped-example">ahadiff learn HEAD~1..HEAD</code>
-          </div>
-        ) : error ? (
-          <div className="lesson-page__error" role="alert">
-            <span>{t('Error.fetch_failed', { resource: t('Nav.lesson') })}</span>
-            <button type="button" className="retry-btn" onClick={() => void fetchAll()}>
-              {t('Error.retry')}
-            </button>
-          </div>
-        ) : (
-          <div className="lesson__layout">
+          ) : error === 'lesson_skipped' ? (
+            <div className="lesson-page__skipped" role="status">
+              <div className="lesson-page__skipped-icon" aria-hidden="true">
+                <svg width="56" height="56" viewBox="0 0 56 56" fill="none"><circle cx="28" cy="28" r="27" stroke="var(--muted)" strokeWidth="2" opacity=".35"/><path d="M20 28h16M28 20v16" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" opacity=".3"/></svg>
+              </div>
+              <h2 className="lesson-page__skipped-title">{t('Lesson.skipped_title')}</h2>
+              <p className="lesson-page__skipped-reason">
+                {runDetail?.learnability?.reasons?.includes('empty_diff')
+                  ? t('Lesson.skipped_reason_empty_diff')
+                  : runDetail?.learnability?.skip_lesson_quiz
+                    ? t('Lesson.skipped_reason_low_score', {
+                        score: String(Math.round((runDetail.learnability.score ?? 0) * 100)),
+                        threshold: String(Math.round((runDetail.learnability.threshold ?? 0) * 100)),
+                      })
+                    : t('Lesson.skipped_reason_generic')}
+              </p>
+              <p className="lesson-page__skipped-hint">{t('Lesson.skipped_hint')}</p>
+              <code className="lesson-page__skipped-example">ahadiff learn HEAD~1..HEAD</code>
+            </div>
+          ) : error ? (
+            <div className="lesson-page__error" role="alert">
+              <span>{t('Error.fetch_failed', { resource: t('Nav.lesson') })}</span>
+              <button type="button" className="retry-btn" onClick={() => void fetchAll()}>
+                {t('Error.retry')}
+              </button>
+            </div>
+          ) : (
+            <div className="lesson__layout">
             <aside className="lesson__toc" aria-label={t('Lesson.toc.title')}>
               <div className="lesson__toc-title">{t('Lesson.toc.title')}</div>
               {tocEntries.length === 0 ? (
@@ -451,7 +496,8 @@ export default function LessonPage() {
                     <li key={e.id} className={e.level > 1 ? `lesson__toc-item--l${e.level}` : undefined}>
                       <a
                         href={`#${e.id}`}
-                        className="lesson__toc-link"
+                        className={`lesson__toc-link${activeHeadingId === e.id ? ' lesson__toc-link--active' : ''}`}
+                        aria-current={activeHeadingId === e.id ? 'location' : undefined}
                         onClick={(ev) => {
                           ev.preventDefault();
                           const el = document.getElementById(e.id);
@@ -470,11 +516,12 @@ export default function LessonPage() {
             </aside>
 
             <div className="lesson__center">
-              <article className="lesson__prose">{renderedProse}</article>
+              <article className="lesson__prose">
+                {renderedProse}
+              </article>
             </div>
 
             <aside className="lesson__rail" aria-label={t('Lesson.rail.title')}>
-              <div className="lesson__rail-title">{t('Lesson.rail.title')}</div>
               <section className="lesson__rail-card" aria-labelledby="lesson-rail-claims">
                 <h2 id="lesson-rail-claims" className="lesson__rail-card-title">
                   {t('Lesson.rail.claims_summary')}
@@ -576,8 +623,9 @@ export default function LessonPage() {
                 )}
               </section>
             </aside>
-          </div>
-        )}
+            </div>
+          )}
+        </section>
       </div>
       {selectedClaim && popoverPos && createPortal(
         <div
@@ -590,7 +638,7 @@ export default function LessonPage() {
           <button
             type="button"
             className="claim-popover__close"
-            aria-label={t('LearnTask.close')}
+            aria-label={t('A11y.close')}
             onClick={() => { setSelectedClaim(null); setPopoverPos(null); }}
           >
             ×

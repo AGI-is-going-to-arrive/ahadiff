@@ -58,7 +58,7 @@ export default function Topbar({
     <header className="topbar" data-glass>
       <button
         type="button"
-        className="topbar__mobile-btn"
+        className="mobile-nav-btn"
         ref={menuButtonRef}
         aria-label={
           isMenuOpen ? t('A11y.close_menu') : t('A11y.open_menu')
@@ -70,12 +70,12 @@ export default function Topbar({
         ☰
       </button>
 
-      <nav className="topbar__crumb" aria-label={t('A11y.breadcrumb')}>
+      <nav className="topbar-crumb" aria-label={t('A11y.breadcrumb')}>
         <ol>
           <li>
-            <span className="topbar__crumb-root">{t('Topbar.crumb_root')}</span>
+            <span>{t('Topbar.crumb_root')}</span>
           </li>
-          <li className="topbar__crumb-sep" aria-hidden="true">/</li>
+          <li className="topbar-crumb-sep" aria-hidden="true">/</li>
           <li aria-current="page">{t(currentKey)}</li>
         </ol>
       </nav>
@@ -83,34 +83,34 @@ export default function Topbar({
       {onSearchOpen ? (
         <button
           type="button"
-          className="topbar__search"
+          className="search"
           aria-label={t('Topbar.search_aria')}
           onClick={(event) => {
             event.currentTarget.focus({ preventScroll: true });
             onSearchOpen();
           }}
         >
-          <span className="topbar__search-icon" aria-hidden="true">⌕</span>
-          <span className="topbar__search-placeholder">{t('Topbar.search_placeholder')}</span>
-          <kbd className="topbar__search-kbd">{t(searchKbdKey)}</kbd>
+          <span aria-hidden="true">⌕</span>
+          <span>{t('Topbar.search_placeholder')}</span>
+          <kbd>{t(searchKbdKey)}</kbd>
         </button>
       ) : (
         <div
-          className="topbar__search topbar__search--inactive"
+          className="search topbar__search--inactive"
           role="note"
           aria-disabled="true"
           aria-label={t('Topbar.search_unavailable')}
           title={t('Topbar.search_unavailable')}
         >
-          <span className="topbar__search-icon" aria-hidden="true">⌕</span>
-          <span className="topbar__search-placeholder">{t('Topbar.search_placeholder')}</span>
-          <kbd className="topbar__search-kbd">{t(searchKbdKey)}</kbd>
+          <span aria-hidden="true">⌕</span>
+          <span>{t('Topbar.search_placeholder')}</span>
+          <kbd>{t(searchKbdKey)}</kbd>
         </div>
       )}
 
       <div className="topbar__actions">
         <a
-          className="topbar__btn topbar__btn--ghost"
+          className="btn ghost"
           href="https://github.com/agi-is-coming/ahadiff#readme"
           target="_blank"
           rel="noopener noreferrer"
@@ -120,7 +120,7 @@ export default function Topbar({
         </a>
         <button
           type="button"
-          className={`topbar__btn topbar__btn--primary${isBusy ? ' topbar__btn--busy' : ''}`}
+          className={`btn btn-inkstone${isBusy ? ' topbar__btn--busy' : ''}`}
           disabled={isBusy}
           aria-label={newRunAriaLabel}
           onClick={onLearnDialogOpen ?? (() => void requestLearn())}

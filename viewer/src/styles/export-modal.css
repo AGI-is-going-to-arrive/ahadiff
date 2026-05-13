@@ -121,6 +121,7 @@
 }
 
 .export-modal__btn--primary:hover:not(:disabled) {
+  background: #b85f42; /* fallback */
   background: color-mix(in srgb, var(--accent, #d27050) 85%, #000);
 }
 
@@ -135,6 +136,7 @@
 }
 
 .export-modal__btn--ghost:hover {
+  background: rgba(0, 0, 0, 0.06); /* fallback */
   background: color-mix(in srgb, var(--ink) 6%, transparent);
 }
 
@@ -147,6 +149,7 @@
 .export-modal__spinner {
   width: 14px;
   height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.4); /* fallback */
   border: 2px solid color-mix(in srgb, #fff 40%, transparent);
   border-top-color: #fff;
   border-radius: 50%;
@@ -158,6 +161,7 @@
   padding: var(--sp-sm, 12px);
   font-size: var(--fs-xs, 0.75rem);
   color: var(--ink);
+  background: #eef5ef; /* fallback */
   background: color-mix(in srgb, var(--success, #4a8a55) 8%, var(--paper));
   border-left: 3px solid var(--success, #4a8a55);
   border-radius: var(--r-sm, 6px);
@@ -170,6 +174,7 @@
   padding: var(--sp-sm, 12px);
   font-size: var(--fs-xs, 0.75rem);
   color: var(--danger, #a3362d);
+  background: #f8ecea; /* fallback */
   background: color-mix(in srgb, var(--danger, #a3362d) 6%, var(--paper));
   border-left: 3px solid var(--danger, #a3362d);
   border-radius: var(--r-sm, 6px);
@@ -181,6 +186,7 @@
   padding: var(--sp-sm, 12px);
   font-size: var(--fs-xs, 0.75rem);
   color: var(--warning-strong, #8a5a00);
+  background: #faf1de; /* fallback */
   background: color-mix(in srgb, var(--warning, #c28a1a) 10%, var(--paper));
   border-left: 3px solid var(--warning, #c28a1a);
   border-radius: var(--r-sm, 6px);

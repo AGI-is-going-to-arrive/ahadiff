@@ -112,29 +112,29 @@ export default function LandingPage() {
   }
 
   return (
-    <main className="landing">
+    <main className="landing page active" data-page="landing" style={{ display: 'block', padding: 0, maxWidth: 'none' }}>
       {/* Hero */}
       <section className="hero">
         <div className="hero-grid">
           <div>
-            <div className="hero__eyebrow">{t('Landing.hero_eyebrow')}</div>
-            <h1 className="hero__title">
+            <div className="eyebrow" style={{ marginBottom: '18px' }}>{t('Landing.hero_eyebrow')}</div>
+            <h1>
               {t('Landing.hero_title_1')}
               <br />
               <em>{t('Landing.hero_title_2')}</em>
             </h1>
-            <div className="hero__en">{t('Brand.tagline')}</div>
-            <p className="hero__lead">{t('Landing.hero_lead')}</p>
+            <div className="en">{t('Brand.tagline')}</div>
+            <p className="lead">{t('Landing.hero_lead')}</p>
             <div className="hero-ctas">
-              <Link to="/" className="btn-primary">
+              <Link to="/" className="btn primary btn-inkstone">
                 {t('Nav.dashboard')} →
               </Link>
-              <code className="cli-cmd">pip install ahadiff</code>
+              <span className="text">⌘ ahadiff learn HEAD~1..HEAD</span>
             </div>
           </div>
 
           <div className="hero-demo">
-            <div className="hero-demo__tabs" role="tablist" aria-label={t('Landing.tabs_label')}>
+            <div className="tabs" role="tablist" aria-label={t('Landing.tabs_label')}>
               <button
                 type="button"
                 id="tab-raw"
@@ -142,7 +142,7 @@ export default function LandingPage() {
                 aria-selected={activeTab === 'raw'}
                 aria-controls="demo-panel"
                 tabIndex={activeTab === 'raw' ? 0 : -1}
-                className={`hero-demo__tab${activeTab === 'raw' ? ' hero-demo__tab--active' : ''}`}
+                className={`tab${activeTab === 'raw' ? ' active' : ''}`}
                 onClick={() => setActiveTab('raw')}
                 onKeyDown={e => handleDemoTabKeyDown(e, 0)}
               >
@@ -155,20 +155,20 @@ export default function LandingPage() {
                 aria-selected={activeTab === 'aha'}
                 aria-controls="demo-panel"
                 tabIndex={activeTab === 'aha' ? 0 : -1}
-                className={`hero-demo__tab${activeTab === 'aha' ? ' hero-demo__tab--active' : ''}`}
+                className={`tab${activeTab === 'aha' ? ' active' : ''}`}
                 onClick={() => setActiveTab('aha')}
                 onKeyDown={e => handleDemoTabKeyDown(e, 1)}
               >
                 {t('Landing.tab_aha')}
               </button>
             </div>
-            <div className="hero-demo__content" id="demo-panel" role="tabpanel" aria-labelledby={activeTab === 'raw' ? 'tab-raw' : 'tab-aha'} tabIndex={0}>
+            <div className="pane active" id="demo-panel" role="tabpanel" aria-labelledby={activeTab === 'raw' ? 'tab-raw' : 'tab-aha'} tabIndex={0}>
               {activeTab === 'raw' ? (
-                <pre className="hero-demo__pre">
+                <pre className="code-block" style={{ margin: 0, borderLeft: '3px solid var(--muted)', maxHeight: '340px' }}>
                   {SAMPLE_DIFF}
                 </pre>
               ) : (
-                <div className="u-text-sm-relaxed">
+                <div className="u-text-sm-relaxed prose" style={{ fontSize: '14.5px' }}>
                   {renderedLesson}
                 </div>
               )}
@@ -178,31 +178,31 @@ export default function LandingPage() {
       </section>
 
       {/* Features */}
-      <section className="landing-section landing-section--features">
-        <div className="landing-section__eyebrow">{t('Landing.section_features')}</div>
+      <section className="section">
+        <div className="eyebrow">{t('Landing.section_features')}</div>
         <h2>{t('Landing.features_title')}</h2>
-        <div className="landing-section__sub">{t('Landing.features_sub')}</div>
+        <div className="sub">{t('Landing.features_sub')}</div>
         <div className="feature-grid" aria-label={t('Landing.features_title')}>
           {FEATURE_CARDS.map((card) => (
-            <article className="feature-card" key={card.marker}>
-              <div className="feature-card__marker">{card.marker}</div>
-              <h3>{t(card.titleKey)}</h3>
-              <p>{t(card.descKey)}</p>
+            <article className="card" key={card.marker} style={{ padding: '18px 20px' }}>
+              <div className="eyebrow">{card.marker}</div>
+              <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '18px', fontWeight: 500, margin: '8px 0 6px', letterSpacing: '-0.01em' }}>{t(card.titleKey)}</h3>
+              <p style={{ fontSize: '13px', color: 'var(--muted)', margin: 0, lineHeight: 1.55 }}>{t(card.descKey)}</p>
             </article>
           ))}
         </div>
       </section>
 
       {/* Pipeline */}
-      <section className="landing-section">
-        <div className="landing-section__eyebrow">{t('Landing.section_workflow')}</div>
+      <section className="section">
+        <div className="eyebrow">{t('Landing.section_workflow')}</div>
         <h2>{t('Landing.pipeline_title')}</h2>
-        <div className="landing-section__sub">{t('Landing.pipeline_sub')}</div>
-        <div className="steps-grid">
+        <div className="sub">{t('Landing.pipeline_sub')}</div>
+        <div className="steps">
           {STEP_KEYS.map((key) => (
-            <div className="step" key={key}>
-              <div className="step__number">{t(`Landing.step_${key}` as 'Landing.step_01')}</div>
-              <h3>{t(`Landing.step_${key}_title` as 'Landing.step_01_title')}</h3>
+            <div className="st" key={key}>
+              <div className="n">{t(`Landing.step_${key}` as 'Landing.step_01')}</div>
+              <h4>{t(`Landing.step_${key}_title` as 'Landing.step_01_title')}</h4>
               <p>{t(`Landing.step_${key}_desc` as 'Landing.step_01_desc')}</p>
             </div>
           ))}
@@ -210,20 +210,20 @@ export default function LandingPage() {
       </section>
 
       {/* Before / After */}
-      <section className="landing-section">
-        <div className="landing-section__eyebrow">{t('Landing.section_evidence')}</div>
+      <section className="section">
+        <div className="eyebrow">{t('Landing.section_evidence')}</div>
         <h2>{t('Landing.before_after_title')}</h2>
-        <div className="landing-section__sub">{t('Landing.before_after_sub')}</div>
-        <div className="ba-grid">
-          <div className="ba-col">
-            <div className="ba-col__header">{t('Landing.before_header')}</div>
+        <div className="sub">{t('Landing.before_after_sub')}</div>
+        <div className="ba">
+          <div className="col">
+            <h5>{t('Landing.before_header')}</h5>
             <div className="ba-col__body">
-              <pre>{SAMPLE_DIFF}</pre>
+              <pre className="mono" style={{ fontSize: '12px', lineHeight: 1.6, color: 'var(--ink-2)', whiteSpace: 'pre-wrap' }}>{SAMPLE_DIFF}</pre>
             </div>
           </div>
-          <div className="ba-col">
-            <div className="ba-col__header">{t('Landing.after_header')}</div>
-            <div className="ba-col__body">
+          <div className="col" style={{ background: '#fff' }}>
+            <h5>{t('Landing.after_header')}</h5>
+            <div className="prose" style={{ fontSize: '14.5px', lineHeight: 1.7 }}>
               {renderedLesson}
             </div>
           </div>
@@ -231,10 +231,10 @@ export default function LandingPage() {
       </section>
 
       {/* Benchmark & Trust */}
-      <section className="landing-section">
-        <div className="landing-section__eyebrow">{t('Landing.section_benchmark')}</div>
+      <section className="section">
+        <div className="eyebrow">{t('Landing.section_benchmark')}</div>
         <h2>{t('Landing.benchmark_title')}</h2>
-        <div className="landing-section__sub">{t('Landing.benchmark_sub')}</div>
+        <div className="sub">{t('Landing.benchmark_sub')}</div>
         <div className="demo-banner">
           <span className="demo-tag">{t('Landing.demo_tag_full')}</span>
           <span>
@@ -243,22 +243,20 @@ export default function LandingPage() {
             {t('Landing.demo_banner_tail')}
           </span>
         </div>
-        <div className="benchmark-grid" aria-label={t('Landing.bench_demo_note')}>
+        <div className="kpi-grid" aria-label={t('Landing.bench_demo_note')}>
           {TRUST_CARDS.map((card) => (
-            <article className="benchmark-card" key={card.labelKey}>
-              <div className="benchmark-card__label-row">
-                <span className="benchmark-card__label">{t(card.labelKey)}</span>
-                <span className="demo-tag benchmark-card__demo">{t('Landing.demo_tag')}</span>
+            <article className="kpi" key={card.labelKey}>
+              <div className="lb">
+                {t(card.labelKey)}
+                <span className="demo-tag" style={{ fontSize: '9px', padding: '1px 5px' }}>{t('Landing.demo_tag')}</span>
               </div>
-              <div className="benchmark-card__value">{card.value}</div>
-              <div
-                className={
-                  card.deltaTone === 'up'
-                    ? 'benchmark-card__delta benchmark-card__delta--up'
-                    : 'benchmark-card__delta'
-                }
-              >
-                {t(card.deltaKey)}
+              <div className="vl">{card.value}</div>
+              <div className="delta">
+                {card.deltaTone === 'up' ? (
+                  <span className="up">▲ {t(card.deltaKey)}</span>
+                ) : (
+                  <span>{t(card.deltaKey)}</span>
+                )}
               </div>
             </article>
           ))}

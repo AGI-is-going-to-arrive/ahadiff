@@ -584,8 +584,7 @@ export default function ReviewPage() {
               <div className="review__summary-body">
                 {heatmapCells.length > 0 && (
                   <div className="review__summary-card">
-                    <h2 className="review__summary-card-title">{t('Review.heatmap_title')}</h2>
-                    <CalendarHeatmap cells={heatmapCells} />
+                    <CalendarHeatmap cells={heatmapCells} title={t('Review.heatmap_title')} />
                   </div>
                 )}
                 {mastery.length > 0 && (

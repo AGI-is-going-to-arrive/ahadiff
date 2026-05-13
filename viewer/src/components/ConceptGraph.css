@@ -82,6 +82,7 @@
   cursor: help;
   margin-left: 6px;
   vertical-align: middle;
+  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -412,13 +413,14 @@
 }
 
 /* ---------- Graph wrap (V6: .graph-wrap) ---------- */
-
 .concept-graph__graph-wrap {
   position: relative;
-  background: var(--subtle);
-  border: 1px solid var(--hair);
-  border-radius: var(--r-lg);
-  padding: var(--sp-5);
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--hair-strong);
+  border-bottom: 1px solid var(--hair-strong);
+  border-radius: 0;
+  padding: var(--sp-4) 0;
   min-height: 560px;
   overflow: hidden;
 }
@@ -958,7 +960,7 @@
 .concept-graph__listg {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 10px;
+  gap: var(--sp-4);
   overflow: hidden;
 }
 
@@ -966,24 +968,25 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 10px var(--sp-3);
-  border: 1px solid var(--hair);
-  border-left: 3px solid var(--concept-kind-stroke, var(--accent));
-  background: var(--elevated);
-  border-radius: var(--r-md);
+  padding: var(--sp-3) 0;
+  border: none;
+  border-bottom: 1px dashed var(--hair-strong);
+  border-left: 2px solid var(--concept-kind-stroke, var(--accent));
+  padding-left: var(--sp-3);
+  background: transparent;
+  border-radius: 0;
   font-size: var(--fs-sm);
   text-align: left;
   cursor: pointer;
-  transition: box-shadow var(--dur-fast) var(--ease-out-quart),
-              transform var(--dur-fast) var(--ease-out-quart),
-              border-color var(--dur-fast) var(--ease-out-quart);
+  transition: opacity var(--dur-fast) var(--ease-out-quart);
   min-width: 0;
   overflow: hidden;
 }
 
 .concept-graph__lnode:hover {
-  box-shadow: var(--sh-md);
-  transform: translateY(-1px);
+  opacity: 0.8;
+  transform: none;
+  box-shadow: none;
 }
 
 .concept-graph__lnode-head {

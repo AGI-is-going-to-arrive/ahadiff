@@ -6,17 +6,14 @@
 /* ---------- Topbar ---------- */
 
 .topbar {
-  --topbar-pad-inline: var(--sp-6);
+  --topbar-pad-inline: var(--sp-8);
   display: flex;
   align-items: center;
-  gap: var(--sp-4);
-  padding: var(--sp-3) var(--topbar-pad-inline);
+  gap: 16px;
+  padding: 14px 32px;
+  background: rgba(250, 248, 242, 0.88);
   border-bottom: 1px solid var(--hair);
-  /* V6 (`AhaDiff Warm v6.html:80-82`) uses an opaque rgba() fallback rather
-   * than color-mix() so older browsers (Firefox <113, Safari <16.4, Chrome
-   * <111) still get the translucent topbar. The dark-mode override below
-   * already follows the same pattern. */
-  background: var(--surface-veil);
+  box-shadow: 0 1px 0 rgba(180, 160, 130, 0.08);
   backdrop-filter: saturate(1.4) blur(8px);
   -webkit-backdrop-filter: saturate(1.4) blur(8px);
   position: sticky;
@@ -32,7 +29,7 @@
 
 /* ---------- Mobile nav button ---------- */
 
-.topbar__mobile-btn {
+.mobile-nav-btn {
   display: none;
   -webkit-appearance: none;
   appearance: none;
@@ -51,63 +48,49 @@
 
 /* ---------- Breadcrumb ---------- */
 
-.topbar__crumb {
+.topbar-crumb {
   flex-shrink: 0;
 }
 
-.topbar__crumb ol {
+.topbar-crumb ol {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: 8px;
   list-style: none;
   margin: 0;
   padding: 0;
-}
-
-.topbar__crumb-root {
-  font-family: var(--font-serif);
-  font-weight: 600;
-  font-size: 15px;
-  color: var(--ink);
-  letter-spacing: -0.01em;
-}
-
-.topbar__crumb-sep {
+  font-family: var(--font-mono);
+  font-size: 12px;
   color: var(--muted);
-  font-size: 14px;
+}
+
+.topbar-crumb-sep {
+  opacity: 0.5;
+  -webkit-user-select: none;
   user-select: none;
-}
-
-.topbar__crumb li[aria-current="page"] {
-  font-family: var(--font-sans);
-  font-size: 14px;
-  color: var(--muted);
-  font-weight: 500;
 }
 
 /* ---------- Search shell ---------- */
 
-.topbar__search {
-  flex: 1;
-  max-width: 480px;
+.search {
+  margin-left: auto;
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-3);
+  gap: 8px;
+  background: var(--subtle);
   border: 1px solid var(--hair);
-  border-radius: var(--r-md);
-  background: var(--elevated);
-  color: var(--muted);
-  font-family: var(--font-sans);
+  border-radius: 8px;
+  padding: 7px 12px;
   font-size: 13px;
-  cursor: default;
-  -webkit-appearance: none;
-  appearance: none;
-  min-height: 44px;
-  transition: border-color var(--dur-fast) var(--ease-out-quart);
+  color: var(--muted);
+  min-width: 280px;
+  cursor: text;
+  transition: all 0.15s;
+  min-height: 34px;
 }
 
-.topbar__search:not(.topbar__search--inactive):hover {
+.search:not(.topbar__search--inactive):hover {
+  background: #fff;
   border-color: var(--hair-strong);
 }
 
@@ -117,105 +100,103 @@
   cursor: default;
 }
 
-.topbar__search:focus-visible {
+.search:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.topbar__search-icon {
-  font-size: 16px;
-  line-height: 1;
-  flex-shrink: 0;
-}
-
-.topbar__search-placeholder {
-  flex: 1;
-  text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.topbar__search-kbd {
-  font-family: var(--font-sans);
-  font-size: 11px;
-  padding: 2px 6px;
+.search kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  background: #fff;
   border: 1px solid var(--hair);
-  border-radius: var(--r-sm);
-  background: var(--paper);
+  padding: 1px 5px;
+  border-radius: 4px;
   color: var(--muted);
-  flex-shrink: 0;
-  line-height: 1.4;
 }
 
 /* ---------- Actions ---------- */
 
 .topbar__actions {
-  margin-left: auto;
   display: flex;
   gap: var(--sp-2);
   align-items: center;
 }
 
-.topbar__btn {
-  font-family: var(--font-sans);
-  font-size: 13px;
-  font-weight: 500;
-  padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--r-md);
-  cursor: pointer;
-  white-space: nowrap;
-  text-decoration: none;
+/* The .btn styles should ideally be in a global CSS file, but we will add them here temporarily if needed.
+   They are partially handled by the global CSS (or will be in v6 components CSS). */
+
+.btn {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  border: 1px solid transparent;
-  transition: background var(--dur-fast) var(--ease-out-quart),
-    color var(--dur-fast) var(--ease-out-quart);
-}
-
-.topbar__btn--ghost {
-  background: transparent;
-  color: var(--muted);
-  border-color: var(--hair);
-}
-
-.topbar__btn--ghost:hover {
-  background: var(--accent-softer);
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--hair-strong);
+  background: #fff;
   color: var(--ink);
-  border-color: var(--hair-strong);
+  transition: background var(--dur-fast) var(--ease-out-quart),
+    border-color var(--dur-fast) var(--ease-out-quart),
+    color var(--dur-fast) var(--ease-out-quart),
+    transform var(--dur-fast) var(--ease-out-quart),
+    box-shadow var(--dur-fast) var(--ease-out-quart);
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
 }
 
-.topbar__btn--ghost:focus-visible {
+.btn:hover {
+  background: var(--accent-softer);
+  border-color: #E0B89E;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px -6px rgba(120, 80, 50, 0.2);
+}
+
+.btn:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.btn.primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  box-shadow: 0 1px 2px rgba(176, 78, 40, 0.18);
+}
+
+.btn.primary:hover {
+  background: var(--accent-ink);
+  border-color: var(--accent-ink);
+  box-shadow: 0 6px 14px -6px rgba(176, 78, 40, 0.45);
+}
+
+.btn.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+
+.btn.ghost:hover {
+  background: var(--subtle);
+  color: var(--ink);
+  box-shadow: none;
+  transform: none;
+}
+
+.btn.btn-inkstone:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.topbar__btn--primary {
-  background: var(--ink-blackletter);
-  color: var(--on-accent);
-  border-color: var(--ink-blackletter);
-  letter-spacing: 0.01em;
-  font-weight: 600;
-}
-
-.topbar__btn--primary:hover:not(:disabled) {
-  background: var(--ink-strong);
-  border-color: var(--ink-strong);
-}
-
-.topbar__btn--primary:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.topbar__btn--primary:disabled {
+.btn.btn-inkstone:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.topbar__btn--primary.topbar__btn--busy {
+.btn.btn-inkstone.topbar__btn--busy {
   animation: topbar-pulse 1.8s var(--ease-out-quart) infinite;
 }
 
@@ -297,23 +278,20 @@
 /* ---------- Responsive ---------- */
 
 @media (max-width: 1024px) {
-  .topbar__btn--ghost {
+  .btn.ghost {
     display: none;
   }
 
-  .topbar__search {
+  .search {
     max-width: 280px;
-  }
-
-  .topbar__search-placeholder {
-    display: none;
+    min-width: 0;
   }
 }
 
 /* Hamburger only at <=768px — between 769-1024px the sidebar collapses to an
  * icon rail (purely CSS, see Sidebar.css), so no drawer toggle is needed. */
 @media (max-width: 768px) {
-  .topbar__mobile-btn {
+  .mobile-nav-btn {
     display: inline-flex;
     flex-shrink: 0;
   }
@@ -328,29 +306,29 @@
     overflow: hidden;
   }
 
-  .topbar__search {
+  .search {
     display: none;
   }
 
-  .topbar__btn--ghost {
+  .btn.ghost {
     display: none;
   }
 
-  .topbar__crumb-root {
+  .topbar-crumb li:first-child span {
     font-size: 14px;
   }
 
-  .topbar__crumb li[aria-current="page"] {
+  .topbar-crumb li[aria-current="page"] {
     font-size: 13px;
   }
 
-  .topbar__crumb {
+  .topbar-crumb {
     min-width: 0;
     overflow: hidden;
     flex: 1 1 0;
   }
 
-  .topbar__crumb ol {
+  .topbar-crumb ol {
     flex-wrap: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -362,7 +340,7 @@
     min-width: 0;
   }
 
-  .topbar__btn--primary {
+  .btn.btn-inkstone {
     padding-inline: var(--sp-2);
     font-size: 12px;
     white-space: nowrap;
@@ -395,11 +373,11 @@
     gap: var(--sp-1);
   }
 
-  .topbar__crumb-root {
+  .topbar-crumb li:first-child span {
     font-size: 13px;
   }
 
-  .topbar__crumb li[aria-current="page"] {
+  .topbar-crumb li[aria-current="page"] {
     font-size: 12px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -409,18 +387,18 @@
 }
 
 @media (max-width: 359px) {
-  .topbar__crumb {
+  .topbar-crumb {
     overflow: hidden;
   }
 
-  .topbar__crumb li[aria-current="page"] {
+  .topbar-crumb li[aria-current="page"] {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 100px;
   }
 
-  .topbar__btn--primary {
+  .btn.btn-inkstone {
     display: none;
   }
 
@@ -443,14 +421,14 @@
 /* ---- Reduced motion ---- */
 @media (prefers-reduced-motion: reduce) {
   .topbar,
-  .topbar__btn,
-  .topbar__search,
+  .btn,
+  .search,
   .lang-switcher__btn {
     transition: none;
   }
 
-  .topbar__mobile-btn:active,
-  .topbar__btn:active,
+  .mobile-nav-btn:active,
+  .btn:active,
   .lang-switcher__btn:active {
     transform: none !important;
   }
@@ -465,19 +443,19 @@
     border: 1px solid LinkText;
   }
 
-  .topbar__search-kbd {
+  .search kbd {
     color: ButtonText;
     background: ButtonFace;
     border-color: ButtonText;
   }
 
-  .topbar__btn--primary {
+  .btn.btn-inkstone {
     background: Highlight;
     color: HighlightText;
     border-color: Highlight;
   }
 
-  .topbar__btn--primary:disabled {
+  .btn.btn-inkstone:disabled {
     opacity: 1;
     background: GrayText;
     color: Canvas;
@@ -485,20 +463,25 @@
   }
 
   .topbar__btn--inactive,
-  .topbar__btn--primary.topbar__btn--inactive {
+  .btn.btn-inkstone.topbar__btn--inactive {
     opacity: 1;
     background: ButtonFace;
     color: GrayText;
     border-color: GrayText;
   }
 
-  .topbar__btn--ghost {
+  .btn.ghost {
     border-color: ButtonText;
     color: ButtonText;
   }
 
-  .topbar__search {
+  .search {
     border-color: ButtonText;
+  }
+
+  .mobile-nav-btn {
+    border-color: ButtonText;
+    color: ButtonText;
   }
 }
 

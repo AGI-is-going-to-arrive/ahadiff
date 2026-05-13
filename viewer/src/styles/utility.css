@@ -442,31 +442,35 @@
  * ------------------------------------------------------------------------ */
 
 .surface-card {
-  background: var(--elevated);
-  border: 1px solid var(--hair);
-  border-radius: var(--r-lg);
-  overflow: hidden;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+  padding: 0;
+  margin-bottom: var(--sp-6);
 }
 
 .surface-card__header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: baseline;
   gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-5);
-  border-bottom: 1px solid var(--hair);
+  padding: 0 0 var(--sp-2);
+  border-bottom: 1px solid var(--hair-strong);
+  margin-bottom: var(--sp-4);
 }
 
 .surface-card__header h2 {
   margin: 0;
-  font-family: var(--font-serif);
-  font-size: var(--fs-lg);
+  font-family: "Newsreader", var(--font-serif);
+  font-size: 24px;
   font-weight: 500;
-  color: var(--ink);
+  color: var(--ink-blackletter);
+  letter-spacing: -0.01em;
 }
 
 .surface-card__body {
-  padding: var(--sp-5);
+  padding: 0;
 }
 
 .surface-card__body--flush {

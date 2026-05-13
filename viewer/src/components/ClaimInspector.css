@@ -112,6 +112,7 @@
   font-family: var(--font-mono);
   font-size: 12px;
   cursor: pointer;
+  -webkit-user-select: none;
   user-select: none;
   white-space: nowrap;
   transition: all var(--dur-xfast) var(--ease-out-quart);

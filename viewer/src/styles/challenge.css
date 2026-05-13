@@ -252,6 +252,7 @@
 }
 
 .challenge-button {
+  -webkit-appearance: none;
   appearance: none;
   font: inherit;
   font-weight: 500;

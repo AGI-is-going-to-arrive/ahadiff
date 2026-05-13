@@ -222,20 +222,24 @@ export default function DashboardPage() {
   // ---- Loading state ----
   if (loading) {
     return (
-      <AppShell>
-        <div className="dashboard" role="status" aria-live="polite" aria-label={t('A11y.loading')}>
-          <div className="dashboard__header">
-            <Skeleton variant="text" width="200px" height="1.8em" />
-            <Skeleton variant="text-short" width="300px" />
+      <AppShell globalShortcutsDisabled={isLearnDialogOpen}>
+        <div className="page active" data-page="dashboard" role="status" aria-live="polite" aria-label={t('A11y.loading')} data-state="loading" data-state-msg={t('A11y.loading')}>
+          <div className="page-head">
+            <div>
+              <Skeleton variant="text" width="200px" height="1.8em" />
+              <div className="sub"><Skeleton variant="text-short" width="300px" /></div>
+            </div>
           </div>
-          <div className="skeleton-grid">
-            <Skeleton variant="card" />
-            <Skeleton variant="card" />
-            <Skeleton variant="card" />
-            <Skeleton variant="card" />
+          <div className="page-content">
+            <div className="skeleton-grid">
+              <Skeleton variant="card" />
+              <Skeleton variant="card" />
+              <Skeleton variant="card" />
+              <Skeleton variant="card" />
+            </div>
+            <Skeleton variant="chart" />
+            <SkeletonGroup count={4} variant="row" />
           </div>
-          <Skeleton variant="chart" />
-          <SkeletonGroup count={4} variant="row" />
         </div>
       </AppShell>
     );
@@ -248,15 +252,19 @@ export default function DashboardPage() {
   if (error === 'Error.auth_failed') {
     return (
       <AppShell>
-        <div className="dashboard">
-          <div className="dashboard__header">
-            <h1 className="dashboard__title">{t('Dashboard.title')}</h1>
+        <div className="page active" data-page="dashboard">
+          <div className="page-head">
+            <div>
+              <h1>{t('Dashboard.title')}</h1>
+            </div>
           </div>
-          <div role="alert" className="dashboard__error">
-            {t('Error.auth_failed')}
-            <button type="button" className="retry-btn" onClick={() => void fetchDashboard()}>
-              {t('Error.retry')}
-            </button>
+          <div className="page-content">
+            <div role="alert" className="dashboard__error">
+              {t('Error.auth_failed')}
+              <button type="button" className="btn primary" onClick={() => void fetchDashboard()}>
+                {t('Error.retry')}
+              </button>
+            </div>
           </div>
         </div>
       </AppShell>
@@ -267,15 +275,19 @@ export default function DashboardPage() {
   if (error && runs.length === 0) {
     return (
       <AppShell>
-        <div className="dashboard">
-          <div className="dashboard__header">
-            <h1 className="dashboard__title">{t('Dashboard.title')}</h1>
+        <div className="page active" data-page="dashboard">
+          <div className="page-head">
+            <div>
+              <h1>{t('Dashboard.title')}</h1>
+            </div>
           </div>
-          <div role="alert" className="dashboard__error">
-            {t('Error.fetch_failed', { resource: t(error as MessageKey) })}
-            <button type="button" className="retry-btn" onClick={() => void fetchDashboard()}>
-              {t('Error.retry')}
-            </button>
+          <div className="page-content">
+            <div role="alert" className="dashboard__error">
+              {t('Error.fetch_failed', { resource: t(error as MessageKey) })}
+              <button type="button" className="btn primary" onClick={() => void fetchDashboard()}>
+                {t('Error.retry')}
+              </button>
+            </div>
           </div>
         </div>
       </AppShell>
@@ -286,37 +298,41 @@ export default function DashboardPage() {
   if (runs.length === 0) {
     return (
       <AppShell globalShortcutsDisabled={isLearnDialogOpen}>
-        <div className="dashboard">
-          <div className="dashboard__header">
-            <h1 className="dashboard__title">{t('Dashboard.title')}</h1>
-          </div>
-
-          <div className="dashboard__empty">
-            <div className="dashboard__empty-icon" aria-hidden="true">Δ</div>
-            <h2 className="dashboard__empty-title">{t('Dashboard.empty_title')}</h2>
-            <p className="dashboard__empty-hint">{t('Dashboard.empty_hint')}</p>
-            <div className="dashboard__empty-actions">
-              <button
-                type="button"
-                className="dashboard__empty-cta dashboard__empty-cta--primary"
-                aria-label={t('Dashboard.empty_first_run_aria')}
-                onClick={() => setIsLearnDialogOpen(true)}
-              >
-                {t('Dashboard.empty_first_run')}
-              </button>
-              <a href="#/onboarding" className="dashboard__empty-cta dashboard__empty-cta--secondary">
-                {t('Dashboard.empty_cta')}
-              </a>
-              <span className="dashboard__empty-or">{t('Dashboard.empty_or')}</span>
-              <code className="dashboard__empty-cmd">ahadiff learn HEAD~1..HEAD</code>
+        <div className="page active" data-page="dashboard">
+          <div className="page-head">
+            <div>
+              <h1>{t('Dashboard.title')}</h1>
             </div>
           </div>
-          {isLearnDialogOpen ? (
-            <Suspense fallback={null}>
-              <LearnModeDialog open={isLearnDialogOpen} onClose={() => setIsLearnDialogOpen(false)} />
-            </Suspense>
-          ) : null}
-          {graphifyCard}
+
+          <div className="page-content">
+            <div className="empty">
+              <div className="empty-icon" aria-hidden="true">Δ</div>
+              <h2 className="empty-title">{t('Dashboard.empty_title')}</h2>
+              <p className="empty-hint">{t('Dashboard.empty_hint')}</p>
+              <div className="dashboard__empty-actions">
+                <button
+                  type="button"
+                  className="btn primary"
+                  aria-label={t('Dashboard.empty_first_run_aria')}
+                  onClick={() => setIsLearnDialogOpen(true)}
+                >
+                  {t('Dashboard.empty_first_run')}
+                </button>
+                <a href="#/onboarding" className="btn">
+                  {t('Dashboard.empty_cta')}
+                </a>
+                <span className="dashboard__empty-or">{t('Dashboard.empty_or')}</span>
+                <code className="dashboard__empty-cmd">ahadiff learn HEAD~1..HEAD</code>
+              </div>
+            </div>
+            {isLearnDialogOpen ? (
+              <Suspense fallback={null}>
+                <LearnModeDialog open={isLearnDialogOpen} onClose={() => setIsLearnDialogOpen(false)} />
+              </Suspense>
+            ) : null}
+            {graphifyCard}
+          </div>
         </div>
       </AppShell>
     );
@@ -454,16 +470,24 @@ export default function DashboardPage() {
 
   // ---- Full dashboard (>= 2 runs) ----
   return (
-    <AppShell>
-      <div className="dashboard" aria-live="polite">
-        <div className="dashboard__header">
-          <h1 className="dashboard__title">{t('Dashboard.title')}</h1>
-          <p className="dashboard__subtitle">{t('Dashboard.subtitle')}</p>
-          {stats?.last_run_at && (
-            <span className="dashboard__last-run">
-              {t('Dashboard.last_run_at', { time: formatDate(stats.last_run_at, locale) })}
-            </span>
-          )}
+    <AppShell globalShortcutsDisabled={isLearnDialogOpen}>
+      <div className="page active" data-page="dashboard" aria-live="polite">
+        <div className="page-head">
+          <div>
+            <div className="eyebrow">{t('Dashboard.eyebrow')}</div>
+            <h1>{t('Dashboard.title')} {stats?.last_run_at && <span className="mono" style={{ fontSize: '18px', color: 'var(--muted)', fontWeight: 400 }}>· {t('Dashboard.last_run_at', { time: formatDate(stats.last_run_at, locale) })}</span>}</h1>
+            <div className="sub">{t('Dashboard.subtitle')}</div>
+          </div>
+          <div className="right">
+            <span className="chip on">{t('Dashboard.range_30d')}</span>
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() => setIsLearnDialogOpen(true)}
+            >
+              + {t('Topbar.new_run_short')}
+            </button>
+          </div>
         </div>
         {errorBanner}
 
@@ -521,7 +545,9 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
-          <CalendarHeatmap cells={heatmapCells ?? deriveHeatmapFromRuns(runs)} />
+          <div className="ratchet-section__card" style={{ padding: 'var(--sp-4) 18px 14px' }}>
+            <CalendarHeatmap cells={heatmapCells ?? deriveHeatmapFromRuns(runs)} />
+          </div>
         </div>
 
         {/* Graphify status — optional, self-fetching, hidden when disabled */}
@@ -638,6 +664,11 @@ export default function DashboardPage() {
           onSourceFilterChange={setSourceFilter}
           onLoadMore={() => { loadMoreRuns().catch(() => { /* handled by store */ }); }}
         />
+        {isLearnDialogOpen ? (
+          <Suspense fallback={null}>
+            <LearnModeDialog open={isLearnDialogOpen} onClose={() => setIsLearnDialogOpen(false)} />
+          </Suspense>
+        ) : null}
       </div>
     </AppShell>
   );
@@ -710,39 +741,43 @@ function RunListTable({
   }, [runs]);
 
   return (
-    <div className="run-list-section">
-      <div className="run-list-section__head">
-        <h2 className="run-list-section__title">{t('Dashboard.run_list_title')}</h2>
-        {onVerdictFilterChange ? (
-          <div
-            className="run-list-section__filters"
-            role="group"
-            aria-label={t('Dashboard.verdict_filter_label')}
-          >
-            {VERDICT_FILTERS.map((opt) => {
-              const isActive = verdictFilter === opt;
-              const labelKey = opt === 'ALL' ? 'Dashboard.filter_all' : (`Verdict.${opt}` as const);
-              return (
-                <button
-                  key={opt}
-                  type="button"
-                  aria-pressed={isActive}
-                  className={`verdict-chip${isActive ? ' verdict-chip--active' : ''} verdict-chip--${opt}`}
-                  onClick={() => onVerdictFilterChange(opt)}
-                >
-                  <span>{t(labelKey)}</span>
-                  <span className="verdict-chip__count">{counts[opt]}</span>
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
+    <div className="card" style={{ marginTop: '18px' }}>
+      <div className="ch">
+        <h3>{t('Dashboard.run_list_title')}</h3>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {onVerdictFilterChange ? (
+            <div
+              className="run-list-section__filters"
+              role="group"
+              aria-label={t('Dashboard.verdict_filter_label')}
+              style={{ display: 'flex', gap: '6px' }}
+            >
+              {VERDICT_FILTERS.map((opt) => {
+                const isActive = verdictFilter === opt;
+                const labelKey = opt === 'ALL' ? 'Dashboard.filter_all' : (`Verdict.${opt}` as const);
+                return (
+                  <button
+                    key={opt}
+                    type="button"
+                    aria-pressed={isActive}
+                    className={`chip${isActive ? ' on' : ''}`}
+                    onClick={() => onVerdictFilterChange(opt)}
+                  >
+                    <span>{t(labelKey)}</span>
+                    <span style={{ marginLeft: '4px', opacity: 0.7 }}>{counts[opt]}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
       </div>
       {onSourceFilterChange ? (
         <div
           className="run-list-section__source-filters"
           role="group"
           aria-label={t('Dashboard.source_filter_label')}
+          style={{ display: 'flex', gap: '6px', padding: '12px 20px', borderBottom: '1px solid var(--hair)', background: 'var(--subtle)' }}
         >
           {SOURCE_GROUPS.map((g) => {
             const isActive = sourceFilter === g.key;
@@ -753,27 +788,30 @@ function RunListTable({
                 key={g.key}
                 type="button"
                 aria-pressed={isActive}
-                className={`source-chip${isActive ? ' source-chip--active' : ''}`}
+                className={`chip${isActive ? ' on' : ''}`}
                 onClick={() => onSourceFilterChange(g.key)}
               >
                 <span>{t(g.labelKey)}</span>
-                <span className="source-chip__count">{count}</span>
+                <span style={{ marginLeft: '4px', opacity: 0.7 }}>{count}</span>
               </button>
             );
           })}
         </div>
       ) : null}
+      <div className="cb" style={{ padding: 0 }}>
       {sorted.length === 0 ? (
-        <p className="u-muted-sm" role="status">
-          {sourceFilter !== 'ALL'
-            ? t(hasMore ? 'Dashboard.filter_empty_with_source_has_more' : 'Dashboard.filter_empty_with_source', {
-                verdict: t(verdictFilter === 'ALL' ? 'Dashboard.filter_all' : (`Verdict.${verdictFilter}` as const)),
-                source: t(SOURCE_GROUPS.find((g) => g.key === sourceFilter)?.labelKey ?? 'Dashboard.source_all'),
-              })
-            : t('Dashboard.filter_empty', { filter: t(verdictFilter === 'ALL' ? 'Dashboard.filter_all' : (`Verdict.${verdictFilter}` as const)) })}
-        </p>
+        <div style={{ padding: '20px', color: 'var(--muted)', textAlign: 'center' }}>
+          <p role="status">
+            {sourceFilter !== 'ALL'
+              ? t(hasMore ? 'Dashboard.filter_empty_with_source_has_more' : 'Dashboard.filter_empty_with_source', {
+                  verdict: t(verdictFilter === 'ALL' ? 'Dashboard.filter_all' : (`Verdict.${verdictFilter}` as const)),
+                  source: t(SOURCE_GROUPS.find((g) => g.key === sourceFilter)?.labelKey ?? 'Dashboard.source_all'),
+                })
+              : t('Dashboard.filter_empty', { filter: t(verdictFilter === 'ALL' ? 'Dashboard.filter_all' : (`Verdict.${verdictFilter}` as const)) })}
+          </p>
+        </div>
       ) : (
-      <table className="run-list" aria-label={t('Dashboard.run_list_title')}>
+      <table className="t" aria-label={t('Dashboard.run_list_title')}>
         <thead>
           <tr>
             <th scope="col">{t('Dashboard.col_ref')}</th>
@@ -788,7 +826,7 @@ function RunListTable({
           {sorted.map((run) => (
             <tr key={run.run_id}>
               <td>
-                <a className="run-list__link mono" href={`#/run/${encodeURIComponent(run.run_id)}/lesson`}>
+                <a className="mono" href={`#/run/${encodeURIComponent(run.run_id)}/lesson`}>
                   {run.source_ref || run.run_id.slice(0, 8)}
                 </a>
               </td>
@@ -799,7 +837,7 @@ function RunListTable({
                 <VerdictBadge verdict={safeVerdict(run.verdict)} t={t} />
               </td>
               <td className="num">{run.overall}</td>
-              <td>{formatDimensionLabel(run.weakest_dim, t)}</td>
+              <td style={{ color: 'var(--muted)' }}>{formatDimensionLabel(run.weakest_dim, t)}</td>
               <td className="mono">
                 {formatDate(run.created_at, locale)}
               </td>
@@ -808,11 +846,12 @@ function RunListTable({
         </tbody>
       </table>
       )}
+      </div>
       {hasMore && (
-        <div className="run-list-section__pagination">
+        <div style={{ padding: '14px 20px', borderTop: '1px solid var(--hair)', textAlign: 'center' }}>
           <button
             type="button"
-            className="load-more-btn"
+            className="btn ghost"
             onClick={onLoadMore}
             disabled={loadingMore}
           >

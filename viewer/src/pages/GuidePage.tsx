@@ -6,7 +6,6 @@ import {
   Code,
   ExternalLink,
   GraduationCap,
-  Hash,
   Puzzle,
   RotateCcw,
   Settings,
@@ -229,7 +228,7 @@ function SectionNav({ t }: { t: TranslateFn }) {
       aria-label={t('Guide.nav_label')}
     >
       <ul className="guide-nav__list" role="list">
-        {NAV_TARGETS.map((target) => (
+        {NAV_TARGETS.map((target, index) => (
           <li className="guide-nav__item" key={target.id}>
             <button
               type="button"
@@ -237,7 +236,9 @@ function SectionNav({ t }: { t: TranslateFn }) {
               data-section={target.id}
               onClick={() => handleJump(target.id)}
             >
-              <Hash className="guide-nav__chip-icon" aria-hidden="true" size={12} />
+              <span className="guide-nav__chip-index" aria-hidden="true">
+                0{index + 1}.
+              </span>
               {t(target.labelKey)}
             </button>
           </li>

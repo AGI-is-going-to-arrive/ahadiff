@@ -32,7 +32,7 @@
     border-color: CanvasText;
   }
 
-  .topbar__brand-mark {
+  .brand-mark {
     color: HighlightText;
     background: Highlight;
     forced-color-adjust: none;

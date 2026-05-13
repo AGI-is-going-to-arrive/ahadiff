@@ -6,6 +6,8 @@ export type ScaffoldLevel = 'full' | 'hint' | 'compact';
 interface ScaffoldingTabsProps {
   level: ScaffoldLevel;
   onChange: (level: ScaffoldLevel) => void;
+  idBase?: string;
+  panelId?: string;
 }
 
 const LEVELS: ScaffoldLevel[] = ['compact', 'hint', 'full'];
@@ -22,7 +24,12 @@ const hintKeyMap: Record<ScaffoldLevel, MessageKey> = {
   compact: 'Lesson.level_compact_hint',
 };
 
-export default function ScaffoldingTabs({ level, onChange }: ScaffoldingTabsProps) {
+export default function ScaffoldingTabs({
+  level,
+  onChange,
+  idBase = 'scaffolding-tab',
+  panelId,
+}: ScaffoldingTabsProps) {
   const { t } = useTranslation();
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -65,9 +72,11 @@ export default function ScaffoldingTabs({ level, onChange }: ScaffoldingTabsProp
           return (
             <button
               key={lvl}
+              id={`${idBase}-${lvl}`}
               ref={(el) => { tabRefs.current[i] = el; }}
               role="tab"
               aria-selected={selected}
+              aria-controls={panelId}
               aria-describedby={selected ? 'scaffolding-hint' : undefined}
               tabIndex={selected ? 0 : -1}
               title={t(hintKeyMap[lvl])}

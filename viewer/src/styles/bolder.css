@@ -163,9 +163,8 @@
 
 /* ---- H: Topbar — archival crumb ---- */
 .topbar-crumb,
-.topbar__crumb,
-.topbar__crumb-root,
-.topbar__crumb li[aria-current="page"] {
+.topbar-crumb li:first-child span,
+.topbar-crumb li[aria-current="page"] {
   font-family: "Newsreader", var(--font-serif);
   font-size: 14.5px;
   font-style: italic;
@@ -173,8 +172,7 @@
   color: var(--ink-2);
 }
 
-.topbar-crumb-sep,
-.topbar__crumb-sep {
+.topbar-crumb-sep {
   color: var(--accent);
   font-style: normal;
   padding: 0 6px;
@@ -330,7 +328,7 @@
   }
   .diff-hunk-marker::before,
   .diff-line--hunk[data-hunk-mark]::before,
-  .topbar__crumb-sep {
+  .topbar-crumb-sep {
     color: LinkText !important;
   }
   .lesson__toc-link::before {

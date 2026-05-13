@@ -126,9 +126,9 @@
   --r-full: 999px;
 
   /* Shadows (v6 naming) */
-  --sh-sm: 0 1px 0 rgba(180, 160, 130, 0.06);
-  --sh-md: 0 1px 0 rgba(180, 160, 130, 0.06), 0 4px 20px -16px rgba(120, 80, 40, 0.18);
-  --sh-lg: 0 2px 4px -1px rgba(120, 80, 40, 0.08), 0 18px 50px -30px rgba(120, 80, 40, 0.28);
+  --sh-sm: 0 1px 0 rgba(180, 160, 130, 0.15);
+  --sh-md: 0 2px 0 rgba(180, 160, 130, 0.15), 0 4px 8px -4px rgba(120, 80, 40, 0.08);
+  --sh-lg: 0 4px 0 rgba(180, 160, 130, 0.1), 0 12px 24px -8px rgba(120, 80, 40, 0.15);
   --sh-ring: 0 0 0 3px var(--accent-softer);
 
   /* Duration (v6 naming) */

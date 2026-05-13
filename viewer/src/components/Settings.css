@@ -61,77 +61,90 @@
 }
 
 .st {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
   width: 100%;
   text-align: left;
-  padding: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2) 0;
   min-height: 38px;
-  border: 1px solid transparent;
-  border-radius: var(--r-md);
-  background: none;
-  font-size: 13px;
+  border: none;
+  background: transparent;
+  font-size: 14px;
   font-family: var(--font-sans);
   color: var(--muted);
   cursor: pointer;
-  transition: background var(--dur-fast) var(--ease-out),
-              color var(--dur-fast) var(--ease-out);
+  transition: color var(--dur-fast) var(--ease-out);
   line-height: 1.4;
+  border-left: 2px solid transparent;
+  padding-left: var(--sp-3);
+  margin-bottom: var(--sp-1);
 }
 
 .st:hover {
-  background: var(--subtle);
-  color: var(--ink);
+  background: transparent;
+  color: var(--ink-strong);
+  border-left-color: var(--hair-strong);
 }
 
 .st:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: -2px;
+  outline-offset: 2px;
+  color: var(--accent-ink);
 }
 
 .st.on {
-  background: var(--elevated);
-  border-color: var(--hair);
-  color: var(--ink);
+  background: transparent;
+  border-left-color: var(--accent);
+  color: var(--ink-blackletter);
   font-weight: 500;
 }
 
 .st .en {
   display: block;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-family: "Newsreader", var(--font-serif);
+  font-size: 13px;
+  font-style: italic;
+  letter-spacing: 0.02em;
   color: var(--muted);
-  margin-top: 1px;
+  margin-top: 2px;
   font-weight: 400;
+  text-transform: none;
+}
+
+.st.on .en {
+  color: var(--accent);
 }
 
 /* ---- Section card ---- */
 .settings-card {
-  background: var(--elevated);
-  border: 1px solid var(--hair);
-  border-radius: var(--r-lg);
-  overflow: hidden;
-  margin-bottom: var(--sp-6);
+  background: transparent;
+  border: none;
+  overflow: visible;
+  margin-bottom: var(--sp-10);
 }
 
 .settings-card__header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 15px var(--sp-5);
-  border-bottom: 1px solid var(--hair);
+  align-items: baseline;
+  padding: 0 0 var(--sp-3);
+  border-bottom: 1px solid var(--hair-strong);
+  margin-bottom: var(--sp-4);
 }
 
 .settings-card__header h2 {
   margin: 0;
-  font-family: var(--font-serif);
-  font-size: 18px;
+  font-family: "Newsreader", var(--font-serif);
+  font-size: 24px;
   font-weight: 500;
+  color: var(--ink-blackletter);
+  letter-spacing: -0.01em;
 }
 
 .settings-card__body {
-  padding: var(--sp-5);
+  padding: 0;
 }
 
 .settings-card__body--flush {
@@ -144,8 +157,8 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--sp-4);
   align-items: center;
-  padding: var(--sp-3) 0;
-  border-bottom: 1px solid var(--hair);
+  padding: var(--sp-4) 0;
+  border-bottom: 1px dashed var(--hair-strong);
 }
 
 .settings-field:last-child {
@@ -154,20 +167,24 @@
 
 .settings-field__label h3 {
   margin: 0;
-  font-size: 14px;
+  font-family: var(--font-serif);
+  font-size: 16px;
   font-weight: 500;
+  color: var(--ink-blackletter);
 }
 
 .settings-field__label p {
   margin: var(--sp-1) 0 0;
-  font-size: 12.5px;
-  color: var(--muted);
+  font-size: 13px;
+  color: var(--muted-strong);
+  line-height: var(--lh-relaxed);
+  max-width: var(--mw-prose);
 }
 
 .settings-field__value {
   font-family: var(--font-mono);
   font-size: 13px;
-  color: var(--ink-2, var(--ink));
+  color: var(--ink-strong);
 }
 
 .settings-field__badge {
@@ -268,52 +285,55 @@
 
 /* ---- Mode summary card (V6 §4D privacy tab) ---- */
 .mode-summary {
-  background: var(--elevated);
-  border: 1px solid var(--hair);
-  border-left: 3px solid var(--accent);
-  border-radius: var(--r-lg);
-  padding: var(--sp-5);
-  margin-bottom: var(--sp-6);
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--hair-strong);
+  border-bottom: 1px solid var(--hair-strong);
+  padding: var(--sp-6) 0;
+  margin-bottom: var(--sp-8);
 }
 
 .mode-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: var(--sp-4);
+  gap: var(--sp-6);
 }
 
 .mode-cell__eyebrow {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   color: var(--muted);
-  margin-bottom: var(--sp-1);
+  margin-bottom: var(--sp-2);
 }
 
 .mode-cell__value {
-  font-family: var(--font-serif);
-  font-size: 17px;
+  font-family: "Newsreader", var(--font-serif);
+  font-size: 20px;
   font-weight: 500;
-  color: var(--ink);
-  word-break: break-all;
+  color: var(--ink-blackletter);
+  word-break: break-word;
+  line-height: var(--lh-tight);
+  margin-bottom: var(--sp-1);
 }
 
 .mode-cell__sub {
   font-family: var(--font-mono);
-  font-size: 11.5px;
-  color: var(--muted);
+  font-size: 12px;
+  color: var(--muted-strong);
   font-weight: 400;
+  line-height: var(--lh-relaxed);
 }
 
 .mode-summary__footer {
-  margin-top: var(--sp-4);
-  padding: 10px 14px;
-  background: var(--accent-softest, rgba(217, 119, 87, 0.06));
-  border-radius: var(--r-md);
-  font-size: 12.5px;
-  color: var(--muted);
-  line-height: 1.5;
+  margin-top: var(--sp-6);
+  padding-top: var(--sp-4);
+  border-top: 1px dashed var(--hair);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--muted-strong);
+  line-height: var(--lh-relaxed);
 }
 
 /* ---- Provider grid ---- */
@@ -523,6 +543,7 @@
 @media (forced-colors: active) {
   .settings-card { border: 1px solid CanvasText; }
   .st.on { border: 2px solid Highlight; }
+  .st:focus-visible { outline: 2px solid Highlight; }
   .mode-summary { border-left: 3px solid Highlight; }
   .settings-toggle { border: 1px solid CanvasText; }
   .settings-toggle.is-on {
@@ -772,6 +793,7 @@
   font-size: var(--fs-sm);
   color: var(--ink);
   padding: var(--sp-2) 0;
+  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -1054,6 +1076,18 @@
 .integration-btn--primary:hover:not(:disabled) {
   background: var(--accent-ink, var(--accent));
   color: var(--on-accent);
+}
+
+.integration-btn--secondary {
+  border-color: var(--hair-strong);
+  background: var(--elevated);
+  color: var(--ink);
+}
+
+.integration-btn--secondary:hover:not(:disabled) {
+  background: var(--subtle);
+  border-color: var(--accent-hair, var(--hair-strong));
+  color: var(--accent-ink, var(--ink));
 }
 
 .integration-btn--danger {

@@ -204,7 +204,7 @@ kbd {
 
 /* ---- Safe-area insets (iOS home indicator) ---- */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
-  .app-shell__content {
+  .app-content {
     padding-bottom: env(safe-area-inset-bottom);
   }
 }

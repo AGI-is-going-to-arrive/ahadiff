@@ -97,6 +97,7 @@
   font-size: var(--fs-xs);
   color: var(--muted);
   cursor: pointer;
+  -webkit-user-select: none;
   user-select: none;
   min-height: 44px;
   display: flex;

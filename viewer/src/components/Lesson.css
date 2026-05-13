@@ -3,20 +3,25 @@
    ========================================================================== */
 
 .lesson-page {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-6);
+  display: block;
+  padding: 32px 40px 88px;
+  max-width: 1440px;
   animation: fadeUp var(--dur-base) ease-out;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
 }
 
 .lesson-page__header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: var(--sp-4);
+  gap: var(--sp-6);
   flex-wrap: wrap;
-  padding-bottom: var(--sp-5);
-  margin-bottom: var(--sp-4);
+  padding-bottom: 22px;
+  margin-bottom: 28px;
   border-bottom: 1px solid var(--hair);
 }
 
@@ -30,48 +35,152 @@
 
 .lesson-page__eyebrow {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10.5px;
   letter-spacing: 0.26em;
   text-transform: uppercase;
-  color: var(--muted);
-  border-top: 2px solid var(--folio-line);
-  padding-top: var(--sp-2);
-  margin-bottom: var(--sp-2);
+  color: var(--muted-2);
+  line-height: 1;
+  margin-bottom: 14px;
 }
 
 .lesson-page__title {
   font-family: var(--font-serif);
-  font-weight: 420;
-  font-size: clamp(1.6rem, 2vw + 0.5rem, 2.4rem);
-  letter-spacing: -0.02em;
+  font-weight: 500;
+  font-size: 36px;
+  letter-spacing: -0.022em;
   color: var(--ink-blackletter);
+  line-height: 1.08;
   margin: 0;
-  line-height: 1.18;
 }
 
 .lesson-page__sub {
-  font-size: 13px;
   color: var(--muted);
-  margin-top: var(--sp-1);
+  font-size: 14px;
+  margin-top: 8px;
+  max-width: 680px;
+  line-height: 1.65;
 }
 
 .lesson-page__header-right {
+  margin-left: auto;
   display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  flex-shrink: 0;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.lesson-scaffolding-panel {
+  min-width: 0;
+}
+
+.lesson-scaffolding-panel:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 4px;
+  border-radius: 6px;
 }
 
 /* ==========================================================================
-   3-Column Layout — V6: 220 / 1fr / 320 with 28px gap
+   3-Column Layout — 220 / 1fr / 320 with 28px gap
    ========================================================================== */
 
 .lesson__layout {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr) minmax(0, 320px);
+  grid-template-columns: 220px minmax(0, 1fr) 320px;
   gap: 28px;
   align-items: start;
 }
+
+/* --- TOC (left rail) --- */
+
+.lesson__toc {
+  position: sticky;
+  top: 72px;
+  align-self: start;
+  font-size: 13px;
+  max-height: calc(100vh - 92px);
+  overflow-y: auto;
+}
+
+.lesson__toc-title {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--folio-line);
+  padding-bottom: 8px;
+}
+
+.lesson__toc-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.lesson__toc-link {
+  display: block;
+  padding: 4px 0 4px 10px;
+  color: var(--muted);
+  border-left: 2px solid transparent;
+  text-decoration: none;
+  position: relative;
+  transition: color var(--dur-fast) var(--ease-out-quart);
+}
+
+.lesson__toc-link::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 6px;
+  height: 1px;
+  background: var(--hair-strong);
+  transform: translateY(-50%);
+  transition: width var(--dur-fast) var(--ease-out-quart), background var(--dur-fast) var(--ease-out-quart);
+}
+
+.lesson__toc-link:hover::before {
+  width: 12px;
+  background: var(--accent);
+}
+
+.lesson__toc-link:hover {
+  color: var(--ink);
+}
+
+.lesson__toc-link--active {
+  color: var(--accent-ink);
+  border-left-color: var(--accent);
+  font-weight: 500;
+}
+
+.lesson__toc-link--active::before {
+  display: none;
+}
+
+.lesson__toc-link:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.lesson__toc-item--l2 {
+  padding-left: 12px;
+}
+
+.lesson__toc-item--l3 {
+  padding-left: 24px;
+}
+
+.lesson__toc-empty {
+  font-size: 13px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* --- Prose (center) --- */
 
 .lesson__center {
   display: flex;
@@ -80,17 +189,15 @@
   min-width: 0;
 }
 
-/* --- Prose: V6 serif 17px/1.8, no card wrapper --- */
-
 .lesson__prose {
-  font-family: var(--font-serif);
+  font-family: "Newsreader", Georgia, var(--font-serif);
   font-size: 17px;
   line-height: 1.8;
   color: var(--ink);
   min-width: 0;
   max-width: 100%;
+  overflow-wrap: break-word;
   overflow-wrap: anywhere;
-  hanging-punctuation: first last;
 }
 
 :lang(zh-Hans) .lesson__prose,
@@ -98,13 +205,26 @@
   line-height: 1.75;
 }
 
+.lesson__prose h2 {
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin: 32px 0 12px;
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: 8px;
+  color: var(--ink-blackletter);
+}
+
+.lesson__prose h3 {
+  font-size: 20px;
+  font-weight: 500;
+  margin: 24px 0 8px;
+}
+
 .lesson__section-heading {
   scroll-margin-top: 96px;
-  font-family: var(--font-serif);
-  font-weight: 500;
-  line-height: 1.18;
-  color: var(--ink-strong);
-  margin: var(--sp-8) 0 var(--sp-3);
+  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 
 .lesson__section-heading:focus-visible {
@@ -113,59 +233,34 @@
   border-radius: 2px;
 }
 
-.lesson__section-heading:first-child {
-  margin-top: 0;
-}
-
-/* V6: h2 = 28px with bottom separator */
-.lesson__prose h2.lesson__section-heading {
-  font-size: 28px;
-  letter-spacing: -0.02em;
-  border-bottom: 1px solid var(--hair);
-  padding-bottom: var(--sp-2);
-  margin-bottom: var(--sp-3);
-}
-
-.lesson__prose h3.lesson__section-heading {
-  font-size: 20px;
-}
-
-.lesson__prose h4.lesson__section-heading {
-  font-family: var(--font-sans);
-  font-size: 15px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
+.lesson__prose p,
 .lesson__paragraph {
   margin: 0 0 14px;
 }
 
+.lesson__prose p:last-child,
 .lesson__paragraph:last-child {
   margin-bottom: 0;
 }
 
+.lesson__prose ul,
 .lesson__list {
-  margin: 0 0 18px;
   padding-left: 22px;
+  margin: 0 0 18px;
 }
 
+.lesson__prose li,
 .lesson__list li {
   margin: 0 0 7px;
-  padding-left: 3px;
 }
 
-.lesson__list li:last-child {
-  margin-bottom: 0;
-}
-
-.lesson__prose code {
+.lesson__prose code,
+.lesson__prose pre {
   font-family: var(--font-mono);
   font-size: 14px;
   background: var(--subtle);
-  border-radius: var(--r-sm);
   padding: 1px 6px;
+  border-radius: 4px;
 }
 
 .lesson__code-block {
@@ -173,186 +268,145 @@
   padding: var(--sp-4) 18px;
   overflow-x: auto;
   white-space: pre;
-  background: var(--subtle);
   border: 1px solid var(--hair);
-  border-radius: var(--r-md);
 }
 
 .lesson__code-block code {
   display: block;
   min-width: max-content;
   padding: 0;
-  border: 0;
-  border-radius: 0;
   background: transparent;
-  color: var(--ink);
+  border-radius: 0;
 }
 
-/* --- TOC (left rail) — V6 archival index with tick decorations --- */
-
-.lesson__toc,
-.lesson__rail {
-  position: sticky;
-  top: 72px;
-  align-self: start;
-  max-height: calc(100vh - 92px);
-  max-height: calc(100dvh - 92px);
-  overflow-y: auto;
-  min-width: 0;
-  overflow-x: hidden;
+.lesson__prose .highlight {
+  background: var(--accent-soft);
+  padding: 1px 4px;
+  border-radius: 3px;
+  cursor: pointer;
+  border-bottom: 1px dashed var(--accent);
 }
 
-.lesson__toc-title {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-weight: 500;
-  font-size: 14px;
-  letter-spacing: 0.01em;
-  color: var(--ink);
-  border-bottom: 1px solid var(--folio-line);
-  padding-bottom: var(--sp-2);
-  margin-bottom: var(--sp-3);
-}
-
-.lesson__rail-title {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+.lesson__prose a[href]::after {
+  content: " (" attr(href) ")";
+  font-size: 12px;
   color: var(--muted);
-  margin-bottom: var(--sp-3);
 }
 
-.lesson__toc-empty,
-.lesson__rail-empty {
-  font-size: 13px;
-  color: var(--muted);
-  font-style: italic;
-}
-
-.lesson__toc-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-.lesson__toc-link {
-  display: flex;
-  align-items: center;
-  min-height: 44px;
-  position: relative;
-  padding: 4px 0 4px 10px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1.5;
-  letter-spacing: 0.02em;
-  color: var(--ink);
-  text-decoration: none;
-  transition: color var(--dur-fast) var(--ease-out-quart);
-}
-
-/* V6: tick decoration before each TOC link */
-.lesson__toc-link::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 6px;
-  height: 1px;
-  background: var(--hair-strong);
-  transition: width var(--dur-fast) var(--ease-out-quart),
-              background var(--dur-fast) var(--ease-out-quart);
-}
-
-.lesson__toc-link:hover {
-  color: var(--accent-ink);
-}
-
-.lesson__toc-link:hover::before {
-  width: 12px;
-  background: var(--accent);
-}
-
-.lesson__toc-link--active {
-  color: var(--accent-ink);
-  font-weight: 500;
-  border-left: 2px solid var(--accent);
-  padding-left: 8px;
-}
-
-.lesson__toc-link--active::before {
-  display: none;
-}
-
-.lesson__toc-link:focus-visible {
-  outline: none;
-  box-shadow: var(--sh-ring);
-}
-
-.lesson__toc-item--l2 {
-  padding-left: var(--sp-3);
-}
-
-.lesson__toc-item--l3 {
-  padding-left: var(--sp-6);
+.lesson__prose .claim-badge--verified {
+  font-size: 10px;
+  padding: 3px 8px;
+  letter-spacing: 0.12em;
+  min-height: 20px;
+  transform: rotate(-2deg);
+  vertical-align: middle;
+  margin-inline-end: 4px;
 }
 
 /* --- Rail (right) --- */
 
 .lesson__rail {
+  position: sticky;
+  top: 72px;
+  align-self: start;
+  min-width: 0;
+  max-height: calc(100vh - 92px);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  overflow-wrap: anywhere;
 }
 
+
 .lesson__rail-card {
-  border-top: 1px solid var(--hair);
-  padding-top: 14px;
-  min-width: 0;
-  max-width: 100%;
+  border-bottom: 1px solid var(--hair);
+  padding: 16px 0;
 }
 
 .lesson__rail-card:first-of-type {
-  border-top: 0;
   padding-top: 0;
+}
+
+.lesson__rail-card:last-of-type {
+  border-bottom: none;
 }
 
 .lesson__rail-card-title {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10.5px;
+  color: var(--muted);
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--muted);
   margin: 0 0 10px;
   display: flex;
   justify-content: space-between;
+  align-items: center;
 }
+
+.lesson__rail-empty {
+  font-size: 13px;
+  color: var(--muted);
+  font-style: italic;
+  margin: 0;
+}
+
+/* --- Claim Summary --- */
 
 .lesson__claim-total {
   display: flex;
   align-items: baseline;
-  gap: var(--sp-2);
-  margin-bottom: 10px;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
 .lesson__claim-total-number {
-  font-family: var(--font-serif);
-  font-size: 30px;
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--ink);
   line-height: 1;
-  color: var(--ink-strong);
 }
 
 .lesson__claim-total-label {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
 }
 
-.lesson__status-grid,
+.lesson__status-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+
+.lesson__status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12.5px;
+  padding: 3px 0;
+}
+
+.lesson__status-row dt {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.lesson__status-row dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.lesson__status-row--verified dd { color: var(--stamp-verified-ink); }
+.lesson__status-row--weak dd { color: var(--warning); }
+.lesson__status-row--contradicted dd { color: var(--danger); }
+.lesson__status-row--rejected dd { color: var(--muted); }
+
+/* --- Sources --- */
+
 .lesson__source-list {
   display: flex;
   flex-direction: column;
@@ -360,173 +414,93 @@
   margin: 0;
 }
 
-.lesson__status-row,
 .lesson__source-row {
   display: flex;
   justify-content: space-between;
-  gap: 10px;
-  min-width: 0;
-  font-size: 12px;
-  line-height: 1.4;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12.5px;
 }
 
-.lesson__status-row dt,
 .lesson__source-row dt {
   color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
-.lesson__status-row dd,
 .lesson__source-row dd {
   margin: 0;
-  color: var(--ink);
-  text-align: right;
-  min-width: 0;
+  text-align: end;
+  overflow-wrap: break-word;
   overflow-wrap: anywhere;
+  word-break: break-all;
+  color: var(--ink);
 }
 
-.lesson__status-row dd {
-  font-family: var(--font-mono);
-  color: var(--ink-strong);
-}
-
-/* V6: per-verdict status row colors */
-.lesson__status-row--verified dt { color: var(--add-fg); }
-.lesson__status-row--weak dt { color: var(--warning); }
-.lesson__status-row--contradicted dt { color: var(--danger); }
-.lesson__status-row--rejected dt { color: var(--muted); text-decoration: line-through; }
-
-.lesson__source-row code,
-.lesson__selected-location {
+.lesson__source-row dd code {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ink);
   background: var(--subtle);
-  border-radius: 6px;
-  padding: 2px 6px;
-  overflow-wrap: anywhere;
+  padding: 1px 5px;
+  border-radius: 4px;
 }
 
-.lesson__selected-claim {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-  min-width: 0;
-}
-
-.lesson__selected-header {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.lesson__selected-id {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  color: var(--muted);
-}
-
-.lesson__selected-statement {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.52;
-  color: var(--ink);
-}
-
-.lesson__selected-location {
-  display: inline-block;
-  max-width: 100%;
-}
-
-.lesson__selected-evidence {
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--ink);
-  background: var(--subtle);
-  border-radius: 6px;
-  padding: 10px var(--sp-3);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
+/* --- Learning Notes --- */
 
 .lesson__notes-list {
-  margin: 0;
+  list-style: disc;
   padding-left: 18px;
-  color: var(--ink);
+  margin: 0;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.55;
+  color: var(--ink);
 }
 
-.lesson__notes-list li + li {
-  margin-top: 6px;
+.lesson__notes-list li {
+  margin-bottom: 4px;
 }
 
 /* ==========================================================================
-   Scaffolding Tabs — V6: pill group in subtle background
+   Scaffolding Tabs
    ========================================================================== */
 
 .scaffolding-tabs-wrapper {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
+  gap: 4px;
 }
 
 .scaffolding-tabs {
   display: flex;
   gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
   background: var(--subtle);
   border-radius: 6px;
   padding: 3px;
   border: 1px solid var(--hair);
 }
 
-.scaffolding-hint {
-  margin: 0;
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--muted);
-  text-align: right;
-  max-width: 280px;
-}
-
-.scaffolding-auto-hint {
-  margin: 0;
-  font-size: 10px;
-  line-height: 1.3;
-  color: var(--muted);
-  text-align: right;
-  max-width: 280px;
-  font-style: italic;
-}
-
 .scaffolding-tab {
-  flex: 0 0 auto;
-  padding: 4px 10px;
-  min-height: 44px;
+  text-align: center;
+  padding: 5px 12px;
+  min-height: 40px;
   border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: 11px;
+  color: var(--muted);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--muted);
-  background: transparent;
-  border: none;
   cursor: pointer;
-  transition: background var(--dur-fast) var(--ease-out-quart),
-              color var(--dur-fast) var(--ease-out-quart);
+  border: none;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  white-space: nowrap;
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
 
 .scaffolding-tab:hover {
   color: var(--ink);
-}
-
-.scaffolding-tab:active {
-  transform: scale(0.97);
 }
 
 .scaffolding-tab--active {
@@ -540,381 +514,20 @@
   box-shadow: var(--sh-ring);
 }
 
-/* ==========================================================================
-   Claim Badge — V6 stamp styling
-   ========================================================================== */
-
-.claim-badge {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--sp-1);
-  padding: 2px var(--sp-2);
-  border-radius: var(--r-sm);
-  font-family: var(--font-mono);
+.scaffolding-hint {
   font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  font-weight: 500;
+  color: var(--muted);
+  margin: 0;
+  text-align: end;
+  max-width: 220px;
   line-height: 1.4;
 }
 
-.claim-badge__glyph {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-size: 11px;
-}
-
-/* V6: verified badge uses Archive Indigo "passport stamp" */
-.claim-badge--verified {
-  background: var(--stamp-verified-tint);
-  color: var(--stamp-verified-ink);
-  border: 2px solid var(--stamp-verified);
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  padding: 5px 11px;
-  min-height: 24px;
-  white-space: nowrap;
-  align-items: center;
-  transform: rotate(-3deg);
-  position: relative;
-  box-shadow: inset 0 0 0 1px var(--stamp-verified-shadow);
-  transition: transform 0.32s var(--ease-out-quart);
-}
-
-.claim-badge--verified::after {
-  content: '';
-  position: absolute;
-  inset: 3px;
-  border: 1px solid var(--stamp-verified-frame);
-  border-radius: 2px;
-  pointer-events: none;
-}
-
-.claim-badge--verified:hover {
-  transform: rotate(-1.2deg) scale(1.02);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .claim-badge--verified {
-    transition: none;
-    transform: none;
-  }
-}
-
-/* Inline stamp in lesson prose */
-.prose .claim-badge--verified {
-  font-size: 10px;
-  padding: 3px 8px;
-  letter-spacing: 0.12em;
-  min-height: 20px;
-  transform: rotate(-2deg);
-  vertical-align: middle;
-  margin-inline-end: 2px;
-}
-
-.prose .claim-badge--verified::after {
-  inset: 2px;
-}
-
-.claim-badge--weak {
-  background: var(--warning-soft);
-  color: var(--warning);
-  border: 1px solid var(--warning-hair);
-}
-
-.claim-badge--not-proven {
-  background: var(--subtle);
-  color: var(--muted);
-  border: 1px solid var(--hair-strong);
-}
-
-.claim-badge--contradicted {
-  background: var(--del-bg);
-  color: var(--danger);
-  border: 1px solid var(--danger-hair);
-}
-
-.claim-badge--rejected {
-  background: var(--subtle);
-  color: var(--muted);
-  text-decoration: line-through;
-}
-
-/* ==========================================================================
-   Claims List
-   ========================================================================== */
-
-.claims-section__title {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin: 0 0 var(--sp-3);
-}
-
-.claims-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  min-width: 0;
-  max-width: 100%;
-}
-
-.claim-card {
-  display: block;
-  width: 100%;
-  border: 1px solid var(--hair);
-  border-radius: 10px;
-  padding: 13px 15px;
-  background: var(--elevated);
-  cursor: pointer;
-  transition: all var(--dur-fast) var(--ease-out-quart);
-  overflow: hidden;
-  min-width: 0;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  box-sizing: border-box;
-  text-align: start;
-}
-
-.claim-card:hover {
-  border-color: var(--hair-strong);
-  transform: translateX(2px);
-}
-
-.claim-card:active {
-  transform: translateX(0) scale(0.99);
-  transition-duration: 0s;
-}
-
-.claim-card--selected {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-  transform: translateX(2px);
-}
-
-.claim-card:focus-visible {
-  outline: none;
-  box-shadow: var(--sh-ring);
-}
-
-.claim-card__id {
-  font-family: var(--font-mono);
+.scaffolding-auto-hint {
   font-size: 11px;
   color: var(--muted);
-  letter-spacing: 0.1em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-  flex-shrink: 1;
-}
-
-.claim-card__row {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  min-width: 0;
-  max-width: 100%;
-  flex-wrap: wrap;
-}
-
-.claim-card__statement {
-  margin: 6px 0 0;
-  font-size: 14px;
-  line-height: 1.55;
-  color: var(--ink);
-  overflow-wrap: anywhere;
-}
-
-.claim-card__location {
-  margin-top: var(--sp-2);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--muted);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* ==========================================================================
-   Evidence Panel
-   ========================================================================== */
-
-.evidence-panel {
-  background: var(--elevated);
-  border: 1px solid var(--hair);
-  border-radius: 10px;
-  padding: 18px var(--sp-5);
-}
-
-.evidence-panel__title {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin: 0 0 14px;
-}
-
-.evidence-panel__header {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  margin-bottom: 10px;
-  min-width: 0;
-}
-
-.evidence-panel__claim-id {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--muted);
-  letter-spacing: 0.1em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-  flex: 1;
-}
-
-.evidence-panel__statement {
-  font-size: 14px;
-  line-height: 1.55;
-  color: var(--ink);
-  margin: 0 0 10px;
-}
-
-.evidence-panel__location {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--muted);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.evidence-panel__location code {
-  background: var(--subtle);
-  padding: 2px 6px;
-  border-radius: 6px;
-}
-
-.evidence-panel__evidence {
-  margin: var(--sp-3) 0 0;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--ink);
-  background: var(--subtle);
-  border-radius: 6px;
-  padding: var(--sp-3) 14px;
-  white-space: pre-wrap;
-  word-break: break-word;
-  overflow-x: auto;
-}
-
-.evidence-panel__empty {
-  font-size: 13px;
-  color: var(--muted);
-  margin: 0;
+  margin-top: 6px;
   font-style: italic;
-}
-
-/* ==========================================================================
-   Claim Popover — floating evidence detail anchored to clicked card
-   ========================================================================== */
-
-.claim-popover {
-  position: fixed;
-  z-index: var(--z-sticky-raised);
-  width: min(420px, calc(100vw - 380px));
-  max-height: calc(100vh - 96px);
-  max-height: calc(100dvh - 96px);
-  overflow-y: auto;
-  background: var(--elevated);
-  border: 1px solid var(--hair);
-  border-radius: var(--r-lg);
-  box-shadow: var(--sh-lg), 0 0 0 1px rgba(0, 0, 0, 0.03);
-  padding: var(--sp-4) var(--sp-5);
-  animation: claimPopoverIn var(--dur-fast) var(--ease-out-quart);
-}
-
-@keyframes claimPopoverIn {
-  from { opacity: 0; transform: translateX(8px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-
-.claim-popover .evidence-panel {
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  padding: 0;
-}
-
-.claim-popover__close {
-  position: absolute;
-  top: var(--sp-2);
-  right: var(--sp-2);
-  min-width: 44px;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--hair);
-  border-radius: var(--r-sm);
-  background: var(--subtle);
-  color: var(--muted);
-  font-size: 16px;
-  cursor: pointer;
-  transition: background var(--dur-xfast) var(--ease-out-quart),
-              color var(--dur-xfast) var(--ease-out-quart);
-}
-
-.claim-popover__close:hover {
-  background: var(--hair);
-  color: var(--ink);
-}
-
-.claim-popover__close:focus-visible {
-  outline: 2px solid var(--accent-ink);
-  outline-offset: 2px;
-}
-
-@media (max-width: 767px) {
-  .claim-popover {
-    position: fixed;
-    inset: auto var(--sp-3) var(--sp-3) var(--sp-3);
-    width: auto;
-    right: auto !important;
-    top: auto !important;
-    max-height: 60vh;
-    border-radius: var(--r-lg) var(--r-lg) var(--r-md) var(--r-md);
-    animation-name: claimPopoverUp;
-  }
-  @keyframes claimPopoverUp {
-    from { opacity: 0; transform: translateY(16px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .claim-popover {
-    animation: none;
-  }
-}
-
-@media print {
-  .claim-popover {
-    display: none;
-  }
 }
 
 /* ==========================================================================
@@ -989,149 +602,60 @@
 }
 
 /* ==========================================================================
-   3-Column Responsive Collapse
+   Responsive Collapse
    ========================================================================== */
 
-@media (max-width: 1023px) {
+@media (max-width: 1024px) {
   .lesson__layout {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 280px);
+    grid-template-columns: 1fr;
+    gap: 18px;
   }
-  .lesson__toc {
-    display: none;
-  }
-  .lesson-page__eyebrow {
-    min-width: auto;
-  }
-}
-
-@media (max-width: 767px) {
-  .lesson__layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
+  .lesson__toc,
   .lesson__rail {
     position: static;
     max-height: none;
     overflow: visible;
   }
+  .lesson__toc {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
   .lesson-page__header {
     flex-direction: column;
+    align-items: flex-start;
+  }
+  .lesson-page__header-right {
+    margin-left: 0;
+    align-items: flex-start;
+    width: 100%;
+  }
+  .scaffolding-tabs-wrapper {
+    align-items: stretch;
+    width: 100%;
+  }
+  .scaffolding-tabs {
+    flex-wrap: wrap;
+  }
+  .scaffolding-tab {
+    flex: 1 1 96px;
+    min-height: 44px;
   }
 }
 
 /* ==========================================================================
-   Dark mode adjustments
-   ========================================================================== */
-
-@media (prefers-color-scheme: dark) {
-  .claim-badge--weak {
-    background: var(--subtle);
-    background: color-mix(in srgb, var(--warning) 18%, transparent);
-  }
-
-  .lesson__code-block,
-  .lesson__selected-evidence {
-    border-color: var(--hair-strong);
-  }
-
-  .claim-card {
-    background: var(--subtle);
-  }
-
-  .claim-card--selected {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-soft);
-  }
-
-  .evidence-panel {
-    background: var(--subtle);
-    border-color: var(--hair-strong);
-  }
-}
-
-/* ==========================================================================
-   Reduced motion
-   ========================================================================== */
-
-@media (prefers-reduced-motion: reduce) {
-  .lesson-page {
-    animation: none;
-  }
-  .claim-card,
-  .lesson__prose,
-  .evidence-panel,
-  .scaffolding-tab,
-  .lesson__toc-link,
-  .lesson__toc-link::before,
-  .claim-badge--verified {
-    transition: none;
-  }
-  .claim-card:hover,
-  .claim-card:active,
-  .claim-card--selected,
-  .scaffolding-tab:active,
-  .claim-badge--verified,
-  .claim-badge--verified:hover {
-    transform: none !important;
-  }
-}
-
-/* ==========================================================================
-   Forced colors
-   ========================================================================== */
-
-@media (forced-colors: active) {
-  .claim-badge {
-    border: 1px solid CanvasText;
-  }
-  .claim-badge--verified {
-    color: LinkText;
-    border-color: LinkText;
-    transform: rotate(-2deg);
-  }
-  .claim-badge--weak {
-    color: CanvasText;
-    border-color: CanvasText;
-  }
-  .claim-badge--contradicted,
-  .claim-badge--rejected {
-    color: CanvasText;
-    border-color: CanvasText;
-  }
-  .claim-card {
-    border: 1px solid CanvasText;
-  }
-  .lesson__toc-link:hover,
-  .lesson__toc-link:focus-visible {
-    color: HighlightText;
-    background: Highlight;
-    forced-color-adjust: none;
-  }
-  .lesson__toc-link::before {
-    background: CanvasText;
-  }
-  .lesson__rail-card {
-    border-color: CanvasText;
-  }
-}
-
-/* ==========================================================================
-   Print — V6: clean lesson-only output
+   Print — clean lesson-only output
    ========================================================================== */
 
 @media print {
   .lesson__toc,
-  .scaffolding-tabs,
+  .lesson__rail,
   .lesson-page__header-right {
     display: none !important;
   }
   .lesson__layout {
     display: block;
-  }
-  .lesson__rail {
-    position: static;
-    max-height: none;
-    overflow: visible;
-    break-inside: avoid;
   }
   .lesson__prose {
     font-size: 11pt;
@@ -1140,8 +664,348 @@
   .lesson__prose code {
     font-size: 9.5pt;
   }
-  .claim-badge--verified {
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
+}
+
+/* ==========================================================================
+   Claims Explorer
+   ========================================================================== */
+
+.claims-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.claim-card {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--hair);
+  border-radius: 10px;
+  padding: 13px 15px;
+  background: var(--elevated);
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-out-quart);
+  overflow: hidden;
+  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
+  text-align: start;
+}
+
+.claim-card:hover {
+  border-color: var(--hair-strong);
+  transform: translateX(2px);
+}
+
+.claim-card:active {
+  transform: translateX(0) scale(0.99);
+  transition-duration: 0s;
+}
+
+.claim-card--selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  transform: translateX(2px);
+}
+
+.claim-card:focus-visible {
+  outline: none;
+  box-shadow: var(--sh-ring);
+}
+
+.claim-card__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.claim-card__id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+  min-width: 0;
+  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+.claim-card__statement {
+  margin: 6px 0 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink);
+  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+.claim-card__location {
+  margin-top: var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+.claim-card__location code {
+  white-space: normal;
+  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* ==========================================================================
+   Evidence Panel & Popover
+   ========================================================================== */
+
+.evidence-panel {
+  background: var(--elevated);
+  border: 1px solid var(--hair);
+  border-radius: 10px;
+  padding: 18px var(--sp-5);
+}
+
+.evidence-panel__title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 14px;
+}
+
+.evidence-panel__header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: 10px;
+}
+
+.evidence-panel__claim-id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+.evidence-panel__statement {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink);
+  margin: 0 0 10px;
+  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+.evidence-panel__location {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.evidence-panel__location code {
+  background: var(--subtle);
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.evidence-panel__evidence {
+  margin: var(--sp-3) 0 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--subtle);
+  border-radius: 6px;
+  padding: var(--sp-3) 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+.evidence-panel__empty {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+  font-style: italic;
+}
+
+.claim-popover {
+  position: fixed;
+  z-index: var(--z-sticky-raised);
+  width: min(420px, calc(100vw - 380px));
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+  background: var(--elevated);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-lg), 0 0 0 1px rgba(0, 0, 0, 0.03);
+  padding: var(--sp-4) var(--sp-5);
+  animation: claimPopoverIn var(--dur-fast) var(--ease-out-quart);
+}
+
+@keyframes claimPopoverIn {
+  from { opacity: 0; transform: translateX(8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.claim-popover .evidence-panel {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+.claim-popover__close {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--subtle);
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.claim-popover__close:hover {
+  background: var(--hair);
+  color: var(--ink);
+}
+
+@media (max-width: 767px) {
+  .claim-popover {
+    inset: auto var(--sp-3) var(--sp-3) var(--sp-3);
+    width: auto;
+    max-height: 60vh;
+    animation-name: claimPopoverUp;
   }
+}
+@keyframes claimPopoverUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-color-scheme: dark) {
+  .claim-card {
+    background: var(--subtle);
+  }
+  .claim-card--selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .evidence-panel {
+    background: var(--subtle);
+    border-color: var(--hair-strong);
+  }
+}
+
+/* ==========================================================================
+   Claim Badge — V6 stamp styling
+   ========================================================================== */
+
+.claim-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--sp-1);
+  padding: 2px var(--sp-2);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.claim-badge__glyph {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.claim-badge--verified {
+  background: var(--stamp-verified-tint);
+  color: var(--stamp-verified-ink);
+  border: 2px solid var(--stamp-verified);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  padding: 5px 11px;
+  min-height: 24px;
+  white-space: nowrap;
+  align-items: center;
+  transform: rotate(-3deg);
+  position: relative;
+  box-shadow: inset 0 0 0 1px var(--stamp-verified-shadow);
+  transition: transform 0.32s var(--ease-out-quart);
+}
+
+.claim-badge--verified::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border: 1px solid var(--stamp-verified-frame);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.claim-badge--verified:hover {
+  transform: rotate(-1.2deg) scale(1.02);
+}
+
+.lesson__prose .claim-badge--verified {
+  font-size: 10px;
+  padding: 3px 8px;
+  letter-spacing: 0.12em;
+  min-height: 20px;
+  transform: rotate(-2deg);
+  vertical-align: middle;
+  margin-inline-end: 2px;
+}
+
+.lesson__prose .claim-badge--verified::after {
+  inset: 2px;
+}
+
+.claim-badge--weak {
+  background: var(--warning-soft);
+  color: var(--warning);
+  border: 1px solid var(--warning-hair);
+}
+
+.claim-badge--not-proven {
+  background: var(--subtle);
+  color: var(--muted);
+  border: 1px solid var(--hair-strong);
+}
+
+.claim-badge--contradicted {
+  background: var(--del-bg);
+  color: var(--danger);
+  border: 1px solid var(--danger-hair);
+}
+
+.claim-badge--rejected {
+  background: var(--subtle);
+  color: var(--muted);
+  text-decoration: line-through;
 }

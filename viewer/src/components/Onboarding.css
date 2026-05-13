@@ -57,17 +57,18 @@
 
 /* ---- Section nav (hash chips) ---- */
 .onboarding-nav {
-  margin: 0 0 var(--sp-8);
-  padding: var(--sp-2);
-  border: 1px solid var(--hair);
-  border-radius: var(--r-lg);
-  background: var(--subtle);
+  margin: 0 0 var(--sp-10);
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-bottom: 1px solid var(--hair-strong);
+  padding-bottom: var(--sp-6);
 }
 
 .onboarding-nav__list {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--sp-1);
+  gap: var(--sp-6);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -79,41 +80,43 @@
 
 .onboarding-nav__chip {
   display: inline-flex;
-  align-items: center;
-  gap: var(--sp-1);
-  padding: var(--sp-1) var(--sp-3);
-  border-radius: var(--r-full);
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  color: var(--ink);
+  align-items: baseline;
+  gap: 8px;
+  padding: 0;
+  border-radius: 0;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  color: var(--muted-strong);
   background: transparent;
-  border: 1px solid transparent;
+  border: none;
   cursor: pointer;
-  transition:
-    background-color var(--dur-fast) var(--ease-out-quart),
-    color var(--dur-fast) var(--ease-out-quart),
-    border-color var(--dur-fast) var(--ease-out-quart);
+  letter-spacing: 0.02em;
+  transition: color var(--dur-fast) var(--ease-out-quart);
 }
 
 .onboarding-nav__chip:hover {
-  background: var(--elevated);
-  color: var(--accent-ink);
-  border-color: var(--accent-hair);
+  background: transparent;
+  color: var(--ink-blackletter);
+  border: none;
 }
 
 .onboarding-nav__chip:focus-visible {
   outline: none;
-  box-shadow: var(--ring-focus);
-}
-
-.onboarding-nav__chip-icon {
-  flex-shrink: 0;
-  color: var(--muted);
-  transition: color var(--dur-fast) var(--ease-out-quart);
-}
-
-.onboarding-nav__chip:hover .onboarding-nav__chip-icon {
   color: var(--accent-ink);
+}
+
+.onboarding-nav__chip-index {
+  flex-shrink: 0;
+  font-family: "Newsreader", var(--font-serif);
+  font-style: italic;
+  font-size: 16px;
+  color: var(--accent);
+  opacity: 0.8;
+  transition: opacity var(--dur-fast) var(--ease-out-quart);
+}
+
+.onboarding-nav__chip:hover .onboarding-nav__chip-index {
+  opacity: 1;
 }
 
 /* ---- Sections ---- */
@@ -135,24 +138,17 @@
 .onboarding-steps__item {
   flex: 1 1 220px;
   min-width: 0;
-  border: 1px solid var(--hair);
-  border-radius: var(--r-lg);
-  background: var(--elevated);
-  transition:
-    border-color var(--dur-base) var(--ease-out-quart),
-    background-color var(--dur-base) var(--ease-out-quart),
-    box-shadow var(--dur-base) var(--ease-out-quart);
+  border: none;
+  background: transparent;
+  transition: opacity var(--dur-base) var(--ease-out-quart);
 }
 
 .onboarding-steps__item[data-state='done'] {
-  border-color: var(--success);
-  background: var(--success-soft);
+  opacity: 0.8;
 }
 
 .onboarding-steps__item[data-state='current'] {
-  border-color: var(--accent);
-  background: var(--accent-softest);
-  box-shadow: var(--shadow-sm);
+  opacity: 1;
 }
 
 .onboarding-steps__jump {
@@ -160,35 +156,42 @@
   align-items: flex-start;
   gap: var(--sp-3);
   width: 100%;
-  padding: var(--sp-4);
+  padding: var(--sp-2) 0;
   background: none;
   border: 0;
+  border-bottom: 1px dashed var(--hair-strong);
+  border-radius: 0;
   text-align: left;
   cursor: pointer;
   color: inherit;
   font: inherit;
-  border-radius: var(--r-lg);
-  transition: background-color var(--dur-fast) var(--ease-out-quart);
+  transition: opacity var(--dur-fast) var(--ease-out-quart);
 }
 
 .onboarding-steps__jump:hover {
-  background: var(--subtle);
+  opacity: 0.8;
+  background: transparent;
 }
 
 /* State-aware hover: keep success/accent palette dominant on done/current
    so generic hover (var(--subtle)) does not override the state background.
    Use static rgba fallback for older engines; evergreen stays consistent. */
 .onboarding-steps__item[data-state='done'] .onboarding-steps__jump:hover {
-  background: rgba(47, 111, 79, 0.08);
+  background: transparent;
 }
 
 .onboarding-steps__item[data-state='current'] .onboarding-steps__jump:hover {
-  background: var(--accent-softer);
+  background: transparent;
 }
 
 .onboarding-steps__jump:focus-visible {
   outline: none;
-  box-shadow: var(--ring-focus);
+  box-shadow: none;
+}
+
+.onboarding-steps__jump:focus-visible .onboarding-steps__number {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .onboarding-steps__number {
@@ -196,49 +199,54 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   border-radius: var(--r-full);
-  background: var(--subtle);
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
+  background: transparent;
+  border: 1px solid var(--hair-strong);
+  color: var(--muted-strong);
+  font-family: "Newsreader", var(--font-serif);
+  font-size: 14px;
+  font-style: italic;
+  font-weight: 500;
   line-height: 1;
-  transition:
-    background-color var(--dur-base) var(--ease-out-quart),
-    color var(--dur-base) var(--ease-out-quart),
-    transform var(--dur-base) var(--ease-out-quart);
+  transition: all var(--dur-base) var(--ease-out-quart);
 }
 
 .onboarding-steps__item[data-state='done'] .onboarding-steps__number {
   background: var(--success);
+  border-color: var(--success);
   color: var(--on-accent);
+  font-style: normal;
 }
 
 .onboarding-steps__item[data-state='current'] .onboarding-steps__number {
   background: var(--accent);
+  border-color: var(--accent);
   color: var(--on-accent);
-  transform: scale(1.04);
+  font-style: normal;
 }
 
 .onboarding-steps__label {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
+  gap: 2px;
   min-width: 0;
+  padding-top: 2px;
 }
 
 .onboarding-steps__title {
-  font-size: var(--fs-base);
+  font-family: "Newsreader", var(--font-serif);
+  font-size: 18px;
   font-weight: 500;
-  color: var(--ink);
+  color: var(--ink-blackletter);
+  letter-spacing: -0.01em;
 }
 
 .onboarding-steps__desc {
-  font-size: var(--fs-xs);
-  color: var(--muted);
-  line-height: var(--lh-snug);
+  font-size: 13px;
+  color: var(--muted-strong);
+  line-height: var(--lh-relaxed);
 }
 
 /* ---- Active step body ---- */

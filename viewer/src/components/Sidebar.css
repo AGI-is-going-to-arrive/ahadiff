@@ -22,39 +22,41 @@
 
 /* ---------- Brand ---------- */
 
-.sidebar__brand {
+.brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: var(--sp-4) 14px var(--sp-3);
+  gap: 12px;
+  padding: 22px 22px 18px;
   border-bottom: 1px solid var(--hair);
   flex-shrink: 0;
 }
 
-.sidebar__brand-mark {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--r-md);
-  background: var(--accent);
-  color: var(--on-accent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 19px;
-  line-height: 1;
-  flex-shrink: 0;
-  box-shadow: var(--shadow-brand);
-}
-
-.sidebar__brand-text {
-  min-width: 0;
-}
-
-.sidebar__brand-name {
+.brand-mark {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-ink) 100%);
+  color: #fff;
+  display: grid;
+  place-items: center;
   font-family: var(--font-serif);
-  font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+  box-shadow: 0 2px 6px -2px rgba(176, 78, 40, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  flex-shrink: 0;
+}
+
+.brand-mark span {
+  display: inline-block;
+  transform: translateY(-1px);
+}
+
+.brand-name {
+  font-family: var(--font-serif);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--ink);
   line-height: 1.2;
   white-space: nowrap;
@@ -62,10 +64,11 @@
   text-overflow: ellipsis;
 }
 
-.sidebar__brand-en {
+.brand-en {
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   color: var(--muted);
   margin-top: 2px;
   white-space: nowrap;
@@ -73,57 +76,67 @@
 
 /* ---------- Nav sections ---------- */
 
-.sidebar__section {
-  padding: var(--sp-2) var(--sp-3) var(--sp-1);
+.nav-section {
+  padding: 14px 12px 4px;
+  flex-shrink: 0;
 }
 
-.sidebar__label {
+.nav-label {
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted-strong);
   padding: 6px 10px;
+  line-height: 1.4;
 }
 
 /* ---------- Nav items ---------- */
 
-.sidebar__item {
+.nav-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: var(--sp-2) 10px;
-  border-radius: var(--r-md);
-  color: var(--ink);
+  padding: 9px 10px;
+  border-radius: 8px;
+  color: var(--ink-2);
   font-size: 14px;
   cursor: pointer;
   margin: 1px 0;
   text-decoration: none;
+  letter-spacing: 0.002em;
   transition: background var(--dur-fast) var(--ease-out-quart),
-    color var(--dur-fast) var(--ease-out-quart);
+    color var(--dur-fast) var(--ease-out-quart),
+    transform var(--dur-fast) var(--ease-out-quart);
 }
 
-.sidebar__item:hover {
+.nav-item:hover {
   background: var(--accent-softer);
+  transform: translateX(1px);
 }
 
-.sidebar__item:active:not(.sidebar__item--disabled) {
+.nav-item:active:not(.nav-item--disabled) {
   transform: scale(0.98);
 }
 
-.sidebar__item--active {
-  background: var(--elevated);
+.nav-item.active {
+  background: #fff;
   color: var(--ink);
-  box-shadow: var(--sh-sm), 0 4px 12px -8px rgba(120, 80, 50, 0.22);
+  box-shadow: 0 1px 0 var(--hair), 0 4px 12px -8px rgba(120, 80, 50, 0.22);
 }
 
-.sidebar__item--active .sidebar__icon {
-  color: var(--accent);
+.nav-item.active .ic {
+  opacity: 1;
+  color: var(--accent-ink);
 }
 
-.sidebar__icon {
-  width: var(--sp-4);
-  height: var(--sp-4);
+.nav-item.active .en {
+  color: var(--accent-ink);
+}
+
+.nav-item .ic {
+  width: 16px;
+  height: 16px;
   flex: none;
   opacity: 0.75;
   display: inline-flex;
@@ -132,90 +145,70 @@
   font-size: 14px;
 }
 
-.sidebar__item--active .sidebar__icon {
-  opacity: 1;
-}
-
-.sidebar__item--disabled {
+.nav-item--disabled {
   color: var(--muted);
   cursor: not-allowed;
   opacity: 0.55;
 }
 
-.sidebar__item--disabled:hover {
+.nav-item--disabled:hover {
   background: transparent;
+  transform: none;
 }
 
-/* ---------- Bilingual labels ---------- */
-
-.sidebar__label-main {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sidebar__label-en {
+.nav-item .en {
   flex: none;
-  font-size: var(--fs-xs);
-  color: var(--muted);
-  margin-inline-start: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted-2);
+  margin-left: auto;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
 /* ---------- Status footer ---------- */
 
-.sidebar__status {
+.side-foot {
   margin-top: auto;
-  padding: 14px var(--sp-4);
+  padding: 14px 16px;
   border-top: 1px solid var(--hair);
+  font-size: 12px;
+  color: var(--muted);
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 12px;
   flex-shrink: 0;
-  color: var(--muted);
 }
 
-.sidebar__status-dot {
-  width: var(--sp-2);
-  height: var(--sp-2);
-  border-radius: var(--r-full);
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
   background: var(--success);
-  box-shadow: 0 0 0 3px var(--success-soft);
+  box-shadow: 0 0 0 3px rgba(47, 111, 79, 0.15);
   flex: none;
 }
 
-.sidebar__status-copy {
+.status-text {
   display: flex;
-  min-width: 0;
-  flex: 1;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
+  flex: 1;
 }
 
-.sidebar__status-mode {
+.status-text span:first-child {
   color: var(--ink);
   font-weight: 500;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.sidebar__status-run {
+.status-text span:last-child {
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.sidebar__status-version {
-  margin-left: auto;
-  color: var(--muted-strong);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
 }
 
 /* ---------- Responsive ---------- */
@@ -239,21 +232,21 @@
     overflow-x: hidden;
   }
 
-  .sidebar__brand {
+  .brand {
     justify-content: center;
     padding: var(--sp-4) var(--sp-1) var(--sp-3);
     gap: 0;
   }
 
-  .sidebar__brand-text {
+  .brand > div:last-child {
     display: none;
   }
 
-  .sidebar__section {
+  .nav-section {
     padding: var(--sp-2) var(--sp-1) var(--sp-1);
   }
 
-  .sidebar__label {
+  .nav-label {
     /* Hide section headings (Workspace / Practice / System) but keep them
      * accessible to screen readers via the parent <section aria-labelledby>. */
     position: absolute;
@@ -267,7 +260,7 @@
     border: 0;
   }
 
-  .sidebar__item {
+  .nav-item {
     justify-content: center;
     gap: 0;
     padding: var(--sp-2);
@@ -275,12 +268,11 @@
     min-height: 40px;
   }
 
-  .sidebar__label-main,
-  .sidebar__label-en {
+  .nav-item > span:not(.ic) {
     display: none;
   }
 
-  .sidebar__status {
+  .side-foot {
     /* The status footer is bilingual + multi-line; hide in icon mode rather
      * than truncate. Screen readers still see the full sidebar in non-rail
      * widths. */
@@ -319,11 +311,11 @@
     transform: translateX(0);
   }
 
-  .sidebar__section {
+  .nav-section {
     padding: var(--sp-2) var(--sp-3) var(--sp-1);
   }
 
-  .sidebar__item {
+  .nav-item {
     flex-direction: row;
     gap: 10px;
     padding: var(--sp-2) 10px;
@@ -333,7 +325,7 @@
     min-height: 44px;
   }
 
-  .sidebar__icon {
+  .nav-item .ic {
     font-size: 14px;
     width: var(--sp-4);
     height: var(--sp-4);
@@ -341,7 +333,7 @@
 }
 
 @media (max-width: 359px) {
-  .sidebar__item {
+  .nav-item {
     min-width: 0;
     min-height: 44px;
     font-size: 13px;
@@ -352,26 +344,25 @@
 /* ---- Reduced motion ---- */
 @media (prefers-reduced-motion: reduce) {
   .sidebar,
-  .sidebar__item {
+  .nav-item {
     transition: none;
   }
 
-  .sidebar__item:active:not(.sidebar__item--disabled) {
+  .nav-item:active:not(.nav-item--disabled) {
     transform: none !important;
   }
 }
 
 @media (forced-colors: active) {
-  .sidebar__item--active {
+  .nav-item.active {
     border: 1px solid LinkText;
   }
 
-  .sidebar__brand-mark {
+  .brand-mark {
     outline: 1px solid CanvasText;
   }
 
-  .sidebar__status-mode,
-  .sidebar__status-version {
+  .side-foot span {
     color: CanvasText;
   }
 }

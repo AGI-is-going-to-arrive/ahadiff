@@ -1,10 +1,7 @@
 /* ==========================================================================
    AppShell — shared layout: Topbar + Sidebar + content area
-   Reference: AhaDiff Warm v6.html (.app, .sidebar, .topbar, .nav-*)
    Uses tokens from styles/tokens.css exclusively.
    ========================================================================== */
-
-/* ---------- App shell grid ---------- */
 
 .skip-to-content {
   position: absolute;
@@ -22,20 +19,16 @@
   top: var(--sp-2);
 }
 
-.app-shell {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-  min-height: 100dvh;
-  background: var(--paper);
-  color: var(--ink);
-}
-
-.app-shell__body {
+.app {
   display: grid;
   grid-template-columns: 248px 1fr;
-  flex: 1;
-  min-height: 0;
+  min-height: 100vh;
+}
+
+.main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .app-shell__backdrop {
@@ -44,11 +37,9 @@
 
 /* ---------- Content ---------- */
 
-.app-shell__content {
+.app-content {
   min-width: 0;
   overflow-x: hidden;
-  padding: var(--sp-8) var(--sp-10) 88px;
-  max-width: var(--mw-wide);
 }
 
 /* ==========================================================================
@@ -58,27 +49,23 @@
      <=768px      drawer overlay with hamburger
    ========================================================================== */
 
-/* Tablet / narrow desktop: collapse to icon rail (56px). The sidebar stays in
- * the grid (no drawer), so no backdrop is rendered. Width changes are handled
- * in Sidebar.css. */
 @media (max-width: 1024px) and (min-width: 769px) {
-  .app-shell__body {
+  .app {
     grid-template-columns: 56px 1fr;
-  }
-
-  .app-shell__content {
-    padding: var(--sp-6) var(--sp-6) 56px;
   }
 }
 
-/* Phone: drawer paradigm — sidebar leaves the grid flow. */
 @media (max-width: 768px) {
-  .app-shell__body {
+  .app {
     grid-template-columns: 1fr;
   }
 
-  .app-shell__content {
-    padding: var(--sp-6) var(--sp-6) 56px;
+  /* Scroll-lock the page underneath while the drawer is open so iOS Safari
+   * doesn't keep scrolling the content beneath the overlay. */
+  .app.nav-open {
+    overflow: hidden;
+    height: 100vh;
+    height: 100dvh;
   }
 
   .app-shell__backdrop {
@@ -101,7 +88,7 @@
 
 /* Phone: tighten content padding under 768px (V6:377). */
 @media (max-width: 767px) {
-  .app-shell__content {
+  .app-content {
     padding: var(--sp-5) var(--sp-4) var(--sp-6);
   }
 }

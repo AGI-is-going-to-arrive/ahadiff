@@ -51,6 +51,7 @@
   color: var(--muted);
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  -webkit-user-select: none;
   user-select: none;
 }
 

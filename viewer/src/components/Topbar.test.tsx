@@ -57,6 +57,6 @@ describe('Topbar', () => {
       </MemoryRouter>,
     );
 
-    expect(html).toContain(`<kbd class="topbar__search-kbd">${expectedShortcut}</kbd>`);
+    expect(html).toContain(`<kbd>${expectedShortcut}</kbd>`);
   });
 });

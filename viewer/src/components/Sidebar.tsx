@@ -139,23 +139,23 @@ export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProp
       aria-hidden={mobileHidden ? true : undefined}
       inert={mobileHidden ? true : undefined}
     >
-      <div className="sidebar__brand">
-        <div className="sidebar__brand-mark" aria-hidden="true"><span>&#916;&#30693;</span></div>
-        <div className="sidebar__brand-text">
-          <div className="sidebar__brand-name">{t('Brand.name')}</div>
-          <div className="sidebar__brand-en">{t('Sidebar.tagline_short')}</div>
+      <div className="brand">
+        <div className="brand-mark" aria-hidden="true"><span>&#916;&#30693;</span></div>
+        <div>
+          <div className="brand-name">{t('Brand.name')}</div>
+          <div className="brand-en">{t('Sidebar.tagline_short')}</div>
         </div>
       </div>
 
       {sections.map((section) => (
         <section
           key={section.sectionKey}
-          className="sidebar__section"
+          className="nav-section"
           aria-labelledby={`sidebar-section-${section.ariaLabel.toLowerCase()}`}
         >
           <div
             id={`sidebar-section-${section.ariaLabel.toLowerCase()}`}
-            className="sidebar__label"
+            className="nav-label"
           >
             {t(section.sectionKey)}
           </div>
@@ -166,18 +166,18 @@ export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProp
             return item.disabled ? (
               <span
                 key={item.labelKey}
-                className="sidebar__item sidebar__item--disabled"
+                className="nav-item nav-item--disabled"
                 role="link"
                 aria-disabled="true"
                 tabIndex={-1}
                 title={`${label} — ${disabledHint}`}
                 aria-label={`${label} (${disabledHint})`}
               >
-                <span className="sidebar__icon" aria-hidden="true">
+                <span className="ic" aria-hidden="true">
                   <Icon size={18} strokeWidth={1.75} aria-hidden="true" />
                 </span>
-                <span className="sidebar__label-main">{label}</span>
-                <span className="sidebar__label-en" aria-hidden="true">{item.labelEn}</span>
+                <span>{label}</span>
+                <span className="en" aria-hidden="true">{item.labelEn}</span>
               </span>
             ) : (
               <NavLink
@@ -185,17 +185,17 @@ export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProp
                 to={item.to}
                 end={item.end}
                 className={({ isActive }) =>
-                  `sidebar__item${isActive ? ' sidebar__item--active' : ''}`
+                  `nav-item${isActive ? ' active' : ''}`
                 }
                 onClick={onNavigate}
                 title={label}
                 aria-label={label}
               >
-                <span className="sidebar__icon" aria-hidden="true">
+                <span className="ic" aria-hidden="true">
                   <Icon size={18} strokeWidth={1.75} aria-hidden="true" />
                 </span>
-                <span className="sidebar__label-main">{label}</span>
-                <span className="sidebar__label-en" aria-hidden="true">{item.labelEn}</span>
+                <span>{label}</span>
+                <span className="en" aria-hidden="true">{item.labelEn}</span>
               </NavLink>
             );
           })}
@@ -203,16 +203,16 @@ export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProp
       ))}
 
       <div
-        className="sidebar__status"
+        className="side-foot"
         aria-label={t('Sidebar.status.aria_label')}
         aria-live="polite"
       >
-        <span className="sidebar__status-dot" aria-hidden="true" />
-        <span className="sidebar__status-copy">
-          <span className="sidebar__status-mode">{t('Sidebar.status.mode')}</span>
-          <span className="sidebar__status-run">{latestRunText}</span>
-        </span>
-        <span className="sidebar__status-version">{VIEWER_VERSION}</span>
+        <span className="dot" aria-hidden="true" />
+        <div className="status-text">
+          <span>{t('Sidebar.status.mode')} </span>
+          <span>{latestRunText}</span>
+        </div>
+        <span className="mono" style={{ marginLeft: 'auto' }}>{VIEWER_VERSION}</span>
       </div>
     </nav>
   );

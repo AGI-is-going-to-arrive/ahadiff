@@ -105,25 +105,24 @@
 .diff-file-summary__chip {
   -webkit-appearance: none;
   appearance: none;
-  border: 1px solid var(--hair);
-  background: var(--paper);
+  border: 1px solid var(--hair-strong);
+  background: transparent;
   color: var(--ink);
   font: inherit;
-  padding: var(--sp-1) var(--sp-3);
-  border-radius: var(--r-sm);
+  padding: var(--sp-1) var(--sp-4);
+  border-radius: var(--r-full);
   cursor: pointer;
   display: inline-flex;
   gap: var(--sp-2);
   align-items: baseline;
   white-space: nowrap;
   max-width: 240px;
-  transition: background var(--dur-micro) var(--ease-out-quart),
-    border-color var(--dur-micro) var(--ease-out-quart);
+  transition: all var(--dur-micro) var(--ease-out-quart);
 }
 
 .diff-file-summary__chip:hover {
   background: var(--subtle);
-  border-color: var(--hair-strong);
+  border-color: var(--muted);
 }
 
 .diff-file-summary__chip:focus-visible {
@@ -132,9 +131,9 @@
 }
 
 .diff-file-summary__chip--active {
-  background: var(--accent-soft);
-  border-color: var(--accent-hair);
-  color: var(--accent-ink);
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
 }
 
 .diff-file-summary__chip-name {
@@ -456,6 +455,7 @@ button.diff-line {
   text-align: end;
   color: var(--muted-strong);
   font-variant-numeric: tabular-nums;
+  -webkit-user-select: none;
   user-select: none;
   border-inline-end: 1px solid var(--hair);
   flex-shrink: 0;

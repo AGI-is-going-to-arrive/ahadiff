@@ -3,7 +3,6 @@ import {
   ArrowRight,
   BookOpen,
   CheckCircle2,
-  Hash,
   ListChecks,
   RefreshCw,
   ShieldCheck,
@@ -425,7 +424,7 @@ function SectionNav({
       data-testid="onboarding-nav"
     >
       <ul className="onboarding-nav__list" role="list">
-        {visibleTargets.map((target) => {
+        {visibleTargets.map((target, index) => {
           const label = t(target.labelKey);
           return (
             <li className="onboarding-nav__item" key={target.id}>
@@ -440,11 +439,9 @@ function SectionNav({
                   handleJump(target.id);
                 }}
               >
-                <Hash
-                  className="onboarding-nav__chip-icon"
-                  aria-hidden="true"
-                  size={12}
-                />
+                <span className="onboarding-nav__chip-index" aria-hidden="true">
+                  0{index + 1}.
+                </span>
                 {label}
               </button>
             </li>

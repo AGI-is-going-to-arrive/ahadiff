@@ -7,7 +7,6 @@
  * ============================================================ */
 
 .calendar-heatmap-shell {
-  height: 100%;
   min-width: 0;
 }
 
@@ -19,12 +18,9 @@
 
 .calendar-heatmap {
   box-sizing: border-box;
-  height: 100%;
-  background: var(--paper);
-  border: 1px solid var(--hair);
-  border-radius: var(--r-lg);
-  padding: var(--sp-4) 18px 14px;
-  box-shadow: var(--sh-sm);
+  background: transparent;
+  border: none;
+  padding: 0;
 }
 
 .calendar-heatmap__header {
