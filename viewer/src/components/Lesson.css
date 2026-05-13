@@ -939,6 +939,55 @@
   font-size: 14px;
 }
 
+.lesson-page__skipped {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-16) var(--sp-6);
+  text-align: center;
+  max-width: 480px;
+  margin: 0 auto;
+  gap: var(--sp-3);
+}
+
+.lesson-page__skipped-icon {
+  margin-bottom: var(--sp-2);
+  opacity: 0.7;
+}
+
+.lesson-page__skipped-title {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--ink-strong);
+  margin: 0;
+}
+
+.lesson-page__skipped-reason {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 0;
+}
+
+.lesson-page__skipped-hint {
+  font-size: 13px;
+  color: var(--muted);
+  margin: var(--sp-2) 0 0;
+}
+
+.lesson-page__skipped-example {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--surface-raised);
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  padding: var(--sp-2) var(--sp-4);
+  color: var(--ink);
+  user-select: all;
+}
+
 /* ==========================================================================
    3-Column Responsive Collapse
    ========================================================================== */

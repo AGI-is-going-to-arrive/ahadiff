@@ -35,7 +35,7 @@ vi.mock('react-force-graph-2d', async () => {
   };
 });
 
-import ConceptGraph from './ConceptGraph';
+import ConceptGraph, { conceptGraphNodeMatchesFocus } from './ConceptGraph';
 import type { ConceptGraphEdge, ConceptGraphNode } from '../api/types';
 
 function makeNodes(
@@ -64,6 +64,18 @@ function makeChainEdges(count: number): ConceptGraphEdge[] {
 }
 
 describe('ConceptGraph rendering guards', () => {
+  it('matches graph focus by id, display name, and normalized ledger keys', () => {
+    const node = {
+      id: 'n-42',
+      name: 'C++ & hash#query?',
+    };
+
+    expect(conceptGraphNodeMatchesFocus(node, 'n-42')).toBe(true);
+    expect(conceptGraphNodeMatchesFocus(node, 'C++ & hash#query?')).toBe(true);
+    expect(conceptGraphNodeMatchesFocus(node, 'c hash query')).toBe(true);
+    expect(conceptGraphNodeMatchesFocus(node, 'other')).toBe(false);
+  });
+
   it('keeps medium graphs in full graph mode without cluster controls', () => {
     const nodes = makeNodes(24, (index) => (index % 2 === 0 ? 'code' : 'rationale'));
     const html = renderToStaticMarkup(

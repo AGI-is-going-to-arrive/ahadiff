@@ -85,7 +85,10 @@ export default function Topbar({
           type="button"
           className="topbar__search"
           aria-label={t('Topbar.search_aria')}
-          onClick={onSearchOpen}
+          onClick={(event) => {
+            event.currentTarget.focus({ preventScroll: true });
+            onSearchOpen();
+          }}
         >
           <span className="topbar__search-icon" aria-hidden="true">⌕</span>
           <span className="topbar__search-placeholder">{t('Topbar.search_placeholder')}</span>

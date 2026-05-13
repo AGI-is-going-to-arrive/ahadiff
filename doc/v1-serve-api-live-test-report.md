@@ -69,6 +69,20 @@
 > and `git diff --check HEAD`. Integration, eval, live judge, wheel build, full
 > Playwright, and remote GitHub Actions were not rerun in that pass.
 
+> Current status note (2026-05-13): this file remains a historical 2026-04-27
+> live snapshot. Current serve has 69 concrete `/api/*` routes plus one
+> `/api/{rest_of_path:path}` catchall and `/healthz`. `GET /api/run/{run_id}`
+> now exposes optional `learnability` on `RunDetail` when finalized metadata
+> contains a valid learnability gate result. `GET /api/run/{run_id}/lesson`,
+> `/claims`, and `/quiz` now return 404 `artifact_not_found` when that specific
+> learning artifact is missing; missing run detail is still a separate 404. The
+> matching verification covered the changed surface only: backend target pytest
+> `199 passed`, target pyright `0 errors`, target ruff check / format check
+> passed, viewer typecheck passed, Vitest `336 passed`, SearchOverlay
+> Playwright `60 passed`, i18n `1271/1271`, and `git diff --check HEAD`
+> passed. Integration, eval, live judge, wheel build, viewer build, full
+> Playwright, and remote GitHub Actions were not rerun in this pass.
+
 ## 2026-04-27 Live Concrete Endpoints (22)
 
 ### Public GET Endpoints (no auth required)
@@ -130,6 +144,12 @@ artifacts: string[]             // ["claims.jsonl", "lesson/lesson.full.md", ...
 graphify_mode: string | null    // "full" | "learning_only" | "empty"
 graphify_status: string | null
 graphify_notes: string[] | null
+learnability: {
+  score: number                  // finite 0..1
+  threshold: number              // finite 0..1
+  skip_lesson_quiz: boolean
+  reasons: string[]
+} | null                         // optional on old runs
 ```
 
 ### RunArtifactEnvelope (from GET /api/run/{run_id}/{lesson|claims|quiz|diff|concepts})
@@ -139,6 +159,10 @@ artifact_type: string           // "lesson" | "claims" | "quiz" | "diff"
 content: string                 // raw artifact content (Markdown / JSONL)
 content_lang: string | null     // "en" | "zh-CN"
 ```
+
+Current code returns 404 `artifact_not_found` for missing `lesson`, `claims`,
+or `quiz` artifacts. This is a current contract note and does not rewrite the
+2026-04-27 live endpoint table above.
 
 ### RatchetHistoryEntry (from GET /api/ratchet/history)
 ```

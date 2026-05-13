@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import sqlite3
 from contextlib import contextmanager
@@ -889,6 +890,52 @@ def test_run_detail_projects_graphify_empty_without_nested_metadata(tmp_path: Pa
     assert detail["graphify_notes"] is None
 
 
+def test_run_detail_projects_valid_learnability_metadata(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=False)
+    metadata = json.loads((run_path / "metadata.json").read_text(encoding="utf-8"))
+    metadata["learnability"] = {
+        "score": 0.42,
+        "threshold": 0.5,
+        "skip_lesson_quiz": True,
+        "reasons": ["tiny_change"],
+    }
+    _write_json(run_path / "metadata.json", metadata)
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    detail = client.get("/api/run/run-1").json()
+
+    assert detail["learnability"] == {
+        "score": 0.42,
+        "threshold": 0.5,
+        "skip_lesson_quiz": True,
+        "reasons": ["tiny_change"],
+    }
+
+
+@pytest.mark.parametrize(
+    "learnability",
+    [
+        {"score": True, "threshold": 0.3, "skip_lesson_quiz": False, "reasons": []},
+        {"score": 0.2, "threshold": False, "skip_lesson_quiz": False, "reasons": []},
+        {"score": 0.2, "threshold": 0.3, "skip_lesson_quiz": "false", "reasons": []},
+        {"score": 0.2, "threshold": 0.3, "skip_lesson_quiz": False, "reasons": [None]},
+        {"score": math.nan, "threshold": 0.3, "skip_lesson_quiz": False, "reasons": []},
+    ],
+)
+def test_project_learnability_rejects_coerced_or_non_finite_values(
+    learnability: dict[str, object],
+) -> None:
+    projected = routes_runs_module._project_learnability(  # pyright: ignore[reportPrivateUsage]
+        {"learnability": learnability}
+    )
+
+    assert projected is None
+
+
 def test_artifact_envelopes_include_content_lang_from_run_metadata(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     initialize_review_db(state_dir / "review.sqlite")
@@ -936,6 +983,36 @@ def test_misconceptions_route_returns_404_when_artifact_is_missing(tmp_path: Pat
 
     assert response.status_code == 404
     assert response.json()["error"] == "artifact_not_found"
+
+
+@pytest.mark.parametrize(
+    ("route", "relative_path"),
+    [
+        ("/api/run/run-1/lesson?level=full", "lesson/lesson.full.md"),
+        ("/api/run/run-1/claims", "claims.jsonl"),
+        ("/api/run/run-1/quiz", "quiz/quiz.jsonl"),
+    ],
+)
+def test_learning_artifact_routes_return_404_when_artifact_is_missing(
+    tmp_path: Path,
+    route: str,
+    relative_path: str,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=False)
+    (run_path / relative_path).unlink()
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    response = client.get(route)
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "error": "artifact_not_found",
+        "status": 404,
+    }
 
 
 def test_score_route_returns_envelope_when_artifact_exists(tmp_path: Path) -> None:

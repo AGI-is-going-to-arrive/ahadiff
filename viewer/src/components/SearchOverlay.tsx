@@ -17,6 +17,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { flushSync } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../api/client';
 import { searchAll, type SearchResponse, type SearchResult } from '../api/search';
@@ -30,15 +31,22 @@ const TABLE_FILTERS = ['', 'concepts', 'cards', 'result_events', 'graph_nodes'] 
 type TableFilter = (typeof TABLE_FILTERS)[number];
 const KIND_ORDER: SearchResult['kind'][] = ['run', 'concept', 'claim', 'card'];
 
+function restoreFocus(target: HTMLElement | null): void {
+  if (!target?.isConnected) return;
+  target.focus({ preventScroll: true });
+}
+
 /** Resolve a result to its in-app navigation target. */
 function hrefFor(result: SearchResult): string | null {
-  if (result.href && result.href.startsWith('#/')) return result.href;
   switch (result.kind) {
     case 'run':
+      if (result.href && result.href.startsWith('#/')) return result.href;
       return `#/run/${encodeURIComponent(result.id)}/lesson`;
     case 'concept':
-      return `#/concepts?focus=${encodeURIComponent(result.id)}`;
+      if (result.href && result.href.startsWith('#/')) return result.href;
+      return `#/concepts?tab=ledger&focus=${encodeURIComponent(result.focusText)}`;
     case 'claim': {
+      if (result.href && result.href.startsWith('#/')) return result.href;
       // Claim id format is `{run_id}:c{n}`; navigate to the diff with the
       // claim selected via hash query parameter consumed by DiffViewerPage.
       const [runId] = result.id.split(':');
@@ -46,6 +54,7 @@ function hrefFor(result: SearchResult): string | null {
       return `#/run/${encodeURIComponent(runId)}/diff?claim=${encodeURIComponent(result.id)}`;
     }
     case 'card':
+      if (result.href && result.href.startsWith('#/')) return result.href;
       return `#/review?card=${encodeURIComponent(result.id)}`;
     default:
       return null;
@@ -140,7 +149,9 @@ export default function SearchOverlay({ open, onClose, initialQuery }: SearchOve
         if (had) el.setAttribute('inert', value ?? '');
         else el.removeAttribute('inert');
       }
-      restoreFocusRef.current?.focus({ preventScroll: true });
+      const restoreTarget = restoreFocusRef.current;
+      restoreFocus(restoreTarget);
+      window.requestAnimationFrame(() => restoreFocus(restoreTarget));
     };
   }, [open]);
 
@@ -242,9 +253,16 @@ export default function SearchOverlay({ open, onClose, initialQuery }: SearchOve
     (result: SearchResult) => {
       const href = hrefFor(result);
       if (!href) return;
-      /* Strip the leading `#` since useNavigate handles HashRouter routes. */
-      navigate(href.startsWith('#') ? href.slice(1) : href);
-      close();
+      flushSync(() => close());
+      if (href.startsWith('#')) {
+        if (window.location.hash === href) {
+          window.dispatchEvent(new Event('hashchange'));
+        } else {
+          window.location.hash = href.slice(1);
+        }
+      } else {
+        navigate(href);
+      }
     },
     [close, navigate],
   );
@@ -452,7 +470,7 @@ export default function SearchOverlay({ open, onClose, initialQuery }: SearchOve
                 const showHeader = idxInGroup === 0;
                 return (
                   <li
-                    key={`${result.kind}-${result.id}`}
+                    key={`${result.kind}-${result.sourceTable}-${result.id}`}
                     className={`search-overlay__result${isActive ? ' search-overlay__result--active' : ''}`}
                     role="option"
                     aria-selected={isActive}

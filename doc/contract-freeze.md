@@ -471,6 +471,7 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 - `LocaleResponse`
 - `RunSummary`
 - `RunDetail`
+- `LearnabilityInfo`：`score: float(0..1)`、`threshold: float(0..1)`、`skip_lesson_quiz: bool`、`reasons: list[str]`
 - `RunArtifactEnvelope`：`run_id`、`artifact_type`、`content`、`content_lang: Literal["en","zh-CN"] | None`
 - `RatchetHistoryEntry`
 - `InstallManifestActionSummary`：`action`、`file_strategy: Literal["generated","user-managed"]`、`path`
@@ -496,6 +497,8 @@ Stage 0 同时冻结最小写请求 DTO：
 - `GET /api/install/targets` 仍是只读展示 contract；浏览器真实写入只能走 `POST /api/install/:target` 和 `POST /api/install/:target/uninstall`
 - install 写操作只允许当前 `ahadiff serve` repo，不接受浏览器传入任意 `repo_root` / path；写入必须带 `X-AhaDiff-Token`，继续走 Origin / Referer 写保护、localhost-only 边界和 repo 写锁
 - manifest preview 是确认门：前端先拿 `manifest_hash`，install / uninstall 时必须回传 `confirmed_manifest_hash`；hash 不匹配时拒绝写入
+- `RunDetail.learnability` 是可选字段，用于把 run metadata 中的 learnability gate 结果投影给 viewer；旧 run 没有该 metadata 时必须保持 `null` / omitted 兼容
+- `lesson` / `claims` / `quiz` artifact 缺失时返回 404 `artifact_not_found`，不再用 400 表示“artifact 不存在”；这不改变 run 本身不存在时的 404 语义
 - `src/ahadiff/contracts/serve_app.py` 是**契约文件**，不是后续真正的 `src/ahadiff/serve/app.py` 实现文件
 
 ### 4.4 Locale 解析顺序
@@ -872,8 +875,9 @@ run_id: str
 - `serve/routes_learn.py`：write-token 保护 + JSON body 校验 + learn submitter 已落地
 
 **当前请求面说明**：
-- 允许的请求字段是现有 learn capture / 选项字段：`revision`、`last`、`since`、`author`、`staged`、`unstaged`、`include_untracked`、`patch`、`compare`、`compare_dir`、`patch_url`、`dry_run`、`force_learn`、`use_graphify`、`lang`、`privacy_mode`
+- 允许的请求字段是现有 learn capture / 选项字段：`revision`、`last`、`since`、`author`、`staged`、`unstaged`、`include_untracked`、`patch`、`compare`、`compare_dir`、`patch_url`、`changed_paths`、`dry_run`、`force_learn`、`use_graphify`、`lang`、`privacy_mode`
 - `compare` / `compare_dir` 需要 2 项 path array
+- `changed_paths` 只用于工作区类输入的路径范围，不表示前端可以传任意 repo 外路径
 - `patch="-"` 在 serve 层明确拒绝，避免后台任务读取进程 stdin
 
 §9.4 中 `/api/tasks*` 四个端点已于 2026-05-02 R0 决策提升为 **stable product API**。
@@ -945,3 +949,15 @@ run_id: str
 - serve 当前为 69 个 concrete `/api/*` routes + 1 个 catchall；前端为 16 页面、62 个生产 TSX、46 个 CSS，i18n scalar keys `1262/1262`。
 
 本轮实测：后端 unit `2409 passed`；integration `11 passed`；eval `9 passed`；`ruff check`、`ruff format --check`、`pyright` 通过；viewer typecheck、Vitest `326 passed`、build 通过；i18n `1262/1262`；`git diff --check HEAD` 通过。live judge、wheel、完整 Playwright 和远端 GitHub Actions 未在本轮重跑。
+
+### 9.16 Run Detail learnability 与学习 artifact 404（2026-05-13）
+
+本轮只记录已经由代码和目标测试验证的契约收口项：
+
+- `RunDetail` 新增可选 `learnability` 字段，类型为 `LearnabilityInfo | None`。旧 run 没有 metadata 时继续返回 `None`，不破坏旧数据。
+- `LearnabilityInfo` 只包含 `score`、`threshold`、`skip_lesson_quiz` 和 `reasons`。投影逻辑只接受有限数值、真实 boolean 和 `list[str]` reasons；metadata 类型不匹配时不投影。
+- `GET /api/run/{run_id}/lesson`、`/claims`、`/quiz` 在 artifact 缺失时返回 404 `artifact_not_found`。这三个 artifact 是 run 下的可选学习产物，缺失不等同于请求参数错误。
+- 前端 search schema 保留后端 `primary_key` 作为稳定 result id，graph node 的 Concepts Ledger 聚焦文本走单独 `focusText`，避免把 HTML 片段或 unsafe hash 当作概念名。
+- ConceptGraph 与 ConceptLedger 的聚焦契约按 id、name 或 normalized ledger key 匹配；同一 hash 跳转时前端会手动派发一次 `hashchange`，让 `#/concepts?tab=ledger&focus=...` 能重复聚焦同一概念。
+
+本轮实测：后端目标 pytest `199 passed`；目标 pyright `0 errors`；目标 ruff check / format check 通过；viewer typecheck 通过；前端 Vitest `336 passed`；SearchOverlay Playwright `60 passed`；i18n `1271/1271`；`git diff --check HEAD` 通过。integration、eval、live judge、wheel、viewer build、完整 Playwright 和远端 GitHub Actions 未在本轮重跑。

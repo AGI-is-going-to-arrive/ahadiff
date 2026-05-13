@@ -10,6 +10,7 @@ import { useTranslation } from '../i18n/useTranslation';
 import { useRunsStore } from '../state/runs-store';
 import { getRunLesson, getRunArtifact } from '../api/runs';
 import { getWeakConcepts } from '../api/review';
+import { ApiError } from '../api/client';
 import { helpfulness } from '../api/signals';
 import { renderMarkdownProse, uniqueSlug } from '../utils/markdown';
 import { createIdempotencyKey } from '../utils/idempotency';
@@ -197,10 +198,12 @@ export default function LessonPage() {
     abortRef.current = controller;
     setLoading(true);
     setError(null);
+    setRunDetail(null);
+    setLessonContent('');
+    setClaims([]);
+    setSelectedClaim(null);
+    setPopoverPos(null);
     try {
-      // Fetch weak concepts first so we can derive the auto-recommended
-      // scaffolding level before the initial lesson fetch. Failures degrade
-      // silently to 'compact' (no UX disruption).
       let recommended: ScaffoldLevel = 'compact';
       try {
         const weak = await getWeakConcepts({ signal: controller.signal });
@@ -209,28 +212,55 @@ export default function LessonPage() {
       } catch (weakErr) {
         if (weakErr instanceof DOMException && weakErr.name === 'AbortError') return;
         if (controller.signal.aborted) return;
-        // eslint-disable-next-line no-console
         if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console
           console.warn('[LessonPage] weak concepts fetch failed, defaulting to compact:', weakErr);
         }
       }
-      // Apply auto-selected level before the lesson fetch so the UI reflects
-      // the recommended value as soon as content lands.
       setLevel(recommended);
       setAutoSelected(true);
-      const [detail, lessonEnv, claimsEnv] = await Promise.all([
-        useRunsStore.getState().loadDetail(runId, { signal: controller.signal }),
-        getRunLesson(runId, recommended, { signal: controller.signal }),
-        getRunArtifact(runId, 'claims', { signal: controller.signal }),
-      ]);
+
+      let detail: RunDetail | null = null;
+      try {
+        detail = await useRunsStore.getState().loadDetail(runId, { signal: controller.signal });
+      } catch (detailErr) {
+        if (detailErr instanceof DOMException && detailErr.name === 'AbortError') return;
+        if (controller.signal.aborted) return;
+        if (detailErr instanceof ApiError && detailErr.status === 404) {
+          setError('fetch_failed');
+          return;
+        }
+        throw detailErr;
+      }
       if (controller.signal.aborted) return;
       setRunDetail(detail);
-      setLessonContent(lessonEnv.content);
-      setClaims(parseClaims(claimsEnv.content));
+
+      const [lessonEnv, claimsEnv] = await Promise.all([
+        getRunLesson(runId, recommended, { signal: controller.signal }).catch((err: unknown) => {
+          if (err instanceof ApiError && err.status === 404) return null;
+          throw err;
+        }),
+        getRunArtifact(runId, 'claims', { signal: controller.signal }).catch((err: unknown) => {
+          if (err instanceof ApiError && err.status === 404) return null;
+          throw err;
+        }),
+      ]);
+      if (controller.signal.aborted) return;
+
+      if (lessonEnv) {
+        setLessonContent(lessonEnv.content);
+      } else {
+        setLessonContent('');
+        setError('lesson_skipped');
+      }
+      if (claimsEnv) {
+        setClaims(parseClaims(claimsEnv.content));
+      } else {
+        setClaims([]);
+      }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       if (controller.signal.aborted) return;
-      // Raw flag; i18n string is computed at render time
       setError('fetch_failed');
       // eslint-disable-next-line no-console
       if (import.meta.env.DEV) console.error('[LessonPage] fetch error:', err);
@@ -272,9 +302,15 @@ export default function LessonPage() {
         const env = await getRunLesson(runId, newLevel, { signal: controller.signal });
         if (token !== levelFetchRef.current) return;
         setLessonContent(env.content);
+        setError(null);
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
         if (token !== levelFetchRef.current) return;
+        if (err instanceof ApiError && err.status === 404) {
+          setLessonContent('');
+          setError('lesson_skipped');
+          return;
+        }
         setError('fetch_failed');
       }
     },
@@ -376,6 +412,25 @@ export default function LessonPage() {
         {loading ? (
           <div className="lesson-page__loading" role="status" aria-live="polite">
             <span className="loading-spinner" /><span>{t('Serve.loading')}</span>
+          </div>
+        ) : error === 'lesson_skipped' ? (
+          <div className="lesson-page__skipped" role="status">
+            <div className="lesson-page__skipped-icon" aria-hidden="true">
+              <svg width="56" height="56" viewBox="0 0 56 56" fill="none"><circle cx="28" cy="28" r="27" stroke="var(--muted)" strokeWidth="2" opacity=".35"/><path d="M20 28h16M28 20v16" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" opacity=".3"/></svg>
+            </div>
+            <h2 className="lesson-page__skipped-title">{t('Lesson.skipped_title')}</h2>
+            <p className="lesson-page__skipped-reason">
+              {runDetail?.learnability?.reasons?.includes('empty_diff')
+                ? t('Lesson.skipped_reason_empty_diff')
+                : runDetail?.learnability?.skip_lesson_quiz
+                  ? t('Lesson.skipped_reason_low_score', {
+                      score: String(Math.round((runDetail.learnability.score ?? 0) * 100)),
+                      threshold: String(Math.round((runDetail.learnability.threshold ?? 0) * 100)),
+                    })
+                  : t('Lesson.skipped_reason_generic')}
+            </p>
+            <p className="lesson-page__skipped-hint">{t('Lesson.skipped_hint')}</p>
+            <code className="lesson-page__skipped-example">ahadiff learn HEAD~1..HEAD</code>
           </div>
         ) : error ? (
           <div className="lesson-page__error" role="alert">

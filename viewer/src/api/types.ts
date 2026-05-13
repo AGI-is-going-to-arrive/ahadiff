@@ -53,6 +53,13 @@ export interface RunSummary {
   degraded_flags: DegradedFlagsMap;
 }
 
+export interface LearnabilityInfo {
+  score: number;
+  threshold: number;
+  skip_lesson_quiz: boolean;
+  reasons: string[];
+}
+
 export interface RunDetail extends RunSummary {
   base_ref: string | null;
   prompt_version: string;
@@ -62,6 +69,7 @@ export interface RunDetail extends RunSummary {
   graphify_mode: GraphifyMode | null;
   graphify_status: string | null;
   graphify_notes?: string[] | null;
+  learnability?: LearnabilityInfo | null;
 }
 
 export type ArtifactKind =

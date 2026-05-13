@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ConceptLedgerEntry } from '../../api/types';
@@ -151,5 +153,51 @@ describe('ConceptLedger', () => {
     const html = renderToStaticMarkup(<ConceptLedger />);
     expect(html).toContain('配置.py');
     expect(html).not.toContain('src\\模块\\配置.py</span>');
+  });
+
+  it('renders graph links when Graphify is available', async () => {
+    Object.assign(mockState, { entries: MOCK_ENTRIES, totalCount: 2 });
+    const { default: ConceptLedger } = await import('../ConceptLedger');
+    const html = renderToStaticMarkup(<ConceptLedger graphifyAvailable />);
+    expect(html).toContain('Concept.ledger_view_in_graph');
+    expect(html).toContain('#/concepts?tab=graph&amp;focus=learn-from-diff');
+  });
+
+  it('encodes graph link focus values with query-special characters', async () => {
+    const entry: ConceptLedgerEntry = {
+      ...MOCK_ENTRIES[0],
+      term_key: 'c++ & hash#query?',
+      concept: 'c++ & hash#query?',
+      display_name: 'C++ & hash#query?',
+    };
+    Object.assign(mockState, { entries: [entry], totalCount: 1 });
+    const { default: ConceptLedger } = await import('../ConceptLedger');
+    const html = renderToStaticMarkup(<ConceptLedger graphifyAvailable />);
+    expect(html).toContain('#/concepts?tab=graph&amp;focus=c%2B%2B%20%26%20hash%23query%3F');
+  });
+
+  it('does not render graph links when Graphify is unavailable', async () => {
+    Object.assign(mockState, { entries: MOCK_ENTRIES, totalCount: 2 });
+    const { default: ConceptLedger } = await import('../ConceptLedger');
+    const html = renderToStaticMarkup(<ConceptLedger graphifyAvailable={false} />);
+    expect(html).not.toContain('Concept.ledger_view_in_graph');
+  });
+
+  it('wires focus concepts to smooth scroll and row highlight', () => {
+    const src = readFileSync(resolve(__dirname, '../ConceptLedger.tsx'), 'utf-8');
+    expect(src).toMatch(/focusConcept/);
+    expect(src).toMatch(/conceptMatchesFocus\(entry, focusConcept\)/);
+    expect(src).toMatch(/behavior: shouldUseSmoothScroll\(\) \? 'smooth' : 'auto'/);
+    expect(src).toMatch(/row\.focus\(\{ preventScroll: true \}\)/);
+    expect(src).toMatch(/aria-current=\{focusedTermKey === entry\.term_key \? 'true' : undefined\}/);
+    expect(src).toContain('concept-ledger__row--focused');
+  });
+
+  it('matches focus by exact, display, term key, and normalized containment', async () => {
+    const { conceptMatchesFocus } = await import('../ConceptLedger');
+    expect(conceptMatchesFocus(MOCK_ENTRIES[1], 'Branding')).toBe(true);
+    expect(conceptMatchesFocus(MOCK_ENTRIES[1], 'branding')).toBe(true);
+    expect(conceptMatchesFocus(MOCK_ENTRIES[0], 'learn-from-diff evidence')).toBe(true);
+    expect(conceptMatchesFocus(MOCK_ENTRIES[0], 'missing')).toBe(false);
   });
 });

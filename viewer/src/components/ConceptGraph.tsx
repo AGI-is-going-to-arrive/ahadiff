@@ -70,9 +70,9 @@ interface GraphLink {
 /* ---------- Constants ---------- */
 
 const GRAPH_CANVAS_HEIGHT = 560;
-const NODE_RADIUS_MIN = 12;
-const NODE_RADIUS_MAX = 18;
-const NODE_RADIUS_BASE = 12;
+const NODE_RADIUS_MIN = 4;
+const NODE_RADIUS_MAX = 15;
+const NODE_RADIUS_BASE = 4;
 const LARGE_GRAPH_THRESHOLD = 150;
 const VERY_LARGE_GRAPH_THRESHOLD = 300;
 const EXTREMELY_LARGE_GRAPH_THRESHOLD = 500;
@@ -96,20 +96,23 @@ interface KindPalette {
 }
 
 /**
- * Sequential muted palette for community rings.
- * 10 colors rotated by community id (stable mapping per id).
+ * Botanical editorial palette — 12 de-saturated earth tones.
+ * Each carries built-in gray undertone to harmonize with cream (#FAF8F5).
+ * code = solid fill, rationale = 15% tint + solid stroke.
  */
 const COMMUNITY_COLORS: readonly string[] = [
-  '#7B9EA8', // muted teal
-  '#B5895B', // warm tan
-  '#9C7AA8', // muted plum
-  '#5C8B5F', // sage green
-  '#C28B6B', // soft terracotta
-  '#6B8AB8', // dusty blue
-  '#A88B5C', // ochre
-  '#8B6B9E', // dusky violet
-  '#7AA888', // mint sage
-  '#B87A7A', // muted rose
+  '#B85D43', // rust
+  '#4A7056', // forest
+  '#D4A35C', // mustard
+  '#4D6D85', // slate
+  '#765C77', // aubergine
+  '#CD7253', // terracotta
+  '#8B9E7A', // sage
+  '#394B61', // indigo
+  '#6B705C', // olive
+  '#A65746', // burnt orange
+  '#3F6366', // teal
+  '#A37B7E', // muted rose
 ];
 
 function communityColor(id: string | number | null): string | null {
@@ -121,6 +124,7 @@ function communityColor(id: string | number | null): string | null {
   }
   return COMMUNITY_COLORS[hash % COMMUNITY_COLORS.length] ?? null;
 }
+
 
 /**
  * Read a node's community id from metadata, normalised to string|null.
@@ -320,12 +324,12 @@ function computeDegrees(
 }
 
 /**
- * Map degree to a node radius using log2 scaling for subtle variation.
- * Range: 12 (≤1 connection) → 18 (≥16 connections). Hub nodes never dominate.
+ * Map degree to a node radius using log1p scaling.
+ * Range: 4 (leaf) → 15 (hub). Tight, controlled variance.
  */
 function radiusForDegree(degree: number): number {
   if (degree <= 0) return NODE_RADIUS_BASE;
-  const r = NODE_RADIUS_MIN + Math.log2(Math.max(1, degree)) * 1.5;
+  const r = 3 + Math.log1p(degree) * 2.5;
   return Math.max(NODE_RADIUS_MIN, Math.min(NODE_RADIUS_MAX, r));
 }
 
@@ -368,6 +372,30 @@ function truncateLabel(text: string, maxLen: number): string {
   if (chars.length <= maxLen) return text;
   if (maxLen <= 1) return '…';
   return chars.slice(0, maxLen - 1).join('') + '…';
+}
+
+function normalizeFocusValue(value: string): string {
+  return value.normalize('NFKC').trim().toLocaleLowerCase();
+}
+
+function normalizeFocusLoose(value: string): string {
+  return normalizeFocusValue(value).replace(/[^\p{Letter}\p{Number}]+/gu, '');
+}
+
+export function conceptGraphNodeMatchesFocus(
+  node: Pick<ConceptGraphNode, 'id' | 'name'>,
+  focus: string,
+): boolean {
+  const needle = normalizeFocusValue(focus);
+  if (!needle) return false;
+  const candidates = [node.id, node.name].filter(Boolean);
+  if (candidates.some((candidate) => candidate === focus)) return true;
+  if (candidates.some((candidate) => normalizeFocusValue(candidate) === needle)) return true;
+  const looseNeedle = normalizeFocusLoose(focus);
+  return Boolean(
+    looseNeedle &&
+      candidates.some((candidate) => normalizeFocusLoose(candidate) === looseNeedle),
+  );
 }
 
 function escapeHtml(text: string): string {
@@ -610,48 +638,64 @@ function ForceGraph({
 
       ctx.globalAlpha = opacity;
 
-      // Kind fill (primary color) + community tint overlay (subtle clustering cue)
+      const baseColor = node.communityFillColor;
+      const bgColor = isDark ? '#1C1B18' : '#FAF8F5';
+
+      // Step 1: Negative-space cutout — separates overlapping nodes cleanly
+      ctx.beginPath();
+      ctx.arc(x, y, r + 1.5 / globalScale, 0, 2 * Math.PI);
+      ctx.fillStyle = forcedColors ? 'Canvas' : bgColor;
+      ctx.fill();
+
+      // Step 2: Node body — solid (code) vs outline (rationale)
       ctx.beginPath();
       ctx.arc(x, y, r, 0, 2 * Math.PI);
-      ctx.fillStyle = forcedColors ? 'Canvas' : kindPalette(node.kind).fill;
-      ctx.fill();
-      if (!forcedColors) {
+      if (node.kind === 'rationale') {
         const savedAlpha = ctx.globalAlpha;
-        ctx.globalAlpha = savedAlpha * 0.3;
-        ctx.fillStyle = node.communityFillColor;
+        ctx.globalAlpha = savedAlpha * 0.15;
+        ctx.fillStyle = forcedColors ? 'Canvas' : baseColor;
         ctx.fill();
         ctx.globalAlpha = savedAlpha;
+        ctx.lineWidth = 1.5 / globalScale;
+        ctx.strokeStyle = forcedColors ? 'CanvasText' : baseColor;
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = forcedColors ? 'Canvas' : baseColor;
+        ctx.fill();
+        if (forcedColors) {
+          ctx.lineWidth = 1.5 / globalScale;
+          ctx.strokeStyle = 'CanvasText';
+          ctx.stroke();
+        }
       }
 
-      // Kind stroke
-      ctx.strokeStyle = forcedColors
-        ? (isSelected ? 'Highlight' : 'CanvasText')
-        : (isSelected ? (isDark ? '#D97757' : '#D27050') : node.kindStrokeColor);
-      ctx.lineWidth = (isSelected ? 3 : 2) / globalScale;
-      ctx.stroke();
-
-      // Selection: outer ring (no shadow — cleaner than shadow blur)
+      // Step 3: Selection / hover ring
       if (isSelected) {
         ctx.beginPath();
-        ctx.arc(x, y, r + 4 / globalScale, 0, 2 * Math.PI);
-        ctx.strokeStyle = forcedColors ? 'Highlight' : (isDark ? 'rgba(217, 119, 87, 0.5)' : 'rgba(210, 112, 80, 0.4)');
+        ctx.arc(x, y, r + 3.5 / globalScale, 0, 2 * Math.PI);
         ctx.lineWidth = 1.5 / globalScale;
+        ctx.strokeStyle = forcedColors ? 'Highlight' : (isDark ? '#E6E3D8' : '#2C2A28');
         ctx.stroke();
       }
 
-      // Label (skip at extreme zoom-out for perf + readability)
-      if (globalScale >= 0.4) {
-        const fontSize = Math.min(13, Math.max(8, 11 / globalScale));
+      // Step 4: Progressive label — NYT-style text stroke for legibility
+      const deg = node.degree ?? 0;
+      const showLabel = globalScale >= 3.0 || (globalScale >= 1.2 && deg > 5) || isSelected;
+      if (showLabel) {
+        const fontSize = Math.max(4, 11 / globalScale);
         const label = node.displayLabel;
-        ctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
-        ctx.textAlign = 'center';
+        ctx.font = `500 ${fontSize}px "Inter", -apple-system, BlinkMacSystemFont, sans-serif`;
+        ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        ctx.strokeStyle = forcedColors ? 'Canvas' : (isDark ? 'rgba(28, 27, 24, 0.85)' : 'rgba(242, 239, 231, 0.92)');
-        ctx.lineWidth = 3 / globalScale;
-        ctx.lineJoin = 'round';
-        ctx.strokeText(label, x, y);
-        ctx.fillStyle = forcedColors ? 'CanvasText' : (isDark ? '#E6E3D8' : '#1C1B18');
-        ctx.fillText(label, x, y);
+        const labelX = x + r + 4 / globalScale;
+        if (!forcedColors) {
+          ctx.lineWidth = 3 / globalScale;
+          ctx.strokeStyle = bgColor;
+          ctx.lineJoin = 'round';
+          ctx.strokeText(label, labelX, y);
+        }
+        ctx.fillStyle = forcedColors ? 'CanvasText' : (isDark ? '#E6E3D8' : '#3A3835');
+        ctx.fillText(label, labelX, y);
       }
 
       ctx.globalAlpha = 1;
@@ -680,35 +724,29 @@ function ForceGraph({
       const tx = tgt.x ?? 0;
       const ty = tgt.y ?? 0;
 
-      let opacity = 0.4;
       const isHighlighted =
         selectedId != null &&
         ((src.id === selectedId) || (tgt.id === selectedId));
 
+      let edgeOpacity = 1;
       if (focusedIds != null) {
         const sIn = focusedIds.has(String(src.id ?? ''));
         const tIn = focusedIds.has(String(tgt.id ?? ''));
-        if (sIn && tIn) {
-          opacity = isHighlighted ? 0.7 : opacity;
-        } else if (sIn || tIn) {
-          opacity = 0.10;
-        } else {
-          opacity = 0.04;
+        if (!(sIn && tIn)) {
+          edgeOpacity = (sIn || tIn) ? 0.08 : 0.03;
         }
       } else if (connectedIds != null && !isHighlighted) {
-        opacity = 0.12;
-      } else if (isHighlighted) {
-        opacity = 0.7;
+        edgeOpacity = 0.08;
       }
 
-      ctx.globalAlpha = opacity;
+      ctx.globalAlpha = edgeOpacity;
       ctx.beginPath();
       ctx.moveTo(sx, sy);
       ctx.lineTo(tx, ty);
       ctx.strokeStyle = forcedColors
         ? (isHighlighted ? 'Highlight' : 'CanvasText')
-        : (isHighlighted ? (isDark ? '#D97757' : '#D27050') : (isDark ? '#4A473E' : '#C9C4B3'));
-      ctx.lineWidth = Math.max(0.5, Math.min(2.5, link.weight ?? 1)) / globalScale;
+        : (isHighlighted ? (isDark ? '#D97757' : '#D27050') : (isDark ? '#3A3832' : '#DED9CE'));
+      ctx.lineWidth = (isHighlighted ? 1.5 : 1) / globalScale;
       ctx.stroke();
 
       if (isHighlighted && link.relation && globalScale > 0.8) {
@@ -1025,8 +1063,9 @@ function DetailPanel({
           role="group"
           aria-label={t('Graph.focus_mode')}
         >
-          {[1, 2, 3].map((h) => {
+          {([1, 2, 3] as const).map((h) => {
             const active = focusHops === h;
+            const label = t(`Graph.hop_label_${h}` as 'Graph.hop_label_1');
             return (
               <button
                 key={h}
@@ -1037,8 +1076,9 @@ function DetailPanel({
                 }`}
                 onClick={handleHopClick}
                 aria-pressed={active}
+                title={label}
               >
-                {h}
+                {label}
               </button>
             );
           })}
@@ -1722,6 +1762,10 @@ function ConceptGraph({
 
   const allKinds = useMemo(() => collectKinds(nodes), [nodes]);
   const allFreshness = useMemo(() => collectFreshness(nodes), [nodes]);
+  const resolvedFocusNodeId = useMemo(() => {
+    if (!focusNodeId) return null;
+    return nodes.find((node) => conceptGraphNodeMatchesFocus(node, focusNodeId))?.id ?? null;
+  }, [focusNodeId, nodes]);
 
   useEffect(() => {
     setActiveKinds(new Set());
@@ -1732,14 +1776,12 @@ function ConceptGraph({
   }, [nodes]);
 
   useEffect(() => {
-    if (!focusNodeId) return;
-    const focused = nodes.find((node) => node.id === focusNodeId || node.name === focusNodeId);
-    if (!focused) return;
+    if (!resolvedFocusNodeId) return;
     setActiveKinds(new Set());
     setActiveFreshness(new Set());
     setActiveCommunities(new Set());
-    setSelectedId(focused.id);
-  }, [focusNodeId, nodes]);
+    setSelectedId(resolvedFocusNodeId);
+  }, [resolvedFocusNodeId]);
 
   // Auto-clear focus hops whenever the selected node is cleared.
   useEffect(() => {
@@ -1834,6 +1876,19 @@ function ConceptGraph({
   const isExtremelyLargeGraph = filteredNodes.length >= EXTREMELY_LARGE_GRAPH_THRESHOLD;
   const shouldBlockExtremeGraph =
     viewMode === 'graph' && isExtremelyLargeGraph && !allowExtremeGraphRender;
+
+  useEffect(() => {
+    if (!resolvedFocusNodeId || viewMode !== 'graph' || shouldBlockExtremeGraph) return undefined;
+    if (!filteredNodeIds.has(resolvedFocusNodeId)) return undefined;
+    const timer = window.setTimeout(() => {
+      fgRef.current?.zoomToFit(
+        500,
+        120,
+        (node) => String(node.id ?? '') === resolvedFocusNodeId,
+      );
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [resolvedFocusNodeId, filteredNodeIds, shouldBlockExtremeGraph, viewMode]);
 
   useEffect(() => {
     if (selectedId != null && !filteredNodeIds.has(selectedId)) {
@@ -1943,10 +1998,10 @@ function ConceptGraph({
             className={`concept-graph__view-btn${viewMode === 'graph' ? ' concept-graph__view-btn--active' : ''}`}
             onClick={() => {
               setAllowExtremeGraphRender(false);
-              // Clear any prior selection/focus so the full graph is visible
-              // when entering graph view (prevents blank-graph after list click).
-              setSelectedId(null);
-              setFocusHops(null);
+              if (!resolvedFocusNodeId) {
+                setSelectedId(null);
+                setFocusHops(null);
+              }
               setViewMode('graph');
               // Auto-fit shortly after the canvas mounts/lays out.
               window.setTimeout(() => handleFit(), 100);

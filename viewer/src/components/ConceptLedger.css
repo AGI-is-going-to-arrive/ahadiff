@@ -34,6 +34,33 @@
   background: var(--elevated);
 }
 
+.concept-ledger__table tbody tr.concept-ledger__row--focused {
+  animation: concept-ledger-focus-fade 1.8s var(--ease-out);
+}
+
+@keyframes concept-ledger-focus-fade {
+  0% {
+    background: var(--accent-soft);
+    box-shadow: inset 4px 0 0 var(--accent);
+  }
+  70% {
+    background: var(--accent-faint);
+    box-shadow: inset 4px 0 0 var(--accent);
+  }
+  100% {
+    background: transparent;
+    box-shadow: inset 4px 0 0 transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .concept-ledger__table tbody tr.concept-ledger__row--focused {
+    animation: none;
+    background: var(--accent-faint);
+    box-shadow: inset 4px 0 0 var(--accent);
+  }
+}
+
 .concept-ledger__name {
   font-weight: 500;
   color: var(--ink-strong);
@@ -47,6 +74,30 @@
   font-size: var(--fs-xs);
   color: var(--muted);
   font-family: var(--font-mono);
+}
+
+.concept-ledger__graph-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: var(--sp-0-5) var(--sp-2);
+  border: 1px solid var(--accent-hair);
+  border-radius: var(--r-sm);
+  color: var(--accent-ink);
+  background: var(--accent-faint);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.concept-ledger__graph-link:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.concept-ledger__graph-link:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .concept-ledger__chip-list {
@@ -264,5 +315,14 @@
   .concept-ledger__health-chip--active {
     border-color: Highlight;
     color: Highlight;
+  }
+  .concept-ledger__table tbody tr.concept-ledger__row--focused {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  .concept-ledger__graph-link {
+    border-color: LinkText;
+    color: LinkText;
+    background: Canvas;
   }
 }

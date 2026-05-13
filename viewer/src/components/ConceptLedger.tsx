@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useConceptsStore } from '../state/concepts-store';
 import { useTranslation } from '../i18n/useTranslation';
 import type { ConceptHealthStatus } from '../api/types';
@@ -28,6 +28,26 @@ const HEALTH_FILTER_LABEL_KEYS: Record<HealthFilter, string> = {
 interface ConceptLedgerProps {
   runFilter?: string;
   onRunFilterChange?: (run: string | undefined) => void;
+  focusConcept?: string;
+  graphifyAvailable?: boolean;
+}
+
+function normalizeConceptMatch(value: string | undefined): string {
+  return (value ?? '').trim().toLocaleLowerCase();
+}
+
+export function conceptMatchesFocus(
+  entry: { concept: string; display_name: string; term_key: string },
+  focusConcept: string,
+): boolean {
+  const needle = normalizeConceptMatch(focusConcept);
+  if (!needle) return false;
+  const candidates = [entry.concept, entry.display_name, entry.term_key]
+    .map(normalizeConceptMatch)
+    .filter(Boolean);
+  if (candidates.some((candidate) => candidate === needle)) return true;
+  if (candidates.some((candidate) => candidate.includes(needle))) return true;
+  return candidates.some((candidate) => candidate.length >= 2 && needle.includes(candidate));
 }
 
 function updateHashRunFilter(run: string | undefined) {
@@ -53,8 +73,19 @@ export function fileRefBasename(path: string): string {
   return separatorIndex >= 0 ? trimmed.slice(separatorIndex + 1) : trimmed;
 }
 
-export default function ConceptLedger({ runFilter, onRunFilterChange }: ConceptLedgerProps) {
+export function shouldUseSmoothScroll(): boolean {
+  if (typeof window === 'undefined') return false;
+  return !window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+}
+
+export default function ConceptLedger({
+  runFilter,
+  onRunFilterChange,
+  focusConcept,
+  graphifyAvailable = false,
+}: ConceptLedgerProps) {
   const { t } = useTranslation();
+  const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
   const entries = useConceptsStore((s) => s.entries);
   const loading = useConceptsStore((s) => s.loading);
   const loadingMore = useConceptsStore((s) => s.loadingMore);
@@ -67,6 +98,7 @@ export default function ConceptLedger({ runFilter, onRunFilterChange }: ConceptL
   const setRunFilter = useConceptsStore((s) => s.setRunFilter);
 
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
+  const [focusedTermKey, setFocusedTermKey] = useState<string | null>(null);
 
   useEffect(() => {
     void loadLedger(runFilter);
@@ -116,6 +148,34 @@ export default function ConceptLedger({ runFilter, onRunFilterChange }: ConceptL
     },
     [onRunFilterChange, setRunFilter],
   );
+
+  useEffect(() => {
+    if (!focusConcept || loading || error || filteredEntries.length === 0) return undefined;
+    const match = filteredEntries.find((entry) => conceptMatchesFocus(entry, focusConcept));
+    if (!match) return undefined;
+    const row = rowRefs.current.get(match.term_key);
+    if (!row) return undefined;
+
+    let clearTimer: number | undefined;
+    let applyFrame: number | undefined;
+    const frame = window.requestAnimationFrame(() => {
+      row.scrollIntoView({
+        behavior: shouldUseSmoothScroll() ? 'smooth' : 'auto',
+        block: 'center',
+      });
+      setFocusedTermKey(match.term_key);
+      applyFrame = window.requestAnimationFrame(() => row.focus({ preventScroll: true }));
+      clearTimer = window.setTimeout(() => {
+        setFocusedTermKey((current) => (current === match.term_key ? null : current));
+      }, 1800);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (applyFrame != null) window.cancelAnimationFrame(applyFrame);
+      if (clearTimer != null) window.clearTimeout(clearTimer);
+    };
+  }, [error, filteredEntries, focusConcept, loading]);
 
   if (loading) {
     return (
@@ -214,11 +274,33 @@ export default function ConceptLedger({ runFilter, onRunFilterChange }: ConceptL
         </thead>
         <tbody>
           {filteredEntries.map((entry) => (
-            <tr key={entry.term_key}>
+            <tr
+              key={entry.term_key}
+              ref={(node) => {
+                if (node) rowRefs.current.set(entry.term_key, node);
+                else rowRefs.current.delete(entry.term_key);
+              }}
+              className={
+                focusedTermKey === entry.term_key
+                  ? 'concept-ledger__row--focused'
+                  : undefined
+              }
+              tabIndex={focusedTermKey === entry.term_key ? -1 : undefined}
+              aria-current={focusedTermKey === entry.term_key ? 'true' : undefined}
+              data-concept-term-key={entry.term_key}
+            >
               <td>
                 <div className="concept-ledger__name">
                   <span>{entry.display_name || entry.concept}</span>
                   <HealthBadge status={entry.health_status} />
+                  {graphifyAvailable && (
+                    <a
+                      className="concept-ledger__graph-link"
+                      href={`#/concepts?tab=graph&focus=${encodeURIComponent(entry.term_key)}`}
+                    >
+                      {t('Concept.ledger_view_in_graph')}
+                    </a>
+                  )}
                 </div>
                 {entry.display_name && entry.display_name !== entry.concept && (
                   <div className="concept-ledger__term-key">{entry.concept}</div>

@@ -21,6 +21,7 @@ from ahadiff.contracts import (
     ConceptLedgerEntry,
     ConceptLedgerPageResponse,
     ConceptsTextPageResponse,
+    LearnabilityInfo,
     RatchetHistoryEntry,
     RunArtifactEnvelope,
     RunDetail,
@@ -174,15 +175,30 @@ async def get_lesson(request: Request) -> JSONResponse:
     level = request.query_params.get("level", "full")
     if level not in _LESSON_LEVELS:
         raise InputError("lesson level must be one of: full, hint, compact")
-    return await _artifact_response(request, f"lesson/lesson.{level}.md", "lesson")
+    return await _artifact_response(
+        request,
+        f"lesson/lesson.{level}.md",
+        "lesson",
+        not_found_status_code=404,
+    )
 
 
 async def get_claims(request: Request) -> JSONResponse:
-    return await _artifact_response(request, _ARTIFACT_PATHS["claims"], "claims")
+    return await _artifact_response(
+        request,
+        _ARTIFACT_PATHS["claims"],
+        "claims",
+        not_found_status_code=404,
+    )
 
 
 async def get_quiz(request: Request) -> JSONResponse:
-    return await _artifact_response(request, _ARTIFACT_PATHS["quiz"], "quiz")
+    return await _artifact_response(
+        request,
+        _ARTIFACT_PATHS["quiz"],
+        "quiz",
+        not_found_status_code=404,
+    )
 
 
 async def get_misconceptions(request: Request) -> JSONResponse:
@@ -371,6 +387,7 @@ def _run_detail_payload(
     if summary is None:
         raise InputError(f"run metadata is invalid: {run_id}")
     graphify_mode, graphify_status, graphify_notes = _project_graphify(metadata)
+    learnability_info = _project_learnability(metadata)
     detail = RunDetail(
         **summary.model_dump(mode="json"),
         base_ref=event.base_ref,
@@ -381,6 +398,7 @@ def _run_detail_payload(
         graphify_mode=cast("Any", graphify_mode),
         graphify_status=graphify_status,
         graphify_notes=graphify_notes,
+        learnability=learnability_info,
     )
     return detail.model_dump(mode="json")
 
@@ -855,6 +873,49 @@ def _project_graphify(metadata: dict[str, Any]) -> tuple[str, str | None, list[s
     else:
         projected_mode = "empty"
     return projected_mode, freshness, notes
+
+
+def _project_learnability(metadata: dict[str, Any]) -> LearnabilityInfo | None:
+    raw = metadata.get("learnability")
+    if not isinstance(raw, dict):
+        return None
+    learn = cast("dict[str, Any]", raw)
+    score_raw = learn.get("score")
+    threshold_raw = learn.get("threshold")
+    skip_raw = learn.get("skip_lesson_quiz")
+    if (
+        not isinstance(score_raw, int | float)
+        or isinstance(score_raw, bool)
+        or not isinstance(threshold_raw, int | float)
+        or isinstance(threshold_raw, bool)
+        or not isinstance(skip_raw, bool)
+    ):
+        return None
+    score = float(score_raw)
+    threshold = float(threshold_raw)
+    if not (
+        math.isfinite(score)
+        and math.isfinite(threshold)
+        and 0.0 <= score <= 1.0
+        and 0.0 <= threshold <= 1.0
+    ):
+        return None
+    reasons_raw: object = learn.get("reasons", [])
+    if reasons_raw is None:
+        reasons: list[str] = []
+    elif isinstance(reasons_raw, list):
+        reason_items = cast("list[object]", reasons_raw)
+        if not all(isinstance(reason, str) for reason in reason_items):
+            return None
+        reasons = [reason for reason in reason_items if isinstance(reason, str)]
+    else:
+        return None
+    return LearnabilityInfo(
+        score=score,
+        threshold=threshold,
+        skip_lesson_quiz=skip_raw,
+        reasons=reasons,
+    )
 
 
 def _load_json_object(path: Path) -> dict[str, Any]:

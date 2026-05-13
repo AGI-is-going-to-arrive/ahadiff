@@ -42,6 +42,7 @@ class TestContractsImport:
             ConfigResponse,
             InputError,
             LearnabilityGate,
+            LearnabilityInfo,
             OrchestratorCommand,
             OrchestratorResult,
             ProviderCapabilities,
@@ -73,6 +74,7 @@ class TestContractsImport:
         assert ResultEvent
         assert UsageEvent
         assert LearnabilityGate
+        assert LearnabilityInfo
         assert OrchestratorCommand
         assert OrchestratorResult
         assert RunConfig
@@ -128,7 +130,7 @@ class TestSerialization:
         assert summary.capability_level == 3
 
     def test_run_detail_declares_graphify_notes_and_rejects_unknown_fields(self) -> None:
-        from ahadiff.contracts import RunDetail
+        from ahadiff.contracts import LearnabilityInfo, RunDetail
 
         detail = RunDetail(
             run_id="run-1",
@@ -143,11 +145,24 @@ class TestSerialization:
             prompt_version="prompt123",
             eval_bundle_version="eval123",
             graphify_notes=["graph artifact is fresh"],
+            learnability=LearnabilityInfo(
+                score=0.72,
+                threshold=0.3,
+                skip_lesson_quiz=False,
+                reasons=["source_change"],
+            ),
         )
 
         assert detail.graphify_notes == ["graph artifact is fresh"]
+        assert detail.learnability is not None
+        assert detail.learnability.score == 0.72
         with pytest.raises(ValidationError):
             RunDetail.model_validate({**detail.model_dump(mode="json"), "extra": "blocked"})
+
+    def test_serve_app_all_exports_learnability_info(self) -> None:
+        from ahadiff.contracts.serve_app import __all__ as serve_app_all
+
+        assert "LearnabilityInfo" in serve_app_all
 
     def test_due_review_card_response_serializes_choice_mode_contract(self) -> None:
         from ahadiff.contracts.quiz_choice import QuizChoice

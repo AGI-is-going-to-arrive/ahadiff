@@ -100,6 +100,13 @@ export const runSummarySchema = z.object({
     ),
 });
 
+const learnabilityInfoSchema = z.object({
+  score: z.number(),
+  threshold: z.number(),
+  skip_lesson_quiz: z.boolean(),
+  reasons: z.array(z.string()).default([]),
+});
+
 export const runDetailSchema = runSummarySchema.extend({
   base_ref: z.string().nullable(),
   prompt_version: z.string(),
@@ -109,6 +116,7 @@ export const runDetailSchema = runSummarySchema.extend({
   graphify_mode: graphifyModeSchema.nullable(),
   graphify_status: z.string().nullable(),
   graphify_notes: z.array(z.string()).nullable().optional(),
+  learnability: learnabilityInfoSchema.nullable().optional(),
 });
 
 /* ─────────────── 3. RunArtifactEnvelope ─────────────── */
@@ -678,8 +686,9 @@ export const auditResponseSchema = z.object({
  * keyed by `source_table` ∈ {"concepts", "result_events", "cards", "graph_nodes"}
  * and a string `primary_key`. The viewer keeps a `kind`/`id`/`title` shape
  * because every consumer (SearchOverlay, hrefFor) was already written against
- * it. Map the wire shape to the viewer shape inside the schema so consumers
- * never see the raw column names. */
+ * it. `sourceTable` stays attached for filters/debug metadata. `id` remains the
+ * stable backend primary key; `focusText` is the optional human label used for
+ * graph-node-to-ledger focus links. */
 export const searchResultKindSchema = z.enum([
   'concept',
   'claim',
@@ -694,6 +703,10 @@ const SOURCE_TABLE_TO_KIND: Record<string, z.infer<typeof searchResultKindSchema
   graph_nodes: 'concept',
 };
 
+function stripHtmlTags(html: string): string {
+  return html.replace(/<\/?[a-zA-Z][^>]*>/g, '');
+}
+
 export const searchResultSchema = z
   .object({
     source_table: z.string().min(1),
@@ -704,15 +717,19 @@ export const searchResultSchema = z
   })
   .transform((row) => {
     const kind = SOURCE_TABLE_TO_KIND[row.source_table] ?? 'concept';
-    /* Title falls back to snippet (truncated) when the backend has no name
-     * column for the table — graph_nodes / cards rows often only carry
-     * snippets. Consumers can still display `snippet` underneath. */
-    const title = row.snippet.length > 80 ? row.snippet.slice(0, 80) + '…' : row.snippet;
+    const plainText = stripHtmlTags(row.snippet).trim();
+    const title = plainText.length > 80 ? plainText.slice(0, 80) + '…' : plainText;
+    const conceptName = plainText.trim() || row.primary_key;
     return {
       kind,
+      sourceTable: row.source_table,
       id: row.primary_key,
+      focusText:
+        kind === 'concept' && row.source_table === 'graph_nodes'
+          ? conceptName
+          : row.primary_key,
       title,
-      snippet: row.snippet,
+      snippet: plainText,
       rank: row.rank,
       href: row.href ?? null,
     };

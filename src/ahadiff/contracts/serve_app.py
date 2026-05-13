@@ -115,6 +115,15 @@ class RunSummary(BaseModel):
     )
 
 
+class LearnabilityInfo(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    score: float = Field(ge=0.0, le=1.0, allow_inf_nan=False)
+    threshold: float = Field(ge=0.0, le=1.0, allow_inf_nan=False)
+    skip_lesson_quiz: bool
+    reasons: list[str] = Field(default_factory=list)
+
+
 class RunDetail(RunSummary):
     model_config = ConfigDict(extra="forbid")
 
@@ -126,6 +135,7 @@ class RunDetail(RunSummary):
     graphify_mode: GraphifyMode | None = None
     graphify_status: str | None = None
     graphify_notes: list[str] | None = None
+    learnability: LearnabilityInfo | None = None
 
 
 class RunArtifactEnvelope(BaseModel):
@@ -277,6 +287,7 @@ __all__ = [
     "HelpfulnessRequest",
     "LearnEstimateResponse",
     "LearnEstimateRiskLevel",
+    "LearnabilityInfo",
     "LearningSignalRequest",
     "LocaleResponse",
     "MarkWrongRequest",

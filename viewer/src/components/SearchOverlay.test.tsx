@@ -108,7 +108,9 @@ function setStates(opts: OverlayStates = {}) {
 function makeResult(overrides: Partial<SearchResult> = {}): SearchResult {
   return {
     kind: 'concept',
+    sourceTable: 'graph_nodes',
     id: 'c-1',
+    focusText: 'sample concept',
     title: 'sample concept',
     snippet: 'a snippet',
     rank: 1,
@@ -247,7 +249,24 @@ describe('SearchOverlay', () => {
       'utf-8',
     );
     expect(src).toMatch(/event\.key === 'Enter'[\s\S]{0,160}commit\(target\)/);
-    expect(src).toMatch(/navigate\(href\.startsWith\('#'\) \? href\.slice\(1\) : href\)/);
+    expect(src).toMatch(/flushSync\(\(\) => close\(\)\)/);
+    expect(src).toMatch(/window\.location\.hash === href/);
+    expect(src).toMatch(/window\.dispatchEvent\(new Event\('hashchange'\)\)/);
+    expect(src).toMatch(/window\.location\.hash = href\.slice\(1\)/);
+  });
+
+  it('routes every concept result to ledger focus links', async () => {
+    const src = readFileSync(
+      resolve(__dirname, 'SearchOverlay.tsx'),
+      'utf-8',
+    );
+
+    expect(src).not.toMatch(/result\.sourceTable !== 'graph_nodes'/);
+    expect(src).toMatch(/case 'concept':[\s\S]{0,120}result\.href && result\.href\.startsWith\('#\/'\)/);
+    expect(src).toMatch(
+      /#\/concepts\?tab=ledger&focus=\$\{encodeURIComponent\(result\.focusText\)\}/,
+    );
+    expect(src).not.toMatch(/#\/concepts\?focus=\$\{encodeURIComponent\(result\.id\)\}/);
   });
 
   it('renders the filter chip group with the active filter checked', async () => {

@@ -30,8 +30,8 @@
 | A10 | L5: review.sqlite (FSRS-6 + schema v1-v7 migration + FTS5) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/review/database.py`, `scheduler.py`, `optimizer.py`, `search.py`; `tests/unit/test_review_*.py` |
 | A11 | L6: Learning Core (quiz + SRS review + concepts + helpfulness) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/quiz/`, `src/ahadiff/wiki/concepts.py`, `src/ahadiff/lesson/helpfulness.py`; `tests/unit/test_helpfulness.py` |
 | A12 | L6: Graphify (models/parser/matcher/linker/slicer/search/freshness) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/graphify/` (7 files: models, parser, matcher, linker, slicer, search, freshness); `tests/unit/test_graphify*.py` (5 test files) |
-| A13 | L7: Serve API (62 concrete API routes + catchall, Starlette + Uvicorn) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/serve/app.py`; route modules; `tests/unit/test_serve*.py`, `test_routes_*.py` |
-| A14 | L7: React 19 SPA (Vite + vanilla CSS) | Blueprint | N/A | IMPL | IMPL | `viewer/src/` (13 pages, 48 production TSX, 43 CSS); `viewer/vitest.config.ts` + Vitest coverage + Playwright |
+| A13 | L7: Serve API (69 concrete API routes + catchall, Starlette + Uvicorn) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/serve/app.py`; route modules; `tests/unit/test_serve*.py`, `test_routes_*.py` |
+| A14 | L7: React 19 SPA (Vite + vanilla CSS) | Blueprint | N/A | IMPL | IMPL | `viewer/src/` (16 pages, 62 production TSX, 46 CSS, i18n `1271/1271`); `viewer/vitest.config.ts` + Vitest coverage + Playwright |
 
 ---
 
@@ -133,7 +133,7 @@
 | G8 | Graphify slicer (sub-graph extraction) | Blueprint | IMPL | N/A | IMPL | `graphify/slicer.py`; `tests/unit/test_graphify_slicer.py` |
 | G9 | Graphify search (FTS on graph nodes) | Blueprint | IMPL | N/A | IMPL | `graphify/search.py`; `tests/unit/test_graphify_search.py` |
 | G10 | Graphify freshness (7 internal states + 4-value external projection) | Blueprint | IMPL | IMPL | IMPL | `graphify/freshness.py`; `viewer/src/components/FreshnessBadge.tsx` (+ test) |
-| G11 | ConceptGraph UI (Graph/List views, large graphs default to List, Full graph stays available) | Blueprint | N/A | IMPL | IMPL | `viewer/src/components/ConceptGraph.tsx`; `viewer/src/components/ConceptGraph.test.tsx` |
+| G11 | ConceptGraph UI (Graph/List views, Canvas renderer, large graphs default to List, Full graph stays available, forced-colors + focus persistence) | Blueprint | N/A | IMPL | IMPL | `viewer/src/components/ConceptGraph.tsx`; `viewer/src/components/ConceptGraph.test.tsx` |
 | G12 | ConceptsPage UI | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/ConceptsPage.tsx` |
 | G13 | GraphifyCard UI | Blueprint | N/A | IMPL | IMPL | `viewer/src/components/GraphifyCard.tsx` |
 | G14 | Graphify shared freshness store (graph-store) | Blueprint | N/A | IMPL | IMPL | `viewer/src/api/graph.ts` |
@@ -178,7 +178,7 @@
 
 | # | Feature | Source | Backend Status | Frontend Status | Test Status | Evidence |
 |---|---------|--------|---------------|-----------------|-------------|----------|
-| J1 | Locale priority chain: cookie -> Accept-Language -> AHADIFF_LANG -> CLI --lang -> config.toml -> LANG -> en | Blueprint+Comp | IMPL | IMPL | IMPL | `i18n/`; `serve/routes_locale.py`; `viewer/src/i18n/`; Learn Mode Dialog defaults to active viewer locale; 1187/1187 i18n scalar keys |
+| J1 | Locale priority chain: cookie -> Accept-Language -> AHADIFF_LANG -> CLI --lang -> config.toml -> LANG -> en | Blueprint+Comp | IMPL | IMPL | IMPL | `i18n/`; `serve/routes_locale.py`; `viewer/src/i18n/`; Learn Mode Dialog defaults to active viewer locale; 1271/1271 i18n scalar keys |
 | J2 | Supported locales: en + zh-CN | Blueprint | IMPL | IMPL | IMPL | `i18n/`; `viewer/src/i18n/` |
 | J3 | Zustand atom store for i18n re-render (no React Context) | Blueprint | N/A | IMPL | IMPL | `viewer/src/i18n/useTranslation.ts` |
 | J4 | LLM OUTPUT_LANGUAGE prefix in prompts | Blueprint | IMPL | N/A | IMPL | Orchestrator resolves output_lang |
@@ -208,16 +208,16 @@
 
 ---
 
-## L. Frontend Viewer Pages (Blueprint Section 05 + current viewer: 13 pages)
+## L. Frontend Viewer Pages (Blueprint Section 05 + current viewer: 16 pages)
 
 | # | Feature | Source | Backend Status | Frontend Status | Test Status | Evidence |
 |---|---------|--------|---------------|-----------------|-------------|----------|
 | L1 | DashboardPage (KPI cards + calendar heatmap) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/DashboardPage.tsx`; `components/KpiCard.tsx`, `CalendarHeatmap.tsx`; empty state can open Learn Mode Dialog |
-| L2 | LessonPage (3-level scaffolding tabs) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/LessonPage.tsx`; `components/ScaffoldingTabs.tsx` |
+| L2 | LessonPage (3-level scaffolding tabs + skipped artifact state) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/LessonPage.tsx`; `components/ScaffoldingTabs.tsx`; `components/Lesson.css` |
 | L3 | DiffViewerPage (side-by-side / unified) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/DiffViewerPage.tsx`; `components/DiffView.tsx` |
 | L4 | QuizPage (active recall quiz) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/QuizPage.tsx` |
 | L5 | ReviewPage (SRS review) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/ReviewPage.tsx`; `components/SRSCard.tsx`; sidebar landmark label covered by a11y E2E |
-| L6 | ConceptsPage (concept graph + list) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/ConceptsPage.tsx`; `components/ConceptGraph.tsx` (753 lines) |
+| L6 | ConceptsPage (Ledger + Graph tabs, graph/list focus sync) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/ConceptsPage.tsx`; `components/ConceptGraph.tsx`; `components/ConceptLedger.tsx` |
 | L7 | SettingsPage (7-tab settings) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/SettingsPage.tsx` |
 | L8 | RatchetPage (score history chart) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/RatchetPage.tsx`; `components/RatchetChart.tsx` |
 | L9 | OnboardingPage (stepper wizard) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/OnboardingPage.tsx`; `viewer/src/components/DiagnosticRow.tsx`; `viewer/src/pages/__tests__/OnboardingPage.test.tsx`; `viewer/tests/e2e/onboarding.spec.ts` |
@@ -225,7 +225,7 @@
 | L11 | GuidePage | Current viewer | N/A | IMPL | IMPL | `viewer/src/pages/GuidePage.tsx`; maintenance commands default to `--dry-run`; legacy `/#/skills` redirects to `/#/guide` |
 | L12 | NotFoundPage (404) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/NotFoundPage.tsx` |
 | L13 | AppShell (Sidebar + Topbar + BottomMiniPanel) | Blueprint | N/A | IMPL | IMPL | `components/AppShell.tsx`, `Sidebar.tsx`, `Topbar.tsx`, `BottomMiniPanel.tsx` |
-| L14 | SearchOverlay (global search, table filters, two-column preview) | Blueprint | N/A | IMPL | IMPL | `components/SearchOverlay.tsx`; `components/SearchOverlay.css`; `SearchOverlay.test.tsx`; `viewer/tests/e2e/search-overlay.spec.ts` |
+| L14 | SearchOverlay (global search, table filters, two-column preview, graph-node Ledger focus links) | Blueprint | N/A | IMPL | IMPL | `components/SearchOverlay.tsx`; `components/SearchOverlay.css`; `SearchOverlay.test.tsx`; `viewer/tests/e2e/search-overlay.spec.ts` |
 | L15 | VirtualList (performance for long lists) | Blueprint | N/A | IMPL | IMPL | `components/VirtualList.tsx` |
 | L16 | ErrorBoundary | Blueprint | N/A | IMPL | IMPL | `components/ErrorBoundary.tsx`; `components/ErrorBoundary.css`; `ErrorBoundary.test.tsx`; `viewer/tests/e2e/error-boundary.spec.ts` |
 | L17 | Skeleton loading states | Blueprint | N/A | IMPL | IMPL | `components/Skeleton.tsx` |
@@ -249,7 +249,7 @@
 | M7 | /api/audit (audit trail) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_audit.py` |
 | M8 | /api/review/* (mastery, SRS) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_review.py` |
 | M9 | /api/concepts/* (weak concepts) | Blueprint | IMPL | IMPL | IMPL | Concepts endpoints |
-| M10 | /api/runs/* (run listing, detail) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_runs.py` |
+| M10 | /api/runs/* (run listing, detail, optional `RunDetail.learnability`, artifact 404) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_runs.py`; `contracts/serve_app.py`; `tests/unit/test_serve_app.py`, `tests/unit/test_contracts.py` |
 | M11 | /api/signals/* (learning signals, write-token protected) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_signals.py` |
 | M12 | /api/locale (get/put, cookie ahadiff_lang) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_locale.py` |
 | M13 | /api/install (install targets) | Blueprint | IMPL | N/A | IMPL | `serve/routes_install.py` |

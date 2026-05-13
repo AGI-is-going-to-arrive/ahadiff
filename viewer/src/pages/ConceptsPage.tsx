@@ -3,9 +3,10 @@ import { ApiError } from '../api/client';
 import { fetchGraphConcepts, refreshGraph } from '../api/graph';
 import type { ConceptGraphResponse } from '../api/types';
 import AppShell from '../components/AppShell';
-import ConceptGraph from '../components/ConceptGraph';
+import ConceptGraph, { conceptGraphNodeMatchesFocus } from '../components/ConceptGraph';
 import ConceptLedger from '../components/ConceptLedger';
 import { useTranslation } from '../i18n/useTranslation';
+import { useGraphStore } from '../state/graph-store';
 import '../components/Concepts.css';
 
 type ConceptsTab = 'ledger' | 'graph';
@@ -31,6 +32,12 @@ function parseHashParams(): { tab?: string; focus?: string; run?: string } {
     focus: params.get('focus') ?? undefined,
     run: params.get('run') ?? undefined,
   };
+}
+
+function tabFromHashParams(params: { tab?: string; focus?: string }): ConceptsTab {
+  if (params.tab === 'graph') return 'graph';
+  if (params.tab === 'ledger') return 'ledger';
+  return params.focus ? 'graph' : 'ledger';
 }
 
 function writeHashParams(
@@ -62,15 +69,15 @@ type ErrorFlag = 'fetch_failed' | string | null;
 export default function ConceptsPage() {
   const { t } = useTranslation();
   const hashParams = parseHashParams();
-  const initialTab: ConceptsTab =
-    hashParams.tab === 'graph' || hashParams.focus ? 'graph' : 'ledger';
-  const [activeTab, setActiveTab] = useState<ConceptsTab>(initialTab);
+  const [activeTab, setActiveTab] = useState<ConceptsTab>(
+    () => tabFromHashParams(hashParams),
+  );
 
   const [graphData, setGraphData] = useState<ConceptGraphResponse | null>(null);
   const [graphLoading, setGraphLoading] = useState(false);
   const [graphError, setGraphError] = useState<ErrorFlag>(null);
   const [showAll, setShowAll] = useState(false);
-  const [focusNodeId, setFocusNodeId] = useState<string | null>(
+  const [focusParam, setFocusParam] = useState<string | null>(
     () => hashParams.focus ?? null,
   );
   const [runFilter, setRunFilter] = useState<string | undefined>(hashParams.run);
@@ -83,9 +90,19 @@ export default function ConceptsPage() {
   const refreshAbortRef = useRef<AbortController | null>(null);
   const refreshRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showAllRef = useRef(showAll);
+  const graphStatus = useGraphStore((s) => s.status);
+  const fetchGraphStatus = useGraphStore((s) => s.fetch);
 
   const REFRESH_MAX_RETRIES = 2;
   const REFRESH_RETRY_DELAY_MS = 2000;
+  const focusNodeId = activeTab === 'graph' ? focusParam : null;
+  const focusConceptName = activeTab === 'ledger' ? focusParam : null;
+  const graphAvailability = graphStatus ?? graphData?.status ?? null;
+  const graphifyAvailable = Boolean(
+    graphAvailability?.enabled &&
+      graphAvailability.source_exists &&
+      graphAvailability.has_graph,
+  );
 
   const fetchGraphData = useCallback(async (all = false) => {
     abortRef.current?.abort();
@@ -109,6 +126,10 @@ export default function ConceptsPage() {
   }, []);
 
   useEffect(() => {
+    void fetchGraphStatus();
+  }, [fetchGraphStatus]);
+
+  useEffect(() => {
     showAllRef.current = showAll;
   }, [showAll]);
 
@@ -122,8 +143,8 @@ export default function ConceptsPage() {
   useEffect(() => {
     const syncHashState = () => {
       const params = parseHashParams();
-      setActiveTab(params.tab === 'graph' || params.focus ? 'graph' : 'ledger');
-      setFocusNodeId(params.focus ?? null);
+      setActiveTab(tabFromHashParams(params));
+      setFocusParam(params.focus ?? null);
       setRunFilter(params.run);
     };
     window.addEventListener('hashchange', syncHashState);
@@ -132,9 +153,7 @@ export default function ConceptsPage() {
 
   useEffect(() => {
     if (!focusNodeId || !graphData?.truncated || showAll) return;
-    const visible = graphData.nodes.some(
-      (node) => node.id === focusNodeId || node.name === focusNodeId,
-    );
+    const visible = graphData.nodes.some((node) => conceptGraphNodeMatchesFocus(node, focusNodeId));
     if (!visible) setShowAll(true);
   }, [focusNodeId, graphData, showAll]);
 
@@ -300,7 +319,12 @@ export default function ConceptsPage() {
         hidden={activeTab !== 'ledger'}
       >
         {activeTab === 'ledger' && (
-          <ConceptLedger runFilter={runFilter} onRunFilterChange={handleRunFilterChange} />
+          <ConceptLedger
+            runFilter={runFilter}
+            onRunFilterChange={handleRunFilterChange}
+            focusConcept={focusConceptName ?? undefined}
+            graphifyAvailable={graphifyAvailable}
+          />
         )}
       </section>
 
