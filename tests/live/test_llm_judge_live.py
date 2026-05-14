@@ -245,7 +245,7 @@ def test_live_spec_semantic_alignment_review_writes_artifact(tmp_path: Path) -> 
                 "source_kind": "patch_file",
                 "capability_level": 3,
                 "degraded_flags": {},
-                "privacy_mode": "strict_local",
+                "privacy_mode": "explicit_remote",
             }
         ),
         encoding="utf-8",
@@ -321,7 +321,7 @@ def test_live_spec_semantic_alignment_review_writes_artifact(tmp_path: Path) -> 
                     ),
                     api_key=api_key,
                     security_config=SecurityConfig(),
-                    privacy_mode="strict_local",
+                    privacy_mode="explicit_remote",
                     output_lang="en",
                     request_timeout_seconds=90,
                     max_concurrent=1,
