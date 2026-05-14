@@ -2,7 +2,9 @@
 
 > Research date: 2026-04-27 | Graphify commit: HEAD of `safishamsi/graphify` | AhaDiff audit target: working tree on top of `a3deaca` (2026-04-29)
 
-> Current status note (2026-05-08): this document started as a 2026-04-27 compatibility baseline. The current branch now already has real `graph.json` parsing/validation, `links`/`edges` normalization, hyperedge handling, matcher/linker/slicer/search helpers, `/api/search` graph-node merge, `GET /api/graph/status`, and `GET /api/graph/concepts`. Serve-time consumers now read only the imported artifact `.ahadiff/graphify/graph.json`; raw `graphify-out/graph.json` remains an untrusted source used for detection/import/freshness only. The graph concepts endpoint gives the frontend sanitized nodes/edges. The current ConceptGraph UI has Graph / List views only: it does not use cluster/community grouping, keeps large graphs in List by default, still allows Full graph, and supports pan/zoom without hard viewport bounds. Graphify import provenance, per-run `graphify_context.json`, token-reduction metrics, and the release perf gate are wired. 5E is still partial because full provenance/CLI polish and real large-repo signoff evidence remain.
+> Current status note (2026-05-08): this document started as a 2026-04-27 compatibility baseline. The current branch now already has real `graph.json` parsing/validation, `links`/`edges` normalization, hyperedge handling, matcher/linker/slicer/search helpers, `/api/search` graph-node merge, `GET /api/graph/status`, and `GET /api/graph/concepts`. Serve-time consumers now read only the imported artifact `.ahadiff/graphify/graph.json`; raw `graphify-out/graph.json` remains an untrusted source used for detection/import/freshness only. The graph concepts endpoint gives the frontend sanitized nodes/edges. The current ConceptGraph UI has Graph / List views only: it does not use cluster/community grouping, keeps large graphs in List by default, still allows Full graph, and supports pan/zoom without hard viewport bounds. Graphify import provenance, per-run `graphify_context.json`, token-reduction metrics, and the release perf gate are wired. 5E is still partial because full source/provenance UI and real large-repo signoff evidence remain.
+
+> Current status note (2026-05-15): the learn pipeline now has a narrow CLI bridge. Step 10 detects an external `graphify` executable, runs `graphify update <repo>`, then force-imports the refreshed `graphify-out/graph.json` before appending concepts. If the CLI is missing, AhaDiff keeps the older optional behavior of importing an existing `graphify-out/graph.json`; if the CLI exists but update fails or times out, it degrades silently and does not import a stale graph as if it were refreshed. Graphify source import now uses the parser's 50 MiB cap. This does not change the remaining evidence gap: there is still no real large-repo signoff fixture in this document.
 
 ## 1. Graphify Official Repo Summary
 
@@ -114,6 +116,7 @@ class GraphifyStatus:
 - Parses JSON first (`safe_json_loads()`), sanitizes recursively, then validates/normalizes with `parse_graph_json_text()`
 - Writes the validated, normalized artifact to `.ahadiff/graphify/graph.json`
 - Records in metadata/status: `enabled`, `source_exists`, `imported_exists`, `freshness`, `provenance`
+- During `ahadiff learn`, Step 10 may first run external `graphify update <repo>` and then call `import_graphify_artifact(..., force=True)` before concepts are appended
 
 ### 2.3 Serve Projection (`serve/routes_runs.py`)
 ```python
@@ -144,6 +147,7 @@ The design plan (`ahadiff-graphify-integration.md` + review) now has these piece
 - 4-value projection: `{current, recent}` → fresh, `{stale, outdated, unknown}` → stale, `unavailable` → unavailable, `disabled` → disabled
 - Backend helpers for subgraph slicing, fuzzy concept matching, concept linking, and graph search
 - `GET /api/graph/status` and `/api/search` graph-node merge
+- Optional external CLI bridge for `graphify update <repo>` during learn; failure only degrades the Graphify enhancement
 - Remaining deeper work is now around frontend surfacing, optional graph slice emission, and real large-repo signoff evidence
 
 ### 2.6 Test Coverage
@@ -155,6 +159,7 @@ The design plan (`ahadiff-graphify-integration.md` + review) now has these piece
 | `tests/unit/test_graphify_matcher.py` | normalization, token overlap, containment, zero-width/control-char handling |
 | `tests/unit/test_graphify_linker.py` | label matching, duplicate labels, score propagation, deduplication |
 | `tests/unit/test_graphify_search.py` | graph-node search, limit/threshold behavior, search-result ranking |
+| `tests/unit/test_orchestrator.py` | learn Step 10 Graphify update/import ordering and optional failure behavior |
 | `tests/unit/test_routes_graph.py` | `/api/graph/status` payload, workspace-root relative path, missing/invalid graph fallback |
 | `tests/unit/test_serve_app.py` | `_project_graphify` for full/learning_only/empty modes, plus legacy status normalization |
 | `tests/unit/test_contracts.py` | `RunDetail.graphify_notes` field validation |
@@ -275,7 +280,7 @@ def slice_subgraph(graph: GraphifyGraph, changed_files: list[str], hops: int = 2
 ```
 
 ### 5.5 Remaining Priority Order
-1. **5E frontend polish**: basic cross-page freshness/status now uses the shared `GraphifyCard`; full source/provenance UI, CLI polish, and large-repo signoff are still pending
+1. **5E frontend polish**: basic cross-page freshness/status now uses the shared `GraphifyCard`; the learn-time CLI update bridge exists, but full source/provenance UI and real large-repo signoff are still pending
 2. **Optional graph slice artifact**: `graphify_context.json` is emitted today; a real `graph.slice.json` remains future work
 3. **Frontend surfacing**: expose `community` / `confidence` in a future filter/detail view rather than only preserving them in metadata; do not treat clustering as current UI behavior
 4. **Stronger compatibility evidence**: add at least one benchmark or regression fixture sourced from a real Graphify v0.5 export, not only the synthetic 15-node smoke fixture

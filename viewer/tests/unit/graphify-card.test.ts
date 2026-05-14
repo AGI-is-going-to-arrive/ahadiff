@@ -223,7 +223,7 @@ describe('GraphifyCard DOM rendering', () => {
     await expect(page.locator('.graphify-card__title').textContent()).resolves.toBe(
       'Graphify source',
     );
-    await expect(page.locator('.graphify-badge').textContent()).resolves.toContain('Stale');
+    await expect(page.locator('.graphify-badge').textContent()).resolves.toContain('Needs Update');
     const body = page.locator('.graphify-card__body');
     await expect(body.textContent()).resolves.toContain('48 nodes');
     await expect(body.textContent()).resolves.toContain('71 edges');

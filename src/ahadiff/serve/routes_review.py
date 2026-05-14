@@ -15,9 +15,10 @@ from ahadiff.contracts import (
     ReviewRateRequest,
     WeakConceptsResponse,
 )
-from ahadiff.core.errors import StorageError
+from ahadiff.core.errors import InputError, StorageError
 from ahadiff.review.database import (
     connect_review_db,
+    import_cards_from_runs,
     initialize_review_db,
     list_due_cards,
     record_card_review_once,
@@ -83,6 +84,26 @@ async def post_review_queue_state(request: Request) -> JSONResponse:
 def _review_rate_sync(state: ServeState, body: ReviewRateRequest) -> ReviewUpdate | None:
     with serve_repo_write_lock(state, command="serve review-rate"):
         initialize_review_db(state.review_db_path)
+        dr = configured_desired_retention(state)
+        try:
+            return record_card_review_once(
+                state.review_db_path,
+                card_id=body.card_id,
+                answer=body.answer,
+                idempotency_key=body.idempotency_key,
+                peeked_this_session=body.peeked_this_session,
+                selected_choice_label=body.selected_choice_label,
+                desired_retention=dr,
+            )
+        except InputError as exc:
+            if "active review card does not exist" not in str(exc):
+                raise
+        import_cards_from_runs(
+            state.review_db_path,
+            state.state_dir,
+            desired_retention=dr,
+            on_error=lambda _p, _e: None,
+        )
         return record_card_review_once(
             state.review_db_path,
             card_id=body.card_id,
@@ -90,7 +111,7 @@ def _review_rate_sync(state: ServeState, body: ReviewRateRequest) -> ReviewUpdat
             idempotency_key=body.idempotency_key,
             peeked_this_session=body.peeked_this_session,
             selected_choice_label=body.selected_choice_label,
-            desired_retention=configured_desired_retention(state),
+            desired_retention=dr,
         )
 
 

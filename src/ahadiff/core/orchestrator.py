@@ -1339,6 +1339,26 @@ def run_learn_pipeline(
                     _emit(10, "Updating concepts")
                     _check_cancelled(_cancelled)
 
+                    # Step 10 is the commit boundary for published learn results.
+                    # Once concepts write starts, late cancellation must not roll back
+                    # finalized artifacts or global concept state.
+
+                    try:
+                        from ahadiff.git.capture import import_graphify_artifact
+                        from ahadiff.graphify.cli import detect_graphify_cli, run_graphify_update
+
+                        graphify_source_path = root / "graphify-out" / "graph.json"
+                        graphify_cli_available = detect_graphify_cli() is not None
+                        graphify_updated = (
+                            run_graphify_update(root) if graphify_cli_available else False
+                        )
+                        if graphify_updated:
+                            import_graphify_artifact(root, force=True)
+                        elif not graphify_cli_available and graphify_source_path.exists():
+                            import_graphify_artifact(root, force=False)
+                    except Exception as graphify_refresh_error:
+                        learn_warnings.append(f"graphify refresh skipped: {graphify_refresh_error}")
+
                     try:
                         from ahadiff.wiki.concepts import append_concepts
 
@@ -1352,9 +1372,6 @@ def run_learn_pipeline(
                         )
                     except Exception as concept_error:
                         learn_warnings.append(f"concepts append failed: {concept_error}")
-                    # Step 10 is the commit boundary for published learn results.
-                    # Once concepts write starts, late cancellation must not roll back
-                    # finalized artifacts or global concept state.
         except AhaDiffError as exc:
             if str(exc) == "cancelled":
                 _cleanup_cancelled_run(run_path=run_path, learn_outcome=learn_outcome)

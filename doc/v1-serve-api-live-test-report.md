@@ -83,6 +83,20 @@
 > passed. Integration, eval, live judge, wheel build, viewer build, full
 > Playwright, and remote GitHub Actions were not rerun in this pass.
 
+> Current status note (2026-05-15): this file remains a historical 2026-04-27
+> live snapshot. Current serve has 72 concrete `/api/*` routes plus one
+> `/api/{rest_of_path:path}` catchall and `/healthz`. `POST /api/review/rate`
+> and `POST /api/signals/srs-review` now retry once after lazy-importing
+> `.ahadiff/runs/*/quiz/cards.jsonl` when the requested active review card is
+> missing; the import runs under the repo write lock and silently skips bad run
+> artifacts through `on_error`. `POST /api/graph/refresh` keeps the same write
+> token, origin/referrer, and repo-lock protections, and its exact route now
+> uses the long 600s request timeout. Matching verification for this follow-up:
+> backend unit `2486 passed`, integration `11 passed`, eval `9 passed`, ruff
+> check, ruff format check, pyright, viewer typecheck, Vitest `349 passed`,
+> i18n `1443/1443`, and `git diff --check HEAD` passed. Wheel build, viewer
+> build, full Playwright, live judge, and remote GitHub Actions were not rerun.
+
 ## 2026-04-27 Live Concrete Endpoints (22)
 
 ### Public GET Endpoints (no auth required)
@@ -244,11 +258,13 @@ file_refs: string[]
 | Endpoint | Request DTO | Required Fields |
 |----------|------------|-----------------|
 | PUT /api/locale | `SetLocaleRequest` | `lang: "en"\|"zh-CN"` |
-| POST /api/review/rate | `ReviewRateRequest` | `idempotency_key, card_id, answer: "good"\|"hard"\|"wrong"` |
+| POST /api/review/rate | `ReviewRateRequest` | `idempotency_key, card_id, answer: "easy"\|"good"\|"hard"\|"wrong"` |
 | POST /api/signals/mark-wrong | `MarkWrongRequest` | `idempotency_key, claim_id` + optional `reason` |
 | POST /api/signals/quiz-answer | `QuizAnswerRequest` | `idempotency_key, quiz_id, choice, correct` |
-| POST /api/signals/srs-review | `ReviewSignalRequest` | `idempotency_key, card_id, answer` |
+| POST /api/signals/srs-review | `ReviewSignalRequest` | `idempotency_key, card_id, answer: "easy"\|"good"\|"hard"\|"wrong"` |
 | POST /api/signals/helpfulness | `HelpfulnessRequest` | `idempotency_key, target_id` + optional `target_kind, payload` |
+
+Current behavior note: review rating and SRS review both lazy-import run cards and retry once when the requested active card is missing.
 
 ## Pagination Behavior
 

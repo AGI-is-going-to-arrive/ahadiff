@@ -291,127 +291,129 @@ export default function ConceptsPage() {
 
   return (
     <AppShell>
-      <header className="concepts-page__header">
-        <h1 className="concepts-page__title">{t('Concept.title')}</h1>
-      </header>
+      <div className="concepts-page" data-page="concepts">
+        <header className="concepts-page__header">
+          <h1 className="concepts-page__title">{t('Concept.title')}</h1>
+        </header>
 
-      <div className="concepts-page__tabs" role="tablist" aria-label={t('Concept.title')}>
-        {CONCEPTS_TABS.map((tab) => (
-          <button
-            key={tab}
-            id={TAB_IDS[tab]}
-            role="tab"
-            type="button"
-            className={`concepts-page__tab${activeTab === tab ? ' concepts-page__tab--active' : ''}`}
-            aria-selected={activeTab === tab}
-            aria-controls={TAB_PANEL_IDS[tab]}
-            tabIndex={activeTab === tab ? 0 : -1}
-            onClick={() => activateTab(tab)}
-            onKeyDown={handleTabKeyDown}
-          >
-            {t(TAB_LABEL_KEYS[tab])}
-          </button>
-        ))}
-      </div>
+        <div className="concepts-page__tabs" role="tablist" aria-label={t('Concept.title')}>
+          {CONCEPTS_TABS.map((tab) => (
+            <button
+              key={tab}
+              id={TAB_IDS[tab]}
+              role="tab"
+              type="button"
+              className={`concepts-page__tab${activeTab === tab ? ' concepts-page__tab--active' : ''}`}
+              aria-selected={activeTab === tab}
+              aria-controls={TAB_PANEL_IDS[tab]}
+              tabIndex={activeTab === tab ? 0 : -1}
+              onClick={() => activateTab(tab)}
+              onKeyDown={handleTabKeyDown}
+            >
+              {t(TAB_LABEL_KEYS[tab])}
+            </button>
+          ))}
+        </div>
 
-      <section
-        id={TAB_PANEL_IDS.ledger}
-        role="tabpanel"
-        aria-labelledby={TAB_IDS.ledger}
-        hidden={activeTab !== 'ledger'}
-      >
-        {activeTab === 'ledger' && (
-          <ConceptLedger
-            runFilter={runFilter}
-            onRunFilterChange={handleRunFilterChange}
-            focusConcept={focusConceptName ?? undefined}
-            graphifyAvailable={graphifyAvailable}
-          />
-        )}
-      </section>
+        <section
+          id={TAB_PANEL_IDS.ledger}
+          role="tabpanel"
+          aria-labelledby={TAB_IDS.ledger}
+          hidden={activeTab !== 'ledger'}
+        >
+          {activeTab === 'ledger' && (
+            <ConceptLedger
+              runFilter={runFilter}
+              onRunFilterChange={handleRunFilterChange}
+              focusConcept={focusConceptName ?? undefined}
+              graphifyAvailable={graphifyAvailable}
+            />
+          )}
+        </section>
 
-      <section
-        id={TAB_PANEL_IDS.graph}
-        role="tabpanel"
-        aria-labelledby={TAB_IDS.graph}
-        hidden={activeTab !== 'graph'}
-      >
-        {activeTab === 'graph' && (
-          <>
-            <div className="concepts-page__graph-toolbar">
-              <button
-                type="button"
-                className="concepts-page__refresh-btn"
-                onClick={() => void handleRefreshGraph()}
-                disabled={refreshing}
-                aria-busy={refreshing}
-              >
-                {refreshing && <span className="loading-spinner" aria-hidden="true" />}
-                {t('Concept.refresh_graph')}
-              </button>
-              {refreshMessage && (
-                <span
-                  role={refreshMessage.kind === 'error' ? 'alert' : 'status'}
-                  aria-live="polite"
-                  className={`concepts-page__refresh-msg concepts-page__refresh-msg--${refreshMessage.kind}`}
-                >
-                  {refreshMessage.text}
-                </span>
-              )}
-            </div>
-
-            {graphLoading && (
-              <div role="status" aria-live="polite" className="concepts-page__loading">
-                <span className="loading-spinner" />
-                {t('Serve.loading')}
-              </div>
-            )}
-
-            {graphErrorMessage && (
-              <div role="alert" className="concepts-page__error">
-                {graphErrorMessage}
+        <section
+          id={TAB_PANEL_IDS.graph}
+          role="tabpanel"
+          aria-labelledby={TAB_IDS.graph}
+          hidden={activeTab !== 'graph'}
+        >
+          {activeTab === 'graph' && (
+            <>
+              <div className="concepts-page__graph-toolbar">
                 <button
                   type="button"
-                  className="retry-btn"
-                  onClick={() => void fetchGraphData(showAll, focusNodeId)}
+                  className="concepts-page__refresh-btn"
+                  onClick={() => void handleRefreshGraph()}
+                  disabled={refreshing}
+                  aria-busy={refreshing}
                 >
-                  {t('Error.retry')}
+                  {refreshing && <span className="loading-spinner" aria-hidden="true" />}
+                  {t('Concept.refresh_graph')}
                 </button>
+                {refreshMessage && (
+                  <span
+                    role={refreshMessage.kind === 'error' ? 'alert' : 'status'}
+                    aria-live="polite"
+                    className={`concepts-page__refresh-msg concepts-page__refresh-msg--${refreshMessage.kind}`}
+                  >
+                    {refreshMessage.text}
+                  </span>
+                )}
               </div>
-            )}
 
-            {!graphLoading && !graphErrorMessage && graphData && (
-              <ConceptGraph
-                nodes={graphData.nodes}
-                edges={graphData.edges}
-                status={graphData.status}
-                truncated={graphData.truncated}
-                focusNodeId={focusNodeId}
-                onShowAll={graphData.truncated && !showAll ? handleShowAll : undefined}
-                currentRun={runFilter}
-              />
-            )}
+              {graphLoading && (
+                <div role="status" aria-live="polite" className="concepts-page__loading">
+                  <span className="loading-spinner" />
+                  {t('Serve.loading')}
+                </div>
+              )}
 
-            {!graphLoading && !graphErrorMessage && !graphData && (
-              <ConceptGraph
-                nodes={[]}
-                edges={[]}
-                status={{
-                  enabled: false,
-                  source_exists: false,
-                  has_graph: false,
-                  freshness: null,
-                  node_count: 0,
-                  edge_count: 0,
-                  source_path: null,
-                  provenance: null,
-                }}
-                truncated={false}
-              />
-            )}
-          </>
-        )}
-      </section>
+              {graphErrorMessage && (
+                <div role="alert" className="concepts-page__error">
+                  {graphErrorMessage}
+                  <button
+                    type="button"
+                    className="retry-btn"
+                    onClick={() => void fetchGraphData(showAll, focusNodeId)}
+                  >
+                    {t('Error.retry')}
+                  </button>
+                </div>
+              )}
+
+              {!graphLoading && !graphErrorMessage && graphData && (
+                <ConceptGraph
+                  nodes={graphData.nodes}
+                  edges={graphData.edges}
+                  status={graphData.status}
+                  truncated={graphData.truncated}
+                  focusNodeId={focusNodeId}
+                  onShowAll={graphData.truncated && !showAll ? handleShowAll : undefined}
+                  currentRun={runFilter}
+                />
+              )}
+
+              {!graphLoading && !graphErrorMessage && !graphData && (
+                <ConceptGraph
+                  nodes={[]}
+                  edges={[]}
+                  status={{
+                    enabled: false,
+                    source_exists: false,
+                    has_graph: false,
+                    freshness: null,
+                    node_count: 0,
+                    edge_count: 0,
+                    source_path: null,
+                    provenance: null,
+                  }}
+                  truncated={false}
+                />
+              )}
+            </>
+          )}
+        </section>
+      </div>
     </AppShell>
   );
 }

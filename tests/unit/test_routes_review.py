@@ -81,6 +81,14 @@ def _write_review_cards(db_path: Path, cards_path: Path, cards: list[ReviewCard]
     assert import_cards_from_jsonl(db_path, cards_path) == len(cards)
 
 
+def _write_cards_artifact(cards_path: Path, cards: list[ReviewCard]) -> None:
+    cards_path.parent.mkdir(parents=True, exist_ok=True)
+    cards_path.write_text(
+        "".join(json.dumps(card.model_dump(mode="json"), sort_keys=True) + "\n" for card in cards),
+        encoding="utf-8",
+    )
+
+
 def _seed_review_cards(state_dir: Path, cards: list[ReviewCard]) -> Path:
     db_path = state_dir / "review.sqlite"
     initialize_review_db(db_path)
@@ -180,6 +188,39 @@ def test_review_rate_valid_payload_records_review_once(tmp_path: Path) -> None:
         review_log_count = connection.execute("SELECT COUNT(*) FROM review_logs").fetchone()[0]
     assert review_log_count == 1
     assert _learning_signal_payload(db_path, "review-api-1")["answer"] == "good"
+
+
+def test_review_rate_lazy_imports_run_cards_before_rating(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    _write_cards_artifact(
+        state_dir / "runs" / "run-1" / "quiz" / "cards.jsonl",
+        [_review_card("lazy-card")],
+    )
+    client = _client(state_dir)
+    payload = ReviewRateRequest(
+        card_id="lazy-card",
+        answer="good",
+        idempotency_key="review-lazy-import",
+    ).model_dump(mode="json")
+
+    response = client.post("/api/review/rate", headers=_AUTH, json=payload)
+    duplicate = client.post("/api/review/rate", headers=_AUTH, json=payload)
+
+    assert response.status_code == 200
+    assert response.json()["inserted"] is True
+    assert response.json()["review"]["card_id"] == "lazy-card"
+    assert duplicate.status_code == 200
+    assert duplicate.json() == {"inserted": False}
+    with connect_review_db(db_path) as connection:
+        review_log_count = connection.execute("SELECT COUNT(*) FROM review_logs").fetchone()[0]
+        card_count = connection.execute(
+            "SELECT COUNT(*) FROM cards WHERE id = 'lazy-card'"
+        ).fetchone()[0]
+    assert card_count == 1
+    assert review_log_count == 1
+    assert _learning_signal_payload(db_path, "review-lazy-import")["answer"] == "good"
 
 
 def test_review_rate_invalid_payload_returns_422(tmp_path: Path) -> None:

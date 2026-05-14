@@ -853,7 +853,9 @@ def import_graphify_artifact(workspace_root: Path, *, force: bool = False) -> Gr
 
     imported_dir = status.imported_path.parent
     imported_dir.mkdir(parents=True, exist_ok=True)
-    graph_limit = _effective_max_patch_bytes(None)
+    from ahadiff.graphify.parser import MAX_GRAPH_FILE_BYTES
+
+    graph_limit = MAX_GRAPH_FILE_BYTES
     graph_bytes = _read_regular_file_no_follow_bounded(
         status.source_path,
         max_bytes=graph_limit,
@@ -1229,7 +1231,8 @@ def _capture_since(
     max_patch_bytes: int,
 ) -> _RawCapture:
     ensure_head_exists(repo)
-    args = ["rev-list", "--first-parent", f"--since={since}"]
+    git_since = _normalize_git_since_argument(since)
+    args = ["rev-list", "--first-parent", f"--since={git_since}"]
     if author is not None:
         args.insert(2, f"--author={author}")
     args.extend(["--end-of-options", "HEAD"])
@@ -1312,6 +1315,12 @@ def _capture_since(
         before_text_by_path=before_text_by_path,
         after_text_by_path=after_text_by_path,
     )
+
+
+def _normalize_git_since_argument(since: str) -> str:
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", since):
+        return f"{since}T00:00:00Z"
+    return since
 
 
 def _capture_worktree(

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { NavLink, useMatch } from 'react-router-dom';
 import {
   BookOpen,
@@ -14,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useTranslation, type MessageKey } from '../i18n/useTranslation';
 import { useRunsStore } from '../state/runs-store';
+import { getConfig } from '../api/config';
 import './Sidebar.css';
 
 interface NavEntry {
@@ -38,6 +40,17 @@ interface SidebarProps {
 }
 
 const VIEWER_VERSION = 'v1.1.0-alpha.0';
+const PRIVACY_MODE_LABEL_KEYS: Record<string, MessageKey> = {
+  strict_local: 'Settings_page.privacy_mode_strict_local',
+  redacted_remote: 'Settings_page.privacy_mode_redacted_remote',
+  explicit_remote: 'Settings_page.privacy_mode_explicit_remote',
+};
+
+export type ProviderStatus =
+  | { state: 'loading' }
+  | { state: 'empty' }
+  | { state: 'error' }
+  | { state: 'ready'; privacyMode: string | null; provider: string | null };
 
 function formatRelativeTime(isoDate: string, locale: string): string {
   const date = new Date(isoDate);
@@ -55,6 +68,46 @@ function formatRelativeTime(isoDate: string, locale: string): string {
   return rtf.format(-diffSec, 'second');
 }
 
+function useProviderStatus() {
+  const [status, setStatus] = useState<ProviderStatus>({ state: 'loading' });
+  useEffect(() => {
+    const controller = new AbortController();
+    getConfig({ signal: controller.signal })
+      .then((cfg) => {
+        if (controller.signal.aborted) return;
+        if (!cfg.privacy_mode && !cfg.generate_provider) {
+          setStatus({ state: 'empty' });
+          return;
+        }
+        setStatus({
+          state: 'ready',
+          privacyMode: cfg.privacy_mode,
+          provider: cfg.generate_provider,
+        });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setStatus({ state: 'error' });
+      });
+    return () => controller.abort();
+  }, []);
+  return status;
+}
+
+export function formatProviderStatus(
+  status: ProviderStatus,
+  t: (key: MessageKey) => string,
+): string {
+  if (status.state === 'loading') return t('Sidebar.status.loading_config');
+  if (status.state === 'error') return t('Sidebar.status.config_unavailable');
+  if (status.state === 'empty') return t('Sidebar.status.no_provider');
+  const parts: string[] = [];
+  if (status.privacyMode) {
+    parts.push(t(PRIVACY_MODE_LABEL_KEYS[status.privacyMode] ?? 'Sidebar.status.unknown_privacy'));
+  }
+  if (status.provider) parts.push(status.provider);
+  return parts.length > 0 ? parts.join(' · ') : t('Sidebar.status.no_provider');
+}
+
 export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProps) {
   const { t, locale } = useTranslation();
   const runMatch = useMatch('/run/:runId/*');
@@ -62,6 +115,8 @@ export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProp
   const runs = useRunsStore((s) => s.runs);
   const firstRunId = runs[0]?.run_id;
   const runId = activeRunId ?? firstRunId;
+  const providerStatus = useProviderStatus();
+  const providerStatusText = formatProviderStatus(providerStatus, t);
 
   const sections: NavSection[] = [
     {
@@ -209,10 +264,10 @@ export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProp
       >
         <span className="dot" aria-hidden="true" />
         <div className="status-text">
-          <span>{t('Sidebar.status.mode')} </span>
+          <span>{providerStatusText}</span>
           <span>{latestRunText}</span>
         </div>
-        <span className="mono" style={{ marginLeft: 'auto' }}>{VIEWER_VERSION}</span>
+        <span className="side-foot__version mono">{VIEWER_VERSION}</span>
       </div>
     </nav>
   );

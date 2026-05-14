@@ -27,6 +27,7 @@ from ahadiff.review.database import (
     connect_review_db,
     finalize_targeted_verify_event,
     import_cards_from_jsonl,
+    import_cards_from_runs,
     import_results_tsv_lossy,
     initialize_review_db,
     insert_learning_signal,
@@ -1410,6 +1411,80 @@ def test_import_cards_marks_missing_run_cards_stale_instead_of_leaving_duplicate
         ("card-1", "stale", "staleness_unknown"),
         ("card-2", "active", None),
     ]
+
+
+def test_import_cards_from_runs_marks_empty_run_cards_stale(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    cards_path = state_dir / "runs" / "run-1" / "quiz" / "cards.jsonl"
+    _write_cards_jsonl(cards_path, (_review_card("card-1"),))
+    assert import_cards_from_runs(db_path, state_dir) == 1
+    cards_path.write_text("", encoding="utf-8")
+
+    assert import_cards_from_runs(db_path, state_dir) == 0
+
+    assert list_due_cards(db_path) == ()
+    with connect_review_db(db_path) as connection:
+        row = connection.execute(
+            "SELECT card_state, stale_reason FROM cards WHERE id = 'card-1'"
+        ).fetchone()
+    assert tuple(row) == ("stale", "staleness_unknown")
+
+
+def test_import_cards_from_runs_skips_bad_utf8_and_imports_later_good_run(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    bad_cards = state_dir / "runs" / "run-bad" / "quiz" / "cards.jsonl"
+    good_cards = state_dir / "runs" / "run-good" / "quiz" / "cards.jsonl"
+    bad_cards.parent.mkdir(parents=True, exist_ok=True)
+    bad_cards.write_bytes(b"\xff\xfe\xfa")
+    _write_cards_jsonl(
+        good_cards,
+        (_review_card("card-good").model_copy(update={"run_id": "run-good"}),),
+    )
+    errors: list[tuple[Path, Exception]] = []
+
+    inserted = import_cards_from_runs(
+        db_path,
+        state_dir,
+        on_error=lambda p, e: errors.append((p, e)),
+    )
+
+    assert inserted == 1
+    assert len(errors) == 1
+    assert errors[0][0] == bad_cards
+    assert isinstance(errors[0][1], InputError)
+    assert [card.card_id for card in list_due_cards(db_path)] == ["card-good"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation requires elevated Windows privileges")
+def test_import_cards_from_runs_skips_symlinked_run_directory(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    runs_dir = state_dir / "runs"
+    outside_run = tmp_path / "outside" / "run-link"
+    cards_path = outside_run / "quiz" / "cards.jsonl"
+    _write_cards_jsonl(
+        cards_path,
+        (_review_card("outside-card").model_copy(update={"run_id": "run-link"}),),
+    )
+    runs_dir.mkdir(parents=True)
+    (runs_dir / "run-link").symlink_to(outside_run, target_is_directory=True)
+    errors: list[tuple[Path, Exception]] = []
+
+    inserted = import_cards_from_runs(
+        db_path,
+        state_dir,
+        on_error=lambda p, e: errors.append((p, e)),
+    )
+
+    assert inserted == 0
+    assert len(errors) == 1
+    assert errors[0][0] == runs_dir / "run-link" / "quiz" / "cards.jsonl"
+    assert isinstance(errors[0][1], InputError)
+    assert list_due_cards(db_path) == ()
 
 
 def test_peek_guard_rejects_good_review(tmp_path: Path) -> None:

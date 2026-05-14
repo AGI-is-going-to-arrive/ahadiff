@@ -128,7 +128,7 @@ Task 17 补充：
 
 - `PrivacyMode = strict_local | redacted_remote | explicit_remote`
 - `ScaffoldingLevel = full | hint | compact`
-- `ReviewAnswer = good | hard | wrong`
+- `ReviewAnswer = easy | good | hard | wrong`
 - `Verdict = PASS | CAUTION | FAIL`
 
 ---
@@ -278,6 +278,8 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 - `peeked_this_session` 允许存在于运行时模型，但序列化持久化时不输出
 - `change_kind` 在当前最小合同里只承载 `deleted | renamed | null`
 - `hunk_hash` 算法冻结：只从 hunk header 提取 `section_header`，若非空则在规范化 payload 首行加入 `section:<section_header>`；body 中忽略 `[truncated]` 与 `\ No newline at end of file`，其余行仅去掉行尾 `\r\n`，保留原始 `+/-/ ` 前缀与正文；最终用 `\n` 连接规范化结果，做 SHA-256 并取 hex 前 12 位。因此 LF/CRLF 差异与 hunk 数字范围变化不影响 `hunk_hash`
+- serve 的 review rate 和 signals SRS 路径在 active card 缺失时，可以在同一个 repo 写锁内从 `.ahadiff/runs/*/quiz/cards.jsonl` lazy import 后重试一次；坏 artifact 通过 `on_error` 跳过，不把导入失败暴露成用户评分失败
+- run cards 导入会校验 state path 不穿 symlink/reparse；空 `cards.jsonl` 会把同 run 中不再出现的 active cards 标为 `stale/staleness_unknown`
 
 `ClaimRecord` 最小字段：
 
@@ -641,8 +643,9 @@ Graphify 在 v0.1 中是**可选增强**，不是主链前置。
 
 冻结行为：
 
-- `ahadiff learn` 自动检测 `graphify-out/graph.json`
-- 产物存在则导入 repo-level context
+- `ahadiff learn` 自动检测外部 `graphify` CLI；存在时先执行 `graphify update <repo>`，成功后 `force=True` 导入新的 `graphify-out/graph.json`
+- 外部 `graphify` CLI 不存在时，仍会检测既有 `graphify-out/graph.json`，产物存在则导入 repo-level context
+- 外部 `graphify` CLI 存在但 update 失败时，只按可选增强降级，不把旧图当作本轮已刷新图导入
 - 产物不存在则静默降级
 - `graph.json` 与 Graphify label 同样视为 untrusted，必须先经过 sanitization
 - 保留“内部 7 态 freshness -> 对外 4 值投影”的设计，但 Stage 0 不冻结这 4 个投影标签的具体字面值
@@ -822,8 +825,8 @@ run_id: str
 | **hooks.py** | ⏸ install-only | 当前仅安装 git hook 脚本，不执行用户自定义 hook 命令。hook 执行入口属于后续 Phase |
 | **PUT /api/config** | ✅ persistent | 支持 `lang`/`privacy_mode`/`generate_model`/`judge_model`/`serve_port`/`capture`/`llm` 七组字段，`lang` 同时更新 session locale，其余字段持久化到 per-repo `.ahadiff/config.toml`。`capture` 含 `max_files`/`hard_limit`/`max_patch_bytes`/`file_ranking`；`llm` 含 `input_token_budget`/`output_token_budget`/`request_timeout_seconds`/`max_concurrent`/`retry_attempts`。所有字段带范围校验 |
 | **GET /api/graph/status** | ✅ 已接线 | 以 workspace root 为基准探测 raw `graphify-out/graph.json` 是否存在；当前 node/edge 统计和 `source_path` 读取的是 imported `.ahadiff/graphify/graph.json`，返回 `enabled/source_exists/has_graph/freshness/node_count/edge_count/source_path(relative)` |
-| **GET /api/graph/concepts** | ✅ 已接线 | 从 imported `.ahadiff/graphify/graph.json` 投影前端 ConceptGraph 所需的 sanitized nodes/edges/status；node `metadata` 继续透传，edge `confidence` 只接受 `EXTRACTED` / `INFERRED` / `AMBIGUOUS`，非法值不出现在响应里；前端已从 SVG + d3-force 迁到 `react-force-graph-2d` Canvas renderer，并保留 Graph/List、大图默认 List、Full graph、节点详情和可访问列表 fallback；Graphify import provenance 与 per-run `graphify_context.json` artifact 已有后端接线；完整 source/provenance UI、CLI polish 和真实大仓 signoff 仍属后续工作 |
-| **POST /api/graph/refresh** | ✅ 已接线 | 写 token + Origin/Referer 写保护 + repo 写锁；调用 `import_graphify_artifact(root, force=True)` 重新导入 raw Graphify artifact，并在导入前后用 no-symlink state-path guard 校验 `.ahadiff/graphify/graph.json` |
+| **GET /api/graph/concepts** | ✅ 已接线 | 从 imported `.ahadiff/graphify/graph.json` 投影前端 ConceptGraph 所需的 sanitized nodes/edges/status；node `metadata` 继续透传，edge `confidence` 只接受 `EXTRACTED` / `INFERRED` / `AMBIGUOUS`，非法值不出现在响应里；前端已从 SVG + d3-force 迁到 `react-force-graph-2d` Canvas renderer，并保留 Graph/List、大图默认 List、Full graph、节点详情和可访问列表 fallback；Graphify import provenance 与 per-run `graphify_context.json` artifact 已有后端接线；完整 source/provenance UI 和真实大仓 signoff 仍属后续工作 |
+| **POST /api/graph/refresh** | ✅ 已接线 | 写 token + Origin/Referer 写保护 + repo 写锁；调用 `import_graphify_artifact(root, force=True)` 重新导入 raw Graphify artifact，并在导入前后用 no-symlink state-path guard 校验 `.ahadiff/graphify/graph.json`；request timeout 对精确路径 `/api/graph/refresh` 放宽到 600s |
 | **POST /api/db/check** | ✅ 已接线 | 写 token + Origin/Referer 写保护 + repo 写锁；使用 `check_review_db(state.review_db_path, ensure_schema=False)` 走 read-only SQLite 检查，不调用 `_ensure_schema()`，缺表时计数为 0，不顺手创建或迁移空库 |
 | **POST /api/learn** | ✅ 已接线 | `core/orchestrator.py` 从 `cli.py` 抽出 learn 主链；route 只接受安全 capture / learn 选项，返回 `202 {"task_id": ...}`，provider override 不从 HTTP 暴露；当前有 10 req/min 写限流，401/403/404 不消耗额度 |
 | **GET /api/export/apkg** | ✅ 已接线 | 写 token + Origin/Referer 写保护；读取 review.sqlite active cards 并生成 `ahadiff_review.apkg`；依赖可选 `genanki`，缺依赖返回 `501 FEATURE_UNAVAILABLE`；空卡组允许导出，上限 10,000 张 active cards |

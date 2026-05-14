@@ -15,6 +15,7 @@ from ahadiff.contracts import (
 from ahadiff.core.errors import InputError
 from ahadiff.core.json_util import safe_json_loads
 from ahadiff.review.database import (
+    import_cards_from_runs,
     initialize_review_db,
     insert_learning_signal,
     make_uuid7,
@@ -85,6 +86,26 @@ def _mark_wrong_sync(state: ServeState, body: MarkWrongRequest) -> bool:
 def _srs_review_sync(state: ServeState, body: ReviewSignalRequest) -> ReviewUpdate | None:
     with serve_repo_write_lock(state, command="serve srs-review"):
         initialize_review_db(state.review_db_path)
+        dr = configured_desired_retention(state)
+        try:
+            return record_card_review_once(
+                state.review_db_path,
+                card_id=body.card_id,
+                answer=body.answer,
+                idempotency_key=body.idempotency_key,
+                peeked_this_session=body.peeked_this_session,
+                selected_choice_label=body.selected_choice_label,
+                desired_retention=dr,
+            )
+        except InputError as exc:
+            if "active review card does not exist" not in str(exc):
+                raise
+        import_cards_from_runs(
+            state.review_db_path,
+            state.state_dir,
+            desired_retention=dr,
+            on_error=lambda _p, _e: None,
+        )
         return record_card_review_once(
             state.review_db_path,
             card_id=body.card_id,
@@ -92,7 +113,7 @@ def _srs_review_sync(state: ServeState, body: ReviewSignalRequest) -> ReviewUpda
             idempotency_key=body.idempotency_key,
             peeked_this_session=body.peeked_this_session,
             selected_choice_label=body.selected_choice_label,
-            desired_retention=configured_desired_retention(state),
+            desired_retention=dr,
         )
 
 

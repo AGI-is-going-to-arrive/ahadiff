@@ -82,6 +82,14 @@ def _write_review_cards(db_path: Path, cards_path: Path, cards: list[ReviewCard]
     assert import_cards_from_jsonl(db_path, cards_path) == len(cards)
 
 
+def _write_cards_artifact(cards_path: Path, cards: list[ReviewCard]) -> None:
+    cards_path.parent.mkdir(parents=True, exist_ok=True)
+    cards_path.write_text(
+        "".join(json.dumps(card.model_dump(mode="json"), sort_keys=True) + "\n" for card in cards),
+        encoding="utf-8",
+    )
+
+
 def _seed_review_cards(state_dir: Path, cards: list[ReviewCard]) -> Path:
     db_path = state_dir / "review.sqlite"
     initialize_review_db(db_path)
@@ -218,6 +226,41 @@ def test_srs_review_signal_valid_submission(tmp_path: Path) -> None:
         "answer": "hard",
         "card_id": "card-1",
         "peeked_this_session": False,
+    }
+
+
+def test_srs_review_signal_lazy_imports_run_cards_before_rating(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    _write_cards_artifact(
+        state_dir / "runs" / "run-1" / "quiz" / "cards.jsonl",
+        [_review_card("lazy-choice-card", answer_mode="multiple_choice")],
+    )
+    client = _client(state_dir)
+    payload = ReviewSignalRequest(
+        card_id="lazy-choice-card",
+        answer="wrong",
+        selected_choice_label="B",
+        idempotency_key="srs-lazy-import",
+    ).model_dump(mode="json")
+
+    response = client.post("/api/signals/srs-review", headers=_AUTH, json=payload)
+    duplicate = client.post("/api/signals/srs-review", headers=_AUTH, json=payload)
+
+    assert response.status_code == 200
+    assert response.json()["inserted"] is True
+    assert response.json()["review"]["card_id"] == "lazy-choice-card"
+    assert duplicate.status_code == 200
+    assert duplicate.json() == {"inserted": False}
+    signal_type, signal_payload = _learning_signal_row(db_path, "srs-lazy-import")
+    assert signal_type == "srs_review"
+    assert signal_payload == {
+        "answer": "wrong",
+        "card_id": "lazy-choice-card",
+        "choice_correct": False,
+        "peeked_this_session": False,
+        "selected_choice_label": "B",
     }
 
 

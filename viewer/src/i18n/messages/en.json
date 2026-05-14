@@ -130,7 +130,7 @@
     "list_connections": "{count} connections",
     "health_healthy": "Healthy",
     "health_orphan": "Orphan",
-    "health_stale": "Stale",
+    "health_stale": "Needs Update",
     "health_contradicted": "Contradicted",
     "health_dismissed": "Dismissed",
     "health_filter_label": "Health Status",
@@ -151,7 +151,7 @@
     "freshness": "Freshness",
     "freshness_disabled": "Disabled",
     "freshness_fresh": "Fresh",
-    "freshness_stale": "Stale",
+    "freshness_stale": "Needs Update",
     "freshness_unavailable": "Unavailable",
     "kind": "Kind",
     "legend": "Legend",
@@ -906,7 +906,7 @@
     "graphify_signoff_unavailable": "Unavailable",
     "graphify_freshness": "Freshness",
     "graphify_freshness_fresh": "Fresh",
-    "graphify_freshness_stale": "Stale",
+    "graphify_freshness_stale": "Needs Update",
     "graphify_freshness_unavailable": "Unavailable",
     "graphify_freshness_disabled": "Disabled",
     "graphify_digest": "Graph digest",
@@ -1452,11 +1452,15 @@
     },
     "status": {
       "aria_label": "Runtime status",
+      "config_unavailable": "Configuration unavailable",
       "healthy": "Healthy",
       "latest_run": "Latest {run} · {time}",
       "label": "Last sync",
+      "loading_config": "Loading configuration",
       "mode": "Hybrid · Local embed + BYOK",
-      "no_runs": "No runs yet"
+      "no_provider": "No provider configured",
+      "no_runs": "No runs yet",
+      "unknown_privacy": "Unknown privacy mode"
     },
     "tagline_short": "Ship · Learn · Ratchet"
   },

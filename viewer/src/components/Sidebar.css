@@ -182,9 +182,10 @@
   font-size: 12px;
   color: var(--muted);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .dot {
@@ -207,6 +208,8 @@
 .status-text span:first-child {
   color: var(--ink);
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -215,6 +218,13 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.side-foot__version {
+  width: 100%;
+  text-align: end;
+  padding-left: 18px;
+  color: var(--muted);
 }
 
 /* ---------- Responsive ---------- */

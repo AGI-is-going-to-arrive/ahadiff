@@ -39,7 +39,7 @@ _EVENT_HANDLER_RE = re.compile(
 )
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 _MAX_LABEL_LEN = 500
-_MAX_GRAPH_FILE_BYTES = 50 * 1024 * 1024  # 50 MiB
+MAX_GRAPH_FILE_BYTES = 50 * 1024 * 1024  # 50 MiB
 _MAX_GRAPH_EDGES = 50_000
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 _NODE_FILE_PATH_KEYS = ("file_path", "source_file", "path")
@@ -297,7 +297,7 @@ def parse_graph_json_text(text: str) -> GraphifyGraph:
         raise InputError(f"Graph JSON validation failed: {exc}") from exc
 
 
-def parse_graph_json(path: Path, *, max_bytes: int = _MAX_GRAPH_FILE_BYTES) -> GraphifyGraph:
+def parse_graph_json(path: Path, *, max_bytes: int = MAX_GRAPH_FILE_BYTES) -> GraphifyGraph:
     text = _read_graph_json_text_no_follow(path, max_bytes=max_bytes)
     return parse_graph_json_text(text)
 

@@ -351,14 +351,15 @@ def _rate_limit_response(retry_after: int) -> Response:
 
 _DEFAULT_REQUEST_TIMEOUT = 30.0
 _LONG_REQUEST_TIMEOUT = 600.0
+_LONG_TIMEOUT_EXACT_PATHS = frozenset({"/api/graph/refresh"})
 _LONG_TIMEOUT_PREFIXES = ("/api/learn", "/api/tasks/")
 
 
 class RequestTimeoutMiddleware(BaseHTTPMiddleware):
     """Abort requests that exceed a wall-clock deadline.
 
-    Default: 30 s for most endpoints, 600 s for ``/api/learn`` and
-    ``/api/tasks/{id}/progress`` (SSE streams and long-running submits).
+    Default: 30 s for most endpoints, 600 s for learn/task requests and the
+    explicit graph refresh route.
     """
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
@@ -375,6 +376,8 @@ class RequestTimeoutMiddleware(BaseHTTPMiddleware):
 
 
 def _request_timeout_for(path: str) -> float:
+    if path in _LONG_TIMEOUT_EXACT_PATHS:
+        return _LONG_REQUEST_TIMEOUT
     for prefix in _LONG_TIMEOUT_PREFIXES:
         if path.startswith(prefix):
             return _LONG_REQUEST_TIMEOUT

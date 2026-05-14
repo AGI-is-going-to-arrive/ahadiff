@@ -435,6 +435,10 @@ class TestRequestTimeoutRouting:
     def test_long_timeout_for_task_get(self) -> None:
         assert _request_timeout_for("/api/tasks/abc123") == 600.0
 
+    def test_long_timeout_for_graph_refresh_exact_path_only(self) -> None:
+        assert _request_timeout_for("/api/graph/refresh") == 600.0
+        assert _request_timeout_for("/api/graph/refreshx") == 30.0
+
     def test_default_timeout_for_healthz(self) -> None:
         assert _request_timeout_for("/healthz") == 30.0
 

@@ -1,3 +1,4 @@
+from .cli import detect_graphify_cli, run_graphify_update
 from .freshness import (
     FreshnessProjection,
     FreshnessState,
@@ -23,6 +24,7 @@ __all__ = [
     "GraphifyNode",
     "Subgraph",
     "compute_freshness",
+    "detect_graphify_cli",
     "extract_subgraph",
     "link_concepts",
     "link_concepts_to_entries",
@@ -30,6 +32,7 @@ __all__ = [
     "parse_graph_json",
     "parse_graph_json_text",
     "project_freshness",
+    "run_graphify_update",
     "search_graph_nodes",
     "similarity",
     "slice_by_files",

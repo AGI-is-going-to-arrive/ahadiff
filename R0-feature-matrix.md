@@ -27,11 +27,11 @@
 | A7 | L3: Lesson Generation (3 levels: full/hint/compact) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/lesson/`; prompts: `lesson_generate.md`, `lesson_hint.md`, `lesson_compact.md`; `tests/unit/test_lesson_generator.py` |
 | A8 | L4: Verification Layer (claim extraction + 5-state classify) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/claims/` (extract, verify, classify, schema, negative_scan); `tests/unit/test_claim_extract.py`, `test_claim_verify.py`, `test_claim_classify.py` |
 | A9 | L5: Ratchet Layer (evaluation bundle + improve loop) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/eval/ratchet.py`; `src/ahadiff/improve/`; `tests/unit/test_improve_loop.py` |
-| A10 | L5: review.sqlite (FSRS-6 + schema v1-v7 migration + FTS5) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/review/database.py`, `scheduler.py`, `optimizer.py`, `search.py`; `tests/unit/test_review_*.py` |
+| A10 | L5: review.sqlite (FSRS-6 + schema v10 migration + FTS5) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/review/database.py`, `scheduler.py`, `optimizer.py`, `search.py`; `tests/unit/test_review_*.py` |
 | A11 | L6: Learning Core (quiz + SRS review + concepts + helpfulness) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/quiz/`, `src/ahadiff/wiki/concepts.py`, `src/ahadiff/lesson/helpfulness.py`; `tests/unit/test_helpfulness.py` |
-| A12 | L6: Graphify (models/parser/matcher/linker/slicer/search/freshness) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/graphify/` (7 files: models, parser, matcher, linker, slicer, search, freshness); `tests/unit/test_graphify*.py` (5 test files) |
+| A12 | L6: Graphify (models/parser/matcher/linker/slicer/search/freshness/cli) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/graphify/` (models, parser, matcher, linker, slicer, search, freshness, cli); `tests/unit/test_graphify*.py` plus orchestrator Graphify tests |
 | A13 | L7: Serve API (72 concrete API routes + catchall, Starlette + Uvicorn) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/serve/app.py`; route modules; `tests/unit/test_serve*.py`, `test_routes_*.py` |
-| A14 | L7: React 19 SPA (Vite + vanilla CSS) | Blueprint | N/A | IMPL | IMPL | `viewer/src/` (14 production page TSX, 52 non-test TSX, 47 CSS, i18n `1439/1439`); `viewer/vitest.config.ts` + Vitest coverage + Playwright |
+| A14 | L7: React 19 SPA (Vite + vanilla CSS) | Blueprint | N/A | IMPL | IMPL | `viewer/src/` (14 production page TSX, 52 non-test TSX, 47 CSS, i18n `1443/1443`); `viewer/vitest.config.ts` + Vitest coverage + Playwright |
 
 ---
 
@@ -92,7 +92,7 @@
 | E3 | FSRS-6 scheduler (py-fsrs v6.3.1, DSR model) | Blueprint+Comp | IMPL | N/A | IMPL | `review/scheduler.py`; `review/database.py`; `tests/unit/test_review_*.py` |
 | E4 | FSRS Optimizer (cold/warm/hot presets) | Blueprint | IMPL | N/A | IMPL | `review/optimizer.py` |
 | E5 | SRS card review with 4-button UX (Again/Hard/Good/Easy) | Blueprint | IMPL | IMPL | IMPL | `review/scheduler.py` (review_fsrs_card); `viewer/src/components/SRSCard.tsx` (238 lines) |
-| E6 | Review cards anchored to run_id + claim evidence | Blueprint | IMPL | N/A | IMPL | `review/database.py`, `review/schemas.py` |
+| E6 | Review cards anchored to run_id + claim evidence + lazy run-card import | Blueprint | IMPL | N/A | IMPL | `review/database.py`, `review/schemas.py`, `serve/routes_review.py`, `serve/routes_signals.py` |
 | E7 | SRS cards preserve creation language (no re-translation) | Blueprint | IMPL | N/A | IMPL | By design in review/database.py |
 | E8 | QuizPage UI | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/QuizPage.tsx` |
 | E9 | ReviewPage UI | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/ReviewPage.tsx` |
@@ -138,7 +138,7 @@
 | G12 | ConceptsPage UI | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/ConceptsPage.tsx` |
 | G13 | GraphifyCard UI | Blueprint | N/A | IMPL | IMPL | `viewer/src/components/GraphifyCard.tsx` |
 | G14 | Graphify shared freshness store (graph-store) | Blueprint | N/A | IMPL | IMPL | `viewer/src/api/graph.ts` |
-| G15 | Graphify provenance / signoff artifact | Blueprint | IMPL | IMPL | IMPL | `graphify_signoff.json` from `git/capture.py`; `/api/run/{run_id}/graphify-signoff`; `RunDetailPage.tsx`; `tests/unit/test_git_capture.py`, `tests/unit/test_serve_app.py` |
+| G15 | Graphify provenance / signoff artifact + learn-time update/import | Blueprint | IMPL | IMPL | IMPL | `graphify_signoff.json` from `git/capture.py`; learn Step 10 `graphify update <repo>` bridge in `graphify/cli.py` + `core/orchestrator.py`; `/api/run/{run_id}/graphify-signoff`; `RunDetailPage.tsx`; `tests/unit/test_git_capture.py`, `tests/unit/test_serve_app.py`, `tests/unit/test_orchestrator.py` |
 
 ---
 
@@ -179,7 +179,7 @@
 
 | # | Feature | Source | Backend Status | Frontend Status | Test Status | Evidence |
 |---|---------|--------|---------------|-----------------|-------------|----------|
-| J1 | Locale priority chain: cookie -> Accept-Language -> AHADIFF_LANG -> CLI --lang -> config.toml -> LANG -> en | Blueprint+Comp | IMPL | IMPL | IMPL | `i18n/`; `serve/routes_locale.py`; `viewer/src/i18n/`; Learn Mode Dialog defaults to active viewer locale; 1439/1439 i18n scalar keys |
+| J1 | Locale priority chain: cookie -> Accept-Language -> AHADIFF_LANG -> CLI --lang -> config.toml -> LANG -> en | Blueprint+Comp | IMPL | IMPL | IMPL | `i18n/`; `serve/routes_locale.py`; `viewer/src/i18n/`; Learn Mode Dialog defaults to active viewer locale; 1443/1443 i18n scalar keys |
 | J2 | Supported locales: en + zh-CN | Blueprint | IMPL | IMPL | IMPL | `i18n/`; `viewer/src/i18n/` |
 | J3 | Zustand atom store for i18n re-render (no React Context) | Blueprint | N/A | IMPL | IMPL | `viewer/src/i18n/useTranslation.ts` |
 | J4 | LLM OUTPUT_LANGUAGE prefix in prompts | Blueprint | IMPL | N/A | IMPL | Orchestrator resolves output_lang |
@@ -218,14 +218,14 @@
 | L3 | DiffViewerPage (Unified / Split, side-aware claim jumps) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/DiffViewerPage.tsx`; `components/DiffView.tsx`; `components/ClaimInspector.tsx`; `tests/unit/diff-view.test.ts`; `viewer/tests/e2e/walkthrough.spec.ts` |
 | L4 | QuizPage (active recall quiz) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/QuizPage.tsx` |
 | L5 | ReviewPage (SRS review) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/ReviewPage.tsx`; `components/SRSCard.tsx`; sidebar landmark label covered by a11y E2E |
-| L6 | ConceptsPage (Ledger + Graph tabs, graph/list focus sync) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/ConceptsPage.tsx`; `components/ConceptGraph.tsx`; `components/ConceptLedger.tsx` |
+| L6 | ConceptsPage (Ledger + Graph tabs, graph/list focus sync, content wrapper) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/ConceptsPage.tsx`; `components/Concepts.css`; `components/ConceptGraph.tsx`; `components/ConceptLedger.tsx` |
 | L7 | SettingsPage (7-tab settings) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/SettingsPage.tsx` |
 | L8 | RatchetPage (score history chart) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/RatchetPage.tsx`; `components/RatchetChart.tsx` |
 | L9 | OnboardingPage (stepper wizard) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/OnboardingPage.tsx`; `viewer/src/components/DiagnosticRow.tsx`; `viewer/src/pages/__tests__/OnboardingPage.test.tsx`; `viewer/tests/e2e/onboarding.spec.ts` |
 | L10 | LandingPage | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/LandingPage.tsx` |
 | L11 | GuidePage | Current viewer | N/A | IMPL | IMPL | `viewer/src/pages/GuidePage.tsx`; maintenance commands default to `--dry-run`; legacy `/#/skills` redirects to `/#/guide` |
 | L12 | NotFoundPage (404) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/NotFoundPage.tsx` |
-| L13 | AppShell (Sidebar + Topbar + BottomMiniPanel) | Blueprint | N/A | IMPL | IMPL | `components/AppShell.tsx`, `Sidebar.tsx`, `Topbar.tsx`, `BottomMiniPanel.tsx` |
+| L13 | AppShell (Sidebar + Topbar + BottomMiniPanel) | Blueprint | N/A | IMPL | IMPL | `components/AppShell.tsx`, `Sidebar.tsx`, `Sidebar.test.tsx`, `Topbar.tsx`, `BottomMiniPanel.tsx`; Sidebar footer reads real config provider/privacy |
 | L14 | SearchOverlay (global search, table filters, two-column preview, graph-node Ledger focus links) | Blueprint | N/A | IMPL | IMPL | `components/SearchOverlay.tsx`; `components/SearchOverlay.css`; `SearchOverlay.test.tsx`; `viewer/tests/e2e/search-overlay.spec.ts` |
 | L15 | VirtualList (performance for long lists) | Blueprint | N/A | IMPL | IMPL | `components/VirtualList.tsx` |
 | L16 | ErrorBoundary | Blueprint | N/A | IMPL | IMPL | `components/ErrorBoundary.tsx`; `components/ErrorBoundary.css`; `ErrorBoundary.test.tsx`; `viewer/tests/e2e/error-boundary.spec.ts` |
@@ -243,15 +243,15 @@
 |---|---------|--------|---------------|-----------------|-------------|----------|
 | M1 | POST /api/learn (trigger learn pipeline from UI, 10 req/min rate limit, `changed_paths`, `against_spec`) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_learn.py`; `LearnModeDialog.tsx`; LearnTaskBanner |
 | M2 | /api/tasks (list/get/cancel/SSE progress) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_tasks.py`; `viewer/src/api/tasks.ts` (5 retry exponential backoff + polling fallback); `learn-store.test.ts` |
-| M3 | /api/graph/* (graph status, FTS) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_graph.py` |
+| M3 | /api/graph/* (graph status, FTS, refresh with exact 600s timeout) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_graph.py`, `serve/middleware.py` |
 | M4 | /api/config (show resolved config) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_config.py` |
 | M5 | /api/search (FTS5 full-text search) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_search.py` |
 | M6 | /api/usage (LLM usage stats) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_stats.py` |
 | M7 | /api/audit (audit trail) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_audit.py` |
-| M8 | /api/review/* (mastery, SRS) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_review.py` |
+| M8 | /api/review/* (mastery, SRS, lazy run-card import) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_review.py`, `review/database.py` |
 | M9 | /api/concepts/* (weak concepts) | Blueprint | IMPL | IMPL | IMPL | Concepts endpoints |
 | M10 | /api/runs/* (run listing, detail, optional `RunDetail.learnability`, artifact 404) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_runs.py`; `contracts/serve_app.py`; `tests/unit/test_serve_app.py`, `tests/unit/test_contracts.py` |
-| M11 | /api/signals/* (learning signals, write-token protected) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_signals.py` |
+| M11 | /api/signals/* (learning signals, SRS lazy run-card import, write-token protected) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_signals.py`, `review/database.py` |
 | M12 | /api/locale (get/put, cookie ahadiff_lang) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_locale.py` |
 | M13 | /api/install (install targets) | Blueprint | IMPL | N/A | IMPL | `serve/routes_install.py` |
 | M14 | /api/export (results TSV/JSON + APKG) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_export.py`; `review/apkg_export.py`; `RatchetPage.tsx`; `test_apkg_export.py` |
@@ -269,7 +269,7 @@
 | N2 | **MOAT 02: Claim -> 5-state Evidence** (no competitor has structured claim verification) | Others: "natural language with line numbers, unstructured" | IMPL | `claims/` module with 5 statuses |
 | N3 | **MOAT 03: Git Ratchet** (no competitor has monotonic quality ratchet) | autoresearch has it for ML, none for learning notes | IMPL | `eval/ratchet.py`, `improve/` |
 | N4 | **MOAT 04: Local-First Privacy** (competitors are all SaaS) | CodeRabbit/Greptile/DeepWiki = cloud only | IMPL | Per-repo `.ahadiff/`, privacy 3-tier, raw never persisted |
-| N5 | **MOAT 05: i18n Learning Notes** (no competitor generates multilingual diff learning notes) | 10 competitors verified: none have this | IMPL | `i18n/`, 1439/1439 viewer scalar keys, en + zh-CN |
+| N5 | **MOAT 05: i18n Learning Notes** (no competitor generates multilingual diff learning notes) | 10 competitors verified: none have this | IMPL | `i18n/`, 1443/1443 viewer scalar keys, en + zh-CN |
 | N6 | **ENG 01: Local-first offline** (strict_local + Ollama) | Competitors need internet | IMPL | strict_local mode + Ollama adapter |
 | N7 | **ENG 02: Serve architecture** (CLI starts local server, no cloud dependency) | Competitors rely on cloud | IMPL | `serve/app.py`, Starlette + Uvicorn |
 | N8 | **ENG 03: Privacy 3-tier grading** (strict_local/redacted_remote/explicit_remote) | Competitors have no privacy tiers | IMPL | `safety/gates.py` |

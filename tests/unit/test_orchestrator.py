@@ -488,6 +488,9 @@ def _patch_completed_pipeline(
     on_generate_quiz: Callable[[dict[str, object]], None] | None = None,
     on_generate_cards: Callable[[], None] | None = None,
     on_persist: Callable[[Path], None] | None = None,
+    graphify_cli_available: bool = True,
+    graphify_update_result: bool = False,
+    on_import_graphify: Callable[[Path, bool], object] | None = None,
 ) -> None:
     def _resolve_provider_from_config(
         **kwargs: object,
@@ -629,6 +632,36 @@ def _patch_completed_pipeline(
         return None
 
     monkeypatch.setattr("ahadiff.core.registry.register_repo", _register_repo)
+
+    def _import_graphify_artifact(*args: object, **kwargs: object) -> object:
+        if on_import_graphify is not None:
+            root = cast("Path", args[0])
+            force = bool(kwargs.get("force", False))
+            return on_import_graphify(root, force)
+        del args, kwargs
+        return None
+
+    monkeypatch.setattr(
+        "ahadiff.git.capture.import_graphify_artifact",
+        _import_graphify_artifact,
+    )
+
+    def _detect_graphify_cli() -> str | None:
+        return "/usr/bin/graphify" if graphify_cli_available else None
+
+    monkeypatch.setattr(
+        "ahadiff.graphify.cli.detect_graphify_cli",
+        _detect_graphify_cli,
+    )
+
+    def _run_graphify_update(*args: object, **kwargs: object) -> bool:
+        del args, kwargs
+        return graphify_update_result
+
+    monkeypatch.setattr(
+        "ahadiff.graphify.cli.run_graphify_update",
+        _run_graphify_update,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1550,6 +1583,118 @@ def test_review_card_import_failure_is_warning_after_publish(
     assert result.warnings == ["review card import failed: review db locked"]
     assert finalized_path.exists()
     assert score_path.exists()
+
+
+def test_graphify_update_imports_before_concepts_with_force(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    _patch_learnability(monkeypatch, score=0.7)
+    calls: list[tuple[str, bool | None]] = []
+
+    def _import_graphify(root: Path, force: bool) -> object:
+        assert root == fake_repo
+        calls.append(("graphify_import", force))
+        return None
+
+    def _append_concepts(**kwargs: object) -> Path:
+        del kwargs
+        calls.append(("append_concepts", None))
+        output_path = fake_repo / ".ahadiff" / "runs" / capture.run_id / "concepts_local.jsonl"
+        output_path.write_text("{}\n", encoding="utf-8")
+        return output_path
+
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        graphify_cli_available=True,
+        graphify_update_result=True,
+        on_import_graphify=_import_graphify,
+    )
+    monkeypatch.setattr("ahadiff.wiki.concepts.append_concepts", _append_concepts)
+
+    result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
+
+    assert result.status == "keep"
+    assert calls == [("graphify_import", True), ("append_concepts", None)]
+
+
+def test_graphify_missing_cli_without_source_skips_import_silently(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    _patch_learnability(monkeypatch, score=0.7)
+    imports: list[tuple[Path, bool]] = []
+
+    def _import_graphify(root: Path, force: bool) -> object:
+        imports.append((root, force))
+        return None
+
+    def _append_concepts(**kwargs: object) -> Path:
+        del kwargs
+        output_path = fake_repo / ".ahadiff" / "runs" / capture.run_id / "concepts_local.jsonl"
+        output_path.write_text("{}\n", encoding="utf-8")
+        return output_path
+
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        graphify_cli_available=False,
+        graphify_update_result=False,
+        on_import_graphify=_import_graphify,
+    )
+    monkeypatch.setattr("ahadiff.wiki.concepts.append_concepts", _append_concepts)
+
+    result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
+
+    assert result.status == "keep"
+    assert imports == []
+    assert not any("graphify refresh skipped" in warning for warning in result.warnings)
+
+
+def test_graphify_cli_failure_does_not_import_stale_source(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    _patch_learnability(monkeypatch, score=0.7)
+    graph_source = fake_repo / "graphify-out" / "graph.json"
+    graph_source.parent.mkdir(parents=True)
+    graph_source.write_text('{"nodes": [], "links": []}\n', encoding="utf-8")
+    imports: list[tuple[Path, bool]] = []
+
+    def _import_graphify(root: Path, force: bool) -> object:
+        imports.append((root, force))
+        return None
+
+    def _append_concepts(**kwargs: object) -> Path:
+        del kwargs
+        output_path = fake_repo / ".ahadiff" / "runs" / capture.run_id / "concepts_local.jsonl"
+        output_path.write_text("{}\n", encoding="utf-8")
+        return output_path
+
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        graphify_cli_available=True,
+        graphify_update_result=False,
+        on_import_graphify=_import_graphify,
+    )
+    monkeypatch.setattr("ahadiff.wiki.concepts.append_concepts", _append_concepts)
+
+    result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
+
+    assert result.status == "keep"
+    assert imports == []
+    assert not any("graphify refresh skipped" in warning for warning in result.warnings)
 
 
 def test_cleanup_cancelled_run_keeps_artifacts_when_result_rollback_fails(

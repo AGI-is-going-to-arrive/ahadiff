@@ -718,11 +718,20 @@ def import_cards_from_jsonl(
     cards_path: Path,
     *,
     desired_retention: float = DEFAULT_DESIRED_RETENTION,
+    expected_run_id: str | None = None,
 ) -> int:
     if not cards_path.exists():
         return 0
     cards = _load_review_cards(cards_path)
     if not cards:
+        if expected_run_id is not None:
+            with connect_review_db(db_path) as connection:
+                _ensure_schema(connection)
+                _mark_run_cards_stale_in_connection(
+                    connection,
+                    run_id=expected_run_id,
+                    stale_reason="staleness_unknown",
+                )
         return 0
     card_choice_payloads = tuple(_serialize_card_choices(card) for card in cards)
     now = _utc_now()
@@ -886,17 +895,28 @@ def import_cards_from_runs(
     desired_retention: float = DEFAULT_DESIRED_RETENTION,
     on_error: Callable[[Path, Exception], None] | None = None,
 ) -> int:
+    from ahadiff.core.paths import validate_state_path_no_symlinks
+
     runs_dir = state_dir / "runs"
     if not runs_dir.exists():
         initialize_review_db(db_path)
         return 0
+    try:
+        validate_state_path_no_symlinks(runs_dir, allow_missing_leaf=False)
+    except (InputError, StorageError) as exc:
+        if on_error is not None:
+            on_error(runs_dir, exc)
+            return 0
+        raise
     inserted = 0
     for cards_path in sorted(runs_dir.glob("*/quiz/cards.jsonl")):
         try:
+            validate_state_path_no_symlinks(cards_path, allow_missing_leaf=False)
             inserted += import_cards_from_jsonl(
                 db_path,
                 cards_path,
                 desired_retention=desired_retention,
+                expected_run_id=cards_path.parent.parent.name,
             )
         except (InputError, StorageError) as exc:
             if on_error is not None:
@@ -914,15 +934,28 @@ def mark_run_cards_stale(
 ) -> int:
     with connect_review_db(db_path) as connection:
         _ensure_schema(connection)
-        cursor = connection.execute(
-            """
-            UPDATE cards
-            SET card_state = ?, stale_reason = ?
-            WHERE run_id = ? AND card_state = 'active'
-            """,
-            ("stale", stale_reason, run_id),
+        cursor = _mark_run_cards_stale_in_connection(
+            connection,
+            run_id=run_id,
+            stale_reason=stale_reason,
         )
     return cursor.rowcount
+
+
+def _mark_run_cards_stale_in_connection(
+    connection: sqlite3.Connection,
+    *,
+    run_id: str,
+    stale_reason: str,
+) -> sqlite3.Cursor:
+    return connection.execute(
+        """
+        UPDATE cards
+        SET card_state = ?, stale_reason = ?
+        WHERE run_id = ? AND card_state = 'active'
+        """,
+        ("stale", stale_reason, run_id),
+    )
 
 
 def list_due_cards(
@@ -2135,7 +2168,13 @@ def _load_review_cards(cards_path: Path) -> tuple[ReviewCard, ...]:
     if file_size > _MAX_CARDS_FILE_BYTES:
         raise InputError(f"cards file exceeds 16 MiB limit: {cards_path}")
     cards: list[ReviewCard] = []
-    for index, line in enumerate(cards_path.read_text(encoding="utf-8").splitlines(), start=1):
+    try:
+        text = cards_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise InputError(f"cards file must be valid UTF-8: {cards_path}") from exc
+    except OSError as exc:
+        raise StorageError(f"failed to read cards file: {cards_path} ({exc})") from exc
+    for index, line in enumerate(text.splitlines(), start=1):
         stripped = line.strip()
         if not stripped:
             continue
