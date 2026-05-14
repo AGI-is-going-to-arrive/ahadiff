@@ -30,10 +30,10 @@ export interface ClaimInspectorProps {
   onCopyAnchor?: (claimId: string) => void;
   /**
    * Optional handler invoked when the user clicks a "Jump to code" link.
-   * Receives the claim's file path and 1-based line number so the caller can
-   * scroll the diff viewport to the corresponding line.
+   * Receives the claim's file path, 1-based line number, and optional source
+   * side so the caller can scroll the diff viewport to the corresponding line.
    */
-  onJumpToCode?: (file: string, line: number) => void;
+  onJumpToCode?: (file: string, line: number, side?: 'old' | 'new' | 'either') => void;
 }
 
 type ClaimFilter = 'shipped' | 'verified' | 'weak' | 'not_proven' | 'rejected';
@@ -71,7 +71,8 @@ function formatSourceRef(claim: ClaimInspectorClaim): string {
 function formatSourceGroupRef(group: ClaimSourceLineGroup): string {
   const range =
     group.line_end !== group.line_start && group.line_end > 0 ? `-${group.line_end}` : '';
-  return `${group.file}:${group.line_start}${range}`;
+  const side = group.side === 'old' || group.side === 'new' ? ` · ${group.side}` : '';
+  return `${group.file}:${group.line_start}${range}${side}`;
 }
 
 function truncateSummary(text: string, limit: number): string {
@@ -364,7 +365,7 @@ export default memo(function ClaimInspector({
                         className="claim-inspector__jump-btn"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onJumpToCode?.(group.file, group.line_start);
+                          onJumpToCode?.(group.file, group.line_start, group.side);
                         }}
                         aria-label={`${t('Claim_inspector.jump_to_code')}: ${ref}`}
                         disabled={!onJumpToCode}

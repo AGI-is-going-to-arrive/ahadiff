@@ -100,18 +100,20 @@ export default function ConceptsPage() {
   const graphAvailability = graphStatus ?? graphData?.status ?? null;
   const graphifyAvailable = Boolean(
     graphAvailability?.enabled &&
-      graphAvailability.source_exists &&
       graphAvailability.has_graph,
   );
 
-  const fetchGraphData = useCallback(async (all = false) => {
+  const fetchGraphData = useCallback(async (all = false, focus: string | null = null) => {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     setGraphLoading(true);
     setGraphError(null);
     try {
-      const params = all ? { limit: 2000 } : {};
+      const params = {
+        ...(all ? { limit: 2000 } : {}),
+        ...(focus ? { focus } : {}),
+      };
       const data = await fetchGraphConcepts(params, { signal: controller.signal });
       if (controller.signal.aborted) return;
       setGraphData(data);
@@ -135,10 +137,10 @@ export default function ConceptsPage() {
 
   useEffect(() => {
     if (activeTab === 'graph') {
-      void fetchGraphData(showAll);
+      void fetchGraphData(showAll, focusNodeId);
     }
     return () => abortRef.current?.abort();
-  }, [activeTab, fetchGraphData, showAll]);
+  }, [activeTab, fetchGraphData, focusNodeId, showAll]);
 
   useEffect(() => {
     const syncHashState = () => {
@@ -178,7 +180,7 @@ export default function ConceptsPage() {
             edges: result.edges,
           }),
         });
-        await fetchGraphData(showAllRef.current);
+        await fetchGraphData(showAllRef.current, focusParam);
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
         if (controller.signal.aborted) return;
@@ -228,7 +230,7 @@ export default function ConceptsPage() {
         }
       }
     },
-    [fetchGraphData, t],
+    [fetchGraphData, focusParam, t],
   );
 
   const handleRefreshGraph = useCallback(async () => {
@@ -371,7 +373,7 @@ export default function ConceptsPage() {
                 <button
                   type="button"
                   className="retry-btn"
-                  onClick={() => void fetchGraphData(showAll)}
+                  onClick={() => void fetchGraphData(showAll, focusNodeId)}
                 >
                   {t('Error.retry')}
                 </button>

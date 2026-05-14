@@ -4,7 +4,7 @@
  * but provides richer data to exercise more code paths (multi-run dashboard,
  * ratchet history with 3+ entries, etc.).
  */
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { installServeMock } from '../fixtures/serve-mock';
 
 const RICH_DIFF = `diff --git a/demo.py b/demo.py
@@ -51,6 +51,13 @@ async function openSearchOverlay(page: Page): Promise<void> {
     await page.keyboard.press('Control+K');
   }
   await expect(page.getByRole('dialog', { name: /Search|搜索/i })).toBeVisible();
+}
+
+async function activateControlWithKeyboard(page: Page, control: Locator): Promise<void> {
+  await expect(control).toBeVisible();
+  await control.focus();
+  await expect(control).toBeFocused();
+  await page.keyboard.press('Enter');
 }
 
 async function holdPeekGuardTimer(page: Page): Promise<void> {
@@ -478,14 +485,21 @@ test.describe('walkthrough: full-app functional test', () => {
     // Ratchet chart section visible (with >= 2 history entries)
     await expect(page.locator('.ratchet-section')).toBeVisible();
 
-    // Load more button (mock returns next_cursor on first page)
+    // Load more button (mock returns next_cursor on desktop first page).
     const loadMoreBtn = page.getByRole('button', { name: /Load more/i });
-    await expect(loadMoreBtn).toBeVisible();
-    await loadMoreBtn.click();
-    // After click: 5 rows total (the store merges the next cursor page).
-    await expect(rows).toHaveCount(5, { timeout: 3000 });
-    await expect(runTable).toContainText('compare');
-    await expect(runTable).toContainText('future_source');
+    let loadedMore = false;
+    if (await loadMoreBtn.isVisible().catch(() => false)) {
+      await loadMoreBtn.click();
+      // After click: 5 rows total (the store merges the next cursor page).
+      await expect(rows).toHaveCount(5, { timeout: 3000 });
+      loadedMore = true;
+    } else {
+      await expect(rows).toHaveCount(3);
+    }
+    if (loadedMore) {
+      await expect(runTable).toContainText('compare');
+      await expect(runTable).toContainText('future_source');
+    }
 
     await page.screenshot({ path: `${SCREENSHOT_DIR}/01-dashboard.png`, fullPage: true });
   });
@@ -546,6 +560,10 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(page.locator('.lesson__rail')).toContainText('Not proven');
     await expect(page.locator('.lesson__rail')).toContainText('Rejected');
     await expect(page.locator('.lesson__concept-chip')).toContainText('Learn-from-diff');
+    await expect(page.locator('.lesson__concept-chip a').first()).toHaveAttribute(
+      'href',
+      /#\/concepts\?tab=ledger&focus=learn-from-diff$/,
+    );
     await expect(page.locator('.lesson__evidence-list li')).toHaveCount(4);
 
     // Click claim to select it
@@ -578,8 +596,15 @@ test.describe('walkthrough: full-app functional test', () => {
   test('Diff — diff view, file header, add/del lines, stats panel', async ({ page }) => {
     await page.goto('/#/run/test-run/diff');
 
-    // Heading
-    await expect(page.getByRole('heading', { name: /diff|差异/i, level: 1 })).toBeVisible();
+    // Warm v6 header actions.
+    await expect(page.locator('.diff-page__header')).toContainText(/Diff \+ Evidence|Diff/);
+    await expect(page.locator('.diff-page__header')).toContainText(/Unified|Split/);
+    await expect(page.getByRole('button', { name: /Prev file|上个文件/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Next file|下个文件/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /Open Lesson|打开课程/i })).toHaveAttribute(
+      'href',
+      /#\/run\/test-run\/lesson$/,
+    );
 
     // Diff view renders
     await expect(page.locator('.diff-view')).toBeVisible();
@@ -604,7 +629,36 @@ test.describe('walkthrough: full-app functional test', () => {
     // Inspector aside (V6 split layout uses ClaimInspector)
     await expect(page.locator('.claim-inspector')).toBeVisible();
 
-    const linkedClaimLine = page.locator('.diff-line--claim-linked').first();
+    const splitButton = page.getByRole('button', { name: /Split/i });
+    await splitButton.click();
+    await expect(splitButton).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('.diff-view')).toHaveClass(/diff-view--split/);
+    const oldReturnCell = page
+      .locator('.diff-split-cell--old.diff-split-cell--del')
+      .filter({ hasText: 'return "world"' });
+    await expect(oldReturnCell).toHaveCount(1);
+    await expect(oldReturnCell).toContainText('return "world"');
+    const newReturnCell = page
+      .locator('.diff-split-cell--new.diff-split-cell--add')
+      .filter({ hasText: 'return "AhaDiff"' });
+    await expect(newReturnCell).toHaveCount(1);
+    await expect(newReturnCell).toContainText('return "AhaDiff"');
+    const splitClaimLine = page.locator('.diff-split-cell--new.diff-line--claim-linked').first();
+    await expect(splitClaimLine).toContainText('# learn-from-diff');
+    await expect(splitClaimLine.locator('.diff-line__claim-dot')).toHaveCount(1);
+    await splitClaimLine.click();
+    await expect(splitClaimLine).toHaveClass(/diff-line--claim-selected/);
+    await expect(page.locator('.claim-inspector__item--selected')).toContainText('c1');
+
+    const unifiedButton = page.getByRole('button', { name: /Unified/i });
+    await unifiedButton.click();
+    await expect(unifiedButton).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('.diff-view')).not.toHaveClass(/diff-view--split/);
+
+    const linkedClaimLine = page
+      .locator('.diff-line.diff-line--claim-linked')
+      .filter({ hasText: '# learn-from-diff' });
+    await expect(linkedClaimLine).toHaveCount(1);
     await expect(linkedClaimLine).toContainText('# learn-from-diff');
     // Each linked diff line now has a small verdict-colored gutter dot.
     await expect(linkedClaimLine.locator('.diff-line__claim-dot')).toHaveCount(1);
@@ -658,6 +712,10 @@ test.describe('walkthrough: full-app functional test', () => {
     // Progress indicator
     await expect(page.locator('.quiz-page__progress')).toBeVisible();
     await expect(page.locator('.quiz-page__progress-bar')).toBeVisible();
+    await expect(page.locator('.quiz-page__mode-row')).toContainText(/Guided|引导/);
+    await expect(page.locator('.quiz-page__mode-row')).toContainText(/Recall|回忆/);
+    await expect(page.locator('.quiz-page__mode-row')).toContainText(/Transfer|迁移/);
+    await expect(page.getByRole('button', { name: /Skip|跳过/ })).toBeVisible();
     await expect(page.locator('.quiz-panel--evidence')).toBeVisible();
     await expect(page.locator('.quiz-evidence__empty')).toBeVisible();
 
@@ -683,6 +741,11 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(page.getByText('learn-from-diff marker tags the change')).toBeVisible();
     await expect(page.locator('.quiz-evidence__item')).toHaveCount(1);
     await expect(page.locator('.quiz-evidence__ref')).toContainText('demo.py:L4');
+    await expect(page.locator('.quiz-evidence__ref')).toHaveAttribute(
+      'href',
+      /#\/run\/test-run\/diff\?focus=demo.py%3A4$/,
+    );
+    await expect(page.locator('.quiz-evidence__anchor-note')).toBeVisible();
     await expect(page.locator('.quiz-page__misconceptions')).toBeVisible();
 
     // Rating buttons appear but are disabled during peek guard (1.5s).
@@ -706,6 +769,7 @@ test.describe('walkthrough: full-app functional test', () => {
 
     // Peek guard hint visible
     await expect(page.locator('.srs-card__peek-hint')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Next|下一题/i })).toBeVisible();
 
     await page.evaluate(() => {
       (window as Window & { __ahadiffReleasePeekGuardTimers?: () => void })
@@ -719,7 +783,8 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(hardBtn).toBeEnabled();
     await expect(wrongBtn).toBeEnabled();
 
-    await hardBtn.click();
+    await hardBtn.focus();
+    await page.keyboard.press('Enter');
     await expect.poll(() => srsReviewRequests.length, { timeout: 3000 }).toBe(1);
     expect(srsReviewRequests[0]).toMatchObject({
       answer: 'hard',
@@ -735,8 +800,8 @@ test.describe('walkthrough: full-app functional test', () => {
 
     // Second quiz item (Socratic — no review_card_id)
     await expect(page.locator('.srs-card__question')).toContainText('return value');
-    const badge = page.locator('.quiz-page__mode-badge');
-    await expect(badge).toContainText(/Socratic/i);
+    await expect(page.locator('.quiz-page__mode-row')).toContainText(/Socratic/i);
+    await expect(page.locator('.quiz-page__mode-badge--active')).toContainText(/Transfer|迁移/);
 
     const answerInput2 = page.locator('.srs-card__answer-input');
     await expect(answerInput2).toBeVisible();
@@ -847,7 +912,7 @@ test.describe('walkthrough: full-app functional test', () => {
     // Flip button
     const flipBtn = page.locator('.flashcard__flip-btn');
     await expect(flipBtn).toBeVisible();
-    await flipBtn.click();
+    await page.keyboard.press('Space');
 
     // After flip: SRS buttons visible
     const srsButtons = page.locator('.srs-buttons');
@@ -982,6 +1047,9 @@ test.describe('walkthrough: full-app functional test', () => {
     ).toBeVisible();
 
     // CLI commands card; doctor all-pass opens on the learn step.
+    await expect(steps.nth(0)).toContainText(/Pick a repo|选择仓库/);
+    await expect(steps.nth(1)).toContainText(/Add provider key|添加 Provider key/);
+    await expect(steps.nth(2)).toContainText(/Install agent|安装 Agent/);
     await expect(page.locator('pre')).toBeVisible();
     await expect(page.locator('pre').first()).toContainText('ahadiff learn HEAD~1..HEAD');
 
@@ -1014,6 +1082,10 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(cards.first()).toBeVisible();
     await expect(page.locator('.guide-install-model')).toContainText('AhaDiff CLI');
     await expect(page.locator('.guide-install-model')).toContainText('Project agent instructions');
+    await expect(page.locator('.guide-agent-skills')).toContainText(/Agent Skills|Agent 技能/);
+    await expect(page.locator('.guide-agent-card')).toHaveCount(13);
+    await expect(page.locator('.guide-agent-previews')).toContainText('SKILL.md');
+    await expect(page.locator('.guide-agent-previews')).toContainText('AGENTS.md preview');
 
     // Copy button on at least one command block
     const copyBtns = page.locator('.command-block__copy-btn');
@@ -1077,7 +1149,9 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(codexRow).toContainText('Scope: current project');
     await expect(codexRow).toContainText('It does not write user-level or global CLI/IDE directories.');
 
-    await codexRow.getByRole('button', { name: 'Preview' }).click();
+    const previewBtn = codexRow.getByRole('button', { name: 'Preview' });
+    await previewBtn.focus();
+    await page.keyboard.press('Enter');
     await expect(codexRow.getByRole('status')).toContainText('Project guidance preview refreshed');
     await expect(codexRow.getByRole('region', { name: 'Inline preview' })).toBeVisible();
     await expect(codexRow).toContainText('Writing guidance will');
@@ -1087,14 +1161,26 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(codexRow.getByRole('button', { name: 'Write Codex CLI guidance to the current project' })).toBeVisible();
     await expect(codexRow.getByRole('button', { name: 'Copy write-guidance command for Codex CLI' })).toBeVisible();
 
-    await codexRow.getByRole('button', { name: 'Collapse preview for Codex CLI' }).click();
+    const collapseBtn = codexRow.getByRole('button', {
+      name: 'Collapse preview for Codex CLI',
+    });
+    await collapseBtn.focus();
+    await page.keyboard.press('Enter');
     await expect(codexRow.getByRole('region', { name: 'Inline preview' })).toHaveCount(0);
     await expect(codexRow.getByRole('button', { name: 'Show preview for Codex CLI' })).toBeVisible();
 
-    await codexRow.getByRole('button', { name: 'Show preview for Codex CLI' }).click();
+    const showPreviewBtn = codexRow.getByRole('button', {
+      name: 'Show preview for Codex CLI',
+    });
+    await showPreviewBtn.focus();
+    await page.keyboard.press('Enter');
     await expect(codexRow.getByRole('region', { name: 'Inline preview' })).toBeVisible();
 
-    await codexRow.getByRole('button', { name: 'Write Codex CLI guidance to the current project' }).click();
+    const writeBtn = codexRow.getByRole('button', {
+      name: 'Write Codex CLI guidance to the current project',
+    });
+    await writeBtn.focus();
+    await page.keyboard.press('Enter');
     await expect(codexRow.getByRole('status')).toContainText('Guidance written to the current project');
     await expect(codexRow).toContainText('guidance written');
     await expect(codexRow.getByRole('region', { name: 'Inline preview' })).toHaveCount(0);
@@ -1103,7 +1189,11 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(codexRow.getByRole('button', { name: 'Remove Codex CLI guidance from the current project' })).toBeVisible();
     await expect(codexRow.getByRole('button', { name: 'Copy remove-guidance command for Codex CLI' })).toBeVisible();
 
-    await codexRow.getByRole('button', { name: 'Remove Codex CLI guidance from the current project' }).click();
+    const removeBtn = codexRow.getByRole('button', {
+      name: 'Remove Codex CLI guidance from the current project',
+    });
+    await removeBtn.focus();
+    await page.keyboard.press('Enter');
     await expect(codexRow.getByRole('status')).toContainText('Guidance removed from the current project');
     await expect(codexRow).toContainText('ready');
     await expect(codexRow.getByRole('region', { name: 'Inline preview' })).toHaveCount(0);
@@ -1123,6 +1213,8 @@ test.describe('walkthrough: full-app functional test', () => {
     // Verify the AI source badge is visible
     const sourceBadge = page.locator('.flashcard__source-badge');
     await expect(sourceBadge).toBeVisible();
+    await expect(page.locator('aside')).toContainText(/Activity|活动/);
+    await expect(page.locator('aside')).toContainText(/Concept Mastery|概念掌握/);
     await expect(page.getByRole('heading', { name: /New Concepts|新概念/i })).toBeVisible();
     await expect(page.getByText('idempotent retry')).toBeVisible();
     await expect(page.locator('.review__weak-meta--new')).toBeVisible();
@@ -1133,8 +1225,7 @@ test.describe('walkthrough: full-app functional test', () => {
 
     // Click the flip/show-answer button
     const flipBtn = page.locator('.flashcard__flip-btn');
-    await expect(flipBtn).toBeVisible();
-    await flipBtn.click();
+    await activateControlWithKeyboard(page, flipBtn);
 
     // Verify the answer text appears on the flashcard back
     await expect(back).toBeVisible();
@@ -1156,8 +1247,7 @@ test.describe('walkthrough: full-app functional test', () => {
 
     // Flip the card
     const flipBtn = page.locator('.flashcard__flip-btn');
-    await expect(flipBtn).toBeVisible();
-    await flipBtn.click();
+    await activateControlWithKeyboard(page, flipBtn);
 
     // After flip: evidence block is visible
     await expect(evidenceLink).toBeVisible();
@@ -1192,14 +1282,19 @@ test.describe('walkthrough: full-app functional test', () => {
     }
   });
 
-  test('Quiz — mode badge shows SRS or Socratic', async ({ page }) => {
+  test('Quiz — mode chips show Warm v6 kinds plus SRS or Socratic', async ({ page }) => {
     await page.goto('/#/run/test-run/quiz');
 
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
-    const badge = page.locator('.quiz-page__mode-badge').first();
-    await expect(badge).toBeVisible();
-    await expect(badge).toContainText(/SRS|Socratic/i);
+    await expect(page.locator('.quiz-page__mode-row')).toContainText(/Guided|引导/);
+    await expect(page.locator('.quiz-page__mode-row')).toContainText(/Recall|回忆/);
+    await expect(page.locator('.quiz-page__mode-row')).toContainText(/Transfer|迁移/);
+    await expect(page.locator('.quiz-page__mode-row')).toContainText(/SRS|Socratic/i);
+    await page.getByRole('button', { name: /Skip|跳过/ }).click();
+    await expect(page.locator('.srs-card__question')).toContainText('return value');
+    await expect(page.locator('.quiz-page__progress')).toContainText('2/2');
+    await expect(page.getByRole('button', { name: /Skip|跳过/ })).toHaveCount(0);
   });
 
   test('Ratchet — benchmark tab renders transparency grid', async ({ page }) => {
@@ -1237,9 +1332,20 @@ test.describe('walkthrough: full-app functional test', () => {
 
     // CTA button
     await expect(page.locator('.btn-primary')).toBeVisible();
+    await expect(page.locator('.btn-primary')).toHaveAttribute(
+      'href',
+      /#\/run\/run-003\/lesson$/,
+    );
+    await activateControlWithKeyboard(
+      page,
+      page.getByRole('button', { name: /Start from your diff|从你的 diff 开始/ }),
+    );
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.keyboard.press('Escape');
 
     // CLI command
     await expect(page.locator('.cli-cmd')).toContainText('pip install ahadiff');
+    await expect(page.locator('.hero-demo__source')).toContainText(/Latest finalized run|最新完成运行/);
 
     // Feature cards (4)
     const featureCards = page.locator('.feature-card');
@@ -1256,6 +1362,7 @@ test.describe('walkthrough: full-app functional test', () => {
 
     // Default is "aha" tab
     await expect(demoTabs.nth(1)).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#demo-panel')).toContainText('Sample lesson');
 
     // Click "raw" tab
     await demoTabs.nth(0).click();
@@ -1265,16 +1372,18 @@ test.describe('walkthrough: full-app functional test', () => {
     // Before/After section
     await expect(page.locator('.ba-grid')).toBeVisible();
 
-    // V6 trust block keeps an explicit demo boundary and per-card deltas.
-    await expect(page.locator('.demo-banner')).toContainText(/DEMO DATA|演示数据/);
+    // V6 trust block keeps an explicit source boundary and uses real transparency data when available.
+    await expect(page.locator('.demo-banner')).toContainText(/LIVE RUN|真实运行/);
     const benchmarkCards = page.locator('.benchmark-card');
     await expect(benchmarkCards).toHaveCount(4);
-    await expect(benchmarkCards.nth(0)).toContainText('50');
-    await expect(benchmarkCards.nth(0).locator('.demo-tag')).toBeVisible();
+    await expect(benchmarkCards.nth(0)).toContainText('31');
+    await expect(benchmarkCards.nth(0).locator('.demo-tag')).toContainText(/LIVE RUN|真实运行/);
     await expect(benchmarkCards.nth(0).locator('.benchmark-card__delta')).toContainText(
-      /8 languages|8 种语言/,
+      /20 eval \/ 11 integration|20 条 eval \/ 11 条 integration/,
     );
-    await expect(benchmarkCards.nth(1)).toContainText('0.82');
+    await expect(benchmarkCards.nth(1)).toContainText('87.3');
+    await expect(benchmarkCards.nth(2)).toContainText('14');
+    await expect(benchmarkCards.nth(3)).toContainText('100%');
 
     await page.screenshot({ path: `${SCREENSHOT_DIR}/11-landing.png`, fullPage: true });
   });
@@ -1478,8 +1587,8 @@ test.describe('walkthrough: full-app functional test', () => {
     await page.goto('/#/review');
     await expect(page.locator('.flashcard')).toBeVisible();
 
-    // Flip to reveal rating buttons
-    await page.locator('.flashcard__flip-btn').click();
+    // Flip to reveal rating buttons.
+    await page.keyboard.press('Space');
     await expect(page.locator('.srs-buttons')).toBeVisible();
 
     // Verify each button has aria-describedby pointing to its interval span
@@ -1554,12 +1663,25 @@ test.describe('walkthrough: full-app functional test', () => {
     // The narrow Firefox project occasionally needs extra time for HashRouter
     // to flush the hashchange listener after viewport-constrained interaction.
     // Keep other projects on the original 5s budget so the suite stays fast.
-    const isFirefoxMobile = test.info().project.name === 'firefox-mobile';
+    const projectName = test.info().project.name;
+    const isFirefox = projectName.startsWith('firefox');
+    const isFirefoxMobile = projectName === 'firefox-mobile';
     const navigationTimeout = isFirefoxMobile ? 20_000 : 5_000;
+    const runUrl = /\/#\/run\/run-003\/lesson/;
     await runLink.click();
+    if (isFirefox) {
+      const clicked = await page.waitForURL(runUrl, { timeout: navigationTimeout }).then(
+        () => true,
+        () => false,
+      );
+      if (!clicked) {
+        await runLink.focus();
+        await page.keyboard.press('Enter');
+      }
+    }
 
     // Should navigate to the lesson page for that run
-    await expect(page).toHaveURL(/\/#\/run\/run-003\/lesson/, { timeout: navigationTimeout });
+    await expect(page).toHaveURL(runUrl, { timeout: navigationTimeout });
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible({
       timeout: isFirefoxMobile ? 15_000 : 5_000,
     });

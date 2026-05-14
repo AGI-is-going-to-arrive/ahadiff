@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildClaimLookup,
+  buildSplitDiffRows,
+  diffLineMatchesFocusTarget,
   diffLineMatchesClaim,
   getClaimSourceLines,
   getRenderedDiffLines,
@@ -203,6 +205,16 @@ describe('DiffView claim lookup', () => {
     expect(lookup.size).toBeGreaterThan(0);
     expect(lookup.size).toBeLessThanOrEqual(10_000);
   });
+
+  it('keeps old-side and new-side claims separate for the same file line number', () => {
+    const lookup = buildClaimLookup([
+      { claim_id: 'old-side', file: 'src/a.ts', line_start: 1, line_end: 1, source_side: 'old' },
+      { claim_id: 'new-side', file: 'src/a.ts', line_start: 1, line_end: 1, source_side: 'new' },
+    ]);
+
+    expect(lookup.get('src/a.ts:old:1')?.map((c) => c.claim_id)).toEqual(['old-side']);
+    expect(lookup.get('src/a.ts:new:1')?.map((c) => c.claim_id)).toEqual(['new-side']);
+  });
 });
 
 describe('DiffView rendered line budget', () => {
@@ -218,5 +230,92 @@ describe('DiffView rendered line budget', () => {
 
     expect(getRenderedDiffLines(lines, true, false)).toHaveLength(1000);
     expect(getRenderedDiffLines(lines, true, true)).toHaveLength(lines.length);
+  });
+});
+
+describe('DiffView focus target matching', () => {
+  it('matches focus targets by normalized file and requested side', () => {
+    const lines = parseUnifiedDiff(
+      ['diff --git a/src/a.ts b/src/a.ts', '@@ -1 +1 @@', '-old', '+new'].join('\n'),
+    );
+    const del = lines.find((line) => line.type === 'del');
+    const add = lines.find((line) => line.type === 'add');
+
+    expect(del && diffLineMatchesFocusTarget(del, { file: 'src/a.ts', line: 1, side: 'old' }))
+      .toBe(true);
+    expect(del && diffLineMatchesFocusTarget(del, { file: 'src/a.ts', line: 1, side: 'new' }))
+      .toBe(false);
+    expect(add && diffLineMatchesFocusTarget(add, { file: 'src/a.ts', line: 1, side: 'new' }))
+      .toBe(true);
+    expect(add && diffLineMatchesFocusTarget(add, { file: 'src/a.ts', line: 1, side: 'old' }))
+      .toBe(false);
+  });
+});
+
+describe('buildSplitDiffRows', () => {
+  it('pairs replacement blocks while preserving context, hunk, and meta rows', () => {
+    const rows = buildSplitDiffRows(parseUnifiedDiff(
+      [
+        'diff --git a/demo.py b/demo.py',
+        '@@ -1,3 +1,4 @@',
+        ' def hello():',
+        '-    return "world"',
+        '+    return "AhaDiff"',
+        '+    # learn-from-diff',
+      ].join('\n'),
+    ));
+
+    expect(rows[0]).toMatchObject({ kind: 'span' });
+    expect(rows[1]).toMatchObject({ kind: 'span' });
+    expect(rows[2]).toMatchObject({
+      kind: 'pair',
+      oldLine: expect.objectContaining({ type: 'ctx', oldLineNo: 1 }),
+      newLine: expect.objectContaining({ type: 'ctx', newLineNo: 1 }),
+    });
+    expect(rows[3]).toMatchObject({
+      kind: 'pair',
+      oldLine: expect.objectContaining({ type: 'del', text: '    return "world"', oldLineNo: 2 }),
+      newLine: expect.objectContaining({ type: 'add', text: '    return "AhaDiff"', newLineNo: 2 }),
+    });
+    expect(rows[4]).toMatchObject({
+      kind: 'pair',
+      oldLine: null,
+      newLine: expect.objectContaining({ type: 'add', text: '    # learn-from-diff', newLineNo: 3 }),
+    });
+  });
+
+  it('keeps uneven delete-only and add-only runs aligned to the correct side', () => {
+    const rows = buildSplitDiffRows(parseUnifiedDiff(
+      [
+        'diff --git a/a.txt b/a.txt',
+        '@@ -1,3 +1,2 @@',
+        '-old a',
+        '-old b',
+        '+new a',
+        ' context',
+        '+new tail',
+      ].join('\n'),
+    )).filter((row) => row.kind === 'pair');
+
+    expect(rows[0]).toMatchObject({
+      kind: 'pair',
+      oldLine: expect.objectContaining({ type: 'del', text: 'old a' }),
+      newLine: expect.objectContaining({ type: 'add', text: 'new a' }),
+    });
+    expect(rows[1]).toMatchObject({
+      kind: 'pair',
+      oldLine: expect.objectContaining({ type: 'del', text: 'old b' }),
+      newLine: null,
+    });
+    expect(rows[2]).toMatchObject({
+      kind: 'pair',
+      oldLine: expect.objectContaining({ type: 'ctx', text: 'context' }),
+      newLine: expect.objectContaining({ type: 'ctx', text: 'context' }),
+    });
+    expect(rows[3]).toMatchObject({
+      kind: 'pair',
+      oldLine: null,
+      newLine: expect.objectContaining({ type: 'add', text: 'new tail' }),
+    });
   });
 });

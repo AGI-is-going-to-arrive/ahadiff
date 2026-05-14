@@ -131,7 +131,7 @@ hr.rule{border:0;border-top:1px solid var(--hair);margin:24px 0}
 .steps .st:hover{background:var(--accent-softer)}
 .steps .st:last-child{border-right:0}
 .steps .st .n{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);letter-spacing:.14em}
-.steps .st h4{font-family:var(--font-serif);font-size:17px;font-weight:500;margin:8px 0 6px;letter-spacing:-.01em}
+.steps .st h3{font-family:var(--font-serif);font-size:17px;font-weight:500;margin:8px 0 6px;letter-spacing:-.01em}
 .steps .st p{font-size:12.5px;color:var(--muted);margin:0;line-height:1.55}
 
 .section{padding:64px 40px;max-width:1280px}
@@ -444,7 +444,7 @@ hr.rule{border:0;border-top:1px solid var(--hair);margin:24px 0}
 /* Before/After */
 .ba{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
 .ba .col{background:var(--subtle);border:1px solid var(--hair);border-radius:10px;padding:14px;min-height:240px}
-.ba .col h5{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+.ba .col .ba-col__header{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
 
 /* tiny icon system using characters */
 .ic-sq{display:inline-block;width:16px;height:16px;border:1.5px solid currentColor;border-radius:3px}
@@ -585,7 +585,7 @@ button:focus-visible,a:focus-visible,[tabindex]:focus-visible,[role="button"]:fo
 
 /* --- Stylesheet-level half-pixel → whole-px --- */
 /* 10.5px → 11px */
-.setting-en, .ba .col h5, table.t th, .kbd, .claim-card .id,
+.setting-en, .ba .col .ba-col__header, table.t th, .kbd, .claim-card .id,
 .steps .st .n, .reader .toc .h, .rail-block .h, .scaffold,
 .legend, .legend .lgl, .qa-switch, .state-card .ds, .copy-btn,
 .gain-row, .srs-buttons .sb .d, .field .lb, .en-sub, .ctrl-hint,
@@ -603,7 +603,7 @@ button:focus-visible,a:focus-visible,[tabindex]:focus-visible,[role="button"]:fo
 .steps .st p, .field .lb p{font-size:13px}
 .impl-notes pre, .impl-notes code, .field code{font-size:12px}
 
-/* --- WCAG AA: muted-2 #8F8878 (3.3:1) → #7A7366 (4.55:1) — set in tokens.css --- */
+/* --- WCAG AA: muted-2 #8F8878 (3.3:1) → #6A6456 (5.4:1) — set in tokens.css --- */
 
 /* --- WCAG AA: accent-as-text → use accent-ink (4.99:1) --- */
 .nav-item.active .ic,
@@ -614,9 +614,9 @@ button:focus-visible,a:focus-visible,[tabindex]:focus-visible,[role="button"]:fo
 /* --- Motion: respect prefers-reduced-motion (v6 supersedes v5) --- */
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{
-    animation-duration:.001ms !important;
+    animation-duration:0s !important;
     animation-iteration-count:1 !important;
-    transition-duration:.001ms !important;
+    transition-duration:0s !important;
     scroll-behavior:auto !important;
   }
 }

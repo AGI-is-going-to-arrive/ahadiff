@@ -98,8 +98,8 @@
   font-family: "Newsreader", var(--font-serif);
   font-style: italic;
   font-size: 16px;
-  color: var(--accent);
-  opacity: 0.8;
+  color: var(--accent-ink);
+  opacity: 1;
   transition: opacity var(--dur-fast) var(--ease-out-quart);
 }
 
@@ -473,6 +473,157 @@
   background: transparent;
 }
 
+/* ---- Agent Skills ---- */
+.guide-agent-skills__head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-6);
+  align-items: flex-start;
+  margin-bottom: var(--sp-5);
+}
+
+.guide-agent-skills__subtitle {
+  margin: 0;
+  color: var(--muted);
+  line-height: var(--lh-relaxed);
+  max-width: var(--mw-prose);
+}
+
+.guide-agent-skills__chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+
+.guide-agent-skills__chip,
+.guide-agent-card__status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--hair);
+  color: var(--ink-2);
+  background: var(--subtle);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.guide-agent-skills__chip--active,
+.guide-agent-card__status--installed {
+  color: var(--accent-ink);
+  background: var(--accent-softest);
+  border-color: var(--accent-tint);
+}
+
+.guide-agent-card__status--unsupported,
+.guide-agent-card__status--error {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+
+.guide-agent-skills__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--sp-6);
+}
+
+.guide-agent-card {
+  min-width: 0;
+  padding: var(--sp-4);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  background: var(--elevated);
+}
+
+.guide-agent-card__topline {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.guide-agent-card__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-md);
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.guide-agent-card__name {
+  margin: var(--sp-3) 0 var(--sp-1);
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.guide-agent-card__path {
+  margin: 0 0 var(--sp-3);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: var(--lh-relaxed);
+  overflow-wrap: anywhere;
+}
+
+.guide-agent-card__actions {
+  margin: var(--sp-3) 0 0;
+  padding: var(--sp-3) 0 0;
+  border-top: 1px dashed var(--hair);
+  list-style: none;
+  color: var(--muted-strong);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: var(--lh-relaxed);
+}
+
+.guide-agent-card__actions span {
+  overflow-wrap: anywhere;
+}
+
+.guide-agent-previews {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: var(--sp-6);
+  margin-top: var(--sp-6);
+}
+
+.guide-agent-preview {
+  min-width: 0;
+  padding: var(--sp-4);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  background: var(--subtle);
+}
+
+.guide-agent-preview__title {
+  margin-bottom: var(--sp-3);
+  font-family: var(--font-serif);
+  font-size: 17px;
+  color: var(--ink-strong);
+}
+
+.guide-agent-preview__code {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
 /* ---- Integrations ---- */
 .guide-integrations__desc {
   margin: 0 0 var(--sp-4);
@@ -588,6 +739,15 @@
 
 /* ---- Responsive ---- */
 @media (max-width: 768px) {
+  .guide-agent-skills__head {
+    flex-direction: column;
+  }
+  .guide-agent-skills__chips {
+    justify-content: flex-start;
+  }
+  .guide-agent-previews {
+    grid-template-columns: 1fr;
+  }
   .guide-workflow__steps {
     flex-direction: column;
   }
@@ -625,6 +785,8 @@
   .guide-card,
   .guide-env__pane,
   .guide-accordion,
+  .guide-agent-card,
+  .guide-agent-preview,
   .guide-integrations__item,
   .guide-notes,
   .guide-integrations__hint {
@@ -663,6 +825,12 @@
     background: Canvas;
     color: CanvasText;
   }
+  .guide-agent-card__status,
+  .guide-agent-skills__chip {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
   .guide-env__pane--active {
     border: 2px solid Highlight;
   }
@@ -682,6 +850,8 @@
   .guide-accordion__summary,
   .guide-accordion__chevron,
   .guide-nav__chip,
+  .guide-agent-card,
+  .guide-agent-preview,
   .guide-integrations__hint {
     transition: none;
   }

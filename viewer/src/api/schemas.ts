@@ -284,6 +284,7 @@ export const conceptLedgerEntrySchema = z
     file_refs: z.array(z.string()).default([]),
     source_refs: z.array(z.string()).default([]),
     updated_by_runs: z.array(z.string()).default([]),
+    graphify_node_id: z.string().min(1).nullable().optional(),
     health_status: z
       .enum(['healthy', 'orphan', 'stale', 'contradicted', 'dismissed'])
       .optional(),

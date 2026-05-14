@@ -20,11 +20,12 @@ export async function fetchGraphStatus(
 }
 
 export async function fetchGraphConcepts(
-  params: { limit?: number } = {},
+  params: { limit?: number; focus?: string | null } = {},
   opts?: Pick<ApiFetchOptions, 'signal'>,
 ): Promise<ConceptGraphResponse> {
   const q = new URLSearchParams();
   if (params.limit != null) q.set('limit', String(params.limit));
+  if (params.focus) q.set('focus', params.focus);
   const qs = q.toString();
   const raw = await apiFetch<unknown>(`/api/graph/concepts${qs ? `?${qs}` : ''}`, opts);
   return parseResponse('GET /api/graph/concepts', conceptGraphResponseSchema, raw);

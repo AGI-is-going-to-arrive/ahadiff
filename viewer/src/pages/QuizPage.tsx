@@ -1,12 +1,12 @@
 import { lazy, Suspense, useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import SRSCard from '../components/SRSCard';
 import type { SrsRating, SrsReviewRating } from '../components/SRSCard';
 import { getRunArtifact } from '../api/runs';
 import { markWrong, quizAnswer, srsReview } from '../api/signals';
 import type { MisconceptionCardItem, ReviewAnswer } from '../api/types';
-import { useTranslation } from '../i18n/useTranslation';
+import { useTranslation, type MessageKey } from '../i18n/useTranslation';
 import {
   hasChoices,
   hasQuizReviewCard,
@@ -61,6 +61,12 @@ function isReviewRating(rating: SrsRating): rating is ReviewAnswer {
 
 const PEEKED_REVIEW_RATING_BLOCKLIST = new Set<SrsReviewRating>(['easy', 'good']);
 const PEEKED_REVIEW_RATING_ERROR = 'peeked cards cannot be reviewed as good or easy; use hard or wrong';
+const QUIZ_KINDS = ['guided', 'recall', 'transfer'] as const;
+const QUIZ_KIND_LABEL_KEYS: Record<(typeof QUIZ_KINDS)[number], MessageKey> = {
+  guided: 'Quiz.mode_guided',
+  recall: 'Quiz.mode_recall',
+  transfer: 'Quiz.mode_transfer',
+};
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -68,6 +74,13 @@ function errorMessage(err: unknown): string {
 
 function formatEvidenceAnchor(file: string, line: number): string {
   return `${file}:L${line}`;
+}
+
+function diffPathForEvidence(runId: string | undefined, file: string, line: number): string {
+  const params = new URLSearchParams({
+    focus: `${file}:${line}`,
+  });
+  return runId ? `/run/${encodeURIComponent(runId)}/diff?${params.toString()}` : '#';
 }
 
 function selectedChoiceLabelFor(quiz: QuizItem, answer: string): string | null {
@@ -306,20 +319,50 @@ export default function QuizPage() {
 
   return (
     <AppShell>
-      <div className="quiz-page">
-        <div className="quiz-page__header">
-          <h1 className="quiz-page__title">{t('Quiz.title')}</h1>
+      <div className="page active quiz-page" data-page="quiz">
+        <div className="page-head quiz-page__header">
+          <div>
+            <div className="eyebrow">{t('Quiz.eyebrow')}</div>
+            <h1 className="quiz-page__title">{t('Quiz.title')}</h1>
+            <p className="sub">{t('Quiz.subtitle')}</p>
+          </div>
           {quizzes.length > 0 && (
-            <span
-              className="quiz-page__progress"
-              role="status"
-              aria-live="polite"
-            >
-              {t('Quiz.progress', {
-                current: String(currentIndex + 1),
-                total: String(quizzes.length),
-              })}
-            </span>
+            <div className="quiz-page__head-tools">
+              <div className="quiz-page__mode-row" aria-label={t('Quiz.mode_label')}>
+                {QUIZ_KINDS.map((kind) => (
+                  <span
+                    key={kind}
+                    className={`quiz-page__mode-badge ${
+                      currentQuiz?.quiz_kind === kind ? 'quiz-page__mode-badge--active' : ''
+                    }`}
+                  >
+                    {t(QUIZ_KIND_LABEL_KEYS[kind])}
+                  </span>
+                ))}
+                <span className={`quiz-page__mode-badge ${isSrsReview ? 'quiz-page__mode-badge--srs' : 'quiz-page__mode-badge--socratic'}`}>
+                  {isSrsReview ? t('Quiz.mode_srs') : t('Quiz.mode_socratic')}
+                </span>
+              </div>
+              <span
+                className="quiz-page__progress"
+                role="status"
+                aria-live="polite"
+              >
+                {t('Quiz.progress', {
+                  current: String(currentIndex + 1),
+                  total: String(quizzes.length),
+                })}
+              </span>
+              {currentIndex < quizzes.length - 1 && (
+                <button
+                  type="button"
+                  className="quiz-page__skip"
+                  onClick={() => setCurrentIndex((prev) => Math.min(quizzes.length - 1, prev + 1))}
+                >
+                  {t('Quiz.skip')}
+                </button>
+              )}
+            </div>
           )}
         </div>
 
@@ -356,26 +399,6 @@ export default function QuizPage() {
                 />
               </div>
 
-              <span className={`quiz-page__mode-badge ${isSrsReview ? 'quiz-page__mode-badge--srs' : 'quiz-page__mode-badge--socratic'}`}>
-                {isSrsReview ? t('Quiz.mode_srs') : t('Quiz.mode_socratic')}
-              </span>
-
-              {/* Visual mode chips matching Warm v6 template. The backend
-                  currently only emits Recall-mode quizzes, so guided/transfer
-                  remain inactive placeholders. They surface the broader
-                  pedagogy roadmap without changing any quiz logic. */}
-              <div
-                className="quiz-page__mode-chips"
-                role="presentation"
-                aria-hidden="true"
-              >
-                <span className="quiz-page__mode-chip">{t('Quiz.mode_guided')}</span>
-                <span className="quiz-page__mode-chip quiz-page__mode-chip--active">
-                  {t('Quiz.mode_recall')}
-                </span>
-                <span className="quiz-page__mode-chip">{t('Quiz.mode_transfer')}</span>
-              </div>
-
               {currentQuiz && (
                 <div className={`quiz-page__card-wrap ${isSrsReview ? 'quiz-page__card-wrap--srs' : 'quiz-page__card-wrap--socratic'}`}>
                   <SRSCard
@@ -407,12 +430,11 @@ export default function QuizPage() {
               )}
 
               {/* Nav row: Prev / Mark wrong (override) / Next.
-                  Gating on `rated` (not `answered`) ensures the SRS signal
-                  has been recorded before advancing — selecting a choice alone
-                  is not enough. Mark wrong only appears when the user already
-                  scored the card as correct, letting them downgrade their
-                  self-grading without a separate "redo" flow. */}
-              {rated[currentQuiz?.question_id ?? ''] && (
+                  Revealed answers can advance immediately like Warm v6. SRS
+                  ratings remain available as a secondary signal, but they no
+                  longer block the quiz flow. Mark wrong is idempotent and only
+                  appears after a correct answer with source claims. */}
+              {currentAnswer && (
                 <div className="quiz-page__nav">
                   <button
                     type="button"
@@ -491,12 +513,15 @@ export default function QuizPage() {
                             key={`${item.file}:${item.line}`}
                             className="quiz-evidence__item"
                           >
-                            <div className="quiz-evidence__ref">
+                            <Link
+                              className="quiz-evidence__ref"
+                              to={diffPathForEvidence(runId, item.file, item.line)}
+                            >
                               {formatEvidenceAnchor(item.file, item.line)}
-                            </div>
-                            <pre className="quiz-evidence__code">
-                              <code>{formatEvidenceAnchor(item.file, item.line)}</code>
-                            </pre>
+                            </Link>
+                            <p className="quiz-evidence__anchor-note">
+                              {t('Quiz.evidence_anchor_note')}
+                            </p>
                           </li>
                         ))}
                       </ul>

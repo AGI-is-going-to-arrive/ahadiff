@@ -9,7 +9,7 @@
 
 .quiz-page__header {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--sp-4);
   margin-bottom: var(--sp-6);
@@ -17,16 +17,48 @@
 
 .quiz-page__title {
   font-family: var(--font-serif);
-  font-size: 1.5rem;
+  font-size: 2.2rem;
   font-weight: 600;
   color: var(--ink-strong);
   margin: 0;
+}
+
+.quiz-page__head-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
 }
 
 .quiz-page__progress {
   font-family: var(--font-mono);
   font-size: var(--fs-base);
   color: var(--muted);
+}
+
+.quiz-page__skip {
+  border: 1px solid var(--hair);
+  border-radius: var(--r-full);
+  background: rgba(255, 255, 255, 0.62);
+  color: var(--ink);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  padding: 8px 12px;
+  transition: border-color var(--dur-fast), color var(--dur-fast), transform var(--dur-fast);
+}
+
+.quiz-page__skip:hover {
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  transform: translateY(-1px);
+}
+
+.quiz-page__skip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .quiz-page__progress--summary {
@@ -43,6 +75,10 @@
   overflow: hidden;
   margin-bottom: 18px;
   box-shadow: inset 0 0 0 1px rgba(180, 160, 130, 0.08);
+}
+
+.quiz-page__head-tools .quiz-page__mode-row {
+  margin: 0;
 }
 
 .quiz-page__progress-fill {
@@ -135,6 +171,8 @@
 }
 
 .quiz-evidence__ref {
+  display: inline-flex;
+  width: fit-content;
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: var(--fs-2xs);
@@ -142,17 +180,17 @@
   overflow-wrap: anywhere;
 }
 
-.quiz-evidence__code {
-  margin: var(--sp-2) 0 0;
-  padding: 10px;
-  border-radius: 6px;
-  background: var(--subtle);
-  color: var(--ink);
-  font-family: var(--font-mono);
+.quiz-evidence__ref:hover {
+  color: var(--accent-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.quiz-evidence__anchor-note {
+  margin: var(--sp-1) 0 0;
+  color: var(--muted);
   font-size: var(--fs-xs);
-  line-height: 1.55;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  line-height: 1.5;
 }
 
 .quiz-evidence__empty {
@@ -849,6 +887,14 @@
 
 /* Mode badge (Socratic / SRS) */
 
+.quiz-page__mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+  margin-bottom: var(--sp-3);
+}
+
 .quiz-page__mode-badge {
   display: inline-flex;
   align-items: center;
@@ -860,17 +906,27 @@
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  margin-bottom: var(--sp-3);
+  background: var(--subtle);
+  color: var(--ink-2);
+  border: 1px solid var(--hair);
+}
+
+.quiz-page__mode-badge--active {
+  background: var(--accent-softest);
+  color: var(--accent-ink);
+  border-color: var(--accent-tint);
 }
 
 .quiz-page__mode-badge--socratic {
   background: var(--info);
   color: var(--on-accent);
+  border-color: transparent;
 }
 
 .quiz-page__mode-badge--srs {
   background: var(--accent);
   color: var(--on-accent);
+  border-color: transparent;
 }
 
 .quiz-page__card-wrap--srs .srs-card {
@@ -881,43 +937,11 @@
   border-left: 3px solid var(--info);
 }
 
-/* Mode chips (Guided / Recall / Transfer) — visual only for now */
-
-.quiz-page__mode-chips {
-  display: flex;
-  gap: 6px;
-  margin-top: 8px;
-  margin-bottom: var(--sp-3);
-  flex-wrap: wrap;
-}
-
-.quiz-page__mode-chip {
-  padding: 4px 10px;
-  border: 1px solid var(--hair, #e6dfd5);
-  border-radius: var(--r-full, 999px);
-  font-family: var(--font-sans);
-  font-size: var(--fs-2xs, 11px);
-  color: var(--muted, #8c8278);
-  background: transparent;
-  white-space: nowrap;
-}
-
-.quiz-page__mode-chip--active {
-  background: var(--accent-soft, #f5e6d8);
-  border-color: var(--accent-hair, #ebc3ae);
-  color: var(--accent-ink, #8b5a3c);
-  font-weight: 500;
-}
-
 /* ---- Dark mode ---- */
 @media (prefers-color-scheme: dark) {
   .quiz-panel {
     background: var(--subtle);
     border-color: var(--hair-strong);
-  }
-
-  .quiz-evidence__code {
-    background: var(--elevated);
   }
 
   .srs-card {
@@ -1035,8 +1059,7 @@
     border: 1px solid CanvasText;
   }
 
-  .quiz-panel,
-  .quiz-evidence__code {
+  .quiz-panel {
     border: 1px solid CanvasText;
   }
 
@@ -1055,18 +1078,6 @@
 
   .quiz-progress-badge--current {
     color: Highlight;
-  }
-
-  .quiz-page__mode-chip {
-    border: 1px solid CanvasText;
-    color: CanvasText;
-    background: Canvas;
-  }
-
-  .quiz-page__mode-chip--active {
-    border-color: Highlight;
-    color: Highlight;
-    background: Canvas;
   }
 
   .quiz-page__nav-btn {

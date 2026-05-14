@@ -248,23 +248,21 @@ def test_gate3_hard_gates_handle_missing_boundary_and_safety_findings() -> None:
         secret_leak_detected=False,
         injection_unresolved=False,
     )
-    assert missing.failed_names() == ("accuracy", "evidence")
+    assert missing.failed_names() == ("accuracy", "evidence", "evidence_coverage")
 
     boundary = evaluate_hard_gates(
         rubric=rubric,
-        dimension_scores={"accuracy": 14.0, "evidence": 13.0},
+        dimension_scores={"accuracy": 14.0, "evidence": 13.0, "diff_coverage": 10.0},
         claims=(),
         secret_leak_detected=False,
         injection_unresolved=False,
     )
-    assert "accuracy" in boundary.failed_names()
-    assert boundary.as_payload()["accuracy"]["detail"] == (
-        "accuracy score 14.00 <= 14.00; requires > 14.00"
-    )
+    assert "accuracy" not in boundary.failed_names()
+    assert boundary.as_payload()["accuracy"]["detail"] == "accuracy score 14.00 >= 14.00"
 
     non_critical = evaluate_hard_gates(
         rubric=rubric,
-        dimension_scores={"accuracy": 15.0, "evidence": 13.0},
+        dimension_scores={"accuracy": 15.0, "evidence": 13.0, "diff_coverage": 10.0},
         claims=(),
         secret_leak_detected=False,
         injection_unresolved=False,
@@ -272,7 +270,7 @@ def test_gate3_hard_gates_handle_missing_boundary_and_safety_findings() -> None:
     )
     critical = evaluate_hard_gates(
         rubric=rubric,
-        dimension_scores={"accuracy": 15.0, "evidence": 13.0},
+        dimension_scores={"accuracy": 15.0, "evidence": 13.0, "diff_coverage": 10.0},
         claims=(),
         secret_leak_detected=False,
         injection_unresolved=False,

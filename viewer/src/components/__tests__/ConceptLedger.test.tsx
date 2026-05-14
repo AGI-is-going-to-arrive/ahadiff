@@ -13,6 +13,7 @@ const MOCK_ENTRIES: ConceptLedgerEntry[] = [
     file_refs: ['demo.py', 'config.py'],
     source_refs: ['abc123'],
     updated_by_runs: ['run-1'],
+    graphify_node_id: 'node-learn-from-diff',
   },
   {
     term_key: 'branding',
@@ -155,12 +156,12 @@ describe('ConceptLedger', () => {
     expect(html).not.toContain('src\\模块\\配置.py</span>');
   });
 
-  it('renders graph links when Graphify is available', async () => {
+  it('renders graph links from real Graphify node ids when available', async () => {
     Object.assign(mockState, { entries: MOCK_ENTRIES, totalCount: 2 });
     const { default: ConceptLedger } = await import('../ConceptLedger');
     const html = renderToStaticMarkup(<ConceptLedger graphifyAvailable />);
     expect(html).toContain('Concept.ledger_view_in_graph');
-    expect(html).toContain('#/concepts?tab=graph&amp;focus=learn-from-diff');
+    expect(html).toContain('#/concepts?tab=graph&amp;focus=node-learn-from-diff');
   });
 
   it('encodes graph link focus values with query-special characters', async () => {
@@ -169,11 +170,21 @@ describe('ConceptLedger', () => {
       term_key: 'c++ & hash#query?',
       concept: 'c++ & hash#query?',
       display_name: 'C++ & hash#query?',
+      graphify_node_id: 'node/c++ & hash#query?',
     };
     Object.assign(mockState, { entries: [entry], totalCount: 1 });
     const { default: ConceptLedger } = await import('../ConceptLedger');
     const html = renderToStaticMarkup(<ConceptLedger graphifyAvailable />);
-    expect(html).toContain('#/concepts?tab=graph&amp;focus=c%2B%2B%20%26%20hash%23query%3F');
+    expect(html).toContain(
+      '#/concepts?tab=graph&amp;focus=node%2Fc%2B%2B%20%26%20hash%23query%3F',
+    );
+  });
+
+  it('does not render graph links for ledger rows without a real Graphify node id', async () => {
+    Object.assign(mockState, { entries: [{ ...MOCK_ENTRIES[0], graphify_node_id: null }], totalCount: 1 });
+    const { default: ConceptLedger } = await import('../ConceptLedger');
+    const html = renderToStaticMarkup(<ConceptLedger graphifyAvailable />);
+    expect(html).not.toContain('Concept.ledger_view_in_graph');
   });
 
   it('does not render graph links when Graphify is unavailable', async () => {

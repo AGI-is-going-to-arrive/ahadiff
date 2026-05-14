@@ -54,7 +54,7 @@ test.describe('smoke', () => {
   test('review page flip reveals answer and rating buttons', async ({ page }) => {
     await page.goto('/#/review');
     await expect(page.locator('.flashcard__flip-btn')).toBeVisible();
-    await page.locator('.flashcard__flip-btn').click();
+    await page.keyboard.press('Space');
     await expect(page.locator('.srs-buttons')).toBeVisible();
     const buttons = page.locator('.srs-btn');
     await expect(buttons).toHaveCount(4);
@@ -280,21 +280,41 @@ test.describe('smoke', () => {
   });
 
   test('guide page shows copy button on command blocks', async ({ page }) => {
-    await page.addInitScript(() => {
+    const installClipboardMock = () => {
+      const setCopiedText = (value: string) => {
+        (window as typeof window & { __ahadiffCopiedText?: string })
+          .__ahadiffCopiedText = value;
+      };
       Object.defineProperty(navigator, 'clipboard', {
         configurable: true,
         value: {
           writeText: async (value: string) => {
-            (window as typeof window & { __ahadiffCopiedText?: string })
-              .__ahadiffCopiedText = value;
+            setCopiedText(value);
           },
         },
       });
-    });
+      const originalExecCommand = document.execCommand?.bind(document);
+      document.execCommand = (commandId: string, showUI?: boolean, value?: string) => {
+        if (commandId === 'copy') {
+          const active = document.activeElement;
+          if (active instanceof HTMLTextAreaElement) {
+            setCopiedText(active.value);
+          }
+          return true;
+        }
+        return originalExecCommand?.(commandId, showUI, value) ?? false;
+      };
+    };
+    await page.addInitScript(installClipboardMock);
     await page.goto('/#/guide');
+    await page.evaluate(installClipboardMock);
     const copyButton = page.locator('.command-block__copy-btn').first();
+    await copyButton.evaluate((button) => {
+      button.scrollIntoView({ block: 'center', inline: 'nearest' });
+    });
     await expect(copyButton).toBeVisible();
-    await copyButton.click();
+    await copyButton.focus();
+    await page.keyboard.press('Enter');
     await expect(copyButton).toHaveAccessibleName(/Copied!/);
     await expect.poll(
       () => page.evaluate(

@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
 
 from ahadiff.contracts.quiz_choice import AnswerMode, QuizChoice, validate_quiz_choices
+
+QuizKind = Literal["guided", "recall", "transfer"]
 
 
 def _normalize_text(value: str) -> str:
@@ -51,6 +53,7 @@ class QuizQuestion(BaseModel):
     review_card_id: str | None = None
     question: str
     expected_answer: str
+    quiz_kind: QuizKind = "recall"
     answer_mode: AnswerMode = "open"
     choices: list[QuizChoice] | None = None
     source_claims: list[str] = Field(default_factory=list)

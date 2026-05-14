@@ -595,9 +595,16 @@
   min-width: 0;
 }
 
-.lesson__concept-chip span {
+.lesson__concept-chip a {
   color: var(--ink);
   overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.lesson__concept-chip a:hover {
+  color: var(--accent-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .lesson__concept-chip code,

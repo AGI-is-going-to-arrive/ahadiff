@@ -28,6 +28,60 @@
     page-break-inside: avoid;
   }
 
+  .lesson-page {
+    display: block !important;
+    max-width: none !important;
+    padding: 0 !important;
+    opacity: 1 !important;
+    transform: none !important;
+    visibility: visible !important;
+  }
+
+  .lesson-page__header {
+    display: flex !important;
+    opacity: 1 !important;
+    transform: none !important;
+    visibility: visible !important;
+  }
+
+  .lesson-page__header-left,
+  .lesson-page__title,
+  .lesson-page__eyebrow,
+  .lesson-page__sub {
+    opacity: 1 !important;
+    transform: none !important;
+    visibility: visible !important;
+  }
+
+  .page,
+  .page.active {
+    display: block !important;
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  .page-head {
+    display: flex !important;
+    border-bottom: 1px solid #000;
+    margin-bottom: 18px;
+  }
+
+  .page-head .right {
+    display: flex !important;
+  }
+
+  .page-head .right .btn {
+    display: none !important;
+  }
+
+  .demo-banner {
+    display: flex !important;
+  }
+
+  .demo-tag {
+    display: inline-flex !important;
+  }
+
   a {
     color: black;
     text-decoration: underline;

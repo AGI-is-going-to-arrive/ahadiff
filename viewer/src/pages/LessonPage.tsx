@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CheckCircle2, Printer } from 'lucide-react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import EvidencePanel from '../components/EvidencePanel';
 import ClaimBadge from '../components/ClaimBadge';
@@ -221,6 +221,11 @@ function collectEvidenceRefs(claims: Claim[]): EvidenceRef[] {
     }
   }
   return refs;
+}
+
+function conceptLedgerPath(concept: ConceptSummaryItem): string {
+  const focus = concept.term_key || concept.display_name;
+  return `/concepts?tab=ledger&focus=${encodeURIComponent(focus)}`;
 }
 
 // Determine recommended scaffolding level from weak concepts.
@@ -776,7 +781,7 @@ export default function LessonPage() {
                     <ul className="lesson__concept-list">
                       {concepts.slice(0, 6).map((concept) => (
                         <li key={concept.term_key} className="lesson__concept-chip">
-                          <span>{concept.display_name}</span>
+                          <Link to={conceptLedgerPath(concept)}>{concept.display_name}</Link>
                           {concept.file_refs[0] && <code>{concept.file_refs[0]}</code>}
                         </li>
                       ))}

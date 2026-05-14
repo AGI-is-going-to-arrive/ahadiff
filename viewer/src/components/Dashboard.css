@@ -374,9 +374,61 @@
   margin-top: var(--sp-4);
 }
 
+.dashboard__spec-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sp-3) var(--sp-6);
+  align-items: center;
+  margin-bottom: var(--sp-6);
+  padding: var(--sp-4) 0;
+  border-top: 1px solid var(--hair-strong);
+  border-bottom: 1px solid var(--hair-strong);
+}
+
+.dashboard__spec-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(80px, auto));
+  gap: var(--sp-4);
+  margin: 0;
+}
+
+.dashboard__spec-metrics div {
+  min-width: 0;
+}
+
+.dashboard__spec-metrics dt {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-strong);
+}
+
+.dashboard__spec-metrics dd {
+  margin: 4px 0 0;
+  font-family: "Newsreader", var(--font-serif);
+  font-size: 24px;
+  color: var(--ink-blackletter);
+}
+
+.dashboard__spec-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
 @media (max-width: 1024px) {
   .dashboard__chart-row {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard__spec-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard__spec-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 

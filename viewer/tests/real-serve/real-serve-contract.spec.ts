@@ -208,3 +208,18 @@ test('browser calls real serve token, estimate, task, and progress stream', asyn
   expect(result.streamText).toContain('event: progress');
   expect(result.streamText).toContain('"status": "completed"');
 });
+
+test('browser renders core pages against real serve APIs without mocks', async ({ page }) => {
+  await page.goto('/#/');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await expect(page.locator('[role="alert"]')).toHaveCount(0);
+
+  await page.goto('/#/guide');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await expect(page.locator('.guide-agent-card')).toHaveCount(13);
+  await expect(page.locator('[role="alert"]')).toHaveCount(0);
+
+  await page.goto('/#/concepts?tab=graph');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await expect(page.locator('[role="alert"]')).toHaveCount(0);
+});

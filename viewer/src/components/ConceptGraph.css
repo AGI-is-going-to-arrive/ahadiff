@@ -1264,7 +1264,7 @@
   .concept-graph__filter-chip--active,
   .concept-graph__filter-chip--active:hover {
     background: Canvas !important;
-    color: Highlight !important;
+    color: CanvasText !important;
     border-color: Highlight !important;
     box-shadow: inset 0 0 0 1px Highlight !important;
     outline: 2px solid Highlight !important;

@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import InfoHint from '../components/InfoHint';
 import CalendarHeatmap, { type HeatmapCell } from '../components/CalendarHeatmap';
@@ -9,13 +10,19 @@ import { ApiError } from '../api/client';
 import { getUsage } from '../api/config';
 import { getWeakConcepts } from '../api/review';
 import { getRatchetHistory } from '../api/runs';
-import { fetchLearningEffectiveness, fetchReviewHeatmap, fetchStats } from '../api/stats';
+import {
+  fetchLearningEffectiveness,
+  fetchReviewHeatmap,
+  fetchSpecAlignment,
+  fetchStats,
+} from '../api/stats';
 import { useRunsStore } from '../state/runs-store';
 import { useTranslation, type MessageKey, type TranslateFn } from '../i18n/useTranslation';
 import { useLocaleStore } from '../state/locale-store';
 import type {
   LearningEffectivenessResponse,
   RatchetHistoryEntry,
+  SpecAlignmentResponse,
   StatsResponse,
   Verdict,
   WeakConceptItem,
@@ -91,6 +98,19 @@ function formatDimensionLabel(
   return dim.replace(/_/g, ' ');
 }
 
+function specAlignmentTone(score: number | null) {
+  if (score == null) return 'default' as const;
+  if (score >= 8) return 'success' as const;
+  if (score >= 6) return 'warning' as const;
+  return 'danger' as const;
+}
+
+function formatSpecAlignmentScore(score: number | null): string {
+  if (score == null) return '-';
+  const rounded = score.toFixed(1).replace(/\.0$/, '');
+  return `${rounded}/10`;
+}
+
 export default function DashboardPage() {
   const { t } = useTranslation();
   const locale = useLocaleStore((s) => s.locale);
@@ -103,8 +123,11 @@ export default function DashboardPage() {
   const [ratchetHistory, setRatchetHistory] = useState<RatchetHistoryEntry[]>([]);
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [learning, setLearning] = useState<LearningEffectivenessResponse | null>(null);
+  const [specAlignment, setSpecAlignment] = useState<SpecAlignmentResponse | null>(null);
   const [heatmapCells, setHeatmapCells] = useState<HeatmapCell[] | null>(null);
+  const [heatmapFallbackAllowed, setHeatmapFallbackAllowed] = useState(false);
   const [statsUnavailable, setStatsUnavailable] = useState(false);
+  const [specAlignmentUnavailable, setSpecAlignmentUnavailable] = useState(false);
   const [usageUnavailable, setUsageUnavailable] = useState(false);
   const [weakConcepts, setWeakConcepts] = useState<WeakConceptItem[]>([]);
   const [usage, setUsage] = useState<UsageResponse | null>(null);
@@ -130,9 +153,12 @@ export default function DashboardPage() {
     setLoading(true);
     setError(null);
     setStatsUnavailable(false);
+    setSpecAlignmentUnavailable(false);
     setUsageUnavailable(false);
     setHeatmapCells(null);
+    setHeatmapFallbackAllowed(false);
     setLearning(null);
+    setSpecAlignment(null);
     setWeakConcepts([]);
     setUsage(null);
     let failed = false;
@@ -148,6 +174,7 @@ export default function DashboardPage() {
       statsResult,
       heatmapResult,
       learningResult,
+      specAlignmentResult,
       weakResult,
       usageResult,
     ] =
@@ -157,6 +184,7 @@ export default function DashboardPage() {
         fetchStats({ signal: controller.signal }),
         fetchReviewHeatmap({ signal: controller.signal }),
         fetchLearningEffectiveness({ signal: controller.signal }),
+        fetchSpecAlignment({ signal: controller.signal }),
         getWeakConcepts({ signal: controller.signal }),
         getUsage({ signal: controller.signal }),
       ]);
@@ -192,15 +220,31 @@ export default function DashboardPage() {
           count: entry.review_count,
         })),
       );
+      setHeatmapFallbackAllowed(false);
     } else {
       if (!failed && isAuthErr(heatmapResult.reason)) {
         setError('Error.auth_failed');
         failed = true;
       }
+      const status = heatmapResult.reason instanceof ApiError
+        ? heatmapResult.reason.status
+        : null;
+      setHeatmapFallbackAllowed(status === 404 || status === 501);
       setHeatmapCells(null);
     }
 
     setLearning(learningResult.status === 'fulfilled' ? learningResult.value : null);
+    if (specAlignmentResult.status === 'fulfilled') {
+      setSpecAlignment(specAlignmentResult.value);
+      setSpecAlignmentUnavailable(false);
+    } else {
+      if (!failed && isAuthErr(specAlignmentResult.reason)) {
+        setError('Error.auth_failed');
+        failed = true;
+      }
+      setSpecAlignment(null);
+      setSpecAlignmentUnavailable(true);
+    }
     setWeakConcepts(
       weakResult.status === 'fulfilled' ? weakResult.value.concepts : [],
     );
@@ -261,7 +305,7 @@ export default function DashboardPage() {
           <div className="page-content">
             <div role="alert" className="dashboard__error">
               {t('Error.auth_failed')}
-              <button type="button" className="btn primary" onClick={() => void fetchDashboard()}>
+              <button type="button" className="btn primary retry-btn" onClick={() => void fetchDashboard()}>
                 {t('Error.retry')}
               </button>
             </div>
@@ -284,7 +328,7 @@ export default function DashboardPage() {
           <div className="page-content">
             <div role="alert" className="dashboard__error">
               {t('Error.fetch_failed', { resource: t(error as MessageKey) })}
-              <button type="button" className="btn primary" onClick={() => void fetchDashboard()}>
+              <button type="button" className="btn primary retry-btn" onClick={() => void fetchDashboard()}>
                 {t('Error.retry')}
               </button>
             </div>
@@ -306,10 +350,10 @@ export default function DashboardPage() {
           </div>
 
           <div className="page-content">
-            <div className="empty">
+            <div className="empty dashboard__empty">
               <div className="empty-icon" aria-hidden="true">Δ</div>
               <h2 className="empty-title">{t('Dashboard.empty_title')}</h2>
-              <p className="empty-hint">{t('Dashboard.empty_hint')}</p>
+              <p className="empty-hint dashboard__empty-hint">{t('Dashboard.empty_hint')}</p>
               <div className="dashboard__empty-actions">
                 <button
                   type="button"
@@ -340,7 +384,7 @@ export default function DashboardPage() {
 
   // ---- KPI computation ----
   const loadedRunCount = runs.length;
-  const totalRuns = Math.max(stats?.total_runs ?? loadedRunCount, loadedRunCount);
+  const totalRuns = stats?.total_runs ?? loadedRunCount;
   const passCount = runs.filter((r) => r.verdict === 'PASS').length;
   // Use runs.length (not totalRuns) as denominator — passCount comes from
   // the loaded runs array, so both must share the same source to avoid
@@ -354,6 +398,18 @@ export default function DashboardPage() {
   const statsHint = statsUnavailable ? t('Dashboard.kpi_stats_unavailable_hint') : undefined;
   const totalLlmCalls: string | number = usage ? usage.total_calls : '-';
   const usageHint = usageUnavailable ? t('Dashboard.kpi_usage_unavailable_hint') : undefined;
+  const specScore = specAlignment?.alignment_score ?? null;
+  const specTone = specAlignmentTone(specScore);
+  const specHint = specAlignmentUnavailable
+    ? t('Dashboard.spec_alignment_unavailable')
+    : specAlignment
+      ? t('Dashboard.spec_alignment_evaluated', {
+          count: String(specAlignment.total_evaluated),
+        })
+      : t('Dashboard.spec_alignment_empty');
+  const specTrendLabel = specAlignment?.recent_trend
+    ? t(`Ratchet.trend_${specAlignment.recent_trend}` as MessageKey)
+    : t('Dashboard.spec_alignment_no_trend');
 
   const passRateTone =
     passRate >= 80 ? 'success' as const :
@@ -377,15 +433,18 @@ export default function DashboardPage() {
     const run = runs[0];
     return (
       <AppShell>
-        <div className="dashboard">
-          <div className="dashboard__header">
-            <h1 className="dashboard__title">{t('Dashboard.title')}</h1>
-            <p className="dashboard__subtitle">{t('Dashboard.subtitle')}</p>
+        <div className="page active" data-page="dashboard" aria-live="polite">
+          <div className="page-head">
+            <div>
+              <div className="eyebrow">{t('Dashboard.eyebrow')}</div>
+              <h1>{t('Dashboard.title')}</h1>
+              <div className="sub">{t('Dashboard.subtitle')}</div>
+            </div>
           </div>
           {errorBanner}
 
 
-          <div className="kpi-grid kpi-grid--3col">
+          <div className="kpi-grid kpi-grid--4col">
             <KpiCard
               label={t('Rubric.overall')}
               value={run.overall}
@@ -400,7 +459,21 @@ export default function DashboardPage() {
               value={totalLlmCalls}
               hint={usageHint}
             />
+            <KpiCard
+              label={t('Ratchet.spec_alignment')}
+              value={formatSpecAlignmentScore(specScore)}
+              tone={specTone}
+              hint={specHint}
+            />
           </div>
+
+          <SpecAlignmentSummary
+            t={t}
+            score={specScore}
+            trendLabel={specTrendLabel}
+            totalEvaluated={specAlignment?.total_evaluated ?? 0}
+            unavailable={specAlignmentUnavailable}
+          />
 
           <div className="ratchet-section">
             <div className="ratchet-section__fallback">
@@ -524,6 +597,14 @@ export default function DashboardPage() {
           />
         </div>
 
+        <SpecAlignmentSummary
+          t={t}
+          score={specScore}
+          trendLabel={specTrendLabel}
+          totalEvaluated={specAlignment?.total_evaluated ?? 0}
+          unavailable={specAlignmentUnavailable}
+        />
+
         {/* Ratchet chart + heatmap row. The heatmap prefers the backend
          * review log source and falls back to loaded-run dates when talking
          * to an older serve process. */}
@@ -546,7 +627,9 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="ratchet-section__card" style={{ padding: 'var(--sp-4) 18px 14px' }}>
-            <CalendarHeatmap cells={heatmapCells ?? deriveHeatmapFromRuns(runs)} />
+            <CalendarHeatmap
+              cells={heatmapCells ?? (heatmapFallbackAllowed ? deriveHeatmapFromRuns(runs) : [])}
+            />
           </div>
         </div>
 
@@ -671,6 +754,53 @@ export default function DashboardPage() {
         ) : null}
       </div>
     </AppShell>
+  );
+}
+
+function SpecAlignmentSummary({
+  t,
+  score,
+  trendLabel,
+  totalEvaluated,
+  unavailable,
+}: {
+  t: TranslateFn;
+  score: number | null;
+  trendLabel: string;
+  totalEvaluated: number;
+  unavailable: boolean;
+}) {
+  const scoreLabel = formatSpecAlignmentScore(score);
+  return (
+    <section className="dashboard__spec-summary" aria-labelledby="dashboard-spec-title">
+      <div>
+        <div className="ratchet-section__meta">{t('Ratchet.spec_alignment')}</div>
+        <h2 id="dashboard-spec-title" className="dashboard__section-title">
+          {t('Dashboard.spec_alignment_title')}
+        </h2>
+      </div>
+      <dl className="dashboard__spec-metrics">
+        <div>
+          <dt>{t('Ratchet.alignment_score')}</dt>
+          <dd>{scoreLabel}</dd>
+        </div>
+        <div>
+          <dt>{t('Ratchet.recent_trend')}</dt>
+          <dd>{trendLabel}</dd>
+        </div>
+        <div>
+          <dt>{t('Dashboard.spec_alignment_runs')}</dt>
+          <dd>{unavailable ? '-' : totalEvaluated}</dd>
+        </div>
+      </dl>
+      <p className="dashboard__spec-hint">
+        {unavailable
+          ? t('Dashboard.spec_alignment_unavailable')
+          : score != null
+            ? t('Dashboard.spec_alignment_evaluated', { count: String(totalEvaluated) })
+            : t('Dashboard.spec_alignment_empty')}
+      </p>
+    </section>
   );
 }
 
@@ -826,9 +956,9 @@ function RunListTable({
           {sorted.map((run) => (
             <tr key={run.run_id}>
               <td>
-                <a className="mono" href={`#/run/${encodeURIComponent(run.run_id)}/lesson`}>
+                <Link className="mono" to={`/run/${encodeURIComponent(run.run_id)}/lesson`}>
                   {run.source_ref || run.run_id.slice(0, 8)}
-                </a>
+                </Link>
               </td>
               <td>
                 <SourceBadge sourceKind={run.source_kind} t={t} />

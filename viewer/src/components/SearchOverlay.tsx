@@ -131,6 +131,8 @@ export default function SearchOverlay({ open, onClose, initialQuery }: SearchOve
         if (!child.contains(dialog)) addInertTarget(child);
       }
     }
+    addInertTarget(document.querySelector('.topbar'));
+    addInertTarget(document.querySelector('.app-shell__body'));
     for (const el of inertTargets) {
       previouslyInert.push({
         el,
@@ -246,14 +248,14 @@ export default function SearchOverlay({ open, onClose, initialQuery }: SearchOve
   );
 
   const close = useCallback(() => {
-    onClose();
+    flushSync(() => onClose());
   }, [onClose]);
 
   const commit = useCallback(
     (result: SearchResult) => {
       const href = hrefFor(result);
       if (!href) return;
-      flushSync(() => close());
+      close();
       if (href.startsWith('#')) {
         if (window.location.hash === href) {
           window.dispatchEvent(new Event('hashchange'));

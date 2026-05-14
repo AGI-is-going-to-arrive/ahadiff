@@ -273,15 +273,23 @@ export default function RunDetailPage() {
   );
 
   if (!runId) {
-    return <AppShell><p>{t('Error.not_found')}</p></AppShell>;
+    return (
+      <AppShell>
+        <div className="page active run-detail-page" data-page="run-detail">
+          <p>{t('Error.not_found')}</p>
+        </div>
+      </AppShell>
+    );
   }
 
   if (loading) {
     return (
       <AppShell>
-        <div role="status" aria-live="polite" className="run-detail__loading">
-          <span className="loading-spinner" />
-          {t('Serve.loading')}
+        <div className="page active run-detail-page" data-page="run-detail">
+          <div role="status" aria-live="polite" className="run-detail__loading">
+            <span className="loading-spinner" />
+            {t('Serve.loading')}
+          </div>
         </div>
       </AppShell>
     );
@@ -290,8 +298,10 @@ export default function RunDetailPage() {
   if (error || !run) {
     return (
       <AppShell>
-        <div role="alert" className="run-detail__error">
-          {t('Error.fetch_failed', { resource: t('RunDetail.resource_run') })}
+        <div className="page active run-detail-page" data-page="run-detail">
+          <div role="alert" className="run-detail__error">
+            {t('Error.fetch_failed', { resource: t('RunDetail.resource_run') })}
+          </div>
         </div>
       </AppShell>
     );
@@ -306,12 +316,15 @@ export default function RunDetailPage() {
 
   return (
     <AppShell>
-      <header className="run-detail__header">
-        <h1 className="run-detail__title">
-          {t('RunDetail.title')}
-          <code className="run-detail__run-id">{runId.length > 16 ? `${runId.slice(0, 16)}…` : runId}</code>
-        </h1>
-      </header>
+      <div className="page active run-detail-page" data-page="run-detail">
+        <header className="page-head run-detail__header">
+          <div>
+            <h1 className="run-detail__title">
+              {t('RunDetail.title')}
+              <code className="run-detail__run-id">{runId.length > 16 ? `${runId.slice(0, 16)}…` : runId}</code>
+            </h1>
+          </div>
+        </header>
 
       <div className="run-detail__tabs" role="tablist" aria-label={t('RunDetail.title')}>
         {visibleTabs.map((tab) => {
@@ -560,6 +573,7 @@ export default function RunDetailPage() {
           </div>
         )}
       </section>
+      </div>
     </AppShell>
   );
 }

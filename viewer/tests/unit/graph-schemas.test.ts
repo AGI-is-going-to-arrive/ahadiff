@@ -8,6 +8,7 @@ import {
   freshnessProjectionSchema,
   graphStatusResponseSchema,
   learningEffectivenessResponseSchema,
+  conceptLedgerEntrySchema,
   ratchetHistoryEntrySchema,
   ratchetHistoryResponseSchema,
   reviewMasteryResponseSchema,
@@ -198,6 +199,30 @@ describe('graph schemas', () => {
       edges: [],
     });
     expect(result.truncated).toBe(false);
+  });
+
+  it('conceptLedgerEntrySchema accepts nullable Graphify node ids', () => {
+    expect(
+      conceptLedgerEntrySchema.parse({
+        term_key: 'concept-1',
+        concept: 'concept-1',
+        graphify_node_id: 'node-1',
+      }).graphify_node_id,
+    ).toBe('node-1');
+    expect(
+      conceptLedgerEntrySchema.parse({
+        term_key: 'concept-1',
+        concept: 'concept-1',
+        graphify_node_id: null,
+      }).graphify_node_id,
+    ).toBeNull();
+    expect(() =>
+      conceptLedgerEntrySchema.parse({
+        term_key: 'concept-1',
+        concept: 'concept-1',
+        graphify_node_id: '',
+      }),
+    ).toThrow();
   });
 
   it('graphStatusResponseSchema rejects missing/null required fields and unknown keys', () => {

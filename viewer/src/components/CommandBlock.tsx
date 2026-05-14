@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { copyToClipboard } from '../utils/clipboard';
 import './CommandBlock.css';
 
+const COPY_CONFIRMATION_MS = 3000;
+
 export interface CopyButtonProps {
   text: string;
   className?: string;
@@ -39,7 +41,7 @@ export function CopyButton({
     resetTimerRef.current = window.setTimeout(() => {
       setCopied(false);
       resetTimerRef.current = null;
-    }, 1400);
+    }, COPY_CONFIRMATION_MS);
   }, []);
 
   const handleCopy = useCallback(() => {

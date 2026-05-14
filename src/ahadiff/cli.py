@@ -1054,6 +1054,18 @@ def learn_cmd(
                             force=False,
                             note_payload={"learnability": learnability.as_metadata()},
                         )
+                        if cards_path is not None:
+                            try:
+                                import_cards_from_jsonl(
+                                    _state_dir_for_root(root, has_git_repo=has_git_repo)
+                                    / "review.sqlite",
+                                    cards_path,
+                                    desired_retention=float(learn_config["desired_retention"]),
+                                )
+                            except Exception as review_import_error:
+                                learn_warnings.append(
+                                    f"review card import failed: {review_import_error}"
+                                )
                         try:
                             concepts_path = append_concepts(
                                 workspace_root=root,

@@ -30,8 +30,8 @@
 | A10 | L5: review.sqlite (FSRS-6 + schema v1-v7 migration + FTS5) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/review/database.py`, `scheduler.py`, `optimizer.py`, `search.py`; `tests/unit/test_review_*.py` |
 | A11 | L6: Learning Core (quiz + SRS review + concepts + helpfulness) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/quiz/`, `src/ahadiff/wiki/concepts.py`, `src/ahadiff/lesson/helpfulness.py`; `tests/unit/test_helpfulness.py` |
 | A12 | L6: Graphify (models/parser/matcher/linker/slicer/search/freshness) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/graphify/` (7 files: models, parser, matcher, linker, slicer, search, freshness); `tests/unit/test_graphify*.py` (5 test files) |
-| A13 | L7: Serve API (69 concrete API routes + catchall, Starlette + Uvicorn) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/serve/app.py`; route modules; `tests/unit/test_serve*.py`, `test_routes_*.py` |
-| A14 | L7: React 19 SPA (Vite + vanilla CSS) | Blueprint | N/A | IMPL | IMPL | `viewer/src/` (16 pages, 62 production TSX, 46 CSS, i18n `1271/1271`); `viewer/vitest.config.ts` + Vitest coverage + Playwright |
+| A13 | L7: Serve API (70 concrete API routes + catchall, Starlette + Uvicorn) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/serve/app.py`; route modules; `tests/unit/test_serve*.py`, `test_routes_*.py` |
+| A14 | L7: React 19 SPA (Vite + vanilla CSS) | Blueprint | N/A | IMPL | IMPL | `viewer/src/` (14 production page TSX, 52 non-test TSX, 47 CSS, i18n `1392/1392`); `viewer/vitest.config.ts` + Vitest coverage + Playwright |
 
 ---
 
@@ -151,7 +151,7 @@
 | H4 | Privacy 3-tier: strict_local / redacted_remote / explicit_remote | Blueprint+Comp | IMPL | N/A | IMPL | `safety/gates.py:12` (PrivacyMode literal); `enforce_privacy_mode()` |
 | H5 | UNTRUSTED_DIFF boundary (7 classes: diff/commit msg/branch/tag/Graphify label/model output/VCR cassette) | Blueprint+Comp | IMPL | N/A | IMPL | `safety/redact.py` redaction_pipeline; `safety/injection.py` |
 | H6 | Audit trail (audit.jsonl + audit.private.jsonl) | Blueprint | IMPL | N/A | IMPL | `serve/routes_audit.py`; `contracts/serve_audit.py` |
-| H7 | XSS prevention (React 19 escape + DOMPurify) | Blueprint | N/A | IMPL | IMPL | `viewer/src/api/client.ts` (sanitizeApiErrorBody) |
+| H7 | XSS prevention (React 19 escaping + API error-body redaction) | Blueprint | N/A | IMPL | IMPL | `viewer/src/api/client.ts` (`sanitizeApiErrorBody`); no DOMPurify dependency in current code |
 | H8 | Serve auth: token + same-origin bootstrap + proxy-trace rejection | Blueprint+Comp | IMPL | N/A | IMPL | `serve/auth.py` (require_write_token, require_token_bootstrap_request) |
 | H9 | Bind 127.0.0.1 only (loopback, reject external) | Blueprint+Comp | IMPL | N/A | IMPL | `serve/auth.py:51` (_is_loopback_origin) |
 | H10 | CORS / CSP middleware | Blueprint | IMPL | N/A | IMPL | `serve/middleware.py` |
@@ -164,7 +164,7 @@
 
 | # | Feature | Source | Backend Status | Frontend Status | Test Status | Evidence |
 |---|---------|--------|---------------|-----------------|-------------|----------|
-| I1 | 8 API formats: OpenAI Chat / OpenAI Responses / Gemini / Anthropic / Azure OpenAI / NewAPI / CherryIN / Ollama | Blueprint | IMPL | N/A | IMPL | `llm/adapters/` (8 adapter files); `llm/provider.py:845-852` |
+| I1 | 8 API formats: OpenAI Chat / OpenAI Responses / Gemini / Anthropic / Azure OpenAI / NewAPI / LM Studio / Ollama | Blueprint | IMPL | N/A | IMPL | `llm/adapters/` (8 adapter files); `llm/provider.py` registry |
 | I2 | BYOK: model_name + base_url + api_key auto-probe | Blueprint | IMPL | N/A | IMPL | `llm/probe.py` |
 | I3 | Auto-detect temperature/TPM/RPM/context_length | Blueprint | IMPL | N/A | IMPL | `llm/probe.py` |
 | I4 | Streaming byte cap + cache | Blueprint | IMPL | N/A | IMPL | `llm/provider.py`, `llm/cache.py` |
@@ -178,7 +178,7 @@
 
 | # | Feature | Source | Backend Status | Frontend Status | Test Status | Evidence |
 |---|---------|--------|---------------|-----------------|-------------|----------|
-| J1 | Locale priority chain: cookie -> Accept-Language -> AHADIFF_LANG -> CLI --lang -> config.toml -> LANG -> en | Blueprint+Comp | IMPL | IMPL | IMPL | `i18n/`; `serve/routes_locale.py`; `viewer/src/i18n/`; Learn Mode Dialog defaults to active viewer locale; 1271/1271 i18n scalar keys |
+| J1 | Locale priority chain: cookie -> Accept-Language -> AHADIFF_LANG -> CLI --lang -> config.toml -> LANG -> en | Blueprint+Comp | IMPL | IMPL | IMPL | `i18n/`; `serve/routes_locale.py`; `viewer/src/i18n/`; Learn Mode Dialog defaults to active viewer locale; 1392/1392 i18n scalar keys |
 | J2 | Supported locales: en + zh-CN | Blueprint | IMPL | IMPL | IMPL | `i18n/`; `viewer/src/i18n/` |
 | J3 | Zustand atom store for i18n re-render (no React Context) | Blueprint | N/A | IMPL | IMPL | `viewer/src/i18n/useTranslation.ts` |
 | J4 | LLM OUTPUT_LANGUAGE prefix in prompts | Blueprint | IMPL | N/A | IMPL | Orchestrator resolves output_lang |
@@ -201,7 +201,7 @@
 | K8 | `ahadiff config show --resolved` | Blueprint | IMPL | N/A | IMPL | `cli.py:2259` |
 | K9 | `ahadiff benchmark` | Blueprint | IMPL | N/A | IMPL | `cli.py:2525` |
 | K10 | `--no-browser` flag for serve | Blueprint | IMPL | N/A | IMPL | `cli.py:1719` (serve_cmd) |
-| K11 | `--open` flag (auto-open browser after learn) | Blueprint | IMPL | N/A | IMPL | CLI flags |
+| K11 | `learn --open` flag (auto-open browser after learn) | Blueprint | NOT_IMPL | N/A | NOT_IMPL | Current CLI opens the browser from `ahadiff serve` and supports `serve --no-browser`; `learn` has no `--open` flag |
 | K12 | AGENTS.md for async VM auto-read | Blueprint | IMPL | N/A | N/A | Mentioned in blueprint |
 | K13 | `ahadiff learn --changed-path` path-scoped worktree capture | User follow-up | IMPL | N/A | IMPL | `cli.py`; `git/capture.py`; `tests/unit/test_git_capture.py` |
 | K14 | `ahadiff mcp-server --repo-root` read-only stdio MCP server | User follow-up | IMPL | N/A | IMPL | `cli.py`; `src/ahadiff/mcp/server.py`; `tests/unit/test_cli.py` |
@@ -214,7 +214,7 @@
 |---|---------|--------|---------------|-----------------|-------------|----------|
 | L1 | DashboardPage (KPI cards + calendar heatmap) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/DashboardPage.tsx`; `components/KpiCard.tsx`, `CalendarHeatmap.tsx`; empty state can open Learn Mode Dialog |
 | L2 | LessonPage (3-level scaffolding tabs + skipped artifact state) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/LessonPage.tsx`; `components/ScaffoldingTabs.tsx`; `components/Lesson.css` |
-| L3 | DiffViewerPage (side-by-side / unified) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/DiffViewerPage.tsx`; `components/DiffView.tsx` |
+| L3 | DiffViewerPage (Unified / Split, side-aware claim jumps) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/DiffViewerPage.tsx`; `components/DiffView.tsx`; `components/ClaimInspector.tsx`; `tests/unit/diff-view.test.ts`; `viewer/tests/e2e/walkthrough.spec.ts` |
 | L4 | QuizPage (active recall quiz) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/QuizPage.tsx` |
 | L5 | ReviewPage (SRS review) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/ReviewPage.tsx`; `components/SRSCard.tsx`; sidebar landmark label covered by a11y E2E |
 | L6 | ConceptsPage (Ledger + Graph tabs, graph/list focus sync) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/ConceptsPage.tsx`; `components/ConceptGraph.tsx`; `components/ConceptLedger.tsx` |
@@ -267,7 +267,7 @@
 | N2 | **MOAT 02: Claim -> 5-state Evidence** (no competitor has structured claim verification) | Others: "natural language with line numbers, unstructured" | IMPL | `claims/` module with 5 statuses |
 | N3 | **MOAT 03: Git Ratchet** (no competitor has monotonic quality ratchet) | autoresearch has it for ML, none for learning notes | IMPL | `eval/ratchet.py`, `improve/` |
 | N4 | **MOAT 04: Local-First Privacy** (competitors are all SaaS) | CodeRabbit/Greptile/DeepWiki = cloud only | IMPL | Per-repo `.ahadiff/`, privacy 3-tier, raw never persisted |
-| N5 | **MOAT 05: i18n Learning Notes** (no competitor generates multilingual diff learning notes) | 10 competitors verified: none have this | IMPL | `i18n/`, 786/786 keys, en + zh-CN |
+| N5 | **MOAT 05: i18n Learning Notes** (no competitor generates multilingual diff learning notes) | 10 competitors verified: none have this | IMPL | `i18n/`, 1392/1392 viewer scalar keys, en + zh-CN |
 | N6 | **ENG 01: Local-first offline** (strict_local + Ollama) | Competitors need internet | IMPL | strict_local mode + Ollama adapter |
 | N7 | **ENG 02: Serve architecture** (CLI starts local server, no cloud dependency) | Competitors rely on cloud | IMPL | `serve/app.py`, Starlette + Uvicorn |
 | N8 | **ENG 03: Privacy 3-tier grading** (strict_local/redacted_remote/explicit_remote) | Competitors have no privacy tiers | IMPL | `safety/gates.py` |
@@ -330,21 +330,21 @@
 | A. Core Architecture | 14 | 14 | 0 | 0 | 0 |
 | B. Diff Capture | 13 | 11 | 0 | 0 | 2 |
 | C. Claim Verification | 7 | 7 | 0 | 0 | 0 |
-| D. Lesson & Learning | 6 | 6 | 0 | 0 | 0 |
+| D. Lesson & Learning | 7 | 7 | 0 | 0 | 0 |
 | E. Quiz & SRS | 9 | 9 | 0 | 0 | 0 |
-| F. Evaluation & Ratchet | 12 | 12 | 0 | 0 | 0 |
+| F. Evaluation & Ratchet | 13 | 13 | 0 | 0 | 0 |
 | G. Concept Graph & Graphify | 15 | 14 | 1 | 0 | 0 |
 | H. Security & Safety | 12 | 12 | 0 | 0 | 0 |
 | I. LLM Provider | 7 | 7 | 0 | 0 | 0 |
 | J. i18n | 6 | 6 | 0 | 0 | 0 |
-| K. CLI Commands & Install | 12 | 12 | 0 | 0 | 0 |
-| L. Frontend Pages | 19 | 19 | 0 | 0 | 0 |
+| K. CLI Commands & Install | 14 | 13 | 0 | 1 | 0 |
+| L. Frontend Pages | 16 | 16 | 0 | 0 | 0 |
 | M. Serve API | 16 | 16 | 0 | 0 | 0 |
 | N. Competitor Moats | 10 | 10 | 0 | 0 | 0 |
 | P. Planned | 6 | 0 | 0 | 0 | 6 |
 | Q. Data Architecture | 8 | 8 | 0 | 0 | 0 |
-| **TOTAL** | **172** | **163** | **1** | **0** | **8** |
+| **TOTAL** | **173** | **163** | **1** | **1** | **8** |
 
-**Implementation rate: 163/164 non-planned = 99.4% (1 PARTIAL: Graphify provenance/signoff G15)**
+**Implementation rate: 163/165 non-planned = 98.8% (1 PARTIAL: Graphify provenance/signoff G15; 1 NOT_IMPL: `learn --open`)**
 
 All 5 competitor moats (MOAT 01-05) and all 5 engineering moats (ENG 01-05) have code evidence confirming implementation.

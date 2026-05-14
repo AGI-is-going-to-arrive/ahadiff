@@ -965,3 +965,16 @@ run_id: str
 - ConceptGraph 与 ConceptLedger 的聚焦契约按 id、name 或 normalized ledger key 匹配；同一 hash 跳转时前端会手动派发一次 `hashchange`，让 `#/concepts?tab=ledger&focus=...` 能重复聚焦同一概念。
 
 本轮实测：后端目标 pytest `199 passed`；目标 pyright `0 errors`；目标 ruff check / format check 通过；viewer typecheck 通过；前端 Vitest `336 passed`；SearchOverlay Playwright `60 passed`；i18n `1271/1271`；`git diff --check HEAD` 通过。integration、eval、live judge、wheel、viewer build、完整 Playwright 和远端 GitHub Actions 未在本轮重跑。
+
+### 9.17 Warm v6 / Blueprint current-truth 收口（2026-05-14）
+
+本轮只记录已经由代码和本轮验证支撑的收口项：
+
+- Diff Viewer 新增 Unified / Split 两种视图。Split 视图按 old/new 两侧展示删除线和新增线，claim 证据点、ClaimInspector 引用和跳转都会保留 side 信息；同一文件同一行的 old / new 引用不会互相覆盖。
+- Dashboard 的 spec alignment KPI 不再用所有 result_events 的历史均值冒充当前状态；它读取 finalized run 的 `score.json`，遇到缺库、坏 JSON、symlink/reparse/hardlink 或超限文件时降级为空值。
+- `GET /api/graph/concepts?focus=` 会在正常 `limit` 之外补回聚焦节点，Concepts Ledger 的 graph link 只使用真实 `graphify_node_id`；找不到可用 graph node 的旧概念不会显示假链接。
+- Quiz 生成契约把 `quiz_kind` 收窄为 `guided` / `recall` / `transfer`；learn 主链在生成 cards 后会导入 `review.sqlite`，失败只记 warning，不阻断 lesson/quiz artifact。
+- 当前 serve 面是 70 个 concrete `/api/*` routes + 1 个 catchall，另有 `/healthz`。
+- 本轮复核 `AhaDiff-Blueprint.html` 后，只把当前代码支持的八层架构、diff capture、8 维评估、Guide/Onboarding、导出、MCP 和 opt-in Challenge 写成已实现；`learn --open`、Amp/Jules/Junie install target、CherryIN provider、DOMPurify 依赖和固定 29 步流程没有代码支撑，不能写成已完成。
+
+本轮实测：后端 unit `2434 passed`；integration `11 passed`；eval `9 passed`；`ruff check`、`ruff format --check`、`pyright`、wheel build 通过；viewer typecheck、Vitest `344 passed`、build 通过；完整 Playwright `2735 passed, 10 skipped`；i18n `1392/1392`；`git diff --check HEAD` 通过。live judge 和远端 GitHub Actions 未在本轮重跑。

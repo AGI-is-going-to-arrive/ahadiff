@@ -50,6 +50,11 @@ export function conceptMatchesFocus(
   return candidates.some((candidate) => candidate.length >= 2 && needle.includes(candidate));
 }
 
+function graphFocusId(entry: { graphify_node_id?: string | null }): string | null {
+  const id = entry.graphify_node_id?.trim();
+  return id ? id : null;
+}
+
 function updateHashRunFilter(run: string | undefined) {
   const [hashPath, rawQuery = ''] = window.location.hash.split('?');
   const params = new URLSearchParams(rawQuery);
@@ -273,83 +278,86 @@ export default function ConceptLedger({
           </tr>
         </thead>
         <tbody>
-          {filteredEntries.map((entry) => (
-            <tr
-              key={entry.term_key}
-              ref={(node) => {
-                if (node) rowRefs.current.set(entry.term_key, node);
-                else rowRefs.current.delete(entry.term_key);
-              }}
-              className={
-                focusedTermKey === entry.term_key
-                  ? 'concept-ledger__row--focused'
-                  : undefined
-              }
-              tabIndex={focusedTermKey === entry.term_key ? -1 : undefined}
-              aria-current={focusedTermKey === entry.term_key ? 'true' : undefined}
-              data-concept-term-key={entry.term_key}
-            >
-              <td>
-                <div className="concept-ledger__name">
-                  <span>{entry.display_name || entry.concept}</span>
-                  <HealthBadge status={entry.health_status} />
-                  {graphifyAvailable && (
-                    <a
-                      className="concept-ledger__graph-link"
-                      href={`#/concepts?tab=graph&focus=${encodeURIComponent(entry.term_key)}`}
-                    >
-                      {t('Concept.ledger_view_in_graph')}
-                    </a>
-                  )}
-                </div>
-                {entry.display_name && entry.display_name !== entry.concept && (
-                  <div className="concept-ledger__term-key">{entry.concept}</div>
-                )}
-              </td>
-              <td>
-                <ul className="concept-ledger__chip-list">
-                  {entry.updated_by_runs.slice(0, MAX_CHIPS).map((run) => (
-                    <li key={run}>
-                      <button
-                        type="button"
-                        className="concept-ledger__chip concept-ledger__chip--run"
-                        onClick={() => handleRunClick(run)}
-                        title={run}
+          {filteredEntries.map((entry) => {
+            const focusId = graphFocusId(entry);
+            return (
+              <tr
+                key={entry.term_key}
+                ref={(node) => {
+                  if (node) rowRefs.current.set(entry.term_key, node);
+                  else rowRefs.current.delete(entry.term_key);
+                }}
+                className={
+                  focusedTermKey === entry.term_key
+                    ? 'concept-ledger__row--focused'
+                    : undefined
+                }
+                tabIndex={focusedTermKey === entry.term_key ? -1 : undefined}
+                aria-current={focusedTermKey === entry.term_key ? 'true' : undefined}
+                data-concept-term-key={entry.term_key}
+              >
+                <td>
+                  <div className="concept-ledger__name">
+                    <span>{entry.display_name || entry.concept}</span>
+                    <HealthBadge status={entry.health_status} />
+                    {graphifyAvailable && focusId && (
+                      <a
+                        className="concept-ledger__graph-link"
+                        href={`#/concepts?tab=graph&focus=${encodeURIComponent(focusId)}`}
                       >
-                        {run.length > 12 ? `${run.slice(0, 12)}…` : run}
-                      </button>
-                    </li>
-                  ))}
-                  {entry.updated_by_runs.length > MAX_CHIPS && (
-                    <li>
-                      <span className="concept-ledger__chip concept-ledger__chip--more">
-                        +{entry.updated_by_runs.length - MAX_CHIPS}
-                      </span>
-                    </li>
+                        {t('Concept.ledger_view_in_graph')}
+                      </a>
+                    )}
+                  </div>
+                  {entry.display_name && entry.display_name !== entry.concept && (
+                    <div className="concept-ledger__term-key">{entry.concept}</div>
                   )}
-                </ul>
-              </td>
-              <td>
-                <ul className="concept-ledger__chip-list">
-                  {entry.file_refs.slice(0, MAX_CHIPS).map((f) => (
-                    <li key={f}>
-                      <span className="concept-ledger__chip" title={f}>
-                        {fileRefBasename(f)}
-                      </span>
-                    </li>
-                  ))}
-                  {entry.file_refs.length > MAX_CHIPS && (
-                    <li>
-                      <span className="concept-ledger__chip concept-ledger__chip--more">
-                        +{entry.file_refs.length - MAX_CHIPS}
-                      </span>
-                    </li>
-                  )}
-                </ul>
-              </td>
-              <td className="concept-ledger__count">{entry.related_claims.length}</td>
-            </tr>
-          ))}
+                </td>
+                <td>
+                  <ul className="concept-ledger__chip-list">
+                    {entry.updated_by_runs.slice(0, MAX_CHIPS).map((run) => (
+                      <li key={run}>
+                        <button
+                          type="button"
+                          className="concept-ledger__chip concept-ledger__chip--run"
+                          onClick={() => handleRunClick(run)}
+                          title={run}
+                        >
+                          {run.length > 12 ? `${run.slice(0, 12)}…` : run}
+                        </button>
+                      </li>
+                    ))}
+                    {entry.updated_by_runs.length > MAX_CHIPS && (
+                      <li>
+                        <span className="concept-ledger__chip concept-ledger__chip--more">
+                          +{entry.updated_by_runs.length - MAX_CHIPS}
+                        </span>
+                      </li>
+                    )}
+                  </ul>
+                </td>
+                <td>
+                  <ul className="concept-ledger__chip-list">
+                    {entry.file_refs.slice(0, MAX_CHIPS).map((f) => (
+                      <li key={f}>
+                        <span className="concept-ledger__chip" title={f}>
+                          {fileRefBasename(f)}
+                        </span>
+                      </li>
+                    ))}
+                    {entry.file_refs.length > MAX_CHIPS && (
+                      <li>
+                        <span className="concept-ledger__chip concept-ledger__chip--more">
+                          +{entry.file_refs.length - MAX_CHIPS}
+                        </span>
+                      </li>
+                    )}
+                  </ul>
+                </td>
+                <td className="concept-ledger__count">{entry.related_claims.length}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 

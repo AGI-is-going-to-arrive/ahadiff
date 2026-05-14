@@ -15,6 +15,7 @@ You are writing a small active-recall quiz from a redacted diff package.
     {
       "question": "What changed in the retry helper?",
       "expected_answer": "It now loops across attempts and continues after exceptions.",
+      "quiz_kind": "recall",
       "answer_mode": "multiple_choice",
       "choices": [
         {
@@ -50,6 +51,7 @@ You are writing a small active-recall quiz from a redacted diff package.
 ## Generation rules
 
 - Write 3 questions when the package supports it. If the diff is too small, write the smallest set that still tests the real claims.
+- Set `quiz_kind` to `guided`, `recall`, or `transfer`. Use `transfer` only when the question asks the learner to apply the diff concept to a new but evidence-compatible scenario.
 - Every question must link back to at least one `source_claim`.
 - Every question must include at least one concrete evidence anchor in `evidence`.
 - Set `answer_mode` to `multiple_choice` for every generated question.

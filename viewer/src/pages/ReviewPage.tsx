@@ -366,7 +366,7 @@ export default function ReviewPage() {
   if (loading) {
     return (
       <AppShell>
-        <div className="review" role="status" aria-label={t('A11y.loading')}>
+        <div className="page active review" data-page="review" role="status" aria-label={t('A11y.loading')}>
           <div className="review__head">
             <div className="review__head-left">
               <Skeleton variant="text" width="180px" />
@@ -397,7 +397,7 @@ export default function ReviewPage() {
     const errorKind = classifyError(error);
     return (
       <AppShell>
-        <div className="review">
+        <div className="page active review" data-page="review">
           <div className="review__head">
             <div className="review__head-left">
               <h1 className="review__title">{t('Review.title')}</h1>
@@ -461,7 +461,7 @@ export default function ReviewPage() {
   if (total === 0) {
     return (
       <AppShell>
-        <div className="review">
+        <div className="page active review" data-page="review">
           <div className="review__head">
             <div className="review__head-left">
               <div className="review__eyebrow">{t('Review.eyebrow')}</div>
@@ -483,7 +483,7 @@ export default function ReviewPage() {
   if (done) {
     return (
       <AppShell>
-        <div className="review">
+        <div className="page active review" data-page="review">
           <div className="review__head">
             <div className="review__head-left">
               <div className="review__eyebrow">{t('Review.eyebrow')}</div>
@@ -533,7 +533,7 @@ export default function ReviewPage() {
 
   return (
     <AppShell>
-      <div className="review">
+      <div className="page active review" data-page="review">
         {/* Header */}
         <div className="review__head">
           <div className="review__head-left">
@@ -945,6 +945,50 @@ export default function ReviewPage() {
 
           {/* Right: Sidebar */}
           <aside aria-label={t('Review.sidebar_label')}>
+            {heatmapCells.length > 0 && (
+              <div className="review__sidebar-card review__sidebar-card--warm">
+                <CalendarHeatmap cells={heatmapCells} title={t('Review.heatmap_sidebar_title')} />
+              </div>
+            )}
+
+            {mastery.length > 0 && (
+              <div className="review__sidebar-card review__sidebar-card--warm">
+                <div className="review__sidebar-header">
+                  <h2>
+                    {t('Review.mastery_title')} <InfoHint label={t('Review.mastery_hint')} />
+                  </h2>
+                  <span className="review__sidebar-meta">{t('Review.mastery_top')}</span>
+                </div>
+                <div className="review__sidebar-body">
+                  <div className="review__mastery-list">
+                    {mastery.slice(0, 6).map((m) => {
+                      const pct = Math.min(100, ((m.avg_rating ?? 0) / 4) * 100);
+                      const tier = pct >= 70 ? '' : pct >= 40 ? ' mastery-bar__fill--warn' : ' mastery-bar__fill--danger';
+                      return (
+                        <div key={m.concept} className="review__mastery-row">
+                          <span className="review__mastery-label">{m.concept}</span>
+                          <div
+                            className="mastery-bar"
+                            role="progressbar"
+                            aria-valuenow={Math.round(pct)}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-label={m.concept}
+                          >
+                            <span
+                              className={`mastery-bar__fill${tier}`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <span className="review__mastery-count">{m.review_count}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="review__sidebar-card">
               <div className="review__sidebar-header">
                 <h2>{t('Review.card_concept')}</h2>

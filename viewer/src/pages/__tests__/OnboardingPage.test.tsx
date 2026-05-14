@@ -268,26 +268,25 @@ describe('OnboardingPage stepper', () => {
     expect(html).toMatch(/aria-current="step"/);
   });
 
-  it('derives computedStep=2 when only repo_root is fail (all-fail fixture)', async () => {
+  it('derives computedStep=1 when repo_root fails (all-fail fixture)', async () => {
     setStates({
       doctor: SETTLED_DOCTOR_LOAD(ALL_FAIL_CHECKS),
-      activeStep: 2,
+      activeStep: 1,
     });
     const html = await renderPage();
-    // step 1 is "done" because computedStep=2 (1<2). step 3, 4 are "pending".
-    expect(getStepState(html, 1)).toBe('done');
+    expect(getStepState(html, 1)).toBe('current');
     expect(getStepState(html, 3)).toBe('pending');
     expect(getStepState(html, 4)).toBe('pending');
   });
 
-  it('derives computedStep=3 when repo_root passes but config_valid fails', async () => {
+  it('derives computedStep=2 when repo_root passes but config_valid fails', async () => {
     setStates({
       doctor: SETTLED_DOCTOR_LOAD(REPO_ONLY_CHECKS),
-      activeStep: 3,
+      activeStep: 2,
     });
     const html = await renderPage();
-    expect(getStepState(html, 2)).toBe('done');
-    expect(getStepState(html, 3)).toBe('current');
+    expect(getStepState(html, 1)).toBe('done');
+    expect(getStepState(html, 2)).toBe('current');
     expect(getStepState(html, 4)).toBe('pending');
   });
 

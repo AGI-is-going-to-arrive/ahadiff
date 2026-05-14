@@ -249,7 +249,8 @@ describe('SearchOverlay', () => {
       'utf-8',
     );
     expect(src).toMatch(/event\.key === 'Enter'[\s\S]{0,160}commit\(target\)/);
-    expect(src).toMatch(/flushSync\(\(\) => close\(\)\)/);
+    expect(src).toMatch(/const close = useCallback\([\s\S]{0,120}flushSync\(\(\) => onClose\(\)\)/);
+    expect(src).toMatch(/const commit = useCallback\([\s\S]{0,220}close\(\)/);
     expect(src).toMatch(/window\.location\.hash === href/);
     expect(src).toMatch(/window\.dispatchEvent\(new Event\('hashchange'\)\)/);
     expect(src).toMatch(/window\.location\.hash = href\.slice\(1\)/);

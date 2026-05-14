@@ -606,6 +606,40 @@ class TestGraphStatus:
         assert data["edges"] == []
         assert data["truncated"] is True
 
+    def test_concept_graph_endpoint_includes_focused_node_beyond_limit(
+        self, tmp_path: Path
+    ) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        imported_dir = state_dir / "graphify"
+        imported_dir.mkdir()
+        (imported_dir / "graph.json").write_text(
+            json.dumps(
+                {
+                    "nodes": [
+                        {"id": "n1", "label": "One"},
+                        {"id": "n2", "label": "Two"},
+                        {"id": "n3", "label": "Three"},
+                    ],
+                    "links": [
+                        {"source": "n1", "target": "n2"},
+                        {"source": "n2", "target": "n3"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        client = _client(state_dir)
+
+        resp = client.get("/api/graph/concepts?limit=1&focus=n3")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        ConceptGraphResponse.model_validate(data)
+        assert [node["id"] for node in data["nodes"]] == ["n3"]
+        assert data["edges"] == []
+        assert data["truncated"] is True
+
     def test_concept_graph_endpoint_falls_back_when_label_sanitizes_empty(
         self, tmp_path: Path
     ) -> None:

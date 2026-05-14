@@ -68,6 +68,7 @@ export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProp
       sectionKey: 'Sidebar.section.workspace',
       ariaLabel: 'Workspace',
       items: [
+        { to: '/welcome', Icon: Star, labelKey: 'Nav.welcome', labelEn: 'Welcome' },
         { to: '/', Icon: LayoutDashboard, labelKey: 'Nav.dashboard', labelEn: 'Dashboard', end: true },
         {
           to: runId ? `/run/${runId}/lesson` : '/',
@@ -105,7 +106,6 @@ export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProp
       sectionKey: 'Sidebar.section.system',
       ariaLabel: 'System',
       items: [
-        { to: '/welcome', Icon: Star, labelKey: 'Nav.welcome', labelEn: 'Welcome' },
         { to: '/onboarding', Icon: Play, labelKey: 'Nav.onboarding', labelEn: 'Get Started' },
         { to: '/guide', Icon: BookOpen, labelKey: 'Nav.guide', labelEn: 'Guide' },
         { to: '/settings', Icon: SettingsIcon, labelKey: 'Settings_page.title', labelEn: 'Settings' },
@@ -141,7 +141,7 @@ export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProp
     >
       <div className="brand">
         <div className="brand-mark" aria-hidden="true"><span>&#916;&#30693;</span></div>
-        <div>
+        <div className="sidebar__brand-text">
           <div className="brand-name">{t('Brand.name')}</div>
           <div className="brand-en">{t('Sidebar.tagline_short')}</div>
         </div>
@@ -150,7 +150,7 @@ export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProp
       {sections.map((section) => (
         <section
           key={section.sectionKey}
-          className="nav-section"
+          className="nav-section sidebar__section"
           aria-labelledby={`sidebar-section-${section.ariaLabel.toLowerCase()}`}
         >
           <div
@@ -166,18 +166,18 @@ export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProp
             return item.disabled ? (
               <span
                 key={item.labelKey}
-                className="nav-item nav-item--disabled"
+                className="nav-item sidebar__item nav-item--disabled sidebar__item--disabled"
                 role="link"
                 aria-disabled="true"
                 tabIndex={-1}
                 title={`${label} — ${disabledHint}`}
                 aria-label={`${label} (${disabledHint})`}
               >
-                <span className="ic" aria-hidden="true">
+                <span className="ic sidebar__icon" aria-hidden="true">
                   <Icon size={18} strokeWidth={1.75} aria-hidden="true" />
                 </span>
-                <span>{label}</span>
-                <span className="en" aria-hidden="true">{item.labelEn}</span>
+                <span className="sidebar__label-main">{label}</span>
+                <span className="en sidebar__label-en" aria-hidden="true">{item.labelEn}</span>
               </span>
             ) : (
               <NavLink
@@ -185,17 +185,17 @@ export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProp
                 to={item.to}
                 end={item.end}
                 className={({ isActive }) =>
-                  `nav-item${isActive ? ' active' : ''}`
+                  `nav-item sidebar__item${isActive ? ' active' : ''}`
                 }
                 onClick={onNavigate}
                 title={label}
                 aria-label={label}
               >
-                <span className="ic" aria-hidden="true">
+                <span className="ic sidebar__icon" aria-hidden="true">
                   <Icon size={18} strokeWidth={1.75} aria-hidden="true" />
                 </span>
-                <span>{label}</span>
-                <span className="en" aria-hidden="true">{item.labelEn}</span>
+                <span className="sidebar__label-main">{label}</span>
+                <span className="en sidebar__label-en" aria-hidden="true">{item.labelEn}</span>
               </NavLink>
             );
           })}

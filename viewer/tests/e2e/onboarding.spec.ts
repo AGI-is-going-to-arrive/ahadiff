@@ -176,13 +176,19 @@ test.describe('onboarding (B6 e2e)', () => {
     expect(rect.top).toBeLessThanOrEqual(rect.vh);
   });
 
-  // 7. Sidebar SYSTEM section enumerates Welcome → Get Started → Guide →
-  //    Settings, in that order, with EN or zh-CN labels accepted.
-  test('sidebar SYSTEM order is Welcome → Get Started → Guide → Settings', async ({ page }) => {
+  // 7. Sidebar keeps Welcome as the Workspace entry and the System section as
+  //    Get Started → Guide → Settings, matching the Warm v6 navigation split.
+  test('sidebar Workspace/System order follows Warm v6 navigation split', async ({ page }) => {
     await mockDbCheck(page);
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/#/onboarding');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+
+    const workspaceSection = page.locator(
+      '.sidebar__section[aria-labelledby="sidebar-section-workspace"]',
+    );
+    await expect(workspaceSection).toBeVisible();
+    await expect(workspaceSection.locator('.sidebar__item').first()).toContainText(/(Welcome|欢迎)/);
 
     // Locate SYSTEM section by its labeled heading id (Sidebar.tsx).
     const systemSection = page.locator(
@@ -191,10 +197,9 @@ test.describe('onboarding (B6 e2e)', () => {
     await expect(systemSection).toBeVisible();
 
     const items = systemSection.locator('.sidebar__item');
-    await expect(items).toHaveCount(4);
+    await expect(items).toHaveCount(3);
 
     const expected: Array<RegExp> = [
-      /(Welcome|欢迎)/,
       /(Get Started|快速上手)/,
       /(Guide|使用指南)/,
       /(Settings|设置)/,

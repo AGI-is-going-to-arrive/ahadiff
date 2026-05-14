@@ -1741,24 +1741,30 @@ function ConceptGraph({
   }, []);
 
   const handleExport = useCallback(() => {
-    const canvas = graphWrapRef.current?.querySelector('canvas');
-    if (!canvas) return;
-    canvas.toBlob((blob) => {
-      if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'concept-graph.png';
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      try {
-        a.click();
-      } finally {
-        a.remove();
-        window.setTimeout(() => URL.revokeObjectURL(url), 0);
-      }
-    });
-  }, []);
+    const payload = JSON.stringify(
+      {
+        status,
+        nodes,
+        edges,
+        truncated,
+      },
+      null,
+      2,
+    );
+    const blob = new Blob([payload], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'concept-graph.json';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    try {
+      a.click();
+    } finally {
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
+  }, [edges, nodes, status, truncated]);
 
   const allKinds = useMemo(() => collectKinds(nodes), [nodes]);
   const allFreshness = useMemo(() => collectFreshness(nodes), [nodes]);

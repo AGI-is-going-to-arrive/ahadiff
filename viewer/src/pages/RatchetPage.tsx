@@ -454,7 +454,7 @@ export default function RatchetPage() {
                   {t('Ratchet.alignment_score')}:{' '}
                   <span className="num">
                     {specAlignment.alignment_score != null
-                      ? formatScore(specAlignment.alignment_score, locale)
+                      ? `${formatScore(specAlignment.alignment_score, locale)}/10`
                       : '-'}
                   </span>
                 </span>

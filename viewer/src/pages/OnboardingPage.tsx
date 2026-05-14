@@ -16,7 +16,9 @@ import type { DiagnosticStatus } from '../components/DiagnosticRow';
 import { useTranslation } from '../i18n/useTranslation';
 import type { MessageKey, TranslateFn } from '../i18n/useTranslation';
 import { fetchDbCheck, getDoctor } from '../api/config';
+import { useRunsStore } from '../state/runs-store';
 import type { DbCheckResult, DoctorCheck } from '../api/config';
+import type { RunSummary } from '../api/types';
 import { mapDoctorMessage } from '../utils/doctor';
 import {
   detectPlatform,
@@ -70,15 +72,18 @@ const NAV_TARGETS: ReadonlyArray<NavTarget> = [
 /**
  * Compute the active onboarding step from doctor checks.
  *
- * - repo_root pass -> step 2 done
- * - config_valid pass -> step 3 done
+ * - repo_root fail -> step 1 needs repo selection/init
+ * - config_valid fail -> step 2 needs provider/config
  * - both pass -> step 4 (or "complete" if all checks pass)
+ *
+ * Step 3 is the optional agent guidance install. It links to the real
+ * Settings write flow rather than pretending doctor can validate it.
  */
 function computeCurrentStep(checks: DoctorCheck[]): StepNumber {
   const repoOk = checks.find((c) => c.name === 'repo_root')?.status === 'pass';
   const configOk = checks.find((c) => c.name === 'config_valid')?.status === 'pass';
-  if (!repoOk) return 2;
-  if (!configOk) return 3;
+  if (!repoOk) return 1;
+  if (!configOk) return 2;
   return 4;
 }
 
@@ -93,6 +98,8 @@ interface OnboardingPageProps {
 
 export default function OnboardingPage({ previewScore }: OnboardingPageProps = {}) {
   const { t } = useTranslation();
+  const runs = useRunsStore((s) => s.runs);
+  const loadRuns = useRunsStore((s) => s.loadRuns);
   const [doctor, setDoctor] = useState<DoctorState>({ checks: [], loading: true });
   const [dbCheck, setDbCheck] = useState<DbCheckState>({ result: null, loading: true });
   const [activeStep, setActiveStep] = useState<StepNumber>(1);
@@ -143,6 +150,23 @@ export default function OnboardingPage({ previewScore }: OnboardingPageProps = {
     return () => abortRef.current?.abort();
   }, [fetchDoctor]);
 
+  useEffect(() => {
+    void loadRuns().catch(() => {
+      // The preview remains an example when serve has no finalized runs.
+    });
+  }, [loadRuns]);
+
+  const latestPreviewRun = useMemo<RunSummary | null>(() => {
+    if (runs.length === 0) return null;
+    return [...runs].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    )[0];
+  }, [runs]);
+  const resolvedPreviewScore = previewScore ?? latestPreviewRun?.overall;
+  const previewRunLabel = latestPreviewRun
+    ? latestPreviewRun.source_ref || latestPreviewRun.run_id.slice(0, 8)
+    : undefined;
+
   const computedStep = computeCurrentStep(doctor.checks);
   const isComplete =
     computedStep === 4 &&
@@ -187,7 +211,7 @@ export default function OnboardingPage({ previewScore }: OnboardingPageProps = {
 
   return (
     <AppShell>
-      <div className="onboarding" data-testid="onboarding-page">
+      <div className="page active onboarding" data-page="onboarding" data-testid="onboarding-page">
         <header className="onboarding__head">
           <p className="onboarding__eyebrow review__eyebrow">{t('Onboarding.eyebrow')}</p>
           <h1 className="onboarding__title">{t('Onboarding.title')}</h1>
@@ -280,7 +304,7 @@ export default function OnboardingPage({ previewScore }: OnboardingPageProps = {
                   {t('Onboarding.install_shell_hint', { shell: shellHint })}
                 </span>
               )}
-              {activeStep === 3 && (
+              {activeStep === 2 && (
                 <span className="onboarding-active__meta">{platformLabel}</span>
               )}
               {activeStep === 4 && (
@@ -291,10 +315,10 @@ export default function OnboardingPage({ previewScore }: OnboardingPageProps = {
             </header>
             <div className="surface-card__body">
               {activeStep === 1 && (
-                <Step1Install installCmd={installCmd} t={t} />
+                <Step1PickRepo installCmd={installCmd} initCmd={initCmd} t={t} />
               )}
-              {activeStep === 2 && <Step2Init initCmd={initCmd} t={t} />}
-              {activeStep === 3 && <Step3Configure envCmd={envCmd} t={t} />}
+              {activeStep === 2 && <Step2ProviderKey envCmd={envCmd} t={t} />}
+              {activeStep === 3 && <Step3InstallAgent t={t} />}
               {activeStep === 4 && (
                 <Step4Learn
                   learnCmd={learnCmd}
@@ -354,7 +378,11 @@ export default function OnboardingPage({ previewScore }: OnboardingPageProps = {
           onRefresh={fetchDoctor}
         />
 
-        <PreviewSection t={t} previewScore={previewScore} />
+        <PreviewSection
+          t={t}
+          previewScore={resolvedPreviewScore}
+          previewRunLabel={previewRunLabel}
+        />
 
         {isComplete && (
           <section
@@ -581,12 +609,15 @@ function DiagnosticsSection({
 function PreviewSection({
   t,
   previewScore,
+  previewRunLabel,
 }: {
   t: TranslateFn;
   previewScore?: number;
+  previewRunLabel?: string;
 }) {
+  const hasRealScore = previewScore !== undefined && Number.isFinite(previewScore);
   const scoreLabel =
-    previewScore !== undefined && Number.isFinite(previewScore)
+    hasRealScore
       ? t('Onboarding.preview_caution_score', {
           score: String(previewScore),
         })
@@ -611,7 +642,9 @@ function PreviewSection({
           {t('Onboarding.step4_preview_title')}
         </h2>
         <span className="onboarding-preview__meta">
-          {t('Onboarding.step4_preview_meta')}
+          {hasRealScore
+            ? t('Onboarding.step4_preview_meta_live')
+            : t('Onboarding.step4_preview_meta')}
         </span>
       </header>
       <div className="onboarding-preview__grid">
@@ -662,7 +695,9 @@ function PreviewSection({
               {scoreLabel}
             </span>
             <p className="onboarding__preview-text">
-              {t('Onboarding.preview_verdict_body')}
+              {hasRealScore && previewRunLabel
+                ? t('Onboarding.preview_verdict_body_live', { run: previewRunLabel })
+                : t('Onboarding.preview_verdict_body')}
             </p>
           </div>
         </article>
@@ -673,36 +708,35 @@ function PreviewSection({
 
 /* ----------------------------- Step bodies ----------------------------- */
 
-function Step1Install({
+function Step1PickRepo({
   installCmd,
+  initCmd,
   t,
 }: {
   installCmd: string;
+  initCmd: string;
   t: TranslateFn;
 }) {
   return (
-    <CommandBlock
-      command={installCmd}
-      copyLabel={t('Onboarding.copy')}
-      copiedLabel={t('Onboarding.copied')}
-    />
-  );
-}
-
-function Step2Init({ initCmd, t }: { initCmd: string; t: TranslateFn }) {
-  return (
     <>
-      <p className="onboarding__step-desc">{t('Onboarding.init_desc')}</p>
-      <CommandBlock
-        command={initCmd}
-        copyLabel={t('Onboarding.copy')}
-        copiedLabel={t('Onboarding.copied')}
-      />
+      <p className="onboarding__step-desc">{t('Onboarding.pick_repo_hint')}</p>
+      <div className="onboarding-command-pair">
+        <CommandBlock
+          command={installCmd}
+          copyLabel={t('Onboarding.copy')}
+          copiedLabel={t('Onboarding.copied')}
+        />
+        <CommandBlock
+          command={initCmd}
+          copyLabel={t('Onboarding.copy')}
+          copiedLabel={t('Onboarding.copied')}
+        />
+      </div>
     </>
   );
 }
 
-function Step3Configure({
+function Step2ProviderKey({
   envCmd,
   t,
 }: {
@@ -722,6 +756,33 @@ function Step3Configure({
         className="onboarding__btn onboarding__btn--primary onboarding__deep-link"
       >
         {t('Onboarding.configure_link')}
+      </a>
+    </>
+  );
+}
+
+function Step3InstallAgent({ t }: { t: TranslateFn }) {
+  return (
+    <>
+      <p className="onboarding__step-desc">{t('Onboarding.agent_install_hint')}</p>
+      <div className="onboarding-agent-grid">
+        {['claude', 'cursor', 'codex', 'gemini'].map((name) => (
+          <div className="onboarding-agent-card" key={name}>
+            <span className="onboarding-agent-card__mark">{name.slice(0, 2).toUpperCase()}</span>
+            <span className="onboarding-agent-card__name">{name}</span>
+            <CommandBlock
+              command={`ahadiff install ${name} --dry-run`}
+              copyLabel={t('Onboarding.copy')}
+              copiedLabel={t('Onboarding.copied')}
+            />
+          </div>
+        ))}
+      </div>
+      <a
+        href="#/settings?tab=integrations"
+        className="onboarding__btn onboarding__btn--primary onboarding__deep-link"
+      >
+        {t('Onboarding.agent_install_link')}
       </a>
     </>
   );

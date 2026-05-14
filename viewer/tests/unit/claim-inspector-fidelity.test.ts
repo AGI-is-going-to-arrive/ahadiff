@@ -45,6 +45,7 @@ const HARNESS_HTML = String.raw`<!doctype html>
 
       const diffContent = ${JSON.stringify(DIFF_CONTENT)};
       const claimsContent = ${JSON.stringify(CLAIMS_CONTENT)};
+      let failClaims = false;
       let root;
 
       function mount(node) {
@@ -75,6 +76,15 @@ const HARNESS_HTML = String.raw`<!doctype html>
           }));
         }
         if (url.pathname === '/api/run/run-1/claims') {
+          if (failClaims) {
+            return Promise.resolve(new Response(JSON.stringify({
+              error_code: 'ARTIFACT_NOT_FOUND',
+              error: 'claims artifact not found',
+            }), {
+              status: 404,
+              headers: { 'content-type': 'application/json' },
+            }));
+          }
           return Promise.resolve(new Response(JSON.stringify({
             run_id: 'run-1',
             artifact_type: 'claims',
@@ -99,7 +109,8 @@ const HARNESS_HTML = String.raw`<!doctype html>
         }));
       };
 
-      window.__renderDiffViewerPage = ({ locale = 'en' } = {}) => {
+      window.__renderDiffViewerPage = ({ locale = 'en', claimsFail = false } = {}) => {
+        failClaims = claimsFail;
         resetToken();
         useLocaleStore.setState({ locale });
         document.documentElement.lang = locale;
@@ -134,7 +145,7 @@ declare global {
   interface Window {
     __claimInspectorReady?: boolean;
     __renderClaimInspector: (options: RenderInspectorOptions) => void;
-    __renderDiffViewerPage: (options?: { locale?: 'en' | 'zh-CN' }) => void;
+    __renderDiffViewerPage: (options?: { claimsFail?: boolean; locale?: 'en' | 'zh-CN' }) => void;
   }
 }
 
@@ -181,10 +192,10 @@ async function renderInspector(page: Page, options: RenderInspectorOptions): Pro
   await page.waitForSelector('.claim-inspector');
 }
 
-async function renderDiffPage(page: Page): Promise<void> {
+async function renderDiffPage(page: Page, options: { claimsFail?: boolean } = {}): Promise<void> {
   await page.goto(`${baseUrl}${TEST_PATH}`);
   await page.waitForFunction(() => Boolean(window.__claimInspectorReady));
-  await page.evaluate(() => window.__renderDiffViewerPage());
+  await page.evaluate((opts) => window.__renderDiffViewerPage(opts), options);
   await page.waitForSelector('.diff-view');
 }
 
@@ -320,5 +331,17 @@ describe('ClaimInspector V6 fidelity', () => {
     await expect
       .poll(() => page.locator('.diff-view').evaluate((el) => getComputedStyle(el).lineHeight))
       .toBe('22px');
+  });
+
+  it('keeps the diff visible when the claims artifact is unavailable', async () => {
+    await renderDiffPage(page, { claimsFail: true });
+
+    const warning = page.locator('.diff-page__claims-warning');
+    await expect.poll(() => warning.textContent()).toContain('Claims unavailable');
+    await expect.poll(() => warning.textContent()).toContain('claim anchors could not be loaded');
+    await expect.poll(() => page.locator('.diff-view').count()).toBe(1);
+    await expect.poll(() => page.locator('.claim-inspector__empty').textContent()).toContain(
+      'Select a claim to inspect',
+    );
   });
 });

@@ -14,12 +14,14 @@ export interface QuizChoice {
 }
 
 export type AnswerMode = 'open' | 'multiple_choice';
+export type QuizKind = 'guided' | 'recall' | 'transfer';
 
 export interface QuizItem {
   question_id: string;
   review_card_id?: string;
   question: string;
   expected_answer: string;
+  quiz_kind: QuizKind;
   source_claims: string[];
   concepts: string[];
   evidence: QuizEvidenceAnchor[];
@@ -104,6 +106,9 @@ function parseQuizRecord(value: unknown): QuizItem | null {
   const question = typeof value.question === 'string' ? normalizeText(value.question) : '';
   const expectedAnswer =
     typeof value.expected_answer === 'string' ? normalizeText(value.expected_answer) : '';
+  const rawQuizKind = typeof value.quiz_kind === 'string' ? value.quiz_kind : null;
+  const quizKind: QuizKind =
+    rawQuizKind === 'guided' || rawQuizKind === 'transfer' ? rawQuizKind : 'recall';
   const sourceClaims = parseStringList(value.source_claims);
   const concepts = value.concepts === undefined ? [] : parseStringList(value.concepts);
   const evidence = parseEvidence(value.evidence);
@@ -137,6 +142,7 @@ function parseQuizRecord(value: unknown): QuizItem | null {
     question_id: questionId,
     question,
     expected_answer: expectedAnswer,
+    quiz_kind: quizKind,
     source_claims: sourceClaims,
     concepts: concepts ?? [],
     evidence,

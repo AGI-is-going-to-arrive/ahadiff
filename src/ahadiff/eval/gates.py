@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-_MAX_CONTRADICTED_CLAIMS = 2
+_EVIDENCE_COVERAGE_GATE_RATIO = 0.60
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -60,15 +60,20 @@ def evaluate_hard_gates(
     contradicted_count = sum(1 for claim in claims if claim.status == "contradicted")
     accuracy_dimension = rubric.dimension("accuracy")
     evidence_dimension = rubric.dimension("evidence")
+    diff_coverage_dimension = rubric.dimension("diff_coverage")
     accuracy_score = _dimension_score(dimension_scores, "accuracy")
     evidence_score = _dimension_score(dimension_scores, "evidence")
+    diff_coverage_score = _dimension_score(dimension_scores, "diff_coverage")
+    evidence_coverage_threshold = (
+        float(diff_coverage_dimension.max_score) * _EVIDENCE_COVERAGE_GATE_RATIO
+    )
     critical_safety_count = _critical_safety_finding_count(safety_findings)
     results = (
         HardGateResult(
             name="accuracy",
             passed=(
                 accuracy_score is not None
-                and accuracy_score > float(accuracy_dimension.hard_gate or 0.0)
+                and accuracy_score >= float(accuracy_dimension.hard_gate or 0.0)
             ),
             detail=_threshold_detail(
                 "accuracy",
@@ -82,7 +87,7 @@ def evaluate_hard_gates(
             name="evidence",
             passed=(
                 evidence_score is not None
-                and evidence_score > float(evidence_dimension.hard_gate or 0.0)
+                and evidence_score >= float(evidence_dimension.hard_gate or 0.0)
             ),
             detail=_threshold_detail(
                 "evidence",
@@ -94,12 +99,24 @@ def evaluate_hard_gates(
         ),
         HardGateResult(
             name="contradicted_claims",
-            passed=contradicted_count <= _MAX_CONTRADICTED_CLAIMS,
+            passed=contradicted_count == 0,
             detail=(
                 "no contradicted claims"
                 if contradicted_count == 0
-                else f"{contradicted_count} contradicted claim(s) (max {_MAX_CONTRADICTED_CLAIMS})"
+                else f"{contradicted_count} contradicted claim(s); requires 0"
             ),
+        ),
+        HardGateResult(
+            name="evidence_coverage",
+            passed=diff_coverage_score is not None
+            and diff_coverage_score >= evidence_coverage_threshold,
+            detail=_minimum_threshold_detail(
+                "evidence coverage",
+                score=diff_coverage_score,
+                threshold=evidence_coverage_threshold,
+            ),
+            score=diff_coverage_score,
+            threshold=evidence_coverage_threshold,
         ),
         HardGateResult(
             name="secret_leak",
@@ -141,10 +158,18 @@ def _dimension_score(dimension_scores: Mapping[str, float], name: str) -> float 
 
 def _threshold_detail(name: str, *, score: float | None, threshold: float) -> str:
     if score is None:
-        return f"{name} score is missing; requires > {threshold:.2f}"
-    if score > threshold:
-        return f"{name} score {score:.2f} > {threshold:.2f}"
-    return f"{name} score {score:.2f} <= {threshold:.2f}; requires > {threshold:.2f}"
+        return f"{name} score is missing; requires >= {threshold:.2f}"
+    if score >= threshold:
+        return f"{name} score {score:.2f} >= {threshold:.2f}"
+    return f"{name} score {score:.2f} < {threshold:.2f}; requires >= {threshold:.2f}"
+
+
+def _minimum_threshold_detail(name: str, *, score: float | None, threshold: float) -> str:
+    if score is None:
+        return f"{name} score is missing; requires >= {threshold:.2f}"
+    if score >= threshold:
+        return f"{name} score {score:.2f} >= {threshold:.2f}"
+    return f"{name} score {score:.2f} < {threshold:.2f}; requires >= {threshold:.2f}"
 
 
 def _critical_safety_finding_count(findings: Sequence[Mapping[str, object]]) -> int:

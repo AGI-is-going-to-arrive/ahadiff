@@ -283,7 +283,7 @@ export async function installServeMock(page: Page): Promise<void> {
           run_id: 'test-run',
           artifact_type: 'quiz',
           content:
-            '{"question_id":"quiz_1","review_card_id":"card_quiz_explicit_1","question":"What does the new comment indicate?","expected_answer":"A learn-from-diff marker","source_claims":["c1"],"concepts":["learn-from-diff"],"evidence":[{"file":"demo.py","line":4}],"explanation":"learn-from-diff marker tags the change for the lesson","answer_mode":"multiple_choice","choices":[{"label":"A","text":"A learn-from-diff marker","is_correct":true},{"label":"B","text":"A runtime debug flag","is_correct":false},{"label":"C","text":"A deprecation warning","is_correct":false},{"label":"D","text":"A type annotation","is_correct":false}]}\n{"question_id":"quiz_2","question":"Why was the return value changed?","expected_answer":"To brand the output as AhaDiff","source_claims":["c1"],"concepts":["branding"],"evidence":[{"file":"demo.py","line":3}],"explanation":"The string literal was updated from world to AhaDiff"}',
+            '{"question_id":"quiz_1","review_card_id":"card_quiz_explicit_1","question":"What does the new comment indicate?","expected_answer":"A learn-from-diff marker","quiz_kind":"recall","source_claims":["c1"],"concepts":["learn-from-diff"],"evidence":[{"file":"demo.py","line":4}],"explanation":"learn-from-diff marker tags the change for the lesson","answer_mode":"multiple_choice","choices":[{"label":"A","text":"A learn-from-diff marker","is_correct":true},{"label":"B","text":"A runtime debug flag","is_correct":false},{"label":"C","text":"A deprecation warning","is_correct":false},{"label":"D","text":"A type annotation","is_correct":false}]}\n{"question_id":"quiz_2","question":"Why was the return value changed?","expected_answer":"To brand the output as AhaDiff","quiz_kind":"transfer","source_claims":["c1"],"concepts":["branding"],"evidence":[{"file":"demo.py","line":3}],"explanation":"The string literal was updated from world to AhaDiff"}',
           content_lang: 'en',
         }),
       }),
@@ -467,6 +467,7 @@ export async function installServeMock(page: Page): Promise<void> {
           file_refs: ['demo.py'],
           source_refs: ['abc123'],
           updated_by_runs: ['test-run'],
+          graphify_node_id: 'node-learn-from-diff',
         },
         {
           term_key: 'branding',
@@ -476,6 +477,7 @@ export async function installServeMock(page: Page): Promise<void> {
           file_refs: ['demo.py', 'config.py'],
           source_refs: ['def456'],
           updated_by_runs: ['test-run', 'test-run-2'],
+          graphify_node_id: 'node-branding',
         },
       ];
       const filtered = runFilter
@@ -567,7 +569,7 @@ export async function installServeMock(page: Page): Promise<void> {
           },
           nodes: [
             {
-              id: 'n1',
+              id: 'node-learn-from-diff',
               name: 'learn-from-diff',
               kind: 'function',
               file_path: 'demo.py',
@@ -593,8 +595,8 @@ export async function installServeMock(page: Page): Promise<void> {
           ],
           edges: [
             {
-              id: 'n1->n2:0',
-              source: 'n1',
+              id: 'node-learn-from-diff->n2:0',
+              source: 'node-learn-from-diff',
               target: 'n2',
               relation: 'calls',
               weight: 1.0,
@@ -780,15 +782,38 @@ export async function installServeMock(page: Page): Promise<void> {
         }),
       }),
   );
-  const manifestHashes: Record<string, string> = {
-    claude: 'a'.repeat(64),
-    codex: 'b'.repeat(64),
-    cursor: 'c'.repeat(64),
-  };
+  const installTargetNames = [
+    'aider',
+    'claude',
+    'cline',
+    'codex',
+    'continue',
+    'copilot',
+    'cursor',
+    'gemini',
+    'github-action',
+    'hooks',
+    'opencode',
+    'roo',
+    'windsurf',
+  ];
+  const manifestHashes: Record<string, string> = Object.fromEntries(
+    installTargetNames.map((name, index) => [
+      name,
+      String.fromCharCode(97 + (index % 26)).repeat(64),
+    ]),
+  );
   const installState: Record<string, 'installed' | 'available'> = {
     claude: 'installed',
     codex: 'available',
     cursor: 'available',
+  };
+  const displayNames: Record<string, string> = {
+    claude: 'Claude Code',
+    codex: 'Codex CLI',
+    copilot: 'Copilot / VS Code',
+    cursor: 'Cursor',
+    'github-action': 'GitHub Actions',
   };
   const manifestFor = (name: string) => ({
     preview: [
@@ -803,11 +828,11 @@ export async function installServeMock(page: Page): Promise<void> {
   });
   const targetFor = (name: string) => ({
     name,
-    display_name: name === 'claude' ? 'Claude Code' : name === 'codex' ? 'Codex CLI' : 'Cursor',
+    display_name: displayNames[name] ?? name,
     detected: installState[name] === 'installed',
     platform_supported: true,
     status: installState[name] ?? 'available',
-    description: name === 'claude' ? 'Claude Code CLI' : name === 'codex' ? 'Codex CLI' : 'Cursor IDE',
+    description: `${displayNames[name] ?? name} project guidance`,
     install_command: `ahadiff install ${name}`,
     uninstall_command: `ahadiff uninstall ${name}`,
     manifest: manifestFor(name),
@@ -822,8 +847,8 @@ export async function installServeMock(page: Page): Promise<void> {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          targets: ['claude', 'codex', 'cursor'].map(targetFor),
-          total: 3,
+          targets: installTargetNames.map(targetFor),
+          total: installTargetNames.length,
         }),
       }),
   );
@@ -1029,7 +1054,7 @@ export async function installServeMock(page: Page): Promise<void> {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          alignment_score: 84.2,
+          alignment_score: 8.4,
           total_evaluated: 4,
           recent_trend: 'stable',
         }),

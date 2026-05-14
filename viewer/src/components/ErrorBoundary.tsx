@@ -124,7 +124,12 @@ function DefaultErrorFallback({ error, componentStack, retryCount, maxRetries, s
 
   const remaining = maxRetries - retryCount;
   const exhausted = remaining <= 0;
-  const diagnosticStack = safeDiagnostic(error?.stack ?? error?.message, '(none)');
+  const rawMessage = error?.message ?? '';
+  const rawStack = error?.stack ?? '';
+  const rawDiagnostic = rawStack.includes(rawMessage)
+    ? rawStack
+    : [rawMessage, rawStack].filter(Boolean).join('\n');
+  const diagnosticStack = safeDiagnostic(rawDiagnostic, '(none)');
   const diagnosticComponentStack = componentStack ? redactDiagnostics(componentStack) : '';
 
   const buildPayload = useCallback(() => {

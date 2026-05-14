@@ -14,6 +14,7 @@ class ConceptLedgerEntry(BaseModel):
     file_refs: list[str] = Field(default_factory=list)
     source_refs: list[str] = Field(default_factory=list)
     updated_by_runs: list[str] = Field(default_factory=list)
+    graphify_node_id: str | None = Field(default=None, min_length=1)
     health_status: (
         Literal[
             "healthy",

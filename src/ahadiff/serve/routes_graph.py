@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 
 _DEFAULT_CONCEPT_GRAPH_LIMIT = 500
 _MAX_CONCEPT_GRAPH_LIMIT = 2_000
+_MAX_GRAPH_FOCUS_LENGTH = 512
 _GRAPH_EDGE_CONFIDENCE_VALUES: frozenset[GraphEdgeConfidence] = frozenset(
     {"EXTRACTED", "INFERRED", "AMBIGUOUS"}
 )
@@ -53,7 +54,15 @@ async def get_concept_graph(request: Request) -> JSONResponse:
         limit = min(max(int(raw_limit), 1), _MAX_CONCEPT_GRAPH_LIMIT)
     except (ValueError, TypeError):
         limit = _DEFAULT_CONCEPT_GRAPH_LIMIT
-    payload = await to_thread.run_sync(lambda: _concept_graph_sync(state.state_dir, limit=limit))
+    raw_focus = request.query_params.get("focus")
+    focus = (
+        raw_focus.strip()
+        if isinstance(raw_focus, str) and 0 < len(raw_focus.strip()) <= _MAX_GRAPH_FOCUS_LENGTH
+        else None
+    )
+    payload = await to_thread.run_sync(
+        lambda: _concept_graph_sync(state.state_dir, limit=limit, focus=focus)
+    )
     return JSONResponse(payload)
 
 
@@ -153,7 +162,12 @@ def _graph_status_sync(state_dir: object) -> dict[str, Any]:
     return response.model_dump(mode="json")
 
 
-def _concept_graph_sync(state_dir: object, *, limit: int) -> dict[str, Any]:
+def _concept_graph_sync(
+    state_dir: object,
+    *,
+    limit: int,
+    focus: str | None = None,
+) -> dict[str, Any]:
     from pathlib import Path
 
     from ahadiff.core.paths import validate_state_path_no_symlinks
@@ -191,6 +205,16 @@ def _concept_graph_sync(state_dir: object, *, limit: int) -> dict[str, Any]:
         ).model_dump(mode="json")
 
     selected_nodes = graph.nodes[:limit]
+    if focus and not any(_graph_node_matches_focus(node, focus) for node in selected_nodes):
+        focused_node = next(
+            (node for node in graph.nodes[limit:] if _graph_node_matches_focus(node, focus)),
+            None,
+        )
+        if focused_node is not None:
+            if len(selected_nodes) >= limit:
+                selected_nodes = [*selected_nodes[:-1], focused_node]
+            else:
+                selected_nodes = [*selected_nodes, focused_node]
     selected_ids = {node.id for node in selected_nodes}
     freshness = status.freshness
     nodes = [
@@ -239,6 +263,12 @@ def _concept_graph_sync(state_dir: object, *, limit: int) -> dict[str, Any]:
             if edge_dict.get("confidence") is None:
                 edge_dict.pop("confidence", None)
     return response_payload
+
+
+def _graph_node_matches_focus(node: Any, focus: str) -> bool:
+    label = getattr(node, "label", None)
+    node_id = getattr(node, "id", None)
+    return node_id == focus or (isinstance(label, str) and label == focus)
 
 
 def _coerce_graph_edge_weight(value: object) -> float:

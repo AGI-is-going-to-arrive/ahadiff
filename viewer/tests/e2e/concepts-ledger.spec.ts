@@ -84,6 +84,18 @@ test.describe('Concepts Ledger tab', () => {
     await expect(graphTab).toHaveAttribute('aria-selected', 'true');
   });
 
+  test('ledger graph links open the focused graph node', async ({ page }) => {
+    await page.goto('/#/concepts?tab=ledger');
+
+    await page.getByRole('link', { name: /view in graph|在图谱中查看/i }).first().click();
+
+    await expect(page).toHaveURL(/tab=graph/);
+    await expect(page).toHaveURL(/focus=node-learn-from-diff/);
+    const graphTab = page.getByRole('tab', { name: /graph|图谱/i });
+    await expect(graphTab).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('.concept-graph__detail')).toContainText('learn-from-diff');
+  });
+
   test('same-route tab query changes sync the selected tab', async ({ page }) => {
     await page.goto('/#/concepts?tab=graph');
     const graphTab = page.getByRole('tab', { name: /graph|图谱/i });

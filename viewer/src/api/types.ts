@@ -97,6 +97,7 @@ export interface ConceptLedgerEntry {
   file_refs: string[];
   source_refs: string[];
   updated_by_runs: string[];
+  graphify_node_id?: string | null;
   health_status?: ConceptHealthStatus;
 }
 

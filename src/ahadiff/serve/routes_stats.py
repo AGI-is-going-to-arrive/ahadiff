@@ -4,22 +4,27 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 import re
 import sqlite3
+import stat
 import time
 from collections.abc import Mapping
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
+from json import JSONDecodeError
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 if not TYPE_CHECKING:
     from pathlib import Path
 
 from anyio import to_thread
+from pydantic import ValidationError
 from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
 
 from ahadiff.contracts import ErrorCode
+from ahadiff.contracts.event_log import RATCHET_COUNTED_STATUSES, ResultEvent
 from ahadiff.contracts.serve_stats import (
     HeatmapEntry,
     ProvidersResponse,
@@ -32,7 +37,9 @@ from ahadiff.contracts.serve_stats import (
     UsageResponse,
 )
 from ahadiff.core.config import mask_provider_base_url_for_display
-from ahadiff.core.errors import StorageError
+from ahadiff.core.errors import InputError, StorageError
+from ahadiff.core.json_util import safe_json_loads
+from ahadiff.core.paths import validate_run_id
 from ahadiff.review.database import connect_review_db, count_concepts
 
 if TYPE_CHECKING:
@@ -46,6 +53,8 @@ log = logging.getLogger(__name__)
 
 _MAX_HEATMAP_SPAN_DAYS = 730
 _DEFAULT_HEATMAP_DAYS = 365
+_MAX_SPEC_ALIGNMENT_JSON_BYTES = 1024 * 1024
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 
 
 # ---------------------------------------------------------------------------
@@ -748,83 +757,187 @@ async def get_usage(request: Request) -> JSONResponse:
 def _build_spec_alignment(state: ServeState) -> dict[str, Any]:
     db_path = state.review_db_path
     if not db_path.is_file():
-        return SpecAlignmentResponse(
-            alignment_score=None,
-            total_evaluated=0,
-            recent_trend=None,
-        ).model_dump(mode="json")
+        return _empty_spec_alignment()
 
-    try:
-        with connect_review_db(db_path) as conn:
-            row = conn.execute(
-                """
-                SELECT COUNT(*), AVG(overall)
-                FROM result_events
-                WHERE status IN ('baseline', 'keep', 'keep_final')
-                """
-            ).fetchone()
-    except sqlite3.OperationalError:
-        return SpecAlignmentResponse(
-            alignment_score=None,
-            total_evaluated=0,
-            recent_trend=None,
-        ).model_dump(mode="json")
+    events = _load_spec_alignment_events(db_path)
+    if not events:
+        return _empty_spec_alignment()
 
-    if not row or row[0] == 0:
-        return SpecAlignmentResponse(
-            alignment_score=None,
-            total_evaluated=0,
-            recent_trend=None,
-        ).model_dump(mode="json")
+    scores: list[float] = []
+    for event in events:
+        score = _load_run_spec_alignment_score(state.runs_dir, event)
+        if score is not None:
+            scores.append(score)
 
-    total = int(row[0])
-    avg = float(row[1]) if row[1] is not None else None
-    if avg is not None and not math.isfinite(avg):
-        avg = None
+    if not scores:
+        return _empty_spec_alignment()
 
+    avg = round(sum(scores) / len(scores), 2)
     trend: str | None = None
-    if total >= 4:
-        try:
-            with connect_review_db(db_path) as conn:
-                half = total // 2
-                earlier = conn.execute(
-                    """
-                    SELECT AVG(overall) FROM (
-                        SELECT overall FROM result_events
-                        WHERE status IN ('baseline', 'keep', 'keep_final')
-                        ORDER BY timestamp ASC
-                        LIMIT ?
-                    )
-                    """,
-                    (half,),
-                ).fetchone()
-                later = conn.execute(
-                    """
-                    SELECT AVG(overall) FROM (
-                        SELECT overall FROM result_events
-                        WHERE status IN ('baseline', 'keep', 'keep_final')
-                        ORDER BY timestamp DESC
-                        LIMIT ?
-                    )
-                    """,
-                    (half,),
-                ).fetchone()
-                if earlier and later and earlier[0] is not None and later[0] is not None:
-                    diff = float(later[0]) - float(earlier[0])
-                    if diff > 1.0:
-                        trend = "improving"
-                    elif diff < -1.0:
-                        trend = "declining"
-                    else:
-                        trend = "stable"
-        except sqlite3.OperationalError:
-            pass
+    if len(scores) >= 4:
+        half = len(scores) // 2
+        earlier_avg = sum(scores[:half]) / half
+        later_avg = sum(scores[-half:]) / half
+        diff = later_avg - earlier_avg
+        if diff > 1.0:
+            trend = "improving"
+        elif diff < -1.0:
+            trend = "declining"
+        else:
+            trend = "stable"
 
     return SpecAlignmentResponse(
         alignment_score=avg,
-        total_evaluated=total,
+        total_evaluated=len(scores),
         recent_trend=trend,
     ).model_dump(mode="json")
+
+
+def _empty_spec_alignment() -> dict[str, Any]:
+    return SpecAlignmentResponse(
+        alignment_score=None,
+        total_evaluated=0,
+        recent_trend=None,
+    ).model_dump(mode="json")
+
+
+def _load_spec_alignment_events(db_path: Path) -> list[ResultEvent]:
+    statuses = tuple(sorted(RATCHET_COUNTED_STATUSES))
+    placeholders = ", ".join("?" for _ in statuses)
+    try:
+        with connect_review_db(db_path) as conn:
+            rows = conn.execute(
+                f"""
+                SELECT event_id, run_id, event_type, timestamp, source_ref, base_ref,
+                       prompt_version, eval_bundle_version, rubric_version, overall,
+                       verdict, status, weakest_dim, note_json
+                FROM result_events
+                WHERE status IN ({placeholders})
+                ORDER BY timestamp ASC, event_id ASC
+                """,
+                statuses,
+            ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+
+    events: list[ResultEvent] = []
+    for row in rows:
+        try:
+            events.append(ResultEvent.model_validate(dict(row)))
+        except ValidationError:
+            continue
+    return events
+
+
+def _load_run_spec_alignment_score(runs_dir: Path, event: ResultEvent) -> float | None:
+    run_path = _finalized_stats_event_run_path(runs_dir, event)
+    if run_path is None:
+        return None
+    score_path = _artifact_path_for_stats_read(run_path, "score.json")
+    if score_path is None:
+        return None
+    payload = _load_stats_json_object(score_path)
+    if payload is None:
+        return None
+
+    dimensions_raw = payload.get("dimensions")
+    if not isinstance(dimensions_raw, dict):
+        return None
+    dimensions = cast("Mapping[str, object]", dimensions_raw)
+    spec_alignment_raw = dimensions.get("spec_alignment")
+    if not isinstance(spec_alignment_raw, dict):
+        return None
+    spec_alignment = cast("Mapping[str, object]", spec_alignment_raw)
+    raw_score = spec_alignment.get("score")
+    if isinstance(raw_score, bool) or not isinstance(raw_score, int | float):
+        return None
+    score = float(raw_score)
+    return score if math.isfinite(score) else None
+
+
+def _finalized_stats_event_run_path(runs_dir: Path, event: ResultEvent) -> Path | None:
+    try:
+        validate_run_id(event.run_id)
+    except InputError:
+        return None
+    if event.run_id.endswith(".tmp"):
+        return None
+    run_path = runs_dir / event.run_id
+    if run_path.is_symlink() or not run_path.is_dir():
+        return None
+    marker = _load_stats_json_object(run_path / "finalized.json")
+    if marker is None:
+        return None
+    if marker.get("run_id") != event.run_id or marker.get("event_id") != event.event_id:
+        return None
+    return run_path
+
+
+def _artifact_path_for_stats_read(run_path: Path, relative_path: str) -> Path | None:
+    artifact_path = run_path / relative_path
+    if not artifact_path.is_file() or artifact_path.is_symlink():
+        return None
+    try:
+        artifact_path.resolve(strict=True).relative_to(run_path.resolve(strict=True))
+    except (OSError, ValueError):
+        return None
+    return artifact_path
+
+
+def _load_stats_json_object(path: Path) -> dict[str, Any] | None:
+    text = _read_stats_regular_text(path)
+    if text is None:
+        return None
+    try:
+        payload = safe_json_loads(text)
+    except (JSONDecodeError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return cast("dict[str, Any]", payload)
+
+
+def _read_stats_regular_text(path: Path) -> str | None:
+    if not path.is_file() or path.is_symlink():
+        return None
+    try:
+        path_stat = os.lstat(path)
+    except OSError:
+        return None
+    if (
+        not stat.S_ISREG(path_stat.st_mode)
+        or _has_windows_reparse_point(path_stat)
+        or getattr(path_stat, "st_nlink", 1) > 1
+        or path_stat.st_size > _MAX_SPEC_ALIGNMENT_JSON_BYTES
+    ):
+        return None
+    fd = -1
+    try:
+        fd = os.open(str(path), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        opened_stat = os.fstat(fd)
+        if (
+            not stat.S_ISREG(opened_stat.st_mode)
+            or _has_windows_reparse_point(opened_stat)
+            or getattr(opened_stat, "st_nlink", 1) > 1
+            or opened_stat.st_size > _MAX_SPEC_ALIGNMENT_JSON_BYTES
+        ):
+            return None
+        if (opened_stat.st_dev, opened_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
+            return None
+        with os.fdopen(fd, "r", encoding="utf-8") as handle:
+            fd = -1
+            return handle.read()
+    except (OSError, UnicodeDecodeError):
+        return None
+    finally:
+        if fd != -1:
+            os.close(fd)
+
+
+def _has_windows_reparse_point(path_stat: object) -> bool:
+    if os.name != "nt":
+        return False
+    return bool(getattr(path_stat, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT)
 
 
 async def get_spec_alignment(request: Request) -> JSONResponse:

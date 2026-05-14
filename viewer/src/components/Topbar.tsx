@@ -58,7 +58,7 @@ export default function Topbar({
     <header className="topbar" data-glass>
       <button
         type="button"
-        className="mobile-nav-btn"
+        className="mobile-nav-btn topbar__mobile-btn"
         ref={menuButtonRef}
         aria-label={
           isMenuOpen ? t('A11y.close_menu') : t('A11y.open_menu')
@@ -120,7 +120,7 @@ export default function Topbar({
         </a>
         <button
           type="button"
-          className={`btn btn-inkstone${isBusy ? ' topbar__btn--busy' : ''}`}
+          className={`btn btn-inkstone topbar__btn--primary${isBusy ? ' topbar__btn--busy' : ''}`}
           disabled={isBusy}
           aria-label={newRunAriaLabel}
           onClick={onLearnDialogOpen ?? (() => void requestLearn())}

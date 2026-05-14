@@ -1,12 +1,15 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import DiffView, {
   type DiffClaimAnchor,
   getClaimSourceLines,
+  parseDiffFileSections,
   parseUnifiedDiff,
+  type DiffFocusTarget,
   type DiffSourceLine,
   type DiffStats,
+  type DiffViewMode,
 } from '../components/DiffView';
 import BottomMiniPanel, { type MiniPanelItem } from '../components/BottomMiniPanel';
 import ClaimInspector, { type ClaimInspectorClaim, type ClaimSourceLineGroup } from '../components/ClaimInspector';
@@ -15,6 +18,7 @@ import type { ClaimVerdict } from '../components/ClaimBadge';
 import { useTranslation } from '../i18n/useTranslation';
 import { copyToClipboard } from '../utils/clipboard';
 import { getRunArtifact } from '../api/runs';
+import { ApiError } from '../api/client';
 import '../components/Diff.css';
 
 const GraphifyCard = lazy(() => import('../components/GraphifyCard'));
@@ -24,6 +28,22 @@ type SourceHunkSide = 'old' | 'new' | 'either';
 type DiffPageClaim = ClaimInspectorClaim & {
   source_anchors: DiffClaimAnchor[];
 };
+type ClaimsLoadResult = {
+  content: string;
+  unavailable: boolean;
+};
+interface FocusTarget {
+  file: string;
+  line: number;
+}
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+}
 
 const CLAIM_VERDICTS: ReadonlySet<ClaimVerdict> = new Set([
   'verified',
@@ -187,17 +207,23 @@ function parseClaims(content: string): DiffPageClaim[] {
 
 export default function DiffViewerPage() {
   const { runId } = useParams<{ runId: string }>();
+  const { search } = useLocation();
   const { t } = useTranslation();
 
   const [phase, setPhase] = useState<Phase>('loading');
   const [content, setContent] = useState('');
   const [stats, setStats] = useState<DiffStats | null>(null);
   const [claims, setClaims] = useState<DiffPageClaim[]>([]);
+  const [claimsUnavailable, setClaimsUnavailable] = useState(false);
   const [selectedClaimId, setSelectedClaimId] = useState<string | null>(null);
+  const [headerFileIndex, setHeaderFileIndex] = useState(0);
+  const [diffViewMode, setDiffViewMode] = useState<DiffViewMode>('unified');
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchAll = useCallback(() => {
     if (!runId) {
+      setClaims([]);
+      setClaimsUnavailable(false);
       setPhase('empty');
       return;
     }
@@ -206,18 +232,34 @@ export default function DiffViewerPage() {
     const controller = new AbortController();
     abortRef.current = controller;
     setPhase('loading');
+    setContent('');
+    setStats(null);
+    setClaims([]);
     setSelectedClaimId(null);
+    setClaimsUnavailable(false);
 
     Promise.all([
       getRunArtifact(runId, 'diff', { signal: controller.signal }),
-      getRunArtifact(runId, 'claims', { signal: controller.signal }).catch(() => ({
-        content: '',
-      })),
+      getRunArtifact(runId, 'claims', { signal: controller.signal })
+        .then((envelope): ClaimsLoadResult => ({
+          content: envelope.content ?? '',
+          unavailable: false,
+        }))
+        .catch((err: unknown): ClaimsLoadResult => {
+          if (err instanceof DOMException && err.name === 'AbortError') throw err;
+          if (!(err instanceof ApiError && err.status === 404)) throw err;
+          if (import.meta.env.DEV) console.warn('DiffViewerPage claims artifact unavailable:', err);
+          return {
+            content: '',
+            unavailable: true,
+          };
+        }),
     ])
       .then(([diffEnv, claimsEnv]) => {
         if (controller.signal.aborted) return;
         const text = diffEnv.content ?? '';
-        setClaims(parseClaims(claimsEnv.content ?? ''));
+        setClaimsUnavailable(claimsEnv.unavailable);
+        setClaims(parseClaims(claimsEnv.content));
         if (text.trim().length === 0) {
           setPhase('empty');
         } else {
@@ -260,23 +302,31 @@ export default function DiffViewerPage() {
    * Falls back to the file header when no exact line anchor is found (e.g.
    * the line is outside the visible diff range — common for large diffs).
    */
-  const handleJumpToCode = useCallback((file: string, line: number) => {
-    const tryScroll = () => {
+  const handleJumpToCode = useCallback((file: string, line: number, side?: SourceHunkSide) => {
+    const tryScroll = (attempt = 0) => {
       const root = document.querySelector<HTMLElement>('.diff-view');
       if (!root) return false;
+      const sideSelector =
+        side === 'old' || side === 'new' ? `[data-line-side="${side}"]` : '';
+      const exactTarget =
+        root.querySelector<HTMLElement>(
+          `[data-line-anchor="${CSS.escape(`${file}:${line}`)}"]${sideSelector}`,
+        );
       const target =
-        root.querySelector<HTMLElement>(`[data-line-anchor="${CSS.escape(`${file}:${line}`)}"]`) ??
+        exactTarget ??
+        root.querySelector<HTMLElement>(`[data-line-anchor="${CSS.escape(`${file}:${line}`)}"]`);
+      if (!target && attempt < 8) {
+        requestAnimationFrame(() => tryScroll(attempt + 1));
+        return false;
+      }
+      const fallbackTarget =
+        target ??
         root.querySelector<HTMLElement>(
           `[data-file-path="${CSS.escape(file)}"] .diff-file-header`,
         );
-      if (!target) return false;
-      // Honor user's reduced-motion preference: skip smooth scroll animation.
-      const prefersReducedMotion =
-        typeof window !== 'undefined' &&
-        typeof window.matchMedia === 'function' &&
-        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      target.scrollIntoView({
-        behavior: prefersReducedMotion ? 'auto' : 'smooth',
+      if (!fallbackTarget) return false;
+      fallbackTarget.scrollIntoView({
+        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
         block: 'center',
       });
       return true;
@@ -290,7 +340,54 @@ export default function DiffViewerPage() {
     });
   }, []);
 
+  const focusTarget = useMemo<FocusTarget | null>(() => {
+    const raw = new URLSearchParams(search).get('focus')?.trim();
+    if (!raw) return null;
+    const sep = raw.lastIndexOf(':');
+    if (sep <= 0) return null;
+    const line = Number(raw.slice(sep + 1));
+    if (!Number.isInteger(line) || line <= 0) return null;
+    const file = raw.slice(0, sep);
+    return file ? { file, line } : null;
+  }, [search]);
+  const diffFocusTarget = useMemo<DiffFocusTarget | null>(
+    () => focusTarget ? { file: focusTarget.file, line: focusTarget.line } : null,
+    [focusTarget],
+  );
+
+  useEffect(() => {
+    if (phase !== 'ready' || !focusTarget) return;
+    handleJumpToCode(focusTarget.file, focusTarget.line);
+  }, [focusTarget, handleJumpToCode, phase]);
+
   const diffLines = useMemo(() => parseUnifiedDiff(content), [content]);
+  const diffSections = useMemo(() => parseDiffFileSections(diffLines), [diffLines]);
+  const headerFile = diffSections[headerFileIndex] ?? diffSections[0] ?? null;
+  const headerFileName = headerFile?.filePath?.split('/').pop() ?? t('Diff.title');
+
+  useEffect(() => {
+    setHeaderFileIndex(0);
+  }, [diffSections.length]);
+
+  const jumpHeaderFile = useCallback(
+    (delta: number) => {
+      if (diffSections.length === 0) return;
+      const nextIndex = (headerFileIndex + delta + diffSections.length) % diffSections.length;
+      setHeaderFileIndex(nextIndex);
+      const filePath = diffSections[nextIndex]?.filePath;
+      if (!filePath) return;
+      requestAnimationFrame(() => {
+        const target = document.querySelector<HTMLElement>(
+          `.diff-view [data-file-path="${CSS.escape(filePath)}"] .diff-file-header`,
+        );
+        target?.scrollIntoView({
+          behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+          block: 'start',
+        });
+      });
+    },
+    [diffSections, headerFileIndex],
+  );
   const claimsWithSource = useMemo(
     () =>
       claims.map((claim) => {
@@ -341,12 +438,65 @@ export default function DiffViewerPage() {
 
   return (
     <AppShell>
-      <div className="diff-page">
-        <div className="diff-page__header">
-          <h1>{t('Diff.title')}</h1>
-          <Suspense fallback={null}>
-            <GraphifyCard compact />
-          </Suspense>
+      <div className="page active diff-page" data-page="diff">
+        <div className="page-head diff-page__header">
+          <div>
+            <div className="eyebrow">
+              {t('Diff.header_eyebrow', { run: runId ?? 'run' })}
+            </div>
+            <h1>
+              {t('Diff.title')} ·{' '}
+              {headerFileName}
+              {headerFile && (
+                <span className="diff-page__header-stats">
+                  · +{headerFile.stats.added} −{headerFile.stats.removed}
+                </span>
+              )}
+            </h1>
+            <p className="sub">{t('Diff.header_subtitle')}</p>
+          </div>
+          <div className="right">
+            <button
+              type="button"
+              className={`chip diff-page__view-chip${diffViewMode === 'unified' ? ' on' : ''}`}
+              aria-pressed={diffViewMode === 'unified'}
+              onClick={() => setDiffViewMode('unified')}
+            >
+              {t('Diff.view_unified')}
+            </button>
+            <button
+              type="button"
+              className={`chip diff-page__view-chip${diffViewMode === 'split' ? ' on' : ''}`}
+              aria-pressed={diffViewMode === 'split'}
+              onClick={() => setDiffViewMode('split')}
+            >
+              {t('Diff.view_split')}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => jumpHeaderFile(-1)}
+              disabled={diffSections.length < 2}
+            >
+              {t('Diff.prev_file')}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => jumpHeaderFile(1)}
+              disabled={diffSections.length < 2}
+            >
+              {t('Diff.next_file')}
+            </button>
+            {runId && (
+              <Link className="btn primary" to={`/run/${encodeURIComponent(runId)}/lesson`}>
+                {t('Diff.open_lesson')} →
+              </Link>
+            )}
+            <Suspense fallback={null}>
+              <GraphifyCard compact />
+            </Suspense>
+          </div>
         </div>
 
         <div className="diff-page__split">
@@ -371,13 +521,27 @@ export default function DiffViewerPage() {
             )}
 
             {phase === 'ready' && (
-              <DiffView
-                lines={diffLines}
-                claims={claimAnchors}
-                selectedClaimId={selectedClaimId}
-                onSelectClaim={handleSelect}
-                onStats={handleStats}
-              />
+              <>
+                {claimsUnavailable && (
+                  <div
+                    className="diff-page__claims-warning"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <strong>{t('Diff.claims_unavailable_title')}</strong>
+                    <span>{t('Diff.claims_unavailable_body')}</span>
+                  </div>
+                )}
+                <DiffView
+                  lines={diffLines}
+                  claims={claimAnchors}
+                  selectedClaimId={selectedClaimId}
+                  onSelectClaim={handleSelect}
+                  onStats={handleStats}
+                  mode={diffViewMode}
+                  focusTarget={diffFocusTarget}
+                />
+              </>
             )}
 
             {phase === 'ready' && selectedClaim && (

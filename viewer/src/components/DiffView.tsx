@@ -30,6 +30,7 @@ const SUMMARY_BAR_STYLE: CSSProperties = { contain: 'layout' };
 
 type LineType = 'add' | 'del' | 'ctx' | 'hunk' | 'meta';
 type SourceSide = 'old' | 'new' | 'either';
+export type DiffViewMode = 'unified' | 'split';
 
 export interface DiffLine {
   type: LineType;
@@ -68,6 +69,16 @@ export interface DiffSourceLine {
   type: Extract<LineType, 'add' | 'del' | 'ctx'>;
   text: string;
 }
+
+export interface DiffFocusTarget {
+  file: string;
+  line: number;
+  side?: SourceSide;
+}
+
+export type SplitDiffRow =
+  | { kind: 'span'; line: DiffLine }
+  | { kind: 'pair'; oldLine: DiffLine | null; newLine: DiffLine | null };
 
 /* ── Parser ──────────────────────────────────────────────────── */
 
@@ -512,6 +523,18 @@ export function getClaimSourceLines(
   return result;
 }
 
+export function diffLineMatchesFocusTarget(line: DiffLine, target: DiffFocusTarget): boolean {
+  if (!isContentLine(line)) return false;
+  const targetPath = normalizeClaimPath(target.file);
+  if (!targetPath) return false;
+  const paths = normalizedLinePaths(line);
+  if (!paths.includes(targetPath)) return false;
+  const side = target.side ?? 'either';
+  if (side !== 'old' && line.newLineNo === target.line) return true;
+  if (side !== 'new' && line.oldLineNo === target.line) return true;
+  return false;
+}
+
 /**
  * Precomputed claim lookup: maps `"normalizedPath:side:lineNo"` to the
  * full list of claims that cover that position. Built once per `claims`
@@ -589,12 +612,7 @@ export function lookupClaimsForLine(line: DiffLine, lookup: ClaimLookup): DiffCl
   // one filePath/oldPath/newPath spelling that could match a claim, so
   // probing all three under both sides is cheap and avoids missing a
   // match when the diff header lists `oldPath !== newPath` (rename).
-  const paths: string[] = [];
-  for (const raw of [line.filePath, line.newPath, line.oldPath]) {
-    if (!raw) continue;
-    const normalized = normalizeClaimPath(raw);
-    if (normalized && !paths.includes(normalized)) paths.push(normalized);
-  }
+  const paths = normalizedLinePaths(line);
   if (paths.length === 0) return [];
   // Collect from every (path, side) probe and dedupe by claim_id while
   // preserving order (new-side hits first to mirror prior precedence).
@@ -622,6 +640,40 @@ export function lookupClaimsForLine(line: DiffLine, lookup: ClaimLookup): DiffCl
   return result;
 }
 
+function normalizedLinePaths(line: DiffLine): string[] {
+  const paths: string[] = [];
+  for (const raw of [line.filePath, line.newPath, line.oldPath]) {
+    if (!raw) continue;
+    const normalized = normalizeClaimPath(raw);
+    if (normalized && !paths.includes(normalized)) paths.push(normalized);
+  }
+  return paths;
+}
+
+function lookupClaimsForLineSide(
+  line: DiffLine,
+  lookup: ClaimLookup,
+  side: Exclude<SourceSide, 'either'>,
+): DiffClaimAnchor[] {
+  if (!isContentLine(line)) return [];
+  const lineNo = side === 'new' ? line.newLineNo : line.oldLineNo;
+  if (lineNo == null) return [];
+  const paths = normalizedLinePaths(line);
+  if (paths.length === 0) return [];
+  const seen = new Set<string>();
+  const result: DiffClaimAnchor[] = [];
+  for (const path of paths) {
+    const hits = lookup.get(`${path}:${side}:${lineNo}`);
+    if (!hits) continue;
+    for (const hit of hits) {
+      if (seen.has(hit.claim_id)) continue;
+      seen.add(hit.claim_id);
+      result.push(hit);
+    }
+  }
+  return result;
+}
+
 export function getRenderedDiffLines(
   lines: ReadonlyArray<DiffLine>,
   expanded: boolean,
@@ -637,6 +689,51 @@ export function getRenderedDiffLines(
 function formatLineAnchor(line: DiffLine): string {
   const lineNo = line.newLineNo ?? line.oldLineNo;
   return `${line.filePath ?? line.newPath ?? line.oldPath ?? 'diff'}${lineNo ? `:${lineNo}` : ''}`;
+}
+
+export function buildSplitDiffRows(lines: ReadonlyArray<DiffLine>): SplitDiffRow[] {
+  const rows: SplitDiffRow[] = [];
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index];
+    if (!line) break;
+    if (line.type === 'meta' || line.type === 'hunk') {
+      rows.push({ kind: 'span', line });
+      index += 1;
+      continue;
+    }
+    if (line.type === 'ctx') {
+      rows.push({ kind: 'pair', oldLine: line, newLine: line });
+      index += 1;
+      continue;
+    }
+    if (line.type === 'del') {
+      const dels: DiffLine[] = [];
+      while (lines[index]?.type === 'del') {
+        dels.push(lines[index]!);
+        index += 1;
+      }
+      const adds: DiffLine[] = [];
+      while (lines[index]?.type === 'add') {
+        adds.push(lines[index]!);
+        index += 1;
+      }
+      const pairCount = Math.max(dels.length, adds.length);
+      for (let i = 0; i < pairCount; i += 1) {
+        rows.push({ kind: 'pair', oldLine: dels[i] ?? null, newLine: adds[i] ?? null });
+      }
+      continue;
+    }
+    const adds: DiffLine[] = [];
+    while (lines[index]?.type === 'add') {
+      adds.push(lines[index]!);
+      index += 1;
+    }
+    for (const add of adds) {
+      rows.push({ kind: 'pair', oldLine: null, newLine: add });
+    }
+  }
+  return rows;
 }
 
 /* ── Single line renderer ────────────────────────────────────── */
@@ -752,6 +849,153 @@ function DiffLineRow({
   );
 }
 
+function SplitDiffCell({
+  line,
+  side,
+  claims: rowClaims,
+  selectedClaimId,
+  onSelectClaim,
+  t,
+}: {
+  line: DiffLine | null;
+  side: Exclude<SourceSide, 'either'>;
+  claims: ReadonlyArray<DiffClaimAnchor>;
+  selectedClaimId: string | null;
+  onSelectClaim?: (claimId: string) => void;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  if (line === null) {
+    return (
+      <div className={`diff-split-cell diff-split-cell--${side} diff-split-cell--empty`} aria-hidden="true">
+        <span className="diff-line__lineno" />
+        <span className="diff-line__text" />
+      </div>
+    );
+  }
+
+  const hasClaims = rowClaims.length > 0;
+  const selectedOnCell = selectedClaimId
+    ? rowClaims.find((c) => c.claim_id === selectedClaimId) ?? null
+    : null;
+  const primary = selectedOnCell ?? (rowClaims[0] ?? null);
+  const primaryClaimId = primary?.claim_id ?? null;
+  const isSelected = selectedOnCell !== null;
+  const cls = `diff-split-cell diff-split-cell--${side} diff-split-cell--${line.type}${hasClaims ? ' diff-line--claim-linked' : ''}${isSelected ? ' diff-line--claim-selected' : ''}`;
+  const lineNo = side === 'new' ? line.newLineNo : line.oldLineNo;
+  const verdictTitle = (claim: DiffClaimAnchor): string => {
+    if (claim.verdict) {
+      return t('Claim_inspector.claim_dot_label', {
+        claim_id: claim.claim_id,
+        verdict: claim.verdict,
+      });
+    }
+    return claim.claim_id;
+  };
+  const dotNodes = hasClaims
+    ? rowClaims.map((claim, claimIndex) => (
+        <span
+          key={`dot:${side}:${claim.claim_id}`}
+          className={`diff-line__claim-dot${claim.verdict ? ` diff-line__claim-dot--${claim.verdict}` : ''}`}
+          aria-hidden="true"
+          style={{ '--claim-dot-offset': `${claimIndex * 8}px` } as CSSProperties}
+          title={verdictTitle(claim) || undefined}
+          data-claim-dot-id={claim.claim_id}
+        />
+      ))
+    : null;
+  const body = (
+    <>
+      {dotNodes}
+      <span className="diff-line__lineno" aria-hidden="true">
+        {lineNo ?? ''}
+      </span>
+      <span className="diff-line__text">
+        <code>{line.text}</code>
+      </span>
+    </>
+  );
+
+  if (primaryClaimId && onSelectClaim) {
+    const claimDescription = rowClaims.map(verdictTitle).join(', ');
+    return (
+      <button
+        type="button"
+        className={cls}
+        data-claim-id={primaryClaimId}
+        data-claim-ids={rowClaims.map((c) => c.claim_id).join(',')}
+        data-line-anchor={formatLineAnchor(line)}
+        data-line-side={side}
+        aria-pressed={isSelected}
+        aria-label={`${side} ${formatLineAnchor(line)} ${claimDescription}`}
+        title={claimDescription || undefined}
+        onClick={() => onSelectClaim(primaryClaimId)}
+      >
+        {body}
+      </button>
+    );
+  }
+
+  return (
+    <div className={cls} data-line-anchor={formatLineAnchor(line)} data-line-side={side}>
+      {body}
+    </div>
+  );
+}
+
+function SplitDiffRowView({
+  row,
+  claimLookup,
+  selectedClaimId,
+  lineMatchesSelectedClaim,
+  onSelectClaim,
+  t,
+}: {
+  row: SplitDiffRow;
+  claimLookup: ClaimLookup;
+  selectedClaimId: string | null;
+  lineMatchesSelectedClaim: (line: DiffLine) => boolean;
+  onSelectClaim?: (claimId: string) => void;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  if (row.kind === 'span') {
+    return (
+      <div className="diff-split-row diff-split-row--span">
+        <DiffLineRow
+          line={row.line}
+          claims={lookupClaimsForLine(row.line, claimLookup)}
+          selectedClaimId={lineMatchesSelectedClaim(row.line) ? selectedClaimId : null}
+          onSelectClaim={onSelectClaim}
+          t={t}
+        />
+      </div>
+    );
+  }
+  return (
+    <div className="diff-split-row diff-split-row--pair" data-split-row="true">
+      <SplitDiffCell
+        line={row.oldLine}
+        side="old"
+        claims={row.oldLine ? lookupClaimsForLineSide(row.oldLine, claimLookup, 'old') : []}
+        selectedClaimId={
+          row.oldLine && lineMatchesSelectedClaim(row.oldLine) ? selectedClaimId : null
+        }
+        onSelectClaim={onSelectClaim}
+        t={t}
+      />
+      <SplitDiffCell
+        line={row.newLine}
+        side="new"
+        claims={row.newLine ? lookupClaimsForLineSide(row.newLine, claimLookup, 'new') : []}
+        selectedClaimId={
+          row.newLine && lineMatchesSelectedClaim(row.newLine) ? selectedClaimId : null
+        }
+        onSelectClaim={onSelectClaim}
+        t={t}
+      />
+    </div>
+  );
+}
+
 /* ── File section view ──────────────────────────────────────── */
 
 function DiffFileSectionView({
@@ -767,6 +1011,7 @@ function DiffFileSectionView({
   onSelectClaim,
   showAllLines,
   onShowAllLines,
+  mode,
   t,
 }: {
   section: DiffFileSection;
@@ -781,6 +1026,7 @@ function DiffFileSectionView({
   onSelectClaim?: (claimId: string) => void;
   showAllLines: boolean;
   onShowAllLines: () => void;
+  mode: DiffViewMode;
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
   const { filePath, oldPath, isRename, stats } = section;
@@ -801,6 +1047,7 @@ function DiffFileSectionView({
   const isLargeFile = totalLineCount > LARGE_FILE_THRESHOLD;
   const truncated = expanded && isLargeFile && !showAllLines;
   const renderedLines = getRenderedDiffLines(section.lines, expanded, showAllLines);
+  const splitRows = useMemo(() => buildSplitDiffRows(renderedLines), [renderedLines]);
   const hiddenLineCount = truncated ? totalLineCount - renderedLines.length : 0;
 
   return (
@@ -851,18 +1098,30 @@ function DiffFileSectionView({
         aria-label={ariaLabel}
         hidden={!expanded}
       >
-        {renderedLines.map((line, i) => (
-          <DiffLineRow
-            key={`${line.filePath ?? '_'}:${line.type}:${line.oldLineNo ?? '_'}:${line.newLineNo ?? '_'}:${i}`}
-            line={line}
-            claims={lookupClaimsForLine(line, claimLookup)}
-            selectedClaimId={
-              lineMatchesSelectedClaim(line) ? selectedClaimId : null
-            }
-            onSelectClaim={onSelectClaim}
-            t={t}
-          />
-        ))}
+        {mode === 'split'
+          ? splitRows.map((row, i) => (
+              <SplitDiffRowView
+                key={`split:${section.filePath ?? '_'}:${i}`}
+                row={row}
+                claimLookup={claimLookup}
+                selectedClaimId={selectedClaimId}
+                lineMatchesSelectedClaim={lineMatchesSelectedClaim}
+                onSelectClaim={onSelectClaim}
+                t={t}
+              />
+            ))
+          : renderedLines.map((line, i) => (
+              <DiffLineRow
+                key={`${line.filePath ?? '_'}:${line.type}:${line.oldLineNo ?? '_'}:${line.newLineNo ?? '_'}:${i}`}
+                line={line}
+                claims={lookupClaimsForLine(line, claimLookup)}
+                selectedClaimId={
+                  lineMatchesSelectedClaim(line) ? selectedClaimId : null
+                }
+                onSelectClaim={onSelectClaim}
+                t={t}
+              />
+            ))}
         {truncated && (
           <div className="diff-file-section__truncation" data-file-truncation="true">
             <p className="diff-file-section__truncation-msg">
@@ -958,6 +1217,8 @@ interface DiffViewProps {
   selectedClaimId?: string | null;
   onSelectClaim?: (claimId: string) => void;
   onStats?: (stats: DiffStats) => void;
+  mode?: DiffViewMode;
+  focusTarget?: DiffFocusTarget | null;
 }
 
 /**
@@ -983,6 +1244,8 @@ const DiffView = memo(function DiffView({
   selectedClaimId = null,
   onSelectClaim,
   onStats,
+  mode = 'unified',
+  focusTarget = null,
 }: DiffViewProps) {
   const { t } = useTranslation();
   const reactInstanceId = useId();
@@ -1132,6 +1395,40 @@ const DiffView = memo(function DiffView({
     });
   }, [selectedClaimId, claims, sections, sectionKeyForIndex]);
 
+  useEffect(() => {
+    if (!focusTarget) return;
+    setCollapsed((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      sections.forEach((section, i) => {
+        if (!section.lines.some((line) => diffLineMatchesFocusTarget(line, focusTarget))) return;
+        const key = sectionKeyForIndex(section, i);
+        if (next[key]) {
+          next[key] = false;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+    setShowAllLinesMap((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      sections.forEach((section, i) => {
+        if (section.lines.length <= LARGE_FILE_THRESHOLD) return;
+        const key = sectionKeyForIndex(section, i);
+        if (next[key]) return;
+        const matchIdx = section.lines.findIndex((line) =>
+          diffLineMatchesFocusTarget(line, focusTarget),
+        );
+        if (matchIdx >= LARGE_FILE_RENDER_LIMIT) {
+          next[key] = true;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [focusTarget, sections, sectionKeyForIndex]);
+
   /* Track active file in viewport for summary-bar highlight. Uses
    * IntersectionObserver on the sticky headers so we don't re-flow on
    * every scroll event. */
@@ -1210,7 +1507,7 @@ const DiffView = memo(function DiffView({
   }
 
   return (
-    <div className="diff-view" role="region" aria-label={t('Diff.title')} ref={containerRef}>
+    <div className={`diff-view diff-view--${mode}`} role="region" aria-label={t('Diff.title')} ref={containerRef}>
       {sections.length > 1 && (
         <DiffFileSummaryBar
           sections={sections}
@@ -1242,6 +1539,7 @@ const DiffView = memo(function DiffView({
               onSelectClaim={onSelectClaim}
               showAllLines={showAllLinesMap[key] === true}
               onShowAllLines={() => setShowAllLinesForKey(key)}
+              mode={mode}
               t={t}
             />
           );

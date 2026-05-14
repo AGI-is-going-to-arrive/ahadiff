@@ -130,6 +130,7 @@ _CONCEPT_LEDGER_FIELDS = frozenset(
         "file_refs",
         "source_refs",
         "updated_by_runs",
+        "graphify_node_id",
         "health_status",
     }
 )
@@ -475,6 +476,7 @@ def _concepts_ledger_sync(
 ) -> dict[str, Any]:
     offset = parse_jsonl_concepts_cursor(cursor)
     all_concepts = _concepts_ledger_entries(state)
+    current_graph_node_ids = _current_graph_node_ids(state.state_dir)
     if run_filter:
         all_concepts = [
             entry
@@ -482,6 +484,9 @@ def _concepts_ledger_sync(
             if run_filter in _string_list(entry.get("updated_by_runs", []))
         ]
     page_entries = all_concepts[offset : offset + limit]
+    page_entries = [
+        _drop_stale_graphify_node_id(entry, current_graph_node_ids) for entry in page_entries
+    ]
     next_cursor = None
     if offset + limit < len(all_concepts):
         next_cursor = str(offset + limit)
@@ -500,6 +505,31 @@ def _concepts_ledger_sync(
             if entry.get("health_status") is None:
                 entry.pop("health_status", None)
     return payload
+
+
+def _current_graph_node_ids(state_dir: Path) -> set[str]:
+    graph_path = state_dir / "graphify" / "graph.json"
+    if not graph_path.exists():
+        return set()
+    try:
+        from ahadiff.graphify import parse_graph_json
+
+        graph = parse_graph_json(graph_path)
+    except Exception:
+        return set()
+    return {node.id for node in graph.nodes}
+
+
+def _drop_stale_graphify_node_id(
+    entry: dict[str, Any],
+    current_graph_node_ids: set[str],
+) -> dict[str, Any]:
+    graphify_node_id = entry.get("graphify_node_id")
+    if not isinstance(graphify_node_id, str) or graphify_node_id in current_graph_node_ids:
+        return entry
+    scrubbed = dict(entry)
+    scrubbed["graphify_node_id"] = None
+    return scrubbed
 
 
 def _concepts_ledger_entries(state: ServeState) -> list[dict[str, Any]]:

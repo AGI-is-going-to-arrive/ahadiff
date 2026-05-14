@@ -129,8 +129,10 @@ export default function AppShell({ children, globalShortcutsDisabled = false }: 
     if (!isMobileNav && isSidebarOpen) setIsSidebarOpen(false);
   }, [isMobileNav, isSidebarOpen]);
 
+  const backgroundInert = isMobileNav && isSidebarOpen;
+
   return (
-    <div className={`app${isSidebarOpen ? ' nav-open' : ''}`}>
+    <div className={`app app-shell${isSidebarOpen ? ' nav-open' : ''}`}>
       <a
         className="skip-to-content"
         href="#main-content"
@@ -169,9 +171,9 @@ export default function AppShell({ children, globalShortcutsDisabled = false }: 
         />
         <main
           id="main-content"
-          className="app-content"
+          className="app-content app-shell__body"
           tabIndex={-1}
-          inert={isMobileNav && isSidebarOpen ? true : undefined}
+          inert={backgroundInert ? true : undefined}
         >
           <LearnTaskBanner />
           {children}

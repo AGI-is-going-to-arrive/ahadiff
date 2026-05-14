@@ -114,7 +114,104 @@ def test_concepts_ledger_with_data(tmp_path: Path) -> None:
         "updated_by_runs": ["run-1"],
         "related_claims": ["c1"],
         "file_refs": ["src/foo.py"],
+        "graphify_node_id": None,
     }
+
+
+def test_concepts_ledger_drops_stale_graphify_node_ids(tmp_path: Path) -> None:
+    state_dir, head_sha = _init_repo_with_head(tmp_path)
+    _write_concepts(
+        state_dir,
+        [
+            {
+                "term_key": "stale",
+                "concept": "stale",
+                "display_name": "Stale Concept",
+                "source_refs": [head_sha],
+                "updated_by_runs": ["run-1"],
+                "related_claims": [],
+                "file_refs": [],
+                "graphify_node_id": "node-old",
+            },
+            {
+                "term_key": "fresh",
+                "concept": "fresh",
+                "display_name": "Fresh Concept",
+                "source_refs": [head_sha],
+                "updated_by_runs": ["run-1"],
+                "related_claims": [],
+                "file_refs": [],
+                "graphify_node_id": "node-current",
+            },
+        ],
+    )
+    graph_dir = state_dir / "graphify"
+    graph_dir.mkdir()
+    (graph_dir / "graph.json").write_text(
+        json.dumps({"nodes": [{"id": "node-current", "label": "Fresh Concept"}], "links": []}),
+        encoding="utf-8",
+    )
+    client = _client(state_dir)
+
+    response = client.get("/api/concepts/ledger", headers=_AUTH)
+
+    assert response.status_code == 200
+    entries = response.json()["entries"]
+    assert entries[0]["graphify_node_id"] is None
+    assert entries[1]["graphify_node_id"] == "node-current"
+
+
+def test_concepts_ledger_drops_graphify_node_ids_when_graph_missing(tmp_path: Path) -> None:
+    state_dir, head_sha = _init_repo_with_head(tmp_path)
+    _write_concepts(
+        state_dir,
+        [
+            {
+                "term_key": "stale",
+                "concept": "stale",
+                "display_name": "Stale Concept",
+                "source_refs": [head_sha],
+                "updated_by_runs": ["run-1"],
+                "related_claims": [],
+                "file_refs": [],
+                "graphify_node_id": "node-from-deleted-graph",
+            }
+        ],
+    )
+    client = _client(state_dir)
+
+    response = client.get("/api/concepts/ledger", headers=_AUTH)
+
+    assert response.status_code == 200
+    assert response.json()["entries"][0]["graphify_node_id"] is None
+
+
+def test_concepts_ledger_drops_graphify_node_ids_when_graph_invalid(tmp_path: Path) -> None:
+    state_dir, head_sha = _init_repo_with_head(tmp_path)
+    _write_concepts(
+        state_dir,
+        [
+            {
+                "term_key": "stale",
+                "concept": "stale",
+                "display_name": "Stale Concept",
+                "source_refs": [head_sha],
+                "updated_by_runs": ["run-1"],
+                "related_claims": [],
+                "file_refs": [],
+                "graphify_node_id": "node-from-broken-graph",
+            }
+        ],
+    )
+    graph_dir = state_dir / "graphify"
+    graph_dir.mkdir()
+    (graph_dir / "graph.json").write_text("{not-json", encoding="utf-8")
+    client = _client(state_dir)
+
+    response = client.get("/api/concepts/ledger", headers=_AUTH)
+
+    assert response.status_code == 200
+    assert response.json()["entries"][0]["graphify_node_id"] is None
 
 
 def test_concepts_ledger_pagination(tmp_path: Path) -> None:

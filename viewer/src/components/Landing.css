@@ -150,6 +150,13 @@
   transition-duration: 0s;
 }
 
+.hero-ctas__learn {
+  height: 44px;
+  padding: 0 var(--sp-5);
+  border-radius: var(--r-md);
+  background: var(--elevated);
+}
+
 .hero-ctas .cli-cmd {
   font-family: var(--font-mono);
   font-size: 13px;
@@ -193,6 +200,23 @@
 .hero-demo__tab:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
+}
+
+.hero-demo__source {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px var(--sp-5);
+  border-bottom: 1px solid var(--hair);
+  background: var(--wash);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.hero-demo__source--live {
+  color: var(--success);
 }
 
 .hero-demo__content {

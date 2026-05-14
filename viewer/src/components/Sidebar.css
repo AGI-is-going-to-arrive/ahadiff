@@ -48,7 +48,13 @@
 }
 
 .brand-mark span {
-  display: inline-block;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-ink);
+  color: #fff;
   transform: translateY(-1px);
 }
 

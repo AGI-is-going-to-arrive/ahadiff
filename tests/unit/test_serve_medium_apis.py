@@ -776,10 +776,161 @@ class TestSpecAlignment:
         resp = client.get("/api/spec/alignment")
         assert resp.status_code == 401
 
+    def test_uses_score_json_spec_alignment_dimension(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir(parents=True)
+        db_path = state_dir / "review.sqlite"
+        initialize_review_db(db_path)
+
+        for idx, score in enumerate((2.0, 3.0, 8.0, 9.0)):
+            event_id = f"evt_{idx}"
+            run_id = f"run_{idx:032x}"
+            _insert_result_event(
+                db_path,
+                event_id=event_id,
+                run_id=run_id,
+                timestamp=f"2026-04-{10 + idx:02d}T12:00:00Z",
+                overall=90.0 - (idx * 10.0),
+            )
+            _write_score_artifact(
+                state_dir,
+                run_id=run_id,
+                event_id=event_id,
+                spec_alignment_score=score,
+            )
+
+        client = _client(state_dir)
+
+        resp = client.get("/api/spec/alignment", headers=_AUTH)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["alignment_score"] == 5.5
+        assert body["total_evaluated"] == 4
+        assert body["recent_trend"] == "improving"
+
+    def test_ignores_result_events_without_valid_spec_alignment_artifact(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir(parents=True)
+        db_path = state_dir / "review.sqlite"
+        initialize_review_db(db_path)
+        _insert_result_event(
+            db_path,
+            event_id="evt_valid",
+            run_id="run_00000000000000000000000000000001",
+            timestamp="2026-04-10T12:00:00Z",
+            overall=10.0,
+        )
+        _write_score_artifact(
+            state_dir,
+            run_id="run_00000000000000000000000000000001",
+            event_id="evt_valid",
+            spec_alignment_score=7.0,
+        )
+        _insert_result_event(
+            db_path,
+            event_id="evt_invalid",
+            run_id="run_00000000000000000000000000000002",
+            timestamp="2026-04-11T12:00:00Z",
+            overall=100.0,
+        )
+        _write_score_artifact(
+            state_dir,
+            run_id="run_00000000000000000000000000000002",
+            event_id="evt_invalid",
+            spec_alignment_score=True,
+        )
+
+        client = _client(state_dir)
+
+        resp = client.get("/api/spec/alignment", headers=_AUTH)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["alignment_score"] == 7.0
+        assert body["total_evaluated"] == 1
+        assert body["recent_trend"] is None
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _insert_result_event(
+    db_path: Path,
+    *,
+    event_id: str,
+    run_id: str,
+    timestamp: str,
+    overall: float,
+) -> None:
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO result_events (
+                event_id, run_id, event_type, timestamp, source_ref, base_ref,
+                prompt_version, eval_bundle_version, rubric_version, overall,
+                verdict, status, weakest_dim, note_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                event_id,
+                run_id,
+                "score",
+                timestamp,
+                "abc123",
+                "def456",
+                "prompt-v1",
+                "eval-v1",
+                "rubric-v1",
+                overall,
+                "PASS",
+                "keep_final",
+                "spec_alignment",
+                None,
+            ),
+        )
+
+
+def _write_score_artifact(
+    state_dir: Path,
+    *,
+    run_id: str,
+    event_id: str,
+    spec_alignment_score: object,
+) -> None:
+    run_path = state_dir / "runs" / run_id
+    run_path.mkdir(parents=True)
+    (run_path / "score.json").write_text(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "overall": 80.0,
+                "dimensions": {
+                    "spec_alignment": {
+                        "score": spec_alignment_score,
+                        "max_score": 10.0,
+                        "reason": "test fixture",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run_path / "finalized.json").write_text(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "event_id": event_id,
+                "finalized_at": "2026-04-10T12:00:00Z",
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def _setup_cards_db(db_path: Path) -> None:

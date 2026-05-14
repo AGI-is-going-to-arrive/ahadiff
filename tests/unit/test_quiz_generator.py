@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -335,8 +336,22 @@ def test_parse_quiz_payload_keeps_legacy_open_answer_rows_when_choices_not_requi
     parsed = parse_quiz_payload(json.dumps({"questions": [_quiz_question_payload()]}))
 
     assert len(parsed.questions) == 1
+    assert parsed.questions[0].quiz_kind == "recall"
     assert parsed.questions[0].answer_mode == "open"
     assert parsed.questions[0].choices is None
+
+
+def test_parse_quiz_payload_accepts_transfer_quiz_kind() -> None:
+    parsed = parse_quiz_payload(
+        json.dumps({"questions": [_quiz_question_payload(quiz_kind="transfer")]})
+    )
+
+    assert parsed.questions[0].quiz_kind == "transfer"
+
+
+def test_quiz_question_rejects_unknown_quiz_kind() -> None:
+    with pytest.raises(ValidationError):
+        QuizQuestion.model_validate(_quiz_question_payload(quiz_kind="memory"))
 
 
 def test_parse_quiz_payload_require_choices_rejects_open_answer_rows() -> None:
@@ -1138,6 +1153,10 @@ diff --git a/src/app.py b/src/app.py
     assert (run_path / "quiz" / "quiz.jsonl").exists()
     assert (run_path / "quiz" / "cards.jsonl").exists()
     assert (run_path / "concepts_local.jsonl").exists()
+    review_db_path = workspace_root / ".ahadiff" / "review.sqlite"
+    with sqlite3.connect(review_db_path) as connection:
+        row = connection.execute("SELECT COUNT(*) FROM cards").fetchone()
+    assert row == (1,)
     assert "Quiz" in result.stdout
     assert "Cards" in result.stdout
     assert "Concepts" in result.stdout

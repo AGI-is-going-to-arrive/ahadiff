@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BookOpen,
   Brain,
@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import AppShell from '../components/AppShell';
 import { CommandBlock } from '../components/CommandBlock';
+import { getInstallTargets, type InstallTarget } from '../api/config';
 import { useTranslation, type MessageKey, type TranslateFn } from '../i18n/useTranslation';
 import { detectPlatform, getEnvVarCommand, type Platform } from '../utils/platform';
 import './GuidePage.css';
@@ -152,10 +153,69 @@ const NAV_TARGETS: ReadonlyArray<NavTarget> = [
   { id: 'workflow', labelKey: 'Guide.nav_workflow' },
   { id: 'commands', labelKey: 'Guide.nav_commands' },
   { id: 'setup', labelKey: 'Guide.nav_setup' },
+  { id: 'agent-skills', labelKey: 'Guide.nav_agent_skills' },
   { id: 'advanced', labelKey: 'Guide.nav_advanced' },
   { id: 'maintenance', labelKey: 'Guide.nav_maintenance' },
   { id: 'integrations', labelKey: 'Guide.nav_integrations' },
 ];
+
+const AGENT_MARKS: Record<string, string> = {
+  aider: 'AI',
+  claude: 'CC',
+  cline: 'CL',
+  codex: 'CD',
+  continue: 'CN',
+  copilot: 'CP',
+  cursor: 'CX',
+  gemini: 'GM',
+  'github-action': 'GH',
+  hooks: 'HK',
+  opencode: 'OC',
+  roo: 'RO',
+  windsurf: 'WS',
+};
+
+const AGENT_PATH_HINTS: Record<string, string> = {
+  claude: '.claude/skills/ahadiff/SKILL.md',
+  cursor: '.cursor/rules/ahadiff.mdc',
+  codex: 'AGENTS.md + ahadiff.toml',
+  gemini: '.gemini/settings.json',
+  opencode: '.opencode/agents/ahadiff.md',
+  copilot: '.github/copilot-instructions.md',
+};
+
+function targetMark(name: string): string {
+  return AGENT_MARKS[name] ?? name.slice(0, 2).toUpperCase();
+}
+
+function fallbackInstallTargets(status: InstallTarget['status']): InstallTarget[] {
+  return INTEGRATION_TARGETS.map((target) => ({
+    name: target.name,
+    display_name: target.name,
+    detected: false,
+    platform_supported: true,
+    status,
+    description: '',
+  }));
+}
+
+const SKILL_PREVIEW = `---
+name: ahadiff
+description: Turn git diffs into verified learning lessons.
+allowed-tools: Read, Grep, Bash
+---
+
+1. Read the diff or run artifact.
+2. Ground every claim to file:line evidence.
+3. Write lesson, claims, quiz, and score outputs.`;
+
+const AGENTS_PREVIEW = `# AGENTS.md · AhaDiff
+
+When a code change lands:
+1. Run ahadiff learn on the relevant diff.
+2. Keep claims evidence-bound.
+3. Never upload secrets or local private files.
+4. Mark ungrounded claims as not_proven.`;
 
 export default function GuidePage() {
   const { t } = useTranslation();
@@ -168,7 +228,7 @@ export default function GuidePage() {
 
   return (
     <AppShell>
-      <div className="guide">
+      <div className="page active guide" data-page="skills">
         <header className="guide__head">
           <p className="guide__eyebrow">§ {t('Guide.eyebrow')}</p>
           <h1 className="guide__title">{t('Guide.title')}</h1>
@@ -189,6 +249,8 @@ export default function GuidePage() {
           t={t}
           copyLabels={copyLabels}
         />
+
+        <AgentSkillsSection t={t} copyLabels={copyLabels} />
 
         <AdvancedSection
           t={t}
@@ -385,6 +447,119 @@ function SetupSection({
         {SETUP_COMMANDS.map((entry) => (
           <CommandCard key={entry.command} entry={entry} t={t} {...copyLabels} />
         ))}
+      </div>
+    </section>
+  );
+}
+
+function AgentSkillsSection({
+  t,
+  copyLabels,
+}: {
+  t: TranslateFn;
+  copyLabels: { copyLabel: string; copiedLabel: string };
+}) {
+  const [targets, setTargets] = useState<InstallTarget[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getInstallTargets({ signal: controller.signal }).then((payload) => {
+      if (!controller.signal.aborted) {
+        setTargets(payload.targets);
+        setLoaded(true);
+        setFailed(false);
+      }
+    }).catch((err: unknown) => {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      if (!controller.signal.aborted) {
+        setTargets([]);
+        setLoaded(true);
+        setFailed(true);
+      }
+    });
+    return () => controller.abort();
+  }, []);
+
+  const displayTargets = useMemo(
+    () =>
+      targets.length > 0
+        ? targets
+        : fallbackInstallTargets(loaded && failed ? 'error' : 'available'),
+    [failed, loaded, targets],
+  );
+
+  return (
+    <section
+      id="agent-skills"
+      className="guide-section guide-agent-skills"
+      aria-labelledby="guide-agent-skills-title"
+    >
+      <div className="guide-agent-skills__head">
+        <div>
+          <h2 id="guide-agent-skills-title" className="guide-section__title">
+            <Puzzle className="guide-section__icon" aria-hidden="true" size={20} />
+            {t('Guide.agent_skills_title')}
+          </h2>
+          <p className="guide-agent-skills__subtitle">
+            {t('Guide.agent_skills_subtitle')}
+          </p>
+        </div>
+        <div className="guide-agent-skills__chips" aria-label={t('Guide.agent_skills_filter_label')}>
+          <span className="guide-agent-skills__chip guide-agent-skills__chip--active">
+            {t('Guide.agent_skills_all')}
+          </span>
+          <span className="guide-agent-skills__chip">
+            {t('Guide.agent_skills_supported', { count: displayTargets.length })}
+          </span>
+          <span className="guide-agent-skills__chip">
+            {failed ? t('Guide.agent_skills_status_unavailable') : t('Guide.agent_skills_status_live')}
+          </span>
+        </div>
+      </div>
+
+      <div className="guide-agent-skills__grid">
+        {displayTargets.map((target) => {
+          const name = target.name;
+          const status = loaded && failed ? 'error' : target.status;
+          const displayName = target.display_name || name;
+          const command = target.install_command ?? `ahadiff install ${name}`;
+          const pathHint = target.manifest?.write?.[0]?.path ?? AGENT_PATH_HINTS[name] ?? '';
+          return (
+            <article className="guide-agent-card" key={name}>
+              <div className="guide-agent-card__topline">
+                <span className="guide-agent-card__mark">{targetMark(name)}</span>
+                <span className={`guide-agent-card__status guide-agent-card__status--${status}`}>
+                  {t(`Guide.agent_status_${status}` as MessageKey)}
+                </span>
+              </div>
+              <h3 className="guide-agent-card__name">{displayName}</h3>
+              <p className="guide-agent-card__path">{pathHint}</p>
+              <CommandBlock command={command} {...copyLabels} />
+              {target?.manifest?.write && target.manifest.write.length > 0 && (
+                <ul className="guide-agent-card__actions" role="list">
+                  {target.manifest.write.slice(0, 2).map((action) => (
+                    <li key={`${action.action}:${action.path}`}>
+                      {action.action} · <span>{action.path}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </article>
+          );
+        })}
+      </div>
+
+      <div className="guide-agent-previews">
+        <article className="guide-agent-preview">
+          <div className="guide-agent-preview__title">SKILL.md</div>
+          <pre className="guide-agent-preview__code">{SKILL_PREVIEW}</pre>
+        </article>
+        <article className="guide-agent-preview">
+          <div className="guide-agent-preview__title">AGENTS.md preview</div>
+          <pre className="guide-agent-preview__code">{AGENTS_PREVIEW}</pre>
+        </article>
       </div>
     </section>
   );

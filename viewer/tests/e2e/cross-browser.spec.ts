@@ -131,6 +131,7 @@ test.describe('cross-browser corner cases', () => {
 
     const viewport = page.viewportSize();
     const isMobile = viewport != null && viewport.width < 768;
+    const usesMobilePreview = viewport != null && viewport.width <= 768;
 
     const searchBtn = page.getByRole('button', { name: /Open search/i });
     const newRun = page.locator('.topbar__btn--primary');
@@ -169,6 +170,8 @@ test.describe('cross-browser corner cases', () => {
     await expect(allFilter).toBeFocused();
     await expect(allFilter).toHaveAttribute('aria-checked', 'true');
     await page.keyboard.press('ArrowRight');
+    await expect(conceptsFilter).toBeFocused();
+    await expect(conceptsFilter).toHaveAttribute('aria-checked', 'true');
 
     const searchTablesSeen: string[] = [];
     await page.route(
@@ -192,11 +195,17 @@ test.describe('cross-browser corner cases', () => {
         });
       },
     );
-    await page.locator('#search-overlay-input').fill('timeout');
+    const searchInput = page.locator('#search-overlay-input');
+    await searchInput.focus();
+    await searchInput.fill('timeout');
+    await expect(searchInput).toHaveValue('timeout');
     const resultButton = page.locator('.search-overlay__result-btn').first();
     await expect(resultButton).toContainText('task timeout result');
     expect(searchTablesSeen.at(-1)).toBe('concepts');
     await resultButton.click();
+    if (usesMobilePreview) {
+      await page.locator('.search-overlay__preview-btn').click();
+    }
     await expect(page).toHaveURL(/#\/run\/run-real\/lesson/);
   });
 

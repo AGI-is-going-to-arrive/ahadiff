@@ -223,10 +223,10 @@ test.describe('Phase 2H — auth bootstrap', () => {
       },
     );
 
-    await page.goto('/#/welcome'); // LandingPage does not auto-fetch /api/runs
+    await page.goto('/#/welcome');
     await page.waitForLoadState('domcontentloaded');
-    // Trigger an apiFetch from the page context so the request count is
-    // deterministic (Dashboard auto-fetches conflict otherwise).
+    // Trigger a direct apiFetch too; the captured token may come from either
+    // Landing's run preview fetch or this explicit call.
     await page.evaluate(async () => {
       const load = (p: string) => import(/* @vite-ignore */ p);
       const mod = (await load('/src/api/client.ts')) as {

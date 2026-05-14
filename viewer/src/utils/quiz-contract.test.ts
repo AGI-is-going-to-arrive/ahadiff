@@ -31,6 +31,7 @@ describe('quiz contract helpers', () => {
         review_card_id: 'card_explicit_1',
         question: 'What does the new comment indicate?',
         expected_answer: 'A learn-from-diff marker',
+        quiz_kind: 'recall',
         source_claims: ['c1'],
         concepts: ['learn-from-diff'],
         evidence: [{ file: 'demo.py', line: 4 }],
@@ -56,6 +57,7 @@ describe('quiz contract helpers', () => {
         question_id: 'quiz_1',
         question: 'What does the new comment indicate?',
         expected_answer: 'A learn-from-diff marker',
+        quiz_kind: 'recall',
         source_claims: ['c1'],
         concepts: ['learn-from-diff'],
         evidence: [{ file: 'demo.py', line: 4 }],
@@ -78,6 +80,30 @@ describe('quiz contract helpers', () => {
 
     const parsed = parseQuizJsonl(row);
     expect(hasQuizReviewCard(parsed[0]!)).toBe(true);
+  });
+
+  it('parses transfer quiz kind and defaults invalid kinds to recall', () => {
+    const transferRow = JSON.stringify({
+      question_id: 'quiz_transfer',
+      question: 'How would this retry rule apply to a webhook receiver?',
+      expected_answer: 'Use idempotency before retrying side-effectful writes.',
+      quiz_kind: 'transfer',
+      source_claims: ['c1'],
+      evidence: [{ file: 'demo.py', line: 4 }],
+    });
+    const invalidRow = JSON.stringify({
+      question_id: 'quiz_invalid_kind',
+      question: 'What changed?',
+      expected_answer: 'A learn-from-diff marker',
+      quiz_kind: 'memory',
+      source_claims: ['c1'],
+      evidence: [{ file: 'demo.py', line: 4 }],
+    });
+
+    const parsed = parseQuizJsonl(`${transferRow}\n${invalidRow}`);
+
+    expect(parsed[0]!.quiz_kind).toBe('transfer');
+    expect(parsed[1]!.quiz_kind).toBe('recall');
   });
 
   it('matches CLI quiz answer normalization', () => {

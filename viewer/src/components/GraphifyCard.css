@@ -226,6 +226,7 @@
     background: var(--elevated);
     border: 1px solid var(--hair-strong);
     border-left: 3px solid var(--accent);
+    border-radius: var(--r-md);
     color: var(--ink);
     break-inside: avoid;
   }

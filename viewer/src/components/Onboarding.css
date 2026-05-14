@@ -110,8 +110,8 @@
   font-family: "Newsreader", var(--font-serif);
   font-style: italic;
   font-size: 16px;
-  color: var(--accent);
-  opacity: 0.8;
+  color: var(--accent-ink);
+  opacity: 1;
   transition: opacity var(--dur-fast) var(--ease-out-quart);
 }
 
@@ -144,7 +144,7 @@
 }
 
 .onboarding-steps__item[data-state='done'] {
-  opacity: 0.8;
+  opacity: 1;
 }
 
 .onboarding-steps__item[data-state='current'] {
@@ -266,6 +266,46 @@
   font-size: var(--fs-base);
   color: var(--ink);
   line-height: var(--lh-relaxed);
+}
+
+.onboarding-command-pair,
+.onboarding-agent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--sp-4);
+}
+
+.onboarding-agent-card {
+  min-width: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  background: var(--subtle);
+}
+
+.onboarding-agent-card__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-md);
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  margin-right: var(--sp-2);
+}
+
+.onboarding-agent-card__name {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  color: var(--ink-strong);
+}
+
+.onboarding-agent-card .command-block {
+  margin-top: var(--sp-3);
 }
 
 .onboarding__step-ready {

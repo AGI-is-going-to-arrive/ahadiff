@@ -82,7 +82,7 @@ export default function CalendarHeatmap({
         data-loading={loading ? 'true' : undefined}
       >
         <header className="calendar-heatmap__header">
-          <h3 className="calendar-heatmap__title">{headerTitle}</h3>
+          <h2 className="calendar-heatmap__title">{headerTitle}</h2>
           <span className="calendar-heatmap__meta">{meta}</span>
         </header>
         <div
