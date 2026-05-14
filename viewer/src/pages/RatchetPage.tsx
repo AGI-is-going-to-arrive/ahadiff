@@ -246,6 +246,7 @@ export default function RatchetPage() {
   const [specAlignment, setSpecAlignment] = useState<SpecAlignmentResponse | null>(null);
   const [transparency, setTransparency] = useState<RatchetTransparencyResponse | null>(null);
   const [transparencyLoading, setTransparencyLoading] = useState(false);
+  const [transparencyError, setTransparencyError] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const loadMoreAbortRef = useRef<AbortController | null>(null);
@@ -349,12 +350,19 @@ export default function RatchetPage() {
     const controller = new AbortController();
     transparencyAbortRef.current = controller;
     setTransparencyLoading(true);
+    setTransparencyError(false);
     getRatchetTransparency({ signal: controller.signal })
       .then((payload) => {
-        if (!controller.signal.aborted) setTransparency(payload);
+        if (!controller.signal.aborted) {
+          setTransparency(payload);
+          setTransparencyError(false);
+        }
       })
       .catch(() => {
-        if (!controller.signal.aborted) setTransparency(null);
+        if (!controller.signal.aborted) {
+          setTransparency(null);
+          setTransparencyError(true);
+        }
       })
       .finally(() => {
         if (!controller.signal.aborted) setTransparencyLoading(false);
@@ -556,6 +564,12 @@ export default function RatchetPage() {
               <h2 id="ratchet-run-list-heading">results.tsv</h2>
               <span className="ratchet-card__meta">{t('Ratchet.meta_entries', { count: resultRows.length })}</span>
             </div>
+            {transparencyError && (
+              <div role="status" className="demo-banner ratchet-transparency-warning">
+                <span className="demo-tag">{t('Ratchet.transparency_warning_tag')}</span>
+                <span>{t('Ratchet.transparency_unavailable')}</span>
+              </div>
+            )}
             <div className="ratchet-card__body ratchet-card__body--table u-p-0" tabIndex={0} role="region" aria-labelledby="ratchet-run-list-heading">
               <table className="ratchet-table" aria-label={t('Ratchet.table_label')}>
                 <thead>
@@ -657,6 +671,12 @@ export default function RatchetPage() {
               />
             ) : (
               <div className="ratchet-card__body">
+                {transparencyError && (
+                  <div role="status" className="demo-banner ratchet-transparency-warning">
+                    <span className="demo-tag">{t('Ratchet.transparency_warning_tag')}</span>
+                    <span>{t('Ratchet.transparency_unavailable')}</span>
+                  </div>
+                )}
                 <p className="u-muted-sm">{t('Ratchet.tab_benchmark_empty')}</p>
               </div>
             )

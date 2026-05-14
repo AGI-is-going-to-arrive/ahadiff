@@ -109,7 +109,9 @@ run_benchmark() {
     fi
   else
     returncode=$?
-    write_fallback_json "$benchmark_name" "$output_file" "$stderr_file" "nonzero_exit" "$returncode"
+    if ! validate_json "$output_file" >/dev/null 2>&1; then
+      write_fallback_json "$benchmark_name" "$output_file" "$stderr_file" "nonzero_exit" "$returncode"
+    fi
   fi
 }
 
@@ -117,6 +119,8 @@ run_benchmark "cli_startup" "$tmp_dir/cli_startup.json" \
   "$benchmark_python" "$script_dir/bench_cli_startup.py"
 run_benchmark "api_latency" "$tmp_dir/api_latency.json" \
   "$benchmark_python" "$script_dir/bench_api_latency.py"
+run_benchmark "serve_read_routes" "$tmp_dir/serve_read_routes.json" \
+  "$benchmark_python" "$script_dir/bench_serve_read_routes.py"
 run_benchmark "sqlite_queries" "$tmp_dir/sqlite_queries.json" \
   "$benchmark_python" "$script_dir/bench_sqlite_queries.py"
 run_benchmark "diff_parse" "$tmp_dir/diff_parse.json" \
@@ -165,6 +169,7 @@ def load_payload(name: str) -> object:
 payload = {
     "cli_startup": load_payload("cli_startup"),
     "api_latency": load_payload("api_latency"),
+    "serve_read_routes": load_payload("serve_read_routes"),
     "sqlite_queries": load_payload("sqlite_queries"),
     "diff_parse": load_payload("diff_parse"),
     "bundle_size": load_payload("bundle_size"),
@@ -177,5 +182,24 @@ PY
 
 if [[ "$graphify_gate_status" == "fail" ]]; then
   echo "graphify perf gate failed" >&2
+  exit 1
+fi
+
+serve_read_gate_status=$("$benchmark_python" - "$tmp_dir/serve_read_routes.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+try:
+    payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+except Exception:
+    print("error")
+else:
+    print(str(payload.get("status", "error")))
+PY
+)
+
+if [[ "$serve_read_gate_status" == "fail" || "$serve_read_gate_status" == "error" ]]; then
+  echo "serve read-route perf gate failed" >&2
   exit 1
 fi

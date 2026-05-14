@@ -921,6 +921,8 @@ def test_learn_cli_generates_lessons_with_explicit_provider(
         "+            continue\n",
         encoding="utf-8",
     )
+    spec_path = workspace_root / "SPEC.md"
+    spec_path.write_text("- The retry helper must loop over attempts.\n", encoding="utf-8")
     fake_provider = _FakeLessonProvider()
     captured: dict[str, object] = {}
 
@@ -996,6 +998,8 @@ def test_learn_cli_generates_lessons_with_explicit_provider(
             str(patch_path),
             "--repo-root",
             str(workspace_root),
+            "--against-spec",
+            "SPEC.md",
             "--base-url",
             "http://127.0.0.1:8318/v1/chat/completions",
             "--model",
@@ -1013,6 +1017,10 @@ def test_learn_cli_generates_lessons_with_explicit_provider(
     assert (lesson_dir / "lesson.hint.md").exists()
     assert (lesson_dir / "lesson.compact.md").exists()
     assert (run_dirs[-1] / "quiz" / "quiz.jsonl").exists()
+    spec_alignment = json.loads((run_dirs[-1] / "spec_alignment.json").read_text(encoding="utf-8"))
+    assert spec_alignment["schema"] == "ahadiff.spec_alignment"
+    assert spec_alignment["spec_source"]["path"] == "SPEC.md"
+    assert spec_alignment["requirements"]
     assert (run_dirs[-1] / "score.json").exists()
     provider_config = captured["provider_config"]
     assert isinstance(provider_config, ProviderConfig)

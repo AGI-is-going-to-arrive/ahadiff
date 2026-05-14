@@ -15,6 +15,7 @@ from functools import cache
 from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, cast
+from urllib.parse import quote
 
 import typer
 from rich.console import Console
@@ -148,6 +149,19 @@ rollback_result_event = _lazy_attr("eval", "rollback_result_event")
 run_benchmark_suite = _lazy_attr("eval", "run_benchmark_suite")
 write_benchmark_report = _lazy_attr("eval", "write_benchmark_report")
 finalized_artifact_digest = _lazy_attr("eval.results", "finalized_artifact_digest")
+spec_source_reference = _lazy_attr("eval.spec_alignment", "spec_source_reference")
+write_spec_alignment_artifact = _lazy_attr(
+    "eval.spec_alignment",
+    "write_spec_alignment_artifact",
+)
+mark_semantic_alignment_review_degraded = _lazy_attr(
+    "eval.spec_alignment",
+    "mark_semantic_alignment_review_degraded",
+)
+run_semantic_alignment_review_for_run = _lazy_attr(
+    "eval.spec_alignment",
+    "run_semantic_alignment_review_for_run",
+)
 capture_patch = _lazy_attr("git.capture", "capture_patch")
 detect_graphify_status = _lazy_attr("git.capture", "detect_graphify_status")
 import_graphify_artifact = _lazy_attr("git.capture", "import_graphify_artifact")
@@ -255,6 +269,42 @@ def _should_open_serve_browser(*, no_browser: bool) -> bool:
         and not os.environ.get("DISPLAY")
         and not os.environ.get("WAYLAND_DISPLAY")
     )
+
+
+def _viewer_url_for_learn_open(
+    *,
+    bind_host: str,
+    port: int,
+    run_id: str | None,
+) -> str:
+    base_url = f"http://{bind_host}:{port}"
+    if run_id is None:
+        return base_url
+    return f"{base_url}/#/run/{quote(run_id, safe='')}/lesson"
+
+
+def _open_learn_viewer(
+    *,
+    serve_config: dict[str, Any],
+    run_id: str | None,
+) -> None:
+    bind_host = str(serve_config["bind_host"])
+    port = int(serve_config["port"])
+    url = _viewer_url_for_learn_open(bind_host=bind_host, port=port, run_id=run_id)
+    console.print(f"[bold]Viewer URL[/bold]: {url}")
+    if bind_host != "127.0.0.1":
+        console.print("[yellow]Open skipped[/yellow]: serve.bind_host must be 127.0.0.1")
+        return
+    if not _should_open_serve_browser(no_browser=False):
+        console.print("[yellow]Open skipped[/yellow]: headless or CI environment detected")
+        return
+    try:
+        opened = webbrowser.open(url)
+    except Exception as exc:
+        console.print(f"[yellow]Open skipped[/yellow]: {exc}")
+        return
+    if not opened:
+        console.print("[yellow]Open warning[/yellow]: browser did not report success")
 
 
 def _state_dir_for_root(root: Path, *, has_git_repo: bool) -> Path:
@@ -801,6 +851,20 @@ def learn_cmd(
         tuple[Path, Path] | None,
         typer.Option("--compare-dir", help="Recursively compare two directories."),
     ] = None,
+    against_spec: Annotated[
+        Path | None,
+        typer.Option(
+            "--against-spec",
+            help="Evaluate this learn run against a repo-local Markdown/text spec.",
+        ),
+    ] = None,
+    spec_semantic_review: Annotated[
+        bool,
+        typer.Option(
+            "--spec-semantic-review",
+            help="Opt in to an LLM semantic review layer for --against-spec.",
+        ),
+    ] = False,
     patch_url: Annotated[
         str | None,
         typer.Option("--patch-url", help="Download a unified diff from an HTTP(S) URL."),
@@ -836,6 +900,13 @@ def learn_cmd(
         typer.Option(
             "--force-learn",
             help="Override low learnability gating for downstream lesson/quiz generation.",
+        ),
+    ] = False,
+    open_viewer: Annotated[
+        bool,
+        typer.Option(
+            "--open",
+            help="Open the local viewer after learn completes.",
         ),
     ] = False,
     provider: Annotated[
@@ -890,6 +961,8 @@ def learn_cmd(
         security_config = (
             load_security_config(root) if has_git_repo else load_workspace_security_config(root)
         )
+        if spec_semantic_review and against_spec is None:
+            raise InputError("--spec-semantic-review requires --against-spec")
         repo_lock_path = (
             lock_file_path(root) if has_git_repo else root / ".ahadiff" / "ahadiff.lock"
         )
@@ -922,6 +995,15 @@ def learn_cmd(
                 force_learn=force_learn,
             )
             capture.metadata["learnability"] = learnability.as_metadata()
+            if against_spec is not None:
+                source_detail = cast(
+                    "dict[str, Any]",
+                    capture.metadata.setdefault("source_detail", {}),
+                )
+                source_detail["against_spec"] = spec_source_reference(
+                    workspace_root=root,
+                    spec_path=against_spec,
+                )
             patch_path, metadata_path = write_input_artifacts(capture)
             run_path = (
                 run_dir(capture.run_id, root)
@@ -1039,6 +1121,73 @@ def learn_cmd(
                             output_lang=resolved_content_lang,
                         )
                         quiz_path = quiz_artifacts.quiz_path
+                        if against_spec is not None:
+                            write_spec_alignment_artifact(
+                                run_path=run_path,
+                                workspace_root=root,
+                                spec_path=against_spec,
+                            )
+                            if spec_semantic_review:
+                                judge_provider_name = str(
+                                    llm_config.get("judge_provider", "")
+                                ).strip()
+                                try:
+                                    (
+                                        semantic_provider_config,
+                                        semantic_api_key,
+                                        semantic_transport_target,
+                                        semantic_provider_selection_explicit,
+                                    ) = _resolve_runtime_provider(
+                                        snapshot=snapshot,
+                                        operation_label="semantic spec alignment review",
+                                        provider_name=judge_provider_name or None,
+                                        provider_class=provider_class,
+                                        base_url=None,
+                                        model=None,
+                                        api_key_env=api_key_env,
+                                        privacy_mode=effective_privacy_mode,
+                                        stdin_interactive=sys.stdin.isatty(),
+                                        local_hosts=security_config.local_hosts,
+                                        strict_local_hosts=security_config.strict_local_hosts,
+                                        role="judge",
+                                    )
+                                    semantic_privacy_mode = (
+                                        _privacy_mode_for_explicit_provider_call(
+                                            effective_privacy_mode,
+                                            transport_target=semantic_transport_target,
+                                            provider_selection_explicit=(
+                                                semantic_provider_selection_explicit
+                                            ),
+                                        )
+                                    )
+                                    run_semantic_alignment_review_for_run(
+                                        run_path=run_path,
+                                        workspace_root=root,
+                                        provider_config=semantic_provider_config,
+                                        api_key=semantic_api_key,
+                                        security_config=security_config,
+                                        privacy_mode=semantic_privacy_mode,
+                                        output_lang=resolved_content_lang,
+                                        request_timeout_seconds=int(
+                                            llm_config["request_timeout_seconds"]
+                                        ),
+                                        max_concurrent=int(llm_config["max_concurrent"]),
+                                        qps_limit=int(provider_limits["qps_limit"]),
+                                        retry_attempts=int(llm_config["retry_attempts"]),
+                                        input_token_budget=int(
+                                            llm_config.get("input_token_budget", 200000)
+                                        ),
+                                        output_token_budget=int(
+                                            llm_config.get("output_token_budget", 50000)
+                                        ),
+                                    )
+                                except Exception as semantic_error:
+                                    mark_semantic_alignment_review_degraded(
+                                        run_path=run_path,
+                                        provider_name=judge_provider_name or "unconfigured",
+                                        model_name=str(llm_config.get("judge_model", "")),
+                                        reason=str(semantic_error),
+                                    )
                         learn_report = evaluate_run(run_path)
                         cards_path = generate_cards_for_run(
                             run_path=run_path,
@@ -1153,6 +1302,12 @@ def learn_cmd(
             )
         else:
             console.print("[bold]Graphify[/bold]: not detected")
+        if open_viewer:
+            serve_config = cast("dict[str, Any]", snapshot.values["serve"])
+            _open_learn_viewer(
+                serve_config=serve_config,
+                run_id=capture.run_id if learn_outcome is not None else None,
+            )
     except Exception as error:  # pragma: no cover - exercised through CLI tests
         _handle_cli_error(error)
 

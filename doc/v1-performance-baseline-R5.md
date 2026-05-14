@@ -6,7 +6,7 @@
 
 This file is still a v1.0 planning baseline, but the Phase 0 benchmark runner is now in the repo.
 
-- **Reproducible now**: `bench_cli_startup.py`, `bench_diff_parse.py`, `bench_sqlite_queries.py`, `bench_bundle_size.sh`, and `run_all.sh`.
+- **Reproducible now**: `bench_cli_startup.py`, `bench_diff_parse.py`, `bench_sqlite_queries.py`, `bench_bundle_size.sh`, `bench_serve_read_routes.py`, and `run_all.sh`.
 - **Latest aggregate artifact**: `run_all.sh` wrote `benchmarks/results/baseline_20260428.json` in this session.
 - **Available but state-dependent**: `bench_api_latency.py` is committed, but the latest run in this session returned `skipped` because `ahadiff serve` was not running.
 - **Still ad-hoc**: R5.1 concepts pressure test. There is still no committed `bench_concepts_10k.py`.
@@ -18,6 +18,7 @@ Current committed commands:
 uv run python benchmarks/scripts/bench_cli_startup.py
 uv run python benchmarks/scripts/bench_diff_parse.py
 uv run python benchmarks/scripts/bench_sqlite_queries.py
+uv run python benchmarks/scripts/bench_serve_read_routes.py
 bash benchmarks/scripts/bench_bundle_size.sh
 AHADIFF_BENCH_PYTHON="$(pwd)/.venv/bin/python" bash benchmarks/scripts/run_all.sh
 ```
@@ -94,6 +95,31 @@ Latest script result:
 ```
 
 **Assessment**: The code path is now script-backed, but we still need a standardized "start serve, then measure" harness before treating API latency as a regression gate.
+
+## R5.3b Serve Read-Route Fixture Gate
+
+**Reproduction status**: committed self-contained benchmark script. It uses Starlette `TestClient`
+with a generated local fixture, so it does not require a separately running `ahadiff serve`.
+
+Current command:
+
+```bash
+uv run python benchmarks/scripts/bench_serve_read_routes.py
+```
+
+The gate measures five read routes over a generated fixture:
+
+- `GET /api/runs`
+- `GET /api/concepts`
+- `GET /api/graph/concepts`
+- `GET /api/search`
+- `GET /api/ratchet/transparency`
+
+It records 5 warmups and 30 samples per route. p95 over 50 ms is `warn`; p95 over 500 ms,
+HTTP errors, or invalid response shape are `fail`. `run_all.sh` now treats `fail` and
+`error` from this script as release-blocking. This is a useful local read-route regression
+gate, but it is still not the same thing as an end-to-end browser or externally hosted API
+latency benchmark.
 
 ---
 

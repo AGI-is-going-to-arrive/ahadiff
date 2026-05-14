@@ -30,8 +30,8 @@
 | A10 | L5: review.sqlite (FSRS-6 + schema v1-v7 migration + FTS5) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/review/database.py`, `scheduler.py`, `optimizer.py`, `search.py`; `tests/unit/test_review_*.py` |
 | A11 | L6: Learning Core (quiz + SRS review + concepts + helpfulness) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/quiz/`, `src/ahadiff/wiki/concepts.py`, `src/ahadiff/lesson/helpfulness.py`; `tests/unit/test_helpfulness.py` |
 | A12 | L6: Graphify (models/parser/matcher/linker/slicer/search/freshness) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/graphify/` (7 files: models, parser, matcher, linker, slicer, search, freshness); `tests/unit/test_graphify*.py` (5 test files) |
-| A13 | L7: Serve API (70 concrete API routes + catchall, Starlette + Uvicorn) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/serve/app.py`; route modules; `tests/unit/test_serve*.py`, `test_routes_*.py` |
-| A14 | L7: React 19 SPA (Vite + vanilla CSS) | Blueprint | N/A | IMPL | IMPL | `viewer/src/` (14 production page TSX, 52 non-test TSX, 47 CSS, i18n `1392/1392`); `viewer/vitest.config.ts` + Vitest coverage + Playwright |
+| A13 | L7: Serve API (72 concrete API routes + catchall, Starlette + Uvicorn) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/serve/app.py`; route modules; `tests/unit/test_serve*.py`, `test_routes_*.py` |
+| A14 | L7: React 19 SPA (Vite + vanilla CSS) | Blueprint | N/A | IMPL | IMPL | `viewer/src/` (14 production page TSX, 52 non-test TSX, 47 CSS, i18n `1439/1439`); `viewer/vitest.config.ts` + Vitest coverage + Playwright |
 
 ---
 
@@ -50,7 +50,7 @@
 | B9 | Capture Pipeline: raw/redacted dual representation | Blueprint | IMPL | N/A | IMPL | `capture.py`, `safety/redact.py` |
 | B10 | raw_patch never persisted to disk | Blueprint | IMPL | N/A | IMPL | By design in capture pipeline |
 | B11 | `--include-untracked` for staged/unstaged | Blueprint | IMPL | N/A | IMPL | `capture.py` |
-| B12 | `.ipynb` cell-aware diff | Blueprint | PLANNED (v0.3) | N/A | NOT_IMPL | Mentioned in blueprint as v0.3 |
+| B12 | `.ipynb` cell-aware diff | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/git/notebook.py`; `capture.py` applies cell-aware rendering to git diff modes; `tests/unit/test_git_capture.py` |
 | B13 | `--url PR_URL` platform PR/MR deep integration | Blueprint | PLANNED (v0.3) | N/A | NOT_IMPL | Mentioned in blueprint as v0.3 |
 
 ---
@@ -116,6 +116,7 @@
 | F11 | Benchmark suite (7 Python + 3 non-Python fixtures) | Blueprint | IMPL | N/A | IMPL | `benchmarks/fixtures/eval/` (10 fixture dirs); `benchmarks/scripts/`; `tests/eval/test_benchmark.py` |
 | F12 | results.tsv / JSON export views (derived from SQLite) | Blueprint | IMPL | IMPL | IMPL | `eval/results.py`; `serve/routes_export.py`; `viewer/src/pages/RatchetPage.tsx` |
 | F13 | Anki `.apkg` download from active review cards | Competitor research | IMPL | IMPL | IMPL | `review/apkg_export.py`; `serve/routes_export.py`; `viewer/src/pages/RatchetPage.tsx`; `tests/unit/test_apkg_export.py` |
+| F14 | Spec alignment artifact + opt-in semantic review | User follow-up | IMPL | IMPL | IMPL | `src/ahadiff/eval/spec_alignment.py`; `prompts/spec_semantic_alignment.md`; `RunDetailPage.tsx`; `tests/unit/test_evaluator.py`; live smoke test exists but is opt-in |
 
 ---
 
@@ -137,7 +138,7 @@
 | G12 | ConceptsPage UI | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/ConceptsPage.tsx` |
 | G13 | GraphifyCard UI | Blueprint | N/A | IMPL | IMPL | `viewer/src/components/GraphifyCard.tsx` |
 | G14 | Graphify shared freshness store (graph-store) | Blueprint | N/A | IMPL | IMPL | `viewer/src/api/graph.ts` |
-| G15 | Graphify full provenance / signoff polish | Blueprint | PARTIAL | N/A | PARTIAL | CLAUDE.md notes "5E provenance/signoff polish still not done" |
+| G15 | Graphify provenance / signoff artifact | Blueprint | IMPL | IMPL | IMPL | `graphify_signoff.json` from `git/capture.py`; `/api/run/{run_id}/graphify-signoff`; `RunDetailPage.tsx`; `tests/unit/test_git_capture.py`, `tests/unit/test_serve_app.py` |
 
 ---
 
@@ -178,7 +179,7 @@
 
 | # | Feature | Source | Backend Status | Frontend Status | Test Status | Evidence |
 |---|---------|--------|---------------|-----------------|-------------|----------|
-| J1 | Locale priority chain: cookie -> Accept-Language -> AHADIFF_LANG -> CLI --lang -> config.toml -> LANG -> en | Blueprint+Comp | IMPL | IMPL | IMPL | `i18n/`; `serve/routes_locale.py`; `viewer/src/i18n/`; Learn Mode Dialog defaults to active viewer locale; 1392/1392 i18n scalar keys |
+| J1 | Locale priority chain: cookie -> Accept-Language -> AHADIFF_LANG -> CLI --lang -> config.toml -> LANG -> en | Blueprint+Comp | IMPL | IMPL | IMPL | `i18n/`; `serve/routes_locale.py`; `viewer/src/i18n/`; Learn Mode Dialog defaults to active viewer locale; 1439/1439 i18n scalar keys |
 | J2 | Supported locales: en + zh-CN | Blueprint | IMPL | IMPL | IMPL | `i18n/`; `viewer/src/i18n/` |
 | J3 | Zustand atom store for i18n re-render (no React Context) | Blueprint | N/A | IMPL | IMPL | `viewer/src/i18n/useTranslation.ts` |
 | J4 | LLM OUTPUT_LANGUAGE prefix in prompts | Blueprint | IMPL | N/A | IMPL | Orchestrator resolves output_lang |
@@ -201,14 +202,14 @@
 | K8 | `ahadiff config show --resolved` | Blueprint | IMPL | N/A | IMPL | `cli.py:2259` |
 | K9 | `ahadiff benchmark` | Blueprint | IMPL | N/A | IMPL | `cli.py:2525` |
 | K10 | `--no-browser` flag for serve | Blueprint | IMPL | N/A | IMPL | `cli.py:1719` (serve_cmd) |
-| K11 | `learn --open` flag (auto-open browser after learn) | Blueprint | NOT_IMPL | N/A | NOT_IMPL | Current CLI opens the browser from `ahadiff serve` and supports `serve --no-browser`; `learn` has no `--open` flag |
+| K11 | `learn --open` flag (auto-open browser after learn) | Blueprint | IMPL | N/A | IMPL | `cli.py` prints the run lesson URL and opens only for loopback non-headless runs; `tests/unit/test_lesson_generator.py`, `tests/unit/test_orchestrator.py` |
 | K12 | AGENTS.md for async VM auto-read | Blueprint | IMPL | N/A | N/A | Mentioned in blueprint |
 | K13 | `ahadiff learn --changed-path` path-scoped worktree capture | User follow-up | IMPL | N/A | IMPL | `cli.py`; `git/capture.py`; `tests/unit/test_git_capture.py` |
 | K14 | `ahadiff mcp-server --repo-root` read-only stdio MCP server | User follow-up | IMPL | N/A | IMPL | `cli.py`; `src/ahadiff/mcp/server.py`; `tests/unit/test_cli.py` |
 
 ---
 
-## L. Frontend Viewer Pages (Blueprint Section 05 + current viewer: 16 pages)
+## L. Frontend Viewer Pages & Components (Blueprint Section 05 + current viewer surfaces)
 
 | # | Feature | Source | Backend Status | Frontend Status | Test Status | Evidence |
 |---|---------|--------|---------------|-----------------|-------------|----------|
@@ -240,7 +241,7 @@
 
 | # | Feature | Source | Backend Status | Frontend Status | Test Status | Evidence |
 |---|---------|--------|---------------|-----------------|-------------|----------|
-| M1 | POST /api/learn (trigger learn pipeline from UI, 10 req/min rate limit, `changed_paths`) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_learn.py`; `LearnModeDialog.tsx`; LearnTaskBanner |
+| M1 | POST /api/learn (trigger learn pipeline from UI, 10 req/min rate limit, `changed_paths`, `against_spec`) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_learn.py`; `LearnModeDialog.tsx`; LearnTaskBanner |
 | M2 | /api/tasks (list/get/cancel/SSE progress) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_tasks.py`; `viewer/src/api/tasks.ts` (5 retry exponential backoff + polling fallback); `learn-store.test.ts` |
 | M3 | /api/graph/* (graph status, FTS) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_graph.py` |
 | M4 | /api/config (show resolved config) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_config.py` |
@@ -256,6 +257,7 @@
 | M14 | /api/export (results TSV/JSON + APKG) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_export.py`; `review/apkg_export.py`; `RatchetPage.tsx`; `test_apkg_export.py` |
 | M15 | /api/watch/status | Blueprint | IMPL | N/A | IMPL | `serve/routes_watch.py` |
 | M16 | TaskInfoResponse: TaskErrorCode + recovery_hint stable fields | Blueprint | IMPL | IMPL | IMPL | `contracts/`, `serve/routes_tasks.py` |
+| M17 | Per-run spec alignment / Graphify signoff artifact routes | User follow-up | IMPL | IMPL | IMPL | `/api/run/{run_id}/spec-alignment`; `/api/run/{run_id}/graphify-signoff`; `routes_runs.py`; `viewer/src/api/runs.ts`; `tests/unit/test_serve_app.py` |
 
 ---
 
@@ -267,7 +269,7 @@
 | N2 | **MOAT 02: Claim -> 5-state Evidence** (no competitor has structured claim verification) | Others: "natural language with line numbers, unstructured" | IMPL | `claims/` module with 5 statuses |
 | N3 | **MOAT 03: Git Ratchet** (no competitor has monotonic quality ratchet) | autoresearch has it for ML, none for learning notes | IMPL | `eval/ratchet.py`, `improve/` |
 | N4 | **MOAT 04: Local-First Privacy** (competitors are all SaaS) | CodeRabbit/Greptile/DeepWiki = cloud only | IMPL | Per-repo `.ahadiff/`, privacy 3-tier, raw never persisted |
-| N5 | **MOAT 05: i18n Learning Notes** (no competitor generates multilingual diff learning notes) | 10 competitors verified: none have this | IMPL | `i18n/`, 1392/1392 viewer scalar keys, en + zh-CN |
+| N5 | **MOAT 05: i18n Learning Notes** (no competitor generates multilingual diff learning notes) | 10 competitors verified: none have this | IMPL | `i18n/`, 1439/1439 viewer scalar keys, en + zh-CN |
 | N6 | **ENG 01: Local-first offline** (strict_local + Ollama) | Competitors need internet | IMPL | strict_local mode + Ollama adapter |
 | N7 | **ENG 02: Serve architecture** (CLI starts local server, no cloud dependency) | Competitors rely on cloud | IMPL | `serve/app.py`, Starlette + Uvicorn |
 | N8 | **ENG 03: Privacy 3-tier grading** (strict_local/redacted_remote/explicit_remote) | Competitors have no privacy tiers | IMPL | `safety/gates.py` |
@@ -299,12 +301,10 @@
 
 | # | Feature | Source | Target Version | Notes |
 |---|---------|--------|---------------|-------|
-| P1 | .ipynb cell-aware diff | Blueprint | v0.3 | Mentioned in capture modes planning |
-| P2 | --url PR_URL platform deep integration (GitHub/GitLab PR/MR) | Blueprint | v0.3 | Mentioned in capture modes planning |
-| P3 | Phase 5E provenance/signoff polish | CLAUDE.md | v1.0 follow-up | Explicitly noted as "still not done" |
-| P4 | Large-repo signoff | CLAUDE.md | v1.0 follow-up | Explicitly noted as "still not done" |
-| P5 | API p95 < 50ms for all endpoints | CLAUDE.md | v1.0 follow-up | GET /api/concepts p95=60.145ms, not yet closed |
-| P6 | tree-sitter as optional runtime consumer | Blueprint Phase 7C | v1.0 | `git/tree_sitter_runtime.py` exists; supports JS/TS/TSX+Go+Java+Rust+PHP+Ruby+C#; Python still AST-first |
+| P1 | --url PR_URL platform deep integration (GitHub/GitLab PR/MR) | Blueprint | v0.3 | Mentioned in capture modes planning |
+| P2 | Large-repo signoff | CLAUDE.md | v1.0 follow-up | Graphify signoff artifact exists, but this matrix still does not count it as real large-repo signoff evidence |
+| P3 | API p95 < 50ms for all endpoints | CLAUDE.md | v1.0 follow-up | `bench_serve_read_routes.py` now gates five read routes; this is not yet an all-endpoint public benchmark signoff |
+| P4 | tree-sitter as optional runtime consumer | Blueprint Phase 7C | v1.0 | `git/tree_sitter_runtime.py` exists; supports JS/TS/TSX+Go+Java+Rust+PHP+Ruby+C#; Python still AST-first |
 
 ---
 
@@ -328,23 +328,23 @@
 | Category | Total Features | IMPL | PARTIAL | NOT_IMPL | PLANNED |
 |----------|---------------|------|---------|----------|---------|
 | A. Core Architecture | 14 | 14 | 0 | 0 | 0 |
-| B. Diff Capture | 13 | 11 | 0 | 0 | 2 |
+| B. Diff Capture | 13 | 12 | 0 | 0 | 1 |
 | C. Claim Verification | 7 | 7 | 0 | 0 | 0 |
 | D. Lesson & Learning | 7 | 7 | 0 | 0 | 0 |
 | E. Quiz & SRS | 9 | 9 | 0 | 0 | 0 |
-| F. Evaluation & Ratchet | 13 | 13 | 0 | 0 | 0 |
-| G. Concept Graph & Graphify | 15 | 14 | 1 | 0 | 0 |
+| F. Evaluation & Ratchet | 14 | 14 | 0 | 0 | 0 |
+| G. Concept Graph & Graphify | 15 | 15 | 0 | 0 | 0 |
 | H. Security & Safety | 12 | 12 | 0 | 0 | 0 |
 | I. LLM Provider | 7 | 7 | 0 | 0 | 0 |
 | J. i18n | 6 | 6 | 0 | 0 | 0 |
-| K. CLI Commands & Install | 14 | 13 | 0 | 1 | 0 |
-| L. Frontend Pages | 16 | 16 | 0 | 0 | 0 |
-| M. Serve API | 16 | 16 | 0 | 0 | 0 |
+| K. CLI Commands & Install | 14 | 14 | 0 | 0 | 0 |
+| L. Frontend Pages & Components | 21 | 21 | 0 | 0 | 0 |
+| M. Serve API | 17 | 17 | 0 | 0 | 0 |
 | N. Competitor Moats | 10 | 10 | 0 | 0 | 0 |
-| P. Planned | 6 | 0 | 0 | 0 | 6 |
+| P. Planned | 4 | 0 | 0 | 0 | 4 |
 | Q. Data Architecture | 8 | 8 | 0 | 0 | 0 |
-| **TOTAL** | **173** | **163** | **1** | **1** | **8** |
+| **TOTAL** | **178** | **173** | **0** | **0** | **5** |
 
-**Implementation rate: 163/165 non-planned = 98.8% (1 PARTIAL: Graphify provenance/signoff G15; 1 NOT_IMPL: `learn --open`)**
+**Implementation rate: 173/173 non-planned = 100.0% (planned items remain excluded from this denominator)**
 
 All 5 competitor moats (MOAT 01-05) and all 5 engineering moats (ENG 01-05) have code evidence confirming implementation.

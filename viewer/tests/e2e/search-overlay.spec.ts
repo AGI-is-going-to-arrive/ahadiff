@@ -92,6 +92,30 @@ test.describe('SearchOverlay browser regressions', () => {
     await expect(searchButton).toBeFocused();
   });
 
+  test('404 from search endpoint surfaces unavailable state', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.route(
+      (url) => url.pathname === '/api/search',
+      (route) =>
+        route.fulfill({
+          status: 404,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'not found' }),
+        }),
+    );
+
+    await page.goto('/');
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await page.getByRole('button', { name: /Open search/i }).click();
+
+    const input = page.locator('#search-overlay-input');
+    await expect(input).toBeFocused();
+    await input.fill('missing route');
+
+    await expect(page.locator('.search-overlay__status')).toContainText(/Search is unavailable/i);
+    await expect(page.locator('.search-overlay__result-btn')).toHaveCount(0);
+  });
+
   test('Shift+Tab remains trapped inside the overlay', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await mockSingleSearchResult(page);

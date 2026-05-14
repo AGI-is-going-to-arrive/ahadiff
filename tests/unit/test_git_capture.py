@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, NoReturn, cast
 import pytest
 from typer.testing import CliRunner
 
+from ahadiff import cli as cli_module
 from ahadiff.cli import app
 from ahadiff.core.errors import InputError, SafetyError, StorageError
 from ahadiff.git import capture as capture_module
@@ -21,7 +22,7 @@ from ahadiff.git import download as download_module
 from ahadiff.git import repo as repo_module
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from click.testing import Result
 
@@ -68,6 +69,19 @@ def _load_run_artifacts(repo_root: Path) -> tuple[Path, dict[str, object], str]:
     return run_dir, metadata, patch_text
 
 
+def _notebook_payload(cells: list[dict[str, object]]) -> str:
+    return json.dumps(
+        {
+            "cells": cells,
+            "metadata": {"kernelspec": {"name": "python3"}},
+            "nbformat": 4,
+            "nbformat_minor": 5,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
 def _assert_artifact_manifest_matches_files(run_dir: Path) -> None:
     manifest = json.loads((run_dir / "artifact_set.json").read_text(encoding="utf-8"))
     assert manifest["schema"] == "ahadiff.artifact_set"
@@ -101,6 +115,214 @@ def _invoke_repo_cli(
         input=input_text,
         catch_exceptions=False,
     )
+
+
+def _write_patch_workspace(tmp_path: Path) -> tuple[Path, Path]:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    (workspace_root / ".ahadiff").mkdir()
+    (workspace_root / ".ahadiff" / "config.toml").write_text(
+        'privacy_mode = "explicit_remote"\n\n'
+        "[capture]\n"
+        "hard_limit = 10\n"
+        "max_files = 50\n"
+        "max_patch_bytes = 10000000\n",
+        encoding="utf-8",
+    )
+    patch_path = workspace_root / "sample.patch"
+    patch_path.write_text(
+        "--- a/sample.py\n+++ b/sample.py\n@@ -0,0 +1,1 @@\n+value = 1\n",
+        encoding="utf-8",
+    )
+    return workspace_root, patch_path
+
+
+def _record_browser_open(opened: list[str]) -> Callable[[str], bool]:
+    def record_open(url: str) -> bool:
+        opened.append(url)
+        return True
+
+    return record_open
+
+
+def test_learn_default_does_not_open_viewer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root, _ = _write_patch_workspace(tmp_path)
+    opened: list[str] = []
+    monkeypatch.setattr(cli_module.webbrowser, "open", _record_browser_open(opened))
+
+    result = _invoke_repo_cli(
+        CliRunner(),
+        workspace_root,
+        ["learn", "--patch", "sample.patch", "--dry-run"],
+    )
+
+    assert result.exit_code == 0
+    assert opened == []
+    assert "Viewer URL" not in result.stdout
+
+
+def test_learn_open_dry_run_opens_existing_viewer_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root, _ = _write_patch_workspace(tmp_path)
+    monkeypatch.setattr(cli_module.sys, "platform", "darwin")
+    monkeypatch.delenv("CI", raising=False)
+    opened: list[str] = []
+    monkeypatch.setattr(cli_module.webbrowser, "open", _record_browser_open(opened))
+
+    result = _invoke_repo_cli(
+        CliRunner(),
+        workspace_root,
+        ["learn", "--patch", "sample.patch", "--dry-run", "--open"],
+    )
+
+    assert result.exit_code == 0
+    assert opened == ["http://127.0.0.1:8765"]
+    assert "Viewer URL" in result.stdout
+    assert "X-AhaDiff-Token" not in result.stdout
+
+
+def test_learn_open_headless_linux_skips_browser(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root, _ = _write_patch_workspace(tmp_path)
+    monkeypatch.setattr(cli_module.sys, "platform", "linux")
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    monkeypatch.delenv("CI", raising=False)
+    opened: list[str] = []
+    monkeypatch.setattr(cli_module.webbrowser, "open", _record_browser_open(opened))
+
+    result = _invoke_repo_cli(
+        CliRunner(),
+        workspace_root,
+        ["learn", "--patch", "sample.patch", "--dry-run", "--open"],
+    )
+
+    assert result.exit_code == 0
+    assert opened == []
+    assert "Open skipped" in result.stdout
+    assert "headless or CI environment detected" in result.stdout
+
+
+def test_learn_open_ci_with_display_skips_browser(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root, _ = _write_patch_workspace(tmp_path)
+    monkeypatch.setattr(cli_module.sys, "platform", "linux")
+    monkeypatch.setenv("CI", "1")
+    monkeypatch.setenv("DISPLAY", ":99")
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+    opened: list[str] = []
+    monkeypatch.setattr(cli_module.webbrowser, "open", _record_browser_open(opened))
+
+    result = _invoke_repo_cli(
+        CliRunner(),
+        workspace_root,
+        ["learn", "--patch", "sample.patch", "--dry-run", "--open"],
+    )
+
+    assert result.exit_code == 0
+    assert opened == []
+    assert "headless or CI environment detected" in result.stdout
+
+
+def test_learn_open_linux_with_display_opens_browser(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root, _ = _write_patch_workspace(tmp_path)
+    monkeypatch.setattr(cli_module.sys, "platform", "linux")
+    monkeypatch.setenv("DISPLAY", ":99")
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    monkeypatch.delenv("CI", raising=False)
+    opened: list[str] = []
+    monkeypatch.setattr(cli_module.webbrowser, "open", _record_browser_open(opened))
+
+    result = _invoke_repo_cli(
+        CliRunner(),
+        workspace_root,
+        ["learn", "--patch", "sample.patch", "--dry-run", "--open"],
+    )
+
+    assert result.exit_code == 0
+    assert opened == ["http://127.0.0.1:8765"]
+
+
+def test_learn_open_uses_configured_serve_port(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root, _ = _write_patch_workspace(tmp_path)
+    (workspace_root / ".ahadiff" / "config.toml").write_text(
+        'privacy_mode = "explicit_remote"\n\n'
+        "[capture]\n"
+        "hard_limit = 10\n"
+        "max_files = 50\n"
+        "max_patch_bytes = 10000000\n\n"
+        "[serve]\n"
+        "port = 9123\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cli_module.sys, "platform", "darwin")
+    monkeypatch.delenv("CI", raising=False)
+    opened: list[str] = []
+    monkeypatch.setattr(cli_module.webbrowser, "open", _record_browser_open(opened))
+
+    result = _invoke_repo_cli(
+        CliRunner(),
+        workspace_root,
+        ["learn", "--patch", "sample.patch", "--dry-run", "--open"],
+    )
+
+    assert result.exit_code == 0
+    assert opened == ["http://127.0.0.1:9123"]
+
+
+def test_learn_open_run_detail_url_is_encoded() -> None:
+    url = cli_module._viewer_url_for_learn_open(  # pyright: ignore[reportPrivateUsage]
+        bind_host="127.0.0.1",
+        port=8765,
+        run_id="run_00000000000000000000000000000001",
+    )
+
+    assert url == "http://127.0.0.1:8765/#/run/run_00000000000000000000000000000001/lesson"
+
+
+def test_open_learn_viewer_with_run_id_opens_run_detail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cli_module.sys, "platform", "darwin")
+    monkeypatch.delenv("CI", raising=False)
+    opened: list[str] = []
+    monkeypatch.setattr(cli_module.webbrowser, "open", _record_browser_open(opened))
+
+    cli_module._open_learn_viewer(  # pyright: ignore[reportPrivateUsage]
+        serve_config={
+            "bind_host": "127.0.0.1",
+            "port": 8765,
+        },
+        run_id="run_00000000000000000000000000000001",
+    )
+
+    assert opened == ["http://127.0.0.1:8765/#/run/run_00000000000000000000000000000001/lesson"]
+
+
+def test_learn_help_exposes_open_and_preserves_existing_flags() -> None:
+    result = CliRunner().invoke(app(), ["learn", "--help"], catch_exceptions=False)
+
+    assert result.exit_code == 0
+    assert "--open" in result.stdout
+    assert "--changed-path" in result.stdout
+    assert "--dry-run" in result.stdout
+    assert "--force-learn" in result.stdout
+    assert "--provider" in result.stdout
 
 
 def test_git_clean_env_strips_dangerous_git_vars_and_sets_prompt(
@@ -2058,6 +2280,416 @@ def test_learn_compare_mode_and_binary_only_degrade(tmp_path: Path) -> None:
     assert degraded_flags["binary_only"] is True
     assert binary_metadata["selected_files"] == ["new.bin"]
     assert "Binary files a/old.bin and b/new.bin differ" in binary_patch
+
+
+def test_compare_ipynb_renders_cell_aware_source_diff(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "tracked.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+    old_file = repo_root / "old.ipynb"
+    new_file = repo_root / "new.ipynb"
+    old_file.write_text(
+        _notebook_payload(
+            [
+                {
+                    "cell_type": "markdown",
+                    "id": "intro",
+                    "source": ["# 标题\n"],
+                    "metadata": {"ignored": True},
+                },
+                {
+                    "cell_type": "code",
+                    "id": "calc",
+                    "source": ["value = 1\n"],
+                    "outputs": [{"text": "old output"}],
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+    new_file.write_text(
+        _notebook_payload(
+            [
+                {
+                    "cell_type": "markdown",
+                    "id": "intro",
+                    "source": ["# 标题\n"],
+                    "metadata": {"ignored": False},
+                },
+                {
+                    "cell_type": "code",
+                    "id": "calc",
+                    "source": ["value = 2\n"],
+                    "outputs": [{"text": "new output"}],
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = _invoke_repo_cli(
+        CliRunner(),
+        repo_root,
+        ["learn", "--compare", str(old_file), str(new_file), "--dry-run"],
+    )
+
+    assert result.exit_code == 0
+    _, metadata, patch_text = _load_run_artifacts(repo_root)
+    source_detail = cast("dict[str, object]", metadata["source_detail"])
+    assert source_detail["notebook_cell_aware"] is True
+    assert "# %% [markdown] cell 0 id=intro" in patch_text
+    assert "# %% [code] cell 1 id=calc" in patch_text
+    assert "-value = 1" in patch_text
+    assert "+value = 2" in patch_text
+    assert "old output" not in patch_text
+    assert "new output" not in patch_text
+
+
+def test_compare_dir_ipynb_uses_cell_aware_rendering(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    old_dir = workspace_root / "old"
+    new_dir = workspace_root / "new"
+    old_dir.mkdir(parents=True)
+    new_dir.mkdir(parents=True)
+    (old_dir / "analysis.ipynb").write_text(
+        _notebook_payload([{"cell_type": "code", "id": "cell-a", "source": "print('old')\n"}]),
+        encoding="utf-8",
+    )
+    (new_dir / "analysis.ipynb").write_text(
+        _notebook_payload([{"cell_type": "code", "id": "cell-a", "source": ["print('new')\n"]}]),
+        encoding="utf-8",
+    )
+
+    capture = capture_module.capture_patch(
+        workspace_root=workspace_root,
+        compare_dir=(Path("old"), Path("new")),
+        max_patch_bytes=10_000,
+    )
+
+    assert capture.metadata["source_detail"]["notebook_cell_aware"] is True
+    assert "# %% [code] cell 0 id=cell-a" in capture.raw_patch_text
+    assert "-print('old')" in capture.raw_patch_text
+    assert "+print('new')" in capture.raw_patch_text
+
+
+def test_compare_ipynb_invalid_json_degrades_to_raw_text_diff(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    old_file = workspace_root / "old.ipynb"
+    new_file = workspace_root / "new.ipynb"
+    old_file.write_text("{not json\n", encoding="utf-8")
+    new_file.write_text('{"cells": []}\n', encoding="utf-8")
+
+    capture = capture_module.capture_patch(
+        workspace_root=workspace_root,
+        compare=(Path("old.ipynb"), Path("new.ipynb")),
+        max_patch_bytes=10_000,
+    )
+
+    source_detail = cast("dict[str, object]", capture.metadata["source_detail"])
+    assert source_detail["notebook_cell_aware"] is False
+    assert source_detail["notebook_degraded"] is True
+    assert "-{not json" in capture.raw_patch_text
+
+
+def test_compare_ipynb_sanitizes_cell_header_fields(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    old_file = workspace_root / "old.ipynb"
+    new_file = workspace_root / "new.ipynb"
+    old_file.write_text(
+        _notebook_payload(
+            [{"cell_type": "code\n+fake", "id": "cell\n+inject", "source": "value = 1\n"}]
+        ),
+        encoding="utf-8",
+    )
+    new_file.write_text(
+        _notebook_payload(
+            [{"cell_type": "code\n+fake", "id": "cell\n+inject", "source": "value = 2\n"}]
+        ),
+        encoding="utf-8",
+    )
+
+    capture = capture_module.capture_patch(
+        workspace_root=workspace_root,
+        compare=(Path("old.ipynb"), Path("new.ipynb")),
+        max_patch_bytes=10_000,
+    )
+
+    assert "# %% [code +fake] cell 0 id=cell +inject" in capture.raw_patch_text
+    assert "# %% [code\n+fake]" not in capture.raw_patch_text
+    assert "id=cell\n+inject" not in capture.raw_patch_text
+
+
+def test_git_staged_ipynb_uses_cell_aware_rendering(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    notebook = repo_root / "analysis.ipynb"
+    notebook.write_text(
+        _notebook_payload(
+            [
+                {
+                    "cell_type": "code",
+                    "id": "calc",
+                    "source": ["value = 1\n"],
+                    "outputs": [{"text": "old output"}],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _commit_all(repo_root, "base")
+    notebook.write_text(
+        _notebook_payload(
+            [
+                {
+                    "cell_type": "code",
+                    "id": "calc",
+                    "source": ["value = 2\n"],
+                    "outputs": [{"text": "new output"}],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _git(repo_root, "add", "analysis.ipynb")
+
+    capture = capture_module.capture_patch(
+        workspace_root=repo_root,
+        staged=True,
+        max_patch_bytes=20_000,
+    )
+
+    source_detail = cast("dict[str, object]", capture.metadata["source_detail"])
+    assert source_detail["notebook_cell_aware"] is True
+    assert source_detail["notebook_cell_aware_files"] == 1
+    assert "# %% [code] cell 0 id=calc" in capture.raw_patch_text
+    assert "-value = 1" in capture.raw_patch_text
+    assert "+value = 2" in capture.raw_patch_text
+    assert "old output" not in capture.raw_patch_text
+    assert "new output" not in capture.raw_patch_text
+
+
+def test_git_unstaged_ipynb_uses_cell_aware_rendering(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    notebook = repo_root / "analysis.ipynb"
+    notebook.write_text(
+        _notebook_payload([{"cell_type": "markdown", "id": "intro", "source": ["old\n"]}]),
+        encoding="utf-8",
+    )
+    _commit_all(repo_root, "base")
+    notebook.write_text(
+        _notebook_payload([{"cell_type": "markdown", "id": "intro", "source": ["new\n"]}]),
+        encoding="utf-8",
+    )
+
+    capture = capture_module.capture_patch(
+        workspace_root=repo_root,
+        unstaged=True,
+        max_patch_bytes=20_000,
+    )
+
+    source_detail = cast("dict[str, object]", capture.metadata["source_detail"])
+    assert source_detail["notebook_cell_aware"] is True
+    assert "# %% [markdown] cell 0 id=intro" in capture.raw_patch_text
+    assert "-old" in capture.raw_patch_text
+    assert "+new" in capture.raw_patch_text
+
+
+def test_git_last_ipynb_uses_cell_aware_rendering(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    notebook = repo_root / "analysis.ipynb"
+    notebook.write_text(
+        _notebook_payload([{"cell_type": "code", "id": "calc", "source": "value = 1\n"}]),
+        encoding="utf-8",
+    )
+    _commit_all(repo_root, "base")
+    notebook.write_text(
+        _notebook_payload([{"cell_type": "code", "id": "calc", "source": "value = 2\n"}]),
+        encoding="utf-8",
+    )
+    _commit_all(repo_root, "change notebook")
+
+    capture = capture_module.capture_patch(
+        workspace_root=repo_root,
+        last=True,
+        max_patch_bytes=20_000,
+    )
+
+    source_detail = cast("dict[str, object]", capture.metadata["source_detail"])
+    assert source_detail["notebook_cell_aware"] is True
+    assert "# %% [code] cell 0 id=calc" in capture.raw_patch_text
+    assert "-value = 1" in capture.raw_patch_text
+    assert "+value = 2" in capture.raw_patch_text
+
+
+def test_git_since_ipynb_uses_cell_aware_rendering(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "anchor.py").write_text("anchor = True\n", encoding="utf-8")
+    _commit_all(repo_root, "anchor")
+    notebook = repo_root / "analysis.ipynb"
+    notebook.write_text(
+        _notebook_payload([{"cell_type": "code", "id": "calc", "source": "value = 1\n"}]),
+        encoding="utf-8",
+    )
+    _commit_all(repo_root, "add notebook")
+    notebook.write_text(
+        _notebook_payload([{"cell_type": "code", "id": "calc", "source": "value = 2\n"}]),
+        encoding="utf-8",
+    )
+    _commit_all(repo_root, "change notebook")
+
+    capture = capture_module.capture_patch(
+        workspace_root=repo_root,
+        since="1970-01-01",
+        max_patch_bytes=20_000,
+    )
+
+    source_detail = cast("dict[str, object]", capture.metadata["source_detail"])
+    assert source_detail["notebook_cell_aware"] is True
+    assert source_detail["notebook_metadata_outputs_ignored"] is True
+    assert "# %% [code] cell 0 id=calc" in capture.raw_patch_text
+    assert "+value = 2" in capture.raw_patch_text
+
+
+def test_git_revision_range_and_combined_ipynb_use_cell_aware_rendering(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    notebook = repo_root / "analysis.ipynb"
+    notebook.write_text(
+        _notebook_payload([{"cell_type": "code", "id": "calc", "source": "value = 1\n"}]),
+        encoding="utf-8",
+    )
+    base = _commit_all(repo_root, "base")
+    notebook.write_text(
+        _notebook_payload([{"cell_type": "code", "id": "calc", "source": "value = 2\n"}]),
+        encoding="utf-8",
+    )
+    head = _commit_all(repo_root, "change notebook")
+
+    revision_capture = capture_module.capture_patch(
+        workspace_root=repo_root,
+        revision=head,
+        max_patch_bytes=20_000,
+    )
+    range_capture = capture_module.capture_patch(
+        workspace_root=repo_root,
+        revision=f"{base}..{head}",
+        max_patch_bytes=20_000,
+    )
+
+    for capture in (revision_capture, range_capture):
+        source_detail = cast("dict[str, object]", capture.metadata["source_detail"])
+        assert source_detail["notebook_cell_aware"] is True
+        assert "# %% [code] cell 0 id=calc" in capture.raw_patch_text
+        assert "-value = 1" in capture.raw_patch_text
+        assert "+value = 2" in capture.raw_patch_text
+
+    notebook.write_text(
+        _notebook_payload([{"cell_type": "code", "id": "calc", "source": "value = 3\n"}]),
+        encoding="utf-8",
+    )
+    _git(repo_root, "add", "analysis.ipynb")
+    notebook.write_text(
+        _notebook_payload([{"cell_type": "code", "id": "calc", "source": "value = 4\n"}]),
+        encoding="utf-8",
+    )
+    combined_capture = capture_module.capture_patch(
+        workspace_root=repo_root,
+        staged=True,
+        unstaged=True,
+        max_patch_bytes=20_000,
+    )
+
+    source_detail = cast("dict[str, object]", combined_capture.metadata["source_detail"])
+    assert source_detail["notebook_cell_aware"] is True
+    assert "-value = 2" in combined_capture.raw_patch_text
+    assert "+value = 4" in combined_capture.raw_patch_text
+    assert "value = 3" not in combined_capture.raw_patch_text
+
+
+def test_untracked_ipynb_include_untracked_uses_cell_aware_rendering(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "tracked.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+    (repo_root / "new.ipynb").write_text(
+        _notebook_payload(
+            [
+                {
+                    "cell_type": "markdown",
+                    "id": "intro",
+                    "source": ["# 新 notebook\n"],
+                    "outputs": [{"text": "ignored"}],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    capture = capture_module.capture_patch(
+        workspace_root=repo_root,
+        unstaged=True,
+        include_untracked=True,
+        max_patch_bytes=20_000,
+    )
+
+    source_detail = cast("dict[str, object]", capture.metadata["source_detail"])
+    assert source_detail["notebook_cell_aware"] is True
+    assert "new file mode 100644" in capture.raw_patch_text
+    assert "# %% [markdown] cell 0 id=intro" in capture.raw_patch_text
+    assert "+# 新 notebook" in capture.raw_patch_text
+    assert '"text": "ignored"' not in capture.raw_patch_text
+
+
+def test_git_patch_commands_disable_textconv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "analysis.ipynb").write_text(
+        _notebook_payload([{"cell_type": "code", "source": "value = 1\n"}]),
+        encoding="utf-8",
+    )
+    _commit_all(repo_root, "base")
+    (repo_root / "analysis.ipynb").write_text(
+        _notebook_payload([{"cell_type": "code", "source": "value = 2\n"}]),
+        encoding="utf-8",
+    )
+    _commit_all(repo_root, "change notebook")
+    (repo_root / "analysis.ipynb").write_text(
+        _notebook_payload([{"cell_type": "code", "source": "value = 3\n"}]),
+        encoding="utf-8",
+    )
+
+    commands: list[tuple[str, ...]] = []
+    original = capture_module._run_git_patch_text  # pyright: ignore[reportPrivateUsage]
+
+    def wrapped(repo_root_arg: Path, *args: str, max_patch_bytes: int) -> str:
+        commands.append(args)
+        return original(repo_root_arg, *args, max_patch_bytes=max_patch_bytes)
+
+    monkeypatch.setattr(capture_module, "_run_git_patch_text", wrapped)
+
+    capture_module.capture_patch(workspace_root=repo_root, last=True, max_patch_bytes=20_000)
+    capture_module.capture_patch(workspace_root=repo_root, unstaged=True, max_patch_bytes=20_000)
+
+    patch_commands = [args for args in commands if args and args[0] in {"show", "diff"}]
+    assert patch_commands
+    assert all("--no-textconv" in args for args in patch_commands)
 
 
 def test_compare_mode_respects_hard_limit_for_single_segment(tmp_path: Path) -> None:

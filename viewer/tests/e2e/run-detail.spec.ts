@@ -18,6 +18,21 @@ test.describe('Run Detail page', () => {
     expect(await metaRows.count()).toBeGreaterThanOrEqual(4);
   });
 
+  test('shows Graphify signoff on overview', async ({ page }) => {
+    await page.goto('/#/run/test-run');
+
+    await expect(page.getByRole('heading', { name: /Graphify Signoff|Graphify 验收/i })).toBeVisible();
+    await expect(page.getByText(/passed/i)).toBeVisible();
+    await expect(page.getByText(/Graph digest|图谱摘要/i)).toBeVisible();
+  });
+
+  test('shows degraded Graphify signoff reasons', async ({ page }) => {
+    await page.goto('/#/run/degraded-graphify-run');
+
+    await expect(page.getByRole('heading', { name: /Graphify Signoff|Graphify 验收/i })).toBeVisible();
+    await expect(page.getByText(/Graph is stale|图谱已过期/i)).toBeVisible();
+  });
+
   test('renders degraded flags as localized labels', async ({ page }) => {
     await page.route(
       (url) => url.pathname === '/api/run/degraded-run',
@@ -71,10 +86,49 @@ test.describe('Run Detail page', () => {
     await expect(overallValue).toBeVisible();
   });
 
+  test('shows spec alignment details in score tab', async ({ page }) => {
+    await page.goto('/#/run/test-run?tab=score');
+
+    await expect(page.getByRole('heading', { name: /Spec Alignment|Spec 一致性/i })).toBeVisible();
+    await expect(page.locator('.run-detail__spec-score')).toContainText('7.5/10');
+    await expect(
+      page.locator('.run-detail__spec-requirements').first().getByText('REQ-001'),
+    ).toBeVisible();
+    await expect(page.getByText(/Verified claim overlaps/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Semantic review|语义审查/i })).toBeVisible();
+    await expect(page.getByText(/gpt-5\.5/i)).toBeVisible();
+    await expect(page.getByText(/Disagrees with deterministic matcher|与确定性 matcher 不一致/i)).toBeVisible();
+  });
+
+  test('shows spec alignment missing and bad-artifact states', async ({ page }) => {
+    await page.goto('/#/run/missing-spec-run?tab=score');
+    await expect(page.getByText(/No spec alignment artifact|没有 Spec 一致性产物/i)).toBeVisible();
+
+    await page.goto('/#/run/invalid-spec-run?tab=score');
+    await expect(page.getByRole('alert')).toContainText(
+      /Failed to load spec alignment|加载 Spec 一致性失败/i,
+    );
+  });
+
+  test('shows spec alignment without score data and empty requirements state', async ({ page }) => {
+    await page.goto('/#/run/no-score-spec-run?tab=score');
+    await expect(page.getByText(/No score data available|无评分数据/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Spec Alignment|Spec 一致性/i })).toBeVisible();
+    await expect(
+      page.locator('.run-detail__spec-requirements').first().getByText('REQ-001'),
+    ).toBeVisible();
+
+    await page.goto('/#/run/empty-spec-run?tab=score');
+    await expect(
+      page.getByText(/No requirements were extracted|未从 Spec 中提取到需求/i),
+    ).toBeVisible();
+  });
+
   test('switches to judge tab and shows model info', async ({ page }) => {
     await page.goto('/#/run/test-run');
 
     const judgeTab = page.getByRole('tab', { name: /judge|评审/i });
+    await judgeTab.scrollIntoViewIfNeeded();
     await judgeTab.click();
     await expect(judgeTab).toHaveAttribute('aria-selected', 'true');
 

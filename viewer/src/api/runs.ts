@@ -3,18 +3,22 @@ import type { ApiFetchOptions } from './client';
 import {
   paginatedRunsResponseSchema,
   parseResponse,
+  graphifySignoffArtifactSchema,
   ratchetHistoryResponseSchema,
   ratchetTransparencyResponseSchema,
   runArtifactEnvelopeSchema,
   runDetailSchema,
+  specAlignmentArtifactSchema,
 } from './schemas';
 import type {
   ArtifactKind,
+  GraphifySignoffArtifact,
   PaginatedRunsResponse,
   RatchetHistoryResponse,
   RatchetTransparencyResponse,
   RunArtifactEnvelope,
   RunDetail,
+  SpecAlignmentArtifact,
 } from './types';
 
 export async function getRunScore(
@@ -26,6 +30,48 @@ export async function getRunScore(
     opts,
   );
   return parseResponse('GET /api/run/{runId}/score', runArtifactEnvelopeSchema, raw);
+}
+
+export async function getRunSpecAlignment(
+  runId: string,
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<SpecAlignmentArtifact> {
+  const raw = await apiFetch<unknown>(
+    `/api/run/${encodeURIComponent(runId)}/spec-alignment`,
+    opts,
+  );
+  const envelope = parseResponse(
+    'GET /api/run/{runId}/spec-alignment',
+    runArtifactEnvelopeSchema,
+    raw,
+  );
+  const parsedContent = JSON.parse(envelope.content) as unknown;
+  return parseResponse(
+    'GET /api/run/{runId}/spec-alignment content',
+    specAlignmentArtifactSchema,
+    parsedContent,
+  );
+}
+
+export async function getRunGraphifySignoff(
+  runId: string,
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<GraphifySignoffArtifact> {
+  const raw = await apiFetch<unknown>(
+    `/api/run/${encodeURIComponent(runId)}/graphify-signoff`,
+    opts,
+  );
+  const envelope = parseResponse(
+    'GET /api/run/{runId}/graphify-signoff',
+    runArtifactEnvelopeSchema,
+    raw,
+  );
+  const parsedContent = JSON.parse(envelope.content) as unknown;
+  return parseResponse(
+    'GET /api/run/{runId}/graphify-signoff content',
+    graphifySignoffArtifactSchema,
+    parsedContent,
+  );
 }
 
 export async function listRuns(

@@ -10,6 +10,7 @@ import pytest
 from ahadiff.contracts import ProviderClass, ProviderConfig
 from ahadiff.core.config import SecurityConfig
 from ahadiff.core.errors import ProviderError, SafetyError
+from ahadiff.eval.spec_alignment import run_semantic_alignment_review_for_run
 from ahadiff.llm import ProviderRequest, make_provider
 from ahadiff.llm.provider import reset_provider_runtime_state
 
@@ -223,3 +224,135 @@ def test_live_llm_judge_prefers_responses_and_falls_back_to_available_model(
     assert result.model in models
     if result.model != models[0]:
         assert any(error.model == models[0] for error in result.errors)
+
+
+def test_live_spec_semantic_alignment_review_writes_artifact(tmp_path: Path) -> None:
+    base_url, api_key, models = _live_settings()
+    run_path = tmp_path / ".ahadiff" / "runs" / "run_live_semantic_spec"
+    run_path.mkdir(parents=True)
+    evidence_ref = {
+        "type": "patch",
+        "file": "example.py",
+        "lines": [2],
+        "anchors": ["answer"],
+        "side": "new",
+    }
+    (run_path / "metadata.json").write_text(
+        json.dumps(
+            {
+                "run_id": "run_live_semantic_spec",
+                "source_ref": "live_semantic_spec_fixture",
+                "source_kind": "patch_file",
+                "capability_level": 3,
+                "degraded_flags": {},
+                "privacy_mode": "strict_local",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run_path / "patch.diff").write_text(
+        "\n".join(
+            [
+                "diff --git a/example.py b/example.py",
+                "--- a/example.py",
+                "+++ b/example.py",
+                "@@ -0,0 +1,2 @@",
+                "+def answer() -> int:",
+                "+    return 2",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (run_path / "claims.jsonl").write_text(
+        json.dumps(
+            {
+                "claim_id": "claim_answer",
+                "status": "verified",
+                "text": "example.py adds answer(), and answer() returns 2.",
+                "source_hunks": [{"file": "example.py", "start": 1, "end": 2, "side": "new"}],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (run_path / "spec_alignment.json").write_text(
+        json.dumps(
+            {
+                "artifact": "spec_alignment",
+                "schema": "ahadiff.spec_alignment",
+                "schema_version": 1,
+                "applicability": "applicable",
+                "status": "scored",
+                "eval_bundle_version": "live-eval-bundle-v1",
+                "spec_source": {"path": "SPEC.md", "sha256": "0" * 64, "bytes": 64},
+                "requirements": [
+                    {
+                        "id": "REQ-001",
+                        "text": "The patch must add an answer function returning 2.",
+                        "classification": "implemented",
+                        "severity": "medium",
+                        "evidence_refs": [evidence_ref],
+                        "confidence": 0.9,
+                        "reason": "Fixture deterministic evidence.",
+                    }
+                ],
+                "summary": {"implemented": 1, "partial": 0, "missing": 0, "unknown": 0},
+                "score": 10.0,
+                "max_score": 10.0,
+                "confidence": 0.9,
+                "known_limitations": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    reset_provider_runtime_state()
+    errors: list[LiveJudgeError] = []
+    for model in models:
+        for provider_class in _PROVIDER_PRIORITY:
+            try:
+                merged = run_semantic_alignment_review_for_run(
+                    run_path=run_path,
+                    workspace_root=tmp_path,
+                    provider_config=_provider_config(
+                        provider_class,
+                        base_url=base_url,
+                        model=model,
+                    ),
+                    api_key=api_key,
+                    security_config=SecurityConfig(),
+                    privacy_mode="strict_local",
+                    output_lang="en",
+                    request_timeout_seconds=90,
+                    max_concurrent=1,
+                    qps_limit=0,
+                    retry_attempts=0,
+                )
+            except (ProviderError, SafetyError, ValueError, json.JSONDecodeError) as exc:
+                errors.append(LiveJudgeError(provider_class, model, str(exc)))
+                continue
+            review = merged["semantic_review"]
+            if review["degraded"] is True:
+                errors.append(
+                    LiveJudgeError(
+                        provider_class,
+                        model,
+                        str(review.get("degradation_reason", "semantic review degraded")),
+                    )
+                )
+                continue
+            assert review["enabled"] is True
+            assert review["model"] == model
+            assert review["requirements"]
+            assert review["requirements"][0]["classification"] in {
+                "implemented",
+                "partial",
+                "missing",
+                "unknown",
+                "violated",
+            }
+            return
+    pytest.fail(
+        "no configured live semantic alignment endpoint succeeded:\n"
+        + "\n".join(f"- {error.model}/{error.provider_class}: {error.message}" for error in errors)
+    )

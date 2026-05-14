@@ -15,6 +15,7 @@ import {
   runSummarySchema,
   scorePayloadSchema,
   serveStatusResponseSchema,
+  specAlignmentArtifactSchema,
   specAlignmentResponseSchema,
   statsResponseSchema,
   taskInfoResponseSchema,
@@ -508,8 +509,101 @@ describe('settings and auxiliary API schemas', () => {
         alignment_score: null,
         total_evaluated: 0,
         recent_trend: null,
+        total_requirements: 0,
+        implemented: 0,
+        partial: 0,
+        missing: 0,
+        unknown: 0,
+        degraded_count: 0,
+        semantic_reviewed: 0,
+        semantic_degraded_count: 0,
+        semantic_disagreement_count: 0,
       }),
     ).toMatchObject({ total_evaluated: 0 });
+
+    expect(
+      specAlignmentArtifactSchema.parse({
+        artifact: 'spec_alignment',
+        schema: 'ahadiff.spec_alignment',
+        schema_version: 1,
+        applicability: 'applicable',
+        status: 'scored',
+        requirements: [
+          {
+            id: 'REQ-001',
+            text: 'Must expose `--against-spec`.',
+            classification: 'implemented',
+            severity: 'high',
+            evidence_refs: [
+              {
+                type: 'patch',
+                file: 'src/ahadiff/cli.py',
+                lines: [1, 2],
+                anchors: ['--against-spec'],
+                side: 'new',
+              },
+            ],
+            confidence: 0.82,
+            reason: 'Captured diff added all required code anchors.',
+          },
+        ],
+        summary: { implemented: 1, partial: 0, missing: 0, unknown: 0 },
+        score: 10,
+        max_score: 10,
+        confidence: 0.82,
+        semantic_review: {
+          enabled: true,
+          provider: 'openai_responses',
+          model: 'gpt-5.5',
+          prompt_digest: 'abc123',
+          input_digest: 'def456',
+          requirements: [
+            {
+              id: 'REQ-001',
+              classification: 'implemented',
+              confidence: 0.8,
+              rationale: 'Evidence supports the requirement.',
+              evidence_refs: [
+                {
+                  type: 'patch',
+                  file: 'src/ahadiff/cli.py',
+                  lines: [1, 2],
+                  anchors: ['--against-spec'],
+                  side: 'new',
+                },
+              ],
+              disagreement_with_deterministic: false,
+            },
+          ],
+          aggregate: {
+            implemented: 1,
+            partial: 0,
+            missing: 0,
+            unknown: 0,
+            violated: 0,
+            confidence: 0.8,
+            risk_flags: [],
+          },
+          degraded: false,
+          degradation_reason: null,
+          limitations: ['Semantic review is not a proof.'],
+        },
+        semantic_adjustment: {
+          policy: 'conservative_evidence_bound',
+          score: 10,
+          delta: 0,
+          reason: 'semantic review recorded; deterministic score retained',
+        },
+        matcher: {
+          mode: 'deterministic_structured',
+          claim_count: 0,
+          uses_code_anchors: true,
+          uses_patch_added_lines: true,
+          detects_forbidden_additions: true,
+        },
+        known_limitations: [],
+      }).requirements[0].evidence_refs[0].anchors,
+    ).toEqual(['--against-spec']);
 
     expect(
       watchStatusResponseSchema.parse({

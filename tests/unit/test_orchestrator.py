@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 from contextlib import contextmanager
@@ -25,7 +26,7 @@ from ahadiff.core.orchestrator import (
     run_learn_pipeline,
     run_with_retry,
 )
-from ahadiff.git.capture import GraphifyStatus
+from ahadiff.git.capture import GraphifyStatus, graphify_signoff_payload_from_capture
 from ahadiff.lesson.schemas import LessonHint
 
 if TYPE_CHECKING:
@@ -50,6 +51,8 @@ def test_learn_request_defaults(tmp_path: Path) -> None:
     assert req.patch is None
     assert req.compare is None
     assert req.compare_dir is None
+    assert req.against_spec is None
+    assert req.spec_semantic_review is False
     assert req.patch_url is None
     assert req.provider_name is None
     assert req.provider_class == "openai"
@@ -309,7 +312,7 @@ def _fake_graphify_capture(tmp_path: Path) -> _FakeCapture:
         freshness="fresh",
         provenance={
             "edge_count": "0",
-            "graph_sha256": "abc123",
+            "graph_sha256": "a" * 64,
             "import_time": "2026-05-04T00:00:00Z",
             "node_count": "1",
             "parser_version": "test",
@@ -331,7 +334,32 @@ def test_persist_graphify_context_writes_with_random_atomic_temp(tmp_path: Path)
     assert not outside.exists()
     assert deterministic_tmp.is_symlink()
     payload = (run_path / "graphify_context.json").read_text(encoding="utf-8")
-    assert '"graph_sha256": "abc123"' in payload
+    assert f'"graph_sha256": "{"a" * 64}"' in payload
+    signoff = json.loads((run_path / "graphify_signoff.json").read_text(encoding="utf-8"))
+    assert signoff["schema"] == "ahadiff.graphify_signoff"
+    assert signoff["signoff"] == "passed"
+    assert signoff["graph_sha256"] == "a" * 64
+
+
+def test_graphify_signoff_degrades_invalid_provenance(tmp_path: Path) -> None:
+    capture = _fake_graphify_capture(tmp_path)
+    capture.graphify_status.provenance.update(  # type: ignore[attr-defined]
+        {
+            "edge_count": "not-a-count",
+            "graph_sha256": "not-a-sha",
+            "node_count": "-1",
+        }
+    )
+
+    signoff = graphify_signoff_payload_from_capture(cast("Any", capture))
+
+    assert signoff is not None
+    assert signoff["signoff"] == "degraded"
+    assert signoff["graph_sha256"] == ""
+    assert signoff["node_count"] == 0
+    assert signoff["edge_count"] == 0
+    reasons = set(cast("list[str]", signoff["degradation_reasons"]))
+    assert {"graph_digest_invalid", "node_count_invalid", "edge_count_invalid"} <= reasons
 
 
 # ---------------------------------------------------------------------------
@@ -799,6 +827,98 @@ def test_progress_callback_emits_lesson_substeps(
         "Generating compact lesson (3/3)",
     ]
     assert all(total == 10 for step, total, _message in collected if step == 6)
+
+
+def test_against_spec_writes_spec_alignment_artifact_before_evaluation(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    _patch_learnability(monkeypatch, score=0.7)
+    _patch_completed_pipeline(monkeypatch, fake_repo, capture)
+    spec_path = fake_repo / "SPEC.md"
+    spec_path.write_text("- The retry helper must attempt three times.\n", encoding="utf-8")
+    calls: list[dict[str, object]] = []
+
+    def _write_spec_alignment_artifact(**kwargs: object) -> dict[str, object]:
+        calls.append(kwargs)
+        run_path = cast("Path", kwargs["run_path"])
+        (run_path / "spec_alignment.json").write_text("{}\n", encoding="utf-8")
+        return {"score": 10.0}
+
+    monkeypatch.setattr(
+        "ahadiff.eval.spec_alignment.write_spec_alignment_artifact",
+        _write_spec_alignment_artifact,
+    )
+
+    result = run_learn_pipeline(
+        LearnRequest(workspace_root=fake_repo, against_spec=Path("SPEC.md")),
+    )
+
+    assert result.status == "keep"
+    assert len(calls) == 1
+    assert calls[0]["workspace_root"] == fake_repo
+    assert calls[0]["spec_path"] == Path("SPEC.md")
+    assert calls[0]["run_path"] == fake_repo / ".ahadiff" / "runs" / capture.run_id
+
+
+def test_against_spec_semantic_review_runs_before_evaluation(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    snapshot = _FakeConfigSnapshot()
+    snapshot.values["llm"]["judge_provider"] = "judge"
+    snapshot.values["llm"]["judge_model"] = "gpt-5.5"
+
+    def _load_config(
+        _root: Path,
+        cli_overrides: dict[str, object] | None = None,
+    ) -> _FakeConfigSnapshot:
+        return snapshot
+
+    monkeypatch.setattr(f"{_ORCH}.load_config", _load_config)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    _patch_learnability(monkeypatch, score=0.7)
+    _patch_completed_pipeline(monkeypatch, fake_repo, capture)
+    spec_path = fake_repo / "SPEC.md"
+    spec_path.write_text("- The retry helper must attempt three times.\n", encoding="utf-8")
+    semantic_calls: list[dict[str, object]] = []
+
+    def _write_spec_alignment_artifact(**kwargs: object) -> dict[str, object]:
+        run_path = cast("Path", kwargs["run_path"])
+        (run_path / "spec_alignment.json").write_text(
+            '{"artifact":"spec_alignment","schema":"ahadiff.spec_alignment","score":8}\n',
+            encoding="utf-8",
+        )
+        return {"score": 8.0}
+
+    def _run_semantic_alignment_review_for_run(**kwargs: object) -> dict[str, object]:
+        semantic_calls.append(kwargs)
+        return {}
+
+    monkeypatch.setattr(
+        "ahadiff.eval.spec_alignment.write_spec_alignment_artifact",
+        _write_spec_alignment_artifact,
+    )
+    monkeypatch.setattr(
+        "ahadiff.eval.spec_alignment.run_semantic_alignment_review_for_run",
+        _run_semantic_alignment_review_for_run,
+    )
+
+    result = run_learn_pipeline(
+        LearnRequest(
+            workspace_root=fake_repo,
+            against_spec=Path("SPEC.md"),
+            spec_semantic_review=True,
+        ),
+    )
+
+    assert result.status == "keep"
+    assert len(semantic_calls) == 1
+    assert semantic_calls[0]["run_path"] == fake_repo / ".ahadiff" / "runs" / capture.run_id
+    assert semantic_calls[0]["output_lang"] == "en"
 
 
 def test_configured_judge_provider_runs_after_deterministic_evaluation(

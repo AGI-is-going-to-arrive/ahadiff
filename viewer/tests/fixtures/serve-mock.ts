@@ -216,7 +216,18 @@ export async function installServeMock(page: Page): Promise<void> {
       const runId = new URL(route.request().url()).pathname.split('/')[3] ?? 'test-run';
       const artifacts = runId === 'no-score-run'
         ? ['patch.diff', 'metadata.json', 'claims.jsonl', 'concepts.jsonl']
-        : ['patch.diff', 'metadata.json', 'claims.jsonl', 'score.json', 'judge.json', 'concepts.jsonl'];
+        : runId === 'no-score-spec-run'
+          ? ['patch.diff', 'metadata.json', 'claims.jsonl', 'concepts.jsonl', 'spec_alignment.json']
+          : [
+            'patch.diff',
+            'metadata.json',
+            'claims.jsonl',
+            'score.json',
+            'judge.json',
+            'concepts.jsonl',
+            'spec_alignment.json',
+            'graphify_signoff.json',
+          ];
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -307,7 +318,7 @@ export async function installServeMock(page: Page): Promise<void> {
     (url) => /^\/api\/run\/[^/]+\/score$/.test(url.pathname),
     (route) => {
       const runId = new URL(route.request().url()).pathname.split('/')[3] ?? 'test-run';
-      if (runId === 'no-score-run') {
+      if (runId === 'no-score-run' || runId === 'no-score-spec-run') {
         return route.fulfill({
           status: 404,
           contentType: 'application/json',
@@ -346,6 +357,227 @@ export async function installServeMock(page: Page): Promise<void> {
             },
             notes: ['Overall strong lesson with good evidence.', 'Conciseness could be improved in section 2.'],
           }),
+          content_lang: 'en',
+        }),
+      });
+    },
+  );
+  await page.route(
+    (url) => /^\/api\/run\/[^/]+\/spec-alignment$/.test(url.pathname),
+    (route) => {
+      const runId = new URL(route.request().url()).pathname.split('/')[3] ?? 'test-run';
+      if (runId === 'missing-spec-run') {
+        return route.fulfill({
+          status: 404,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'artifact_not_found', status: 404 }),
+        });
+      }
+      const content = runId === 'invalid-spec-run'
+        ? '{not json'
+        : runId === 'empty-spec-run'
+          ? JSON.stringify({
+              artifact: 'spec_alignment',
+              schema: 'ahadiff.spec_alignment',
+              schema_version: 1,
+              applicability: 'applicable',
+              status: 'scored',
+              spec_source: {
+                path: 'SPEC.md',
+                ref: 'SPEC.md',
+                sha256: 'f'.repeat(64),
+                bytes: 240,
+              },
+              spec_digest: 'f'.repeat(64),
+              requirements: [],
+              summary: { implemented: 0, partial: 0, missing: 0, unknown: 0 },
+              score: 0,
+              max_score: 10,
+              confidence: 0,
+              known_limitations: ['No requirements extracted.'],
+            })
+        : JSON.stringify({
+            artifact: 'spec_alignment',
+            schema: 'ahadiff.spec_alignment',
+            schema_version: 1,
+            applicability: 'applicable',
+            status: 'scored',
+            spec_source: {
+              path: 'SPEC.md',
+              ref: 'SPEC.md',
+              sha256: 'f'.repeat(64),
+              bytes: 240,
+            },
+            spec_digest: 'f'.repeat(64),
+            requirements: [
+              {
+                id: 'REQ-001',
+                text: 'The lesson must explain the learn-from-diff marker.',
+                classification: 'implemented',
+                severity: 'medium',
+                evidence_refs: [
+                  {
+                    type: 'claim',
+                    claim_id: 'c1',
+                    file: 'demo.py',
+                    start: 4,
+                    end: 4,
+                    side: 'new',
+                  },
+                ],
+                confidence: 0.9,
+                reason: 'Verified claim overlaps the requirement.',
+              },
+              {
+                id: 'REQ-002',
+                text: 'The flow should include a transfer question.',
+                classification: 'partial',
+                severity: 'medium',
+                evidence_refs: [],
+                confidence: 0.6,
+                reason: 'Captured diff overlaps requirement but evidence is incomplete.',
+              },
+            ],
+            summary: { implemented: 1, partial: 1, missing: 0, unknown: 0 },
+            score: 7.5,
+            max_score: 10,
+            confidence: 0.75,
+            deterministic_result: {
+              score: 7.5,
+              summary: { implemented: 1, partial: 1, missing: 0, unknown: 0 },
+            },
+            semantic_review: {
+              enabled: true,
+              provider: 'openai_responses',
+              model: 'gpt-5.5',
+              prompt_digest: 'abc123',
+              input_digest: 'def456',
+              requirements: [
+                {
+                  id: 'REQ-001',
+                  classification: 'implemented',
+                  confidence: 0.84,
+                  rationale: 'The listed claim evidence supports the requirement.',
+                  evidence_refs: [
+                    {
+                      type: 'claim',
+                      claim_id: 'c1',
+                      file: 'demo.py',
+                      start: 4,
+                      end: 4,
+                      side: 'new',
+                    },
+                  ],
+                  disagreement_with_deterministic: false,
+                },
+                {
+                  id: 'REQ-002',
+                  classification: 'unknown',
+                  confidence: 0.2,
+                  rationale: 'No deterministic evidence reference was bound.',
+                  evidence_refs: [],
+                  disagreement_with_deterministic: true,
+                },
+              ],
+              aggregate: {
+                implemented: 1,
+                partial: 0,
+                missing: 0,
+                unknown: 1,
+                violated: 0,
+                confidence: 0.52,
+                risk_flags: ['deterministic_semantic_disagreement'],
+              },
+              degraded: false,
+              degradation_reason: null,
+              limitations: ['Semantic review is not a proof.'],
+              usage: { input_tokens: 24, output_tokens: 18, finish_reason: 'stop' },
+            },
+            semantic_adjustment: {
+              policy: 'conservative_evidence_bound',
+              score: 7.5,
+              delta: 0,
+              reason: 'semantic review recorded; deterministic score retained',
+            },
+            known_limitations: ['Deterministic lexical matching only.'],
+          });
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          run_id: runId,
+          artifact_type: 'spec_alignment',
+          content,
+          content_lang: 'en',
+        }),
+      });
+    },
+  );
+  await page.route(
+    (url) => /^\/api\/run\/[^/]+\/graphify-signoff$/.test(url.pathname),
+    (route) => {
+      const runId = new URL(route.request().url()).pathname.split('/')[3] ?? 'test-run';
+      if (runId === 'missing-graphify-run') {
+        return route.fulfill({
+          status: 404,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'artifact_not_found', status: 404 }),
+        });
+      }
+      const content = runId === 'degraded-graphify-run'
+        ? JSON.stringify({
+            artifact: 'graphify_signoff',
+            schema: 'ahadiff.graphify_signoff',
+            schema_version: 1,
+            run_id: runId,
+            signoff: 'degraded',
+            freshness: 'stale',
+            graph_source: 'graphify-out/graph.json',
+            graph_sha256: '',
+            parser_version: 'v1',
+            import_time: '2026-05-14T00:00:00Z',
+            node_count: 3,
+            edge_count: 2,
+            source_coverage: {
+              selected_files: 1,
+              omitted_files: 0,
+              graph_nodes: 3,
+              graph_edges: 2,
+            },
+            degradation_reasons: ['graph_digest_missing', 'freshness_stale'],
+            checks: [{ name: 'digest_present', passed: false, detail: '' }],
+            known_limitations: ['Fixture limitation.'],
+          })
+        : JSON.stringify({
+            artifact: 'graphify_signoff',
+            schema: 'ahadiff.graphify_signoff',
+            schema_version: 1,
+            run_id: runId,
+            signoff: 'passed',
+            freshness: 'fresh',
+            graph_source: 'graphify-out/graph.json',
+            graph_sha256: 'a'.repeat(64),
+            parser_version: 'v1',
+            import_time: '2026-05-14T00:00:00Z',
+            node_count: 12,
+            edge_count: 9,
+            source_coverage: {
+              selected_files: 2,
+              omitted_files: 0,
+              graph_nodes: 12,
+              graph_edges: 9,
+            },
+            degradation_reasons: [],
+            checks: [{ name: 'digest_present', passed: true, detail: 'aaaaaaaaaaaa' }],
+            known_limitations: ['Fixture limitation.'],
+          });
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          run_id: runId,
+          artifact_type: 'graphify_signoff',
+          content,
           content_lang: 'en',
         }),
       });
@@ -1057,6 +1289,15 @@ export async function installServeMock(page: Page): Promise<void> {
           alignment_score: 8.4,
           total_evaluated: 4,
           recent_trend: 'stable',
+          total_requirements: 12,
+          implemented: 8,
+          partial: 2,
+          missing: 1,
+          unknown: 1,
+          degraded_count: 0,
+          semantic_reviewed: 1,
+          semantic_degraded_count: 0,
+          semantic_disagreement_count: 1,
         }),
       }),
   );

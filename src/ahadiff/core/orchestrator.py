@@ -70,6 +70,8 @@ class LearnRequest:
     patch: str | None = None
     compare: tuple[Path, Path] | None = None
     compare_dir: tuple[Path, Path] | None = None
+    against_spec: Path | None = None
+    spec_semantic_review: bool = False
     patch_url: str | None = None
 
     # Provider overrides
@@ -644,21 +646,36 @@ def _persist_graphify_context(capture: Any, run_path: Path) -> None:
     if gs is None or not getattr(gs, "has_graph", False):
         return
     try:
-        from ahadiff.git.capture import graphify_context_payload_from_capture
+        from ahadiff.git.capture import (
+            graphify_context_payload_from_capture,
+            graphify_signoff_payload_from_capture,
+        )
 
         payload = graphify_context_payload_from_capture(capture)
-        if payload is None:
+        signoff_payload = graphify_signoff_payload_from_capture(capture)
+        if payload is None and signoff_payload is None:
             return
         run_path.mkdir(parents=True, exist_ok=True)
-        ctx_path = run_path / "graphify_context.json"
-        if ctx_path.exists():
-            if not stat.S_ISREG(ctx_path.lstat().st_mode):
-                log.warning("graphify context path is not a regular file: %s", ctx_path)
-            return
-        atomic_write_state_text(
-            ctx_path,
-            _json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-        )
+        if payload is not None:
+            ctx_path = run_path / "graphify_context.json"
+            if ctx_path.exists():
+                if not stat.S_ISREG(ctx_path.lstat().st_mode):
+                    log.warning("graphify context path is not a regular file: %s", ctx_path)
+            else:
+                atomic_write_state_text(
+                    ctx_path,
+                    _json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+                )
+        if signoff_payload is not None:
+            signoff_path = run_path / "graphify_signoff.json"
+            if signoff_path.exists():
+                if not stat.S_ISREG(signoff_path.lstat().st_mode):
+                    log.warning("graphify signoff path is not a regular file: %s", signoff_path)
+            else:
+                atomic_write_state_text(
+                    signoff_path,
+                    _json.dumps(signoff_payload, ensure_ascii=False, indent=2) + "\n",
+                )
     except Exception:
         log.warning("failed to persist graphify context to %s", run_path, exc_info=True)
 
@@ -723,6 +740,8 @@ def run_learn_pipeline(
     security_config = (
         load_security_config(root) if has_git_repo else load_workspace_security_config(root)
     )
+    if request.spec_semantic_review and request.against_spec is None:
+        raise ConfigError("spec_semantic_review requires against_spec")
     repo_lock_path = lock_file_path(root) if has_git_repo else root / ".ahadiff" / "ahadiff.lock"
 
     # ------------------------------------------------------------------
@@ -789,6 +808,17 @@ def run_learn_pipeline(
                 force_learn=request.force_learn,
             )
             capture.metadata["learnability"] = learnability.as_metadata()
+            if request.against_spec is not None:
+                from ahadiff.eval.spec_alignment import spec_source_reference
+
+                source_detail = cast(
+                    "dict[str, Any]",
+                    capture.metadata.setdefault("source_detail", {}),
+                )
+                source_detail["against_spec"] = spec_source_reference(
+                    workspace_root=root,
+                    spec_path=request.against_spec,
+                )
             write_input_artifacts(capture)
 
             run_path = (
@@ -1126,6 +1156,87 @@ def run_learn_pipeline(
                     _check_cancelled(_cancelled)
 
                     from ahadiff.eval.evaluator import evaluate_run, run_llm_judge_for_run
+
+                    if request.against_spec is not None:
+                        from ahadiff.eval.spec_alignment import (
+                            mark_semantic_alignment_review_degraded,
+                            run_semantic_alignment_review_for_run,
+                            write_spec_alignment_artifact,
+                        )
+
+                        write_spec_alignment_artifact(
+                            run_path=run_path,
+                            workspace_root=root,
+                            spec_path=request.against_spec,
+                        )
+                        if request.spec_semantic_review:
+                            judge_provider_name = str(llm_config.get("judge_provider", "")).strip()
+                            try:
+                                (
+                                    semantic_provider_config,
+                                    semantic_api_key,
+                                    semantic_transport_target,
+                                    semantic_provider_selection_explicit,
+                                ) = _resolve_provider_from_config(
+                                    snapshot=snapshot,
+                                    operation_label="semantic spec alignment review",
+                                    provider_name=judge_provider_name or None,
+                                    provider_class=request.provider_class,
+                                    base_url=None,
+                                    model=None,
+                                    api_key_env=request.api_key_env,
+                                    privacy_mode=effective_privacy_mode,
+                                    local_hosts=security_config.local_hosts,
+                                    strict_local_hosts=security_config.strict_local_hosts,
+                                    role="judge",
+                                )
+                                semantic_privacy_mode = _privacy_mode_for_explicit_provider_call(
+                                    effective_privacy_mode,
+                                    transport_target=semantic_transport_target,
+                                    provider_selection_explicit=(
+                                        semantic_provider_selection_explicit
+                                    ),
+                                )
+
+                                def _run_semantic_review() -> None:
+                                    run_semantic_alignment_review_for_run(
+                                        run_path=run_path,
+                                        workspace_root=root,
+                                        provider_config=semantic_provider_config,
+                                        api_key=semantic_api_key,
+                                        security_config=security_config,
+                                        privacy_mode=cast("PrivacyMode", semantic_privacy_mode),
+                                        output_lang=resolved_content_lang,
+                                        request_timeout_seconds=int(
+                                            llm_config["request_timeout_seconds"]
+                                        ),
+                                        max_concurrent=int(llm_config["max_concurrent"]),
+                                        qps_limit=int(provider_limits["qps_limit"]),
+                                        retry_attempts=int(llm_config["retry_attempts"]),
+                                        input_token_budget=int(
+                                            llm_config.get("input_token_budget", 200000)
+                                        ),
+                                        output_token_budget=output_budget,
+                                    )
+
+                                _emit(8, "Running semantic spec alignment review")
+                                run_with_retry(
+                                    _run_semantic_review,
+                                    step_name="semantic_spec_alignment",
+                                    budget=error_budget,
+                                    is_cancelled=_cancelled,
+                                    max_retries_override=_LLM_STEP_MAX_RETRIES,
+                                )
+                            except Exception as semantic_error:
+                                learn_warnings.append(
+                                    f"semantic spec alignment review failed: {semantic_error}"
+                                )
+                                mark_semantic_alignment_review_degraded(
+                                    run_path=run_path,
+                                    provider_name=judge_provider_name or "unconfigured",
+                                    model_name=str(llm_config.get("judge_model", "")),
+                                    reason=str(semantic_error),
+                                )
 
                     learn_report = evaluate_run(run_path)
 

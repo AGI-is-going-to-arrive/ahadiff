@@ -60,10 +60,12 @@ _ARTIFACT_PATHS = {
     "claims": "claims.jsonl",
     "concepts": "concepts.jsonl",
     "diff": "patch.diff",
+    "graphify_signoff": "graphify_signoff.json",
     "judge": "judge.json",
     "misconceptions": "quiz/misconception_cards.jsonl",
     "quiz": "quiz/quiz.jsonl",
     "score": "score.json",
+    "spec_alignment": "spec_alignment.json",
 }
 _LESSON_LEVELS = {"full", "hint", "compact"}
 _SUPPORTED_CONTENT_LANGS = frozenset({"en", "zh-CN"})
@@ -142,11 +144,13 @@ _ALLOWED_ARTIFACTS = frozenset(
     {
         "claims.jsonl",
         "concepts.jsonl",
+        "graphify_signoff.json",
         "judge.json",
         "patch.diff",
         "quiz/misconception_cards.jsonl",
         "quiz/quiz.jsonl",
         "score.json",
+        "spec_alignment.json",
         "lesson/lesson.full.md",
         "lesson/lesson.hint.md",
         "lesson/lesson.compact.md",
@@ -238,6 +242,24 @@ async def get_score(request: Request) -> JSONResponse:
 async def get_judge(request: Request) -> JSONResponse:
     return await _artifact_response(
         request, _ARTIFACT_PATHS["judge"], "judge", not_found_status_code=404
+    )
+
+
+async def get_spec_alignment_artifact(request: Request) -> JSONResponse:
+    return await _artifact_response(
+        request,
+        _ARTIFACT_PATHS["spec_alignment"],
+        "spec_alignment",
+        not_found_status_code=404,
+    )
+
+
+async def get_graphify_signoff(request: Request) -> JSONResponse:
+    return await _artifact_response(
+        request,
+        _ARTIFACT_PATHS["graphify_signoff"],
+        "graphify_signoff",
+        not_found_status_code=404,
     )
 
 
@@ -1404,6 +1426,7 @@ __all__ = [
     "get_concepts",
     "get_concepts_ledger",
     "get_diff",
+    "get_graphify_signoff",
     "get_judge",
     "get_lesson",
     "get_misconceptions",
@@ -1413,5 +1436,6 @@ __all__ = [
     "get_run",
     "get_run_concepts",
     "get_score",
+    "get_spec_alignment_artifact",
     "list_runs",
 ]

@@ -133,7 +133,7 @@ export const runArtifactEnvelopeSchema = z.object({
 export const scoreDimensionSchema = z
   .object({
     score: z.number().finite().nonnegative(),
-    max_score: z.number().finite().positive(),
+    max_score: z.number().finite().nonnegative(),
     reason: z.string(),
   })
   .strict()
@@ -177,6 +177,174 @@ export const scorePayloadSchema = z
       }),
     hard_gates: z.record(z.string().min(1), scoreHardGateSchema),
     notes: z.array(z.string()),
+  })
+  .strict();
+
+export const specEvidenceRefSchema = z
+  .object({
+    type: z.string().min(1),
+    claim_id: z.string().optional(),
+    file: z.string().optional(),
+    start: z.number().int().nullable().optional(),
+    end: z.number().int().nullable().optional(),
+    side: z.string().nullable().optional(),
+    lines: z.array(z.number().int().nonnegative()).optional(),
+    anchors: z.array(z.string()).optional(),
+  })
+  .strict();
+
+export const specRequirementSchema = z
+  .object({
+    id: z.string().min(1),
+    text: z.string(),
+    classification: z.enum(['implemented', 'partial', 'missing', 'unknown']),
+    severity: z.string(),
+    evidence_refs: z.array(specEvidenceRefSchema),
+    confidence: z.number().finite().min(0).max(1),
+    reason: z.string(),
+  })
+  .strict();
+
+export const specSemanticRequirementSchema = z
+  .object({
+    id: z.string().min(1),
+    classification: z.enum(['implemented', 'partial', 'missing', 'unknown', 'violated']),
+    confidence: z.number().finite().min(0).max(1),
+    rationale: z.string(),
+    evidence_refs: z.array(specEvidenceRefSchema),
+    disagreement_with_deterministic: z.boolean(),
+  })
+  .strict();
+
+export const specSemanticReviewSchema = z
+  .object({
+    enabled: z.boolean(),
+    provider: z.string(),
+    model: z.string(),
+    prompt_digest: z.string(),
+    input_digest: z.string(),
+    requirements: z.array(specSemanticRequirementSchema),
+    aggregate: z
+      .object({
+        implemented: z.number().int().nonnegative(),
+        partial: z.number().int().nonnegative(),
+        missing: z.number().int().nonnegative(),
+        unknown: z.number().int().nonnegative(),
+        violated: z.number().int().nonnegative(),
+        confidence: z.number().finite().min(0).max(1),
+        risk_flags: z.array(z.string()),
+      })
+      .strict(),
+    degraded: z.boolean(),
+    degradation_reason: z.string().nullable().optional(),
+    limitations: z.array(z.string()),
+    usage: z
+      .object({
+        input_tokens: z.number().int().nonnegative().optional(),
+        output_tokens: z.number().int().nonnegative().optional(),
+        finish_reason: z.string().nullable().optional(),
+        request_id: z.string().nullable().optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+export const specSemanticAdjustmentSchema = z
+  .object({
+    policy: z.string(),
+    score: z.number().finite().min(0).max(10),
+    delta: z.number().finite().min(-10).max(10),
+    reason: z.string(),
+  })
+  .strict();
+
+export const specAlignmentArtifactSchema = z
+  .object({
+    artifact: z.literal('spec_alignment'),
+    schema: z.literal('ahadiff.spec_alignment'),
+    schema_version: z.number().int().positive(),
+    applicability: z.string(),
+    status: z.string(),
+    spec_source: z
+      .object({
+        path: z.string().optional(),
+        ref: z.string().optional(),
+        sha256: z.string().optional(),
+        bytes: z.number().int().nonnegative().optional(),
+      })
+      .strict()
+      .optional(),
+    spec_digest: z.string().optional(),
+    requirements: z.array(specRequirementSchema),
+    summary: z
+      .object({
+        implemented: z.number().int().nonnegative(),
+        partial: z.number().int().nonnegative(),
+        missing: z.number().int().nonnegative(),
+        unknown: z.number().int().nonnegative(),
+      })
+      .strict(),
+    score: z.number().finite().min(0).max(10),
+    max_score: z.number().finite().positive(),
+    confidence: z.number().finite().min(0).max(1),
+    matcher: z
+      .object({
+        mode: z.string(),
+        claim_count: z.number().int().nonnegative(),
+        uses_code_anchors: z.boolean(),
+        uses_patch_added_lines: z.boolean(),
+        detects_forbidden_additions: z.boolean(),
+      })
+      .strict()
+      .optional(),
+    deterministic_result: z
+      .object({
+        score: z.number().finite().min(0).max(10),
+        summary: z.record(z.string(), z.number().int().nonnegative()).optional(),
+        matcher: z.record(z.string(), z.unknown()).optional(),
+      })
+      .strict()
+      .optional(),
+    semantic_review: specSemanticReviewSchema.optional(),
+    semantic_adjustment: specSemanticAdjustmentSchema.optional(),
+    known_limitations: z.array(z.string()),
+  })
+  .strict();
+
+export const graphifySignoffArtifactSchema = z
+  .object({
+    artifact: z.literal('graphify_signoff'),
+    schema: z.literal('ahadiff.graphify_signoff'),
+    schema_version: z.number().int().positive(),
+    run_id: z.string().min(1),
+    signoff: z.enum(['passed', 'degraded', 'unavailable']),
+    freshness: z.string().nullable().optional(),
+    graph_source: z.string(),
+    graph_sha256: z.string(),
+    parser_version: z.string(),
+    import_time: z.string(),
+    node_count: z.number().int().nonnegative(),
+    edge_count: z.number().int().nonnegative(),
+    source_coverage: z
+      .object({
+        selected_files: z.number().int().nonnegative(),
+        omitted_files: z.number().int().nonnegative(),
+        graph_nodes: z.number().int().nonnegative(),
+        graph_edges: z.number().int().nonnegative(),
+      })
+      .strict(),
+    degradation_reasons: z.array(z.string()),
+    checks: z.array(
+      z
+        .object({
+          name: z.string(),
+          passed: z.boolean(),
+          detail: z.string(),
+        })
+        .strict(),
+    ),
+    known_limitations: z.array(z.string()),
   })
   .strict();
 
@@ -1061,6 +1229,15 @@ export const specAlignmentResponseSchema = z
     alignment_score: z.number().finite().nullable(),
     total_evaluated: z.number().int().nonnegative(),
     recent_trend: z.enum(['improving', 'stable', 'declining']).nullable(),
+    total_requirements: z.number().int().nonnegative(),
+    implemented: z.number().int().nonnegative(),
+    partial: z.number().int().nonnegative(),
+    missing: z.number().int().nonnegative(),
+    unknown: z.number().int().nonnegative(),
+    degraded_count: z.number().int().nonnegative(),
+    semantic_reviewed: z.number().int().nonnegative(),
+    semantic_degraded_count: z.number().int().nonnegative(),
+    semantic_disagreement_count: z.number().int().nonnegative(),
   })
   .strict();
 

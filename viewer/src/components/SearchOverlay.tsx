@@ -5,9 +5,9 @@
  * this component supplies the actual interaction. Behaviour parallels V6
  * (AhaDiff Warm v6.html L1440 + L80-82): a global keyboard shortcut opens
  * a centred modal with debounced search, keyboard-navigable result list,
- * and Esc/backdrop-click to dismiss. Backend may return 404 / network
- * error before `/api/search` ships — we degrade gracefully to "no results"
- * messaging instead of throwing, so the shortcut is always responsive.
+ * and Esc/backdrop-click to dismiss. Backend errors are surfaced as an
+ * unavailable state so route/schema drift is visible instead of looking like
+ * an empty result set.
  */
 
 import {
@@ -19,7 +19,6 @@ import {
 } from 'react';
 import { flushSync } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { ApiError } from '../api/client';
 import { searchAll, type SearchResponse, type SearchResult } from '../api/search';
 import { ValidationError } from '../api/schemas';
 import { useTranslation } from '../i18n/useTranslation';
@@ -205,13 +204,6 @@ export default function SearchOverlay({ open, onClose, initialQuery }: SearchOve
         .catch((err: unknown) => {
           if (controller.signal.aborted) return;
           if (err instanceof DOMException && err.name === 'AbortError') return;
-          if (err instanceof ApiError && err.status === 404) {
-            /* Endpoint not yet shipped — degrade gracefully to empty. */
-            setResults([]);
-            setMobilePreview(false);
-            setStatus('empty');
-            return;
-          }
           if (err instanceof ValidationError) {
             setResults([]);
             setMobilePreview(false);

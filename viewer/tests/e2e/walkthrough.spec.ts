@@ -1319,6 +1319,32 @@ test.describe('walkthrough: full-app functional test', () => {
     expect(scoreRequests).toEqual([]);
   });
 
+  test('Ratchet — transparency failure is visible while history fallback remains', async ({ page }) => {
+    await page.route(
+      (url) => url.pathname === '/api/ratchet/transparency',
+      (route) =>
+        route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'transparency failed' }),
+        }),
+    );
+
+    await page.goto('/#/ratchet');
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+
+    await expect(page.locator('.ratchet-transparency-warning')).toContainText(
+      /Ratchet transparency is unavailable/i,
+    );
+    await expect(page.locator('.ratchet-table tbody tr')).toHaveCount(3);
+
+    await page.locator('.ratchet-tabs__tab', { hasText: /Benchmark/i }).click();
+    await expect(page.locator('.ratchet-transparency-warning')).toContainText(
+      /Ratchet transparency is unavailable/i,
+    );
+    await expect(page.locator('.benchmark-grid')).toHaveCount(0);
+  });
+
   /* ---------------------------------------------------------------- */
   /*  Page 11: Landing / Welcome                                       */
   /* ---------------------------------------------------------------- */

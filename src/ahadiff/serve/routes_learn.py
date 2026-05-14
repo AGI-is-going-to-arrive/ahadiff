@@ -33,6 +33,8 @@ _ACCEPTED_FIELDS = frozenset(
         "patch",
         "compare",
         "compare_dir",
+        "against_spec",
+        "spec_semantic_review",
         "patch_url",
         "dry_run",
         "force_learn",
@@ -45,10 +47,19 @@ _ACCEPTED_FIELDS = frozenset(
 _IGNORED_FIELDS: frozenset[str] = frozenset()
 
 _BOOL_FIELDS = frozenset(
-    {"last", "staged", "unstaged", "include_untracked", "dry_run", "force_learn"}
+    {
+        "last",
+        "staged",
+        "unstaged",
+        "include_untracked",
+        "dry_run",
+        "force_learn",
+        "spec_semantic_review",
+    }
 )
 _OPTIONAL_BOOL_FIELDS = frozenset({"use_graphify"})
 _PATH_PAIR_FIELDS = frozenset({"compare", "compare_dir"})
+_PATH_FIELDS = frozenset({"against_spec"})
 _ENUM_FIELDS = {
     "lang": frozenset({"auto", "en", "zh-CN"}),
     "privacy_mode": frozenset({"strict_local", "redacted_remote", "explicit_remote"}),
@@ -115,6 +126,14 @@ def _coerce_path_pair(key: str, value: object) -> tuple[Path, Path]:
     return coerced[0], coerced[1]
 
 
+def _coerce_path(key: str, value: object) -> Path:
+    if not isinstance(value, str):
+        raise TypeError(f"{key} expects string path value")
+    if len(value) > _MAX_STRING_LENGTH:
+        raise ValueError(f"{key} exceeds max length")
+    return Path(value)
+
+
 def _coerce_changed_paths(value: object) -> tuple[str, ...]:
     if not isinstance(value, list | tuple):
         raise TypeError("changed_paths expects a path array")
@@ -140,6 +159,8 @@ def _coerce_field(key: str, value: object) -> object:
         return _coerce_optional_bool(value)
     if key in _PATH_PAIR_FIELDS:
         return _coerce_path_pair(key, value)
+    if key in _PATH_FIELDS:
+        return _coerce_path(key, value)
     return _coerce_string(key, value)
 
 

@@ -1,18 +1,29 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import httpx
+import pytest
 from typer.testing import CliRunner
 
 from ahadiff.cli import app
 from ahadiff.contracts import ClaimRecord, ProviderConfig, SourceHunk, compute_eval_bundle_version
 from ahadiff.contracts.eval_bundle import compute_runtime_eval_bundle_version
 from ahadiff.core.config import SecurityConfig
+from ahadiff.core.errors import InputError
 from ahadiff.eval import evaluate_run
 from ahadiff.eval.evaluator import run_llm_judge_for_run
+from ahadiff.eval.spec_alignment import (
+    merge_semantic_review_into_artifact,
+    parse_semantic_alignment_output,
+    read_spec_source,
+    run_semantic_alignment_review_for_run,
+    write_spec_alignment_artifact,
+)
 from ahadiff.git.line_map import build_line_map, serialize_line_map_payload
 
 _RUNNER = CliRunner()
@@ -98,6 +109,63 @@ def _write_run_fixture(
             encoding="utf-8",
         )
     return run_path
+
+
+def _write_spec_alignment_artifact(
+    run_path: Path,
+    *,
+    score: float,
+    summary: dict[str, int] | None = None,
+) -> None:
+    payload = {
+        "artifact": "spec_alignment",
+        "schema": "ahadiff.spec_alignment",
+        "schema_version": 1,
+        "applicability": "applicable",
+        "status": "scored",
+        "spec_source": {
+            "path": "SPEC.md",
+            "ref": "SPEC.md",
+            "sha256": "0" * 64,
+            "bytes": 128,
+        },
+        "spec_digest": "0" * 64,
+        "requirements": [
+            {
+                "id": "REQ-001",
+                "text": "Retry helper must attempt three times.",
+                "classification": "implemented",
+                "severity": "medium",
+                "evidence_refs": [
+                    {
+                        "type": "claim",
+                        "claim_id": "claim_retry_loop",
+                        "file": "src/app.py",
+                        "start": 1,
+                        "end": 6,
+                        "side": "new",
+                    }
+                ],
+                "confidence": 0.9,
+                "reason": "Verified claim overlaps the requirement.",
+            }
+        ],
+        "summary": summary
+        or {
+            "implemented": 1,
+            "partial": 0,
+            "missing": 0,
+            "unknown": 0,
+        },
+        "score": score,
+        "max_score": 10.0,
+        "confidence": 0.9,
+        "known_limitations": ["Deterministic lexical matching only."],
+    }
+    (run_path / "spec_alignment.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _standard_quiz_patch_text() -> str:
@@ -290,6 +358,442 @@ diff --git a/src/app.py b/src/app.py
     assert report.verdict == "PASS"
     assert report.overall >= 80.0
     assert report.hard_gates.passed is True
+
+
+def test_spec_alignment_without_spec_is_not_applicable_score_zero(tmp_path: Path) -> None:
+    run_path = _write_run_fixture(
+        tmp_path,
+        run_id="run-no-spec",
+        claims=_standard_quiz_claims("run-no-spec"),
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+    )
+
+    report = evaluate_run(run_path)
+    dimensions = cast("dict[str, dict[str, object]]", report.to_payload()["dimensions"])
+    spec_dimension = dimensions["spec_alignment"]
+
+    assert spec_dimension["score"] == 0.0
+    assert spec_dimension["max_score"] == 0.0
+    assert "not applicable" in str(spec_dimension["reason"]).lower()
+    assert report.overall >= 80.0
+    assert report.weakest_dim != "spec_alignment"
+
+
+def test_spec_alignment_uses_artifact_score_and_summary(tmp_path: Path) -> None:
+    run_path = _write_run_fixture(
+        tmp_path,
+        run_id="run-spec",
+        claims=_standard_quiz_claims("run-spec"),
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+    )
+    _write_spec_alignment_artifact(
+        run_path,
+        score=7.5,
+        summary={"implemented": 1, "partial": 1, "missing": 1, "unknown": 0},
+    )
+
+    report = evaluate_run(run_path)
+    dimensions = cast("dict[str, dict[str, object]]", report.to_payload()["dimensions"])
+    spec_dimension = dimensions["spec_alignment"]
+
+    assert spec_dimension["score"] == 7.5
+    assert "implemented=1" in str(spec_dimension["reason"])
+    assert "missing=1" in str(spec_dimension["reason"])
+
+
+def test_spec_alignment_bad_artifact_degrades_to_zero(tmp_path: Path) -> None:
+    run_path = _write_run_fixture(
+        tmp_path,
+        run_id="run-bad-spec",
+        claims=_standard_quiz_claims("run-bad-spec"),
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+    )
+    (run_path / "spec_alignment.json").write_text("{not json\n", encoding="utf-8")
+
+    report = evaluate_run(run_path)
+    dimensions = cast("dict[str, dict[str, object]]", report.to_payload()["dimensions"])
+    spec_dimension = dimensions["spec_alignment"]
+
+    assert spec_dimension["score"] == 0.0
+    assert "unreadable" in str(spec_dimension["reason"]).lower()
+
+
+def test_spec_alignment_hardlink_artifact_degrades_to_zero(tmp_path: Path) -> None:
+    run_path = _write_run_fixture(
+        tmp_path,
+        run_id="run-hardlink-spec",
+        claims=_standard_quiz_claims("run-hardlink-spec"),
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+    )
+    external = tmp_path / "external-spec-alignment.json"
+    _write_spec_alignment_artifact(run_path, score=9.0)
+    external.write_text(
+        (run_path / "spec_alignment.json").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    (run_path / "spec_alignment.json").unlink()
+    try:
+        os.link(external, run_path / "spec_alignment.json")
+    except OSError:
+        pytest.skip("hardlinks are not available on this filesystem")
+
+    report = evaluate_run(run_path)
+    dimensions = cast("dict[str, dict[str, object]]", report.to_payload()["dimensions"])
+    spec_dimension = dimensions["spec_alignment"]
+
+    assert spec_dimension["score"] == 0.0
+    assert "unreadable" in str(spec_dimension["reason"]).lower()
+
+
+def test_against_spec_rejects_invalid_utf8(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "repo"
+    workspace_root.mkdir()
+    spec_path = workspace_root / "SPEC.md"
+    spec_path.write_bytes(b"\xff\xfe invalid")
+
+    with pytest.raises(InputError, match="valid UTF-8"):
+        read_spec_source(workspace_root=workspace_root, spec_path=Path("SPEC.md"))
+
+
+def test_spec_alignment_uses_patch_anchors_without_claims(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "repo"
+    run_path = workspace_root / ".ahadiff" / "runs" / "run-spec-patch"
+    run_path.mkdir(parents=True)
+    spec_text = "- The CLI must expose `--against-spec` and write `spec_alignment.json`.\n"
+    (workspace_root / "SPEC.md").write_text(spec_text, encoding="utf-8")
+    (run_path / "patch.diff").write_text(
+        """\
+diff --git a/src/ahadiff/cli.py b/src/ahadiff/cli.py
+--- a/src/ahadiff/cli.py
++++ b/src/ahadiff/cli.py
+@@ -1,2 +1,4 @@
++option = "--against-spec"
++artifact = "spec_alignment.json"
+""",
+        encoding="utf-8",
+    )
+
+    payload = write_spec_alignment_artifact(
+        run_path=run_path,
+        workspace_root=workspace_root,
+        spec_path=Path("SPEC.md"),
+    )
+
+    requirement = payload["requirements"][0]
+    assert requirement["classification"] == "implemented"
+    assert requirement["evidence_refs"] == [
+        {
+            "type": "patch",
+            "file": "src/ahadiff/cli.py",
+            "lines": [1, 2],
+            "anchors": ["--against-spec", "spec_alignment.json"],
+            "side": "new",
+        }
+    ]
+    assert "code anchors" in requirement["reason"]
+    assert payload["matcher"]["mode"] == "deterministic_structured"
+    assert payload["matcher"]["claim_count"] == 0
+    assert payload["spec_source"]["sha256"] == hashlib.sha256(spec_text.encode("utf-8")).hexdigest()
+
+
+def test_spec_alignment_marks_forbidden_anchor_added_as_missing(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "repo"
+    run_path = workspace_root / ".ahadiff" / "runs" / "run-spec-forbidden"
+    run_path.mkdir(parents=True)
+    (workspace_root / "SPEC.md").write_text(
+        "- Must not import `DOMPurify`.\n",
+        encoding="utf-8",
+    )
+    (run_path / "patch.diff").write_text(
+        """\
+diff --git a/viewer/src/App.tsx b/viewer/src/App.tsx
+--- a/viewer/src/App.tsx
++++ b/viewer/src/App.tsx
+@@ -1 +1,2 @@
++import DOMPurify from 'dompurify';
+ export function App() {}
+""",
+        encoding="utf-8",
+    )
+    (run_path / "claims.jsonl").write_text(
+        json.dumps(
+            {
+                "claim_id": "claim_dom",
+                "text": "The app imports DOMPurify.",
+                "status": "verified",
+                "source_hunks": [
+                    {"file": "viewer/src/App.tsx", "start": 1, "end": 1, "side": "new"}
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    payload = write_spec_alignment_artifact(
+        run_path=run_path,
+        workspace_root=workspace_root,
+        spec_path=Path("SPEC.md"),
+    )
+
+    requirement = payload["requirements"][0]
+    assert requirement["classification"] == "missing"
+    assert requirement["confidence"] >= 0.8
+    assert "Forbidden requirement anchor was added" in requirement["reason"]
+    assert requirement["evidence_refs"][0]["type"] == "patch_forbidden"
+    assert requirement["evidence_refs"][0]["anchors"] == ["DOMPurify"]
+    assert payload["summary"] == {"implemented": 0, "partial": 0, "missing": 1, "unknown": 0}
+    assert payload["score"] == 0.0
+
+
+def test_semantic_review_without_bound_evidence_stays_unknown() -> None:
+    deterministic: dict[str, Any] = {
+        "artifact": "spec_alignment",
+        "schema": "ahadiff.spec_alignment",
+        "score": 0.0,
+        "summary": {"implemented": 0, "partial": 0, "missing": 1, "unknown": 0},
+        "requirements": [
+            {
+                "id": "REQ-001",
+                "text": "The CLI must expose --spec-semantic-review.",
+                "classification": "missing",
+                "severity": "medium",
+                "evidence_refs": [],
+                "confidence": 0.55,
+                "reason": "No matching claim or diff evidence was found.",
+            }
+        ],
+    }
+
+    review = parse_semantic_alignment_output(
+        json.dumps(
+            {
+                "requirements": [
+                    {
+                        "id": "REQ-001",
+                        "classification": "implemented",
+                        "confidence": 0.95,
+                        "rationale": "Looks implemented semantically.",
+                        "evidence_refs": [],
+                    }
+                ]
+            }
+        ),
+        deterministic_artifact=deterministic,
+        provider=cast("Any", type("Provider", (), {"provider": "openai", "model": "gpt-5.5"})()),
+        prompt_digest="abc123",
+        input_digest="def456",
+    )
+    merged = merge_semantic_review_into_artifact(deterministic, review)
+
+    requirement = merged["semantic_review"]["requirements"][0]
+    assert requirement["classification"] == "unknown"
+    assert requirement["confidence"] <= 0.35
+    assert merged["score"] == 0.0
+    assert merged["semantic_adjustment"]["delta"] == 0.0
+
+
+def test_semantic_review_forbidden_violation_lowers_score_when_evidence_bound() -> None:
+    evidence_ref = {
+        "type": "patch_forbidden",
+        "file": "viewer/src/App.tsx",
+        "lines": [2],
+        "anchors": ["DOMPurify"],
+        "side": "new",
+    }
+    deterministic = {
+        "artifact": "spec_alignment",
+        "schema": "ahadiff.spec_alignment",
+        "score": 10.0,
+        "summary": {"implemented": 1, "partial": 0, "missing": 0, "unknown": 0},
+        "requirements": [
+            {
+                "id": "REQ-001",
+                "text": "Do not add `DOMPurify` unless HTML rendering exists.",
+                "classification": "implemented",
+                "severity": "high",
+                "evidence_refs": [evidence_ref],
+                "confidence": 0.9,
+                "reason": "Fixture deterministic result.",
+            }
+        ],
+    }
+
+    review = parse_semantic_alignment_output(
+        json.dumps(
+            {
+                "requirements": [
+                    {
+                        "id": "REQ-001",
+                        "classification": "violated",
+                        "confidence": 0.9,
+                        "rationale": (
+                            "The forbidden anchor is present in the listed patch evidence."
+                        ),
+                        "evidence_refs": [evidence_ref],
+                    }
+                ]
+            }
+        ),
+        deterministic_artifact=deterministic,
+        provider=cast("Any", type("Provider", (), {"provider": "openai", "model": "gpt-5.5"})()),
+        prompt_digest="abc123",
+        input_digest="def456",
+    )
+    merged = merge_semantic_review_into_artifact(deterministic, review)
+
+    assert merged["semantic_review"]["requirements"][0]["classification"] == "violated"
+    assert merged["score"] < 10.0
+    assert merged["semantic_adjustment"]["delta"] < 0
+
+
+def test_run_semantic_alignment_review_for_run_writes_optional_artifact_field(
+    tmp_path: Path,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    spec_path = workspace_root / "SPEC.md"
+    spec_path.parent.mkdir(parents=True)
+    spec_path.write_text("- The retry helper must attempt three times.\n", encoding="utf-8")
+    run_path = _write_run_fixture(
+        workspace_root,
+        run_id="run-semantic",
+        claims=_standard_quiz_claims("run-semantic"),
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+    )
+    deterministic = write_spec_alignment_artifact(
+        run_path=run_path,
+        workspace_root=workspace_root,
+        spec_path=Path("SPEC.md"),
+    )
+    evidence_refs = deterministic["requirements"][0]["evidence_refs"]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        assert payload["model"] == "gpt-5.5"
+        return httpx.Response(
+            200,
+            json={
+                "id": "resp_semantic",
+                "model": "gpt-5.5",
+                "status": "completed",
+                "output_text": json.dumps(
+                    {
+                        "requirements": [
+                            {
+                                "id": "REQ-001",
+                                "classification": "implemented",
+                                "confidence": 0.88,
+                                "rationale": "The evidence supports the retry requirement.",
+                                "evidence_refs": evidence_refs,
+                            }
+                        ],
+                        "limitations": ["Fixture limitation."],
+                    }
+                ),
+                "usage": {"input_tokens": 33, "output_tokens": 44},
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler), trust_env=False) as client:
+        merged = run_semantic_alignment_review_for_run(
+            run_path=run_path,
+            workspace_root=workspace_root,
+            provider_config=ProviderConfig(
+                provider_class="openai_responses",
+                model_name="gpt-5.5",
+                base_url="http://127.0.0.1:8318",
+                api_key_env="AHADIFF_GPT55_KEY",
+            ),
+            api_key="test-key",
+            security_config=SecurityConfig(),
+            privacy_mode="strict_local",
+            output_lang="en",
+            request_timeout_seconds=30,
+            max_concurrent=1,
+            qps_limit=10,
+            retry_attempts=0,
+            client=client,
+        )
+
+    payload = json.loads((run_path / "spec_alignment.json").read_text(encoding="utf-8"))
+    assert merged["semantic_review"]["model"] == "gpt-5.5"
+    assert payload["semantic_review"]["aggregate"]["implemented"] == 1
+    assert payload["semantic_review"]["degraded"] is False
+    assert payload["deterministic_result"]["score"] == deterministic["score"]
+
+
+def test_run_semantic_alignment_review_bad_json_degrades_without_changing_score(
+    tmp_path: Path,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    spec_path = workspace_root / "SPEC.md"
+    spec_path.parent.mkdir(parents=True)
+    spec_path.write_text("- The retry helper must attempt three times.\n", encoding="utf-8")
+    run_path = _write_run_fixture(
+        workspace_root,
+        run_id="run-semantic-bad-json",
+        claims=_standard_quiz_claims("run-semantic-bad-json"),
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+    )
+    deterministic = write_spec_alignment_artifact(
+        run_path=run_path,
+        workspace_root=workspace_root,
+        spec_path=Path("SPEC.md"),
+    )
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "id": "resp_semantic_bad",
+                "model": "gpt-5.5",
+                "status": "completed",
+                "output_text": "{not-json",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler), trust_env=False) as client:
+        merged = run_semantic_alignment_review_for_run(
+            run_path=run_path,
+            workspace_root=workspace_root,
+            provider_config=ProviderConfig(
+                provider_class="openai_responses",
+                model_name="gpt-5.5",
+                base_url="http://127.0.0.1:8318",
+                api_key_env="AHADIFF_GPT55_KEY",
+            ),
+            api_key="test-key",
+            security_config=SecurityConfig(),
+            privacy_mode="strict_local",
+            output_lang="en",
+            request_timeout_seconds=30,
+            max_concurrent=1,
+            qps_limit=10,
+            retry_attempts=0,
+            client=client,
+        )
+
+    assert merged["semantic_review"]["degraded"] is True
+    assert merged["score"] == deterministic["score"]
 
 
 def test_run_llm_judge_for_run_writes_judge_artifact(tmp_path: Path) -> None:
@@ -577,6 +1081,7 @@ diff --git a/src/app.py b/src/app.py
         with_lesson=False,
         with_quiz=False,
     )
+    _write_spec_alignment_artifact(run_path, score=10.0)
 
     report = evaluate_run(run_path)
 

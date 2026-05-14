@@ -60,6 +60,7 @@ from .routes_runs import (
     get_concepts,
     get_concepts_ledger,
     get_diff,
+    get_graphify_signoff,
     get_judge,
     get_lesson,
     get_misconceptions,
@@ -69,6 +70,7 @@ from .routes_runs import (
     get_run,
     get_run_concepts,
     get_score,
+    get_spec_alignment_artifact,
     list_runs,
 )
 from .routes_search import search_api
@@ -159,8 +161,10 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
             Route("/api/run/{run_id}/quiz", get_quiz, methods=["GET"]),
             Route("/api/run/{run_id}/misconceptions", get_misconceptions, methods=["GET"]),
             Route("/api/run/{run_id}/diff", get_diff, methods=["GET"]),
+            Route("/api/run/{run_id}/graphify-signoff", get_graphify_signoff, methods=["GET"]),
             Route("/api/run/{run_id}/score", get_score, methods=["GET"]),
             Route("/api/run/{run_id}/judge", get_judge, methods=["GET"]),
+            Route("/api/run/{run_id}/spec-alignment", get_spec_alignment_artifact, methods=["GET"]),
             Route("/api/run/{run_id}/concepts", get_run_concepts, methods=["GET"]),
             Route("/api/concepts/ledger", get_concepts_ledger, methods=["GET"]),
             Route("/api/concepts", get_concepts, methods=["GET"]),

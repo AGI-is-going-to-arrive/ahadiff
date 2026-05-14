@@ -58,12 +58,13 @@ def build_deterministic_scores(
     line_maps: Sequence[FileLineMap],
     lesson_artifacts: Mapping[str, str],
     quiz_entries: Sequence[Mapping[str, Any]],
+    run_path: Path | None = None,
 ) -> DeterministicScoreResult:
     notes: list[str] = []
     learnability_score = _metadata_learnability_score(metadata, notes)
     quiz_score, quiz_reason = _quiz_transfer_score(quiz_entries, claims=claims, line_maps=line_maps)
     conciseness_score, conciseness_reason = _conciseness_score(lesson_artifacts)
-    spec_score, spec_reason = _spec_alignment_score(metadata)
+    spec_score, spec_reason, spec_applicable = _spec_alignment_score(metadata, run_path=run_path)
     coverage_score, coverage_reason = _diff_coverage_score(claims, line_maps)
     accuracy_score, accuracy_reason = _claim_weighted_score(
         claims,
@@ -135,7 +136,7 @@ def build_deterministic_scores(
         DimensionScore(
             name="spec_alignment",
             score=spec_score,
-            max_score=rubric.dimension("spec_alignment").max_score,
+            max_score=(rubric.dimension("spec_alignment").max_score if spec_applicable else 0.0),
             reason=spec_reason,
         ),
         DimensionScore(
@@ -366,13 +367,13 @@ def _conciseness_score(
 
 def _spec_alignment_score(
     metadata: Mapping[str, Any],
-) -> tuple[float, str]:
-    source_detail = metadata.get("source_detail")
-    if isinstance(source_detail, dict) and any(
-        key in source_detail for key in ("against_spec", "spec_path", "spec_ref")
-    ):
-        return 6.0, "spec reference present but deterministic scorer is neutral"
-    return 10.0, "no spec constraint attached to this run"
+    *,
+    run_path: Path | None,
+) -> tuple[float, str, bool]:
+    from ahadiff.eval.spec_alignment import dimension_score_from_artifact
+
+    dimension = dimension_score_from_artifact(run_path=run_path, metadata=dict(metadata))
+    return dimension.score, dimension.reason, dimension.applicable
 
 
 def _diff_coverage_score(

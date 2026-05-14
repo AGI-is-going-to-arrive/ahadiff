@@ -6,7 +6,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -15,6 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 RUN_ALL_SCRIPT = REPO_ROOT / "benchmarks" / "scripts" / "run_all.sh"
 BASELINE_PATH = REPO_ROOT / "benchmarks" / "results" / "baseline_20260428.json"
 GRAPHIFY_BENCH_SCRIPT = REPO_ROOT / "benchmarks" / "scripts" / "bench_graphify.py"
+SERVE_READ_BENCH_SCRIPT = REPO_ROOT / "benchmarks" / "scripts" / "bench_serve_read_routes.py"
 RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release.yml"
 BENCHMARK_MANIFEST = REPO_ROOT / "benchmarks" / "manifest.json"
 GRAPH_PRESENT_FIXTURE = (
@@ -29,6 +30,18 @@ GRAPH_PRESENT_FIXTURE = (
 
 def _load_graphify_bench_module() -> ModuleType:
     spec = importlib.util.spec_from_file_location("ahadiff_bench_graphify", GRAPHIFY_BENCH_SCRIPT)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_serve_read_bench_module() -> ModuleType:
+    spec = importlib.util.spec_from_file_location(
+        "ahadiff_bench_serve_read_routes",
+        SERVE_READ_BENCH_SCRIPT,
+    )
     assert spec is not None
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -91,6 +104,39 @@ def test_run_all_treats_graphify_perf_gate_as_release_blocking() -> None:
 
     assert "graphify perf gate failed" in script
     assert '[[ "$graphify_gate_status" == "fail" ]]' in script
+
+
+def test_run_all_treats_serve_read_route_gate_as_release_blocking() -> None:
+    script = RUN_ALL_SCRIPT.read_text(encoding="utf-8")
+
+    assert "serve read-route perf gate failed" in script
+    assert (
+        '[[ "$serve_read_gate_status" == "fail" || "$serve_read_gate_status" == "error" ]]'
+        in script
+    )
+
+
+def test_serve_read_route_benchmark_fails_http_errors() -> None:
+    module = _load_serve_read_bench_module()
+
+    class FakeResponse:
+        status_code = 500
+        content = b'{"error":"boom"}'
+
+    class FakeClient:
+        def get(self, path: str, headers: dict[str, str]) -> FakeResponse:
+            _ = (path, headers)
+            return FakeResponse()
+
+    result = module._measure_route(  # pyright: ignore[reportPrivateUsage]
+        cast("Any", FakeClient()),
+        "GET /api/runs",
+        "/api/runs",
+        False,
+    )
+
+    assert result["status"] == "fail"
+    assert "http_status_500" in result["validation_errors"]
 
 
 def test_release_workflow_runs_graphify_perf_gate() -> None:

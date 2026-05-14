@@ -126,6 +126,15 @@ class SpecAlignmentResponse(BaseModel):
     alignment_score: FiniteNumber | None
     total_evaluated: NonNegativeCount
     recent_trend: Literal["improving", "stable", "declining"] | None
+    total_requirements: NonNegativeCount = 0
+    implemented: NonNegativeCount = 0
+    partial: NonNegativeCount = 0
+    missing: NonNegativeCount = 0
+    unknown: NonNegativeCount = 0
+    degraded_count: NonNegativeCount = 0
+    semantic_reviewed: NonNegativeCount = 0
+    semantic_degraded_count: NonNegativeCount = 0
+    semantic_disagreement_count: NonNegativeCount = 0
 
 
 __all__ = [

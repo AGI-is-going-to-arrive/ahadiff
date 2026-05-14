@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import pathlib as _pathlib
+import re
 import selectors
 import shutil
 import stat
@@ -162,7 +163,10 @@ _TEXT_MAP_SCHEMA = "ahadiff.text_map"
 _TEXT_MAP_SCHEMA_VERSION = 1
 _GRAPHIFY_CONTEXT_SCHEMA = "ahadiff.graphify_context"
 _GRAPHIFY_CONTEXT_SCHEMA_VERSION = 1
+_GRAPHIFY_SIGNOFF_SCHEMA = "ahadiff.graphify_signoff"
+_GRAPHIFY_SIGNOFF_SCHEMA_VERSION = 1
 _GRAPHIFY_PROVENANCE_MAX_BYTES = 16 * 1024
+_SHA256_HEX_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 log = logging.getLogger(__name__)
 
 
@@ -237,14 +241,14 @@ def capture_patch(
         use_graphify=use_graphify,
         repo=_repo,
     )
-    graphify_provenance_missing = "graph_sha256" not in graphify_status.provenance
+    graphify_provenance_invalid = not _is_sha256_hex(graphify_status.provenance.get("graph_sha256"))
     if graphify_status.has_graph and (
-        not graphify_status.imported_exists or graphify_provenance_missing
+        not graphify_status.imported_exists or graphify_provenance_invalid
     ):
         try:
             graphify_status = import_graphify_artifact(
                 workspace_root,
-                force=not graphify_status.imported_exists or graphify_provenance_missing,
+                force=not graphify_status.imported_exists or graphify_provenance_invalid,
             )
         except (InputError, OSError, StorageError):
             if use_graphify is True:
@@ -380,6 +384,12 @@ def write_input_artifacts(capture: CapturedDiff) -> tuple[Path, Path]:
             _render_json_text(graphify_context_payload),
             capture.workspace_root,
         )
+    graphify_signoff_payload = graphify_signoff_payload_from_capture(capture)
+    if graphify_signoff_payload is not None:
+        artifact_texts["graphify_signoff.json"] = _redact_json_artifact(
+            _render_json_text(graphify_signoff_payload),
+            capture.workspace_root,
+        )
     artifact_set_payload = _artifact_set_payload(
         capture,
         artifact_texts,
@@ -388,6 +398,7 @@ def write_input_artifacts(capture: CapturedDiff) -> tuple[Path, Path]:
         before_text_payload,
         after_text_payload,
         graphify_context_payload,
+        graphify_signoff_payload,
     )
     artifact_texts["artifact_set.json"] = _redact_json_artifact(
         _render_json_text(artifact_set_payload),
@@ -460,6 +471,7 @@ def _artifact_set_payload(
     before_text_payload: dict[str, Any],
     after_text_payload: dict[str, Any],
     graphify_context_payload: dict[str, Any] | None,
+    graphify_signoff_payload: dict[str, Any] | None,
 ) -> dict[str, Any]:
     artifacts = [
         _artifact_descriptor(
@@ -518,6 +530,17 @@ def _artifact_set_payload(
                 schema_version=graphify_context_payload["schema_version"],
             )
         )
+    if graphify_signoff_payload is not None:
+        artifacts.append(
+            _artifact_descriptor(
+                artifact_type="graphify_signoff",
+                path="graphify_signoff.json",
+                media_type="application/json",
+                text=artifact_texts["graphify_signoff.json"],
+                schema=graphify_signoff_payload["schema"],
+                schema_version=graphify_signoff_payload["schema_version"],
+            )
+        )
     return {
         "artifacts": artifacts,
         "created_at": capture.metadata["created_at"],
@@ -537,6 +560,9 @@ def _artifact_set_payload(
             "after_text_by_path_from": "capture.after_text_by_path",
             "graphify_context_from": (
                 "capture.graphify_status" if graphify_context_payload is not None else None
+            ),
+            "graphify_signoff_from": (
+                "capture.graphify_status" if graphify_signoff_payload is not None else None
             ),
         },
         "manifest_type": "artifact_set",
@@ -558,14 +584,15 @@ def graphify_context_payload_from_capture(capture: CapturedDiff) -> dict[str, An
     if not status.has_graph:
         return None
     provenance = dict(status.provenance)
-    if "graph_sha256" not in provenance:
+    raw_graph_digest = provenance.get("graph_sha256")
+    if not isinstance(raw_graph_digest, str) or not _is_sha256_hex(raw_graph_digest):
         return None
-    node_count = _parse_int_provenance(provenance.get("node_count"))
-    edge_count = _parse_int_provenance(provenance.get("edge_count"))
+    node_count, _node_count_valid = _parse_nonnegative_int_provenance(provenance.get("node_count"))
+    edge_count, _edge_count_valid = _parse_nonnegative_int_provenance(provenance.get("edge_count"))
     return {
         "edge_count": edge_count,
         "freshness": status.freshness,
-        "graph_sha256": provenance.get("graph_sha256", ""),
+        "graph_sha256": raw_graph_digest.lower(),
         "graph_source": provenance.get("source_path") or provenance.get("source", ""),
         "import_time": provenance.get("import_time", ""),
         "node_count": node_count,
@@ -575,12 +602,118 @@ def graphify_context_payload_from_capture(capture: CapturedDiff) -> dict[str, An
     }
 
 
-def _parse_int_provenance(value: str | None) -> int:
+def graphify_signoff_payload_from_capture(capture: CapturedDiff) -> dict[str, Any] | None:
+    status = capture.graphify_status
+    if not (status.has_graph or status.source_exists or status.imported_exists):
+        return None
+    provenance = dict(status.provenance)
+    node_count, node_count_valid = _parse_nonnegative_int_provenance(provenance.get("node_count"))
+    edge_count, edge_count_valid = _parse_nonnegative_int_provenance(provenance.get("edge_count"))
+    raw_graph_digest = provenance.get("graph_sha256", "")
+    graph_digest = raw_graph_digest.lower() if _is_sha256_hex(raw_graph_digest) else ""
+    degradation_reasons: list[str] = []
+    if not status.enabled:
+        degradation_reasons.append("graphify_disabled")
+    if not status.source_exists:
+        degradation_reasons.append("source_missing")
+    if not status.imported_exists:
+        degradation_reasons.append("imported_artifact_missing")
+    if status.has_graph and raw_graph_digest and not graph_digest:
+        degradation_reasons.append("graph_digest_invalid")
+    elif status.has_graph and not graph_digest:
+        degradation_reasons.append("graph_digest_missing")
+    if status.has_graph and not node_count_valid:
+        degradation_reasons.append("node_count_invalid")
+    if status.has_graph and not edge_count_valid:
+        degradation_reasons.append("edge_count_invalid")
+    if status.freshness not in {"fresh", None}:
+        degradation_reasons.append(f"freshness_{status.freshness}")
+    signoff = (
+        "passed" if status.has_graph and status.imported_exists and graph_digest else "degraded"
+    )
+    if not status.has_graph:
+        signoff = "unavailable"
+    if degradation_reasons and signoff == "passed":
+        signoff = "degraded"
+    selected_files = capture.metadata.get("selected_files")
+    omitted_files = capture.metadata.get("omitted_files")
+    selected_file_count = (
+        len(cast("list[object]", selected_files)) if isinstance(selected_files, list) else 0
+    )
+    omitted_file_count = (
+        len(cast("list[object]", omitted_files)) if isinstance(omitted_files, list) else 0
+    )
+    return {
+        "artifact": "graphify_signoff",
+        "schema": _GRAPHIFY_SIGNOFF_SCHEMA,
+        "schema_version": _GRAPHIFY_SIGNOFF_SCHEMA_VERSION,
+        "run_id": capture.run_id,
+        "signoff": signoff,
+        "freshness": status.freshness,
+        "graph_source": provenance.get("source_path") or provenance.get("source", ""),
+        "graph_sha256": graph_digest,
+        "parser_version": provenance.get("parser_version", ""),
+        "import_time": provenance.get("import_time", ""),
+        "node_count": node_count,
+        "edge_count": edge_count,
+        "source_coverage": {
+            "selected_files": selected_file_count,
+            "omitted_files": omitted_file_count,
+            "graph_nodes": node_count,
+            "graph_edges": edge_count,
+        },
+        "degradation_reasons": degradation_reasons,
+        "checks": [
+            {
+                "name": "source_present",
+                "passed": status.source_exists,
+                "detail": str(status.source_path),
+            },
+            {
+                "name": "imported_present",
+                "passed": status.imported_exists,
+                "detail": str(status.imported_path),
+            },
+            {
+                "name": "digest_present",
+                "passed": bool(graph_digest),
+                "detail": graph_digest[:12],
+            },
+            {
+                "name": "node_count_valid",
+                "passed": node_count_valid,
+                "detail": str(node_count),
+            },
+            {
+                "name": "edge_count_valid",
+                "passed": edge_count_valid,
+                "detail": str(edge_count),
+            },
+            {
+                "name": "freshness",
+                "passed": status.freshness == "fresh",
+                "detail": status.freshness or "unknown",
+            },
+        ],
+        "known_limitations": [
+            "Graphify signoff summarizes imported graph metadata; it does not re-parse code.",
+            "Coverage is approximate and based on run-selected files versus graph size.",
+        ],
+    }
+
+
+def _is_sha256_hex(value: object) -> bool:
+    return isinstance(value, str) and _SHA256_HEX_RE.fullmatch(value) is not None
+
+
+def _parse_nonnegative_int_provenance(value: str | None) -> tuple[int, bool]:
     if value is None:
-        return 0
+        return 0, False
     with suppress(ValueError):
-        return int(value)
-    return 0
+        parsed = int(value)
+        if parsed >= 0:
+            return parsed, True
+    return 0, False
 
 
 def _artifact_descriptor(
@@ -923,35 +1056,47 @@ def _capture_input(
     repo = open_repo(workspace_root)
     ensure_no_merge_conflicts(repo)
     if since is not None:
-        return _capture_since(
-            repo,
-            since=since,
-            author=author,
-            max_files=max_files,
+        return _apply_notebook_cell_aware_to_git_capture(
+            _capture_since(
+                repo,
+                since=since,
+                author=author,
+                max_files=max_files,
+                max_patch_bytes=effective_max_patch_bytes,
+            ),
             max_patch_bytes=effective_max_patch_bytes,
         )
     if last:
-        return _capture_last(
-            repo,
-            max_files=max_files,
+        return _apply_notebook_cell_aware_to_git_capture(
+            _capture_last(
+                repo,
+                max_files=max_files,
+                max_patch_bytes=effective_max_patch_bytes,
+            ),
             max_patch_bytes=effective_max_patch_bytes,
         )
     if staged or unstaged:
-        return _capture_worktree(
-            repo,
-            staged=staged,
-            unstaged=unstaged,
-            include_untracked=include_untracked,
-            changed_paths=changed_paths,
-            max_files=max_files,
+        return _apply_notebook_cell_aware_to_git_capture(
+            _capture_worktree(
+                repo,
+                staged=staged,
+                unstaged=unstaged,
+                include_untracked=include_untracked,
+                changed_paths=changed_paths,
+                max_files=max_files,
+                max_patch_bytes=effective_max_patch_bytes,
+            ),
             max_patch_bytes=effective_max_patch_bytes,
         )
     if revision is None:
         raise InputError("revision input was not provided")
-    return _capture_revision(
-        repo,
-        revision,
-        max_files=max_files,
+    return _apply_notebook_cell_aware_to_git_capture(
+        _capture_revision(
+            repo,
+            revision,
+            max_files=max_files,
+            max_patch_bytes=effective_max_patch_bytes,
+        ),
         max_patch_bytes=effective_max_patch_bytes,
     )
 
@@ -969,6 +1114,7 @@ def _capture_revision(
             repo.root,
             "diff",
             "--no-ext-diff",
+            "--no-textconv",
             "--end-of-options",
             base_ref,
             head_ref,
@@ -1123,6 +1269,7 @@ def _capture_since(
         repo.root,
         "diff",
         "--no-ext-diff",
+        "--no-textconv",
         "--end-of-options",
         base_ref,
         head_ref,
@@ -1181,7 +1328,7 @@ def _capture_worktree(
     changed_path_scope = _normalize_changed_path_scope(repo.root, changed_paths)
     pathspecs = _git_literal_pathspecs(changed_path_scope)
     combined_mode = staged and unstaged
-    args = ["diff", "--no-ext-diff"]
+    args = ["diff", "--no-ext-diff", "--no-textconv"]
     if combined_mode:
         args.append("HEAD")
         source_kind: ContractSourceKind = "git_staged_unstaged"
@@ -1501,6 +1648,24 @@ def _capture_compare_input(
 
     old_text = _normalize_newlines(_decode_text_bytes(old_bytes, description=f"{old_rel}"))
     new_text = _normalize_newlines(_decode_text_bytes(new_bytes, description=f"{new_rel}"))
+    source_detail_extra: dict[str, Any] = {}
+    if _is_notebook_path(old_rel) or _is_notebook_path(new_rel):
+        rendered = _render_notebook_pair(
+            old_bytes=old_bytes,
+            new_bytes=new_bytes,
+            old_rel=old_rel,
+            new_rel=new_rel,
+            old_exists=True,
+            new_exists=True,
+        )
+        if rendered is None:
+            source_detail_extra = {
+                "notebook_cell_aware": False,
+                "notebook_degraded": True,
+                "notebook_degradation_reason": "invalid notebook JSON or schema",
+            }
+        else:
+            old_text, new_text, source_detail_extra = rendered
     if old_text == new_text:
         raise InputError("compare input files are identical")
 
@@ -1527,6 +1692,7 @@ def _capture_compare_input(
             "type": "compare",
             "old_name": Path(old_rel).name,
             "new_name": Path(new_rel).name,
+            **source_detail_extra,
         },
         branch_names=(),
         tag_names=(),
@@ -1567,8 +1733,12 @@ def _capture_compare_dir_input(
     digest = hashlib.sha256()
     changed_count = 0
     binary_count = 0
+    notebook_cell_aware_count = 0
+    notebook_degraded_count = 0
+    notebook_warnings: list[str] = []
     running_patch_bytes = 0
     for relative_path in all_paths:
+        relative_posix = relative_path.as_posix()
         old_exists = relative_path in old_files
         new_exists = relative_path in new_files
         old_bytes = old_files.get(relative_path, b"")
@@ -1576,34 +1746,53 @@ def _capture_compare_dir_input(
         if old_exists and new_exists and old_bytes == new_bytes:
             continue
 
-        digest.update(relative_path.as_posix().encode("utf-8"))
+        digest.update(relative_posix.encode("utf-8"))
         digest.update(b"\0old\0")
         digest.update(old_bytes)
         digest.update(b"\0new\0")
         digest.update(new_bytes)
         changed_count += 1
 
-        old_text = _decode_compare_dir_text(old_bytes, relative_path.as_posix())
-        new_text = _decode_compare_dir_text(new_bytes, relative_path.as_posix())
+        old_text = _decode_compare_dir_text(old_bytes, relative_posix)
+        new_text = _decode_compare_dir_text(new_bytes, relative_posix)
         if old_text is None or new_text is None:
             binary_count += 1
-            relative_posix = relative_path.as_posix()
             chunk = f"Binary files a/{relative_posix} and b/{relative_posix} differ\n"
             running_patch_bytes += len(chunk.encode("utf-8"))
             if running_patch_bytes > max_patch_bytes:
                 raise InputError(f"compare-dir patch exceeds {max_patch_bytes} bytes")
             patch_chunks.append(chunk)
             continue
+        if _is_notebook_path(relative_posix):
+            rendered = _render_notebook_pair(
+                old_bytes=old_bytes,
+                new_bytes=new_bytes,
+                old_rel=relative_posix,
+                new_rel=relative_posix,
+                old_exists=old_exists,
+                new_exists=new_exists,
+            )
+            if rendered is None:
+                notebook_degraded_count += 1
+                notebook_warnings.append(f"{relative_posix}: invalid notebook JSON or schema")
+            else:
+                old_text, new_text, notebook_detail = rendered
+                notebook_cell_aware_count += 1
+                raw_warnings = notebook_detail.get("notebook_warnings")
+                if isinstance(raw_warnings, list):
+                    notebook_warnings.extend(
+                        str(item) for item in cast("list[object]", raw_warnings[:10])
+                    )
 
         if old_exists:
-            before_text_by_path[relative_path.as_posix()] = old_text
+            before_text_by_path[relative_posix] = old_text
         if new_exists:
-            after_text_by_path[relative_path.as_posix()] = new_text
+            after_text_by_path[relative_posix] = new_text
         diff_lines = unified_diff(
             old_text.splitlines(keepends=True),
             new_text.splitlines(keepends=True),
-            fromfile=f"a/{relative_path.as_posix()}",
-            tofile=f"b/{relative_path.as_posix()}",
+            fromfile=f"a/{relative_posix}",
+            tofile=f"b/{relative_posix}",
             lineterm="",
         )
         rendered = _render_unified_diff(diff_lines)
@@ -1633,6 +1822,11 @@ def _capture_compare_dir_input(
             "new_name": new_dir.name,
             "changed_files": changed_count,
             "binary_files": binary_count,
+            **_notebook_compare_dir_source_detail(
+                cell_aware_count=notebook_cell_aware_count,
+                degraded_count=notebook_degraded_count,
+                warnings=notebook_warnings,
+            ),
         },
         branch_names=(),
         tag_names=(),
@@ -1806,6 +2000,193 @@ def _decode_compare_dir_text(data: bytes, description: str) -> str | None:
         return _normalize_newlines(_decode_text_bytes(data, description=description))
     except InputError:
         return None
+
+
+def _is_notebook_path(path: str) -> bool:
+    return Path(path).suffix.lower() == ".ipynb"
+
+
+def _render_notebook_pair(
+    *,
+    old_bytes: bytes,
+    new_bytes: bytes,
+    old_rel: str,
+    new_rel: str,
+    old_exists: bool,
+    new_exists: bool,
+) -> tuple[str, str, dict[str, Any]] | None:
+    from ahadiff.git.notebook import NotebookRender, render_notebook_source_for_diff
+
+    old_render = (
+        render_notebook_source_for_diff(old_bytes, display_path=old_rel)
+        if old_exists
+        else NotebookRender(text="", cell_count=0, warnings=())
+    )
+    new_render = (
+        render_notebook_source_for_diff(new_bytes, display_path=new_rel)
+        if new_exists
+        else NotebookRender(text="", cell_count=0, warnings=())
+    )
+    if old_render is None or new_render is None:
+        return None
+    warnings = [f"a/{old_rel}: {item}" for item in old_render.warnings]
+    warnings.extend(f"b/{new_rel}: {item}" for item in new_render.warnings)
+    detail: dict[str, Any] = {
+        "notebook_cell_aware": True,
+        "notebook_degraded": False,
+        "notebook_metadata_outputs_ignored": True,
+        "notebook_old_cells": old_render.cell_count,
+        "notebook_new_cells": new_render.cell_count,
+    }
+    if warnings:
+        detail["notebook_warnings"] = warnings[:20]
+    return old_render.text, new_render.text, detail
+
+
+def _notebook_compare_dir_source_detail(
+    *,
+    cell_aware_count: int,
+    degraded_count: int,
+    warnings: list[str],
+) -> dict[str, Any]:
+    if cell_aware_count == 0 and degraded_count == 0:
+        return {}
+    detail: dict[str, Any] = {
+        "notebook_cell_aware": cell_aware_count > 0 and degraded_count == 0,
+        "notebook_degraded": degraded_count > 0,
+        "notebook_cell_aware_files": cell_aware_count,
+        "notebook_degraded_files": degraded_count,
+        "notebook_metadata_outputs_ignored": cell_aware_count > 0,
+    }
+    if warnings:
+        detail["notebook_warnings"] = warnings[:20]
+    return detail
+
+
+def _apply_notebook_cell_aware_to_git_capture(
+    raw_capture: _RawCapture,
+    *,
+    max_patch_bytes: int,
+) -> _RawCapture:
+    notebook_paths = sorted(
+        path
+        for path in set(raw_capture.before_text_by_path) | set(raw_capture.after_text_by_path)
+        if _is_notebook_path(path)
+    )
+    if not notebook_paths:
+        return raw_capture
+
+    segments = _split_patch_segments(raw_capture.raw_patch_text)
+    if not segments:
+        return raw_capture
+
+    replacements: dict[str, str] = {}
+    rendered_before = dict(raw_capture.before_text_by_path)
+    rendered_after = dict(raw_capture.after_text_by_path)
+    cell_aware_count = 0
+    degraded_count = 0
+    warnings: list[str] = []
+
+    for path in notebook_paths:
+        old_exists = path in raw_capture.before_text_by_path
+        new_exists = path in raw_capture.after_text_by_path
+        old_text = raw_capture.before_text_by_path.get(path, "")
+        new_text = raw_capture.after_text_by_path.get(path, "")
+        rendered = _render_notebook_pair(
+            old_bytes=old_text.encode("utf-8"),
+            new_bytes=new_text.encode("utf-8"),
+            old_rel=path,
+            new_rel=path,
+            old_exists=old_exists,
+            new_exists=new_exists,
+        )
+        if rendered is None:
+            degraded_count += 1
+            warnings.append(f"{path}: invalid notebook JSON or schema")
+            continue
+
+        old_rendered, new_rendered, notebook_detail = rendered
+        replacement = _render_notebook_git_patch_chunk(
+            path=path,
+            old_text=old_rendered,
+            new_text=new_rendered,
+            old_exists=old_exists,
+            new_exists=new_exists,
+        )
+        if not replacement:
+            continue
+        replacements[path] = replacement
+        cell_aware_count += 1
+        if old_exists:
+            rendered_before[path] = old_rendered
+        if new_exists:
+            rendered_after[path] = new_rendered
+        raw_warnings = notebook_detail.get("notebook_warnings")
+        if isinstance(raw_warnings, list):
+            warnings.extend(str(item) for item in cast("list[object]", raw_warnings[:10]))
+
+    if not replacements and degraded_count == 0:
+        return raw_capture
+
+    rewritten_segments = [replacements.get(segment.path, segment.text) for segment in segments]
+    rewritten_patch = "".join(
+        text if text.endswith("\n") else text + "\n" for text in rewritten_segments
+    )
+    _ensure_patch_text_size(rewritten_patch, max_patch_bytes=max_patch_bytes)
+    detail = dict(raw_capture.source_detail)
+    detail.update(
+        _notebook_compare_dir_source_detail(
+            cell_aware_count=cell_aware_count,
+            degraded_count=degraded_count,
+            warnings=warnings,
+        )
+    )
+    return _RawCapture(
+        source_kind=raw_capture.source_kind,
+        source_ref=raw_capture.source_ref,
+        capability_level=raw_capture.capability_level,
+        raw_patch_text=rewritten_patch,
+        base_ref=raw_capture.base_ref,
+        head_ref=raw_capture.head_ref,
+        source_detail=detail,
+        branch_names=raw_capture.branch_names,
+        tag_names=raw_capture.tag_names,
+        resolved_files={
+            path: rendered_after.get(path, text)
+            for path, text in raw_capture.resolved_files.items()
+        },
+        before_text_by_path=rendered_before,
+        after_text_by_path=rendered_after,
+        metadata_texts=raw_capture.metadata_texts,
+    )
+
+
+def _render_notebook_git_patch_chunk(
+    *,
+    path: str,
+    old_text: str,
+    new_text: str,
+    old_exists: bool,
+    new_exists: bool,
+) -> str:
+    if not old_exists and not new_exists:
+        return ""
+    header = f"diff --git a/{path} b/{path}\n"
+    if not old_exists:
+        header += "new file mode 100644\n"
+    elif not new_exists:
+        header += "deleted file mode 100644\n"
+    diff_lines = unified_diff(
+        old_text.splitlines(keepends=True),
+        new_text.splitlines(keepends=True),
+        fromfile=f"a/{path}" if old_exists else "/dev/null",
+        tofile=f"b/{path}" if new_exists else "/dev/null",
+        lineterm="",
+    )
+    rendered = _render_unified_diff(diff_lines)
+    if rendered and not rendered.endswith("\n"):
+        rendered += "\n"
+    return header + rendered
 
 
 def _read_regular_file_no_follow_bounded(
@@ -2279,6 +2660,7 @@ def _single_commit_patch(
             repo.root,
             "show",
             "--format=",
+            "--no-textconv",
             "--root",
             "--end-of-options",
             revision,
@@ -2289,6 +2671,7 @@ def _single_commit_patch(
             repo.root,
             "show",
             "--format=",
+            "--no-textconv",
             "--first-parent",
             "--end-of-options",
             revision,
@@ -2299,6 +2682,7 @@ def _single_commit_patch(
             repo.root,
             "show",
             "--format=",
+            "--no-textconv",
             "--end-of-options",
             revision,
             max_patch_bytes=max_patch_bytes,
@@ -2771,5 +3155,6 @@ __all__ = [
     "detect_graphify_status",
     "import_graphify_artifact",
     "graphify_context_payload_from_capture",
+    "graphify_signoff_payload_from_capture",
     "write_input_artifacts",
 ]

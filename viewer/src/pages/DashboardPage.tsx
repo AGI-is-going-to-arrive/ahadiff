@@ -400,12 +400,17 @@ export default function DashboardPage() {
   const usageHint = usageUnavailable ? t('Dashboard.kpi_usage_unavailable_hint') : undefined;
   const specScore = specAlignment?.alignment_score ?? null;
   const specTone = specAlignmentTone(specScore);
+  const specDegradedCount = specAlignment?.degraded_count ?? 0;
   const specHint = specAlignmentUnavailable
     ? t('Dashboard.spec_alignment_unavailable')
     : specAlignment
-      ? t('Dashboard.spec_alignment_evaluated', {
-          count: String(specAlignment.total_evaluated),
-        })
+      ? specDegradedCount > 0
+        ? t('Dashboard.spec_alignment_degraded', {
+            count: String(specDegradedCount),
+          })
+        : t('Dashboard.spec_alignment_evaluated', {
+            count: String(specAlignment.total_evaluated),
+          })
       : t('Dashboard.spec_alignment_empty');
   const specTrendLabel = specAlignment?.recent_trend
     ? t(`Ratchet.trend_${specAlignment.recent_trend}` as MessageKey)
@@ -472,6 +477,7 @@ export default function DashboardPage() {
             score={specScore}
             trendLabel={specTrendLabel}
             totalEvaluated={specAlignment?.total_evaluated ?? 0}
+            degradedCount={specDegradedCount}
             unavailable={specAlignmentUnavailable}
           />
 
@@ -602,6 +608,7 @@ export default function DashboardPage() {
           score={specScore}
           trendLabel={specTrendLabel}
           totalEvaluated={specAlignment?.total_evaluated ?? 0}
+          degradedCount={specDegradedCount}
           unavailable={specAlignmentUnavailable}
         />
 
@@ -762,12 +769,14 @@ function SpecAlignmentSummary({
   score,
   trendLabel,
   totalEvaluated,
+  degradedCount,
   unavailable,
 }: {
   t: TranslateFn;
   score: number | null;
   trendLabel: string;
   totalEvaluated: number;
+  degradedCount: number;
   unavailable: boolean;
 }) {
   const scoreLabel = formatSpecAlignmentScore(score);
@@ -796,7 +805,9 @@ function SpecAlignmentSummary({
       <p className="dashboard__spec-hint">
         {unavailable
           ? t('Dashboard.spec_alignment_unavailable')
-          : score != null
+          : degradedCount > 0
+            ? t('Dashboard.spec_alignment_degraded', { count: String(degradedCount) })
+            : score != null
             ? t('Dashboard.spec_alignment_evaluated', { count: String(totalEvaluated) })
             : t('Dashboard.spec_alignment_empty')}
       </p>

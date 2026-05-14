@@ -3,11 +3,25 @@ import { useParams, Link } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import ScoreBreakdown from '../components/ScoreBreakdown';
 import JudgeReport from '../components/JudgeReport';
-import { getRun, getRunScore, getRunConcepts } from '../api/runs';
+import {
+  getRun,
+  getRunScore,
+  getRunConcepts,
+  getRunSpecAlignment,
+  getRunGraphifySignoff,
+} from '../api/runs';
 import { ApiError } from '../api/client';
 import { scorePayloadSchema } from '../api/schemas';
 import { useTranslation, type MessageKey, type TranslateFn } from '../i18n/useTranslation';
-import type { DegradedFlag, RunDetail, ScorePayload } from '../api/types';
+import type {
+  DegradedFlag,
+  GraphifySignoffArtifact,
+  RunDetail,
+  ScorePayload,
+  SpecAlignmentArtifact,
+  SpecSemanticClassification,
+  SpecRequirementClassification,
+} from '../api/types';
 import { safeVerdict } from '../utils/verdict';
 import './RunDetailPage.css';
 
@@ -47,6 +61,76 @@ interface RunConceptRow {
   display_name: string;
   file_refs: string[];
   related_claims: string[];
+}
+
+type SpecAlignmentLoadState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'loaded'; artifact: SpecAlignmentArtifact }
+  | { status: 'missing' }
+  | { status: 'error' };
+
+type GraphifySignoffLoadState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'loaded'; artifact: GraphifySignoffArtifact }
+  | { status: 'missing' }
+  | { status: 'error' };
+
+const SPEC_CLASS_KEYS: Record<SpecRequirementClassification, MessageKey> = {
+  implemented: 'RunDetail.spec_class_implemented',
+  partial: 'RunDetail.spec_class_partial',
+  missing: 'RunDetail.spec_class_missing',
+  unknown: 'RunDetail.spec_class_unknown',
+};
+
+const SPEC_SEMANTIC_CLASS_KEYS: Record<SpecSemanticClassification, MessageKey> = {
+  implemented: 'RunDetail.spec_class_implemented',
+  partial: 'RunDetail.spec_class_partial',
+  missing: 'RunDetail.spec_class_missing',
+  unknown: 'RunDetail.spec_class_unknown',
+  violated: 'RunDetail.spec_class_violated',
+};
+
+const GRAPHIFY_SIGNOFF_KEYS: Record<GraphifySignoffArtifact['signoff'], MessageKey> = {
+  passed: 'RunDetail.graphify_signoff_passed',
+  degraded: 'RunDetail.graphify_signoff_degraded',
+  unavailable: 'RunDetail.graphify_signoff_unavailable',
+};
+
+const GRAPHIFY_FRESHNESS_KEYS: Record<string, MessageKey> = {
+  fresh: 'RunDetail.graphify_freshness_fresh',
+  stale: 'RunDetail.graphify_freshness_stale',
+  unavailable: 'RunDetail.graphify_freshness_unavailable',
+  disabled: 'RunDetail.graphify_freshness_disabled',
+};
+
+const GRAPHIFY_DEGRADATION_KEYS: Record<string, MessageKey> = {
+  graphify_disabled: 'RunDetail.graphify_reason_graphify_disabled',
+  source_missing: 'RunDetail.graphify_reason_source_missing',
+  imported_artifact_missing: 'RunDetail.graphify_reason_imported_artifact_missing',
+  graph_digest_missing: 'RunDetail.graphify_reason_graph_digest_missing',
+  graph_digest_invalid: 'RunDetail.graphify_reason_graph_digest_invalid',
+  node_count_invalid: 'RunDetail.graphify_reason_node_count_invalid',
+  edge_count_invalid: 'RunDetail.graphify_reason_edge_count_invalid',
+  freshness_stale: 'RunDetail.graphify_reason_freshness_stale',
+  freshness_unavailable: 'RunDetail.graphify_reason_freshness_unavailable',
+  freshness_disabled: 'RunDetail.graphify_reason_freshness_disabled',
+};
+
+function formatCodeLabel(value: string): string {
+  return value.replace(/_/g, ' ');
+}
+
+function graphifyFreshnessLabel(t: TranslateFn, value: string | null | undefined): string {
+  if (!value) return '-';
+  const key = GRAPHIFY_FRESHNESS_KEYS[value];
+  return key ? t(key) : formatCodeLabel(value);
+}
+
+function graphifyDegradationLabel(t: TranslateFn, value: string): string {
+  const key = GRAPHIFY_DEGRADATION_KEYS[value];
+  return key ? t(key) : formatCodeLabel(value);
 }
 
 function parseConceptsJsonl(text: string): RunConceptRow[] {
@@ -147,7 +231,14 @@ export default function RunDetailPage() {
   const [conceptsLoading, setConceptsLoading] = useState(false);
   const [conceptsNotFound, setConceptsNotFound] = useState(false);
   const [conceptsError, setConceptsError] = useState(false);
+  const [specAlignmentState, setSpecAlignmentState] = useState<SpecAlignmentLoadState>({
+    status: 'idle',
+  });
+  const [graphifySignoffState, setGraphifySignoffState] =
+    useState<GraphifySignoffLoadState>({ status: 'idle' });
   const conceptsAbortRef = useRef<AbortController | null>(null);
+  const specAbortRef = useRef<AbortController | null>(null);
+  const graphifyAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!runId) return;
@@ -160,6 +251,8 @@ export default function RunDetailPage() {
     setConceptsLoading(false);
     setConceptsNotFound(false);
     setConceptsError(false);
+    setSpecAlignmentState({ status: 'idle' });
+    setGraphifySignoffState({ status: 'idle' });
 
     Promise.allSettled([
       getRun(runId),
@@ -232,10 +325,64 @@ export default function RunDetailPage() {
   }, [activeTab, runId, concepts, fetchConcepts]);
 
   useEffect(() => {
+    if (activeTab !== 'score' || !runId || !run?.artifacts.includes('spec_alignment.json')) {
+      return;
+    }
+    if (specAlignmentState.status !== 'idle') return;
+    specAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    specAbortRef.current = ctrl;
+    setSpecAlignmentState({ status: 'loading' });
+    getRunSpecAlignment(runId, { signal: ctrl.signal })
+      .then((artifact) => {
+        if (ctrl.signal.aborted) return;
+        setSpecAlignmentState({ status: 'loaded', artifact });
+      })
+      .catch((err: unknown) => {
+        if (ctrl.signal.aborted) return;
+        if (err instanceof ApiError && err.status === 404) {
+          setSpecAlignmentState({ status: 'missing' });
+        } else {
+          setSpecAlignmentState({ status: 'error' });
+        }
+      });
+  }, [activeTab, runId, run, specAlignmentState.status]);
+
+  useEffect(() => {
+    if (!runId || !run?.artifacts.includes('graphify_signoff.json')) return;
+    if (graphifySignoffState.status !== 'idle') return;
+    graphifyAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    graphifyAbortRef.current = ctrl;
+    setGraphifySignoffState({ status: 'loading' });
+    getRunGraphifySignoff(runId, { signal: ctrl.signal })
+      .then((artifact) => {
+        if (ctrl.signal.aborted) return;
+        setGraphifySignoffState({ status: 'loaded', artifact });
+      })
+      .catch((err: unknown) => {
+        if (ctrl.signal.aborted) return;
+        if (err instanceof ApiError && err.status === 404) {
+          setGraphifySignoffState({ status: 'missing' });
+        } else {
+          setGraphifySignoffState({ status: 'error' });
+        }
+      });
+  }, [runId, run, graphifySignoffState.status]);
+
+  useEffect(() => {
     if (activeTab !== 'concepts') conceptsAbortRef.current?.abort();
   }, [activeTab]);
 
-  useEffect(() => () => conceptsAbortRef.current?.abort(), []);
+  useEffect(() => {
+    if (activeTab !== 'score') specAbortRef.current?.abort();
+  }, [activeTab]);
+
+  useEffect(() => () => {
+    conceptsAbortRef.current?.abort();
+    specAbortRef.current?.abort();
+    graphifyAbortRef.current?.abort();
+  }, []);
 
   useEffect(() => {
     if (loading || !run || activeTab !== 'concepts') return;
@@ -310,6 +457,8 @@ export default function RunDetailPage() {
   const hasJudge = run.artifacts.includes('judge.json');
   const hasScore = score != null;
   const hasConcepts = run.artifacts.includes('concepts.jsonl');
+  const hasSpecAlignment = run.artifacts.includes('spec_alignment.json');
+  const hasGraphifySignoff = run.artifacts.includes('graphify_signoff.json');
   const visibleTabs = TABS.filter((tab) => tab !== 'concepts' || hasConcepts);
   const links = artifactLinks(run.artifacts, runId, t);
   const degradedFlags = activeDegradedFlags(run.degraded_flags);
@@ -436,6 +585,13 @@ export default function RunDetailPage() {
             )}
           </dl>
         )}
+        {activeTab === 'overview' && hasGraphifySignoff && (
+          <GraphifySignoffPanel
+            t={t}
+            state={graphifySignoffState}
+            onRetry={() => setGraphifySignoffState({ status: 'idle' })}
+          />
+        )}
       </section>
 
       <section
@@ -447,6 +603,14 @@ export default function RunDetailPage() {
         {activeTab === 'score' && score && <ScoreBreakdown payload={score} />}
         {activeTab === 'score' && !score && (
           <p className="run-detail__empty">{t('RunDetail.score_unavailable')}</p>
+        )}
+        {activeTab === 'score' && (score || hasSpecAlignment) && (
+          <SpecAlignmentPanel
+            t={t}
+            hasArtifact={hasSpecAlignment}
+            state={specAlignmentState}
+            onRetry={() => setSpecAlignmentState({ status: 'idle' })}
+          />
         )}
       </section>
 
@@ -575,5 +739,320 @@ export default function RunDetailPage() {
       </section>
       </div>
     </AppShell>
+  );
+}
+
+function GraphifySignoffPanel({
+  t,
+  state,
+  onRetry,
+}: {
+  t: TranslateFn;
+  state: GraphifySignoffLoadState;
+  onRetry: () => void;
+}) {
+  if (state.status === 'idle' || state.status === 'loading') {
+    return (
+      <section className="run-detail__graphify-signoff" aria-labelledby="run-detail-graphify-title">
+        <h2 id="run-detail-graphify-title" className="run-detail__spec-title">
+          {t('RunDetail.graphify_signoff_title')}
+        </h2>
+        <div role="status" aria-live="polite" className="run-detail__loading">
+          <span className="loading-spinner" />
+          {t('RunDetail.graphify_signoff_loading')}
+        </div>
+      </section>
+    );
+  }
+  if (state.status === 'missing') {
+    return (
+      <section className="run-detail__graphify-signoff" aria-labelledby="run-detail-graphify-title">
+        <h2 id="run-detail-graphify-title" className="run-detail__spec-title">
+          {t('RunDetail.graphify_signoff_title')}
+        </h2>
+        <p className="run-detail__empty">{t('RunDetail.graphify_signoff_missing')}</p>
+      </section>
+    );
+  }
+  if (state.status === 'error') {
+    return (
+      <section className="run-detail__graphify-signoff" aria-labelledby="run-detail-graphify-title">
+        <h2 id="run-detail-graphify-title" className="run-detail__spec-title">
+          {t('RunDetail.graphify_signoff_title')}
+        </h2>
+        <div role="alert" className="run-detail__error">
+          {t('RunDetail.graphify_signoff_load_failed')}
+          <button type="button" className="retry-btn" onClick={onRetry}>
+            {t('Error.retry')}
+          </button>
+        </div>
+      </section>
+    );
+  }
+  const artifact = state.artifact;
+  return (
+    <section className="run-detail__graphify-signoff" aria-labelledby="run-detail-graphify-title">
+      <h2 id="run-detail-graphify-title" className="run-detail__spec-title">
+        {t('RunDetail.graphify_signoff_title')}
+      </h2>
+      <dl className="run-detail__spec-summary">
+        <div>
+          <dt>{t('RunDetail.graphify_signoff_status')}</dt>
+          <dd>{t(GRAPHIFY_SIGNOFF_KEYS[artifact.signoff])}</dd>
+        </div>
+        <div>
+          <dt>{t('RunDetail.graphify_freshness')}</dt>
+          <dd>{graphifyFreshnessLabel(t, artifact.freshness)}</dd>
+        </div>
+        <div>
+          <dt>{t('Graph.node_count', { count: artifact.node_count })}</dt>
+          <dd>{artifact.node_count}</dd>
+        </div>
+        <div>
+          <dt>{t('Graph.edge_count', { count: artifact.edge_count })}</dt>
+          <dd>{artifact.edge_count}</dd>
+        </div>
+      </dl>
+      {artifact.graph_sha256 && (
+        <p className="run-detail__spec-source">
+          {t('RunDetail.graphify_digest')} <code>{artifact.graph_sha256.slice(0, 12)}…</code>
+        </p>
+      )}
+      {artifact.degradation_reasons.length > 0 && (
+        <p className="run-detail__spec-reason">
+          {t('RunDetail.graphify_degraded_reasons')}:{' '}
+          {artifact.degradation_reasons
+            .map((reason) => graphifyDegradationLabel(t, reason))
+            .join(', ')}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function SpecAlignmentPanel({
+  t,
+  hasArtifact,
+  state,
+  onRetry,
+}: {
+  t: TranslateFn;
+  hasArtifact: boolean;
+  state: SpecAlignmentLoadState;
+  onRetry: () => void;
+}) {
+  if (!hasArtifact) {
+    return (
+      <section className="run-detail__spec-panel" aria-labelledby="run-detail-spec-title">
+        <h2 id="run-detail-spec-title" className="run-detail__spec-title">
+          {t('RunDetail.spec_alignment_title')}
+        </h2>
+        <p className="run-detail__empty">{t('RunDetail.spec_alignment_missing')}</p>
+      </section>
+    );
+  }
+  if (state.status === 'idle' || state.status === 'loading') {
+    return (
+      <section className="run-detail__spec-panel" aria-labelledby="run-detail-spec-title">
+        <h2 id="run-detail-spec-title" className="run-detail__spec-title">
+          {t('RunDetail.spec_alignment_title')}
+        </h2>
+        <div role="status" aria-live="polite" className="run-detail__loading">
+          <span className="loading-spinner" />
+          {t('RunDetail.spec_alignment_loading')}
+        </div>
+      </section>
+    );
+  }
+  if (state.status === 'missing') {
+    return (
+      <section className="run-detail__spec-panel" aria-labelledby="run-detail-spec-title">
+        <h2 id="run-detail-spec-title" className="run-detail__spec-title">
+          {t('RunDetail.spec_alignment_title')}
+        </h2>
+        <p className="run-detail__empty">{t('RunDetail.spec_alignment_missing')}</p>
+      </section>
+    );
+  }
+  if (state.status === 'error') {
+    return (
+      <section className="run-detail__spec-panel" aria-labelledby="run-detail-spec-title">
+        <h2 id="run-detail-spec-title" className="run-detail__spec-title">
+          {t('RunDetail.spec_alignment_title')}
+        </h2>
+        <div role="alert" className="run-detail__error">
+          {t('RunDetail.spec_alignment_load_failed')}
+          <button type="button" className="retry-btn" onClick={onRetry}>
+            {t('Error.retry')}
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  const artifact = state.artifact;
+  return (
+    <section className="run-detail__spec-panel" aria-labelledby="run-detail-spec-title">
+      <div className="run-detail__spec-head">
+        <div>
+          <h2 id="run-detail-spec-title" className="run-detail__spec-title">
+            {t('RunDetail.spec_alignment_title')}
+          </h2>
+          <p className="run-detail__spec-source">
+            {artifact.spec_source?.path ?? t('RunDetail.spec_alignment_source_unknown')}
+          </p>
+        </div>
+        <div className="run-detail__spec-score">
+          {artifact.score.toFixed(1)}/{artifact.max_score.toFixed(0)}
+        </div>
+      </div>
+      <dl className="run-detail__spec-summary">
+        <div>
+          <dt>{t('RunDetail.spec_class_implemented')}</dt>
+          <dd>{artifact.summary.implemented}</dd>
+        </div>
+        <div>
+          <dt>{t('RunDetail.spec_class_partial')}</dt>
+          <dd>{artifact.summary.partial}</dd>
+        </div>
+        <div>
+          <dt>{t('RunDetail.spec_class_missing')}</dt>
+          <dd>{artifact.summary.missing}</dd>
+        </div>
+        <div>
+          <dt>{t('RunDetail.spec_class_unknown')}</dt>
+          <dd>{artifact.summary.unknown}</dd>
+        </div>
+      </dl>
+      {artifact.semantic_review && (
+        <SpecSemanticReviewPanel t={t} artifact={artifact} />
+      )}
+      {artifact.requirements.length === 0 ? (
+        <p className="run-detail__empty">{t('RunDetail.spec_alignment_no_requirements')}</p>
+      ) : (
+        <ul className="run-detail__spec-requirements">
+          {artifact.requirements.map((requirement) => (
+            <li
+              key={requirement.id}
+              className={`run-detail__spec-req run-detail__spec-req--${requirement.classification}`}
+            >
+              <div className="run-detail__spec-req-head">
+                <code>{requirement.id}</code>
+                <span>{t(SPEC_CLASS_KEYS[requirement.classification])}</span>
+              </div>
+              <p>{requirement.text}</p>
+              <p className="run-detail__spec-reason">{requirement.reason}</p>
+              {requirement.evidence_refs.length > 0 && (
+                <ul className="run-detail__spec-evidence">
+                  {requirement.evidence_refs.map((ref, index) => (
+                    <li key={`${requirement.id}-${index}`}>
+                      <code>
+                        {ref.file ?? ref.claim_id ?? ref.type}
+                        {typeof ref.start === 'number' ? `:${ref.start}` : ''}
+                      </code>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {artifact.known_limitations.length > 0 && (
+        <p className="run-detail__spec-limitations">
+          {t('RunDetail.spec_alignment_limitations', {
+            count: String(artifact.known_limitations.length),
+          })}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function SpecSemanticReviewPanel({
+  t,
+  artifact,
+}: {
+  t: TranslateFn;
+  artifact: SpecAlignmentArtifact;
+}) {
+  const review = artifact.semantic_review;
+  if (!review) return null;
+  const adjustment = artifact.semantic_adjustment;
+  return (
+    <section className="run-detail__semantic-panel" aria-labelledby="run-detail-semantic-title">
+      <div className="run-detail__semantic-head">
+        <div>
+          <h3 id="run-detail-semantic-title">{t('RunDetail.spec_semantic_title')}</h3>
+          <p className="run-detail__spec-source">
+            {review.provider}/{review.model}
+          </p>
+        </div>
+        <span className={`run-detail__semantic-status ${review.degraded ? 'is-degraded' : 'is-ok'}`}>
+          {review.degraded
+            ? t('RunDetail.spec_semantic_degraded')
+            : t('RunDetail.spec_semantic_available')}
+        </span>
+      </div>
+      {review.degraded && review.degradation_reason && (
+        <p className="run-detail__spec-reason">{review.degradation_reason}</p>
+      )}
+      <dl className="run-detail__spec-summary run-detail__semantic-summary">
+        <div>
+          <dt>{t('RunDetail.spec_class_implemented')}</dt>
+          <dd>{review.aggregate.implemented}</dd>
+        </div>
+        <div>
+          <dt>{t('RunDetail.spec_class_partial')}</dt>
+          <dd>{review.aggregate.partial}</dd>
+        </div>
+        <div>
+          <dt>{t('RunDetail.spec_class_missing')}</dt>
+          <dd>{review.aggregate.missing}</dd>
+        </div>
+        <div>
+          <dt>{t('RunDetail.spec_class_violated')}</dt>
+          <dd>{review.aggregate.violated}</dd>
+        </div>
+      </dl>
+      {adjustment && (
+        <p className="run-detail__spec-limitations">
+          {t('RunDetail.spec_semantic_adjustment', {
+            score: adjustment.score.toFixed(1),
+            delta: adjustment.delta.toFixed(1),
+          })}
+        </p>
+      )}
+      {review.requirements.length === 0 ? (
+        <p className="run-detail__empty">{t('RunDetail.spec_semantic_empty')}</p>
+      ) : (
+        <ul className="run-detail__spec-requirements run-detail__semantic-requirements">
+          {review.requirements.map((requirement) => (
+            <li
+              key={`semantic-${requirement.id}`}
+              className={`run-detail__spec-req run-detail__spec-req--${requirement.classification === 'violated' ? 'missing' : requirement.classification}`}
+            >
+              <div className="run-detail__spec-req-head">
+                <code>{requirement.id}</code>
+                <span>{t(SPEC_SEMANTIC_CLASS_KEYS[requirement.classification])}</span>
+              </div>
+              <p className="run-detail__spec-reason">{requirement.rationale}</p>
+              {requirement.disagreement_with_deterministic && (
+                <p className="run-detail__semantic-disagreement">
+                  {t('RunDetail.spec_semantic_disagreement')}
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {review.limitations.length > 0 && (
+        <p className="run-detail__spec-limitations">
+          {t('RunDetail.spec_semantic_limitations', {
+            count: String(review.limitations.length),
+          })}
+        </p>
+      )}
+    </section>
   );
 }

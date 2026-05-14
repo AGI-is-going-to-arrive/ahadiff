@@ -843,6 +843,20 @@ class TestSpecAlignment:
             event_id="evt_invalid",
             spec_alignment_score=True,
         )
+        _insert_result_event(
+            db_path,
+            event_id="evt_not_applicable",
+            run_id="run_00000000000000000000000000000003",
+            timestamp="2026-04-12T12:00:00Z",
+            overall=100.0,
+        )
+        _write_score_artifact(
+            state_dir,
+            run_id="run_00000000000000000000000000000003",
+            event_id="evt_not_applicable",
+            spec_alignment_score=0.0,
+            spec_alignment_max_score=0.0,
+        )
 
         client = _client(state_dir)
 
@@ -853,6 +867,141 @@ class TestSpecAlignment:
         assert body["alignment_score"] == 7.0
         assert body["total_evaluated"] == 1
         assert body["recent_trend"] is None
+
+    def test_degrades_schema_less_spec_alignment_artifact(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir(parents=True)
+        db_path = state_dir / "review.sqlite"
+        initialize_review_db(db_path)
+        _insert_result_event(
+            db_path,
+            event_id="evt_bad_artifact",
+            run_id="run_00000000000000000000000000000004",
+            timestamp="2026-04-10T12:00:00Z",
+            overall=85.0,
+        )
+        _write_score_artifact(
+            state_dir,
+            run_id="run_00000000000000000000000000000004",
+            event_id="evt_bad_artifact",
+            spec_alignment_score=8.0,
+        )
+        run_path = state_dir / "runs" / "run_00000000000000000000000000000004"
+        (run_path / "spec_alignment.json").write_text(
+            json.dumps({"score": 999.0, "summary": {}, "requirements": []}),
+            encoding="utf-8",
+        )
+
+        resp = _client(state_dir).get("/api/spec/alignment", headers=_AUTH)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["alignment_score"] is None
+        assert body["total_evaluated"] == 0
+        assert body["degraded_count"] == 1
+
+    def test_uses_spec_alignment_artifact_summary_when_available(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir(parents=True)
+        db_path = state_dir / "review.sqlite"
+        initialize_review_db(db_path)
+        _insert_result_event(
+            db_path,
+            event_id="evt_spec",
+            run_id="run_00000000000000000000000000000003",
+            timestamp="2026-04-10T12:00:00Z",
+            overall=85.0,
+        )
+        _write_score_artifact(
+            state_dir,
+            run_id="run_00000000000000000000000000000003",
+            event_id="evt_spec",
+            spec_alignment_score=1.0,
+        )
+        _write_spec_alignment_artifact(
+            state_dir,
+            run_id="run_00000000000000000000000000000003",
+            score=8.0,
+            summary={"implemented": 2, "partial": 1, "missing": 1, "unknown": 0},
+        )
+
+        resp = _client(state_dir).get("/api/spec/alignment", headers=_AUTH)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["alignment_score"] == 8.0
+        assert body["total_requirements"] == 4
+        assert body["implemented"] == 2
+        assert body["partial"] == 1
+        assert body["missing"] == 1
+        assert body["unknown"] == 0
+
+    def test_counts_semantic_review_summary_when_available(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir(parents=True)
+        db_path = state_dir / "review.sqlite"
+        initialize_review_db(db_path)
+        _insert_result_event(
+            db_path,
+            event_id="evt_semantic_spec",
+            run_id="run_00000000000000000000000000000005",
+            timestamp="2026-04-10T12:00:00Z",
+            overall=85.0,
+        )
+        _write_score_artifact(
+            state_dir,
+            run_id="run_00000000000000000000000000000005",
+            event_id="evt_semantic_spec",
+            spec_alignment_score=7.0,
+        )
+        _write_spec_alignment_artifact(
+            state_dir,
+            run_id="run_00000000000000000000000000000005",
+            score=7.0,
+            summary={"implemented": 1, "partial": 0, "missing": 0, "unknown": 0},
+        )
+        artifact_path = (
+            state_dir / "runs" / "run_00000000000000000000000000000005" / "spec_alignment.json"
+        )
+        payload = json.loads(artifact_path.read_text(encoding="utf-8"))
+        payload["semantic_review"] = {
+            "enabled": True,
+            "provider": "openai_responses",
+            "model": "gpt-5.5",
+            "prompt_digest": "abc123",
+            "input_digest": "def456",
+            "requirements": [
+                {
+                    "id": "REQ-001",
+                    "classification": "missing",
+                    "confidence": 0.8,
+                    "rationale": "Fixture disagreement.",
+                    "evidence_refs": [],
+                    "disagreement_with_deterministic": True,
+                }
+            ],
+            "aggregate": {
+                "implemented": 0,
+                "partial": 0,
+                "missing": 1,
+                "unknown": 0,
+                "violated": 0,
+                "confidence": 0.8,
+                "risk_flags": ["deterministic_semantic_disagreement"],
+            },
+            "degraded": False,
+            "degradation_reason": None,
+            "limitations": [],
+        }
+        artifact_path.write_text(json.dumps(payload), encoding="utf-8")
+
+        resp = _client(state_dir).get("/api/spec/alignment", headers=_AUTH)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["semantic_reviewed"] == 1
+        assert body["semantic_degraded_count"] == 0
+        assert body["semantic_disagreement_count"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -902,6 +1051,7 @@ def _write_score_artifact(
     run_id: str,
     event_id: str,
     spec_alignment_score: object,
+    spec_alignment_max_score: object = 10.0,
 ) -> None:
     run_path = state_dir / "runs" / run_id
     run_path.mkdir(parents=True)
@@ -913,7 +1063,7 @@ def _write_score_artifact(
                 "dimensions": {
                     "spec_alignment": {
                         "score": spec_alignment_score,
-                        "max_score": 10.0,
+                        "max_score": spec_alignment_max_score,
                         "reason": "test fixture",
                     }
                 },
@@ -927,6 +1077,44 @@ def _write_score_artifact(
                 "run_id": run_id,
                 "event_id": event_id,
                 "finalized_at": "2026-04-10T12:00:00Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_spec_alignment_artifact(
+    state_dir: Path,
+    *,
+    run_id: str,
+    score: float,
+    summary: dict[str, int],
+) -> None:
+    run_path = state_dir / "runs" / run_id
+    run_path.mkdir(parents=True, exist_ok=True)
+    requirements: list[dict[str, object]] = [
+        {
+            "id": f"REQ-{index:03d}",
+            "text": f"Requirement {index}",
+            "classification": "implemented",
+            "severity": "medium",
+            "evidence_refs": [],
+            "confidence": 0.8,
+            "reason": "test fixture",
+        }
+        for index in range(1, sum(summary.values()) + 1)
+    ]
+    (run_path / "spec_alignment.json").write_text(
+        json.dumps(
+            {
+                "artifact": "spec_alignment",
+                "schema": "ahadiff.spec_alignment",
+                "schema_version": 1,
+                "applicability": "applicable",
+                "status": "scored",
+                "score": score,
+                "summary": summary,
+                "requirements": requirements,
             }
         ),
         encoding="utf-8",

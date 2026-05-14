@@ -20,6 +20,62 @@ test.describe('smoke', () => {
     expect(overflow).toBeLessThanOrEqual(0);
   });
 
+  test('dashboard distinguishes degraded spec alignment artifacts', async ({ page }) => {
+    await page.route(
+      (url) => url.pathname === '/api/runs',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            runs: [
+              {
+                run_id: 'run-001',
+                source_kind: 'git_ref',
+                source_ref: 'HEAD',
+                content_lang: 'en',
+                capability_level: 3,
+                verdict: 'PASS',
+                overall: 88,
+                status: 'baseline',
+                weakest_dim: 'evidence',
+                created_at: '2026-04-25T10:00:00Z',
+                degraded_flags: {},
+              },
+            ],
+          }),
+        }),
+    );
+    await page.route(
+      (url) => url.pathname === '/api/spec/alignment',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            alignment_score: null,
+            total_evaluated: 0,
+            recent_trend: null,
+            total_requirements: 0,
+            implemented: 0,
+            partial: 0,
+            missing: 0,
+            unknown: 0,
+            degraded_count: 2,
+            semantic_reviewed: 0,
+            semantic_degraded_count: 0,
+            semantic_disagreement_count: 0,
+          }),
+        }),
+    );
+
+    await page.goto('/');
+
+    await expect(
+      page.getByLabel(/Spec alignment/i).getByText(/2 spec alignment artifacts need attention/i),
+    ).toBeVisible();
+  });
+
   test('hash router diff route renders DiffViewer heading', async ({ page }) => {
     await page.goto('/#/run/test-run/diff');
     await expect(page.getByRole('heading', { name: /diff/i, level: 1 })).toBeVisible();

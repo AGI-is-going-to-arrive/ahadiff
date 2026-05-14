@@ -1033,6 +1033,61 @@ def test_score_route_returns_envelope_when_artifact_exists(tmp_path: Path) -> No
     assert '"overall":88' in body["content"]
 
 
+def test_spec_alignment_route_returns_envelope_when_artifact_exists(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=False)
+    (run_path / "spec_alignment.json").write_text(
+        '{"schema":"ahadiff.spec_alignment","score":8}',
+        encoding="utf-8",
+    )
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    response = client.get("/api/run/run-1/spec-alignment")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["artifact_type"] == "spec_alignment"
+    assert body["run_id"] == "run-1"
+    assert '"score":8' in body["content"]
+
+
+def test_spec_alignment_route_returns_404_when_artifact_is_missing(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=False)
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    response = client.get("/api/run/run-1/spec-alignment")
+
+    assert response.status_code == 404
+    assert response.json()["error"] == "artifact_not_found"
+
+
+def test_graphify_signoff_route_returns_envelope_when_artifact_exists(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=False)
+    (run_path / "graphify_signoff.json").write_text(
+        '{"schema":"ahadiff.graphify_signoff","signoff":"degraded"}',
+        encoding="utf-8",
+    )
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    response = client.get("/api/run/run-1/graphify-signoff")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["artifact_type"] == "graphify_signoff"
+    assert '"signoff":"degraded"' in body["content"]
+
+
 def test_score_route_returns_400_when_artifact_is_missing(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     initialize_review_db(state_dir / "review.sqlite")

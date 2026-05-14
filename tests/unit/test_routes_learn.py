@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import threading
 import time
+from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import Any, Literal, cast
 
 import anyio
 import httpx
@@ -18,9 +19,6 @@ from ahadiff.contracts.serve_runtime import TaskInfoResponse, TaskSubmitResponse
 from ahadiff.core.orchestrator import LearnRequest, LearnResult
 from ahadiff.core.task_runner import TaskRunner
 from ahadiff.serve import ServeState, create_app, routes_learn
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def _client(
@@ -475,6 +473,40 @@ def test_post_learn_passes_changed_paths_to_request(
     assert info["status"] == "completed"
     assert constructed_kwargs["workspace_root"] == tmp_path.parent
     assert constructed_kwargs["changed_paths"] == ("src/app.py", "tests/test_app.py")
+
+
+def test_post_learn_passes_against_spec_to_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ahadiff.core.orchestrator as orchestrator_module
+
+    constructed_kwargs: dict[str, Any] = {}
+
+    def recording_learn_request(**kwargs: Any) -> LearnRequest:
+        constructed_kwargs.update(kwargs)
+        assert kwargs["against_spec"] == Path("SPEC.md")
+        assert kwargs["spec_semantic_review"] is True
+        return LearnRequest(**kwargs)
+
+    def fake_run_learn_pipeline(request: LearnRequest, **_: object) -> LearnResult:
+        return LearnResult(run_id="run-against-spec", status="completed")
+
+    monkeypatch.setattr(orchestrator_module, "LearnRequest", recording_learn_request)
+    monkeypatch.setattr(orchestrator_module, "run_learn_pipeline", fake_run_learn_pipeline)
+
+    with _client(tmp_path) as client:
+        resp = _post_learn(
+            client,
+            body={"against_spec": "SPEC.md", "spec_semantic_review": True},
+        )
+        assert resp.status_code == 202
+
+        info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
+
+    assert info["status"] == "completed"
+    assert constructed_kwargs["against_spec"] == Path("SPEC.md")
+    assert constructed_kwargs["spec_semantic_review"] is True
 
 
 # ---------------------------------------------------------------------------

@@ -764,13 +764,39 @@ def _build_spec_alignment(state: ServeState) -> dict[str, Any]:
         return _empty_spec_alignment()
 
     scores: list[float] = []
+    aggregate = {
+        "implemented": 0,
+        "partial": 0,
+        "missing": 0,
+        "unknown": 0,
+        "total_requirements": 0,
+        "degraded_count": 0,
+        "semantic_reviewed": 0,
+        "semantic_degraded_count": 0,
+        "semantic_disagreement_count": 0,
+    }
     for event in events:
-        score = _load_run_spec_alignment_score(state.runs_dir, event)
-        if score is not None:
-            scores.append(score)
+        item = _load_run_spec_alignment_summary(state.runs_dir, event)
+        if item is None:
+            continue
+        if item["degraded"]:
+            aggregate["degraded_count"] += 1
+        raw_score = item["score"]
+        if isinstance(raw_score, float):
+            scores.append(raw_score)
+            aggregate["implemented"] += item["implemented"]
+            aggregate["partial"] += item["partial"]
+            aggregate["missing"] += item["missing"]
+            aggregate["unknown"] += item["unknown"]
+            aggregate["total_requirements"] += item["total_requirements"]
+            aggregate["semantic_reviewed"] += item["semantic_reviewed"]
+            aggregate["semantic_degraded_count"] += item["semantic_degraded_count"]
+            aggregate["semantic_disagreement_count"] += item["semantic_disagreement_count"]
 
     if not scores:
-        return _empty_spec_alignment()
+        payload = _empty_spec_alignment()
+        payload["degraded_count"] = aggregate["degraded_count"]
+        return payload
 
     avg = round(sum(scores) / len(scores), 2)
     trend: str | None = None
@@ -790,6 +816,15 @@ def _build_spec_alignment(state: ServeState) -> dict[str, Any]:
         alignment_score=avg,
         total_evaluated=len(scores),
         recent_trend=trend,
+        total_requirements=aggregate["total_requirements"],
+        implemented=aggregate["implemented"],
+        partial=aggregate["partial"],
+        missing=aggregate["missing"],
+        unknown=aggregate["unknown"],
+        degraded_count=aggregate["degraded_count"],
+        semantic_reviewed=aggregate["semantic_reviewed"],
+        semantic_degraded_count=aggregate["semantic_degraded_count"],
+        semantic_disagreement_count=aggregate["semantic_disagreement_count"],
     ).model_dump(mode="json")
 
 
@@ -829,10 +864,54 @@ def _load_spec_alignment_events(db_path: Path) -> list[ResultEvent]:
     return events
 
 
-def _load_run_spec_alignment_score(runs_dir: Path, event: ResultEvent) -> float | None:
+def _load_run_spec_alignment_summary(runs_dir: Path, event: ResultEvent) -> dict[str, Any] | None:
     run_path = _finalized_stats_event_run_path(runs_dir, event)
     if run_path is None:
         return None
+    artifact_path = _artifact_path_for_stats_read(run_path, "spec_alignment.json")
+    if artifact_path is not None:
+        artifact = _load_stats_json_object(artifact_path)
+        if artifact is None:
+            return _empty_run_spec_alignment_summary(degraded=True)
+        schema_version = artifact.get("schema_version")
+        if (
+            artifact.get("artifact") != "spec_alignment"
+            or artifact.get("schema") != "ahadiff.spec_alignment"
+            or isinstance(schema_version, bool)
+            or not isinstance(schema_version, int)
+            or schema_version < 1
+        ):
+            return _empty_run_spec_alignment_summary(degraded=True)
+        score = _finite_spec_score(artifact.get("score"))
+        if score is None:
+            return _empty_run_spec_alignment_summary(degraded=True)
+        semantic_summary = _semantic_summary_from_artifact(artifact)
+        raw_summary = artifact.get("summary")
+        summary: Mapping[str, object] = (
+            cast("Mapping[str, object]", raw_summary)
+            if isinstance(raw_summary, dict)
+            else cast("Mapping[str, object]", {})
+        )
+        requirements = artifact.get("requirements")
+        total_requirements = (
+            len(cast("list[object]", requirements)) if isinstance(requirements, list) else 0
+        )
+        summary_item = _empty_run_spec_alignment_summary(degraded=False)
+        summary_item["score"] = score
+        summary_item["implemented"] = _summary_count(summary, "implemented")
+        summary_item["partial"] = _summary_count(summary, "partial")
+        summary_item["missing"] = _summary_count(summary, "missing")
+        summary_item["unknown"] = _summary_count(summary, "unknown")
+        summary_item["total_requirements"] = max(
+            total_requirements,
+            summary_item["implemented"]
+            + summary_item["partial"]
+            + summary_item["missing"]
+            + summary_item["unknown"],
+        )
+        summary_item.update(semantic_summary)
+        return summary_item
+
     score_path = _artifact_path_for_stats_read(run_path, "score.json")
     if score_path is None:
         return None
@@ -848,11 +927,70 @@ def _load_run_spec_alignment_score(runs_dir: Path, event: ResultEvent) -> float 
     if not isinstance(spec_alignment_raw, dict):
         return None
     spec_alignment = cast("Mapping[str, object]", spec_alignment_raw)
-    raw_score = spec_alignment.get("score")
-    if isinstance(raw_score, bool) or not isinstance(raw_score, int | float):
+    raw_max_score = spec_alignment.get("max_score")
+    if not isinstance(raw_max_score, int | float) or float(raw_max_score) <= 0:
         return None
-    score = float(raw_score)
-    return score if math.isfinite(score) else None
+    raw_score = spec_alignment.get("score")
+    score = _finite_spec_score(raw_score)
+    if score is None:
+        return None
+    summary_item = _empty_run_spec_alignment_summary(degraded=False)
+    summary_item["score"] = score
+    return summary_item
+
+
+def _empty_run_spec_alignment_summary(*, degraded: bool) -> dict[str, Any]:
+    return {
+        "score": None,
+        "implemented": 0,
+        "partial": 0,
+        "missing": 0,
+        "unknown": 0,
+        "total_requirements": 0,
+        "degraded": degraded,
+        "semantic_reviewed": 0,
+        "semantic_degraded_count": 0,
+        "semantic_disagreement_count": 0,
+    }
+
+
+def _semantic_summary_from_artifact(artifact: Mapping[str, object]) -> dict[str, int]:
+    raw_review = artifact.get("semantic_review")
+    if not isinstance(raw_review, dict):
+        return {
+            "semantic_reviewed": 0,
+            "semantic_degraded_count": 0,
+            "semantic_disagreement_count": 0,
+        }
+    review = cast("Mapping[str, object]", raw_review)
+    raw_requirements = review.get("requirements")
+    requirements = (
+        cast("list[object]", raw_requirements) if isinstance(raw_requirements, list) else []
+    )
+    disagreements = 0
+    for raw_item in requirements:
+        if not isinstance(raw_item, dict):
+            continue
+        item = cast("Mapping[str, object]", raw_item)
+        if item.get("disagreement_with_deterministic") is True:
+            disagreements += 1
+    return {
+        "semantic_reviewed": 1,
+        "semantic_degraded_count": 1 if review.get("degraded") is True else 0,
+        "semantic_disagreement_count": disagreements,
+    }
+
+
+def _finite_spec_score(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    score = float(value)
+    return score if math.isfinite(score) and 0.0 <= score <= 10.0 else None
+
+
+def _summary_count(summary: Mapping[str, object], key: str) -> int:
+    value = summary.get(key)
+    return value if isinstance(value, int) and value >= 0 else 0
 
 
 def _finalized_stats_event_run_path(runs_dir: Path, event: ResultEvent) -> Path | None:

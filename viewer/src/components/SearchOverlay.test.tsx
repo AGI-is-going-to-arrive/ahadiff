@@ -211,6 +211,17 @@ describe('SearchOverlay', () => {
     expect(src).toMatch(/trimmed\.length < MIN_QUERY/);
   });
 
+  it('treats /api/search 404 as unavailable instead of empty results', async () => {
+    const src = readFileSync(
+      resolve(__dirname, 'SearchOverlay.tsx'),
+      'utf-8',
+    );
+
+    expect(src).not.toContain('Endpoint not yet shipped');
+    expect(src).not.toMatch(/err instanceof ApiError && err\.status === 404[\s\S]{0,180}setStatus\('empty'\)/);
+    expect(src).toContain("setStatus('error')");
+  });
+
   it('cycles the active result with ArrowDown/ArrowUp on the dialog', async () => {
     const results: SearchResult[] = [
       makeResult({ kind: 'run', id: 'run-1', title: 'Run one' }),

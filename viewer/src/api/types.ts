@@ -495,6 +495,158 @@ export interface SpecAlignmentResponse {
   alignment_score: number | null;
   total_evaluated: number;
   recent_trend: 'improving' | 'stable' | 'declining' | null;
+  total_requirements: number;
+  implemented: number;
+  partial: number;
+  missing: number;
+  unknown: number;
+  degraded_count: number;
+  semantic_reviewed: number;
+  semantic_degraded_count: number;
+  semantic_disagreement_count: number;
+}
+
+export type SpecRequirementClassification = 'implemented' | 'partial' | 'missing' | 'unknown';
+
+export interface SpecEvidenceRef {
+  type: string;
+  claim_id?: string;
+  file?: string;
+  start?: number | null;
+  end?: number | null;
+  side?: string | null;
+  lines?: number[];
+  anchors?: string[];
+}
+
+export interface SpecRequirement {
+  id: string;
+  text: string;
+  classification: SpecRequirementClassification;
+  severity: string;
+  evidence_refs: SpecEvidenceRef[];
+  confidence: number;
+  reason: string;
+}
+
+export type SpecSemanticClassification =
+  | 'implemented'
+  | 'partial'
+  | 'missing'
+  | 'unknown'
+  | 'violated';
+
+export interface SpecSemanticRequirement {
+  id: string;
+  classification: SpecSemanticClassification;
+  confidence: number;
+  rationale: string;
+  evidence_refs: SpecEvidenceRef[];
+  disagreement_with_deterministic: boolean;
+}
+
+export interface SpecSemanticReview {
+  enabled: boolean;
+  provider: string;
+  model: string;
+  prompt_digest: string;
+  input_digest: string;
+  requirements: SpecSemanticRequirement[];
+  aggregate: {
+    implemented: number;
+    partial: number;
+    missing: number;
+    unknown: number;
+    violated: number;
+    confidence: number;
+    risk_flags: string[];
+  };
+  degraded: boolean;
+  degradation_reason?: string | null;
+  limitations: string[];
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    finish_reason?: string | null;
+    request_id?: string | null;
+  };
+}
+
+export interface SpecSemanticAdjustment {
+  policy: string;
+  score: number;
+  delta: number;
+  reason: string;
+}
+
+export interface SpecAlignmentArtifact {
+  artifact: 'spec_alignment';
+  schema: 'ahadiff.spec_alignment';
+  schema_version: number;
+  applicability: string;
+  status: string;
+  spec_source?: {
+    path?: string;
+    ref?: string;
+    sha256?: string;
+    bytes?: number;
+  };
+  spec_digest?: string;
+  requirements: SpecRequirement[];
+  summary: {
+    implemented: number;
+    partial: number;
+    missing: number;
+    unknown: number;
+  };
+  score: number;
+  max_score: number;
+  confidence: number;
+  matcher?: {
+    mode: string;
+    claim_count: number;
+    uses_code_anchors: boolean;
+    uses_patch_added_lines: boolean;
+    detects_forbidden_additions: boolean;
+  };
+  deterministic_result?: {
+    score: number;
+    summary?: Record<string, number>;
+    matcher?: Record<string, unknown>;
+  };
+  semantic_review?: SpecSemanticReview;
+  semantic_adjustment?: SpecSemanticAdjustment;
+  known_limitations: string[];
+}
+
+export interface GraphifySignoffCheck {
+  name: string;
+  passed: boolean;
+  detail: string;
+}
+
+export interface GraphifySignoffArtifact {
+  artifact: 'graphify_signoff';
+  schema: 'ahadiff.graphify_signoff';
+  schema_version: number;
+  run_id: string;
+  signoff: 'passed' | 'degraded' | 'unavailable';
+  freshness?: string | null;
+  graph_source: string;
+  graph_sha256: string;
+  parser_version: string;
+  import_time: string;
+  node_count: number;
+  edge_count: number;
+  source_coverage: {
+    selected_files: number;
+    omitted_files: number;
+    graph_nodes: number;
+    graph_edges: number;
+  };
+  degradation_reasons: string[];
+  checks: GraphifySignoffCheck[];
+  known_limitations: string[];
 }
 
 export interface WatchStatusResponse {

@@ -122,6 +122,7 @@ def evaluate_run(run_path: Path) -> ScoreReport:
     deterministic = build_deterministic_scores(
         rubric=rubric,
         metadata=metadata,
+        run_path=run_path,
         patch_text=patch_text,
         claims=claims,
         line_maps=line_maps,
@@ -136,7 +137,7 @@ def evaluate_run(run_path: Path) -> ScoreReport:
         secret_leak_detected=deterministic.secret_leak_detected,
         injection_unresolved=deterministic.injection_unresolved,
     )
-    overall = round(sum(dimension_scores.values()), 2)
+    overall = _resolve_overall(deterministic.dimensions)
     verdict = _resolve_verdict(
         overall=overall,
         hard_gates=hard_gates,
@@ -685,6 +686,19 @@ def _resolve_verdict(
     return "FAIL"
 
 
+def _resolve_overall(dimensions: tuple[DimensionScore, ...]) -> float:
+    applicable = tuple(item for item in dimensions if item.max_score > 0)
+    if not applicable:
+        return 0.0
+    raw_score = sum(item.score for item in applicable)
+    raw_max = sum(item.max_score for item in applicable)
+    if raw_max <= 0:
+        return 0.0
+    if math.isclose(raw_max, 100.0):
+        return round(raw_score, 2)
+    return round((raw_score / raw_max) * 100.0, 2)
+
+
 def _has_complete_stage3_artifacts(
     *,
     claims: tuple[ClaimRecord, ...],
@@ -751,8 +765,9 @@ def _evidence_links_to_line_map(
 
 
 def _resolve_weakest_dimension(dimensions: tuple[DimensionScore, ...]) -> str:
+    comparable = tuple(item for item in dimensions if item.max_score > 0) or dimensions
     weakest = min(
-        dimensions,
+        comparable,
         key=lambda item: (
             item.score / item.max_score if item.max_score else 0.0,
             item.score,
