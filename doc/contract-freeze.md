@@ -1027,3 +1027,14 @@ run_id: str
 - `VERDICT_SEVERITY` 当前顺序是 `verified < weak < not_proven < contradicted < rejected`，用于聚合优先级和默认选择，不改变 claim artifact 原始状态。
 
 本轮实测：`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run pytest tests/unit/test_routes_learn.py tests/unit/test_git_capture.py -q` = `199 passed`；后端 unit `2513 passed`；integration+eval `20 passed`；`ruff check`、`ruff format --check`、`pyright`、wheel build 通过；viewer typecheck、Vitest `35 files, 360 tests passed`、viewer build 通过；i18n `1454/1454`；`git diff --check HEAD` 通过。完整 Playwright、live judge 和远端 GitHub Actions 未在本轮重跑。
+
+### 9.21 Diff claim navigation sticky 收口（2026-05-16）
+
+本轮只记录已经由代码和本轮验证支撑的 `viewer/` 收口项：
+
+- `.diff-page` 不再用 `overflow: hidden` 截断 sticky 右侧栏；长 diff 跳转时 ClaimInspector 仍停在视口内。
+- ClaimInspector 选中卡片的自动滚动只作用于右侧栏自身，不再调用会影响整页的 `scrollIntoView()`。
+- 选中详情和证据 / 跳转按钮仍使用原有视觉结构，但渲染在对应 claim 卡片下方，用户不用回到列表顶部查看详情。
+- 旧浏览器会话可能仍被 Workbox service worker / cache 托管旧 bundle；验证当前 build 时需要清理缓存或硬刷新。
+
+本轮实测：目标 Vitest `2 files, 29 tests passed`；viewer typecheck；完整 Vitest `35 files, 362 tests passed`；viewer build；`git diff --check HEAD`；serve/browser cache-bust smoke 确认 `DiffViewerPage-CTH1QPRr.css` 已加载，`.diff-page` `overflowY=visible`，claim 021 跳到 `viewer/src/i18n/messages/en.json:565`，右侧 ClaimInspector 仍可见。后端、integration、eval、ruff/format、pyright、wheel、完整 Playwright、live judge 和远端 GitHub Actions 未在本轮重跑。

@@ -740,7 +740,7 @@ button.diff-split-cell {
   padding: var(--sp-8) var(--sp-10) 88px;
   gap: 18px;
   animation: fadeUp 0.28s ease-out;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .diff-page__header {

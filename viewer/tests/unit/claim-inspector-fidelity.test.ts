@@ -26,6 +26,31 @@ const CLAIMS_CONTENT = [
   }),
 ].join('\n');
 
+const LONG_DIFF_CONTENT = [
+  'diff --git a/src/long.ts b/src/long.ts',
+  '@@ -1,1 +1,181 @@',
+  ' export const seed = 1;',
+  ...Array.from({ length: 180 }, (_, index) =>
+    `+export const generatedValue${String(index + 1).padStart(3, '0')} = ${index + 1};`,
+  ),
+].join('\n');
+
+const LONG_CLAIMS_CONTENT = Array.from({ length: 24 }, (_, index) => {
+  const line = Math.min(2 + index * 7, 175);
+  const claimId = index === 20 ? 'c-scroll-target' : `c-long-${String(index).padStart(2, '0')}`;
+  return JSON.stringify({
+    claim_id: claimId,
+    status: 'verified',
+    statement:
+      index === 20
+        ? 'Selecting this lower claim should keep the right claim navigator available.'
+        : `Generated long diff claim ${index}`,
+    source_hunks: [{ file: 'src/long.ts', start: line, end: line, side: 'new' }],
+    confidence: 0.88,
+    concepts: ['long_diff_navigation'],
+  });
+}).join('\n');
+
 const HARNESS_HTML = String.raw`<!doctype html>
 <html lang="en">
   <head>
@@ -45,7 +70,11 @@ const HARNESS_HTML = String.raw`<!doctype html>
 
       const diffContent = ${JSON.stringify(DIFF_CONTENT)};
       const claimsContent = ${JSON.stringify(CLAIMS_CONTENT)};
+      const longDiffContent = ${JSON.stringify(LONG_DIFF_CONTENT)};
+      const longClaimsContent = ${JSON.stringify(LONG_CLAIMS_CONTENT)};
       let failClaims = false;
+      let activeDiffContent = diffContent;
+      let activeClaimsContent = claimsContent;
       let root;
 
       function mount(node) {
@@ -68,7 +97,7 @@ const HARNESS_HTML = String.raw`<!doctype html>
           return Promise.resolve(new Response(JSON.stringify({
             run_id: 'run-1',
             artifact_type: 'diff',
-            content: diffContent,
+            content: activeDiffContent,
             content_lang: 'en',
           }), {
             status: 200,
@@ -88,7 +117,7 @@ const HARNESS_HTML = String.raw`<!doctype html>
           return Promise.resolve(new Response(JSON.stringify({
             run_id: 'run-1',
             artifact_type: 'claims',
-            content: claimsContent,
+            content: activeClaimsContent,
             content_lang: 'en',
           }), {
             status: 200,
@@ -109,8 +138,11 @@ const HARNESS_HTML = String.raw`<!doctype html>
         }));
       };
 
-      window.__renderDiffViewerPage = ({ locale = 'en', claimsFail = false } = {}) => {
+      window.__renderDiffViewerPage = (options = {}) => {
+        const { locale = 'en', claimsFail = false, longDiff = false } = options;
         failClaims = claimsFail;
+        activeDiffContent = longDiff ? longDiffContent : diffContent;
+        activeClaimsContent = longDiff ? longClaimsContent : claimsContent;
         resetToken();
         useLocaleStore.setState({ locale });
         document.documentElement.lang = locale;
@@ -145,7 +177,11 @@ declare global {
   interface Window {
     __claimInspectorReady?: boolean;
     __renderClaimInspector: (options: RenderInspectorOptions) => void;
-    __renderDiffViewerPage: (options?: { claimsFail?: boolean; locale?: 'en' | 'zh-CN' }) => void;
+    __renderDiffViewerPage: (options?: {
+      claimsFail?: boolean;
+      locale?: 'en' | 'zh-CN';
+      longDiff?: boolean;
+    }) => void;
   }
 }
 
@@ -192,7 +228,10 @@ async function renderInspector(page: Page, options: RenderInspectorOptions): Pro
   await page.waitForSelector('.claim-inspector');
 }
 
-async function renderDiffPage(page: Page, options: { claimsFail?: boolean } = {}): Promise<void> {
+async function renderDiffPage(
+  page: Page,
+  options: { claimsFail?: boolean; longDiff?: boolean } = {},
+): Promise<void> {
   await page.goto(`${baseUrl}${TEST_PATH}`);
   await page.waitForFunction(() => Boolean(window.__claimInspectorReady));
   await page.evaluate((opts) => window.__renderDiffViewerPage(opts), options);
@@ -317,6 +356,98 @@ describe('ClaimInspector V6 fidelity', () => {
     await expect
       .poll(() => page.locator('.claim-inspector__item').textContent())
       .toContain('c-rejected-single');
+  });
+
+  it('keeps the selected claim card and detail visible in the inspector', async () => {
+    await page.setViewportSize({ width: 1280, height: 520 });
+    const claims = Array.from({ length: 22 }, (_, index) =>
+      makeClaim({
+        claim_id: index === 18 ? 'c-target' : `c-${String(index).padStart(2, '0')}`,
+        statement:
+          index === 18
+            ? 'Selected claim detail should stay next to the selected card.'
+            : `Background claim ${index}`,
+        confidence: 0.9,
+      }),
+    );
+
+    await renderInspector(page, { claims, selectedClaimId: 'c-target' });
+
+    const selectedItem = page.locator('#claim-c-target');
+    const selectedDetail = page.locator('#claim-detail-c-target');
+    await expect.poll(() => selectedItem.count()).toBe(1);
+    await expect.poll(() => selectedDetail.count()).toBe(1);
+    await expect.poll(() => selectedDetail.textContent()).toContain(
+      'Selected claim detail should stay next to the selected card.',
+    );
+
+    await page.waitForFunction(() => {
+      const inspector = document.querySelector('.claim-inspector');
+      const item = document.querySelector('#claim-c-target');
+      const detail = document.querySelector('#claim-detail-c-target');
+      if (!inspector || !item || !detail) return false;
+      const inspectorBox = inspector.getBoundingClientRect();
+      const itemBox = item.getBoundingClientRect();
+      const detailBox = detail.getBoundingClientRect();
+      return (
+        itemBox.top >= inspectorBox.top &&
+        itemBox.bottom <= inspectorBox.bottom &&
+        detailBox.top >= inspectorBox.top &&
+        detailBox.top - itemBox.bottom <= 16
+      );
+    });
+
+    await expect
+      .poll(() =>
+        page.locator('.claim-inspector__list-item').evaluateAll((items) =>
+          items.findIndex((item) => item.querySelector('#claim-c-target') !== null),
+        ),
+      )
+      .toBe(18);
+    await expect
+      .poll(() =>
+        page.locator('.claim-inspector__list-item').nth(18).evaluate((item) => {
+          const button = item.querySelector('#claim-c-target');
+          const detail = item.querySelector('#claim-detail-c-target');
+          return Boolean(button && detail && button.nextElementSibling === detail);
+        }),
+      )
+      .toBe(true);
+  });
+
+  it('keeps the claim navigator visible after jumping deep into a long diff', async () => {
+    await page.setViewportSize({ width: 1280, height: 520 });
+    await renderDiffPage(page, { longDiff: true });
+    await page.locator('#claim-c-scroll-target').scrollIntoViewIfNeeded();
+    await page.locator('#claim-c-scroll-target').click();
+
+    await page.waitForFunction(() =>
+      Boolean(
+        document.querySelector(
+          '.diff-line--claim-selected[data-line-anchor="src/long.ts:142"]',
+        ),
+      ),
+    );
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
+    await expect
+      .poll(() =>
+        page.locator('.claim-inspector').evaluate((inspector) => {
+          const box = inspector.getBoundingClientRect();
+          return box.top >= 0 && box.top < window.innerHeight && box.bottom > 0;
+        }),
+      )
+      .toBe(true);
+    await expect
+      .poll(() =>
+        page.locator('#claim-c-scroll-target').evaluate((item) => {
+          const inspector = item.closest('.claim-inspector');
+          if (!inspector) return false;
+          const inspectorBox = inspector.getBoundingClientRect();
+          const itemBox = item.getBoundingClientRect();
+          return itemBox.top >= inspectorBox.top && itemBox.bottom <= inspectorBox.bottom;
+        }),
+      )
+      .toBe(true);
   });
 
   it('renders selected source hunk outside the 22px diff area', async () => {

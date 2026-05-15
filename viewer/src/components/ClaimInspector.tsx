@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from '../i18n/useTranslation';
 import ClaimBadge from './ClaimBadge';
 import type { ClaimVerdict } from './ClaimBadge';
@@ -158,6 +158,7 @@ export default memo(function ClaimInspector({
   onJumpToCode,
 }: ClaimInspectorProps) {
   const { t } = useTranslation();
+  const inspectorRef = useRef<HTMLElement | null>(null);
   const [activeFilter, setActiveFilter] = useState<ClaimFilter>(() => getDefaultFilter(claims));
 
   useEffect(() => {
@@ -199,10 +200,118 @@ export default memo(function ClaimInspector({
         : []
     : [];
   const selectedConcepts = getDisplayConcepts(selectedClaim?.concepts);
+  const selectedDetailId = selectedClaim ? `claim-detail-${selectedClaim.claim_id}` : undefined;
+
+  useEffect(() => {
+    if (!selectedClaimId) return;
+    const inspector = inspectorRef.current;
+    const selectedItem = document.getElementById(`claim-${selectedClaimId}`);
+    if (!inspector || !selectedItem || !inspector.contains(selectedItem)) return;
+    requestAnimationFrame(() => {
+      const inspectorBox = inspector.getBoundingClientRect();
+      const itemBox = selectedItem.getBoundingClientRect();
+      const itemTop = inspector.scrollTop + itemBox.top - inspectorBox.top;
+      const centeredTop = itemTop - Math.max((inspector.clientHeight - itemBox.height) / 2, 0);
+      inspector.scrollTo({ top: Math.max(0, centeredTop), behavior: 'auto' });
+    });
+  }, [filteredClaims, selectedClaimId]);
+
+  const selectedDetail = selectedClaim ? (
+    <div
+      id={selectedDetailId}
+      className={`claim-inspector__detail claim-inspector__detail--${selectedClaim.verdict}`}
+      aria-live="polite"
+    >
+      <div className="claim-inspector__row">
+        <span className="claim-inspector__row-label">
+          {t('Claim_inspector.status_label')}
+        </span>
+        <ClaimBadge verdict={selectedClaim.verdict} />
+        {selectedClaim.confidence != null &&
+          isDisplayableConfidence(selectedClaim.confidence) && (
+            <span className="claim-inspector__conf-score">
+              {t('Claim_inspector.confidence_short')}{' '}
+              {formatConfidence(selectedClaim.confidence)}
+            </span>
+          )}
+      </div>
+
+      <EvidencePanel claim={selectedClaim} />
+
+      {selectedConcepts.length > 0 && (
+        <div className="claim-inspector__concepts-row">
+          <span className="claim-inspector__row-label">
+            {t('Claim_inspector.concepts_label')}
+          </span>
+          <div className="claim-inspector__concepts-list">
+            {selectedConcepts.map((concept) => (
+              <span
+                key={concept.key}
+                className="claim-inspector__concept-tag"
+                title={concept.label}
+              >
+                {concept.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Jump-to-code links replace the in-panel source code preview. The
+          full source hunk is rendered in the .diff-page__selected-hunk
+          section below the diff, avoiding horizontal scroll inside this
+          narrow panel. */}
+      {selectedJumpTargets.length > 0 ? (
+        <div className="claim-inspector__jumps">
+          <span className="claim-inspector__row-label">
+            {t('Claim_inspector.source_hunk_title')}
+          </span>
+          <ul className="claim-inspector__jump-list">
+            {selectedJumpTargets.map((group, index) => {
+              const ref = formatSourceGroupRef(group);
+              return (
+                <li key={`${ref}-${index}`}>
+                  <button
+                    type="button"
+                    className="claim-inspector__jump-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onJumpToCode?.(group.file, group.line_start, group.side);
+                    }}
+                    aria-label={`${t('Claim_inspector.jump_to_code')}: ${ref}`}
+                    disabled={!onJumpToCode}
+                  >
+                    <span aria-hidden="true" className="claim-inspector__jump-icon">
+                      ➥
+                    </span>
+                    <code className="claim-inspector__jump-ref">{ref}</code>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : (
+        hasSourceHunk(selectedClaim) ? null : (
+          <p className="claim-inspector__source-empty">
+            {t('Claim_inspector.source_unavailable')}
+          </p>
+        )
+      )}
+
+      {/* Backwards-compat ref for selected-claim location (kept so callers
+          that read the existing source ref formatter from props still see
+          the value). */}
+      {hasSourceHunk(selectedClaim) && selectedJumpTargets.length === 0 && (
+        <code className="claim-inspector__item-loc">{formatSourceRef(selectedClaim)}</code>
+      )}
+    </div>
+  ) : null;
 
   if (claims.length === 0 && !selectedClaim) {
     return (
       <aside
+        ref={inspectorRef}
         className="claim-inspector claim-inspector--empty"
         aria-label={t('Claim_inspector.title')}
       >
@@ -218,7 +327,7 @@ export default memo(function ClaimInspector({
   }
 
   return (
-    <aside className="claim-inspector" aria-label={t('Claim_inspector.title')}>
+    <aside ref={inspectorRef} className="claim-inspector" aria-label={t('Claim_inspector.title')}>
       <header className="claim-inspector__header">
         <h2 className="claim-inspector__title">{t('Claim_inspector.title')}</h2>
         <InfoHint label={t('Claim_inspector.onboarding_what_is_claim')} />
@@ -271,12 +380,13 @@ export default memo(function ClaimInspector({
             {filteredClaims.map((claim) => {
               const isSelected = claim.claim_id === selectedClaimId;
               return (
-                <li key={claim.claim_id}>
+                <li key={claim.claim_id} className="claim-inspector__list-item">
                   <button
                     type="button"
                     id={`claim-${claim.claim_id}`}
                     className={`claim-inspector__item claim-inspector__item--${claim.verdict}${isSelected ? ' claim-inspector__item--selected' : ''}${isSelected ? ' claim-inspector__item--expanded' : ' claim-inspector__item--collapsed'}`}
                     aria-pressed={isSelected}
+                    aria-controls={isSelected ? selectedDetailId : undefined}
                     onClick={() => onSelect?.(claim.claim_id)}
                   >
                     <div className="claim-inspector__item-row">
@@ -295,6 +405,7 @@ export default memo(function ClaimInspector({
                         : truncateSummary(claim.statement, COLLAPSED_SUMMARY_LIMIT)}
                     </p>
                   </button>
+                  {isSelected && selectedDetail}
                 </li>
               );
             })}
@@ -306,95 +417,6 @@ export default memo(function ClaimInspector({
         <p className="claim-inspector__empty" role="status">
           {t('Claim_inspector.filter_no_results')}
         </p>
-      )}
-
-      {/* Selected claim detail */}
-      {selectedClaim && (
-        <div className="claim-inspector__detail" aria-live="polite">
-          <div className="claim-inspector__row">
-            <span className="claim-inspector__row-label">
-              {t('Claim_inspector.status_label')}
-            </span>
-            <ClaimBadge verdict={selectedClaim.verdict} />
-            {selectedClaim.confidence != null &&
-              isDisplayableConfidence(selectedClaim.confidence) && (
-                <span className="claim-inspector__conf-score">
-                  {t('Claim_inspector.confidence_short')}{' '}
-                  {formatConfidence(selectedClaim.confidence)}
-                </span>
-              )}
-          </div>
-
-          <EvidencePanel claim={selectedClaim} />
-
-          {selectedConcepts.length > 0 && (
-            <div className="claim-inspector__concepts-row">
-              <span className="claim-inspector__row-label">
-                {t('Claim_inspector.concepts_label')}
-              </span>
-              <div className="claim-inspector__concepts-list">
-                {selectedConcepts.map((concept) => (
-                  <span
-                    key={concept.key}
-                    className="claim-inspector__concept-tag"
-                    title={concept.label}
-                  >
-                    {concept.label}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Jump-to-code links replace the in-panel source code preview. The
-              full source hunk is rendered in the .diff-page__selected-hunk
-              section below the diff, avoiding horizontal scroll inside this
-              narrow panel. */}
-          {selectedJumpTargets.length > 0 ? (
-            <div className="claim-inspector__jumps">
-              <span className="claim-inspector__row-label">
-                {t('Claim_inspector.source_hunk_title')}
-              </span>
-              <ul className="claim-inspector__jump-list">
-                {selectedJumpTargets.map((group, index) => {
-                  const ref = formatSourceGroupRef(group);
-                  return (
-                    <li key={`${ref}-${index}`}>
-                      <button
-                        type="button"
-                        className="claim-inspector__jump-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onJumpToCode?.(group.file, group.line_start, group.side);
-                        }}
-                        aria-label={`${t('Claim_inspector.jump_to_code')}: ${ref}`}
-                        disabled={!onJumpToCode}
-                      >
-                        <span aria-hidden="true" className="claim-inspector__jump-icon">
-                          ➥
-                        </span>
-                        <code className="claim-inspector__jump-ref">{ref}</code>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ) : (
-            hasSourceHunk(selectedClaim) ? null : (
-              <p className="claim-inspector__source-empty">
-                {t('Claim_inspector.source_unavailable')}
-              </p>
-            )
-          )}
-
-          {/* Backwards-compat ref for selected-claim location (kept so callers
-              that read the existing source ref formatter from props still see
-              the value). */}
-          {hasSourceHunk(selectedClaim) && selectedJumpTargets.length === 0 && (
-            <code className="claim-inspector__item-loc">{formatSourceRef(selectedClaim)}</code>
-          )}
-        </div>
       )}
     </aside>
   );
