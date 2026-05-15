@@ -92,10 +92,13 @@
 > artifacts through `on_error`. `POST /api/graph/refresh` keeps the same write
 > token, origin/referrer, and repo-lock protections, and its exact route now
 > uses the long 600s request timeout. Matching verification for this follow-up:
-> backend unit `2486 passed`, integration `11 passed`, eval `9 passed`, ruff
-> check, ruff format check, pyright, viewer typecheck, Vitest `349 passed`,
-> i18n `1443/1443`, and `git diff --check HEAD` passed. Wheel build, viewer
-> build, full Playwright, live judge, and remote GitHub Actions were not rerun.
+> backend unit `2502 passed`, integration `11 passed`, eval `9 passed`, ruff
+> check, ruff format check, pyright, wheel build, viewer typecheck, Vitest
+> `350 passed`, viewer build, full Playwright `2855 passed, 10 skipped`, i18n
+> `1447/1447`, and `git diff --check HEAD` passed. The same follow-up adds
+> `quiz.quiz_question_count` to `GET/PUT /api/config` and publishes a minimal
+> finalized run when learnability skips lesson/quiz. Live judge and remote
+> GitHub Actions were not rerun.
 
 ## 2026-04-27 Live Concrete Endpoints (22)
 

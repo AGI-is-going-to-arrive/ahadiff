@@ -51,6 +51,9 @@ def _empty_config_snapshot() -> dict[str, Any]:
             "learnability_threshold": 0.3,
             "desired_retention": 0.9,
         },
+        "quiz": {
+            "quiz_question_count": 3,
+        },
     }
 
 
@@ -94,6 +97,7 @@ def _safe_config_snapshot(state: ServeState) -> dict[str, Any]:
         llm_values = _object_mapping(snapshot_values.get("llm"))
         serve_values = _object_mapping(snapshot_values.get("serve"))
         capture_values = _object_mapping(snapshot_values.get("capture"))
+        quiz_values = _object_mapping(snapshot_values.get("quiz"))
         result: dict[str, Any] = {
             "lang": snapshot_values.get("lang"),
             "privacy_mode": snapshot_values.get("privacy_mode"),
@@ -116,6 +120,9 @@ def _safe_config_snapshot(state: ServeState) -> dict[str, Any]:
                 "max_concurrent": llm_values.get("max_concurrent", 3),
                 "retry_attempts": llm_values.get("retry_attempts", 3),
                 "output_lang": llm_values.get("output_lang", "auto"),
+            },
+            "quiz": {
+                "quiz_question_count": quiz_values.get("quiz_question_count", 3),
             },
         }
         learn_values = _object_mapping(snapshot_values.get("learn"))
@@ -154,6 +161,7 @@ def _safe_config_snapshot(state: ServeState) -> dict[str, Any]:
             "output_lang": "auto",
         }
         result["learn"] = {"learnability_threshold": 0.3, "desired_retention": 0.9}
+        result["quiz"] = {"quiz_question_count": 3}
         api_key_env = getattr(llm, "api_key_env", None) if llm else None
         providers = getattr(cfg, "providers", None)
 
@@ -500,6 +508,25 @@ def _validate_learn_update(learn: object) -> dict[str, Any] | str:
     return validated
 
 
+def _validate_quiz_update(quiz: object) -> dict[str, Any] | str:
+    if not isinstance(quiz, dict):
+        return "quiz must be a JSON object"
+    quiz_dict = cast("dict[str, Any]", quiz)
+    allowed = {"quiz_question_count"}
+    unknown_quiz: set[str] = set(quiz_dict.keys()) - allowed
+    if unknown_quiz:
+        return f"unknown quiz keys: {sorted(unknown_quiz)}"
+    validated: dict[str, Any] = {}
+    if "quiz_question_count" in quiz_dict:
+        val: object = quiz_dict["quiz_question_count"]
+        if not isinstance(val, int) or isinstance(val, bool):
+            return "quiz.quiz_question_count must be an integer"
+        if val < 1 or val > 10:
+            return "quiz.quiz_question_count must be between 1 and 10"
+        validated["quiz_question_count"] = val
+    return validated
+
+
 async def put_config(request: Request) -> JSONResponse:
     from .auth import require_write_token, serve_state
 
@@ -520,6 +547,7 @@ async def put_config(request: Request) -> JSONResponse:
         "serve_port",
         "llm",
         "learn",
+        "quiz",
     }
     unknown: set[str] = set(body.keys()) - allowed_keys
     if unknown:
@@ -640,6 +668,13 @@ async def put_config(request: Request) -> JSONResponse:
             return JSONResponse({"error": learn_result, "status": 400}, status_code=400)
         if learn_result:
             persist_updates["learn"] = learn_result
+
+    if "quiz" in body:
+        quiz_result = _validate_quiz_update(body["quiz"])
+        if isinstance(quiz_result, str):
+            return JSONResponse({"error": quiz_result, "status": 400}, status_code=400)
+        if quiz_result:
+            persist_updates["quiz"] = quiz_result
 
     if persist_updates:
         from ahadiff.core.config import read_config_data, write_config_data

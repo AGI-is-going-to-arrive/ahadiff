@@ -802,8 +802,12 @@ function DiffLineRow({
         />
       ))
     : null;
+  const changeIndicator = line.type === 'add' ? '+' : line.type === 'del' ? '−' : '';
   const body = (
     <>
+      <span className="diff-line__change-indicator" aria-hidden="true">
+        {changeIndicator}
+      </span>
       {dotNodes}
       <span className="diff-line__lineno" aria-hidden="true">
         {line.oldLineNo ?? ''}
@@ -903,12 +907,21 @@ function SplitDiffCell({
         />
       ))
     : null;
+  const markerChar = line.type === 'add' ? '+' : line.type === 'del' ? '−' : ' ';
+  const srText =
+    line.type === 'add'
+      ? t('Diff.line_added')
+      : line.type === 'del'
+        ? t('Diff.line_removed')
+        : null;
   const body = (
     <>
       {dotNodes}
       <span className="diff-line__lineno" aria-hidden="true">
         {lineNo ?? ''}
       </span>
+      <span className="diff-line__marker" aria-hidden="true">{markerChar}</span>
+      {srText && <span className="sr-only">{srText}</span>}
       <span className="diff-line__text">
         <code>{line.text}</code>
       </span>
@@ -1171,6 +1184,22 @@ function DiffFileSummaryBar({
       <div className="diff-file-summary__actions">
         <button
           type="button"
+          className="diff-file-summary__nav-btn"
+          onClick={() => activeIndex !== null && activeIndex > 0 && onJump(activeIndex - 1)}
+          disabled={activeIndex === null || activeIndex === 0}
+        >
+          {t('Diff.prev_file')}
+        </button>
+        <button
+          type="button"
+          className="diff-file-summary__nav-btn"
+          onClick={() => activeIndex !== null && activeIndex < sections.length - 1 && onJump(activeIndex + 1)}
+          disabled={activeIndex === null || activeIndex === sections.length - 1}
+        >
+          {t('Diff.next_file')}
+        </button>
+        <button
+          type="button"
           className="diff-file-summary__action"
           onClick={allExpanded ? onCollapseAll : onExpandAll}
           aria-pressed={allExpanded}
@@ -1217,6 +1246,7 @@ interface DiffViewProps {
   selectedClaimId?: string | null;
   onSelectClaim?: (claimId: string) => void;
   onStats?: (stats: DiffStats) => void;
+  onActiveFileChange?: (index: number | null) => void;
   mode?: DiffViewMode;
   focusTarget?: DiffFocusTarget | null;
 }
@@ -1244,6 +1274,7 @@ const DiffView = memo(function DiffView({
   selectedClaimId = null,
   onSelectClaim,
   onStats,
+  onActiveFileChange,
   mode = 'unified',
   focusTarget = null,
 }: DiffViewProps) {
@@ -1432,7 +1463,7 @@ const DiffView = memo(function DiffView({
   /* Track active file in viewport for summary-bar highlight. Uses
    * IntersectionObserver on the sticky headers so we don't re-flow on
    * every scroll event. */
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [activeIndex, setActiveIndex] = useState<number | null>(() => (sections.length > 0 ? 0 : null));
   const containerRef = useRef<HTMLDivElement | null>(null);
   const headerRefs = useRef<Array<HTMLElement | null>>([]);
   const setHeaderRef = useCallback(
@@ -1441,6 +1472,22 @@ const DiffView = memo(function DiffView({
     },
     [],
   );
+
+  useEffect(() => {
+    setActiveIndex((current) => {
+      const next =
+        sections.length === 0
+          ? null
+          : current === null || current >= sections.length
+            ? 0
+            : current;
+      return next;
+    });
+  }, [sections.length]);
+
+  useEffect(() => {
+    onActiveFileChange?.(activeIndex);
+  }, [activeIndex, onActiveFileChange]);
 
   useEffect(() => {
     headerRefs.current.length = sections.length;
@@ -1474,7 +1521,7 @@ const DiffView = memo(function DiffView({
       observer.observe(el);
     });
     return () => observer.disconnect();
-  }, [sections]);
+  }, [sections, onActiveFileChange]);
 
   const jumpToFile = useCallback(
     (index: number) => {
@@ -1508,7 +1555,7 @@ const DiffView = memo(function DiffView({
 
   return (
     <div className={`diff-view diff-view--${mode}`} role="region" aria-label={t('Diff.title')} ref={containerRef}>
-      {sections.length > 1 && (
+      {sections.length > 0 && (
         <DiffFileSummaryBar
           sections={sections}
           activeIndex={activeIndex}

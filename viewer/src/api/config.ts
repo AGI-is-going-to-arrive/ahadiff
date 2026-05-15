@@ -42,6 +42,10 @@ export interface LearnConfig {
   desired_retention?: number;
 }
 
+export interface QuizConfig {
+  quiz_question_count: number;
+}
+
 export interface ConfigResponse {
   lang: string | null;
   privacy_mode: string | null;
@@ -54,6 +58,7 @@ export interface ConfigResponse {
   capture: CaptureConfig;
   llm: LlmConfig;
   learn: LearnConfig;
+  quiz: QuizConfig;
 }
 
 export interface ConfigUpdateResponse {

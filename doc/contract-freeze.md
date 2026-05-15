@@ -476,6 +476,8 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 - `RunSummary`
 - `RunDetail`
 - `LearnabilityInfo`：`score: float(0..1)`、`threshold: float(0..1)`、`skip_lesson_quiz: bool`、`reasons: list[str]`
+- `QuizConfig`：`quiz_question_count: int(1..10)`，默认 `3`
+- `ConfigResponse`：除 provider / privacy / capture / learn / llm 外，必须包含 `quiz: QuizConfig`
 - `RunArtifactEnvelope`：`run_id`、`artifact_type`、`content`、`content_lang: Literal["en","zh-CN"] | None`
 - `RatchetHistoryEntry`
 - `RatchetTransparencyResponse`：从 `review.sqlite/result_events` 投影最近结果行，并从 `benchmarks/manifest.json` 与 `.ahadiff/benchmarks/local-report.json` 投影 benchmark 摘要；结果行的 `note_json` 只暴露 allowlist 字段
@@ -823,7 +825,7 @@ run_id: str
 |------|------|------|
 | **registry.py** | ✅ 已接线 | `cli.py` learn 成功后自动调用 `register_repo()`，失败仅 warn 不阻塞 |
 | **hooks.py** | ⏸ install-only | 当前仅安装 git hook 脚本，不执行用户自定义 hook 命令。hook 执行入口属于后续 Phase |
-| **PUT /api/config** | ✅ persistent | 支持 `lang`/`privacy_mode`/`generate_model`/`judge_model`/`serve_port`/`capture`/`llm` 七组字段，`lang` 同时更新 session locale，其余字段持久化到 per-repo `.ahadiff/config.toml`。`capture` 含 `max_files`/`hard_limit`/`max_patch_bytes`/`file_ranking`；`llm` 含 `input_token_budget`/`output_token_budget`/`request_timeout_seconds`/`max_concurrent`/`retry_attempts`。所有字段带范围校验 |
+| **PUT /api/config** | ✅ persistent | 支持 `lang`/`privacy_mode`/`generate_provider`/`generate_model`/`judge_provider`/`judge_model`/`serve_port`/`capture`/`llm`/`learn`/`quiz` 字段，`lang` 同时更新 session locale，其余字段持久化到 per-repo `.ahadiff/config.toml`。`capture` 含 `max_files`/`hard_limit`/`max_patch_bytes`/`file_ranking`；`llm` 含 `input_token_budget`/`output_token_budget`/`request_timeout_seconds`/`max_concurrent`/`retry_attempts`；`learn` 含 `learnability_threshold`/`desired_retention`；`quiz` 只接受 `quiz_question_count`，范围 1-10。所有字段带范围校验 |
 | **GET /api/graph/status** | ✅ 已接线 | 以 workspace root 为基准探测 raw `graphify-out/graph.json` 是否存在；当前 node/edge 统计和 `source_path` 读取的是 imported `.ahadiff/graphify/graph.json`，返回 `enabled/source_exists/has_graph/freshness/node_count/edge_count/source_path(relative)` |
 | **GET /api/graph/concepts** | ✅ 已接线 | 从 imported `.ahadiff/graphify/graph.json` 投影前端 ConceptGraph 所需的 sanitized nodes/edges/status；node `metadata` 继续透传，edge `confidence` 只接受 `EXTRACTED` / `INFERRED` / `AMBIGUOUS`，非法值不出现在响应里；前端已从 SVG + d3-force 迁到 `react-force-graph-2d` Canvas renderer，并保留 Graph/List、大图默认 List、Full graph、节点详情和可访问列表 fallback；Graphify import provenance 与 per-run `graphify_context.json` artifact 已有后端接线；完整 source/provenance UI 和真实大仓 signoff 仍属后续工作 |
 | **POST /api/graph/refresh** | ✅ 已接线 | 写 token + Origin/Referer 写保护 + repo 写锁；调用 `import_graphify_artifact(root, force=True)` 重新导入 raw Graphify artifact，并在导入前后用 no-symlink state-path guard 校验 `.ahadiff/graphify/graph.json`；request timeout 对精确路径 `/api/graph/refresh` 放宽到 600s |
@@ -981,3 +983,17 @@ run_id: str
 - 本轮复核 `AhaDiff-Blueprint.html` 后，只把当前代码支持的八层架构、diff capture、8 维评估、Guide/Onboarding、导出、MCP 和 opt-in Challenge 写成已实现；`learn --open`、Amp/Jules/Junie install target、CherryIN provider、DOMPurify 依赖和固定 29 步流程没有代码支撑，不能写成已完成。
 
 本轮实测：后端 unit `2434 passed`；integration `11 passed`；eval `9 passed`；`ruff check`、`ruff format --check`、`pyright`、wheel build 通过；viewer typecheck、Vitest `344 passed`、build 通过；完整 Playwright `2735 passed, 10 skipped`；i18n `1392/1392`；`git diff --check HEAD` 通过。live judge 和远端 GitHub Actions 未在本轮重跑。
+
+### 9.18 Learnability skip 持久化、quiz 数量和 Diff/Review/Lesson 收口（2026-05-15）
+
+本轮只记录已经由代码和本轮验证支撑的收口项：
+
+- learnability gate 判断 `skip_lesson_quiz=True` 且非 dry-run 时，learn 主链仍会发布一个最小 finalized run：写入 result event、`score.json` 和 `finalized.json`。这个 run 不伪造 lesson/quiz artifact；对应 artifact 缺失仍按 §9.16 返回 404 `artifact_not_found`。
+- 最小 run 发布失败时必须回滚刚写入的 result event，避免 SQLite 中出现没有 `score.json` / `finalized.json` 的可见 run。CLI 直跑 `ahadiff learn` 和 serve/orchestrator 路径走同一套发布语义。
+- `quiz.quiz_question_count` 成为稳定配置项，默认 `3`，范围 `1..10`。配置值会进入 quiz prompt、quiz prompt fingerprint、CLI learn 主链、`GET/PUT /api/config` 和 Settings Preferences。
+- Review open-answer 卡片的普通 reveal 不再记为 quiz peek；这只影响当前 session 内的前端状态，不改变 review.sqlite 的 FSRS 评分语义。
+- Diff Viewer 在 Unified / Split 基础上补文件摘要 Prev/Next、`+` / `-` 行标记、claim 选中后的自动滚动和窄屏 / forced-colors 样式。Split 下行标记仍保留左右分侧语义。
+- Lesson 页继续把 run detail 404 视为 `fetch_failed`；只有 lesson artifact 缺失才展示 skipped empty state。这与 skipped-run 最小发布配套，避免把 run 不存在误报成“跳过课程”。
+- 当前 serve 面仍是 72 个 concrete `/api/*` routes + 1 个 catchall，另有 `/healthz`。
+
+本轮实测：后端 unit `2502 passed`；integration `11 passed`；eval `9 passed`；`ruff check`、`ruff format --check`、`pyright`、wheel build 通过；viewer typecheck、Vitest `350 passed`、build 通过；完整 Playwright `2855 passed, 10 skipped`；i18n `1447/1447`；`git diff --check HEAD` 通过。live judge 和远端 GitHub Actions 未在本轮重跑。

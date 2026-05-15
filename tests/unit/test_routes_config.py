@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 import ahadiff.serve.routes_config as routes_config_module
-from ahadiff.contracts.serve_app import LearnConfig
+from ahadiff.contracts.serve_app import LearnConfig, QuizConfig
 from ahadiff.serve import ServeState, create_app
 
 
@@ -75,6 +75,12 @@ def _mock_load_config_factory(
 def test_learn_config_contract_rejects_invalid_threshold(value: float) -> None:
     with pytest.raises(ValidationError, match="learnability_threshold"):
         LearnConfig.model_validate({"learnability_threshold": value})
+
+
+@pytest.mark.parametrize("value", [0, 11, True, "3"])
+def test_quiz_config_contract_rejects_invalid_question_count(value: object) -> None:
+    with pytest.raises(ValidationError, match="quiz_question_count"):
+        QuizConfig.model_validate({"quiz_question_count": value})
 
 
 def test_get_config_returns_json_with_expected_keys(
@@ -236,6 +242,7 @@ def test_get_config_handles_load_failure_gracefully(
         "capture": _CAPTURE_DEFAULTS,
         "llm": _LLM_DEFAULTS,
         "learn": {"learnability_threshold": 0.3, "desired_retention": 0.9},
+        "quiz": {"quiz_question_count": 3},
     }
 
 
@@ -255,13 +262,14 @@ def test_get_config_returns_nullable_shape_when_no_git_repo(tmp_path: Path) -> N
     assert payload["judge_model"] == "gpt-5.4-mini"
     assert payload["serve_port"] == 8765
     assert payload["learn"] == {"learnability_threshold": 0.3, "desired_retention": 0.9}
+    assert payload["quiz"] == {"quiz_question_count": 3}
 
 
 def test_get_config_reads_workspace_config_when_no_git_repo(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     state_dir.mkdir()
     (state_dir / "config.toml").write_text(
-        "[learn]\ndesired_retention = 0.84\n",
+        "[learn]\ndesired_retention = 0.84\n\n[quiz]\nquiz_question_count = 6\n",
         encoding="utf-8",
     )
     client = _client(state_dir)
@@ -270,6 +278,7 @@ def test_get_config_reads_workspace_config_when_no_git_repo(tmp_path: Path) -> N
 
     assert response.status_code == 200
     assert response.json()["learn"]["desired_retention"] == 0.84
+    assert response.json()["quiz"]["quiz_question_count"] == 6
 
 
 def test_get_config_key_status_shows_configured_when_env_set(

@@ -39,7 +39,7 @@
 
 .app-content {
   min-width: 0;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 /* ==========================================================================

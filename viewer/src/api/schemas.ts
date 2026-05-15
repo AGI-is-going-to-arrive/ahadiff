@@ -706,6 +706,10 @@ export const learnConfigSchema = z.object({
   desired_retention: z.number().min(0.7).max(0.99).optional(),
 });
 
+export const quizConfigSchema = z.object({
+  quiz_question_count: z.number().int().min(1).max(10).default(3),
+});
+
 export const configResponseSchema = z.object({
   lang: z.string().nullable(),
   privacy_mode: z.string().nullable(),
@@ -718,6 +722,7 @@ export const configResponseSchema = z.object({
   capture: captureConfigSchema,
   llm: llmConfigSchema,
   learn: learnConfigSchema,
+  quiz: quizConfigSchema.default({ quiz_question_count: 3 }),
 });
 
 export const configUpdateResponseSchema = z.object({

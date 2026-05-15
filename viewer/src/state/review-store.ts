@@ -12,8 +12,8 @@ interface RateOptions {
    */
   selectedChoiceLabel?: string | null;
   /**
-   * Whether the answer was peeked (revealed before rating). Choice cards never
-   * peek (the user commits to a choice first), open cards always peek.
+   * Whether the answer was peeked through a quiz-style reveal before rating.
+   * The Review page's normal flashcard reveal is not treated as peeked.
    */
   peekedThisSession?: boolean;
 }

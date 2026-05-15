@@ -1239,6 +1239,7 @@ interface PreferencesForm {
   output_lang: string;
   learnability_threshold: number;
   desired_retention: number;
+  quiz_question_count: number;
 }
 
 function PreferencesTab({
@@ -1268,6 +1269,7 @@ function PreferencesTab({
         output_lang: config.llm.output_lang ?? 'auto',
         learnability_threshold: config.learn.learnability_threshold ?? 0.3,
         desired_retention: config.learn.desired_retention ?? 0.9,
+        quiz_question_count: config.quiz.quiz_question_count ?? 3,
       });
     }
   }, [config]);
@@ -1286,6 +1288,7 @@ function PreferencesTab({
     form.output_lang !== (config.llm.output_lang ?? 'auto')
     || form.learnability_threshold !== (config.learn.learnability_threshold ?? 0.3)
     || form.desired_retention !== (config.learn.desired_retention ?? 0.9)
+    || form.quiz_question_count !== (config.quiz.quiz_question_count ?? 3)
   );
 
   const handleSave = async () => {
@@ -1299,6 +1302,9 @@ function PreferencesTab({
         learn: {
           learnability_threshold: form.learnability_threshold,
           desired_retention: form.desired_retention,
+        },
+        quiz: {
+          quiz_question_count: form.quiz_question_count,
         },
       });
       setSaveOk(true);
@@ -1436,6 +1442,22 @@ function PreferencesTab({
                   />
                   <span className="settings-slider__value">{Math.round(form.desired_retention * 100)}%</span>
                 </div>
+              </div>
+
+              <div className="settings-field">
+                <div className="settings-field__label">
+                  <h3>{t('Settings_page.quiz_question_count')}</h3>
+                  <p>{t('Settings_page.quiz_question_count_desc')}</p>
+                </div>
+                <input
+                  type="number"
+                  className="settings-input"
+                  aria-label={t('Settings_page.quiz_question_count')}
+                  min={1}
+                  max={10}
+                  value={form.quiz_question_count}
+                  onChange={e => setField('quiz_question_count', Math.max(1, Math.min(10, Number(e.target.value) || 3)))}
+                />
               </div>
             </div>
           </div>

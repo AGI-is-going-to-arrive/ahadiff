@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError, apiFetch, apiFetchBlob, resetToken, setToken } from '../../src/api/client';
-import { putConfig } from '../../src/api/config';
+import { getConfig, putConfig } from '../../src/api/config';
 import { ValidationError } from '../../src/api/schemas';
 
 type Deferred<T> = {
@@ -297,6 +297,52 @@ describe('config api', () => {
     resetToken();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it('parses quiz question count from GET /api/config', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          jsonResponse({
+            lang: 'en',
+            privacy_mode: 'strict_local',
+            generate_provider: null,
+            generate_model: 'gpt-5.4-mini',
+            judge_provider: null,
+            judge_model: 'gpt-5.4-mini',
+            serve_port: 8765,
+            key_status: {},
+            capture: {
+              max_files: 30,
+              hard_limit: 3000,
+              max_patch_bytes: 5000000,
+              file_ranking: 'learning_value',
+              symbol_extractor: 'auto',
+            },
+            llm: {
+              input_token_budget: 200000,
+              output_token_budget: 50000,
+              request_timeout_seconds: 30,
+              max_concurrent: 3,
+              retry_attempts: 3,
+              output_lang: 'auto',
+            },
+            learn: {
+              learnability_threshold: 0.3,
+              desired_retention: 0.9,
+            },
+            quiz: {
+              quiz_question_count: 6,
+            },
+          }),
+        ),
+      ),
+    );
+
+    await expect(getConfig()).resolves.toMatchObject({
+      quiz: { quiz_question_count: 6 },
+    });
   });
 
   it('parses PUT /api/config update acknowledgements and sends JSON', async () => {

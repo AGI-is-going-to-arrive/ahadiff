@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 
 from . import event_log as event_log_contract
 from . import run_source as run_source_contract
@@ -61,6 +61,12 @@ class LearnConfig(BaseModel):
     desired_retention: float = Field(default=0.9, ge=0.7, le=0.99, allow_inf_nan=False)
 
 
+class QuizConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    quiz_question_count: StrictInt = Field(default=3, ge=1, le=10)
+
+
 class ConfigResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -75,6 +81,7 @@ class ConfigResponse(BaseModel):
     capture: CaptureConfig = Field(default_factory=CaptureConfig)
     llm: LlmConfig = Field(default_factory=LlmConfig)
     learn: LearnConfig = Field(default_factory=LearnConfig)
+    quiz: QuizConfig = Field(default_factory=QuizConfig)
 
 
 class ConfigUpdateResponse(BaseModel):
@@ -291,6 +298,7 @@ __all__ = [
     "LearningSignalRequest",
     "LocaleResponse",
     "MarkWrongRequest",
+    "QuizConfig",
     "QuizAnswerRequest",
     "RatchetHistoryEntry",
     "ReviewAnswer",

@@ -13,6 +13,7 @@ import shutil
 import stat
 import time
 from collections.abc import Callable, Iterable
+from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, TypeVar, cast
 
@@ -573,6 +574,97 @@ def _cleanup_cancelled_run(
         shutil.rmtree(run_path, ignore_errors=True)
 
 
+def _persist_skipped_run(
+    *,
+    run_path: Path,
+    run_id: str,
+    source_ref: str,
+    learnability_metadata: dict[str, object],
+    workspace_root: Path,
+) -> list[str]:
+    """Persist minimal result artifacts for a learnability_skip run.
+
+    Without these artifacts the serve layer cannot resolve the run detail
+    (``finalized.json`` is required by ``_finalized_run_path``), causing the
+    frontend to show a generic "fetch failed" error instead of the
+    learnability-skip empty state.
+    """
+    from datetime import UTC, datetime
+
+    from ahadiff.contracts import compute_runtime_eval_bundle_version
+    from ahadiff.contracts.event_log import ResultEvent
+    from ahadiff.eval.results import (
+        compute_prompt_version,
+        make_result_event_id,
+        review_db_path_for_run,
+        rollback_result_event,
+        write_finalized_result,
+    )
+    from ahadiff.review.database import sync_result_event
+
+    warnings: list[str] = []
+    timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f+00:00")
+    note_payload = {"learnability": learnability_metadata}
+    event = ResultEvent(
+        event_id=make_result_event_id(),
+        run_id=run_id,
+        event_type="learn",
+        timestamp=timestamp,
+        source_ref=source_ref,
+        base_ref=None,
+        prompt_version=compute_prompt_version(workspace_root),
+        eval_bundle_version=compute_runtime_eval_bundle_version(),
+        rubric_version=None,
+        overall=0.0,
+        verdict="FAIL",
+        status="non_ratcheted",
+        weakest_dim="learnability",
+        note_json=_json.dumps(note_payload, sort_keys=True),
+    )
+
+    db_path = review_db_path_for_run(run_path)
+    try:
+        inserted = sync_result_event(db_path, event)
+    except Exception as exc:
+        warnings.append(f"skipped-run result event insert failed: {exc}")
+        return warnings
+    if not inserted:
+        warnings.append(f"skipped-run result event already exists: {event.event_id}")
+        return warnings
+
+    score_path = run_path / "score.json"
+    score_text = (
+        _json.dumps(
+            {
+                "run_id": run_id,
+                "overall": 0.0,
+                "verdict": "FAIL",
+                "status": "learnability_skip",
+            },
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    try:
+        atomic_write_state_text(score_path, score_text)
+        write_finalized_result(run_path=run_path, event=event, score_path=score_path)
+    except Exception as exc:
+        try:
+            rollback_result_event(run_path=run_path, event_id=event.event_id)
+        except Exception as rollback_error:
+            raise AhaDiffError(
+                "failed to publish skipped-run artifacts and failed to roll back "
+                f"result event {event.event_id}: {rollback_error}"
+            ) from rollback_error
+        with suppress(OSError):
+            score_path.unlink(missing_ok=True)
+        warnings.append(f"skipped-run artifact publish failed and was rolled back: {exc}")
+
+    return warnings
+
+
 def _persist_evaluated_run_sync(
     *,
     run_path: Path,
@@ -733,6 +825,7 @@ def run_learn_pipeline(
 
     capture_config = cast("dict[str, Any]", snapshot.values["capture"])
     learn_config = cast("dict[str, Any]", snapshot.values["learn"])
+    quiz_config = cast("dict[str, Any]", snapshot.values["quiz"])
     llm_config = cast("dict[str, Any]", snapshot.values["llm"])
     provider_limits = cast("dict[str, Any]", snapshot.values["provider"])
     effective_privacy_mode = str(snapshot.values["privacy_mode"])
@@ -857,6 +950,15 @@ def run_learn_pipeline(
                     learnability_score=learnability.score,
                     learnability_skip=learnability.skip_lesson_quiz,
                 )
+                if not request.dry_run and learnability.skip_lesson_quiz:
+                    skip_warnings = _persist_skipped_run(
+                        run_path=run_path,
+                        run_id=capture.run_id,
+                        source_ref=str(capture.run_source.source_ref),
+                        learnability_metadata=learnability.as_metadata(),
+                        workspace_root=root,
+                    )
+                    early_result.warnings.extend(skip_warnings)
             else:
                 # ------------------------------------------------------------------
                 # Step 4: resolve provider
@@ -1129,6 +1231,7 @@ def run_learn_pipeline(
                                 output_token_budget=output_budget,
                                 quiz_output_token_cap=quiz_output_cap,
                                 misconception_output_token_cap=misconception_output_cap,
+                                question_count=int(quiz_config["quiz_question_count"]),
                                 on_sub_progress=lambda message: _emit(7, message),
                             )
                             quiz_questions_holder[:] = [questions]

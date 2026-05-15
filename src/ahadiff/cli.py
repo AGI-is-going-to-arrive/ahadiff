@@ -169,6 +169,7 @@ write_input_artifacts = _lazy_attr("git.capture", "write_input_artifacts")
 repo_write_lock = _lazy_attr("git.repo", "repo_write_lock")
 unlock_repo_write_lock = _lazy_attr("git.repo", "unlock_repo_write_lock")
 run_improve_loop = _lazy_attr("improve", "run_improve_loop")
+persist_skipped_run = _lazy_attr("core.orchestrator", "_persist_skipped_run")
 available_targets = _lazy_attr("install", "available_targets")
 get_target = _lazy_attr("install", "get_target")
 manifest_preview_for = _lazy_attr("install", "manifest_preview_for")
@@ -954,6 +955,7 @@ def learn_cmd(
         )
         capture_config = cast("dict[str, Any]", snapshot.values["capture"])
         learn_config = cast("dict[str, Any]", snapshot.values["learn"])
+        quiz_config = cast("dict[str, Any]", snapshot.values["quiz"])
         llm_config = cast("dict[str, Any]", snapshot.values["llm"])
         provider_limits = cast("dict[str, Any]", snapshot.values["provider"])
         effective_privacy_mode = str(snapshot.values["privacy_mode"])
@@ -1021,6 +1023,18 @@ def learn_cmd(
             learn_report = None
             learn_outcome = None
             learn_warnings: list[str] = []
+            skipped_run_persisted = False
+            if not dry_run and learnability.skip_lesson_quiz:
+                learn_warnings.extend(
+                    persist_skipped_run(
+                        run_path=run_path,
+                        run_id=capture.run_id,
+                        source_ref=str(capture.run_source.source_ref),
+                        learnability_metadata=learnability.as_metadata(),
+                        workspace_root=root,
+                    )
+                )
+                skipped_run_persisted = (run_path / "finalized.json").is_file()
             if not dry_run and not learnability.skip_lesson_quiz:
                 try:
                     (
@@ -1119,6 +1133,7 @@ def learn_cmd(
                             retry_attempts=int(llm_config["retry_attempts"]),
                             privacy_mode=resolved_privacy_mode,
                             output_lang=resolved_content_lang,
+                            question_count=int(quiz_config["quiz_question_count"]),
                         )
                         quiz_path = quiz_artifacts.quiz_path
                         if against_spec is not None:
@@ -1292,6 +1307,8 @@ def learn_cmd(
             console.print(f"[bold]Lesson[/bold]: skipped because {lesson_skip_reason}")
         elif not dry_run and learnability.skip_lesson_quiz:
             console.print("[bold]Lesson[/bold]: skipped by learnability gate")
+            for warning in learn_warnings:
+                console.print(f"[yellow]Warning[/yellow]: {warning}")
         if capture.run_source.degraded_flags:
             console.print(f"[yellow]Degraded flags[/yellow]: {capture.run_source.degraded_flags}")
         else:
@@ -1306,7 +1323,9 @@ def learn_cmd(
             serve_config = cast("dict[str, Any]", snapshot.values["serve"])
             _open_learn_viewer(
                 serve_config=serve_config,
-                run_id=capture.run_id if learn_outcome is not None else None,
+                run_id=(
+                    capture.run_id if learn_outcome is not None or skipped_run_persisted else None
+                ),
             )
     except Exception as error:  # pragma: no cover - exercised through CLI tests
         _handle_cli_error(error)
@@ -1580,6 +1599,7 @@ def regenerate_cmd(
         snapshot = load_config(root) if has_git_repo else load_workspace_config(root)
         llm_config = cast("dict[str, Any]", snapshot.values["llm"])
         learn_config = cast("dict[str, Any]", snapshot.values["learn"])
+        quiz_config = cast("dict[str, Any]", snapshot.values["quiz"])
         provider_limits = cast("dict[str, Any]", snapshot.values["provider"])
         effective_privacy_mode = str(snapshot.values["privacy_mode"])
         security_config = (
@@ -1640,6 +1660,7 @@ def regenerate_cmd(
                     retry_attempts=int(llm_config["retry_attempts"]),
                     privacy_mode=resolved_privacy_mode,
                     output_lang=output_lang,
+                    question_count=int(quiz_config["quiz_question_count"]),
                     overwrite=True,
                 )
                 report = evaluate_run(run_path)

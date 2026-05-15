@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import threading
 import time
 from contextlib import contextmanager
@@ -20,6 +21,7 @@ from ahadiff.core.orchestrator import (
     LearnResult,
     PipelineErrorBudget,
     _persist_graphify_context,  # pyright: ignore[reportPrivateUsage]
+    _persist_skipped_run,  # pyright: ignore[reportPrivateUsage]
     _resolve_provider_from_config,  # pyright: ignore[reportPrivateUsage]
     is_recoverable_error,
     is_timeout_or_network_error,
@@ -269,6 +271,7 @@ class _FakeConfigSnapshot:
                 "max_patch_bytes": 500_000,
             },
             "learn": {"learnability_threshold": 0.3, "desired_retention": 0.9},
+            "quiz": {"quiz_question_count": 3},
             "llm": {
                 "generate_model": "test-model",
                 "output_lang": "auto",
@@ -360,6 +363,36 @@ def test_graphify_signoff_degrades_invalid_provenance(tmp_path: Path) -> None:
     assert signoff["edge_count"] == 0
     reasons = set(cast("list[str]", signoff["degradation_reasons"]))
     assert {"graph_digest_invalid", "node_count_invalid", "edge_count_invalid"} <= reasons
+
+
+def test_persist_skipped_run_rolls_back_event_when_finalized_write_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_path = tmp_path / ".ahadiff" / "runs" / "run-skip"
+    run_path.mkdir(parents=True)
+
+    def _fail_finalized(**kwargs: object) -> None:
+        del kwargs
+        raise OSError("disk full")
+
+    monkeypatch.setattr("ahadiff.eval.results.write_finalized_result", _fail_finalized)
+
+    warnings = _persist_skipped_run(
+        run_path=run_path,
+        run_id="run-skip",
+        source_ref="abc123",
+        learnability_metadata={"score": 0.1, "threshold": 0.3, "skip_lesson_quiz": True},
+        workspace_root=tmp_path,
+    )
+
+    assert any("rolled back" in warning for warning in warnings)
+    assert not (run_path / "finalized.json").exists()
+    assert not (run_path / "score.json").exists()
+    db_path = tmp_path / ".ahadiff" / "review.sqlite"
+    with sqlite3.connect(db_path) as connection:
+        row = connection.execute("SELECT COUNT(*) FROM result_events").fetchone()
+    assert row == (0,)
 
 
 # ---------------------------------------------------------------------------
@@ -1096,6 +1129,7 @@ def test_pipeline_passes_step_specific_output_caps(
             "misconception_cards_output_cap": 2_800,
         }
     )
+    snapshot.values["quiz"]["quiz_question_count"] = 7
 
     def _load_config(
         _root: Path,
@@ -1146,6 +1180,7 @@ def test_pipeline_passes_step_specific_output_caps(
     assert quiz_provider.max_output_tokens == 5_500
     assert seen["quiz"]["quiz_output_token_cap"] == 5_500
     assert seen["quiz"]["misconception_output_token_cap"] == 2_800
+    assert seen["quiz"]["question_count"] == 7
     assert seen["quiz"]["output_token_budget"] == 50_000
 
 

@@ -4,7 +4,7 @@
 **Auditor**: Claude Opus 4.6 (automated)
 **Scope**: All 11 v6 pages, tokens, typography, components, features, tests
 
-> 2026-05-12 update: this remains a historical V6 fidelity audit. Current viewer has moved past several rows below: ConceptGraph is now a `react-force-graph-2d` Canvas renderer with Graph/List views, large-graph List default, community fill, legend/filter, detail panel, and accessible list fallback; global search is implemented as a two-column SearchOverlay with table filters and mobile preview back/Escape behavior; Ratchet can download TSV, JSON, and APKG; ErrorBoundary has redacted diagnostics and clipboard fallback; shared `motion.css` and `elevation.css` now exist. Current i18n parity is 1187/1187. Rows below are not a current gap list.
+> 2026-05-15 update: this remains a historical V6 fidelity audit. Current viewer has moved past several rows below: ConceptGraph is now a `react-force-graph-2d` Canvas renderer with Graph/List views, large-graph List default, community fill, legend/filter, detail panel, and accessible list fallback; global search is implemented as a two-column SearchOverlay with table filters and mobile preview back/Escape behavior; Ratchet can download TSV, JSON, and APKG; ErrorBoundary has redacted diagnostics and clipboard fallback; shared `motion.css` and `elevation.css` now exist. Settings Preferences now exposes `quiz_question_count`; Diff has Unified / Split, file Prev / Next, `+` / `-` row markers, and claim auto-scroll; Review open-answer reveal no longer trips the quiz peek guard. Current i18n parity is 1447/1447, and the latest local viewer verification is typecheck, Vitest `350 passed`, build, and full Playwright `2855 passed, 10 skipped`. Rows below are not a current gap list.
 
 ---
 

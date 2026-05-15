@@ -660,11 +660,44 @@ def test_generate_quiz_from_run_writes_expected_artifact(
         "quiz.misconception_card",
     ]
     assert [request.max_output_tokens for request in fake_provider.requests] == [6000, 3000]
+    assert "Write 3 questions" in fake_provider.requests[0].payload_text
     assert progress_messages == [
         "Generating quiz questions (1/2)",
         "Generating misconception cards (2/2)",
     ]
     assert "Simplified Chinese (zh-CN)" in fake_provider.requests[0].payload_text
+
+
+def test_generate_quiz_from_run_uses_configured_question_count(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz")
+    fake_provider = _FakeQuizProvider()
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
+        return fake_provider
+
+    monkeypatch.setattr("ahadiff.quiz.generator.make_provider", fake_provider_factory)
+
+    generate_quiz_from_run(
+        run_id="run_quiz",
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        question_count=5,
+    )
+
+    assert "Write 5 questions" in fake_provider.requests[0].payload_text
+    assert "{question_count}" not in fake_provider.requests[0].payload_text
 
 
 @pytest.mark.parametrize(
@@ -1041,6 +1074,11 @@ def test_learn_command_writes_quiz_cards_and_local_concepts_for_patch_input(
 ) -> None:
     workspace_root = tmp_path / "workspace"
     workspace_root.mkdir()
+    (workspace_root / ".ahadiff").mkdir()
+    (workspace_root / ".ahadiff" / "config.toml").write_text(
+        "[quiz]\nquiz_question_count = 5\n",
+        encoding="utf-8",
+    )
     patch_path = workspace_root / "sample.patch"
     patch_path.write_text(
         """\
@@ -1112,6 +1150,7 @@ diff --git a/src/app.py b/src/app.py
     def fake_quiz(
         *args: object, **kwargs: object
     ) -> tuple[QuizArtifactPaths, tuple[QuizQuestion, ...]]:
+        assert kwargs["question_count"] == 5
         run_path = cast("Path", kwargs["run_path"])
         questions = (
             QuizQuestion(
@@ -1160,3 +1199,64 @@ diff --git a/src/app.py b/src/app.py
     assert "Quiz" in result.stdout
     assert "Cards" in result.stdout
     assert "Concepts" in result.stdout
+
+
+def test_learn_command_persists_low_learnability_skipped_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    patch_path = workspace_root / "tiny.patch"
+    patch_path.write_text(
+        """\
+diff --git a/src/app.py b/src/app.py
+--- a/src/app.py
++++ b/src/app.py
+@@ -1 +1 @@
+-value = 1
++value = 2
+""",
+        encoding="utf-8",
+    )
+
+    class _LowLearnability:
+        score = 0.1
+        threshold = 0.3
+        skip_lesson_quiz = True
+        forced = False
+
+        def as_metadata(self) -> dict[str, object]:
+            return {
+                "score": self.score,
+                "threshold": self.threshold,
+                "skip_lesson_quiz": self.skip_lesson_quiz,
+                "forced": self.forced,
+                "reasons": ["low_learning_value"],
+            }
+
+    def _low_learnability(*args: object, **kwargs: object) -> _LowLearnability:
+        del args, kwargs
+        return _LowLearnability()
+
+    monkeypatch.setattr("ahadiff.cli.assess_learnability", _low_learnability)
+
+    result = _RUNNER.invoke(
+        app(),
+        ["learn", "--patch", str(patch_path), "--repo-root", str(workspace_root)],
+    )
+
+    assert result.exit_code == 0
+    runs = sorted((workspace_root / ".ahadiff" / "runs").iterdir())
+    assert len(runs) == 1
+    run_path = runs[0]
+    assert (run_path / "score.json").exists()
+    assert (run_path / "finalized.json").exists()
+    review_db_path = workspace_root / ".ahadiff" / "review.sqlite"
+    with sqlite3.connect(review_db_path) as connection:
+        row = connection.execute(
+            "SELECT status, weakest_dim FROM result_events WHERE run_id = ?",
+            (run_path.name,),
+        ).fetchone()
+    assert row == ("non_ratcheted", "learnability")
+    assert "skipped by learnability gate" in result.stdout

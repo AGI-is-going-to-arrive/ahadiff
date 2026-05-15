@@ -24,6 +24,7 @@
    * accent-ink on accent-soft (#F4E4D9): #9B4420 ≈ 5.2:1 (AA). */
   --on-accent: #FFFFFF;
   --accent: #BE5236;
+  --accent-rgb: 190 82 54;
   --accent-ink: #9B4420;
   --accent-soft: #F4E4D9;
   --accent-softer: #FAF0E8;
@@ -370,6 +371,7 @@
   --hair-strong: #4A473E;
   --on-accent: #1C1B18;
   --accent: #D97757;
+  --accent-rgb: 217 119 87;
   --accent-ink: #E3C0A8;
   --accent-soft: rgba(210, 112, 80, 0.15);
   --accent-softer: rgba(210, 112, 80, 0.08);
@@ -377,8 +379,10 @@
   --accent-tint: rgba(210, 112, 80, 0.12);
   --accent-hair: rgba(210, 112, 80, 0.25);
   --add-bg: rgba(47, 111, 79, 0.15);
+  --add-bg-strong: rgba(47, 111, 79, 0.35);
   --add-fg: #95D4B4;
   --del-bg: rgba(163, 61, 43, 0.15);
+  --del-bg-strong: rgba(163, 61, 43, 0.35);
   --del-fg: #F4B7AC;
   --success: #A1D2B8;
   --warning: #E5C18C;

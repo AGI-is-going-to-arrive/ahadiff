@@ -340,10 +340,6 @@ export default function LessonPage() {
       } catch (detailErr) {
         if (detailErr instanceof DOMException && detailErr.name === 'AbortError') return;
         if (controller.signal.aborted) return;
-        if (detailErr instanceof ApiError && detailErr.status === 404) {
-          setError('fetch_failed');
-          return;
-        }
         throw detailErr;
       }
       if (controller.signal.aborted) return;

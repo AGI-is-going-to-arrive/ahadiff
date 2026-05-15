@@ -329,6 +329,35 @@ def test_learn_desired_retention_defaults_to_point_nine_when_unset(tmp_path: Pat
     assert resolved.source == "default"
 
 
+def test_quiz_question_count_defaults_to_three_when_unset(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+
+    snapshot = load_config(repo_root, env={"HOME": str(tmp_path / "home")})
+
+    assert snapshot.values["quiz"]["quiz_question_count"] == 3
+    resolved = resolve_effective("quiz.quiz_question_count", snapshot=snapshot)
+    assert resolved.value == 3
+    assert resolved.source == "default"
+
+
+@pytest.mark.parametrize("raw_value", ["0", "11"])
+def test_quiz_question_count_rejects_invalid_values(
+    tmp_path: Path,
+    raw_value: str,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    repo_path = repo_config_path(repo_root)
+    repo_path.parent.mkdir(parents=True)
+    repo_path.write_text(f"[quiz]\nquiz_question_count = {raw_value}\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="quiz\\.quiz_question_count"):
+        load_config(repo_root, env={"HOME": str(tmp_path / "home")})
+
+
 @pytest.mark.parametrize("raw_value", ["0.5", "1.0", "nan", "inf"])
 def test_learn_desired_retention_rejects_invalid_values(
     tmp_path: Path,

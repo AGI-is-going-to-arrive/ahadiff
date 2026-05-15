@@ -197,12 +197,11 @@ export default function ReviewPage() {
     async (answer: ReviewAnswer) => {
       const card = useReviewStore.getState().currentCard();
       const beforeIndex = useReviewStore.getState().currentIndex;
-      // For multiple_choice cards: the user committed to a label without
-      // peeking, so forward the selected label and peeked=false. For open
-      // cards: the user clicked "Show answer" before rating, so peeked=true.
+      // Review-page reveal is the normal flashcard flow, not the Quiz peek
+      // guard. Keep peeked=false so all four SRS ratings remain available.
       const isChoice = card ? isChoiceCard(card) : false;
       const result = await rate(answer, {
-        peekedThisSession: isChoice ? false : true,
+        peekedThisSession: false,
         selectedChoiceLabel: isChoice ? selectedChoiceLabel : null,
       });
       const afterIndex = useReviewStore.getState().currentIndex;
@@ -456,7 +455,6 @@ export default function ReviewPage() {
   // Easy/Good are disabled when the user picked wrong (per plan: keep manual
   // rating, force at least Hard or Wrong on incorrect selections).
   const ratingsBlocked = choiceCard !== null && !isAnswerCorrect;
-
   // --- Empty queue ---
   if (total === 0) {
     return (

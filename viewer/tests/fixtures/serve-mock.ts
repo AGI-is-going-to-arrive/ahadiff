@@ -993,6 +993,9 @@ export async function installServeMock(page: Page): Promise<void> {
             learnability_threshold: 0.3,
             desired_retention: 0.9,
           },
+          quiz: {
+            quiz_question_count: 3,
+          },
         }),
       });
     },

@@ -97,6 +97,7 @@ def generate_quiz_from_run(
     output_token_budget: int | None = None,
     quiz_output_token_cap: int | None = None,
     misconception_output_token_cap: int | None = None,
+    question_count: int = 3,
     on_sub_progress: Callable[[str], None] | None = None,
 ) -> tuple[QuizArtifactPaths, tuple[QuizQuestion, ...]]:
     bundle = load_redacted_run_bundle(
@@ -123,6 +124,7 @@ def generate_quiz_from_run(
         input_token_budget=input_token_budget,
         output_token_budget=output_token_budget,
         output_token_cap=quiz_output_token_cap,
+        question_count=question_count,
     )
     question_set = parse_quiz_payload(payload, require_choices=True)
     questions = _materialize_question_ids(run_id, question_set.questions)
@@ -278,6 +280,7 @@ def build_quiz_payload(
     patch_text: str,
     line_map_text: str,
     symbols_text: str,
+    question_count: int = 3,
     output_lang: str = "en",
 ) -> str:
     metadata_payload = {
@@ -290,7 +293,7 @@ def build_quiz_payload(
     }
     return "\n\n".join(
         (
-            prompt_text.strip(),
+            prompt_text.replace("{question_count}", str(question_count)).strip(),
             "## Output language\n" + prompt_language_instruction(output_lang),
             "## Run metadata\n```json\n"
             + json.dumps(metadata_payload, ensure_ascii=False, indent=2, sort_keys=True)
@@ -321,8 +324,14 @@ def _generate_quiz_payload(
     input_token_budget: int | None = None,
     output_token_budget: int | None = None,
     output_token_cap: int | None = None,
+    question_count: int = 3,
 ) -> str:
+    if type(question_count) is not int:
+        raise InputError("quiz question_count must be an integer")
+    if question_count < 1 or question_count > 10:
+        raise InputError("quiz question_count must be between 1 and 10")
     prompt_text = load_quiz_prompt()
+    resolved_prompt_text = prompt_text.replace("{question_count}", str(question_count))
     payload_text = build_quiz_payload(
         prompt_text=prompt_text,
         metadata=bundle.metadata,
@@ -331,9 +340,10 @@ def _generate_quiz_payload(
         patch_text=bundle.patch_text,
         line_map_text=bundle.line_map_text,
         symbols_text=bundle.symbols_text,
+        question_count=question_count,
         output_lang=output_lang,
     )
-    prompt_fingerprint = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()[:12]
+    prompt_fingerprint = hashlib.sha256(resolved_prompt_text.encode("utf-8")).hexdigest()[:12]
     resolved_privacy_mode = privacy_mode or bundle.privacy_mode
     if resolved_privacy_mode not in _VALID_PRIVACY_MODES:
         raise InputError(f"unsupported privacy_mode: {resolved_privacy_mode!r}")

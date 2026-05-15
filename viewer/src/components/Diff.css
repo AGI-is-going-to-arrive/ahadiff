@@ -63,7 +63,8 @@
   align-items: center;
 }
 
-.diff-file-summary__action {
+.diff-file-summary__action,
+.diff-file-summary__nav-btn {
   -webkit-appearance: none;
   appearance: none;
   border: 1px solid var(--hair);
@@ -77,14 +78,21 @@
     border-color var(--dur-micro) var(--ease-out-quart);
 }
 
-.diff-file-summary__action:hover {
+.diff-file-summary__action:hover,
+.diff-file-summary__nav-btn:hover:not(:disabled) {
   background: var(--subtle);
   border-color: var(--hair-strong);
 }
 
-.diff-file-summary__action:focus-visible {
+.diff-file-summary__action:focus-visible,
+.diff-file-summary__nav-btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+.diff-file-summary__nav-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .diff-file-summary__count {
@@ -140,6 +148,11 @@
   color: var(--paper);
 }
 
+.diff-file-summary__chip--active .diff-file-summary__chip-add,
+.diff-file-summary__chip--active .diff-file-summary__chip-del {
+  color: currentColor;
+}
+
 .diff-file-summary__chip-name {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -164,7 +177,8 @@
 /* ── Touch targets: expand to 44x44 on coarse pointers ────── */
 @media (pointer: coarse) {
   .diff-file-summary__chip,
-  .diff-file-summary__action {
+  .diff-file-summary__action,
+  .diff-file-summary__nav-btn {
     min-height: 44px;
     display: inline-flex;
     align-items: center;
@@ -444,9 +458,61 @@ button.diff-line {
 }
 
 .diff-line--claim-selected {
-  box-shadow: inset 3px 0 0 var(--accent);
-  filter: brightness(0.98);
+  box-shadow: inset 4px 0 0 var(--accent), inset 0 0 0 9999px rgb(var(--accent-rgb, 139 90 43) / 0.08), 0 0 0 1px var(--accent-hair);
+  scroll-margin-top: 64px;
 }
+
+.diff-line--claim-selected .diff-line__claim-dot {
+  transform: translateY(-50%) scale(1.6);
+  box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--accent);
+}
+
+@keyframes diff-claim-pulse {
+  0% { box-shadow: inset 4px 0 0 var(--accent), inset 0 0 0 9999px rgb(var(--accent-rgb, 139 90 43) / 0.08), 0 0 0 1px var(--accent-hair); }
+  40% { box-shadow: inset 4px 0 0 var(--accent), inset 0 0 0 9999px rgb(var(--accent-rgb, 139 90 43) / 0.08), 0 0 0 4px var(--accent-tint); }
+  100% { box-shadow: inset 4px 0 0 var(--accent), inset 0 0 0 9999px rgb(var(--accent-rgb, 139 90 43) / 0.08), 0 0 0 1px var(--accent-hair); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .diff-line--claim-selected {
+    animation: diff-claim-pulse 1.2s ease-out;
+  }
+}
+
+/* ── Change indicator (+/−) ────────────────────────────────── */
+
+.diff-line__change-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  box-sizing: border-box;
+  width: 32px;
+  min-width: 32px;
+  padding-inline-end: 6px;
+  font-weight: 700;
+  font-size: 0.8125rem;
+  line-height: 1;
+  user-select: none;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+.diff-line--add .diff-line__change-indicator { color: var(--add-fg); }
+.diff-line--del .diff-line__change-indicator { color: var(--del-fg); }
+
+.diff-line__marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  min-width: 16px;
+  font-weight: 600;
+  font-size: 0.75rem;
+  user-select: none;
+  pointer-events: none;
+  color: var(--muted);
+}
+.diff-split-cell--add .diff-line__marker { color: var(--add-fg); }
+.diff-split-cell--del .diff-line__marker { color: var(--del-fg); }
 
 /* ── Line numbers ─────────────────────────────────────────── */
 
@@ -473,7 +539,7 @@ button.diff-line {
    target via event bubbling. */
 .diff-line__claim-dot {
   position: absolute;
-  inset-inline-start: calc(4px + var(--claim-dot-offset, 0px));
+  inset-inline-start: calc(6px + var(--claim-dot-offset, 0px));
   top: 50%;
   transform: translateY(-50%);
   width: 6px;
@@ -602,11 +668,13 @@ button.diff-split-cell {
 .diff-split-cell--add {
   background: var(--add-bg);
   color: var(--add-fg);
+  border-inline-start: 4px solid var(--add-fg);
 }
 
 .diff-split-cell--del {
   background: var(--del-bg);
   color: var(--del-fg);
+  border-inline-start: 4px solid var(--del-fg);
 }
 
 .diff-split-cell--empty {
@@ -896,6 +964,12 @@ button.diff-split-cell {
     width: 30px;
     min-width: 30px;
     font-size: 10px;
+  }
+
+  .diff-line__change-indicator {
+    width: 26px;
+    min-width: 26px;
+    padding-inline-end: 4px;
   }
 
   .diff-line__text {

@@ -284,10 +284,6 @@ export default function DiffViewerPage() {
     setStats(s);
   }, []);
 
-  const handleSelect = useCallback((claimId: string) => {
-    setSelectedClaimId((prev) => (prev === claimId ? null : claimId));
-  }, []);
-
   const handleCopyAnchor = useCallback((claimId: string) => {
     void copyToClipboard(`#claim-${claimId}`);
   }, []);
@@ -369,25 +365,6 @@ export default function DiffViewerPage() {
     setHeaderFileIndex(0);
   }, [diffSections.length]);
 
-  const jumpHeaderFile = useCallback(
-    (delta: number) => {
-      if (diffSections.length === 0) return;
-      const nextIndex = (headerFileIndex + delta + diffSections.length) % diffSections.length;
-      setHeaderFileIndex(nextIndex);
-      const filePath = diffSections[nextIndex]?.filePath;
-      if (!filePath) return;
-      requestAnimationFrame(() => {
-        const target = document.querySelector<HTMLElement>(
-          `.diff-view [data-file-path="${CSS.escape(filePath)}"] .diff-file-header`,
-        );
-        target?.scrollIntoView({
-          behavior: prefersReducedMotion() ? 'auto' : 'smooth',
-          block: 'start',
-        });
-      });
-    },
-    [diffSections, headerFileIndex],
-  );
   const claimsWithSource = useMemo(
     () =>
       claims.map((claim) => {
@@ -426,6 +403,26 @@ export default function DiffViewerPage() {
     : selectedClaim
       ? formatClaimRef(selectedClaim)
       : '';
+
+  const handleActiveFileChange = useCallback((index: number | null) => {
+    if (index != null) setHeaderFileIndex(index);
+  }, []);
+
+  const handleSelect = useCallback((claimId: string) => {
+    setSelectedClaimId((prev) => (prev === claimId ? null : claimId));
+  }, []);
+
+  useEffect(() => {
+    if (!selectedClaimId || phase !== 'ready') return;
+    const sel = claimsWithSource.find((c) => c.claim_id === selectedClaimId);
+    const group = sel?.source_line_groups?.[0];
+    if (group?.file && group.line_start != null) {
+      const file = group.file;
+      const line = group.line_start;
+      const side = group.side ?? undefined;
+      requestAnimationFrame(() => handleJumpToCode(file, line, side));
+    }
+  }, [selectedClaimId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Build mini-panel items from stats */
   const panelItems: MiniPanelItem[] = stats
@@ -471,22 +468,6 @@ export default function DiffViewerPage() {
               onClick={() => setDiffViewMode('split')}
             >
               {t('Diff.view_split')}
-            </button>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => jumpHeaderFile(-1)}
-              disabled={diffSections.length < 2}
-            >
-              {t('Diff.prev_file')}
-            </button>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => jumpHeaderFile(1)}
-              disabled={diffSections.length < 2}
-            >
-              {t('Diff.next_file')}
             </button>
             {runId && (
               <Link className="btn primary" to={`/run/${encodeURIComponent(runId)}/lesson`}>
@@ -538,6 +519,7 @@ export default function DiffViewerPage() {
                   selectedClaimId={selectedClaimId}
                   onSelectClaim={handleSelect}
                   onStats={handleStats}
+                  onActiveFileChange={handleActiveFileChange}
                   mode={diffViewMode}
                   focusTarget={diffFocusTarget}
                 />

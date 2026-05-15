@@ -651,6 +651,23 @@ class TestPutConfig:
         assert get_resp.status_code == 200
         assert get_resp.json()["learn"]["desired_retention"] == 0.84
 
+    def test_quiz_question_count_round_trips(self, tmp_path: Path) -> None:
+        repo_root = tmp_path / "repo"
+        (repo_root / ".git").mkdir(parents=True)
+        state_dir = repo_root / ".ahadiff"
+        client = _client(state_dir)
+
+        put_resp = client.put(
+            "/api/config",
+            json={"quiz": {"quiz_question_count": 7}},
+            headers={**_AUTH, "origin": "http://localhost:8765"},
+        )
+        get_resp = client.get("/api/config")
+
+        assert put_resp.status_code == 200
+        assert get_resp.status_code == 200
+        assert get_resp.json()["quiz"]["quiz_question_count"] == 7
+
     @pytest.mark.parametrize("value", [0.7, 0.99])
     def test_learn_desired_retention_accepts_boundaries(
         self,
@@ -741,6 +758,31 @@ class TestPutConfig:
 
         assert resp.status_code == 400
         assert "unknown learn keys" in resp.json()["error"]
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"quiz": {"quiz_question_count": 0}},
+            {"quiz": {"quiz_question_count": 11}},
+            {"quiz": {"quiz_question_count": True}},
+            {"quiz": {"quiz_question_count": "3"}},
+            {"quiz": {"quiz_question_count": None}},
+        ],
+    )
+    def test_quiz_question_count_invalid_values_rejected(
+        self,
+        tmp_path: Path,
+        payload: dict[str, object],
+    ) -> None:
+        client = _client(tmp_path / ".ahadiff")
+        resp = client.put(
+            "/api/config",
+            json=payload,
+            headers={**_AUTH, "origin": "http://localhost:8765"},
+        )
+
+        assert resp.status_code == 400
+        assert "quiz.quiz_question_count" in resp.json()["error"]
 
     def test_non_object_rejected(self, tmp_path: Path) -> None:
         client = _client(tmp_path / ".ahadiff")

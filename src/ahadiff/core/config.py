@@ -37,6 +37,7 @@ _POSITIVE_INT_KEYS = {
     "llm.quiz_generation_output_cap",
     "llm.misconception_cards_output_cap",
 }
+_QUIZ_QUESTION_COUNT_RANGE = (1, 10)
 _SAFE_PROVIDER_API_KEY_ENVS = frozenset(
     {
         "OPENAI_API_KEY",
@@ -91,6 +92,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "learn": {
         "learnability_threshold": 0.3,
         "desired_retention": 0.9,
+    },
+    "quiz": {
+        "quiz_question_count": 3,
     },
     "serve": {
         "port": 8765,
@@ -299,6 +303,11 @@ def _coerce_value(
                 raise ConfigError(f"{key} expects int, got {value!r}") from exc
         else:
             raise ConfigError(f"{key} expects int, got {type(value).__name__}")
+        if key == "quiz.quiz_question_count":
+            lo, hi = _QUIZ_QUESTION_COUNT_RANGE
+            if coerced < lo or coerced > hi:
+                raise ConfigError(f"{key} must be between {lo} and {hi}")
+            return coerced
         if key in _POSITIVE_INT_KEYS and coerced < 1:
             raise ConfigError(f"{key} must be >= 1")
         return coerced

@@ -49,7 +49,7 @@ You are writing a small active-recall quiz from a redacted diff package.
 
 ## Generation rules
 
-- Write 3 questions when the package supports it. If the diff is too small, write the smallest set that still tests the real claims.
+- Write {question_count} questions when the package supports it. If the diff is too small, write the smallest set that still tests the real claims.
 - Every question must link back to at least one `source_claim`.
 - Every question must include at least one concrete evidence anchor in `evidence`.
 - Set `answer_mode` to `multiple_choice` for every generated question.
