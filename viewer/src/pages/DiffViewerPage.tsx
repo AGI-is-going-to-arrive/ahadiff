@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import AppShell from '../components/AppShell';
+import InfoHint from '../components/InfoHint';
 import DiffView, {
   type DiffClaimAnchor,
   getClaimSourceLines,
@@ -449,6 +450,7 @@ export default function DiffViewerPage() {
                   · +{headerFile.stats.added} −{headerFile.stats.removed}
                 </span>
               )}
+              {' '}<InfoHint label={t('Diff.dot_legend')} />
             </h1>
             <p className="sub">{t('Diff.header_subtitle')}</p>
           </div>
@@ -538,6 +540,7 @@ export default function DiffViewerPage() {
                     {selectedSourceRef ? ` · ${selectedSourceRef}` : ''}
                   </div>
                 </div>
+                <p className="diff-page__selected-hint">{t('Diff.selected_lines_hint')}</p>
                 <blockquote className="diff-page__selected-hunk-claim">
                   {selectedClaim.statement}
                 </blockquote>

@@ -997,3 +997,15 @@ run_id: str
 - 当前 serve 面仍是 72 个 concrete `/api/*` routes + 1 个 catchall，另有 `/healthz`。
 
 本轮实测：后端 unit `2502 passed`；integration `11 passed`；eval `9 passed`；`ruff check`、`ruff format --check`、`pyright`、wheel build 通过；viewer typecheck、Vitest `350 passed`、build 通过；完整 Playwright `2855 passed, 10 skipped`；i18n `1447/1447`；`git diff --check HEAD` 通过。live judge 和远端 GitHub Actions 未在本轮重跑。
+
+### 9.19 Diff claim 选中视觉和 Welcome lesson 折叠收口（2026-05-15）
+
+本轮只记录已经由代码和本轮验证支撑的 `viewer/` 收口项：
+
+- Diff Viewer 的 claim 选中态不再用 accent ring，改为柔和的蓝灰行级色带；Unified / Split 的新增/删除选中底色都保留 add/del 语义。
+- claim dot 的 hover / focus-visible 样式在 Unified 和 Split 下保持一致；header 增加圆点说明，选中 claim 时会显示“高亮行是代码证据”的提示。
+- Welcome 的 hero lesson demo 按 H2 分组为 `<details>/<summary>` 折叠面板；H2 前的 preamble 会保留；没有 H2 时回到普通 prose；H3 仍留在当前 H2 section 里。
+- Welcome demo 面板有高度上限；当页面拿到最新 finalized run 时，会在 lesson demo 下方链接到对应 Lesson。
+- `renderMarkdownProse` 的签名未变；新增的 `renderMarkdownCollapsible` 是单独 helper，现有 Lesson 调用不受影响。
+
+本轮实测：后端 unit `2502 passed`；viewer typecheck 通过；Vitest `35 files, 353 tests passed`；viewer build 通过；i18n `1449/1449`；`git diff --check HEAD` 通过。integration、eval、ruff/format/pyright、wheel、完整 Playwright、live judge 和远端 GitHub Actions 未在本轮重跑。

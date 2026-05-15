@@ -4,6 +4,7 @@
 > 方法：6 维并行 Agent Teams 扫描 + Codex 5 路只读 sub-agent 复核 + 主线程抽样验证
 >
 > [Codex Audit] 2026-05-12：本次修订基于当前仓库真实代码、真实测试输出、静态文件计数；第六章竞品格局已追加 Grok Search 官方/权威来源复核。
+> [Current-state note] 2026-05-15：本报告仍是 05-12 研究快照，不是当前实现账本。当前 Diff 已有 Unified / Split、Prev/Next、`+` / `-` 行标记、claim auto-scroll、柔和 claim 选中色带、dot legend 和 selected-lines hint；Welcome/Landing lesson demo 已有 H2 折叠、高度上限和最新 Lesson 链接。最新 frontend-polish 实测为后端 unit `2502 passed`、viewer typecheck、Vitest `353 passed`、viewer build、i18n `1449/1449` 和 diffcheck；integration/eval/ruff/format/pyright/wheel/full Playwright 未在这次 polish 中重跑。
 
 ---
 

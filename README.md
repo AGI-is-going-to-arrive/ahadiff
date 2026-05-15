@@ -40,6 +40,8 @@ Stage 0 / Task 0 到 Stage 6 主线现在都已经有实际产物，Stage 7 的 
 
 2026-05-15 review/test follow-up 收口当前未提交改动：`/api/signals/srs-review` 和 `/api/review/rate` 遇到 active review card 不存在时，会在 repo 写锁内从 `runs/*/quiz/cards.jsonl` lazy import 后重试；导入会跳过 symlink/reparse 和坏 UTF-8 artifact，空 `cards.jsonl` 会把同 run 的旧 active cards 标成 stale。learn Step 10 现在先尝试 `graphify update <repo>`，成功后强制导入新的 `.ahadiff/graphify/graph.json`，再写 concepts，因此本次 run 的 concepts 可以链接刚更新的图；如果找不到 Graphify CLI 但已有 `graphify-out/graph.json`，仍沿用旧的可选导入；如果 CLI 存在但 update 失败，则降级且不会把旧图冒充刷新。Graphify source import 使用 parser 的 50 MiB 上限，`/api/graph/refresh` 只对精确路径给 600s timeout，`git --since` 的纯日期输入会归一到 UTC 午夜以避开平台解析差异。后续 review 修复又补上低 learnability 跳过 lesson/quiz 时的最小 run 发布：写入 result event、`score.json` 和 `finalized.json`，发布失败会回滚刚写入的 result event；CLI 直跑 `ahadiff learn` 和 serve/orchestrator 路径口径一致。Quiz 生成新增 `quiz.quiz_question_count`，默认 3，范围 1-10，CLI、prompt、serve config API 和 Settings 都已接通。前端把 Review open-answer 卡片改为未 peek 状态，Diff 页补文件摘要 Prev/Next、统一/分栏 `+`/`-` 标记、claim auto-scroll 与窄屏/forced-colors 样式，Lesson 页恢复 run detail 404 为 fetch failed，只把 lesson artifact 缺失显示成 skipped。真实验证：后端 unit `2502 passed`、integration `11 passed`、eval `9 passed`；`ruff check`、`ruff format --check`、`pyright`、wheel、viewer typecheck、Vitest `350 passed`、viewer build、完整 Playwright `2855 passed, 10 skipped`、i18n scalar keys `1447/1447` 和 `git diff --check HEAD` 通过。live judge 和远端 GitHub Actions 没有在本轮重跑。
 
+同日后续 frontend polish 只改 `viewer/` 的 Diff 和 Welcome 学习入口：Diff claim 选中不再用 accent ring，改成柔和的行级色带；Unified / Split 里的 claim dot hover/focus、add/del 选中底色、圆点说明和高亮行提示已同步。Welcome 的 lesson demo 会按 H2 折叠，保留 H2 前导内容；没有 H2 时回到普通 prose；demo 面板有高度上限；有最新 finalized run 时会链接到对应 Lesson。新增 `renderMarkdownCollapsible` 单测覆盖 H2 分组、preamble、无 H2 fallback 和 H3 留在当前 section。本轮真实验证：`cd viewer && pnpm typecheck` 通过；`cd viewer && pnpm vitest run` = `35 files, 353 tests passed`；`cd viewer && pnpm build` 通过；`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run pytest tests/unit -q` = `2502 passed`；i18n scalar keys `1449/1449`；`git diff --check HEAD` 通过。integration、eval、ruff/format/pyright、wheel、完整 Playwright、live judge 和远端 GitHub Actions 没有在这次 frontend polish 中重跑。
+
 2026-05-09 的 follow-up 把 path-scoped learn 补成真正的端到端能力：`ahadiff learn --changed-path`、watch 自触发 learn、`POST /api/learn` / `POST /api/learn/estimate` 和 Learn Mode Dialog 都会把路径范围传到 capture 层；capture 只允许它用于 staged / unstaged / working tree，并用 literal pathspec 处理 glob 字符。前端同时把任务进度改为 EventSource 优先、polling fallback，Learn Mode Dialog 的高级区补了路径范围、其它来源提示和三个运行选项说明；PWA manifest 也补上同源 `id` / `scope` 以及 192/512 PNG 图标。
 
 本次 follow-up 的目标验证：后端 path-scope 回归 `6 passed`；`cd viewer && pnpm vitest run tests/unit/learn-mode-dialog.test.ts tests/unit/manifest.test.ts src/state/learn-store.test.ts` = `3 files, 87 tests passed`；`cd viewer && pnpm typecheck`、`pnpm build` 通过；`cd viewer && pnpm test:e2e:real-serve` = `1 passed`。完整后端单元、完整 Playwright、live judge 和 coverage 没有在这次 follow-up 里重跑。
@@ -380,7 +382,7 @@ ahadiff/
 ├─ tests/eval/                  # benchmark suite 测试
 ├─ tests/integration/           # pinned integration fixtures
 ├─ tests/live/                  # 需要显式环境变量开启的真实 LLM judge smoke
-├─ viewer/                      # React 19 + Vite + Zustand + vanilla CSS 前端（14 个生产页面 TSX / 52 个非测试 TSX / 47 个 CSS / 1447 i18n scalar keys；Phase 2: Challenge 页面、Export modal、HealthBadge；最新本地 gate：后端 unit 2502 + integration 11 + eval 9 + Vitest 350 + 完整 Playwright 2855）
+├─ viewer/                      # React 19 + Vite + Zustand + vanilla CSS 前端（14 个生产页面 TSX / 52 个非测试 TSX / 47 个 CSS / 1449 i18n scalar keys；Phase 2: Challenge 页面、Export modal、HealthBadge；最新本地 frontend polish gate：后端 unit 2502 + viewer Vitest 353 + i18n 1449；上一轮完整 gate 仍有 integration 11 + eval 9 + 完整 Playwright 2855）
 ├─ ui/                          # HTML 原型 v1–v6（设计迭代史）
 └─ CLAUDE.md                    # 项目 AI 上下文索引
 ```
@@ -451,6 +453,8 @@ pytest tests/live/test_llm_judge_live.py -q
 2026-05-14 spec alignment / Notebook follow-up 重跑后端 unit `2477 passed`、integration `11 passed`、eval `9 passed`、`ruff check`、`ruff format --check`、`pyright`、wheel build、viewer typecheck、Vitest `345 passed`、viewer build、完整 Playwright `2855 passed, 10 skipped`、i18n `1439/1439` 和 `git diff --check HEAD`。随后加载 `.env.local` 重跑 live semantic alignment smoke = `1 passed`。远端 GitHub Actions 已触发并监控，但 GitHub 在 job 启动前因 account billing / spending limit 拒绝运行，未产生 runner 日志，不计为代码验证通过。
 
 2026-05-15 review/test follow-up 重跑后端 unit `2502 passed`、integration `11 passed`、eval `9 passed`、`ruff check`、`ruff format --check`、`pyright`、wheel build、viewer typecheck、Vitest `34 files, 350 tests passed`、viewer build、完整 Playwright `2855 passed, 10 skipped`、i18n `1447/1447` 和 `git diff --check HEAD`。本轮没有重跑 live judge 或远端 GitHub Actions。
+
+2026-05-15 Diff/Landing frontend polish 重跑 viewer typecheck、Vitest `35 files, 353 tests passed`、viewer build、后端 unit `2502 passed`、i18n `1449/1449` 和 `git diff --check HEAD`。本轮只改 `viewer/` 学习入口，没有重跑 integration、eval、ruff/format/pyright、wheel、完整 Playwright、live judge 或远端 GitHub Actions。
 
 下一步路线图：
 

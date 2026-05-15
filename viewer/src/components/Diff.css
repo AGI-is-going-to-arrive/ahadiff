@@ -453,29 +453,41 @@ button.diff-line {
 }
 
 .diff-line--claim-linked:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--info);
   outline-offset: -2px;
 }
 
 .diff-line--claim-selected {
-  box-shadow: inset 4px 0 0 var(--accent), inset 0 0 0 9999px rgb(var(--accent-rgb, 139 90 43) / 0.08), 0 0 0 1px var(--accent-hair);
+  box-shadow: inset 2.5px 0 0 var(--stamp-verified-frame);
+  background: var(--stamp-verified-tint);
   scroll-margin-top: 64px;
 }
 
-.diff-line--claim-selected .diff-line__claim-dot {
-  transform: translateY(-50%) scale(1.6);
-  box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--accent);
+.diff-line--add.diff-line--claim-selected {
+  background: color-mix(in srgb, var(--add-bg) 80%, var(--stamp-verified-tint));
+}
+
+.diff-line--del.diff-line--claim-selected {
+  background: color-mix(in srgb, var(--del-bg) 80%, var(--stamp-verified-tint));
+}
+
+.diff-split-cell--add.diff-line--claim-selected {
+  background: color-mix(in srgb, var(--add-bg) 80%, var(--stamp-verified-tint));
+}
+
+.diff-split-cell--del.diff-line--claim-selected {
+  background: color-mix(in srgb, var(--del-bg) 80%, var(--stamp-verified-tint));
 }
 
 @keyframes diff-claim-pulse {
-  0% { box-shadow: inset 4px 0 0 var(--accent), inset 0 0 0 9999px rgb(var(--accent-rgb, 139 90 43) / 0.08), 0 0 0 1px var(--accent-hair); }
-  40% { box-shadow: inset 4px 0 0 var(--accent), inset 0 0 0 9999px rgb(var(--accent-rgb, 139 90 43) / 0.08), 0 0 0 4px var(--accent-tint); }
-  100% { box-shadow: inset 4px 0 0 var(--accent), inset 0 0 0 9999px rgb(var(--accent-rgb, 139 90 43) / 0.08), 0 0 0 1px var(--accent-hair); }
+  0% { box-shadow: inset 2.5px 0 0 var(--stamp-verified-frame); }
+  40% { box-shadow: inset 2.5px 0 0 var(--stamp-verified), 0 0 0 1px var(--stamp-verified-tint); }
+  100% { box-shadow: inset 2.5px 0 0 var(--stamp-verified-frame); }
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .diff-line--claim-selected {
-    animation: diff-claim-pulse 1.2s ease-out;
+    animation: diff-claim-pulse 1s ease-out;
   }
 }
 
@@ -548,9 +560,8 @@ button.diff-line {
   border: 0;
   padding: 0;
   cursor: pointer;
+  color: var(--muted);
   background: var(--muted);
-  /* Halo so the dot stays visible against verdict-colored row backgrounds
-     (add green / del red). */
   box-shadow: 0 0 0 1px var(--paper);
   transition: transform var(--dur-xfast) var(--ease-out-quart),
     box-shadow var(--dur-xfast) var(--ease-out-quart);
@@ -558,25 +569,31 @@ button.diff-line {
 }
 
 button.diff-line:hover .diff-line__claim-dot,
-button.diff-line:focus-visible .diff-line__claim-dot {
-  transform: translateY(-50%) scale(1.4);
-  box-shadow: 0 0 0 2px var(--paper), 0 0 0 3px var(--accent-soft);
+button.diff-line:focus-visible .diff-line__claim-dot,
+button.diff-split-cell:hover .diff-line__claim-dot,
+button.diff-split-cell:focus-visible .diff-line__claim-dot {
+  transform: translateY(-50%) scale(1.25);
+  box-shadow: 0 0 0 1.5px var(--paper), 0 0 3px 0 currentColor;
 }
 
 .diff-line__claim-dot--verified {
+  color: var(--success);
   background: var(--success);
 }
 
 .diff-line__claim-dot--weak {
+  color: var(--warning);
   background: var(--warning);
 }
 
 .diff-line__claim-dot--not_proven {
+  color: var(--muted);
   background: var(--muted);
 }
 
 .diff-line__claim-dot--rejected,
 .diff-line__claim-dot--contradicted {
+  color: var(--danger);
   background: var(--danger);
 }
 
@@ -593,7 +610,9 @@ button.diff-line:focus-visible .diff-line__claim-dot {
     transition: none;
   }
   button.diff-line:hover .diff-line__claim-dot,
-  button.diff-line:focus-visible .diff-line__claim-dot {
+  button.diff-line:focus-visible .diff-line__claim-dot,
+  button.diff-split-cell:hover .diff-line__claim-dot,
+  button.diff-split-cell:focus-visible .diff-line__claim-dot {
     transform: translateY(-50%);
   }
 }
@@ -816,8 +835,15 @@ button.diff-split-cell {
   white-space: nowrap;
 }
 
+.diff-page__selected-hint {
+  margin: 0 var(--sp-4);
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .diff-page__selected-hunk-claim {
-  margin: 14px var(--sp-4) 0;
+  margin: 10px var(--sp-4) 0;
   padding: 5px 14px;
   border-left: 3px solid var(--accent);
   background: var(--accent-softer, var(--accent-soft));

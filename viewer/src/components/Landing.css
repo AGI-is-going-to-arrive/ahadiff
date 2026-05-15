@@ -221,8 +221,87 @@
 
 .hero-demo__content {
   padding: var(--sp-5);
-  max-height: 400px;
+  max-height: 520px;
   overflow-y: auto;
+}
+
+/* ---- Lesson accordion (collapsible sections in hero card) ---- */
+.hero-demo__accordion {
+  border-top: 1px solid var(--hair);
+  margin-top: var(--sp-2);
+}
+
+.hero-demo__accordion + .hero-demo__accordion {
+  margin-top: 0;
+}
+
+.hero-demo__accordion-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) 0;
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--ink-strong);
+  user-select: none;
+  transition: color var(--dur-fast) var(--ease-out-quart);
+}
+
+.hero-demo__accordion-summary::-webkit-details-marker {
+  display: none;
+}
+
+.hero-demo__accordion-summary::marker {
+  content: "";
+}
+
+.hero-demo__accordion-summary:hover {
+  color: var(--accent-ink);
+}
+
+.hero-demo__accordion-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.hero-demo__accordion-chevron {
+  flex-shrink: 0;
+  font-size: 16px;
+  color: var(--muted);
+  transition: transform var(--dur-base) var(--ease-out-quart);
+  display: inline-block;
+}
+
+.hero-demo__accordion[open] > .hero-demo__accordion-summary .hero-demo__accordion-chevron {
+  transform: rotate(90deg);
+}
+
+.hero-demo__accordion-body {
+  padding: 0 0 var(--sp-3) 0;
+}
+
+/* ---- Lesson link at bottom of hero card ---- */
+.hero-demo__lesson-link {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--hair);
+  text-align: center;
+}
+
+.hero-demo__lesson-link a {
+  font-family: var(--font-serif);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease-out-quart);
+}
+
+.hero-demo__lesson-link a:hover {
+  color: var(--accent);
 }
 
 /* ---- Hero demo: raw diff preformatted text ---- */
@@ -645,6 +724,16 @@
   .hero-demo__tab--active {
     border-bottom-color: Highlight;
   }
+
+  .hero-demo__accordion {
+    border-color: CanvasText;
+  }
+
+  .hero-demo__accordion-summary,
+  .hero-demo__accordion-chevron,
+  .hero-demo__lesson-link a {
+    color: LinkText;
+  }
 }
 
 /* ---- Print ---- */
@@ -689,7 +778,10 @@
   .hero-ctas .btn-primary,
   .feature-card,
   .feature-card::before,
-  .step {
+  .step,
+  .hero-demo__accordion-summary,
+  .hero-demo__accordion-chevron,
+  .hero-demo__lesson-link a {
     transition: none;
     transform: none !important;
   }

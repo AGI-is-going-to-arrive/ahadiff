@@ -5,7 +5,7 @@ import type { RatchetTransparencyResponse, RunSummary } from '../api/types';
 import { useTranslation } from '../i18n/useTranslation';
 import { useRunsStore } from '../state/runs-store';
 import { formatCompactNumber } from '../utils/format';
-import { renderMarkdownProse } from '../utils/markdown';
+import { renderMarkdownCollapsible, renderMarkdownProse } from '../utils/markdown';
 import '../components/Landing.css';
 
 const LearnModeDialog = lazy(() => import('../components/LearnModeDialog'));
@@ -146,6 +146,10 @@ export default function LandingPage() {
   const demoLesson = liveDemo?.lesson ?? SAMPLE_LESSON;
   const renderedLesson = useMemo(
     () => renderMarkdownProse(demoLesson, 'hero-demo'),
+    [demoLesson],
+  );
+  const renderedLessonCollapsible = useMemo(
+    () => renderMarkdownCollapsible(demoLesson, 'hero-demo', 1),
     [demoLesson],
   );
 
@@ -350,14 +354,21 @@ export default function LandingPage() {
                   : t('Landing.hero_demo_source_demo')}
               </span>
             </div>
-            <div className="pane active" id="demo-panel" role="tabpanel" aria-labelledby={activeTab === 'raw' ? 'tab-raw' : 'tab-aha'} tabIndex={0}>
+            <div className="pane active hero-demo__content" id="demo-panel" role="tabpanel" aria-labelledby={activeTab === 'raw' ? 'tab-raw' : 'tab-aha'} tabIndex={0}>
               {activeTab === 'raw' ? (
-                <pre className="code-block" style={{ margin: 0, borderLeft: '3px solid var(--muted)', maxHeight: '340px' }}>
+                <pre className="code-block" style={{ margin: 0, borderLeft: '3px solid var(--muted)' }}>
                   {demoDiff}
                 </pre>
               ) : (
                 <div className="u-text-sm-relaxed prose" style={{ fontSize: '14.5px' }}>
-                  {renderedLesson}
+                  {renderedLessonCollapsible}
+                  {liveDemo && latestRun && (
+                    <div className="hero-demo__lesson-link">
+                      <Link to={`/run/${encodeURIComponent(latestRun.run_id)}/lesson`}>
+                        {t('Diff.open_lesson')} →
+                      </Link>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

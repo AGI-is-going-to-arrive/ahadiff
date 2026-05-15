@@ -40,6 +40,68 @@ export function renderInline(text: string, keyPrefix: string): React.ReactNode[]
   return nodes.length > 0 ? nodes : [text];
 }
 
+interface MarkdownHeadingProps {
+  id?: string;
+  children?: React.ReactNode;
+}
+
+function isMarkdownH2(node: React.ReactNode): node is React.ReactElement<MarkdownHeadingProps> {
+  return React.isValidElement<MarkdownHeadingProps>(node) && node.type === 'h2';
+}
+
+/**
+ * Group flat markdown into collapsible `<details>` sections per H2 heading.
+ * The first section is open by default; the rest are collapsed.
+ */
+export function renderMarkdownCollapsible(
+  content: string,
+  classPrefix = 'lesson',
+  defaultOpenCount = 1,
+): React.ReactNode[] | null {
+  const flat = renderMarkdownProse(content, classPrefix);
+  if (!flat || flat.length === 0) return flat;
+
+  const sections: { heading: React.ReactElement<MarkdownHeadingProps>; body: React.ReactNode[] }[] = [];
+  const preamble: React.ReactNode[] = [];
+
+  for (const node of flat) {
+    if (isMarkdownH2(node)) {
+      sections.push({ heading: node, body: [] });
+    } else if (sections.length > 0) {
+      sections[sections.length - 1].body.push(node);
+    } else {
+      preamble.push(node);
+    }
+  }
+
+  if (sections.length === 0) return flat;
+
+  const result: React.ReactNode[] = [...preamble];
+  sections.forEach((section, idx) => {
+    const label = typeof section.heading.props.children === 'string'
+      ? section.heading.props.children
+      : `Section ${idx + 1}`;
+    const slug = section.heading.props.id ?? `section-${idx}`;
+    result.push(
+      <details
+        key={`collapsible-${slug}`}
+        className={`${classPrefix}__accordion`}
+        open={idx < defaultOpenCount || undefined}
+      >
+        <summary className={`${classPrefix}__accordion-summary`}>
+          <span className={`${classPrefix}__accordion-chevron`} aria-hidden="true">&#x203A;</span>
+          <span>{label}</span>
+        </summary>
+        <div className={`${classPrefix}__accordion-body`}>
+          {section.body}
+        </div>
+      </details>,
+    );
+  });
+
+  return result;
+}
+
 export function renderMarkdownProse(content: string, classPrefix = 'lesson'): React.ReactNode[] | null {
   if (!content) return null;
   const lines = content.split('\n');
