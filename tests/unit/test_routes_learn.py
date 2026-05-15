@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import threading
 import time
-from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import anyio
 import httpx
@@ -19,6 +18,9 @@ from ahadiff.contracts.serve_runtime import TaskInfoResponse, TaskSubmitResponse
 from ahadiff.core.orchestrator import LearnRequest, LearnResult
 from ahadiff.core.task_runner import TaskRunner
 from ahadiff.serve import ServeState, create_app, routes_learn
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _client(
@@ -99,6 +101,16 @@ def _wait_for_task(
         time.sleep(0.02)
     raise AssertionError(
         f"task {task_id} did not reach {expected_status!r}; last payload={last_payload!r}"
+    )
+
+
+def _stub_completed_learn(monkeypatch: pytest.MonkeyPatch, run_id: str) -> None:
+    def fake_run_learn_pipeline(request: LearnRequest, **_: object) -> LearnResult:
+        return LearnResult(run_id=run_id, status="completed")
+
+    monkeypatch.setattr(
+        "ahadiff.core.orchestrator.run_learn_pipeline",
+        fake_run_learn_pipeline,
     )
 
 
@@ -286,6 +298,7 @@ def test_post_learn_invalid_json(tmp_path: Path) -> None:
     client = _client(tmp_path)
     resp = _post_learn(client, body=None)
     assert resp.status_code == 400
+    assert _json_object(resp)["error_code"] == "INPUT_INVALID_JSON"
     assert _json_object(resp)["error"] == "invalid_json"
 
 
@@ -301,6 +314,7 @@ def test_post_learn_body_must_be_object(tmp_path: Path) -> None:
         },
     )
     assert resp.status_code == 400
+    assert _json_object(resp)["error_code"] == "INPUT_BAD_FIELD"
     assert _json_object(resp)["error"] == "body_must_be_object"
 
 
@@ -309,28 +323,44 @@ def test_post_learn_body_must_be_object(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_post_learn_returns_202_with_task_id(tmp_path: Path) -> None:
-    client = _client(tmp_path)
-    resp = _post_learn(client, body={})
-    assert resp.status_code == 202
-    data = _json_object(resp)
-    assert "task_id" in data
-    assert isinstance(data["task_id"], str)
-    assert len(data["task_id"]) > 0
+def test_post_learn_returns_202_with_task_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_completed_learn(monkeypatch, "run-accepted")
+
+    with _client(tmp_path) as client:
+        resp = _post_learn(client, body={})
+        assert resp.status_code == 202
+        data = _json_object(resp)
+        assert "task_id" in data
+        assert isinstance(data["task_id"], str)
+        assert len(data["task_id"]) > 0
+        info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
+
+    assert info["status"] == "completed"
 
 
-def test_post_learn_with_valid_fields(tmp_path: Path) -> None:
-    client = _client(tmp_path)
-    resp = _post_learn(
-        client,
-        body={
-            "dry_run": True,
-            "force_learn": True,
-            "lang": "zh-CN",
-        },
-    )
-    assert resp.status_code == 202
-    assert "task_id" in _json_object(resp)
+def test_post_learn_with_valid_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_completed_learn(monkeypatch, "run-valid-fields")
+
+    with _client(tmp_path) as client:
+        resp = _post_learn(
+            client,
+            body={
+                "dry_run": True,
+                "force_learn": True,
+                "lang": "zh-CN",
+            },
+        )
+        assert resp.status_code == 202
+        assert "task_id" in _json_object(resp)
+        info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
+
+    assert info["status"] == "completed"
 
 
 # ---------------------------------------------------------------------------
@@ -351,20 +381,27 @@ def test_post_learn_rejects_unknown_fields(tmp_path: Path) -> None:
     )
     assert resp.status_code == 422
     body = _json_object(resp)
+    assert body["error_code"] == "INPUT_UNKNOWN_KEYS"
     assert "unknown_fields" in str(body.get("error", ""))
 
 
-def test_post_learn_filters_none_values(tmp_path: Path) -> None:
+def test_post_learn_filters_none_values(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Fields with None values should be filtered out."""
-    client = _client(tmp_path)
-    resp = _post_learn(
-        client,
-        body={
-            "revision": None,
-            "dry_run": True,
-        },
-    )
-    assert resp.status_code == 202
+    _stub_completed_learn(monkeypatch, "run-none-values")
+    with _client(tmp_path) as client:
+        resp = _post_learn(
+            client,
+            body={
+                "revision": None,
+                "dry_run": True,
+            },
+        )
+        assert resp.status_code == 202
+        info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
+    assert info["status"] == "completed"
 
 
 # ---------------------------------------------------------------------------
@@ -372,12 +409,18 @@ def test_post_learn_filters_none_values(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_post_learn_empty_body_accepted(tmp_path: Path) -> None:
-    client = _client(tmp_path)
-    resp = _post_learn(client, body={})
-    assert resp.status_code == 202
-    data = _json_object(resp)
-    assert "task_id" in data
+def test_post_learn_empty_body_accepted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_completed_learn(monkeypatch, "run-empty-body")
+    with _client(tmp_path) as client:
+        resp = _post_learn(client, body={})
+        assert resp.status_code == 202
+        data = _json_object(resp)
+        assert "task_id" in data
+        info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
+    assert info["status"] == "completed"
 
 
 # ---------------------------------------------------------------------------
@@ -385,19 +428,25 @@ def test_post_learn_empty_body_accepted(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_post_learn_task_visible_in_tasks_list(tmp_path: Path) -> None:
-    client = _client(tmp_path)
-    resp = _post_learn(client, body={})
-    assert resp.status_code == 202
-    task_id = _task_id_from(resp)
+def test_post_learn_task_visible_in_tasks_list(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_completed_learn(monkeypatch, "run-visible-task")
+    with _client(tmp_path) as client:
+        resp = _post_learn(client, body={})
+        assert resp.status_code == 202
+        task_id = _task_id_from(resp)
 
-    tasks_resp = client.get("/api/tasks")
-    assert tasks_resp.status_code == 200
-    tasks_value = _json_object(tasks_resp)["tasks"]
-    assert isinstance(tasks_value, list)
-    tasks = cast("list[dict[str, object]]", tasks_value)
-    task_ids = [task["task_id"] for task in tasks]
-    assert task_id in task_ids
+        tasks_resp = client.get("/api/tasks")
+        assert tasks_resp.status_code == 200
+        tasks_value = _json_object(tasks_resp)["tasks"]
+        assert isinstance(tasks_value, list)
+        tasks = cast("list[dict[str, object]]", tasks_value)
+        task_ids = [task["task_id"] for task in tasks]
+        assert task_id in task_ids
+        info = _wait_for_task(client, task_id, expected_status="completed")
+    assert info["status"] == "completed"
 
 
 # ---------------------------------------------------------------------------
@@ -485,7 +534,7 @@ def test_post_learn_passes_against_spec_to_request(
 
     def recording_learn_request(**kwargs: Any) -> LearnRequest:
         constructed_kwargs.update(kwargs)
-        assert kwargs["against_spec"] == Path("SPEC.md")
+        assert kwargs["against_spec"] == (tmp_path.parent / "SPEC.md").resolve()
         assert kwargs["spec_semantic_review"] is True
         return LearnRequest(**kwargs)
 
@@ -505,8 +554,29 @@ def test_post_learn_passes_against_spec_to_request(
         info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
 
     assert info["status"] == "completed"
-    assert constructed_kwargs["against_spec"] == Path("SPEC.md")
+    assert constructed_kwargs["against_spec"] == (tmp_path.parent / "SPEC.md").resolve()
     assert constructed_kwargs["spec_semantic_review"] is True
+
+
+def test_post_learn_rejects_against_spec_outside_workspace(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    resp = _post_learn(
+        client,
+        body={"against_spec": "/etc/passwd", "spec_semantic_review": True},
+    )
+    assert resp.status_code == 422
+    body = _json_object(resp)
+    assert body["error_code"] == "INPUT_VALIDATION"
+    assert body["error"] == "invalid_value_for_against_spec"
+
+
+def test_post_learn_estimate_rejects_against_spec_outside_workspace(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    resp = _post_learn_estimate(client, body={"against_spec": "/etc/passwd"})
+    assert resp.status_code == 422
+    body = _json_object(resp)
+    assert body["error_code"] == "INPUT_VALIDATION"
+    assert body["error"] == "invalid_value_for_against_spec"
 
 
 # ---------------------------------------------------------------------------
@@ -515,14 +585,29 @@ def test_post_learn_passes_against_spec_to_request(
 
 
 def test_post_learn_queue_depth_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """When max pending tasks limit is reached, return 503."""
+    """When max pending tasks limit is reached, return a stable conflict error."""
     import ahadiff.serve.routes_learn as rl
 
     monkeypatch.setattr(rl, "_MAX_PENDING_TASKS", 0)
     client = _client(tmp_path)
     resp = _post_learn(client, body={})
-    assert resp.status_code == 503
-    assert _json_object(resp)["error"] == "too_many_pending_learn_tasks"
+    assert resp.status_code == 409
+    body = _json_object(resp)
+    assert body["error_code"] == "LOCK_CONFLICT"
+    assert body["error"] == "too_many_pending_learn_tasks"
+
+
+def test_post_learn_prechecks_repo_write_lock(tmp_path: Path) -> None:
+    from ahadiff.git.repo import repo_write_lock
+
+    client = _client(tmp_path)
+    with repo_write_lock(tmp_path / "ahadiff.lock", command="test"):
+        resp = _post_learn(client, body={})
+
+    assert resp.status_code == 409
+    body = _json_object(resp)
+    assert body["error_code"] == "LOCK_CONFLICT"
+    assert body["error"] == "run_in_progress"
 
 
 # ---------------------------------------------------------------------------
@@ -530,11 +615,17 @@ def test_post_learn_queue_depth_limit(tmp_path: Path, monkeypatch: pytest.Monkey
 # ---------------------------------------------------------------------------
 
 
-def test_post_learn_coerces_string_bool(tmp_path: Path) -> None:
+def test_post_learn_coerces_string_bool(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """'false' as string should be coerced to False, not truthy."""
-    client = _client(tmp_path)
-    resp = _post_learn(client, body={"dry_run": "false"})
-    assert resp.status_code == 202
+    _stub_completed_learn(monkeypatch, "run-string-bool")
+    with _client(tmp_path) as client:
+        resp = _post_learn(client, body={"dry_run": "false"})
+        assert resp.status_code == 202
+        info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
+    assert info["status"] == "completed"
 
 
 def test_post_learn_coerces_falsey_bool_strings(
@@ -618,6 +709,7 @@ def test_post_learn_rejects_stdin_patch_mode(tmp_path: Path) -> None:
     client = _client(tmp_path)
     resp = _post_learn(client, body={"patch": "-"})
     assert resp.status_code == 422
+    assert _json_object(resp)["error_code"] == "INPUT_VALIDATION"
 
 
 @pytest.mark.parametrize(
@@ -628,6 +720,10 @@ def test_post_learn_rejects_stdin_patch_mode(tmp_path: Path) -> None:
         ({"privacy_mode": "totally_remote"}, "invalid_value_for_privacy_mode"),
         ({"lang": "fr"}, "invalid_value_for_lang"),
         ({"author": "x" * 4097}, "invalid_value_for_author"),
+        ({"author": "--all"}, "invalid_value_for_author"),
+        ({"author": "Ada\x7f"}, "invalid_value_for_author"),
+        ({"since": "--all"}, "invalid_value_for_since"),
+        ({"since": "2025-01-01\x1f"}, "invalid_value_for_since"),
         ({"dry_run": 42}, "invalid_value_for_dry_run"),
         ({"compare": ["only-one"]}, "invalid_value_for_compare"),
         ({"compare_dir": ["old", 7]}, "invalid_value_for_compare_dir"),
@@ -641,7 +737,18 @@ def test_post_learn_rejects_invalid_values(
     client = _client(tmp_path)
     resp = _post_learn(client, body=body)
     assert resp.status_code == 422
-    assert _json_object(resp)["error"] == error
+    response_body = _json_object(resp)
+    assert response_body["error_code"] == "INPUT_VALIDATION"
+    assert response_body["error"] == error
+
+
+def test_post_learn_estimate_rejects_since_git_option_injection(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    resp = _post_learn_estimate(client, body={"since": "--all"})
+    assert resp.status_code == 422
+    body = _json_object(resp)
+    assert body["error_code"] == "INPUT_VALIDATION"
+    assert body["error"] == "invalid_value_for_since"
 
 
 @pytest.mark.anyio
@@ -679,7 +786,9 @@ async def test_post_learn_queue_depth_limit_is_atomic(
             await anyio.sleep(0.05)
             release.set()
 
-    assert sorted(response.status_code for response in responses) == [202, 503]
+    assert sorted(response.status_code for response in responses) == [202, 409]
+    conflict = next(response for response in responses if response.status_code == 409)
+    assert _json_object(conflict)["error_code"] == "LOCK_CONFLICT"
 
 
 def test_post_learn_completed_task_preserves_result(
@@ -876,8 +985,10 @@ async def test_post_learn_blocks_new_submission_while_timed_out_thread_is_still_
         assert failed_info["error_code"] == "timeout"
 
         second = await client.post("/api/learn", json={}, headers=headers)
-        assert second.status_code == 503
-        assert _json_object(second)["error"] == "too_many_pending_learn_tasks"
+        assert second.status_code == 409
+        second_body = _json_object(second)
+        assert second_body["error_code"] == "LOCK_CONFLICT"
+        assert second_body["error"] == "too_many_pending_learn_tasks"
 
         release.set()
         deadline = anyio.current_time() + 1.0

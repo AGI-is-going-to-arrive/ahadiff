@@ -769,7 +769,7 @@ run_id: str
 - `POST /api/graph/refresh` — 受写 token 保护；在 repo 写锁内重新导入 Graphify artifact，校验 `.ahadiff/graphify/graph.json` 的 symlink/reparse 边界，返回 `status` / `nodes` / `edges`
 - `POST /api/db/check` — 受写 token 保护；在 repo 写锁内调用 read-only `check_review_db(..., ensure_schema=False)`，不初始化空库，返回 `healthy` / `schema_version` / `quick_check` / `event_count` / `card_count`
 - `PUT /api/config` — 配置更新
-- `POST /api/learn` — 提交后台 learn 任务；当前返回 `202 {"task_id": ...}`，进度/取消走 `/api/tasks*`；写请求有 in-memory 10 req/min 滑动窗口限流，429 返回 `{"error":"rate_limited","retry_after":...}` 并带 `Retry-After`
+- `POST /api/learn` — 提交后台 learn 任务；当前返回 `202 {"task_id": ...}`，进度/取消走 `/api/tasks*`；写请求有 in-memory 10 req/min 滑动窗口限流，429 返回 `{"error":"rate_limited","retry_after":...}` 并带 `Retry-After`；submit 会预检 repo 写锁；submit/estimate 都会校验 workspace-only `against_spec` 和 `since` / `author` git option 注入边界
 - `GET /api/tasks` — **stable**，参见 §9.10
 - `GET /api/tasks/{task_id}` — **stable**，参见 §9.10
 - `POST /api/tasks/{task_id}/cancel` — **stable**，参见 §9.10
@@ -830,7 +830,7 @@ run_id: str
 | **GET /api/graph/concepts** | ✅ 已接线 | 从 imported `.ahadiff/graphify/graph.json` 投影前端 ConceptGraph 所需的 sanitized nodes/edges/status；node `metadata` 继续透传，edge `confidence` 只接受 `EXTRACTED` / `INFERRED` / `AMBIGUOUS`，非法值不出现在响应里；前端已从 SVG + d3-force 迁到 `react-force-graph-2d` Canvas renderer，并保留 Graph/List、大图默认 List、Full graph、节点详情和可访问列表 fallback；Graphify import provenance 与 per-run `graphify_context.json` artifact 已有后端接线；完整 source/provenance UI 和真实大仓 signoff 仍属后续工作 |
 | **POST /api/graph/refresh** | ✅ 已接线 | 写 token + Origin/Referer 写保护 + repo 写锁；调用 `import_graphify_artifact(root, force=True)` 重新导入 raw Graphify artifact，并在导入前后用 no-symlink state-path guard 校验 `.ahadiff/graphify/graph.json`；request timeout 对精确路径 `/api/graph/refresh` 放宽到 600s |
 | **POST /api/db/check** | ✅ 已接线 | 写 token + Origin/Referer 写保护 + repo 写锁；使用 `check_review_db(state.review_db_path, ensure_schema=False)` 走 read-only SQLite 检查，不调用 `_ensure_schema()`，缺表时计数为 0，不顺手创建或迁移空库 |
-| **POST /api/learn** | ✅ 已接线 | `core/orchestrator.py` 从 `cli.py` 抽出 learn 主链；route 只接受安全 capture / learn 选项，返回 `202 {"task_id": ...}`，provider override 不从 HTTP 暴露；当前有 10 req/min 写限流，401/403/404 不消耗额度 |
+| **POST /api/learn** | ✅ 已接线 | `core/orchestrator.py` 从 `cli.py` 抽出 learn 主链；route 只接受安全 capture / learn 选项，返回 `202 {"task_id": ...}`，provider override 不从 HTTP 暴露；当前有 10 req/min 写限流，401/403/404 不消耗额度；提交前预检 repo 写锁、workspace-only `against_spec` 和 `since` / `author` leading dash / 控制字符 |
 | **GET /api/export/apkg** | ✅ 已接线 | 写 token + Origin/Referer 写保护；读取 review.sqlite active cards 并生成 `ahadiff_review.apkg`；依赖可选 `genanki`，缺依赖返回 `501 FEATURE_UNAVAILABLE`；空卡组允许导出，上限 10,000 张 active cards |
 | **medium APIs** | ✅ 全部真实接线 | search/audit/mastery/weak/alignment/learning stats 均查 SQLite/JSONL，无 mock |
 | **/api/tasks*** | ✅ stable product API | 2026-05-02 R0 决策提升为稳定 API（§9.10）；`TaskInfoResponse` 全部字段、`TaskErrorCode`、`RecoveryHint`、`TaskProgressEvent` JSON payload 均为稳定合约；SSE framing text 为实现细节 |
@@ -884,9 +884,11 @@ run_id: str
 - `serve/routes_learn.py`：write-token 保护 + JSON body 校验 + learn submitter 已落地
 
 **当前请求面说明**：
-- 允许的请求字段是现有 learn capture / 选项字段：`revision`、`last`、`since`、`author`、`staged`、`unstaged`、`include_untracked`、`patch`、`compare`、`compare_dir`、`patch_url`、`changed_paths`、`dry_run`、`force_learn`、`use_graphify`、`lang`、`privacy_mode`
+- 允许的请求字段是现有 learn capture / 选项字段：`revision`、`last`、`since`、`author`、`staged`、`unstaged`、`include_untracked`、`patch`、`compare`、`compare_dir`、`patch_url`、`changed_paths`、`against_spec`、`spec_semantic_review`、`dry_run`、`force_learn`、`use_graphify`、`lang`、`privacy_mode`
 - `compare` / `compare_dir` 需要 2 项 path array
 - `changed_paths` 只用于工作区类输入的路径范围，不表示前端可以传任意 repo 外路径
+- `against_spec` 只接受当前 workspace 内本地文件路径；URL、控制字符、repo 外路径和 symlink / special-file 路径都拒绝，并统一走 `INPUT_VALIDATION`
+- `since` / `author` 不能以 `-` 开头，不能包含 `\x00-\x1f` / `\x7f` 控制字符；capture 层也有同一层防护，避免绕过 serve route
 - `patch="-"` 在 serve 层明确拒绝，避免后台任务读取进程 stdin
 
 §9.4 中 `/api/tasks*` 四个端点已于 2026-05-02 R0 决策提升为 **stable product API**。
@@ -1009,3 +1011,19 @@ run_id: str
 - `renderMarkdownProse` 的签名未变；新增的 `renderMarkdownCollapsible` 是单独 helper，现有 Lesson 调用不受影响。
 
 本轮实测：后端 unit `2502 passed`；viewer typecheck 通过；Vitest `35 files, 353 tests passed`；viewer build 通过；i18n `1449/1449`；`git diff --check HEAD` 通过。integration、eval、ruff/format/pyright、wheel、完整 Playwright、live judge 和远端 GitHub Actions 未在本轮重跑。
+
+### 9.20 Learn Mode 输入校验与 Diff claim 聚合收口（2026-05-15）
+
+本轮只记录已经由代码和本轮验证支撑的安全 / a11y / UI 收口项：
+
+- `src/ahadiff/git/capture.py` 和 `src/ahadiff/serve/routes_learn.py` 对 `since` / `author` 使用同一类 git option guard：拒绝 leading dash，拒绝 `\x00-\x1f` / `\x7f` 控制字符。serve submit 与 estimate 都会在 route 层返回 `INPUT_VALIDATION`。
+- `against_spec` 仍是 workspace-local 文件路径参数，不接受 URL、控制字符、repo 外路径、symlink 或 special-file 路径；合法值会在 route 层解析成 safe path 后交给 orchestrator。
+- `/api/learn` 进入 `TaskRunner` 前会做 repo write lock 预检；已有 learn / graph / install 等写操作持锁时，submit 返回 `LOCK_CONFLICT`，不排队制造后续失败。
+- Learn Mode Dialog 的 path scope 只用于 working / unstaged / staged，前端拒绝 `..`、绝对路径、Windows drive path、UNC path、控制字符和超过 500 条路径。它不改变 capture 层的 literal pathspec 边界。
+- Learn Mode Dialog 的 `patch_url` 只允许无 username/password 的 `http:` / `https:`；`data:`、`blob:`、`file:`、`javascript:` 等协议都在前端拒绝。`revision` 最长 255，拒绝 leading dash、控制字符和非预期字符。
+- Learn Mode Dialog 关闭时会 abort estimate 和 pending learn request；`learn-store` 的 `pendingPayload` 会去掉 inline `patch` 和 `patch_url`，避免 UI 状态里保留 patch 内容或远端 URL。
+- Dialog 暴露 `aria-busy` 和 polite live region；overlay 不再使用 `role="presentation"`；print CSS 会隐藏 Learn dialog；forced-colors 下 tile focus 仍可见。
+- Diff Viewer 不再为同一行渲染多个水平堆叠 claim dot。现在按 verdict severity 聚合为单个 indicator；多 claim 时显示 count badge；未选中 claim 时点击默认打开最高严重度 claim，和圆点颜色一致。
+- `VERDICT_SEVERITY` 当前顺序是 `verified < weak < not_proven < contradicted < rejected`，用于聚合优先级和默认选择，不改变 claim artifact 原始状态。
+
+本轮实测：`UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run pytest tests/unit/test_routes_learn.py tests/unit/test_git_capture.py -q` = `199 passed`；后端 unit `2513 passed`；integration+eval `20 passed`；`ruff check`、`ruff format --check`、`pyright`、wheel build 通过；viewer typecheck、Vitest `35 files, 360 tests passed`、viewer build 通过；i18n `1454/1454`；`git diff --check HEAD` 通过。完整 Playwright、live judge 和远端 GitHub Actions 未在本轮重跑。

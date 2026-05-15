@@ -562,7 +562,10 @@
     "path_scope": "路径范围",
     "path_scope_hint": "只限制当前工作区学习运行；留空则学习全部路径。",
     "path_scope_ph": "src/app.py\nviewer/src/App.tsx",
+    "error_path_scope_invalid": "只能使用仓库相对路径；不允许绝对路径、上级目录片段或控制字符。",
     "error_path_scope_too_many": "最多使用 {max} 个路径。",
+    "error_revision_invalid": "请输入 commit SHA 或 git revision，不能包含空格、控制字符或以短横线开头。",
+    "error_patch_url_invalid": "请输入 http 或 https 补丁 URL，且不要包含内嵌凭证。",
     "options_title": "运行选项",
     "opt_force": "跳过可学性检查",
     "opt_force_hint": "后端仍会运行捕获和安全检查，只是不因低可学性跳过生成。",
@@ -582,6 +585,8 @@
     "cancel": "取消",
     "start": "开始运行",
     "start_aria": "开始新的学习运行",
+    "status_busy": "正在准备学习请求。",
+    "status_ready": "学习请求已就绪。",
     "kbd_esc_close": "Esc 关闭"
   },
   "Learn": {

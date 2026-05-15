@@ -6,14 +6,18 @@ from typing import TYPE_CHECKING, Any, cast
 from anyio.to_thread import run_sync as run_sync_in_thread
 from starlette.responses import JSONResponse
 
+from ahadiff.contracts import ErrorCode
 from ahadiff.contracts.serve_app import LearnEstimateResponse, LearnEstimateRiskLevel
 from ahadiff.contracts.serve_runtime import TaskSubmitResponse
 from ahadiff.core.config import load_config, load_workspace_config
 from ahadiff.core.errors import AhaDiffError
 from ahadiff.core.paths import assert_local_repo_path, find_repo_root, find_workspace_root
 from ahadiff.git.capture import capture_patch
+from ahadiff.git.repo import repo_write_lock
 from ahadiff.llm.cost import estimate_text_tokens, resolve_context_window
+from ahadiff.safety.ignore import resolve_safe_path_from_root
 
+from ._errors import error_response
 from .auth import require_write_token, serve_state
 
 if TYPE_CHECKING:
@@ -68,6 +72,7 @@ _TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 _FALSE_VALUES = frozenset({"", "0", "false", "no", "off"})
 _MAX_STRING_LENGTH = 4096
 _MAX_CHANGED_PATHS = 500
+_RUN_IN_PROGRESS_ERROR = "run_in_progress"
 
 _MAX_PENDING_TASKS = 1
 _DANGER_CONTEXT_RATIO = 0.8
@@ -164,29 +169,36 @@ def _coerce_field(key: str, value: object) -> object:
     return _coerce_string(key, value)
 
 
+def _invalid_value_response(key: str, message: str | None = None) -> JSONResponse:
+    details = {"field": key}
+    if message:
+        details["reason"] = message
+    return error_response(
+        ErrorCode.INPUT_VALIDATION,
+        f"invalid_value_for_{key}",
+        details=details,
+    )
+
+
 async def _parse_learn_request_body(
     request: Request,
 ) -> tuple[dict[str, Any] | None, JSONResponse | None]:
     try:
         raw_body_object = cast("object", await request.json())
     except Exception:
-        return None, JSONResponse(
-            {"error": "invalid_json", "status": 400},
-            status_code=400,
-        )
+        return None, error_response(ErrorCode.INPUT_INVALID_JSON, "invalid_json")
 
     if not isinstance(raw_body_object, dict):
-        return None, JSONResponse(
-            {"error": "body_must_be_object", "status": 400},
-            status_code=400,
-        )
+        return None, error_response(ErrorCode.INPUT_BAD_FIELD, "body_must_be_object")
     raw_body = cast("dict[str, object]", raw_body_object)
 
     unknown_fields = set(raw_body) - _ACCEPTED_FIELDS
     if unknown_fields:
-        return None, JSONResponse(
-            {"error": f"unknown_fields: {', '.join(sorted(unknown_fields))}", "status": 422},
-            status_code=422,
+        return None, error_response(
+            ErrorCode.INPUT_UNKNOWN_KEYS,
+            f"unknown_fields: {', '.join(sorted(unknown_fields))}",
+            status=422,
+            details={"fields": sorted(unknown_fields)},
         )
 
     params: dict[str, Any] = {}
@@ -194,19 +206,53 @@ async def _parse_learn_request_body(
         if k in _ACCEPTED_FIELDS and v is not None:
             try:
                 coerced = _coerce_field(k, v)
-            except (ValueError, TypeError):
-                return None, JSONResponse(
-                    {"error": f"invalid_value_for_{k}", "status": 422},
-                    status_code=422,
-                )
+            except (ValueError, TypeError) as exc:
+                return None, _invalid_value_response(k, str(exc))
             if k not in _IGNORED_FIELDS:
                 params[k] = coerced
     if params.get("patch") == "-":
-        return None, JSONResponse(
-            {"error": "invalid_value_for_patch", "status": 422},
-            status_code=422,
-        )
+        return None, _invalid_value_response("patch", "stdin patch input is not supported")
     return params, None
+
+
+def _resolve_against_spec_param(root: Path, params: dict[str, Any]) -> JSONResponse | None:
+    raw_path = params.get("against_spec")
+    if raw_path is None:
+        return None
+    path = cast("Path", raw_path)
+    path_text = str(path)
+    if "://" in path_text:
+        return _invalid_value_response(
+            "against_spec",
+            "against_spec only accepts a local workspace file path",
+        )
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in path_text):
+        return _invalid_value_response("against_spec", "against_spec contains control characters")
+    try:
+        params["against_spec"] = resolve_safe_path_from_root(root, path)
+    except AhaDiffError as exc:
+        return _invalid_value_response("against_spec", str(exc))
+    return None
+
+
+def _validate_git_filter_param(key: str, params: dict[str, Any]) -> JSONResponse | None:
+    value = params.get(key)
+    if value is None:
+        return None
+    text = cast("str", value)
+    if text.startswith("-"):
+        return _invalid_value_response(key, f"{key} must not start with '-'")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in text):
+        return _invalid_value_response(key, f"{key} contains control characters")
+    return None
+
+
+def _validate_git_filter_params(params: dict[str, Any]) -> JSONResponse | None:
+    for key in ("since", "author"):
+        error = _validate_git_filter_param(key, params)
+        if error is not None:
+            return error
+    return None
 
 
 def _resolve_workspace_root_for_estimate(workspace_root: Path) -> tuple[Path, bool]:
@@ -277,6 +323,35 @@ def _file_count_from_capture(capture: object) -> int:
     return 0
 
 
+def _learn_conflict_response() -> JSONResponse:
+    return error_response(
+        ErrorCode.LOCK_CONFLICT,
+        _RUN_IN_PROGRESS_ERROR,
+        status=409,
+    )
+
+
+def _precheck_repo_write_lock(state: Any) -> JSONResponse | None:
+    repo_lock_path = getattr(state, "repo_lock_path", None)
+    thread_write_lock = getattr(state, "thread_write_lock", None)
+    if not isinstance(repo_lock_path, Path) or thread_write_lock is None:
+        return None
+
+    acquired = bool(thread_write_lock.acquire(False))
+    if not acquired:
+        return _learn_conflict_response()
+    try:
+        try:
+            with repo_write_lock(repo_lock_path, command="serve learn precheck"):
+                return None
+        except AhaDiffError as exc:
+            if exc.code is ErrorCode.LOCK_CONFLICT:
+                return _learn_conflict_response()
+            return error_response(exc.code, str(exc) or "repo_write_lock_unavailable")
+    finally:
+        thread_write_lock.release()
+
+
 def _estimate_risk(
     *,
     estimated_tokens: int,
@@ -314,13 +389,19 @@ async def post_learn_estimate(request: Request) -> JSONResponse:
     """POST /api/learn/estimate -- capture and estimate a learn run without LLM calls."""
     require_write_token(request)
     state = serve_state(request)
-    params, error_response = await _parse_learn_request_body(request)
-    if error_response is not None:
-        return error_response
+    params, parse_error = await _parse_learn_request_body(request)
+    if parse_error is not None:
+        return parse_error
     assert params is not None  # noqa: S101
 
     workspace_root = state.state_dir.parent
     root, has_git_repo = _resolve_workspace_root_for_estimate(workspace_root)
+    against_spec_error = _resolve_against_spec_param(root, params)
+    if against_spec_error is not None:
+        return against_spec_error
+    git_filter_error = _validate_git_filter_params(params)
+    if git_filter_error is not None:
+        return git_filter_error
     if not params.get("lang"):
         cookie_lang = request.cookies.get("ahadiff_lang")
         if cookie_lang in {"en", "zh-CN"}:
@@ -398,17 +479,28 @@ async def post_learn(request: Request) -> JSONResponse:
     state = serve_state(request)
     runner = state.task_runner
     if runner is None:
-        return JSONResponse(
-            {"error": "task_runner_unavailable", "status": 503},
-            status_code=503,
+        return error_response(
+            ErrorCode.REQUEST_TIMEOUT,
+            "task_runner_unavailable",
+            status=503,
         )
 
-    params, error_response = await _parse_learn_request_body(request)
-    if error_response is not None:
-        return error_response
+    params, parse_error = await _parse_learn_request_body(request)
+    if parse_error is not None:
+        return parse_error
     assert params is not None  # noqa: S101
 
     workspace_root = state.state_dir.parent
+    root, _has_git_repo = _resolve_workspace_root_for_estimate(workspace_root)
+    against_spec_error = _resolve_against_spec_param(root, params)
+    if against_spec_error is not None:
+        return against_spec_error
+    git_filter_error = _validate_git_filter_params(params)
+    if git_filter_error is not None:
+        return git_filter_error
+    lock_error = _precheck_repo_write_lock(state)
+    if lock_error is not None:
+        return lock_error
 
     if not params.get("lang"):
         cookie_lang = request.cookies.get("ahadiff_lang")
@@ -451,9 +543,10 @@ async def post_learn(request: Request) -> JSONResponse:
         thread_backed=True,
     )
     if task_id is None:
-        return JSONResponse(
-            {"error": "too_many_pending_learn_tasks", "status": 503},
-            status_code=503,
+        return error_response(
+            ErrorCode.LOCK_CONFLICT,
+            "too_many_pending_learn_tasks",
+            status=409,
         )
     return JSONResponse(
         TaskSubmitResponse(task_id=task_id).model_dump(mode="json"),

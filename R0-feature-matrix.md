@@ -31,7 +31,7 @@
 | A11 | L6: Learning Core (quiz + SRS review + concepts + helpfulness) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/quiz/`, `src/ahadiff/wiki/concepts.py`, `src/ahadiff/lesson/helpfulness.py`; `tests/unit/test_helpfulness.py` |
 | A12 | L6: Graphify (models/parser/matcher/linker/slicer/search/freshness/cli) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/graphify/` (models, parser, matcher, linker, slicer, search, freshness, cli); `tests/unit/test_graphify*.py` plus orchestrator Graphify tests |
 | A13 | L7: Serve API (72 concrete API routes + catchall, Starlette + Uvicorn) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/serve/app.py`; route modules; `tests/unit/test_serve*.py`, `test_routes_*.py` |
-| A14 | L7: React 19 SPA (Vite + vanilla CSS) | Blueprint | N/A | IMPL | IMPL | `viewer/src/` (14 production page TSX, 52 non-test TSX, 47 CSS, i18n `1449/1449`); `viewer/vitest.config.ts` + Vitest coverage + Playwright |
+| A14 | L7: React 19 SPA (Vite + vanilla CSS) | Blueprint | N/A | IMPL | IMPL | `viewer/src/` (14 production page TSX, 52 non-test TSX, 47 CSS, i18n `1454/1454`); `viewer/vitest.config.ts` + Vitest coverage + Playwright |
 
 ---
 
@@ -40,7 +40,7 @@
 | # | Feature | Source | Backend Status | Frontend Status | Test Status | Evidence |
 |---|---------|--------|---------------|-----------------|-------------|----------|
 | B1 | `ahadiff learn --last` (default, last commit) | Blueprint | IMPL | N/A | IMPL | `cli.py:712`, `capture.py` |
-| B2 | `--since` with optional `--author` | Blueprint | IMPL | N/A | IMPL | `capture.py` |
+| B2 | `--since` with optional `--author` | Blueprint | IMPL | N/A | IMPL | `capture.py` rejects leading dash / control-character option values; `tests/unit/test_git_capture.py` |
 | B3 | `--staged` / `--unstaged` | Blueprint | IMPL | N/A | IMPL | `capture.py` |
 | B4 | Revision range (sha..sha or single sha) | Blueprint | IMPL | N/A | IMPL | `capture.py` |
 | B5 | `--patch file.patch` / stdin | Blueprint | IMPL | N/A | IMPL | `capture.py` |
@@ -179,7 +179,7 @@
 
 | # | Feature | Source | Backend Status | Frontend Status | Test Status | Evidence |
 |---|---------|--------|---------------|-----------------|-------------|----------|
-| J1 | Locale priority chain: cookie -> Accept-Language -> AHADIFF_LANG -> CLI --lang -> config.toml -> LANG -> en | Blueprint+Comp | IMPL | IMPL | IMPL | `i18n/`; `serve/routes_locale.py`; `viewer/src/i18n/`; Learn Mode Dialog defaults to active viewer locale; 1449/1449 i18n scalar keys |
+| J1 | Locale priority chain: cookie -> Accept-Language -> AHADIFF_LANG -> CLI --lang -> config.toml -> LANG -> en | Blueprint+Comp | IMPL | IMPL | IMPL | `i18n/`; `serve/routes_locale.py`; `viewer/src/i18n/`; Learn Mode Dialog defaults to active viewer locale; 1454/1454 i18n scalar keys |
 | J2 | Supported locales: en + zh-CN | Blueprint | IMPL | IMPL | IMPL | `i18n/`; `viewer/src/i18n/` |
 | J3 | Zustand atom store for i18n re-render (no React Context) | Blueprint | N/A | IMPL | IMPL | `viewer/src/i18n/useTranslation.ts` |
 | J4 | LLM OUTPUT_LANGUAGE prefix in prompts | Blueprint | IMPL | N/A | IMPL | Orchestrator resolves output_lang |
@@ -215,7 +215,7 @@
 |---|---------|--------|---------------|-----------------|-------------|----------|
 | L1 | DashboardPage (KPI cards + calendar heatmap) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/DashboardPage.tsx`; `components/KpiCard.tsx`, `CalendarHeatmap.tsx`; empty state can open Learn Mode Dialog |
 | L2 | LessonPage (3-level scaffolding tabs + skipped artifact state) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/LessonPage.tsx`; run detail 404 remains fetch failed, lesson artifact 404 shows skipped state; `components/ScaffoldingTabs.tsx`; `components/Lesson.css` |
-| L3 | DiffViewerPage (Unified / Split, side-aware claim jumps, file nav, line markers) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/DiffViewerPage.tsx`; `components/DiffView.tsx`; `components/ClaimInspector.tsx`; file summary Prev/Next, `+`/`-` markers, claim auto-scroll, soft selected claim band, dot legend, selected-lines hint; `tests/unit/diff-view.test.ts`; `viewer/tests/e2e/walkthrough.spec.ts` |
+| L3 | DiffViewerPage (Unified / Split, side-aware claim jumps, file nav, line markers) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/DiffViewerPage.tsx`; `components/DiffView.tsx`; `components/ClaimInspector.tsx`; file summary Prev/Next, `+`/`-` markers, claim auto-scroll, aggregated highest-severity claim dot + count badge, soft selected claim band, dot legend, selected-lines hint; `tests/unit/diff-view.test.ts`; `viewer/tests/e2e/walkthrough.spec.ts` |
 | L4 | QuizPage (active recall quiz) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/QuizPage.tsx` |
 | L5 | ReviewPage (SRS review) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/ReviewPage.tsx`; open-answer reveal no longer marks the quiz peek guard; `components/SRSCard.tsx`; sidebar landmark label covered by a11y E2E |
 | L6 | ConceptsPage (Ledger + Graph tabs, graph/list focus sync, content wrapper) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/ConceptsPage.tsx`; `components/Concepts.css`; `components/ConceptGraph.tsx`; `components/ConceptLedger.tsx` |
@@ -232,7 +232,7 @@
 | L17 | Skeleton loading states | Blueprint | N/A | IMPL | IMPL | `components/Skeleton.tsx` |
 | L18 | LearnTaskBanner (learn task status + retry/cancel + 429 rate_limited copy) | Blueprint | N/A | IMPL | IMPL | `components/LearnTaskBanner.tsx` (+ test) |
 | L19 | FreshnessBadge (Graphify freshness indicator) | Blueprint | N/A | IMPL | IMPL | `components/FreshnessBadge.tsx` (+ test) |
-| L20 | Learn Mode Dialog path scope and advanced-source guidance | User follow-up | IMPL | IMPL | IMPL | `components/LearnModeDialog.tsx`; `learn-mode-dialog.test.ts` |
+| L20 | Learn Mode Dialog path scope, validation, abort, and advanced-source guidance | User follow-up | IMPL | IMPL | IMPL | `components/LearnModeDialog.tsx` validates path scope / patch URL / revision, aborts estimate and pending learn, exposes `aria-busy` / live region, and redacts pending payload; `learn-mode-dialog.test.ts`, `learn-store.test.ts` |
 | L21 | PWA manifest id/scope + PNG install icons | Frontend research | N/A | IMPL | IMPL | `viewer/public/manifest.json`; `viewer/public/icons/*.png`; `manifest.test.ts` |
 
 ---
@@ -241,7 +241,7 @@
 
 | # | Feature | Source | Backend Status | Frontend Status | Test Status | Evidence |
 |---|---------|--------|---------------|-----------------|-------------|----------|
-| M1 | POST /api/learn (trigger learn pipeline from UI, 10 req/min rate limit, `changed_paths`, `against_spec`) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_learn.py`; `LearnModeDialog.tsx`; LearnTaskBanner |
+| M1 | POST /api/learn (trigger learn pipeline from UI, 10 req/min rate limit, `changed_paths`, `against_spec`) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_learn.py` validates workspace-only `against_spec` and rejects `since` / `author` leading dash or control chars for submit and estimate; `POST /api/learn` also prechecks repo write lock; `LearnModeDialog.tsx`; LearnTaskBanner |
 | M2 | /api/tasks (list/get/cancel/SSE progress) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_tasks.py`; `viewer/src/api/tasks.ts` (5 retry exponential backoff + polling fallback); `learn-store.test.ts` |
 | M3 | /api/graph/* (graph status, FTS, refresh with exact 600s timeout) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_graph.py`, `serve/middleware.py` |
 | M4 | /api/config (show/update resolved config, including quiz count) | Blueprint | IMPL | IMPL | IMPL | `serve/routes_config.py`; `contracts/serve_app.py`; `viewer/src/api/config.ts`; `SettingsPage.tsx` |
@@ -269,7 +269,7 @@
 | N2 | **MOAT 02: Claim -> 5-state Evidence** (no competitor has structured claim verification) | Others: "natural language with line numbers, unstructured" | IMPL | `claims/` module with 5 statuses |
 | N3 | **MOAT 03: Git Ratchet** (no competitor has monotonic quality ratchet) | autoresearch has it for ML, none for learning notes | IMPL | `eval/ratchet.py`, `improve/` |
 | N4 | **MOAT 04: Local-First Privacy** (competitors are all SaaS) | CodeRabbit/Greptile/DeepWiki = cloud only | IMPL | Per-repo `.ahadiff/`, privacy 3-tier, raw never persisted |
-| N5 | **MOAT 05: i18n Learning Notes** (no competitor generates multilingual diff learning notes) | 10 competitors verified: none have this | IMPL | `i18n/`, 1449/1449 viewer scalar keys, en + zh-CN |
+| N5 | **MOAT 05: i18n Learning Notes** (no competitor generates multilingual diff learning notes) | 10 competitors verified: none have this | IMPL | `i18n/`, 1454/1454 viewer scalar keys, en + zh-CN |
 | N6 | **ENG 01: Local-first offline** (strict_local + Ollama) | Competitors need internet | IMPL | strict_local mode + Ollama adapter |
 | N7 | **ENG 02: Serve architecture** (CLI starts local server, no cloud dependency) | Competitors rely on cloud | IMPL | `serve/app.py`, Starlette + Uvicorn |
 | N8 | **ENG 03: Privacy 3-tier grading** (strict_local/redacted_remote/explicit_remote) | Competitors have no privacy tiers | IMPL | `safety/gates.py` |

@@ -1232,8 +1232,10 @@ def _capture_since(
 ) -> _RawCapture:
     ensure_head_exists(repo)
     git_since = _normalize_git_since_argument(since)
+    _validate_git_option_value("--since", git_since)
     args = ["rev-list", "--first-parent", f"--since={git_since}"]
     if author is not None:
+        _validate_git_option_value("--author", author)
         args.insert(2, f"--author={author}")
     args.extend(["--end-of-options", "HEAD"])
     result = run_git(repo.root, *args)
@@ -1321,6 +1323,13 @@ def _normalize_git_since_argument(since: str) -> str:
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", since):
         return f"{since}T00:00:00Z"
     return since
+
+
+def _validate_git_option_value(option_name: str, value: str) -> None:
+    if value.startswith("-"):
+        raise InputError(f"{option_name} value must not start with a dash")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise InputError(f"{option_name} value contains control characters")
 
 
 def _capture_worktree(

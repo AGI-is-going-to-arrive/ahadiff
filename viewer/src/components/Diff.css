@@ -545,34 +545,46 @@ button.diff-line {
 
 /* ── Claim dot (gutter indicator) ─────────────────────────── */
 
-/* The dot is rendered as a <span> inside the row's parent <button> so the
-   click bubbles up and selects the claim. We avoid nesting <button> inside
-   <button> (invalid HTML); the dot itself is decorative + acts as a click
-   target via event bubbling. */
-.diff-line__claim-dot {
+/* Single aggregated dot per line. Color = worst verdict across all claims
+   on this line. A count badge appears beside the dot when ≥2 claims. */
+.diff-line__claim-indicator {
   position: absolute;
-  inset-inline-start: calc(6px + var(--claim-dot-offset, 0px));
+  inset-inline-start: 2px;
   top: 50%;
   transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  pointer-events: none;
+}
+
+.diff-line__claim-dot {
+  flex-shrink: 0;
   width: 6px;
   height: 6px;
   border-radius: var(--r-full);
   border: 0;
   padding: 0;
-  cursor: pointer;
   color: var(--muted);
   background: var(--muted);
   box-shadow: 0 0 0 1px var(--paper);
   transition: transform var(--dur-xfast) var(--ease-out-quart),
     box-shadow var(--dur-xfast) var(--ease-out-quart);
-  pointer-events: none;
+}
+
+.diff-line__claim-count {
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--muted);
+  opacity: 0.8;
 }
 
 button.diff-line:hover .diff-line__claim-dot,
 button.diff-line:focus-visible .diff-line__claim-dot,
 button.diff-split-cell:hover .diff-line__claim-dot,
 button.diff-split-cell:focus-visible .diff-line__claim-dot {
-  transform: translateY(-50%) scale(1.25);
+  transform: scale(1.25);
   box-shadow: 0 0 0 1.5px var(--paper), 0 0 3px 0 currentColor;
 }
 
@@ -580,10 +592,16 @@ button.diff-split-cell:focus-visible .diff-line__claim-dot {
   color: var(--success);
   background: var(--success);
 }
+.diff-line__claim-count--verified {
+  color: var(--success);
+}
 
 .diff-line__claim-dot--weak {
   color: var(--warning);
   background: var(--warning);
+}
+.diff-line__claim-count--weak {
+  color: var(--warning);
 }
 
 .diff-line__claim-dot--not_proven {
@@ -596,12 +614,19 @@ button.diff-split-cell:focus-visible .diff-line__claim-dot {
   color: var(--danger);
   background: var(--danger);
 }
+.diff-line__claim-count--rejected,
+.diff-line__claim-count--contradicted {
+  color: var(--danger);
+}
 
 @media (forced-colors: active) {
   .diff-line__claim-dot {
     forced-color-adjust: none;
     background: LinkText;
     box-shadow: 0 0 0 1px Canvas;
+  }
+  .diff-line__claim-count {
+    color: LinkText;
   }
 }
 
@@ -613,7 +638,7 @@ button.diff-split-cell:focus-visible .diff-line__claim-dot {
   button.diff-line:focus-visible .diff-line__claim-dot,
   button.diff-split-cell:hover .diff-line__claim-dot,
   button.diff-split-cell:focus-visible .diff-line__claim-dot {
-    transform: translateY(-50%);
+    transform: none;
   }
 }
 

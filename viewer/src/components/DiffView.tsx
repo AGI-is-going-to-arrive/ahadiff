@@ -49,6 +49,30 @@ export type DiffClaimVerdict =
   | 'contradicted'
   | 'rejected';
 
+const VERDICT_SEVERITY: Record<DiffClaimVerdict, number> = {
+  verified: 0,
+  weak: 1,
+  not_proven: 2,
+  contradicted: 3,
+  rejected: 4,
+};
+
+function worstClaim(claims: readonly DiffClaimAnchor[]): DiffClaimAnchor | undefined {
+  let worst: DiffClaimAnchor | undefined;
+  let worstSev = -1;
+  for (const c of claims) {
+    if (c.verdict && VERDICT_SEVERITY[c.verdict] > worstSev) {
+      worst = c;
+      worstSev = VERDICT_SEVERITY[c.verdict];
+    }
+  }
+  return worst;
+}
+
+function worstVerdict(claims: readonly DiffClaimAnchor[]): DiffClaimVerdict | undefined {
+  return worstClaim(claims)?.verdict;
+}
+
 export interface DiffClaimAnchor {
   claim_id: string;
   file: string;
@@ -758,14 +782,13 @@ function DiffLineRow({
   t?: (key: string, params?: Record<string, string | number>) => string;
 }) {
   const hasClaims = rowClaims.length > 0;
-  // Prefer the selected claim when this row carries it (so the dot color
-  // and aria-label reflect what the user clicked). Otherwise fall back
-  // to the first claim — that mirrors the previous single-claim map's
-  // behavior for the common 1-claim-per-line case.
+  // Prefer the selected claim when this row carries it. Otherwise use
+  // the highest-severity verdict so the default click target matches
+  // the aggregated dot color.
   const selectedOnRow = selectedClaimId
     ? rowClaims.find((c) => c.claim_id === selectedClaimId) ?? null
     : null;
-  const primary = selectedOnRow ?? (rowClaims[0] ?? null);
+  const primary = selectedOnRow ?? worstClaim(rowClaims) ?? (rowClaims[0] ?? null);
   const isSelected = selectedOnRow !== null;
   const primaryClaimId = primary?.claim_id ?? null;
   const isHunk = line.type === 'hunk';
@@ -773,14 +796,6 @@ function DiffLineRow({
   const hunkMarkerProps = isHunk ? { 'data-hunk-mark': '§' } : {};
   // Visual gutter dot. The parent .diff-line button already exposes the
   // claim id via aria-label and is the accessible interaction surface, so
-  // the dot itself stays decorative (aria-hidden) and lets clicks fall
-  // through to the row (CSS sets pointer-events: none). This avoids the
-  // invalid HTML of nesting a focusable element inside another <button>.
-  //
-  // When more than one claim anchors to this line we render one dot per
-  // claim (capped to keep the gutter readable) so every claim remains
-  // discoverable. The first dot mirrors the previous single-dot styling
-  // for backward compatibility.
   const verdictTitle = (claim: DiffClaimAnchor): string => {
     if (claim.verdict && t) {
       return t('Claim_inspector.claim_dot_label', {
@@ -790,25 +805,29 @@ function DiffLineRow({
     }
     return claim.claim_id;
   };
-  const dotNodes = hasClaims
-    ? rowClaims.map((claim, claimIndex) => (
-        <span
-          key={`dot:${claim.claim_id}`}
-          className={`diff-line__claim-dot${claim.verdict ? ` diff-line__claim-dot--${claim.verdict}` : ''}`}
-          aria-hidden="true"
-          style={{ '--claim-dot-offset': `${claimIndex * 8}px` } as CSSProperties}
-          title={verdictTitle(claim) || undefined}
-          data-claim-dot-id={claim.claim_id}
-        />
-      ))
-    : null;
+  const aggregated = hasClaims ? worstVerdict(rowClaims) : undefined;
+  const claimCount = rowClaims.length;
+  const dotNode = hasClaims ? (
+    <span className="diff-line__claim-indicator" aria-hidden="true">
+      <span
+        className={`diff-line__claim-dot${aggregated ? ` diff-line__claim-dot--${aggregated}` : ''}`}
+        title={rowClaims.map(verdictTitle).join(', ') || undefined}
+        data-claim-dot-id={rowClaims[0].claim_id}
+      />
+      {claimCount >= 2 && (
+        <span className={`diff-line__claim-count${aggregated ? ` diff-line__claim-count--${aggregated}` : ''}`}>
+          {claimCount}
+        </span>
+      )}
+    </span>
+  ) : null;
   const changeIndicator = line.type === 'add' ? '+' : line.type === 'del' ? '−' : '';
   const body = (
     <>
       <span className="diff-line__change-indicator" aria-hidden="true">
         {changeIndicator}
       </span>
-      {dotNodes}
+      {dotNode}
       <span className="diff-line__lineno" aria-hidden="true">
         {line.oldLineNo ?? ''}
       </span>
@@ -881,7 +900,7 @@ function SplitDiffCell({
   const selectedOnCell = selectedClaimId
     ? rowClaims.find((c) => c.claim_id === selectedClaimId) ?? null
     : null;
-  const primary = selectedOnCell ?? (rowClaims[0] ?? null);
+  const primary = selectedOnCell ?? worstClaim(rowClaims) ?? (rowClaims[0] ?? null);
   const primaryClaimId = primary?.claim_id ?? null;
   const isSelected = selectedOnCell !== null;
   const cls = `diff-split-cell diff-split-cell--${side} diff-split-cell--${line.type}${hasClaims ? ' diff-line--claim-linked' : ''}${isSelected ? ' diff-line--claim-selected' : ''}`;
@@ -895,18 +914,22 @@ function SplitDiffCell({
     }
     return claim.claim_id;
   };
-  const dotNodes = hasClaims
-    ? rowClaims.map((claim, claimIndex) => (
-        <span
-          key={`dot:${side}:${claim.claim_id}`}
-          className={`diff-line__claim-dot${claim.verdict ? ` diff-line__claim-dot--${claim.verdict}` : ''}`}
-          aria-hidden="true"
-          style={{ '--claim-dot-offset': `${claimIndex * 8}px` } as CSSProperties}
-          title={verdictTitle(claim) || undefined}
-          data-claim-dot-id={claim.claim_id}
-        />
-      ))
-    : null;
+  const aggregated = hasClaims ? worstVerdict(rowClaims) : undefined;
+  const claimCount = rowClaims.length;
+  const dotNode = hasClaims ? (
+    <span className="diff-line__claim-indicator" aria-hidden="true">
+      <span
+        className={`diff-line__claim-dot${aggregated ? ` diff-line__claim-dot--${aggregated}` : ''}`}
+        title={rowClaims.map(verdictTitle).join(', ') || undefined}
+        data-claim-dot-id={rowClaims[0].claim_id}
+      />
+      {claimCount >= 2 && (
+        <span className={`diff-line__claim-count${aggregated ? ` diff-line__claim-count--${aggregated}` : ''}`}>
+          {claimCount}
+        </span>
+      )}
+    </span>
+  ) : null;
   const markerChar = line.type === 'add' ? '+' : line.type === 'del' ? '−' : ' ';
   const srText =
     line.type === 'add'
@@ -916,7 +939,7 @@ function SplitDiffCell({
         : null;
   const body = (
     <>
-      {dotNodes}
+      {dotNode}
       <span className="diff-line__lineno" aria-hidden="true">
         {lineNo ?? ''}
       </span>

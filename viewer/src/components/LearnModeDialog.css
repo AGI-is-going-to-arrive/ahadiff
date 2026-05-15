@@ -15,6 +15,7 @@
   position: relative;
   width: min(680px, calc(100vw - 32px));
   max-height: calc(100vh - 64px);
+  max-height: calc(100dvh - 64px);
   overflow-y: auto;
   background: var(--paper);
   border-radius: var(--r-lg, 12px);
@@ -536,6 +537,7 @@
   .learn-dialog {
     width: calc(100vw - 16px);
     max-height: calc(100vh - 32px);
+    max-height: calc(100dvh - 32px);
     border-radius: var(--r-md, 8px);
   }
 
@@ -585,6 +587,7 @@
   .learn-dialog {
     width: calc(100vw - 16px);
     max-height: calc(100vh - 32px);
+    max-height: calc(100dvh - 32px);
   }
 
   .learn-dialog__radio-row .learn-dialog__dual-input {
@@ -662,6 +665,18 @@
   clip: rect(0 0 0 0);
 }
 
+.learn-dialog__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .learn-dialog__tile:focus-within {
   outline: 2px solid var(--accent, #d27050);
   outline-offset: 2px;
@@ -688,6 +703,11 @@
   .learn-dialog__tile--selected .learn-dialog__tile-label,
   .learn-dialog__tile--selected .learn-dialog__tile-desc {
     color: HighlightText;
+  }
+
+  .learn-dialog__tile:focus-within {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
   }
 
   .learn-dialog__btn--primary {

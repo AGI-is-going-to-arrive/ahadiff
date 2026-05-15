@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from '../i18n/useTranslation';
 import { useLearnStore } from '../state/learn-store';
@@ -28,9 +28,22 @@ interface LearnModeDialogProps {
 
 const QUICK_MODES: CaptureMode[] = ['working', 'unstaged', 'staged', 'last'];
 const MAX_TEXT_INPUT_LENGTH = 4096;
+const MAX_REVISION_LENGTH = 255;
 const MAX_PATCH_TEXT_BYTES = 4096;
 const MAX_CHANGED_PATHS = 500;
 const MAX_PATH_SCOPE_TEXT_LENGTH = 64 * 1024;
+const UTF8_ENCODER = new TextEncoder();
+const CONTROL_CHAR_RE = /[\u0000-\u001f\u007f]/;
+const WINDOWS_ABSOLUTE_RE = /^[A-Za-z]:\//;
+const REVISION_INPUT_RE = /^[A-Za-z0-9._/@:+~^{}-]+$/;
+const useSafeLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
+
+type PathScopeError = 'invalid' | 'too_many' | null;
+
+interface ChangedPathsParseResult {
+  paths: string[];
+  error: PathScopeError;
+}
 
 interface BuildPayloadArgs {
   mode: CaptureMode;
@@ -43,7 +56,7 @@ interface BuildPayloadArgs {
   compareB: string;
   compareDirA: string;
   compareDirB: string;
-  pathScope: string;
+  changedPaths: string[];
   forceLearn: boolean;
   useGraphify: boolean;
   dryRun: boolean;
@@ -63,7 +76,7 @@ function buildPayload(args: BuildPayloadArgs): LearnSubmitPayload {
     compareB,
     compareDirA,
     compareDirB,
-    pathScope,
+    changedPaths,
     forceLearn,
     useGraphify,
     dryRun,
@@ -108,7 +121,7 @@ function buildPayload(args: BuildPayloadArgs): LearnSubmitPayload {
       break;
     default: {
       const exhaustive: never = mode;
-      return exhaustive;
+      throw new Error(`Unhandled learn capture mode: ${String(exhaustive)}`);
     }
   }
   if (forceLearn) base.force_learn = true;
@@ -116,10 +129,7 @@ function buildPayload(args: BuildPayloadArgs): LearnSubmitPayload {
   if (dryRun) base.dry_run = true;
   if (lang !== 'auto') base.lang = lang;
   if (privacyMode !== '') base.privacy_mode = privacyMode;
-  if (isPathScopeMode(mode)) {
-    const changedPaths = parseChangedPaths(pathScope);
-    if (changedPaths.length > 0) base.changed_paths = changedPaths;
-  }
+  if (isPathScopeMode(mode) && changedPaths.length > 0) base.changed_paths = changedPaths;
   return base;
 }
 
@@ -138,16 +148,53 @@ function isPathScopeMode(mode: CaptureMode): boolean {
   return mode === 'working' || mode === 'unstaged' || mode === 'staged';
 }
 
-function parseChangedPaths(value: string): string[] {
-  const paths = value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-  return Array.from(new Set(paths));
+function parseChangedPaths(value: string): ChangedPathsParseResult {
+  const paths: string[] = [];
+  for (const line of value.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    if (CONTROL_CHAR_RE.test(trimmed)) return { paths, error: 'invalid' };
+
+    let normalized = trimmed.replace(/\\/g, '/').replace(/\/+/g, '/');
+    if (normalized.startsWith('/') || normalized.startsWith('//') || WINDOWS_ABSOLUTE_RE.test(normalized)) {
+      return { paths, error: 'invalid' };
+    }
+    while (normalized.startsWith('./')) normalized = normalized.slice(2);
+    const parts = normalized.split('/');
+    if (
+      normalized.length === 0 ||
+      normalized.startsWith(':') ||
+      parts.some((part) => part === '' || part === '.' || part === '..')
+    ) {
+      return { paths, error: 'invalid' };
+    }
+    paths.push(normalized);
+  }
+  const uniquePaths = Array.from(new Set(paths));
+  return {
+    paths: uniquePaths,
+    error: uniquePaths.length > MAX_CHANGED_PATHS ? 'too_many' : null,
+  };
 }
 
 function utf8ByteLength(value: string): number {
-  return new TextEncoder().encode(value).length;
+  return UTF8_ENCODER.encode(value).length;
+}
+
+function patchUrlIsValid(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (url.protocol === 'http:' || url.protocol === 'https:') && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+
+function revisionIsValid(value: string): boolean {
+  if (value.length > MAX_REVISION_LENGTH) return false;
+  if (value.startsWith('-')) return false;
+  if (CONTROL_CHAR_RE.test(value)) return false;
+  return REVISION_INPUT_RE.test(value);
 }
 
 export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps) {
@@ -158,6 +205,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
   const dialogRef = useRef<HTMLDivElement>(null);
   const firstFocusRef = useRef<HTMLInputElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const estimateAbortRef = useRef<AbortController | null>(null);
 
   const [mode, setMode] = useState<CaptureMode>('working');
   const [since, setSince] = useState('');
@@ -179,23 +227,52 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const isBusy = learnPhase === 'submitting' || learnPhase === 'running' || learnPhase === 'cancelling' || learnPhase === 'estimating' || learnPhase === 'confirming';
-  const patchTextBytes = mode === 'patch' ? utf8ByteLength(patchText) : 0;
+  const patchTextBytes = useMemo(() => utf8ByteLength(patchText), [patchText]);
   const patchTooLarge = patchTextBytes > MAX_PATCH_TEXT_BYTES;
+  const patchBlocksSubmit = mode === 'patch' && patchTooLarge;
   const patchErrorId = patchTooLarge ? 'learn-mode-patch-error' : undefined;
   const patchValidationMessage = patchTooLarge
     ? t('LearnDialog.error_patch_too_large', { max: MAX_PATCH_TEXT_BYTES })
     : null;
   const pathScopeDisabled = !isPathScopeMode(mode);
-  const pathScopePathCount = parseChangedPaths(pathScope).length;
-  const pathScopeTooMany = !pathScopeDisabled && pathScopePathCount > MAX_CHANGED_PATHS;
-  const pathScopeErrorId = pathScopeTooMany ? 'learn-mode-path-scope-error' : undefined;
+  const pathScopeResult = useMemo(() => parseChangedPaths(pathScope), [pathScope]);
+  const activePathScopeError = pathScopeDisabled ? null : pathScopeResult.error;
+  const pathScopeInvalid = activePathScopeError !== null;
+  const pathScopeErrorId = pathScopeInvalid ? 'learn-mode-path-scope-error' : undefined;
   const pathScopeDescriptionId = 'learn-mode-path-scope-hint';
   const pathScopeDescribedBy = pathScopeErrorId
     ? `${pathScopeDescriptionId} ${pathScopeErrorId}`
     : pathScopeDescriptionId;
-  const pathScopeValidationMessage = pathScopeTooMany
-    ? t('LearnDialog.error_path_scope_too_many', { max: MAX_CHANGED_PATHS })
-    : null;
+  const pathScopeValidationMessage =
+    activePathScopeError === 'too_many'
+      ? t('LearnDialog.error_path_scope_too_many', { max: MAX_CHANGED_PATHS })
+      : activePathScopeError === 'invalid'
+        ? t('LearnDialog.error_path_scope_invalid')
+        : null;
+  const trimmedRevision = revision.trim();
+  const revisionInvalid = mode === 'revision' && trimmedRevision.length > 0 && !revisionIsValid(trimmedRevision);
+  const revisionErrorId = revisionInvalid ? 'learn-mode-revision-error' : undefined;
+  const revisionValidationMessage = revisionInvalid ? t('LearnDialog.error_revision_invalid') : null;
+  const trimmedPatchUrl = patchUrl.trim();
+  const patchUrlInvalid = mode === 'patch_url' && trimmedPatchUrl.length > 0 && !patchUrlIsValid(trimmedPatchUrl);
+  const patchUrlErrorId = patchUrlInvalid ? 'learn-mode-patch-url-error' : undefined;
+  const patchUrlValidationMessage = patchUrlInvalid ? t('LearnDialog.error_patch_url_invalid') : null;
+
+  const abortEstimate = useCallback(() => {
+    estimateAbortRef.current?.abort();
+    estimateAbortRef.current = null;
+  }, []);
+
+  const clearSensitiveFields = useCallback(() => {
+    setPatchText('');
+    setPatchUrl('');
+  }, []);
+
+  const handleClose = useCallback(() => {
+    abortEstimate();
+    clearSensitiveFields();
+    onClose();
+  }, [abortEstimate, clearSensitiveFields, onClose]);
 
   let needsValidInput = false;
   switch (mode) {
@@ -203,13 +280,13 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
       needsValidInput = since.trim().length > 0;
       break;
     case 'revision':
-      needsValidInput = revision.trim().length > 0;
+      needsValidInput = trimmedRevision.length > 0 && !revisionInvalid;
       break;
     case 'patch_url':
-      needsValidInput = patchUrl.trim().length > 0;
+      needsValidInput = trimmedPatchUrl.length > 0 && !patchUrlInvalid;
       break;
     case 'patch':
-      needsValidInput = patchText.trim().length > 0 && !patchTooLarge;
+      needsValidInput = patchText.trim().length > 0 && !patchBlocksSubmit;
       break;
     case 'compare':
       needsValidInput = compareA.trim().length > 0 && compareB.trim().length > 0;
@@ -221,7 +298,16 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
       needsValidInput = true;
       break;
   }
-  const canSubmit = !isBusy && needsValidInput && !pathScopeTooMany;
+  const canSubmit = !isBusy && needsValidInput && !pathScopeInvalid;
+
+  useSafeLayoutEffect(() => {
+    if (!open || typeof document === 'undefined') return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
 
   // Preserve any pre-existing inert state while this portal dialog is open.
   useEffect(() => {
@@ -248,6 +334,16 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
   }, [open]);
 
   useEffect(() => {
+    if (!open) {
+      abortEstimate();
+      clearSensitiveFields();
+    }
+    return undefined;
+  }, [abortEstimate, clearSensitiveFields, open]);
+
+  useEffect(() => () => abortEstimate(), [abortEstimate]);
+
+  useEffect(() => {
     if (open) {
       restoreFocusRef.current = document.activeElement as HTMLElement | null;
       setMode('working');
@@ -264,7 +360,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
       setForceLearn(false);
       setUseGraphify(false);
       setDryRun(false);
-      setLang(useLocaleStore.getState().locale);
+      setLang(viewerLocale);
       setPrivacyMode('');
       setAdvancedOpen(false);
       const raf = requestAnimationFrame(() => firstFocusRef.current?.focus());
@@ -275,19 +371,19 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
       };
     }
     return undefined;
-  }, [open]);
+  }, [open, viewerLocale]);
 
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        onClose();
+        handleClose();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  }, [handleClose, open]);
 
   // Focus trap
   useEffect(() => {
@@ -331,15 +427,21 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
       compareB,
       compareDirA,
       compareDirB,
-      pathScope,
+      changedPaths: pathScopeResult.paths,
       forceLearn,
       useGraphify,
       dryRun,
       lang,
       privacyMode,
     });
-    void requestLearn(payload);
-    onClose();
+    const controller = new AbortController();
+    estimateAbortRef.current?.abort();
+    estimateAbortRef.current = controller;
+    void requestLearn(payload, { signal: controller.signal }).finally(() => {
+      if (estimateAbortRef.current === controller) estimateAbortRef.current = null;
+      clearSensitiveFields();
+      if (!controller.signal.aborted) onClose();
+    });
   }, [
     canSubmit,
     mode,
@@ -352,20 +454,21 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
     compareB,
     compareDirA,
     compareDirB,
-    pathScope,
+    pathScopeResult.paths,
     forceLearn,
     useGraphify,
     dryRun,
     lang,
     privacyMode,
     requestLearn,
+    clearSensitiveFields,
     onClose,
   ]);
 
   if (!open) return null;
 
   return createPortal(
-    <div ref={overlayRef} className="learn-dialog__overlay" role="presentation" onClick={onClose}>
+    <div ref={overlayRef} className="learn-dialog__overlay" onClick={handleClose}>
       <div
         ref={dialogRef}
         className="learn-dialog"
@@ -441,7 +544,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                   id="learn-mode-path-scope"
                   className="learn-dialog__path-scope-input"
                   aria-describedby={pathScopeDescribedBy}
-                  aria-invalid={pathScopeTooMany || undefined}
+                  aria-invalid={pathScopeInvalid || undefined}
                   placeholder={t('LearnDialog.path_scope_ph')}
                   disabled={pathScopeDisabled}
                   value={pathScope}
@@ -453,7 +556,8 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                   <p
                     id="learn-mode-path-scope-error"
                     className="learn-dialog__error"
-                    role="alert"
+                    role="status"
+                    aria-live="polite"
                   >
                     {pathScopeValidationMessage}
                   </p>
@@ -467,7 +571,6 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
               {/* Since */}
               <div
                 className="learn-dialog__radio-row"
-                role="presentation"
                 onClick={() => handleModeSelect('since')}
               >
                 <input
@@ -498,7 +601,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
               </div>
 
               {/* Author filter (qualifier for since) */}
-              <div className="learn-dialog__author-row" role="presentation" onClick={() => handleModeSelect('since')}>
+              <div className="learn-dialog__author-row" onClick={() => handleModeSelect('since')}>
                 <label
                   htmlFor="learn-mode-author"
                   className="learn-dialog__author-label"
@@ -523,7 +626,6 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
               {/* Revision */}
               <div
                 className="learn-dialog__radio-row"
-                role="presentation"
                 onClick={() => handleModeSelect('revision')}
               >
                 <input
@@ -542,8 +644,10 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                   type="text"
                   className="learn-dialog__input"
                   aria-labelledby="learn-mode-revision-label"
+                  aria-describedby={revisionErrorId}
+                  aria-invalid={revisionInvalid || undefined}
                   placeholder={t('LearnDialog.mode_revision_ph')}
-                  maxLength={MAX_TEXT_INPUT_LENGTH}
+                  maxLength={MAX_REVISION_LENGTH}
                   value={revision}
                   onFocus={() => handleModeSelect('revision')}
                   onChange={(e) => {
@@ -551,12 +655,21 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                     setRevision(e.target.value);
                   }}
                 />
+                {revisionValidationMessage && (
+                  <p
+                    id="learn-mode-revision-error"
+                    className="learn-dialog__error"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {revisionValidationMessage}
+                  </p>
+                )}
               </div>
 
               {/* Patch URL */}
               <div
                 className="learn-dialog__radio-row"
-                role="presentation"
                 onClick={() => handleModeSelect('patch_url')}
               >
                 <input
@@ -575,6 +688,8 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                   type="text"
                   className="learn-dialog__input"
                   aria-labelledby="learn-mode-patch-url-label"
+                  aria-describedby={patchUrlErrorId}
+                  aria-invalid={patchUrlInvalid || undefined}
                   placeholder={t('LearnDialog.mode_patch_url_ph')}
                   maxLength={MAX_TEXT_INPUT_LENGTH}
                   value={patchUrl}
@@ -584,12 +699,21 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                     setPatchUrl(e.target.value);
                   }}
                 />
+                {patchUrlValidationMessage && (
+                  <p
+                    id="learn-mode-patch-url-error"
+                    className="learn-dialog__error"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {patchUrlValidationMessage}
+                  </p>
+                )}
               </div>
 
               {/* Compare refs */}
               <div
                 className="learn-dialog__radio-row"
-                role="presentation"
                 onClick={() => handleModeSelect('compare')}
               >
                 <input
@@ -638,7 +762,6 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
               {/* Compare dirs */}
               <div
                 className="learn-dialog__radio-row"
-                role="presentation"
                 onClick={() => handleModeSelect('compare_dir')}
               >
                 <input
@@ -687,7 +810,6 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
               {/* Paste patch */}
               <div
                 className="learn-dialog__radio-row learn-dialog__radio-row--block"
-                role="presentation"
                 onClick={() => handleModeSelect('patch')}
               >
                 <input
@@ -709,6 +831,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                   aria-invalid={patchTooLarge || undefined}
                   placeholder={t('LearnDialog.mode_patch_ph')}
                   value={patchText}
+                  maxLength={MAX_PATH_SCOPE_TEXT_LENGTH}
                   onFocus={() => handleModeSelect('patch')}
                   onChange={(e) => {
                     handleModeSelect('patch');
@@ -720,7 +843,8 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                   <p
                     id="learn-mode-patch-error"
                     className="learn-dialog__error"
-                    role="alert"
+                    role="status"
+                    aria-live="polite"
                   >
                     {patchValidationMessage}
                   </p>
@@ -814,14 +938,18 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
           <button
             type="button"
             className="learn-dialog__btn learn-dialog__btn--ghost"
-            onClick={onClose}
+            onClick={handleClose}
           >
             {t('LearnDialog.cancel')}
           </button>
+          <p className="learn-dialog__sr-only" role="status" aria-live="polite">
+            {isBusy ? t('LearnDialog.status_busy') : t('LearnDialog.status_ready')}
+          </p>
           <button
             type="button"
             className="learn-dialog__btn learn-dialog__btn--primary"
             disabled={!canSubmit}
+            aria-busy={isBusy}
             aria-label={t('LearnDialog.start_aria')}
             onClick={handleSubmit}
           >

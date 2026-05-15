@@ -24,6 +24,10 @@ type LearnPhase =
   | 'failed'
   | 'cancelling';
 
+interface LearnRequestOptions {
+  signal?: AbortSignal;
+}
+
 const POLL_INTERVAL_MS = 1500;
 const MAX_POLL_INTERVAL_MS = 30_000;
 /**
@@ -60,6 +64,7 @@ let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let progressSubscription: TaskProgressSubscription | null = null;
 let submitGeneration = 0;
 let consecutiveErrors = 0;
+let pendingSubmitPayload: LearnSubmitPayload | null = null;
 
 interface LearnState {
   phase: LearnPhase;
@@ -72,7 +77,7 @@ interface LearnState {
   pendingPayload: LearnSubmitPayload | null;
   retryable: boolean;
 
-  requestLearn: (payload?: LearnSubmitPayload) => Promise<void>;
+  requestLearn: (payload?: LearnSubmitPayload, opts?: LearnRequestOptions) => Promise<void>;
   confirmLearn: () => Promise<void>;
   submitLearn: (payload?: LearnSubmitPayload) => Promise<void>;
   retryLearn: () => Promise<void>;
@@ -98,6 +103,20 @@ function resetPollState(): void {
   stopPolling();
   stopProgressSubscription();
   consecutiveErrors = 0;
+}
+
+function stripSensitivePayload(payload: LearnSubmitPayload): LearnSubmitPayload {
+  const { patch: _p, patch_url: _u, ...safePayload } = payload;
+  return safePayload;
+}
+
+function isAbortError(err: unknown): boolean {
+  return (
+    typeof err === 'object'
+    && err !== null
+    && 'name' in err
+    && (err as { name?: unknown }).name === 'AbortError'
+  );
 }
 
 function nextPollIntervalMs(): number {
@@ -273,13 +292,14 @@ export const useLearnStore = create<LearnState>(() => ({
   pendingPayload: null,
   retryable: true,
 
-  requestLearn: async (payload) => {
+  requestLearn: async (payload, opts) => {
     const { phase } = useLearnStore.getState();
     if (phase === 'submitting' || phase === 'running' || phase === 'cancelling' || phase === 'estimating' || phase === 'confirming') return;
     const generation = ++submitGeneration;
     const effectivePayload = payload ?? {};
-    const { patch: _p, patch_url: _u, ...safePayload } = effectivePayload;
-    const retryable = _p === undefined && _u === undefined;
+    const safePayload = stripSensitivePayload(effectivePayload);
+    const retryable = effectivePayload.patch === undefined && effectivePayload.patch_url === undefined;
+    pendingSubmitPayload = effectivePayload;
     useLearnStore.setState({
       phase: 'estimating',
       error: null,
@@ -288,11 +308,11 @@ export const useLearnStore = create<LearnState>(() => ({
       taskId: null,
       estimate: null,
       lastPayload: safePayload,
-      pendingPayload: effectivePayload,
+      pendingPayload: safePayload,
       retryable,
     });
     try {
-      const est = await estimateLearn(effectivePayload);
+      const est = await estimateLearn(effectivePayload, opts);
       if (submitGeneration !== generation) return;
       if (est.risk_level === 'ok') {
         useLearnStore.setState({ estimate: est });
@@ -300,16 +320,31 @@ export const useLearnStore = create<LearnState>(() => ({
       } else {
         useLearnStore.setState({ phase: 'confirming', estimate: est });
       }
-    } catch {
+    } catch (err: unknown) {
       if (submitGeneration !== generation) return;
+      if (opts?.signal?.aborted || isAbortError(err)) {
+        pendingSubmitPayload = null;
+        useLearnStore.setState({
+          phase: 'idle',
+          error: null,
+          errorCode: null,
+          task: null,
+          taskId: null,
+          estimate: null,
+          pendingPayload: null,
+        });
+        return;
+      }
       await useLearnStore.getState().submitLearn(effectivePayload);
     }
   },
 
   confirmLearn: async () => {
     const { pendingPayload } = useLearnStore.getState();
+    const effectivePayload = pendingSubmitPayload ?? pendingPayload ?? {};
+    pendingSubmitPayload = null;
     useLearnStore.setState({ pendingPayload: null });
-    await useLearnStore.getState().submitLearn(pendingPayload ?? {});
+    await useLearnStore.getState().submitLearn(effectivePayload);
   },
 
   submitLearn: async (payload) => {
@@ -317,8 +352,9 @@ export const useLearnStore = create<LearnState>(() => ({
     if (phase === 'submitting' || phase === 'running' || phase === 'cancelling') return;
     const generation = ++submitGeneration;
     const effectivePayload = payload ?? {};
-    const { patch: _p, patch_url: _u, ...safePayload } = effectivePayload;
-    const retryable = _p === undefined && _u === undefined;
+    const safePayload = stripSensitivePayload(effectivePayload);
+    const retryable = effectivePayload.patch === undefined && effectivePayload.patch_url === undefined;
+    pendingSubmitPayload = null;
     useLearnStore.setState({
       phase: 'submitting',
       error: null,
@@ -326,6 +362,7 @@ export const useLearnStore = create<LearnState>(() => ({
       task: null,
       taskId: null,
       lastPayload: safePayload,
+      pendingPayload: null,
       retryable,
     });
     try {
@@ -336,7 +373,7 @@ export const useLearnStore = create<LearnState>(() => ({
       startProgressTracking(res.task_id);
     } catch (err: unknown) {
       if (submitGeneration !== generation || useLearnStore.getState().phase !== 'submitting') return;
-      if (err instanceof DOMException && err.name === 'AbortError') {
+      if (isAbortError(err)) {
         useLearnStore.setState({
           phase: 'failed',
           error: null,
@@ -412,6 +449,7 @@ export const useLearnStore = create<LearnState>(() => ({
 
   dismiss: () => {
     submitGeneration += 1;
+    pendingSubmitPayload = null;
     resetPollState();
     useLearnStore.setState({ phase: 'idle', taskId: null, task: null, estimate: null, error: null, errorCode: null, pendingPayload: null });
   },

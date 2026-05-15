@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
-import {
+import DiffView, {
   buildClaimLookup,
   buildSplitDiffRows,
   diffLineMatchesFocusTarget,
@@ -214,6 +216,66 @@ describe('DiffView claim lookup', () => {
 
     expect(lookup.get('src/a.ts:old:1')?.map((c) => c.claim_id)).toEqual(['old-side']);
     expect(lookup.get('src/a.ts:new:1')?.map((c) => c.claim_id)).toEqual(['new-side']);
+  });
+
+  it('renders one aggregated claim indicator with the highest-severity claim as the click target', () => {
+    const content = [
+      'diff --git a/src/a.ts b/src/a.ts',
+      '@@ -1 +1 @@',
+      '-old',
+      '+new',
+    ].join('\n');
+    const claims: DiffClaimAnchor[] = [
+      {
+        claim_id: 'c-verified',
+        file: 'src/a.ts',
+        line_start: 1,
+        line_end: 1,
+        source_side: 'new',
+        verdict: 'verified',
+      },
+      {
+        claim_id: 'c-weak',
+        file: 'src/a.ts',
+        line_start: 1,
+        line_end: 1,
+        source_side: 'new',
+        verdict: 'weak',
+      },
+      {
+        claim_id: 'c-not-proven',
+        file: 'src/a.ts',
+        line_start: 1,
+        line_end: 1,
+        source_side: 'new',
+        verdict: 'not_proven',
+      },
+      {
+        claim_id: 'c-rejected',
+        file: 'src/a.ts',
+        line_start: 1,
+        line_end: 1,
+        source_side: 'new',
+        verdict: 'rejected',
+      },
+    ];
+
+    const html = renderToStaticMarkup(
+      createElement(DiffView, {
+        content,
+        claims,
+        onSelectClaim: () => undefined,
+      }),
+    );
+
+    expect(html.match(/class="[^"]*diff-line__claim-dot(?:\s|")/g) ?? []).toHaveLength(1);
+    expect(html).toContain('diff-line__claim-dot--rejected');
+    expect(html).toContain('diff-line__claim-count--rejected');
+    expect(html).toContain('>4</span>');
+    expect(html).toContain('data-claim-id="c-rejected"');
+    expect(html).toContain('data-claim-ids="c-verified,c-weak,c-not-proven,c-rejected"');
+    expect(html).toContain('c-verified');
+    expect(html).toContain('c-rejected');
   });
 });
 

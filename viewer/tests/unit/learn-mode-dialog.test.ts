@@ -14,6 +14,7 @@ const HARNESS_HTML = String.raw`<!doctype html>
     <div id="root"></div>
     <script>
       window.__requestLearnCalls = [];
+      window.__requestLearnOptions = [];
       window.__onCloseCalls = 0;
       window.__currentPhase = 'idle';
     </script>
@@ -27,13 +28,18 @@ const HARNESS_HTML = String.raw`<!doctype html>
       let root;
 
       // Stable spy reference (so React selector returns same identity across renders)
-      const requestLearnSpy = (payload) => {
+      const requestLearnSpy = (payload, options) => {
         window.__requestLearnCalls.push(payload);
+        window.__requestLearnOptions.push({
+          hasSignal: Boolean(options?.signal),
+          aborted: Boolean(options?.signal?.aborted),
+        });
         return Promise.resolve();
       };
 
       window.__renderLearnModeDialog = ({ open = true, locale = 'en', phase = 'idle' } = {}) => {
         window.__requestLearnCalls = [];
+        window.__requestLearnOptions = [];
         window.__onCloseCalls = 0;
         window.__currentPhase = phase;
 
@@ -93,6 +99,7 @@ declare global {
     __onCloseCalls: number;
     __renderLearnModeDialog: (options?: RenderOptions) => void;
     __requestLearnCalls: Array<Record<string, unknown> | undefined>;
+    __requestLearnOptions: Array<{ hasSignal: boolean; aborted: boolean }>;
     __updateOpen: (open: boolean) => void;
   }
 }
@@ -134,6 +141,10 @@ async function renderDialog(page: Page, options: RenderOptions = {}): Promise<vo
 
 async function getPayloads(page: Page): Promise<Array<Record<string, unknown> | undefined>> {
   return page.evaluate(() => window.__requestLearnCalls);
+}
+
+async function getRequestOptions(page: Page): Promise<Array<{ hasSignal: boolean; aborted: boolean }>> {
+  return page.evaluate(() => window.__requestLearnOptions);
 }
 
 async function getCloseCount(page: Page): Promise<number> {
@@ -296,11 +307,14 @@ describe('LearnModeDialog', () => {
     await expect.poll(() => page.locator('#outside-panel').getAttribute('inert')).toBe('');
     await expect.poll(() => page.locator('#already-inert-panel').getAttribute('inert')).toBe('');
     await expect.poll(() => page.locator('.learn-dialog__overlay').getAttribute('inert')).toBeNull();
+    await expect.poll(() => page.locator('.learn-dialog__overlay').getAttribute('role')).toBeNull();
+    await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('hidden');
 
     await page.evaluate(() => window.__updateOpen(false));
     await expect.poll(() => page.locator('#root').getAttribute('inert')).toBeNull();
     await expect.poll(() => page.locator('#outside-panel').getAttribute('inert')).toBeNull();
     await expect.poll(() => page.locator('#already-inert-panel').getAttribute('inert')).toBe('');
+    await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('');
   });
 
   it('selecting or focusing "Since" input selects that source and deselects quick tiles', async () => {
@@ -336,6 +350,7 @@ describe('LearnModeDialog', () => {
     await expect.poll(() => getPayloads(page)).toEqual([
       { staged: true, unstaged: true, include_untracked: true, lang: 'en' },
     ]);
+    await expect.poll(() => getRequestOptions(page)).toEqual([{ hasSignal: true, aborted: false }]);
     await expect.poll(() => getCloseCount(page)).toBe(1);
   });
 
@@ -360,7 +375,7 @@ describe('LearnModeDialog', () => {
 
     await page.locator('.learn-dialog__advanced-toggle').click();
     await page.waitForSelector('#learn-dialog-advanced');
-    await page.locator('#learn-mode-path-scope').fill('  src/app.py\n\nsrc/app.py\nviewer/src/App.tsx  ');
+    await page.locator('#learn-mode-path-scope').fill('  src/app.py\n\nsrc/app.py\nviewer\\src\\App.tsx  ');
     await page.locator('.learn-dialog__btn--primary').click();
 
     await expect.poll(() => getPayloads(page)).toEqual([
@@ -372,6 +387,24 @@ describe('LearnModeDialog', () => {
         lang: 'en',
       },
     ]);
+  });
+
+  it('path scope rejects absolute paths, traversal, and control characters', async () => {
+    await renderDialog(page);
+    await page.waitForSelector('[role="dialog"]');
+
+    await page.locator('.learn-dialog__advanced-toggle').click();
+    await page.waitForSelector('#learn-dialog-advanced');
+    const input = page.locator('#learn-mode-path-scope');
+    const startBtn = page.locator('.learn-dialog__btn--primary');
+
+    for (const value of ['../secret.txt', '/etc/passwd', 'C:\\temp\\secret.txt', 'src/\u0001bad.py']) {
+      await input.fill(value);
+      await expect.poll(() => startBtn.isDisabled()).toBe(true);
+      await expect.poll(() => page.locator('#learn-mode-path-scope-error').textContent()).toContain(
+        'repository-relative',
+      );
+    }
   });
 
   it('path scope is ignored when a non-worktree mode is submitted', async () => {
@@ -563,6 +596,29 @@ describe('LearnModeDialog', () => {
     ]);
   });
 
+  it('revision mode rejects leading dash and spaces, and caps length', async () => {
+    await renderDialog(page);
+    await page.waitForSelector('[role="dialog"]');
+
+    await page.locator('.learn-dialog__advanced-toggle').click();
+    await page.waitForSelector('#learn-dialog-advanced');
+    await page.locator('label[for="learn-mode-revision"]').click();
+    const input = page.locator('#learn-mode-revision-value');
+    const startBtn = page.locator('.learn-dialog__btn--primary');
+    await expect.poll(() => input.getAttribute('maxLength')).toBe('255');
+
+    for (const value of ['--all', 'bad ref']) {
+      await input.fill(value);
+      await expect.poll(() => startBtn.isDisabled()).toBe(true);
+      await expect.poll(() => page.locator('#learn-mode-revision-error').textContent()).toContain(
+        'git revision',
+      );
+    }
+
+    await input.fill('a'.repeat(255));
+    await expect.poll(() => startBtn.isDisabled()).toBe(false);
+  });
+
   it('typing an inactive advanced source input selects that source', async () => {
     await renderDialog(page);
     await page.waitForSelector('[role="dialog"]');
@@ -617,6 +673,28 @@ describe('LearnModeDialog', () => {
     await expect.poll(() => getPayloads(page)).toEqual([
       { patch_url: 'https://example.test/file.patch', lang: 'en' },
     ]);
+  });
+
+  it('patch_url mode rejects non-http URLs and embedded credentials', async () => {
+    await renderDialog(page);
+    await page.waitForSelector('[role="dialog"]');
+
+    await page.locator('.learn-dialog__advanced-toggle').click();
+    await page.waitForSelector('#learn-dialog-advanced');
+    await page.locator('label[for="learn-mode-patch-url"]').click();
+    const input = page.locator('#learn-mode-patch-url-value');
+    const startBtn = page.locator('.learn-dialog__btn--primary');
+
+    for (const value of ['javascript:alert(1)', 'file:///tmp/file.patch', 'data:text/plain,patch', 'https://user:pass@example.test/a.patch']) {
+      await input.fill(value);
+      await expect.poll(() => startBtn.isDisabled()).toBe(true);
+      await expect.poll(() => page.locator('#learn-mode-patch-url-error').textContent()).toContain(
+        'http or https',
+      );
+    }
+
+    await input.fill('http://example.test/file.patch');
+    await expect.poll(() => startBtn.isDisabled()).toBe(false);
   });
 
   it('patch mode sends inline patch text', async () => {

@@ -416,6 +416,29 @@ def test_capture_revision_range_rejects_leading_dash_segment(tmp_path: Path) -> 
         capture_module.capture_patch(workspace_root=repo_root, revision="HEAD..--exec=sh")
 
 
+@pytest.mark.parametrize("since", ["--all", "-1 day"])
+def test_capture_since_rejects_leading_dash_options(tmp_path: Path, since: str) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "app.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+
+    with pytest.raises(InputError, match="--since value must not start with a dash"):
+        capture_module.capture_patch(workspace_root=repo_root, since=since)
+
+
+def test_capture_since_author_rejects_leading_dash_options(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "app.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+
+    with pytest.raises(InputError, match="--author value must not start with a dash"):
+        capture_module.capture_patch(workspace_root=repo_root, since="1 day ago", author="--all")
+
+
 @pytest.mark.parametrize("revision", ["HEAD", "main", "abc123", "v1.0", "feature/x"])
 def test_resolve_commitish_allows_valid_revision_names(tmp_path: Path, revision: str) -> None:
     repo_root = tmp_path / "repo"

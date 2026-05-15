@@ -562,7 +562,10 @@
     "path_scope": "Path scope",
     "path_scope_hint": "Limit the current working-tree learn run. Leave empty for all paths.",
     "path_scope_ph": "src/app.py\nviewer/src/App.tsx",
+    "error_path_scope_invalid": "Use repository-relative paths only. Absolute paths, parent-directory segments, and control characters are not allowed.",
     "error_path_scope_too_many": "Use at most {max} paths.",
+    "error_revision_invalid": "Use a commit SHA or git revision without spaces, control characters, or leading dashes.",
+    "error_patch_url_invalid": "Use an http or https patch URL without embedded credentials.",
     "options_title": "Run options",
     "opt_force": "Skip learnability check",
     "opt_force_hint": "Backend still captures and checks safety; it only avoids skipping generation for low learnability.",
@@ -582,6 +585,8 @@
     "cancel": "Cancel",
     "start": "Start Run",
     "start_aria": "Start a new learn run",
+    "status_busy": "Learn request is being prepared.",
+    "status_ready": "Learn request is ready.",
     "kbd_esc_close": "Esc to close"
   },
   "Learn": {

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   startLearnTask,
+  estimateLearn,
   getTask,
   cancelTask,
   listTasks,
@@ -9,7 +10,7 @@ import {
 import { ApiError } from '../api/client';
 import { useRunsStore } from './runs-store';
 import { useLearnStore } from './learn-store';
-import type { LearnSubmitPayload, TaskInfoResponse, TaskSubmitResponse } from '../api/types';
+import type { LearnEstimateResponse, LearnSubmitPayload, TaskInfoResponse, TaskSubmitResponse } from '../api/types';
 
 const graphInvalidateMock = vi.hoisted(() => vi.fn());
 
@@ -29,6 +30,7 @@ vi.mock('./graph-store', () => ({
 }));
 
 const mockedStartLearnTask = vi.mocked(startLearnTask);
+const mockedEstimateLearn = vi.mocked(estimateLearn);
 const mockedGetTask = vi.mocked(getTask);
 const mockedCancelTask = vi.mocked(cancelTask);
 const mockedListTasks = vi.mocked(listTasks);
@@ -48,6 +50,20 @@ function makeTaskInfo(overrides: Partial<TaskInfoResponse> = {}): TaskInfoRespon
     completed_at: null,
     elapsed_seconds: null,
     recovery_hint: null,
+    ...overrides,
+  };
+}
+
+function makeEstimate(overrides: Partial<LearnEstimateResponse> = {}): LearnEstimateResponse {
+  return {
+    patch_bytes: 32,
+    file_count: 1,
+    total_lines: 4,
+    estimated_tokens: 16,
+    provider_context_window: 8192,
+    provider_max_output: null,
+    risk_level: 'ok',
+    warnings: [],
     ...overrides,
   };
 }
@@ -348,6 +364,54 @@ describe('learn store', () => {
 
     expect(mockedStartLearnTask).not.toHaveBeenCalled();
     expect(useLearnStore.getState().phase).toBe('failed');
+  });
+
+  // ---------- requestLearn ----------
+
+  it('requestLearn passes abort signal to estimate and clears sensitive pending payload before submit', async () => {
+    const controller = new AbortController();
+    const payload = { patch: 'secret-diff', revision: 'abc123' };
+    mockedEstimateLearn.mockResolvedValue(makeEstimate());
+    mockedStartLearnTask.mockResolvedValue({ task_id: 'task-1' });
+
+    await useLearnStore.getState().requestLearn(payload, { signal: controller.signal });
+
+    expect(mockedEstimateLearn).toHaveBeenCalledWith(payload, { signal: controller.signal });
+    expect(mockedStartLearnTask).toHaveBeenCalledWith(payload);
+    expect(useLearnStore.getState().pendingPayload).toBeNull();
+    expect(useLearnStore.getState().lastPayload).toEqual({ revision: 'abc123' });
+  });
+
+  it('requestLearn keeps full sensitive payload only in the confirm handoff', async () => {
+    const payload = { patch: 'secret-diff', revision: 'abc123' };
+    mockedEstimateLearn.mockResolvedValue(makeEstimate({ risk_level: 'warn', warnings: ['large diff'] }));
+    mockedStartLearnTask.mockResolvedValue({ task_id: 'task-1' });
+
+    await useLearnStore.getState().requestLearn(payload);
+
+    expect(useLearnStore.getState().phase).toBe('confirming');
+    expect(useLearnStore.getState().pendingPayload).toEqual({ revision: 'abc123' });
+    expect(useLearnStore.getState().pendingPayload).not.toHaveProperty('patch');
+    expect(mockedStartLearnTask).not.toHaveBeenCalled();
+
+    await useLearnStore.getState().confirmLearn();
+
+    expect(mockedStartLearnTask).toHaveBeenCalledWith(payload);
+    expect(useLearnStore.getState().pendingPayload).toBeNull();
+  });
+
+  it('requestLearn abort clears pending payload without falling through to submit', async () => {
+    const controller = new AbortController();
+    const payload = { patch: 'secret-diff' };
+    const abortError = new DOMException('aborted', 'AbortError');
+    mockedEstimateLearn.mockRejectedValue(abortError);
+    controller.abort();
+
+    await useLearnStore.getState().requestLearn(payload, { signal: controller.signal });
+
+    expect(mockedStartLearnTask).not.toHaveBeenCalled();
+    expect(useLearnStore.getState().phase).toBe('idle');
+    expect(useLearnStore.getState().pendingPayload).toBeNull();
   });
 
   // ---------- cancelLearn ----------
