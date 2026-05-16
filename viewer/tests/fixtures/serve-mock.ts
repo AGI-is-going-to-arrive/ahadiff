@@ -214,6 +214,7 @@ export async function installServeMock(page: Page): Promise<void> {
     (url) => /^\/api\/run\/[^/]+$/.test(url.pathname),
     (route) => {
       const runId = new URL(route.request().url()).pathname.split('/')[3] ?? 'test-run';
+      const gateFailRun = runId === 'gate-fail-run';
       const artifacts = runId === 'no-score-run'
         ? ['patch.diff', 'metadata.json', 'claims.jsonl', 'concepts.jsonl']
         : runId === 'no-score-spec-run'
@@ -226,8 +227,8 @@ export async function installServeMock(page: Page): Promise<void> {
             'judge.json',
             'concepts.jsonl',
             'spec_alignment.json',
-            'graphify_signoff.json',
-          ];
+              'graphify_signoff.json',
+            ];
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -237,10 +238,10 @@ export async function installServeMock(page: Page): Promise<void> {
           source_ref: 'HEAD',
           content_lang: 'en',
           capability_level: 3,
-          verdict: 'PASS',
-          overall: 88,
+          verdict: gateFailRun ? 'FAIL' : 'PASS',
+          overall: gateFailRun ? 86.92 : 88,
           status: 'baseline',
-          weakest_dim: 'evidence',
+          weakest_dim: gateFailRun ? 'diff_coverage' : 'evidence',
           created_at: '2026-04-25T00:00:00Z',
           degraded_flags: {},
           base_ref: 'HEAD~1',
@@ -323,6 +324,58 @@ export async function installServeMock(page: Page): Promise<void> {
           status: 404,
           contentType: 'application/json',
           body: JSON.stringify({ error: 'artifact_not_found', status: 404 }),
+        });
+      }
+      if (runId === 'gate-fail-run') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            run_id: runId,
+            artifact_type: 'score',
+            content: JSON.stringify({
+              run_id: runId,
+              source_ref: 'HEAD',
+              source_kind: 'git_ref',
+              capability_level: 3,
+              degraded_flags: {},
+              overall: 86.92,
+              verdict: 'FAIL',
+              weakest_dim: 'diff_coverage',
+              eval_bundle_version: 'bundle-v1',
+              rubric_version: 'rubric-v1',
+              dimensions: {
+                accuracy: { score: 18.91, max_score: 20, reason: 'claim status mix' },
+                evidence: { score: 16.17, max_score: 18, reason: 'claim evidence coverage' },
+                diff_coverage: {
+                  score: 7.25,
+                  max_score: 14,
+                  reason: 'claim anchors cover files and hunks from line_map.json',
+                },
+                learnability: { score: 11.9, max_score: 14, reason: 'capture metadata learnability score' },
+                quiz_transfer: { score: 10, max_score: 10, reason: 'quiz artifact quality' },
+                spec_alignment: { score: 0, max_score: 0, reason: 'not applicable' },
+                conciseness: { score: 8, max_score: 8, reason: 'lesson artifact presence and length budgets' },
+                safety_privacy: { score: 6, max_score: 6, reason: 'persisted patch passes checks' },
+              },
+              hard_gates: {
+                evidence_coverage: {
+                  passed: false,
+                  detail: 'claim anchor coverage score 7.25 < 8.40; requires >= 8.40',
+                  score: 7.25,
+                  threshold: 8.4,
+                },
+                evidence: {
+                  passed: true,
+                  detail: 'evidence score 16.17 >= 12.00',
+                  score: 16.17,
+                  threshold: 12,
+                },
+              },
+              notes: [],
+            }),
+            content_lang: 'en',
+          }),
         });
       }
       return route.fulfill({
@@ -614,6 +667,7 @@ export async function installServeMock(page: Page): Promise<void> {
           artifact_type: 'judge',
           content: JSON.stringify({
             model_id: 'gpt-5.5',
+            overall: runId === 'gate-fail-run' ? 92 : 91.5,
             notes: [
               'Overall strong lesson with good evidence.',
               'Second judge note confirms array rendering.',

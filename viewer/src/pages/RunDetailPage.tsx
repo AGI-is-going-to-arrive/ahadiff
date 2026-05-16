@@ -22,6 +22,7 @@ import type {
   SpecSemanticClassification,
   SpecRequirementClassification,
 } from '../api/types';
+import { formatHardGateName } from '../utils/hard-gates';
 import { safeVerdict } from '../utils/verdict';
 import './RunDetailPage.css';
 
@@ -504,86 +505,99 @@ export default function RunDetailPage() {
         hidden={activeTab !== 'overview'}
       >
         {activeTab === 'overview' && (
-          <dl className="run-detail__meta">
-            <div className="run-detail__meta-row">
-              <dt>{t('RunDetail.source_ref')}</dt>
-              <dd><code>{run.source_ref}</code></dd>
-            </div>
-            {run.base_ref && (
-              <div className="run-detail__meta-row">
-                <dt>{t('RunDetail.base_ref')}</dt>
-                <dd><code>{run.base_ref}</code></dd>
-              </div>
-            )}
-            <div className="run-detail__meta-row">
-              <dt>{t('RunDetail.verdict')}</dt>
-              <dd>
-                <span className={`verdict-badge verdict-badge--${safeVerdict(run.verdict)}`}>
+          <>
+            <div className="run-detail__summary-card">
+              <div className="run-detail__summary-verdict">
+                <span className={`verdict-badge verdict-badge--${safeVerdict(run.verdict)} run-detail__summary-badge`}>
                   {run.verdict}
                 </span>
-              </dd>
-            </div>
-            {hasScore && (
-              <div className="run-detail__meta-row">
-                <dt>{t('RunDetail.overall_score')}</dt>
-                <dd>{score.overall.toFixed(1)}</dd>
+                {hasScore && (
+                  <span className="run-detail__summary-score">{score.overall.toFixed(1)}</span>
+                )}
               </div>
-            )}
-            <div className="run-detail__meta-row">
-              <dt>{t('RunDetail.capability_level')}</dt>
-              <dd>{run.capability_level}</dd>
-            </div>
-            <div className="run-detail__meta-row">
-              <dt>{t('RunDetail.content_lang')}</dt>
-              <dd>{run.content_lang}</dd>
-            </div>
-            <div className="run-detail__meta-row">
-              <dt>{t('RunDetail.created_at')}</dt>
-              <dd>{formatDate(run.created_at, locale)}</dd>
-            </div>
-            <div className="run-detail__meta-row">
-              <dt>{t('RunDetail.source_kind')}</dt>
-              <dd>{run.source_kind}</dd>
-            </div>
-            {run.prompt_version && (
-              <div className="run-detail__meta-row">
-                <dt>{t('RunDetail.prompt_version')}</dt>
-                <dd><code>{run.prompt_version}</code></dd>
+              <div className="run-detail__summary-body">
+                <p className="run-detail__summary-text">
+                  {run.verdict === 'PASS' && t('RunDetail.overview_summary_pass', { score: hasScore ? score.overall.toFixed(1) : '—' })}
+                  {run.verdict === 'FAIL' && t('RunDetail.overview_summary_fail', {
+                    reason: score?.hard_gates
+                      ? (() => {
+                          const failed = Object.entries(score.hard_gates).find(([, g]) => !g.passed);
+                          return failed
+                            ? t('RunDetail.overview_summary_gate_reason', { gate: formatHardGateName(t, failed[0]) })
+                            : t('RunDetail.overview_summary_score_reason', { score: hasScore ? score.overall.toFixed(1) : '—' });
+                        })()
+                      : t('RunDetail.overview_summary_score_reason', { score: hasScore ? score.overall.toFixed(1) : '—' }),
+                  })}
+                  {run.verdict === 'CAUTION' && t('RunDetail.overview_summary_caution', { score: hasScore ? score.overall.toFixed(1) : '—' })}
+                </p>
+                <div className="run-detail__summary-meta">
+                  <span>{formatDate(run.created_at, locale)}</span>
+                  <span><code>{run.source_ref}</code></span>
+                  <span>{run.capability_level}</span>
+                </div>
               </div>
-            )}
-            {run.eval_bundle_version && (
-              <div className="run-detail__meta-row">
-                <dt>{t('RunDetail.eval_bundle_version')}</dt>
-                <dd><code>{run.eval_bundle_version}</code></dd>
-              </div>
-            )}
-            {run.graphify_mode && (
-              <div className="run-detail__meta-row">
-                <dt>{t('RunDetail.graphify_mode')}</dt>
-                <dd>{run.graphify_mode}</dd>
-              </div>
-            )}
-            {run.graphify_status && (
-              <div className="run-detail__meta-row">
-                <dt>{t('RunDetail.graphify_status')}</dt>
-                <dd>{run.graphify_status}</dd>
-              </div>
-            )}
+              {links.length > 0 && (
+                <nav className="run-detail__summary-links" aria-label={t('RunDetail.overview_quick_links')}>
+                  {links.map((link) => (
+                    <Link key={link.path} to={link.path} className="run-detail__summary-link">
+                      {link.label}
+                    </Link>
+                  ))}
+                </nav>
+              )}
+            </div>
+
             {degradedFlags.length > 0 && (
-              <div className="run-detail__meta-row">
-                <dt>{t('RunDetail.degraded_flags')}</dt>
-                <dd>
-                  <ul className="run-detail__degraded-list">
-                    {degradedFlags.map((flag) => (
-                      <li key={flag} title={flag}>
-                        {t(DEGRADED_FLAG_LABEL_KEYS[flag])}
-                      </li>
-                    ))}
-                  </ul>
-                </dd>
+              <div className="run-detail__degraded-banner">
+                {degradedFlags.map((flag) => (
+                  <span key={flag} className="run-detail__degraded-tag" title={flag}>
+                    {t(DEGRADED_FLAG_LABEL_KEYS[flag])}
+                  </span>
+                ))}
               </div>
             )}
-          </dl>
+
+            <dl className="run-detail__meta">
+              {run.base_ref && (
+                <div className="run-detail__meta-row">
+                  <dt>{t('RunDetail.base_ref')}</dt>
+                  <dd><code>{run.base_ref}</code></dd>
+                </div>
+              )}
+              <div className="run-detail__meta-row">
+                <dt>{t('RunDetail.content_lang')}</dt>
+                <dd>{run.content_lang}</dd>
+              </div>
+              <div className="run-detail__meta-row">
+                <dt>{t('RunDetail.source_kind')}</dt>
+                <dd>{run.source_kind}</dd>
+              </div>
+              {run.prompt_version && (
+                <div className="run-detail__meta-row">
+                  <dt>{t('RunDetail.prompt_version')}</dt>
+                  <dd><code>{run.prompt_version}</code></dd>
+                </div>
+              )}
+              {run.eval_bundle_version && (
+                <div className="run-detail__meta-row">
+                  <dt>{t('RunDetail.eval_bundle_version')}</dt>
+                  <dd><code>{run.eval_bundle_version}</code></dd>
+                </div>
+              )}
+              {run.graphify_mode && (
+                <div className="run-detail__meta-row">
+                  <dt>{t('RunDetail.graphify_mode')}</dt>
+                  <dd>{run.graphify_mode}</dd>
+                </div>
+              )}
+              {run.graphify_status && (
+                <div className="run-detail__meta-row">
+                  <dt>{t('RunDetail.graphify_status')}</dt>
+                  <dd>{run.graphify_status}</dd>
+                </div>
+              )}
+            </dl>
+          </>
         )}
         {activeTab === 'overview' && hasGraphifySignoff && (
           <GraphifySignoffPanel
@@ -712,29 +726,7 @@ export default function RunDetailPage() {
         hidden={activeTab !== 'artifacts'}
       >
         {activeTab === 'artifacts' && (
-          <div className="run-detail__artifacts">
-            <h2 className="run-detail__artifacts-title">{t('RunDetail.tab_artifacts')}</h2>
-            <nav className="run-detail__artifact-links" aria-label={t('RunDetail.tab_artifacts')}>
-              {links.map((link) => (
-                <Link key={link.path} to={link.path} className="run-detail__artifact-link">
-                  {link.label}
-                </Link>
-              ))}
-              <Link to={`/concepts?run=${runId}`} className="run-detail__artifact-link">
-                {t('RunDetail.link_concepts')}
-              </Link>
-            </nav>
-            <div className="run-detail__artifact-files">
-              <h3 className="run-detail__artifact-files-title">{t('RunDetail.available_artifacts')}</h3>
-              <ul className="run-detail__artifact-list">
-                {run.artifacts.map((a) => (
-                  <li key={a} className="run-detail__artifact-item">
-                    <code>{a}</code>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
+          <ArtifactsPanel run={run} runId={runId} links={links} t={t} />
         )}
       </section>
       </div>
@@ -1054,5 +1046,82 @@ function SpecSemanticReviewPanel({
         </p>
       )}
     </section>
+  );
+}
+
+const ARTIFACT_GROUPS: { key: string; patterns: string[] }[] = [
+  { key: 'learning', patterns: ['lesson', 'walkthrough', 'quiz', 'misconception'] },
+  { key: 'eval', patterns: ['score', 'judge', 'claims', 'eval', 'spec_alignment'] },
+  { key: 'graph', patterns: ['concepts', 'graphify', 'graph'] },
+];
+
+function classifyArtifact(name: string): string {
+  for (const group of ARTIFACT_GROUPS) {
+    if (group.patterns.some((p) => name.includes(p))) return group.key;
+  }
+  return 'other';
+}
+
+function ArtifactsPanel({
+  run,
+  runId,
+  links,
+  t,
+}: {
+  run: RunDetail;
+  runId: string;
+  links: { name: string; path: string; label: string }[];
+  t: TranslateFn;
+}) {
+  const grouped = new Map<string, string[]>();
+  for (const a of run.artifacts) {
+    const group = classifyArtifact(a);
+    const list = grouped.get(group) ?? [];
+    list.push(a);
+    grouped.set(group, list);
+  }
+
+  const groupOrder = ['learning', 'eval', 'graph', 'other'] as const;
+  const groupLabelKeys: Record<string, string> = {
+    learning: 'RunDetail.artifacts_group_learning',
+    eval: 'RunDetail.artifacts_group_eval',
+    graph: 'RunDetail.artifacts_group_graph',
+    other: 'RunDetail.artifacts_group_other',
+  };
+
+  return (
+    <div className="run-detail__artifacts">
+      {links.length > 0 && (
+        <nav className="run-detail__artifact-links" aria-label={t('RunDetail.overview_quick_links')}>
+          {links.map((link) => (
+            <Link key={link.path} to={link.path} className="run-detail__artifact-link">
+              {link.label}
+            </Link>
+          ))}
+          <Link to={`/concepts?run=${runId}`} className="run-detail__artifact-link">
+            {t('RunDetail.link_concepts')}
+          </Link>
+        </nav>
+      )}
+
+      <div className="run-detail__artifact-groups">
+        {groupOrder.map((groupKey) => {
+          const items = grouped.get(groupKey);
+          if (!items || items.length === 0) return null;
+          return (
+            <div key={groupKey} className="run-detail__artifact-section">
+              <h3 className="run-detail__artifact-section-title">{t(groupLabelKeys[groupKey])}</h3>
+              <ul className="run-detail__artifact-list">
+                {items.map((a) => (
+                  <li key={a} className="run-detail__artifact-item">
+                    <code>{a}</code>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

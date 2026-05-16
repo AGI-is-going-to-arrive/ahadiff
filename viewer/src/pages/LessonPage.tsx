@@ -9,13 +9,15 @@ import FreshnessBadge from '../components/FreshnessBadge';
 import ScaffoldingTabs from '../components/ScaffoldingTabs';
 import { useTranslation } from '../i18n/useTranslation';
 import { useRunsStore } from '../state/runs-store';
-import { getRunLesson, getRunArtifact } from '../api/runs';
+import { getRunLesson, getRunArtifact, getRunScore } from '../api/runs';
+import { scorePayloadSchema } from '../api/schemas';
 import { getWeakConcepts } from '../api/review';
 import { ApiError } from '../api/client';
 import { helpfulness } from '../api/signals';
+import { formatHardGateDetail, formatHardGateName } from '../utils/hard-gates';
 import { renderMarkdownProse, uniqueSlug } from '../utils/markdown';
 import { createIdempotencyKey } from '../utils/idempotency';
-import type { RunDetail, WeakConceptsResponse } from '../api/types';
+import type { RunDetail, ScoreHardGate, ScorePayload, WeakConceptsResponse } from '../api/types';
 import type { Claim, ClaimSourceHunk } from '../components/EvidencePanel';
 import type { ScaffoldLevel } from '../components/ScaffoldingTabs';
 import '../components/Lesson.css';
@@ -82,6 +84,16 @@ interface EvidenceRef {
   range: string;
 }
 
+interface FailedGateSummary {
+  name: string;
+  gate: ScoreHardGate;
+}
+
+interface JudgeSummary {
+  modelId: string | null;
+  overall: number | null;
+}
+
 type MarkLearnedState = 'idle' | 'saving' | 'saved' | 'error';
 
 const SHIPPED_VERDICTS: ReadonlySet<Claim['verdict']> = new Set([
@@ -96,6 +108,42 @@ const REJECTED_VERDICTS: ReadonlySet<Claim['verdict']> = new Set([
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseScorePayloadContent(content: string): ScorePayload | null {
+  try {
+    const raw = JSON.parse(content) as unknown;
+    const parsed = scorePayloadSchema.safeParse(raw);
+    return parsed.success ? parsed.data as ScorePayload : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseJudgeSummaryContent(content: string): JudgeSummary | null {
+  try {
+    const raw = JSON.parse(content) as unknown;
+    if (!isRecord(raw)) return null;
+    const rawModel = raw.model_id;
+    const rawOverall = raw.overall;
+    const modelId = typeof rawModel === 'string' && rawModel.trim() ? rawModel.trim() : null;
+    const overall = typeof rawOverall === 'number' && Number.isFinite(rawOverall) ? rawOverall : null;
+    return modelId || overall !== null ? { modelId, overall } : null;
+  } catch {
+    return null;
+  }
+}
+
+function firstFailedHardGate(payload: ScorePayload | null): FailedGateSummary | null {
+  if (!payload) return null;
+  for (const [name, gate] of Object.entries(payload.hard_gates)) {
+    if (!gate.passed) return { name, gate };
+  }
+  return null;
+}
+
+function formatRoundedScore(score: number): string {
+  return String(Math.round(score));
 }
 
 function toFiniteInt(value: unknown, fallback: number): number {
@@ -291,6 +339,8 @@ export default function LessonPage() {
   const [claims, setClaims] = useState<Claim[]>([]);
   const [concepts, setConcepts] = useState<ConceptSummaryItem[]>([]);
   const [quizSummary, setQuizSummary] = useState<QuizSummary | null>(null);
+  const [scoreDetail, setScoreDetail] = useState<ScorePayload | null>(null);
+  const [judgeSummary, setJudgeSummary] = useState<JudgeSummary | null>(null);
   const [selectedClaim, setSelectedClaim] = useState<Claim | null>(null);
   const [popoverPos, setPopoverPos] = useState<{ top: number; right: number } | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -314,6 +364,8 @@ export default function LessonPage() {
     setClaims([]);
     setConcepts([]);
     setQuizSummary(null);
+    setScoreDetail(null);
+    setJudgeSummary(null);
     setSelectedClaim(null);
     setPopoverPos(null);
     setMarkLearnedState('idle');
@@ -345,7 +397,7 @@ export default function LessonPage() {
       if (controller.signal.aborted) return;
       setRunDetail(detail);
 
-      const [lessonEnv, claimsEnv, conceptsEnv, quizEnv] = await Promise.all([
+      const [lessonEnv, claimsEnv, conceptsEnv, quizEnv, scorePayload, judgePayload] = await Promise.all([
         getRunLesson(runId, recommended, { signal: controller.signal }).catch((err: unknown) => {
           if (err instanceof ApiError && err.status === 404) return null;
           throw err;
@@ -362,6 +414,14 @@ export default function LessonPage() {
           if (err instanceof ApiError && err.status === 404) return null;
           throw err;
         }),
+        getRunScore(runId, { signal: controller.signal })
+          .then((env) => parseScorePayloadContent(env.content))
+          .catch(() => null),
+        detail?.artifacts?.includes('judge.json')
+          ? getRunArtifact(runId, 'judge', { signal: controller.signal })
+            .then((env) => parseJudgeSummaryContent(env.content))
+            .catch(() => null)
+          : Promise.resolve(null),
       ]);
       if (controller.signal.aborted) return;
 
@@ -378,6 +438,8 @@ export default function LessonPage() {
       }
       setConcepts(conceptsEnv ? parseConcepts(conceptsEnv.content) : []);
       setQuizSummary(quizEnv ? parseQuizSummary(quizEnv.content) : null);
+      setScoreDetail(scorePayload);
+      setJudgeSummary(judgePayload);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       if (controller.signal.aborted) return;
@@ -541,6 +603,16 @@ export default function LessonPage() {
       : markLearnedState === 'saved'
         ? t('Lesson.mark_learned_done')
         : t('Lesson.mark_learned');
+  const failedGate = useMemo(() => firstFailedHardGate(scoreDetail), [scoreDetail]);
+  const showScoreExplainer = Boolean(
+    runDetail && (runDetail.verdict === 'FAIL' || failedGate || judgeSummary),
+  );
+  const scoreDetailsPath = runDetail
+    ? `/run/${encodeURIComponent(runDetail.run_id)}?tab=score`
+    : '#';
+  const judgeDetailsPath = runDetail
+    ? `/run/${encodeURIComponent(runDetail.run_id)}?tab=judge`
+    : '#';
 
   const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
   useEffect(() => {
@@ -643,6 +715,47 @@ export default function LessonPage() {
               <p className="scaffolding-auto-hint" aria-live="polite">
                 {t('Lesson.scaffolding_auto_hint')}
               </p>
+            )}
+            {runDetail && showScoreExplainer && (
+              <div className="lesson-page__score-explainer">
+                <p className="lesson-page__score-explainer-title">
+                  {failedGate
+                    ? t('Lesson.score_explainer_fail_title', {
+                        verdict: runDetail.verdict,
+                        score: formatRoundedScore(runDetail.overall),
+                      })
+                    : t('Lesson.score_explainer_title', {
+                        verdict: runDetail.verdict,
+                        score: formatRoundedScore(runDetail.overall),
+                      })}
+                </p>
+                <p className="lesson-page__score-explainer-body">
+                  {failedGate
+                    ? t('Lesson.score_explainer_fail_body', {
+                        gate: formatHardGateName(t, failedGate.name),
+                        detail: formatHardGateDetail(t, failedGate.name, failedGate.gate),
+                      })
+                    : t('Lesson.score_explainer_body')}
+                </p>
+                {judgeSummary && (
+                  <p className="lesson-page__score-explainer-body">
+                    {judgeSummary.overall !== null
+                      ? t('Lesson.score_explainer_judge_with_score', {
+                          model: judgeSummary.modelId ?? t('Lesson.score_explainer_unknown_model'),
+                          score: formatRoundedScore(judgeSummary.overall),
+                        })
+                      : t('Lesson.score_explainer_judge_without_score', {
+                          model: judgeSummary.modelId ?? t('Lesson.score_explainer_unknown_model'),
+                        })}
+                  </p>
+                )}
+                <div className="lesson-page__score-explainer-links">
+                  <Link to={scoreDetailsPath}>{t('Lesson.score_explainer_score_link')}</Link>
+                  {judgeSummary && (
+                    <Link to={judgeDetailsPath}>{t('Lesson.score_explainer_judge_link')}</Link>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         </header>

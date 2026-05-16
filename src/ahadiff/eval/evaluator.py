@@ -22,12 +22,14 @@ from .gates import HardGateSummary, evaluate_hard_gates
 from .rubric import load_rubric
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     import httpx
 
     from ahadiff.contracts import PrivacyMode, ProviderConfig
     from ahadiff.core.config import SecurityConfig
 
-    from .rubric import RubricDefinition
+    from .rubric import RubricDefinition, RubricDimension
 
 _JSON_FENCE_RE = re.compile(
     r"```(?P<lang>[^\r\n`]*)\r?\n(?P<body>[\s\S]*?)```",
@@ -35,6 +37,7 @@ _JSON_FENCE_RE = re.compile(
 )
 _LLM_JUDGE_PROMPT_FILENAME = "eval_judge.md"
 _LLM_JUDGE_OUTPUT_TOKEN_CAP = 4_000
+_SAFETY_FINDINGS_ARTIFACTS = ("safety_findings.json", "safety_findings.jsonl")
 
 
 @dataclass(frozen=True)
@@ -130,12 +133,14 @@ def evaluate_run(run_path: Path) -> ScoreReport:
         quiz_entries=quiz_entries,
     )
     dimension_scores = deterministic.score_lookup()
+    safety_findings = _load_safety_findings(run_path)
     hard_gates = evaluate_hard_gates(
         rubric=rubric,
         dimension_scores=dimension_scores,
         claims=claims,
         secret_leak_detected=deterministic.secret_leak_detected,
         injection_unresolved=deterministic.injection_unresolved,
+        safety_findings=safety_findings,
     )
     overall = _resolve_overall(deterministic.dimensions)
     verdict = _resolve_verdict(
@@ -257,7 +262,12 @@ def run_llm_judge_for_run(
     finally:
         provider.close()
 
-    dimensions = parse_llm_judge_output(response.content)
+    dimensions = parse_llm_judge_output(
+        response.content,
+        dimension_max_scores={
+            dimension.name: dimension.max_score for dimension in deterministic_report.dimensions
+        },
+    )
     judge_report = LlmJudgeReport(
         run_id=deterministic_report.run_id,
         source_ref=deterministic_report.source_ref,
@@ -266,7 +276,7 @@ def run_llm_judge_for_run(
         provider_class=provider_config.provider_class,
         prompt_fingerprint=prompt_fingerprint,
         eval_bundle_version=deterministic_report.eval_bundle_version,
-        overall=sum(item.score for item in dimensions),
+        overall=_resolve_overall(dimensions),
         dimensions=dimensions,
         input_tokens=response.input_tokens,
         output_tokens=response.output_tokens,
@@ -331,6 +341,7 @@ def parse_llm_judge_output(
     content: str,
     *,
     rubric: RubricDefinition | None = None,
+    dimension_max_scores: Mapping[str, float] | None = None,
 ) -> tuple[DimensionScore, ...]:
     active_rubric = rubric or load_rubric()
     payload = _load_llm_judge_json_object(content)
@@ -341,23 +352,43 @@ def parse_llm_judge_output(
     missing = [
         dimension.name
         for dimension in active_rubric.dimensions
-        if dimension.name not in raw_dimension_map
+        if _llm_judge_dimension_max_score(dimension, dimension_max_scores) > 0.0
+        and dimension.name not in raw_dimension_map
     ]
     if missing:
         raise InputError("LLM judge output is missing dimensions: " + ", ".join(missing))
 
     dimensions: list[DimensionScore] = []
     for dimension in active_rubric.dimensions:
+        max_score = _llm_judge_dimension_max_score(dimension, dimension_max_scores)
+        if max_score <= 0.0:
+            reason = "not applicable in deterministic score"
+            if dimension.name in raw_dimension_map:
+                _score, parsed_reason = _parse_llm_judge_dimension(
+                    raw_dimension_map[dimension.name],
+                    name=dimension.name,
+                    max_score=float(dimension.max_score),
+                )
+                reason = f"{reason}; judge reason: {parsed_reason}"
+            dimensions.append(
+                DimensionScore(
+                    name=dimension.name,
+                    score=0.0,
+                    max_score=0.0,
+                    reason=reason,
+                )
+            )
+            continue
         score, reason = _parse_llm_judge_dimension(
             raw_dimension_map[dimension.name],
             name=dimension.name,
-            max_score=float(dimension.max_score),
+            max_score=max_score,
         )
         dimensions.append(
             DimensionScore(
                 name=dimension.name,
                 score=score,
-                max_score=float(dimension.max_score),
+                max_score=max_score,
                 reason=reason,
             )
         )
@@ -579,6 +610,21 @@ def _parse_llm_judge_dimension(
     return round(score, 2), reason
 
 
+def _llm_judge_dimension_max_score(
+    dimension: RubricDimension,
+    dimension_max_scores: Mapping[str, float] | None,
+) -> float:
+    if dimension_max_scores is None:
+        return float(dimension.max_score)
+    raw_value = dimension_max_scores.get(dimension.name, float(dimension.max_score))
+    value = float(raw_value)
+    if not math.isfinite(value) or value < 0.0:
+        raise InputError(f"LLM judge dimension {dimension.name!r} max_score must be finite")
+    if value > float(dimension.max_score):
+        raise InputError(f"LLM judge dimension {dimension.name!r} max_score exceeds rubric maximum")
+    return value
+
+
 def _load_json_object(path: Path) -> dict[str, Any]:
     try:
         payload = safe_json_loads(_read_text(path))
@@ -665,6 +711,55 @@ def _load_jsonl_objects(path: Path, *, required: bool) -> tuple[dict[str, Any], 
             raise InputError(f"expected a JSON object on line {index}: {path}")
         payloads.append(cast("dict[str, Any]", payload))
     return tuple(payloads)
+
+
+def _load_safety_findings(run_path: Path) -> tuple[dict[str, Any], ...]:
+    findings: list[dict[str, Any]] = []
+    for relative_path in _SAFETY_FINDINGS_ARTIFACTS:
+        path = run_path / relative_path
+        if not path.exists():
+            continue
+        if path.is_symlink():
+            findings.append(_safety_findings_load_failure(path, "symlink artifact rejected"))
+            continue
+        try:
+            stat = path.stat()
+        except OSError as exc:
+            findings.append(_safety_findings_load_failure(path, f"artifact stat failed: {exc}"))
+            continue
+        if getattr(stat, "st_nlink", 1) > 1:
+            findings.append(_safety_findings_load_failure(path, "hardlinked artifact rejected"))
+            continue
+        if path.suffix == ".jsonl":
+            try:
+                findings.extend(_load_jsonl_objects(path, required=False))
+            except (InputError, UnicodeDecodeError, OSError) as exc:
+                findings.append(_safety_findings_load_failure(path, f"artifact load failed: {exc}"))
+            continue
+        try:
+            payload = _load_json_object(path)
+        except (InputError, UnicodeDecodeError, OSError) as exc:
+            findings.append(_safety_findings_load_failure(path, f"artifact load failed: {exc}"))
+            continue
+        raw_findings = payload.get("findings")
+        if not isinstance(raw_findings, list):
+            findings.append(_safety_findings_load_failure(path, "missing findings array"))
+            continue
+        for index, raw_finding in enumerate(cast("list[object]", raw_findings), start=1):
+            if not isinstance(raw_finding, dict):
+                findings.append(_safety_findings_load_failure(path, f"invalid finding at {index}"))
+                continue
+            findings.append(cast("dict[str, Any]", raw_finding))
+    return tuple(findings)
+
+
+def _safety_findings_load_failure(path: Path, reason: str) -> dict[str, Any]:
+    return {
+        "severity": "Critical",
+        "rule_id": "SAFETY_FINDINGS_ARTIFACT_INVALID",
+        "source": path.name,
+        "reason": reason,
+    }
 
 
 def _resolve_verdict(

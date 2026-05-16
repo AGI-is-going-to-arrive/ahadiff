@@ -14,15 +14,16 @@ test.describe('Run Detail page', () => {
     const overviewTab = page.getByRole('tab', { name: /overview|概览/i });
     await expect(overviewTab).toHaveAttribute('aria-selected', 'true');
 
+    await expect(page.locator('.run-detail__summary-card')).toBeVisible();
     const metaRows = page.locator('.run-detail__meta-row');
-    expect(await metaRows.count()).toBeGreaterThanOrEqual(4);
+    expect(await metaRows.count()).toBeGreaterThanOrEqual(2);
   });
 
   test('shows Graphify signoff on overview', async ({ page }) => {
     await page.goto('/#/run/test-run');
 
     await expect(page.getByRole('heading', { name: /Graphify Signoff|Graphify 验收/i })).toBeVisible();
-    await expect(page.getByText(/passed/i)).toBeVisible();
+    await expect(page.getByText('Passed', { exact: true })).toBeVisible();
     await expect(page.getByText(/Graph digest|图谱摘要/i)).toBeVisible();
   });
 
@@ -66,7 +67,7 @@ test.describe('Run Detail page', () => {
 
     await page.goto('/#/run/degraded-run');
 
-    const flags = page.locator('.run-detail__degraded-list');
+    const flags = page.locator('.run-detail__degraded-banner');
     await expect(flags).toContainText('Diff clipped');
     await expect(flags).toContainText('File count exceeded');
     await expect(flags).not.toContainText('diff_clipped');
@@ -79,11 +80,21 @@ test.describe('Run Detail page', () => {
     await scoreTab.click();
     await expect(scoreTab).toHaveAttribute('aria-selected', 'true');
 
-    const dimRows = page.locator('.score-breakdown__dim-row');
-    expect(await dimRows.count()).toBeGreaterThanOrEqual(1);
+    const dimCards = page.locator('.score-breakdown__dim-card');
+    expect(await dimCards.count()).toBeGreaterThanOrEqual(1);
 
     const overallValue = page.locator('.score-breakdown__overall-value');
     await expect(overallValue).toBeVisible();
+  });
+
+  test('score tab localizes hard gate names and claim anchor detail', async ({ page }) => {
+    await page.goto('/#/run/gate-fail-run?tab=score');
+
+    await expect(page.getByText('claim anchor coverage', { exact: true })).toBeVisible();
+    await expect(page.getByText(
+      'Claim anchors scored 7.25; this gate requires 8.40.',
+      { exact: true },
+    )).toBeVisible();
   });
 
   test('shows spec alignment details in score tab', async ({ page }) => {
@@ -134,6 +145,8 @@ test.describe('Run Detail page', () => {
 
     const modelValue = page.locator('.judge-report__model-value');
     await expect(modelValue).toContainText('gpt-5.5');
+    await expect(page.locator('.judge-report__summary-value')).toContainText('91.5');
+    await expect(page.locator('.judge-report__summary-note')).toContainText('Semantic review result');
   });
 
   test('shows artifact links in artifacts tab', async ({ page }) => {

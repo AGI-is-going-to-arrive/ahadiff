@@ -589,6 +589,26 @@ test.describe('walkthrough: full-app functional test', () => {
     await page.screenshot({ path: `${SCREENSHOT_DIR}/02-lesson.png`, fullPage: true });
   });
 
+  test('Lesson — explains high score with failed hard gate and advisory judge', async ({ page }) => {
+    await page.goto('/#/run/gate-fail-run/lesson');
+
+    await expect(page.locator('.lesson-page__verdict')).toContainText('FAIL · 87');
+    const explainer = page.locator('.lesson-page__score-explainer');
+    await expect(explainer).toContainText('Why is 87 still FAIL?');
+    await expect(explainer).toContainText('claim anchor coverage');
+    await expect(explainer).toContainText('Claim anchors scored 7.25; this gate requires 8.40.');
+    await expect(explainer).toContainText('LLM judge contributes semantic review');
+    await expect(explainer).toContainText('gpt-5.5 scored 92');
+    await expect(explainer.getByRole('link', { name: /Score details/i })).toHaveAttribute(
+      'href',
+      /#\/run\/gate-fail-run\?tab=score/,
+    );
+    await expect(explainer.getByRole('link', { name: /LLM judge report/i })).toHaveAttribute(
+      'href',
+      /#\/run\/gate-fail-run\?tab=judge/,
+    );
+  });
+
   /* ---------------------------------------------------------------- */
   /*  Page 3: Diff                                                     */
   /* ---------------------------------------------------------------- */

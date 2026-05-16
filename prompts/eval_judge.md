@@ -31,5 +31,9 @@ Use these maximum scores:
 - conciseness: 8
 - safety_privacy: 6
 
+If the deterministic score block marks a dimension with `"max_score": 0`, that
+dimension is not applicable for this run. Return score `0` for that dimension
+and explain that it is not applicable.
+
 Every score must be a finite number between 0 and that dimension's maximum.
 Do not include Markdown, code fences, prose outside the JSON, or extra keys.

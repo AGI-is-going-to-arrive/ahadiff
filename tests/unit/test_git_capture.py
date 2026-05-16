@@ -88,7 +88,7 @@ def _assert_artifact_manifest_matches_files(run_dir: Path) -> None:
     assert manifest["schema_version"] == 1
     assert manifest["manifest_type"] == "artifact_set"
     paths = [item["path"] for item in manifest["artifacts"]]
-    assert paths == [
+    required_paths = [
         "patch.diff",
         "metadata.json",
         "line_map.json",
@@ -96,6 +96,12 @@ def _assert_artifact_manifest_matches_files(run_dir: Path) -> None:
         "before_text_by_path.json",
         "after_text_by_path.json",
     ]
+    assert paths[: len(required_paths)] == required_paths
+    assert set(paths[len(required_paths) :]) <= {
+        "safety_findings.json",
+        "graphify_context.json",
+        "graphify_signoff.json",
+    }
     for item in manifest["artifacts"]:
         payload = (run_dir / item["path"]).read_text(encoding="utf-8")
         assert item["bytes"] == len(payload.encode("utf-8"))
@@ -542,6 +548,8 @@ def test_learn_range_dry_run_writes_redacted_artifacts(tmp_path: Path) -> None:
     symbols = json.loads((run_dir / "symbols.json").read_text(encoding="utf-8"))
     before_text_map = (run_dir / "before_text_by_path.json").read_text(encoding="utf-8")
     after_text_map = (run_dir / "after_text_by_path.json").read_text(encoding="utf-8")
+    safety_findings_text = (run_dir / "safety_findings.json").read_text(encoding="utf-8")
+    safety_findings = json.loads(safety_findings_text)
     assert metadata["source_kind"] == "git_ref"
     assert metadata["source_ref"] == head_sha
     assert metadata["content_lang"] == "zh-CN"
@@ -550,8 +558,14 @@ def test_learn_range_dry_run_writes_redacted_artifacts(tmp_path: Path) -> None:
     assert secret not in patch_text
     assert secret not in before_text_map
     assert secret not in after_text_map
+    assert secret not in safety_findings_text
     assert "[REDACTED:openai_api_key]" in patch_text
     assert "[REDACTED:openai_api_key]" in after_text_map
+    assert safety_findings["schema"] == "ahadiff.safety_findings"
+    assert safety_findings["schema_version"] == 1
+    assert safety_findings["findings"][0]["severity"] == "Critical"
+    assert safety_findings["findings"][0]["rule_id"] == "OPENAI_API_KEY"
+    assert "value_sha256" in safety_findings["findings"][0]
     assert line_map["schema"] == "ahadiff.line_map"
     assert line_map["schema_version"] == 1
     assert line_map["files"][0]["display_path"] == "app.py"

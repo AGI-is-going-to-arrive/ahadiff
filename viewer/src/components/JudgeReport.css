@@ -35,6 +35,42 @@
   border-radius: var(--r-sm);
 }
 
+.judge-report__summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px var(--sp-3);
+  align-items: baseline;
+  margin: 0 0 var(--sp-4);
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.judge-report__summary-label {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.judge-report__summary-value {
+  color: var(--ink-strong);
+  font-family: var(--font-mono);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.judge-report__summary-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-relaxed);
+}
+
 .judge-report__feedback {
   margin: 0 0 var(--sp-4);
   display: flex;
@@ -49,10 +85,25 @@
 }
 
 .judge-report__feedback-dim {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
   font-weight: 600;
   font-size: var(--fs-sm);
   color: var(--ink-strong);
   margin-bottom: var(--sp-1);
+}
+
+.judge-report__feedback-score {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--accent-ink);
+  padding: var(--sp-0-5) var(--sp-2);
+  background: var(--elevated);
+  border-radius: var(--r-sm);
+  font-variant-numeric: tabular-nums;
 }
 
 .judge-report__feedback-reason {
@@ -121,6 +172,7 @@
   .judge-report__raw {
     border-color: CanvasText;
   }
+  .judge-report__summary,
   .judge-report__feedback-row {
     border: 1px solid CanvasText;
   }

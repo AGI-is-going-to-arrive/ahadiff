@@ -161,6 +161,65 @@
   line-height: 1.35;
 }
 
+.lesson-page__score-explainer {
+  width: min(100%, 390px);
+  margin-top: var(--sp-2);
+  padding: 10px 12px;
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  background: var(--subtle);
+  color: var(--ink);
+  text-align: start;
+}
+
+.lesson-page__score-explainer-title {
+  margin: 0 0 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.lesson-page__score-explainer-body {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.lesson-page__score-explainer-body + .lesson-page__score-explainer-body {
+  margin-top: 6px;
+}
+
+.lesson-page__score-explainer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.lesson-page__score-explainer-links a {
+  color: var(--accent-ink);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.lesson-page__score-explainer-links a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.lesson-page__score-explainer-links a:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
 .lesson-scaffolding-panel {
   min-width: 0;
 }
@@ -961,6 +1020,9 @@
     align-items: flex-start;
     width: 100%;
   }
+  .lesson-page__score-explainer {
+    width: 100%;
+  }
   .lesson-page__actions {
     justify-content: flex-start;
     width: 100%;
@@ -1275,6 +1337,7 @@
 @media (forced-colors: active) {
   .lesson-page__verdict,
   .lesson-page__action-btn,
+  .lesson-page__score-explainer,
   .lesson__concept-chip,
   .lesson__evidence-list code,
   .lesson__scaffold-pill,

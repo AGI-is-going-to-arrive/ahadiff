@@ -10,14 +10,14 @@ export const DIMENSION_ORDER = [
 ] as const;
 
 export const DIM_I18N_KEYS: Record<string, string> = {
-  accuracy: 'Ratchet.dim_accuracy',
-  evidence: 'Ratchet.dim_evidence',
-  diff_coverage: 'Ratchet.dim_diff_coverage',
-  learnability: 'Ratchet.dim_learnability',
-  quiz_transfer: 'Ratchet.dim_quiz_transfer',
-  spec_alignment: 'Ratchet.dim_spec_alignment',
-  conciseness: 'Ratchet.dim_conciseness',
-  safety_privacy: 'Ratchet.dim_safety_privacy',
+  accuracy: 'Ratchet.dim_accuracy_label',
+  evidence: 'Ratchet.dim_evidence_label',
+  diff_coverage: 'Ratchet.dim_diff_coverage_label',
+  learnability: 'Ratchet.dim_learnability_label',
+  quiz_transfer: 'Ratchet.dim_quiz_transfer_label',
+  spec_alignment: 'Ratchet.dim_spec_alignment_label',
+  conciseness: 'Ratchet.dim_conciseness_label',
+  safety_privacy: 'Ratchet.dim_safety_privacy_label',
 };
 
 export const DIM_HINT_KEYS: Record<string, string> = {

@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import { z } from 'zod';
 import { getRunArtifact } from '../api/runs';
-import { useTranslation } from '../i18n/useTranslation';
+import { useTranslation, type TranslateFn } from '../i18n/useTranslation';
+import { DIM_I18N_KEYS } from '../utils/score-dimensions';
 import './JudgeReport.css';
+
+function translateDimName(t: TranslateFn, dim: string): string {
+  const key = DIM_I18N_KEYS[dim];
+  if (key) return t(key);
+  return dim.replaceAll('_', ' ');
+}
 
 const judgeDimensionSchema = z.record(z.string(), z.object({
   reason: z.string().optional(),
@@ -11,6 +18,7 @@ const judgeDimensionSchema = z.record(z.string(), z.object({
 
 const judgeReportSchema = z.object({
   model_id: z.string().optional(),
+  overall: z.number().finite().optional(),
   notes: z.union([z.string(), z.array(z.string())]).optional(),
   dimensions: judgeDimensionSchema.optional(),
 }).passthrough();
@@ -84,6 +92,9 @@ export default function JudgeReport({ runId }: JudgeReportProps) {
   }
 
   const modelId = typeof data.model_id === 'string' ? data.model_id : null;
+  const overall = typeof data.overall === 'number' && Number.isFinite(data.overall)
+    ? data.overall
+    : null;
   const rawNotes = data.notes;
   const overallNotes =
     typeof rawNotes === 'string'
@@ -104,16 +115,33 @@ export default function JudgeReport({ runId }: JudgeReportProps) {
         </div>
       )}
 
+      {overall !== null && (
+        <div className="judge-report__summary">
+          <span className="judge-report__summary-label">{t('RunDetail.judge_score')}</span>
+          <span className="judge-report__summary-value">{overall.toFixed(1)}</span>
+          <p className="judge-report__summary-note">{t('RunDetail.judge_advisory_note')}</p>
+        </div>
+      )}
+
       {dimensions && Object.keys(dimensions).length > 0 && (
         <dl className="judge-report__feedback">
-          {Object.entries(dimensions).map(([dim, val]) => (
-            <div key={dim} className="judge-report__feedback-row">
-              <dt className="judge-report__feedback-dim">{dim}</dt>
-              <dd className="judge-report__feedback-reason">
-                {typeof val === 'object' && val?.reason ? String(val.reason) : '—'}
-              </dd>
-            </div>
-          ))}
+          {Object.entries(dimensions).map(([dim, val]) => {
+            const score = typeof val === 'object' && typeof val?.score === 'number'
+              ? val.score : null;
+            return (
+              <div key={dim} className="judge-report__feedback-row">
+                <dt className="judge-report__feedback-dim">
+                  {translateDimName(t, dim)}
+                  {score !== null && (
+                    <span className="judge-report__feedback-score">{score.toFixed(1)}</span>
+                  )}
+                </dt>
+                <dd className="judge-report__feedback-reason">
+                  {typeof val === 'object' && val?.reason ? String(val.reason) : '—'}
+                </dd>
+              </div>
+            );
+          })}
         </dl>
       )}
 

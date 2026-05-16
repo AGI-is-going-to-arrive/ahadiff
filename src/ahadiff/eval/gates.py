@@ -111,7 +111,7 @@ def evaluate_hard_gates(
             passed=diff_coverage_score is not None
             and diff_coverage_score >= evidence_coverage_threshold,
             detail=_minimum_threshold_detail(
-                "evidence coverage",
+                "claim anchor coverage",
                 score=diff_coverage_score,
                 threshold=evidence_coverage_threshold,
             ),

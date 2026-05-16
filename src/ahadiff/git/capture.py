@@ -45,7 +45,7 @@ from ahadiff.safety.ignore import (
     load_workspace_allowlist_policy,
     resolve_safe_path_from_root,
 )
-from ahadiff.safety.injection import protect_untrusted_text
+from ahadiff.safety.injection import InjectionReport, protect_untrusted_text
 from ahadiff.safety.redact import RedactionPipelineResult, redaction_pipeline
 
 from .download import download_patch_url
@@ -121,6 +121,7 @@ class CapturedDiff:
     persisted_patch_text: str
     metadata: dict[str, Any]
     redaction_result: RedactionPipelineResult
+    injection_report: InjectionReport
     graphify_status: GraphifyStatus
     before_text_by_path: dict[str, str]
     after_text_by_path: dict[str, str]
@@ -165,6 +166,8 @@ _GRAPHIFY_CONTEXT_SCHEMA = "ahadiff.graphify_context"
 _GRAPHIFY_CONTEXT_SCHEMA_VERSION = 1
 _GRAPHIFY_SIGNOFF_SCHEMA = "ahadiff.graphify_signoff"
 _GRAPHIFY_SIGNOFF_SCHEMA_VERSION = 1
+_SAFETY_FINDINGS_SCHEMA = "ahadiff.safety_findings"
+_SAFETY_FINDINGS_SCHEMA_VERSION = 1
 _GRAPHIFY_PROVENANCE_MAX_BYTES = 16 * 1024
 _SHA256_HEX_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 log = logging.getLogger(__name__)
@@ -264,11 +267,12 @@ def capture_patch(
         tag_names=raw_capture.tag_names,
         metadata_texts=raw_capture.metadata_texts,
     )
-    protected_patch = protect_untrusted_text(
+    injection_report = protect_untrusted_text(
         redaction_result.redacted_text,
         source_name="patch.diff",
         source_kind="raw_patch",
-    ).protected_text
+    )
+    protected_patch = injection_report.protected_text
     persisted_patch_text, selection = _apply_capture_limits(
         protected_patch,
         max_files=effective_max_files,
@@ -332,6 +336,7 @@ def capture_patch(
         persisted_patch_text=persisted_patch_text,
         metadata=metadata,
         redaction_result=redaction_result,
+        injection_report=injection_report,
         graphify_status=graphify_status,
         before_text_by_path=raw_capture.before_text_by_path,
         after_text_by_path=raw_capture.after_text_by_path,
@@ -361,6 +366,7 @@ def write_input_artifacts(capture: CapturedDiff) -> tuple[Path, Path]:
         artifact="after_text_by_path",
         texts=capture.after_text_by_path,
     )
+    safety_findings_payload = safety_findings_payload_from_capture(capture)
     redacted_before_text = _redact_json_artifact(
         _render_json_text(before_text_payload),
         capture.workspace_root,
@@ -378,6 +384,11 @@ def write_input_artifacts(capture: CapturedDiff) -> tuple[Path, Path]:
         "before_text_by_path.json": redacted_before_text,
         "after_text_by_path.json": redacted_after_text,
     }
+    if safety_findings_payload is not None:
+        artifact_texts["safety_findings.json"] = _redact_json_artifact(
+            _render_json_text(safety_findings_payload),
+            capture.workspace_root,
+        )
     graphify_context_payload = graphify_context_payload_from_capture(capture)
     if graphify_context_payload is not None:
         artifact_texts["graphify_context.json"] = _redact_json_artifact(
@@ -397,6 +408,7 @@ def write_input_artifacts(capture: CapturedDiff) -> tuple[Path, Path]:
         symbols_payload,
         before_text_payload,
         after_text_payload,
+        safety_findings_payload,
         graphify_context_payload,
         graphify_signoff_payload,
     )
@@ -470,6 +482,7 @@ def _artifact_set_payload(
     symbols_payload: dict[str, Any],
     before_text_payload: dict[str, Any],
     after_text_payload: dict[str, Any],
+    safety_findings_payload: dict[str, Any] | None,
     graphify_context_payload: dict[str, Any] | None,
     graphify_signoff_payload: dict[str, Any] | None,
 ) -> dict[str, Any]:
@@ -519,6 +532,17 @@ def _artifact_set_payload(
             schema_version=after_text_payload["schema_version"],
         ),
     ]
+    if safety_findings_payload is not None:
+        artifacts.append(
+            _artifact_descriptor(
+                artifact_type="safety_findings",
+                path="safety_findings.json",
+                media_type="application/json",
+                text=artifact_texts["safety_findings.json"],
+                schema=safety_findings_payload["schema"],
+                schema_version=safety_findings_payload["schema_version"],
+            )
+        )
     if graphify_context_payload is not None:
         artifacts.append(
             _artifact_descriptor(
@@ -558,6 +582,11 @@ def _artifact_set_payload(
             ],
             "before_text_by_path_from": "capture.before_text_by_path",
             "after_text_by_path_from": "capture.after_text_by_path",
+            "safety_findings_from": (
+                "capture.redaction_result+capture.injection_report"
+                if safety_findings_payload is not None
+                else None
+            ),
             "graphify_context_from": (
                 "capture.graphify_status" if graphify_context_payload is not None else None
             ),
@@ -699,6 +728,50 @@ def graphify_signoff_payload_from_capture(capture: CapturedDiff) -> dict[str, An
             "Graphify signoff summarizes imported graph metadata; it does not re-parse code.",
             "Coverage is approximate and based on run-selected files versus graph size.",
         ],
+    }
+
+
+def safety_findings_payload_from_capture(capture: CapturedDiff) -> dict[str, Any] | None:
+    findings: list[dict[str, Any]] = []
+    for finding in capture.redaction_result.findings:
+        severity = (
+            "Critical" if finding.severity == "hard_block" and not finding.allowlisted else "High"
+        )
+        findings.append(
+            {
+                "action": finding.action,
+                "allowlisted": finding.allowlisted,
+                "blocked_remote": finding.blocked_remote,
+                "column": finding.column,
+                "line": finding.line,
+                "path": finding.path,
+                "rule_id": finding.rule_id,
+                "secret_type": finding.secret_type,
+                "severity": severity,
+                "source_kind": finding.source_kind,
+                "source_name": finding.source_name,
+                "value_sha256": finding.value_hash,
+            }
+        )
+    for finding in capture.injection_report.findings:
+        findings.append(
+            {
+                "action": finding.action,
+                "line": finding.line,
+                "rule_id": finding.rule_id,
+                "severity": "Critical",
+                "source_kind": finding.source_kind,
+                "source_name": finding.source_name,
+            }
+        )
+    if not findings:
+        return None
+    return {
+        "artifact": "safety_findings",
+        "findings": findings,
+        "run_id": capture.run_id,
+        "schema": _SAFETY_FINDINGS_SCHEMA,
+        "schema_version": _SAFETY_FINDINGS_SCHEMA_VERSION,
     }
 
 

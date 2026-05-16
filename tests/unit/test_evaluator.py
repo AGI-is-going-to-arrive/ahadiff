@@ -382,6 +382,104 @@ def test_spec_alignment_without_spec_is_not_applicable_score_zero(tmp_path: Path
     assert report.weakest_dim != "spec_alignment"
 
 
+def test_evaluate_run_fails_when_safety_findings_artifact_has_critical(
+    tmp_path: Path,
+) -> None:
+    run_path = _write_run_fixture(
+        tmp_path,
+        run_id="run-critical-safety",
+        claims=_standard_quiz_claims("run-critical-safety"),
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+    )
+    (run_path / "safety_findings.json").write_text(
+        json.dumps(
+            {
+                "artifact": "safety_findings",
+                "schema": "ahadiff.safety_findings",
+                "schema_version": 1,
+                "run_id": "run-critical-safety",
+                "findings": [
+                    {
+                        "severity": "Critical",
+                        "rule_id": "BLOCKED_SECRET",
+                        "source": "patch.diff",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    report = evaluate_run(run_path)
+
+    assert report.verdict == "FAIL"
+    assert "critical_safety_findings" in report.hard_gates.failed_names()
+
+
+def test_evaluate_run_keeps_non_critical_safety_findings_non_blocking(
+    tmp_path: Path,
+) -> None:
+    run_path = _write_run_fixture(
+        tmp_path,
+        run_id="run-non-critical-safety",
+        claims=_standard_quiz_claims("run-non-critical-safety"),
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+    )
+    (run_path / "safety_findings.json").write_text(
+        json.dumps(
+            {
+                "artifact": "safety_findings",
+                "schema": "ahadiff.safety_findings",
+                "schema_version": 1,
+                "run_id": "run-non-critical-safety",
+                "findings": [
+                    {
+                        "severity": "High",
+                        "rule_id": "SOFT_DETECT",
+                        "source": "patch.diff",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    report = evaluate_run(run_path)
+
+    assert report.verdict == "PASS"
+    assert "critical_safety_findings" not in report.hard_gates.failed_names()
+
+
+def test_evaluate_run_fails_closed_on_invalid_safety_findings_artifact(
+    tmp_path: Path,
+) -> None:
+    run_path = _write_run_fixture(
+        tmp_path,
+        run_id="run-invalid-safety",
+        claims=_standard_quiz_claims("run-invalid-safety"),
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+    )
+    (run_path / "safety_findings.json").write_text("{not json\n", encoding="utf-8")
+
+    report = evaluate_run(run_path)
+
+    assert report.verdict == "FAIL"
+    assert "critical_safety_findings" in report.hard_gates.failed_names()
+
+
 def test_spec_alignment_uses_artifact_score_and_summary(tmp_path: Path) -> None:
     run_path = _write_run_fixture(
         tmp_path,
@@ -809,9 +907,11 @@ def test_run_llm_judge_for_run_writes_judge_artifact(tmp_path: Path) -> None:
     )
     deterministic_report = evaluate_run(run_path)
     dimensions = {
-        dimension.name: {"score": dimension.max_score, "reason": "ok"}
+        dimension.name: {"score": round(dimension.max_score / 2, 2), "reason": "ok"}
         for dimension in deterministic_report.dimensions
+        if dimension.name != "spec_alignment"
     }
+    dimensions["spec_alignment"] = {"score": 10, "reason": "judge treated no-spec as aligned"}
     captured: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -856,9 +956,12 @@ def test_run_llm_judge_for_run_writes_judge_artifact(tmp_path: Path) -> None:
     assert request_payload["model"] == "gpt-5.5"
     assert request_payload["text"] == {"format": {"type": "json_object"}}
     assert report.model_id == "gpt-5.5"
+    assert report.overall == 50.0
     payload = json.loads((run_path / "judge.json").read_text(encoding="utf-8"))
     assert payload["artifact"] == "llm_judge"
     assert payload["model_id"] == "gpt-5.5"
+    assert payload["dimensions"]["spec_alignment"]["score"] == 0.0
+    assert payload["dimensions"]["spec_alignment"]["max_score"] == 0.0
     assert payload["usage"] == {"input_tokens": 11, "output_tokens": 22}
 
 

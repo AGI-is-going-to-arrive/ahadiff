@@ -67,6 +67,104 @@
   border-bottom-color: var(--accent);
 }
 
+/* ---------- Overview summary card ---------- */
+.run-detail__summary-card {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  margin-bottom: var(--sp-4);
+}
+
+.run-detail__summary-verdict {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1);
+  flex-shrink: 0;
+}
+
+.run-detail__summary-badge {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.run-detail__summary-score {
+  font-family: var(--font-mono);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--ink-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.run-detail__summary-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.run-detail__summary-text {
+  margin: 0 0 var(--sp-2);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  line-height: 1.5;
+}
+
+.run-detail__summary-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.run-detail__summary-links {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  flex-shrink: 0;
+}
+
+.run-detail__summary-link {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--sp-1) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--accent-ink);
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+.run-detail__summary-link:hover {
+  background: var(--elevated);
+}
+
+/* ---------- Degraded banner ---------- */
+.run-detail__degraded-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  margin-bottom: var(--sp-4);
+}
+
+.run-detail__degraded-tag {
+  background: var(--warning-soft);
+  color: var(--warning);
+  padding: var(--sp-0-5) var(--sp-2);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+}
+
 /* ---------- Overview meta ---------- */
 .run-detail__meta {
   margin: 0;
@@ -105,23 +203,6 @@
 .run-detail__artifact-item code {
   overflow-wrap: anywhere;
   word-break: break-word;
-}
-
-.run-detail__degraded-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-1);
-}
-
-.run-detail__degraded-list li {
-  background: var(--warning-soft);
-  color: var(--warning);
-  padding: var(--sp-0-5) var(--sp-2);
-  border-radius: var(--r-sm);
-  font-size: var(--fs-xs);
 }
 
 /* ---------- Spec alignment ---------- */
@@ -306,19 +387,11 @@
 }
 
 /* ---------- Artifacts ---------- */
-.run-detail__artifacts-title {
-  font-family: var(--font-sans);
-  font-size: var(--fs-lg);
-  font-weight: 600;
-  color: var(--ink-strong);
-  margin: 0 0 var(--sp-3);
-}
-
 .run-detail__artifact-links {
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-2);
-  margin-bottom: var(--sp-4);
+  margin-bottom: var(--sp-5);
 }
 
 .run-detail__artifact-link {
@@ -341,11 +414,19 @@
   background: var(--elevated);
 }
 
-.run-detail__artifact-files-title {
+.run-detail__artifact-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.run-detail__artifact-section-title {
   font-family: var(--font-sans);
   font-size: var(--fs-sm);
   font-weight: 600;
-  color: var(--ink-strong);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   margin: 0 0 var(--sp-2);
 }
 
@@ -361,12 +442,14 @@
 .run-detail__artifact-item {
   padding: var(--sp-1) var(--sp-2);
   background: var(--surface);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--r-sm);
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   color: var(--ink);
 }
 
+/* ---------- Concepts table ---------- */
 .run-detail__concepts-table {
   width: 100%;
   border-collapse: collapse;
@@ -426,11 +509,18 @@
 }
 
 @media (max-width: 540px) {
+  .run-detail__summary-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .run-detail__summary-links {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
   .run-detail__meta-row {
     flex-direction: column;
     gap: var(--sp-1);
   }
-
   .run-detail__meta-row dt {
     flex-basis: auto;
   }
