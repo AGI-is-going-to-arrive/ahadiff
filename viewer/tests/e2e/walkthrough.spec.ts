@@ -692,14 +692,13 @@ test.describe('walkthrough: full-app functional test', () => {
       await expect(linkedClaimLine).toHaveClass(/diff-line--claim-selected/);
     }).toPass({ timeout: 7000 });
     await expect(page.locator('.claim-inspector__item--selected')).toContainText('c1');
-    // Source preview moved out of the right inspector panel (which now shows
-    // jump-to-code links instead). The actual source hunk renders below the
-    // diff in `.diff-page__selected-hunk`.
+    // Source preview stays attached to the selected claim card so users do
+    // not have to scroll to the bottom of a long diff to inspect evidence.
     const jumpButtons = page.locator('.claim-inspector__jump-btn');
     await expect(jumpButtons).toHaveCount(2);
     await expect(jumpButtons.nth(0)).toContainText('demo.py:3');
     await expect(jumpButtons.nth(1)).toContainText('demo.py:8-9');
-    await expect(page.locator('.diff-page__selected-hunk-code')).toContainText(
+    await expect(page.locator('.claim-inspector__source-preview-code').first()).toContainText(
       '# learn-from-diff',
     );
 

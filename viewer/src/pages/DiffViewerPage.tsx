@@ -146,24 +146,6 @@ function parseSourceHunks(
   };
 }
 
-function formatSourceGroupRef(group: ClaimSourceLineGroup): string {
-  const range =
-    group.line_end !== group.line_start && group.line_end > 0 ? `-${group.line_end}` : '';
-  return `${group.file}:${group.line_start}${range}`;
-}
-
-function formatClaimRef(claim: ClaimInspectorClaim): string {
-  if (!claim.file || claim.line_start <= 0) return '';
-  const range =
-    claim.line_end !== claim.line_start && claim.line_end > 0 ? `-${claim.line_end}` : '';
-  return `${claim.file}:${claim.line_start}${range}`;
-}
-
-function formatSourceLine(line: DiffSourceLine): string {
-  const marker = line.type === 'add' ? '+' : line.type === 'del' ? '-' : ' ';
-  return `${marker}${String(line.line_no).padStart(4, ' ')} ${line.text}`;
-}
-
 function parseClaims(content: string): DiffPageClaim[] {
   const result: DiffPageClaim[] = [];
   for (const line of content.split('\n')) {
@@ -390,21 +372,6 @@ export default function DiffViewerPage() {
     () => claims.flatMap((claim) => claim.source_anchors),
     [claims],
   );
-  const selectedClaim = useMemo(
-    () =>
-      selectedClaimId
-        ? claimsWithSource.find((claim) => claim.claim_id === selectedClaimId) ?? null
-        : null,
-    [claimsWithSource, selectedClaimId],
-  );
-  const selectedSourceGroup = selectedClaim?.source_line_groups?.[0];
-  const selectedSourceLines = selectedSourceGroup?.lines ?? selectedClaim?.source_lines ?? [];
-  const selectedSourceRef = selectedSourceGroup
-    ? formatSourceGroupRef(selectedSourceGroup)
-    : selectedClaim
-      ? formatClaimRef(selectedClaim)
-      : '';
-
   const handleActiveFileChange = useCallback((index: number | null) => {
     if (index != null) setHeaderFileIndex(index);
   }, []);
@@ -526,34 +493,6 @@ export default function DiffViewerPage() {
                   focusTarget={diffFocusTarget}
                 />
               </>
-            )}
-
-            {phase === 'ready' && selectedClaim && (
-              <section
-                className={`diff-page__selected-hunk diff-page__selected-hunk--${selectedClaim.verdict}`}
-                aria-label={t('Diff.selected_source_hunk_title')}
-              >
-                <div className="diff-page__selected-hunk-header">
-                  <h2>{t('Diff.selected_source_hunk_title')}</h2>
-                  <div className="diff-page__selected-hunk-meta">
-                    {selectedClaim.claim_id}
-                    {selectedSourceRef ? ` · ${selectedSourceRef}` : ''}
-                  </div>
-                </div>
-                <p className="diff-page__selected-hint">{t('Diff.selected_lines_hint')}</p>
-                <blockquote className="diff-page__selected-hunk-claim">
-                  {selectedClaim.statement}
-                </blockquote>
-                {selectedSourceLines.length > 0 ? (
-                  <pre className="diff-page__selected-hunk-code">
-                    <code>{selectedSourceLines.map(formatSourceLine).join('\n')}</code>
-                  </pre>
-                ) : (
-                  <p className="diff-page__selected-hunk-empty">
-                    {t('Claim_inspector.source_unavailable')}
-                  </p>
-                )}
-              </section>
             )}
           </div>
 

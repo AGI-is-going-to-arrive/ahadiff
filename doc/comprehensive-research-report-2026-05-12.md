@@ -6,6 +6,7 @@
 > [Codex Audit] 2026-05-12：本次修订基于当前仓库真实代码、真实测试输出、静态文件计数；第六章竞品格局已追加 Grok Search 官方/权威来源复核。
 > [Current-state note] 2026-05-15：本报告仍是 05-12 研究快照，不是当前实现账本。当前 Diff 已有 Unified / Split、Prev/Next、`+` / `-` 行标记、claim auto-scroll、柔和 claim 选中色带、dot legend 和 selected-lines hint；Welcome/Landing lesson demo 已有 H2 折叠、高度上限和最新 Lesson 链接。最新 frontend-polish 实测为后端 unit `2502 passed`、viewer typecheck、Vitest `353 passed`、viewer build、i18n `1449/1449` 和 diffcheck；integration/eval/ruff/format/pyright/wheel/full Playwright 未在这次 polish 中重跑。
 > [Current-state note] 2026-05-16：Diff claim navigation 又补上右侧 ClaimInspector 长 diff 跳转后保持可见、选中详情贴在对应卡片下方，以及右侧栏内部滚动；本轮只重跑 viewer 目标/完整 Vitest、typecheck、build、diffcheck 和 serve/browser cache-bust smoke，未重跑后端、完整 Playwright 或 live judge。
+> [Current-state note] 2026-05-17：Diff 选中 claim 的源码块预览已改为卡片内联展示，旧底部 selected-hunk 面板已移除；Welcome/Landing 现在会显示 LearnTaskBanner 反馈，并优先使用刚完成或 latest run 的真实 diff / lesson artifact，真实 run 缺 lesson 时不再混入样例内容。最新 viewer-only 实测为 viewer typecheck、Vitest `362 passed`、viewer build、Diff Chromium E2E `1 passed`、Welcome Chromium E2E `4 passed`、i18n `1490/1490`；后端、完整 Playwright 和 live judge 未在本轮重跑。
 
 ---
 
@@ -46,7 +47,7 @@
 | P1 | Lesson 三栏 reader 完整落地 | `LessonPage.tsx` |
 | P2 | Diff 虚拟列表 | `DiffView.tsx` |
 | P2 | Benchmark/judge 报告页 | 新页面 |
-| P2 | Landing 真实数据替换样例 | `LandingPage.tsx` |
+| P2 | Landing benchmark/demo API（真实 run artifact 预览已接入） | `LandingPage.tsx` |
 | P2 | V6 Newsreader / local font token 取舍 | CSS tokens |
 | P2 | 8C artifact pack 完整包 | doc/ |
 
@@ -288,7 +289,7 @@
 | `.gitattributes` 强制 LF（已补，后续只维护模式表） | 0.5h |
 | `manifest.json` 补 `display_override` + `lang` | 0.5h |
 | Diff 大文件虚拟滚动 | 1-2d |
-| Landing 真实数据替换样例 | 1d |
+| Landing benchmark/demo API（真实 run artifact 预览已接入） | 1d |
 
 > [Codex Audit] P0/P1/P2 排序已保留，但 Karpathy 维护循环和公开 preview 不是纯前端任务；它们涉及后端数据模型、安全边界和产品发布策略。
 

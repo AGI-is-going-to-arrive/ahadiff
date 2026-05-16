@@ -1,8 +1,11 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getRatchetTransparency, getRunArtifact, getRunLesson } from '../api/runs';
-import type { RatchetTransparencyResponse, RunSummary } from '../api/types';
+import LearnTaskBanner from '../components/LearnTaskBanner';
+import { ApiError } from '../api/client';
+import type { RatchetTransparencyResponse, RunArtifactEnvelope, RunSummary } from '../api/types';
 import { useTranslation } from '../i18n/useTranslation';
+import { useLearnStore } from '../state/learn-store';
 import { useRunsStore } from '../state/runs-store';
 import { formatCompactNumber } from '../utils/format';
 import { renderMarkdownCollapsible, renderMarkdownProse } from '../utils/markdown';
@@ -89,10 +92,11 @@ interface TrustCardView {
 
 const DEMO_TABS = ['raw', 'aha'] as const;
 type DemoTabId = typeof DEMO_TABS[number];
+const LESSON_LEVEL_FALLBACKS = ['full', 'hint', 'compact'] as const;
 
 interface LiveHeroDemo {
-  diff: string;
-  lesson: string;
+  diff: string | null;
+  lesson: string | null;
   runLabel: string;
 }
 
@@ -132,24 +136,48 @@ function latestRunOf(runs: RunSummary[]): RunSummary | null {
   )[0];
 }
 
+async function getFirstAvailableLesson(
+  runId: string,
+  options: { signal: AbortSignal },
+): Promise<RunArtifactEnvelope | null> {
+  for (const level of LESSON_LEVEL_FALLBACKS) {
+    try {
+      return await getRunLesson(runId, level, options);
+    } catch (err: unknown) {
+      if (err instanceof ApiError && err.status === 404) continue;
+      throw err;
+    }
+  }
+  return null;
+}
+
 export default function LandingPage() {
   const { t, locale } = useTranslation();
   const runs = useRunsStore((s) => s.runs);
   const loadRuns = useRunsStore((s) => s.loadRuns);
+  const learnPhase = useLearnStore((s) => s.phase);
+  const completedLearnRunId = useLearnStore((s) =>
+    s.phase === 'completed' ? s.task?.result_summary?.run_id ?? null : null,
+  );
   const [activeTab, setActiveTab] = useState<DemoTabId>('aha');
   const [isLearnDialogOpen, setIsLearnDialogOpen] = useState(false);
   const [liveDemo, setLiveDemo] = useState<LiveHeroDemo | null>(null);
   const [transparency, setTransparency] = useState<RatchetTransparencyResponse | null>(null);
   const latestRun = useMemo(() => latestRunOf(runs), [runs]);
-  const latestLessonPath = latestRun ? `/run/${encodeURIComponent(latestRun.run_id)}/lesson` : '/';
-  const demoDiff = liveDemo?.diff ?? SAMPLE_DIFF;
-  const demoLesson = liveDemo?.lesson ?? SAMPLE_LESSON;
+  const activeRunId = completedLearnRunId ?? latestRun?.run_id ?? null;
+  const activeRunSourceRef = runs.find((run) => run.run_id === activeRunId)?.source_ref ?? null;
+  const liveLessonMissing = liveDemo !== null && liveDemo.lesson === null;
+  const latestRunPath = activeRunId
+    ? `/run/${encodeURIComponent(activeRunId)}${liveLessonMissing ? '' : '/lesson'}`
+    : '/';
+  const demoDiff = liveDemo ? liveDemo.diff : SAMPLE_DIFF;
+  const demoLesson = liveDemo ? liveDemo.lesson : SAMPLE_LESSON;
   const renderedLesson = useMemo(
-    () => renderMarkdownProse(demoLesson, 'hero-demo'),
+    () => (demoLesson ? renderMarkdownProse(demoLesson, 'hero-demo') : null),
     [demoLesson],
   );
   const renderedLessonCollapsible = useMemo(
-    () => renderMarkdownCollapsible(demoLesson, 'hero-demo', 1),
+    () => (demoLesson ? renderMarkdownCollapsible(demoLesson, 'hero-demo', 1) : null),
     [demoLesson],
   );
 
@@ -158,6 +186,16 @@ export default function LandingPage() {
       // Welcome remains useful as a static example when serve has no run list.
     });
   }, [loadRuns]);
+
+  useEffect(() => {
+    if (learnPhase !== 'completed') return undefined;
+    const controller = new AbortController();
+    void loadRuns(undefined, { signal: controller.signal }).catch((err: unknown) => {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      // Keep the just-finished run preview path working via result_summary.run_id.
+    });
+    return () => controller.abort();
+  }, [learnPhase, loadRuns]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -171,33 +209,38 @@ export default function LandingPage() {
   }, []);
 
   useEffect(() => {
-    if (!latestRun) {
+    if (!activeRunId) {
       setLiveDemo(null);
       return;
     }
 
     const controller = new AbortController();
-    setLiveDemo(null);
-    Promise.all([
-      getRunArtifact(latestRun.run_id, 'diff', { signal: controller.signal }),
-      getRunLesson(latestRun.run_id, 'full', { signal: controller.signal }),
-    ]).then(([diffEnvelope, lessonEnvelope]) => {
+    const runLabel = activeRunSourceRef || activeRunId.slice(0, 8);
+    setLiveDemo({ diff: null, lesson: null, runLabel });
+    Promise.allSettled([
+      getRunArtifact(activeRunId, 'diff', { signal: controller.signal }),
+      getFirstAvailableLesson(activeRunId, { signal: controller.signal }),
+    ]).then(([diffResult, lessonResult]) => {
       if (controller.signal.aborted) return;
-      const diff = diffEnvelope.content.trim() || SAMPLE_DIFF;
-      const lesson = lessonEnvelope.content.trim() || SAMPLE_LESSON;
+      const diff = diffResult.status === 'fulfilled'
+        ? diffResult.value.content.trim() || null
+        : null;
+      const lesson = lessonResult.status === 'fulfilled'
+        ? lessonResult.value?.content.trim() || null
+        : null;
       setLiveDemo({
         diff,
         lesson,
-        runLabel: latestRun.source_ref || latestRun.run_id.slice(0, 8),
+        runLabel,
       });
     }).catch((err: unknown) => {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       if (controller.signal.aborted) return;
-      setLiveDemo(null);
+      setLiveDemo({ diff: null, lesson: null, runLabel });
     });
 
     return () => controller.abort();
-  }, [latestRun]);
+  }, [activeRunId, activeRunSourceRef]);
 
   const trustCards: TrustCardView[] = useMemo(() => {
     const manifest = transparency?.benchmark.manifest ?? null;
@@ -301,8 +344,10 @@ export default function LandingPage() {
             <div className="en">{t('Brand.tagline')}</div>
             <p className="lead">{t('Landing.hero_lead')}</p>
             <div className="hero-ctas">
-              <Link to={latestLessonPath} className="btn primary btn-inkstone btn-primary">
-                {latestRun ? t('Landing.hero_cta_lesson') : t('Nav.dashboard')} →
+              <Link to={latestRunPath} className="btn primary btn-inkstone btn-primary">
+                {activeRunId
+                  ? t(liveLessonMissing ? 'Landing.hero_cta_run' : 'Landing.hero_cta_lesson')
+                  : t('Nav.dashboard')} →
               </Link>
               <button
                 type="button"
@@ -312,6 +357,9 @@ export default function LandingPage() {
                 {t('Landing.hero_cta_learn')}
               </button>
               <span className="text cli-cmd">pip install ahadiff && ahadiff learn HEAD~1..HEAD</span>
+            </div>
+            <div className="hero-learn-status">
+              <LearnTaskBanner />
             </div>
           </div>
 
@@ -356,16 +404,34 @@ export default function LandingPage() {
             </div>
             <div className="pane active hero-demo__content" id="demo-panel" role="tabpanel" aria-labelledby={activeTab === 'raw' ? 'tab-raw' : 'tab-aha'} tabIndex={0}>
               {activeTab === 'raw' ? (
-                <pre className="code-block" style={{ margin: 0, borderLeft: '3px solid var(--muted)' }}>
-                  {demoDiff}
-                </pre>
+                demoDiff ? (
+                  <pre className="code-block" style={{ margin: 0, borderLeft: '3px solid var(--muted)' }}>
+                    {demoDiff}
+                  </pre>
+                ) : (
+                  <div className="hero-demo__artifact-empty" role="status">
+                    {t('Landing.hero_demo_diff_unavailable')}
+                  </div>
+                )
               ) : (
                 <div className="u-text-sm-relaxed prose" style={{ fontSize: '14.5px' }}>
-                  {renderedLessonCollapsible}
-                  {liveDemo && latestRun && (
+                  {renderedLessonCollapsible ?? (
+                    <div className="hero-demo__artifact-empty" role="status">
+                      <strong>{t('Landing.hero_demo_lesson_unavailable_title')}</strong>
+                      <span>{t('Landing.hero_demo_lesson_unavailable_body')}</span>
+                    </div>
+                  )}
+                  {liveDemo && activeRunId && liveDemo.lesson && (
                     <div className="hero-demo__lesson-link">
-                      <Link to={`/run/${encodeURIComponent(latestRun.run_id)}/lesson`}>
+                      <Link to={`/run/${encodeURIComponent(activeRunId)}/lesson`}>
                         {t('Diff.open_lesson')} →
+                      </Link>
+                    </div>
+                  )}
+                  {liveDemo && activeRunId && !liveDemo.lesson && (
+                    <div className="hero-demo__lesson-link">
+                      <Link to={`/run/${encodeURIComponent(activeRunId)}`}>
+                        {t('Landing.hero_demo_open_run')} →
                       </Link>
                     </div>
                   )}
@@ -422,13 +488,24 @@ export default function LandingPage() {
           <div className="col">
             <h3 className="ba-col__header">{t('Landing.before_header')}</h3>
             <div className="ba-col__body">
-              <pre className="mono" style={{ fontSize: '12px', lineHeight: 1.6, color: 'var(--ink-2)', whiteSpace: 'pre-wrap' }}>{demoDiff}</pre>
+              {demoDiff ? (
+                <pre className="mono" style={{ fontSize: '12px', lineHeight: 1.6, color: 'var(--ink-2)', whiteSpace: 'pre-wrap' }}>{demoDiff}</pre>
+              ) : (
+                <div className="hero-demo__artifact-empty" role="status">
+                  {t('Landing.hero_demo_diff_unavailable')}
+                </div>
+              )}
             </div>
           </div>
           <div className="col" style={{ background: '#fff' }}>
             <h3 className="ba-col__header">{t('Landing.after_header')}</h3>
             <div className="prose" style={{ fontSize: '14.5px', lineHeight: 1.7 }}>
-              {renderedLesson}
+              {renderedLesson ?? (
+                <div className="hero-demo__artifact-empty" role="status">
+                  <strong>{t('Landing.hero_demo_lesson_unavailable_title')}</strong>
+                  <span>{t('Landing.hero_demo_lesson_unavailable_body')}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>

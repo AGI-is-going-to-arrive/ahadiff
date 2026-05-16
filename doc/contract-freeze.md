@@ -1035,6 +1035,18 @@ run_id: str
 - `.diff-page` 不再用 `overflow: hidden` 截断 sticky 右侧栏；长 diff 跳转时 ClaimInspector 仍停在视口内。
 - ClaimInspector 选中卡片的自动滚动只作用于右侧栏自身，不再调用会影响整页的 `scrollIntoView()`。
 - 选中详情和证据 / 跳转按钮仍使用原有视觉结构，但渲染在对应 claim 卡片下方，用户不用回到列表顶部查看详情。
+- 选中 claim 的源码块预览现在也渲染在对应 ClaimInspector 卡片里，使用 `.claim-inspector__source-preview-code` 展示片段和跳转按钮；旧的底部 `.diff-page__selected-hunk` 面板已移除。
 - 旧浏览器会话可能仍被 Workbox service worker / cache 托管旧 bundle；验证当前 build 时需要清理缓存或硬刷新。
 
 本轮实测：目标 Vitest `2 files, 29 tests passed`；viewer typecheck；完整 Vitest `35 files, 362 tests passed`；viewer build；`git diff --check HEAD`；serve/browser cache-bust smoke 确认 `DiffViewerPage-CTH1QPRr.css` 已加载，`.diff-page` `overflowY=visible`，claim 021 跳到 `viewer/src/i18n/messages/en.json:565`，右侧 ClaimInspector 仍可见。后端、integration、eval、ruff/format、pyright、wheel、完整 Playwright、live judge 和远端 GitHub Actions 未在本轮重跑。
+
+### 9.22 Diff inline source preview / Welcome real-run preview（2026-05-17）
+
+本轮只记录当前 `viewer/` 改动已经支撑的契约：
+
+- Diff claim 的“看证据”路径以右侧 ClaimInspector 卡片为入口。用户点击任意 claim 后，状态、证据、相关概念、源码块预览和跳转按钮都在同一卡片附近展示；页面底部不再保留单独的 selected hunk 展示区。
+- 源码块预览仍来自当前 diff 的 `sourceSnippets`，每条 preview 使用原始 line number 和 marker 格式化，不把 claim 文案当源码。
+- Welcome/Landing 的学习入口会先显示当前 learn task 反馈；有刚完成 task 的 `run_id` 时优先读取该 run，其次才读取 latest finalized run。
+- Landing 的 hero preview 使用真实 run 的 diff artifact 和第一个可用 lesson artifact（full → hint → compact）。当真实 run 缺 lesson 时，页面显示空状态并跳到 Run Detail，不回退到样例 lesson，避免把样例和真实 run 混在一起。
+
+本轮实测：viewer typecheck 通过；前端 Vitest `35 files, 362 tests passed`；viewer build 通过；Diff Chromium E2E `1 passed`；Welcome Chromium E2E `4 passed`；i18n scalar keys `1490/1490`。一次并行 Playwright 启动因为两个 webServer 同抢 `5173` 失败，随后用 `AHADIFF_VIEWER_E2E_PORT=5174` 重跑 Welcome 通过。后端、integration、eval、ruff/format、pyright、wheel、完整 Playwright、live judge 和远端 GitHub Actions 未在本轮重跑。

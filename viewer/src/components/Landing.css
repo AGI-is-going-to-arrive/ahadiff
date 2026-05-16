@@ -168,6 +168,23 @@
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), inset 0 -1px 0 rgba(0,0,0,0.3);
 }
 
+.hero-learn-status:empty {
+  display: none;
+}
+
+.hero-learn-status {
+  margin-top: var(--sp-5);
+  max-width: min(640px, 100%);
+}
+
+.hero-learn-status .learn-banner {
+  margin: 0;
+  max-width: none;
+  align-items: flex-start;
+  padding: 12px var(--sp-4);
+  border-radius: var(--r-lg);
+}
+
 /* ---- Demo card ---- */
 .hero-demo {
   background: var(--elevated);
@@ -223,6 +240,23 @@
   padding: var(--sp-5);
   max-height: 520px;
   overflow-y: auto;
+}
+
+.hero-demo__artifact-empty {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  border: 1px dashed var(--hair);
+  border-radius: var(--r-md);
+  background: var(--wash);
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.hero-demo__artifact-empty strong {
+  color: var(--ink);
 }
 
 /* ---- Lesson accordion (collapsible sections in hero card) ---- */

@@ -75,6 +75,11 @@ function formatSourceGroupRef(group: ClaimSourceLineGroup): string {
   return `${group.file}:${group.line_start}${range}${side}`;
 }
 
+function formatSourceLine(line: DiffSourceLine): string {
+  const marker = line.type === 'add' ? '+' : line.type === 'del' ? '-' : ' ';
+  return `${marker}${String(line.line_no).padStart(4, ' ')} ${line.text}`;
+}
+
 function truncateSummary(text: string, limit: number): string {
   const flat = text.replace(/\s+/g, ' ').trim();
   if (flat.length <= limit) return flat;
@@ -257,23 +262,21 @@ export default memo(function ClaimInspector({
         </div>
       )}
 
-      {/* Jump-to-code links replace the in-panel source code preview. The
-          full source hunk is rendered in the .diff-page__selected-hunk
-          section below the diff, avoiding horizontal scroll inside this
-          narrow panel. */}
+      {/* Keep the source preview attached to the selected card so users do
+          not have to scroll past a long diff to inspect the evidence. */}
       {selectedJumpTargets.length > 0 ? (
-        <div className="claim-inspector__jumps">
+        <div className="claim-inspector__source-preview">
           <span className="claim-inspector__row-label">
             {t('Claim_inspector.source_hunk_title')}
           </span>
-          <ul className="claim-inspector__jump-list">
+          <ul className="claim-inspector__source-preview-list">
             {selectedJumpTargets.map((group, index) => {
               const ref = formatSourceGroupRef(group);
               return (
-                <li key={`${ref}-${index}`}>
+                <li key={`${ref}-${index}`} className="claim-inspector__source-preview-item">
                   <button
                     type="button"
-                    className="claim-inspector__jump-btn"
+                    className="claim-inspector__jump-btn claim-inspector__source-preview-jump"
                     onClick={(e) => {
                       e.stopPropagation();
                       onJumpToCode?.(group.file, group.line_start, group.side);
@@ -286,6 +289,15 @@ export default memo(function ClaimInspector({
                     </span>
                     <code className="claim-inspector__jump-ref">{ref}</code>
                   </button>
+                  {group.lines.length > 0 ? (
+                    <pre className="claim-inspector__source-preview-code">
+                      <code>{group.lines.map(formatSourceLine).join('\n')}</code>
+                    </pre>
+                  ) : (
+                    <p className="claim-inspector__source-empty">
+                      {t('Claim_inspector.source_unavailable')}
+                    </p>
+                  )}
                 </li>
               );
             })}

@@ -450,15 +450,19 @@ describe('ClaimInspector V6 fidelity', () => {
       .toBe(true);
   });
 
-  it('renders selected source hunk outside the 22px diff area', async () => {
+  it('renders selected source hunk next to the selected claim card', async () => {
     await renderDiffPage(page);
     await page.locator('.diff-line[data-claim-id="c007"]').first().click();
 
-    const panel = page.locator('.diff-page__selected-hunk');
-    await expect.poll(() => panel.count()).toBe(1);
-    await expect.poll(() => panel.textContent()).toContain('Selected source hunk');
-    await expect.poll(() => panel.textContent()).toContain('c007 · src/client.ts:2-4');
-    expect(await page.locator('.diff-view .diff-page__selected-hunk').count()).toBe(0);
+    const detail = page.locator('#claim-detail-c007');
+    const sourcePreview = detail.locator('.claim-inspector__source-preview');
+    await expect.poll(() => detail.count()).toBe(1);
+    await expect.poll(() => sourcePreview.textContent()).toContain('Source hunk');
+    await expect.poll(() => sourcePreview.textContent()).toContain('src/client.ts:2-4 · new');
+    await expect
+      .poll(() => sourcePreview.locator('.claim-inspector__source-preview-code').textContent())
+      .toContain('+   2   async request(path: string, opts: ReqOpts = {}) {');
+    expect(await page.locator('.diff-page__selected-hunk').count()).toBe(0);
     await expect
       .poll(() => page.locator('.diff-view').evaluate((el) => getComputedStyle(el).lineHeight))
       .toBe('22px');

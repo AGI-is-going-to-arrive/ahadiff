@@ -31,7 +31,7 @@
 | A11 | L6: Learning Core (quiz + SRS review + concepts + helpfulness) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/quiz/`, `src/ahadiff/wiki/concepts.py`, `src/ahadiff/lesson/helpfulness.py`; `tests/unit/test_helpfulness.py` |
 | A12 | L6: Graphify (models/parser/matcher/linker/slicer/search/freshness/cli) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/graphify/` (models, parser, matcher, linker, slicer, search, freshness, cli); `tests/unit/test_graphify*.py` plus orchestrator Graphify tests |
 | A13 | L7: Serve API (72 concrete API routes + catchall, Starlette + Uvicorn) | Blueprint | IMPL | N/A | IMPL | `src/ahadiff/serve/app.py`; route modules; `tests/unit/test_serve*.py`, `test_routes_*.py` |
-| A14 | L7: React 19 SPA (Vite + vanilla CSS) | Blueprint | N/A | IMPL | IMPL | `viewer/src/` (14 production page TSX, 52 non-test TSX, 47 CSS, i18n `1454/1454`); `viewer/vitest.config.ts` + Vitest coverage + Playwright |
+| A14 | L7: React 19 SPA (Vite + vanilla CSS) | Blueprint | N/A | IMPL | IMPL | `viewer/src/` (14 production page TSX, 52 non-test TSX, 47 CSS, i18n `1490/1490`); `viewer/vitest.config.ts` + Vitest coverage + Playwright |
 
 ---
 
@@ -179,7 +179,7 @@
 
 | # | Feature | Source | Backend Status | Frontend Status | Test Status | Evidence |
 |---|---------|--------|---------------|-----------------|-------------|----------|
-| J1 | Locale priority chain: cookie -> Accept-Language -> AHADIFF_LANG -> CLI --lang -> config.toml -> LANG -> en | Blueprint+Comp | IMPL | IMPL | IMPL | `i18n/`; `serve/routes_locale.py`; `viewer/src/i18n/`; Learn Mode Dialog defaults to active viewer locale; 1454/1454 i18n scalar keys |
+| J1 | Locale priority chain: cookie -> Accept-Language -> AHADIFF_LANG -> CLI --lang -> config.toml -> LANG -> en | Blueprint+Comp | IMPL | IMPL | IMPL | `i18n/`; `serve/routes_locale.py`; `viewer/src/i18n/`; Learn Mode Dialog defaults to active viewer locale; 1490/1490 i18n scalar keys |
 | J2 | Supported locales: en + zh-CN | Blueprint | IMPL | IMPL | IMPL | `i18n/`; `viewer/src/i18n/` |
 | J3 | Zustand atom store for i18n re-render (no React Context) | Blueprint | N/A | IMPL | IMPL | `viewer/src/i18n/useTranslation.ts` |
 | J4 | LLM OUTPUT_LANGUAGE prefix in prompts | Blueprint | IMPL | N/A | IMPL | Orchestrator resolves output_lang |
@@ -215,14 +215,14 @@
 |---|---------|--------|---------------|-----------------|-------------|----------|
 | L1 | DashboardPage (KPI cards + calendar heatmap) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/DashboardPage.tsx`; `components/KpiCard.tsx`, `CalendarHeatmap.tsx`; empty state can open Learn Mode Dialog |
 | L2 | LessonPage (3-level scaffolding tabs + skipped artifact state) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/LessonPage.tsx`; run detail 404 remains fetch failed, lesson artifact 404 shows skipped state; `components/ScaffoldingTabs.tsx`; `components/Lesson.css` |
-| L3 | DiffViewerPage (Unified / Split, side-aware claim jumps, file nav, line markers) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/DiffViewerPage.tsx`; `components/DiffView.tsx`; `components/ClaimInspector.tsx`; file summary Prev/Next, `+`/`-` markers, claim auto-scroll, sticky ClaimInspector navigation after long diff jumps, selected detail below the active claim card, aggregated highest-severity claim dot + count badge, soft selected claim band, dot legend, selected-lines hint; `tests/unit/diff-view.test.ts`; `viewer/tests/unit/claim-inspector-fidelity.test.ts`; `viewer/tests/e2e/walkthrough.spec.ts` |
+| L3 | DiffViewerPage (Unified / Split, side-aware claim jumps, file nav, line markers) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/DiffViewerPage.tsx`; `components/DiffView.tsx`; `components/ClaimInspector.tsx`; file summary Prev/Next, `+`/`-` markers, claim auto-scroll, sticky ClaimInspector navigation after long diff jumps, selected detail and source hunk preview inside the active claim card, aggregated highest-severity claim dot + count badge, soft selected claim band, dot legend, selected-lines hint; the old bottom selected-hunk panel is removed; `tests/unit/diff-view.test.ts`; `viewer/tests/unit/claim-inspector-fidelity.test.ts`; `viewer/tests/e2e/walkthrough.spec.ts` |
 | L4 | QuizPage (active recall quiz) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/QuizPage.tsx` |
 | L5 | ReviewPage (SRS review) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/ReviewPage.tsx`; open-answer reveal no longer marks the quiz peek guard; `components/SRSCard.tsx`; sidebar landmark label covered by a11y E2E |
 | L6 | ConceptsPage (Ledger + Graph tabs, graph/list focus sync, content wrapper) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/ConceptsPage.tsx`; `components/Concepts.css`; `components/ConceptGraph.tsx`; `components/ConceptLedger.tsx` |
 | L7 | SettingsPage (7-tab settings) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/SettingsPage.tsx`; Preferences exposes `quiz_question_count` |
 | L8 | RatchetPage (score history chart) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/RatchetPage.tsx`; `components/RatchetChart.tsx` |
 | L9 | OnboardingPage (stepper wizard) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/OnboardingPage.tsx`; `viewer/src/components/DiagnosticRow.tsx`; `viewer/src/pages/__tests__/OnboardingPage.test.tsx`; `viewer/tests/e2e/onboarding.spec.ts` |
-| L10 | LandingPage | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/LandingPage.tsx`; hero lesson demo uses H2 accordion, capped content height, latest Lesson link; `viewer/src/utils/markdown.tsx`; `viewer/src/utils/markdown.test.tsx` |
+| L10 | LandingPage | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/LandingPage.tsx`; hero lesson demo uses H2 accordion, capped content height, LearnTaskBanner feedback, latest/just-finished run diff + first available lesson preview, and Run Detail fallback when lesson is missing; it does not mix sample lesson into a real run; `viewer/src/utils/markdown.tsx`; `viewer/src/utils/markdown.test.tsx`; `viewer/tests/e2e/learn-task.spec.ts` |
 | L11 | GuidePage | Current viewer | N/A | IMPL | IMPL | `viewer/src/pages/GuidePage.tsx`; maintenance commands default to `--dry-run`; legacy `/#/skills` redirects to `/#/guide` |
 | L12 | NotFoundPage (404) | Blueprint | N/A | IMPL | IMPL | `viewer/src/pages/NotFoundPage.tsx` |
 | L13 | AppShell (Sidebar + Topbar + BottomMiniPanel) | Blueprint | N/A | IMPL | IMPL | `components/AppShell.tsx`, `Sidebar.tsx`, `Sidebar.test.tsx`, `Topbar.tsx`, `BottomMiniPanel.tsx`; Sidebar footer reads real config provider/privacy |
@@ -269,7 +269,7 @@
 | N2 | **MOAT 02: Claim -> 5-state Evidence** (no competitor has structured claim verification) | Others: "natural language with line numbers, unstructured" | IMPL | `claims/` module with 5 statuses |
 | N3 | **MOAT 03: Git Ratchet** (no competitor has monotonic quality ratchet) | autoresearch has it for ML, none for learning notes | IMPL | `eval/ratchet.py`, `improve/` |
 | N4 | **MOAT 04: Local-First Privacy** (competitors are all SaaS) | CodeRabbit/Greptile/DeepWiki = cloud only | IMPL | Per-repo `.ahadiff/`, privacy 3-tier, raw never persisted |
-| N5 | **MOAT 05: i18n Learning Notes** (no competitor generates multilingual diff learning notes) | 10 competitors verified: none have this | IMPL | `i18n/`, 1454/1454 viewer scalar keys, en + zh-CN |
+| N5 | **MOAT 05: i18n Learning Notes** (no competitor generates multilingual diff learning notes) | 10 competitors verified: none have this | IMPL | `i18n/`, 1490/1490 viewer scalar keys, en + zh-CN |
 | N6 | **ENG 01: Local-first offline** (strict_local + Ollama) | Competitors need internet | IMPL | strict_local mode + Ollama adapter |
 | N7 | **ENG 02: Serve architecture** (CLI starts local server, no cloud dependency) | Competitors rely on cloud | IMPL | `serve/app.py`, Starlette + Uvicorn |
 | N8 | **ENG 03: Privacy 3-tier grading** (strict_local/redacted_remote/explicit_remote) | Competitors have no privacy tiers | IMPL | `safety/gates.py` |

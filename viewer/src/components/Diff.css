@@ -819,90 +819,6 @@ button.diff-split-cell {
   color: var(--danger);
 }
 
-/* ── Selected source hunk panel ───────── */
-
-.diff-page__selected-hunk {
-  margin-top: 18px;
-  background: var(--elevated);
-  border: 1px solid var(--hair);
-  border-radius: 10px;
-  box-shadow: var(--sh-sm);
-  overflow: hidden;
-}
-
-.diff-page__selected-hunk--contradicted,
-.diff-page__selected-hunk--rejected {
-  background: var(--danger-soft, #fdf1ec);
-  border-color: var(--danger-hair);
-}
-
-.diff-page__selected-hunk-header {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--sp-3);
-  align-items: baseline;
-  padding: var(--sp-3) var(--sp-4);
-  border-bottom: 1px solid var(--hair);
-}
-
-.diff-page__selected-hunk-header h2 {
-  margin: 0;
-  font-family: var(--font-serif);
-  font-size: var(--fs-md);
-  font-weight: 600;
-  color: var(--ink-strong);
-}
-
-.diff-page__selected-hunk-meta {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-.diff-page__selected-hint {
-  margin: 0 var(--sp-4);
-  font-size: 11.5px;
-  color: var(--muted);
-  line-height: 1.4;
-}
-
-.diff-page__selected-hunk-claim {
-  margin: 10px var(--sp-4) 0;
-  padding: 5px 14px;
-  border-left: 3px solid var(--accent);
-  background: var(--accent-softer, var(--accent-soft));
-  color: var(--ink-2);
-  font-family: var(--font-serif);
-  font-size: 14.5px;
-  line-height: 1.55;
-}
-
-.diff-page__selected-hunk--contradicted .diff-page__selected-hunk-claim,
-.diff-page__selected-hunk--rejected .diff-page__selected-hunk-claim {
-  border-left-color: var(--danger);
-  background: var(--danger-soft, #fdf1ec);
-}
-
-.diff-page__selected-hunk-code {
-  margin: 14px var(--sp-4) var(--sp-4);
-  padding: 10px var(--sp-3);
-  border: 1px solid var(--hair);
-  border-radius: 6px;
-  background: var(--surface-diff);
-  color: var(--ink);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.6;
-  overflow-x: auto;
-}
-
-.diff-page__selected-hunk-empty {
-  margin: var(--sp-3) var(--sp-4) var(--sp-4);
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
 /* ── BottomMiniPanel ──────────────────────────────────────── */
 
 .mini-panel {
@@ -994,15 +910,6 @@ button.diff-split-cell {
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
-  .diff-page__selected-hunk-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--sp-1);
-  }
-
-  .diff-page__selected-hunk-meta {
-    white-space: normal;
-  }
 }
 
 /* ── Small phones (V6 §2D, --bp-xs 540px) ─────────────────── */
@@ -1048,17 +955,12 @@ button.diff-split-cell {
     border: 1px solid CanvasText;
   }
 
-  .diff-page__selected-hunk,
-  .diff-page__selected-hunk-code {
-    border: 1px solid CanvasText;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .diff-page,
   .diff-view,
   .diff-line--claim-linked,
-  .diff-page__selected-hunk,
   .mini-panel {
     animation: none;
     transition: none;

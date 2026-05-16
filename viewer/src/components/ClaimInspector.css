@@ -234,9 +234,9 @@
   scroll-margin-block: var(--sp-4);
 }
 
-/* ── Jump-to-code links (replaces inline source preview) ─── */
+/* ── Source preview + jump-to-code links ─────────────────── */
 
-.claim-inspector__jumps {
+.claim-inspector__source-preview {
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
@@ -244,10 +244,16 @@
   padding-top: var(--sp-3);
 }
 
-.claim-inspector__jump-list {
+.claim-inspector__source-preview-list {
   list-style: none;
   margin: 0;
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.claim-inspector__source-preview-item {
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
@@ -307,8 +313,24 @@
   border: 0;
 }
 
+.claim-inspector__source-preview-code {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 9px 10px;
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  background: var(--surface-diff);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
 .claim-inspector__source-empty {
-  font-size: 0.9rem;
+  margin: 0;
+  font-size: 0.85rem;
   color: var(--muted);
 }
 
@@ -484,6 +506,12 @@
 
   .claim-inspector__jump-btn {
     border: 1px solid CanvasText;
+  }
+
+  .claim-inspector__source-preview-code {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
   }
 
   .claim-inspector__chip {
