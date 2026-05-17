@@ -8,7 +8,7 @@
 
 不能标记为“发布级全部完成”的原因有两点：
 
-- GitHub Actions 当前被 billing / spending limit 阻断，Backend CI、Frontend CI 和 Windows Runtime Guard 的 job 都没有启动。
+- GitHub Actions 在推送后已触发 Backend CI、Frontend CI 和 Pages runs，但 jobs 立即 failure，steps 为空且日志不存在；这不计为远端代码验证通过。此前 annotation 指向 billing / spending limit。
 - “没有任何显性隐性 bug”无法被严格证明；当前只能说明本轮覆盖范围内未发现剩余阻断问题。
 
 ## 目标到证据映射
@@ -47,7 +47,7 @@
 限制：
 
 - 测试覆盖不能数学证明零 bug。
-- 远端 CI 未启动，不能作为跨平台绿灯。
+- 远端 CI 没有实际执行 steps，不能作为跨平台绿灯。
 
 ### 本轮修改清单
 
@@ -108,8 +108,8 @@
 
 - 原生 aarch64 `python:3.12-slim` 自编译 SQLite `3.51.3` 路径在 `apt-get install build-essential` 阶段曾被 Docker 以 exit `137` 杀掉；已改用已有 `node:22-bookworm` 镜像绕过 apt 安装并完成 SQLite `3.51.3` 目标 gate。
 - `colima` / `orbctl` / `podman` / `lima` / `act` 不存在。
-- GitHub Actions job 未启动：最新 Backend CI / Frontend CI run 的 jobs 均为 `steps: []`，Ubuntu job `runner_id: 0`；之前 annotation 显示 billing / spending limit 阻断。
-- 最近远端 run 的 `headSha` 是当前 `HEAD`，但当前工作区仍有未提交 diff；远端 run 不包含这些未提交改动。
+- GitHub Actions jobs 立即 failure：Backend CI / Frontend CI / Pages runs 的 jobs 均为 `steps: []`，`gh run view --log-failed` 返回 `log not found`；之前 annotation 显示 billing / spending limit 阻断。
+- 远端 run 指向对应推送 commit，但没有实际执行 steps/logs；runner 恢复后仍需重新跑。
 
 ### i18n 正确性
 
@@ -216,17 +216,15 @@
 ## 发布前剩余门禁
 
 1. 恢复 GitHub Actions billing / spending limit。
-2. 本次提交推送后，重新触发 Backend CI、Frontend CI、Windows Runtime Guard，确保远端 runner 验证的是已提交 diff。
+2. runner 恢复后，重新触发 Backend CI、Frontend CI、Windows Runtime Guard，确保远端 runner 验证的是已提交 diff。
 3. 远端 runner 恢复后复核 CI 日志；本地通过不等于远端 CI 已闭合。
 4. 若需要更强 Windows 证据，提供真实 Windows runner；Linux SQLite `3.51.3` 目标 gate 已本地闭合，完整 Linux CI 仍可在远端 runner 恢复后补跑。
 5. 如果要把文档状态同步到其它项目文档体系，明确确认“使用 recorder agent 更新项目文档”。
 
 当前提交边界：
 
-- tracked 修改：27 个文件。
-- untracked 新文件：`docs/USER_GUIDE.zh.html`、`docs/VALIDATION_AUDIT.zh.md`、`viewer/src/api/__tests__/tasks-schema.test.ts`。
-- 需要纳入提交的新增前端测试改动包括 `viewer/tests/e2e/smoke.spec.ts`。
-- 文档收口还需要纳入：`README.md`、`README.en.md`、`CLAUDE.md`、`AGENTS.md`、`doc/CLAUDE.md`、`doc/contract-freeze.md`、`doc/FRONTEND_GAP_REPORT.md`。
+- 代码、安全、前端测试、用户指南和验证审计已纳入本轮提交。
+- 推送后发现的远端 CI no-steps/no-logs 事实，只需要文档 follow-up 同步。
 - 不纳入提交：`viewer/dist/`、`viewer/test-results/`、`viewer/playwright-report/`，它们是 gitignored 验证产物。
 - 早前已执行 `git add --dry-run` 覆盖当时 23 个提交候选文件；文档收口后最终提交列表以本次提交的 staged diff 为准。
 
