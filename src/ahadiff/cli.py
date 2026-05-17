@@ -77,7 +77,9 @@ _DB_APP = typer.Typer(help="Manage review.sqlite migrations, backup, restore, an
 _CONCEPTS_APP = typer.Typer(help="Export, rollback, and verify the concepts derived cache.")
 _EXPORT_APP = typer.Typer(help="Static preview and review export bundles.")
 _CHALLENGE_APP = typer.Typer(
-    help="Opt-in Diffity-style challenge loop (build/status/abort/advance).",
+    help=(
+        "Opt-in Diffity-style challenge loop (CLI: build/status; WebUI/API: advance/abort/review)."
+    ),
 )
 _APP.add_typer(_CONFIG_APP, name="config")
 _APP.add_typer(_GRAPH_APP, name="graph")

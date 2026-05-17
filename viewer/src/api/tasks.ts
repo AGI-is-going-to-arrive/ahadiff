@@ -1,6 +1,7 @@
 import { apiFetch } from './client';
 import type { ApiFetchOptions } from './client';
 import {
+  learnEstimateResponseSchema,
   parseResponse,
   taskCancelResponseSchema,
   taskInfoResponseSchema,
@@ -32,12 +33,12 @@ export async function estimateLearn(
   payload: LearnSubmitPayload = {},
   opts?: Pick<ApiFetchOptions, 'signal'>,
 ): Promise<LearnEstimateResponse> {
-  const raw = await apiFetch<LearnEstimateResponse>('/api/learn/estimate', {
+  const raw = await apiFetch<unknown>('/api/learn/estimate', {
     method: 'POST',
     body: JSON.stringify(payload),
     ...opts,
   });
-  return raw;
+  return parseResponse('POST /api/learn/estimate', learnEstimateResponseSchema, raw);
 }
 
 export async function startLearnTask(

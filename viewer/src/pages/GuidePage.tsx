@@ -79,7 +79,18 @@ const CORE_COMMANDS: ReadonlyArray<CommandEntry> = [
 const SETUP_COMMANDS: ReadonlyArray<CommandEntry> = [
   { command: 'ahadiff doctor', labelKey: 'Guide.setup_doctor' },
   { command: 'ahadiff config show --resolved', labelKey: 'Guide.setup_config' },
-  { command: 'ahadiff provider test --name default', labelKey: 'Guide.setup_provider' },
+  {
+    command: [
+      'ahadiff provider test \\',
+      '  --name gpt55 \\',
+      '  --provider-class openai_responses \\',
+      '  --base-url "$AHADIFF_PROVIDER_BASE_URL" \\',
+      '  --model gpt-5.5 \\',
+      '  --api-key-env AHADIFF_PROVIDER_API_KEY \\',
+      '  --privacy-mode explicit_remote',
+    ].join('\n'),
+    labelKey: 'Guide.setup_provider',
+  },
   { command: 'ahadiff install --detect', labelKey: 'Guide.setup_install_detect' },
   { command: 'ahadiff install codex --dry-run', labelKey: 'Guide.setup_install_preview' },
   { command: 'ahadiff uninstall codex --dry-run', labelKey: 'Guide.setup_uninstall_preview' },

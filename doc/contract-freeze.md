@@ -886,7 +886,7 @@ run_id: str
 **当前请求面说明**：
 - 允许的请求字段是现有 learn capture / 选项字段：`revision`、`last`、`since`、`author`、`staged`、`unstaged`、`include_untracked`、`patch`、`compare`、`compare_dir`、`patch_url`、`changed_paths`、`against_spec`、`spec_semantic_review`、`dry_run`、`force_learn`、`use_graphify`、`lang`、`privacy_mode`
 - `compare` / `compare_dir` 需要 2 项 path array
-- `changed_paths` 只用于工作区类输入的路径范围，不表示前端可以传任意 repo 外路径
+- `changed_paths` 只用于工作区类输入的路径范围，不表示前端可以传任意 repo 外路径；serve 层只接受 repo-relative path scope，拒绝空值、绝对路径、Windows drive / UNC、`.` / `..`、`.git` / `.ahadiff` 和控制字符
 - `against_spec` 只接受当前 workspace 内本地文件路径；URL、控制字符、repo 外路径和 symlink / special-file 路径都拒绝，并统一走 `INPUT_VALIDATION`
 - `since` / `author` 不能以 `-` 开头，不能包含 `\x00-\x1f` / `\x7f` 控制字符；capture 层也有同一层防护，避免绕过 serve route
 - `patch="-"` 在 serve 层明确拒绝，避免后台任务读取进程 stdin
@@ -1050,3 +1050,17 @@ run_id: str
 - Landing 的 hero preview 使用真实 run 的 diff artifact 和第一个可用 lesson artifact（full → hint → compact）。当真实 run 缺 lesson 时，页面显示空状态并跳到 Run Detail，不回退到样例 lesson，避免把样例和真实 run 混在一起。
 
 本轮实测：viewer typecheck 通过；前端 Vitest `35 files, 362 tests passed`；viewer build 通过；Diff Chromium E2E `1 passed`；Welcome Chromium E2E `4 passed`；i18n scalar keys `1490/1490`。一次并行 Playwright 启动因为两个 webServer 同抢 `5173` 失败，随后用 `AHADIFF_VIEWER_E2E_PORT=5174` 重跑 Welcome 通过。后端、integration、eval、ruff/format、pyright、wheel、完整 Playwright、live judge 和远端 GitHub Actions 未在本轮重跑。
+
+### 9.23 Completion audit / 输入与本地文件边界收口（2026-05-17）
+
+本轮只记录已经由代码和本轮验证支撑的后端 / 前端 / 文档收口项：
+
+- `safe_sqlite_connect()` 在 Linux 上通过 nofollow fd 绑定打开 SQLite 文件，并校验主库实际路径；打开失败的错误路径也会做路径身份校验，避免 race 后把错误归到旧路径。
+- compare input、Graphify source/imported graph 和 JSONL artifact 读取继续走 no-follow / regular-file / reparse / size / TOCTOU guard，本轮又明确拒绝 hardlink 文件，避免同一路径检查后被其它 link 身份混淆。
+- provider URL 的私有地址判断收紧为 `not addr.is_global`。这会覆盖 loopback、private、link-local、multicast、reserved、CGNAT 等非公网地址；本地 provider discovery 仍走显式 local provider 入口，不靠公网 URL helper 放行。
+- `POST /api/learn` 与 `POST /api/learn/estimate` 对 `changed_paths` 使用同一组 route 校验：拒绝空字符串、控制字符、绝对路径、Windows drive path、UNC path、`.` / `..` path part、`.git` 和 `.ahadiff`。合法路径仍作为 repo-relative path scope 交给 capture 层 literal pathspec 处理。
+- 前端 API client 在 bootstrap token 和 raw fetch 中使用同源 absolute URL；token generation 变化会清理 pending bootstrap promise，避免旧请求拿到过期 token。
+- provider model discovery 和 learn estimate 的前端响应都走 Zod schema 解析；Guide 页的 GPT-5.5 provider 命令补齐 `--provider-class openai_responses`，并统一使用 `gpt55` 示例名称。
+- 新增 `docs/USER_GUIDE.zh.html` 作为自包含中文用户指南；`docs/VALIDATION_AUDIT.zh.md` 记录本轮 completion audit、真实验证、剩余门禁和复跑命令。
+
+本轮实测：后端 unit `2530 passed`；integration+eval `20 passed`；`ruff check`、`ruff format --check`、`pyright`、wheel build 通过；viewer typecheck、lint、Vitest `36 files, 365 tests passed`、build 通过；完整 Playwright `2945 passed, 10 skipped`；real-serve `2 passed`；live judge `2 passed`；临时 repo GPT-5.5 provider test / live learn 通过；Linux SQLite `3.51.3` 目标 gate 通过；`git diff --check HEAD` 通过。远端 GitHub Actions 因 billing / spending limit 未启动，Windows 仍缺真实 runner 结果。

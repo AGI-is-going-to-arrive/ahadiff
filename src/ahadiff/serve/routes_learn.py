@@ -81,6 +81,16 @@ _WARN_FILE_COUNT = 30
 _DANGER_FILE_COUNT = 50
 
 
+def _contains_control_chars(value: str) -> bool:
+    return any(ord(ch) < 32 or ord(ch) == 127 for ch in value)
+
+
+def _looks_like_windows_absolute_or_unc_path(value: str) -> bool:
+    if value.startswith(("\\\\", "//")):
+        return True
+    return len(value) >= 2 and value[1] == ":" and value[0].isalpha()
+
+
 def _coerce_bool(value: object) -> bool:
     if isinstance(value, bool):
         return value
@@ -151,6 +161,18 @@ def _coerce_changed_paths(value: object) -> tuple[str, ...]:
             raise TypeError("changed_paths entries must be strings")
         if len(item) > _MAX_STRING_LENGTH:
             raise ValueError("changed_paths entry exceeds max length")
+        if item.strip() == "":
+            raise ValueError("changed_paths entry must not be empty")
+        if _contains_control_chars(item):
+            raise ValueError("changed_paths entry contains control characters")
+        normalized = item.replace("\\", "/")
+        path = Path(normalized)
+        if path.is_absolute() or _looks_like_windows_absolute_or_unc_path(item):
+            raise ValueError("changed_paths entries must be repository-relative paths")
+        if any(part in {"", ".", ".."} for part in path.parts) or normalized in {"", "."}:
+            raise ValueError("changed_paths entry escapes repository root")
+        if normalized.startswith((".git/", ".ahadiff/")) or normalized in {".git", ".ahadiff"}:
+            raise ValueError("changed_paths entry targets an internal repository directory")
         coerced.append(item)
     return tuple(coerced)
 
@@ -226,7 +248,7 @@ def _resolve_against_spec_param(root: Path, params: dict[str, Any]) -> JSONRespo
             "against_spec",
             "against_spec only accepts a local workspace file path",
         )
-    if any(ord(ch) < 32 or ord(ch) == 127 for ch in path_text):
+    if _contains_control_chars(path_text):
         return _invalid_value_response("against_spec", "against_spec contains control characters")
     try:
         params["against_spec"] = resolve_safe_path_from_root(root, path)
@@ -242,7 +264,7 @@ def _validate_git_filter_param(key: str, params: dict[str, Any]) -> JSONResponse
     text = cast("str", value)
     if text.startswith("-"):
         return _invalid_value_response(key, f"{key} must not start with '-'")
-    if any(ord(ch) < 32 or ord(ch) == 127 for ch in text):
+    if _contains_control_chars(text):
         return _invalid_value_response(key, f"{key} contains control characters")
     return None
 

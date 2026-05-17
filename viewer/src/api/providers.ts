@@ -3,12 +3,14 @@ import type { ApiFetchOptions } from './client';
 import {
   parseResponse,
   providerDeleteResponseSchema,
+  providerModelsResponseSchema,
   providerMutationResponseSchema,
   providerProbeSubmitResponseSchema,
 } from './schemas';
 import type {
   ProviderCreateInput,
   ProviderDeleteResponse,
+  ProviderModelsResponse,
   ProviderMutationResponse,
   ProviderProbeSubmitResponse,
   ProviderUpdateInput,
@@ -67,21 +69,31 @@ export async function deleteProvider(
 export async function discoverModels(
   data: { base_url: string; api_key: string; provider_class: string },
   opts?: Pick<ApiFetchOptions, 'signal'>,
-): Promise<{ models: string[] }> {
-  return apiFetch<{ models: string[] }>('/api/providers/discover-models', {
+): Promise<ProviderModelsResponse> {
+  const raw = await apiFetch<unknown>('/api/providers/discover-models', {
     method: 'POST',
     body: JSON.stringify(data),
     signal: opts?.signal,
   });
+  return parseResponse(
+    'POST /api/providers/discover-models',
+    providerModelsResponseSchema,
+    raw,
+  );
 }
 
 export async function fetchProviderModels(
   alias: string,
   opts?: Pick<ApiFetchOptions, 'signal'>,
-): Promise<{ models: string[] }> {
-  return apiFetch<{ models: string[] }>(
+): Promise<ProviderModelsResponse> {
+  const raw = await apiFetch<unknown>(
     `/api/providers/${encodeURIComponent(alias)}/models`,
     { signal: opts?.signal },
+  );
+  return parseResponse(
+    'GET /api/providers/{alias}/models',
+    providerModelsResponseSchema,
+    raw,
   );
 }
 

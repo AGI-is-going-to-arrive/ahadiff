@@ -333,6 +333,9 @@ test.describe('smoke', () => {
     await expect(page.locator('.guide')).toBeVisible();
     await expect(page.locator('.guide-workflow')).toBeVisible();
     await expect(page.locator('.guide-card').first()).toBeVisible();
+    await expect(
+      page.locator('.command-block').filter({ hasText: '--provider-class openai_responses' }),
+    ).toHaveCount(1);
   });
 
   test('guide page shows copy button on command blocks', async ({ page }) => {

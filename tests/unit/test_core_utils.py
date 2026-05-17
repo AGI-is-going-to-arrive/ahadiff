@@ -21,6 +21,16 @@ def _read_write_target(path: Path) -> str:
     return sqlite_util_module._read_write_sqlite_uri(path)  # pyright: ignore[reportPrivateUsage]
 
 
+def _is_existing_db_connect_target(database: Any, path: Path) -> bool:
+    if database == _read_write_target(path):
+        return True
+    return (
+        isinstance(database, str)
+        and database.startswith("file:/proc/self/fd/")
+        and database.endswith("?mode=rw")
+    )
+
+
 class TestSafeJsonLoads:
     def test_valid_json(self) -> None:
         assert safe_json_loads('{"x": 1}') == {"x": 1}
@@ -226,12 +236,11 @@ class TestSafeSqliteConnect:
         with sqlite3.connect(shadow) as connection:
             connection.execute("CREATE TABLE t(x)")
         original_connect = sqlite_util_module.sqlite3.connect
-        connect_target = _read_write_target(db)
         swapped = False
 
         def swapping_connect(database: Any, *args: Any, **kwargs: Any) -> sqlite3.Connection:
             nonlocal swapped
-            if database == connect_target and not swapped:
+            if _is_existing_db_connect_target(database, db) and not swapped:
                 swapped = True
                 db.unlink()
                 try:
@@ -262,12 +271,11 @@ class TestSafeSqliteConnect:
             connection.execute("CREATE TABLE marker(value TEXT)")
             connection.execute("INSERT INTO marker VALUES('replacement')")
         original_connect = sqlite_util_module.sqlite3.connect
-        connect_target = _read_write_target(db)
         swapped = False
 
         def swapping_connect(database: Any, *args: Any, **kwargs: Any) -> sqlite3.Connection:
             nonlocal swapped
-            if database == connect_target and not swapped:
+            if _is_existing_db_connect_target(database, db) and not swapped:
                 swapped = True
                 db.rename(backup)
                 replacement.rename(db)
@@ -302,12 +310,11 @@ class TestSafeSqliteConnect:
             connection.execute("CREATE TABLE marker(value TEXT)")
             connection.execute("INSERT INTO marker VALUES('replacement')")
         original_connect = sqlite_util_module.sqlite3.connect
-        connect_target = _read_write_target(db)
         swapped = False
 
         def swapping_connect(database: Any, *args: Any, **kwargs: Any) -> sqlite3.Connection:
             nonlocal swapped
-            if database == connect_target and not swapped:
+            if _is_existing_db_connect_target(database, db) and not swapped:
                 swapped = True
                 db.rename(backup)
                 replacement.rename(db)
@@ -320,12 +327,16 @@ class TestSafeSqliteConnect:
 
         monkeypatch.setattr(sqlite_util_module.sqlite3, "connect", swapping_connect)
 
-        conn = safe_sqlite_connect(db)
-        try:
-            value = conn.execute("SELECT value FROM marker").fetchone()[0]
-            assert value == "original"
-        finally:
-            conn.close()
+        if sys.platform.startswith("linux"):
+            with pytest.raises(PermissionError, match="changed during open"):
+                safe_sqlite_connect(db)
+        else:
+            conn = safe_sqlite_connect(db)
+            try:
+                value = conn.execute("SELECT value FROM marker").fetchone()[0]
+                assert value == "original"
+            finally:
+                conn.close()
 
         assert swapped is True
         with sqlite3.connect(db) as connection:
@@ -374,12 +385,11 @@ class TestSafeSqliteConnect:
         with sqlite3.connect(shadow) as connection:
             connection.execute("CREATE TABLE t(x)")
         original_connect = sqlite_util_module.sqlite3.connect
-        connect_target = _read_write_target(db)
         swapped = False
 
         def swapping_connect(database: Any, *args: Any, **kwargs: Any) -> sqlite3.Connection:
             nonlocal swapped
-            if database == connect_target and not swapped:
+            if _is_existing_db_connect_target(database, db) and not swapped:
                 swapped = True
                 db.unlink()
                 try:
@@ -408,12 +418,11 @@ class TestSafeSqliteConnect:
         db = parent / "race.db"
         outside_target = outside / "race.db"
         original_connect = sqlite_util_module.sqlite3.connect
-        connect_target = _read_write_target(db)
         swapped = False
 
         def swapping_connect(database: Any, *args: Any, **kwargs: Any) -> sqlite3.Connection:
             nonlocal swapped
-            if database == connect_target and not swapped:
+            if _is_existing_db_connect_target(database, db) and not swapped:
                 swapped = True
                 parent.rename(parent_backup)
                 try:

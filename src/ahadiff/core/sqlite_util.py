@@ -77,10 +77,14 @@ def safe_sqlite_connect(
         )
         conn: sqlite3.Connection | None = None
         try:
+            fd_path = _sqlite_proc_fd_path(attempt_state.nofollow_fd)
             if uri:
-                conn = sqlite3.connect(uri, uri=True, timeout=timeout)
+                connect_uri = _sqlite_file_uri(fd_path, "ro") if fd_path is not None else uri
+                conn = sqlite3.connect(connect_uri, uri=True, timeout=timeout)
             elif attempt_state.expected_identity is not None:
-                conn = sqlite3.connect(_read_write_sqlite_uri(p), uri=True, timeout=timeout)
+                connect_path = fd_path if fd_path is not None else p
+                connect_uri = _read_write_sqlite_uri(connect_path)
+                conn = sqlite3.connect(connect_uri, uri=True, timeout=timeout)
             else:
                 conn = sqlite3.connect(database_target, timeout=timeout)
             _verify_opened_database_path(conn, p, attempt_state)
@@ -327,7 +331,11 @@ def _verify_opened_database_path(
     if actual_path is None:
         return
 
-    actual_stat = actual_path.stat()
+    _verify_main_database_location(actual_path, requested_path)
+    try:
+        actual_stat = actual_path.stat()
+    except OSError as exc:
+        raise PermissionError(f"database path changed during open: {requested_path}") from exc
     if not stat.S_ISREG(actual_stat.st_mode):
         raise PermissionError(f"database path changed during open: {requested_path}")
     _reject_hardlink_stat(requested_path, actual_stat)
@@ -407,6 +415,7 @@ def _raise_if_parent_changed_during_failed_open(
     requested_path: Path,
     verification_state: _OpenVerificationState,
 ) -> None:
+    _raise_if_requested_path_changed_during_failed_open(requested_path, verification_state)
     expected_identity = verification_state.parent_identity
     expected_change_token = verification_state.parent_change_token
     if expected_identity is None or expected_change_token is None:
@@ -416,6 +425,25 @@ def _raise_if_parent_changed_during_failed_open(
     except PermissionError as exc:
         raise PermissionError(f"database path changed during open: {requested_path}") from exc
     if current_identity != expected_identity or current_change_token != expected_change_token:
+        raise PermissionError(f"database path changed during open: {requested_path}")
+
+
+def _raise_if_requested_path_changed_during_failed_open(
+    requested_path: Path,
+    verification_state: _OpenVerificationState,
+) -> None:
+    expected_identity = verification_state.expected_identity
+    if expected_identity is None:
+        return
+    try:
+        current_stat = os.lstat(requested_path)
+    except FileNotFoundError as exc:
+        raise PermissionError(f"database path changed during open: {requested_path}") from exc
+    _reject_symlink_stat(requested_path, current_stat)
+    if not stat.S_ISREG(current_stat.st_mode):
+        raise PermissionError(f"database path changed during open: {requested_path}")
+    _reject_hardlink_stat(requested_path, current_stat)
+    if (current_stat.st_dev, current_stat.st_ino) != expected_identity:
         raise PermissionError(f"database path changed during open: {requested_path}")
 
 
@@ -477,6 +505,24 @@ def _main_database_path(conn: sqlite3.Connection) -> Path | None:
     if path_text == "":
         return None
     return Path(path_text)
+
+
+def _verify_main_database_location(actual_path: Path, requested_path: Path) -> None:
+    actual = _canonicalize_system_sqlite_path(actual_path.absolute())
+    requested = _canonicalize_system_sqlite_path(requested_path.absolute())
+    if os.path.normcase(str(actual)) != os.path.normcase(str(requested)):
+        raise PermissionError(f"database path changed during open: {requested_path}")
+
+
+def _sqlite_proc_fd_path(fd: int | None) -> Path | None:
+    if fd is None or not sys.platform.startswith("linux"):
+        return None
+    fd_path = Path("/proc/self/fd") / str(fd)
+    try:
+        fd_path.stat()
+    except OSError:
+        return None
+    return fd_path
 
 
 def _reject_symlink(p: Path) -> None:

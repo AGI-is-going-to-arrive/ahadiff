@@ -2959,6 +2959,24 @@ def test_read_regular_file_no_follow_bounded_rejects_windows_reparse_point(
         )
 
 
+@pytest.mark.skipif(not hasattr(os, "link"), reason="requires hardlink support")
+def test_read_regular_file_no_follow_bounded_rejects_hardlink(tmp_path: Path) -> None:
+    target_file = tmp_path / "target.py"
+    hardlink_file = tmp_path / "hardlink.py"
+    target_file.write_text("value = 1\n", encoding="utf-8")
+    try:
+        os.link(target_file, hardlink_file)
+    except OSError as exc:
+        pytest.skip(f"hardlink creation unavailable: {exc}")
+
+    with pytest.raises(InputError, match="compare input file must not be a hardlink"):
+        capture_module._read_regular_file_no_follow_bounded(  # pyright: ignore[reportPrivateUsage]
+            hardlink_file,
+            max_bytes=128,
+            total_budget_bytes=128,
+        )
+
+
 def test_compare_capture_rejects_files_exceeding_total_byte_budget(tmp_path: Path) -> None:
     workspace_root = tmp_path / "workspace"
     workspace_root.mkdir()

@@ -796,6 +796,10 @@ export interface ProviderDeleteResponse {
   alias: string;
 }
 
+export interface ProviderModelsResponse {
+  models: string[];
+}
+
 export interface ProviderProbeSubmitResponse {
   task_id: string;
   alias: string;

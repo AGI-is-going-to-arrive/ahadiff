@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ProviderSummary } from '../config';
 import {
   providerCreateRequestSchema,
+  providerModelsResponseSchema,
   providerSummarySchema,
   providerUpdateRequestSchema,
   providersResponseSchema,
@@ -71,5 +72,20 @@ describe('provider API schemas', () => {
       ...updateInput,
       unknown: true,
     }).success).toBe(false);
+  });
+
+  it('validates provider model discovery responses strictly', () => {
+    expect(
+      providerModelsResponseSchema.parse({ models: ['gpt-5.5', 'gpt-5.4-mini'] }),
+    ).toEqual({
+      models: ['gpt-5.5', 'gpt-5.4-mini'],
+    });
+    expect(
+      providerModelsResponseSchema.safeParse({
+        models: ['gpt-5.5'],
+        api_key: 'sk-test',
+      }).success,
+    ).toBe(false);
+    expect(providerModelsResponseSchema.safeParse({ models: [42] }).success).toBe(false);
   });
 });

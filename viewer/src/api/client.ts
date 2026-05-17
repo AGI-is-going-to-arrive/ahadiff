@@ -200,7 +200,7 @@ async function ensureToken(signal?: AbortSignal): Promise<string> {
       // Phase 2H: default to POST /api/auth/token (same-origin bootstrap gate).
       // GET remains backend-only compatibility for non-browser callers; the
       // viewer never falls back to GET here — see plan §2H and BF-5.
-      const res = await fetch('/api/auth/token', {
+      const res = await fetch(new URL('/api/auth/token', window.location.origin).href, {
         method: 'POST',
         credentials: 'same-origin',
         signal: controller.signal,
@@ -228,6 +228,11 @@ export function resetToken(): void {
 }
 
 export function setToken(token: string | null): void {
+  tokenGeneration += 1;
+  tokenRequestId += 1;
+  refreshRequestId += 1;
+  tokenPromise = null;
+  refreshPromise = null;
   cachedToken = token;
 }
 
@@ -244,7 +249,11 @@ async function rawFetch(
   headers.set('X-AhaDiff-Token', token);
   if (init?.body && !headers.has('content-type'))
     headers.set('content-type', 'application/json');
-  return fetch(apiPath, { ...init, headers, credentials: 'same-origin' });
+  return fetch(new URL(apiPath, window.location.origin).href, {
+    ...init,
+    headers,
+    credentials: 'same-origin',
+  });
 }
 
 export type ApiFetchOptions = RequestInit;

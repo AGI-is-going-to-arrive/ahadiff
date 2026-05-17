@@ -700,13 +700,7 @@ def reset_provider_runtime_state(provider_key: str | None = None) -> None:
 def _is_non_public_ip(addr: IPv4Address | IPv6Address) -> bool:
     if isinstance(addr, IPv6Address) and addr.ipv4_mapped is not None:
         return _is_non_public_ip(addr.ipv4_mapped)
-    return (
-        addr.is_private
-        or addr.is_reserved
-        or addr.is_loopback
-        or addr.is_link_local
-        or addr.is_multicast
-    )
+    return not addr.is_global
 
 
 def _resolve_hostname_ips(hostname: str) -> list[IPv4Address | IPv6Address]:

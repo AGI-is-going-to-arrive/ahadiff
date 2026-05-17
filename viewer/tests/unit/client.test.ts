@@ -9,6 +9,12 @@ type Deferred<T> = {
   resolve: (value: T) => void;
 };
 
+const TEST_ORIGIN = 'http://localhost:5173';
+
+function apiUrl(path: string): string {
+  return new URL(path, TEST_ORIGIN).href;
+}
+
 function deferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {
@@ -35,7 +41,7 @@ async function waitForPendingAuth(authResponses: Deferred<Response>[], count: nu
 describe('api client token reset', () => {
   beforeEach(() => {
     resetToken();
-    vi.stubGlobal('window', { location: { origin: 'http://localhost:5173' } });
+    vi.stubGlobal('window', { location: { origin: TEST_ORIGIN } });
   });
 
   afterEach(() => {
@@ -51,12 +57,12 @@ describe('api client token reset', () => {
       'fetch',
       vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         const url = String(input);
-        if (url === '/api/auth/token') {
+        if (url === apiUrl('/api/auth/token')) {
           const pending = deferred<Response>();
           authResponses.push(pending);
           return pending.promise;
         }
-        if (url === '/api/runs') {
+        if (url === apiUrl('/api/runs')) {
           runTokens.push(new Headers(init?.headers).get('x-ahadiff-token'));
           return Promise.resolve(jsonResponse({ runs: [] }));
         }
@@ -85,6 +91,43 @@ describe('api client token reset', () => {
     ]);
   });
 
+  it('setToken cancels pending bootstrap state before injecting a manual token', async () => {
+    const authResponses: Deferred<Response>[] = [];
+    const runTokens: Array<string | null> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        if (url === apiUrl('/api/auth/token')) {
+          const pending = deferred<Response>();
+          authResponses.push(pending);
+          return pending.promise;
+        }
+        if (url === apiUrl('/api/runs')) {
+          runTokens.push(new Headers(init?.headers).get('x-ahadiff-token'));
+          return Promise.resolve(jsonResponse({ runs: [] }));
+        }
+        return Promise.resolve(jsonResponse({ error: 'unexpected request', url }, 404));
+      }),
+    );
+
+    const first = apiFetch<{ runs: unknown[] }>('/api/runs');
+    await waitForPendingAuth(authResponses, 1);
+
+    setToken('manual-token');
+    await expect(apiFetch<{ runs: unknown[] }>('/api/runs')).resolves.toEqual({ runs: [] });
+
+    authResponses[0].resolve(jsonResponse({ token: 'stale-bootstrap-token' }));
+    await expect(first).resolves.toEqual({ runs: [] });
+
+    await expect(apiFetch<{ runs: unknown[] }>('/api/runs')).resolves.toEqual({ runs: [] });
+    expect(runTokens).toEqual([
+      'manual-token',
+      'stale-bootstrap-token',
+      'manual-token',
+    ]);
+  });
+
   it('drops a pending refresh promise so post-reset retries fetch independently', async () => {
     const authResponses: Deferred<Response>[] = [];
     const runTokens: Array<string | null> = [];
@@ -92,12 +135,12 @@ describe('api client token reset', () => {
       'fetch',
       vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         const url = String(input);
-        if (url === '/api/auth/token') {
+        if (url === apiUrl('/api/auth/token')) {
           const pending = deferred<Response>();
           authResponses.push(pending);
           return pending.promise;
         }
-        if (url === '/api/runs') {
+        if (url === apiUrl('/api/runs')) {
           const token = new Headers(init?.headers).get('x-ahadiff-token');
           runTokens.push(token);
           if (token?.startsWith('stale-')) {
@@ -185,7 +228,7 @@ describe('ApiError redaction', () => {
 describe('auth bootstrap edge cases (Phase 2H)', () => {
   beforeEach(() => {
     resetToken();
-    vi.stubGlobal('window', { location: { origin: 'http://localhost:5173' } });
+    vi.stubGlobal('window', { location: { origin: TEST_ORIGIN } });
   });
 
   afterEach(() => {
@@ -197,7 +240,7 @@ describe('auth bootstrap edge cases (Phase 2H)', () => {
 
   it('surfaces 403 from bootstrap when same-origin gate rejects', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL): Promise<Response> => {
-      if (String(input) === '/api/auth/token') {
+      if (String(input) === apiUrl('/api/auth/token')) {
         return Promise.resolve(
           jsonResponse({ detail: 'same-origin required' }, 403),
         );
@@ -250,7 +293,7 @@ describe('auth bootstrap edge cases (Phase 2H)', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((input: RequestInfo | URL): Promise<Response> => {
-        if (String(input) === '/api/auth/token') {
+        if (String(input) === apiUrl('/api/auth/token')) {
           return Promise.resolve(
             jsonResponse({ token: '', backup_token: 'sk-should-not-leak-token' }),
           );
@@ -271,7 +314,7 @@ describe('auth bootstrap edge cases (Phase 2H)', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((input: RequestInfo | URL): Promise<Response> => {
-        if (String(input) === '/api/auth/token') {
+        if (String(input) === apiUrl('/api/auth/token')) {
           return Promise.resolve(jsonResponse({ token: `tok-${++callCount}` }));
         }
         const token = callCount === 1 ? 'stale' : 'fresh';
@@ -290,7 +333,7 @@ describe('config api', () => {
   beforeEach(() => {
     resetToken();
     setToken('unit-test-token');
-    vi.stubGlobal('window', { location: { origin: 'http://localhost:5173' } });
+    vi.stubGlobal('window', { location: { origin: TEST_ORIGIN } });
   });
 
   afterEach(() => {
@@ -347,7 +390,7 @@ describe('config api', () => {
 
   it('parses PUT /api/config update acknowledgements and sends JSON', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-      expect(String(input)).toBe('/api/config');
+      expect(String(input)).toBe(apiUrl('/api/config'));
       expect(init?.method).toBe('PUT');
       expect(init?.body).toBe(JSON.stringify({ lang: 'zh-CN' }));
       const headers = new Headers(init?.headers);
@@ -389,7 +432,7 @@ describe('api client blob downloads', () => {
   beforeEach(() => {
     resetToken();
     setToken('unit-test-token');
-    vi.stubGlobal('window', { location: { origin: 'http://localhost:5173' } });
+    vi.stubGlobal('window', { location: { origin: TEST_ORIGIN } });
   });
 
   afterEach(() => {
@@ -400,7 +443,7 @@ describe('api client blob downloads', () => {
 
   it('fetches file exports with the write token header', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-      expect(String(input)).toBe('/api/export/results?format=tsv');
+      expect(String(input)).toBe(apiUrl('/api/export/results?format=tsv'));
       const headers = new Headers(init?.headers);
       expect(headers.get('x-ahadiff-token')).toBe('unit-test-token');
       return Promise.resolve(

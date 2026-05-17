@@ -821,13 +821,19 @@ export const providerSummarySchema = z
     probed_tpm: z.number().int().positive().nullable().optional(),
     probed_rpm: z.number().int().positive().nullable().optional(),
     probe_timestamp: z.string().nullable().optional(),
-  available_models: z.array(z.string()).default([]),
+    available_models: z.array(z.string()).default([]),
   })
   .strict();
 
 export const providersResponseSchema = z
   .object({
     providers: z.array(providerSummarySchema),
+  })
+  .strict();
+
+export const providerModelsResponseSchema = z
+  .object({
+    models: z.array(z.string().min(1)),
   })
   .strict();
 
@@ -1169,6 +1175,19 @@ export const taskSubmitResponseSchema = z
 export const taskCancelResponseSchema = z
   .object({
     cancelled: z.boolean(),
+  })
+  .strict();
+
+export const learnEstimateResponseSchema = z
+  .object({
+    patch_bytes: z.number().int().nonnegative(),
+    file_count: z.number().int().nonnegative(),
+    total_lines: z.number().int().nonnegative(),
+    estimated_tokens: z.number().int().nonnegative(),
+    provider_context_window: z.number().int().positive(),
+    provider_max_output: z.number().int().positive().nullable(),
+    risk_level: z.enum(['ok', 'warn', 'danger']),
+    warnings: z.array(z.string()),
   })
   .strict();
 

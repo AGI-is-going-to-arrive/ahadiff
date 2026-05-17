@@ -2297,6 +2297,8 @@ def _read_regular_file_no_follow_bounded(
         raise InputError(f"{label} must not be a symlink")
     if _has_windows_reparse_point(path_stat):
         raise InputError(f"{label} must not be a Windows reparse point or junction")
+    if stat.S_ISREG(path_stat.st_mode) and getattr(path_stat, "st_nlink", 1) > 1:
+        raise InputError(f"{label} must not be a hardlink")
 
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     try:
@@ -2312,6 +2314,8 @@ def _read_regular_file_no_follow_bounded(
             raise InputError(f"{label} must be a regular file")
         if _has_windows_reparse_point(file_stat):
             raise InputError(f"{label} must not be a Windows reparse point or junction")
+        if getattr(file_stat, "st_nlink", 1) > 1:
+            raise InputError(f"{label} must not be a hardlink")
         if (file_stat.st_dev, file_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
             raise InputError(f"{label} changed during validation")
         if file_stat.st_size > max_bytes:
@@ -2366,6 +2370,8 @@ def _read_regular_file_from_dir_fd(
             raise InputError(f"{label} must be a regular file")
         if _has_windows_reparse_point(file_stat):
             raise InputError(f"{label} must not be a Windows reparse point or junction")
+        if getattr(expected_stat, "st_nlink", 1) > 1 or getattr(file_stat, "st_nlink", 1) > 1:
+            raise InputError(f"{label} must not be a hardlink")
         if (file_stat.st_dev, file_stat.st_ino) != (expected_stat.st_dev, expected_stat.st_ino):
             raise InputError(f"{label} changed during validation")
         if file_stat.st_size > max_bytes:

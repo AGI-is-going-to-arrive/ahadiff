@@ -68,6 +68,11 @@ async function installShellRoutes(
   );
 }
 
+async function openClientModulePage(page: Page): Promise<void> {
+  await page.goto('/src/api/client.ts');
+  await page.waitForLoadState('domcontentloaded');
+}
+
 test.describe('Phase 2H — auth bootstrap', () => {
   test('uses POST method to bootstrap /api/auth/token', async ({ page }) => {
     const methods: string[] = [];
@@ -118,8 +123,7 @@ test.describe('Phase 2H — auth bootstrap', () => {
       return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
     });
 
-    await page.goto('/#/welcome');
-    await page.waitForLoadState('domcontentloaded');
+    await openClientModulePage(page);
     authCalls = 0;
     const result = await page.evaluate(async () => {
       const load = (p: string) => import(/* @vite-ignore */ p);
@@ -176,15 +180,15 @@ test.describe('Phase 2H — auth bootstrap', () => {
       return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
     });
 
-    await page.goto('/#/welcome');
-    await page.waitForLoadState('domcontentloaded');
+    await openClientModulePage(page);
     authCalls = 0;
     await page.evaluate(async () => {
+      const clientModuleUrl = new URL('/src/api/client.ts', window.location.origin).href;
       const base = document.createElement('base');
       base.href = 'https://example.invalid/';
       document.head.appendChild(base);
       const load = (p: string) => import(/* @vite-ignore */ p);
-      const mod = (await load('/src/api/client.ts')) as {
+      const mod = (await load(clientModuleUrl)) as {
         apiFetch: (path: string) => Promise<unknown>;
         setToken: (token: string | null) => void;
       };

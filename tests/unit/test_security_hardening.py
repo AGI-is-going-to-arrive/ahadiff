@@ -42,6 +42,9 @@ class TestIsNonPublicIp:
             "127.0.0.1",
             "127.0.0.2",
             "169.254.1.1",
+            "100.64.0.1",
+            "198.18.0.1",
+            "192.0.2.1",
             "0.0.0.0",
         ],
     )
@@ -131,6 +134,9 @@ class TestValidateRemoteUrl:
             "http://[::1]:8000",
             "http://[fe80::1]:8000",
             "http://[fc00::1]:8000",
+            "http://100.64.0.1:8000",
+            "http://198.18.0.1:8000",
+            "http://192.0.2.1:8000",
         ],
     )
     def test_private_ip_rejected(self, url: str) -> None:

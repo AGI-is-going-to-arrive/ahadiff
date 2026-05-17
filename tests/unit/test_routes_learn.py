@@ -234,6 +234,34 @@ def test_post_learn_estimate_passes_changed_paths_to_capture(
 
 
 @pytest.mark.parametrize(
+    "changed_path",
+    [
+        "../outside.py",
+        "/tmp/outside.py",
+        "C:/Users/example/app.py",
+        "C:\\Users\\example\\app.py",
+        "\\\\server\\share\\app.py",
+        "src/\x01app.py",
+        ".git/config",
+    ],
+)
+def test_post_learn_estimate_rejects_unsafe_changed_paths(
+    tmp_path: Path,
+    changed_path: str,
+) -> None:
+    client = _client(tmp_path / ".ahadiff")
+
+    resp = _post_learn_estimate(
+        client,
+        body={"changed_paths": [changed_path], "unstaged": True},
+    )
+
+    assert resp.status_code == 422
+    body = _json_object(resp)
+    assert body["error"] == "invalid_value_for_changed_paths"
+
+
+@pytest.mark.parametrize(
     ("estimated_tokens", "context_window", "file_count", "risk_level"),
     [
         (4_000, 10_000, 2, "ok"),

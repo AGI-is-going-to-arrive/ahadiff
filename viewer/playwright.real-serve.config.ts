@@ -27,9 +27,11 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command:
-      `AHADIFF_DEV_API_ORIGIN=http://127.0.0.1:${SERVE_PORT} ` +
-      `pnpm exec vite --port ${VIEWER_PORT} --strictPort`,
+    command: `pnpm exec vite --port ${VIEWER_PORT} --strictPort`,
+    env: {
+      ...process.env,
+      AHADIFF_DEV_API_ORIGIN: `http://127.0.0.1:${SERVE_PORT}`,
+    },
     url: `http://localhost:${VIEWER_PORT}`,
     reuseExistingServer: false,
     timeout: 120_000,
