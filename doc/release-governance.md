@@ -22,7 +22,8 @@ Pre-release versions use PEP 440 suffixes: `0.1.0a0` (alpha), `0.1.0b1` (beta), 
    - CLI smoke (`--version`, `doctor`, `learn --help`)
    - Windows runtime guard
 2. Tag `v{VERSION}` on main branch
-3. `release.yml` publishes wheel to PyPI via OIDC
+3. `release.yml` is no longer triggered automatically by tag push. Run it with `workflow_dispatch`; use the tag ref and set `dry_run=false` for an actual PyPI publish.
+4. `release.yml` publishes wheel to PyPI via OIDC
 
 ## Commercial Stance
 

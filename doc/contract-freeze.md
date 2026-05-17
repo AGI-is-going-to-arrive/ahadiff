@@ -1076,4 +1076,6 @@ run_id: str
 - Guide 的日常 `learn` / `improve` 命令不再要求用户重复输入 `--provider` / `--privacy-mode`；这些参数仍保留在 `provider test` 或临时 override 场景。
 - Remotion 教程视频作为 docs 资产加入仓库；中文 / 英文最终 MP4 为 H.264 3840x2160 + AAC 48 kHz，时长分别为 `403.000000s` / `395.000000s`。
 
+2026-05-18 GitHub Actions push 触发收口只改 workflow 配置：`.github/workflows/ci.yml`、`frontend-ci.yml`、`pages.yml` 和 `release.yml` 的 `push` 触发已注释，`workflow_dispatch` 保留；Backend / Frontend 的 `pull_request` 触发和 `nightly-eval` schedule 仍保留。验证：`rg -n "^\\s*push:" .github/workflows` 无 active `push:`，`.github/workflows/*.yml` 可解析，`git diff --check -- .github/workflows` 通过。
+
 本轮实测：provider/config/install 目标后端 `209 passed`，目标 ruff/format/pyright、wheel build、viewer 目标 Vitest `5 passed`、viewer 全量 Vitest `38 files, 370 tests passed`、viewer typecheck/lint/build、docs/video typecheck/probe/scan 和 `git diff --check HEAD` 通过；`node scripts/check-asr-similarity.mjs` 当前中文 ASR 一致性失败，已按失败记录。

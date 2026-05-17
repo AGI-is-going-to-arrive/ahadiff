@@ -180,7 +180,7 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
     <li>截图来自当前 <code>viewer/</code>，用 Playwright 和现有 serve mock 生成，不包含真实密钥。</li>
     <li>real-serve 已用临时 git repo 启动真实 <code>python -m ahadiff serve</code>，浏览器覆盖 token、estimate、learn dry-run、task 和 progress stream。</li>
     <li>GPT-5.5 live 验证使用已配置 provider 和合成 fixture，不是对整个当前大型仓库做无限制全量 LLM 生成。</li>
-    <li>跨平台方面，本机实际执行是 macOS；Linux Docker smoke 已确认源码可安装、目标跨平台 / reparse / SQLite race 单测通过、CLI 可加载；另用 Linux <code>node:22-bookworm</code> 镜像自编译 SQLite 3.51.3 后，目标测试和 <code>doctor</code> SQLite gate 均通过。Windows 仍缺真实 runner。最近 GitHub Actions job 没有启动，annotation 显示 billing / spending limit 阻断，因此不等同于当前远端 runner 全绿。</li>
+    <li>跨平台方面，本机实际执行是 macOS；Linux Docker smoke 已确认源码可安装、目标跨平台 / reparse / SQLite race 单测通过、CLI 可加载；另用 Linux <code>node:22-bookworm</code> 镜像自编译 SQLite 3.51.3 后，目标测试和 <code>doctor</code> SQLite gate 均通过。Windows 仍缺真实 runner。最近 GitHub Actions job 没有启动，annotation 显示 billing / spending limit 阻断，因此不等同于当前远端 runner 全绿；仓库当前已关闭 Backend CI、Frontend CI、Pages 和 Release 的 push 自动触发，仍可手动触发或通过 PR / nightly schedule 触发。</li>
   </ul>
 </section>
 

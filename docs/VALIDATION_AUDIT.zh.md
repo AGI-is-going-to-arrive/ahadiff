@@ -8,7 +8,7 @@
 
 不能标记为“发布级全部完成”的原因有两点：
 
-- GitHub Actions 在推送后已触发 Backend CI、Frontend CI 和 Pages runs，但 jobs 立即 failure，steps 为空且日志不存在；这不计为远端代码验证通过。此前 annotation 指向 billing / spending limit。
+- GitHub Actions 在上一轮推送后曾触发 Backend CI、Frontend CI 和 Pages runs，但 jobs 立即 failure，steps 为空且日志不存在；这不计为远端代码验证通过。此前 annotation 指向 billing / spending limit。本轮已注释仓库内 Backend CI / Frontend CI / Pages / Release 的 `push` 触发，后续普通 push 不应再自动启动这些 workflow；`workflow_dispatch`、Backend/Frontend `pull_request` 和 `nightly-eval` schedule 仍保留。
 - “没有任何显性隐性 bug”无法被严格证明；当前只能说明本轮覆盖范围内未发现剩余阻断问题。
 
 ## 目标到证据映射
@@ -47,11 +47,11 @@
 限制：
 
 - 测试覆盖不能数学证明零 bug。
-- 远端 CI 没有实际执行 steps，不能作为跨平台绿灯。
+- 远端 CI 此前没有实际执行 steps，不能作为跨平台绿灯；当前 push 自动触发已关闭，远端 runner 证据仍需要手动触发或 PR / schedule 触发后重新取得。
 
 ### 本轮修改清单
 
-这次提交包含上一轮 completion audit 的未提交代码，也包含本轮 provider / Guide / 视频文档 follow-up。下面只写当前 diff 能支撑的事实。
+这次提交包含上一轮 completion audit 的未提交代码，也包含本轮 provider / Guide / 视频文档 follow-up 和 GitHub Actions push 触发收口。下面只写当前 diff 能支撑的事实。
 
 后端与配置：
 
@@ -59,6 +59,7 @@
 - `src/ahadiff/core/config.py`：`providers.<alias>.available_models` 成为可持久化的动态字段，写回 TOML 时按字符串数组渲染。
 - `src/ahadiff/serve/routes_providers.py`：保存 provider models 时去重，并以 tuple 写入配置，避免重载后丢失模型列表。
 - `src/ahadiff/serve/routes_install.py`：`hooks` target 在 Windows 上明确标为 unsupported，避免把 POSIX hook 指令展示成可用 Windows 安装。
+- `.github/workflows/ci.yml`、`frontend-ci.yml`、`pages.yml`、`release.yml`：注释 `push` 自动触发，保留 `workflow_dispatch`。Backend / Frontend 的 `pull_request` 触发和 `nightly-eval` schedule 没有移除。
 
 前端与接线：
 
@@ -102,15 +103,15 @@
 - Docker Linux `python:3.12-slim` smoke：源码可安装，目标跨平台 / reparse / SQLite race 单测 `45 passed, 1 skipped`，`python -m ahadiff --version` 输出 `1.1.0a0`；该轻量镜像 SQLite 为 `3.46.1`，所以只算兼容性 smoke。
 - Docker Linux `node:22-bookworm` + 自编译 SQLite `3.51.3` gate：目标跨平台 / reparse / SQLite race 单测 `45 passed, 1 skipped`，`python -m ahadiff doctor --repo-root .` 显示 `SQLite gate: compatible with the frozen contract`。
 - Windows guard 单测和跨平台静态测试。
-- CI workflow 配置包含 Ubuntu、macOS 和 Windows Runtime Guard。
+- CI workflow 仍包含 Ubuntu、macOS 和 Windows Runtime Guard，但当前仓库已关闭 push 自动触发；需要手动触发、PR 触发或 nightly schedule 才会请求远端 runner。
 - real-serve Playwright 配置从 POSIX-only env 前缀改为 Playwright `webServer.env`。
 
 未闭合：
 
 - 原生 aarch64 `python:3.12-slim` 自编译 SQLite `3.51.3` 路径在 `apt-get install build-essential` 阶段曾被 Docker 以 exit `137` 杀掉；已改用已有 `node:22-bookworm` 镜像绕过 apt 安装并完成 SQLite `3.51.3` 目标 gate。
 - `colima` / `orbctl` / `podman` / `lima` / `act` 不存在。
-- GitHub Actions jobs 立即 failure：Backend CI / Frontend CI / Pages runs 的 jobs 均为 `steps: []`，`gh run view --log-failed` 返回 `log not found`；之前 annotation 显示 billing / spending limit 阻断。
-- 远端 run 指向对应推送 commit，但没有实际执行 steps/logs；runner 恢复后仍需重新跑。
+- GitHub Actions jobs 立即 failure：上一轮 Backend CI / Frontend CI / Pages runs 的 jobs 均为 `steps: []`，`gh run view --log-failed` 返回 `log not found`；之前 annotation 显示 billing / spending limit 阻断。
+- 这些远端 run 指向对应推送 commit，但没有实际执行 steps/logs；runner 恢复后仍需通过手动触发、PR 触发或 schedule 重新跑。当前已注释 push 触发，普通 push 不再作为复跑入口。
 
 ### i18n 正确性
 
@@ -229,7 +230,7 @@
 ## 发布前剩余门禁
 
 1. 恢复 GitHub Actions billing / spending limit。
-2. runner 恢复后，重新触发 Backend CI、Frontend CI、Windows Runtime Guard，确保远端 runner 验证的是已提交 diff。
+2. runner 恢复后，用 `workflow_dispatch`、PR 或 nightly schedule 重新触发 Backend CI、Frontend CI、Windows Runtime Guard，确保远端 runner 验证的是已提交 diff；普通 push 已不再自动触发这些 workflow。
 3. 远端 runner 恢复后复核 CI 日志；本地通过不等于远端 CI 已闭合。
 4. 若需要更强 Windows 证据，提供真实 Windows runner；Linux SQLite `3.51.3` 目标 gate 已本地闭合，完整 Linux CI 仍可在远端 runner 恢复后补跑。
 5. 如果要把文档状态同步到其它项目文档体系，明确确认“使用 recorder agent 更新项目文档”。
@@ -293,6 +294,7 @@ uv run python -m ahadiff doctor --repo-root .
 远端 CI 恢复后：
 
 ```bash
+rg -n "^\s*push:" .github/workflows || true
 gh run list --limit 5 --json databaseId,workflowName,status,conclusion,headSha,url
 gh run view <run-id> --json jobs,conclusion,headSha,url
 ```
