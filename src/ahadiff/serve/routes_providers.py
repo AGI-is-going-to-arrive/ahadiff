@@ -873,7 +873,7 @@ async def save_provider_models(request: Request) -> JSONResponse:
     if len(model_items) > 100:
         return _error("too many models (max 100)", status=400)
 
-    cleaned = [cast("str", item).strip() for item in model_items]
+    cleaned = list(dict.fromkeys(cast("str", item).strip() for item in model_items))
 
     def _persist() -> dict[str, Any] | None:
         with serve_repo_write_lock(state, command="serve save-provider-models"):
@@ -881,7 +881,7 @@ async def save_provider_models(request: Request) -> JSONResponse:
             raw = providers.get(alias)
             if not isinstance(raw, dict):
                 return None
-            raw["available_models"] = cleaned
+            raw["available_models"] = tuple(cleaned)
             write_config_data(config_path, data)
             return dict(cast("dict[str, Any]", raw))
 

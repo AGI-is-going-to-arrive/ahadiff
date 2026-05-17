@@ -527,12 +527,77 @@ function AccountTab({
 /*  Tab: Provider (merged Keys + Models + model config + LLM settings) */
 /* ------------------------------------------------------------------ */
 
-interface ProviderForm {
+export interface ProviderForm {
   generate_provider: string;
   generate_model: string;
   judge_provider: string;
   judge_model: string;
   llm: LlmConfig;
+}
+
+const PROVIDER_LLM_CONFIG_KEYS = [
+  'input_token_budget',
+  'output_token_budget',
+  'request_timeout_seconds',
+  'max_concurrent',
+  'retry_attempts',
+] as const satisfies readonly (keyof LlmConfig)[];
+
+export function modelOptionsForProvider(provider: ProviderSummary | undefined): string[] {
+  if (!provider) return [];
+  const availableModels = provider.available_models ?? [];
+  const models = availableModels.length > 0 ? availableModels : [provider.model_name];
+  return [...new Set(models.map(model => model.trim()).filter(Boolean))];
+}
+
+export function effectiveModelProvider(
+  providers: ProviderSummary[],
+  selectedAlias: string,
+): ProviderSummary | undefined {
+  if (selectedAlias) return providers.find(provider => provider.alias === selectedAlias);
+  return providers.length === 1 ? providers[0] : undefined;
+}
+
+export function nextModelForProviderSelection(
+  providers: ProviderSummary[],
+  selectedAlias: string,
+  currentModel: string,
+): string {
+  const modelOptions = modelOptionsForProvider(effectiveModelProvider(providers, selectedAlias));
+  if (modelOptions.length === 0) return currentModel;
+  return modelOptions.includes(currentModel) ? currentModel : modelOptions[0];
+}
+
+export function buildProviderConfigUpdatePayload(
+  form: ProviderForm,
+  config: ConfigResponse,
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {};
+
+  if (form.generate_provider !== (config.generate_provider ?? '')) {
+    payload.generate_provider = form.generate_provider;
+  }
+  if (form.generate_model !== (config.generate_model ?? '')) {
+    payload.generate_model = form.generate_model;
+  }
+  if (form.judge_provider !== (config.judge_provider ?? '')) {
+    payload.judge_provider = form.judge_provider;
+  }
+  if (form.judge_model !== (config.judge_model ?? '')) {
+    payload.judge_model = form.judge_model;
+  }
+
+  const llm: Record<string, unknown> = {};
+  for (const key of PROVIDER_LLM_CONFIG_KEYS) {
+    if (form.llm[key] !== config.llm[key]) {
+      llm[key] = form.llm[key];
+    }
+  }
+  if (Object.keys(llm).length > 0) {
+    payload.llm = llm;
+  }
+
+  return payload;
 }
 
 function ProviderTab({
@@ -570,31 +635,19 @@ function ProviderTab({
     }
   }, [config]);
 
-  const dirty = config && form && (
-    form.generate_provider !== (config.generate_provider ?? '')
-    || form.generate_model !== (config.generate_model ?? '')
-    || form.judge_provider !== (config.judge_provider ?? '')
-    || form.judge_model !== (config.judge_model ?? '')
-    || form.llm.input_token_budget !== config.llm.input_token_budget
-    || form.llm.output_token_budget !== config.llm.output_token_budget
-    || form.llm.request_timeout_seconds !== config.llm.request_timeout_seconds
-    || form.llm.max_concurrent !== config.llm.max_concurrent
-    || form.llm.retry_attempts !== config.llm.retry_attempts
+  const dirty = Boolean(
+    config && form && Object.keys(buildProviderConfigUpdatePayload(form, config)).length > 0,
   );
 
   const handleSave = async () => {
-    if (!form) return;
+    if (!form || !config) return;
+    const payload = buildProviderConfigUpdatePayload(form, config);
+    if (Object.keys(payload).length === 0) return;
     setSaving(true);
     setSaveError(null);
     setSaveOk(false);
     try {
-      await putConfig({
-        generate_provider: form.generate_provider,
-        generate_model: form.generate_model,
-        judge_provider: form.judge_provider,
-        judge_model: form.judge_model,
-        llm: form.llm,
-      });
+      await putConfig(payload);
       setSaveOk(true);
       onSaved();
     } catch (e) {
@@ -718,12 +771,8 @@ function ProviderTab({
                 const providerKey = `${role}_provider` as keyof ProviderForm;
                 const modelKey = `${role}_model` as keyof ProviderForm;
                 const selectedAlias = form[providerKey] as string;
-                const selectedProvider = providers.find(p => p.alias === selectedAlias);
-                const modelOptions = selectedProvider?.available_models?.length
-                  ? selectedProvider.available_models
-                  : selectedProvider
-                    ? [selectedProvider.model_name]
-                    : [];
+                const selectedProvider = effectiveModelProvider(providers, selectedAlias);
+                const modelOptions = modelOptionsForProvider(selectedProvider);
                 const currentModel = form[modelKey] as string;
                 return (
                   <div className="settings-field" key={role}>
@@ -739,10 +788,13 @@ function ProviderTab({
                         onChange={e => {
                           const alias = e.target.value;
                           setField(providerKey, alias as ProviderForm[typeof providerKey]);
-                          const p = providers.find(p => p.alias === alias);
-                          if (p) {
-                            const firstModel = p.available_models?.length ? p.available_models[0] : p.model_name;
-                            setField(modelKey, firstModel as ProviderForm[typeof modelKey]);
+                          const nextModel = nextModelForProviderSelection(
+                            providers,
+                            alias,
+                            currentModel,
+                          );
+                          if (nextModel !== currentModel) {
+                            setField(modelKey, nextModel as ProviderForm[typeof modelKey]);
                           }
                         }}
                       >
@@ -757,11 +809,14 @@ function ProviderTab({
                         <select
                           className="settings-select settings-select--model"
                           aria-label={t(MODEL_SELECT_ARIA_KEY[role])}
-                          value={modelOptions.includes(currentModel) ? currentModel : ''}
+                          value={currentModel}
                           onChange={e => setField(modelKey, e.target.value as ProviderForm[typeof modelKey])}
                         >
                           {!modelOptions.includes(currentModel) && currentModel && (
-                            <option value="">{currentModel}</option>
+                            <option value={currentModel}>{currentModel}</option>
+                          )}
+                          {!currentModel && (
+                            <option value="" disabled>{t('Settings_page.model_name_placeholder')}</option>
                           )}
                           {modelOptions.map(m => (
                             <option key={m} value={m}>{m}</option>

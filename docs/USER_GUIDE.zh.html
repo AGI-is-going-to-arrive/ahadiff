@@ -13,9 +13,10 @@
 <body>
 <main class="wrap">
 <section class="hero">
-  <div class="eyebrow">AhaDiff User Guide · 2026-05-17</div>
+  <div class="eyebrow">AhaDiff User Guide · 2026-05-18</div>
   <h1>知返 AhaDiff 用户使用指南</h1>
   <p class="lead">AhaDiff 把一次 git diff 变成带代码证据的课程、声明清单、测验、复习卡、概念图谱和质量棘轮。它默认是 local-first：每个仓库自己的 <code>.ahadiff/</code> 是真相源。</p>
+  <p class="notice">新增视频教程：<a href="video/output/ahadiff-tutorial.zh.burned-subtitles.mp4">打开中文介绍和使用教程 MP4</a>；<a href="video/output/ahadiff-tutorial.en.burned-subtitles.mp4">打开 English tutorial MP4</a>。两个视频分别使用对应语言界面和烧录字幕；字幕源文件在 <code>docs/video/output/subtitles/</code>。</p>
   <div class="toc">
     <a href="#quickstart">快速开始</a><a href="#provider">配置 GPT-5.5</a><a href="#learn">生成课程</a><a href="#webui">使用 WebUI</a><a href="#export">导出</a><a href="#features">功能状态</a><a href="#qa">常见问题</a>
   </div>
@@ -24,10 +25,11 @@
 <section id="quickstart">
   <h2>1. 快速开始</h2>
   <div class="grid two">
-    <div class="card"><h3>安装命令</h3><pre>pipx install ahadiff
+    <div class="card"><h3>安装命令</h3><pre># 当前还未发布到 PyPI；在源码 checkout 中安装 CLI
+uv tool install --editable .
 
-# 如果需要 WebUI 导出 Anki .apkg
-pipx install "ahadiff[anki]"</pre></div>
+# 或者直接在源码目录运行
+uv run ahadiff --version</pre></div>
     <div class="card"><h3>源码 checkout</h3><pre>uv sync --locked --dev
 uv run python -m ahadiff --version
 uv run python -m ahadiff doctor</pre></div>
@@ -43,12 +45,19 @@ ahadiff config show --resolved</pre>
 <section id="provider">
   <h2>2. 配置 GPT-5.5 Provider</h2>
   <p>不要把真实 key 写进 Git、README、manifest 或命令行历史。推荐把 key 放到环境变量里，只把变量名交给 AhaDiff。</p>
+  <h3>macOS / Linux</h3>
   <pre>export AHADIFF_PROVIDER_BASE_URL="https://api.example.com/v1"
 export AHADIFF_PROVIDER_API_KEY="&lt;provider-api-key&gt;"
 
 ahadiff provider test   --name gpt55   --provider-class openai_responses   --base-url "$AHADIFF_PROVIDER_BASE_URL"   --model gpt-5.5   --api-key-env AHADIFF_PROVIDER_API_KEY   --privacy-mode explicit_remote</pre>
-  <p>之后运行 learn 时可以显式指定：</p>
-  <pre>ahadiff learn --last   --provider gpt55   --model gpt-5.5   --privacy-mode explicit_remote</pre>
+  <h3>Windows PowerShell</h3>
+  <pre>$env:AHADIFF_PROVIDER_BASE_URL="https://api.example.com/v1"
+$env:AHADIFF_PROVIDER_API_KEY="&lt;provider-api-key&gt;"
+
+ahadiff provider test --name gpt55 --provider-class openai_responses --base-url $env:AHADIFF_PROVIDER_BASE_URL --model gpt-5.5 --api-key-env AHADIFF_PROVIDER_API_KEY --privacy-mode explicit_remote</pre>
+  <p>配置完成后，单个 provider 或 Settings 里选好的生成 provider/model 会被 <code>ahadiff learn</code> 直接使用。日常学习命令不需要再写 provider 参数；显式 <code>--provider</code> / <code>--model</code> 只用于临时覆盖：</p>
+  <pre>ahadiff learn --last
+ahadiff learn --last --provider gpt55 --model gpt-5.5</pre>
 </section>
 
 <section id="learn">
@@ -76,7 +85,7 @@ ahadiff learn --last --against-spec SPEC.md --spec-semantic-review</pre>
   <h2>4. 使用 WebUI</h2>
   <pre>ahadiff serve
 ahadiff serve --port 8765 --no-browser
-ahadiff serve --watch</pre>
+ahadiff serve --watch  # 需要安装 ahadiff[watchdog]</pre>
   <div class="demo">
     <h3>工作流 CSS 动图 demo</h3>
     <div class="rail">
@@ -121,7 +130,7 @@ ahadiff verify RUN_ID
 ahadiff score RUN_ID
 ahadiff improve --rounds 1</pre></div>
     <div class="card"><h3>服务与数据</h3><pre>ahadiff serve
-ahadiff serve --watch
+ahadiff serve --watch  # 需要安装 ahadiff[watchdog]
 ahadiff db check
 ahadiff graph status
 ahadiff concepts list
@@ -175,7 +184,7 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
   </ul>
 </section>
 
-<p class="footer">生成日期：2026-05-17。本文档是一个自包含 HTML 文件；截图和 CSS 动图 demo 已嵌入文件内部。</p>
+<p class="footer">生成日期：2026-05-18。本文档是一个自包含 HTML 文件；截图和 CSS 动图 demo 已嵌入文件内部。</p>
 </main>
 </body>
 </html>

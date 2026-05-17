@@ -1,0 +1,65 @@
+[
+  {
+    "text": "AI changed the code, but changes never became your knowledge.",
+    "startMs": 0,
+    "endMs": 32835,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": "uv install, init, learn — three steps to start.",
+    "startMs": 32835,
+    "endMs": 87458,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": "Click Diff dots to see the code behind each claim.",
+    "startMs": 87458,
+    "endMs": 125226,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": "Three lesson tiers, scores and reviews for quality judgment.",
+    "startMs": 125226,
+    "endMs": 157239,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": "Quizzes help you recall, reviews help you retain.",
+    "startMs": 157239,
+    "endMs": 203640,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": "8-dimension scoring, accuracy and evidence have hard gates.",
+    "startMs": 203640,
+    "endMs": 252096,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": "Concept ledger and graph grow as you learn more.",
+    "startMs": 252096,
+    "endMs": 298086,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": "Dashboard for records, Settings for model and tool integration.",
+    "startMs": 298086,
+    "endMs": 350242,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": "Let AI write code. Let AhaDiff return the knowledge to you.",
+    "startMs": 350242,
+    "endMs": 395000,
+    "timestampMs": null,
+    "confidence": null
+  }
+]

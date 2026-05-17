@@ -356,7 +356,7 @@ export default function LandingPage() {
               >
                 {t('Landing.hero_cta_learn')}
               </button>
-              <span className="text cli-cmd">pip install ahadiff && ahadiff learn HEAD~1..HEAD</span>
+              <span className="text cli-cmd">uv run ahadiff learn HEAD~1..HEAD</span>
             </div>
             <div className="hero-learn-status">
               <LearnTaskBanner />

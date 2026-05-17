@@ -147,6 +147,200 @@ def test_runtime_provider_uses_configured_generate_model_override(
     assert provider_config.model_name == "gpt-5.5"
 
 
+def test_runtime_provider_treats_single_configured_remote_as_explicit(
+    monkeypatch: Any,
+) -> None:
+    snapshot = SimpleNamespace(
+        values={
+            "llm": {"generate_model": "gpt-5.5"},
+            "providers": {
+                "gpt55": {
+                    "provider_class": "openai_responses",
+                    "model_name": "gpt-5.5",
+                    "base_url": "https://api.openai.com/v1",
+                    "api_key_env": "AHADIFF_PROVIDER_API_KEY",
+                }
+            },
+        },
+        resolved={},
+    )
+    monkeypatch.setenv("AHADIFF_PROVIDER_API_KEY", "test-key")
+
+    provider_config, api_key, target, explicit = cli_module._resolve_runtime_provider(  # pyright: ignore[reportPrivateUsage]
+        snapshot=snapshot,
+        operation_label="lesson generation",
+        provider_name=None,
+        provider_class="openai",
+        base_url=None,
+        model=None,
+        api_key_env="AHADIFF_PROVIDER_API_KEY",
+        privacy_mode="strict_local",
+        stdin_interactive=False,
+        local_hosts=("127.0.0.1",),
+        strict_local_hosts=("127.0.0.1",),
+    )
+
+    assert provider_config.model_name == "gpt-5.5"
+    assert api_key == "test-key"
+    assert target == "remote"
+    assert explicit is True
+
+
+def test_runtime_provider_uses_role_models_with_single_configured_provider(
+    monkeypatch: Any,
+) -> None:
+    snapshot = SimpleNamespace(
+        values={
+            "llm": {
+                "generate_model": "learn-model",
+                "judge_model": "judge-model",
+            },
+            "providers": {
+                "gpt": {
+                    "provider_class": "openai_responses",
+                    "model_name": "provider-default",
+                    "base_url": "https://api.openai.com/v1",
+                    "api_key_env": "AHADIFF_PROVIDER_API_KEY",
+                    "available_models": ("learn-model", "judge-model"),
+                }
+            },
+        },
+        resolved={
+            "llm.generate_model": ResolvedSetting(
+                key="llm.generate_model",
+                value="learn-model",
+                source="repo:/tmp/repo/.ahadiff/config.toml",
+            ),
+            "llm.judge_model": ResolvedSetting(
+                key="llm.judge_model",
+                value="judge-model",
+                source="repo:/tmp/repo/.ahadiff/config.toml",
+            ),
+        },
+    )
+    monkeypatch.setenv("AHADIFF_PROVIDER_API_KEY", "test-key")
+
+    generate_config, _, _, generate_explicit = cli_module._resolve_runtime_provider(  # pyright: ignore[reportPrivateUsage]
+        snapshot=snapshot,
+        operation_label="lesson generation",
+        provider_name=None,
+        provider_class="openai",
+        base_url=None,
+        model=None,
+        api_key_env="AHADIFF_PROVIDER_API_KEY",
+        privacy_mode="strict_local",
+        stdin_interactive=False,
+        local_hosts=("127.0.0.1",),
+        strict_local_hosts=("127.0.0.1",),
+    )
+    judge_config, _, _, judge_explicit = cli_module._resolve_runtime_provider(  # pyright: ignore[reportPrivateUsage]
+        snapshot=snapshot,
+        operation_label="LLM judge evaluation",
+        provider_name=None,
+        provider_class="openai",
+        base_url=None,
+        model=None,
+        api_key_env="AHADIFF_PROVIDER_API_KEY",
+        privacy_mode="strict_local",
+        stdin_interactive=False,
+        local_hosts=("127.0.0.1",),
+        strict_local_hosts=("127.0.0.1",),
+        role="judge",
+    )
+
+    assert generate_config.model_name == "learn-model"
+    assert judge_config.model_name == "judge-model"
+    assert generate_explicit is True
+    assert judge_explicit is True
+
+
+def test_runtime_provider_keeps_single_provider_model_for_default_llm_model() -> None:
+    snapshot = SimpleNamespace(
+        values={
+            "llm": {"generate_model": "gpt-default-from-config-schema"},
+            "providers": {
+                "local": {
+                    "provider_class": "openai",
+                    "model_name": "provider-model",
+                    "base_url": "http://127.0.0.1:8318",
+                    "api_key_env": "AHADIFF_PROVIDER_API_KEY",
+                }
+            },
+        },
+        resolved={
+            "llm.generate_model": ResolvedSetting(
+                key="llm.generate_model",
+                value="gpt-default-from-config-schema",
+                source="default",
+            )
+        },
+    )
+
+    provider_config, _, target, explicit = cli_module._resolve_runtime_provider(  # pyright: ignore[reportPrivateUsage]
+        snapshot=snapshot,
+        operation_label="lesson generation",
+        provider_name=None,
+        provider_class="openai",
+        base_url=None,
+        model=None,
+        api_key_env="AHADIFF_PROVIDER_API_KEY",
+        privacy_mode="strict_local",
+        stdin_interactive=False,
+        local_hosts=("127.0.0.1",),
+        strict_local_hosts=("127.0.0.1",),
+    )
+
+    assert provider_config.model_name == "provider-model"
+    assert target == "local"
+    assert explicit is False
+
+
+def test_runtime_provider_uses_configured_generate_provider_with_multiple_remotes(
+    monkeypatch: Any,
+) -> None:
+    snapshot = SimpleNamespace(
+        values={
+            "llm": {"generate_provider": "gpt", "generate_model": "gpt-5.5"},
+            "providers": {
+                "azure": {
+                    "provider_class": "azure",
+                    "model_name": "gpt-5.5-2026-04-24",
+                    "base_url": "https://example.openai.azure.com/openai/deployments/gpt",
+                    "api_key_env": "AHADIFF_PROVIDER_API_KEY",
+                },
+                "gpt": {
+                    "provider_class": "openai_responses",
+                    "model_name": "gpt-5.5",
+                    "base_url": "https://api.openai.com/v1",
+                    "api_key_env": "AHADIFF_PROVIDER_API_KEY",
+                },
+            },
+        },
+        resolved={},
+    )
+    monkeypatch.setenv("AHADIFF_PROVIDER_API_KEY", "test-key")
+
+    provider_config, api_key, target, explicit = cli_module._resolve_runtime_provider(  # pyright: ignore[reportPrivateUsage]
+        snapshot=snapshot,
+        operation_label="lesson generation",
+        provider_name=None,
+        provider_class="openai",
+        base_url=None,
+        model=None,
+        api_key_env="AHADIFF_PROVIDER_API_KEY",
+        privacy_mode="strict_local",
+        stdin_interactive=False,
+        local_hosts=("127.0.0.1",),
+        strict_local_hosts=("127.0.0.1",),
+    )
+
+    assert provider_config.provider_class == "openai_responses"
+    assert provider_config.model_name == "gpt-5.5"
+    assert api_key == "test-key"
+    assert target == "remote"
+    assert explicit is True
+
+
 def test_improve_lang_is_passed_to_run_improve_loop(tmp_path: Path, monkeypatch: Any) -> None:
     repo_root = _repo_root(tmp_path, monkeypatch)
     captured: dict[str, Any] = {}

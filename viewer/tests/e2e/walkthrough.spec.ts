@@ -1389,7 +1389,7 @@ test.describe('walkthrough: full-app functional test', () => {
     await page.keyboard.press('Escape');
 
     // CLI command
-    await expect(page.locator('.cli-cmd')).toContainText('pip install ahadiff');
+    await expect(page.locator('.cli-cmd')).toContainText('uv run ahadiff learn HEAD~1..HEAD');
     await expect(page.locator('.hero-demo__source')).toContainText(/Latest finalized run|最新完成运行/);
 
     // Feature cards (4)

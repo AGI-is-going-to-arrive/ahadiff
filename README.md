@@ -4,7 +4,7 @@
 >
 > 把 Claude / Codex / Cursor 写出的每一个 git diff，变成带证据链、会出题、会复习、会自我迭代的学习课程。
 
-[English](./README.en.md) · [设计文档](./doc/) · [UI 原型](./ui/)
+[English](./README.en.md) · [使用指南](./docs/USER_GUIDE.zh.html) · [中文视频教程](./docs/video/output/ahadiff-tutorial.zh.burned-subtitles.mp4) · [English tutorial video](./docs/video/output/ahadiff-tutorial.en.burned-subtitles.mp4) · [设计文档](./doc/) · [UI 原型](./ui/)
 
 ---
 
@@ -52,6 +52,8 @@ Stage 0 / Task 0 到 Stage 6 主线现在都已经有实际产物，Stage 7 的 
 
 同日 completion audit / 文档收口覆盖当前所有未提交改动：后端补 Linux SQLite nofollow fd 绑定和主库路径校验，compare / Graphify / JSONL artifact 读取拒绝 hardlink，provider URL 判定收紧为 `not addr.is_global`，`POST /api/learn` 与 estimate 的 `changed_paths` 会拒绝空值、绝对路径、Windows drive / UNC、`.` / `..`、`.git` / `.ahadiff` 和控制字符。前端补 token bootstrap 与同源 absolute URL、provider models / learn estimate Zod schema、real-serve Playwright env、Guide GPT-5.5 provider 命令，以及 API schema / tasks 回归测试。新增 `docs/USER_GUIDE.zh.html` 和 `docs/VALIDATION_AUDIT.zh.md`。真实验证：后端 unit `2530 passed`、integration+eval `20 passed`、ruff/format/pyright/wheel 通过；前端 typecheck、lint、Vitest `36 files, 365 tests passed`、build、完整 Playwright `2945 passed, 10 skipped`、real-serve `2 passed` 通过；live judge `2 passed`，临时 repo 的 GPT-5.5 provider test / live learn 通过；Linux SQLite `3.51.3` 目标 gate 通过；`git diff --check HEAD` 通过。推送后远端 Backend CI / Frontend CI / Pages runs 已触发，但 jobs 立即 failure，steps 为空且日志不存在，不计为代码验证通过；Windows 目前只有静态 guard / workflow 证据，没有真实 Windows runner 结果。
 
+2026-05-18 provider / Guide / 视频 follow-up 只同步当前 diff 能支撑的事实：`learn` / `improve` 会优先使用配置里的生成/评判 provider 和 model；单个 provider 会自动作为默认 provider；多个 provider 已在 Settings 选好生成/评判模型时，日常 `ahadiff learn` 不需要重复传 `--provider` / `--privacy-mode`。Guide、Landing、README 和用户指南改为源码 checkout / 本地 editable 安装口径；新增 `docs/video/` Remotion 中英文教程视频、旁白音频、字幕源和烧录字幕 MP4。真实验证只覆盖改动面：provider/config/install 目标后端测试、目标 ruff/format/pyright、wheel、viewer 全量 Vitest `38 files, 370 tests passed`、viewer typecheck/lint/build、docs/video typecheck/probe/scan 和 `git diff --check HEAD`；中文 ASR 相似度校验失败，已按失败记录，完整 Playwright、live judge 和远端 CI 未在本轮重跑。
+
 2026-05-09 的 follow-up 把 path-scoped learn 补成真正的端到端能力：`ahadiff learn --changed-path`、watch 自触发 learn、`POST /api/learn` / `POST /api/learn/estimate` 和 Learn Mode Dialog 都会把路径范围传到 capture 层；capture 只允许它用于 staged / unstaged / working tree，并用 literal pathspec 处理 glob 字符。前端同时把任务进度改为 EventSource 优先、polling fallback，Learn Mode Dialog 的高级区补了路径范围、其它来源提示和三个运行选项说明；PWA manifest 也补上同源 `id` / `scope` 以及 192/512 PNG 图标。
 
 本次 follow-up 的目标验证：后端 path-scope 回归 `6 passed`；`cd viewer && pnpm vitest run tests/unit/learn-mode-dialog.test.ts tests/unit/manifest.test.ts src/state/learn-store.test.ts` = `3 files, 87 tests passed`；`cd viewer && pnpm typecheck`、`pnpm build` 通过；`cd viewer && pnpm test:e2e:real-serve` = `1 passed`。完整后端单元、完整 Playwright、live judge 和 coverage 没有在这次 follow-up 里重跑。
@@ -80,7 +82,7 @@ Stage 0 / Task 0 到 Stage 6 主线现在都已经有实际产物，Stage 7 的 
 
 本次 Skills → Guide follow-up 把旧 Skills 页替换成更轻的 Guide 页：`/#/guide` 展示日常学习工作流、核心命令、设置命令、进阶/维护命令和 13 个支持的集成目标；`/#/skills` 现在会 replace 到 `/#/guide`。Guide 不导入 install API，也不执行安装/卸载；实际 preview / write / remove 仍在 Settings → AI 工具指引里完成。Onboarding 的命令块抽成共享 `CommandBlock`，复制按钮有本地化 label、clipboard API 优先和 `execCommand('copy')` fallback，fallback textarea 会在异常路径清理。Onboarding 示例也按平台拆成 POSIX / PowerShell 写法，并只使用占位符 API key。本次真实验证：Guide 目标 Playwright `7 passed`；`cd viewer && pnpm vitest run` = `253 passed`；`pnpm typecheck`、`pnpm build` 通过；Guide keys 全部被使用；旧 Skills 残留只剩 `/skills` redirect 测试；Guide/Onboarding/CommandBlock 未发现真实 key、endpoint 或本机绝对路径示例；`git diff --check` 通过。后端、integration、eval、live judge、coverage、wheel、完整 Playwright 和 GitHub Actions 远端 workflow 没有在本次重跑。
 
-2026-05-11 的 Onboarding / Guide QA follow-up 只改前端学习入口和测试：新增 `DiagnosticRow` 组件，把 doctor / DB check 行的状态图标、`sr-only` 文案和 `aria-live="polite"` 收到一个地方；Onboarding 重排 stepper、doctor、DB check、预览和 CTA，补上 HashRouter 下的锚点滚动、reduced-motion、forced-colors、414px 窄屏和 renderToStaticMarkup 断言；Sidebar 的 SYSTEM 顺序保持 Welcome → Get Started → Guide → Settings；Guide 的维护命令默认展示 `--dry-run`；light mode focus ring 改回可见 token 组合；WebKit 下 Dashboard run link 的 E2E 等待改成点击后断言 URL，避免把 hash SPA 的 load 等待误当成产品失败。
+2026-05-11 的 Onboarding / Guide QA follow-up 只改前端学习入口和测试：新增 `DiagnosticRow` 组件，把 doctor / DB check 行的状态图标、`sr-only` 文案和 `aria-live="polite"` 收到一个地方；Onboarding 重排 stepper、doctor、DB check、预览和 CTA，补上 HashRouter 下的锚点滚动、reduced-motion、forced-colors、414px 窄屏和 renderToStaticMarkup 断言；Sidebar 的 SYSTEM 顺序保持 Welcome → Get Started → Guide → Settings；当时 Guide 的维护命令偏保守展示；light mode focus ring 改回可见 token 组合；WebKit 下 Dashboard run link 的 E2E 等待改成点击后断言 URL，避免把 hash SPA 的 load 等待误当成产品失败。
 
 本次 QA follow-up 的真实验证：后端完整 unit `2136 passed`；`ruff format --check src tests`、`ruff check src tests`、`pyright`、`uv build --wheel`、`python -m ahadiff --version` 和 `ahadiff doctor` 通过；`cd viewer && pnpm install --frozen-lockfile`、`pnpm typecheck`、`pnpm lint`、`pnpm vitest run` = `25 files, 268 tests passed`、`pnpm build` 和完整 Playwright = `2630 passed, 10 skipped` 通过；i18n scalar keys `1090/1090`，`errors.*` 覆盖 `27/27` 个 error code，`Format.*` 覆盖 6 个格式化文案；Vite preview 与 `ahadiff serve` 的 `/`、`/healthz` 本机 smoke 没有安全 console error/warning；`git diff --check` 通过。integration / eval / live judge / coverage 和远端 GitHub Actions 没有在本次重跑。
 
@@ -125,13 +127,14 @@ LOOP：编辑 → commit → 评估 → 高分 keep / 低分 reset → 写入 `r
 
 ## 快速开始
 
-下面命令对应当前 CLI。源码 checkout 中可以用 `uv run ahadiff ...`；安装为 wheel / pipx 后直接用 `ahadiff ...`。
+下面命令对应当前 CLI。AhaDiff 当前还未发布到 PyPI；源码 checkout 中可以用 `uv run ahadiff ...`，也可以用 `uv tool install --editable .` 安装本机 CLI。用本地 editable 或本地 wheel 安装后，再直接用 `ahadiff ...`。
 
 ```bash
-pipx install ahadiff
+# 在 AhaDiff 源码 checkout 中安装本机 CLI
+uv tool install --editable .
 
-# 如果要在 WebUI 下载 Anki .apkg，需要可选 extra
-pipx install "ahadiff[anki]"
+# 或者直接在源码目录运行
+uv run ahadiff --version
 
 # 初始化当前 repo 的 .ahadiff/
 ahadiff init
@@ -174,7 +177,7 @@ ahadiff review
 ahadiff mark <claim_id> wrong
 ahadiff serve
 ahadiff serve --port 8765 --no-browser
-ahadiff serve --watch
+ahadiff serve --watch  # 需要 watchdog extra
 
 # 本地静态预览导出和概念健康检查
 ahadiff export preview <run_id> --out .ahadiff/export-preview
@@ -213,7 +216,10 @@ ahadiff provider test \
   --api-key-env AHADIFF_PROVIDER_API_KEY \
   --privacy-mode explicit_remote
 
-ahadiff learn --last --provider gpt55 --model gpt-5.5 --privacy-mode explicit_remote
+ahadiff learn --last
+
+# 临时覆盖已配置 provider/model 时才需要显式传参
+ahadiff learn --last --provider gpt55 --model gpt-5.5
 ```
 
 真实 LLM judge smoke 默认不跑。要用 GPT-5.5，显式传环境变量；不要把 key 或真实 endpoint 写死进文档：
@@ -392,7 +398,7 @@ ahadiff/
 ├─ tests/eval/                  # benchmark suite 测试
 ├─ tests/integration/           # pinned integration fixtures
 ├─ tests/live/                  # 需要显式环境变量开启的真实 LLM judge smoke
-├─ viewer/                      # React 19 + Vite + Zustand + vanilla CSS 前端（14 个生产页面 TSX / 52 个非测试 TSX / 47 个 CSS / 1490 i18n scalar keys；Phase 2: Challenge 页面、Export modal、HealthBadge；最新 completion audit：后端 unit 2530 + viewer Vitest 365 + i18n 1490；完整 Playwright gate 为 2945 passed / 10 skipped）
+├─ viewer/                      # React 19 + Vite + Zustand + vanilla CSS 前端（14 个生产页面 TSX / 52 个非测试 TSX / 47 个 CSS / 1490 i18n scalar keys；Phase 2: Challenge 页面、Export modal、HealthBadge；最新完整 gate：后端 unit 2530 + viewer Vitest 365 + i18n 1490；完整 Playwright gate 为 2945 passed / 10 skipped）
 ├─ ui/                          # HTML 原型 v1–v6（设计迭代史）
 └─ CLAUDE.md                    # 项目 AI 上下文索引
 ```
@@ -418,7 +424,7 @@ ahadiff/
 - `src/ahadiff/review/{database,scheduler,schemas,signal}.py`：review.sqlite schema / migration、FSRS-6 调度、review queue、learning signal 和 review CLI 后端
 - `src/ahadiff/improve/{loop,program,targeted,rewrite}.py`：improve session、immutable improve_program、worktree 隔离、5 个 mutable prompt 白名单、replay-learn、targeted verification、Phase 2.5 触发、cherry-pick 顺序、session 校验与 pending worktree resume guard
 - source checkout 与 wheel 安装态的 runtime 资源定位：`eval_bundle_version`、`prompt_version`、lesson prompt 加载都已经接到包内资源
-- `keep_final` 仍通过全 8 维 recheck 后的 `ahadiff db finalize-targeted <event_id>` 手动收口，不在 improve loop 内自动升级。前端 `viewer/` React SPA 当前是 14 个生产页面 TSX；当前学习面已收口到更接近实际使用：Review 页面显示 Again / Hard / Good / Easy 四档评分并支持 `1`-`4` 快捷键，open-answer 普通 reveal 不再记为 quiz peek；Quiz 的 SRSCard 仍保留 Good / Hard / Wrong 与 peek guard，但已有 Prev / Mark wrong / Next 导航、mode chips 和 progress table，后端 quiz kind 只接受 `guided` / `recall` / `transfer`；Topbar 的 Learn Run 会打开 Learn Mode Dialog，默认输出语言跟随当前 viewer locale，也可选择 10 种 capture mode 并走 preflight 确认，working / unstaged / staged 模式可填写每行一个路径的 Path scope，前端会拒绝路径遍历、绝对路径、Windows drive/UNC 形态、控制字符和超过 500 条路径，关闭时会取消 estimate / pending learn 请求；Challenge 页面提供 Build / Tour / Challenge / Review / Adapt 记忆重构流程；Dashboard 空态也可以直接打开 Learn Mode Dialog，spec alignment KPI 读取 finalized run 的 `score.json` 和 `spec_alignment.json` 聚合，并展示 semantic reviewed / degraded / disagreement 计数；Diff Viewer 有 Unified / Split 两种模式，Split 下 old/new 两侧 claim 证据点和跳转保持分侧，文件摘要栏有 Prev / Next，新增/删除行有 `+` / `-` 标记，claim 选中后会滚动到证据行，右侧 ClaimInspector 会在跳转后保持在视口内，选中详情贴在对应卡片下方，同一行多个 claim 会聚合成一个最高严重度圆点和数量角标；Lesson 会根据 weak concepts / stability 推荐 compact / hint / full，也会把 lesson artifact 缺失显示成 skipped empty state；Lesson reader 的 header 现在有 verdict / score、打印和本地“标记已学”，右侧 rail 会根据当前 run 的 lesson、claims、concepts、quiz artifact 展示声明汇总、知识记忆、证据、学习进度、脚手架、未证明、被反驳和来源，不再是静态示例；Settings 是 7-tab（Account / Provider / Capture / Privacy / Audit / Preferences / AI 工具指引），Preferences 合并语言、外观、`learnability_threshold`、`desired_retention` 和 `quiz_question_count`，Provider/Capture/AI 工具指引等 `?tab=` 深链可初始化并切换，Provider tab 的生成/评判 provider 与 model 控件有独立 aria-label；AI 工具指引页签支持 preview/write/remove、复制命令、inline manifest plan、查看 manifest 写入路径和写后重新 detect；Guide 页替代旧 Skills 页，展示工作流、常用命令、维护命令和支持的集成目标，并解释 CLI 安装与项目级 Agent 指引的区别，维护命令默认展示 `--dry-run`，`/#/skills` 会 replace 到 `/#/guide`；SearchOverlay 的 graph node 结果会跳到 Concepts Ledger 并聚焦纯文本概念名；Review 会消费 `?card=`，并展示高风险概念、遗忘曲线说明和 mastery 色阶；Concepts 是 Ledger / Graph 双 tab，会消费 `?focus=`、`?run=` 和 `?tab=`，Ledger 展示并筛选已加载概念的 health status，每行可跳到 Graph 查看同一概念，focus 会滚动和高亮，Graph tab 可以刷新 Graphify import，`?focus=` 会在 limit 外补回聚焦节点，遇到写锁冲突会做一次延迟重试；Ratchet 通过 Export modal 下载 `results.tsv`、`results.json`、APKG，并可请求 static preview manifest，也有只读 Improve Preview tab；Ratchet 的 results tab 现在直接渲染透明度 API 给出的 inline `results.tsv` 表，Phase 2.5 卡片读取最终事件里的 `note_json.phase25`，Benchmark tab 读取真实 manifest/report 摘要；Run Detail 页展示 Overview / Score / Judge / Concepts / Artifacts 五个 tab，其中 Overview 会按 artifact 加载 Spec Alignment 和 Graphify Signoff，Concepts 只在 run 有 `concepts.jsonl` 时出现；Onboarding 会单独展示 DB check，doctor 和 DB check 互不遮挡，并通过 `DiagnosticRow` 给状态图标、`sr-only` 文案和 `aria-live` 做统一处理；Onboarding 和 Guide 共享 `CommandBlock` 复制组件；ConceptGraph 现在只有 Graph / List 两种视图，大图默认 List 但仍可打开完整图谱，完整图谱改为 `react-force-graph-2d` Canvas renderer，支持 botanical palette、community fill、legend/filter、forced-colors、节点详情、id/name/ledger key 聚焦、跨页搜索跳转和可访问列表 fallback，节点文件路径展示会剥离本机 home/system 前缀；Dashboard 对 runs / ratchet / stats / heatmap / learning 使用 `Promise.allSettled`，学习效果接口失败不会拖垮主页面；长任务进度现在走 SSE 优先、polling fallback。
+- `keep_final` 仍通过全 8 维 recheck 后的 `ahadiff db finalize-targeted <event_id>` 手动收口，不在 improve loop 内自动升级。前端 `viewer/` React SPA 当前是 14 个生产页面 TSX；当前学习面已收口到更接近实际使用：Review 页面显示 Again / Hard / Good / Easy 四档评分并支持 `1`-`4` 快捷键，open-answer 普通 reveal 不再记为 quiz peek；Quiz 的 SRSCard 仍保留 Good / Hard / Wrong 与 peek guard，但已有 Prev / Mark wrong / Next 导航、mode chips 和 progress table，后端 quiz kind 只接受 `guided` / `recall` / `transfer`；Topbar 的 Learn Run 会打开 Learn Mode Dialog，默认输出语言跟随当前 viewer locale，也可选择 10 种 capture mode 并走 preflight 确认，working / unstaged / staged 模式可填写每行一个路径的 Path scope，前端会拒绝路径遍历、绝对路径、Windows drive/UNC 形态、控制字符和超过 500 条路径，关闭时会取消 estimate / pending learn 请求；Challenge 页面提供 Build / Tour / Challenge / Review / Adapt 记忆重构流程；Dashboard 空态也可以直接打开 Learn Mode Dialog，spec alignment KPI 读取 finalized run 的 `score.json` 和 `spec_alignment.json` 聚合，并展示 semantic reviewed / degraded / disagreement 计数；Diff Viewer 有 Unified / Split 两种模式，Split 下 old/new 两侧 claim 证据点和跳转保持分侧，文件摘要栏有 Prev / Next，新增/删除行有 `+` / `-` 标记，claim 选中后会滚动到证据行，右侧 ClaimInspector 会在跳转后保持在视口内，选中详情贴在对应卡片下方，同一行多个 claim 会聚合成一个最高严重度圆点和数量角标；Lesson 会根据 weak concepts / stability 推荐 compact / hint / full，也会把 lesson artifact 缺失显示成 skipped empty state；Lesson reader 的 header 现在有 verdict / score、打印和本地“标记已学”，右侧 rail 会根据当前 run 的 lesson、claims、concepts、quiz artifact 展示声明汇总、知识记忆、证据、学习进度、脚手架、未证明、被反驳和来源，不再是静态示例；Settings 是 7-tab（Account / Provider / Capture / Privacy / Audit / Preferences / AI 工具指引），Preferences 合并语言、外观、`learnability_threshold`、`desired_retention` 和 `quiz_question_count`，Provider/Capture/AI 工具指引等 `?tab=` 深链可初始化并切换，Provider tab 的生成/评判 provider 与 model 控件有独立 aria-label；AI 工具指引页签支持 preview/write/remove、复制命令、inline manifest plan、查看 manifest 写入路径和写后重新 detect；Guide 页替代旧 Skills 页，展示工作流、常用命令、维护命令和支持的集成目标，并解释 CLI 安装与项目级 Agent 指引的区别，维护命令展示真实必填参数，预览类命令才保留 `--dry-run`，`/#/skills` 会 replace 到 `/#/guide`；SearchOverlay 的 graph node 结果会跳到 Concepts Ledger 并聚焦纯文本概念名；Review 会消费 `?card=`，并展示高风险概念、遗忘曲线说明和 mastery 色阶；Concepts 是 Ledger / Graph 双 tab，会消费 `?focus=`、`?run=` 和 `?tab=`，Ledger 展示并筛选已加载概念的 health status，每行可跳到 Graph 查看同一概念，focus 会滚动和高亮，Graph tab 可以刷新 Graphify import，`?focus=` 会在 limit 外补回聚焦节点，遇到写锁冲突会做一次延迟重试；Ratchet 通过 Export modal 下载 `results.tsv`、`results.json`、APKG，并可请求 static preview manifest，也有只读 Improve Preview tab；Ratchet 的 results tab 现在直接渲染透明度 API 给出的 inline `results.tsv` 表，Phase 2.5 卡片读取最终事件里的 `note_json.phase25`，Benchmark tab 读取真实 manifest/report 摘要；Run Detail 页展示 Overview / Score / Judge / Concepts / Artifacts 五个 tab，其中 Overview 会按 artifact 加载 Spec Alignment 和 Graphify Signoff，Concepts 只在 run 有 `concepts.jsonl` 时出现；Onboarding 会单独展示 DB check，doctor 和 DB check 互不遮挡，并通过 `DiagnosticRow` 给状态图标、`sr-only` 文案和 `aria-live` 做统一处理；Onboarding 和 Guide 共享 `CommandBlock` 复制组件；ConceptGraph 现在只有 Graph / List 两种视图，大图默认 List 但仍可打开完整图谱，完整图谱改为 `react-force-graph-2d` Canvas renderer，支持 botanical palette、community fill、legend/filter、forced-colors、节点详情、id/name/ledger key 聚焦、跨页搜索跳转和可访问列表 fallback，节点文件路径展示会剥离本机 home/system 前缀；Dashboard 对 runs / ratchet / stats / heatmap / learning 使用 `Promise.allSettled`，学习效果接口失败不会拖垮主页面；长任务进度现在走 SSE 优先、polling fallback。
 
 本轮又收口了几件容易出错的运行时边界：`prompt_version` 只描述 AhaDiff 自己的 prompt 资源，不再受目标工作区 `prompts/` 影响；lesson JSON 解析会跳过不匹配 schema 的示例块，claims / quiz / misconception cards / LLM judge 也会在 provider envelope、fenced JSON、JSONL、示例块和部分截断 JSON 之间选择能通过 schema 的真实答案；lesson/quiz 目录改成生成后再接到主链，失败时会回滚；如果 lesson 生成阶段失败，会清掉新写出的 `claims.raw.jsonl` / `claims.jsonl`、`quiz/` 和 `concepts_local.jsonl` 半成品；`learn` 成功后会写入 `event_type=learn` 的评分事件和 `score.json`，配置 `judge_provider` 时还会把 LLM judge 的 8 维结果写入 `judge.json`，manual `score` / `verify` 不再污染 learn 的 ratchet baseline；`ReviewCard` 现在会校验 `last_rating` 范围和 `card_state/stale_reason` 组合；伪造 quiz 也不会再误拿 `PASS`。后续又把 pinned integration 里的 `cards.jsonl` fixture 收回真实生成路径：测试先写 `symbols.json`，再用 `generate_cards_for_run()` 生成 cards，并逐行校验 `ReviewCard` schema，避免手写半截 cards 绕过生产契约。Task 15 这轮也已经补齐：旧版 `cards` schema 会显式迁移 `stale_reason`，schema-invalid `cards.jsonl` 会降级成 warning，重复 regenerate 不会把旧 active 卡留在 due queue 里；`regenerate --only quiz` 在 `evaluate_run` 失败时会恢复旧 quiz/cards，在 `FAIL` 时会删掉陈旧 `cards.jsonl` 并把该 run 的 active 卡标成 `stale + staleness_unknown`；lossy TSV import 现在走单连接整批导入，坏行或 duplicate identity 会整批回滚；`rollback_result_event` 也改成同一连接里完成 delete + export rows，普通 DB connect 不会再因为路径 typo 静默建目录。Task 16/17 这轮补上了 `lesson_hint.md` 白名单、session_id 路径校验、30 分钟 replay timeout、双 prompt temp+replace 写入、非冲突 cherry-pick 失败区分、discard/pending conflict 不写 `finalized.json`、pending conflict 不作为下一轮 baseline、volatile staged/unstaged 输入从保存的 `patch.diff` 重放、短 worktree 路径、`--rounds` 上限 20、null byte 拒绝、Ctrl+C 在已完成 round 后不再追加第二条 crash event、targeted verification、Phase 2.5 单次触发，以及 OpenAI-compatible provider endpoint 归一化。这次又把 LLM cache key 的版本边界补齐：同一 `api_family` 下不同 `api_family_version` 会生成不同 cache key，避免兼容网关或 API 版本变化时误复用旧结果。
 
@@ -436,13 +442,13 @@ source .venv/bin/activate && python -m ahadiff db check --help
 source .venv/bin/activate && python -m ahadiff install github-action --help
 ```
 
-真实 LLM judge smoke 需要显式开启，默认模型顺序是 `gpt-5.3-codex-spark,gpt-5.4-mini`，每个模型都会先试 OpenAI Responses，再试 Chat Completions；如需 GPT-5.5，请像快速开始里那样显式设置 `AHADIFF_LIVE_LLM_MODELS`：
+真实 LLM judge smoke 需要显式开启。下面是 GPT-5.5 示例；如果省略 `AHADIFF_LIVE_LLM_MODELS`，测试会使用代码里的默认模型顺序：
 
 ```bash
 AHADIFF_LIVE_LLM_JUDGE=1 \
 AHADIFF_LIVE_LLM_API_KEY="$AHADIFF_LIVE_LLM_API_KEY" \
 AHADIFF_LIVE_LLM_BASE_URL="$AHADIFF_LIVE_LLM_BASE_URL" \
-AHADIFF_LIVE_LLM_MODELS="gpt-5.3-codex-spark,gpt-5.4-mini" \
+AHADIFF_LIVE_LLM_MODELS="gpt-5.5" \
 pytest tests/live/test_llm_judge_live.py -q
 ```
 
@@ -475,6 +481,8 @@ pytest tests/live/test_llm_judge_live.py -q
 2026-05-17 viewer follow-up 重跑 viewer typecheck、Vitest `35 files, 362 tests passed`、viewer build、Diff walkthrough Chromium E2E `1 passed`、Welcome learn-task Chromium E2E `4 passed`，并确认 i18n scalar keys `1490/1490`。一次并行 Playwright 尝试因两个 Vite webServer 抢 `5173` 失败，随后 Welcome 组用 `AHADIFF_VIEWER_E2E_PORT=5174` 重跑通过；本轮没有重跑后端、integration、eval、ruff/format/pyright、wheel、完整 Playwright、live judge 或远端 GitHub Actions。
 
 2026-05-17 completion audit / 文档收口重跑后端 unit `2530 passed`、integration+eval `20 passed`、`ruff check`、`ruff format --check`、`pyright`、wheel、viewer typecheck、lint、Vitest `36 files, 365 tests passed`、viewer build、完整 Playwright `2945 passed, 10 skipped`、real-serve `2 passed`、live judge `2 passed`、临时 repo GPT-5.5 provider test / live learn、Linux SQLite `3.51.3` 目标 gate 和 `git diff --check HEAD`。推送后远端 Backend CI / Frontend CI / Pages runs 已触发，但 jobs 立即 failure，steps 为空且日志不存在，不计为代码验证通过；Windows 仍缺真实 runner 结果。
+
+2026-05-18 provider / Guide / 视频 follow-up 重跑 provider/config/install 目标后端测试、目标 ruff/format/pyright、wheel、viewer 目标 Vitest `5 passed`、viewer 全量 Vitest `38 files, 370 tests passed`、viewer typecheck/lint/build、docs/video typecheck/probe/scan 和 `git diff --check HEAD`。`node scripts/check-asr-similarity.mjs` 当前失败在中文 ASR，英文按同一逻辑单独计算达标；本轮没有重跑完整 Playwright、live judge 或远端 CI。
 
 下一步路线图：
 

@@ -952,7 +952,7 @@ img { max-width: 100%; display: block; }
         <span class="terminal-title">Terminal</span>
       </div>
       <div class="terminal-body">
-        <div><span class="prompt">$ </span><span class="cmd">pip install ahadiff</span></div>
+        <div><span class="prompt">$ </span><span class="cmd">uv tool install --editable .</span></div>
         <div><span class="prompt">$ </span><span class="cmd">cd my-project</span></div>
         <div><span class="prompt">$ </span><span class="cmd">ahadiff learn --last</span></div>
         <div>&nbsp;</div>
@@ -1050,8 +1050,8 @@ img { max-width: 100%; display: block; }
       <div class="start-card reveal">
         <div class="start-num">1</div>
         <h3 data-i18n="start.c1.title">Install</h3>
-        <p data-i18n="start.c1.desc">通过 pip 安装 AhaDiff CLI 工具。</p>
-        <div class="code-block"><span class="prompt">$ </span><span class="cmd">pip install ahadiff</span></div>
+        <p data-i18n="start.c1.desc">当前还未发布到 PyPI；源码 checkout 中用 uv 安装本机 CLI。</p>
+        <div class="code-block"><span class="prompt">$ </span><span class="cmd">uv tool install --editable .</span></div>
       </div>
       <div class="start-card reveal reveal-delay-1">
         <div class="start-num">2</div>
@@ -1277,8 +1277,8 @@ const T = {
   },
   "start.c1.title": { zh: "安装", en: "Install" },
   "start.c1.desc": {
-    zh: "通过 pip 安装 AhaDiff CLI 工具。",
-    en: "Install AhaDiff CLI via pip."
+    zh: "当前还未发布到 PyPI；源码 checkout 中用 uv 安装本机 CLI。",
+    en: "AhaDiff is not published on PyPI yet; install the local CLI from a source checkout with uv."
   },
   "start.c2.title": { zh: "学习", en: "Learn" },
   "start.c2.desc": {

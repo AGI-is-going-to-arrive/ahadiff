@@ -19,9 +19,9 @@ export function detectPlatform(): Platform {
 }
 
 export function getInstallCommand(_platform: Platform): string {
-  // pip install is identical across platforms; the platform argument is
-  // retained so callers can branch on it later (e.g. brew, scoop, apt).
-  return 'pip install ahadiff';
+  // AhaDiff is not published on PyPI yet. Install the CLI from the current
+  // source checkout into uv's isolated tool environment.
+  return 'uv tool install --editable .';
 }
 
 export function getShellHint(platform: Platform): string {

@@ -1,6 +1,6 @@
 # AhaDiff 本轮验证审计
 
-日期：2026-05-17
+日期：2026-05-18
 
 ## 结论
 
@@ -24,7 +24,7 @@
 - CLI 命令实测：已覆盖 help、临时 repo 行为矩阵、live provider / learn 和破坏性命令的 dry-run 或临时 repo 路径。
 - 前后端接线 / feature 状态：已覆盖 real-serve、Settings/Guide/API schemas、task progress、auth/token 和核心页面；完整远端 runner 未闭合。
 - GPT-5.5 live：已用已配置 provider 跑 live judge、provider test 和 live learn；不是全仓库无限制 LLM 生成。
-- 用户说明文档和媒体：已交付自包含 HTML，包含截图和 CSS 动图 demo；未用 Remotion 生成独立视频，因为当前交付没有 Remotion 项目依赖，且 HTML 内嵌 demo 更直接。
+- 用户说明文档和媒体：已交付自包含 HTML，包含截图和 CSS 动图 demo；本轮 follow-up 已补中文和英文两个独立 Remotion 视频、对应旁白音频、ASR 回听文本、字幕源文件和烧录字幕 MP4。
 - recorder 文档同步：未执行；需要用户明确确认“使用 recorder agent 更新项目文档”。
 
 ### 全方位多维 code review 和实际测试
@@ -51,31 +51,32 @@
 
 ### 本轮修改清单
 
-后端与安全：
+这次提交包含上一轮 completion audit 的未提交代码，也包含本轮 provider / Guide / 视频文档 follow-up。下面只写当前 diff 能支撑的事实。
 
-- `src/ahadiff/cli.py`：校准 Challenge CLI 文案。
-- `src/ahadiff/core/sqlite_util.py`：Linux SQLite nofollow fd 绑定、主库路径校验和失败打开路径身份校验。
-- `src/ahadiff/git/capture.py`：diff capture 输入边界加固。
-- `src/ahadiff/llm/provider.py`：provider schema / model discovery 加固。
-- `src/ahadiff/serve/routes_learn.py`：learn route 输入校验和 estimate / submit 接线加固。
+后端与配置：
+
+- `src/ahadiff/cli.py`、`src/ahadiff/core/orchestrator.py`：`learn` / `improve` 解析 provider 时，会优先使用配置中的角色 provider；只有多个 provider 且没有可用默认时，才要求显式 `--provider`。单个 provider 会自动作为默认 provider，远端 provider 来自配置时也算用户显式配置，可在 `strict_local` 下通过已有安全检查进入远端调用。
+- `src/ahadiff/core/config.py`：`providers.<alias>.available_models` 成为可持久化的动态字段，写回 TOML 时按字符串数组渲染。
+- `src/ahadiff/serve/routes_providers.py`：保存 provider models 时去重，并以 tuple 写入配置，避免重载后丢失模型列表。
+- `src/ahadiff/serve/routes_install.py`：`hooks` target 在 Windows 上明确标为 unsupported，避免把 POSIX hook 指令展示成可用 Windows 安装。
 
 前端与接线：
 
-- `viewer/src/api/client.ts`：同源绝对 URL token/API 请求，避免 `<base href>` 干扰。
-- `viewer/src/api/providers.ts`、`viewer/src/api/schemas.ts`、`viewer/src/api/tasks.ts`、`viewer/src/api/types.ts`：API schema / task / provider 类型收口。
-- `viewer/src/pages/GuidePage.tsx`：Guide provider 命令补齐 `base-url`、model、key env 和 privacy mode。
-- `viewer/playwright.real-serve.config.ts`：real-serve E2E 改为 Playwright `webServer.env`。
+- `viewer/src/pages/SettingsPage.tsx`：Provider tab 在单 provider 情况下也会展示可选模型；切换 provider 时保留仍有效的当前模型；保存时只提交实际变化的字段，避免单纯改 LLM limits 时误写默认模型。
+- `viewer/src/pages/GuidePage.tsx`、`viewer/src/i18n/messages/*.json`：核心学习命令改回简单心智模型，`learn` / `improve` 不再在日常命令里要求 `--provider` / `--privacy-mode`；provider test 仍保留在设置命令里，作为一次性配置入口；PowerShell 环境变量写法和维护命令参数同步到真实 CLI。
+- `viewer/src/pages/LandingPage.tsx`、`viewer/src/utils/platform.ts`、相关 E2E：Welcome/Guide 示例改为源码 checkout / `uv run` / `uv tool install --editable .` 口径，不再写成已发布 PyPI 的安装方式。
 
 测试：
 
-- `tests/unit/test_core_utils.py`：SQLite race / symlink / reparse 目标覆盖。
-- `tests/unit/test_git_capture.py`、`tests/unit/test_routes_learn.py`、`tests/unit/test_security_hardening.py`：capture、learn route、安全输入边界回归。
-- `viewer/src/api/__tests__/providers-schema.test.ts`、`viewer/src/api/__tests__/tasks-schema.test.ts`、`viewer/tests/e2e/auth.spec.ts`、`viewer/tests/unit/client.test.ts`：前端 API schema、task schema、auth/base-href 和 token bootstrap 回归。
+- 新增并已运行 provider 默认解析回归：`tests/unit/test_cli.py`、`tests/unit/test_orchestrator.py`、`tests/unit/test_routes_providers.py`。
+- 新增并已运行前端 helper 回归：`viewer/src/pages/__tests__/SettingsPage.test.tsx`、`viewer/src/pages/__tests__/GuidePage.test.tsx`。
+- 新增并已运行 install route Windows hooks 回归：`tests/unit/test_routes_install.py`。
 
-文档：
+文档和视频：
 
-- `docs/USER_GUIDE.zh.html`：自包含中文用户指南、7 张截图、CSS 动图 demo、功能状态和验证口径。
-- `docs/VALIDATION_AUDIT.zh.md`：本轮 completion audit、证据矩阵、阻断项和复跑命令。
+- `docs/USER_GUIDE.zh.html`：安装、provider 默认使用、PowerShell 示例、`serve --watch` 依赖和视频入口已同步。
+- `docs/video/`：新增独立 Remotion 工程、中文/英文 clean MP4、烧录字幕 MP4、旁白音频、字幕源文件、ASR 输出和复现脚本。
+- `docs/VALIDATION_AUDIT.zh.md`、`docs/video/README.md`、README / README.en / 项目文档：同步当前代码、真实测试结果和视频验证结果；ASR 中文一致性校验失败按失败记录，不写成通过。
 
 ### corner case / 安全边界
 
@@ -197,20 +198,32 @@
 - 单文件自包含中文指南。
 - 内嵌 7 张当前 Viewer 截图。
 - 内嵌 CSS 工作流动图 demo。
-- 当前 `docs/USER_GUIDE.zh.html` SHA-256：`c279503981c7ddf3894702135a860e164ac1c72807c1a9c4127f2aeb8f8f2086`。
-- 浏览器打开后 console `0 errors, 0 warnings`。
-- 390px 移动视口打开后无水平溢出，console `0 errors, 0 warnings`。
+- 视频入口已加入 `docs/USER_GUIDE.zh.html` hero 区域，分别指向中文视频 `docs/video/output/ahadiff-tutorial.zh.burned-subtitles.mp4` 和英文视频 `docs/video/output/ahadiff-tutorial.en.burned-subtitles.mp4`。
+- 当前 `docs/USER_GUIDE.zh.html` SHA-256：`c47306ac0985124ee71d04eafcd5f3b2f9f9f8cee32f1936fcd7f5bc47d30407`。
+- 上一轮浏览器打开后 console `0 errors, 0 warnings`；本轮更新安装、provider 和视频入口文案，未重跑浏览器视觉检查。
+- 上一轮 390px 移动视口打开后无水平溢出，console `0 errors, 0 warnings`；本轮未重跑移动浏览器检查。
 - 静态检查确认没有真实 key 和本机临时路径泄漏。
+
+本轮补交 Remotion 视频：
+
+- `docs/video/` 是独立 Remotion 工程，未复用或污染 `viewer/` 生产代码。
+- 文案源：`docs/video/content/story.json`，分 `zh` / `en` 两套界面和旁白字段；中文 composition 只显示中文界面和中文字幕，英文 composition 只显示英文界面和英文字幕。
+- 用户可看的成片是 `docs/video/output/ahadiff-tutorial.zh.burned-subtitles.mp4` 和 `docs/video/output/ahadiff-tutorial.en.burned-subtitles.mp4`；clean MP4 是无烧录字幕的渲染中间产物。
+- `ffprobe` 显示中文最终 MP4 为 H.264 3840x2160 视频 + AAC 48 kHz stereo 音频，大小 `37,002,001` bytes，时长 `403.000000` 秒；英文最终 MP4 为 H.264 3840x2160 视频 + AAC 48 kHz stereo 音频，大小 `38,710,711` bytes，时长 `395.000000` 秒。
+- 字幕源文件：`docs/video/output/subtitles/ahadiff-tutorial.zh.srt` / `.vtt` / `.json`，以及 `docs/video/output/subtitles/ahadiff-tutorial.en.srt` / `.vtt` / `.json`。
+- `pnpm run typecheck` 通过。
+- `pnpm run probe` 通过，确认两个 clean / burned MP4 均只有 H.264 视频轨和 AAC 音频轨，没有独立 subtitle stream；字幕区域像素差中文 `5.74087`、英文 `8.34139`。
+- `pnpm run scan` 扫描 39 个文本文件，未发现真实 API key、本机绝对路径、临时路径或 localhost 端口泄漏。
+- `node scripts/check-asr-similarity.mjs` 当前失败在中文 ASR：`dice=0.126`、`lengthRatio=0.027`。中文 ASR 输出是拒绝式说明，不是完整转写；英文按同一脚本逻辑单独计算为 `dice=0.923`、`lengthRatio=0.836`。因此本轮不能把 ASR 一致性写成通过，只能把 MP4 轨道、字幕烧录和敏感信息扫描作为视频产物证据。
 
 ### 后续一致性修正
 
-- `docs/USER_GUIDE.zh.html` 的 FAQ provider 排障命令已补齐 `--provider-class openai_responses`，与快速配置段一致。
-- `viewer/src/pages/GuidePage.tsx` 的 Guide provider 命令已同步补齐 `--provider-class openai_responses`，并把示例 provider 名称统一为 `gpt55`。
-- 新增 `viewer/tests/e2e/smoke.spec.ts` 断言，确保 Guide 页面继续展示 `--provider-class openai_responses`。
-- 追加验证：`pnpm typecheck`、`pnpm lint`、`pnpm vitest run`（`36 files, 365 tests passed`）、`pnpm build`、`pnpm exec playwright test tests/e2e/smoke.spec.ts -g "hash router guide route renders workflow section and command blocks" --project=chromium-desktop`、`git diff --check HEAD` 均通过。
-- 本审计文档的后端复跑命令改为通过 `tempfile.gettempdir()` 派生 `UV_CACHE_DIR`，避免写入硬编码本机临时路径；重新扫描 `USER_GUIDE.zh.html` 和 `VALIDATION_AUDIT.zh.md` 后，没有真实 key、本机路径或 localhost 端口泄漏。
-- 更新后的 `USER_GUIDE.zh.html` 已通过本地浏览器复核：2 个 provider block 都含 `--provider-class openai_responses`，内嵌 JPEG 截图仍为 7 张，CSS `@keyframes flow` 存在，390px 视口无页面水平溢出，console 无 error/warning。
-- 本轮文档收口又同步了 `README.md`、`README.en.md`、根 `CLAUDE.md`、`AGENTS.md`、`doc/contract-freeze.md`、`doc/FRONTEND_GAP_REPORT.md` 和 `doc/CLAUDE.md`，口径只引用本文件已列出的代码事实和测试结果。
+- `docs/USER_GUIDE.zh.html` 已改为源码 checkout 安装口径，补 PowerShell provider 示例，并说明配置好的单 provider 或 Settings 选中的生成 provider/model 可直接供 `ahadiff learn` 使用。
+- `viewer/src/pages/GuidePage.tsx` 的核心命令不再要求用户每次手写 `--provider gpt55 --privacy-mode explicit_remote`；这些参数仍保留在一次性 `provider test` 命令中。
+- `docs/video/README.md` 已按当前 MP4 时长、大小、probe、scan 和 ASR 结果重写；中文 ASR 一致性失败已明确记录。
+- 本轮追加验证：后端 provider/config/install 目标 `209 passed`，目标 ruff/format/pyright、wheel build、viewer 目标 Vitest `5 passed`、viewer 全量 Vitest `38 files, 370 tests passed`、viewer typecheck/lint/build、docs/video typecheck/probe/scan、`git diff --check HEAD`。
+- 本轮还以 build viewer mode 启动本地 WebUI，并打开 Guide 供人工观察；Chrome/Playwright MCP 因已有 profile 占用未能接管该浏览器会话。
+- 文档收口同步了 `README.md`、`README.en.md`、根 `CLAUDE.md`、`AGENTS.md`、`doc/contract-freeze.md`、`doc/FRONTEND_GAP_REPORT.md`、`doc/CLAUDE.md`、`docs/index.html` 和视频文档，口径只引用本文件已列出的代码事实和测试结果。
 - 本轮验证留下的 `viewer/dist/`、`viewer/test-results/`、`viewer/playwright-report/` 都是 gitignored 产物，不会进入提交；未删除它们，因为删除目录需要明确确认。
 
 ## 发布前剩余门禁
@@ -223,10 +236,9 @@
 
 当前提交边界：
 
-- 代码、安全、前端测试、用户指南和验证审计已纳入本轮提交。
-- 推送后发现的远端 CI no-steps/no-logs 事实，只需要文档 follow-up 同步。
-- 不纳入提交：`viewer/dist/`、`viewer/test-results/`、`viewer/playwright-report/`，它们是 gitignored 验证产物。
-- 早前已执行 `git add --dry-run` 覆盖当时 23 个提交候选文件；文档收口后最终提交列表以本次提交的 staged diff 为准。
+- 待提交：provider 默认解析、Settings/Guide/Landing 接线、相关测试、用户指南、验证审计、视频工程和最终 MP4。
+- 不纳入提交：`viewer/dist/`、`viewer/test-results/`、`viewer/playwright-report/`、`docs/video/node_modules/`、`.remotion/`、raw/per-scene audio 和 macOS metadata，它们都是 ignored 产物。
+- 最终提交列表以本次 `git status --short` 和 staged diff 为准。
 
 ## 复跑命令
 

@@ -340,6 +340,10 @@ CREATE INDEX ix_result_events_weakest_dim_ts
 
 - `generate_provider` / `judge_provider` 分别选择生成与评判 provider。
 - `generate_model` / `judge_model` 的非默认配置会覆盖 provider alias 中的 `model_name`。
+- 若只配置了一个 provider，`learn` / `improve` 会把它作为默认 provider；若配置了多个 provider，会优先使用对应角色的 `generate_provider` / `judge_provider`。
+- 单 provider 场景下，Settings 中选择的 `generate_model` / `judge_model` 可以覆盖该 provider 的默认模型；保存其它 LLM 参数时不会把 schema 默认模型误写成模型选择。
+- `providers.<alias>.available_models` 是 UI model discovery 的持久化字段，写回时会去重并以字符串数组保存；运行时构造 `ProviderConfig` 会忽略这类 UI 元数据。
+- 配置中的远端 provider 算作用户已显式配置的远端调用，不要求每次命令重复传 `--provider` / `--privacy-mode explicit_remote`。
 - 未配置 `judge_provider` 时，learn pipeline 不运行 LLM judge，也不写 `judge.json`。
 
 ### 3.6 UsageEvent（预留）
@@ -1064,3 +1068,12 @@ run_id: str
 - 新增 `docs/USER_GUIDE.zh.html` 作为自包含中文用户指南；`docs/VALIDATION_AUDIT.zh.md` 记录本轮 completion audit、真实验证、剩余门禁和复跑命令。
 
 本轮实测：后端 unit `2530 passed`；integration+eval `20 passed`；`ruff check`、`ruff format --check`、`pyright`、wheel build 通过；viewer typecheck、lint、Vitest `36 files, 365 tests passed`、build 通过；完整 Playwright `2945 passed, 10 skipped`；real-serve `2 passed`；live judge `2 passed`；临时 repo GPT-5.5 provider test / live learn 通过；Linux SQLite `3.51.3` 目标 gate 通过；`git diff --check HEAD` 通过。推送后远端 Backend CI / Frontend CI / Pages runs 已触发，但 jobs 立即 failure，steps 为空且日志不存在，不计为代码验证通过；Windows 仍缺真实 runner 结果。
+
+2026-05-18 provider / Guide / video follow-up 只同步当前未提交 diff 能支撑的契约：
+
+- `cli.py` 与 `core/orchestrator.py` 的 provider 解析现在优先使用角色 provider；单 provider 自动作为默认 provider；多 provider 且未配置角色 provider 时仍要求显式选择。
+- `available_models` 可写入 provider config，保存时去重；运行时 `ProviderConfig` 会忽略 UI-only provider metadata。
+- Guide 的日常 `learn` / `improve` 命令不再要求用户重复输入 `--provider` / `--privacy-mode`；这些参数仍保留在 `provider test` 或临时 override 场景。
+- Remotion 教程视频作为 docs 资产加入仓库；中文 / 英文最终 MP4 为 H.264 3840x2160 + AAC 48 kHz，时长分别为 `403.000000s` / `395.000000s`。
+
+本轮实测：provider/config/install 目标后端 `209 passed`，目标 ruff/format/pyright、wheel build、viewer 目标 Vitest `5 passed`、viewer 全量 Vitest `38 files, 370 tests passed`、viewer typecheck/lint/build、docs/video typecheck/probe/scan 和 `git diff --check HEAD` 通过；`node scripts/check-asr-similarity.mjs` 当前中文 ASR 一致性失败，已按失败记录。

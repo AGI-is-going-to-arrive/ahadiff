@@ -327,8 +327,11 @@ def _normalize_provider_base_url(base_url: str, *, provider_class: str) -> str:
 
 
 def _provider_config_from_payload(payload: dict[str, Any]) -> ProviderConfig:
+    runtime_payload = {
+        key: value for key, value in payload.items() if key in ProviderConfig.model_fields
+    }
     try:
-        return ProviderConfig.model_validate(payload)
+        return ProviderConfig.model_validate(runtime_payload)
     except ValidationError as exc:
         message = exc.errors()[0].get("msg", "invalid provider configuration")
         raise AhaDiffError(f"invalid provider configuration: {message}") from exc
@@ -419,6 +422,7 @@ def _resolve_provider_from_config(
         model=model,
     )
     provider_selection_explicit = base_url is not None or provider_name is not None
+    provider_selection_from_config = False
 
     if base_url is not None:
         normalized_base_url = _normalize_provider_base_url(base_url, provider_class=provider_class)
@@ -443,6 +447,7 @@ def _resolve_provider_from_config(
             config_provider = str(llm_config.get(config_provider_key, "")).strip()
             if config_provider and config_provider in providers_table:
                 resolved_name = config_provider
+                provider_selection_from_config = True
             elif config_provider and config_provider not in providers_table:
                 raise AhaDiffError(
                     f"{role}_provider '{config_provider}' not found in configured providers"
@@ -460,8 +465,10 @@ def _resolve_provider_from_config(
                         f"{operation_label} requires --provider or set {role}_provider "
                         "in [llm] config when multiple providers are configured"
                     )
+                provider_selection_from_config = True
             else:
                 resolved_name = configured_names[0]
+                provider_selection_from_config = True
         raw_config_payload = providers_table.get(resolved_name)
         if not isinstance(raw_config_payload, dict):
             raise AhaDiffError(f"configured provider is missing or invalid: {resolved_name}")
@@ -486,6 +493,8 @@ def _resolve_provider_from_config(
         ),
         strict_local=privacy_mode == "strict_local",
     )
+    if provider_selection_from_config and transport_target == "remote":
+        provider_selection_explicit = True
 
     if (
         not provider_selection_explicit

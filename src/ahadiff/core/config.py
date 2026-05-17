@@ -357,6 +357,7 @@ _PROVIDER_DYNAMIC_FIELDS = frozenset(
         "probed_tpm",
         "probed_rpm",
         "probe_timestamp",
+        "available_models",
     }
 )
 _DYNAMIC_PROVIDER_FIELD_DEFAULTS: dict[str, Scalar] = {
@@ -370,6 +371,7 @@ _DYNAMIC_PROVIDER_FIELD_DEFAULTS: dict[str, Scalar] = {
     "probed_tpm": 0,
     "probed_rpm": 0,
     "probe_timestamp": "",
+    "available_models": (),
 }
 PROVIDER_STALE_PROBE_FIELDS: tuple[str, ...] = (
     "probed_max_context",
@@ -618,10 +620,10 @@ def _coerce_string_sequence(key: str, value: Any) -> tuple[str, ...]:
     return tuple(value)
 
 
-def _render_scalar(value: Scalar) -> str:
+def _render_scalar(value: Scalar | list[str]) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
-    if isinstance(value, tuple):
+    if _is_string_sequence(value):
         return "[" + ", ".join(json.dumps(item, ensure_ascii=False) for item in value) + "]"
     if isinstance(value, str):
         return json.dumps(value, ensure_ascii=False)

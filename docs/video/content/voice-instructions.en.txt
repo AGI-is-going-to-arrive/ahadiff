@@ -1,0 +1,10 @@
+Voice: natural, clear, and suitable for explaining a developer tool to fellow engineers.
+Tone: professional but conversational, technically precise without being dry.
+Pacing: medium-slow and continuous; do not chop one sentence into isolated fragments.
+Pauses: use natural paragraph pauses, while keeping each paragraph connected.
+Emphasis: clearly pronounce the following terms —
+  - "AhaDiff": stress the "Aha" part, then "Diff"
+  - "learn", "serve", "review", "quiz", "init": command names, crisp pronunciation
+  - "claim": emphasize as a key concept
+  - "vibe coding": slightly emphasized as a known concept
+Overall feel: an experienced engineer explaining a tool they find genuinely valuable to a colleague.

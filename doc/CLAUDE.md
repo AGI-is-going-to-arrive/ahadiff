@@ -101,7 +101,7 @@
 
 ### 数据范围
 
-CLI 全局安装（`pip install ahadiff`），per-repo 运用。核心原则：**per-repo truth + global derived governance**。
+CLI 当前以源码 checkout / 本地 wheel 安装为准；本地开发可用 `uv run ahadiff ...`，本机 CLI 可用 `uv tool install --editable .`。per-repo 运用。核心原则：**per-repo truth + global derived governance**。
 
 - **Per-repo 真相源**（`<repo>/.ahadiff/`）：review.sqlite / concepts.jsonl / audit.jsonl / audit.private.jsonl / runs/ / graphify/ / prompts/
 - **Global 派生层**（`~/.config/ahadiff/` 等）：config.toml / registry.json(v0.2) / usage.sqlite(v0.2)
@@ -138,6 +138,8 @@ CLI 全局安装（`pip install ahadiff`），per-repo 运用。核心原则：*
 2026-05-17 viewer follow-up 只同步当前未提交前端代码能支撑的交互收口：Diff 选中 claim 的源码块预览已经放回对应 ClaimInspector 卡片里，和证据 / 跳转按钮一起展示；旧的底部 `.diff-page__selected-hunk` 展示区已移除，用户点击右侧 claim 后不需要翻到页面底部才能看源码证据。Welcome/Landing 现在会显示 LearnTaskBanner 提交反馈，并在 learn task 完成或存在 latest finalized run 时读取真实 diff artifact 和第一个可用 lesson（full → hint → compact）；真实 run 缺 lesson 时显示空状态并跳到 Run Detail，不再混入样例 lesson。真实验证：viewer typecheck 通过；前端 Vitest `35 files, 362 tests passed`；viewer build 通过；Diff Chromium E2E `1 passed`；Welcome Chromium E2E `4 passed`；i18n scalar keys `1490/1490`；一次并行 Playwright 启动因为两个 webServer 同抢 `5173` 失败，随后用 `AHADIFF_VIEWER_E2E_PORT=5174` 重跑 Welcome 通过。后端、integration、eval、ruff/format/pyright、wheel、完整 Playwright、live judge 和远端 GitHub Actions 未在本轮重跑。
 
 同日 completion audit / 文档收口同步当前未提交改动能支撑的文档真值：README / README.en / 根 CLAUDE / AGENTS / contract-freeze / frontend gap report / validation audit / 用户指南按真实代码和本 session 测试统一口径。代码事实包括 Linux SQLite nofollow fd 绑定与主库路径校验、artifact hardlink guard、provider `not addr.is_global`、serve `changed_paths` 严格校验、前端 API schema / token bootstrap / Guide provider 命令。真实验证：后端 unit `2530 passed`、integration+eval `20 passed`、ruff/format/pyright/wheel、viewer typecheck/lint/Vitest `365 passed`/build、完整 Playwright `2945 passed, 10 skipped`、real-serve `2 passed`、live judge `2 passed`、临时 repo GPT-5.5 provider test / live learn、Linux SQLite `3.51.3` 目标 gate 和 `git diff --check HEAD` 通过；推送后远端 Backend CI / Frontend CI / Pages runs 已触发，但 jobs 立即 failure，steps 为空且日志不存在，不计为代码验证通过，Windows 缺真实 runner 结果。
+
+2026-05-18 provider / Guide / 视频 follow-up 只同步当前 diff 能支撑的事实：`learn` / `improve` 会优先使用配置里的角色 provider/model；单个 provider 会自动作为默认 provider；多 provider 已在 Settings 选择生成/评判模型时，日常 `ahadiff learn` 不需要重复传 `--provider` / `--privacy-mode`。Guide / Landing / README / 用户指南改为源码 checkout 与 `uv tool install --editable .` 口径。`docs/video/` 新增 Remotion 工程、中文/英文旁白、字幕和烧录字幕 MP4；视频 typecheck、probe、敏感信息扫描通过，中文 ASR 相似度校验失败并按失败记录。
 
 ## 常见问题 (FAQ)
 

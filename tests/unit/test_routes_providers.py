@@ -8,6 +8,7 @@ import httpx
 import pytest
 from starlette.testclient import TestClient
 
+from ahadiff.core.config import load_config
 from ahadiff.serve import ServeState, create_app
 from ahadiff.serve import routes_providers as routes_provider_module
 
@@ -426,6 +427,36 @@ def test_fetch_provider_models_allows_saved_loopback_provider(
     assert response.json() == {"models": ["llama3"]}
     request = captured["requests"][0]
     assert request["url"] == "http://localhost:11434/api/tags"
+
+
+def test_save_provider_models_survives_config_reload(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        "[providers.demo]\n"
+        'provider_class = "openai"\n'
+        'model_name = "gpt-5.4-mini"\n'
+        'base_url = "https://api.example.test/v1"\n'
+        'api_key_env = "AHADIFF_PROVIDER_API_KEY"\n',
+        encoding="utf-8",
+    )
+    client = _client(state_dir)
+
+    saved = client.put(
+        "/api/providers/demo/models",
+        headers=_AUTH,
+        json={"models": ["gpt-5.5", "gpt-5.5", "gpt-5.4-mini"]},
+    )
+    loaded = client.get("/api/providers", headers=_AUTH)
+    snapshot = load_config(tmp_path)
+
+    expected_models = ["gpt-5.5", "gpt-5.4-mini"]
+    assert saved.status_code == 200
+    assert saved.json()["available_models"] == expected_models
+    assert loaded.status_code == 200
+    assert loaded.json()["providers"][0]["available_models"] == expected_models
+    assert snapshot.values["providers"]["demo"]["available_models"] == tuple(expected_models)
 
 
 @pytest.mark.parametrize(

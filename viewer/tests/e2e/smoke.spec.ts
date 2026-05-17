@@ -380,7 +380,7 @@ test.describe('smoke', () => {
         () => (window as typeof window & { __ahadiffCopiedText?: string })
           .__ahadiffCopiedText,
       ),
-    ).toBe('pip install ahadiff');
+    ).toBe('uv tool install --editable .');
   });
 
   test('legacy /#/skills redirects to /#/guide', async ({ page }) => {

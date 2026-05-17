@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import subprocess
+import sys
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from anyio import to_thread
@@ -167,6 +168,10 @@ def _target_entry(name: str, state: ServeState, context: InstallContext) -> dict
         target = get_target(name)
     except ValueError as exc:
         raise InputError(str(exc)) from exc
+    if name == "hooks" and sys.platform == "win32":
+        entry["platform_supported"] = False
+        entry["status"] = "unsupported"
+        return entry
     try:
         entry["detected"] = target.detect(context)
         entry["status"] = "installed" if entry["detected"] else "available"

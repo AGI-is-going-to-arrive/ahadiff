@@ -57,10 +57,16 @@ interface CommandEntry {
 }
 
 const CORE_COMMANDS: ReadonlyArray<CommandEntry> = [
-  { command: 'pip install ahadiff', labelKey: 'Guide.commands_install' },
+  { command: 'uv tool install --editable .', labelKey: 'Guide.commands_install' },
   { command: 'ahadiff init', labelKey: 'Guide.commands_init' },
-  { command: 'ahadiff learn HEAD~1..HEAD', labelKey: 'Guide.commands_learn' },
-  { command: 'ahadiff learn --staged', labelKey: 'Guide.commands_learn_staged' },
+  {
+    command: 'ahadiff learn HEAD~1..HEAD',
+    labelKey: 'Guide.commands_learn',
+  },
+  {
+    command: 'ahadiff learn --staged',
+    labelKey: 'Guide.commands_learn_staged',
+  },
   {
     command: 'ahadiff learn --unstaged --include-untracked',
     labelKey: 'Guide.commands_learn_unstaged',
@@ -73,28 +79,32 @@ const CORE_COMMANDS: ReadonlyArray<CommandEntry> = [
   { command: 'ahadiff quiz RUN_ID', labelKey: 'Guide.commands_quiz' },
   { command: 'ahadiff review', labelKey: 'Guide.commands_review' },
   { command: 'ahadiff verify RUN_ID', labelKey: 'Guide.commands_verify' },
-  { command: 'ahadiff improve --rounds 1', labelKey: 'Guide.commands_improve' },
+  {
+    command: 'ahadiff improve --rounds 1',
+    labelKey: 'Guide.commands_improve',
+  },
 ];
 
-const SETUP_COMMANDS: ReadonlyArray<CommandEntry> = [
-  { command: 'ahadiff doctor', labelKey: 'Guide.setup_doctor' },
-  { command: 'ahadiff config show --resolved', labelKey: 'Guide.setup_config' },
-  {
-    command: [
-      'ahadiff provider test \\',
-      '  --name gpt55 \\',
-      '  --provider-class openai_responses \\',
-      '  --base-url "$AHADIFF_PROVIDER_BASE_URL" \\',
-      '  --model gpt-5.5 \\',
-      '  --api-key-env AHADIFF_PROVIDER_API_KEY \\',
-      '  --privacy-mode explicit_remote',
-    ].join('\n'),
-    labelKey: 'Guide.setup_provider',
-  },
-  { command: 'ahadiff install --detect', labelKey: 'Guide.setup_install_detect' },
-  { command: 'ahadiff install codex --dry-run', labelKey: 'Guide.setup_install_preview' },
-  { command: 'ahadiff uninstall codex --dry-run', labelKey: 'Guide.setup_uninstall_preview' },
-];
+function providerBaseUrlArg(platform: Platform): string {
+  return platform === 'windows'
+    ? '$env:AHADIFF_PROVIDER_BASE_URL'
+    : '"$AHADIFF_PROVIDER_BASE_URL"';
+}
+
+function setupCommands(platform: Platform): ReadonlyArray<CommandEntry> {
+  return [
+    { command: 'ahadiff doctor', labelKey: 'Guide.setup_doctor' },
+    { command: 'ahadiff config show --resolved', labelKey: 'Guide.setup_config' },
+    {
+      command:
+        `ahadiff provider test --name gpt55 --provider-class openai_responses --base-url ${providerBaseUrlArg(platform)} --model gpt-5.5 --api-key-env AHADIFF_PROVIDER_API_KEY --privacy-mode explicit_remote`,
+      labelKey: 'Guide.setup_provider',
+    },
+    { command: 'ahadiff install --detect', labelKey: 'Guide.setup_install_detect' },
+    { command: 'ahadiff install codex --dry-run', labelKey: 'Guide.setup_install_preview' },
+    { command: 'ahadiff uninstall codex --dry-run', labelKey: 'Guide.setup_uninstall_preview' },
+  ];
+}
 
 const ADVANCED_COMMANDS: ReadonlyArray<CommandEntry> = [
   { command: 'ahadiff watch', labelKey: 'Guide.advanced_watch' },
@@ -105,7 +115,7 @@ const ADVANCED_COMMANDS: ReadonlyArray<CommandEntry> = [
   { command: 'ahadiff concepts list', labelKey: 'Guide.advanced_concepts_list' },
   { command: 'ahadiff concepts verify', labelKey: 'Guide.advanced_concepts_verify' },
   { command: 'ahadiff benchmark', labelKey: 'Guide.advanced_benchmark' },
-  { command: 'ahadiff claims RUN_ID', labelKey: 'Guide.advanced_claims' },
+  { command: 'ahadiff claims RUN_ID --force', labelKey: 'Guide.advanced_claims' },
   { command: 'ahadiff score RUN_ID', labelKey: 'Guide.advanced_score' },
   { command: 'ahadiff export-results', labelKey: 'Guide.advanced_export' },
   {
@@ -117,9 +127,18 @@ const ADVANCED_COMMANDS: ReadonlyArray<CommandEntry> = [
 const MAINTENANCE_COMMANDS: ReadonlyArray<CommandEntry> = [
   { command: 'ahadiff db upgrade', labelKey: 'Guide.maintenance_db_upgrade' },
   { command: 'ahadiff db backup', labelKey: 'Guide.maintenance_db_backup' },
-  { command: 'ahadiff db restore', labelKey: 'Guide.maintenance_db_restore' },
-  { command: 'ahadiff db import-results', labelKey: 'Guide.maintenance_db_import_results' },
-  { command: 'ahadiff db finalize-targeted', labelKey: 'Guide.maintenance_db_finalize_targeted' },
+  {
+    command: 'ahadiff db restore PATH/TO/review.sqlite.bak',
+    labelKey: 'Guide.maintenance_db_restore',
+  },
+  {
+    command: 'ahadiff db import-results results.tsv --i-understand-this-is-lossy',
+    labelKey: 'Guide.maintenance_db_import_results',
+  },
+  {
+    command: 'ahadiff db finalize-targeted RUN_ID',
+    labelKey: 'Guide.maintenance_db_finalize_targeted',
+  },
   { command: 'ahadiff concepts export', labelKey: 'Guide.maintenance_concepts_export' },
   { command: 'ahadiff concepts sync', labelKey: 'Guide.maintenance_concepts_sync' },
   {
@@ -130,8 +149,8 @@ const MAINTENANCE_COMMANDS: ReadonlyArray<CommandEntry> = [
     command: 'ahadiff maint clean-orphans --dry-run',
     labelKey: 'Guide.maintenance_clean_orphans',
   },
-  { command: 'ahadiff unlock', labelKey: 'Guide.maintenance_unlock' },
-  { command: 'ahadiff mark', labelKey: 'Guide.maintenance_mark' },
+  { command: 'ahadiff unlock --force', labelKey: 'Guide.maintenance_unlock' },
+  { command: 'ahadiff mark CLAIM_ID wrong', labelKey: 'Guide.maintenance_mark' },
 ];
 
 interface IntegrationTarget {
@@ -258,6 +277,7 @@ export default function GuidePage() {
 
         <SetupSection
           t={t}
+          platform={platform}
           copyLabels={copyLabels}
         />
 
@@ -374,8 +394,14 @@ function CoreCommandsSection({
   platform: Platform;
   copyLabels: { copyLabel: string; copiedLabel: string };
 }) {
-  const psCmd = getEnvVarCommand('windows', 'OPENAI_API_KEY', '<your-key>');
-  const shCmd = getEnvVarCommand('macos', 'OPENAI_API_KEY', '<your-key>');
+  const psCmd = [
+    getEnvVarCommand('windows', 'AHADIFF_PROVIDER_API_KEY', '<your-key>'),
+    getEnvVarCommand('windows', 'AHADIFF_PROVIDER_BASE_URL', 'https://api.openai.com/v1'),
+  ].join('\n');
+  const shCmd = [
+    getEnvVarCommand('macos', 'AHADIFF_PROVIDER_API_KEY', '<your-key>'),
+    getEnvVarCommand('macos', 'AHADIFF_PROVIDER_BASE_URL', 'https://api.openai.com/v1'),
+  ].join('\n');
 
   return (
     <section
@@ -439,11 +465,14 @@ function CoreCommandsSection({
 
 function SetupSection({
   t,
+  platform,
   copyLabels,
 }: {
   t: TranslateFn;
+  platform: Platform;
   copyLabels: { copyLabel: string; copiedLabel: string };
 }) {
+  const commands = useMemo(() => setupCommands(platform), [platform]);
   return (
     <section
       id="setup"
@@ -455,7 +484,7 @@ function SetupSection({
         {t('Guide.setup_title')}
       </h2>
       <div className="guide-grid">
-        {SETUP_COMMANDS.map((entry) => (
+        {commands.map((entry) => (
           <CommandCard key={entry.command} entry={entry} t={t} {...copyLabels} />
         ))}
       </div>

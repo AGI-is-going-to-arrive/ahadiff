@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from typing import TYPE_CHECKING, Any, Literal
 
 from starlette.testclient import TestClient
@@ -172,6 +173,24 @@ def test_detect_not_implemented_marks_platform_unsupported(
     targets_by_name = {t["name"]: t for t in response.json()["targets"]}
     assert targets_by_name["hooks"]["platform_supported"] is False
     assert targets_by_name["hooks"]["detected"] is False
+
+
+def test_hooks_target_is_unsupported_on_windows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    monkeypatch.setattr(sys, "platform", "win32")
+    client = _client(state_dir)
+
+    response = client.get("/api/install/targets")
+
+    targets_by_name = {t["name"]: t for t in response.json()["targets"]}
+    hooks = targets_by_name["hooks"]
+    assert hooks["platform_supported"] is False
+    assert hooks["status"] == "unsupported"
+    assert hooks["detected"] is False
 
 
 # ---------------------------------------------------------------------------
