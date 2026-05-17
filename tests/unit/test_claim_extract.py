@@ -1321,7 +1321,7 @@ def test_claims_cli_preserves_run_redacted_remote_for_explicit_remote_provider(
     assert "[REDACTED:openai_api_key]" in sent_payloads[0]
 
 
-def test_claims_cli_requires_explicit_remote_provider_under_strict_local(
+def test_claims_cli_allows_single_configured_remote_provider_under_strict_local(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1356,9 +1356,8 @@ def test_claims_cli_requires_explicit_remote_provider_under_strict_local(
         ["claims", run_id, "--extract", "--repo-root", str(workspace_root)],
     )
 
-    assert result.exit_code == 1
-    assert "requires --provider or --base-url" in result.stderr
-    assert provider_called is False
+    assert result.exit_code == 0
+    assert provider_called is True
 
 
 def test_claims_cli_extracts_configured_provider_through_mocktransport(

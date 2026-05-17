@@ -47,9 +47,39 @@ node_modules/
 # CCG local dev artifacts (review reports, team plans, scratch)
 .ccg/
 
+# Internal planning artifacts (research prompts, audit reports, kept local)
+plan/
+
 # Development screenshots & test patches (local only)
 *.png
 !viewer/public/icons/ahadiff-192.png
 !viewer/public/icons/ahadiff-512.png
 *.patch
 !benchmarks/fixtures/**/*.patch
+
+# Large media source files (keep only burned-subtitles MP4 for users)
+*.wav
+*.mp3
+*.m4a
+*.ogg
+*.webm
+*.mov
+docs/video/output/*clean*.mp4
+
+# Local dev output dirs
+/output/
+artifacts/
+screenshots/
+.claude-tmp/
+
+# TypeScript incremental cache
+*.tsbuildinfo
+
+# Development-only tracked files (kept locally for reference)
+result.json
+blueprint-snapshot.md
+snapshot-01-dashboard.md
+docs/VALIDATION_AUDIT.zh.md
+viewer/AUDIT-REPORT.md
+viewer/AUDIT_V6_FIDELITY.md
+viewer/V6_DEEP_ANALYSIS.md

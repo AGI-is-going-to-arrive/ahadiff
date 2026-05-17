@@ -10,18 +10,30 @@ production WebUI bundle is not affected by video tooling.
   and UI copy.
 - `content/voice-instructions.{zh,en}.txt` — TTS voice style prompts.
 - `public/screenshots/{zh,en}/` — WebUI screenshots used by the Remotion render.
-- `public/audio/ahadiff-narration.{zh,en}.wav` — final narration audio.
 - `public/captions/ahadiff-tutorial.{zh,en}.json` — captions used by the video.
 - `output/script/ahadiff-narration.{zh,en}.txt` — full narration scripts.
 - `output/asr/ahadiff-asr.{zh,en}.{txt,raw.json}` — ASR validation outputs.
 - `output/subtitles/ahadiff-tutorial.{zh,en}.{srt,vtt,json}` — subtitle source.
-- `output/ahadiff-tutorial.{zh,en}.clean.mp4` — Remotion render without burned
-  subtitles.
 - `output/ahadiff-tutorial.{zh,en}.burned-subtitles.mp4` — final viewer-facing
-  MP4 files.
+  MP4 files (the only video binaries shipped to users).
 
-Ignored local intermediates include `node_modules/`, `.remotion/`, raw TTS WAVs,
-per-scene TTS WAVs, concat lists, logs, and macOS metadata.
+## What Is Generated Locally (Not Committed)
+
+These artifacts are produced by the video build and are intentionally gitignored
+to keep the repository slim. Developers who want to rebuild or modify the video
+must regenerate them locally:
+
+- `public/audio/ahadiff-narration.{zh,en}.wav` — final narration audio (run the
+  `mimo_tts.py` step described under **Rebuild** below).
+- `output/ahadiff-tutorial.{zh,en}.clean.mp4` — Remotion render without burned
+  subtitles (produced by `pnpm run render`; the burn step turns it into the
+  committed `*.burned-subtitles.mp4`).
+- `node_modules/`, `.remotion/`, raw TTS WAVs, per-scene TTS WAVs, concat lists,
+  logs, and macOS metadata.
+
+If a build script complains about a missing `*.clean.mp4` or
+`public/audio/*.wav`, run the **Rebuild** steps below to regenerate the
+intermediates.
 
 ## Current Outputs
 

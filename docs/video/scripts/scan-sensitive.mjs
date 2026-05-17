@@ -18,6 +18,7 @@ const patterns = [
 ];
 
 const files = [];
+const skippedTargets = [];
 const collect = (target) => {
   const stat = fs.statSync(target);
   if (stat.isFile()) {
@@ -38,6 +39,13 @@ const collect = (target) => {
 };
 
 for (const target of targets) {
+  if (!fs.existsSync(target)) {
+    // Some scan targets (e.g. docs/VALIDATION_AUDIT.zh.md) are local-only
+    // development artifacts and may be absent in a clean checkout. Skip
+    // them instead of failing the scan.
+    skippedTargets.push(path.relative(repo, target));
+    continue;
+  }
   collect(target);
 }
 
@@ -57,4 +65,7 @@ if (findings.length > 0) {
   process.exit(1);
 }
 
+if (skippedTargets.length > 0) {
+  console.log(`Skipped missing targets: ${skippedTargets.join(", ")}`);
+}
 console.log(`Sensitive scan passed for ${files.length} text files.`);

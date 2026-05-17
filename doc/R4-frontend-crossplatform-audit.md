@@ -2,7 +2,7 @@
 
 > Auditor: Claude (R4, 2026-04-28)
 > Scope: Frontend plan feasibility, cross-platform safety, bundle size, V6 alignment, i18n, a11y
-> Input: `v1.0-fullscope-execution-plan.md` + current codebase
+> Input: `v1.0-fullscope-execution-plan.md` (now kept under local-only `.claude/team-plan/`, not committed) + current codebase
 
 ---
 
