@@ -1,3 +1,4 @@
+import './ClaimBadge.css';
 import { useTranslation } from '../i18n/useTranslation';
 
 export type ClaimVerdict =
@@ -25,9 +26,9 @@ const verdictClassMap: Record<ClaimVerdict, string> = {
 // the semantic meaning.
 const verdictGlyphMap: Record<ClaimVerdict, string> = {
   verified: '✓',
-  weak: '~',
-  not_proven: '?',
-  contradicted: '×',
+  weak: '◆',
+  not_proven: '○',
+  contradicted: '✕',
   rejected: '⊘',
 };
 

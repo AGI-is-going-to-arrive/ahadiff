@@ -1,0 +1,200 @@
+/* ==========================================================================
+   Claim Badge — V6 stamp styling
+   ========================================================================== */
+
+.claim-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-full);
+  border: 1px solid var(--hair-strong);
+  background: var(--elevated);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* Glyph element does double duty:
+   1. Default + dark mode: rendered as a 6x6 colored dot (background: currentColor)
+      with the text character hidden but kept in the DOM.
+   2. forced-colors / print: text character is re-exposed (see overrides below)
+      because `currentColor` collapses to CanvasText and a flat dot would lose
+      meaning. WCAG 1.4.1 fallback is preserved without TSX changes. */
+.claim-badge__glyph {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  font-size: 0;
+  color: transparent;
+  line-height: 0;
+  flex: 0 0 auto;
+}
+
+/* --- Verified: editorial stamp (unchanged geometry, kept intentionally distinct
+       from the pill family because verified is the only positive endorsement) --- */
+.claim-badge--verified {
+  background: var(--stamp-verified-tint);
+  color: var(--stamp-verified-ink);
+  border: 2px solid var(--stamp-verified);
+  border-radius: 4px;
+  height: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  padding: 5px 11px;
+  min-height: 24px;
+  white-space: nowrap;
+  align-items: center;
+  transform: rotate(-3deg);
+  position: relative;
+  box-shadow: inset 0 0 0 1px var(--stamp-verified-shadow);
+  transition: transform 0.32s var(--ease-out-quart);
+}
+
+/* Inside the verified stamp, suppress the dot treatment so the ✓ character
+   reads as part of the stamp typography rather than a bullet. */
+.claim-badge--verified .claim-badge__glyph {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: transparent;
+  font-size: inherit;
+  color: inherit;
+  line-height: inherit;
+  font-weight: 700;
+}
+
+.claim-badge--verified::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border: 1px solid var(--stamp-verified-frame);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.claim-badge--verified:hover {
+  transform: rotate(-1.2deg) scale(1.02);
+}
+
+/* --- Pill family: Semantic Archival Tags ---
+   Each non-verified state uses a visible Unicode glyph character (matching
+   the verified stamp approach), a distinct colored background, and a
+   semantic border style. WCAG 1.4.1: shape + color + glyph character. */
+
+/* Expose text glyphs for all non-verified badges (undo the 6px CSS dot) */
+.claim-badge--weak .claim-badge__glyph,
+.claim-badge--not-proven .claim-badge__glyph,
+.claim-badge--contradicted .claim-badge__glyph,
+.claim-badge--rejected .claim-badge__glyph {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: transparent;
+  font-size: 10px;
+  color: inherit;
+  line-height: inherit;
+}
+
+.claim-badge--weak,
+.claim-badge--not-proven,
+.claim-badge--contradicted,
+.claim-badge--rejected {
+  transition: all var(--dur-micro) var(--ease-out-quart);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .claim-badge--weak,
+  .claim-badge--not-proven,
+  .claim-badge--contradicted,
+  .claim-badge--rejected {
+    transition: none;
+  }
+}
+
+/* WEAK: amber fill + dashed border + ◆ diamond glyph → "caution" */
+.claim-badge--weak {
+  color: var(--warning);
+  background: var(--warning-soft);
+  border: 1px dashed var(--warning);
+  box-shadow: inset 0 0 0 0.5px var(--warning-hair);
+}
+
+.claim-badge--weak:hover {
+  box-shadow: inset 0 0 0 0.5px var(--warning-hair), var(--sh-sm);
+  transform: translateY(-1px);
+}
+
+/* NOT PROVEN: muted fill + dotted border + ○ hollow circle glyph → "unknown" */
+.claim-badge--not-proven {
+  color: var(--muted-strong);
+  background: var(--subtle);
+  border: 1px dotted var(--muted);
+  box-shadow: inset 0 0 0 0.5px var(--hair-strong);
+}
+
+.claim-badge--not-proven:hover {
+  box-shadow: inset 0 0 0 0.5px var(--hair-strong), var(--sh-sm);
+  transform: translateY(-1px);
+}
+
+/* CONTRADICTED: red fill + solid border + ✕ cross glyph → "conflict" */
+.claim-badge--contradicted {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid var(--danger);
+  box-shadow: inset 0 0 0 0.5px var(--danger-hair);
+}
+
+.claim-badge--contradicted:hover {
+  box-shadow: inset 0 0 0 0.5px var(--danger-hair), var(--sh-sm);
+  transform: translateY(-1px);
+}
+
+/* REJECTED: dark-red fill + dashed border + ⊘ void glyph + strikethrough → "void" */
+.claim-badge--rejected {
+  color: var(--stamp-red-ink);
+  background: var(--danger-soft);
+  border: 1px dashed var(--danger-hair);
+  box-shadow: inset 0 0 0 0.5px var(--danger-hair);
+  opacity: 0.75;
+  text-decoration: line-through;
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 1px;
+  text-decoration-skip-ink: none;
+}
+
+.claim-badge--rejected .claim-badge__glyph {
+  text-decoration: none;
+}
+
+.claim-badge--rejected:hover {
+  opacity: 0.95;
+  box-shadow: inset 0 0 0 0.5px var(--danger-hair), var(--sh-sm);
+  transform: translateY(-1px);
+}
+
+@media print {
+  /* Restore claim badge glyph character for printed output — the colored dot
+     loses meaning on monochrome print. WCAG 1.4.1 fallback. */
+  .claim-badge__glyph {
+    width: auto;
+    height: auto;
+    border-radius: 0;
+    background: transparent;
+    font-size: 9.5pt;
+    color: inherit;
+    line-height: 1;
+  }
+}

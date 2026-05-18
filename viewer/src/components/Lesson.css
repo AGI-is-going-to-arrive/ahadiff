@@ -456,16 +456,6 @@
   color: var(--muted);
 }
 
-.lesson__prose .claim-badge--verified {
-  font-size: 10px;
-  padding: 3px 8px;
-  letter-spacing: 0.12em;
-  min-height: 20px;
-  transform: rotate(-2deg);
-  vertical-align: middle;
-  margin-inline-end: 4px;
-}
-
 /* --- Rail (right) --- */
 
 .lesson__rail {
@@ -1366,63 +1356,8 @@
   }
 }
 
-/* ==========================================================================
-   Claim Badge — V6 stamp styling
-   ========================================================================== */
-
-.claim-badge {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--sp-1);
-  padding: 2px var(--sp-2);
-  border-radius: var(--r-sm);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  font-weight: 500;
-  line-height: 1.4;
-}
-
-.claim-badge__glyph {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-size: 11px;
-}
-
-.claim-badge--verified {
-  background: var(--stamp-verified-tint);
-  color: var(--stamp-verified-ink);
-  border: 2px solid var(--stamp-verified);
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  padding: 5px 11px;
-  min-height: 24px;
-  white-space: nowrap;
-  align-items: center;
-  transform: rotate(-3deg);
-  position: relative;
-  box-shadow: inset 0 0 0 1px var(--stamp-verified-shadow);
-  transition: transform 0.32s var(--ease-out-quart);
-}
-
-.claim-badge--verified::after {
-  content: '';
-  position: absolute;
-  inset: 3px;
-  border: 1px solid var(--stamp-verified-frame);
-  border-radius: 2px;
-  pointer-events: none;
-}
-
-.claim-badge--verified:hover {
-  transform: rotate(-1.2deg) scale(1.02);
-}
-
+/* Lesson prose-only verified badge sizing. The base ClaimBadge rules are
+   loaded by ClaimBadge.css through the component import. */
 .lesson__prose .claim-badge--verified {
   font-size: 10px;
   padding: 3px 8px;
@@ -1435,28 +1370,4 @@
 
 .lesson__prose .claim-badge--verified::after {
   inset: 2px;
-}
-
-.claim-badge--weak {
-  background: var(--warning-soft);
-  color: var(--warning);
-  border: 1px solid var(--warning-hair);
-}
-
-.claim-badge--not-proven {
-  background: var(--subtle);
-  color: var(--muted);
-  border: 1px solid var(--hair-strong);
-}
-
-.claim-badge--contradicted {
-  background: var(--del-bg);
-  color: var(--danger);
-  border: 1px solid var(--danger-hair);
-}
-
-.claim-badge--rejected {
-  background: var(--subtle);
-  color: var(--muted);
-  text-decoration: line-through;
 }

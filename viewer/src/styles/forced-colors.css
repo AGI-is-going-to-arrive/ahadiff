@@ -45,9 +45,31 @@
     forced-color-adjust: none;
   }
 
-  /* Claim verdict + diff badges keep their text + glyph; rely on OS palette. */
+  /* Claim verdict + diff badges keep their text + glyph; rely on OS palette.
+     The pill-family glyph is normally a CSS dot (font-size:0) — in
+     forced-colors mode we restore the character so the verdict stays
+     distinguishable when semantic color collapses to CanvasText. */
   .claim-badge {
     border: 1px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .claim-badge__glyph {
+    width: auto;
+    height: auto;
+    border-radius: 0;
+    background: transparent;
+    font-size: 11px;
+    color: CanvasText;
+    line-height: 1;
+  }
+
+  /* Rejected: keep the strike-through under forced colors so the verdict
+     reads as "rejected" even when the danger hue is unavailable. */
+  .claim-badge--rejected {
+    text-decoration: line-through;
+    text-decoration-color: CanvasText;
   }
 
   /* SRS rating buttons: distinguish Good/Hard/Again via system palette. */
