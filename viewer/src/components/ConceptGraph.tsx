@@ -974,7 +974,6 @@ function DetailPanel({
   return (
     <aside
       className="concept-graph__detail"
-      role="complementary"
       aria-label={node.name}
       style={kindColorStyle(node.kind)}
     >

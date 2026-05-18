@@ -161,6 +161,19 @@
   line-height: 1.35;
 }
 
+.lesson-page__artifact-warning {
+  width: min(100%, 390px);
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--warning-hair);
+  border-radius: 8px;
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: start;
+}
+
 .lesson-page__score-explainer {
   width: min(100%, 390px);
   margin-top: var(--sp-2);

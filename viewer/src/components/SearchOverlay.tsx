@@ -35,6 +35,17 @@ function restoreFocus(target: HTMLElement | null): void {
   target.focus({ preventScroll: true });
 }
 
+function isFocusableVisible(el: HTMLElement): boolean {
+  if (el.hidden || el.closest('[hidden], [inert], [aria-hidden="true"]')) return false;
+  if (typeof el.checkVisibility === 'function') return el.checkVisibility();
+  const style = window.getComputedStyle(el);
+  if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse') {
+    return false;
+  }
+  if (el.offsetParent !== null) return true;
+  return el.getClientRects().length > 0;
+}
+
 /** Resolve a result to its in-app navigation target. */
 function hrefFor(result: SearchResult): string | null {
   switch (result.kind) {
@@ -326,7 +337,7 @@ export default function SearchOverlay({ open, onClose, initialQuery }: SearchOve
           dialogRef.current.querySelectorAll<HTMLElement>(
             'button:not([disabled]):not([tabindex="-1"]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])',
           ),
-        ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+        ).filter((el) => isFocusableVisible(el) || el === document.activeElement);
         if (focusables.length === 0) return;
         const first = focusables[0]!;
         const last = focusables[focusables.length - 1]!;

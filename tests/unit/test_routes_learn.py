@@ -238,6 +238,7 @@ def test_post_learn_estimate_passes_changed_paths_to_capture(
     [
         "../outside.py",
         "/tmp/outside.py",
+        "C:secret.txt",
         "C:/Users/example/app.py",
         "C:\\Users\\example\\app.py",
         "\\\\server\\share\\app.py",

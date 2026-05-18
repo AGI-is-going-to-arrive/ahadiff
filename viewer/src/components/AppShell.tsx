@@ -142,7 +142,10 @@ export default function AppShell({ children, globalShortcutsDisabled = false }: 
           if (el) {
             const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
             el.focus({ preventScroll: true });
-            el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+            window.requestAnimationFrame(() => {
+              if (!el.isConnected) return;
+              el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+            });
           }
         }}
       >{t('A11y.skip_to_content')}</a>

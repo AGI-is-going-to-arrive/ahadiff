@@ -417,7 +417,7 @@ describe('LearnModeDialog', () => {
     const input = page.locator('#learn-mode-path-scope');
     const startBtn = page.locator('.learn-dialog__btn--primary');
 
-    for (const value of ['../secret.txt', '/etc/passwd', 'C:\\temp\\secret.txt', 'src/\u0001bad.py']) {
+    for (const value of ['../secret.txt', '/etc/passwd', 'C:\\temp\\secret.txt', 'C:secret.txt', 'src/\u0001bad.py']) {
       await input.fill(value);
       await expect.poll(() => startBtn.isDisabled()).toBe(true);
       await expect.poll(() => page.locator('#learn-mode-path-scope-error').textContent()).toContain(

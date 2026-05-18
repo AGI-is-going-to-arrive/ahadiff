@@ -221,9 +221,10 @@ describe('ErrorBoundary - error stack details', () => {
     err.stack = [
       'Error: token=secret-value',
       '    at /Users/alice/project/src/App.tsx?api_key=sk-test-secret',
+      '    at file:///home/alice/project/src/App.tsx',
       'Authorization: Bearer abc.def.ghi',
     ].join('\n');
-    induceError(instance, err, '\n    at /Users/alice/project/src/App.tsx');
+    induceError(instance, err, '\n    at /Users/alice/project/src/App.tsx\n    at /home/alice/project/src/App.tsx');
 
     const html = renderHtml();
 
@@ -232,6 +233,7 @@ describe('ErrorBoundary - error stack details', () => {
     expect(html).not.toContain('secret-value');
     expect(html).not.toContain('sk-test-secret');
     expect(html).not.toContain('/Users/alice');
+    expect(html).not.toContain('/home/alice');
     expect(html).not.toContain('abc.def.ghi');
   });
 });

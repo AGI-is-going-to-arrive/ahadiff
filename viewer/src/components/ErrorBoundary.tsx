@@ -3,23 +3,34 @@ import { useTranslation } from '../i18n/useTranslation';
 import './ErrorBoundary.css';
 
 const MAX_RETRIES = 3;
+const MAX_DIAGNOSTIC_HASH_LENGTH = 512;
 const SENSITIVE_ASSIGNMENT_RE =
   /\b(api[_-]?key|token|secret|password|authorization|access[_-]?token|refresh[_-]?token)(?:=|:)\s*([^&\s]+)/gi;
 const BEARER_RE = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
 const SECRET_TOKEN_RE = /\b(?:sk-[A-Za-z0-9_-]{8,}|ghp_[A-Za-z0-9_]{8,}|xox[baprs]-[A-Za-z0-9-]{8,})\b/g;
-const LOCAL_PATH_RE = /(?:file:\/\/)?(?:\/Users\/[^)\s]+|[A-Za-z]:\\[^)\s]+)/g;
+const LOCAL_PATH_RE = /(?:file:\/\/)?(?:\/Users\/[^)\s]+|\/home\/[^)\s]+|\/root\/[^)\s]+|[A-Za-z]:\\[^)\s]+)/g;
+const URL_CREDENTIAL_RE = /\b((?:https?|wss?):\/\/)([^/?#\s@]+)@/gi;
+const CONTROL_CHAR_RE = /[\x00-\x1F\x7F]/g;
 
 function redactDiagnostics(value: string): string {
   return value
     .replace(BEARER_RE, 'Bearer [redacted]')
     .replace(SENSITIVE_ASSIGNMENT_RE, (_match, key: string) => `${key}=[redacted]`)
     .replace(SECRET_TOKEN_RE, '[redacted-secret]')
+    .replace(URL_CREDENTIAL_RE, '$1[redacted]@')
     .replace(LOCAL_PATH_RE, '[local-path]');
 }
 
 function safeDiagnostic(value: string | null | undefined, fallback: string): string {
   const text = value && value.trim() ? value : fallback;
   return redactDiagnostics(text);
+}
+
+function safeDiagnosticHash(value: string | null | undefined): string {
+  const hash = safeDiagnostic(value, '#').replace(CONTROL_CHAR_RE, '');
+  if (hash.length <= MAX_DIAGNOSTIC_HASH_LENGTH) return hash;
+  const omitted = hash.length - MAX_DIAGNOSTIC_HASH_LENGTH;
+  return `${hash.slice(0, MAX_DIAGNOSTIC_HASH_LENGTH)}... [truncated ${omitted} chars]`;
 }
 
 async function copyText(text: string): Promise<void> {
@@ -139,7 +150,7 @@ function DefaultErrorFallback({ error, componentStack, retryCount, maxRetries, s
       `message: ${safeDiagnostic(error?.message, 'unknown')}`,
       `retry: ${retryCount}/${maxRetries}`,
       `ua: ${safeDiagnostic(navigator.userAgent, 'unknown')}`,
-      `href: ${safeDiagnostic(window.location.hash, '#')}`,
+      `href: ${safeDiagnosticHash(window.location.hash)}`,
       '',
       'stack:',
       diagnosticStack,

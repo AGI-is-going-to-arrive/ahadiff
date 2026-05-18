@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { ConfigResponse, ProviderSummary } from '../../api/config';
 import {
   buildProviderConfigUpdatePayload,
@@ -116,5 +118,14 @@ describe('SettingsPage provider/model helpers', () => {
       generate_model: 'gpt-5.5',
       judge_model: 'gpt-5.5-judge',
     });
+  });
+
+  it('guards integration actions against unmounting while async work is pending', () => {
+    const src = readFileSync(resolve(__dirname, '../SettingsPage.tsx'), 'utf-8');
+
+    expect(src).toContain('mountedRef.current = false');
+    expect(src).toContain('copiedResetTimerRef.current !== null');
+    expect(src).toContain('actionAbortControllersRef.current');
+    expect(src).toContain('if (controller.signal.aborted || !mountedRef.current) return;');
   });
 });

@@ -95,9 +95,11 @@ ui/
 # Internal development documentation and planning
 doc/
 plan/
+docs/VALIDATION_AUDIT.zh.md
 
 # Codex / Aider / dev conventions (not for end users)
 AGENTS.md
+CLAUDE.md
 CONVENTIONS.md
 R0-feature-matrix.md
 

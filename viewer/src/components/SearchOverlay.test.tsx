@@ -244,6 +244,18 @@ describe('SearchOverlay', () => {
     expect(src).toMatch(/event\.key === 'ArrowUp'[\s\S]{0,160}flatResults\.length/);
   });
 
+  it('guards focus trap visibility fallback against hidden fixed elements', async () => {
+    const src = readFileSync(
+      resolve(__dirname, 'SearchOverlay.tsx'),
+      'utf-8',
+    );
+
+    expect(src).toContain('function isFocusableVisible');
+    expect(src).toContain("el.closest('[hidden], [inert], [aria-hidden=\"true\"]')");
+    expect(src).toContain("style.visibility === 'hidden'");
+    expect(src).toContain('el.getClientRects().length > 0');
+  });
+
   it('commits the active result on Enter via navigate + onClose', async () => {
     const results: SearchResult[] = [
       makeResult({ kind: 'concept', id: 'c-9', title: 'Pick me' }),

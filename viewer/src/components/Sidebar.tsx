@@ -29,7 +29,7 @@ interface NavEntry {
 
 interface NavSection {
   sectionKey: MessageKey;
-  ariaLabel: string;
+  sectionId: string;
   items: NavEntry[];
 }
 
@@ -121,7 +121,7 @@ export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProp
   const sections: NavSection[] = [
     {
       sectionKey: 'Sidebar.section.workspace',
-      ariaLabel: 'Workspace',
+      sectionId: 'workspace',
       items: [
         { to: '/welcome', Icon: Star, labelKey: 'Nav.welcome', labelEn: 'Welcome' },
         { to: '/', Icon: LayoutDashboard, labelKey: 'Nav.dashboard', labelEn: 'Dashboard', end: true },
@@ -144,7 +144,7 @@ export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProp
     },
     {
       sectionKey: 'Sidebar.section.practice',
-      ariaLabel: 'Practice',
+      sectionId: 'practice',
       items: [
         {
           to: runId ? `/run/${runId}/quiz` : '/',
@@ -159,7 +159,7 @@ export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProp
     },
     {
       sectionKey: 'Sidebar.section.system',
-      ariaLabel: 'System',
+      sectionId: 'system',
       items: [
         { to: '/onboarding', Icon: Play, labelKey: 'Nav.onboarding', labelEn: 'Get Started' },
         { to: '/guide', Icon: BookOpen, labelKey: 'Nav.guide', labelEn: 'Guide' },
@@ -206,10 +206,10 @@ export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProp
         <section
           key={section.sectionKey}
           className="nav-section sidebar__section"
-          aria-labelledby={`sidebar-section-${section.ariaLabel.toLowerCase()}`}
+          aria-labelledby={`sidebar-section-${section.sectionId}`}
         >
           <div
-            id={`sidebar-section-${section.ariaLabel.toLowerCase()}`}
+            id={`sidebar-section-${section.sectionId}`}
             className="nav-label"
           >
             {t(section.sectionKey)}

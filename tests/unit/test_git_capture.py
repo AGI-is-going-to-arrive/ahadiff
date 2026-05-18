@@ -754,6 +754,28 @@ def test_capture_changed_paths_rejects_outside_repo_path(tmp_path: Path) -> None
         )
 
 
+@pytest.mark.parametrize(
+    "changed_path", ["C:secret.txt", "C:/repo/app.py", "\\\\server\\share\\app.py"]
+)
+def test_capture_changed_paths_rejects_windows_drive_and_unc_syntax(
+    tmp_path: Path,
+    changed_path: str,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "app.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+    (repo_root / "app.py").write_text("value = 2\n", encoding="utf-8")
+
+    with pytest.raises(InputError, match="Windows drive or UNC syntax"):
+        capture_module.capture_patch(
+            workspace_root=repo_root,
+            unstaged=True,
+            changed_paths=[changed_path],
+        )
+
+
 def test_capture_changed_paths_treats_glob_chars_as_literal(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()

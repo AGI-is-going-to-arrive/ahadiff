@@ -41,7 +41,7 @@ const MAX_CHANGED_PATHS = 500;
 const MAX_PATH_SCOPE_TEXT_LENGTH = 64 * 1024;
 const UTF8_ENCODER = new TextEncoder();
 const CONTROL_CHAR_RE = /[\u0000-\u001f\u007f]/;
-const WINDOWS_ABSOLUTE_RE = /^[A-Za-z]:\//;
+const WINDOWS_DRIVE_PATH_RE = /^[A-Za-z]:/;
 const REVISION_INPUT_RE = /^[A-Za-z0-9._/@:+~^{}-]+$/;
 const useSafeLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
@@ -163,7 +163,7 @@ function parseChangedPaths(value: string): ChangedPathsParseResult {
     if (CONTROL_CHAR_RE.test(trimmed)) return { paths, error: 'invalid' };
 
     let normalized = trimmed.replace(/\\/g, '/').replace(/\/+/g, '/');
-    if (normalized.startsWith('/') || normalized.startsWith('//') || WINDOWS_ABSOLUTE_RE.test(normalized)) {
+    if (normalized.startsWith('/') || normalized.startsWith('//') || WINDOWS_DRIVE_PATH_RE.test(normalized)) {
       return { paths, error: 'invalid' };
     }
     while (normalized.startsWith('./')) normalized = normalized.slice(2);
@@ -834,7 +834,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                   aria-invalid={patchTooLarge || undefined}
                   placeholder={t('LearnDialog.mode_patch_ph')}
                   value={patchText}
-                  maxLength={MAX_PATH_SCOPE_TEXT_LENGTH}
+                  maxLength={MAX_PATCH_TEXT_BYTES * 4}
                   onFocus={() => handleModeSelect('patch')}
                   onChange={(e) => {
                     handleModeSelect('patch');

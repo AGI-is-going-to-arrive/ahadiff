@@ -160,8 +160,9 @@ export default function SettingsPage() {
     }
   }, []);
 
-  const refreshInstallTargets = useCallback(async () => {
-    const inst = await getInstallTargets();
+  const refreshInstallTargets = useCallback(async (opts?: { signal?: AbortSignal }) => {
+    const inst = await getInstallTargets(opts);
+    if (opts?.signal?.aborted) return;
     setData((current) => ({
       ...current,
       installTargets: inst.targets,
@@ -1755,11 +1756,21 @@ function IntegrationsTab({
   showGraphify: boolean;
   t: TFn;
   onRetry: () => void;
-  onRefreshTargets: () => Promise<void>;
+  onRefreshTargets: (opts?: { signal?: AbortSignal }) => Promise<void>;
 }) {
   const [copiedTarget, setCopiedTarget] = useState<string | null>(null);
   const [localTargets, setLocalTargets] = useState<InstallTarget[]>(targets);
   const [actionState, setActionState] = useState<Record<string, InstallActionState>>({});
+  const mountedRef = useRef(true);
+  const copiedResetTimerRef = useRef<number | null>(null);
+  const actionAbortControllersRef = useRef<Set<AbortController>>(new Set());
+
+  useEffect(() => () => {
+    mountedRef.current = false;
+    if (copiedResetTimerRef.current !== null) window.clearTimeout(copiedResetTimerRef.current);
+    for (const controller of actionAbortControllersRef.current) controller.abort();
+    actionAbortControllersRef.current.clear();
+  }, []);
 
   useEffect(() => {
     setLocalTargets(targets);
@@ -1776,12 +1787,18 @@ function IntegrationsTab({
     kind: 'install' | 'uninstall',
   ) => {
     const ok = await copyToClipboard(commandFor(target, kind));
-    if (!ok) return;
+    if (!ok || !mountedRef.current) return;
     setCopiedTarget(`${target.name}:${kind}`);
-    window.setTimeout(() => setCopiedTarget(null), 1400);
+    if (copiedResetTimerRef.current !== null) window.clearTimeout(copiedResetTimerRef.current);
+    copiedResetTimerRef.current = window.setTimeout(() => {
+      copiedResetTimerRef.current = null;
+      if (mountedRef.current) setCopiedTarget(null);
+    }, 1400);
   }, []);
 
   const runAction = useCallback(async (target: InstallTarget, kind: InstallActionKind) => {
+    const controller = new AbortController();
+    actionAbortControllersRef.current.add(controller);
     setActionState((current) => ({
       ...current,
       [target.name]: {
@@ -1791,7 +1808,8 @@ function IntegrationsTab({
       },
     }));
     try {
-      const preview = await previewInstallTarget(target.name);
+      const preview = await previewInstallTarget(target.name, { signal: controller.signal });
+      if (controller.signal.aborted || !mountedRef.current) return;
       upsertTarget(preview.target);
       if (kind === 'preview') {
         setActionState((current) => ({
@@ -1806,8 +1824,9 @@ function IntegrationsTab({
         return;
       }
       const result = kind === 'install'
-        ? await applyInstallTarget(target.name, preview.manifest_hash)
-        : await removeInstallTarget(target.name, preview.manifest_hash);
+        ? await applyInstallTarget(target.name, preview.manifest_hash, { signal: controller.signal })
+        : await removeInstallTarget(target.name, preview.manifest_hash, { signal: controller.signal });
+      if (controller.signal.aborted || !mountedRef.current) return;
       upsertTarget(result.target);
       setActionState((current) => ({
         ...current,
@@ -1820,8 +1839,9 @@ function IntegrationsTab({
           previewCollapsed: true,
         },
       }));
-      await onRefreshTargets();
+      await onRefreshTargets({ signal: controller.signal });
     } catch (e) {
+      if (controller.signal.aborted || !mountedRef.current) return;
       setActionState((current) => ({
         ...current,
         [target.name]: {
@@ -1831,6 +1851,8 @@ function IntegrationsTab({
           error: e instanceof Error ? e.message : t('Skills.action_failed'),
         },
       }));
+    } finally {
+      actionAbortControllersRef.current.delete(controller);
     }
   }, [onRefreshTargets, t, upsertTarget]);
 

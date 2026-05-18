@@ -55,7 +55,7 @@ async function installCrashingDashboard(page: Page) {
         contentType: 'application/javascript',
         body: `
           export default function DashboardPage() {
-            throw new Error("api_key=sk-testsecret123456 Authorization: Bearer abcdef123456 /Users/alice/project/app.tsx");
+            throw new Error("api_key=sk-testsecret123456 Authorization: Bearer abcdef123456 /Users/alice/project/app.tsx file:///home/alice/project/app.tsx");
           }
         `,
       }),
@@ -85,6 +85,7 @@ test.describe('ErrorBoundary browser regressions', () => {
     expect(stack).not.toContain('sk-testsecret123456');
     expect(stack).not.toContain('abcdef123456');
     expect(stack).not.toContain('/Users/alice');
+    expect(stack).not.toContain('/home/alice');
 
     const copyButton = page.getByRole('button', { name: /Copy error|Copied/ });
     await copyButton.click();
@@ -96,6 +97,7 @@ test.describe('ErrorBoundary browser regressions', () => {
     expect(copiedPayload).not.toContain('sk-testsecret123456');
     expect(copiedPayload).not.toContain('abcdef123456');
     expect(copiedPayload).not.toContain('/Users/alice');
+    expect(copiedPayload).not.toContain('/home/alice');
 
     await copyButton.click();
     await expect

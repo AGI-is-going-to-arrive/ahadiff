@@ -94,6 +94,12 @@ interface JudgeSummary {
   overall: number | null;
 }
 
+interface OptionalArtifactResult<T> {
+  failed: boolean;
+  label: string;
+  value: T | null;
+}
+
 type MarkLearnedState = 'idle' | 'saving' | 'saved' | 'error';
 
 const SHIPPED_VERDICTS: ReadonlySet<Claim['verdict']> = new Set([
@@ -120,6 +126,12 @@ function parseScorePayloadContent(content: string): ScorePayload | null {
   }
 }
 
+function parseScorePayloadContentOrThrow(content: string): ScorePayload {
+  const payload = parseScorePayloadContent(content);
+  if (!payload) throw new Error('invalid_score_payload');
+  return payload;
+}
+
 function parseJudgeSummaryContent(content: string): JudgeSummary | null {
   try {
     const raw = JSON.parse(content) as unknown;
@@ -132,6 +144,12 @@ function parseJudgeSummaryContent(content: string): JudgeSummary | null {
   } catch {
     return null;
   }
+}
+
+function parseJudgeSummaryContentOrThrow(content: string): JudgeSummary {
+  const summary = parseJudgeSummaryContent(content);
+  if (!summary) throw new Error('invalid_judge_payload');
+  return summary;
 }
 
 function firstFailedHardGate(payload: ScorePayload | null): FailedGateSummary | null {
@@ -325,6 +343,36 @@ function parseClaims(content: string): Claim[] {
   return result;
 }
 
+function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'AbortError';
+}
+
+function logOptionalLessonArtifactFailure(label: string, err: unknown): void {
+  if (!import.meta.env.DEV || isAbortError(err)) return;
+  // eslint-disable-next-line no-console
+  console.warn(`[LessonPage] ${label} artifact unavailable:`, err);
+}
+
+export function optionalArtifact<T>(label: string, request: Promise<T>): Promise<OptionalArtifactResult<T>> {
+  return request
+    .then((value) => ({ failed: false, label, value }))
+    .catch((err: unknown) => {
+      if (err instanceof ApiError && err.status === 404) return null;
+      logOptionalLessonArtifactFailure(label, err);
+      return { failed: true, label, value: null };
+    })
+    .then((result) => result ?? { failed: false, label, value: null });
+}
+
+function restoreFocus(target: HTMLElement | null): void {
+  if (!target?.isConnected) return;
+  try {
+    target.focus({ preventScroll: true });
+  } catch {
+    target.focus();
+  }
+}
+
 export default function LessonPage() {
   const { runId } = useParams<{ runId: string }>();
   const { t } = useTranslation();
@@ -341,9 +389,14 @@ export default function LessonPage() {
   const [quizSummary, setQuizSummary] = useState<QuizSummary | null>(null);
   const [scoreDetail, setScoreDetail] = useState<ScorePayload | null>(null);
   const [judgeSummary, setJudgeSummary] = useState<JudgeSummary | null>(null);
+  const [artifactFailures, setArtifactFailures] = useState<string[]>([]);
   const [selectedClaim, setSelectedClaim] = useState<Claim | null>(null);
   const [popoverPos, setPopoverPos] = useState<{ top: number; right: number } | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const levelRef = useRef<ScaffoldLevel>('compact');
+  const manualLevelOverrideRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [markLearnedState, setMarkLearnedState] = useState<MarkLearnedState>('idle');
@@ -366,6 +419,8 @@ export default function LessonPage() {
     setQuizSummary(null);
     setScoreDetail(null);
     setJudgeSummary(null);
+    setArtifactFailures([]);
+    manualLevelOverrideRef.current = false;
     setSelectedClaim(null);
     setPopoverPos(null);
     setMarkLearnedState('idle');
@@ -383,8 +438,11 @@ export default function LessonPage() {
           console.warn('[LessonPage] weak concepts fetch failed, defaulting to compact:', weakErr);
         }
       }
-      setLevel(recommended);
-      setAutoSelected(true);
+      if (!manualLevelOverrideRef.current) {
+        levelRef.current = recommended;
+        setLevel(recommended);
+        setAutoSelected(true);
+      }
 
       let detail: RunDetail | null = null;
       try {
@@ -397,51 +455,54 @@ export default function LessonPage() {
       if (controller.signal.aborted) return;
       setRunDetail(detail);
 
-      const [lessonEnv, claimsEnv, conceptsEnv, quizEnv, scorePayload, judgePayload] = await Promise.all([
-        getRunLesson(runId, recommended, { signal: controller.signal }).catch((err: unknown) => {
+      const requestedLevel = manualLevelOverrideRef.current ? levelRef.current : recommended;
+      const [lessonEnv, claimsResult, conceptsResult, quizResult, scoreResult, judgeResult] = await Promise.all([
+        getRunLesson(runId, requestedLevel, { signal: controller.signal }).catch((err: unknown) => {
           if (err instanceof ApiError && err.status === 404) return null;
           throw err;
         }),
-        getRunArtifact(runId, 'claims', { signal: controller.signal }).catch((err: unknown) => {
-          if (err instanceof ApiError && err.status === 404) return null;
-          throw err;
-        }),
-        getRunArtifact(runId, 'concepts', { signal: controller.signal }).catch((err: unknown) => {
-          if (err instanceof ApiError && err.status === 404) return null;
-          throw err;
-        }),
-        getRunArtifact(runId, 'quiz', { signal: controller.signal }).catch((err: unknown) => {
-          if (err instanceof ApiError && err.status === 404) return null;
-          throw err;
-        }),
-        getRunScore(runId, { signal: controller.signal })
-          .then((env) => parseScorePayloadContent(env.content))
-          .catch(() => null),
+        optionalArtifact('claims', getRunArtifact(runId, 'claims', { signal: controller.signal })),
+        optionalArtifact('concepts', getRunArtifact(runId, 'concepts', { signal: controller.signal })),
+        optionalArtifact('quiz', getRunArtifact(runId, 'quiz', { signal: controller.signal })),
+        optionalArtifact(
+          'score',
+          getRunScore(runId, { signal: controller.signal })
+            .then((env) => parseScorePayloadContentOrThrow(env.content)),
+        ),
         detail?.artifacts?.includes('judge.json')
-          ? getRunArtifact(runId, 'judge', { signal: controller.signal })
-            .then((env) => parseJudgeSummaryContent(env.content))
-            .catch(() => null)
-          : Promise.resolve(null),
+          ? optionalArtifact(
+              'judge',
+              getRunArtifact(runId, 'judge', { signal: controller.signal })
+                .then((env) => parseJudgeSummaryContentOrThrow(env.content)),
+            )
+          : Promise.resolve({ failed: false, label: 'judge', value: null }),
       ]);
       if (controller.signal.aborted) return;
 
-      if (lessonEnv) {
-        setLessonContent(lessonEnv.content);
-      } else {
-        setLessonContent('');
-        setError('lesson_skipped');
+      if (levelRef.current === requestedLevel) {
+        if (lessonEnv) {
+          setLessonContent(lessonEnv.content);
+        } else {
+          setLessonContent('');
+          setError('lesson_skipped');
+        }
       }
-      if (claimsEnv) {
-        setClaims(parseClaims(claimsEnv.content));
+      if (claimsResult.value) {
+        setClaims(parseClaims(claimsResult.value.content));
       } else {
         setClaims([]);
       }
-      setConcepts(conceptsEnv ? parseConcepts(conceptsEnv.content) : []);
-      setQuizSummary(quizEnv ? parseQuizSummary(quizEnv.content) : null);
-      setScoreDetail(scorePayload);
-      setJudgeSummary(judgePayload);
+      setConcepts(conceptsResult.value ? parseConcepts(conceptsResult.value.content) : []);
+      setQuizSummary(quizResult.value ? parseQuizSummary(quizResult.value.content) : null);
+      setScoreDetail(scoreResult.value);
+      setJudgeSummary(judgeResult.value);
+      setArtifactFailures(
+        [claimsResult, conceptsResult, quizResult, scoreResult, judgeResult]
+          .filter((result) => result.failed)
+          .map((result) => result.label),
+      );
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return;
+      if (isAbortError(err)) return;
       if (controller.signal.aborted) return;
       setError('fetch_failed');
       // eslint-disable-next-line no-console
@@ -465,7 +526,9 @@ export default function LessonPage() {
   }, [fetchAll]);
   const handleLevelChange = useCallback(
     async (newLevel: ScaffoldLevel) => {
-      const previousLevel = level;
+      const previousLevel = levelRef.current;
+      manualLevelOverrideRef.current = true;
+      levelRef.current = newLevel;
       setLevel(newLevel);
       // Manual override -- clear the auto-selected hint.
       setAutoSelected(false);
@@ -475,7 +538,12 @@ export default function LessonPage() {
         target_kind: 'section',
         target_id: `${runId}:scaffolding`,
         payload: { helpful: true, level: newLevel, previous_level: previousLevel },
-      }).catch(() => {});
+      }).catch((err: unknown) => {
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console
+          console.warn('[LessonPage] scaffolding helpfulness signal failed:', err);
+        }
+      });
       levelAbortRef.current?.abort();
       const controller = new AbortController();
       levelAbortRef.current = controller;
@@ -486,7 +554,7 @@ export default function LessonPage() {
         setLessonContent(env.content);
         setError(null);
       } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (isAbortError(err)) return;
         if (token !== levelFetchRef.current) return;
         if (err instanceof ApiError && err.status === 404) {
           setLessonContent('');
@@ -496,7 +564,7 @@ export default function LessonPage() {
         setError('fetch_failed');
       }
     },
-    [runId, level],
+    [runId],
   );
 
   const handlePrint = useCallback(() => {
@@ -519,8 +587,12 @@ export default function LessonPage() {
         },
       });
       setMarkLearnedState('saved');
-    } catch {
+    } catch (err) {
       setMarkLearnedState('error');
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.warn('[LessonPage] mark-learned helpfulness signal failed:', err);
+      }
     }
   }, [claims.length, level, markLearnedState, quizSummary?.total, runId]);
 
@@ -530,8 +602,11 @@ export default function LessonPage() {
       setSelectedClaim((prev) => {
         if (prev?.claim_id === claim.claim_id) {
           setPopoverPos(null);
+          restoreFocus(previousFocusRef.current);
+          previousFocusRef.current = null;
           return null;
         }
+        previousFocusRef.current = document.activeElement as HTMLElement;
         const maxTop = window.innerHeight - 320;
         const top = Math.min(Math.max(72, rect.top), maxTop);
         const right = window.innerWidth - rect.left + 12;
@@ -546,7 +621,12 @@ export default function LessonPage() {
   useEffect(() => {
     if (!selectedClaim) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setSelectedClaim(null); setPopoverPos(null); }
+      if (e.key === 'Escape') {
+        setSelectedClaim(null);
+        setPopoverPos(null);
+        restoreFocus(previousFocusRef.current);
+        previousFocusRef.current = null;
+      }
     };
     const onClick = (e: MouseEvent) => {
       const popover = popoverRef.current;
@@ -555,6 +635,8 @@ export default function LessonPage() {
       if (!popover.contains(target) && !(target as Element).closest?.('.claim-card')) {
         setSelectedClaim(null);
         setPopoverPos(null);
+        restoreFocus(previousFocusRef.current);
+        previousFocusRef.current = null;
       }
     };
     document.addEventListener('keydown', onKey);
@@ -563,6 +645,13 @@ export default function LessonPage() {
       document.removeEventListener('keydown', onKey);
       document.removeEventListener('mousedown', onClick);
     };
+  }, [selectedClaim]);
+
+  // Focus the close button when the popover opens
+  useEffect(() => {
+    if (selectedClaim) {
+      closeButtonRef.current?.focus();
+    }
   }, [selectedClaim]);
 
   const tocEntries = useMemo(() => extractTocEntries(lessonContent), [lessonContent]);
@@ -603,6 +692,26 @@ export default function LessonPage() {
       : markLearnedState === 'saved'
         ? t('Lesson.mark_learned_done')
         : t('Lesson.mark_learned');
+  const artifactFailureText = useMemo(() => {
+    if (artifactFailures.length === 0) return null;
+    const labels = artifactFailures.map((label) => {
+      switch (label) {
+        case 'claims':
+          return t('Lesson.artifact_claims');
+        case 'concepts':
+          return t('Lesson.artifact_concepts');
+        case 'quiz':
+          return t('Lesson.artifact_quiz');
+        case 'score':
+          return t('Lesson.artifact_score');
+        case 'judge':
+          return t('Lesson.artifact_judge');
+        default:
+          return label;
+      }
+    });
+    return t('Lesson.artifact_warning', { artifacts: labels.join(', ') });
+  }, [artifactFailures, t]);
   const failedGate = useMemo(() => firstFailedHardGate(scoreDetail), [scoreDetail]);
   const showScoreExplainer = Boolean(
     runDetail && (runDetail.verdict === 'FAIL' || failedGate || judgeSummary),
@@ -703,6 +812,11 @@ export default function LessonPage() {
             {markLearnedState === 'error' && (
               <p className="lesson-page__action-error" role="status">
                 {t('Lesson.mark_learned_failed')}
+              </p>
+            )}
+            {artifactFailureText && (
+              <p className="lesson-page__artifact-warning" role="status">
+                {artifactFailureText}
               </p>
             )}
             <ScaffoldingTabs
@@ -1084,10 +1198,16 @@ export default function LessonPage() {
           aria-label={t('Lesson.rail.selected_evidence')}
         >
           <button
+            ref={closeButtonRef}
             type="button"
             className="claim-popover__close"
             aria-label={t('A11y.close')}
-            onClick={() => { setSelectedClaim(null); setPopoverPos(null); }}
+            onClick={() => {
+              setSelectedClaim(null);
+              setPopoverPos(null);
+              restoreFocus(previousFocusRef.current);
+              previousFocusRef.current = null;
+            }}
           >
             ×
           </button>

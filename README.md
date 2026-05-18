@@ -84,11 +84,11 @@ Two more things to try:
 ahadiff quiz <run_id>    # test yourself on what you just learned
 ahadiff review           # spaced-repetition review of past cards
 ```
-See the [User Guide](./docs/USER_GUIDE.en.html) for all 8 diff capture modes, export options, concept graphs, and advanced commands.
+See the [User Guide](./docs/USER_GUIDE.en.html) for all 9 diff capture modes, export options, concept graphs, and advanced commands.
 
 ## Features
 
-- **Learn**: `ahadiff learn` supports 8 diff capture modes: git commit, range, staged, unstaged, patch, patch URL, file compare, and directory compare.
+- **Learn**: `ahadiff learn` supports 9 diff capture modes: git commit, range, time-window (`--since`), staged, unstaged, patch, patch URL, file compare, and directory compare.
 - **Evidence-linked claims**: every lesson conclusion is tied to `file:line` evidence, with verification states such as verified, weak, not proven, contradicted, and rejected.
 - **Quiz and review**: `ahadiff quiz` tests the run you just learned; `ahadiff review` brings back older cards with spaced repetition.
 - **Scoring**: each run gets an 8-dimension score, with an optional LLM judge when configured.
@@ -103,12 +103,53 @@ See the [User Guide](./docs/USER_GUIDE.en.html) for all 8 diff capture modes, ex
 - **Cross-platform**: macOS, Linux, Windows, Python 3.11+.
 - **Security**: URL secret redaction, provider URL validation, input validation, prompt injection detection, and safety hard gates.
 
+## Screenshots
+
+<p align="center">
+  <img src="./docs/video/public/screenshots/en/en-dashboard.png" alt="Dashboard — runs, scores, ratchet trajectory" width="800">
+</p>
+
+<details>
+<summary>Lesson — AI-generated lesson from your diff</summary>
+<img src="./docs/video/public/screenshots/en/en-lesson.png" alt="Lesson page" width="800">
+</details>
+
+<details>
+<summary>Diff Viewer — claim-linked code evidence</summary>
+<img src="./docs/video/public/screenshots/en/en-diff.png" alt="Diff viewer with claim highlights" width="800">
+</details>
+
+<details>
+<summary>Quiz — active recall from the lesson</summary>
+<img src="./docs/video/public/screenshots/en/en-quiz.png" alt="Quiz page" width="800">
+</details>
+
+<details>
+<summary>Review — spaced repetition cards</summary>
+<img src="./docs/video/public/screenshots/en/en-review.png" alt="Review page" width="800">
+</details>
+
+<details>
+<summary>Concept Graph — cross-diff knowledge map</summary>
+<img src="./docs/video/public/screenshots/en/en-concepts-graph.png" alt="Concept graph" width="800">
+</details>
+
+<details>
+<summary>Run Detail — scores and evaluation breakdown</summary>
+<img src="./docs/video/public/screenshots/en/en-rundetail-overview.png" alt="Run detail overview" width="800">
+</details>
+
+<details>
+<summary>Settings — provider and preferences</summary>
+<img src="./docs/video/public/screenshots/en/en-settings.png" alt="Settings page" width="800">
+</details>
+
 ## AI tool integration
 
 AhaDiff writes project-level guidance into your AI tool so it knows about your learning history:
 ```bash
 ahadiff install --detect        # auto-detect your tools
-ahadiff install claude          # or pick one: cursor, copilot, codex, gemini, aider, ...
+ahadiff install claude          # also: cursor, copilot, codex, gemini, aider, windsurf, cline, roo, continue, ...
 ```
 13 targets supported. Run `ahadiff install --help` for the full list, or configure in the WebUI under Settings → AI Tool Guidance.
 
@@ -138,7 +179,6 @@ ahadiff/
 ├─ benchmarks/          # Eval benchmark fixtures
 ├─ docs/                # Landing page, user guides, tutorial videos
 ├─ .github/workflows/   # CI/CD
-├─ CLAUDE.md            # Project AI context
 ├─ pyproject.toml       # Python package config
 └─ LICENSE              # MIT
 ```

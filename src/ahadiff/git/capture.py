@@ -2900,6 +2900,8 @@ def _normalize_changed_path_scope(
             raise InputError("changed path must not be empty")
         if any(ord(ch) < 32 or ord(ch) == 127 for ch in raw):
             raise InputError("changed path contains control characters")
+        if raw.startswith(("\\\\", "//")) or (len(raw) >= 2 and raw[1] == ":" and raw[0].isalpha()):
+            raise InputError("changed path must not use Windows drive or UNC syntax")
         raw = raw.replace("\\", "/")
         candidate = Path(raw)
         if candidate.is_absolute():

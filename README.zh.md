@@ -84,11 +84,11 @@ ahadiff serve
 ahadiff quiz <run_id>    # 测测自己有没有看懂刚才的改动
 ahadiff review           # 复习过去生成的卡片
 ```
-8 种 diff 捕获方式、导出、概念图谱和进阶命令都在 [使用指南](./docs/USER_GUIDE.zh.html) 里。
+9 种 diff 捕获方式、导出、概念图谱和进阶命令都在 [使用指南](./docs/USER_GUIDE.zh.html) 里。
 
 ## 功能
 
-- **学习**：`ahadiff learn` 支持 8 种 diff 捕获模式：git commit、range、staged、unstaged、patch、patch URL、文件对比、目录对比。
+- **学习**：`ahadiff learn` 支持 9 种 diff 捕获模式：git commit、range、时间窗口（`--since`）、staged、unstaged、patch、patch URL、文件对比、目录对比。
 - **证据化 Claims**：每条 lesson 结论都绑定 `file:line` 证据，并区分 verified、weak、not proven、contradicted、rejected 等状态。
 - **测验与复习**：`ahadiff quiz` 用来测试刚学过的 run；`ahadiff review` 用间隔重复带回旧卡片。
 - **评分**：每次 run 都会得到 8 维评分；配置后也可以启用 LLM judge。
@@ -103,12 +103,53 @@ ahadiff review           # 复习过去生成的卡片
 - **跨平台**：macOS、Linux、Windows，Python 3.11+。
 - **安全**：URL secret 脱敏、provider URL 校验、输入校验、prompt 注入检测和安全门禁。
 
+## 界面截图
+
+<p align="center">
+  <img src="./docs/video/public/screenshots/zh/zh-dashboard.png" alt="运行面板 — 运行记录、分数、棘轮轨迹" width="800">
+</p>
+
+<details>
+<summary>课程 — AI 根据 diff 生成的教学课程</summary>
+<img src="./docs/video/public/screenshots/zh/zh-lesson.png" alt="课程页面" width="800">
+</details>
+
+<details>
+<summary>差异查看器 — 带 claim 关联的代码证据</summary>
+<img src="./docs/video/public/screenshots/zh/zh-diff.png" alt="差异查看器" width="800">
+</details>
+
+<details>
+<summary>测验 — 基于课程的主动回忆测试</summary>
+<img src="./docs/video/public/screenshots/zh/zh-quiz.png" alt="测验页面" width="800">
+</details>
+
+<details>
+<summary>复习 — 间隔重复卡片</summary>
+<img src="./docs/video/public/screenshots/zh/zh-review.png" alt="复习页面" width="800">
+</details>
+
+<details>
+<summary>概念图谱 — 跨 diff 的知识图谱</summary>
+<img src="./docs/video/public/screenshots/zh/zh-concepts-graph.png" alt="概念图谱" width="800">
+</details>
+
+<details>
+<summary>运行详情 — 分数与评估细节</summary>
+<img src="./docs/video/public/screenshots/zh/zh-rundetail-overview.png" alt="运行详情概览" width="800">
+</details>
+
+<details>
+<summary>设置 — Provider 与偏好配置</summary>
+<img src="./docs/video/public/screenshots/zh/zh-settings.png" alt="设置页面" width="800">
+</details>
+
 ## AI 工具集成
 
 AhaDiff 会把项目级指引写入你的 AI 工具，让它知道这个 repo 的学习历史：
 ```bash
 ahadiff install --detect        # 自动检测可用工具
-ahadiff install claude          # 也可以指定：cursor, copilot, codex, gemini, aider, ...
+ahadiff install claude     # 也支持: cursor, copilot, codex, gemini, aider, windsurf, cline, roo, continue, ...
 ```
 当前支持 13 个目标。完整列表可运行 `ahadiff install --help`，也可以在 WebUI 的 Settings → AI Tool Guidance 中配置。
 
@@ -138,7 +179,6 @@ ahadiff/
 ├─ benchmarks/          # Eval benchmark fixtures
 ├─ docs/                # Landing page、使用指南、教程视频
 ├─ .github/workflows/   # CI/CD
-├─ CLAUDE.md            # 项目 AI 上下文
 ├─ pyproject.toml       # Python 包配置
 └─ LICENSE              # MIT
 ```
