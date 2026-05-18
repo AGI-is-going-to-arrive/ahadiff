@@ -150,6 +150,7 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</pre>
   <h2>7. Feature Status: Defaults, Opt-ins, and Dependencies</h2>
   <table><thead><tr><th>Feature</th><th>Status</th><th>Notes</th></tr></thead><tbody>
     <tr><td>Lesson / Claims / Quiz / Score</td><td class="ok">Default pipeline</td><td>Produced after <code>ahadiff learn</code>. Which specific artifacts get created depends on the diff and its learnability.</td></tr>
+    <tr><td>Quiz question count</td><td class="ok">Fixed by default; adaptive is opt-in</td><td>Default is 3 questions. In Settings, or with <code>--quiz-mode auto</code>, AhaDiff uses diff stats to choose a bounded count; the default adaptive range is 3-8 questions.</td></tr>
     <tr><td>WebUI / Dashboard / Diff / Review</td><td class="ok">Available by default</td><td>Open locally with <code>ahadiff serve</code>.</td></tr>
     <tr><td>GPT-5.5 LLM</td><td class="warn">Requires configuration</td><td>Configure the provider, base URL, model, and the API-key environment variable before use.</td></tr>
     <tr><td>Challenge</td><td class="warn">Off by default</td><td>Opt-in via configuration. The CLI currently exposes build / status; full progression happens through the WebUI / API.</td></tr>
@@ -170,6 +171,10 @@ ahadiff config show --resolved
 ahadiff provider test --name gpt55 --provider-class openai_responses --base-url "$AHADIFF_PROVIDER_BASE_URL" --model gpt-5.5 --api-key-env AHADIFF_PROVIDER_API_KEY --privacy-mode explicit_remote</pre>
   <h3>What if the lesson gets skipped?</h3>
   <p>The diff might be too small, learnability might be too low, or there aren't enough verified claims. If you're sure this is the change you want to study, re-run with <code>--force-learn</code>.</p>
+  <h3>How do I change quiz question count?</h3>
+  <p>Use Settings → Preferences. Fixed mode always asks the configured number of questions. Adaptive mode uses the captured diff stats; old runs without those stats fall back to the fixed count. All quiz counts must stay between 1 and 10.</p>
+  <h3>What safety findings fail a run?</h3>
+  <p>An unmitigated Critical safety finding fails the run. A Critical secret finding is treated as mitigated only when the local capture record shows a complete redaction shape, including the rule, hash, source, line, and column.</p>
   <h3>Can you guarantee there are no bugs?</h3>
   <p>No — that level of guarantee isn't possible. This release validated backend unit / integration / eval suites, static checks, the wheel build, frontend typecheck / build / Vitest, the full Playwright suite, real-serve, the CLI behavior matrix, Linux target container tests, and the GPT-5.5 live fixture. Even so, full Windows and Linux runner runs should be re-executed before a release if your risk profile demands it.</p>
 </section>

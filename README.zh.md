@@ -90,7 +90,7 @@ ahadiff review           # 复习过去生成的卡片
 
 - **学习**：`ahadiff learn` 支持 9 种 diff 捕获模式：git commit、range、时间窗口（`--since`）、staged、unstaged、patch、patch URL、文件对比、目录对比。
 - **证据化 Claims**：每条 lesson 结论都绑定 `file:line` 证据，并区分 verified、weak、not proven、contradicted、rejected 等状态。
-- **测验与复习**：`ahadiff quiz` 用来测试刚学过的 run；`ahadiff review` 用间隔重复带回旧卡片。
+- **测验与复习**：`ahadiff quiz` 用来测试刚学过的 run；`ahadiff review` 用间隔重复带回旧卡片。题量默认固定，也可以按 diff 大小自动调整。
 - **评分**：每次 run 都会得到 8 维评分；配置后也可以启用 LLM judge。
 - **WebUI**：`ahadiff serve` 打开 Dashboard、Lesson、Diff、Quiz、Review、Concepts、Run Detail、Settings 和 Guide。
 - **导出**：支持 TSV / JSON、Anki `.apkg`，以及本地静态预览包。
@@ -159,12 +159,12 @@ ahadiff install claude     # 也支持: cursor, copilot, codex, gemini, aider, w
 |---|------|------|--------|
 | 1 | Accuracy | 20 | < 14 → FAIL |
 | 2 | Evidence | 18 | < 12 → FAIL |
-| 3 | Diff Coverage | 14 | — |
+| 3 | Diff Coverage | 14 | < 7.70 → FAIL |
 | 4 | Learnability | 14 | — |
 | 5 | Quiz Transfer | 10 | — |
 | 6 | Spec Alignment | 10 | — |
 | 7 | Conciseness | 8 | — |
-| 8 | Safety & Privacy | 6 | Critical → FAIL |
+| 8 | Safety & Privacy | 6 | 未缓解 Critical → FAIL |
 
 三档 verdict：**PASS** ≥ 80 / **CAUTION** 60–80 / **FAIL** < 60。
 

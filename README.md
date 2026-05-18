@@ -90,7 +90,7 @@ See the [User Guide](./docs/USER_GUIDE.en.html) for all 9 diff capture modes, ex
 
 - **Learn**: `ahadiff learn` supports 9 diff capture modes: git commit, range, time-window (`--since`), staged, unstaged, patch, patch URL, file compare, and directory compare.
 - **Evidence-linked claims**: every lesson conclusion is tied to `file:line` evidence, with verification states such as verified, weak, not proven, contradicted, and rejected.
-- **Quiz and review**: `ahadiff quiz` tests the run you just learned; `ahadiff review` brings back older cards with spaced repetition.
+- **Quiz and review**: `ahadiff quiz` tests the run you just learned; `ahadiff review` brings back older cards with spaced repetition. Quiz count is fixed by default and can adapt to diff size when enabled.
 - **Scoring**: each run gets an 8-dimension score, with an optional LLM judge when configured.
 - **WebUI**: `ahadiff serve` opens Dashboard, Lesson, Diff, Quiz, Review, Concepts, Run Detail, Settings, and Guide.
 - **Export**: export results as TSV / JSON, Anki `.apkg`, or a local static preview bundle.
@@ -159,12 +159,12 @@ ahadiff install claude          # also: cursor, copilot, codex, gemini, aider, w
 |---|-----------|--------|-----------|
 | 1 | Accuracy | 20 | < 14 → FAIL |
 | 2 | Evidence | 18 | < 12 → FAIL |
-| 3 | Diff Coverage | 14 | — |
+| 3 | Diff Coverage | 14 | < 7.70 → FAIL |
 | 4 | Learnability | 14 | — |
 | 5 | Quiz Transfer | 10 | — |
 | 6 | Spec Alignment | 10 | — |
 | 7 | Conciseness | 8 | — |
-| 8 | Safety & Privacy | 6 | Critical → FAIL |
+| 8 | Safety & Privacy | 6 | Unmitigated Critical → FAIL |
 
 Three verdicts: **PASS** ≥ 80 / **CAUTION** 60–80 / **FAIL** < 60.
 

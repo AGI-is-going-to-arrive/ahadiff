@@ -337,12 +337,15 @@ def test_quiz_question_count_defaults_to_three_when_unset(tmp_path: Path) -> Non
     snapshot = load_config(repo_root, env={"HOME": str(tmp_path / "home")})
 
     assert snapshot.values["quiz"]["quiz_question_count"] == 3
+    assert snapshot.values["quiz"]["quiz_question_count_mode"] == "fixed"
+    assert snapshot.values["quiz"]["quiz_auto_range_min"] == 3
+    assert snapshot.values["quiz"]["quiz_auto_range_max"] == 8
     resolved = resolve_effective("quiz.quiz_question_count", snapshot=snapshot)
     assert resolved.value == 3
     assert resolved.source == "default"
 
 
-@pytest.mark.parametrize("raw_value", ["0", "11"])
+@pytest.mark.parametrize("raw_value", ["0", "11", "true", "nan", "inf"])
 def test_quiz_question_count_rejects_invalid_values(
     tmp_path: Path,
     raw_value: str,
@@ -355,6 +358,55 @@ def test_quiz_question_count_rejects_invalid_values(
     repo_path.write_text(f"[quiz]\nquiz_question_count = {raw_value}\n", encoding="utf-8")
 
     with pytest.raises(ConfigError, match="quiz\\.quiz_question_count"):
+        load_config(repo_root, env={"HOME": str(tmp_path / "home")})
+
+
+@pytest.mark.parametrize("raw_value", ['"adaptive"', '""', "true"])
+def test_quiz_question_count_mode_rejects_invalid_values(
+    tmp_path: Path,
+    raw_value: str,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    repo_path = repo_config_path(repo_root)
+    repo_path.parent.mkdir(parents=True)
+    repo_path.write_text(f"[quiz]\nquiz_question_count_mode = {raw_value}\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="quiz\\.quiz_question_count_mode"):
+        load_config(repo_root, env={"HOME": str(tmp_path / "home")})
+
+
+@pytest.mark.parametrize("key", ["quiz_auto_range_min", "quiz_auto_range_max"])
+@pytest.mark.parametrize("raw_value", ["0", "11", "true", "nan", "inf"])
+def test_quiz_auto_range_rejects_invalid_values(
+    tmp_path: Path,
+    key: str,
+    raw_value: str,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    repo_path = repo_config_path(repo_root)
+    repo_path.parent.mkdir(parents=True)
+    repo_path.write_text(f"[quiz]\n{key} = {raw_value}\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match=rf"quiz\.{key}"):
+        load_config(repo_root, env={"HOME": str(tmp_path / "home")})
+
+
+def test_quiz_auto_range_rejects_min_above_max(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    repo_path = repo_config_path(repo_root)
+    repo_path.parent.mkdir(parents=True)
+    repo_path.write_text(
+        "[quiz]\nquiz_auto_range_min = 8\nquiz_auto_range_max = 3\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="quiz\\.quiz_auto_range_min"):
         load_config(repo_root, env={"HOME": str(tmp_path / "home")})
 
 

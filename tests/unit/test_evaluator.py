@@ -421,6 +421,93 @@ def test_evaluate_run_fails_when_safety_findings_artifact_has_critical(
     assert "critical_safety_findings" in report.hard_gates.failed_names()
 
 
+def test_evaluate_run_fails_when_safety_findings_mitigation_fields_are_forged(
+    tmp_path: Path,
+) -> None:
+    run_path = _write_run_fixture(
+        tmp_path,
+        run_id="run-forged-safety-mitigation",
+        claims=_standard_quiz_claims("run-forged-safety-mitigation"),
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+    )
+    (run_path / "safety_findings.json").write_text(
+        json.dumps(
+            {
+                "artifact": "safety_findings",
+                "schema": "ahadiff.safety_findings",
+                "schema_version": 1,
+                "run_id": "run-forged-safety-mitigation",
+                "findings": [
+                    {
+                        "severity": "Critical",
+                        "rule_id": "BLOCKED_SECRET",
+                        "action": "redact",
+                        "blocked_remote": True,
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    report = evaluate_run(run_path)
+
+    assert report.verdict == "FAIL"
+    assert "critical_safety_findings" in report.hard_gates.failed_names()
+
+
+def test_evaluate_run_accepts_capture_shaped_mitigated_safety_findings(
+    tmp_path: Path,
+) -> None:
+    run_path = _write_run_fixture(
+        tmp_path,
+        run_id="run-mitigated-safety",
+        claims=_standard_quiz_claims("run-mitigated-safety"),
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+    )
+    (run_path / "safety_findings.json").write_text(
+        json.dumps(
+            {
+                "artifact": "safety_findings",
+                "schema": "ahadiff.safety_findings",
+                "schema_version": 1,
+                "run_id": "run-mitigated-safety",
+                "findings": [
+                    {
+                        "severity": "Critical",
+                        "action": "redact",
+                        "allowlisted": False,
+                        "blocked_remote": True,
+                        "column": 1,
+                        "line": 1,
+                        "rule_id": "OPENAI_API_KEY",
+                        "secret_type": "openai_api_key",
+                        "source_kind": "raw_patch",
+                        "source_name": "raw_patch",
+                        "value_sha256": "a" * 64,
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    report = evaluate_run(run_path)
+
+    assert report.verdict == "PASS"
+    assert "critical_safety_findings" not in report.hard_gates.failed_names()
+
+
 def test_evaluate_run_keeps_non_critical_safety_findings_non_blocking(
     tmp_path: Path,
 ) -> None:

@@ -551,6 +551,14 @@
     border-color: Highlight;
   }
   .settings-toggle__knob { background: Canvas; }
+  .settings-theme-btn.is-active {
+    background: Highlight;
+    border-color: Highlight;
+    color: HighlightText;
+  }
+  .settings-theme-btn:focus-visible {
+    outline: 2px solid Highlight;
+  }
   .provider-cell { border: 1px solid CanvasText; }
   .audit-table th,
   .audit-table td { border-bottom: 1px solid CanvasText; }
@@ -559,6 +567,7 @@
 /* ---- Reduced motion ---- */
 @media (prefers-reduced-motion: reduce) {
   .st,
+  .settings-theme-btn,
   .settings-toggle,
   .settings-toggle__knob {
     transition: none;
@@ -679,6 +688,72 @@
   border-color: var(--accent);
   background: var(--accent-softer);
   color: var(--accent);
+}
+
+/* ---- Preferences: quiz count (fixed + auto range) ---- */
+.settings-quiz-count {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-2);
+}
+
+.settings-auto-range__desc {
+  font-size: var(--fs-sm);
+  color: var(--muted-strong);
+  margin: var(--sp-1) 0 var(--sp-2);
+  max-width: var(--mw-prose);
+  line-height: var(--lh-relaxed);
+}
+
+.settings-auto-range__inputs {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-3);
+}
+
+.settings-auto-range__inputs label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  font-size: var(--fs-xs);
+  color: var(--muted-strong);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.settings-auto-range__inputs .settings-input {
+  width: 5rem;
+  min-width: 5rem;
+}
+
+.settings-auto-range__separator {
+  color: var(--muted);
+  align-self: center;
+  font-family: var(--font-mono);
+  padding-top: var(--sp-3);
+}
+
+@media (max-width: 599px) {
+  .settings-quiz-count {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .settings-auto-range__inputs {
+    width: 100%;
+  }
+
+  .settings-auto-range__inputs label {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .settings-auto-range__inputs .settings-input {
+    width: 100%;
+    min-width: 0;
+  }
 }
 
 /* ---- Preferences: learnability slider ---- */

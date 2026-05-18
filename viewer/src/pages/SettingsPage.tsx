@@ -1291,11 +1291,52 @@ const OUTPUT_LANG_LABEL_KEY: Record<string, MessageKey> = {
   'zh-CN': 'Settings_page.output_lang_zh_cn',
 };
 
-interface PreferencesForm {
+const QUIZ_COUNT_MIN = 1;
+const QUIZ_COUNT_MAX = 10;
+
+export function clampQuizCountInput(rawValue: string, fallback: number): number {
+  if (rawValue.trim() === '') {
+    return fallback;
+  }
+  const parsed = Number(rawValue);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(QUIZ_COUNT_MIN, Math.min(QUIZ_COUNT_MAX, Math.round(parsed)));
+}
+
+export interface PreferencesForm {
   output_lang: string;
   learnability_threshold: number;
   desired_retention: number;
   quiz_question_count: number;
+  quiz_question_count_mode: 'fixed' | 'auto';
+  quiz_auto_range_min: number;
+  quiz_auto_range_max: number;
+}
+
+export function preferencesFormFromConfig(config: ConfigResponse): PreferencesForm {
+  return {
+    output_lang: config.llm.output_lang ?? 'auto',
+    learnability_threshold: config.learn.learnability_threshold ?? 0.3,
+    desired_retention: config.learn.desired_retention ?? 0.9,
+    quiz_question_count: config.quiz.quiz_question_count ?? 3,
+    quiz_question_count_mode: config.quiz.quiz_question_count_mode ?? 'fixed',
+    quiz_auto_range_min: config.quiz.quiz_auto_range_min ?? 3,
+    quiz_auto_range_max: config.quiz.quiz_auto_range_max ?? 8,
+  };
+}
+
+export function isPreferencesFormDirty(form: PreferencesForm, config: ConfigResponse): boolean {
+  return (
+    form.output_lang !== (config.llm.output_lang ?? 'auto')
+    || form.learnability_threshold !== (config.learn.learnability_threshold ?? 0.3)
+    || form.desired_retention !== (config.learn.desired_retention ?? 0.9)
+    || form.quiz_question_count !== (config.quiz.quiz_question_count ?? 3)
+    || form.quiz_question_count_mode !== (config.quiz.quiz_question_count_mode ?? 'fixed')
+    || form.quiz_auto_range_min !== (config.quiz.quiz_auto_range_min ?? 3)
+    || form.quiz_auto_range_max !== (config.quiz.quiz_auto_range_max ?? 8)
+  );
 }
 
 function PreferencesTab({
@@ -1321,12 +1362,7 @@ function PreferencesTab({
 
   useEffect(() => {
     if (config) {
-      setForm({
-        output_lang: config.llm.output_lang ?? 'auto',
-        learnability_threshold: config.learn.learnability_threshold ?? 0.3,
-        desired_retention: config.learn.desired_retention ?? 0.9,
-        quiz_question_count: config.quiz.quiz_question_count ?? 3,
-      });
+      setForm(preferencesFormFromConfig(config));
     }
   }, [config]);
 
@@ -1340,12 +1376,7 @@ function PreferencesTab({
     }
   };
 
-  const dirty = config && form && (
-    form.output_lang !== (config.llm.output_lang ?? 'auto')
-    || form.learnability_threshold !== (config.learn.learnability_threshold ?? 0.3)
-    || form.desired_retention !== (config.learn.desired_retention ?? 0.9)
-    || form.quiz_question_count !== (config.quiz.quiz_question_count ?? 3)
-  );
+  const dirty = config && form && isPreferencesFormDirty(form, config);
 
   const handleSave = async () => {
     if (!form) return;
@@ -1361,6 +1392,9 @@ function PreferencesTab({
         },
         quiz: {
           quiz_question_count: form.quiz_question_count,
+          quiz_question_count_mode: form.quiz_question_count_mode,
+          quiz_auto_range_min: form.quiz_auto_range_min,
+          quiz_auto_range_max: form.quiz_auto_range_max,
         },
       });
       setSaveOk(true);
@@ -1505,15 +1539,87 @@ function PreferencesTab({
                   <h3>{t('Settings_page.quiz_question_count')}</h3>
                   <p>{t('Settings_page.quiz_question_count_desc')}</p>
                 </div>
-                <input
-                  type="number"
-                  className="settings-input"
-                  aria-label={t('Settings_page.quiz_question_count')}
-                  min={1}
-                  max={10}
-                  value={form.quiz_question_count}
-                  onChange={e => setField('quiz_question_count', Math.max(1, Math.min(10, Number(e.target.value) || 3)))}
-                />
+                <div className="settings-quiz-count">
+                  <div
+                    className="settings-theme-buttons"
+                    role="group"
+                    aria-label={t('Settings_page.quiz_mode')}
+                  >
+                    <button
+                      type="button"
+                      className={`settings-theme-btn${form.quiz_question_count_mode === 'fixed' ? ' is-active' : ''}`}
+                      aria-pressed={form.quiz_question_count_mode === 'fixed'}
+                      onClick={() => setField('quiz_question_count_mode', 'fixed')}
+                    >
+                      {t('Settings_page.quiz_mode_fixed')}
+                    </button>
+                    <button
+                      type="button"
+                      className={`settings-theme-btn${form.quiz_question_count_mode === 'auto' ? ' is-active' : ''}`}
+                      aria-pressed={form.quiz_question_count_mode === 'auto'}
+                      onClick={() => setField('quiz_question_count_mode', 'auto')}
+                    >
+                      {t('Settings_page.quiz_mode_auto')}
+                    </button>
+                  </div>
+                  {form.quiz_question_count_mode === 'fixed' ? (
+                    <input
+                      type="number"
+                      className="settings-input"
+                      aria-label={t('Settings_page.quiz_question_count')}
+                      min={1}
+                      max={10}
+                      step={1}
+                      value={form.quiz_question_count}
+                      onChange={e => setField('quiz_question_count', clampQuizCountInput(e.target.value, 3))}
+                    />
+                  ) : (
+                    <div className="settings-auto-range">
+                      <p className="settings-auto-range__desc">{t('Settings_page.quiz_auto_desc')}</p>
+                      <div className="settings-auto-range__inputs">
+                        <label>
+                          {t('Settings_page.quiz_auto_min')}
+                          <input
+                            type="number"
+                            className="settings-input"
+                            min={1}
+                            max={10}
+                            step={1}
+                            aria-label={t('Settings_page.quiz_auto_min')}
+                            value={form.quiz_auto_range_min}
+                            onChange={e => {
+                              const v = clampQuizCountInput(e.target.value, 3);
+                              setField('quiz_auto_range_min', v);
+                              if (v > form.quiz_auto_range_max) {
+                                setField('quiz_auto_range_max', v);
+                              }
+                            }}
+                          />
+                        </label>
+                        <span className="settings-auto-range__separator" aria-hidden="true">—</span>
+                        <label>
+                          {t('Settings_page.quiz_auto_max')}
+                          <input
+                            type="number"
+                            className="settings-input"
+                            min={1}
+                            max={10}
+                            step={1}
+                            aria-label={t('Settings_page.quiz_auto_max')}
+                            value={form.quiz_auto_range_max}
+                            onChange={e => {
+                              const v = clampQuizCountInput(e.target.value, 8);
+                              setField('quiz_auto_range_max', v);
+                              if (v < form.quiz_auto_range_min) {
+                                setField('quiz_auto_range_min', v);
+                              }
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

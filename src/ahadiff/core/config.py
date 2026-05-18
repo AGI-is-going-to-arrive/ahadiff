@@ -26,6 +26,7 @@ _PRIVACY_MODES = {"strict_local", "redacted_remote", "explicit_remote"}
 _LOCALE_PREFERENCE_KEYS = {"lang", "llm.prompt_lang", "llm.output_lang"}
 _CAPTURE_SYMBOL_EXTRACTORS = {"auto", "builtin", "tree_sitter"}
 _CAPTURE_FILE_RANKINGS = {"learning_value", "changed_lines", "path"}
+_QUIZ_QUESTION_COUNT_MODES = {"fixed", "auto"}
 _POSITIVE_INT_KEYS = {
     "capture.max_files",
     "capture.hard_limit",
@@ -95,6 +96,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "quiz": {
         "quiz_question_count": 3,
+        "quiz_question_count_mode": "fixed",
+        "quiz_auto_range_min": 3,
+        "quiz_auto_range_max": 8,
     },
     "serve": {
         "port": 8765,
@@ -280,6 +284,13 @@ def _coerce_value(
             allowed = ", ".join(sorted(_CAPTURE_FILE_RANKINGS))
             raise ConfigError(f"{key} must be one of {allowed}, got {value!r}")
         return value
+    if key == "quiz.quiz_question_count_mode":
+        if not isinstance(value, str):
+            raise ConfigError(f"{key} expects str, got {type(value).__name__}")
+        if value not in _QUIZ_QUESTION_COUNT_MODES:
+            allowed = ", ".join(sorted(_QUIZ_QUESTION_COUNT_MODES))
+            raise ConfigError(f"{key} must be one of {allowed}, got {value!r}")
+        return value
     if isinstance(expected, bool):
         if isinstance(value, bool):
             return value
@@ -303,7 +314,11 @@ def _coerce_value(
                 raise ConfigError(f"{key} expects int, got {value!r}") from exc
         else:
             raise ConfigError(f"{key} expects int, got {type(value).__name__}")
-        if key == "quiz.quiz_question_count":
+        if key in {
+            "quiz.quiz_question_count",
+            "quiz.quiz_auto_range_min",
+            "quiz.quiz_auto_range_max",
+        }:
             lo, hi = _QUIZ_QUESTION_COUNT_RANGE
             if coerced < lo or coerced > hi:
                 raise ConfigError(f"{key} must be between {lo} and {hi}")
@@ -878,6 +893,17 @@ def _layer_source_label(layer: str, key: str, repo_path: Path, global_path: Path
     return "default"
 
 
+def _validate_quiz_auto_range(values: Mapping[str, Any]) -> None:
+    quiz = values.get("quiz")
+    if not isinstance(quiz, Mapping):
+        return
+    quiz_values = cast("Mapping[str, object]", quiz)
+    range_min = quiz_values.get("quiz_auto_range_min")
+    range_max = quiz_values.get("quiz_auto_range_max")
+    if isinstance(range_min, int) and isinstance(range_max, int) and range_min > range_max:
+        raise ConfigError("quiz.quiz_auto_range_min must be <= quiz.quiz_auto_range_max")
+
+
 def _resolve_config_root(repo_root: Path | None, *, allow_non_git: bool) -> Path:
     if allow_non_git:
         return find_workspace_root(repo_root)
@@ -939,6 +965,7 @@ def _load_config_snapshot(
         )
 
     values = _nest_mapping({key: item.value for key, item in resolved.items()})
+    _validate_quiz_auto_range(values)
     return ConfigSnapshot(
         values=values,
         resolved=resolved,

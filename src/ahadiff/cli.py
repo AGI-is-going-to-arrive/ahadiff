@@ -14,7 +14,7 @@ from contextlib import ExitStack, suppress
 from functools import cache
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any, cast
+from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
 from urllib.parse import quote
 
 import typer
@@ -183,6 +183,7 @@ transport_target_for_base_url = _lazy_attr("llm.provider", "transport_target_for
 generate_cards_for_run = _lazy_attr("quiz", "generate_cards_for_run")
 generate_quiz_from_run = _lazy_attr("quiz", "generate_quiz_from_run")
 load_quiz_questions = _lazy_attr("quiz", "load_quiz_questions")
+resolve_question_count = _lazy_attr("quiz.adaptive", "resolve_question_count")
 backup_review_db = _lazy_attr("review.database", "backup_review_db")
 check_review_db = _lazy_attr("review.database", "check_review_db")
 finalize_targeted_verify_event = _lazy_attr("review.database", "finalize_targeted_verify_event")
@@ -216,6 +217,7 @@ def _cli_overrides(
     judge_model: str | None = None,
     serve_port: int | None = None,
     no_browser: bool | None = None,
+    quiz_mode: Literal["fixed", "auto"] | None = None,
 ) -> dict[str, Any]:
     return {
         "lang": lang,
@@ -224,6 +226,7 @@ def _cli_overrides(
         "llm.judge_model": judge_model,
         "serve.port": serve_port,
         "serve.no_browser": no_browser,
+        "quiz.quiz_question_count_mode": quiz_mode,
     }
 
 
@@ -930,6 +933,13 @@ def learn_cmd(
             help="Open the local viewer after learn completes.",
         ),
     ] = False,
+    quiz_mode: Annotated[
+        Literal["fixed", "auto"] | None,
+        typer.Option(
+            "--quiz-mode",
+            help="Override quiz question count mode for this run.",
+        ),
+    ] = None,
     provider: Annotated[
         str | None,
         typer.Option("--provider", help="Configured provider alias under [providers.<name>]."),
@@ -966,11 +976,22 @@ def learn_cmd(
             allow_non_git=allow_non_git,
         )
         snapshot = (
-            load_config(root, cli_overrides=_cli_overrides(privacy_mode=privacy_mode, lang=lang))
+            load_config(
+                root,
+                cli_overrides=_cli_overrides(
+                    privacy_mode=privacy_mode,
+                    lang=lang,
+                    quiz_mode=quiz_mode,
+                ),
+            )
             if has_git_repo
             else load_workspace_config(
                 root,
-                cli_overrides=_cli_overrides(privacy_mode=privacy_mode, lang=lang),
+                cli_overrides=_cli_overrides(
+                    privacy_mode=privacy_mode,
+                    lang=lang,
+                    quiz_mode=quiz_mode,
+                ),
             )
         )
         capture_config = cast("dict[str, Any]", snapshot.values["capture"])
@@ -1153,7 +1174,10 @@ def learn_cmd(
                             retry_attempts=int(llm_config["retry_attempts"]),
                             privacy_mode=resolved_privacy_mode,
                             output_lang=resolved_content_lang,
-                            question_count=int(quiz_config["quiz_question_count"]),
+                            question_count=_effective_quiz_question_count(
+                                quiz_config,
+                                capture.metadata.get("diff_stats"),
+                            ),
                         )
                         quiz_path = quiz_artifacts.quiz_path
                         if against_spec is not None:
@@ -1573,6 +1597,38 @@ def _run_content_lang_or_none(run_path: Path) -> str | None:
     return normalize_locale(value) if isinstance(value, str) else None
 
 
+def _run_diff_stats_or_none(run_path: Path) -> dict[str, int] | None:
+    metadata_path = run_path / "metadata.json"
+    if not metadata_path.exists():
+        return None
+    try:
+        payload = safe_json_loads(metadata_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, ValueError, OSError, UnicodeDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    metadata = cast("dict[str, object]", payload)
+    diff_stats = metadata.get("diff_stats")
+    if not isinstance(diff_stats, dict):
+        return None
+    return cast("dict[str, int]", diff_stats)
+
+
+def _effective_quiz_question_count(
+    quiz_config: dict[str, Any],
+    diff_stats: object,
+) -> int:
+    return int(
+        resolve_question_count(
+            str(quiz_config.get("quiz_question_count_mode", "fixed")),
+            fixed_count=int(quiz_config["quiz_question_count"]),
+            diff_stats=cast("dict[str, int]", diff_stats) if isinstance(diff_stats, dict) else None,
+            auto_range_min=int(quiz_config.get("quiz_auto_range_min", 3)),
+            auto_range_max=int(quiz_config.get("quiz_auto_range_max", 8)),
+        )
+    )
+
+
 @_APP.command("regenerate")
 def regenerate_cmd(
     run_id: Annotated[
@@ -1607,6 +1663,13 @@ def regenerate_cmd(
         str,
         typer.Option("--api-key-env", help="Env var name used to resolve the provider API key."),
     ] = "AHADIFF_PROVIDER_API_KEY",
+    quiz_mode: Annotated[
+        Literal["fixed", "auto"] | None,
+        typer.Option(
+            "--quiz-mode",
+            help="Override quiz question count mode for regeneration.",
+        ),
+    ] = None,
 ) -> None:
     try:
         if only != "quiz":
@@ -1616,7 +1679,11 @@ def regenerate_cmd(
         run_path = run_dir(run_id, root) if has_git_repo else (root / ".ahadiff" / "runs" / run_id)
         if not run_path.exists():
             raise AhaDiffError(f"run artifacts do not exist: {run_path}")
-        snapshot = load_config(root) if has_git_repo else load_workspace_config(root)
+        snapshot = (
+            load_config(root, cli_overrides=_cli_overrides(quiz_mode=quiz_mode))
+            if has_git_repo
+            else load_workspace_config(root, cli_overrides=_cli_overrides(quiz_mode=quiz_mode))
+        )
         llm_config = cast("dict[str, Any]", snapshot.values["llm"])
         learn_config = cast("dict[str, Any]", snapshot.values["learn"])
         quiz_config = cast("dict[str, Any]", snapshot.values["quiz"])
@@ -1680,7 +1747,10 @@ def regenerate_cmd(
                     retry_attempts=int(llm_config["retry_attempts"]),
                     privacy_mode=resolved_privacy_mode,
                     output_lang=output_lang,
-                    question_count=int(quiz_config["quiz_question_count"]),
+                    question_count=_effective_quiz_question_count(
+                        quiz_config,
+                        _run_diff_stats_or_none(run_path),
+                    ),
                     overwrite=True,
                 )
                 report = evaluate_run(run_path)

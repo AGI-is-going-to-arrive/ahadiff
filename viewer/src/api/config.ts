@@ -44,6 +44,9 @@ export interface LearnConfig {
 
 export interface QuizConfig {
   quiz_question_count: number;
+  quiz_question_count_mode: 'fixed' | 'auto';
+  quiz_auto_range_min: number;
+  quiz_auto_range_max: number;
 }
 
 export interface ConfigResponse {

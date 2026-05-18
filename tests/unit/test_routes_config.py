@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import pytest
 from pydantic import ValidationError
@@ -66,6 +66,17 @@ def _mock_load_config_factory(
     return _mock_load_config
 
 
+def _validate_quiz_update_for_test(
+    payload: object,
+    *,
+    current_quiz: object | None = None,
+) -> dict[str, Any] | str:
+    return cast("Any", routes_config_module)._validate_quiz_update(
+        payload,
+        current_quiz=current_quiz,
+    )
+
+
 # ---------------------------------------------------------------------------
 # GET /api/config
 # ---------------------------------------------------------------------------
@@ -81,6 +92,27 @@ def test_learn_config_contract_rejects_invalid_threshold(value: float) -> None:
 def test_quiz_config_contract_rejects_invalid_question_count(value: object) -> None:
     with pytest.raises(ValidationError, match="quiz_question_count"):
         QuizConfig.model_validate({"quiz_question_count": value})
+
+
+@pytest.mark.parametrize("value", ["adaptive", "", 3, True])
+def test_quiz_config_contract_rejects_invalid_question_count_mode(value: object) -> None:
+    with pytest.raises(ValidationError, match="quiz_question_count_mode"):
+        QuizConfig.model_validate({"quiz_question_count_mode": value})
+
+
+@pytest.mark.parametrize("field", ["quiz_auto_range_min", "quiz_auto_range_max"])
+@pytest.mark.parametrize("value", [0, 11, True, "3"])
+def test_quiz_config_contract_rejects_invalid_auto_range(
+    field: str,
+    value: object,
+) -> None:
+    with pytest.raises(ValidationError, match=field):
+        QuizConfig.model_validate({field: value})
+
+
+def test_quiz_config_contract_rejects_auto_range_min_above_max() -> None:
+    with pytest.raises(ValidationError, match="quiz_auto_range_min"):
+        QuizConfig.model_validate({"quiz_auto_range_min": 8, "quiz_auto_range_max": 3})
 
 
 def test_get_config_returns_json_with_expected_keys(
@@ -242,7 +274,12 @@ def test_get_config_handles_load_failure_gracefully(
         "capture": _CAPTURE_DEFAULTS,
         "llm": _LLM_DEFAULTS,
         "learn": {"learnability_threshold": 0.3, "desired_retention": 0.9},
-        "quiz": {"quiz_question_count": 3},
+        "quiz": {
+            "quiz_question_count": 3,
+            "quiz_question_count_mode": "fixed",
+            "quiz_auto_range_min": 3,
+            "quiz_auto_range_max": 8,
+        },
     }
 
 
@@ -262,7 +299,12 @@ def test_get_config_returns_nullable_shape_when_no_git_repo(tmp_path: Path) -> N
     assert payload["judge_model"] == "gpt-5.4-mini"
     assert payload["serve_port"] == 8765
     assert payload["learn"] == {"learnability_threshold": 0.3, "desired_retention": 0.9}
-    assert payload["quiz"] == {"quiz_question_count": 3}
+    assert payload["quiz"] == {
+        "quiz_question_count": 3,
+        "quiz_question_count_mode": "fixed",
+        "quiz_auto_range_min": 3,
+        "quiz_auto_range_max": 8,
+    }
 
 
 def test_get_config_reads_workspace_config_when_no_git_repo(tmp_path: Path) -> None:
@@ -279,6 +321,119 @@ def test_get_config_reads_workspace_config_when_no_git_repo(tmp_path: Path) -> N
     assert response.status_code == 200
     assert response.json()["learn"]["desired_retention"] == 0.84
     assert response.json()["quiz"]["quiz_question_count"] == 6
+    assert response.json()["quiz"]["quiz_question_count_mode"] == "fixed"
+    assert response.json()["quiz"]["quiz_auto_range_min"] == 3
+    assert response.json()["quiz"]["quiz_auto_range_max"] == 8
+
+
+def test_validate_quiz_update_accepts_auto_fields() -> None:
+    assert _validate_quiz_update_for_test(
+        {
+            "quiz_question_count_mode": "auto",
+            "quiz_auto_range_min": 2,
+            "quiz_auto_range_max": 9,
+        }
+    ) == {
+        "quiz_question_count_mode": "auto",
+        "quiz_auto_range_min": 2,
+        "quiz_auto_range_max": 9,
+    }
+
+
+def test_put_config_partial_auto_range_min_uses_current_max_and_threadpool(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    (repo_root / ".git").mkdir(parents=True)
+    state_dir = repo_root / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        "[quiz]\nquiz_auto_range_max = 10\n",
+        encoding="utf-8",
+    )
+    calls: list[str] = []
+
+    async def recording_run_sync(func: Any, *args: Any, **kwargs: Any) -> Any:
+        del kwargs
+        calls.append(getattr(func, "__name__", repr(func)))
+        return func(*args)
+
+    monkeypatch.setattr(routes_config_module.to_thread, "run_sync", recording_run_sync)
+    client = _client(state_dir)
+
+    response = client.put(
+        "/api/config",
+        json={"quiz": {"quiz_auto_range_min": 9}},
+        headers={"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"},
+    )
+
+    assert response.status_code == 200
+    assert "_current_quiz_config_for_update" in calls
+
+
+def test_put_config_rejects_partial_quiz_update_when_existing_range_is_invalid(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    (repo_root / ".git").mkdir(parents=True)
+    state_dir = repo_root / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        "[quiz]\nquiz_auto_range_min = 9\nquiz_auto_range_max = 3\n",
+        encoding="utf-8",
+    )
+    client = _client(state_dir)
+
+    response = client.put(
+        "/api/config",
+        json={"quiz": {"quiz_question_count": 4}},
+        headers={"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"},
+    )
+
+    assert response.status_code == 400
+    assert "quiz.quiz_auto_range_min" in response.json()["error"]
+
+
+def test_validate_quiz_update_allows_payload_to_fix_existing_invalid_range() -> None:
+    assert _validate_quiz_update_for_test(
+        {"quiz_auto_range_max": 10},
+        current_quiz={"quiz_auto_range_min": 9, "quiz_auto_range_max": 3},
+    ) == {"quiz_auto_range_max": 10}
+
+
+def test_validate_quiz_update_rejects_unknown_quiz_keys() -> None:
+    result = _validate_quiz_update_for_test({"extra": 1})
+
+    assert isinstance(result, str)
+    assert "unknown quiz keys" in result
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ({"quiz_question_count_mode": "adaptive"}, "quiz.quiz_question_count_mode"),
+        ({"quiz_question_count_mode": 3}, "quiz.quiz_question_count_mode"),
+        ({"quiz_question_count_mode": True}, "quiz.quiz_question_count_mode"),
+        ({"quiz_auto_range_min": 0}, "quiz.quiz_auto_range_min"),
+        ({"quiz_auto_range_max": 11}, "quiz.quiz_auto_range_max"),
+        ({"quiz_auto_range_min": True}, "quiz.quiz_auto_range_min"),
+        ({"quiz_auto_range_max": True}, "quiz.quiz_auto_range_max"),
+        ({"quiz_auto_range_max": "8"}, "quiz.quiz_auto_range_max"),
+        (
+            {"quiz_auto_range_min": 8, "quiz_auto_range_max": 3},
+            "quiz.quiz_auto_range_min must be <= quiz.quiz_auto_range_max",
+        ),
+    ],
+)
+def test_validate_quiz_update_rejects_invalid_auto_fields(
+    payload: dict[str, object],
+    expected: str,
+) -> None:
+    result = _validate_quiz_update_for_test(payload)
+
+    assert isinstance(result, str)
+    assert expected in result
 
 
 def test_get_config_key_status_shows_configured_when_env_set(

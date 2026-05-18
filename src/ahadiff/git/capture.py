@@ -317,6 +317,7 @@ def capture_patch(
         ),
         "selected_files": selection["selected_files"],
         "omitted_files": selection["omitted_files"],
+        "diff_stats": selection["diff_stats"],
         "ranking_version": "v1",
         "has_graph": graphify_status.has_graph,
         "graphify": {
@@ -2549,6 +2550,11 @@ def _apply_capture_limits(
             "file_count_exceeded": False,
             "selected_files": [],
             "omitted_files": [],
+            "diff_stats": {
+                "total_changed_lines": 0,
+                "total_hunk_count": 0,
+                "file_count": 0,
+            },
         }
 
     if file_ranking == "learning_value":
@@ -2590,6 +2596,11 @@ def _apply_capture_limits(
     binary_only = all(item.binary_only for item in segments)
     selected_files = [item.path for item in selected]
     omitted_files = sorted({item.path for item in omitted if item.path not in selected_files})
+    diff_stats = {
+        "total_changed_lines": sum(item.changed_lines for item in selected),
+        "total_hunk_count": sum(item.hunk_count for item in selected),
+        "file_count": len(selected),
+    }
     persisted = "".join(
         seg.text if seg.text.endswith("\n") else seg.text + "\n" for seg in selected
     )
@@ -2599,6 +2610,7 @@ def _apply_capture_limits(
         "file_count_exceeded": file_count_exceeded,
         "selected_files": selected_files,
         "omitted_files": omitted_files,
+        "diff_stats": diff_stats,
     }
 
 

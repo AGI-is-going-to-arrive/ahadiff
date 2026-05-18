@@ -659,14 +659,26 @@ class TestPutConfig:
 
         put_resp = client.put(
             "/api/config",
-            json={"quiz": {"quiz_question_count": 7}},
+            json={
+                "quiz": {
+                    "quiz_question_count": 7,
+                    "quiz_question_count_mode": "auto",
+                    "quiz_auto_range_min": 2,
+                    "quiz_auto_range_max": 9,
+                }
+            },
             headers={**_AUTH, "origin": "http://localhost:8765"},
         )
         get_resp = client.get("/api/config")
 
         assert put_resp.status_code == 200
         assert get_resp.status_code == 200
-        assert get_resp.json()["quiz"]["quiz_question_count"] == 7
+        assert get_resp.json()["quiz"] == {
+            "quiz_question_count": 7,
+            "quiz_question_count_mode": "auto",
+            "quiz_auto_range_min": 2,
+            "quiz_auto_range_max": 9,
+        }
 
     @pytest.mark.parametrize("value", [0.7, 0.99])
     def test_learn_desired_retention_accepts_boundaries(
@@ -760,19 +772,30 @@ class TestPutConfig:
         assert "unknown learn keys" in resp.json()["error"]
 
     @pytest.mark.parametrize(
-        "payload",
+        ("payload", "expected_error"),
         [
-            {"quiz": {"quiz_question_count": 0}},
-            {"quiz": {"quiz_question_count": 11}},
-            {"quiz": {"quiz_question_count": True}},
-            {"quiz": {"quiz_question_count": "3"}},
-            {"quiz": {"quiz_question_count": None}},
+            ({"quiz": {"quiz_question_count": 0}}, "quiz."),
+            ({"quiz": {"quiz_question_count": 11}}, "quiz."),
+            ({"quiz": {"quiz_question_count": True}}, "quiz."),
+            ({"quiz": {"quiz_question_count": "3"}}, "quiz."),
+            ({"quiz": {"quiz_question_count": None}}, "quiz."),
+            ({"quiz": {"extra": 1}}, "unknown quiz keys"),
+            ({"quiz": {"quiz_question_count_mode": "adaptive"}}, "quiz."),
+            ({"quiz": {"quiz_question_count_mode": 3}}, "quiz."),
+            ({"quiz": {"quiz_question_count_mode": True}}, "quiz."),
+            ({"quiz": {"quiz_auto_range_min": 0}}, "quiz."),
+            ({"quiz": {"quiz_auto_range_min": True}}, "quiz."),
+            ({"quiz": {"quiz_auto_range_max": 11}}, "quiz."),
+            ({"quiz": {"quiz_auto_range_max": True}}, "quiz."),
+            ({"quiz": {"quiz_auto_range_max": "8"}}, "quiz."),
+            ({"quiz": {"quiz_auto_range_min": 8, "quiz_auto_range_max": 3}}, "quiz."),
         ],
     )
     def test_quiz_question_count_invalid_values_rejected(
         self,
         tmp_path: Path,
         payload: dict[str, object],
+        expected_error: str,
     ) -> None:
         client = _client(tmp_path / ".ahadiff")
         resp = client.put(
@@ -782,7 +805,7 @@ class TestPutConfig:
         )
 
         assert resp.status_code == 400
-        assert "quiz.quiz_question_count" in resp.json()["error"]
+        assert expected_error in resp.json()["error"]
 
     def test_non_object_rejected(self, tmp_path: Path) -> None:
         client = _client(tmp_path / ".ahadiff")

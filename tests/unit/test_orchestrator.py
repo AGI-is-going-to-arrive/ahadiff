@@ -495,7 +495,12 @@ class _FakeConfigSnapshot:
                 "max_patch_bytes": 500_000,
             },
             "learn": {"learnability_threshold": 0.3, "desired_retention": 0.9},
-            "quiz": {"quiz_question_count": 3},
+            "quiz": {
+                "quiz_question_count": 3,
+                "quiz_question_count_mode": "fixed",
+                "quiz_auto_range_min": 3,
+                "quiz_auto_range_max": 8,
+            },
             "llm": {
                 "generate_model": "test-model",
                 "output_lang": "auto",
@@ -1406,6 +1411,276 @@ def test_pipeline_passes_step_specific_output_caps(
     assert seen["quiz"]["misconception_output_token_cap"] == 2_800
     assert seen["quiz"]["question_count"] == 7
     assert seen["quiz"]["output_token_budget"] == 50_000
+
+
+def test_pipeline_uses_adaptive_question_count_from_capture_stats(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    snapshot = _FakeConfigSnapshot()
+    snapshot.values["quiz"].update(
+        {
+            "quiz_question_count": 4,
+            "quiz_question_count_mode": "auto",
+            "quiz_auto_range_min": 3,
+            "quiz_auto_range_max": 8,
+        }
+    )
+
+    def _load_config(
+        _root: Path,
+        cli_overrides: dict[str, object] | None = None,
+    ) -> _FakeConfigSnapshot:
+        del cli_overrides
+        return snapshot
+
+    monkeypatch.setattr(f"{_ORCH}.load_config", _load_config)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    capture.metadata["diff_stats"] = {
+        "total_changed_lines": 500,
+        "total_hunk_count": 5,
+        "file_count": 9,
+    }
+    _patch_learnability(monkeypatch, score=0.7)
+    seen: dict[str, object] = {}
+
+    def _record_quiz(kwargs: dict[str, object]) -> None:
+        seen.update(kwargs)
+
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        on_generate_quiz=_record_quiz,
+    )
+
+    result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
+
+    assert result.status == "keep"
+    assert seen["question_count"] == 8
+
+
+def test_pipeline_falls_back_to_fixed_mode_when_quiz_mode_key_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    snapshot = _FakeConfigSnapshot()
+    del snapshot.values["quiz"]["quiz_question_count_mode"]
+    snapshot.values["quiz"]["quiz_question_count"] = 5
+
+    def _load_config(
+        _root: Path,
+        cli_overrides: dict[str, object] | None = None,
+    ) -> _FakeConfigSnapshot:
+        del cli_overrides
+        return snapshot
+
+    monkeypatch.setattr(f"{_ORCH}.load_config", _load_config)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    capture.metadata["diff_stats"] = {
+        "total_changed_lines": 500,
+        "total_hunk_count": 5,
+        "file_count": 9,
+    }
+    _patch_learnability(monkeypatch, score=0.7)
+    seen: dict[str, object] = {}
+
+    def _record_quiz(kwargs: dict[str, object]) -> None:
+        seen.update(kwargs)
+
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        on_generate_quiz=_record_quiz,
+    )
+
+    result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
+
+    assert result.status == "keep"
+    assert seen["question_count"] == 5
+
+
+@pytest.mark.parametrize(
+    "diff_stats",
+    [
+        {"file_count": 9},
+        {"total_changed_lines": 500},
+        {"total_changed_lines": 500, "file_count": False},
+        {"total_changed_lines": -1, "file_count": 9},
+    ],
+)
+def test_pipeline_falls_back_to_fixed_count_for_incomplete_adaptive_stats(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+    diff_stats: dict[str, object],
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    snapshot = _FakeConfigSnapshot()
+    snapshot.values["quiz"].update(
+        {
+            "quiz_question_count": 4,
+            "quiz_question_count_mode": "auto",
+            "quiz_auto_range_min": 3,
+            "quiz_auto_range_max": 8,
+        }
+    )
+
+    def _load_config(
+        _root: Path,
+        cli_overrides: dict[str, object] | None = None,
+    ) -> _FakeConfigSnapshot:
+        del cli_overrides
+        return snapshot
+
+    monkeypatch.setattr(f"{_ORCH}.load_config", _load_config)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    capture.metadata["diff_stats"] = diff_stats
+    _patch_learnability(monkeypatch, score=0.7)
+    seen: dict[str, object] = {}
+
+    def _record_quiz(kwargs: dict[str, object]) -> None:
+        seen.update(kwargs)
+
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        on_generate_quiz=_record_quiz,
+    )
+
+    result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
+
+    assert result.status == "keep"
+    assert seen["question_count"] == 4
+
+
+def test_pipeline_uses_default_auto_range_when_legacy_range_keys_are_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    snapshot = _FakeConfigSnapshot()
+    snapshot.values["quiz"] = {
+        "quiz_question_count": 4,
+        "quiz_question_count_mode": "auto",
+    }
+
+    def _load_config(
+        _root: Path,
+        cli_overrides: dict[str, object] | None = None,
+    ) -> _FakeConfigSnapshot:
+        del cli_overrides
+        return snapshot
+
+    monkeypatch.setattr(f"{_ORCH}.load_config", _load_config)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    capture.metadata["diff_stats"] = {
+        "total_changed_lines": 500,
+        "total_hunk_count": 5,
+        "file_count": 100,
+    }
+    _patch_learnability(monkeypatch, score=0.7)
+    seen: dict[str, object] = {}
+
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        on_generate_quiz=lambda kwargs: seen.update(kwargs),
+    )
+
+    result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
+
+    assert result.status == "keep"
+    assert seen["question_count"] == 8
+
+
+def test_pipeline_falls_back_to_fixed_count_when_diff_stats_key_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    snapshot = _FakeConfigSnapshot()
+    snapshot.values["quiz"].update(
+        {
+            "quiz_question_count": 4,
+            "quiz_question_count_mode": "auto",
+            "quiz_auto_range_min": 3,
+            "quiz_auto_range_max": 8,
+        }
+    )
+
+    def _load_config(
+        _root: Path,
+        cli_overrides: dict[str, object] | None = None,
+    ) -> _FakeConfigSnapshot:
+        del cli_overrides
+        return snapshot
+
+    monkeypatch.setattr(f"{_ORCH}.load_config", _load_config)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    _patch_learnability(monkeypatch, score=0.7)
+    seen: dict[str, object] = {}
+
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        on_generate_quiz=lambda kwargs: seen.update(kwargs),
+    )
+
+    result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
+
+    assert result.status == "keep"
+    assert seen["question_count"] == 4
+
+
+def test_pipeline_uses_auto_lower_bound_for_zero_diff_stats(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    snapshot = _FakeConfigSnapshot()
+    snapshot.values["quiz"].update(
+        {
+            "quiz_question_count": 4,
+            "quiz_question_count_mode": "auto",
+            "quiz_auto_range_min": 5,
+            "quiz_auto_range_max": 8,
+        }
+    )
+
+    def _load_config(
+        _root: Path,
+        cli_overrides: dict[str, object] | None = None,
+    ) -> _FakeConfigSnapshot:
+        del cli_overrides
+        return snapshot
+
+    monkeypatch.setattr(f"{_ORCH}.load_config", _load_config)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    capture.metadata["diff_stats"] = {
+        "total_changed_lines": 0,
+        "total_hunk_count": 0,
+        "file_count": 0,
+    }
+    _patch_learnability(monkeypatch, score=0.7)
+    seen: dict[str, object] = {}
+
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        on_generate_quiz=lambda kwargs: seen.update(kwargs),
+    )
+
+    result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
+
+    assert result.status == "keep"
+    assert seen["question_count"] == 5
 
 
 def test_cancellation_before_persist_skips_finalized_and_result_events(

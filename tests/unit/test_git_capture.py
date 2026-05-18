@@ -1815,8 +1815,34 @@ def test_patch_file_plain_unified_diff_respects_max_files(tmp_path: Path) -> Non
     assert degraded_flags["file_count_exceeded"] is True
     assert capture.metadata["selected_files"] == ["a.py"]
     assert capture.metadata["omitted_files"] == ["b.py"]
+    assert capture.metadata["diff_stats"] == {
+        "total_changed_lines": 2,
+        "total_hunk_count": 1,
+        "file_count": 1,
+    }
     assert "+++ b/a.py" in capture.persisted_patch_text
     assert "+++ b/b.py" not in capture.persisted_patch_text
+
+
+def test_patch_file_empty_diff_records_zero_diff_stats(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    patch_path = workspace_root / "empty.patch"
+    patch_path.write_text("", encoding="utf-8")
+
+    capture = capture_module.capture_patch(
+        workspace_root=workspace_root,
+        patch="empty.patch",
+        max_patch_bytes=10_000_000,
+    )
+
+    assert capture.metadata["selected_files"] == []
+    assert capture.metadata["omitted_files"] == []
+    assert capture.metadata["diff_stats"] == {
+        "total_changed_lines": 0,
+        "total_hunk_count": 0,
+        "file_count": 0,
+    }
 
 
 def test_patch_stdin_plain_unified_diff_respects_max_files(tmp_path: Path) -> None:

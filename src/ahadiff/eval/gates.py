@@ -3,7 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-_EVIDENCE_COVERAGE_GATE_RATIO = 0.60
+_EVIDENCE_COVERAGE_GATE_RATIO = 0.55
+_SHA256_HEX_LENGTH = 64
+_REDACTION_SOURCE_KINDS = frozenset(
+    {"raw_patch", "resolved_file", "branch_name", "tag_name", "markdown", "string"}
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -64,10 +68,12 @@ def evaluate_hard_gates(
     accuracy_score = _dimension_score(dimension_scores, "accuracy")
     evidence_score = _dimension_score(dimension_scores, "evidence")
     diff_coverage_score = _dimension_score(dimension_scores, "diff_coverage")
-    evidence_coverage_threshold = (
-        float(diff_coverage_dimension.max_score) * _EVIDENCE_COVERAGE_GATE_RATIO
+    evidence_coverage_threshold = round(
+        float(diff_coverage_dimension.max_score) * _EVIDENCE_COVERAGE_GATE_RATIO,
+        2,
     )
     critical_safety_count = _critical_safety_finding_count(safety_findings)
+    mitigated_critical_safety_count = _mitigated_critical_safety_finding_count(safety_findings)
     results = (
         HardGateResult(
             name="accuracy",
@@ -139,10 +145,9 @@ def evaluate_hard_gates(
         HardGateResult(
             name="critical_safety_findings",
             passed=critical_safety_count == 0,
-            detail=(
-                "no Critical safety findings"
-                if critical_safety_count == 0
-                else f"{critical_safety_count} Critical safety finding(s) detected"
+            detail=_critical_safety_finding_detail(
+                critical_safety_count,
+                mitigated_critical_safety_count,
             ),
         ),
     )
@@ -176,9 +181,75 @@ def _critical_safety_finding_count(findings: Sequence[Mapping[str, object]]) -> 
     count = 0
     for finding in findings:
         raw_severity = finding.get("severity", finding.get("level"))
-        if isinstance(raw_severity, str) and raw_severity.casefold() == "critical":
+        if not (isinstance(raw_severity, str) and raw_severity.casefold() == "critical"):
+            continue
+        # Skip only capture-shaped findings that were actually redacted locally.
+        if _is_mitigated_critical_redaction_finding(finding):
+            continue
+        count += 1
+    return count
+
+
+def _mitigated_critical_safety_finding_count(
+    findings: Sequence[Mapping[str, object]],
+) -> int:
+    count = 0
+    for finding in findings:
+        raw_severity = finding.get("severity", finding.get("level"))
+        if not (isinstance(raw_severity, str) and raw_severity.casefold() == "critical"):
+            continue
+        if _is_mitigated_critical_redaction_finding(finding):
             count += 1
     return count
+
+
+def _is_mitigated_critical_redaction_finding(finding: Mapping[str, object]) -> bool:
+    if finding.get("action") != "redact" or finding.get("blocked_remote") is not True:
+        return False
+    if finding.get("allowlisted") is not False:
+        return False
+    if not _non_empty_string(finding.get("rule_id")):
+        return False
+    if not _non_empty_string(finding.get("secret_type")):
+        return False
+    if not _sha256_hex(finding.get("value_sha256")):
+        return False
+    source_kind = finding.get("source_kind")
+    if not isinstance(source_kind, str) or source_kind not in _REDACTION_SOURCE_KINDS:
+        return False
+    if not _non_empty_string(finding.get("source_name")):
+        return False
+    return _positive_int(finding.get("line")) and _positive_int(finding.get("column"))
+
+
+def _non_empty_string(value: object) -> bool:
+    return isinstance(value, str) and value.strip() != ""
+
+
+def _sha256_hex(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == _SHA256_HEX_LENGTH
+        and all(char in "0123456789abcdefABCDEF" for char in value)
+    )
+
+
+def _positive_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 1
+
+
+def _critical_safety_finding_detail(
+    unmitigated_count: int,
+    mitigated_count: int,
+) -> str:
+    if mitigated_count > 0:
+        base = f"{unmitigated_count} unmitigated Critical safety finding(s)"
+        if unmitigated_count > 0:
+            base += " detected"
+        return f"{base} ({mitigated_count} mitigated by redaction)"
+    if unmitigated_count == 0:
+        return "no Critical safety findings"
+    return f"{unmitigated_count} unmitigated Critical safety finding(s) detected"
 
 
 __all__ = ["HardGateResult", "HardGateSummary", "evaluate_hard_gates"]

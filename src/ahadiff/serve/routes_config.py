@@ -21,6 +21,13 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+_QUIZ_DEFAULTS: dict[str, Any] = {
+    "quiz_question_count": 3,
+    "quiz_question_count_mode": "fixed",
+    "quiz_auto_range_min": 3,
+    "quiz_auto_range_max": 8,
+}
+
 
 def _empty_config_snapshot() -> dict[str, Any]:
     return {
@@ -51,9 +58,7 @@ def _empty_config_snapshot() -> dict[str, Any]:
             "learnability_threshold": 0.3,
             "desired_retention": 0.9,
         },
-        "quiz": {
-            "quiz_question_count": 3,
-        },
+        "quiz": dict(_QUIZ_DEFAULTS),
     }
 
 
@@ -123,6 +128,9 @@ def _safe_config_snapshot(state: ServeState) -> dict[str, Any]:
             },
             "quiz": {
                 "quiz_question_count": quiz_values.get("quiz_question_count", 3),
+                "quiz_question_count_mode": quiz_values.get("quiz_question_count_mode", "fixed"),
+                "quiz_auto_range_min": quiz_values.get("quiz_auto_range_min", 3),
+                "quiz_auto_range_max": quiz_values.get("quiz_auto_range_max", 8),
             },
         }
         learn_values = _object_mapping(snapshot_values.get("learn"))
@@ -161,7 +169,7 @@ def _safe_config_snapshot(state: ServeState) -> dict[str, Any]:
             "output_lang": "auto",
         }
         result["learn"] = {"learnability_threshold": 0.3, "desired_retention": 0.9}
-        result["quiz"] = {"quiz_question_count": 3}
+        result["quiz"] = dict(_QUIZ_DEFAULTS)
         api_key_env = getattr(llm, "api_key_env", None) if llm else None
         providers = getattr(cfg, "providers", None)
 
@@ -419,6 +427,12 @@ _LLM_INT_FIELDS: dict[str, tuple[int, int]] = {
 }
 _ALLOWED_SYMBOL_EXTRACTORS = frozenset({"auto", "builtin", "tree_sitter"})
 _ALLOWED_OUTPUT_LANGS = frozenset({"auto", "en", "zh-CN"})
+_ALLOWED_QUIZ_COUNT_MODES = frozenset({"fixed", "auto"})
+_QUIZ_INT_FIELDS = {
+    "quiz_question_count",
+    "quiz_auto_range_min",
+    "quiz_auto_range_max",
+}
 
 
 def _validate_llm_update(llm: object) -> dict[str, Any] | str:
@@ -508,22 +522,75 @@ def _validate_learn_update(learn: object) -> dict[str, Any] | str:
     return validated
 
 
-def _validate_quiz_update(quiz: object) -> dict[str, Any] | str:
+def _validate_quiz_int_field(field: str, value: object) -> int | str:
+    if not isinstance(value, int) or isinstance(value, bool):
+        return f"quiz.{field} must be an integer"
+    if value < 1 or value > 10:
+        return f"quiz.{field} must be between 1 and 10"
+    return value
+
+
+def _validate_effective_quiz_config(values: dict[str, object]) -> str | None:
+    mode = values.get("quiz_question_count_mode", _QUIZ_DEFAULTS["quiz_question_count_mode"])
+    if not isinstance(mode, str) or mode not in _ALLOWED_QUIZ_COUNT_MODES:
+        allowed_modes = sorted(_ALLOWED_QUIZ_COUNT_MODES)
+        return f"quiz.quiz_question_count_mode must be one of {allowed_modes}"
+    for field in _QUIZ_INT_FIELDS:
+        parsed = _validate_quiz_int_field(field, values.get(field))
+        if isinstance(parsed, str):
+            return parsed
+        values[field] = parsed
+    range_min = values["quiz_auto_range_min"]
+    range_max = values["quiz_auto_range_max"]
+    if isinstance(range_min, int) and isinstance(range_max, int) and range_min > range_max:
+        return "quiz.quiz_auto_range_min must be <= quiz.quiz_auto_range_max"
+    return None
+
+
+def _current_quiz_config_for_update(state: ServeState) -> dict[str, object]:
+    from ahadiff.core.config import read_config_data
+
+    config_path = state.state_dir / "config.toml"
+    if not config_path.exists():
+        return {}
+    raw_config = read_config_data(config_path)
+    return _object_mapping(raw_config.get("quiz"))
+
+
+def _validate_quiz_update(
+    quiz: object,
+    *,
+    current_quiz: object | None = None,
+) -> dict[str, Any] | str:
     if not isinstance(quiz, dict):
         return "quiz must be a JSON object"
     quiz_dict = cast("dict[str, Any]", quiz)
-    allowed = {"quiz_question_count"}
+    allowed = _QUIZ_INT_FIELDS | {"quiz_question_count_mode"}
     unknown_quiz: set[str] = set(quiz_dict.keys()) - allowed
     if unknown_quiz:
         return f"unknown quiz keys: {sorted(unknown_quiz)}"
     validated: dict[str, Any] = {}
-    if "quiz_question_count" in quiz_dict:
-        val: object = quiz_dict["quiz_question_count"]
-        if not isinstance(val, int) or isinstance(val, bool):
-            return "quiz.quiz_question_count must be an integer"
-        if val < 1 or val > 10:
-            return "quiz.quiz_question_count must be between 1 and 10"
-        validated["quiz_question_count"] = val
+    if "quiz_question_count_mode" in quiz_dict:
+        mode: object = quiz_dict["quiz_question_count_mode"]
+        if not isinstance(mode, str) or mode not in _ALLOWED_QUIZ_COUNT_MODES:
+            allowed_modes = sorted(_ALLOWED_QUIZ_COUNT_MODES)
+            return f"quiz.quiz_question_count_mode must be one of {allowed_modes}"
+        validated["quiz_question_count_mode"] = mode
+    for field in _QUIZ_INT_FIELDS:
+        if field not in quiz_dict:
+            continue
+        parsed = _validate_quiz_int_field(field, quiz_dict[field])
+        if isinstance(parsed, str):
+            return parsed
+        validated[field] = parsed
+
+    current_values = _object_mapping(current_quiz)
+    effective_values: dict[str, object] = dict(_QUIZ_DEFAULTS)
+    effective_values.update({key: current_values[key] for key in allowed if key in current_values})
+    effective_values.update(validated)
+    effective_error = _validate_effective_quiz_config(effective_values)
+    if effective_error is not None:
+        return effective_error
     return validated
 
 
@@ -670,7 +737,14 @@ async def put_config(request: Request) -> JSONResponse:
             persist_updates["learn"] = learn_result
 
     if "quiz" in body:
-        quiz_result = _validate_quiz_update(body["quiz"])
+        try:
+            current_quiz = await to_thread.run_sync(_current_quiz_config_for_update, state)
+        except Exception as exc:
+            return JSONResponse(
+                {"error": f"cannot read current quiz config: {exc}", "status": 400},
+                status_code=400,
+            )
+        quiz_result = _validate_quiz_update(body["quiz"], current_quiz=current_quiz)
         if isinstance(quiz_result, str):
             return JSONResponse({"error": quiz_result, "status": 400}, status_code=400)
         if quiz_result:

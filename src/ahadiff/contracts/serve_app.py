@@ -65,6 +65,15 @@ class QuizConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     quiz_question_count: StrictInt = Field(default=3, ge=1, le=10)
+    quiz_question_count_mode: Literal["fixed", "auto"] = "fixed"
+    quiz_auto_range_min: StrictInt = Field(default=3, ge=1, le=10)
+    quiz_auto_range_max: StrictInt = Field(default=8, ge=1, le=10)
+
+    @model_validator(mode="after")
+    def _validate_auto_range(self) -> QuizConfig:
+        if self.quiz_auto_range_min > self.quiz_auto_range_max:
+            raise ValueError("quiz_auto_range_min must be <= quiz_auto_range_max")
+        return self
 
 
 class ConfigResponse(BaseModel):

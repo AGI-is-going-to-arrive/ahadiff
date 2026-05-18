@@ -684,51 +684,75 @@ export const misconceptionCardSchema = z.object({
 
 /* ─────────────── 10. Config / Doctor / Install ─────────────── */
 
-export const captureConfigSchema = z.object({
-  max_files: z.number().int().positive(),
-  hard_limit: z.number().int().positive(),
-  max_patch_bytes: z.number().int().positive(),
-  file_ranking: z.string(),
-  symbol_extractor: z.string().default('auto'),
-});
+export const captureConfigSchema = z
+  .object({
+    max_files: z.number().int().positive(),
+    hard_limit: z.number().int().positive(),
+    max_patch_bytes: z.number().int().positive(),
+    file_ranking: z.string(),
+    symbol_extractor: z.string().default('auto'),
+  })
+  .strict();
 
-export const llmConfigSchema = z.object({
-  input_token_budget: z.number().int().positive(),
-  output_token_budget: z.number().int().positive(),
-  request_timeout_seconds: z.number().int().positive(),
-  max_concurrent: z.number().int().positive(),
-  retry_attempts: z.number().int().nonnegative(),
-  output_lang: z.string().default('auto'),
-});
+export const llmConfigSchema = z
+  .object({
+    input_token_budget: z.number().int().positive(),
+    output_token_budget: z.number().int().positive(),
+    request_timeout_seconds: z.number().int().positive(),
+    max_concurrent: z.number().int().positive(),
+    retry_attempts: z.number().int().nonnegative(),
+    output_lang: z.string().default('auto'),
+  })
+  .strict();
 
-export const learnConfigSchema = z.object({
-  learnability_threshold: z.number().min(0).max(1).default(0.3),
-  desired_retention: z.number().min(0.7).max(0.99).optional(),
-});
+export const learnConfigSchema = z
+  .object({
+    learnability_threshold: z.number().min(0).max(1).default(0.3),
+    desired_retention: z.number().min(0.7).max(0.99).optional(),
+  })
+  .strict();
 
-export const quizConfigSchema = z.object({
-  quiz_question_count: z.number().int().min(1).max(10).default(3),
-});
+export const quizConfigSchema = z
+  .object({
+    quiz_question_count: z.number().int().min(1).max(10).default(3),
+    quiz_question_count_mode: z.enum(['fixed', 'auto']).default('fixed'),
+    quiz_auto_range_min: z.number().int().min(1).max(10).default(3),
+    quiz_auto_range_max: z.number().int().min(1).max(10).default(8),
+  })
+  .strict()
+  .refine(v => v.quiz_auto_range_min <= v.quiz_auto_range_max, {
+    message: 'quiz_auto_range_min must be <= quiz_auto_range_max',
+    path: ['quiz_auto_range_min'],
+  });
 
-export const configResponseSchema = z.object({
-  lang: z.string().nullable(),
-  privacy_mode: z.string().nullable(),
-  generate_provider: z.string().nullable().default(null),
-  generate_model: z.string().nullable(),
-  judge_provider: z.string().nullable().default(null),
-  judge_model: z.string().nullable(),
-  serve_port: z.number().int().nullable(),
-  key_status: z.record(z.string(), z.enum(['configured', 'missing'])).default({}),
-  capture: captureConfigSchema,
-  llm: llmConfigSchema,
-  learn: learnConfigSchema,
-  quiz: quizConfigSchema.default({ quiz_question_count: 3 }),
-});
+export const configResponseSchema = z
+  .object({
+    lang: z.string().nullable(),
+    privacy_mode: z.string().nullable(),
+    generate_provider: z.string().nullable().default(null),
+    generate_model: z.string().nullable(),
+    judge_provider: z.string().nullable().default(null),
+    judge_model: z.string().nullable(),
+    serve_port: z.number().int().nullable(),
+    key_status: z.record(z.string(), z.enum(['configured', 'missing'])).default({}),
+    capture: captureConfigSchema,
+    llm: llmConfigSchema,
+    learn: learnConfigSchema,
+    quiz: quizConfigSchema.default({
+      quiz_question_count: 3,
+      quiz_question_count_mode: 'fixed',
+      quiz_auto_range_min: 3,
+      quiz_auto_range_max: 8,
+    }),
+  })
+  .strict();
 
-export const configUpdateResponseSchema = z.object({
-  updated: z.boolean(),
-  scope: z.enum(['session']),
-});
+export const configUpdateResponseSchema = z
+  .object({
+    updated: z.boolean(),
+    scope: z.enum(['session']),
+  })
+  .strict();
 
 export const doctorCheckSchema = z
   .object({

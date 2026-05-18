@@ -1206,12 +1206,26 @@ def run_learn_pipeline(
                     _check_cancelled(_cancelled)
 
                     try:
+                        from ahadiff.quiz.adaptive import resolve_question_count
                         from ahadiff.quiz.generator import (
                             generate_cards_for_run,
                             generate_quiz_from_run,
                         )
 
                         quiz_questions_holder: list[Any] = []
+                        raw_diff_stats = capture.metadata.get("diff_stats")
+                        diff_stats = (
+                            cast("dict[str, int]", raw_diff_stats)
+                            if isinstance(raw_diff_stats, dict)
+                            else None
+                        )
+                        effective_question_count = resolve_question_count(
+                            str(quiz_config.get("quiz_question_count_mode", "fixed")),
+                            fixed_count=int(quiz_config["quiz_question_count"]),
+                            diff_stats=diff_stats,
+                            auto_range_min=int(quiz_config.get("quiz_auto_range_min", 3)),
+                            auto_range_max=int(quiz_config.get("quiz_auto_range_max", 8)),
+                        )
 
                         def _generate_quiz() -> None:
                             _, questions = generate_quiz_from_run(
@@ -1240,7 +1254,7 @@ def run_learn_pipeline(
                                 output_token_budget=output_budget,
                                 quiz_output_token_cap=quiz_output_cap,
                                 misconception_output_token_cap=misconception_output_cap,
-                                question_count=int(quiz_config["quiz_question_count"]),
+                                question_count=effective_question_count,
                                 on_sub_progress=lambda message: _emit(7, message),
                             )
                             quiz_questions_holder[:] = [questions]

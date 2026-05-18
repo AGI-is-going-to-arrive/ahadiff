@@ -150,6 +150,7 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</pre>
   <h2>7. 功能状态：默认、Opt-in、依赖项</h2>
   <table><thead><tr><th>功能</th><th>状态</th><th>说明</th></tr></thead><tbody>
     <tr><td>Lesson / Claims / Quiz / Score</td><td class="ok">默认主链</td><td>运行 <code>ahadiff learn</code> 后生成，具体产物取决于 diff 和 learnability。</td></tr>
+    <tr><td>测验题量</td><td class="ok">默认固定；可手动改成自适应</td><td>默认生成 3 题。可在 Settings 里开启，或临时使用 <code>--quiz-mode auto</code>；自适应模式会根据 diff stats 选题量，默认范围是 3-8 题。</td></tr>
     <tr><td>WebUI / Dashboard / Diff / Review</td><td class="ok">默认可用</td><td>通过 <code>ahadiff serve</code> 本地打开。</td></tr>
     <tr><td>GPT-5.5 LLM</td><td class="warn">需要配置</td><td>配置 provider、base URL、model 和 API key 环境变量后使用。</td></tr>
     <tr><td>Challenge</td><td class="warn">默认关闭</td><td>需要配置 opt-in。CLI 当前提供 build/status，完整推进在 WebUI/API。</td></tr>
@@ -170,6 +171,10 @@ ahadiff config show --resolved
 ahadiff provider test --name gpt55 --provider-class openai_responses --base-url "$AHADIFF_PROVIDER_BASE_URL" --model gpt-5.5 --api-key-env AHADIFF_PROVIDER_API_KEY --privacy-mode explicit_remote</pre>
   <h3>课程被跳过怎么办？</h3>
   <p>可能是 diff 太小、learnability 太低或 verified claims 不足。确认这是你想学习的改动后，可以使用 <code>--force-learn</code>。</p>
+  <h3>怎么改测验题量？</h3>
+  <p>到 Settings → Preferences 里设置。固定模式会始终使用配置的题数；自适应模式会读取本次捕获到的 diff stats。旧 run 没有这些 stats 时，会回退到固定题数。所有题量都必须在 1 到 10 之间。</p>
+  <h3>哪些安全发现会让 run 失败？</h3>
+  <p>未缓解的 Critical safety finding 会让 run 失败。Critical secret finding 只有在本地捕获记录里带完整 redaction 结构时才算已缓解，包括 rule、hash、source、line 和 column。</p>
   <h3>能不能说没有任何 bug？</h3>
   <p>不能做绝对保证。本轮验证覆盖了后端 unit/integration/eval、静态检查、wheel、前端 typecheck/build/Vitest、完整 Playwright、real-serve、CLI 行为矩阵、Linux 目标容器测试和 GPT-5.5 live fixture；但真实 Windows/Linux 全量 runner 仍应在发布前按风险补跑。</p>
 </section>
