@@ -339,6 +339,25 @@ describe('LearnModeDialog', () => {
     await expect.poll(() => tiles.nth(0).evaluate((el) => el.classList.contains('learn-dialog__tile--selected'))).toBe(false);
   }, 10_000);
 
+  it('author filter is exposed as a textbox, not a nested fake button', async () => {
+    await renderDialog(page);
+    await page.waitForSelector('[role="dialog"]');
+
+    await page.locator('.learn-dialog__advanced-toggle').click();
+    await page.waitForSelector('#learn-dialog-advanced');
+    await page.locator('label[for="learn-mode-revision"]').click();
+    await expect.poll(() => page.locator('#learn-mode-revision').isChecked()).toBe(true);
+
+    const authorRow = page.locator('.learn-dialog__author-row');
+    await expect.poll(() => authorRow.getAttribute('role')).toBeNull();
+    await expect.poll(() => authorRow.getAttribute('tabindex')).toBeNull();
+
+    const authorInput = page.locator('#learn-mode-author');
+    await authorInput.focus();
+    await expect.poll(() => page.locator('#learn-mode-since').isChecked()).toBe(true);
+    await expect.poll(() => authorInput.evaluate((el) => document.activeElement === el)).toBe(true);
+  });
+
   it('Start button calls requestLearn with staged + unstaged + include_untracked for working mode', async () => {
     await renderDialog(page);
     await page.waitForSelector('[role="dialog"]');

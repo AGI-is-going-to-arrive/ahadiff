@@ -296,8 +296,7 @@
   }
 }
 
-/* Drawer sidebar at <=768px — aligns with V6 (`AhaDiff Warm v6.html:361`)
- * but tightened from 1024px so 769-1024px gets the icon rail instead. */
+/* Drawer sidebar at <=768px; 769-1024px gets the icon rail instead. */
 @media (max-width: 768px) {
   .sidebar {
     position: fixed;

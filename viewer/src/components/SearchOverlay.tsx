@@ -2,8 +2,8 @@
  * Phase 4B: Cmd/Ctrl+K command palette over `/api/search`.
  *
  * The viewer's topbar already had a placeholder search input (Phase 2C);
- * this component supplies the actual interaction. Behaviour parallels V6
- * (AhaDiff Warm v6.html L1440 + L80-82): a global keyboard shortcut opens
+ * this component supplies the actual interaction. Behaviour parallels V6:
+ * a global keyboard shortcut opens
  * a centred modal with debounced search, keyboard-navigable result list,
  * and Esc/backdrop-click to dismiss. Backend errors are surfaced as an
  * unavailable state so route/schema drift is visible instead of looking like

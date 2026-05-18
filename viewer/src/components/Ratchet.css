@@ -203,7 +203,7 @@
 }
 
 /* ---- Phase 4G: strict-ratchet transparency banner ----
- * V6 demo-banner pattern (AhaDiff Warm v6.html L1562 + L1967): pull the
+ * V6 demo-banner pattern: pull the
  * rule out of the table copy and into a visible note so users understand
  * why "discard" rows aren't bugs. */
 .ratchet-banner {

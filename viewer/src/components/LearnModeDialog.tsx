@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from '../i18n/useTranslation';
 import { useLearnStore } from '../state/learn-store';
@@ -571,7 +578,6 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
               {/* Since */}
               <div
                 className="learn-dialog__radio-row"
-                onClick={() => handleModeSelect('since')}
               >
                 <input
                   id="learn-mode-since"
@@ -601,7 +607,9 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
               </div>
 
               {/* Author filter (qualifier for since) */}
-              <div className="learn-dialog__author-row" onClick={() => handleModeSelect('since')}>
+              <div
+                className="learn-dialog__author-row"
+              >
                 <label
                   htmlFor="learn-mode-author"
                   className="learn-dialog__author-label"
@@ -626,7 +634,6 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
               {/* Revision */}
               <div
                 className="learn-dialog__radio-row"
-                onClick={() => handleModeSelect('revision')}
               >
                 <input
                   id="learn-mode-revision"
@@ -670,7 +677,6 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
               {/* Patch URL */}
               <div
                 className="learn-dialog__radio-row"
-                onClick={() => handleModeSelect('patch_url')}
               >
                 <input
                   id="learn-mode-patch-url"
@@ -714,7 +720,6 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
               {/* Compare refs */}
               <div
                 className="learn-dialog__radio-row"
-                onClick={() => handleModeSelect('compare')}
               >
                 <input
                   id="learn-mode-compare"
@@ -762,7 +767,6 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
               {/* Compare dirs */}
               <div
                 className="learn-dialog__radio-row"
-                onClick={() => handleModeSelect('compare_dir')}
               >
                 <input
                   id="learn-mode-compare-dir"
@@ -810,7 +814,6 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
               {/* Paste patch */}
               <div
                 className="learn-dialog__radio-row learn-dialog__radio-row--block"
-                onClick={() => handleModeSelect('patch')}
               >
                 <input
                   id="learn-mode-patch"

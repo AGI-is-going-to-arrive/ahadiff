@@ -155,8 +155,8 @@
 
   /* Phase 2D: V6 responsive breakpoint reference (read-only).
      CSS variables can't be used inside @media queries — these are the
-     authoritative breakpoint values that page CSS must use. Mirrors V6
-     template (AhaDiff Warm v6.html) and risk register R1/R2.
+     authoritative breakpoint values that page CSS must use. Mirrors the V6
+     template breakpoints and risk register R1/R2.
      --bp-xs: 540px   -- single-column small phones, body 15px
      --bp-sm: 720px   -- 2-col card grids collapse to 1-col
      --bp-md: 768px   -- KPI/agent/states grids collapse to 1-col, topbar search hides

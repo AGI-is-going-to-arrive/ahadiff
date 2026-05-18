@@ -1,6 +1,6 @@
 /* ============================================================
  * Phase 4A — CalendarHeatmap component
- * Mirrors V6 (AhaDiff Warm v6.html L2228-2244):
+ * Mirrors the V6 calendar heatmap pattern:
  *   .card { .ch h3 + .meta · .cb { 10×3 grid, 3px gap } }
  * Color levels are derived from --accent / --hair / --subtle so the
  * widget tracks paper/dark theme and forced-colors automatically.

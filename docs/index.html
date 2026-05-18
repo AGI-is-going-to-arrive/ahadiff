@@ -678,15 +678,15 @@ img { max-width: 100%; display: block; }
 <!-- ===== Hero ===== -->
 <section class="hero container" id="hero">
   <div class="b-crown" aria-hidden="true">&Delta;</div>
-  <div class="b-eyebrow"><span data-i18n="hero.eyebrow">Local-first &middot; v0.1 Preview</span></div>
+  <div class="b-eyebrow"><span data-i18n="hero.eyebrow">Local-first &middot; v1.1.0-alpha</span></div>
   <div class="hero-badge"><span>&Delta;</span> <span data-i18n="hero.badge">Local-first Verified Diff Learning</span></div>
   <h1 class="b-display"><span data-i18n="hero.title.pre">知返 Aha</span><span class="delta shout">Diff</span></h1>
   <p class="hero-tagline" data-i18n="hero.tagline">AI 写完，<span class="b-mark">Diff 教回</span>。</p>
   <p class="hero-tagline-en" data-i18n="hero.tagline_en">Ship with AI. <span class="b-mark">Learn it back.</span></p>
   <p class="hero-desc" data-i18n="hero.desc">一个 local-first 的 <span class="b-mark">verified diff learning layer</span>。把 Claude / Codex / Cursor 等 AI 工具写出的 git diff，变成带代码证据链的学习笔记、概念图谱、主动回忆测验和 SRS 复习卡。</p>
-  <p class="hero-status" data-i18n="hero.status" style="display:inline-block;margin:12px auto 0;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:500;background:var(--accent-soft);color:var(--accent-ink);font-family:var(--font-mono);letter-spacing:.04em">v0.1 Design Preview — Coming Soon</p>
+  <p class="hero-status" data-i18n="hero.status" style="display:inline-block;margin:12px auto 0;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:500;background:var(--accent-soft);color:var(--accent-ink);font-family:var(--font-mono);letter-spacing:.04em">v1.1.0-alpha · Source checkout available</p>
   <div class="hero-ctas">
-    <a href="#start" class="btn-primary" data-i18n="hero.cta1">Design Preview</a>
+    <a href="#start" class="btn-primary" data-i18n="hero.cta1">Get Started</a>
     <a href="https://github.com/agi-is-coming/ahadiff" target="_blank" rel="noopener" class="btn-secondary">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
       GitHub
@@ -1043,8 +1043,8 @@ img { max-width: 100%; display: block; }
 <!-- ===== Getting Started ===== -->
 <section class="section-pad start b-focal" id="start">
   <div class="container">
-    <div class="section-eyebrow reveal" data-i18n="start.eyebrow">PLANNED INTERFACE</div>
-    <h2 class="section-title reveal" data-i18n="start.title">三步开始（计划中）</h2>
+    <div class="section-eyebrow reveal" data-i18n="start.eyebrow">SOURCE CHECKOUT</div>
+    <h2 class="section-title reveal" data-i18n="start.title">三步开始</h2>
     <p class="section-subtitle reveal" data-i18n="start.subtitle">从安装到第一个学习循环，不超过两分钟。</p>
     <div class="start-grid">
       <div class="start-card reveal">
@@ -1089,11 +1089,11 @@ img { max-width: 100%; display: block; }
 <footer class="footer">
   <div class="footer-links">
     <a href="https://github.com/agi-is-coming/ahadiff" target="_blank" rel="noopener">GitHub</a>
-    <a href="https://github.com/agi-is-coming/ahadiff/tree/main/doc" target="_blank" rel="noopener" data-i18n="footer.docs">Documentation</a>
+    <a href="./USER_GUIDE.en.html" data-i18n="footer.docs">Documentation</a>
     <a href="https://github.com/agi-is-coming/ahadiff/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
   </div>
   <p data-i18n="footer.credit">Built with care by the AhaDiff team.</p>
-  <div class="footer-version">v0.1 (in development)</div>
+  <div class="footer-version">v1.1.0-alpha</div>
 </footer>
 
 <script>
@@ -1105,7 +1105,7 @@ const T = {
   "nav.features": { zh: "特性", en: "Features" },
   "nav.arch": { zh: "架构", en: "Architecture" },
   "nav.start": { zh: "开始", en: "Start" },
-  "hero.eyebrow": { zh: "Local-first · v0.1 预览", en: "Local-first · v0.1 Preview" },
+  "hero.eyebrow": { zh: "Local-first · v1.1.0-alpha", en: "Local-first · v1.1.0-alpha" },
   "hero.badge": { zh: "Local-first 验证式 Diff 学习", en: "Local-first Verified Diff Learning" },
   "hero.title.pre": { zh: "知返 Aha", en: "Aha" },
   "hero.tagline": { zh: 'AI 写完，<span class="b-mark">Diff 教回</span>。', en: 'Ship with AI. <span class="b-mark">Learn it back.</span>' },
@@ -1115,8 +1115,8 @@ const T = {
     en: 'A local-first <span class="b-mark">verified diff learning layer</span>. Transforms git diffs from AI coding tools like Claude, Codex, and Cursor into learning notes with code evidence chains, concept graphs, active recall quizzes, and SRS review cards.'
   },
   "quote.core": { zh: "每一行 AI 写的代码，都应该能把学习教回给你。", en: "Every line of AI-written code should teach you something back." },
-  "hero.status": { zh: "v0.1 设计预览 — 即将发布", en: "v0.1 Design Preview — Coming Soon" },
-  "hero.cta1": { zh: "设计预览", en: "Design Preview" },
+  "hero.status": { zh: "v1.1.0-alpha · 源码安装可用", en: "v1.1.0-alpha · Source checkout available" },
+  "hero.cta1": { zh: "开始使用", en: "Get Started" },
   "hero.insight_title": { zh: "AhaDiff 验证课文", en: "AhaDiff Verified Lesson" },
   "hero.claim1": {
     zh: "添加了显式算法固定 (HS256)，防止算法混淆攻击",
@@ -1269,8 +1269,8 @@ const T = {
   "cmp.col4": { zh: "Local-first", en: "Local-first" },
   "cmp.col5": { zh: "证据链", en: "Evidence Chain" },
   "cmp.col6": { zh: "Agent 接入", en: "Agent Install" },
-  "start.eyebrow": { zh: "计划接口预览", en: "PLANNED INTERFACE" },
-  "start.title": { zh: "三步开始（计划中）", en: "Three Steps to Start (Planned)" },
+  "start.eyebrow": { zh: "源码安装", en: "SOURCE CHECKOUT" },
+  "start.title": { zh: "三步开始", en: "Three Steps to Start" },
   "start.subtitle": {
     zh: "从安装到第一个学习循环，不超过两分钟。",
     en: "From install to your first learning loop in under two minutes."

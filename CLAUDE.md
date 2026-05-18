@@ -88,8 +88,6 @@ global_config_dir()                   ← Global（派生/索引/偏好，非真
 | benchmarks | `benchmarks/` | 10 fixtures、Graphify 10k gate（parse 750ms + peak 96MiB） |
 | viewer | `viewer/` | React 19 SPA；14 个生产 page TSX；SearchOverlay 双栏预览 + graph-node Ledger focus；ErrorBoundary 诊断脱敏和复制 fallback；Learn Mode Dialog 默认跟随 viewer locale，含 path scope / patch URL / revision 校验、AbortController 取消、redacted pending payload、`aria-busy` / live region、print hide；Review 四档 SRS + 高风险概念，open-answer reveal 不再记为 peek；Quiz 导航 / mark-wrong / progress table；Challenge Mode；Export modal；HealthBadge；ConceptLedger graph link/focus highlight；ConceptGraph Canvas renderer + botanical palette + community fill + forced-colors + focus persistence + a11y list fallback；Ratchet TSV/JSON/APKG 导出；Settings 项目级 AI 工具指引 + quiz 数量配置；Dashboard + Lesson + Concepts + Ratchet + RunDetail + Settings + Guide + Diff + Search；RunDetail Overview 摘要卡、Score 维度卡片、Judge 语义评审说明、Artifacts 分组；Lesson score explainer 链接 Score/Judge；Diff 文件 Prev/Next、claim auto-scroll、`+`/`-` 行标记、claim 单点聚合/count badge、sticky ClaimInspector、柔和 claim 选中色带、卡片内 source hunk 预览、dot legend 和 selected hint；Welcome lesson H2 折叠、demo 高度上限、最新 Lesson 链接、LearnTaskBanner 反馈和真实 run artifact 预览；Onboarding DiagnosticRow；错误码本地化；locale-aware byte/token 格式化；motion/elevation CSS；侧栏三档 + 真实 config footer；Concepts content wrapper；container query；PWA |
 | tests | `tests/` | unit/integration/eval/live；最新完整 gate 是 2026-05-17 completion audit：后端 unit `2530 passed`、integration+eval `20 passed`、ruff/format/pyright/wheel、viewer typecheck、lint、Vitest `365 passed`、viewer build、完整 Playwright `2945 passed, 10 skipped`、real-serve `2 passed`、live judge `2 passed`、临时 repo GPT-5.5 provider test / live learn、Linux SQLite `3.51.3` 目标 gate 和 diffcheck；2026-05-18 只重跑 provider/Guide/video 改动面目标验证；远端 CI 仍需 runner 恢复后重跑，Windows 仍缺真实 runner 结果；CI: PR unit + eval + nightly eval + release coverage ≥85% |
-| doc | `doc/` | 产品设计文档 |
-| ui | `ui/` | UI 原型 Warm v1-v6 |
 
 ## 运行与开发
 
@@ -183,7 +181,7 @@ pytest tests/live/test_llm_judge_live.py -q
 |-----|------|------|
 | `src/ahadiff/**/*.py` / `tests/**` | Codex | Claude + Codex |
 | `viewer/src/**/*.tsx` / `*.css` | Claude | Claude + Gemini |
-| `prompts/*.md` / `doc/**` / `CLAUDE.md` | Claude | — |
+| `prompts/*.md` / `docs/**` / `CLAUDE.md` | Claude | — |
 
 ### 阶段门禁
 
@@ -225,6 +223,7 @@ pytest tests/live/test_llm_judge_live.py -q
 | 05-16 | Run Detail / Judge / safety findings UX + hard gate wording | backend target 1+53 / frontend 362 / Run Detail+walkthrough E2E 57 / i18n 1485 / target ruff+format+pyright+typecheck+build+diffcheck |
 | 05-17 | Diff inline source preview + Welcome real-run preview | frontend 362 / Diff E2E 1 / Welcome E2E 4 / i18n 1490 / typecheck+build |
 | 05-17 | Completion audit + docs sync + provider/SQLite/path hardening | backend 2530 / integration+eval 20 / frontend 365 / full Playwright 2945 / real-serve 2 / live judge 2 / Linux SQLite 3.51.3 / ruff+format+pyright+wheel+typecheck+lint+build+diffcheck；remote CI jobs failed before steps/logs |
+| 05-18 | Pre-release repo cleanup + README restructure + a11y fix + docs accuracy | backend 2541 / integration+eval 20 / frontend 370 / i18n 8 / ruff+format+pyright+wheel+typecheck+build+diffcheck；94 dev files untracked；README en default 180 lines + zh.md；provider class fix；LearnModeDialog a11y regression fix + test；landing page + User Guide broken link fix |
 
 
 <!-- AHADIFF:BEGIN target=claude -->

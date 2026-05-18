@@ -141,7 +141,6 @@
   row-gap: var(--sp-2xs, 4px);
   font-size: var(--fs-sm, 0.875rem);
   min-height: 52px;
-  cursor: pointer;
 }
 
 .learn-dialog__radio-row input[type="radio"] {

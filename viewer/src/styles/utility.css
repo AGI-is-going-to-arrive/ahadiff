@@ -217,8 +217,7 @@
 
 /* ---------------------------------------------------------------------------
  * V6 typography utilities (Phase 0F)
- * Direct ports from AhaDiff Warm v6.html — see /AhaDiff Warm v6.html lines
- * 47-48 (.serif/.mono), line 50 + 599 (.eyebrow), 217-223 (.prose).
+ * Direct ports from the Warm v6 typography system.
  * Goal: any page can opt into V6 prose/eyebrow without duplicating CSS.
  * ------------------------------------------------------------------------ */
 
@@ -233,7 +232,7 @@
   font-feature-settings: "ss01" 1, "zero" 1, "cv11" 1;
 }
 
-/* Tabular numerals shorthand (V6 line 51 + 885). Independent from .mono so
+/* Tabular numerals shorthand from the V6 pattern. Independent from .mono so
  * KPI/serif numbers can stay on their inherited font while still aligning. */
 .num {
   font-variant-numeric: tabular-nums slashed-zero;
@@ -327,7 +326,7 @@
 
 /* ---------------------------------------------------------------------------
  * Phase 2D: V6 7-breakpoint responsive utilities
- * Mirrors AhaDiff Warm v6.html lines 651-680 generic responsive polish.
+ * Mirrors Warm v6 generic responsive polish.
  * Source-of-truth breakpoints documented in tokens.css (--bp-xs .. --bp-xl).
  * Design intent: page CSS handles structural breakpoints; these globals
  * handle generic typography/spacing tuning at 540/900/1280.
@@ -384,7 +383,7 @@
   }
 }
 
-/* Small-screen body / button polish < 540. V6 line 670. */
+/* Small-screen body / button polish < 540 using the V6 pattern. */
 @media (max-width: 540px) {
   body {
     font-size: 15px;

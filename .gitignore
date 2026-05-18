@@ -83,3 +83,35 @@ docs/VALIDATION_AUDIT.zh.md
 viewer/AUDIT-REPORT.md
 viewer/AUDIT_V6_FIDELITY.md
 viewer/V6_DEEP_ANALYSIS.md
+
+# Release cleanup: development-only directories and files
+
+# Development HTML mockups and prototypes (root + ui/)
+AhaDiff Warm*.html
+AhaDiff-Blueprint.html
+AhaDiff-Competitors-Research.html
+ui/
+
+# Internal development documentation and planning
+doc/
+plan/
+
+# Codex / Aider / dev conventions (not for end users)
+AGENTS.md
+CONVENTIONS.md
+R0-feature-matrix.md
+
+# Video build intermediates (keep final burned-subtitles MP4 + screenshots)
+docs/video/content/
+docs/video/output/asr/
+docs/video/output/script/
+docs/video/output/subtitles/
+docs/video/scripts/
+docs/video/src/
+docs/video/package.json
+docs/video/pnpm-lock.yaml
+docs/video/remotion.config.ts
+docs/video/tsconfig.json
+docs/video/README.md
+docs/video/public/captions/
+docs/video/.gitignore

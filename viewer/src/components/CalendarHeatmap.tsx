@@ -1,8 +1,8 @@
 /**
  * Phase 4A: 30-day review activity heatmap.
  *
- * Mirrors V6 template (AhaDiff Warm v6.html L2228-L2244): 30 cells laid out
- * as a 10×3 grid, intensity bucketed into 4 levels (none / low / mid / high)
+ * Uses 30 cells laid out as a 10×3 grid, intensity bucketed into 4 levels
+ * (none / low / mid / high)
  * keyed off review counts per day. The component is data-agnostic — pass
  * already-bucketed `cells` from the consumer (DashboardPage / RatchetPage /
  * ReviewPage) so the same widget supports `/api/review/heatmap` once the

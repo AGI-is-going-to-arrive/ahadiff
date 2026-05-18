@@ -74,7 +74,7 @@ def resolve_locale(
     env: Mapping[str, str] | None = None,
     default: Locale = "en",
 ) -> Locale:
-    """Resolve the locale preference chain per `doc/contract-freeze.md` 4.4.
+    """Resolve the locale preference chain used by the product locale contract.
 
     Order: cookie -> Accept-Language -> AHADIFF_LANG env -> CLI session ->
     per-repo / global config -> system LANG -> default(en).
