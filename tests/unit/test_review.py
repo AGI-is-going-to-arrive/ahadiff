@@ -1112,6 +1112,13 @@ def test_import_cards_and_record_fsrs_review(tmp_path: Path) -> None:
     assert update.stability > 0
     assert update.difficulty > 0
     assert json.loads(update.fsrs_state)["last_review"] == "2026-04-24T00:00:00+00:00"
+    loaded_card = review_database_module.get_card(db_path, "card-1")
+    assert loaded_card is not None
+    assert loaded_card.stability == update.stability
+    assert loaded_card.difficulty == update.difficulty
+    assert loaded_card.reps == 1
+    assert loaded_card.lapses == 0
+    assert loaded_card.last_rating == 3
     with connect_review_db(db_path) as connection:
         card_row = connection.execute("SELECT reps, last_rating FROM cards").fetchone()
         log_row = connection.execute("SELECT rating, state FROM review_logs").fetchone()
@@ -1216,6 +1223,11 @@ def test_list_due_cards_preserves_question_and_answer_fields(tmp_path: Path) -> 
     assert due_cards[0].card_id == "card-1"
     assert due_cards[0].question == question
     assert due_cards[0].answer == answer
+    assert due_cards[0].stability is not None
+    assert due_cards[0].difficulty is not None
+    assert due_cards[0].reps == 0
+    assert due_cards[0].lapses == 0
+    assert due_cards[0].last_rating is None
 
 
 def test_import_multiple_choice_card_persists_choices_and_daos_round_trip(

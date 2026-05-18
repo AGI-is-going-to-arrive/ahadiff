@@ -155,9 +155,10 @@ def _insert_due_card(db_path: Path) -> None:
             """
             INSERT INTO cards (
                 id, concept, run_id, fsrs_state, card_state, scheduler_version,
-                due_date, stability, difficulty, source_ref, file_id,
-                display_path, hunk_id, hunk_hash, answer_mode, created_at_utc
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                due_date, stability, difficulty, reps, lapses, last_rating,
+                source_ref, file_id, display_path, hunk_id, hunk_hash, answer_mode,
+                created_at_utc
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 "card-mcp-1",
@@ -167,8 +168,11 @@ def _insert_due_card(db_path: Path) -> None:
                 "active",
                 "fsrs-test",
                 "2020-01-01T00:00:00Z",
-                0.0,
-                0.0,
+                "bad",
+                2.5,
+                "inf",
+                "3.5",
+                "2.5",
                 "abc1234",
                 "file-app",
                 "src/app.py",
@@ -268,6 +272,11 @@ class TestMCPReadOnly:
         assert len(cards) == 1
         assert cards[0]["card_id"] == "card-mcp-1"
         assert cards[0]["answer_mode"] == "open"
+        assert cards[0]["stability"] is None
+        assert cards[0]["difficulty"] == 2.5
+        assert cards[0]["reps"] == 0
+        assert cards[0]["lapses"] == 0
+        assert cards[0]["last_rating"] is None
 
         search_payload = _search(tmp_path, db_path, {"query": "retry", "limit": 5})
         assert "results" in search_payload
@@ -285,6 +294,31 @@ class TestMCPReadOnly:
         missing = tmp_path / "absent.sqlite"
         with pytest.raises(StorageError, match="MCP read-only DB does not exist"):
             mcp_readonly_connect(missing)
+
+    def test_list_due_cards_returns_empty_for_legacy_schema(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "review.sqlite"
+        with sqlite3.connect(db_path) as connection:
+            connection.execute("PRAGMA user_version=9")
+            connection.execute(
+                """
+                CREATE TABLE cards (
+                    id TEXT PRIMARY KEY,
+                    concept TEXT,
+                    run_id TEXT,
+                    due_date TEXT,
+                    card_state TEXT
+                )
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO cards (id, concept, run_id, due_date, card_state)
+                VALUES ('legacy-card', 'legacy', 'run-1', '2020-01-01T00:00:00Z', 'active')
+                """
+            )
+            connection.commit()
+
+        assert _list_due_cards(db_path, {"limit": 5}) == {"cards": []}
 
     def test_no_wal_shm_created(self, tmp_path: Path) -> None:
         db_path = tmp_path / "review.sqlite"

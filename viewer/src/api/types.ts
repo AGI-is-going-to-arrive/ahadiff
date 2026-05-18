@@ -301,6 +301,11 @@ export interface DueReviewCard {
   answer?: string | null;
   answer_mode?: ReviewAnswerMode;
   choices?: ReviewChoice[] | null;
+  stability: number | null;
+  difficulty: number | null;
+  reps: number;
+  lapses: number;
+  last_rating: number | null;
 }
 
 export interface ReviewQueueResponse {

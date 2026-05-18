@@ -191,6 +191,11 @@ class DueReviewCardResponse(BaseModel):
     run_id: str = Field(min_length=1)
     due_date: str
     scaffolding_level: str
+    stability: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    difficulty: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    reps: int = Field(default=0, ge=0)
+    lapses: int = Field(default=0, ge=0)
+    last_rating: int | None = Field(default=None, ge=1, le=4)
     display_path: str
     source_ref: str | None = None
     symbol: str | None = None

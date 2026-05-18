@@ -33,7 +33,13 @@ from ahadiff.core.paths import (
     validate_state_path_no_symlinks,
 )
 from ahadiff.core.sqlite_util import mcp_readonly_connect
-from ahadiff.review.schemas import DueReviewCard
+from ahadiff.review.database import CURRENT_SCHEMA_VERSION
+from ahadiff.review.schemas import (
+    DueReviewCard,
+    normalize_due_card_count,
+    normalize_due_card_float,
+    normalize_due_card_last_rating,
+)
 from ahadiff.wiki.concepts import load_concepts_page
 
 from ._lesson_search import (
@@ -95,6 +101,11 @@ _DUE_CARD_COLUMNS = (
     "run_id",
     "due_date",
     "scaffolding_level",
+    "stability",
+    "difficulty",
+    "reps",
+    "lapses",
+    "last_rating",
     "display_path",
     "source_ref",
     "symbol",
@@ -785,6 +796,10 @@ def _read_due_cards(db_path: Path, *, limit: int) -> tuple[DueReviewCard, ...]:
     try:
         if not _table_exists(connection, "cards"):
             return ()
+        if _sqlite_user_version(connection) != CURRENT_SCHEMA_VERSION:
+            return ()
+        if not _table_has_columns(connection, "cards", _DUE_CARD_COLUMNS):
+            return ()
         rows = connection.execute(
             f"""
             SELECT {", ".join(_DUE_CARD_COLUMNS)}
@@ -1012,6 +1027,11 @@ def _row_to_due_review_card(row: sqlite3.Row) -> DueReviewCard:
         due_date=str(row["due_date"]),
         scaffolding_level=str(row["scaffolding_level"]),
         display_path=str(row["display_path"]),
+        stability=normalize_due_card_float(row["stability"]),
+        difficulty=normalize_due_card_float(row["difficulty"]),
+        reps=normalize_due_card_count(row["reps"]),
+        lapses=normalize_due_card_count(row["lapses"]),
+        last_rating=normalize_due_card_last_rating(row["last_rating"]),
         source_ref=cast("str | None", row["source_ref"]),
         symbol=cast("str | None", row["symbol"]),
         question=cast("str | None", row["question"]),
@@ -1169,6 +1189,30 @@ def _table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
         (table_name,),
     ).fetchone()
     return row is not None
+
+
+def _sqlite_user_version(connection: sqlite3.Connection) -> int:
+    row = connection.execute("PRAGMA user_version").fetchone()
+    if row is None:
+        return 0
+    try:
+        return int(row[0])
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+
+def _table_has_columns(
+    connection: sqlite3.Connection,
+    table_name: str,
+    column_names: tuple[str, ...],
+) -> bool:
+    rows = connection.execute(f"PRAGMA table_info({_quote_identifier(table_name)})").fetchall()
+    present = {str(row[1]) for row in rows}
+    return all(column_name in present for column_name in column_names)
+
+
+def _quote_identifier(value: str) -> str:
+    return '"' + value.replace('"', '""') + '"'
 
 
 def _result_event_payload(event: dict[str, Any]) -> dict[str, Any]:

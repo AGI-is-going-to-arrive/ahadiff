@@ -87,6 +87,48 @@
   gap: var(--sp-6);
 }
 
+/* ---- Top progress bar (P0 visual): lives above the flashcard inside the
+ * main column so the user always sees how far through the session they are
+ * without scrolling to the sidebar. Accuracy chip is only rendered after the
+ * first rating to avoid the "0%" cold start.
+ * ---------------------------------------------------------------- */
+.review__progress-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3, 12px);
+  margin-bottom: var(--sp-4, 16px);
+  padding: var(--sp-2, 8px) 0;
+}
+
+.review__progress-track {
+  flex: 1;
+  height: 6px;
+  background: var(--subtle, #e2e8f0);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.review__progress-fill {
+  height: 100%;
+  background: var(--accent, #b45309);
+  border-radius: 3px;
+  transition: width 300ms ease-out;
+}
+
+.review__progress-text {
+  font-size: var(--fs-sm, 0.875rem);
+  color: var(--muted, #64748b);
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+.review__progress-accuracy {
+  font-size: var(--fs-sm, 0.875rem);
+  font-weight: 600;
+  color: var(--success, #059669);
+  white-space: nowrap;
+}
+
 /* ---- Flashcard ---- */
 .flashcard {
   background: var(--elevated);
@@ -184,16 +226,33 @@
   color: var(--ink-2, var(--ink));
   font-size: var(--fs-md);
   line-height: 1.65;
+  animation: review-reveal 200ms ease-out;
 }
 
 .flashcard__back[hidden] {
   display: none;
 }
 
+@keyframes review-reveal {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .flashcard__answer {
-  font-size: var(--fs-md);
-  line-height: 1.7;
+  font-size: var(--fs-xl, 1.25rem);
+  line-height: 1.6;
+  font-weight: 500;
   color: var(--ink);
+}
+
+.flashcard__answer code {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-size: 0.9em;
+  background: var(--subtle, #f1f5f9);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  border: 1px solid var(--hair, #e2e8f0);
+  color: var(--accent-ink, #b45309);
 }
 
 .flashcard__meta {
@@ -301,23 +360,61 @@
   cursor: not-allowed;
 }
 
+/* Tinted rating buttons (P0 visual): each rating gets a semantic color so the
+ * four options are distinguishable at a glance. Uses existing semantic tokens
+ * (--danger / --warning / --success / --info) with hex fallbacks for the
+ * fallback path. `color-mix(in srgb, ...)` matches the codebase pattern
+ * (export-modal.css, LearnModeDialog.css, Diff.css) and is supported across
+ * the browserslist (Chrome >= 111, Edge >= 111, Firefox >= 113, Safari >= 16.4). */
+.srs-btn--wrong {
+  border-color: var(--danger, #dc2626);
+  color: var(--danger, #dc2626);
+}
+.srs-btn--wrong:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger, #dc2626) 8%, transparent);
+  border-color: var(--danger, #dc2626);
+}
+
+.srs-btn--hard {
+  border-color: var(--warning, #d97706);
+  color: var(--warning, #d97706);
+}
+.srs-btn--hard:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--warning, #d97706) 8%, transparent);
+  border-color: var(--warning, #d97706);
+}
+
 .srs-btn--good {
-  background: var(--accent-soft);
-  border-color: var(--accent-hair);
+  border-color: var(--success, #059669);
+  color: var(--success, #059669);
+  background: var(--elevated);
+}
+.srs-btn--good:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--success, #059669) 8%, transparent);
+  border-color: var(--success, #059669);
 }
 
 .srs-btn--easy {
-  /* No special background — same as default srs-btn. */
+  border-color: var(--info, #0284c7);
+  color: var(--info, #0284c7);
+}
+.srs-btn--easy:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--info, #0284c7) 8%, transparent);
+  border-color: var(--info, #0284c7);
 }
 
 .srs-btn__label {
   font-family: var(--font-serif);
   font-size: var(--fs-lg);
   font-weight: 500;
+  color: inherit;
 }
 
-.srs-btn--good .srs-btn__label {
-  color: var(--accent-ink);
+.srs-btn--good .srs-btn__label,
+.srs-btn--easy .srs-btn__label,
+.srs-btn--wrong .srs-btn__label,
+.srs-btn--hard .srs-btn__label {
+  color: inherit;
 }
 
 .srs-btn__interval {
@@ -729,10 +826,46 @@
 
   .srs-btn {
     border: 1px solid CanvasText;
+    color: CanvasText;
+    background: Canvas;
   }
 
-  .srs-btn--good {
-    border: 2px solid Highlight;
+  .srs-btn--wrong,
+  .srs-btn--hard,
+  .srs-btn--good,
+  .srs-btn--easy {
+    border: 2px solid CanvasText;
+    color: CanvasText;
+    background: Canvas;
+    forced-color-adjust: none;
+  }
+
+  .srs-btn--wrong:hover:not(:disabled),
+  .srs-btn--hard:hover:not(:disabled),
+  .srs-btn--good:hover:not(:disabled),
+  .srs-btn--easy:hover:not(:disabled) {
+    border-color: Highlight;
+    background: Canvas;
+  }
+
+  .review__progress-track {
+    border: 1px solid CanvasText;
+    background: Canvas;
+  }
+
+  .review__progress-fill {
+    background: Highlight;
+  }
+
+  .review__progress-accuracy {
+    color: CanvasText;
+  }
+
+  .flashcard__answer code {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    forced-color-adjust: none;
   }
 
   .review__sidebar-card {
@@ -921,5 +1054,245 @@
   .review__choice {
     transition: none;
     transform: none !important;
+  }
+
+  .flashcard__back {
+    animation: none;
+  }
+
+  .review__progress-fill {
+    transition: none;
+  }
+}
+
+/* ==========================================================================
+   P1 enhancements: card metadata breadcrumb, session-complete summary
+   upgrades (rating bar / time / CTA), card info expandable panel, and
+   evidence "View in Diff" CTA.
+   Appended after the existing P0 rules; no existing rule is modified.
+   ========================================================================== */
+
+/* ---- Card metadata breadcrumb (P1.1) ---- */
+.flashcard__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1, 4px) var(--sp-2, 8px);
+  padding: var(--sp-2, 8px) 0;
+  font-size: var(--fs-xs, 0.75rem);
+  color: var(--muted, #64748b);
+  border-bottom: 1px solid var(--hair, #e2e8f0);
+  margin-bottom: var(--sp-3, 12px);
+}
+
+.flashcard__stats-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1, 4px);
+}
+
+.flashcard__stats-item--path {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-size: var(--fs-2xs, 0.7rem);
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flashcard__stats-item--warn {
+  color: var(--danger, #dc2626);
+}
+
+/* ---- Session complete: rating distribution bar (P1.2b) ---- */
+.review__rating-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: var(--sp-4, 16px) auto 0;
+  max-width: 560px;
+}
+
+.review__rating-segment {
+  min-width: 4px;
+  transition: flex 300ms ease-out;
+}
+
+.review__rating-segment--wrong { background: var(--danger, #dc2626); }
+.review__rating-segment--hard { background: var(--warning, #d97706); }
+.review__rating-segment--good { background: var(--success, #059669); }
+.review__rating-segment--easy { background: var(--info, #0284c7); }
+
+/* ---- Session complete: elapsed time + per-card pace (P1.2a) ---- */
+.review__complete-time {
+  font-size: var(--fs-sm, 0.875rem);
+  color: var(--muted, #64748b);
+  margin-top: var(--sp-2, 8px);
+}
+
+/* ---- Session complete: CTA back to dashboard (P1.2c) ---- */
+.review__complete-actions {
+  display: flex;
+  gap: var(--sp-3, 12px);
+  margin-top: var(--sp-6, 24px);
+  justify-content: center;
+}
+
+.review__complete-cta {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--sp-2, 8px) var(--sp-4, 16px);
+  border-radius: 8px;
+  font-weight: 500;
+  text-decoration: none;
+  background: var(--accent, #b45309);
+  color: var(--on-accent, #fff);
+  transition: opacity 150ms ease;
+}
+
+.review__complete-cta:hover { opacity: 0.85; }
+
+/* ---- Card info expandable panel (P1.4) ---- */
+.flashcard__info-panel {
+  margin-top: var(--sp-3, 12px);
+  border: 1px solid var(--hair, #e2e8f0);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.flashcard__info-toggle {
+  display: flex;
+  align-items: center;
+  padding: var(--sp-2, 8px) var(--sp-3, 12px);
+  font-size: var(--fs-sm, 0.875rem);
+  font-weight: 500;
+  color: var(--muted, #64748b);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.flashcard__info-toggle::-webkit-details-marker { display: none; }
+
+.flashcard__info-toggle::before {
+  content: '›';
+  margin-right: var(--sp-2, 8px);
+  font-size: 1rem;
+  transition: transform 150ms ease;
+}
+
+.flashcard__info-panel[open] > .flashcard__info-toggle::before {
+  transform: rotate(90deg);
+}
+
+.flashcard__info-body {
+  padding: var(--sp-2, 8px) var(--sp-3, 12px);
+  border-top: 1px solid var(--hair, #e2e8f0);
+}
+
+.flashcard__info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--sp-1, 4px) 0;
+  font-size: var(--fs-sm, 0.875rem);
+}
+
+.flashcard__info-label {
+  color: var(--muted, #64748b);
+}
+
+.flashcard__info-value {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Evidence section: row wrapper + "View in Diff" CTA (P1.5) ---- */
+.flashcard__evidence-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2, 8px);
+  flex-wrap: wrap;
+}
+
+.flashcard__evidence-row .flashcard__evidence {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.flashcard__evidence-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1, 4px);
+  padding: var(--sp-1, 4px) var(--sp-2, 8px);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: var(--fs-xs, 0.75rem);
+  font-weight: 500;
+  color: var(--accent, #b45309);
+  background: color-mix(in srgb, var(--accent, #b45309) 6%, transparent);
+  border-radius: 6px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 150ms ease;
+}
+
+.flashcard__evidence-cta:hover,
+.flashcard__evidence-cta:focus-visible {
+  background: color-mix(in srgb, var(--accent, #b45309) 12%, transparent);
+}
+
+/* ---- Forced colors for P1 additions ---- */
+@media (forced-colors: active) {
+  .flashcard__stats-item--warn {
+    color: Mark;
+  }
+
+  .flashcard__info-panel {
+    border-color: CanvasText;
+  }
+
+  .flashcard__info-body {
+    border-top-color: CanvasText;
+  }
+
+  .review__rating-segment {
+    background: CanvasText;
+    forced-color-adjust: none;
+  }
+
+  .review__complete-cta {
+    border: 2px solid ButtonText;
+    background: ButtonFace;
+    color: ButtonText;
+    forced-color-adjust: none;
+  }
+
+  .flashcard__evidence-cta {
+    border: 1px solid LinkText;
+    color: LinkText;
+    background: Canvas;
+    forced-color-adjust: none;
+  }
+}
+
+/* ---- Reduced motion for P1 additions ---- */
+@media (prefers-reduced-motion: reduce) {
+  .review__rating-segment {
+    transition: none;
+  }
+
+  .flashcard__info-toggle::before {
+    transition: none;
+  }
+
+  .flashcard__info-panel[open] > .flashcard__info-toggle::before {
+    transition: none;
+  }
+
+  .review__complete-cta {
+    transition: none;
+  }
+
+  .flashcard__evidence-cta {
+    transition: none;
   }
 }

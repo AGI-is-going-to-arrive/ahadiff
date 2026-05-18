@@ -16,6 +16,7 @@ import type {
 } from '../api/types';
 import { useReviewStore } from '../state/review-store';
 import { useTranslation } from '../i18n/useTranslation';
+import { renderInline } from '../utils/markdown';
 import '../components/Review.css';
 
 type ReviewErrorKind = 'network' | 'auth' | 'unknown';
@@ -102,6 +103,7 @@ export default function ReviewPage() {
   const [flipped, setFlipped] = useState(false);
   const [selectedChoiceLabel, setSelectedChoiceLabel] = useState<string | null>(null);
   const [sessionRatings, setSessionRatings] = useState<RatingSummary>(() => createRatingSummary());
+  const [sessionStartTime] = useState(() => Date.now());
   const [heatmapCells, setHeatmapCells] = useState<HeatmapCell[]>([]);
   const [mastery, setMastery] = useState<ReviewMasteryItem[]>([]);
   const [weakConcepts, setWeakConcepts] = useState<WeakConceptItem[]>([]);
@@ -352,6 +354,13 @@ export default function ReviewPage() {
   const sessionReviewedCount = countRatings(sessionRatings);
   const confidentCount = sessionRatings.good + sessionRatings.easy;
   const followupCount = sessionRatings.wrong + sessionRatings.hard;
+  // Session accuracy = confident ratings (good/easy) / total ratings so far.
+  // Only rendered once `sessionReviewedCount > 0` to avoid a "0%" cold start.
+  const accuracy =
+    sessionReviewedCount > 0
+      ? Math.round((confidentCount / sessionReviewedCount) * 100)
+      : 0;
+  const progressPct = total > 0 ? (currentIndex / total) * 100 : 0;
   const choiceCard = useMemo(
     () => (card && isChoiceCard(card) ? card : null),
     [card],
@@ -479,6 +488,13 @@ export default function ReviewPage() {
 
   // --- Session complete ---
   if (done) {
+    const completedCount = sessionReviewedCount > 0 ? sessionReviewedCount : total;
+    const elapsedMs = Date.now() - sessionStartTime;
+    const elapsedMinutes = Math.max(0, Math.round(elapsedMs / 60000));
+    const avgSecondsPerCard =
+      sessionReviewedCount > 0
+        ? Math.max(0, Math.round(elapsedMs / 1000 / sessionReviewedCount))
+        : 0;
     return (
       <AppShell>
         <div className="page active review" data-page="review">
@@ -492,15 +508,23 @@ export default function ReviewPage() {
             <div className="review__complete-icon" aria-hidden="true">&#127881;</div>
             <h2>{t('Review.complete')}</h2>
             <p className="review__complete-count">
-              {t('Review.complete_hint', { count: total })}
+              {t('Review.complete_hint', { count: completedCount })}
             </p>
+            {sessionReviewedCount > 0 && (
+              <p className="review__complete-time">
+                {t('Review.complete_time', {
+                  minutes: elapsedMinutes,
+                  avg: avgSecondsPerCard,
+                })}
+              </p>
+            )}
             <div
               className="review__complete-stats"
               aria-label={t('Review.complete_stats_title')}
             >
               <div className="review__complete-stat">
                 <span>{t('Review.stat_completed')}</span>
-                <strong>{sessionReviewedCount || total}</strong>
+                <strong>{completedCount}</strong>
               </div>
               <div className="review__complete-stat">
                 <span>{t('Review.stat_confident')}</span>
@@ -511,6 +535,34 @@ export default function ReviewPage() {
                 <strong>{followupCount}</strong>
               </div>
             </div>
+            {sessionReviewedCount > 0 && (
+              <div className="review__rating-bar" aria-hidden="true">
+                {sessionRatings.wrong > 0 && (
+                  <div
+                    className="review__rating-segment review__rating-segment--wrong"
+                    style={{ flex: sessionRatings.wrong }}
+                  />
+                )}
+                {sessionRatings.hard > 0 && (
+                  <div
+                    className="review__rating-segment review__rating-segment--hard"
+                    style={{ flex: sessionRatings.hard }}
+                  />
+                )}
+                {sessionRatings.good > 0 && (
+                  <div
+                    className="review__rating-segment review__rating-segment--good"
+                    style={{ flex: sessionRatings.good }}
+                  />
+                )}
+                {sessionRatings.easy > 0 && (
+                  <div
+                    className="review__rating-segment review__rating-segment--easy"
+                    style={{ flex: sessionRatings.easy }}
+                  />
+                )}
+              </div>
+            )}
             <div
               className="review__rating-summary"
               aria-label={t('Review.rating_summary_title')}
@@ -522,6 +574,11 @@ export default function ReviewPage() {
                   <strong>{sessionRatings[answer]}</strong>
                 </div>
               ))}
+            </div>
+            <div className="review__complete-actions">
+              <a href="#/" className="review__complete-cta">
+                {t('Review.complete_go_home')}
+              </a>
             </div>
           </div>
         </div>
@@ -660,6 +717,35 @@ export default function ReviewPage() {
         <div className="review__grid">
           {/* Left: Flashcard + buttons */}
           <div>
+            {/* Top progress bar (P0 visual): visible without scrolling to the
+                sidebar. Accuracy chip only appears after the first rating. */}
+            <div className="review__progress-bar">
+              <div
+                className="review__progress-track"
+                data-testid="review-top-progress-bar"
+                role="progressbar"
+                aria-valuenow={currentIndex}
+                aria-valuemin={0}
+                aria-valuemax={total}
+                aria-label={t('Review.progress_hint')}
+              >
+                <div
+                  className="review__progress-fill"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+              <span className="review__progress-text">
+                {t('Review.progress', { current: currentIndex, total })}
+              </span>
+              {sessionReviewedCount > 0 && (
+                <span
+                  className="review__progress-accuracy"
+                  aria-label={t('Review.session_accuracy_label', { value: accuracy })}
+                >
+                  {accuracy}%
+                </span>
+              )}
+            </div>
             <div className="flashcard">
               {card!.scaffolding_level && (
                 <div className="flashcard__tag">
@@ -700,6 +786,31 @@ export default function ReviewPage() {
                   </span>
                 )}
               </div>
+              {(card!.stability != null || card!.reps > 0) && (
+                <div className="flashcard__stats">
+                  {card!.display_path && (
+                    <span className="flashcard__stats-item flashcard__stats-item--path">
+                      {card!.display_path}
+                      {card!.symbol ? ` · ${card!.symbol}` : ''}
+                    </span>
+                  )}
+                  {card!.reps > 0 && (
+                    <span className="flashcard__stats-item">
+                      {t('Review.stats_reviews', { count: card!.reps })}
+                    </span>
+                  )}
+                  {card!.stability != null && (
+                    <span className="flashcard__stats-item">
+                      {t('Review.stats_stability', { days: Math.round(card!.stability) })}
+                    </span>
+                  )}
+                  {card!.lapses > 0 && (
+                    <span className="flashcard__stats-item flashcard__stats-item--warn">
+                      {t('Review.stats_lapses', { count: card!.lapses })}
+                    </span>
+                  )}
+                </div>
+              )}
               <div className="flashcard__front">
                 {card!.question?.trim() || (
                   <>
@@ -786,7 +897,9 @@ export default function ReviewPage() {
                     </div>
                   </>
                 ) : card!.answer?.trim() ? (
-                  <div className="flashcard__answer">{card!.answer}</div>
+                  <div className="flashcard__answer">
+                    {renderInline(card!.answer, 'review-answer')}
+                  </div>
                 ) : (
                   <div className="flashcard__meta">
                     {card!.source_ref && (
@@ -803,16 +916,67 @@ export default function ReviewPage() {
                   {card!.symbol && <> · <span className="mono">{card!.symbol}</span></>}
                 </div>
                 {card!.display_path && (
-                  <a
-                    className="flashcard__evidence"
-                    href={`/#/run/${encodeURIComponent(card!.run_id)}/lesson`}
-                    data-testid="flashcard-evidence-link"
-                  >
-                    <span className="flashcard__evidence-label">{t('Review.evidence_label')}</span>
-                    <span className="flashcard__evidence-path">
-                      {card!.display_path}
-                    </span>
-                  </a>
+                  <div className="flashcard__evidence-row">
+                    <a
+                      className="flashcard__evidence"
+                      href={`/#/run/${encodeURIComponent(card!.run_id)}/lesson`}
+                      data-testid="flashcard-evidence-link"
+                    >
+                      <span className="flashcard__evidence-label">{t('Review.evidence_label')}</span>
+                      <span className="flashcard__evidence-path">
+                        {card!.display_path}
+                      </span>
+                    </a>
+                    <a
+                      href={`/#/run/${encodeURIComponent(card!.run_id)}/diff?focus=${encodeURIComponent(card!.display_path)}:1`}
+                      className="flashcard__evidence-cta"
+                    >
+                      {t('Review.view_in_diff')}
+                    </a>
+                  </div>
+                )}
+                {card!.reps > 0 && (
+                  <details className="flashcard__info-panel">
+                    <summary className="flashcard__info-toggle">
+                      {t('Review.card_info_title')}
+                    </summary>
+                    <div className="flashcard__info-body">
+                      <div className="flashcard__info-row">
+                        <span className="flashcard__info-label">{t('Review.card_info_stability')}</span>
+                        <span className="flashcard__info-value">
+                          {card!.stability != null ? `${card!.stability.toFixed(1)}d` : '—'}
+                        </span>
+                      </div>
+                      <div className="flashcard__info-row">
+                        <span className="flashcard__info-label">{t('Review.card_info_difficulty')}</span>
+                        <span className="flashcard__info-value">
+                          {card!.difficulty != null ? card!.difficulty.toFixed(2) : '—'}
+                        </span>
+                      </div>
+                      <div className="flashcard__info-row">
+                        <span className="flashcard__info-label">{t('Review.card_info_reviews')}</span>
+                        <span className="flashcard__info-value">{card!.reps}</span>
+                      </div>
+                      <div className="flashcard__info-row">
+                        <span className="flashcard__info-label">{t('Review.card_info_lapses')}</span>
+                        <span className="flashcard__info-value">{card!.lapses}</span>
+                      </div>
+                      {card!.last_rating != null && (
+                        <div className="flashcard__info-row">
+                          <span className="flashcard__info-label">{t('Review.card_info_last_rating')}</span>
+                          <span className="flashcard__info-value">
+                            {[
+                              '',
+                              t('Review.rating_wrong'),
+                              t('Review.rating_hard'),
+                              t('Review.rating_good'),
+                              t('Review.rating_easy'),
+                            ][card!.last_rating] ?? card!.last_rating}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </details>
                 )}
               </div>
             </div>
@@ -829,11 +993,12 @@ export default function ReviewPage() {
                   <button
                     ref={firstRatingRef}
                     type="button"
-                    className="srs-btn"
+                    className="srs-btn srs-btn--wrong"
                     onClick={() => void handleRate('wrong')}
                     disabled={rating}
                     aria-label={t('Review.srs_aria_wrong')}
                     aria-describedby="srs-interval-wrong"
+                    title={t('Review.rating_hint_wrong')}
                   >
                     <div className="srs-btn__label">{t('Review.rating_wrong')}</div>
                     <div className="srs-btn__interval" id="srs-interval-wrong">{t('Review.interval_again')}</div>
@@ -841,11 +1006,12 @@ export default function ReviewPage() {
                   </button>
                   <button
                     type="button"
-                    className="srs-btn"
+                    className="srs-btn srs-btn--hard"
                     onClick={() => void handleRate('hard')}
                     disabled={rating}
                     aria-label={t('Review.srs_aria_hard')}
                     aria-describedby="srs-interval-hard"
+                    title={t('Review.rating_hint_hard')}
                   >
                     <div className="srs-btn__label">{t('Review.rating_hard')}</div>
                     <div className="srs-btn__interval" id="srs-interval-hard">{t('Review.interval_hard')}</div>
@@ -858,6 +1024,7 @@ export default function ReviewPage() {
                     disabled={rating || ratingsBlocked}
                     aria-label={t('Review.srs_aria_good')}
                     aria-describedby="srs-interval-good"
+                    title={t('Review.rating_hint_good')}
                   >
                     <div className="srs-btn__label">{t('Review.rating_good')}</div>
                     <div className="srs-btn__interval" id="srs-interval-good">{t('Review.interval_good')}</div>
@@ -870,6 +1037,7 @@ export default function ReviewPage() {
                     disabled={rating || ratingsBlocked}
                     aria-label={t('Review.srs_aria_easy')}
                     aria-describedby="srs-interval-easy"
+                    title={t('Review.rating_hint_easy')}
                   >
                     <div className="srs-btn__label">{t('Review.rating_easy')}</div>
                     <div className="srs-btn__interval" id="srs-interval-easy">{t('Review.interval_easy')}</div>
@@ -891,11 +1059,12 @@ export default function ReviewPage() {
                 <button
                   ref={firstRatingRef}
                   type="button"
-                  className="srs-btn"
+                  className="srs-btn srs-btn--wrong"
                   onClick={() => void handleRate('wrong')}
                   disabled={rating}
                   aria-label={t('Review.srs_aria_wrong')}
                   aria-describedby="srs-interval-wrong"
+                  title={t('Review.rating_hint_wrong')}
                 >
                   <div className="srs-btn__label">{t('Review.rating_wrong')}</div>
                   <div className="srs-btn__interval" id="srs-interval-wrong">{t('Review.interval_again')}</div>
@@ -903,11 +1072,12 @@ export default function ReviewPage() {
                 </button>
                 <button
                   type="button"
-                  className="srs-btn"
+                  className="srs-btn srs-btn--hard"
                   onClick={() => void handleRate('hard')}
                   disabled={rating}
                   aria-label={t('Review.srs_aria_hard')}
                   aria-describedby="srs-interval-hard"
+                  title={t('Review.rating_hint_hard')}
                 >
                   <div className="srs-btn__label">{t('Review.rating_hard')}</div>
                   <div className="srs-btn__interval" id="srs-interval-hard">{t('Review.interval_hard')}</div>
@@ -920,6 +1090,7 @@ export default function ReviewPage() {
                   disabled={rating}
                   aria-label={t('Review.srs_aria_good')}
                   aria-describedby="srs-interval-good"
+                  title={t('Review.rating_hint_good')}
                 >
                   <div className="srs-btn__label">{t('Review.rating_good')}</div>
                   <div className="srs-btn__interval" id="srs-interval-good">{t('Review.interval_good')}</div>
@@ -932,6 +1103,7 @@ export default function ReviewPage() {
                   disabled={rating}
                   aria-label={t('Review.srs_aria_easy')}
                   aria-describedby="srs-interval-easy"
+                  title={t('Review.rating_hint_easy')}
                 >
                   <div className="srs-btn__label">{t('Review.rating_easy')}</div>
                   <div className="srs-btn__interval" id="srs-interval-easy">{t('Review.interval_easy')}</div>

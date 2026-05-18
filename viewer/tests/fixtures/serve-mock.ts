@@ -920,6 +920,11 @@ export async function installServeMock(page: Page): Promise<void> {
               answer: 'It runs when the component unmounts or before the effect re-runs, used for cleanup like cancelling subscriptions.',
               answer_mode: 'open',
               choices: null,
+              stability: 4.5,
+              difficulty: 6.25,
+              reps: 2,
+              lapses: 1,
+              last_rating: 2,
             },
             {
               card_id: 'card-2-mc',

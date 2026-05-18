@@ -41,7 +41,15 @@ from .scheduler import (
     scheduler_version,
     snapshot_card_state,
 )
-from .schemas import DueReviewCard, ReviewAnswer, ReviewDbCheck, ReviewUpdate
+from .schemas import (
+    DueReviewCard,
+    ReviewAnswer,
+    ReviewDbCheck,
+    ReviewUpdate,
+    normalize_due_card_count,
+    normalize_due_card_float,
+    normalize_due_card_last_rating,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
@@ -963,6 +971,7 @@ def list_due_cards(
     *,
     now_utc: datetime | None = None,
     limit: int = 20,
+    offset: int = 0,
 ) -> tuple[DueReviewCard, ...]:
     now_text = _datetime_to_utc_text(now_utc or datetime.now(UTC))
     with connect_review_db(db_path) as connection:
@@ -977,6 +986,11 @@ def list_due_cards(
                 due_date,
                 scaffolding_level,
                 display_path,
+                stability,
+                difficulty,
+                reps,
+                lapses,
+                last_rating,
                 source_ref,
                 symbol,
                 question,
@@ -986,9 +1000,9 @@ def list_due_cards(
             FROM cards
             WHERE card_state = 'active' AND due_date <= ?
             ORDER BY due_date ASC, id ASC
-            LIMIT ?
+            LIMIT ? OFFSET ?
             """,
-            (now_text, limit),
+            (now_text, limit, offset),
         ).fetchall()
     return tuple(_row_to_due_review_card(row) for row in rows)
 
@@ -1008,6 +1022,11 @@ def get_card(db_path: Path, card_id: str) -> DueReviewCard | None:
                 due_date,
                 scaffolding_level,
                 display_path,
+                stability,
+                difficulty,
+                reps,
+                lapses,
+                last_rating,
                 source_ref,
                 symbol,
                 question,
@@ -2285,6 +2304,11 @@ def _row_to_due_review_card(row: sqlite3.Row) -> DueReviewCard:
         due_date=str(row["due_date"]),
         scaffolding_level=str(row["scaffolding_level"]),
         display_path=str(row["display_path"]),
+        stability=normalize_due_card_float(row["stability"]),
+        difficulty=normalize_due_card_float(row["difficulty"]),
+        reps=normalize_due_card_count(row["reps"]),
+        lapses=normalize_due_card_count(row["lapses"]),
+        last_rating=normalize_due_card_last_rating(row["last_rating"]),
         source_ref=cast("str | None", row["source_ref"]),
         symbol=cast("str | None", row["symbol"]),
         question=cast("str | None", row["question"]),

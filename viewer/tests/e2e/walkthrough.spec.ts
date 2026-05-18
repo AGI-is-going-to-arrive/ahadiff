@@ -927,6 +927,10 @@ test.describe('walkthrough: full-app functional test', () => {
 
     // Progress bar (scoped to sidebar to avoid matching mastery summary bars)
     await expect(page.getByTestId('review-progress-bar')).toBeVisible();
+    const topProgress = page.getByTestId('review-top-progress-bar');
+    await expect(topProgress).toBeVisible();
+    await expect(topProgress).toHaveAttribute('aria-valuenow', '0');
+    await expect(page.locator('.review__progress-text')).toContainText('0/2');
 
     // Flip button
     const flipBtn = page.locator('.flashcard__flip-btn');
@@ -953,6 +957,8 @@ test.describe('walkthrough: full-app functional test', () => {
 
     // After rating: advances to the next due card in the mock queue.
     await expect(page.locator('.review__complete')).toHaveCount(0);
+    await expect(topProgress).toHaveAttribute('aria-valuenow', '1');
+    await expect(page.locator('.review__progress-accuracy')).toContainText('100%');
     await expect(page.locator('.flashcard')).toContainText('What does the new comment indicate?');
 
     await page.screenshot({ path: `${SCREENSHOT_DIR}/06-review.png`, fullPage: true });
@@ -1237,6 +1243,9 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(page.getByRole('heading', { name: /New Concepts|新概念/i })).toBeVisible();
     await expect(page.getByText('idempotent retry')).toBeVisible();
     await expect(page.locator('.review__weak-meta--new')).toBeVisible();
+    await expect(page.locator('.flashcard__stats')).toContainText('2 reviews');
+    await expect(page.locator('.flashcard__stats')).toContainText('~5d stability');
+    await expect(page.locator('.flashcard__stats')).toContainText('1 lapses');
 
     // Verify the answer is hidden before flipping
     const back = page.locator('.flashcard__back');
@@ -1253,6 +1262,15 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(answerEl).toContainText(
       'It runs when the component unmounts or before the effect re-runs, used for cleanup like cancelling subscriptions.',
     );
+    const details = page.locator('.flashcard__info-panel');
+    await expect(details).toBeVisible();
+    await details.locator('summary').click();
+    await expect(details).toContainText('Stability');
+    await expect(details).toContainText('4.5d');
+    await expect(details).toContainText('Difficulty');
+    await expect(details).toContainText('6.25');
+    await expect(details).toContainText('Last Rating');
+    await expect(details).toContainText('Hard');
   });
 
   test('Review — evidence link visible after flip with correct href', async ({ page }) => {
@@ -1277,6 +1295,23 @@ test.describe('walkthrough: full-app functional test', () => {
     // Verify the href points to the lesson page for this run
     const href = await evidenceLink.getAttribute('href');
     expect(href).toMatch(/^\/#\/run\/test-run\/lesson$/);
+    const diffLink = page.getByRole('link', { name: /View in Diff|在 Diff 中查看/ });
+    await expect(diffLink).toBeVisible();
+    expect(await diffLink.getAttribute('href')).toBe('/#/run/test-run/diff?focus=demo.py:1');
+  });
+
+  test('Review — deep-linked final card completion counts only this session', async ({ page }) => {
+    await page.goto('/#/review?card=card-2-mc');
+    await expect(page.locator('.flashcard')).toContainText('What does the new comment indicate?');
+
+    await page.getByRole('radio', { name: /A.*learn-from-diff marker/i }).click();
+    await page.locator('.srs-btn--good').click();
+
+    await expect(page.locator('.review__complete')).toBeVisible();
+    await expect(page.locator('.review__complete-count')).toContainText('You reviewed 1 cards');
+    await expect(page.locator('.review__complete-stat').filter({ hasText: 'Completed' })).toContainText('1');
+    await expect(page.locator('.review__rating-bar')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Back to Dashboard' })).toBeVisible();
   });
 
   test('Review — summary section toggles collapsed state', async ({ page }) => {

@@ -610,11 +610,18 @@ export const dueReviewCardSchema = z.object({
   answer: z.string().nullable().optional(),
   answer_mode: reviewAnswerModeSchema.optional(),
   choices: reviewChoicesSchema.nullable().optional(),
-});
+  stability: z.number().finite().nonnegative().nullable().optional().default(null),
+  difficulty: z.number().finite().nonnegative().nullable().optional().default(null),
+  reps: z.number().int().nonnegative().default(0),
+  lapses: z.number().int().nonnegative().default(0),
+  last_rating: z.number().int().min(1).max(4).nullable().optional().default(null),
+}).strict();
 
-export const reviewQueueResponseSchema = z.object({
-  cards: z.array(dueReviewCardSchema),
-});
+export const reviewQueueResponseSchema = z
+  .object({
+    cards: z.array(dueReviewCardSchema),
+  })
+  .strict();
 
 export const reviewRateResponseSchema = z.object({
   inserted: z.boolean(),

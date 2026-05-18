@@ -16,6 +16,7 @@ from ahadiff.contracts import (
     WeakConceptsResponse,
 )
 from ahadiff.core.errors import InputError, StorageError
+from ahadiff.core.paths import validate_run_id
 from ahadiff.review.database import (
     connect_review_db,
     import_cards_from_runs,
@@ -28,6 +29,7 @@ from ahadiff.review.database import (
 from .auth import require_write_token, serve_state
 from .config_runtime import configured_desired_retention
 from .lock import serve_repo_write_lock
+from .routes_runs import finalized_marker_is_valid
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -42,6 +44,11 @@ else:
     DueReviewCard = Any
     ReviewUpdate = Any
     ServeState = Any
+
+
+_REVIEW_QUEUE_TARGET_LIMIT = 20
+_REVIEW_QUEUE_SCAN_BATCH_SIZE = 50
+_REVIEW_QUEUE_MAX_SCAN = 1000
 
 
 async def get_review_queue(request: Request) -> JSONResponse:
@@ -129,12 +136,58 @@ def _review_queue_sync(state: ServeState) -> tuple[DueReviewCard, ...]:
     if not state.review_db_path.exists():
         return ()
     try:
-        return tuple(list_due_cards(state.review_db_path))
+        cards: list[DueReviewCard] = []
+        invalid_marker_by_run: dict[str, bool] = {}
+        offset = 0
+        while len(cards) < _REVIEW_QUEUE_TARGET_LIMIT and offset < _REVIEW_QUEUE_MAX_SCAN:
+            batch_limit = min(_REVIEW_QUEUE_SCAN_BATCH_SIZE, _REVIEW_QUEUE_MAX_SCAN - offset)
+            batch = tuple(
+                list_due_cards(
+                    state.review_db_path,
+                    limit=batch_limit,
+                    offset=offset,
+                )
+            )
+            if not batch:
+                break
+            for card in batch:
+                invalid_marker = invalid_marker_by_run.get(card.run_id)
+                if invalid_marker is None:
+                    invalid_marker = _run_has_invalid_finalized_marker(state, card.run_id)
+                    invalid_marker_by_run[card.run_id] = invalid_marker
+                if not invalid_marker:
+                    cards.append(card)
+                    if len(cards) >= _REVIEW_QUEUE_TARGET_LIMIT:
+                        break
+            offset += len(batch)
     except sqlite3.DatabaseError as exc:
         raise StorageError(
             "review database is unavailable",
             code=ErrorCode.STORAGE_REVIEW_DB,
         ) from exc
+    return tuple(cards)
+
+
+def _run_has_invalid_finalized_marker(state: ServeState, run_id: str) -> bool:
+    try:
+        validate_run_id(run_id)
+    except InputError:
+        return True
+
+    run_path = state.runs_dir / run_id
+    finalized_path = run_path / "finalized.json"
+    try:
+        marker_exists = finalized_path.exists() or finalized_path.is_symlink()
+    except OSError:
+        return True
+    if not marker_exists:
+        return False
+    try:
+        if run_path.is_symlink() or not run_path.is_dir():
+            return True
+    except OSError:
+        return True
+    return not finalized_marker_is_valid(run_path)
 
 
 _MAX_WEAK_CONCEPTS = 100

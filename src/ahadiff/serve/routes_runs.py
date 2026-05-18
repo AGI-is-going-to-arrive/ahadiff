@@ -1275,6 +1275,10 @@ def _load_valid_finalized_marker(
     return marker
 
 
+def finalized_marker_is_valid(run_path: Path) -> bool:
+    return _load_valid_finalized_marker(run_path) is not None
+
+
 def _bounded_finalized_artifact_digest(run_path: Path) -> tuple[int, str]:
     artifact_paths: list[tuple[str, Path, os.stat_result]] = []
     stack = [run_path]
@@ -1437,5 +1441,6 @@ __all__ = [
     "get_run_concepts",
     "get_score",
     "get_spec_alignment_artifact",
+    "finalized_marker_is_valid",
     "list_runs",
 ]

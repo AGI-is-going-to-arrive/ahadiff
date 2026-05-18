@@ -16,6 +16,9 @@ from ahadiff.review.database import (
     connect_review_db,
     import_cards_from_jsonl,
     initialize_review_db,
+    normalize_due_card_count,
+    normalize_due_card_float,
+    normalize_due_card_last_rating,
 )
 from ahadiff.serve.app import create_app
 from ahadiff.serve.state import ServeState
@@ -163,6 +166,239 @@ def test_review_read_endpoints_with_auth_return_empty_db_state(tmp_path: Path) -
     assert weak.json() == {"concepts": [], "new_concepts": []}
     assert mastery.status_code == 200
     assert mastery.json() == {"mastery": []}
+
+
+def test_review_queue_response_includes_fsrs_card_stats(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = _seed_review_cards(
+        state_dir,
+        [_review_card("card-default"), _review_card("card-stats")],
+    )
+    with connect_review_db(db_path) as connection:
+        connection.execute(
+            """
+            UPDATE cards
+            SET stability = ?, difficulty = ?, reps = ?, lapses = ?, last_rating = ?
+            WHERE id = ?
+            """,
+            (4.5, 6.25, 2, 1, 2, "card-stats"),
+        )
+    client = _client(state_dir)
+
+    response = client.get("/api/review/queue", headers=_AUTH)
+
+    assert response.status_code == 200
+    cards = {card["card_id"]: card for card in response.json()["cards"]}
+    stats_card = cards["card-stats"]
+    assert stats_card["stability"] == 4.5
+    assert stats_card["difficulty"] == 6.25
+    assert stats_card["reps"] == 2
+    assert stats_card["lapses"] == 1
+    assert stats_card["last_rating"] == 2
+    assert isinstance(stats_card["stability"], float)
+    assert isinstance(stats_card["difficulty"], float)
+    assert isinstance(stats_card["reps"], int)
+    assert isinstance(stats_card["lapses"], int)
+    assert isinstance(stats_card["last_rating"], int)
+    default_card = cards["card-default"]
+    assert default_card["reps"] == 0
+    assert default_card["lapses"] == 0
+    assert default_card["last_rating"] is None
+
+
+def test_review_queue_hides_cards_for_invalid_finalized_runs(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    valid_card = _review_card("card-valid").model_copy(update={"run_id": "run-valid"})
+    invalid_card = _review_card("card-invalid").model_copy(update={"run_id": "run-invalid"})
+    _write_review_cards(
+        db_path,
+        state_dir / "runs" / "run-valid" / "quiz" / "cards.jsonl",
+        [valid_card, invalid_card],
+    )
+    invalid_run = state_dir / "runs" / "run-invalid"
+    invalid_run.mkdir(parents=True)
+    (invalid_run / "finalized.json").write_text(
+        json.dumps(
+            {
+                "artifact_count": 0,
+                "checksum": "not-the-current-digest",
+                "event_id": "018f0f52-91c0-7abc-8123-000000000000",
+                "finalized_at": "2026-04-24T00:00:00Z",
+                "run_id": "run-invalid",
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    client = _client(state_dir)
+
+    response = client.get("/api/review/queue", headers=_AUTH)
+
+    assert response.status_code == 200
+    assert [card["card_id"] for card in response.json()["cards"]] == ["card-valid"]
+
+
+def test_review_queue_hides_cards_with_invalid_run_ids(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = _seed_review_cards(
+        state_dir,
+        [
+            _review_card("card-valid"),
+            _review_card("card-bad-run").model_copy(update={"run_id": "../bad"}),
+        ],
+    )
+    client = _client(state_dir)
+
+    response = client.get("/api/review/queue", headers=_AUTH)
+
+    assert response.status_code == 200
+    assert [card["card_id"] for card in response.json()["cards"]] == ["card-valid"]
+    with connect_review_db(db_path) as connection:
+        row = connection.execute(
+            "SELECT run_id FROM cards WHERE id = ?",
+            ("card-bad-run",),
+        ).fetchone()
+    assert row["run_id"] == "../bad"
+
+
+def test_review_queue_hides_cards_with_symlink_finalized_markers(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    valid_card = _review_card("card-valid").model_copy(update={"run_id": "run-valid"})
+    symlink_card = _review_card("card-symlink").model_copy(update={"run_id": "run-symlink"})
+    _write_review_cards(
+        db_path,
+        state_dir / "runs" / "run-valid" / "quiz" / "cards.jsonl",
+        [valid_card, symlink_card],
+    )
+    symlink_run = state_dir / "runs" / "run-symlink"
+    symlink_run.mkdir(parents=True)
+    target = state_dir / "target-finalized.json"
+    target.write_text("{}", encoding="utf-8")
+    try:
+        (symlink_run / "finalized.json").symlink_to(target)
+    except OSError as exc:
+        pytest.skip(f"symlink creation is unavailable: {exc}")
+    client = _client(state_dir)
+
+    response = client.get("/api/review/queue", headers=_AUTH)
+
+    assert response.status_code == 200
+    assert [card["card_id"] for card in response.json()["cards"]] == ["card-valid"]
+
+
+def test_review_queue_overscans_invalid_finalized_runs_before_valid_cards(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    invalid_cards = [
+        _review_card(f"card-invalid-{index:02d}").model_copy(
+            update={"run_id": f"run-invalid-{index:02d}"}
+        )
+        for index in range(20)
+    ]
+    valid_card = _review_card("card-valid").model_copy(update={"run_id": "run-valid"})
+    _write_review_cards(
+        db_path,
+        state_dir / "runs" / "run-valid" / "quiz" / "cards.jsonl",
+        [*invalid_cards, valid_card],
+    )
+    for card in invalid_cards:
+        invalid_run = state_dir / "runs" / card.run_id
+        invalid_run.mkdir(parents=True)
+        (invalid_run / "finalized.json").write_text(
+            json.dumps(
+                {
+                    "artifact_count": 0,
+                    "checksum": "not-the-current-digest",
+                    "event_id": f"event-{card.card_id}",
+                    "finalized_at": "2026-04-24T00:00:00Z",
+                    "run_id": card.run_id,
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    client = _client(state_dir)
+
+    response = client.get("/api/review/queue", headers=_AUTH)
+
+    assert response.status_code == 200
+    assert [card["card_id"] for card in response.json()["cards"]] == ["card-valid"]
+
+
+def test_review_queue_sanitizes_invalid_fsrs_card_stats(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = _seed_review_cards(
+        state_dir,
+        [
+            _review_card("card-inf"),
+            _review_card("card-negative"),
+            _review_card("card-text"),
+        ],
+    )
+    with connect_review_db(db_path) as connection:
+        connection.execute(
+            """
+            UPDATE cards
+            SET stability = ?, difficulty = ?, reps = ?, lapses = ?, last_rating = ?
+            WHERE id = ?
+            """,
+            (float("inf"), float("-inf"), 2, 1, 9, "card-inf"),
+        )
+        connection.execute(
+            """
+            UPDATE cards
+            SET stability = ?, difficulty = ?, reps = ?, lapses = ?, last_rating = ?
+            WHERE id = ?
+            """,
+            (-1.0, -0.5, -3, -2, 0, "card-negative"),
+        )
+        connection.execute(
+            """
+            UPDATE cards
+            SET stability = ?, difficulty = ?, reps = ?, lapses = ?, last_rating = ?
+            WHERE id = ?
+            """,
+            ("not-a-number", "NaN", "inf", "3.5", "2.5", "card-text"),
+        )
+    client = _client(state_dir)
+
+    response = client.get("/api/review/queue", headers=_AUTH)
+
+    assert response.status_code == 200
+    assert normalize_due_card_float(float("nan")) is None
+    assert normalize_due_card_float("not-a-number") is None
+    assert normalize_due_card_count(float("inf")) == 0
+    assert normalize_due_card_count("3.5") == 0
+    assert normalize_due_card_last_rating(float("nan")) is None
+    assert normalize_due_card_last_rating("2.5") is None
+    cards = {card["card_id"]: card for card in response.json()["cards"]}
+    inf_card = cards["card-inf"]
+    assert inf_card["stability"] is None
+    assert inf_card["difficulty"] is None
+    assert inf_card["reps"] == 2
+    assert inf_card["lapses"] == 1
+    assert inf_card["last_rating"] is None
+    negative_card = cards["card-negative"]
+    assert negative_card["stability"] is None
+    assert negative_card["difficulty"] is None
+    assert negative_card["reps"] == 0
+    assert negative_card["lapses"] == 0
+    assert negative_card["last_rating"] is None
+    text_card = cards["card-text"]
+    assert text_card["stability"] is None
+    assert text_card["difficulty"] is None
+    assert text_card["reps"] == 0
+    assert text_card["lapses"] == 0
+    assert text_card["last_rating"] is None
 
 
 def test_review_rate_valid_payload_records_review_once(tmp_path: Path) -> None:
