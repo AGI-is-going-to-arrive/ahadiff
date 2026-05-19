@@ -27,15 +27,29 @@ if TYPE_CHECKING:
     )
     from .schemas import (
         CacheKeyInput,
+        EnforcementMode,
         ProbeReport,
         ProviderRequest,
         ProviderResponse,
         RateLimitSnapshot,
     )
+    from .structured import (
+        OutputSchemaSpec,
+        canonical_json,
+        normalize_schema_for_provider,
+        schema_hash,
+        schema_spec_for,
+    )
+    from .validation_retry import (
+        StructuredCallResult,
+        build_validation_retry_feedback,
+        generate_with_validation_retry,
+    )
 
 __all__ = [
     "AdapterBase",
     "CacheKeyInput",
+    "EnforcementMode",
     "DEFAULT_CONTEXT_WINDOW",
     "DEFAULT_INPUT_TOKEN_BUDGET",
     "DEFAULT_OUTPUT_TOKEN_BUDGET",
@@ -46,8 +60,11 @@ __all__ = [
     "ProviderRequest",
     "ProviderResponse",
     "RateLimitSnapshot",
+    "OutputSchemaSpec",
+    "StructuredCallResult",
     "adapter_conformance_test",
     "assert_context_bundle_hash",
+    "build_validation_retry_feedback",
     "build_cache_key",
     "build_context_bundle_hash",
     "clip_text_to_context_limit",
@@ -58,12 +75,18 @@ __all__ = [
     "parse_rate_limit_headers",
     "persist_probe_result",
     "probe_provider",
+    "canonical_json",
+    "normalize_schema_for_provider",
     "resolve_context_window",
+    "schema_hash",
+    "schema_spec_for",
+    "generate_with_validation_retry",
 ]
 
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "AdapterBase": ("provider", "AdapterBase"),
     "CacheKeyInput": ("schemas", "CacheKeyInput"),
+    "EnforcementMode": ("schemas", "EnforcementMode"),
     "DEFAULT_CONTEXT_WINDOW": ("cost", "DEFAULT_CONTEXT_WINDOW"),
     "DEFAULT_INPUT_TOKEN_BUDGET": ("cost", "DEFAULT_INPUT_TOKEN_BUDGET"),
     "DEFAULT_OUTPUT_TOKEN_BUDGET": ("cost", "DEFAULT_OUTPUT_TOKEN_BUDGET"),
@@ -74,8 +97,14 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "ProviderRequest": ("schemas", "ProviderRequest"),
     "ProviderResponse": ("schemas", "ProviderResponse"),
     "RateLimitSnapshot": ("schemas", "RateLimitSnapshot"),
+    "OutputSchemaSpec": ("structured", "OutputSchemaSpec"),
+    "StructuredCallResult": ("validation_retry", "StructuredCallResult"),
     "adapter_conformance_test": ("provider", "adapter_conformance_test"),
     "assert_context_bundle_hash": ("cache", "assert_context_bundle_hash"),
+    "build_validation_retry_feedback": (
+        "validation_retry",
+        "build_validation_retry_feedback",
+    ),
     "build_cache_key": ("cache", "build_cache_key"),
     "build_context_bundle_hash": ("cache", "build_context_bundle_hash"),
     "clip_text_to_context_limit": ("cost", "clip_text_to_context_limit"),
@@ -86,7 +115,15 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "parse_rate_limit_headers": ("cost", "parse_rate_limit_headers"),
     "persist_probe_result": ("probe", "persist_probe_result"),
     "probe_provider": ("probe", "probe_provider"),
+    "canonical_json": ("structured", "canonical_json"),
+    "normalize_schema_for_provider": ("structured", "normalize_schema_for_provider"),
     "resolve_context_window": ("cost", "resolve_context_window"),
+    "schema_hash": ("structured", "schema_hash"),
+    "schema_spec_for": ("structured", "schema_spec_for"),
+    "generate_with_validation_retry": (
+        "validation_retry",
+        "generate_with_validation_retry",
+    ),
 }
 
 _LAZY_SUBMODULES = {
@@ -95,7 +132,9 @@ _LAZY_SUBMODULES = {
     "probe",
     "provider",
     "schemas",
+    "structured",
     "usage",
+    "validation_retry",
 }
 
 

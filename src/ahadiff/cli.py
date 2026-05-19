@@ -326,6 +326,14 @@ def _resolve_output_lang_from_snapshot(snapshot: Any, *, cli_lang: str | None) -
     return resolve_locale(cli_lang=cli_lang, config_lang=configured_content_lang)
 
 
+def _structured_output_mode(llm_config: dict[str, Any]) -> Any:
+    return llm_config.get("structured_output_mode", "json_object")
+
+
+def _structured_validation_retries(llm_config: dict[str, Any]) -> int:
+    return int(llm_config.get("structured_validation_retries", 0))
+
+
 def _normalize_provider_base_url(base_url: str, *, provider_class: str) -> str:
     return normalize_provider_base_url(base_url, provider_class=provider_class)
 
@@ -1116,6 +1124,8 @@ def learn_cmd(
                         retry_attempts=int(llm_config["retry_attempts"]),
                         request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
                         output_lang=resolved_content_lang,
+                        structured_output_mode=_structured_output_mode(llm_config),
+                        structured_validation_retries=_structured_validation_retries(llm_config),
                     )
                     candidates = load_claim_candidates(
                         raw_claims_path,
@@ -1160,6 +1170,10 @@ def learn_cmd(
                             retry_attempts=int(llm_config["retry_attempts"]),
                             privacy_mode=resolved_privacy_mode,
                             output_lang=resolved_content_lang,
+                            structured_output_mode=_structured_output_mode(llm_config),
+                            structured_validation_retries=_structured_validation_retries(
+                                llm_config
+                            ),
                         )
                         quiz_artifacts, quiz_questions = generate_quiz_from_run(
                             run_id=capture.run_id,
@@ -1177,6 +1191,10 @@ def learn_cmd(
                             question_count=_effective_quiz_question_count(
                                 quiz_config,
                                 capture.metadata.get("diff_stats"),
+                            ),
+                            structured_output_mode=_structured_output_mode(llm_config),
+                            structured_validation_retries=_structured_validation_retries(
+                                llm_config
                             ),
                         )
                         quiz_path = quiz_artifacts.quiz_path
@@ -1752,6 +1770,8 @@ def regenerate_cmd(
                         _run_diff_stats_or_none(run_path),
                     ),
                     overwrite=True,
+                    structured_output_mode=_structured_output_mode(llm_config),
+                    structured_validation_retries=_structured_validation_retries(llm_config),
                 )
                 report = evaluate_run(run_path)
                 cards_path = generate_cards_for_run(
@@ -2691,6 +2711,8 @@ def claims_cmd(
                 retry_attempts=int(llm_config["retry_attempts"]),
                 request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
                 output_lang=verify_content_lang,
+                structured_output_mode=_structured_output_mode(llm_config),
+                structured_validation_retries=_structured_validation_retries(llm_config),
             )
             extracted_candidate_path = raw_claims_path
             candidate_load_path = raw_claims_path

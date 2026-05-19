@@ -25,14 +25,17 @@ from ahadiff.llm import (
     DEFAULT_INPUT_TOKEN_BUDGET,
     DEFAULT_OUTPUT_TOKEN_BUDGET,
     ProviderRequest,
+    generate_with_validation_retry,
     make_provider,
 )
+from ahadiff.llm.structured import schema_spec_for, structured_request_kwargs
 from ahadiff.safety.ignore import AllowlistPolicy
 from ahadiff.safety.redact import redaction_pipeline
 
 from .misconception import (
     MisconceptionCard,
     build_misconception_prompt_payload,
+    has_explicit_empty_misconception_cards,
     load_misconception_prompt,
     parse_misconception_cards,
     write_misconception_cards,
@@ -47,6 +50,7 @@ if TYPE_CHECKING:
     from ahadiff.core.config import SecurityConfig
     from ahadiff.git.line_map import FileLineMap, HunkLineMap
     from ahadiff.git.symbols import SymbolRecord
+    from ahadiff.llm.schemas import EnforcementMode
 
 
 @dataclass(frozen=True)
@@ -99,6 +103,8 @@ def generate_quiz_from_run(
     misconception_output_token_cap: int | None = None,
     question_count: int = 3,
     on_sub_progress: Callable[[str], None] | None = None,
+    structured_output_mode: EnforcementMode = "json_object",
+    structured_validation_retries: int = 0,
 ) -> tuple[QuizArtifactPaths, tuple[QuizQuestion, ...]]:
     bundle = load_redacted_run_bundle(
         run_id=run_id,
@@ -125,6 +131,8 @@ def generate_quiz_from_run(
         output_token_budget=output_token_budget,
         output_token_cap=quiz_output_token_cap,
         question_count=question_count,
+        structured_output_mode=structured_output_mode,
+        structured_validation_retries=structured_validation_retries,
     )
     question_set = parse_quiz_payload(payload, require_choices=True)
     questions = _materialize_question_ids(run_id, question_set.questions)
@@ -147,6 +155,8 @@ def generate_quiz_from_run(
         input_token_budget=input_token_budget,
         output_token_budget=output_token_budget,
         output_token_cap=misconception_output_token_cap,
+        structured_output_mode=structured_output_mode,
+        structured_validation_retries=structured_validation_retries,
     )
     quiz_dir = run_path / "quiz"
     quiz_path = quiz_dir / "quiz.jsonl"
@@ -325,6 +335,8 @@ def _generate_quiz_payload(
     output_token_budget: int | None = None,
     output_token_cap: int | None = None,
     question_count: int = 3,
+    structured_output_mode: EnforcementMode = "json_object",
+    structured_validation_retries: int = 0,
 ) -> str:
     if type(question_count) is not int:
         raise InputError("quiz question_count must be an integer")
@@ -379,34 +391,49 @@ def _generate_quiz_payload(
             DEFAULT_OUTPUT_TOKEN_BUDGET,
         ),
     )
+    schema_spec = schema_spec_for("quiz_generate.v1")
+    request = ProviderRequest(
+        prompt_name=_PROMPT_NAME,
+        prompt_fingerprint=prompt_fingerprint,
+        prompt_version=prompt_fingerprint,
+        eval_bundle_version=compute_runtime_eval_bundle_version(),
+        model=provider_config.model_name,
+        payload_text=payload_text,
+        diff_content=bundle.patch_text,
+        source_ref=str(bundle.metadata["source_ref"]),
+        output_lang=output_lang,
+        privacy_mode=resolved_privacy_mode,
+        redacted_payload_text=redacted_payload_text,
+        findings=findings,
+        max_output_tokens=_resolve_request_output_tokens(
+            provider_config=provider_config,
+            output_token_budget=output_token_budget,
+            output_token_cap=output_token_cap,
+            default_output_token_cap=_QUIZ_OUTPUT_TOKEN_CAP,
+        ),
+        thinking_level=provider_config.thinking_level,
+        **structured_request_kwargs(
+            schema_name="quiz_generate.v1",
+            provider_class=provider_config.provider_class,
+            mode=structured_output_mode,
+        ),
+    )
+
+    def _validate(payload: str) -> str:
+        parse_quiz_payload(payload, require_choices=True)
+        return payload
+
     try:
-        response = provider.generate(
-            ProviderRequest(
-                prompt_name=_PROMPT_NAME,
-                prompt_fingerprint=prompt_fingerprint,
-                prompt_version=prompt_fingerprint,
-                eval_bundle_version=compute_runtime_eval_bundle_version(),
-                model=provider_config.model_name,
-                payload_text=payload_text,
-                diff_content=bundle.patch_text,
-                source_ref=str(bundle.metadata["source_ref"]),
-                output_lang=output_lang,
-                privacy_mode=resolved_privacy_mode,
-                redacted_payload_text=redacted_payload_text,
-                findings=findings,
-                response_format="json",
-                max_output_tokens=_resolve_request_output_tokens(
-                    provider_config=provider_config,
-                    output_token_budget=output_token_budget,
-                    output_token_cap=output_token_cap,
-                    default_output_token_cap=_QUIZ_OUTPUT_TOKEN_CAP,
-                ),
-                thinking_level=provider_config.thinking_level,
-            )
+        result = generate_with_validation_retry(
+            provider=provider,
+            request=request,
+            schema_spec=schema_spec,
+            parse=_validate,
+            max_validation_retries=structured_validation_retries,
         )
     finally:
         provider.close()
-    return response.content
+    return result.value
 
 
 def _generate_misconception_cards(
@@ -427,6 +454,8 @@ def _generate_misconception_cards(
     input_token_budget: int | None = None,
     output_token_budget: int | None = None,
     output_token_cap: int | None = None,
+    structured_output_mode: EnforcementMode = "json_object",
+    structured_validation_retries: int = 0,
 ) -> tuple[MisconceptionCard, ...]:
     prompt_text = load_misconception_prompt()
     concept_terms = _dedupe_concept_terms(questions)
@@ -477,34 +506,52 @@ def _generate_misconception_cards(
             DEFAULT_OUTPUT_TOKEN_BUDGET,
         ),
     )
+    schema_spec = schema_spec_for("quiz_misconception_card.v1")
+    request = ProviderRequest(
+        prompt_name=_MISCONCEPTION_PROMPT_NAME,
+        prompt_fingerprint=prompt_fingerprint,
+        prompt_version=prompt_fingerprint,
+        eval_bundle_version=compute_runtime_eval_bundle_version(),
+        model=provider_config.model_name,
+        payload_text=payload_text,
+        diff_content=bundle.patch_text,
+        source_ref=str(bundle.metadata["source_ref"]),
+        output_lang=output_lang,
+        privacy_mode=resolved_privacy_mode,
+        redacted_payload_text=redacted_payload_text,
+        findings=findings,
+        max_output_tokens=_resolve_request_output_tokens(
+            provider_config=provider_config,
+            output_token_budget=output_token_budget,
+            output_token_cap=output_token_cap,
+            default_output_token_cap=_MISCONCEPTION_OUTPUT_TOKEN_CAP,
+        ),
+        thinking_level=provider_config.thinking_level,
+        **structured_request_kwargs(
+            schema_name="quiz_misconception_card.v1",
+            provider_class=provider_config.provider_class,
+            mode=structured_output_mode,
+        ),
+    )
+
+    def _validate(payload: str) -> str:
+        if not parse_misconception_cards(payload) and not has_explicit_empty_misconception_cards(
+            payload
+        ):
+            raise ValueError("misconception payload must contain at least one card")
+        return payload
+
     try:
-        response = provider.generate(
-            ProviderRequest(
-                prompt_name=_MISCONCEPTION_PROMPT_NAME,
-                prompt_fingerprint=prompt_fingerprint,
-                prompt_version=prompt_fingerprint,
-                eval_bundle_version=compute_runtime_eval_bundle_version(),
-                model=provider_config.model_name,
-                payload_text=payload_text,
-                diff_content=bundle.patch_text,
-                source_ref=str(bundle.metadata["source_ref"]),
-                output_lang=output_lang,
-                privacy_mode=resolved_privacy_mode,
-                redacted_payload_text=redacted_payload_text,
-                findings=findings,
-                response_format="json",
-                max_output_tokens=_resolve_request_output_tokens(
-                    provider_config=provider_config,
-                    output_token_budget=output_token_budget,
-                    output_token_cap=output_token_cap,
-                    default_output_token_cap=_MISCONCEPTION_OUTPUT_TOKEN_CAP,
-                ),
-                thinking_level=provider_config.thinking_level,
-            )
+        result = generate_with_validation_retry(
+            provider=provider,
+            request=request,
+            schema_spec=schema_spec,
+            parse=_validate,
+            max_validation_retries=structured_validation_retries,
         )
     finally:
         provider.close()
-    cards = parse_misconception_cards(response.content)
+    cards = parse_misconception_cards(result.value)
     return tuple(replace(card, run_id=card.run_id or run_id) for card in cards)
 
 

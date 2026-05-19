@@ -308,6 +308,14 @@ def _resolve_output_lang_from_snapshot(snapshot: Any, *, cli_lang: str | None) -
     return resolve_locale(cli_lang=cli_lang, config_lang=configured_content_lang)
 
 
+def _structured_output_mode(llm_config: dict[str, Any]) -> Any:
+    return llm_config.get("structured_output_mode", "json_object")
+
+
+def _structured_validation_retries(llm_config: dict[str, Any]) -> int:
+    return int(llm_config.get("structured_validation_retries", 0))
+
+
 def _normalize_provider_base_url(base_url: str, *, provider_class: str) -> str:
     normalized = base_url.rstrip("/")
     suffixes: tuple[str, ...] = ()
@@ -1089,6 +1097,10 @@ def run_learn_pipeline(
                             output_token_budget=output_budget,
                             claim_output_token_cap=claim_output_cap,
                             output_lang=resolved_content_lang,
+                            structured_output_mode=_structured_output_mode(llm_config),
+                            structured_validation_retries=_structured_validation_retries(
+                                llm_config
+                            ),
                         )
                         raw_claims_path = result_path
                         return result_path
@@ -1183,6 +1195,10 @@ def run_learn_pipeline(
                                 output_token_budget=output_budget,
                                 lesson_output_token_caps=lesson_output_caps,
                                 on_sub_progress=lambda message: _emit(6, message),
+                                structured_output_mode=_structured_output_mode(llm_config),
+                                structured_validation_retries=_structured_validation_retries(
+                                    llm_config
+                                ),
                             )
 
                         run_with_retry(
@@ -1256,6 +1272,10 @@ def run_learn_pipeline(
                                 misconception_output_token_cap=misconception_output_cap,
                                 question_count=effective_question_count,
                                 on_sub_progress=lambda message: _emit(7, message),
+                                structured_output_mode=_structured_output_mode(llm_config),
+                                structured_validation_retries=_structured_validation_retries(
+                                    llm_config
+                                ),
                             )
                             quiz_questions_holder[:] = [questions]
 

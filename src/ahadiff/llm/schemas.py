@@ -16,7 +16,13 @@ else:
     ProviderConfig = Any
     SecretFinding = Any
 
-RequestFormat = Literal["text", "json"]
+RequestFormat = Literal["text", "json", "json_schema"]
+EnforcementMode = Literal[
+    "prompt_contract",
+    "json_object",
+    "native_json_schema",
+    "strict_tool",
+]
 
 
 @dataclass(frozen=True)
@@ -49,6 +55,13 @@ class CacheKeyInput:
     request_payload_sha256: str
     max_output_tokens: int | None = None
     thinking_level: str = "none"
+    response_format: RequestFormat = "text"
+    output_schema_id: str | None = None
+    output_schema_version: str | None = None
+    output_schema_hash: str | None = None
+    normalized_output_schema_hash: str | None = None
+    enforcement_mode: EnforcementMode = "prompt_contract"
+    temperature: float | None = None
 
 
 @dataclass(frozen=True)
@@ -73,6 +86,12 @@ class ProviderRequest:
     max_output_tokens: int | None = None
     thinking_level: str | None = None
     response_format: RequestFormat = "text"
+    output_schema_id: str | None = None
+    output_schema_version: str | None = None
+    output_schema: Mapping[str, Any] | None = None
+    output_schema_hash: str | None = None
+    normalized_output_schema_hash: str | None = None
+    enforcement_mode: EnforcementMode = "prompt_contract"
     findings: tuple[SecretFinding, ...] = ()
 
     def effective_payload(self) -> str:
@@ -119,6 +138,7 @@ class ProbeReport:
 
 __all__ = [
     "CacheKeyInput",
+    "EnforcementMode",
     "ProbeReport",
     "ProviderRequest",
     "ProviderResponse",

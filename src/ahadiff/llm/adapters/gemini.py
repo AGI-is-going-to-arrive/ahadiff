@@ -6,6 +6,7 @@ from ahadiff.contracts import ProviderCapabilities
 
 from ..provider import AdapterBase
 from ..schemas import ProviderRequest, ProviderResponse
+from .structured import gemini_response_format
 from .thinking import gemini_thinking_level
 
 if TYPE_CHECKING:
@@ -18,6 +19,8 @@ class GeminiAdapter(AdapterBase):
         return ProviderCapabilities(
             supports_stream=False,
             supports_json_mode=True,
+            supports_json_object_mode=True,
+            supports_native_json_schema=True,
             supports_tool_use=False,
             supports_temperature=True,
             supports_rate_limit_headers=False,
@@ -48,6 +51,9 @@ class GeminiAdapter(AdapterBase):
         thinking = gemini_thinking_level(request.thinking_level)
         if thinking is not None:
             generation_config["thinkingConfig"] = {"thinkingLevel": thinking}
+        response_format = gemini_response_format(request)
+        if response_format is not None:
+            generation_config.update(response_format)
         if generation_config:
             payload["generationConfig"] = generation_config
         url = f"{self.config.base_url.rstrip('/')}/v1beta/models/{request.model}:generateContent"

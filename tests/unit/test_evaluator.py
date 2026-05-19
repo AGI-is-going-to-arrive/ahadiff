@@ -25,6 +25,7 @@ from ahadiff.eval.spec_alignment import (
     write_spec_alignment_artifact,
 )
 from ahadiff.git.line_map import build_line_map, serialize_line_map_payload
+from ahadiff.llm.schemas import ProviderRequest, ProviderResponse
 
 _RUNNER = CliRunner()
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -981,6 +982,79 @@ def test_run_semantic_alignment_review_bad_json_degrades_without_changing_score(
     assert merged["score"] == deterministic["score"]
 
 
+def test_semantic_alignment_request_stays_json_object_without_schema_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    spec_path = workspace_root / "SPEC.md"
+    spec_path.parent.mkdir(parents=True)
+    spec_path.write_text("- The retry helper must attempt three times.\n", encoding="utf-8")
+    run_path = _write_run_fixture(
+        workspace_root,
+        run_id="run-semantic-json-object",
+        claims=_standard_quiz_claims("run-semantic-json-object"),
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+    )
+    deterministic = write_spec_alignment_artifact(
+        run_path=run_path,
+        workspace_root=workspace_root,
+        spec_path=Path("SPEC.md"),
+    )
+    seen_requests: list[ProviderRequest] = []
+
+    class FakeProvider:
+        def __enter__(self) -> FakeProvider:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def generate(self, request: ProviderRequest) -> ProviderResponse:
+            seen_requests.append(request)
+            return ProviderResponse(
+                content="{not-json",
+                model_id="gpt-5.5",
+                input_tokens=1,
+                output_tokens=1,
+            )
+
+    def fake_make_provider(*_args: object, **_kwargs: object) -> FakeProvider:
+        return FakeProvider()
+
+    monkeypatch.setattr("ahadiff.llm.provider.make_provider", fake_make_provider)
+
+    merged = run_semantic_alignment_review_for_run(
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai_responses",
+            model_name="gpt-5.5",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_GPT55_KEY",
+        ),
+        api_key="test-key",
+        security_config=SecurityConfig(),
+        privacy_mode="strict_local",
+        output_lang="en",
+        request_timeout_seconds=30,
+        max_concurrent=1,
+        qps_limit=10,
+        retry_attempts=0,
+    )
+
+    assert merged["semantic_review"]["degraded"] is True
+    assert merged["score"] == deterministic["score"]
+    assert len(seen_requests) == 1
+    assert seen_requests[0].response_format == "json"
+    assert seen_requests[0].enforcement_mode == "json_object"
+    assert seen_requests[0].output_schema_id is None
+    assert seen_requests[0].output_schema is None
+
+
 def test_run_llm_judge_for_run_writes_judge_artifact(tmp_path: Path) -> None:
     workspace_root = tmp_path / "workspace"
     run_path = _write_run_fixture(
@@ -1050,6 +1124,73 @@ def test_run_llm_judge_for_run_writes_judge_artifact(tmp_path: Path) -> None:
     assert payload["dimensions"]["spec_alignment"]["score"] == 0.0
     assert payload["dimensions"]["spec_alignment"]["max_score"] == 0.0
     assert payload["usage"] == {"input_tokens": 11, "output_tokens": 22}
+
+
+def test_llm_judge_request_stays_json_object_without_schema_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_run_fixture(
+        workspace_root,
+        run_id="run-judge-json-object",
+        claims=_standard_quiz_claims("run-judge-json-object"),
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+    )
+    deterministic_report = evaluate_run(run_path)
+    seen_requests: list[ProviderRequest] = []
+    dimensions = {
+        dimension.name: {"score": round(dimension.max_score / 2, 2), "reason": "ok"}
+        for dimension in deterministic_report.dimensions
+        if dimension.max_score > 0
+    }
+
+    class FakeProvider:
+        def generate(self, request: ProviderRequest) -> ProviderResponse:
+            seen_requests.append(request)
+            return ProviderResponse(
+                content=json.dumps({"dimensions": dimensions}),
+                model_id="gpt-5.5",
+                input_tokens=1,
+                output_tokens=1,
+            )
+
+        def close(self) -> None:
+            return None
+
+    def fake_make_provider(*_args: object, **_kwargs: object) -> FakeProvider:
+        return FakeProvider()
+
+    monkeypatch.setattr("ahadiff.llm.provider.make_provider", fake_make_provider)
+
+    run_llm_judge_for_run(
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai_responses",
+            model_name="gpt-5.5",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_GPT55_KEY",
+        ),
+        api_key="test-key",
+        security_config=SecurityConfig(),
+        privacy_mode="strict_local",
+        output_lang="en",
+        deterministic_report=deterministic_report,
+        request_timeout_seconds=30,
+        max_concurrent=1,
+        qps_limit=10,
+        retry_attempts=0,
+    )
+
+    assert len(seen_requests) == 1
+    assert seen_requests[0].response_format == "json"
+    assert seen_requests[0].enforcement_mode == "json_object"
+    assert seen_requests[0].output_schema_id is None
+    assert seen_requests[0].output_schema is None
 
 
 def test_evaluate_run_does_not_pass_with_unlinked_quiz_artifacts(

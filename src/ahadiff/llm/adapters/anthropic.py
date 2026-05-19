@@ -7,6 +7,7 @@ from ahadiff.core.errors import ProviderError
 
 from ..provider import AdapterBase
 from ..schemas import ProviderRequest, ProviderResponse
+from .structured import native_schema_for_request
 from .thinking import anthropic_budget_tokens
 
 if TYPE_CHECKING:
@@ -19,6 +20,7 @@ class AnthropicAdapter(AdapterBase):
         return ProviderCapabilities(
             supports_stream=True,
             supports_json_mode=False,
+            supports_native_json_schema=True,
             supports_tool_use=True,
             supports_temperature=True,
             supports_rate_limit_headers=False,
@@ -59,6 +61,14 @@ class AnthropicAdapter(AdapterBase):
             payload["thinking"] = {"type": "enabled", "budget_tokens": budget}
         elif request.temperature is not None:
             payload["temperature"] = request.temperature
+        schema = native_schema_for_request(request)
+        if schema is not None:
+            payload["output_config"] = {
+                "format": {
+                    "type": "json_schema",
+                    "schema": schema,
+                }
+            }
         base = self.config.base_url.rstrip("/")
         prefix = base if base.endswith("/v1") else f"{base}/v1"
         url = f"{prefix}/messages"

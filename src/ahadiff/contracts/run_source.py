@@ -69,6 +69,12 @@ class ProviderCapabilities(BaseModel):
 
     supports_stream: bool
     supports_json_mode: bool
+    supports_json_object_mode: bool = False
+    supports_native_json_schema: bool = False
+    supports_strict_tool_use: bool = False
+    supports_schema_name: bool = False
+    supports_schema_strict_flag: bool = False
+    structured_output_notes: tuple[str, ...] = ()
     supports_tool_use: bool
     supports_temperature: bool
     supports_rate_limit_headers: bool

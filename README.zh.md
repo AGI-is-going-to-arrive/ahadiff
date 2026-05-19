@@ -90,6 +90,7 @@ ahadiff review           # 复习过去生成的卡片
 
 - **学习**：`ahadiff learn` 支持 9 种 diff 捕获模式：git commit、range、时间窗口（`--since`）、staged、unstaged、patch、patch URL、文件对比、目录对比。
 - **证据化 Claims**：每条 lesson 结论都绑定 `file:line` 证据，并区分 verified、weak、not proven、contradicted、rejected 等状态。
+- **结构化 LLM 输出**：生成链路会按 schema 约束 JSON 输出；不支持的 provider 仍保留 parser、repair 和 degraded 回退。
 - **测验与复习**：`ahadiff quiz` 用来测试刚学过的 run；`ahadiff review` 用间隔重复带回旧卡片。题量默认固定，也可以按 diff 大小自动调整。
 - **评分**：每次 run 都会得到 8 维评分；配置后也可以启用 LLM judge。
 - **WebUI**：`ahadiff serve` 打开 Dashboard、Lesson、Diff、Quiz、Review、Concepts、Run Detail、Settings 和 Guide。

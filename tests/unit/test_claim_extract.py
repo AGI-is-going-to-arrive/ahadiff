@@ -35,6 +35,8 @@ from ahadiff.git.symbols import (
     extract_symbols,
     serialize_symbols_payload,
 )
+from ahadiff.llm.schemas import ProviderRequest, ProviderResponse
+from ahadiff.llm.structured import schema_spec_for
 
 
 def _write_claim_run_artifacts(
@@ -1028,6 +1030,102 @@ def test_extract_claim_candidates_from_run_caps_request_max_output_tokens(
         )
 
     assert sent_max_tokens == [expected_max_tokens]
+
+
+def test_extract_claim_candidates_from_run_retries_after_schema_validation_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_id = "run_extract_retry"
+    run_path = _write_claim_run_artifacts(workspace_root, run_id)
+    requests: list[ProviderRequest] = []
+    responses = [
+        ProviderResponse(
+            content=json.dumps({"claims": [{"text": "missing source hunks"}]}),
+            model_id="gpt-5.4-mini",
+            input_tokens=10,
+            output_tokens=10,
+        ),
+        ProviderResponse(
+            content=json.dumps(
+                {
+                    "output": {
+                        "claims": [
+                            {
+                                "claim_id": f"{run_id}-claim-1",
+                                "run_id": run_id,
+                                "text": "updates retry_once return value",
+                                "source_hunks": [
+                                    {
+                                        "file": "src/app.py",
+                                        "start": 1,
+                                        "end": 2,
+                                        "side": "new",
+                                    }
+                                ],
+                                "symbols": ["retry_once"],
+                            }
+                        ]
+                    }
+                }
+            ),
+            model_id="gpt-5.4-mini",
+            input_tokens=10,
+            output_tokens=10,
+        ),
+    ]
+
+    class FakeProvider:
+        def generate(self, request: ProviderRequest) -> ProviderResponse:
+            requests.append(request)
+            return responses.pop(0)
+
+        def close(self) -> None:
+            return None
+
+    def fake_make_provider(*_args: object, **_kwargs: object) -> FakeProvider:
+        return FakeProvider()
+
+    monkeypatch.setattr(
+        "ahadiff.claims.runtime.make_provider",
+        fake_make_provider,
+    )
+
+    output_path, candidates = extract_claim_candidates_from_run(
+        run_id=run_id,
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        output_path=run_path / "claims.raw.jsonl",
+        structured_output_mode="native_json_schema",
+        structured_validation_retries=1,
+    )
+
+    spec = schema_spec_for("claim_candidates.v1")
+    assert len(requests) == 2
+    assert requests[0].response_format == "json_schema"
+    assert requests[0].enforcement_mode == "native_json_schema"
+    assert requests[0].output_schema_id == spec.schema_id
+    assert requests[0].output_schema_version == spec.schema_version
+    assert requests[0].output_schema_hash == spec.schema_hash
+    assert requests[0].output_schema is not None
+    retry_feedback = requests[1].payload_text.split("The previous response", 1)[1]
+    assert "claim_candidates.v1" in retry_feedback
+    assert "source_hunks" in retry_feedback
+    assert "diff --git" not in retry_feedback
+    assert '"properties"' not in retry_feedback
+    assert len(candidates) == 1
+    raw_payload = json.loads(output_path.read_text(encoding="utf-8").splitlines()[0])
+    assert raw_payload["run_id"] == run_id
+    assert raw_payload["source_hunks"][0]["file"] == "src/app.py"
 
 
 def test_claims_cli_extracts_with_one_off_provider_and_normalizes_chat_completions_url(

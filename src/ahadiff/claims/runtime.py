@@ -9,7 +9,13 @@ from typing import TYPE_CHECKING, Any, TypedDict, cast
 from ahadiff.core.errors import InputError
 from ahadiff.core.json_util import safe_json_loads
 from ahadiff.i18n import prompt_language_instruction
-from ahadiff.llm import DEFAULT_OUTPUT_TOKEN_BUDGET, ProviderRequest, make_provider
+from ahadiff.llm import (
+    DEFAULT_OUTPUT_TOKEN_BUDGET,
+    ProviderRequest,
+    generate_with_validation_retry,
+    make_provider,
+)
+from ahadiff.llm.structured import schema_spec_for, structured_request_kwargs
 from ahadiff.safety.ignore import AllowlistPolicy
 from ahadiff.safety.redact import redaction_pipeline
 
@@ -24,6 +30,7 @@ if TYPE_CHECKING:
 
     from ahadiff.contracts import PrivacyMode, ProviderConfig
     from ahadiff.core.config import SecurityConfig
+    from ahadiff.llm.schemas import EnforcementMode
 
     from .schema import ClaimCandidate
 
@@ -111,6 +118,8 @@ def extract_claim_candidates_from_run(
     output_token_budget: int | None = None,
     claim_output_token_cap: int | None = None,
     output_lang: str = "en",
+    structured_output_mode: EnforcementMode = "json_object",
+    structured_validation_retries: int = 0,
 ) -> tuple[Path, tuple[ClaimCandidate, ...]]:
     prompt_text = load_claim_extract_prompt()
     metadata = _load_run_json(run_path / "metadata.json")
@@ -166,36 +175,46 @@ def extract_claim_candidates_from_run(
         execution_origin="claims_extract",
         **budget_kwargs,
     )
+    schema_spec = schema_spec_for("claim_candidates.v1")
+    request = ProviderRequest(
+        prompt_name="claim.extract",
+        prompt_fingerprint=prompt_fingerprint,
+        prompt_version=prompt_fingerprint,
+        eval_bundle_version=_CLAIM_EXTRACT_EVAL_VERSION,
+        model=provider_config.model_name,
+        payload_text=payload_text,
+        diff_content=patch_text,
+        source_ref=source_ref,
+        privacy_mode=resolved_privacy_mode,
+        redacted_payload_text=redacted_payload_text,
+        findings=findings,
+        output_lang=output_lang,
+        max_output_tokens=_resolve_claim_request_max_output_tokens(
+            provider_max_output_tokens=provider_config.max_output_tokens,
+            output_token_budget=output_token_budget,
+            claim_output_token_cap=claim_output_token_cap,
+        ),
+        thinking_level=provider_config.thinking_level,
+        **structured_request_kwargs(
+            schema_name="claim_candidates.v1",
+            provider_class=provider_config.provider_class,
+            mode=structured_output_mode,
+        ),
+    )
     try:
-        response = provider.generate(
-            ProviderRequest(
-                prompt_name="claim.extract",
-                prompt_fingerprint=prompt_fingerprint,
-                prompt_version=prompt_fingerprint,
-                eval_bundle_version=_CLAIM_EXTRACT_EVAL_VERSION,
-                model=provider_config.model_name,
-                payload_text=payload_text,
-                diff_content=patch_text,
-                source_ref=source_ref,
-                privacy_mode=resolved_privacy_mode,
-                redacted_payload_text=redacted_payload_text,
-                findings=findings,
-                response_format="json",
-                output_lang=output_lang,
-                max_output_tokens=_resolve_claim_request_max_output_tokens(
-                    provider_max_output_tokens=provider_config.max_output_tokens,
-                    output_token_budget=output_token_budget,
-                    claim_output_token_cap=claim_output_token_cap,
-                ),
-                thinking_level=provider_config.thinking_level,
-            )
+        result = generate_with_validation_retry(
+            provider=provider,
+            request=request,
+            schema_spec=schema_spec,
+            parse=lambda content: parse_claim_candidates_text(
+                content,
+                default_run_id=run_id,
+            ),
+            max_validation_retries=structured_validation_retries,
         )
     finally:
         provider.close()
-    candidates = parse_claim_candidates_text(
-        response.content,
-        default_run_id=run_id,
-    )
+    candidates = result.value
     return write_claim_candidates_jsonl(output_path, candidates, overwrite=overwrite), candidates
 
 

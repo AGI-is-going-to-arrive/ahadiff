@@ -17,6 +17,8 @@ from ahadiff.core.config import SecurityConfig
 from ahadiff.core.errors import InputError
 from ahadiff.lesson.generator import write_lesson_artifacts
 from ahadiff.lesson.schemas import LessonCompact, LessonFull, LessonHint
+from ahadiff.llm.schemas import ProviderResponse
+from ahadiff.llm.structured import schema_spec_for
 from ahadiff.quiz import generator as quiz_generator_module
 from ahadiff.quiz.generator import (
     QuizArtifactPaths,
@@ -26,7 +28,10 @@ from ahadiff.quiz.generator import (
     load_quiz_questions,
     write_quiz_questions_jsonl,
 )
-from ahadiff.quiz.misconception import load_misconception_cards
+from ahadiff.quiz.misconception import (
+    has_explicit_empty_misconception_cards,
+    load_misconception_cards,
+)
 from ahadiff.quiz.schemas import QuizEvidence, QuizQuestion, parse_quiz_payload
 
 if TYPE_CHECKING:
@@ -668,6 +673,259 @@ def test_generate_quiz_from_run_writes_expected_artifact(
     assert "Simplified Chinese (zh-CN)" in fake_provider.requests[0].payload_text
 
 
+def test_quiz_generation_attaches_structured_schema_metadata_for_both_prompts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_schema")
+    fake_provider = _FakeQuizProvider()
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
+        return fake_provider
+
+    monkeypatch.setattr("ahadiff.quiz.generator.make_provider", fake_provider_factory)
+
+    generate_quiz_from_run(
+        run_id="run_quiz_schema",
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        structured_output_mode="native_json_schema",
+        structured_validation_retries=1,
+    )
+
+    expected = [
+        ("quiz.generate", "quiz_generate.v1", 6000),
+        ("quiz.misconception_card", "quiz_misconception_card.v1", 3000),
+    ]
+    assert len(fake_provider.requests) == 2
+    for request, (prompt_name, schema_name, max_tokens) in zip(
+        fake_provider.requests,
+        expected,
+        strict=True,
+    ):
+        spec = schema_spec_for(schema_name)
+        assert request.prompt_name == prompt_name
+        assert request.max_output_tokens == max_tokens
+        assert request.response_format == "json_schema"
+        assert request.enforcement_mode == "native_json_schema"
+        assert request.output_schema_id == spec.schema_id
+        assert request.output_schema_version == spec.schema_version
+        assert request.output_schema_hash == spec.schema_hash
+        assert request.output_schema is not None
+
+
+def test_quiz_generation_retries_then_preserves_quiz_jsonl_shape(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_retry")
+    fake_provider = _FakeQuizProvider()
+    quiz_attempts = 0
+
+    def fake_generate(request: object) -> object:
+        nonlocal quiz_attempts
+        req = cast("ProviderRequest", request)
+        fake_provider.requests.append(req)
+        if req.prompt_name == "quiz.generate":
+            quiz_attempts += 1
+            question = _quiz_question_payload(source_claims=["run_quiz_retry-claim-1"])
+            if quiz_attempts == 1:
+                return ProviderResponse(
+                    content=json.dumps({"questions": [question]}),
+                    model_id="gpt-5.4-mini",
+                    input_tokens=10,
+                    output_tokens=20,
+                )
+            question["choices"] = _quiz_choice_payloads()
+            return ProviderResponse(
+                content=json.dumps({"questions": [question]}),
+                model_id="gpt-5.4-mini",
+                input_tokens=10,
+                output_tokens=20,
+            )
+        return _FakeQuizProvider.generate(fake_provider, req)
+
+    fake_provider.generate = fake_generate  # type: ignore[method-assign]
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
+        return fake_provider
+
+    monkeypatch.setattr("ahadiff.quiz.generator.make_provider", fake_provider_factory)
+
+    artifacts, questions = generate_quiz_from_run(
+        run_id="run_quiz_retry",
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        structured_output_mode="native_json_schema",
+        structured_validation_retries=1,
+    )
+
+    quiz_requests = [
+        request for request in fake_provider.requests if request.prompt_name == "quiz.generate"
+    ]
+    assert len(quiz_requests) == 2
+    retry_feedback = quiz_requests[1].payload_text.split("The previous response", 1)[1]
+    assert "quiz_generate.v1" in retry_feedback
+    assert "diff --git" not in retry_feedback
+    assert '"properties"' not in retry_feedback
+    assert len(questions) == 1
+    assert len(artifacts.quiz_path.read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_misconception_generation_retries_invalid_nonempty_payload_then_preserves_jsonl_shape(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_misconception_retry")
+    fake_provider = _FakeQuizProvider()
+    misconception_attempts = 0
+
+    def fake_generate(request: object) -> object:
+        nonlocal misconception_attempts
+        req = cast("ProviderRequest", request)
+        if req.prompt_name != "quiz.misconception_card":
+            return _FakeQuizProvider.generate(fake_provider, req)
+        fake_provider.requests.append(req)
+        misconception_attempts += 1
+        if misconception_attempts == 1:
+            content = json.dumps({"cards": [{"concept": "retry loop"}]})
+        else:
+            content = json.dumps(
+                {
+                    "cards": [
+                        {
+                            "concept": "retry loop",
+                            "misconception": "The diff proves exponential backoff.",
+                            "correction": "The diff only proves repeated retry attempts.",
+                            "evidence_ref": "src/app.py:2",
+                            "severity": "medium",
+                            "safety_tags": [],
+                        }
+                    ]
+                }
+            )
+        return ProviderResponse(
+            content=content,
+            model_id="gpt-5.4-mini",
+            input_tokens=10,
+            output_tokens=20,
+        )
+
+    fake_provider.generate = fake_generate  # type: ignore[method-assign]
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
+        return fake_provider
+
+    monkeypatch.setattr("ahadiff.quiz.generator.make_provider", fake_provider_factory)
+
+    artifacts, _questions = generate_quiz_from_run(
+        run_id="run_quiz_misconception_retry",
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        structured_output_mode="native_json_schema",
+        structured_validation_retries=1,
+    )
+
+    misconception_requests = [
+        request
+        for request in fake_provider.requests
+        if request.prompt_name == "quiz.misconception_card"
+    ]
+    assert len(misconception_requests) == 2
+    retry_feedback = misconception_requests[1].payload_text.split("The previous response", 1)[1]
+    assert "quiz_misconception_card.v1" in retry_feedback
+    assert artifacts.misconception_path is not None
+    cards = load_misconception_cards(artifacts.misconception_path)
+    assert len(cards) == 1
+    assert cards[0].run_id == "run_quiz_misconception_retry"
+
+
+def test_generate_quiz_from_run_allows_empty_misconception_cards(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_empty_misconceptions")
+    fake_provider = _FakeQuizProvider()
+
+    def fake_generate(request: object) -> object:
+        req = cast("ProviderRequest", request)
+        if req.prompt_name != "quiz.misconception_card":
+            return _FakeQuizProvider.generate(fake_provider, req)
+        fake_provider.requests.append(req)
+        return ProviderResponse(
+            content=json.dumps({"cards": []}),
+            model_id="gpt-5.4-mini",
+            input_tokens=10,
+            output_tokens=20,
+        )
+
+    fake_provider.generate = fake_generate  # type: ignore[method-assign]
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
+        return fake_provider
+
+    monkeypatch.setattr("ahadiff.quiz.generator.make_provider", fake_provider_factory)
+
+    artifacts, _questions = generate_quiz_from_run(
+        run_id="run_quiz_empty_misconceptions",
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        structured_output_mode="native_json_schema",
+        structured_validation_retries=0,
+    )
+
+    misconception_requests = [
+        request
+        for request in fake_provider.requests
+        if request.prompt_name == "quiz.misconception_card"
+    ]
+    assert len(misconception_requests) == 1
+    assert artifacts.misconception_path is not None
+    assert artifacts.misconception_path.read_text(encoding="utf-8") == ""
+    assert load_misconception_cards(artifacts.misconception_path) == []
+
+
+def test_misconception_empty_container_does_not_mask_invalid_nonempty_cards() -> None:
+    assert has_explicit_empty_misconception_cards('{"cards": []}') is True
+    assert has_explicit_empty_misconception_cards('{"cards": [{"concept": "retry"}]}') is False
+
+
 def test_generate_quiz_from_run_uses_configured_question_count(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -790,7 +1048,7 @@ def test_generate_quiz_from_run_rejects_provider_payload_without_choices(
 
     monkeypatch.setattr("ahadiff.quiz.generator.make_provider", fake_provider_factory)
 
-    with pytest.raises((ValidationError, ValueError)):
+    with pytest.raises(InputError, match="provider output omitted"):
         generate_quiz_from_run(
             run_id="run_quiz",
             run_path=run_path,

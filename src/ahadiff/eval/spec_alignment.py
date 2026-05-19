@@ -239,6 +239,7 @@ def run_semantic_alignment_review_for_run(
                     redacted_payload_text=redacted_payload_text,
                     redaction_config="semantic_alignment",
                     response_format="json",
+                    enforcement_mode="json_object",
                     max_output_tokens=_semantic_review_output_tokens(
                         provider_config=provider_config,
                         output_token_budget=output_token_budget,

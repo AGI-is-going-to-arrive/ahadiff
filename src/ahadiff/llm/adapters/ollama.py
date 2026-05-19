@@ -6,6 +6,7 @@ from ahadiff.contracts import ProviderCapabilities
 
 from ..provider import AdapterBase
 from ..schemas import ProviderRequest, ProviderResponse
+from .structured import native_schema_for_request
 from .thinking import normalize_thinking_level
 
 if TYPE_CHECKING:
@@ -17,7 +18,9 @@ class OllamaAdapter(AdapterBase):
     def capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(
             supports_stream=True,
-            supports_json_mode=False,
+            supports_json_mode=True,
+            supports_json_object_mode=True,
+            supports_native_json_schema=True,
             supports_tool_use=False,
             supports_temperature=True,
             supports_rate_limit_headers=False,
@@ -43,6 +46,11 @@ class OllamaAdapter(AdapterBase):
         }
         if request.temperature is not None:
             payload["options"] = {"temperature": request.temperature}
+        schema = native_schema_for_request(request)
+        if schema is not None:
+            payload["format"] = schema
+        elif request.response_format == "json":
+            payload["format"] = "json"
         url = f"{self.config.base_url.rstrip('/')}/api/chat"
         return "POST", url, headers, payload
 

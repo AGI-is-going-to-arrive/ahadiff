@@ -252,6 +252,7 @@ def run_llm_judge_for_run(
                 redacted_payload_text=redacted_payload_text,
                 findings=findings,
                 response_format="json",
+                enforcement_mode="json_object",
                 max_output_tokens=_resolve_llm_judge_max_output_tokens(
                     provider_config=provider_config,
                     output_token_budget=output_token_budget,

@@ -424,9 +424,18 @@ _LLM_INT_FIELDS: dict[str, tuple[int, int]] = {
     "request_timeout_seconds": (5, 600),
     "max_concurrent": (1, 20),
     "retry_attempts": (0, 10),
+    "structured_validation_retries": (0, 2),
 }
 _ALLOWED_SYMBOL_EXTRACTORS = frozenset({"auto", "builtin", "tree_sitter"})
 _ALLOWED_OUTPUT_LANGS = frozenset({"auto", "en", "zh-CN"})
+_ALLOWED_STRUCTURED_OUTPUT_MODES = frozenset(
+    {
+        "prompt_contract",
+        "json_object",
+        "native_json_schema",
+        "strict_tool",
+    }
+)
 _ALLOWED_QUIZ_COUNT_MODES = frozenset({"fixed", "auto"})
 _QUIZ_INT_FIELDS = {
     "quiz_question_count",
@@ -439,7 +448,7 @@ def _validate_llm_update(llm: object) -> dict[str, Any] | str:
     if not isinstance(llm, dict):
         return "llm must be a JSON object"
     llm_dict = cast("dict[str, Any]", llm)
-    allowed = set(_LLM_INT_FIELDS) | {"output_lang"}
+    allowed = set(_LLM_INT_FIELDS) | {"output_lang", "structured_output_mode"}
     unknown_llm: set[str] = set(llm_dict.keys()) - allowed
     if unknown_llm:
         return f"unknown llm keys: {sorted(unknown_llm)}"
@@ -457,6 +466,14 @@ def _validate_llm_update(llm: object) -> dict[str, Any] | str:
         if not isinstance(ol, str) or ol not in _ALLOWED_OUTPUT_LANGS:
             return f"llm.output_lang must be one of {sorted(_ALLOWED_OUTPUT_LANGS)}"
         validated["output_lang"] = ol
+    if "structured_output_mode" in llm_dict:
+        mode: object = llm_dict["structured_output_mode"]
+        if not isinstance(mode, str) or mode not in _ALLOWED_STRUCTURED_OUTPUT_MODES:
+            return (
+                "llm.structured_output_mode must be one of "
+                f"{sorted(_ALLOWED_STRUCTURED_OUTPUT_MODES)}"
+            )
+        validated["structured_output_mode"] = mode
     return validated
 
 

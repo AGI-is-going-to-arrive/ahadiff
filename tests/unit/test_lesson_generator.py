@@ -29,6 +29,7 @@ from ahadiff.lesson.generator import (
 from ahadiff.lesson.scaffolding import compute_scaffolding_level
 from ahadiff.lesson.schemas import LessonCompact, LessonFull, LessonHint, parse_lesson_payload
 from ahadiff.llm.schemas import ProviderRequest, ProviderResponse
+from ahadiff.llm.structured import schema_spec_for
 from ahadiff.quiz.generator import QuizArtifactPaths, write_quiz_questions_jsonl
 from ahadiff.quiz.schemas import QuizEvidence, QuizQuestion
 
@@ -294,6 +295,118 @@ def test_generate_lessons_from_run_writes_expected_artifacts(
     assert bundle.claims_text
 
 
+def test_generate_lessons_from_run_attaches_lesson_schema_metadata_for_all_variants(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_lesson_run_artifacts(workspace_root, "run_lesson_schema")
+    fake_provider = _FakeLessonProvider()
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeLessonProvider:
+        return fake_provider
+
+    monkeypatch.setattr("ahadiff.lesson.generator.make_provider", fake_provider_factory)
+
+    generate_lessons_from_run(
+        run_id="run_lesson_schema",
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        structured_output_mode="native_json_schema",
+        structured_validation_retries=1,
+    )
+
+    assert [request.prompt_name for request in fake_provider.requests] == [
+        "lesson.generate",
+        "lesson.hint",
+        "lesson.compact",
+    ]
+    for request, schema_name in zip(
+        fake_provider.requests,
+        ("lesson_full.v1", "lesson_hint.v1", "lesson_compact.v1"),
+        strict=True,
+    ):
+        spec = schema_spec_for(schema_name)
+        assert request.response_format == "json_schema"
+        assert request.enforcement_mode == "native_json_schema"
+        assert request.output_schema_id == spec.schema_id
+        assert request.output_schema_version == spec.schema_version
+        assert request.output_schema_hash == spec.schema_hash
+        assert request.output_schema is not None
+
+
+def test_lesson_generation_retries_once_after_schema_validation_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_lesson_run_artifacts(workspace_root, "run_lesson_retry")
+    fake_provider = _FakeLessonProvider()
+    full_attempts = 0
+
+    def fake_generate(request: ProviderRequest) -> ProviderResponse:
+        nonlocal full_attempts
+        if request.prompt_name != "lesson.generate":
+            return _FakeLessonProvider.generate(fake_provider, request)
+        full_attempts += 1
+        fake_provider.prompt_names.append(request.prompt_name)
+        fake_provider.requests.append(request)
+        if full_attempts == 1:
+            return ProviderResponse(
+                content="not json",
+                model_id="gpt-5.4-mini",
+                input_tokens=10,
+                output_tokens=20,
+            )
+        return ProviderResponse(
+            content=_sample_lessons()[0].model_dump_json(),
+            model_id="gpt-5.4-mini",
+            input_tokens=10,
+            output_tokens=20,
+        )
+
+    fake_provider.generate = fake_generate  # type: ignore[method-assign]
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeLessonProvider:
+        return fake_provider
+
+    monkeypatch.setattr("ahadiff.lesson.generator.make_provider", fake_provider_factory)
+
+    paths = generate_lessons_from_run(
+        run_id="run_lesson_retry",
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        structured_output_mode="native_json_schema",
+        structured_validation_retries=1,
+    )
+
+    full_requests = [
+        request for request in fake_provider.requests if request.prompt_name == "lesson.generate"
+    ]
+    assert len(full_requests) == 2
+    retry_feedback = full_requests[1].payload_text.split("The previous response", 1)[1]
+    assert "lesson_full.v1" in retry_feedback
+    assert "diff --git" not in retry_feedback
+    assert '"properties"' not in retry_feedback
+    assert "## TL;DR" in paths.full_path.read_text(encoding="utf-8")
+
+
 def test_generate_lessons_from_run_fills_missing_full_quiz_and_sources(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -402,6 +515,8 @@ def test_generate_lessons_from_run_repairs_section_shaped_full_lesson(
         ),
         api_key=None,
         security_config=SecurityConfig(),
+        structured_output_mode="native_json_schema",
+        structured_validation_retries=1,
     )
 
     full_text = paths.full_path.read_text(encoding="utf-8")

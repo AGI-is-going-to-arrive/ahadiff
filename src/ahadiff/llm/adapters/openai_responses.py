@@ -6,6 +6,7 @@ from ahadiff.contracts import ProviderCapabilities
 
 from ..provider import AdapterBase
 from ..schemas import ProviderRequest, ProviderResponse
+from .structured import responses_text_format
 from .thinking import normalize_thinking_level
 
 if TYPE_CHECKING:
@@ -18,6 +19,10 @@ class OpenAIResponsesAdapter(AdapterBase):
         return ProviderCapabilities(
             supports_stream=True,
             supports_json_mode=True,
+            supports_json_object_mode=True,
+            supports_native_json_schema=True,
+            supports_schema_name=True,
+            supports_schema_strict_flag=True,
             supports_tool_use=True,
             supports_temperature=True,
             supports_rate_limit_headers=True,
@@ -48,7 +53,10 @@ class OpenAIResponsesAdapter(AdapterBase):
         thinking = normalize_thinking_level(request.thinking_level)
         if thinking != "none":
             payload["reasoning"] = {"effort": thinking}
-        if request.response_format == "json":
+        text_format = responses_text_format(request)
+        if text_format is not None:
+            payload["text"] = text_format
+        elif request.response_format == "json":
             payload["text"] = {"format": {"type": "json_object"}}
         base = self.config.base_url.rstrip("/")
         prefix = base if base.endswith("/v1") else f"{base}/v1"

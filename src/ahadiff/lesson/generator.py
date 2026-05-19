@@ -15,7 +15,13 @@ from ahadiff.contracts import PrivacyMode, ProviderConfig, compute_runtime_eval_
 from ahadiff.core.errors import InputError
 from ahadiff.core.json_util import safe_json_loads
 from ahadiff.i18n import prompt_language_instruction
-from ahadiff.llm import DEFAULT_OUTPUT_TOKEN_BUDGET, ProviderRequest, make_provider
+from ahadiff.llm import (
+    DEFAULT_OUTPUT_TOKEN_BUDGET,
+    ProviderRequest,
+    generate_with_validation_retry,
+    make_provider,
+)
+from ahadiff.llm.structured import schema_spec_for, structured_request_kwargs
 from ahadiff.safety.ignore import AllowlistPolicy
 from ahadiff.safety.redact import redaction_pipeline
 
@@ -33,6 +39,7 @@ if TYPE_CHECKING:
     import httpx
 
     from ahadiff.core.config import SecurityConfig
+    from ahadiff.llm.schemas import EnforcementMode
 
 LessonVariant = Literal["full", "hint", "compact"]
 _VALID_PRIVACY_MODES = frozenset({"strict_local", "redacted_remote", "explicit_remote"})
@@ -55,6 +62,19 @@ _VARIANT_OUTPUT_CAPS: dict[LessonVariant, int] = {
     "full": 24_000,
     "hint": 3000,
     "compact": 2500,
+}
+_VARIANT_SCHEMA_NAMES: dict[LessonVariant, str] = {
+    "full": "lesson_full.v1",
+    "hint": "lesson_hint.v1",
+    "compact": "lesson_compact.v1",
+}
+_VARIANT_SCHEMAS: dict[
+    LessonVariant,
+    type[LessonFull] | type[LessonHint] | type[LessonCompact],
+] = {
+    "full": LessonFull,
+    "hint": LessonHint,
+    "compact": LessonCompact,
 }
 
 
@@ -123,6 +143,8 @@ def generate_lesson(
     input_token_budget: int | None = None,
     output_token_budget: int | None = None,
     output_token_cap: int | None = None,
+    structured_output_mode: EnforcementMode = "json_object",
+    structured_validation_retries: int = 0,
 ) -> LessonFull:
     payload = _generate_variant_payload(
         variant="full",
@@ -140,6 +162,8 @@ def generate_lesson(
         input_token_budget=input_token_budget,
         output_token_budget=output_token_budget,
         output_token_cap=output_token_cap,
+        structured_output_mode=structured_output_mode,
+        structured_validation_retries=structured_validation_retries,
     )
     parsed = _parse_lesson_payload_with_fallbacks(payload, schema=LessonFull, bundle=bundle)
     lesson = cast("LessonFull", parsed)
@@ -164,6 +188,8 @@ def generate_hint(
     input_token_budget: int | None = None,
     output_token_budget: int | None = None,
     output_token_cap: int | None = None,
+    structured_output_mode: EnforcementMode = "json_object",
+    structured_validation_retries: int = 0,
 ) -> LessonHint:
     payload = _generate_variant_payload(
         variant="hint",
@@ -181,6 +207,8 @@ def generate_hint(
         input_token_budget=input_token_budget,
         output_token_budget=output_token_budget,
         output_token_cap=output_token_cap,
+        structured_output_mode=structured_output_mode,
+        structured_validation_retries=structured_validation_retries,
     )
     parsed = _parse_lesson_payload_with_fallbacks(payload, schema=LessonHint, bundle=bundle)
     return cast("LessonHint", parsed)
@@ -202,6 +230,8 @@ def generate_compact(
     input_token_budget: int | None = None,
     output_token_budget: int | None = None,
     output_token_cap: int | None = None,
+    structured_output_mode: EnforcementMode = "json_object",
+    structured_validation_retries: int = 0,
 ) -> LessonCompact:
     payload = _generate_variant_payload(
         variant="compact",
@@ -219,6 +249,8 @@ def generate_compact(
         input_token_budget=input_token_budget,
         output_token_budget=output_token_budget,
         output_token_cap=output_token_cap,
+        structured_output_mode=structured_output_mode,
+        structured_validation_retries=structured_validation_retries,
     )
     parsed = _parse_lesson_payload_with_fallbacks(payload, schema=LessonCompact, bundle=bundle)
     return cast("LessonCompact", parsed)
@@ -568,6 +600,8 @@ def generate_lessons_from_run(
     output_token_budget: int | None = None,
     lesson_output_token_caps: Mapping[LessonVariant, int] | None = None,
     on_sub_progress: Callable[[str], None] | None = None,
+    structured_output_mode: EnforcementMode = "json_object",
+    structured_validation_retries: int = 0,
 ) -> LessonArtifactPaths:
     bundle = load_redacted_run_bundle(
         run_id=run_id,
@@ -591,6 +625,8 @@ def generate_lessons_from_run(
         input_token_budget=input_token_budget,
         output_token_budget=output_token_budget,
         output_token_cap=_output_token_cap_for_variant("full", lesson_output_token_caps),
+        structured_output_mode=structured_output_mode,
+        structured_validation_retries=structured_validation_retries,
     )
     if on_sub_progress is not None:
         on_sub_progress("Generating hint lesson (2/3)")
@@ -609,6 +645,8 @@ def generate_lessons_from_run(
         input_token_budget=input_token_budget,
         output_token_budget=output_token_budget,
         output_token_cap=_output_token_cap_for_variant("hint", lesson_output_token_caps),
+        structured_output_mode=structured_output_mode,
+        structured_validation_retries=structured_validation_retries,
     )
     if on_sub_progress is not None:
         on_sub_progress("Generating compact lesson (3/3)")
@@ -627,6 +665,8 @@ def generate_lessons_from_run(
         input_token_budget=input_token_budget,
         output_token_budget=output_token_budget,
         output_token_cap=_output_token_cap_for_variant("compact", lesson_output_token_caps),
+        structured_output_mode=structured_output_mode,
+        structured_validation_retries=structured_validation_retries,
     )
     return write_lesson_artifacts(
         run_path=run_path,
@@ -744,6 +784,8 @@ def _generate_variant_payload(
     input_token_budget: int | None = None,
     output_token_budget: int | None = None,
     output_token_cap: int | None = None,
+    structured_output_mode: EnforcementMode = "json_object",
+    structured_validation_retries: int = 0,
 ) -> str:
     prompt_text = load_lesson_prompt(variant)
     payload_text = build_lesson_payload(
@@ -788,38 +830,58 @@ def _generate_variant_payload(
         execution_origin=f"lesson_{variant}",
         **budget_kwargs,
     )
+    schema_name = _VARIANT_SCHEMA_NAMES[variant]
+    schema_spec = schema_spec_for(schema_name)
+    schema = _VARIANT_SCHEMAS[variant]
+    request = ProviderRequest(
+        prompt_name=_PROMPT_NAMES[variant],
+        prompt_fingerprint=prompt_fingerprint,
+        prompt_version=prompt_fingerprint,
+        eval_bundle_version=compute_runtime_eval_bundle_version(),
+        model=provider_config.model_name,
+        payload_text=payload_text,
+        diff_content=bundle.patch_text,
+        source_ref=str(bundle.metadata["source_ref"]),
+        output_lang=output_lang,
+        privacy_mode=resolved_privacy_mode,
+        redacted_payload_text=redacted_payload_text,
+        findings=findings,
+        max_output_tokens=_resolve_request_max_output_tokens(
+            provider_config=provider_config,
+            output_token_budget=output_token_budget,
+            output_token_cap=(
+                output_token_cap if output_token_cap is not None else _VARIANT_OUTPUT_CAPS[variant]
+            ),
+            default_output_token_cap=_VARIANT_OUTPUT_CAPS[variant],
+        ),
+        thinking_level=provider_config.thinking_level,
+        **structured_request_kwargs(
+            schema_name=schema_name,
+            provider_class=provider_config.provider_class,
+            mode=structured_output_mode,
+        ),
+    )
+
+    def _validate(payload: str) -> str:
+        parse_lesson_payload(payload, schema=schema)
+        return payload
+
+    def _fallback(payload: str) -> str:
+        _parse_lesson_payload_with_fallbacks(payload, schema=schema, bundle=bundle)
+        return payload
+
     try:
-        response = provider.generate(
-            ProviderRequest(
-                prompt_name=_PROMPT_NAMES[variant],
-                prompt_fingerprint=prompt_fingerprint,
-                prompt_version=prompt_fingerprint,
-                eval_bundle_version=compute_runtime_eval_bundle_version(),
-                model=provider_config.model_name,
-                payload_text=payload_text,
-                diff_content=bundle.patch_text,
-                source_ref=str(bundle.metadata["source_ref"]),
-                output_lang=output_lang,
-                privacy_mode=resolved_privacy_mode,
-                redacted_payload_text=redacted_payload_text,
-                findings=findings,
-                response_format="json",
-                max_output_tokens=_resolve_request_max_output_tokens(
-                    provider_config=provider_config,
-                    output_token_budget=output_token_budget,
-                    output_token_cap=(
-                        output_token_cap
-                        if output_token_cap is not None
-                        else _VARIANT_OUTPUT_CAPS[variant]
-                    ),
-                    default_output_token_cap=_VARIANT_OUTPUT_CAPS[variant],
-                ),
-                thinking_level=provider_config.thinking_level,
-            )
+        result = generate_with_validation_retry(
+            provider=provider,
+            request=request,
+            schema_spec=schema_spec,
+            parse=_validate,
+            fallback_parse=_fallback,
+            max_validation_retries=structured_validation_retries,
         )
     finally:
         provider.close()
-    return response.content
+    return result.value
 
 
 def _output_token_cap_for_variant(

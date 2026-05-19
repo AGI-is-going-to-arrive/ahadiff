@@ -90,6 +90,7 @@ See the [User Guide](./docs/USER_GUIDE.en.html) for all 9 diff capture modes, ex
 
 - **Learn**: `ahadiff learn` supports 9 diff capture modes: git commit, range, time-window (`--since`), staged, unstaged, patch, patch URL, file compare, and directory compare.
 - **Evidence-linked claims**: every lesson conclusion is tied to `file:line` evidence, with verification states such as verified, weak, not proven, contradicted, and rejected.
+- **Structured LLM output**: generation uses schema-aware JSON contracts where supported, while keeping the existing parser, repair, and degraded fallback paths.
 - **Quiz and review**: `ahadiff quiz` tests the run you just learned; `ahadiff review` brings back older cards with spaced repetition. Quiz count is fixed by default and can adapt to diff size when enabled.
 - **Scoring**: each run gets an 8-dimension score, with an optional LLM judge when configured.
 - **WebUI**: `ahadiff serve` opens Dashboard, Lesson, Diff, Quiz, Review, Concepts, Run Detail, Settings, and Guide.

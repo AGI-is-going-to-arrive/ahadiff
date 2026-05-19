@@ -80,6 +80,7 @@ def build_provider_audit_record(
     billing_mode: str,
     execution_origin: str,
     api_principal_hash: str,
+    structured_output: dict[str, Any] | None = None,
     partial_tokens: int | None = None,
     note: str | None = None,
 ) -> dict[str, Any]:
@@ -102,6 +103,8 @@ def build_provider_audit_record(
         "execution_origin": execution_origin,
         "api_principal_hash": api_principal_hash,
     }
+    if structured_output is not None:
+        record["structured_output"] = structured_output
     if partial_tokens is not None:
         record["partial_tokens"] = partial_tokens
     if note is not None:

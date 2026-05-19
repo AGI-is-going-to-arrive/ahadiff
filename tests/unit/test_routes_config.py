@@ -77,6 +77,10 @@ def _validate_quiz_update_for_test(
     )
 
 
+def _validate_llm_update_for_test(payload: object) -> dict[str, Any] | str:
+    return cast("Any", routes_config_module)._validate_llm_update(payload)
+
+
 # ---------------------------------------------------------------------------
 # GET /api/config
 # ---------------------------------------------------------------------------
@@ -113,6 +117,34 @@ def test_quiz_config_contract_rejects_invalid_auto_range(
 def test_quiz_config_contract_rejects_auto_range_min_above_max() -> None:
     with pytest.raises(ValidationError, match="quiz_auto_range_min"):
         QuizConfig.model_validate({"quiz_auto_range_min": 8, "quiz_auto_range_max": 3})
+
+
+def test_validate_llm_update_accepts_structured_output_controls() -> None:
+    assert _validate_llm_update_for_test(
+        {
+            "structured_output_mode": "native_json_schema",
+            "structured_validation_retries": 2,
+        }
+    ) == {
+        "structured_output_mode": "native_json_schema",
+        "structured_validation_retries": 2,
+    }
+
+
+@pytest.mark.parametrize("value", ["auto", "", 3, True])
+def test_validate_llm_update_rejects_unknown_structured_output_mode(value: object) -> None:
+    result = _validate_llm_update_for_test({"structured_output_mode": value})
+
+    assert isinstance(result, str)
+    assert "llm.structured_output_mode" in result
+
+
+@pytest.mark.parametrize("value", [-1, 3, True, "1"])
+def test_validate_llm_update_rejects_invalid_validation_retries(value: object) -> None:
+    result = _validate_llm_update_for_test({"structured_validation_retries": value})
+
+    assert isinstance(result, str)
+    assert "llm.structured_validation_retries" in result
 
 
 def test_get_config_returns_json_with_expected_keys(

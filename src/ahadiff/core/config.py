@@ -27,6 +27,12 @@ _LOCALE_PREFERENCE_KEYS = {"lang", "llm.prompt_lang", "llm.output_lang"}
 _CAPTURE_SYMBOL_EXTRACTORS = {"auto", "builtin", "tree_sitter"}
 _CAPTURE_FILE_RANKINGS = {"learning_value", "changed_lines", "path"}
 _QUIZ_QUESTION_COUNT_MODES = {"fixed", "auto"}
+_STRUCTURED_OUTPUT_MODES = {
+    "prompt_contract",
+    "json_object",
+    "native_json_schema",
+    "strict_tool",
+}
 _POSITIVE_INT_KEYS = {
     "capture.max_files",
     "capture.hard_limit",
@@ -79,6 +85,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "misconception_cards_output_cap": 3_000,
         "prompt_lang": "auto",
         "output_lang": "auto",
+        "structured_output_mode": "json_object",
+        "structured_validation_retries": 0,
     },
     "pricing": {
         "openrouter_enabled": True,
@@ -291,6 +299,13 @@ def _coerce_value(
             allowed = ", ".join(sorted(_QUIZ_QUESTION_COUNT_MODES))
             raise ConfigError(f"{key} must be one of {allowed}, got {value!r}")
         return value
+    if key == "llm.structured_output_mode":
+        if not isinstance(value, str):
+            raise ConfigError(f"{key} expects str, got {type(value).__name__}")
+        if value not in _STRUCTURED_OUTPUT_MODES:
+            allowed = ", ".join(sorted(_STRUCTURED_OUTPUT_MODES))
+            raise ConfigError(f"{key} must be one of {allowed}, got {value!r}")
+        return value
     if isinstance(expected, bool):
         if isinstance(value, bool):
             return value
@@ -322,6 +337,10 @@ def _coerce_value(
             lo, hi = _QUIZ_QUESTION_COUNT_RANGE
             if coerced < lo or coerced > hi:
                 raise ConfigError(f"{key} must be between {lo} and {hi}")
+            return coerced
+        if key == "llm.structured_validation_retries":
+            if coerced < 0 or coerced > 2:
+                raise ConfigError(f"{key} must be between 0 and 2")
             return coerced
         if key in _POSITIVE_INT_KEYS and coerced < 1:
             raise ConfigError(f"{key} must be >= 1")

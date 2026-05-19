@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import threading
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, cast
 
 import httpx
@@ -16,7 +17,13 @@ from ahadiff.core.paths import usage_db_path
 from ahadiff.llm import ProviderRequest, adapter_conformance_test, make_provider
 from ahadiff.llm import provider as provider_module
 from ahadiff.llm import usage as usage_module
+from ahadiff.llm.adapters.anthropic import AnthropicAdapter
 from ahadiff.llm.adapters.azure import AzureOpenAIAdapter
+from ahadiff.llm.adapters.gemini import GeminiAdapter
+from ahadiff.llm.adapters.lmstudio import LMStudioAdapter
+from ahadiff.llm.adapters.newapi import NewAPIAdapter
+from ahadiff.llm.adapters.ollama import OllamaAdapter
+from ahadiff.llm.adapters.openai import OpenAIChatAdapter
 from ahadiff.llm.adapters.openai_compat import OpenAICompatAdapter
 from ahadiff.llm.adapters.openai_responses import OpenAIResponsesAdapter
 from ahadiff.llm.cache import build_cache_key
@@ -24,6 +31,7 @@ from ahadiff.llm.cost import (
     DEFAULT_OPENROUTER_MODELS_URL,
     PricingEntry,
     estimate_cost_usd,
+    estimate_request_tokens,
     fetch_openrouter_pricing_catalog,
     official_pricing_source_url,
     reset_openrouter_pricing_cache,
@@ -85,6 +93,24 @@ def _request(**overrides: Any) -> ProviderRequest:
     }
     payload.update(overrides)
     return ProviderRequest(**payload)
+
+
+def _structured_request(**overrides: Any) -> ProviderRequest:
+    payload: dict[str, Any] = {
+        "response_format": "json_schema",
+        "output_schema_id": "claim_candidates",
+        "output_schema_version": "1",
+        "output_schema_hash": "sha256:test",
+        "output_schema": {
+            "type": "object",
+            "properties": {"claims": {"type": "array", "items": {"type": "object"}}},
+            "required": ["claims"],
+            "additionalProperties": False,
+        },
+        "enforcement_mode": "native_json_schema",
+    }
+    payload.update(overrides)
+    return _request(**payload)
 
 
 def _usage_record() -> UsageRecord:
@@ -252,6 +278,185 @@ def test_openai_responses_provider_sends_responses_request_and_parses_response()
     assert response.request_id == "req-responses-123"
 
 
+def test_openai_chat_uses_native_json_schema_when_requested() -> None:
+    adapter = OpenAIChatAdapter(_provider_config("openai"))
+    _method, _url, _headers, payload = adapter.build_request(
+        _structured_request(),
+        api_key="test-key",
+    )
+
+    assert payload["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "claim_candidates_v1",
+            "strict": True,
+            "schema": _structured_request().output_schema,
+        },
+    }
+
+
+def test_openai_responses_uses_native_json_schema_when_requested() -> None:
+    adapter = OpenAIResponsesAdapter(_provider_config("openai_responses"))
+    _method, _url, _headers, payload = adapter.build_request(
+        _structured_request(),
+        api_key="test-key",
+    )
+
+    assert payload["text"] == {
+        "format": {
+            "type": "json_schema",
+            "name": "claim_candidates_v1",
+            "strict": True,
+            "schema": _structured_request().output_schema,
+        }
+    }
+
+
+@pytest.mark.parametrize(
+    ("adapter", "provider_class"),
+    [
+        (AzureOpenAIAdapter, "azure"),
+        (OpenAICompatAdapter, "newapi"),
+        (NewAPIAdapter, "newapi"),
+        (LMStudioAdapter, "lmstudio"),
+    ],
+)
+def test_openai_compatible_adapters_use_native_json_schema_when_requested(
+    adapter: type[AzureOpenAIAdapter | OpenAICompatAdapter],
+    provider_class: str,
+) -> None:
+    instance = adapter(_provider_config(provider_class))
+    _method, _url, _headers, payload = instance.build_request(
+        _structured_request(),
+        api_key="test-key",
+    )
+
+    assert payload["response_format"]["type"] == "json_schema"
+    assert payload["response_format"]["json_schema"]["name"] == "claim_candidates_v1"
+    assert payload["response_format"]["json_schema"]["strict"] is True
+    assert (
+        payload["response_format"]["json_schema"]["schema"] == _structured_request().output_schema
+    )
+
+
+def test_gemini_uses_native_json_schema_when_requested() -> None:
+    adapter = GeminiAdapter(_provider_config("gemini"))
+    _method, _url, _headers, payload = adapter.build_request(
+        _structured_request(),
+        api_key="test-key",
+    )
+
+    assert payload["generationConfig"]["responseMimeType"] == "application/json"
+    assert payload["generationConfig"]["responseSchema"] == _structured_request().output_schema
+    assert "responseFormat" not in payload["generationConfig"]
+
+
+def test_anthropic_uses_output_config_json_schema_when_requested() -> None:
+    adapter = AnthropicAdapter(_provider_config("anthropic"))
+    _method, _url, _headers, payload = adapter.build_request(
+        _structured_request(),
+        api_key="test-key",
+    )
+
+    assert payload["output_config"] == {
+        "format": {
+            "type": "json_schema",
+            "schema": _structured_request().output_schema,
+        }
+    }
+
+
+def test_ollama_uses_format_schema_when_requested() -> None:
+    adapter = OllamaAdapter(_provider_config("ollama"))
+    _method, _url, _headers, payload = adapter.build_request(
+        _structured_request(),
+        api_key=None,
+    )
+
+    assert payload["format"] == _structured_request().output_schema
+
+
+def test_ollama_preserves_json_object_format() -> None:
+    adapter = OllamaAdapter(_provider_config("ollama"))
+    _method, _url, _headers, payload = adapter.build_request(
+        _request(response_format="json"),
+        api_key=None,
+    )
+
+    assert payload["format"] == "json"
+
+
+def test_provider_downgrades_strict_tool_request_to_native_schema(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        assert payload["response_format"]["type"] == "json_schema"
+        return _openai_success_response(content="{}")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        workspace_root=tmp_path,
+        client=client,
+    )
+    try:
+        response = provider.generate(_structured_request(enforcement_mode="strict_tool"))
+    finally:
+        provider.close()
+
+    assert "structured_output_downgraded:strict_tool_to_native_json_schema" in response.notes
+    record = json.loads(
+        (tmp_path / ".ahadiff" / "audit.jsonl").read_text(encoding="utf-8").splitlines()[0]
+    )
+    assert record["structured_output"]["enforcement_mode"] == "native_json_schema"
+
+
+def test_newapi_provider_downgrades_native_schema_to_json_object(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        assert payload["response_format"] == {"type": "json_object"}
+        return _openai_success_response(content="{}")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("newapi"),
+        api_key="test-key",
+        workspace_root=tmp_path,
+        client=client,
+    )
+    try:
+        response = provider.generate(_structured_request())
+    finally:
+        provider.close()
+
+    assert "structured_output_downgraded:native_json_schema_to_json_object" in response.notes
+    record = json.loads(
+        (tmp_path / ".ahadiff" / "audit.jsonl").read_text(encoding="utf-8").splitlines()[0]
+    )
+    assert record["structured_output"]["enforcement_mode"] == "json_object"
+
+
+def test_lmstudio_provider_keeps_native_json_schema(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        assert payload["response_format"]["type"] == "json_schema"
+        return _openai_success_response(content="{}")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("lmstudio"),
+        api_key="test-key",
+        workspace_root=tmp_path,
+        client=client,
+    )
+    try:
+        response = provider.generate(_structured_request())
+    finally:
+        provider.close()
+
+    assert not any(note.startswith("structured_output_downgraded:") for note in response.notes)
+
+
 def test_provider_request_rejects_redirect_even_when_client_follows_redirects() -> None:
     seen_urls: list[str] = []
 
@@ -399,7 +604,7 @@ def test_repo_local_hosts_are_ignored_under_strict_local() -> None:
 
 
 def test_redacted_remote_sends_redacted_payload_and_audit_omits_prompt_text(tmp_path: Path) -> None:
-    secret = 'OPENAI_API_KEY="sk-abcdefghijklmnopqrstuvwxyz123456"'
+    secret = 'OPENAI_API_KEY="' + ("sk-" + "a" * 24) + '"'
     redaction = redaction_pipeline(secret)
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -434,6 +639,86 @@ def test_redacted_remote_sends_redacted_payload_and_audit_omits_prompt_text(tmp_
     assert "OPENAI_API_KEY" not in audit_text
     assert "[REDACTED:openai_api_key]" not in audit_text
     assert '"schema_version": 1' in audit_text
+
+
+def test_redacted_remote_rejects_unredacted_native_schema_secret(tmp_path: Path) -> None:
+    secret = 'OPENAI_API_KEY="' + ("sk-" + "a" * 24) + '"'
+    redaction = redaction_pipeline(secret)
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda _: _openai_success_response(content="{}")),
+        trust_env=False,
+    )
+    provider = make_provider(
+        _provider_config("openai", base_url="http://8.8.8.8"),
+        api_key="test-key",
+        workspace_root=tmp_path,
+        client=client,
+    )
+    try:
+        with pytest.raises(SafetyError, match="unredacted secret remains"):
+            provider.generate(
+                _structured_request(
+                    payload_text=secret,
+                    redacted_payload_text=redaction.redacted_text,
+                    diff_content=secret,
+                    privacy_mode="redacted_remote",
+                    findings=redaction.findings,
+                    output_schema={
+                        "type": "object",
+                        "description": secret,
+                        "properties": {"claims": {"type": "array"}},
+                    },
+                )
+            )
+    finally:
+        provider.close()
+
+
+def test_provider_audit_records_structured_output_metadata_without_schema_body(
+    tmp_path: Path,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        assert payload["response_format"]["type"] == "json_schema"
+        return _openai_success_response(content="{}")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        workspace_root=tmp_path,
+        client=client,
+    )
+    try:
+        provider.generate(
+            _request(
+                response_format="json_schema",
+                output_schema_id="claim_candidates",
+                output_schema_version="1",
+                output_schema_hash="sha256:1111",
+                output_schema={
+                    "type": "object",
+                    "properties": {"claims": {"type": "array"}},
+                },
+                enforcement_mode="native_json_schema",
+            )
+        )
+    finally:
+        provider.close()
+
+    record = json.loads(
+        (tmp_path / ".ahadiff" / "audit.jsonl").read_text(encoding="utf-8").splitlines()[0]
+    )
+    assert record["structured_output"] == {
+        "response_format": "json_schema",
+        "output_schema_id": "claim_candidates",
+        "output_schema_version": "1",
+        "output_schema_hash": "sha256:1111",
+        "normalized_output_schema_hash": None,
+        "enforcement_mode": "native_json_schema",
+    }
+    assert "output_schema" not in record
+    assert "properties" not in json.dumps(record, ensure_ascii=False)
 
 
 def test_request_hash_is_salted_per_audit_event(tmp_path: Path) -> None:
@@ -696,6 +981,23 @@ def test_context_clipping_sets_token_exceeded_flag() -> None:
     assert captured_lengths[0] < len(long_payload)
 
 
+def test_provider_reserves_output_tokens_against_context_window() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        raise AssertionError("provider should reject before network dispatch")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai", max_context=20),
+        api_key="test-key",
+        client=client,
+    )
+    try:
+        with pytest.raises(ProviderError, match="context window exceeded"):
+            provider.generate(_request(payload_text="short prompt", max_output_tokens=18))
+    finally:
+        provider.close()
+
+
 def test_cache_key_hashes_diff_content_without_embedding_raw_patch() -> None:
     large_diff = "x" * 20_000
     cache_key = build_cache_key(
@@ -721,6 +1023,46 @@ def test_cache_key_hashes_diff_content_without_embedding_raw_patch() -> None:
     )
     assert len(cache_key) == 64
     assert large_diff not in cache_key
+
+
+def test_cache_key_separates_response_format_and_schema_hash() -> None:
+    base = CacheKeyInput(
+        diff_content="diff --git a/app.py b/app.py\n+print('hi')",
+        source_ref="HEAD",
+        prompt_name="claim.extract",
+        prompt_fingerprint="prompt-v1",
+        prompt_version="prompt-v1",
+        eval_bundle_version="bundle-v1",
+        provider_class="openai",
+        provider_kind="openai_chat",
+        base_url="https://api.openai.com/v1",
+        model_id="gpt-5.4-mini",
+        api_family="openai",
+        api_family_version="v1",
+        output_lang="en",
+        privacy_mode="strict_local",
+        redaction_config="cfg",
+        context_bundle_hash="ctx",
+        request_payload_sha256="payload",
+        response_format="json",
+        output_schema_id="claim_candidates",
+        output_schema_version="1",
+        output_schema_hash="sha256:1111",
+        enforcement_mode="json_object",
+    )
+
+    assert build_cache_key(base) != build_cache_key(
+        replace(
+            base,
+            response_format="json_schema",
+            enforcement_mode="native_json_schema",
+        )
+    )
+    assert build_cache_key(base) != build_cache_key(replace(base, output_schema_hash="sha256:2222"))
+    assert build_cache_key(base) != build_cache_key(
+        replace(base, normalized_output_schema_hash="sha256:3333")
+    )
+    assert build_cache_key(base) != build_cache_key(replace(base, temperature=0.8))
 
 
 def test_cache_key_separates_api_family_versions() -> None:
@@ -783,6 +1125,45 @@ def test_cache_key_separates_provider_and_base_url() -> None:
     assert proxy_key != newapi_key
 
 
+def test_request_token_estimate_counts_schema_overhead() -> None:
+    base_request = _request(payload_text="short prompt", diff_content="short prompt")
+    json_object_schema_metadata_request = _request(
+        payload_text="short prompt",
+        diff_content="short prompt",
+        response_format="json",
+        output_schema_id="claim_candidates",
+        output_schema_version="1",
+        output_schema_hash="sha256:1111",
+        output_schema={"type": "object", "properties": {"claims": {"type": "array"}}},
+        enforcement_mode="json_object",
+    )
+    schema_request = _request(
+        payload_text="short prompt",
+        diff_content="short prompt",
+        response_format="json_schema",
+        output_schema_id="claim_candidates",
+        output_schema_version="1",
+        output_schema_hash="sha256:1111",
+        output_schema={"type": "object", "properties": {"claims": {"type": "array"}}},
+        enforcement_mode="native_json_schema",
+    )
+
+    assert (
+        estimate_request_tokens(
+            json_object_schema_metadata_request,
+            "char_div_4",
+        ).input_tokens
+        == estimate_request_tokens(base_request, "char_div_4").input_tokens
+    )
+    assert (
+        estimate_request_tokens(
+            schema_request,
+            "char_div_4",
+        ).input_tokens
+        > estimate_request_tokens(base_request, "char_div_4").input_tokens
+    )
+
+
 def test_provider_disk_cache_hit_skips_network_and_records_usage(tmp_path: Path) -> None:
     calls = {"count": 0}
 
@@ -825,6 +1206,33 @@ def test_provider_disk_cache_hit_skips_network_and_records_usage(tmp_path: Path)
         (0, 13, 5, 0.00003225, "openai-api-pricing-2026-04-23"),
         (1, 13, 5, 0.0, "cache-hit"),
     ]
+
+
+def test_provider_cache_separates_temperature(tmp_path: Path) -> None:
+    calls = {"count": 0}
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        return _openai_success_response(content=f"Temp {calls['count']}")
+
+    workspace_root = tmp_path / "repo"
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        workspace_root=workspace_root,
+        client=client,
+    )
+    try:
+        first = provider.generate(_request(temperature=0.0))
+        second = provider.generate(_request(temperature=0.8))
+    finally:
+        provider.close()
+
+    assert first.content == "Temp 1"
+    assert second.content == "Temp 2"
+    assert "cache_hit" not in second.notes
+    assert calls["count"] == 2
 
 
 @pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlink support")
@@ -1305,6 +1713,15 @@ def test_openai_compat_adapters_share_common_base() -> None:
 
     assert issubclass(NewAPIAdapter, OpenAICompatAdapter)
     assert issubclass(LMStudioAdapter, OpenAICompatAdapter)
+
+
+def test_openai_compat_capabilities_are_conservative_for_backend_dependent_schema() -> None:
+    assert OpenAICompatAdapter(_provider_config("newapi")).capabilities.supports_json_object_mode
+    assert not OpenAICompatAdapter(
+        _provider_config("newapi")
+    ).capabilities.supports_native_json_schema
+    assert not NewAPIAdapter(_provider_config("newapi")).capabilities.supports_native_json_schema
+    assert LMStudioAdapter(_provider_config("lmstudio")).capabilities.supports_native_json_schema
 
 
 def test_make_provider_rejects_max_concurrent_below_one() -> None:

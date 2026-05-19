@@ -48,6 +48,36 @@ def parse_misconception_cards(raw: str) -> list[MisconceptionCard]:
     return []
 
 
+def has_explicit_empty_misconception_cards(raw: str) -> bool:
+    for parsed in _extract_json_candidates(raw):
+        if _contains_explicit_empty_card_container(parsed):
+            return True
+        items = _coerce_card_items(parsed)
+        if items:
+            return False
+    return False
+
+
+def _contains_explicit_empty_card_container(value: Any) -> bool:
+    if isinstance(value, list):
+        return any(
+            _contains_explicit_empty_card_container(item) for item in cast("list[Any]", value)
+        )
+    if not isinstance(value, dict):
+        return False
+    value_map = cast("dict[str, Any]", value)
+    for key in _CARD_CONTAINER_KEYS:
+        raw_items = value_map.get(key)
+        if raw_items == []:
+            return True
+        if isinstance(raw_items, list):
+            return False
+    return any(
+        _contains_explicit_empty_card_container(nested)
+        for nested in _nested_card_sources(value_map)
+    )
+
+
 def _validate_card_items(items: list[Any]) -> list[MisconceptionCard]:
     cards: list[MisconceptionCard] = []
     for index, item in enumerate(items):
@@ -456,6 +486,7 @@ __all__ = [
     "MisconceptionCard",
     "MisconceptionSeverity",
     "build_misconception_prompt_payload",
+    "has_explicit_empty_misconception_cards",
     "load_misconception_prompt",
     "load_misconception_cards",
     "parse_misconception_cards",

@@ -13,7 +13,7 @@
 <body>
 <main class="wrap">
 <section class="hero">
-  <div class="eyebrow">AhaDiff User Guide · 2026-05-18 · <a href="USER_GUIDE.zh.html" style="text-decoration:none;color:var(--accent)">中文</a></div>
+  <div class="eyebrow">AhaDiff User Guide · 2026-05-19 · <a href="USER_GUIDE.zh.html" style="text-decoration:none;color:var(--accent)">中文</a></div>
   <h1>AhaDiff User Guide</h1>
   <p class="lead">AhaDiff turns a git diff into a code-grounded lesson, a list of verifiable claims, a quiz, review cards, a concept graph and a quality ratchet. It is local-first by default: each repository's own <code>.ahadiff/</code> is the source of truth.</p>
   <p class="notice">Video tutorials: <a href="video/output/ahadiff-tutorial.en.burned-subtitles.mp4">English walkthrough (MP4)</a>; <a href="video/output/ahadiff-tutorial.zh.burned-subtitles.mp4">Chinese walkthrough (MP4)</a>. Each video uses the matching UI language with burned-in subtitles; intermediate subtitle source files are not shipped in the public docs tree.</p>
@@ -151,6 +151,7 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</pre>
   <table><thead><tr><th>Feature</th><th>Status</th><th>Notes</th></tr></thead><tbody>
     <tr><td>Lesson / Claims / Quiz / Score</td><td class="ok">Default pipeline</td><td>Produced after <code>ahadiff learn</code>. Which specific artifacts get created depends on the diff and its learnability.</td></tr>
     <tr><td>Quiz question count</td><td class="ok">Fixed by default; adaptive is opt-in</td><td>Default is 3 questions. In Settings, or with <code>--quiz-mode auto</code>, AhaDiff uses diff stats to choose a bounded count; the default adaptive range is 3-8 questions.</td></tr>
+    <tr><td>Structured JSON output</td><td class="ok">Default JSON object mode; native schema is opt-in</td><td>The public artifacts stay the same. Unsupported provider modes downgrade without removing the local parser, repair, or degraded fallback behavior.</td></tr>
     <tr><td>WebUI / Dashboard / Diff / Review</td><td class="ok">Available by default</td><td>Open locally with <code>ahadiff serve</code>.</td></tr>
     <tr><td>GPT-5.5 LLM</td><td class="warn">Requires configuration</td><td>Configure the provider, base URL, model, and the API-key environment variable before use.</td></tr>
     <tr><td>Challenge</td><td class="warn">Off by default</td><td>Opt-in via configuration. The CLI currently exposes build / status; full progression happens through the WebUI / API.</td></tr>
@@ -176,7 +177,7 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
   <h3>What safety findings fail a run?</h3>
   <p>An unmitigated Critical safety finding fails the run. A Critical secret finding is treated as mitigated only when the local capture record shows a complete redaction shape, including the rule, hash, source, line, and column.</p>
   <h3>Can you guarantee there are no bugs?</h3>
-  <p>No — that level of guarantee isn't possible. This release validated backend unit / integration / eval suites, static checks, the wheel build, frontend typecheck / build / Vitest, the full Playwright suite, real-serve, the CLI behavior matrix, Linux target container tests, and the GPT-5.5 live fixture. Even so, full Windows and Linux runner runs should be re-executed before a release if your risk profile demands it.</p>
+  <p>No — that level of guarantee isn't possible. The last full release gate validated backend unit / integration / eval suites, static checks, the wheel build, frontend typecheck / build / Vitest, the full Playwright suite, real-serve, the CLI behavior matrix, Linux target container tests, and the GPT-5.5 live fixture. This structured-output follow-up re-ran the backend unit / integration / eval gates, static checks, and provider live smoke on synthetic fixtures. Even so, full Windows and Linux runner runs should be re-executed before a release if your risk profile demands it.</p>
 </section>
 
 <section id="verification">
@@ -184,12 +185,13 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
   <ul>
     <li>Screenshots come from the current <code>viewer/</code> via Playwright and existing serve mocks; no real credentials are included.</li>
     <li>The real-serve checks bring up a real <code>python -m ahadiff serve</code> against a throwaway git repo and use a browser to exercise token, estimate, learn dry-run, task, and progress-stream flows.</li>
+    <li>Structured-output live smoke used synthetic fixtures across local LM Studio, local Ollama, a local OpenAI-compatible endpoint, a local Anthropic-compatible endpoint, and Gemini AI Studio. Credentials were supplied only through temporary process environment variables.</li>
     <li>GPT-5.5 live verification uses the configured provider plus synthetic fixtures — it is not an unconstrained full-repo LLM run against the entire current codebase.</li>
     <li>For cross-platform: the host machine is macOS. A Linux Docker smoke run confirms that the source installs cleanly, that targeted cross-platform / reparse / SQLite race unit tests pass, and that the CLI loads. A separate Linux <code>node:22-bookworm</code> image with a hand-built SQLite 3.51.3 also passes the targeted tests and the <code>doctor</code> SQLite gate. There is still no real Windows runner result. Recent GitHub Actions jobs failed to start (annotations show billing / spending limit blocks), so that should not be read as "remote CI is green." Backend CI, Frontend CI, Pages, and Release workflows have had their push triggers disabled in this repo; manual dispatch, PRs, and the nightly schedule still trigger them.</li>
   </ul>
 </section>
 
-<p class="footer">Generated 2026-05-18. This document is a self-contained HTML file; the screenshots and the CSS workflow animation are embedded inline.</p>
+<p class="footer">Generated 2026-05-19. This document is a self-contained HTML file; the screenshots and the CSS workflow animation are embedded inline.</p>
 </main>
 </body>
 </html>

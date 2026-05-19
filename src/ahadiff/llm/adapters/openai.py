@@ -6,6 +6,7 @@ from ahadiff.contracts import ProviderCapabilities
 
 from ..provider import AdapterBase
 from ..schemas import ProviderRequest, ProviderResponse
+from .structured import openai_json_schema_format
 from .thinking import reject_unsupported_thinking
 
 if TYPE_CHECKING:
@@ -18,6 +19,10 @@ class OpenAIChatAdapter(AdapterBase):
         return ProviderCapabilities(
             supports_stream=True,
             supports_json_mode=True,
+            supports_json_object_mode=True,
+            supports_native_json_schema=True,
+            supports_schema_name=True,
+            supports_schema_strict_flag=True,
             supports_tool_use=True,
             supports_temperature=True,
             supports_rate_limit_headers=True,
@@ -47,7 +52,10 @@ class OpenAIChatAdapter(AdapterBase):
             payload["temperature"] = request.temperature
         if request.max_output_tokens is not None:
             payload["max_tokens"] = request.max_output_tokens
-        if request.response_format == "json":
+        native_format = openai_json_schema_format(request)
+        if native_format is not None:
+            payload["response_format"] = native_format
+        elif request.response_format == "json":
             payload["response_format"] = {"type": "json_object"}
         base = self.config.base_url.rstrip("/")
         prefix = base if base.endswith("/v1") else f"{base}/v1"

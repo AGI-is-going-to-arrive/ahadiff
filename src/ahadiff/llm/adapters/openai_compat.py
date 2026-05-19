@@ -11,6 +11,11 @@ class OpenAICompatAdapter(OpenAIChatAdapter):
         return ProviderCapabilities(
             supports_stream=True,
             supports_json_mode=True,
+            supports_json_object_mode=True,
+            supports_native_json_schema=False,
+            supports_schema_name=True,
+            supports_schema_strict_flag=True,
+            structured_output_notes=("backend-dependent",),
             supports_tool_use=True,
             supports_temperature=True,
             supports_rate_limit_headers=True,

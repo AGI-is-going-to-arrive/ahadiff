@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 import threading
 import time
@@ -86,9 +87,23 @@ class CostEstimate:
 def estimate_request_tokens(
     request: ProviderRequest, strategy: TokenizerEstimation
 ) -> TokenEstimate:
+    schema_overhead = _schema_overhead_text(request)
+    payload = request.effective_payload()
+    combined = payload if not schema_overhead else f"{payload}\n{schema_overhead}"
     return TokenEstimate(
-        input_tokens=estimate_text_tokens(request.effective_payload(), strategy),
+        input_tokens=estimate_text_tokens(combined, strategy),
         strategy=strategy,
+    )
+
+
+def _schema_overhead_text(request: ProviderRequest) -> str:
+    if request.output_schema is None or request.response_format != "json_schema":
+        return ""
+    return json.dumps(
+        request.output_schema,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
     )
 
 

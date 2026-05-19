@@ -70,6 +70,20 @@ class Provider(Protocol):
     def generate(self, request: ProviderRequest) -> ProviderResponse: ...
 
 
+def _privacy_enforcement_text(request: ProviderRequest) -> str:
+    parts = [request.effective_payload()]
+    if request.response_format == "json_schema" and request.output_schema is not None:
+        parts.append(
+            json.dumps(
+                request.output_schema,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
+    return "\n".join(parts)
+
+
 class AdapterBase(ABC):
     def __init__(self, config: ProviderConfig) -> None:
         self.config = config
@@ -222,13 +236,14 @@ class ManagedProvider:
             and getattr(self.client, "_trust_env", False)
         ):
             raise SafetyError("strict_local mode requires an http client with trust_env=False")
-        payload_text = request.effective_payload()
+        request_to_send, structured_notes = self._resolve_structured_output_request(request)
+        payload_text = request_to_send.effective_payload()
         enforce_privacy_mode(
-            request.privacy_mode,
+            request_to_send.privacy_mode,
             target=transport_target,
-            text=payload_text,
-            findings=request.findings,
-            is_redacted=request.is_redacted_payload,
+            text=_privacy_enforcement_text(request_to_send),
+            findings=request_to_send.findings,
+            is_redacted=request_to_send.is_redacted_payload,
         )
         if transport_target == "remote":
             validate_remote_url(self.config.base_url)
@@ -240,15 +255,17 @@ class ManagedProvider:
                 request.context_artifacts,
             )
 
-        request_to_send = request
         estimate = estimate_request_tokens(request_to_send, self.capabilities.tokenizer_estimation)
         max_context = resolve_context_window(request.model, self.config.probed_max_context)
+        context_limit = int(max_context * 0.9)
+        reserved_output_tokens = max(0, request_to_send.max_output_tokens or 0)
+        input_context_limit = max(1, context_limit - reserved_output_tokens)
         degraded_flags: dict[str, bool] = {}
-        notes: list[str] = []
-        if estimate.input_tokens > int(max_context * 0.9):
+        notes: list[str] = list(structured_notes)
+        if estimate.input_tokens > input_context_limit:
             clipped_payload = clip_text_to_context_limit(
                 payload_text,
-                max_tokens=int(max_context * 0.9),
+                max_tokens=input_context_limit,
                 strategy=self.capabilities.tokenizer_estimation,
             )
             if clipped_payload != payload_text:
@@ -265,8 +282,10 @@ class ManagedProvider:
                 )
                 degraded_flags["token_exceeded"] = True
                 notes.append("prompt_clipped_for_context")
-        if estimate.input_tokens > int(max_context * 0.9):
+        if estimate.input_tokens > input_context_limit:
             raise ProviderError("context window exceeded after clipping")
+        if estimate.input_tokens + reserved_output_tokens > context_limit:
+            raise ProviderError("context window exceeded after reserving output tokens")
 
         enforce_token_budget(
             input_tokens=estimate.input_tokens,
@@ -297,6 +316,13 @@ class ManagedProvider:
             ).hexdigest(),
             max_output_tokens=request.max_output_tokens,
             thinking_level=request.thinking_level or "none",
+            response_format=request_to_send.response_format,
+            output_schema_id=request_to_send.output_schema_id,
+            output_schema_version=request_to_send.output_schema_version,
+            output_schema_hash=request_to_send.output_schema_hash,
+            normalized_output_schema_hash=request_to_send.normalized_output_schema_hash,
+            enforcement_mode=request_to_send.enforcement_mode,
+            temperature=request_to_send.temperature,
         )
         cache_key = build_cache_key(cache_parts)
         if self.workspace_root is not None:
@@ -418,6 +444,55 @@ class ManagedProvider:
             f"{self.config.base_url.rstrip('/')}:"
             f"{self.config.model_name}"
         )
+
+    def _resolve_structured_output_request(
+        self,
+        request: ProviderRequest,
+    ) -> tuple[ProviderRequest, tuple[str, ...]]:
+        if request.enforcement_mode == "strict_tool":
+            if self.capabilities.supports_strict_tool_use:
+                return request, ()
+            if request.output_schema is not None and self.capabilities.supports_native_json_schema:
+                return (
+                    replace(
+                        request,
+                        response_format="json_schema",
+                        enforcement_mode="native_json_schema",
+                    ),
+                    ("structured_output_downgraded:strict_tool_to_native_json_schema",),
+                )
+            if self.capabilities.supports_json_object_mode:
+                return (
+                    replace(request, response_format="json", enforcement_mode="json_object"),
+                    ("structured_output_downgraded:strict_tool_to_json_object",),
+                )
+            return (
+                replace(request, response_format="text", enforcement_mode="prompt_contract"),
+                ("structured_output_downgraded:strict_tool_to_prompt_contract",),
+            )
+
+        if request.enforcement_mode == "native_json_schema":
+            if request.output_schema is not None and self.capabilities.supports_native_json_schema:
+                return request, ()
+            if self.capabilities.supports_json_object_mode:
+                return (
+                    replace(request, response_format="json", enforcement_mode="json_object"),
+                    ("structured_output_downgraded:native_json_schema_to_json_object",),
+                )
+            return (
+                replace(request, response_format="text", enforcement_mode="prompt_contract"),
+                ("structured_output_downgraded:native_json_schema_to_prompt_contract",),
+            )
+
+        if request.enforcement_mode == "json_object" or request.response_format == "json":
+            if self.capabilities.supports_json_object_mode:
+                return replace(request, response_format="json", enforcement_mode="json_object"), ()
+            return (
+                replace(request, response_format="text", enforcement_mode="prompt_contract"),
+                ("structured_output_downgraded:json_object_to_prompt_contract",),
+            )
+
+        return request, ()
 
     def _send_once(self, request: ProviderRequest) -> ProviderResponse:
         method, url, headers, payload = self.adapter.build_request(request, api_key=self.api_key)
@@ -583,6 +658,14 @@ class ManagedProvider:
             billing_mode="token_budget",
             execution_origin=self.execution_origin,
             api_principal_hash=principal_hash,
+            structured_output={
+                "response_format": request.response_format,
+                "output_schema_id": request.output_schema_id,
+                "output_schema_version": request.output_schema_version,
+                "output_schema_hash": request.output_schema_hash,
+                "normalized_output_schema_hash": request.normalized_output_schema_hash,
+                "enforcement_mode": request.enforcement_mode,
+            },
             note=f"cache_key={cache_key}",
         )
         append_audit_record(audit_path, record)

@@ -883,6 +883,10 @@ def test_run_improve_loop_propagates_output_lang_to_replay_and_provider_request(
 
     assert result.outcomes[0].status == "targeted_verify"
     assert [request.output_lang for request in seen_requests] == ["zh-CN"]
+    assert seen_requests[0].response_format == "json"
+    assert seen_requests[0].enforcement_mode == "json_object"
+    assert seen_requests[0].output_schema_id is None
+    assert seen_requests[0].output_schema is None
     assert seen_commands
     assert "--lang" in seen_commands[0]
     lang_index = seen_commands[0].index("--lang")
