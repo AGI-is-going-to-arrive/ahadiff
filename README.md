@@ -92,7 +92,7 @@ See the [User Guide](./docs/USER_GUIDE.en.html) for all 9 diff capture modes, ex
 - **Evidence-linked claims**: every lesson conclusion is tied to `file:line` evidence, with verification states such as verified, weak, not proven, contradicted, and rejected.
 - **Structured LLM output**: generation uses schema-aware JSON contracts where supported, while keeping the existing parser, repair, and degraded fallback paths.
 - **Quiz and review**: `ahadiff quiz` tests the run you just learned; `ahadiff review` brings back older cards with spaced repetition. Quiz count is fixed by default and can adapt to diff size when enabled.
-- **Scoring**: each run gets an 8-dimension score, with an optional LLM judge when configured.
+- **Scoring**: each run gets an 8-dimension score, with an optional LLM judge when configured. Diff Coverage is based on visible `line_map.json` files and line-weighted hunks, and hard-gate details show the adaptive claim-anchor threshold used for that run.
 - **WebUI**: `ahadiff serve` opens Dashboard, Lesson, Diff, Quiz, Review, Concepts, Run Detail, Settings, and Guide.
 - **Export**: export results as TSV / JSON, Anki `.apkg`, or a local static preview bundle.
 - **Concept graph**: AhaDiff extracts cross-diff concepts and shows them in a Canvas graph with health checks.
@@ -160,14 +160,14 @@ ahadiff install claude          # also: cursor, copilot, codex, gemini, aider, w
 |---|-----------|--------|-----------|
 | 1 | Accuracy | 20 | < 14 → FAIL |
 | 2 | Evidence | 18 | < 12 → FAIL |
-| 3 | Diff Coverage | 14 | < 7.70 → FAIL |
+| 3 | Diff Coverage | 14 | Adaptive claim-anchor gate. Normal diffs fail below 7.70; large broad diffs use a lower threshold, while one/two-file many-hunk diffs use a stricter one. The exact ratio, regime, and visible basis are written into hard gate details. |
 | 4 | Learnability | 14 | — |
 | 5 | Quiz Transfer | 10 | — |
 | 6 | Spec Alignment | 10 | — |
 | 7 | Conciseness | 8 | — |
 | 8 | Safety & Privacy | 6 | Unmitigated Critical → FAIL |
 
-Three verdicts: **PASS** ≥ 80 / **CAUTION** 60–80 / **FAIL** < 60.
+Three verdicts: **PASS** ≥ 80 / **CAUTION** 60–80 / **FAIL** < 60. Hard gates can still force **FAIL** even when the overall score is high; contradicted claims require zero tolerance, and unmitigated Critical safety findings fail the run.
 
 ## Repository Layout
 

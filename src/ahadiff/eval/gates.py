@@ -60,6 +60,7 @@ def evaluate_hard_gates(
     secret_leak_detected: bool,
     injection_unresolved: bool,
     safety_findings: Sequence[Mapping[str, object]] = (),
+    diff_coverage_basis: Mapping[str, int] | None = None,
 ) -> HardGateSummary:
     contradicted_count = sum(1 for claim in claims if claim.status == "contradicted")
     accuracy_dimension = rubric.dimension("accuracy")
@@ -68,8 +69,11 @@ def evaluate_hard_gates(
     accuracy_score = _dimension_score(dimension_scores, "accuracy")
     evidence_score = _dimension_score(dimension_scores, "evidence")
     diff_coverage_score = _dimension_score(dimension_scores, "diff_coverage")
+    evidence_coverage_ratio, evidence_coverage_regime, evidence_coverage_basis_detail = (
+        _evidence_coverage_threshold_policy(diff_coverage_basis)
+    )
     evidence_coverage_threshold = round(
-        float(diff_coverage_dimension.max_score) * _EVIDENCE_COVERAGE_GATE_RATIO,
+        float(diff_coverage_dimension.max_score) * evidence_coverage_ratio,
         2,
     )
     critical_safety_count = _critical_safety_finding_count(safety_findings)
@@ -120,6 +124,9 @@ def evaluate_hard_gates(
                 "claim anchor coverage",
                 score=diff_coverage_score,
                 threshold=evidence_coverage_threshold,
+                adaptive_ratio=evidence_coverage_ratio,
+                regime=evidence_coverage_regime,
+                basis=evidence_coverage_basis_detail,
             ),
             score=diff_coverage_score,
             threshold=evidence_coverage_threshold,
@@ -169,12 +176,66 @@ def _threshold_detail(name: str, *, score: float | None, threshold: float) -> st
     return f"{name} score {score:.2f} < {threshold:.2f}; requires >= {threshold:.2f}"
 
 
-def _minimum_threshold_detail(name: str, *, score: float | None, threshold: float) -> str:
+def _minimum_threshold_detail(
+    name: str,
+    *,
+    score: float | None,
+    threshold: float,
+    adaptive_ratio: float,
+    regime: str,
+    basis: str,
+) -> str:
+    policy_detail = f"adaptive_ratio={adaptive_ratio:.2f}; regime={regime}; basis={basis}"
     if score is None:
-        return f"{name} score is missing; requires >= {threshold:.2f}"
+        return f"{name} score is missing; requires >= {threshold:.2f}; {policy_detail}"
     if score >= threshold:
-        return f"{name} score {score:.2f} >= {threshold:.2f}"
-    return f"{name} score {score:.2f} < {threshold:.2f}; requires >= {threshold:.2f}"
+        return f"{name} score {score:.2f} >= {threshold:.2f}; {policy_detail}"
+    return (
+        f"{name} score {score:.2f} < {threshold:.2f}; requires >= {threshold:.2f}; {policy_detail}"
+    )
+
+
+def _evidence_coverage_threshold_policy(
+    basis: Mapping[str, int] | None,
+) -> tuple[float, str, str]:
+    if basis is None:
+        return _EVIDENCE_COVERAGE_GATE_RATIO, "normal", "unavailable"
+    visible_files = _non_negative_int(basis.get("visible_files"))
+    visible_hunks = _non_negative_int(basis.get("visible_hunks"))
+    visible_changed_lines = _non_negative_int(basis.get("visible_changed_lines"))
+    if visible_files <= 2 and visible_hunks > 80:
+        basis_detail = (
+            f"visible_files={visible_files}, visible_hunks={visible_hunks}, "
+            f"visible_changed_lines={visible_changed_lines}"
+        )
+        return 0.64, "single_file_many_hunks", basis_detail
+    ratio, regime = _adaptive_evidence_coverage_ratio(
+        visible_hunks=visible_hunks,
+        visible_changed_lines=visible_changed_lines,
+    )
+    basis_detail = (
+        f"visible_files={visible_files}, visible_hunks={visible_hunks}, "
+        f"visible_changed_lines={visible_changed_lines}"
+    )
+    return ratio, regime, basis_detail
+
+
+def _adaptive_evidence_coverage_ratio(
+    *,
+    visible_hunks: int,
+    visible_changed_lines: int,
+) -> tuple[float, str]:
+    if visible_hunks <= 20 and visible_changed_lines <= 400:
+        return 0.55, "normal"
+    if visible_hunks <= 80 and visible_changed_lines <= 1200:
+        return 0.52, "medium"
+    if visible_hunks <= 160 and visible_changed_lines <= 3000:
+        return 0.50, "large"
+    return 0.48, "very_large"
+
+
+def _non_negative_int(value: object) -> int:
+    return value if isinstance(value, int) and value >= 0 else 0
 
 
 def _critical_safety_finding_count(findings: Sequence[Mapping[str, object]]) -> int:

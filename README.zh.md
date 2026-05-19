@@ -92,7 +92,7 @@ ahadiff review           # 复习过去生成的卡片
 - **证据化 Claims**：每条 lesson 结论都绑定 `file:line` 证据，并区分 verified、weak、not proven、contradicted、rejected 等状态。
 - **结构化 LLM 输出**：生成链路会按 schema 约束 JSON 输出；不支持的 provider 仍保留 parser、repair 和 degraded 回退。
 - **测验与复习**：`ahadiff quiz` 用来测试刚学过的 run；`ahadiff review` 用间隔重复带回旧卡片。题量默认固定，也可以按 diff 大小自动调整。
-- **评分**：每次 run 都会得到 8 维评分；配置后也可以启用 LLM judge。
+- **评分**：每次 run 都会得到 8 维评分；配置后也可以启用 LLM judge。Diff Coverage 只看可见 `line_map.json` 里的文件和按行数加权的 hunk；hard gate 详情会写明本次 run 使用的自适应 claim-anchor 阈值。
 - **WebUI**：`ahadiff serve` 打开 Dashboard、Lesson、Diff、Quiz、Review、Concepts、Run Detail、Settings 和 Guide。
 - **导出**：支持 TSV / JSON、Anki `.apkg`，以及本地静态预览包。
 - **概念图谱**：自动提取跨 diff 的概念关系，并用 Canvas 图谱和健康检查展示。
@@ -160,14 +160,14 @@ ahadiff install claude     # 也支持: cursor, copilot, codex, gemini, aider, w
 |---|------|------|--------|
 | 1 | Accuracy | 20 | < 14 → FAIL |
 | 2 | Evidence | 18 | < 12 → FAIL |
-| 3 | Diff Coverage | 14 | < 7.70 → FAIL |
+| 3 | Diff Coverage | 14 | 自适应 claim-anchor 门禁。普通 diff 低于 7.70 会 FAIL；大而分散的 diff 阈值会降低，单/双文件但 hunk 很多的 diff 阈值会更严格。具体 ratio、regime 和 visible basis 会写进 hard gate detail。 |
 | 4 | Learnability | 14 | — |
 | 5 | Quiz Transfer | 10 | — |
 | 6 | Spec Alignment | 10 | — |
 | 7 | Conciseness | 8 | — |
 | 8 | Safety & Privacy | 6 | 未缓解 Critical → FAIL |
 
-三档 verdict：**PASS** ≥ 80 / **CAUTION** 60–80 / **FAIL** < 60。
+三档 verdict：**PASS** ≥ 80 / **CAUTION** 60–80 / **FAIL** < 60。即使总分很高，hard gate 也可以直接让 run 变成 **FAIL**；contradicted claims 是 0 容忍，未缓解 Critical safety finding 也会 FAIL。
 
 ## 项目结构
 

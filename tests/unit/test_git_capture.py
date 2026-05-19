@@ -15,8 +15,12 @@ import pytest
 from typer.testing import CliRunner
 
 from ahadiff import cli as cli_module
+from ahadiff.claims.extract import load_line_map_records
 from ahadiff.cli import app
+from ahadiff.contracts import ClaimRecord, SourceHunk
 from ahadiff.core.errors import InputError, SafetyError, StorageError
+from ahadiff.eval.deterministic import build_deterministic_scores
+from ahadiff.eval.rubric import load_rubric
 from ahadiff.git import capture as capture_module
 from ahadiff.git import download as download_module
 from ahadiff.git import repo as repo_module
@@ -3359,6 +3363,25 @@ def test_capture_config_limits_selected_files_with_stable_ranking(tmp_path: Path
     assert all(item["path"] == "alpha.py" for item in symbols["symbols"])
     assert manifest["selection"]["selected_files"] == ["alpha.py"]
     assert manifest["selection"]["omitted_files"] == ["beta.py"]
+
+    claim = ClaimRecord(
+        claim_id="claim-visible",
+        run_id=str(metadata["run_id"]),
+        text="updates alpha.py",
+        status="verified",
+        source_hunks=[SourceHunk(file="alpha.py", start=1, end=2, side="new")],
+    )
+    scored = build_deterministic_scores(
+        rubric=load_rubric(),
+        metadata=metadata,
+        patch_text=patch_text,
+        claims=(claim,),
+        line_maps=load_line_map_records(run_dir / "line_map.json"),
+        lesson_artifacts={"compact": "short"},
+        quiz_entries=(),
+    )
+
+    assert scored.score_lookup()["diff_coverage"] == 14.0
 
 
 def test_compare_metadata_is_redacted_before_persist(tmp_path: Path) -> None:

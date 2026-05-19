@@ -26,15 +26,13 @@ from ahadiff.eval.results import (
     review_db_path_for_run,
 )
 from ahadiff.eval.rubric import load_rubric
-from ahadiff.git.line_map import build_line_map
+from ahadiff.git.line_map import FileLineMap, HunkLineMap, build_line_map
 from ahadiff.git.parser import parse_unified_diff
 from ahadiff.git.symbols import extract_symbols
 from ahadiff.serve import ServeState, create_app
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    from ahadiff.git.line_map import FileLineMap
 
 
 def _init_git_repo(root: Path) -> None:
@@ -236,6 +234,258 @@ diff --git "a/src/é.py" "b/src/é.py"
     assert scored.score_lookup()["diff_coverage"] > 0.0
     with pytest.raises(ValidationError, match="Field required"):
         ClaimRecord.model_validate({"claim_id": "broken", "run_id": "run-1", "status": "verified"})
+
+
+def test_diff_coverage_weights_large_hunk_more_than_tiny_hunk() -> None:
+    patch = """\
+diff --git a/src/app.py b/src/app.py
+--- a/src/app.py
++++ b/src/app.py
+@@ -1 +1 @@
+-old = 1
++new = 1
+@@ -10,10 +10,10 @@
+-old0
+-old1
+-old2
+-old3
+-old4
+-old5
+-old6
+-old7
+-old8
+-old9
++new0
++new1
++new2
++new3
++new4
++new5
++new6
++new7
++new8
++new9
+"""
+    small_claim = ClaimRecord(
+        claim_id="claim-small",
+        run_id="run-1",
+        text="updates the tiny hunk",
+        status="verified",
+        source_hunks=[SourceHunk(file="src/app.py", start=1, end=1, side="new")],
+    )
+    large_claim = ClaimRecord(
+        claim_id="claim-large",
+        run_id="run-1",
+        text="updates the large hunk",
+        status="verified",
+        source_hunks=[SourceHunk(file="src/app.py", start=10, end=19, side="new")],
+    )
+
+    rubric = load_rubric()
+    line_maps = build_line_map(parse_unified_diff(patch))
+    small_score = build_deterministic_scores(
+        rubric=rubric,
+        metadata={"learnability": {"score": 1.0}},
+        patch_text=patch,
+        claims=(small_claim,),
+        line_maps=line_maps,
+        lesson_artifacts={"compact": "short"},
+        quiz_entries=(),
+    ).score_lookup()["diff_coverage"]
+    large_score = build_deterministic_scores(
+        rubric=rubric,
+        metadata={"learnability": {"score": 1.0}},
+        patch_text=patch,
+        claims=(large_claim,),
+        line_maps=line_maps,
+        lesson_artifacts={"compact": "short"},
+        quiz_entries=(),
+    ).score_lookup()["diff_coverage"]
+
+    assert large_score > small_score
+
+
+def test_diff_coverage_counts_deleted_lines_in_weighted_hunk_ratio() -> None:
+    patch = """\
+diff --git a/src/app.py b/src/app.py
+--- a/src/app.py
++++ b/src/app.py
+@@ -1 +1 @@
+-old = 1
++new = 1
+@@ -10,10 +10,0 @@
+-old0
+-old1
+-old2
+-old3
+-old4
+-old5
+-old6
+-old7
+-old8
+-old9
+"""
+    added_claim = ClaimRecord(
+        claim_id="claim-added",
+        run_id="run-1",
+        text="updates the added hunk",
+        status="verified",
+        source_hunks=[SourceHunk(file="src/app.py", start=1, end=1, side="new")],
+    )
+    deleted_claim = ClaimRecord(
+        claim_id="claim-deleted",
+        run_id="run-1",
+        text="removes the larger hunk",
+        status="verified",
+        source_hunks=[SourceHunk(file="src/app.py", start=10, end=19, side="old")],
+    )
+
+    rubric = load_rubric()
+    line_maps = build_line_map(parse_unified_diff(patch))
+    added_score = build_deterministic_scores(
+        rubric=rubric,
+        metadata={"learnability": {"score": 1.0}},
+        patch_text=patch,
+        claims=(added_claim,),
+        line_maps=line_maps,
+        lesson_artifacts={"compact": "short"},
+        quiz_entries=(),
+    ).score_lookup()["diff_coverage"]
+    deleted_score = build_deterministic_scores(
+        rubric=rubric,
+        metadata={"learnability": {"score": 1.0}},
+        patch_text=patch,
+        claims=(deleted_claim,),
+        line_maps=line_maps,
+        lesson_artifacts={"compact": "short"},
+        quiz_entries=(),
+    ).score_lookup()["diff_coverage"]
+
+    assert deleted_score > added_score
+
+
+def test_diff_coverage_keeps_hunk_count_floor_when_line_weighting_would_lower_score() -> None:
+    patch = """\
+diff --git a/src/app.py b/src/app.py
+--- a/src/app.py
++++ b/src/app.py
+@@ -1 +1 @@
+-old = 1
++new = 1
+@@ -10,10 +10,10 @@
+-old0
+-old1
+-old2
+-old3
+-old4
+-old5
+-old6
+-old7
+-old8
+-old9
++new0
++new1
++new2
++new3
++new4
++new5
++new6
++new7
++new8
++new9
+"""
+    claim = ClaimRecord(
+        claim_id="claim-small",
+        run_id="run-1",
+        text="updates the tiny hunk",
+        status="verified",
+        source_hunks=[SourceHunk(file="src/app.py", start=1, end=1, side="new")],
+    )
+
+    scored = build_deterministic_scores(
+        rubric=load_rubric(),
+        metadata={"learnability": {"score": 1.0}},
+        patch_text=patch,
+        claims=(claim,),
+        line_maps=build_line_map(parse_unified_diff(patch)),
+        lesson_artifacts={"compact": "short"},
+        quiz_entries=(),
+    )
+
+    assert scored.score_lookup()["diff_coverage"] == 11.2
+
+
+def test_diff_coverage_handles_binary_and_zero_changed_line_hunks_without_divide_by_zero() -> None:
+    binary_patch = """\
+diff --git a/image.png b/image.png
+new file mode 100644
+index 0000000..1111111
+Binary files /dev/null and b/image.png differ
+"""
+    binary_claim = ClaimRecord(
+        claim_id="claim-binary",
+        run_id="run-1",
+        text="adds an image",
+        status="verified",
+        source_hunks=[SourceHunk(file="image.png", start=1, end=1, side="new")],
+    )
+    binary_score = build_deterministic_scores(
+        rubric=load_rubric(),
+        metadata={"learnability": {"score": 1.0}},
+        patch_text=binary_patch,
+        claims=(binary_claim,),
+        line_maps=build_line_map(parse_unified_diff(binary_patch)),
+        lesson_artifacts={"compact": "short"},
+        quiz_entries=(),
+    ).score_lookup()["diff_coverage"]
+    assert binary_score == 8.4
+
+    zero_hunk = HunkLineMap(
+        file_id="file-zero",
+        display_path="src/struct.py",
+        hunk_id="hunk-zero",
+        hunk_hash="0" * 12,
+        change_kind="modified",
+        old_start=5,
+        old_end=5,
+        new_start=5,
+        new_end=5,
+        section_header=None,
+        added_lines=(),
+        deleted_lines=(),
+        context_old_lines=(),
+        context_new_lines=(),
+    )
+    zero_line_maps = (
+        FileLineMap(
+            file_id="file-zero",
+            display_path="src/struct.py",
+            path_identity_key="src/struct.py",
+            old_path="src/struct.py",
+            new_path="src/struct.py",
+            change_kind="modified",
+            hunks=(zero_hunk,),
+        ),
+    )
+    zero_claim = ClaimRecord(
+        claim_id="claim-zero",
+        run_id="run-1",
+        text="updates structural metadata",
+        status="verified",
+        source_hunks=[SourceHunk(file="src/struct.py", start=5, end=5, side="new")],
+    )
+
+    zero_score = build_deterministic_scores(
+        rubric=load_rubric(),
+        metadata={"learnability": {"score": 1.0}},
+        patch_text="",
+        claims=(zero_claim,),
+        line_maps=zero_line_maps,
+        lesson_artifacts={"compact": "short"},
+        quiz_entries=(),
+    ).score_lookup()["diff_coverage"]
+
+    assert zero_score == 14.0
 
 
 def test_gate3_hard_gates_handle_missing_boundary_and_safety_findings() -> None:

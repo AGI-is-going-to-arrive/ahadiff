@@ -384,6 +384,12 @@ def _diff_coverage_score(
     total_hunks = sum(len(item.hunks) for item in line_maps)
     if total_files == 0:
         return 0.0, "line_map.json contains no files"
+    hunk_weights = {
+        hunk.hunk_id: _hunk_changed_line_weight(hunk)
+        for file_map in line_maps
+        for hunk in file_map.hunks
+    }
+    total_weighted_lines = sum(hunk_weights.values())
     covered_files: set[str] = set()
     covered_hunks: set[str] = set()
     file_lookup = {path_identity_key(Path(item.display_path)): item for item in line_maps}
@@ -402,9 +408,27 @@ def _diff_coverage_score(
                 ):
                     covered_hunks.add(hunk.hunk_id)
     file_ratio = len(covered_files) / total_files
-    hunk_ratio = 0.0 if total_hunks == 0 else len(covered_hunks) / total_hunks
+    covered_weighted_lines = sum(hunk_weights[hunk_id] for hunk_id in covered_hunks)
+    weighted_hunk_ratio = (
+        0.0 if total_weighted_lines == 0 else covered_weighted_lines / total_weighted_lines
+    )
+    hunk_count_ratio = 0.0 if total_hunks == 0 else len(covered_hunks) / total_hunks
+    hunk_ratio = max(hunk_count_ratio, weighted_hunk_ratio)
     combined = 0.6 * file_ratio + 0.4 * hunk_ratio
-    return round(14.0 * combined, 2), "claim anchors cover files and hunks from line_map.json"
+    reason = (
+        "claim anchors cover visible files and weighted hunks from line_map.json "
+        f"(visible_files={total_files}, visible_hunks={total_hunks}, "
+        f"covered_files={len(covered_files)}, covered_hunks={len(covered_hunks)}, "
+        f"covered_weighted_lines={covered_weighted_lines}, "
+        f"total_weighted_lines={total_weighted_lines}, "
+        f"hunk_count_ratio={hunk_count_ratio:.4f}, "
+        f"weighted_hunk_ratio={weighted_hunk_ratio:.4f})"
+    )
+    return round(14.0 * combined, 2), reason
+
+
+def _hunk_changed_line_weight(hunk: HunkLineMap) -> int:
+    return max(1, len(hunk.added_lines) + len(hunk.deleted_lines))
 
 
 def _claim_weighted_score(

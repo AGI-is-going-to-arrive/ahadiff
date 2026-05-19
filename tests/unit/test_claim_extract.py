@@ -180,6 +180,24 @@ def test_packaged_claim_extract_prompt_matches_repo_prompt() -> None:
     assert load_claim_extract_prompt() == repo_prompt
 
 
+def _assert_cluster_coverage_prompt_contract(prompt: str) -> None:
+    assert '"claims"' in prompt
+    assert '"source_hunks"' in prompt
+    assert "high-signal change clusters" in prompt
+    assert "Do not cover every file mechanically" in prompt
+    assert "one claim per file" not in prompt
+
+
+def test_claim_extract_prompt_requires_cluster_coverage_without_schema_change() -> None:
+    repo_prompt = Path("prompts/claim_extract.md").read_text(encoding="utf-8")
+    fallback_prompt = (
+        claim_runtime_module._FALLBACK_CLAIM_EXTRACT_PROMPT  # pyright: ignore[reportPrivateUsage]
+    )
+
+    _assert_cluster_coverage_prompt_contract(repo_prompt)
+    _assert_cluster_coverage_prompt_contract(fallback_prompt)
+
+
 def test_load_json_rejects_symlink_artifact(tmp_path: Path) -> None:
     target = tmp_path / "target.json"
     target.write_text('{"ok": true}', encoding="utf-8")

@@ -124,6 +124,65 @@ def test_hard_gates_fail_when_evidence_coverage_below_threshold() -> None:
     assert passed_summary.failed_names() == ()
 
 
+def test_evidence_coverage_gate_uses_adaptive_threshold_for_large_visible_diff() -> None:
+    summary = evaluate_hard_gates(
+        rubric=load_rubric(),
+        dimension_scores={"accuracy": 19.0, "evidence": 16.0, "diff_coverage": 7.0},
+        claims=(_claim(status="verified"),),
+        secret_leak_detected=False,
+        injection_unresolved=False,
+        diff_coverage_basis={
+            "visible_files": 30,
+            "visible_hunks": 109,
+            "visible_changed_lines": 1841,
+        },
+    )
+
+    payload = summary.as_payload()["evidence_coverage"]
+    assert summary.failed_names() == ()
+    assert payload["threshold"] == 7.0
+    assert "adaptive_ratio=0.50" in str(payload["detail"])
+    assert "regime=large" in str(payload["detail"])
+    assert "visible_hunks=109" in str(payload["detail"])
+
+
+def test_adaptive_threshold_does_not_modify_safety_gates() -> None:
+    summary = evaluate_hard_gates(
+        rubric=load_rubric(),
+        dimension_scores={"accuracy": 19.0, "evidence": 16.0, "diff_coverage": 14.0},
+        claims=(_claim(status="verified"),),
+        secret_leak_detected=True,
+        injection_unresolved=True,
+        diff_coverage_basis={
+            "visible_files": 50,
+            "visible_hunks": 200,
+            "visible_changed_lines": 4000,
+        },
+    )
+
+    assert summary.failed_names() == ("secret_leak", "injection_unresolved")
+
+
+def test_evidence_coverage_gate_rejects_single_file_many_hunks_with_tiny_anchor() -> None:
+    summary = evaluate_hard_gates(
+        rubric=load_rubric(),
+        dimension_scores={"accuracy": 19.0, "evidence": 16.0, "diff_coverage": 8.46},
+        claims=(_claim(status="verified"),),
+        secret_leak_detected=False,
+        injection_unresolved=False,
+        diff_coverage_basis={
+            "visible_files": 1,
+            "visible_hunks": 100,
+            "visible_changed_lines": 200,
+        },
+    )
+
+    payload = summary.as_payload()["evidence_coverage"]
+    assert summary.failed_names() == ("evidence_coverage",)
+    assert payload["threshold"] == 8.96
+    assert "regime=single_file_many_hunks" in str(payload["detail"])
+
+
 def test_critical_safety_findings_skips_mitigated_redactions() -> None:
     summary = evaluate_hard_gates(
         rubric=load_rubric(),

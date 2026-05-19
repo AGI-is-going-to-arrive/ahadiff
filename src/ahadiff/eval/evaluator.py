@@ -6,7 +6,7 @@ import math
 import os
 import re
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -18,7 +18,7 @@ from ahadiff.core.paths import path_identity_key
 from ahadiff.llm.cost import DEFAULT_INPUT_TOKEN_BUDGET, DEFAULT_OUTPUT_TOKEN_BUDGET
 
 from .deterministic import DimensionScore, build_deterministic_scores
-from .gates import HardGateSummary, evaluate_hard_gates
+from .gates import HardGateResult, HardGateSummary, evaluate_hard_gates
 from .rubric import load_rubric
 
 if TYPE_CHECKING:
@@ -141,6 +141,7 @@ def evaluate_run(run_path: Path) -> ScoreReport:
         secret_leak_detected=deterministic.secret_leak_detected,
         injection_unresolved=deterministic.injection_unresolved,
         safety_findings=safety_findings,
+        diff_coverage_basis=_diff_coverage_basis_from_line_maps(line_maps),
     )
     overall = _resolve_overall(deterministic.dimensions)
     verdict = _resolve_verdict(
@@ -171,6 +172,140 @@ def evaluate_run(run_path: Path) -> ScoreReport:
         hard_gates=hard_gates,
         notes=deterministic.notes,
     )
+
+
+def evaluate_run_for_replay_calibration(run_path: Path) -> ScoreReport:
+    current = evaluate_run(run_path)
+    score_path = run_path / "score.json"
+    if not score_path.exists():
+        return current
+    try:
+        persisted = _load_json_object(score_path)
+    except (InputError, OSError, UnicodeDecodeError) as exc:
+        return _score_report_with_replay_note(
+            current,
+            f"ignored persisted score: unreadable score.json ({type(exc).__name__})",
+        )
+
+    raw_eval_bundle_version = persisted.get("eval_bundle_version")
+    if not isinstance(raw_eval_bundle_version, str) or not raw_eval_bundle_version:
+        return _score_report_with_replay_note(
+            current,
+            "ignored persisted score: missing legacy eval_bundle_version",
+        )
+    if raw_eval_bundle_version == current.eval_bundle_version:
+        return current
+
+    identity_mismatch = _legacy_score_identity_mismatch(persisted, current)
+    if identity_mismatch is not None:
+        return _score_report_with_replay_note(
+            current,
+            f"ignored persisted score: identity mismatch ({identity_mismatch})",
+        )
+
+    legacy_hard_gates = _hard_gate_summary_from_payload(persisted.get("hard_gates"))
+    raw_verdict = persisted.get("verdict")
+    if legacy_hard_gates is None:
+        return _score_report_with_replay_note(
+            current,
+            "ignored persisted score: invalid hard_gates",
+        )
+    if raw_verdict not in {"PASS", "CAUTION", "FAIL"}:
+        return _score_report_with_replay_note(
+            current,
+            "ignored persisted score: invalid verdict",
+        )
+
+    note = (
+        "legacy replay calibration preserved persisted hard gates from "
+        f"eval_bundle_version={raw_eval_bundle_version}"
+    )
+    return replace(
+        current,
+        verdict=str(raw_verdict),
+        hard_gates=legacy_hard_gates,
+        notes=(*current.notes, note),
+    )
+
+
+def _diff_coverage_basis_from_line_maps(line_maps: tuple[Any, ...]) -> dict[str, int]:
+    visible_hunks = 0
+    visible_changed_lines = 0
+    for file_map in line_maps:
+        for hunk in file_map.hunks:
+            visible_hunks += 1
+            visible_changed_lines += len(hunk.added_lines) + len(hunk.deleted_lines)
+    return {
+        "visible_files": len(line_maps),
+        "visible_hunks": visible_hunks,
+        "visible_changed_lines": visible_changed_lines,
+    }
+
+
+def _hard_gate_summary_from_payload(raw_value: object) -> HardGateSummary | None:
+    if not isinstance(raw_value, dict):
+        return None
+    raw_mapping = cast("dict[object, object]", raw_value)
+    results: list[HardGateResult] = []
+    for raw_name, raw_gate in raw_mapping.items():
+        if not isinstance(raw_name, str) or not raw_name.strip():
+            return None
+        if not isinstance(raw_gate, dict):
+            return None
+        raw_gate_mapping = cast("dict[object, object]", raw_gate)
+        passed = raw_gate_mapping.get("passed")
+        detail = raw_gate_mapping.get("detail")
+        if not isinstance(passed, bool) or not isinstance(detail, str):
+            return None
+        try:
+            score = _optional_hard_gate_number(raw_gate_mapping.get("score"))
+            threshold = _optional_hard_gate_number(raw_gate_mapping.get("threshold"))
+        except ValueError:
+            return None
+        results.append(
+            HardGateResult(
+                name=raw_name,
+                passed=passed,
+                detail=detail,
+                score=score,
+                threshold=threshold,
+            )
+        )
+    if not results:
+        return None
+    return HardGateSummary(results=tuple(results))
+
+
+def _legacy_score_identity_mismatch(
+    persisted: dict[str, Any],
+    current: ScoreReport,
+) -> str | None:
+    raw_run_id = persisted.get("run_id")
+    if raw_run_id != current.run_id:
+        return f"run_id={raw_run_id!r} current={current.run_id!r}"
+    for field_name, current_value in (
+        ("source_ref", current.source_ref),
+        ("source_kind", current.source_kind),
+    ):
+        raw_value = persisted.get(field_name)
+        if raw_value is not None and raw_value != current_value:
+            return f"{field_name}={raw_value!r} current={current_value!r}"
+    return None
+
+
+def _score_report_with_replay_note(current: ScoreReport, note: str) -> ScoreReport:
+    return replace(current, notes=(*current.notes, f"legacy replay calibration {note}"))
+
+
+def _optional_hard_gate_number(raw_value: object) -> float | None:
+    if raw_value is None:
+        return None
+    if isinstance(raw_value, bool) or not isinstance(raw_value, int | float):
+        raise ValueError("hard gate numeric field must be finite")
+    value = float(raw_value)
+    if not math.isfinite(value):
+        raise ValueError("hard gate numeric field must be finite")
+    return value
 
 
 def run_llm_judge_for_run(
@@ -897,6 +1032,7 @@ __all__ = [
     "ScoreReport",
     "build_llm_judge_payload",
     "evaluate_run",
+    "evaluate_run_for_replay_calibration",
     "load_llm_judge_prompt",
     "parse_llm_judge_output",
     "run_llm_judge_for_run",

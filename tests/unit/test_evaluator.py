@@ -4,7 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 import pytest
@@ -16,7 +16,7 @@ from ahadiff.contracts.eval_bundle import compute_runtime_eval_bundle_version
 from ahadiff.core.config import SecurityConfig
 from ahadiff.core.errors import InputError
 from ahadiff.eval import evaluate_run
-from ahadiff.eval.evaluator import run_llm_judge_for_run
+from ahadiff.eval.evaluator import evaluate_run_for_replay_calibration, run_llm_judge_for_run
 from ahadiff.eval.spec_alignment import (
     merge_semantic_review_into_artifact,
     parse_semantic_alignment_output,
@@ -26,6 +26,9 @@ from ahadiff.eval.spec_alignment import (
 )
 from ahadiff.git.line_map import build_line_map, serialize_line_map_payload
 from ahadiff.llm.schemas import ProviderRequest, ProviderResponse
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 _RUNNER = CliRunner()
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -188,6 +191,21 @@ diff --git a/src/app.py b/src/app.py
 """
 
 
+def _many_hunk_patch_text(hunk_count: int) -> str:
+    hunks: list[str] = []
+    for index in range(hunk_count):
+        line_number = index * 10 + 1
+        hunks.append(
+            f"""@@ -{line_number} +{line_number} @@
+-old_{index}
++new_{index}
+"""
+        )
+    return "diff --git a/src/app.py b/src/app.py\n--- a/src/app.py\n+++ b/src/app.py\n" + "".join(
+        hunks
+    )
+
+
 def _standard_quiz_claims(run_id: str) -> list[ClaimRecord]:
     return [
         ClaimRecord(
@@ -207,6 +225,74 @@ def _standard_quiz_claims(run_id: str) -> list[ClaimRecord]:
             source_hunks=[SourceHunk(file="src/app.py", start=7, end=8, side="new")],
         ),
     ]
+
+
+def _mostly_verified_claims_with_one_contradiction(run_id: str) -> list[ClaimRecord]:
+    return [
+        ClaimRecord(
+            claim_id="claim_retry_loop",
+            run_id=run_id,
+            text="The retry helper now iterates up to three attempts.",
+            status="verified",
+            confidence="high",
+            source_hunks=[SourceHunk(file="src/app.py", start=1, end=6, side="new")],
+        ),
+        ClaimRecord(
+            claim_id="claim_success_return",
+            run_id=run_id,
+            text="The retry helper can return a successful attempt.",
+            status="verified",
+            confidence="high",
+            source_hunks=[SourceHunk(file="src/app.py", start=2, end=4, side="new")],
+        ),
+        ClaimRecord(
+            claim_id="claim_default_return",
+            run_id=run_id,
+            text="The helper now returns 0 after exhausting attempts.",
+            status="verified",
+            confidence="high",
+            source_hunks=[SourceHunk(file="src/app.py", start=7, end=8, side="new")],
+        ),
+        ClaimRecord(
+            claim_id="claim_removed_retry",
+            run_id=run_id,
+            text="The retry helper was removed.",
+            status="contradicted",
+            confidence="high",
+            source_hunks=[SourceHunk(file="src/app.py", start=1, end=8, side="new")],
+        ),
+    ]
+
+
+def _write_score_json(
+    run_path: Path,
+    *,
+    eval_bundle_version: str,
+    verdict: str,
+    hard_gates: Mapping[str, Mapping[str, object]],
+    run_id: str | None = None,
+    source_ref: str = "abc123",
+    source_kind: str = "git_ref",
+) -> None:
+    payload: dict[str, object] = {
+        "run_id": run_id or run_path.name,
+        "source_ref": source_ref,
+        "source_kind": source_kind,
+        "capability_level": 3,
+        "degraded_flags": {},
+        "overall": 90.0,
+        "verdict": verdict,
+        "weakest_dim": "safety_privacy",
+        "eval_bundle_version": eval_bundle_version,
+        "rubric_version": "legacy-rubric",
+        "dimensions": {},
+        "hard_gates": {name: dict(gate) for name, gate in hard_gates.items()},
+        "notes": [],
+    }
+    (run_path / "score.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _choice_options(correct_text: str) -> list[dict[str, object]]:
@@ -359,6 +445,192 @@ diff --git a/src/app.py b/src/app.py
     assert report.verdict == "PASS"
     assert report.overall >= 80.0
     assert report.hard_gates.passed is True
+
+
+def test_evaluate_run_fails_contradicted_claims_end_to_end(tmp_path: Path) -> None:
+    run_id = "run-current-contradicted"
+    run_path = _write_run_fixture(
+        tmp_path,
+        run_id=run_id,
+        claims=_mostly_verified_claims_with_one_contradiction(run_id),
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+    )
+
+    report = evaluate_run(run_path)
+
+    assert report.verdict == "FAIL"
+    assert report.hard_gates.failed_names() == ("contradicted_claims",)
+
+
+def test_replay_calibration_preserves_legacy_hard_gates_explicitly(
+    tmp_path: Path,
+) -> None:
+    run_id = "run-legacy-contradicted-pass"
+    run_path = _write_run_fixture(
+        tmp_path,
+        run_id=run_id,
+        claims=_mostly_verified_claims_with_one_contradiction(run_id),
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+    )
+    legacy_gates = {
+        "accuracy": {"passed": True, "detail": "accuracy >= 14.00", "score": 20.0},
+        "evidence": {"passed": True, "detail": "evidence >= 12.60", "score": 18.0},
+        "contradicted_claims": {
+            "passed": True,
+            "detail": "1 contradicted claim(s) (max 2)",
+        },
+    }
+    _write_score_json(
+        run_path,
+        eval_bundle_version="legacy-eval-bundle",
+        verdict="PASS",
+        hard_gates=legacy_gates,
+    )
+
+    current_report = evaluate_run(run_path)
+    calibration_report = evaluate_run_for_replay_calibration(run_path)
+
+    assert current_report.verdict == "FAIL"
+    assert calibration_report.verdict == "PASS"
+    assert calibration_report.hard_gates.as_payload() == legacy_gates
+    assert any("legacy replay calibration" in note for note in calibration_report.notes)
+
+
+def test_replay_calibration_does_not_override_current_bundle_score(
+    tmp_path: Path,
+) -> None:
+    run_id = "run-current-score-contradicted"
+    run_path = _write_run_fixture(
+        tmp_path,
+        run_id=run_id,
+        claims=_mostly_verified_claims_with_one_contradiction(run_id),
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+    )
+    _write_score_json(
+        run_path,
+        eval_bundle_version=compute_runtime_eval_bundle_version(),
+        verdict="PASS",
+        hard_gates={
+            "contradicted_claims": {
+                "passed": True,
+                "detail": "legacy data cannot override current bundle",
+            }
+        },
+    )
+
+    calibration_report = evaluate_run_for_replay_calibration(run_path)
+
+    assert calibration_report.verdict == "FAIL"
+    assert calibration_report.hard_gates.failed_names() == ("contradicted_claims",)
+
+
+def test_replay_calibration_ignores_malformed_legacy_hard_gates(
+    tmp_path: Path,
+) -> None:
+    run_id = "run-malformed-legacy-score"
+    run_path = _write_run_fixture(
+        tmp_path,
+        run_id=run_id,
+        claims=_mostly_verified_claims_with_one_contradiction(run_id),
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+    )
+    _write_score_json(
+        run_path,
+        eval_bundle_version="legacy-eval-bundle",
+        verdict="PASS",
+        hard_gates={
+            "contradicted_claims": {
+                "passed": "yes",
+                "detail": "malformed legacy gate must not override current scoring",
+            }
+        },
+    )
+
+    calibration_report = evaluate_run_for_replay_calibration(run_path)
+
+    assert calibration_report.verdict == "FAIL"
+    assert calibration_report.hard_gates.failed_names() == ("contradicted_claims",)
+    assert any("ignored persisted score" in note for note in calibration_report.notes)
+
+
+def test_replay_calibration_ignores_legacy_score_for_mismatched_run_identity(
+    tmp_path: Path,
+) -> None:
+    run_id = "run-mismatched-legacy-score"
+    run_path = _write_run_fixture(
+        tmp_path,
+        run_id=run_id,
+        claims=_mostly_verified_claims_with_one_contradiction(run_id),
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+    )
+    _write_score_json(
+        run_path,
+        eval_bundle_version="legacy-eval-bundle",
+        verdict="PASS",
+        hard_gates={
+            "contradicted_claims": {
+                "passed": True,
+                "detail": "mismatched legacy score must not override current scoring",
+            }
+        },
+        run_id="run-from-a-different-directory",
+    )
+
+    calibration_report = evaluate_run_for_replay_calibration(run_path)
+
+    assert calibration_report.verdict == "FAIL"
+    assert calibration_report.hard_gates.failed_names() == ("contradicted_claims",)
+    assert any("identity mismatch" in note for note in calibration_report.notes)
+
+
+def test_evaluate_run_exposes_adaptive_diff_coverage_gate_basis(tmp_path: Path) -> None:
+    patch_text = _many_hunk_patch_text(21)
+    claim = ClaimRecord(
+        claim_id="claim_first_hunk",
+        run_id="run_adaptive_gate",
+        text="The first hunk changes an app value.",
+        status="verified",
+        confidence="high",
+        source_hunks=[SourceHunk(file="src/app.py", start=1, end=1, side="new")],
+    )
+    run_path = _write_run_fixture(
+        tmp_path,
+        run_id="run_adaptive_gate",
+        claims=[claim],
+        patch_text=patch_text,
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+    )
+
+    payload = evaluate_run(run_path).to_payload()
+    hard_gates = cast("dict[str, dict[str, object]]", payload["hard_gates"])
+    dimensions = cast("dict[str, dict[str, object]]", payload["dimensions"])
+    evidence_coverage = hard_gates["evidence_coverage"]
+
+    assert evidence_coverage["threshold"] == 7.28
+    assert "adaptive_ratio=0.52" in str(evidence_coverage["detail"])
+    assert "regime=medium" in str(evidence_coverage["detail"])
+    assert "visible_files=1" in str(evidence_coverage["detail"])
+    assert "visible_hunks=21" in str(evidence_coverage["detail"])
+    assert "visible_changed_lines=42" in str(evidence_coverage["detail"])
+    assert isinstance(evidence_coverage["threshold"], float)
+    assert "adaptive_ratio" not in str(dimensions["diff_coverage"]["reason"])
 
 
 def test_spec_alignment_without_spec_is_not_applicable_score_zero(tmp_path: Path) -> None:
