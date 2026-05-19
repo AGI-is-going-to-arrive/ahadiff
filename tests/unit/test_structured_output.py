@@ -6,6 +6,7 @@ from typing import Any, cast
 
 import pytest
 
+from ahadiff.core.config import DEFAULT_CONFIG
 from ahadiff.core.errors import InputError
 from ahadiff.llm import ProviderRequest, ProviderResponse
 from ahadiff.llm.structured import (
@@ -28,6 +29,10 @@ def test_schema_hash_is_stable_for_claim_candidates() -> None:
     assert spec.schema_version == "1"
     assert spec.schema_hash.startswith("sha256:")
     assert schema_hash(spec.json_schema) == spec.schema_hash
+
+
+def test_default_config_enables_one_structured_validation_retry() -> None:
+    assert DEFAULT_CONFIG["llm"]["structured_validation_retries"] == 1
 
 
 def test_schema_registry_rejects_unknown_schema() -> None:

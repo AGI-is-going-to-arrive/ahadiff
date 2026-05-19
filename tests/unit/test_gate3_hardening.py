@@ -120,6 +120,54 @@ def test_gate3_provider_config_schema_is_validated(
         load_config(repo_root, env={"HOME": str(tmp_path / "home")})
 
 
+def test_provider_capability_overrides_load_from_config(tmp_path: Path) -> None:
+    repo_root = _repo_with_config(
+        tmp_path,
+        """\
+[providers.demo]
+provider_class = "newapi"
+model_name = "gpt-5.4-mini"
+base_url = "https://api.example.test"
+api_key_env = "AHADIFF_PROVIDER_API_KEY"
+
+[providers.demo.capability_overrides]
+supports_native_json_schema = true
+supports_temperature = false
+""",
+    )
+
+    snapshot = load_config(repo_root, env={"HOME": str(tmp_path / "home")})
+    providers = snapshot.values["providers"]
+
+    assert snapshot.repo_unknown_keys == ()
+    assert providers["demo"]["capability_overrides"] == {
+        "supports_native_json_schema": True,
+        "supports_temperature": False,
+    }
+
+
+def test_provider_capability_overrides_reject_non_bool_values(tmp_path: Path) -> None:
+    repo_root = _repo_with_config(
+        tmp_path,
+        """\
+[providers.demo]
+provider_class = "newapi"
+model_name = "gpt-5.4-mini"
+base_url = "https://api.example.test"
+api_key_env = "AHADIFF_PROVIDER_API_KEY"
+
+[providers.demo.capability_overrides]
+supports_native_json_schema = "true"
+""",
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match=r"providers\.demo\.capability_overrides\.supports_native_json_schema expects bool",
+    ):
+        load_config(repo_root, env={"HOME": str(tmp_path / "home")})
+
+
 def test_gate3_toml_parse_error_includes_path_and_line_number(tmp_path: Path) -> None:
     repo_root = _repo_with_config(tmp_path, "[capture]\nmax_files = \n")
     config_path = repo_config_path(repo_root)

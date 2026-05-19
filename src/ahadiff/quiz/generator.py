@@ -28,6 +28,10 @@ from ahadiff.llm import (
     generate_with_validation_retry,
     make_provider,
 )
+from ahadiff.llm.strict_json import (
+    require_complete_json_for_fallback,
+    strict_json_envelope,
+)
 from ahadiff.llm.structured import schema_spec_for, structured_request_kwargs
 from ahadiff.safety.ignore import AllowlistPolicy
 from ahadiff.safety.redact import redaction_pipeline
@@ -104,7 +108,7 @@ def generate_quiz_from_run(
     question_count: int = 3,
     on_sub_progress: Callable[[str], None] | None = None,
     structured_output_mode: EnforcementMode = "json_object",
-    structured_validation_retries: int = 0,
+    structured_validation_retries: int = 1,
 ) -> tuple[QuizArtifactPaths, tuple[QuizQuestion, ...]]:
     bundle = load_redacted_run_bundle(
         run_id=run_id,
@@ -336,7 +340,7 @@ def _generate_quiz_payload(
     output_token_cap: int | None = None,
     question_count: int = 3,
     structured_output_mode: EnforcementMode = "json_object",
-    structured_validation_retries: int = 0,
+    structured_validation_retries: int = 1,
 ) -> str:
     if type(question_count) is not int:
         raise InputError("quiz question_count must be an integer")
@@ -420,6 +424,13 @@ def _generate_quiz_payload(
     )
 
     def _validate(payload: str) -> str:
+        parsed = strict_json_envelope(payload, root_key="questions", allow_empty=False)
+        _validate_schema_payload(schema_spec, parsed)
+        parse_quiz_payload(payload, require_choices=True)
+        return payload
+
+    def _fallback(payload: str) -> str:
+        require_complete_json_for_fallback(payload)
         parse_quiz_payload(payload, require_choices=True)
         return payload
 
@@ -429,6 +440,7 @@ def _generate_quiz_payload(
             request=request,
             schema_spec=schema_spec,
             parse=_validate,
+            fallback_parse=_fallback,
             max_validation_retries=structured_validation_retries,
         )
     finally:
@@ -455,7 +467,7 @@ def _generate_misconception_cards(
     output_token_budget: int | None = None,
     output_token_cap: int | None = None,
     structured_output_mode: EnforcementMode = "json_object",
-    structured_validation_retries: int = 0,
+    structured_validation_retries: int = 1,
 ) -> tuple[MisconceptionCard, ...]:
     prompt_text = load_misconception_prompt()
     concept_terms = _dedupe_concept_terms(questions)
@@ -535,6 +547,14 @@ def _generate_misconception_cards(
     )
 
     def _validate(payload: str) -> str:
+        parsed = strict_json_envelope(payload, root_key="cards", allow_empty=True)
+        _validate_schema_payload(schema_spec, parsed)
+        if parsed["cards"] and not parse_misconception_cards(payload):
+            raise ValueError("misconception payload must contain at least one card")
+        return payload
+
+    def _fallback(payload: str) -> str:
+        require_complete_json_for_fallback(payload)
         if not parse_misconception_cards(payload) and not has_explicit_empty_misconception_cards(
             payload
         ):
@@ -547,12 +567,19 @@ def _generate_misconception_cards(
             request=request,
             schema_spec=schema_spec,
             parse=_validate,
+            fallback_parse=_fallback,
             max_validation_retries=structured_validation_retries,
         )
     finally:
         provider.close()
     cards = parse_misconception_cards(result.value)
     return tuple(replace(card, run_id=card.run_id or run_id) for card in cards)
+
+
+def _validate_schema_payload(schema_spec: Any, parsed: dict[str, Any]) -> None:
+    if schema_spec.pydantic_model is None:
+        raise ValueError(f"{schema_spec.schema_id} schema is missing a validation model")
+    schema_spec.pydantic_model.model_validate(parsed)
 
 
 def _resolve_request_output_tokens(

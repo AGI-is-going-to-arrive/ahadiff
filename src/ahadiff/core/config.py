@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, TypeGuard, cast, get_args
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from ahadiff.contracts import ProviderClass, ThinkingLevel
+from ahadiff.contracts import ProviderCapabilityOverride, ProviderClass, ThinkingLevel
 from ahadiff.i18n import normalize_locale_preference
 
 from .errors import ConfigError
@@ -86,7 +86,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "prompt_lang": "auto",
         "output_lang": "auto",
         "structured_output_mode": "json_object",
-        "structured_validation_retries": 0,
+        "structured_validation_retries": 1,
     },
     "pricing": {
         "openrouter_enabled": True,
@@ -394,6 +394,7 @@ _PROVIDER_DYNAMIC_FIELDS = frozenset(
         "available_models",
     }
 )
+_PROVIDER_CAPABILITY_OVERRIDE_FIELDS = frozenset(get_args(ProviderCapabilityOverride))
 _DYNAMIC_PROVIDER_FIELD_DEFAULTS: dict[str, Scalar] = {
     "provider_class": "",
     "model_name": "",
@@ -750,6 +751,8 @@ def _normalize_cli_overrides(cli_overrides: Mapping[str, Any] | None) -> dict[st
 def _path_expects_table(path: tuple[str, ...]) -> bool:
     if path in _KNOWN_TABLE_PATHS:
         return True
+    if len(path) == 3 and path[0] == "providers" and path[2] == "capability_overrides":
+        return True
     return len(path) == 2 and path[0] == "providers"
 
 
@@ -757,6 +760,8 @@ def _expected_scalar_for_path(path: tuple[str, ...]) -> Scalar | None:
     dotted_key = ".".join(path)
     if dotted_key in _FLAT_DEFAULTS:
         return _FLAT_DEFAULTS[dotted_key]
+    if _dynamic_provider_capability_override(path) is not None:
+        return False
     provider_field = _dynamic_provider_field(dotted_key)
     if provider_field is not None:
         return _DYNAMIC_PROVIDER_FIELD_DEFAULTS[provider_field]
@@ -827,6 +832,10 @@ def _flatten_config_file(
         if key in _FLAT_DEFAULTS:
             normalized[key] = _coerce_config_file_value(key, value, _FLAT_DEFAULTS[key])
             continue
+        capability_override = _dynamic_provider_capability_override(tuple(key.split(".")))
+        if capability_override is not None:
+            normalized[key] = _coerce_config_file_value(key, value, False)
+            continue
         dynamic_field = _dynamic_provider_field(key)
         if dynamic_field is not None:
             coerced = _coerce_config_file_value(
@@ -857,7 +866,11 @@ def _flatten_config_file(
 def _is_supported_key(key: str) -> bool:
     if key in _FLAT_DEFAULTS:
         return True
-    return _dynamic_provider_field(key) is not None or _dynamic_model_pricing_field(key) is not None
+    return (
+        _dynamic_provider_capability_override(tuple(key.split("."))) is not None
+        or _dynamic_provider_field(key) is not None
+        or _dynamic_model_pricing_field(key) is not None
+    )
 
 
 def _dynamic_provider_field(key: str) -> str | None:
@@ -870,6 +883,17 @@ def _dynamic_provider_field(key: str) -> str | None:
     if field_name not in _PROVIDER_DYNAMIC_FIELDS:
         return None
     return field_name
+
+
+def _dynamic_provider_capability_override(path: tuple[str, ...]) -> str | None:
+    if len(path) != 4 or path[0] != "providers" or path[2] != "capability_overrides":
+        return None
+    if path[1] == "" or path[3] == "":
+        return None
+    override_name = path[3]
+    if override_name not in _PROVIDER_CAPABILITY_OVERRIDE_FIELDS:
+        return None
+    return override_name
 
 
 def _dynamic_model_pricing_field(key: str) -> str | None:

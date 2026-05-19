@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Literal, TypeAlias
+from typing import Literal, TypeAlias, get_args
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
 
 SourceKind: TypeAlias = Literal[
     "git_ref",
@@ -34,6 +34,20 @@ ProviderClass: TypeAlias = Literal[
 TokenizerEstimation: TypeAlias = Literal["tiktoken", "char_div_4", "probe_cached"]
 ThinkingLevel: TypeAlias = Literal["none", "low", "medium", "high"]
 DegradedFlagsMap: TypeAlias = dict[DegradedFlag, bool]
+ProviderCapabilityOverride: TypeAlias = Literal[
+    "supports_stream",
+    "supports_json_mode",
+    "supports_json_object_mode",
+    "supports_native_json_schema",
+    "supports_strict_tool_use",
+    "supports_schema_name",
+    "supports_schema_strict_flag",
+    "supports_tool_use",
+    "supports_temperature",
+    "supports_rate_limit_headers",
+    "supports_context_probe",
+]
+_PROVIDER_CAPABILITY_OVERRIDE_FIELDS = frozenset(get_args(ProviderCapabilityOverride))
 
 
 def empty_degraded_flags() -> DegradedFlagsMap:
@@ -62,6 +76,24 @@ class ProviderConfig(BaseModel):
     probed_tpm: int | None = None
     probed_rpm: int | None = None
     probe_timestamp: str | None = None
+    capability_overrides: dict[str, StrictBool] | None = None
+
+    @field_validator("capability_overrides")
+    @classmethod
+    def validate_capability_overrides(
+        cls,
+        value: dict[str, StrictBool] | None,
+    ) -> dict[str, StrictBool] | None:
+        if value is None:
+            return None
+        unknown = sorted(set(value) - _PROVIDER_CAPABILITY_OVERRIDE_FIELDS)
+        if unknown:
+            allowed = ", ".join(sorted(_PROVIDER_CAPABILITY_OVERRIDE_FIELDS))
+            raise ValueError(
+                "capability_overrides keys must be ProviderCapabilities boolean fields "
+                f"({allowed}); got {', '.join(unknown)}"
+            )
+        return value
 
 
 class ProviderCapabilities(BaseModel):
@@ -103,6 +135,7 @@ __all__ = [
     "DegradedFlag",
     "PrivacyMode",
     "ProviderClass",
+    "ProviderCapabilityOverride",
     "TokenizerEstimation",
     "RunSource",
     "ProviderConfig",

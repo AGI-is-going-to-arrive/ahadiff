@@ -11,9 +11,11 @@ if TYPE_CHECKING:
 class LMStudioAdapter(OpenAICompatAdapter):
     @property
     def capabilities(self) -> ProviderCapabilities:
-        return super().capabilities.model_copy(
-            update={
-                "supports_native_json_schema": True,
-                "structured_output_notes": ("lm-studio-structured-output",),
-            }
+        return self._apply_capability_overrides(
+            self._base_capabilities().model_copy(
+                update={
+                    "supports_native_json_schema": True,
+                    "structured_output_notes": ("lm-studio-structured-output",),
+                }
+            )
         )

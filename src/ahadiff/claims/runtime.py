@@ -15,6 +15,10 @@ from ahadiff.llm import (
     generate_with_validation_retry,
     make_provider,
 )
+from ahadiff.llm.strict_json import (
+    require_complete_json_for_fallback,
+    strict_json_envelope,
+)
 from ahadiff.llm.structured import schema_spec_for, structured_request_kwargs
 from ahadiff.safety.ignore import AllowlistPolicy
 from ahadiff.safety.redact import redaction_pipeline
@@ -126,7 +130,7 @@ def extract_claim_candidates_from_run(
     claim_output_token_cap: int | None = None,
     output_lang: str = "en",
     structured_output_mode: EnforcementMode = "json_object",
-    structured_validation_retries: int = 0,
+    structured_validation_retries: int = 1,
 ) -> tuple[Path, tuple[ClaimCandidate, ...]]:
     prompt_text = load_claim_extract_prompt()
     metadata = _load_run_json(run_path / "metadata.json")
@@ -213,7 +217,12 @@ def extract_claim_candidates_from_run(
             provider=provider,
             request=request,
             schema_spec=schema_spec,
-            parse=lambda content: parse_claim_candidates_text(
+            parse=lambda content: _parse_strict_claim_candidates_payload(
+                content,
+                schema_spec=schema_spec,
+                default_run_id=run_id,
+            ),
+            fallback_parse=lambda content: _parse_fallback_claim_candidates_payload(
                 content,
                 default_run_id=run_id,
             ),
@@ -223,6 +232,28 @@ def extract_claim_candidates_from_run(
         provider.close()
     candidates = result.value
     return write_claim_candidates_jsonl(output_path, candidates, overwrite=overwrite), candidates
+
+
+def _parse_strict_claim_candidates_payload(
+    payload: str,
+    *,
+    schema_spec: Any,
+    default_run_id: str,
+) -> tuple[ClaimCandidate, ...]:
+    parsed = strict_json_envelope(payload, root_key="claims", allow_empty=False)
+    if schema_spec.pydantic_model is None:
+        raise ValueError("claim_candidates schema is missing a validation model")
+    schema_spec.pydantic_model.model_validate(parsed)
+    return parse_claim_candidates_text(payload, default_run_id=default_run_id)
+
+
+def _parse_fallback_claim_candidates_payload(
+    payload: str,
+    *,
+    default_run_id: str,
+) -> tuple[ClaimCandidate, ...]:
+    require_complete_json_for_fallback(payload)
+    return parse_claim_candidates_text(payload, default_run_id=default_run_id)
 
 
 def _resolve_claim_request_max_output_tokens(

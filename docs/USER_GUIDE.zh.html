@@ -13,7 +13,7 @@
 <body>
 <main class="wrap">
 <section class="hero">
-  <div class="eyebrow">AhaDiff User Guide · 2026-05-19 · <a href="USER_GUIDE.en.html">English</a></div>
+  <div class="eyebrow">AhaDiff User Guide · 2026-05-20 · <a href="USER_GUIDE.en.html">English</a></div>
   <h1>知返 AhaDiff 用户使用指南</h1>
   <p class="lead">AhaDiff 把一次 git diff 变成带代码证据的课程、声明清单、测验、复习卡、概念图谱和质量棘轮。它默认是 local-first：每个仓库自己的 <code>.ahadiff/</code> 是真相源。</p>
   <p class="notice">新增视频教程：<a href="video/output/ahadiff-tutorial.zh.burned-subtitles.mp4">打开中文介绍和使用教程 MP4</a>；<a href="video/output/ahadiff-tutorial.en.burned-subtitles.mp4">打开 English tutorial MP4</a>。两个视频分别使用对应语言界面和烧录字幕；中间字幕源文件不随公开文档树发布。</p>
@@ -58,6 +58,9 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
   <p>配置完成后，单个 provider 或 Settings 里选好的生成 provider/model 会被 <code>ahadiff learn</code> 直接使用。日常学习命令不需要再写 provider 参数；显式 <code>--provider</code> / <code>--model</code> 只用于临时覆盖：</p>
   <pre>ahadiff learn --last
 ahadiff learn --last --provider gpt55 --model gpt-5.5</pre>
+  <p>如果本地 OpenAI-compatible 服务上报的 JSON 能力不准确，可以在 <code>.ahadiff/config.toml</code> 里只覆盖已知布尔能力：</p>
+  <pre>[providers.local.capability_overrides]
+supports_native_json_schema = false</pre>
 </section>
 
 <section id="learn">
@@ -151,7 +154,7 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</pre>
   <table><thead><tr><th>功能</th><th>状态</th><th>说明</th></tr></thead><tbody>
     <tr><td>Lesson / Claims / Quiz / Score</td><td class="ok">默认主链</td><td>运行 <code>ahadiff learn</code> 后生成，具体产物取决于 diff 和 learnability。</td></tr>
     <tr><td>测验题量</td><td class="ok">默认固定；可手动改成自适应</td><td>默认生成 3 题。可在 Settings 里开启，或临时使用 <code>--quiz-mode auto</code>；自适应模式会根据 diff stats 选题量，默认范围是 3-8 题。</td></tr>
-    <tr><td>结构化 JSON 输出</td><td class="ok">默认 JSON object；native schema 需要显式开启</td><td>公开 artifact 形状不变。不支持的 provider mode 会自动降级，同时保留本地 parser、repair 和 degraded 回退。</td></tr>
+    <tr><td>结构化 JSON 输出</td><td class="ok">默认 JSON object；带 1 次 validation retry</td><td>公开 artifact 形状不变。只有 provider 能力声明支持时才使用 native schema；不支持的 mode 会降级。截断或格式不完整的 fallback JSON 会触发重试，不会被直接接受。</td></tr>
     <tr><td>WebUI / Dashboard / Diff / Review</td><td class="ok">默认可用</td><td>通过 <code>ahadiff serve</code> 本地打开。</td></tr>
     <tr><td>GPT-5.5 LLM</td><td class="warn">需要配置</td><td>配置 provider、base URL、model 和 API key 环境变量后使用。</td></tr>
     <tr><td>Challenge</td><td class="warn">默认关闭</td><td>需要配置 opt-in。CLI 当前提供 build/status，完整推进在 WebUI/API。</td></tr>
@@ -179,7 +182,7 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
   <h3>哪些安全发现会让 run 失败？</h3>
   <p>未缓解的 Critical safety finding 会让 run 失败。Critical secret finding 只有在本地捕获记录里带完整 redaction 结构时才算已缓解，包括 rule、hash、source、line 和 column。</p>
   <h3>能不能说没有任何 bug？</h3>
-  <p>不能做绝对保证。上一轮完整发布 gate 覆盖了后端 unit/integration/eval、静态检查、wheel、前端 typecheck/build/Vitest、完整 Playwright、real-serve、CLI 行为矩阵、Linux 目标容器测试和 GPT-5.5 live fixture。后续 follow-up 只按各自改动面复跑。本次 diff-coverage follow-up 复跑了 evaluator / capture / claim prompt 目标测试、静态检查和只读 legacy replay calibration；没有重跑前端、wheel、完整 Playwright、live judge、远端 CI 或真实 Windows runner。</p>
+  <p>不能做绝对保证。上一轮完整发布 gate 覆盖了后端 unit/integration/eval、静态检查、wheel、前端 typecheck/build/Vitest、完整 Playwright、real-serve、CLI 行为矩阵、Linux 目标容器测试和 GPT-5.5 live fixture。后续 follow-up 只按各自改动面复跑。本次后端 hardening pass 复跑了 <code>uv run pytest tests/unit</code>，结果是 <code>2784 passed</code>，并通过 ruff、format check、pyright 和 <code>git diff --check HEAD</code>；没有重跑前端、integration/eval、wheel、完整 Playwright、live judge、远端 CI 或真实 Windows runner。</p>
 </section>
 
 <section id="verification">
@@ -187,14 +190,15 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
   <ul>
     <li>截图来自当前 <code>viewer/</code>，用 Playwright 和现有 serve mock 生成，不包含真实密钥。</li>
     <li>real-serve 已用临时 git repo 启动真实 <code>python -m ahadiff serve</code>，浏览器覆盖 token、estimate、learn dry-run、task 和 progress stream。</li>
-    <li>Structured-output live smoke 使用合成 fixture，覆盖本地 LM Studio、本地 Ollama、本地 OpenAI-compatible、本地 Anthropic-compatible 和 Gemini AI Studio；凭证只通过临时进程环境变量传入。</li>
+    <li>本次后端 hardening pass 已对当前代码 diff 复核 unit、ruff、format check、pyright 和 whitespace diff-check；这次文档同步后又重跑了 whitespace diff-check。没有改动前端文件。</li>
+    <li>上一轮 structured-output live smoke 使用合成 fixture，覆盖本地 LM Studio、本地 Ollama、本地 OpenAI-compatible、本地 Anthropic-compatible 和 Gemini AI Studio；凭证只通过临时进程环境变量传入。</li>
     <li>Diff-coverage follow-up 用目标 pytest、ruff、pyright、<code>git diff --check</code> 和只读 legacy replay calibration 复核了本次改动面。Calibration 检查了 39 个已有 <code>score.json</code> 的历史 run，没有写 run artifact。它只是历史校准辅助；正常 <code>ahadiff score</code> 和 <code>ahadiff verify</code> 仍使用当前 hard gate 语义。</li>
     <li>GPT-5.5 live 验证使用已配置 provider 和合成 fixture，不是对整个当前大型仓库做无限制全量 LLM 生成。</li>
     <li>跨平台方面，本机实际执行是 macOS；Linux Docker smoke 已确认源码可安装、目标跨平台 / reparse / SQLite race 单测通过、CLI 可加载；另用 Linux <code>node:22-bookworm</code> 镜像自编译 SQLite 3.51.3 后，目标测试和 <code>doctor</code> SQLite gate 均通过。Windows 仍缺真实 runner。最近 GitHub Actions job 没有启动，annotation 显示 billing / spending limit 阻断，因此不等同于当前远端 runner 全绿；仓库当前已关闭 Backend CI、Frontend CI、Pages 和 Release 的 push 自动触发，仍可手动触发或通过 PR / nightly schedule 触发。</li>
   </ul>
 </section>
 
-<p class="footer">生成日期：2026-05-19。本文档是一个自包含 HTML 文件；截图和 CSS 动图 demo 已嵌入文件内部。</p>
+<p class="footer">生成日期：2026-05-20。本文档是一个自包含 HTML 文件；截图和 CSS 动图 demo 已嵌入文件内部。</p>
 </main>
 </body>
 </html>

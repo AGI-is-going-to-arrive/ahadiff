@@ -392,21 +392,52 @@ def _diff_coverage_score(
     total_weighted_lines = sum(hunk_weights.values())
     covered_files: set[str] = set()
     covered_hunks: set[str] = set()
-    file_lookup = {path_identity_key(Path(item.display_path)): item for item in line_maps}
+    file_lookup = _line_map_path_lookup(line_maps)
+    hunk_lookup = {
+        hunk.hunk_id: (file_map, hunk) for file_map in line_maps for hunk in file_map.hunks
+    }
+    file_id_lookup = {file_map.file_id: file_map for file_map in line_maps}
     for claim in claims:
         for source_hunk in claim.source_hunks:
-            file_map = file_lookup.get(path_identity_key(Path(source_hunk.file)))
-            if file_map is None:
+            candidate_maps: tuple[FileLineMap, ...] = ()
+            if source_hunk.hunk_id is not None:
+                hunk_match = hunk_lookup.get(source_hunk.hunk_id)
+                if hunk_match is not None:
+                    file_map, hunk = hunk_match
+                    if (
+                        source_hunk.file_id is None or source_hunk.file_id == file_map.file_id
+                    ) and _hunk_matches_source_hunk(
+                        hunk,
+                        source_hunk.start,
+                        source_hunk.end,
+                        source_hunk.side,
+                    ):
+                        covered_files.add(file_map.file_id)
+                        covered_hunks.add(hunk.hunk_id)
+                        continue
+            if source_hunk.file_id is not None:
+                file_map = file_id_lookup.get(source_hunk.file_id)
+                if file_map is not None:
+                    candidate_maps = (file_map,)
+            if not candidate_maps:
+                for raw_path in (source_hunk.file, source_hunk.display_path):
+                    if raw_path is None:
+                        continue
+                    candidate_maps = file_lookup.get(path_identity_key(Path(raw_path)), ())
+                    if candidate_maps:
+                        break
+            if not candidate_maps:
                 continue
-            covered_files.add(file_map.file_id)
-            for hunk in file_map.hunks:
-                if _hunk_matches_source_hunk(
-                    hunk,
-                    source_hunk.start,
-                    source_hunk.end,
-                    source_hunk.side,
-                ):
-                    covered_hunks.add(hunk.hunk_id)
+            for file_map in candidate_maps:
+                covered_files.add(file_map.file_id)
+                for hunk in file_map.hunks:
+                    if _hunk_matches_source_hunk(
+                        hunk,
+                        source_hunk.start,
+                        source_hunk.end,
+                        source_hunk.side,
+                    ):
+                        covered_hunks.add(hunk.hunk_id)
     file_ratio = len(covered_files) / total_files
     covered_weighted_lines = sum(hunk_weights[hunk_id] for hunk_id in covered_hunks)
     weighted_hunk_ratio = (
@@ -429,6 +460,24 @@ def _diff_coverage_score(
 
 def _hunk_changed_line_weight(hunk: HunkLineMap) -> int:
     return max(1, len(hunk.added_lines) + len(hunk.deleted_lines))
+
+
+def _line_map_path_lookup(line_maps: Sequence[FileLineMap]) -> dict[str, tuple[FileLineMap, ...]]:
+    lookup: dict[str, list[FileLineMap]] = {}
+
+    def add(path: str | None, item: FileLineMap) -> None:
+        if path is None:
+            return
+        identity = path_identity_key(Path(path))
+        existing = lookup.setdefault(identity, [])
+        if all(candidate.file_id != item.file_id for candidate in existing):
+            existing.append(item)
+
+    for item in line_maps:
+        add(item.display_path, item)
+        add(item.old_path, item)
+        add(item.new_path, item)
+    return {key: tuple(value) for key, value in lookup.items()}
 
 
 def _claim_weighted_score(

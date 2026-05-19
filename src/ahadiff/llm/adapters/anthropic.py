@@ -7,11 +7,15 @@ from ahadiff.core.errors import ProviderError
 
 from ..provider import AdapterBase
 from ..schemas import ProviderRequest, ProviderResponse
-from .structured import native_schema_for_request
 from .thinking import anthropic_budget_tokens
 
 if TYPE_CHECKING:
     import httpx
+
+_JSON_OBJECT_SYSTEM_INSTRUCTION = (
+    "Return a single valid JSON object only. Do not include markdown fences, prose, "
+    "or any text outside the JSON object."
+)
 
 
 class AnthropicAdapter(AdapterBase):
@@ -20,7 +24,8 @@ class AnthropicAdapter(AdapterBase):
         return ProviderCapabilities(
             supports_stream=True,
             supports_json_mode=False,
-            supports_native_json_schema=True,
+            supports_json_object_mode=True,
+            supports_native_json_schema=False,
             supports_tool_use=True,
             supports_temperature=True,
             supports_rate_limit_headers=False,
@@ -57,18 +62,12 @@ class AnthropicAdapter(AdapterBase):
             "messages": [{"role": "user", "content": request.effective_payload()}],
             "max_tokens": max_tokens,
         }
+        if request.response_format == "json" or request.enforcement_mode == "json_object":
+            payload["system"] = _JSON_OBJECT_SYSTEM_INSTRUCTION
         if budget is not None:
             payload["thinking"] = {"type": "enabled", "budget_tokens": budget}
         elif request.temperature is not None:
             payload["temperature"] = request.temperature
-        schema = native_schema_for_request(request)
-        if schema is not None:
-            payload["output_config"] = {
-                "format": {
-                    "type": "json_schema",
-                    "schema": schema,
-                }
-            }
         base = self.config.base_url.rstrip("/")
         prefix = base if base.endswith("/v1") else f"{base}/v1"
         url = f"{prefix}/messages"

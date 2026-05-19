@@ -206,6 +206,20 @@ def _many_hunk_patch_text(hunk_count: int) -> str:
     )
 
 
+def _rename_patch_text() -> str:
+    return """\
+diff --git a/src/old.py b/src/new.py
+similarity index 90%
+rename from src/old.py
+rename to src/new.py
+--- a/src/old.py
++++ b/src/new.py
+@@ -1 +1 @@
+-old_value = 1
++new_value = 2
+"""
+
+
 def _standard_quiz_claims(run_id: str) -> list[ClaimRecord]:
     return [
         ClaimRecord(
@@ -631,6 +645,42 @@ def test_evaluate_run_exposes_adaptive_diff_coverage_gate_basis(tmp_path: Path) 
     assert "visible_changed_lines=42" in str(evidence_coverage["detail"])
     assert isinstance(evidence_coverage["threshold"], float)
     assert "adaptive_ratio" not in str(dimensions["diff_coverage"]["reason"])
+
+
+def test_diff_coverage_matches_renamed_old_side_source_hunks(tmp_path: Path) -> None:
+    run_id = "run_renamed_old_side"
+    claim = ClaimRecord(
+        claim_id="claim_old_rename_side",
+        run_id=run_id,
+        text="The old file value is replaced during the rename.",
+        status="weak",
+        confidence="medium",
+        source_hunks=[SourceHunk(file="src/old.py", start=1, end=1, side="old")],
+    )
+    run_path = _write_run_fixture(
+        tmp_path,
+        run_id=run_id,
+        claims=[claim],
+        patch_text=_rename_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+        quiz_entries=[
+            {
+                "question": "What changed?",
+                "source_claims": [claim.claim_id],
+                "evidence": [{"file": "src/old.py", "line": 1}],
+                "concepts": ["rename"],
+            }
+        ],
+    )
+
+    report = evaluate_run(run_path)
+    dimensions = cast("dict[str, dict[str, object]]", report.to_payload()["dimensions"])
+    hard_gates = cast("dict[str, dict[str, object]]", report.to_payload()["hard_gates"])
+
+    assert dimensions["diff_coverage"]["score"] == 14.0
+    assert hard_gates["evidence_coverage"]["passed"] is True
 
 
 def test_spec_alignment_without_spec_is_not_applicable_score_zero(tmp_path: Path) -> None:

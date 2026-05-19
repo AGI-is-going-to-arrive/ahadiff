@@ -313,7 +313,7 @@ def _structured_output_mode(llm_config: dict[str, Any]) -> Any:
 
 
 def _structured_validation_retries(llm_config: dict[str, Any]) -> int:
-    return int(llm_config.get("structured_validation_retries", 0))
+    return int(llm_config.get("structured_validation_retries", 1))
 
 
 def _normalize_provider_base_url(base_url: str, *, provider_class: str) -> str:

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 import pytest
+from pydantic import ValidationError
 
 from ahadiff.contracts import ProviderConfig
 from ahadiff.core.config import SecurityConfig
@@ -164,6 +165,19 @@ def _openai_success_response(
             "x-ratelimit-limit-requests": "9",
             "x-ratelimit-remaining-requests": "8",
         },
+    )
+
+
+def _anthropic_success_response(content: str = "OK") -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={
+            "model": "claude-test",
+            "content": [{"type": "text", "text": content}],
+            "usage": {"input_tokens": 11, "output_tokens": 7},
+            "stop_reason": "end_turn",
+        },
+        headers={"x-request-id": "req-123"},
     )
 
 
@@ -351,19 +365,42 @@ def test_gemini_uses_native_json_schema_when_requested() -> None:
     assert "responseFormat" not in payload["generationConfig"]
 
 
-def test_anthropic_uses_output_config_json_schema_when_requested() -> None:
+def test_anthropic_adapter_does_not_send_unsupported_output_config() -> None:
     adapter = AnthropicAdapter(_provider_config("anthropic"))
     _method, _url, _headers, payload = adapter.build_request(
         _structured_request(),
         api_key="test-key",
     )
 
-    assert payload["output_config"] == {
-        "format": {
-            "type": "json_schema",
-            "schema": _structured_request().output_schema,
-        }
-    }
+    assert "output_config" not in payload
+
+
+def test_anthropic_provider_downgrades_native_schema_to_json_object_instruction(
+    tmp_path: Path,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        assert "output_config" not in payload
+        assert "JSON object" in payload["system"]
+        return _anthropic_success_response(content="{}")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("anthropic"),
+        api_key="test-key",
+        workspace_root=tmp_path,
+        client=client,
+    )
+    try:
+        response = provider.generate(_structured_request())
+    finally:
+        provider.close()
+
+    assert "structured_output_downgraded:native_json_schema_to_json_object" in response.notes
+    record = json.loads(
+        (tmp_path / ".ahadiff" / "audit.jsonl").read_text(encoding="utf-8").splitlines()[0]
+    )
+    assert record["structured_output"]["enforcement_mode"] == "json_object"
 
 
 def test_ollama_uses_format_schema_when_requested() -> None:
@@ -1722,6 +1759,54 @@ def test_openai_compat_capabilities_are_conservative_for_backend_dependent_schem
     ).capabilities.supports_native_json_schema
     assert not NewAPIAdapter(_provider_config("newapi")).capabilities.supports_native_json_schema
     assert LMStudioAdapter(_provider_config("lmstudio")).capabilities.supports_native_json_schema
+
+
+def test_anthropic_capabilities_use_json_object_not_native_schema() -> None:
+    capabilities = AnthropicAdapter(_provider_config("anthropic")).capabilities
+
+    assert capabilities.supports_json_object_mode
+    assert not capabilities.supports_native_json_schema
+
+
+def test_openai_compat_capability_overrides_apply_through_provider_factory() -> None:
+    config = _provider_config("newapi").model_copy(
+        update={
+            "capability_overrides": {
+                "supports_native_json_schema": True,
+                "supports_temperature": False,
+            }
+        }
+    )
+    provider = make_provider(config, api_key="test-key")
+    try:
+        assert provider.capabilities.supports_native_json_schema
+        assert not provider.capabilities.supports_temperature
+    finally:
+        provider.close()
+
+
+def test_lmstudio_capability_overrides_can_disable_default_native_schema() -> None:
+    config = _provider_config("lmstudio").model_copy(
+        update={"capability_overrides": {"supports_native_json_schema": False}}
+    )
+
+    assert not LMStudioAdapter(config).capabilities.supports_native_json_schema
+
+
+def test_provider_config_rejects_unknown_capability_override() -> None:
+    payload = _provider_config("newapi").model_dump(mode="json")
+    payload["capability_overrides"] = {"supports_magic_schema": True}
+
+    with pytest.raises(ValidationError, match="capability_overrides keys"):
+        ProviderConfig.model_validate(payload)
+
+
+def test_provider_config_rejects_non_bool_capability_override() -> None:
+    payload = _provider_config("newapi").model_dump(mode="json")
+    payload["capability_overrides"] = {"supports_native_json_schema": "true"}
+
+    with pytest.raises(ValidationError, match="bool"):
+        ProviderConfig.model_validate(payload)
 
 
 def test_make_provider_rejects_max_concurrent_below_one() -> None:
