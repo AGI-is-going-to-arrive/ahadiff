@@ -94,6 +94,7 @@ ahadiff review           # 复习过去生成的卡片
 - **测验与复习**：`ahadiff quiz` 用来测试刚学过的 run；`ahadiff review` 用间隔重复带回旧卡片。题量默认固定，也可以按 diff 大小自动调整。
 - **评分**：每次 run 都会得到 8 维评分；配置后也可以启用 LLM judge。Diff Coverage 只看可见 `line_map.json` 里的文件和按行数加权的 hunk；hard gate 详情会写明本次 run 使用的自适应 claim-anchor 阈值。
 - **WebUI**：`ahadiff serve` 打开 Dashboard、Lesson、Diff、Quiz、Review、Concepts、Run Detail、Settings 和 Guide。
+- **新建学习对话框**：Dashboard 可直接从工作区、未暂存、已暂存或最近一次提交开始学习；高级卡片覆盖 `--since`、提交/范围、patch URL、粘贴补丁、文件对比和目录对比。
 - **导出**：支持 TSV / JSON、Anki `.apkg`，以及本地静态预览包。
 - **概念图谱**：自动提取跨 diff 的概念关系，并用 Canvas 图谱和健康检查展示。
 - **AI 工具集成**：为 Claude、Cursor、Copilot、Codex、Gemini、Aider 等工具写入项目级指引。

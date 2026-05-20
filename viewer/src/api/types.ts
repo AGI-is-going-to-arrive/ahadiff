@@ -680,6 +680,8 @@ export interface LearnSubmitPayload {
   patch?: string;
   compare?: [string, string];
   compare_dir?: [string, string];
+  against_spec?: string;
+  spec_semantic_review?: boolean;
   patch_url?: string;
   dry_run?: boolean;
   use_graphify?: boolean | null;

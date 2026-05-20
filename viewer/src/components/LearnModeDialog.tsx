@@ -43,6 +43,7 @@ const UTF8_ENCODER = new TextEncoder();
 const CONTROL_CHAR_RE = /[\u0000-\u001f\u007f]/;
 const WINDOWS_DRIVE_PATH_RE = /^[A-Za-z]:/;
 const REVISION_INPUT_RE = /^[A-Za-z0-9._/@:+~^{}-]+$/;
+const INTERNAL_PATH_ROOTS = new Set(['.git', '.ahadiff']);
 const useSafeLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
 type PathScopeError = 'invalid' | 'too_many' | null;
@@ -134,7 +135,7 @@ function buildPayload(args: BuildPayloadArgs): LearnSubmitPayload {
   if (forceLearn) base.force_learn = true;
   if (useGraphify) base.use_graphify = true;
   if (dryRun) base.dry_run = true;
-  if (lang !== 'auto') base.lang = lang;
+  base.lang = lang;
   if (privacyMode !== '') base.privacy_mode = privacyMode;
   if (isPathScopeMode(mode) && changedPaths.length > 0) base.changed_paths = changedPaths;
   return base;
@@ -171,7 +172,8 @@ function parseChangedPaths(value: string): ChangedPathsParseResult {
     if (
       normalized.length === 0 ||
       normalized.startsWith(':') ||
-      parts.some((part) => part === '' || part === '.' || part === '..')
+      parts.some((part) => part === '' || part === '.' || part === '..') ||
+      INTERNAL_PATH_ROOTS.has(parts[0] ?? '')
     ) {
       return { paths, error: 'invalid' };
     }
@@ -202,6 +204,12 @@ function revisionIsValid(value: string): boolean {
   if (value.startsWith('-')) return false;
   if (CONTROL_CHAR_RE.test(value)) return false;
   return REVISION_INPUT_RE.test(value);
+}
+
+function gitFilterIsValid(value: string): boolean {
+  if (value.length > MAX_TEXT_INPUT_LENGTH) return false;
+  if (value.startsWith('-')) return false;
+  return !CONTROL_CHAR_RE.test(value);
 }
 
 export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps) {
@@ -236,10 +244,13 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
   const isBusy = learnPhase === 'submitting' || learnPhase === 'running' || learnPhase === 'cancelling' || learnPhase === 'estimating' || learnPhase === 'confirming';
   const patchTextBytes = useMemo(() => utf8ByteLength(patchText), [patchText]);
   const patchTooLarge = patchTextBytes > MAX_PATCH_TEXT_BYTES;
-  const patchBlocksSubmit = mode === 'patch' && patchTooLarge;
-  const patchErrorId = patchTooLarge ? 'learn-mode-patch-error' : undefined;
+  const patchUsesStdinSentinel = patchText.trim() === '-';
+  const patchBlocksSubmit = mode === 'patch' && (patchTooLarge || patchUsesStdinSentinel);
+  const patchErrorId = patchBlocksSubmit ? 'learn-mode-patch-error' : undefined;
   const patchValidationMessage = patchTooLarge
     ? t('LearnDialog.error_patch_too_large', { max: MAX_PATCH_TEXT_BYTES })
+    : patchUsesStdinSentinel
+      ? t('LearnDialog.error_patch_stdin_unsupported')
     : null;
   const pathScopeDisabled = !isPathScopeMode(mode);
   const pathScopeResult = useMemo(() => parseChangedPaths(pathScope), [pathScope]);
@@ -260,6 +271,14 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
   const revisionInvalid = mode === 'revision' && trimmedRevision.length > 0 && !revisionIsValid(trimmedRevision);
   const revisionErrorId = revisionInvalid ? 'learn-mode-revision-error' : undefined;
   const revisionValidationMessage = revisionInvalid ? t('LearnDialog.error_revision_invalid') : null;
+  const trimmedSince = since.trim();
+  const sinceInvalid = mode === 'since' && trimmedSince.length > 0 && !gitFilterIsValid(trimmedSince);
+  const sinceErrorId = sinceInvalid ? 'learn-mode-since-error' : undefined;
+  const sinceValidationMessage = sinceInvalid ? t('LearnDialog.error_since_invalid') : null;
+  const trimmedAuthor = author.trim();
+  const authorInvalid = mode === 'since' && trimmedAuthor.length > 0 && !gitFilterIsValid(trimmedAuthor);
+  const authorErrorId = authorInvalid ? 'learn-mode-author-error' : undefined;
+  const authorValidationMessage = authorInvalid ? t('LearnDialog.error_author_invalid') : null;
   const trimmedPatchUrl = patchUrl.trim();
   const patchUrlInvalid = mode === 'patch_url' && trimmedPatchUrl.length > 0 && !patchUrlIsValid(trimmedPatchUrl);
   const patchUrlErrorId = patchUrlInvalid ? 'learn-mode-patch-url-error' : undefined;
@@ -284,7 +303,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
   let needsValidInput = false;
   switch (mode) {
     case 'since':
-      needsValidInput = since.trim().length > 0;
+      needsValidInput = trimmedSince.length > 0 && !sinceInvalid && !authorInvalid;
       break;
     case 'revision':
       needsValidInput = trimmedRevision.length > 0 && !revisionInvalid;
@@ -514,6 +533,9 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                   <span className="learn-dialog__tile-label">
                     {t(`LearnDialog.mode_${m}` as `LearnDialog.mode_working`)}
                   </span>
+                  <span className="learn-dialog__tile-cmd" aria-hidden="true">
+                    {t(`LearnDialog.mode_${m}_cmd` as `LearnDialog.mode_working_cmd`)}
+                  </span>
                   <span className="learn-dialog__tile-desc">
                     {t(`LearnDialog.mode_${m}_desc` as `LearnDialog.mode_working_desc`)}
                   </span>
@@ -521,18 +543,25 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
               ))}
             </div>
 
+          {!advancedOpen && (
+            <p id="learn-dialog-mode-hint" className="learn-dialog__mode-hint">
+              {t('LearnDialog.mode_hint')}
+            </p>
+          )}
+
           {/* Advanced toggle */}
           <button
             type="button"
             className="learn-dialog__advanced-toggle"
             aria-expanded={advancedOpen}
             aria-controls="learn-dialog-advanced"
+            aria-describedby={!advancedOpen ? 'learn-dialog-mode-hint' : undefined}
             onClick={() => setAdvancedOpen((v) => !v)}
           >
             <span className="learn-dialog__advanced-arrow" aria-hidden="true">
               {advancedOpen ? '▾' : '▸'}
             </span>
-            {t('LearnDialog.advanced_toggle')}
+            {advancedOpen ? t('LearnDialog.advanced_toggle_open') : t('LearnDialog.advanced_toggle_closed')}
           </button>
 
           {/* Advanced section */}
@@ -571,286 +600,463 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                 )}
               </div>
 
-              <div className="learn-dialog__advanced-group-label">
-                {t('LearnDialog.advanced_sources_title')}
-              </div>
-
-              {/* Since */}
-              <div
-                className="learn-dialog__radio-row"
-              >
-                <input
-                  id="learn-mode-since"
-                  type="radio"
-                  name="capture-mode"
-                  checked={mode === 'since'}
-                  onChange={() => handleModeSelect('since')}
-                />
-                <label id="learn-mode-since-label" htmlFor="learn-mode-since" className="learn-dialog__radio-label">
-                  <span className="learn-dialog__radio-label-main">{t('LearnDialog.mode_since')}</span>
-                  <span className="learn-dialog__radio-hint">{t('LearnDialog.mode_since_hint')}</span>
-                </label>
-                <input
-                  id="learn-mode-since-value"
-                  type="text"
-                  className="learn-dialog__input"
-                  aria-labelledby="learn-mode-since-label"
-                  placeholder={t('LearnDialog.mode_since_ph')}
-                  maxLength={MAX_TEXT_INPUT_LENGTH}
-                  value={since}
-                  onFocus={() => handleModeSelect('since')}
-                  onChange={(e) => {
-                    handleModeSelect('since');
-                    setSince(e.target.value);
-                  }}
-                />
-              </div>
-
-              {/* Author filter (qualifier for since) */}
-              <div
-                className="learn-dialog__author-row"
-              >
-                <label
-                  htmlFor="learn-mode-author"
-                  className="learn-dialog__author-label"
-                >
-                  {t('LearnDialog.author_filter')}
-                </label>
-                <input
-                  id="learn-mode-author"
-                  type="text"
-                  className="learn-dialog__input"
-                  placeholder={t('LearnDialog.author_filter_ph')}
-                  maxLength={MAX_TEXT_INPUT_LENGTH}
-                  value={author}
-                  onFocus={() => handleModeSelect('since')}
-                  onChange={(e) => {
-                    handleModeSelect('since');
-                    setAuthor(e.target.value);
-                  }}
-                />
-              </div>
-
-              {/* Revision */}
-              <div
-                className="learn-dialog__radio-row"
-              >
-                <input
-                  id="learn-mode-revision"
-                  type="radio"
-                  name="capture-mode"
-                  checked={mode === 'revision'}
-                  onChange={() => handleModeSelect('revision')}
-                />
-                <label id="learn-mode-revision-label" htmlFor="learn-mode-revision" className="learn-dialog__radio-label">
-                  <span className="learn-dialog__radio-label-main">{t('LearnDialog.mode_revision')}</span>
-                  <span className="learn-dialog__radio-hint">{t('LearnDialog.mode_revision_hint')}</span>
-                </label>
-                <input
-                  id="learn-mode-revision-value"
-                  type="text"
-                  className="learn-dialog__input"
-                  aria-labelledby="learn-mode-revision-label"
-                  aria-describedby={revisionErrorId}
-                  aria-invalid={revisionInvalid || undefined}
-                  placeholder={t('LearnDialog.mode_revision_ph')}
-                  maxLength={MAX_REVISION_LENGTH}
-                  value={revision}
-                  onFocus={() => handleModeSelect('revision')}
-                  onChange={(e) => {
-                    handleModeSelect('revision');
-                    setRevision(e.target.value);
-                  }}
-                />
-                {revisionValidationMessage && (
-                  <p
-                    id="learn-mode-revision-error"
-                    className="learn-dialog__error"
-                    role="status"
-                    aria-live="polite"
+              {/* ============== Git Advanced group ============== */}
+              <div className="learn-dialog__adv-group" role="group" aria-labelledby="learn-adv-group-git">
+                <div id="learn-adv-group-git" className="learn-dialog__adv-group-title">
+                  <span>{t('LearnDialog.adv_group_git')}</span>
+                  <span className="learn-dialog__adv-group-meta">{t('LearnDialog.adv_group_git_meta')}</span>
+                </div>
+                <div className="learn-dialog__adv-grid">
+                  {/* Since card */}
+                  <label
+                    className={`learn-dialog__adv-card${mode === 'since' ? ' learn-dialog__adv-card--selected' : ''}`}
                   >
-                    {revisionValidationMessage}
-                  </p>
+                    <input
+                      id="learn-mode-since"
+                      type="radio"
+                      name="capture-mode"
+                      checked={mode === 'since'}
+                      onChange={() => handleModeSelect('since')}
+                      className="learn-dialog__tile-radio"
+                    />
+                    <div className="learn-dialog__adv-card-head">
+                      <span className="learn-dialog__adv-card-title">{t('LearnDialog.mode_since')}</span>
+                      <span className="learn-dialog__adv-card-badge learn-dialog__adv-card-badge--window">
+                        {t('LearnDialog.badge_window')}
+                      </span>
+                    </div>
+                    <div className="learn-dialog__adv-example" aria-hidden="true">
+                      <span className="learn-dialog__cmd-prefix" aria-hidden="true">$</span>
+                      {' ahadiff learn '}
+                      <span className="learn-dialog__cmd-flag">--since</span>
+                      {' '}
+                      <span className="learn-dialog__cmd-arg">&quot;2h ago&quot;</span>
+                    </div>
+                    <div className="learn-dialog__adv-desc">{t('LearnDialog.adv_since_desc')}</div>
+                  </label>
+
+                  {/* Revision card */}
+                  <label
+                    className={`learn-dialog__adv-card${mode === 'revision' ? ' learn-dialog__adv-card--selected' : ''}`}
+                  >
+                    <input
+                      id="learn-mode-revision"
+                      type="radio"
+                      name="capture-mode"
+                      checked={mode === 'revision'}
+                      onChange={() => handleModeSelect('revision')}
+                      className="learn-dialog__tile-radio"
+                    />
+                    <div className="learn-dialog__adv-card-head">
+                      <span className="learn-dialog__adv-card-title">{t('LearnDialog.mode_revision')}</span>
+                    </div>
+                    <div className="learn-dialog__adv-example" aria-hidden="true">
+                      <span className="learn-dialog__cmd-prefix" aria-hidden="true">$</span>
+                      {' ahadiff learn '}
+                      <span className="learn-dialog__cmd-arg">HEAD~5..HEAD</span>
+                    </div>
+                    <div className="learn-dialog__adv-desc">{t('LearnDialog.adv_revision_desc')}</div>
+                  </label>
+                </div>
+
+                {/* Inline inputs for Since */}
+                {mode === 'since' && (
+                  <div className="learn-dialog__input-area">
+                    <div className="learn-dialog__radio-row">
+                      <label
+                        id="learn-mode-since-label"
+                        htmlFor="learn-mode-since-value"
+                        className="learn-dialog__radio-label"
+                      >
+                        <span className="learn-dialog__radio-label-main">{t('LearnDialog.mode_since')}</span>
+                        <span className="learn-dialog__radio-hint">{t('LearnDialog.mode_since_hint')}</span>
+                      </label>
+                      <input
+                        id="learn-mode-since-value"
+                        type="text"
+                        className="learn-dialog__input"
+                        aria-labelledby="learn-mode-since-label"
+                        aria-describedby={sinceErrorId}
+                        aria-invalid={sinceInvalid || undefined}
+                        placeholder={t('LearnDialog.mode_since_ph')}
+                        maxLength={MAX_TEXT_INPUT_LENGTH}
+                        value={since}
+                        onFocus={() => handleModeSelect('since')}
+                        onChange={(e) => {
+                          handleModeSelect('since');
+                          setSince(e.target.value);
+                        }}
+                      />
+                      {sinceValidationMessage && (
+                        <p
+                          id="learn-mode-since-error"
+                          className="learn-dialog__error"
+                          role="status"
+                          aria-live="polite"
+                        >
+                          {sinceValidationMessage}
+                        </p>
+                      )}
+                    </div>
+                    <div className="learn-dialog__author-row">
+                      <label htmlFor="learn-mode-author" className="learn-dialog__author-label">
+                        {t('LearnDialog.author_filter')}
+                      </label>
+                      <input
+                        id="learn-mode-author"
+                        type="text"
+                        className="learn-dialog__input"
+                        placeholder={t('LearnDialog.author_filter_ph')}
+                        aria-describedby={authorErrorId}
+                        aria-invalid={authorInvalid || undefined}
+                        maxLength={MAX_TEXT_INPUT_LENGTH}
+                        value={author}
+                        onFocus={() => handleModeSelect('since')}
+                        onChange={(e) => {
+                          handleModeSelect('since');
+                          setAuthor(e.target.value);
+                        }}
+                      />
+                      {authorValidationMessage && (
+                        <p
+                          id="learn-mode-author-error"
+                          className="learn-dialog__error"
+                          role="status"
+                          aria-live="polite"
+                        >
+                          {authorValidationMessage}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Inline inputs for Revision */}
+                {mode === 'revision' && (
+                  <div className="learn-dialog__input-area">
+                    <div className="learn-dialog__radio-row">
+                      <label
+                        id="learn-mode-revision-label"
+                        htmlFor="learn-mode-revision-value"
+                        className="learn-dialog__radio-label"
+                      >
+                        <span className="learn-dialog__radio-label-main">{t('LearnDialog.mode_revision')}</span>
+                        <span className="learn-dialog__radio-hint">{t('LearnDialog.mode_revision_hint')}</span>
+                      </label>
+                      <input
+                        id="learn-mode-revision-value"
+                        type="text"
+                        className="learn-dialog__input"
+                        aria-labelledby="learn-mode-revision-label"
+                        aria-describedby={revisionErrorId}
+                        aria-invalid={revisionInvalid || undefined}
+                        placeholder={t('LearnDialog.mode_revision_ph')}
+                        maxLength={MAX_REVISION_LENGTH}
+                        value={revision}
+                        onFocus={() => handleModeSelect('revision')}
+                        onChange={(e) => {
+                          handleModeSelect('revision');
+                          setRevision(e.target.value);
+                        }}
+                      />
+                      {revisionValidationMessage && (
+                        <p
+                          id="learn-mode-revision-error"
+                          className="learn-dialog__error"
+                          role="status"
+                          aria-live="polite"
+                        >
+                          {revisionValidationMessage}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
 
-              {/* Patch URL */}
-              <div
-                className="learn-dialog__radio-row"
-              >
-                <input
-                  id="learn-mode-patch-url"
-                  type="radio"
-                  name="capture-mode"
-                  checked={mode === 'patch_url'}
-                  onChange={() => handleModeSelect('patch_url')}
-                />
-                <label id="learn-mode-patch-url-label" htmlFor="learn-mode-patch-url" className="learn-dialog__radio-label">
-                  <span className="learn-dialog__radio-label-main">{t('LearnDialog.mode_patch_url')}</span>
-                  <span className="learn-dialog__radio-hint">{t('LearnDialog.mode_patch_url_hint')}</span>
-                </label>
-                <input
-                  id="learn-mode-patch-url-value"
-                  type="text"
-                  className="learn-dialog__input"
-                  aria-labelledby="learn-mode-patch-url-label"
-                  aria-describedby={patchUrlErrorId}
-                  aria-invalid={patchUrlInvalid || undefined}
-                  placeholder={t('LearnDialog.mode_patch_url_ph')}
-                  maxLength={MAX_TEXT_INPUT_LENGTH}
-                  value={patchUrl}
-                  onFocus={() => handleModeSelect('patch_url')}
-                  onChange={(e) => {
-                    handleModeSelect('patch_url');
-                    setPatchUrl(e.target.value);
-                  }}
-                />
-                {patchUrlValidationMessage && (
-                  <p
-                    id="learn-mode-patch-url-error"
-                    className="learn-dialog__error"
-                    role="status"
-                    aria-live="polite"
+              {/* ============== Patch group ============== */}
+              <div className="learn-dialog__adv-group" role="group" aria-labelledby="learn-adv-group-patch">
+                <div id="learn-adv-group-patch" className="learn-dialog__adv-group-title">
+                  <span>{t('LearnDialog.adv_group_patch')}</span>
+                  <span className="learn-dialog__adv-group-meta">{t('LearnDialog.adv_group_patch_meta')}</span>
+                </div>
+                <div className="learn-dialog__adv-grid">
+                  {/* Patch URL card */}
+                  <label
+                    className={`learn-dialog__adv-card${mode === 'patch_url' ? ' learn-dialog__adv-card--selected' : ''}`}
                   >
-                    {patchUrlValidationMessage}
-                  </p>
+                    <input
+                      id="learn-mode-patch-url"
+                      type="radio"
+                      name="capture-mode"
+                      checked={mode === 'patch_url'}
+                      onChange={() => handleModeSelect('patch_url')}
+                      className="learn-dialog__tile-radio"
+                    />
+                    <div className="learn-dialog__adv-card-head">
+                      <span className="learn-dialog__adv-card-title">{t('LearnDialog.mode_patch_url')}</span>
+                    </div>
+                    <div className="learn-dialog__adv-example" aria-hidden="true">
+                      <span className="learn-dialog__cmd-prefix" aria-hidden="true">$</span>
+                      {' ahadiff learn '}
+                      <span className="learn-dialog__cmd-flag">--patch-url</span>
+                      {' '}
+                      <span className="learn-dialog__cmd-arg">https://...</span>
+                    </div>
+                    <div className="learn-dialog__adv-desc">{t('LearnDialog.adv_patch_url_desc')}</div>
+                  </label>
+
+                  {/* Patch (paste) card */}
+                  <label
+                    className={`learn-dialog__adv-card${mode === 'patch' ? ' learn-dialog__adv-card--selected' : ''}`}
+                  >
+                    <input
+                      id="learn-mode-patch"
+                      type="radio"
+                      name="capture-mode"
+                      checked={mode === 'patch'}
+                      onChange={() => handleModeSelect('patch')}
+                      className="learn-dialog__tile-radio"
+                    />
+                    <div className="learn-dialog__adv-card-head">
+                      <span className="learn-dialog__adv-card-title">{t('LearnDialog.mode_patch')}</span>
+                    </div>
+                    <div className="learn-dialog__adv-example" aria-hidden="true">
+                      <span className="learn-dialog__cmd-prefix" aria-hidden="true">$</span>
+                      {' ahadiff learn '}
+                      <span className="learn-dialog__cmd-flag">--patch</span>
+                      {' '}
+                      <span className="learn-dialog__cmd-arg">-</span>
+                    </div>
+                    <div className="learn-dialog__adv-desc">{t('LearnDialog.adv_patch_desc')}</div>
+                  </label>
+                </div>
+
+                {/* Inline inputs for Patch URL */}
+                {mode === 'patch_url' && (
+                  <div className="learn-dialog__input-area">
+                    <div className="learn-dialog__radio-row">
+                      <label
+                        id="learn-mode-patch-url-label"
+                        htmlFor="learn-mode-patch-url-value"
+                        className="learn-dialog__radio-label"
+                      >
+                        <span className="learn-dialog__radio-label-main">{t('LearnDialog.mode_patch_url')}</span>
+                        <span className="learn-dialog__radio-hint">{t('LearnDialog.mode_patch_url_hint')}</span>
+                      </label>
+                      <input
+                        id="learn-mode-patch-url-value"
+                        type="text"
+                        className="learn-dialog__input"
+                        aria-labelledby="learn-mode-patch-url-label"
+                        aria-describedby={patchUrlErrorId}
+                        aria-invalid={patchUrlInvalid || undefined}
+                        placeholder={t('LearnDialog.mode_patch_url_ph')}
+                        maxLength={MAX_TEXT_INPUT_LENGTH}
+                        value={patchUrl}
+                        onFocus={() => handleModeSelect('patch_url')}
+                        onChange={(e) => {
+                          handleModeSelect('patch_url');
+                          setPatchUrl(e.target.value);
+                        }}
+                      />
+                      {patchUrlValidationMessage && (
+                        <p
+                          id="learn-mode-patch-url-error"
+                          className="learn-dialog__error"
+                          role="status"
+                          aria-live="polite"
+                        >
+                          {patchUrlValidationMessage}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Inline inputs for Patch (paste) */}
+                {mode === 'patch' && (
+                  <div className="learn-dialog__input-area">
+                    <div className="learn-dialog__radio-row learn-dialog__radio-row--block">
+                      <label
+                        id="learn-mode-patch-label"
+                        htmlFor="learn-mode-patch-text"
+                        className="learn-dialog__radio-label"
+                      >
+                        <span className="learn-dialog__radio-label-main">{t('LearnDialog.mode_patch')}</span>
+                        <span className="learn-dialog__radio-hint">{t('LearnDialog.mode_patch_hint')}</span>
+                      </label>
+                      <textarea
+                        id="learn-mode-patch-text"
+                        className="learn-dialog__textarea"
+                        aria-labelledby="learn-mode-patch-label"
+                        aria-describedby={patchErrorId}
+                        aria-invalid={patchTooLarge || undefined}
+                        placeholder={t('LearnDialog.mode_patch_ph')}
+                        value={patchText}
+                        maxLength={MAX_PATCH_TEXT_BYTES * 4}
+                        onFocus={() => handleModeSelect('patch')}
+                        onChange={(e) => {
+                          handleModeSelect('patch');
+                          setPatchText(e.target.value);
+                        }}
+                        rows={6}
+                      />
+                      {patchValidationMessage && (
+                        <p
+                          id="learn-mode-patch-error"
+                          className="learn-dialog__error"
+                          role="status"
+                          aria-live="polite"
+                        >
+                          {patchValidationMessage}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
 
-              {/* Compare refs */}
-              <div
-                className="learn-dialog__radio-row"
-              >
-                <input
-                  id="learn-mode-compare"
-                  type="radio"
-                  name="capture-mode"
-                  checked={mode === 'compare'}
-                  onChange={() => handleModeSelect('compare')}
-                />
-                <label htmlFor="learn-mode-compare" className="learn-dialog__radio-label">
-                  <span className="learn-dialog__radio-label-main">{t('LearnDialog.mode_compare')}</span>
-                  <span className="learn-dialog__radio-hint">{t('LearnDialog.mode_compare_hint')}</span>
-                </label>
-                <div className="learn-dialog__dual-input">
-                  <input
-                    id="learn-mode-compare-a"
-                    type="text"
-                    className="learn-dialog__input"
-                    aria-label={t('LearnDialog.mode_compare_a_aria')}
-                    placeholder={t('LearnDialog.mode_compare_a_ph')}
-                    maxLength={MAX_TEXT_INPUT_LENGTH}
-                    value={compareA}
-                    onFocus={() => handleModeSelect('compare')}
-                    onChange={(e) => {
-                      handleModeSelect('compare');
-                      setCompareA(e.target.value);
-                    }}
-                  />
-                  <input
-                    id="learn-mode-compare-b"
-                    type="text"
-                    className="learn-dialog__input"
-                    aria-label={t('LearnDialog.mode_compare_b_aria')}
-                    placeholder={t('LearnDialog.mode_compare_b_ph')}
-                    maxLength={MAX_TEXT_INPUT_LENGTH}
-                    value={compareB}
-                    onFocus={() => handleModeSelect('compare')}
-                    onChange={(e) => {
-                      handleModeSelect('compare');
-                      setCompareB(e.target.value);
-                    }}
-                  />
+              {/* ============== Compare group ============== */}
+              <div className="learn-dialog__adv-group" role="group" aria-labelledby="learn-adv-group-compare">
+                <div id="learn-adv-group-compare" className="learn-dialog__adv-group-title">
+                  <span>{t('LearnDialog.adv_group_compare')}</span>
+                  <span className="learn-dialog__adv-group-meta">{t('LearnDialog.adv_group_compare_meta')}</span>
                 </div>
-              </div>
-
-              {/* Compare dirs */}
-              <div
-                className="learn-dialog__radio-row"
-              >
-                <input
-                  id="learn-mode-compare-dir"
-                  type="radio"
-                  name="capture-mode"
-                  checked={mode === 'compare_dir'}
-                  onChange={() => handleModeSelect('compare_dir')}
-                />
-                <label htmlFor="learn-mode-compare-dir" className="learn-dialog__radio-label">
-                  <span className="learn-dialog__radio-label-main">{t('LearnDialog.mode_compare_dir')}</span>
-                  <span className="learn-dialog__radio-hint">{t('LearnDialog.mode_compare_dir_hint')}</span>
-                </label>
-                <div className="learn-dialog__dual-input">
-                  <input
-                    id="learn-mode-compare-dir-a"
-                    type="text"
-                    className="learn-dialog__input"
-                    aria-label={t('LearnDialog.mode_compare_dir_a_aria')}
-                    placeholder={t('LearnDialog.mode_compare_dir_a_ph')}
-                    maxLength={MAX_TEXT_INPUT_LENGTH}
-                    value={compareDirA}
-                    onFocus={() => handleModeSelect('compare_dir')}
-                    onChange={(e) => {
-                      handleModeSelect('compare_dir');
-                      setCompareDirA(e.target.value);
-                    }}
-                  />
-                  <input
-                    id="learn-mode-compare-dir-b"
-                    type="text"
-                    className="learn-dialog__input"
-                    aria-label={t('LearnDialog.mode_compare_dir_b_aria')}
-                    placeholder={t('LearnDialog.mode_compare_dir_b_ph')}
-                    maxLength={MAX_TEXT_INPUT_LENGTH}
-                    value={compareDirB}
-                    onFocus={() => handleModeSelect('compare_dir')}
-                    onChange={(e) => {
-                      handleModeSelect('compare_dir');
-                      setCompareDirB(e.target.value);
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Paste patch */}
-              <div
-                className="learn-dialog__radio-row learn-dialog__radio-row--block"
-              >
-                <input
-                  id="learn-mode-patch"
-                  type="radio"
-                  name="capture-mode"
-                  checked={mode === 'patch'}
-                  onChange={() => handleModeSelect('patch')}
-                />
-                <label id="learn-mode-patch-label" htmlFor="learn-mode-patch" className="learn-dialog__radio-label">
-                  <span className="learn-dialog__radio-label-main">{t('LearnDialog.mode_patch')}</span>
-                  <span className="learn-dialog__radio-hint">{t('LearnDialog.mode_patch_hint')}</span>
-                </label>
-                <textarea
-                  id="learn-mode-patch-text"
-                  className="learn-dialog__textarea"
-                  aria-labelledby="learn-mode-patch-label"
-                  aria-describedby={patchErrorId}
-                  aria-invalid={patchTooLarge || undefined}
-                  placeholder={t('LearnDialog.mode_patch_ph')}
-                  value={patchText}
-                  maxLength={MAX_PATCH_TEXT_BYTES * 4}
-                  onFocus={() => handleModeSelect('patch')}
-                  onChange={(e) => {
-                    handleModeSelect('patch');
-                    setPatchText(e.target.value);
-                  }}
-                  rows={6}
-                />
-                {patchValidationMessage && (
-                  <p
-                    id="learn-mode-patch-error"
-                    className="learn-dialog__error"
-                    role="status"
-                    aria-live="polite"
+                <div className="learn-dialog__adv-grid">
+                  {/* Compare files card */}
+                  <label
+                    className={`learn-dialog__adv-card${mode === 'compare' ? ' learn-dialog__adv-card--selected' : ''}`}
                   >
-                    {patchValidationMessage}
-                  </p>
+                    <input
+                      id="learn-mode-compare"
+                      type="radio"
+                      name="capture-mode"
+                      checked={mode === 'compare'}
+                      onChange={() => handleModeSelect('compare')}
+                      className="learn-dialog__tile-radio"
+                    />
+                    <div className="learn-dialog__adv-card-head">
+                      <span className="learn-dialog__adv-card-title">{t('LearnDialog.mode_compare')}</span>
+                    </div>
+                    <div className="learn-dialog__adv-example" aria-hidden="true">
+                      <span className="learn-dialog__cmd-prefix" aria-hidden="true">$</span>
+                      {' ahadiff learn '}
+                      <span className="learn-dialog__cmd-flag">--compare</span>
+                      {' '}
+                      <span className="learn-dialog__cmd-arg">old.py new.py</span>
+                    </div>
+                    <div className="learn-dialog__adv-desc">{t('LearnDialog.adv_compare_desc')}</div>
+                  </label>
+
+                  {/* Compare dirs card */}
+                  <label
+                    className={`learn-dialog__adv-card${mode === 'compare_dir' ? ' learn-dialog__adv-card--selected' : ''}`}
+                  >
+                    <input
+                      id="learn-mode-compare-dir"
+                      type="radio"
+                      name="capture-mode"
+                      checked={mode === 'compare_dir'}
+                      onChange={() => handleModeSelect('compare_dir')}
+                      className="learn-dialog__tile-radio"
+                    />
+                    <div className="learn-dialog__adv-card-head">
+                      <span className="learn-dialog__adv-card-title">{t('LearnDialog.mode_compare_dir')}</span>
+                    </div>
+                    <div className="learn-dialog__adv-example" aria-hidden="true">
+                      <span className="learn-dialog__cmd-prefix" aria-hidden="true">$</span>
+                      {' ahadiff learn '}
+                      <span className="learn-dialog__cmd-flag">--compare-dir</span>
+                      {' '}
+                      <span className="learn-dialog__cmd-arg">old/ new/</span>
+                    </div>
+                    <div className="learn-dialog__adv-desc">{t('LearnDialog.adv_compare_dir_desc')}</div>
+                  </label>
+                </div>
+
+                {/* Inline inputs for Compare files */}
+                {mode === 'compare' && (
+                  <div className="learn-dialog__input-area">
+                    <div className="learn-dialog__radio-row">
+                      <label htmlFor="learn-mode-compare-a" className="learn-dialog__radio-label">
+                        <span className="learn-dialog__radio-label-main">{t('LearnDialog.mode_compare')}</span>
+                        <span className="learn-dialog__radio-hint">{t('LearnDialog.mode_compare_hint')}</span>
+                      </label>
+                      <div className="learn-dialog__dual-input">
+                        <input
+                          id="learn-mode-compare-a"
+                          type="text"
+                          className="learn-dialog__input"
+                          aria-label={t('LearnDialog.mode_compare_a_aria')}
+                          placeholder={t('LearnDialog.mode_compare_a_ph')}
+                          maxLength={MAX_TEXT_INPUT_LENGTH}
+                          value={compareA}
+                          onFocus={() => handleModeSelect('compare')}
+                          onChange={(e) => {
+                            handleModeSelect('compare');
+                            setCompareA(e.target.value);
+                          }}
+                        />
+                        <input
+                          id="learn-mode-compare-b"
+                          type="text"
+                          className="learn-dialog__input"
+                          aria-label={t('LearnDialog.mode_compare_b_aria')}
+                          placeholder={t('LearnDialog.mode_compare_b_ph')}
+                          maxLength={MAX_TEXT_INPUT_LENGTH}
+                          value={compareB}
+                          onFocus={() => handleModeSelect('compare')}
+                          onChange={(e) => {
+                            handleModeSelect('compare');
+                            setCompareB(e.target.value);
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Inline inputs for Compare dirs */}
+                {mode === 'compare_dir' && (
+                  <div className="learn-dialog__input-area">
+                    <div className="learn-dialog__radio-row">
+                      <label htmlFor="learn-mode-compare-dir-a" className="learn-dialog__radio-label">
+                        <span className="learn-dialog__radio-label-main">{t('LearnDialog.mode_compare_dir')}</span>
+                        <span className="learn-dialog__radio-hint">{t('LearnDialog.mode_compare_dir_hint')}</span>
+                      </label>
+                      <div className="learn-dialog__dual-input">
+                        <input
+                          id="learn-mode-compare-dir-a"
+                          type="text"
+                          className="learn-dialog__input"
+                          aria-label={t('LearnDialog.mode_compare_dir_a_aria')}
+                          placeholder={t('LearnDialog.mode_compare_dir_a_ph')}
+                          maxLength={MAX_TEXT_INPUT_LENGTH}
+                          value={compareDirA}
+                          onFocus={() => handleModeSelect('compare_dir')}
+                          onChange={(e) => {
+                            handleModeSelect('compare_dir');
+                            setCompareDirA(e.target.value);
+                          }}
+                        />
+                        <input
+                          id="learn-mode-compare-dir-b"
+                          type="text"
+                          className="learn-dialog__input"
+                          aria-label={t('LearnDialog.mode_compare_dir_b_aria')}
+                          placeholder={t('LearnDialog.mode_compare_dir_b_ph')}
+                          maxLength={MAX_TEXT_INPUT_LENGTH}
+                          value={compareDirB}
+                          onFocus={() => handleModeSelect('compare_dir')}
+                          onChange={(e) => {
+                            handleModeSelect('compare_dir');
+                            setCompareDirB(e.target.value);
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
 

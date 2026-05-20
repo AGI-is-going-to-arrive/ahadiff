@@ -883,6 +883,10 @@
   .srs-card__choice:active:not(.srs-card__choice--disabled) {
     transform: none !important;
   }
+
+  .quiz-page__mode-tooltip {
+    transition: none;
+  }
 }
 
 /* Mode badge (Socratic / SRS) */
@@ -896,8 +900,10 @@
 }
 
 .quiz-page__mode-badge {
+  appearance: none;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--sp-1);
   padding: 3px 10px;
   border-radius: var(--r-full);
@@ -911,10 +917,23 @@
   border: 1px solid var(--hair);
 }
 
+.quiz-page__mode-tip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
 .quiz-page__mode-badge--active {
   background: var(--accent-softest);
   color: var(--accent-ink);
   border-color: var(--accent-tint);
+}
+
+.quiz-page__mode-badge--socratic,
+.quiz-page__mode-badge--srs {
+  cursor: help;
+  min-width: 44px;
+  min-height: 44px;
 }
 
 .quiz-page__mode-badge--socratic {
@@ -927,6 +946,44 @@
   background: var(--accent);
   color: var(--on-accent);
   border-color: transparent;
+}
+
+.quiz-page__mode-badge--socratic:focus-visible,
+.quiz-page__mode-badge--srs:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.quiz-page__mode-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: var(--bg);
+  font-family: var(--font-body, system-ui, sans-serif);
+  font-size: 13px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.4;
+  padding: 6px 12px;
+  border-radius: 6px;
+  white-space: normal;
+  max-width: min(280px, calc(100vw - 32px));
+  pointer-events: none;
+  z-index: 10;
+}
+
+.quiz-page__mode-tooltip::before {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--ink);
+  pointer-events: none;
 }
 
 .quiz-page__card-wrap--srs .srs-card {
@@ -1003,6 +1060,16 @@
   .quiz-page__mode-badge--srs {
     border-color: Highlight !important;
     color: Highlight !important;
+  }
+
+  .quiz-page__mode-tooltip {
+    background: Canvas !important;
+    color: CanvasText !important;
+    border: 1px solid CanvasText !important;
+  }
+
+  .quiz-page__mode-tooltip::before {
+    border-top-color: CanvasText !important;
   }
 
   .srs-card {

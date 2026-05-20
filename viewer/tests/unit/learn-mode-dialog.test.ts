@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { chromium, type Browser, type Page } from '@playwright/test';
+import { chromium, type Browser, type Locator, type Page } from '@playwright/test';
 import { createServer, type ViteDevServer } from 'vite';
 
 const TEST_PATH = '/__learn-mode-dialog-test.html';
@@ -151,6 +151,10 @@ async function getCloseCount(page: Page): Promise<number> {
   return page.evaluate(() => window.__onCloseCalls);
 }
 
+function advancedCard(page: Page, radioId: string): Locator {
+  return page.locator('.learn-dialog__adv-card').filter({ has: page.locator(`#${radioId}`) });
+}
+
 describe('LearnModeDialog', () => {
   beforeAll(async () => {
     const harness = await createHarnessServer();
@@ -274,14 +278,14 @@ describe('LearnModeDialog', () => {
     await expect.poll(() => page.locator('#learn-mode-path-scope-hint').textContent()).toContain(
       'Leave empty for all paths',
     );
-    await expect.poll(() => page.locator('.learn-dialog__advanced-group-label').textContent()).toBe(
-      'Other sources',
+    await expect.poll(() => page.locator('.learn-dialog__adv-group-title').first().textContent()).toContain(
+      'Git Advanced',
     );
-    await expect.poll(() => page.locator('label[for="learn-mode-since"]').textContent()).toContain(
-      'Recent commit window',
+    await expect.poll(() => advancedCard(page, 'learn-mode-since').textContent()).toContain(
+      'Since date',
     );
-    await expect.poll(() => page.locator('label[for="learn-mode-patch"]').textContent()).toContain(
-      'Unified diff text',
+    await expect.poll(() => advancedCard(page, 'learn-mode-patch').textContent()).toContain(
+      'Paste patch',
     );
     await expect.poll(() => page.locator('#learn-mode-path-scope').getAttribute('aria-describedby')).toBe(
       'learn-mode-path-scope-hint',
@@ -325,9 +329,9 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__advanced-toggle').click();
     await page.waitForSelector('#learn-dialog-advanced');
 
-    // The first radio row in advanced is the "since" row
-    const sinceRow = page.locator('.learn-dialog__radio-row').nth(0);
-    const sinceInput = sinceRow.locator('input[type="text"]');
+    await advancedCard(page, 'learn-mode-since').click();
+    await page.waitForSelector('#learn-mode-since-value');
+    const sinceInput = page.locator('#learn-mode-since-value');
 
     // Input is directly focusable; focusing or typing also selects this source.
     await expect.poll(() => sinceInput.isDisabled()).toBe(false);
@@ -345,8 +349,10 @@ describe('LearnModeDialog', () => {
 
     await page.locator('.learn-dialog__advanced-toggle').click();
     await page.waitForSelector('#learn-dialog-advanced');
-    await page.locator('label[for="learn-mode-revision"]').click();
+    await advancedCard(page, 'learn-mode-revision').click();
     await expect.poll(() => page.locator('#learn-mode-revision').isChecked()).toBe(true);
+    await advancedCard(page, 'learn-mode-since').click();
+    await page.waitForSelector('#learn-mode-author');
 
     const authorRow = page.locator('.learn-dialog__author-row');
     await expect.poll(() => authorRow.getAttribute('role')).toBeNull();
@@ -388,6 +394,20 @@ describe('LearnModeDialog', () => {
     ]);
   });
 
+  it('sends explicit auto language when Auto is selected', async () => {
+    await renderDialog(page, { locale: 'zh-CN' });
+    await page.waitForSelector('[role="dialog"]');
+
+    await page.locator('.learn-dialog__advanced-toggle').click();
+    await page.waitForSelector('#learn-dialog-advanced');
+    await page.locator('#learn-opt-lang').selectOption('auto');
+    await page.locator('.learn-dialog__btn--primary').click();
+
+    await expect.poll(() => getPayloads(page)).toEqual([
+      { staged: true, unstaged: true, include_untracked: true, lang: 'auto' },
+    ]);
+  });
+
   it('path scope input sends deduped changed_paths for working mode', async () => {
     await renderDialog(page);
     await page.waitForSelector('[role="dialog"]');
@@ -417,7 +437,15 @@ describe('LearnModeDialog', () => {
     const input = page.locator('#learn-mode-path-scope');
     const startBtn = page.locator('.learn-dialog__btn--primary');
 
-    for (const value of ['../secret.txt', '/etc/passwd', 'C:\\temp\\secret.txt', 'C:secret.txt', 'src/\u0001bad.py']) {
+    for (const value of [
+      '../secret.txt',
+      '/etc/passwd',
+      'C:\\temp\\secret.txt',
+      'C:secret.txt',
+      'src/\u0001bad.py',
+      '.git/config',
+      '.ahadiff/runs/run-1',
+    ]) {
       await input.fill(value);
       await expect.poll(() => startBtn.isDisabled()).toBe(true);
       await expect.poll(() => page.locator('#learn-mode-path-scope-error').textContent()).toContain(
@@ -426,7 +454,7 @@ describe('LearnModeDialog', () => {
     }
   });
 
-  it('path scope is ignored when a non-worktree mode is submitted', async () => {
+  it('path scope is ignored when last commit mode is submitted', async () => {
     await renderDialog(page);
     await page.waitForSelector('[role="dialog"]');
 
@@ -439,6 +467,41 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__btn--primary').click();
 
     await expect.poll(() => getPayloads(page)).toEqual([{ last: true, lang: 'en' }]);
+  });
+
+  it('path scope is ignored for advanced non-worktree modes', async () => {
+    const cases = [
+      {
+        radioId: 'learn-mode-revision',
+        fill: async () => page.locator('#learn-mode-revision-value').fill('HEAD~1..HEAD'),
+        expected: { revision: 'HEAD~1..HEAD', lang: 'en' },
+      },
+      {
+        radioId: 'learn-mode-patch-url',
+        fill: async () => page.locator('#learn-mode-patch-url-value').fill('https://example.test/a.patch'),
+        expected: { patch_url: 'https://example.test/a.patch', lang: 'en' },
+      },
+      {
+        radioId: 'learn-mode-compare',
+        fill: async () => {
+          await page.locator('#learn-mode-compare-a').fill('old.py');
+          await page.locator('#learn-mode-compare-b').fill('new.py');
+        },
+        expected: { compare: ['old.py', 'new.py'], lang: 'en' },
+      },
+    ] as const;
+
+    for (const item of cases) {
+      await renderDialog(page);
+      await page.waitForSelector('[role="dialog"]');
+      await page.locator('.learn-dialog__advanced-toggle').click();
+      await page.waitForSelector('#learn-dialog-advanced');
+      await page.locator('#learn-mode-path-scope').fill('src/app.py');
+      await advancedCard(page, item.radioId).click();
+      await item.fill();
+      await page.locator('.learn-dialog__btn--primary').click();
+      await expect.poll(() => getPayloads(page)).toEqual([item.expected]);
+    }
   });
 
   it('path scope rejects more than 500 unique paths', async () => {
@@ -500,12 +563,11 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__advanced-toggle').click();
     await page.waitForSelector('#learn-dialog-advanced');
 
-    // Click the label to select since mode
-    await page.locator('label[for="learn-mode-since"]').click();
+    await advancedCard(page, 'learn-mode-since').click();
 
-    // Wait until the input is enabled
-    const sinceRow = page.locator('.learn-dialog__radio-row').nth(0);
-    const sinceInput = sinceRow.locator('input[type="text"]');
+    // Wait until the input is rendered and enabled
+    await page.waitForSelector('#learn-mode-since-value');
+    const sinceInput = page.locator('#learn-mode-since-value');
     await expect.poll(() => sinceInput.isDisabled()).toBe(false);
 
     // Button must be disabled (empty since input)
@@ -520,6 +582,36 @@ describe('LearnModeDialog', () => {
     await sinceInput.fill('   ');
     await expect.poll(() => startBtn.isDisabled()).toBe(true);
   }, 15_000);
+
+  it('since mode rejects leading dash and control characters in git filters', async () => {
+    await renderDialog(page);
+    await page.waitForSelector('[role="dialog"]');
+
+    await page.locator('.learn-dialog__advanced-toggle').click();
+    await page.waitForSelector('#learn-dialog-advanced');
+    await advancedCard(page, 'learn-mode-since').click();
+    await page.waitForSelector('#learn-mode-since-value');
+
+    const sinceInput = page.locator('#learn-mode-since-value');
+    const authorInput = page.locator('#learn-mode-author');
+    const startBtn = page.locator('.learn-dialog__btn--primary');
+
+    await sinceInput.fill('--all');
+    await expect.poll(() => startBtn.isDisabled()).toBe(true);
+    await expect.poll(() => page.locator('#learn-mode-since-error').textContent()).toContain(
+      'must not start',
+    );
+
+    await sinceInput.fill('2 hours ago');
+    await authorInput.fill('bad\u0001author');
+    await expect.poll(() => startBtn.isDisabled()).toBe(true);
+    await expect.poll(() => page.locator('#learn-mode-author-error').textContent()).toContain(
+      'control characters',
+    );
+
+    await authorInput.fill('alice');
+    await expect.poll(() => startBtn.isDisabled()).toBe(false);
+  });
 
   it('Esc key closes the dialog (calls onClose)', async () => {
     await renderDialog(page);
@@ -562,13 +654,11 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__advanced-toggle').click();
     await page.waitForSelector('#learn-dialog-advanced');
 
-    // Select compare mode
-    await page.locator('label[for="learn-mode-compare"]').click();
+    await advancedCard(page, 'learn-mode-compare').click();
+    await page.waitForSelector('#learn-mode-compare-a');
 
-    // Fill both inputs
-    const dualInputs = page.locator('.learn-dialog__dual-input').nth(0).locator('input');
-    await dualInputs.nth(0).fill('main');
-    await dualInputs.nth(1).fill('feature-branch');
+    await page.locator('#learn-mode-compare-a').fill('main');
+    await page.locator('#learn-mode-compare-b').fill('feature-branch');
 
     await page.locator('.learn-dialog__btn--primary').click();
 
@@ -584,11 +674,11 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__advanced-toggle').click();
     await page.waitForSelector('#learn-dialog-advanced');
 
-    await page.locator('label[for="learn-mode-compare-dir"]').click();
+    await advancedCard(page, 'learn-mode-compare-dir').click();
+    await page.waitForSelector('#learn-mode-compare-dir-a');
 
-    const dualInputs = page.locator('.learn-dialog__dual-input').nth(1).locator('input');
-    await dualInputs.nth(0).fill('/old/dir');
-    await dualInputs.nth(1).fill('/new/dir');
+    await page.locator('#learn-mode-compare-dir-a').fill('/old/dir');
+    await page.locator('#learn-mode-compare-dir-b').fill('/new/dir');
 
     await page.locator('.learn-dialog__btn--primary').click();
 
@@ -604,9 +694,9 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__advanced-toggle').click();
     await page.waitForSelector('#learn-dialog-advanced');
 
-    await page.locator('label[for="learn-mode-revision"]').click();
-    const revisionRow = page.locator('.learn-dialog__radio-row').nth(1);
-    await revisionRow.locator('input[type="text"]').fill('  abc123  ');
+    await advancedCard(page, 'learn-mode-revision').click();
+    await page.waitForSelector('#learn-mode-revision-value');
+    await page.locator('#learn-mode-revision-value').fill('  abc123  ');
 
     await page.locator('.learn-dialog__btn--primary').click();
 
@@ -621,7 +711,8 @@ describe('LearnModeDialog', () => {
 
     await page.locator('.learn-dialog__advanced-toggle').click();
     await page.waitForSelector('#learn-dialog-advanced');
-    await page.locator('label[for="learn-mode-revision"]').click();
+    await advancedCard(page, 'learn-mode-revision').click();
+    await page.waitForSelector('#learn-mode-revision-value');
     const input = page.locator('#learn-mode-revision-value');
     const startBtn = page.locator('.learn-dialog__btn--primary');
     await expect.poll(() => input.getAttribute('maxLength')).toBe('255');
@@ -645,6 +736,8 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__advanced-toggle').click();
     await page.waitForSelector('#learn-dialog-advanced');
 
+    await advancedCard(page, 'learn-mode-revision').click();
+    await page.waitForSelector('#learn-mode-revision-value');
     await page.locator('#learn-mode-revision-value').fill('  def456  ');
 
     await expect.poll(() => page.locator('#learn-mode-revision').isChecked()).toBe(true);
@@ -663,9 +756,9 @@ describe('LearnModeDialog', () => {
     await toggle.click();
     await page.waitForSelector('#learn-dialog-advanced');
 
-    await page.locator('label[for="learn-mode-revision"]').click();
-    const revisionRow = page.locator('.learn-dialog__radio-row').nth(1);
-    await revisionRow.locator('input[type="text"]').fill('  def456  ');
+    await advancedCard(page, 'learn-mode-revision').click();
+    await page.waitForSelector('#learn-mode-revision-value');
+    await page.locator('#learn-mode-revision-value').fill('  def456  ');
 
     await toggle.click();
     await expect.poll(() => page.locator('#learn-dialog-advanced').count()).toBe(0);
@@ -683,9 +776,9 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__advanced-toggle').click();
     await page.waitForSelector('#learn-dialog-advanced');
 
-    await page.locator('label[for="learn-mode-patch-url"]').click();
-    const patchUrlRow = page.locator('.learn-dialog__radio-row').nth(2);
-    await patchUrlRow.locator('input[type="text"]').fill('  https://example.test/file.patch  ');
+    await advancedCard(page, 'learn-mode-patch-url').click();
+    await page.waitForSelector('#learn-mode-patch-url-value');
+    await page.locator('#learn-mode-patch-url-value').fill('  https://example.test/file.patch  ');
 
     await page.locator('.learn-dialog__btn--primary').click();
 
@@ -700,7 +793,8 @@ describe('LearnModeDialog', () => {
 
     await page.locator('.learn-dialog__advanced-toggle').click();
     await page.waitForSelector('#learn-dialog-advanced');
-    await page.locator('label[for="learn-mode-patch-url"]').click();
+    await advancedCard(page, 'learn-mode-patch-url').click();
+    await page.waitForSelector('#learn-mode-patch-url-value');
     const input = page.locator('#learn-mode-patch-url-value');
     const startBtn = page.locator('.learn-dialog__btn--primary');
 
@@ -723,7 +817,8 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__advanced-toggle').click();
     await page.waitForSelector('#learn-dialog-advanced');
 
-    await page.locator('label[for="learn-mode-patch"]').click();
+    await advancedCard(page, 'learn-mode-patch').click();
+    await page.waitForSelector('.learn-dialog__textarea');
 
     const textarea = page.locator('.learn-dialog__textarea');
     await textarea.fill('--- a/file.py\n+++ b/file.py\n@@ -1 +1 @@\n-old\n+new');
@@ -741,7 +836,8 @@ describe('LearnModeDialog', () => {
 
     await page.locator('.learn-dialog__advanced-toggle').click();
     await page.waitForSelector('#learn-dialog-advanced');
-    await page.locator('label[for="learn-mode-patch"]').click();
+    await advancedCard(page, 'learn-mode-patch').click();
+    await page.waitForSelector('.learn-dialog__textarea');
 
     const startBtn = page.locator('.learn-dialog__btn--primary');
     const textarea = page.locator('.learn-dialog__textarea');
@@ -749,6 +845,12 @@ describe('LearnModeDialog', () => {
     await expect.poll(() => startBtn.isDisabled()).toBe(true);
     await textarea.fill('   ');
     await expect.poll(() => startBtn.isDisabled()).toBe(true);
+
+    await textarea.fill('-');
+    await expect.poll(() => startBtn.isDisabled()).toBe(true);
+    await expect.poll(() => page.locator('#learn-mode-patch-error').textContent()).toContain(
+      'Paste the diff text',
+    );
 
     await textarea.fill('x'.repeat(4097));
     await expect.poll(() => startBtn.isDisabled()).toBe(true);
@@ -768,11 +870,11 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__advanced-toggle').click();
     await page.waitForSelector('#learn-dialog-advanced');
 
-    await page.locator('label[for="learn-mode-since"]').click();
+    await advancedCard(page, 'learn-mode-since').click();
+    await page.waitForSelector('#learn-mode-since-value');
 
     // Fill since input
-    const sinceRow = page.locator('.learn-dialog__radio-row').nth(0);
-    await sinceRow.locator('input[type="text"]').fill('2 hours ago');
+    await page.locator('#learn-mode-since-value').fill('2 hours ago');
 
     // Fill author input
     const authorInput = page.locator('#learn-mode-author');
@@ -792,14 +894,14 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__advanced-toggle').click();
     await page.waitForSelector('#learn-dialog-advanced');
 
-    await page.locator('label[for="learn-mode-since"]').click();
-    const sinceRow = page.locator('.learn-dialog__radio-row').nth(0);
-    await sinceRow.locator('input[type="text"]').fill('yesterday');
+    await advancedCard(page, 'learn-mode-since').click();
+    await page.waitForSelector('#learn-mode-since-value');
+    await page.locator('#learn-mode-since-value').fill('yesterday');
     await page.locator('#learn-mode-author').fill('alice');
 
-    await page.locator('label[for="learn-mode-revision"]').click();
-    const revisionRow = page.locator('.learn-dialog__radio-row').nth(1);
-    await revisionRow.locator('input[type="text"]').fill('abc123');
+    await advancedCard(page, 'learn-mode-revision').click();
+    await page.waitForSelector('#learn-mode-revision-value');
+    await page.locator('#learn-mode-revision-value').fill('abc123');
     await page.locator('.learn-dialog__btn--primary').click();
 
     await expect.poll(() => getPayloads(page)).toEqual([
@@ -872,18 +974,18 @@ describe('LearnModeDialog', () => {
     await page.locator('.learn-dialog__advanced-toggle').click();
     await page.waitForSelector('#learn-dialog-advanced');
 
-    await page.locator('label[for="learn-mode-compare"]').click();
+    await advancedCard(page, 'learn-mode-compare').click();
+    await page.waitForSelector('#learn-mode-compare-a');
 
     // Only fill one input
-    const dualInputs = page.locator('.learn-dialog__dual-input').nth(0).locator('input');
-    await dualInputs.nth(0).fill('main');
+    await page.locator('#learn-mode-compare-a').fill('main');
 
     // Button should be disabled (second input empty)
     const startBtn = page.locator('.learn-dialog__btn--primary');
     await expect.poll(() => startBtn.isDisabled()).toBe(true);
 
     // Fill second → enabled
-    await dualInputs.nth(1).fill('develop');
+    await page.locator('#learn-mode-compare-b').fill('develop');
     await expect.poll(() => startBtn.isDisabled()).toBe(false);
   });
 
@@ -893,20 +995,22 @@ describe('LearnModeDialog', () => {
 
     await page.locator('.learn-dialog__advanced-toggle').click();
     await page.waitForSelector('#learn-dialog-advanced');
-    await page.locator('label[for="learn-mode-compare"]').click();
+    await advancedCard(page, 'learn-mode-compare').click();
+    await page.waitForSelector('#learn-mode-compare-a');
 
     const startBtn = page.locator('.learn-dialog__btn--primary');
-    const dualInputs = page.locator('.learn-dialog__dual-input').nth(0).locator('input');
+    const inputA = page.locator('#learn-mode-compare-a');
+    const inputB = page.locator('#learn-mode-compare-b');
 
     await expect.poll(() => startBtn.isDisabled()).toBe(true);
-    await dualInputs.nth(0).fill('   ');
-    await dualInputs.nth(1).fill('\t  ');
+    await inputA.fill('   ');
+    await inputB.fill('\t  ');
     await expect.poll(() => startBtn.isDisabled()).toBe(true);
 
-    await dualInputs.nth(0).fill('main');
+    await inputA.fill('main');
     await expect.poll(() => startBtn.isDisabled()).toBe(true);
 
-    await dualInputs.nth(1).fill('feature');
+    await inputB.fill('feature');
     await expect.poll(() => startBtn.isDisabled()).toBe(false);
   });
 });

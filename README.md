@@ -94,6 +94,7 @@ See the [User Guide](./docs/USER_GUIDE.en.html) for all 9 diff capture modes, ex
 - **Quiz and review**: `ahadiff quiz` tests the run you just learned; `ahadiff review` brings back older cards with spaced repetition. Quiz count is fixed by default and can adapt to diff size when enabled.
 - **Scoring**: each run gets an 8-dimension score, with an optional LLM judge when configured. Diff Coverage is based on visible `line_map.json` files and line-weighted hunks, and hard-gate details show the adaptive claim-anchor threshold used for that run.
 - **WebUI**: `ahadiff serve` opens Dashboard, Lesson, Diff, Quiz, Review, Concepts, Run Detail, Settings, and Guide.
+- **New Run dialog**: Dashboard can start quick learn runs for working tree, unstaged, staged, or last commit changes, with advanced cards for `--since`, revision/range, patch URL, pasted patch text, file compare, and directory compare.
 - **Export**: export results as TSV / JSON, Anki `.apkg`, or a local static preview bundle.
 - **Concept graph**: AhaDiff extracts cross-diff concepts and shows them in a Canvas graph with health checks.
 - **AI tool integration**: project-level guidance for Claude, Cursor, Copilot, Codex, Gemini, Aider, and more.

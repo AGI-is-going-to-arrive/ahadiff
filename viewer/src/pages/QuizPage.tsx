@@ -1,4 +1,13 @@
-import { lazy, Suspense, useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { Link, useParams } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import SRSCard from '../components/SRSCard';
@@ -99,6 +108,7 @@ export default function QuizPage() {
   const [answered, setAnswered] = useState<Record<string, AnswerRecord>>({});
   const [misconceptions, setMisconceptions] = useState<MisconceptionCardItem[]>([]);
   const [signalError, setSignalError] = useState<string | null>(null);
+  const [modeTipOpen, setModeTipOpen] = useState(false);
   // `rated` gates the Next button. SRS-tracked quiz rows require a rating; legacy
   // no-review rows are marked rated after answer reveal so they do not depend on
   // review.sqlite cards that were never generated.
@@ -164,6 +174,17 @@ export default function QuizPage() {
   );
 
   const isSrsReview = currentQuiz ? hasQuizReviewCard(currentQuiz) : false;
+  const modeTipLabel = isSrsReview ? t('Quiz.mode_srs') : t('Quiz.mode_socratic');
+  const modeTipText = isSrsReview ? t('Quiz.mode_srs_tip') : t('Quiz.mode_socratic_tip');
+
+  const showModeTip = useCallback(() => setModeTipOpen(true), []);
+  const hideModeTip = useCallback(() => setModeTipOpen(false), []);
+  const handleModeTipKeyDown = useCallback((event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === 'Escape') {
+      event.stopPropagation();
+      setModeTipOpen(false);
+    }
+  }, []);
 
   const handleAnswer = useCallback(
     (questionId: string, answer: string, correct: boolean) => {
@@ -339,8 +360,30 @@ export default function QuizPage() {
                     {t(QUIZ_KIND_LABEL_KEYS[kind])}
                   </span>
                 ))}
-                <span className={`quiz-page__mode-badge ${isSrsReview ? 'quiz-page__mode-badge--srs' : 'quiz-page__mode-badge--socratic'}`}>
-                  {isSrsReview ? t('Quiz.mode_srs') : t('Quiz.mode_socratic')}
+                <span className="quiz-page__mode-tip">
+                  <button
+                    type="button"
+                    className={`quiz-page__mode-badge ${isSrsReview ? 'quiz-page__mode-badge--srs' : 'quiz-page__mode-badge--socratic'}`}
+                    aria-expanded={modeTipOpen}
+                    aria-controls={modeTipOpen ? 'quiz-mode-tip' : undefined}
+                    aria-describedby={modeTipOpen ? 'quiz-mode-tip' : 'quiz-mode-tip-description'}
+                    onMouseEnter={showModeTip}
+                    onMouseLeave={hideModeTip}
+                    onFocus={showModeTip}
+                    onBlur={hideModeTip}
+                    onKeyDown={handleModeTipKeyDown}
+                    onClick={showModeTip}
+                  >
+                    {modeTipLabel}
+                  </button>
+                  <span id="quiz-mode-tip-description" className="sr-only">
+                    {modeTipText}
+                  </span>
+                  {modeTipOpen && (
+                    <span id="quiz-mode-tip" role="tooltip" className="quiz-page__mode-tooltip">
+                      {modeTipText}
+                    </span>
+                  )}
                 </span>
               </div>
               <span

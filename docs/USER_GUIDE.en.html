@@ -83,6 +83,7 @@ ahadiff learn --compare old.py new.py
 ahadiff learn --compare-dir old/ new/
 ahadiff learn --last --against-spec SPEC.md
 ahadiff learn --last --against-spec SPEC.md --spec-semantic-review</pre>
+  <p>The Dashboard's New Run dialog mirrors these capture modes. The four quick tiles cover working tree, unstaged, staged, and last commit runs. More capture modes are grouped into Git Advanced, Patch, and File Compare cards, and each card shows the matching CLI shape. Path scope only applies to working-tree modes and accepts repo-relative paths. The WebUI patch field accepts pasted unified diff text up to 4096 bytes; use the CLI for patch files, stdin, or larger patches.</p>
 </section>
 
 <section id="webui">
@@ -107,7 +108,7 @@ ahadiff serve --watch  # requires ahadiff[watchdog]</pre>
     <tr><td><code>/run/:runId</code></td><td>Run detail: Overview, Score, Judge, Artifacts.</td></tr>
     <tr><td><code>/run/:runId/lesson</code></td><td>Lesson body, claim summary, evidence, and knowledge notes.</td></tr>
     <tr><td><code>/run/:runId/diff</code></td><td>Unified/Split diff, claim dots, and the ClaimInspector.</td></tr>
-    <tr><td><code>/run/:runId/quiz</code></td><td>Guided / Recall / Transfer questions.</td></tr>
+    <tr><td><code>/run/:runId/quiz</code></td><td>Guided / Recall / Transfer questions. The mode badge explains whether the current question is a one-time Socratic quiz or an SRS review card.</td></tr>
     <tr><td><code>/review</code></td><td>FSRS review queue with Again / Hard / Good / Easy grading.</td></tr>
     <tr><td><code>/concepts</code></td><td>Concept ledger, concept graph, and Graphify source.</td></tr>
     <tr><td><code>/ratchet</code></td><td>Result history, benchmark summary, and export entry points.</td></tr>
@@ -183,7 +184,7 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
   <h3>What safety findings fail a run?</h3>
   <p>An unmitigated Critical safety finding fails the run. A Critical secret finding is treated as mitigated only when the local capture record shows a complete redaction shape, including the rule, hash, source, line, and column.</p>
   <h3>Can you guarantee there are no bugs?</h3>
-  <p>No — that level of guarantee isn't possible. The last full release gate validated backend unit / integration / eval suites, static checks, the wheel build, frontend typecheck / build / Vitest, the full Playwright suite, real-serve, the CLI behavior matrix, Linux target container tests, and the GPT-5.5 live fixture. Later follow-ups re-ran their changed surfaces only. The latest adversarial review and fix pass re-ran <code>uv run pytest tests</code> with <code>2853 passed, 7 skipped</code>, plus ruff, format check, pyright, frontend typecheck, frontend Vitest with <code>401 passed</code>, frontend build, strict replay calibration, and <code>git diff --check HEAD</code>; it did not re-run full Playwright, live judge, remote CI, or a real Windows runner.</p>
+  <p>No — that level of guarantee isn't possible. The last full release gate validated backend unit / integration / eval suites, static checks, the wheel build, frontend typecheck / build / Vitest, the full Playwright suite, real-serve, the CLI behavior matrix, Linux target container tests, and the GPT-5.5 live fixture. Later follow-ups re-ran their changed surfaces only. The latest Learn dialog / Quiz badge review pass re-ran frontend Vitest with <code>405 passed</code>, frontend typecheck, i18n parity, desktop cross-browser Playwright for <code>cross-browser.spec.ts</code> with <code>30 passed</code>, and <code>git diff --check HEAD</code>; it did not re-run backend, full Playwright, live judge, remote CI, or a real Windows runner.</p>
 </section>
 
 <section id="verification">
@@ -191,7 +192,7 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
   <ul>
     <li>Screenshots come from the current <code>viewer/</code> via Playwright and existing serve mocks; no real credentials are included.</li>
     <li>The real-serve checks bring up a real <code>python -m ahadiff serve</code> against a throwaway git repo and use a browser to exercise token, estimate, learn dry-run, task, and progress-stream flows.</li>
-    <li>The current adversarial review and fix pass rechecked the backend and frontend changed surfaces: full pytest, ruff, format check, pyright, frontend typecheck, Vitest, frontend build, and whitespace diff-check. This documentation sync then re-ran whitespace diff-check for these guide files.</li>
+    <li>The current Learn dialog / Quiz badge review pass rechecked the frontend changed surface: <code>pnpm vitest run</code>, <code>pnpm typecheck</code>, i18n parity, desktop cross-browser Playwright for <code>cross-browser.spec.ts</code>, and whitespace diff-check. This documentation sync then re-ran whitespace diff-check for the updated docs.</li>
     <li>The earlier structured-output live smoke used synthetic fixtures across local LM Studio, local Ollama, a local OpenAI-compatible endpoint, a local Anthropic-compatible endpoint, and Gemini AI Studio. Credentials were supplied only through temporary process environment variables.</li>
     <li>The diff-coverage follow-up rechecked the changed backend surface with target pytest, ruff, pyright, <code>git diff --check</code>, and read-only replay calibration. Strict calibration now treats historical runs without <code>score.json</code> or without a persisted <code>evidence_coverage</code> gate as skipped, not as code failures. The latest run checked 7 eligible historical runs, skipped 158 ineligible old runs, reported <code>pass_to_fail=0</code> and <code>fail_to_pass=3</code>, and did not write run artifacts. It is a history-calibration helper only; normal <code>ahadiff score</code> and <code>ahadiff verify</code> still use the current hard gate semantics.</li>
     <li>GPT-5.5 live verification uses the configured provider plus synthetic fixtures — it is not an unconstrained full-repo LLM run against the entire current codebase.</li>

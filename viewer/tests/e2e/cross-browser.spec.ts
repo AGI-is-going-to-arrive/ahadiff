@@ -116,7 +116,9 @@ test.describe('cross-browser corner cases', () => {
 
     const learnDialog = page.getByRole('dialog', { name: /Start a Learn Run/i });
     await expect(learnDialog).toBeVisible();
-    await learnDialog.getByRole('button', { name: /More options/i }).focus();
+    const advancedToggle = learnDialog.getByRole('button', { name: /More capture modes/i });
+    await expect(advancedToggle).toHaveAttribute('aria-expanded', 'false');
+    await advancedToggle.focus();
 
     await page.keyboard.press('Control+K');
 
