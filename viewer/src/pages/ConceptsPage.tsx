@@ -82,19 +82,39 @@ export default function ConceptsPage() {
   );
   const [runFilter, setRunFilter] = useState<string | undefined>(hashParams.run);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshElapsed, setRefreshElapsed] = useState(0);
   const [refreshMessage, setRefreshMessage] = useState<{
     kind: 'success' | 'error';
     text: string;
   } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const graphFetchGenerationRef = useRef(0);
   const refreshAbortRef = useRef<AbortController | null>(null);
+  const refreshButtonRef = useRef<HTMLButtonElement | null>(null);
+  const refreshGenerationRef = useRef(0);
+  const refreshingRef = useRef(false);
   const refreshRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshTickerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const refreshStartRef = useRef<number>(0);
   const showAllRef = useRef(showAll);
   const graphStatus = useGraphStore((s) => s.status);
   const fetchGraphStatus = useGraphStore((s) => s.fetch);
 
   const REFRESH_MAX_RETRIES = 2;
   const REFRESH_RETRY_DELAY_MS = 2000;
+  const REFRESH_TIMEOUT_MS = 120_000;
+
+  const clearRefreshTimers = useCallback(() => {
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current);
+      refreshTimeoutRef.current = null;
+    }
+    if (refreshTickerRef.current) {
+      clearInterval(refreshTickerRef.current);
+      refreshTickerRef.current = null;
+    }
+  }, []);
   const focusNodeId = activeTab === 'graph' ? focusParam : null;
   const focusConceptName = activeTab === 'ledger' ? focusParam : null;
   const graphAvailability = graphStatus ?? graphData?.status ?? null;
@@ -106,12 +126,14 @@ export default function ConceptsPage() {
   const fetchGraphData = useCallback(async (all = false, focus: string | null = null) => {
     abortRef.current?.abort();
     const controller = new AbortController();
+    const generation = graphFetchGenerationRef.current + 1;
+    graphFetchGenerationRef.current = generation;
     abortRef.current = controller;
     setGraphLoading(true);
     setGraphError(null);
     try {
       const params = {
-        ...(all ? { limit: 2000 } : {}),
+        ...(all ? { limit: 50000 } : {}),
         ...(focus ? { focus } : {}),
       };
       const data = await fetchGraphConcepts(params, { signal: controller.signal });
@@ -123,7 +145,13 @@ export default function ConceptsPage() {
       setGraphError(err instanceof Error ? err.message : 'fetch_failed');
       setGraphData(null);
     } finally {
-      if (!controller.signal.aborted) setGraphLoading(false);
+      if (
+        graphFetchGenerationRef.current === generation &&
+        abortRef.current === controller
+      ) {
+        setGraphLoading(false);
+        abortRef.current = null;
+      }
     }
   }, []);
 
@@ -166,10 +194,34 @@ export default function ConceptsPage() {
   const runRefreshOnce = useCallback(
     async (attempt: number): Promise<void> => {
       refreshAbortRef.current?.abort();
+      clearRefreshTimers();
       const controller = new AbortController();
+      const generation = refreshGenerationRef.current + 1;
+      refreshGenerationRef.current = generation;
       refreshAbortRef.current = controller;
+      let timedOut = false;
+      // Client-side hard timeout: aborts both the refresh POST and any
+      // in-flight fetchGraphData GET so the user is not stranded behind an
+      // unresponsive backend at either stage of the operation.
+      refreshTimeoutRef.current = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+        abortRef.current?.abort();
+      }, REFRESH_TIMEOUT_MS);
+
       setRefreshing(true);
-      if (attempt === 0) setRefreshMessage(null);
+      refreshingRef.current = true;
+      if (attempt === 0) {
+        setRefreshMessage(null);
+        refreshStartRef.current = Date.now();
+        setRefreshElapsed(0);
+        // Tick the elapsed-time indicator once per second so users can see
+        // progress on long refreshes.
+        refreshTickerRef.current = setInterval(() => {
+          const seconds = Math.floor((Date.now() - refreshStartRef.current) / 1000);
+          setRefreshElapsed(seconds);
+        }, 1000);
+      }
       try {
         const result = await refreshGraph({ signal: controller.signal });
         if (controller.signal.aborted) return;
@@ -180,16 +232,47 @@ export default function ConceptsPage() {
             edges: result.edges,
           }),
         });
+        // Sync the global graph store cache so other views reflect the new
+        // node/edge counts immediately.
+        useGraphStore.getState().invalidate();
         await fetchGraphData(showAllRef.current, focusParam);
-      } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
+        // fetchGraphData swallows AbortError internally, so a timeout that
+        // fires during the GET phase will not surface as a thrown error here.
+        // Surface it explicitly so the user sees the timeout message instead
+        // of a stale success notice.
+        if (timedOut) {
+          setRefreshMessage({
+            kind: 'error',
+            text: t('Concept.refresh_timeout'),
+          });
+          return;
+        }
         if (controller.signal.aborted) return;
+      } catch (err) {
+        // User-initiated abort via cancel button: stay silent and bail.
+        if (
+          !timedOut &&
+          (err instanceof DOMException && err.name === 'AbortError'
+            || controller.signal.aborted)
+        ) {
+          return;
+        }
+
+        if (timedOut) {
+          setRefreshMessage({
+            kind: 'error',
+            text: t('Concept.refresh_timeout'),
+          });
+          return;
+        }
 
         const isLockConflict =
           err instanceof ApiError && (err.errorCode === 'LOCK_CONFLICT' || err.status === 409);
         const isNetworkError =
           err instanceof TypeError ||
           (err instanceof ApiError && err.status === 0);
+        const isNodeLimit =
+          err instanceof ApiError && err.errorCode === 'GRAPH_NODE_LIMIT';
 
         if (isLockConflict && attempt < REFRESH_MAX_RETRIES) {
           const nextAttempt = attempt + 1;
@@ -208,6 +291,25 @@ export default function ConceptsPage() {
           return;
         }
 
+        if (isNodeLimit) {
+          const details =
+            err instanceof ApiError &&
+            err.body &&
+            typeof err.body === 'object' &&
+            'details' in err.body
+              ? (err.body as { details?: Record<string, unknown> }).details
+              : undefined;
+          const rawCount = details?.count;
+          const rawLimit = details?.limit;
+          const count = typeof rawCount === 'number' ? rawCount : '?';
+          const limit = typeof rawLimit === 'number' ? rawLimit : '?';
+          setRefreshMessage({
+            kind: 'error',
+            text: t('Concept.refresh_node_limit', { count, limit }),
+          });
+          return;
+        }
+
         let key: string;
         if (isLockConflict) key = 'Concept.refresh_lock_conflict';
         else if (isNetworkError) key = 'Concept.refresh_network_error';
@@ -215,25 +317,41 @@ export default function ConceptsPage() {
 
         let text = t(key);
         const apiMsg = err instanceof Error ? err.message : '';
+        // Suppress raw English provider/backend strings — only append when the
+        // message is a localized/short detail (not a raw "API ..." stack line)
+        // and is not already represented in the localized text.
         if (
           !isLockConflict &&
+          !isNodeLimit &&
           apiMsg &&
           !text.includes(apiMsg) &&
-          !apiMsg.startsWith('API ')
+          !apiMsg.startsWith('API ') &&
+          apiMsg.length <= 120 &&
+          !/^[\x00-\x1f]/.test(apiMsg)
         ) {
           text = `${text} (${apiMsg})`;
         }
         setRefreshMessage({ kind: 'error', text });
       } finally {
-        if (!controller.signal.aborted && !refreshRetryTimerRef.current) {
+        if (
+          refreshGenerationRef.current !== generation ||
+          refreshAbortRef.current !== controller
+        ) {
+          return;
+        }
+        if (!refreshRetryTimerRef.current) {
+          clearRefreshTimers();
           setRefreshing(false);
+          refreshingRef.current = false;
+          refreshAbortRef.current = null;
         }
       }
     },
-    [fetchGraphData, focusParam, t],
+    [clearRefreshTimers, fetchGraphData, focusParam, t],
   );
 
   const handleRefreshGraph = useCallback(async () => {
+    if (refreshingRef.current) return;
     if (refreshRetryTimerRef.current) {
       clearTimeout(refreshRetryTimerRef.current);
       refreshRetryTimerRef.current = null;
@@ -241,12 +359,43 @@ export default function ConceptsPage() {
     await runRefreshOnce(0);
   }, [runRefreshOnce]);
 
+  const handleCancelRefresh = useCallback(() => {
+    if (refreshRetryTimerRef.current) {
+      clearTimeout(refreshRetryTimerRef.current);
+      refreshRetryTimerRef.current = null;
+    }
+    refreshGenerationRef.current += 1;
+    // Abort both the refresh POST and any in-flight fetchGraphData GET that
+    // may have been started after a successful POST, so cancel always stops
+    // the full operation rather than just the first stage.
+    refreshAbortRef.current?.abort();
+    abortRef.current?.abort();
+    clearRefreshTimers();
+    setRefreshing(false);
+    refreshingRef.current = false;
+    setRefreshElapsed(0);
+    setRefreshMessage(null);
+    window.requestAnimationFrame(() => refreshButtonRef.current?.focus());
+  }, [clearRefreshTimers]);
+
   useEffect(
     () => () => {
+      refreshGenerationRef.current += 1;
       refreshAbortRef.current?.abort();
+      // Also abort any in-flight fetchGraphData GET on unmount so a hanging
+      // refresh chain cannot outlive the component.
+      abortRef.current?.abort();
       if (refreshRetryTimerRef.current) {
         clearTimeout(refreshRetryTimerRef.current);
         refreshRetryTimerRef.current = null;
+      }
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
+      }
+      if (refreshTickerRef.current) {
+        clearInterval(refreshTickerRef.current);
+        refreshTickerRef.current = null;
       }
     },
     [],
@@ -341,6 +490,7 @@ export default function ConceptsPage() {
             <>
               <div className="concepts-page__graph-toolbar">
                 <button
+                  ref={refreshButtonRef}
                   type="button"
                   className="concepts-page__refresh-btn"
                   onClick={() => void handleRefreshGraph()}
@@ -350,6 +500,27 @@ export default function ConceptsPage() {
                   {refreshing && <span className="loading-spinner" aria-hidden="true" />}
                   {t('Concept.refresh_graph')}
                 </button>
+                {refreshing && (
+                  <>
+                    <span
+                      className="concepts-page__elapsed"
+                      aria-hidden="true"
+                    >
+                      {t('Concept.refresh_elapsed', { seconds: refreshElapsed })}
+                    </span>
+                    <span className="sr-only" role="status" aria-live="polite">
+                      {t('Concept.refresh_in_progress')}
+                    </span>
+                    <button
+                      type="button"
+                      className="concepts-page__cancel-btn"
+                      onClick={handleCancelRefresh}
+                      aria-label={t('Concept.refresh_cancel')}
+                    >
+                      {t('Concept.refresh_cancel')}
+                    </button>
+                  </>
+                )}
                 {refreshMessage && (
                   <span
                     role={refreshMessage.kind === 'error' ? 'alert' : 'status'}

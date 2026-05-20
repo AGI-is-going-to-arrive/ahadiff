@@ -237,6 +237,9 @@ class ManagedProvider:
         ):
             raise SafetyError("strict_local mode requires an http client with trust_env=False")
         request_to_send, structured_notes = self._resolve_structured_output_request(request)
+        request_to_send, capability_notes = self._normalize_request_for_capabilities(
+            request_to_send
+        )
         payload_text = request_to_send.effective_payload()
         enforce_privacy_mode(
             request_to_send.privacy_mode,
@@ -261,7 +264,7 @@ class ManagedProvider:
         reserved_output_tokens = max(0, request_to_send.max_output_tokens or 0)
         input_context_limit = max(1, context_limit - reserved_output_tokens)
         degraded_flags: dict[str, bool] = {}
-        notes: list[str] = list(structured_notes)
+        notes: list[str] = [*structured_notes, *capability_notes]
         if estimate.input_tokens > input_context_limit:
             clipped_payload = clip_text_to_context_limit(
                 payload_text,
@@ -450,8 +453,6 @@ class ManagedProvider:
         request: ProviderRequest,
     ) -> tuple[ProviderRequest, tuple[str, ...]]:
         if request.enforcement_mode == "strict_tool":
-            if self.capabilities.supports_strict_tool_use:
-                return request, ()
             if request.output_schema is not None and self.capabilities.supports_native_json_schema:
                 return (
                     replace(
@@ -492,6 +493,17 @@ class ManagedProvider:
                 ("structured_output_downgraded:json_object_to_prompt_contract",),
             )
 
+        return request, ()
+
+    def _normalize_request_for_capabilities(
+        self,
+        request: ProviderRequest,
+    ) -> tuple[ProviderRequest, tuple[str, ...]]:
+        if request.temperature is not None and not self.capabilities.supports_temperature:
+            return (
+                replace(request, temperature=None),
+                ("provider_capability_ignored:temperature",),
+            )
         return request, ()
 
     def _send_once(self, request: ProviderRequest) -> ProviderResponse:

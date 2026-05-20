@@ -12,7 +12,7 @@ from ahadiff.claims.extract import parse_claim_candidates_text, write_claim_cand
 from ahadiff.claims.schema import ClaimCandidate
 from ahadiff.claims.verify import verify_claim_candidate
 from ahadiff.contracts import ClaimRecord, SourceHunk
-from ahadiff.core.config import load_config
+from ahadiff.core.config import load_config, resolve_effective
 from ahadiff.core.errors import ConfigError, InputError
 from ahadiff.core.paths import repo_config_path
 from ahadiff.eval.deterministic import build_deterministic_scores
@@ -73,6 +73,59 @@ def test_gate3_capture_limits_reject_non_positive_values(tmp_path: Path, key: st
 
     with pytest.raises(ConfigError, match=rf"capture\.{key} must be >= 1"):
         load_config(repo_root, env={"HOME": str(tmp_path / "home")})
+
+
+def test_gate3_graph_max_nodes_import_defaults_to_fifty_thousand(tmp_path: Path) -> None:
+    repo_root = _repo_with_config(tmp_path, "")
+
+    snapshot = load_config(repo_root, env={"HOME": str(tmp_path / "home")})
+
+    assert snapshot.values["graph"]["max_nodes_import"] == 50_000
+    resolved = resolve_effective("graph.max_nodes_import", snapshot=snapshot)
+    assert resolved.value == 50_000
+    assert resolved.source == "default"
+
+
+@pytest.mark.parametrize("raw_value", ["999", "50001", "200001"])
+def test_gate3_graph_max_nodes_import_validates_range(
+    tmp_path: Path,
+    raw_value: str,
+) -> None:
+    repo_root = _repo_with_config(tmp_path, f"[graph]\nmax_nodes_import = {raw_value}\n")
+
+    with pytest.raises(
+        ConfigError,
+        match=r"graph\.max_nodes_import must be between 1000 and 50000",
+    ):
+        load_config(repo_root, env={"HOME": str(tmp_path / "home")})
+
+
+@pytest.mark.parametrize("raw_value", ["true", "nan", "inf"])
+def test_gate3_graph_max_nodes_import_rejects_non_int_values(
+    tmp_path: Path,
+    raw_value: str,
+) -> None:
+    repo_root = _repo_with_config(tmp_path, f"[graph]\nmax_nodes_import = {raw_value}\n")
+
+    with pytest.raises(ConfigError, match=r"graph\.max_nodes_import expects int"):
+        load_config(repo_root, env={"HOME": str(tmp_path / "home")})
+
+
+def test_gate3_graph_max_nodes_import_env_override(tmp_path: Path) -> None:
+    repo_root = _repo_with_config(tmp_path, "[graph]\nmax_nodes_import = 2500\n")
+
+    snapshot = load_config(
+        repo_root,
+        env={
+            "HOME": str(tmp_path / "home"),
+            "AHADIFF_GRAPH_MAX_NODES_IMPORT": "12345",
+        },
+    )
+
+    assert snapshot.values["graph"]["max_nodes_import"] == 12_345
+    resolved = resolve_effective("graph.max_nodes_import", snapshot=snapshot)
+    assert resolved.value == 12_345
+    assert resolved.source == "env:AHADIFF_GRAPH_MAX_NODES_IMPORT"
 
 
 def test_gate3_known_config_table_rejects_scalar_value(tmp_path: Path) -> None:
@@ -164,6 +217,28 @@ supports_native_json_schema = "true"
     with pytest.raises(
         ConfigError,
         match=r"providers\.demo\.capability_overrides\.supports_native_json_schema expects bool",
+    ):
+        load_config(repo_root, env={"HOME": str(tmp_path / "home")})
+
+
+def test_provider_capability_overrides_reject_unknown_keys(tmp_path: Path) -> None:
+    repo_root = _repo_with_config(
+        tmp_path,
+        """\
+[providers.demo]
+provider_class = "newapi"
+model_name = "gpt-5.4-mini"
+base_url = "https://api.example.test"
+api_key_env = "AHADIFF_PROVIDER_API_KEY"
+
+[providers.demo.capability_overrides]
+supports_magic_schema = true
+""",
+    )
+
+    with pytest.raises(
+        ConfigError,
+        match=r"providers\.demo\.capability_overrides\.supports_magic_schema",
     ):
         load_config(repo_root, env={"HOME": str(tmp_path / "home")})
 

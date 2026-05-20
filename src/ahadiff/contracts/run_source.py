@@ -39,7 +39,6 @@ ProviderCapabilityOverride: TypeAlias = Literal[
     "supports_json_mode",
     "supports_json_object_mode",
     "supports_native_json_schema",
-    "supports_strict_tool_use",
     "supports_schema_name",
     "supports_schema_strict_flag",
     "supports_tool_use",

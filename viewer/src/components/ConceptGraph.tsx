@@ -77,6 +77,7 @@ const LARGE_GRAPH_THRESHOLD = 150;
 const VERY_LARGE_GRAPH_THRESHOLD = 300;
 const EXTREMELY_LARGE_GRAPH_THRESHOLD = 500;
 const LIST_INITIAL_LIMIT = 500;
+const LIST_PAGE_SIZE = 500;
 const MAX_COMMUNITY_FILTER_CHIPS = 50;
 const MIN_EDGE_WEIGHT = 0.1;
 const MAX_EDGE_WEIGHT = 3.0;
@@ -1476,7 +1477,7 @@ function ListFallback({
 }) {
   const { t } = useTranslation();
   const [search, setSearch] = useState('');
-  const [showAll, setShowAll] = useState(false);
+  const [visibleLimit, setVisibleLimit] = useState(LIST_INITIAL_LIMIT);
   const [collapsedKinds, setCollapsedKinds] = useState<Set<string>>(new Set());
 
   const degrees = useMemo(() => computeDegrees(nodes, edges), [nodes, edges]);
@@ -1492,6 +1493,7 @@ function ListFallback({
 
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setSearch(e.target.value);
+    setVisibleLimit(LIST_INITIAL_LIMIT);
   }, []);
 
   const handleToggleKind = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
@@ -1516,10 +1518,9 @@ function ListFallback({
   }, [nodes, search]);
 
   const totalAfterSearch = filteredNodes.length;
-  const limited = !showAll && totalAfterSearch > LIST_INITIAL_LIMIT;
-  const visibleNodes = limited
-    ? filteredNodes.slice(0, LIST_INITIAL_LIMIT)
-    : filteredNodes;
+  const clampedVisibleLimit = Math.min(visibleLimit, totalAfterSearch);
+  const limited = totalAfterSearch > clampedVisibleLimit;
+  const visibleNodes = filteredNodes.slice(0, clampedVisibleLimit);
 
   /**
    * Group nodes by kind and sort each group alphabetically.
@@ -1664,14 +1665,18 @@ function ListFallback({
             <div className="concept-graph__list-more">
               <span className="concept-graph__list-more-text">
                 {t('Concept.list_showing_first', {
-                  shown: String(LIST_INITIAL_LIMIT),
+                  shown: String(clampedVisibleLimit),
                   total: String(totalAfterSearch),
                 })}
               </span>
               <button
                 type="button"
                 className="concept-graph__list-more-btn"
-                onClick={() => setShowAll(true)}
+                onClick={() => {
+                  setVisibleLimit((current) =>
+                    Math.min(current + LIST_PAGE_SIZE, totalAfterSearch),
+                  );
+                }}
               >
                 {t('Concept.list_show_more')}
               </button>

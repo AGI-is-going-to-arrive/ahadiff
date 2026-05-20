@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 from typer.testing import CliRunner
@@ -30,6 +30,7 @@ from ahadiff.lesson.scaffolding import compute_scaffolding_level
 from ahadiff.lesson.schemas import LessonCompact, LessonFull, LessonHint, parse_lesson_payload
 from ahadiff.llm.schemas import ProviderRequest, ProviderResponse
 from ahadiff.llm.structured import schema_spec_for
+from ahadiff.llm.validation_retry import StructuredCallResult
 from ahadiff.quiz.generator import QuizArtifactPaths, write_quiz_questions_jsonl
 from ahadiff.quiz.schemas import QuizEvidence, QuizQuestion
 
@@ -407,6 +408,196 @@ def test_lesson_generation_retries_once_after_schema_validation_failure(
     assert "## TL;DR" in paths.full_path.read_text(encoding="utf-8")
 
 
+def test_lesson_generation_retries_instead_of_accepting_truncated_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_lesson_run_artifacts(workspace_root, "run_lesson_truncated_retry")
+    fake_provider = _FakeLessonProvider()
+    full_attempts = 0
+    truncated_full_lesson = (
+        "{\n"
+        '  "tl_dr": "The retry helper now loops and handles transient failures.",\n'
+        '  "what_changed": ["retry_once now iterates across attempts."],\n'
+        '  "why": ["The diff adds a retry-oriented control-flow path."],\n'
+        '  "walkthrough": ["Read the new for-loop and exception handling path first."],\n'
+        '  "claims": ["The helper now loops over attempts."],\n'
+        '  "concepts": ["Retries re-run an operation after a failure."],\n'
+        '  "quiz": ["Why is the exception branch part of the teaching surface?"],\n'
+        '  "sources": ["src/app.py:new:1-6"],\n'
+        '  "not_proven": ["The output was truncated inside this string'
+    )
+
+    def fake_generate(request: ProviderRequest) -> ProviderResponse:
+        nonlocal full_attempts
+        if request.prompt_name != "lesson.generate":
+            return _FakeLessonProvider.generate(fake_provider, request)
+        full_attempts += 1
+        fake_provider.prompt_names.append(request.prompt_name)
+        fake_provider.requests.append(request)
+        return ProviderResponse(
+            content=truncated_full_lesson
+            if full_attempts == 1
+            else _sample_lessons()[0].model_dump_json(),
+            model_id="gpt-5.4-mini",
+            input_tokens=10,
+            output_tokens=20,
+        )
+
+    fake_provider.generate = fake_generate  # type: ignore[method-assign]
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeLessonProvider:
+        return fake_provider
+
+    monkeypatch.setattr("ahadiff.lesson.generator.make_provider", fake_provider_factory)
+
+    paths = generate_lessons_from_run(
+        run_id="run_lesson_truncated_retry",
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        structured_output_mode="native_json_schema",
+        structured_validation_retries=1,
+    )
+
+    full_requests = [
+        request for request in fake_provider.requests if request.prompt_name == "lesson.generate"
+    ]
+    assert len(full_requests) == 2
+    assert "provider output omitted" in full_requests[1].payload_text
+    assert "## TL;DR" in paths.full_path.read_text(encoding="utf-8")
+
+
+def test_lesson_generation_retries_instead_of_accepting_prose_wrapped_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_lesson_run_artifacts(workspace_root, "run_lesson_wrapped_retry")
+    fake_provider = _FakeLessonProvider()
+    full_attempts = 0
+    clean_payload = _sample_lessons()[0].model_dump_json()
+
+    def fake_generate(request: ProviderRequest) -> ProviderResponse:
+        nonlocal full_attempts
+        if request.prompt_name != "lesson.generate":
+            return _FakeLessonProvider.generate(fake_provider, request)
+        full_attempts += 1
+        fake_provider.prompt_names.append(request.prompt_name)
+        fake_provider.requests.append(request)
+        return ProviderResponse(
+            content=f"Here is the lesson: {clean_payload}" if full_attempts == 1 else clean_payload,
+            model_id="gpt-5.4-mini",
+            input_tokens=10,
+            output_tokens=20,
+        )
+
+    fake_provider.generate = fake_generate  # type: ignore[method-assign]
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeLessonProvider:
+        return fake_provider
+
+    monkeypatch.setattr("ahadiff.lesson.generator.make_provider", fake_provider_factory)
+
+    paths = generate_lessons_from_run(
+        run_id="run_lesson_wrapped_retry",
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        structured_output_mode="native_json_schema",
+        structured_validation_retries=1,
+    )
+
+    full_requests = [
+        request for request in fake_provider.requests if request.prompt_name == "lesson.generate"
+    ]
+    assert len(full_requests) == 2
+    assert "provider output omitted" in full_requests[1].payload_text
+    assert "## TL;DR" in paths.full_path.read_text(encoding="utf-8")
+
+
+def test_lesson_strict_envelope_rejects_lenient_preface_text(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_lesson_run_artifacts(workspace_root, "run_lesson_preface")
+    fake_provider = _FakeLessonProvider()
+    clean_payloads = {
+        "lesson_full": _sample_lessons()[0].model_dump_json(),
+        "lesson_hint": _sample_lessons()[1].model_dump_json(),
+        "lesson_compact": _sample_lessons()[2].model_dump_json(),
+    }
+    checked_schema_ids: list[str] = []
+
+    def fake_provider_factory(*_args: object, **_kwargs: object) -> _FakeLessonProvider:
+        return fake_provider
+
+    def fake_generate_with_validation_retry(**kwargs: Any) -> StructuredCallResult[str]:
+        schema_id = kwargs["schema_spec"].schema_id
+        parse = kwargs["parse"]
+        fallback_parse = kwargs.get("fallback_parse")
+        assert fallback_parse is not None
+        clean_payload = clean_payloads[schema_id]
+        for lenient_payload in (
+            f"Here is the lesson: {clean_payload}",
+            f"这是课程：{clean_payload}",
+        ):
+            with pytest.raises(ValueError):
+                parse(lenient_payload)
+            with pytest.raises(ValueError):
+                fallback_parse(lenient_payload)
+        checked_schema_ids.append(schema_id)
+        return StructuredCallResult(
+            value=clean_payload,
+            response=ProviderResponse(
+                content=clean_payload,
+                model_id="gpt-5.4-mini",
+                input_tokens=10,
+                output_tokens=20,
+            ),
+            attempts=1,
+        )
+
+    monkeypatch.setattr("ahadiff.lesson.generator.make_provider", fake_provider_factory)
+    monkeypatch.setattr(
+        "ahadiff.lesson.generator.generate_with_validation_retry",
+        fake_generate_with_validation_retry,
+    )
+
+    generate_lessons_from_run(
+        run_id="run_lesson_preface",
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        structured_validation_retries=1,
+    )
+
+    assert checked_schema_ids == ["lesson_full", "lesson_hint", "lesson_compact"]
+
+
 def test_generate_lessons_from_run_fills_missing_full_quiz_and_sources(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -645,6 +836,8 @@ def test_full_lesson_prompt_is_identical_in_root_and_package() -> None:
     assert root_prompt == package_prompt
 
 
+# These parser-level tests preserve the lenient fallback contract. The strict
+# generation path must reject prose, fences, and thinking blocks before fallback.
 def test_parse_lesson_payload_accepts_preface_and_fenced_json() -> None:
     payload = (
         "Here is the hint lesson.\n\n"

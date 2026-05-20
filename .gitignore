@@ -46,6 +46,7 @@ node_modules/
 
 # CCG local dev artifacts (review reports, team plans, scratch)
 .ccg/
+.codex/
 
 # Internal planning artifacts (research prompts, audit reports, kept local)
 plan/

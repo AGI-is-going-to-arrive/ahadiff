@@ -249,9 +249,11 @@ def capture_patch(
         not graphify_status.imported_exists or graphify_provenance_invalid
     ):
         try:
+            graph_max_nodes_import = _effective_graph_max_nodes_import(workspace_root)
             graphify_status = import_graphify_artifact(
                 workspace_root,
                 force=not graphify_status.imported_exists or graphify_provenance_invalid,
+                max_nodes=graph_max_nodes_import,
             )
         except (InputError, OSError, StorageError):
             if use_graphify is True:
@@ -917,12 +919,18 @@ def _resolve_graphify_freshness(
     return project_freshness(state)
 
 
-def import_graphify_artifact(workspace_root: Path, *, force: bool = False) -> GraphifyStatus:
+def import_graphify_artifact(
+    workspace_root: Path,
+    *,
+    force: bool = False,
+    max_nodes: int | None = None,
+) -> GraphifyStatus:
     _repo: GitRepo | None = None
     with suppress(InputError, OSError):
         _repo = open_repo(workspace_root)
     status = detect_graphify_status(workspace_root, use_graphify=True, repo=_repo)
     if status.imported_exists and not force:
+        _raise_if_existing_graph_import_exceeds_limit(status, max_nodes=max_nodes)
         return status
 
     imported_dir = status.imported_path.parent
@@ -944,14 +952,20 @@ def import_graphify_artifact(workspace_root: Path, *, force: bool = False) -> Gr
         raw_graph = safe_json_loads(graph_text)
     except (TypeError, ValueError) as exc:
         raise InputError(f"Invalid graph JSON: {exc}") from exc
+    _raise_if_raw_graph_exceeds_limit(raw_graph, max_nodes=max_nodes)
     protected_graph = _sanitize_graphify_value(raw_graph, workspace_root=workspace_root)
     graph_text = json.dumps(protected_graph, ensure_ascii=False)
     sanitized_graph = parse_graph_json_text(graph_text)
+    if max_nodes is not None and len(sanitized_graph.nodes) > max_nodes:
+        raise InputError(
+            f"graph node import exceeds limit: {len(sanitized_graph.nodes)} nodes > {max_nodes} max"
+        )
     from ahadiff.review.database import import_graph_nodes
 
     import_graph_nodes(
         workspace_root / ".ahadiff" / "review.sqlite",
         [node.model_dump(mode="json") for node in sanitized_graph.nodes],
+        max_nodes=max_nodes,
     )
     _atomic_write_text(
         status.imported_path,
@@ -974,6 +988,45 @@ def import_graphify_artifact(workspace_root: Path, *, force: bool = False) -> Gr
         final_status.provenance,
     )
     return final_status
+
+
+def _effective_graph_node_import_limit(max_nodes: int | None) -> int:
+    return 50_000 if max_nodes is None else min(max_nodes, 50_000)
+
+
+def _graph_node_limit_message(count: int, limit: int) -> str:
+    return f"graph node import exceeds limit: {count} nodes > {limit} max"
+
+
+def _raw_graph_node_count(raw_graph: object) -> int:
+    if not isinstance(raw_graph, dict):
+        return 0
+    raw_nodes = cast("dict[object, object]", raw_graph).get("nodes")
+    return len(cast("list[object]", raw_nodes)) if isinstance(raw_nodes, list) else 0
+
+
+def _raise_if_raw_graph_exceeds_limit(raw_graph: object, *, max_nodes: int | None) -> None:
+    limit = _effective_graph_node_import_limit(max_nodes)
+    count = _raw_graph_node_count(raw_graph)
+    if count > limit:
+        raise InputError(_graph_node_limit_message(count, limit))
+
+
+def _raise_if_existing_graph_import_exceeds_limit(
+    status: GraphifyStatus,
+    *,
+    max_nodes: int | None,
+) -> None:
+    limit = _effective_graph_node_import_limit(max_nodes)
+    count, valid = _parse_nonnegative_int_provenance(status.provenance.get("node_count"))
+    if not valid:
+        with suppress(Exception):
+            from ahadiff.graphify import parse_graph_json
+
+            count = len(parse_graph_json(status.imported_path).nodes)
+            valid = True
+    if valid and count > limit:
+        raise InputError(_graph_node_limit_message(count, limit))
 
 
 def _graphify_provenance_path(imported_path: Path) -> Path:
@@ -3249,6 +3302,19 @@ def _effective_symbol_extractor(
         return cast("SymbolExtractorMode", DEFAULT_CONFIG["capture"]["symbol_extractor"])
     capture_config = cast("dict[str, Any]", snapshot.values["capture"])
     return cast("SymbolExtractorMode", capture_config["symbol_extractor"])
+
+
+def _effective_graph_max_nodes_import(workspace_root: Path) -> int:
+    try:
+        snapshot = (
+            load_config(workspace_root)
+            if _has_git_root(workspace_root)
+            else load_workspace_config(workspace_root)
+        )
+    except StorageError:
+        return cast("dict[str, int]", DEFAULT_CONFIG["graph"])["max_nodes_import"]
+    graph_config = cast("dict[str, Any]", snapshot.values["graph"])
+    return int(graph_config["max_nodes_import"])
 
 
 def _redact_json_artifact(raw_text: str, workspace_root: Path) -> str:

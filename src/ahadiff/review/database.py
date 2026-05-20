@@ -3011,17 +3011,24 @@ def import_concepts_from_jsonl(db_path: Path, jsonl_path: Path) -> int:
     return upsert_concepts_batch(db_path, entries)
 
 
-_MAX_GRAPH_NODES_IMPORT = 10_000
+_MAX_GRAPH_NODES_IMPORT = 50_000
 
 
 def import_graph_nodes(
     db_path: Path,
     nodes: Sequence[Mapping[str, object]],
+    *,
+    max_nodes: int | None = None,
 ) -> int:
     if not nodes:
         return 0
-    if len(nodes) > _MAX_GRAPH_NODES_IMPORT:
-        raise InputError(f"graph node import exceeds {_MAX_GRAPH_NODES_IMPORT} nodes")
+    effective_limit = (
+        _MAX_GRAPH_NODES_IMPORT if max_nodes is None else min(max_nodes, _MAX_GRAPH_NODES_IMPORT)
+    )
+    if len(nodes) > effective_limit:
+        raise InputError(
+            f"graph node import exceeds limit: {len(nodes)} nodes > {effective_limit} max"
+        )
     with connect_review_db(db_path, create_parent=True) as connection:
         _ensure_schema(connection)
         connection.execute("DELETE FROM graph_nodes")

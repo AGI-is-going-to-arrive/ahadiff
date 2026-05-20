@@ -11,13 +11,14 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
-from ahadiff.contracts import ProviderConfig
+from ahadiff.contracts import ProviderCapabilities, ProviderConfig
 from ahadiff.core.config import SecurityConfig
 from ahadiff.core.errors import ConfigError, InputError, ProviderError, SafetyError, StorageError
 from ahadiff.core.paths import usage_db_path
 from ahadiff.llm import ProviderRequest, adapter_conformance_test, make_provider
 from ahadiff.llm import provider as provider_module
 from ahadiff.llm import usage as usage_module
+from ahadiff.llm.adapters._capability_overrides import apply_capability_overrides
 from ahadiff.llm.adapters.anthropic import AnthropicAdapter
 from ahadiff.llm.adapters.azure import AzureOpenAIAdapter
 from ahadiff.llm.adapters.gemini import GeminiAdapter
@@ -40,7 +41,11 @@ from ahadiff.llm.cost import (
     resolve_pricing_entry,
 )
 from ahadiff.llm.probe import _probe_context_window  # pyright: ignore[reportPrivateUsage]
-from ahadiff.llm.provider import reset_provider_runtime_state, transport_target_for_base_url
+from ahadiff.llm.provider import (
+    AdapterBase,
+    reset_provider_runtime_state,
+    transport_target_for_base_url,
+)
 from ahadiff.llm.schemas import CacheKeyInput
 from ahadiff.llm.usage import UsageRecord
 from ahadiff.safety.redact import redaction_pipeline
@@ -78,6 +83,163 @@ def _provider_config(
         base_url=base_url,
         api_key_env="AHADIFF_PROVIDER_API_KEY",
         probed_max_context=max_context,
+    )
+
+
+_PROVIDER_CAPABILITY_OVERRIDE_TEST_FIELDS = (
+    "supports_stream",
+    "supports_json_mode",
+    "supports_json_object_mode",
+    "supports_native_json_schema",
+    "supports_schema_name",
+    "supports_schema_strict_flag",
+    "supports_tool_use",
+    "supports_temperature",
+    "supports_rate_limit_headers",
+    "supports_context_probe",
+)
+
+
+def _capability_fixture() -> ProviderCapabilities:
+    return ProviderCapabilities(
+        supports_stream=True,
+        supports_json_mode=True,
+        supports_json_object_mode=True,
+        supports_native_json_schema=False,
+        supports_tool_use=True,
+        supports_temperature=True,
+        supports_rate_limit_headers=True,
+        supports_context_probe=True,
+        tokenizer_estimation="tiktoken",
+        api_family="openai",
+        api_family_version="v1",
+        provider_kind="test",
+    )
+
+
+def _capability_snapshot(caps: ProviderCapabilities) -> dict[str, object]:
+    return caps.model_dump(mode="python")
+
+
+def _provider_config_with_capability_overrides(
+    provider_class: str,
+    overrides: dict[str, object] | None,
+) -> ProviderConfig:
+    return _provider_config(provider_class).model_copy(update={"capability_overrides": overrides})
+
+
+def _adapter_capabilities(
+    adapter_cls: type[AdapterBase],
+    provider_class: str,
+    overrides: dict[str, object] | None,
+) -> ProviderCapabilities:
+    return adapter_cls(
+        _provider_config_with_capability_overrides(provider_class, overrides)
+    ).capabilities
+
+
+def _bool_capability_value(caps: ProviderCapabilities, field: str) -> bool:
+    value = getattr(caps, field)
+    assert isinstance(value, bool)
+    return value
+
+
+def _first_bool_capability_field(
+    caps: ProviderCapabilities,
+    expected: bool,
+    *,
+    blocked_fields: frozenset[str] = frozenset(),
+) -> str | None:
+    for field in _PROVIDER_CAPABILITY_OVERRIDE_TEST_FIELDS:
+        if field in blocked_fields:
+            continue
+        if _bool_capability_value(caps, field) is expected:
+            return field
+    return None
+
+
+def _assert_adapter_capability_override_matrix(
+    adapter_cls: type[AdapterBase],
+    provider_class: str,
+    *,
+    blocked_fields: frozenset[str] = frozenset(),
+) -> None:
+    default_caps = adapter_cls(_provider_config(provider_class)).capabilities
+    default_snapshot = _capability_snapshot(default_caps)
+
+    assert (
+        _capability_snapshot(_adapter_capabilities(adapter_cls, provider_class, None))
+        == default_snapshot
+    )
+    assert (
+        _capability_snapshot(_adapter_capabilities(adapter_cls, provider_class, {}))
+        == default_snapshot
+    )
+
+    if "supports_native_json_schema" in blocked_fields:
+        assert (
+            _capability_snapshot(
+                _adapter_capabilities(
+                    adapter_cls,
+                    provider_class,
+                    {"supports_native_json_schema": not default_caps.supports_native_json_schema},
+                )
+            )
+            == default_snapshot
+        )
+    else:
+        native_default = default_caps.supports_native_json_schema
+        flipped_native = _adapter_capabilities(
+            adapter_cls,
+            provider_class,
+            {"supports_native_json_schema": not native_default},
+        )
+        assert flipped_native.supports_native_json_schema is (not native_default)
+        assert (
+            _capability_snapshot(
+                _adapter_capabilities(
+                    adapter_cls,
+                    provider_class,
+                    {"supports_native_json_schema": native_default},
+                )
+            )
+            == default_snapshot
+        )
+    assert (
+        _capability_snapshot(
+            _adapter_capabilities(
+                adapter_cls,
+                provider_class,
+                {"supports_imaginary_feature": True},
+            )
+        )
+        == default_snapshot
+    )
+    assert (
+        _capability_snapshot(
+            _adapter_capabilities(
+                adapter_cls,
+                provider_class,
+                {"supports_native_json_schema": "true"},
+            )
+        )
+        == default_snapshot
+    )
+
+    true_field = _first_bool_capability_field(default_caps, True, blocked_fields=blocked_fields)
+    false_field = _first_bool_capability_field(default_caps, False, blocked_fields=blocked_fields)
+    assert true_field is not None
+    true_to_false = _adapter_capabilities(adapter_cls, provider_class, {true_field: False})
+    assert _bool_capability_value(true_to_false, true_field) is False
+    if false_field is not None:
+        false_to_true = _adapter_capabilities(adapter_cls, provider_class, {false_field: True})
+        assert _bool_capability_value(false_to_true, false_field) is True
+        false_to_true.supports_stream = not false_to_true.supports_stream
+
+    assert _capability_snapshot(default_caps) == default_snapshot
+    assert (
+        _capability_snapshot(adapter_cls(_provider_config(provider_class)).capabilities)
+        == default_snapshot
     )
 
 
@@ -330,8 +492,6 @@ def test_openai_responses_uses_native_json_schema_when_requested() -> None:
     ("adapter", "provider_class"),
     [
         (AzureOpenAIAdapter, "azure"),
-        (OpenAICompatAdapter, "newapi"),
-        (NewAPIAdapter, "newapi"),
         (LMStudioAdapter, "lmstudio"),
     ],
 )
@@ -351,6 +511,19 @@ def test_openai_compatible_adapters_use_native_json_schema_when_requested(
     assert (
         payload["response_format"]["json_schema"]["schema"] == _structured_request().output_schema
     )
+
+
+@pytest.mark.parametrize("adapter", [OpenAICompatAdapter, NewAPIAdapter])
+def test_openai_compatible_adapters_downgrade_native_schema_without_capability(
+    adapter: type[OpenAICompatAdapter],
+) -> None:
+    instance = adapter(_provider_config("newapi"))
+    _method, _url, _headers, payload = instance.build_request(
+        _structured_request(),
+        api_key="test-key",
+    )
+
+    assert payload["response_format"] == {"type": "json_object"}
 
 
 def test_gemini_uses_native_json_schema_when_requested() -> None:
@@ -403,6 +576,14 @@ def test_anthropic_provider_downgrades_native_schema_to_json_object_instruction(
     assert record["structured_output"]["enforcement_mode"] == "json_object"
 
 
+def test_anthropic_native_schema_override_is_ignored() -> None:
+    config = _provider_config("anthropic").model_copy(
+        update={"capability_overrides": {"supports_native_json_schema": True}}
+    )
+
+    assert not AnthropicAdapter(config).capabilities.supports_native_json_schema
+
+
 def test_ollama_uses_format_schema_when_requested() -> None:
     adapter = OllamaAdapter(_provider_config("ollama"))
     _method, _url, _headers, payload = adapter.build_request(
@@ -411,6 +592,19 @@ def test_ollama_uses_format_schema_when_requested() -> None:
     )
 
     assert payload["format"] == _structured_request().output_schema
+
+
+def test_ollama_downgrades_native_schema_when_capability_disabled() -> None:
+    config = _provider_config("ollama").model_copy(
+        update={"capability_overrides": {"supports_native_json_schema": False}}
+    )
+    adapter = OllamaAdapter(config)
+    _method, _url, _headers, payload = adapter.build_request(
+        _structured_request(),
+        api_key=None,
+    )
+
+    assert payload["format"] == "json"
 
 
 def test_ollama_preserves_json_object_format() -> None:
@@ -448,6 +642,14 @@ def test_provider_downgrades_strict_tool_request_to_native_schema(tmp_path: Path
     assert record["structured_output"]["enforcement_mode"] == "native_json_schema"
 
 
+def test_provider_strict_tool_override_is_rejected() -> None:
+    payload = _provider_config("newapi").model_dump(mode="json")
+    payload["capability_overrides"] = {"supports_strict_tool_use": True}
+
+    with pytest.raises(ValidationError, match="capability_overrides keys"):
+        ProviderConfig.model_validate(payload)
+
+
 def test_newapi_provider_downgrades_native_schema_to_json_object(tmp_path: Path) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content.decode("utf-8"))
@@ -471,6 +673,48 @@ def test_newapi_provider_downgrades_native_schema_to_json_object(tmp_path: Path)
         (tmp_path / ".ahadiff" / "audit.jsonl").read_text(encoding="utf-8").splitlines()[0]
     )
     assert record["structured_output"]["enforcement_mode"] == "json_object"
+
+
+def test_provider_temperature_override_removes_temperature_from_request(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        assert "temperature" not in payload
+        return _openai_success_response(content="{}")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    config = _provider_config("newapi").model_copy(
+        update={"capability_overrides": {"supports_temperature": False}}
+    )
+    provider = make_provider(config, api_key="test-key", workspace_root=tmp_path, client=client)
+    try:
+        response = provider.generate(_request(temperature=0.2))
+    finally:
+        provider.close()
+
+    assert "provider_capability_ignored:temperature" in response.notes
+    record = json.loads(
+        (tmp_path / ".ahadiff" / "audit.jsonl").read_text(encoding="utf-8").splitlines()[0]
+    )
+    assert record["note"].startswith("cache_key=")
+
+
+def test_openai_compatible_schema_overrides_omit_name_and_strict_flag() -> None:
+    config = _provider_config("newapi").model_copy(
+        update={
+            "capability_overrides": {
+                "supports_native_json_schema": True,
+                "supports_schema_name": False,
+                "supports_schema_strict_flag": False,
+            }
+        }
+    )
+    _method, _url, _headers, payload = OpenAICompatAdapter(config).build_request(
+        _structured_request(),
+        api_key="test-key",
+    )
+
+    schema_payload = payload["response_format"]["json_schema"]
+    assert schema_payload == {"schema": _structured_request().output_schema}
 
 
 def test_lmstudio_provider_keeps_native_json_schema(tmp_path: Path) -> None:
@@ -1768,6 +2012,42 @@ def test_anthropic_capabilities_use_json_object_not_native_schema() -> None:
     assert not capabilities.supports_native_json_schema
 
 
+def test_apply_capability_overrides_ignores_unknown_keys() -> None:
+    base = _capability_fixture()
+    result = apply_capability_overrides(base, {"supports_bogus": True})
+
+    assert _capability_snapshot(result) == _capability_snapshot(base)
+
+
+@pytest.mark.parametrize("raw_value", [1, "true", None])
+def test_apply_capability_overrides_ignores_non_bool_values(raw_value: object) -> None:
+    base = _capability_fixture()
+    result = apply_capability_overrides(base, {"supports_stream": raw_value})
+
+    assert _capability_snapshot(result) == _capability_snapshot(base)
+
+
+def test_apply_capability_overrides_returns_input_for_empty_overrides() -> None:
+    base = _capability_fixture()
+
+    assert apply_capability_overrides(base, None) is base
+    assert _capability_snapshot(apply_capability_overrides(base, {})) == _capability_snapshot(base)
+
+
+def test_apply_capability_overrides_does_not_mutate_base_capabilities() -> None:
+    base = _capability_fixture()
+    result = apply_capability_overrides(base, {"supports_stream": False})
+
+    assert result is not base
+    assert base.supports_stream
+    assert not result.supports_stream
+
+    result.supports_native_json_schema = True
+
+    assert not base.supports_native_json_schema
+    assert result.supports_native_json_schema
+
+
 def test_openai_compat_capability_overrides_apply_through_provider_factory() -> None:
     config = _provider_config("newapi").model_copy(
         update={
@@ -1786,11 +2066,39 @@ def test_openai_compat_capability_overrides_apply_through_provider_factory() -> 
 
 
 def test_lmstudio_capability_overrides_can_disable_default_native_schema() -> None:
-    config = _provider_config("lmstudio").model_copy(
-        update={"capability_overrides": {"supports_native_json_schema": False}}
+    _assert_adapter_capability_override_matrix(LMStudioAdapter, "lmstudio")
+
+
+def test_anthropic_adapter_applies_capability_overrides() -> None:
+    _assert_adapter_capability_override_matrix(
+        AnthropicAdapter,
+        "anthropic",
+        blocked_fields=frozenset({"supports_native_json_schema"}),
     )
 
-    assert not LMStudioAdapter(config).capabilities.supports_native_json_schema
+
+def test_openai_chat_adapter_applies_capability_overrides() -> None:
+    _assert_adapter_capability_override_matrix(OpenAIChatAdapter, "openai")
+
+
+def test_openai_responses_adapter_applies_capability_overrides() -> None:
+    _assert_adapter_capability_override_matrix(OpenAIResponsesAdapter, "openai_responses")
+
+
+def test_azure_adapter_applies_capability_overrides() -> None:
+    _assert_adapter_capability_override_matrix(AzureOpenAIAdapter, "azure")
+
+
+def test_gemini_adapter_applies_capability_overrides() -> None:
+    _assert_adapter_capability_override_matrix(GeminiAdapter, "gemini")
+
+
+def test_ollama_adapter_applies_capability_overrides() -> None:
+    _assert_adapter_capability_override_matrix(OllamaAdapter, "ollama")
+
+
+def test_openai_compat_adapter_applies_capability_overrides() -> None:
+    _assert_adapter_capability_override_matrix(OpenAICompatAdapter, "newapi")
 
 
 def test_provider_config_rejects_unknown_capability_override() -> None:

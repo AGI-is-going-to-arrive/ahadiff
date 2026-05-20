@@ -2,13 +2,17 @@ from __future__ import annotations
 
 from ahadiff.contracts import ProviderCapabilities
 
+from ._capability_overrides import apply_capability_overrides
 from .openai import OpenAIChatAdapter
 
 
 class OpenAICompatAdapter(OpenAIChatAdapter):
     @property
     def capabilities(self) -> ProviderCapabilities:
-        return self._apply_capability_overrides(self._base_capabilities())
+        return apply_capability_overrides(
+            self._base_capabilities(),
+            self.config.capability_overrides,
+        )
 
     def _base_capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(
@@ -28,21 +32,6 @@ class OpenAICompatAdapter(OpenAIChatAdapter):
             api_family_version="v1",
             provider_kind="openai_compat",
         )
-
-    def _apply_capability_overrides(
-        self,
-        capabilities: ProviderCapabilities,
-    ) -> ProviderCapabilities:
-        overrides = self.config.capability_overrides or {}
-        if not overrides:
-            return capabilities
-        bool_fields = {
-            key for key, value in capabilities.model_dump().items() if isinstance(value, bool)
-        }
-        updates = {key: value for key, value in overrides.items() if key in bool_fields}
-        if not updates:
-            return capabilities
-        return capabilities.model_copy(update=updates)
 
 
 __all__ = ["OpenAICompatAdapter"]

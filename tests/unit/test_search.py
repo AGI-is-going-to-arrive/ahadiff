@@ -785,12 +785,44 @@ def test_import_graph_nodes_rejects_over_cap_without_truncation(tmp_path: Path) 
     db = tmp_path / "review.sqlite"
     initialize_review_db(db)
     import_graph_nodes(db, [{"id": "keep", "label": "Existing"}])
-    nodes = [{"id": f"n{i}", "label": f"Node {i}"} for i in range(10_001)]
+    nodes = [{"id": f"n{i}", "label": f"Node {i}"} for i in range(50_001)]
 
-    with pytest.raises(InputError, match="graph node import exceeds 10000"):
+    with pytest.raises(
+        InputError,
+        match="graph node import exceeds limit: 50001 nodes > 50000 max",
+    ):
         import_graph_nodes(db, nodes)
 
     assert count_graph_nodes(db) == 1
+
+
+def test_import_graph_nodes_respects_custom_graph_node_max_nodes(tmp_path: Path) -> None:
+    from ahadiff.review.database import count_graph_nodes, import_graph_nodes
+
+    db = tmp_path / "review.sqlite"
+    initialize_review_db(db)
+    nodes = [{"id": f"n{i}", "label": f"Node {i}"} for i in range(3)]
+
+    with pytest.raises(InputError, match="graph node import exceeds limit: 3 nodes > 2 max"):
+        import_graph_nodes(db, nodes, max_nodes=2)
+
+    assert count_graph_nodes(db) == 0
+    assert import_graph_nodes(db, nodes, max_nodes=3) == 3
+    assert count_graph_nodes(db) == 3
+
+
+def test_import_graph_nodes_does_not_allow_custom_limit_above_hard_cap(tmp_path: Path) -> None:
+    from ahadiff.review.database import import_graph_nodes
+
+    db = tmp_path / "review.sqlite"
+    initialize_review_db(db)
+    nodes = [{"id": f"n{i}", "label": f"Node {i}"} for i in range(50_001)]
+
+    with pytest.raises(
+        InputError,
+        match="graph node import exceeds limit: 50001 nodes > 50000 max",
+    ):
+        import_graph_nodes(db, nodes, max_nodes=200_000)
 
 
 def test_search_graph_nodes_fts_empty_db(tmp_path: Path) -> None:

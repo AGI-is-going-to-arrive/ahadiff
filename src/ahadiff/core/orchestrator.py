@@ -1490,7 +1490,10 @@ def run_learn_pipeline(
                     # finalized artifacts or global concept state.
 
                     try:
-                        from ahadiff.git.capture import import_graphify_artifact
+                        from ahadiff.git.capture import (
+                            _effective_graph_max_nodes_import,
+                            import_graphify_artifact,
+                        )
                         from ahadiff.graphify.cli import detect_graphify_cli, run_graphify_update
 
                         graphify_source_path = root / "graphify-out" / "graph.json"
@@ -1499,9 +1502,19 @@ def run_learn_pipeline(
                             run_graphify_update(root) if graphify_cli_available else False
                         )
                         if graphify_updated:
-                            import_graphify_artifact(root, force=True)
+                            graph_max_nodes_import = _effective_graph_max_nodes_import(root)
+                            import_graphify_artifact(
+                                root,
+                                force=True,
+                                max_nodes=graph_max_nodes_import,
+                            )
                         elif not graphify_cli_available and graphify_source_path.exists():
-                            import_graphify_artifact(root, force=False)
+                            graph_max_nodes_import = _effective_graph_max_nodes_import(root)
+                            import_graphify_artifact(
+                                root,
+                                force=False,
+                                max_nodes=graph_max_nodes_import,
+                            )
                     except Exception as graphify_refresh_error:
                         learn_warnings.append(f"graphify refresh skipped: {graphify_refresh_error}")
 

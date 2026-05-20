@@ -6,6 +6,7 @@ from ahadiff.contracts import ProviderCapabilities
 
 from ..provider import AdapterBase
 from ..schemas import ProviderRequest, ProviderResponse
+from ._capability_overrides import apply_capability_overrides
 from .structured import gemini_response_format
 from .thinking import gemini_thinking_level
 
@@ -16,19 +17,22 @@ if TYPE_CHECKING:
 class GeminiAdapter(AdapterBase):
     @property
     def capabilities(self) -> ProviderCapabilities:
-        return ProviderCapabilities(
-            supports_stream=False,
-            supports_json_mode=True,
-            supports_json_object_mode=True,
-            supports_native_json_schema=True,
-            supports_tool_use=False,
-            supports_temperature=True,
-            supports_rate_limit_headers=False,
-            supports_context_probe=True,
-            tokenizer_estimation="char_div_4",
-            api_family="gemini",
-            api_family_version="v1beta",
-            provider_kind="gemini",
+        return apply_capability_overrides(
+            ProviderCapabilities(
+                supports_stream=False,
+                supports_json_mode=True,
+                supports_json_object_mode=True,
+                supports_native_json_schema=True,
+                supports_tool_use=False,
+                supports_temperature=True,
+                supports_rate_limit_headers=False,
+                supports_context_probe=True,
+                tokenizer_estimation="char_div_4",
+                api_family="gemini",
+                api_family_version="v1beta",
+                provider_kind="gemini",
+            ),
+            self.config.capability_overrides,
         )
 
     def build_request(
@@ -51,7 +55,7 @@ class GeminiAdapter(AdapterBase):
         thinking = gemini_thinking_level(request.thinking_level)
         if thinking is not None:
             generation_config["thinkingConfig"] = {"thinkingLevel": thinking}
-        response_format = gemini_response_format(request)
+        response_format = gemini_response_format(request, capabilities=self.capabilities)
         if response_format is not None:
             generation_config.update(response_format)
         if generation_config:

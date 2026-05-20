@@ -124,6 +124,22 @@ def test_hard_gates_fail_when_evidence_coverage_below_threshold() -> None:
     assert passed_summary.failed_names() == ()
 
 
+def test_evidence_coverage_gate_keeps_fixed_threshold_when_basis_unavailable() -> None:
+    summary = evaluate_hard_gates(
+        rubric=load_rubric(),
+        dimension_scores={"accuracy": 19.0, "evidence": 16.0, "diff_coverage": 7.70},
+        claims=(_claim(status="verified"),),
+        secret_leak_detected=False,
+        injection_unresolved=False,
+    )
+
+    payload = summary.as_payload()["evidence_coverage"]
+    detail = str(payload["detail"])
+    assert payload["threshold"] == 7.70
+    assert "basis=unavailable" in detail
+    assert "regime=" not in detail
+
+
 def test_evidence_coverage_gate_uses_adaptive_threshold_for_large_visible_diff() -> None:
     summary = evaluate_hard_gates(
         rubric=load_rubric(),

@@ -13,7 +13,7 @@
 <body>
 <main class="wrap">
 <section class="hero">
-  <div class="eyebrow">AhaDiff User Guide · 2026-05-20 · <a href="USER_GUIDE.zh.html" style="text-decoration:none;color:var(--accent)">中文</a></div>
+  <div class="eyebrow">AhaDiff User Guide · 2026-05-21 · <a href="USER_GUIDE.zh.html" style="text-decoration:none;color:var(--accent)">中文</a></div>
   <h1>AhaDiff User Guide</h1>
   <p class="lead">AhaDiff turns a git diff into a code-grounded lesson, a list of verifiable claims, a quiz, review cards, a concept graph and a quality ratchet. It is local-first by default: each repository's own <code>.ahadiff/</code> is the source of truth.</p>
   <p class="notice">Video tutorials: <a href="video/output/ahadiff-tutorial.en.burned-subtitles.mp4">English walkthrough (MP4)</a>; <a href="video/output/ahadiff-tutorial.zh.burned-subtitles.mp4">Chinese walkthrough (MP4)</a>. Each video uses the matching UI language with burned-in subtitles; intermediate subtitle source files are not shipped in the public docs tree.</p>
@@ -61,6 +61,7 @@ ahadiff learn --last --provider gpt55 --model gpt-5.5</pre>
   <p>For local OpenAI-compatible servers that report the wrong JSON capability, set only known boolean overrides in <code>.ahadiff/config.toml</code>:</p>
   <pre>[providers.local.capability_overrides]
 supports_native_json_schema = false</pre>
+  <p>NewAPI defaults to <code>supports_native_json_schema=false</code>. If your NewAPI gateway truly supports native JSON schema, add <code>capability_overrides = { supports_native_json_schema = true }</code> to your provider config.</p>
 </section>
 
 <section id="learn">
@@ -160,7 +161,7 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</pre>
     <tr><td>Challenge</td><td class="warn">Off by default</td><td>Opt-in via configuration. The CLI currently exposes build / status; full progression happens through the WebUI / API.</td></tr>
     <tr><td>APKG export</td><td class="warn">Requires extra</td><td>Requires <code>ahadiff[anki]</code>. Active review cards can be exported today, but stable namespace GUIDs have not landed yet.</td></tr>
     <tr><td>Watch</td><td class="warn">Requires extra</td><td>Needs the watchdog dependency; otherwise just run learn manually.</td></tr>
-    <tr><td>Graphify refresh</td><td class="warn">Depends on external tool / cache</td><td>Refreshes when the Graphify CLI is available; otherwise falls back to the existing graph cache or a degraded view.</td></tr>
+    <tr><td>Graphify refresh</td><td class="warn">Depends on external tool / cache</td><td>Refreshes when the Graphify CLI is available; otherwise falls back to the existing graph cache or a degraded view. Imports are capped by <code>graph.max_nodes_import</code> (default <code>50000</code>, allowed range <code>1000</code>-<code>50000</code>); over-limit refreshes return <code>GRAPH_NODE_LIMIT</code>.</td></tr>
     <tr><td>Team features</td><td class="no">Not released</td><td>Still on the roadmap and should not be treated as a shipped capability.</td></tr>
   </tbody></table>
 </section>
@@ -182,7 +183,7 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
   <h3>What safety findings fail a run?</h3>
   <p>An unmitigated Critical safety finding fails the run. A Critical secret finding is treated as mitigated only when the local capture record shows a complete redaction shape, including the rule, hash, source, line, and column.</p>
   <h3>Can you guarantee there are no bugs?</h3>
-  <p>No — that level of guarantee isn't possible. The last full release gate validated backend unit / integration / eval suites, static checks, the wheel build, frontend typecheck / build / Vitest, the full Playwright suite, real-serve, the CLI behavior matrix, Linux target container tests, and the GPT-5.5 live fixture. Later follow-ups re-ran their changed surfaces only. The latest backend hardening pass re-ran <code>uv run pytest tests/unit</code> with <code>2784 passed</code>, plus ruff, format check, pyright, and <code>git diff --check HEAD</code>; it did not re-run frontend, integration/eval, wheel, full Playwright, live judge, remote CI, or a real Windows runner.</p>
+  <p>No — that level of guarantee isn't possible. The last full release gate validated backend unit / integration / eval suites, static checks, the wheel build, frontend typecheck / build / Vitest, the full Playwright suite, real-serve, the CLI behavior matrix, Linux target container tests, and the GPT-5.5 live fixture. Later follow-ups re-ran their changed surfaces only. The latest adversarial review and fix pass re-ran <code>uv run pytest tests</code> with <code>2853 passed, 7 skipped</code>, plus ruff, format check, pyright, frontend typecheck, frontend Vitest with <code>401 passed</code>, frontend build, strict replay calibration, and <code>git diff --check HEAD</code>; it did not re-run full Playwright, live judge, remote CI, or a real Windows runner.</p>
 </section>
 
 <section id="verification">
@@ -190,15 +191,15 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
   <ul>
     <li>Screenshots come from the current <code>viewer/</code> via Playwright and existing serve mocks; no real credentials are included.</li>
     <li>The real-serve checks bring up a real <code>python -m ahadiff serve</code> against a throwaway git repo and use a browser to exercise token, estimate, learn dry-run, task, and progress-stream flows.</li>
-    <li>The current backend hardening pass rechecked unit tests, ruff, format check, pyright, and whitespace diff-check for the current code diff; this documentation sync then re-ran whitespace diff-check. No frontend files changed.</li>
+    <li>The current adversarial review and fix pass rechecked the backend and frontend changed surfaces: full pytest, ruff, format check, pyright, frontend typecheck, Vitest, frontend build, and whitespace diff-check. This documentation sync then re-ran whitespace diff-check for these guide files.</li>
     <li>The earlier structured-output live smoke used synthetic fixtures across local LM Studio, local Ollama, a local OpenAI-compatible endpoint, a local Anthropic-compatible endpoint, and Gemini AI Studio. Credentials were supplied only through temporary process environment variables.</li>
-    <li>The diff-coverage follow-up rechecked the changed backend surface with target pytest, ruff, pyright, <code>git diff --check</code>, and read-only legacy replay calibration. Calibration checked 39 historical runs with existing <code>score.json</code> files and did not write run artifacts. It is a history-calibration helper only; normal <code>ahadiff score</code> and <code>ahadiff verify</code> still use the current hard gate semantics.</li>
+    <li>The diff-coverage follow-up rechecked the changed backend surface with target pytest, ruff, pyright, <code>git diff --check</code>, and read-only replay calibration. Strict calibration now treats historical runs without <code>score.json</code> or without a persisted <code>evidence_coverage</code> gate as skipped, not as code failures. The latest run checked 7 eligible historical runs, skipped 158 ineligible old runs, reported <code>pass_to_fail=0</code> and <code>fail_to_pass=3</code>, and did not write run artifacts. It is a history-calibration helper only; normal <code>ahadiff score</code> and <code>ahadiff verify</code> still use the current hard gate semantics.</li>
     <li>GPT-5.5 live verification uses the configured provider plus synthetic fixtures — it is not an unconstrained full-repo LLM run against the entire current codebase.</li>
     <li>For cross-platform: the host machine is macOS. A Linux Docker smoke run confirms that the source installs cleanly, that targeted cross-platform / reparse / SQLite race unit tests pass, and that the CLI loads. A separate Linux <code>node:22-bookworm</code> image with a hand-built SQLite 3.51.3 also passes the targeted tests and the <code>doctor</code> SQLite gate. There is still no real Windows runner result. Recent GitHub Actions jobs failed to start (annotations show billing / spending limit blocks), so that should not be read as "remote CI is green." Backend CI, Frontend CI, Pages, and Release workflows have had their push triggers disabled in this repo; manual dispatch, PRs, and the nightly schedule still trigger them.</li>
   </ul>
 </section>
 
-<p class="footer">Generated 2026-05-20. This document is a self-contained HTML file; the screenshots and the CSS workflow animation are embedded inline.</p>
+<p class="footer">Generated 2026-05-21. This document is a self-contained HTML file; the screenshots and the CSS workflow animation are embedded inline.</p>
 </main>
 </body>
 </html>

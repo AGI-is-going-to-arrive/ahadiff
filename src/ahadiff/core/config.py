@@ -108,6 +108,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "quiz_auto_range_min": 3,
         "quiz_auto_range_max": 8,
     },
+    "graph": {
+        "max_nodes_import": 50_000,
+    },
     "serve": {
         "port": 8765,
         "bind_host": "127.0.0.1",
@@ -341,6 +344,10 @@ def _coerce_value(
         if key == "llm.structured_validation_retries":
             if coerced < 0 or coerced > 2:
                 raise ConfigError(f"{key} must be between 0 and 2")
+            return coerced
+        if key == "graph.max_nodes_import":
+            if coerced < 1_000 or coerced > 50_000:
+                raise ConfigError(f"{key} must be between 1000 and 50000")
             return coerced
         if key in _POSITIVE_INT_KEYS and coerced < 1:
             raise ConfigError(f"{key} must be >= 1")
@@ -827,6 +834,12 @@ def _flatten_config_file(
     data = _read_toml(path)
     flattened = _flatten_mapping(data)
     unknown = tuple(sorted(key for key in flattened if not _is_supported_key(key)))
+    for key in unknown:
+        if _is_provider_capability_override_path(tuple(key.split("."))):
+            allowed = ", ".join(sorted(_PROVIDER_CAPABILITY_OVERRIDE_FIELDS))
+            raise ConfigError(
+                f"{key} must be one of supported provider capability overrides: {allowed}"
+            )
     normalized: dict[str, Scalar] = {}
     for key, value in flattened.items():
         if key in _FLAT_DEFAULTS:
@@ -886,14 +899,22 @@ def _dynamic_provider_field(key: str) -> str | None:
 
 
 def _dynamic_provider_capability_override(path: tuple[str, ...]) -> str | None:
-    if len(path) != 4 or path[0] != "providers" or path[2] != "capability_overrides":
-        return None
-    if path[1] == "" or path[3] == "":
+    if not _is_provider_capability_override_path(path):
         return None
     override_name = path[3]
     if override_name not in _PROVIDER_CAPABILITY_OVERRIDE_FIELDS:
         return None
     return override_name
+
+
+def _is_provider_capability_override_path(path: tuple[str, ...]) -> bool:
+    return (
+        len(path) == 4
+        and path[0] == "providers"
+        and path[2] == "capability_overrides"
+        and path[1] != ""
+        and path[3] != ""
+    )
 
 
 def _dynamic_model_pricing_field(key: str) -> str | None:

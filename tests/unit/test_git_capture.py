@@ -3708,6 +3708,117 @@ def test_graph_import_populates_review_db_fts(tmp_path: Path) -> None:
     assert status.provenance["source_path"] == "graphify-out/graph.json"
 
 
+def test_graph_import_respects_graph_node_max_nodes(tmp_path: Path) -> None:
+    from ahadiff.review.database import count_graph_nodes
+
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "tracked.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+
+    graph_dir = repo_root / "graphify-out"
+    graph_dir.mkdir()
+    graph_data = {
+        "nodes": [{"id": f"n{i}", "label": f"Node {i}"} for i in range(3)],
+        "links": [],
+    }
+    (graph_dir / "graph.json").write_text(json.dumps(graph_data), encoding="utf-8")
+
+    with pytest.raises(InputError, match="graph node import exceeds limit: 3 nodes > 2 max"):
+        capture_module.import_graphify_artifact(repo_root, force=True, max_nodes=2)
+
+    review_db = repo_root / ".ahadiff" / "review.sqlite"
+    assert count_graph_nodes(review_db) == 0
+    status = capture_module.import_graphify_artifact(repo_root, force=True, max_nodes=3)
+    assert status.provenance["node_count"] == "3"
+    assert count_graph_nodes(review_db) == 3
+
+
+def test_graph_import_rejects_raw_node_count_before_sanitizing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "tracked.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+
+    graph_dir = repo_root / "graphify-out"
+    graph_dir.mkdir()
+    (graph_dir / "graph.json").write_text(
+        json.dumps(
+            {
+                "nodes": [{"id": f"n{i}", "label": f"Node {i}"} for i in range(4)],
+                "links": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def fail_if_sanitize_runs(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("sanitize should not run after raw node limit pre-check")
+
+    monkeypatch.setattr(capture_module, "_sanitize_graphify_value", fail_if_sanitize_runs)
+
+    with pytest.raises(InputError, match="graph node import exceeds limit: 4 nodes > 3 max"):
+        capture_module.import_graphify_artifact(repo_root, force=True, max_nodes=3)
+
+
+def test_graph_import_existing_artifact_respects_lowered_node_limit(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "tracked.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+
+    graph_dir = repo_root / "graphify-out"
+    graph_dir.mkdir()
+    (graph_dir / "graph.json").write_text(
+        json.dumps(
+            {
+                "nodes": [{"id": f"n{i}", "label": f"Node {i}"} for i in range(4)],
+                "links": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    capture_module.import_graphify_artifact(repo_root, force=True, max_nodes=4)
+
+    with pytest.raises(InputError, match="graph node import exceeds limit: 4 nodes > 3 max"):
+        capture_module.import_graphify_artifact(repo_root, force=False, max_nodes=3)
+
+
+def test_capture_graphify_import_uses_configured_graph_node_max_nodes(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / ".ahadiff").mkdir()
+    (repo_root / ".ahadiff" / "config.toml").write_text(
+        "[graph]\nmax_nodes_import = 1000\n",
+        encoding="utf-8",
+    )
+    target = repo_root / "tracked.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+    target.write_text("value = 2\n", encoding="utf-8")
+    graph_dir = repo_root / "graphify-out"
+    graph_dir.mkdir()
+    (graph_dir / "graph.json").write_text(
+        json.dumps(
+            {
+                "nodes": [{"id": f"n{i}", "label": f"Node {i}"} for i in range(1001)],
+                "links": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(InputError, match="graph node import exceeds limit: 1001 nodes > 1000 max"):
+        capture_module.capture_patch(workspace_root=repo_root, unstaged=True, use_graphify=True)
+
+
 def test_graphify_status_handles_macos_var_alias_without_relative_to_crash(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

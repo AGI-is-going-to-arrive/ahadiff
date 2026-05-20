@@ -249,6 +249,46 @@ class TestGraphStatus:
         assert data["has_graph"] is True
         assert data["provenance"] == provenance
 
+
+class TestGraphRefresh:
+    def test_graph_refresh_uses_configured_graph_node_limit(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        _git(tmp_path, "init", "-q")
+        _git(tmp_path, "config", "user.name", "AhaDiff Test")
+        _git(tmp_path, "config", "user.email", "test@example.com")
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        (state_dir / "config.toml").write_text(
+            "[graph]\nmax_nodes_import = 1000\n",
+            encoding="utf-8",
+        )
+        graph_dir = tmp_path / "graphify-out"
+        graph_dir.mkdir()
+        (graph_dir / "graph.json").write_text(
+            json.dumps(
+                {
+                    "nodes": [{"id": f"n{i}", "label": f"Node {i}"} for i in range(1001)],
+                    "links": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        _git(tmp_path, "add", "graphify-out/graph.json")
+        _git(tmp_path, "commit", "-qm", "add graph", "--no-gpg-sign")
+
+        resp = _client(state_dir).post(
+            "/api/graph/refresh",
+            headers={"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"},
+        )
+
+        assert resp.status_code == 413
+        body = resp.json()
+        assert body["error_code"] == "GRAPH_NODE_LIMIT"
+        assert body["error"] == "graph node import exceeds limit: 1001 nodes > 1000 max"
+        assert body["details"] == {"count": 1001, "limit": 1000}
+
     def test_graph_status_drops_malformed_provenance(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".ahadiff"
         state_dir.mkdir()

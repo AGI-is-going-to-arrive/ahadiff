@@ -166,6 +166,7 @@ run_semantic_alignment_review_for_run = _lazy_attr(
 )
 capture_patch = _lazy_attr("git.capture", "capture_patch")
 detect_graphify_status = _lazy_attr("git.capture", "detect_graphify_status")
+effective_graph_max_nodes_import = _lazy_attr("git.capture", "_effective_graph_max_nodes_import")
 import_graphify_artifact = _lazy_attr("git.capture", "import_graphify_artifact")
 write_input_artifacts = _lazy_attr("git.capture", "write_input_artifacts")
 repo_write_lock = _lazy_attr("git.repo", "repo_write_lock")
@@ -3425,8 +3426,13 @@ def graph_import_cmd(
 ) -> None:
     try:
         root = find_repo_root(repo_root)
+        graph_max_nodes_import = effective_graph_max_nodes_import(root)
         with repo_write_lock(lock_file_path(root), command="graph import") as _:
-            status = import_graphify_artifact(root, force=force)
+            status = import_graphify_artifact(
+                root,
+                force=force,
+                max_nodes=graph_max_nodes_import,
+            )
         console.print(f"[green]Imported[/green] {status.imported_path}")
     except Exception as error:  # pragma: no cover - exercised through CLI tests
         _handle_cli_error(error)
@@ -3441,8 +3447,13 @@ def graph_refresh_cmd(
 ) -> None:
     try:
         root = find_repo_root(repo_root)
+        graph_max_nodes_import = effective_graph_max_nodes_import(root)
         with repo_write_lock(lock_file_path(root), command="graph refresh") as _:
-            status = import_graphify_artifact(root, force=True)
+            status = import_graphify_artifact(
+                root,
+                force=True,
+                max_nodes=graph_max_nodes_import,
+            )
         console.print(f"[green]Refreshed[/green] {status.imported_path}")
     except Exception as error:  # pragma: no cover - exercised through CLI tests
         _handle_cli_error(error)

@@ -211,4 +211,29 @@ describe('ConceptGraph rendering guards', () => {
     expect(html).toContain('Concept 0');
     expect(html).not.toContain('<canvas');
   });
+
+  it('does not render all nodes in one list expansion for huge graphs', () => {
+    const nodes = makeNodes(1200, () => 'code');
+    const html = renderToStaticMarkup(
+      <ConceptGraph
+        status={{
+          enabled: true,
+          source_exists: true,
+          has_graph: true,
+          freshness: 'fresh',
+          node_count: nodes.length,
+          edge_count: 0,
+          source_path: null,
+          provenance: null,
+        }}
+        nodes={nodes}
+        edges={[]}
+        truncated={false}
+      />,
+    );
+
+    expect(html).toContain('Showing first 500 of 1200');
+    expect(html).toContain('Show more');
+    expect(html).not.toContain('Concept 1199');
+  });
 });

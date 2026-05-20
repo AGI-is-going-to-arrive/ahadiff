@@ -185,7 +185,10 @@ def _minimum_threshold_detail(
     regime: str,
     basis: str,
 ) -> str:
-    policy_detail = f"adaptive_ratio={adaptive_ratio:.2f}; regime={regime}; basis={basis}"
+    if basis == "unavailable":
+        policy_detail = f"fixed_ratio={adaptive_ratio:.2f}; basis=unavailable"
+    else:
+        policy_detail = f"adaptive_ratio={adaptive_ratio:.2f}; regime={regime}; basis={basis}"
     if score is None:
         return f"{name} score is missing; requires >= {threshold:.2f}; {policy_detail}"
     if score >= threshold:

@@ -7,6 +7,7 @@ from ahadiff.core.errors import ProviderError
 
 from ..provider import AdapterBase
 from ..schemas import ProviderRequest, ProviderResponse
+from ._capability_overrides import apply_capability_overrides
 from .thinking import anthropic_budget_tokens
 
 if TYPE_CHECKING:
@@ -21,19 +22,23 @@ _JSON_OBJECT_SYSTEM_INSTRUCTION = (
 class AnthropicAdapter(AdapterBase):
     @property
     def capabilities(self) -> ProviderCapabilities:
-        return ProviderCapabilities(
-            supports_stream=True,
-            supports_json_mode=False,
-            supports_json_object_mode=True,
-            supports_native_json_schema=False,
-            supports_tool_use=True,
-            supports_temperature=True,
-            supports_rate_limit_headers=False,
-            supports_context_probe=False,
-            tokenizer_estimation="tiktoken",
-            api_family="anthropic",
-            api_family_version="2023-06-01",
-            provider_kind="anthropic",
+        return apply_capability_overrides(
+            ProviderCapabilities(
+                supports_stream=True,
+                supports_json_mode=False,
+                supports_json_object_mode=True,
+                supports_native_json_schema=False,
+                supports_tool_use=True,
+                supports_temperature=True,
+                supports_rate_limit_headers=False,
+                supports_context_probe=False,
+                tokenizer_estimation="tiktoken",
+                api_family="anthropic",
+                api_family_version="2023-06-01",
+                provider_kind="anthropic",
+            ),
+            self.config.capability_overrides,
+            blocked_fields=frozenset({"supports_native_json_schema"}),
         )
 
     def build_request(

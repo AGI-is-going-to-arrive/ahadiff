@@ -6,6 +6,7 @@ from ahadiff.contracts import ProviderCapabilities
 
 from ..provider import AdapterBase
 from ..schemas import ProviderRequest, ProviderResponse
+from ._capability_overrides import apply_capability_overrides
 from .structured import native_schema_for_request
 from .thinking import normalize_thinking_level
 
@@ -16,19 +17,22 @@ if TYPE_CHECKING:
 class OllamaAdapter(AdapterBase):
     @property
     def capabilities(self) -> ProviderCapabilities:
-        return ProviderCapabilities(
-            supports_stream=True,
-            supports_json_mode=True,
-            supports_json_object_mode=True,
-            supports_native_json_schema=True,
-            supports_tool_use=False,
-            supports_temperature=True,
-            supports_rate_limit_headers=False,
-            supports_context_probe=False,
-            tokenizer_estimation="char_div_4",
-            api_family="ollama",
-            api_family_version="v1",
-            provider_kind="ollama",
+        return apply_capability_overrides(
+            ProviderCapabilities(
+                supports_stream=True,
+                supports_json_mode=True,
+                supports_json_object_mode=True,
+                supports_native_json_schema=True,
+                supports_tool_use=False,
+                supports_temperature=True,
+                supports_rate_limit_headers=False,
+                supports_context_probe=False,
+                tokenizer_estimation="char_div_4",
+                api_family="ollama",
+                api_family_version="v1",
+                provider_kind="ollama",
+            ),
+            self.config.capability_overrides,
         )
 
     def build_request(
@@ -46,10 +50,16 @@ class OllamaAdapter(AdapterBase):
         }
         if request.temperature is not None:
             payload["options"] = {"temperature": request.temperature}
-        schema = native_schema_for_request(request)
+        schema = (
+            native_schema_for_request(request)
+            if self.capabilities.supports_native_json_schema
+            else None
+        )
         if schema is not None:
             payload["format"] = schema
-        elif request.response_format == "json":
+        elif request.response_format in {"json", "json_schema"} and (
+            self.capabilities.supports_json_object_mode
+        ):
             payload["format"] = "json"
         url = f"{self.config.base_url.rstrip('/')}/api/chat"
         return "POST", url, headers, payload

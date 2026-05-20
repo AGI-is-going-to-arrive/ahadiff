@@ -288,6 +288,27 @@ def _parse_lesson_payload_with_fallbacks(
     raise last_error
 
 
+def _parse_strict_lesson_payload(
+    payload: str,
+    *,
+    schema: type[LessonFull] | type[LessonHint] | type[LessonCompact],
+) -> LessonFull | LessonHint | LessonCompact:
+    parsed: Any = safe_json_loads(payload)
+    if not isinstance(parsed, dict):
+        raise ValueError("structured lesson output must be a JSON object")
+    schema.model_validate(parsed)
+    return cast(
+        "LessonFull | LessonHint | LessonCompact",
+        parse_lesson_payload(payload, schema=schema),
+    )
+
+
+def _require_plain_json_object_for_lesson_fallback(payload: str) -> None:
+    parsed: Any = safe_json_loads(payload)
+    if not isinstance(parsed, dict):
+        raise ValueError("lesson fallback output must be a plain JSON object")
+
+
 def _repair_lesson_candidate(
     candidate: Mapping[str, Any],
     *,
@@ -863,10 +884,11 @@ def _generate_variant_payload(
     )
 
     def _validate(payload: str) -> str:
-        parse_lesson_payload(payload, schema=schema)
+        _parse_strict_lesson_payload(payload, schema=schema)
         return payload
 
     def _fallback(payload: str) -> str:
+        _require_plain_json_object_for_lesson_fallback(payload)
         _parse_lesson_payload_with_fallbacks(payload, schema=schema, bundle=bundle)
         return payload
 
