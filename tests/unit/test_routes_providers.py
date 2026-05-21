@@ -181,6 +181,35 @@ def test_provider_create_alias_validation_returns_400_before_registry_mutation(
     assert not (state_dir / "config.toml").exists()
 
 
+def test_get_providers_tolerates_corrupt_providers_table(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text('providers = "not-a-table"\n', encoding="utf-8")
+    client = _client(state_dir)
+
+    response = client.get("/api/providers", headers=_AUTH)
+
+    assert response.status_code == 200
+    assert response.json() == {"providers": []}
+
+
+def test_provider_create_rejects_corrupt_providers_table_without_mutation(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    config_path = state_dir / "config.toml"
+    original = 'providers = "not-a-table"\n'
+    config_path.write_text(original, encoding="utf-8")
+    client = _client(state_dir)
+
+    response = client.post("/api/providers", headers=_AUTH, json=_provider_payload())
+
+    assert response.status_code == 500
+    error = str(response.json()["error"])
+    assert "providers" in error
+    assert "table" in error
+    assert config_path.read_text(encoding="utf-8") == original
+
+
 @pytest.mark.parametrize(
     "base_url",
     (

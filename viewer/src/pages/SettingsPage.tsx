@@ -6,18 +6,21 @@ import ProviderCard from '../components/ProviderCard';
 import DiagnosticRow, { type DiagnosticStatus } from '../components/DiagnosticRow';
 import {
   applyInstallTarget,
+  getCaptureRecommended,
   getConfig, getDoctor, getProviders, getUsage, getAudit, getInstallTargets,
   previewInstallTarget,
   putConfig,
   removeInstallTarget,
 } from '../api/config';
+import CaptureBudgetBar from '../components/CaptureBudgetBar';
+import { buildFormatTexts, formatBytes, formatCompactNumber } from '../utils/format';
 import {
   createProvider, updateProvider, deleteProvider, probeProvider,
 } from '../api/providers';
 import { fetchServeStatus, fetchWatchStatus } from '../api/stats';
 import type {
-  AuditEntry, CaptureConfig, ConfigResponse, DoctorCheck, LlmConfig, ProviderSummary,
-  UsageResponse, AuditResponse, InstallManifestAction, InstallTarget,
+  AuditEntry, CaptureConfig, CaptureRecommendation, ConfigResponse, DoctorCheck, LlmConfig,
+  ProviderSummary, UsageResponse, AuditResponse, InstallManifestAction, InstallTarget,
 } from '../api/config';
 import type {
   ProviderCreateInput, ProviderUpdateInput, ServeStatusResponse, WatchStatusResponse,
@@ -273,6 +276,7 @@ export default function SettingsPage() {
             config={data.config}
             failed={Boolean(data.failed.config)}
             t={t}
+            locale={locale}
             onRetry={retry}
             onSaved={() => void fetchAll()}
           />
@@ -1666,16 +1670,50 @@ const SYMBOL_EXTRACTOR_LABEL_KEY: Record<string, MessageKey> = {
   tree_sitter: 'Settings_page.capture_extractor_tree_sitter',
 };
 
+const CAPTURE_SOURCE_KEYS: Record<string, MessageKey> = {
+  live: 'Settings_page.capture_auto_source_live',
+  registry: 'Settings_page.capture_auto_source_registry',
+  default: 'Settings_page.capture_auto_source_default',
+};
+
+function captureSourceLabel(t: TFn, source: string): string {
+  const key = CAPTURE_SOURCE_KEYS[source];
+  return key ? t(key) : source;
+}
+
+/**
+ * Pure derivation: compare a manual draft against the saved capture config to
+ * detect dirty state.  Exported for unit tests.
+ */
+export function isCaptureFormDirty(
+  form: CaptureConfig,
+  saved: CaptureConfig | undefined | null,
+): boolean {
+  if (!saved) return false;
+  const savedMode = saved.mode ?? 'manual';
+  const formMode = form.mode ?? 'manual';
+  return (
+    formMode !== savedMode
+    || form.max_files !== saved.max_files
+    || form.hard_limit !== saved.hard_limit
+    || form.max_patch_bytes !== saved.max_patch_bytes
+    || form.file_ranking !== saved.file_ranking
+    || form.symbol_extractor !== saved.symbol_extractor
+  );
+}
+
 function CaptureTab({
   config,
   failed,
   t,
+  locale,
   onRetry,
   onSaved,
 }: {
   config: ConfigResponse | null;
   failed: boolean;
   t: TFn;
+  locale: string;
   onRetry: () => void;
   onSaved: () => void;
 }) {
@@ -1684,10 +1722,40 @@ function CaptureTab({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveOk, setSaveOk] = useState(false);
+  const [recommendation, setRecommendation] = useState<CaptureRecommendation | null>(null);
+  const [recommendationLoading, setRecommendationLoading] = useState(false);
+  const [recommendationError, setRecommendationError] = useState<string | null>(null);
 
   useEffect(() => {
     if (capture) setForm({ ...capture });
   }, [capture]);
+
+  // Fetch capture recommendation (used in both auto/manual modes for hints).
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    setRecommendationLoading(true);
+    setRecommendationError(null);
+    void (async () => {
+      try {
+        const rec = await getCaptureRecommended({ signal: controller.signal });
+        if (cancelled) return;
+        setRecommendation(rec);
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (err instanceof Error && err.name === 'AbortError') return;
+        setRecommendation(null);
+        setRecommendationError(err instanceof Error ? err.message : 'failed');
+      } finally {
+        if (!cancelled) setRecommendationLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [config]);
 
   if (failed || !config || !form) {
     return (
@@ -1700,13 +1768,13 @@ function CaptureTab({
     );
   }
 
-  const dirty = capture && (
-    form.max_files !== capture.max_files
-    || form.hard_limit !== capture.hard_limit
-    || form.max_patch_bytes !== capture.max_patch_bytes
-    || form.file_ranking !== capture.file_ranking
-    || form.symbol_extractor !== capture.symbol_extractor
-  );
+  const mode: 'auto' | 'manual' = form.mode ?? 'manual';
+  const isAuto = mode === 'auto';
+  const dirty = isCaptureFormDirty(form, capture);
+
+  const formatTexts = buildFormatTexts(t);
+  const fmtTokens = (n: number) => formatCompactNumber(n, locale, formatTexts);
+  const fmtBytes = (n: number) => formatBytes(n, locale, formatTexts);
 
   const handleSave = async () => {
     setSaving(true);
@@ -1728,6 +1796,16 @@ function CaptureTab({
     setSaveOk(false);
   };
 
+  const setMode = (next: 'auto' | 'manual') => {
+    setForm(prev => prev ? { ...prev, mode: next } : prev);
+    setSaveOk(false);
+  };
+
+  // Tracks recommendation availability for the no-provider / too-small banners.
+  const hasRecommendation = recommendation != null;
+  const recFitsMinimums = recommendation?.fits_minimums ?? true;
+  const recWarnings = recommendation?.warnings ?? [];
+
   return (
     <>
       <div className="settings-card">
@@ -1739,57 +1817,245 @@ function CaptureTab({
             {t('Settings_page.capture_description')}
           </p>
 
-          <div className="settings-field">
+          {/* Auto / Manual mode toggle (segmented control) */}
+          <div
+            className="settings-field"
+            role="radiogroup"
+            aria-label={t('Settings_page.capture_mode')}
+          >
             <div className="settings-field__label">
-              <h3>{t('Settings_page.capture_max_files')}</h3>
-              <p>{t('Settings_page.capture_max_files_desc')}</p>
+              <h3>{t('Settings_page.capture_mode')}</h3>
+              <p>{t('Settings_page.capture_mode_desc')}</p>
             </div>
-            <input
-              type="number"
-              className="settings-input"
-              aria-label={t('Settings_page.capture_max_files')}
-              min={1}
-              max={500}
-              value={form.max_files}
-              onChange={e => setField('max_files', Math.max(1, Math.min(500, Number(e.target.value) || 1)))}
-            />
+            <div className="capture-mode-segmented" role="presentation">
+              <label
+                className={`capture-mode-segmented__option${isAuto ? ' is-active' : ''}`}
+              >
+                <input
+                  type="radio"
+                  name="capture-mode"
+                  value="auto"
+                  checked={isAuto}
+                  onChange={() => setMode('auto')}
+                  className="capture-mode-segmented__radio"
+                  data-testid="capture-mode-auto"
+                />
+                <span>{t('Settings_page.capture_mode_auto')}</span>
+              </label>
+              <label
+                className={`capture-mode-segmented__option${!isAuto ? ' is-active' : ''}`}
+              >
+                <input
+                  type="radio"
+                  name="capture-mode"
+                  value="manual"
+                  checked={!isAuto}
+                  onChange={() => setMode('manual')}
+                  className="capture-mode-segmented__radio"
+                  data-testid="capture-mode-manual"
+                />
+                <span>{t('Settings_page.capture_mode_manual')}</span>
+              </label>
+            </div>
           </div>
 
-          <div className="settings-field">
-            <div className="settings-field__label">
-              <h3>{t('Settings_page.capture_hard_limit')}</h3>
-              <p>{t('Settings_page.capture_hard_limit_desc')}</p>
-            </div>
-            <input
-              type="number"
-              className="settings-input"
-              aria-label={t('Settings_page.capture_hard_limit')}
-              min={100}
-              max={100000}
-              value={form.hard_limit}
-              onChange={e => setField('hard_limit', Math.max(100, Math.min(100000, Number(e.target.value) || 100)))}
-            />
-          </div>
+          {/* Recommendation loading / error banner (visible in both modes) */}
+          {recommendationLoading && (
+            <p className="u-muted-sm" role="status">
+              {t('Settings_page.capture_recommendation_loading')}
+            </p>
+          )}
+          {!recommendationLoading && recommendationError && (
+            <p className="settings-field__badge settings-field__badge--missing" role="alert">
+              {t('Settings_page.capture_recommendation_failed')}
+            </p>
+          )}
 
-          <div className="settings-field">
-            <div className="settings-field__label">
-              <h3>{t('Settings_page.capture_max_patch_bytes')}</h3>
-              <p>{t('Settings_page.capture_max_patch_bytes_desc')}</p>
-            </div>
-            <input
-              type="number"
-              className="settings-input"
-              aria-label={t('Settings_page.capture_max_patch_bytes')}
-              min={10000}
-              max={100000000}
-              step={100000}
-              value={form.max_patch_bytes}
-              onChange={e => setField('max_patch_bytes', Math.max(10000, Math.min(100000000, Number(e.target.value) || 10000)))}
-            />
-            <span className="u-muted-sm settings-field__suffix">
-              ({(form.max_patch_bytes / 1_000_000).toFixed(1)} MB)
-            </span>
-          </div>
+          {/* Auto mode: show computed values + budget bar + warnings */}
+          {isAuto && (
+            <>
+              {!hasRecommendation && !recommendationLoading && !recommendationError && (
+                <p className="settings-field__badge settings-field__badge--missing" role="alert">
+                  {t('Settings_page.capture_auto_no_provider')}
+                </p>
+              )}
+
+              {hasRecommendation && (
+                <>
+                  {!recFitsMinimums && (
+                    <p
+                      className="settings-field__badge settings-field__badge--missing"
+                      role="alert"
+                    >
+                      {t('Settings_page.capture_auto_too_small')}
+                    </p>
+                  )}
+
+                  <div className="settings-field">
+                    <div className="settings-field__label">
+                      <h3>{t('Settings_page.capture_model_label')}</h3>
+                      <p>{t('Settings_page.capture_auto_computed')}</p>
+                    </div>
+                    <output className="settings-field__value">
+                      {recommendation!.model_name}
+                    </output>
+                  </div>
+
+                  <div className="settings-field">
+                    <div className="settings-field__label">
+                      <h3>{t('Settings_page.capture_auto_source')}</h3>
+                    </div>
+                    <output className="settings-field__value">
+                      <span className="settings-field__badge">
+                        {captureSourceLabel(t, recommendation!.source)}
+                      </span>
+                    </output>
+                  </div>
+
+                  <div className="settings-field">
+                    <div className="settings-field__label">
+                      <h3>{t('Settings_page.capture_max_files')}</h3>
+                      <p>{t('Settings_page.capture_max_files_desc')}</p>
+                    </div>
+                    <output
+                      className="settings-field__value"
+                      data-testid="capture-auto-max-files"
+                    >
+                      {fmtTokens(recommendation!.max_files)}
+                    </output>
+                  </div>
+
+                  <div className="settings-field">
+                    <div className="settings-field__label">
+                      <h3>{t('Settings_page.capture_hard_limit')}</h3>
+                      <p>{t('Settings_page.capture_hard_limit_desc')}</p>
+                    </div>
+                    <output
+                      className="settings-field__value"
+                      data-testid="capture-auto-hard-limit"
+                    >
+                      {fmtTokens(recommendation!.hard_limit)}
+                    </output>
+                  </div>
+
+                  <div className="settings-field">
+                    <div className="settings-field__label">
+                      <h3>{t('Settings_page.capture_max_patch_bytes')}</h3>
+                      <p>{t('Settings_page.capture_max_patch_bytes_desc')}</p>
+                    </div>
+                    <output
+                      className="settings-field__value"
+                      data-testid="capture-auto-max-patch-bytes"
+                    >
+                      {fmtBytes(recommendation!.max_patch_bytes)}
+                    </output>
+                  </div>
+
+                  <div className="settings-field">
+                    <div className="settings-field__label">
+                      <h3>{t('Settings_page.capture_budget_total')}</h3>
+                    </div>
+                    <div className="settings-field__value capture-budget-bar-wrap">
+                      <CaptureBudgetBar recommendation={recommendation} />
+                    </div>
+                  </div>
+
+                  {recWarnings.length > 0 && (
+                    <div className="settings-field">
+                      <div className="settings-field__label">
+                        <h3>{t('Settings_page.capture_warnings_title')}</h3>
+                      </div>
+                      <ul className="capture-warning-list" role="list">
+                        {recWarnings.map((w, idx) => (
+                          <li key={`${idx}:${w}`} className="capture-warning-list__item">
+                            {w}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+
+          {/* Manual mode: keep numeric inputs editable */}
+          {!isAuto && (
+            <>
+              <div className="settings-field">
+                <div className="settings-field__label">
+                  <h3>{t('Settings_page.capture_max_files')}</h3>
+                  <p>{t('Settings_page.capture_max_files_desc')}</p>
+                  {hasRecommendation && (
+                    <p className="u-muted-sm" data-testid="capture-hint-max-files">
+                      {t('Settings_page.capture_auto_hint', {
+                        value: fmtTokens(recommendation!.max_files),
+                      })}
+                    </p>
+                  )}
+                </div>
+                <input
+                  type="number"
+                  className="settings-input"
+                  aria-label={t('Settings_page.capture_max_files')}
+                  min={1}
+                  max={500}
+                  value={form.max_files}
+                  onChange={e => setField('max_files', Math.max(1, Math.min(500, Number(e.target.value) || 1)))}
+                />
+              </div>
+
+              <div className="settings-field">
+                <div className="settings-field__label">
+                  <h3>{t('Settings_page.capture_hard_limit')}</h3>
+                  <p>{t('Settings_page.capture_hard_limit_desc')}</p>
+                  {hasRecommendation && (
+                    <p className="u-muted-sm" data-testid="capture-hint-hard-limit">
+                      {t('Settings_page.capture_auto_hint', {
+                        value: fmtTokens(recommendation!.hard_limit),
+                      })}
+                    </p>
+                  )}
+                </div>
+                <input
+                  type="number"
+                  className="settings-input"
+                  aria-label={t('Settings_page.capture_hard_limit')}
+                  min={100}
+                  max={100000}
+                  value={form.hard_limit}
+                  onChange={e => setField('hard_limit', Math.max(100, Math.min(100000, Number(e.target.value) || 100)))}
+                />
+              </div>
+
+              <div className="settings-field">
+                <div className="settings-field__label">
+                  <h3>{t('Settings_page.capture_max_patch_bytes')}</h3>
+                  <p>{t('Settings_page.capture_max_patch_bytes_desc')}</p>
+                  {hasRecommendation && (
+                    <p className="u-muted-sm" data-testid="capture-hint-max-patch-bytes">
+                      {t('Settings_page.capture_auto_hint', {
+                        value: fmtBytes(recommendation!.max_patch_bytes),
+                      })}
+                    </p>
+                  )}
+                </div>
+                <input
+                  type="number"
+                  className="settings-input"
+                  aria-label={t('Settings_page.capture_max_patch_bytes')}
+                  min={10000}
+                  max={100000000}
+                  step={100000}
+                  value={form.max_patch_bytes}
+                  onChange={e => setField('max_patch_bytes', Math.max(10000, Math.min(100000000, Number(e.target.value) || 10000)))}
+                />
+                <span className="u-muted-sm settings-field__suffix">
+                  ({(form.max_patch_bytes / 1_000_000).toFixed(1)} MB)
+                </span>
+              </div>
+            </>
+          )}
 
           <div className="settings-field">
             <div className="settings-field__label">

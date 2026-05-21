@@ -441,8 +441,23 @@ def _provider_summary_from_mapping(
             api_key_env = "****"
     api_family, api_family_version, provider_kind = _provider_api_family(provider_class)
     probed_max_context = _optional_positive_int(provider_mapping, "probed_max_context")
+    probed_max_input_tokens = _optional_positive_int(provider_mapping, "probed_max_input_tokens")
+    probed_max_output_tokens = _optional_positive_int(provider_mapping, "probed_max_output_tokens")
     probed_tpm = _optional_positive_int(provider_mapping, "probed_tpm")
     probed_rpm = _optional_positive_int(provider_mapping, "probed_rpm")
+    raw_probed_limits_source = provider_mapping.get("probed_limits_source")
+    probed_limits_source = (
+        str(raw_probed_limits_source)
+        if isinstance(raw_probed_limits_source, str)
+        and raw_probed_limits_source in {"live", "registry", "default"}
+        else None
+    )
+    raw_model_limits_name = provider_mapping.get("model_limits_name")
+    model_limits_name = (
+        str(raw_model_limits_name)
+        if isinstance(raw_model_limits_name, str) and raw_model_limits_name
+        else None
+    )
     raw_probe_timestamp = provider_mapping.get("probe_timestamp")
     probe_timestamp = (
         str(raw_probe_timestamp)
@@ -450,7 +465,16 @@ def _provider_summary_from_mapping(
         else None
     )
     probed = any(
-        value is not None for value in (probed_max_context, probed_tpm, probed_rpm, probe_timestamp)
+        value is not None
+        for value in (
+            probed_max_context,
+            probed_max_input_tokens,
+            probed_max_output_tokens,
+            probed_limits_source,
+            probed_tpm,
+            probed_rpm,
+            probe_timestamp,
+        )
     )
     return ProviderSummary(
         alias=alias,
@@ -465,6 +489,10 @@ def _provider_summary_from_mapping(
         api_family_version=api_family_version,
         probed=probed,
         probed_max_context=probed_max_context,
+        probed_max_input_tokens=probed_max_input_tokens,
+        probed_max_output_tokens=probed_max_output_tokens,
+        probed_limits_source=probed_limits_source,
+        model_limits_name=model_limits_name,
         max_output_tokens=_optional_positive_int(provider_mapping, "max_output_tokens"),
         thinking_level=_optional_thinking_level(provider_mapping),
         probed_tpm=probed_tpm,
@@ -499,6 +527,10 @@ def _legacy_provider_summary(  # pyright: ignore[reportUnusedFunction]
         api_family_version=api_family_version,
         probed=False,
         probed_max_context=None,
+        probed_max_input_tokens=None,
+        probed_max_output_tokens=None,
+        probed_limits_source=None,
+        model_limits_name=None,
     )
 
 

@@ -15,6 +15,7 @@ if TYPE_CHECKING:
         estimate_request_tokens,
         parse_rate_limit_headers,
         resolve_context_window,
+        resolve_model_limits,
     )
     from .probe import persist_probe_result, probe_provider
     from .provider import (
@@ -28,6 +29,7 @@ if TYPE_CHECKING:
     from .schemas import (
         CacheKeyInput,
         EnforcementMode,
+        ProbeContextResult,
         ProbeReport,
         ProviderRequest,
         ProviderResponse,
@@ -55,6 +57,7 @@ __all__ = [
     "DEFAULT_OUTPUT_TOKEN_BUDGET",
     "DEFAULT_PROVIDER_RESPONSE_BYTE_CAP",
     "ManagedProvider",
+    "ProbeContextResult",
     "ProbeReport",
     "Provider",
     "ProviderRequest",
@@ -78,6 +81,7 @@ __all__ = [
     "canonical_json",
     "normalize_schema_for_provider",
     "resolve_context_window",
+    "resolve_model_limits",
     "schema_hash",
     "schema_spec_for",
     "generate_with_validation_retry",
@@ -92,6 +96,7 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "DEFAULT_OUTPUT_TOKEN_BUDGET": ("cost", "DEFAULT_OUTPUT_TOKEN_BUDGET"),
     "DEFAULT_PROVIDER_RESPONSE_BYTE_CAP": ("provider", "DEFAULT_PROVIDER_RESPONSE_BYTE_CAP"),
     "ManagedProvider": ("provider", "ManagedProvider"),
+    "ProbeContextResult": ("schemas", "ProbeContextResult"),
     "ProbeReport": ("schemas", "ProbeReport"),
     "Provider": ("provider", "Provider"),
     "ProviderRequest": ("schemas", "ProviderRequest"),
@@ -118,6 +123,7 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "canonical_json": ("structured", "canonical_json"),
     "normalize_schema_for_provider": ("structured", "normalize_schema_for_provider"),
     "resolve_context_window": ("cost", "resolve_context_window"),
+    "resolve_model_limits": ("cost", "resolve_model_limits"),
     "schema_hash": ("structured", "schema_hash"),
     "schema_spec_for": ("structured", "schema_spec_for"),
     "generate_with_validation_retry": (

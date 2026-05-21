@@ -631,12 +631,46 @@ function ProviderDetailView({
 
       {provider.probed && (
         <div className="provider-card__probe-results">
-          {provider.probed_max_context != null && (
-            <Field
-              label={t('Settings_page.provider_context_label')}
-              value={formatTokenCount(provider.probed_max_context, locale)}
-              mono
-            />
+          {(provider.probed_max_input_tokens != null
+            || provider.probed_max_output_tokens != null) ? (
+            <>
+              {provider.probed_max_input_tokens != null && (
+                <Field
+                  label={t('Settings_page.provider_input_tokens')}
+                  value={formatTokenCount(provider.probed_max_input_tokens, locale)}
+                  mono
+                />
+              )}
+              {provider.probed_max_output_tokens != null && (
+                <Field
+                  label={t('Settings_page.provider_output_tokens')}
+                  value={formatTokenCount(provider.probed_max_output_tokens, locale)}
+                  mono
+                />
+              )}
+              {provider.probed_limits_source && (
+                <Field
+                  label={t('Settings_page.provider_limits_source')}
+                  value={providerLimitsSourceLabel(t, provider.probed_limits_source)}
+                  mono
+                />
+              )}
+              {provider.model_limits_name && (
+                <Field
+                  label={t('Settings_page.provider_model_limits_name')}
+                  value={provider.model_limits_name}
+                  mono
+                />
+              )}
+            </>
+          ) : (
+            provider.probed_max_context != null && (
+              <Field
+                label={t('Settings_page.provider_context_label')}
+                value={formatTokenCount(provider.probed_max_context, locale)}
+                mono
+              />
+            )
           )}
           {provider.probe_timestamp && (
             <Field
@@ -1079,6 +1113,20 @@ function formatTokenCount(value: number, locale: string): string {
   } catch {
     return value.toLocaleString();
   }
+}
+
+const PROVIDER_LIMITS_SOURCE_KEYS: Record<string, MessageKey> = {
+  live: 'Settings_page.provider_limits_source_live',
+  registry: 'Settings_page.provider_limits_source_registry',
+  default: 'Settings_page.provider_limits_source_default',
+};
+
+function providerLimitsSourceLabel(
+  t: ReturnType<typeof useTranslation>['t'],
+  source: string,
+): string {
+  const key = PROVIDER_LIMITS_SOURCE_KEYS[source];
+  return key ? t(key) : source;
 }
 
 function Field({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {

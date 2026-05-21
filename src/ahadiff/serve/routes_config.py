@@ -27,6 +27,14 @@ _QUIZ_DEFAULTS: dict[str, Any] = {
     "quiz_auto_range_min": 3,
     "quiz_auto_range_max": 8,
 }
+_CAPTURE_DEFAULTS: dict[str, Any] = {
+    "mode": "auto",
+    "max_files": 30,
+    "hard_limit": 3000,
+    "max_patch_bytes": 5_000_000,
+    "file_ranking": "learning_value",
+    "symbol_extractor": "auto",
+}
 
 
 def _empty_config_snapshot() -> dict[str, Any]:
@@ -39,13 +47,7 @@ def _empty_config_snapshot() -> dict[str, Any]:
         "judge_model": None,
         "serve_port": None,
         "key_status": {},
-        "capture": {
-            "max_files": 30,
-            "hard_limit": 3000,
-            "max_patch_bytes": 5_000_000,
-            "file_ranking": "learning_value",
-            "symbol_extractor": "auto",
-        },
+        "capture": dict(_CAPTURE_DEFAULTS),
         "llm": {
             "input_token_budget": 200_000,
             "output_token_budget": 50_000,
@@ -112,6 +114,7 @@ def _safe_config_snapshot(state: ServeState) -> dict[str, Any]:
             "judge_model": llm_values.get("judge_model"),
             "serve_port": serve_values.get("port"),
             "capture": {
+                "mode": capture_values.get("mode", "auto"),
                 "max_files": capture_values.get("max_files", 30),
                 "hard_limit": capture_values.get("hard_limit", 3000),
                 "max_patch_bytes": capture_values.get("max_patch_bytes", 5_000_000),
@@ -153,13 +156,7 @@ def _safe_config_snapshot(state: ServeState) -> dict[str, Any]:
 
         serve = getattr(cfg, "serve", None)
         result["serve_port"] = getattr(serve, "port", None) if serve else None
-        result["capture"] = {
-            "max_files": 30,
-            "hard_limit": 3000,
-            "max_patch_bytes": 5_000_000,
-            "file_ranking": "learning_value",
-            "symbol_extractor": "auto",
-        }
+        result["capture"] = dict(_CAPTURE_DEFAULTS)
         result["llm"] = {
             "input_token_budget": 200_000,
             "output_token_budget": 50_000,
@@ -413,10 +410,11 @@ async def get_doctor(request: Request) -> JSONResponse:
 _ALLOWED_CONFIG_LANG = frozenset({"en", "zh-CN"})
 _ALLOWED_PRIVACY_MODES = frozenset({"strict_local", "redacted_remote", "explicit_remote"})
 _ALLOWED_FILE_RANKINGS = frozenset({"learning_value", "changed_lines", "path"})
+_ALLOWED_CAPTURE_MODES = frozenset({"auto", "manual"})
 _CAPTURE_INT_FIELDS: dict[str, tuple[int, int]] = {
     "max_files": (1, 500),
     "hard_limit": (100, 100_000),
-    "max_patch_bytes": (10_000, 100_000_000),
+    "max_patch_bytes": (100_000, 50 * 1024 * 1024),
 }
 _LLM_INT_FIELDS: dict[str, tuple[int, int]] = {
     "input_token_budget": (1_000, 10_000_000),
@@ -481,13 +479,26 @@ def _validate_capture_update(capture: object) -> dict[str, Any] | str:
     if not isinstance(capture, dict):
         return "capture must be a JSON object"
     capture_dict = cast("dict[str, Any]", capture)
-    allowed = {"max_files", "hard_limit", "max_patch_bytes", "file_ranking", "symbol_extractor"}
+    allowed = {
+        "mode",
+        "max_files",
+        "hard_limit",
+        "max_patch_bytes",
+        "file_ranking",
+        "symbol_extractor",
+    }
     unknown_cap: set[str] = set(capture_dict.keys()) - allowed
     if unknown_cap:
         return f"unknown capture keys: {sorted(unknown_cap)}"
     validated: dict[str, Any] = {}
+    mode = capture_dict.get("mode")
+    if "mode" in capture_dict:
+        if not isinstance(mode, str) or mode not in _ALLOWED_CAPTURE_MODES:
+            return f"capture.mode must be one of {sorted(_ALLOWED_CAPTURE_MODES)}"
+        validated["mode"] = mode
+    validate_numeric_fields = mode != "auto"
     for field_name, (lo, hi) in _CAPTURE_INT_FIELDS.items():
-        if field_name in capture_dict:
+        if validate_numeric_fields and field_name in capture_dict:
             val: object = capture_dict[field_name]
             if not isinstance(val, int) or isinstance(val, bool):
                 return f"capture.{field_name} must be an integer"

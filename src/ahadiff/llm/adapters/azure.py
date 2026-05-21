@@ -16,6 +16,11 @@ if TYPE_CHECKING:
 
 
 class AzureOpenAIAdapter(AdapterBase):
+    """Azure deployments should set model_limits_name for registry limit lookup.
+
+    Deployment names may differ from base model names, so live context probing stays disabled.
+    """
+
     DEFAULT_API_VERSION = "2024-10-21"
 
     @property

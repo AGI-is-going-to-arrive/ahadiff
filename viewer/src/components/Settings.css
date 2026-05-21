@@ -644,6 +644,101 @@
   margin-left: var(--sp-2);
 }
 
+/* ---- Capture: auto/manual segmented control ---- */
+.capture-mode-segmented {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  background: var(--elevated);
+  overflow: hidden;
+}
+
+.capture-mode-segmented__option {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  padding: var(--sp-1) var(--sp-3);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  border-right: 1px solid var(--hair);
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+
+.capture-mode-segmented__option:last-child {
+  border-right: none;
+}
+
+.capture-mode-segmented__option.is-active {
+  background: var(--accent-softer, var(--subtle));
+  color: var(--accent-ink, var(--accent));
+  font-weight: 500;
+}
+
+.capture-mode-segmented__radio {
+  /* Visually hide but keep accessible */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.capture-mode-segmented__option:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  z-index: 1;
+}
+
+.capture-budget-bar-wrap {
+  width: 100%;
+  max-width: 520px;
+}
+
+.capture-warning-list {
+  list-style: disc;
+  padding-left: var(--sp-4);
+  margin: 0;
+  color: var(--muted-strong, var(--muted));
+  font-size: 13px;
+  line-height: var(--lh-relaxed);
+}
+
+.capture-warning-list__item + .capture-warning-list__item {
+  margin-top: var(--sp-1);
+}
+
+@media (forced-colors: active) {
+  .capture-mode-segmented {
+    border-color: CanvasText;
+  }
+  .capture-mode-segmented__option {
+    border-right-color: CanvasText;
+    color: CanvasText;
+  }
+  .capture-mode-segmented__option.is-active {
+    background: Highlight;
+    color: HighlightText;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .capture-mode-segmented__option {
+    transition: none;
+  }
+}
+
 /* ---- Print ---- */
 @media print {
   .stabs { display: none; }

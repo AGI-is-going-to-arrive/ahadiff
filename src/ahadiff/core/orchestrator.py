@@ -14,12 +14,19 @@ import stat
 import time
 from collections.abc import Callable, Iterable
 from contextlib import suppress
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Literal, TypeVar, cast
 
 from pydantic import ValidationError
 
 from ahadiff.contracts import PrivacyMode, ProviderConfig
+from ahadiff.core.budget import (
+    CaptureRecommendation,
+    compute_cjk_factor,
+    compute_output_reserve,
+    compute_recommended_capture,
+    manual_capture_recommendation,
+)
 from ahadiff.core.config import (
     SecurityConfig,
     load_config,
@@ -39,6 +46,7 @@ from ahadiff.core.paths import (
     run_dir,
 )
 from ahadiff.i18n import resolve_locale
+from ahadiff.llm.cost import resolve_model_limits
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -170,6 +178,144 @@ def _step_output_cap(
     if provider_max is not None and provider_max > 0:
         candidates.append(int(provider_max))
     return min(candidates)
+
+
+def _output_reserve_inputs(llm_config: dict[str, Any]) -> tuple[int, dict[str, int]]:
+    output_budget = _llm_positive_int(llm_config, "output_token_budget", 50_000)
+    return output_budget, {
+        step_name: _llm_positive_int(
+            llm_config,
+            f"{step_name}_output_cap",
+            default_value,
+        )
+        for step_name, default_value in _STEP_OUTPUT_CAPS.items()
+    }
+
+
+def _fallback_budget_provider_config(
+    *,
+    snapshot: Any,
+    provider_class: str,
+    model: str | None,
+    api_key_env: str,
+) -> ProviderConfig:
+    llm_config = cast("dict[str, Any]", snapshot.values.get("llm", {}))
+    model_name = model or str(llm_config.get("generate_model", "gpt-5.4-mini"))
+    return ProviderConfig(
+        provider_class=cast("Any", provider_class),
+        model_name=model_name,
+        base_url="http://127.0.0.1",
+        api_key_env=api_key_env,
+    )
+
+
+def _provider_config_for_capture_budget(
+    *,
+    snapshot: Any,
+    operation_label: str,
+    provider_name: str | None,
+    provider_class: str,
+    base_url: str | None,
+    model: str | None,
+    api_key_env: str,
+    privacy_mode: str,
+    local_hosts: tuple[str, ...],
+    strict_local_hosts: tuple[str, ...],
+    require_configured_provider: bool = False,
+) -> tuple[ProviderConfig, list[str]]:
+    try:
+        provider_config, _, _, _ = _resolve_provider_from_config(
+            snapshot=snapshot,
+            operation_label=operation_label,
+            provider_name=provider_name,
+            provider_class=provider_class,
+            base_url=base_url,
+            model=model,
+            api_key_env=api_key_env,
+            privacy_mode=privacy_mode,
+            local_hosts=local_hosts,
+            strict_local_hosts=strict_local_hosts,
+            require_api_key=False,
+        )
+        return provider_config, []
+    except AhaDiffError:
+        if require_configured_provider:
+            raise
+        return _fallback_budget_provider_config(
+            snapshot=snapshot,
+            provider_class=provider_class,
+            model=model,
+            api_key_env=api_key_env,
+        ), ["using default model limits because no unambiguous provider is configured"]
+
+
+def _effective_capture_recommendation(
+    *,
+    snapshot: Any,
+    capture_config: dict[str, Any],
+    llm_config: dict[str, Any],
+    provider_name: str | None,
+    provider_class: str,
+    base_url: str | None,
+    model: str | None,
+    api_key_env: str,
+    privacy_mode: str,
+    local_hosts: tuple[str, ...],
+    strict_local_hosts: tuple[str, ...],
+    require_configured_provider: bool = False,
+    cjk_factor: float = 1.0,
+) -> CaptureRecommendation:
+    provider_config, provider_warnings = _provider_config_for_capture_budget(
+        snapshot=snapshot,
+        operation_label="capture budget",
+        provider_name=provider_name,
+        provider_class=provider_class,
+        base_url=base_url,
+        model=model,
+        api_key_env=api_key_env,
+        privacy_mode=privacy_mode,
+        local_hosts=local_hosts,
+        strict_local_hosts=strict_local_hosts,
+        require_configured_provider=require_configured_provider,
+    )
+    provider_class_name = str(getattr(provider_config, "provider_class", "openai") or "openai")
+    model_name = str(
+        getattr(provider_config, "model_name", "")
+        or llm_config.get("generate_model", "gpt-5.4-mini")
+    )
+    limits = resolve_model_limits(
+        provider_class_name,
+        model_name,
+        cast("Any", provider_config),
+    )
+    output_budget, per_step_caps = _output_reserve_inputs(llm_config)
+    output_reserve, output_warnings = compute_output_reserve(
+        config_output_budget=output_budget,
+        per_step_caps=per_step_caps,
+        provider_max_output=limits.max_output_tokens,
+        thinking_budget=None,
+    )
+    capture_mode = str(capture_config.get("mode", "manual"))
+    if capture_mode == "auto":
+        recommendation = compute_recommended_capture(
+            limits=limits,
+            output_reserve=output_reserve,
+            model_name=model_name,
+            cjk_factor=cjk_factor,
+        )
+    else:
+        recommendation = manual_capture_recommendation(
+            max_files=int(capture_config["max_files"]),
+            hard_limit=int(capture_config["hard_limit"]),
+            max_patch_bytes=int(capture_config["max_patch_bytes"]),
+            limits=limits,
+            output_reserve=output_reserve,
+            model_name=model_name,
+        )
+    return replace(
+        recommendation,
+        warnings=[*provider_warnings, *output_warnings, *recommendation.warnings],
+    )
 
 
 @dataclass
@@ -418,6 +564,7 @@ def _resolve_provider_from_config(
     local_hosts: tuple[str, ...],
     strict_local_hosts: tuple[str, ...],
     role: str = "generate",
+    require_api_key: bool = True,
 ) -> tuple[ProviderConfig, str | None, TransportTarget, bool]:
     from ahadiff.llm.provider import transport_target_for_base_url
 
@@ -516,7 +663,8 @@ def _resolve_provider_from_config(
 
     effective_api_key = resolve_provider_api_key(provider_config.api_key_env)
     if (
-        not effective_api_key
+        require_api_key
+        and not effective_api_key
         and provider_config.provider_class != "ollama"
         and transport_target == "remote"
     ):
@@ -853,6 +1001,19 @@ def run_learn_pipeline(
     if request.spec_semantic_review and request.against_spec is None:
         raise ConfigError("spec_semantic_review requires against_spec")
     repo_lock_path = lock_file_path(root) if has_git_repo else root / ".ahadiff" / "ahadiff.lock"
+    effective_capture_limits = _effective_capture_recommendation(
+        snapshot=snapshot,
+        capture_config=capture_config,
+        llm_config=llm_config,
+        provider_name=request.provider_name,
+        provider_class=request.provider_class,
+        base_url=request.base_url,
+        model=request.model,
+        api_key_env=request.api_key_env,
+        privacy_mode=effective_privacy_mode,
+        local_hosts=security_config.local_hosts,
+        strict_local_hosts=security_config.strict_local_hosts,
+    )
 
     # ------------------------------------------------------------------
     # Step 2: capture patch (under repo lock)
@@ -896,13 +1057,57 @@ def run_learn_pipeline(
                 compare_dir=request.compare_dir,
                 patch_url=request.patch_url,
                 use_graphify=request.use_graphify,
-                max_files=int(capture_config["max_files"]),
-                hard_limit=int(capture_config["hard_limit"]),
-                max_patch_bytes=int(capture_config["max_patch_bytes"]),
+                max_files=effective_capture_limits.max_files,
+                hard_limit=effective_capture_limits.hard_limit,
+                max_patch_bytes=effective_capture_limits.max_patch_bytes,
                 privacy_mode=effective_privacy_mode,
                 content_lang=resolved_content_lang,
             )
+            if effective_capture_limits.mode == "auto":
+                adjusted_capture_limits = _effective_capture_recommendation(
+                    snapshot=snapshot,
+                    capture_config=capture_config,
+                    llm_config=llm_config,
+                    provider_name=request.provider_name,
+                    provider_class=request.provider_class,
+                    base_url=request.base_url,
+                    model=request.model,
+                    api_key_env=request.api_key_env,
+                    privacy_mode=effective_privacy_mode,
+                    local_hosts=security_config.local_hosts,
+                    strict_local_hosts=security_config.strict_local_hosts,
+                    cjk_factor=compute_cjk_factor(str(capture.persisted_patch_text)),
+                )
+                if (
+                    adjusted_capture_limits.max_patch_bytes
+                    < effective_capture_limits.max_patch_bytes
+                    and len(str(capture.persisted_patch_text).encode("utf-8"))
+                    > adjusted_capture_limits.max_patch_bytes
+                ):
+                    capture = capture_patch(
+                        workspace_root=root,
+                        revision=request.revision,
+                        last=request.last,
+                        since=request.since,
+                        author=request.author,
+                        staged=request.staged,
+                        unstaged=request.unstaged,
+                        include_untracked=request.include_untracked,
+                        changed_paths=request.changed_paths,
+                        patch=request.patch,
+                        compare=request.compare,
+                        compare_dir=request.compare_dir,
+                        patch_url=request.patch_url,
+                        use_graphify=request.use_graphify,
+                        max_files=adjusted_capture_limits.max_files,
+                        hard_limit=adjusted_capture_limits.hard_limit,
+                        max_patch_bytes=adjusted_capture_limits.max_patch_bytes,
+                        privacy_mode=effective_privacy_mode,
+                        content_lang=resolved_content_lang,
+                    )
+                effective_capture_limits = adjusted_capture_limits
             captured_state_dir = capture.state_dir
+            capture.metadata["effective_capture_limits"] = asdict(effective_capture_limits)
 
             # ------------------------------------------------------------------
             # Step 3: assess learnability

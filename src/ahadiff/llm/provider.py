@@ -59,6 +59,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ahadiff.contracts import ProviderCapabilities, ProviderConfig
+    from ahadiff.llm.schemas import ProbeContextResult
 
 log = logging.getLogger(__name__)
 
@@ -111,10 +112,15 @@ class AdapterBase(ABC):
         *,
         api_key: str | None,
         model_name: str,
-    ) -> tuple[str, str, dict[str, str]] | None:
+    ) -> tuple[str, str, dict[str, str]] | tuple[str, str, dict[str, str], bytes] | None:
         return None
 
-    def parse_context_probe(self, response: httpx.Response, *, model_name: str) -> int | None:
+    def parse_context_probe(
+        self,
+        response: httpx.Response,
+        *,
+        model_name: str,
+    ) -> ProbeContextResult | int | None:
         return None
 
 

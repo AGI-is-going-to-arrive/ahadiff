@@ -52,6 +52,10 @@ class ProviderSummary(BaseModel):
     thinking_level: str | None = None
     probed: bool
     probed_max_context: int | None
+    probed_max_input_tokens: int | None = None
+    probed_max_output_tokens: int | None = None
+    probed_limits_source: str | None = None
+    model_limits_name: str | None = None
     probed_tpm: int | None = None
     probed_rpm: int | None = None
     probe_timestamp: str | None = None

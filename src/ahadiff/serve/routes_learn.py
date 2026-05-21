@@ -9,12 +9,21 @@ from starlette.responses import JSONResponse
 from ahadiff.contracts import ErrorCode
 from ahadiff.contracts.serve_app import LearnEstimateResponse, LearnEstimateRiskLevel
 from ahadiff.contracts.serve_runtime import TaskSubmitResponse
-from ahadiff.core.config import load_config, load_workspace_config
+from ahadiff.core.budget import compute_cjk_factor
+from ahadiff.core.config import (
+    load_config,
+    load_security_config,
+    load_workspace_config,
+    load_workspace_security_config,
+)
 from ahadiff.core.errors import AhaDiffError
+from ahadiff.core.orchestrator import (
+    _effective_capture_recommendation,  # pyright: ignore[reportPrivateUsage]
+)
 from ahadiff.core.paths import assert_local_repo_path, find_repo_root, find_workspace_root
 from ahadiff.git.capture import capture_patch
 from ahadiff.git.repo import repo_write_lock
-from ahadiff.llm.cost import estimate_text_tokens, resolve_context_window
+from ahadiff.llm.cost import estimate_text_tokens
 from ahadiff.safety.ignore import resolve_safe_path_from_root
 
 from ._errors import error_response
@@ -23,6 +32,7 @@ from .auth import require_write_token, serve_state
 if TYPE_CHECKING:
     from starlette.requests import Request
 
+    from ahadiff.core.budget import CaptureRecommendation
     from ahadiff.core.task_runner import TaskHandle
 
 _ACCEPTED_FIELDS = frozenset(
@@ -286,46 +296,6 @@ def _resolve_workspace_root_for_estimate(workspace_root: Path) -> tuple[Path, bo
         return ws, False
 
 
-def _provider_limits_from_config(
-    *,
-    root: Path,
-    has_git_repo: bool,
-    params: dict[str, Any],
-) -> tuple[int, int | None]:
-    from ahadiff.core.orchestrator import (
-        _resolve_provider_from_config,  # pyright: ignore[reportPrivateUsage]
-    )
-
-    cli_overrides = {"privacy_mode": params.get("privacy_mode"), "lang": params.get("lang")}
-    snapshot = (
-        load_config(root, cli_overrides=cli_overrides)
-        if has_git_repo
-        else load_workspace_config(root, cli_overrides=cli_overrides)
-    )
-    llm_config = cast("dict[str, Any]", snapshot.values["llm"])
-    try:
-        provider_config, _, _, _ = _resolve_provider_from_config(
-            snapshot=snapshot,
-            operation_label="learn estimate",
-            provider_name=None,
-            provider_class="openai",
-            base_url=None,
-            model=None,
-            api_key_env="AHADIFF_PROVIDER_API_KEY",
-            privacy_mode=str(snapshot.values["privacy_mode"]),
-            local_hosts=(),
-            strict_local_hosts=(),
-        )
-        return (
-            resolve_context_window(provider_config.model_name, provider_config.probed_max_context),
-            provider_config.max_output_tokens,
-        )
-    except AhaDiffError:
-        model_name = str(llm_config.get("generate_model", "gpt-5.4-mini"))
-        max_output = int(llm_config.get("output_token_budget", 50000))
-        return resolve_context_window(model_name, None), max_output
-
-
 def _file_count_from_capture(capture: object) -> int:
     metadata = getattr(capture, "metadata", None)
     if isinstance(metadata, dict):
@@ -381,6 +351,9 @@ def _estimate_risk(
     patch_bytes: int,
     max_patch_bytes: int,
     file_count: int,
+    capture_mode: str = "manual",
+    diff_clipped: bool = False,
+    omitted_files_count: int = 0,
 ) -> tuple[LearnEstimateRiskLevel, list[str]]:
     danger_warnings: list[str] = []
     warn_warnings: list[str] = []
@@ -396,15 +369,71 @@ def _estimate_risk(
         danger_warnings.append(
             f"Patch size {patch_bytes} bytes exceeds capture.max_patch_bytes {max_patch_bytes}"
         )
-    if file_count > _DANGER_FILE_COUNT:
-        danger_warnings.append(f"File count {file_count} exceeds {_DANGER_FILE_COUNT}")
-    elif file_count > _WARN_FILE_COUNT:
-        warn_warnings.append(f"File count {file_count} exceeds {_WARN_FILE_COUNT}")
+    if capture_mode == "auto":
+        if omitted_files_count > 0:
+            warn_warnings.append(f"Capture omitted {omitted_files_count} files")
+        if diff_clipped:
+            warn_warnings.append("Diff was clipped by effective capture limits")
+    else:
+        if file_count > _DANGER_FILE_COUNT:
+            danger_warnings.append(f"File count {file_count} exceeds {_DANGER_FILE_COUNT}")
+        elif file_count > _WARN_FILE_COUNT:
+            warn_warnings.append(f"File count {file_count} exceeds {_WARN_FILE_COUNT}")
     if danger_warnings:
         return "danger", [*danger_warnings, *warn_warnings]
     if warn_warnings:
         return "warn", warn_warnings
     return "ok", []
+
+
+def _omitted_files_count_from_capture(capture: object) -> int:
+    metadata = getattr(capture, "metadata", None)
+    if not isinstance(metadata, dict):
+        return 0
+    omitted = cast("dict[str, object]", metadata).get("omitted_files")
+    if isinstance(omitted, list | tuple):
+        omitted = cast("list[object] | tuple[object, ...]", omitted)
+        return len(omitted)
+    return 0
+
+
+def _diff_clipped_from_capture(capture: object) -> bool:
+    metadata = getattr(capture, "metadata", None)
+    if not isinstance(metadata, dict):
+        return False
+    typed_metadata = cast("dict[str, object]", metadata)
+    degraded_flags = typed_metadata.get("degraded_flags")
+    if not isinstance(degraded_flags, dict):
+        return False
+    typed_flags = cast("dict[object, object]", degraded_flags)
+    return typed_flags.get("diff_clipped") is True
+
+
+def _capture_recommendation_for_estimate(
+    *,
+    root: Path,
+    has_git_repo: bool,
+    snapshot: object,
+    capture_config: dict[str, Any],
+    cjk_factor: float = 1.0,
+) -> CaptureRecommendation:
+    security_config = (
+        load_security_config(root) if has_git_repo else load_workspace_security_config(root)
+    )
+    return _effective_capture_recommendation(
+        snapshot=snapshot,
+        capture_config=capture_config,
+        llm_config=cast("dict[str, Any]", cast("Any", snapshot).values["llm"]),
+        provider_name=None,
+        provider_class="openai",
+        base_url=None,
+        model=None,
+        api_key_env="AHADIFF_PROVIDER_API_KEY",
+        privacy_mode=str(cast("Any", snapshot).values["privacy_mode"]),
+        local_hosts=security_config.local_hosts,
+        strict_local_hosts=security_config.strict_local_hosts,
+        cjk_factor=cjk_factor,
+    )
 
 
 async def post_learn_estimate(request: Request) -> JSONResponse:
@@ -436,7 +465,13 @@ async def post_learn_estimate(request: Request) -> JSONResponse:
         else load_workspace_config(root, cli_overrides=cli_overrides)
     )
     capture_config = cast("dict[str, Any]", snapshot.values["capture"])
-    max_patch_bytes = int(capture_config["max_patch_bytes"])
+    effective_capture_limits = _capture_recommendation_for_estimate(
+        root=root,
+        has_git_repo=has_git_repo,
+        snapshot=snapshot,
+        capture_config=capture_config,
+    )
+    max_patch_bytes = effective_capture_limits.max_patch_bytes
     from ahadiff.i18n import resolve_locale
 
     content_lang = resolve_locale(
@@ -444,43 +479,67 @@ async def post_learn_estimate(request: Request) -> JSONResponse:
         config_lang=str(snapshot.values.get("lang", "en")),
     )
 
-    capture = capture_patch(
-        workspace_root=root,
-        revision=cast("str | None", params.get("revision")),
-        last=bool(params.get("last", False)),
-        since=cast("str | None", params.get("since")),
-        author=cast("str | None", params.get("author")),
-        staged=bool(params.get("staged", False)),
-        unstaged=bool(params.get("unstaged", False)),
-        include_untracked=bool(params.get("include_untracked", False)),
-        changed_paths=cast("tuple[str, ...] | None", params.get("changed_paths")),
-        patch=cast("str | None", params.get("patch")),
-        compare=cast("tuple[Path, Path] | None", params.get("compare")),
-        compare_dir=cast("tuple[Path, Path] | None", params.get("compare_dir")),
-        patch_url=cast("str | None", params.get("patch_url")),
-        use_graphify=cast("bool | None", params.get("use_graphify")),
-        max_files=int(capture_config["max_files"]),
-        hard_limit=int(capture_config["hard_limit"]),
-        max_patch_bytes=max_patch_bytes,
-        privacy_mode=str(snapshot.values["privacy_mode"]),
-        content_lang=content_lang,
-    )
+    def capture_with_limits(limits: CaptureRecommendation) -> Any:
+        return capture_patch(
+            workspace_root=root,
+            revision=cast("str | None", params.get("revision")),
+            last=bool(params.get("last", False)),
+            since=cast("str | None", params.get("since")),
+            author=cast("str | None", params.get("author")),
+            staged=bool(params.get("staged", False)),
+            unstaged=bool(params.get("unstaged", False)),
+            include_untracked=bool(params.get("include_untracked", False)),
+            changed_paths=cast("tuple[str, ...] | None", params.get("changed_paths")),
+            patch=cast("str | None", params.get("patch")),
+            compare=cast("tuple[Path, Path] | None", params.get("compare")),
+            compare_dir=cast("tuple[Path, Path] | None", params.get("compare_dir")),
+            patch_url=cast("str | None", params.get("patch_url")),
+            use_graphify=cast("bool | None", params.get("use_graphify")),
+            max_files=limits.max_files,
+            hard_limit=limits.hard_limit,
+            max_patch_bytes=limits.max_patch_bytes,
+            privacy_mode=str(snapshot.values["privacy_mode"]),
+            content_lang=content_lang,
+        )
+
+    capture = capture_with_limits(effective_capture_limits)
     patch_text = str(capture.persisted_patch_text)
     patch_bytes = len(patch_text.encode("utf-8"))
+    if effective_capture_limits.mode == "auto":
+        adjusted_capture_limits = _capture_recommendation_for_estimate(
+            root=root,
+            has_git_repo=has_git_repo,
+            snapshot=snapshot,
+            capture_config=capture_config,
+            cjk_factor=compute_cjk_factor(patch_text),
+        )
+        if (
+            adjusted_capture_limits.max_patch_bytes < effective_capture_limits.max_patch_bytes
+            and patch_bytes > adjusted_capture_limits.max_patch_bytes
+        ):
+            capture = capture_with_limits(adjusted_capture_limits)
+            patch_text = str(capture.persisted_patch_text)
+            patch_bytes = len(patch_text.encode("utf-8"))
+        effective_capture_limits = adjusted_capture_limits
+        max_patch_bytes = effective_capture_limits.max_patch_bytes
     file_count = _file_count_from_capture(capture)
     total_lines = len(patch_text.splitlines())
     estimated_tokens = estimate_text_tokens(patch_text, "char_div_4")
-    context_window, provider_max_output = _provider_limits_from_config(
-        root=root,
-        has_git_repo=has_git_repo,
-        params=params,
+    diff_clipped = _diff_clipped_from_capture(capture)
+    omitted_files_count = _omitted_files_count_from_capture(capture)
+    context_window = (
+        effective_capture_limits.context_window or effective_capture_limits.max_input_tokens
     )
+    provider_max_output = effective_capture_limits.max_output_tokens
     risk_level, warnings = _estimate_risk(
         estimated_tokens=estimated_tokens,
         context_window=context_window,
         patch_bytes=patch_bytes,
         max_patch_bytes=max_patch_bytes,
         file_count=file_count,
+        capture_mode=effective_capture_limits.mode,
+        diff_clipped=diff_clipped,
+        omitted_files_count=omitted_files_count,
     )
     response = LearnEstimateResponse(
         patch_bytes=patch_bytes,
@@ -489,6 +548,9 @@ async def post_learn_estimate(request: Request) -> JSONResponse:
         estimated_tokens=estimated_tokens,
         provider_context_window=context_window,
         provider_max_output=provider_max_output,
+        effective_capture_limits=effective_capture_limits,
+        diff_clipped=diff_clipped,
+        omitted_files_count=omitted_files_count,
         risk_level=risk_level,
         warnings=warnings,
     )

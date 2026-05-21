@@ -63,7 +63,7 @@ ahadiff provider test \
   --base-url https://api.openai.com/v1 \
   --api-key-env OPENAI_API_KEY
 ```
-`provider test` sends a small probe request. If it succeeds, the provider is saved to `.ahadiff/config.toml`.
+`provider test` sends a small probe request. If it succeeds, the provider is saved to `.ahadiff/config.toml`. When the provider exposes model limits, AhaDiff records split input / output limits; otherwise auto capture falls back to the bundled model registry or conservative defaults.
 
 Supported provider classes: `openai`, `openai_responses`, `gemini`, `anthropic`, `azure`, `newapi`, `lmstudio`, `ollama`. Advanced OpenAI-compatible or local setups can use `providers.<name>.capability_overrides` for known boolean capabilities such as native JSON schema support; invalid keys or non-boolean values are rejected. NewAPI disables `supports_native_json_schema` by default; if your NewAPI gateway backend actually supports native JSON schema, you can add `capability_overrides = { supports_native_json_schema = true }` in the provider config. See [User Guide](./docs/USER_GUIDE.en.html) for details.
 > AhaDiff defaults to strict_local privacy — nothing leaves your machine unless you explicitly configure a remote provider.
@@ -91,6 +91,7 @@ See the [User Guide](./docs/USER_GUIDE.en.html) for all 9 diff capture modes, ex
 - **Learn**: `ahadiff learn` supports 9 diff capture modes: git commit, range, time-window (`--since`), staged, unstaged, patch, patch URL, file compare, and directory compare.
 - **Evidence-linked claims**: every lesson conclusion is tied to `file:line` evidence, with verification states such as verified, weak, not proven, contradicted, and rejected.
 - **Structured LLM output**: generation uses schema-aware JSON contracts where supported, defaults to JSON object mode with one bounded validation retry, and keeps the existing parser, repair, and degraded fallback paths. Truncated or malformed fallback JSON is retried instead of being accepted.
+- **Adaptive capture limits**: fresh configs default to auto capture sizing; existing customized capture settings stay manual. Auto mode uses provider probes, the bundled model registry, output reserves, safety reserves, and CJK diff density, while runtime patch intake remains capped at 50 MiB.
 - **Quiz and review**: `ahadiff quiz` tests the run you just learned; `ahadiff review` brings back older cards with spaced repetition. Quiz count is fixed by default and can adapt to diff size when enabled.
 - **Scoring**: each run gets an 8-dimension score, with an optional LLM judge when configured. Diff Coverage is based on visible `line_map.json` files and line-weighted hunks, and hard-gate details show the adaptive claim-anchor threshold used for that run.
 - **WebUI**: `ahadiff serve` opens Dashboard, Lesson, Diff, Quiz, Review, Concepts, Run Detail, Settings, and Guide.

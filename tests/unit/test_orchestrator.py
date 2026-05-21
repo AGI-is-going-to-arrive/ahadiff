@@ -20,6 +20,7 @@ from ahadiff.core.orchestrator import (
     LearnRequest,
     LearnResult,
     PipelineErrorBudget,
+    _effective_capture_recommendation,  # pyright: ignore[reportPrivateUsage]
     _persist_graphify_context,  # pyright: ignore[reportPrivateUsage]
     _persist_skipped_run,  # pyright: ignore[reportPrivateUsage]
     _resolve_provider_from_config,  # pyright: ignore[reportPrivateUsage]
@@ -594,6 +595,42 @@ def test_graphify_signoff_degrades_invalid_provenance(tmp_path: Path) -> None:
     assert {"graph_digest_invalid", "node_count_invalid", "edge_count_invalid"} <= reasons
 
 
+def test_capture_recommendation_prefers_split_live_input_over_legacy_context() -> None:
+    snapshot = _FakeConfigSnapshot()
+    snapshot.values["capture"]["mode"] = "auto"
+    snapshot.values["llm"]["generate_provider"] = "local"
+    snapshot.values["providers"] = {
+        "local": {
+            "provider_class": "openai",
+            "model_name": "gpt-4o",
+            "base_url": "http://127.0.0.1:8318",
+            "api_key_env": "AHADIFF_PROVIDER_API_KEY",
+            "probed_max_context": 1_000_000,
+            "probed_max_input_tokens": 128_000,
+        }
+    }
+
+    recommendation = _effective_capture_recommendation(
+        snapshot=snapshot,
+        capture_config=cast("dict[str, Any]", snapshot.values["capture"]),
+        llm_config=cast("dict[str, Any]", snapshot.values["llm"]),
+        provider_name=None,
+        provider_class="openai",
+        base_url=None,
+        model=None,
+        api_key_env="AHADIFF_PROVIDER_API_KEY",
+        privacy_mode="strict_local",
+        local_hosts=("127.0.0.1",),
+        strict_local_hosts=("127.0.0.1",),
+        require_configured_provider=True,
+    )
+
+    assert recommendation.context_window == 1_000_000
+    assert recommendation.max_input_tokens == 128_000
+    assert recommendation.max_output_tokens == 16_384
+    assert recommendation.source == "mixed"
+
+
 def test_persist_skipped_run_rolls_back_event_when_finalized_write_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -955,6 +992,43 @@ def test_dry_run_returns_early(
     assert result.learnability_score == 0.7
     assert result.overall is None  # no eval happened
     assert register_calls == [(fake_repo, fake_repo / ".ahadiff")]
+
+
+def test_dry_run_metadata_includes_capture_limits_and_truncation_audit(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    capture.metadata.update(
+        {
+            "degraded_flags": {"diff_clipped": True},
+            "omitted_files": ["large.py"],
+        }
+    )
+    _patch_learnability(monkeypatch, score=0.7)
+    written: dict[str, dict[str, object]] = {}
+
+    def _write_input_artifacts(seen_capture: _FakeCapture) -> None:
+        written["metadata"] = json.loads(json.dumps(seen_capture.metadata))
+
+    def _register_repo(_root: Path, _state_dir: Path) -> None:
+        return None
+
+    monkeypatch.setattr(f"{_GIT_CAPTURE}.write_input_artifacts", _write_input_artifacts)
+    monkeypatch.setattr("ahadiff.core.registry.register_repo", _register_repo)
+
+    result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo, dry_run=True))
+
+    assert result.status == "dry_run"
+    metadata = written["metadata"]
+    assert cast("dict[str, object]", metadata["degraded_flags"])["diff_clipped"] is True
+    assert metadata["omitted_files"] == ["large.py"]
+    limits = cast("dict[str, object]", metadata["effective_capture_limits"])
+    assert limits["mode"] == "manual"
+    assert limits["max_files"] == 50
+    assert limits["hard_limit"] == 100
+    assert limits["max_patch_bytes"] == 500_000
 
 
 def test_concurrent_dry_run_learn_calls_serialize_on_repo_write_lock(

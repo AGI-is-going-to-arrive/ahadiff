@@ -15,7 +15,13 @@ describe('learn task API schemas', () => {
       warnings: ['large diff'],
     } satisfies LearnEstimateResponse;
 
-    expect(learnEstimateResponseSchema.parse(estimate)).toEqual(estimate);
+    // Schema applies defaults for the new optional Phase-3 fields, so we
+    // compare against the augmented expectation rather than the raw input.
+    expect(learnEstimateResponseSchema.parse(estimate)).toEqual({
+      ...estimate,
+      diff_clipped: false,
+      omitted_files_count: 0,
+    });
     expect(
       learnEstimateResponseSchema.safeParse({
         ...estimate,

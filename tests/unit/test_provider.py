@@ -2363,10 +2363,13 @@ def test_probe_context_window_returns_fallback_on_transport_error() -> None:
             self.client = FakeClient()
             self.api_key = "test-key"
 
-    context_window, source = _probe_context_window(FakeProvider(), model_name="gpt-5.4-mini")
+    context_result, source = _probe_context_window(FakeProvider(), model_name="gpt-5.4-mini")
 
     assert source == "fallback"
-    assert context_window > 0
+    assert context_result.max_context_tokens is not None
+    assert context_result.max_context_tokens > 0
+    assert context_result.max_input_tokens is None
+    assert context_result.max_output_tokens is None
 
 
 # ---------------------------------------------------------------------------

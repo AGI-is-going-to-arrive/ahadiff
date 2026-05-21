@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from ahadiff.contracts import ProviderCapabilities
 
+from ..probe_limits import safe_positive_int
 from ..provider import AdapterBase
-from ..schemas import ProviderRequest, ProviderResponse
+from ..schemas import ProbeContextResult, ProviderRequest, ProviderResponse
 from ._capability_overrides import apply_capability_overrides
 from .structured import responses_text_format
 from .thinking import normalize_thinking_level
@@ -103,12 +104,31 @@ class OpenAIResponsesAdapter(AdapterBase):
         prefix = base if base.endswith("/v1") else f"{base}/v1"
         return "GET", f"{prefix}/models", headers
 
-    def parse_context_probe(self, response: httpx.Response, *, model_name: str) -> int | None:
+    def parse_context_probe(
+        self, response: httpx.Response, *, model_name: str
+    ) -> ProbeContextResult | None:
         payload = response.json()
-        for item in payload.get("data", []):
-            if item.get("id") != model_name:
+        if not isinstance(payload, dict):
+            return None
+        payload_mapping = cast("dict[str, Any]", payload)
+        data = payload_mapping.get("data")
+        if not isinstance(data, list):
+            return None
+        data_items = cast("list[object]", data)
+        for item in data_items:
+            if not isinstance(item, dict):
                 continue
-            value = item.get("context_window") or item.get("max_tokens")
-            if value is not None:
-                return int(value)
+            typed_item = cast("dict[str, Any]", item)
+            if typed_item.get("id") != model_name:
+                continue
+            for field_name in ("context_window", "max_tokens"):
+                value = safe_positive_int(typed_item.get(field_name))
+                if value is None:
+                    continue
+                return ProbeContextResult(
+                    max_context_tokens=value,
+                    max_input_tokens=None,
+                    max_output_tokens=None,
+                    source="live",
+                )
         return None

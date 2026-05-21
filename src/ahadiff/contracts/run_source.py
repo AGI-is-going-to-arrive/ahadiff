@@ -46,6 +46,7 @@ ProviderCapabilityOverride: TypeAlias = Literal[
     "supports_rate_limit_headers",
     "supports_context_probe",
 ]
+ProviderLimitsSource: TypeAlias = Literal["live", "registry", "default"]
 _PROVIDER_CAPABILITY_OVERRIDE_FIELDS = frozenset(get_args(ProviderCapabilityOverride))
 
 
@@ -74,6 +75,10 @@ class ProviderConfig(BaseModel):
     probed_max_context: int | None = None
     probed_tpm: int | None = None
     probed_rpm: int | None = None
+    probed_max_input_tokens: int | None = None
+    probed_max_output_tokens: int | None = None
+    probed_limits_source: ProviderLimitsSource | None = None
+    model_limits_name: str | None = None
     probe_timestamp: str | None = None
     capability_overrides: dict[str, StrictBool] | None = None
 
@@ -141,6 +146,7 @@ __all__ = [
     "ProviderCapabilities",
     "AllowlistPolicy",
     "DegradedFlagsMap",
+    "ProviderLimitsSource",
     "ThinkingLevel",
     "empty_degraded_flags",
 ]

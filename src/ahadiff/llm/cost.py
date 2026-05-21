@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from email.utils import parsedate_to_datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import urlparse
 
 import httpx
@@ -21,7 +21,7 @@ from .schemas import ProviderRequest, RateLimitSnapshot
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ahadiff.contracts import TokenizerEstimation
+    from ahadiff.contracts import ProviderConfig, TokenizerEstimation
 
 
 DEFAULT_INPUT_TOKEN_BUDGET = 200_000
@@ -82,6 +82,17 @@ class CostEstimate:
     cost_usd: float | None
     pricing_version: str | None
     cost_confidence: str
+
+
+@dataclass(frozen=True)
+class ResolvedModelLimits:
+    max_context_tokens: int | None
+    max_input_tokens: int
+    max_output_tokens: int
+    source: Literal["live", "registry", "default", "mixed"]
+    input_source: str
+    output_source: str
+    warnings: tuple[str, ...] = ()
 
 
 def estimate_request_tokens(
@@ -151,6 +162,95 @@ def resolve_context_window(model_name: str, probed_max_context: int | None) -> i
     if probed_max_context is not None and probed_max_context > 0:
         return probed_max_context
     return _DEV_CONTEXT_WINDOWS.get(model_name, DEFAULT_CONTEXT_WINDOW)
+
+
+def resolve_model_limits(
+    provider_class: str,
+    model_name: str,
+    config: ProviderConfig,
+) -> ResolvedModelLimits:
+    from .model_registry import lookup_model_limits
+
+    registry = lookup_model_limits(
+        provider_class,
+        model_name,
+        getattr(config, "model_limits_name", None),
+    )
+    registry_warnings = registry.warnings if registry is not None else ()
+    legacy_context = _positive_int_or_none(getattr(config, "probed_max_context", None))
+
+    output_value, output_source = _resolve_output_limit(config, registry)
+    split_input_value, split_input_source = _resolve_split_input_limit(config, registry)
+    if split_input_value is not None:
+        input_value = split_input_value
+        input_source = split_input_source
+        split_context = input_value + output_value
+        context_value = max(legacy_context or 0, split_context)
+    else:
+        context_value = legacy_context or resolve_context_window(model_name, None)
+        input_value = max(context_value - output_value, 0)
+        input_source = "total_derived"
+
+    return ResolvedModelLimits(
+        max_context_tokens=context_value,
+        max_input_tokens=input_value,
+        max_output_tokens=output_value,
+        source=_combined_limit_source(input_source, output_source),
+        input_source=input_source,
+        output_source=output_source,
+        warnings=registry_warnings,
+    )
+
+
+def _resolve_split_input_limit(
+    config: ProviderConfig,
+    registry: Any,
+) -> tuple[int | None, str]:
+    live_input = _positive_int_or_none(getattr(config, "probed_max_input_tokens", None))
+    if live_input is not None:
+        return live_input, "live"
+    if registry is not None:
+        registry_input = _positive_int_or_none(registry.max_input_tokens)
+        if registry_input is not None:
+            return registry_input, "registry"
+    return None, "total_derived"
+
+
+def _resolve_output_limit(config: ProviderConfig, registry: Any) -> tuple[int, str]:
+    live_output = _positive_int_or_none(getattr(config, "probed_max_output_tokens", None))
+    if live_output is not None:
+        return live_output, "live"
+    if registry is not None:
+        registry_output = _positive_int_or_none(registry.max_output_tokens)
+        if registry_output is not None:
+            return registry_output, "registry"
+    return DEFAULT_OUTPUT_TOKEN_BUDGET, "default"
+
+
+def _positive_int_or_none(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value > 0:
+        return value
+    return None
+
+
+def _combined_limit_source(
+    input_source: str,
+    output_source: str,
+) -> Literal["live", "registry", "default", "mixed"]:
+    source_map = {
+        "legacy_context": "default",
+        "total_derived": "default",
+        "default": "default",
+        "live": "live",
+        "registry": "registry",
+    }
+    input_group = source_map.get(input_source, "default")
+    output_group = source_map.get(output_source, "default")
+    if input_group == output_group:
+        return cast("Literal['live', 'registry', 'default', 'mixed']", input_group)
+    return "mixed"
 
 
 def enforce_token_budget(
@@ -433,6 +533,7 @@ __all__ = [
     "DEFAULT_OPENROUTER_REFRESH_SECONDS",
     "DEFAULT_OUTPUT_TOKEN_BUDGET",
     "PricingEntry",
+    "ResolvedModelLimits",
     "TokenEstimate",
     "clip_text_to_context_limit",
     "enforce_token_budget",
@@ -446,4 +547,5 @@ __all__ = [
     "reset_openrouter_pricing_cache",
     "resolve_pricing_entry",
     "resolve_context_window",
+    "resolve_model_limits",
 ]

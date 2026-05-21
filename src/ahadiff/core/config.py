@@ -26,6 +26,7 @@ _PRIVACY_MODES = {"strict_local", "redacted_remote", "explicit_remote"}
 _LOCALE_PREFERENCE_KEYS = {"lang", "llm.prompt_lang", "llm.output_lang"}
 _CAPTURE_SYMBOL_EXTRACTORS = {"auto", "builtin", "tree_sitter"}
 _CAPTURE_FILE_RANKINGS = {"learning_value", "changed_lines", "path"}
+_CAPTURE_MODES = {"auto", "manual"}
 _QUIZ_QUESTION_COUNT_MODES = {"fixed", "auto"}
 _STRUCTURED_OUTPUT_MODES = {
     "prompt_contract",
@@ -61,6 +62,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "lang": "auto",
     "privacy_mode": "strict_local",
     "capture": {
+        "mode": "auto",
         "max_files": 30,
         "hard_limit": 3000,
         "max_patch_bytes": 5_000_000,
@@ -295,6 +297,13 @@ def _coerce_value(
             allowed = ", ".join(sorted(_CAPTURE_FILE_RANKINGS))
             raise ConfigError(f"{key} must be one of {allowed}, got {value!r}")
         return value
+    if key == "capture.mode":
+        if not isinstance(value, str):
+            raise ConfigError(f"{key} expects str, got {type(value).__name__}")
+        if value not in _CAPTURE_MODES:
+            allowed = ", ".join(sorted(_CAPTURE_MODES))
+            raise ConfigError(f"{key} must be one of {allowed}, got {value!r}")
+        return value
     if key == "quiz.quiz_question_count_mode":
         if not isinstance(value, str):
             raise ConfigError(f"{key} expects str, got {type(value).__name__}")
@@ -395,6 +404,10 @@ _PROVIDER_DYNAMIC_FIELDS = frozenset(
         "max_output_tokens",
         "thinking_level",
         "probed_max_context",
+        "probed_max_input_tokens",
+        "probed_max_output_tokens",
+        "probed_limits_source",
+        "model_limits_name",
         "probed_tpm",
         "probed_rpm",
         "probe_timestamp",
@@ -410,6 +423,10 @@ _DYNAMIC_PROVIDER_FIELD_DEFAULTS: dict[str, Scalar] = {
     "max_output_tokens": 0,
     "thinking_level": "",
     "probed_max_context": 0,
+    "probed_max_input_tokens": 0,
+    "probed_max_output_tokens": 0,
+    "probed_limits_source": "",
+    "model_limits_name": "",
     "probed_tpm": 0,
     "probed_rpm": 0,
     "probe_timestamp": "",
@@ -417,6 +434,9 @@ _DYNAMIC_PROVIDER_FIELD_DEFAULTS: dict[str, Scalar] = {
 }
 PROVIDER_STALE_PROBE_FIELDS: tuple[str, ...] = (
     "probed_max_context",
+    "probed_max_input_tokens",
+    "probed_max_output_tokens",
+    "probed_limits_source",
     "probed_tpm",
     "probed_rpm",
     "probe_timestamp",
@@ -814,6 +834,16 @@ def _validate_provider_dynamic_field(key: str, field_name: str, value: Scalar) -
         if model_name.strip() == "":
             raise ConfigError(f"{key} expects non-empty str, got empty string")
         return
+    if field_name == "model_limits_name":
+        model_limits_name = cast("str", value)
+        if model_limits_name.strip() == "":
+            raise ConfigError(f"{key} expects non-empty str, got empty string")
+        return
+    if field_name == "probed_limits_source":
+        source = cast("str", value)
+        if source and source not in {"live", "registry", "default"}:
+            raise ConfigError(f"{key} must be one of default, live, registry, got {source!r}")
+        return
     if field_name != "base_url":
         return
     base_url = cast("str", value)
@@ -945,6 +975,33 @@ def _repo_sensitive_keys(flattened: Mapping[str, Scalar]) -> tuple[str, ...]:
     return tuple(sorted(key for key, value in flattened.items() if _is_sensitive_key(key, value)))
 
 
+def _capture_mode_from_legacy_values(
+    *,
+    resolved: Mapping[str, ResolvedSetting],
+    layers: Mapping[str, Mapping[str, Scalar]],
+) -> ResolvedSetting | None:
+    for layer_name in ("env", "cli", "repo", "global"):
+        if "capture.mode" in layers[layer_name]:
+            return None
+    capture_defaults = cast("Mapping[str, Scalar]", DEFAULT_CONFIG["capture"])
+    for field_name in (
+        "max_files",
+        "hard_limit",
+        "max_patch_bytes",
+        "symbol_extractor",
+        "file_ranking",
+    ):
+        key = f"capture.{field_name}"
+        setting = resolved.get(key)
+        if setting is not None and setting.value != capture_defaults[field_name]:
+            return ResolvedSetting(
+                key="capture.mode",
+                value="manual",
+                source="migration:capture-customized",
+            )
+    return None
+
+
 def _layer_source_label(layer: str, key: str, repo_path: Path, global_path: Path) -> str:
     if layer == "env":
         return f"env:{_ENV_KEY_MAP[key]}"
@@ -1027,6 +1084,10 @@ def _load_config_snapshot(
                 shadowed=tuple(shadowed[1:]),
             )
         )
+
+    migrated_capture_mode = _capture_mode_from_legacy_values(resolved=resolved, layers=layers)
+    if migrated_capture_mode is not None:
+        resolved["capture.mode"] = migrated_capture_mode
 
     values = _nest_mapping({key: item.value for key, item in resolved.items()})
     _validate_quiz_auto_range(values)

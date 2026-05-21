@@ -63,7 +63,7 @@ ahadiff provider test \
   --base-url https://api.openai.com/v1 \
   --api-key-env OPENAI_API_KEY
 ```
-`provider test` 会发送一个小探测请求。成功后，provider 配置自动写入 `.ahadiff/config.toml`。
+`provider test` 会发送一个小探测请求。成功后，provider 配置自动写入 `.ahadiff/config.toml`。如果 provider 暴露模型上限，AhaDiff 会记录拆分后的 input / output token limit；否则自动捕获会回退到内置模型表或保守默认值。
 
 支持的 provider class：`openai`、`openai_responses`、`gemini`、`anthropic`、`azure`、`newapi`、`lmstudio`、`ollama`。进阶的 OpenAI-compatible 或本地 provider 可以用 `providers.<name>.capability_overrides` 覆盖已知布尔能力，例如是否支持 native JSON schema；未知 key 或非布尔值会被拒绝。NewAPI 默认关闭 `supports_native_json_schema`；如果你的 NewAPI 网关后端真的支持 native JSON schema，可在 provider config 加 `capability_overrides = { supports_native_json_schema = true }`。更多细节见 [使用指南](./docs/USER_GUIDE.zh.html)。
 > AhaDiff 默认使用 strict_local 隐私模式：除非你明确配置远端 provider，否则内容不会离开本机。
@@ -91,6 +91,7 @@ ahadiff review           # 复习过去生成的卡片
 - **学习**：`ahadiff learn` 支持 9 种 diff 捕获模式：git commit、range、时间窗口（`--since`）、staged、unstaged、patch、patch URL、文件对比、目录对比。
 - **证据化 Claims**：每条 lesson 结论都绑定 `file:line` 证据，并区分 verified、weak、not proven、contradicted、rejected 等状态。
 - **结构化 LLM 输出**：生成链路会在支持时按 schema 约束 JSON 输出；默认使用 JSON object mode，并带 1 次有界 validation retry；原有 parser、repair 和 degraded 回退仍保留。截断或格式不完整的 fallback JSON 会触发重试，不会被直接接受。
+- **自适应捕获上限**：新配置默认使用自动捕获；已经自定义过捕获数字的旧配置保持手动模式。自动模式会结合 provider probe、内置模型表、输出预留、安全预留和 CJK diff 密度来计算上限，同时运行时 patch 读取仍封顶 50 MiB。
 - **测验与复习**：`ahadiff quiz` 用来测试刚学过的 run；`ahadiff review` 用间隔重复带回旧卡片。题量默认固定，也可以按 diff 大小自动调整。
 - **评分**：每次 run 都会得到 8 维评分；配置后也可以启用 LLM judge。Diff Coverage 只看可见 `line_map.json` 里的文件和按行数加权的 hunk；hard gate 详情会写明本次 run 使用的自适应 claim-anchor 阈值。
 - **WebUI**：`ahadiff serve` 打开 Dashboard、Lesson、Diff、Quiz、Review、Concepts、Run Detail、Settings 和 Guide。

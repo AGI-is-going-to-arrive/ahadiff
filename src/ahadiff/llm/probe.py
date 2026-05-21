@@ -14,8 +14,9 @@ from ahadiff.core.config import (
 from ahadiff.core.errors import InputError, ProviderError
 
 from .cost import resolve_context_window
+from .probe_limits import safe_positive_int as _safe_positive_int
 from .provider import make_provider, transport_target_for_base_url
-from .schemas import ProbeReport, ProviderRequest
+from .schemas import ProbeContextResult, ProbeReport, ProviderRequest
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -72,13 +73,16 @@ def probe_provider(
                 privacy_mode=privacy_mode,
             )
         )
-        context_window, context_source = _probe_context_window(provider, model_name=model_name)
+        context_result, context_source = _probe_context_window(provider, model_name=model_name)
         config = ProviderConfig(
             provider_class=base_config.provider_class,
             model_name=base_config.model_name,
             base_url=base_config.base_url,
             api_key_env=base_config.api_key_env,
-            probed_max_context=context_window,
+            probed_max_context=context_result.max_context_tokens,
+            probed_max_input_tokens=context_result.max_input_tokens,
+            probed_max_output_tokens=context_result.max_output_tokens,
+            probed_limits_source="live" if context_result.source == "live" else "default",
             probed_tpm=response.rate_limits.tpm_limit if response.rate_limits else None,
             probed_rpm=response.rate_limits.rpm_limit if response.rate_limits else None,
             probe_timestamp=_utc_now(),
@@ -91,7 +95,7 @@ def probe_provider(
             transport_target=_transport_target(base_url, security_config),
             rate_limits=response.rate_limits,
             context_window_source=context_source,
-            notes=("provider probe succeeded",),
+            notes=("provider probe succeeded", *context_result.warnings),
         )
     finally:
         provider.close()
@@ -123,6 +127,10 @@ def persist_probe_result(
                 "max_output_tokens": config.max_output_tokens,
                 "thinking_level": config.thinking_level,
                 "probed_max_context": config.probed_max_context,
+                "probed_max_input_tokens": config.probed_max_input_tokens,
+                "probed_max_output_tokens": config.probed_max_output_tokens,
+                "probed_limits_source": config.probed_limits_source,
+                "model_limits_name": config.model_limits_name,
                 "probed_tpm": config.probed_tpm,
                 "probed_rpm": config.probed_rpm,
                 "probe_timestamp": config.probe_timestamp,
@@ -158,26 +166,65 @@ def _build_probe_request(
     )
 
 
-def _probe_context_window(provider: Any, *, model_name: str) -> tuple[int, str]:
+def _probe_context_window(provider: Any, *, model_name: str) -> tuple[ProbeContextResult, str]:
     request = provider.adapter.build_context_probe_request(
         api_key=provider.api_key, model_name=model_name
     )
     if request is None:
-        return resolve_context_window(model_name, provider.config.probed_max_context), "fallback"
-    method, url, headers = request
+        return _fallback_context_result(provider, model_name=model_name), "fallback"
+    method, url, headers = request[:3]
+    body = request[3] if len(request) == 4 else None
     try:
-        response = provider.client.request(method, url, headers=headers)
+        request_kwargs: dict[str, Any] = {"headers": headers}
+        if body is not None:
+            request_kwargs["content"] = body
+        response = provider.client.request(method, url, **request_kwargs)
     except (httpx.TimeoutException, httpx.TransportError):
-        return resolve_context_window(model_name, provider.config.probed_max_context), "fallback"
+        return _fallback_context_result(provider, model_name=model_name), "fallback"
     if response.status_code >= 400:
-        return resolve_context_window(model_name, provider.config.probed_max_context), "fallback"
+        return _fallback_context_result(provider, model_name=model_name), "fallback"
     try:
         probed = provider.adapter.parse_context_probe(response, model_name=model_name)
     except (KeyError, TypeError, ValueError):
-        return resolve_context_window(model_name, provider.config.probed_max_context), "fallback"
+        return _fallback_context_result(provider, model_name=model_name), "fallback"
     if probed is None:
-        return resolve_context_window(model_name, provider.config.probed_max_context), "fallback"
-    return probed, "live"
+        return _fallback_context_result(provider, model_name=model_name), "fallback"
+    if isinstance(probed, ProbeContextResult):
+        if not _probe_result_has_limits(probed):
+            return _fallback_context_result(provider, model_name=model_name), "fallback"
+        return probed, probed.source
+    probed_value = _safe_positive_int(probed)
+    if probed_value is None:
+        return _fallback_context_result(provider, model_name=model_name), "fallback"
+    return (
+        ProbeContextResult(
+            max_context_tokens=probed_value,
+            max_input_tokens=None,
+            max_output_tokens=None,
+            source="live",
+        ),
+        "live",
+    )
+
+
+def _probe_result_has_limits(result: ProbeContextResult) -> bool:
+    return any(
+        value is not None
+        for value in (
+            result.max_context_tokens,
+            result.max_input_tokens,
+            result.max_output_tokens,
+        )
+    )
+
+
+def _fallback_context_result(provider: Any, *, model_name: str) -> ProbeContextResult:
+    return ProbeContextResult(
+        max_context_tokens=resolve_context_window(model_name, provider.config.probed_max_context),
+        max_input_tokens=None,
+        max_output_tokens=None,
+        source="fallback",
+    )
 
 
 def _transport_target(

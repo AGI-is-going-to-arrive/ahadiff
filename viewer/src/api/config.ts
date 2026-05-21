@@ -2,6 +2,7 @@ import { apiFetch } from './client';
 import type { ApiFetchOptions } from './client';
 import {
   auditResponseSchema,
+  captureRecommendationSchema,
   configResponseSchema,
   configUpdateResponseSchema,
   dbCheckResultSchema,
@@ -13,6 +14,7 @@ import {
   providersResponseSchema,
   usageResponseSchema,
 } from './schemas';
+import type { z } from 'zod';
 
 export interface ConfigField {
   key: string;
@@ -21,12 +23,15 @@ export interface ConfigField {
 }
 
 export interface CaptureConfig {
+  mode?: 'auto' | 'manual';
   max_files: number;
   hard_limit: number;
   max_patch_bytes: number;
   file_ranking: string;
   symbol_extractor: string;
 }
+
+export type CaptureRecommendation = z.infer<typeof captureRecommendationSchema>;
 
 export interface LlmConfig {
   input_token_budget: number;
@@ -150,6 +155,10 @@ export interface ProviderSummary {
   thinking_level?: string | null;
   probed: boolean;
   probed_max_context: number | null;
+  probed_max_input_tokens?: number | null;
+  probed_max_output_tokens?: number | null;
+  probed_limits_source?: string | null;
+  model_limits_name?: string | null;
   probed_tpm?: number | null;
   probed_rpm?: number | null;
   probe_timestamp?: string | null;
@@ -330,4 +339,15 @@ export async function putConfig(
     signal: opts?.signal,
   });
   return parseResponse('PUT /api/config', configUpdateResponseSchema, raw);
+}
+
+export async function getCaptureRecommended(
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<CaptureRecommendation> {
+  const raw = await apiFetch<unknown>('/api/capture/recommended', opts);
+  return parseResponse(
+    'GET /api/capture/recommended',
+    captureRecommendationSchema,
+    raw,
+  );
 }

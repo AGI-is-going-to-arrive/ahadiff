@@ -288,6 +288,7 @@ def test_get_config_handles_load_failure_gracefully(
         "output_lang": "auto",
     }
     _CAPTURE_DEFAULTS = {
+        "mode": "auto",
         "max_files": 30,
         "hard_limit": 3000,
         "max_patch_bytes": 5_000_000,
@@ -356,6 +357,42 @@ def test_get_config_reads_workspace_config_when_no_git_repo(tmp_path: Path) -> N
     assert response.json()["quiz"]["quiz_question_count_mode"] == "fixed"
     assert response.json()["quiz"]["quiz_auto_range_min"] == 3
     assert response.json()["quiz"]["quiz_auto_range_max"] == 8
+
+
+def test_validate_capture_update_accepts_auto_mode_without_numeric_validation() -> None:
+    result = cast("Any", routes_config_module)._validate_capture_update(
+        {"mode": "auto", "max_files": "computed"}
+    )
+
+    assert result == {"mode": "auto"}
+
+
+def test_validate_capture_update_rejects_invalid_mode() -> None:
+    result = cast("Any", routes_config_module)._validate_capture_update({"mode": "adaptive"})
+
+    assert isinstance(result, str)
+    assert "capture.mode" in result
+
+
+def test_put_config_rejects_invalid_capture_mode_without_writing_config(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    (repo_root / ".git").mkdir(parents=True)
+    state_dir = repo_root / ".ahadiff"
+    state_dir.mkdir()
+    config_path = state_dir / "config.toml"
+    original = '[capture]\nmode = "manual"\nmax_files = 9\n'
+    config_path.write_text(original, encoding="utf-8")
+    client = _client(state_dir)
+
+    response = client.put(
+        "/api/config",
+        json={"capture": {"mode": "invalid"}},
+        headers={"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"},
+    )
+
+    assert response.status_code == 400
+    assert "capture.mode" in response.json()["error"]
+    assert config_path.read_text(encoding="utf-8") == original
 
 
 def test_validate_quiz_update_accepts_auto_fields() -> None:

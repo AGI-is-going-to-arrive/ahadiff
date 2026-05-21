@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import quote
 
 from ahadiff.contracts import ProviderCapabilities
 
+from ..probe_limits import safe_positive_int
 from ..provider import AdapterBase
-from ..schemas import ProviderRequest, ProviderResponse
+from ..schemas import ProbeContextResult, ProviderRequest, ProviderResponse
 from ._capability_overrides import apply_capability_overrides
 from .structured import gemini_response_format
 from .thinking import gemini_thinking_level
@@ -88,9 +90,23 @@ class GeminiAdapter(AdapterBase):
         headers: dict[str, str] = {}
         if api_key:
             headers["x-goog-api-key"] = api_key
-        return "GET", f"{self.config.base_url.rstrip('/')}/v1beta/models/{model_name}", headers
+        model_path = quote(model_name.removeprefix("models/"), safe="")
+        return "GET", f"{self.config.base_url.rstrip('/')}/v1beta/models/{model_path}", headers
 
-    def parse_context_probe(self, response: httpx.Response, *, model_name: str) -> int | None:
+    def parse_context_probe(
+        self, response: httpx.Response, *, model_name: str
+    ) -> ProbeContextResult | None:
         payload = response.json()
-        value = payload.get("inputTokenLimit") or payload.get("contextWindow")
-        return None if value is None else int(value)
+        if not isinstance(payload, dict):
+            return None
+        payload_mapping = cast("dict[str, Any]", payload)
+        input_limit = safe_positive_int(payload_mapping.get("inputTokenLimit"))
+        output_limit = safe_positive_int(payload_mapping.get("outputTokenLimit"))
+        if input_limit is None and output_limit is None:
+            return None
+        return ProbeContextResult(
+            max_context_tokens=None,
+            max_input_tokens=input_limit,
+            max_output_tokens=output_limit,
+            source="live",
+        )

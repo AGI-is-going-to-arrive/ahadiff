@@ -1,0 +1,227 @@
+/* ==========================================================================
+   CaptureBudgetBar - stacked horizontal bar showing token budget breakdown.
+   External legend (no text inside segments). Responsive to 360px.
+   ========================================================================== */
+
+.capture-budget-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: 100%;
+  min-width: 0;
+}
+
+.capture-budget-bar__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.capture-budget-bar__title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.capture-budget-bar__total {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.capture-budget-bar__track {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 14px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--subtle, var(--paper, transparent));
+  isolation: isolate;
+}
+
+.capture-budget-bar--danger .capture-budget-bar__track {
+  border-color: var(--danger);
+  outline: 1px solid var(--danger);
+  outline-offset: 1px;
+}
+
+.capture-budget-bar__segment {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  transition: width var(--dur-fast, 150ms) var(--ease-out, ease-out);
+}
+
+.capture-budget-bar__segment--system {
+  background: var(--muted, #9aa);
+  opacity: 0.55;
+}
+
+.capture-budget-bar__segment--safety {
+  background: var(--warning, #d39a17);
+}
+
+.capture-budget-bar__segment--diff {
+  background: var(--accent, #4a6b8a);
+}
+
+.capture-budget-bar__segment--output {
+  background: var(--accent-ink, #2c4866);
+  opacity: 0.7;
+}
+
+.capture-budget-bar__segment--remaining {
+  background: var(--hair-strong, #d6d6d6);
+  opacity: 0.6;
+}
+
+.capture-budget-bar__legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted-strong, var(--muted));
+}
+
+.capture-budget-bar__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.capture-budget-bar__swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid var(--hair);
+  flex: 0 0 auto;
+}
+
+.capture-budget-bar__swatch--system {
+  background: var(--muted, #9aa);
+  opacity: 0.55;
+}
+
+.capture-budget-bar__swatch--safety {
+  background: var(--warning, #d39a17);
+}
+
+.capture-budget-bar__swatch--diff {
+  background: var(--accent, #4a6b8a);
+}
+
+.capture-budget-bar__swatch--output {
+  background: var(--accent-ink, #2c4866);
+  opacity: 0.7;
+}
+
+.capture-budget-bar__swatch--remaining {
+  background: var(--hair-strong, #d6d6d6);
+  opacity: 0.6;
+}
+
+.capture-budget-bar__legend-label {
+  color: var(--muted, #888);
+}
+
+.capture-budget-bar__legend-value {
+  color: var(--ink-strong, currentColor);
+  font-variant-numeric: tabular-nums;
+}
+
+.capture-budget-bar__status {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted-strong, var(--muted));
+}
+
+.capture-budget-bar__status--danger {
+  color: var(--danger);
+  font-weight: 500;
+}
+
+/* ---- Responsive (down to 360px) ---- */
+@media (max-width: 480px) {
+  .capture-budget-bar__legend {
+    gap: var(--sp-1) var(--sp-3);
+    font-size: 10px;
+  }
+  .capture-budget-bar__track {
+    height: 12px;
+  }
+}
+
+/* ---- Reduced motion ---- */
+@media (prefers-reduced-motion: reduce) {
+  .capture-budget-bar__segment {
+    transition: none;
+  }
+}
+
+/* ---- Forced colors ---- */
+@media (forced-colors: active) {
+  .capture-budget-bar__track {
+    border-color: CanvasText;
+    background: Canvas;
+  }
+  .capture-budget-bar__segment {
+    forced-color-adjust: none;
+  }
+  .capture-budget-bar__segment--system {
+    background: GrayText;
+    opacity: 1;
+  }
+  .capture-budget-bar__segment--safety {
+    background: Highlight;
+    opacity: 1;
+  }
+  .capture-budget-bar__segment--diff {
+    background: LinkText;
+    opacity: 1;
+  }
+  .capture-budget-bar__segment--output {
+    background: ButtonText;
+    opacity: 1;
+  }
+  .capture-budget-bar__segment--remaining {
+    background: ButtonFace;
+    opacity: 1;
+  }
+  .capture-budget-bar__swatch {
+    border-color: CanvasText;
+    forced-color-adjust: none;
+  }
+  .capture-budget-bar__swatch--system { background: GrayText; opacity: 1; }
+  .capture-budget-bar__swatch--safety { background: Highlight; opacity: 1; }
+  .capture-budget-bar__swatch--diff { background: LinkText; opacity: 1; }
+  .capture-budget-bar__swatch--output { background: ButtonText; opacity: 1; }
+  .capture-budget-bar__swatch--remaining { background: ButtonFace; opacity: 1; }
+  .capture-budget-bar--danger .capture-budget-bar__track {
+    outline-color: Mark;
+  }
+  .capture-budget-bar__status--danger {
+    color: Mark;
+  }
+}
+
+/* ---- Print ---- */
+@media print {
+  .capture-budget-bar__segment {
+    transition: none;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}

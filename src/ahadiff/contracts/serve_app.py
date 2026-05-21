@@ -4,6 +4,8 @@ from typing import Any, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 
+from ahadiff.core.budget import CaptureRecommendation  # noqa: TC001
+
 from . import event_log as event_log_contract
 from . import run_source as run_source_contract
 from .quiz_choice import AnswerMode, QuizChoice, QuizChoiceLabel  # noqa: TC001
@@ -36,6 +38,7 @@ class LocaleResponse(BaseModel):
 class CaptureConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    mode: Literal["auto", "manual"] = "auto"
     max_files: int = 30
     hard_limit: int = 3000
     max_patch_bytes: int = 5_000_000
@@ -109,6 +112,9 @@ class LearnEstimateResponse(BaseModel):
     estimated_tokens: int
     provider_context_window: int
     provider_max_output: int | None
+    effective_capture_limits: CaptureRecommendation | None = None
+    diff_clipped: bool = False
+    omitted_files_count: int = 0
     risk_level: LearnEstimateRiskLevel
     warnings: list[str]
 

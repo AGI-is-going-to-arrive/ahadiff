@@ -64,6 +64,9 @@ if TYPE_CHECKING:
 _CORE_FIELDS = ("provider_class", "model_name", "base_url", "api_key_env")
 _PROBE_RESULT_FIELDS = (
     "probed_max_context",
+    "probed_max_input_tokens",
+    "probed_max_output_tokens",
+    "probed_limits_source",
     "probed_tpm",
     "probed_rpm",
     "probe_timestamp",

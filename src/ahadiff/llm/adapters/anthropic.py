@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import quote
 
 from ahadiff.contracts import ProviderCapabilities
 from ahadiff.core.errors import ProviderError
 
+from ..probe_limits import safe_positive_int
 from ..provider import AdapterBase
-from ..schemas import ProviderRequest, ProviderResponse
+from ..schemas import ProbeContextResult, ProviderRequest, ProviderResponse
 from ._capability_overrides import apply_capability_overrides
 from .thinking import anthropic_budget_tokens
 
@@ -31,7 +33,7 @@ class AnthropicAdapter(AdapterBase):
                 supports_tool_use=True,
                 supports_temperature=True,
                 supports_rate_limit_headers=False,
-                supports_context_probe=False,
+                supports_context_probe=True,
                 tokenizer_estimation="tiktoken",
                 api_family="anthropic",
                 api_family_version="2023-06-01",
@@ -77,6 +79,41 @@ class AnthropicAdapter(AdapterBase):
         prefix = base if base.endswith("/v1") else f"{base}/v1"
         url = f"{prefix}/messages"
         return "POST", url, headers, payload
+
+    def build_context_probe_request(
+        self,
+        *,
+        api_key: str | None,
+        model_name: str,
+    ) -> tuple[str, str, dict[str, str]] | None:
+        headers = {"anthropic-version": "2023-06-01"}
+        if api_key:
+            headers["x-api-key"] = api_key
+        base = self.config.base_url.rstrip("/")
+        prefix = base if base.endswith("/v1") else f"{base}/v1"
+        model_path = quote(model_name, safe="")
+        return "GET", f"{prefix}/models/{model_path}", headers
+
+    def parse_context_probe(
+        self,
+        response: httpx.Response,
+        *,
+        model_name: str,
+    ) -> ProbeContextResult | None:
+        data = response.json()
+        if not isinstance(data, dict):
+            return None
+        data_mapping = cast("dict[str, Any]", data)
+        input_limit = safe_positive_int(data_mapping.get("max_input_tokens"))
+        output_limit = safe_positive_int(data_mapping.get("max_tokens"))
+        if input_limit is None and output_limit is None:
+            return None
+        return ProbeContextResult(
+            max_context_tokens=None,
+            max_input_tokens=input_limit,
+            max_output_tokens=output_limit,
+            source="live",
+        )
 
     def parse_response(self, response: httpx.Response) -> ProviderResponse:
         payload = response.json()

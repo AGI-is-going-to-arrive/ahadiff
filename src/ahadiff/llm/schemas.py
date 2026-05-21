@@ -125,6 +125,15 @@ class ProviderResponse:
 
 
 @dataclass(frozen=True)
+class ProbeContextResult:
+    max_context_tokens: int | None
+    max_input_tokens: int | None
+    max_output_tokens: int | None
+    source: Literal["live", "fallback"]
+    warnings: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class ProbeReport:
     provider_name: str
     config: ProviderConfig
@@ -139,6 +148,7 @@ class ProbeReport:
 __all__ = [
     "CacheKeyInput",
     "EnforcementMode",
+    "ProbeContextResult",
     "ProbeReport",
     "ProviderRequest",
     "ProviderResponse",

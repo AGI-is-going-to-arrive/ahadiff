@@ -15,6 +15,7 @@ from starlette.testclient import TestClient
 
 from ahadiff.contracts.serve_app import LearnEstimateResponse
 from ahadiff.contracts.serve_runtime import TaskInfoResponse, TaskSubmitResponse
+from ahadiff.core.budget import CaptureRecommendation
 from ahadiff.core.orchestrator import LearnRequest, LearnResult
 from ahadiff.core.task_runner import TaskRunner
 from ahadiff.serve import ServeState, create_app, routes_learn
@@ -79,6 +80,37 @@ def _task_id_from(response: httpx.Response) -> str:
     task_id = payload.task_id
     assert isinstance(task_id, str)
     return task_id
+
+
+def _capture_recommendation(
+    *,
+    mode: Literal["auto", "manual"] = "auto",
+    context_window: int = 16_000,
+    max_input_tokens: int = 12_000,
+    max_output_tokens: int = 4_000,
+    source: str = "live",
+) -> CaptureRecommendation:
+    return CaptureRecommendation(
+        mode=mode,
+        max_files=8,
+        hard_limit=400,
+        max_patch_bytes=100_000,
+        runtime_max_patch_bytes=50 * 1024 * 1024,
+        payload_byte_budget=24_000,
+        context_window=context_window,
+        max_input_tokens=max_input_tokens,
+        max_output_tokens=max_output_tokens,
+        diff_token_budget=8_000,
+        safety_reserve=2_000,
+        output_reserve=max_output_tokens,
+        system_prompt_tokens=1_220,
+        fits_minimums=True,
+        model_name="gpt-4o",
+        source=source,
+        cjk_ratio=0.0,
+        cjk_factor=1.0,
+        warnings=[],
+    )
 
 
 def _wait_for_task(
@@ -159,7 +191,10 @@ def test_post_learn_estimate_happy_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    client = _client(tmp_path / ".ahadiff")
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text('[capture]\nmode = "manual"\n', encoding="utf-8")
+    client = _client(state_dir)
     patch_text = "diff --git a/a.py b/a.py\n+print('hello')\n"
 
     def fake_capture_patch(**_: object) -> SimpleNamespace:
@@ -171,15 +206,20 @@ def test_post_learn_estimate_happy_path(
     def fake_estimate_text_tokens(_text: str, _strategy: object) -> int:
         return 10
 
-    def fake_provider_limits_from_config(**_: object) -> tuple[int, int]:
-        return 16_000, 4_000
+    def fake_capture_recommendation_for_estimate(**_: object) -> CaptureRecommendation:
+        return _capture_recommendation(
+            mode="manual",
+            context_window=16_000,
+            max_input_tokens=12_000,
+            max_output_tokens=4_000,
+        )
 
     monkeypatch.setattr(routes_learn, "capture_patch", fake_capture_patch)
     monkeypatch.setattr(routes_learn, "estimate_text_tokens", fake_estimate_text_tokens)
     monkeypatch.setattr(
         routes_learn,
-        "_provider_limits_from_config",
-        fake_provider_limits_from_config,
+        "_capture_recommendation_for_estimate",
+        fake_capture_recommendation_for_estimate,
     )
 
     resp = _post_learn_estimate(client)
@@ -213,15 +253,20 @@ def test_post_learn_estimate_passes_changed_paths_to_capture(
     def fake_estimate_text_tokens(_text: str, _strategy: object) -> int:
         return 10
 
-    def fake_provider_limits_from_config(**_: object) -> tuple[int, int]:
-        return 16_000, 4_000
+    def fake_capture_recommendation_for_estimate(**_: object) -> CaptureRecommendation:
+        return _capture_recommendation(
+            mode="manual",
+            context_window=16_000,
+            max_input_tokens=12_000,
+            max_output_tokens=4_000,
+        )
 
     monkeypatch.setattr(routes_learn, "capture_patch", fake_capture_patch)
     monkeypatch.setattr(routes_learn, "estimate_text_tokens", fake_estimate_text_tokens)
     monkeypatch.setattr(
         routes_learn,
-        "_provider_limits_from_config",
-        fake_provider_limits_from_config,
+        "_capture_recommendation_for_estimate",
+        fake_capture_recommendation_for_estimate,
     )
 
     resp = _post_learn_estimate(
@@ -280,7 +325,10 @@ def test_post_learn_estimate_risk_levels(
     file_count: int,
     risk_level: Literal["ok", "warn", "danger"],
 ) -> None:
-    client = _client(tmp_path / ".ahadiff")
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text('[capture]\nmode = "manual"\n', encoding="utf-8")
+    client = _client(state_dir)
     patch_text = "x\n"
 
     def fake_capture_patch(**_: object) -> SimpleNamespace:
@@ -292,8 +340,13 @@ def test_post_learn_estimate_risk_levels(
     def fake_estimate_text_tokens(_text: str, _strategy: object) -> int:
         return estimated_tokens
 
-    def fake_provider_limits_from_config(**_: object) -> tuple[int, None]:
-        return context_window, None
+    def fake_capture_recommendation_for_estimate(**_: object) -> CaptureRecommendation:
+        return _capture_recommendation(
+            mode="manual",
+            context_window=context_window,
+            max_input_tokens=max(context_window - 4_000, 0),
+            max_output_tokens=4_000,
+        )
 
     monkeypatch.setattr(routes_learn, "capture_patch", fake_capture_patch)
     monkeypatch.setattr(
@@ -303,8 +356,8 @@ def test_post_learn_estimate_risk_levels(
     )
     monkeypatch.setattr(
         routes_learn,
-        "_provider_limits_from_config",
-        fake_provider_limits_from_config,
+        "_capture_recommendation_for_estimate",
+        fake_capture_recommendation_for_estimate,
     )
 
     resp = _post_learn_estimate(client)
@@ -316,6 +369,175 @@ def test_post_learn_estimate_risk_levels(
         assert payload.warnings == []
     else:
         assert payload.warnings
+
+
+def test_post_learn_estimate_auto_mode_warns_on_omitted_files_not_file_count(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path / ".ahadiff")
+
+    def fake_capture_patch(**_: object) -> SimpleNamespace:
+        return SimpleNamespace(
+            persisted_patch_text="x\n",
+            metadata={
+                "selected_files": [f"f{i}.py" for i in range(100)],
+                "omitted_files": ["omitted.py"],
+            },
+        )
+
+    def fake_estimate_text_tokens(_text: str, _strategy: object) -> int:
+        return 10
+
+    def fake_capture_recommendation_for_estimate(**_: object) -> CaptureRecommendation:
+        return _capture_recommendation(
+            mode="auto",
+            context_window=10_000,
+            max_input_tokens=6_000,
+            max_output_tokens=4_000,
+        )
+
+    monkeypatch.setattr(routes_learn, "capture_patch", fake_capture_patch)
+    monkeypatch.setattr(routes_learn, "estimate_text_tokens", fake_estimate_text_tokens)
+    monkeypatch.setattr(
+        routes_learn,
+        "_capture_recommendation_for_estimate",
+        fake_capture_recommendation_for_estimate,
+    )
+
+    resp = _post_learn_estimate(client)
+
+    assert resp.status_code == 200
+    payload = LearnEstimateResponse.model_validate(_json_object(resp))
+    assert payload.file_count == 100
+    assert payload.omitted_files_count == 1
+    assert payload.risk_level == "warn"
+    assert all("File count" not in warning for warning in payload.warnings)
+
+
+def test_post_learn_estimate_audits_clipped_diff_and_omitted_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path / ".ahadiff")
+    recommendation = _capture_recommendation(mode="auto")
+    captured_kwargs: dict[str, object] = {}
+
+    def fake_capture_recommendation_for_estimate(**_: object) -> CaptureRecommendation:
+        return recommendation
+
+    def fake_capture_patch(**kwargs: object) -> SimpleNamespace:
+        captured_kwargs.update(kwargs)
+        return SimpleNamespace(
+            persisted_patch_text="diff --git a/a.py b/a.py\n+print('hello')\n",
+            metadata={
+                "selected_files": ["a.py"],
+                "omitted_files": ["large.py", "generated.py"],
+                "degraded_flags": {"diff_clipped": True},
+            },
+        )
+
+    def fake_estimate_text_tokens(_text: str, _strategy: object) -> int:
+        return 10
+
+    monkeypatch.setattr(
+        routes_learn,
+        "_capture_recommendation_for_estimate",
+        fake_capture_recommendation_for_estimate,
+    )
+    monkeypatch.setattr(routes_learn, "capture_patch", fake_capture_patch)
+    monkeypatch.setattr(routes_learn, "estimate_text_tokens", fake_estimate_text_tokens)
+    resp = _post_learn_estimate(client)
+
+    assert resp.status_code == 200
+    payload = LearnEstimateResponse.model_validate(_json_object(resp))
+    assert payload.diff_clipped is True
+    assert payload.omitted_files_count == 2
+    assert payload.risk_level == "warn"
+    assert "Capture omitted 2 files" in payload.warnings
+    assert "Diff was clipped by effective capture limits" in payload.warnings
+    assert captured_kwargs["max_files"] == recommendation.max_files
+    assert captured_kwargs["hard_limit"] == recommendation.hard_limit
+    assert captured_kwargs["max_patch_bytes"] == recommendation.max_patch_bytes
+
+
+def test_post_learn_estimate_uses_one_config_snapshot_for_capture_and_limits(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path / ".ahadiff")
+
+    def snapshot(max_input_tokens: int) -> SimpleNamespace:
+        return SimpleNamespace(
+            values={
+                "capture": {"mode": "auto", "max_files": 30, "hard_limit": 3000},
+                "llm": {
+                    "generate_model": "gpt-4o",
+                    "output_token_budget": 50_000,
+                    "claim_extraction_output_cap": 16_000,
+                    "lesson_full_output_cap": 24_000,
+                    "lesson_hint_output_cap": 3_000,
+                    "lesson_compact_output_cap": 2_500,
+                    "quiz_generation_output_cap": 6_000,
+                    "misconception_cards_output_cap": 3_000,
+                },
+                "providers": {
+                    "local": {
+                        "provider_class": "openai",
+                        "model_name": "gpt-4o",
+                        "base_url": "http://127.0.0.1:8318",
+                        "api_key_env": "AHADIFF_PROVIDER_API_KEY",
+                        "probed_max_input_tokens": max_input_tokens,
+                    }
+                },
+                "privacy_mode": "strict_local",
+                "lang": "en",
+            },
+            resolved={},
+        )
+
+    snapshots = [snapshot(120_000), snapshot(4_096)]
+    load_calls: list[Path] = []
+
+    def fake_load_workspace_config(
+        root: Path,
+        cli_overrides: dict[str, object] | None = None,
+    ) -> SimpleNamespace:
+        del cli_overrides
+        load_calls.append(root)
+        return snapshots[min(len(load_calls) - 1, len(snapshots) - 1)]
+
+    def fake_capture_patch(**_: object) -> SimpleNamespace:
+        return SimpleNamespace(
+            persisted_patch_text="diff --git a/a.py b/a.py\n+print('hello')\n",
+            metadata={"selected_files": ["a.py"]},
+        )
+
+    def fake_load_workspace_security_config(_root: Path) -> SimpleNamespace:
+        return SimpleNamespace(
+            local_hosts=("127.0.0.1",),
+            strict_local_hosts=("127.0.0.1",),
+        )
+
+    def fake_estimate_text_tokens(_text: str, _strategy: object) -> int:
+        return 10
+
+    monkeypatch.setattr(routes_learn, "load_workspace_config", fake_load_workspace_config)
+    monkeypatch.setattr(
+        routes_learn,
+        "load_workspace_security_config",
+        fake_load_workspace_security_config,
+    )
+    monkeypatch.setattr(routes_learn, "capture_patch", fake_capture_patch)
+    monkeypatch.setattr(routes_learn, "estimate_text_tokens", fake_estimate_text_tokens)
+
+    resp = _post_learn_estimate(client)
+
+    assert resp.status_code == 200
+    payload = LearnEstimateResponse.model_validate(_json_object(resp))
+    assert payload.effective_capture_limits is not None
+    assert payload.provider_context_window == payload.effective_capture_limits.context_window
+    assert len(load_calls) == 1
 
 
 # ---------------------------------------------------------------------------

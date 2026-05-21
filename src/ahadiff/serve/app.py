@@ -18,6 +18,7 @@ from ._errors import error_response
 from .auth import require_token_bootstrap_request, serve_state
 from .middleware import LoopbackGuardMiddleware, RequestTimeoutMiddleware, WriteRateLimitMiddleware
 from .routes_audit import get_audit
+from .routes_capture import get_capture_recommended
 from .routes_challenge import (
     get_challenge,
     get_challenge_feedback,
@@ -180,6 +181,7 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
             Route("/api/usage", get_usage, methods=["GET"]),
             Route("/api/audit", get_audit, methods=["GET"]),
             Route("/api/spec/alignment", get_spec_alignment, methods=["GET"]),
+            Route("/api/capture/recommended", get_capture_recommended, methods=["GET"]),
             Route("/api/config", get_config, methods=["GET"]),
             Route("/api/config", put_config, methods=["PUT"]),
             Route("/api/doctor", get_doctor, methods=["GET"]),

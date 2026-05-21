@@ -692,6 +692,28 @@ export interface LearnSubmitPayload {
 
 export type LearnRiskLevel = 'ok' | 'warn' | 'danger';
 
+export interface EffectiveCaptureLimits {
+  mode: 'auto' | 'manual';
+  max_files: number;
+  hard_limit: number;
+  max_patch_bytes: number;
+  payload_byte_budget: number;
+  context_window: number | null;
+  max_input_tokens: number;
+  max_output_tokens: number;
+  diff_token_budget: number;
+  safety_reserve: number;
+  output_reserve: number;
+  system_prompt_tokens: number;
+  fits_minimums: boolean;
+  model_name: string;
+  source: string;
+  cjk_ratio: number;
+  cjk_factor: number;
+  runtime_max_patch_bytes?: number;
+  warnings: string[];
+}
+
 export interface LearnEstimateResponse {
   patch_bytes: number;
   file_count: number;
@@ -701,6 +723,9 @@ export interface LearnEstimateResponse {
   provider_max_output: number | null;
   risk_level: LearnRiskLevel;
   warnings: string[];
+  effective_capture_limits?: EffectiveCaptureLimits | null;
+  diff_clipped?: boolean;
+  omitted_files_count?: number;
 }
 
 export interface TaskProgressResponse {

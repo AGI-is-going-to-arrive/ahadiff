@@ -693,11 +693,36 @@ export const misconceptionCardSchema = z.object({
 
 export const captureConfigSchema = z
   .object({
+    mode: z.enum(['auto', 'manual']).default('manual'),
     max_files: z.number().int().positive(),
     hard_limit: z.number().int().positive(),
     max_patch_bytes: z.number().int().positive(),
     file_ranking: z.string(),
     symbol_extractor: z.string().default('auto'),
+  })
+  .strict();
+
+export const captureRecommendationSchema = z
+  .object({
+    mode: z.enum(['auto', 'manual']),
+    max_files: z.number(),
+    hard_limit: z.number(),
+    max_patch_bytes: z.number(),
+    payload_byte_budget: z.number(),
+    context_window: z.number().nullable(),
+    max_input_tokens: z.number(),
+    max_output_tokens: z.number(),
+    diff_token_budget: z.number(),
+    safety_reserve: z.number(),
+    output_reserve: z.number(),
+    system_prompt_tokens: z.number(),
+    fits_minimums: z.boolean(),
+    model_name: z.string(),
+    source: z.string(),
+    cjk_ratio: z.number(),
+    cjk_factor: z.number(),
+    runtime_max_patch_bytes: z.number().optional(),
+    warnings: z.array(z.string()),
   })
   .strict();
 
@@ -849,12 +874,16 @@ export const providerSummarySchema = z
     thinking_level: z.enum(['none', 'low', 'medium', 'high']).nullable().optional(),
     probed: z.boolean(),
     probed_max_context: z.number().int().positive().nullable(),
+    probed_max_input_tokens: z.number().int().positive().nullable().optional(),
+    probed_max_output_tokens: z.number().int().positive().nullable().optional(),
+    probed_limits_source: z.string().nullable().optional(),
+    model_limits_name: z.string().nullable().optional(),
     probed_tpm: z.number().int().positive().nullable().optional(),
     probed_rpm: z.number().int().positive().nullable().optional(),
     probe_timestamp: z.string().nullable().optional(),
     available_models: z.array(z.string()).default([]),
   })
-  .strict();
+  .strip();
 
 export const providersResponseSchema = z
   .object({
@@ -1219,6 +1248,9 @@ export const learnEstimateResponseSchema = z
     provider_max_output: z.number().int().positive().nullable(),
     risk_level: z.enum(['ok', 'warn', 'danger']),
     warnings: z.array(z.string()),
+    effective_capture_limits: captureRecommendationSchema.nullable().optional(),
+    diff_clipped: z.boolean().default(false),
+    omitted_files_count: z.number().int().nonnegative().default(0),
   })
   .strict();
 

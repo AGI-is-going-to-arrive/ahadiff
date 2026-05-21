@@ -133,4 +133,5 @@ describe('ProviderCard', () => {
     expect(html).toContain('class="sr-only"');
     expect(html).toContain(`>${expected}</span>`);
   });
+
 });

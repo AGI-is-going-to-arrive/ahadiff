@@ -36,11 +36,12 @@ describe('provider API schemas', () => {
     });
   });
 
-  it('rejects unknown fields on provider responses', () => {
-    expect(providerSummarySchema.safeParse({
+  it('strips unknown provider fields while keeping the response envelope strict', () => {
+    expect(providerSummarySchema.parse({
       ...fullProvider,
       leaked_secret: 'sk-test',
-    }).success).toBe(false);
+      future_limit_source: 'runtime',
+    })).toEqual(fullProvider);
     expect(providersResponseSchema.safeParse({
       providers: [fullProvider],
       extra: true,
