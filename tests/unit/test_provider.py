@@ -32,6 +32,7 @@ from ahadiff.llm.cache import build_cache_key
 from ahadiff.llm.cost import (
     DEFAULT_OPENROUTER_MODELS_URL,
     PricingEntry,
+    TokenEstimate,
     estimate_cost_usd,
     estimate_request_tokens,
     fetch_openrouter_pricing_catalog,
@@ -1248,13 +1249,22 @@ def test_context_clipping_sets_token_exceeded_flag() -> None:
 
     long_payload = "x" * 4000
     client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    config = _provider_config("openai", model_name="local-small", max_context=None).model_copy(
+        update={
+            "probed_max_input_tokens": 300,
+            "probed_max_output_tokens": 20,
+            "probed_limits_source": "live",
+        }
+    )
     provider = make_provider(
-        _provider_config("openai", max_context=300),
+        config,
         api_key="test-key",
         client=client,
     )
     try:
-        response = provider.generate(_request(payload_text=long_payload, diff_content=long_payload))
+        response = provider.generate(
+            _request(model="local-small", payload_text=long_payload, diff_content=long_payload)
+        )
     finally:
         provider.close()
 
@@ -1262,19 +1272,69 @@ def test_context_clipping_sets_token_exceeded_flag() -> None:
     assert captured_lengths[0] < len(long_payload)
 
 
+def test_managed_provider_uses_registry_context_window_for_large_known_models(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        assert payload["model"] == "gpt-5.5"
+        return _openai_success_response(content="Not clipped", model_id="gpt-5.5")
+
+    def fake_estimate(request: ProviderRequest, strategy: str) -> TokenEstimate:
+        return TokenEstimate(input_tokens=200_000, strategy=cast("Any", strategy))
+
+    def fail_clip(*args: object, **kwargs: object) -> str:
+        raise AssertionError("registry-sized requests must not fall back to 128k clipping")
+
+    monkeypatch.setattr(provider_module, "estimate_request_tokens", fake_estimate)
+    monkeypatch.setattr(provider_module, "clip_text_to_context_limit", fail_clip)
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai", model_name="gpt-5.5", max_context=None),
+        api_key="test-key",
+        client=client,
+    )
+    try:
+        response = provider.generate(
+            _request(
+                model="gpt-5.5",
+                payload_text="large estimated prompt",
+                diff_content="large estimated prompt",
+                max_output_tokens=1024,
+            )
+        )
+    finally:
+        provider.close()
+
+    assert response.content == "Not clipped"
+
+
 def test_provider_reserves_output_tokens_against_context_window() -> None:
     def handler(_: httpx.Request) -> httpx.Response:
         raise AssertionError("provider should reject before network dispatch")
 
     client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    config = _provider_config("openai", model_name="local-small", max_context=None).model_copy(
+        update={
+            "probed_max_input_tokens": 20,
+            "probed_max_output_tokens": 1,
+            "probed_limits_source": "live",
+        }
+    )
     provider = make_provider(
-        _provider_config("openai", max_context=20),
+        config,
         api_key="test-key",
         client=client,
     )
     try:
         with pytest.raises(ProviderError, match="context window exceeded"):
-            provider.generate(_request(payload_text="short prompt", max_output_tokens=18))
+            provider.generate(
+                _request(
+                    model="local-small",
+                    payload_text="short prompt",
+                    max_output_tokens=18,
+                )
+            )
     finally:
         provider.close()
 
@@ -2354,7 +2414,7 @@ def test_probe_context_window_returns_fallback_on_transport_error() -> None:
 
     class FakeClient:
         def request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
-            raise httpx.ConnectError("connection refused")
+            raise AssertionError("context probe must use provider.request_context_probe")
 
     class FakeProvider:
         def __init__(self) -> None:
@@ -2363,6 +2423,22 @@ def test_probe_context_window_returns_fallback_on_transport_error() -> None:
             self.client = FakeClient()
             self.api_key = "test-key"
 
+        def request_context_probe(
+            self,
+            *,
+            method: str,
+            url: str,
+            headers: dict[str, str],
+            content: bytes | None,
+            privacy_mode: str,
+        ) -> httpx.Response:
+            assert method == "GET"
+            assert url.endswith("/v1/models/gpt-5.4-mini")
+            assert headers == {}
+            assert content is None
+            assert privacy_mode == "explicit_remote"
+            raise httpx.ConnectError("connection refused")
+
     context_result, source = _probe_context_window(FakeProvider(), model_name="gpt-5.4-mini")
 
     assert source == "fallback"
@@ -2370,6 +2446,144 @@ def test_probe_context_window_returns_fallback_on_transport_error() -> None:
     assert context_result.max_context_tokens > 0
     assert context_result.max_input_tokens is None
     assert context_result.max_output_tokens is None
+
+
+def test_context_probe_uses_dns_pinning_for_remote_hosts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_validate_remote_url(url: str) -> str:
+        captured["validated_url"] = url
+        return "93.184.216.34"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["host"] = request.headers.get("host")
+        captured["accept_encoding"] = request.headers.get("accept-encoding")
+        captured["sni_hostname"] = request.extensions.get("sni_hostname")
+        return httpx.Response(
+            200,
+            json={"data": [{"id": "gpt-5.5", "context_window": 528000}]},
+        )
+
+    monkeypatch.setattr(provider_module, "validate_remote_url", fake_validate_remote_url)
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config(
+            "openai",
+            base_url="https://api.example.test",
+            model_name="gpt-5.5",
+            max_context=None,
+        ),
+        api_key="test-key",
+        client=client,
+    )
+    try:
+        context_result, source = _probe_context_window(provider, model_name="gpt-5.5")
+    finally:
+        provider.close()
+
+    assert captured["validated_url"] == "https://api.example.test/v1/models"
+    assert captured["url"] == "https://93.184.216.34/v1/models"
+    assert captured["host"] == "api.example.test"
+    assert captured["accept_encoding"] == "identity"
+    assert captured["sni_hostname"] == b"api.example.test"
+    assert source == "live"
+    assert context_result.max_context_tokens == 528000
+
+
+def test_context_probe_dns_rebinding_guard_runs_before_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dispatched = False
+
+    def fake_validate_remote_url(url: str) -> str | None:
+        raise SafetyError("hostname resolves to private/reserved IP")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal dispatched
+        dispatched = True
+        return httpx.Response(200, json={"data": []})
+
+    monkeypatch.setattr(provider_module, "validate_remote_url", fake_validate_remote_url)
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config(
+            "openai",
+            base_url="https://api.example.test",
+            model_name="gpt-5.5",
+            max_context=None,
+        ),
+        api_key="test-key",
+        client=client,
+    )
+    try:
+        with pytest.raises(SafetyError, match="private/reserved IP"):
+            _probe_context_window(provider, model_name="gpt-5.5")
+    finally:
+        provider.close()
+
+    assert dispatched is False
+
+
+def test_context_probe_rejects_redirects_without_following() -> None:
+    seen_urls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_urls.append(str(request.url))
+        if len(seen_urls) == 1:
+            return httpx.Response(
+                302,
+                headers={"location": "http://127.0.0.1:9999/private-models"},
+            )
+        return httpx.Response(200, json={"data": [{"id": "gpt-5.4-mini"}]})
+
+    client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        follow_redirects=True,
+        trust_env=False,
+    )
+    provider = make_provider(
+        _provider_config("openai", base_url="http://127.0.0.1:8000"),
+        api_key="test-key",
+        client=client,
+    )
+    try:
+        context_result, source = _probe_context_window(provider, model_name="gpt-5.4-mini")
+    finally:
+        provider.close()
+
+    assert seen_urls == ["http://127.0.0.1:8000/v1/models"]
+    assert source == "fallback"
+    assert context_result.source == "fallback"
+
+
+def test_context_probe_uses_response_byte_cap() -> None:
+    stream = _ChunkedByteStream(
+        (
+            b'{"data": [',
+            b'{"id": "gpt-5.4-mini", "context_window": 1000000}',
+            b"]}",
+        )
+    )
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, stream=stream)),
+        trust_env=False,
+    )
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        client=client,
+        response_byte_cap=16,
+    )
+    try:
+        context_result, source = _probe_context_window(provider, model_name="gpt-5.4-mini")
+    finally:
+        provider.close()
+
+    assert source == "fallback"
+    assert context_result.source == "fallback"
 
 
 # ---------------------------------------------------------------------------

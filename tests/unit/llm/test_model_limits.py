@@ -361,11 +361,29 @@ def test_ollama_context_probe_uses_post_body_and_warns_on_lower_num_ctx() -> Non
     assert headers["content-type"] == "application/json"
     assert json.loads(body.decode("utf-8")) == {"name": "llama3.1"}
     assert result is not None
-    assert result.max_context_tokens == 131072
+    assert result.max_context_tokens == 4096
     assert result.max_input_tokens is None
     assert result.max_output_tokens is None
     assert result.source == "live"
     assert result.warnings == ("ollama_num_ctx_below_architecture_context_length:4096<131072",)
+
+
+def test_ollama_context_probe_does_not_exceed_architecture_context_length() -> None:
+    adapter = OllamaAdapter(_config("ollama", model_name="llama3.1"))
+
+    result = adapter.parse_context_probe(
+        _response(
+            {
+                "model_info": {"llama.context_length": 8192},
+                "parameters": "num_ctx 131072\n",
+            }
+        ),
+        model_name="llama3.1",
+    )
+
+    assert result is not None
+    assert result.max_context_tokens == 8192
+    assert result.warnings == ()
 
 
 def test_lmstudio_context_probe_prefers_loaded_instance_config() -> None:
@@ -492,14 +510,8 @@ def test_probe_context_window_sends_optional_body() -> None:
             )
 
     class FakeClient:
-        def __init__(self) -> None:
-            self.seen_content: bytes | None = None
-
         def request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
-            assert method == "POST"
-            assert url.endswith("/api/show")
-            self.seen_content = cast("bytes", kwargs.get("content"))
-            return _response({"context_window": 4096})
+            raise AssertionError("context probe must use provider.request_context_probe")
 
     class FakeProvider:
         def __init__(self) -> None:
@@ -507,11 +519,28 @@ def test_probe_context_window_sends_optional_body() -> None:
             self.config = _config("ollama", model_name="llama3")
             self.client = FakeClient()
             self.api_key = None
+            self.seen_content: bytes | None = None
+
+        def request_context_probe(
+            self,
+            *,
+            method: str,
+            url: str,
+            headers: dict[str, str],
+            content: bytes | None,
+            privacy_mode: str,
+        ) -> httpx.Response:
+            assert method == "POST"
+            assert url.endswith("/api/show")
+            assert headers == {}
+            assert privacy_mode == "explicit_remote"
+            self.seen_content = content
+            return _response({"context_window": 4096})
 
     provider = FakeProvider()
     result, source = _probe_context_window(provider, model_name="llama3")
 
-    assert provider.client.seen_content == b'{"name":"llama3"}'
+    assert provider.seen_content == b'{"name":"llama3"}'
     assert source == "live"
     assert result.max_context_tokens == 4096
 
@@ -541,9 +570,7 @@ def test_probe_context_window_treats_empty_live_probe_as_fallback() -> None:
 
     class FakeClient:
         def request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
-            assert method == "GET"
-            assert url.endswith("/models")
-            return _response({})
+            raise AssertionError("context probe must use provider.request_context_probe")
 
     class FakeProvider:
         def __init__(self) -> None:
@@ -551,6 +578,22 @@ def test_probe_context_window_treats_empty_live_probe_as_fallback() -> None:
             self.config = _config("openai", model_name="unknown-model")
             self.client = FakeClient()
             self.api_key = None
+
+        def request_context_probe(
+            self,
+            *,
+            method: str,
+            url: str,
+            headers: dict[str, str],
+            content: bytes | None,
+            privacy_mode: str,
+        ) -> httpx.Response:
+            assert method == "GET"
+            assert url.endswith("/models")
+            assert headers == {}
+            assert content is None
+            assert privacy_mode == "explicit_remote"
+            return _response({})
 
     result, source = _probe_context_window(FakeProvider(), model_name="unknown-model")
 
@@ -592,10 +635,18 @@ def test_lookup_model_limits_restricts_prefix_and_family_suffixes() -> None:
 
 def test_lookup_model_limits_uses_model_limits_name_escape_hatch() -> None:
     limits = lookup_model_limits("azure", "deployment-prod", model_limits_name="gpt-4o")
+    prefixed_limits = lookup_model_limits(
+        "azure",
+        "deployment-prod",
+        model_limits_name="openai/gpt-4o",
+    )
 
     assert limits is not None
     assert limits.max_input_tokens == 128000
     assert limits.max_output_tokens == 16384
+    assert prefixed_limits is not None
+    assert prefixed_limits.max_input_tokens == 128000
+    assert prefixed_limits.max_output_tokens == 16384
 
 
 def test_registry_confidence_stays_distinct_from_live_probe_source() -> None:
@@ -861,6 +912,21 @@ def test_resolve_model_limits_uses_registry_before_legacy_context() -> None:
     assert limits.source == "registry"
 
 
+def test_resolve_model_limits_does_not_add_default_output_to_known_split_input() -> None:
+    limits = resolve_model_limits(
+        "ollama",
+        "llama3.1",
+        _config("ollama", model_name="llama3.1"),
+    )
+
+    assert limits.max_context_tokens == 131072
+    assert limits.max_input_tokens == 131072
+    assert limits.max_output_tokens == DEFAULT_OUTPUT_TOKEN_BUDGET
+    assert limits.source == "mixed"
+    assert limits.input_source == "registry"
+    assert limits.output_source == "default"
+
+
 def test_resolve_model_limits_falls_back_to_legacy_context_and_defaults() -> None:
     limits = resolve_model_limits(
         "openai",
@@ -869,7 +935,7 @@ def test_resolve_model_limits_falls_back_to_legacy_context_and_defaults() -> Non
     )
 
     assert limits.max_context_tokens == 77777
-    assert limits.max_input_tokens == 27777
+    assert limits.max_input_tokens == 77777
     assert limits.max_output_tokens == DEFAULT_OUTPUT_TOKEN_BUDGET
     assert limits.source == "default"
     assert limits.input_source == "total_derived"
@@ -884,7 +950,7 @@ def test_resolve_model_limits_uses_default_without_probe_or_registry() -> None:
     )
 
     assert limits.max_context_tokens == DEFAULT_CONTEXT_WINDOW
-    assert limits.max_input_tokens == DEFAULT_CONTEXT_WINDOW - DEFAULT_OUTPUT_TOKEN_BUDGET
+    assert limits.max_input_tokens == DEFAULT_CONTEXT_WINDOW
     assert limits.max_output_tokens == DEFAULT_OUTPUT_TOKEN_BUDGET
     assert limits.source == "default"
 

@@ -117,7 +117,13 @@ def compute_recommended_capture(
         MAX_SAFETY_RESERVE,
     )
 
-    provider_input_budget = math.floor(limits.max_input_tokens * PROVIDER_CONTEXT_RATIO)
+    effective_input_tokens = limits.max_input_tokens
+    if limits.max_context_tokens is not None:
+        effective_input_tokens = min(
+            effective_input_tokens,
+            max(limits.max_context_tokens - output_reserve, 0),
+        )
+    provider_input_budget = math.floor(effective_input_tokens * PROVIDER_CONTEXT_RATIO)
     risk_limit = math.floor(basis * RISK_WARN_RATIO)
     diff_budget = max(
         0,

@@ -73,7 +73,11 @@ def probe_provider(
                 privacy_mode=privacy_mode,
             )
         )
-        context_result, context_source = _probe_context_window(provider, model_name=model_name)
+        context_result, context_source = _probe_context_window(
+            provider,
+            model_name=model_name,
+            privacy_mode=privacy_mode,
+        )
         config = ProviderConfig(
             provider_class=base_config.provider_class,
             model_name=base_config.model_name,
@@ -166,7 +170,12 @@ def _build_probe_request(
     )
 
 
-def _probe_context_window(provider: Any, *, model_name: str) -> tuple[ProbeContextResult, str]:
+def _probe_context_window(
+    provider: Any,
+    *,
+    model_name: str,
+    privacy_mode: PrivacyMode = "explicit_remote",
+) -> tuple[ProbeContextResult, str]:
     request = provider.adapter.build_context_probe_request(
         api_key=provider.api_key, model_name=model_name
     )
@@ -175,11 +184,14 @@ def _probe_context_window(provider: Any, *, model_name: str) -> tuple[ProbeConte
     method, url, headers = request[:3]
     body = request[3] if len(request) == 4 else None
     try:
-        request_kwargs: dict[str, Any] = {"headers": headers}
-        if body is not None:
-            request_kwargs["content"] = body
-        response = provider.client.request(method, url, **request_kwargs)
-    except (httpx.TimeoutException, httpx.TransportError):
+        response = provider.request_context_probe(
+            method=method,
+            url=url,
+            headers=headers,
+            content=body,
+            privacy_mode=privacy_mode,
+        )
+    except (ProviderError, httpx.DecodingError, httpx.TimeoutException, httpx.TransportError):
         return _fallback_context_result(provider, model_name=model_name), "fallback"
     if response.status_code >= 400:
         return _fallback_context_result(provider, model_name=model_name), "fallback"

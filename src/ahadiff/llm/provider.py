@@ -48,7 +48,7 @@ from .cost import (
     estimate_request_tokens,
     fetch_openrouter_pricing_catalog,
     parse_rate_limit_headers,
-    resolve_context_window,
+    resolve_model_limits,
     resolve_pricing_entry,
 )
 from .schemas import CacheKeyInput, ProviderRequest, ProviderResponse
@@ -58,7 +58,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
     from pathlib import Path
 
-    from ahadiff.contracts import ProviderCapabilities, ProviderConfig
+    from ahadiff.contracts import PrivacyMode, ProviderCapabilities, ProviderConfig
     from ahadiff.llm.schemas import ProbeContextResult
 
 log = logging.getLogger(__name__)
@@ -265,10 +265,13 @@ class ManagedProvider:
             )
 
         estimate = estimate_request_tokens(request_to_send, self.capabilities.tokenizer_estimation)
-        max_context = resolve_context_window(request.model, self.config.probed_max_context)
-        context_limit = int(max_context * 0.9)
+        limits = resolve_model_limits(self.config.provider_class, request.model, self.config)
+        context_limit = int((limits.max_context_tokens or limits.max_input_tokens) * 0.9)
         reserved_output_tokens = max(0, request_to_send.max_output_tokens or 0)
-        input_context_limit = max(1, context_limit - reserved_output_tokens)
+        input_context_limit = int(limits.max_input_tokens * 0.9)
+        if limits.max_context_tokens is not None:
+            input_context_limit = min(input_context_limit, context_limit - reserved_output_tokens)
+        input_context_limit = max(1, input_context_limit)
         degraded_flags: dict[str, bool] = {}
         notes: list[str] = [*structured_notes, *capability_notes]
         if estimate.input_tokens > input_context_limit:
@@ -514,16 +517,70 @@ class ManagedProvider:
 
     def _send_once(self, request: ProviderRequest) -> ProviderResponse:
         method, url, headers, payload = self.adapter.build_request(request, api_key=self.api_key)
+        buffered_response = self._request_http_once(
+            method=method,
+            url=url,
+            headers=headers,
+            privacy_mode=request.privacy_mode,
+            json_payload=payload,
+        )
+        parsed = self.adapter.parse_response(buffered_response)
+        guarded_content = strip_model_output_fences(parsed.content)
+        if not guarded_content.strip():
+            raise ProviderError("provider returned empty response")
+        output_guard_notes = tuple(scan_model_output(parsed.content))
+        return replace(
+            parsed,
+            content=guarded_content,
+            rate_limits=parse_rate_limit_headers(buffered_response.headers),
+            notes=_append_unique_notes(parsed.notes, *output_guard_notes),
+        )
+
+    def request_context_probe(
+        self,
+        *,
+        method: str,
+        url: str,
+        headers: dict[str, str],
+        content: bytes | None,
+        privacy_mode: PrivacyMode,
+    ) -> httpx.Response:
+        return self._request_http_once(
+            method=method,
+            url=url,
+            headers=headers,
+            privacy_mode=privacy_mode,
+            content=content,
+        )
+
+    def _request_http_once(
+        self,
+        *,
+        method: str,
+        url: str,
+        headers: dict[str, str],
+        privacy_mode: PrivacyMode,
+        json_payload: dict[str, Any] | None = None,
+        content: bytes | None = None,
+    ) -> httpx.Response:
+        if json_payload is not None and content is not None:
+            raise ProviderError("provider request cannot send both JSON and raw content")
         request_target = transport_target_for_base_url(
             url,
             local_hosts=local_hosts_for_privacy_mode(
                 self.security_config,
-                request.privacy_mode,
+                privacy_mode,
             ),
-            strict_local=request.privacy_mode == "strict_local",
+            strict_local=privacy_mode == "strict_local",
         )
-        if request.privacy_mode == "strict_local" and request_target != "local":
+        if privacy_mode == "strict_local" and request_target != "local":
             raise SafetyError("strict_local mode forbids remote transport")
+        if (
+            privacy_mode == "strict_local"
+            and request_target == "local"
+            and getattr(self.client, "_trust_env", False)
+        ):
+            raise SafetyError("strict_local mode requires an http client with trust_env=False")
         # DNS-pinning: resolve + validate once, then connect to the validated
         # IP directly so a DNS rebinding attack cannot redirect the TCP
         # connection to a private address between validation and connect.
@@ -541,7 +598,8 @@ class ManagedProvider:
             method,
             url,
             headers=headers,
-            json=payload,
+            json=json_payload,
+            content=content,
             follow_redirects=False,
             extensions=stream_extensions,
         ) as response:
@@ -571,24 +629,13 @@ class ManagedProvider:
                     if k.lower() not in (b"content-encoding", b"transfer-encoding")
                 ]
             )
-            buffered_response = httpx.Response(
+            return httpx.Response(
                 response.status_code,
                 headers=buffered_headers,
                 content=raw_body,
                 request=response.request,
                 extensions=response.extensions,
             )
-        parsed = self.adapter.parse_response(buffered_response)
-        guarded_content = strip_model_output_fences(parsed.content)
-        if not guarded_content.strip():
-            raise ProviderError("provider returned empty response")
-        output_guard_notes = tuple(scan_model_output(parsed.content))
-        return replace(
-            parsed,
-            content=guarded_content,
-            rate_limits=parse_rate_limit_headers(buffered_response.headers),
-            notes=_append_unique_notes(parsed.notes, *output_guard_notes),
-        )
 
     def _read_capped_response_body(self, response: httpx.Response) -> bytes:
         body = bytearray()

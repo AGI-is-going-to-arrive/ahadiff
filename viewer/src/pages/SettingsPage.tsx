@@ -1,9 +1,10 @@
-import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import AppShell from '../components/AppShell';
 import Skeleton, { SkeletonGroup } from '../components/Skeleton';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import ProviderCard from '../components/ProviderCard';
 import DiagnosticRow, { type DiagnosticStatus } from '../components/DiagnosticRow';
+import { ApiError } from '../api/client';
 import {
   applyInstallTarget,
   getCaptureRecommended,
@@ -1745,8 +1746,18 @@ function CaptureTab({
         if (cancelled) return;
         if (err instanceof DOMException && err.name === 'AbortError') return;
         if (err instanceof Error && err.name === 'AbortError') return;
+        // 404/NOT_FOUND from /api/capture/recommended means no provider is
+        // configured yet. That is not an error — the auto-mode no-provider
+        // banner should render instead of the generic failure badge.
+        const isNoProvider =
+          err instanceof ApiError
+          && (err.status === 404 || err.errorCode === 'NOT_FOUND');
         setRecommendation(null);
-        setRecommendationError(err instanceof Error ? err.message : 'failed');
+        if (isNoProvider) {
+          setRecommendationError(null);
+        } else {
+          setRecommendationError(err instanceof Error ? err.message : 'failed');
+        }
       } finally {
         if (!cancelled) setRecommendationLoading(false);
       }
@@ -1756,6 +1767,8 @@ function CaptureTab({
       controller.abort();
     };
   }, [config]);
+
+  const formatTexts = useMemo(() => buildFormatTexts(t), [t]);
 
   if (failed || !config || !form) {
     return (
@@ -1772,7 +1785,6 @@ function CaptureTab({
   const isAuto = mode === 'auto';
   const dirty = isCaptureFormDirty(form, capture);
 
-  const formatTexts = buildFormatTexts(t);
   const fmtTokens = (n: number) => formatCompactNumber(n, locale, formatTexts);
   const fmtBytes = (n: number) => formatBytes(n, locale, formatTexts);
 
@@ -1896,20 +1908,20 @@ function CaptureTab({
                       <h3>{t('Settings_page.capture_model_label')}</h3>
                       <p>{t('Settings_page.capture_auto_computed')}</p>
                     </div>
-                    <output className="settings-field__value">
+                    <span className="settings-field__value">
                       {recommendation!.model_name}
-                    </output>
+                    </span>
                   </div>
 
                   <div className="settings-field">
                     <div className="settings-field__label">
                       <h3>{t('Settings_page.capture_auto_source')}</h3>
                     </div>
-                    <output className="settings-field__value">
+                    <span className="settings-field__value">
                       <span className="settings-field__badge">
                         {captureSourceLabel(t, recommendation!.source)}
                       </span>
-                    </output>
+                    </span>
                   </div>
 
                   <div className="settings-field">
@@ -1917,12 +1929,12 @@ function CaptureTab({
                       <h3>{t('Settings_page.capture_max_files')}</h3>
                       <p>{t('Settings_page.capture_max_files_desc')}</p>
                     </div>
-                    <output
+                    <span
                       className="settings-field__value"
                       data-testid="capture-auto-max-files"
                     >
                       {fmtTokens(recommendation!.max_files)}
-                    </output>
+                    </span>
                   </div>
 
                   <div className="settings-field">
@@ -1930,12 +1942,12 @@ function CaptureTab({
                       <h3>{t('Settings_page.capture_hard_limit')}</h3>
                       <p>{t('Settings_page.capture_hard_limit_desc')}</p>
                     </div>
-                    <output
+                    <span
                       className="settings-field__value"
                       data-testid="capture-auto-hard-limit"
                     >
                       {fmtTokens(recommendation!.hard_limit)}
-                    </output>
+                    </span>
                   </div>
 
                   <div className="settings-field">
@@ -1943,12 +1955,12 @@ function CaptureTab({
                       <h3>{t('Settings_page.capture_max_patch_bytes')}</h3>
                       <p>{t('Settings_page.capture_max_patch_bytes_desc')}</p>
                     </div>
-                    <output
+                    <span
                       className="settings-field__value"
                       data-testid="capture-auto-max-patch-bytes"
                     >
                       {fmtBytes(recommendation!.max_patch_bytes)}
-                    </output>
+                    </span>
                   </div>
 
                   <div className="settings-field">
@@ -1968,7 +1980,14 @@ function CaptureTab({
                       <ul className="capture-warning-list" role="list">
                         {recWarnings.map((w, idx) => (
                           <li key={`${idx}:${w}`} className="capture-warning-list__item">
-                            {w}
+                            {/*
+                              Backend warning strings are currently English-only;
+                              wrap in lang="en" so screen readers pronounce them
+                              correctly even when the UI locale is non-English.
+                              TODO(i18n): backend-side localization pending so we
+                              can drop this wrapper and translate the string.
+                            */}
+                            <span lang="en">{w}</span>
                           </li>
                         ))}
                       </ul>
@@ -2051,7 +2070,7 @@ function CaptureTab({
                   onChange={e => setField('max_patch_bytes', Math.max(10000, Math.min(100000000, Number(e.target.value) || 10000)))}
                 />
                 <span className="u-muted-sm settings-field__suffix">
-                  ({(form.max_patch_bytes / 1_000_000).toFixed(1)} MB)
+                  ({fmtBytes(form.max_patch_bytes)})
                 </span>
               </div>
             </>

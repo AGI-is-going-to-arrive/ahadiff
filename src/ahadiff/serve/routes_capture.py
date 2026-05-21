@@ -69,13 +69,34 @@ async def get_capture_recommended(request: Request) -> JSONResponse:
     try:
         payload = await to_thread.run_sync(_recommended_capture_payload, state)
     except AhaDiffError as exc:
+        if _is_provider_not_configured_error(exc):
+            return error_response(
+                ErrorCode.NOT_FOUND,
+                "capture_recommendation_requires_configured_provider",
+                status=404,
+            )
+        if _is_provider_ambiguous_error(exc):
+            return error_response(
+                ErrorCode.INPUT_VALIDATION,
+                "capture_recommendation_requires_generate_provider",
+            )
         return error_response(
-            ErrorCode.NOT_FOUND,
-            "capture_recommendation_requires_configured_provider",
-            status=404,
-            details={"reason": str(exc)},
+            exc.code,
+            "capture_recommendation_failed",
         )
     return JSONResponse(payload)
+
+
+def _is_provider_not_configured_error(exc: AhaDiffError) -> bool:
+    return "requires --base-url or a configured [providers.<name>] entry" in str(exc)
+
+
+def _is_provider_ambiguous_error(exc: AhaDiffError) -> bool:
+    message = str(exc)
+    return (
+        "requires --provider or set generate_provider in [llm] config" in message
+        and "when multiple providers are configured" in message
+    )
 
 
 __all__ = ["get_capture_recommended"]

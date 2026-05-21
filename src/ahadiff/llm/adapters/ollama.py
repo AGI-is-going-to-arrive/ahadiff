@@ -105,7 +105,10 @@ class OllamaAdapter(AdapterBase):
         model_info = payload_mapping.get("model_info", {})
         architecture_context = _parse_model_info_context_length(model_info)
         num_ctx = _parse_parameters_num_ctx(payload_mapping.get("parameters"))
-        context_length = architecture_context or num_ctx
+        if architecture_context is not None and num_ctx is not None:
+            context_length = min(architecture_context, num_ctx)
+        else:
+            context_length = architecture_context or num_ctx
         if context_length is None:
             return None
         warnings: tuple[str, ...] = ()

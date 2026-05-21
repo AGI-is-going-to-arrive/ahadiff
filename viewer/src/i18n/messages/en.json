@@ -1343,7 +1343,6 @@
     "capture_file_ranking_desc": "How files are prioritized when the diff exceeds limits.",
     "capture_hard_limit": "Max diff lines",
     "capture_hard_limit_desc": "Maximum total lines sent to the LLM (across all files).",
-    "capture_judge_warning": "Judge provider has smaller context",
     "capture_max_files": "Max files",
     "capture_max_files_desc": "Maximum number of files included in a single learn run.",
     "capture_max_patch_bytes": "Max patch size (bytes)",

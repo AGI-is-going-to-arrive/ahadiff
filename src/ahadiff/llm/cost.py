@@ -184,11 +184,13 @@ def resolve_model_limits(
     if split_input_value is not None:
         input_value = split_input_value
         input_source = split_input_source
-        split_context = input_value + output_value
+        output_for_context = output_value if output_source in {"live", "registry"} else 0
+        split_context = input_value + output_for_context
         context_value = max(legacy_context or 0, split_context)
     else:
         context_value = legacy_context or resolve_context_window(model_name, None)
-        input_value = max(context_value - output_value, 0)
+        output_for_context = output_value if output_source in {"live", "registry"} else 0
+        input_value = max(context_value - output_for_context, 0)
         input_source = "total_derived"
 
     return ResolvedModelLimits(

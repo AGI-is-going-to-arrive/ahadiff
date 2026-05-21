@@ -645,6 +645,10 @@
 }
 
 /* ---- Capture: auto/manual segmented control ---- */
+/* NOTE: no `overflow: hidden` here — it would clip the focus indicator
+   on the first/last options. We round each option's outer corners
+   individually and use box-shadow (not outline) for focus so the ring
+   never gets clipped. */
 .capture-mode-segmented {
   display: inline-flex;
   align-items: stretch;
@@ -652,7 +656,6 @@
   border: 1px solid var(--hair);
   border-radius: var(--r-md);
   background: var(--elevated);
-  overflow: hidden;
 }
 
 .capture-mode-segmented__option {
@@ -672,8 +675,15 @@
               color var(--dur-fast) var(--ease-out);
 }
 
+.capture-mode-segmented__option:first-child {
+  border-top-left-radius: var(--r-md);
+  border-bottom-left-radius: var(--r-md);
+}
+
 .capture-mode-segmented__option:last-child {
   border-right: none;
+  border-top-right-radius: var(--r-md);
+  border-bottom-right-radius: var(--r-md);
 }
 
 .capture-mode-segmented__option.is-active {
@@ -695,9 +705,11 @@
   border: 0;
 }
 
+/* Use box-shadow instead of outline so the focus ring is not clipped
+   by the segmented container's rounded corners. */
 .capture-mode-segmented__option:focus-within {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent);
   z-index: 1;
 }
 

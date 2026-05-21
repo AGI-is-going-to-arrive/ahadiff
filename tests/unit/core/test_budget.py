@@ -77,6 +77,23 @@ def test_compute_recommended_capture_marks_output_reserve_larger_than_context_as
     assert "recommended diff budget is below the minimum learning floor" in recommendation.warnings
 
 
+def test_compute_recommended_capture_reserves_configured_output_tokens() -> None:
+    limits = ResolvedModelLimits(
+        max_context_tokens=128_000,
+        max_input_tokens=128_000,
+        max_output_tokens=50_000,
+        source="default",
+        input_source="total_derived",
+        output_source="default",
+    )
+
+    small_reserve = compute_recommended_capture(limits=limits, output_reserve=4_096)
+    large_reserve = compute_recommended_capture(limits=limits, output_reserve=50_000)
+
+    assert large_reserve.diff_token_budget < small_reserve.diff_token_budget
+    assert large_reserve.output_reserve == 50_000
+
+
 def test_compute_cjk_factor_reduces_char_budget_for_cjk_text() -> None:
     assert compute_cjk_factor("plain ascii diff text") == 1.0
     cjk_factor = compute_cjk_factor("中文变更说明" * 20)

@@ -62,7 +62,7 @@ def lookup_model_limits(
     if exact is not None:
         return _to_public(exact)
 
-    stripped = _strip_provider_prefix(lookup_name, provider_class)
+    stripped = _strip_provider_prefix(lookup_name, provider_names)
     if stripped != lookup_name:
         stripped_match = _find_exact(entries, provider_names, stripped)
         if stripped_match is not None:
@@ -169,12 +169,16 @@ def _matches_family(model_name: str, family_name: str) -> bool:
     return _FAMILY_SUFFIX_RE.fullmatch(model_name.removeprefix(prefix)) is not None
 
 
-def _strip_provider_prefix(model_name: str, provider_class: str) -> str:
+def _strip_provider_prefix(model_name: str, provider_names: tuple[str, ...]) -> str:
     if "/" not in model_name:
         return model_name
     prefix, remainder = model_name.split("/", 1)
     normalized_prefix = prefix.strip().lower()
-    provider_prefixes = _PROVIDER_PREFIXES.get(provider_class.strip().lower(), ())
+    provider_prefixes = {
+        prefix
+        for provider_name in provider_names
+        for prefix in _PROVIDER_PREFIXES.get(provider_name, (provider_name,))
+    }
     if normalized_prefix in provider_prefixes:
         return remainder.removeprefix("models/")
     return model_name
