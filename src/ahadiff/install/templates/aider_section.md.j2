@@ -2,18 +2,29 @@
 
 Use AhaDiff as the learn-back layer for AI-written diffs:
 
-- `ahadiff learn HEAD~1..HEAD` after a commit.
-- `ahadiff learn --staged` before committing staged changes.
-- `ahadiff quiz <run_id>` and `ahadiff review` for retention.
-- `ahadiff verify <run_id>` when checking an existing run.
-- `ahadiff improve <run_id>` for a targeted follow-up.
-- `ahadiff serve` to inspect local run artifacts.
+Common commands:
 
-Keep explanations grounded in verified claims and file-line evidence. Treat
-`.ahadiff/review.sqlite`, `.ahadiff/runs/`, and `prompts/` as local state unless
-the repository explicitly documents otherwise.
+- `ahadiff learn HEAD~1..HEAD`
+- `ahadiff learn --staged`
+- `ahadiff quiz <run_id>`
+- `ahadiff review`
+- `ahadiff verify <run_id>`
+- `ahadiff improve --rounds 1`
+- `ahadiff serve`
+
+Additional learn capture modes:
+
+- `ahadiff learn --last`
+- `ahadiff learn --since "2 hours ago"`
 
 For Aider, consider starting with `--read CONVENTIONS.md` when this repository
 uses that convention. A project `.aider.conf.yml` can also include optional
-read-only context files, but provider secrets should stay in environment
-variables, not repository files.
+read-only context files.
+
+## Boundaries
+
+- Keep provider credentials in environment variables.
+- Do not commit `.ahadiff/audit.private.jsonl`.
+- Treat `.ahadiff/` as local state.
+- Prefer verified claims with file-line evidence.
+- Do not upload `.ahadiff/` artifacts to external services without explicit user consent.

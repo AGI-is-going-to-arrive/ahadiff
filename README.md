@@ -97,7 +97,7 @@ See the [User Guide](./docs/USER_GUIDE.en.html) for all 9 diff capture modes, ex
 - **New Run dialog**: Dashboard can start quick learn runs for working tree, unstaged, staged, or last commit changes, with advanced cards for `--since`, revision/range, patch URL, pasted patch text, file compare, and directory compare.
 - **Export**: export results as TSV / JSON, Anki `.apkg`, or a local static preview bundle.
 - **Concept graph**: AhaDiff extracts cross-diff concepts and shows them in a Canvas graph with health checks.
-- **AI tool integration**: project-level guidance for Claude, Cursor, Copilot, Codex, Gemini, Aider, and more. Codex, Gemini, and Copilot also get tool-native generated files where those tools support them.
+- **AI tool integration**: project-level guidance for Claude, Cursor, Copilot, Codex, Gemini, Aider, and more. Claude, Codex, Gemini, Copilot, and OpenCode also get tool-native generated files where those tools support them.
 - **Auto-iteration**: `ahadiff improve` optimizes prompts in an isolated worktree and keeps only better results.
 - **MCP server**: read-only stdio MCP server for local MCP-capable agents.
 - **Privacy**: three tiers: strict_local, redacted_remote, explicit_remote. The default is strict_local.
@@ -155,7 +155,7 @@ ahadiff install claude          # also: cursor, copilot, codex, gemini, aider, w
 ```
 13 targets supported. Run `ahadiff install --help` for the full list, or configure in the WebUI under Settings → AI Tool Guidance.
 
-For Codex, Gemini, and Copilot, install writes the tool-native generated skill or instruction file plus the small marked section in the repo guidance file. Uninstall only removes AhaDiff-generated files and AhaDiff marked sections.
+For Claude, Codex, Gemini, Copilot, and OpenCode, install writes a tool-native generated file plus the small marked section in the repo guidance file. The generated paths are `.claude/skills/ahadiff/SKILL.md`, `.agents/skills/ahadiff/SKILL.md`, `.gemini/skills/ahadiff/SKILL.md`, `.github/instructions/ahadiff.instructions.md`, and `.opencode/agents/ahadiff.md`. Repo guidance sections stay in user-managed files such as `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, and `.github/copilot-instructions.md`. Uninstall only removes AhaDiff-generated files and AhaDiff marked sections.
 
 ## 8-Dimension Rubric
 

@@ -14,15 +14,17 @@ be learned back from the actual diff.
 - `ahadiff quiz <run_id>` reviews generated quiz questions.
 - `ahadiff review` opens the due SRS queue.
 - `ahadiff verify <run_id>` rechecks claims and score artifacts.
-- `ahadiff improve <run_id>` proposes targeted improvements.
+- `ahadiff improve --rounds 1` runs one targeted improvement round.
 - `ahadiff serve` opens the local WebUI.
+- `ahadiff init` initializes per-repo AhaDiff state.
 
-## Guidance
+Additional learn capture modes: `ahadiff learn --last`, `ahadiff learn --since
+"2 hours ago"`, `ahadiff learn --unstaged`, and `ahadiff learn --patch FILE|-`.
 
-- Prefer AhaDiff artifacts with verified claims and file-line evidence over
-  free-form summaries.
-- Use `.ahadiff/runs/<run_id>/` for run artifacts such as claims, lessons,
-  quizzes, scores, and provenance.
-- Treat `review.sqlite` as the local review and SRS state source.
-- Keep provider credentials in environment variables and do not commit private
-  audit logs.
+## Boundaries
+
+- Keep provider credentials in environment variables.
+- Do not commit `.ahadiff/audit.private.jsonl`.
+- Treat `.ahadiff/` as local state.
+- Prefer verified claims with file-line evidence.
+- Do not upload `.ahadiff/` artifacts to external services without explicit user consent.

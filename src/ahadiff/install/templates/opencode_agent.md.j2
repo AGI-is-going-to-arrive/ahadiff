@@ -1,4 +1,5 @@
 ---
+name: ahadiff
 description: "AhaDiff verified diff learning guidance"
 ---
 <!-- AHADIFF:GENERATED -->
@@ -8,17 +9,49 @@ Use AhaDiff after code changes to produce verified learn-back artifacts. OpenCod
 can also pick up project skills from `.agents/skills` when the workspace uses
 that shared convention.
 
-Preferred commands:
+## Core Commands
 
 - `ahadiff learn HEAD~1..HEAD`
 - `ahadiff learn --staged`
 - `ahadiff quiz <run_id>`
 - `ahadiff review`
 - `ahadiff verify <run_id>`
-- `ahadiff improve <run_id>`
+- `ahadiff improve --rounds 1`
 - `ahadiff serve`
+- `ahadiff init`
 
-Use verified claims and file-line evidence when explaining changes. Keep
-`.ahadiff/review.sqlite`, `.ahadiff/runs/`, and `prompts/` local unless the repo
-policy says otherwise. Do not commit local provider credentials, endpoints, or
-private audit logs.
+### Additional Capture Modes
+
+- `ahadiff learn --last`
+- `ahadiff learn --since "2 hours ago"`
+- `ahadiff learn --unstaged`
+- `ahadiff learn --patch FILE|-`
+- `ahadiff learn --compare PATH1 PATH2`
+- `ahadiff learn --compare-dir DIR1 DIR2`
+- `ahadiff learn --patch-url URL`
+- `ahadiff learn --against-spec PATH`
+- `ahadiff learn --changed-path PATH`
+
+## Advanced
+
+- `ahadiff doctor`
+- `ahadiff config show --resolved`
+- `ahadiff watch`
+- `ahadiff export preview RUN_ID --out PATH`
+- `ahadiff export-results`
+- `ahadiff mcp-server`
+- `ahadiff install --detect`
+- `ahadiff graph status`
+- `ahadiff graph import`
+- `ahadiff graph refresh`
+- `ahadiff concepts list`
+- `ahadiff concepts verify`
+- `ahadiff concepts lint`
+
+## Boundaries
+
+- Keep provider credentials in environment variables.
+- Do not commit `.ahadiff/audit.private.jsonl`.
+- Treat `.ahadiff/` as local state.
+- Prefer verified claims with file-line evidence.
+- Do not upload `.ahadiff/` artifacts to external services without explicit user consent.

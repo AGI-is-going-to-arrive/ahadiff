@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from typer.testing import CliRunner
 
 import ahadiff.install.hooks as hooks_module
@@ -19,6 +20,123 @@ from ahadiff.install.registry import get_target
 from ahadiff.install.template_loader import render_template
 
 _RUNNER = CliRunner()
+_INSTALL_TEMPLATE_NAMES = (
+    "agents_section.md.j2",
+    "ahadiff-generate.yml.j2",
+    "ahadiff-verify.yml.j2",
+    "aider_section.md.j2",
+    "claude_section.md.j2",
+    "claude_skill.md.j2",
+    "cline_rules.md.j2",
+    "codex_skill.md.j2",
+    "continue_rule.md.j2",
+    "copilot_instruction.md.j2",
+    "copilot_section.md.j2",
+    "cursor_rule.mdc.j2",
+    "gemini_section.md.j2",
+    "gemini_skill.md.j2",
+    "opencode_agent.md.j2",
+    "post_commit_hook.sh.j2",
+    "pre_push_hook.sh.j2",
+    "roo_rules.md.j2",
+    "windsurf_rule.md.j2",
+)
+_SKILL_TEMPLATE_NAMES = (
+    "claude_skill.md.j2",
+    "codex_skill.md.j2",
+    "gemini_skill.md.j2",
+    "opencode_agent.md.j2",
+)
+_SECTION_TEMPLATE_NAMES = (
+    "claude_section.md.j2",
+    "agents_section.md.j2",
+    "gemini_section.md.j2",
+    "aider_section.md.j2",
+    "copilot_section.md.j2",
+)
+_STANDARD_BOUNDARY_PHRASES = (
+    "Keep provider credentials in environment variables",
+    "Do not commit `.ahadiff/audit.private.jsonl`",
+    "Treat `.ahadiff/` as local state",
+    "Prefer verified claims with file-line evidence",
+    "Do not upload `.ahadiff/` artifacts to external services without explicit user consent",
+)
+_SKILL_CORE_COMMANDS = (
+    "`ahadiff learn HEAD~1..HEAD`",
+    "`ahadiff quiz <run_id>`",
+    "`ahadiff review`",
+    "`ahadiff verify <run_id>`",
+    "`ahadiff improve --rounds 1`",
+    "`ahadiff serve`",
+    "`ahadiff init`",
+)
+_SKILL_CAPTURE_COMMANDS = (
+    "`ahadiff learn --last`",
+    '`ahadiff learn --since "2 hours ago"`',
+    "`ahadiff learn --unstaged`",
+    "`ahadiff learn --patch FILE|-`",
+    "`ahadiff learn --compare PATH1 PATH2`",
+    "`ahadiff learn --compare-dir DIR1 DIR2`",
+    "`ahadiff learn --patch-url URL`",
+    "`ahadiff learn --against-spec PATH`",
+    "`ahadiff learn --changed-path PATH`",
+)
+_SKILL_CURATED_ADVANCED_COMMANDS = (
+    "`ahadiff doctor`",
+    "`ahadiff config show --resolved`",
+    "`ahadiff watch`",
+    "`ahadiff export preview RUN_ID --out PATH`",
+    "`ahadiff export-results`",
+    "`ahadiff mcp-server`",
+    "`ahadiff install --detect`",
+    "`ahadiff graph status`",
+    "`ahadiff graph import`",
+    "`ahadiff graph refresh`",
+    "`ahadiff concepts list`",
+    "`ahadiff concepts verify`",
+    "`ahadiff concepts lint`",
+)
+_SECTION_CAPTURE_COMMANDS = (
+    "`ahadiff learn --last`",
+    '`ahadiff learn --since "2 hours ago"`',
+)
+_TEMPLATE_CLI_HELP_CHECKS = (
+    (
+        ("--help",),
+        (
+            "init",
+            "learn",
+            "quiz",
+            "review",
+            "verify",
+            "improve",
+            "serve",
+            "watch",
+            "export-results",
+        ),
+    ),
+    (
+        ("learn", "--help"),
+        (
+            "--last",
+            "--since",
+            "--staged",
+            "--unstaged",
+            "--patch",
+            "--compare",
+            "--compare-dir",
+            "--patch-url",
+            "--against-spec",
+            "--changed-path",
+        ),
+    ),
+    (("improve", "--help"), ("--rounds",)),
+    (("install", "--help"), ("--detect", "--dry-run")),
+    (("export", "preview", "--help"), ("RUN_ID", "--out")),
+    (("graph", "--help"), ("status", "import", "refresh")),
+    (("concepts", "--help"), ("list", "verify", "lint")),
+    (("mcp-server", "--help"), ("--repo-root",)),
+)
 _V02_INSTALL_TARGET_CASES = (
     ("aider", "CONVENTIONS.md", "AHADIFF:BEGIN target=aider", False),
     ("cline", ".clinerules/ahadiff.md", "AHADIFF:GENERATED", True),
@@ -133,6 +251,9 @@ def test_v02_install_targets_are_available_in_help(target: str) -> None:
 def test_install_templates_are_static_and_render_without_values() -> None:
     assert tuple(inspect.signature(render_template).parameters) == ("name",)
     templates_root = files("ahadiff.install.templates")
+    assert sorted(
+        template.name for template in templates_root.iterdir() if template.name.endswith(".j2")
+    ) == sorted(_INSTALL_TEMPLATE_NAMES)
     for template in templates_root.iterdir():
         if not template.name.endswith(".j2"):
             continue
@@ -141,7 +262,79 @@ def test_install_templates_are_static_and_render_without_values() -> None:
         assert "]]" not in template_text
         assert "{%" not in template_text
         assert "{#" not in template_text
-        assert render_template(template.name)
+        rendered = render_template(template.name)
+        assert rendered
+        if template.name.endswith(".yml.j2"):
+            payload = yaml.safe_load(rendered)
+            assert isinstance(payload, dict)
+            assert "on" in payload
+            assert True not in payload
+
+
+@pytest.mark.parametrize("template_name", _INSTALL_TEMPLATE_NAMES)
+def test_install_templates_use_standard_boundaries(template_name: str) -> None:
+    rendered = render_template(template_name)
+
+    assert "Boundaries" in rendered
+    for phrase in _STANDARD_BOUNDARY_PHRASES:
+        assert phrase in rendered
+
+
+@pytest.mark.parametrize("template_name", _SKILL_TEMPLATE_NAMES)
+def test_skill_templates_document_curated_safe_cli_surface(template_name: str) -> None:
+    rendered = render_template(template_name)
+
+    for heading in ("## Core Commands", "### Additional Capture Modes", "## Advanced"):
+        assert heading in rendered
+    assert "`ahadiff learn --staged`" in rendered
+    for command in (
+        _SKILL_CORE_COMMANDS + _SKILL_CAPTURE_COMMANDS + _SKILL_CURATED_ADVANCED_COMMANDS
+    ):
+        assert command in rendered
+    for maintenance_command in (
+        "`ahadiff db restore PATH/TO/review.sqlite.bak`",
+        "`ahadiff unlock --force`",
+        "`ahadiff mark CLAIM_ID wrong`",
+    ):
+        assert maintenance_command not in rendered
+
+
+@pytest.mark.parametrize(("args", "snippets"), _TEMPLATE_CLI_HELP_CHECKS)
+def test_skill_template_curated_commands_match_cli_help(
+    args: tuple[str, ...],
+    snippets: tuple[str, ...],
+) -> None:
+    result = _RUNNER.invoke(app(), list(args))
+
+    assert result.exit_code == 0, result.output
+    for snippet in snippets:
+        assert snippet in result.output
+
+
+@pytest.mark.parametrize("template_name", _SECTION_TEMPLATE_NAMES)
+def test_section_templates_include_curated_learn_capture_modes(template_name: str) -> None:
+    rendered = render_template(template_name)
+
+    for command in _SECTION_CAPTURE_COMMANDS:
+        assert command in rendered
+
+
+def test_claude_skill_frontmatter_lists_safe_tools() -> None:
+    rendered = render_template("claude_skill.md.j2")
+
+    assert "allowed-tools: Read, Grep, Bash" in rendered
+
+
+def test_opencode_agent_frontmatter_names_ahadiff_agent() -> None:
+    rendered = render_template("opencode_agent.md.j2")
+
+    assert "name: ahadiff" in rendered
+
+
+def test_agents_section_notes_shared_codex_opencode_usage() -> None:
+    rendered = render_template("agents_section.md.j2")
+
+    assert "This section is shared by Codex CLI and OpenCode" in rendered
 
 
 def test_install_detect_reports_written_targets(tmp_path: Path) -> None:
@@ -257,6 +450,20 @@ def test_codex_install_merges_and_uninstalls_agents_section(tmp_path: Path) -> N
     assert installed_text.count("AHADIFF:BEGIN target=codex") == 1
     assert uninstall_result.exit_code == 0
     assert agents_path.read_text(encoding="utf-8").strip() == "Existing instructions"
+
+
+def test_claude_install_creates_missing_claude_file_and_skill(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+
+    install_result = _RUNNER.invoke(app(), ["install", "claude", "--repo-root", str(repo_root)])
+
+    assert install_result.exit_code == 0, install_result.output
+    claude_path = repo_root / "CLAUDE.md"
+    skill_path = repo_root / ".claude" / "skills" / "ahadiff" / "SKILL.md"
+    assert "AHADIFF:BEGIN target=claude" in claude_path.read_text(encoding="utf-8")
+    assert "<!-- AHADIFF:GENERATED -->" in skill_path.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(

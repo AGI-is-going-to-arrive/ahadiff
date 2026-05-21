@@ -1,26 +1,56 @@
 ---
 name: ahadiff
 description: "Use AhaDiff to verify and learn back AI-written diffs."
+allowed-tools: Read, Grep, Bash
 ---
 <!-- AHADIFF:GENERATED -->
 # AhaDiff
 
 Use this skill when a coding change should be learned back by the developer.
 
-## Commands
+## Core Commands
 
-- `ahadiff learn HEAD~1..HEAD` captures the latest commit and generates learning artifacts.
-- `ahadiff learn --staged` captures staged changes.
+- `ahadiff learn HEAD~1..HEAD` captures the latest commit.
+- `ahadiff learn --staged` captures staged work before commit.
 - `ahadiff quiz <run_id>` reviews generated quiz questions.
 - `ahadiff review` opens the due SRS queue.
 - `ahadiff verify <run_id>` rechecks a run.
-- `ahadiff improve <run_id>` runs a targeted improvement loop.
+- `ahadiff improve --rounds 1` runs one targeted improvement round.
 - `ahadiff serve` opens the local WebUI for run inspection.
+- `ahadiff init` initializes per-repo AhaDiff state.
+
+### Additional Capture Modes
+
+- `ahadiff learn --last`
+- `ahadiff learn --since "2 hours ago"`
+- `ahadiff learn --unstaged`
+- `ahadiff learn --patch FILE|-`
+- `ahadiff learn --compare PATH1 PATH2`
+- `ahadiff learn --compare-dir DIR1 DIR2`
+- `ahadiff learn --patch-url URL`
+- `ahadiff learn --against-spec PATH`
+- `ahadiff learn --changed-path PATH`
+
+## Advanced
+
+- `ahadiff doctor`
+- `ahadiff config show --resolved`
+- `ahadiff watch`
+- `ahadiff export preview RUN_ID --out PATH`
+- `ahadiff export-results`
+- `ahadiff mcp-server`
+- `ahadiff install --detect`
+- `ahadiff graph status`
+- `ahadiff graph import`
+- `ahadiff graph refresh`
+- `ahadiff concepts list`
+- `ahadiff concepts verify`
+- `ahadiff concepts lint`
 
 ## Boundaries
 
 - Keep provider credentials in environment variables.
 - Do not commit `.ahadiff/audit.private.jsonl`.
-- Treat `.ahadiff/review.sqlite`, `.ahadiff/runs/`, and `prompts/` as local
-  AhaDiff state unless the repository policy explicitly says otherwise.
-- Prefer verified claims with file-line evidence over free-form summaries.
+- Treat `.ahadiff/` as local state.
+- Prefer verified claims with file-line evidence.
+- Do not upload `.ahadiff/` artifacts to external services without explicit user consent.

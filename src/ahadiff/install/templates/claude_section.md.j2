@@ -2,11 +2,25 @@
 
 When working in this repository, use AhaDiff for learn-back and verification:
 
+Common commands:
+
 - `ahadiff learn HEAD~1..HEAD`
+- `ahadiff learn --staged`
 - `ahadiff quiz <run_id>`
 - `ahadiff review`
 - `ahadiff verify <run_id>`
+- `ahadiff improve --rounds 1`
+- `ahadiff serve`
 
-Treat `.ahadiff/review.sqlite` as the local truth source for scores, review
-cards, and learning signals. Do not write API keys or local provider endpoints
-into committed documentation.
+Additional learn capture modes:
+
+- `ahadiff learn --last`
+- `ahadiff learn --since "2 hours ago"`
+
+## Boundaries
+
+- Keep provider credentials in environment variables.
+- Do not commit `.ahadiff/audit.private.jsonl`.
+- Treat `.ahadiff/` as local state.
+- Prefer verified claims with file-line evidence.
+- Do not upload `.ahadiff/` artifacts to external services without explicit user consent.

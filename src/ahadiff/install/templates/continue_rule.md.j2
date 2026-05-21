@@ -14,8 +14,16 @@ scores, and run artifacts for the current diff.
 - Run `ahadiff quiz <run_id>` for generated recall and transfer questions.
 - Run `ahadiff review` to revisit due SRS cards.
 - Run `ahadiff verify <run_id>` before trusting generated artifacts.
+- Run `ahadiff improve --rounds 1` for one targeted improvement round.
 - Run `ahadiff serve` to inspect local run artifacts in the WebUI.
 
-Keep `.ahadiff/review.sqlite`, `.ahadiff/runs/`, and prompt files local unless
-the repository explicitly documents a different policy. Do not write provider
-secrets, private audit logs, or local provider endpoints into committed files.
+Additional learn capture modes: `ahadiff learn --last`, `ahadiff learn --since
+"2 hours ago"`, `ahadiff learn --unstaged`, and `ahadiff learn --patch FILE|-`.
+
+## Boundaries
+
+- Keep provider credentials in environment variables.
+- Do not commit `.ahadiff/audit.private.jsonl`.
+- Treat `.ahadiff/` as local state.
+- Prefer verified claims with file-line evidence.
+- Do not upload `.ahadiff/` artifacts to external services without explicit user consent.

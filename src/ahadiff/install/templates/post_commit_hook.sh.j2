@@ -1,4 +1,10 @@
 # AHADIFF:BEGIN target=hooks
+# Boundaries:
+# - Keep provider credentials in environment variables.
+# - Do not commit `.ahadiff/audit.private.jsonl`.
+# - Treat `.ahadiff/` as local state.
+# - Prefer verified claims with file-line evidence.
+# - Do not upload `.ahadiff/` artifacts to external services without explicit user consent.
 (
   if command -v ahadiff >/dev/null 2>&1; then
     printf '%s\n' 'AhaDiff: run `ahadiff learn HEAD~1..HEAD` to learn back this commit.'

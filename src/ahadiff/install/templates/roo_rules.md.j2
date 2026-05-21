@@ -11,9 +11,16 @@ Preferred commands:
 - `ahadiff quiz <run_id>`
 - `ahadiff review`
 - `ahadiff verify <run_id>`
-- `ahadiff improve <run_id>`
+- `ahadiff improve --rounds 1`
 - `ahadiff serve`
 
-Treat `.ahadiff/review.sqlite`, `.ahadiff/runs/`, and `prompts/` as local
-AhaDiff state. Do not commit provider credentials, local endpoints, or private
-audit logs. Prefer claims with file-line evidence over free-form summaries.
+Additional learn capture modes: `ahadiff learn --last`, `ahadiff learn --since
+"2 hours ago"`, `ahadiff learn --unstaged`, and `ahadiff learn --patch FILE|-`.
+
+## Boundaries
+
+- Keep provider credentials in environment variables.
+- Do not commit `.ahadiff/audit.private.jsonl`.
+- Treat `.ahadiff/` as local state.
+- Prefer verified claims with file-line evidence.
+- Do not upload `.ahadiff/` artifacts to external services without explicit user consent.

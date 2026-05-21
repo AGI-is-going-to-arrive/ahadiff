@@ -97,7 +97,7 @@ ahadiff review           # 复习过去生成的卡片
 - **新建学习对话框**：Dashboard 可直接从工作区、未暂存、已暂存或最近一次提交开始学习；高级卡片覆盖 `--since`、提交/范围、patch URL、粘贴补丁、文件对比和目录对比。
 - **导出**：支持 TSV / JSON、Anki `.apkg`，以及本地静态预览包。
 - **概念图谱**：自动提取跨 diff 的概念关系，并用 Canvas 图谱和健康检查展示。
-- **AI 工具集成**：为 Claude、Cursor、Copilot、Codex、Gemini、Aider 等工具写入项目级指引。Codex、Gemini 和 Copilot 还会写入各自工具能识别的生成文件。
+- **AI 工具集成**：为 Claude、Cursor、Copilot、Codex、Gemini、Aider 等工具写入项目级指引。Claude、Codex、Gemini、Copilot 和 OpenCode 还会写入各自工具能识别的生成文件。
 - **自动迭代**：`ahadiff improve` 在隔离 worktree 中优化 prompt，只保留更好的结果。
 - **MCP Server**：只读 stdio MCP server，可供支持 MCP 的本地 agent 使用。
 - **隐私**：三档模式：strict_local、redacted_remote、explicit_remote；默认 strict_local。
@@ -151,11 +151,11 @@ ahadiff review           # 复习过去生成的卡片
 AhaDiff 会在当前仓库写入项目级 AI 工具指引文件；不会重新安装 AhaDiff CLI，也不会写入全局用户目录：
 ```bash
 ahadiff install --detect        # 自动检测可用工具
-ahadiff install claude     # 也支持: cursor, copilot, codex, gemini, aider, windsurf, cline, roo, continue, ...
+ahadiff install claude          # 也支持: cursor, copilot, codex, gemini, aider, windsurf, cline, roo, continue, ...
 ```
 当前支持 13 个目标。完整列表可运行 `ahadiff install --help`，也可以在 WebUI 的 Settings → AI Tool Guidance 中配置。
 
-Codex、Gemini 和 Copilot 安装时会同时写入工具原生的生成 skill / instruction 文件，以及 repo 指引文件里的小段 AhaDiff 标记内容。卸载时只移除 AhaDiff 生成的文件和 AhaDiff 标记段。
+Claude、Codex、Gemini、Copilot 和 OpenCode 安装时会同时写入工具原生的生成文件，以及 repo 指引文件里的小段 AhaDiff 标记内容。生成文件路径分别是 `.claude/skills/ahadiff/SKILL.md`、`.agents/skills/ahadiff/SKILL.md`、`.gemini/skills/ahadiff/SKILL.md`、`.github/instructions/ahadiff.instructions.md` 和 `.opencode/agents/ahadiff.md`。repo 指引标记段仍写在 `CLAUDE.md`、`AGENTS.md`、`GEMINI.md`、`.github/copilot-instructions.md` 等用户管理文件中。卸载时只移除 AhaDiff 生成的文件和 AhaDiff 标记段。
 
 ## 8 维评分 Rubric
 

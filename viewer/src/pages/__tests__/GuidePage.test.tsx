@@ -1,8 +1,12 @@
 import type { ReactNode } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+
+const platformState = vi.hoisted(() => ({
+  current: 'linux' as 'linux' | 'windows',
+}));
 
 vi.mock('../../components/AppShell', () => ({
   default: ({ children }: { children: ReactNode }) => (
@@ -34,9 +38,8 @@ vi.mock('../../utils/platform', async () => {
   );
   return {
     ...actual,
-    detectPlatform: () => 'linux' as const,
-    getEnvVarCommand: (_p: unknown, name: string, value: string) =>
-      `export ${name}="${value}"`,
+    detectPlatform: () => platformState.current,
+    getEnvVarCommand: actual.getEnvVarCommand,
   };
 });
 
@@ -82,6 +85,11 @@ function extractRenderedCommands(html: string): string[] {
 }
 
 describe('GuidePage command examples', () => {
+  beforeEach(() => {
+    platformState.current = 'linux';
+    vi.resetModules();
+  });
+
   it('renders copyable commands with simple daily commands and required setup arguments', async () => {
     const { default: GuidePage } = await import('../GuidePage');
     const html = renderToStaticMarkup(<GuidePage />);
@@ -90,7 +98,20 @@ describe('GuidePage command examples', () => {
     expect(commands).toContain('uv tool install --editable .');
     expect(commands).toContain('ahadiff learn HEAD~1..HEAD');
     expect(commands).toContain('ahadiff learn --staged');
+    expect(commands).toContain('ahadiff learn --unstaged --include-untracked');
     expect(commands).toContain('ahadiff learn --unstaged --changed-path src/example.py');
+    expect(commands).toContain('ahadiff learn --last');
+    expect(commands).toContain('ahadiff learn --since "2 hours ago"');
+    expect(commands).toContain('ahadiff learn --patch diff.patch');
+    expect(commands).toContain('ahadiff learn --compare old.py new.py');
+    expect(commands).toContain('ahadiff learn --compare-dir src_old/ src_new/');
+    expect(commands).toContain('ahadiff learn --patch-url https://example.com/change.diff');
+    expect(commands).toContain('ahadiff learn --against-spec spec.md');
+    expect(commands).toContain('ahadiff mcp-server');
+    expect(commands).toContain('ahadiff export preview RUN_ID --out ./preview');
+    expect(commands).toContain('ahadiff challenge build RUN_ID');
+    expect(commands).toContain('ahadiff challenge status');
+    expect(commands).toContain('ahadiff concepts lint');
     expect(commands).toContain('ahadiff regenerate RUN_ID --only quiz');
     expect(commands).toContain('export AHADIFF_PROVIDER_API_KEY="<your-key>"\nexport AHADIFF_PROVIDER_BASE_URL="https://api.openai.com/v1"');
     expect(commands).toContain(
@@ -113,6 +134,20 @@ describe('GuidePage command examples', () => {
     expect(commands).not.toContain('pip install ahadiff');
     expect(commands).not.toContain(
       'ahadiff learn HEAD~1..HEAD --provider gpt55 --privacy-mode explicit_remote',
+    );
+  });
+
+  it('renders PowerShell setup syntax for Windows users', async () => {
+    platformState.current = 'windows';
+    const { default: GuidePage } = await import('../GuidePage');
+    const html = renderToStaticMarkup(<GuidePage />);
+    const commands = extractRenderedCommands(html);
+
+    expect(commands).toContain(
+      '$env:AHADIFF_PROVIDER_API_KEY = "<your-key>"\n$env:AHADIFF_PROVIDER_BASE_URL = "https://api.openai.com/v1"',
+    );
+    expect(commands).toContain(
+      'ahadiff provider test --name gpt55 --provider-class openai_responses --base-url $env:AHADIFF_PROVIDER_BASE_URL --model gpt-5.5 --api-key-env AHADIFF_PROVIDER_API_KEY --privacy-mode explicit_remote',
     );
   });
 

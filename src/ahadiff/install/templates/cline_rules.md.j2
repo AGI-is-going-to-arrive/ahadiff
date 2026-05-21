@@ -11,10 +11,16 @@ Preferred commands:
 - `ahadiff quiz <run_id>`
 - `ahadiff review`
 - `ahadiff verify <run_id>`
-- `ahadiff improve <run_id>`
+- `ahadiff improve --rounds 1`
 - `ahadiff serve`
 
-Prefer generated explanations backed by verified claims and file-line evidence.
-Treat `.ahadiff/review.sqlite`, `.ahadiff/runs/`, and `prompts/` as local
-AhaDiff state. Keep provider secrets in environment variables and do not commit
-private `.ahadiff/` audit logs or local provider endpoints.
+Additional learn capture modes: `ahadiff learn --last`, `ahadiff learn --since
+"2 hours ago"`, `ahadiff learn --unstaged`, and `ahadiff learn --patch FILE|-`.
+
+## Boundaries
+
+- Keep provider credentials in environment variables.
+- Do not commit `.ahadiff/audit.private.jsonl`.
+- Treat `.ahadiff/` as local state.
+- Prefer verified claims with file-line evidence.
+- Do not upload `.ahadiff/` artifacts to external services without explicit user consent.

@@ -2,14 +2,25 @@
 
 When suggesting or reviewing code changes, use AhaDiff for verified learn-back:
 
-- `ahadiff learn HEAD~1..HEAD` for committed changes.
-- `ahadiff learn --staged` before committing staged work.
-- `ahadiff quiz <run_id>` and `ahadiff review` for retention.
-- `ahadiff verify <run_id>` for existing runs.
-- `ahadiff improve <run_id>` for targeted follow-up.
-- `ahadiff serve` for local WebUI inspection.
+Common commands:
 
-Prefer explanations backed by `claims.jsonl` and file-line evidence. Treat
-`.ahadiff/review.sqlite`, `.ahadiff/runs/`, and `prompts/` as local AhaDiff
-state unless the repo policy says otherwise. Keep provider credentials in
-environment variables and avoid committing private audit logs.
+- `ahadiff learn HEAD~1..HEAD`
+- `ahadiff learn --staged`
+- `ahadiff quiz <run_id>`
+- `ahadiff review`
+- `ahadiff verify <run_id>`
+- `ahadiff improve --rounds 1`
+- `ahadiff serve`
+
+Additional learn capture modes:
+
+- `ahadiff learn --last`
+- `ahadiff learn --since "2 hours ago"`
+
+## Boundaries
+
+- Keep provider credentials in environment variables.
+- Do not commit `.ahadiff/audit.private.jsonl`.
+- Treat `.ahadiff/` as local state.
+- Prefer verified claims with file-line evidence.
+- Do not upload `.ahadiff/` artifacts to external services without explicit user consent.

@@ -76,6 +76,31 @@ const CORE_COMMANDS: ReadonlyArray<CommandEntry> = [
     command: 'ahadiff learn --unstaged --changed-path src/example.py',
     labelKey: 'Guide.commands_learn_path',
   },
+  { command: 'ahadiff learn --last', labelKey: 'Guide.commands_learn_last' },
+  {
+    command: 'ahadiff learn --since "2 hours ago"',
+    labelKey: 'Guide.commands_learn_since',
+  },
+  {
+    command: 'ahadiff learn --patch diff.patch',
+    labelKey: 'Guide.commands_learn_patch',
+  },
+  {
+    command: 'ahadiff learn --compare old.py new.py',
+    labelKey: 'Guide.commands_learn_compare',
+  },
+  {
+    command: 'ahadiff learn --compare-dir src_old/ src_new/',
+    labelKey: 'Guide.commands_learn_compare_dir',
+  },
+  {
+    command: 'ahadiff learn --patch-url https://example.com/change.diff',
+    labelKey: 'Guide.commands_learn_patch_url',
+  },
+  {
+    command: 'ahadiff learn --against-spec spec.md',
+    labelKey: 'Guide.commands_learn_against_spec',
+  },
   { command: 'ahadiff serve', labelKey: 'Guide.commands_serve' },
   { command: 'ahadiff quiz RUN_ID', labelKey: 'Guide.commands_quiz' },
   { command: 'ahadiff review', labelKey: 'Guide.commands_review' },
@@ -115,13 +140,27 @@ const ADVANCED_COMMANDS: ReadonlyArray<CommandEntry> = [
   { command: 'ahadiff db check', labelKey: 'Guide.advanced_db_check' },
   { command: 'ahadiff concepts list', labelKey: 'Guide.advanced_concepts_list' },
   { command: 'ahadiff concepts verify', labelKey: 'Guide.advanced_concepts_verify' },
+  { command: 'ahadiff concepts lint', labelKey: 'Guide.commands_concepts_lint' },
   { command: 'ahadiff benchmark', labelKey: 'Guide.advanced_benchmark' },
   { command: 'ahadiff claims RUN_ID --force', labelKey: 'Guide.advanced_claims' },
   { command: 'ahadiff score RUN_ID', labelKey: 'Guide.advanced_score' },
   { command: 'ahadiff export-results', labelKey: 'Guide.advanced_export' },
   {
+    command: 'ahadiff export preview RUN_ID --out ./preview',
+    labelKey: 'Guide.commands_export_preview',
+  },
+  {
     command: 'ahadiff regenerate RUN_ID --only quiz',
     labelKey: 'Guide.advanced_regenerate',
+  },
+  { command: 'ahadiff mcp-server', labelKey: 'Guide.commands_mcp_server' },
+  {
+    command: 'ahadiff challenge build RUN_ID',
+    labelKey: 'Guide.commands_challenge_build',
+  },
+  {
+    command: 'ahadiff challenge status',
+    labelKey: 'Guide.commands_challenge_status',
   },
 ];
 
