@@ -15,6 +15,7 @@ import ahadiff.install.hooks as hooks_module
 from ahadiff.cli import app
 from ahadiff.core.errors import InputError
 from ahadiff.install.base import InstallContext
+from ahadiff.install.registry import get_target
 from ahadiff.install.template_loader import render_template
 
 _RUNNER = CliRunner()
@@ -191,6 +192,30 @@ def test_install_manifest_preview_lists_file_strategies(tmp_path: Path) -> None:
     assert not (repo_root / ".claude").exists()
     assert not (repo_root / "CLAUDE.md").exists()
 
+    codex_result = _RUNNER.invoke(
+        app(),
+        ["install", "codex", "--repo-root", str(repo_root), "--manifest"],
+    )
+
+    assert codex_result.exit_code == 0
+    codex_payload = json.loads(codex_result.output)
+    assert codex_payload["actions"]["preview"] == [
+        {
+            "action": "write",
+            "file_strategy": "generated",
+            "path": ".agents/skills/ahadiff/SKILL.md",
+        },
+        {"action": "merge-section", "file_strategy": "user-managed", "path": "AGENTS.md"},
+    ]
+    assert codex_payload["actions"]["uninstall"] == [
+        {
+            "action": "remove",
+            "file_strategy": "generated",
+            "path": ".agents/skills/ahadiff/SKILL.md",
+        },
+        {"action": "remove-section", "file_strategy": "user-managed", "path": "AGENTS.md"},
+    ]
+
     github_result = _RUNNER.invoke(
         app(),
         ["install", "github-action", "--repo-root", str(repo_root), "--manifest"],
@@ -232,6 +257,182 @@ def test_codex_install_merges_and_uninstalls_agents_section(tmp_path: Path) -> N
     assert installed_text.count("AHADIFF:BEGIN target=codex") == 1
     assert uninstall_result.exit_code == 0
     assert agents_path.read_text(encoding="utf-8").strip() == "Existing instructions"
+
+
+@pytest.mark.parametrize(
+    ("target", "section_path", "generated_path", "section_marker", "generated_heading"),
+    (
+        (
+            "codex",
+            "AGENTS.md",
+            ".agents/skills/ahadiff/SKILL.md",
+            "AHADIFF:BEGIN target=codex",
+            "Codex",
+        ),
+        (
+            "gemini",
+            "GEMINI.md",
+            ".gemini/skills/ahadiff/SKILL.md",
+            "AHADIFF:BEGIN target=gemini",
+            "Gemini",
+        ),
+        (
+            "copilot",
+            ".github/copilot-instructions.md",
+            ".github/instructions/ahadiff.instructions.md",
+            "AHADIFF:BEGIN target=copilot",
+            "AhaDiff",
+        ),
+    ),
+)
+def test_workspace_install_targets_write_detect_and_uninstall_generated_skills(
+    tmp_path: Path,
+    target: str,
+    section_path: str,
+    generated_path: str,
+    section_marker: str,
+    generated_heading: str,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    user_managed_path = repo_root / section_path
+    generated_file_path = repo_root / generated_path
+
+    install_result = _RUNNER.invoke(app(), ["install", target, "--repo-root", str(repo_root)])
+    second_install = _RUNNER.invoke(app(), ["install", target, "--repo-root", str(repo_root)])
+    detect_result = _RUNNER.invoke(app(), ["install", "--detect", "--repo-root", str(repo_root)])
+
+    assert install_result.exit_code == 0, install_result.output
+    assert second_install.exit_code == 0, second_install.output
+    assert user_managed_path.exists()
+    assert generated_file_path.exists()
+    generated_text = generated_file_path.read_text(encoding="utf-8")
+    assert "AHADIFF:GENERATED" in generated_text
+    assert generated_heading in generated_text
+    assert section_marker in user_managed_path.read_text(encoding="utf-8")
+    assert detect_result.exit_code == 0, detect_result.output
+    assert target in detect_result.output
+    assert "yes" in detect_result.output
+
+    uninstall_result = _RUNNER.invoke(
+        app(),
+        ["uninstall", target, "--repo-root", str(repo_root)],
+    )
+    assert uninstall_result.exit_code == 0, uninstall_result.output
+    assert not generated_file_path.exists()
+    assert section_marker not in user_managed_path.read_text(encoding="utf-8")
+    assert get_target(target).detect(InstallContext(repo_root=repo_root)) is False
+
+
+@pytest.mark.parametrize(
+    ("target", "section_path", "generated_path", "section_marker"),
+    (
+        ("codex", "AGENTS.md", ".agents/skills/ahadiff/SKILL.md", "codex"),
+        ("gemini", "GEMINI.md", ".gemini/skills/ahadiff/SKILL.md", "gemini"),
+        (
+            "copilot",
+            ".github/copilot-instructions.md",
+            ".github/instructions/ahadiff.instructions.md",
+            "copilot",
+        ),
+    ),
+)
+def test_workspace_install_targets_detect_section_or_generated_file_only(
+    tmp_path: Path,
+    target: str,
+    section_path: str,
+    generated_path: str,
+    section_marker: str,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    context = InstallContext(repo_root=repo_root)
+    install_target = get_target(target)
+
+    section_file = repo_root / section_path
+    section_file.parent.mkdir(parents=True, exist_ok=True)
+    section_file.write_text(
+        f"before\n\n<!-- AHADIFF:BEGIN target={section_marker} -->\nbody\n<!-- AHADIFF:END -->\n",
+        encoding="utf-8",
+    )
+    assert install_target.detect(context) is True
+
+    section_file.unlink()
+    generated_file = repo_root / generated_path
+    generated_file.parent.mkdir(parents=True, exist_ok=True)
+    template_name = f"{target}_skill.md.j2" if target != "copilot" else "copilot_instruction.md.j2"
+    generated_file.write_text(render_template(template_name), encoding="utf-8")
+
+    assert install_target.detect(context) is True
+
+
+@pytest.mark.parametrize(
+    ("target", "generated_path"),
+    (
+        ("codex", ".agents/skills/ahadiff/SKILL.md"),
+        ("gemini", ".gemini/skills/ahadiff/SKILL.md"),
+        ("copilot", ".github/instructions/ahadiff.instructions.md"),
+    ),
+)
+def test_workspace_install_targets_refuse_user_file_with_incidental_generated_token(
+    tmp_path: Path,
+    target: str,
+    generated_path: str,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    generated_file = repo_root / generated_path
+    generated_file.parent.mkdir(parents=True)
+    generated_file.write_text(
+        "# User-managed instructions\n\nThis file mentions AHADIFF:GENERATED in prose.\n",
+        encoding="utf-8",
+    )
+
+    denied = _RUNNER.invoke(app(), ["install", target, "--repo-root", str(repo_root)])
+    uninstall = _RUNNER.invoke(app(), ["uninstall", target, "--repo-root", str(repo_root)])
+
+    assert denied.exit_code == 1
+    assert "refusing to overwrite" in denied.output
+    assert uninstall.exit_code == 0, uninstall.output
+    assert generated_file.exists()
+    assert generated_file.read_text(encoding="utf-8").startswith("# User-managed")
+
+    forced = _RUNNER.invoke(app(), ["install", target, "--repo-root", str(repo_root), "--force"])
+
+    assert forced.exit_code == 0, forced.output
+    assert "<!-- AHADIFF:GENERATED -->" in generated_file.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("target", "symlink_name", "outside_generated_path"),
+    (
+        ("codex", ".agents", "skills/ahadiff/SKILL.md"),
+        ("gemini", ".gemini", "skills/ahadiff/SKILL.md"),
+        ("copilot", ".github", "instructions/ahadiff.instructions.md"),
+    ),
+)
+def test_workspace_install_targets_do_not_detect_generated_file_through_symlink_parent(
+    tmp_path: Path,
+    target: str,
+    symlink_name: str,
+    outside_generated_path: str,
+) -> None:
+    repo_root = tmp_path / "repo"
+    outside_dir = tmp_path / "outside"
+    repo_root.mkdir()
+    outside_file = outside_dir / outside_generated_path
+    outside_file.parent.mkdir(parents=True)
+    outside_file.write_text("<!-- AHADIFF:GENERATED -->\n# Outside\n", encoding="utf-8")
+    _init_git_repo(repo_root)
+    try:
+        (repo_root / symlink_name).symlink_to(outside_dir, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
+
+    assert get_target(target).detect(InstallContext(repo_root=repo_root)) is False
 
 
 def test_uninstall_dry_run_previews_removals_without_mutating(tmp_path: Path) -> None:

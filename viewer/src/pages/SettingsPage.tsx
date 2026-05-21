@@ -25,6 +25,7 @@ import type {
 import { useTranslation, type MessageKey, type TranslateFn } from '../i18n/useTranslation';
 import { copyToClipboard } from '../utils/clipboard';
 import { mapDoctorMessage } from '../utils/doctor';
+import { actionLabel, strategyLabel } from '../utils/integrationLabels';
 import '../components/Settings.css';
 
 const GraphifyCard = lazy(() => import('../components/GraphifyCard'));
@@ -2200,28 +2201,6 @@ function previewButtonAriaLabel(
 
 function shortManifestHash(hash?: string | null): string | null {
   return hash ? `${hash.slice(0, 10)}…` : null;
-}
-
-function actionLabel(action: InstallManifestAction, t: TFn): string {
-  switch (action.action) {
-    case 'merge-section':
-    case 'append-section':
-      return t('Settings_page.integration_action_merge_section');
-    case 'remove-section':
-      return t('Settings_page.integration_action_remove_section');
-    case 'write':
-      return t('Settings_page.integration_action_write_file');
-    case 'remove':
-      return t('Settings_page.integration_action_remove_file');
-    default:
-      return action.action;
-  }
-}
-
-function strategyLabel(action: InstallManifestAction, t: TFn): string {
-  return action.file_strategy === 'generated'
-    ? t('Settings_page.integration_strategy_generated')
-    : t('Settings_page.integration_strategy_user_managed');
 }
 
 function IntegrationPreviewPanel({

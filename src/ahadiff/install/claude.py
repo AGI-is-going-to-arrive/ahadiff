@@ -6,6 +6,7 @@ from .base import (
     InstallAction,
     InstallContext,
     has_marker,
+    is_generated_file,
     remove_empty_parents,
     remove_generated_file,
     remove_marked_section,
@@ -23,8 +24,10 @@ class ClaudeTarget:
     name = "claude"
 
     def detect(self, context: InstallContext) -> bool:
-        return repo_path(context, ".claude/skills/ahadiff/SKILL.md").exists() or has_marker(
-            repo_path(context, "CLAUDE.md"), self.name
+        skill_path = repo_path(context, ".claude/skills/ahadiff/SKILL.md")
+        return is_generated_file(skill_path) or has_marker(
+            repo_path(context, "CLAUDE.md"),
+            self.name,
         )
 
     def preview(self, context: InstallContext) -> str:

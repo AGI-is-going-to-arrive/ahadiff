@@ -97,7 +97,7 @@ See the [User Guide](./docs/USER_GUIDE.en.html) for all 9 diff capture modes, ex
 - **New Run dialog**: Dashboard can start quick learn runs for working tree, unstaged, staged, or last commit changes, with advanced cards for `--since`, revision/range, patch URL, pasted patch text, file compare, and directory compare.
 - **Export**: export results as TSV / JSON, Anki `.apkg`, or a local static preview bundle.
 - **Concept graph**: AhaDiff extracts cross-diff concepts and shows them in a Canvas graph with health checks.
-- **AI tool integration**: project-level guidance for Claude, Cursor, Copilot, Codex, Gemini, Aider, and more.
+- **AI tool integration**: project-level guidance for Claude, Cursor, Copilot, Codex, Gemini, Aider, and more. Codex, Gemini, and Copilot also get tool-native generated files where those tools support them.
 - **Auto-iteration**: `ahadiff improve` optimizes prompts in an isolated worktree and keeps only better results.
 - **MCP server**: read-only stdio MCP server for local MCP-capable agents.
 - **Privacy**: three tiers: strict_local, redacted_remote, explicit_remote. The default is strict_local.
@@ -142,18 +142,20 @@ See the [User Guide](./docs/USER_GUIDE.en.html) for all 9 diff capture modes, ex
 </details>
 
 <details>
-<summary>Settings — provider and preferences</summary>
+<summary>Settings — provider, preferences, and AI tool guidance</summary>
 <img src="./docs/video/public/screenshots/en/en-settings.png" alt="Settings page" width="800">
 </details>
 
 ## AI tool integration
 
-AhaDiff writes project-level guidance into your AI tool so it knows about your learning history:
+AhaDiff writes repo-local guidance files for the current project; it does not install the AhaDiff CLI again or write global user directories:
 ```bash
 ahadiff install --detect        # auto-detect your tools
 ahadiff install claude          # also: cursor, copilot, codex, gemini, aider, windsurf, cline, roo, continue, ...
 ```
 13 targets supported. Run `ahadiff install --help` for the full list, or configure in the WebUI under Settings → AI Tool Guidance.
+
+For Codex, Gemini, and Copilot, install writes the tool-native generated skill or instruction file plus the small marked section in the repo guidance file. Uninstall only removes AhaDiff-generated files and AhaDiff marked sections.
 
 ## 8-Dimension Rubric
 

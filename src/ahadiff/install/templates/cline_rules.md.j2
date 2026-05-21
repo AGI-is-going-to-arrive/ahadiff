@@ -11,7 +11,10 @@ Preferred commands:
 - `ahadiff quiz <run_id>`
 - `ahadiff review`
 - `ahadiff verify <run_id>`
+- `ahadiff improve <run_id>`
+- `ahadiff serve`
 
-Prefer generated explanations with verified claims and file-line evidence.
-Keep provider secrets in environment variables and do not commit private
-`.ahadiff/` audit logs.
+Prefer generated explanations backed by verified claims and file-line evidence.
+Treat `.ahadiff/review.sqlite`, `.ahadiff/runs/`, and `prompts/` as local
+AhaDiff state. Keep provider secrets in environment variables and do not commit
+private `.ahadiff/` audit logs or local provider endpoints.

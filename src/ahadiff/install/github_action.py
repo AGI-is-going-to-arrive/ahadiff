@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from .base import (
     InstallAction,
     InstallContext,
+    is_generated_file,
     remove_empty_parents,
     remove_generated_file,
     write_generated_file,
@@ -20,7 +21,7 @@ class GitHubActionTarget:
     name = "github-action"
 
     def detect(self, context: InstallContext) -> bool:
-        return any(path.exists() for path in self._workflow_paths(context))
+        return any(is_generated_file(path) for path in self._workflow_paths(context))
 
     def preview(self, context: InstallContext) -> str:
         return self._plan(context).render(context.repo_root)

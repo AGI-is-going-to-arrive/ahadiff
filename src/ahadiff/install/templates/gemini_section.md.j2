@@ -4,7 +4,12 @@ Use AhaDiff to verify and learn from AI-written diffs:
 
 - Run `ahadiff learn HEAD~1..HEAD` for committed changes.
 - Run `ahadiff learn --staged` before committing staged work.
+- Run `ahadiff quiz <run_id>` and `ahadiff review` for retention.
 - Use `ahadiff verify <run_id>` when checking existing artifacts.
+- Use `ahadiff improve <run_id>` for a targeted follow-up.
+- Use `ahadiff serve` to inspect local run artifacts.
 
 Generated explanations should be grounded in `claims.jsonl` and file-line
-evidence. Provider secrets must stay in environment variables.
+evidence. Treat `.ahadiff/review.sqlite`, `.ahadiff/runs/`, and `prompts/` as
+local AhaDiff state unless the repo policy says otherwise. Provider secrets
+must stay in environment variables.

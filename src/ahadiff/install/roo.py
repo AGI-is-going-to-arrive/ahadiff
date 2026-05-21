@@ -6,6 +6,7 @@ from .base import (
     InstallAction,
     InstallContext,
     InstallPlan,
+    is_generated_file,
     remove_empty_parents,
     remove_generated_file,
     write_generated_file,
@@ -21,7 +22,7 @@ class RooTarget:
     name = "roo"
 
     def detect(self, context: InstallContext) -> bool:
-        return _is_generated(self._rules_path(context))
+        return is_generated_file(self._rules_path(context))
 
     def preview(self, context: InstallContext) -> str:
         return self._plan(context).render(context.repo_root)
@@ -54,10 +55,3 @@ class RooTarget:
 
     def _rules_path(self, context: InstallContext) -> Path:
         return repo_path(context, ".roo/rules/ahadiff.md")
-
-
-def _is_generated(path: Path) -> bool:
-    try:
-        return path.exists() and "AHADIFF:GENERATED" in path.read_text(encoding="utf-8")
-    except OSError:
-        return False

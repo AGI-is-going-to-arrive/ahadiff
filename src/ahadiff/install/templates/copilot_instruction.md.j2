@@ -1,0 +1,28 @@
+---
+applyTo: "**"
+---
+<!-- AHADIFF:GENERATED -->
+# AhaDiff
+
+Use AhaDiff when suggesting, reviewing, or explaining code changes that should
+be learned back from the actual diff.
+
+## Commands
+
+- `ahadiff learn HEAD~1..HEAD` captures the latest commit.
+- `ahadiff learn --staged` captures staged changes before commit.
+- `ahadiff quiz <run_id>` reviews generated quiz questions.
+- `ahadiff review` opens the due SRS queue.
+- `ahadiff verify <run_id>` rechecks claims and score artifacts.
+- `ahadiff improve <run_id>` proposes targeted improvements.
+- `ahadiff serve` opens the local WebUI.
+
+## Guidance
+
+- Prefer AhaDiff artifacts with verified claims and file-line evidence over
+  free-form summaries.
+- Use `.ahadiff/runs/<run_id>/` for run artifacts such as claims, lessons,
+  quizzes, scores, and provenance.
+- Treat `review.sqlite` as the local review and SRS state source.
+- Keep provider credentials in environment variables and do not commit private
+  audit logs.

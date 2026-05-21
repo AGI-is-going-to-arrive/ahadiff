@@ -6,6 +6,7 @@ from .base import (
     InstallAction,
     InstallContext,
     has_marker,
+    is_generated_file,
     remove_empty_parents,
     remove_generated_file,
     remove_marked_section,
@@ -23,7 +24,7 @@ class OpenCodeTarget:
     name = "opencode"
 
     def detect(self, context: InstallContext) -> bool:
-        return repo_path(context, ".opencode/agents/ahadiff.md").exists() or has_marker(
+        return is_generated_file(repo_path(context, ".opencode/agents/ahadiff.md")) or has_marker(
             repo_path(context, "AGENTS.md"), self.name
         )
 

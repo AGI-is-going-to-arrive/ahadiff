@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 vi.mock('../../components/AppShell', () => ({
   default: ({ children }: { children: ReactNode }) => (
@@ -112,5 +114,13 @@ describe('GuidePage command examples', () => {
     expect(commands).not.toContain(
       'ahadiff learn HEAD~1..HEAD --provider gpt55 --privacy-mode explicit_remote',
     );
+  });
+
+  it('keeps live agent manifest hints accessible and focused on generated files', () => {
+    const source = readFileSync(resolve(__dirname, '../GuidePage.tsx'), 'utf-8');
+
+    expect(source).toContain("file_strategy === 'generated'");
+    expect(source).not.toContain('target.manifest?.write?.[0]?.path ?? AGENT_PATH_HINTS');
+    expect(source).not.toContain('className="guide-agent-card__actions-more" aria-hidden');
   });
 });

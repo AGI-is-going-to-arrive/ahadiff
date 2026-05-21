@@ -1,7 +1,12 @@
+---
+description: "AhaDiff verified diff learning guidance"
+---
 <!-- AHADIFF:GENERATED -->
 # AhaDiff Agent
 
-Use AhaDiff after code changes to produce verified learn-back artifacts.
+Use AhaDiff after code changes to produce verified learn-back artifacts. OpenCode
+can also pick up project skills from `.agents/skills` when the workspace uses
+that shared convention.
 
 Preferred commands:
 
@@ -10,5 +15,10 @@ Preferred commands:
 - `ahadiff quiz <run_id>`
 - `ahadiff review`
 - `ahadiff verify <run_id>`
+- `ahadiff improve <run_id>`
+- `ahadiff serve`
 
-Do not commit local provider credentials or private audit logs.
+Use verified claims and file-line evidence when explaining changes. Keep
+`.ahadiff/review.sqlite`, `.ahadiff/runs/`, and `prompts/` local unless the repo
+policy says otherwise. Do not commit local provider credentials, endpoints, or
+private audit logs.

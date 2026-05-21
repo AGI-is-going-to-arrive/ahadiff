@@ -107,8 +107,15 @@ def _uninstall_command(name: str) -> str:
     return f"ahadiff uninstall {name}"
 
 
-def _manifest_hash(payload: dict[str, Any]) -> str:
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+def _manifest_hash(payload: dict[str, Any], context: InstallContext) -> str:
+    hash_payload = {
+        "manifest": payload,
+        "options": {
+            "force": context.force,
+            "layer2": context.layer2,
+        },
+    }
+    canonical = json.dumps(hash_payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
@@ -121,7 +128,7 @@ def _manifest_preview_payload(target: Any, context: InstallContext) -> tuple[dic
     if not isinstance(raw_actions, dict):
         raise InputError("install target manifest preview is invalid")
     actions = cast("dict[str, Any]", raw_actions)
-    return actions, _manifest_hash(manifest_payload)
+    return actions, _manifest_hash(manifest_payload, context)
 
 
 def _relative_paths(paths: list[Any], repo_root: Any) -> list[str]:

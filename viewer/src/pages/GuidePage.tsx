@@ -18,6 +18,7 @@ import { CommandBlock } from '../components/CommandBlock';
 import { getInstallTargets, type InstallTarget } from '../api/config';
 import { useTranslation, type MessageKey, type TranslateFn } from '../i18n/useTranslation';
 import { detectPlatform, getEnvVarCommand, type Platform } from '../utils/platform';
+import { actionLabel } from '../utils/integrationLabels';
 import './GuidePage.css';
 
 type IconType = typeof BookOpen;
@@ -206,12 +207,19 @@ const AGENT_MARKS: Record<string, string> = {
 };
 
 const AGENT_PATH_HINTS: Record<string, string> = {
+  aider: 'CONVENTIONS.md',
   claude: '.claude/skills/ahadiff/SKILL.md',
+  cline: '.clinerules/ahadiff.md',
+  codex: '.agents/skills/ahadiff/SKILL.md',
+  continue: '.continue/rules/ahadiff.md',
+  copilot: '.github/instructions/ahadiff.instructions.md',
   cursor: '.cursor/rules/ahadiff.mdc',
-  codex: 'AGENTS.md + ahadiff.toml',
-  gemini: '.gemini/settings.json',
+  gemini: '.gemini/skills/ahadiff/SKILL.md',
+  'github-action': '.github/workflows/ahadiff-verify.yml',
+  hooks: '.git/hooks/post-commit',
   opencode: '.opencode/agents/ahadiff.md',
-  copilot: '.github/copilot-instructions.md',
+  roo: '.roo/rules/ahadiff.md',
+  windsurf: '.windsurf/rules/ahadiff.md',
 };
 
 function targetMark(name: string): string {
@@ -530,6 +538,14 @@ function AgentSkillsSection({
     [failed, loaded, targets],
   );
 
+  const integrationMeta = useMemo(() => {
+    const map = new Map<string, IntegrationTarget>();
+    for (const target of INTEGRATION_TARGETS) {
+      map.set(target.name, target);
+    }
+    return map;
+  }, []);
+
   return (
     <section
       id="agent-skills"
@@ -565,7 +581,14 @@ function AgentSkillsSection({
           const status = loaded && failed ? 'error' : target.status;
           const displayName = target.display_name || name;
           const command = target.install_command ?? `ahadiff install ${name}`;
-          const pathHint = target.manifest?.write?.[0]?.path ?? AGENT_PATH_HINTS[name] ?? '';
+          const writes = target?.manifest?.write ?? [];
+          const pathHint = writes.find((action) => action.file_strategy === 'generated')?.path
+            ?? writes[0]?.path
+            ?? AGENT_PATH_HINTS[name]
+            ?? '';
+          const visibleWrites = writes.slice(0, 2);
+          const hiddenCount = Math.max(writes.length - visibleWrites.length, 0);
+          const meta = integrationMeta.get(name);
           return (
             <article className="guide-agent-card" key={name}>
               <div className="guide-agent-card__topline">
@@ -573,17 +596,27 @@ function AgentSkillsSection({
                 <span className={`guide-agent-card__status guide-agent-card__status--${status}`}>
                   {t(`Guide.agent_status_${status}` as MessageKey)}
                 </span>
+                {meta?.posixOnly && (
+                  <span className="guide-agent-card__platform-badge">
+                    {t('Guide.integrations_posix_only')}
+                  </span>
+                )}
               </div>
               <h3 className="guide-agent-card__name">{displayName}</h3>
-              <p className="guide-agent-card__path">{pathHint}</p>
+              {pathHint && <p className="guide-agent-card__path">{pathHint}</p>}
               <CommandBlock command={command} {...copyLabels} />
-              {target?.manifest?.write && target.manifest.write.length > 0 && (
+              {writes.length > 0 && (
                 <ul className="guide-agent-card__actions" role="list">
-                  {target.manifest.write.slice(0, 2).map((action) => (
+                  {visibleWrites.map((action) => (
                     <li key={`${action.action}:${action.path}`}>
-                      {action.action} · <span>{action.path}</span>
+                      {actionLabel(action, t)} · <code>{action.path}</code>
                     </li>
                   ))}
+                  {hiddenCount > 0 && (
+                    <li className="guide-agent-card__actions-more">
+                      {t('Guide.agent_skills_more_actions', { count: hiddenCount })}
+                    </li>
+                  )}
                 </ul>
               )}
             </article>

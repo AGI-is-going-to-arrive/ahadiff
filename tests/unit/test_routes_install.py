@@ -191,6 +191,9 @@ def test_hooks_target_is_unsupported_on_windows(
     assert hooks["platform_supported"] is False
     assert hooks["status"] == "unsupported"
     assert hooks["detected"] is False
+    for target_name in ("codex", "gemini", "copilot"):
+        assert targets_by_name[target_name]["platform_supported"] is True
+        assert targets_by_name[target_name]["status"] == "available"
 
 
 # ---------------------------------------------------------------------------
@@ -311,18 +314,36 @@ def test_get_install_targets_returns_manifest_preview(tmp_path: Path) -> None:
     response = client.get("/api/install/targets")
 
     targets_by_name = {t["name"]: t for t in response.json()["targets"]}
-    codex = targets_by_name["codex"]
-    assert codex["display_name"] == "Codex CLI"
-    assert targets_by_name["gemini"]["display_name"] == "Gemini CLI"
-    assert targets_by_name["copilot"]["display_name"] == "Copilot / VS Code"
-    assert codex["manifest_error"] is None
-    assert len(codex["manifest_hash"]) == 64
-    assert codex["manifest"]["write"] == [
-        {"action": "merge-section", "file_strategy": "user-managed", "path": "AGENTS.md"}
-    ]
-    assert codex["manifest"]["uninstall"] == [
-        {"action": "remove-section", "file_strategy": "user-managed", "path": "AGENTS.md"}
-    ]
+    expected_manifests = {
+        "codex": (
+            "Codex CLI",
+            ".agents/skills/ahadiff/SKILL.md",
+            "AGENTS.md",
+        ),
+        "gemini": (
+            "Gemini CLI",
+            ".gemini/skills/ahadiff/SKILL.md",
+            "GEMINI.md",
+        ),
+        "copilot": (
+            "Copilot / VS Code",
+            ".github/instructions/ahadiff.instructions.md",
+            ".github/copilot-instructions.md",
+        ),
+    }
+    for name, (display_name, generated_path, section_path) in expected_manifests.items():
+        target = targets_by_name[name]
+        assert target["display_name"] == display_name
+        assert target["manifest_error"] is None
+        assert len(target["manifest_hash"]) == 64
+        assert target["manifest"]["write"] == [
+            {"action": "write", "file_strategy": "generated", "path": generated_path},
+            {"action": "merge-section", "file_strategy": "user-managed", "path": section_path},
+        ]
+        assert target["manifest"]["uninstall"] == [
+            {"action": "remove", "file_strategy": "generated", "path": generated_path},
+            {"action": "remove-section", "file_strategy": "user-managed", "path": section_path},
+        ]
 
 
 def test_all_registered_targets_appear_in_response(tmp_path: Path) -> None:
@@ -446,6 +467,40 @@ def test_install_mutation_requires_token_and_manifest_confirmation(tmp_path: Pat
     assert not (state_dir.parent / "AGENTS.md").exists()
 
 
+def test_install_mutation_rejects_manifest_hash_when_force_option_changes(tmp_path: Path) -> None:
+    state_dir = tmp_path / "repo" / ".ahadiff"
+    state_dir.mkdir(parents=True)
+    skill_path = state_dir.parent / ".agents" / "skills" / "ahadiff" / "SKILL.md"
+    skill_path.parent.mkdir(parents=True)
+    skill_path.write_text("user-managed\n", encoding="utf-8")
+    client = _client(state_dir)
+    headers = {"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"}
+
+    default_preview = client.post("/api/install/codex/preview", headers=headers, json={}).json()
+    mismatched_force = client.post(
+        "/api/install/codex",
+        headers=headers,
+        json={"confirmed_manifest_hash": default_preview["manifest_hash"], "force": True},
+    )
+    assert mismatched_force.status_code == 400
+    assert skill_path.read_text(encoding="utf-8") == "user-managed\n"
+
+    force_preview = client.post(
+        "/api/install/codex/preview",
+        headers=headers,
+        json={"force": True},
+    ).json()
+    installed = client.post(
+        "/api/install/codex",
+        headers=headers,
+        json={"confirmed_manifest_hash": force_preview["manifest_hash"], "force": True},
+    )
+
+    assert force_preview["manifest_hash"] != default_preview["manifest_hash"]
+    assert installed.status_code == 200
+    assert "<!-- AHADIFF:GENERATED -->" in skill_path.read_text(encoding="utf-8")
+
+
 def test_install_and_uninstall_mutations_write_only_tmp_repo(tmp_path: Path) -> None:
     state_dir = tmp_path / "repo" / ".ahadiff"
     state_dir.mkdir(parents=True)
@@ -468,13 +523,15 @@ def test_install_and_uninstall_mutations_write_only_tmp_repo(tmp_path: Path) -> 
     agents_path = state_dir.parent / "AGENTS.md"
     assert installed.status_code == 200
     assert installed.json()["operation"] == "install"
-    assert installed.json()["updated_paths"] == ["AGENTS.md"]
+    expected_paths = [".agents/skills/ahadiff/SKILL.md", "AGENTS.md"]
+    assert sorted(installed.json()["updated_paths"]) == sorted(expected_paths)
     assert installed.json()["target"]["status"] == "installed"
     assert agents_path.exists()
     assert uninstalled.status_code == 200
     assert uninstalled.json()["operation"] == "uninstall"
-    assert uninstalled.json()["updated_paths"] == ["AGENTS.md"]
+    assert sorted(uninstalled.json()["updated_paths"]) == sorted(expected_paths)
     assert "AHADIFF:BEGIN target=codex" not in agents_path.read_text(encoding="utf-8")
+    assert uninstalled.json()["target"]["detected"] is False
 
 
 def test_install_mutation_rejects_repo_root_override(tmp_path: Path) -> None:

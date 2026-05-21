@@ -1,3 +1,7 @@
+---
+name: ahadiff
+description: "Use AhaDiff to verify and learn back AI-written diffs."
+---
 <!-- AHADIFF:GENERATED -->
 # AhaDiff
 
@@ -10,9 +14,13 @@ Use this skill when a coding change should be learned back by the developer.
 - `ahadiff quiz <run_id>` reviews generated quiz questions.
 - `ahadiff review` opens the due SRS queue.
 - `ahadiff verify <run_id>` rechecks a run.
+- `ahadiff improve <run_id>` runs a targeted improvement loop.
+- `ahadiff serve` opens the local WebUI for run inspection.
 
 ## Boundaries
 
 - Keep provider credentials in environment variables.
 - Do not commit `.ahadiff/audit.private.jsonl`.
+- Treat `.ahadiff/review.sqlite`, `.ahadiff/runs/`, and `prompts/` as local
+  AhaDiff state unless the repository policy explicitly says otherwise.
 - Prefer verified claims with file-line evidence over free-form summaries.

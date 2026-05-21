@@ -1,13 +1,21 @@
+---
+name: ahadiff
+description: "AhaDiff verified diff learning guidance"
+alwaysApply: false
+---
 <!-- AHADIFF:GENERATED -->
 # AhaDiff
 
 Use AhaDiff after code changes to capture verified lessons, claims, quiz cards,
-and scores for the current diff.
+scores, and run artifacts for the current diff.
 
 - Run `ahadiff learn HEAD~1..HEAD` for the latest commit.
 - Run `ahadiff learn --staged` before committing staged work.
+- Run `ahadiff quiz <run_id>` for generated recall and transfer questions.
 - Run `ahadiff review` to revisit due SRS cards.
 - Run `ahadiff verify <run_id>` before trusting generated artifacts.
+- Run `ahadiff serve` to inspect local run artifacts in the WebUI.
 
-Do not write provider secrets, private audit logs, or local provider endpoints
-into committed files.
+Keep `.ahadiff/review.sqlite`, `.ahadiff/runs/`, and prompt files local unless
+the repository explicitly documents a different policy. Do not write provider
+secrets, private audit logs, or local provider endpoints into committed files.

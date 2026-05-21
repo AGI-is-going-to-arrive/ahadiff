@@ -6,6 +6,7 @@ from .base import (
     InstallAction,
     InstallContext,
     InstallPlan,
+    is_generated_file,
     remove_empty_parents,
     remove_generated_file,
     write_generated_file,
@@ -21,13 +22,7 @@ class WindsurfTarget:
     name = "windsurf"
 
     def detect(self, context: InstallContext) -> bool:
-        try:
-            rule_path = repo_path(context, ".windsurf/rules/ahadiff.md")
-            return rule_path.exists() and "AHADIFF:GENERATED" in rule_path.read_text(
-                encoding="utf-8"
-            )
-        except OSError:
-            return False
+        return is_generated_file(repo_path(context, ".windsurf/rules/ahadiff.md"))
 
     def preview(self, context: InstallContext) -> str:
         return self._plan(context).render(context.repo_root)

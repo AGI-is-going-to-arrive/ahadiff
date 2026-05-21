@@ -22,6 +22,7 @@ SECTION_RE = re.compile(
     re.DOTALL,
 )
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+_GENERATED_SENTINELS = frozenset({"<!-- AHADIFF:GENERATED -->", "# AHADIFF:GENERATED"})
 
 
 @dataclass(frozen=True)
@@ -142,6 +143,14 @@ def has_marker(path: Path, target: str) -> bool:
         return False
 
 
+def is_generated_file(path: Path) -> bool:
+    try:
+        content = _read_text_no_follow_regular(path, "generated install target")
+        return _has_generated_sentinel(content)
+    except (FileNotFoundError, OSError):
+        return False
+
+
 def merge_marked_section(path: Path, target: str, section: str) -> str:
     try:
         original = _read_text_no_follow_regular(path, "install target")
@@ -187,7 +196,7 @@ def write_generated_file(
         existing = _read_text_no_follow_regular(path, "generated install target")
     except FileNotFoundError:
         existing = None
-    if existing is not None and not force and "AHADIFF:GENERATED" not in existing:
+    if existing is not None and not force and not _has_generated_sentinel(existing):
         raise InputError(f"refusing to overwrite user-managed file without --force: {path}")
     _prepare_install_file_write(path, "generated install target")
     _atomic_write(path, content)
@@ -198,7 +207,7 @@ def remove_generated_file(path: Path) -> bool:
         content = _read_text_no_follow_regular(path, "generated install target")
     except FileNotFoundError:
         return False
-    if "AHADIFF:GENERATED" not in content:
+    if not _has_generated_sentinel(content):
         return False
     _prepare_install_file_write(path, "generated install target")
     path.unlink()
@@ -212,6 +221,25 @@ def _replace_marked_section(original: str, target: str, section: str) -> str:
     )
     updated, count = pattern.subn(section.strip(), original, count=1)
     return updated if count else original
+
+
+def _has_generated_sentinel(content: str) -> bool:
+    lines = content.splitlines()
+    index = 0
+    while index < len(lines) and not lines[index].strip():
+        index += 1
+    if index < len(lines) and lines[index].strip() == "---":
+        index += 1
+        while index < len(lines) and lines[index].strip() != "---":
+            index += 1
+        if index >= len(lines):
+            return False
+        index += 1
+        while index < len(lines) and not lines[index].strip():
+            index += 1
+    if index >= len(lines):
+        return False
+    return lines[index].strip() in _GENERATED_SENTINELS
 
 
 def _uninstall_action(action: InstallAction) -> InstallAction:

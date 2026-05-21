@@ -184,7 +184,7 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
   <h3>哪些安全发现会让 run 失败？</h3>
   <p>未缓解的 Critical safety finding 会让 run 失败。Critical secret finding 只有在本地捕获记录里带完整 redaction 结构时才算已缓解，包括 rule、hash、source、line 和 column。</p>
   <h3>能不能说没有任何 bug？</h3>
-  <p>不能做绝对保证。上一轮完整发布 gate 覆盖了后端 unit/integration/eval、静态检查、wheel、前端 typecheck/build/Vitest、完整 Playwright、real-serve、CLI 行为矩阵、Linux 目标容器测试和 GPT-5.5 live fixture。后续 follow-up 只按各自改动面复跑。本次 Learn 对话框 / Quiz 徽标 review 和修复 pass 复跑了前端 Vitest，结果是 <code>405 passed</code>，并通过前端 typecheck、i18n parity、桌面三浏览器 <code>cross-browser.spec.ts</code> Playwright <code>30 passed</code> 和 <code>git diff --check HEAD</code>；没有重跑后端、完整 Playwright、live judge、远端 CI 或真实 Windows runner。</p>
+  <p>不能做绝对保证。上一轮完整发布 gate 覆盖了后端 unit/integration/eval、静态检查、wheel、前端 typecheck/build/Vitest、完整 Playwright、real-serve、CLI 行为矩阵、Linux 目标容器测试和 GPT-5.5 live fixture。后续 follow-up 只按各自改动面复跑。本次 AI 工具指引 review 和修复 pass 复跑了 install route/unit 测试，结果是 <code>72 passed</code>，并通过 ruff check、ruff format check、pyright <code>0 errors</code>、前端 typecheck、完整前端 Vitest <code>408 passed</code>、前端 build 和 <code>git diff --check HEAD</code>；没有重跑完整 Playwright、live judge、远端 CI、Linux 容器 gate 或真实 Windows runner。</p>
 </section>
 
 <section id="verification">
@@ -192,7 +192,7 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
   <ul>
     <li>截图来自当前 <code>viewer/</code>，用 Playwright 和现有 serve mock 生成，不包含真实密钥。</li>
     <li>real-serve 已用临时 git repo 启动真实 <code>python -m ahadiff serve</code>，浏览器覆盖 token、estimate、learn dry-run、task 和 progress stream。</li>
-    <li>本次 Learn 对话框 / Quiz 徽标 review 和修复 pass 已复核前端改动面：<code>pnpm vitest run</code>、<code>pnpm typecheck</code>、i18n parity、桌面三浏览器 <code>cross-browser.spec.ts</code> Playwright 和 whitespace diff-check。这次文档同步后，又针对更新后的文档重跑了 whitespace diff-check。</li>
+    <li>本次 AI 工具指引 review 和修复 pass 已复核 install 与 viewer 改动面：<code>uv run pytest tests/unit/test_install.py tests/unit/test_routes_install.py -q</code> 为 <code>72 passed</code>，ruff check、ruff format check、pyright、前端 typecheck、<code>pnpm vitest run</code> 为 <code>408 passed</code>，前端 build 和 whitespace diff-check 均通过。新增回归覆盖 generated 文件生命周期、uninstall 后 detect、严格 generated sentinel、symlink parent detect、manifest hash options、Guide generated 路径提示和本地化 action label。</li>
     <li>上一轮 structured-output live smoke 使用合成 fixture，覆盖本地 LM Studio、本地 Ollama、本地 OpenAI-compatible、本地 Anthropic-compatible 和 Gemini AI Studio；凭证只通过临时进程环境变量传入。</li>
     <li>Diff-coverage follow-up 用目标 pytest、ruff、pyright、<code>git diff --check</code> 和只读 replay calibration 复核了本次改动面。Strict calibration 现在会把没有 <code>score.json</code> 或没有持久化 <code>evidence_coverage</code> gate 的历史 run 记为 skipped，而不是代码失败。最新运行检查了 7 个符合条件的历史 run，跳过 158 个不适配的旧 run，结果为 <code>pass_to_fail=0</code>、<code>fail_to_pass=3</code>，且没有写 run artifact。它只是历史校准辅助；正常 <code>ahadiff score</code> 和 <code>ahadiff verify</code> 仍使用当前 hard gate 语义。</li>
     <li>GPT-5.5 live 验证使用已配置 provider 和合成 fixture，不是对整个当前大型仓库做无限制全量 LLM 生成。</li>

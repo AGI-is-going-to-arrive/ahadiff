@@ -1,0 +1,30 @@
+---
+name: ahadiff
+description: "AhaDiff verified diff learning — learn back from AI-generated code changes"
+---
+<!-- AHADIFF:GENERATED -->
+# AhaDiff
+
+Use this Codex agent skill when a code change should be learned back from the
+diff instead of explained from memory.
+
+## Commands
+
+- `ahadiff learn HEAD~1..HEAD` captures the latest commit.
+- `ahadiff learn --staged` captures staged changes before commit.
+- `ahadiff quiz <run_id>` reviews generated quiz questions.
+- `ahadiff review` opens the due SRS queue backed by `review.sqlite`.
+- `ahadiff verify <run_id>` rechecks claims and score artifacts.
+- `ahadiff improve <run_id>` proposes targeted improvements for weak evidence.
+- `ahadiff serve` opens the local WebUI for runs, lessons, review, and graphs.
+
+## Local State
+
+- `.ahadiff/review.sqlite` is the local review and SRS truth source.
+- `.ahadiff/runs/<run_id>/` stores run artifacts such as claims, lessons,
+  quizzes, scores, and provenance.
+- `prompts/` contains the prompt templates that shape generated learning output.
+
+Prefer AhaDiff artifacts with verified claims and file-line evidence over
+free-form summaries. Keep provider credentials in environment variables and do
+not commit private audit logs.

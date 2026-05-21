@@ -10,6 +10,11 @@ artifacts for the current diff.
 
 - Run `ahadiff learn HEAD~1..HEAD` for the latest commit.
 - Run `ahadiff learn --staged` before committing staged work.
-- Prefer `ahadiff verify <run_id>` and `ahadiff score <run_id>` when reviewing existing artifacts.
+- Run `ahadiff quiz <run_id>` and `ahadiff review` for retention.
+- Prefer `ahadiff verify <run_id>` when reviewing existing artifacts.
+- Use `ahadiff improve <run_id>` for targeted follow-up and `ahadiff serve` for
+  local WebUI inspection.
 - Keep provider credentials in environment variables.
+- Treat `.ahadiff/review.sqlite`, `.ahadiff/runs/`, and `prompts/` as local
+  AhaDiff state unless the repository policy says otherwise.
 - Do not commit `.ahadiff/audit.private.jsonl` or local provider endpoints.

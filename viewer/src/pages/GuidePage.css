@@ -588,8 +588,38 @@
   line-height: var(--lh-relaxed);
 }
 
-.guide-agent-card__actions span {
+.guide-agent-card__actions span,
+.guide-agent-card__actions code {
   overflow-wrap: anywhere;
+}
+
+.guide-agent-card__actions code {
+  background: transparent;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-strong);
+}
+
+.guide-agent-card__actions-more {
+  margin-top: var(--sp-1);
+  color: var(--muted);
+  font-style: italic;
+}
+
+.guide-agent-card__platform-badge {
+  display: inline-block;
+  margin-inline-start: var(--sp-2);
+  padding: 1px 6px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--hair-strong);
+  background: var(--subtle);
+  color: var(--muted-strong);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: middle;
 }
 
 .guide-agent-previews {
@@ -745,6 +775,9 @@
   .guide-agent-skills__chips {
     justify-content: flex-start;
   }
+  .guide-agent-skills__grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  }
   .guide-agent-previews {
     grid-template-columns: 1fr;
   }
@@ -766,6 +799,10 @@
 @media (max-width: 480px) {
   .guide-grid {
     grid-template-columns: 1fr;
+  }
+  .guide-agent-skills__grid {
+    grid-template-columns: 1fr;
+    gap: var(--sp-4);
   }
   .guide-env__panes {
     grid-template-columns: 1fr;
@@ -826,6 +863,7 @@
     color: CanvasText;
   }
   .guide-agent-card__status,
+  .guide-agent-card__platform-badge,
   .guide-agent-skills__chip {
     border: 1px solid CanvasText;
     background: Canvas;

@@ -1,0 +1,31 @@
+---
+name: ahadiff
+description: "AhaDiff verified diff learning — learn back from AI-generated code changes"
+---
+<!-- AHADIFF:GENERATED -->
+# AhaDiff
+
+Use this Gemini CLI workspace skill when code changes should be turned into
+verified, local learning artifacts.
+
+## Commands
+
+- `ahadiff learn HEAD~1..HEAD` captures the latest commit.
+- `ahadiff learn --staged` captures staged changes before commit.
+- `ahadiff quiz <run_id>` reviews generated quiz questions.
+- `ahadiff review` opens the due spaced-repetition queue.
+- `ahadiff verify <run_id>` rechecks an existing run.
+- `ahadiff improve <run_id>` targets weak evidence or low-score areas.
+- `ahadiff serve` opens the local WebUI for lessons, claims, review, and runs.
+
+## Workspace Boundaries
+
+- Treat `.ahadiff/` as per-repository local state unless the repository policy
+  explicitly says otherwise.
+- `review.sqlite` stores review scheduling and card state.
+- Run artifacts under `.ahadiff/runs/<run_id>/` are the evidence source for
+  lessons, quizzes, claims, and scores.
+- `prompts/` defines the prompt templates used by AhaDiff generation.
+
+Prefer verified claims with file-line evidence. Keep provider secrets in
+environment variables and avoid committing private audit logs.
