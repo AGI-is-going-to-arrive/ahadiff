@@ -16,7 +16,7 @@ import ahadiff.install.hooks as hooks_module
 from ahadiff.cli import app
 from ahadiff.core.errors import InputError
 from ahadiff.install.base import InstallContext
-from ahadiff.install.registry import get_target
+from ahadiff.install.registry import get_target, target_detection
 from ahadiff.install.template_loader import render_template
 
 _RUNNER = CliRunner()
@@ -25,6 +25,9 @@ _INSTALL_TEMPLATE_NAMES = (
     "ahadiff-generate.yml.j2",
     "ahadiff-verify.yml.j2",
     "aider_section.md.j2",
+    "antigravity_cli_skill.md.j2",
+    "antigravity_rule.md.j2",
+    "antigravity_skill.md.j2",
     "claude_section.md.j2",
     "claude_skill.md.j2",
     "cline_rules.md.j2",
@@ -43,6 +46,8 @@ _INSTALL_TEMPLATE_NAMES = (
 )
 _SKILL_TEMPLATE_NAMES = (
     "claude_skill.md.j2",
+    "antigravity_cli_skill.md.j2",
+    "antigravity_skill.md.j2",
     "codex_skill.md.j2",
     "gemini_skill.md.j2",
     "opencode_agent.md.j2",
@@ -139,6 +144,18 @@ _TEMPLATE_CLI_HELP_CHECKS = (
 )
 _V02_INSTALL_TARGET_CASES = (
     ("aider", "CONVENTIONS.md", "AHADIFF:BEGIN target=aider", False),
+    (
+        "antigravity",
+        ".agents/skills/ahadiff-antigravity/SKILL.md",
+        "AHADIFF:GENERATED",
+        True,
+    ),
+    (
+        "antigravity-cli",
+        ".agents/skills/ahadiff-antigravity-cli/SKILL.md",
+        "AHADIFF:GENERATED",
+        True,
+    ),
     ("cline", ".clinerules/ahadiff.md", "AHADIFF:GENERATED", True),
     ("continue", ".continue/rules/ahadiff.md", "AHADIFF:GENERATED", True),
     ("copilot", ".github/copilot-instructions.md", "AHADIFF:BEGIN target=copilot", False),
@@ -182,12 +199,27 @@ def _init_git_repo(repo_root: Path) -> None:
     _git(repo_root, "config", "user.email", "test@example.com")
 
 
-def test_install_dry_run_lists_v01_targets(tmp_path: Path) -> None:
+def test_install_dry_run_lists_workspace_targets(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _init_git_repo(repo_root)
 
-    for target in ("claude", "codex", "gemini", "opencode", "hooks"):
+    dry_run_targets = {
+        "antigravity": (
+            ".agents/skills/ahadiff-antigravity/SKILL.md",
+            ".agents/rules/ahadiff.md",
+        ),
+        "antigravity-cli": (
+            ".agents/skills/ahadiff-antigravity-cli/SKILL.md",
+            "GEMINI.md",
+        ),
+        "claude": (".claude/skills/ahadiff/SKILL.md", "CLAUDE.md"),
+        "codex": (".agents/skills/ahadiff/SKILL.md", "AGENTS.md"),
+        "gemini": (".gemini/skills/ahadiff/SKILL.md", "GEMINI.md"),
+        "opencode": (".opencode/agents/ahadiff.md", "AGENTS.md"),
+        "hooks": (".git/hooks/post-commit", ".git/hooks/pre-push"),
+    }
+    for target in dry_run_targets:
         result = _RUNNER.invoke(
             app(),
             ["install", target, "--repo-root", str(repo_root), "--dry-run"],
@@ -198,6 +230,9 @@ def test_install_dry_run_lists_v01_targets(tmp_path: Path) -> None:
 
     assert not (repo_root / "AGENTS.md").exists()
     assert not (repo_root / ".claude").exists()
+    for paths in dry_run_targets.values():
+        for relative_path in paths:
+            assert not (repo_root / relative_path).exists()
 
 
 @pytest.mark.parametrize(
@@ -351,6 +386,26 @@ def test_install_detect_reports_written_targets(tmp_path: Path) -> None:
     assert "yes" in detect_result.output
 
 
+def test_install_detect_isolates_unreadable_target_files(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    outside_path = tmp_path / "outside-agents.md"
+    repo_root.mkdir()
+    outside_path.write_text("outside\n", encoding="utf-8")
+    _init_git_repo(repo_root)
+    try:
+        (repo_root / "AGENTS.md").symlink_to(outside_path)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
+
+    detections = target_detection(InstallContext(repo_root=repo_root))
+    detect_result = _RUNNER.invoke(app(), ["install", "--detect", "--repo-root", str(repo_root)])
+
+    assert detections["codex"] is False
+    assert detections["antigravity"] is False
+    assert detect_result.exit_code == 0, detect_result.output
+    assert "codex" in detect_result.output
+
+
 def test_install_manifest_preview_lists_file_strategies(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -490,6 +545,13 @@ def test_claude_install_creates_missing_claude_file_and_skill(tmp_path: Path) ->
             "AHADIFF:BEGIN target=copilot",
             "AhaDiff",
         ),
+        (
+            "antigravity-cli",
+            "GEMINI.md",
+            ".agents/skills/ahadiff-antigravity-cli/SKILL.md",
+            "AHADIFF:BEGIN target=antigravity-cli",
+            "Antigravity CLI",
+        ),
     ),
 )
 def test_workspace_install_targets_write_detect_and_uninstall_generated_skills(
@@ -538,6 +600,12 @@ def test_workspace_install_targets_write_detect_and_uninstall_generated_skills(
         ("codex", "AGENTS.md", ".agents/skills/ahadiff/SKILL.md", "codex"),
         ("gemini", "GEMINI.md", ".gemini/skills/ahadiff/SKILL.md", "gemini"),
         (
+            "antigravity-cli",
+            "GEMINI.md",
+            ".agents/skills/ahadiff-antigravity-cli/SKILL.md",
+            "antigravity-cli",
+        ),
+        (
             "copilot",
             ".github/copilot-instructions.md",
             ".github/instructions/ahadiff.instructions.md",
@@ -569,15 +637,40 @@ def test_workspace_install_targets_detect_section_or_generated_file_only(
     section_file.unlink()
     generated_file = repo_root / generated_path
     generated_file.parent.mkdir(parents=True, exist_ok=True)
-    template_name = f"{target}_skill.md.j2" if target != "copilot" else "copilot_instruction.md.j2"
+    template_name = (
+        "copilot_instruction.md.j2"
+        if target == "copilot"
+        else f"{target.replace('-', '_')}_skill.md.j2"
+    )
     generated_file.write_text(render_template(template_name), encoding="utf-8")
 
+    assert install_target.detect(context) is True
+
+
+def test_antigravity_detects_rule_or_workspace_skill_only(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    context = InstallContext(repo_root=repo_root)
+    install_target = get_target("antigravity")
+
+    rule_path = repo_root / ".agents" / "rules" / "ahadiff.md"
+    rule_path.parent.mkdir(parents=True)
+    rule_path.write_text(render_template("antigravity_rule.md.j2"), encoding="utf-8")
+    assert install_target.detect(context) is True
+
+    rule_path.unlink()
+    skill_path = repo_root / ".agents" / "skills" / "ahadiff-antigravity" / "SKILL.md"
+    skill_path.parent.mkdir(parents=True)
+    skill_path.write_text(render_template("antigravity_skill.md.j2"), encoding="utf-8")
     assert install_target.detect(context) is True
 
 
 @pytest.mark.parametrize(
     ("target", "generated_path"),
     (
+        ("antigravity", ".agents/skills/ahadiff-antigravity/SKILL.md"),
+        ("antigravity-cli", ".agents/skills/ahadiff-antigravity-cli/SKILL.md"),
         ("codex", ".agents/skills/ahadiff/SKILL.md"),
         ("gemini", ".gemini/skills/ahadiff/SKILL.md"),
         ("copilot", ".github/instructions/ahadiff.instructions.md"),
@@ -616,6 +709,8 @@ def test_workspace_install_targets_refuse_user_file_with_incidental_generated_to
 @pytest.mark.parametrize(
     ("target", "symlink_name", "outside_generated_path"),
     (
+        ("antigravity", ".agents", "skills/ahadiff-antigravity/SKILL.md"),
+        ("antigravity-cli", ".agents", "skills/ahadiff-antigravity-cli/SKILL.md"),
         ("codex", ".agents", "skills/ahadiff/SKILL.md"),
         ("gemini", ".gemini", "skills/ahadiff/SKILL.md"),
         ("copilot", ".github", "instructions/ahadiff.instructions.md"),
@@ -640,6 +735,72 @@ def test_workspace_install_targets_do_not_detect_generated_file_through_symlink_
         pytest.skip(f"symlink creation unavailable: {exc}")
 
     assert get_target(target).detect(InstallContext(repo_root=repo_root)) is False
+
+
+def test_antigravity_rule_is_isolated_from_codex_skill(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+
+    codex_install = _RUNNER.invoke(app(), ["install", "codex", "--repo-root", str(repo_root)])
+    antigravity_install = _RUNNER.invoke(
+        app(),
+        ["install", "antigravity", "--repo-root", str(repo_root)],
+    )
+
+    assert codex_install.exit_code == 0, codex_install.output
+    assert antigravity_install.exit_code == 0, antigravity_install.output
+    context = InstallContext(repo_root=repo_root)
+    assert get_target("codex").detect(context) is True
+    assert get_target("antigravity").detect(context) is True
+
+    uninstall_antigravity = _RUNNER.invoke(
+        app(),
+        ["uninstall", "antigravity", "--repo-root", str(repo_root)],
+    )
+
+    assert uninstall_antigravity.exit_code == 0, uninstall_antigravity.output
+    assert not (repo_root / ".agents" / "rules" / "ahadiff.md").exists()
+    assert not (repo_root / ".agents" / "skills" / "ahadiff-antigravity" / "SKILL.md").exists()
+    assert (repo_root / ".agents" / "skills" / "ahadiff" / "SKILL.md").exists()
+    assert "AHADIFF:BEGIN target=codex" in (repo_root / "AGENTS.md").read_text(encoding="utf-8")
+    assert get_target("codex").detect(context) is True
+    assert get_target("antigravity").detect(context) is False
+
+
+def test_antigravity_cli_marker_coexists_with_gemini_marker(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+
+    gemini_install = _RUNNER.invoke(app(), ["install", "gemini", "--repo-root", str(repo_root)])
+    antigravity_cli_install = _RUNNER.invoke(
+        app(),
+        ["install", "antigravity-cli", "--repo-root", str(repo_root)],
+    )
+
+    assert gemini_install.exit_code == 0, gemini_install.output
+    assert antigravity_cli_install.exit_code == 0, antigravity_cli_install.output
+    gemini_text = (repo_root / "GEMINI.md").read_text(encoding="utf-8")
+    assert gemini_text.count("AHADIFF:BEGIN target=gemini") == 1
+    assert gemini_text.count("AHADIFF:BEGIN target=antigravity-cli") == 1
+    context = InstallContext(repo_root=repo_root)
+    assert get_target("gemini").detect(context) is True
+    assert get_target("antigravity-cli").detect(context) is True
+
+    uninstall_antigravity_cli = _RUNNER.invoke(
+        app(),
+        ["uninstall", "antigravity-cli", "--repo-root", str(repo_root)],
+    )
+
+    assert uninstall_antigravity_cli.exit_code == 0, uninstall_antigravity_cli.output
+    remaining_text = (repo_root / "GEMINI.md").read_text(encoding="utf-8")
+    assert "AHADIFF:BEGIN target=gemini" in remaining_text
+    assert "AHADIFF:BEGIN target=antigravity-cli" not in remaining_text
+    assert not (repo_root / ".agents" / "skills" / "ahadiff-antigravity-cli" / "SKILL.md").exists()
+    assert (repo_root / ".gemini" / "skills" / "ahadiff" / "SKILL.md").exists()
+    assert get_target("gemini").detect(context) is True
+    assert get_target("antigravity-cli").detect(context) is False
 
 
 def test_uninstall_dry_run_previews_removals_without_mutating(tmp_path: Path) -> None:

@@ -216,7 +216,13 @@ test('browser renders core pages against real serve APIs without mocks', async (
 
   await page.goto('/#/guide');
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-  await expect(page.locator('.guide-agent-card')).toHaveCount(13);
+  await expect(page.locator('.guide-agent-card')).toHaveCount(15);
+  await expect(page.locator('.guide-agent-card').filter({ hasText: 'Antigravity IDE' })).toContainText(
+    '.agents/skills/ahadiff-antigravity/SKILL.md',
+  );
+  await expect(page.locator('.guide-agent-card').filter({ hasText: 'Antigravity CLI' })).toContainText(
+    '.agents/skills/ahadiff-antigravity-cli/SKILL.md',
+  );
   await expect(page.locator('[role="alert"]')).toHaveCount(0);
 
   await page.goto('/#/concepts?tab=graph');

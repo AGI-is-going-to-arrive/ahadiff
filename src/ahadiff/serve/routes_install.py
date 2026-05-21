@@ -36,6 +36,8 @@ log = logging.getLogger(__name__)
 
 _TARGET_DESCRIPTIONS = {
     "aider": "Write AhaDiff guidance for Aider.",
+    "antigravity": "Write Antigravity IDE workspace skill and AhaDiff rules.",
+    "antigravity-cli": "Write Antigravity CLI workspace skill and GEMINI.md guidance.",
     "claude": "Write Claude Code project instructions and skills.",
     "cline": "Write AhaDiff instructions for Cline.",
     "codex": "Write Codex AGENTS.md guidance.",
@@ -51,6 +53,8 @@ _TARGET_DESCRIPTIONS = {
 }
 
 _TARGET_DISPLAY_NAMES = {
+    "antigravity": "Antigravity IDE",
+    "antigravity-cli": "Antigravity CLI",
     "claude": "Claude Code",
     "codex": "Codex CLI",
     "copilot": "Copilot / VS Code",

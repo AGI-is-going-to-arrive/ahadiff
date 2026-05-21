@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from .aider import AiderTarget
+from .antigravity import AntigravityTarget
+from .antigravity_cli import AntigravityCLITarget
 from .claude import ClaudeTarget
 from .cline import ClineTarget
 from .codex import CodexTarget
@@ -33,11 +35,20 @@ def get_target(name: str) -> InstallTarget:
 
 
 def target_detection(context: InstallContext) -> dict[str, bool]:
-    return {name: target.detect(context) for name, target in sorted(_TARGETS.items())}
+    return {name: _detect_target(target, context) for name, target in sorted(_TARGETS.items())}
+
+
+def _detect_target(target: InstallTarget, context: InstallContext) -> bool:
+    try:
+        return target.detect(context)
+    except OSError:
+        return False
 
 
 _TARGETS: dict[str, InstallTarget] = {
     "aider": AiderTarget(),
+    "antigravity": AntigravityTarget(),
+    "antigravity-cli": AntigravityCLITarget(),
     "claude": ClaudeTarget(),
     "cline": ClineTarget(),
     "codex": CodexTarget(),

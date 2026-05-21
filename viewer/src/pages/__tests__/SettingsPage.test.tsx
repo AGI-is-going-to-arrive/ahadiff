@@ -135,6 +135,34 @@ describe('SettingsPage provider/model helpers', () => {
     expect(src).toContain('actionAbortControllersRef.current');
     expect(src).toContain('if (controller.signal.aborted || !mountedRef.current) return;');
   });
+
+  it('keeps install target marks complete and unique', () => {
+    const src = readFileSync(resolve(__dirname, '../SettingsPage.tsx'), 'utf-8');
+    const block = src.match(/const knownMarks: Record<string, string> = \{([\s\S]*?)\n  \};/);
+    expect(block).not.toBeNull();
+    const entries = [...(block?.[1] ?? '').matchAll(/['"]?([a-z-]+)['"]?: '([A-Z]+)'/g)].map(
+      ([, name, mark]) => [name, mark] as const,
+    );
+
+    expect(Object.fromEntries(entries)).toEqual({
+      aider: 'AI',
+      antigravity: 'AG',
+      'antigravity-cli': 'AC',
+      claude: 'CC',
+      cline: 'CL',
+      codex: 'CD',
+      continue: 'CN',
+      copilot: 'CP',
+      cursor: 'CX',
+      gemini: 'GM',
+      'github-action': 'GH',
+      hooks: 'HK',
+      opencode: 'OC',
+      roo: 'RO',
+      windsurf: 'WS',
+    });
+    expect(new Set(entries.map(([, mark]) => mark)).size).toBe(entries.length);
+  });
 });
 
 describe('PreferencesTab quiz count adaptive mode', () => {

@@ -90,9 +90,9 @@ _APP.add_typer(_CONCEPTS_APP, name="concepts")
 _APP.add_typer(_EXPORT_APP, name="export")
 _APP.add_typer(_CHALLENGE_APP, name="challenge")
 _INSTALL_TARGET_HELP = (
-    "Install target: aider, claude, cline, codex, continue, copilot, cursor, gemini, "
-    "github-action, hooks, opencode, roo, or windsurf. hooks uses POSIX shell hooks; "
-    "Windows hooks are not supported in v0.1."
+    "Install target: aider, antigravity, antigravity-cli, claude, cline, codex, continue, "
+    "copilot, cursor, gemini, github-action, hooks, opencode, roo, or windsurf. "
+    "hooks uses POSIX shell hooks; Windows hooks are not supported in v0.1."
 )
 _SQLITE_MIN_VERSION = (3, 51, 3)
 _SQLITE_ALLOWED_BACKPORTS = {(3, 50, 7), (3, 44, 6)}

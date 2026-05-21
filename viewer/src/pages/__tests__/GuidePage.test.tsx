@@ -158,4 +158,16 @@ describe('GuidePage command examples', () => {
     expect(source).not.toContain('target.manifest?.write?.[0]?.path ?? AGENT_PATH_HINTS');
     expect(source).not.toContain('className="guide-agent-card__actions-more" aria-hidden');
   });
+
+  it('uses friendly names for install target fallback cards', async () => {
+    const { default: GuidePage } = await import('../GuidePage');
+    const html = renderToStaticMarkup(<GuidePage />);
+
+    expect(html).toContain('Antigravity IDE');
+    expect(html).toContain('Antigravity CLI');
+    expect(html).toContain('.agents/skills/ahadiff-antigravity/SKILL.md');
+    expect(html).toContain('.agents/skills/ahadiff-antigravity-cli/SKILL.md');
+    expect(html).toContain('Codex CLI');
+    expect(html).toContain('Gemini CLI');
+  });
 });

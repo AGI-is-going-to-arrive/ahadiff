@@ -1078,6 +1078,8 @@ export async function installServeMock(page: Page): Promise<void> {
   );
   const installTargetNames = [
     'aider',
+    'antigravity',
+    'antigravity-cli',
     'claude',
     'cline',
     'codex',
@@ -1103,23 +1105,90 @@ export async function installServeMock(page: Page): Promise<void> {
     cursor: 'available',
   };
   const displayNames: Record<string, string> = {
+    antigravity: 'Antigravity IDE',
+    'antigravity-cli': 'Antigravity CLI',
     claude: 'Claude Code',
     codex: 'Codex CLI',
     copilot: 'Copilot / VS Code',
     cursor: 'Cursor',
     'github-action': 'GitHub Actions',
   };
-  const manifestFor = (name: string) => ({
-    preview: [
-      { action: 'preview', file_strategy: 'user-managed', path: name === 'codex' ? 'AGENTS.md' : `${name}/manifest.md` },
-    ],
-    write: [
-      { action: name === 'codex' ? 'append-section' : 'write', file_strategy: name === 'codex' ? 'user-managed' : 'generated', path: name === 'codex' ? 'AGENTS.md' : `${name}/manifest.md` },
-    ],
-    uninstall: [
-      { action: name === 'codex' ? 'remove-section' : 'remove', file_strategy: name === 'codex' ? 'user-managed' : 'generated', path: name === 'codex' ? 'AGENTS.md' : `${name}/manifest.md` },
-    ],
-  });
+  const manifestFor = (name: string) => {
+    if (name === 'codex') {
+      return {
+        preview: [{ action: 'preview', file_strategy: 'user-managed', path: 'AGENTS.md' }],
+        write: [{ action: 'append-section', file_strategy: 'user-managed', path: 'AGENTS.md' }],
+        uninstall: [{ action: 'remove-section', file_strategy: 'user-managed', path: 'AGENTS.md' }],
+      };
+    }
+    if (name === 'antigravity') {
+      return {
+        preview: [
+          {
+            action: 'write',
+            file_strategy: 'generated',
+            path: '.agents/skills/ahadiff-antigravity/SKILL.md',
+          },
+          { action: 'write', file_strategy: 'generated', path: '.agents/rules/ahadiff.md' },
+        ],
+        write: [
+          {
+            action: 'write',
+            file_strategy: 'generated',
+            path: '.agents/skills/ahadiff-antigravity/SKILL.md',
+          },
+          { action: 'write', file_strategy: 'generated', path: '.agents/rules/ahadiff.md' },
+        ],
+        uninstall: [
+          {
+            action: 'remove',
+            file_strategy: 'generated',
+            path: '.agents/skills/ahadiff-antigravity/SKILL.md',
+          },
+          { action: 'remove', file_strategy: 'generated', path: '.agents/rules/ahadiff.md' },
+        ],
+      };
+    }
+    if (name === 'antigravity-cli') {
+      return {
+        preview: [
+          {
+            action: 'write',
+            file_strategy: 'generated',
+            path: '.agents/skills/ahadiff-antigravity-cli/SKILL.md',
+          },
+          { action: 'merge-section', file_strategy: 'user-managed', path: 'GEMINI.md' },
+        ],
+        write: [
+          {
+            action: 'write',
+            file_strategy: 'generated',
+            path: '.agents/skills/ahadiff-antigravity-cli/SKILL.md',
+          },
+          { action: 'merge-section', file_strategy: 'user-managed', path: 'GEMINI.md' },
+        ],
+        uninstall: [
+          {
+            action: 'remove',
+            file_strategy: 'generated',
+            path: '.agents/skills/ahadiff-antigravity-cli/SKILL.md',
+          },
+          { action: 'remove-section', file_strategy: 'user-managed', path: 'GEMINI.md' },
+        ],
+      };
+    }
+    return {
+      preview: [
+        { action: 'preview', file_strategy: 'user-managed', path: `${name}/manifest.md` },
+      ],
+      write: [
+        { action: 'write', file_strategy: 'generated', path: `${name}/manifest.md` },
+      ],
+      uninstall: [
+        { action: 'remove', file_strategy: 'generated', path: `${name}/manifest.md` },
+      ],
+    };
+  };
   const targetFor = (name: string) => ({
     name,
     display_name: displayNames[name] ?? name,

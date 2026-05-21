@@ -2438,11 +2438,21 @@ function commandFor(target: InstallTarget, kind: 'install' | 'uninstall'): strin
 
 function targetMark(target: InstallTarget): string {
   const knownMarks: Record<string, string> = {
+    aider: 'AI',
+    antigravity: 'AG',
+    'antigravity-cli': 'AC',
     claude: 'CC',
+    cline: 'CL',
     codex: 'CD',
+    continue: 'CN',
     copilot: 'CP',
+    cursor: 'CX',
     gemini: 'GM',
+    'github-action': 'GH',
+    hooks: 'HK',
     opencode: 'OC',
+    roo: 'RO',
+    windsurf: 'WS',
   };
   if (knownMarks[target.name]) return knownMarks[target.name];
   const words = target.display_name

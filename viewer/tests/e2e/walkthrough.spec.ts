@@ -1108,7 +1108,13 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(page.locator('.guide-install-model')).toContainText('AhaDiff CLI');
     await expect(page.locator('.guide-install-model')).toContainText('Project agent instructions');
     await expect(page.locator('.guide-agent-skills')).toContainText(/Agent Skills|Agent 技能/);
-    await expect(page.locator('.guide-agent-card')).toHaveCount(13);
+    await expect(page.locator('.guide-agent-card')).toHaveCount(15);
+    await expect(page.locator('.guide-agent-card').filter({ hasText: 'Antigravity IDE' })).toContainText(
+      '.agents/skills/ahadiff-antigravity/SKILL.md',
+    );
+    await expect(page.locator('.guide-agent-card').filter({ hasText: 'Antigravity CLI' })).toContainText(
+      '.agents/skills/ahadiff-antigravity-cli/SKILL.md',
+    );
     await expect(page.locator('.guide-agent-previews')).toContainText('SKILL.md');
     await expect(page.locator('.guide-agent-previews')).toContainText('AGENTS.md preview');
 

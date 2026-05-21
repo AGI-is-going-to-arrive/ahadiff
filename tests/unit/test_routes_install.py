@@ -72,7 +72,15 @@ def test_get_install_targets_contains_known_targets(tmp_path: Path) -> None:
     response = client.get("/api/install/targets")
 
     names = {t["name"] for t in response.json()["targets"]}
-    for expected in ("claude", "codex", "gemini", "hooks", "github-action"):
+    for expected in (
+        "antigravity",
+        "antigravity-cli",
+        "claude",
+        "codex",
+        "gemini",
+        "hooks",
+        "github-action",
+    ):
         assert expected in names
 
 
@@ -191,7 +199,7 @@ def test_hooks_target_is_unsupported_on_windows(
     assert hooks["platform_supported"] is False
     assert hooks["status"] == "unsupported"
     assert hooks["detected"] is False
-    for target_name in ("codex", "gemini", "copilot"):
+    for target_name in ("antigravity", "antigravity-cli", "codex", "gemini", "copilot"):
         assert targets_by_name[target_name]["platform_supported"] is True
         assert targets_by_name[target_name]["status"] == "available"
 
@@ -344,6 +352,48 @@ def test_get_install_targets_returns_manifest_preview(tmp_path: Path) -> None:
             {"action": "remove", "file_strategy": "generated", "path": generated_path},
             {"action": "remove-section", "file_strategy": "user-managed", "path": section_path},
         ]
+
+    antigravity = targets_by_name["antigravity"]
+    assert antigravity["display_name"] == "Antigravity IDE"
+    assert antigravity["manifest_error"] is None
+    assert len(antigravity["manifest_hash"]) == 64
+    assert antigravity["manifest"]["write"] == [
+        {
+            "action": "write",
+            "file_strategy": "generated",
+            "path": ".agents/skills/ahadiff-antigravity/SKILL.md",
+        },
+        {"action": "write", "file_strategy": "generated", "path": ".agents/rules/ahadiff.md"},
+    ]
+    assert antigravity["manifest"]["uninstall"] == [
+        {
+            "action": "remove",
+            "file_strategy": "generated",
+            "path": ".agents/skills/ahadiff-antigravity/SKILL.md",
+        },
+        {"action": "remove", "file_strategy": "generated", "path": ".agents/rules/ahadiff.md"},
+    ]
+
+    antigravity_cli = targets_by_name["antigravity-cli"]
+    assert antigravity_cli["display_name"] == "Antigravity CLI"
+    assert antigravity_cli["manifest_error"] is None
+    assert len(antigravity_cli["manifest_hash"]) == 64
+    assert antigravity_cli["manifest"]["write"] == [
+        {
+            "action": "write",
+            "file_strategy": "generated",
+            "path": ".agents/skills/ahadiff-antigravity-cli/SKILL.md",
+        },
+        {"action": "merge-section", "file_strategy": "user-managed", "path": "GEMINI.md"},
+    ]
+    assert antigravity_cli["manifest"]["uninstall"] == [
+        {
+            "action": "remove",
+            "file_strategy": "generated",
+            "path": ".agents/skills/ahadiff-antigravity-cli/SKILL.md",
+        },
+        {"action": "remove-section", "file_strategy": "user-managed", "path": "GEMINI.md"},
+    ]
 
 
 def test_all_registered_targets_appear_in_response(tmp_path: Path) -> None:

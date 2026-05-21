@@ -200,6 +200,8 @@ interface IntegrationTarget {
 
 const INTEGRATION_TARGETS: ReadonlyArray<IntegrationTarget> = [
   { name: 'aider' },
+  { name: 'antigravity' },
+  { name: 'antigravity-cli' },
   { name: 'claude' },
   { name: 'cline' },
   { name: 'codex' },
@@ -231,6 +233,8 @@ const NAV_TARGETS: ReadonlyArray<NavTarget> = [
 
 const AGENT_MARKS: Record<string, string> = {
   aider: 'AI',
+  antigravity: 'AG',
+  'antigravity-cli': 'AC',
   claude: 'CC',
   cline: 'CL',
   codex: 'CD',
@@ -245,8 +249,28 @@ const AGENT_MARKS: Record<string, string> = {
   windsurf: 'WS',
 };
 
+const AGENT_DISPLAY_NAMES: Record<string, string> = {
+  aider: 'Aider',
+  antigravity: 'Antigravity IDE',
+  'antigravity-cli': 'Antigravity CLI',
+  claude: 'Claude Code',
+  cline: 'Cline',
+  codex: 'Codex CLI',
+  continue: 'Continue',
+  copilot: 'Copilot / VS Code',
+  cursor: 'Cursor',
+  gemini: 'Gemini CLI',
+  'github-action': 'GitHub Action',
+  hooks: 'Git hooks',
+  opencode: 'OpenCode',
+  roo: 'Roo',
+  windsurf: 'Windsurf',
+};
+
 const AGENT_PATH_HINTS: Record<string, string> = {
   aider: 'CONVENTIONS.md',
+  antigravity: '.agents/skills/ahadiff-antigravity/SKILL.md · .agents/rules/ahadiff.md',
+  'antigravity-cli': '.agents/skills/ahadiff-antigravity-cli/SKILL.md · GEMINI.md',
   claude: '.claude/skills/ahadiff/SKILL.md',
   cline: '.clinerules/ahadiff.md',
   codex: '.agents/skills/ahadiff/SKILL.md',
@@ -268,7 +292,7 @@ function targetMark(name: string): string {
 function fallbackInstallTargets(status: InstallTarget['status']): InstallTarget[] {
   return INTEGRATION_TARGETS.map((target) => ({
     name: target.name,
-    display_name: target.name,
+    display_name: AGENT_DISPLAY_NAMES[target.name] ?? target.name,
     detected: false,
     platform_supported: true,
     status,

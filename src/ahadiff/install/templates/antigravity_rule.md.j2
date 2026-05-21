@@ -1,0 +1,27 @@
+---
+alwaysApply: true
+description: "AhaDiff verified diff learning guidance"
+---
+<!-- AHADIFF:GENERATED -->
+# AhaDiff
+
+Use AhaDiff to turn AI-written diffs into verified lessons, claims, quiz cards,
+review signals, and local run artifacts.
+
+- Run `ahadiff learn HEAD~1..HEAD` after committed changes.
+- Run `ahadiff learn --staged` before committing staged work.
+- Run `ahadiff quiz <run_id>` and `ahadiff review` to revisit generated cards.
+- Use `ahadiff verify <run_id>` before trusting generated explanations.
+- Use `ahadiff improve --rounds 1` when the diff needs a targeted follow-up.
+- Open `ahadiff serve` for the local WebUI when inspecting run artifacts.
+
+Additional learn capture modes: `ahadiff learn --last`, `ahadiff learn --since
+"2 hours ago"`, `ahadiff learn --unstaged`, and `ahadiff learn --patch FILE|-`.
+
+## Boundaries
+
+- Keep provider credentials in environment variables.
+- Do not commit `.ahadiff/audit.private.jsonl`.
+- Treat `.ahadiff/` as local state.
+- Prefer verified claims with file-line evidence.
+- Do not upload `.ahadiff/` artifacts to external services without explicit user consent.
