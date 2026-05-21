@@ -129,7 +129,7 @@ class ProbeContextResult:
     max_context_tokens: int | None
     max_input_tokens: int | None
     max_output_tokens: int | None
-    source: Literal["live", "fallback"]
+    source: Literal["live", "fallback", "default"]
     warnings: tuple[str, ...] = ()
 
 

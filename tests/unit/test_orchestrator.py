@@ -607,6 +607,7 @@ def test_capture_recommendation_prefers_split_live_input_over_legacy_context() -
             "api_key_env": "AHADIFF_PROVIDER_API_KEY",
             "probed_max_context": 1_000_000,
             "probed_max_input_tokens": 128_000,
+            "probed_limits_source": "live",
         }
     }
 

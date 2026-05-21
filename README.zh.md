@@ -66,6 +66,9 @@ ahadiff provider test \
 `provider test` 会发送一个小探测请求。成功后，provider 配置自动写入 `.ahadiff/config.toml`。如果 provider 暴露模型上限，AhaDiff 会记录拆分后的 input / output token limit；否则自动捕获会回退到内置模型表或保守默认值。
 
 支持的 provider class：`openai`、`openai_responses`、`gemini`、`anthropic`、`azure`、`newapi`、`lmstudio`、`ollama`。进阶的 OpenAI-compatible 或本地 provider 可以用 `providers.<name>.capability_overrides` 覆盖已知布尔能力，例如是否支持 native JSON schema；未知 key 或非布尔值会被拒绝。NewAPI 默认关闭 `supports_native_json_schema`；如果你的 NewAPI 网关后端真的支持 native JSON schema，可在 provider config 加 `capability_overrides = { supports_native_json_schema = true }`。更多细节见 [使用指南](./docs/USER_GUIDE.zh.html)。
+
+GPT-5.5 有两种内置口径：普通 `openai` 接入按 40 万上下文预算，`openai_responses` / API 接入按 105 万上下文预算。endpoint 如果通过 live probe 上报可信 total context，仍会优先使用 probe 结果。
+
 > AhaDiff 默认使用 strict_local 隐私模式：除非你明确配置远端 provider，否则内容不会离开本机。
 
 ## 你的第一节课

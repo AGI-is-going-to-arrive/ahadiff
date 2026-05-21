@@ -3822,10 +3822,21 @@ def provider_test_cmd(
         provider_limits = cast("dict[str, Any]", snapshot.values["provider"])
         resolved_model = model or str(llm_config["generate_model"])
         normalized_base_url = _normalize_provider_base_url(base_url, provider_class=provider_class)
+        model_limits_name: str | None = None
+        raw_providers_table = snapshot.values.get("providers")
+        if isinstance(raw_providers_table, dict):
+            providers_table = cast("dict[str, Any]", raw_providers_table)
+            provider_payload = providers_table.get(name)
+            if isinstance(provider_payload, dict):
+                provider_payload_typed = cast("dict[str, Any]", provider_payload)
+                raw_model_limits_name = provider_payload_typed.get("model_limits_name")
+                if isinstance(raw_model_limits_name, str) and raw_model_limits_name.strip():
+                    model_limits_name = raw_model_limits_name
         _provider_config_from_payload(
             {
                 "provider_class": provider_class,
                 "model_name": resolved_model,
+                "model_limits_name": model_limits_name,
                 "base_url": normalized_base_url,
                 "api_key_env": api_key_env,
             }
@@ -3867,6 +3878,7 @@ def provider_test_cmd(
             provider_name=name,
             provider_class=provider_class,
             model_name=resolved_model,
+            model_limits_name=model_limits_name,
             base_url=normalized_base_url,
             api_key=effective_api_key,
             api_key_env=api_key_env,

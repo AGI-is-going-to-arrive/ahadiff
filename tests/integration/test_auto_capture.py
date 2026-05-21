@@ -29,7 +29,7 @@ index 1111111..2222222 100644
 """
 _AUTO_128K_EXPECTED = {
     "context_window": 128_000,
-    "max_input_tokens": 78_000,
+    "max_input_tokens": 128_000,
     "max_output_tokens": 50_000,
     "diff_token_budget": 53_620,
     "hard_limit": 2_234,

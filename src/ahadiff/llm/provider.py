@@ -268,6 +268,11 @@ class ManagedProvider:
         limits = resolve_model_limits(self.config.provider_class, request.model, self.config)
         context_limit = int((limits.max_context_tokens or limits.max_input_tokens) * 0.9)
         reserved_output_tokens = max(0, request_to_send.max_output_tokens or 0)
+        if reserved_output_tokens > limits.max_output_tokens:
+            raise ProviderError(
+                f"output token budget exceeded: {reserved_output_tokens} > "
+                f"{limits.max_output_tokens}"
+            )
         input_context_limit = int(limits.max_input_tokens * 0.9)
         if limits.max_context_tokens is not None:
             input_context_limit = min(input_context_limit, context_limit - reserved_output_tokens)

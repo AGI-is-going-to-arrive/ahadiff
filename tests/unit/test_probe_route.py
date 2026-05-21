@@ -21,12 +21,21 @@ if TYPE_CHECKING:
 _AUTH = {"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"}
 
 
-def _write_provider_config(state_dir: Path, *, alias: str = "demo") -> None:
+def _write_provider_config(
+    state_dir: Path,
+    *,
+    alias: str = "demo",
+    model_limits_name: str | None = None,
+) -> None:
     state_dir.mkdir(parents=True, exist_ok=True)
+    model_limits_line = (
+        f'model_limits_name = "{model_limits_name}"\n' if model_limits_name is not None else ""
+    )
     (state_dir / "config.toml").write_text(
         f"[providers.{alias}]\n"
         'provider_class = "openai"\n'
         'model_name = "gpt-5.4-mini"\n'
+        f"{model_limits_line}"
         'base_url = "https://api.example.test/v1"\n'
         'api_key_env = "AHADIFF_PROVIDER_API_KEY"\n',
         encoding="utf-8",
@@ -68,7 +77,7 @@ def test_probe_provider_route_submits_task_and_persists_probe_result(
     import ahadiff.serve.routes_providers as routes_providers
 
     state_dir = tmp_path / ".ahadiff"
-    _write_provider_config(state_dir)
+    _write_provider_config(state_dir, model_limits_name="openai/gpt-5.4-mini")
     runner = TaskRunner()
     captured: dict[str, object] = {}
 
@@ -79,6 +88,7 @@ def test_probe_provider_route_submits_task_and_persists_probe_result(
             config=ProviderConfig(
                 provider_class="openai",
                 model_name="gpt-5.4-mini",
+                model_limits_name=cast("str", kwargs.get("model_limits_name")),
                 base_url="https://api.example.test/v1",
                 api_key_env="AHADIFF_PROVIDER_API_KEY",
                 probed_max_context=12345,
@@ -117,10 +127,15 @@ def test_probe_provider_route_submits_task_and_persists_probe_result(
     assert result["stale"] is False
     assert captured["api_key"] == "placeholder-token"
     assert captured["persist_result"] is False
+    assert captured["model_limits_name"] == "openai/gpt-5.4-mini"
+    assert cast("dict[str, object]", result["config"])["model_limits_name"] == (
+        "openai/gpt-5.4-mini"
+    )
 
     config = read_config_data(state_dir / "config.toml")
     provider = cast("dict[str, object]", cast("dict[str, object]", config["providers"])["demo"])
     assert provider["probed_max_context"] == 12345
+    assert provider["model_limits_name"] == "openai/gpt-5.4-mini"
 
 
 def test_probe_provider_route_alias_not_found_returns_404(tmp_path: Path) -> None:

@@ -1,6 +1,10 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import ProviderCard, { createProviderProbePoller } from '../ProviderCard';
+import ProviderCard, {
+  ProviderDetailView,
+  createProviderProbePoller,
+  providerLimitsSourceLabel,
+} from '../ProviderCard';
 import type { ProviderSummary } from '../../api/config';
 import type { TaskInfoResponse } from '../../api/types';
 
@@ -17,6 +21,10 @@ vi.mock('../../i18n/useTranslation', () => ({
         'Settings_page.provider_status_key_missing': 'Key missing',
         'Settings_page.provider_status_not_probed': 'Not probed',
         'Settings_page.provider_status_probed': 'Probed',
+        'Settings_page.provider_limits_source': 'Limits source',
+        'Settings_page.provider_limits_source_fallback': 'Fallback probe',
+        'Settings_page.provider_context_label': 'Context Length',
+        'Settings_page.provider_model_limits_name': 'Limits profile',
       };
       return messages[key] ?? key;
     },
@@ -134,4 +142,67 @@ describe('ProviderCard', () => {
     expect(html).toContain(`>${expected}</span>`);
   });
 
+  it('localizes fallback provider limit source', () => {
+    const t = (key: string) => {
+      const messages: Record<string, string> = {
+        'Settings_page.provider_limits_source_fallback': 'Fallback probe',
+      };
+      return messages[key] ?? key;
+    };
+
+    const label = providerLimitsSourceLabel(t, 'fallback');
+
+    expect(label).toBe('Fallback probe');
+    expect(label).not.toBe('fallback');
+  });
+
+  it('renders context-only fallback probe source and limits profile', () => {
+    const html = renderToStaticMarkup(
+      <ProviderDetailView
+        provider={makeProvider({
+          probed: true,
+          probed_max_context: 128_000,
+          probed_limits_source: 'fallback',
+          model_limits_name: 'openai/gpt-5',
+        })}
+        probeStatus="idle"
+        probeError={null}
+        probeRunning={false}
+        confirmDelete={false}
+        deleting={false}
+        deleteError={null}
+        onEdit={() => undefined}
+        onProbe={() => undefined}
+        onAskDelete={() => undefined}
+        onCancelDelete={() => undefined}
+        onConfirmDelete={() => undefined}
+        remoteModels={null}
+        fetchingModels={false}
+        fetchModelsError={null}
+        selectedModels={new Set()}
+        savingModels={false}
+        onFetchModels={() => undefined}
+        onSaveModels={() => undefined}
+        onToggleModel={() => undefined}
+        onCancelModels={() => undefined}
+        t={(key: string) => {
+          const messages: Record<string, string> = {
+            'Settings_page.provider_limits_source': 'Limits source',
+            'Settings_page.provider_limits_source_fallback': 'Fallback probe',
+            'Settings_page.provider_context_label': 'Context Length',
+            'Settings_page.provider_model_limits_name': 'Limits profile',
+          };
+          return messages[key] ?? key;
+        }}
+        locale="en-US"
+      />,
+    );
+
+    expect(html).toContain('Context Length');
+    expect(html).toContain('128,000');
+    expect(html).toContain('Limits source');
+    expect(html).toContain('Fallback probe');
+    expect(html).toContain('Limits profile');
+    expect(html).toContain('openai/gpt-5');
+  });
 });

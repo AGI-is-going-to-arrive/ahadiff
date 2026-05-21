@@ -55,6 +55,7 @@ ahadiff provider test   --name gpt55   --provider-class openai_responses   --bas
 $env:AHADIFF_PROVIDER_API_KEY="&lt;provider-api-key&gt;"
 
 ahadiff provider test --name gpt55 --provider-class openai_responses --base-url $env:AHADIFF_PROVIDER_BASE_URL --model gpt-5.5 --api-key-env AHADIFF_PROVIDER_API_KEY --privacy-mode explicit_remote</pre>
+  <p>这里使用 <code>openai_responses</code>，是因为 GPT-5.5 有两种 registry profile：普通 <code>openai</code> 接入按 40 万上下文预算，<code>openai_responses</code> / API 接入按 105 万上下文预算。endpoint 如果通过 live probe 上报可信 total context，可以覆盖这两个内置 profile。</p>
   <p>配置完成后，单个 provider 或 Settings 里选好的生成 provider/model 会被 <code>ahadiff learn</code> 直接使用。日常学习命令不需要再写 provider 参数；显式 <code>--provider</code> / <code>--model</code> 只用于临时覆盖：</p>
   <pre>ahadiff learn --last
 ahadiff learn --last --provider gpt55 --model gpt-5.5</pre>
@@ -187,7 +188,7 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
   <h3>怎么改测验题量？</h3>
   <p>到 Settings → Preferences 里设置。固定模式会始终使用配置的题数；自适应模式会读取本次捕获到的 diff stats。旧 run 没有这些 stats 时，会回退到固定题数。所有题量都必须在 1 到 10 之间。</p>
   <h3>捕获上限怎么决定？</h3>
-  <p>新 repo 默认使用自动捕获。AhaDiff 会优先使用 live provider probe，拿不到时用内置模型表，再拿不到才用保守默认值。total context 会被当成 input 加 output，所以 output reserve 只扣一次。手动模式会继续使用你在 config 或 Settings 里保存的数字。</p>
+  <p>新 repo 默认使用自动捕获。AhaDiff 会优先使用 live provider probe，拿不到时用内置模型表，再拿不到才用保守默认值。total context、input limit 和 output limit 会分开解析；output reserve 只从 input budget 里扣一次。只有 Gemini 这类显式 split-envelope registry rows 会把 input 加 output 存成 total context。手动模式会继续使用你在 config 或 Settings 里保存的数字。</p>
   <h3>Diff Coverage 怎么判断？</h3>
   <p>Diff Coverage 只使用持久化 <code>line_map.json</code> 里的可见文件和 hunk。被省略的文件不会进入分母。hunk 覆盖按 changed lines 加权，同时保留 hunk 数量下限，避免很小的 hunk 被完全稀释。hard gate 使用自适应 claim-anchor 阈值，并会把 ratio、regime 和 visible basis 写进 gate detail。</p>
   <h3>哪些安全发现会让 run 失败？</h3>
@@ -201,6 +202,7 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
   <ul>
     <li>截图来自当前 <code>viewer/</code>，用 Playwright 和现有 serve mock 生成，不包含真实密钥。</li>
     <li>real-serve 已用临时 git repo 启动真实 <code>python -m ahadiff serve</code>，浏览器覆盖 token、estimate、learn dry-run、task 和 progress stream。</li>
+    <li>本次 2026-05-22 capture-limits follow-up 在 GPT-5.5 profile 拆分后复核了 model-limit 改动面：<code>pytest tests/unit/llm/test_model_limits.py -q</code> 为 <code>98 passed</code>，<code>pytest tests/unit/llm -q -k "model_limits or probe or adapter or provider"</code> 为 <code>98 passed</code>，<code>ruff check src/ahadiff/llm tests/unit/llm</code>、<code>ruff format --check src/ahadiff/llm tests/unit/llm</code>、<code>pyright src/ahadiff/llm</code> 为 <code>0 errors</code>，registry integrity 脚本确认 <code>openai/gpt-5.5=400000</code>、<code>openai_responses/gpt-5.5=1050000</code>，<code>git diff --check HEAD</code> 通过。拆分后没有重跑后端 full unit、前端全套和完整 Playwright。</li>
     <li>较早的动态捕获 review / fix pass 已复核后端和 viewer 改动面：<code>uv run ruff check src tests</code>、<code>uv run ruff format --check src tests</code>、<code>uv run pyright</code>、<code>uv run pytest tests/unit/ -x -q</code> 为 <code>2982 passed</code>，<code>uv run pytest tests/integration/ -x -q --ignore=tests/integration/test_live_pipeline.py --ignore=tests/integration/test_real_openclaw_cli.py</code> 为 <code>16 passed</code>，<code>cd viewer && pnpm typecheck</code>、<code>cd viewer && pnpm vitest run</code> 为 <code>417 passed</code>，<code>cd viewer && pnpm build</code> 和 <code>git diff --check HEAD</code> 均通过。新增回归覆盖旧 total context 迁移、split input/output limits、CJK 预算缩放、probe URL 编码、provider response schema 兼容、config 校验和 estimate 到 learn metadata 的一致性。</li>
     <li>Antigravity install-target follow-up 已复核本次 install 和 viewer 改动面：<code>uv run pytest tests/unit/test_install.py tests/unit/test_routes_install.py -q</code> 为 <code>131 passed</code>，<code>uv run ruff check src/ahadiff/install/ tests/unit/test_install.py tests/unit/test_routes_install.py</code>、<code>uv run ruff format --check src/ahadiff/install/ tests/unit/test_install.py tests/unit/test_routes_install.py</code> 均通过，<code>uv run pyright src/ahadiff/install/antigravity.py src/ahadiff/install/antigravity_cli.py</code> 为 <code>0 errors</code>，<code>cd viewer && pnpm typecheck</code> 通过，<code>cd viewer && pnpm vitest run</code> 为 <code>420 passed</code>（其中一次 Learn Mode Dialog 超时后目标重跑通过，再复跑全量通过），<code>cd viewer && pnpm build</code>、Guide 目标 Playwright、real-serve 目标 Playwright 和 <code>git diff --check HEAD</code> 均通过。没有重跑完整 Playwright、live judge、wheel、Linux 容器 gate、远端 CI 或真实 Windows runner。</li>
     <li>上一轮 structured-output live smoke 使用合成 fixture，覆盖本地 LM Studio、本地 Ollama、本地 OpenAI-compatible、本地 Anthropic-compatible 和 Gemini AI Studio；凭证只通过临时进程环境变量传入。</li>

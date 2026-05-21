@@ -19,6 +19,18 @@ _JSON_OBJECT_SYSTEM_INSTRUCTION = (
     "Return a single valid JSON object only. Do not include markdown fences, prose, "
     "or any text outside the JSON object."
 )
+_CONTEXT_PROBE_TOTAL_FIELDS = ("max_context_tokens", "context_window", "max_context_length")
+
+
+def _first_positive_probe_limit(
+    mapping: dict[str, Any],
+    field_names: tuple[str, ...],
+) -> int | None:
+    for field_name in field_names:
+        value = safe_positive_int(mapping.get(field_name))
+        if value is not None:
+            return value
+    return None
 
 
 class AnthropicAdapter(AdapterBase):
@@ -104,12 +116,13 @@ class AnthropicAdapter(AdapterBase):
         if not isinstance(data, dict):
             return None
         data_mapping = cast("dict[str, Any]", data)
+        context_limit = _first_positive_probe_limit(data_mapping, _CONTEXT_PROBE_TOTAL_FIELDS)
         input_limit = safe_positive_int(data_mapping.get("max_input_tokens"))
         output_limit = safe_positive_int(data_mapping.get("max_tokens"))
-        if input_limit is None and output_limit is None:
+        if context_limit is None and input_limit is None and output_limit is None:
             return None
         return ProbeContextResult(
-            max_context_tokens=None,
+            max_context_tokens=context_limit,
             max_input_tokens=input_limit,
             max_output_tokens=output_limit,
             source="live",

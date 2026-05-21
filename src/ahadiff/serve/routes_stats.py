@@ -449,7 +449,7 @@ def _provider_summary_from_mapping(
     probed_limits_source = (
         str(raw_probed_limits_source)
         if isinstance(raw_probed_limits_source, str)
-        and raw_probed_limits_source in {"live", "registry", "default"}
+        and raw_probed_limits_source in {"live", "registry", "default", "fallback"}
         else None
     )
     raw_model_limits_name = provider_mapping.get("model_limits_name")

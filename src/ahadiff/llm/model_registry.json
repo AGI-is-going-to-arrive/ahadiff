@@ -1,59 +1,1448 @@
 {
-  "schema_version": 1,
-  "entries": [
-    {"provider": "openai", "model": "gpt-5.5", "mode": "chat", "max_input_tokens": 400000, "max_output_tokens": 128000, "aliases": ["gpt-5.5-latest"], "confidence": "registry"},
-    {"provider": "openai", "model": "gpt-5.5-mini", "mode": "chat", "max_input_tokens": 400000, "max_output_tokens": 128000, "aliases": [], "confidence": "registry"},
-    {"provider": "openai", "model": "gpt-5.4", "mode": "chat", "max_input_tokens": 400000, "max_output_tokens": 128000, "aliases": ["gpt-5.4-latest"], "confidence": "registry"},
-    {"provider": "openai", "model": "gpt-5.4-mini", "mode": "chat", "max_input_tokens": 1000000, "max_output_tokens": 128000, "aliases": [], "confidence": "registry"},
-    {"provider": "openai", "model": "gpt-5.4-nano", "mode": "chat", "max_input_tokens": 1000000, "max_output_tokens": 128000, "aliases": [], "confidence": "registry"},
-    {"provider": "openai", "model": "gpt-5", "mode": "chat", "max_input_tokens": 400000, "max_output_tokens": 128000, "aliases": ["gpt-5-latest"], "confidence": "registry"},
-    {"provider": "openai", "model": "gpt-5-mini", "mode": "chat", "max_input_tokens": 400000, "max_output_tokens": 128000, "aliases": [], "confidence": "registry"},
-    {"provider": "openai", "model": "gpt-5-nano", "mode": "chat", "max_input_tokens": 400000, "max_output_tokens": 128000, "aliases": [], "confidence": "registry"},
-    {"provider": "openai", "model": "gpt-4.5-preview", "mode": "chat", "max_input_tokens": 128000, "max_output_tokens": 16384, "aliases": ["gpt-4.5"], "confidence": "registry"},
-    {"provider": "openai", "model": "gpt-4o", "mode": "chat", "max_input_tokens": 128000, "max_output_tokens": 16384, "aliases": ["gpt-4o-latest"], "confidence": "registry"},
-    {"provider": "openai", "model": "gpt-4o-mini", "mode": "chat", "max_input_tokens": 128000, "max_output_tokens": 16384, "aliases": [], "confidence": "registry"},
-    {"provider": "openai", "model": "o3", "mode": "chat", "max_input_tokens": 200000, "max_output_tokens": 100000, "aliases": [], "confidence": "registry"},
-    {"provider": "openai", "model": "o3-mini", "mode": "chat", "max_input_tokens": 200000, "max_output_tokens": 100000, "aliases": [], "confidence": "registry"},
-    {"provider": "openai", "model": "o4-mini", "mode": "chat", "max_input_tokens": 200000, "max_output_tokens": 100000, "aliases": [], "confidence": "registry"},
-    {"provider": "anthropic", "model": "claude-opus-4-1", "mode": "chat", "max_input_tokens": 200000, "max_output_tokens": 32000, "aliases": ["claude-opus-4-1-20250805"], "confidence": "registry"},
-    {"provider": "anthropic", "model": "claude-opus-4", "mode": "chat", "max_input_tokens": 200000, "max_output_tokens": 32000, "aliases": ["claude-opus-4-20250514"], "confidence": "registry"},
-    {"provider": "anthropic", "model": "claude-sonnet-4-6", "mode": "chat", "max_input_tokens": 200000, "max_output_tokens": 64000, "aliases": ["claude-sonnet-4-6-latest"], "confidence": "registry"},
-    {"provider": "anthropic", "model": "claude-sonnet-4-5", "mode": "chat", "max_input_tokens": 200000, "max_output_tokens": 64000, "aliases": ["claude-sonnet-4-5-latest"], "confidence": "registry"},
-    {"provider": "anthropic", "model": "claude-sonnet-4", "mode": "chat", "max_input_tokens": 200000, "max_output_tokens": 64000, "aliases": ["claude-sonnet-4-20250514"], "confidence": "registry"},
-    {"provider": "anthropic", "model": "claude-3-7-sonnet", "mode": "chat", "max_input_tokens": 200000, "max_output_tokens": 64000, "aliases": ["claude-3-7-sonnet-latest", "claude-3-7-sonnet-20250219"], "confidence": "registry"},
-    {"provider": "anthropic", "model": "claude-3-5-sonnet", "mode": "chat", "max_input_tokens": 200000, "max_output_tokens": 8192, "aliases": ["claude-3-5-sonnet-latest", "claude-3-5-sonnet-20241022"], "confidence": "registry"},
-    {"provider": "anthropic", "model": "claude-3-5-haiku", "mode": "chat", "max_input_tokens": 200000, "max_output_tokens": 8192, "aliases": ["claude-3-5-haiku-20241022"], "confidence": "registry"},
-    {"provider": "gemini", "model": "gemini-2.5-pro", "mode": "chat", "max_input_tokens": 1048576, "max_output_tokens": 65536, "aliases": ["models/gemini-2.5-pro"], "confidence": "registry"},
-    {"provider": "gemini", "model": "gemini-2.5-flash", "mode": "chat", "max_input_tokens": 1048576, "max_output_tokens": 65536, "aliases": ["models/gemini-2.5-flash"], "confidence": "registry"},
-    {"provider": "gemini", "model": "gemini-2.5-flash-lite", "mode": "chat", "max_input_tokens": 1048576, "max_output_tokens": 65536, "aliases": ["models/gemini-2.5-flash-lite"], "confidence": "registry"},
-    {"provider": "gemini", "model": "gemini-2.0-pro", "mode": "chat", "max_input_tokens": 1048576, "max_output_tokens": 8192, "aliases": ["models/gemini-2.0-pro"], "confidence": "registry"},
-    {"provider": "gemini", "model": "gemini-2.0-flash", "mode": "chat", "max_input_tokens": 1048576, "max_output_tokens": 8192, "aliases": ["models/gemini-2.0-flash"], "confidence": "registry"},
-    {"provider": "gemini", "model": "gemini-2.0-flash-lite", "mode": "chat", "max_input_tokens": 1048576, "max_output_tokens": 8192, "aliases": ["models/gemini-2.0-flash-lite"], "confidence": "registry"},
-    {"provider": "gemini", "model": "gemini-1.5-pro", "mode": "chat", "max_input_tokens": 2097152, "max_output_tokens": 8192, "aliases": ["models/gemini-1.5-pro"], "confidence": "registry"},
-    {"provider": "gemini", "model": "gemini-1.5-flash", "mode": "chat", "max_input_tokens": 1048576, "max_output_tokens": 8192, "aliases": ["models/gemini-1.5-flash"], "confidence": "registry"},
-    {"provider": "openai_compat", "model": "deepseek-chat", "mode": "chat", "max_input_tokens": 64000, "max_output_tokens": 8192, "aliases": ["deepseek-v3"], "confidence": "registry"},
-    {"provider": "openai_compat", "model": "deepseek-reasoner", "mode": "chat", "max_input_tokens": 64000, "max_output_tokens": 8192, "aliases": ["deepseek-r1"], "confidence": "registry"},
-    {"provider": "openai_compat", "model": "llama-3.3-70b-instruct", "mode": "chat", "max_input_tokens": 131072, "max_output_tokens": 8192, "aliases": ["meta-llama/llama-3.3-70b-instruct"], "confidence": "registry"},
-    {"provider": "openai_compat", "model": "llama-3.1-405b-instruct", "mode": "chat", "max_input_tokens": 131072, "max_output_tokens": 8192, "aliases": ["meta-llama/llama-3.1-405b-instruct"], "confidence": "registry"},
-    {"provider": "openai_compat", "model": "llama-3.1-70b-instruct", "mode": "chat", "max_input_tokens": 131072, "max_output_tokens": 8192, "aliases": ["meta-llama/llama-3.1-70b-instruct"], "confidence": "registry"},
-    {"provider": "openai_compat", "model": "llama-3.1-8b-instruct", "mode": "chat", "max_input_tokens": 131072, "max_output_tokens": 8192, "aliases": ["meta-llama/llama-3.1-8b-instruct"], "confidence": "registry"},
-    {"provider": "openai_compat", "model": "qwen3-coder", "mode": "chat", "max_input_tokens": 262144, "max_output_tokens": 32768, "aliases": ["qwen/qwen3-coder"], "confidence": "registry"},
-    {"provider": "openai_compat", "model": "qwen2.5-coder-32b-instruct", "mode": "chat", "max_input_tokens": 131072, "max_output_tokens": 8192, "aliases": ["qwen/qwen2.5-coder-32b-instruct"], "confidence": "registry"},
-    {"provider": "openai_compat", "model": "mistral-large-latest", "mode": "chat", "max_input_tokens": 131072, "max_output_tokens": 8192, "aliases": ["mistral-large"], "confidence": "registry"},
-    {"provider": "openai_compat", "model": "mixtral-8x22b-instruct", "mode": "chat", "max_input_tokens": 65536, "max_output_tokens": 8192, "aliases": ["mistralai/mixtral-8x22b-instruct"], "confidence": "registry"},
-    {"provider": "openai_compat", "model": "grok-4", "mode": "chat", "max_input_tokens": 256000, "max_output_tokens": 8192, "aliases": ["xai/grok-4"], "confidence": "registry"},
-    {"provider": "ollama", "model": "llama3.3", "mode": "chat", "max_input_tokens": 131072, "max_output_tokens": null, "aliases": ["llama3.3:70b"], "confidence": "registry"},
-    {"provider": "ollama", "model": "llama3.2", "mode": "chat", "max_input_tokens": 131072, "max_output_tokens": null, "aliases": ["llama3.2:3b", "llama3.2:1b"], "confidence": "registry"},
-    {"provider": "ollama", "model": "llama3.1", "mode": "chat", "max_input_tokens": 131072, "max_output_tokens": null, "aliases": ["llama3.1:8b", "llama3.1:70b"], "confidence": "registry"},
-    {"provider": "ollama", "model": "qwen3", "mode": "chat", "max_input_tokens": 40960, "max_output_tokens": null, "aliases": ["qwen3:8b", "qwen3:14b", "qwen3:32b"], "confidence": "registry"},
-    {"provider": "ollama", "model": "qwen2.5-coder", "mode": "chat", "max_input_tokens": 131072, "max_output_tokens": null, "aliases": ["qwen2.5-coder:32b", "qwen2.5-coder:14b"], "confidence": "registry"},
-    {"provider": "ollama", "model": "deepseek-r1", "mode": "chat", "max_input_tokens": 65536, "max_output_tokens": null, "aliases": ["deepseek-r1:7b", "deepseek-r1:32b"], "confidence": "registry"},
-    {"provider": "ollama", "model": "mistral", "mode": "chat", "max_input_tokens": 32768, "max_output_tokens": null, "aliases": ["mistral:7b"], "confidence": "registry"},
-    {"provider": "lmstudio", "model": "llama-3.3-70b-instruct", "mode": "chat", "max_input_tokens": 131072, "max_output_tokens": 8192, "aliases": [], "confidence": "registry"},
-    {"provider": "lmstudio", "model": "llama-3.1-8b-instruct", "mode": "chat", "max_input_tokens": 131072, "max_output_tokens": 8192, "aliases": [], "confidence": "registry"},
-    {"provider": "lmstudio", "model": "qwen2.5-coder-32b-instruct", "mode": "chat", "max_input_tokens": 131072, "max_output_tokens": 8192, "aliases": [], "confidence": "registry"},
-    {"provider": "lmstudio", "model": "mistral-nemo-instruct-2407", "mode": "chat", "max_input_tokens": 128000, "max_output_tokens": 8192, "aliases": ["mistral-nemo"], "confidence": "registry"},
-    {"provider": "newapi", "model": "deepseek-chat", "mode": "chat", "max_input_tokens": 64000, "max_output_tokens": 8192, "aliases": [], "confidence": "registry"},
-    {"provider": "newapi", "model": "qwen3-coder", "mode": "chat", "max_input_tokens": 262144, "max_output_tokens": 32768, "aliases": [], "confidence": "registry"}
+  "schema_version": 2,
+  "models": [
+    {
+      "provider": "openai_responses",
+      "model": "gpt-5.5",
+      "max_context_tokens": 1050000,
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "context_policy": "shared_pool",
+      "source": "OPENAI-2026-05-22 API profile; LS-2026-05-22; OR-2026-05-22",
+      "confidence": "high",
+      "aliases": [
+        "gpt-5.5-latest"
+      ]
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.5",
+      "max_context_tokens": 400000,
+      "max_input_tokens": 400000,
+      "max_output_tokens": 128000,
+      "context_policy": "shared_pool",
+      "source": "OPENAI-2026-05-22 ordinary-access profile; LS-2026-05-22; OR-2026-05-22",
+      "confidence": "medium",
+      "warnings": [
+        "ordinary access profile; use openai_responses or live probe for API 1M context"
+      ],
+      "aliases": [
+        "gpt-5.5-latest"
+      ]
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.5-pro",
+      "max_context_tokens": 1050000,
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "context_policy": "shared_pool",
+      "source": "LS-2026-05-22; OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.4",
+      "max_context_tokens": 1050000,
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "context_policy": "shared_pool",
+      "source": "OPENAI-2026-05-22; LS-2026-05-22; OR-2026-05-22",
+      "confidence": "high",
+      "aliases": [
+        "gpt-5.4-latest"
+      ]
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.4-pro",
+      "max_context_tokens": 1050000,
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "context_policy": "shared_pool",
+      "source": "LS-2026-05-22; OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "max_context_tokens": 400000,
+      "max_input_tokens": 400000,
+      "max_output_tokens": 128000,
+      "context_policy": "shared_pool",
+      "source": "LS-2026-05-22; OR-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.4-nano",
+      "max_context_tokens": 400000,
+      "max_input_tokens": 400000,
+      "max_output_tokens": 128000,
+      "context_policy": "shared_pool",
+      "source": "LS-2026-05-22; OR-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5",
+      "max_context_tokens": 400000,
+      "max_input_tokens": 400000,
+      "max_output_tokens": 128000,
+      "context_policy": "shared_pool",
+      "source": "OPENAI-2026-05-22; LS-2026-05-22; OR-2026-05-22",
+      "confidence": "high",
+      "aliases": [
+        "gpt-5-latest"
+      ]
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5-mini",
+      "max_context_tokens": 400000,
+      "max_input_tokens": 400000,
+      "max_output_tokens": 128000,
+      "context_policy": "shared_pool",
+      "source": "OPENAI-2026-05-22; LS-2026-05-22; OR-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5-nano",
+      "max_context_tokens": 400000,
+      "max_input_tokens": 400000,
+      "max_output_tokens": 128000,
+      "context_policy": "shared_pool",
+      "source": "OPENAI-2026-05-22; LS-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "max_context_tokens": 128000,
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "context_policy": "shared_pool",
+      "source": "OPENAI-2026-05-22; LS-2026-05-22; OR-2026-05-22",
+      "confidence": "high",
+      "aliases": [
+        "gpt-4o-latest"
+      ]
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "max_context_tokens": 128000,
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "context_policy": "shared_pool",
+      "source": "OPENAI-2026-05-22; LS-2026-05-22; OR-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openai",
+      "model": "o3",
+      "max_context_tokens": 200000,
+      "max_input_tokens": 200000,
+      "max_output_tokens": 100000,
+      "context_policy": "shared_pool",
+      "source": "OPENAI-2026-05-22; LS-2026-05-22; OR-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openai",
+      "model": "o3-mini",
+      "max_context_tokens": 200000,
+      "max_input_tokens": 200000,
+      "max_output_tokens": 100000,
+      "context_policy": "shared_pool",
+      "source": "OPENAI-2026-05-22; LS-2026-05-22; OR-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openai",
+      "model": "o4-mini",
+      "max_context_tokens": 200000,
+      "max_input_tokens": 200000,
+      "max_output_tokens": 100000,
+      "context_policy": "shared_pool",
+      "source": "OPENAI-2026-05-22; LS-2026-05-22; OR-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openai",
+      "model": "o1",
+      "max_context_tokens": 200000,
+      "max_input_tokens": 200000,
+      "max_output_tokens": 100000,
+      "context_policy": "shared_pool",
+      "source": "OPENAI-2026-05-22; LS-2026-05-22; OR-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openai",
+      "model": "o1-mini",
+      "max_context_tokens": 128000,
+      "max_input_tokens": 128000,
+      "max_output_tokens": 65536,
+      "context_policy": "shared_pool",
+      "source": "LS-2026-05-22; OPENAI-2026-05-22 legacy docs",
+      "confidence": "medium"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-opus-4-7",
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "context_policy": "shared_pool",
+      "source": "ANTHROPIC-2026-05-22; LS-2026-05-22; OR-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-opus-4-6",
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "context_policy": "shared_pool",
+      "source": "ANTHROPIC-2026-05-22; OR-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-opus-4-1",
+      "max_context_tokens": 200000,
+      "max_input_tokens": 200000,
+      "max_output_tokens": 32000,
+      "context_policy": "shared_pool",
+      "source": "ANTHROPIC-2026-05-22; LS-2026-05-22",
+      "confidence": "high",
+      "aliases": [
+        "claude-opus-4-1-20250805"
+      ]
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-opus-4",
+      "max_context_tokens": 200000,
+      "max_input_tokens": 200000,
+      "max_output_tokens": 32000,
+      "context_policy": "shared_pool",
+      "source": "ANTHROPIC-2026-05-22; LS-2026-05-22",
+      "confidence": "high",
+      "aliases": [
+        "claude-opus-4-20250514"
+      ]
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-6",
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 64000,
+      "context_policy": "shared_pool",
+      "source": "ANTHROPIC-2026-05-22; LS-2026-05-22",
+      "confidence": "high",
+      "aliases": [
+        "claude-sonnet-4-6-latest"
+      ]
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5",
+      "max_context_tokens": 200000,
+      "max_input_tokens": 200000,
+      "max_output_tokens": 64000,
+      "context_policy": "shared_pool",
+      "source": "ANTHROPIC-2026-05-22; LS-2026-05-22",
+      "confidence": "high",
+      "aliases": [
+        "claude-sonnet-4-5-latest"
+      ]
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4",
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 64000,
+      "context_policy": "shared_pool",
+      "source": "ANTHROPIC-2026-05-22; LS-2026-05-22",
+      "confidence": "medium",
+      "aliases": [
+        "claude-sonnet-4-20250514"
+      ]
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-3-7-sonnet",
+      "max_context_tokens": 200000,
+      "max_input_tokens": 200000,
+      "max_output_tokens": 64000,
+      "context_policy": "shared_pool",
+      "source": "ANTHROPIC-2026-05-22; LS-2026-05-22",
+      "confidence": "high",
+      "aliases": [
+        "claude-3-7-sonnet-latest",
+        "claude-3-7-sonnet-20250219"
+      ]
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-3-5-sonnet",
+      "max_context_tokens": 200000,
+      "max_input_tokens": 200000,
+      "max_output_tokens": 8192,
+      "context_policy": "shared_pool",
+      "source": "ANTHROPIC-2026-05-22; LS-2026-05-22",
+      "confidence": "high",
+      "aliases": [
+        "claude-3-5-sonnet-latest",
+        "claude-3-5-sonnet-20241022"
+      ]
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-3-5-haiku",
+      "max_context_tokens": 200000,
+      "max_input_tokens": 200000,
+      "max_output_tokens": 8192,
+      "context_policy": "shared_pool",
+      "source": "ANTHROPIC-2026-05-22; LS-2026-05-22",
+      "confidence": "high",
+      "aliases": [
+        "claude-3-5-haiku-20241022"
+      ]
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "max_context_tokens": 200000,
+      "max_input_tokens": 200000,
+      "max_output_tokens": 64000,
+      "context_policy": "shared_pool",
+      "source": "ANTHROPIC-2026-05-22; LS-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.5-flash",
+      "max_context_tokens": 1114111,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 65535,
+      "context_policy": "split_envelope",
+      "source": "GEMINI-2026-05-22; LS-2026-05-22; OR-2026-05-22 one-token output conflict",
+      "confidence": "high",
+      "aliases": [
+        "models/gemini-3.5-flash"
+      ]
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3-flash-preview",
+      "max_context_tokens": 1114111,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 65535,
+      "context_policy": "split_envelope",
+      "source": "GEMINI-2026-05-22; LS-2026-05-22; OR-2026-05-22 one-token output conflict",
+      "confidence": "high",
+      "aliases": [
+        "models/gemini-3-flash-preview"
+      ]
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.1-pro-preview",
+      "max_context_tokens": 1114112,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 65536,
+      "context_policy": "split_envelope",
+      "source": "GEMINI-2026-05-22; LS-2026-05-22; OR-2026-05-22",
+      "confidence": "high",
+      "aliases": [
+        "models/gemini-3.1-pro-preview"
+      ]
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.1-flash-lite",
+      "max_context_tokens": 1114112,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 65536,
+      "context_policy": "split_envelope",
+      "source": "GEMINI-2026-05-22; OR-2026-05-22",
+      "confidence": "high",
+      "aliases": [
+        "models/gemini-3.1-flash-lite"
+      ]
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.1-flash-lite-preview",
+      "max_context_tokens": 1114112,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 65536,
+      "context_policy": "split_envelope",
+      "source": "GEMINI-2026-05-22; LS-2026-05-22; OR-2026-05-22",
+      "confidence": "high",
+      "aliases": [
+        "models/gemini-3.1-flash-lite-preview"
+      ]
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-2.5-pro",
+      "max_context_tokens": 1114112,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 65536,
+      "context_policy": "split_envelope",
+      "source": "GEMINI-2026-05-22; LS-2026-05-22; OR-2026-05-22",
+      "confidence": "high",
+      "aliases": [
+        "models/gemini-2.5-pro"
+      ]
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "max_context_tokens": 1114112,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 65536,
+      "context_policy": "split_envelope",
+      "source": "GEMINI-2026-05-22; LS-2026-05-22; OR-2026-05-22",
+      "confidence": "high",
+      "aliases": [
+        "models/gemini-2.5-flash"
+      ]
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-2.5-flash-lite",
+      "max_context_tokens": 1114112,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 65536,
+      "context_policy": "split_envelope",
+      "source": "GEMINI-2026-05-22; LS-2026-05-22; OR-2026-05-22",
+      "confidence": "high",
+      "aliases": [
+        "models/gemini-2.5-flash-lite"
+      ]
+    },
+    {
+      "provider": "openrouter",
+      "model": "google/gemini-3.5-flash",
+      "max_context_tokens": 1048576,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 65536,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openrouter",
+      "model": "google/gemini-3.1-pro-preview",
+      "max_context_tokens": 1048576,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 65536,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openrouter",
+      "model": "google/gemini-3-flash-preview",
+      "max_context_tokens": 1048576,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 65536,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openrouter",
+      "model": "google/gemma-4-26b-a4b-it",
+      "max_context_tokens": 262144,
+      "max_input_tokens": 262144,
+      "max_output_tokens": null,
+      "context_policy": "route_specific",
+      "source": "GEMMA-2026-05-22; OR-2026-05-22 output missing on paid route",
+      "confidence": "medium",
+      "warnings": [
+        "max_output_tokens not published for this route"
+      ]
+    },
+    {
+      "provider": "openrouter",
+      "model": "google/gemma-4-26b-a4b-it:free",
+      "max_context_tokens": 262144,
+      "max_input_tokens": 262144,
+      "max_output_tokens": 32768,
+      "context_policy": "route_specific",
+      "source": "GEMMA-2026-05-22; OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "google/gemma-4-31b-it",
+      "max_context_tokens": 262144,
+      "max_input_tokens": 262144,
+      "max_output_tokens": 16384,
+      "context_policy": "route_specific",
+      "source": "GEMMA-2026-05-22; OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "deepseek-v4-flash",
+      "max_context_tokens": 1048576,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 384000,
+      "context_policy": "shared_pool",
+      "source": "DEEPSEEK-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "deepseek-v4-pro",
+      "max_context_tokens": 1048576,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 384000,
+      "context_policy": "shared_pool",
+      "source": "DEEPSEEK-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "deepseek-chat",
+      "max_context_tokens": 1048576,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 384000,
+      "context_policy": "shared_pool",
+      "source": "DEEPSEEK-2026-05-22 alias docs",
+      "confidence": "high"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "deepseek-reasoner",
+      "max_context_tokens": 1048576,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 384000,
+      "context_policy": "shared_pool",
+      "source": "DEEPSEEK-2026-05-22 alias docs",
+      "confidence": "high"
+    },
+    {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-pro",
+      "max_context_tokens": 1048576,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 384000,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22; DEEPSEEK-2026-05-22 conflict on decimal/binary context",
+      "confidence": "high"
+    },
+    {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash:free",
+      "max_context_tokens": 1048576,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 384000,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22; DEEPSEEK-2026-05-22 conflict on decimal/binary context",
+      "confidence": "high"
+    },
+    {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash",
+      "max_context_tokens": 1048576,
+      "max_input_tokens": 1048575,
+      "max_output_tokens": null,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22 paid route missing output",
+      "confidence": "medium",
+      "warnings": [
+        "max_output_tokens not published for this route"
+      ]
+    },
+    {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v3.2-speciale",
+      "max_context_tokens": 163840,
+      "max_input_tokens": 163840,
+      "max_output_tokens": 163840,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22; LS-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v3.2",
+      "max_context_tokens": 131072,
+      "max_input_tokens": 131072,
+      "max_output_tokens": 65536,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22; LS-2026-05-22 conflict",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v3.2-exp",
+      "max_context_tokens": 163840,
+      "max_input_tokens": 163840,
+      "max_output_tokens": 65536,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-chat-v3.1",
+      "max_context_tokens": 163840,
+      "max_input_tokens": 163840,
+      "max_output_tokens": 32768,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22; LS-2026-05-22 variants",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v3.1-terminus",
+      "max_context_tokens": 163840,
+      "max_input_tokens": 163840,
+      "max_output_tokens": 32768,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22; LS-2026-05-22 variants",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-chat",
+      "max_context_tokens": 163840,
+      "max_input_tokens": 163840,
+      "max_output_tokens": 16384,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22 legacy route",
+      "confidence": "high"
+    },
+    {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-r1",
+      "max_context_tokens": 163840,
+      "max_input_tokens": 64000,
+      "max_output_tokens": 16000,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22 legacy route",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "qwen3.7-max",
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 65536,
+      "context_policy": "shared_pool",
+      "source": "ALIBABA-2026-05-22 official blog/API example; OR-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "qwen3.5-plus",
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 65536,
+      "context_policy": "shared_pool",
+      "source": "ALIBABA-2026-05-22 pricing tiers; LS-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "qwen-plus-latest",
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 32768,
+      "context_policy": "shared_pool",
+      "source": "ALIBABA-2026-05-22 pricing tiers; LS-2026-05-22; OR-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "qwen3-max",
+      "max_context_tokens": 258048,
+      "max_input_tokens": 258048,
+      "max_output_tokens": 65536,
+      "context_policy": "shared_pool",
+      "source": "ALIBABA-2026-05-22 pricing tiers up to 252K; LS-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "qwen3-max-preview",
+      "max_context_tokens": 258048,
+      "max_input_tokens": 258048,
+      "max_output_tokens": 65536,
+      "context_policy": "shared_pool",
+      "source": "ALIBABA-2026-05-22 pricing tiers up to 252K; LS-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "qwen3-coder-plus",
+      "max_context_tokens": 997952,
+      "max_input_tokens": 997952,
+      "max_output_tokens": 65536,
+      "context_policy": "shared_pool",
+      "source": "ALIBABA-2026-05-22; LS-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "qwen3-coder-flash",
+      "max_context_tokens": 997952,
+      "max_input_tokens": 997952,
+      "max_output_tokens": 65536,
+      "context_policy": "shared_pool",
+      "source": "ALIBABA-2026-05-22; LS-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openrouter",
+      "model": "qwen/qwen3.7-max",
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 65536,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22; ALIBABA-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openrouter",
+      "model": "qwen/qwen3.6-plus",
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 65536,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22; ALIBABA-2026-05-22 blog comparison only",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "qwen/qwen3.6-flash",
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 65536,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "qwen/qwen3.6-max-preview",
+      "max_context_tokens": 262144,
+      "max_input_tokens": 262144,
+      "max_output_tokens": 65536,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "qwen/qwen3.6-35b-a3b",
+      "max_context_tokens": 262144,
+      "max_input_tokens": 262144,
+      "max_output_tokens": 262144,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "qwen/qwen3.6-27b",
+      "max_context_tokens": 262144,
+      "max_input_tokens": 262140,
+      "max_output_tokens": 262140,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "qwen/qwen3.5-plus-20260420",
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 65536,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22; ALIBABA-2026-05-22 pricing tiers",
+      "confidence": "high"
+    },
+    {
+      "provider": "openrouter",
+      "model": "qwen/qwen3.5-plus-02-15",
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 65536,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22; ALIBABA-2026-05-22 pricing tiers",
+      "confidence": "high"
+    },
+    {
+      "provider": "openrouter",
+      "model": "qwen/qwen3.5-flash-02-23",
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 65536,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "qwen/qwen3.5-397b-a17b",
+      "max_context_tokens": 262144,
+      "max_input_tokens": 262144,
+      "max_output_tokens": 65536,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "qwen/qwen3.5-122b-a10b",
+      "max_context_tokens": 262144,
+      "max_input_tokens": 262144,
+      "max_output_tokens": 65536,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "qwen/qwen3.5-35b-a3b",
+      "max_context_tokens": 262144,
+      "max_input_tokens": 262144,
+      "max_output_tokens": null,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22 missing output",
+      "confidence": "low",
+      "warnings": [
+        "max_output_tokens not published for this route"
+      ]
+    },
+    {
+      "provider": "openrouter",
+      "model": "qwen/qwen3.5-27b",
+      "max_context_tokens": 262144,
+      "max_input_tokens": 262144,
+      "max_output_tokens": 65536,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "qwen/qwen3.5-9b",
+      "max_context_tokens": 262144,
+      "max_input_tokens": 262144,
+      "max_output_tokens": 81920,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "qwen/qwen-plus",
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 32768,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openrouter",
+      "model": "qwen/qwen3-coder",
+      "max_context_tokens": 262144,
+      "max_input_tokens": 262144,
+      "max_output_tokens": 65536,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22 top_provider context",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "glm-5.1",
+      "max_context_tokens": 200000,
+      "max_input_tokens": 200000,
+      "max_output_tokens": 128000,
+      "context_policy": "shared_pool",
+      "source": "ZHIPU-2026-05-22 official docs",
+      "confidence": "high"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "glm-5v-turbo",
+      "max_context_tokens": 200000,
+      "max_input_tokens": 200000,
+      "max_output_tokens": 128000,
+      "context_policy": "shared_pool",
+      "source": "ZHIPU-2026-05-22 official docs",
+      "confidence": "high"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "glm-5",
+      "max_context_tokens": 200000,
+      "max_input_tokens": 200000,
+      "max_output_tokens": 128000,
+      "context_policy": "shared_pool",
+      "source": "LS-2026-05-22 zai row; OR-2026-05-22 route family",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "glm-4.7",
+      "max_context_tokens": 200000,
+      "max_input_tokens": 200000,
+      "max_output_tokens": 128000,
+      "context_policy": "shared_pool",
+      "source": "LS-2026-05-22 zai row; OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "glm-4.6",
+      "max_context_tokens": 200000,
+      "max_input_tokens": 200000,
+      "max_output_tokens": 128000,
+      "context_policy": "shared_pool",
+      "source": "LS-2026-05-22 zai row; OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "glm-4.5",
+      "max_context_tokens": 128000,
+      "max_input_tokens": 128000,
+      "max_output_tokens": 32000,
+      "context_policy": "shared_pool",
+      "source": "LS-2026-05-22 zai row",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "z-ai/glm-5.1",
+      "max_context_tokens": 202752,
+      "max_input_tokens": 202752,
+      "max_output_tokens": null,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22; ZHIPU-2026-05-22 output conflict",
+      "confidence": "medium",
+      "warnings": [
+        "max_output_tokens not published for this route"
+      ]
+    },
+    {
+      "provider": "openrouter",
+      "model": "z-ai/glm-5v-turbo",
+      "max_context_tokens": 202752,
+      "max_input_tokens": 202752,
+      "max_output_tokens": 131072,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22; ZHIPU-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openrouter",
+      "model": "z-ai/glm-5-turbo",
+      "max_context_tokens": 202752,
+      "max_input_tokens": 202752,
+      "max_output_tokens": 131072,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "z-ai/glm-5",
+      "max_context_tokens": 202752,
+      "max_input_tokens": 202752,
+      "max_output_tokens": null,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22; LS-2026-05-22 conflict",
+      "confidence": "medium",
+      "warnings": [
+        "max_output_tokens not published for this route"
+      ]
+    },
+    {
+      "provider": "openrouter",
+      "model": "z-ai/glm-4.7",
+      "max_context_tokens": 202752,
+      "max_input_tokens": 202752,
+      "max_output_tokens": 131072,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "z-ai/glm-4.7-flash",
+      "max_context_tokens": 202752,
+      "max_input_tokens": 202752,
+      "max_output_tokens": 131072,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "z-ai/glm-4.6",
+      "max_context_tokens": 202752,
+      "max_input_tokens": 202752,
+      "max_output_tokens": 131072,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "z-ai/glm-4.6v",
+      "max_context_tokens": 131072,
+      "max_input_tokens": 131072,
+      "max_output_tokens": 24000,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "moonshot-v1-128k",
+      "max_context_tokens": 131072,
+      "max_input_tokens": 131072,
+      "max_output_tokens": null,
+      "context_policy": "shared_pool",
+      "source": "MOONSHOT-2026-05-22; LS-2026-05-22",
+      "confidence": "high",
+      "warnings": [
+        "max_output_tokens not published for this direct model"
+      ]
+    },
+    {
+      "provider": "openai_compat",
+      "model": "kimi-latest",
+      "max_context_tokens": 131072,
+      "max_input_tokens": 131072,
+      "max_output_tokens": 131072,
+      "context_policy": "shared_pool",
+      "source": "LS-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "kimi-k2.5",
+      "max_context_tokens": 262144,
+      "max_input_tokens": 262144,
+      "max_output_tokens": 262144,
+      "context_policy": "shared_pool",
+      "source": "LS-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "kimi-k2.6",
+      "max_context_tokens": 262144,
+      "max_input_tokens": 262144,
+      "max_output_tokens": 262144,
+      "context_policy": "shared_pool",
+      "source": "LS-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "moonshotai/kimi-latest",
+      "max_context_tokens": 262142,
+      "max_input_tokens": 262142,
+      "max_output_tokens": 262142,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22 top_provider context",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "MiniMax-M2.7",
+      "max_context_tokens": 204800,
+      "max_input_tokens": 204800,
+      "max_output_tokens": null,
+      "context_policy": "shared_pool",
+      "source": "MINIMAX-2026-05-22",
+      "confidence": "medium",
+      "warnings": [
+        "max_output_tokens not published for this direct model"
+      ]
+    },
+    {
+      "provider": "openai_compat",
+      "model": "MiniMax-M2.5",
+      "max_context_tokens": 204800,
+      "max_input_tokens": 204800,
+      "max_output_tokens": null,
+      "context_policy": "shared_pool",
+      "source": "MINIMAX-2026-05-22; LS-2026-05-22 conflict",
+      "confidence": "medium",
+      "warnings": [
+        "max_output_tokens not published for this direct model"
+      ]
+    },
+    {
+      "provider": "openrouter",
+      "model": "minimax/minimax-m1",
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 40000,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "minimax/minimax-m2",
+      "max_context_tokens": 196608,
+      "max_input_tokens": 196608,
+      "max_output_tokens": 196608,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22 top_provider context",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "minimax/minimax-m2.1",
+      "max_context_tokens": 196608,
+      "max_input_tokens": 196608,
+      "max_output_tokens": 196608,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22 top_provider context",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "minimax/minimax-m2.5",
+      "max_context_tokens": 196608,
+      "max_input_tokens": 196608,
+      "max_output_tokens": 196608,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22 top_provider context",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "minimax/minimax-m2.7",
+      "max_context_tokens": 196608,
+      "max_input_tokens": 196608,
+      "max_output_tokens": 131072,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22 top_provider context",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "mimo-v2-pro",
+      "max_context_tokens": 1048576,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 131072,
+      "context_policy": "shared_pool",
+      "source": "XIAOMI-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "mimo-v2.5-pro",
+      "max_context_tokens": 1048576,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 16384,
+      "context_policy": "shared_pool",
+      "source": "XIAOMI-2026-05-22; OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "xiaomi/mimo-v2-flash",
+      "max_context_tokens": 262144,
+      "max_input_tokens": 262144,
+      "max_output_tokens": 65536,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "xiaomi/mimo-v2-pro",
+      "max_context_tokens": 1048576,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 131072,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "xiaomi/mimo-v2.5",
+      "max_context_tokens": 1048576,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 131072,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "xiaomi/mimo-v2.5-pro",
+      "max_context_tokens": 1048576,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 16384,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "meta-llama/llama-3.1-70b-instruct",
+      "max_context_tokens": 131072,
+      "max_input_tokens": 131072,
+      "max_output_tokens": 16384,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openrouter",
+      "model": "meta-llama/llama-3.1-8b-instruct",
+      "max_context_tokens": 16384,
+      "max_input_tokens": 16384,
+      "max_output_tokens": 16384,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22 top_provider context",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "meta-llama/llama-4-maverick",
+      "max_context_tokens": 1048576,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 16384,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openrouter",
+      "model": "meta-llama/llama-4-scout",
+      "max_context_tokens": 327680,
+      "max_input_tokens": 327680,
+      "max_output_tokens": 16384,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22 top_provider context; LS-2026-05-22 says 10M direct",
+      "confidence": "medium"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "Llama-4-Maverick",
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 4028,
+      "context_policy": "shared_pool",
+      "source": "LS-2026-05-22 Meta direct row",
+      "confidence": "low"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "Llama-4-Scout",
+      "max_context_tokens": 10000000,
+      "max_input_tokens": 10000000,
+      "max_output_tokens": 4028,
+      "context_policy": "shared_pool",
+      "source": "LS-2026-05-22 Meta direct row",
+      "confidence": "low"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "mistral-large-latest",
+      "max_context_tokens": 262144,
+      "max_input_tokens": 262144,
+      "max_output_tokens": 262144,
+      "context_policy": "shared_pool",
+      "source": "LS-2026-05-22",
+      "confidence": "high",
+      "aliases": [
+        "mistral-large"
+      ]
+    },
+    {
+      "provider": "openai_compat",
+      "model": "mistral-small-latest",
+      "max_context_tokens": 131072,
+      "max_input_tokens": 131072,
+      "max_output_tokens": 131072,
+      "context_policy": "shared_pool",
+      "source": "LS-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "codestral-2508",
+      "max_context_tokens": 131072,
+      "max_input_tokens": 131072,
+      "max_output_tokens": null,
+      "context_policy": "shared_pool",
+      "source": "MISTRAL-2026-05-22; LS-2026-05-22 conflict",
+      "confidence": "medium",
+      "warnings": [
+        "max_output_tokens not published for this direct model"
+      ]
+    },
+    {
+      "provider": "openai_compat",
+      "model": "pixtral-large-latest",
+      "max_context_tokens": 128000,
+      "max_input_tokens": 128000,
+      "max_output_tokens": 128000,
+      "context_policy": "shared_pool",
+      "source": "LS-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openrouter",
+      "model": "mistralai/mistral-large-2512",
+      "max_context_tokens": 262144,
+      "max_input_tokens": 262144,
+      "max_output_tokens": 262144,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openrouter",
+      "model": "mistralai/mistral-small-3.2-24b-instruct",
+      "max_context_tokens": 128000,
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openrouter",
+      "model": "mistralai/mixtral-8x22b-instruct",
+      "max_context_tokens": 65536,
+      "max_input_tokens": 65536,
+      "max_output_tokens": 65536,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openrouter",
+      "model": "mistralai/codestral-2508",
+      "max_context_tokens": 256000,
+      "max_input_tokens": 256000,
+      "max_output_tokens": 256000,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openrouter",
+      "model": "mistralai/pixtral-large-2411",
+      "max_context_tokens": 131072,
+      "max_input_tokens": 131072,
+      "max_output_tokens": 131072,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "openai_compat",
+      "model": "grok-4",
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": null,
+      "context_policy": "shared_pool",
+      "source": "XAI-2026-05-22 official Grok 4.3 alias docs; LS-2026-05-22 stale conflict",
+      "confidence": "medium",
+      "warnings": [
+        "max_output_tokens not published"
+      ]
+    },
+    {
+      "provider": "openai_compat",
+      "model": "grok-4.20",
+      "max_context_tokens": 2000000,
+      "max_input_tokens": 2000000,
+      "max_output_tokens": null,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22; xAI docs mention newer behavior but do not make it the primary model page",
+      "confidence": "low",
+      "warnings": [
+        "max_output_tokens not published"
+      ]
+    },
+    {
+      "provider": "openai_compat",
+      "model": "grok-4.3",
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": null,
+      "context_policy": "shared_pool",
+      "source": "XAI-2026-05-22; LS-2026-05-22; OR-2026-05-22",
+      "confidence": "high",
+      "warnings": [
+        "max_output_tokens not published"
+      ]
+    },
+    {
+      "provider": "openrouter",
+      "model": "x-ai/grok-4.20",
+      "max_context_tokens": 2000000,
+      "max_input_tokens": 2000000,
+      "max_output_tokens": null,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "high",
+      "warnings": [
+        "max_output_tokens not published for this route"
+      ]
+    },
+    {
+      "provider": "openrouter",
+      "model": "x-ai/grok-4.3",
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": null,
+      "context_policy": "route_specific",
+      "source": "OR-2026-05-22",
+      "confidence": "high",
+      "warnings": [
+        "max_output_tokens not published for this route"
+      ]
+    },
+    {
+      "provider": "lmstudio",
+      "model": "*",
+      "max_context_tokens": null,
+      "max_input_tokens": null,
+      "max_output_tokens": null,
+      "context_policy": "local_runtime",
+      "source": "PROXY-2026-05-22; live probe preferred",
+      "confidence": "medium"
+    },
+    {
+      "provider": "ollama",
+      "model": "*",
+      "max_context_tokens": null,
+      "max_input_tokens": null,
+      "max_output_tokens": null,
+      "context_policy": "local_runtime",
+      "source": "PROXY-2026-05-22; live probe preferred",
+      "confidence": "medium"
+    }
   ]
 }

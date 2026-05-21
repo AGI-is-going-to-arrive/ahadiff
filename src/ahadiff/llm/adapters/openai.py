@@ -14,6 +14,34 @@ from .thinking import reject_unsupported_thinking
 if TYPE_CHECKING:
     import httpx
 
+_CONTEXT_PROBE_TOTAL_FIELDS = (
+    "max_context_tokens",
+    "context_window",
+    "max_context_length",
+    "max_tokens",
+)
+_CONTEXT_PROBE_INPUT_FIELDS = ("max_input_tokens",)
+_CONTEXT_PROBE_OUTPUT_FIELDS = ("max_output_tokens",)
+
+
+def _context_probe_metadata(item: dict[str, Any]) -> dict[str, Any]:
+    metadata = item.get("metadata")
+    if not isinstance(metadata, dict):
+        return {}
+    return cast("dict[str, Any]", metadata)
+
+
+def _first_positive_probe_limit(
+    mappings: tuple[dict[str, Any], ...],
+    field_names: tuple[str, ...],
+) -> int | None:
+    for mapping in mappings:
+        for field_name in field_names:
+            value = safe_positive_int(mapping.get(field_name))
+            if value is not None:
+                return value
+    return None
+
 
 class OpenAIChatAdapter(AdapterBase):
     @property
@@ -117,14 +145,30 @@ class OpenAIChatAdapter(AdapterBase):
             typed_item = cast("dict[str, Any]", item)
             if typed_item.get("id") != model_name:
                 continue
-            for field_name in ("context_window", "max_tokens"):
-                value = safe_positive_int(typed_item.get(field_name))
-                if value is None:
-                    continue
-                return ProbeContextResult(
-                    max_context_tokens=value,
-                    max_input_tokens=None,
-                    max_output_tokens=None,
-                    source="live",
-                )
+            metadata = _context_probe_metadata(typed_item)
+            probe_sources = (metadata, typed_item)
+            max_context_tokens = _first_positive_probe_limit(
+                probe_sources,
+                _CONTEXT_PROBE_TOTAL_FIELDS,
+            )
+            max_input_tokens = _first_positive_probe_limit(
+                probe_sources,
+                _CONTEXT_PROBE_INPUT_FIELDS,
+            )
+            max_output_tokens = _first_positive_probe_limit(
+                probe_sources,
+                _CONTEXT_PROBE_OUTPUT_FIELDS,
+            )
+            if (
+                max_context_tokens is None
+                and max_input_tokens is None
+                and max_output_tokens is None
+            ):
+                continue
+            return ProbeContextResult(
+                max_context_tokens=max_context_tokens,
+                max_input_tokens=max_input_tokens,
+                max_output_tokens=max_output_tokens,
+                source="live",
+            )
         return None

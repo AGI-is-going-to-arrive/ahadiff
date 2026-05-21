@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
 
@@ -31,6 +31,7 @@ def probe_provider(
     provider_name: str,
     provider_class: str,
     model_name: str,
+    model_limits_name: str | None = None,
     base_url: str,
     api_key: str | None,
     api_key_env: str,
@@ -47,6 +48,7 @@ def probe_provider(
     base_config = ProviderConfig(
         provider_class=provider_class,  # pyright: ignore[reportArgumentType]
         model_name=model_name,
+        model_limits_name=model_limits_name,
         base_url=base_url,
         api_key_env=api_key_env,
     )
@@ -81,12 +83,13 @@ def probe_provider(
         config = ProviderConfig(
             provider_class=base_config.provider_class,
             model_name=base_config.model_name,
+            model_limits_name=base_config.model_limits_name,
             base_url=base_config.base_url,
             api_key_env=base_config.api_key_env,
             probed_max_context=context_result.max_context_tokens,
             probed_max_input_tokens=context_result.max_input_tokens,
             probed_max_output_tokens=context_result.max_output_tokens,
-            probed_limits_source="live" if context_result.source == "live" else "default",
+            probed_limits_source=context_result.source,
             probed_tpm=response.rate_limits.tpm_limit if response.rate_limits else None,
             probed_rpm=response.rate_limits.rpm_limit if response.rate_limits else None,
             probe_timestamp=_utc_now(),
@@ -180,7 +183,10 @@ def _probe_context_window(
         api_key=provider.api_key, model_name=model_name
     )
     if request is None:
-        return _fallback_context_result(provider, model_name=model_name), "fallback"
+        return (
+            _fallback_context_result(provider, model_name=model_name, source="default"),
+            "default",
+        )
     method, url, headers = request[:3]
     body = request[3] if len(request) == 4 else None
     try:
@@ -230,12 +236,17 @@ def _probe_result_has_limits(result: ProbeContextResult) -> bool:
     )
 
 
-def _fallback_context_result(provider: Any, *, model_name: str) -> ProbeContextResult:
+def _fallback_context_result(
+    provider: Any,
+    *,
+    model_name: str,
+    source: Literal["fallback", "default"] = "fallback",
+) -> ProbeContextResult:
     return ProbeContextResult(
         max_context_tokens=resolve_context_window(model_name, provider.config.probed_max_context),
         max_input_tokens=None,
         max_output_tokens=None,
-        source="fallback",
+        source=source,
     )
 
 

@@ -1515,6 +1515,7 @@
     "provider_input_tokens": "Input limit",
     "provider_limits_source": "Limits source",
     "provider_limits_source_default": "default",
+    "provider_limits_source_fallback": "fallback probe",
     "provider_limits_source_live": "live",
     "provider_limits_source_registry": "registry",
     "provider_max_output_label": "Max Output Tokens",

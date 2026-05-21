@@ -46,7 +46,7 @@ ProviderCapabilityOverride: TypeAlias = Literal[
     "supports_rate_limit_headers",
     "supports_context_probe",
 ]
-ProviderLimitsSource: TypeAlias = Literal["live", "registry", "default"]
+ProviderLimitsSource: TypeAlias = Literal["live", "registry", "default", "fallback"]
 _PROVIDER_CAPABILITY_OVERRIDE_FIELDS = frozenset(get_args(ProviderCapabilityOverride))
 
 

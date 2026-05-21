@@ -1515,6 +1515,7 @@
     "provider_input_tokens": "输入上限",
     "provider_limits_source": "限制来源",
     "provider_limits_source_default": "默认",
+    "provider_limits_source_fallback": "回退探测",
     "provider_limits_source_live": "实测",
     "provider_limits_source_registry": "注册表",
     "provider_max_output_label": "最大输出 Tokens",

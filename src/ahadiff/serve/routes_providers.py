@@ -238,6 +238,15 @@ def _provider_required_str(provider_data: Mapping[str, Any], field_name: str) ->
     return value
 
 
+def _provider_optional_str(provider_data: Mapping[str, Any], field_name: str) -> str | None:
+    value = provider_data.get(field_name)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise ConfigError(f"provider {field_name} must be a non-empty string")
+    return value
+
+
 def _probe_report_result(
     *,
     alias: str,
@@ -578,6 +587,7 @@ async def probe_provider_route(request: Request) -> JSONResponse:
         try:
             provider_class = _provider_required_str(provider_snapshot, "provider_class")
             model_name = _provider_required_str(provider_snapshot, "model_name")
+            model_limits_name = _provider_optional_str(provider_snapshot, "model_limits_name")
             base_url = _provider_required_str(provider_snapshot, "base_url")
             api_key_env = _provider_required_str(provider_snapshot, "api_key_env")
             validate_provider_base_url(
@@ -595,6 +605,7 @@ async def probe_provider_route(request: Request) -> JSONResponse:
                     provider_name=alias,
                     provider_class=provider_class,
                     model_name=model_name,
+                    model_limits_name=model_limits_name,
                     base_url=base_url,
                     api_key=api_key,
                     api_key_env=api_key_env,

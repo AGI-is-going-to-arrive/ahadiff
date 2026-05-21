@@ -841,8 +841,10 @@ def _validate_provider_dynamic_field(key: str, field_name: str, value: Scalar) -
         return
     if field_name == "probed_limits_source":
         source = cast("str", value)
-        if source and source not in {"live", "registry", "default"}:
-            raise ConfigError(f"{key} must be one of default, live, registry, got {source!r}")
+        if source and source not in {"live", "registry", "default", "fallback"}:
+            raise ConfigError(
+                f"{key} must be one of default, fallback, live, registry, got {source!r}"
+            )
         return
     if field_name != "base_url":
         return

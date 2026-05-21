@@ -33,6 +33,30 @@ _MAX_RETRY_AFTER_SECONDS = 300.0
 _DEV_CONTEXT_WINDOWS = {
     "gpt-5.4-mini": 1_000_000,
 }
+_WARNING_FALLBACK_CONTEXT_IGNORED = (
+    "fallback/default probe limits ignored for context; registry context retained"
+)
+_WARNING_STALE_PROBE_LIMITS = (
+    "stale probe limits missing live source; using them only after registry limits"
+)
+_WARNING_LIVE_SPLIT_NO_CONTEXT = (
+    "live split limits did not include max_context_tokens; "
+    "context resolved without summing input and output"
+)
+_WARNING_LIVE_CONTEXT_INCONSISTENT = (
+    "live probe context internally inconsistent; using registry value"
+)
+_WARNING_NON_LIVE_SPLIT_IGNORED = (
+    "non-live probe input/output limits ignored; using registry values"
+)
+_WARNING_OUTPUT_CLAMPED = "max_output_tokens exceeds max_context_tokens; clamped to context window"
+_WARNING_MISSING_OUTPUT = (
+    "max_output_tokens missing from model registry; using default output budget"
+)
+_WARNING_UNKNOWN_PROXY_MODEL = (
+    "model limits unknown for proxy route; using conservative defaults; "
+    "set model_limits_name to a provider-qualified model id"
+)
 
 
 @dataclass(frozen=True)
@@ -176,57 +200,233 @@ def resolve_model_limits(
         model_name,
         getattr(config, "model_limits_name", None),
     )
-    registry_warnings = registry.warnings if registry is not None else ()
-    legacy_context = _positive_int_or_none(getattr(config, "probed_max_context", None))
+    warnings = list(registry.warnings if registry is not None else ())
+    probed_source = getattr(config, "probed_limits_source", None)
+    live_context = _positive_int_or_none(getattr(config, "probed_max_context", None))
+    live_input = _positive_int_or_none(getattr(config, "probed_max_input_tokens", None))
+    live_output = _positive_int_or_none(getattr(config, "probed_max_output_tokens", None))
+    has_probe_limits = any(value is not None for value in (live_context, live_input, live_output))
+    registry_context = (
+        _positive_int_or_none(registry.max_context_tokens) if registry is not None else None
+    )
 
-    output_value, output_source = _resolve_output_limit(config, registry)
-    split_input_value, split_input_source = _resolve_split_input_limit(config, registry)
-    if split_input_value is not None:
-        input_value = split_input_value
-        input_source = split_input_source
-        output_for_context = output_value if output_source in {"live", "registry"} else 0
-        split_context = input_value + output_for_context
-        context_value = max(legacy_context or 0, split_context)
-    else:
-        context_value = legacy_context or resolve_context_window(model_name, None)
-        output_for_context = output_value if output_source in {"live", "registry"} else 0
-        input_value = max(context_value - output_for_context, 0)
-        input_source = "total_derived"
+    has_split_probe_limits = live_input is not None or live_output is not None
+
+    if (
+        live_context is not None
+        and probed_source in {"default", "fallback"}
+        and registry_context is not None
+    ):
+        _append_warning(
+            warnings,
+            _WARNING_FALLBACK_CONTEXT_IGNORED,
+        )
+    elif has_probe_limits and probed_source != "live":
+        _append_warning(
+            warnings,
+            _WARNING_STALE_PROBE_LIMITS,
+        )
+    if (
+        live_context is None
+        and probed_source == "live"
+        and (live_input is not None or live_output is not None)
+    ):
+        _append_warning(
+            warnings,
+            _WARNING_LIVE_SPLIT_NO_CONTEXT,
+        )
+    if registry is not None and has_split_probe_limits and probed_source != "live":
+        _append_warning(
+            warnings,
+            _WARNING_NON_LIVE_SPLIT_IGNORED,
+        )
+
+    input_value, input_source = _resolve_input_limit(
+        live_input=live_input,
+        probed_source=probed_source,
+        registry=registry,
+    )
+    output_value, output_source = _resolve_output_limit(
+        live_output=live_output,
+        probed_source=probed_source,
+        registry=registry,
+        warnings=warnings,
+    )
+    context_value, context_source = _resolve_context_limit(
+        provider_class=provider_class,
+        model_name=model_name,
+        config=config,
+        live_context=live_context,
+        live_input=live_input,
+        live_output=live_output,
+        probed_source=probed_source,
+        registry=registry,
+        warnings=warnings,
+    )
+
+    if output_value > context_value:
+        output_value = context_value
+        _append_warning(
+            warnings,
+            _WARNING_OUTPUT_CLAMPED,
+        )
+
+    if input_value is None:
+        input_value = context_value
+        input_source = "input_conservative"
 
     return ResolvedModelLimits(
         max_context_tokens=context_value,
         max_input_tokens=input_value,
         max_output_tokens=output_value,
-        source=_combined_limit_source(input_source, output_source),
+        source=_combined_limit_source(context_source, input_source, output_source),
         input_source=input_source,
         output_source=output_source,
-        warnings=registry_warnings,
+        warnings=tuple(warnings),
     )
 
 
-def _resolve_split_input_limit(
-    config: ProviderConfig,
+def _resolve_input_limit(
+    *,
+    live_input: int | None,
+    probed_source: str | None,
     registry: Any,
 ) -> tuple[int | None, str]:
-    live_input = _positive_int_or_none(getattr(config, "probed_max_input_tokens", None))
+    registry_input = (
+        _positive_int_or_none(registry.max_input_tokens) if registry is not None else None
+    )
+    if registry_input is not None and probed_source != "live":
+        return registry_input, "registry"
     if live_input is not None:
-        return live_input, "live"
+        return live_input, "live" if probed_source == "live" else "stale_probe"
+    if registry_input is not None:
+        return registry_input, "registry"
     if registry is not None:
-        registry_input = _positive_int_or_none(registry.max_input_tokens)
-        if registry_input is not None:
-            return registry_input, "registry"
-    return None, "total_derived"
+        return None, "input_conservative"
+    return None, "input_conservative"
 
 
-def _resolve_output_limit(config: ProviderConfig, registry: Any) -> tuple[int, str]:
-    live_output = _positive_int_or_none(getattr(config, "probed_max_output_tokens", None))
+def _resolve_output_limit(
+    *,
+    live_output: int | None,
+    probed_source: str | None,
+    registry: Any,
+    warnings: list[str],
+) -> tuple[int, str]:
+    registry_output = (
+        _positive_int_or_none(registry.max_output_tokens) if registry is not None else None
+    )
+    if registry_output is not None and probed_source != "live":
+        return registry_output, "registry"
     if live_output is not None:
-        return live_output, "live"
+        return live_output, "live" if probed_source == "live" else "stale_probe"
+    if registry_output is not None:
+        return registry_output, "registry"
     if registry is not None:
-        registry_output = _positive_int_or_none(registry.max_output_tokens)
-        if registry_output is not None:
-            return registry_output, "registry"
+        _append_warning(
+            warnings,
+            _WARNING_MISSING_OUTPUT,
+        )
     return DEFAULT_OUTPUT_TOKEN_BUDGET, "default"
+
+
+def _resolve_context_limit(
+    *,
+    provider_class: str,
+    model_name: str,
+    config: ProviderConfig,
+    live_context: int | None,
+    live_input: int | None,
+    live_output: int | None,
+    probed_source: str | None,
+    registry: Any,
+    warnings: list[str],
+) -> tuple[int, str]:
+    registry_context = (
+        _positive_int_or_none(registry.max_context_tokens) if registry is not None else None
+    )
+    if live_context is not None and probed_source == "live":
+        if registry_context is not None and not _is_live_context_internally_consistent(
+            live_context=live_context,
+            live_input=live_input,
+            live_output=live_output,
+        ):
+            _append_warning(
+                warnings,
+                _WARNING_LIVE_CONTEXT_INCONSISTENT,
+            )
+            return registry_context, "registry"
+        if registry_context is not None and live_context != registry_context:
+            _append_warning(
+                warnings,
+                f"live probe context {live_context} overrides registry context {registry_context}",
+            )
+        return live_context, "live"
+    if registry_context is not None:
+        return registry_context, "registry"
+    if live_context is not None and probed_source != "live":
+        _append_missing_registry_warning(
+            provider_class=provider_class,
+            config=config,
+            warnings=warnings,
+        )
+        return live_context, "default"
+    if live_context is not None:
+        return live_context, "default"
+    if live_input is not None or live_output is not None:
+        _append_missing_registry_warning(
+            provider_class=provider_class,
+            config=config,
+            warnings=warnings,
+        )
+        return max(live_input or 0, live_output or 0, DEFAULT_CONTEXT_WINDOW), "default"
+    _append_missing_registry_warning(
+        provider_class=provider_class,
+        config=config,
+        warnings=warnings,
+    )
+    return resolve_context_window(model_name, None), "default"
+
+
+def _append_missing_registry_warning(
+    *,
+    provider_class: str,
+    config: ProviderConfig,
+    warnings: list[str],
+) -> None:
+    model_limits_name = getattr(config, "model_limits_name", None)
+    if _needs_proxy_model_limits_warning(provider_class, config):
+        _append_warning(
+            warnings,
+            _WARNING_UNKNOWN_PROXY_MODEL,
+        )
+    elif model_limits_name:
+        _append_warning(
+            warnings,
+            f"model_limits_name {model_limits_name} was not found; using conservative defaults",
+        )
+
+
+def _is_live_context_internally_consistent(
+    *,
+    live_context: int,
+    live_input: int | None,
+    live_output: int | None,
+) -> bool:
+    return (live_input is None or live_context >= live_input) and (
+        live_output is None or live_context >= live_output
+    )
+
+
+def _needs_proxy_model_limits_warning(provider_class: str, config: ProviderConfig) -> bool:
+    if getattr(config, "model_limits_name", None):
+        return False
+    return provider_class.strip().lower() in {"azure", "newapi", "openai_compat", "openrouter"}
+
+
+def _append_warning(warnings: list[str], warning: str) -> None:
+    if warning not in warnings:
+        warnings.append(warning)
 
 
 def _positive_int_or_none(value: object) -> int | None:
@@ -237,21 +437,19 @@ def _positive_int_or_none(value: object) -> int | None:
     return None
 
 
-def _combined_limit_source(
-    input_source: str,
-    output_source: str,
-) -> Literal["live", "registry", "default", "mixed"]:
+def _combined_limit_source(*sources: str) -> Literal["live", "registry", "default", "mixed"]:
     source_map = {
         "legacy_context": "default",
         "total_derived": "default",
+        "input_conservative": "default",
+        "stale_probe": "default",
         "default": "default",
         "live": "live",
         "registry": "registry",
     }
-    input_group = source_map.get(input_source, "default")
-    output_group = source_map.get(output_source, "default")
-    if input_group == output_group:
-        return cast("Literal['live', 'registry', 'default', 'mixed']", input_group)
+    groups = {source_map.get(source, "default") for source in sources}
+    if len(groups) == 1:
+        return cast("Literal['live', 'registry', 'default', 'mixed']", next(iter(groups)))
     return "mixed"
 
 

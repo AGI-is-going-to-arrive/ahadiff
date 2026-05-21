@@ -3,7 +3,7 @@ import type { ProviderSummary } from '../api/config';
 import type { ProviderCreateInput, ProviderUpdateInput, TaskInfoResponse } from '../api/types';
 import { getTask } from '../api/tasks';
 import { discoverModels, fetchProviderModels, saveProviderModels } from '../api/providers';
-import { useTranslation, type MessageKey } from '../i18n/useTranslation';
+import { useTranslation, type MessageKey, type TranslateFn } from '../i18n/useTranslation';
 import './ProviderCard.css';
 
 const PROVIDER_CLASSES = [
@@ -578,7 +578,7 @@ interface DetailProps {
   locale: string;
 }
 
-function ProviderDetailView({
+export function ProviderDetailView({
   provider,
   probeStatus,
   probeError,
@@ -648,20 +648,6 @@ function ProviderDetailView({
                   mono
                 />
               )}
-              {provider.probed_limits_source && (
-                <Field
-                  label={t('Settings_page.provider_limits_source')}
-                  value={providerLimitsSourceLabel(t, provider.probed_limits_source)}
-                  mono
-                />
-              )}
-              {provider.model_limits_name && (
-                <Field
-                  label={t('Settings_page.provider_model_limits_name')}
-                  value={provider.model_limits_name}
-                  mono
-                />
-              )}
             </>
           ) : (
             provider.probed_max_context != null && (
@@ -671,6 +657,20 @@ function ProviderDetailView({
                 mono
               />
             )
+          )}
+          {provider.probed_limits_source && (
+            <Field
+              label={t('Settings_page.provider_limits_source')}
+              value={providerLimitsSourceLabel(t, provider.probed_limits_source)}
+              mono
+            />
+          )}
+          {provider.model_limits_name && (
+            <Field
+              label={t('Settings_page.provider_model_limits_name')}
+              value={provider.model_limits_name}
+              mono
+            />
           )}
           {provider.probe_timestamp && (
             <Field
@@ -1119,10 +1119,11 @@ const PROVIDER_LIMITS_SOURCE_KEYS: Record<string, MessageKey> = {
   live: 'Settings_page.provider_limits_source_live',
   registry: 'Settings_page.provider_limits_source_registry',
   default: 'Settings_page.provider_limits_source_default',
+  fallback: 'Settings_page.provider_limits_source_fallback',
 };
 
-function providerLimitsSourceLabel(
-  t: ReturnType<typeof useTranslation>['t'],
+export function providerLimitsSourceLabel(
+  t: TranslateFn,
   source: string,
 ): string {
   const key = PROVIDER_LIMITS_SOURCE_KEYS[source];

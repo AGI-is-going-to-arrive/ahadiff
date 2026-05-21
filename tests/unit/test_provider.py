@@ -1327,7 +1327,7 @@ def test_provider_reserves_output_tokens_against_context_window() -> None:
         client=client,
     )
     try:
-        with pytest.raises(ProviderError, match="context window exceeded"):
+        with pytest.raises(ProviderError, match="output token budget exceeded"):
             provider.generate(
                 _request(
                     model="local-small",

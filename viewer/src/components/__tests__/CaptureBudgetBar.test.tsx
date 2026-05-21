@@ -149,4 +149,18 @@ describe('CaptureBudgetBar', () => {
     expect(html).toContain('System prompt');
     expect(html).toContain('Output reserve');
   });
+
+  it('falls back to max_input_tokens when context_window is null', () => {
+    const html = renderToStaticMarkup(
+      <CaptureBudgetBar
+        recommendation={makeRec({
+          context_window: null as any,
+          max_input_tokens: 150_000,
+          max_output_tokens: 50_000,
+        })}
+      />,
+    );
+    expect(html).toContain('total 150K');
+    expect(html).not.toContain('total 200K');
+  });
 });

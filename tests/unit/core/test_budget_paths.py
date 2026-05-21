@@ -91,16 +91,18 @@ def test_model_registry_loads_json_from_pathlib_path_without_shell_interpolation
     (resource_root / "model_registry.json").write_text(
         json.dumps(
             {
-                "schema_version": 1,
-                "entries": [
+                "schema_version": 2,
+                "models": [
                     {
                         "provider": "openai",
                         "model": "unit-path-model",
-                        "mode": "chat",
+                        "max_context_tokens": 12345,
                         "max_input_tokens": 12345,
                         "max_output_tokens": 678,
+                        "context_policy": "shared_pool",
                         "aliases": ["unit alias with spaces"],
-                        "confidence": "registry",
+                        "source": "UNIT-TEST-2026-05-22",
+                        "confidence": "high",
                     }
                 ],
             }
@@ -122,7 +124,7 @@ def test_model_registry_loads_json_from_pathlib_path_without_shell_interpolation
     assert limits is not None
     assert limits.max_input_tokens == 12345
     assert limits.max_output_tokens == 678
-    assert limits.source == "registry"
+    assert limits.source == "UNIT-TEST-2026-05-22"
 
 
 def test_model_limits_name_with_special_chars_persists_through_probe_config(

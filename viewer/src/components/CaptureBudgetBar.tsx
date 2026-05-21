@@ -39,8 +39,7 @@ export default function CaptureBudgetBar({
   }
 
   const contextWindow = recommendation.context_window
-    ?? recommendation.max_input_tokens
-    + recommendation.max_output_tokens;
+    ?? recommendation.max_input_tokens;
   const system = Math.max(0, recommendation.system_prompt_tokens);
   const safety = Math.max(0, recommendation.safety_reserve);
   const diff = Math.max(0, recommendation.diff_token_budget);

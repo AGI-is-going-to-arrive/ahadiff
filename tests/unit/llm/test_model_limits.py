@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from importlib.resources import files
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlsplit
 
@@ -35,6 +36,9 @@ from ahadiff.llm.model_registry import lookup_model_limits
 from ahadiff.llm.probe import _probe_context_window, _safe_positive_int, persist_probe_result
 from ahadiff.llm.schemas import ProbeContextResult
 
+_ALLOWED_CONTEXT_POLICIES = {"shared_pool", "split_envelope", "route_specific", "local_runtime"}
+_ALLOWED_REGISTRY_CONFIDENCE = {"high", "medium", "low"}
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
     from pathlib import Path
@@ -63,27 +67,56 @@ def _response(payload: object) -> httpx.Response:
     return httpx.Response(200, json=payload)
 
 
-def _registry_payload(entries: list[dict[str, object]]) -> dict[str, object]:
-    return {"schema_version": 1, "entries": entries}
+def _registry_payload(models: list[dict[str, object]]) -> dict[str, object]:
+    return {"schema_version": 2, "models": models}
 
 
 def _registry_entry(
     provider: str,
     model: str,
     *,
+    max_context_tokens: int | None = 1100,
     max_input_tokens: int | None = 1000,
     max_output_tokens: int | None = 100,
     aliases: list[str] | None = None,
+    context_policy: object = "shared_pool",
+    source: object = "UNIT-TEST",
+    confidence: object = "high",
+    warnings: list[str] | None = None,
 ) -> dict[str, object]:
     return {
         "provider": provider,
         "model": model,
-        "mode": "chat",
+        "aliases": aliases or [],
+        "max_context_tokens": max_context_tokens,
         "max_input_tokens": max_input_tokens,
         "max_output_tokens": max_output_tokens,
-        "aliases": aliases or [],
-        "confidence": "registry",
+        "context_policy": context_policy,
+        "source": source,
+        "confidence": confidence,
+        "warnings": warnings or [],
     }
+
+
+def _bundled_registry_payload() -> dict[str, Any]:
+    payload = json.loads(
+        files("ahadiff.llm").joinpath("model_registry.json").read_text(encoding="utf-8")
+    )
+    assert isinstance(payload, dict)
+    return cast("dict[str, Any]", payload)
+
+
+def _bundled_registry_models() -> list[dict[str, Any]]:
+    payload = _bundled_registry_payload()
+    assert payload.get("schema_version") == 2
+    raw_models = payload.get("models")
+    assert isinstance(raw_models, list)
+    raw_model_items = cast("list[object]", raw_models)
+    models: list[dict[str, Any]] = []
+    for raw_model in raw_model_items:
+        assert isinstance(raw_model, dict)
+        models.append(cast("dict[str, Any]", raw_model))
+    return models
 
 
 @pytest.fixture
@@ -268,6 +301,61 @@ def test_openai_context_probe_does_not_guess_limits_from_paginated_miss() -> Non
     assert result is None
 
 
+def test_openai_context_probe_returns_split_limits_without_summing() -> None:
+    adapter = OpenAIChatAdapter(_config("openai", model_name="gpt-4o"))
+
+    result = adapter.parse_context_probe(
+        _response(
+            {
+                "data": [
+                    {
+                        "id": "gpt-4o",
+                        "max_input_tokens": 128000,
+                        "max_output_tokens": 16384,
+                    }
+                ]
+            }
+        ),
+        model_name="gpt-4o",
+    )
+
+    assert result == ProbeContextResult(
+        max_context_tokens=None,
+        max_input_tokens=128000,
+        max_output_tokens=16384,
+        source="live",
+    )
+
+
+def test_openai_context_probe_parses_explicit_metadata_context() -> None:
+    adapter = OpenAIChatAdapter(_config("openai", model_name="gpt-4o"))
+
+    result = adapter.parse_context_probe(
+        _response(
+            {
+                "data": [
+                    {
+                        "id": "gpt-4o",
+                        "metadata": {
+                            "max_context_tokens": 128000,
+                            "max_input_tokens": 120000,
+                            "max_output_tokens": 16384,
+                        },
+                    }
+                ]
+            }
+        ),
+        model_name="gpt-4o",
+    )
+
+    assert result == ProbeContextResult(
+        max_context_tokens=128000,
+        max_input_tokens=120000,
+        max_output_tokens=16384,
+        source="live",
+    )
+
+
 def test_anthropic_context_probe_request_and_parse_result() -> None:
     adapter = AnthropicAdapter(_config("anthropic", model_name="claude-sonnet-4-6"))
     context_request = adapter.build_context_probe_request(
@@ -288,6 +376,28 @@ def test_anthropic_context_probe_request_and_parse_result() -> None:
     assert headers["anthropic-version"] == "2023-06-01"
     assert result == ProbeContextResult(
         max_context_tokens=None,
+        max_input_tokens=200000,
+        max_output_tokens=64000,
+        source="live",
+    )
+
+
+def test_anthropic_context_probe_keeps_explicit_total_context_when_present() -> None:
+    adapter = AnthropicAdapter(_config("anthropic", model_name="claude-sonnet-4-6"))
+
+    result = adapter.parse_context_probe(
+        _response(
+            {
+                "context_window": 200000,
+                "max_input_tokens": 200000,
+                "max_tokens": 64000,
+            }
+        ),
+        model_name="claude-sonnet-4-6",
+    )
+
+    assert result == ProbeContextResult(
+        max_context_tokens=200000,
         max_input_tokens=200000,
         max_output_tokens=64000,
         source="live",
@@ -430,6 +540,47 @@ def test_lmstudio_context_probe_falls_back_to_max_context_length() -> None:
 
     assert result is not None
     assert result.max_context_tokens == 8192
+
+
+def test_context_probe_adapters_mark_live_source_for_returned_limits() -> None:
+    cases: tuple[tuple[str, Any, str, object], ...] = (
+        (
+            "anthropic",
+            AnthropicAdapter(_config("anthropic", model_name="claude-sonnet-4-6")),
+            "claude-sonnet-4-6",
+            {"max_input_tokens": 200000, "max_tokens": 64000},
+        ),
+        (
+            "gemini",
+            GeminiAdapter(_config("gemini", model_name="gemini-2.5-pro")),
+            "gemini-2.5-pro",
+            {"inputTokenLimit": 1048576, "outputTokenLimit": 65536},
+        ),
+        (
+            "lmstudio",
+            LMStudioAdapter(_config("lmstudio", model_name="local-model")),
+            "local-model",
+            {"data": [{"id": "local-model", "max_context_length": 8192}]},
+        ),
+        (
+            "ollama",
+            OllamaAdapter(_config("ollama", model_name="llama3.1")),
+            "llama3.1",
+            {"model_info": {"llama.context_length": 8192}, "parameters": ""},
+        ),
+        (
+            "openai",
+            OpenAIChatAdapter(_config("openai", model_name="gpt-4o")),
+            "gpt-4o",
+            {"data": [{"id": "gpt-4o", "context_window": 128000}]},
+        ),
+    )
+
+    for name, adapter, model_name, payload in cases:
+        result = adapter.parse_context_probe(_response(payload), model_name=model_name)
+
+        assert result is not None, name
+        assert result.source == "live", name
 
 
 def test_openai_context_probes_wrap_legacy_context_window() -> None:
@@ -602,6 +753,29 @@ def test_probe_context_window_treats_empty_live_probe_as_fallback() -> None:
     assert result.max_context_tokens == DEFAULT_CONTEXT_WINDOW
 
 
+def test_probe_context_window_marks_no_probe_endpoint_as_default() -> None:
+    class FakeAdapter:
+        def build_context_probe_request(
+            self,
+            *,
+            api_key: str | None,
+            model_name: str,
+        ) -> None:
+            return None
+
+    class FakeProvider:
+        def __init__(self) -> None:
+            self.adapter = FakeAdapter()
+            self.config = _config("azure", model_name="deployment")
+            self.api_key = None
+
+    result, source = _probe_context_window(FakeProvider(), model_name="deployment")
+
+    assert source == "default"
+    assert result.source == "default"
+    assert result.max_context_tokens == DEFAULT_CONTEXT_WINDOW
+
+
 def test_lookup_model_limits_exact_prefix_alias_family_and_miss() -> None:
     exact = lookup_model_limits("openai", "gpt-4o")
     prefixed = lookup_model_limits("openai", "openai/gpt-4o")
@@ -619,6 +793,121 @@ def test_lookup_model_limits_exact_prefix_alias_family_and_miss() -> None:
     assert family.max_output_tokens == 64000
     assert family.warnings == ("model limits matched version-family fallback: claude-sonnet-4-6",)
     assert missing is None
+
+
+def test_lookup_model_limits_loads_v2_schema_context_limits(
+    temp_model_registry: Callable[[object | str], None],
+) -> None:
+    temp_model_registry(
+        _registry_payload(
+            [
+                _registry_entry(
+                    "openai",
+                    "fixture-model",
+                    max_context_tokens=4096,
+                    max_input_tokens=4096,
+                    max_output_tokens=512,
+                    aliases=["fixture-model-alias"],
+                )
+            ]
+        )
+    )
+
+    exact = lookup_model_limits("openai", "fixture-model")
+    alias = lookup_model_limits("openai", "fixture-model-alias")
+
+    assert exact is not None
+    assert cast("Any", exact).max_context_tokens == 4096
+    assert exact.max_input_tokens == 4096
+    assert exact.max_output_tokens == 512
+    assert exact.confidence == "high"
+    assert alias is not None
+    assert cast("Any", alias).max_context_tokens == 4096
+
+
+def test_lookup_model_limits_supports_exact_and_provider_qualified_routes(
+    temp_model_registry: Callable[[object | str], None],
+) -> None:
+    temp_model_registry(
+        _registry_payload(
+            [
+                _registry_entry(
+                    "openai_compat",
+                    "qwen-plus-latest",
+                    max_context_tokens=1_000_000,
+                    max_input_tokens=1_000_000,
+                    max_output_tokens=32_768,
+                ),
+                _registry_entry(
+                    "openai",
+                    "gpt-5",
+                    max_context_tokens=400_000,
+                    max_input_tokens=400_000,
+                    max_output_tokens=128_000,
+                ),
+                _registry_entry(
+                    "openrouter",
+                    "qwen/qwen-plus",
+                    max_context_tokens=1_000_000,
+                    max_input_tokens=1_000_000,
+                    max_output_tokens=32_768,
+                    context_policy="route_specific",
+                ),
+            ]
+        )
+    )
+
+    exact = lookup_model_limits("newapi", "qwen-plus-latest")
+    openai_qualified = lookup_model_limits(
+        "newapi", "served-model", model_limits_name="openai/gpt-5"
+    )
+    openrouter_qualified = lookup_model_limits(
+        "newapi",
+        "served-model",
+        model_limits_name="openrouter/qwen/qwen-plus",
+    )
+
+    assert exact is not None
+    assert cast("Any", exact).max_context_tokens == 1_000_000
+    assert openai_qualified is not None
+    assert cast("Any", openai_qualified).max_context_tokens == 400_000
+    assert openai_qualified.max_output_tokens == 128_000
+    assert openrouter_qualified is not None
+    assert cast("Any", openrouter_qualified).max_context_tokens == 1_000_000
+    assert openrouter_qualified.max_output_tokens == 32_768
+
+
+def test_lookup_model_limits_prefers_specific_provider_before_fallback_provider(
+    temp_model_registry: Callable[[object | str], None],
+) -> None:
+    temp_model_registry(
+        _registry_payload(
+            [
+                _registry_entry(
+                    "openai",
+                    "gpt-5.5",
+                    max_context_tokens=400_000,
+                    max_input_tokens=400_000,
+                    max_output_tokens=128_000,
+                ),
+                _registry_entry(
+                    "openai_responses",
+                    "gpt-5.5",
+                    max_context_tokens=1_050_000,
+                    max_input_tokens=1_050_000,
+                    max_output_tokens=128_000,
+                ),
+            ]
+        )
+    )
+
+    ordinary = lookup_model_limits("openai", "gpt-5.5")
+    api_profile = lookup_model_limits("openai_responses", "gpt-5.5")
+
+    assert ordinary is not None
+    assert cast("Any", ordinary).max_context_tokens == 400_000
+    assert api_profile is not None
+    assert cast("Any", api_profile).max_context_tokens == 1_050_000
 
 
 def test_lookup_model_limits_restricts_prefix_and_family_suffixes() -> None:
@@ -664,10 +953,10 @@ def test_registry_confidence_stays_distinct_from_live_probe_source() -> None:
     )
 
     assert registry is not None
-    assert registry.confidence == "registry"
+    assert registry.confidence == "high"
     assert registry_limits.source == "registry"
     assert registry_limits.input_source == "registry"
-    assert live_limits.source == "live"
+    assert live_limits.source == "mixed"
     assert live_limits.input_source == "live"
 
 
@@ -678,8 +967,8 @@ def test_model_registry_invalid_schema_version_falls_back_to_empty(
     caplog.set_level(logging.WARNING, logger=model_registry.__name__)
     temp_model_registry(
         {
-            "schema_version": 2,
-            "entries": [_registry_entry("openai", "fixture-model")],
+            "schema_version": 3,
+            "models": [_registry_entry("openai", "fixture-model")],
         }
     )
 
@@ -692,10 +981,19 @@ def test_model_registry_missing_entries_array_falls_back_to_empty(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     caplog.set_level(logging.WARNING, logger=model_registry.__name__)
-    temp_model_registry({"schema_version": 1})
+    temp_model_registry({"schema_version": 2})
 
     assert lookup_model_limits("openai", "fixture-model") is None
     _assert_registry_fallback_warning(caplog)
+
+
+def test_bundled_registry_loader_raises_on_schema_errors(
+    temp_model_registry: Callable[[object | str], None],
+) -> None:
+    temp_model_registry({"schema_version": 2})
+
+    with pytest.raises(ValueError, match="models must be a list"):
+        model_registry._load_registry_entries()
 
 
 def test_model_registry_non_dict_json_falls_back_to_empty(
@@ -714,7 +1012,7 @@ def test_model_registry_corrupt_json_falls_back_to_empty(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     caplog.set_level(logging.WARNING, logger=model_registry.__name__)
-    temp_model_registry('{"schema_version":1,"entries":[')
+    temp_model_registry('{"schema_version":2,"models":[')
 
     assert model_registry._load_registry_entries() == ()
     assert lookup_model_limits("openai", "fixture-model") is None
@@ -727,6 +1025,59 @@ def test_model_registry_invalid_entry_falls_back_to_empty(
 ) -> None:
     caplog.set_level(logging.WARNING, logger=model_registry.__name__)
     temp_model_registry(_registry_payload([{"provider": "openai", "model": "fixture-model"}]))
+
+    assert lookup_model_limits("openai", "fixture-model") is None
+    _assert_registry_fallback_warning(caplog)
+
+
+def test_model_registry_missing_max_context_tokens_falls_back_to_empty(
+    temp_model_registry: Callable[[object | str], None],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    row = _registry_entry("openai", "fixture-model")
+    row.pop("max_context_tokens")
+    caplog.set_level(logging.WARNING, logger=model_registry.__name__)
+    temp_model_registry(_registry_payload([row]))
+
+    assert lookup_model_limits("openai", "fixture-model") is None
+    _assert_registry_fallback_warning(caplog)
+
+
+@pytest.mark.parametrize("context_policy", ["", "combined", "split", None, True])
+def test_model_registry_invalid_context_policy_falls_back_to_empty(
+    temp_model_registry: Callable[[object | str], None],
+    caplog: pytest.LogCaptureFixture,
+    context_policy: object,
+) -> None:
+    caplog.set_level(logging.WARNING, logger=model_registry.__name__)
+    temp_model_registry(
+        _registry_payload(
+            [_registry_entry("openai", "fixture-model", context_policy=context_policy)]
+        )
+    )
+
+    assert lookup_model_limits("openai", "fixture-model") is None
+    _assert_registry_fallback_warning(caplog)
+
+
+def test_bundled_registry_rejects_context_smaller_than_output(
+    temp_model_registry: Callable[[object | str], None],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.WARNING, logger=model_registry.__name__)
+    temp_model_registry(
+        _registry_payload(
+            [
+                _registry_entry(
+                    "openai",
+                    "fixture-model",
+                    max_context_tokens=100,
+                    max_input_tokens=100,
+                    max_output_tokens=101,
+                )
+            ]
+        )
+    )
 
     assert lookup_model_limits("openai", "fixture-model") is None
     _assert_registry_fallback_warning(caplog)
@@ -747,7 +1098,7 @@ def test_model_registry_failed_load_does_not_poison_retry(
     model_registry._load_registry_entries_cached.cache_clear()
     monkeypatch.setattr(model_registry, "files", fake_files)
 
-    registry_path.write_text('{"schema_version":1,"entries":[', encoding="utf-8")
+    registry_path.write_text('{"schema_version":2,"models":[', encoding="utf-8")
     assert lookup_model_limits("openai", "retry-model") is None
     assert model_registry._load_registry_entries_cached.cache_info().currsize == 0
     _assert_registry_fallback_warning(caplog)
@@ -865,7 +1216,316 @@ def test_model_registry_concurrent_access_is_deterministic(
     assert set(results) == {(8192, 1024)}
 
 
-def test_resolve_model_limits_prefers_live_split_limits() -> None:
+def test_bundled_model_registry_is_v2_with_mandatory_context_metadata() -> None:
+    models = _bundled_registry_models()
+
+    assert models
+    model_keys = {
+        (str(row["provider"]).lower(), str(row["model"]).lower().removeprefix("models/"))
+        for row in models
+    }
+    alias_keys: set[tuple[str, str]] = set()
+    for index, row in enumerate(models):
+        label = f"model_registry.json models[{index}]"
+        max_context_tokens = row.get("max_context_tokens")
+        max_input_tokens = row.get("max_input_tokens")
+        max_output_tokens = row.get("max_output_tokens")
+        context_policy = row.get("context_policy")
+
+        assert isinstance(row.get("provider"), str) and row["provider"], label
+        assert isinstance(row.get("model"), str) and row["model"], label
+        if context_policy == "local_runtime":
+            assert max_context_tokens is None, label
+            assert max_input_tokens is None, label
+            assert max_output_tokens is None, label
+        else:
+            assert isinstance(max_context_tokens, int) and max_context_tokens > 0, label
+            assert max_input_tokens is None or (
+                isinstance(max_input_tokens, int) and max_input_tokens > 0
+            ), label
+            assert max_output_tokens is None or (
+                isinstance(max_output_tokens, int) and 0 < max_output_tokens <= max_context_tokens
+            ), label
+        assert context_policy in _ALLOWED_CONTEXT_POLICIES, label
+        assert isinstance(row.get("source"), str) and row["source"], label
+        assert "-2026-05-22" in row["source"], label
+        assert row.get("confidence") in _ALLOWED_REGISTRY_CONFIDENCE, label
+        provider = str(row["provider"]).lower()
+        aliases = row.get("aliases", [])
+        assert isinstance(aliases, list), label
+        for alias in aliases:
+            assert isinstance(alias, str) and alias, label
+            alias_key = (provider, alias.lower().removeprefix("models/"))
+            own_key = (provider, str(row["model"]).lower().removeprefix("models/"))
+            assert alias_key == own_key or alias_key not in model_keys, label
+            assert alias_key not in alias_keys, label
+            alias_keys.add(alias_key)
+
+
+def test_curate_registry_script_emits_loader_compatible_v2_rows(
+    temp_model_registry: Callable[[object | str], None],
+) -> None:
+    from scripts.curate_registry import _curate_entries
+
+    rows = _curate_entries(
+        {
+            "gemini/gemini-3.1-pro-preview": {
+                "mode": "chat",
+                "litellm_provider": "gemini",
+                "max_input_tokens": 1_048_576,
+                "max_output_tokens": 65_536,
+            },
+            "openrouter/qwen/qwen-plus": {
+                "mode": "chat",
+                "litellm_provider": "openrouter",
+                "max_context_tokens": 999_999,
+                "top_provider": {"context_length": 1_000_000},
+                "max_completion_tokens": 32_768,
+            },
+        },
+        limit=10,
+        source_tag="UNIT-TEST-2026-05-22",
+    )
+
+    assert rows == [
+        {
+            "provider": "gemini",
+            "model": "gemini-3.1-pro-preview",
+            "aliases": [],
+            "max_context_tokens": 1_114_112,
+            "max_input_tokens": 1_048_576,
+            "max_output_tokens": 65_536,
+            "context_policy": "split_envelope",
+            "source": "UNIT-TEST-2026-05-22",
+            "confidence": "medium",
+            "warnings": [],
+        },
+        {
+            "provider": "openrouter",
+            "model": "qwen/qwen-plus",
+            "aliases": [],
+            "max_context_tokens": 1_000_000,
+            "max_input_tokens": 1_000_000,
+            "max_output_tokens": 32_768,
+            "context_policy": "route_specific",
+            "source": "UNIT-TEST-2026-05-22",
+            "confidence": "medium",
+            "warnings": [],
+        },
+    ]
+
+    temp_model_registry(_registry_payload(rows))
+    gemini = lookup_model_limits("gemini", "models/gemini-3.1-pro-preview")
+    route = lookup_model_limits(
+        "newapi",
+        "served-model",
+        model_limits_name="openrouter/qwen/qwen-plus",
+    )
+
+    assert gemini is not None
+    assert cast("Any", gemini).max_context_tokens == 1_114_112
+    assert route is not None
+    assert cast("Any", route).max_context_tokens == 1_000_000
+
+
+@pytest.mark.parametrize(
+    ("provider_class", "model_name"),
+    [
+        ("openai", "gpt-5.5-mini"),
+        ("openai", "g-mini"),
+        ("gemini", "gemini-2.0-pro"),
+        ("newapi", "minimax-t"),
+        ("newapi", "mimo-7b"),
+        ("newapi", "yi-lightning"),
+        ("newapi", "glm-z1-flash"),
+        ("newapi", "qwen3.7-plus"),
+        ("newapi", "qwen3.6-max"),
+        ("newapi", "qwen3.5-max"),
+        ("newapi", "qwen3.5-4b"),
+    ],
+)
+def test_hallucinated_models_are_not_active_registry_rows(
+    provider_class: str,
+    model_name: str,
+) -> None:
+    assert lookup_model_limits(provider_class, model_name) is None
+
+
+@pytest.mark.parametrize(
+    "model_name",
+    [
+        "gemini-2.0-pro",
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-lite",
+        "gemini-1.5-pro",
+        "gemini-1.5-flash",
+    ],
+)
+def test_gemini_15_and_20_models_are_not_active_registry_rows(model_name: str) -> None:
+    assert lookup_model_limits("gemini", model_name) is None
+    assert lookup_model_limits("gemini", f"models/{model_name}") is None
+
+
+@pytest.mark.parametrize("model_name", ["deepseek-chat", "deepseek-reasoner"])
+def test_deepseek_direct_rows_use_one_mib_context(model_name: str) -> None:
+    limits = lookup_model_limits("newapi", model_name)
+
+    assert limits is not None
+    assert cast("Any", limits).max_context_tokens == 1_048_576
+    assert limits.max_input_tokens == 1_048_576
+    assert limits.max_output_tokens == 384_000
+
+
+def test_gpt55_default_openai_uses_ordinary_context_not_input_plus_output() -> None:
+    limits = resolve_model_limits("openai", "gpt-5.5", _config("openai", model_name="gpt-5.5"))
+
+    assert limits.max_context_tokens == 400_000
+    assert limits.max_context_tokens != 528_000
+    assert limits.max_input_tokens == 400_000
+    assert limits.max_output_tokens == 128_000
+    assert limits.source == "registry"
+    assert (
+        "ordinary access profile; use openai_responses or live probe for API 1M context"
+        in limits.warnings
+    )
+
+
+def test_gpt55_openai_responses_uses_api_context_profile() -> None:
+    limits = resolve_model_limits(
+        "openai_responses",
+        "gpt-5.5",
+        _config("openai_responses", model_name="gpt-5.5"),
+    )
+
+    assert limits.max_context_tokens == 1_050_000
+    assert limits.max_context_tokens != 1_178_000
+    assert limits.max_input_tokens == 1_050_000
+    assert limits.max_output_tokens == 128_000
+    assert limits.source == "registry"
+
+
+def test_shared_pool_model_does_not_sum_input_and_output() -> None:
+    limits = resolve_model_limits("openai", "gpt-5", _config("openai", model_name="gpt-5"))
+
+    assert limits.max_context_tokens == 400_000
+    assert limits.max_context_tokens != 528_000
+    assert limits.max_input_tokens == 400_000
+    assert limits.max_output_tokens == 128_000
+
+
+def test_gemini_split_envelope_preserves_input_limit() -> None:
+    limits = resolve_model_limits(
+        "gemini",
+        "models/gemini-2.5-pro",
+        _config("gemini", model_name="models/gemini-2.5-pro"),
+    )
+
+    assert limits.max_context_tokens == 1_114_112
+    assert limits.max_input_tokens == 1_048_576
+    assert limits.max_output_tokens == 65_536
+    assert limits.source == "registry"
+
+
+def test_live_context_overrides_registry_when_source_is_live() -> None:
+    limits = resolve_model_limits(
+        "openai",
+        "gpt-4o",
+        _config(
+            "openai",
+            probed_max_context=200_000,
+            probed_max_input_tokens=200_000,
+            probed_max_output_tokens=24_000,
+            probed_limits_source="live",
+        ),
+    )
+
+    assert limits.max_context_tokens == 200_000
+    assert limits.max_input_tokens == 200_000
+    assert limits.max_output_tokens == 24_000
+    assert limits.source == "live"
+    assert "live probe context 200000 overrides registry context 128000" in limits.warnings
+
+
+def test_fallback_context_does_not_override_registry() -> None:
+    limits = resolve_model_limits(
+        "openai",
+        "gpt-4o",
+        _config("openai", probed_max_context=999_999, probed_limits_source="default"),
+    )
+
+    assert limits.max_context_tokens == 128_000
+    assert limits.max_input_tokens == 128_000
+    assert limits.max_output_tokens == 16_384
+    assert limits.source == "registry"
+    assert (
+        "fallback/default probe limits ignored for context; registry context retained"
+        in limits.warnings
+    )
+
+
+def test_fallback_probe_source_does_not_override_registry() -> None:
+    limits = resolve_model_limits(
+        "openai",
+        "gpt-4o",
+        _config("openai", probed_max_context=999_999, probed_limits_source="fallback"),
+    )
+
+    assert limits.max_context_tokens == 128_000
+    assert limits.max_input_tokens == 128_000
+    assert limits.max_output_tokens == 16_384
+    assert limits.source == "registry"
+    assert (
+        "fallback/default probe limits ignored for context; registry context retained"
+        in limits.warnings
+    )
+
+
+def test_live_context_internally_inconsistent_falls_back_to_registry() -> None:
+    limits = resolve_model_limits(
+        "openai",
+        "gpt-4o",
+        _config(
+            "openai",
+            probed_max_context=4_096,
+            probed_max_input_tokens=128_000,
+            probed_max_output_tokens=24_000,
+            probed_limits_source="live",
+        ),
+    )
+
+    assert limits.max_context_tokens == 128_000
+    assert limits.max_input_tokens == 128_000
+    assert limits.max_output_tokens == 24_000
+    assert limits.source == "mixed"
+    assert limits.input_source == "live"
+    assert limits.output_source == "live"
+    assert "live probe context internally inconsistent; using registry value" in limits.warnings
+
+
+def test_non_live_split_probe_values_do_not_override_registry() -> None:
+    limits = resolve_model_limits(
+        "openai",
+        "gpt-4o",
+        _config(
+            "openai",
+            probed_max_input_tokens=4_096,
+            probed_max_output_tokens=8_192,
+            probed_limits_source="fallback",
+        ),
+    )
+
+    assert limits.max_context_tokens == 128_000
+    assert limits.max_input_tokens == 128_000
+    assert limits.max_output_tokens == 16_384
+    assert limits.source == "registry"
+    assert limits.input_source == "registry"
+    assert limits.output_source == "registry"
+    assert "non-live probe input/output limits ignored; using registry values" in limits.warnings
+
+
+def test_live_split_without_context_does_not_sum(
+    temp_model_registry: Callable[[object | str], None],
+) -> None:
     limits = resolve_model_limits(
         "openai",
         "gpt-4o",
@@ -877,19 +1537,149 @@ def test_resolve_model_limits_prefers_live_split_limits() -> None:
         ),
     )
 
-    assert limits.max_context_tokens == 133000
-    assert limits.max_input_tokens == 111000
-    assert limits.max_output_tokens == 22000
-    assert limits.source == "live"
+    assert limits.max_context_tokens == 128_000
+    assert limits.max_context_tokens != 133_000
+    assert limits.max_input_tokens == 111_000
+    assert limits.max_output_tokens == 22_000
+    assert limits.source == "mixed"
     assert limits.input_source == "live"
     assert limits.output_source == "live"
+    assert (
+        "live split limits did not include max_context_tokens; "
+        "context resolved without summing input and output" in limits.warnings
+    )
+
+    temp_model_registry(_registry_payload([]))
+    fallback_limits = resolve_model_limits(
+        "openai",
+        "split-only-unknown",
+        _config(
+            "openai",
+            model_name="split-only-unknown",
+            probed_max_input_tokens=111_000,
+            probed_max_output_tokens=22_000,
+            probed_limits_source="live",
+        ),
+    )
+
+    assert fallback_limits.max_context_tokens == DEFAULT_CONTEXT_WINDOW
+    assert fallback_limits.max_context_tokens != 133_000
+    assert fallback_limits.max_input_tokens == 111_000
+    assert fallback_limits.max_output_tokens == 22_000
+
+
+def test_output_greater_than_context_is_clamped_for_custom_config(
+    temp_model_registry: Callable[[object | str], None],
+) -> None:
+    temp_model_registry(_registry_payload([]))
+
+    limits = resolve_model_limits(
+        "openai",
+        "custom-live-model",
+        _config(
+            "openai",
+            model_name="custom-live-model",
+            probed_max_context=4_096,
+            probed_max_output_tokens=8_192,
+            probed_limits_source="live",
+        ),
+    )
+
+    assert limits.max_context_tokens == 4_096
+    assert limits.max_output_tokens == 4_096
+    assert (
+        "max_output_tokens exceeds max_context_tokens; clamped to context window" in limits.warnings
+    )
+
+
+def test_azure_deployment_uses_model_limits_name() -> None:
+    limits = resolve_model_limits(
+        "azure",
+        "deployment-prod",
+        _config(
+            "azure",
+            model_name="deployment-prod",
+            base_url="https://example.openai.azure.com",
+            model_limits_name="openai/gpt-5",
+        ),
+    )
+
+    assert limits.max_context_tokens == 400_000
+    assert limits.max_input_tokens == 400_000
+    assert limits.max_output_tokens == 128_000
+    assert limits.source == "registry"
+
+
+def test_newapi_provider_qualified_model_limits_name() -> None:
+    limits = resolve_model_limits(
+        "newapi",
+        "served-model",
+        _config(
+            "newapi",
+            model_name="served-model",
+            model_limits_name="openrouter/qwen/qwen-plus",
+        ),
+    )
+
+    assert limits.max_context_tokens == 1_000_000
+    assert limits.max_input_tokens == 1_000_000
+    assert limits.max_output_tokens == 32_768
+    assert limits.source == "registry"
+
+
+def test_unknown_proxy_model_uses_conservative_warning(
+    temp_model_registry: Callable[[object | str], None],
+) -> None:
+    temp_model_registry(_registry_payload([]))
+
+    limits = resolve_model_limits(
+        "newapi",
+        "unexpected-proxy-model",
+        _config("newapi", model_name="unexpected-proxy-model"),
+    )
+
+    assert limits.max_context_tokens == DEFAULT_CONTEXT_WINDOW
+    assert limits.max_input_tokens == DEFAULT_CONTEXT_WINDOW
+    assert limits.max_output_tokens == DEFAULT_OUTPUT_TOKEN_BUDGET
+    assert limits.source == "default"
+    assert (
+        "model limits unknown for proxy route; using conservative defaults; "
+        "set model_limits_name to a provider-qualified model id" in limits.warnings
+    )
+
+
+def test_default_proxy_probe_registry_miss_keeps_model_limits_warning(
+    temp_model_registry: Callable[[object | str], None],
+) -> None:
+    temp_model_registry(_registry_payload([]))
+
+    limits = resolve_model_limits(
+        "newapi",
+        "unexpected-proxy-model",
+        _config(
+            "newapi",
+            model_name="unexpected-proxy-model",
+            probed_max_context=200_000,
+            probed_limits_source="default",
+        ),
+    )
+
+    assert limits.max_context_tokens == 200_000
+    assert (
+        "model limits unknown for proxy route; using conservative defaults; "
+        "set model_limits_name to a provider-qualified model id" in limits.warnings
+    )
+    assert (
+        "fallback/default probe limits ignored for context; registry context retained"
+        not in limits.warnings
+    )
 
 
 def test_resolve_model_limits_mixes_live_and_registry_sources() -> None:
     limits = resolve_model_limits(
         "openai",
         "gpt-4o",
-        _config("openai", probed_max_input_tokens=100000),
+        _config("openai", probed_max_input_tokens=100000, probed_limits_source="live"),
     )
 
     assert limits.max_input_tokens == 100000
@@ -912,11 +1702,27 @@ def test_resolve_model_limits_uses_registry_before_legacy_context() -> None:
     assert limits.source == "registry"
 
 
-def test_resolve_model_limits_does_not_add_default_output_to_known_split_input() -> None:
+def test_resolve_model_limits_does_not_add_default_output_to_known_split_input(
+    temp_model_registry: Callable[[object | str], None],
+) -> None:
+    temp_model_registry(
+        _registry_payload(
+            [
+                _registry_entry(
+                    "openai_compat",
+                    "split-input-only-model",
+                    max_context_tokens=131_072,
+                    max_input_tokens=131_072,
+                    max_output_tokens=None,
+                )
+            ]
+        )
+    )
+
     limits = resolve_model_limits(
-        "ollama",
-        "llama3.1",
-        _config("ollama", model_name="llama3.1"),
+        "newapi",
+        "split-input-only-model",
+        _config("newapi", model_name="split-input-only-model"),
     )
 
     assert limits.max_context_tokens == 131072
@@ -925,6 +1731,10 @@ def test_resolve_model_limits_does_not_add_default_output_to_known_split_input()
     assert limits.source == "mixed"
     assert limits.input_source == "registry"
     assert limits.output_source == "default"
+    assert (
+        "max_output_tokens missing from model registry; using default output budget"
+        in limits.warnings
+    )
 
 
 def test_resolve_model_limits_falls_back_to_legacy_context_and_defaults() -> None:
@@ -938,8 +1748,12 @@ def test_resolve_model_limits_falls_back_to_legacy_context_and_defaults() -> Non
     assert limits.max_input_tokens == 77777
     assert limits.max_output_tokens == DEFAULT_OUTPUT_TOKEN_BUDGET
     assert limits.source == "default"
-    assert limits.input_source == "total_derived"
+    assert limits.input_source == "input_conservative"
     assert limits.output_source == "default"
+    assert (
+        "stale probe limits missing live source; using them only after registry limits"
+        in limits.warnings
+    )
 
 
 def test_resolve_model_limits_uses_default_without_probe_or_registry() -> None:
@@ -967,11 +1781,17 @@ def test_resolve_model_limits_ignores_stale_legacy_context_when_split_limits_exi
         ),
     )
 
-    assert limits.max_context_tokens == 152000
+    assert limits.max_context_tokens == 128000
     assert limits.max_input_tokens == 128000
-    assert limits.max_output_tokens == 24000
-    assert limits.input_source == "live"
-    assert limits.output_source == "live"
+    assert limits.max_output_tokens == 16384
+    assert limits.source == "registry"
+    assert limits.input_source == "registry"
+    assert limits.output_source == "registry"
+    assert (
+        "stale probe limits missing live source; using them only after registry limits"
+        in limits.warnings
+    )
+    assert "non-live probe input/output limits ignored; using registry values" in limits.warnings
 
 
 @pytest.mark.parametrize("model_name", ["", "   ", "模型-" + "x" * 1200])
