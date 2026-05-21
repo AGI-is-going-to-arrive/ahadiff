@@ -1,4 +1,6 @@
 import { EventEmitter } from 'node:events';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { UserConfig } from 'vite';
 
@@ -44,6 +46,18 @@ describe('vite dev API proxy', () => {
       .map(pluginName);
 
     expect(names).toContain('vite-plugin-pwa');
+  });
+
+  it('keeps the service worker on the immediate activation path', () => {
+    const configSource = readFileSync(resolve(__dirname, '../../vite.config.ts'), 'utf8');
+    const registerSource = readFileSync(resolve(__dirname, '../../public/registerSW.js'), 'utf8');
+
+    expect(configSource).toContain("registerType: 'autoUpdate'");
+    expect(configSource).toContain("injectRegister: 'script-defer'");
+    expect(configSource).toContain('skipWaiting: true');
+    expect(configSource).toContain('clientsClaim: true');
+    expect(registerSource).toContain('controllerchange');
+    expect(registerSource).toContain('SKIP_WAITING');
   });
 
   it('preserves production same-origin paths while targeting the loopback backend in dev', () => {
