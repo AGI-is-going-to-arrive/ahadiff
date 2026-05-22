@@ -33,7 +33,12 @@ from ahadiff.quiz.misconception import (
     has_explicit_empty_misconception_cards,
     load_misconception_cards,
 )
-from ahadiff.quiz.schemas import QuizEvidence, QuizQuestion, parse_quiz_payload
+from ahadiff.quiz.schemas import (
+    MisconceptionCardSet,
+    QuizEvidence,
+    QuizQuestion,
+    parse_quiz_payload,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -320,6 +325,17 @@ def _quiz_question_payload(**overrides: object) -> dict[str, object]:
     return payload
 
 
+def _misconception_card_payload(index: int) -> dict[str, object]:
+    return {
+        "concept": f"retry loop {index}",
+        "misconception": f"The diff proves exponential backoff {index}.",
+        "correction": "The diff only proves repeated retry attempts.",
+        "evidence_ref": "src/app.py:2",
+        "severity": "medium",
+        "safety_tags": [],
+    }
+
+
 def test_load_quiz_questions_keeps_legacy_open_answer_rows(tmp_path: Path) -> None:
     quiz_path = tmp_path / "quiz.jsonl"
     quiz_path.write_text(
@@ -524,6 +540,26 @@ def test_parse_quiz_payload_accepts_valid_array_root() -> None:
     assert parsed.questions[0].question == "What structural change was added to retry_once?"
 
 
+def test_parse_quiz_payload_rejects_more_than_thirty_questions() -> None:
+    questions = [
+        _quiz_question_payload(
+            question_id=f"quiz_{index}",
+            question=f"What changed in case {index}?",
+            choices=_quiz_choice_payloads(),
+        )
+        for index in range(31)
+    ]
+
+    with pytest.raises(ValidationError):
+        parse_quiz_payload(json.dumps({"questions": questions}), require_choices=True)
+
+
+def test_quiz_structured_schema_caps_questions_at_thirty() -> None:
+    spec = schema_spec_for("quiz_generate.v1")
+
+    assert spec.json_schema["properties"]["questions"]["maxItems"] == 30
+
+
 def test_parse_quiz_payload_rejects_missing_required_fields() -> None:
     with pytest.raises(ValueError):
         parse_quiz_payload(json.dumps({"questions": [{"question": "Missing fields."}]}))
@@ -665,7 +701,7 @@ def test_generate_quiz_from_run_writes_expected_artifact(
         "quiz.generate",
         "quiz.misconception_card",
     ]
-    assert [request.max_output_tokens for request in fake_provider.requests] == [6000, 3000]
+    assert [request.max_output_tokens for request in fake_provider.requests] == [18_000, 6_000]
     assert "Write 3 questions" in fake_provider.requests[0].payload_text
     assert progress_messages == [
         "Generating quiz questions (1/2)",
@@ -704,8 +740,8 @@ def test_quiz_generation_attaches_structured_schema_metadata_for_both_prompts(
     )
 
     expected = [
-        ("quiz.generate", "quiz_generate.v1", 6000),
-        ("quiz.misconception_card", "quiz_misconception_card.v1", 3000),
+        ("quiz.generate", "quiz_generate.v1", 18_000),
+        ("quiz.misconception_card", "quiz_misconception_card.v1", 6_000),
     ]
     assert len(fake_provider.requests) == 2
     for request, (prompt_name, schema_name, max_tokens) in zip(
@@ -1061,6 +1097,149 @@ def test_generate_quiz_from_run_allows_empty_misconception_cards(
     assert load_misconception_cards(artifacts.misconception_path) == []
 
 
+def test_misconception_card_set_accepts_thirty_cards() -> None:
+    parsed = MisconceptionCardSet.model_validate(
+        {"cards": [_misconception_card_payload(index) for index in range(30)]}
+    )
+
+    assert len(parsed.cards) == 30
+
+
+def test_misconception_card_set_rejects_more_than_thirty_cards() -> None:
+    with pytest.raises(ValidationError):
+        MisconceptionCardSet.model_validate(
+            {"cards": [_misconception_card_payload(index) for index in range(31)]}
+        )
+
+
+def test_misconception_structured_schema_caps_cards_at_thirty() -> None:
+    spec = schema_spec_for("quiz_misconception_card.v1")
+
+    assert spec.json_schema["properties"]["cards"]["maxItems"] == 30
+
+
+def test_generate_quiz_from_run_rejects_more_than_thirty_misconception_cards(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_too_many_misconceptions")
+    fake_provider = _FakeQuizProvider()
+
+    def fake_generate(request: object) -> object:
+        req = cast("ProviderRequest", request)
+        if req.prompt_name != "quiz.misconception_card":
+            return _FakeQuizProvider.generate(fake_provider, req)
+        fake_provider.requests.append(req)
+        return ProviderResponse(
+            content=json.dumps(
+                {"cards": [_misconception_card_payload(index) for index in range(31)]}
+            ),
+            model_id="gpt-5.4-mini",
+            input_tokens=10,
+            output_tokens=20,
+        )
+
+    fake_provider.generate = fake_generate  # type: ignore[method-assign]
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
+        return fake_provider
+
+    monkeypatch.setattr("ahadiff.quiz.generator.make_provider", fake_provider_factory)
+
+    with pytest.raises(InputError, match="structured output validation failed"):
+        generate_quiz_from_run(
+            run_id="run_quiz_too_many_misconceptions",
+            run_path=run_path,
+            workspace_root=workspace_root,
+            provider_config=ProviderConfig(
+                provider_class="openai",
+                model_name="gpt-5.4-mini",
+                base_url="http://127.0.0.1:8318",
+                api_key_env="AHADIFF_PROVIDER_API_KEY",
+            ),
+            api_key=None,
+            security_config=SecurityConfig(),
+            structured_output_mode="native_json_schema",
+            structured_validation_retries=0,
+        )
+    assert fake_provider.requests[-1].prompt_name == "quiz.misconception_card"
+    assert not (run_path / "quiz" / "misconception_cards.jsonl").exists()
+
+
+def test_generate_quiz_from_run_caps_misconception_concept_terms_at_thirty(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_terms")
+    fake_provider = _FakeQuizProvider()
+
+    def fake_generate(request: object) -> object:
+        req = cast("ProviderRequest", request)
+        fake_provider.requests.append(req)
+        if req.prompt_name == "quiz.generate":
+            questions: list[dict[str, object]] = []
+            for index in range(30):
+                concepts = [f"concept-{index}"]
+                if index == 29:
+                    concepts.extend(f"concept-{extra}" for extra in range(30, 35))
+                questions.append(
+                    _quiz_question_payload(
+                        question_id=f"quiz_{index}",
+                        question=f"What changed in case {index}?",
+                        source_claims=["run_quiz_terms-claim-1"],
+                        concepts=concepts,
+                        choices=_quiz_choice_payloads(),
+                    )
+                )
+            content = json.dumps({"questions": questions})
+        else:
+            content = json.dumps({"cards": []})
+        return ProviderResponse(
+            content=content,
+            model_id="gpt-5.4-mini",
+            input_tokens=10,
+            output_tokens=20,
+        )
+
+    fake_provider.generate = fake_generate  # type: ignore[method-assign]
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
+        return fake_provider
+
+    monkeypatch.setattr("ahadiff.quiz.generator.make_provider", fake_provider_factory)
+
+    generate_quiz_from_run(
+        run_id="run_quiz_terms",
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        question_count=30,
+    )
+
+    misconception_request = next(
+        request
+        for request in fake_provider.requests
+        if request.prompt_name == "quiz.misconception_card"
+    )
+    concept_json = misconception_request.payload_text.split(
+        "Given these concepts found in a code diff:\n",
+        1,
+    )[1].split("\n\nRun ID:", 1)[0]
+    concept_terms = json.loads(concept_json)
+
+    assert concept_terms == [f"concept-{index}" for index in range(30)]
+    assert "concept-30" not in concept_terms
+
+
 def test_misconception_empty_container_does_not_mask_invalid_nonempty_cards() -> None:
     assert has_explicit_empty_misconception_cards('{"cards": []}') is True
     assert has_explicit_empty_misconception_cards('{"cards": [{"concept": "retry"}]}') is False
@@ -1096,6 +1275,129 @@ def test_generate_quiz_from_run_uses_configured_question_count(
 
     assert "Write 5 questions" in fake_provider.requests[0].payload_text
     assert "{question_count}" not in fake_provider.requests[0].payload_text
+
+
+def test_generate_quiz_from_run_allows_max_question_count(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz")
+    fake_provider = _FakeQuizProvider()
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
+        return fake_provider
+
+    monkeypatch.setattr("ahadiff.quiz.generator.make_provider", fake_provider_factory)
+
+    generate_quiz_from_run(
+        run_id="run_quiz",
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        question_count=30,
+    )
+
+    assert "Write 30 questions" in fake_provider.requests[0].payload_text
+
+
+def test_generate_quiz_from_run_allows_fifteen_questions_when_thirty_requested(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_fifteen")
+    fake_provider = _FakeQuizProvider()
+
+    def fake_generate(request: object) -> object:
+        req = cast("ProviderRequest", request)
+        fake_provider.requests.append(req)
+        if req.prompt_name == "quiz.misconception_card":
+            return ProviderResponse(
+                content='{"cards":[]}',
+                model_id="gpt-5.4-mini",
+                input_tokens=10,
+                output_tokens=20,
+            )
+        questions = [
+            _quiz_question_payload(
+                question_id=f"quiz_{index}",
+                question=f"What changed in case {index}?",
+                source_claims=["run_quiz_fifteen-claim-1"],
+                choices=_quiz_choice_payloads(),
+            )
+            for index in range(15)
+        ]
+        return ProviderResponse(
+            content=json.dumps({"questions": questions}),
+            model_id="gpt-5.4-mini",
+            input_tokens=10,
+            output_tokens=20,
+        )
+
+    fake_provider.generate = fake_generate  # type: ignore[method-assign]
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
+        return fake_provider
+
+    monkeypatch.setattr("ahadiff.quiz.generator.make_provider", fake_provider_factory)
+
+    artifacts, questions = generate_quiz_from_run(
+        run_id="run_quiz_fifteen",
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        question_count=30,
+    )
+
+    assert "Write 30 questions" in fake_provider.requests[0].payload_text
+    assert len(questions) == 15
+    assert len(load_quiz_questions(artifacts.quiz_path)) == 15
+
+
+def test_generate_quiz_from_run_rejects_question_count_above_max(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz")
+    fake_provider = _FakeQuizProvider()
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
+        return fake_provider
+
+    monkeypatch.setattr("ahadiff.quiz.generator.make_provider", fake_provider_factory)
+
+    with pytest.raises(InputError, match="between 1 and 30"):
+        generate_quiz_from_run(
+            run_id="run_quiz",
+            run_path=run_path,
+            workspace_root=workspace_root,
+            provider_config=ProviderConfig(
+                provider_class="openai",
+                model_name="gpt-5.4-mini",
+                base_url="http://127.0.0.1:8318",
+                api_key_env="AHADIFF_PROVIDER_API_KEY",
+            ),
+            api_key=None,
+            security_config=SecurityConfig(),
+            question_count=31,
+        )
+    assert fake_provider.requests == []
 
 
 @pytest.mark.parametrize(
@@ -1142,6 +1444,37 @@ def test_generate_quiz_from_run_clamps_output_token_caps_with_overrides(
     assert [request.max_output_tokens for request in fake_provider.requests] == expected_max_tokens
 
 
+def test_generate_quiz_from_run_clamps_default_caps_to_provider_max_output_tokens(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_provider_cap")
+    fake_provider = _FakeQuizProvider()
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
+        return fake_provider
+
+    monkeypatch.setattr("ahadiff.quiz.generator.make_provider", fake_provider_factory)
+
+    generate_quiz_from_run(
+        run_id="run_quiz_provider_cap",
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+            max_output_tokens=4096,
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+    )
+
+    assert [request.max_output_tokens for request in fake_provider.requests] == [4096, 4096]
+
+
 def test_generate_quiz_from_run_ignores_non_positive_output_token_values(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1172,7 +1505,7 @@ def test_generate_quiz_from_run_ignores_non_positive_output_token_values(
         misconception_output_token_cap=-1,
     )
 
-    assert [request.max_output_tokens for request in fake_provider.requests] == [6000, 3000]
+    assert [request.max_output_tokens for request in fake_provider.requests] == [18_000, 6_000]
 
 
 def test_generate_quiz_from_run_rejects_provider_payload_without_choices(

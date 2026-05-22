@@ -25,7 +25,7 @@ _QUIZ_DEFAULTS: dict[str, Any] = {
     "quiz_question_count": 3,
     "quiz_question_count_mode": "fixed",
     "quiz_auto_range_min": 3,
-    "quiz_auto_range_max": 8,
+    "quiz_auto_range_max": 12,
 }
 _CAPTURE_DEFAULTS: dict[str, Any] = {
     "mode": "auto",
@@ -133,7 +133,7 @@ def _safe_config_snapshot(state: ServeState) -> dict[str, Any]:
                 "quiz_question_count": quiz_values.get("quiz_question_count", 3),
                 "quiz_question_count_mode": quiz_values.get("quiz_question_count_mode", "fixed"),
                 "quiz_auto_range_min": quiz_values.get("quiz_auto_range_min", 3),
-                "quiz_auto_range_max": quiz_values.get("quiz_auto_range_max", 8),
+                "quiz_auto_range_max": quiz_values.get("quiz_auto_range_max", 12),
             },
         }
         learn_values = _object_mapping(snapshot_values.get("learn"))
@@ -553,8 +553,8 @@ def _validate_learn_update(learn: object) -> dict[str, Any] | str:
 def _validate_quiz_int_field(field: str, value: object) -> int | str:
     if not isinstance(value, int) or isinstance(value, bool):
         return f"quiz.{field} must be an integer"
-    if value < 1 or value > 10:
-        return f"quiz.{field} must be between 1 and 10"
+    if value < 1 or value > 30:
+        return f"quiz.{field} must be between 1 and 30"
     return value
 
 

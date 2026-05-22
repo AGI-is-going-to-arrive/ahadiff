@@ -1460,6 +1460,8 @@
     "quiz_auto_desc": "根据 diff 复杂度自动调整题目数量——改动越大，题目越多。",
     "quiz_auto_min": "最少题数",
     "quiz_auto_max": "最多题数",
+    "quiz_fixed_range_help": "可选范围 1 到 30。",
+    "quiz_auto_range_help": "范围上下限可设置在 1 到 30 之间。默认根据 diff 复杂度在 3 到 12 之间自适应。",
     "privacy_audit_log": "审计日志",
     "privacy_audit_log_desc": "提供商调用会记录模型、Token 和成本元数据。",
     "privacy_local_only": "仅本地模式",

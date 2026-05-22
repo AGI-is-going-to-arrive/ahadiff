@@ -384,8 +384,107 @@ describe('config api', () => {
     );
 
     await expect(getConfig()).resolves.toMatchObject({
-      quiz: { quiz_question_count: 6 },
+      quiz: {
+        quiz_question_count: 6,
+        quiz_question_count_mode: 'fixed',
+        quiz_auto_range_min: 3,
+        quiz_auto_range_max: 12,
+      },
     });
+  });
+
+  it('rejects GET /api/config payloads with quiz_question_count above max (31)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          jsonResponse({
+            lang: 'en',
+            privacy_mode: 'strict_local',
+            generate_provider: null,
+            generate_model: 'gpt-5.4-mini',
+            judge_provider: null,
+            judge_model: 'gpt-5.4-mini',
+            serve_port: 8765,
+            key_status: {},
+            capture: {
+              max_files: 30,
+              hard_limit: 3000,
+              max_patch_bytes: 5000000,
+              file_ranking: 'learning_value',
+              symbol_extractor: 'auto',
+            },
+            llm: {
+              input_token_budget: 200000,
+              output_token_budget: 50000,
+              request_timeout_seconds: 30,
+              max_concurrent: 3,
+              retry_attempts: 3,
+              output_lang: 'auto',
+            },
+            learn: {
+              learnability_threshold: 0.3,
+              desired_retention: 0.9,
+            },
+            quiz: {
+              quiz_question_count: 31,
+              quiz_question_count_mode: 'fixed',
+              quiz_auto_range_min: 3,
+              quiz_auto_range_max: 12,
+            },
+          }),
+        ),
+      ),
+    );
+
+    await expect(getConfig()).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it('rejects GET /api/config payloads with quiz_auto_range_max above max (31)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          jsonResponse({
+            lang: 'en',
+            privacy_mode: 'strict_local',
+            generate_provider: null,
+            generate_model: 'gpt-5.4-mini',
+            judge_provider: null,
+            judge_model: 'gpt-5.4-mini',
+            serve_port: 8765,
+            key_status: {},
+            capture: {
+              max_files: 30,
+              hard_limit: 3000,
+              max_patch_bytes: 5000000,
+              file_ranking: 'learning_value',
+              symbol_extractor: 'auto',
+            },
+            llm: {
+              input_token_budget: 200000,
+              output_token_budget: 50000,
+              request_timeout_seconds: 30,
+              max_concurrent: 3,
+              retry_attempts: 3,
+              output_lang: 'auto',
+            },
+            learn: {
+              learnability_threshold: 0.3,
+              desired_retention: 0.9,
+            },
+            quiz: {
+              quiz_question_count: 3,
+              quiz_question_count_mode: 'auto',
+              quiz_auto_range_min: 3,
+              quiz_auto_range_max: 31,
+            },
+          }),
+        ),
+      ),
+    );
+
+    await expect(getConfig()).rejects.toBeInstanceOf(ValidationError);
   });
 
   it('parses PUT /api/config update acknowledgements and sends JSON', async () => {

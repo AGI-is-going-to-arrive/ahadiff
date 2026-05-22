@@ -1189,6 +1189,12 @@ def learn_cmd(
                             retry_attempts=int(llm_config["retry_attempts"]),
                             privacy_mode=resolved_privacy_mode,
                             output_lang=resolved_content_lang,
+                            quiz_output_token_cap=int(
+                                llm_config.get("quiz_generation_output_cap", 18_000)
+                            ),
+                            misconception_output_token_cap=int(
+                                llm_config.get("misconception_cards_output_cap", 6_000)
+                            ),
                             question_count=_effective_quiz_question_count(
                                 quiz_config,
                                 capture.metadata.get("diff_stats"),
@@ -1643,7 +1649,7 @@ def _effective_quiz_question_count(
             fixed_count=int(quiz_config["quiz_question_count"]),
             diff_stats=cast("dict[str, int]", diff_stats) if isinstance(diff_stats, dict) else None,
             auto_range_min=int(quiz_config.get("quiz_auto_range_min", 3)),
-            auto_range_max=int(quiz_config.get("quiz_auto_range_max", 8)),
+            auto_range_max=int(quiz_config.get("quiz_auto_range_max", 12)),
         )
     )
 
@@ -1766,6 +1772,10 @@ def regenerate_cmd(
                     retry_attempts=int(llm_config["retry_attempts"]),
                     privacy_mode=resolved_privacy_mode,
                     output_lang=output_lang,
+                    quiz_output_token_cap=int(llm_config.get("quiz_generation_output_cap", 18_000)),
+                    misconception_output_token_cap=int(
+                        llm_config.get("misconception_cards_output_cap", 6_000)
+                    ),
                     question_count=_effective_quiz_question_count(
                         quiz_config,
                         _run_diff_stats_or_none(run_path),

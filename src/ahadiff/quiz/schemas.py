@@ -125,7 +125,7 @@ class QuizQuestion(BaseModel):
 class QuizSet(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    questions: list[QuizQuestion]
+    questions: list[QuizQuestion] = Field(..., min_length=1, max_length=30)
 
     @field_validator("questions")
     @classmethod
@@ -133,6 +133,23 @@ class QuizSet(BaseModel):
         if not values:
             raise ValueError("quiz set must contain at least one question")
         return values
+
+
+class MisconceptionCardOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    concept: str
+    misconception: str
+    correction: str
+    evidence_ref: str
+    severity: str
+    safety_tags: list[str]
+
+
+class MisconceptionCardSet(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    cards: list[MisconceptionCardOutput] = Field(..., max_length=30)
 
 
 def parse_quiz_payload(payload: str, *, require_choices: bool = False) -> QuizSet:
@@ -652,4 +669,11 @@ def _matching_open_quote_index(text: str, closing_quote_index: int) -> int | Non
     return None
 
 
-__all__ = ["QuizEvidence", "QuizQuestion", "QuizSet", "parse_quiz_payload"]
+__all__ = [
+    "MisconceptionCardOutput",
+    "MisconceptionCardSet",
+    "QuizEvidence",
+    "QuizQuestion",
+    "QuizSet",
+    "parse_quiz_payload",
+]

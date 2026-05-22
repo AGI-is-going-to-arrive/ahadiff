@@ -45,7 +45,7 @@ _POSITIVE_INT_KEYS = {
     "llm.quiz_generation_output_cap",
     "llm.misconception_cards_output_cap",
 }
-_QUIZ_QUESTION_COUNT_RANGE = (1, 10)
+_QUIZ_QUESTION_COUNT_RANGE = (1, 30)
 _SAFE_PROVIDER_API_KEY_ENVS = frozenset(
     {
         "OPENAI_API_KEY",
@@ -83,8 +83,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "lesson_full_output_cap": 24_000,
         "lesson_hint_output_cap": 3_000,
         "lesson_compact_output_cap": 2_500,
-        "quiz_generation_output_cap": 6_000,
-        "misconception_cards_output_cap": 3_000,
+        "quiz_generation_output_cap": 18_000,
+        "misconception_cards_output_cap": 6_000,
         "prompt_lang": "auto",
         "output_lang": "auto",
         "structured_output_mode": "json_object",
@@ -108,7 +108,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "quiz_question_count": 3,
         "quiz_question_count_mode": "fixed",
         "quiz_auto_range_min": 3,
-        "quiz_auto_range_max": 8,
+        "quiz_auto_range_max": 12,
     },
     "graph": {
         "max_nodes_import": 50_000,

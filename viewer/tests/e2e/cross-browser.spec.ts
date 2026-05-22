@@ -1,5 +1,14 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { installServeMock } from '../fixtures/serve-mock';
+
+async function openPreferences(page: Page) {
+  await page.goto('/#/settings');
+  await expect(page.getByRole('tab', { name: /preferences/i })).toBeVisible();
+  await page.getByRole('tab', { name: /preferences/i }).click();
+  const panel = page.locator('#spanel-preferences');
+  await expect(panel).toBeVisible();
+  return panel;
+}
 
 test.describe('cross-browser corner cases', () => {
   test.beforeEach(async ({ page, context }) => {
@@ -30,6 +39,78 @@ test.describe('cross-browser corner cases', () => {
     await expect(enBtn).toHaveAttribute('aria-pressed', 'true');
 
     expect(errors).toHaveLength(0);
+  });
+
+  test('Settings preferences saves fixed quiz count 30', async ({ page }) => {
+    const panel = await openPreferences(page);
+    const quizCount = panel.getByRole('spinbutton', { name: 'Quiz question count' });
+    await expect(quizCount).toHaveValue('3');
+
+    await quizCount.fill('30');
+    const putWait = page.waitForResponse(
+      (res) => res.url().endsWith('/api/config') && res.request().method() === 'PUT',
+    );
+    await panel.getByRole('button', { name: 'Save' }).click();
+    await putWait;
+
+    await expect(quizCount).toHaveValue('30');
+    await expect(panel.getByText('Choose a number from 1 to 30.')).toBeVisible();
+  });
+
+  test('Settings preferences saves adaptive quiz range up to 30', async ({ page }) => {
+    const panel = await openPreferences(page);
+    await panel.getByRole('button', { name: 'Adaptive' }).click();
+    const minInput = panel.getByRole('spinbutton', { name: 'Min questions' });
+    const maxInput = panel.getByRole('spinbutton', { name: 'Max questions' });
+    await expect(maxInput).toHaveValue('12');
+
+    await minInput.fill('3');
+    await maxInput.fill('30');
+    const putWait = page.waitForResponse(
+      (res) => res.url().endsWith('/api/config') && res.request().method() === 'PUT',
+    );
+    await panel.getByRole('button', { name: 'Save' }).click();
+    await putWait;
+
+    await expect(panel.getByRole('button', { name: 'Adaptive' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(minInput).toHaveValue('3');
+    await expect(maxInput).toHaveValue('30');
+  });
+
+  test('Settings quiz count range copy switches locale', async ({ page }) => {
+    const panel = await openPreferences(page);
+    await expect(panel.getByText('Choose a number from 1 to 30.')).toBeVisible();
+
+    await panel.getByRole('button', { name: 'Adaptive' }).click();
+    await expect(
+      panel.getByText('Range bounds accept 1 to 30. Defaults adapt between 3 and 12 based on diff complexity.'),
+    ).toBeVisible();
+
+    const putWait = page.waitForResponse(
+      (res) => res.url().endsWith('/api/locale') && res.request().method() === 'PUT',
+    );
+    await panel.getByRole('button', { name: '简体中文' }).click();
+    await putWait;
+
+    await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
+    await expect(panel.getByText('范围上下限可设置在 1 到 30 之间。默认根据 diff 复杂度在 3 到 12 之间自适应。')).toBeVisible();
+    await panel.getByRole('button', { name: '固定' }).click();
+    await expect(panel.getByText('可选范围 1 到 30。')).toBeVisible();
+  });
+
+  test('Settings preferences quiz controls have no mobile overflow', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    const panel = await openPreferences(page);
+    await panel.getByRole('button', { name: 'Adaptive' }).click();
+    await expect(panel.getByRole('spinbutton', { name: 'Max questions' })).toBeVisible();
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
   });
 
   test('rapid sequential navigation produces no JS errors', async ({ page }) => {

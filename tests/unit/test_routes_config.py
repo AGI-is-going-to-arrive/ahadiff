@@ -92,10 +92,24 @@ def test_learn_config_contract_rejects_invalid_threshold(value: float) -> None:
         LearnConfig.model_validate({"learnability_threshold": value})
 
 
-@pytest.mark.parametrize("value", [0, 11, True, "3"])
+@pytest.mark.parametrize("value", [0, 31, True, "3"])
 def test_quiz_config_contract_rejects_invalid_question_count(value: object) -> None:
     with pytest.raises(ValidationError, match="quiz_question_count"):
         QuizConfig.model_validate({"quiz_question_count": value})
+
+
+def test_quiz_config_contract_accepts_max_question_count() -> None:
+    config = QuizConfig.model_validate(
+        {
+            "quiz_question_count": 30,
+            "quiz_auto_range_min": 30,
+            "quiz_auto_range_max": 30,
+        }
+    )
+
+    assert config.quiz_question_count == 30
+    assert config.quiz_auto_range_min == 30
+    assert config.quiz_auto_range_max == 30
 
 
 @pytest.mark.parametrize("value", ["adaptive", "", 3, True])
@@ -105,7 +119,7 @@ def test_quiz_config_contract_rejects_invalid_question_count_mode(value: object)
 
 
 @pytest.mark.parametrize("field", ["quiz_auto_range_min", "quiz_auto_range_max"])
-@pytest.mark.parametrize("value", [0, 11, True, "3"])
+@pytest.mark.parametrize("value", [0, 31, True, "3"])
 def test_quiz_config_contract_rejects_invalid_auto_range(
     field: str,
     value: object,
@@ -311,7 +325,7 @@ def test_get_config_handles_load_failure_gracefully(
             "quiz_question_count": 3,
             "quiz_question_count_mode": "fixed",
             "quiz_auto_range_min": 3,
-            "quiz_auto_range_max": 8,
+            "quiz_auto_range_max": 12,
         },
     }
 
@@ -336,7 +350,7 @@ def test_get_config_returns_nullable_shape_when_no_git_repo(tmp_path: Path) -> N
         "quiz_question_count": 3,
         "quiz_question_count_mode": "fixed",
         "quiz_auto_range_min": 3,
-        "quiz_auto_range_max": 8,
+        "quiz_auto_range_max": 12,
     }
 
 
@@ -356,7 +370,7 @@ def test_get_config_reads_workspace_config_when_no_git_repo(tmp_path: Path) -> N
     assert response.json()["quiz"]["quiz_question_count"] == 6
     assert response.json()["quiz"]["quiz_question_count_mode"] == "fixed"
     assert response.json()["quiz"]["quiz_auto_range_min"] == 3
-    assert response.json()["quiz"]["quiz_auto_range_max"] == 8
+    assert response.json()["quiz"]["quiz_auto_range_max"] == 12
 
 
 def test_validate_capture_update_accepts_auto_mode_without_numeric_validation() -> None:
@@ -406,6 +420,20 @@ def test_validate_quiz_update_accepts_auto_fields() -> None:
         "quiz_question_count_mode": "auto",
         "quiz_auto_range_min": 2,
         "quiz_auto_range_max": 9,
+    }
+
+
+def test_validate_quiz_update_accepts_max_count_and_range() -> None:
+    assert _validate_quiz_update_for_test(
+        {
+            "quiz_question_count": 30,
+            "quiz_auto_range_min": 30,
+            "quiz_auto_range_max": 30,
+        }
+    ) == {
+        "quiz_question_count": 30,
+        "quiz_auto_range_min": 30,
+        "quiz_auto_range_max": 30,
     }
 
 
@@ -485,7 +513,7 @@ def test_validate_quiz_update_rejects_unknown_quiz_keys() -> None:
         ({"quiz_question_count_mode": 3}, "quiz.quiz_question_count_mode"),
         ({"quiz_question_count_mode": True}, "quiz.quiz_question_count_mode"),
         ({"quiz_auto_range_min": 0}, "quiz.quiz_auto_range_min"),
-        ({"quiz_auto_range_max": 11}, "quiz.quiz_auto_range_max"),
+        ({"quiz_auto_range_max": 31}, "quiz.quiz_auto_range_max"),
         ({"quiz_auto_range_min": True}, "quiz.quiz_auto_range_min"),
         ({"quiz_auto_range_max": True}, "quiz.quiz_auto_range_max"),
         ({"quiz_auto_range_max": "8"}, "quiz.quiz_auto_range_max"),

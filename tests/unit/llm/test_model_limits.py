@@ -1251,8 +1251,9 @@ def test_bundled_model_registry_is_v2_with_mandatory_context_metadata() -> None:
         assert "-2026-05-22" in row["source"], label
         assert row.get("confidence") in _ALLOWED_REGISTRY_CONFIDENCE, label
         provider = str(row["provider"]).lower()
-        aliases = row.get("aliases", [])
-        assert isinstance(aliases, list), label
+        aliases_raw = row.get("aliases", [])
+        assert isinstance(aliases_raw, list), label
+        aliases = cast("list[object]", aliases_raw)
         for alias in aliases:
             assert isinstance(alias, str) and alias, label
             alias_key = (provider, alias.lower().removeprefix("models/"))

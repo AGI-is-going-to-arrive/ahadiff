@@ -388,27 +388,12 @@ def _build_registry() -> dict[str, OutputSchemaSpec]:
         ClaimCandidate,  # noqa: TC001 - Pydantic needs this at runtime.
     )
     from ahadiff.lesson.schemas import LessonCompact, LessonFull, LessonHint
-    from ahadiff.quiz.schemas import QuizSet
+    from ahadiff.quiz.schemas import MisconceptionCardSet, QuizSet
 
     class ClaimCandidatesEnvelope(BaseModel):
         model_config = ConfigDict(extra="forbid")
 
         claims: list[ClaimCandidate]
-
-    class MisconceptionCardOutput(BaseModel):
-        model_config = ConfigDict(extra="forbid")
-
-        concept: str
-        misconception: str
-        correction: str
-        evidence_ref: str
-        severity: str
-        safety_tags: list[str]
-
-    class MisconceptionCardsEnvelope(BaseModel):
-        model_config = ConfigDict(extra="forbid")
-
-        cards: list[MisconceptionCardOutput]
 
     specs = [
         _make_spec("claim_candidates", "1", ClaimCandidatesEnvelope),
@@ -416,7 +401,7 @@ def _build_registry() -> dict[str, OutputSchemaSpec]:
         _make_spec("lesson_hint", "1", LessonHint),
         _make_spec("lesson_compact", "1", LessonCompact),
         _make_spec("quiz_generate", "1", QuizSet),
-        _make_spec("quiz_misconception_card", "1", MisconceptionCardsEnvelope),
+        _make_spec("quiz_misconception_card", "1", MisconceptionCardSet),
     ]
     return {f"{spec.schema_id}.v{spec.schema_version}": spec for spec in specs}
 

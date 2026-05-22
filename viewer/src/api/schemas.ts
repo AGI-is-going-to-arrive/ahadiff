@@ -746,10 +746,10 @@ export const learnConfigSchema = z
 
 export const quizConfigSchema = z
   .object({
-    quiz_question_count: z.number().int().min(1).max(10).default(3),
+    quiz_question_count: z.number().int().min(1).max(30).default(3),
     quiz_question_count_mode: z.enum(['fixed', 'auto']).default('fixed'),
-    quiz_auto_range_min: z.number().int().min(1).max(10).default(3),
-    quiz_auto_range_max: z.number().int().min(1).max(10).default(8),
+    quiz_auto_range_min: z.number().int().min(1).max(30).default(3),
+    quiz_auto_range_max: z.number().int().min(1).max(30).default(12),
   })
   .strict()
   .refine(v => v.quiz_auto_range_min <= v.quiz_auto_range_max, {
@@ -774,7 +774,7 @@ export const configResponseSchema = z
       quiz_question_count: 3,
       quiz_question_count_mode: 'fixed',
       quiz_auto_range_min: 3,
-      quiz_auto_range_max: 8,
+      quiz_auto_range_max: 12,
     }),
   })
   .strict();

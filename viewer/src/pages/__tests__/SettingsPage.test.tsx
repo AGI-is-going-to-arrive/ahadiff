@@ -63,7 +63,7 @@ function makeConfig(overrides: Partial<ConfigResponse> = {}): ConfigResponse {
       quiz_question_count: 3,
       quiz_question_count_mode: 'fixed',
       quiz_auto_range_min: 3,
-      quiz_auto_range_max: 8,
+      quiz_auto_range_max: 12,
     },
     ...overrides,
   };
@@ -130,6 +130,7 @@ describe('SettingsPage provider/model helpers', () => {
   it('guards integration actions against unmounting while async work is pending', () => {
     const src = readFileSync(resolve(__dirname, '../SettingsPage.tsx'), 'utf-8');
 
+    expect(src).toContain('mountedRef.current = true');
     expect(src).toContain('mountedRef.current = false');
     expect(src).toContain('copiedResetTimerRef.current !== null');
     expect(src).toContain('actionAbortControllersRef.current');
@@ -171,11 +172,22 @@ describe('PreferencesTab quiz count adaptive mode', () => {
       quiz_question_count: 3,
       quiz_question_count_mode: 'fixed',
       quiz_auto_range_min: 3,
-      quiz_auto_range_max: 8,
+      quiz_auto_range_max: 12,
     });
     expect(parsed.quiz_question_count_mode).toBe('fixed');
     expect(parsed.quiz_auto_range_min).toBe(3);
-    expect(parsed.quiz_auto_range_max).toBe(8);
+    expect(parsed.quiz_auto_range_max).toBe(12);
+  });
+
+  it('schema accepts upper-bound values quiz_question_count=30 and quiz_auto_range_max=30', () => {
+    const parsed = quizConfigSchema.parse({
+      quiz_question_count: 30,
+      quiz_question_count_mode: 'auto',
+      quiz_auto_range_min: 3,
+      quiz_auto_range_max: 30,
+    });
+    expect(parsed.quiz_question_count).toBe(30);
+    expect(parsed.quiz_auto_range_max).toBe(30);
   });
 
   it('schema accepts auto mode with custom range', () => {
@@ -194,7 +206,7 @@ describe('PreferencesTab quiz count adaptive mode', () => {
     const parsed = quizConfigSchema.parse({ quiz_question_count: 4 });
     expect(parsed.quiz_question_count_mode).toBe('fixed');
     expect(parsed.quiz_auto_range_min).toBe(3);
-    expect(parsed.quiz_auto_range_max).toBe(8);
+    expect(parsed.quiz_auto_range_max).toBe(12);
   });
 
   it('schema rejects invalid mode values', () => {
@@ -202,17 +214,27 @@ describe('PreferencesTab quiz count adaptive mode', () => {
       quiz_question_count: 3,
       quiz_question_count_mode: 'random',
       quiz_auto_range_min: 3,
-      quiz_auto_range_max: 8,
+      quiz_auto_range_max: 12,
     });
     expect(result.success).toBe(false);
   });
 
-  it('schema rejects out-of-range auto bounds (>10 / <1)', () => {
-    const tooHigh = quizConfigSchema.safeParse({
+  it('schema accepts quiz_auto_range_max=11 (within new max=30)', () => {
+    const parsed = quizConfigSchema.safeParse({
       quiz_question_count: 3,
       quiz_question_count_mode: 'auto',
       quiz_auto_range_min: 3,
       quiz_auto_range_max: 11,
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('schema rejects out-of-range auto bounds (>30 / <1)', () => {
+    const tooHigh = quizConfigSchema.safeParse({
+      quiz_question_count: 3,
+      quiz_question_count_mode: 'auto',
+      quiz_auto_range_min: 3,
+      quiz_auto_range_max: 31,
     });
     expect(tooHigh.success).toBe(false);
 
@@ -220,7 +242,7 @@ describe('PreferencesTab quiz count adaptive mode', () => {
       quiz_question_count: 3,
       quiz_question_count_mode: 'auto',
       quiz_auto_range_min: 0,
-      quiz_auto_range_max: 8,
+      quiz_auto_range_max: 12,
     });
     expect(tooLow.success).toBe(false);
   });
@@ -229,7 +251,7 @@ describe('PreferencesTab quiz count adaptive mode', () => {
     const inverted = quizConfigSchema.safeParse({
       quiz_question_count: 3,
       quiz_question_count_mode: 'auto',
-      quiz_auto_range_min: 8,
+      quiz_auto_range_min: 12,
       quiz_auto_range_max: 3,
     });
     expect(inverted.success).toBe(false);
@@ -243,7 +265,7 @@ describe('PreferencesTab quiz count adaptive mode', () => {
       quiz_question_count: 3,
       quiz_question_count_mode: 'fixed',
       quiz_auto_range_min: 3,
-      quiz_auto_range_max: 8,
+      quiz_auto_range_max: 12,
       unexpected_field: true,
     });
     expect(withExtra.success).toBe(false);
@@ -274,7 +296,7 @@ describe('PreferencesTab quiz count adaptive mode', () => {
         quiz_question_count: 3,
         quiz_question_count_mode: 'fixed',
         quiz_auto_range_min: 3,
-        quiz_auto_range_max: 8,
+        quiz_auto_range_max: 12,
       },
       unexpected_field: true,
     });
@@ -323,14 +345,16 @@ describe('PreferencesTab quiz count adaptive mode', () => {
     });
     expect(minimal.quiz.quiz_question_count_mode).toBe('fixed');
     expect(minimal.quiz.quiz_auto_range_min).toBe(3);
-    expect(minimal.quiz.quiz_auto_range_max).toBe(8);
+    expect(minimal.quiz.quiz_auto_range_max).toBe(12);
   });
 
   it('clamps quiz number inputs to integer range before saving', () => {
     expect(clampQuizCountInput('2.5', 3)).toBe(3);
     expect(clampQuizCountInput('2.4', 3)).toBe(2);
-    expect(clampQuizCountInput('', 8)).toBe(8);
-    expect(clampQuizCountInput('999', 3)).toBe(10);
+    expect(clampQuizCountInput('', 12)).toBe(12);
+    expect(clampQuizCountInput('999', 3)).toBe(30);
+    expect(clampQuizCountInput('30', 3)).toBe(30);
+    expect(clampQuizCountInput('31', 3)).toBe(30);
     expect(clampQuizCountInput('-2', 3)).toBe(1);
     expect(clampQuizCountInput('NaN', 3)).toBe(3);
   });
@@ -368,6 +392,27 @@ describe('PreferencesTab quiz count adaptive mode', () => {
     expect(src).toContain('step={1}');
   });
 
+  it('PreferencesTab source uses QUIZ_COUNT_MAX = 30 constant for inputs', () => {
+    const src = readFileSync(resolve(__dirname, '../SettingsPage.tsx'), 'utf-8');
+
+    expect(src).toContain('const QUIZ_COUNT_MAX = 30;');
+    expect(src).toContain('max={QUIZ_COUNT_MAX}');
+  });
+
+  it('PreferencesTab source wires aria-describedby for fixed and auto inputs (a11y)', () => {
+    const src = readFileSync(resolve(__dirname, '../SettingsPage.tsx'), 'utf-8');
+
+    // Fixed input -> describedby quiz-fixed-help, with matching id element
+    expect(src).toContain('aria-describedby="quiz-fixed-help"');
+    expect(src).toContain('id="quiz-fixed-help"');
+    expect(src).toContain("t('Settings_page.quiz_fixed_range_help')");
+
+    // Auto inputs -> describedby quiz-auto-help, with matching id element
+    expect(src).toContain('aria-describedby="quiz-auto-help"');
+    expect(src).toContain('id="quiz-auto-help"');
+    expect(src).toContain("t('Settings_page.quiz_auto_range_help')");
+  });
+
   it('PreferencesTab source clamps auto-range so min <= max bidirectionally', () => {
     const src = readFileSync(resolve(__dirname, '../SettingsPage.tsx'), 'utf-8');
 
@@ -402,6 +447,6 @@ describe('PreferencesTab quiz count adaptive mode', () => {
     expect(isPreferencesFormDirty(form, config)).toBe(false);
     expect(isPreferencesFormDirty({ ...form, quiz_question_count_mode: 'auto' }, config)).toBe(true);
     expect(isPreferencesFormDirty({ ...form, quiz_auto_range_min: 4 }, config)).toBe(true);
-    expect(isPreferencesFormDirty({ ...form, quiz_auto_range_max: 9 }, config)).toBe(true);
+    expect(isPreferencesFormDirty({ ...form, quiz_auto_range_max: 13 }, config)).toBe(true);
   });
 });

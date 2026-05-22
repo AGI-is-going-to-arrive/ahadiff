@@ -67,10 +67,10 @@ class LearnConfig(BaseModel):
 class QuizConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    quiz_question_count: StrictInt = Field(default=3, ge=1, le=10)
+    quiz_question_count: StrictInt = Field(default=3, ge=1, le=30)
     quiz_question_count_mode: Literal["fixed", "auto"] = "fixed"
-    quiz_auto_range_min: StrictInt = Field(default=3, ge=1, le=10)
-    quiz_auto_range_max: StrictInt = Field(default=8, ge=1, le=10)
+    quiz_auto_range_min: StrictInt = Field(default=3, ge=1, le=30)
+    quiz_auto_range_max: StrictInt = Field(default=12, ge=1, le=30)
 
     @model_validator(mode="after")
     def _validate_auto_range(self) -> QuizConfig:

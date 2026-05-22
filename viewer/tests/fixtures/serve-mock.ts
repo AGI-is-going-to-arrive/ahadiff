@@ -17,6 +17,32 @@ function extractCookieLocale(req: Request): string {
   return match ? decodeURIComponent(match[1]!) : 'en';
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+interface MockConfigState {
+  lang: string;
+  privacy_mode: string;
+  generate_provider: string | null;
+  generate_model: string | null;
+  judge_provider: string | null;
+  judge_model: string | null;
+  serve_port: number;
+  key_status: Record<string, 'configured' | 'missing'>;
+  capture: Record<string, string | number>;
+  llm: Record<string, string | number>;
+  learn: Record<string, number>;
+  quiz: {
+    quiz_question_count: number;
+    quiz_question_count_mode: string;
+    quiz_auto_range_min: number;
+    quiz_auto_range_max: number;
+  };
+}
+
 /**
  * Install minimal serve API mocks.
  *
@@ -26,6 +52,42 @@ function extractCookieLocale(req: Request): string {
  * module and breaking React boot.
  */
 export async function installServeMock(page: Page): Promise<void> {
+  const configState: MockConfigState = {
+    lang: 'en',
+    privacy_mode: 'strict_local',
+    generate_provider: null,
+    generate_model: 'gpt-5.4-mini',
+    judge_provider: null,
+    judge_model: 'gpt-5.4-mini',
+    serve_port: 8384,
+    key_status: { openai: 'configured' },
+    capture: {
+      max_files: 30,
+      hard_limit: 3000,
+      max_patch_bytes: 5000000,
+      file_ranking: 'learning_value',
+      symbol_extractor: 'auto',
+    },
+    llm: {
+      input_token_budget: 100000,
+      output_token_budget: 16000,
+      request_timeout_seconds: 120,
+      max_concurrent: 4,
+      retry_attempts: 2,
+      output_lang: 'auto',
+    },
+    learn: {
+      learnability_threshold: 0.3,
+      desired_retention: 0.9,
+    },
+    quiz: {
+      quiz_question_count: 3,
+      quiz_question_count_mode: 'fixed',
+      quiz_auto_range_min: 3,
+      quiz_auto_range_max: 12,
+    },
+  };
+
   // Phase 2H: viewer ensureToken() POSTs to /api/auth/token.
   // Mock fulfils both POST (default) and GET (legacy compatibility).
   await page.route(
@@ -58,7 +120,7 @@ export async function installServeMock(page: Page): Promise<void> {
           {
             name: 'ahadiff_lang',
             value: lang,
-            url: 'http://localhost:5173/',
+            url: new URL(req.url()).origin,
             sameSite: 'Lax',
           },
         ]);
@@ -1015,6 +1077,30 @@ export async function installServeMock(page: Page): Promise<void> {
     (url) => url.pathname === '/api/config',
     (route) => {
       if (route.request().method() === 'PUT') {
+        const body = asRecord(route.request().postDataJSON());
+        const llm = asRecord(body.llm);
+        const learn = asRecord(body.learn);
+        const quiz = asRecord(body.quiz);
+        const capture = asRecord(body.capture);
+        if (Object.keys(llm).length > 0) {
+          Object.assign(configState.llm, llm);
+        }
+        if (Object.keys(learn).length > 0) {
+          Object.assign(configState.learn, learn);
+        }
+        if (Object.keys(quiz).length > 0) {
+          Object.assign(configState.quiz, quiz);
+        }
+        if (Object.keys(capture).length > 0) {
+          Object.assign(configState.capture, capture);
+        }
+        if (typeof body.lang === 'string') configState.lang = body.lang;
+        if (typeof body.privacy_mode === 'string') configState.privacy_mode = body.privacy_mode;
+        if (typeof body.generate_provider === 'string') configState.generate_provider = body.generate_provider;
+        if (typeof body.generate_model === 'string') configState.generate_model = body.generate_model;
+        if (typeof body.judge_provider === 'string') configState.judge_provider = body.judge_provider;
+        if (typeof body.judge_model === 'string') configState.judge_model = body.judge_model;
+        if (typeof body.serve_port === 'number') configState.serve_port = body.serve_port;
         return route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -1024,38 +1110,7 @@ export async function installServeMock(page: Page): Promise<void> {
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({
-          lang: 'en',
-          privacy_mode: 'strict_local',
-          generate_provider: null,
-          generate_model: 'gpt-5.4-mini',
-          judge_provider: null,
-          judge_model: 'gpt-5.4-mini',
-          serve_port: 8384,
-          key_status: { openai: 'configured' },
-          capture: {
-            max_files: 30,
-            hard_limit: 3000,
-            max_patch_bytes: 5000000,
-            file_ranking: 'learning_value',
-            symbol_extractor: 'auto',
-          },
-          llm: {
-            input_token_budget: 100000,
-            output_token_budget: 16000,
-            request_timeout_seconds: 120,
-            max_concurrent: 4,
-            retry_attempts: 2,
-            output_lang: 'auto',
-          },
-          learn: {
-            learnability_threshold: 0.3,
-            desired_retention: 0.9,
-          },
-          quiz: {
-            quiz_question_count: 3,
-          },
-        }),
+        body: JSON.stringify(configState),
       });
     },
   );
@@ -1218,46 +1273,56 @@ export async function installServeMock(page: Page): Promise<void> {
   await page.route(
     (url) =>
       url.pathname !== '/api/install/targets' &&
-      /^\/api\/install\/[^/]+(?:\/preview|\/uninstall)?$/.test(url.pathname),
+      url.pathname.startsWith('/api/install/'),
     async (route) => {
-      const req = route.request();
-      if (req.method() !== 'POST') {
-        await route.fulfill({ status: 405, contentType: 'application/json', body: JSON.stringify({ error: 'method_not_allowed' }) });
-        return;
-      }
-      const parts = new URL(req.url()).pathname.split('/').filter(Boolean);
-      const name = decodeURIComponent(parts[2] ?? '');
-      if (!(name in installState)) {
-        await route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'unknown target' }) });
-        return;
-      }
-      if (parts[3] === 'preview') {
+      try {
+        const req = route.request();
+        if (req.method() !== 'POST') {
+          await route.fulfill({ status: 405, contentType: 'application/json', body: JSON.stringify({ error: 'method_not_allowed' }) });
+          return;
+        }
+        const parts = new URL(req.url()).pathname.split('/').filter(Boolean);
+        const name = decodeURIComponent(parts[2] ?? '');
+        if (!(name in installState)) {
+          await route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'unknown target' }) });
+          return;
+        }
+        if (parts[3] === 'preview') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ target: targetFor(name), manifest_hash: manifestHashes[name] }),
+          });
+          return;
+        }
+        const body = (req.postDataJSON() ?? {}) as { confirmed_manifest_hash?: string };
+        if (body.confirmed_manifest_hash !== manifestHashes[name]) {
+          await route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'confirmed_manifest_hash mismatch' }) });
+          return;
+        }
+        const operation = parts[3] === 'uninstall' ? 'uninstall' : 'install';
+        installState[name] = operation === 'install' ? 'installed' : 'available';
+        const manifest = manifestFor(name);
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ target: targetFor(name), manifest_hash: manifestHashes[name] }),
+          body: JSON.stringify({
+            target: targetFor(name),
+            operation,
+            updated: true,
+            updated_paths: manifest[operation === 'install' ? 'write' : 'uninstall'].map((action) => action.path),
+            manifest_hash: manifestHashes[name],
+          }),
         });
-        return;
+      } catch (error) {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            error: error instanceof Error ? error.message : 'install mock failed',
+          }),
+        });
       }
-      const body = (req.postDataJSON() ?? {}) as { confirmed_manifest_hash?: string };
-      if (body.confirmed_manifest_hash !== manifestHashes[name]) {
-        await route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'confirmed_manifest_hash mismatch' }) });
-        return;
-      }
-      const operation = parts[3] === 'uninstall' ? 'uninstall' : 'install';
-      installState[name] = operation === 'install' ? 'installed' : 'available';
-      const manifest = manifestFor(name);
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          target: targetFor(name),
-          operation,
-          updated: true,
-          updated_paths: manifest[operation === 'install' ? 'write' : 'uninstall'].map((action) => action.path),
-          manifest_hash: manifestHashes[name],
-        }),
-      });
     },
   );
   await page.route(

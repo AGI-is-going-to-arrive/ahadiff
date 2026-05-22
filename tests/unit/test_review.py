@@ -1902,6 +1902,71 @@ def test_regenerate_only_quiz_uses_run_content_lang(
     assert captured["output_lang"] == "zh-CN"
 
 
+def test_regenerate_only_quiz_passes_quiz_output_caps_to_generator(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    run_path = repo_root / ".ahadiff" / "runs" / "run-reg"
+    quiz_path = run_path / "quiz" / "quiz.jsonl"
+    misconception_path = run_path / "quiz" / "misconception_cards.jsonl"
+    quiz_path.parent.mkdir(parents=True)
+    quiz_path.write_text('{"old": true}\n', encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    class _FakeReport:
+        verdict = "PASS"
+
+    def fake_generate_quiz_from_run(
+        **kwargs: object,
+    ) -> tuple[QuizArtifactPaths, tuple[object, ...]]:
+        captured.update(kwargs)
+        quiz_path.write_text('{"new": true}\n', encoding="utf-8")
+        misconception_path.write_text('{"new-misconception": true}\n', encoding="utf-8")
+        return (
+            QuizArtifactPaths(
+                quiz_dir=quiz_path.parent,
+                quiz_path=quiz_path,
+                misconception_path=misconception_path,
+            ),
+            (),
+        )
+
+    def fake_generate_cards_for_run(**kwargs: object) -> Path:
+        del kwargs
+        cards_path = run_path / "quiz" / "cards.jsonl"
+        _write_cards_jsonl(cards_path, (_review_card(),))
+        return cards_path
+
+    def fake_evaluate_run(_run_path: Path) -> _FakeReport:
+        return _FakeReport()
+
+    monkeypatch.setattr(cli_module, "generate_quiz_from_run", fake_generate_quiz_from_run)
+    monkeypatch.setattr(cli_module, "generate_cards_for_run", fake_generate_cards_for_run)
+    monkeypatch.setattr(cli_module, "evaluate_run", fake_evaluate_run)
+
+    result = _RUNNER.invoke(
+        app(),
+        [
+            "regenerate",
+            "run-reg",
+            "--only",
+            "quiz",
+            "--repo-root",
+            str(repo_root),
+            "--base-url",
+            "http://127.0.0.1:8318",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0
+    assert captured["quiz_output_token_cap"] == 18_000
+    assert captured["misconception_output_token_cap"] == 6_000
+
+
 def test_regenerate_only_quiz_rejects_concurrent_session_lock(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

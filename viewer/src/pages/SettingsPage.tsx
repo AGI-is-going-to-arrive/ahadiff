@@ -1298,7 +1298,7 @@ const OUTPUT_LANG_LABEL_KEY: Record<string, MessageKey> = {
 };
 
 const QUIZ_COUNT_MIN = 1;
-const QUIZ_COUNT_MAX = 10;
+const QUIZ_COUNT_MAX = 30;
 
 export function clampQuizCountInput(rawValue: string, fallback: number): number {
   if (rawValue.trim() === '') {
@@ -1329,7 +1329,7 @@ export function preferencesFormFromConfig(config: ConfigResponse): PreferencesFo
     quiz_question_count: config.quiz.quiz_question_count ?? 3,
     quiz_question_count_mode: config.quiz.quiz_question_count_mode ?? 'fixed',
     quiz_auto_range_min: config.quiz.quiz_auto_range_min ?? 3,
-    quiz_auto_range_max: config.quiz.quiz_auto_range_max ?? 8,
+    quiz_auto_range_max: config.quiz.quiz_auto_range_max ?? 12,
   };
 }
 
@@ -1341,7 +1341,7 @@ export function isPreferencesFormDirty(form: PreferencesForm, config: ConfigResp
     || form.quiz_question_count !== (config.quiz.quiz_question_count ?? 3)
     || form.quiz_question_count_mode !== (config.quiz.quiz_question_count_mode ?? 'fixed')
     || form.quiz_auto_range_min !== (config.quiz.quiz_auto_range_min ?? 3)
-    || form.quiz_auto_range_max !== (config.quiz.quiz_auto_range_max ?? 8)
+    || form.quiz_auto_range_max !== (config.quiz.quiz_auto_range_max ?? 12)
   );
 }
 
@@ -1569,16 +1569,20 @@ function PreferencesTab({
                     </button>
                   </div>
                   {form.quiz_question_count_mode === 'fixed' ? (
-                    <input
-                      type="number"
-                      className="settings-input"
-                      aria-label={t('Settings_page.quiz_question_count')}
-                      min={1}
-                      max={10}
-                      step={1}
-                      value={form.quiz_question_count}
-                      onChange={e => setField('quiz_question_count', clampQuizCountInput(e.target.value, 3))}
-                    />
+                    <div>
+                      <input
+                        type="number"
+                        className="settings-input"
+                        aria-label={t('Settings_page.quiz_question_count')}
+                        aria-describedby="quiz-fixed-help"
+                        min={1}
+                        max={QUIZ_COUNT_MAX}
+                        step={1}
+                        value={form.quiz_question_count}
+                        onChange={e => setField('quiz_question_count', clampQuizCountInput(e.target.value, 3))}
+                      />
+                      <p id="quiz-fixed-help" className="settings-auto-range__desc u-muted-sm">{t('Settings_page.quiz_fixed_range_help')}</p>
+                    </div>
                   ) : (
                     <div className="settings-auto-range">
                       <p className="settings-auto-range__desc">{t('Settings_page.quiz_auto_desc')}</p>
@@ -1588,8 +1592,9 @@ function PreferencesTab({
                           <input
                             type="number"
                             className="settings-input"
+                            aria-describedby="quiz-auto-help"
                             min={1}
-                            max={10}
+                            max={QUIZ_COUNT_MAX}
                             step={1}
                             aria-label={t('Settings_page.quiz_auto_min')}
                             value={form.quiz_auto_range_min}
@@ -1608,13 +1613,14 @@ function PreferencesTab({
                           <input
                             type="number"
                             className="settings-input"
+                            aria-describedby="quiz-auto-help"
                             min={1}
-                            max={10}
+                            max={QUIZ_COUNT_MAX}
                             step={1}
                             aria-label={t('Settings_page.quiz_auto_max')}
                             value={form.quiz_auto_range_max}
                             onChange={e => {
-                              const v = clampQuizCountInput(e.target.value, 8);
+                              const v = clampQuizCountInput(e.target.value, 12);
                               setField('quiz_auto_range_max', v);
                               if (v < form.quiz_auto_range_min) {
                                 setField('quiz_auto_range_min', v);
@@ -1623,6 +1629,7 @@ function PreferencesTab({
                           />
                         </label>
                       </div>
+                      <p id="quiz-auto-help" className="settings-auto-range__desc u-muted-sm">{t('Settings_page.quiz_auto_range_help')}</p>
                     </div>
                   )}
                 </div>
@@ -2157,11 +2164,14 @@ function IntegrationsTab({
   const copiedResetTimerRef = useRef<number | null>(null);
   const actionAbortControllersRef = useRef<Set<AbortController>>(new Set());
 
-  useEffect(() => () => {
-    mountedRef.current = false;
-    if (copiedResetTimerRef.current !== null) window.clearTimeout(copiedResetTimerRef.current);
-    for (const controller of actionAbortControllersRef.current) controller.abort();
-    actionAbortControllersRef.current.clear();
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (copiedResetTimerRef.current !== null) window.clearTimeout(copiedResetTimerRef.current);
+      for (const controller of actionAbortControllersRef.current) controller.abort();
+      actionAbortControllersRef.current.clear();
+    };
   }, []);
 
   useEffect(() => {

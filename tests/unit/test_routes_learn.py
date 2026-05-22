@@ -478,8 +478,8 @@ def test_post_learn_estimate_uses_one_config_snapshot_for_capture_and_limits(
                     "lesson_full_output_cap": 24_000,
                     "lesson_hint_output_cap": 3_000,
                     "lesson_compact_output_cap": 2_500,
-                    "quiz_generation_output_cap": 6_000,
-                    "misconception_cards_output_cap": 3_000,
+                    "quiz_generation_output_cap": 18_000,
+                    "misconception_cards_output_cap": 6_000,
                 },
                 "providers": {
                     "local": {

@@ -500,7 +500,7 @@ class _FakeConfigSnapshot:
                 "quiz_question_count": 3,
                 "quiz_question_count_mode": "fixed",
                 "quiz_auto_range_min": 3,
-                "quiz_auto_range_max": 8,
+                "quiz_auto_range_max": 12,
             },
             "llm": {
                 "generate_model": "test-model",
@@ -1488,6 +1488,40 @@ def test_pipeline_passes_step_specific_output_caps(
     assert seen["quiz"]["output_token_budget"] == 50_000
 
 
+def test_pipeline_passes_default_quiz_output_caps(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    snapshot = _FakeConfigSnapshot()
+
+    def _load_config(
+        _root: Path,
+        cli_overrides: dict[str, object] | None = None,
+    ) -> _FakeConfigSnapshot:
+        del cli_overrides
+        return snapshot
+
+    monkeypatch.setattr(f"{_ORCH}.load_config", _load_config)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    _patch_learnability(monkeypatch, score=0.7)
+    seen: dict[str, object] = {}
+
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        provider_config=_FakeProviderConfig(max_output_tokens=131_072),
+        on_generate_quiz=lambda kwargs: seen.update(kwargs),
+    )
+
+    result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
+
+    assert result.status == "keep"
+    assert seen["quiz_output_token_cap"] == 18_000
+    assert seen["misconception_output_token_cap"] == 6_000
+
+
 def test_pipeline_uses_adaptive_question_count_from_capture_stats(
     monkeypatch: pytest.MonkeyPatch,
     fake_repo: Path,
@@ -1670,7 +1704,7 @@ def test_pipeline_uses_default_auto_range_when_legacy_range_keys_are_missing(
     result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
 
     assert result.status == "keep"
-    assert seen["question_count"] == 8
+    assert seen["question_count"] == 12
 
 
 def test_pipeline_falls_back_to_fixed_count_when_diff_stats_key_is_missing(

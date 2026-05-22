@@ -6,7 +6,7 @@ def _clamp(value: int, lower: int, upper: int) -> int:
 
 
 _QUESTION_COUNT_MIN = 1
-_QUESTION_COUNT_MAX = 10
+_QUESTION_COUNT_MAX = 30
 
 
 def _require_int(name: str, value: object) -> int:
@@ -33,19 +33,19 @@ def compute_adaptive_question_count(
     total_changed_lines: int,
     file_count: int,
     range_min: int = 3,
-    range_max: int = 8,
+    range_max: int = 12,
 ) -> int:
     """Map diff size and file diversity to a bounded quiz question count."""
 
     total_changed_lines = _require_non_negative_int("total_changed_lines", total_changed_lines)
     file_count = _require_non_negative_int("file_count", file_count)
-    range_min = _require_int("range_min", range_min)
-    range_max = _require_int("range_max", range_max)
+    range_min = _require_question_count("range_min", range_min)
+    range_max = _require_question_count("range_max", range_max)
 
-    lower = _clamp(range_min, _QUESTION_COUNT_MIN, _QUESTION_COUNT_MAX)
-    upper = _clamp(range_max, _QUESTION_COUNT_MIN, _QUESTION_COUNT_MAX)
+    lower = range_min
+    upper = range_max
     if lower > upper:
-        lower, upper = upper, lower
+        raise ValueError("range_min must be <= range_max")
     if total_changed_lines == 0:
         return lower
 
@@ -59,10 +59,18 @@ def compute_adaptive_question_count(
         base_count = 6
     elif total_changed_lines <= 400:
         base_count = 7
+    elif total_changed_lines <= 800:
+        base_count = 9
+    elif total_changed_lines <= 1200:
+        base_count = 12
+    elif total_changed_lines <= 2000:
+        base_count = 15
+    elif total_changed_lines <= 3000:
+        base_count = 18
     else:
-        base_count = 8
+        base_count = 20
 
-    file_bonus = min(max(file_count - 1, 0) // 3, 2)
+    file_bonus = min(max(file_count - 1, 0) // 3, 4)
     return _clamp(base_count + file_bonus, lower, upper)
 
 
@@ -71,7 +79,7 @@ def resolve_question_count(
     fixed_count: int,
     diff_stats: dict[str, int] | None,
     auto_range_min: int = 3,
-    auto_range_max: int = 8,
+    auto_range_max: int = 12,
 ) -> int:
     """Resolve the effective quiz question count for fixed or adaptive mode."""
 

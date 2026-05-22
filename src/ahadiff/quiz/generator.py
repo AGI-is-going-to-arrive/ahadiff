@@ -81,8 +81,9 @@ _MISCONCEPTION_PROMPT_NAME = "quiz.misconception_card"
 _MISCONCEPTION_ARTIFACT_NAME = "misconception_cards.jsonl"
 _VALID_PRIVACY_MODES = frozenset({"strict_local", "redacted_remote", "explicit_remote"})
 _MAX_RUN_ARTIFACT_TEXT_BYTES = 16 * 1024 * 1024
-_QUIZ_OUTPUT_TOKEN_CAP = 6000
-_MISCONCEPTION_OUTPUT_TOKEN_CAP = 3000
+_QUIZ_OUTPUT_TOKEN_CAP = 18_000
+_MISCONCEPTION_OUTPUT_TOKEN_CAP = 6_000
+_MAX_MISCONCEPTION_CARDS = 30
 
 
 def generate_quiz_from_run(
@@ -344,8 +345,8 @@ def _generate_quiz_payload(
 ) -> str:
     if type(question_count) is not int:
         raise InputError("quiz question_count must be an integer")
-    if question_count < 1 or question_count > 10:
-        raise InputError("quiz question_count must be between 1 and 10")
+    if question_count < 1 or question_count > 30:
+        raise InputError("quiz question_count must be between 1 and 30")
     prompt_text = load_quiz_prompt()
     resolved_prompt_text = prompt_text.replace("{question_count}", str(question_count))
     payload_text = build_quiz_payload(
@@ -549,15 +550,17 @@ def _generate_misconception_cards(
     def _validate(payload: str) -> str:
         parsed = strict_json_envelope(payload, root_key="cards", allow_empty=True)
         _validate_schema_payload(schema_spec, parsed)
-        if parsed["cards"] and not parse_misconception_cards(payload):
+        cards = parse_misconception_cards(payload)
+        _validate_misconception_card_count(cards)
+        if parsed["cards"] and not cards:
             raise ValueError("misconception payload must contain at least one card")
         return payload
 
     def _fallback(payload: str) -> str:
         require_complete_json_for_fallback(payload)
-        if not parse_misconception_cards(payload) and not has_explicit_empty_misconception_cards(
-            payload
-        ):
+        cards = parse_misconception_cards(payload)
+        _validate_misconception_card_count(cards)
+        if not cards and not has_explicit_empty_misconception_cards(payload):
             raise ValueError("misconception payload must contain at least one card")
         return payload
 
@@ -573,7 +576,15 @@ def _generate_misconception_cards(
     finally:
         provider.close()
     cards = parse_misconception_cards(result.value)
+    _validate_misconception_card_count(cards)
     return tuple(replace(card, run_id=card.run_id or run_id) for card in cards)
+
+
+def _validate_misconception_card_count(cards: Sequence[MisconceptionCard]) -> None:
+    if len(cards) > _MAX_MISCONCEPTION_CARDS:
+        raise ValueError(
+            f"misconception payload must contain at most {_MAX_MISCONCEPTION_CARDS} cards"
+        )
 
 
 def _validate_schema_payload(schema_spec: Any, parsed: dict[str, Any]) -> None:
@@ -630,6 +641,8 @@ def _dedupe_concept_terms(questions: Sequence[QuizQuestion]) -> list[str]:
                 continue
             seen.add(normalized)
             terms.append(normalized)
+            if len(terms) >= 30:
+                return terms
     return terms
 
 

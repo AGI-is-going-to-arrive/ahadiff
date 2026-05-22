@@ -680,6 +680,31 @@ class TestPutConfig:
             "quiz_auto_range_max": 9,
         }
 
+    def test_quiz_question_count_accepts_max_round_trip(self, tmp_path: Path) -> None:
+        repo_root = tmp_path / "repo"
+        (repo_root / ".git").mkdir(parents=True)
+        state_dir = repo_root / ".ahadiff"
+        client = _client(state_dir)
+
+        put_resp = client.put(
+            "/api/config",
+            json={
+                "quiz": {
+                    "quiz_question_count": 30,
+                    "quiz_auto_range_min": 30,
+                    "quiz_auto_range_max": 30,
+                }
+            },
+            headers={**_AUTH, "origin": "http://localhost:8765"},
+        )
+        get_resp = client.get("/api/config")
+
+        assert put_resp.status_code == 200
+        assert get_resp.status_code == 200
+        assert get_resp.json()["quiz"]["quiz_question_count"] == 30
+        assert get_resp.json()["quiz"]["quiz_auto_range_min"] == 30
+        assert get_resp.json()["quiz"]["quiz_auto_range_max"] == 30
+
     @pytest.mark.parametrize("value", [0.7, 0.99])
     def test_learn_desired_retention_accepts_boundaries(
         self,
@@ -775,7 +800,7 @@ class TestPutConfig:
         ("payload", "expected_error"),
         [
             ({"quiz": {"quiz_question_count": 0}}, "quiz."),
-            ({"quiz": {"quiz_question_count": 11}}, "quiz."),
+            ({"quiz": {"quiz_question_count": 31}}, "quiz."),
             ({"quiz": {"quiz_question_count": True}}, "quiz."),
             ({"quiz": {"quiz_question_count": "3"}}, "quiz."),
             ({"quiz": {"quiz_question_count": None}}, "quiz."),
@@ -785,7 +810,7 @@ class TestPutConfig:
             ({"quiz": {"quiz_question_count_mode": True}}, "quiz."),
             ({"quiz": {"quiz_auto_range_min": 0}}, "quiz."),
             ({"quiz": {"quiz_auto_range_min": True}}, "quiz."),
-            ({"quiz": {"quiz_auto_range_max": 11}}, "quiz."),
+            ({"quiz": {"quiz_auto_range_max": 31}}, "quiz."),
             ({"quiz": {"quiz_auto_range_max": True}}, "quiz."),
             ({"quiz": {"quiz_auto_range_max": "8"}}, "quiz."),
             ({"quiz": {"quiz_auto_range_min": 8, "quiz_auto_range_max": 3}}, "quiz."),

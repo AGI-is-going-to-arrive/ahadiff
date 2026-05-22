@@ -339,13 +339,13 @@ def test_quiz_question_count_defaults_to_three_when_unset(tmp_path: Path) -> Non
     assert snapshot.values["quiz"]["quiz_question_count"] == 3
     assert snapshot.values["quiz"]["quiz_question_count_mode"] == "fixed"
     assert snapshot.values["quiz"]["quiz_auto_range_min"] == 3
-    assert snapshot.values["quiz"]["quiz_auto_range_max"] == 8
+    assert snapshot.values["quiz"]["quiz_auto_range_max"] == 12
     resolved = resolve_effective("quiz.quiz_question_count", snapshot=snapshot)
     assert resolved.value == 3
     assert resolved.source == "default"
 
 
-@pytest.mark.parametrize("raw_value", ["0", "11", "true", "nan", "inf"])
+@pytest.mark.parametrize("raw_value", ["0", "31", "true", "nan", "inf"])
 def test_quiz_question_count_rejects_invalid_values(
     tmp_path: Path,
     raw_value: str,
@@ -359,6 +359,49 @@ def test_quiz_question_count_rejects_invalid_values(
 
     with pytest.raises(ConfigError, match="quiz\\.quiz_question_count"):
         load_config(repo_root, env={"HOME": str(tmp_path / "home")})
+
+
+def test_quiz_question_count_accepts_max_value(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    repo_path = repo_config_path(repo_root)
+    repo_path.parent.mkdir(parents=True)
+    repo_path.write_text("[quiz]\nquiz_question_count = 30\n", encoding="utf-8")
+
+    snapshot = load_config(repo_root, env={"HOME": str(tmp_path / "home")})
+
+    assert snapshot.values["quiz"]["quiz_question_count"] == 30
+
+
+def test_quiz_auto_range_accepts_existing_legacy_max_value(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    repo_path = repo_config_path(repo_root)
+    repo_path.parent.mkdir(parents=True)
+    repo_path.write_text("[quiz]\nquiz_auto_range_max = 8\n", encoding="utf-8")
+
+    snapshot = load_config(repo_root, env={"HOME": str(tmp_path / "home")})
+
+    assert snapshot.values["quiz"]["quiz_auto_range_max"] == 8
+
+
+def test_quiz_auto_range_accepts_max_values(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    repo_path = repo_config_path(repo_root)
+    repo_path.parent.mkdir(parents=True)
+    repo_path.write_text(
+        "[quiz]\nquiz_auto_range_min = 30\nquiz_auto_range_max = 30\n",
+        encoding="utf-8",
+    )
+
+    snapshot = load_config(repo_root, env={"HOME": str(tmp_path / "home")})
+
+    assert snapshot.values["quiz"]["quiz_auto_range_min"] == 30
+    assert snapshot.values["quiz"]["quiz_auto_range_max"] == 30
 
 
 @pytest.mark.parametrize("raw_value", ['"adaptive"', '""', "true"])
@@ -378,7 +421,7 @@ def test_quiz_question_count_mode_rejects_invalid_values(
 
 
 @pytest.mark.parametrize("key", ["quiz_auto_range_min", "quiz_auto_range_max"])
-@pytest.mark.parametrize("raw_value", ["0", "11", "true", "nan", "inf"])
+@pytest.mark.parametrize("raw_value", ["0", "31", "true", "nan", "inf"])
 def test_quiz_auto_range_rejects_invalid_values(
     tmp_path: Path,
     key: str,

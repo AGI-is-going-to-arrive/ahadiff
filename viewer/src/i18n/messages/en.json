@@ -1460,6 +1460,8 @@
     "quiz_auto_desc": "Automatically adjusts the number of questions based on diff complexity — larger changes get more questions.",
     "quiz_auto_min": "Min questions",
     "quiz_auto_max": "Max questions",
+    "quiz_fixed_range_help": "Choose a number from 1 to 30.",
+    "quiz_auto_range_help": "Range bounds accept 1 to 30. Defaults adapt between 3 and 12 based on diff complexity.",
     "privacy_audit_log": "Audit log",
     "privacy_audit_log_desc": "Provider calls are recorded with model, token, and cost metadata.",
     "privacy_local_only": "Local-only mode",

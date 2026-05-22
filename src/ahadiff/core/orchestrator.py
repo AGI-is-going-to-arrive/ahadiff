@@ -140,8 +140,8 @@ _STEP_OUTPUT_CAPS = {
     "lesson_full": 24_000,
     "lesson_hint": 3_000,
     "lesson_compact": 2_500,
-    "quiz_generation": 6_000,
-    "misconception_cards": 3_000,
+    "quiz_generation": 18_000,
+    "misconception_cards": 6_000,
 }
 
 
@@ -1445,7 +1445,7 @@ def run_learn_pipeline(
                             fixed_count=int(quiz_config["quiz_question_count"]),
                             diff_stats=diff_stats,
                             auto_range_min=int(quiz_config.get("quiz_auto_range_min", 3)),
-                            auto_range_max=int(quiz_config.get("quiz_auto_range_max", 8)),
+                            auto_range_max=int(quiz_config.get("quiz_auto_range_max", 12)),
                         )
 
                         def _generate_quiz() -> None:
