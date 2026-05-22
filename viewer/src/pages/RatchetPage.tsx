@@ -740,6 +740,10 @@ export default function RatchetPage() {
           tabIndex={0}
           hidden={activeTab !== 'improve'}
         >
+          <div className="ratchet-card__header">
+            <h2>{t('Improve.tab_preview')}</h2>
+            <span className="ratchet-card__meta">{t('Improve.heading')}</span>
+          </div>
           {activeTab === 'improve' && (
             <Suspense fallback={<div className="ratchet-card__body"><Skeleton height="200px" /></div>}>
               <ImprovePreview />

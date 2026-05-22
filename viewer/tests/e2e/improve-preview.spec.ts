@@ -34,7 +34,7 @@ test.describe('Improve Preview tab on Ratchet page', () => {
 
     await page.locator('.improve-preview__banner').waitFor({ state: 'visible' });
 
-    const dlRows = page.locator('.improve-preview__dl-row');
+    const dlRows = page.locator('.improve-preview__tile');
     await expect(dlRows.first()).toBeVisible();
     expect(await dlRows.count()).toBeGreaterThanOrEqual(3);
 
@@ -48,7 +48,7 @@ test.describe('Improve Preview tab on Ratchet page', () => {
     const improveTab = page.getByRole('tab', { name: /improve|改进/i });
     await improveTab.click();
 
-    const providerBadge = page.locator('.improve-preview__provider-badge--ok');
+    const providerBadge = page.locator('.improve-preview__provider-tile .ratchet-status--kept');
     await expect(providerBadge).toBeVisible();
   });
 
@@ -77,7 +77,7 @@ test.describe('Improve Preview tab on Ratchet page', () => {
     await expect(sessionCards.first()).toBeVisible();
     expect(await sessionCards.count()).toBe(1);
 
-    const statusPill = page.locator('.improve-preview__status-pill');
+    const statusPill = page.locator('.improve-preview__session-card .ratchet-status');
     await expect(statusPill).toContainText('discard');
   });
 
