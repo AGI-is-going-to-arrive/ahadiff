@@ -14,12 +14,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import ahadiff.core.orchestrator as orchestrator_module
 from ahadiff.core.config import ResolvedSetting
 from ahadiff.core.errors import AhaDiffError, ConfigError, SafetyError
 from ahadiff.core.orchestrator import (
     LearnRequest,
     LearnResult,
     PipelineErrorBudget,
+    _bounded_judge_failure_message,  # pyright: ignore[reportPrivateUsage]
     _effective_capture_recommendation,  # pyright: ignore[reportPrivateUsage]
     _persist_graphify_context,  # pyright: ignore[reportPrivateUsage]
     _persist_skipped_run,  # pyright: ignore[reportPrivateUsage]
@@ -67,6 +69,7 @@ def test_learn_request_defaults(tmp_path: Path) -> None:
     assert req.use_graphify is None
     assert req.lang is None
     assert req.privacy_mode is None
+    assert req.quiz_mode is None
 
 
 def test_learn_result_defaults() -> None:
@@ -527,6 +530,7 @@ class _FakeProviderConfig:
     base_url: str = "http://localhost:11434"
     api_key_env: str = "FAKE_KEY"
     provider_class: str = "ollama"
+    model_name: str = "fake-model"
     max_output_tokens: int | None = None
 
     def model_copy(self, *, update: dict[str, object]) -> _FakeProviderConfig:
@@ -964,6 +968,45 @@ def _patch_completed_pipeline(
     )
 
 
+def _patch_persist_warnings(monkeypatch: pytest.MonkeyPatch, warnings: list[str]) -> None:
+    def _persist(
+        *,
+        run_path: Path,
+        report: object,
+        workspace_root: Path,
+        event_type: str,
+        output_path: Path,
+        force: bool,
+        note_payload: dict[str, object] | None = None,
+    ) -> tuple[object, list[str]]:
+        del report, workspace_root, event_type, force, note_payload
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        fake_event = MagicMock()
+        fake_event.status = "keep"
+        fake_event.event_id = "evt-001"
+        fake_outcome = MagicMock()
+        fake_outcome.event = fake_event
+        return fake_outcome, list(warnings)
+
+    monkeypatch.setattr(f"{_ORCH}._persist_evaluated_run_sync", _persist)
+
+
+def _patch_successful_post_persist_steps(monkeypatch: pytest.MonkeyPatch, run_path: Path) -> None:
+    def _import_cards_from_jsonl(*args: object, **kwargs: object) -> int:
+        del args, kwargs
+        return 0
+
+    def _append_concepts(**kwargs: object) -> Path:
+        del kwargs
+        output_path = run_path / "concepts_local.jsonl"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("{}\n", encoding="utf-8")
+        return output_path
+
+    monkeypatch.setattr("ahadiff.review.database.import_cards_from_jsonl", _import_cards_from_jsonl)
+    monkeypatch.setattr("ahadiff.wiki.concepts.append_concepts", _append_concepts)
+
+
 # ---------------------------------------------------------------------------
 # Pipeline tests
 # ---------------------------------------------------------------------------
@@ -1323,6 +1366,178 @@ def test_configured_judge_provider_runs_after_deterministic_evaluation(
     assert judge_calls[0]["run_path"] == fake_repo / ".ahadiff" / "runs" / capture.run_id
     assert judge_calls[0]["output_lang"] == "en"
     assert cast("MagicMock", judge_calls[0]["deterministic_report"]).verdict == "PASS"
+    assert not (fake_repo / ".ahadiff" / "runs" / capture.run_id / "judge_failure.json").exists()
+
+
+def test_judge_failure_warning_survives_persist_and_writes_artifact(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    snapshot = _FakeConfigSnapshot()
+    snapshot.values["llm"]["judge_provider"] = "judge"
+    snapshot.values["llm"]["judge_model"] = "judge-model"
+
+    def _load_config(
+        _root: Path,
+        cli_overrides: dict[str, object] | None = None,
+    ) -> _FakeConfigSnapshot:
+        del cli_overrides
+        return snapshot
+
+    monkeypatch.setattr(f"{_ORCH}.load_config", _load_config)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    run_path = fake_repo / ".ahadiff" / "runs" / capture.run_id
+    _patch_learnability(monkeypatch, score=0.7)
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        provider_config=_FakeProviderConfig(
+            provider_class="openai_responses",
+            model_name="judge-model",
+        ),
+    )
+    _patch_persist_warnings(monkeypatch, ["persist warning"])
+    _patch_successful_post_persist_steps(monkeypatch, run_path)
+    secret = "sk-" + ("A" * 32)
+    key_secret = "key-" + ("B" * 32)
+    bearer_secret = "Bearer " + ("C" * 40)
+    long_message = (
+        f"judge failed with {secret} {key_secret} {bearer_secret} "
+        "request body: diff --git a/secret.py b/secret.py\n" + ("x" * 2500)
+    )
+
+    def _run_llm_judge_for_run(**kwargs: object) -> None:
+        del kwargs
+        raise RuntimeError(long_message)
+
+    monkeypatch.setattr("ahadiff.eval.evaluator.run_llm_judge_for_run", _run_llm_judge_for_run)
+
+    with caplog.at_level("WARNING", logger=orchestrator_module.__name__):
+        result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
+
+    assert result.status == "keep"
+    assert result.warnings[0] == "LLM judge evaluation failed: RuntimeError"
+    expected_log_message = "LLM judge evaluation failed: RuntimeError"
+    assert any(
+        record.exc_info is not None and record.message == expected_log_message
+        for record in caplog.records
+    )
+    assert secret not in result.warnings[0]
+    assert key_secret not in result.warnings[0]
+    assert bearer_secret not in result.warnings[0]
+    assert "judge failed with" not in result.warnings[0]
+    assert result.warnings[-1] == "persist warning"
+    failure_path = run_path / "judge_failure.json"
+    assert failure_path.exists()
+    failure = json.loads(failure_path.read_text(encoding="utf-8"))
+    assert failure["schema"] == "ahadiff.judge_failure.v1"
+    assert failure["provider_class"] == "openai_responses"
+    assert failure["model_name"] == "judge-model"
+    assert failure["error_type"] == "RuntimeError"
+    redacted_payload_message = (
+        "Judge failure details were redacted because the error included provider payload "
+        "or diff text."
+    )
+    assert failure["message"] == redacted_payload_message
+    assert secret not in failure["message"]
+    assert key_secret not in failure["message"]
+    assert bearer_secret not in failure["message"]
+    assert "diff --git" not in failure["message"]
+    assert "request body" not in failure["message"]
+    assert "sk-" not in failure["message"]
+    assert "key-" not in failure["message"]
+    assert "Bearer" not in failure["message"]
+    assert "Traceback" not in failure["message"]
+
+
+def test_judge_failure_message_preserves_unicode_without_utf16_over_truncation() -> None:
+    message = _bounded_judge_failure_message(RuntimeError("评审失败 😀" * 300))
+
+    assert len(message) <= 2000
+    assert "评审失败" in message
+    assert "😀" in message
+
+
+def test_semantic_alignment_failure_warning_survives_persist(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    snapshot = _FakeConfigSnapshot()
+    snapshot.values["llm"]["judge_provider"] = "judge"
+    snapshot.values["llm"]["judge_model"] = "judge-model"
+
+    def _load_config(
+        _root: Path,
+        cli_overrides: dict[str, object] | None = None,
+    ) -> _FakeConfigSnapshot:
+        del cli_overrides
+        return snapshot
+
+    monkeypatch.setattr(f"{_ORCH}.load_config", _load_config)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    run_path = fake_repo / ".ahadiff" / "runs" / capture.run_id
+    _patch_learnability(monkeypatch, score=0.7)
+    _patch_completed_pipeline(monkeypatch, fake_repo, capture)
+    _patch_persist_warnings(monkeypatch, ["persist warning"])
+    _patch_successful_post_persist_steps(monkeypatch, run_path)
+    spec_path = fake_repo / "SPEC.md"
+    spec_path.write_text("- The retry helper must attempt three times.\n", encoding="utf-8")
+
+    def _write_spec_alignment_artifact(**kwargs: object) -> dict[str, object]:
+        run = cast("Path", kwargs["run_path"])
+        (run / "spec_alignment.json").write_text(
+            '{"artifact":"spec_alignment","schema":"ahadiff.spec_alignment","score":8}\n',
+            encoding="utf-8",
+        )
+        return {"score": 8.0}
+
+    secret = "key-" + ("C" * 32)
+    degraded_calls: list[dict[str, object]] = []
+
+    def _run_semantic_alignment_review_for_run(**kwargs: object) -> dict[str, object]:
+        del kwargs
+        raise RuntimeError(f"semantic review failed with {secret}")
+
+    def _mark_semantic_alignment_review_degraded(**kwargs: object) -> dict[str, object]:
+        degraded_calls.append(kwargs)
+        return {}
+
+    def _run_llm_judge_for_run(**kwargs: object) -> None:
+        del kwargs
+
+    monkeypatch.setattr(
+        "ahadiff.eval.spec_alignment.write_spec_alignment_artifact",
+        _write_spec_alignment_artifact,
+    )
+    monkeypatch.setattr(
+        "ahadiff.eval.spec_alignment.run_semantic_alignment_review_for_run",
+        _run_semantic_alignment_review_for_run,
+    )
+    monkeypatch.setattr(
+        "ahadiff.eval.spec_alignment.mark_semantic_alignment_review_degraded",
+        _mark_semantic_alignment_review_degraded,
+    )
+    monkeypatch.setattr("ahadiff.eval.evaluator.run_llm_judge_for_run", _run_llm_judge_for_run)
+
+    result = run_learn_pipeline(
+        LearnRequest(
+            workspace_root=fake_repo,
+            against_spec=Path("SPEC.md"),
+            spec_semantic_review=True,
+        )
+    )
+
+    assert result.status == "keep"
+    assert result.warnings == [
+        "semantic spec alignment review failed: RuntimeError",
+        "persist warning",
+    ]
+    assert secret not in result.warnings[0]
+    assert degraded_calls[0]["reason"] == "RuntimeError"
 
 
 def test_no_verified_claims_skip(
@@ -1568,6 +1783,33 @@ def test_pipeline_uses_adaptive_question_count_from_capture_stats(
 
     assert result.status == "keep"
     assert seen["question_count"] == 8
+
+
+def test_pipeline_applies_quiz_mode_request_override(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    snapshot = _FakeConfigSnapshot()
+    seen_overrides: dict[str, object] = {}
+
+    def _load_config(
+        _root: Path,
+        cli_overrides: dict[str, object] | None = None,
+    ) -> _FakeConfigSnapshot:
+        seen_overrides.update(cli_overrides or {})
+        return snapshot
+
+    monkeypatch.setattr(f"{_ORCH}.load_config", _load_config)
+    _patch_capture(monkeypatch, fake_repo)
+    _patch_learnability(monkeypatch, score=0.7)
+
+    result = run_learn_pipeline(
+        LearnRequest(workspace_root=fake_repo, dry_run=True, quiz_mode="auto")
+    )
+
+    assert result.status == "dry_run"
+    assert seen_overrides["quiz.quiz_question_count_mode"] == "auto"
 
 
 def test_pipeline_falls_back_to_fixed_mode_when_quiz_mode_key_is_missing(

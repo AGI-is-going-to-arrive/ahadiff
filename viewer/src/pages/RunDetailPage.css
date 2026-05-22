@@ -498,6 +498,82 @@
   border-radius: var(--r-sm);
 }
 
+/* ---------- Judge failure panel ---------- */
+.run-detail__judge-failure {
+  margin-top: var(--sp-3);
+  padding: var(--sp-4);
+  border: 1px solid var(--warning-hair, var(--border));
+  border-left: 3px solid var(--warning, var(--danger));
+  border-radius: var(--r-md);
+  background: var(--warning-soft-bg, var(--surface));
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.run-detail__judge-failure-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.run-detail__judge-failure-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--warning-soft, var(--danger-soft));
+  color: var(--warning, var(--danger));
+  font-weight: 700;
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+
+.run-detail__judge-failure-title {
+  margin: 0;
+  font-size: var(--fs-md, 1rem);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.run-detail__judge-failure-meta {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.run-detail__judge-failure-row {
+  font-size: var(--fs-sm, 0.875rem);
+  color: var(--text);
+}
+
+.run-detail__judge-failure-message {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: var(--fs-sm, 0.875rem);
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.run-detail__judge-failure-note {
+  margin: 0;
+  font-size: var(--fs-sm, 0.875rem);
+  color: var(--text-muted, var(--text));
+}
+
 /* ---------- Forced-colors ---------- */
 @media (forced-colors: active) {
   .run-detail__tab--active {
@@ -505,6 +581,20 @@
   }
   .run-detail__artifact-link {
     border-color: LinkText;
+  }
+  .run-detail__judge-failure {
+    border: 1px solid CanvasText;
+    border-left: 3px solid Highlight;
+    background: Canvas;
+  }
+  .run-detail__judge-failure-icon {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+  .run-detail__judge-failure-message {
+    border: 1px solid CanvasText;
+    background: Canvas;
   }
 }
 
@@ -523,5 +613,8 @@
   }
   .run-detail__meta-row dt {
     flex-basis: auto;
+  }
+  .run-detail__judge-failure {
+    padding: var(--sp-3);
   }
 }

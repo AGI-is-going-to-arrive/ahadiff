@@ -4,6 +4,7 @@ import {
   paginatedRunsResponseSchema,
   parseResponse,
   graphifySignoffArtifactSchema,
+  judgeFailureSchema,
   ratchetHistoryResponseSchema,
   ratchetTransparencyResponseSchema,
   runArtifactEnvelopeSchema,
@@ -13,6 +14,7 @@ import {
 import type {
   ArtifactKind,
   GraphifySignoffArtifact,
+  JudgeFailure,
   PaginatedRunsResponse,
   RatchetHistoryResponse,
   RatchetTransparencyResponse,
@@ -70,6 +72,27 @@ export async function getRunGraphifySignoff(
   return parseResponse(
     'GET /api/run/{runId}/graphify-signoff content',
     graphifySignoffArtifactSchema,
+    parsedContent,
+  );
+}
+
+export async function getRunJudgeFailure(
+  runId: string,
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<JudgeFailure> {
+  const raw = await apiFetch<unknown>(
+    `/api/run/${encodeURIComponent(runId)}/judge-failure`,
+    opts,
+  );
+  const envelope = parseResponse(
+    'GET /api/run/{runId}/judge-failure',
+    runArtifactEnvelopeSchema,
+    raw,
+  );
+  const parsedContent = JSON.parse(envelope.content) as unknown;
+  return parseResponse(
+    'GET /api/run/{runId}/judge-failure content',
+    judgeFailureSchema,
     parsedContent,
   );
 }

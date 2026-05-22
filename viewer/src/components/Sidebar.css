@@ -220,6 +220,28 @@
   text-overflow: ellipsis;
 }
 
+.side-foot__github {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 500;
+  width: 100%;
+  padding-left: 18px;
+  margin-top: 4px;
+  transition: color var(--dur-fast) var(--ease-out-quart);
+}
+
+.side-foot__github:hover,
+.side-foot__github:focus {
+  color: var(--accent);
+}
+
+.side-foot__github-icon {
+  flex: none;
+}
+
 .side-foot__version {
   width: 100%;
   text-align: end;
@@ -359,7 +381,8 @@
 /* ---- Reduced motion ---- */
 @media (prefers-reduced-motion: reduce) {
   .sidebar,
-  .nav-item {
+  .nav-item,
+  .side-foot__github {
     transition: none;
   }
 
@@ -379,6 +402,11 @@
 
   .side-foot span {
     color: CanvasText;
+  }
+
+  .side-foot__github,
+  .side-foot__github span {
+    color: LinkText;
   }
 }
 

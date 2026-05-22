@@ -624,6 +624,15 @@ export interface SpecAlignmentArtifact {
   known_limitations: string[];
 }
 
+export interface JudgeFailure {
+  schema: string;
+  provider_class: string;
+  model_name: string;
+  error_type: string;
+  message: string;
+  created_at: string;
+}
+
 export interface GraphifySignoffCheck {
   name: string;
   passed: boolean;

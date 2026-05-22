@@ -479,6 +479,9 @@
     "artifact_quiz": "测验",
     "artifact_score": "评分",
     "artifact_warning": "部分课程产物加载失败：{artifacts}。课程正文仍可阅读。",
+    "judge_link_always": "查看 LLM 评审报告",
+    "score_link_always": "查看评分详情",
+    "verdict_link_aria": "查看 {verdict} 结果的运行详情",
     "score_explainer_body": "最终状态先看可复现的 score.json 和必须项（硬门禁），这样之后能审计。",
     "score_explainer_fail_body": "总分不低，但有必须项没过。本次未通过 {gate}：{detail}",
     "score_explainer_fail_title": "为什么 {score} 还是 {verdict}？",
@@ -1032,6 +1035,11 @@
     "judge_unavailable": "此运行无评审报告。",
     "judge_load_failed": "加载评审报告失败。",
     "judge_raw_json": "原始 JSON",
+    "judge_failure_title": "评审评估失败",
+    "judge_failure_provider": "提供者：{provider}",
+    "judge_failure_model": "模型：{model}",
+    "judge_failure_error": "错误：{error}",
+    "judge_failure_note": "确定性评分和硬门禁不受评审失败影响。",
     "score_unavailable": "此运行无评分数据。",
     "spec_alignment_title": "Spec 一致性",
     "spec_alignment_loading": "正在加载 Spec 一致性…",
@@ -1601,6 +1609,8 @@
     "nav_label": "导航"
   },
   "Sidebar": {
+    "github_aria": "在新标签页打开 AhaDiff GitHub 仓库",
+    "github_link": "GitHub 仓库",
     "section": {
       "practice": "练习 · Practice",
       "system": "系统 · System",

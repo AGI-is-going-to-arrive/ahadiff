@@ -15,6 +15,14 @@ interface TopbarProps {
   onLearnDialogOpen?: () => void;
 }
 
+const REPO_URL = 'https://github.com/AGI-is-going-to-arrive/ahadiff';
+
+export function docsUrlForLocale(locale: string | null | undefined): string {
+  return (locale ?? '').toLowerCase().startsWith('zh')
+    ? `${REPO_URL}/blob/main/README.zh.md`
+    : `${REPO_URL}#readme`;
+}
+
 const ROUTE_TO_KEY: Array<[RegExp, TranslationKey]> = [
   [/^\/$/, 'Nav.dashboard'],
   [/^\/run\/[^/]+\/lesson/, 'Nav.lesson'],
@@ -44,7 +52,7 @@ export default function Topbar({
   onSearchOpen,
   onLearnDialogOpen,
 }: TopbarProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const currentKey = useCurrentPageKey();
   const learnPhase = useLearnStore((s) => s.phase);
   const requestLearn = useLearnStore((s) => s.requestLearn);
@@ -53,6 +61,7 @@ export default function Topbar({
   const newRunShort = isBusy ? t('Topbar.new_run_running') : t('Topbar.new_run_short');
   const newRunAriaLabel = isBusy ? t('Topbar.new_run_running') : t('Topbar.new_run_aria');
   const searchKbdKey: TranslationKey = detectPlatform() === 'macos' ? 'Topbar.search_kbd_mac' : 'Topbar.search_kbd_other';
+  const docsUrl = docsUrlForLocale(locale);
 
   return (
     <header className="topbar" data-glass>
@@ -111,7 +120,7 @@ export default function Topbar({
       <div className="topbar__actions">
         <a
           className="btn ghost"
-          href="https://github.com/agi-is-coming/ahadiff#readme"
+          href={docsUrl}
           target="_blank"
           rel="noopener noreferrer"
           aria-label={t('Topbar.docs_aria')}

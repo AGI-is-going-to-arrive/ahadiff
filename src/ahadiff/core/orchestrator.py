@@ -9,6 +9,7 @@ from __future__ import annotations
 import json as _json
 import logging
 import os
+import re
 import shutil
 import stat
 import time
@@ -96,6 +97,7 @@ class LearnRequest:
     use_graphify: bool | None = None
     lang: str | None = None
     privacy_mode: str | None = None
+    quiz_mode: Literal["fixed", "auto"] | None = None
 
 
 @dataclass
@@ -134,6 +136,28 @@ _TIMEOUT_OR_NETWORK_ERROR_MARKERS = (
     "network",
     "decompression failed",
     "decompressing",
+)
+_API_KEY_LIKE_RE = re.compile(
+    r"(?<![A-Za-z0-9_])"
+    r"(?:(?:sk|key)-[A-Za-z0-9][A-Za-z0-9._-]{7,}"
+    r"|bearer\s+[A-Za-z0-9][A-Za-z0-9._~+/=-]{11,})",
+    re.IGNORECASE,
+)
+_JUDGE_FAILURE_PAYLOAD_MARKERS = (
+    "diff --git",
+    "\n--- a/",
+    "\n+++ b/",
+    "request body",
+    "request_body",
+    "raw request",
+    "provider request",
+    '"messages"',
+    '"input"',
+    '"prompt"',
+    "Traceback (most recent call last)",
+)
+_REDACTED_JUDGE_FAILURE_PAYLOAD_MESSAGE = (
+    "Judge failure details were redacted because the error included provider payload or diff text."
 )
 _STEP_OUTPUT_CAPS = {
     "claim_extraction": 16_000,
@@ -441,8 +465,13 @@ def _cli_overrides(
     *,
     privacy_mode: str | None = None,
     lang: str | None = None,
+    quiz_mode: Literal["fixed", "auto"] | None = None,
 ) -> dict[str, Any]:
-    return {"privacy_mode": privacy_mode, "lang": lang}
+    return {
+        "privacy_mode": privacy_mode,
+        "lang": lang,
+        "quiz.quiz_question_count_mode": quiz_mode,
+    }
 
 
 def _resolve_output_lang_from_snapshot(snapshot: Any, *, cli_lang: str | None) -> str:
@@ -830,6 +859,62 @@ def _persist_skipped_run(
     return warnings
 
 
+def _bounded_judge_failure_message(error: Exception) -> str:
+    try:
+        raw_message = str(error)
+    except Exception:
+        raw_message = error.__class__.__name__
+    raw_probe = raw_message.lower()
+    if any(marker.lower() in raw_probe for marker in _JUDGE_FAILURE_PAYLOAD_MARKERS):
+        return _REDACTED_JUDGE_FAILURE_PAYLOAD_MESSAGE
+    try:
+        from ahadiff.safety.redact import redaction_pipeline
+
+        redacted_message = redaction_pipeline(raw_message).redacted_text
+    except Exception:
+        redacted_message = "judge failure message unavailable after redaction failure"
+    return _API_KEY_LIKE_RE.sub("[redacted-secret]", redacted_message)[:2000]
+
+
+def _sanitized_judge_failure_exc_info(
+    error: Exception,
+) -> tuple[type[BaseException], BaseException, Any]:
+    safe_error = RuntimeError(_bounded_judge_failure_message(error))
+    return (RuntimeError, safe_error, error.__traceback__)
+
+
+def _write_judge_failure_artifact(
+    *,
+    run_path: Path,
+    provider_config: ProviderConfig | None,
+    error: Exception,
+) -> None:
+    from datetime import UTC, datetime
+
+    provider_class = str(getattr(provider_config, "provider_class", "") or "unknown")
+    model_name = str(getattr(provider_config, "model_name", "") or "unknown")
+    payload = {
+        "schema": "ahadiff.judge_failure.v1",
+        "provider_class": provider_class,
+        "model_name": model_name,
+        "error_type": error.__class__.__name__,
+        "message": _bounded_judge_failure_message(error),
+        "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    }
+    atomic_write_state_text(
+        run_path / "judge_failure.json",
+        _json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+    )
+
+
+def _append_new_warnings(warnings: list[str], extra_warnings: list[str]) -> list[str]:
+    combined = list(warnings)
+    for warning in extra_warnings:
+        if warning not in combined:
+            combined.append(warning)
+    return combined
+
+
 def _persist_evaluated_run_sync(
     *,
     run_path: Path,
@@ -981,7 +1066,11 @@ def run_learn_pipeline(
         assert_local_repo_path(root)
         has_git_repo = False
 
-    overrides = _cli_overrides(privacy_mode=request.privacy_mode, lang=request.lang)
+    overrides = _cli_overrides(
+        privacy_mode=request.privacy_mode,
+        lang=request.lang,
+        quiz_mode=request.quiz_mode,
+    )
     snapshot = (
         load_config(root, cli_overrides=overrides)
         if has_git_repo
@@ -1580,19 +1669,21 @@ def run_learn_pipeline(
                                 )
                             except Exception as semantic_error:
                                 learn_warnings.append(
-                                    f"semantic spec alignment review failed: {semantic_error}"
+                                    "semantic spec alignment review failed: "
+                                    f"{type(semantic_error).__name__}"
                                 )
                                 mark_semantic_alignment_review_degraded(
                                     run_path=run_path,
                                     provider_name=judge_provider_name or "unconfigured",
                                     model_name=str(llm_config.get("judge_model", "")),
-                                    reason=str(semantic_error),
+                                    reason=type(semantic_error).__name__,
                                 )
 
                     learn_report = evaluate_run(run_path)
 
                     judge_provider_name = str(llm_config.get("judge_provider", "")).strip()
                     if judge_provider_name:
+                        judge_provider_config: ProviderConfig | None = None
                         try:
                             (
                                 judge_provider_config,
@@ -1649,7 +1740,22 @@ def run_learn_pipeline(
                                 max_retries_override=_LLM_STEP_MAX_RETRIES,
                             )
                         except Exception as judge_error:
-                            learn_warnings.append(f"LLM judge evaluation failed: {judge_error}")
+                            log.warning(
+                                "LLM judge evaluation failed: %s",
+                                type(judge_error).__name__,
+                                exc_info=_sanitized_judge_failure_exc_info(judge_error),
+                            )
+                            learn_warnings.append(
+                                f"LLM judge evaluation failed: {type(judge_error).__name__}"
+                            )
+                            try:
+                                _write_judge_failure_artifact(
+                                    run_path=run_path,
+                                    provider_config=judge_provider_config,
+                                    error=judge_error,
+                                )
+                            except Exception:
+                                log.warning("failed to write judge_failure.json", exc_info=True)
 
                     generate_cards_for_run(
                         run_path=run_path,
@@ -1663,7 +1769,7 @@ def run_learn_pipeline(
                     _emit(9, "Persisting results")
                     _check_cancelled(_cancelled)
 
-                    learn_outcome, learn_warnings = _persist_evaluated_run_sync(
+                    learn_outcome, persist_warnings = _persist_evaluated_run_sync(
                         run_path=run_path,
                         report=learn_report,
                         workspace_root=root,
@@ -1672,6 +1778,7 @@ def run_learn_pipeline(
                         force=False,
                         note_payload={"learnability": learnability.as_metadata()},
                     )
+                    learn_warnings = _append_new_warnings(learn_warnings, persist_warnings)
 
                     try:
                         from ahadiff.review.database import import_cards_from_jsonl

@@ -26,6 +26,9 @@ describe('QuizPage evidence empty states', () => {
     const src = source();
 
     expect(src).toContain('quiz-evidence__locked');
+    expect(src).toContain('className="quiz-evidence__empty quiz-evidence__locked"');
+    expect(src).toContain('role="status"');
+    expect(src).toContain('aria-live="polite"');
     expect(src).toContain("t('Quiz.evidence_locked_hint')");
     expect(src).toContain('currentEvidence.length > 0');
     expect(src).toContain("t('Quiz.evidence_unavailable')");

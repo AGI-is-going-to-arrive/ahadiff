@@ -10,6 +10,16 @@ async function expectActiveTransformNone(locator: Locator): Promise<void> {
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
   const transform = await locator.evaluate((el) => getComputedStyle(el).transform);
+  const viewport = page.viewportSize();
+  const releaseX =
+    viewport && box.x + box.width + 20 < viewport.width
+      ? box.x + box.width + 20
+      : Math.max(0, box.x - 20);
+  const releaseY =
+    viewport && box.y + box.height + 20 < viewport.height
+      ? box.y + box.height + 20
+      : Math.max(0, box.y - 20);
+  await page.mouse.move(releaseX, releaseY);
   await page.mouse.up();
   expect(transform).toBe('none');
 }

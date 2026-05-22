@@ -9,6 +9,7 @@ import {
   getRunConcepts,
   getRunSpecAlignment,
   getRunGraphifySignoff,
+  getRunJudgeFailure,
 } from '../api/runs';
 import { ApiError } from '../api/client';
 import { scorePayloadSchema } from '../api/schemas';
@@ -16,6 +17,7 @@ import { useTranslation, type MessageKey, type TranslateFn } from '../i18n/useTr
 import type {
   DegradedFlag,
   GraphifySignoffArtifact,
+  JudgeFailure,
   RunDetail,
   ScorePayload,
   SpecAlignmentArtifact,
@@ -75,6 +77,13 @@ type GraphifySignoffLoadState =
   | { status: 'idle' }
   | { status: 'loading' }
   | { status: 'loaded'; artifact: GraphifySignoffArtifact }
+  | { status: 'missing' }
+  | { status: 'error' };
+
+type JudgeFailureLoadState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'loaded'; artifact: JudgeFailure }
   | { status: 'missing' }
   | { status: 'error' };
 
@@ -237,13 +246,17 @@ export default function RunDetailPage() {
   });
   const [graphifySignoffState, setGraphifySignoffState] =
     useState<GraphifySignoffLoadState>({ status: 'idle' });
+  const [judgeFailureState, setJudgeFailureState] =
+    useState<JudgeFailureLoadState>({ status: 'idle' });
   const conceptsAbortRef = useRef<AbortController | null>(null);
   const specAbortRef = useRef<AbortController | null>(null);
   const graphifyAbortRef = useRef<AbortController | null>(null);
+  const judgeFailureAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!runId) return;
     let cancelled = false;
+    judgeFailureAbortRef.current?.abort();
     setLoading(true);
     setError(null);
     setRun(null);
@@ -254,6 +267,7 @@ export default function RunDetailPage() {
     setConceptsError(false);
     setSpecAlignmentState({ status: 'idle' });
     setGraphifySignoffState({ status: 'idle' });
+    setJudgeFailureState({ status: 'idle' });
 
     Promise.allSettled([
       getRun(runId),
@@ -379,10 +393,48 @@ export default function RunDetailPage() {
     if (activeTab !== 'score') specAbortRef.current?.abort();
   }, [activeTab]);
 
+  useEffect(() => {
+    if (
+      activeTab !== 'judge' ||
+      !runId ||
+      !run ||
+      run.artifacts.includes('judge.json') ||
+      !run.artifacts.includes('judge_failure.json')
+    ) {
+      return;
+    }
+    if (judgeFailureState.status !== 'idle') return;
+    judgeFailureAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    judgeFailureAbortRef.current = ctrl;
+    setJudgeFailureState({ status: 'loading' });
+    getRunJudgeFailure(runId, { signal: ctrl.signal })
+      .then((artifact) => {
+        if (ctrl.signal.aborted) return;
+        setJudgeFailureState({ status: 'loaded', artifact });
+      })
+      .catch((err: unknown) => {
+        if (ctrl.signal.aborted) return;
+        if (err instanceof ApiError && err.status === 404) {
+          setJudgeFailureState({ status: 'missing' });
+        } else {
+          setJudgeFailureState({ status: 'error' });
+        }
+      });
+  }, [activeTab, runId, run, judgeFailureState.status]);
+
+  useEffect(() => {
+    if (activeTab !== 'judge') {
+      judgeFailureAbortRef.current?.abort();
+      setJudgeFailureState({ status: 'idle' });
+    }
+  }, [activeTab]);
+
   useEffect(() => () => {
     conceptsAbortRef.current?.abort();
     specAbortRef.current?.abort();
     graphifyAbortRef.current?.abort();
+    judgeFailureAbortRef.current?.abort();
   }, []);
 
   useEffect(() => {
@@ -456,6 +508,7 @@ export default function RunDetailPage() {
   }
 
   const hasJudge = run.artifacts.includes('judge.json');
+  const hasJudgeFailure = run.artifacts.includes('judge_failure.json');
   const hasScore = score != null;
   const hasConcepts = run.artifacts.includes('concepts.jsonl');
   const hasSpecAlignment = run.artifacts.includes('spec_alignment.json');
@@ -635,7 +688,14 @@ export default function RunDetailPage() {
         hidden={activeTab !== 'judge'}
       >
         {activeTab === 'judge' && hasJudge && <JudgeReport runId={runId} />}
-        {activeTab === 'judge' && !hasJudge && (
+        {activeTab === 'judge' && !hasJudge && hasJudgeFailure && (
+          <JudgeFailurePanel
+            t={t}
+            state={judgeFailureState}
+            onRetry={() => setJudgeFailureState({ status: 'idle' })}
+          />
+        )}
+        {activeTab === 'judge' && !hasJudge && !hasJudgeFailure && (
           <p className="run-detail__empty">{t('RunDetail.judge_unavailable')}</p>
         )}
       </section>
@@ -818,6 +878,109 @@ function GraphifySignoffPanel({
             .join(', ')}
         </p>
       )}
+    </section>
+  );
+}
+
+function JudgeFailurePanel({
+  t,
+  state,
+  onRetry,
+}: {
+  t: TranslateFn;
+  state: JudgeFailureLoadState;
+  onRetry: () => void;
+}) {
+  if (state.status === 'idle' || state.status === 'loading') {
+    return (
+      <section
+        className="run-detail__judge-failure"
+        aria-labelledby="run-detail-judge-failure-title"
+      >
+        <h2
+          id="run-detail-judge-failure-title"
+          className="run-detail__judge-failure-title"
+        >
+          {t('RunDetail.judge_failure_title')}
+        </h2>
+        <div role="status" aria-live="polite" className="run-detail__loading">
+          <span className="loading-spinner" />
+          {t('RunDetail.judge_loading')}
+        </div>
+      </section>
+    );
+  }
+  if (state.status === 'missing') {
+    return (
+      <p className="run-detail__empty">{t('RunDetail.judge_unavailable')}</p>
+    );
+  }
+  if (state.status === 'error') {
+    return (
+      <section
+        className="run-detail__judge-failure"
+        aria-labelledby="run-detail-judge-failure-title"
+      >
+        <h2
+          id="run-detail-judge-failure-title"
+          className="run-detail__judge-failure-title"
+        >
+          {t('RunDetail.judge_failure_title')}
+        </h2>
+        <div role="alert" className="run-detail__error">
+          {t('RunDetail.judge_load_failed')}
+          <button type="button" className="retry-btn" onClick={onRetry}>
+            {t('Error.retry')}
+          </button>
+        </div>
+      </section>
+    );
+  }
+  const artifact = state.artifact;
+  return (
+    <section
+      className="run-detail__judge-failure"
+      aria-labelledby="run-detail-judge-failure-title"
+    >
+      <div className="run-detail__judge-failure-head">
+        <span
+          className="run-detail__judge-failure-icon"
+          aria-hidden="true"
+        >
+          !
+        </span>
+        <h2
+          id="run-detail-judge-failure-title"
+          className="run-detail__judge-failure-title"
+        >
+          {t('RunDetail.judge_failure_title')}
+        </h2>
+      </div>
+      <ul className="run-detail__judge-failure-meta">
+        {artifact.provider_class && (
+          <li className="run-detail__judge-failure-row">
+            {t('RunDetail.judge_failure_provider', {
+              provider: artifact.provider_class,
+            })}
+          </li>
+        )}
+        {artifact.model_name && (
+          <li className="run-detail__judge-failure-row">
+            {t('RunDetail.judge_failure_model', { model: artifact.model_name })}
+          </li>
+        )}
+        {artifact.error_type && (
+          <li className="run-detail__judge-failure-row">
+            {t('RunDetail.judge_failure_error', { error: artifact.error_type })}
+          </li>
+        )}
+      </ul>
+      {artifact.message && (
+        <p className="run-detail__judge-failure-message">{artifact.message}</p>
+      )}
+      <p className="run-detail__judge-failure-note">
+        {t('RunDetail.judge_failure_note')}
+      </p>
     </section>
   );
 }

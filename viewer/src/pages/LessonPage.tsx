@@ -722,6 +722,13 @@ export default function LessonPage() {
   const judgeDetailsPath = runDetail
     ? `/run/${encodeURIComponent(runDetail.run_id)}?tab=judge`
     : '#';
+  const overviewPath = runDetail
+    ? `/run/${encodeURIComponent(runDetail.run_id)}?tab=overview`
+    : '#';
+  const showAlwaysJudgeLink = Boolean(
+    runDetail?.artifacts?.includes('judge.json') ||
+      runDetail?.artifacts?.includes('judge_failure.json'),
+  );
 
   const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
   useEffect(() => {
@@ -782,14 +789,26 @@ export default function LessonPage() {
           <div className="lesson-page__header-right">
             {runDetail && (
               <div className="lesson-page__actions" aria-label={t('Lesson.header_actions')}>
-                <span
+                <Link
+                  to={overviewPath}
                   className={`lesson-page__verdict lesson-page__verdict--${runDetail.verdict.toLowerCase()}`}
+                  aria-label={t('Lesson.verdict_link_aria', { verdict: runDetail.verdict })}
                 >
                   {t('Lesson.header_status', {
                     verdict: runDetail.verdict,
                     score: String(Math.round(runDetail.overall)),
                   })}
-                </span>
+                </Link>
+                <div className="lesson-page__always-links">
+                  <Link to={scoreDetailsPath} className="lesson-page__always-link">
+                    {t('Lesson.score_link_always')}
+                  </Link>
+                  {showAlwaysJudgeLink && (
+                    <Link to={judgeDetailsPath} className="lesson-page__always-link">
+                      {t('Lesson.judge_link_always')}
+                    </Link>
+                  )}
+                </div>
                 <button
                   type="button"
                   className="lesson-page__action-btn"

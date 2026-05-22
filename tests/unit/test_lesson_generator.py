@@ -7,7 +7,6 @@ from typing import Any, cast
 import pytest
 from typer.testing import CliRunner
 
-from ahadiff import cli as cli_module
 from ahadiff.claims.extract import write_claim_candidates_jsonl
 from ahadiff.claims.schema import ClaimCandidate, VerifiedClaim
 from ahadiff.cli import app
@@ -1267,11 +1266,13 @@ def test_learn_cli_generates_lessons_with_explicit_provider(
         )
 
     monkeypatch.setattr(
-        cli_module,
-        "extract_claim_candidates_from_run",
+        "ahadiff.claims.runtime.extract_claim_candidates_from_run",
         fake_extract_claim_candidates_from_run,
     )
-    monkeypatch.setattr(cli_module, "verify_claim_candidates", fake_verify_claim_candidates)
+    monkeypatch.setattr(
+        "ahadiff.claims.verify.verify_claim_candidates",
+        fake_verify_claim_candidates,
+    )
 
     def fake_provider_factory(*args: object, **kwargs: object) -> _FakeLessonProvider:
         return fake_provider
@@ -1296,7 +1297,7 @@ def test_learn_cli_generates_lessons_with_explicit_provider(
         write_quiz_questions_jsonl(quiz_path, questions)
         return QuizArtifactPaths(quiz_dir=quiz_path.parent, quiz_path=quiz_path), questions
 
-    monkeypatch.setattr(cli_module, "generate_quiz_from_run", fake_quiz)
+    monkeypatch.setattr("ahadiff.quiz.generator.generate_quiz_from_run", fake_quiz)
 
     result = _RUNNER.invoke(
         app(),
@@ -1408,11 +1409,13 @@ def test_learn_cli_cleans_claim_artifacts_when_lesson_generation_fails(
             return None
 
     monkeypatch.setattr(
-        cli_module,
-        "extract_claim_candidates_from_run",
+        "ahadiff.claims.runtime.extract_claim_candidates_from_run",
         fake_extract_claim_candidates_from_run,
     )
-    monkeypatch.setattr(cli_module, "verify_claim_candidates", fake_verify_claim_candidates)
+    monkeypatch.setattr(
+        "ahadiff.claims.verify.verify_claim_candidates",
+        fake_verify_claim_candidates,
+    )
 
     def fake_invalid_provider_factory(*args: object, **kwargs: object) -> _InvalidLessonProvider:
         return _InvalidLessonProvider()
@@ -1465,7 +1468,7 @@ def test_learn_cli_skips_generation_for_low_learnability(
     def should_not_run(**kwargs: object):
         raise AssertionError("claims extraction should be skipped for low learnability")
 
-    monkeypatch.setattr(cli_module, "extract_claim_candidates_from_run", should_not_run)
+    monkeypatch.setattr("ahadiff.claims.runtime.extract_claim_candidates_from_run", should_not_run)
 
     result = _RUNNER.invoke(
         app(),
@@ -1544,11 +1547,13 @@ def test_learn_cli_skips_lesson_generation_without_verified_claims(
         raise AssertionError("lesson provider should be skipped when no verified claims survive")
 
     monkeypatch.setattr(
-        cli_module,
-        "extract_claim_candidates_from_run",
+        "ahadiff.claims.runtime.extract_claim_candidates_from_run",
         fake_extract_claim_candidates_from_run,
     )
-    monkeypatch.setattr(cli_module, "verify_claim_candidates", fake_verify_claim_candidates)
+    monkeypatch.setattr(
+        "ahadiff.claims.verify.verify_claim_candidates",
+        fake_verify_claim_candidates,
+    )
     monkeypatch.setattr("ahadiff.lesson.generator.make_provider", should_not_run_provider)
 
     result = _RUNNER.invoke(

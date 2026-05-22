@@ -58,3 +58,30 @@ describe('LessonPage request guards', () => {
     expect(src).toContain('if (levelRef.current === requestedLevel)');
   });
 });
+
+describe('LessonPage always-visible run links', () => {
+  const src = readFileSync(resolve(__dirname, 'LessonPage.tsx'), 'utf-8');
+
+  it('renders the verdict badge as a Link to the run overview tab', () => {
+    expect(src).toContain('overviewPath');
+    expect(src).toContain('?tab=overview');
+    expect(src).toContain("aria-label={t('Lesson.verdict_link_aria'");
+    // The verdict badge should be a <Link>, not a <span>
+    expect(src).toMatch(/<Link[^>]*lesson-page__verdict/);
+  });
+
+  it('exposes always-visible score and judge links when runDetail is loaded', () => {
+    // Score link is always shown when runDetail exists (not gated on FAIL / failedGate).
+    expect(src).toContain("Lesson.score_link_always");
+    // Judge link is gated on artifacts including judge.json, not on judgeSummary parse.
+    expect(src).toContain("showAlwaysJudgeLink");
+    expect(src).toContain("artifacts?.includes('judge.json')");
+    expect(src).toContain("Lesson.judge_link_always");
+  });
+
+  it('keeps showScoreExplainer gate unchanged so the callout stays opt-in', () => {
+    expect(src).toContain(
+      "Boolean(\n    runDetail && (runDetail.verdict === 'FAIL' || failedGate || judgeSummary),\n  )",
+    );
+  });
+});

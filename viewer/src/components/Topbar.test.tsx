@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
-import Topbar from './Topbar';
+import Topbar, { docsUrlForLocale } from './Topbar';
 
 let learnPhase = 'idle';
 const submitLearn = vi.fn();
@@ -58,5 +58,46 @@ describe('Topbar', () => {
     );
 
     expect(html).toContain(`<kbd>${expectedShortcut}</kbd>`);
+  });
+
+  it('uses the canonical AGI-is-going-to-arrive docs URL at the default locale', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <Topbar isMenuOpen={false} onMenuToggle={() => undefined} />
+      </MemoryRouter>,
+    );
+
+    // SSR initial-state snapshot — default locale resolves to 'en', so the
+    // English #readme anchor must render. The legacy lowercased org name must
+    // never reappear in the rendered tree.
+    expect(html).toContain('href="https://github.com/AGI-is-going-to-arrive/ahadiff#readme"');
+    expect(html).not.toContain('agi-is-coming');
+  });
+
+  it('selects the localized docs URL through the helper in the source', () => {
+    // Zustand 5.x routes useSyncExternalStore through getInitialState() during
+    // SSR (renderToStaticMarkup), so runtime locale switches do not flow into
+    // the rendered output without a DOM. Pin the locale-aware URL contract via
+    // the source so the legacy org name cannot regress and both branches stay
+    // exercised.
+    const src = readFileSync(resolve(__dirname, 'Topbar.tsx'), 'utf-8');
+
+    expect(src).toContain("docsUrlForLocale(locale)");
+    expect(src).toContain('https://github.com/AGI-is-going-to-arrive/ahadiff');
+    expect(src).toContain('/blob/main/README.zh.md');
+    expect(src).toContain('#readme');
+    expect(src).not.toContain('agi-is-coming');
+  });
+
+  it('keeps docs URL selection tolerant of future string variants and null locale', () => {
+    expect(docsUrlForLocale('zh-Hant')).toBe(
+      'https://github.com/AGI-is-going-to-arrive/ahadiff/blob/main/README.zh.md',
+    );
+    expect(docsUrlForLocale('en-AU')).toBe(
+      'https://github.com/AGI-is-going-to-arrive/ahadiff#readme',
+    );
+    expect(docsUrlForLocale(null)).toBe(
+      'https://github.com/AGI-is-going-to-arrive/ahadiff#readme',
+    );
   });
 });

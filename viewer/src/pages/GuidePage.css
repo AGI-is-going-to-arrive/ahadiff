@@ -614,12 +614,22 @@
   border-radius: var(--r-full);
   border: 1px solid var(--hair-strong);
   background: var(--subtle);
-  color: var(--muted-strong);
+  color: #726c5d;
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   vertical-align: middle;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .guide-agent-card__platform-badge {
+    color: var(--muted-strong);
+  }
+}
+
+:root[data-theme="dark"] .guide-agent-card__platform-badge {
+  color: var(--muted-strong);
 }
 
 .guide-agent-previews {

@@ -479,6 +479,9 @@
     "artifact_quiz": "quiz",
     "artifact_score": "score",
     "artifact_warning": "Some lesson artifacts could not be loaded: {artifacts}. The lesson remains available.",
+    "judge_link_always": "View LLM judge report",
+    "score_link_always": "View score details",
+    "verdict_link_aria": "View run details for {verdict} verdict",
     "score_explainer_body": "Final status comes from reproducible score.json checks and required gates, so the ratchet stays auditable.",
     "score_explainer_fail_body": "The score is high, but one required gate failed: {gate}: {detail}",
     "score_explainer_fail_title": "Why is {score} still {verdict}?",
@@ -1032,6 +1035,11 @@
     "judge_unavailable": "No judge report available for this run.",
     "judge_load_failed": "Failed to load judge report.",
     "judge_raw_json": "Raw JSON",
+    "judge_failure_title": "Judge Evaluation Failed",
+    "judge_failure_provider": "Provider: {provider}",
+    "judge_failure_model": "Model: {model}",
+    "judge_failure_error": "Error: {error}",
+    "judge_failure_note": "The deterministic score and hard gates are unaffected by judge failure.",
     "score_unavailable": "No score data available for this run.",
     "spec_alignment_title": "Spec Alignment",
     "spec_alignment_loading": "Loading spec alignment…",
@@ -1601,6 +1609,8 @@
     "nav_label": "Navigation"
   },
   "Sidebar": {
+    "github_aria": "Open AhaDiff GitHub repository in a new tab",
+    "github_link": "GitHub repo",
     "section": {
       "practice": "Practice",
       "system": "System",

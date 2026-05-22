@@ -616,7 +616,11 @@ export default function QuizPage() {
                       )}
                     </>
                   ) : (
-                    <div className="quiz-evidence__locked">
+                    <div
+                      className="quiz-evidence__empty quiz-evidence__locked"
+                      role="status"
+                      aria-live="polite"
+                    >
                       <span className="quiz-evidence__locked-icon" aria-hidden="true">🔒</span>
                       <p className="quiz-evidence__locked-text">{t('Quiz.evidence_locked')}</p>
                       <p className="quiz-evidence__locked-hint">{t('Quiz.evidence_locked_hint')}</p>

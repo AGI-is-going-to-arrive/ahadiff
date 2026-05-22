@@ -268,4 +268,172 @@ test.describe('Run Detail page', () => {
     await page.goto('/#/run/invalid-judge?tab=judge');
     await expect(page.getByRole('alert')).toContainText(/Failed to load judge|加载评审报告失败/i);
   });
+
+  test('shows judge failure panel when judge_failure.json exists', async ({ page }) => {
+    await page.route(
+      (url) => url.pathname === '/api/run/judge-failed-run',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            run_id: 'judge-failed-run',
+            source_kind: 'git_ref',
+            source_ref: 'HEAD',
+            content_lang: 'en',
+            capability_level: 2,
+            verdict: 'PASS',
+            overall: 84,
+            status: 'baseline',
+            weakest_dim: 'evidence',
+            created_at: '2026-05-23T00:00:00Z',
+            degraded_flags: {},
+            base_ref: 'HEAD~1',
+            prompt_version: 'abc1234',
+            eval_bundle_version: 'v1',
+            note_json: null,
+            artifacts: [
+              'patch.diff',
+              'metadata.json',
+              'claims.jsonl',
+              'score.json',
+              'judge_failure.json',
+            ],
+            graphify_mode: null,
+            graphify_status: null,
+            graphify_notes: null,
+          }),
+        }),
+    );
+    await page.route(
+      (url) => url.pathname === '/api/run/judge-failed-run/judge-failure',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            run_id: 'judge-failed-run',
+            artifact_type: 'judge_failure',
+            content: JSON.stringify({
+              schema: 'ahadiff.judge_failure.v1',
+              provider_class: 'openai_responses',
+              model_name: 'gpt-5.5-mini',
+              error_type: 'InputError',
+              message: 'Judge model returned malformed JSON envelope.',
+              created_at: '2026-05-23T00:00:00Z',
+            }),
+            content_lang: 'en',
+          }),
+        }),
+    );
+
+    await page.goto('/#/run/judge-failed-run?tab=judge');
+    await expect(
+      page.getByRole('heading', { name: /Judge Evaluation Failed|评审评估失败/i }),
+    ).toBeVisible();
+    await expect(page.getByText(/openai_responses/)).toBeVisible();
+    await expect(page.getByText(/gpt-5\.5-mini/)).toBeVisible();
+    await expect(page.getByText(/InputError/)).toBeVisible();
+    await expect(
+      page.getByText(/deterministic score and hard gates are unaffected|确定性评分和硬门禁不受评审失败影响/i),
+    ).toBeVisible();
+  });
+
+  test('does not show stale judge failure payload after quick run switch', async ({ page }) => {
+    let firstFailureRequestedResolve: (() => void) | null = null;
+    const firstFailureRequested = new Promise<void>((resolve) => {
+      firstFailureRequestedResolve = resolve;
+    });
+    const fulfillRun = (runId: string) => ({
+      run_id: runId,
+      source_kind: 'git_ref',
+      source_ref: 'HEAD',
+      content_lang: 'en',
+      capability_level: 2,
+      verdict: 'PASS',
+      overall: 84,
+      status: 'baseline',
+      weakest_dim: 'evidence',
+      created_at: '2026-05-23T00:00:00Z',
+      degraded_flags: {},
+      base_ref: 'HEAD~1',
+      prompt_version: 'abc1234',
+      eval_bundle_version: 'v1',
+      note_json: null,
+      artifacts: ['patch.diff', 'metadata.json', 'claims.jsonl', 'score.json', 'judge_failure.json'],
+      graphify_mode: null,
+      graphify_status: null,
+      graphify_notes: null,
+    });
+    await page.route(
+      (url) => url.pathname === '/api/run/stale-judge-run',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(fulfillRun('stale-judge-run')),
+        }),
+    );
+    await page.route(
+      (url) => url.pathname === '/api/run/fresh-judge-run',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(fulfillRun('fresh-judge-run')),
+        }),
+    );
+    await page.route(
+      (url) => url.pathname === '/api/run/stale-judge-run/judge-failure',
+      async (route) => {
+        firstFailureRequestedResolve?.();
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            run_id: 'stale-judge-run',
+            artifact_type: 'judge_failure',
+            content: JSON.stringify({
+              schema: 'ahadiff.judge_failure.v1',
+              provider_class: 'stale_provider',
+              model_name: 'stale-model',
+              error_type: 'TimeoutError',
+              message: 'old run failure',
+              created_at: '2026-05-23T00:00:00Z',
+            }),
+            content_lang: 'en',
+          }),
+        });
+      },
+    );
+    await page.route(
+      (url) => url.pathname === '/api/run/fresh-judge-run/judge-failure',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            run_id: 'fresh-judge-run',
+            artifact_type: 'judge_failure',
+            content: JSON.stringify({
+              schema: 'ahadiff.judge_failure.v1',
+              provider_class: 'fresh_provider',
+              model_name: 'fresh-model',
+              error_type: 'InputError',
+              message: 'new run failure',
+              created_at: '2026-05-23T00:00:00Z',
+            }),
+            content_lang: 'en',
+          }),
+        }),
+    );
+
+    await page.goto('/#/run/stale-judge-run?tab=judge');
+    await firstFailureRequested;
+    await page.goto('/#/run/fresh-judge-run?tab=judge');
+
+    await expect(page.getByText(/fresh_provider/)).toBeVisible();
+    await expect(page.getByText(/stale_provider/)).toHaveCount(0);
+  });
 });

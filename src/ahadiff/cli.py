@@ -151,19 +151,6 @@ rollback_result_event = _lazy_attr("eval", "rollback_result_event")
 run_benchmark_suite = _lazy_attr("eval", "run_benchmark_suite")
 write_benchmark_report = _lazy_attr("eval", "write_benchmark_report")
 finalized_artifact_digest = _lazy_attr("eval.results", "finalized_artifact_digest")
-spec_source_reference = _lazy_attr("eval.spec_alignment", "spec_source_reference")
-write_spec_alignment_artifact = _lazy_attr(
-    "eval.spec_alignment",
-    "write_spec_alignment_artifact",
-)
-mark_semantic_alignment_review_degraded = _lazy_attr(
-    "eval.spec_alignment",
-    "mark_semantic_alignment_review_degraded",
-)
-run_semantic_alignment_review_for_run = _lazy_attr(
-    "eval.spec_alignment",
-    "run_semantic_alignment_review_for_run",
-)
 capture_patch = _lazy_attr("git.capture", "capture_patch")
 detect_graphify_status = _lazy_attr("git.capture", "detect_graphify_status")
 effective_graph_max_nodes_import = _lazy_attr("git.capture", "_effective_graph_max_nodes_import")
@@ -172,13 +159,10 @@ write_input_artifacts = _lazy_attr("git.capture", "write_input_artifacts")
 repo_write_lock = _lazy_attr("git.repo", "repo_write_lock")
 unlock_repo_write_lock = _lazy_attr("git.repo", "unlock_repo_write_lock")
 run_improve_loop = _lazy_attr("improve", "run_improve_loop")
-persist_skipped_run = _lazy_attr("core.orchestrator", "_persist_skipped_run")
 available_targets = _lazy_attr("install", "available_targets")
 get_target = _lazy_attr("install", "get_target")
 manifest_preview_for = _lazy_attr("install", "manifest_preview_for")
 target_detection = _lazy_attr("install", "target_detection")
-generate_lessons_from_run = _lazy_attr("lesson", "generate_lessons_from_run")
-assess_learnability = _lazy_attr("lesson.learnability", "assess_learnability")
 probe_provider = _lazy_attr("llm", "probe_provider")
 transport_target_for_base_url = _lazy_attr("llm.provider", "transport_target_for_base_url")
 generate_cards_for_run = _lazy_attr("quiz", "generate_cards_for_run")
@@ -312,6 +296,107 @@ def _open_learn_viewer(
         return
     if not opened:
         console.print("[yellow]Open warning[/yellow]: browser did not report success")
+
+
+def _learn_result_run_path(result: Any) -> Path | None:
+    artifacts_path = getattr(result, "artifacts_path", None)
+    if not artifacts_path:
+        return None
+    return Path(str(artifacts_path))
+
+
+def _learnability_metadata_for_result(result: Any) -> dict[str, Any]:
+    run_path = _learn_result_run_path(result)
+    if run_path is None:
+        return {}
+    metadata_path = run_path / "metadata.json"
+    if not metadata_path.is_file():
+        return {}
+    with suppress(Exception):
+        metadata = safe_json_loads(metadata_path.read_text(encoding="utf-8"))
+        if isinstance(metadata, dict):
+            raw_learnability = cast("dict[str, Any]", metadata).get("learnability")
+            if isinstance(raw_learnability, dict):
+                return cast("dict[str, Any]", raw_learnability)
+    return {}
+
+
+def _print_learn_pipeline_result(result: Any) -> None:
+    run_path = _learn_result_run_path(result)
+    learnability = _learnability_metadata_for_result(result)
+
+    console.print(f"[bold]Run ID[/bold]: {result.run_id}")
+    console.print(f"[bold]Status[/bold]: {result.status}")
+    if run_path is not None:
+        console.print(f"[bold]Artifacts[/bold]: {run_path}")
+        lesson_path = run_path / "lesson" / "lesson.full.md"
+        hint_path = run_path / "lesson" / "lesson.hint.md"
+        compact_path = run_path / "lesson" / "lesson.compact.md"
+        quiz_path = run_path / "quiz" / "quiz.jsonl"
+        cards_path = run_path / "quiz" / "cards.jsonl"
+        concepts_path = run_path / "concepts_local.jsonl"
+        score_path = run_path / "score.json"
+        if lesson_path.is_file():
+            console.print(f"[bold]Lesson[/bold]: {lesson_path}")
+            if hint_path.is_file():
+                console.print(f"[bold]Hint[/bold]: {hint_path}")
+            if compact_path.is_file():
+                console.print(f"[bold]Compact[/bold]: {compact_path}")
+        if quiz_path.is_file():
+            console.print(f"[bold]Quiz[/bold]: {quiz_path}")
+        if cards_path.is_file():
+            console.print(f"[bold]Cards[/bold]: {cards_path}")
+        if concepts_path.is_file():
+            console.print(f"[bold]Concepts[/bold]: {concepts_path}")
+        if score_path.is_file():
+            console.print(f"[bold]Score Output[/bold]: {score_path}")
+
+    score = getattr(result, "learnability_score", None)
+    if isinstance(score, int | float):
+        threshold = learnability.get("threshold")
+        if isinstance(threshold, int | float):
+            console.print(f"[bold]Learnability[/bold]: {score:.3f} / {threshold:.3f}")
+        else:
+            console.print(f"[bold]Learnability[/bold]: {score:.3f}")
+
+    learnability_skip = bool(getattr(result, "learnability_skip", False))
+    if learnability_skip:
+        console.print(
+            "[yellow]Learnability[/yellow]: low learning value; lesson/quiz would be skipped"
+        )
+    elif learnability.get("forced") is True:
+        threshold = learnability.get("threshold")
+        if (
+            isinstance(score, int | float)
+            and isinstance(threshold, int | float)
+            and score < threshold
+        ):
+            console.print(
+                "[yellow]Learnability[/yellow]: low learning value, "
+                "but --force-learn overrides the skip"
+            )
+
+    if result.status == "learnability_skip":
+        console.print("[bold]Lesson[/bold]: skipped by learnability gate")
+    elif result.status == "no_verified_claims":
+        console.print(
+            "[bold]Lesson[/bold]: skipped because no verified claims survived verification"
+        )
+
+    overall = getattr(result, "overall", None)
+    if isinstance(overall, int | float):
+        console.print(f"[bold]Score[/bold]: {overall:.2f}")
+    verdict = getattr(result, "verdict", None)
+    if verdict:
+        console.print(f"[bold]Verdict[/bold]: {verdict}")
+    weakest_dim = getattr(result, "weakest_dim", None)
+    if weakest_dim:
+        console.print(f"[bold]Weakest dim[/bold]: {weakest_dim}")
+    recoverable_errors = int(getattr(result, "recoverable_errors", 0) or 0)
+    if recoverable_errors:
+        console.print(f"[bold]Recoverable errors[/bold]: {recoverable_errors}")
+    for warning in getattr(result, "warnings", []) or []:
+        console.print(f"[yellow]Warning[/yellow]: {warning}")
 
 
 def _state_dir_for_root(root: Path, *, has_git_repo: bool) -> Path:
@@ -572,24 +657,6 @@ def _remove_state_path(path: Path) -> None:
         shutil.rmtree(path)
         return
     path.unlink(missing_ok=True)
-
-
-def _cleanup_lesson_generation_artifacts(
-    *,
-    run_path: Path,
-    raw_claims_path: Path | None,
-    claims_output_path: Path | None,
-) -> None:
-    for target in (
-        raw_claims_path,
-        claims_output_path,
-        run_path / "lesson",
-        run_path / "quiz",
-        run_path / "concepts_local.jsonl",
-    ):
-        if target is None or not target.exists():
-            continue
-        _remove_state_path(target)
 
 
 def _resolve_learn_workspace_root(
@@ -974,6 +1041,8 @@ def learn_cmd(
     ] = "AHADIFF_PROVIDER_API_KEY",
 ) -> None:
     try:
+        if spec_semantic_review and against_spec is None:
+            raise InputError("--spec-semantic-review requires --against-spec")
         allow_non_git = (
             patch is not None
             or compare is not None
@@ -984,43 +1053,10 @@ def learn_cmd(
             repo_root,
             allow_non_git=allow_non_git,
         )
-        snapshot = (
-            load_config(
-                root,
-                cli_overrides=_cli_overrides(
-                    privacy_mode=privacy_mode,
-                    lang=lang,
-                    quiz_mode=quiz_mode,
-                ),
-            )
-            if has_git_repo
-            else load_workspace_config(
-                root,
-                cli_overrides=_cli_overrides(
-                    privacy_mode=privacy_mode,
-                    lang=lang,
-                    quiz_mode=quiz_mode,
-                ),
-            )
-        )
-        capture_config = cast("dict[str, Any]", snapshot.values["capture"])
-        learn_config = cast("dict[str, Any]", snapshot.values["learn"])
-        quiz_config = cast("dict[str, Any]", snapshot.values["quiz"])
-        llm_config = cast("dict[str, Any]", snapshot.values["llm"])
-        provider_limits = cast("dict[str, Any]", snapshot.values["provider"])
-        effective_privacy_mode = str(snapshot.values["privacy_mode"])
-        resolved_content_lang = _resolve_output_lang_from_snapshot(snapshot, cli_lang=lang)
-        security_config = (
-            load_security_config(root) if has_git_repo else load_workspace_security_config(root)
-        )
-        if spec_semantic_review and against_spec is None:
-            raise InputError("--spec-semantic-review requires --against-spec")
-        repo_lock_path = (
-            lock_file_path(root) if has_git_repo else root / ".ahadiff" / "ahadiff.lock"
-        )
+        from .core import orchestrator as orchestrator_module
 
-        with repo_write_lock(repo_lock_path, command="learn") as _:
-            capture = capture_patch(
+        result = orchestrator_module.run_learn_pipeline(
+            orchestrator_module.LearnRequest(
                 workspace_root=root,
                 revision=revision,
                 last=last,
@@ -1033,369 +1069,53 @@ def learn_cmd(
                 patch=patch,
                 compare=compare,
                 compare_dir=compare_dir,
+                against_spec=against_spec,
+                spec_semantic_review=spec_semantic_review,
                 patch_url=patch_url,
-                use_graphify=use_graphify,
-                max_files=int(capture_config["max_files"]),
-                hard_limit=int(capture_config["hard_limit"]),
-                max_patch_bytes=int(capture_config["max_patch_bytes"]),
-                privacy_mode=effective_privacy_mode,
-                content_lang=resolved_content_lang,
-            )
-            learnability = assess_learnability(
-                capture.persisted_patch_text,
-                threshold=float(learn_config["learnability_threshold"]),
+                provider_name=provider,
+                provider_class=provider_class,
+                base_url=base_url,
+                model=model,
+                api_key_env=api_key_env,
+                dry_run=dry_run,
                 force_learn=force_learn,
+                use_graphify=use_graphify,
+                lang=lang,
+                privacy_mode=privacy_mode,
+                quiz_mode=quiz_mode,
             )
-            capture.metadata["learnability"] = learnability.as_metadata()
-            if against_spec is not None:
-                source_detail = cast(
-                    "dict[str, Any]",
-                    capture.metadata.setdefault("source_detail", {}),
-                )
-                source_detail["against_spec"] = spec_source_reference(
-                    workspace_root=root,
-                    spec_path=against_spec,
-                )
-            patch_path, metadata_path = write_input_artifacts(capture)
-            run_path = (
-                run_dir(capture.run_id, root)
-                if has_git_repo
-                else (root / ".ahadiff" / "runs" / capture.run_id)
-            )
-            raw_claims_path: Path | None = None
-            claims_output_path: Path | None = None
-            lesson_paths = None
-            quiz_artifacts = None
-            quiz_path: Path | None = None
-            cards_path: Path | None = None
-            concepts_path: Path | None = None
-            lesson_skip_reason: str | None = None
-            learn_report = None
-            learn_outcome = None
-            learn_warnings: list[str] = []
-            skipped_run_persisted = False
-            if not dry_run and learnability.skip_lesson_quiz:
-                learn_warnings.extend(
-                    persist_skipped_run(
-                        run_path=run_path,
-                        run_id=capture.run_id,
-                        source_ref=str(capture.run_source.source_ref),
-                        learnability_metadata=learnability.as_metadata(),
-                        workspace_root=root,
-                    )
-                )
-                skipped_run_persisted = (run_path / "finalized.json").is_file()
-            if not dry_run and not learnability.skip_lesson_quiz:
-                try:
-                    (
-                        provider_config,
-                        effective_api_key,
-                        transport_target,
-                        provider_selection_explicit,
-                    ) = _resolve_runtime_provider(
-                        snapshot=snapshot,
-                        operation_label="lesson generation",
-                        provider_name=provider,
-                        provider_class=provider_class,
-                        base_url=base_url,
-                        model=model,
-                        api_key_env=api_key_env,
-                        privacy_mode=effective_privacy_mode,
-                        stdin_interactive=sys.stdin.isatty(),
-                        local_hosts=security_config.local_hosts,
-                        strict_local_hosts=security_config.strict_local_hosts,
-                    )
-                    resolved_privacy_mode = _privacy_mode_for_explicit_provider_call(
-                        effective_privacy_mode,
-                        transport_target=transport_target,
-                        provider_selection_explicit=provider_selection_explicit,
-                    )
-                    raw_claims_path, _ = extract_claim_candidates_from_run(
-                        run_id=capture.run_id,
-                        run_path=run_path,
-                        workspace_root=root,
-                        provider_config=provider_config,
-                        api_key=effective_api_key,
-                        security_config=security_config,
-                        output_path=run_path / "claims.raw.jsonl",
-                        overwrite=False,
-                        privacy_mode=resolved_privacy_mode,
-                        max_concurrent=int(llm_config["max_concurrent"]),
-                        qps_limit=int(provider_limits["qps_limit"]),
-                        retry_attempts=int(llm_config["retry_attempts"]),
-                        request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
-                        output_lang=resolved_content_lang,
-                        structured_output_mode=_structured_output_mode(llm_config),
-                        structured_validation_retries=_structured_validation_retries(llm_config),
-                    )
-                    candidates = load_claim_candidates(
-                        raw_claims_path,
-                        default_run_id=capture.run_id,
-                        enforce_run_id_match=True,
-                    )
-                    line_maps = load_line_map_records(run_path / "line_map.json")
-                    symbols = load_symbol_records(run_path / "symbols.json")
-                    before_text_by_path = load_text_map(
-                        run_path / "before_text_by_path.json",
-                        expected_artifact="before_text_by_path",
-                    )
-                    after_text_by_path = load_text_map(
-                        run_path / "after_text_by_path.json",
-                        expected_artifact="after_text_by_path",
-                    )
-                    verified = verify_claim_candidates(
-                        candidates,
-                        line_maps=line_maps,
-                        symbols=symbols,
-                        before_text_by_path=before_text_by_path,
-                        after_text_by_path=after_text_by_path,
-                    )
-                    claims_output_path = run_path / "claims.jsonl"
-                    write_verified_claims_jsonl(claims_output_path, verified, overwrite=False)
-                    verified_claim_count = sum(
-                        1 for item in verified if item.record.status == "verified"
-                    )
-                    if verified_claim_count == 0:
-                        lesson_skip_reason = "no verified claims survived verification"
-                    else:
-                        lesson_paths = generate_lessons_from_run(
-                            run_id=capture.run_id,
-                            run_path=run_path,
-                            workspace_root=root,
-                            provider_config=provider_config,
-                            api_key=effective_api_key,
-                            security_config=security_config,
-                            request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
-                            max_concurrent=int(llm_config["max_concurrent"]),
-                            qps_limit=int(provider_limits["qps_limit"]),
-                            retry_attempts=int(llm_config["retry_attempts"]),
-                            privacy_mode=resolved_privacy_mode,
-                            output_lang=resolved_content_lang,
-                            structured_output_mode=_structured_output_mode(llm_config),
-                            structured_validation_retries=_structured_validation_retries(
-                                llm_config
-                            ),
-                        )
-                        quiz_artifacts, quiz_questions = generate_quiz_from_run(
-                            run_id=capture.run_id,
-                            run_path=run_path,
-                            workspace_root=root,
-                            provider_config=provider_config,
-                            api_key=effective_api_key,
-                            security_config=security_config,
-                            request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
-                            max_concurrent=int(llm_config["max_concurrent"]),
-                            qps_limit=int(provider_limits["qps_limit"]),
-                            retry_attempts=int(llm_config["retry_attempts"]),
-                            privacy_mode=resolved_privacy_mode,
-                            output_lang=resolved_content_lang,
-                            quiz_output_token_cap=int(
-                                llm_config.get("quiz_generation_output_cap", 18_000)
-                            ),
-                            misconception_output_token_cap=int(
-                                llm_config.get("misconception_cards_output_cap", 6_000)
-                            ),
-                            question_count=_effective_quiz_question_count(
-                                quiz_config,
-                                capture.metadata.get("diff_stats"),
-                            ),
-                            structured_output_mode=_structured_output_mode(llm_config),
-                            structured_validation_retries=_structured_validation_retries(
-                                llm_config
-                            ),
-                        )
-                        quiz_path = quiz_artifacts.quiz_path
-                        if against_spec is not None:
-                            write_spec_alignment_artifact(
-                                run_path=run_path,
-                                workspace_root=root,
-                                spec_path=against_spec,
-                            )
-                            if spec_semantic_review:
-                                judge_provider_name = str(
-                                    llm_config.get("judge_provider", "")
-                                ).strip()
-                                try:
-                                    (
-                                        semantic_provider_config,
-                                        semantic_api_key,
-                                        semantic_transport_target,
-                                        semantic_provider_selection_explicit,
-                                    ) = _resolve_runtime_provider(
-                                        snapshot=snapshot,
-                                        operation_label="semantic spec alignment review",
-                                        provider_name=judge_provider_name or None,
-                                        provider_class=provider_class,
-                                        base_url=None,
-                                        model=None,
-                                        api_key_env=api_key_env,
-                                        privacy_mode=effective_privacy_mode,
-                                        stdin_interactive=sys.stdin.isatty(),
-                                        local_hosts=security_config.local_hosts,
-                                        strict_local_hosts=security_config.strict_local_hosts,
-                                        role="judge",
-                                    )
-                                    semantic_privacy_mode = (
-                                        _privacy_mode_for_explicit_provider_call(
-                                            effective_privacy_mode,
-                                            transport_target=semantic_transport_target,
-                                            provider_selection_explicit=(
-                                                semantic_provider_selection_explicit
-                                            ),
-                                        )
-                                    )
-                                    run_semantic_alignment_review_for_run(
-                                        run_path=run_path,
-                                        workspace_root=root,
-                                        provider_config=semantic_provider_config,
-                                        api_key=semantic_api_key,
-                                        security_config=security_config,
-                                        privacy_mode=semantic_privacy_mode,
-                                        output_lang=resolved_content_lang,
-                                        request_timeout_seconds=int(
-                                            llm_config["request_timeout_seconds"]
-                                        ),
-                                        max_concurrent=int(llm_config["max_concurrent"]),
-                                        qps_limit=int(provider_limits["qps_limit"]),
-                                        retry_attempts=int(llm_config["retry_attempts"]),
-                                        input_token_budget=int(
-                                            llm_config.get("input_token_budget", 200000)
-                                        ),
-                                        output_token_budget=int(
-                                            llm_config.get("output_token_budget", 50000)
-                                        ),
-                                    )
-                                except Exception as semantic_error:
-                                    mark_semantic_alignment_review_degraded(
-                                        run_path=run_path,
-                                        provider_name=judge_provider_name or "unconfigured",
-                                        model_name=str(llm_config.get("judge_model", "")),
-                                        reason=str(semantic_error),
-                                    )
-                        learn_report = evaluate_run(run_path)
-                        cards_path = generate_cards_for_run(
-                            run_path=run_path,
-                            questions=quiz_questions,
-                            verdict=learn_report.verdict,
-                        )
-                        learn_outcome, learn_warnings = _persist_evaluated_run(
-                            run_path=run_path,
-                            report=learn_report,
-                            workspace_root=root,
-                            event_type="learn",
-                            output_path=run_path / "score.json",
-                            force=False,
-                            note_payload={"learnability": learnability.as_metadata()},
-                        )
-                        if cards_path is not None:
-                            try:
-                                import_cards_from_jsonl(
-                                    _state_dir_for_root(root, has_git_repo=has_git_repo)
-                                    / "review.sqlite",
-                                    cards_path,
-                                    desired_retention=float(learn_config["desired_retention"]),
-                                )
-                            except Exception as review_import_error:
-                                learn_warnings.append(
-                                    f"review card import failed: {review_import_error}"
-                                )
-                        try:
-                            concepts_path = append_concepts(
-                                workspace_root=root,
-                                run_path=run_path,
-                                run_id=capture.run_id,
-                                source_kind=str(capture.run_source.source_kind),
-                                source_ref=str(capture.run_source.source_ref),
-                                questions=quiz_questions,
-                            )
-                        except Exception as concept_error:
-                            learn_warnings.append(f"concepts append failed: {concept_error}")
-                except Exception as exc:
-                    _cleanup_lesson_generation_artifacts(
-                        run_path=run_path,
-                        raw_claims_path=raw_claims_path,
-                        claims_output_path=claims_output_path,
-                    )
-                    if isinstance(exc, AhaDiffError):
-                        raise
-                    raise AhaDiffError(f"lesson generation failed: {exc}") from exc
-
-        try:
-            from ahadiff.core.registry import register_repo
-
-            register_repo(root, capture.state_dir)
-        except Exception as reg_error:
-            learn_warnings.append(f"registry auto-register failed: {reg_error}")
-
-        console.print(f"[green]Captured[/green] {capture.run_source.source_kind}")
-        console.print(f"[bold]Run ID[/bold]: {capture.run_id}")
-        console.print(f"[bold]Patch[/bold]: {patch_path}")
-        console.print(f"[bold]Metadata[/bold]: {metadata_path}")
-        console.print(f"[bold]Source ref[/bold]: {capture.run_source.source_ref}")
-        console.print(f"[bold]Capability level[/bold]: {capture.run_source.capability_level}")
-        console.print(
-            f"[bold]Learnability[/bold]: {learnability.score:.3f} / {learnability.threshold:.3f}"
         )
-        if learnability.skip_lesson_quiz:
-            console.print(
-                "[yellow]Learnability[/yellow]: low learning value; lesson/quiz would be skipped"
-            )
-        elif learnability.forced and learnability.score < learnability.threshold:
-            console.print(
-                "[yellow]Learnability[/yellow]: low learning value, "
-                "but --force-learn overrides the skip"
-            )
-        if raw_claims_path is not None:
-            console.print(f"[bold]Raw claims[/bold]: {raw_claims_path}")
-        if claims_output_path is not None:
-            console.print(f"[bold]Claims[/bold]: {claims_output_path}")
-        if lesson_paths is not None:
-            console.print(f"[bold]Lesson[/bold]: {lesson_paths.full_path}")
-            console.print(f"[bold]Hint[/bold]: {lesson_paths.hint_path}")
-            console.print(f"[bold]Compact[/bold]: {lesson_paths.compact_path}")
-            if quiz_path is not None:
-                console.print(f"[bold]Quiz[/bold]: {quiz_path}")
-            if quiz_artifacts is not None and quiz_artifacts.misconception_path is not None:
-                console.print(
-                    f"[bold]Misconception cards[/bold]: {quiz_artifacts.misconception_path}"
-                )
-            if cards_path is not None:
-                console.print(f"[bold]Cards[/bold]: {cards_path}")
-            elif learn_report is not None and learn_report.verdict == "FAIL":
-                console.print("[bold]Cards[/bold]: skipped because verdict is FAIL")
-            if concepts_path is not None:
-                console.print(f"[bold]Concepts[/bold]: {concepts_path}")
-            if learn_report is not None and learn_outcome is not None:
-                console.print(f"[bold]Score[/bold]: {learn_report.overall:.2f}")
-                console.print(f"[bold]Verdict[/bold]: {learn_report.verdict}")
-                console.print(f"[bold]Status[/bold]: {learn_outcome.event.status}")
-                console.print(f"[bold]Score Output[/bold]: {run_path / 'score.json'}")
-                for warning in learn_warnings:
-                    console.print(f"[yellow]Warning[/yellow]: {warning}")
-        elif lesson_skip_reason is not None:
-            console.print(f"[bold]Lesson[/bold]: skipped because {lesson_skip_reason}")
-        elif not dry_run and learnability.skip_lesson_quiz:
-            console.print("[bold]Lesson[/bold]: skipped by learnability gate")
-            for warning in learn_warnings:
-                console.print(f"[yellow]Warning[/yellow]: {warning}")
-        if capture.run_source.degraded_flags:
-            console.print(f"[yellow]Degraded flags[/yellow]: {capture.run_source.degraded_flags}")
-        else:
-            console.print("[green]Degraded flags[/green]: none")
-        if capture.graphify_status.has_graph:
-            console.print(
-                f"[bold]Graphify[/bold]: detected at {capture.graphify_status.source_path}"
-            )
-        else:
-            console.print("[bold]Graphify[/bold]: not detected")
+        _print_learn_pipeline_result(result)
         if open_viewer:
+            snapshot = (
+                load_config(
+                    root,
+                    cli_overrides=_cli_overrides(
+                        privacy_mode=privacy_mode,
+                        lang=lang,
+                        quiz_mode=quiz_mode,
+                    ),
+                )
+                if has_git_repo
+                else load_workspace_config(
+                    root,
+                    cli_overrides=_cli_overrides(
+                        privacy_mode=privacy_mode,
+                        lang=lang,
+                        quiz_mode=quiz_mode,
+                    ),
+                )
+            )
             serve_config = cast("dict[str, Any]", snapshot.values["serve"])
             _open_learn_viewer(
                 serve_config=serve_config,
                 run_id=(
-                    capture.run_id if learn_outcome is not None or skipped_run_persisted else None
+                    result.run_id
+                    if result.status not in {"dry_run", "no_verified_claims"}
+                    else None
                 ),
             )
+        return
     except Exception as error:  # pragma: no cover - exercised through CLI tests
         _handle_cli_error(error)
 

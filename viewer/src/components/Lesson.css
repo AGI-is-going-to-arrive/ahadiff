@@ -96,6 +96,34 @@
   background: var(--subtle);
   color: var(--ink);
   font-weight: 600;
+  text-decoration: none;
+  transition: opacity var(--dur-fast) var(--ease-out-quart);
+}
+
+.lesson-page__verdict:hover,
+.lesson-page__verdict:focus-visible {
+  opacity: 0.85;
+}
+
+.lesson-page__always-links {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.lesson-page__always-link {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color var(--dur-fast) var(--ease-out-quart);
+}
+
+.lesson-page__always-link:hover,
+.lesson-page__always-link:focus-visible {
+  color: var(--accent);
 }
 
 .lesson-page__verdict--pass {
@@ -1324,6 +1352,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .lesson-page,
+  .lesson-page__verdict,
+  .lesson-page__always-link,
   .lesson-page__action-btn,
   .claim-card,
   .claim-popover {
@@ -1338,6 +1368,13 @@
 }
 
 @media (forced-colors: active) {
+  .lesson-page__verdict {
+    border-color: LinkText;
+    color: LinkText;
+  }
+  .lesson-page__always-link {
+    color: LinkText;
+  }
   .lesson-page__verdict,
   .lesson-page__action-btn,
   .lesson-page__score-explainer,

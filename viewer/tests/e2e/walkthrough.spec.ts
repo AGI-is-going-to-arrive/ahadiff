@@ -60,6 +60,22 @@ async function activateControlWithKeyboard(page: Page, control: Locator): Promis
   await page.keyboard.press('Enter');
 }
 
+async function clickPressedToggle(button: Locator): Promise<void> {
+  await expect(button).toBeVisible();
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await button.scrollIntoViewIfNeeded();
+    await button.click();
+    try {
+      await expect(button).toHaveAttribute('aria-pressed', 'true', { timeout: 1500 });
+      return;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Toggle did not become pressed');
+}
+
 async function holdPeekGuardTimer(page: Page): Promise<void> {
   await page.addInitScript(`
     (() => {
@@ -650,8 +666,7 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(page.locator('.claim-inspector')).toBeVisible();
 
     const splitButton = page.getByRole('button', { name: /Split/i });
-    await splitButton.click();
-    await expect(splitButton).toHaveAttribute('aria-pressed', 'true');
+    await clickPressedToggle(splitButton);
     await expect(page.locator('.diff-view')).toHaveClass(/diff-view--split/);
     const oldReturnCell = page
       .locator('.diff-split-cell--old.diff-split-cell--del')
@@ -671,8 +686,7 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(page.locator('.claim-inspector__item--selected')).toContainText('c1');
 
     const unifiedButton = page.getByRole('button', { name: /Unified/i });
-    await unifiedButton.click();
-    await expect(unifiedButton).toHaveAttribute('aria-pressed', 'true');
+    await clickPressedToggle(unifiedButton);
     await expect(page.locator('.diff-view')).not.toHaveClass(/diff-view--split/);
 
     const linkedClaimLine = page

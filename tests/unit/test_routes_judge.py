@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import TYPE_CHECKING, Any, cast
 
+import pytest
 from starlette.testclient import TestClient
 
 from ahadiff.contracts import ResultEvent
@@ -143,3 +145,104 @@ def test_run_detail_artifacts_includes_judge(tmp_path: Path) -> None:
     assert response.status_code == 200
     detail = response.json()
     assert "judge.json" in detail["artifacts"]
+
+
+def test_get_judge_failure_returns_envelope(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1")
+    _write_json(
+        run_path / "judge_failure.json",
+        {
+            "schema": "ahadiff.judge_failure.v1",
+            "provider_class": "openai_responses",
+            "model_name": "gpt-5.5",
+            "error_type": "TimeoutError",
+            "message": "request timed out",
+            "created_at": "2026-04-24T00:00:01Z",
+        },
+    )
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    response = client.get("/api/run/run-1/judge-failure", headers=AUTH)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["artifact_type"] == "judge_failure"
+    assert body["run_id"] == "run-1"
+    parsed = json.loads(body["content"])
+    assert parsed["schema"] == "ahadiff.judge_failure.v1"
+    assert parsed["error_type"] == "TimeoutError"
+
+
+def test_get_judge_failure_404_when_missing(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1")
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    response = client.get("/api/run/run-1/judge-failure", headers=AUTH)
+
+    assert response.status_code == 404
+    assert response.json()["error"] == "artifact_not_found"
+
+
+def test_get_judge_failure_rejects_symlink_after_finalize(tmp_path: Path) -> None:
+    if not hasattr(os, "symlink"):
+        pytest.skip("symlink is unavailable on this platform")
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1")
+    _write_json(
+        run_path / "judge_failure.json",
+        {
+            "schema": "ahadiff.judge_failure.v1",
+            "provider_class": "openai_responses",
+            "model_name": "gpt-5.5",
+            "error_type": "TimeoutError",
+            "message": "request timed out",
+            "created_at": "2026-04-24T00:00:01Z",
+        },
+    )
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    (run_path / "judge_failure.json").unlink()
+    target = tmp_path / "outside.json"
+    target.write_text("outside secret should not be read\n", encoding="utf-8")
+    os.symlink(target, run_path / "judge_failure.json")
+    client = _client(state_dir)
+
+    response = client.get("/api/run/run-1/judge-failure", headers=AUTH)
+
+    assert response.status_code != 200
+    assert "outside secret should not be read" not in response.text
+
+
+def test_run_detail_artifacts_includes_judge_failure(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1")
+    _write_json(
+        run_path / "judge_failure.json",
+        {
+            "schema": "ahadiff.judge_failure.v1",
+            "provider_class": "openai_responses",
+            "model_name": "gpt-5.5",
+            "error_type": "TimeoutError",
+            "message": "request timed out",
+            "created_at": "2026-04-24T00:00:01Z",
+        },
+    )
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    response = client.get("/api/run/run-1", headers=AUTH)
+
+    assert response.status_code == 200
+    detail = response.json()
+    assert "judge_failure.json" in detail["artifacts"]

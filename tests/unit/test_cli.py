@@ -3,21 +3,25 @@ from __future__ import annotations
 import inspect
 import json
 import subprocess
-from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from typer.testing import CliRunner
 
 from ahadiff import cli as cli_module
 from ahadiff.cli import app
 from ahadiff.contracts import ProviderConfig
+from ahadiff.core import orchestrator as orchestrator_module
 from ahadiff.core.config import (
     DEFAULT_CONFIG,
     ResolvedSetting,
     write_config_data,
     write_default_config,
 )
+from ahadiff.core.orchestrator import LearnResult
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _RUNNER = CliRunner()
 
@@ -633,7 +637,7 @@ def test_quiz_lang_is_resolved_inside_handler(tmp_path: Path, monkeypatch: Any) 
     assert captured["cli_lang"] == "zh-CN"
 
 
-def test_cli_learn_passes_quiz_output_caps_to_generator(
+def test_cli_learn_delegates_to_shared_pipeline_and_preserves_quiz_mode(
     tmp_path: Path,
     monkeypatch: Any,
 ) -> None:
@@ -643,139 +647,67 @@ def test_cli_learn_passes_quiz_output_caps_to_generator(
         "diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -1 +1 @@\n-old\n+new\n",
         encoding="utf-8",
     )
-    run_id = "run-cli-quiz-caps"
-    run_path = repo_root / ".ahadiff" / "runs" / run_id
     captured: dict[str, object] = {}
 
-    class _FakeLearnability:
-        score = 0.8
-        threshold = 0.3
-        skip_lesson_quiz = False
-        forced = False
+    def fail_legacy_capture_path(**_kwargs: object) -> object:
+        raise AssertionError("legacy learn path called")
 
-        def as_metadata(self) -> dict[str, object]:
-            return {"score": self.score, "threshold": self.threshold}
-
-    capture = SimpleNamespace(
-        run_id=run_id,
-        state_dir=repo_root / ".ahadiff",
-        persisted_patch_text=patch_path.read_text(encoding="utf-8"),
-        metadata={"diff_stats": {"total_changed_lines": 10, "file_count": 1}},
-        run_source=SimpleNamespace(
-            source_kind="patch",
-            source_ref=str(patch_path),
-            capability_level=3,
-            degraded_flags={},
-        ),
-        graphify_status=SimpleNamespace(has_graph=False, source_path=None),
-    )
-
-    def fake_capture_patch(**kwargs: object) -> object:
-        del kwargs
-        return capture
-
-    def fake_write_input_artifacts(_capture: object) -> tuple[Path, Path]:
-        run_path.mkdir(parents=True)
-        written_patch = run_path / "patch.diff"
-        metadata_path = run_path / "metadata.json"
-        written_patch.write_text(patch_path.read_text(encoding="utf-8"), encoding="utf-8")
-        metadata_path.write_text(json.dumps({"run_id": run_id}) + "\n", encoding="utf-8")
-        return written_patch, metadata_path
-
-    def fake_resolve_runtime_provider(
+    def fake_run_learn_pipeline(
+        request: orchestrator_module.LearnRequest,
         **kwargs: object,
-    ) -> tuple[ProviderConfig, None, str, bool]:
-        del kwargs
-        return _provider_config(), None, "local", True
-
-    def fake_extract_claims(**kwargs: object) -> tuple[Path, tuple[object, ...]]:
-        output_path = Path(str(kwargs["output_path"]))
-        output_path.write_text("{}\n", encoding="utf-8")
-        return output_path, ()
-
-    def fake_write_verified_claims(output_path: Path, *_args: object, **_kwargs: object) -> None:
-        output_path.write_text('{"claim_id":"claim-1","status":"verified"}\n', encoding="utf-8")
-
-    def fake_generate_lessons(**kwargs: object) -> object:
-        del kwargs
-        lesson_dir = run_path / "lesson"
-        lesson_dir.mkdir()
-        full_path = lesson_dir / "lesson.full.md"
-        hint_path = lesson_dir / "lesson.hint.md"
-        compact_path = lesson_dir / "lesson.compact.md"
-        full_path.write_text("full\n", encoding="utf-8")
-        hint_path.write_text("hint\n", encoding="utf-8")
-        compact_path.write_text("compact\n", encoding="utf-8")
-        return SimpleNamespace(
-            full_path=full_path,
-            hint_path=hint_path,
-            compact_path=compact_path,
+    ) -> LearnResult:
+        captured["request"] = request
+        captured["kwargs"] = kwargs
+        return LearnResult(
+            run_id="run-shared-cli",
+            status="dry_run",
+            artifacts_path=str(repo_root / ".ahadiff" / "runs" / "run-shared-cli"),
+            learnability_score=0.72,
+            warnings=["pipeline warning"],
         )
 
-    def fake_generate_quiz(**kwargs: object) -> tuple[object, tuple[object, ...]]:
-        captured.update(kwargs)
-        quiz_dir = run_path / "quiz"
-        quiz_dir.mkdir()
-        quiz_path = quiz_dir / "quiz.jsonl"
-        quiz_path.write_text("", encoding="utf-8")
-        return SimpleNamespace(quiz_path=quiz_path, misconception_path=None), ()
-
-    def fake_evaluate_run(_run_path: Path) -> object:
-        return SimpleNamespace(verdict="PASS", overall=90.0)
-
-    def fake_persist_evaluated_run(**kwargs: object) -> tuple[object, list[str]]:
-        del kwargs
-        return SimpleNamespace(event=SimpleNamespace(status="keep")), []
-
-    def fake_assess_learnability(*_args: object, **_kwargs: object) -> _FakeLearnability:
-        return _FakeLearnability()
-
-    def fake_load_empty_records(*_args: object, **_kwargs: object) -> tuple[object, ...]:
-        return ()
-
-    def fake_load_text_map(*_args: object, **_kwargs: object) -> dict[str, object]:
-        return {}
-
-    def fake_verify_claim_candidates(*_args: object, **_kwargs: object) -> tuple[object, ...]:
-        return (SimpleNamespace(record=SimpleNamespace(status="verified")),)
-
-    def fake_generate_cards_for_run(**_kwargs: object) -> None:
-        return None
-
-    def fake_append_concepts(**_kwargs: object) -> None:
-        return None
-
-    monkeypatch.setattr(cli_module, "capture_patch", fake_capture_patch)
-    monkeypatch.setattr(cli_module, "write_input_artifacts", fake_write_input_artifacts)
-    monkeypatch.setattr(cli_module, "assess_learnability", fake_assess_learnability)
-    monkeypatch.setattr(cli_module, "_resolve_runtime_provider", fake_resolve_runtime_provider)
-    monkeypatch.setattr(cli_module, "extract_claim_candidates_from_run", fake_extract_claims)
-    monkeypatch.setattr(cli_module, "load_claim_candidates", fake_load_empty_records)
-    monkeypatch.setattr(cli_module, "load_line_map_records", fake_load_empty_records)
-    monkeypatch.setattr(cli_module, "load_symbol_records", fake_load_empty_records)
-    monkeypatch.setattr(cli_module, "load_text_map", fake_load_text_map)
-    monkeypatch.setattr(
-        cli_module,
-        "verify_claim_candidates",
-        fake_verify_claim_candidates,
-    )
-    monkeypatch.setattr(cli_module, "write_verified_claims_jsonl", fake_write_verified_claims)
-    monkeypatch.setattr(cli_module, "generate_lessons_from_run", fake_generate_lessons)
-    monkeypatch.setattr(cli_module, "generate_quiz_from_run", fake_generate_quiz)
-    monkeypatch.setattr(cli_module, "evaluate_run", fake_evaluate_run)
-    monkeypatch.setattr(cli_module, "generate_cards_for_run", fake_generate_cards_for_run)
-    monkeypatch.setattr(cli_module, "_persist_evaluated_run", fake_persist_evaluated_run)
-    monkeypatch.setattr(cli_module, "append_concepts", fake_append_concepts)
+    monkeypatch.setattr(cli_module, "capture_patch", fail_legacy_capture_path)
+    monkeypatch.setattr(orchestrator_module, "run_learn_pipeline", fake_run_learn_pipeline)
 
     result = _RUNNER.invoke(
         app(),
-        ["learn", "--patch", str(patch_path), "--repo-root", str(repo_root), "--force-learn"],
+        [
+            "learn",
+            "--patch",
+            str(patch_path),
+            "--repo-root",
+            str(repo_root),
+            "--dry-run",
+            "--quiz-mode",
+            "auto",
+            "--provider",
+            "local",
+            "--base-url",
+            "http://127.0.0.1:11434",
+            "--model",
+            "local-model",
+            "--privacy-mode",
+            "strict_local",
+            "--lang",
+            "zh-CN",
+        ],
         catch_exceptions=False,
     )
 
-    assert result.exit_code == 0, (result.exception, result.stdout, result.stderr)
-    assert captured["quiz_output_token_cap"] == 18_000
-    assert captured["misconception_output_token_cap"] == 6_000
+    assert result.exit_code == 0
+    request = captured["request"]
+    assert isinstance(request, orchestrator_module.LearnRequest)
+    assert request.workspace_root == repo_root
+    assert request.patch == str(patch_path)
+    assert request.dry_run is True
+    assert request.quiz_mode == "auto"
+    assert request.provider_name == "local"
+    assert request.base_url == "http://127.0.0.1:11434"
+    assert request.model == "local-model"
+    assert request.privacy_mode == "strict_local"
+    assert request.lang == "zh-CN"
+    assert "Run ID" in result.stdout
+    assert "pipeline warning" in result.stdout
 
 
 # --- F2 regression: --api-key-env prefix validation ---

@@ -7,6 +7,7 @@ import {
   conceptGraphResponseSchema,
   freshnessProjectionSchema,
   graphStatusResponseSchema,
+  judgeFailureSchema,
   learningEffectivenessResponseSchema,
   conceptLedgerEntrySchema,
   ratchetHistoryEntrySchema,
@@ -37,6 +38,29 @@ describe('auth token schema', () => {
   it('rejects empty token and unknown keys', () => {
     expect(() => authTokenResponseSchema.parse({ token: '' })).toThrow();
     expect(() => authTokenResponseSchema.parse({ token: 'abc', extra: true })).toThrow();
+  });
+});
+
+describe('judge failure schema', () => {
+  const validFailure = {
+    schema: 'ahadiff.judge_failure.v1',
+    provider_class: 'openai_responses',
+    model_name: 'gpt-5.5-mini',
+    error_type: 'InputError',
+    message: '评审失败 😀'.repeat(200),
+    created_at: '2026-05-23T00:00:00Z',
+  };
+
+  it('uses the backend schema literal and counts Unicode by code point', () => {
+    expect(judgeFailureSchema.parse(validFailure).schema).toBe('ahadiff.judge_failure.v1');
+    expect(judgeFailureSchema.parse({ ...validFailure, message: '😀'.repeat(2000) }).message)
+      .toHaveLength(4000);
+    expect(() =>
+      judgeFailureSchema.parse({ ...validFailure, schema: 'ahadiff.judge_failure.v2' }),
+    ).toThrow();
+    expect(() =>
+      judgeFailureSchema.parse({ ...validFailure, message: '😀'.repeat(2001) }),
+    ).toThrow();
   });
 });
 

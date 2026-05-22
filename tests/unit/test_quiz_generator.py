@@ -1905,11 +1905,17 @@ diff --git a/src/app.py b/src/app.py
         write_quiz_questions_jsonl(quiz_path, questions)
         return QuizArtifactPaths(quiz_dir=quiz_path.parent, quiz_path=quiz_path), questions
 
-    monkeypatch.setattr("ahadiff.cli._resolve_runtime_provider", fake_runtime_provider)
-    monkeypatch.setattr("ahadiff.cli.extract_claim_candidates_from_run", fake_extract_claims)
-    monkeypatch.setattr("ahadiff.cli.verify_claim_candidates", fake_verify)
-    monkeypatch.setattr("ahadiff.cli.generate_lessons_from_run", fake_lessons)
-    monkeypatch.setattr("ahadiff.cli.generate_quiz_from_run", fake_quiz)
+    monkeypatch.setattr(
+        "ahadiff.core.orchestrator._resolve_provider_from_config",
+        fake_runtime_provider,
+    )
+    monkeypatch.setattr(
+        "ahadiff.claims.runtime.extract_claim_candidates_from_run",
+        fake_extract_claims,
+    )
+    monkeypatch.setattr("ahadiff.claims.verify.verify_claim_candidates", fake_verify)
+    monkeypatch.setattr("ahadiff.lesson.generator.generate_lessons_from_run", fake_lessons)
+    monkeypatch.setattr("ahadiff.quiz.generator.generate_quiz_from_run", fake_quiz)
 
     result = _RUNNER.invoke(
         app(),
@@ -1970,7 +1976,7 @@ diff --git a/src/app.py b/src/app.py
         del args, kwargs
         return _LowLearnability()
 
-    monkeypatch.setattr("ahadiff.cli.assess_learnability", _low_learnability)
+    monkeypatch.setattr("ahadiff.lesson.learnability.assess_learnability", _low_learnability)
 
     result = _RUNNER.invoke(
         app(),

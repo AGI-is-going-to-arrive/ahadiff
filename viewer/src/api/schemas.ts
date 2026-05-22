@@ -312,6 +312,19 @@ export const specAlignmentArtifactSchema = z
   })
   .strict();
 
+export const judgeFailureSchema = z
+  .object({
+    schema: z.literal('ahadiff.judge_failure.v1'),
+    provider_class: z.string(),
+    model_name: z.string(),
+    error_type: z.string(),
+    message: z.string().refine((value) => Array.from(value).length <= 2000, {
+      message: 'Judge failure message must be at most 2000 characters.',
+    }),
+    created_at: z.string(),
+  })
+  .strict();
+
 export const graphifySignoffArtifactSchema = z
   .object({
     artifact: z.literal('graphify_signoff'),
