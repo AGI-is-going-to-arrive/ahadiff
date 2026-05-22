@@ -483,7 +483,6 @@ function AccountTab({
                 eyebrow={t('Settings_page.usage_total_tokens')}
                 value={formatNumber(usage.total_input_tokens + usage.total_output_tokens, locale)}
               />
-              <ModeCell eyebrow={t('Settings_page.usage_total_cost')} value={`$${usage.total_cost_usd.toFixed(4)}`} />
               <ModeCell
                 eyebrow={t('Settings_page.usage_cache_hits')}
                 value={formatNumber(usage.cache_hits, locale)}
@@ -504,7 +503,7 @@ function AccountTab({
                         <th className="settings-usage__num">{t('Settings_page.usage_calls')}</th>
                         <th className="settings-usage__num">{t('Settings_page.usage_tokens_in')}</th>
                         <th className="settings-usage__num">{t('Settings_page.usage_tokens_out')}</th>
-                        <th className="settings-usage__num">{t('Settings_page.usage_cost')}</th>
+
                       </tr>
                     </thead>
                     <tbody>
@@ -515,7 +514,7 @@ function AccountTab({
                           <td className="settings-usage__num">{formatNumber(m.call_count, locale)}</td>
                           <td className="settings-usage__num">{formatNumber(m.total_input_tokens, locale)}</td>
                           <td className="settings-usage__num">{formatNumber(m.total_output_tokens, locale)}</td>
-                          <td className="settings-usage__num">{`$${m.total_cost_usd.toFixed(4)}`}</td>
+
                         </tr>
                       ))}
                     </tbody>
