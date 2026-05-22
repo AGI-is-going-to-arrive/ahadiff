@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getRatchetTransparency, getRunArtifact, getRunLesson } from '../api/runs';
 import LearnTaskBanner from '../components/LearnTaskBanner';
@@ -93,6 +93,10 @@ interface TrustCardView {
 const DEMO_TABS = ['raw', 'aha'] as const;
 type DemoTabId = typeof DEMO_TABS[number];
 const LESSON_LEVEL_FALLBACKS = ['full', 'hint', 'compact'] as const;
+const DEFAULT_DIFF_COLLAPSE_HEIGHT = 300;
+const MIN_DIFF_COLLAPSE_HEIGHT = 200;
+const DIFF_LINE_HEIGHT_PX = 19.2;
+const DIFF_FADE_HEIGHT_PX = 64;
 
 interface LiveHeroDemo {
   diff: string | null;
@@ -180,6 +184,57 @@ export default function LandingPage() {
     () => (demoLesson ? renderMarkdownCollapsible(demoLesson, 'hero-demo', 1) : null),
     [demoLesson],
   );
+
+  const [diffExpanded, setDiffExpanded] = useState(false);
+  const rightColRef = useRef<HTMLDivElement>(null);
+  const [diffCollapseHeight, setDiffCollapseHeight] = useState(DEFAULT_DIFF_COLLAPSE_HEIGHT);
+
+  const diffLineCount = useMemo(() => {
+    if (!demoDiff) return 0;
+    return demoDiff.split('\n').length;
+  }, [demoDiff]);
+
+  const collapsedVisibleLineCount = useMemo(() => {
+    if (!demoDiff) return 0;
+    const visibleHeight = Math.max(DIFF_LINE_HEIGHT_PX, diffCollapseHeight - DIFF_FADE_HEIGHT_PX);
+    return Math.max(1, Math.floor(visibleHeight / DIFF_LINE_HEIGHT_PX));
+  }, [demoDiff, diffCollapseHeight]);
+
+  const needsCollapse = diffLineCount > 0 && diffLineCount > collapsedVisibleLineCount + 3;
+
+  useEffect(() => {
+    setDiffExpanded(false);
+  }, [demoDiff]);
+
+  useEffect(() => {
+    const el = rightColRef.current;
+    if (!el) return;
+    let frameId: number | null = null;
+    const applyHeight = (height: number) => {
+      const nextHeight = Math.max(MIN_DIFF_COLLAPSE_HEIGHT, Math.ceil(height));
+      setDiffCollapseHeight((current) => (current === nextHeight ? current : nextHeight));
+    };
+    applyHeight(el.getBoundingClientRect().height);
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        applyHeight(entry.contentRect.height);
+        frameId = null;
+      });
+    });
+    ro.observe(el);
+    return () => {
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+      ro.disconnect();
+    };
+  }, []);
+
+  const handleDiffToggle = useCallback(() => {
+    setDiffExpanded((prev) => !prev);
+  }, []);
 
   useEffect(() => {
     void loadRuns().catch(() => {
@@ -489,7 +544,37 @@ export default function LandingPage() {
             <h3 className="ba-col__header">{t('Landing.before_header')}</h3>
             <div className="ba-col__body">
               {demoDiff ? (
-                <pre className="mono" style={{ fontSize: '12px', lineHeight: 1.6, color: 'var(--ink-2)', whiteSpace: 'pre-wrap' }}>{demoDiff}</pre>
+                <>
+                  <div
+                    className="ba-diff-wrap"
+                    id="landing-diff-content"
+                    style={{ maxHeight: needsCollapse && !diffExpanded ? diffCollapseHeight : 'none' }}
+                  >
+                    <pre className="mono" style={{ fontSize: '12px', lineHeight: 1.6, color: 'var(--ink-2)', whiteSpace: 'pre-wrap' }}>{demoDiff}</pre>
+                    {needsCollapse && !diffExpanded && (
+                      <div className="ba-diff-fade" aria-hidden="true">
+                        <span className="ba-diff-line-count">
+                          {t('Landing.diff_showing_lines', { shown: String(collapsedVisibleLineCount), total: String(diffLineCount) })}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {needsCollapse && (
+                    <button
+                      type="button"
+                      className="ba-diff-toggle"
+                      aria-expanded={diffExpanded}
+                      aria-controls="landing-diff-content"
+                      aria-label={diffExpanded
+                        ? `${t('Landing.before_header')}: ${t('Landing.diff_collapse')}`
+                        : `${t('Landing.before_header')}: ${t('Landing.diff_expand')} — ${t('Landing.diff_showing_lines', { shown: String(collapsedVisibleLineCount), total: String(diffLineCount) })}`}
+                      onClick={handleDiffToggle}
+                    >
+                      {diffExpanded ? t('Landing.diff_collapse') : t('Landing.diff_expand')}
+                      <span className="ba-diff-arrow" aria-hidden="true">▼</span>
+                    </button>
+                  )}
+                </>
               ) : (
                 <div className="hero-demo__artifact-empty" role="status">
                   {t('Landing.hero_demo_diff_unavailable')}
@@ -498,14 +583,16 @@ export default function LandingPage() {
             </div>
           </div>
           <div className="col" style={{ background: '#fff' }}>
-            <h3 className="ba-col__header">{t('Landing.after_header')}</h3>
-            <div className="prose" style={{ fontSize: '14.5px', lineHeight: 1.7 }}>
-              {renderedLesson ?? (
-                <div className="hero-demo__artifact-empty" role="status">
-                  <strong>{t('Landing.hero_demo_lesson_unavailable_title')}</strong>
-                  <span>{t('Landing.hero_demo_lesson_unavailable_body')}</span>
-                </div>
-              )}
+            <div ref={rightColRef}>
+              <h3 className="ba-col__header">{t('Landing.after_header')}</h3>
+              <div className="prose" style={{ fontSize: '14.5px', lineHeight: 1.7 }}>
+                {renderedLesson ?? (
+                  <div className="hero-demo__artifact-empty" role="status">
+                    <strong>{t('Landing.hero_demo_lesson_unavailable_title')}</strong>
+                    <span>{t('Landing.hero_demo_lesson_unavailable_body')}</span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

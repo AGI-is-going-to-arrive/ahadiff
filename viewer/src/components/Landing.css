@@ -556,6 +556,81 @@
   margin: 0;
 }
 
+/* ---- Diff collapse ---- */
+.ba-diff-wrap {
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+  transition: max-height 0.3s ease;
+}
+
+.ba-diff-wrap pre {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.ba-diff-fade {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  background: linear-gradient(to bottom, transparent, var(--subtle, #f5f0ea));
+  pointer-events: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 6px;
+}
+
+.ba-diff-line-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  background: var(--bg, #fff);
+  padding: 2px 10px;
+  border-radius: 99px;
+  border: 1px solid var(--hair);
+  pointer-events: none;
+}
+
+.ba-diff-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 0;
+  border: none;
+  border-top: 1px solid var(--hair);
+  background: var(--subtle, #f5f0ea);
+  color: var(--accent-ink, #9b4420);
+  font-family: var(--font-body, system-ui);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.ba-diff-toggle:hover {
+  background: var(--accent-softest, #f8e9df);
+  background: color-mix(in srgb, var(--accent, #8b6914) 6%, var(--subtle, #f5f0ea));
+}
+
+.ba-diff-toggle:focus-visible {
+  outline: 2px solid var(--accent, #8b6914);
+  outline-offset: -2px;
+}
+
+.ba-diff-toggle .ba-diff-arrow {
+  font-size: 10px;
+  transition: transform 0.3s;
+}
+
+.ba-diff-toggle[aria-expanded="true"] .ba-diff-arrow {
+  transform: rotate(180deg);
+}
+
 /* ---- Benchmark grid ---- */
 .demo-tag {
   display: inline-flex;
@@ -768,6 +843,25 @@
   .hero-demo__lesson-link a {
     color: LinkText;
   }
+
+  .ba-diff-fade {
+    background: none;
+    border-top: 2px solid CanvasText;
+    height: auto;
+    padding: 4px 0;
+  }
+
+  .ba-diff-toggle {
+    border-color: CanvasText;
+    color: LinkText;
+    background: Canvas;
+  }
+
+  .ba-diff-line-count {
+    border-color: CanvasText;
+    color: CanvasText;
+    background: Canvas;
+  }
 }
 
 /* ---- Print ---- */
@@ -805,6 +899,16 @@
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
   }
+
+  .ba-diff-wrap {
+    max-height: none !important;
+    overflow: visible;
+  }
+
+  .ba-diff-fade,
+  .ba-diff-toggle {
+    display: none;
+  }
 }
 
 /* ---- Reduced motion ---- */
@@ -818,5 +922,13 @@
   .hero-demo__lesson-link a {
     transition: none;
     transform: none !important;
+  }
+
+  .ba-diff-wrap {
+    transition: none;
+  }
+
+  .ba-diff-toggle .ba-diff-arrow {
+    transition: none;
   }
 }
