@@ -3014,6 +3014,24 @@ def import_concepts_from_jsonl(db_path: Path, jsonl_path: Path) -> int:
 _MAX_GRAPH_NODES_IMPORT = 50_000
 
 
+def _graph_node_insert_rows(
+    nodes: Sequence[Mapping[str, object]],
+) -> list[tuple[str, str, object, object, str]]:
+    rows: list[tuple[str, str, object, object, str]] = []
+    for node in nodes:
+        node_id = str(node.get("id", ""))
+        label = str(node.get("label", ""))
+        if not node_id or not label:
+            continue
+        metadata = node.get("metadata", {})
+        metadata_json = json.dumps(
+            metadata if isinstance(metadata, dict) else {},
+            ensure_ascii=False,
+        )
+        rows.append((node_id, label, node.get("kind"), node.get("file_path"), metadata_json))
+    return rows
+
+
 def import_graph_nodes(
     db_path: Path,
     nodes: Sequence[Mapping[str, object]],
@@ -3029,35 +3047,25 @@ def import_graph_nodes(
         raise InputError(
             f"graph node import exceeds limit: {len(nodes)} nodes > {effective_limit} max"
         )
+    rows = _graph_node_insert_rows(nodes)
     with connect_review_db(db_path, create_parent=True) as connection:
         _ensure_schema(connection)
-        connection.execute("DELETE FROM graph_nodes")
-        inserted = 0
-        for node in nodes:
-            node_id = str(node.get("id", ""))
-            label = str(node.get("label", ""))
-            if not node_id or not label:
-                continue
-            metadata = node.get("metadata", {})
-            metadata_json = json.dumps(
-                metadata if isinstance(metadata, dict) else {},
-                ensure_ascii=False,
-            )
-            connection.execute(
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute("DELETE FROM graph_nodes")
+            connection.executemany(
                 """
                 INSERT OR REPLACE INTO graph_nodes (id, label, kind, file_path, metadata_json)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                (
-                    node_id,
-                    label,
-                    node.get("kind"),
-                    node.get("file_path"),
-                    metadata_json,
-                ),
+                rows,
             )
-            inserted += 1
-    return inserted
+            connection.execute("COMMIT")
+        except Exception:
+            with suppress(sqlite3.DatabaseError):
+                connection.execute("ROLLBACK")
+            raise
+    return len(rows)
 
 
 def replace_commit_ancestry(

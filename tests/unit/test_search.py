@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from typing import TYPE_CHECKING
 
 import pytest
@@ -792,6 +793,19 @@ def test_import_graph_nodes_rejects_over_cap_without_truncation(tmp_path: Path) 
         match="graph node import exceeds limit: 50001 nodes > 50000 max",
     ):
         import_graph_nodes(db, nodes)
+
+    assert count_graph_nodes(db) == 1
+
+
+def test_import_graph_nodes_rolls_back_when_batch_insert_fails(tmp_path: Path) -> None:
+    from ahadiff.review.database import count_graph_nodes, import_graph_nodes
+
+    db = tmp_path / "review.sqlite"
+    initialize_review_db(db)
+    import_graph_nodes(db, [{"id": "keep", "label": "Existing"}])
+
+    with pytest.raises((TypeError, sqlite3.DatabaseError)):
+        import_graph_nodes(db, [{"id": "bad", "label": "Bad", "kind": object()}])
 
     assert count_graph_nodes(db) == 1
 

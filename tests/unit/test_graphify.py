@@ -117,6 +117,12 @@ class TestParseValid:
         assert g.nodes == []
         assert g.links == []
 
+    def test_loaded_graph_data_matches_text_parser(self) -> None:
+        via_text = parse_graph_json_text(json.dumps(_MINIMAL_GRAPH))
+        via_data = graphify_parser_module.parse_graph_json_data(_MINIMAL_GRAPH)
+
+        assert via_data == via_text
+
     def test_from_file(self, tmp_path: Path) -> None:
         p = tmp_path / "graph.json"
         p.write_text(json.dumps(_MINIMAL_GRAPH), encoding="utf-8")
@@ -221,6 +227,21 @@ class TestParseInvalid:
     def test_top_level_array(self) -> None:
         with pytest.raises(InputError, match="must be an object"):
             parse_graph_json_text("[]")
+
+    def test_loaded_graph_data_rejects_non_finite_numbers(self) -> None:
+        data: dict[str, Any] = {
+            "nodes": [
+                {
+                    "id": "n1",
+                    "label": "Node",
+                    "metadata": {"score": float("nan")},
+                }
+            ],
+            "links": [],
+        }
+
+        with pytest.raises(InputError, match="non-finite"):
+            graphify_parser_module.parse_graph_json_data(data)
 
     def test_extra_field_forbidden(self) -> None:
         data = {**_MINIMAL_GRAPH, "extra_key": True}

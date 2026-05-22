@@ -103,7 +103,7 @@ export default function ConceptsPage() {
 
   const REFRESH_MAX_RETRIES = 2;
   const REFRESH_RETRY_DELAY_MS = 2000;
-  const REFRESH_TIMEOUT_MS = 120_000;
+  const REFRESH_TIMEOUT_MS = 600_000;
 
   const clearRefreshTimers = useCallback(() => {
     if (refreshTimeoutRef.current) {

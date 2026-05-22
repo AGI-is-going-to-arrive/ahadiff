@@ -3,12 +3,14 @@ from __future__ import annotations
 import errno
 import html
 import logging
+import math
 import os
 import re
 import stat
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from pathlib import Path
 
 from ahadiff.core.errors import InputError
@@ -91,6 +93,35 @@ def _sanitize_json_value(value: object, *, sanitize_keys: bool = False) -> objec
             )
         return sanitized
     return value
+
+
+def _reject_non_finite_json_numbers(
+    value: object,
+    *,
+    depth: int = 0,
+    seen: set[int] | None = None,
+) -> None:
+    if isinstance(value, float) and not math.isfinite(value):
+        raise InputError("Graph JSON contains non-finite numeric values")
+    if depth > 100:
+        raise InputError("Graph JSON exceeds maximum nesting depth")
+    if isinstance(value, dict):
+        items: Iterable[object] = cast("dict[object, object]", value).values()
+    elif isinstance(value, list):
+        items = cast("list[object]", value)
+    else:
+        return
+
+    seen = seen if seen is not None else set()
+    object_id = id(cast("object", value))
+    if object_id in seen:
+        raise InputError("Graph JSON contains cyclic data")
+    seen.add(object_id)
+    try:
+        for item in items:
+            _reject_non_finite_json_numbers(item, depth=depth + 1, seen=seen)
+    finally:
+        seen.remove(object_id)
 
 
 def _first_present(item: dict[str, object], keys: tuple[str, ...]) -> object | None:
@@ -257,17 +288,14 @@ def _remove_dangling_edges(
     return valid
 
 
-def parse_graph_json_text(text: str) -> GraphifyGraph:
-    try:
-        data = safe_json_loads(text)
-    except (ValueError, TypeError) as exc:
-        raise InputError(f"Invalid graph JSON: {exc}") from exc
-
+def parse_graph_json_data(data: object) -> GraphifyGraph:
     if not isinstance(data, dict):
         raise InputError("Graph JSON must be an object at the top level")
+    data_obj = cast("dict[object, object]", data)
+    _reject_non_finite_json_numbers(data_obj)
 
     obj = _normalize_graph_object(
-        cast("dict[str, object]", _sanitize_json_value(cast("object", data)))
+        cast("dict[str, object]", _sanitize_json_value(cast("object", data_obj)))
     )
 
     # --- duplicate node IDs: keep last occurrence ---
@@ -295,6 +323,14 @@ def parse_graph_json_text(text: str) -> GraphifyGraph:
         return GraphifyGraph.model_validate(obj)
     except Exception as exc:
         raise InputError(f"Graph JSON validation failed: {exc}") from exc
+
+
+def parse_graph_json_text(text: str) -> GraphifyGraph:
+    try:
+        data = safe_json_loads(text)
+    except (ValueError, TypeError) as exc:
+        raise InputError(f"Invalid graph JSON: {exc}") from exc
+    return parse_graph_json_data(data)
 
 
 def parse_graph_json(path: Path, *, max_bytes: int = MAX_GRAPH_FILE_BYTES) -> GraphifyGraph:

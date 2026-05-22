@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import AppShell from '../components/AppShell';
@@ -114,6 +115,7 @@ export default function QuizPage() {
   // review.sqlite cards that were never generated.
   const [rated, setRated] = useState<Record<string, boolean>>({});
   const abortRef = useRef<AbortController | null>(null);
+  const modeTipPointerDownRef = useRef(false);
   // Tracks signal idempotency keys already dispatched within this session so
   // the "Mark wrong (override)" button cannot fire duplicates if the user
   // double-clicks. Mirrors the qa/srs key shape so the backend dedup window
@@ -179,9 +181,32 @@ export default function QuizPage() {
 
   const showModeTip = useCallback(() => setModeTipOpen(true), []);
   const hideModeTip = useCallback(() => setModeTipOpen(false), []);
+  const handleModeTipPointerDown = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType !== 'mouse' && event.pointerType !== 'touch' && event.pointerType !== 'pen') {
+      return;
+    }
+    modeTipPointerDownRef.current = true;
+  }, []);
+  const handleModeTipFocus = useCallback(() => {
+    if (modeTipPointerDownRef.current) return;
+    setModeTipOpen(true);
+  }, []);
+  const handleModeTipBlur = useCallback(() => {
+    modeTipPointerDownRef.current = false;
+    setModeTipOpen(false);
+  }, []);
+  const handleModeTipClick = useCallback(() => {
+    if (modeTipPointerDownRef.current) {
+      modeTipPointerDownRef.current = false;
+      setModeTipOpen((v) => !v);
+      return;
+    }
+    setModeTipOpen(true);
+  }, []);
   const handleModeTipKeyDown = useCallback((event: ReactKeyboardEvent<HTMLButtonElement>) => {
     if (event.key === 'Escape') {
       event.stopPropagation();
+      modeTipPointerDownRef.current = false;
       setModeTipOpen(false);
     }
   }, []);
@@ -369,10 +394,11 @@ export default function QuizPage() {
                     aria-describedby={modeTipOpen ? 'quiz-mode-tip' : 'quiz-mode-tip-description'}
                     onMouseEnter={showModeTip}
                     onMouseLeave={hideModeTip}
-                    onFocus={showModeTip}
-                    onBlur={hideModeTip}
+                    onPointerDown={handleModeTipPointerDown}
+                    onFocus={handleModeTipFocus}
+                    onBlur={handleModeTipBlur}
                     onKeyDown={handleModeTipKeyDown}
-                    onClick={showModeTip}
+                    onClick={handleModeTipClick}
                   >
                     {modeTipLabel}
                   </button>
@@ -550,24 +576,28 @@ export default function QuizPage() {
                 <div className="quiz-panel__body">
                   {currentAnswer ? (
                     <>
-                      <ul className="quiz-evidence" aria-label={t('Quiz.evidence_label')}>
-                        {currentEvidence.map((item) => (
-                          <li
-                            key={`${item.file}:${item.line}`}
-                            className="quiz-evidence__item"
-                          >
-                            <Link
-                              className="quiz-evidence__ref"
-                              to={diffPathForEvidence(runId, item.file, item.line)}
+                      {currentEvidence.length > 0 ? (
+                        <ul className="quiz-evidence" aria-label={t('Quiz.evidence_label')}>
+                          {currentEvidence.map((item) => (
+                            <li
+                              key={`${item.file}:${item.line}`}
+                              className="quiz-evidence__item"
                             >
-                              {formatEvidenceAnchor(item.file, item.line)}
-                            </Link>
-                            <p className="quiz-evidence__anchor-note">
-                              {t('Quiz.evidence_anchor_note')}
-                            </p>
-                          </li>
-                        ))}
-                      </ul>
+                              <Link
+                                className="quiz-evidence__ref"
+                                to={diffPathForEvidence(runId, item.file, item.line)}
+                              >
+                                {formatEvidenceAnchor(item.file, item.line)}
+                              </Link>
+                              <p className="quiz-evidence__anchor-note">
+                                {t('Quiz.evidence_anchor_note')}
+                              </p>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="quiz-evidence__empty">{t('Quiz.evidence_unavailable')}</p>
+                      )}
                       {(currentSourceClaims.length > 0 || currentConcepts.length > 0) && (
                         <dl className="quiz-evidence__meta">
                           {currentSourceClaims.length > 0 && (
@@ -586,7 +616,11 @@ export default function QuizPage() {
                       )}
                     </>
                   ) : (
-                    <p className="quiz-evidence__empty">{t('Quiz.evidence_locked')}</p>
+                    <div className="quiz-evidence__locked">
+                      <span className="quiz-evidence__locked-icon" aria-hidden="true">🔒</span>
+                      <p className="quiz-evidence__locked-text">{t('Quiz.evidence_locked')}</p>
+                      <p className="quiz-evidence__locked-hint">{t('Quiz.evidence_locked_hint')}</p>
+                    </div>
                   )}
                 </div>
               </section>

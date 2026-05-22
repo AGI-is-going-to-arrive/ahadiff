@@ -34,7 +34,7 @@ from ahadiff.core.paths import (
     validate_state_dir_path,
     validate_state_path_no_symlinks,
 )
-from ahadiff.graphify import parse_graph_json_text
+from ahadiff.graphify.parser import parse_graph_json_data
 from ahadiff.safety.audit import append_audit_record, build_redaction_audit_record
 from ahadiff.safety.ignore import (
     AllowlistPolicy,
@@ -954,8 +954,7 @@ def import_graphify_artifact(
         raise InputError(f"Invalid graph JSON: {exc}") from exc
     _raise_if_raw_graph_exceeds_limit(raw_graph, max_nodes=max_nodes)
     protected_graph = _sanitize_graphify_value(raw_graph, workspace_root=workspace_root)
-    graph_text = json.dumps(protected_graph, ensure_ascii=False)
-    sanitized_graph = parse_graph_json_text(graph_text)
+    sanitized_graph = parse_graph_json_data(protected_graph)
     if max_nodes is not None and len(sanitized_graph.nodes) > max_nodes:
         raise InputError(
             f"graph node import exceeds limit: {len(sanitized_graph.nodes)} nodes > {max_nodes} max"

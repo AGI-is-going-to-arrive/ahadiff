@@ -13,6 +13,21 @@ describe('QuizPage mode badge tooltip', () => {
     expect(src).toContain('role="tooltip"');
     expect(src).toContain('aria-expanded={modeTipOpen}');
     expect(src).toContain("event.key === 'Escape'");
+    expect(src).toContain('modeTipPointerDownRef.current');
+    expect(src).toContain('onPointerDown={handleModeTipPointerDown}');
+    expect(src).toContain('onFocus={handleModeTipFocus}');
+    expect(src).toContain('onClick={handleModeTipClick}');
     expect(src).not.toContain('data-tooltip=');
+  });
+});
+
+describe('QuizPage evidence empty states', () => {
+  it('renders locked and answered-without-evidence empty states explicitly', () => {
+    const src = source();
+
+    expect(src).toContain('quiz-evidence__locked');
+    expect(src).toContain("t('Quiz.evidence_locked_hint')");
+    expect(src).toContain('currentEvidence.length > 0');
+    expect(src).toContain("t('Quiz.evidence_unavailable')");
   });
 });
