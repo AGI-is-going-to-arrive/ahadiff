@@ -57,12 +57,28 @@ def decide_learn_ratchet(
         prior_events=prior_events,
         allowed_event_types=frozenset({"learn"}),
     )
+
+    note_payload: dict[str, object] = {}
+    if baseline is not None:
+        note_payload["baseline_overall"] = round(baseline.overall, 2)
+
+    if report.verdict != "PASS" or not report.hard_gates.passed:
+        note_payload.update(
+            {
+                "ratchet_reason": "verdict_or_hard_gate_failed",
+                "verdict": report.verdict,
+                "failed_gates": list(report.hard_gates.failed_names()),
+            }
+        )
+        return RatchetDecision(
+            status="discard",
+            base_ref=baseline.source_ref if baseline is not None else None,
+            note_payload=note_payload,
+        )
+
     if baseline is None:
         return RatchetDecision(status="baseline")
 
-    note_payload: dict[str, object] = {
-        "baseline_overall": round(baseline.overall, 2),
-    }
     if report.degraded_flags and report.overall < baseline.overall:
         note_payload["ratchet_note"] = "degraded_comparison"
         return RatchetDecision(
@@ -86,6 +102,8 @@ def select_baseline_event(
     best_distance: int | None = None
     for event in prior_events:
         if event.status not in RATCHET_COUNTED_STATUSES:
+            continue
+        if event.verdict != "PASS":
             continue
         if allowed_event_types is not None and event.event_type not in allowed_event_types:
             continue

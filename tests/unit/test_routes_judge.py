@@ -114,6 +114,72 @@ def test_get_judge_returns_envelope(tmp_path: Path) -> None:
     assert parsed["notes"] == "good"
 
 
+def test_score_and_judge_routes_keep_deterministic_score_owner(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1")
+    deterministic_score: dict[str, Any] = {
+        "overall": 42.0,
+        "verdict": "FAIL",
+        "hard_gates": {"passed": False, "failed": ["accuracy"]},
+        "dimensions": {
+            "accuracy": {"score": 4.0, "max_score": 10.0},
+            "spec_alignment": {
+                "score": 0.0,
+                "max_score": 0.0,
+                "applicability": "not_applicable",
+            },
+        },
+    }
+    advisory_judge: dict[str, Any] = {
+        "schema": "ahadiff.judge.v1",
+        "model_id": "gpt-5.5",
+        "overall": 95.0,
+        "verdict": "PASS",
+        "advisory": True,
+        "dimensions": {
+            "accuracy": {"score": 9.5, "max_score": 10.0},
+            "spec_alignment": {"score": 10.0, "max_score": 10.0},
+        },
+    }
+    _write_json(run_path / "score.json", deterministic_score)
+    _write_json(run_path / "judge.json", advisory_judge)
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    score_response = client.get("/api/run/run-1/score", headers=AUTH)
+    judge_response = client.get("/api/run/run-1/judge", headers=AUTH)
+
+    assert score_response.status_code == 200
+    score_body = score_response.json()
+    assert score_body["artifact_type"] == "score"
+    assert score_body["run_id"] == "run-1"
+    score_payload = cast("dict[str, Any]", json.loads(cast("str", score_body["content"])))
+    assert score_payload == deterministic_score
+    assert score_payload["verdict"] == "FAIL"
+    assert score_payload["hard_gates"]["passed"] is False
+
+    assert judge_response.status_code == 200
+    judge_body = judge_response.json()
+    assert judge_body["artifact_type"] == "judge"
+    assert judge_body["run_id"] == "run-1"
+    judge_payload = cast("dict[str, Any]", json.loads(cast("str", judge_body["content"])))
+    assert judge_payload == advisory_judge
+    assert judge_payload["verdict"] == "PASS"
+    assert judge_payload["overall"] > score_payload["overall"]
+
+    score_after_judge = client.get("/api/run/run-1/score", headers=AUTH)
+
+    assert score_after_judge.status_code == 200
+    score_after_payload = cast(
+        "dict[str, Any]",
+        json.loads(cast("str", score_after_judge.json()["content"])),
+    )
+    assert score_after_payload["verdict"] == "FAIL"
+    assert score_after_payload == deterministic_score
+
+
 def test_get_judge_404_when_missing(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     initialize_review_db(state_dir / "review.sqlite")

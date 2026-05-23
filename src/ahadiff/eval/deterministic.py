@@ -10,6 +10,7 @@ from ahadiff.safety.injection import protect_untrusted_text
 from ahadiff.safety.redact import redaction_pipeline
 
 _QUIZ_CHOICE_LABELS = ("A", "B", "C", "D")
+_DIFF_COVERAGE_CLAIM_STATUSES = frozenset({"verified", "weak", "not_proven"})
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -380,6 +381,10 @@ def _diff_coverage_score(
     claims: Sequence[ClaimRecord],
     line_maps: Sequence[FileLineMap],
 ) -> tuple[float, str]:
+    coverage_claims = tuple(
+        claim for claim in claims if claim.status in _DIFF_COVERAGE_CLAIM_STATUSES
+    )
+    ignored_claim_count = len(claims) - len(coverage_claims)
     total_files = len(line_maps)
     total_hunks = sum(len(item.hunks) for item in line_maps)
     if total_files == 0:
@@ -397,7 +402,7 @@ def _diff_coverage_score(
         hunk.hunk_id: (file_map, hunk) for file_map in line_maps for hunk in file_map.hunks
     }
     file_id_lookup = {file_map.file_id: file_map for file_map in line_maps}
-    for claim in claims:
+    for claim in coverage_claims:
         for source_hunk in claim.source_hunks:
             candidate_maps: tuple[FileLineMap, ...] = ()
             if source_hunk.hunk_id is not None:
@@ -448,7 +453,8 @@ def _diff_coverage_score(
     combined = 0.6 * file_ratio + 0.4 * hunk_ratio
     reason = (
         "claim anchors cover visible files and weighted hunks from line_map.json "
-        f"(visible_files={total_files}, visible_hunks={total_hunks}, "
+        f"(eligible_claims={len(coverage_claims)}, ignored_claims={ignored_claim_count}, "
+        f"visible_files={total_files}, visible_hunks={total_hunks}, "
         f"covered_files={len(covered_files)}, covered_hunks={len(covered_hunks)}, "
         f"covered_weighted_lines={covered_weighted_lines}, "
         f"total_weighted_lines={total_weighted_lines}, "
@@ -568,9 +574,56 @@ def _hunk_matches_source_hunk(
     end: int,
     side: str,
 ) -> bool:
-    if side in {"new", "either"} and _ranges_overlap(start, end, hunk.new_start, hunk.new_end):
+    old_lines, new_lines = _hunk_line_sides(hunk)
+    if side in {"new", "either"} and _ranges_overlap_any(
+        start,
+        end,
+        _line_number_ranges(new_lines),
+    ):
         return True
-    return side in {"old", "either"} and _ranges_overlap(start, end, hunk.old_start, hunk.old_end)
+    return side in {"old", "either"} and _ranges_overlap_any(
+        start,
+        end,
+        _line_number_ranges(old_lines),
+    )
+
+
+def _hunk_line_sides(hunk: HunkLineMap) -> tuple[set[int], set[int]]:
+    return (
+        {
+            *hunk.deleted_lines,
+            *hunk.context_old_lines,
+        },
+        {
+            *hunk.added_lines,
+            *hunk.context_new_lines,
+        },
+    )
+
+
+def _line_number_ranges(line_numbers: set[int]) -> tuple[tuple[int, int], ...]:
+    if not line_numbers:
+        return ()
+    ranges: list[tuple[int, int]] = []
+    start = previous = min(line_numbers)
+    for line_number in sorted(line_numbers - {start}):
+        if line_number == previous + 1:
+            previous = line_number
+            continue
+        ranges.append((start, previous))
+        start = previous = line_number
+    ranges.append((start, previous))
+    return tuple(ranges)
+
+
+def _ranges_overlap_any(
+    start: int,
+    end: int,
+    ranges: Sequence[tuple[int, int]],
+) -> bool:
+    return any(
+        _ranges_overlap(start, end, other_start, other_end) for other_start, other_end in ranges
+    )
 
 
 def _ranges_overlap(start: int, end: int, other_start: int, other_end: int) -> bool:

@@ -18,12 +18,29 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
+class HardGatePolicy:
+    kind: str
+    ratio: float
+    regime: str
+    basis: Mapping[str, int]
+
+    def as_payload(self) -> dict[str, object]:
+        return {
+            "kind": self.kind,
+            "ratio": round(self.ratio, 2),
+            "regime": self.regime,
+            "basis": dict(self.basis),
+        }
+
+
+@dataclass(frozen=True)
 class HardGateResult:
     name: str
     passed: bool
     detail: str
     score: float | None = None
     threshold: float | None = None
+    policy: HardGatePolicy | None = None
 
     def as_payload(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -34,6 +51,8 @@ class HardGateResult:
             payload["score"] = round(self.score, 2)
         if self.threshold is not None:
             payload["threshold"] = round(self.threshold, 2)
+        if self.policy is not None:
+            payload["policy"] = self.policy.as_payload()
         return payload
 
 
@@ -78,34 +97,58 @@ def evaluate_hard_gates(
     )
     critical_safety_count = _critical_safety_finding_count(safety_findings)
     mitigated_critical_safety_count = _mitigated_critical_safety_finding_count(safety_findings)
+    adaptive_policy = _adaptive_accuracy_evidence_policy(diff_coverage_basis)
+    rejected_quality = _rejected_quality_constraint(claims)
+    accuracy_base_threshold = float(accuracy_dimension.hard_gate or 0.0)
+    evidence_base_threshold = float(evidence_dimension.hard_gate or 0.0)
+    accuracy_threshold = _adaptive_gate_threshold(accuracy_base_threshold, adaptive_policy)
+    evidence_threshold = _adaptive_gate_threshold(evidence_base_threshold, adaptive_policy)
+    accuracy_quality_blocked = _adaptive_quality_blocks_pass(
+        score=accuracy_score,
+        base_threshold=accuracy_base_threshold,
+        adjusted_threshold=accuracy_threshold,
+        rejected_quality=rejected_quality,
+    )
+    evidence_quality_blocked = _adaptive_quality_blocks_pass(
+        score=evidence_score,
+        base_threshold=evidence_base_threshold,
+        adjusted_threshold=evidence_threshold,
+        rejected_quality=rejected_quality,
+    )
     results = (
         HardGateResult(
             name="accuracy",
-            passed=(
-                accuracy_score is not None
-                and accuracy_score >= float(accuracy_dimension.hard_gate or 0.0)
-            ),
-            detail=_threshold_detail(
+            passed=accuracy_score is not None
+            and accuracy_score >= accuracy_threshold
+            and not accuracy_quality_blocked,
+            detail=_adaptive_threshold_detail(
                 "accuracy",
                 score=accuracy_score,
-                threshold=float(accuracy_dimension.hard_gate or 0.0),
+                threshold=accuracy_threshold,
+                policy=adaptive_policy,
+                rejected_quality=rejected_quality,
+                quality_blocked=accuracy_quality_blocked,
             ),
             score=accuracy_score,
-            threshold=accuracy_dimension.hard_gate,
+            threshold=accuracy_threshold,
+            policy=adaptive_policy,
         ),
         HardGateResult(
             name="evidence",
-            passed=(
-                evidence_score is not None
-                and evidence_score >= float(evidence_dimension.hard_gate or 0.0)
-            ),
-            detail=_threshold_detail(
+            passed=evidence_score is not None
+            and evidence_score >= evidence_threshold
+            and not evidence_quality_blocked,
+            detail=_adaptive_threshold_detail(
                 "evidence",
                 score=evidence_score,
-                threshold=float(evidence_dimension.hard_gate or 0.0),
+                threshold=evidence_threshold,
+                policy=adaptive_policy,
+                rejected_quality=rejected_quality,
+                quality_blocked=evidence_quality_blocked,
             ),
             score=evidence_score,
-            threshold=evidence_dimension.hard_gate,
+            threshold=evidence_threshold,
+            policy=adaptive_policy,
         ),
         HardGateResult(
             name="contradicted_claims",
@@ -176,6 +219,32 @@ def _threshold_detail(name: str, *, score: float | None, threshold: float) -> st
     return f"{name} score {score:.2f} < {threshold:.2f}; requires >= {threshold:.2f}"
 
 
+@dataclass(frozen=True)
+class RejectedQualityConstraint:
+    ratio: float
+    blocked: bool
+
+
+def _adaptive_threshold_detail(
+    name: str,
+    *,
+    score: float | None,
+    threshold: float,
+    policy: HardGatePolicy | None,
+    rejected_quality: RejectedQualityConstraint,
+    quality_blocked: bool,
+) -> str:
+    detail = _threshold_detail(name, score=score, threshold=threshold)
+    if policy is not None:
+        detail += f"; adaptive_ratio={policy.ratio:.2f}; regime={policy.regime}"
+    if quality_blocked:
+        detail += (
+            f"; blocked_by_rejected_ratio={rejected_quality.ratio:.2f}; "
+            "unsafe_rejected_claims_exceed_25_percent"
+        )
+    return detail
+
+
 def _minimum_threshold_detail(
     name: str,
     *,
@@ -223,6 +292,80 @@ def _evidence_coverage_threshold_policy(
     return ratio, regime, basis_detail
 
 
+def _adaptive_accuracy_evidence_policy(
+    basis: Mapping[str, int] | None,
+) -> HardGatePolicy | None:
+    if basis is None:
+        return None
+    visible_files = _non_negative_int(basis.get("visible_files"))
+    visible_hunks = _non_negative_int(basis.get("visible_hunks"))
+    visible_changed_lines = _non_negative_int(basis.get("visible_changed_lines"))
+    ratio, regime = _adaptive_accuracy_evidence_ratio(
+        visible_hunks=visible_hunks,
+        visible_changed_lines=visible_changed_lines,
+    )
+    return HardGatePolicy(
+        kind="adaptive_threshold",
+        ratio=ratio,
+        regime=regime,
+        basis={
+            "visible_files": visible_files,
+            "visible_hunks": visible_hunks,
+            "visible_changed_lines": visible_changed_lines,
+        },
+    )
+
+
+def _adaptive_gate_threshold(base_threshold: float, policy: HardGatePolicy | None) -> float:
+    if policy is None:
+        return base_threshold
+    return round(base_threshold * policy.ratio, 2)
+
+
+def _adaptive_quality_blocks_pass(
+    *,
+    score: float | None,
+    base_threshold: float,
+    adjusted_threshold: float,
+    rejected_quality: RejectedQualityConstraint,
+) -> bool:
+    if score is None or not rejected_quality.blocked:
+        return False
+    return adjusted_threshold < base_threshold and adjusted_threshold <= score < base_threshold
+
+
+def _rejected_quality_constraint(claims: Sequence[ClaimRecord]) -> RejectedQualityConstraint:
+    if not claims:
+        return RejectedQualityConstraint(ratio=0.0, blocked=False)
+    rejected_claims = tuple(claim for claim in claims if claim.status == "rejected")
+    rejected_ratio = len(rejected_claims) / len(claims)
+    if rejected_ratio <= 0.25:
+        return RejectedQualityConstraint(ratio=rejected_ratio, blocked=False)
+    unsafe_rejected = any(
+        not _is_safe_phase2_diagnostic_rejection(claim) for claim in rejected_claims
+    )
+    return RejectedQualityConstraint(ratio=rejected_ratio, blocked=unsafe_rejected)
+
+
+def _is_safe_phase2_diagnostic_rejection(_claim: ClaimRecord) -> bool:
+    # ClaimRecord currently has no narrow Phase 2 safe-diagnostic marker.
+    return False
+
+
+def _adaptive_accuracy_evidence_ratio(
+    *,
+    visible_hunks: int,
+    visible_changed_lines: int,
+) -> tuple[float, str]:
+    if visible_hunks <= 20 and visible_changed_lines <= 400:
+        return 1.0, "normal"
+    if visible_hunks <= 80 and visible_changed_lines <= 1200:
+        return 0.95, "medium"
+    if visible_hunks <= 160 and visible_changed_lines <= 3000:
+        return 0.90, "large"
+    return 0.85, "very_large"
+
+
 def _adaptive_evidence_coverage_ratio(
     *,
     visible_hunks: int,
@@ -238,7 +381,7 @@ def _adaptive_evidence_coverage_ratio(
 
 
 def _non_negative_int(value: object) -> int:
-    return value if isinstance(value, int) and value >= 0 else 0
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
 
 
 def _critical_safety_finding_count(findings: Sequence[Mapping[str, object]]) -> int:
@@ -316,4 +459,4 @@ def _critical_safety_finding_detail(
     return f"{unmitigated_count} unmitigated Critical safety finding(s) detected"
 
 
-__all__ = ["HardGateResult", "HardGateSummary", "evaluate_hard_gates"]
+__all__ = ["HardGatePolicy", "HardGateResult", "HardGateSummary", "evaluate_hard_gates"]

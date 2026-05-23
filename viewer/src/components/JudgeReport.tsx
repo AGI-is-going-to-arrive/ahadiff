@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { z } from 'zod';
 import { getRunArtifact } from '../api/runs';
-import { useTranslation, type TranslateFn } from '../i18n/useTranslation';
-import { DIM_I18N_KEYS } from '../utils/score-dimensions';
+import { useTranslation, type TranslateFn, type MessageKey } from '../i18n/useTranslation';
+import { DIMENSION_ORDER, DIM_I18N_KEYS } from '../utils/score-dimensions';
 import './JudgeReport.css';
 
 function translateDimName(t: TranslateFn, dim: string): string {
@@ -11,25 +11,51 @@ function translateDimName(t: TranslateFn, dim: string): string {
   return dim.replaceAll('_', ' ');
 }
 
-const judgeDimensionSchema = z.record(z.string(), z.object({
-  reason: z.string().optional(),
-  score: z.number().optional(),
-}).passthrough());
+const judgeDimensionSchema = z.record(
+  z.string(),
+  z
+    .object({
+      reason: z.string(),
+      score: z.number().finite().nonnegative(),
+      max_score: z.number().finite().nonnegative(),
+    })
+    .strict()
+    .refine((dimension) => dimension.score <= dimension.max_score, {
+      message: 'score must be <= max_score',
+      path: ['score'],
+    }),
+);
 
-const judgeReportSchema = z.object({
-  model_id: z.string().optional(),
-  overall: z.number().finite().optional(),
-  notes: z.union([z.string(), z.array(z.string())]).optional(),
-  dimensions: judgeDimensionSchema.optional(),
-}).passthrough();
+export const judgeReportSchema = z
+  .object({
+    artifact: z.literal('llm_judge'),
+    schema_version: z.number().int().positive(),
+    run_id: z.string().min(1),
+    source_ref: z.string(),
+    source_kind: z.string().min(1),
+    model_id: z.string().min(1),
+    provider_class: z.string().min(1),
+    prompt_fingerprint: z.string().min(1),
+    eval_bundle_version: z.string().min(1),
+    overall: z.number().finite().nonnegative(),
+    dimensions: judgeDimensionSchema,
+    usage: z
+      .object({
+        input_tokens: z.number().int().nonnegative(),
+        output_tokens: z.number().int().nonnegative(),
+      })
+      .strict(),
+    finish_reason: z.string().nullable(),
+    request_id: z.string().nullable(),
+    notes: z.array(z.string()),
+  })
+  .strict();
 
 interface JudgeReportProps {
   runId: string;
 }
 
-interface JudgeData {
-  [key: string]: unknown;
-}
+type JudgeData = z.infer<typeof judgeReportSchema>;
 
 export default function JudgeReport({ runId }: JudgeReportProps) {
   const { t } = useTranslation();
@@ -47,7 +73,10 @@ export default function JudgeReport({ runId }: JudgeReportProps) {
       const envelope = await getRunArtifact(runId, 'judge');
       const raw = JSON.parse(envelope.content);
       const result = judgeReportSchema.safeParse(raw);
-      setData(result.success ? result.data as JudgeData : raw as JudgeData);
+      if (!result.success) {
+        throw new Error('judge artifact schema validation failed');
+      }
+      setData(result.data);
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'status' in err && (err as { status: number }).status === 404) {
         setNotFound(true);
@@ -91,20 +120,20 @@ export default function JudgeReport({ runId }: JudgeReportProps) {
     );
   }
 
-  const modelId = typeof data.model_id === 'string' ? data.model_id : null;
-  const overall = typeof data.overall === 'number' && Number.isFinite(data.overall)
-    ? data.overall
-    : null;
+  const modelId = data.model_id;
+  const overall = data.overall;
   const rawNotes = data.notes;
-  const overallNotes =
-    typeof rawNotes === 'string'
-      ? [rawNotes]
-      : Array.isArray(rawNotes) && rawNotes.every((note) => typeof note === 'string')
-        ? rawNotes
-        : [];
-  const rawDims = data.dimensions;
-  const dimsParsed = judgeDimensionSchema.safeParse(rawDims);
-  const dimensions = dimsParsed.success ? dimsParsed.data : undefined;
+  const overallNotes = rawNotes;
+  const dimensions = data.dimensions;
+
+  const orderedDims = Object.keys(dimensions).sort((a, b) => {
+    const idxA = DIMENSION_ORDER.indexOf(a as typeof DIMENSION_ORDER[number]);
+    const idxB = DIMENSION_ORDER.indexOf(b as typeof DIMENSION_ORDER[number]);
+    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+    if (idxA !== -1) return -1;
+    if (idxB !== -1) return 1;
+    return a.localeCompare(b);
+  });
 
   return (
     <div className="judge-report">
@@ -115,29 +144,28 @@ export default function JudgeReport({ runId }: JudgeReportProps) {
         </div>
       )}
 
-      {overall !== null && (
-        <div className="judge-report__summary">
-          <span className="judge-report__summary-label">{t('RunDetail.judge_score')}</span>
-          <span className="judge-report__summary-value">{overall.toFixed(1)}</span>
-          <p className="judge-report__summary-note">{t('RunDetail.judge_advisory_note')}</p>
-        </div>
-      )}
+      <div className="judge-report__summary">
+        <span className="judge-report__summary-label">{t('RunDetail.judge_score')}</span>
+        <span className="judge-report__summary-value">{overall.toFixed(1)}</span>
+        <p className="judge-report__summary-note">{t('RunDetail.judge_advisory_note')}</p>
+      </div>
 
-      {dimensions && Object.keys(dimensions).length > 0 && (
+      {Object.keys(dimensions).length > 0 && (
         <dl className="judge-report__feedback">
-          {Object.entries(dimensions).map(([dim, val]) => {
-            const score = typeof val === 'object' && typeof val?.score === 'number'
-              ? val.score : null;
+          {orderedDims.map((dim) => {
+            const val = dimensions[dim];
+            const score = val.score;
+            const maxScore = val.max_score;
             return (
               <div key={dim} className="judge-report__feedback-row">
                 <dt className="judge-report__feedback-dim">
                   {translateDimName(t, dim)}
-                  {score !== null && (
-                    <span className="judge-report__feedback-score">{score.toFixed(1)}</span>
-                  )}
+                  <span className={`judge-report__feedback-score ${maxScore === 0 ? 'judge-report__feedback-score--na' : ''}`}>
+                    {maxScore === 0 ? t('Lesson.score_dim_na' as MessageKey) : score.toFixed(1)}
+                  </span>
                 </dt>
                 <dd className="judge-report__feedback-reason">
-                  {typeof val === 'object' && val?.reason ? String(val.reason) : '—'}
+                  {val.reason}
                 </dd>
               </div>
             );
@@ -147,7 +175,7 @@ export default function JudgeReport({ runId }: JudgeReportProps) {
 
       {overallNotes.length > 0 && (
         <div className="judge-report__notes">
-          <h3 className="judge-report__notes-title">{t('RunDetail.notes')}</h3>
+          <h2 className="judge-report__notes-title">{t('RunDetail.notes')}</h2>
           <ul className="judge-report__notes-list">
             {overallNotes.map((note, index) => (
               <li key={index} className="judge-report__notes-text">

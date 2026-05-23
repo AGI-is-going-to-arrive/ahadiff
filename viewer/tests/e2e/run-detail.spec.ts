@@ -147,6 +147,7 @@ test.describe('Run Detail page', () => {
     await expect(modelValue).toContainText('gpt-5.5');
     await expect(page.locator('.judge-report__summary-value')).toContainText('91.5');
     await expect(page.locator('.judge-report__summary-note')).toContainText('Semantic review result');
+    await expect(page.locator('.judge-report__feedback-score--na')).toContainText('N/A');
   });
 
   test('shows artifact links in artifacts tab', async ({ page }) => {

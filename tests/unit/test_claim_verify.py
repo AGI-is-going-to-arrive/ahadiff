@@ -28,6 +28,26 @@ def _build_context(
     )
 
 
+def _numbered_text(prefix: str, count: int) -> str:
+    return "".join(f"{prefix}_{line_number}\n" for line_number in range(1, count + 1))
+
+
+def _truncated_context_patch(
+    *,
+    parsed_line_count: int = 120,
+    header_count: int = 121,
+) -> str:
+    body = "".join(f" line_{line_number}\n" for line_number in range(1, parsed_line_count + 1))
+    return (
+        "diff --git a/src/app.py b/src/app.py\n"
+        "--- a/src/app.py\n"
+        "+++ b/src/app.py\n"
+        f"@@ -1,{header_count} +1,{header_count} @@\n"
+        f"{body}"
+        "[truncated]\n"
+    )
+
+
 @pytest.mark.parametrize(("start", "end"), [(0, 1), (-5, -1), (1, 0)])
 def test_source_hunk_rejects_non_positive_line_ranges(start: int, end: int) -> None:
     with pytest.raises(ValidationError, match="source hunk start and end must be positive"):
@@ -290,6 +310,339 @@ diff --git a/src/app.py b/src/app.py
     assert len(source_hunk.hunk_hash) == 12
 
 
+def test_verify_claim_normalizes_multi_hunk_same_file_same_side_range() -> None:
+    patch = """\
+diff --git a/src/app.py b/src/app.py
+--- a/src/app.py
++++ b/src/app.py
+@@ -1 +1 @@
+-old_first = 1
++new_first = 1
+@@ -2 +2 @@
+-old_second = 1
++new_second = 1
+"""
+    line_maps, symbols = _build_context(
+        patch,
+        before_text_by_path={"src/app.py": "old_first = 1\nold_second = 1\n"},
+        after_text_by_path={"src/app.py": "new_first = 1\nnew_second = 1\n"},
+    )
+    claim = ClaimCandidate(
+        claim_id="c-multi-hunk",
+        run_id="run-1",
+        text="updates both app constants",
+        source_hunks=[SourceHunk(file="src/app.py", start=1, end=2, side="new")],
+    )
+
+    result = verify_claim_candidate(
+        claim,
+        line_maps=line_maps,
+        symbols=symbols,
+        before_text_by_path={"src/app.py": "old_first = 1\nold_second = 1\n"},
+        after_text_by_path={"src/app.py": "new_first = 1\nnew_second = 1\n"},
+    )
+
+    assert result.record.status == "weak"
+    assert result.record.reason_code is None
+    assert [(hunk.start, hunk.end, hunk.side) for hunk in result.record.source_hunks] == [
+        (1, 1, "new"),
+        (2, 2, "new"),
+    ]
+    assert len(result.matched_hunk_ids) == 2
+    assert all(hunk.hunk_id is not None for hunk in result.record.source_hunks)
+    assert all(hunk.hunk_hash is not None for hunk in result.record.source_hunks)
+
+
+def test_verify_claim_normalizes_multi_hunk_range_and_drops_context_gap() -> None:
+    patch = """\
+diff --git a/src/app.py b/src/app.py
+--- a/src/app.py
++++ b/src/app.py
+@@ -1,2 +1,2 @@
+-old_first = 1
++new_first = 1
+ keep_first()
+@@ -8,2 +8,2 @@
+-old_second = 1
++new_second = 1
+ keep_second()
+"""
+    before_text = (
+        "old_first = 1\n"
+        "keep_first()\n"
+        "gap_3()\n"
+        "gap_4()\n"
+        "gap_5()\n"
+        "gap_6()\n"
+        "gap_7()\n"
+        "old_second = 1\n"
+        "keep_second()\n"
+    )
+    after_text = (
+        "new_first = 1\n"
+        "keep_first()\n"
+        "gap_3()\n"
+        "gap_4()\n"
+        "gap_5()\n"
+        "gap_6()\n"
+        "gap_7()\n"
+        "new_second = 1\n"
+        "keep_second()\n"
+    )
+    line_maps, symbols = _build_context(
+        patch,
+        before_text_by_path={"src/app.py": before_text},
+        after_text_by_path={"src/app.py": after_text},
+    )
+    claim = ClaimCandidate(
+        claim_id="c-multi-hunk-gap",
+        run_id="run-1",
+        text="updates both app regions",
+        source_hunks=[SourceHunk(file="src/app.py", start=1, end=9, side="new")],
+    )
+
+    result = verify_claim_candidate(
+        claim,
+        line_maps=line_maps,
+        symbols=symbols,
+        before_text_by_path={"src/app.py": before_text},
+        after_text_by_path={"src/app.py": after_text},
+    )
+
+    assert result.record.status == "weak"
+    assert [(hunk.start, hunk.end, hunk.side) for hunk in result.record.source_hunks] == [
+        (1, 2, "new"),
+        (8, 9, "new"),
+    ]
+    assert len(result.matched_hunk_ids) == 2
+
+
+def test_verify_claim_rejects_truncated_hunk_uncaptured_lines() -> None:
+    patch = _truncated_context_patch()
+    file_text = _numbered_text("line", 121)
+    line_maps, symbols = _build_context(
+        patch,
+        before_text_by_path={"src/app.py": file_text},
+        after_text_by_path={"src/app.py": file_text},
+    )
+    claim = ClaimCandidate(
+        claim_id="c-truncated-uncaptured",
+        run_id="run-1",
+        text="claims an uncaptured line from a truncated hunk",
+        source_hunks=[SourceHunk(file="src/app.py", start=121, end=121, side="new")],
+    )
+
+    result = verify_claim_candidate(
+        claim,
+        line_maps=line_maps,
+        symbols=symbols,
+        before_text_by_path={"src/app.py": file_text},
+        after_text_by_path={"src/app.py": file_text},
+    )
+
+    assert result.record.status == "rejected"
+    assert result.record.reason_code == "line_outside_hunk"
+    assert result.matched_hunk_ids == []
+    assert all(
+        hunk.hunk_id is None and hunk.hunk_hash is None for hunk in result.record.source_hunks
+    )
+
+
+def test_verify_claim_rejects_truncated_hunk_overlap_with_uncaptured_lines() -> None:
+    patch = _truncated_context_patch()
+    file_text = _numbered_text("line", 121)
+    line_maps, symbols = _build_context(
+        patch,
+        before_text_by_path={"src/app.py": file_text},
+        after_text_by_path={"src/app.py": file_text},
+    )
+    claim = ClaimCandidate(
+        claim_id="c-truncated-overlap",
+        run_id="run-1",
+        text="claims a range that overlaps captured and uncaptured lines",
+        source_hunks=[SourceHunk(file="src/app.py", start=120, end=121, side="new")],
+    )
+
+    result = verify_claim_candidate(
+        claim,
+        line_maps=line_maps,
+        symbols=symbols,
+        before_text_by_path={"src/app.py": file_text},
+        after_text_by_path={"src/app.py": file_text},
+    )
+
+    assert result.record.status == "rejected"
+    assert result.record.reason_code == "line_outside_hunk"
+    assert result.matched_hunk_ids == []
+    assert all(
+        hunk.hunk_id is None and hunk.hunk_hash is None for hunk in result.record.source_hunks
+    )
+
+
+def test_verify_claim_accepts_truncated_hunk_captured_lines() -> None:
+    patch = _truncated_context_patch()
+    file_text = _numbered_text("line", 121)
+    line_maps, symbols = _build_context(
+        patch,
+        before_text_by_path={"src/app.py": file_text},
+        after_text_by_path={"src/app.py": file_text},
+    )
+    claim = ClaimCandidate(
+        claim_id="c-truncated-captured",
+        run_id="run-1",
+        text="claims captured lines from a truncated hunk",
+        source_hunks=[SourceHunk(file="src/app.py", start=119, end=120, side="new")],
+    )
+
+    result = verify_claim_candidate(
+        claim,
+        line_maps=line_maps,
+        symbols=symbols,
+        before_text_by_path={"src/app.py": file_text},
+        after_text_by_path={"src/app.py": file_text},
+    )
+
+    assert result.record.status == "weak"
+    assert [(hunk.start, hunk.end, hunk.side) for hunk in result.record.source_hunks] == [
+        (119, 120, "new")
+    ]
+    assert result.record.source_hunks[0].hunk_id is not None
+    assert result.record.source_hunks[0].hunk_hash is not None
+
+
+@pytest.mark.parametrize(
+    ("line_number", "expected_status"),
+    [
+        (119, "weak"),
+        (120, "weak"),
+        (121, "rejected"),
+    ],
+)
+def test_verify_claim_respects_truncated_hunk_parsed_upper_boundary(
+    line_number: int,
+    expected_status: str,
+) -> None:
+    patch = _truncated_context_patch()
+    file_text = _numbered_text("line", 121)
+    line_maps, symbols = _build_context(
+        patch,
+        before_text_by_path={"src/app.py": file_text},
+        after_text_by_path={"src/app.py": file_text},
+    )
+    claim = ClaimCandidate(
+        claim_id=f"c-truncated-boundary-{line_number}",
+        run_id="run-1",
+        text=f"claims boundary line {line_number}",
+        source_hunks=[
+            SourceHunk(file="src/app.py", start=line_number, end=line_number, side="new")
+        ],
+    )
+
+    result = verify_claim_candidate(
+        claim,
+        line_maps=line_maps,
+        symbols=symbols,
+        before_text_by_path={"src/app.py": file_text},
+        after_text_by_path={"src/app.py": file_text},
+    )
+
+    assert result.record.status == expected_status
+    if expected_status == "weak":
+        assert [(hunk.start, hunk.end, hunk.side) for hunk in result.record.source_hunks] == [
+            (line_number, line_number, "new")
+        ]
+        assert result.record.source_hunks[0].hunk_id is not None
+        assert result.record.source_hunks[0].hunk_hash is not None
+    else:
+        assert result.record.reason_code == "line_outside_hunk"
+        assert result.matched_hunk_ids == []
+        assert all(
+            hunk.hunk_id is None and hunk.hunk_hash is None for hunk in result.record.source_hunks
+        )
+
+
+def test_verify_claim_rejects_old_side_when_truncated_hunk_only_parsed_new_lines() -> None:
+    patch = """\
+diff --git a/src/app.py b/src/app.py
+--- a/src/app.py
++++ b/src/app.py
+@@ -1,3 +1,3 @@
++new_1
++new_2
++new_3
+[truncated]
+"""
+    before_text = _numbered_text("old", 3)
+    after_text = _numbered_text("new", 3)
+    line_maps, symbols = _build_context(
+        patch,
+        before_text_by_path={"src/app.py": before_text},
+        after_text_by_path={"src/app.py": after_text},
+    )
+    claim = ClaimCandidate(
+        claim_id="c-side-mismatch-old",
+        run_id="run-1",
+        text="claims old-side evidence from a new-only truncated body",
+        source_hunks=[SourceHunk(file="src/app.py", start=2, end=2, side="old")],
+    )
+
+    result = verify_claim_candidate(
+        claim,
+        line_maps=line_maps,
+        symbols=symbols,
+        before_text_by_path={"src/app.py": before_text},
+        after_text_by_path={"src/app.py": after_text},
+    )
+
+    assert result.record.status == "rejected"
+    assert result.record.reason_code == "line_outside_hunk"
+    assert result.matched_hunk_ids == []
+    assert all(
+        hunk.hunk_id is None and hunk.hunk_hash is None for hunk in result.record.source_hunks
+    )
+
+
+def test_verify_claim_rejects_new_side_when_truncated_hunk_only_parsed_old_lines() -> None:
+    patch = """\
+diff --git a/src/app.py b/src/app.py
+--- a/src/app.py
++++ b/src/app.py
+@@ -1,3 +1,3 @@
+-old_1
+-old_2
+-old_3
+[truncated]
+"""
+    before_text = _numbered_text("old", 3)
+    after_text = _numbered_text("new", 3)
+    line_maps, symbols = _build_context(
+        patch,
+        before_text_by_path={"src/app.py": before_text},
+        after_text_by_path={"src/app.py": after_text},
+    )
+    claim = ClaimCandidate(
+        claim_id="c-side-mismatch-new",
+        run_id="run-1",
+        text="claims new-side evidence from an old-only truncated body",
+        source_hunks=[SourceHunk(file="src/app.py", start=2, end=2, side="new")],
+    )
+
+    result = verify_claim_candidate(
+        claim,
+        line_maps=line_maps,
+        symbols=symbols,
+        before_text_by_path={"src/app.py": before_text},
+        after_text_by_path={"src/app.py": after_text},
+    )
+
+    assert result.record.status == "rejected"
+    assert result.record.reason_code == "line_outside_hunk"
+    assert result.matched_hunk_ids == []
+    assert all(
+        hunk.hunk_id is None and hunk.hunk_hash is None for hunk in result.record.source_hunks
+    )
+
+
 def test_verify_claim_rejects_ambiguous_old_path_alias_collision() -> None:
     patch = (
         "diff --git a/src/a.py b/src/b.py\n"
@@ -424,6 +777,84 @@ diff --git a/src/app.py b/src/app.py
     assert result.record.status == "rejected"
     assert result.record.reason_code == "evidence_missing"
     assert result.record.extractor == "section_header"
+
+
+def test_verify_claim_rejects_multi_hunk_range_above_audit_limit() -> None:
+    patch = """\
+diff --git a/src/app.py b/src/app.py
+--- a/src/app.py
++++ b/src/app.py
+@@ -1 +1 @@
+-old_first = 1
++new_first = 1
+@@ -130 +130 @@
+-old_second = 1
++new_second = 1
+"""
+    before_lines = [
+        "old_first = 1",
+        *(f"gap_{index}()" for index in range(2, 130)),
+        "old_second = 1",
+    ]
+    after_lines = [
+        "new_first = 1",
+        *(f"gap_{index}()" for index in range(2, 130)),
+        "new_second = 1",
+    ]
+    before_text = "\n".join(before_lines) + "\n"
+    after_text = "\n".join(after_lines) + "\n"
+    line_maps, symbols = _build_context(
+        patch,
+        before_text_by_path={"src/app.py": before_text},
+        after_text_by_path={"src/app.py": after_text},
+    )
+    claim = ClaimCandidate(
+        claim_id="c-too-wide",
+        run_id="run-1",
+        text="claims a source range too wide for audit",
+        source_hunks=[SourceHunk(file="src/app.py", start=1, end=121, side="new")],
+    )
+
+    result = verify_claim_candidate(
+        claim,
+        line_maps=line_maps,
+        symbols=symbols,
+        before_text_by_path={"src/app.py": before_text},
+        after_text_by_path={"src/app.py": after_text},
+    )
+
+    assert result.record.status == "rejected"
+    assert result.record.reason_code == "evidence_missing"
+
+
+def test_verify_claim_rejects_mode_only_file_without_diff_hunks() -> None:
+    patch = """\
+diff --git a/script.sh b/script.sh
+old mode 100644
+new mode 100755
+"""
+    line_maps, symbols = _build_context(
+        patch,
+        before_text_by_path={"script.sh": "#!/bin/sh\n"},
+        after_text_by_path={"script.sh": "#!/bin/sh\n"},
+    )
+    claim = ClaimCandidate(
+        claim_id="c-mode-only",
+        run_id="run-1",
+        text="makes script executable",
+        source_hunks=[SourceHunk(file="script.sh", start=1, end=1, side="new")],
+    )
+
+    result = verify_claim_candidate(
+        claim,
+        line_maps=line_maps,
+        symbols=symbols,
+        before_text_by_path={"script.sh": "#!/bin/sh\n"},
+        after_text_by_path={"script.sh": "#!/bin/sh\n"},
+    )
+
+    assert result.record.status == "rejected"
+    assert result.record.reason_code == "line_outside_hunk"
 
 
 def test_verify_claim_does_not_bind_ambiguous_fuzzy_basename() -> None:

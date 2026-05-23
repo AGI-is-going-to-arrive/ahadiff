@@ -120,11 +120,23 @@ export interface ScoreDimension {
   reason: string;
 }
 
+export interface ScoreHardGatePolicy {
+  kind: 'adaptive_threshold';
+  ratio: number;
+  regime: string;
+  basis: {
+    visible_files: number;
+    visible_hunks: number;
+    visible_changed_lines: number;
+  };
+}
+
 export interface ScoreHardGate {
   passed: boolean;
   detail: string;
   score?: number;
   threshold?: number;
+  policy?: ScoreHardGatePolicy;
 }
 
 export interface ScorePayload {
@@ -590,6 +602,8 @@ export interface SpecAlignmentArtifact {
   schema_version: number;
   applicability: string;
   status: string;
+  eval_bundle_version?: string;
+  rubric_version?: string;
   spec_source?: {
     path?: string;
     ref?: string;

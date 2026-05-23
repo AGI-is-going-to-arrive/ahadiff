@@ -126,6 +126,10 @@
   transition: width var(--dur-base) var(--ease-out);
 }
 
+.score-breakdown__dim-fill--na {
+  background: var(--border);
+}
+
 /* ---------- Hard gates ---------- */
 .score-breakdown__gates {
   margin-top: var(--sp-5);
@@ -146,10 +150,6 @@
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: var(--sp-2);
   margin-bottom: var(--sp-3);
-}
-
-.score-breakdown__gate-group--pass {
-  opacity: 0.75;
 }
 
 .score-breakdown__gate {
@@ -179,8 +179,15 @@
   flex-shrink: 0;
 }
 
+.score-breakdown__gate-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .score-breakdown__gate-name {
   font-weight: 500;
+  word-break: break-word;
 }
 
 .score-breakdown__gate-detail {

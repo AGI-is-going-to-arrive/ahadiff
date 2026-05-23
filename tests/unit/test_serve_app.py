@@ -1501,12 +1501,22 @@ def test_ratchet_history_returns_restricted_note_json(tmp_path: Path) -> None:
             status="keep",
             note_json=json.dumps(
                 {
+                    "baseline_overall": 70.0,
+                    "failed_gates": [
+                        "accuracy",
+                        {"drop": "nested"},
+                        "evidence",
+                    ],
                     "phase25": True,
                     "phase25_note": "PHASE25: consecutive_discard_count=2",
+                    "ratchet_reason": "verdict_or_hard_gate_failed",
                     "trigger_reason": "consecutive_discard_count=2",
+                    "verdict": "FAIL",
+                    "api_key": "sk-test-secret",
                     "worktree_path": "/tmp/ahadiff-sensitive-worktree",
                     "target_prompt": "internal prompt text",
                     "stash_ref": "commit-sha",
+                    "unsafe_nested": {"token": "secret"},
                 },
                 sort_keys=True,
             ),
@@ -1520,9 +1530,13 @@ def test_ratchet_history_returns_restricted_note_json(tmp_path: Path) -> None:
     detail_note = json.loads(detail["note_json"])
 
     assert note == {
+        "baseline_overall": 70.0,
+        "failed_gates": ["accuracy", "evidence"],
         "phase25": True,
         "phase25_note": "PHASE25: consecutive_discard_count=2",
+        "ratchet_reason": "verdict_or_hard_gate_failed",
         "trigger_reason": "consecutive_discard_count=2",
+        "verdict": "FAIL",
     }
     assert detail_note == note
 

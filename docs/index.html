@@ -796,7 +796,7 @@ img { max-width: 100%; display: block; }
         <div class="step-num">4</div>
         <div class="step-cmd">ratchet</div>
         <h3 data-i18n="how.s4.title">棘轮质量追踪</h3>
-        <p data-i18n="how.s4.desc">8 维评估 100 分制。Git ratchet 确保只进不退，Phase 2.5 突破瓶颈。</p>
+        <p data-i18n="how.s4.desc">8 维评估 100 分制。Git ratchet 只接受通过确定性门禁且不低于基线的 run，Phase 2.5 突破瓶颈。</p>
       </div>
     </div>
   </div>
@@ -920,7 +920,7 @@ img { max-width: 100%; display: block; }
         <div class="arch-num">5</div>
         <div class="arch-layer-name">Ratchet</div>
         <div class="arch-layer-sub" data-i18n="arch.l5">evaluation bundle (immutable) + review.sqlite</div>
-        <div class="arch-tooltip" data-i18n="arch.l5.tip">Git ratchet: score can only go up</div>
+        <div class="arch-tooltip" data-i18n="arch.l5.tip">Git ratchet: accepted runs must pass deterministic gates</div>
       </div>
       <div class="arch-layer al-6 reveal reveal-delay-3">
         <div class="arch-num">6</div>
@@ -1175,8 +1175,8 @@ const T = {
   },
   "how.s4.title": { zh: "棘轮质量追踪", en: "Ratchet Quality Tracking" },
   "how.s4.desc": {
-    zh: "8 维评估 100 分制。Git ratchet 确保只进不退，Phase 2.5 突破瓶颈。",
-    en: "8-dimension rubric, 100-point scale. Git ratchet ensures no regression. Phase 2.5 breaks through plateaus."
+    zh: "8 维评估 100 分制。Git ratchet 只接受通过确定性门禁且不低于基线的 run，Phase 2.5 突破瓶颈。",
+    en: "8-dimension rubric, 100-point scale. Git ratchet only accepts runs that pass deterministic gates and do not fall below the baseline. Phase 2.5 breaks through plateaus."
   },
   "feat.eyebrow": { zh: "核心特性", en: "FEATURES" },
   "feat.title": { zh: "每个细节都为学习设计", en: "Every Detail Designed for Learning" },
@@ -1241,7 +1241,7 @@ const T = {
   "arch.l4": { zh: "claims.jsonl + 评分 + judge 产物", en: "claims.jsonl + score + judge artifacts" },
   "arch.l4.tip": { zh: "5 态 claims: verified / weak / not_proven / contradicted / rejected", en: "5-state claims: verified / weak / not_proven / contradicted / rejected" },
   "arch.l5": { zh: "evaluation bundle (不可变) + review.sqlite", en: "evaluation bundle (immutable) + review.sqlite" },
-  "arch.l5.tip": { zh: "Git 棘轮：分数只升不降", en: "Git ratchet: score can only go up" },
+  "arch.l5.tip": { zh: "Git 棘轮：必须通过确定性门禁才会被接受", en: "Git ratchet: accepted runs must pass deterministic gates" },
   "arch.l6": { zh: "测验 + SRS 复习 + concepts.jsonl", en: "quiz + SRS review + concepts.jsonl" },
   "arch.l6.tip": { zh: "FSRS-6 间隔重复 + 概念图谱", en: "FSRS-6 spaced repetition + concept graph" },
   "arch.l7": { zh: "React SPA via ahadiff serve", en: "React SPA via ahadiff serve" },

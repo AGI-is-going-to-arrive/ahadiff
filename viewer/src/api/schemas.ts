@@ -148,6 +148,21 @@ export const scoreHardGateSchema = z
     detail: z.string(),
     score: z.number().finite().nonnegative().optional(),
     threshold: z.number().finite().nonnegative().optional(),
+    policy: z
+      .object({
+        kind: z.literal('adaptive_threshold'),
+        ratio: z.number().finite().positive(),
+        regime: z.string().min(1),
+        basis: z
+          .object({
+            visible_files: z.number().int().nonnegative(),
+            visible_hunks: z.number().int().nonnegative(),
+            visible_changed_lines: z.number().int().nonnegative(),
+          })
+          .strict(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -266,6 +281,8 @@ export const specAlignmentArtifactSchema = z
     schema_version: z.number().int().positive(),
     applicability: z.string(),
     status: z.string(),
+    eval_bundle_version: z.string().min(1).optional(),
+    rubric_version: z.string().min(1).optional(),
     spec_source: z
       .object({
         path: z.string().optional(),

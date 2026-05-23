@@ -271,6 +271,36 @@ def _line_maps() -> tuple[FileLineMap, ...]:
     return build_line_map(parse_unified_diff(_patch_text()))
 
 
+def _multi_hunk_patch_text() -> str:
+    return """\
+diff --git a/src/app.py b/src/app.py
+--- a/src/app.py
++++ b/src/app.py
+@@ -1,2 +1,2 @@
+-old_first = 1
++new_first = 1
+ keep_first()
+@@ -8,2 +8,2 @@
+-old_second = 1
++new_second = 1
+ keep_second()
+"""
+
+
+def _multi_hunk_after_text() -> str:
+    return (
+        "new_first = 1\n"
+        "keep_first()\n"
+        "gap_3()\n"
+        "gap_4()\n"
+        "gap_5()\n"
+        "gap_6()\n"
+        "gap_7()\n"
+        "new_second = 1\n"
+        "keep_second()\n"
+    )
+
+
 def _claim_payload(**overrides: object) -> dict[str, object]:
     payload: dict[str, object] = {
         "claim_id": "claim-1",
@@ -357,6 +387,459 @@ diff --git "a/src/é.py" "b/src/é.py"
     assert scored.score_lookup()["diff_coverage"] > 0.0
     with pytest.raises(ValidationError, match="Field required"):
         ClaimRecord.model_validate({"claim_id": "broken", "run_id": "run-1", "status": "verified"})
+
+
+def test_gate3_empty_claims_keep_deterministic_accuracy_reason() -> None:
+    scored = build_deterministic_scores(
+        rubric=load_rubric(),
+        metadata={"learnability": {"score": 0.5}},
+        patch_text=_patch_text(),
+        claims=(),
+        line_maps=_line_maps(),
+        lesson_artifacts={},
+        quiz_entries=(),
+    )
+    dimensions = {item.name: item for item in scored.dimensions}
+
+    assert dimensions["accuracy"].score == 0.0
+    assert dimensions["accuracy"].reason == "no verified claims artifact"
+    assert dimensions["evidence"].score == 0.0
+    assert dimensions["evidence"].reason == "no verified claims artifact"
+
+
+def test_gate3_rejected_claims_remain_scoreable_accuracy_and_evidence_penalties() -> None:
+    verified_claim = ClaimRecord(
+        claim_id="claim-verified",
+        run_id="run-1",
+        text="updates the value",
+        status="verified",
+        confidence="high",
+        source_hunks=[SourceHunk(file="src/app.py", start=1, end=1, side="new")],
+    )
+    rejected_claims = (
+        ClaimRecord(
+            claim_id="claim-evidence-missing",
+            run_id="run-1",
+            text="claims ambiguous evidence",
+            status="rejected",
+            reason_code="evidence_missing",
+            confidence="low",
+            source_hunks=[SourceHunk(file="src/app.py", start=1, end=1, side="new")],
+        ),
+        ClaimRecord(
+            claim_id="claim-hunk-mismatch",
+            run_id="run-1",
+            text="claims the wrong hunk id",
+            status="rejected",
+            reason_code="hunk_id_mismatch",
+            confidence="low",
+            source_hunks=[SourceHunk(file="src/app.py", start=1, end=1, side="new")],
+        ),
+    )
+    rubric = load_rubric()
+    baseline = build_deterministic_scores(
+        rubric=rubric,
+        metadata={"learnability": {"score": 1.0}},
+        patch_text=_patch_text(),
+        claims=(verified_claim,),
+        line_maps=_line_maps(),
+        lesson_artifacts={"compact": "short"},
+        quiz_entries=(),
+    ).score_lookup()
+    penalized = build_deterministic_scores(
+        rubric=rubric,
+        metadata={"learnability": {"score": 1.0}},
+        patch_text=_patch_text(),
+        claims=(verified_claim, *rejected_claims),
+        line_maps=_line_maps(),
+        lesson_artifacts={"compact": "short"},
+        quiz_entries=(),
+    ).score_lookup()
+
+    assert penalized["accuracy"] < baseline["accuracy"]
+    assert penalized["evidence"] < baseline["evidence"]
+
+
+def test_gate3_line_outside_hunk_rejections_remain_scoreable_penalties() -> None:
+    weak_claim = ClaimRecord(
+        claim_id="claim-weak",
+        run_id="run-1",
+        text="updates the value",
+        status="weak",
+        confidence="medium",
+        source_hunks=[SourceHunk(file="src/app.py", start=1, end=1, side="new")],
+    )
+    line_outside_claims = (
+        ClaimRecord(
+            claim_id="claim-mode-only",
+            run_id="run-1",
+            text="mode-only claim cannot bind to a diff hunk",
+            status="rejected",
+            reason_code="line_outside_hunk",
+            confidence="low",
+            source_hunks=[SourceHunk(file="script.sh", start=1, end=1, side="new")],
+        ),
+        ClaimRecord(
+            claim_id="claim-side-mismatch",
+            run_id="run-1",
+            text="side mismatch claim cannot bind to parsed lines",
+            status="rejected",
+            reason_code="line_outside_hunk",
+            confidence="low",
+            source_hunks=[SourceHunk(file="src/app.py", start=1, end=1, side="old")],
+        ),
+    )
+    rubric = load_rubric()
+    baseline = build_deterministic_scores(
+        rubric=rubric,
+        metadata={"learnability": {"score": 1.0}},
+        patch_text=_patch_text(),
+        claims=(weak_claim,),
+        line_maps=_line_maps(),
+        lesson_artifacts={"compact": "short"},
+        quiz_entries=(),
+    ).score_lookup()
+    penalized = build_deterministic_scores(
+        rubric=rubric,
+        metadata={"learnability": {"score": 1.0}},
+        patch_text=_patch_text(),
+        claims=(weak_claim, *line_outside_claims),
+        line_maps=_line_maps(),
+        lesson_artifacts={"compact": "short"},
+        quiz_entries=(),
+    ).score_lookup()
+
+    assert penalized["accuracy"] < baseline["accuracy"]
+    assert penalized["evidence"] < baseline["evidence"]
+
+
+def test_gate3_current_failed_run_shape_stays_below_deterministic_hard_gates() -> None:
+    def source_hunks(start: int, count: int) -> list[SourceHunk]:
+        return [
+            SourceHunk(file="src/app.py", start=start, end=start, side="new") for _ in range(count)
+        ]
+
+    claims: list[ClaimRecord] = [
+        ClaimRecord(
+            claim_id=f"claim-verified-{index}",
+            run_id="run-current-shape",
+            text=f"verified claim {index}",
+            status="verified",
+            confidence="high",
+            source_hunks=source_hunks(1, 1 if index == 13 else 2),
+        )
+        for index in range(14)
+    ]
+    claims += [
+        ClaimRecord(
+            claim_id="claim-weak-0",
+            run_id="run-current-shape",
+            text="weak claim",
+            status="weak",
+            confidence="medium",
+            source_hunks=source_hunks(1, 1),
+        )
+    ]
+    claims += [
+        ClaimRecord(
+            claim_id=f"claim-rejected-{index}",
+            run_id="run-current-shape",
+            text=f"rejected claim {index}",
+            status="rejected",
+            reason_code="line_outside_hunk",
+            confidence="low",
+            source_hunks=source_hunks(99, 2),
+        )
+        for index in range(9)
+    ]
+    assert sum(1 for claim in claims if claim.status == "verified") == 14
+    assert sum(1 for claim in claims if claim.status == "weak") == 1
+    assert sum(1 for claim in claims if claim.status == "rejected") == 9
+    assert sum(len(claim.source_hunks) for claim in claims) == 46
+    rubric = load_rubric()
+    scores = build_deterministic_scores(
+        rubric=rubric,
+        metadata={"learnability": {"score": 1.0}},
+        patch_text=_patch_text(),
+        claims=tuple(claims),
+        line_maps=_line_maps(),
+        lesson_artifacts={"compact": "short", "hint": "hint", "full": "full"},
+        quiz_entries=(),
+    )
+    score_lookup = scores.score_lookup()
+    accuracy_gate = rubric.dimension("accuracy").hard_gate
+    evidence_gate = rubric.dimension("evidence").hard_gate
+    assert accuracy_gate is not None
+    assert evidence_gate is not None
+    assert abs(score_lookup["accuracy"] - 12.29) <= 0.005
+    assert score_lookup["accuracy"] < accuracy_gate
+    assert abs(score_lookup["evidence"] - 11.01) <= 0.005
+    assert score_lookup["evidence"] < evidence_gate
+    hard_gates = evaluate_hard_gates(
+        rubric=rubric,
+        dimension_scores=score_lookup,
+        claims=tuple(claims),
+        secret_leak_detected=scores.secret_leak_detected,
+        injection_unresolved=scores.injection_unresolved,
+    )
+    assert not hard_gates.passed
+    assert "accuracy" in hard_gates.failed_names()
+    assert "evidence" in hard_gates.failed_names()
+    assert "evidence_coverage" not in hard_gates.failed_names()
+
+
+def test_gate3_diff_coverage_ignores_rejected_claim_anchors() -> None:
+    rejected_claim = ClaimRecord(
+        claim_id="claim-rejected",
+        run_id="run-1",
+        text="rejected evidence must not count toward diff coverage",
+        status="rejected",
+        reason_code="evidence_missing",
+        confidence="low",
+        source_hunks=[SourceHunk(file="src/app.py", start=1, end=1, side="new")],
+    )
+
+    scored = build_deterministic_scores(
+        rubric=load_rubric(),
+        metadata={"learnability": {"score": 1.0}},
+        patch_text=_patch_text(),
+        claims=(rejected_claim,),
+        line_maps=_line_maps(),
+        lesson_artifacts={"compact": "short"},
+        quiz_entries=(),
+    )
+    dimensions = {item.name: item for item in scored.dimensions}
+
+    assert dimensions["diff_coverage"].score == 0.0
+    assert "eligible_claims=0" in dimensions["diff_coverage"].reason
+    assert "ignored_claims=1" in dimensions["diff_coverage"].reason
+
+
+def test_gate3_diff_coverage_counts_only_eligible_claim_statuses() -> None:
+    patch = """\
+diff --git a/src/app.py b/src/app.py
+--- a/src/app.py
++++ b/src/app.py
+@@ -1 +1 @@
+-old_a = 1
++new_a = 1
+@@ -10 +10 @@
+-old_b = 1
++new_b = 1
+@@ -20 +20 @@
+-old_c = 1
++new_c = 1
+"""
+    claims = (
+        ClaimRecord(
+            claim_id="claim-weak",
+            run_id="run-1",
+            text="weak evidence covers the first hunk",
+            status="weak",
+            confidence="medium",
+            source_hunks=[SourceHunk(file="src/app.py", start=1, end=1, side="new")],
+        ),
+        ClaimRecord(
+            claim_id="claim-not-proven",
+            run_id="run-1",
+            text="not-proven evidence still anchors the second hunk",
+            status="not_proven",
+            confidence="low",
+            source_hunks=[SourceHunk(file="src/app.py", start=10, end=10, side="new")],
+        ),
+        ClaimRecord(
+            claim_id="claim-rejected",
+            run_id="run-1",
+            text="rejected evidence must not cover the third hunk",
+            status="rejected",
+            reason_code="hunk_id_mismatch",
+            confidence="low",
+            source_hunks=[SourceHunk(file="src/app.py", start=20, end=20, side="new")],
+        ),
+    )
+
+    scored = build_deterministic_scores(
+        rubric=load_rubric(),
+        metadata={"learnability": {"score": 1.0}},
+        patch_text=patch,
+        claims=claims,
+        line_maps=build_line_map(parse_unified_diff(patch)),
+        lesson_artifacts={"compact": "short"},
+        quiz_entries=(),
+    )
+    dimensions = {item.name: item for item in scored.dimensions}
+
+    assert dimensions["diff_coverage"].score == 12.13
+    assert "eligible_claims=2" in dimensions["diff_coverage"].reason
+    assert "ignored_claims=1" in dimensions["diff_coverage"].reason
+    assert "covered_hunks=2" in dimensions["diff_coverage"].reason
+
+
+def test_gate3_current_run_wide_claims_normalize_instead_of_all_rejecting() -> None:
+    line_maps = build_line_map(parse_unified_diff(_multi_hunk_patch_text()))
+    after_text = _multi_hunk_after_text()
+    wide_claims = [
+        ClaimCandidate(
+            claim_id=f"claim-wide-{index}",
+            run_id="run-current-shape",
+            text=f"wide claim {index}",
+            source_hunks=[SourceHunk(file="src/app.py", start=1, end=9, side="new")],
+        )
+        for index in range(9)
+    ]
+
+    normalized = tuple(
+        verify_claim_candidate(
+            claim,
+            line_maps=line_maps,
+            symbols=(),
+            after_text_by_path={"src/app.py": after_text},
+        ).record
+        for claim in wide_claims
+    )
+
+    assert sum(1 for claim in normalized if claim.status == "rejected") == 0
+    assert all(len(claim.source_hunks) == 2 for claim in normalized)
+    claims: list[ClaimRecord] = [
+        ClaimRecord(
+            claim_id=f"claim-verified-{index}",
+            run_id="run-current-shape",
+            text=f"verified claim {index}",
+            status="verified",
+            confidence="high",
+            source_hunks=[normalized[0].source_hunks[0]],
+        )
+        for index in range(14)
+    ]
+    claims.append(
+        ClaimRecord(
+            claim_id="claim-weak-0",
+            run_id="run-current-shape",
+            text="weak claim",
+            status="weak",
+            confidence="medium",
+            source_hunks=[normalized[0].source_hunks[1]],
+        )
+    )
+    claims.extend(normalized)
+
+    rubric = load_rubric()
+    scores = build_deterministic_scores(
+        rubric=rubric,
+        metadata={"learnability": {"score": 1.0}},
+        patch_text=_multi_hunk_patch_text(),
+        claims=tuple(claims),
+        line_maps=line_maps,
+        lesson_artifacts={"compact": "short", "hint": "hint", "full": "full"},
+        quiz_entries=(),
+    )
+    score_lookup = scores.score_lookup()
+    accuracy_gate = rubric.dimension("accuracy").hard_gate
+    evidence_gate = rubric.dimension("evidence").hard_gate
+    assert accuracy_gate is not None
+    assert evidence_gate is not None
+    assert score_lookup["accuracy"] > 12.29
+    assert score_lookup["accuracy"] >= accuracy_gate
+    assert score_lookup["evidence"] > 11.01
+    assert score_lookup["evidence"] >= evidence_gate
+
+
+def test_gate3_diff_coverage_uses_parsed_lines_not_hunk_header_range() -> None:
+    truncated_hunk = HunkLineMap(
+        file_id="file-truncated",
+        display_path="src/app.py",
+        hunk_id="hunk-truncated",
+        hunk_hash="1" * 12,
+        change_kind="modified",
+        old_start=1,
+        old_end=3,
+        new_start=1,
+        new_end=3,
+        section_header=None,
+        added_lines=(1,),
+        deleted_lines=(),
+        context_old_lines=(),
+        context_new_lines=(),
+    )
+    line_maps = (
+        FileLineMap(
+            file_id="file-truncated",
+            display_path="src/app.py",
+            path_identity_key="src/app.py",
+            old_path="src/app.py",
+            new_path="src/app.py",
+            change_kind="modified",
+            hunks=(truncated_hunk,),
+        ),
+    )
+    claim = ClaimRecord(
+        claim_id="claim-header-only-line",
+        run_id="run-1",
+        text="claims a line present only in the hunk header range",
+        status="verified",
+        confidence="high",
+        source_hunks=[SourceHunk(file="src/app.py", start=3, end=3, side="new")],
+    )
+
+    scored = build_deterministic_scores(
+        rubric=load_rubric(),
+        metadata={"learnability": {"score": 1.0}},
+        patch_text="",
+        claims=(claim,),
+        line_maps=line_maps,
+        lesson_artifacts={"compact": "short"},
+        quiz_entries=(),
+    )
+    dimensions = {item.name: item for item in scored.dimensions}
+
+    assert dimensions["diff_coverage"].score == 8.4
+    assert "covered_hunks=0" in dimensions["diff_coverage"].reason
+    assert "covered_files=1" in dimensions["diff_coverage"].reason
+
+
+def test_gate3_normalized_multi_hunk_evidence_has_interpretable_clipped_ranges() -> None:
+    line_maps = build_line_map(parse_unified_diff(_multi_hunk_patch_text()))
+    hunk_ranges = {
+        hunk.hunk_id: (hunk.new_start, hunk.new_end)
+        for file_map in line_maps
+        for hunk in file_map.hunks
+    }
+    result = verify_claim_candidate(
+        ClaimCandidate(
+            claim_id="claim-wide-interpretable",
+            run_id="run-1",
+            text="wide claim",
+            source_hunks=[SourceHunk(file="src/app.py", start=1, end=9, side="new")],
+        ),
+        line_maps=line_maps,
+        symbols=(),
+        after_text_by_path={"src/app.py": _multi_hunk_after_text()},
+    )
+
+    assert result.record.status == "weak"
+    assert [(hunk.start, hunk.end) for hunk in result.record.source_hunks] == [(1, 2), (8, 9)]
+    for source_hunk in result.record.source_hunks:
+        assert source_hunk.hunk_id is not None
+        assert source_hunk.hunk_hash is not None
+        assert source_hunk.hunk_id in result.matched_hunk_ids
+        assert hunk_ranges[source_hunk.hunk_id] == (source_hunk.start, source_hunk.end)
+
+
+def test_gate3_multi_hunk_normalization_cannot_fabricate_missing_file_evidence() -> None:
+    result = verify_claim_candidate(
+        ClaimCandidate(
+            claim_id="claim-missing-wide",
+            run_id="run-1",
+            text="wide missing-file claim",
+            source_hunks=[SourceHunk(file="src/missing.py", start=1, end=9, side="new")],
+        ),
+        line_maps=build_line_map(parse_unified_diff(_multi_hunk_patch_text())),
+        symbols=(),
+        after_text_by_path={"src/app.py": _multi_hunk_after_text()},
+    )
+
+    assert result.record.status == "rejected"
+    assert result.record.reason_code == "file_not_in_patch"
 
 
 def test_diff_coverage_weights_large_hunk_more_than_tiny_hunk() -> None:
@@ -608,7 +1091,7 @@ Binary files /dev/null and b/image.png differ
         quiz_entries=(),
     ).score_lookup()["diff_coverage"]
 
-    assert zero_score == 14.0
+    assert zero_score == 8.4
 
 
 def test_gate3_hard_gates_handle_missing_boundary_and_safety_findings() -> None:

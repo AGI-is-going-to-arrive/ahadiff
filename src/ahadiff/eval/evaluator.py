@@ -23,7 +23,7 @@ from ahadiff.llm.cost import (
 )
 
 from .deterministic import DimensionScore, build_deterministic_scores
-from .gates import HardGateResult, HardGateSummary, evaluate_hard_gates
+from .gates import HardGatePolicy, HardGateResult, HardGateSummary, evaluate_hard_gates
 from .rubric import load_rubric
 
 if TYPE_CHECKING:
@@ -265,6 +265,7 @@ def _hard_gate_summary_from_payload(raw_value: object) -> HardGateSummary | None
         try:
             score = _optional_hard_gate_number(raw_gate_mapping.get("score"))
             threshold = _optional_hard_gate_number(raw_gate_mapping.get("threshold"))
+            policy = _optional_hard_gate_policy(raw_gate_mapping.get("policy"))
         except ValueError:
             return None
         results.append(
@@ -274,6 +275,7 @@ def _hard_gate_summary_from_payload(raw_value: object) -> HardGateSummary | None
                 detail=detail,
                 score=score,
                 threshold=threshold,
+                policy=policy,
             )
         )
     if not results:
@@ -311,6 +313,45 @@ def _optional_hard_gate_number(raw_value: object) -> float | None:
     if not math.isfinite(value):
         raise ValueError("hard gate numeric field must be finite")
     return value
+
+
+def _optional_hard_gate_policy(raw_value: object) -> HardGatePolicy | None:
+    if raw_value is None:
+        return None
+    if not isinstance(raw_value, dict):
+        raise ValueError("hard gate policy must be an object")
+    policy = cast("dict[object, object]", raw_value)
+    if policy.get("kind") != "adaptive_threshold":
+        raise ValueError("hard gate policy kind is unsupported")
+    raw_ratio = policy.get("ratio")
+    if isinstance(raw_ratio, bool) or not isinstance(raw_ratio, int | float):
+        raise ValueError("hard gate policy ratio must be finite")
+    ratio = float(raw_ratio)
+    if not math.isfinite(ratio) or ratio <= 0.0:
+        raise ValueError("hard gate policy ratio must be finite")
+    regime = policy.get("regime")
+    if not isinstance(regime, str) or not regime.strip():
+        raise ValueError("hard gate policy regime must be non-empty")
+    basis = _hard_gate_policy_basis(policy.get("basis"))
+    return HardGatePolicy(
+        kind="adaptive_threshold",
+        ratio=ratio,
+        regime=regime,
+        basis=basis,
+    )
+
+
+def _hard_gate_policy_basis(raw_value: object) -> dict[str, int]:
+    if not isinstance(raw_value, dict):
+        raise ValueError("hard gate policy basis must be an object")
+    raw_basis = cast("dict[object, object]", raw_value)
+    basis: dict[str, int] = {}
+    for key in ("visible_files", "visible_hunks", "visible_changed_lines"):
+        value = raw_basis.get(key)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError("hard gate policy basis values must be non-negative integers")
+        basis[key] = value
+    return basis
 
 
 def run_llm_judge_for_run(

@@ -108,8 +108,10 @@ _RATCHET_HISTORY_NOTE_KEYS = frozenset(
         "baseline_overall",
         "cherry_pick_pending",
         "degraded_flags",
+        "failed_gates",
         "phase25",
         "phase25_note",
+        "ratchet_reason",
         "round",
         "target_dimension",
         "targeted_baseline_score",
@@ -119,6 +121,7 @@ _RATCHET_HISTORY_NOTE_KEYS = frozenset(
         "targeted_passed",
         "targeted_reason",
         "trigger_reason",
+        "verdict",
     }
 )
 _MAX_FINALIZED_ARTIFACTS = 64

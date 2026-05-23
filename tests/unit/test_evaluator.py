@@ -15,7 +15,7 @@ from ahadiff.contracts import ClaimRecord, ProviderConfig, SourceHunk, compute_e
 from ahadiff.contracts.eval_bundle import compute_runtime_eval_bundle_version
 from ahadiff.core.config import SecurityConfig
 from ahadiff.core.errors import InputError
-from ahadiff.eval import evaluate_run
+from ahadiff.eval import evaluate_run, write_score_report
 from ahadiff.eval.evaluator import evaluate_run_for_replay_calibration, run_llm_judge_for_run
 from ahadiff.eval.spec_alignment import (
     merge_semantic_review_into_artifact,
@@ -29,6 +29,13 @@ from ahadiff.llm.schemas import ProviderRequest, ProviderResponse
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from typing import TypedDict
+
+    class _DimensionPayload(TypedDict):
+        score: float
+        max_score: float
+        reason: str
+
 
 _RUNNER = CliRunner()
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -204,6 +211,28 @@ def _many_hunk_patch_text(hunk_count: int) -> str:
     return "diff --git a/src/app.py b/src/app.py\n--- a/src/app.py\n+++ b/src/app.py\n" + "".join(
         hunks
     )
+
+
+def _current_large_run_shape_patch_text() -> str:
+    sections: list[str] = []
+    global_hunk_index = 0
+    for file_index in range(44):
+        path = f"src/file_{file_index:02d}.py"
+        sections.append(f"diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n")
+        file_hunks = 4 if file_index < 32 else 3
+        for local_hunk_index in range(file_hunks):
+            old_count = 8
+            new_count = 9 if global_hunk_index < 132 else 8
+            start = local_hunk_index * 24 + 1
+            sections.append(f"@@ -{start},{old_count} +{start},{new_count} @@\n")
+            sections.extend(
+                f"-old_{global_hunk_index}_{line_index}\n" for line_index in range(old_count)
+            )
+            sections.extend(
+                f"+new_{global_hunk_index}_{line_index}\n" for line_index in range(new_count)
+            )
+            global_hunk_index += 1
+    return "".join(sections)
 
 
 def _rename_patch_text() -> str:
@@ -647,6 +676,49 @@ def test_evaluate_run_exposes_adaptive_diff_coverage_gate_basis(tmp_path: Path) 
     assert "adaptive_ratio" not in str(dimensions["diff_coverage"]["reason"])
 
 
+def test_evaluate_run_uses_very_large_accuracy_evidence_policy_for_current_run_shape(
+    tmp_path: Path,
+) -> None:
+    run_id = "run_current_large_shape"
+    patch_text = _current_large_run_shape_patch_text()
+    claim = ClaimRecord(
+        claim_id="claim_first_file",
+        run_id=run_id,
+        text="The first generated file changes several values.",
+        status="verified",
+        confidence="high",
+        source_hunks=[SourceHunk(file="src/file_00.py", start=1, end=8, side="new")],
+    )
+    run_path = _write_run_fixture(
+        tmp_path,
+        run_id=run_id,
+        claims=[claim],
+        patch_text=patch_text,
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=False,
+    )
+
+    payload = evaluate_run(run_path).to_payload()
+    hard_gates = cast("dict[str, dict[str, object]]", payload["hard_gates"])
+    accuracy_policy = hard_gates["accuracy"]["policy"]
+    evidence_policy = hard_gates["evidence"]["policy"]
+
+    assert accuracy_policy == {
+        "kind": "adaptive_threshold",
+        "ratio": 0.85,
+        "regime": "very_large",
+        "basis": {
+            "visible_files": 44,
+            "visible_hunks": 164,
+            "visible_changed_lines": 2756,
+        },
+    }
+    assert evidence_policy == accuracy_policy
+    assert hard_gates["accuracy"]["threshold"] == 11.90
+    assert hard_gates["evidence"]["threshold"] == 10.20
+
+
 def test_diff_coverage_matches_renamed_old_side_source_hunks(tmp_path: Path) -> None:
     run_id = "run_renamed_old_side"
     claim = ClaimRecord(
@@ -694,15 +766,26 @@ def test_spec_alignment_without_spec_is_not_applicable_score_zero(tmp_path: Path
         with_quiz=True,
     )
 
+    assert not (run_path / "spec_alignment.json").exists()
+
     report = evaluate_run(run_path)
-    dimensions = cast("dict[str, dict[str, object]]", report.to_payload()["dimensions"])
+    dimensions = cast("dict[str, _DimensionPayload]", report.to_payload()["dimensions"])
     spec_dimension = dimensions["spec_alignment"]
+    applicable_dimensions = [
+        dimension for dimension in dimensions.values() if float(dimension["max_score"]) > 0.0
+    ]
+    applicable_score = sum(float(dimension["score"]) for dimension in applicable_dimensions)
+    applicable_max = sum(float(dimension["max_score"]) for dimension in applicable_dimensions)
+    hard_gates = report.hard_gates.as_payload()
 
     assert spec_dimension["score"] == 0.0
     assert spec_dimension["max_score"] == 0.0
     assert "not applicable" in str(spec_dimension["reason"]).lower()
+    assert applicable_max == 90.0
+    assert report.overall == round((applicable_score / applicable_max) * 100.0, 2)
     assert report.overall >= 80.0
     assert report.weakest_dim != "spec_alignment"
+    assert "spec_alignment" not in hard_gates
 
 
 def test_evaluate_run_fails_when_safety_findings_artifact_has_critical(
@@ -1445,7 +1528,90 @@ def test_run_llm_judge_for_run_writes_judge_artifact(tmp_path: Path) -> None:
     assert payload["model_id"] == "gpt-5.5"
     assert payload["dimensions"]["spec_alignment"]["score"] == 0.0
     assert payload["dimensions"]["spec_alignment"]["max_score"] == 0.0
+    assert (
+        "judge reason: judge treated no-spec as aligned"
+        in payload["dimensions"]["spec_alignment"]["reason"]
+    )
     assert payload["usage"] == {"input_tokens": 11, "output_tokens": 22}
+
+
+def test_high_llm_judge_scores_do_not_change_deterministic_score_json_verdict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_id = "run-judge-advisory-only"
+    run_path = _write_run_fixture(
+        workspace_root,
+        run_id=run_id,
+        claims=_mostly_verified_claims_with_one_contradiction(run_id),
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+    )
+    deterministic_report = evaluate_run(run_path)
+    assert deterministic_report.verdict == "FAIL"
+    assert deterministic_report.hard_gates.failed_names() == ("contradicted_claims",)
+    write_score_report(run_path / "score.json", deterministic_report)
+    score_before = json.loads((run_path / "score.json").read_text(encoding="utf-8"))
+    high_dimensions = {
+        dimension.name: {
+            "score": dimension.max_score if dimension.max_score > 0.0 else 10.0,
+            "reason": "judge awarded a high score",
+        }
+        for dimension in deterministic_report.dimensions
+    }
+    seen_requests: list[ProviderRequest] = []
+
+    class FakeProvider:
+        def generate(self, request: ProviderRequest) -> ProviderResponse:
+            seen_requests.append(request)
+            return ProviderResponse(
+                content=json.dumps({"dimensions": high_dimensions}),
+                model_id="gpt-5.5",
+                input_tokens=1,
+                output_tokens=1,
+            )
+
+        def close(self) -> None:
+            return None
+
+    def fake_make_provider(*_args: object, **_kwargs: object) -> FakeProvider:
+        return FakeProvider()
+
+    monkeypatch.setattr("ahadiff.llm.provider.make_provider", fake_make_provider)
+
+    judge_report = run_llm_judge_for_run(
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai_responses",
+            model_name="gpt-5.5",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_GPT55_KEY",
+        ),
+        api_key="test-key",
+        security_config=SecurityConfig(),
+        privacy_mode="strict_local",
+        output_lang="en",
+        deterministic_report=deterministic_report,
+        request_timeout_seconds=30,
+        max_concurrent=1,
+        qps_limit=10,
+        retry_attempts=0,
+    )
+
+    assert len(seen_requests) == 1
+    assert judge_report.overall == 100.0
+    judge_payload = json.loads((run_path / "judge.json").read_text(encoding="utf-8"))
+    score_after = json.loads((run_path / "score.json").read_text(encoding="utf-8"))
+    assert judge_payload["overall"] == 100.0
+    assert judge_payload["dimensions"]["spec_alignment"]["score"] == 0.0
+    assert judge_payload["dimensions"]["spec_alignment"]["max_score"] == 0.0
+    assert score_after == score_before
+    assert score_after["verdict"] == "FAIL"
+    assert score_after["hard_gates"]["contradicted_claims"]["passed"] is False
 
 
 def test_llm_judge_request_stays_json_object_without_schema_metadata(

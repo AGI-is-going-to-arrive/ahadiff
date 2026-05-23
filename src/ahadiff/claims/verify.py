@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from ahadiff.git.symbols import SymbolRecord
 
 
-_MAX_SOURCE_HUNK_SPAN = 10_000
+_MAX_SOURCE_HUNK_SPAN = 120
 
 
 @dataclass(frozen=True)
@@ -260,6 +260,33 @@ def _match_source_hunks(
             matched_by_side=matched_by_side,
         )
         if resolved_side is None:
+            multi_hunk_match = _normalize_multi_hunk_source_hunk(
+                source_hunk,
+                file_map=file_map,
+                normalized_file=normalized_file,
+                requested_sides=requested_sides,
+                before_text_lookup=before_text_lookup,
+                after_text_lookup=after_text_lookup,
+            )
+            if multi_hunk_match is not None:
+                multi_source_hunks, multi_matched_hunks = multi_hunk_match
+                if _source_hunk_hunk_id_mismatched(source_hunk, multi_matched_hunks):
+                    return _MatchFailure(
+                        reason_code="hunk_id_mismatch",
+                        source_hunks=(
+                            SourceHunk(
+                                file=normalized_file,
+                                start=source_hunk.start,
+                                end=source_hunk.end,
+                                side=source_hunk.side,
+                                file_id=file_map.file_id,
+                                display_path=file_map.display_path,
+                            ),
+                        ),
+                    )
+                normalized_hunks.extend(multi_source_hunks)
+                matched_hunks.extend(multi_matched_hunks)
+                continue
             if any(matched_by_side[side] for side in ("old", "new")):
                 return _MatchFailure(
                     reason_code="evidence_missing",
@@ -288,6 +315,20 @@ def _match_source_hunks(
                 ),
             )
         primary_hunk = matched_by_side[resolved_side][0]
+        if _source_hunk_hunk_id_mismatched(source_hunk, matched_by_side[resolved_side]):
+            return _MatchFailure(
+                reason_code="hunk_id_mismatch",
+                source_hunks=(
+                    SourceHunk(
+                        file=normalized_file,
+                        start=source_hunk.start,
+                        end=source_hunk.end,
+                        side=source_hunk.side,
+                        file_id=file_map.file_id,
+                        display_path=file_map.display_path,
+                    ),
+                ),
+            )
         normalized_hunks.append(
             SourceHunk(
                 file=normalized_file,
@@ -387,6 +428,167 @@ def _source_hunk_matching_sides(
     if "new" in requested_sides and _source_hunk_is_within_lines(source_hunk, new_lines):
         matched.append("new")
     return tuple(matched)
+
+
+def _normalize_multi_hunk_source_hunk(
+    source_hunk: SourceHunk,
+    *,
+    file_map: FileLineMap,
+    normalized_file: str,
+    requested_sides: Sequence[SourceHunkSide],
+    before_text_lookup: Mapping[str, str],
+    after_text_lookup: Mapping[str, str],
+) -> tuple[tuple[SourceHunk, ...], tuple[HunkLineMap, ...]] | None:
+    matched_by_side: dict[SourceHunkSide, tuple[HunkLineMap, ...]] = {}
+    for side in ("old", "new"):
+        if side not in requested_sides:
+            continue
+        if not _source_hunk_is_within_file_text_for_side(
+            source_hunk,
+            side=side,
+            file_map=file_map,
+            before_text_lookup=before_text_lookup,
+            after_text_lookup=after_text_lookup,
+        ):
+            continue
+        matched_hunks = tuple(
+            hunk
+            for hunk in file_map.hunks
+            if _source_hunk_intersects_hunk_side(source_hunk, hunk, side=side)
+        )
+        if matched_hunks and not _source_hunk_has_unparsed_lines_in_hunk_headers(
+            source_hunk,
+            matched_hunks,
+            side=side,
+        ):
+            matched_by_side[side] = matched_hunks
+    if source_hunk.side != "either":
+        resolved_side = source_hunk.side if source_hunk.side in matched_by_side else None
+    elif len(matched_by_side) == 1:
+        resolved_side = next(iter(matched_by_side))
+    else:
+        resolved_side = None
+    if resolved_side is None:
+        return None
+
+    normalized_hunks: list[SourceHunk] = []
+    for hunk in matched_by_side[resolved_side]:
+        for start, end in _source_hunk_intersections_for_hunk_side(
+            source_hunk,
+            hunk,
+            side=resolved_side,
+        ):
+            normalized_hunks.append(
+                SourceHunk(
+                    file=normalized_file,
+                    start=start,
+                    end=end,
+                    side=resolved_side,
+                    file_id=file_map.file_id,
+                    display_path=file_map.display_path,
+                    hunk_id=hunk.hunk_id,
+                    hunk_hash=hunk.hunk_hash,
+                )
+            )
+    if not normalized_hunks:
+        return None
+    return tuple(normalized_hunks), matched_by_side[resolved_side]
+
+
+def _source_hunk_intersects_hunk_side(
+    source_hunk: SourceHunk,
+    hunk: HunkLineMap,
+    *,
+    side: SourceHunkSide,
+) -> bool:
+    return bool(_source_hunk_intersections_for_hunk_side(source_hunk, hunk, side=side))
+
+
+def _source_hunk_has_unparsed_lines_in_hunk_headers(
+    source_hunk: SourceHunk,
+    hunks: Sequence[HunkLineMap],
+    *,
+    side: SourceHunkSide,
+) -> bool:
+    parsed_lines: set[int] = set()
+    header_lines: set[int] = set()
+    for hunk in hunks:
+        header_start, header_end = _hunk_side_header_range(hunk, side)
+        if header_start is not None and header_end is not None:
+            start = max(source_hunk.start, header_start)
+            end = min(source_hunk.end, header_end)
+            if start <= end:
+                header_lines.update(range(start, end + 1))
+        for start, end in _source_hunk_intersections_for_hunk_side(
+            source_hunk,
+            hunk,
+            side=side,
+        ):
+            parsed_lines.update(range(start, end + 1))
+    return bool(header_lines - parsed_lines)
+
+
+def _hunk_side_header_range(
+    hunk: HunkLineMap,
+    side: SourceHunkSide,
+) -> tuple[int | None, int | None]:
+    if side == "old":
+        return hunk.old_start, hunk.old_end
+    if side == "new":
+        return hunk.new_start, hunk.new_end
+    return None, None
+
+
+def _source_hunk_intersections_for_hunk_side(
+    source_hunk: SourceHunk,
+    hunk: HunkLineMap,
+    *,
+    side: SourceHunkSide,
+) -> tuple[tuple[int, int], ...]:
+    ranges = _hunk_side_parsed_line_ranges(hunk, side)
+    intersections: list[tuple[int, int]] = []
+    for hunk_start, hunk_end in ranges:
+        start = max(source_hunk.start, hunk_start)
+        end = min(source_hunk.end, hunk_end)
+        if start <= end:
+            intersections.append((start, end))
+    return tuple(intersections)
+
+
+def _hunk_side_parsed_line_ranges(
+    hunk: HunkLineMap,
+    side: SourceHunkSide,
+) -> tuple[tuple[int, int], ...]:
+    old_lines, new_lines = _hunk_line_sides(hunk)
+    if side == "old":
+        return _line_number_ranges(old_lines)
+    if side == "new":
+        return _line_number_ranges(new_lines)
+    return ()
+
+
+def _line_number_ranges(line_numbers: set[int]) -> tuple[tuple[int, int], ...]:
+    if not line_numbers:
+        return ()
+    ranges: list[tuple[int, int]] = []
+    start = previous = min(line_numbers)
+    for line_number in sorted(line_numbers - {start}):
+        if line_number == previous + 1:
+            previous = line_number
+            continue
+        ranges.append((start, previous))
+        start = previous = line_number
+    ranges.append((start, previous))
+    return tuple(ranges)
+
+
+def _source_hunk_hunk_id_mismatched(
+    source_hunk: SourceHunk,
+    matched_hunks: Sequence[HunkLineMap],
+) -> bool:
+    return source_hunk.hunk_id is not None and all(
+        hunk.hunk_id != source_hunk.hunk_id for hunk in matched_hunks
+    )
 
 
 def _hunk_line_sides(hunk: HunkLineMap) -> tuple[set[int], set[int]]:

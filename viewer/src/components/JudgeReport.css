@@ -16,8 +16,10 @@
 .judge-report__model {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--sp-2);
   margin-bottom: var(--sp-4);
+  min-width: 0;
 }
 
 .judge-report__model-label {
@@ -33,6 +35,9 @@
   padding: var(--sp-0-5) var(--sp-2);
   background: var(--surface);
   border-radius: var(--r-sm);
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .judge-report__summary {
@@ -104,6 +109,10 @@
   background: var(--elevated);
   border-radius: var(--r-sm);
   font-variant-numeric: tabular-nums;
+}
+
+.judge-report__feedback-score--na {
+  color: var(--muted);
 }
 
 .judge-report__feedback-reason {

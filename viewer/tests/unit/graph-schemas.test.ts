@@ -393,6 +393,33 @@ describe('score payload schema', () => {
     expect(parsed.hard_gates.accuracy?.passed).toBe(true);
   });
 
+  it('accepts strict adaptive hard gate policy payloads', () => {
+    const parsed = scorePayloadSchema.parse({
+      ...validScorePayload,
+      hard_gates: {
+        accuracy: {
+          passed: true,
+          detail: 'accuracy score 11.90 >= 11.90; adaptive_ratio=0.85; regime=very_large',
+          score: 11.9,
+          threshold: 11.9,
+          policy: {
+            kind: 'adaptive_threshold',
+            ratio: 0.85,
+            regime: 'very_large',
+            basis: {
+              visible_files: 44,
+              visible_hunks: 164,
+              visible_changed_lines: 2756,
+            },
+          },
+        },
+      },
+    });
+
+    expect(parsed.hard_gates.accuracy?.policy?.regime).toBe('very_large');
+    expect(parsed.hard_gates.accuracy?.policy?.basis.visible_hunks).toBe(164);
+  });
+
   it('rejects unsafe score numbers and missing stable fields', () => {
     expect(() =>
       scorePayloadSchema.parse({
@@ -417,6 +444,33 @@ describe('score payload schema', () => {
 
   it('rejects unknown top-level keys', () => {
     expect(() => scorePayloadSchema.parse({ ...validScorePayload, extra: true })).toThrow();
+  });
+
+  it('rejects unknown adaptive hard gate policy keys', () => {
+    expect(() =>
+      scorePayloadSchema.parse({
+        ...validScorePayload,
+        hard_gates: {
+          accuracy: {
+            passed: true,
+            detail: 'accuracy score passed',
+            score: 18,
+            threshold: 14,
+            policy: {
+              kind: 'adaptive_threshold',
+              ratio: 1,
+              regime: 'normal',
+              basis: {
+                visible_files: 1,
+                visible_hunks: 1,
+                visible_changed_lines: 1,
+                extra: 1,
+              },
+            },
+          },
+        },
+      }),
+    ).toThrow();
   });
 });
 
@@ -552,6 +606,8 @@ describe('settings and auxiliary API schemas', () => {
         schema_version: 1,
         applicability: 'applicable',
         status: 'scored',
+        eval_bundle_version: 'bundle-v1',
+        rubric_version: 'v0.1',
         requirements: [
           {
             id: 'REQ-001',

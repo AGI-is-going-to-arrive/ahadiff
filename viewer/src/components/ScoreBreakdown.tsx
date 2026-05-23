@@ -1,5 +1,5 @@
 import type { ScorePayload } from '../api/types';
-import { useTranslation } from '../i18n/useTranslation';
+import { useTranslation, type MessageKey } from '../i18n/useTranslation';
 import { formatHardGateDetail, formatHardGateName } from '../utils/hard-gates';
 import { DIMENSION_ORDER, DIM_I18N_KEYS, DIM_HINT_KEYS } from '../utils/score-dimensions';
 import { safeVerdict } from '../utils/verdict';
@@ -53,21 +53,35 @@ export default function ScoreBreakdown({ payload }: ScoreBreakdownProps) {
             <div key={dim} className="score-breakdown__dim-card" title={t(DIM_HINT_KEYS[dim] ?? '')}>
               <div className="score-breakdown__dim-top">
                 <span className="score-breakdown__dim-name">{t(DIM_I18N_KEYS[dim] ?? dim)}</span>
-                <span className="score-breakdown__dim-score" style={{ color: dimColor(pct) }}>
-                  {d.score.toFixed(1)}
-                  <span className="score-breakdown__dim-max">/{d.max_score}</span>
+                <span className="score-breakdown__dim-score" style={{ color: d.max_score > 0 ? dimColor(pct) : 'var(--muted)' }}>
+                  {d.max_score > 0 ? (
+                    <>
+                      {d.score.toFixed(1)}
+                      <span className="score-breakdown__dim-max">/{d.max_score}</span>
+                    </>
+                  ) : (
+                    t('Lesson.score_dim_na' as MessageKey)
+                  )}
                 </span>
               </div>
               <div className="score-breakdown__dim-bar">
-                <div
-                  className="score-breakdown__dim-fill"
-                  style={{ width: `${Math.min(pct, 100)}%`, background: dimColor(pct) }}
-                  role="meter"
-                  aria-valuenow={d.score}
-                  aria-valuemin={0}
-                  aria-valuemax={d.max_score}
-                  aria-label={`${t(DIM_I18N_KEYS[dim] ?? dim)}: ${d.score.toFixed(1)} / ${d.max_score}`}
-                />
+                {d.max_score > 0 ? (
+                  <div
+                    className="score-breakdown__dim-fill"
+                    style={{ width: `${Math.min(pct, 100)}%`, background: dimColor(pct) }}
+                    role="meter"
+                    aria-valuenow={d.score}
+                    aria-valuemin={0}
+                    aria-valuemax={d.max_score}
+                    aria-label={`${t(DIM_I18N_KEYS[dim] ?? dim)}: ${d.score.toFixed(1)} / ${d.max_score}`}
+                  />
+                ) : (
+                  <div
+                    className="score-breakdown__dim-fill score-breakdown__dim-fill--na"
+                    role="img"
+                    aria-label={`${t(DIM_I18N_KEYS[dim] ?? dim)}: ${t('Lesson.score_dim_na' as MessageKey)}`}
+                  />
+                )}
               </div>
             </div>
           );
@@ -76,16 +90,18 @@ export default function ScoreBreakdown({ payload }: ScoreBreakdownProps) {
 
       {gateEntries.length > 0 && (
         <div className="score-breakdown__gates">
-          <h3 className="score-breakdown__gates-title">{t('RunDetail.hard_gates')}</h3>
+          <h2 className="score-breakdown__gates-title">{t('RunDetail.hard_gates')}</h2>
           {failedGates.length > 0 && (
             <div className="score-breakdown__gate-group">
               {failedGates.map(([name, gate]) => (
                 <div key={name} className="score-breakdown__gate score-breakdown__gate--fail">
                   <span className="score-breakdown__gate-indicator" aria-hidden="true">✗</span>
-                  <span className="score-breakdown__gate-name">{formatHardGateName(t, name)}</span>
-                  {gate.detail && (
-                    <span className="score-breakdown__gate-detail">{formatHardGateDetail(t, name, gate)}</span>
-                  )}
+                  <div className="score-breakdown__gate-content">
+                    <span className="score-breakdown__gate-name">{formatHardGateName(t, name)}</span>
+                    {gate.detail && (
+                      <span className="score-breakdown__gate-detail">{formatHardGateDetail(t, name, gate)}</span>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -94,10 +110,12 @@ export default function ScoreBreakdown({ payload }: ScoreBreakdownProps) {
             {passedGates.map(([name, gate]) => (
               <div key={name} className="score-breakdown__gate score-breakdown__gate--pass">
                 <span className="score-breakdown__gate-indicator" aria-hidden="true">✓</span>
-                <span className="score-breakdown__gate-name">{formatHardGateName(t, name)}</span>
-                {gate.detail && (
-                  <span className="score-breakdown__gate-detail">{formatHardGateDetail(t, name, gate)}</span>
-                )}
+                <div className="score-breakdown__gate-content">
+                  <span className="score-breakdown__gate-name">{formatHardGateName(t, name)}</span>
+                  {gate.detail && (
+                    <span className="score-breakdown__gate-detail">{formatHardGateDetail(t, name, gate)}</span>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -106,7 +124,7 @@ export default function ScoreBreakdown({ payload }: ScoreBreakdownProps) {
 
       {payload.notes.length > 0 && (
         <div className="score-breakdown__notes">
-          <h3 className="score-breakdown__notes-title">{t('RunDetail.notes')}</h3>
+          <h2 className="score-breakdown__notes-title">{t('RunDetail.notes')}</h2>
           <ul className="score-breakdown__notes-list">
             {payload.notes.map((note, index) => (
               <li key={index} className="score-breakdown__notes-text">

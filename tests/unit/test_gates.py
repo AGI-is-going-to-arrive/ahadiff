@@ -1,16 +1,23 @@
 from __future__ import annotations
 
-from ahadiff.contracts import ClaimRecord, ClaimStatus, SourceHunk
+import pytest
+
+from ahadiff.contracts import ClaimRecord, ClaimStatus, RejectReasonCode, SourceHunk
 from ahadiff.eval.gates import evaluate_hard_gates
 from ahadiff.eval.rubric import load_rubric
 
 
-def _claim(*, status: ClaimStatus) -> ClaimRecord:
+def _claim(
+    *,
+    status: ClaimStatus,
+    reason_code: RejectReasonCode | None = None,
+) -> ClaimRecord:
     return ClaimRecord(
-        claim_id=f"claim-{status}",
+        claim_id=f"claim-{status}-{reason_code or 'none'}",
         run_id="run_test",
         text="Example claim",
         status=status,
+        reason_code=(reason_code or "evidence_missing") if status == "rejected" else None,
         confidence="medium",
         source_hunks=[
             SourceHunk(file="src/app.py", start=1, end=2, side="new"),
@@ -97,8 +104,116 @@ def test_hard_gates_pass_at_accuracy_and_evidence_thresholds() -> None:
 
     assert summary.passed is True
     assert summary.failed_names() == ()
-    assert summary.as_payload()["accuracy"]["detail"] == "accuracy score 14.00 >= 14.00"
-    assert summary.as_payload()["evidence"]["detail"] == "evidence score 12.00 >= 12.00"
+    payload = summary.as_payload()
+    assert payload["accuracy"]["detail"] == "accuracy score 14.00 >= 14.00"
+    assert payload["accuracy"]["threshold"] == 14.00
+    assert "policy" not in payload["accuracy"]
+    assert payload["evidence"]["detail"] == "evidence score 12.00 >= 12.00"
+    assert payload["evidence"]["threshold"] == 12.00
+    assert "policy" not in payload["evidence"]
+
+
+@pytest.mark.parametrize(
+    ("basis", "expected_regime", "expected_accuracy", "expected_evidence"),
+    [
+        (
+            {"visible_files": 2, "visible_hunks": 20, "visible_changed_lines": 400},
+            "normal",
+            14.00,
+            12.00,
+        ),
+        (
+            {"visible_files": 8, "visible_hunks": 80, "visible_changed_lines": 1200},
+            "medium",
+            13.30,
+            11.40,
+        ),
+        (
+            {"visible_files": 24, "visible_hunks": 160, "visible_changed_lines": 3000},
+            "large",
+            12.60,
+            10.80,
+        ),
+        (
+            {"visible_files": 44, "visible_hunks": 164, "visible_changed_lines": 2756},
+            "very_large",
+            11.90,
+            10.20,
+        ),
+    ],
+)
+def test_accuracy_and_evidence_gates_use_adaptive_threshold_policy(
+    basis: dict[str, int],
+    expected_regime: str,
+    expected_accuracy: float,
+    expected_evidence: float,
+) -> None:
+    summary = evaluate_hard_gates(
+        rubric=load_rubric(),
+        dimension_scores={
+            "accuracy": expected_accuracy,
+            "evidence": expected_evidence,
+            "diff_coverage": 14.0,
+        },
+        claims=(_claim(status="verified"),),
+        secret_leak_detected=False,
+        injection_unresolved=False,
+        diff_coverage_basis=basis,
+    )
+
+    payload = summary.as_payload()
+    accuracy = payload["accuracy"]
+    evidence = payload["evidence"]
+
+    assert summary.failed_names() == ()
+    assert accuracy["threshold"] == expected_accuracy
+    assert evidence["threshold"] == expected_evidence
+    assert accuracy["passed"] is True
+    assert evidence["passed"] is True
+    assert accuracy["policy"] == {
+        "kind": "adaptive_threshold",
+        "ratio": round(expected_accuracy / 14.0, 2),
+        "regime": expected_regime,
+        "basis": basis,
+    }
+    assert evidence["policy"] == {
+        "kind": "adaptive_threshold",
+        "ratio": round(expected_evidence / 12.0, 2),
+        "regime": expected_regime,
+        "basis": basis,
+    }
+    assert "policy" not in payload["contradicted_claims"]
+    assert "policy" not in payload["evidence_coverage"]
+    assert "policy" not in payload["secret_leak"]
+    assert "policy" not in payload["injection_unresolved"]
+    assert "policy" not in payload["critical_safety_findings"]
+
+
+def test_adaptive_accuracy_and_evidence_gate_rejected_ratio_quality_constraint() -> None:
+    summary = evaluate_hard_gates(
+        rubric=load_rubric(),
+        dimension_scores={"accuracy": 11.90, "evidence": 10.20, "diff_coverage": 14.0},
+        claims=(
+            _claim(status="verified"),
+            _claim(status="verified"),
+            _claim(status="rejected", reason_code="evidence_missing"),
+        ),
+        secret_leak_detected=False,
+        injection_unresolved=False,
+        diff_coverage_basis={
+            "visible_files": 44,
+            "visible_hunks": 164,
+            "visible_changed_lines": 2756,
+        },
+    )
+
+    payload = summary.as_payload()
+
+    assert summary.failed_names() == ("accuracy", "evidence")
+    assert payload["accuracy"]["threshold"] == 11.90
+    assert payload["evidence"]["threshold"] == 10.20
+    assert "blocked_by_rejected_ratio=0.33" in str(payload["accuracy"]["detail"])
+    assert "blocked_by_rejected_ratio=0.33" in str(payload["evidence"]["detail"])
 
 
 def test_hard_gates_fail_when_evidence_coverage_below_threshold() -> None:
