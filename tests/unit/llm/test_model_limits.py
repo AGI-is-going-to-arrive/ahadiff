@@ -17,6 +17,7 @@ from ahadiff.core.config import (
     PROVIDER_STALE_PROBE_FIELDS,
     clear_provider_probe_fields,
     load_config,
+    provider_core_fingerprint,
     read_config_data,
 )
 from ahadiff.llm.adapters.anthropic import AnthropicAdapter
@@ -30,6 +31,7 @@ from ahadiff.llm.adapters.openai_responses import OpenAIResponsesAdapter
 from ahadiff.llm.cost import (
     DEFAULT_CONTEXT_WINDOW,
     DEFAULT_OUTPUT_TOKEN_BUDGET,
+    effective_output_cap,
     resolve_model_limits,
 )
 from ahadiff.llm.model_registry import lookup_model_limits
@@ -960,6 +962,77 @@ def test_registry_confidence_stays_distinct_from_live_probe_source() -> None:
     assert live_limits.input_source == "live"
 
 
+def test_resolved_model_limits_marks_default_fallback_values_unknown() -> None:
+    limits = resolve_model_limits("openai", "not-a-real-model", _config("openai"))
+
+    assert limits.max_context_tokens == DEFAULT_CONTEXT_WINDOW
+    assert limits.max_input_tokens == DEFAULT_CONTEXT_WINDOW
+    assert limits.max_output_tokens == DEFAULT_OUTPUT_TOKEN_BUDGET
+    assert limits.max_context_known is False
+    assert limits.max_input_known is False
+    assert limits.max_output_known is False
+
+
+def test_resolved_model_limits_passes_registry_policy_and_confidence(
+    temp_model_registry: Callable[[object | str], None],
+) -> None:
+    temp_model_registry(
+        _registry_payload(
+            [
+                _registry_entry(
+                    "gemini",
+                    "fixture-model",
+                    max_context_tokens=1114112,
+                    max_input_tokens=1048576,
+                    max_output_tokens=65536,
+                    context_policy="split_envelope",
+                    confidence="medium",
+                )
+            ]
+        )
+    )
+
+    limits = resolve_model_limits("gemini", "fixture-model", _config("gemini"))
+
+    assert limits.context_policy == "split_envelope"
+    assert limits.confidence == "medium"
+    assert limits.max_context_known is True
+    assert limits.max_input_known is True
+    assert limits.max_output_known is True
+
+
+def test_effective_output_cap_clamps_step_budget_and_model_limit() -> None:
+    assert (
+        effective_output_cap(
+            requested_step_cap=18_000,
+            llm_output_budget=12_000,
+            resolved_model_max_output=4096,
+        )
+        == 4096
+    )
+    assert (
+        effective_output_cap(
+            requested_step_cap=2500,
+            llm_output_budget=12_000,
+            resolved_model_max_output=4096,
+        )
+        == 2500
+    )
+
+
+def test_effective_output_cap_respects_remaining_context_with_input_estimate() -> None:
+    assert (
+        effective_output_cap(
+            requested_step_cap=8000,
+            llm_output_budget=8000,
+            resolved_model_max_output=8000,
+            estimated_input_tokens=3600,
+            resolved_model_max_context=4096,
+        )
+        == 496
+    )
+
+
 def test_model_registry_invalid_schema_version_falls_back_to_empty(
     temp_model_registry: Callable[[object | str], None],
     caplog: pytest.LogCaptureFixture,
@@ -1375,6 +1448,36 @@ def test_deepseek_direct_rows_use_one_mib_context(model_name: str) -> None:
     assert cast("Any", limits).max_context_tokens == 1_048_576
     assert limits.max_input_tokens == 1_048_576
     assert limits.max_output_tokens == 384_000
+
+
+def test_lmstudio_auto_lookup_prefers_local_runtime_over_openai_compat_collision() -> None:
+    registry = lookup_model_limits("lmstudio", "deepseek-chat")
+    explicit = lookup_model_limits(
+        "lmstudio",
+        "served-model",
+        model_limits_name="deepseek-chat",
+    )
+    provider_qualified = lookup_model_limits(
+        "lmstudio",
+        "served-model",
+        model_limits_name="openai_compat/deepseek-chat",
+    )
+    resolved = resolve_model_limits(
+        "lmstudio",
+        "deepseek-chat",
+        _config("lmstudio", model_name="deepseek-chat"),
+    )
+
+    assert registry is not None
+    assert registry.context_policy == "local_runtime"
+    assert registry.max_output_tokens is None
+    assert explicit is not None
+    assert explicit.context_policy == "local_runtime"
+    assert explicit.max_output_tokens is None
+    assert provider_qualified is not None
+    assert provider_qualified.max_output_tokens == 384_000
+    assert resolved.context_policy == "local_runtime"
+    assert resolved.max_output_known is False
 
 
 def test_gpt55_default_openai_uses_ordinary_context_not_input_plus_output() -> None:
@@ -1850,6 +1953,21 @@ def test_clear_provider_probe_fields_clears_new_fields() -> None:
     assert "probed_max_output_tokens" not in provider
     assert "probed_limits_source" not in provider
     assert provider["model_limits_name"] == "gpt-4o"
+
+
+def test_provider_core_fingerprint_includes_model_limits_name() -> None:
+    provider: dict[str, object] = {
+        "provider_class": "openai",
+        "model_name": "deployment",
+        "base_url": "https://api.example.test/v1",
+        "api_key_env": "AHADIFF_PROVIDER_API_KEY",
+        "model_limits_name": "openai/gpt-4o",
+    }
+    original = provider_core_fingerprint(provider)
+
+    provider["model_limits_name"] = "openai/gpt-5"
+
+    assert provider_core_fingerprint(provider) != original
 
 
 def test_persist_probe_result_writes_split_limit_fields(tmp_path: Path) -> None:

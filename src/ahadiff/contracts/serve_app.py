@@ -9,6 +9,7 @@ from ahadiff.core.budget import CaptureRecommendation  # noqa: TC001
 from . import event_log as event_log_contract
 from . import run_source as run_source_contract
 from .quiz_choice import AnswerMode, QuizChoice, QuizChoiceLabel  # noqa: TC001
+from .serve_providers import ModelLimitsResponse  # noqa: TC001
 
 DegradedFlag: TypeAlias = run_source_contract.DegradedFlag
 DegradedFlagsMap: TypeAlias = run_source_contract.DegradedFlagsMap
@@ -79,6 +80,13 @@ class QuizConfig(BaseModel):
         return self
 
 
+class ConfigModelLimits(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    generate: ModelLimitsResponse | None = None
+    judge: ModelLimitsResponse | None = None
+
+
 class ConfigResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -94,6 +102,7 @@ class ConfigResponse(BaseModel):
     llm: LlmConfig = Field(default_factory=LlmConfig)
     learn: LearnConfig = Field(default_factory=LearnConfig)
     quiz: QuizConfig = Field(default_factory=QuizConfig)
+    model_limits: ConfigModelLimits = Field(default_factory=ConfigModelLimits)
 
 
 class ConfigUpdateResponse(BaseModel):

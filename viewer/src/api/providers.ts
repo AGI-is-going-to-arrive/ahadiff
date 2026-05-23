@@ -1,6 +1,7 @@
 import { apiFetch } from './client';
 import type { ApiFetchOptions } from './client';
 import {
+  modelLimitsResponseSchema,
   parseResponse,
   providerDeleteResponseSchema,
   providerModelsResponseSchema,
@@ -135,4 +136,27 @@ export async function probeProvider(
     providerProbeSubmitResponseSchema,
     raw,
   );
+}
+
+export async function getProviderModelLimits(
+  alias: string,
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<import('./types').ModelLimitsResponse> {
+  const raw = await apiFetch<unknown>(
+    `/api/providers/${encodeURIComponent(alias)}/model-limits`,
+    { signal: opts?.signal },
+  );
+  return parseResponse('GET /api/providers/{alias}/model-limits', modelLimitsResponseSchema, raw);
+}
+
+export async function previewModelLimits(
+  data: { provider_class: string; model_name: string; model_limits_name?: string | null },
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<import('./types').ModelLimitsResponse> {
+  const raw = await apiFetch<unknown>('/api/providers/model-limits/preview', {
+    method: 'POST',
+    body: JSON.stringify(data),
+    signal: opts?.signal,
+  });
+  return parseResponse('POST /api/providers/model-limits/preview', modelLimitsResponseSchema, raw);
 }

@@ -10,7 +10,7 @@ from ..probe_limits import safe_positive_int
 from ..provider import AdapterBase
 from ..schemas import ProbeContextResult, ProviderRequest, ProviderResponse
 from ._capability_overrides import apply_capability_overrides
-from .thinking import anthropic_budget_tokens
+from .thinking import anthropic_thinking_config
 
 if TYPE_CHECKING:
     import httpx
@@ -69,8 +69,9 @@ class AnthropicAdapter(AdapterBase):
             headers["x-api-key"] = api_key
         default_max_tokens = self.config.probed_max_context or 4096
         max_tokens = request.max_output_tokens or max(256, min(4096, default_max_tokens // 4))
-        budget = anthropic_budget_tokens(request.thinking_level)
-        if budget is not None:
+        thinking = anthropic_thinking_config(request.thinking_level, request.model)
+        budget = thinking.get("budget_tokens") if thinking is not None else None
+        if isinstance(budget, int):
             if request.max_output_tokens is not None and request.max_output_tokens <= budget:
                 raise ProviderError(
                     f"anthropic thinking requires max_output_tokens > budget_tokens={budget}"
@@ -83,8 +84,8 @@ class AnthropicAdapter(AdapterBase):
         }
         if request.response_format == "json" or request.enforcement_mode == "json_object":
             payload["system"] = _JSON_OBJECT_SYSTEM_INSTRUCTION
-        if budget is not None:
-            payload["thinking"] = {"type": "enabled", "budget_tokens": budget}
+        if thinking is not None:
+            payload["thinking"] = thinking
         elif request.temperature is not None:
             payload["temperature"] = request.temperature
         base = self.config.base_url.rstrip("/")

@@ -10,7 +10,7 @@ from ..provider import AdapterBase
 from ..schemas import ProbeContextResult, ProviderRequest, ProviderResponse
 from ._capability_overrides import apply_capability_overrides
 from .structured import native_schema_for_request
-from .thinking import normalize_thinking_level
+from .thinking import ollama_think_value
 
 if TYPE_CHECKING:
     import httpx
@@ -48,7 +48,7 @@ class OllamaAdapter(AdapterBase):
             "model": request.model,
             "messages": [{"role": "user", "content": request.effective_payload()}],
             "stream": False,
-            "think": normalize_thinking_level(request.thinking_level) != "none",
+            "think": ollama_think_value(request.thinking_level, request.model),
         }
         if request.temperature is not None:
             payload["options"] = {"temperature": request.temperature}

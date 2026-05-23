@@ -81,6 +81,16 @@ function formFromConfig(config: ConfigResponse, overrides: Partial<ProviderForm>
 }
 
 describe('SettingsPage provider/model helpers', () => {
+  it('keeps model limit keys inside the Settings_page namespace', () => {
+    const catalog = JSON.parse(
+      readFileSync(resolve(__dirname, '../../i18n/messages/en.json'), 'utf-8'),
+    ) as Record<string, unknown>;
+    const settings = catalog.Settings_page as Record<string, unknown>;
+
+    expect(settings.model_limits_title).toBe('Model Context Limits');
+    expect(catalog['Settings_page.model_limits_title']).toBeUndefined();
+  });
+
   it('uses a single provider as the effective auto provider and exposes its models', () => {
     const provider = makeProvider({
       available_models: ['gpt-5.5', 'gpt-5.5', 'gpt-5.4-mini'],

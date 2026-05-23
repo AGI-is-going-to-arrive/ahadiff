@@ -10,6 +10,97 @@ async function openPreferences(page: Page) {
   return panel;
 }
 
+async function installProviderSmartConfigMock(page: Page) {
+  const previewBodies: Record<string, unknown>[] = [];
+  const updateBodies: Record<string, unknown>[] = [];
+  const provider = {
+    alias: 'openai-gpt5',
+    role: 'generate',
+    provider_class: 'openai',
+    provider_kind: 'openai',
+    model_name: 'gpt-5.4-mini',
+    base_url: 'https://api.openai.com/v1',
+    api_key_env: 'OPENAI_API_KEY',
+    key_status: 'configured',
+    api_family: 'openai_chat',
+    api_family_version: 'v1',
+    max_output_tokens: null,
+    thinking_level: null,
+    probed: true,
+    probed_max_context: 128000,
+    probed_max_input_tokens: null,
+    probed_max_output_tokens: null,
+    probed_limits_source: null,
+    model_limits_name: null,
+    probed_tpm: 1000000,
+    probed_rpm: 500,
+    probe_timestamp: '2026-04-30T11:59:00Z',
+    available_models: ['gpt-5.4-mini', 'deployment-prod'],
+  };
+
+  await page.unroute((url) => url.pathname === '/api/providers');
+  await page.route(
+    (url) => url.pathname === '/api/providers',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ providers: [provider] }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/providers/model-limits/preview',
+    async (route) => {
+      const body = (route.request().postDataJSON() ?? {}) as Record<string, unknown>;
+      previewBodies.push(body);
+      const usesProfile = body.model_limits_name === 'openai/gpt-4o';
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          alias: null,
+          provider_class: body.provider_class,
+          model_name: body.model_name,
+          max_context_tokens: usesProfile ? 128000 : 400000,
+          max_input_tokens: null,
+          max_output_tokens: usesProfile ? 16384 : 128000,
+          max_context_known: true,
+          max_input_known: false,
+          max_output_known: true,
+          context_policy: 'shared_pool',
+          source: 'registry',
+          confidence: usesProfile ? 'low' : 'high',
+          warnings: usesProfile ? [{ code: 'provider_limits.low_confidence' }] : [],
+          thinking: { supported: false, mode: null, warnings: [] },
+        }),
+      });
+    },
+  );
+  await page.route(
+    (url) => url.pathname === '/api/providers/openai-gpt5',
+    async (route) => {
+      const body = (route.request().postDataJSON() ?? {}) as Record<string, unknown>;
+      updateBodies.push(body);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          updated: true,
+          warnings: [{ code: 'provider_limits.max_output_clamped' }],
+          provider: {
+            ...provider,
+            model_name: body.model_name,
+            max_output_tokens: body.max_output_tokens,
+            model_limits_name: body.model_limits_name,
+          },
+        }),
+      });
+    },
+  );
+
+  return { previewBodies, updateBodies };
+}
+
 test.describe('cross-browser corner cases', () => {
   test.beforeEach(async ({ page, context }) => {
     await context.clearCookies();
@@ -111,6 +202,56 @@ test.describe('cross-browser corner cases', () => {
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow).toBeLessThanOrEqual(0);
+  });
+
+  test('Settings provider smart config uses draft limits profile and localized warnings', async ({
+    page,
+  }) => {
+    const { previewBodies, updateBodies } = await installProviderSmartConfigMock(page);
+
+    await page.goto('/#/settings?tab=provider');
+    const card = page.getByTestId('provider-card-openai-gpt5');
+    await expect(card).toBeVisible();
+    await card.locator('.provider-card__header').click();
+    await card.getByRole('button', { name: 'Edit' }).click();
+
+    await expect(card.getByText('Max Output', { exact: true })).toBeVisible();
+    await expect(card.getByText('128,000')).toBeVisible();
+    await card.getByText('Advanced').click();
+    await card.getByLabel('Model Name').fill('deployment-prod');
+    await card.getByLabel('Limits profile').fill('openai/gpt-4o');
+    await card.getByLabel('Max Output Tokens').fill('200000');
+
+    await expect(card.getByText('This registry row has low confidence')).toBeVisible();
+    await expect
+      .poll(() =>
+        previewBodies.some(
+          (body) =>
+            body.model_name === 'deployment-prod'
+            && body.model_limits_name === 'openai/gpt-4o',
+        ),
+      )
+      .toBe(true);
+
+    const localeWait = page.waitForResponse(
+      (res) => res.url().endsWith('/api/locale') && res.request().method() === 'PUT',
+    );
+    await page.getByRole('button', { name: '简体中文' }).click();
+    await localeWait;
+
+    await expect(card.getByText('该注册表条目可信度较低')).toBeVisible();
+    await card.getByRole('button', { name: '使用推荐值' }).click();
+    await expect(card.getByLabel('最大输出 Tokens')).toHaveValue('16384');
+    await card.getByRole('button', { name: '保存' }).click();
+
+    await expect(card.getByText('已把保存的输出覆盖值收敛到已知模型上限')).toBeVisible();
+    await expect
+      .poll(() => updateBodies.at(-1))
+      .toMatchObject({
+        model_name: 'deployment-prod',
+        model_limits_name: 'openai/gpt-4o',
+        max_output_tokens: 16384,
+      });
   });
 
   test('rapid sequential navigation produces no JS errors', async ({ page }) => {

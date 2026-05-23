@@ -15,6 +15,12 @@ from ahadiff.contracts import compute_runtime_eval_bundle_version
 from ahadiff.core.errors import InputError
 from ahadiff.core.json_util import safe_json_loads
 from ahadiff.core.paths import atomic_write_state_text
+from ahadiff.llm.cost import (
+    DEFAULT_INPUT_TOKEN_BUDGET,
+    DEFAULT_OUTPUT_TOKEN_BUDGET,
+    effective_output_cap,
+    resolve_model_limits,
+)
 from ahadiff.safety.ignore import resolve_safe_path_from_root
 
 from .rubric import load_rubric
@@ -204,7 +210,6 @@ def run_semantic_alignment_review_for_run(
         findings = redaction.findings
 
     try:
-        from ahadiff.llm.cost import DEFAULT_INPUT_TOKEN_BUDGET, DEFAULT_OUTPUT_TOKEN_BUDGET
         from ahadiff.llm.provider import make_provider
         from ahadiff.llm.schemas import ProviderRequest
 
@@ -1028,13 +1033,21 @@ def _semantic_review_output_tokens(
     provider_config: ProviderConfig,
     output_token_budget: int | None,
 ) -> int:
-    limits = [_SEMANTIC_REVIEW_OUTPUT_TOKEN_CAP]
-    if output_token_budget is not None and output_token_budget > 0:
-        limits.append(output_token_budget)
+    limits = resolve_model_limits(
+        str(provider_config.provider_class),
+        provider_config.model_name,
+        provider_config,
+    )
+    model_max_candidates = [limits.max_output_tokens]
     provider_max = provider_config.max_output_tokens
     if provider_max is not None and provider_max > 0:
-        limits.append(provider_max)
-    return min(limits)
+        model_max_candidates.append(provider_max)
+    return effective_output_cap(
+        requested_step_cap=_SEMANTIC_REVIEW_OUTPUT_TOKEN_CAP,
+        llm_output_budget=output_token_budget,
+        resolved_model_max_output=min(model_max_candidates),
+        default_step_cap=_SEMANTIC_REVIEW_OUTPUT_TOKEN_CAP,
+    )
 
 
 def _semantic_source_ref(run_path: Path) -> str:

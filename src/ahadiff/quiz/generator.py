@@ -28,6 +28,7 @@ from ahadiff.llm import (
     generate_with_validation_retry,
     make_provider,
 )
+from ahadiff.llm.cost import effective_output_cap, resolve_model_limits
 from ahadiff.llm.strict_json import (
     require_complete_json_for_fallback,
     strict_json_envelope,
@@ -600,15 +601,20 @@ def _resolve_request_output_tokens(
     output_token_cap: int | None,
     default_output_token_cap: int,
 ) -> int:
-    request_budget = _positive_output_token_value(output_token_budget, DEFAULT_OUTPUT_TOKEN_BUDGET)
-    per_call_cap = (
-        output_token_cap
-        if output_token_cap is not None and output_token_cap > 0
-        else default_output_token_cap
+    limits = resolve_model_limits(
+        str(provider_config.provider_class),
+        provider_config.model_name,
+        provider_config,
     )
-    if not provider_config.max_output_tokens or provider_config.max_output_tokens <= 0:
-        return min(request_budget, per_call_cap)
-    return min(provider_config.max_output_tokens, request_budget, per_call_cap)
+    model_max_candidates = [limits.max_output_tokens]
+    if provider_config.max_output_tokens and provider_config.max_output_tokens > 0:
+        model_max_candidates.append(provider_config.max_output_tokens)
+    return effective_output_cap(
+        requested_step_cap=output_token_cap,
+        llm_output_budget=output_token_budget,
+        resolved_model_max_output=min(model_max_candidates),
+        default_step_cap=default_output_token_cap,
+    )
 
 
 def _positive_output_token_value(value: int | None, default: int) -> int:

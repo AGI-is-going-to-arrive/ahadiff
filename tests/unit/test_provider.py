@@ -28,6 +28,7 @@ from ahadiff.llm.adapters.ollama import OllamaAdapter
 from ahadiff.llm.adapters.openai import OpenAIChatAdapter
 from ahadiff.llm.adapters.openai_compat import OpenAICompatAdapter
 from ahadiff.llm.adapters.openai_responses import OpenAIResponsesAdapter
+from ahadiff.llm.adapters.thinking import thinking_policy_for
 from ahadiff.llm.cache import build_cache_key
 from ahadiff.llm.cost import (
     DEFAULT_OPENROUTER_MODELS_URL,
@@ -539,6 +540,50 @@ def test_gemini_uses_native_json_schema_when_requested() -> None:
     assert "responseFormat" not in payload["generationConfig"]
 
 
+def test_thinking_policy_reports_payload_modes_for_adapter_specific_models() -> None:
+    assert thinking_policy_for("openai", "gpt-5.4-mini") == {
+        "supported": False,
+        "accepted_levels": (),
+        "payload_mode": "unsupported",
+        "warnings": (),
+    }
+    assert not thinking_policy_for("newapi", "gpt-oss-20b")["supported"]
+    assert not thinking_policy_for("lmstudio", "local-model")["supported"]
+    assert (
+        thinking_policy_for("openai_responses", "gpt-5.4-mini")["payload_mode"]
+        == "reasoning.effort"
+    )
+    assert (
+        thinking_policy_for("azure", "gpt-5.4-mini")["payload_mode"]
+        == "reasoning_effort+max_completion_tokens"
+    )
+    assert (
+        thinking_policy_for("gemini", "gemini-2.5-pro")["payload_mode"]
+        == "thinkingConfig.thinkingLevel"
+    )
+    assert thinking_policy_for("ollama", "llama3.1")["payload_mode"] == "think:boolean"
+    assert thinking_policy_for("ollama", "gpt-oss:20b")["payload_mode"] == "think:string"
+
+    old_anthropic = thinking_policy_for("anthropic", "claude-opus-4-6")
+    adaptive_anthropic = thinking_policy_for("anthropic", "claude-opus-4-7-20260522")
+
+    assert old_anthropic["supported"]
+    assert old_anthropic["accepted_levels"] == ("low", "medium", "high")
+    assert old_anthropic["payload_mode"] == "thinking.budget_tokens"
+    assert adaptive_anthropic["payload_mode"] == "thinking.effort"
+    assert adaptive_anthropic["warnings"] == ("anthropic_adaptive_thinking_effort_only",)
+
+
+def test_gemini_thinking_level_payload_uses_lowercase_level() -> None:
+    adapter = GeminiAdapter(_provider_config("gemini", model_name="gemini-2.5-pro"))
+    _method, _url, _headers, payload = adapter.build_request(
+        _request(model="gemini-2.5-pro", thinking_level="HIGH"),
+        api_key="test-key",
+    )
+
+    assert payload["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "high"}
+
+
 def test_anthropic_adapter_does_not_send_unsupported_output_config() -> None:
     adapter = AnthropicAdapter(_provider_config("anthropic"))
     _method, _url, _headers, payload = adapter.build_request(
@@ -547,6 +592,39 @@ def test_anthropic_adapter_does_not_send_unsupported_output_config() -> None:
     )
 
     assert "output_config" not in payload
+
+
+def test_anthropic_old_models_use_manual_budget_tokens_under_max_tokens() -> None:
+    adapter = AnthropicAdapter(_provider_config("anthropic", model_name="claude-sonnet-4-6"))
+    _method, _url, _headers, payload = adapter.build_request(
+        _request(model="claude-sonnet-4-6", thinking_level="high", max_output_tokens=8193),
+        api_key="test-key",
+    )
+
+    assert payload["max_tokens"] == 8193
+    assert payload["thinking"] == {"type": "enabled", "budget_tokens": 8192}
+
+
+def test_anthropic_old_models_reject_budget_not_below_max_tokens() -> None:
+    adapter = AnthropicAdapter(_provider_config("anthropic", model_name="claude-sonnet-4-6"))
+
+    with pytest.raises(ProviderError, match="max_output_tokens > budget_tokens=8192"):
+        adapter.build_request(
+            _request(model="claude-sonnet-4-6", thinking_level="high", max_output_tokens=8192),
+            api_key="test-key",
+        )
+
+
+def test_anthropic_opus_4_7_uses_adaptive_effort_without_manual_budget() -> None:
+    adapter = AnthropicAdapter(_provider_config("anthropic", model_name="claude-opus-4-7"))
+    _method, _url, _headers, payload = adapter.build_request(
+        _request(model="claude-opus-4-7", thinking_level="high", max_output_tokens=2048),
+        api_key="test-key",
+    )
+
+    assert payload["max_tokens"] == 2048
+    assert payload["thinking"] == {"type": "enabled", "effort": "high"}
+    assert "budget_tokens" not in payload["thinking"]
 
 
 def test_anthropic_provider_downgrades_native_schema_to_json_object_instruction(
@@ -616,6 +694,26 @@ def test_ollama_preserves_json_object_format() -> None:
     )
 
     assert payload["format"] == "json"
+
+
+def test_ollama_non_gpt_oss_models_use_boolean_think() -> None:
+    adapter = OllamaAdapter(_provider_config("ollama", model_name="llama3.1"))
+    _method, _url, _headers, payload = adapter.build_request(
+        _request(model="llama3.1", thinking_level="medium"),
+        api_key=None,
+    )
+
+    assert payload["think"] is True
+
+
+def test_ollama_gpt_oss_models_use_string_think_level() -> None:
+    adapter = OllamaAdapter(_provider_config("ollama", model_name="gpt-oss:20b"))
+    _method, _url, _headers, payload = adapter.build_request(
+        _request(model="gpt-oss:20b", thinking_level="medium"),
+        api_key=None,
+    )
+
+    assert payload["think"] == "medium"
 
 
 def test_provider_downgrades_strict_tool_request_to_native_schema(tmp_path: Path) -> None:

@@ -18,7 +18,10 @@ from anyio import to_thread
 from pydantic import ValidationError
 from starlette.responses import JSONResponse
 
+from ahadiff.contracts.run_source import ProviderConfig
 from ahadiff.contracts.serve_providers import (
+    ModelLimitsPreviewRequest,
+    ModelLimitsResponse,
     ProviderCreateRequest,
     ProviderDeleteResponse,
     ProviderMutationResponse,
@@ -43,6 +46,8 @@ from ahadiff.core.errors import ConfigError, ProviderError, SafetyError
 from ahadiff.core.ids import make_event_id
 from ahadiff.core.task_runner import TaskStatus
 from ahadiff.llm import provider as provider_module
+from ahadiff.llm.adapters.thinking import thinking_policy_for
+from ahadiff.llm.cost import resolve_model_limits
 from ahadiff.llm.probe import probe_provider
 from ahadiff.safety.audit import append_audit_record
 
@@ -62,6 +67,7 @@ if TYPE_CHECKING:
 
 
 _CORE_FIELDS = ("provider_class", "model_name", "base_url", "api_key_env")
+_LIMIT_IDENTITY_FIELDS = (*_CORE_FIELDS, "model_limits_name")
 _PROBE_RESULT_FIELDS = (
     "probed_max_context",
     "probed_max_input_tokens",
@@ -75,9 +81,14 @@ _MAX_PENDING_PROVIDER_PROBE_TASKS = 1
 _MAX_GLOBAL_PENDING_PROBE_TASKS = 3
 _MODEL_DISCOVERY_RESPONSE_BYTE_CAP = 1_048_576
 _MODEL_DISCOVERY_TIMEOUT_SECONDS = 5.0
+_UNTRUSTED_CLAMP_POLICIES = {"route_specific", "local_runtime"}
 
 
 class _ProviderBaseUrlError(Exception):
+    pass
+
+
+class _ProviderFieldError(Exception):
     pass
 
 
@@ -118,6 +129,15 @@ def _build_summary(
     if summary is None:
         return None
     return summary.model_dump(mode="json")
+
+
+def _clean_optional_provider_text(value: str | None, *, field_name: str) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        raise _ProviderFieldError(f"{field_name} must be a non-empty string")
+    return stripped
 
 
 def _error(message: str, *, status: int) -> JSONResponse:
@@ -247,6 +267,196 @@ def _provider_optional_str(provider_data: Mapping[str, Any], field_name: str) ->
     return value
 
 
+def _provider_config_for_limits(provider_data: Mapping[str, Any]) -> ProviderConfig:
+    payload: dict[str, object] = {
+        "provider_class": provider_data.get("provider_class"),
+        "model_name": provider_data.get("model_name"),
+        "base_url": provider_data.get("base_url") or "http://127.0.0.1",
+        "api_key_env": provider_data.get("api_key_env") or "AHADIFF_PROVIDER_API_KEY",
+    }
+    for field_name in (
+        "max_output_tokens",
+        "thinking_level",
+        "probed_max_context",
+        "probed_tpm",
+        "probed_rpm",
+        "probed_max_input_tokens",
+        "probed_max_output_tokens",
+        "probed_limits_source",
+        "model_limits_name",
+        "probe_timestamp",
+    ):
+        value = provider_data.get(field_name)
+        if value is not None:
+            payload[field_name] = value
+    return ProviderConfig.model_validate(payload)
+
+
+def _append_limit_warning(
+    warnings: list[dict[str, object]],
+    code: str,
+    *,
+    params: dict[str, object] | None = None,
+) -> None:
+    warning: dict[str, object] = {"code": code}
+    if params:
+        warning["params"] = params
+    if warning not in warnings:
+        warnings.append(warning)
+
+
+def _structured_limit_warnings(
+    *,
+    context_policy: str | None,
+    confidence: str | None,
+    max_context_known: bool,
+    max_input_known: bool,
+    max_output_known: bool,
+    raw_warnings: tuple[str, ...],
+) -> list[dict[str, object]]:
+    warnings: list[dict[str, object]] = []
+    if not max_context_known or not max_input_known or not max_output_known:
+        _append_limit_warning(
+            warnings,
+            "provider_limits.default_fallback",
+            params={
+                "max_context_known": max_context_known,
+                "max_input_known": max_input_known,
+                "max_output_known": max_output_known,
+            },
+        )
+    if context_policy == "local_runtime":
+        _append_limit_warning(warnings, "provider_limits.local_runtime")
+    if context_policy == "route_specific":
+        _append_limit_warning(warnings, "provider_limits.route_specific")
+    if confidence == "low":
+        _append_limit_warning(warnings, "provider_limits.low_confidence")
+    for _raw_warning in raw_warnings:
+        _append_limit_warning(warnings, "provider_limits.registry_warning")
+    return warnings
+
+
+def _public_limit_value(value: int | None, *, known: bool) -> int | None:
+    if not known:
+        return None
+    return value
+
+
+def _thinking_metadata(provider_class: str, model_name: str) -> dict[str, object]:
+    policy = thinking_policy_for(provider_class, model_name)
+    supported = bool(policy["supported"])
+    return {
+        **policy,
+        "supported": supported,
+    }
+
+
+def build_model_limits_response(
+    *,
+    alias: str | None,
+    provider_data: Mapping[str, Any],
+    model_name_override: str | None = None,
+) -> ModelLimitsResponse | None:
+    provider_snapshot = dict(provider_data)
+    if model_name_override is not None and model_name_override.strip():
+        provider_snapshot["model_name"] = model_name_override.strip()
+        provider_snapshot.pop("model_limits_name", None)
+    try:
+        config = _provider_config_for_limits(provider_snapshot)
+    except ValidationError:
+        return None
+    limits = resolve_model_limits(
+        config.provider_class,
+        config.model_name,
+        config,
+    )
+    return ModelLimitsResponse(
+        alias=alias,
+        provider_class=config.provider_class,
+        model_name=config.model_name,
+        max_context_tokens=_public_limit_value(
+            limits.max_context_tokens,
+            known=limits.max_context_known,
+        ),
+        max_input_tokens=_public_limit_value(
+            limits.max_input_tokens,
+            known=limits.max_input_known,
+        ),
+        max_output_tokens=_public_limit_value(
+            limits.max_output_tokens,
+            known=limits.max_output_known,
+        ),
+        max_context_known=limits.max_context_known,
+        max_input_known=limits.max_input_known,
+        max_output_known=limits.max_output_known,
+        context_policy=cast("Any", limits.context_policy),
+        source=limits.source,
+        confidence=cast("Any", limits.confidence),
+        warnings=_structured_limit_warnings(
+            context_policy=limits.context_policy,
+            confidence=limits.confidence,
+            max_context_known=limits.max_context_known,
+            max_input_known=limits.max_input_known,
+            max_output_known=limits.max_output_known,
+            raw_warnings=limits.warnings,
+        ),
+        thinking=_thinking_metadata(config.provider_class, config.model_name),
+    )
+
+
+def _trusted_max_output_limit(limits: Any) -> int | None:
+    if not limits.max_output_known:
+        return None
+    if limits.max_output_tokens is None:
+        return None
+    if limits.context_policy in _UNTRUSTED_CLAMP_POLICIES:
+        return None
+    if limits.confidence == "low":
+        return None
+    return int(limits.max_output_tokens)
+
+
+def _apply_max_output_policy(provider_data: dict[str, Any]) -> list[dict[str, object]]:
+    requested = provider_data.get("max_output_tokens")
+    if requested is None:
+        return []
+    if isinstance(requested, bool) or not isinstance(requested, int):
+        return []
+    try:
+        config = _provider_config_for_limits(provider_data)
+    except ValidationError:
+        return []
+    limits = resolve_model_limits(config.provider_class, config.model_name, config)
+    trusted_limit = _trusted_max_output_limit(limits)
+    if trusted_limit is not None:
+        if requested <= trusted_limit:
+            return []
+        provider_data["max_output_tokens"] = trusted_limit
+        return [
+            {
+                "code": "provider_limits.max_output_clamped",
+                "params": {
+                    "requested": requested,
+                    "clamped_to": trusted_limit,
+                    "source": limits.output_source,
+                    "max_output_known": limits.max_output_known,
+                },
+            }
+        ]
+    return [
+        {
+            "code": "provider_limits.unverified_override",
+            "params": {
+                "requested": requested,
+                "source": limits.output_source,
+                "max_output_known": limits.max_output_known,
+                "context_policy": limits.context_policy,
+                "confidence": limits.confidence,
+            },
+        }
+    ]
+
+
 def _probe_report_result(
     *,
     alias: str,
@@ -345,14 +555,21 @@ async def create_provider(request: Request) -> JSONResponse:
         body = ProviderCreateRequest.model_validate(payload)
     except ValidationError as exc:
         return _validation_error(exc)
+    try:
+        model_limits_name = _clean_optional_provider_text(
+            body.model_limits_name,
+            field_name="model_limits_name",
+        )
+    except _ProviderFieldError as exc:
+        return _error(str(exc), status=422)
 
     config_path = _config_path(state)
 
-    def _persist() -> tuple[bool, dict[str, Any] | None]:
+    def _persist() -> tuple[bool, dict[str, Any] | None, list[dict[str, object]]]:
         with serve_repo_write_lock(state, command="serve provider create"):
             data, providers = _read_providers_table(config_path)
             if body.alias in providers:
-                return False, None
+                return False, None, []
             normalized_base_url = _normalize_and_validate_base_url(
                 body.base_url,
                 provider_class=body.provider_class,
@@ -368,6 +585,9 @@ async def create_provider(request: Request) -> JSONResponse:
                 new_provider["max_output_tokens"] = body.max_output_tokens
             if body.thinking_level is not None:
                 new_provider["thinking_level"] = body.thinking_level
+            if model_limits_name is not None:
+                new_provider["model_limits_name"] = model_limits_name
+            warnings = _apply_max_output_policy(new_provider)
             providers[body.alias] = new_provider
             write_config_data(config_path, data)
             _append_provider_audit_event(
@@ -376,10 +596,10 @@ async def create_provider(request: Request) -> JSONResponse:
                 alias=body.alias,
                 provider_data=new_provider,
             )
-            return True, dict(new_provider)
+            return True, dict(new_provider), warnings
 
     try:
-        created, persisted = await to_thread.run_sync(_persist)
+        created, persisted, warnings = await to_thread.run_sync(_persist)
     except _ProviderBaseUrlError as exc:
         return _error(f"base_url: {exc}", status=422)
     except ConfigError as exc:
@@ -391,11 +611,81 @@ async def create_provider(request: Request) -> JSONResponse:
     if summary is None:
         return _error("provider_summary_unavailable", status=500)
     return JSONResponse(
-        ProviderMutationResponse.model_validate({"updated": True, "provider": summary}).model_dump(
-            mode="json"
-        ),
+        ProviderMutationResponse.model_validate(
+            {"updated": True, "provider": summary, "warnings": warnings}
+        ).model_dump(mode="json"),
         status_code=201,
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/providers/{alias}/model-limits
+# POST /api/providers/model-limits/preview
+# ---------------------------------------------------------------------------
+
+
+async def get_provider_model_limits(request: Request) -> JSONResponse:
+    require_write_token(request)
+    state = serve_state(request)
+    alias = str(request.path_params.get("alias", ""))
+    if not alias:
+        return _error("alias_required", status=422)
+    alias_error = _invalid_alias_response(alias)
+    if alias_error is not None:
+        return alias_error
+
+    config_path = _config_path(state)
+
+    def _load_provider() -> dict[str, Any] | None:
+        _data, providers = _read_providers_table(config_path)
+        raw_provider = providers.get(alias)
+        if not isinstance(raw_provider, dict):
+            return None
+        return dict(cast("dict[str, Any]", raw_provider))
+
+    try:
+        provider_data = await to_thread.run_sync(_load_provider)
+    except ConfigError as exc:
+        return _error(str(exc), status=500)
+    if provider_data is None:
+        return _error("provider_not_found", status=404)
+
+    response = build_model_limits_response(alias=alias, provider_data=provider_data)
+    if response is None:
+        return _error("provider_limits_unavailable", status=500)
+    return JSONResponse(response.model_dump(mode="json"))
+
+
+async def preview_provider_model_limits(request: Request) -> JSONResponse:
+    require_write_token(request)
+    try:
+        raw_payload = cast("object", await request.json())
+    except Exception:
+        return _error("invalid_json", status=400)
+    if not isinstance(raw_payload, dict):
+        return _error("body_must_be_object", status=400)
+    try:
+        body = ModelLimitsPreviewRequest.model_validate(raw_payload)
+    except ValidationError as exc:
+        return _validation_error(exc)
+    try:
+        model_limits_name = _clean_optional_provider_text(
+            body.model_limits_name,
+            field_name="model_limits_name",
+        )
+    except _ProviderFieldError as exc:
+        return _error(str(exc), status=422)
+
+    provider_data: dict[str, Any] = {
+        "provider_class": body.provider_class,
+        "model_name": body.model_name,
+    }
+    if model_limits_name is not None:
+        provider_data["model_limits_name"] = model_limits_name
+    response = build_model_limits_response(alias=None, provider_data=provider_data)
+    if response is None:
+        return _error("provider_limits_unavailable", status=500)
+    return JSONResponse(response.model_dump(mode="json"))
 
 
 # ---------------------------------------------------------------------------
@@ -425,21 +715,35 @@ async def update_provider(request: Request) -> JSONResponse:
     except ValidationError as exc:
         return _validation_error(exc)
 
+    fields_set = set(body.model_fields_set)
     update_payload = body.model_dump(exclude_none=True)
+    if "model_limits_name" in update_payload:
+        try:
+            update_payload["model_limits_name"] = _clean_optional_provider_text(
+                cast("str", update_payload["model_limits_name"]),
+                field_name="model_limits_name",
+            )
+        except _ProviderFieldError as exc:
+            return _error(str(exc), status=422)
+    clear_fields: set[str] = set()
+    if "max_output_tokens" in fields_set and body.max_output_tokens is None:
+        clear_fields.add("max_output_tokens")
+    if "model_limits_name" in fields_set and body.model_limits_name is None:
+        clear_fields.add("model_limits_name")
     masked_key = update_payload.get("api_key_env")
     if isinstance(masked_key, str) and "****" in masked_key:
         del update_payload["api_key_env"]
-    if not update_payload:
+    if not update_payload and not clear_fields:
         return _error("at_least_one_field_required", status=422)
 
     config_path = _config_path(state)
 
-    def _persist() -> tuple[bool, dict[str, Any] | None]:
+    def _persist() -> tuple[bool, dict[str, Any] | None, list[dict[str, object]]]:
         with serve_repo_write_lock(state, command="serve provider update"):
             data, providers = _read_providers_table(config_path)
             existing = providers.get(alias)
             if not isinstance(existing, dict):
-                return False, None
+                return False, None, []
             existing_typed = cast("dict[str, Any]", existing)
             updated_provider: dict[str, Any] = dict(existing_typed)
             safe_update = {
@@ -448,6 +752,8 @@ async def update_provider(request: Request) -> JSONResponse:
                 if not (k == "api_key_env" and isinstance(v, str) and "****" in v)
             }
             updated_provider.update(safe_update)
+            for field_name in clear_fields:
+                updated_provider.pop(field_name, None)
             # Recompute base_url normalization if either base_url or
             # provider_class changed (so suffix stripping stays aligned).
             if "base_url" in update_payload or "provider_class" in update_payload:
@@ -459,10 +765,14 @@ async def update_provider(request: Request) -> JSONResponse:
                         provider_class=provider_class,
                         data=data,
                     )
-            # Clear stale probe results when any core identity field changed.
-            core_changed = any(field in update_payload for field in _CORE_FIELDS)
-            if core_changed:
+            # Clear stale probe results when the provider identity or registry
+            # model override changes; old live probe limits belong to the old identity.
+            limit_identity_changed = any(
+                field in update_payload or field in clear_fields for field in _LIMIT_IDENTITY_FIELDS
+            )
+            if limit_identity_changed:
                 clear_provider_probe_fields(updated_provider)
+            warnings = _apply_max_output_policy(updated_provider)
             providers[alias] = updated_provider
             write_config_data(config_path, data)
             _append_provider_audit_event(
@@ -471,10 +781,10 @@ async def update_provider(request: Request) -> JSONResponse:
                 alias=alias,
                 provider_data=updated_provider,
             )
-            return True, dict(updated_provider)
+            return True, dict(updated_provider), warnings
 
     try:
-        updated, persisted = await to_thread.run_sync(_persist)
+        updated, persisted, warnings = await to_thread.run_sync(_persist)
     except _ProviderBaseUrlError as exc:
         return _error(f"base_url: {exc}", status=422)
     except ConfigError as exc:
@@ -486,9 +796,9 @@ async def update_provider(request: Request) -> JSONResponse:
     if summary is None:
         return _error("provider_summary_unavailable", status=500)
     return JSONResponse(
-        ProviderMutationResponse.model_validate({"updated": True, "provider": summary}).model_dump(
-            mode="json"
-        )
+        ProviderMutationResponse.model_validate(
+            {"updated": True, "provider": summary, "warnings": warnings}
+        ).model_dump(mode="json")
     )
 
 
@@ -953,10 +1263,13 @@ def _extract_model_ids(payload: Any, provider_class: str) -> list[str]:
 
 
 __all__ = [
+    "build_model_limits_response",
     "create_provider",
     "delete_provider",
     "discover_models",
     "fetch_provider_models",
+    "get_provider_model_limits",
+    "preview_provider_model_limits",
     "probe_provider_route",
     "save_provider_models",
     "update_provider",

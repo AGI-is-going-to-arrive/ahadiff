@@ -327,6 +327,7 @@ def test_get_config_handles_load_failure_gracefully(
             "quiz_auto_range_min": 3,
             "quiz_auto_range_max": 12,
         },
+        "model_limits": {"generate": None, "judge": None},
     }
 
 
@@ -631,6 +632,139 @@ def test_get_config_is_public_no_token_required(tmp_path: Path) -> None:
     response = client.get("/api/config")
 
     assert response.status_code == 200
+
+
+def test_get_config_includes_generate_model_limits_when_provider_configured(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    (repo_root / ".git").mkdir(parents=True)
+    state_dir = repo_root / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        "[llm]\n"
+        'generate_provider = "gen"\n'
+        'generate_model = "gpt-5.4-mini"\n'
+        "\n[providers.gen]\n"
+        'provider_class = "openai"\n'
+        'model_name = "gpt-5.4-mini"\n'
+        'base_url = "https://api.example.test/v1"\n'
+        'api_key_env = "AHADIFF_PROVIDER_API_KEY"\n',
+        encoding="utf-8",
+    )
+    client = _client(state_dir)
+
+    response = client.get("/api/config")
+
+    assert response.status_code == 200
+    generate_limits = response.json()["model_limits"]["generate"]
+    assert generate_limits["alias"] == "gen"
+    assert generate_limits["model_name"] == "gpt-5.4-mini"
+    assert generate_limits["max_output_tokens"] == 128000
+    assert response.json()["model_limits"]["judge"]["alias"] == "gen"
+
+
+def test_get_config_model_limits_use_provider_model_when_role_model_is_default(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    (repo_root / ".git").mkdir(parents=True)
+    state_dir = repo_root / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        "[llm]\n"
+        'generate_provider = "gen"\n'
+        "\n[providers.gen]\n"
+        'provider_class = "gemini"\n'
+        'model_name = "gemini-2.5-pro"\n'
+        'base_url = "https://generativelanguage.googleapis.com/v1beta"\n'
+        'api_key_env = "GEMINI_API_KEY"\n',
+        encoding="utf-8",
+    )
+    client = _client(state_dir)
+
+    response = client.get("/api/config")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["generate_model"] == "gpt-5.4-mini"
+    generate_limits = payload["model_limits"]["generate"]
+    assert generate_limits["alias"] == "gen"
+    assert generate_limits["model_name"] == "gemini-2.5-pro"
+    assert generate_limits["max_output_tokens"] == 65536
+
+
+def test_get_config_model_limits_ignore_provider_limits_profile_for_role_model_override(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    (repo_root / ".git").mkdir(parents=True)
+    state_dir = repo_root / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        "[llm]\n"
+        'generate_provider = "gen"\n'
+        'generate_model = "gpt-4o"\n'
+        "\n[providers.gen]\n"
+        'provider_class = "openai"\n'
+        'model_name = "deployment-name"\n'
+        'model_limits_name = "openai/gpt-5"\n'
+        'base_url = "https://api.example.test/v1"\n'
+        'api_key_env = "AHADIFF_PROVIDER_API_KEY"\n',
+        encoding="utf-8",
+    )
+    client = _client(state_dir)
+
+    response = client.get("/api/config")
+
+    assert response.status_code == 200
+    generate_limits = response.json()["model_limits"]["generate"]
+    assert generate_limits["model_name"] == "gpt-4o"
+    assert generate_limits["max_output_tokens"] == 16384
+
+
+def test_get_config_model_limits_use_single_provider_when_role_provider_is_default(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    (repo_root / ".git").mkdir(parents=True)
+    state_dir = repo_root / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        "[providers.only]\n"
+        'provider_class = "openai"\n'
+        'model_name = "gpt-4o"\n'
+        'base_url = "https://api.example.test/v1"\n'
+        'api_key_env = "AHADIFF_PROVIDER_API_KEY"\n',
+        encoding="utf-8",
+    )
+    client = _client(state_dir)
+
+    response = client.get("/api/config")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["generate_provider"] == ""
+    assert payload["judge_provider"] == ""
+    generate_limits = payload["model_limits"]["generate"]
+    judge_limits = payload["model_limits"]["judge"]
+    assert generate_limits["alias"] == "only"
+    assert generate_limits["model_name"] == "gpt-4o"
+    assert judge_limits["alias"] == "only"
+    assert judge_limits["model_name"] == "gpt-4o"
+
+
+def test_get_config_model_limits_are_null_without_selected_provider(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    client = _client(state_dir)
+
+    response = client.get("/api/config")
+
+    assert response.status_code == 200
+    assert response.json()["model_limits"] == {"generate": None, "judge": None}
 
 
 # ---------------------------------------------------------------------------

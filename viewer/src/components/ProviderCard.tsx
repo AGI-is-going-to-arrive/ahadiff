@@ -1,10 +1,43 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ProviderSummary } from '../api/config';
-import type { ProviderCreateInput, ProviderUpdateInput, TaskInfoResponse } from '../api/types';
+import type {
+  ModelLimitsResponse,
+  ModelLimitsWarning,
+  ProviderCreateInput,
+  ProviderMutationResponse,
+  ProviderUpdateInput,
+  TaskInfoResponse,
+} from '../api/types';
 import { getTask } from '../api/tasks';
-import { discoverModels, fetchProviderModels, saveProviderModels } from '../api/providers';
+import {
+  discoverModels,
+  fetchProviderModels,
+  previewModelLimits,
+  saveProviderModels,
+} from '../api/providers';
 import { useTranslation, type MessageKey, type TranslateFn } from '../i18n/useTranslation';
 import './ProviderCard.css';
+
+const SUPPORTS_THINKING = ['anthropic', 'azure', 'openai_responses', 'gemini', 'ollama'];
+const THINKING_HINT_KEY_BY_PROVIDER: Record<string, MessageKey> = {
+  anthropic: 'Settings_page.provider_thinking_hint_anthropic',
+  azure: 'Settings_page.provider_thinking_hint_azure',
+  gemini: 'Settings_page.provider_thinking_hint_gemini',
+  ollama: 'Settings_page.provider_thinking_hint_ollama',
+  openai_responses: 'Settings_page.provider_thinking_hint_openai_responses',
+};
+const PROVIDER_WARNING_KEY_BY_CODE: Record<string, MessageKey> = {
+  'provider_limits.default_fallback': 'Settings_page.provider_limits_warning_default_fallback',
+  'provider_limits.local_runtime': 'Settings_page.provider_limits_warning_local_runtime',
+  'provider_limits.route_specific': 'Settings_page.provider_limits_warning_route_specific',
+  'provider_limits.low_confidence': 'Settings_page.provider_limits_warning_low_confidence',
+  'provider_limits.registry_warning': 'Settings_page.provider_limits_warning_registry_warning',
+  'provider_limits.max_output_clamped': 'Settings_page.provider_limits_warning_max_output_clamped',
+  'provider_limits.unverified_override': 'Settings_page.provider_limits_warning_unverified_override',
+};
+const THINKING_WARNING_KEY_BY_CODE: Record<string, MessageKey> = {
+  ollama_thinking_unverified: 'Settings_page.provider_thinking_warning_ollama_unverified',
+};
 
 const PROVIDER_CLASSES = [
   'openai',
@@ -27,14 +60,16 @@ interface DraftFields {
   api_key_env: string;
   max_output_tokens: string;
   thinking_level: string;
+  model_limits_name: string;
 }
 
 export interface ProviderCardProps {
   provider: ProviderSummary;
   isNew?: boolean;
-  onSave: (alias: string, data: ProviderUpdateInput | ProviderCreateInput) => Promise<void>;
+  onSave: (alias: string, data: ProviderUpdateInput | ProviderCreateInput) => Promise<ProviderMutationResponse | void>;
   onDelete: (alias: string) => Promise<void>;
   onProbe: (alias: string) => Promise<string | null>;
+  onRefresh?: () => void;
   onCancelNew?: () => void;
 }
 
@@ -46,6 +81,7 @@ const DEFAULT_DRAFT: DraftFields = {
   api_key_env: '',
   max_output_tokens: '',
   thinking_level: 'none',
+  model_limits_name: '',
 };
 
 interface ProviderExample {
@@ -196,6 +232,44 @@ export function createProviderProbePoller(
   return { start, cancel };
 }
 
+export function providerLimitsWarningMessage(
+  t: TranslateFn,
+  warning: ModelLimitsWarning,
+): string {
+  const key = PROVIDER_WARNING_KEY_BY_CODE[warning.code]
+    ?? 'Settings_page.provider_limits_warning_unknown';
+  return t(key);
+}
+
+export function providerThinkingHintKey(providerClass: string): MessageKey | null {
+  return THINKING_HINT_KEY_BY_PROVIDER[providerClass] ?? null;
+}
+
+function providerThinkingWarningMessages(
+  t: TranslateFn,
+  thinking: Record<string, unknown> | undefined,
+): string[] {
+  const rawWarnings = thinking?.warnings;
+  if (!Array.isArray(rawWarnings)) return [];
+  return rawWarnings
+    .map((warning) => (typeof warning === 'string' ? THINKING_WARNING_KEY_BY_CODE[warning] : undefined))
+    .filter((key): key is MessageKey => Boolean(key))
+    .map((key) => t(key));
+}
+
+export function shouldShowRecommendedLimitAction(
+  limits: Pick<ModelLimitsResponse, 'max_output_known' | 'max_output_tokens'>,
+  draftValue: string,
+): boolean {
+  if (!limits.max_output_known || limits.max_output_tokens == null) return false;
+  const parsed = Number(draftValue);
+  return Number.isFinite(parsed) && parsed > 0 && parsed !== limits.max_output_tokens;
+}
+
+function providerActionError(t: TranslateFn, key: MessageKey): string {
+  return t(key);
+}
+
 function toDraft(p: ProviderSummary): DraftFields {
   return {
     alias: p.alias,
@@ -205,6 +279,7 @@ function toDraft(p: ProviderSummary): DraftFields {
     api_key_env: p.api_key_env ?? '',
     max_output_tokens: p.max_output_tokens != null ? String(p.max_output_tokens) : '',
     thinking_level: p.thinking_level ?? 'none',
+    model_limits_name: p.model_limits_name ?? '',
   };
 }
 
@@ -214,6 +289,7 @@ export default function ProviderCard({
   onSave,
   onDelete,
   onProbe,
+  onRefresh,
   onCancelNew,
 }: ProviderCardProps) {
   const { t, locale } = useTranslation();
@@ -235,6 +311,7 @@ export default function ProviderCard({
     new Set(provider.available_models ?? []),
   );
   const [savingModels, setSavingModels] = useState(false);
+  const [mutationWarnings, setMutationWarnings] = useState<ModelLimitsWarning[]>([]);
   const mountedRef = useRef(false);
   const probeRequestRef = useRef(0);
   const probePollerRef = useRef<ProviderProbePoller | null>(null);
@@ -292,6 +369,7 @@ export default function ProviderCard({
     setEditing(true);
     setExpanded(true);
     setSaveError(null);
+    setMutationWarnings([]);
   };
 
   const cancelEdit = () => {
@@ -310,7 +388,10 @@ export default function ProviderCard({
     try {
       const parsedMaxOutput = parseInt(draft.max_output_tokens, 10);
       const maxOutput = Number.isFinite(parsedMaxOutput) && parsedMaxOutput > 0 ? parsedMaxOutput : null;
-      const thinkingLevel = draft.thinking_level === 'none' || !draft.thinking_level ? null : draft.thinking_level;
+      const thinkingLevel = SUPPORTS_THINKING.includes(draft.provider_class)
+        ? (draft.thinking_level === 'none' || !draft.thinking_level ? null : draft.thinking_level)
+        : null;
+      const modelLimitsName = draft.model_limits_name.trim() || null;
       if (isNew) {
         const payload: ProviderCreateInput = {
           alias: draft.alias.trim(),
@@ -320,8 +401,10 @@ export default function ProviderCard({
           api_key_env: draft.api_key_env.trim(),
           max_output_tokens: maxOutput,
           thinking_level: thinkingLevel,
+          model_limits_name: modelLimitsName,
         };
-        await onSave(draft.alias.trim(), payload);
+        const result = await onSave(draft.alias.trim(), payload);
+        setMutationWarnings(result?.warnings ?? []);
       } else {
         const payload: ProviderUpdateInput = {
           provider_class: draft.provider_class,
@@ -330,12 +413,14 @@ export default function ProviderCard({
           api_key_env: draft.api_key_env.trim() || undefined,
           max_output_tokens: maxOutput,
           thinking_level: thinkingLevel,
+          model_limits_name: modelLimitsName,
         };
-        await onSave(provider.alias, payload);
+        const result = await onSave(provider.alias, payload);
+        setMutationWarnings(result?.warnings ?? []);
       }
       setEditing(false);
-    } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'save_failed');
+    } catch {
+      setSaveError(providerActionError(t, 'Settings_page.provider_save_failed'));
     } finally {
       setSaving(false);
     }
@@ -346,8 +431,8 @@ export default function ProviderCard({
     setDeleteError(null);
     try {
       await onDelete(provider.alias);
-    } catch (e) {
-      setDeleteError(e instanceof Error ? e.message : 'delete_failed');
+    } catch {
+      setDeleteError(providerActionError(t, 'Settings_page.provider_delete_failed'));
       setDeleting(false);
       setConfirmDelete(false);
     }
@@ -368,22 +453,23 @@ export default function ProviderCard({
             if (!isCurrentProbe(requestId)) return;
             setProbeStatus('success');
             setProbeTaskId(null);
+            onRefresh?.();
           },
-          onError: (message) => {
+          onError: () => {
             if (!isCurrentProbe(requestId)) return;
             setProbeStatus('error');
-            setProbeError(message);
+            setProbeError(providerActionError(t, 'Settings_page.provider_probe_error'));
             setProbeTaskId(null);
           },
         });
       } else {
         setProbeStatus('error');
-        setProbeError('probe_no_task');
+        setProbeError(providerActionError(t, 'Settings_page.provider_probe_error'));
       }
-    } catch (e) {
+    } catch {
       if (!isCurrentProbe(requestId)) return;
       setProbeStatus('error');
-      setProbeError(e instanceof Error ? e.message : 'probe_failed');
+      setProbeError(providerActionError(t, 'Settings_page.provider_probe_error'));
     }
   };
 
@@ -396,8 +482,8 @@ export default function ProviderCard({
       setRemoteModels(result.models);
       const existing = new Set(provider.available_models ?? []);
       setSelectedModels(existing.size > 0 ? existing : new Set(result.models));
-    } catch (e) {
-      setFetchModelsError(e instanceof Error ? e.message : 'fetch_failed');
+    } catch {
+      setFetchModelsError(providerActionError(t, 'Settings_page.provider_models_fetch_failed'));
     } finally {
       setFetchingModels(false);
     }
@@ -503,6 +589,7 @@ export default function ProviderCard({
       {/* Body (read-only details OR edit form) */}
       {expanded && (
         <div className="provider-card__body" id={bodyId} role="region" aria-labelledby={headerId}>
+          {mutationWarnings.length > 0 && <ProviderWarnings warnings={mutationWarnings} t={t} />}
           {editing ? (
             <ProviderEditForm
               draft={draft}
@@ -513,6 +600,7 @@ export default function ProviderCard({
               onSave={handleSave}
               onCancel={cancelEdit}
               t={t}
+              locale={locale}
             />
           ) : (
             <ProviderDetailView
@@ -819,6 +907,25 @@ export function ProviderDetailView({
   );
 }
 
+function ProviderWarnings({
+  warnings,
+  t,
+}: {
+  warnings: ModelLimitsWarning[];
+  t: TranslateFn;
+}) {
+  if (warnings.length === 0) return null;
+  return (
+    <div className="provider-card__warning-list" role="status">
+      {warnings.map((warning, index) => (
+        <div className="provider-card__warning" key={`${warning.code}-${index}`}>
+          {providerLimitsWarningMessage(t, warning)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 interface FormProps {
   draft: DraftFields;
   setDraft: React.Dispatch<React.SetStateAction<DraftFields>>;
@@ -828,6 +935,7 @@ interface FormProps {
   onSave: () => void;
   onCancel: () => void;
   t: ReturnType<typeof useTranslation>['t'];
+  locale: string;
 }
 
 function ProviderEditForm({
@@ -839,13 +947,61 @@ function ProviderEditForm({
   onSave,
   onCancel,
   t,
+  locale,
 }: FormProps) {
   const [discoveredModels, setDiscoveredModels] = useState<string[] | null>(null);
   const [discoveringModels, setDiscoveringModels] = useState(false);
   const [discoverError, setDiscoverError] = useState<string | null>(null);
   const discoverAbortRef = useRef<AbortController | null>(null);
   const discoverRequestRef = useRef(0);
+  const [modelLimits, setModelLimits] = useState<ModelLimitsResponse | null>(null);
+  const limitsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const limitsAbortRef = useRef<AbortController | null>(null);
+  const limitsRequestRef = useRef(0);
 
+  useEffect(() => {
+    if (limitsTimerRef.current) clearTimeout(limitsTimerRef.current);
+    limitsAbortRef.current?.abort();
+    const requestId = limitsRequestRef.current + 1;
+    limitsRequestRef.current = requestId;
+
+    if (!draft.model_name.trim()) {
+      setModelLimits(null);
+      return;
+    }
+
+    limitsTimerRef.current = setTimeout(() => {
+      const controller = new AbortController();
+      limitsAbortRef.current = controller;
+
+      const modelLimitsName = draft.model_limits_name.trim();
+      const fetchPromise = previewModelLimits(
+        {
+          provider_class: draft.provider_class,
+          model_name: draft.model_name.trim(),
+          model_limits_name: modelLimitsName || null,
+        },
+        { signal: controller.signal },
+      );
+
+      fetchPromise
+        .then((res) => {
+          if (!controller.signal.aborted && limitsRequestRef.current === requestId) {
+            setModelLimits(res);
+          }
+        })
+        .catch(() => {
+          if (!controller.signal.aborted && limitsRequestRef.current === requestId) {
+            setModelLimits(null);
+          }
+        });
+    }, 300);
+
+    return () => {
+      if (limitsTimerRef.current) clearTimeout(limitsTimerRef.current);
+      limitsAbortRef.current?.abort();
+    };
+  }, [draft.provider_class, draft.model_name, draft.model_limits_name]);
   useEffect(() => {
     return () => {
       discoverRequestRef.current += 1;
@@ -891,9 +1047,9 @@ function ProviderEditForm({
           return { ...prev, model_name: firstModel };
         });
       }
-    } catch (e) {
+    } catch {
       if (controller.signal.aborted || discoverRequestRef.current !== requestId) return;
-      setDiscoverError(e instanceof Error ? e.message : 'fetch_failed');
+      setDiscoverError(providerActionError(t, 'Settings_page.provider_models_fetch_failed'));
     } finally {
       if (!controller.signal.aborted && discoverRequestRef.current === requestId) {
         setDiscoveringModels(false);
@@ -910,6 +1066,9 @@ function ProviderEditForm({
   const modelInvalid = draft.model_name.trim() === '';
   const baseInvalid = draft.base_url.trim() === '';
   const canSave = !saving && !aliasInvalid && !modelInvalid && !baseInvalid;
+  const thinkingSupported = typeof modelLimits?.thinking?.supported === 'boolean'
+    ? modelLimits.thinking.supported
+    : SUPPORTS_THINKING.includes(draft.provider_class);
 
   return (
     <form
@@ -1042,43 +1201,125 @@ function ProviderEditForm({
         />
       </div>
 
-      <div className="provider-card__form-row">
-        <label
-          className="provider-card__form-label"
-          htmlFor={`provider-maxout-${isNew ? 'new' : draft.alias}`}
-        >
-          {t('Settings_page.provider_max_output_label')}
-        </label>
-        <input
-          id={`provider-maxout-${isNew ? 'new' : draft.alias}`}
-          type="number"
-          className="provider-card__input"
-          value={draft.max_output_tokens}
-          onChange={(e) => setField('max_output_tokens', e.target.value)}
-          placeholder={t('Settings_page.provider_max_output_ph')}
-          min={1}
-        />
-      </div>
+      <details className="provider-card__advanced">
+        <summary>{t('Settings_page.provider_advanced')}</summary>
+        <div className="provider-card__form-row">
+          <label
+            className="provider-card__form-label"
+            htmlFor={`provider-maxout-${isNew ? 'new' : draft.alias}`}
+          >
+            {t('Settings_page.provider_max_output_label')}
+          </label>
+          <input
+            id={`provider-maxout-${isNew ? 'new' : draft.alias}`}
+            type="number"
+            className="provider-card__input"
+            value={draft.max_output_tokens}
+            onChange={(e) => setField('max_output_tokens', e.target.value)}
+            placeholder={t('Settings_page.provider_max_output_ph')}
+            min={1}
+          />
+        </div>
+        <div className="provider-card__form-row">
+          <label
+            className="provider-card__form-label"
+            htmlFor={`provider-limits-name-${isNew ? 'new' : draft.alias}`}
+          >
+            {t('Settings_page.provider_model_limits_name')}
+          </label>
+          <input
+            id={`provider-limits-name-${isNew ? 'new' : draft.alias}`}
+            type="text"
+            className="provider-card__input"
+            value={draft.model_limits_name}
+            onChange={(e) => setField('model_limits_name', e.target.value)}
+            placeholder={t('Settings_page.provider_model_limits_name_ph')}
+          />
+        </div>
+      </details>
 
-      <div className="provider-card__form-row">
-        <label
-          className="provider-card__form-label"
-          htmlFor={`provider-thinking-${isNew ? 'new' : draft.alias}`}
-        >
-          {t('Settings_page.provider_thinking_label')}
-        </label>
-        <select
-          id={`provider-thinking-${isNew ? 'new' : draft.alias}`}
-          className="provider-card__select"
-          value={draft.thinking_level}
-          onChange={(e) => setField('thinking_level', e.target.value)}
-        >
-          <option value="none">{t('Settings_page.provider_thinking_level_none')}</option>
-          <option value="low">{t('Settings_page.provider_thinking_level_low')}</option>
-          <option value="medium">{t('Settings_page.provider_thinking_level_medium')}</option>
-          <option value="high">{t('Settings_page.provider_thinking_level_high')}</option>
-        </select>
-      </div>
+      {modelLimits && (
+        <div className="provider-card__limits-info">
+          <div>
+            <span
+              className={`provider-card__badge provider-card__badge--${modelLimits.source}`}
+            >
+              {t(
+                `Settings_page.provider_output_badge_${modelLimits.source === 'live' ? 'probed' : modelLimits.source}` as MessageKey,
+              )}
+            </span>
+            {shouldShowRecommendedLimitAction(modelLimits, draft.max_output_tokens) && (
+              <button
+                type="button"
+                className="provider-card__recommend-btn"
+                onClick={() =>
+                  setField('max_output_tokens', String(modelLimits.max_output_tokens))
+                }
+              >
+                {t('Settings_page.provider_limits_use_recommended')}
+              </button>
+            )}
+          </div>
+          <ProviderWarnings warnings={modelLimits.warnings} t={t} />
+          <dl className="provider-card__limits-values">
+            <div>
+              <dt>{t('Settings_page.limits_context')}</dt>
+              <dd>
+                {modelLimits.max_context_known && modelLimits.max_context_tokens != null
+                  ? formatTokenCount(modelLimits.max_context_tokens, locale)
+                  : t('Settings_page.limits_unknown')}
+              </dd>
+            </div>
+            <div>
+              <dt>{t('Settings_page.limits_max_out')}</dt>
+              <dd>
+                {modelLimits.max_output_known && modelLimits.max_output_tokens != null
+                  ? formatTokenCount(modelLimits.max_output_tokens, locale)
+                  : t('Settings_page.limits_unknown')}
+              </dd>
+            </div>
+          </dl>
+          {modelLimits.max_output_known
+            && modelLimits.max_output_tokens != null
+            && Number(draft.max_output_tokens) > modelLimits.max_output_tokens && (
+              <div className="provider-card__warning" role="alert">
+                {t('Settings_page.provider_output_warn_exceeds')}
+              </div>
+            )}
+          {providerThinkingHintKey(modelLimits.provider_class) && (
+            <div className="provider-card__hint">
+              {t(providerThinkingHintKey(modelLimits.provider_class) as MessageKey)}
+            </div>
+          )}
+          {providerThinkingWarningMessages(t, modelLimits.thinking).map((message) => (
+            <div className="provider-card__warning" key={message}>
+              {message}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {thinkingSupported && (
+        <div className="provider-card__form-row">
+          <label
+            className="provider-card__form-label"
+            htmlFor={`provider-thinking-${isNew ? 'new' : draft.alias}`}
+          >
+            {t('Settings_page.provider_thinking_label')}
+          </label>
+          <select
+            id={`provider-thinking-${isNew ? 'new' : draft.alias}`}
+            className="provider-card__select"
+            value={draft.thinking_level}
+            onChange={(e) => setField('thinking_level', e.target.value)}
+          >
+            <option value="none">{t('Settings_page.provider_thinking_level_none')}</option>
+            <option value="low">{t('Settings_page.provider_thinking_level_low')}</option>
+            <option value="medium">{t('Settings_page.provider_thinking_level_medium')}</option>
+            <option value="high">{t('Settings_page.provider_thinking_level_high')}</option>
+          </select>
+        </div>
+      )}
 
       {saveError && (
         <div className="provider-card__probe-msg provider-card__probe-msg--error" role="alert">

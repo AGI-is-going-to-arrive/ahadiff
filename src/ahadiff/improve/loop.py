@@ -27,6 +27,7 @@ from ahadiff.eval.evaluator import ScoreReport, evaluate_run
 from ahadiff.eval.results import append_result, compute_prompt_version
 from ahadiff.git.repo import run_git
 from ahadiff.llm import ProviderRequest, make_provider
+from ahadiff.llm.cost import effective_output_cap, resolve_model_limits
 from ahadiff.review.database import load_result_events_for_improve_chain, load_result_events_from_db
 
 from .program import (
@@ -1130,6 +1131,14 @@ def _mutate_prompt_in_worktree(
         request_timeout_seconds=request_timeout_seconds,
         execution_origin="improve",
     )
+    limits = resolve_model_limits(
+        str(provider_config.provider_class),
+        provider_config.model_name,
+        provider_config,
+    )
+    model_max_candidates = [limits.max_output_tokens]
+    if provider_config.max_output_tokens is not None and provider_config.max_output_tokens > 0:
+        model_max_candidates.append(provider_config.max_output_tokens)
     try:
         response = provider.generate(
             ProviderRequest(
@@ -1145,7 +1154,12 @@ def _mutate_prompt_in_worktree(
                 privacy_mode=cast("Any", privacy_mode),
                 response_format="json",
                 enforcement_mode="json_object",
-                max_output_tokens=provider_config.max_output_tokens or 6000,
+                max_output_tokens=effective_output_cap(
+                    requested_step_cap=6000,
+                    llm_output_budget=None,
+                    resolved_model_max_output=min(model_max_candidates),
+                    default_step_cap=6000,
+                ),
                 thinking_level=provider_config.thinking_level,
             )
         )

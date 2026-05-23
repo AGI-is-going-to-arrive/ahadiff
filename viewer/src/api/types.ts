@@ -816,6 +816,7 @@ export interface ProviderCreateInput {
   api_key_env: string;
   max_output_tokens?: number | null;
   thinking_level?: string | null;
+  model_limits_name?: string | null;
 }
 
 export interface ProviderUpdateInput {
@@ -825,11 +826,13 @@ export interface ProviderUpdateInput {
   api_key_env?: string;
   max_output_tokens?: number | null;
   thinking_level?: string | null;
+  model_limits_name?: string | null;
 }
 
 export interface ProviderMutationResponse {
   updated: boolean;
   provider: import('./config').ProviderSummary;
+  warnings?: ModelLimitsWarning[];
 }
 
 export interface ProviderDeleteResponse {
@@ -886,4 +889,26 @@ export interface ImprovePreflightResponse {
   existing_sessions: ImproveSessionSummary[];
   repo_state: ImproveRepoState;
   provider_configured: boolean;
+}
+
+export interface ModelLimitsWarning {
+  code: string;
+  params: Record<string, unknown>;
+}
+
+export interface ModelLimitsResponse {
+  alias: string | null;
+  provider_class: string;
+  model_name: string;
+  max_context_tokens: number | null;
+  max_input_tokens: number | null;
+  max_output_tokens: number | null;
+  max_context_known: boolean;
+  max_input_known: boolean;
+  max_output_known: boolean;
+  context_policy: 'shared_pool' | 'split_envelope' | 'route_specific' | 'local_runtime' | null;
+  source: 'live' | 'registry' | 'default' | 'mixed';
+  confidence: 'high' | 'medium' | 'low' | null;
+  warnings: ModelLimitsWarning[];
+  thinking: Record<string, unknown>;
 }

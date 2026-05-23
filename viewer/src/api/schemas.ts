@@ -770,6 +770,38 @@ export const quizConfigSchema = z
     path: ['quiz_auto_range_min'],
   });
 
+/**
+ * Mirrors backend `ModelLimitsResponse` (src/ahadiff/contracts/serve_providers.py).
+ * Backend emits nullable token fields whenever a limit is unknown (e.g. registry
+ * miss for a never-probed alias); nullable `alias` / `confidence` mirror the
+ * fact that preview lookups omit alias and unknown sources omit confidence.
+ * `warnings` and `thinking` are open-ended dicts of LocalizedWarning-style
+ * structures we treat as opaque for forward-compatibility.
+ */
+export const modelLimitsWarningSchema = z
+  .object({
+    code: z.string().min(1),
+    params: z.record(z.string(), z.unknown()).default({}),
+  })
+  .strict();
+
+export const modelLimitsResponseSchema = z.object({
+  alias: z.string().nullable(),
+  provider_class: z.string(),
+  model_name: z.string(),
+  max_context_tokens: z.number().int().nullable(),
+  max_input_tokens: z.number().int().nullable(),
+  max_output_tokens: z.number().int().nullable(),
+  max_context_known: z.boolean(),
+  max_input_known: z.boolean(),
+  max_output_known: z.boolean(),
+  context_policy: z.enum(['shared_pool', 'split_envelope', 'route_specific', 'local_runtime']).nullable(),
+  source: z.enum(['live', 'registry', 'default', 'mixed']),
+  confidence: z.enum(['high', 'medium', 'low']).nullable(),
+  warnings: z.array(modelLimitsWarningSchema).default([]),
+  thinking: z.record(z.string(), z.unknown()).default({}),
+}).strict();
+
 export const configResponseSchema = z
   .object({
     lang: z.string().nullable(),
@@ -780,6 +812,10 @@ export const configResponseSchema = z
     judge_model: z.string().nullable(),
     serve_port: z.number().int().nullable(),
     key_status: z.record(z.string(), z.enum(['configured', 'missing'])).default({}),
+    model_limits: z.object({
+      generate: modelLimitsResponseSchema.nullable().optional(),
+      judge: modelLimitsResponseSchema.nullable().optional(),
+    }).optional(),
     capture: captureConfigSchema,
     llm: llmConfigSchema,
     learn: learnConfigSchema,
@@ -929,6 +965,7 @@ export const providerCreateRequestSchema = z
     api_key_env: z.string().min(1),
     max_output_tokens: z.number().int().positive().nullable().optional(),
     thinking_level: z.enum(['none', 'low', 'medium', 'high']).nullable().optional(),
+    model_limits_name: z.string().min(1).nullable().optional(),
   })
   .strict();
 
@@ -940,11 +977,15 @@ export const providerUpdateRequestSchema = z
     api_key_env: z.string().min(1).optional(),
     max_output_tokens: z.number().int().positive().nullable().optional(),
     thinking_level: z.enum(['none', 'low', 'medium', 'high']).nullable().optional(),
+    model_limits_name: z.string().min(1).nullable().optional(),
   })
   .strict();
 
+
+
 export const providerMutationResponseSchema = z
   .object({
+    warnings: z.array(modelLimitsWarningSchema).optional(),
     updated: z.boolean(),
     provider: providerSummarySchema,
   })

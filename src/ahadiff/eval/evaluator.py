@@ -15,7 +15,12 @@ from ahadiff.contracts import ClaimRecord, compute_runtime_eval_bundle_version
 from ahadiff.core.errors import InputError
 from ahadiff.core.json_util import safe_json_loads
 from ahadiff.core.paths import path_identity_key
-from ahadiff.llm.cost import DEFAULT_INPUT_TOKEN_BUDGET, DEFAULT_OUTPUT_TOKEN_BUDGET
+from ahadiff.llm.cost import (
+    DEFAULT_INPUT_TOKEN_BUDGET,
+    DEFAULT_OUTPUT_TOKEN_BUDGET,
+    effective_output_cap,
+    resolve_model_limits,
+)
 
 from .deterministic import DimensionScore, build_deterministic_scores
 from .gates import HardGateResult, HardGateSummary, evaluate_hard_gates
@@ -792,13 +797,21 @@ def _resolve_llm_judge_max_output_tokens(
     provider_config: ProviderConfig,
     output_token_budget: int | None,
 ) -> int:
-    limits = [_LLM_JUDGE_OUTPUT_TOKEN_CAP]
-    if output_token_budget is not None and output_token_budget > 0:
-        limits.append(output_token_budget)
+    limits = resolve_model_limits(
+        str(provider_config.provider_class),
+        provider_config.model_name,
+        provider_config,
+    )
+    model_max_candidates = [limits.max_output_tokens]
     provider_max = getattr(provider_config, "max_output_tokens", None)
     if provider_max is not None and provider_max > 0:
-        limits.append(int(provider_max))
-    return min(limits)
+        model_max_candidates.append(int(provider_max))
+    return effective_output_cap(
+        requested_step_cap=_LLM_JUDGE_OUTPUT_TOKEN_CAP,
+        llm_output_budget=output_token_budget,
+        resolved_model_max_output=min(model_max_candidates),
+        default_step_cap=_LLM_JUDGE_OUTPUT_TOKEN_CAP,
+    )
 
 
 def _load_claim_records(path: Path) -> tuple[ClaimRecord, ...]:

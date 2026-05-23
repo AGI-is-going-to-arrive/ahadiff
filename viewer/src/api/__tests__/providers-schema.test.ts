@@ -55,12 +55,14 @@ describe('provider API schemas', () => {
       model_name: 'gpt-test',
       base_url: 'https://api.example.test/v1',
       api_key_env: 'TEST_API_KEY',
+      model_limits_name: 'openai/gpt-test',
     } satisfies ProviderCreateInput;
     const updateInput = {
       provider_class: 'openai_responses',
       model_name: 'gpt-test-2',
       base_url: 'https://api.example.test/responses',
       api_key_env: 'TEST_API_KEY_2',
+      model_limits_name: null,
     } satisfies ProviderUpdateInput;
 
     expect(providerCreateRequestSchema.parse(createInput)).toEqual(createInput);

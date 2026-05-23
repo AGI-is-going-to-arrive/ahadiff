@@ -24,7 +24,8 @@ import type {
   ProviderSummary, UsageResponse, AuditResponse, InstallManifestAction, InstallTarget,
 } from '../api/config';
 import type {
-  ProviderCreateInput, ProviderUpdateInput, ServeStatusResponse, WatchStatusResponse,
+  ModelLimitsResponse, ProviderCreateInput, ProviderUpdateInput, ServeStatusResponse,
+  WatchStatusResponse,
 } from '../api/types';
 import { useTranslation, type MessageKey, type TranslateFn } from '../i18n/useTranslation';
 import { copyToClipboard } from '../utils/clipboard';
@@ -269,6 +270,14 @@ export default function SettingsPage() {
             t={t}
             onRetry={retry}
             onSaved={() => void fetchAll()}
+            onProviderMutated={(provider) =>
+              setData((current) => ({
+                ...current,
+                providers: current.providers.some((item) => item.alias === provider.alias)
+                  ? current.providers.map((item) => item.alias === provider.alias ? provider : item)
+                  : [...current.providers, provider],
+              }))
+            }
           />
         );
       case 'capture':
@@ -606,6 +615,95 @@ export function buildProviderConfigUpdatePayload(
   return payload;
 }
 
+function formattedLimitValue(
+  value: number | null,
+  known: boolean,
+  t: TFn,
+): string {
+  return known && value !== null ? value.toLocaleString() : t('Settings_page.limits_unknown');
+}
+
+function inputBudgetLimit(limits: ModelLimitsResponse): number | null {
+  if (limits.max_input_known && limits.max_input_tokens !== null) {
+    return limits.max_input_tokens;
+  }
+  if (limits.max_context_known && limits.max_context_tokens !== null) {
+    return limits.max_context_tokens;
+  }
+  return null;
+}
+
+function ModelLimitSummary({
+  role,
+  limits,
+  llm,
+  t,
+  setLlmField,
+}: {
+  role: 'generate' | 'judge';
+  limits: ModelLimitsResponse;
+  llm: LlmConfig;
+  t: TFn;
+  setLlmField: (key: 'input_token_budget' | 'output_token_budget', value: number) => void;
+}) {
+  const inputLimit = inputBudgetLimit(limits);
+  const outputLimit = limits.max_output_known ? limits.max_output_tokens : null;
+  const confidenceClass = limits.confidence ?? 'unknown';
+
+  return (
+    <div className="settings-model-context-bar">
+      <div className="settings-model-context-bar__title">
+        <span>{t('Settings_page.model_limits_title')}</span>
+        <span className="settings-model-context-bar__role">{t(`Settings_page.${role}_model`)}</span>
+        <span className={`provider-card__badge provider-card__badge--${limits.source}`}>
+          {t(`Settings_page.provider_limits_source_${limits.source}` as MessageKey)}
+        </span>
+        <span className={`provider-card__badge provider-card__badge--${confidenceClass}`}>
+          {limits.confidence ? t(`Settings_page.provider_output_badge_${limits.confidence}` as MessageKey) : t('Settings_page.provider_output_badge_unknown')}
+        </span>
+      </div>
+      <div className="settings-model-context-bar__stats">
+        <div className="settings-model-context-bar__stat">
+          <span className="settings-model-context-bar__stat-label">{t('Settings_page.limits_context')}</span>
+          <span className="settings-model-context-bar__stat-val">
+            {formattedLimitValue(limits.max_context_tokens, limits.max_context_known, t)}
+          </span>
+        </div>
+        <div className="settings-model-context-bar__stat">
+          <span className="settings-model-context-bar__stat-label">{t('Settings_page.limits_max_out')}</span>
+          <span className="settings-model-context-bar__stat-val">
+            {formattedLimitValue(limits.max_output_tokens, limits.max_output_known, t)}
+          </span>
+        </div>
+      </div>
+      {inputLimit !== null && llm.input_token_budget > inputLimit && (
+        <div className="settings-model-context-bar__warning">
+          <span>{t('Settings_page.limits_input_budget_exceeds')}</span>
+          <button
+            type="button"
+            className="settings-model-context-bar__btn"
+            onClick={() => setLlmField('input_token_budget', inputLimit)}
+          >
+            {t('Settings_page.limits_use_recommended')}
+          </button>
+        </div>
+      )}
+      {outputLimit !== null && llm.output_token_budget > outputLimit && (
+        <div className="settings-model-context-bar__warning">
+          <span>{t('Settings_page.limits_output_budget_exceeds')}</span>
+          <button
+            type="button"
+            className="settings-model-context-bar__btn"
+            onClick={() => setLlmField('output_token_budget', outputLimit)}
+          >
+            {t('Settings_page.limits_use_recommended')}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProviderTab({
   config,
   providers,
@@ -614,6 +712,7 @@ function ProviderTab({
   t,
   onRetry,
   onSaved,
+  onProviderMutated,
 }: {
   config: ConfigResponse | null;
   providers: ProviderSummary[];
@@ -622,6 +721,7 @@ function ProviderTab({
   t: TFn;
   onRetry: () => void;
   onSaved: () => void;
+  onProviderMutated: (provider: ProviderSummary) => void;
 }) {
   const [form, setForm] = useState<ProviderForm | null>(null);
   const [saving, setSaving] = useState(false);
@@ -675,12 +775,15 @@ function ProviderTab({
 
   const handleProviderSave = async (alias: string, data: ProviderUpdateInput | ProviderCreateInput) => {
     if ('alias' in data) {
-      await createProvider(data);
+      const result = await createProvider(data);
       setShowNewProvider(false);
+      onProviderMutated(result.provider);
+      return result;
     } else {
-      await updateProvider(alias, data);
+      const result = await updateProvider(alias, data);
+      onProviderMutated(result.provider);
+      return result;
     }
-    onSaved();
   };
 
   const handleProviderDelete = async (alias: string) => {
@@ -743,6 +846,7 @@ function ProviderTab({
                   onSave={handleProviderSave}
                   onDelete={handleProviderDelete}
                   onProbe={handleProviderProbe}
+                  onRefresh={onSaved}
                   onCancelNew={() => setShowNewProvider(false)}
                 />
               )}
@@ -753,6 +857,7 @@ function ProviderTab({
                   onSave={handleProviderSave}
                   onDelete={handleProviderDelete}
                   onProbe={handleProviderProbe}
+                  onRefresh={onSaved}
                 />
               ))}
             </div>
@@ -848,6 +953,22 @@ function ProviderTab({
           <div className="settings-card">
             <div className="settings-card__header"><h2>{t('Settings_page.section_llm')}</h2></div>
             <div className="settings-card__body">
+              <div className="settings-model-context-list">
+                {(['generate', 'judge'] as const).map(role => {
+                  const limits = config.model_limits?.[role];
+                  if (!limits) return null;
+                  return (
+                    <ModelLimitSummary
+                      key={role}
+                      role={role}
+                      limits={limits}
+                      llm={form.llm}
+                      t={t}
+                      setLlmField={setLlmField}
+                    />
+                  );
+                })}
+              </div>
               <div className="settings-field">
                 <div className="settings-field__label">
                   <h3>{t('Settings_page.llm_input_token_budget')}</h3>

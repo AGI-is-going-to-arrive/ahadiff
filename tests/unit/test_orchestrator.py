@@ -209,6 +209,47 @@ def test_resolve_provider_uses_configured_role_model_override(
     assert provider_config.model_name == "gpt-5.5"
 
 
+def test_resolve_provider_clears_limits_profile_for_role_model_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = _FakeConfigSnapshot()
+    snapshot.values["llm"]["generate_provider"] = "gpt"
+    snapshot.values["llm"]["generate_model"] = "gpt-4o"
+    snapshot.values["providers"] = {
+        "gpt": {
+            "provider_class": "openai",
+            "model_name": "deployment-name",
+            "model_limits_name": "openai/gpt-5",
+            "base_url": "http://127.0.0.1:8318",
+            "api_key_env": "AHADIFF_PROVIDER_API_KEY",
+        }
+    }
+    snapshot.resolved = {
+        "llm.generate_model": ResolvedSetting(
+            key="llm.generate_model",
+            value="gpt-4o",
+            source="repo:/tmp/repo/.ahadiff/config.toml",
+        )
+    }
+    monkeypatch.setenv("AHADIFF_PROVIDER_API_KEY", "test-key")
+
+    provider_config, _, _, _ = _resolve_provider_from_config(
+        snapshot=snapshot,
+        operation_label="lesson generation",
+        provider_name=None,
+        provider_class="openai",
+        base_url=None,
+        model=None,
+        api_key_env="AHADIFF_PROVIDER_API_KEY",
+        privacy_mode="strict_local",
+        local_hosts=("127.0.0.1",),
+        strict_local_hosts=("127.0.0.1",),
+    )
+
+    assert provider_config.model_name == "gpt-4o"
+    assert provider_config.model_limits_name is None
+
+
 def test_resolve_provider_treats_single_configured_remote_as_explicit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -15,6 +15,7 @@ from ahadiff.llm import (
     generate_with_validation_retry,
     make_provider,
 )
+from ahadiff.llm.cost import effective_output_cap, resolve_model_limits
 from ahadiff.llm.strict_json import (
     require_complete_json_for_fallback,
     strict_json_envelope,
@@ -201,7 +202,7 @@ def extract_claim_candidates_from_run(
         findings=findings,
         output_lang=output_lang,
         max_output_tokens=_resolve_claim_request_max_output_tokens(
-            provider_max_output_tokens=provider_config.max_output_tokens,
+            provider_config=provider_config,
             output_token_budget=output_token_budget,
             claim_output_token_cap=claim_output_token_cap,
         ),
@@ -258,19 +259,24 @@ def _parse_fallback_claim_candidates_payload(
 
 def _resolve_claim_request_max_output_tokens(
     *,
-    provider_max_output_tokens: int | None,
+    provider_config: ProviderConfig,
     output_token_budget: int | None,
     claim_output_token_cap: int | None,
 ) -> int:
-    output_budget = _positive_output_token_value(output_token_budget, DEFAULT_OUTPUT_TOKEN_BUDGET)
-    cap = _positive_output_token_value(
-        claim_output_token_cap,
-        _DEFAULT_CLAIM_OUTPUT_TOKEN_CAP,
+    limits = resolve_model_limits(
+        str(provider_config.provider_class),
+        provider_config.model_name,
+        provider_config,
     )
-    limits = [output_budget, cap]
-    if provider_max_output_tokens and provider_max_output_tokens > 0:
-        limits.append(provider_max_output_tokens)
-    return min(limits)
+    model_max_candidates = [limits.max_output_tokens]
+    if provider_config.max_output_tokens and provider_config.max_output_tokens > 0:
+        model_max_candidates.append(provider_config.max_output_tokens)
+    return effective_output_cap(
+        requested_step_cap=claim_output_token_cap,
+        llm_output_budget=output_token_budget,
+        resolved_model_max_output=min(model_max_candidates),
+        default_step_cap=_DEFAULT_CLAIM_OUTPUT_TOKEN_CAP,
+    )
 
 
 def _positive_output_token_value(value: int | None, default: int) -> int:

@@ -117,6 +117,11 @@ class ResolvedModelLimits:
     input_source: str
     output_source: str
     warnings: tuple[str, ...] = ()
+    context_policy: str | None = None
+    confidence: str | None = None
+    max_context_known: bool = True
+    max_input_known: bool = True
+    max_output_known: bool = True
 
 
 def estimate_request_tokens(
@@ -186,6 +191,30 @@ def resolve_context_window(model_name: str, probed_max_context: int | None) -> i
     if probed_max_context is not None and probed_max_context > 0:
         return probed_max_context
     return _DEV_CONTEXT_WINDOWS.get(model_name, DEFAULT_CONTEXT_WINDOW)
+
+
+def effective_output_cap(
+    *,
+    requested_step_cap: int | None,
+    llm_output_budget: int | None,
+    resolved_model_max_output: int | None,
+    estimated_input_tokens: int | None = None,
+    resolved_model_max_context: int | None = None,
+    default_step_cap: int = DEFAULT_OUTPUT_TOKEN_BUDGET,
+    default_output_budget: int = DEFAULT_OUTPUT_TOKEN_BUDGET,
+) -> int:
+    """Clamp an AhaDiff-owned generation request to step, config, and model limits."""
+    step_cap = _positive_int_or_none(requested_step_cap) or default_step_cap
+    output_budget = _positive_int_or_none(llm_output_budget) or default_output_budget
+    candidates = [step_cap, output_budget]
+    model_max = _positive_int_or_none(resolved_model_max_output)
+    if model_max is not None:
+        candidates.append(model_max)
+    context = _positive_int_or_none(resolved_model_max_context)
+    estimated_input = _non_negative_int_or_none(estimated_input_tokens)
+    if context is not None and estimated_input is not None:
+        candidates.append(max(1, context - estimated_input))
+    return max(1, min(candidates))
 
 
 def resolve_model_limits(
@@ -283,6 +312,11 @@ def resolve_model_limits(
         input_source=input_source,
         output_source=output_source,
         warnings=tuple(warnings),
+        context_policy=getattr(registry, "context_policy", None) if registry is not None else None,
+        confidence=getattr(registry, "confidence", None) if registry is not None else None,
+        max_context_known=_limit_source_is_known(context_source),
+        max_input_known=_limit_source_is_known(input_source),
+        max_output_known=_limit_source_is_known(output_source),
     )
 
 
@@ -437,6 +471,14 @@ def _positive_int_or_none(value: object) -> int | None:
     return None
 
 
+def _non_negative_int_or_none(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value >= 0:
+        return value
+    return None
+
+
 def _combined_limit_source(*sources: str) -> Literal["live", "registry", "default", "mixed"]:
     source_map = {
         "legacy_context": "default",
@@ -451,6 +493,10 @@ def _combined_limit_source(*sources: str) -> Literal["live", "registry", "defaul
     if len(groups) == 1:
         return cast("Literal['live', 'registry', 'default', 'mixed']", next(iter(groups)))
     return "mixed"
+
+
+def _limit_source_is_known(source: str) -> bool:
+    return source in {"live", "registry"}
 
 
 def enforce_token_budget(
@@ -736,6 +782,7 @@ __all__ = [
     "ResolvedModelLimits",
     "TokenEstimate",
     "clip_text_to_context_limit",
+    "effective_output_cap",
     "enforce_token_budget",
     "estimate_cost_usd",
     "estimate_request_tokens",

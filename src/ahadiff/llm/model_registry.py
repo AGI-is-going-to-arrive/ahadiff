@@ -73,7 +73,40 @@ def lookup_model_limits(
     if not lookup_name:
         return None
     entries = _load_registry_entries_for_lookup()
-    provider_names = _provider_candidates(provider_class)
+    provider_names = _provider_candidates(provider_class, explicit_lookup=explicit_lookup)
+    if provider_class.strip().lower() == "lmstudio" and "openai_compat" in provider_names:
+        primary_match = _lookup_model_limits_for_providers(
+            entries,
+            ("lmstudio",),
+            lookup_name,
+            explicit_lookup,
+        )
+        if primary_match is not None:
+            return primary_match
+        fallback_names = tuple(provider for provider in provider_names if provider != "lmstudio")
+        return _lookup_model_limits_for_providers(
+            entries,
+            fallback_names,
+            lookup_name,
+            explicit_lookup,
+        )
+
+    return _lookup_model_limits_for_providers(
+        entries,
+        provider_names,
+        lookup_name,
+        explicit_lookup,
+    )
+
+
+def _lookup_model_limits_for_providers(
+    entries: tuple[_RegistryEntry, ...],
+    provider_names: tuple[str, ...],
+    lookup_name: str,
+    explicit_lookup: bool,
+) -> ModelLimitEntry | None:
+    if not provider_names:
+        return None
 
     exact = _find_exact(entries, provider_names, lookup_name)
     if exact is not None:
@@ -100,7 +133,13 @@ def lookup_model_limits(
         qualified_providers, qualified_name = provider_qualified
         family_match = _find_family(entries, qualified_providers, qualified_name)
     if family_match is None:
-        return None
+        wildcard_match = _find_wildcard(entries, provider_names)
+        if wildcard_match is None and provider_qualified is not None:
+            qualified_providers, _qualified_name = provider_qualified
+            wildcard_match = _find_wildcard(entries, qualified_providers)
+        if wildcard_match is None:
+            return None
+        return _to_public(wildcard_match)
     return _to_public(
         family_match,
         warnings=(f"model limits matched version-family fallback: {family_match.model}",),
@@ -155,6 +194,17 @@ def _find_family(
     return None
 
 
+def _find_wildcard(
+    entries: tuple[_RegistryEntry, ...],
+    providers: tuple[str, ...],
+) -> _RegistryEntry | None:
+    for provider in providers:
+        for entry in entries:
+            if entry.provider == provider and _normalize_model_name(entry.model) == "*":
+                return entry
+    return None
+
+
 def _to_public(
     entry: _RegistryEntry,
     *,
@@ -171,8 +221,14 @@ def _to_public(
     )
 
 
-def _provider_candidates(provider_class: str) -> tuple[str, ...]:
+def _provider_candidates(
+    provider_class: str,
+    *,
+    explicit_lookup: bool = False,
+) -> tuple[str, ...]:
     normalized = provider_class.strip().lower()
+    if normalized == "lmstudio" and not explicit_lookup:
+        return ("lmstudio",)
     aliases: dict[str, tuple[str, ...]] = {
         "openai_responses": ("openai_responses", "openai"),
         "azure": ("azure", "openai"),

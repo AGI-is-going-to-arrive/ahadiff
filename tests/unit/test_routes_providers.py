@@ -488,6 +488,371 @@ def test_save_provider_models_survives_config_reload(tmp_path: Path) -> None:
     assert snapshot.values["providers"]["demo"]["available_models"] == tuple(expected_models)
 
 
+def test_get_provider_model_limits_returns_registry_metadata(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        "[providers.demo]\n"
+        'provider_class = "openai"\n'
+        'model_name = "gpt-5.4-mini"\n'
+        'base_url = "https://api.example.test/v1"\n'
+        'api_key_env = "AHADIFF_PROVIDER_API_KEY"\n',
+        encoding="utf-8",
+    )
+    client = _client(state_dir)
+
+    response = client.get("/api/providers/demo/model-limits", headers=_AUTH)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["alias"] == "demo"
+    assert payload["provider_class"] == "openai"
+    assert payload["model_name"] == "gpt-5.4-mini"
+    assert payload["max_output_tokens"] == 128000
+    assert payload["max_output_known"] is True
+    assert payload["context_policy"] == "shared_pool"
+    assert payload["confidence"] == "high"
+    assert payload["thinking"]["supported"] is False
+    assert "hint_key" not in payload["thinking"]
+
+
+def test_get_provider_model_limits_returns_404_for_unknown_alias(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    client = _client(state_dir)
+
+    response = client.get("/api/providers/missing/model-limits", headers=_AUTH)
+
+    assert response.status_code == 404
+    assert response.json() == {"error": "provider_not_found", "status": 404}
+
+
+def test_model_limits_preview_reports_local_runtime_as_unknown_limits(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+
+    response = client.post(
+        "/api/providers/model-limits/preview",
+        headers=_AUTH,
+        json={"provider_class": "ollama", "model_name": "llama3"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["context_policy"] == "local_runtime"
+    assert payload["max_context_tokens"] is None
+    assert payload["max_input_tokens"] is None
+    assert payload["max_output_tokens"] is None
+    assert payload["max_context_known"] is False
+    assert payload["max_input_known"] is False
+    assert payload["max_output_known"] is False
+    assert {warning["code"] for warning in payload["warnings"]} >= {
+        "provider_limits.local_runtime",
+        "provider_limits.default_fallback",
+    }
+
+
+def test_model_limits_preview_reports_split_envelope_and_thinking_support(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+
+    gemini = client.post(
+        "/api/providers/model-limits/preview",
+        headers=_AUTH,
+        json={"provider_class": "gemini", "model_name": "gemini-2.5-pro"},
+    )
+    anthropic = client.post(
+        "/api/providers/model-limits/preview",
+        headers=_AUTH,
+        json={"provider_class": "anthropic", "model_name": "claude-sonnet-4-6"},
+    )
+
+    assert gemini.status_code == 200
+    gemini_payload = gemini.json()
+    assert gemini_payload["context_policy"] == "split_envelope"
+    assert gemini_payload["max_input_tokens"] == 1048576
+    assert gemini_payload["max_output_tokens"] == 65536
+    assert gemini_payload["thinking"]["supported"] is True
+    assert "hint_key" not in gemini_payload["thinking"]
+    assert anthropic.status_code == 200
+    assert anthropic.json()["thinking"]["supported"] is True
+
+
+def test_model_limits_preview_warns_for_route_specific_and_low_confidence(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+
+    route_specific = client.post(
+        "/api/providers/model-limits/preview",
+        headers=_AUTH,
+        json={
+            "provider_class": "newapi",
+            "model_name": "served-model",
+            "model_limits_name": "openrouter/qwen/qwen3.5-122b-a10b",
+        },
+    )
+    low_confidence = client.post(
+        "/api/providers/model-limits/preview",
+        headers=_AUTH,
+        json={
+            "provider_class": "newapi",
+            "model_name": "served-model",
+            "model_limits_name": "openrouter/qwen/qwen3.5-35b-a3b",
+        },
+    )
+
+    assert route_specific.status_code == 200
+    assert {warning["code"] for warning in route_specific.json()["warnings"]} >= {
+        "provider_limits.route_specific"
+    }
+    assert low_confidence.status_code == 200
+    assert {warning["code"] for warning in low_confidence.json()["warnings"]} >= {
+        "provider_limits.low_confidence"
+    }
+
+
+def test_provider_create_clamps_max_output_tokens_to_known_hard_limit(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+
+    response = client.post(
+        "/api/providers",
+        headers=_AUTH,
+        json=_provider_payload(max_output_tokens=999999),
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["provider"]["max_output_tokens"] == 128000
+    assert payload["warnings"] == [
+        {
+            "code": "provider_limits.max_output_clamped",
+            "params": {
+                "requested": 999999,
+                "clamped_to": 128000,
+                "source": "registry",
+                "max_output_known": True,
+            },
+        }
+    ]
+    snapshot = load_config(tmp_path)
+    assert snapshot.values["providers"]["demo"]["max_output_tokens"] == 128000
+
+
+def test_provider_update_clamps_and_null_clears_max_output_tokens(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+    created = client.post(
+        "/api/providers",
+        headers=_AUTH,
+        json=_provider_payload(max_output_tokens=1000),
+    )
+    assert created.status_code == 201
+
+    clamped = client.put(
+        "/api/providers/demo",
+        headers=_AUTH,
+        json={"max_output_tokens": 999999},
+    )
+    cleared = client.put(
+        "/api/providers/demo",
+        headers=_AUTH,
+        json={"max_output_tokens": None},
+    )
+
+    assert clamped.status_code == 200
+    assert clamped.json()["provider"]["max_output_tokens"] == 128000
+    assert clamped.json()["warnings"][0]["code"] == "provider_limits.max_output_clamped"
+    assert cleared.status_code == 200
+    assert cleared.json()["provider"]["max_output_tokens"] is None
+    assert "max_output_tokens" not in load_config(tmp_path).values["providers"]["demo"]
+
+
+@pytest.mark.parametrize("bad_value", (True, "123", 123.0))
+def test_provider_create_rejects_non_strict_max_output_tokens(
+    tmp_path: Path,
+    bad_value: object,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+
+    response = client.post(
+        "/api/providers",
+        headers=_AUTH,
+        json=_provider_payload(max_output_tokens=bad_value),
+    )
+
+    assert response.status_code == 422
+    assert not (state_dir / "config.toml").exists()
+
+
+@pytest.mark.parametrize("bad_value", (True, "123", 123.0))
+def test_provider_update_rejects_non_strict_max_output_tokens(
+    tmp_path: Path,
+    bad_value: object,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+    created = client.post("/api/providers", headers=_AUTH, json=_provider_payload())
+    assert created.status_code == 201
+
+    response = client.put(
+        "/api/providers/demo",
+        headers=_AUTH,
+        json={"max_output_tokens": bad_value},
+    )
+
+    assert response.status_code == 422
+    assert "max_output_tokens" not in load_config(tmp_path).values["providers"]["demo"]
+
+
+def test_provider_update_clears_probe_fields_when_model_limits_name_changes(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        "[providers.demo]\n"
+        'provider_class = "openai"\n'
+        'model_name = "served-model"\n'
+        'base_url = "https://api.example.test/v1"\n'
+        'api_key_env = "AHADIFF_PROVIDER_API_KEY"\n'
+        "probed_max_context = 300000\n"
+        "probed_max_input_tokens = 300000\n"
+        "probed_max_output_tokens = 300000\n"
+        'probed_limits_source = "live"\n'
+        "probed_tpm = 1000\n"
+        "probed_rpm = 20\n"
+        'probe_timestamp = "2026-05-23T00:00:00Z"\n',
+        encoding="utf-8",
+    )
+    client = _client(state_dir)
+
+    response = client.put(
+        "/api/providers/demo",
+        headers=_AUTH,
+        json={"model_limits_name": "openai/gpt-4o", "max_output_tokens": 200000},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    provider = payload["provider"]
+    assert provider["model_limits_name"] == "openai/gpt-4o"
+    assert provider["max_output_tokens"] == 16384
+    assert payload["warnings"][0]["code"] == "provider_limits.max_output_clamped"
+    persisted = load_config(tmp_path).values["providers"]["demo"]
+    for field_name in (
+        "probed_max_context",
+        "probed_max_input_tokens",
+        "probed_max_output_tokens",
+        "probed_limits_source",
+        "probed_tpm",
+        "probed_rpm",
+        "probe_timestamp",
+    ):
+        assert provider.get(field_name) is None
+        assert field_name not in persisted
+
+
+def test_provider_update_clears_probe_fields_when_model_limits_name_is_cleared(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        "[providers.demo]\n"
+        'provider_class = "openai"\n'
+        'model_name = "gpt-4o"\n'
+        'base_url = "https://api.example.test/v1"\n'
+        'api_key_env = "AHADIFF_PROVIDER_API_KEY"\n'
+        'model_limits_name = "openai/gpt-5"\n'
+        "probed_max_context = 300000\n"
+        "probed_max_input_tokens = 300000\n"
+        "probed_max_output_tokens = 300000\n"
+        'probed_limits_source = "live"\n'
+        'probe_timestamp = "2026-05-23T00:00:00Z"\n',
+        encoding="utf-8",
+    )
+    client = _client(state_dir)
+
+    response = client.put(
+        "/api/providers/demo",
+        headers=_AUTH,
+        json={"model_limits_name": None},
+    )
+
+    assert response.status_code == 200
+    provider = response.json()["provider"]
+    persisted = load_config(tmp_path).values["providers"]["demo"]
+    assert provider["model_limits_name"] is None
+    assert "model_limits_name" not in persisted
+    for field_name in (
+        "probed_max_context",
+        "probed_max_input_tokens",
+        "probed_max_output_tokens",
+        "probed_limits_source",
+        "probe_timestamp",
+    ):
+        assert provider.get(field_name) is None
+        assert field_name not in persisted
+
+
+def test_provider_create_keeps_valid_max_output_tokens_without_warning(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+
+    response = client.post(
+        "/api/providers",
+        headers=_AUTH,
+        json=_provider_payload(max_output_tokens=1000),
+    )
+
+    assert response.status_code == 201
+    assert response.json()["provider"]["max_output_tokens"] == 1000
+    assert response.json()["warnings"] == []
+
+
+def test_provider_create_warns_but_does_not_clamp_unverified_override(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+
+    response = client.post(
+        "/api/providers",
+        headers=_AUTH,
+        json=_provider_payload(
+            provider_class="newapi",
+            model_name="served-model",
+            model_limits_name="openrouter/qwen/qwen3.5-35b-a3b",
+            max_output_tokens=999999,
+        ),
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["provider"]["max_output_tokens"] == 999999
+    assert payload["warnings"][0]["code"] == "provider_limits.unverified_override"
+
+
 @pytest.mark.parametrize(
     "base_url",
     (

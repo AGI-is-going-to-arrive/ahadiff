@@ -61,6 +61,7 @@ def _empty_config_snapshot() -> dict[str, Any]:
             "desired_retention": 0.9,
         },
         "quiz": dict(_QUIZ_DEFAULTS),
+        "model_limits": {"generate": None, "judge": None},
     }
 
 
@@ -88,6 +89,73 @@ def _add_legacy_llm_key_status(key_status: dict[str, str], api_key_env: object) 
     import os
 
     key_status.setdefault("llm", "configured" if os.environ.get(api_key_env) else "missing")
+
+
+def _model_limit_summaries(
+    result: dict[str, Any],
+    providers: object,
+    resolved: object = None,
+) -> dict[str, Any]:
+    from .routes_providers import build_model_limits_response
+
+    summaries: dict[str, Any] = {"generate": None, "judge": None}
+    providers_map = _object_mapping(providers)
+    for role in ("generate", "judge"):
+        alias_value = _effective_provider_alias(result, providers_map, role=role)
+        if alias_value is None:
+            continue
+        provider_data = _object_mapping(providers_map.get(alias_value))
+        if not provider_data:
+            continue
+        model_value = _explicit_role_model_override(result, resolved, role=role)
+        response = build_model_limits_response(
+            alias=alias_value,
+            provider_data=provider_data,
+            model_name_override=model_value,
+        )
+        if response is not None:
+            summaries[role] = response.model_dump(mode="json")
+    return summaries
+
+
+def _effective_provider_alias(
+    result: dict[str, Any],
+    providers_map: dict[str, object],
+    *,
+    role: str,
+) -> str | None:
+    alias_value = result.get(f"{role}_provider")
+    if isinstance(alias_value, str) and alias_value:
+        return alias_value
+    if len(providers_map) != 1:
+        return None
+    alias, provider_data = next(iter(providers_map.items()))
+    if not _object_mapping(provider_data):
+        return None
+    return alias
+
+
+def _explicit_role_model_override(
+    result: dict[str, Any],
+    resolved: object,
+    *,
+    role: str,
+) -> str | None:
+    model_value = result.get(f"{role}_model")
+    if not isinstance(model_value, str) or not model_value.strip():
+        return None
+    source = _resolved_setting_source(resolved, f"llm.{role}_model")
+    if source == "default":
+        return None
+    return model_value
+
+
+def _resolved_setting_source(resolved: object, key: str) -> str | None:
+    if not isinstance(resolved, dict):
+        return None
+    setting = cast("dict[object, object]", resolved).get(key)
+    source = getattr(setting, "source", None)
+    return source if isinstance(source, str) else None
 
 
 def _safe_config_snapshot(state: ServeState) -> dict[str, Any]:
@@ -173,6 +241,11 @@ def _safe_config_snapshot(state: ServeState) -> dict[str, Any]:
     key_status = _provider_key_status(providers)
     _add_legacy_llm_key_status(key_status, api_key_env)
     result["key_status"] = key_status
+    result["model_limits"] = _model_limit_summaries(
+        result,
+        providers,
+        resolved=getattr(cfg, "resolved", None),
+    )
 
     return result
 

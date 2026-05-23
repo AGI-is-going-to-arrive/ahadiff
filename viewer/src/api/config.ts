@@ -63,6 +63,10 @@ export interface ConfigResponse {
   judge_model: string | null;
   serve_port: number | null;
   key_status: Record<string, 'configured' | 'missing'>;
+  model_limits?: {
+    generate?: import('./types').ModelLimitsResponse | null;
+    judge?: import('./types').ModelLimitsResponse | null;
+  };
   capture: CaptureConfig;
   llm: LlmConfig;
   learn: LearnConfig;

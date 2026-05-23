@@ -444,6 +444,7 @@ PROVIDER_STALE_PROBE_FIELDS: tuple[str, ...] = (
 _PROVIDER_CORE_FIELDS: tuple[str, ...] = (
     "provider_class",
     "model_name",
+    "model_limits_name",
     "base_url",
     "api_key_env",
 )

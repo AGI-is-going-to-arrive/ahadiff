@@ -47,7 +47,7 @@ from ahadiff.core.paths import (
     run_dir,
 )
 from ahadiff.i18n import resolve_locale
-from ahadiff.llm.cost import resolve_model_limits
+from ahadiff.llm.cost import effective_output_cap, resolve_model_limits
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -190,6 +190,7 @@ def _step_output_cap(
     llm_config: dict[str, Any],
     output_budget: int,
     step_name: str,
+    resolved_model_max_output: int | None = None,
 ) -> int:
     step_default = _STEP_OUTPUT_CAPS[step_name]
     step_cap = _llm_positive_int(
@@ -197,11 +198,19 @@ def _step_output_cap(
         f"{step_name}_output_cap",
         step_default,
     )
-    candidates = [output_budget, step_cap]
+    model_max_candidates: list[int] = []
     provider_max = getattr(provider_config, "max_output_tokens", None)
     if provider_max is not None and provider_max > 0:
-        candidates.append(int(provider_max))
-    return min(candidates)
+        model_max_candidates.append(int(provider_max))
+    if resolved_model_max_output is not None and resolved_model_max_output > 0:
+        model_max_candidates.append(resolved_model_max_output)
+    model_max = min(model_max_candidates) if model_max_candidates else None
+    return effective_output_cap(
+        requested_step_cap=step_cap,
+        llm_output_budget=output_budget,
+        resolved_model_max_output=model_max,
+        default_step_cap=step_default,
+    )
 
 
 def _output_reserve_inputs(llm_config: dict[str, Any]) -> tuple[int, dict[str, int]]:
@@ -664,6 +673,7 @@ def _resolve_provider_from_config(
         )
         if configured_model_override is not None:
             normalized_payload["model_name"] = configured_model_override
+            normalized_payload.pop("model_limits_name", None)
         provider_config = _provider_config_from_payload(normalized_payload)
 
     transport_target: TransportTarget = transport_target_for_base_url(
@@ -1313,11 +1323,17 @@ def run_learn_pipeline(
                 assert resolved_privacy_mode is not None  # noqa: S101
 
                 output_budget = _llm_positive_int(llm_config, "output_token_budget", 50_000)
+                generation_limits = resolve_model_limits(
+                    str(provider_config.provider_class),
+                    provider_config.model_name,
+                    provider_config,
+                )
                 claim_output_cap = _step_output_cap(
                     provider_config=provider_config,
                     llm_config=llm_config,
                     output_budget=output_budget,
                     step_name="claim_extraction",
+                    resolved_model_max_output=generation_limits.max_output_tokens,
                 )
                 lesson_output_caps: dict[Literal["full", "hint", "compact"], int] = {
                     "full": _step_output_cap(
@@ -1325,18 +1341,21 @@ def run_learn_pipeline(
                         llm_config=llm_config,
                         output_budget=output_budget,
                         step_name="lesson_full",
+                        resolved_model_max_output=generation_limits.max_output_tokens,
                     ),
                     "hint": _step_output_cap(
                         provider_config=provider_config,
                         llm_config=llm_config,
                         output_budget=output_budget,
                         step_name="lesson_hint",
+                        resolved_model_max_output=generation_limits.max_output_tokens,
                     ),
                     "compact": _step_output_cap(
                         provider_config=provider_config,
                         llm_config=llm_config,
                         output_budget=output_budget,
                         step_name="lesson_compact",
+                        resolved_model_max_output=generation_limits.max_output_tokens,
                     ),
                 }
                 quiz_output_cap = _step_output_cap(
@@ -1344,12 +1363,14 @@ def run_learn_pipeline(
                     llm_config=llm_config,
                     output_budget=output_budget,
                     step_name="quiz_generation",
+                    resolved_model_max_output=generation_limits.max_output_tokens,
                 )
                 misconception_output_cap = _step_output_cap(
                     provider_config=provider_config,
                     llm_config=llm_config,
                     output_budget=output_budget,
                     step_name="misconception_cards",
+                    resolved_model_max_output=generation_limits.max_output_tokens,
                 )
 
                 # ------------------------------------------------------------------

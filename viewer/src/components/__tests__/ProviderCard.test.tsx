@@ -4,6 +4,9 @@ import ProviderCard, {
   ProviderDetailView,
   createProviderProbePoller,
   providerLimitsSourceLabel,
+  providerLimitsWarningMessage,
+  providerThinkingHintKey,
+  shouldShowRecommendedLimitAction,
 } from '../ProviderCard';
 import type { ProviderSummary } from '../../api/config';
 import type { TaskInfoResponse } from '../../api/types';
@@ -25,6 +28,9 @@ vi.mock('../../i18n/useTranslation', () => ({
         'Settings_page.provider_limits_source_fallback': 'Fallback probe',
         'Settings_page.provider_context_label': 'Context Length',
         'Settings_page.provider_model_limits_name': 'Limits profile',
+        'Settings_page.provider_limits_warning_route_specific': 'Route-specific limits can vary.',
+        'Settings_page.provider_limits_warning_unknown': 'Limits could not be verified.',
+        'Settings_page.provider_thinking_hint_gemini': 'Gemini hint',
       };
       return messages[key] ?? key;
     },
@@ -154,6 +160,37 @@ describe('ProviderCard', () => {
 
     expect(label).toBe('Fallback probe');
     expect(label).not.toBe('fallback');
+  });
+
+  it('maps provider limit warning codes through a frontend i18n allowlist', () => {
+    const t = (key: string) => {
+      const messages: Record<string, string> = {
+        'Settings_page.provider_limits_warning_route_specific': 'Route-specific limits can vary.',
+        'Settings_page.provider_limits_warning_unknown': 'Limits could not be verified.',
+      };
+      return messages[key] ?? key;
+    };
+
+    expect(providerLimitsWarningMessage(t, { code: 'provider_limits.route_specific', params: {} }))
+      .toBe('Route-specific limits can vary.');
+    expect(providerLimitsWarningMessage(t, { code: 'provider_limits.future', params: {} }))
+      .toBe('Limits could not be verified.');
+  });
+
+  it('derives thinking hint keys locally instead of rendering backend key names', () => {
+    expect(providerThinkingHintKey('gemini')).toBe('Settings_page.provider_thinking_hint_gemini');
+    expect(providerThinkingHintKey('openai')).toBeNull();
+  });
+
+  it('only offers recommended output when a manual value differs from the known limit', () => {
+    const limits = {
+      max_output_known: true,
+      max_output_tokens: 8192,
+    };
+
+    expect(shouldShowRecommendedLimitAction(limits, '')).toBe(false);
+    expect(shouldShowRecommendedLimitAction(limits, '8192')).toBe(false);
+    expect(shouldShowRecommendedLimitAction(limits, '4096')).toBe(true);
   });
 
   it('renders context-only fallback probe source and limits profile', () => {

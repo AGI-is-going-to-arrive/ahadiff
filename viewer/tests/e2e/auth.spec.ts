@@ -385,8 +385,7 @@ test.describe('Phase 2H — auth bootstrap', () => {
       },
     );
 
-    await page.goto('/#/welcome');
-    await page.waitForLoadState('domcontentloaded');
+    await openClientModulePage(page);
     authCalls = 0;
 
     await page.evaluate(async (path) => {
@@ -436,8 +435,7 @@ test.describe('Phase 2H — auth bootstrap', () => {
       },
     );
 
-    await page.goto('/#/welcome');
-    await page.waitForLoadState('domcontentloaded');
+    await openClientModulePage(page);
     authCalls = 0;
 
     await page.evaluate(async (path) => {
@@ -491,8 +489,7 @@ test.describe('Phase 2H — auth bootstrap', () => {
       },
     );
 
-    await page.goto('/#/welcome');
-    await page.waitForLoadState('domcontentloaded');
+    await openClientModulePage(page);
     authCalls = 0;
 
     await page.evaluate(async (path) => {
@@ -548,8 +545,7 @@ test.describe('Phase 2H — auth bootstrap', () => {
       },
     );
 
-    await page.goto('/#/welcome');
-    await page.waitForLoadState('domcontentloaded');
+    await openClientModulePage(page);
     authCalls = 0;
 
     await page.evaluate(async (path) => {

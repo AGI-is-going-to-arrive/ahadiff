@@ -69,6 +69,12 @@ let tokenPromise: Promise<string> | null = null;
 // Coalesces the 401/403 retry path so N concurrent stale-token failures
 // produce ONE refresh fetch instead of N (CR1-01 thundering-herd fix).
 let refreshPromise: Promise<string> | null = null;
+let lastRefresh: {
+  failedToken: string;
+  token: string;
+  generation: number;
+  expiresAt: number;
+} | null = null;
 let tokenGeneration = 0;
 let tokenRequestId = 0;
 let refreshRequestId = 0;
@@ -76,6 +82,7 @@ let refreshRequestId = 0;
 // Cap the auth-token bootstrap fetch so a stalled /api/auth/token endpoint
 // can't deadlock every API call queued behind ensureToken().
 const TOKEN_FETCH_TIMEOUT_MS = 8000;
+const REFRESH_REUSE_WINDOW_MS = 5000;
 
 function normalizeApiPath(path: string): string {
   let url: URL;
@@ -174,16 +181,36 @@ function clearToken(): void {
 function refreshToken(failedToken: string, signal?: AbortSignal): Promise<string> {
   throwIfAborted(signal);
   if (cachedToken && cachedToken !== failedToken) return Promise.resolve(cachedToken);
+  const now = Date.now();
+  if (
+    lastRefresh &&
+    lastRefresh.failedToken === failedToken &&
+    lastRefresh.generation === tokenGeneration &&
+    lastRefresh.expiresAt > now
+  ) {
+    cachedToken = lastRefresh.token;
+    return Promise.resolve(lastRefresh.token);
+  }
   if (refreshPromise) return withAbort(refreshPromise, signal);
   const requestId = ++refreshRequestId;
-  refreshPromise = (async () => {
+  const generation = tokenGeneration;
+  refreshPromise = Promise.resolve().then(async () => {
     try {
       if (!cachedToken || cachedToken === failedToken) clearToken();
-      return await ensureToken();
+      const token = await ensureToken();
+      if (tokenGeneration === generation) {
+        lastRefresh = {
+          failedToken,
+          token,
+          generation,
+          expiresAt: Date.now() + REFRESH_REUSE_WINDOW_MS,
+        };
+      }
+      return token;
     } finally {
       if (refreshRequestId === requestId) refreshPromise = null;
     }
-  })();
+  });
   return withAbort(refreshPromise, signal);
 }
 
@@ -225,6 +252,7 @@ export function resetToken(): void {
   refreshRequestId += 1;
   clearToken();
   refreshPromise = null;
+  lastRefresh = null;
 }
 
 export function setToken(token: string | null): void {
@@ -233,6 +261,7 @@ export function setToken(token: string | null): void {
   refreshRequestId += 1;
   tokenPromise = null;
   refreshPromise = null;
+  lastRefresh = null;
   cachedToken = token;
 }
 
