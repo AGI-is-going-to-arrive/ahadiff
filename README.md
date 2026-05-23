@@ -89,11 +89,11 @@ Two more things to try:
 ahadiff quiz <run_id>    # test yourself on what you just learned
 ahadiff review           # spaced-repetition review of past cards
 ```
-See the [User Guide](./docs/USER_GUIDE.en.html) for all 9 diff capture modes, export options, concept graphs, and advanced commands.
+See the [User Guide](./docs/USER_GUIDE.en.html) for all 10 diff capture sources, export options, concept graphs, and advanced commands.
 
 ## Features
 
-- **Learn**: `ahadiff learn` supports 9 diff capture modes: git commit, range, time-window (`--since`), staged, unstaged, patch, patch URL, file compare, and directory compare.
+- **Learn**: `ahadiff learn` supports 10 diff capture sources: working tree, unstaged, staged, last commit, revision/range, time-window (`--since`), patch/stdin, patch URL, file compare, and directory compare.
 - **Evidence-linked claims**: every lesson conclusion is tied to `file:line` evidence, with verification states such as verified, weak, not proven, contradicted, and rejected.
 - **Structured LLM output**: generation uses schema-aware JSON contracts where supported, defaults to JSON object mode with one bounded validation retry, and keeps the existing parser, repair, and degraded fallback paths. Truncated or malformed fallback JSON is retried instead of being accepted.
 - **Adaptive capture limits**: fresh configs default to auto capture sizing; existing customized capture settings stay manual. Auto mode uses provider probes, the bundled model registry, output reserves, safety reserves, and CJK diff density, while runtime patch intake remains capped at 50 MiB. Settings previews provider limits from the current draft provider class, model, and optional limits profile before saving, without remote probing on every edit.

@@ -3317,11 +3317,39 @@ def _effective_graph_max_nodes_import(workspace_root: Path) -> int:
 
 
 def _redact_json_artifact(raw_text: str, workspace_root: Path) -> str:
-    return redaction_pipeline(
-        raw_text,
-        repo_root=workspace_root if _has_git_root(workspace_root) else None,
-        policy=_resolve_policy(workspace_root),
-    ).redacted_text
+    repo_root = workspace_root if _has_git_root(workspace_root) else None
+    policy = _resolve_policy(workspace_root)
+    try:
+        payload: object = json.loads(raw_text)
+    except json.JSONDecodeError:
+        return redaction_pipeline(raw_text, repo_root=repo_root, policy=policy).redacted_text
+    return _render_json_value(_redact_json_value(payload, repo_root=repo_root, policy=policy))
+
+
+def _redact_json_value(
+    value: object,
+    *,
+    repo_root: Path | None,
+    policy: AllowlistPolicy | None,
+) -> object:
+    if isinstance(value, str):
+        return redaction_pipeline(value, repo_root=repo_root, policy=policy).redacted_text
+    if isinstance(value, list):
+        items = cast("list[object]", value)
+        return [_redact_json_value(item, repo_root=repo_root, policy=policy) for item in items]
+    if isinstance(value, dict):
+        entries = cast("dict[object, object]", value)
+        return {
+            str(_redact_json_value(str(key), repo_root=repo_root, policy=policy)): (
+                _redact_json_value(item, repo_root=repo_root, policy=policy)
+            )
+            for key, item in entries.items()
+        }
+    return value
+
+
+def _render_json_value(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
 
 
 __all__ = [

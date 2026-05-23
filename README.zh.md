@@ -89,11 +89,11 @@ ahadiff serve
 ahadiff quiz <run_id>    # 测测自己有没有看懂刚才的改动
 ahadiff review           # 复习过去生成的卡片
 ```
-9 种 diff 捕获方式、导出、概念图谱和进阶命令都在 [使用指南](./docs/USER_GUIDE.zh.html) 里。
+10 种 diff 捕获来源、导出、概念图谱和进阶命令都在 [使用指南](./docs/USER_GUIDE.zh.html) 里。
 
 ## 功能
 
-- **学习**：`ahadiff learn` 支持 9 种 diff 捕获模式：git commit、range、时间窗口（`--since`）、staged、unstaged、patch、patch URL、文件对比、目录对比。
+- **学习**：`ahadiff learn` 支持 10 种 diff 捕获来源：工作区、未暂存、已暂存、最近一次提交、提交/范围、时间窗口（`--since`）、patch/stdin、patch URL、文件对比、目录对比。
 - **证据化 Claims**：每条 lesson 结论都绑定 `file:line` 证据，并区分 verified、weak、not proven、contradicted、rejected 等状态。
 - **结构化 LLM 输出**：生成链路会在支持时按 schema 约束 JSON 输出；默认使用 JSON object mode，并带 1 次有界 validation retry；原有 parser、repair 和 degraded 回退仍保留。截断或格式不完整的 fallback JSON 会触发重试，不会被直接接受。
 - **自适应捕获上限**：新配置默认使用自动捕获；已经自定义过捕获数字的旧配置保持手动模式。自动模式会结合 provider probe、内置模型表、输出预留、安全预留和 CJK diff 密度来计算上限，同时运行时 patch 读取仍封顶 50 MiB。Settings 会按当前草稿 provider class、model 和可选 limits profile 预览保存后的模型上限，不会在每次编辑时远程探测。

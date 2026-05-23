@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
+from ahadiff.git.parser import parse_unified_diff
 from ahadiff.safety import audit as audit_module
 from ahadiff.safety import redact as redact_module
 from ahadiff.safety.audit import append_audit_record, build_redaction_audit_record
@@ -81,6 +82,35 @@ def test_redaction_pipeline_detects_base64_wrapped_secret() -> None:
 
     assert any(finding.rule_id == "BASE64_WRAPPED_SECRET" for finding in result.findings)
     assert "[REDACTED:base64_wrapped_secret]" in result.redacted_text
+
+
+def test_redaction_pipeline_preserves_diff_prefix_for_leading_entropy_tokens() -> None:
+    patch = (
+        "diff --git a/README.md b/README.md\n"
+        "--- a/README.md\n"
+        "+++ b/README.md\n"
+        "@@ -1,2 +1,2 @@\n"
+        "-UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run pytest \\\n"
+        "+UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run pytest \\\n"
+        " keep\n"
+    )
+
+    result = redaction_pipeline(patch, policy=AllowlistPolicy())
+
+    assert "-[REDACTED:high_entropy_string] uv run pytest \\" in result.redacted_text
+    assert "+[REDACTED:high_entropy_string] uv run pytest \\" in result.redacted_text
+    parse_unified_diff(result.redacted_text)
+
+
+def test_redaction_pipeline_redacts_line_start_entropy_outside_diff() -> None:
+    token = "UV_CACHE_DIR=/tmp/ahadiff-uv-cache"
+
+    result = redaction_pipeline(f"+{token}\n-{token}\n", policy=AllowlistPolicy())
+
+    assert result.redacted_text == (
+        "+[REDACTED:high_entropy_string]\n-[REDACTED:high_entropy_string]\n"
+    )
+    assert token not in result.redacted_text
 
 
 def test_redaction_pipeline_detects_multiline_split_github_token() -> None:

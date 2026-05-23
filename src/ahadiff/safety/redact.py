@@ -511,13 +511,30 @@ def _iter_high_entropy_matches(text: str) -> tuple[tuple[int, int, str], ...]:
     matches: list[tuple[int, int, str]] = []
     for match in _HIGH_ENTROPY_TOKEN.finditer(text):
         raw_value = match.group("value")
+        start, end = _trim_leading_diff_marker_from_entropy_match(
+            text,
+            *match.span("value"),
+        )
+        if start != match.start("value"):
+            raw_value = text[start:end]
         if _is_high_entropy_exempt(raw_value):
             continue
         if len(raw_value) <= 20 or _shannon_entropy(raw_value) <= 4.5:
             continue
-        start, end = match.span("value")
         matches.append((start, end, raw_value))
     return tuple(matches)
+
+
+def _trim_leading_diff_marker_from_entropy_match(
+    text: str,
+    start: int,
+    end: int,
+) -> tuple[int, int]:
+    if end - start <= 1 or text[start] not in "+-":
+        return start, end
+    if start != 0 and text[start - 1] not in "\r\n":
+        return start, end
+    return start + 1, end
 
 
 def _decoded_payload_matches_hard_block_rule(payload: str, *, max_depth: int = 3) -> bool:

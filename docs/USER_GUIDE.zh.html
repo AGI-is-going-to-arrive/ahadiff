@@ -69,13 +69,14 @@ supports_native_json_schema = false</pre>
 <section id="learn">
   <h2>3. 生成一次学习 run</h2>
   <div class="steps">
-    <div class="step"><strong>选择 diff 范围</strong><br>最近一次提交、暂存区、未暂存区、patch 文件、URL patch 或两个文件/目录对比都可以。</div>
+    <div class="step"><strong>选择 diff 来源</strong><br>工作区、未暂存、已暂存、最近一次提交、提交范围、时间窗口、patch 文本或 stdin、patch URL，以及文件/目录对比都可以。</div>
     <div class="step"><strong>生成课程和证据</strong><br>AhaDiff 会捕获 diff、扫描安全风险、生成 claims / lesson / quiz / score 等 artifact。</div>
     <div class="step"><strong>打开 WebUI 学习</strong><br>用 Lesson 看解释，用 Diff 查证据，用 Quiz 检验理解，用 Review 做间隔复习。</div>
   </div>
   <pre>ahadiff learn --last
 ahadiff learn --last --open
 ahadiff learn HEAD~1..HEAD
+ahadiff learn --since "2 hours ago"
 ahadiff learn --staged
 ahadiff learn --unstaged --include-untracked
 ahadiff learn --unstaged --include-untracked --changed-path src/app.py
@@ -85,7 +86,7 @@ ahadiff learn --compare old.py new.py
 ahadiff learn --compare-dir old/ new/
 ahadiff learn --last --against-spec SPEC.md
 ahadiff learn --last --against-spec SPEC.md --spec-semantic-review</pre>
-  <p>Dashboard 的“开始学习”对话框和这些命令保持同一套心智模型。四个快速卡片对应工作区、未暂存、已暂存和最近一次提交；更多捕获模式按 Git 高级、补丁来源、文件对比分组，每张卡片都会显示对应 CLI 形态。路径范围只对工作区类运行生效，且只接受仓库相对路径。WebUI 的补丁输入框只接受粘贴的 unified diff 文本，限制为 4096 字节；补丁文件、stdin 或更大的补丁请用 CLI。</p>
+  <p>Dashboard 的“开始学习”对话框和这些命令保持同一套心智模型。四个快速卡片对应工作区、未暂存、已暂存和最近一次提交；更多捕获来源按 Git 高级、补丁来源、文件对比分组，每张卡片都会显示对应 CLI 形态。路径范围只对工作区类运行生效，且只接受仓库相对路径。WebUI 的补丁输入框只接受粘贴的 unified diff 文本，限制为 4096 字节；补丁文件、stdin 或更大的补丁请用 CLI。远程 patch URL 会走和 CLI 一样的安全检查；loopback 和私有网络 URL 会被拒绝。</p>
 </section>
 
 <section id="webui">
@@ -201,7 +202,7 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
   <h3>哪些安全发现会让 run 失败？</h3>
   <p>未缓解的 Critical safety finding 会让 run 失败。Critical secret finding 只有在本地捕获记录里带完整 redaction 结构时才算已缓解，包括 rule、hash、source、line 和 column。</p>
   <h3>能不能说没有任何 bug？</h3>
-  <p>不能做绝对保证。上一轮完整发布 gate 覆盖了后端 unit/integration/eval、静态检查、wheel、前端 typecheck/build/Vitest、完整 Playwright、real-serve、CLI 行为矩阵、Linux 目标容器测试和 GPT-5.5 live fixture。后续 follow-up 只按各自改动面复跑。最新的 Eval Scoring Enhancement review-fix 复跑了后端目标回归、目标 ruff / format / pyright、前端 typecheck、目标 Vitest、前端 build、Run Detail Playwright、a11y Playwright、临时目录 raw-claims 复算和 <code>git diff --check HEAD</code>；没有重跑 wheel、real-serve、live judge、远端 CI、Linux Docker gate、真实 Windows runner、后端全量 unit / integration / eval、前端全量 Vitest 或完整 Playwright matrix。</p>
+  <p>不能做绝对保证。上一轮完整发布 gate 覆盖了后端 unit/integration/eval、静态检查、wheel、前端 typecheck/build/Vitest、完整 Playwright、real-serve、CLI 行为矩阵、Linux 目标容器测试和 GPT-5.5 live fixture。后续 follow-up 只按各自改动面复跑。最新的 learn capture redaction follow-up 复跑了受影响的后端测试和静态检查，按 dry-run 跑过 10 种新建学习 / CLI 捕获来源，用已配置 provider 完整跑通 <code>--last</code> 和 <code>--since "2 hours ago"</code>，并验证了本地 serve API 的这两种来源。没有重跑 wheel、前端套件、完整 Playwright、远端 CI、Linux Docker gate 或真实 Windows runner。</p>
 </section>
 
 <section id="verification">
@@ -209,6 +210,7 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
   <ul>
     <li>截图来自当前 <code>viewer/</code>，用 Playwright 和现有 serve mock 生成，不包含真实密钥。</li>
     <li>real-serve 已用临时 git repo 启动真实 <code>python -m ahadiff serve</code>，浏览器覆盖 token、estimate、learn dry-run、task 和 progress stream。</li>
+    <li>本次 2026-05-24 learn capture redaction follow-up 修复两个捕获阶段失败路径：高熵脱敏会保留 diff 行首 <code>+</code> / <code>-</code> 标记；JSON text-map artifact 会先解析、递归脱敏，再重新渲染，不再把原始 JSON 字符串直接替换坏。真实验证：<code>ahadiff learn --last</code> 完整跑通，<code>run_019e56fc40cd37a4dbd7a24047b3917e</code> 为 <code>PASS 89.87</code>；<code>ahadiff learn --since "2 hours ago"</code> 完整跑通，<code>run_019e570853bb3084ae5766c74724b5b0</code> 为 <code>PASS 86.58</code>；10 种捕获来源 dry-run 覆盖工作区、未暂存、已暂存、最近一次提交、时间窗口、提交范围、patch stdin、文件对比、目录对比和公开 HTTPS patch URL，均通过。私有 loopback patch URL 被现有安全策略拒绝，这是预期行为。后端目标测试 <code>76 passed</code>，目标 pyright <code>0 errors</code>，目标 ruff check、ruff format check、<code>git diff --check HEAD</code>、<code>/healthz</code>，以及 WebUI API 的 last / since dry-run 都通过。本轮没有重跑 wheel、前端套件、完整 Playwright、远端 CI、Linux Docker gate 或真实 Windows runner。</li>
     <li>本次 2026-05-24 Eval Scoring Enhancement review-fix 覆盖当前评分、ratchet、claim verifier、score/judge API 和 Run Detail score/judge 展示改动面。后端修复 failed hard gate / <code>verdict != PASS</code> 不得进入 ratchet <code>baseline</code> / <code>keep</code>，并让历史 counted event 只有 <code>verdict = PASS</code> 时才可作为 baseline；verifier 支持同文件同 side 的 multi-hunk region anchor，但继续拒绝 mode-only、binary、file-not-in-patch、side mismatch、hunk id mismatch、过宽范围和 truncated hunk 未捕获行；无 spec 的 <code>spec_alignment</code> 仍是 N/A / <code>0/0</code>，LLM judge 仍只是 advisory。前端 strict schema 同步 <code>hard_gates.*.policy</code>、<code>spec_alignment</code> 真实 artifact 字段和当前 <code>llm_judge</code> payload，并在 Score / Judge tab 中把 <code>max_score = 0</code> 的维度显示为 N/A。真实验证：后端目标回归 <code>158 passed</code>，目标 ruff check、ruff format check、pyright <code>0 errors</code>，前端 typecheck，目标 Vitest <code>4</code> 个文件、<code>41</code> 个测试通过，前端 build，Run Detail Playwright <code>300 passed</code>，a11y Playwright <code>255 passed</code>，临时目录从 <code>claims.raw.jsonl</code> 重新 verify + evaluate 的目标 run 为 <code>PASS 85.54</code>，以及 <code>git diff --check HEAD</code>。本轮没有重跑 wheel、real-serve、live judge、远端 CI、Linux Docker gate、真实 Windows runner、后端全量 unit / integration / eval、前端全量 Vitest 或完整 Playwright matrix。</li>
     <li>本次 2026-05-24 provider smart config review 覆盖当前 provider model-limit 和 Settings 改动面。后端现在支持 provider create/update 写入 <code>model_limits_name</code>，provider 身份或 limits profile 变化时会清理旧 probe，支持不保存配置的 limits preview，显式 role-model override 会忽略已保存的 limits profile；低置信度、默认回退、route-specific、local-runtime limit 会返回结构化 warning；<code>max_output_tokens</code> 使用 strict integer 校验。WebUI provider 卡片会按草稿表单预览 limits，本地化 provider warning 和 thinking hint，保存后的 warning 不会被刷新状态吞掉，probe 成功后会刷新卡片，Settings 也会分别展示 generate / judge 模型上限；前端 API client 还收口了 stale-token retry single-flight。真实验证：后端 unit <code>3155 passed</code>，integration + eval <code>25 passed</code>，ruff check、ruff format check、pyright <code>0 errors</code>，前端 typecheck，前端 Vitest <code>44</code> 个文件、<code>448</code> 个测试通过，前端 build，i18n parity <code>EN: 1652 ZH: 1652 Missing: 0</code>，以及 <code>git diff --check HEAD</code>。两轮完整 Playwright matrix 都是 <code>3064 passed, 10 skipped, 1 failed</code>；失败分别是不同的 Firefox 单点超时，两个失败项都已目标复跑通过。Linux Docker 针对跨平台 / Windows-runtime guard 和 provider/model-limit 目标的 smoke 为 <code>155 passed</code>。本轮没有重跑 wheel、real-serve、live judge、远端 CI 或真实 Windows runner。</li>
     <li>本次 2026-05-23 frontend-enhancement / judge-failure review 把 CLI learn 迁回共享 <code>run_learn_pipeline</code> 路径并保留 <code>--quiz-mode</code>；新增脱敏 <code>judge_failure.json</code> 和 <code>/api/run/{run_id}/judge-failure</code> route；Run Detail / Lesson 补齐 Score、Judge、Overview 链接和失败面板；Shell 补 GitHub / docs 入口；同时修复少量 a11y、contrast 和浏览器回归点。本 session 真实验证：<code>uv run pytest tests/unit -q</code> 为 <code>3119 passed</code>，<code>uv run pytest tests/integration -q</code> 为 <code>16 passed</code>，<code>uv run pytest tests/eval -q</code> 为 <code>9 passed</code>，ruff check、ruff format check、pyright <code>0 errors</code>，前端 typecheck，前端 Vitest 为 <code>44</code> 个文件、<code>444</code> 个测试通过，前端 build，<code>AHADIFF_VIEWER_E2E_PORT=5174</code> 上完整 Playwright 为 <code>3050 passed, 10 skipped</code>，i18n parity <code>1 passed</code>，以及 <code>git diff --check HEAD</code>。默认端口上的一次 Playwright run 因本地服务复用出现连接错误，已改用干净端口 5174 全量重跑通过。本轮没有重跑 wheel、real-serve、live judge、远端 CI、Linux 容器 gate 或真实 Windows runner。</li>

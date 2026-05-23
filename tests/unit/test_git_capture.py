@@ -580,6 +580,34 @@ def test_learn_range_dry_run_writes_redacted_artifacts(tmp_path: Path) -> None:
     _assert_artifact_manifest_matches_files(run_dir)
 
 
+def test_redacted_text_maps_remain_valid_json_when_entropy_follows_newline(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "README.md").write_text("base\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+    (repo_root / "README.md").write_text(
+        "notes\n\n```bash\n"
+        "UV_CACHE_DIR=/tmp/ahadiff-uv-cache uv run pytest \\\n"
+        "  tests/unit/test_redact.py\n"
+        "```\n",
+        encoding="utf-8",
+    )
+    _commit_all(repo_root, "add command notes")
+
+    runner = CliRunner()
+    result = _invoke_repo_cli(runner, repo_root, ["learn", "--last", "--dry-run"])
+
+    assert result.exit_code == 0
+    run_dir, _metadata, patch_text = _load_run_artifacts(repo_root)
+    after_text_map = json.loads((run_dir / "after_text_by_path.json").read_text(encoding="utf-8"))
+    after_text = after_text_map["texts"]["README.md"]
+    assert "+[REDACTED:high_entropy_string] uv run pytest \\" in patch_text
+    assert "\n[REDACTED:high_entropy_string] uv run pytest \\" in after_text
+
+
 def test_learn_last_matches_single_commit_semantics(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
